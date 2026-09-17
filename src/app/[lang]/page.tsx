@@ -20,7 +20,7 @@ export default async function Home({ params }: { params: Promise<{ lang: string 
         <Proof t={t} />
         <How t={t} />
         <Agents t={t} />
-        <Industries t={t} />
+        <Industries t={t} lang={lang} />
         <Integrations t={t} />
         <Calendar t={t} />
         <Pricing t={t} lang={lang} />

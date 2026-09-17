@@ -1,0 +1,99 @@
+---
+title_ar: أفضل 8 وكلاء تسويق بالذكاء الاصطناعي للخليج 2026 — معيار مُعلن
+title_en: The 8 Best AI Marketing Agents for the Gulf in 2026 — a published rubric
+date: 2026-09-17
+desc_ar: قيّمنا 8 أدوات على 6 معايير موزونة: التنفيذ المستقل، العربية واللهجات، القنوات الخليجية، الالتزام، التحكم البشري، السعر. نشر تبني إحداها — والمعيار كامل أمامك.
+desc_en: We scored 8 tools on 6 weighted criteria: autonomous execution, Arabic and dialects, Gulf channels, compliance, human control, price. Nashr builds one of them — the full rubric is here.
+---
+## الإفصاح
+
+نشر تبني نور، إحدى الأدوات المقيّمة. لذلك ننشر المعيار كاملاً، ونقيّم انتشارنا بتحفّظ (2/5)، ونسمّي الفائزين في فئات لا نتفوق فيها. راسلنا لتصحيح أي رقم.
+
+## المعيار
+
+| المعيار | الوزن |
+|---|---|
+| التنفيذ المستقل (ينتج وينشر لا يقترح فقط) | 25% |
+| العربية واللهجات الخليجية | 20% |
+| القنوات الخليجية (سناب، واتساب، سلة/زد) | 20% |
+| الالتزام (صحة، عقار، قانون) | 10% |
+| التحكم البشري (موافقة، حوكمة) | 15% |
+| السعر/القيمة | 10% |
+
+## النتائج
+
+| # | الأداة | التنفيذ | العربية | القنوات | الالتزام | التحكم | السعر | المجموع |
+|---|---|---|---|---|---|---|---|---|
+| 1 | نور (نشر) | 4 | 5 | 5 | 4 | 5 | 4 | **4.55** |
+| 2 | Enrich Labs (Helena) | 5 | 1 | 1 | 2 | 5 | 4 | 3.05 |
+| 3 | Jasper | 2 | 2 | 1 | 1 | 3 | 3 | 1.95 |
+| 4 | ChatGPT | 1 | 3 | 1 | 1 | 2 | 5 | 1.95 |
+| 5 | Hootsuite/Buffer | 2 | 2 | 2 | 1 | 4 | 3 | 2.25 |
+| 6 | Sintra | 3 | 1 | 1 | 1 | 3 | 4 | 2.05 |
+| 7 | Okara AI CMO | 3 | 1 | 1 | 2 | 3 | 3 | 2.05 |
+| 8 | وكالة محلية (مرجع) | 5 | 5 | 5 | 4 | 3 | 1 | 4.20 |
+
+**فائزو الفئات:** التنفيذ الأوسع: Enrich Labs (100+ تكامل غربي). السعر: ChatGPT. الجودة الإبداعية القصوى: الوكالة المحلية.
+
+## ملاحظات لكل أداة
+
+**نور (نشر):** لهجات، تقويم هجري، سناب/واتساب/سلة، مراجِع ثانٍ للالتزام. الضعف: التكاملات الرسمية قيد الموافقة، الانتشار جديد.
+**Enrich Labs:** الأقوى تنفيذاً في أمريكا. بلا عربية ولا قنوات خليجية.
+**Jasper:** كاتب إنجليزي، لا وكيل.
+**ChatGPT:** مساعد عام بلا ذاكرة تسويقية ولا نشر.
+**Hootsuite/Buffer:** جدولة لما تكتبه أنت.
+**Sintra / Okara:** وكلاء عامون بالإنجليزي.
+**الوكالة المحلية:** أعلى جودة إبداعية وأعلى سعر وأبطأ.
+
+## كيف تختار
+
+اختبر أداة واحدة على قناة واحدة لأسبوعين. قِس: كم عنصراً اعتمدته بلا تعديل؟ إذا تجاوز 80% بعد الأسبوع الثاني، أنت في المكان الصحيح.
+
+[جرّب نور مجاناً](/ar/app/signup)
+
+---EN---
+## Disclosure
+
+Nashr builds Noor, one of the tools scored here. So we publish the full rubric, score our own adoption conservatively (2/5), and name category winners where we don't lead. Email us to correct any number.
+
+## Rubric
+
+| Criterion | Weight |
+|---|---|
+| Autonomous execution (produces and publishes, not just suggests) | 25% |
+| Arabic and Gulf dialects | 20% |
+| Gulf channels (Snap, WhatsApp, Salla/Zid) | 20% |
+| Compliance (health, real estate, legal) | 10% |
+| Human control (approval, governance) | 15% |
+| Price/value | 10% |
+
+## Results
+
+| # | Tool | Exec | Arabic | Channels | Compliance | Control | Price | Score |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Noor (Nashr) | 4 | 5 | 5 | 4 | 5 | 4 | **4.55** |
+| 2 | Enrich Labs (Helena) | 5 | 1 | 1 | 2 | 5 | 4 | 3.05 |
+| 3 | Jasper | 2 | 2 | 1 | 1 | 3 | 3 | 1.95 |
+| 4 | ChatGPT | 1 | 3 | 1 | 1 | 2 | 5 | 1.95 |
+| 5 | Hootsuite/Buffer | 2 | 2 | 2 | 1 | 4 | 3 | 2.25 |
+| 6 | Sintra | 3 | 1 | 1 | 1 | 3 | 4 | 2.05 |
+| 7 | Okara AI CMO | 3 | 1 | 1 | 2 | 3 | 3 | 2.05 |
+| 8 | Local agency (reference) | 5 | 5 | 5 | 4 | 3 | 1 | 4.20 |
+
+**Category winners:** broadest execution: Enrich Labs (100+ Western integrations). Price: ChatGPT. Peak creative quality: a local agency.
+
+## Notes per tool
+
+**Noor (Nashr):** dialects, Hijri calendar, Snap/WhatsApp/Salla, second reviewer for compliance. Weak spots: official integrations pending approval, adoption is new.
+**Enrich Labs:** strongest execution in the US. No Arabic, no Gulf channels.
+**Jasper:** an English writer, not an agent.
+**ChatGPT:** general assistant with no marketing memory and no publishing.
+**Hootsuite/Buffer:** scheduling for what you write.
+**Sintra / Okara:** general English agents.
+**Local agency:** highest creative quality, highest price, slowest.
+
+## How to choose
+
+Test one tool on one channel for two weeks. Measure: how many items did you approve without editing? Above 80% by week two means you're in the right place.
+
+[Try Noor free](/en/app/signup)

@@ -71,3 +71,15 @@ body {
 
 details > summary { list-style: none; cursor: pointer; }
 details > summary::-webkit-details-marker { display: none; }
+
+/* Blog article typography */
+.prose-nashr h2 { font-family: var(--font-display), var(--font-body), sans-serif; font-size: 1.5rem; font-weight: 700; margin-top: 2.5rem; color: var(--color-oasis); }
+.prose-nashr h3 { font-family: var(--font-display), var(--font-body), sans-serif; font-size: 1.2rem; font-weight: 600; margin-top: 1.75rem; }
+.prose-nashr p, .prose-nashr li { line-height: 1.8; margin-top: 0.75rem; color: color-mix(in oklab, var(--color-ink) 85%, transparent); }
+.prose-nashr ul { list-style: disc; padding-inline-start: 1.5rem; }
+.prose-nashr ol { list-style: decimal; padding-inline-start: 1.5rem; }
+.prose-nashr a { color: var(--color-oasis); text-decoration: underline; }
+.prose-nashr table { width: 100%; margin-top: 1rem; border-collapse: collapse; font-size: 0.9rem; }
+.prose-nashr th { background: var(--color-oasis); color: var(--color-mist); text-align: start; padding: 0.5rem 0.75rem; }
+.prose-nashr td { border-top: 1px solid color-mix(in oklab, var(--color-ink) 10%, transparent); padding: 0.5rem 0.75rem; }
+.prose-nashr strong { font-weight: 600; }

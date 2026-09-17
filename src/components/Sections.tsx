@@ -1,4 +1,6 @@
-import type { Dict } from "@/lib/i18n";
+import Link from "next/link";
+import type { Dict, Lang } from "@/lib/i18n";
+const INDUSTRY_LINKS = ["ecommerce", "real-estate", "legal", "startups", "clinics", "restaurants", "agencies", "agencies"];
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-sadu">{children}</p>;
@@ -83,18 +85,18 @@ export function Agents({ t }: { t: Dict }) {
   );
 }
 
-export function Industries({ t }: { t: Dict }) {
+export function Industries({ t, lang = "ar" }: { t: Dict; lang?: Lang }) {
   return (
     <section id="industries" className="scroll-mt-20">
       <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
         <Eyebrow>{t.industries.eyebrow}</Eyebrow>
         <H2>{t.industries.title}</H2>
         <div className="mt-10 grid gap-px overflow-hidden rounded-xl border border-ink/10 bg-ink/10 sm:grid-cols-2 lg:grid-cols-4">
-          {t.industries.items.map((it) => (
-            <div key={it.name} className="bg-salt p-5">
+          {t.industries.items.map((it, i) => (
+            <Link key={it.name} href={`/${lang}/for/${INDUSTRY_LINKS[i] ?? "ecommerce"}`} className="bg-salt p-5 transition hover:bg-white">
               <h3 className="font-display font-medium">{it.name}</h3>
               <p className="mt-2 text-sm leading-relaxed text-ink/70">{it.body}</p>
-            </div>
+            </Link>
           ))}
         </div>
       </div>

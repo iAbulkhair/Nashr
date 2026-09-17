@@ -7,7 +7,8 @@ export default function Nav({ t, lang }: { t: Dict; lang: Lang }) {
     { href: `/${lang}#agents`, label: t.nav.agents },
     { href: `/${lang}#industries`, label: t.nav.industries },
     { href: `/${lang}/pricing`, label: t.nav.pricing },
-    { href: `/${lang}#faq`, label: t.nav.faq },
+    { href: `/${lang}/tools`, label: t.nav.tools },
+    { href: `/${lang}/blog`, label: t.nav.blog },
   ];
   return (
     <header className="sticky top-0 z-40 border-b border-mist/10 bg-oasis-deep/90 text-mist backdrop-blur">

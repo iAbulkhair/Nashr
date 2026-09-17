@@ -20,7 +20,7 @@ export type Dict = {
   dir: "rtl" | "ltr";
   brand: string;
   agent: string;
-  nav: { how: string; agents: string; industries: string; pricing: string; faq: string; cta: string; switchLang: string; switchHref: string };
+  nav: { how: string; agents: string; industries: string; pricing: string; faq: string; cta: string; switchLang: string; switchHref: string; tools: string; blog: string };
   hero: {
     eyebrow: string;
     title1: string;
@@ -49,7 +49,7 @@ export const dict: Record<Lang, Dict> = {
     dir: "rtl",
     brand: "نشر",
     agent: "نور",
-    nav: { how: "كيف تعمل", agents: "الوكلاء", industries: "القطاعات", pricing: "الأسعار", faq: "الأسئلة", cta: "ابدأ مجاناً", switchLang: "English", switchHref: "/en" },
+    nav: { how: "كيف تعمل", agents: "الوكلاء", industries: "القطاعات", pricing: "الأسعار", faq: "الأسئلة", cta: "ابدأ مجاناً", switchLang: "English", switchHref: "/en", tools: "أدوات مجانية", blog: "المدونة" },
     hero: {
       eyebrow: "فريق تسويق كامل يعمل بالذكاء الاصطناعي — مبني للخليج",
       title1: "وأنت نايم،",
@@ -193,8 +193,11 @@ export const dict: Record<Lang, Dict> = {
       tagline: "وكيلة تسويق تعمل 24/7 — مبنية في الرياض للخليج.",
       rights: "© 2026 نشر. جميع الحقوق محفوظة.",
       links: [
-        { label: "الأسعار", href: "#pricing" },
-        { label: "الأسئلة", href: "#faq" },
+        { label: "الأسعار", href: "/ar/pricing" },
+        { label: "أدوات مجانية", href: "/ar/tools" },
+        { label: "المدونة", href: "/ar/blog" },
+        { label: "الشركاء", href: "/ar/affiliates" },
+        { label: "المقارنات", href: "/ar/vs/enrich-labs" },
         { label: "سياسة الخصوصية", href: "/ar/privacy" },
         { label: "الشروط", href: "/ar/terms" },
       ],
@@ -204,7 +207,7 @@ export const dict: Record<Lang, Dict> = {
     dir: "ltr",
     brand: "Nashr",
     agent: "Noor",
-    nav: { how: "How it works", agents: "Agents", industries: "Industries", pricing: "Pricing", faq: "FAQ", cta: "Start free", switchLang: "العربية", switchHref: "/ar" },
+    nav: { how: "How it works", agents: "Agents", industries: "Industries", pricing: "Pricing", faq: "FAQ", cta: "Start free", switchLang: "العربية", switchHref: "/ar", tools: "Free tools", blog: "Blog" },
     hero: {
       eyebrow: "An AI marketing team, built for the Gulf",
       title1: "While you sleep,",
@@ -348,8 +351,11 @@ export const dict: Record<Lang, Dict> = {
       tagline: "A marketing agent that works 24/7 — built in Riyadh for the Gulf.",
       rights: "© 2026 Nashr. All rights reserved.",
       links: [
-        { label: "Pricing", href: "#pricing" },
-        { label: "FAQ", href: "#faq" },
+        { label: "Pricing", href: "/en/pricing" },
+        { label: "Free tools", href: "/en/tools" },
+        { label: "Blog", href: "/en/blog" },
+        { label: "Affiliates", href: "/en/affiliates" },
+        { label: "Comparisons", href: "/en/vs/enrich-labs" },
         { label: "Privacy", href: "/en/privacy" },
         { label: "Terms", href: "/en/terms" },
       ],
