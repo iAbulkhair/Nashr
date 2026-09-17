@@ -10,10 +10,13 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
   const p = t.inspo;
   const [channel, setChannel] = useState("all");
   const [kind, setKind] = useState("all");
+  const [q, setQ] = useState("");
   const [busy, setBusy] = useState("");
   const channels = ["all", ...new Set(items.map((i) => i.channel))];
   const kinds = ["all", ...new Set(items.map((i) => i.kind))];
-  const shown = items.filter((i) => (channel === "all" || i.channel === channel) && (kind === "all" || i.kind === kind));
+  const needle = q.trim().toLowerCase();
+  const shown = items.filter((i) => (channel === "all" || i.channel === channel) && (kind === "all" || i.kind === kind) && (!needle || [i.title, i.brand, i.why, i.sample, i.industry].join(" ").toLowerCase().includes(needle)));
+  const ICONS: Record<string, string> = { snapchat: "👻", tiktok: "🎵", instagram: "📸", whatsapp: "💬", x: "𝕏", gbp: "📍", email: "✉️" };
   async function use(i: Inspo) {
     setBusy(i.id);
     const text = lang === "ar"
@@ -29,6 +32,7 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
     <div>
       <h1 className="page-title">{p.title}</h1>
       <p className="mt-2 text-ink/70">{p.sub}</p>
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={p.search} className="input mt-4 max-w-md" />
       <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
         <span className="text-ink/50">{p.channel}:</span>
         {channels.map((c) => <Pill key={c} v={c} cur={channel} set={setChannel} label={c === "all" ? p.all : c} />)}
@@ -37,9 +41,11 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
         <span className="text-ink/50">{p.kind}:</span>
         {kinds.map((k) => <Pill key={k} v={k} cur={kind} set={setKind} label={k === "all" ? p.all : (p.kinds as Record<string, string>)[k] ?? k} />)}
       </div>
+      {shown.length === 0 && <p className="mt-6 text-sm text-ink/60">{p.none}</p>}
       <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {shown.map((i) => (
-          <article key={i.id} className="flex flex-col card card-sm">
+          <article key={i.id} className="flex flex-col overflow-hidden card card-sm">
+            <div className="-mx-4 -mt-4 mb-3 flex h-20 items-center justify-center bg-oasis-deep text-3xl" aria-hidden><span>{ICONS[i.channel] ?? "✦"}</span></div>
             <div className="flex items-center gap-2 text-[11px]">
               <span className="rounded bg-oasis/10 px-2 py-0.5 text-oasis">{i.channel}</span>
               <span className="rounded bg-salt-dim px-2 py-0.5">{(p.kinds as Record<string, string>)[i.kind]}</span>

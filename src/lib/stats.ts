@@ -22,14 +22,15 @@ export type Kpis = {
 
 const perItem = (t: TaskType) => (TASK_COST[t] ?? 1) / (TASK_COUNT[t] ?? 1);
 
-export async function kpis(scope: string): Promise<Kpis> {
+export async function kpis(scope: string, days?: number): Promise<Kpis> {
   const tasks = await listTasks(scope);
   const now = new Date();
-  const month = now.toISOString().slice(0, 7);
+  const month = days ? `${days}d` : now.toISOString().slice(0, 7);
   const prevMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
   const inMonth = (t: Task, m: string) => t.createdAt.slice(0, 7) === m;
-  const cur = tasks.filter((t) => inMonth(t, month));
-  const prev = tasks.filter((t) => inMonth(t, prevMonth));
+  const ms = (t: Task) => new Date(t.createdAt).getTime();
+  const cur = days ? tasks.filter((t) => ms(t) >= now.getTime() - days * 864e5) : tasks.filter((t) => inMonth(t, now.toISOString().slice(0, 7)));
+  const prev = days ? tasks.filter((t) => ms(t) >= now.getTime() - 2 * days * 864e5 && ms(t) < now.getTime() - days * 864e5) : tasks.filter((t) => inMonth(t, prevMonth));
   const approved = cur.filter((t) => t.status === "approved").length;
   const rejected = cur.filter((t) => t.status === "rejected").length;
   const pending = tasks.filter((t) => t.status === "pending").length;

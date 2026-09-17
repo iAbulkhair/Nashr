@@ -41,7 +41,7 @@ function ItemCard({ item, t, lang }: { item: ChatItem; t: AppDict; lang: "ar" | 
   );
 }
 
-export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, wide }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; wide?: boolean }) {
+export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, wide, initialAgent }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; wide?: boolean; initialAgent?: string }) {
   const ar = lang === "ar";
   const [msgs, setMsgs] = useState<ChatMsg[]>(initial);
   const [text, setText] = useState(initialPrompt);
@@ -49,7 +49,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
   const [credits, setCredits] = useState(c0);
   const [convs, setConvs] = useState<Conv[]>([]);
   const [conv, setConv] = useState(initialConv ?? "default");
-  const [agent, setAgent] = useState<AgentId>("noor");
+  const [agent, setAgent] = useState<AgentId>((initialAgent as AgentId) ?? "noor");
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [showList, setShowList] = useState(false);

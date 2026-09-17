@@ -12,7 +12,7 @@ import type { Lang } from "@/lib/i18n";
 
 type Item = { id: string; type: TaskType; title: string; status: string; createdAt: string };
 
-export default function ReportsPanel({ t, lang, k, items, credits, quality }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[] }) {
+export default function ReportsPanel({ t, lang, k, items, credits, quality, days = 30, connected = [] }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; days?: number; connected?: string[] }) {
   const r = useRouter();
   const R = t.reports;
   const [busy, setBusy] = useState<TaskType | null>(null);
@@ -58,6 +58,18 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality }: { 
     <div className="mx-auto max-w-5xl">
       <h1 className="page-title">{R.title}</h1>
       <p className="mt-2 text-ink/70">{R.sub}</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {(["7", "30", "90"] as const).map((d) => <Link key={d} href={`/${lang}/app/reports?range=${d}`} className={`rounded-full px-3 py-1 text-xs ${String(days) === d ? "bg-oasis text-mist" : "border border-ink/15 text-ink/60 hover:border-oasis"}`}>{R.ranges[d]}</Link>)}
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        {([["ga", ["google"]], ["meta", ["meta"]], ["shop", ["shopify", "salla", "zid", "woocommerce"]]] as const).map(([key, provs]) => { const on = provs.some((p) => connected.includes(p)); return (
+          <div key={key} className="card card-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/50">{R.tiles[key]}</p>
+            <p className={`mt-1 text-sm ${on ? "text-oasis" : "text-ink/50"}`}>{on ? "✓" : R.notConnected}</p>
+            {!on && <Link href={`/${lang}/app/integrations`} className="mt-2 inline-block text-xs font-semibold text-oasis hover:underline">{R.connectNow} →</Link>}
+          </div>
+        ); })}
+      </div>
 
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {tiles.map((x) => (

@@ -98,6 +98,9 @@ body {
   .eyebrow { margin-bottom: 0.75rem; font-size: var(--primitive-fontSize-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.2em; color: var(--color-danger); }
   .eyebrow-accent { color: var(--color-accent); }
 
+  /* Text clipping (single line with ellipsis) */
+  .clip { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
   /* Layout */
   .section-wrap { margin-inline: auto; max-width: 72rem; padding: var(--spacing-section) 1rem; }
   @media (min-width: 640px) { .section-wrap { padding-inline: 1.5rem; } }
