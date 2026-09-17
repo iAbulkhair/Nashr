@@ -34,7 +34,7 @@ export default function Pricing({ t, lang }: { t: Dict; lang: Lang }) {
                   </li>
                 ))}
               </ul>
-              <Link href={`/${lang}#waitlist`} className={`mt-6 rounded-full px-4 py-2.5 text-center text-sm font-semibold transition ${plan.highlight ? "bg-saffron text-ink hover:bg-saffron/90" : "border border-mist/25 text-mist hover:border-mist/60"}`}>
+              <Link href={`/${lang}/app/signup`} className={`mt-6 rounded-full px-4 py-2.5 text-center text-sm font-semibold transition ${plan.highlight ? "bg-saffron text-ink hover:bg-saffron/90" : "border border-mist/25 text-mist hover:border-mist/60"}`}>
                 {plan.cta}
               </Link>
             </article>

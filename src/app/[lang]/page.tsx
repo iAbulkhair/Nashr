@@ -5,7 +5,7 @@ import Hero from "@/components/Hero";
 import { Agents, Calendar, How, Industries, Integrations, Proof } from "@/components/Sections";
 import Pricing from "@/components/Pricing";
 import Faq from "@/components/Faq";
-import WaitlistForm from "@/components/WaitlistForm";
+import FinalCta from "@/components/FinalCta";
 import Footer from "@/components/Footer";
 
 export default async function Home({ params }: { params: Promise<{ lang: string }> }) {
@@ -25,7 +25,7 @@ export default async function Home({ params }: { params: Promise<{ lang: string 
         <Calendar t={t} />
         <Pricing t={t} lang={lang} />
         <Faq t={t} />
-        <WaitlistForm t={t} lang={lang} />
+        <FinalCta t={t} lang={lang} />
       </main>
       <Footer t={t} />
     </>

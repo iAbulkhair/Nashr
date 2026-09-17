@@ -27,7 +27,7 @@ export default function Nav({ t, lang }: { t: Dict; lang: Lang }) {
           <Link href={t.nav.switchHref} lang={lang === "ar" ? "en" : "ar"} className="rounded-full border border-mist/20 px-3 py-1.5 text-xs text-mist-dim transition hover:border-mist/50 hover:text-mist">
             {t.nav.switchLang}
           </Link>
-          <Link href={`/${lang}#waitlist`} className="rounded-full bg-saffron px-4 py-2 text-sm font-semibold text-ink transition hover:bg-saffron/90">
+          <Link href={`/${lang}/app/signup`} className="rounded-full bg-saffron px-4 py-2 text-sm font-semibold text-ink transition hover:bg-saffron/90">
             {t.nav.cta}
           </Link>
         </div>
