@@ -21,7 +21,7 @@ const ar = {
     notify: "تنبيه قبل النشر (دقائق)", notifySub: "عند تفعيل النشر التلقائي (قريباً): تُرسل لك رسالة قبل كل نشر بهذا الوقت.",
     save: "حفظ", saved: "تم الحفظ",
   },
-  login: { title: "تسجيل الدخول", email: "البريد الإلكتروني", password: "كلمة المرور", submit: "دخول", noAccount: "ما عندك حساب؟", signup: "أنشئ حساباً", invalid: "البريد أو كلمة المرور غير صحيحة." },
+  login: { title: "تسجيل الدخول", email: "البريد الإلكتروني", password: "كلمة المرور", submit: "دخول", noAccount: "ما عندك حساب؟", signup: "أنشئ حساباً", invalid: "البريد أو كلمة المرور غير صحيحة.", suspended: "هذا الحساب موقوف. تواصل معنا على واتساب." },
   signup: { title: "ابدأ تجربتك المجانية", sub: "3 أيام، 50 كريدت، بدون بطاقة.", name: "اسمك", phone: "رقم الجوال (واتساب)", email: "البريد الإلكتروني", password: "كلمة المرور (8 أحرف أو أكثر)", submit: "أنشئ الحساب", have: "عندك حساب؟", login: "سجّل دخول", exists: "هذا البريد مسجّل مسبقاً.", bad_phone: "رقم الجوال غير صحيح.", weak_password: "كلمة المرور قصيرة (8 أحرف على الأقل).", bad_email: "البريد غير صحيح." },
   onboarding: {
     title: "عرّفي نور على علامتك", sub: "دقيقتان. كل ما تكتبه هنا تستخدمه نور في كل محتوى.",
@@ -110,7 +110,7 @@ const en: typeof ar = {
     notify: "Notify before publishing (minutes)", notifySub: "Once auto-publishing is on (coming soon): you get a message this long before each post.",
     save: "Save", saved: "Saved",
   },
-  login: { title: "Log in", email: "Email", password: "Password", submit: "Log in", noAccount: "No account?", signup: "Create one", invalid: "Wrong email or password." },
+  login: { title: "Log in", email: "Email", password: "Password", submit: "Log in", noAccount: "No account?", signup: "Create one", invalid: "Wrong email or password.", suspended: "This account is suspended. Contact us on WhatsApp." },
   signup: { title: "Start your free trial", sub: "3 days, 50 credits, no card.", name: "Your name", phone: "Mobile number (WhatsApp)", email: "Email", password: "Password (8+ characters)", submit: "Create account", have: "Have an account?", login: "Log in", exists: "This email is already registered.", bad_phone: "Invalid mobile number.", weak_password: "Password too short (8+ characters).", bad_email: "Invalid email." },
   onboarding: {
     title: "Introduce Noor to your brand", sub: "Two minutes. Everything here shapes every piece Noor writes.",

@@ -56,7 +56,7 @@ export function LoginForm({ t, lang }: { t: AppDict; lang: Lang }) {
     const fd = Object.fromEntries(new FormData(e.currentTarget));
     const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fd) });
     setBusy(false);
-    if (!res.ok) return setErr(t.login.invalid);
+    if (!res.ok) { const j = await res.json().catch(() => ({} as { error?: string })); return setErr(j.error === "suspended" ? t.login.suspended : t.login.invalid); }
     if (next) { window.location.href = next; return; }
     r.push(`/${lang}/app`);
     r.refresh();

@@ -17,6 +17,8 @@ export type User = {
   lang: "ar" | "en";
   /** YYYY-MM of the last monthly credit renewal (paid plans). */
   renewedAt?: string;
+  /** Set by the admin: login and all API access blocked. */
+  suspended?: boolean;
   /** Runtime only: storage scope of the active brand (email for the default brand). Never persisted. */
   scope?: string;
   brandId?: string;
@@ -95,7 +97,7 @@ export async function currentUser(): Promise<User | null> {
   const email = await db.get<string>(`session:${token}`);
   if (!email) return null;
   const u = await getUser(email);
-  if (!u) return null;
+  if (!u || u.suspended) return null;
   const { activeBrandId, scopeFor } = await import("./brands");
   u.brandId = await activeBrandId(email);
   u.scope = scopeFor(email, u.brandId);

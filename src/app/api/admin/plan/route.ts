@@ -14,7 +14,7 @@ export async function GET(req: Request) {
     const u = await getUser(e);
     if (!u) continue;
     const usage = await getUsage(u.email);
-    users.push({ email: u.email, name: u.name, phone: u.phone, plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt, renewedAt: u.renewedAt ?? null, tokens: usage.in + usage.out, usd: usage.usd, calls: usage.calls });
+    users.push({ email: u.email, name: u.name, phone: u.phone, plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt, renewedAt: u.renewedAt ?? null, suspended: !!u.suspended, lang: u.lang, tokens: usage.in + usage.out, usd: usage.usd, calls: usage.calls });
   }
   users.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   const total = await getUsage("_all");

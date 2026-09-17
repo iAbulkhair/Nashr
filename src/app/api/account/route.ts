@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser, destroySession, verifyPassword } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { listTasks } from "@/lib/brand";
-import { listFiles } from "@/lib/files";
+import { wipeAccount } from "@/lib/account";
 import bcrypt from "bcryptjs";
 import { saveUser } from "@/lib/auth";
 
@@ -23,11 +21,7 @@ export async function DELETE(req: Request) {
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const b = (await req.json().catch(() => ({}))) as { password?: string };
   if (!(await verifyPassword(u, b.password ?? ""))) return NextResponse.json({ ok: false, error: "wrong_password" }, { status: 401 });
-  const e = u.email;
-  for (const t of await listTasks(e)) await db.del(`task:${e}:${t.id}`);
-  for (const f of await listFiles(e)) await db.del(`file:${e}:${f.name}`);
-  for (const k of [`tasks:${e}`, `files:${e}`, `brand:${e}`, `prefs:${e}`, `chat:${e}`, `gov:${e}`, `schedule:${e}`, `brief:${e}`, `profile:${e}`, `conns:${e}`, `mcptoken-of:${e}`, `user:${e}`]) await db.del(k);
-  await db.lpush("deleted-accounts", JSON.stringify({ email: e, at: new Date().toISOString() }));
+  await wipeAccount(u.email);
   await destroySession();
   return NextResponse.json({ ok: true });
 }

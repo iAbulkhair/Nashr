@@ -1,14 +1,17 @@
 "use client";
 import { Fragment, useEffect, useState } from "react";
 
-type U = { email: string; name: string; phone: string; plan: string; credits: number; trialEnds: string; createdAt: string; renewedAt?: string | null; tokens?: number; usd?: number; calls?: number };
+type U = { email: string; name: string; phone: string; plan: string; credits: number; trialEnds: string; createdAt: string; renewedAt?: string | null; suspended?: boolean; lang?: string; tokens?: number; usd?: number; calls?: number };
+type Detail = { user: U; brand: Record<string, unknown> | null; tasks: T[]; usage: { in: number; out: number; calls: number; usd: number; kinds: Record<string, number> }; connections: { provider: string; label?: string; connectedAt?: string }[]; brands: { id: string; name: string; status: string }[]; conversations: number; referrals: number; avgScore: number | null };
 type T = { id: string; type: string; channel: string; title: string; status: string; createdAt: string; body: string; editedBody?: string; quality?: { score: number; notes: string } };
 type TM = { type: string; n: number; approvalRate: number | null; editRate: number | null; editMagnitude: number | null; published: number; avgScore: number | null; low: number; avgHoursToDecide: number | null };
 type AM = { agent: string; n: number; approvalRate: number | null; editRate: number | null; avgScore: number | null; low: number; thumbsUp: number; thumbsDown: number; types: TM[] };
 
 export default function AdminConsole() {
   const [users, setUsers] = useState<U[] | null>(null);
-  const [sel, setSel] = useState<{ user: U; brand: Record<string, unknown> | null; tasks: T[] } | null>(null);
+  const [sel, setSel] = useState<Detail | null>(null);
+  const [q, setQ] = useState("");
+  const [total, setTotal] = useState<{ usd: number; in: number; out: number; calls: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [evals, setEvals] = useState<{ agents: AM[]; users: { email: string; n: number; approvalRate: number | null; avgScore: number | null }[] } | null>(null);
@@ -18,6 +21,21 @@ export default function AdminConsole() {
     if (r.status === 401) return setUsers([]);
     const j = await r.json();
     setUsers(j.users);
+    if (j.total) setTotal(j.total);
+  }
+  async function act(email: string, action: string, extra: Record<string, unknown> = {}) {
+    setBusy(true);
+    const r = await fetch(`/api/admin/users/${encodeURIComponent(email)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...extra }) });
+    const j = await r.json();
+    setBusy(false);
+    if (!j.ok) { setMsg(`${action} failed: ${j.error ?? r.status}`); return j; }
+    if (action === "resetPassword") { window.prompt(`Temporary password for ${email} (shown once, send it on WhatsApp):`, j.tempPassword); setMsg(`${email}: password reset`); }
+    else if (action === "impersonate") { window.location.assign(j.redirect); return j; }
+    else if (action === "delete") { setMsg(`${email} deleted`); setSel(null); }
+    else setMsg(`${email}: ${action} ✓`);
+    await load();
+    if (sel && action !== "delete") await open(email);
+    return j;
   }
   useEffect(() => { load(); fetch("/api/admin/evals").then((r) => r.json()).then((j) => j.ok && setEvals(j)).catch(() => {}); }, []);
 
@@ -45,25 +63,27 @@ export default function AdminConsole() {
 
   if (users === null) return <p className="text-ink/60">Loading…</p>;
   const paying = users.filter((u) => u.plan !== "trial").length;
+  const shown = users.filter((u) => !q || [u.email, u.name, u.phone, u.plan].some((x) => (x ?? "").toLowerCase().includes(q.toLowerCase())));
   const today = users.filter((u) => u.createdAt.slice(0, 10) === new Date().toISOString().slice(0, 10)).length;
 
   return (
     <div dir="ltr" className="grid gap-6">
       <div className="grid gap-3 sm:grid-cols-4">
-        {[["Users", users.length], ["Paying", paying], ["Signed up today", today], ["Trial", users.length - paying]].map(([l, v]) => (
+        {[["Users", users.length], ["Paying", paying], ["Signed up today", today], ["Trial", users.length - paying], ["Model cost this month $", total ? total.usd.toFixed(2) : "…"], ["Tokens this month", total ? `${Math.round((total.in + total.out) / 1000)}k` : "…"], ["Model calls", total ? total.calls : "…"], ["Suspended", users.filter((u) => u.suspended).length]].map(([l, v]) => (
           <div key={String(l)} className="rounded-xl border border-ink/10 bg-white p-4"><p className="text-xs text-ink/60">{l}</p><p className="font-display text-2xl font-bold text-oasis">{v}</p></div>
         ))}
       </div>
       {msg && <p className="text-sm text-oasis">{msg}</p>}
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search email, name, phone, plan…" className="w-full max-w-md rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm" />
       <div className="overflow-x-auto rounded-xl border border-ink/10 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-salt-dim text-left text-xs uppercase tracking-wide text-ink/60">
             <tr><th className="p-3">Email</th><th>Name</th><th>Phone</th><th>Plan</th><th>Credits</th><th>Tokens (mo)</th><th>Cost $ (mo)</th><th>Trial ends</th><th>Joined</th><th></th></tr>
           </thead>
           <tbody>
-            {users.map((u) => (
-              <tr key={u.email} className="border-t border-ink/5">
-                <td className="p-3"><button onClick={() => open(u.email)} className="text-oasis underline">{u.email}</button></td>
+            {shown.map((u) => (
+              <tr key={u.email} className={`border-t border-ink/5 ${u.suspended ? "bg-sadu/5" : ""}`}>
+                <td className="p-3"><button onClick={() => open(u.email)} className="text-oasis underline">{u.email}</button>{u.suspended && <span className="ms-2 rounded bg-sadu px-1.5 text-[10px] font-semibold text-white">SUSPENDED</span>}</td>
                 <td>{u.name}</td>
                 <td className="font-mono text-xs"><a href={`https://wa.me/${u.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="underline">{u.phone}</a></td>
                 <td>
@@ -114,9 +134,23 @@ export default function AdminConsole() {
 
       {sel && (
         <div className="rounded-xl border border-oasis/30 bg-white p-5">
-          <div className="flex items-center justify-between">
-            <h2 className="font-display text-lg font-bold text-oasis">{sel.user.email}</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-display text-lg font-bold text-oasis">{sel.user.email} <span className="text-sm font-normal text-ink/60">· {sel.user.name} · {sel.user.phone} · {sel.user.plan} · {sel.user.credits} credits{sel.user.suspended ? " · SUSPENDED" : ""}</span></h2>
             <button onClick={() => setSel(null)} className="text-sm text-ink/60">close</button>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            <button disabled={busy} onClick={() => act(sel.user.email, "impersonate")} className="rounded-full bg-oasis px-3 py-1 font-semibold text-mist">Log in as user</button>
+            <button disabled={busy} onClick={() => act(sel.user.email, "extendTrial", { days: Number(prompt("Extend trial by days:", "7")) || 7 })} className="rounded-full border border-ink/20 px-3 py-1">Extend trial</button>
+            <button disabled={busy} onClick={() => act(sel.user.email, "resetPassword")} className="rounded-full border border-ink/20 px-3 py-1">Reset password</button>
+            <button disabled={busy} onClick={() => act(sel.user.email, "setLang", { lang: sel.user.lang === "ar" ? "en" : "ar" })} className="rounded-full border border-ink/20 px-3 py-1">Emails in {sel.user.lang === "ar" ? "English" : "Arabic"}</button>
+            <button disabled={busy} onClick={() => act(sel.user.email, sel.user.suspended ? "unsuspend" : "suspend")} className={`rounded-full px-3 py-1 font-semibold ${sel.user.suspended ? "bg-oasis text-mist" : "border border-sadu text-sadu"}`}>{sel.user.suspended ? "Unsuspend" : "Suspend"}</button>
+            <button disabled={busy} onClick={() => { if (prompt(`Type the email to permanently delete this account and all its data:`) === sel.user.email) act(sel.user.email, "delete"); }} className="rounded-full bg-sadu px-3 py-1 font-semibold text-white">Delete account</button>
+          </div>
+          <div className="mt-4 grid gap-2 text-xs sm:grid-cols-4">
+            <div className="rounded border border-ink/10 p-2"><p className="text-ink/50">Model usage (month)</p><p className="font-mono">{Math.round((sel.usage.in + sel.usage.out) / 1000)}k tokens · ${sel.usage.usd.toFixed(2)} · {sel.usage.calls} calls</p><p className="font-mono text-[10px] text-ink/50">{Object.entries(sel.usage.kinds).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}</p></div>
+            <div className="rounded border border-ink/10 p-2"><p className="text-ink/50">Trial ends / renewed</p><p className="font-mono">{sel.user.trialEnds.slice(0, 10)} · {sel.user.renewedAt ?? "—"}</p><p className="font-mono text-[10px] text-ink/50">joined {sel.user.createdAt.slice(0, 10)}</p></div>
+            <div className="rounded border border-ink/10 p-2"><p className="text-ink/50">Integrations</p><p className="font-mono">{sel.connections.length ? sel.connections.map((c) => c.provider).join(", ") : "none"}</p></div>
+            <div className="rounded border border-ink/10 p-2"><p className="text-ink/50">Brands · conversations · referrals · judge</p><p className="font-mono">{sel.brands.length} · {sel.conversations} · {sel.referrals} · {sel.avgScore ?? "—"}</p></div>
           </div>
           <h3 className="mt-4 text-xs uppercase tracking-wide text-ink/60">Brand file</h3>
           <pre className="mt-1 max-h-48 overflow-auto rounded bg-salt-dim p-3 text-xs" dir="auto">{sel.brand ? JSON.stringify(sel.brand, null, 2) : "— not completed —"}</pre>
@@ -124,7 +158,7 @@ export default function AdminConsole() {
           <ul className="mt-2 grid max-h-96 gap-2 overflow-auto">
             {sel.tasks.map((t) => (
               <li key={t.id} className="rounded border border-ink/10 p-3 text-xs">
-                <div className="flex justify-between text-ink/60"><span>{t.type} · {t.channel} · {t.status}</span><span>{t.createdAt.slice(0, 16).replace("T", " ")}</span></div>
+                <div className="flex justify-between text-ink/60"><span>{t.type} · {t.channel} · {t.status}{t.quality ? ` · judge ${t.quality.score}` : ""}</span><span>{t.createdAt.slice(0, 16).replace("T", " ")}</span></div>
                 <p className="mt-1 whitespace-pre-wrap" dir="auto">{(t.editedBody ?? t.body).slice(0, 600)}</p>
               </li>
             ))}
