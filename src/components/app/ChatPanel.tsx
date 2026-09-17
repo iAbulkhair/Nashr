@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { ChatMsg, ChatItem } from "@/lib/chat";
@@ -157,6 +158,10 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
       <div className="hidden lg:block">{list}</div>
       {showList && <div className="fixed inset-0 z-40 bg-black/40 p-4 lg:hidden" onClick={() => setShowList(false)}><div className="h-full max-w-xs" onClick={(e) => e.stopPropagation()}>{list}</div></div>}
       <div className="flex min-h-0 flex-col">
+        <div className="mb-2 flex gap-1 border-b border-ink/10 text-sm">
+          <span className="border-b-2 border-oasis px-4 py-2 font-semibold text-oasis">{t.inbox.tabChat}</span>
+          <Link href={`/${lang}/app`} className="px-4 py-2 text-ink/60 hover:text-oasis">{t.inbox.tabFeed} <span className="badge badge-accent ms-1">NEW</span></Link>
+        </div>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <button onClick={() => setShowList(true)} className="rounded-md border border-ink/15 px-2 py-1 text-xs lg:hidden">☰</button>

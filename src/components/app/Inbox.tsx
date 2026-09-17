@@ -8,6 +8,7 @@ import { limitFromError } from "./LimitModal";
 import { render } from "@/lib/md";
 import type { Lang } from "@/lib/i18n";
 
+const ICONS: Record<string, string> = { instagram: "📸", x: "𝕏", snapchat: "👻", tiktok: "🎵", whatsapp: "💬", gbp: "📍", meta: "📘", linkedin: "💼", email: "✉️", call: "📞", blog: "📝", plan: "🗓", sales: "🤝", finance: "📊", growth: "🚀", report: "📈", deck: "📑", dashboard: "🧭", strategy: "🎯", product: "🧩" };
 const CHAR_LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250, tiktok: 2200, whatsapp: 1024, gbp: 1500, linkedin: 3000 };
 
 export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[] }) {
@@ -44,6 +45,13 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
   }
 
   const shown = tasks.filter((x) => filter === "all" || x.status === filter);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const dayLabel = (iso: string) => new Intl.DateTimeFormat(lang === "ar" ? "ar-SA-u-nu-latn" : "en", { weekday: "long", month: "long", day: "numeric" }).format(new Date(iso));
+  async function share(x: Task, body: string) {
+    const text = `${x.title}\n\n${body}`;
+    if (navigator.share) { try { await navigator.share({ title: x.title, text }); return; } catch { /* cancelled */ } }
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
+  }
 
   async function patch(id: string, body: Record<string, unknown>) {
     await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -55,6 +63,10 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
 
   return (
     <div>
+      <div className="mb-4 flex gap-1 border-b border-ink/10 text-sm">
+        <Link href={`/${lang}/app/chat`} className="px-4 py-2 text-ink/60 hover:text-oasis">{i.tabChat}</Link>
+        <span className="border-b-2 border-oasis px-4 py-2 font-semibold text-oasis">{i.tabFeed} <span className="badge badge-accent ms-1">NEW</span></span>
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="page-title">{i.title}</h1>
         <div className="flex gap-1 text-sm">
@@ -67,9 +79,9 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
       </div>
 
       {brief && (
-        <div className="mt-5 rounded-xl border border-saffron/40 bg-saffron/10 p-4 text-sm" dir="auto">
-          <p className="mb-1 text-xs font-semibold text-sadu">{i.brief}</p>
-          <pre className="whitespace-pre-wrap font-body leading-relaxed">{brief}</pre>
+        <div className="mt-5 flex gap-3 rounded-xl border border-saffron/40 bg-saffron/10 p-4 text-sm" dir="auto">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-oasis font-display font-bold text-saffron" aria-hidden>ن</span>
+          <div><p className="mb-1 text-xs font-semibold text-sadu">{i.brief}</p><pre className="whitespace-pre-wrap font-body leading-relaxed">{brief}</pre></div>
         </div>
       )}
       {shown.length === 0 && (
@@ -80,20 +92,27 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
       )}
 
       <ul className="mt-6 grid gap-4">
-        {shown.map((x) => {
+        {shown.map((x, idx) => {
           const body = x.editedBody ?? x.body;
+          const day = x.createdAt.slice(0, 10);
+          const newDay = idx === 0 || shown[idx - 1].createdAt.slice(0, 10) !== day;
+          const isCollapsed = !!collapsed[x.id];
           return (
-            <li key={x.id} className="card">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="badge badge-primary">{x.channel}</span>
-                  <span className="font-display font-medium">{x.title}</span>
+            <li key={x.id} className="grid gap-4">
+              {newDay && <p className="flex items-center gap-3 text-xs text-ink/50"><span className="h-px flex-1 bg-ink/10" /><span className="rounded-full border border-ink/10 bg-white px-3 py-1">{dayLabel(x.createdAt)}</span><span className="h-px flex-1 bg-ink/10" /></p>}
+              <article className="card overflow-hidden p-0">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink/5 px-4 py-2.5">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="text-lg" aria-hidden>{ICONS[x.channel] ?? "•"}</span>
+                  <span className="font-semibold capitalize">{x.channel}</span>
+                  <span className="clip text-sm text-ink/60" dir="auto">· {x.title}</span>
                 </div>
                 <span className="flex items-center gap-2 text-xs">
                   {x.quality && <span title={x.quality.notes} className={`rounded-full px-2 py-0.5 font-mono ${x.quality.score >= 85 ? "bg-oasis/10 text-oasis" : x.quality.score >= 70 ? "bg-saffron/20 text-ink" : "bg-sadu/10 text-sadu"}`} dir="ltr">{i.quality} {x.quality.score}</span>}
-                  <span className={x.status === "approved" ? "text-oasis" : x.status === "rejected" ? "text-sadu" : "text-ink/50"}>{i[x.status]}</span>
+                  <span className={`badge ${x.status === "approved" ? "badge-primary" : x.status === "rejected" ? "badge-danger" : "badge-accent"}`}>{i[x.status]}</span>
                 </span>
               </div>
+              <div className="px-4 pb-3">
               {x.published && x.published.length > 0 && (
                 <p className="mt-2 text-xs text-oasis">{x.published.map((p) => <a key={p.url} href={p.url} target="_blank" rel="noreferrer" className="me-3 underline">{p.status === "draft" ? i.draftOn : i.published} {p.provider} ↗</a>)}</p>
               )}
@@ -112,7 +131,15 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
                   </div>
                 </div>
               ) : (
-                <><div className="prose-nashr prose-compact mt-3 text-sm text-ink/90" dir="auto" dangerouslySetInnerHTML={{ __html: render(body) }} /><p className={`mt-1 font-mono text-[10px] ${CHAR_LIMITS[x.channel] && body.length > CHAR_LIMITS[x.channel] ? "text-sadu" : "text-ink/40"}`} dir="ltr">{body.length}{CHAR_LIMITS[x.channel] ? ` / ${CHAR_LIMITS[x.channel]}` : ""}</p></>
+                <>{!isCollapsed && <div className="prose-nashr prose-compact mt-3 text-sm text-ink/90" dir="auto" dangerouslySetInnerHTML={{ __html: render(body) }} />}
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className={`font-mono text-[10px] ${CHAR_LIMITS[x.channel] && body.length > CHAR_LIMITS[x.channel] ? "text-sadu" : "text-ink/40"}`} dir="ltr">{body.length}{CHAR_LIMITS[x.channel] ? ` / ${CHAR_LIMITS[x.channel]}` : ""}</span>
+                  <span className="ms-auto flex gap-1.5">
+                    <button onClick={() => setCollapsed((p) => ({ ...p, [x.id]: !isCollapsed }))} className="btn btn-secondary btn-xs">{isCollapsed ? "▾ " + i.expand : "▴ " + i.collapse}</button>
+                    <button onClick={async () => { await navigator.clipboard.writeText(body); setCopied(x.id); setTimeout(() => setCopied(null), 1500); }} className="btn btn-secondary btn-xs">{copied === x.id ? i.copied : "⧉ " + i.copy}</button>
+                    <button onClick={() => share(x, body)} className="btn btn-secondary btn-xs">↗ {i.share}</button>
+                  </span>
+                </div></>
               )}
               {rejecting === x.id && (
                 <div className="mt-3 grid gap-2">
@@ -123,14 +150,12 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
                   </div>
                 </div>
               )}
+              </div>
               {editing !== x.id && rejecting !== x.id && (
-                <div className="mt-4 flex flex-wrap gap-2 text-sm">
+                <div className="flex flex-wrap items-center gap-2 border-t border-ink/5 bg-salt px-4 py-3 text-sm">
                   {x.status !== "approved" && <button onClick={() => patch(x.id, { status: "approved" })} className="btn btn-primary btn-pill">{i.approve}</button>}
                   <button onClick={() => { setEditing(x.id); setDraft(body); }} className="btn btn-secondary btn-pill">{i.edit}</button>
                   {x.status !== "rejected" && <button onClick={() => setRejecting(x.id)} className="btn btn-danger btn-pill">{i.reject}</button>}
-                  <button onClick={async () => { await navigator.clipboard.writeText(body); setCopied(x.id); setTimeout(() => setCopied(null), 1500); }} className="btn btn-secondary btn-pill">
-                    {copied === x.id ? i.copied : i.copy}
-                  </button>
                   {x.type === "board_deck" && (
                     <a href={`/api/tasks/${x.id}/pptx`} className="btn btn-accent btn-pill">{i.pptx}</a>
                   )}
@@ -146,6 +171,8 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
                   </label>
                 </div>
               )}
+              {(editing === x.id || rejecting === x.id) && <div className="pb-3" />}
+              </article>
             </li>
           );
         })}

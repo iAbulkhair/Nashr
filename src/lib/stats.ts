@@ -18,19 +18,47 @@ export type Kpis = {
   byType: Record<string, number>;
   byChannel: Record<string, number>;
   weeks: { label: string; created: number; approved: number }[];
+  /** per-day series for the selected window (oldest first) */
+  daily: { date: string; created: number; approved: number; published: number }[];
+  window: { from: string; to: string; label: string };
 };
+
+export type Range = "1" | "2" | "7" | "30" | "60" | "90" | "ytd" | "ly" | "custom";
+/** Resolve a range key (Enrich-style pills) into a UTC window. */
+export function rangeWindow(range: string | undefined, from?: string, to?: string): { from: Date; to: Date; label: string; prevFrom: Date } {
+  const now = new Date();
+  const end = new Date(now);
+  const day = 864e5;
+  if (range === "custom" && from && to) { const f = new Date(from), t = new Date(to); t.setUTCHours(23, 59, 59, 999); return { from: f, to: t, label: "custom", prevFrom: new Date(f.getTime() - (t.getTime() - f.getTime())) }; }
+  if (range === "ytd") { const f = new Date(Date.UTC(now.getUTCFullYear(), 0, 1)); return { from: f, to: end, label: "ytd", prevFrom: new Date(Date.UTC(now.getUTCFullYear() - 1, 0, 1)) }; }
+  if (range === "ly") { const f = new Date(Date.UTC(now.getUTCFullYear() - 1, 0, 1)); const t = new Date(Date.UTC(now.getUTCFullYear(), 0, 1) - 1); return { from: f, to: t, label: "ly", prevFrom: new Date(Date.UTC(now.getUTCFullYear() - 2, 0, 1)) }; }
+  const days = ["1", "2", "7", "30", "60", "90"].includes(range ?? "") ? Number(range) : 7;
+  const f = new Date(now.getTime() - days * day);
+  return { from: f, to: end, label: `${days}d`, prevFrom: new Date(f.getTime() - days * day) };
+}
 
 const perItem = (t: TaskType) => (TASK_COST[t] ?? 1) / (TASK_COUNT[t] ?? 1);
 
-export async function kpis(scope: string, days?: number): Promise<Kpis> {
+export async function kpis(scope: string, days?: number, win?: { from: Date; to: Date; label: string; prevFrom: Date }): Promise<Kpis> {
   const tasks = await listTasks(scope);
   const now = new Date();
-  const month = days ? `${days}d` : now.toISOString().slice(0, 7);
+  const w = win ?? (days ? rangeWindow(String(days)) : null);
+  const month = w ? w.label : now.toISOString().slice(0, 7);
   const prevMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
   const inMonth = (t: Task, m: string) => t.createdAt.slice(0, 7) === m;
   const ms = (t: Task) => new Date(t.createdAt).getTime();
-  const cur = days ? tasks.filter((t) => ms(t) >= now.getTime() - days * 864e5) : tasks.filter((t) => inMonth(t, now.toISOString().slice(0, 7)));
-  const prev = days ? tasks.filter((t) => ms(t) >= now.getTime() - 2 * days * 864e5 && ms(t) < now.getTime() - days * 864e5) : tasks.filter((t) => inMonth(t, prevMonth));
+  const cur = w ? tasks.filter((t) => ms(t) >= w.from.getTime() && ms(t) <= w.to.getTime()) : tasks.filter((t) => inMonth(t, now.toISOString().slice(0, 7)));
+  const prev = w ? tasks.filter((t) => ms(t) >= w.prevFrom.getTime() && ms(t) < w.from.getTime()) : tasks.filter((t) => inMonth(t, prevMonth));
+  // daily series across the window (capped at 120 points)
+  const wf = w ? w.from : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const wt = w ? w.to : now;
+  const nDays = Math.min(120, Math.max(1, Math.ceil((wt.getTime() - wf.getTime()) / 864e5)));
+  const daily: Kpis["daily"] = [];
+  for (let i = 0; i < nDays; i++) {
+    const a = new Date(wf.getTime() + i * 864e5); const b = new Date(a.getTime() + 864e5);
+    const inDay = tasks.filter((t) => ms(t) >= a.getTime() && ms(t) < b.getTime());
+    daily.push({ date: a.toISOString().slice(0, 10), created: inDay.length, approved: inDay.filter((t) => t.status === "approved").length, published: inDay.filter((t) => t.published?.length).length });
+  }
   const approved = cur.filter((t) => t.status === "approved").length;
   const rejected = cur.filter((t) => t.status === "rejected").length;
   const pending = tasks.filter((t) => t.status === "pending").length;
@@ -68,6 +96,8 @@ export async function kpis(scope: string, days?: number): Promise<Kpis> {
     byType,
     byChannel,
     weeks,
+    daily,
+    window: { from: wf.toISOString().slice(0, 10), to: wt.toISOString().slice(0, 10), label: month },
   };
 }
 

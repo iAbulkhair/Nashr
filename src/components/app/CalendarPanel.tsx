@@ -117,9 +117,18 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
         </div>
       )}
 
-      <aside className="card card-sm mt-4">
-        <h2 className="font-mono text-sm text-oasis" dir="ltr">{sel}</h2>
-        {selected.length === 0 ? <p className="mt-2 text-sm text-ink/60">{c.none} · <Link href={`/${lang}/app`} className="text-oasis underline">{c.addContent}</Link></p> : (
+      <aside className="card mt-4">
+        <div className="flex items-center justify-between">
+          <button onClick={() => { const d = new Date(sel); d.setUTCDate(d.getUTCDate() - 1); setSel(iso(d)); }} className="grid h-10 w-10 place-items-center rounded-full border border-oasis text-oasis hover:bg-oasis hover:text-mist" aria-label={c.prev}>‹</button>
+          <h2 className="font-display text-lg font-semibold" dir="auto">{new Intl.DateTimeFormat(lang === "ar" ? "ar-SA-u-nu-latn" : "en", { weekday: "short", month: "short", day: "numeric" }).format(new Date(sel))}</h2>
+          <button onClick={() => { const d = new Date(sel); d.setUTCDate(d.getUTCDate() + 1); setSel(iso(d)); }} className="grid h-10 w-10 place-items-center rounded-full border border-oasis text-oasis hover:bg-oasis hover:text-mist" aria-label={c.next}>›</button>
+        </div>
+        {selected.length === 0 ? (
+          <div className="py-10 text-center">
+            <p className="text-sm text-ink/60">{c.none}</p>
+            <Link href={`/${lang}/app/chat?prompt=${encodeURIComponent((lang === "ar" ? "جهّزي محتوى ليوم " : "Prepare content for ") + sel)}`} className="btn btn-primary mt-4">{c.addContent}</Link>
+          </div>
+        ) : (
           <ul className="mt-2 grid gap-2 md:grid-cols-2">{selected.map((x) => <li key={x.id} className="rounded border border-ink/10 p-2 text-xs"><span className="text-oasis">{ICONS[x.channel] ?? ""} {x.channel}</span> · {x.title} <span className={`badge ${x.status === "approved" ? "badge-primary" : "badge-accent"}`}>{x.status === "approved" ? t.inbox.approved : t.inbox.pending}</span><p className="mt-1 line-clamp-3 whitespace-pre-wrap text-ink/70" dir="auto">{(x.editedBody ?? x.body).slice(0, 200)}</p></li>)}</ul>
         )}
         {unscheduled.length > 0 && <p className="mt-3 text-xs text-ink/50">{c.unscheduled}: {unscheduled.length} · <Link href={`/${lang}/app`} className="text-oasis underline">{c.setDates}</Link></p>}
