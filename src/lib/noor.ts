@@ -101,7 +101,13 @@ function mock(type: TaskType, brand: Brand): Generated[] {
   }));
 }
 
-export async function generate(type: TaskType, brand: Brand, prefs: string[], extra?: string): Promise<Generated[]> {
+export type GenOptions = { memory?: string; reviewer?: boolean; noEmDash?: boolean };
+
+function stripDashes(items: Generated[]) {
+  return items.map((i) => ({ ...i, body: i.body.replace(/\s*[—–]\s*/g, ", ") }));
+}
+
+export async function generate(type: TaskType, brand: Brand, prefs: string[], extra?: string, opts: GenOptions = {}): Promise<Generated[]> {
   if (!process.env.ANTHROPIC_API_KEY) return mock(type, brand);
   const client = new Anthropic();
   const userMsg = `TASK: ${SPECS[type].spec}${extra ? `\n\nOWNER NOTES FOR THIS BATCH: ${extra.slice(0, 1000)}` : ""}\n\nReturn exactly ${SPECS[type].count} item(s) as a JSON array.`;
@@ -109,7 +115,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   const params = {
     model: "claude-opus-5",
     max_tokens: 16000,
-    system: [{ type: "text" as const, text: systemPrompt(brand, prefs), cache_control: { type: "ephemeral" as const } }],
+    system: [{ type: "text" as const, text: systemPrompt(brand, prefs) + (opts.memory ? "\n\nWORKSPACE FILES (Noor's memory — follow them)\n" + opts.memory : ""), cache_control: { type: "ephemeral" as const } }],
     messages: [{ role: "user" as const, content: userMsg }],
     thinking: { type: "adaptive" as const },
     output_config: { effort: "medium" as const },
@@ -131,8 +137,10 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
       throw e;
     }
   }
-  const items = parseItems(text);
-  return critique(client, brand, prefs, type, items);
+  let items = parseItems(text);
+  if (opts.reviewer !== false) items = await critique(client, brand, prefs, type, items);
+  if (opts.noEmDash) items = stripDashes(items);
+  return items;
 }
 
 /**

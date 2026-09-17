@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth";
 import { addPreference, getTask, saveTask } from "@/lib/brand";
+import { getGov } from "@/lib/governance";
+import { readFile, writeFile } from "@/lib/files";
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const u = await currentUser();
@@ -9,13 +11,20 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const t = await getTask(u.email, id);
   if (!t) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   const b = (await req.json().catch(() => ({}))) as { status?: string; editedBody?: string; note?: string };
+  const gov = await getGov(u.email);
+  const learn = async (note: string) => {
+    if (!gov.learning) return;
+    await addPreference(u.email, note);
+    const f = await readFile(u.email, "preferences.md");
+    await writeFile(u.email, "preferences.md", `${f?.content ?? "# Preferences learned from the owner\n"}\n- ${new Date().toISOString().slice(0, 10)}: ${note}`.slice(-20000), "noor");
+  };
   if (typeof b.editedBody === "string" && b.editedBody !== t.body) {
     t.editedBody = b.editedBody.slice(0, 20000);
-    await addPreference(u.email, `Owner edited a ${t.type} item (${t.channel}). ${b.note ? "Reason: " + b.note : "Prefer this style: " + b.editedBody.slice(0, 200)}`);
+    await learn(`Owner edited a ${t.type} item (${t.channel}). ${b.note ? "Reason: " + b.note : "Prefer this style: " + b.editedBody.slice(0, 200)}`);
   }
   if (b.status === "approved" || b.status === "rejected" || b.status === "pending") {
     t.status = b.status;
-    if (b.status === "rejected" && b.note) await addPreference(u.email, `Owner rejected a ${t.type} item (${t.channel}). Reason: ${b.note}`);
+    if (b.status === "rejected" && b.note) await learn(`Owner rejected a ${t.type} item (${t.channel}). Reason: ${b.note}`);
   }
   await saveTask(u.email, t);
   return NextResponse.json({ ok: true, task: t });

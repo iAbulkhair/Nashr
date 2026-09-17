@@ -24,7 +24,7 @@ export default function BrandForm({ t, lang, initial }: { t: AppDict; lang: Lang
     setBusy(false);
     if (res.ok) {
       setMsg(o.saved);
-      r.push(`/${lang}/app/generate`);
+      r.push(`/${lang}/app/chat`);
       r.refresh();
     }
   }

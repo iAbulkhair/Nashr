@@ -2,7 +2,25 @@ import type { Lang } from "./i18n";
 
 const ar = {
   appName: "نشر",
-  nav: { inbox: "صندوق الموافقة", generate: "اطلب من نور", brand: "ملف العلامة", billing: "الاشتراك", logout: "خروج", credits: "كريدت" },
+  nav: { inbox: "صندوق الموافقة", generate: "اطلب من نور", brand: "ملف العلامة", billing: "الاشتراك", logout: "خروج", credits: "كريدت", chat: "نور", files: "الملفات", governance: "الحوكمة" },
+  start: {
+    title: "أعطي نور رابط موقعك.", sub: "تقرأه، تبحث عن سوقك، وتكتب ملفات علامتك أمامك خلال دقيقة. بدون نماذج.",
+    url: "رابط الموقع أو المتجر (سلة / زد / شوبيفاي / أي موقع)", hints: "أي شيء تبيه تعرفه نور؟ (اختياري) مثال: نبيع عطور، جمهورنا شباب الرياض، ما نبي كلمة رخيص",
+    go: "ابدئي يا نور", manual: "أفضّل تعبئة النموذج يدوياً",
+    steps: { crawl: "أقرأ موقعك", research: "أبحث عن سوقك ومنافسيك", brand: "أكتب ملف العلامة", file: "حفظت ملفاً", complete: "جاهز! خذني للدردشة مع نور", error: "حصل خطأ. جرّب مرة أخرى أو عبّئ النموذج يدوياً." },
+  },
+  chat: { title: "نور", placeholder: "اكتب لنور… مثال: جهزي 10 منشورات لليوم الوطني", send: "أرسل", thinking: "نور تفكر…", empty: "مرحباً! أنا نور. اطلب مني محتوى، أو اسألني عن خطتك، أو خبرني بأي شيء عن علامتك وسأتذكره.", suggestions: ["اكتبي خطة الأسبوع", "10 منشورات لليوم الوطني", "3 رسائل واتساب لاسترجاع السلات", "ما الذي بانتظار موافقتي؟", "نبرتنا فاخرة وهادئة، تذكري ذلك"] },
+  files: { title: "الملفات", sub: "ذاكرة نور. تقرأها في كل عملية توليد. عدّل ما تشاء.", empty: "لا ملفات بعد. شغّل الإعداد من رابط موقعك.", edit: "تعديل", save: "حفظ", cancel: "إلغاء", delete: "حذف", newFile: "ملف جديد", by: { noor: "كتبته نور", user: "كتبته أنت" } },
+  governance: {
+    title: "الحوكمة", sub: "تحكّم بما تفعله نور وحدها وما ينتظر موافقتك.",
+    autoApprove: "اعتماد تلقائي (يتجاوز صندوق الموافقة)", autoApproveSub: "اختر الأنواع التي تثق بها. الباقي ينتظرك.",
+    reviewer: "المراجع الثاني", reviewerSub: "نموذج ثانٍ يراجع كل عنصر للالتزام وصوت العلامة قبل وصوله إليك. يبطئ التوليد قليلاً.",
+    learning: "التعلّم من تعديلاتك", learningSub: "كل تعديل أو رفض يُكتب في preferences.md وتلتزم به نور لاحقاً.",
+    noEmDash: "بدون شرطات طويلة", noEmDashSub: "تستبدل — و – بفواصل عادية.",
+    weeklyCap: "الحد الأسبوعي للمهام المجدولة", weeklyCapSub: "أقصى عدد عناصر تنشئها نور أسبوعياً من تلقاء نفسها عند تفعيل المهام المجدولة (قريباً).",
+    notify: "تنبيه قبل النشر (دقائق)", notifySub: "عند تفعيل النشر التلقائي (قريباً): تُرسل لك رسالة قبل كل نشر بهذا الوقت.",
+    save: "حفظ", saved: "تم الحفظ",
+  },
   login: { title: "تسجيل الدخول", email: "البريد الإلكتروني", password: "كلمة المرور", submit: "دخول", noAccount: "ما عندك حساب؟", signup: "أنشئ حساباً", invalid: "البريد أو كلمة المرور غير صحيحة." },
   signup: { title: "ابدأ تجربتك المجانية", sub: "7 أيام، 50 كريدت، بدون بطاقة.", name: "اسمك", phone: "رقم الجوال (واتساب)", email: "البريد الإلكتروني", password: "كلمة المرور (8 أحرف أو أكثر)", submit: "أنشئ الحساب", have: "عندك حساب؟", login: "سجّل دخول", exists: "هذا البريد مسجّل مسبقاً.", bad_phone: "رقم الجوال غير صحيح.", weak_password: "كلمة المرور قصيرة (8 أحرف على الأقل).", bad_email: "البريد غير صحيح." },
   onboarding: {
@@ -40,7 +58,25 @@ const ar = {
 
 const en: typeof ar = {
   appName: "Nashr",
-  nav: { inbox: "Approval inbox", generate: "Ask Noor", brand: "Brand file", billing: "Subscription", logout: "Log out", credits: "credits" },
+  nav: { inbox: "Approval inbox", generate: "Ask Noor", brand: "Brand file", billing: "Subscription", logout: "Log out", credits: "credits", chat: "Noor", files: "Files", governance: "Governance" },
+  start: {
+    title: "Give Noor your website.", sub: "She reads it, researches your market, and writes your brand files in front of you in about a minute. No forms.",
+    url: "Website or store URL (Salla / Zid / Shopify / any site)", hints: "Anything Noor should know? (optional) e.g. we sell perfume, audience is young Riyadh, never say 'cheap'",
+    go: "Go, Noor", manual: "I'd rather fill the form manually",
+    steps: { crawl: "Reading your website", research: "Researching your market and competitors", brand: "Writing your brand file", file: "Saved a file", complete: "Done! Take me to chat with Noor", error: "Something failed. Try again or fill the form manually." },
+  },
+  chat: { title: "Noor", placeholder: "Message Noor… e.g. prepare 10 posts for National Day", send: "Send", thinking: "Noor is thinking…", empty: "Hi! I'm Noor. Ask me for content, ask about your plan, or tell me anything about your brand and I'll remember it.", suggestions: ["Write this week's plan", "10 posts for National Day", "3 WhatsApp cart-recovery messages", "What's waiting for my approval?", "Our tone is premium and calm, remember that"] },
+  files: { title: "Files", sub: "Noor's memory. She reads these on every generation. Edit anything.", empty: "No files yet. Run setup from your website URL.", edit: "Edit", save: "Save", cancel: "Cancel", delete: "Delete", newFile: "New file", by: { noor: "written by Noor", user: "written by you" } },
+  governance: {
+    title: "Governance", sub: "Control what Noor does on her own and what waits for you.",
+    autoApprove: "Auto-approve (skips the inbox)", autoApproveSub: "Pick the types you trust. Everything else waits for you.",
+    reviewer: "Second reviewer", reviewerSub: "A second model checks every item for compliance and brand voice before it reaches you. Slightly slower.",
+    learning: "Learn from your edits", learningSub: "Every edit or rejection is written to preferences.md and Noor follows it going forward.",
+    noEmDash: "No em-dashes", noEmDashSub: "Replaces — and – with plain commas.",
+    weeklyCap: "Weekly cap for scheduled tasks", weeklyCapSub: "Max items Noor creates per week on her own once scheduled tasks are on (coming soon).",
+    notify: "Notify before publishing (minutes)", notifySub: "Once auto-publishing is on (coming soon): you get a message this long before each post.",
+    save: "Save", saved: "Saved",
+  },
   login: { title: "Log in", email: "Email", password: "Password", submit: "Log in", noAccount: "No account?", signup: "Create one", invalid: "Wrong email or password." },
   signup: { title: "Start your free trial", sub: "7 days, 50 credits, no card.", name: "Your name", phone: "Mobile number (WhatsApp)", email: "Email", password: "Password (8+ characters)", submit: "Create account", have: "Have an account?", login: "Log in", exists: "This email is already registered.", bad_phone: "Invalid mobile number.", weak_password: "Password too short (8+ characters).", bad_email: "Invalid email." },
   onboarding: {

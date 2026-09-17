@@ -12,6 +12,6 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
-  if (!(await getBrand(u.email))) redirect(`/${lang}/app/onboarding`);
+  if (!(await getBrand(u.email))) redirect(`/${lang}/app/start`);
   return <Inbox t={appDict[lang]} lang={lang} tasks={await listTasks(u.email)} />;
 }

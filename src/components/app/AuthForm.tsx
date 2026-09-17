@@ -20,7 +20,7 @@ export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
     const j = await res.json();
     setBusy(false);
     if (!j.ok) return setErr((t.signup as Record<string, string>)[j.error] ?? j.error);
-    r.push(`/${lang}/app/onboarding`);
+    r.push(`/${lang}/app/start`);
     r.refresh();
   }
   return (

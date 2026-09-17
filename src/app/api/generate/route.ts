@@ -3,6 +3,8 @@ import { randomBytes } from "crypto";
 import { currentUser, saveUser } from "@/lib/auth";
 import { TASK_COST, getBrand, listPreferences, saveTask, type Task, type TaskType } from "@/lib/brand";
 import { generate } from "@/lib/noor";
+import { memoryBlock } from "@/lib/files";
+import { getGov } from "@/lib/governance";
 
 export const maxDuration = 300;
 
@@ -18,9 +20,10 @@ export async function POST(req: Request) {
   const cost = TASK_COST[type];
   if (u.credits < cost) return NextResponse.json({ ok: false, error: "no_credits", need: cost, have: u.credits }, { status: 402 });
 
+  const gov = await getGov(u.email);
   let items;
   try {
-    items = await generate(type, brand, await listPreferences(u.email), b.notes);
+    items = await generate(type, brand, await listPreferences(u.email), b.notes, { memory: await memoryBlock(u.email), reviewer: gov.reviewer, noEmDash: gov.noEmDash });
   } catch (e) {
     console.error("generate failed", e);
     return NextResponse.json({ ok: false, error: "generation_failed" }, { status: 502 });
@@ -28,7 +31,7 @@ export async function POST(req: Request) {
   const lang = brand.languages[0] ?? "ar";
   const created: Task[] = [];
   for (const it of items) {
-    const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: "pending", createdAt: new Date().toISOString(), lang };
+    const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: gov.autoApprove[type] ? "approved" : "pending", createdAt: new Date().toISOString(), lang };
     await saveTask(u.email, t, true);
     created.push(t);
   }
