@@ -14,6 +14,7 @@
   --color-salt-dim: var(--primitive-color-salt-200);
   --color-saffron: var(--primitive-color-saffron-500);
   --color-sadu: var(--primitive-color-sadu-500);
+  --color-sadu-deep: var(--primitive-color-sadu-600);
   --color-ink: var(--primitive-color-ink-500);
   --color-mist: var(--primitive-color-mist-100);
   --color-mist-dim: var(--primitive-color-mist-300);
@@ -27,6 +28,13 @@
 html {
   scroll-behavior: smooth;
 }
+
+/* Browser surfaces carry the palette too */
+::selection { background: color-mix(in oklab, var(--color-accent) 45%, transparent); color: var(--color-foreground); }
+* { caret-color: var(--color-primary); scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--color-foreground) 22%, transparent) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: color-mix(in oklab, var(--color-foreground) 22%, transparent); border-radius: 999px; }
+.tnum { font-variant-numeric: tabular-nums; }
 
 body {
   background: var(--color-background);

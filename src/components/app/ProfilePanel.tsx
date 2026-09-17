@@ -17,7 +17,7 @@ type Data = {
 function Card({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
   return <section className="card"><h2 className="font-display text-lg font-bold">{title}</h2>{sub && <p className="mt-1 text-sm text-ink/60">{sub}</p>}<div className="mt-3">{children}</div></section>;
 }
-const L = (k: string) => <label className="block text-[11px] font-semibold uppercase tracking-wide text-ink/50">{k}</label>;
+const L = (k: string) => <label className="block text-xs font-semibold uppercase tracking-wide text-ink/50">{k}</label>;
 
 export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
   const ar = lang === "ar";

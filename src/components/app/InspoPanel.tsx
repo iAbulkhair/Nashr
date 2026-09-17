@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Inspo } from "@/lib/inspo";
 import type { Lang } from "@/lib/i18n";
+import { Icon, channelIcon } from "./Icons";
 
 export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang; items: Inspo[] }) {
   const r = useRouter();
@@ -16,7 +17,6 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
   const kinds = ["all", ...new Set(items.map((i) => i.kind))];
   const needle = q.trim().toLowerCase();
   const shown = items.filter((i) => (channel === "all" || i.channel === channel) && (kind === "all" || i.kind === kind) && (!needle || [i.title, i.brand, i.why, i.sample, i.industry].join(" ").toLowerCase().includes(needle)));
-  const ICONS: Record<string, string> = { snapchat: "👻", tiktok: "🎵", instagram: "📸", whatsapp: "💬", x: "𝕏", gbp: "📍", email: "✉️" };
   async function use(i: Inspo) {
     setBusy(i.id);
     const text = lang === "ar"
@@ -45,8 +45,8 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
       <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {shown.map((i) => (
           <article key={i.id} className="flex flex-col overflow-hidden card card-sm">
-            <div className="-mx-4 -mt-4 mb-3 flex h-20 items-center justify-center bg-oasis-deep text-3xl" aria-hidden><span>{ICONS[i.channel] ?? "✦"}</span></div>
-            <div className="flex items-center gap-2 text-[11px]">
+            <div className="-mx-4 -mt-4 mb-3 flex h-20 items-center justify-center bg-oasis-deep text-saffron" aria-hidden><Icon name={channelIcon(i.channel)} className="h-9 w-9" /></div>
+            <div className="flex items-center gap-2 text-xs">
               <span className="rounded bg-oasis/10 px-2 py-0.5 text-oasis">{i.channel}</span>
               <span className="rounded bg-salt-dim px-2 py-0.5">{(p.kinds as Record<string, string>)[i.kind]}</span>
               <span className="text-ink/50">{i.industry}</span>

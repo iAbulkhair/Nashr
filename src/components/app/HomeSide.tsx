@@ -3,6 +3,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
 import type { Kpis } from "@/lib/stats";
 import type { Notif } from "@/lib/notifications";
+import { Icon } from "./Icons";
 
 type Props = {
   t: AppDict; lang: Lang; k: Kpis;
@@ -22,6 +23,10 @@ function Box({ title, children, href, action }: { title: string; children: React
   );
 }
 
+/** Arabic plural forms for days and hours. */
+const daysAr = (n: number) => (n === 1 ? "يوم" : n === 2 ? "يومين" : n <= 10 ? `${n} أيام` : `${n} يوماً`);
+const hoursAr = (n: number) => (n === 1 ? "ساعة" : n === 2 ? "ساعتين" : n <= 10 ? `${n} ساعات` : `${n} ساعة`);
+
 /** Next Sunday 03:00 UTC (weekly) or next 05:00 UTC (daily), as "in Nd" / "in Nh". */
 function nextRun(kind: "weekly" | "daily", lang: Lang) {
   const now = new Date();
@@ -29,12 +34,13 @@ function nextRun(kind: "weekly" | "daily", lang: Lang) {
   if (kind === "weekly") { n.setUTCHours(3, 0, 0, 0); n.setUTCDate(n.getUTCDate() + ((7 - n.getUTCDay()) % 7 || (n <= now ? 7 : 0))); if (n <= now) n.setUTCDate(n.getUTCDate() + 7); }
   else { n.setUTCHours(5, 0, 0, 0); if (n <= now) n.setUTCDate(n.getUTCDate() + 1); }
   const h = Math.max(1, Math.round((n.getTime() - now.getTime()) / 36e5));
-  return h >= 24 ? (lang === "ar" ? `بعد ${Math.round(h / 24)} يوم` : `in ${Math.round(h / 24)}d`) : (lang === "ar" ? `بعد ${h} ساعة` : `in ${h}h`);
+  return h >= 24 ? (lang === "ar" ? `بعد ${daysAr(Math.round(h / 24))}` : `in ${Math.round(h / 24)}d`) : (lang === "ar" ? `بعد ${hoursAr(h)}` : `in ${h}h`);
 }
 function ago(iso: string | undefined, lang: Lang) {
   if (!iso) return lang === "ar" ? "لم يُشغَّل بعد" : "never";
   const h = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 36e5));
-  return h >= 48 ? (lang === "ar" ? `قبل ${Math.round(h / 24)} يوم` : `${Math.round(h / 24)}d ago`) : (lang === "ar" ? `قبل ${h} ساعة` : `${h}h ago`);
+  if (h === 0) return lang === "ar" ? "الآن" : "just now";
+  return h >= 48 ? (lang === "ar" ? `قبل ${daysAr(Math.round(h / 24))}` : `${Math.round(h / 24)}d ago`) : (lang === "ar" ? `قبل ${hoursAr(h)}` : `${h}h ago`);
 }
 
 /** Right-hand home panel (Enrich-style): metrics, channels, task feed with live status and latest run, brand assets. Server component. */
@@ -57,7 +63,7 @@ export default function HomeSide({ t, lang, k, connections, schedule, files, bri
     <aside className="grid content-start gap-4">
       <Box title={H.metrics} href={`${base}/reports`} action={H.all}>
         <div className="grid grid-cols-3 gap-2">
-          {tiles.map((x) => <Link key={x.l} href={x.href} className="rounded-lg bg-salt-dim p-2"><p className="text-[10px] text-ink/50">{x.l}</p><p className="font-display text-xl font-bold text-oasis" dir="ltr">{x.v}</p></Link>)}
+          {tiles.map((x) => <Link key={x.l} href={x.href} className="rounded-lg bg-salt-dim p-2"><p className="text-xs text-ink/50">{x.l}</p><p className="font-display text-xl font-bold text-oasis" dir="ltr">{x.v}</p></Link>)}
         </div>
         <Link href={`${base}/integrations`} className="mt-3 block rounded-lg border border-dashed border-ink/20 p-2 text-center text-xs text-ink/60 hover:border-oasis hover:text-oasis">{H.connectAnalytics}</Link>
       </Box>
@@ -74,7 +80,7 @@ export default function HomeSide({ t, lang, k, connections, schedule, files, bri
                 <span className="flex items-center gap-2 font-medium"><span className={`h-1.5 w-1.5 rounded-full ${x.on ? "bg-oasis" : "bg-ink/20"}`} />{x.l}</span>
                 <Link href={`${base}/tasks`} className="text-oasis hover:underline">{H.runNow}</Link>
               </div>
-              <p className="ms-3.5 text-[10px] text-ink/50">{x.on ? H.live : H.paused} · {H.next} {x.next} · {H.last} {x.last}</p>
+              <p className="ms-3.5 text-xs text-ink/50">{x.on ? H.live : H.paused} · {H.next} {x.next} · {H.last} {x.last}</p>
             </li>
           ))}
         </ul>
@@ -86,7 +92,7 @@ export default function HomeSide({ t, lang, k, connections, schedule, files, bri
         )}
         {action && (
           <div className="mt-3 rounded-lg border border-saffron/50 bg-saffron/10 p-3 text-xs">
-            <p className="font-semibold" dir="auto">⚡ {action.title}</p>
+            <p className="flex items-center gap-1.5 font-semibold" dir="auto"><Icon name="bell" className="h-3.5 w-3.5 text-sadu-deep" />{action.title}</p>
             <p className="mt-1 text-ink/70" dir="auto">{action.body}</p>
             <Link href={action.href} className="btn btn-primary btn-xs mt-2">{H.review}</Link>
           </div>
@@ -94,7 +100,7 @@ export default function HomeSide({ t, lang, k, connections, schedule, files, bri
       </Box>
       <Box title={H.assets} href={`${base}/files`} action={H.all}>
         {files.length === 0 ? <p className="text-xs text-ink/50">{H.noFiles}</p> : (
-          <ul className="space-y-1.5">{files.slice(0, 4).map((f) => <li key={f.name} className="flex items-center justify-between text-xs"><Link href={`${base}/files`} className="hover:text-oasis" dir="ltr">{f.name}</Link><span className="font-mono text-[10px] text-ink/50" dir="ltr">{f.updatedAt.slice(5, 10)}</span></li>)}</ul>
+          <ul className="space-y-1.5">{files.slice(0, 4).map((f) => <li key={f.name} className="flex items-center justify-between text-xs"><Link href={`${base}/files`} className="hover:text-oasis" dir="ltr">{f.name}</Link><span className="font-mono text-xs text-ink/50" dir="ltr">{f.updatedAt.slice(5, 10)}</span></li>)}</ul>
         )}
         <Link href={`${base}/onboarding`} className="mt-3 block rounded-lg border border-dashed border-ink/20 p-2 text-center text-xs text-ink/60 hover:border-oasis hover:text-oasis">{H.completeBrand}</Link>
       </Box>

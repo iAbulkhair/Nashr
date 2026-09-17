@@ -6,9 +6,9 @@ import type { AppDict } from "@/lib/app-i18n";
 import { IMAGE_TYPES, type Task } from "@/lib/brand";
 import { limitFromError } from "./LimitModal";
 import { render } from "@/lib/md";
+import { Icon, channelIcon } from "./Icons";
 import type { Lang } from "@/lib/i18n";
 
-const ICONS: Record<string, string> = { instagram: "📸", x: "𝕏", snapchat: "👻", tiktok: "🎵", whatsapp: "💬", gbp: "📍", meta: "📘", linkedin: "💼", email: "✉️", call: "📞", blog: "📝", plan: "🗓", sales: "🤝", finance: "📊", growth: "🚀", report: "📈", deck: "📑", dashboard: "🧭", strategy: "🎯", product: "🧩" };
 const CHAR_LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250, tiktok: 2200, whatsapp: 1024, gbp: 1500, linkedin: 3000 };
 
 export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[] }) {
@@ -65,7 +65,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
     <div>
       <div className="mb-4 flex gap-1 border-b border-ink/10 text-sm">
         <Link href={`/${lang}/app/chat`} className="px-4 py-2 text-ink/60 hover:text-oasis">{i.tabChat}</Link>
-        <span className="border-b-2 border-oasis px-4 py-2 font-semibold text-oasis">{i.tabFeed} <span className="badge badge-accent ms-1">NEW</span></span>
+        <span className="border-b-2 border-oasis px-4 py-2 font-semibold text-oasis">{i.tabFeed} <span className="badge badge-accent ms-1">{t.nav.newBadge}</span></span>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="page-title">{i.title}</h1>
@@ -80,8 +80,8 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
 
       {brief && (
         <div className="mt-5 flex gap-3 rounded-xl border border-saffron/40 bg-saffron/10 p-4 text-sm" dir="auto">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-oasis font-display font-bold text-saffron" aria-hidden>ن</span>
-          <div><p className="mb-1 text-xs font-semibold text-sadu">{i.brief}</p><pre className="whitespace-pre-wrap font-body leading-relaxed">{brief}</pre></div>
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-oasis font-display font-bold text-saffron" aria-hidden>{t.agents.noor.name.charAt(0)}</span>
+          <div><p className="mb-1 text-xs font-semibold text-sadu-deep">{i.brief}</p><pre className="whitespace-pre-wrap font-body leading-relaxed">{brief}</pre></div>
         </div>
       )}
       {shown.length === 0 && (
@@ -99,16 +99,16 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
           const isCollapsed = !!collapsed[x.id];
           return (
             <li key={x.id} className="grid gap-4">
-              {newDay && <p className="flex items-center gap-3 text-xs text-ink/50"><span className="h-px flex-1 bg-ink/10" /><span className="rounded-full border border-ink/10 bg-white px-3 py-1">{dayLabel(x.createdAt)}</span><span className="h-px flex-1 bg-ink/10" /></p>}
+              {newDay && <p className="flex items-center gap-3 text-xs text-ink/70"><span className="sadu-thin h-1 flex-1 rounded-full opacity-60" /><span className="rounded-full border border-ink/10 bg-white px-3 py-1">{dayLabel(x.createdAt)}</span><span className="sadu-thin h-1 flex-1 rounded-full opacity-60" /></p>}
               <article className="card overflow-hidden p-0">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink/5 px-4 py-2.5">
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="text-lg" aria-hidden>{ICONS[x.channel] ?? "•"}</span>
-                  <span className="font-semibold capitalize">{x.channel}</span>
-                  <span className="clip text-sm text-ink/60" dir="auto">· {x.title}</span>
+                  <Icon name={channelIcon(x.channel)} className="h-4 w-4 shrink-0 text-oasis" />
+                  <span className="font-semibold">{(t.channelNames as Record<string, string>)[x.channel] ?? x.channel}</span>
+                  <span className="text-sm text-ink/70" dir="auto">· {x.title}</span>
                 </div>
                 <span className="flex items-center gap-2 text-xs">
-                  {x.quality && <span title={x.quality.notes} className={`rounded-full px-2 py-0.5 font-mono ${x.quality.score >= 85 ? "bg-oasis/10 text-oasis" : x.quality.score >= 70 ? "bg-saffron/20 text-ink" : "bg-sadu/10 text-sadu"}`} dir="ltr">{i.quality} {x.quality.score}</span>}
+                  {x.quality && <span title={x.quality.notes} className={`tnum rounded-full px-2 py-0.5 ${x.quality.score >= 85 ? "bg-oasis/10 text-oasis" : x.quality.score >= 70 ? "bg-saffron/20 text-ink" : "bg-sadu/10 text-sadu-deep"}`} dir="ltr">{i.quality} {x.quality.score}</span>}
                   <span className={`badge ${x.status === "approved" ? "badge-primary" : x.status === "rejected" ? "badge-danger" : "badge-accent"}`}>{i[x.status]}</span>
                 </span>
               </div>
@@ -133,7 +133,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
               ) : (
                 <>{!isCollapsed && <div className="prose-nashr prose-compact mt-3 text-sm text-ink/90" dir="auto" dangerouslySetInnerHTML={{ __html: render(body) }} />}
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className={`font-mono text-[10px] ${CHAR_LIMITS[x.channel] && body.length > CHAR_LIMITS[x.channel] ? "text-sadu" : "text-ink/40"}`} dir="ltr">{body.length}{CHAR_LIMITS[x.channel] ? ` / ${CHAR_LIMITS[x.channel]}` : ""}</span>
+                  <span className={`tnum text-xs ${CHAR_LIMITS[x.channel] && body.length > CHAR_LIMITS[x.channel] ? "font-semibold text-sadu-deep" : "text-ink/60"}`} dir="ltr">{body.length}{CHAR_LIMITS[x.channel] ? ` / ${CHAR_LIMITS[x.channel]}` : ""}</span>
                   <span className="ms-auto flex gap-1.5">
                     <button onClick={() => setCollapsed((p) => ({ ...p, [x.id]: !isCollapsed }))} className="btn btn-secondary btn-xs">{isCollapsed ? "▾ " + i.expand : "▴ " + i.collapse}</button>
                     <button onClick={async () => { await navigator.clipboard.writeText(body); setCopied(x.id); setTimeout(() => setCopied(null), 1500); }} className="btn btn-secondary btn-xs">{copied === x.id ? i.copied : "⧉ " + i.copy}</button>

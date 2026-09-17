@@ -94,7 +94,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
         {(["1", "2", "7", "30", "60", "90", "ytd", "ly"] as const).map((rg) => <Link key={rg} href={rangeHref(rg)} className={`rounded-full px-3 py-1 text-xs ${range === rg ? "bg-ink text-salt" : "border border-ink/15 text-ink/60 hover:border-oasis"}`}>{R.ranges[rg]}</Link>)}
         <form action={`/${lang}/app/reports`} className="flex items-center gap-1 text-xs"><input type="hidden" name="range" value="custom" /><input type="date" name="from" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><input type="date" name="to" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><button className={`rounded-full px-3 py-1 ${range === "custom" ? "bg-ink text-salt" : "border border-ink/15 text-ink/60"}`}>{R.ranges.custom}</button></form>
       </div>
-      <p className="mt-2 font-mono text-[11px] text-ink/50" dir="ltr">{k.window.from} → {k.window.to}</p>
+      <p className="mt-2 font-mono text-xs text-ink/50" dir="ltr">{k.window.from} → {k.window.to}</p>
 
       <h2 className="mt-8 font-display text-xl font-bold">{R.metricsTitle}</h2>
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -103,7 +103,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
             <button onClick={() => savePicked(picked.filter((p) => p !== key))} className="absolute end-2 top-2 text-xs text-ink/30 hover:text-sadu" aria-label={R.removeMetric}>✕</button>
             <p className="text-xs text-ink/60">{value[key].label}</p>
             <p className="mt-1 font-display text-3xl font-bold text-oasis" dir="ltr">{value[key].value}</p>
-            {value[key].sub && <p className="mt-0.5 text-[11px] text-ink/50" dir="auto">{value[key].sub}</p>}
+            {value[key].sub && <p className="mt-0.5 text-xs text-ink/50" dir="auto">{value[key].sub}</p>}
           </div>
         ))}
         <button onClick={() => setAdding(!adding)} className="grid min-h-24 place-items-center rounded-xl border-2 border-dashed border-ink/15 text-sm text-ink/50 hover:border-oasis hover:text-oasis"><span><span className="block text-2xl">+</span>{R.addMetric}</span></button>
@@ -146,7 +146,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
                   <div className="w-1/2 rounded-t bg-oasis/30" style={{ height: `${(w.created / max) * 100}%` }} />
                   <div className="w-1/2 rounded-t bg-oasis" style={{ height: `${(w.approved / max) * 100}%` }} />
                 </div>
-                <span className="font-mono text-[10px] text-ink/50">{w.label}</span>
+                <span className="font-mono text-xs text-ink/50">{w.label}</span>
               </div>
             ))}
           </div>
@@ -187,7 +187,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
             </tbody>
           </table>
         </div>
-        <p className="mt-2 text-[11px] text-ink/50">{R.judgeNote}</p>
+        <p className="mt-2 text-xs text-ink/50">{R.judgeNote}</p>
       </section>
 
       <section className="mt-8 rounded-xl border border-oasis/20 bg-salt-dim p-5">

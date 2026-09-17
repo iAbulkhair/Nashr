@@ -70,7 +70,7 @@ export default function FilesPanel({ t, files }: { t: AppDict; files: WFile[] })
               <li key={x.name}>
                 <button onClick={() => { setOpen(x.name); setEditing(false); }} className={`w-full rounded-lg px-3 py-2 text-start text-sm ${open === x.name ? "bg-oasis text-mist" : "hover:bg-salt-dim"}`} dir="ltr">
                   <span className="font-mono">{x.name}</span>
-                  <span className={`block text-[10px] ${open === x.name ? "text-mist-dim" : "text-ink/50"}`}>{x.updatedAt.slice(0, 10)} · {f.by[x.by]}</span>
+                  <span className={`block text-xs ${open === x.name ? "text-mist-dim" : "text-ink/50"}`}>{x.updatedAt.slice(0, 10)} · {f.by[x.by]}</span>
                 </button>
               </li>
             ))}

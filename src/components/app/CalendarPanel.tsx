@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Task } from "@/lib/brand";
 import type { Lang } from "@/lib/i18n";
+import { Icon, channelIcon } from "./Icons";
 
-const ICONS: Record<string, string> = { blog: "📝", linkedin: "💼", x: "𝕏", instagram: "📸", snapchat: "👻", tiktok: "🎵", whatsapp: "💬", gbp: "📍", meta: "📘", plan: "🗓", email: "✉️" };
 const DEFAULT_ROWS = ["instagram", "snapchat", "tiktok", "x", "whatsapp", "gbp", "blog"];
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -56,7 +56,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h1 className="page-title">{c.title}</h1><p className="mt-1 text-ink/70">{c.sub}</p>
-          <p className="mt-1 flex flex-wrap gap-4 text-[11px] text-ink/50"><span><kbd className="rounded border border-ink/20 px-1">←/→</kbd> {c.navigate}</span><span><kbd className="rounded border border-ink/20 px-1">T</kbd> {c.today}</span><span><kbd className="rounded border border-ink/20 px-1">V</kbd> {c.toggleView}</span></p>
+          <p className="mt-1 flex flex-wrap gap-4 text-xs text-ink/50"><span><kbd className="rounded border border-ink/20 px-1">←/→</kbd> {c.navigate}</span><span><kbd className="rounded border border-ink/20 px-1">T</kbd> {c.today}</span><span><kbd className="rounded border border-ink/20 px-1">V</kbd> {c.toggleView}</span></p>
         </div>
         <div className="flex items-center gap-2 text-sm">
           <button onClick={goToday} className="btn btn-secondary btn-xs">{c.today}</button>
@@ -76,11 +76,11 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
           <table className="w-full min-w-[860px] table-fixed text-xs">
             <thead>
               <tr>
-                <th className="w-28 border-b border-ink/10 p-2 text-start text-[10px] font-semibold uppercase tracking-wide text-ink/50">{c.channel}</th>
+                <th className="w-28 border-b border-ink/10 p-2 text-start text-xs font-semibold uppercase tracking-wide text-ink/50">{c.channel}</th>
                 {days.map((d) => { const k = iso(d); const isT = k === today; return (
                   <th key={k} className={`border-b border-ink/10 p-2 text-center ${isT ? "bg-oasis/5" : ""}`}>
                     <span className={`font-display text-xl font-bold ${isT ? "text-oasis" : "text-ink/70"}`} dir="ltr">{d.getUTCDate()}</span>
-                    <span className="block text-[10px] uppercase tracking-wide text-ink/50">{c.days[d.getUTCDay()]}</span>
+                    <span className="block text-xs uppercase tracking-wide text-ink/50">{c.days[d.getUTCDay()]}</span>
                   </th>
                 ); })}
               </tr>
@@ -88,11 +88,11 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
             <tbody>
               {rows.map((ch) => (
                 <tr key={ch} className="border-t border-ink/5">
-                  <td className="p-2 align-top text-ink/70"><span className="me-1" aria-hidden>{ICONS[ch] ?? "•"}</span>{ch}</td>
+                  <td className="p-2 align-top text-ink/80"><span className="flex items-center gap-1.5"><Icon name={channelIcon(ch)} className="h-4 w-4 text-oasis" />{(t.channelNames as Record<string, string>)[ch] ?? ch}</span></td>
                   {days.map((d) => { const k = iso(d); const items = (byDay.get(k) ?? []).filter((x) => x.channel === ch); return (
                     <td key={k} className={`h-16 p-1 align-top ${k === today ? "bg-oasis/5" : ""}`}>
                       {items.length === 0 ? (
-                        <Link href={`/${lang}/app`} className="flex h-full min-h-14 items-center justify-center rounded-lg border border-dashed border-ink/10 text-ink/20 hover:border-oasis hover:text-oasis" aria-label={c.addContent}><span aria-hidden>{ICONS[ch] ?? "+"}</span></Link>
+                        <Link href={`/${lang}/app`} className="flex h-full min-h-14 items-center justify-center rounded-lg border border-dashed border-ink/10 text-ink/20 hover:border-oasis hover:text-oasis" aria-label={c.addContent}><Icon name={channelIcon(ch)} className="h-4 w-4" /></Link>
                       ) : items.map((x) => (
                         <button key={x.id} onClick={() => setSel(k)} className={`clip mb-1 block w-full rounded-md px-2 py-1 text-start ${x.status === "approved" ? "bg-oasis text-mist" : "bg-saffron/30 text-ink"}`} dir="auto" title={x.title}>{x.title}</button>
                       ))}
@@ -110,7 +110,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
             {Array.from({ length: startDow }).map((_, i) => <div key={"e" + i} />)}
             {Array.from({ length: daysIn }, (_, i) => i + 1).map((d) => { const k = key(d); const n = byDay.get(k)?.length ?? 0; const isSel = k === sel; const isToday = k === today; return (
               <button key={k} onClick={() => setSel(k)} className={`flex aspect-square flex-col items-center justify-center rounded-lg border text-sm ${isSel ? "border-oasis bg-oasis text-mist" : isToday ? "border-saffron" : "border-ink/5 hover:bg-salt-dim"}`}>
-                <span>{d}</span>{n > 0 && <span className={`mt-0.5 rounded-full px-1.5 text-[10px] ${isSel ? "bg-saffron text-ink" : "bg-oasis/10 text-oasis"}`}>{n}</span>}
+                <span>{d}</span>{n > 0 && <span className={`mt-0.5 rounded-full px-1.5 text-xs ${isSel ? "bg-saffron text-ink" : "bg-oasis/10 text-oasis"}`}>{n}</span>}
               </button>
             ); })}
           </div>
@@ -129,7 +129,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
             <Link href={`/${lang}/app/chat?prompt=${encodeURIComponent((lang === "ar" ? "جهّزي محتوى ليوم " : "Prepare content for ") + sel)}`} className="btn btn-primary mt-4">{c.addContent}</Link>
           </div>
         ) : (
-          <ul className="mt-2 grid gap-2 md:grid-cols-2">{selected.map((x) => <li key={x.id} className="rounded border border-ink/10 p-2 text-xs"><span className="text-oasis">{ICONS[x.channel] ?? ""} {x.channel}</span> · {x.title} <span className={`badge ${x.status === "approved" ? "badge-primary" : "badge-accent"}`}>{x.status === "approved" ? t.inbox.approved : t.inbox.pending}</span><p className="mt-1 line-clamp-3 whitespace-pre-wrap text-ink/70" dir="auto">{(x.editedBody ?? x.body).slice(0, 200)}</p></li>)}</ul>
+          <ul className="mt-2 grid gap-2 md:grid-cols-2">{selected.map((x) => <li key={x.id} className="rounded border border-ink/10 p-2 text-xs"><span className="inline-flex items-center gap-1 text-oasis"><Icon name={channelIcon(x.channel)} className="h-3.5 w-3.5" />{(t.channelNames as Record<string, string>)[x.channel] ?? x.channel}</span> · {x.title} <span className={`badge ${x.status === "approved" ? "badge-primary" : "badge-accent"}`}>{x.status === "approved" ? t.inbox.approved : t.inbox.pending}</span><p className="mt-1 line-clamp-3 whitespace-pre-wrap text-ink/70" dir="auto">{(x.editedBody ?? x.body).slice(0, 200)}</p></li>)}</ul>
         )}
         {unscheduled.length > 0 && <p className="mt-3 text-xs text-ink/50">{c.unscheduled}: {unscheduled.length} · <Link href={`/${lang}/app`} className="text-oasis underline">{c.setDates}</Link></p>}
       </aside>

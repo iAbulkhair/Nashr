@@ -40,7 +40,7 @@ export default function BrandsPanel({ lang }: { lang: Lang }) {
         {brands.map((b) => (
           <li key={b.id} className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 ${b.id === active ? "border-oasis bg-white" : "border-ink/10 bg-white"} ${b.status === "archived" ? "opacity-60" : ""}`}>
             <div>
-              <p className="font-display font-medium" dir="auto">{b.name} {b.id === active && <span className="ms-2 rounded bg-oasis px-2 py-0.5 text-[10px] text-mist">{ar ? "نشطة" : "ACTIVE"}</span>} {b.status === "archived" && <span className="ms-2 rounded bg-ink/10 px-2 py-0.5 text-[10px]">{ar ? "مؤرشفة" : "archived"}</span>}</p>
+              <p className="font-display font-medium" dir="auto">{b.name} {b.id === active && <span className="ms-2 rounded bg-oasis px-2 py-0.5 text-xs text-mist">{ar ? "نشطة" : "ACTIVE"}</span>} {b.status === "archived" && <span className="ms-2 rounded bg-ink/10 px-2 py-0.5 text-xs">{ar ? "مؤرشفة" : "archived"}</span>}</p>
               <p className="mt-1 text-xs text-ink/50" dir="ltr">{b.createdAt.slice(0, 10)}{!b.hasBrandFile && (ar ? " · لم يكتمل الإعداد" : " · setup incomplete")}</p>
             </div>
             <div className="flex gap-2 text-xs">

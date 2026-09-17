@@ -20,9 +20,12 @@ export default function LimitModal({ t, lang }: { t: AppDict; lang: Lang }) {
   const [kind, setKind] = useState<LimitKind | null>(null);
   useEffect(() => {
     const on = (e: Event) => setKind((e as CustomEvent<{ kind: LimitKind }>).detail.kind);
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setKind(null); };
     window.addEventListener("nashr:limit", on);
-    return () => window.removeEventListener("nashr:limit", on);
+    window.addEventListener("keydown", key);
+    return () => { window.removeEventListener("nashr:limit", on); window.removeEventListener("keydown", key); };
   }, []);
+  useEffect(() => { if (kind) document.getElementById("limit-later")?.focus(); }, [kind]);
   if (!kind) return null;
   const L = t.limit;
   return (
@@ -32,24 +35,10 @@ export default function LimitModal({ t, lang }: { t: AppDict; lang: Lang }) {
         <h2 id="limit-title" className="mt-5 font-display text-2xl font-bold">{kind === "credits" ? L.creditsTitle : L.trialTitle}</h2>
         <p className="page-sub">{kind === "credits" ? L.creditsBody : L.trialBody}</p>
         <div className="mt-6 flex justify-center gap-3">
-          <button onClick={() => setKind(null)} className="btn btn-secondary">{L.later}</button>
+          <button id="limit-later" onClick={() => setKind(null)} className="btn btn-secondary">{L.later}</button>
           <Link href={`/${lang}/app/billing`} className="btn btn-primary">{L.plans}</Link>
         </div>
       </div>
-    </div>
-  );
-}
-
-/** Under-composer block for trial accounts (Enrich: "Hire your first autonomous AI marketer today."). */
-export function HireBlock({ t, lang, firstStep }: { t: AppDict; lang: Lang; firstStep?: string }) {
-  const L = t.limit;
-  const step = firstStep ? (L.firstSteps as Record<string, string>)[firstStep] : undefined;
-  return (
-    <div className="mt-3 rounded-xl bg-oasis-deep p-4 text-center text-mist">
-      <p className="font-display font-semibold">{L.hireTitle}</p>
-      <Link href={`/${lang}/app/billing`} className="btn btn-accent btn-pill mt-2">{L.hire}</Link>
-      <p className="mt-2 text-xs text-mist-dim">{L.hireSub}</p>
-      {step && <p className="mt-1 text-xs text-mist-dim">{L.firstUp}: {step}</p>}
     </div>
   );
 }

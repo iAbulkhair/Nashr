@@ -88,7 +88,7 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
                 <div>
                   <p className="font-display font-medium">{providerById.get(c.provider)?.name ?? c.provider}</p>
                   <p className="mt-1 text-xs text-ink/60" dir="ltr">{c.meta?.account ?? c.meta?.shop ?? c.meta?.site ?? ""}</p>
-                  <p className="mt-1 text-[10px] text-ink/40" dir="ltr">{c.connectedAt.slice(0, 10)}</p>
+                  <p className="mt-1 text-xs text-ink/40" dir="ltr">{c.connectedAt.slice(0, 10)}</p>
                 </div>
                 <div className="flex shrink-0 flex-col gap-1">
                   {["shopify", "woocommerce", "odoo", "prestashop"].includes(c.provider) && <button disabled={busy} onClick={() => importProducts(c.provider)} className="rounded-full border border-oasis/40 px-3 py-1 text-xs text-oasis">{g.importProducts}</button>}
@@ -114,7 +114,7 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
                   <div>
                     <p className="font-display font-medium">{i.name}</p>
                     {i.note && <p className="mt-1 text-xs text-ink/60">{i.note}</p>}
-                    <span className={`mt-2 inline-block rounded px-2 py-0.5 text-[11px] ${badge(status === "ready" ? "soon" : status)}`}>{status === "ready" ? g.ready : status === "live" ? g.connected : status === "soon" && p?.kind === "oauth" ? g.waiting : g.status[i.status]}</span>
+                    <span className={`mt-2 inline-block rounded px-2 py-0.5 text-xs ${badge(status === "ready" ? "soon" : status)}`}>{status === "ready" ? g.ready : status === "live" ? g.connected : status === "soon" && p?.kind === "oauth" ? g.waiting : g.status[i.status]}</span>
                   </div>
                   {canConnect ? (
                     <button onClick={() => (p!.kind === "key" ? setKeyFor(p!) : startOAuth(p!))} className="shrink-0 rounded-full bg-oasis px-3 py-1 text-xs font-semibold text-mist">{g.connect}</button>
