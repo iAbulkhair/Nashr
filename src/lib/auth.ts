@@ -60,7 +60,7 @@ export async function createUser(input: { email: string; name: string; phone: st
     passHash: await bcrypt.hash(input.password, 10),
     plan: "trial",
     credits: PLAN_CREDITS.trial,
-    trialEnds: new Date(now.getTime() + 7 * 864e5).toISOString(),
+    trialEnds: new Date(now.getTime() + 3 * 864e5).toISOString(),
     createdAt: now.toISOString(),
     lang: input.lang,
   };

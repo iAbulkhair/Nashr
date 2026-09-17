@@ -45,6 +45,8 @@ export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
 
 export function LoginForm({ t, lang }: { t: AppDict; lang: Lang }) {
   const r = useRouter();
+  const nextParam = useSearchParams().get("next") ?? "";
+  const next = nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "";
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -55,6 +57,7 @@ export function LoginForm({ t, lang }: { t: AppDict; lang: Lang }) {
     const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fd) });
     setBusy(false);
     if (!res.ok) return setErr(t.login.invalid);
+    if (next) { window.location.href = next; return; }
     r.push(`/${lang}/app`);
     r.refresh();
   }

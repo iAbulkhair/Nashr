@@ -22,7 +22,7 @@ const ar = {
     save: "حفظ", saved: "تم الحفظ",
   },
   login: { title: "تسجيل الدخول", email: "البريد الإلكتروني", password: "كلمة المرور", submit: "دخول", noAccount: "ما عندك حساب؟", signup: "أنشئ حساباً", invalid: "البريد أو كلمة المرور غير صحيحة." },
-  signup: { title: "ابدأ تجربتك المجانية", sub: "7 أيام، 50 كريدت، بدون بطاقة.", name: "اسمك", phone: "رقم الجوال (واتساب)", email: "البريد الإلكتروني", password: "كلمة المرور (8 أحرف أو أكثر)", submit: "أنشئ الحساب", have: "عندك حساب؟", login: "سجّل دخول", exists: "هذا البريد مسجّل مسبقاً.", bad_phone: "رقم الجوال غير صحيح.", weak_password: "كلمة المرور قصيرة (8 أحرف على الأقل).", bad_email: "البريد غير صحيح." },
+  signup: { title: "ابدأ تجربتك المجانية", sub: "3 أيام، 50 كريدت، بدون بطاقة.", name: "اسمك", phone: "رقم الجوال (واتساب)", email: "البريد الإلكتروني", password: "كلمة المرور (8 أحرف أو أكثر)", submit: "أنشئ الحساب", have: "عندك حساب؟", login: "سجّل دخول", exists: "هذا البريد مسجّل مسبقاً.", bad_phone: "رقم الجوال غير صحيح.", weak_password: "كلمة المرور قصيرة (8 أحرف على الأقل).", bad_email: "البريد غير صحيح." },
   onboarding: {
     title: "عرّفي نور على علامتك", sub: "دقيقتان. كل ما تكتبه هنا تستخدمه نور في كل محتوى.",
     name: "اسم النشاط", website: "الموقع أو رابط المتجر (سلة / زد / شوبيفاي)", industry: "القطاع", city: "المدينة / السوق",
@@ -36,7 +36,7 @@ const ar = {
     title: "ماذا تريد من نور اليوم؟", sub: "كل طلب يُنتج عناصر جاهزة في صندوق الموافقة.",
     notes: "ملاحظات لهذه الدفعة (اختياري): موسم، منتج معين، عرض…", run: "نفّذي يا نور", running: "نور تعمل… (30-90 ثانية)", done: "جاهز! العناصر في صندوق الموافقة.",
     types: {
-      weekly_plan: { t: "خطة الأسبوع", d: "خطة 7 أيام: ماذا ننشر، متى، وأين نعلن." },
+      weekly_plan: { t: "خطة الأسبوع", d: "خطة 3 أيام: ماذا ننشر، متى، وأين نعلن." },
       social: { t: "10 منشورات سوشال", d: "إنستقرام، سناب، تيك توك، X — جاهزة للنشر." },
       article: { t: "مقال SEO", d: "1,200-1,600 كلمة، مهيكل، مع FAQ." },
       whatsapp: { t: "3 رسائل واتساب", d: "سلة متروكة، عرض موسمي، شكر بعد الشراء." },
@@ -45,7 +45,7 @@ const ar = {
     },
     cost: "كريدت", noCredits: "الكريدت غير كافي. رقّ خطتك.", trialOver: "انتهت التجربة. اشترك للمتابعة.", failed: "تعذّر التوليد. حاول مرة أخرى.", noBrand: "أكمل ملف العلامة أولاً.",
   },
-  tasks: { title: "المهام المجدولة", sub: "ما تفعله نور من تلقاء نفسها. أوقفها أو شغّلها الآن.", weekly: "خطة الأسبوع", weeklyDesc: "كل أحد 06:00 صباحاً بتوقيت السعودية — خطة 7 أيام في صندوق الموافقة (1 كريدت).", daily: "ملخص الصباح", dailyDesc: "كل يوم 08:00 صباحاً — ملخص بدون كريدت: ما ينتظرك، رصيدك، المواسم القريبة.", runNow: "شغّل الآن", lastRun: "آخر تشغيل", never: "لم يُشغَّل بعد", on: "مفعّل", off: "متوقف", ran: "تم التشغيل", capNote: "الحد الأسبوعي من صفحة الحوكمة ينطبق على خطة الأسبوع." },
+  tasks: { title: "المهام المجدولة", sub: "ما تفعله نور من تلقاء نفسها. أوقفها أو شغّلها الآن.", weekly: "خطة الأسبوع", weeklyDesc: "كل أحد 06:00 صباحاً بتوقيت السعودية — خطة 3 أيام في صندوق الموافقة (1 كريدت).", daily: "ملخص الصباح", dailyDesc: "كل يوم 08:00 صباحاً — ملخص بدون كريدت: ما ينتظرك، رصيدك، المواسم القريبة.", runNow: "شغّل الآن", lastRun: "آخر تشغيل", never: "لم يُشغَّل بعد", on: "مفعّل", off: "متوقف", ran: "تم التشغيل", capNote: "الحد الأسبوعي من صفحة الحوكمة ينطبق على خطة الأسبوع." },
   calendar: { title: "التقويم", sub: "العناصر المعتمدة حسب تاريخ النشر. عيّن التاريخ من صندوق الموافقة.", today: "اليوم", prev: "السابق", next: "التالي", none: "لا شيء في هذا اليوم", unscheduled: "معتمد بدون تاريخ", days: ["أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"] },
   refer: { title: "اكسب كريدت", sub: "شارك رابطك. أنت وصديقك تحصلان على 50 كريدت عند تسجيله.", link: "رابطك", code: "الكود", copy: "انسخ", copied: "تم النسخ", count: "إحالات ناجحة", earned: "كريدت مكتسب", share: "مشاركة على واتساب", shareText: "جرّب نشر — نور وكيلة تسويق بالذكاء الاصطناعي تكتب لك بلهجتك. سجّل من رابطي وخذ 50 كريدت مجاناً:" },
   integrations: { title: "التكاملات", sub: "الخليج أولاً. أخبرنا ماذا تريد بعد ذلك — الأكثر طلباً يُبنى أولاً.", groups: { commerce: "التجارة", ads: "الإعلانات", messaging: "الرسائل", publishing: "النشر", data: "البيانات", payments: "الدفع" }, status: { live: "متاح", soon: "قريباً", planned: "مخطط" }, request: "أريد هذا", requested: "سُجّل طلبك", other: "تكامل آخر تحتاجه؟", send: "أرسل", connect: "اربط", connected: "متصل", disconnect: "فصل", shopPrompt: "اسم متجرك (مثال: mystore.myshopify.com)", keyTitle: "أدخل بيانات الربط", keyHelp: "أين أجدها؟", verifying: "جارٍ التحقق…", verifyFailed: "فشل التحقق. راجع البيانات.", importProducts: "استورد المنتجات", ready: "جاهز للربط", waiting: "بانتظار موافقة المنصة", note: "النشر التلقائي يعتمد على موافقات المنصات (ميتا، سناب، تيك توك). قدّمنا الطلبات وسنفعّلها فور الموافقة." },
@@ -83,7 +83,7 @@ const en: typeof ar = {
     save: "Save", saved: "Saved",
   },
   login: { title: "Log in", email: "Email", password: "Password", submit: "Log in", noAccount: "No account?", signup: "Create one", invalid: "Wrong email or password." },
-  signup: { title: "Start your free trial", sub: "7 days, 50 credits, no card.", name: "Your name", phone: "Mobile number (WhatsApp)", email: "Email", password: "Password (8+ characters)", submit: "Create account", have: "Have an account?", login: "Log in", exists: "This email is already registered.", bad_phone: "Invalid mobile number.", weak_password: "Password too short (8+ characters).", bad_email: "Invalid email." },
+  signup: { title: "Start your free trial", sub: "3 days, 50 credits, no card.", name: "Your name", phone: "Mobile number (WhatsApp)", email: "Email", password: "Password (8+ characters)", submit: "Create account", have: "Have an account?", login: "Log in", exists: "This email is already registered.", bad_phone: "Invalid mobile number.", weak_password: "Password too short (8+ characters).", bad_email: "Invalid email." },
   onboarding: {
     title: "Introduce Noor to your brand", sub: "Two minutes. Everything here shapes every piece Noor writes.",
     name: "Business name", website: "Website or store URL (Salla / Zid / Shopify)", industry: "Industry", city: "City / market",

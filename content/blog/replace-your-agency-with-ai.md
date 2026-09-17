@@ -45,7 +45,7 @@ desc_en: Agencies charge SAR 5,000–25,000 a month for daily execution an AI ag
 - **"من يفهم السوق؟"** الوكيل المبني للخليج يعرف رمضان واليوم الوطني وسناب وواتساب. الوكيل الأمريكي لا.
 - **"من يتحمل المسؤولية؟"** أنت — كما كان دائماً. لكن الآن كل شيء يمر بصندوق موافقتك.
 
-**ابدأ:** [جرّب نور 7 أيام مجاناً](/ar/app/signup).
+**ابدأ:** [جرّب نور 3 أيام مجاناً](/ar/app/signup).
 
 ---EN---
 ## Why now
@@ -88,4 +88,4 @@ Savings ≈ SAR 135,000 a year. Reinvest a third in ads, a third in real video.
 - **"Who understands the market?"** A Gulf-built agent knows Ramadan, National Day, Snap and WhatsApp. A US agent doesn't.
 - **"Who's accountable?"** You — as always. Now everything passes your approval inbox.
 
-**Start:** [Try Noor free for 7 days](/en/app/signup).
+**Start:** [Try Noor free for 3 days](/en/app/signup).

@@ -43,7 +43,7 @@ export default function ToolForm({ tool, lang }: { tool: Tool; lang: Lang }) {
         )}
         <div className="mt-6 rounded-xl bg-oasis-deep p-4 text-mist">
           <p className="font-display font-medium">{ar ? "نور تسوي هذا كل يوم — تلقائياً." : "Noor does this every day — automatically."}</p>
-          <p className="mt-1 text-sm text-mist-dim">{ar ? "تتعلم علامتك، تخطط أسبوعك، وتنتج المحتوى لكل قنواتك بلهجتك. 7 أيام مجاناً." : "Learns your brand, plans your week, produces content for every channel in your dialect. 7 days free."}</p>
+          <p className="mt-1 text-sm text-mist-dim">{ar ? "تتعلم علامتك، تخطط أسبوعك، وتنتج المحتوى لكل قنواتك بلهجتك. 3 أيام مجاناً." : "Learns your brand, plans your week, produces content for every channel in your dialect. 3 days free."}</p>
           <Link href={`/${lang}/app/signup`} className="mt-3 inline-block rounded-full bg-saffron px-4 py-2 text-sm font-semibold text-ink">{ar ? "جرّب نور مجاناً" : "Try Noor free"}</Link>
         </div>
       </div>

@@ -24,12 +24,18 @@ const TOOLS = [
 ];
 
 type Rpc = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: Record<string, unknown> };
-const ok = (id: Rpc["id"], result: unknown) => NextResponse.json({ jsonrpc: "2.0", id: id ?? null, result });
-const err = (id: Rpc["id"], code: number, message: string, status = 200) => NextResponse.json({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }, { status });
+const ok = (id: Rpc["id"], result: unknown) => NextResponse.json({ jsonrpc: "2.0", id: id ?? null, result }, { headers: CORS });
+const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Authorization, Content-Type, Mcp-Session-Id, Mcp-Protocol-Version" };
+const err = (id: Rpc["id"], code: number, message: string, status = 200) => {
+  const headers: Record<string, string> = { ...CORS };
+  if (status === 401) headers["WWW-Authenticate"] = `Bearer resource_metadata="${process.env.APP_ORIGIN ?? "https://nashr-tau.vercel.app"}/.well-known/oauth-protected-resource"`;
+  return NextResponse.json({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }, { status, headers });
+};
+export async function OPTIONS() { return new NextResponse(null, { headers: CORS }); }
 const text = (s: string) => ({ content: [{ type: "text", text: s }] });
 
 export async function GET() {
-  return NextResponse.json({ name: "nashr", version: "0.1.0", transport: "streamable-http", auth: "Authorization: Bearer <token from /app/mcp>", tools: TOOLS.map((t) => t.name) });
+  return NextResponse.json({ name: "nashr", version: "0.2.0", transport: "streamable-http", auth: ["oauth2.1 (PKCE, DCR) — see /.well-known/oauth-authorization-server", "personal bearer token from /app/mcp"], tools: TOOLS.map((t) => t.name) }, { headers: CORS });
 }
 
 export async function POST(req: Request) {
@@ -43,7 +49,7 @@ export async function POST(req: Request) {
   if (method === "tools/list") return ok(id, { tools: TOOLS });
 
   const user = await userFromBearer(req);
-  if (!user) return err(id, -32001, "Unauthorized: add header Authorization: Bearer <token> (get one at /ar/app/mcp)", 401);
+  if (!user) return err(id, -32001, "Unauthorized: connect via OAuth (this server advertises /.well-known/oauth-authorization-server) or add Authorization: Bearer <personal token from /ar/app/mcp>", 401);
 
   if (method !== "tools/call") return err(id, -32601, "Method not found");
   const name = String(params.name ?? "");

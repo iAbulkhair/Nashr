@@ -24,7 +24,7 @@ desc_en: Why Snap first in Saudi, account structure, creative that works, budget
 
 ## الميزانيات
 
-ابدأ بـ 100 ريال/يوم لكل حملة، 7 أيام بدون تعديل، ثم أوقف المجموعات التي تجاوزت ضعف تكلفة التحويل المستهدفة. لا تلمس الميزانية يومياً.
+ابدأ بـ 100 ريال/يوم لكل حملة، 3 أيام بدون تعديل، ثم أوقف المجموعات التي تجاوزت ضعف تكلفة التحويل المستهدفة. لا تلمس الميزانية يومياً.
 
 ## القياس
 
@@ -60,7 +60,7 @@ In Saudi Arabia Snapchat reaches the overwhelming majority of 18–34s, with dai
 
 ## Budgets
 
-Start at SAR 100/day per campaign, 7 days untouched, then pause ad sets above 2× target cost per conversion. Don't touch budgets daily.
+Start at SAR 100/day per campaign, 3 days untouched, then pause ad sets above 2× target cost per conversion. Don't touch budgets daily.
 
 ## Measurement
 

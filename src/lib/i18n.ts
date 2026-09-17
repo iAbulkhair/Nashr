@@ -148,7 +148,7 @@ export const dict: Record<Lang, Dict> = {
       eyebrow: "الأسعار",
       title: "أرخص من موظف واحد. أسرع من وكالة.",
       sub: "بالريال السعودي، شامل الضريبة عند الدفع. ألغِ في أي وقت.",
-      trial: "تجربة 7 أيام مجاناً — بدون بطاقة",
+      trial: "تجربة 3 أيام مجاناً — بدون بطاقة",
       annual: "ادفع سنوياً ووفّر شهرين",
       plans: [
         { name: "البداية", price: "149", period: "ريال / شهر", credits: "200 كريدت شهرياً", tagline: "للتاجر الفرد والمبدع", features: ["علامة واحدة، مستخدم واحد", "منشورات سوشال + صور", "مقالات SEO بالعربي", "حملات سناب وميتا (قراءة + اقتراحات)", "ملخص واتساب أسبوعي", "10 مهام متزامنة"], cta: "ابدأ مجاناً" },
@@ -307,7 +307,7 @@ export const dict: Record<Lang, Dict> = {
       eyebrow: "Pricing",
       title: "Cheaper than one hire. Faster than an agency.",
       sub: "In Saudi riyals, VAT applied at checkout. Cancel anytime.",
-      trial: "7-day free trial — no card",
+      trial: "3-day free trial — no card",
       annual: "Pay yearly, get two months free",
       plans: [
         { name: "Starter", price: "149", period: "SAR / month", credits: "200 credits / month", tagline: "For solo sellers and creators", features: ["1 brand, 1 seat", "Social posts + images", "Arabic SEO articles", "Snap & Meta campaigns (read + suggest)", "Weekly WhatsApp brief", "10 concurrent tasks"], cta: "Start free" },

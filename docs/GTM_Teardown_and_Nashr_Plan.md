@@ -76,11 +76,11 @@ KPIs: 1,000 tool uses/week, 300 signups/week, 12% trial→paid, 3 affiliates act
 2/ الشركات الصغيرة عندنا تصرف آلاف الريالات شهرياً على وكالات وفريلانسرز… والنتيجة منشور كل أسبوعين بالفصحى.
 3/ نور تقدر: ➤ تقرأ موقعك أو متجرك على سلة وتكتب ملف علامتك في دقيقة ➤ 10 منشورات أسبوعياً لسناب وتيك توك وإنستقرام بلهجة سعودية ➤ رسائل واتساب لاسترجاع السلات ➤ مقالات SEO بالعربي ➤ إعلانات جاهزة مع الجمهور والميزانية ➤ وتتعلم من كل تعديل تسويه
 4/ كل شيء يمر بصندوق موافقتك. أنت توافق، هي تنفّذ.
-5/ 7 أيام مجاناً، بدون بطاقة: nashr-tau.vercel.app
+5/ 3 أيام مجاناً، بدون بطاقة: nashr-tau.vercel.app
 (EN thread mirrors, "While you sleep, Noor markets.")
 
 ### Founder LinkedIn post (EN)
-"After [X] years marketing in the Gulf I kept seeing the same thing: great products, dead Instagram feeds, Snap ads run by gut. Global AI tools speak English and think Black Friday. So we built Noor…" + 6 arrows + "7-day trial, no card. Link in comments."
+"After [X] years marketing in the Gulf I kept seeing the same thing: great products, dead Instagram feeds, Snap ads run by gut. Global AI tools speak English and think Black Friday. So we built Noor…" + 6 arrows + "3-day trial, no card. Link in comments."
 
 ### Newsletter pitch (to sponsor/editor)
 Subject: An AI marketer that speaks Saudi — for your readers

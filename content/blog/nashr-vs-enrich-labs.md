@@ -27,7 +27,7 @@ desc_en: We tried Helena. Excellent for America. Here is everything it didn't un
 
 ## متى تختار نور
 
-تبيع في الخليج. [7 أيام مجاناً](/ar/app/signup).
+تبيع في الخليج. [3 أيام مجاناً](/ar/app/signup).
 
 ---EN---
 ## What we liked about Helena
@@ -52,4 +52,4 @@ US audience, email is your channel, you need Western integrations today.
 
 ## When to choose Noor
 
-You sell in the Gulf. [7 days free](/en/app/signup).
+You sell in the Gulf. [3 days free](/en/app/signup).

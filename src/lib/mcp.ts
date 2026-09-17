@@ -19,7 +19,7 @@ export async function revokeMcpToken(email: string) {
 }
 export async function userFromBearer(req: Request): Promise<User | null> {
   const h = req.headers.get("authorization") ?? "";
-  const m = h.match(/^Bearer\s+(nashr_[A-Za-z0-9_-]+)$/);
+  const m = h.match(/^Bearer\s+(nashr_[A-Za-z0-9_.-]+)$/);
   if (!m) return null;
   const email = await db.get<string>(`mcptoken:${m[1]}`);
   return email ? getUser(email) : null;
