@@ -3,11 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { ChatMsg } from "@/lib/chat";
 import { AGENTS, type AgentId } from "@/lib/agents";
+import { HireBlock, raiseLimit } from "./LimitModal";
 
 type Conv = { id: string; title: string; updatedAt: string; count: number; agent?: AgentId };
 type Hit = { conversationId: string; title: string; snippet: string; at: string };
 
-export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "" }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string }) {
+export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string }) {
   const ar = lang === "ar";
   const [msgs, setMsgs] = useState<ChatMsg[]>(initial);
   const [text, setText] = useState(initialPrompt);
@@ -20,6 +21,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [showList, setShowList] = useState(false);
   const [voted, setVoted] = useState<Record<string, 1 | -1>>({});
+  const [steps, setSteps] = useState<string[]>([]);
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs, busy]);
   useEffect(() => { fetch("/api/conversations").then((r) => r.json()).then((j) => { if (j.ok) { setConvs(j.conversations); if (initialConv) setAgent((j.conversations as Conv[]).find((c) => c.id === initialConv)?.agent ?? "noor"); } }); }, [initialConv]);
@@ -59,13 +61,31 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
     if (!m || busy) return;
     setText("");
     setMsgs((p) => [...p, { role: "user", content: m, at: new Date().toISOString() }]);
-    setBusy(true);
-    try {
-      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: m, conv, agent }) });
-      const j = await res.json();
-      if (j.ok) { setMsgs((p) => [...p, j.message]); setCredits(j.credits); if (conv !== "default") setConvs((p) => p.map((c) => (c.id === conv && c.title === "…" ? { ...c, title: m.slice(0, 60) } : c))); }
+    setBusy(true); setSteps([]);
+    const done = (j: { ok?: boolean; message?: ChatMsg; credits?: number; limit?: string | null; error?: string }) => {
+      if (j.message) { setMsgs((p) => [...p, j.message!]); if (typeof j.credits === "number") setCredits(j.credits); if (conv !== "default") setConvs((p) => p.map((c) => (c.id === conv && c.title === "…" ? { ...c, title: m.slice(0, 60) } : c))); if (j.limit === "credits" || j.limit === "trial") raiseLimit(j.limit); }
       else setMsgs((p) => [...p, { role: "assistant", content: "⚠︎ " + (j.error ?? "error"), at: new Date().toISOString() }]);
-    } finally { setBusy(false); }
+    };
+    try {
+      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json", "x-lang": lang }, body: JSON.stringify({ text: m, conv, agent, stream: true }) });
+      if (!res.body || !res.headers.get("content-type")?.includes("text/event-stream")) { done(await res.json()); return; }
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+      for (;;) {
+        const { value, done: end } = await reader.read();
+        if (end) break;
+        buf += dec.decode(value, { stream: true });
+        let i;
+        while ((i = buf.indexOf("\n\n")) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 2);
+          if (!line.startsWith("data:")) continue;
+          const ev = JSON.parse(line.slice(5));
+          if (ev.type === "status") setSteps((p) => [...p, ev.text]);
+          else if (ev.type === "message") done({ ok: true, ...ev });
+          else if (ev.type === "error") done({ ok: false, error: ev.error });
+        }
+      }
+    } catch { done({ ok: false, error: "network" }); }
+    finally { setBusy(false); setSteps([]); }
   }
   async function vote(m: ChatMsg, value: 1 | -1) {
     if (voted[m.at]) return;
@@ -139,13 +159,19 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
               </div>
             </div>
           ))}
-          {busy && <p className="text-sm text-ink/50">{agent === "noor" ? t.chat.thinking : `${t.agents[agent].name}…`}</p>}
+          {busy && (
+            <div className="text-sm text-ink/50">
+              {steps.map((s, i) => <p key={i} className={`flex items-center gap-2 ${i < steps.length - 1 ? "opacity-60" : ""}`}><span className={`h-1.5 w-1.5 rounded-full ${i < steps.length - 1 ? "bg-oasis" : "animate-pulse bg-saffron"}`} />{s}</p>)}
+              {steps.length === 0 && <p>{agent === "noor" ? t.chat.thinking : `${t.agents[agent].name}…`}</p>}
+            </div>
+          )}
           <div ref={end} />
         </div>
         <form onSubmit={(e) => { e.preventDefault(); send(text); }} className="mt-3 flex gap-2">
           <input value={text} onChange={(e) => setText(e.target.value)} placeholder={t.chat.placeholder} className="flex-1 input rounded-full" />
           <button disabled={busy || !text.trim()} className="rounded-full bg-saffron px-5 py-3 text-sm font-semibold text-ink disabled:opacity-50">{t.chat.send}</button>
         </form>
+        {plan === "trial" && <HireBlock t={t} lang={lang} />}
       </div>
     </div>
   );

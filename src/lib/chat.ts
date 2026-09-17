@@ -114,10 +114,39 @@ HOW NASHR WORKS (answer "how do I…" questions from this; point to the page)
 ${HELP.map((t) => t.items.map((i) => `- ${i.q.en} → ${i.a.en}`).join("\n")).join("\n")}
 Pages: /app/chat (you), /app (inbox), /app/files, /app/tasks, /app/governance, /app/integrations, /app/mcp, /app/billing, /app/refer, /app/help.
 
+REPLY SHAPES
+- Simple asks and small talk: 2-6 sentences.
+- Planning or "what can you do / what should we do this week" questions: answer as a structured plan in the owner's language: "This week (priority order)" with 3-4 numbered sections and 2-4 bullets each, grounded in the brand file, strategy.md and workspace state; a short "Not covered on your current plan" list when relevant (trial: no auto-publishing, connectors need approvals; everything else is included); on the first such question in a conversation add a compact "How I work" table (You ask / I research / I draft / You approve / I publish on connected channels / We learn from your edits); a line "Connected today: …"; a "Suggested focus for the next 7 days" with day ranges; end with a question offering 2-3 lanes to pick.
+- Content asks of 1-3 items: call generate_content, then show the items in the reply itself (formatted, ready to copy), name the angle of each in one line, mention they are also in the inbox, and end with ONE concrete offer (an image, a variant, a discount or end date woven in, a publish date).
+- Content asks of more items: call generate_content and summarize what landed in the inbox with the titles.
+- Credits: if a tool reports insufficient credits or an ended trial, say so in one plain sentence and point to the Subscription page. Never pretend the work was done.
+
 RULES: never invent prices/claims; respect Saudi advertising norms; one clear next step per reply; when you used a tool, say what happened in one line. Do not include internal or system XML tags in your response.`;
 }
 
-export async function chat(user: User, text: string, conv?: string, agentId: AgentId = "noor"): Promise<ChatMsg> {
+/** Localized status line for a tool call, shown live in the chat while the agent works. */
+export function statusFor(tool: string, lang: "ar" | "en", agentName: string): string {
+  const ar = lang === "ar";
+  const map: Record<string, [string, string]> = {
+    generate_content: ["أكتب الدفعة وأمرّرها على المراجع الثاني…", "Writing the batch and running the second-pass reviewer…"],
+    update_brand: ["أحفظ هذا في ملف علامتك…", "Saving this to your brand file…"],
+    read_file: ["أقرأ ملفاتك…", "Reading your files…"],
+    write_file: ["أكتب في ذاكرتي…", "Writing to my memory…"],
+    import_catalog: ["أستورد منتجاتك من المتجر…", "Importing your products from the store…"],
+    generate_image: ["أرسم الصورة…", "Generating the image…"],
+    publish_item: ["أنشر العنصر…", "Publishing the item…"],
+    list_inbox: ["أتفقد صندوق الموافقة…", "Checking your inbox…"],
+  };
+  const [a, e] = map[tool] ?? [`${agentName} تعمل…`, `${agentName} is working…`];
+  return ar ? a : e;
+}
+
+export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en" };
+
+export async function chat(user: User, text: string, conv?: string, agentId: AgentId = "noor", opts: ChatOpts = {}): Promise<ChatMsg & { limit?: "credits" | "trial" }> {
+  const lang = opts.lang ?? user.lang;
+  const agentName = agentById(agentId).name[lang];
+  opts.onStatus?.(lang === "ar" ? "أقرأ ملف علامتك ومذكراتي…" : "Reading your brand file and my notes…");
   const email = user.scope ?? user.email;
   await push(email, { role: "user", content: text, at: new Date().toISOString() }, conv);
   const actions: string[] = [];
@@ -150,14 +179,17 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
     const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
     if (!uses.length) {
       const reply = res.content.filter((b) => b.type === "text").map((b) => (b as Anthropic.TextBlock).text).join("\n").trim();
-      const m: ChatMsg = { role: "assistant", content: reply || "…", at: new Date().toISOString(), actions, agent: agentId };
+      const m: ChatMsg & { limit?: "credits" | "trial" } = { role: "assistant", content: reply || "…", at: new Date().toISOString(), actions: actions.filter((a) => !a.startsWith("limit:")), agent: agentId };
       await push(email, m, conv);
+      const lim = actions.find((a) => a.startsWith("limit:"));
+      if (lim) m.limit = lim.slice(6) as "credits" | "trial";
       return m;
     }
     const results: Anthropic.ToolResultBlockParam[] = [];
     for (const u of uses) {
       let out = "";
       let isError = false;
+      opts.onStatus?.(statusFor(u.name, lang, agentName));
       try {
         out = await runTool(user, u.name, u.input as Record<string, unknown>, actions);
       } catch (e) {
@@ -181,9 +213,9 @@ async function runTool(user: User, name: string, input: Record<string, unknown>,
       const cost = TASK_COST[type];
       const brand = await getBrand(email);
       if (!brand) return "No brand file yet. Ask the owner to run onboarding.";
-      if (user.plan === "trial" && new Date(user.trialEnds) < new Date()) return "Trial ended. Owner must subscribe.";
+      if (user.plan === "trial" && new Date(user.trialEnds) < new Date()) { actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page."; }
       const paid = await charge(user.email, cost);
-      if (!paid.ok) return `Insufficient credits: need ${cost}, have ${paid.credits}.`;
+      if (!paid.ok) { actions.push("limit:credits"); return `Insufficient credits: need ${cost}, have ${paid.credits}. Tell the owner plainly and point to the Subscription page.`; }
       user.credits = paid.credits;
       const gov = await getGov(email);
       let items;
@@ -201,7 +233,8 @@ async function runTool(user: User, name: string, input: Record<string, unknown>,
       }
       judgeLater(email, user.email, brand, created);
       actions.push(`generated:${type}:${items.length}`);
-      return `Created ${items.length} ${type} item(s) in the inbox${gov.autoApprove[type] ? " (auto-approved per governance)" : ""}. Credits left: ${user.credits}. Titles: ${items.map((i) => i.title).join(" | ")}`;
+      const inline = items.length <= 3 ? `\n\nITEM BODIES (show these to the owner in your reply, formatted, since the batch is small):\n${items.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body.slice(0, 1500)}`).join("\n\n")}` : "";
+      return `Created ${items.length} ${type} item(s) in the inbox${gov.autoApprove[type] ? " (auto-approved per governance)" : ""}. Credits left: ${user.credits}. Titles: ${items.map((i) => i.title).join(" | ")}${inline}`;
     }
     case "update_brand": {
       const brand = await getBrand(email);
@@ -255,7 +288,7 @@ async function runTool(user: User, name: string, input: Record<string, unknown>,
       const t = await getTask(email, String(input.task_id));
       if (!brand || !t) return "Item not found.";
       const paid = await charge(user.email, IMAGE_COST);
-      if (!paid.ok) return "Insufficient credits for an image.";
+      if (!paid.ok) { actions.push("limit:credits"); return "Insufficient credits for an image."; }
       user.credits = paid.credits;
       let img;
       try {

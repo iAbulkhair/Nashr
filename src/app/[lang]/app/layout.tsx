@@ -7,6 +7,7 @@ import { currentUser, isFounder } from "@/lib/auth";
 import Sidebar from "@/components/app/Sidebar";
 import TrialBanner from "@/components/app/TrialBanner";
 import LangToggle from "@/components/LangToggle";
+import LimitModal from "@/components/app/LimitModal";
 import { getBrand } from "@/lib/brand";
 import { sc } from "@/lib/auth";
 
@@ -44,6 +45,7 @@ export default async function AppLayout({ children, params }: { children: React.
         {!path.endsWith("/billing") && !path.endsWith("/start") && <TrialBanner lang={lang} trialEnds={user.trialEnds} plan={user.plan} industry={brand?.industry} />}
         {children}
       </main>
+      <LimitModal t={t} lang={lang} />
     </div>
   );
 }

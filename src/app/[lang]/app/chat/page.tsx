@@ -24,7 +24,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const [initial, k, connections, schedule, files] = await Promise.all([history(sc(u), conv), kpis(sc(u)), listConnections(u.email), getSchedule(sc(u)), listFiles(sc(u))]);
   return (
     <div className="grid gap-4 2xl:grid-cols-[1fr_300px]">
-      <ChatPanel t={appDict[lang]} initial={initial} credits={u.credits} lang={lang} initialConv={conv} initialPrompt={typeof sp.prompt === "string" ? sp.prompt.slice(0, 2000) : ""} />
+      <ChatPanel t={appDict[lang]} initial={initial} credits={u.credits} lang={lang} initialConv={conv} initialPrompt={typeof sp.prompt === "string" ? sp.prompt.slice(0, 2000) : ""} plan={u.plan} />
       <div className="hidden 2xl:block"><HomeSide t={appDict[lang]} lang={lang} k={k} connections={connections} schedule={schedule} files={files.map((f) => ({ name: f.name, updatedAt: f.updatedAt }))} /></div>
     </div>
   );

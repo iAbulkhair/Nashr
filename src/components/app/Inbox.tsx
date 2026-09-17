@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import { IMAGE_TYPES, type Task } from "@/lib/brand";
+import { limitFromError } from "./LimitModal";
 import type { Lang } from "@/lib/i18n";
 
 export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[] }) {
@@ -35,7 +36,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
     setImaging(id);
     const res = await fetch(`/api/tasks/${id}/image`, { method: "POST" });
     setImaging(null);
-    if (!res.ok) alert(i.imageFail);
+    if (!res.ok) { const j = await res.json().catch(() => ({} as { error?: string })); if (!limitFromError(j.error)) alert(i.imageFail); }
     r.refresh();
   }
 

@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import { TASK_COST, type TaskType } from "@/lib/brand";
 import { agentById } from "@/lib/agents";
+import { limitFromError } from "./LimitModal";
 import type { Kpis } from "@/lib/stats";
 import type { AgentMetrics } from "@/lib/evals";
 import type { Lang } from "@/lib/i18n";
@@ -24,6 +25,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality }: { 
     const j = await res.json();
     setBusy(null);
     if (j.ok) { setMsg(t.generate.done); r.refresh(); return; }
+    limitFromError(j.error);
     const map: Record<string, string> = { no_credits: t.generate.noCredits, trial_over: t.generate.trialOver, no_brand: t.generate.noBrand };
     setMsg(map[j.error] ?? t.generate.failed);
   }

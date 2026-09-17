@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import { TASK_COST, type TaskType } from "@/lib/brand";
 import { AGENTS } from "@/lib/agents";
+import { limitFromError } from "./LimitModal";
 import type { Lang } from "@/lib/i18n";
 
 export default function GeneratePanel({ t, lang, credits }: { t: AppDict; lang: Lang; credits: number }) {
@@ -25,6 +26,7 @@ export default function GeneratePanel({ t, lang, credits }: { t: AppDict; lang: 
       r.refresh();
       return;
     }
+    limitFromError(j.error);
     const map: Record<string, string> = { no_credits: g.noCredits, trial_over: g.trialOver, no_brand: g.noBrand };
     setMsg(map[j.error] ?? g.failed);
   }
