@@ -6,7 +6,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { Task } from "@/lib/brand";
 import type { Lang } from "@/lib/i18n";
 
-export default function Inbox({ t, lang, tasks }: { t: AppDict; lang: Lang; tasks: Task[] }) {
+export default function Inbox({ t, lang, tasks, brief }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null }) {
   const i = t.inbox;
   const r = useRouter();
   const [filter, setFilter] = useState<"pending" | "approved" | "rejected" | "all">("pending");
@@ -39,6 +39,12 @@ export default function Inbox({ t, lang, tasks }: { t: AppDict; lang: Lang; task
         </div>
       </div>
 
+      {brief && (
+        <div className="mt-5 rounded-xl border border-saffron/40 bg-saffron/10 p-4 text-sm" dir="auto">
+          <p className="mb-1 text-xs font-semibold text-sadu">{i.brief}</p>
+          <pre className="whitespace-pre-wrap font-body leading-relaxed">{brief}</pre>
+        </div>
+      )}
       {shown.length === 0 && (
         <div className="mt-10 rounded-xl border border-dashed border-ink/20 p-10 text-center text-ink/60">
           <p>{i.empty}</p>
@@ -86,6 +92,10 @@ export default function Inbox({ t, lang, tasks }: { t: AppDict; lang: Lang; task
                   <button onClick={async () => { await navigator.clipboard.writeText(body); setCopied(x.id); setTimeout(() => setCopied(null), 1500); }} className="rounded-full border border-ink/20 px-4 py-1.5">
                     {copied === x.id ? i.copied : i.copy}
                   </button>
+                  <label className="ms-auto flex items-center gap-1 text-xs text-ink/60">
+                    {i.date}
+                    <input type="date" dir="ltr" defaultValue={x.scheduledFor ?? ""} onChange={(e) => patch(x.id, { scheduledFor: e.target.value || null })} className="rounded border border-ink/15 px-2 py-1 text-xs" />
+                  </label>
                 </div>
               )}
             </li>

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSession, createUser, getUser, normalizeEmail } from "@/lib/auth";
+import { applyReferral, registerCode } from "@/lib/referral";
 
 export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as Record<string, string>;
@@ -9,6 +10,9 @@ export async function POST(req: Request) {
   if (!b.phone || b.phone.replace(/\D/g, "").length < 9) return NextResponse.json({ ok: false, error: "bad_phone" }, { status: 400 });
   if (await getUser(email)) return NextResponse.json({ ok: false, error: "exists" }, { status: 409 });
   const u = await createUser({ email, name: b.name ?? "", phone: b.phone, password: b.password, lang: b.lang === "en" ? "en" : "ar" });
+  await registerCode(u.email);
+  let referred = false;
+  if (b.ref && /^[A-Za-z0-9]{6,10}$/.test(b.ref)) referred = await applyReferral(u.email, b.ref);
   await createSession(u.email);
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, referred });
 }

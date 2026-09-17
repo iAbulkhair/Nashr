@@ -2,7 +2,7 @@ import type { Lang } from "./i18n";
 
 const ar = {
   appName: "نشر",
-  nav: { inbox: "صندوق الموافقة", generate: "اطلب من نور", brand: "ملف العلامة", billing: "الاشتراك", logout: "خروج", credits: "كريدت", chat: "نور", files: "الملفات", governance: "الحوكمة" },
+  nav: { inbox: "صندوق الموافقة", generate: "اطلب من نور", brand: "ملف العلامة", billing: "الاشتراك", logout: "خروج", credits: "كريدت", chat: "نور", files: "الملفات", governance: "الحوكمة", tasks: "المهام", calendar: "التقويم", refer: "اكسب كريدت", integrations: "التكاملات", inspo: "إلهام" },
   start: {
     title: "أعطي نور رابط موقعك.", sub: "تقرأه، تبحث عن سوقك، وتكتب ملفات علامتك أمامك خلال دقيقة. بدون نماذج.",
     url: "رابط الموقع أو المتجر (سلة / زد / شوبيفاي / أي موقع)", hints: "أي شيء تبيه تعرفه نور؟ (اختياري) مثال: نبيع عطور، جمهورنا شباب الرياض، ما نبي كلمة رخيص",
@@ -45,9 +45,14 @@ const ar = {
     },
     cost: "كريدت", noCredits: "الكريدت غير كافي. رقّ خطتك.", trialOver: "انتهت التجربة. اشترك للمتابعة.", failed: "تعذّر التوليد. حاول مرة أخرى.", noBrand: "أكمل ملف العلامة أولاً.",
   },
+  tasks: { title: "المهام المجدولة", sub: "ما تفعله نور من تلقاء نفسها. أوقفها أو شغّلها الآن.", weekly: "خطة الأسبوع", weeklyDesc: "كل أحد 06:00 صباحاً بتوقيت السعودية — خطة 7 أيام في صندوق الموافقة (1 كريدت).", daily: "ملخص الصباح", dailyDesc: "كل يوم 08:00 صباحاً — ملخص بدون كريدت: ما ينتظرك، رصيدك، المواسم القريبة.", runNow: "شغّل الآن", lastRun: "آخر تشغيل", never: "لم يُشغَّل بعد", on: "مفعّل", off: "متوقف", ran: "تم التشغيل", capNote: "الحد الأسبوعي من صفحة الحوكمة ينطبق على خطة الأسبوع." },
+  calendar: { title: "التقويم", sub: "العناصر المعتمدة حسب تاريخ النشر. عيّن التاريخ من صندوق الموافقة.", today: "اليوم", prev: "السابق", next: "التالي", none: "لا شيء في هذا اليوم", unscheduled: "معتمد بدون تاريخ", days: ["أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"] },
+  refer: { title: "اكسب كريدت", sub: "شارك رابطك. أنت وصديقك تحصلان على 50 كريدت عند تسجيله.", link: "رابطك", code: "الكود", copy: "انسخ", copied: "تم النسخ", count: "إحالات ناجحة", earned: "كريدت مكتسب", share: "مشاركة على واتساب", shareText: "جرّب نشر — نور وكيلة تسويق بالذكاء الاصطناعي تكتب لك بلهجتك. سجّل من رابطي وخذ 50 كريدت مجاناً:" },
+  integrations: { title: "التكاملات", sub: "الخليج أولاً. أخبرنا ماذا تريد بعد ذلك — الأكثر طلباً يُبنى أولاً.", groups: { commerce: "التجارة", ads: "الإعلانات", messaging: "الرسائل", publishing: "النشر", data: "البيانات", payments: "الدفع" }, status: { live: "متاح", soon: "قريباً", planned: "مخطط" }, request: "أريد هذا", requested: "سُجّل طلبك", other: "تكامل آخر تحتاجه؟", send: "أرسل", note: "النشر التلقائي يعتمد على موافقات المنصات (ميتا، سناب، تيك توك). قدّمنا الطلبات وسنفعّلها فور الموافقة." },
+  inspo: { title: "إلهام خليجي", sub: "أنماط تنجح في السعودية والخليج، بالقناة والقطاع. اضغط «استخدم كمرجع» ونور تبني عليه.", use: "استخدم كمرجع", why: "لماذا ينجح", sample: "مثال", all: "الكل", channel: "القناة", kind: "النوع", kinds: { hook: "هوك", offer: "عرض", seasonal: "موسمي", ugc: "UGC", retention: "احتفاظ", launch: "إطلاق", education: "توعية" } },
   inbox: {
     title: "صندوق الموافقة", empty: "لا يوجد شيء بانتظارك. اطلب من نور أول دفعة.", pending: "بانتظارك", approved: "معتمد", rejected: "مرفوض", all: "الكل",
-    approve: "اعتمد", reject: "ارفض", edit: "عدّل", save: "احفظ التعديل", cancel: "إلغاء", copy: "انسخ", copied: "تم النسخ", why: "سبب الرفض (تتعلم منه نور)", regenerate: "اطلب دفعة جديدة",
+    approve: "اعتمد", reject: "ارفض", edit: "عدّل", save: "احفظ التعديل", cancel: "إلغاء", copy: "انسخ", copied: "تم النسخ", why: "سبب الرفض (تتعلم منه نور)", regenerate: "اطلب دفعة جديدة", date: "تاريخ النشر", brief: "ملخص نور",
   },
   billing: {
     title: "الاشتراك", current: "خطتك الحالية", credits: "الكريدت المتبقي", trialEnds: "تنتهي التجربة",
@@ -58,7 +63,7 @@ const ar = {
 
 const en: typeof ar = {
   appName: "Nashr",
-  nav: { inbox: "Approval inbox", generate: "Ask Noor", brand: "Brand file", billing: "Subscription", logout: "Log out", credits: "credits", chat: "Noor", files: "Files", governance: "Governance" },
+  nav: { inbox: "Approval inbox", generate: "Ask Noor", brand: "Brand file", billing: "Subscription", logout: "Log out", credits: "credits", chat: "Noor", files: "Files", governance: "Governance", tasks: "Tasks", calendar: "Calendar", refer: "Earn credits", integrations: "Integrations", inspo: "Inspiration" },
   start: {
     title: "Give Noor your website.", sub: "She reads it, researches your market, and writes your brand files in front of you in about a minute. No forms.",
     url: "Website or store URL (Salla / Zid / Shopify / any site)", hints: "Anything Noor should know? (optional) e.g. we sell perfume, audience is young Riyadh, never say 'cheap'",
@@ -101,9 +106,14 @@ const en: typeof ar = {
     },
     cost: "credits", noCredits: "Not enough credits. Upgrade your plan.", trialOver: "Trial ended. Subscribe to continue.", failed: "Generation failed. Try again.", noBrand: "Complete your brand file first.",
   },
+  tasks: { title: "Scheduled tasks", sub: "What Noor does on her own. Pause or run now.", weekly: "Weekly plan", weeklyDesc: "Every Sunday 06:00 KSA — a 7-day plan lands in your inbox (1 credit).", daily: "Morning brief", dailyDesc: "Every day 08:00 KSA — no credits: what's waiting, your balance, upcoming seasons.", runNow: "Run now", lastRun: "Last run", never: "Never", on: "On", off: "Off", ran: "Done", capNote: "The weekly cap from Governance applies to the weekly plan." },
+  calendar: { title: "Calendar", sub: "Approved items by publish date. Set dates from the inbox.", today: "Today", prev: "Prev", next: "Next", none: "Nothing on this day", unscheduled: "Approved, no date", days: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] },
+  refer: { title: "Earn credits", sub: "Share your link. You and your friend each get 50 credits when they sign up.", link: "Your link", code: "Code", copy: "Copy", copied: "Copied", count: "Successful referrals", earned: "Credits earned", share: "Share on WhatsApp", shareText: "Try Nashr — Noor, an AI marketing agent that writes in your dialect. Sign up with my link and get 50 free credits:" },
+  integrations: { title: "Integrations", sub: "Gulf first. Tell us what you need next — most requested gets built first.", groups: { commerce: "Commerce", ads: "Ads", messaging: "Messaging", publishing: "Publishing", data: "Data", payments: "Payments" }, status: { live: "Live", soon: "Coming soon", planned: "Planned" }, request: "I want this", requested: "Requested", other: "Need another integration?", send: "Send", note: "Auto-publishing depends on platform approvals (Meta, Snap, TikTok). Applications are submitted; we switch each on the day it's approved." },
+  inspo: { title: "Gulf inspiration", sub: "Patterns that work in KSA and the Gulf, by channel and industry. Hit “Use as reference” and Noor builds on it.", use: "Use as reference", why: "Why it works", sample: "Sample", all: "All", channel: "Channel", kind: "Type", kinds: { hook: "Hook", offer: "Offer", seasonal: "Seasonal", ugc: "UGC", retention: "Retention", launch: "Launch", education: "Education" } },
   inbox: {
     title: "Approval inbox", empty: "Nothing waiting. Ask Noor for a first batch.", pending: "Waiting", approved: "Approved", rejected: "Rejected", all: "All",
-    approve: "Approve", reject: "Reject", edit: "Edit", save: "Save edit", cancel: "Cancel", copy: "Copy", copied: "Copied", why: "Why? (Noor learns from this)", regenerate: "Ask for a new batch",
+    approve: "Approve", reject: "Reject", edit: "Edit", save: "Save edit", cancel: "Cancel", copy: "Copy", copied: "Copied", why: "Why? (Noor learns from this)", regenerate: "Ask for a new batch", date: "Publish date", brief: "Noor's brief",
   },
   billing: {
     title: "Subscription", current: "Current plan", credits: "Credits left", trialEnds: "Trial ends",

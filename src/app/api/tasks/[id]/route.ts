@@ -10,7 +10,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const { id } = await ctx.params;
   const t = await getTask(u.email, id);
   if (!t) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
-  const b = (await req.json().catch(() => ({}))) as { status?: string; editedBody?: string; note?: string };
+  const b = (await req.json().catch(() => ({}))) as { status?: string; editedBody?: string; note?: string; scheduledFor?: string | null };
+  if (b.scheduledFor === null) delete t.scheduledFor;
+  else if (typeof b.scheduledFor === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.scheduledFor)) t.scheduledFor = b.scheduledFor;
   const gov = await getGov(u.email);
   const learn = async (note: string) => {
     if (!gov.learning) return;

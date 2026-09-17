@@ -31,9 +31,14 @@ export default async function AppLayout({ children, params }: { children: React.
               <Link href={`/${lang}/app/chat`} className="rounded-full bg-saffron px-3 py-1.5 font-semibold text-ink">{t.nav.chat}</Link>
               <Link href={`/${lang}/app`} className="text-mist-dim hover:text-mist">{t.nav.inbox}</Link>
               <Link href={`/${lang}/app/generate`} className="hidden text-mist-dim hover:text-mist sm:inline">{t.nav.generate}</Link>
-              <Link href={`/${lang}/app/files`} className="hidden text-mist-dim hover:text-mist sm:inline">{t.nav.files}</Link>
-              <Link href={`/${lang}/app/governance`} className="hidden text-mist-dim hover:text-mist sm:inline">{t.nav.governance}</Link>
-              <Link href={`/${lang}/app/onboarding`} className="hidden text-mist-dim hover:text-mist lg:inline">{t.nav.brand}</Link>
+              <Link href={`/${lang}/app/calendar`} className="hidden text-mist-dim hover:text-mist sm:inline">{t.nav.calendar}</Link>
+              <Link href={`/${lang}/app/files`} className="hidden text-mist-dim hover:text-mist md:inline">{t.nav.files}</Link>
+              <Link href={`/${lang}/app/tasks`} className="hidden text-mist-dim hover:text-mist md:inline">{t.nav.tasks}</Link>
+              <Link href={`/${lang}/app/governance`} className="hidden text-mist-dim hover:text-mist lg:inline">{t.nav.governance}</Link>
+              <Link href={`/${lang}/app/inspo`} className="hidden text-mist-dim hover:text-mist lg:inline">{t.nav.inspo}</Link>
+              <Link href={`/${lang}/app/integrations`} className="hidden text-mist-dim hover:text-mist xl:inline">{t.nav.integrations}</Link>
+              <Link href={`/${lang}/app/refer`} className="hidden text-mist-dim hover:text-mist xl:inline">{t.nav.refer}</Link>
+              <Link href={`/${lang}/app/onboarding`} className="hidden text-mist-dim hover:text-mist xl:inline">{t.nav.brand}</Link>
               <Link href={`/${lang}/app/billing`} className="font-mono text-xs text-saffron" dir="ltr">{user.credits} {t.nav.credits}</Link>
               <LogoutButton label={t.nav.logout} lang={lang} />
             </nav>

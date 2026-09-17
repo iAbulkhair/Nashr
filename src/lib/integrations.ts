@@ -1,0 +1,32 @@
+/** Gulf-first integration catalog. status: live | soon | planned */
+export type Integration = { id: string; name: string; group: "commerce" | "ads" | "messaging" | "publishing" | "data" | "payments"; status: "live" | "soon" | "planned"; note?: string };
+
+export const INTEGRATIONS: Integration[] = [
+  { id: "salla", name: "Salla (سلة)", group: "commerce", status: "soon", note: "Products, orders, abandoned carts, blog publishing" },
+  { id: "zid", name: "Zid (زد)", group: "commerce", status: "soon", note: "Products, orders, abandoned carts" },
+  { id: "shopify", name: "Shopify", group: "commerce", status: "soon" },
+  { id: "woocommerce", name: "WooCommerce", group: "commerce", status: "planned" },
+  { id: "snap_ads", name: "Snapchat Ads", group: "ads", status: "soon", note: "Read + budget guardrails" },
+  { id: "tiktok_ads", name: "TikTok Ads", group: "ads", status: "soon" },
+  { id: "meta_ads", name: "Meta Ads", group: "ads", status: "soon" },
+  { id: "google_ads", name: "Google Ads", group: "ads", status: "planned" },
+  { id: "x_ads", name: "X Ads", group: "ads", status: "planned" },
+  { id: "whatsapp", name: "WhatsApp Business API", group: "messaging", status: "soon", note: "Templates, campaigns, cart recovery" },
+  { id: "unifonic", name: "Unifonic SMS", group: "messaging", status: "planned" },
+  { id: "mailchimp", name: "Mailchimp", group: "messaging", status: "planned" },
+  { id: "klaviyo", name: "Klaviyo", group: "messaging", status: "planned" },
+  { id: "instagram", name: "Instagram", group: "publishing", status: "soon" },
+  { id: "tiktok", name: "TikTok", group: "publishing", status: "soon" },
+  { id: "snapchat", name: "Snapchat", group: "publishing", status: "soon" },
+  { id: "x", name: "X", group: "publishing", status: "soon" },
+  { id: "linkedin", name: "LinkedIn", group: "publishing", status: "planned" },
+  { id: "youtube", name: "YouTube Shorts", group: "publishing", status: "planned" },
+  { id: "gbp", name: "Google Business Profile", group: "publishing", status: "soon" },
+  { id: "ga4", name: "Google Analytics 4", group: "data", status: "soon" },
+  { id: "gsc", name: "Google Search Console", group: "data", status: "soon" },
+  { id: "meta_pixel", name: "Meta Pixel / CAPI", group: "data", status: "planned" },
+  { id: "tap", name: "Tap Payments", group: "payments", status: "planned" },
+  { id: "moyasar", name: "Moyasar", group: "payments", status: "planned" },
+  { id: "tabby", name: "Tabby", group: "payments", status: "planned" },
+  { id: "tamara", name: "Tamara", group: "payments", status: "planned" },
+];

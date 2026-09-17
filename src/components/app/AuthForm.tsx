@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
@@ -9,6 +9,7 @@ const input = "w-full rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm
 
 export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
   const r = useRouter();
+  const ref = useSearchParams().get("ref") ?? "";
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -16,7 +17,7 @@ export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
     setBusy(true);
     setErr("");
     const fd = Object.fromEntries(new FormData(e.currentTarget));
-    const res = await fetch("/api/auth/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fd, lang }) });
+    const res = await fetch("/api/auth/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fd, lang, ref }) });
     const j = await res.json();
     setBusy(false);
     if (!j.ok) return setErr((t.signup as Record<string, string>)[j.error] ?? j.error);

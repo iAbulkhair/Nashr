@@ -32,6 +32,8 @@ export type Task = {
   status: "pending" | "approved" | "rejected";
   createdAt: string;
   lang: "ar" | "en";
+  source?: "manual" | "chat" | "scheduled";
+  scheduledFor?: string; // YYYY-MM-DD, set by owner in inbox/calendar
 };
 
 export async function getBrand(email: string) {
