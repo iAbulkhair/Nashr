@@ -8,7 +8,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { randomBytes } from "crypto";
 import { db } from "./db";
 import type { User } from "./auth";
-import { TASK_COST, getBrand, listPreferences, saveBrand, saveTask, listTasks, type Brand, type Task, type TaskType } from "./brand";
+import { TASK_COST, TASK_COUNT, getBrand, listPreferences, saveBrand, saveTask, listTasks, type Brand, type Task, type TaskType } from "./brand";
 import { generate } from "./noor";
 import { listFiles, memoryBlock, readFile, writeFile } from "./files";
 import { getGov } from "./governance";
