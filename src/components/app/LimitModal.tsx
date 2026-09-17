@@ -41,13 +41,15 @@ export default function LimitModal({ t, lang }: { t: AppDict; lang: Lang }) {
 }
 
 /** Under-composer block for trial accounts (Enrich: "Hire your first autonomous AI marketer today."). */
-export function HireBlock({ t, lang }: { t: AppDict; lang: Lang }) {
+export function HireBlock({ t, lang, firstStep }: { t: AppDict; lang: Lang; firstStep?: string }) {
   const L = t.limit;
+  const step = firstStep ? (L.firstSteps as Record<string, string>)[firstStep] : undefined;
   return (
     <div className="mt-3 rounded-xl bg-oasis-deep p-4 text-center text-mist">
       <p className="font-display font-semibold">{L.hireTitle}</p>
       <Link href={`/${lang}/app/billing`} className="btn btn-accent btn-pill mt-2">{L.hire}</Link>
       <p className="mt-2 text-xs text-mist-dim">{L.hireSub}</p>
+      {step && <p className="mt-1 text-xs text-mist-dim">{L.firstUp}: {step}</p>}
     </div>
   );
 }

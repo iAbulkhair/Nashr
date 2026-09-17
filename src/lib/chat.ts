@@ -20,7 +20,8 @@ import { publishTask, targetsFor } from "./connectors/publish";
 import { HELP } from "./help";
 import { IMAGE_COST, getTask } from "./brand";
 
-export type ChatMsg = { role: "user" | "assistant"; content: string; at: string; actions?: string[]; agent?: AgentId };
+export type ChatItem = { id: string; type: TaskType; channel: string; title: string; body: string; status: string };
+export type ChatMsg = { role: "user" | "assistant"; content: string; at: string; actions?: string[]; agent?: AgentId; /** items created by tools during this turn, rendered as cards */ items?: ChatItem[] };
 
 const key = (email: string, conv?: string) => (conv && conv !== "default" ? `chat:${email}:${conv}` : `chat:${email}`);
 export async function history(email: string, conv?: string): Promise<ChatMsg[]> {
@@ -123,8 +124,8 @@ Pages: /app/chat (you), /app (inbox), /app/files, /app/tasks, /app/governance, /
 REPLY SHAPES
 - Simple asks and small talk: 2-6 sentences.
 - Planning or "what can you do / what should we do this week" questions: answer as a structured plan in the owner's language: "This week (priority order)" with 3-4 numbered sections and 2-4 bullets each, grounded in the brand file, strategy.md and workspace state; a short "Not covered on your current plan" list when relevant (trial: no auto-publishing, connectors need approvals; everything else is included); on the first such question in a conversation add a compact "How I work" table (You ask / I research / I draft / You approve / I publish on connected channels / We learn from your edits); a line "Connected today: …"; a "Suggested focus for the next 7 days" with day ranges; end with a question offering 2-3 lanes to pick.
-- Content asks of 1-3 items (a caption, three posts, two messages): call draft_items IMMEDIATELY with the owner's brief. Do not ask clarifying questions first and do not argue about timing or batch sizes; unknown facts (discount, end date) become [رقم] / [date] placeholders. Then show the items in the reply (formatted, ready to copy), name the angle of each in one line, mention they are also in the inbox, add at most one sentence of advice (e.g. a closer season), and end with ONE concrete offer (an image, a variant, the discount or end date woven in, a publish date).
-- Content asks of more items: call generate_content and summarize what landed in the inbox with the titles.
+- Content asks of 1-3 items (a caption, three posts, two messages): call draft_items IMMEDIATELY with the owner's brief. Do not ask clarifying questions first and do not argue about timing or batch sizes; unknown facts (discount, end date) become [رقم] / [date] placeholders. The app renders every created item as a card under your reply (with copy and approve buttons), so DO NOT paste the bodies again. Reply with: one line per item naming its angle, that they are also in the inbox, at most one sentence of advice (e.g. a closer season), and ONE concrete offer (an image, a variant, the discount or end date woven in, a publish date).
+- Content asks of more items: call generate_content; the app renders the cards, so summarize the angles in 2-3 lines and end with one offer.
 - Credits: if a tool reports insufficient credits or an ended trial, say so in one plain sentence and point to the Subscription page. Never pretend the work was done.
 
 RULES: never invent prices/claims; respect Saudi advertising norms; one clear next step per reply; when you used a tool, say what happened in one line. Do not include internal or system XML tags in your response.`;
@@ -157,6 +158,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   const email = user.scope ?? user.email;
   await push(email, { role: "user", content: text, at: new Date().toISOString() }, conv);
   const actions: string[] = [];
+  const made: Task[] = [];
 
   if (!process.env.ANTHROPIC_API_KEY) {
     const m: ChatMsg = { role: "assistant", content: "[DEV MOCK] ANTHROPIC_API_KEY not set. I would answer here and use tools.", at: new Date().toISOString(), actions };
@@ -186,7 +188,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
     const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
     if (!uses.length) {
       const reply = res.content.filter((b) => b.type === "text").map((b) => (b as Anthropic.TextBlock).text).join("\n").trim();
-      const m: ChatMsg & { limit?: "credits" | "trial" } = { role: "assistant", content: reply || "…", at: new Date().toISOString(), actions: actions.filter((a) => !a.startsWith("limit:")), agent: agentId };
+      const m: ChatMsg & { limit?: "credits" | "trial" } = { role: "assistant", content: reply || "…", at: new Date().toISOString(), actions: actions.filter((a) => !a.startsWith("limit:")), agent: agentId, ...(made.length ? { items: made.slice(0, 10).map((x) => ({ id: x.id, type: x.type, channel: x.channel, title: x.title, body: x.body, status: x.status })) } : {}) };
       await push(email, m, conv);
       const lim = actions.find((a) => a.startsWith("limit:"));
       if (lim) m.limit = lim.slice(6) as "credits" | "trial";
@@ -198,7 +200,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
       let isError = false;
       opts.onStatus?.(statusFor(u.name, lang, agentName));
       try {
-        out = await runTool(user, u.name, u.input as Record<string, unknown>, actions);
+        out = await runTool(user, u.name, u.input as Record<string, unknown>, actions, made);
       } catch (e) {
         isError = true;
         out = e instanceof Error ? e.message : "tool_failed";
@@ -212,7 +214,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   return m;
 }
 
-async function runTool(user: User, name: string, input: Record<string, unknown>, actions: string[]): Promise<string> {
+async function runTool(user: User, name: string, input: Record<string, unknown>, actions: string[], made: Task[] = []): Promise<string> {
   const email = user.scope ?? user.email;
   switch (name) {
     case "generate_content": {
@@ -239,6 +241,7 @@ async function runTool(user: User, name: string, input: Record<string, unknown>,
         created.push(t);
       }
       judgeLater(email, user.email, brand, created);
+      made.push(...created);
       actions.push(`generated:${type}:${items.length}`);
       const inline = items.length <= 3 ? `\n\nITEM BODIES (show these to the owner in your reply, formatted, since the batch is small):\n${items.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body.slice(0, 1500)}`).join("\n\n")}` : "";
       return `Created ${items.length} ${type} item(s) in the inbox${gov.autoApprove[type] ? " (auto-approved per governance)" : ""}. Credits left: ${user.credits}. Titles: ${items.map((i) => i.title).join(" | ")}${inline}`;
@@ -268,6 +271,7 @@ async function runTool(user: User, name: string, input: Record<string, unknown>,
         created.push(t);
       }
       judgeLater(email, user.email, brand, created);
+      made.push(...created);
       actions.push(`drafted:${type}:${items.length}`);
       return `Drafted ${items.length} ${type} item(s) (${cost} credit${cost > 1 ? "s" : ""}); also in the inbox. Credits left: ${user.credits}.\n\nITEM BODIES (show these to the owner, formatted and ready to copy):\n${items.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body}`).join("\n\n")}`;
     }

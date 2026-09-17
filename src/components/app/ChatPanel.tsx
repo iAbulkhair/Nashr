@@ -1,14 +1,47 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
-import type { ChatMsg } from "@/lib/chat";
+import type { ChatMsg, ChatItem } from "@/lib/chat";
 import { AGENTS, type AgentId } from "@/lib/agents";
 import { HireBlock, raiseLimit } from "./LimitModal";
 
 type Conv = { id: string; title: string; updatedAt: string; count: number; agent?: AgentId };
 type Hit = { conversationId: string; title: string; snippet: string; at: string };
 
-export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string }) {
+const LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250, tiktok: 2200, whatsapp: 1024, gbp: 1500, meta: 63206, linkedin: 3000 };
+const ICONS: Record<string, string> = { instagram: "📸", x: "𝕏", snapchat: "👻", tiktok: "🎵", whatsapp: "💬", gbp: "📍", meta: "📘", linkedin: "💼", email: "✉️", call: "📞", blog: "📝" };
+
+/** A generated item rendered inside the chat, Enrich-style: channel header, body, character count, copy, approve. */
+function ItemCard({ item, t, lang }: { item: ChatItem; t: AppDict; lang: "ar" | "en" }) {
+  const [open, setOpen] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const [status, setStatus] = useState(item.status);
+  const limit = LIMITS[item.channel];
+  const ar = lang === "ar";
+  async function approve() {
+    const r = await fetch(`/api/tasks/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "approved" }) });
+    if (r.ok) setStatus("approved");
+  }
+  return (
+    <article className="mt-3 overflow-hidden rounded-xl border border-ink/10 bg-white text-ink">
+      <header className="flex items-center justify-between border-b border-ink/5 px-3 py-2 text-xs">
+        <span className="flex items-center gap-2 font-semibold"><span aria-hidden>{ICONS[item.channel] ?? "•"}</span>{item.channel}<span className="font-normal text-ink/50" dir="auto">· {item.title}</span></span>
+        <span className={`badge ${status === "approved" ? "badge-primary" : "badge-accent"}`}>{status === "approved" ? t.inbox.approved : t.inbox.pending}</span>
+      </header>
+      {open && <pre className="whitespace-pre-wrap px-4 py-3 font-body text-sm leading-relaxed" dir="auto">{item.body}</pre>}
+      <footer className="flex flex-wrap items-center gap-2 border-t border-ink/5 px-3 py-2 text-xs">
+        <span className={`font-mono ${limit && item.body.length > limit ? "text-sadu" : "text-ink/50"}`} dir="ltr">{item.body.length}{limit ? ` / ${limit}` : ""}</span>
+        <span className="ms-auto flex gap-1.5">
+          <button onClick={() => setOpen(!open)} className="btn btn-secondary btn-xs">{open ? (ar ? "طيّ" : "Collapse") : (ar ? "عرض" : "Expand")}</button>
+          <button onClick={async () => { await navigator.clipboard.writeText(item.body); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="btn btn-secondary btn-xs">{copied ? t.inbox.copied : t.inbox.copy}</button>
+          {status !== "approved" && <button onClick={approve} className="btn btn-primary btn-xs">{t.inbox.approve}</button>}
+        </span>
+      </footer>
+    </article>
+  );
+}
+
+export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, wide }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; wide?: boolean }) {
   const ar = lang === "ar";
   const [msgs, setMsgs] = useState<ChatMsg[]>(initial);
   const [text, setText] = useState(initialPrompt);
@@ -119,7 +152,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
   );
 
   return (
-    <div className="mx-auto grid h-[calc(100vh-6rem)] max-w-5xl gap-4 lg:h-[calc(100vh-3rem)] lg:grid-cols-[240px_1fr]">
+    <div className={`mx-auto grid h-[calc(100vh-6rem)] gap-4 lg:h-[calc(100vh-3rem)] lg:grid-cols-[240px_1fr] ${wide ? "" : "max-w-5xl"}`}>
       <div className="hidden lg:block">{list}</div>
       {showList && <div className="fixed inset-0 z-40 bg-black/40 p-4 lg:hidden" onClick={() => setShowList(false)}><div className="h-full max-w-xs" onClick={(e) => e.stopPropagation()}>{list}</div></div>}
       <div className="flex min-h-0 flex-col">
@@ -146,9 +179,10 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           )}
           {msgs.map((m, i) => (
             <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-oasis text-mist" : "bg-salt-dim text-ink"}`} dir="auto">
+              <div className={`${m.items?.length ? "w-full max-w-[95%]" : "max-w-[85%]"} rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-oasis text-mist" : "bg-salt-dim text-ink"}`} dir="auto">
                 {m.role === "assistant" && <span className="mb-1 block text-[11px] font-semibold text-sadu">{t.agents[m.agent ?? agent].name}</span>}
                 <p className="whitespace-pre-wrap">{m.content}</p>
+                {m.items && m.items.length > 0 && <div className="mt-1">{m.items.map((it) => <ItemCard key={it.id} item={it} t={t} lang={lang} />)}</div>}
                 {m.actions && m.actions.length > 0 && <p className="mt-1 font-mono text-[10px] text-ink/50" dir="ltr">{m.actions.join(" · ")}</p>}
                 {m.role === "assistant" && (
                   <span className="mt-1 flex gap-1 text-[11px]">
@@ -171,7 +205,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           <input value={text} onChange={(e) => setText(e.target.value)} placeholder={t.chat.placeholder} className="flex-1 input rounded-full" />
           <button disabled={busy || !text.trim()} className="rounded-full bg-saffron px-5 py-3 text-sm font-semibold text-ink disabled:opacity-50">{t.chat.send}</button>
         </form>
-        {plan === "trial" && <HireBlock t={t} lang={lang} />}
+        {plan === "trial" && <HireBlock t={t} lang={lang} firstStep={firstStep} />}
       </div>
     </div>
   );
