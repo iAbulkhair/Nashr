@@ -7,7 +7,7 @@ import type { Lang } from "@/lib/i18n";
 
 type Ev = { step: string; status: string; detail?: string; file?: { name: string; content: string }; brand?: { name: string } };
 
-export default function StartWizard({ t, lang }: { t: AppDict; lang: Lang }) {
+export default function StartWizard({ t, lang, initialUrl = "" }: { t: AppDict; lang: Lang; initialUrl?: string }) {
   const r = useRouter();
   const s = t.start;
   const [events, setEvents] = useState<Ev[]>([]);
@@ -60,7 +60,7 @@ export default function StartWizard({ t, lang }: { t: AppDict; lang: Lang }) {
       <p className="mt-2 text-ink/70">{s.sub}</p>
       {!done && (
         <form onSubmit={onSubmit} className="mt-6 grid gap-3">
-          <input name="url" required dir="ltr" placeholder={s.url} className="w-full rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm" />
+          <input name="url" required dir="ltr" defaultValue={initialUrl} placeholder={s.url} className="w-full rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm" />
           <textarea name="hints" rows={2} placeholder={s.hints} className="w-full rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm" />
           <button disabled={busy} className="rounded-lg bg-oasis px-5 py-3 font-semibold text-mist disabled:opacity-60">{busy ? s.steps.brand + "…" : s.go}</button>
           <Link href={`/${lang}/app/onboarding`} className="text-center text-sm text-ink/60 underline">{s.manual}</Link>

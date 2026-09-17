@@ -35,6 +35,13 @@ const SPECS: Record<TaskType, string> = {
   retention_play: "Three retention plays ready to implement: (1) activation and onboarding sequence for new customers, (2) churn-prevention play with early-warning signals and interventions, (3) referral or loyalty program with mechanics and rewards in SAR. channel = 'growth'.",
   weekly_report: "One weekly performance report built ONLY from the WORKSPACE DATA and owner notes provided: headline (what changed and why), 6-8 KPI lines with prior-period comparison, content output and approval rate, published items, wins, misses, and next week's three actions. Never invent numbers; where data is missing write [رقم] and say what to track. channel = 'report'.",
   board_deck: "One board or investor deck outline of 10-12 slides. Format strictly: a line '## Slide N: Title', then 3-5 bullet lines starting with '- ', then one line starting with 'Notes:' holding speaker notes. Cover: executive summary, market and customer, offer, traction (from WORKSPACE DATA), marketing engine, sales pipeline, unit economics, financial snapshot, next-quarter plan, asks. Numbers only from the data provided or as [رقم] placeholders. channel = 'deck'.",
+  strategy_review: "One 90-day strategy review as a one-page document: situation in 5 lines (from the brand file, workspace data and owner notes), the 3 bets to make, the kill list (what to stop), resource allocation as percentages, risks with mitigations, the 10 questions the owner must answer this quarter, and the decision deadline. Placeholders for unknown figures. channel = 'strategy'.",
+  okrs: "One quarterly OKR set for a 3-30 person company: at most 3 objectives, each with 2-4 measurable key results (baseline as [رقم] if unknown, target, owner), a weekly scorecard table, the monthly and quarterly review agenda, and the first two weeks of actions. channel = 'strategy'.",
+  decision_memo: "One one-page decision memo on the question in the owner notes (if no question given, pick the most consequential open decision visible in the brand file and workspace data): context, 3 options with cost, upside, risk and reversibility, recommendation with reasoning, what would change the decision, owner, deadline. channel = 'strategy'.",
+  prd: "One compact PRD for the feature or product in the owner notes (if none, the most valuable next feature for this business): problem, users and jobs to be done, scope in and out, requirements table (must/should/could), success metrics with placeholders, risks, open questions, launch plan. Arabic-first UX and WhatsApp considerations where relevant. channel = 'product'.",
+  roadmap: "One now/next/later roadmap for the next two quarters: quarterly themes, 8-12 items with RICE scores (reach, impact, confidence, effort 1-10 each), owner, dependency, and the explicit 'not now' list with reasons. channel = 'product'.",
+  feedback_synthesis: "One feedback synthesis report from the customer feedback in the owner notes or files (if none, write the interview script and synthesis template instead and say so): themes with counts and representative quotes, severity and frequency matrix, opportunity solution tree for the top 3 themes, recommended next actions. Never invent quotes. channel = 'product'.",
+  onboarding_flow: "One onboarding and activation flow for new customers of this business: the activation metric definition, first-session or first-purchase steps, a 5-touch WhatsApp and email checklist sequence with timing and message intent, the three most common drop-offs and fixes, and how to measure time to value. channel = 'product'.",
   dashboard_spec: "One KPI dashboard specification: 8-10 tiles as a Markdown table (metric, definition, data source, target, chart type, refresh cadence, owner), layout order, RTL notes, alert thresholds, and the five questions the dashboard must answer. channel = 'dashboard'.",
 };
 
@@ -89,7 +96,7 @@ function seasonBlock() {
   return s.map((x) => `- ${x.name} (${x.nameAr}) in ${x.daysLeft} days: ${x.play}`).join("\n");
 }
 
-const CHANNELS = ["instagram", "snapchat", "tiktok", "whatsapp", "meta", "linkedin", "gbp", "blog", "plan", "x", "sales", "finance", "growth", "report", "deck", "dashboard", "email", "call"];
+const CHANNELS = ["instagram", "snapchat", "tiktok", "whatsapp", "meta", "linkedin", "gbp", "blog", "plan", "x", "sales", "finance", "growth", "report", "deck", "dashboard", "email", "call", "strategy", "product"];
 function normalizeChannel(raw: string): string {
   const c = raw.toLowerCase().trim();
   if (c === "x" || c === "twitter") return "x";

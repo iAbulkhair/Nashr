@@ -56,7 +56,7 @@ export function Agents({ t }: { t: Dict }) {
         <Eyebrow>{t.agents.eyebrow}</Eyebrow>
         <H2>{t.agents.title}</H2>
         <p className="mt-3 max-w-xl text-mist-dim">{t.agents.sub}</p>
-        <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {t.agents.items.map((a, i) => (
             <article key={a.name} className={`rounded-xl border p-5 ${i === 0 ? "border-saffron/60 bg-oasis md:col-span-2 lg:col-span-1" : "border-mist/10 bg-oasis/60"}`}>
               <div className="flex items-center gap-3">

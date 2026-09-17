@@ -34,7 +34,7 @@ async function push(email: string, m: ChatMsg, conv?: string) {
 const TOOLS: Anthropic.Tool[] = [
   {
     name: "generate_content",
-    description: "Create items and put them in the owner's approval inbox. Deducts credits. Marketing (Noor): weekly_plan, social (10 posts), article, whatsapp (3), ads (5), gbp (3). Sales (Sami): sales_script, lead_qualifier, followup_seq. Finance (Razan): pricing_review, unit_economics, cash_forecast. Growth (Faris): gtm_plan, growth_experiments, retention_play. Reports (Dana): weekly_report, board_deck, dashboard_spec. Any agent may call any type; the item is written by the agent who owns that type.",
+    description: "Create items and put them in the owner's approval inbox. Deducts credits. Marketing (Noor): weekly_plan, social (10 posts), article, whatsapp (3), ads (5), gbp (3). Sales (Sami): sales_script, lead_qualifier, followup_seq. Finance (Razan): pricing_review, unit_economics, cash_forecast. Growth (Faris): gtm_plan, growth_experiments, retention_play. Reports (Dana): weekly_report, board_deck, dashboard_spec. Executive (Majed): strategy_review, okrs, decision_memo. Product and retention (Layan): prd, roadmap, feedback_synthesis, onboarding_flow. Any agent may call any type; the item is written by the agent who owns that type.",
     input_schema: { type: "object", additionalProperties: false, required: ["type"], properties: { type: { type: "string", enum: Object.keys(TASK_COST) }, notes: { type: "string", description: "Owner's specific instructions for this batch (product, season, angle)." } } },
     strict: true,
   },

@@ -32,6 +32,16 @@ export type Dict = {
     logNote: string;
     log: { t: string; text: string; tag: string }[];
   };
+  land: {
+    hero: { eyebrow: string; title: string; sub: string; urlPlaceholder: string; urlCta: string; assess: string; trial: string };
+    highlights: { title: string; sub: string; items: { t: string; d: string }[] };
+    teammate: { title: string; body: string; cards: { label: string; title: string; body: string }[] };
+    oldway: { title: string; sub: string; old: { label: string; items: string[] }; new: { label: string; items: string[] } };
+    runs: { title: string; sub: string; items: { tag: string; quote: string; does: string; proof: string }[]; callout: string };
+    deliverables: { eyebrow: string; title: string; sub: string; items: { n: string; l: string }[]; note: string };
+    pillars: { title: string; sub: string; items: { t: string; d: string; chips: string[] }[] };
+    cta: { title: string; sub: string; button: string };
+  };
   proof: { label: string; items: { n: string; l: string }[] };
   how: { eyebrow: string; title: string; steps: { title: string; body: string }[] };
   agents: { eyebrow: string; title: string; sub: string; items: { name: string; role: string; body: string; does: string[] }[] };
@@ -68,6 +78,78 @@ export const dict: Record<Lang, Dict> = {
         { t: "08:00", text: "أرسلت ملخص الصباح: 4 مهام بانتظار موافقتك، إيراد الأمس 18,420 ريال (+11%).", tag: "ملخص" },
       ],
     },
+    land: {
+      hero: {
+        eyebrow: "نقدّم لك نور وفريقها",
+        title: "فريق تسويق ومبيعات كامل. يشتغل قبل ما تصحى.",
+        sub: "تقرأ. تخطط. تكتب. تتعلم من كل تعديل. كل صباح، قبل أن يبدأ يومك، وبلهجتك.",
+        urlPlaceholder: "ضع رابط موقعك أو متجرك",
+        urlCta: "ابدأ",
+        assess: "أول تقييم لعلامتك خلال دقيقتين.",
+        trial: "تجربة 3 أيام. بدون بطاقة. ألغِ متى شئت.",
+      },
+      highlights: {
+        title: "الخلاصة.",
+        sub: "عملية تسويقك كلها. نور واحدة. دائماً شغالة.",
+        items: [
+          { t: "ملخص الصباح كل يوم", d: "08:00 بتوقيت السعودية: ما ينتظر موافقتك، ما نُشر، رصيدك، والمواسم القريبة. في التطبيق وعلى إيميلك." },
+          { t: "تتعلم صوت علامتك", d: "من موقعك أولاً، ثم من كل تعديل ورفض. النبرة واللهجة والكلمات الممنوعة تُكتب في ملف تقرؤه في كل مرة." },
+          { t: "محتوى السوشال جاهز للنشر", d: "إنستقرام، سناب، تيك توك، X. 10 منشورات في الدفعة، مع الهاشتاقات وسكربتات الفيديو والصور." },
+          { t: "الإعلانات والواتساب", d: "5 نسخ إعلانية بجمهور وميزانية مقترحة بالريال، و3 رسائل واتساب لاسترجاع السلات والعروض والشكر." },
+          { t: "خطة الأسبوع كل أحد", d: "ماذا تنشر، متى، وأين تعلن، مبنية على تقويم الخليج: رمضان، الأعياد، اليوم الوطني، الجمعة البيضاء." },
+          { t: "تقارير وأرقام صادقة", d: "لوحة مؤشرات لمساحة عملك، تقرير أسبوعي، وعرض مجلس إدارة يُحمَّل PowerPoint. بلا أرقام مخترعة." },
+        ],
+      },
+      teammate: {
+        title: "تشتغل وأنت نايم.",
+        body: "زميلة حقيقية لا موظفة مؤقتة: تعرف منتجاتك وعملاءك ومنافسيك، تعمل بالليل، وتسلّمك الصباح كل شيء جاهزاً للموافقة. لا اجتماعات، لا متابعة، لا عذر.",
+        cards: [
+          { label: "مراقبة المواسم", title: "تعرف ما تغيّر الليلة.", body: "الأيام المتبقية على رمضان والأعياد واليوم الوطني، وما يجب أن يتغيّر في محتواك قبلها بأسابيع." },
+          { label: "تنفيذ أسبوعي", title: "أسبوع كامل، في طريقه للتنفيذ.", body: "خطة، منشورات، رسائل، إعلانات ومقالات، كلها في صندوق واحد تعتمده بضغطة." },
+        ],
+      },
+      oldway: {
+        title: "ما عاد تحتاج وكالة.",
+        sub: "الوكالة تطلب اجتماعاً لكل تعديل وتفوتها المواسم. نور تعرف موسمك قبل أن تسألها.",
+        old: { label: "الطريقة القديمة", items: ["وكالة بـ 8,000+ ريال شهرياً أو موظف بـ 10,000+", "10 لوحات لا تفتحها و25 ساعة متابعة كل أسبوع", "محتوى متأخر عن الموسم، ولهجة غير لهجتك", "لا أحد يقرأ تعديلاتك ويتعلم منها"] },
+        new: { label: "طريقة نور", items: ["فريق كامل من 149 ريالاً شهرياً", "كل شيء في صندوق موافقة واحد، وملخص صباحي", "محتوى بلهجتك، مبني على تقويم الخليج", "تتعلم من كل تعديل ورفض وتتحسن كل أسبوع"] },
+      },
+      runs: {
+        title: "تدير كل شيء.",
+        sub: "التسويق، ثم المبيعات والمالية والنمو والتقارير. من ملف علامة واحد.",
+        items: [
+          { tag: "استراتيجية", quote: "ما عندي وقت أفكر، أنا أطفّي حرائق.", does: "نور تقرأ موقعك وسوقك ومنافسيك وتكتب ملف علامتك وخطة 90 يوماً، ثم خطة كل أسبوع.", proof: "ملف العلامة والخطة خلال دقيقة من رابط موقعك." },
+          { tag: "بحث", quote: "ما نظهر في قوقل، والـ SEO دايماً مؤجّل.", does: "مقالات عربية 1,200-1,600 كلمة مهيكلة مع أسئلة شائعة، ومنشورات Google Business، مبنية على فجوات منافسيك.", proof: "مقال جاهز للنشر بكريدتين." },
+          { tag: "واتساب", quote: "قائمة عملائي باردة لأني ما أراسلها.", does: "رسائل استرجاع السلة والعروض الموسمية والشكر بعد الشراء، بقوالب جاهزة لواتساب للأعمال وبنبرة محترمة.", proof: "3 رسائل جاهزة في كل دفعة." },
+          { tag: "إعلانات", quote: "أصرف، وما أدري وش اللي يشتغل.", does: "نسخ إعلانية لسناب وميتا وتيك توك مع جمهور مقترح وميزانية يومية بالريال، وتجارب نمو بتقييم ICE.", proof: "5 إعلانات في كل دفعة." },
+          { tag: "سوشال", quote: "الفيد وحش جوعان وأنا دايماً متأخر.", does: "10 منشورات في الدفعة: كابشنات، سكربتات سناب وتيك توك، منشور X، وصور مولّدة على ذوق الخليج.", proof: "حتى 50 منشوراً في الشهر على الخطة الاحترافية." },
+          { tag: "مبيعات ومالية", quote: "التسويق يجيب اهتمام، لكن من يقفل الصفقة ويحسب الأرقام؟", does: "سامي يكتب سكربتات وتأهيل العملاء والمتابعة، رزان تراجع التسعير والتدفق النقدي، دانة تكتب التقرير والعرض.", proof: "7 وكلاء من ملف علامة واحد." },
+        ],
+        callout: "استرجع 25 ساعة كل أسبوع، بلا توظيف ولا إدارة ولا مطاردة مصمم حر.",
+      },
+      deliverables: {
+        eyebrow: "أول 30 يوماً",
+        title: "شغل حقيقي، من اليوم الأول.",
+        sub: "هذا ما تجده في صندوق موافقتك خلال شهرك الأول على الخطة الاحترافية.",
+        items: [
+          { n: "40+", l: "منشور سوشال بلهجتك" },
+          { n: "4", l: "مقالات SEO عربية" },
+          { n: "12", l: "رسالة واتساب جاهزة" },
+          { n: "20", l: "نسخة إعلانية بميزانيتها" },
+        ],
+        note: "كل عنصر ينتظر موافقتك. لا يُنشر شيء بدونك إلا ما تفوّضه من صفحة الحوكمة.",
+      },
+      pillars: {
+        title: "بناها مسوّقون. وتضبطها أنت.",
+        sub: "كتيّبات مجرّبة لكل قطاع، وصوت علامتك، وحلقة تعلّم من كل موافقة.",
+        items: [
+          { t: "من مسوّقين", d: "كتيّبات لكل قطاع: تجارة إلكترونية، عيادات، مطاعم، عقار، قانون، شركات ناشئة، وكالات. لا تخمينات ذكاء اصطناعي عامة.", chips: ["كتيّبات القطاعات", "حواجز الالتزام السعودية", "مراجع ثانٍ لكل عنصر", "تقويم الخليج"] },
+          { t: "علامتك، متعلَّمة", d: "النبرة واللهجة والمنتجات والعملاء والكلمات الممنوعة تشكّل كل قطعة. تعدّلها في ملف، أو تقولها لنور في الدردشة.", chips: ["سعودي خفيف", "فصحى مبسطة", "إماراتي", "عربي + إنجليزي"] },
+          { t: "تتحسن وحدها", d: "كل تعديل ورفض يُكتب في ذاكرتها ويُقرأ في كل توليد. وحَكَم آلي يقيّم كل عنصر من 100 قبل أن يصلك.", chips: ["preferences.md", "درجة جودة لكل عنصر", "نسبة الاعتماد", "تنبيهات المتابعة"] },
+        ],
+      },
+      cta: { title: "جاهز تشتغل مع نور؟", sub: "تجربة 3 أيام · بدون بطاقة · ألغِ متى شئت", button: "ابدأ مجاناً" },
+    },
     proof: {
       label: "لماذا الآن",
       items: [
@@ -98,6 +180,8 @@ export const dict: Record<Lang, Dict> = {
         { name: "رزان", role: "المالية والتسعير", body: "تسعير بالريال شامل الضريبة، اقتصاديات الوحدة، وتدفق نقدي لـ 90 يوماً.", does: ["مراجعة التسعير", "اقتصاديات الوحدة", "توقع التدفق النقدي", "مراجعة الإيرادات"] },
         { name: "فارس", role: "الدخول للسوق والنمو", body: "التموضع، خطة 90 يوماً، تجارب نمو بتقييم ICE، والاحتفاظ والإحالة.", does: ["خطة GTM", "5 تجارب نمو", "3 خطط احتفاظ", "برامج الإحالة"] },
         { name: "دانة", role: "التقارير والعروض", body: "تقرير أسبوعي صادق من بياناتك، مواصفة لوحة المؤشرات، وعرض مجلس إدارة يُحمَّل PowerPoint.", does: ["التقرير الأسبوعي", "لوحة المؤشرات", "عرض المستثمرين", "الملخص التنفيذي"] },
+        { name: "ماجد", role: "المستشار التنفيذي", body: "فريقك التنفيذي في شخص واحد: مراجعة استراتيجية، أهداف الربع، مذكرات قرار، وإيقاع تشغيل أسبوعي.", does: ["مراجعة 90 يوماً", "OKRs", "مذكرة قرار", "بطاقة الأداء الأسبوعية"] },
+        { name: "ليان", role: "المنتج والاحتفاظ", body: "من فكرة إلى PRD وخارطة طريق، ومن عميل جديد إلى عميل يعود: التفعيل والاحتفاظ والمتابعة.", does: ["PRD", "خارطة طريق RICE", "تحليل آراء العملاء", "رحلة التفعيل"] },
       ],
     },
     industries: {
@@ -162,21 +246,23 @@ export const dict: Record<Lang, Dict> = {
         { action: "مقال SEO / بطاقة تأهيل / تقرير أسبوعي", cost: "2" },
         { action: "اقتصاديات الوحدة / سلسلة متابعة", cost: "3" },
         { action: "سكربتات مبيعات / مراجعة تسعير / تدفق نقدي / تجارب نمو", cost: "4" },
-        { action: "خطة دخول للسوق / عرض مجلس الإدارة", cost: "5" },
+        { action: "خطة دخول للسوق / عرض مجلس الإدارة / مراجعة استراتيجية", cost: "5" },
         { action: "الدردشة مع الفريق والإعداد من رابط موقعك", cost: "مجاناً" },
       ],
     },
     faq: {
       eyebrow: "الأسئلة الشائعة",
-      title: "ما يسأله الجميع قبل الاشتراك.",
+      title: "أسئلة؟ خذ الخلاصة.",
       items: [
-        { q: "هل تنشر نور بدون إذني؟", a: "لا، إلا إذا فعّلت ذلك. الافتراضي أن كل شيء يمر بصندوق الموافقة. يمكنك تفويض أنواع محددة (مثلاً منشورات السوشال) بعد أن تثق بها." },
-        { q: "هل تعدّل ميزانيات إعلاناتي؟", a: "في خطة البداية: تقترح فقط. في الاحتراف وما فوق: تعدّل ضمن حدود تضعها أنت (حد يومي، حد أدنى ROAS، قنوات مسموحة). كل تعديل مسجّل ويمكن التراجع عنه." },
-        { q: "كيف جودة العربي؟", a: "نور تكتب بالفصحى المبسّطة أو بلهجة خليجية خفيفة حسب اختيارك. تتعلم من تعديلاتك، ولديك قائمة كلمات ممنوعة ومفضّلة." },
-        { q: "أين تُحفظ بياناتي؟", a: "على خوادم داخل المملكة (منطقة سحابية سعودية)، متوافقة مع نظام حماية البيانات الشخصية. لا نُدرّب نماذج عامة على بياناتك." },
-        { q: "هل واتساب مسموح؟", a: "نعم، عبر WhatsApp Business API الرسمي بقوالب معتمدة من ميتا. لا نستخدم أرقاماً شخصية أو أدوات غير رسمية." },
-        { q: "ماذا لو انتهت الكريدت؟", a: "تشتري رصيداً إضافياً عند الحاجة، أو ترقّي الخطة. لا نوقف حملاتك الجارية فجأة." },
-        { q: "هل تحل محل وكالتي؟", a: "للأغلبية: نعم لتنفيذ اليومي. للحملات الكبرى والإنتاج الاحترافي: نور تعمل بجانب الوكالة وتوفّر عليك ساعات التنفيذ." },
+        { q: "ليش ما أستخدم ChatGPT أو Claude مباشرة؟", a: "تقدر، وستقضي وقتك تكتب الأوامر وتنسخ وتلصق. نور مبنية للتسويق الخليجي: ملف علامة تقرؤه في كل مرة، كتيّبات لكل قطاع، تقويم رمضان والأعياد، مراجع ثانٍ للالتزام، صندوق موافقة، جدولة، ونشر عبر التكاملات. وتتعلم من تعديلاتك." },
+        { q: "هل تنشر نور بدون إذني؟", a: "لا. كل عنصر ينتظر موافقتك في الصندوق. بعد أن تثق بها، تفوّض أنواعاً محددة من صفحة الحوكمة." },
+        { q: "وش يعني ملخص الصباح؟", a: "كل يوم 08:00 بتوقيت السعودية: ما ينتظر موافقتك، ما اعتُمد، رصيدك، المواسم القريبة، ومتابعات الفريق (عناصر موعدها اليوم، أشياء تنتظرك من يومين). في التطبيق وعلى إيميلك." },
+        { q: "متى أشوف نتائج؟", a: "ملف العلامة وخطة 90 يوماً خلال دقيقة من رابط موقعك، وأول دفعة محتوى خلال دقيقتين. المقالات والـ SEO تتراكم عادةً خلال 2-3 أشهر." },
+        { q: "كم تكلّف؟", a: "كريدت شهري حسب الخطة: البداية 149، الاحتراف 399، الوكالة 799 ريال. منشور = 1 كريدت، مقال = 2، عرض مجلس إدارة = 5. الدردشة مع الفريق مجانية. تغيّر الخطة متى شئت." },
+        { q: "الخصوصية؟", a: "بياناتك لمساحة عملك فقط، لا تُستخدم لتدريب نماذج ولا تُشارك بين الحسابات. مفاتيح التكاملات مشفّرة. تحذف حسابك وكل بياناته بنفسك من صفحة الملف الشخصي." },
+        { q: "هل تتعلم صوت علامتي؟", a: "نعم. من موقعك أولاً، ثم من كل تعديل ورفض تكتبه، يُحفظ في preferences.md وتلتزم به. عادةً 20 تعديلاً تكفي لتثبيت صوتك." },
+        { q: "أقدر ألغي؟", a: "نعم. تجربة 3 أيام بدون بطاقة، وبعدها ترقّي أو تخفّض أو تلغي من صفحة الاشتراك. السنوي يوفّر شهرين." },
+        { q: "من هم بقية الفريق؟", a: "سامي للمبيعات، رزان للمالية والتسعير، فارس للنمو، دانة للتقارير والعروض، ماجد المستشار التنفيذي، ليان للمنتج والاحتفاظ. كلهم في الدردشة نفسها ومن ملف العلامة نفسه." },
       ],
     },
     waitlist: {
@@ -228,6 +314,78 @@ export const dict: Record<Lang, Dict> = {
         { t: "08:00", text: "Sent morning brief: 4 tasks awaiting approval, yesterday's revenue SAR 18,420 (+11%).", tag: "Brief" },
       ],
     },
+    land: {
+      hero: {
+        eyebrow: "Introducing Noor and her team",
+        title: "Your whole marketing team. Working before you wake up.",
+        sub: "Reads. Plans. Writes. Learns from every edit. Every morning, before your day starts, in your dialect.",
+        urlPlaceholder: "Enter your website or store URL",
+        urlCta: "Start",
+        assess: "Get your first brand assessment in 2 minutes.",
+        trial: "3-day free trial. No card. Cancel anytime.",
+      },
+      highlights: {
+        title: "Get the highlights.",
+        sub: "Your entire marketing operation. One Noor. Always on.",
+        items: [
+          { t: "Daily morning brief", d: "08:00 KSA: what waits for your approval, what went out, your balance, upcoming seasons. In the app and in your inbox." },
+          { t: "Brand voice, learned", d: "From your website first, then from every edit and rejection. Tone, dialect and banned words live in a file she reads every time." },
+          { t: "Social content, ready to post", d: "Instagram, Snapchat, TikTok, X. Ten posts per batch with hashtags, video scripts and generated visuals." },
+          { t: "Ads and WhatsApp", d: "Five ad variants with a suggested audience and daily budget in SAR, and three WhatsApp messages for cart recovery, offers and thanks." },
+          { t: "Weekly plan every Sunday", d: "What to post, when, and where to advertise, built on the Gulf calendar: Ramadan, Eids, National Day, White Friday." },
+          { t: "Honest reports and numbers", d: "A live dashboard of your workspace, a weekly report, and a board deck that downloads as PowerPoint. No invented figures." },
+        ],
+      },
+      teammate: {
+        title: "She works while you sleep.",
+        body: "A real teammate, not a contractor: she knows your products, customers and competitors, works overnight, and hands you the morning with everything ready to approve. No meetings, no chasing, no excuses.",
+        cards: [
+          { label: "Season watch", title: "Know what changed overnight.", body: "Days left to Ramadan, Eid and National Day, and what should change in your content weeks before." },
+          { label: "Weekly execution", title: "A full week, already in motion.", body: "Plan, posts, messages, ads and articles, all in one inbox you approve with a click." },
+        ],
+      },
+      oldway: {
+        title: "Never hire another agency again.",
+        sub: "An agency needs a meeting for every edit and misses your seasons. Noor knows your season before you ask.",
+        old: { label: "The old way", items: ["An agency at SAR 8,000+/month or a hire at 10,000+", "10 dashboards you never open, 25 hours of follow-up a week", "Content late for the season, in someone else's dialect", "Nobody reads your edits and learns from them"] },
+        new: { label: "The Noor way", items: ["A full team from SAR 149/month", "Everything in one approval inbox, plus a morning brief", "Content in your dialect, on the Gulf calendar", "Learns from every edit and rejection, better every week"] },
+      },
+      runs: {
+        title: "She runs the whole thing.",
+        sub: "Marketing first, then sales, finance, growth and reporting. From one brand file.",
+        items: [
+          { tag: "Strategy", quote: "I have no time to think, I'm putting out fires.", does: "Noor reads your site, market and competitors, writes your brand file and a 90-day plan, then a plan every week.", proof: "Brand file and plan within a minute of your URL." },
+          { tag: "Search", quote: "We're invisible on Google and SEO never gets done.", does: "Arabic articles of 1,200-1,600 words with FAQs, plus Google Business posts, built on your competitors' gaps.", proof: "A publish-ready article for two credits." },
+          { tag: "WhatsApp", quote: "My customer list goes cold because I never message it.", does: "Cart recovery, seasonal offers and post-purchase thanks, as WhatsApp Business templates in a respectful tone.", proof: "Three ready messages per batch." },
+          { tag: "Ads", quote: "I'm spending, but can't tell what's working.", does: "Ad copy for Snapchat, Meta and TikTok with a suggested audience and daily budget in SAR, and ICE-scored growth experiments.", proof: "Five ads per batch." },
+          { tag: "Social", quote: "The feed is a hungry beast and I'm always behind.", does: "Ten posts per batch: captions, Snapchat and TikTok scripts, an X post, and generated visuals with Gulf taste.", proof: "Up to 50 posts a month on Pro." },
+          { tag: "Sales and finance", quote: "Marketing brings attention, but who closes and who counts?", does: "Sami writes scripts, qualification and follow-ups, Razan reviews pricing and cash flow, Dana writes the report and the deck.", proof: "Seven agents from one brand file." },
+        ],
+        callout: "Get back 25 hours every week, without hiring, managing, or chasing a single freelancer.",
+      },
+      deliverables: {
+        eyebrow: "The first 30 days",
+        title: "Already doing the work.",
+        sub: "What lands in your approval inbox in the first month on the Pro plan.",
+        items: [
+          { n: "40+", l: "social posts in your dialect" },
+          { n: "4", l: "Arabic SEO articles" },
+          { n: "12", l: "WhatsApp messages, ready" },
+          { n: "20", l: "ad variants with budgets" },
+        ],
+        note: "Every item waits for your approval. Nothing goes out without you, unless you delegate it in Governance.",
+      },
+      pillars: {
+        title: "Built by marketers. Tuned by you.",
+        sub: "Proven playbooks per industry, your brand voice, and a learning loop from every approval.",
+        items: [
+          { t: "By marketers", d: "Playbooks per industry: e-commerce, clinics, restaurants, real estate, legal, startups, agencies. Not generic AI guesses.", chips: ["Industry playbooks", "Saudi compliance guardrails", "Second-pass reviewer", "Gulf calendar"] },
+          { t: "Your brand, learned", d: "Tone, dialect, products, customers and banned words shape every piece. Edit them in a file, or just tell Noor in chat.", chips: ["Light Saudi", "Simple MSA", "Emirati", "Arabic + English"] },
+          { t: "Self-improving", d: "Every edit and rejection is written to her memory and read on every generation. An automated judge scores each item out of 100 before it reaches you.", chips: ["preferences.md", "Quality score per item", "Approval rate", "Follow-up alerts"] },
+        ],
+      },
+      cta: { title: "Ready to work with Noor?", sub: "3-day free trial · No card · Cancel anytime", button: "Start free" },
+    },
     proof: {
       label: "Why now",
       items: [
@@ -258,6 +416,8 @@ export const dict: Record<Lang, Dict> = {
         { name: "Razan", role: "Finance and pricing", body: "SAR pricing with VAT in mind, unit economics, and a 90-day cash-flow forecast.", does: ["Pricing review", "Unit economics", "Cash-flow forecast", "Revenue review"] },
         { name: "Faris", role: "Go-to-market and growth", body: "Positioning, a 90-day plan, ICE-scored growth experiments, retention and referrals.", does: ["GTM plan", "5 growth experiments", "3 retention plays", "Referral programs"] },
         { name: "Dana", role: "Reports and decks", body: "An honest weekly report from your data, a dashboard spec, and a board deck that downloads as PowerPoint.", does: ["Weekly report", "Dashboard spec", "Investor deck", "Executive summary"] },
+        { name: "Majed", role: "Executive advisor", body: "Your executive team in one person: strategy review, quarterly OKRs, decision memos, weekly operating cadence.", does: ["90-day review", "OKRs", "Decision memo", "Weekly scorecard"] },
+        { name: "Layan", role: "Product and retention", body: "From idea to PRD and roadmap, and from new customer to returning customer: activation, retention, follow-ups.", does: ["PRD", "RICE roadmap", "Feedback synthesis", "Activation flow"] },
       ],
     },
     industries: {
@@ -322,21 +482,23 @@ export const dict: Record<Lang, Dict> = {
         { action: "SEO article / lead qualification card / weekly report", cost: "2" },
         { action: "Unit economics / follow-up cadence", cost: "3" },
         { action: "Sales scripts / pricing review / cash forecast / growth experiments", cost: "4" },
-        { action: "Go-to-market plan / board deck", cost: "5" },
+        { action: "Go-to-market plan / board deck / strategy review", cost: "5" },
         { action: "Chatting with the team and onboarding from your URL", cost: "Free" },
       ],
     },
     faq: {
       eyebrow: "FAQ",
-      title: "What everyone asks before subscribing.",
+      title: "Questions? Good to know.",
       items: [
-        { q: "Does Noor publish without my permission?", a: "No, unless you turn that on. By default everything goes through the approval inbox. You can delegate specific types (say, social posts) once you trust her." },
-        { q: "Does she change my ad budgets?", a: "On Starter: suggestions only. On Pro and above: she adjusts within limits you set (daily cap, minimum ROAS, allowed channels). Every change is logged and reversible." },
-        { q: "How good is the Arabic?", a: "Noor writes in simplified MSA or light Gulf dialect — your choice. She learns from your edits, and you keep a list of banned and preferred words." },
-        { q: "Where is my data stored?", a: "On servers inside Saudi Arabia (a Saudi cloud region), compliant with the Personal Data Protection Law. We never train general models on your data." },
-        { q: "Is WhatsApp allowed?", a: "Yes, through the official WhatsApp Business API with Meta-approved templates. No personal numbers or unofficial tools." },
-        { q: "What if I run out of credits?", a: "Buy a top-up when you need it, or upgrade. We never stop your running campaigns abruptly." },
-        { q: "Does she replace my agency?", a: "For most: yes, for daily execution. For big campaigns and professional production: Noor works alongside the agency and saves you the execution hours." },
+        { q: "Can't I just use ChatGPT or Claude?", a: "You can, and you'll spend your time writing prompts and copy-pasting. Noor is built for Gulf marketing: a brand file she reads every time, playbooks per industry, the Ramadan and Eid calendar, a second-pass compliance reviewer, an approval inbox, scheduling, and publishing through integrations. And she learns from your edits." },
+        { q: "Does Noor publish without permission?", a: "No. Every item waits in your inbox. Once you trust her, delegate specific types from Governance." },
+        { q: "What is the morning brief?", a: "Every day at 08:00 KSA: what waits for approval, what was approved, your balance, upcoming seasons, and team follow-ups (items due today, things waiting for two days). In the app and by email." },
+        { q: "How long until I see results?", a: "Brand file and 90-day plan within a minute of your URL, first content batch within two minutes. Articles and SEO typically compound over 2-3 months." },
+        { q: "How much does it cost?", a: "Monthly credits by plan: Starter 149, Pro 399, Agency 799 SAR. A post is 1 credit, an article 2, a board deck 5. Chatting with the team is free. Switch plans anytime." },
+        { q: "What about privacy?", a: "Your data stays in your workspace, is never used to train models and never shared across accounts. Integration keys are encrypted. Delete your account and all its data yourself from Profile." },
+        { q: "Does Noor learn my brand voice?", a: "Yes. From your website first, then from every edit and rejection you write, saved to preferences.md and followed. About 20 edits usually lock in your voice." },
+        { q: "Can I cancel anytime?", a: "Yes. 3-day trial with no card, then upgrade, downgrade or cancel from Subscription. Annual saves two months." },
+        { q: "Who else is on the team?", a: "Sami for sales, Razan for finance and pricing, Faris for growth, Dana for reports and decks, Majed the executive advisor, Layan for product and retention. All in the same chat, from the same brand file." },
       ],
     },
     waitlist: {

@@ -9,7 +9,10 @@ const input = "w-full rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm
 
 export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
   const r = useRouter();
-  const ref = useSearchParams().get("ref") ?? "";
+  const sp = useSearchParams();
+  const ref = sp.get("ref") ?? "";
+  const nextParam = sp.get("next") ?? "";
+  const next = nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "";
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -21,6 +24,7 @@ export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
     const j = await res.json();
     setBusy(false);
     if (!j.ok) return setErr((t.signup as Record<string, string>)[j.error] ?? j.error);
+    if (next) { window.location.assign(next); return; }
     r.push(`/${lang}/app/start`);
     r.refresh();
   }
