@@ -61,7 +61,7 @@ BRAND FILE
 - Language policy: ${DIALECT[brand.dialect]} Output languages: ${brand.languages.join(" + ")}.${brand.languages.length > 1 ? " When both are listed, write the Arabic version first, then the English version, inside the same body." : ""}
 - Banned words/claims: ${brand.banned || "none"}
 - Preferred words/phrases: ${brand.preferred || "none"}
-- Active channels: ${brand.channels.join(", ") || "instagram, snapchat, tiktok, whatsapp"}
+- Active channels: ${brand.channels.join(", ") || "instagram, snapchat, tiktok, whatsapp"}${brand.valueProp ? `\n- Value proposition: ${brand.valueProp}` : ""}${brand.social && Object.keys(brand.social).length ? `\n- Handles: ${Object.entries(brand.social).map(([k, v]) => `${k} ${v}`).join(", ")}` : ""}
 
 RULES
 - Never invent prices, discounts, certifications, or medical/legal/financial claims that are not in the brand file. If a number is needed, write [رقم] / [number] as a placeholder.

@@ -16,6 +16,12 @@ export type Brand = {
   channels: string[];
   city: string;
   updatedAt: string;
+  /** Why customers choose you (profile page). */
+  valueProp?: string;
+  /** Sitemap URL for internal links and product import. */
+  sitemap?: string;
+  /** Social handles by platform (instagram, snapchat, tiktok, x, linkedin). */
+  social?: Record<string, string>;
 };
 
 export type TaskType =

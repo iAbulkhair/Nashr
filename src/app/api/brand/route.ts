@@ -30,6 +30,9 @@ export async function PUT(req: Request) {
     channels: Array.isArray(b.channels) ? b.channels.map((c) => s(c, 20)).slice(0, 10) : [],
     city: s(b.city, 60),
     updatedAt: new Date().toISOString(),
+    ...(b.valueProp ? { valueProp: s(b.valueProp, 500) } : {}),
+    ...(b.sitemap ? { sitemap: s(b.sitemap, 300) } : {}),
+    ...(b.social && typeof b.social === "object" ? { social: Object.fromEntries(Object.entries(b.social).slice(0, 8).map(([k, v]) => [s(k, 20), s(v, 80)])) } : {}),
   };
   await saveBrand(sc(u), brand);
   return NextResponse.json({ ok: true, brand });

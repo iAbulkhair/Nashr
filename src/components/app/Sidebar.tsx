@@ -9,7 +9,7 @@ import LangToggle from "../LangToggle";
 
 type Item = { href: string; label: string; accent?: boolean };
 
-export default function Sidebar({ t, lang, user, brandName, admin }: { t: AppDict; lang: Lang; user: { name: string; email: string; credits: number; plan: string }; brandName?: string; admin?: boolean }) {
+export default function Sidebar({ t, lang, user, brandName, admin, supportWa }: { t: AppDict; lang: Lang; user: { name: string; email: string; credits: number; plan: string }; brandName?: string; admin?: boolean; supportWa?: string }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -25,6 +25,7 @@ export default function Sidebar({ t, lang, user, brandName, admin }: { t: AppDic
     { href: `${base}/generate`, label: t.nav.generate },
     { href: `${base}/reports`, label: t.nav.reports },
     { href: `${base}/notifications`, label: unread ? `${t.nav.notifications} (${unread})` : t.nav.notifications, accent: unread > 0 },
+    { href: `${base}/conversations`, label: t.nav.history },
   ];
   const settings: Item[] = [
     { href: `${base}/onboarding`, label: t.nav.brand },
@@ -34,6 +35,7 @@ export default function Sidebar({ t, lang, user, brandName, admin }: { t: AppDic
     { href: `${base}/refer`, label: t.nav.refer },
     { href: `${base}/mcp`, label: "MCP" },
     { href: `${base}/help`, label: lang === "ar" ? "المساعدة" : "Help" },
+    { href: supportWa ? `https://wa.me/${supportWa}` : `${base}/help#support`, label: t.nav.contact },
     ...(admin ? [{ href: `${base}/admin`, label: lang === "ar" ? "لوحة المؤسس" : "Founder console", accent: true }] : []),
   ];
   const active = (h: string) => (h === base ? path === base : path.startsWith(h));

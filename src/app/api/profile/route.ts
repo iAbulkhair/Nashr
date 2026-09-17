@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { currentUser, saveUser, sc } from "@/lib/auth";
-import { listTasks, TASK_COST, TASK_COUNT, type TaskType } from "@/lib/brand";
+import { currentUser, PLAN_CREDITS, saveUser, sc } from "@/lib/auth";
+import { getBrand, listTasks, saveBrand, TASK_COST, TASK_COUNT, type TaskType } from "@/lib/brand";
 import { db } from "@/lib/db";
 
 export type EmailPrefs = "all" | "important" | "none";
@@ -20,17 +20,40 @@ export async function GET() {
   const images = tasks.filter((t) => t.imageUrl && new Date(t.createdAt) >= monthStart).length;
   const prefs = (await db.get<{ emails?: EmailPrefs }>(`profile:${sc(u)}`)) ?? {};
   const { passHash: _p, ...safe } = u; void _p;
-  return NextResponse.json({ ok: true, user: safe, usage, images, emails: prefs.emails ?? "all" });
+  const brand = await getBrand(sc(u));
+  const now = new Date();
+  const nextReset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
+  return NextResponse.json({
+    ok: true, user: safe, usage, images, emails: prefs.emails ?? "all", allowance: PLAN_CREDITS[u.plan], nextReset,
+    brand: brand ? { name: brand.name, website: brand.website, sitemap: brand.sitemap ?? "", products: brand.products, audience: brand.audience, tone: brand.tone, valueProp: brand.valueProp ?? "", social: brand.social ?? {} } : null,
+  });
 }
 
 export async function PUT(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  const b = (await req.json().catch(() => ({}))) as { name?: string; phone?: string; lang?: string; emails?: EmailPrefs };
+  const b = (await req.json().catch(() => ({}))) as Record<string, string | undefined> & { emails?: EmailPrefs };
   if (typeof b.name === "string") u.name = b.name.trim().slice(0, 80);
   if (typeof b.phone === "string" && b.phone.replace(/\D/g, "").length >= 9) u.phone = b.phone.trim().slice(0, 30);
   if (b.lang === "ar" || b.lang === "en") u.lang = b.lang;
   await saveUser(u);
   if (b.emails && ["all", "important", "none"].includes(b.emails)) await db.set(`profile:${sc(u)}`, { emails: b.emails });
+  // Brand-level fields shown on the profile (Enrich-style): business name, description, customers, voice, value prop, website, sitemap, social handles.
+  const brand = await getBrand(sc(u));
+  if (brand) {
+    const s = (v: unknown, n = 1000) => String(v ?? "").trim().slice(0, n);
+    if (typeof b.business === "string" && b.business.trim()) brand.name = s(b.business, 80);
+    if (typeof b.products === "string" && b.products.trim()) brand.products = s(b.products);
+    if (typeof b.audience === "string" && b.audience.trim()) brand.audience = s(b.audience);
+    if (typeof b.tone === "string" && b.tone.trim()) brand.tone = s(b.tone, 300);
+    if (typeof b.valueProp === "string") brand.valueProp = s(b.valueProp, 500);
+    if (typeof b.website === "string") brand.website = s(b.website, 200);
+    if (typeof b.sitemap === "string") brand.sitemap = s(b.sitemap, 300);
+    const social: Record<string, string> = { ...(brand.social ?? {}) };
+    for (const k of ["instagram", "snapchat", "tiktok", "x", "linkedin"]) { const v = b[`social_${k}`]; if (typeof v === "string") { if (v.trim()) social[k] = s(v, 80); else delete social[k]; } }
+    brand.social = social;
+    brand.updatedAt = new Date().toISOString();
+    await saveBrand(sc(u), brand);
+  }
   return NextResponse.json({ ok: true });
 }

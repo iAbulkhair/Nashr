@@ -7,14 +7,14 @@ import { AGENTS, type AgentId } from "@/lib/agents";
 type Conv = { id: string; title: string; updatedAt: string; count: number; agent?: AgentId };
 type Hit = { conversationId: string; title: string; snippet: string; at: string };
 
-export default function ChatPanel({ t, initial, credits: c0, lang }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en" }) {
+export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "" }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string }) {
   const ar = lang === "ar";
   const [msgs, setMsgs] = useState<ChatMsg[]>(initial);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialPrompt);
   const [busy, setBusy] = useState(false);
   const [credits, setCredits] = useState(c0);
   const [convs, setConvs] = useState<Conv[]>([]);
-  const [conv, setConv] = useState("default");
+  const [conv, setConv] = useState(initialConv ?? "default");
   const [agent, setAgent] = useState<AgentId>("noor");
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[] | null>(null);
@@ -22,7 +22,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang }: { t: AppDic
   const [voted, setVoted] = useState<Record<string, 1 | -1>>({});
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs, busy]);
-  useEffect(() => { fetch("/api/conversations").then((r) => r.json()).then((j) => j.ok && setConvs(j.conversations)); }, []);
+  useEffect(() => { fetch("/api/conversations").then((r) => r.json()).then((j) => { if (j.ok) { setConvs(j.conversations); if (initialConv) setAgent((j.conversations as Conv[]).find((c) => c.id === initialConv)?.agent ?? "noor"); } }); }, [initialConv]);
 
   async function open(id: string) {
     setConv(id); setHits(null); setShowList(false);
