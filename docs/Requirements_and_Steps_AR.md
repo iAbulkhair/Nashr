@@ -1,0 +1,125 @@
+# نشر (Nashr) — ملف المتطلبات والخطوات التفصيلية
+
+**التاريخ:** 17 سبتمبر 2026 · **الحالة:** المنتج حيّ على https://nashr-tau.vercel.app · **المستودع:** github.com/iAbulkhair/Nashr (خاص)
+
+هذا الملف يجيب على ثلاثة أسئلة: ما الذي بُني، ما المطلوب منك خطوة بخطوة، وما القادم. للتفاصيل التقنية للمنتج راجع `PRD.md`، ولخطة التسويق `GTM_Teardown_and_Nashr_Plan.md`، ولتسجيل المنصات `Platform_Access_Playbook.md`.
+
+---
+
+## 1. ما الذي بُني (حالة اليوم)
+
+### الموقع التسويقي (`/ar` و`/en`)
+- الرئيسية، الأسعار، 7 صفحات قطاعات (`/for/*`)، 5 مقارنات (`/vs/*`)، 12 أداة مجانية (`/tools/*`)، مدونة بـ 13 مقالاً (`/blog`)، صفحة تعريفية GEO (`/ai-marketing-agent`)، الشركاء (`/affiliates`)، المساعدة (`/help`)، الخصوصية والشروط. خريطة موقع 92+ رابط.
+
+### التطبيق (`/app`)
+| الصفحة | الوظيفة |
+|---|---|
+| `/app/signup` `/app/login` | حساب بالبريد وكلمة المرور ورقم الجوال. الإحالة عبر `?ref=CODE` |
+| `/app/start` | إعداد من رابط الموقع/المتجر: نور تقرأه وتكتب brand.md وmarket-research.md وstrategy.md أمام المستخدم |
+| `/app/chat` | الدردشة مع نور (أدوات: توليد محتوى، تحديث العلامة، قراءة/كتابة ملفات، استيراد المنتجات، صور، نشر، صندوق الموافقة). محادثات متعددة + بحث |
+| `/app` | صندوق الموافقة: اعتمد/عدّل/ارفض/انسخ/صورة/تاريخ نشر/انشر على المنصات المتصلة + ملخص الصباح |
+| `/app/generate` | 6 أزرار سريعة: خطة الأسبوع، 10 منشورات، مقال، 3 واتساب، 5 إعلانات، 3 Google |
+| `/app/files` | ذاكرة نور: brand.md، products.md، strategy.md، market-research.md، preferences.md — تعديل/حذف/إضافة + استيراد المنتجات من خريطة الموقع |
+| `/app/calendar` | العناصر المعتمدة حسب تاريخ النشر |
+| `/app/tasks` | المهام المجدولة: خطة الأسبوع (الأحد 06:00) والملخص اليومي (08:00) — تشغيل/إيقاف/شغّل الآن |
+| `/app/governance` | اعتماد تلقائي لأنواع، المراجع الثاني، التعلّم، منع الشرطات، الحد الأسبوعي، دقائق التنبيه |
+| `/app/integrations` | 40+ موصّل. **حيّة الآن (بدون موافقات):** WordPress، WooCommerce، Klaviyo، Odoo، PrestaShop، Telegram، Brevo. **مبنية بانتظار مفاتيحك:** X، Shopify، Google، Meta، سلة، زد، LinkedIn، TikTok، Snapchat |
+| `/app/brands` | علامات متعددة (تجربة/بداية/احتراف: 1، وكالة: 5) |
+| `/app/inspo` | 16 نمطاً خليجياً ناجحاً + «استخدم كمرجع» |
+| `/app/refer` | إحالة: 50 كريدت لك و50 لصديقك |
+| `/app/mcp` | نور داخل Claude/ChatGPT: OAuth 2.1 أو رمز شخصي |
+| `/app/profile` | استهلاك الكريدت، البيانات، تفضيلات الإيميل، كلمة المرور، حذف الحساب |
+| `/app/billing` | الخطط بالريال + وعد التفعيل + زر واتساب (روابط الدفع عند توفرها) |
+| `/app/help` | مركز المساعدة + تذكرة دعم |
+| `/app/admin` | لوحة المؤسس: المستخدمون، تغيير الخطة، إضافة كريدت، عرض محتوى أي عميل |
+
+### المحرك
+- نموذج Claude Opus 5 للتوليد، Sonnet 5 للمراجعة الثانية ووصف الصور.
+- تقويم هجري/خليجي (رمضان، الأعياد، يوم التأسيس، اليوم الوطني، الجمعة البيضاء…) — نور تحضّر قبل 4 أسابيع.
+- 8 ملفات لعب حسب القطاع (تجارة، عقار، قانون، ناشئة، عيادات، مطاعم، وكالات، خدمات).
+- التجربة: 3 أيام / 50 كريدت. الخطط: 149 / 399 / 799 ريال.
+- تسلسل إيميلات (يوم 1، 2، 3، 10) + تنبيه المسجّل غير المفعّل + ملخص يومي — **معطّلة حتى وضع مفتاح Resend**.
+- الصور عبر fal.ai — **صور بديلة حتى وضع مفتاح FAL**.
+
+---
+
+## 2. المطلوب منك — خطوة بخطوة
+
+> كل مفتاح يُضاف من طرفك في Terminal بهذا الأمر ثم تخبرني باسم المتغيّر فقط. لا ترسل أي مفتاح في المحادثة.
+> ```bash
+> cd ~/projects/nashr && vercel env add اسم_المتغير production
+> ```
+> بعد إضافة أي مفتاح: `vercel --prod --yes` (أو قل لي وأنا أنشر).
+
+### المرحلة أ — اليوم (يفعّل ما هو مبني)
+
+| # | الخطوة | أين | ماذا تفعل بالضبط | ما يفعّله |
+|---|---|---|---|---|
+| A1 | مفتاح Resend | resend.com → API Keys → Create | `RESEND_API_KEY` + `WAITLIST_TO=بريدك` (لتذاكر الدعم وطلبات الشركاء) | الملخص اليومي بالإيميل، تسلسل التجربة، تنبيه المسجّل غير المفعّل، تذاكر الدعم |
+| A2 | مفتاح fal.ai (اختياري) | fal.ai → Keys → Add key + رصيد $10 | `FAL_KEY` | صور حقيقية للمنشورات (0.003$ للصورة) |
+| A3 | روابط الدفع | لوحة Moyasar/Tap/PayTabs → Payment link ×3 | `PAY_LINK_STARTER` `PAY_LINK_PRO` `PAY_LINK_AGENCY` | أزرار «اشترك الآن» بدل واتساب |
+| A4 | اختبار Telegram | @BotFather → /newbot → أضف البوت أدمن في قناتك | التكاملات → Telegram → اربط → انشر منشوراً من صندوق الموافقة | أول نشر تلقائي حقيقي |
+| A5 | اختبار Claude Connector | claude.ai → Settings → Connectors → Add custom connector → `https://nashr-tau.vercel.app/api/mcp` → Allow | اكتب في Claude: «اسأل نور: ما الذي بانتظار موافقتي؟» | التأكد من OAuth مع عميل خارجي |
+| A6 | نطاق | اشترِ `nashr.ai` أو `nashr.sa` → `vercel domains add nashr.ai` | ثم `vercel env add APP_ORIGIN production` = `https://nashr.ai` | روابط نظيفة في الإيميلات وOAuth |
+
+### المرحلة ب — هذا الأسبوع (تسجيلات فورية، 10 دقائق لكل واحدة)
+
+| # | المنصة | الرابط | المتغيّرات | يفعّل |
+|---|---|---|---|---|
+| B1 | Shopify Partners | partners.shopify.com → Apps → Create app → Redirect `https://nashr-tau.vercel.app/api/connect/shopify/callback` | `SHOPIFY_CLIENT_ID` `SHOPIFY_CLIENT_SECRET` | استيراد منتجات + نشر مقالات لمتاجر Shopify |
+| B2 | X Developer (Basic ~100$) | developer.x.com → Project → App → User auth: Web App، Callback `/api/connect/x/callback`، Scopes `tweet.read tweet.write users.read offline.access` | `X_CLIENT_ID` `X_CLIENT_SECRET` | نشر تلقائي على X |
+| B3 | Google Cloud | console.cloud.google.com → مشروع Nashr → Enable: Analytics Data، Search Console، My Business ×2، YouTube → OAuth consent (External) → Credentials → Web client → Redirect `/api/connect/google/callback` | `GOOGLE_CLIENT_ID` `GOOGLE_CLIENT_SECRET` | Google Business + GA4 + Search Console (يتطلب Verification لاحقاً) |
+
+### المرحلة ج — ابدأ اليوم، النتيجة خلال أسابيع (موافقات)
+
+| # | المنصة | الرابط | المدة | المتغيّرات |
+|---|---|---|---|---|
+| C1 | **Meta Business Verification** | business.facebook.com → Security Center → Start verification (السجل التجاري، الهاتف، الموقع) ثم developers.facebook.com → Create app (Business) → WhatsApp + Instagram + Login + Marketing API → App Review | 2–10 أيام توثيق + 1–4 أسابيع مراجعة | `META_APP_ID` `META_APP_SECRET` |
+| C2 | **سلة Partners** | salla.partners → Register → My Apps → Create (Public) → Redirect `/api/connect/salla/callback` | 1–3 أسابيع | `SALLA_CLIENT_ID` `SALLA_CLIENT_SECRET` `SALLA_WEBHOOK_SECRET` |
+| C3 | **زد Partners** | partners.zid.sa → Apply → Create app → Redirect `/api/connect/zid/callback` | 1–3 أسابيع | `ZID_CLIENT_ID` `ZID_CLIENT_SECRET` |
+| C4 | Moyasar أو Tap (حساب تاجر) | moyasar.com / tap.company → السجل التجاري + الآيبان | 3–10 أيام | `MOYASAR_SECRET_KEY` أو `TAP_SECRET_KEY` |
+| C5 | Snapchat Marketing API | business.snapchat.com → حساب أعمال → developers.snap.com → OAuth app → Redirect `/api/connect/snapchat/callback` | 2–8 أسابيع | `SNAP_CLIENT_ID` `SNAP_CLIENT_SECRET` |
+| C6 | TikTok for Developers | developers.tiktok.com → App → Login Kit + Content Posting → Redirect `/api/connect/tiktok/callback` + ملف توثيق النطاق (أرسله لي) | 1–4 أسابيع | `TIKTOK_CLIENT_KEY` `TIKTOK_CLIENT_SECRET` |
+| C7 | LinkedIn | أنشئ صفحة Nashr → linkedin.com/developers → App → Share on LinkedIn + Community Management → Redirect `/api/connect/linkedin/callback` | 1–2 أسبوع | `LINKEDIN_CLIENT_ID` `LINKEDIN_CLIENT_SECRET` |
+| C8 | Unifonic (SMS) | unifonic.com → حساب أعمال + Sender ID | 1–2 أسبوع | `UNIFONIC_APP_SID` `UNIFONIC_SENDER_ID` |
+
+### المرحلة د — الإطلاق (من ملف GTM)
+
+| # | الخطوة | التفاصيل |
+|---|---|---|
+| D1 | سلسلة X + منشور LinkedIn | النصوص في `GTM_Teardown_and_Nashr_Plan.md` §4. الأحد 9 صباحاً بتوقيت الرياض. 15 حساباً صديقاً يعيدون النشر في الساعة الأولى |
+| D2 | فيديو إطلاق 60–90 ثانية | قل لي «سكربت الفيديو» وأكتبه |
+| D3 | الأدلة (Directories) | TAAFT، Futurepedia، AIAXIO، Product Hunt، G2، Capterra — الوصف في GTM §4 |
+| D4 | النشرات | Wamda، MAGNiTT، نشرات LinkedIn السعودية؛ وGTM Engineer School تحريرياً (الإيميل جاهز) |
+| D5 | الشركاء | أرسل نص الشراكة لـ 20 وكالة/صانع محتوى؛ الطلبات تصلك في `/api/affiliates?key=…` |
+| D6 | 3–5 مستخدمين أوائل | راقب: هل أصاب الإعداد علامتهم؟ ماذا عدّلوا؟ ماذا طلبوا ولم تقدر نور؟ — أرسل لي الملاحظات |
+
+---
+
+## 3. مفاتيح موجودة الآن في Vercel (لا تلمسها)
+`ANTHROPIC_API_KEY`، `KV_*` (قاعدة البيانات Upstash)، `WAITLIST_ADMIN_KEY` (لوحة المؤسس)، `CRON_SECRET`، `CONNECT_SECRET` (تشفير التوكنات)، `SUPPORT_WHATSAPP`، `APP_ORIGIN`.
+نسخة محلية من مفاتيح المؤسس في `~/projects/nashr/.env.admin.local` (خارج Git).
+
+## 4. كيف تشغّل المشروع محلياً
+```bash
+cd ~/projects/nashr && npm install && npm run dev
+```
+بدون مفاتيح: قاعدة بيانات في الذاكرة + محتوى تجريبي «DEV MOCK». مع `ANTHROPIC_API_KEY` في `.env.local`: نور حقيقية.
+النشر: `vercel --prod --yes`.
+
+## 5. القادم (لم يُبنَ بعد)
+- نشر تلقائي على IG/FB/Snap/TikTok/LinkedIn — ينتظر C1/C5/C6/C7.
+- إرسال واتساب تلقائي — ينتظر C1 (WhatsApp Cloud API) + حالة Tech Provider.
+- ضبط ميزانيات الإعلانات ضمن الحدود — ينتظر Snap/Meta/TikTok Ads.
+- تقارير الأداء (GA4/Snap/Meta) — ينتظر المفاتيح.
+- تقارير بشعار الوكالة (PDF)، أدوار الفريق (مالك/محرر/مشاهد).
+- مجموعة تقييم عربية (300 عنصر) لقياس جودة اللهجة.
+- Composio للذيل الطويل (1,000+ موصّل) بعد أول 100 عميل.
+
+## 6. المستندات
+- `docs/PRD.md` — متطلبات المنتج الكاملة
+- `docs/Platform_Access_Playbook.md` — تسجيل كل منصة بالتفصيل (إنجليزي)
+- `docs/GTM_Teardown_and_Nashr_Plan.md` — تحليل Enrich وخطة الوصول للعملاء + نصوص الإطلاق
+- `docs/Enrich_Teardown.md` — تشريح منتج Enrich شاشة بشاشة
+- `docs/Nashr_Financial_Model.xlsx` — النموذج المالي 36 شهراً
+- `docs/Nashr_Pitch_Deck.pptx` — عرض المستثمرين

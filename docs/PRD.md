@@ -2,7 +2,7 @@
 
 **Product:** Nashr — an autonomous AI marketing agent ("Noor") for GCC businesses
 **Version:** 1.0 (MVP scope) · **Date:** 17 September 2026 · **Owner:** Founder
-**Status:** Draft for build
+**Status:** v0 live at https://nashr-tau.vercel.app (17 Sep 2026). Current build state and owner action items: `Requirements_and_Steps_AR.md`.
 
 ---
 
