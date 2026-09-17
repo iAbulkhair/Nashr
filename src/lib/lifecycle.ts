@@ -41,9 +41,9 @@ export async function runLifecycle(u: User): Promise<string[]> {
   if (!process.env.RESEND_API_KEY) return [];
   const days = Math.floor((Date.now() - new Date(u.createdAt).getTime()) / 864e5);
   const paying = u.plan !== "trial";
-  const brand = await getBrand(u.email);
+  const brand = await getBrand(u.scope ?? u.email);
   if (!brand) return []; // signup nudge handles no-brand users
-  const tasks = await listTasks(u.email);
+  const tasks = await listTasks(u.scope ?? u.email);
   const ctx = { firstTitle: tasks.at(-1)?.title, pending: tasks.filter((x) => x.status === "pending").length, approved: tasks.filter((x) => x.status === "approved").length, trialEnds: u.trialEnds.slice(0, 10) };
   const plan: [string, boolean][] = [["day1", days >= 1], ["day5", days >= 5 && !paying], ["day7", days >= 7 && !paying], ["day14", days >= 14 && !paying]];
   const sent: string[] = [];

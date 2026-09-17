@@ -3,6 +3,7 @@ import { allUsers, runDaily } from "@/lib/schedule";
 import { getBrand } from "@/lib/brand";
 import { once, sendEmail } from "@/lib/notify";
 import { runLifecycle } from "@/lib/lifecycle";
+import { db } from "@/lib/db";
 
 export const maxDuration = 120;
 
@@ -12,7 +13,7 @@ export async function GET(req: Request) {
   let n = 0, emails = 0, nudges = 0, lifecycle = 0;
   const wa = process.env.SUPPORT_WHATSAPP ? `https://wa.me/${process.env.SUPPORT_WHATSAPP.replace(/\D/g, "")}` : "";
   for (const u of await allUsers()) {
-    const brand = await getBrand(u.email);
+    const brand = await getBrand(u.scope ?? u.email);
     // Signup nudge: registered but never built a brand (Enrich-style founder follow-up)
     if (!brand && Date.now() - new Date(u.createdAt).getTime() > 10 * 60e3 && process.env.RESEND_API_KEY && (await once(u.email, "nudge1"))) {
       const ar = u.lang === "ar";
@@ -28,7 +29,9 @@ export async function GET(req: Request) {
     const brief = await runDaily(u);
     if (brief) {
       n++;
-      if (await sendEmail(u.email, u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, brief.text + `\n\nhttps://nashr-tau.vercel.app/${u.lang}/app`)) emails++;
+      const pref = ((await db.get<{ emails?: string }>(`profile:${u.email}`)) ?? {}).emails ?? "all";
+      const worth = pref === "all" || (pref === "important" && brief.pending > 0);
+      if (worth && await sendEmail(u.email, u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, brief.text + `\n\nhttps://nashr-tau.vercel.app/${u.lang}/app`)) emails++;
     }
   }
   return NextResponse.json({ ok: true, briefs: n, emails, nudges, lifecycle, emailConfigured: !!process.env.RESEND_API_KEY });

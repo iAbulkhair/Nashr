@@ -1,4 +1,4 @@
-import { currentUser } from "@/lib/auth";
+import { currentUser, sc } from "@/lib/auth";
 import { crawl } from "@/lib/crawl";
 import { buildFromSite } from "@/lib/onboard";
 import { saveBrand } from "@/lib/brand";
@@ -24,14 +24,14 @@ export async function POST(req: Request) {
         send({ step: "brand", status: "running" });
         const r = await buildFromSite(site, u.lang, b.hints);
         send({ step: "research", status: "done" });
-        await saveBrand(u.email, r.brand);
+        await saveBrand(sc(u), r.brand);
         send({ step: "brand", status: "done", brand: r.brand });
         for (const f of r.files) {
-          const saved = await writeFile(u.email, f.name, f.content, "noor");
+          const saved = await writeFile(sc(u), f.name, f.content, "noor");
           send({ step: "file", status: "done", file: { name: saved.name, content: saved.content } });
         }
-        if (!(await readFile(u.email, "preferences.md"))) {
-          await writeFile(u.email, "preferences.md", "# Preferences learned from the owner\n", "noor");
+        if (!(await readFile(sc(u), "preferences.md"))) {
+          await writeFile(sc(u), "preferences.md", "# Preferences learned from the owner\n", "noor");
         }
         send({ step: "complete", status: "done" });
       } catch (e) {

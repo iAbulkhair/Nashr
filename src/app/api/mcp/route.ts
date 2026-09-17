@@ -57,15 +57,15 @@ export async function POST(req: Request) {
       case "generate_content": {
         const type = String(args.type) as TaskType;
         if (!(type in TASK_COST)) return ok(id, { ...text("Unknown type."), isError: true });
-        const brand = await getBrand(user.email);
+        const brand = await getBrand((user.scope ?? user.email));
         if (!brand) return ok(id, { ...text("No brand file yet. Run onboarding in the app first."), isError: true });
         const cost = TASK_COST[type];
         if (user.credits < cost) return ok(id, { ...text(`Insufficient credits: need ${cost}, have ${user.credits}.`), isError: true });
-        const gov = await getGov(user.email);
-        const items = await generate(type, brand, await listPreferences(user.email), String(args.notes ?? ""), { memory: await memoryBlock(user.email), reviewer: gov.reviewer, noEmDash: gov.noEmDash });
+        const gov = await getGov((user.scope ?? user.email));
+        const items = await generate(type, brand, await listPreferences((user.scope ?? user.email)), String(args.notes ?? ""), { memory: await memoryBlock((user.scope ?? user.email)), reviewer: gov.reviewer, noEmDash: gov.noEmDash });
         for (const it of items) {
           const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: gov.autoApprove[type] ? "approved" : "pending", createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat" };
-          await saveTask(user.email, t, true);
+          await saveTask((user.scope ?? user.email), t, true);
         }
         user.credits -= cost;
         await saveUser(user);
@@ -73,15 +73,15 @@ export async function POST(req: Request) {
       }
       case "list_inbox": {
         const status = String(args.status ?? "pending");
-        const tasks = (await listTasks(user.email)).filter((t) => status === "all" || t.status === status).slice(0, 30);
+        const tasks = (await listTasks((user.scope ?? user.email))).filter((t) => status === "all" || t.status === status).slice(0, 30);
         return ok(id, text(tasks.length ? tasks.map((t) => `[${t.id}] ${t.status} · ${t.type}/${t.channel} · ${t.title}\n${(t.editedBody ?? t.body).slice(0, 300)}`).join("\n\n") : "Inbox empty."));
       }
       case "read_file": {
-        const f = await readFile(user.email, String(args.name ?? ""));
+        const f = await readFile((user.scope ?? user.email), String(args.name ?? ""));
         return ok(id, f ? text(f.content) : { ...text("Not found."), isError: true });
       }
       case "list_files": {
-        const fs = await listFiles(user.email);
+        const fs = await listFiles((user.scope ?? user.email));
         return ok(id, text(fs.map((f) => `${f.name} (${f.content.length} chars, ${f.updatedAt.slice(0, 10)})`).join("\n") || "No files."));
       }
       default:

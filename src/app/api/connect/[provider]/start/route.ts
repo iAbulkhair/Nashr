@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
-import { currentUser } from "@/lib/auth";
+import { currentUser, sc } from "@/lib/auth";
 import { getProvider, isAvailable } from "@/lib/connectors/registry";
 import { authorizeUrl, pkcePair } from "@/lib/connectors/oauth";
 import { saveState } from "@/lib/connectors/store";
@@ -22,6 +22,6 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   }
   const state = randomBytes(16).toString("hex");
   const pk = p.oauth!.pkce ? pkcePair() : null;
-  await saveState(state, { email: u.email, provider, lang, shop, verifier: pk?.verifier ?? "" });
+  await saveState(state, { email: sc(u), provider, lang, shop, verifier: pk?.verifier ?? "" });
   return NextResponse.redirect(authorizeUrl(p, state, { shop, challenge: pk?.challenge }));
 }

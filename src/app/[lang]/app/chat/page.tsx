@@ -14,5 +14,5 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
   if (!(await getBrand(u.email))) redirect(`/${lang}/app/start`);
-  return <ChatPanel t={appDict[lang]} initial={await history(u.email)} credits={u.credits} />;
+  return <ChatPanel t={appDict[lang]} initial={await history(u.email)} credits={u.credits} lang={lang} />;
 }

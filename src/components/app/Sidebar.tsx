@@ -8,7 +8,7 @@ import LogoutButton from "./LogoutButton";
 
 type Item = { href: string; label: string; accent?: boolean };
 
-export default function Sidebar({ t, lang, user }: { t: AppDict; lang: Lang; user: { name: string; email: string; credits: number; plan: string } }) {
+export default function Sidebar({ t, lang, user, brandName }: { t: AppDict; lang: Lang; user: { name: string; email: string; credits: number; plan: string }; brandName?: string }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const base = `/${lang}/app`;
@@ -51,10 +51,14 @@ export default function Sidebar({ t, lang, user }: { t: AppDict; lang: Lang; use
         {t.appName}
         <span className="ms-2 inline-block h-2 w-2 rounded-full bg-saffron align-middle" aria-hidden />
       </Link>
+      <Link href={`${base}/brands`} className="-mt-3 flex items-center justify-between rounded-lg border border-mist/15 px-3 py-2 text-xs text-mist-dim hover:border-mist/40 hover:text-mist">
+        <span className="truncate" dir="auto">{brandName || (lang === "ar" ? "علامتك" : "Your brand")}</span>
+        <span>⇄</span>
+      </Link>
       <Group title={t.nav.workspace} items={work} />
       <Group title={t.nav.settings} items={settings} />
       <div className="mt-auto rounded-lg bg-oasis p-3 text-xs">
-        <p className="truncate font-medium text-mist">{user.name || user.email}</p>
+        <Link href={`${base}/profile`} className="block truncate font-medium text-mist hover:text-saffron">{user.name || user.email}</Link>
         <p className="mt-0.5 flex items-center justify-between text-mist-dim"><span>{user.plan}</span><Link href={`${base}/billing`} className="font-mono text-saffron" dir="ltr">{user.credits} {t.nav.credits}</Link></p>
         <div className="mt-2 flex items-center justify-between">
           <Link href={lang === "ar" ? path.replace("/ar/", "/en/") : path.replace("/en/", "/ar/")} className="text-mist-dim hover:text-mist">{lang === "ar" ? "English" : "العربية"}</Link>

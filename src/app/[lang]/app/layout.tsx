@@ -5,6 +5,8 @@ import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser } from "@/lib/auth";
 import Sidebar from "@/components/app/Sidebar";
+import { getBrand } from "@/lib/brand";
+import { sc } from "@/lib/auth";
 
 const PUBLIC = ["/login", "/signup", "/admin"];
 
@@ -32,9 +34,10 @@ export default async function AppLayout({ children, params }: { children: React.
     );
   }
 
+  const brand = await getBrand(sc(user));
   return (
     <div className="flex min-h-screen flex-col bg-salt lg:flex-row">
-      <Sidebar t={t} lang={lang} user={{ name: user.name, email: user.email, credits: user.credits, plan: user.plan }} />
+      <Sidebar t={t} lang={lang} user={{ name: user.name, email: user.email, credits: user.credits, plan: user.plan }} brandName={brand?.name} />
       <main className="min-w-0 flex-1 px-4 py-6 sm:px-8">{children}</main>
     </div>
   );

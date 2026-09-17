@@ -17,12 +17,13 @@ import { IMAGE_COST, getTask } from "./brand";
 
 export type ChatMsg = { role: "user" | "assistant"; content: string; at: string; actions?: string[] };
 
-export async function history(email: string): Promise<ChatMsg[]> {
-  const rows = await db.lrange(`chat:${email}`, 0, 39);
+const key = (email: string, conv?: string) => (conv && conv !== "default" ? `chat:${email}:${conv}` : `chat:${email}`);
+export async function history(email: string, conv?: string): Promise<ChatMsg[]> {
+  const rows = await db.lrange(key(email, conv), 0, 39);
   return rows.map((r) => JSON.parse(r) as ChatMsg).reverse();
 }
-async function push(email: string, m: ChatMsg) {
-  await db.lpush(`chat:${email}`, JSON.stringify(m));
+async function push(email: string, m: ChatMsg, conv?: string) {
+  await db.lpush(key(email, conv), JSON.stringify(m));
 }
 
 const TOOLS: Anthropic.Tool[] = [
@@ -104,14 +105,14 @@ Pages: /app/chat (you), /app (inbox), /app/files, /app/tasks, /app/governance, /
 RULES: never invent prices/claims; respect Saudi advertising norms; one clear next step per reply; when you used a tool, say what happened in one line. Do not include internal or system XML tags in your response.`;
 }
 
-export async function chat(user: User, text: string): Promise<ChatMsg> {
-  const email = user.email;
-  await push(email, { role: "user", content: text, at: new Date().toISOString() });
+export async function chat(user: User, text: string, conv?: string): Promise<ChatMsg> {
+  const email = user.scope ?? user.email;
+  await push(email, { role: "user", content: text, at: new Date().toISOString() }, conv);
   const actions: string[] = [];
 
   if (!process.env.ANTHROPIC_API_KEY) {
     const m: ChatMsg = { role: "assistant", content: "[DEV MOCK] ANTHROPIC_API_KEY not set. I would answer here and use tools.", at: new Date().toISOString(), actions };
-    await push(email, m);
+    await push(email, m, conv);
     return m;
   }
 
@@ -121,7 +122,7 @@ export async function chat(user: User, text: string): Promise<ChatMsg> {
   const memory = await memoryBlock(email);
   const files = (await listFiles(email)).map((f) => f.name);
   const connected = (await listConnections(email)).map((c) => c.provider);
-  const past = (await history(email)).slice(-16);
+  const past = (await history(email, conv)).slice(-16);
   const messages: Anthropic.MessageParam[] = past.map((m) => ({ role: m.role, content: m.content }));
   if (!messages.length || messages[messages.length - 1].role !== "user") messages.push({ role: "user", content: text });
 
@@ -137,7 +138,7 @@ export async function chat(user: User, text: string): Promise<ChatMsg> {
     if (!uses.length) {
       const reply = res.content.filter((b) => b.type === "text").map((b) => (b as Anthropic.TextBlock).text).join("\n").trim();
       const m: ChatMsg = { role: "assistant", content: reply || "…", at: new Date().toISOString(), actions };
-      await push(email, m);
+      await push(email, m, conv);
       return m;
     }
     const results: Anthropic.ToolResultBlockParam[] = [];
@@ -155,12 +156,12 @@ export async function chat(user: User, text: string): Promise<ChatMsg> {
     messages.push({ role: "user", content: results });
   }
   const m: ChatMsg = { role: "assistant", content: "تم. تحقق من صندوق الموافقة.", at: new Date().toISOString(), actions };
-  await push(email, m);
+  await push(email, m, conv);
   return m;
 }
 
 async function runTool(user: User, name: string, input: Record<string, unknown>, actions: string[]): Promise<string> {
-  const email = user.email;
+  const email = user.scope ?? user.email;
   switch (name) {
     case "generate_content": {
       const type = input.type as TaskType;

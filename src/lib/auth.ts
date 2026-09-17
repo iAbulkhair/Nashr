@@ -15,7 +15,11 @@ export type User = {
   trialEnds: string; // ISO
   createdAt: string; // ISO
   lang: "ar" | "en";
+  /** Runtime only: storage scope of the active brand (email for the default brand). Never persisted. */
+  scope?: string;
+  brandId?: string;
 };
+export const sc = (u: User) => u.scope ?? u.email;
 
 export const PLAN_CREDITS: Record<Plan, number> = { trial: 50, starter: 200, pro: 700, agency: 2000, enterprise: 10000 };
 const SESSION_TTL = 60 * 60 * 24 * 30;
@@ -40,7 +44,9 @@ export async function getUser(email: string): Promise<User | null> {
 }
 
 export async function saveUser(u: User) {
-  await db.set(`user:${u.email}`, u);
+  const { scope: _s, brandId: _b, ...persist } = u;
+  void _s; void _b;
+  await db.set(`user:${u.email}`, persist);
   await db.sadd("users:all", u.email);
 }
 
@@ -86,7 +92,12 @@ export async function currentUser(): Promise<User | null> {
   if (!token) return null;
   const email = await db.get<string>(`session:${token}`);
   if (!email) return null;
-  return getUser(email);
+  const u = await getUser(email);
+  if (!u) return null;
+  const { activeBrandId, scopeFor } = await import("./brands");
+  u.brandId = await activeBrandId(email);
+  u.scope = scopeFor(email, u.brandId);
+  return u;
 }
 
 export async function isAdmin(req: Request) {

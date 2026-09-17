@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentUser } from "@/lib/auth";
+import { currentUser, sc } from "@/lib/auth";
 import { getSchedule, runDaily, runWeekly, saveSchedule } from "@/lib/schedule";
 
 export const maxDuration = 300;
@@ -7,7 +7,7 @@ export const maxDuration = 300;
 export async function GET() {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  return NextResponse.json({ ok: true, schedule: await getSchedule(u.email) });
+  return NextResponse.json({ ok: true, schedule: await getSchedule(sc(u)) });
 }
 export async function PUT(req: Request) {
   const u = await currentUser();
@@ -16,7 +16,7 @@ export async function PUT(req: Request) {
   const patch: Record<string, boolean> = {};
   if (typeof b.weeklyPlan === "boolean") patch.weeklyPlan = b.weeklyPlan;
   if (typeof b.dailyBrief === "boolean") patch.dailyBrief = b.dailyBrief;
-  return NextResponse.json({ ok: true, schedule: await saveSchedule(u.email, patch) });
+  return NextResponse.json({ ok: true, schedule: await saveSchedule(sc(u), patch) });
 }
 /** POST {run: "weekly"|"daily"} → run now */
 export async function POST(req: Request) {

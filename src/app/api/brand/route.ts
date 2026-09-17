@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { currentUser } from "@/lib/auth";
+import { currentUser, sc } from "@/lib/auth";
 import { getBrand, saveBrand, type Brand } from "@/lib/brand";
 
 export async function GET() {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  return NextResponse.json({ ok: true, brand: await getBrand(u.email) });
+  return NextResponse.json({ ok: true, brand: await getBrand(sc(u)) });
 }
 
 export async function PUT(req: Request) {
@@ -31,6 +31,6 @@ export async function PUT(req: Request) {
     city: s(b.city, 60),
     updatedAt: new Date().toISOString(),
   };
-  await saveBrand(u.email, brand);
+  await saveBrand(sc(u), brand);
   return NextResponse.json({ ok: true, brand });
 }

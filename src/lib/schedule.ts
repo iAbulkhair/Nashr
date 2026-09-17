@@ -28,7 +28,7 @@ export async function latestBrief(email: string) {
 
 /** Weekly plan for one user. Returns what happened. */
 export async function runWeekly(user: User): Promise<string> {
-  const email = user.email;
+  const email = user.scope ?? user.email;
   const brand = await getBrand(email);
   if (!brand) return "no_brand";
   const sched = await getSchedule(email);
@@ -54,7 +54,7 @@ export async function runWeekly(user: User): Promise<string> {
 
 /** Daily brief: no model call, no credits. Pure summary from stored data. */
 export async function runDaily(user: User): Promise<Brief | null> {
-  const email = user.email;
+  const email = user.scope ?? user.email;
   const sched = await getSchedule(email);
   if (!sched.dailyBrief) return null;
   const brand = await getBrand(email);
@@ -87,12 +87,17 @@ export async function runDaily(user: User): Promise<Brief | null> {
   return brief;
 }
 
+/** One entry per (user, active brand). Extra brands get their own copy with scope set. */
 export async function allUsers(): Promise<User[]> {
+  const { listBrands, scopeFor } = await import("./brands");
   const emails = await db.smembers("users:all");
   const out: User[] = [];
   for (const e of emails) {
     const u = await getUser(e);
-    if (u) out.push(u);
+    if (!u) continue;
+    for (const b of (await listBrands(e)).filter((x) => x.status === "active")) {
+      out.push({ ...u, brandId: b.id, scope: scopeFor(e, b.id) });
+    }
   }
   return out;
 }
