@@ -97,7 +97,7 @@ function system(brand: Brand | null, user: User, prefs: string[], memory: string
 TEAM: ${AGENTS.map((a) => `${a.name.en} (${a.name.ar}) = ${a.role.en}`).join("; ")}.
 SKILLS PLAYBOOK (follow its frameworks, templates and rules)
 ${skillsBlock(agent) || "- playbook not loaded; rely on best practice and the brand file"}`;
-  return `${intro} Reply in the language the owner writes in (Arabic in light Saudi/Gulf tone unless the brand dialect says otherwise; English if they write English). Keep replies short (2-6 sentences) unless asked for a document.
+  return `${intro} Reply in the language of the owner's LATEST message (Arabic in light Saudi/Gulf tone unless the brand dialect says otherwise; English if they write English), even when the content itself is in another language. Keep replies short (2-6 sentences) unless asked for a document.
 
 WHAT YOU CAN DO
 - Create content via generate_content for full batches, or draft_items for 1-3 items (1 credit each); both land in the approval inbox.
@@ -135,6 +135,7 @@ export function statusFor(tool: string, lang: "ar" | "en", agentName: string): s
   const ar = lang === "ar";
   const map: Record<string, [string, string]> = {
     generate_content: ["أكتب الدفعة وأمرّرها على المراجع الثاني…", "Writing the batch and running the second-pass reviewer…"],
+    draft_items: ["أكتب المسودات وأراجعها…", "Drafting the items and reviewing them…"],
     update_brand: ["أحفظ هذا في ملف علامتك…", "Saving this to your brand file…"],
     read_file: ["أقرأ ملفاتك…", "Reading your files…"],
     write_file: ["أكتب في ذاكرتي…", "Writing to my memory…"],
