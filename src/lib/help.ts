@@ -1,0 +1,46 @@
+import type { Lang } from "./i18n";
+
+export type HelpTopic = { id: string; title: Record<Lang, string>; items: { q: Record<Lang, string>; a: Record<Lang, string> }[] };
+
+export const HELP: HelpTopic[] = [
+  { id: "start", title: { ar: "البداية", en: "Getting started" }, items: [
+    { q: { ar: "كيف أبدأ؟", en: "How do I start?" }, a: { ar: "سجّل، أعطِ نور رابط موقعك أو متجرك، وخلال دقيقة تكتب ملف علامتك وخطة 90 يوماً. ثم اطلب منها أول دفعة من الدردشة.", en: "Sign up, give Noor your website or store URL, and within a minute she writes your brand file and a 90-day plan. Then ask her for a first batch in chat." } },
+    { q: { ar: "موقعي لا يعمل بعد / ليس لدي موقع", en: "My site isn't live yet / I have no site" }, a: { ar: "اضغط «أفضّل تعبئة النموذج يدوياً» في صفحة البداية واكتب علامتك بنفسك. يمكنك تشغيل الإعداد من الرابط لاحقاً.", en: "Click “I'd rather fill the form manually” on the start page. You can run URL setup later." } },
+    { q: { ar: "كيف أغيّر اللهجة أو النبرة؟", en: "How do I change dialect or tone?" }, a: { ar: "من «ملف العلامة» في القائمة، أو قل لنور في الدردشة: «نبرتنا فاخرة وهادئة» وتحفظها.", en: "From “Brand file” in the menu, or tell Noor in chat: “our tone is premium and calm” and she saves it." } },
+    { q: { ar: "ما الفرق بين الدردشة و«اطلب من نور»؟", en: "Chat vs “Ask Noor”?" }, a: { ar: "نفس المحرك. الدردشة تفهم الطلبات الحرة وتتذكر السياق؛ «اطلب من نور» أزرار سريعة للأنواع الستة.", en: "Same engine. Chat understands free requests and remembers context; “Ask Noor” is quick buttons for the six types." } },
+  ] },
+  { id: "credits", title: { ar: "الكريدت والخطط", en: "Credits and plans" }, items: [
+    { q: { ar: "كم تكلّف كل مهمة؟", en: "What does each task cost?" }, a: { ar: "خطة الأسبوع 1 · 10 منشورات 10 · مقال 2 · 3 رسائل واتساب 3 · 5 إعلانات 5 · 3 منشورات Google 3 · صورة 1.", en: "Weekly plan 1 · 10 posts 10 · article 2 · 3 WhatsApp 3 · 5 ads 5 · 3 Google posts 3 · image 1." } },
+    { q: { ar: "ماذا يحدث عند انتهاء الكريدت؟", en: "What happens when credits run out?" }, a: { ar: "نور تخبرك وتوقف التوليد الجديد؛ ما في صندوقك يبقى. ارفع خطتك أو اطلب رصيداً إضافياً من صفحة الاشتراك.", en: "Noor tells you and pauses new generation; your inbox stays. Upgrade or request a top-up from Subscription." } },
+    { q: { ar: "التجربة المجانية؟", en: "The free trial?" }, a: { ar: "7 أيام، 50 كريدت، بدون بطاقة. بعدها تختار خطة: البداية 149، الاحتراف 399، الوكالة 799 ريال شهرياً.", en: "7 days, 50 credits, no card. Then pick a plan: Starter 149, Pro 399, Agency 799 SAR/month." } },
+    { q: { ar: "كيف أدفع؟", en: "How do I pay?" }, a: { ar: "من صفحة الاشتراك عبر رابط الدفع أو واتساب. يُفعَّل حسابك خلال ساعات العمل. فاتورة ضريبية عند الطلب.", en: "From Subscription via payment link or WhatsApp. Activated within business hours. VAT invoice on request." } },
+    { q: { ar: "كيف أكسب كريدت مجاناً؟", en: "How do I earn free credits?" }, a: { ar: "شارك رابط الإحالة من «اكسب كريدت»: 50 لك و50 لصديقك عند تسجيله.", en: "Share your referral link from “Earn credits”: 50 for you and 50 for your friend when they sign up." } },
+  ] },
+  { id: "inbox", title: { ar: "صندوق الموافقة والملفات", en: "Inbox and files" }, items: [
+    { q: { ar: "هل تنشر نور بدون إذني؟", en: "Does Noor publish without permission?" }, a: { ar: "لا. كل عنصر ينتظر اعتمادك، إلا الأنواع التي تفوّضها من صفحة الحوكمة.", en: "No. Every item waits for approval, except types you delegate in Governance." } },
+    { q: { ar: "كيف تتعلم نور من تعديلاتي؟", en: "How does Noor learn from my edits?" }, a: { ar: "كل تعديل أو رفض (مع السبب) يُكتب في preferences.md وتقرؤه في كل توليد لاحق. عادةً 20 تعديلاً تكفي لتثبيت صوتك.", en: "Every edit or rejection (with reason) is written to preferences.md and read on every later generation. About 20 edits lock in your voice." } },
+    { q: { ar: "ما هي الملفات؟", en: "What are the files?" }, a: { ar: "ذاكرة نور: brand.md، products.md، strategy.md، market-research.md، preferences.md. عدّلها أو أضف ملفاتك؛ تقرؤها كلها.", en: "Noor's memory: brand.md, products.md, strategy.md, market-research.md, preferences.md. Edit them or add your own; she reads them all." } },
+    { q: { ar: "كيف أستورد منتجاتي؟", en: "How do I import my products?" }, a: { ar: "الملفات → «استورد منتجات المتجر»، أو قل لنور «استوردي منتجاتي». تقرأ خريطة موقعك وصفحات المنتجات. إذا لم تجدها، أرسل لها 3-5 روابط منتجات.", en: "Files → “Import store products”, or tell Noor “import my products”. She reads your sitemap and product pages. If none found, send her 3–5 product links." } },
+    { q: { ar: "الصور؟", en: "Images?" }, a: { ar: "زر «ولّدي صورة» على أي منشور (1 كريدت). نور تكتب وصف الصورة من المنشور وعلامتك.", en: "“Generate image” on any post (1 credit). Noor writes the image prompt from the post and your brand." } },
+    { q: { ar: "التقويم؟", en: "Calendar?" }, a: { ar: "عيّن تاريخ النشر من صندوق الموافقة، ويظهر العنصر في التقويم.", en: "Set a publish date from the inbox; the item appears on the calendar." } },
+  ] },
+  { id: "connect", title: { ar: "الربط والنشر", en: "Connecting and publishing" }, items: [
+    { q: { ar: "ما المنصات المتصلة الآن؟", en: "Which platforms connect today?" }, a: { ar: "الآن: WordPress (كلمة مرور تطبيق)، WooCommerce، Klaviyo. X وShopify وGoogle وميتا وسلة وزد وLinkedIn وTikTok وسناب جاهزة تقنياً وتظهر فور اعتماد المنصات. اضغط «أريد هذا» لترتيب الأولوية.", en: "Today: WordPress (application password), WooCommerce, Klaviyo. X, Shopify, Google, Meta, Salla, Zid, LinkedIn, TikTok and Snap are built and appear the moment platforms approve us. Click “I want this” to set priority." } },
+    { q: { ar: "كيف أنشر مقالاً على WordPress؟", en: "How do I publish an article to WordPress?" }, a: { ar: "التكاملات → WordPress → اربط (رابط الموقع، اسم المستخدم، كلمة مرور التطبيق من الملف الشخصي في WordPress). ثم زر «انشر على wordpress» يظهر على كل مقال. يُحفظ كمسودة لتراجعه.", en: "Integrations → WordPress → Connect (site URL, username, application password from your WordPress profile). Then “Publish to wordpress” appears on every article. Saved as a draft for review." } },
+    { q: { ar: "أين تُحفظ رموز الوصول؟", en: "Where are tokens stored?" }, a: { ar: "مشفّرة (AES-256) في قاعدتنا، لا تُعرض لأحد، وتُحذف فوراً عند الفصل.", en: "Encrypted (AES-256) in our database, never displayed, deleted immediately on disconnect." } },
+    { q: { ar: "الواتساب؟", en: "WhatsApp?" }, a: { ar: "نور تكتب الرسائل الآن بقوالب جاهزة؛ الإرسال التلقائي يحتاج موافقة ميتا على WhatsApp Business API وهي قيد الطلب.", en: "Noor writes template-ready messages now; automatic sending needs Meta's WhatsApp Business API approval, in progress." } },
+  ] },
+  { id: "automation", title: { ar: "المهام المجدولة والحوكمة", en: "Scheduled tasks and governance" }, items: [
+    { q: { ar: "ما الذي تفعله نور من تلقاء نفسها؟", en: "What does Noor do on her own?" }, a: { ar: "خطة أسبوعية كل أحد 06:00 (1 كريدت) وملخص صباحي يومي 08:00 (مجاني). أوقفهما أو شغّلهما من «المهام».", en: "A weekly plan every Sunday 06:00 (1 credit) and a daily morning brief 08:00 (free). Toggle or run now from “Tasks”." } },
+    { q: { ar: "الحوكمة؟", en: "Governance?" }, a: { ar: "اعتماد تلقائي لأنواع محددة، المراجع الثاني، التعلّم من تعديلاتك، منع الشرطات الطويلة، الحد الأسبوعي، ودقائق التنبيه قبل النشر.", en: "Auto-approve per type, second reviewer, learning from edits, no em-dashes, weekly cap, and notify-before-publish minutes." } },
+    { q: { ar: "المراجع الثاني؟", en: "The second reviewer?" }, a: { ar: "نموذج ثانٍ يفحص كل عنصر للالتزام (صحة، عقار، قانون) وصوت العلامة قبل وصوله إليك. يبطئ التوليد قليلاً؛ يمكن إيقافه.", en: "A second model checks every item for compliance (health, real estate, legal) and brand voice before it reaches you. Slightly slower; can be turned off." } },
+  ] },
+  { id: "mcp", title: { ar: "MCP و Claude", en: "MCP and Claude" }, items: [
+    { q: { ar: "كيف أستخدم نور داخل Claude؟", en: "How do I use Noor inside Claude?" }, a: { ar: "من صفحة MCP أنشئ رمزاً، ثم في Claude Code: claude mcp add --transport http nashr https://nashr-tau.vercel.app/api/mcp --header \"Authorization: Bearer <الرمز>\". الأدوات: ask_noor، generate_content، list_inbox، read_file.", en: "On the MCP page generate a token, then in Claude Code: claude mcp add --transport http nashr https://nashr-tau.vercel.app/api/mcp --header \"Authorization: Bearer <token>\". Tools: ask_noor, generate_content, list_inbox, read_file." } },
+    { q: { ar: "فقدت الرمز؟", en: "Lost the token?" }, a: { ar: "أنشئ رمزاً جديداً؛ القديم يُلغى تلقائياً.", en: "Generate a new one; the old one is revoked automatically." } },
+  ] },
+  { id: "privacy", title: { ar: "الخصوصية والحساب", en: "Privacy and account" }, items: [
+    { q: { ar: "هل تُدرَّب النماذج على بياناتي؟", en: "Are models trained on my data?" }, a: { ar: "لا. تفضيلاتك خاصة بحسابك فقط. راجع سياسة الخصوصية.", en: "No. Your preferences are private to your account. See the privacy policy." } },
+    { q: { ar: "كيف أحذف حسابي؟", en: "How do I delete my account?" }, a: { ar: "راسلنا من نموذج الدعم أدناه أو على hello@nashr.ai؛ نحذف كل شيء خلال 30 يوماً ونرسل لك تأكيداً.", en: "Message us via the support form below or hello@nashr.ai; we delete everything within 30 days and confirm." } },
+  ] },
+];

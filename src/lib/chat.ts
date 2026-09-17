@@ -12,6 +12,7 @@ import { importCatalog } from "./catalog";
 import { generateImage } from "./images";
 import { listConnections } from "./connectors/store";
 import { publishTask, targetsFor } from "./connectors/publish";
+import { HELP } from "./help";
 import { IMAGE_COST, getTask } from "./brand";
 
 export type ChatMsg = { role: "user" | "assistant"; content: string; at: string; actions?: string[] };
@@ -95,6 +96,10 @@ OWNER PREFERENCES: ${prefs.slice(0, 15).join(" | ") || "none yet"}.
 
 MEMORY FILES
 ${memory || "(empty)"}
+
+HOW NASHR WORKS (answer "how do I…" questions from this; point to the page)
+${HELP.map((t) => t.items.map((i) => `- ${i.q.en} → ${i.a.en}`).join("\n")).join("\n")}
+Pages: /app/chat (you), /app (inbox), /app/files, /app/tasks, /app/governance, /app/integrations, /app/mcp, /app/billing, /app/refer, /app/help.
 
 RULES: never invent prices/claims; respect Saudi advertising norms; one clear next step per reply; when you used a tool, say what happened in one line. Do not include internal or system XML tags in your response.`;
 }
