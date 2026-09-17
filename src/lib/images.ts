@@ -1,3 +1,4 @@
+import { meter } from "./usage";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Brand, Task } from "./brand";
 
@@ -7,7 +8,7 @@ import type { Brand, Task } from "./brand";
  */
 export type ImageResult = { url: string; prompt: string; provider: "fal" | "placeholder" };
 
-async function imagePrompt(brand: Brand, task: Task): Promise<string> {
+async function imagePrompt(brand: Brand, task: Task, email?: string): Promise<string> {
   const fallback = `Premium ${brand.industry} product photo for ${brand.name}, Gulf aesthetic, warm light, clean background, no text, 1:1`;
   if (!process.env.ANTHROPIC_API_KEY) return fallback;
   const client = new Anthropic();
@@ -19,12 +20,13 @@ async function imagePrompt(brand: Brand, task: Task): Promise<string> {
     system: "You write one image-generation prompt (English, ≤ 60 words) for a social post. Photographic, specific subject, lighting, composition, Gulf/Saudi cultural fit (modest, no faces unless generic, no text or logos in image, no alcohol). Output the prompt only.",
     messages: [{ role: "user", content: `Brand: ${brand.name} (${brand.industry}). Tone: ${brand.tone}. Products: ${brand.products.slice(0, 300)}.\nChannel: ${task.channel}\nPost:\n${(task.editedBody ?? task.body).slice(0, 1200)}` }],
   });
+  await meter(email, res.model, "image_prompt", res.usage);
   const text = res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join(" ").trim();
   return text || fallback;
 }
 
-export async function generateImage(brand: Brand, task: Task): Promise<ImageResult> {
-  const prompt = await imagePrompt(brand, task);
+export async function generateImage(brand: Brand, task: Task, email?: string): Promise<ImageResult> {
+  const prompt = await imagePrompt(brand, task, email);
   const key = process.env.FAL_KEY;
   if (!key) {
     return { url: `https://placehold.co/1024x1024/0f3d3a/f2b33d.png?text=${encodeURIComponent(brand.name.slice(0, 24))}`, prompt, provider: "placeholder" };

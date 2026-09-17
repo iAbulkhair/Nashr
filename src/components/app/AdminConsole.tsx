@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 
-type U = { email: string; name: string; phone: string; plan: string; credits: number; trialEnds: string; createdAt: string };
+type U = { email: string; name: string; phone: string; plan: string; credits: number; trialEnds: string; createdAt: string; renewedAt?: string | null; tokens?: number; usd?: number; calls?: number };
 type T = { id: string; type: string; channel: string; title: string; status: string; createdAt: string; body: string; editedBody?: string };
 
 export default function AdminConsole() {
@@ -55,7 +55,7 @@ export default function AdminConsole() {
       <div className="overflow-x-auto rounded-xl border border-ink/10 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-salt-dim text-left text-xs uppercase tracking-wide text-ink/60">
-            <tr><th className="p-3">Email</th><th>Name</th><th>Phone</th><th>Plan</th><th>Credits</th><th>Trial ends</th><th>Joined</th><th></th></tr>
+            <tr><th className="p-3">Email</th><th>Name</th><th>Phone</th><th>Plan</th><th>Credits</th><th>Tokens (mo)</th><th>Cost $ (mo)</th><th>Trial ends</th><th>Joined</th><th></th></tr>
           </thead>
           <tbody>
             {users.map((u) => (
@@ -69,6 +69,8 @@ export default function AdminConsole() {
                   </select>
                 </td>
                 <td className="font-mono">{u.credits}</td>
+                <td className="font-mono text-xs" title={`${u.calls ?? 0} model calls`}>{((u.tokens ?? 0) / 1000).toFixed(1)}k</td>
+                <td className="font-mono text-xs">{(u.usd ?? 0).toFixed(2)}</td>
                 <td className="font-mono text-xs">{u.plan === "trial" ? u.trialEnds.slice(0, 10) : "—"}</td>
                 <td className="font-mono text-xs">{u.createdAt.slice(0, 10)}</td>
                 <td className="p-3"><button disabled={busy} onClick={() => addCredits(u.email)} className="rounded-full border border-ink/20 px-3 py-1 text-xs">+ credits</button></td>
@@ -77,7 +79,7 @@ export default function AdminConsole() {
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-ink/50">Changing the plan adds that plan&apos;s monthly credits on top of the current balance. Use &quot;+ credits&quot; for top-ups or corrections.</p>
+      <p className="text-xs text-ink/50">Changing the plan resets the balance to that plan&apos;s monthly allowance and starts the renewal cycle (balance resets on the 1st of each month, UTC). Use &quot;+ credits&quot; for top-ups within the month. Tokens and cost are this month&apos;s real model usage.</p>
 
       {sel && (
         <div className="rounded-xl border border-oasis/30 bg-white p-5">

@@ -1,6 +1,7 @@
+import { adjust } from "./credits";
 import { createHash } from "crypto";
 import { db } from "./db";
-import { getUser, saveUser } from "./auth";
+import { getUser } from "./auth";
 
 export const REFERRAL_CREDITS = 50;
 
@@ -21,9 +22,8 @@ export async function applyReferral(newEmail: string, code: string) {
   if (!refEmail || refEmail === newEmail) return false;
   const [ref, nu] = await Promise.all([getUser(refEmail), getUser(newEmail)]);
   if (!ref || !nu) return false;
-  ref.credits += REFERRAL_CREDITS;
-  nu.credits += REFERRAL_CREDITS;
-  await Promise.all([saveUser(ref), saveUser(nu)]);
+  await adjust(refEmail, REFERRAL_CREDITS);
+  await adjust(newEmail, REFERRAL_CREDITS);
   await db.lpush(`referrals:${refEmail}`, JSON.stringify({ email: newEmail, at: new Date().toISOString() }));
   await db.set(`referredBy:${newEmail}`, refEmail);
   return true;

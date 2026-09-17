@@ -1,3 +1,4 @@
+import { meter } from "./usage";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Brand } from "./brand";
 import { activeSeasons } from "./seasons";
@@ -46,7 +47,7 @@ function mock(site: SiteSnapshot, lang: "ar" | "en"): OnboardResult {
   };
 }
 
-export async function buildFromSite(site: SiteSnapshot, lang: "ar" | "en", hints?: string): Promise<OnboardResult> {
+export async function buildFromSite(site: SiteSnapshot, lang: "ar" | "en", hints?: string, email?: string): Promise<OnboardResult> {
   if (!process.env.ANTHROPIC_API_KEY) return mock(site, lang);
   const client = new Anthropic();
   const seasons = activeSeasons().map((s) => `${s.name} in ${s.daysLeft} days`).join("; ") || "none in 35 days";
@@ -82,6 +83,7 @@ ${site.text.slice(0, 9000)}`;
       output_config: { effort: "medium", format: { type: "json_schema", schema: SCHEMA } },
     })
     .finalMessage();
+  await meter(email, msg.model, "onboard", msg.usage);
   const text = msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("");
   const j = JSON.parse(text) as { brand: Omit<Brand, "website" | "banned" | "preferred" | "updatedAt">; brand_md: string; market_research_md: string; strategy_md: string };
   const brand: Brand = { ...j.brand, website: site.url, banned: "", preferred: "", updatedAt: new Date().toISOString() } as Brand;

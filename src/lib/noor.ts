@@ -1,3 +1,4 @@
+import { meter } from "./usage";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Brand, TaskType } from "./brand";
 import { pickPlaybook } from "./playbooks";
@@ -101,7 +102,7 @@ function mock(type: TaskType, brand: Brand): Generated[] {
   }));
 }
 
-export type GenOptions = { memory?: string; reviewer?: boolean; noEmDash?: boolean };
+export type GenOptions = { /** account email for token metering */ meter?: string; memory?: string; reviewer?: boolean; noEmDash?: boolean };
 
 function stripDashes(items: Generated[]) {
   return items.map((i) => ({ ...i, body: i.body.replace(/\s*[—–]\s*/g, ", ") }));
@@ -127,18 +128,20 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
       .stream({ ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" })
       .finalMessage();
     if (msg.stop_reason === "refusal") throw new Error("refused");
+    await meter(opts.meter, msg.model, "generate", msg.usage);
     text = msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
   } catch (e) {
     // Fallback parameter not accepted (older org/plan) → plain request.
     if (e instanceof Anthropic.BadRequestError) {
       const msg = await client.messages.stream(params).finalMessage();
+      await meter(opts.meter, msg.model, "generate", msg.usage);
       text = msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
     } else {
       throw e;
     }
   }
   let items = parseItems(text);
-  if (opts.reviewer !== false) items = await critique(client, brand, prefs, type, items);
+  if (opts.reviewer !== false) items = await critique(client, brand, prefs, type, items, opts.meter);
   if (opts.noEmDash) items = stripDashes(items);
   return items;
 }
@@ -147,7 +150,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
  * Second pass: a cheaper model reviews every item against the brand file, Gulf
  * compliance rules and the owner's preferences, and rewrites what fails.
  */
-async function critique(client: Anthropic, brand: Brand, prefs: string[], type: TaskType, items: Generated[]): Promise<Generated[]> {
+async function critique(client: Anthropic, brand: Brand, prefs: string[], type: TaskType, items: Generated[], meterEmail?: string): Promise<Generated[]> {
   if (!items.length) return items;
   try {
     const review = await client.messages.create({
@@ -170,6 +173,7 @@ Return ONLY a JSON array, same length and order as input: {"ok": true} if the it
         },
       ],
     });
+    await meter(meterEmail, review.model, "review", review.usage);
     const raw = review.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
     const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
     const verdicts = JSON.parse(cleaned.slice(cleaned.indexOf("["), cleaned.lastIndexOf("]") + 1)) as Array<{ ok: boolean; body?: string }>;

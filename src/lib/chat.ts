@@ -1,8 +1,9 @@
+import { charge, refund } from "./credits";
+import { meter } from "./usage";
 import Anthropic from "@anthropic-ai/sdk";
 import { randomBytes } from "crypto";
 import { db } from "./db";
 import type { User } from "./auth";
-import { saveUser } from "./auth";
 import { TASK_COST, getBrand, listPreferences, saveBrand, saveTask, listTasks, type Brand, type Task, type TaskType } from "./brand";
 import { generate } from "./noor";
 import { listFiles, memoryBlock, readFile, writeFile } from "./files";
@@ -132,6 +133,7 @@ export async function chat(user: User, text: string, conv?: string): Promise<Cha
     const res = await client.messages
       .stream({ model: "claude-opus-5", max_tokens: 8000, system: sys, messages, tools: TOOLS, thinking: { type: "adaptive" }, output_config: { effort: "medium" } })
       .finalMessage();
+    await meter(user.email, res.model, "chat", res.usage);
     if (res.stop_reason === "refusal") break;
     messages.push({ role: "assistant", content: res.content });
     const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
@@ -169,15 +171,21 @@ async function runTool(user: User, name: string, input: Record<string, unknown>,
       const brand = await getBrand(email);
       if (!brand) return "No brand file yet. Ask the owner to run onboarding.";
       if (user.plan === "trial" && new Date(user.trialEnds) < new Date()) return "Trial ended. Owner must subscribe.";
-      if (user.credits < cost) return `Insufficient credits: need ${cost}, have ${user.credits}.`;
+      const paid = await charge(user.email, cost);
+      if (!paid.ok) return `Insufficient credits: need ${cost}, have ${paid.credits}.`;
+      user.credits = paid.credits;
       const gov = await getGov(email);
-      const items = await generate(type, brand, await listPreferences(email), String(input.notes ?? ""), { memory: await memoryBlock(email), reviewer: gov.reviewer, noEmDash: gov.noEmDash });
+      let items;
+      try {
+        items = await generate(type, brand, await listPreferences(email), String(input.notes ?? ""), { memory: await memoryBlock(email), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email });
+      } catch (e) {
+        user.credits = await refund(user.email, cost);
+        throw e;
+      }
       for (const it of items) {
         const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: gov.autoApprove[type] ? "approved" : "pending", createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar" };
         await saveTask(email, t, true);
       }
-      user.credits -= cost;
-      await saveUser(user);
       actions.push(`generated:${type}:${items.length}`);
       return `Created ${items.length} ${type} item(s) in the inbox${gov.autoApprove[type] ? " (auto-approved per governance)" : ""}. Credits left: ${user.credits}. Titles: ${items.map((i) => i.title).join(" | ")}`;
     }
@@ -232,13 +240,19 @@ async function runTool(user: User, name: string, input: Record<string, unknown>,
       const brand = await getBrand(email);
       const t = await getTask(email, String(input.task_id));
       if (!brand || !t) return "Item not found.";
-      if (user.credits < IMAGE_COST) return "Insufficient credits for an image.";
-      const img = await generateImage(brand, t);
+      const paid = await charge(user.email, IMAGE_COST);
+      if (!paid.ok) return "Insufficient credits for an image.";
+      user.credits = paid.credits;
+      let img;
+      try {
+        img = await generateImage(brand, t, user.email);
+      } catch (e) {
+        user.credits = await refund(user.email, IMAGE_COST);
+        throw e;
+      }
       t.imageUrl = img.url;
       t.imagePrompt = img.prompt;
       await saveTask(email, t);
-      user.credits -= IMAGE_COST;
-      await saveUser(user);
       actions.push(`image:${t.id}`);
       return `Image generated for "${t.title}" (${img.provider}). It's attached to the item in the inbox. Credits left: ${user.credits}.`;
     }

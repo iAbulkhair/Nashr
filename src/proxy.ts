@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const LANGS = ["ar", "en"] as const;
-type Lang = (typeof LANGS)[number];
+type Lang = "ar" | "en";
 
 function pickLang(req: NextRequest): Lang {
   const c = req.cookies.get("nashr_lang")?.value;

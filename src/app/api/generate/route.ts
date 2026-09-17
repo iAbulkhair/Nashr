@@ -1,6 +1,7 @@
+import { charge, refund } from "@/lib/credits";
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
-import { currentUser, saveUser, sc } from "@/lib/auth";
+import { currentUser, sc } from "@/lib/auth";
 import { TASK_COST, getBrand, listPreferences, saveTask, type Task, type TaskType } from "@/lib/brand";
 import { generate } from "@/lib/noor";
 import { memoryBlock } from "@/lib/files";
@@ -18,14 +19,17 @@ export async function POST(req: Request) {
   if (!brand) return NextResponse.json({ ok: false, error: "no_brand" }, { status: 400 });
   if (u.plan === "trial" && new Date(u.trialEnds) < new Date()) return NextResponse.json({ ok: false, error: "trial_over" }, { status: 402 });
   const cost = TASK_COST[type];
-  if (u.credits < cost) return NextResponse.json({ ok: false, error: "no_credits", need: cost, have: u.credits }, { status: 402 });
+  const paid = await charge(u.email, cost);
+  if (!paid.ok) return NextResponse.json({ ok: false, error: "no_credits", need: cost, have: paid.credits }, { status: 402 });
+  u.credits = paid.credits;
 
   const gov = await getGov(sc(u));
   let items;
   try {
-    items = await generate(type, brand, await listPreferences(sc(u)), b.notes, { memory: await memoryBlock(sc(u)), reviewer: gov.reviewer, noEmDash: gov.noEmDash });
+    items = await generate(type, brand, await listPreferences(sc(u)), b.notes, { memory: await memoryBlock(sc(u)), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: u.email });
   } catch (e) {
     console.error("generate failed", e);
+    u.credits = await refund(u.email, cost);
     return NextResponse.json({ ok: false, error: "generation_failed" }, { status: 502 });
   }
   const lang = brand.languages[0] ?? "ar";
@@ -35,7 +39,5 @@ export async function POST(req: Request) {
     await saveTask(sc(u), t, true);
     created.push(t);
   }
-  u.credits -= cost;
-  await saveUser(u);
   return NextResponse.json({ ok: true, created: created.length, credits: u.credits });
 }

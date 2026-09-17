@@ -22,7 +22,7 @@ export async function POST(req: Request) {
         send({ step: "crawl", status: site.ok ? "done" : "warn", detail: site.ok ? `${site.platform !== "unknown" ? site.platform + " · " : ""}${site.title || site.url}` : `Site unreachable (${site.error}). Building from the domain and your hints.` });
         send({ step: "research", status: "running" });
         send({ step: "brand", status: "running" });
-        const r = await buildFromSite(site, u.lang, b.hints);
+        const r = await buildFromSite(site, u.lang, b.hints, u.email);
         send({ step: "research", status: "done" });
         await saveBrand(sc(u), r.brand);
         send({ step: "brand", status: "done", brand: r.brand });

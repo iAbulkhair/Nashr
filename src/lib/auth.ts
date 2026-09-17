@@ -15,6 +15,8 @@ export type User = {
   trialEnds: string; // ISO
   createdAt: string; // ISO
   lang: "ar" | "en";
+  /** YYYY-MM of the last monthly credit renewal (paid plans). */
+  renewedAt?: string;
   /** Runtime only: storage scope of the active brand (email for the default brand). Never persisted. */
   scope?: string;
   brandId?: string;

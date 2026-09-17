@@ -13,6 +13,9 @@ type Store = {
   sadd(key: string, member: string): Promise<number>;
   smembers(key: string): Promise<string[]>;
   incrby(key: string, n: number): Promise<number>;
+  /** SET NX with TTL. True when this caller won the lock. */
+  lock(key: string, ttlSeconds: number): Promise<boolean>;
+  unlock(key: string): Promise<void>;
 };
 
 function upstash(): Store | null {
@@ -46,6 +49,12 @@ function upstash(): Store | null {
     },
     async incrby(key, n) {
       return await r.incrby(key, n);
+    },
+    async lock(key, ttl) {
+      return (await r.set(key, "1", { nx: true, ex: ttl })) === "OK";
+    },
+    async unlock(key) {
+      await r.del(key);
     },
   };
 }
@@ -87,6 +96,15 @@ function memory(): Store {
       const v = ((m.kv.get(key) as number) ?? 0) + n;
       m.kv.set(key, v);
       return v;
+    },
+    async lock(key, ttl) {
+      const until = m.kv.get(key) as number | undefined;
+      if (until && until > Date.now()) return false;
+      m.kv.set(key, Date.now() + ttl * 1000);
+      return true;
+    },
+    async unlock(key) {
+      m.kv.delete(key);
     },
   };
 }

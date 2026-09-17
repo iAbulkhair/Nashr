@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import { db } from "./db";
-import { getUser, saveUser, type User } from "./auth";
+import { getUser, type User } from "./auth";
+import { charge, refund } from "./credits";
 import { TASK_COST, getBrand, listPreferences, listTasks, saveTask, type Task } from "./brand";
 import { generate } from "./noor";
 import { memoryBlock } from "./files";
@@ -35,19 +36,25 @@ export async function runWeekly(user: User): Promise<string> {
   if (!sched.weeklyPlan) return "off";
   const gov = await getGov(email);
   const cost = TASK_COST.weekly_plan;
-  if (user.credits < cost) return "no_credits";
   if (user.plan === "trial" && new Date(user.trialEnds) < new Date()) return "trial_over";
   // weekly cap: count items Noor created on her own in the last 7 days
   const weekAgo = Date.now() - 7 * 864e5;
   const auto = (await listTasks(email)).filter((t) => t.source === "scheduled" && new Date(t.createdAt).getTime() > weekAgo).length;
   if (auto >= gov.weeklyCap) return "cap_reached";
-  const items = await generate("weekly_plan", brand, await listPreferences(email), "This is the automatic Sunday plan. Reference strategy.md phases and the calendar.", { memory: await memoryBlock(email), reviewer: gov.reviewer, noEmDash: gov.noEmDash });
+  const paid = await charge(user.email, cost);
+  if (!paid.ok) return "no_credits";
+  user.credits = paid.credits;
+  let items;
+  try {
+    items = await generate("weekly_plan", brand, await listPreferences(email), "This is the automatic Sunday plan. Reference strategy.md phases and the calendar.", { memory: await memoryBlock(email), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email });
+  } catch (e) {
+    user.credits = await refund(user.email, cost);
+    throw e;
+  }
   for (const it of items) {
     const t: Task = { id: randomBytes(8).toString("hex"), type: "weekly_plan", channel: it.channel, title: it.title, body: it.body, status: gov.autoApprove.weekly_plan ? "approved" : "pending", createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "scheduled" };
     await saveTask(email, t, true);
   }
-  user.credits -= cost;
-  await saveUser(user);
   await saveSchedule(email, { lastWeekly: new Date().toISOString() });
   return `ok:${items.length}`;
 }

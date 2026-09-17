@@ -4,6 +4,10 @@ import type { Lang } from "@/lib/i18n";
 
 const COOKIE = "nashr_lang";
 
+function remember(to: Lang) {
+  document.cookie = `${COOKIE}=${to}; path=/; max-age=31536000; samesite=lax`;
+}
+
 /** Swap the /ar ↔ /en prefix but keep the rest of the path. */
 export function swapLang(path: string, to: Lang): string {
   const m = path.match(/^\/(ar|en)(\/.*)?$/);
@@ -18,7 +22,7 @@ export default function LangToggle({ lang, tone = "dark", size = "md" }: { lang:
   function go(to: Lang, e: React.MouseEvent<HTMLAnchorElement>) {
     if (to === lang) { e.preventDefault(); return; }
     e.preventDefault();
-    document.cookie = `${COOKIE}=${to}; path=/; max-age=31536000; samesite=lax`;
+    remember(to);
     router.push(swapLang(path, to) + window.location.search + window.location.hash);
   }
 

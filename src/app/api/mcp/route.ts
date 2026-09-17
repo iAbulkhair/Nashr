@@ -1,3 +1,4 @@
+import { charge, refund } from "@/lib/credits";
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { userFromBearer } from "@/lib/mcp";
@@ -6,7 +7,6 @@ import { TASK_COST, getBrand, listPreferences, listTasks, saveTask, type Task, t
 import { generate } from "@/lib/noor";
 import { listFiles, memoryBlock, readFile } from "@/lib/files";
 import { getGov } from "@/lib/governance";
-import { saveUser } from "@/lib/auth";
 
 export const maxDuration = 300;
 
@@ -66,15 +66,21 @@ export async function POST(req: Request) {
         const brand = await getBrand((user.scope ?? user.email));
         if (!brand) return ok(id, { ...text("No brand file yet. Run onboarding in the app first."), isError: true });
         const cost = TASK_COST[type];
-        if (user.credits < cost) return ok(id, { ...text(`Insufficient credits: need ${cost}, have ${user.credits}.`), isError: true });
+        const paid = await charge(user.email, cost);
+        if (!paid.ok) return ok(id, { ...text(`Insufficient credits: need ${cost}, have ${paid.credits}.`), isError: true });
+        user.credits = paid.credits;
         const gov = await getGov((user.scope ?? user.email));
-        const items = await generate(type, brand, await listPreferences((user.scope ?? user.email)), String(args.notes ?? ""), { memory: await memoryBlock((user.scope ?? user.email)), reviewer: gov.reviewer, noEmDash: gov.noEmDash });
+        let items;
+        try {
+          items = await generate(type, brand, await listPreferences((user.scope ?? user.email)), String(args.notes ?? ""), { memory: await memoryBlock((user.scope ?? user.email)), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email });
+        } catch (e) {
+          user.credits = await refund(user.email, cost);
+          throw e;
+        }
         for (const it of items) {
           const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: gov.autoApprove[type] ? "approved" : "pending", createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat" };
           await saveTask((user.scope ?? user.email), t, true);
         }
-        user.credits -= cost;
-        await saveUser(user);
         return ok(id, text(`Created ${items.length} ${type} item(s). Credits left: ${user.credits}.\n\n` + items.map((i) => `## ${i.title} (${i.channel})\n${i.body}`).join("\n\n")));
       }
       case "list_inbox": {
