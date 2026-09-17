@@ -2,7 +2,7 @@ import type { Lang } from "./i18n";
 
 const ar = {
   appName: "نشر",
-  nav: { inbox: "صندوق الموافقة", generate: "اطلب من نور", brand: "ملف العلامة", billing: "الاشتراك", logout: "خروج", credits: "كريدت", chat: "نور", files: "الملفات", governance: "الحوكمة", tasks: "المهام", calendar: "التقويم", refer: "اكسب كريدت", integrations: "التكاملات", inspo: "إلهام" },
+  nav: { inbox: "صندوق الموافقة", generate: "اطلب من نور", brand: "ملف العلامة", billing: "الاشتراك", logout: "خروج", credits: "كريدت", chat: "نور", files: "الملفات", governance: "الحوكمة", tasks: "المهام", calendar: "التقويم", refer: "اكسب كريدت", integrations: "التكاملات", inspo: "إلهام", menu: "القائمة", workspace: "مساحة العمل", settings: "الإعدادات" },
   start: {
     title: "أعطي نور رابط موقعك.", sub: "تقرأه، تبحث عن سوقك، وتكتب ملفات علامتك أمامك خلال دقيقة. بدون نماذج.",
     url: "رابط الموقع أو المتجر (سلة / زد / شوبيفاي / أي موقع)", hints: "أي شيء تبيه تعرفه نور؟ (اختياري) مثال: نبيع عطور، جمهورنا شباب الرياض، ما نبي كلمة رخيص",
@@ -10,7 +10,7 @@ const ar = {
     steps: { crawl: "أقرأ موقعك", research: "أبحث عن سوقك ومنافسيك", brand: "أكتب ملف العلامة", file: "حفظت ملفاً", complete: "جاهز! خذني للدردشة مع نور", error: "حصل خطأ. جرّب مرة أخرى أو عبّئ النموذج يدوياً." },
   },
   chat: { title: "نور", placeholder: "اكتب لنور… مثال: جهزي 10 منشورات لليوم الوطني", send: "أرسل", thinking: "نور تفكر…", empty: "مرحباً! أنا نور. اطلب مني محتوى، أو اسألني عن خطتك، أو خبرني بأي شيء عن علامتك وسأتذكره.", suggestions: ["اكتبي خطة الأسبوع", "10 منشورات لليوم الوطني", "3 رسائل واتساب لاسترجاع السلات", "ما الذي بانتظار موافقتي؟", "نبرتنا فاخرة وهادئة، تذكري ذلك"] },
-  files: { title: "الملفات", sub: "ذاكرة نور. تقرأها في كل عملية توليد. عدّل ما تشاء.", empty: "لا ملفات بعد. شغّل الإعداد من رابط موقعك.", edit: "تعديل", save: "حفظ", cancel: "إلغاء", delete: "حذف", newFile: "ملف جديد", by: { noor: "كتبته نور", user: "كتبته أنت" } },
+  files: { title: "الملفات", sub: "ذاكرة نور. تقرأها في كل عملية توليد. عدّل ما تشاء.", empty: "لا ملفات بعد. شغّل الإعداد من رابط موقعك.", edit: "تعديل", save: "حفظ", cancel: "إلغاء", delete: "حذف", newFile: "ملف جديد", by: { noor: "كتبته نور", user: "كتبته أنت" }, importCatalog: "استورد منتجات المتجر", importing: "أقرأ خريطة الموقع وصفحات المنتجات…", imported: "تم استيراد", importFail: "ما لقيت صفحات منتجات. أرسل لنور 3-5 روابط منتجات في الدردشة." },
   governance: {
     title: "الحوكمة", sub: "تحكّم بما تفعله نور وحدها وما ينتظر موافقتك.",
     autoApprove: "اعتماد تلقائي (يتجاوز صندوق الموافقة)", autoApproveSub: "اختر الأنواع التي تثق بها. الباقي ينتظرك.",
@@ -52,7 +52,7 @@ const ar = {
   inspo: { title: "إلهام خليجي", sub: "أنماط تنجح في السعودية والخليج، بالقناة والقطاع. اضغط «استخدم كمرجع» ونور تبني عليه.", use: "استخدم كمرجع", why: "لماذا ينجح", sample: "مثال", all: "الكل", channel: "القناة", kind: "النوع", kinds: { hook: "هوك", offer: "عرض", seasonal: "موسمي", ugc: "UGC", retention: "احتفاظ", launch: "إطلاق", education: "توعية" } },
   inbox: {
     title: "صندوق الموافقة", empty: "لا يوجد شيء بانتظارك. اطلب من نور أول دفعة.", pending: "بانتظارك", approved: "معتمد", rejected: "مرفوض", all: "الكل",
-    approve: "اعتمد", reject: "ارفض", edit: "عدّل", save: "احفظ التعديل", cancel: "إلغاء", copy: "انسخ", copied: "تم النسخ", why: "سبب الرفض (تتعلم منه نور)", regenerate: "اطلب دفعة جديدة", date: "تاريخ النشر", brief: "ملخص نور",
+    approve: "اعتمد", reject: "ارفض", edit: "عدّل", save: "احفظ التعديل", cancel: "إلغاء", copy: "انسخ", copied: "تم النسخ", why: "سبب الرفض (تتعلم منه نور)", regenerate: "اطلب دفعة جديدة", date: "تاريخ النشر", brief: "ملخص نور", image: "ولّدي صورة", imaging: "نور ترسم…", imageFail: "تعذّر توليد الصورة.", download: "تنزيل",
   },
   billing: {
     title: "الاشتراك", current: "خطتك الحالية", credits: "الكريدت المتبقي", trialEnds: "تنتهي التجربة",
@@ -63,7 +63,7 @@ const ar = {
 
 const en: typeof ar = {
   appName: "Nashr",
-  nav: { inbox: "Approval inbox", generate: "Ask Noor", brand: "Brand file", billing: "Subscription", logout: "Log out", credits: "credits", chat: "Noor", files: "Files", governance: "Governance", tasks: "Tasks", calendar: "Calendar", refer: "Earn credits", integrations: "Integrations", inspo: "Inspiration" },
+  nav: { inbox: "Approval inbox", generate: "Ask Noor", brand: "Brand file", billing: "Subscription", logout: "Log out", credits: "credits", chat: "Noor", files: "Files", governance: "Governance", tasks: "Tasks", calendar: "Calendar", refer: "Earn credits", integrations: "Integrations", inspo: "Inspiration", menu: "Menu", workspace: "Workspace", settings: "Settings" },
   start: {
     title: "Give Noor your website.", sub: "She reads it, researches your market, and writes your brand files in front of you in about a minute. No forms.",
     url: "Website or store URL (Salla / Zid / Shopify / any site)", hints: "Anything Noor should know? (optional) e.g. we sell perfume, audience is young Riyadh, never say 'cheap'",
@@ -71,7 +71,7 @@ const en: typeof ar = {
     steps: { crawl: "Reading your website", research: "Researching your market and competitors", brand: "Writing your brand file", file: "Saved a file", complete: "Done! Take me to chat with Noor", error: "Something failed. Try again or fill the form manually." },
   },
   chat: { title: "Noor", placeholder: "Message Noor… e.g. prepare 10 posts for National Day", send: "Send", thinking: "Noor is thinking…", empty: "Hi! I'm Noor. Ask me for content, ask about your plan, or tell me anything about your brand and I'll remember it.", suggestions: ["Write this week's plan", "10 posts for National Day", "3 WhatsApp cart-recovery messages", "What's waiting for my approval?", "Our tone is premium and calm, remember that"] },
-  files: { title: "Files", sub: "Noor's memory. She reads these on every generation. Edit anything.", empty: "No files yet. Run setup from your website URL.", edit: "Edit", save: "Save", cancel: "Cancel", delete: "Delete", newFile: "New file", by: { noor: "written by Noor", user: "written by you" } },
+  files: { title: "Files", sub: "Noor's memory. She reads these on every generation. Edit anything.", empty: "No files yet. Run setup from your website URL.", edit: "Edit", save: "Save", cancel: "Cancel", delete: "Delete", newFile: "New file", by: { noor: "written by Noor", user: "written by you" }, importCatalog: "Import store products", importing: "Reading sitemap and product pages…", imported: "Imported", importFail: "No product pages found. Send Noor 3-5 product links in chat." },
   governance: {
     title: "Governance", sub: "Control what Noor does on her own and what waits for you.",
     autoApprove: "Auto-approve (skips the inbox)", autoApproveSub: "Pick the types you trust. Everything else waits for you.",
@@ -113,7 +113,7 @@ const en: typeof ar = {
   inspo: { title: "Gulf inspiration", sub: "Patterns that work in KSA and the Gulf, by channel and industry. Hit “Use as reference” and Noor builds on it.", use: "Use as reference", why: "Why it works", sample: "Sample", all: "All", channel: "Channel", kind: "Type", kinds: { hook: "Hook", offer: "Offer", seasonal: "Seasonal", ugc: "UGC", retention: "Retention", launch: "Launch", education: "Education" } },
   inbox: {
     title: "Approval inbox", empty: "Nothing waiting. Ask Noor for a first batch.", pending: "Waiting", approved: "Approved", rejected: "Rejected", all: "All",
-    approve: "Approve", reject: "Reject", edit: "Edit", save: "Save edit", cancel: "Cancel", copy: "Copy", copied: "Copied", why: "Why? (Noor learns from this)", regenerate: "Ask for a new batch", date: "Publish date", brief: "Noor's brief",
+    approve: "Approve", reject: "Reject", edit: "Edit", save: "Save edit", cancel: "Cancel", copy: "Copy", copied: "Copied", why: "Why? (Noor learns from this)", regenerate: "Ask for a new batch", date: "Publish date", brief: "Noor's brief", image: "Generate image", imaging: "Noor is drawing…", imageFail: "Image failed.", download: "Download",
   },
   billing: {
     title: "Subscription", current: "Current plan", credits: "Credits left", trialEnds: "Trial ends",

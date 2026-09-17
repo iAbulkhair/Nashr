@@ -37,7 +37,7 @@ export async function deleteFile(email: string, name: string) {
 }
 /** Core files Noor reads on every generation. */
 export async function memoryBlock(email: string) {
-  const wanted = ["brand.md", "strategy.md", "market-research.md", "preferences.md"];
+  const wanted = ["brand.md", "products.md", "strategy.md", "market-research.md", "preferences.md"];
   const parts: string[] = [];
   for (const n of wanted) {
     const f = await readFile(email, n);

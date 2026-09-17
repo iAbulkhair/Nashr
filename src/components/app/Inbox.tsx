@@ -15,6 +15,14 @@ export default function Inbox({ t, lang, tasks, brief }: { t: AppDict; lang: Lan
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [why, setWhy] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
+  const [imaging, setImaging] = useState<string | null>(null);
+  async function image(id: string) {
+    setImaging(id);
+    const res = await fetch(`/api/tasks/${id}/image`, { method: "POST" });
+    setImaging(null);
+    if (!res.ok) alert(i.imageFail);
+    r.refresh();
+  }
 
   const shown = tasks.filter((x) => filter === "all" || x.status === filter);
 
@@ -64,6 +72,12 @@ export default function Inbox({ t, lang, tasks, brief }: { t: AppDict; lang: Lan
                 </div>
                 <span className={`text-xs ${x.status === "approved" ? "text-oasis" : x.status === "rejected" ? "text-sadu" : "text-ink/50"}`}>{i[x.status]}</span>
               </div>
+              {x.imageUrl && (
+                <div className="mt-3 flex items-start gap-3">
+                  <img src={x.imageUrl} alt="" className="h-40 w-40 rounded-lg object-cover" />
+                  <div className="text-xs text-ink/50"><a href={x.imageUrl} target="_blank" rel="noreferrer" className="underline">{i.download}</a>{x.imagePrompt && <p className="mt-1 line-clamp-4" dir="ltr">{x.imagePrompt}</p>}</div>
+                </div>
+              )}
               {editing === x.id ? (
                 <div className="mt-3 grid gap-2">
                   <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={10} className="w-full rounded-lg border border-ink/15 p-3 text-sm" />
@@ -92,6 +106,9 @@ export default function Inbox({ t, lang, tasks, brief }: { t: AppDict; lang: Lan
                   <button onClick={async () => { await navigator.clipboard.writeText(body); setCopied(x.id); setTimeout(() => setCopied(null), 1500); }} className="rounded-full border border-ink/20 px-4 py-1.5">
                     {copied === x.id ? i.copied : i.copy}
                   </button>
+                  {x.type !== "weekly_plan" && x.type !== "article" && (
+                    <button disabled={imaging === x.id} onClick={() => image(x.id)} className="rounded-full border border-saffron px-4 py-1.5 disabled:opacity-50">{imaging === x.id ? i.imaging : (x.imageUrl ? "↻ " : "") + i.image}</button>
+                  )}
                   <label className="ms-auto flex items-center gap-1 text-xs text-ink/60">
                     {i.date}
                     <input type="date" dir="ltr" defaultValue={x.scheduledFor ?? ""} onChange={(e) => patch(x.id, { scheduledFor: e.target.value || null })} className="rounded border border-ink/15 px-2 py-1 text-xs" />

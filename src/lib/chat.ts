@@ -8,6 +8,9 @@ import { generate } from "./noor";
 import { listFiles, memoryBlock, readFile, writeFile } from "./files";
 import { getGov } from "./governance";
 import { activeSeasons } from "./seasons";
+import { importCatalog } from "./catalog";
+import { generateImage } from "./images";
+import { IMAGE_COST, getTask } from "./brand";
 
 export type ChatMsg = { role: "user" | "assistant"; content: string; at: string; actions?: string[] };
 
@@ -45,6 +48,18 @@ const TOOLS: Anthropic.Tool[] = [
     strict: true,
   },
   {
+    name: "import_catalog",
+    description: "Import the store's product catalog (names, prices, links) from its sitemap into products.md so content uses real products. Use when the owner mentions products, prices, or asks you to know their catalog. Takes 20-60 seconds.",
+    input_schema: { type: "object", additionalProperties: false, properties: { url: { type: "string", description: "Store URL; defaults to the brand website." } } },
+    strict: true,
+  },
+  {
+    name: "generate_image",
+    description: "Generate an image for an inbox item (1 credit). Use when the owner asks for a visual/photo for a specific post. Needs the item id from list_inbox.",
+    input_schema: { type: "object", additionalProperties: false, required: ["task_id"], properties: { task_id: { type: "string" } } },
+    strict: true,
+  },
+  {
     name: "list_inbox",
     description: "List the owner's inbox items with status counts. Use when asked what's pending or what was approved.",
     input_schema: { type: "object", additionalProperties: false, properties: {} },
@@ -59,6 +74,7 @@ function system(brand: Brand | null, user: User, prefs: string[], memory: string
 WHAT YOU CAN DO
 - Create content via generate_content (it lands in the approval inbox; tell the owner it's there and how many credits it used).
 - Remember facts via update_brand and write_file. Read your memory via read_file.
+- Import real products from the store via import_catalog (writes products.md). Generate a visual for an inbox item via generate_image (${IMAGE_COST} credit).
 - You cannot publish to platforms yet; the owner copies approved items. Say so plainly if asked. Auto-publishing arrives after platform approvals.
 
 CREDITS: owner has ${user.credits}. Costs: ${Object.entries(TASK_COST).map(([k, v]) => `${k}=${v}`).join(", ")}. If credits are insufficient, say so and point to the Subscription page.
@@ -174,7 +190,29 @@ async function runTool(user: User, name: string, input: Record<string, unknown>,
     case "list_inbox": {
       const tasks = await listTasks(email);
       const c = (s: string) => tasks.filter((t) => t.status === s).length;
-      return `Inbox: ${c("pending")} pending, ${c("approved")} approved, ${c("rejected")} rejected. Latest: ${tasks.slice(0, 8).map((t) => `${t.type}/${t.channel}: ${t.title} [${t.status}]`).join("; ")}`;
+      return `Inbox: ${c("pending")} pending, ${c("approved")} approved, ${c("rejected")} rejected. Latest: ${tasks.slice(0, 8).map((t) => `[id=${t.id}] ${t.type}/${t.channel}: ${t.title} [${t.status}]${t.imageUrl ? " (has image)" : ""}`).join("; ")}`;
+    }
+    case "import_catalog": {
+      const brand = await getBrand(email);
+      const site = String(input.url ?? "") || brand?.website;
+      if (!site) return "No store URL known. Ask the owner for it.";
+      const r = await importCatalog(email, site);
+      actions.push(`catalog:${r.count}`);
+      return r.count ? `Imported ${r.count} products into products.md. Examples: ${r.products.slice(0, 5).map((p) => `${p.title}${p.price ? " (" + p.price + ")" : ""}`).join("; ")}` : "Could not find product pages (no sitemap or unusual URLs). Ask the owner for 3-5 product links or a product list.";
+    }
+    case "generate_image": {
+      const brand = await getBrand(email);
+      const t = await getTask(email, String(input.task_id));
+      if (!brand || !t) return "Item not found.";
+      if (user.credits < IMAGE_COST) return "Insufficient credits for an image.";
+      const img = await generateImage(brand, t);
+      t.imageUrl = img.url;
+      t.imagePrompt = img.prompt;
+      await saveTask(email, t);
+      user.credits -= IMAGE_COST;
+      await saveUser(user);
+      actions.push(`image:${t.id}`);
+      return `Image generated for "${t.title}" (${img.provider}). It's attached to the item in the inbox. Credits left: ${user.credits}.`;
     }
     default:
       return "Unknown tool.";

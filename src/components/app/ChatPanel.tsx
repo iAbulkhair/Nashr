@@ -26,7 +26,7 @@ export default function ChatPanel({ t, initial, credits: c0 }: { t: AppDict; ini
   }
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-8rem)] max-w-3xl flex-col">
+    <div className="mx-auto flex h-[calc(100vh-6rem)] max-w-3xl flex-col lg:h-[calc(100vh-3rem)]">
       <div className="flex items-center justify-between">
         <h1 className="font-display text-2xl font-bold text-oasis">{t.chat.title}</h1>
         <span className="font-mono text-xs text-ink/60" dir="ltr">{credits} {t.nav.credits}</span>

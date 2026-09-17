@@ -34,7 +34,10 @@ export type Task = {
   lang: "ar" | "en";
   source?: "manual" | "chat" | "scheduled";
   scheduledFor?: string; // YYYY-MM-DD, set by owner in inbox/calendar
+  imageUrl?: string;
+  imagePrompt?: string;
 };
+export const IMAGE_COST = 1;
 
 export async function getBrand(email: string) {
   return db.get<Brand>(`brand:${email}`);

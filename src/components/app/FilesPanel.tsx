@@ -12,6 +12,35 @@ export default function FilesPanel({ t, files }: { t: AppDict; files: WFile[] })
   const [draft, setDraft] = useState("");
   const [newName, setNewName] = useState("");
   const cur = files.find((x) => x.name === open) ?? null;
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState("");
+  async function importCatalog() {
+    setImporting(true);
+    setImportMsg(f.importing);
+    const res = await fetch("/api/catalog", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    if (!res.body) { setImporting(false); return; }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split("\n\n");
+      buf = parts.pop() ?? "";
+      for (const p of parts) {
+        try {
+          const j = JSON.parse(p.replace(/^data: /, ""));
+          if (j.progress) setImportMsg(`${f.importing} ${j.progress}`);
+          if (j.done) setImportMsg(j.count ? `${f.imported} ${j.count}` : f.importFail);
+          if (j.error) setImportMsg(f.importFail);
+        } catch {}
+      }
+    }
+    setImporting(false);
+    setOpen("products.md");
+    r.refresh();
+  }
 
   async function save(name: string, content: string) {
     await fetch("/api/files", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, content }) });
@@ -29,6 +58,10 @@ export default function FilesPanel({ t, files }: { t: AppDict; files: WFile[] })
     <div>
       <h1 className="font-display text-3xl font-bold text-oasis">{f.title}</h1>
       <p className="mt-2 text-ink/70">{f.sub}</p>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button disabled={importing} onClick={importCatalog} className="rounded-full bg-oasis px-4 py-2 text-sm font-semibold text-mist disabled:opacity-60">{f.importCatalog}</button>
+        {importMsg && <span role="status" className="text-sm text-ink/60">{importMsg}</span>}
+      </div>
       <div className="mt-6 grid gap-4 md:grid-cols-[260px_1fr]">
         <aside className="rounded-xl border border-ink/10 bg-white p-3">
           {files.length === 0 && <p className="p-2 text-sm text-ink/60">{f.empty}</p>}
