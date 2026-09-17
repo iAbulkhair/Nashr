@@ -59,6 +59,10 @@ export type Task = {
   imageUrl?: string;
   imagePrompt?: string;
   published?: { provider: string; url: string; status: "draft" | "published"; at: string }[];
+  /** When the owner approved or rejected (for time-to-decision). */
+  decidedAt?: string;
+  /** Automated judge score (src/lib/judge.ts). */
+  quality?: { score: number; dims: { completeness: number; brand: number; honesty: number; language: number; format: number }; notes: string; model: string; at: string };
 };
 export const IMAGE_COST = 1;
 

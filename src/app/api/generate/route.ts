@@ -1,5 +1,6 @@
 import { charge, refund } from "@/lib/credits";
 import { statsFor } from "@/lib/stats";
+import { judgeLater } from "@/lib/judge";
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { currentUser, sc } from "@/lib/auth";
@@ -40,5 +41,6 @@ export async function POST(req: Request) {
     await saveTask(sc(u), t, true);
     created.push(t);
   }
+  judgeLater(sc(u), u.email, brand, created);
   return NextResponse.json({ ok: true, created: created.length, credits: u.credits });
 }

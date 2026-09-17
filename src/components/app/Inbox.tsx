@@ -85,7 +85,10 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
                   <span className="rounded bg-oasis/10 px-2 py-0.5 text-xs font-medium text-oasis">{x.channel}</span>
                   <span className="font-display font-medium">{x.title}</span>
                 </div>
-                <span className={`text-xs ${x.status === "approved" ? "text-oasis" : x.status === "rejected" ? "text-sadu" : "text-ink/50"}`}>{i[x.status]}</span>
+                <span className="flex items-center gap-2 text-xs">
+                  {x.quality && <span title={x.quality.notes} className={`rounded-full px-2 py-0.5 font-mono ${x.quality.score >= 85 ? "bg-oasis/10 text-oasis" : x.quality.score >= 70 ? "bg-saffron/20 text-ink" : "bg-sadu/10 text-sadu"}`} dir="ltr">{i.quality} {x.quality.score}</span>}
+                  <span className={x.status === "approved" ? "text-oasis" : x.status === "rejected" ? "text-sadu" : "text-ink/50"}>{i[x.status]}</span>
+                </span>
               </div>
               {x.published && x.published.length > 0 && (
                 <p className="mt-2 text-xs text-oasis">{x.published.map((p) => <a key={p.url} href={p.url} target="_blank" rel="noreferrer" className="me-3 underline">{p.status === "draft" ? i.draftOn : i.published} {p.provider} ↗</a>)}</p>

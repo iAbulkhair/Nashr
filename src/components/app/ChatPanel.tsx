@@ -19,6 +19,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang }: { t: AppDic
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [showList, setShowList] = useState(false);
+  const [voted, setVoted] = useState<Record<string, 1 | -1>>({});
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs, busy]);
   useEffect(() => { fetch("/api/conversations").then((r) => r.json()).then((j) => j.ok && setConvs(j.conversations)); }, []);
@@ -65,6 +66,13 @@ export default function ChatPanel({ t, initial, credits: c0, lang }: { t: AppDic
       if (j.ok) { setMsgs((p) => [...p, j.message]); setCredits(j.credits); if (conv !== "default") setConvs((p) => p.map((c) => (c.id === conv && c.title === "…" ? { ...c, title: m.slice(0, 60) } : c))); }
       else setMsgs((p) => [...p, { role: "assistant", content: "⚠︎ " + (j.error ?? "error"), at: new Date().toISOString() }]);
     } finally { setBusy(false); }
+  }
+  async function vote(m: ChatMsg, value: 1 | -1) {
+    if (voted[m.at]) return;
+    setVoted((p) => ({ ...p, [m.at]: value }));
+    let reason: string | undefined;
+    if (value === -1) reason = window.prompt(t.chat.whyBad) ?? undefined;
+    await fetch("/api/chat/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agent: m.agent ?? agent, value, reason, at: m.at }) });
   }
   const title = conv === "default" ? (ar ? "البداية" : "Getting started") : convs.find((c) => c.id === conv)?.title ?? "…";
 
@@ -122,6 +130,12 @@ export default function ChatPanel({ t, initial, credits: c0, lang }: { t: AppDic
                 {m.role === "assistant" && <span className="mb-1 block text-[11px] font-semibold text-sadu">{t.agents[m.agent ?? agent].name}</span>}
                 <p className="whitespace-pre-wrap">{m.content}</p>
                 {m.actions && m.actions.length > 0 && <p className="mt-1 font-mono text-[10px] text-ink/50" dir="ltr">{m.actions.join(" · ")}</p>}
+                {m.role === "assistant" && (
+                  <span className="mt-1 flex gap-1 text-[11px]">
+                    <button onClick={() => vote(m, 1)} aria-label={t.chat.helpful} title={t.chat.helpful} className={`rounded px-1 ${voted[m.at] === 1 ? "bg-oasis text-mist" : "text-ink/40 hover:text-oasis"}`}>👍</button>
+                    <button onClick={() => vote(m, -1)} aria-label={t.chat.notHelpful} title={t.chat.notHelpful} className={`rounded px-1 ${voted[m.at] === -1 ? "bg-sadu text-white" : "text-ink/40 hover:text-sadu"}`}>👎</button>
+                  </span>
+                )}
               </div>
             </div>
           ))}

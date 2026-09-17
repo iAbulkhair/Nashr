@@ -1,5 +1,6 @@
 import { charge, refund } from "@/lib/credits";
 import { statsFor } from "@/lib/stats";
+import { judgeLater } from "@/lib/judge";
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { userFromBearer } from "@/lib/mcp";
@@ -78,10 +79,13 @@ export async function POST(req: Request) {
           user.credits = await refund(user.email, cost);
           throw e;
         }
+        const created: Task[] = [];
         for (const it of items) {
           const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: gov.autoApprove[type] ? "approved" : "pending", createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat" };
           await saveTask((user.scope ?? user.email), t, true);
+          created.push(t);
         }
+        judgeLater(user.scope ?? user.email, user.email, brand, created);
         return ok(id, text(`Created ${items.length} ${type} item(s). Credits left: ${user.credits}.\n\n` + items.map((i) => `## ${i.title} (${i.channel})\n${i.body}`).join("\n\n")));
       }
       case "list_inbox": {

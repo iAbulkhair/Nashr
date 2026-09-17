@@ -6,11 +6,12 @@ import type { AppDict } from "@/lib/app-i18n";
 import { TASK_COST, type TaskType } from "@/lib/brand";
 import { agentById } from "@/lib/agents";
 import type { Kpis } from "@/lib/stats";
+import type { AgentMetrics } from "@/lib/evals";
 import type { Lang } from "@/lib/i18n";
 
 type Item = { id: string; type: TaskType; title: string; status: string; createdAt: string };
 
-export default function ReportsPanel({ t, lang, k, items, credits }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number }) {
+export default function ReportsPanel({ t, lang, k, items, credits, quality }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[] }) {
   const r = useRouter();
   const R = t.reports;
   const [busy, setBusy] = useState<TaskType | null>(null);
@@ -95,6 +96,30 @@ export default function ReportsPanel({ t, lang, k, items, credits }: { t: AppDic
           ))}
         </div>
       </div>
+
+      <section className="mt-8">
+        <h2 className="font-display text-lg font-semibold text-oasis">{R.qualityTitle}</h2>
+        <p className="mt-1 text-xs text-ink/60">{R.qualitySub}</p>
+        <div className="mt-3 overflow-x-auto rounded-xl border border-ink/10 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-salt-dim text-xs text-ink/60"><tr><th className="p-2 text-start">{R.colAgent}</th><th>{R.colItems}</th><th>{R.colApproval}</th><th>{R.colEdit}</th><th>{R.colJudge}</th><th>{R.colLow}</th><th>{R.colThumbs}</th></tr></thead>
+            <tbody>
+              {quality.map((a) => (
+                <tr key={a.agent} className="border-t border-ink/5 text-center">
+                  <td className="p-2 text-start font-medium">{t.agents[a.agent].name} <span className="text-xs text-ink/50">· {t.agents[a.agent].role}</span></td>
+                  <td className="font-mono" dir="ltr">{a.n}</td>
+                  <td className="font-mono" dir="ltr">{a.approvalRate === null ? "—" : a.approvalRate + "%"}</td>
+                  <td className="font-mono" dir="ltr">{a.editRate === null ? "—" : a.editRate + "%"}</td>
+                  <td className={`font-mono ${a.avgScore !== null && a.avgScore < 70 ? "text-sadu" : a.avgScore !== null && a.avgScore >= 85 ? "text-oasis" : ""}`} dir="ltr">{a.avgScore ?? "—"}</td>
+                  <td className="font-mono" dir="ltr">{a.low}</td>
+                  <td className="font-mono" dir="ltr">{a.thumbsUp}/{a.thumbsDown}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-2 text-[11px] text-ink/50">{R.judgeNote}</p>
+      </section>
 
       <section className="mt-8 rounded-xl border border-oasis/20 bg-salt-dim p-5">
         <h2 className="font-display text-lg font-semibold text-oasis">{R.ask} <span className="text-sm font-normal text-ink/60">· {t.agents.dana.role}</span></h2>

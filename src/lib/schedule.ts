@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import { db } from "./db";
 import { getUser, type User } from "./auth";
 import { charge, refund } from "./credits";
+import { judgeLater } from "./judge";
 import { TASK_COST, getBrand, listPreferences, listTasks, saveTask, type Task } from "./brand";
 import { generate } from "./noor";
 import { memoryBlock } from "./files";
@@ -51,10 +52,13 @@ export async function runWeekly(user: User): Promise<string> {
     user.credits = await refund(user.email, cost);
     throw e;
   }
+  const created: Task[] = [];
   for (const it of items) {
     const t: Task = { id: randomBytes(8).toString("hex"), type: "weekly_plan", channel: it.channel, title: it.title, body: it.body, status: gov.autoApprove.weekly_plan ? "approved" : "pending", createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "scheduled" };
     await saveTask(email, t, true);
+    created.push(t);
   }
+  judgeLater(email, user.email, brand, created);
   await saveSchedule(email, { lastWeekly: new Date().toISOString() });
   return `ok:${items.length}`;
 }

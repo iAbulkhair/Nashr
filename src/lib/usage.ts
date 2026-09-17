@@ -21,7 +21,7 @@ const RATES: Record<string, { in: number; out: number; cacheRead: number; cacheW
 };
 const DEFAULT_RATE = RATES["claude-opus-5"];
 
-export const KINDS = ["generate", "review", "chat", "onboard", "image_prompt", "tool"] as const;
+export const KINDS = ["generate", "review", "chat", "onboard", "image_prompt", "tool", "judge"] as const;
 export type Kind = (typeof KINDS)[number];
 
 export function costUsd(model: string, u: TokenUsage): number {

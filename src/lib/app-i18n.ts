@@ -9,7 +9,7 @@ const ar = {
     go: "ابدئي يا نور", manual: "أفضّل تعبئة النموذج يدوياً",
     steps: { crawl: "أقرأ موقعك", research: "أبحث عن سوقك ومنافسيك", brand: "أكتب ملف العلامة", file: "حفظت ملفاً", complete: "جاهز! خذني للدردشة مع نور", error: "حصل خطأ. جرّب مرة أخرى أو عبّئ النموذج يدوياً." },
   },
-  chat: { title: "نور", placeholder: "اكتب لنور… مثال: جهزي 10 منشورات لليوم الوطني", send: "أرسل", thinking: "نور تفكر…", empty: "مرحباً! أنا نور. اطلب مني محتوى، أو اسألني عن خطتك، أو خبرني بأي شيء عن علامتك وسأتذكره.", suggestions: ["اكتبي خطة الأسبوع", "10 منشورات لليوم الوطني", "3 رسائل واتساب لاسترجاع السلات", "ما الذي بانتظار موافقتي؟", "نبرتنا فاخرة وهادئة، تذكري ذلك"] },
+  chat: { helpful: "مفيد", notHelpful: "غير مفيد", whyBad: "ما الذي كان ناقصاً؟ (اختياري)", title: "نور", placeholder: "اكتب لنور… مثال: جهزي 10 منشورات لليوم الوطني", send: "أرسل", thinking: "نور تفكر…", empty: "مرحباً! أنا نور. اطلب مني محتوى، أو اسألني عن خطتك، أو خبرني بأي شيء عن علامتك وسأتذكره.", suggestions: ["اكتبي خطة الأسبوع", "10 منشورات لليوم الوطني", "3 رسائل واتساب لاسترجاع السلات", "ما الذي بانتظار موافقتي؟", "نبرتنا فاخرة وهادئة، تذكري ذلك"] },
   files: { title: "الملفات", sub: "ذاكرة نور. تقرأها في كل عملية توليد. عدّل ما تشاء.", empty: "لا ملفات بعد. شغّل الإعداد من رابط موقعك.", edit: "تعديل", save: "حفظ", cancel: "إلغاء", delete: "حذف", newFile: "ملف جديد", by: { noor: "كتبته نور", user: "كتبته أنت" }, importCatalog: "استورد منتجات المتجر", importing: "أقرأ خريطة الموقع وصفحات المنتجات…", imported: "تم استيراد", importFail: "ما لقيت صفحات منتجات. أرسل لنور 3-5 روابط منتجات في الدردشة." },
   governance: {
     title: "الحوكمة", sub: "تحكّم بما تفعله نور وحدها وما ينتظر موافقتك.",
@@ -63,7 +63,7 @@ const ar = {
   integrations: { title: "التكاملات", sub: "الخليج أولاً. أخبرنا ماذا تريد بعد ذلك — الأكثر طلباً يُبنى أولاً.", groups: { commerce: "التجارة", ads: "الإعلانات", messaging: "الرسائل", publishing: "النشر", data: "البيانات", payments: "الدفع" }, status: { live: "متاح", soon: "قريباً", planned: "مخطط" }, request: "أريد هذا", requested: "سُجّل طلبك", other: "تكامل آخر تحتاجه؟", send: "أرسل", connect: "اربط", connected: "متصل", disconnect: "فصل", shopPrompt: "اسم متجرك (مثال: mystore.myshopify.com)", keyTitle: "أدخل بيانات الربط", keyHelp: "أين أجدها؟", verifying: "جارٍ التحقق…", verifyFailed: "فشل التحقق. راجع البيانات.", importProducts: "استورد المنتجات", ready: "جاهز للربط", waiting: "بانتظار موافقة المنصة", note: "النشر التلقائي يعتمد على موافقات المنصات (ميتا، سناب، تيك توك). قدّمنا الطلبات وسنفعّلها فور الموافقة." },
   inspo: { title: "إلهام خليجي", sub: "أنماط تنجح في السعودية والخليج، بالقناة والقطاع. اضغط «استخدم كمرجع» ونور تبني عليه.", use: "استخدم كمرجع", why: "لماذا ينجح", sample: "مثال", all: "الكل", channel: "القناة", kind: "النوع", kinds: { hook: "هوك", offer: "عرض", seasonal: "موسمي", ugc: "UGC", retention: "احتفاظ", launch: "إطلاق", education: "توعية" } },
   inbox: {
-    pptx: "تحميل PowerPoint",
+    pptx: "تحميل PowerPoint", quality: "الجودة",
     title: "صندوق الموافقة", empty: "لا يوجد شيء بانتظارك. اطلب من نور أول دفعة.", pending: "بانتظارك", approved: "معتمد", rejected: "مرفوض", all: "الكل",
     approve: "اعتمد", reject: "ارفض", edit: "عدّل", save: "احفظ التعديل", cancel: "إلغاء", copy: "انسخ", copied: "تم النسخ", why: "سبب الرفض (تتعلم منه نور)", regenerate: "اطلب دفعة جديدة", date: "تاريخ النشر", brief: "ملخص نور", image: "ولّدي صورة", imaging: "نور ترسم…", imageFail: "تعذّر توليد الصورة.", download: "تنزيل", publishTo: "انشر على", publishing: "جارٍ النشر…", published: "نُشر", draftOn: "مسودة على", publishFail: "فشل النشر.",
   },
@@ -84,6 +84,7 @@ const ar = {
     title: "التقارير ولوحة المؤشرات", sub: "أرقام مساحة عملك هذا الشهر، وما تجهّزه دانة منها.",
     created: "عناصر أُنشئت", approved: "معتمدة", approvalRate: "نسبة الاعتماد", pending: "بانتظارك", published: "نُشرت عبر التكاملات", images: "صور مولّدة", creditsUsed: "كريدت مستهلك", scheduled: "مجدولة قادمة",
     vsPrev: "عن الشهر الماضي", weeks: "آخر 8 أسابيع (أُنشئ / اعتُمد)", byType: "حسب النوع", byChannel: "حسب القناة",
+    qualityTitle: "جودة الفريق (آخر 30 يوماً)", qualitySub: "ما اعتمدته وعدّلته، ودرجات الحَكَم الآلي لكل وكيل.", colAgent: "الوكيل", colItems: "عناصر", colApproval: "اعتماد", colEdit: "تعديل", colJudge: "الحَكَم", colLow: "أقل من 70", colThumbs: "الدردشة 👍/👎", judgeNote: "الحَكَم: نموذج ثانٍ يقيّم كل عنصر من 100 (اكتمال، التزام بالعلامة، صدق الأرقام، لغة، تنسيق). 85+ جاهز، 70-84 تعديل خفيف، أقل من 70 أعد التوليد.",
     ask: "اطلب من دانة", items: "تقارير وعروض دانة", empty: "لا تقارير بعد. اطلب التقرير الأسبوعي أو عرضاً.", open: "افتح في صندوق الموافقة", note: "أرقام المبيعات والإيرادات لا تُجمع تلقائياً بعد. اكتبها لدانة في الملاحظات أو في ملف، وتُدرجها في التقرير.",
   },
 };
@@ -97,7 +98,7 @@ const en: typeof ar = {
     go: "Go, Noor", manual: "I'd rather fill the form manually",
     steps: { crawl: "Reading your website", research: "Researching your market and competitors", brand: "Writing your brand file", file: "Saved a file", complete: "Done! Take me to chat with Noor", error: "Something failed. Try again or fill the form manually." },
   },
-  chat: { title: "Noor", placeholder: "Message Noor… e.g. prepare 10 posts for National Day", send: "Send", thinking: "Noor is thinking…", empty: "Hi! I'm Noor. Ask me for content, ask about your plan, or tell me anything about your brand and I'll remember it.", suggestions: ["Write this week's plan", "10 posts for National Day", "3 WhatsApp cart-recovery messages", "What's waiting for my approval?", "Our tone is premium and calm, remember that"] },
+  chat: { helpful: "Helpful", notHelpful: "Not helpful", whyBad: "What was missing? (optional)", title: "Noor", placeholder: "Message Noor… e.g. prepare 10 posts for National Day", send: "Send", thinking: "Noor is thinking…", empty: "Hi! I'm Noor. Ask me for content, ask about your plan, or tell me anything about your brand and I'll remember it.", suggestions: ["Write this week's plan", "10 posts for National Day", "3 WhatsApp cart-recovery messages", "What's waiting for my approval?", "Our tone is premium and calm, remember that"] },
   files: { title: "Files", sub: "Noor's memory. She reads these on every generation. Edit anything.", empty: "No files yet. Run setup from your website URL.", edit: "Edit", save: "Save", cancel: "Cancel", delete: "Delete", newFile: "New file", by: { noor: "written by Noor", user: "written by you" }, importCatalog: "Import store products", importing: "Reading sitemap and product pages…", imported: "Imported", importFail: "No product pages found. Send Noor 3-5 product links in chat." },
   governance: {
     title: "Governance", sub: "Control what Noor does on her own and what waits for you.",
@@ -151,7 +152,7 @@ const en: typeof ar = {
   integrations: { title: "Integrations", sub: "Gulf first. Tell us what you need next — most requested gets built first.", groups: { commerce: "Commerce", ads: "Ads", messaging: "Messaging", publishing: "Publishing", data: "Data", payments: "Payments" }, status: { live: "Live", soon: "Coming soon", planned: "Planned" }, request: "I want this", requested: "Requested", other: "Need another integration?", send: "Send", connect: "Connect", connected: "Connected", disconnect: "Disconnect", shopPrompt: "Your store (e.g. mystore.myshopify.com)", keyTitle: "Enter connection details", keyHelp: "Where do I find these?", verifying: "Verifying…", verifyFailed: "Verification failed. Check the details.", importProducts: "Import products", ready: "Ready to connect", waiting: "Awaiting platform approval", note: "Auto-publishing depends on platform approvals (Meta, Snap, TikTok). Applications are submitted; we switch each on the day it's approved." },
   inspo: { title: "Gulf inspiration", sub: "Patterns that work in KSA and the Gulf, by channel and industry. Hit “Use as reference” and Noor builds on it.", use: "Use as reference", why: "Why it works", sample: "Sample", all: "All", channel: "Channel", kind: "Type", kinds: { hook: "Hook", offer: "Offer", seasonal: "Seasonal", ugc: "UGC", retention: "Retention", launch: "Launch", education: "Education" } },
   inbox: {
-    pptx: "Download PowerPoint",
+    pptx: "Download PowerPoint", quality: "Quality",
     title: "Approval inbox", empty: "Nothing waiting. Ask Noor for a first batch.", pending: "Waiting", approved: "Approved", rejected: "Rejected", all: "All",
     approve: "Approve", reject: "Reject", edit: "Edit", save: "Save edit", cancel: "Cancel", copy: "Copy", copied: "Copied", why: "Why? (Noor learns from this)", regenerate: "Ask for a new batch", date: "Publish date", brief: "Noor's brief", image: "Generate image", imaging: "Noor is drawing…", imageFail: "Image failed.", download: "Download", publishTo: "Publish to", publishing: "Publishing…", published: "Published", draftOn: "Draft on", publishFail: "Publish failed.",
   },
@@ -172,6 +173,7 @@ const en: typeof ar = {
     title: "Reports and dashboard", sub: "Your workspace numbers this month, and what Dana builds from them.",
     created: "Items created", approved: "Approved", approvalRate: "Approval rate", pending: "Waiting for you", published: "Published via integrations", images: "Images generated", creditsUsed: "Credits used", scheduled: "Scheduled ahead",
     vsPrev: "vs last month", weeks: "Last 8 weeks (created / approved)", byType: "By type", byChannel: "By channel",
+    qualityTitle: "Team quality (last 30 days)", qualitySub: "What you approved and edited, plus the automated judge's scores per agent.", colAgent: "Agent", colItems: "Items", colApproval: "Approval", colEdit: "Edited", colJudge: "Judge", colLow: "Below 70", colThumbs: "Chat 👍/👎", judgeNote: "Judge: a second model scores every item out of 100 (completeness, brand fit, honest numbers, language, format). 85+ ready, 70-84 light edit, below 70 regenerate.",
     ask: "Ask Dana", items: "Dana's reports and decks", empty: "No reports yet. Ask for the weekly report or a deck.", open: "Open in inbox", note: "Sales and revenue figures are not collected automatically yet. Give them to Dana in the notes or in a file and she includes them.",
   },
 };

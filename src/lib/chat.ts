@@ -2,6 +2,7 @@ import { charge, refund } from "./credits";
 import { AGENTS, agentById, type AgentId } from "./agents";
 import { skillsBlock } from "./skills";
 import { statsFor } from "./stats";
+import { judgeLater } from "./judge";
 import { meter } from "./usage";
 import Anthropic from "@anthropic-ai/sdk";
 import { randomBytes } from "crypto";
@@ -192,10 +193,13 @@ async function runTool(user: User, name: string, input: Record<string, unknown>,
         user.credits = await refund(user.email, cost);
         throw e;
       }
+      const created: Task[] = [];
       for (const it of items) {
-        const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: gov.autoApprove[type] ? "approved" : "pending", createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar" };
+        const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: gov.autoApprove[type] ? "approved" : "pending", createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat" };
         await saveTask(email, t, true);
+        created.push(t);
       }
+      judgeLater(email, user.email, brand, created);
       actions.push(`generated:${type}:${items.length}`);
       return `Created ${items.length} ${type} item(s) in the inbox${gov.autoApprove[type] ? " (auto-approved per governance)" : ""}. Credits left: ${user.credits}. Titles: ${items.map((i) => i.title).join(" | ")}`;
     }

@@ -75,6 +75,9 @@ OUTPUT FORMAT
 Return ONLY a JSON array. Each element: {"channel": string, "title": string, "body": string}. "title" is a short internal label (≤ 60 chars). "body" is the full content (Markdown allowed). No text before or after the JSON.`;
 }
 
+/** The spec text an agent was given for a task type (used by the judge). */
+export const taskSpec = (type: TaskType) => SPECS[type];
+
 function playbookBlock(brand: Brand) {
   const pb = pickPlaybook(brand.industry);
   return pb ? pb.text : "INDUSTRY PLAYBOOK\n- General SMB: one clear offer, one CTA, local proof, WhatsApp as the conversion channel.";

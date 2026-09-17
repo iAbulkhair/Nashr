@@ -25,6 +25,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     await learn(`Owner edited a ${t.type} item (${t.channel}). ${b.note ? "Reason: " + b.note : "Prefer this style: " + b.editedBody.slice(0, 200)}`);
   }
   if (b.status === "approved" || b.status === "rejected" || b.status === "pending") {
+    if (b.status !== t.status) t.decidedAt = b.status === "pending" ? undefined : new Date().toISOString();
     t.status = b.status;
     if (b.status === "rejected" && b.note) await learn(`Owner rejected a ${t.type} item (${t.channel}). Reason: ${b.note}`);
   }

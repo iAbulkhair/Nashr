@@ -5,6 +5,7 @@ import { currentUser, sc } from "@/lib/auth";
 import { getBrand, listTasks } from "@/lib/brand";
 import { kpis } from "@/lib/stats";
 import { agentById } from "@/lib/agents";
+import { scopeMetrics } from "@/lib/evals";
 import ReportsPanel from "@/components/app/ReportsPanel";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +16,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
   if (!(await getBrand(sc(u)))) redirect(`/${lang}/app/start`);
-  const [k, tasks] = await Promise.all([kpis(sc(u)), listTasks(sc(u))]);
+  const [k, tasks, quality] = await Promise.all([kpis(sc(u)), listTasks(sc(u)), scopeMetrics(sc(u), u.email)]);
   const dana = agentById("dana").tasks;
   const items = tasks.filter((t) => dana.includes(t.type)).slice(0, 20).map((t) => ({ id: t.id, type: t.type, title: t.title, status: t.status, createdAt: t.createdAt }));
-  return <ReportsPanel t={appDict[lang]} lang={lang} k={k} items={items} credits={u.credits} />;
+  return <ReportsPanel t={appDict[lang]} lang={lang} k={k} items={items} credits={u.credits} quality={quality} />;
 }

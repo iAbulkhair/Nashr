@@ -1,14 +1,17 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 type U = { email: string; name: string; phone: string; plan: string; credits: number; trialEnds: string; createdAt: string; renewedAt?: string | null; tokens?: number; usd?: number; calls?: number };
-type T = { id: string; type: string; channel: string; title: string; status: string; createdAt: string; body: string; editedBody?: string };
+type T = { id: string; type: string; channel: string; title: string; status: string; createdAt: string; body: string; editedBody?: string; quality?: { score: number; notes: string } };
+type TM = { type: string; n: number; approvalRate: number | null; editRate: number | null; editMagnitude: number | null; published: number; avgScore: number | null; low: number; avgHoursToDecide: number | null };
+type AM = { agent: string; n: number; approvalRate: number | null; editRate: number | null; avgScore: number | null; low: number; thumbsUp: number; thumbsDown: number; types: TM[] };
 
 export default function AdminConsole() {
   const [users, setUsers] = useState<U[] | null>(null);
   const [sel, setSel] = useState<{ user: U; brand: Record<string, unknown> | null; tasks: T[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [evals, setEvals] = useState<{ agents: AM[]; users: { email: string; n: number; approvalRate: number | null; avgScore: number | null }[] } | null>(null);
 
   async function load() {
     const r = await fetch("/api/admin/plan");
@@ -16,7 +19,7 @@ export default function AdminConsole() {
     const j = await r.json();
     setUsers(j.users);
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); fetch("/api/admin/evals").then((r) => r.json()).then((j) => j.ok && setEvals(j)).catch(() => {}); }, []);
 
   async function setPlan(email: string, plan: string) {
     setBusy(true);
@@ -79,6 +82,34 @@ export default function AdminConsole() {
           </tbody>
         </table>
       </div>
+      <section className="rounded-xl border border-ink/10 bg-white p-4">
+        <h2 className="font-display text-lg font-semibold text-oasis">Agent quality · last 30 days · all workspaces</h2>
+        <p className="text-xs text-ink/50">Approval = approved ÷ decided. Edited = approved items the owner changed (magnitude = % of text changed). Judge = automated score /100 (85+ ready, &lt;70 regenerate). Thumbs = chat replies.</p>
+        {!evals ? <p className="mt-2 text-sm text-ink/50">Loading…</p> : (
+          <table className="mt-3 w-full text-sm">
+            <thead className="bg-salt-dim text-left text-xs uppercase tracking-wide text-ink/60"><tr><th className="p-2">Agent / type</th><th>Items</th><th>Approval</th><th>Edited</th><th>Magnitude</th><th>Published</th><th>Judge</th><th>&lt;70</th><th>Hours to decide</th><th>👍/👎</th></tr></thead>
+            <tbody>
+              {evals.agents.map((a) => (
+                <Fragment key={a.agent}>
+                  <tr className="border-t border-ink/10 bg-salt/60 font-medium">
+                    <td className="p-2">{a.agent}</td><td className="font-mono">{a.n}</td><td className="font-mono">{a.approvalRate ?? "—"}{a.approvalRate !== null && "%"}</td><td className="font-mono">{a.editRate ?? "—"}{a.editRate !== null && "%"}</td><td></td><td></td>
+                    <td className={`font-mono ${a.avgScore !== null && a.avgScore < 70 ? "text-sadu" : ""}`}>{a.avgScore ?? "—"}</td><td className="font-mono">{a.low}</td><td></td><td className="font-mono">{a.thumbsUp}/{a.thumbsDown}</td>
+                  </tr>
+                  {a.types.map((x) => (
+                    <tr key={a.agent + x.type} className="border-t border-ink/5 text-ink/70">
+                      <td className="p-2 ps-6 font-mono text-xs">{x.type}</td><td className="font-mono">{x.n}</td><td className="font-mono">{x.approvalRate ?? "—"}{x.approvalRate !== null && "%"}</td><td className="font-mono">{x.editRate ?? "—"}{x.editRate !== null && "%"}</td><td className="font-mono">{x.editMagnitude ?? "—"}{x.editMagnitude !== null && "%"}</td><td className="font-mono">{x.published}</td>
+                      <td className={`font-mono ${x.avgScore !== null && x.avgScore < 70 ? "text-sadu" : ""}`}>{x.avgScore ?? "—"}</td><td className="font-mono">{x.low}</td><td className="font-mono">{x.avgHoursToDecide ?? "—"}</td><td></td>
+                    </tr>
+                  ))}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {evals && evals.users.length > 0 && (
+          <p className="mt-3 text-xs text-ink/60">Per workspace: {evals.users.slice(0, 12).map((u) => `${u.email} (${u.n} items, approval ${u.approvalRate ?? "—"}${u.approvalRate !== null ? "%" : ""}, judge ${u.avgScore ?? "—"})`).join(" · ")}</p>
+        )}
+      </section>
       <p className="text-xs text-ink/50">Changing the plan resets the balance to that plan&apos;s monthly allowance and starts the renewal cycle (balance resets on the 1st of each month, UTC). Use &quot;+ credits&quot; for top-ups within the month. Tokens and cost are this month&apos;s real model usage.</p>
 
       {sel && (
