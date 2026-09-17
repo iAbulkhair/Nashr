@@ -70,6 +70,16 @@ function seasonBlock() {
   return s.map((x) => `- ${x.name} (${x.nameAr}) in ${x.daysLeft} days: ${x.play}`).join("\n");
 }
 
+const CHANNELS = ["instagram", "snapchat", "tiktok", "whatsapp", "meta", "linkedin", "gbp", "blog", "plan", "x"];
+function normalizeChannel(raw: string): string {
+  const c = raw.toLowerCase().trim();
+  if (c === "x" || c === "twitter") return "x";
+  for (const k of CHANNELS) if (c.startsWith(k.slice(0, 4))) return k;
+  if (c.includes("google")) return "gbp";
+  if (c.includes("face") || c.includes("insta")) return c.includes("insta") ? "instagram" : "meta";
+  return c.slice(0, 20) || "general";
+}
+
 function parseItems(text: string): Generated[] {
   const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   const start = cleaned.indexOf("[");
@@ -79,7 +89,7 @@ function parseItems(text: string): Generated[] {
   if (!Array.isArray(arr)) throw new Error("not_array");
   return arr
     .filter((x): x is Generated => typeof x === "object" && x !== null && typeof (x as Generated).body === "string")
-    .map((x) => ({ channel: String(x.channel ?? "general").slice(0, 30), title: String(x.title ?? "").slice(0, 80), body: String(x.body) }));
+    .map((x) => ({ channel: normalizeChannel(String(x.channel ?? "general")), title: String(x.title ?? "").slice(0, 80), body: String(x.body) }));
 }
 
 function mock(type: TaskType, brand: Brand): Generated[] {
