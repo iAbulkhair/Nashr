@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 // GET  /api/admin/plan?key=...            → list users
 // POST /api/admin/plan?key=... {email, plan?, addCredits?} → set plan / add credits
 export async function GET(req: Request) {
-  if (!isAdmin(req)) return NextResponse.json({ ok: false }, { status: 401 });
+  if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
   const emails = await db.smembers("users:all");
   const users = [];
   for (const e of emails) {
@@ -17,7 +17,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  if (!isAdmin(req)) return NextResponse.json({ ok: false }, { status: 401 });
+  if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
   const b = (await req.json().catch(() => ({}))) as { email?: string; plan?: Plan; addCredits?: number };
   const u = b.email ? await getUser(b.email) : null;
   if (!u) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });

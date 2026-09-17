@@ -89,9 +89,19 @@ export async function currentUser(): Promise<User | null> {
   return getUser(email);
 }
 
-export function isAdmin(req: Request) {
+export async function isAdmin(req: Request) {
   const key = process.env.WAITLIST_ADMIN_KEY;
+  if (!key) return false;
   const url = new URL(req.url);
   const given = url.searchParams.get("key") ?? req.headers.get("x-admin-key");
-  return Boolean(key && given === key);
+  if (given === key) return true;
+  const jar = await cookies();
+  return jar.get("nashr_admin")?.value === key;
+}
+
+export async function isAdminCookie() {
+  const key = process.env.WAITLIST_ADMIN_KEY;
+  if (!key) return false;
+  const jar = await cookies();
+  return jar.get("nashr_admin")?.value === key;
 }
