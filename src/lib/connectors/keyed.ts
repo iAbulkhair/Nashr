@@ -1,0 +1,65 @@
+import type { Connection } from "./store";
+import { writeFile } from "../files";
+
+/** Key-based connectors that need no partner registration: Odoo, PrestaShop, Telegram, Brevo. */
+
+// ---------- Odoo (JSON-RPC, per-customer API key) ----------
+async function odooCall(c: Record<string, string>, model: string, method: string, args: unknown[], kwargs: Record<string, unknown> = {}) {
+  const url = c.url.replace(/\/+$/, "") + "/jsonrpc";
+  const auth = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", id: 1, params: { service: "common", method: "authenticate", args: [c.db, c.username, c.apiKey, {}] } }) });
+  const aj = (await auth.json()) as { result?: number; error?: { message: string } };
+  if (!aj.result) throw new Error(aj.error?.message ?? "odoo auth failed");
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", id: 2, params: { service: "object", method: "execute_kw", args: [c.db, aj.result, c.apiKey, model, method, args, kwargs] } }) });
+  const j = (await r.json()) as { result?: unknown; error?: { message: string } };
+  if (j.error) throw new Error(j.error.message);
+  return j.result;
+}
+export async function verifyOdoo(d: Record<string, string>) {
+  try { await odooCall(d, "res.users", "search_count", [[]]); return { ok: true }; } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "failed" }; }
+}
+export async function importOdoo(email: string, c: Connection) {
+  const rows = (await odooCall(c.data, "product.template", "search_read", [[["sale_ok", "=", true]]], { fields: ["name", "list_price", "description_sale", "website_url"], limit: 60 })) as { name: string; list_price: number; description_sale?: string | false; website_url?: string | false }[];
+  const md = [`# Product catalog (Odoo, ${new Date().toISOString().slice(0, 10)})`, "", ...rows.map((p) => `- **${p.name}** — ${p.list_price}${p.description_sale ? `\n  ${String(p.description_sale).slice(0, 200)}` : ""}${p.website_url ? `\n  ${c.data.url.replace(/\/+$/, "")}${p.website_url}` : ""}`)].join("\n");
+  await writeFile(email, "products.md", md, "noor");
+  return rows.length;
+}
+
+// ---------- PrestaShop (Webservice key) ----------
+function psAuth(d: Record<string, string>) { return "Basic " + Buffer.from(`${d.apiKey}:`).toString("base64"); }
+export async function verifyPrestaShop(d: Record<string, string>) {
+  const r = await fetch(`${d.site.replace(/\/+$/, "")}/api/products?limit=1&output_format=JSON`, { headers: { Authorization: psAuth(d) } });
+  return r.ok ? { ok: true } : { ok: false, error: `HTTP ${r.status} (enable Webservice + key with products GET permission)` };
+}
+export async function importPrestaShop(email: string, c: Connection) {
+  const base = c.data.site.replace(/\/+$/, "");
+  const r = await fetch(`${base}/api/products?display=[id,name,price,link_rewrite,description_short]&limit=60&output_format=JSON`, { headers: { Authorization: psAuth(c.data) } });
+  if (!r.ok) throw new Error(`prestashop ${r.status}`);
+  const j = (await r.json()) as { products?: { id: number; name: string | { value: string }[]; price: string; link_rewrite: string | { value: string }[]; description_short?: string | { value: string }[] }[] };
+  const txt = (v: unknown) => (Array.isArray(v) ? String((v[0] as { value: string })?.value ?? "") : String(v ?? ""));
+  const rows = j.products ?? [];
+  const md = [`# Product catalog (PrestaShop, ${new Date().toISOString().slice(0, 10)})`, "", ...rows.map((p) => `- **${txt(p.name)}** — ${p.price}\n  ${txt(p.description_short).replace(/<[^>]+>/g, "").slice(0, 200)}\n  ${base}/${txt(p.link_rewrite)}`)].join("\n");
+  await writeFile(email, "products.md", md, "noor");
+  return rows.length;
+}
+
+// ---------- Telegram (bot token + channel) ----------
+export async function verifyTelegram(d: Record<string, string>) {
+  const r = await fetch(`https://api.telegram.org/bot${d.botToken}/getChat?chat_id=${encodeURIComponent(d.chatId)}`);
+  const j = (await r.json()) as { ok: boolean; result?: { title?: string; username?: string }; description?: string };
+  return j.ok ? { ok: true, name: j.result?.title ?? j.result?.username } : { ok: false, error: j.description ?? "bot cannot see this chat (add the bot as channel admin)" };
+}
+export async function postTelegram(c: Connection, text: string): Promise<{ id: string; url: string }> {
+  const r = await fetch(`https://api.telegram.org/bot${c.data.botToken}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: c.data.chatId, text: text.slice(0, 4000) }) });
+  const j = (await r.json()) as { ok: boolean; result?: { message_id: number; chat: { username?: string; id: number } }; description?: string };
+  if (!j.ok || !j.result) throw new Error(j.description ?? "telegram failed");
+  const u = j.result.chat.username;
+  return { id: String(j.result.message_id), url: u ? `https://t.me/${u}/${j.result.message_id}` : `https://t.me/c/${String(j.result.chat.id).replace(/^-100/, "")}/${j.result.message_id}` };
+}
+
+// ---------- Brevo (API key) ----------
+export async function verifyBrevo(d: Record<string, string>) {
+  const r = await fetch("https://api.brevo.com/v3/account", { headers: { "api-key": d.apiKey } });
+  if (!r.ok) return { ok: false, error: `HTTP ${r.status}` };
+  const j = (await r.json()) as { companyName?: string; email?: string };
+  return { ok: true, name: j.companyName ?? j.email };
+}

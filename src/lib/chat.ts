@@ -65,8 +65,8 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "publish_item",
-    description: "Publish an approved inbox item to a connected platform (wordpress or shopify for articles → saved as draft on the site; x for X posts → published). Only when the owner explicitly asks to publish. Needs the item id from list_inbox.",
-    input_schema: { type: "object", additionalProperties: false, required: ["task_id", "provider"], properties: { task_id: { type: "string" }, provider: { type: "string", enum: ["wordpress", "shopify", "x"] } } },
+    description: "Publish an approved inbox item to a connected platform (wordpress or shopify for articles → saved as draft on the site; x for X posts → published; telegram for social/gbp/whatsapp items → posted to the channel). Only when the owner explicitly asks to publish. Needs the item id from list_inbox.",
+    input_schema: { type: "object", additionalProperties: false, required: ["task_id", "provider"], properties: { task_id: { type: "string" }, provider: { type: "string", enum: ["wordpress", "shopify", "x", "telegram"] } } },
     strict: true,
   },
   {

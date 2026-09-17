@@ -48,6 +48,37 @@ export const PROVIDERS: Provider[] = [
     keyFields: [{ name: "apiKey", label: "Private API key", labelAr: "مفتاح API الخاص", type: "password", placeholder: "pk_…" }],
     docs: "Klaviyo → Settings → API keys → Create private key (lists:read, campaigns:write)",
   },
+  {
+    id: "odoo", name: "Odoo", kind: "key", capabilities: ["products", "orders"],
+    keyFields: [
+      { name: "url", label: "Odoo URL", labelAr: "رابط Odoo", type: "url", placeholder: "https://mycompany.odoo.com" },
+      { name: "db", label: "Database name", labelAr: "اسم قاعدة البيانات" },
+      { name: "username", label: "Login email", labelAr: "بريد الدخول" },
+      { name: "apiKey", label: "API key", labelAr: "مفتاح API", type: "password" },
+    ],
+    docs: "Odoo → Preferences → Account Security → New API Key",
+  },
+  {
+    id: "prestashop", name: "PrestaShop", kind: "key", capabilities: ["products"],
+    keyFields: [
+      { name: "site", label: "Store URL", labelAr: "رابط المتجر", type: "url" },
+      { name: "apiKey", label: "Webservice key", labelAr: "مفتاح Webservice", type: "password" },
+    ],
+    docs: "PrestaShop → Advanced Parameters → Webservice → enable + Add key (products: GET)",
+  },
+  {
+    id: "telegram", name: "Telegram", kind: "key", capabilities: ["publish_post"],
+    keyFields: [
+      { name: "botToken", label: "Bot token", labelAr: "رمز البوت", type: "password", placeholder: "123456:ABC…" },
+      { name: "chatId", label: "Channel @username or chat id", labelAr: "معرّف القناة @username", placeholder: "@mystore" },
+    ],
+    docs: "@BotFather → /newbot → copy token → add the bot as admin of your channel",
+  },
+  {
+    id: "brevo", name: "Brevo", kind: "key", capabilities: ["messaging"],
+    keyFields: [{ name: "apiKey", label: "API key", labelAr: "مفتاح API", type: "password", placeholder: "xkeysib-…" }],
+    docs: "Brevo → SMTP & API → API Keys → Generate",
+  },
   // ---- OAuth (activate when env keys exist) ----
   { id: "x", name: "X", kind: "oauth", capabilities: ["publish_post"], oauth: { authorizeUrl: "https://x.com/i/oauth2/authorize", tokenUrl: "https://api.x.com/2/oauth2/token", scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"], clientIdEnv: "X_CLIENT_ID", clientSecretEnv: "X_CLIENT_SECRET", pkce: true, tokenAuth: "basic" } },
   { id: "shopify", name: "Shopify", kind: "oauth", capabilities: ["products", "orders", "publish_article"], oauth: { authorizeUrl: "https://{shop}/admin/oauth/authorize", tokenUrl: "https://{shop}/admin/oauth/access_token", scopes: ["read_products", "read_orders", "read_checkouts", "write_content", "read_customers"], clientIdEnv: "SHOPIFY_CLIENT_ID", clientSecretEnv: "SHOPIFY_CLIENT_SECRET", scopeSeparator: ",", needsShop: true } },

@@ -3,6 +3,7 @@ import { getConnection } from "./store";
 import { publishWordPress } from "./wordpress";
 import { postToX } from "./x";
 import { publishShopifyArticle } from "./shopify";
+import { postTelegram } from "./keyed";
 
 export type PublishResult = { url: string; id: string; provider: string; status: "draft" | "published" };
 
@@ -11,6 +12,7 @@ export function targetsFor(task: Task, connected: string[]): string[] {
   const out: string[] = [];
   if (task.type === "article") for (const p of ["wordpress", "shopify"]) if (connected.includes(p)) out.push(p);
   if (task.type === "social" && task.channel === "x" && connected.includes("x")) out.push("x");
+  if ((task.type === "social" || task.type === "gbp" || task.type === "whatsapp") && connected.includes("telegram")) out.push("telegram");
   return out;
 }
 
@@ -27,6 +29,10 @@ export async function publishTask(email: string, task: Task, provider: string): 
     case "shopify": {
       const r = await publishShopifyArticle(c, { title, body: body.replace(/^#\s+.+\n/, ""), published: false });
       return { ...r, provider, status: "draft" };
+    }
+    case "telegram": {
+      const r = await postTelegram(c, body);
+      return { ...r, provider, status: "published" };
     }
     case "x": {
       const r = await postToX(c, body);

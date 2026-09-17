@@ -21,6 +21,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
     const out: string[] = [];
     if (x.type === "article") for (const p of ["wordpress", "shopify"]) if (connected.includes(p)) out.push(p);
     if (x.type === "social" && x.channel === "x" && connected.includes("x")) out.push("x");
+    if ((x.type === "social" || x.type === "gbp" || x.type === "whatsapp") && connected.includes("telegram")) out.push("telegram");
     return out;
   };
   async function publish(id: string, provider: string) {

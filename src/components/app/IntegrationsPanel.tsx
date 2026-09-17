@@ -91,7 +91,7 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
                   <p className="mt-1 text-[10px] text-ink/40" dir="ltr">{c.connectedAt.slice(0, 10)}</p>
                 </div>
                 <div className="flex shrink-0 flex-col gap-1">
-                  {(c.provider === "shopify" || c.provider === "woocommerce") && <button disabled={busy} onClick={() => importProducts(c.provider)} className="rounded-full border border-oasis/40 px-3 py-1 text-xs text-oasis">{g.importProducts}</button>}
+                  {["shopify", "woocommerce", "odoo", "prestashop"].includes(c.provider) && <button disabled={busy} onClick={() => importProducts(c.provider)} className="rounded-full border border-oasis/40 px-3 py-1 text-xs text-oasis">{g.importProducts}</button>}
                   <button onClick={() => disconnect(c.provider)} className="rounded-full border border-sadu/40 px-3 py-1 text-xs text-sadu">{g.disconnect}</button>
                 </div>
               </div>

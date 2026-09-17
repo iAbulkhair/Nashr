@@ -4,6 +4,7 @@ import { getProvider } from "@/lib/connectors/registry";
 import { saveConnection } from "@/lib/connectors/store";
 import { verifyWordPress } from "@/lib/connectors/wordpress";
 import { verifyWoo } from "@/lib/connectors/woocommerce";
+import { verifyBrevo, verifyOdoo, verifyPrestaShop, verifyTelegram } from "@/lib/connectors/keyed";
 
 /** POST key-based credentials → verify → store encrypted */
 export async function POST(req: Request, ctx: { params: Promise<{ provider: string }> }) {
@@ -29,6 +30,22 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
     const v = await verifyWoo(data);
     if (!v.ok) return NextResponse.json({ ok: false, error: "verify_failed", detail: v.error }, { status: 400 });
     meta.site = data.site;
+  } else if (provider === "odoo") {
+    const v = await verifyOdoo(data);
+    if (!v.ok) return NextResponse.json({ ok: false, error: "verify_failed", detail: v.error }, { status: 400 });
+    meta.site = data.url;
+  } else if (provider === "prestashop") {
+    const v = await verifyPrestaShop(data);
+    if (!v.ok) return NextResponse.json({ ok: false, error: "verify_failed", detail: v.error }, { status: 400 });
+    meta.site = data.site;
+  } else if (provider === "telegram") {
+    const v = await verifyTelegram(data);
+    if (!v.ok) return NextResponse.json({ ok: false, error: "verify_failed", detail: v.error }, { status: 400 });
+    meta.account = v.name ?? data.chatId;
+  } else if (provider === "brevo") {
+    const v = await verifyBrevo(data);
+    if (!v.ok) return NextResponse.json({ ok: false, error: "verify_failed", detail: v.error }, { status: 400 });
+    meta.account = v.name ?? "";
   } else if (provider === "klaviyo") {
     const r = await fetch("https://a.klaviyo.com/api/accounts/", { headers: { Authorization: `Klaviyo-API-Key ${data.apiKey}`, revision: "2024-10-15" } });
     if (!r.ok) return NextResponse.json({ ok: false, error: "verify_failed", detail: `HTTP ${r.status}` }, { status: 400 });
