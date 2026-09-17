@@ -1,3 +1,4 @@
+import { track } from "@/lib/track";
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { getBrand, saveBrand, type Brand } from "@/lib/brand";
@@ -35,5 +36,6 @@ export async function PUT(req: Request) {
     ...(b.social && typeof b.social === "object" ? { social: Object.fromEntries(Object.entries(b.social).slice(0, 8).map(([k, v]) => [s(k, 20), s(v, 80)])) } : {}),
   };
   await saveBrand(sc(u), brand);
+  await track(u.email, "onboard");
   return NextResponse.json({ ok: true, brand });
 }

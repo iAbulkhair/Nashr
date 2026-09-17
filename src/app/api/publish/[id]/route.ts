@@ -1,3 +1,4 @@
+import { track } from "@/lib/track";
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { getTask, saveTask } from "@/lib/brand";
@@ -18,6 +19,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     t.published = [...(t.published ?? []), { provider: r.provider, url: r.url, status: r.status, at: new Date().toISOString() }];
     t.status = "approved";
     await saveTask(sc(u), t);
+    await track(u.email, "publish");
     return NextResponse.json({ ok: true, result: r, task: t });
   } catch (e) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : "publish_failed" }, { status: 502 });

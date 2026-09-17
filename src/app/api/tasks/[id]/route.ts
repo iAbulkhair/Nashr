@@ -1,3 +1,4 @@
+import { track } from "@/lib/track";
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { addPreference, getTask, saveTask } from "@/lib/brand";
@@ -27,6 +28,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (b.status === "approved" || b.status === "rejected" || b.status === "pending") {
     if (b.status !== t.status) t.decidedAt = b.status === "pending" ? undefined : new Date().toISOString();
     t.status = b.status;
+    if (b.status === "approved") await track(u.email, "approve");
+    if (b.status === "rejected") await track(u.email, "reject");
     if (b.status === "rejected" && b.note) await learn(`Owner rejected a ${t.type} item (${t.channel}). Reason: ${b.note}`);
   }
   await saveTask(sc(u), t);

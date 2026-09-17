@@ -1,3 +1,4 @@
+import { track } from "@/lib/track";
 import { NextResponse } from "next/server";
 import { getProvider } from "@/lib/connectors/registry";
 import { exchangeCode } from "@/lib/connectors/oauth";
@@ -25,6 +26,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
     const conn = { provider: p.id, data, meta, connectedAt: new Date().toISOString(), expiresAt };
     if (p.id === "x") { const me = await xMe(conn); if (me) meta.account = `@${me.username}`; }
     await saveConnection(st.email, conn);
+    await track(st.email.split("#")[0], "connect");
     return back(`connected=${p.id}`);
   } catch (e) {
     console.error("oauth callback failed", e);

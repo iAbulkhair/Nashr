@@ -10,6 +10,7 @@ target_fingerprint: "sha256:6e430da9cf820290a837df7fd17bf0e5f03a9c72440924f5e498
 target_path: /Users/ihejazy/projects/nashr/src/app/[lang]/app/chat/page.tsx
 timestamp: 2026-09-17T20-14-35Z
 slug: src-app-lang-app-chat-page-tsx
+closed: true
 ---
 Method: dual-agent (A: design review sub-agent · B: detector/browser sub-agent)
 

@@ -1,3 +1,4 @@
+import { track } from "@/lib/track";
 import { NextResponse } from "next/server";
 import { createSession, createUser, getUser, normalizeEmail } from "@/lib/auth";
 import { applyReferral, registerCode } from "@/lib/referral";
@@ -14,5 +15,6 @@ export async function POST(req: Request) {
   let referred = false;
   if (b.ref && /^[A-Za-z0-9]{6,10}$/.test(b.ref)) referred = await applyReferral(u.email, b.ref);
   await createSession(u.email);
+  await track(u.email, "signup");
   return NextResponse.json({ ok: true, referred });
 }

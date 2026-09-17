@@ -10,6 +10,7 @@ import { listConversations } from "@/lib/conversations";
 import { withUserLock } from "@/lib/credits";
 import { wipeAccount } from "@/lib/account";
 import { db } from "@/lib/db";
+import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
   });
 }
 
-type Action = { action: "suspend" | "unsuspend" | "extendTrial" | "resetPassword" | "delete" | "impersonate" | "setLang"; days?: number; lang?: "ar" | "en" };
+type Action = { action: "suspend" | "unsuspend" | "extendTrial" | "resetPassword" | "delete" | "impersonate" | "setLang"; days?: number; lang?: "ar" | "en"; reason?: string };
 
 /** POST actions on one user. Every action is logged to admin:log. */
 export async function POST(req: Request, ctx: { params: Promise<{ email: string }> }) {
@@ -47,7 +48,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
   const u = await getUser(email);
   if (!u) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   const b = (await req.json().catch(() => ({}))) as Action;
-  const log = (what: string) => db.lpush("admin:log", JSON.stringify({ email, what, at: new Date().toISOString() }));
+  const log = (what: string, extra: Record<string, unknown> = {}) => db.lpush("admin:log", JSON.stringify({ actor: "founder", email, what, reason: (b.reason ?? "").slice(0, 200) || undefined, ...extra, at: new Date().toISOString() }));
 
   switch (b.action) {
     case "suspend":
@@ -58,13 +59,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     }
     case "extendTrial": {
       const days = Math.max(1, Math.min(90, Math.trunc(b.days ?? 7)));
+      const prevTrial = String(u.trialEnds);
       const user = await withUserLock(email, async (x) => {
         const base = new Date(x.trialEnds).getTime() > Date.now() ? new Date(x.trialEnds) : new Date();
         x.trialEnds = new Date(base.getTime() + days * 864e5).toISOString();
         await saveUser(x);
         return x;
       });
-      await log(`extendTrial ${days}d`);
+      await log(`extendTrial ${days}d`, { before: prevTrial, after: user.trialEnds });
       return NextResponse.json({ ok: true, trialEnds: user.trialEnds });
     }
     case "resetPassword": {
@@ -80,8 +82,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       return NextResponse.json({ ok: true });
     }
     case "impersonate": {
+      const jar = await cookies();
+      const mine = jar.get("nashr_session")?.value;
+      if (mine) jar.set("nashr_return", mine, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 2 });
+      jar.set("nashr_impersonate", email, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 2 });
       await createSession(email);
-      await log("impersonate");
+      await log("impersonate", { expiresInMin: 120 });
       return NextResponse.json({ ok: true, redirect: `/${u.lang}/app` });
     }
     case "delete": {

@@ -1,3 +1,4 @@
+import { track } from "@/lib/track";
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { IMAGE_COST, getBrand, getTask, saveTask } from "@/lib/brand";
@@ -19,6 +20,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     t.imageUrl = img.url;
     t.imagePrompt = img.prompt;
     await saveTask(sc(u), t);
+    await track(u.email, "image");
     return NextResponse.json({ ok: true, task: t, credits: paid.credits, provider: img.provider });
   } catch (e) {
     console.error("image failed", e);

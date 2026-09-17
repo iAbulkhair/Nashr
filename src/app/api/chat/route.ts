@@ -1,3 +1,4 @@
+import { track } from "@/lib/track";
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { chat, history } from "@/lib/chat";
@@ -30,10 +31,12 @@ export async function POST(req: Request) {
   if (!b.stream) {
     try {
       const m = await chat(u, text, b.conv, agent, { lang });
+      await track(u.email, "chat");
       if (b.conv && b.conv !== "default") await touchConversation(sc(u), b.conv, text);
       return NextResponse.json({ ok: true, message: m, credits: u.credits, limit: m.limit ?? null });
     } catch (e) {
       console.error("chat failed", e);
+      await track(u.email, "error");
       return NextResponse.json({ ok: false, error: "chat_failed" }, { status: 502 });
     }
   }
@@ -44,10 +47,12 @@ export async function POST(req: Request) {
       const send = (obj: unknown) => controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
       try {
         const m = await chat(u, text, b.conv, agent, { lang, onStatus: (s) => send({ type: "status", text: s }) });
+        await track(u.email, "chat");
         if (b.conv && b.conv !== "default") await touchConversation(sc(u), b.conv, text);
         send({ type: "message", message: m, credits: u.credits, limit: m.limit ?? null });
       } catch (e) {
         console.error("chat failed", e);
+        await track(u.email, "error");
         send({ type: "error", error: "chat_failed" });
       } finally {
         controller.close();

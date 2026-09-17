@@ -10,15 +10,15 @@ Researched 17 Sep 2026. Claims link to the page they came from. **[unverified]**
 
 **Later:** subscriptions, invoices, dunning and ZATCA e-invoices once Moyasar or Tap is wired; MRR movements, cohorts and funnels once an analytics tool is fed; role-scoped admin and safe impersonation before anyone but the founder gets access.
 
-**Two hard findings for a Saudi entity:** Stripe's global page lists the UAE but **not Saudi Arabia** ([stripe.com/global](https://stripe.com/global)), so the Stripe → ChartMogul/Baremetrics stack is not directly available. And neither Moyasar nor Tap mention ZATCA; their "invoices" are payment requests, so Nashr must generate the VAT invoice itself.
+**Two hard findings for a Saudi entity:** Stripe's global page lists the UAE but **not Saudi Arabia** ([stripe.com/global](https://stripe.com/global)), so the Stripe → ChartMogul/Baremetrics stack is not directly available. Neither Moyasar nor Tap mention ZATCA; their "invoices" are payment requests, so Nashr generates the VAT invoice itself.
 
 ## 2. Credit-based AI SaaS: how peers expose credits
 
 > **الخلاصة:** الجميع يعرض الرصيد، تكلفة كل إجراء، تاريخ إعادة التعيين، وصناديق انتهاء الصلاحية. المشغّل يرى استهلاك كل مساحة عمل ويتحكم في التجاوز والإشعارات.
 
 - **Enrich Labs / Helena.** The pricing page (live today, unlike the "no public pricing" note in `docs/Enrich_Teardown.md`) lists Starter $39/200 credits, Pro $99/700, Pro Plus $199/2,000; credits "reset on the 1st of each month, and you can top up on demand"; only Pro Plus gets rollover and "priority top-ups"; 1 credit = post/image/chat, 2 = article, 3 = email campaign, 12–24 = video; 3-day trial ([enrichlabs.ai/pricing](https://www.enrichlabs.ai/pricing)). Nashr's `PLAN_CREDITS` (200/700/2000) mirrors this exactly.
-- **Jasper.** Credits are per action; "admins can view and govern their workspace's credit allocation"; Business adds "Team Usage & Analytics" ([jasper.ai/pricing](https://www.jasper.ai/pricing)). PAYG overage with a monthly cap, an admin toggle per workspace and alerts at 10k/5k/1k/0 credits **[unverified: [help article](https://help.jasper.ai/hc/en-us/articles/46644376016923-Credits-Based-Pricing) returned 403]**.
-- **Lovable.** Credits are "units Lovable uses to measure and pay for usage across your workspace"; 5 daily credits expire at day end; monthly credits expire 2 months after issuance; top-ups last 12 months; per-message cost shows on hover ([lovable.dev/pricing](https://lovable.dev/pricing)). $15 per 50 credits **[unverified]**.
+- **Jasper.** Credits are per action; "admins can view and govern their workspace's credit allocation" ([jasper.ai/pricing](https://www.jasper.ai/pricing)). PAYG overage with a monthly cap, a per-workspace toggle and alerts at 10k/5k/1k/0 credits **[unverified: [help article](https://help.jasper.ai/hc/en-us/articles/46644376016923-Credits-Based-Pricing) returned 403]**.
+- **Lovable.** Credits are "units Lovable uses to measure and pay for usage across your workspace"; 5 daily credits expire at day end; monthly credits expire after 2 months; top-ups last 12 months; per-message cost shows on hover ([lovable.dev/pricing](https://lovable.dev/pricing)).
 - **Bolt.** Unused tokens "roll over and stay valid for two months", consumed FIFO; reloads only on top Pro or annual plans, reload tokens "do not expire", reload price "varies based on your plan" ([support.bolt.new](https://support.bolt.new/account-and-subscription/tokens)).
 - **Copy.ai** (acquired by Fullcast, Oct 2025 ([copy.ai](https://www.copy.ai/blog/fullcast-acquires-copy-a))): one credit per workflow step, monthly reset **[unverified]**. **Midjourney:** fast GPU hours per plan, no carry-over, extra hours purchasable ([docs](https://docs.midjourney.com/hc/en-us/articles/32016412137741-GPU-Speed-Fast-Relax-Turbo)) **[403]**.
 
@@ -32,17 +32,17 @@ Researched 17 Sep 2026. Claims link to the page they came from. **[unverified]**
 
 **Lemon Squeezy / Paddle.** Lemon Squeezy is Stripe-owned and migrating merchants to waitlisted "Stripe Managed Payments" ([2026 update](https://www.lemonsqueezy.com/blog/2026-update)); Saudi Arabia is on its bank-payout list ([docs](https://docs.lemonsqueezy.com/help/getting-started/supported-countries)). Paddle: KSA seller eligibility **[unverified]** ([docs](https://developer.paddle.com/concepts/sell/supported-countries-locales/)). Neither offers mada; USD pricing clashes with SAR plans.
 
-**Moyasar (SAMA-supervised).** Recurring = save a card token at first checkout, then POST `/v1/payments` with the token on the merchant's own schedule ([tokenized cards](https://docs.moyasar.com/guides/tokenization/tokenized-cards)); the SaaS page promises "smart retry and notification systems" ([solutions](https://moyasar.com/en/solutions/subscriptions-and-saas/)) but I found no native subscription object **[unverified]**. Webhooks: `payment_paid`, `payment_failed`, `payment_refunded`, `payment_voided`, signed with a `shared_secret` ([reference](https://docs.moyasar.com/api/other/webhooks/available-webhooks/)). "Invoices" carry amount, description, `expired_at`, `callback_url`, metadata; no VAT fields ([docs](https://docs.moyasar.com/guides/invoices/creating-invoices/)). Dashboard: transactions, refunds, team roles **[helpdesk unreachable]**.
+**Moyasar (SAMA-supervised).** Recurring = save a card token at first checkout, then POST `/v1/payments` with it on the merchant's own schedule ([docs](https://docs.moyasar.com/guides/tokenization/tokenized-cards)); the SaaS page promises "smart retry and notification systems" ([solutions](https://moyasar.com/en/solutions/subscriptions-and-saas/)) but I found no native subscription object **[unverified]**. Webhooks: `payment_paid`, `payment_failed`, `payment_refunded`, signed with a `shared_secret` ([reference](https://docs.moyasar.com/api/other/webhooks/available-webhooks/)). "Invoices" carry amount, description, `expired_at`, `callback_url`, metadata; no VAT fields ([docs](https://docs.moyasar.com/guides/invoices/creating-invoices/)). Dashboard: transactions, refunds, team roles **[helpdesk unreachable]**.
 
-**Tap Payments.** Dashboard tracks "payments, payouts, refunds, reports" ([tap.company](https://www.tap.company/en-sa/products/billing)). The old Subscriptions API "is no longer supported for new integrations"; use merchant-initiated recurring with `save_card=true`, a Payment Agreement ID and a 5-minute token ([docs](https://developers.tap.company/docs/recurring-payments)); unsupported for some local methods (KNET, Benefit); mada recurring **[unverified]**. Webhooks cover charges, invoices, subscriptions with an HMAC-SHA256 `hashstring` and two retries ([docs](https://developers.tap.company/docs/webhook)).
+**Tap Payments.** Dashboard tracks "payments, payouts, refunds, reports" ([tap.company](https://www.tap.company/en-sa/products/billing)). The old Subscriptions API "is no longer supported for new integrations"; use merchant-initiated recurring with `save_card=true`, a Payment Agreement ID and a 5-minute token ([docs](https://developers.tap.company/docs/recurring-payments)); mada recurring **[unverified]**. Webhooks cover charges, invoices, subscriptions with an HMAC-SHA256 `hashstring` and two retries ([docs](https://developers.tap.company/docs/webhook)).
 
-**What Nashr must issue (ZATCA).** Tax invoice: "Tax Invoice" header, seller name/address/VAT number, buyer name and VAT number (B2B), serial number, issue date, description, quantity, unit price, taxable amount, 15% VAT rate and amount, total, QR code; simplified (B2C) needs fewer fields but still seller VAT number, total including VAT and QR ([Wafeq](https://www.wafeq.com/en-sa/forms/accounting-templates/tax-invoice-form-template), [ClearTax](https://www.cleartax.com/sa/ksa-einvoicing)). Phase 2: XML or PDF/A-3 with embedded XML, UUID, cryptographic stamp, real-time clearance for B2B, 24-hour reporting for B2C, 9-field TLV QR; Wave 24 (revenue over SAR 375,000) by 30 June 2026 ([Wafeq](https://www.wafeq.com/en-sa/tax-and-reporting/qr-code-requirements-for-e-invoices-zatca-saudi-arabia)). Nashr is below any wave, so Phase 1 generation applies once VAT-registered: a provider plus an e-invoicing library, not a dashboard feature.
+**What Nashr must issue (ZATCA).** Tax invoice: "Tax Invoice" header, seller name/address/VAT number, buyer name and VAT number (B2B), serial number, issue date, line items with quantity and unit price, taxable amount, 15% VAT rate and amount, total, QR code; simplified (B2C) needs fewer fields but still seller VAT number, total including VAT and QR ([Wafeq](https://www.wafeq.com/en-sa/forms/accounting-templates/tax-invoice-form-template), [ClearTax](https://www.cleartax.com/sa/ksa-einvoicing)). Phase 2: XML or PDF/A-3 with embedded XML, UUID, cryptographic stamp, real-time clearance for B2B, 24-hour reporting for B2C, 9-field TLV QR; Wave 24 (revenue over SAR 375,000) by 30 June 2026 ([Wafeq](https://www.wafeq.com/en-sa/tax-and-reporting/qr-code-requirements-for-e-invoices-zatca-saudi-arabia)). Nashr is below any wave, so Phase 1 generation applies once VAT-registered: a provider plus an e-invoicing library, not a dashboard feature.
 
 ## 4. Product analytics for operators
 
 > **الخلاصة:** المقاييس القياسية: تسجيلات، تفعيل، DAU/WAU/MAU، احتفاظ، قمع، استخدام الميزات، تسجيلات الجلسات. الطبقات المجانية كافية لسنة.
 
-Standard set: signups, activation (first approved item), DAU/WAU/MAU, retention cohorts, funnels (signup → onboarding → first generation → first approval → paid), feature usage per agent, session recordings.
+Standard set: signups, activation (first approved item), DAU/WAU/MAU, retention cohorts, funnels (signup → first generation → first approval → paid), feature usage per agent, session recordings.
 
 - **PostHog** free: 1M events, 5K recordings, 1M flag requests, 1,500 survey responses, 100K exceptions/month, no card ([pricing](https://posthog.com/pricing)); flags roll out "by person property, cohort, or group" ([docs](https://posthog.com/docs/feature-flags)).
 - **Mixpanel** free: 1M events/month, funnels and retention, 10K replays, cohorts "Limited" ([pricing](https://mixpanel.com/pricing)).
@@ -56,8 +56,8 @@ Standard set: signups, activation (first approved item), DAU/WAU/MAU, retention 
 > **الخلاصة:** الأدوات الثلاث تضع MRR وحركاته أولاً، ثم التسرب، LTV، ARPU/ARPA، تحويل التجربة، وQuick Ratio. لا واحدة تتصل بـ Moyasar أو Tap.
 
 - **ChartMogul:** free under $120K ARR, Pro from $1,188/year; sources Stripe, Chargebee, Paddle ([pricing](https://chartmogul.com/pricing/)); core charts MRR, paid churn, LTV, ARPA ([help](https://help.chartmogul.com/article/282-getting-started-with-charts-in-chartmogul)).
-- **Baremetrics:** "MRR breakdown by new, expansion, reactivation, contraction, and churn"; Launch $75/month (its own blog says $49; treat the blog as stale); has a "Universal Connector (API)" ([pricing](https://baremetrics.com/pricing), [comparison](https://baremetrics.com/blog/baremetrics-vs-chartmogul-vs-profitwell)).
-- **ProfitWell Metrics (Paddle):** free; MRR, churn, up/downgrades, LTV, active customers, revenue per customer, benchmarks; Stripe, Chargebee, Braintree, Zuora, Recurly, Paddle ([paddle.com](https://www.paddle.com/profitwell-metrics)).
+- **Baremetrics:** "MRR breakdown by new, expansion, reactivation, contraction, and churn"; Launch $75/month (its blog still says $49); has a "Universal Connector (API)" ([pricing](https://baremetrics.com/pricing), [comparison](https://baremetrics.com/blog/baremetrics-vs-chartmogul-vs-profitwell)).
+- **ProfitWell Metrics (Paddle):** free; MRR, churn, up/downgrades, LTV, active customers, benchmarks; Stripe, Chargebee, Braintree, Recurly, Paddle ([paddle.com](https://www.paddle.com/profitwell-metrics)).
 - **Quick ratio** = (new + expansion MRR) ÷ (contraction + churned MRR) ([ChartMogul](https://chartmogul.com/blog/saas-quick-ratio/), [Baremetrics](https://baremetrics.com/academy/saas-quick-ratio)).
 
 With Moyasar/Tap, Nashr computes these from its own subscription records or pushes them to Baremetrics' Universal Connector.
@@ -71,10 +71,10 @@ With Moyasar/Tap, Nashr computes these from its own subscription records or push
 | Sentry Developer | 5K errors, 5M spans, 50 replays, 1 uptime + 1 cron monitor, 5 GB logs, 1 user; Team $26/mo ([pricing](https://sentry.io/pricing/)) |
 | Better Stack | 10 monitors and heartbeats, 30 s checks, 1 status page, on-call; logs 3 GB/3 days ([pricing](https://betterstack.com/pricing)) |
 | Axiom Personal | 500 GB/mo ingest, 30-day retention; Cloud $25/mo ([pricing](https://axiom.co/pricing)) |
-| Vercel Web Analytics | Hobby 50K events/mo, 1-month window, no custom events; Pro $0.03/1K ([docs](https://vercel.com/docs/analytics/limits-and-pricing)) |
-| Vercel Speed Insights | 10K events/30 days, RES only; Plus $10/project for all Core Web Vitals ([docs](https://vercel.com/docs/speed-insights/limits-and-pricing)) |
+| Vercel Web Analytics | Hobby 50K events/mo, 1-month window; Pro $0.03/1K ([docs](https://vercel.com/docs/analytics/limits-and-pricing)) |
+| Vercel Speed Insights | 10K events/30 days, RES only; Plus $10/project ([docs](https://vercel.com/docs/speed-insights/limits-and-pricing)) |
 | Upstash Redis | 500K commands/mo, 256 MB; $0.20/100K after; budget alerts at 70/90% ([pricing](https://upstash.com/pricing/redis)) |
-| Highlight.io | Do not adopt: acquired by LaunchDarkly, standalone shut 28 Feb 2026; pricing URL redirects to launchdarkly.com ([announcement](https://launchdarkly.com/blog/welcome-highlight-to-launchdarkly/)) |
+| Highlight.io | Do not adopt: acquired by LaunchDarkly, standalone shut 28 Feb 2026 ([announcement](https://launchdarkly.com/blog/welcome-highlight-to-launchdarkly/)) |
 
 Model API signals: a 429 `rate_limit_error` carries `retry-after`; the tier spend cap (Start $500/mo, Build $1,000/mo) also returns 429 but with `error_code: enforced_spend_limit_reached` and no `retry-after`, so retries are pointless; `anthropic-ratelimit-*-remaining` headers expose headroom ([platform.claude.com](https://platform.claude.com/docs/en/api/rate-limits)). Nashr's crons (`vercel.json`: Sun 03:00 and daily 05:00 UTC) should each ping a Better Stack heartbeat.
 
@@ -94,10 +94,10 @@ Model API signals: a 429 `rate_limit_error` carries `retry-after`; the tier spen
 
 | Platform | What the operator view shows |
 |---|---|
-| Enrich/Helena | Per-plan allowance, monthly reset, on-demand top-up, rollover on top tier (pricing page; console not public) |
-| Jasper | Workspace credit allocation, PAYG toggle and cap, threshold alerts, team usage analytics |
-| Lovable / Bolt | Per-message cost, credit/token buckets with expiry, reload eligibility by plan |
-| Stripe Billing | MRR and movements, subscribers, ARPU, LTV, trial conversion, churn, cohorts, AR aging, recovery, CSV |
+| Enrich/Helena | Per-plan allowance, monthly reset, on-demand top-up, rollover on top tier (console not public) |
+| Jasper | Workspace credit allocation, PAYG toggle and cap, threshold alerts, usage analytics |
+| Lovable / Bolt | Per-message cost, credit buckets with expiry, reload eligibility by plan |
+| Stripe Billing | MRR and movements, subscribers, ARPU, LTV, trial conversion, churn, cohorts, recovery, CSV |
 | Moyasar | Transactions, payment-request invoices, refunds, team roles, webhooks, settlement exports |
 | Tap | Payments, payouts, refunds, reports; recurring via saved card + agreement; webhooks |
 | ChartMogul / Baremetrics / ProfitWell | MRR breakdown, churn, LTV, ARPA/ARPU, quick ratio, cohorts, benchmarks |
@@ -108,7 +108,7 @@ Model API signals: a 429 `rate_limit_error` carries `retry-after`; the tier spen
 
 > **الخلاصة:** ثمانية أقسام، لكل مقياس اسم وتعريف ومصدر بيانات محدد داخل Redis أو أداة خارجية.
 
-Existing keys: `users:all`, `user:{email}` (plan, credits, trialEnds, createdAt, renewedAt, suspended), `usage:{email|_all}:{YYYY-MM}:{in|out|calls|usd_micro|kind:*}`, `tasks:{scope}`/`task:{scope}:{id}` (quality.score, status), `fb:{email}:{agent}:{up|down}`, `fblog:{email}`, `referrals:{email}`, `admin:log`. **new** marks keys to add.
+Existing keys: `users:all`, `user:{email}` (plan, credits, trialEnds, createdAt, renewedAt, suspended), `usage:{email|_all}:{YYYY-MM}:{in|out|calls|usd_micro|kind:*}`, `task:{scope}:{id}` (quality.score, status), `fb:{email}:{agent}:{up|down}`, `fblog:{email}`, `admin:log`. **new** marks keys to add.
 
 **A. Overview (today / 7d / 30d)**
 
@@ -132,7 +132,7 @@ Existing keys: `users:all`, `user:{email}` (plan, credits, trialEnds, createdAt,
 
 **E. Quality.** `globalMetrics(days)` via `/api/admin/evals`: thumbs per agent, average judge score, share below 70, approval rate from `stats.ts`.
 
-**F. Health.** **new** `cron:last:{daily|weekly}` set by handlers plus Better Stack heartbeats; Sentry error count; Speed Insights RES; Upstash commands; Anthropic remaining headers sampled into **new** `health:ratelimit:latest`.
+**F. Health.** **new** `cron:last:{daily|weekly}` set by handlers plus Better Stack heartbeats; Sentry errors; Speed Insights RES; Upstash commands; Anthropic remaining headers in **new** `health:ratelimit:latest`.
 
 **G. Audit log.** Entries become `{actor, target, action, before, after, reason, at}`; log `/api/admin/plan` POSTs; add reason and expiry to impersonation.
 
@@ -146,4 +146,4 @@ Existing keys: `users:all`, `user:{email}` (plan, credits, trialEnds, createdAt,
 |---|---|---|
 | Sections A, B, D, E, G, H; signup/conversion/credit counters; reason-required adjustments; cron heartbeats; Sentry and Speed Insights free tiers | Section C; real MRR from subscription records; failed payments, retries, refunds; ZATCA invoices with QR; churn and quick ratio from billing events; top-up SKU | Funnels (signup → first approval → paid), retention cohorts, feature usage per agent, session recordings, percentage flags |
 
-**Still unverified, check before committing:** Jasper's alert thresholds; whether Moyasar has a native subscription object; mada support for Tap merchant-initiated recurring; Paddle seller eligibility for a KSA company; Lovable top-up price.
+**Check before committing:** Moyasar native subscription object; mada on Tap merchant-initiated recurring; Paddle seller eligibility for a KSA company.

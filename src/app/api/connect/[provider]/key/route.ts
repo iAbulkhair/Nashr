@@ -1,3 +1,4 @@
+import { track } from "@/lib/track";
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { getProvider } from "@/lib/connectors/registry";
@@ -51,5 +52,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
     if (!r.ok) return NextResponse.json({ ok: false, error: "verify_failed", detail: `HTTP ${r.status}` }, { status: 400 });
   }
   await saveConnection(sc(u), { provider, data, meta, connectedAt: new Date().toISOString() });
+  await track(u.email, "connect");
   return NextResponse.json({ ok: true, meta });
 }

@@ -1,3 +1,4 @@
+import { track } from "@/lib/track";
 import { charge, refund } from "@/lib/credits";
 import { statsFor } from "@/lib/stats";
 import { judgeLater } from "@/lib/judge";
@@ -31,6 +32,7 @@ export async function POST(req: Request) {
     items = await generate(type, brand, await listPreferences(sc(u)), b.notes, { memory: await memoryBlock(sc(u)), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: u.email, stats: await statsFor(type, sc(u)) });
   } catch (e) {
     console.error("generate failed", e);
+    await track(u.email, "error");
     u.credits = await refund(u.email, cost);
     return NextResponse.json({ ok: false, error: "generation_failed" }, { status: 502 });
   }
@@ -42,5 +44,6 @@ export async function POST(req: Request) {
     created.push(t);
   }
   judgeLater(sc(u), u.email, brand, created);
+  await track(u.email, "generate");
   return NextResponse.json({ ok: true, created: created.length, credits: u.credits });
 }

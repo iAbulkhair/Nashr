@@ -1,3 +1,4 @@
+import { track } from "@/lib/track";
 import { currentUser, sc } from "@/lib/auth";
 import { crawl } from "@/lib/crawl";
 import { buildFromSite } from "@/lib/onboard";
@@ -23,6 +24,7 @@ export async function POST(req: Request) {
         send({ step: "research", status: "running" });
         send({ step: "brand", status: "running" });
         const r = await buildFromSite(site, u.lang, b.hints, u.email);
+        await track(u.email, "onboard");
         send({ step: "research", status: "done" });
         await saveBrand(sc(u), r.brand);
         send({ step: "brand", status: "done", brand: r.brand });
