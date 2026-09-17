@@ -1,4 +1,5 @@
 import type { Dict } from "@/lib/i18n";
+import LangToggle from "./LangToggle";
 
 export default function Footer({ t }: { t: Dict }) {
   return (
@@ -17,7 +18,10 @@ export default function Footer({ t }: { t: Dict }) {
           ))}
         </nav>
       </div>
-      <p className="mx-auto max-w-6xl px-4 pb-8 text-xs sm:px-6">{t.footer.rights}</p>
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 pb-8 text-xs sm:px-6">
+        <p>{t.footer.rights}</p>
+        <LangToggle lang={t.dir === "rtl" ? "ar" : "en"} />
+      </div>
     </footer>
   );
 }

@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
 import LogoutButton from "./LogoutButton";
+import LangToggle from "../LangToggle";
 
 type Item = { href: string; label: string; accent?: boolean };
 
@@ -61,7 +62,7 @@ export default function Sidebar({ t, lang, user, brandName }: { t: AppDict; lang
         <Link href={`${base}/profile`} className="block truncate font-medium text-mist hover:text-saffron">{user.name || user.email}</Link>
         <p className="mt-0.5 flex items-center justify-between text-mist-dim"><span>{user.plan}</span><Link href={`${base}/billing`} className="font-mono text-saffron" dir="ltr">{user.credits} {t.nav.credits}</Link></p>
         <div className="mt-2 flex items-center justify-between">
-          <Link href={lang === "ar" ? path.replace("/ar/", "/en/") : path.replace("/en/", "/ar/")} className="text-mist-dim hover:text-mist">{lang === "ar" ? "English" : "العربية"}</Link>
+          <LangToggle lang={lang} size="sm" />
           <LogoutButton label={t.nav.logout} lang={lang} />
         </div>
       </div>
@@ -74,6 +75,7 @@ export default function Sidebar({ t, lang, user, brandName }: { t: AppDict; lang
         <Link href={`${base}/chat`} className="font-display text-xl font-bold">{t.appName}</Link>
         <div className="flex items-center gap-3">
           <Link href={`${base}/billing`} className="font-mono text-xs text-saffron" dir="ltr">{user.credits}</Link>
+          <LangToggle lang={lang} size="sm" />
           <button onClick={() => setOpen(!open)} aria-label={t.nav.menu} className="rounded-md border border-mist/20 px-2 py-1 text-sm">☰</button>
         </div>
       </header>

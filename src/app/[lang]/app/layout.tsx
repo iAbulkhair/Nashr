@@ -6,6 +6,7 @@ import { appDict } from "@/lib/app-i18n";
 import { currentUser } from "@/lib/auth";
 import Sidebar from "@/components/app/Sidebar";
 import TrialBanner from "@/components/app/TrialBanner";
+import LangToggle from "@/components/LangToggle";
 import { getBrand } from "@/lib/brand";
 import { sc } from "@/lib/auth";
 
@@ -27,7 +28,7 @@ export default async function AppLayout({ children, params }: { children: React.
         <header className="border-b border-mist/10 bg-oasis-deep text-mist">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
             <Link href={`/${lang}`} className="font-display text-xl font-bold">{t.appName}<span className="ms-2 inline-block h-2 w-2 rounded-full bg-saffron align-middle" aria-hidden /></Link>
-            <Link href={lang === "ar" ? "/en/app/login" : "/ar/app/login"} className="text-xs text-mist-dim">{lang === "ar" ? "English" : "العربية"}</Link>
+            <LangToggle lang={lang} />
           </div>
         </header>
         <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">{children}</main>
