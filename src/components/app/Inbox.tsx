@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import { IMAGE_TYPES, type Task } from "@/lib/brand";
 import { limitFromError } from "./LimitModal";
+import { render } from "@/lib/md";
 import type { Lang } from "@/lib/i18n";
 
 const CHAR_LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250, tiktok: 2200, whatsapp: 1024, gbp: 1500, linkedin: 3000 };
@@ -111,7 +112,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
                   </div>
                 </div>
               ) : (
-                <><pre className="mt-3 whitespace-pre-wrap font-body text-sm leading-relaxed text-ink/90">{body}</pre><p className={`mt-1 font-mono text-[10px] ${CHAR_LIMITS[x.channel] && body.length > CHAR_LIMITS[x.channel] ? "text-sadu" : "text-ink/40"}`} dir="ltr">{body.length}{CHAR_LIMITS[x.channel] ? ` / ${CHAR_LIMITS[x.channel]}` : ""}</p></>
+                <><div className="prose-nashr prose-compact mt-3 text-sm text-ink/90" dir="auto" dangerouslySetInnerHTML={{ __html: render(body) }} /><p className={`mt-1 font-mono text-[10px] ${CHAR_LIMITS[x.channel] && body.length > CHAR_LIMITS[x.channel] ? "text-sadu" : "text-ink/40"}`} dir="ltr">{body.length}{CHAR_LIMITS[x.channel] ? ` / ${CHAR_LIMITS[x.channel]}` : ""}</p></>
               )}
               {rejecting === x.id && (
                 <div className="mt-3 grid gap-2">

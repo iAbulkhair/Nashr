@@ -139,3 +139,14 @@ details > summary::-webkit-details-marker { display: none; }
 .prose-nashr th { background: var(--color-primary); color: var(--color-primary-foreground); text-align: start; padding: 0.5rem 0.75rem; }
 .prose-nashr td { border-top: 1px solid color-mix(in oklab, var(--color-foreground) 10%, transparent); padding: 0.5rem 0.75rem; }
 .prose-nashr strong { font-weight: 600; }
+
+/* Compact prose for inbox items and chat bubbles */
+.prose-compact h2, .prose-compact h3, .prose-compact h4 { font-size: 1rem; margin-top: 0.9rem; color: var(--color-primary); }
+.prose-compact h2:first-child, .prose-compact h3:first-child, .prose-compact p:first-child { margin-top: 0; }
+.prose-compact p, .prose-compact li { margin-top: 0.35rem; line-height: 1.7; color: inherit; }
+.prose-compact ul, .prose-compact ol { margin-top: 0.35rem; padding-inline-start: 1.25rem; }
+.prose-compact hr { border: 0; border-top: 1px solid color-mix(in oklab, var(--color-foreground) 10%, transparent); margin: 0.75rem 0; }
+.prose-compact table { font-size: 0.8rem; margin-top: 0.5rem; }
+.prose-compact th { padding: 0.3rem 0.5rem; }
+.prose-compact td { padding: 0.3rem 0.5rem; }
+.prose-compact code { background: color-mix(in oklab, var(--color-foreground) 8%, transparent); border-radius: 0.25rem; padding: 0 0.3rem; font-family: var(--font-mono), monospace; font-size: 0.85em; }

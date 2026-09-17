@@ -29,30 +29,4 @@ export function slugs() {
 }
 
 /** Small markdown → HTML: headings, paragraphs, lists, tables, bold, links. */
-export function render(md: string) {
-  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-  const inline = (s: string) => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\[(.+?)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-  const lines = md.split("\n");
-  const out: string[] = [];
-  let list: string[] = [], ol: string[] = [], table: string[][] = [];
-  const flush = () => {
-    if (list.length) { out.push("<ul>" + list.map((l) => `<li>${l}</li>`).join("") + "</ul>"); list = []; }
-    if (ol.length) { out.push("<ol>" + ol.map((l) => `<li>${l}</li>`).join("") + "</ol>"); ol = []; }
-    if (table.length) {
-      const [h, ...rows] = table.filter((r) => !r.every((c) => /^-+$/.test(c)));
-      out.push(`<table><thead><tr>${h.map((c) => `<th>${inline(c)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
-      table = [];
-    }
-  };
-  for (const raw of lines) {
-    const l = raw.trimEnd();
-    if (/^\|/.test(l)) { table.push(l.split("|").slice(1, -1).map((c) => c.trim())); continue; }
-    if (/^#{1,6}\s/.test(l)) { flush(); const n = l.match(/^#+/)![0].length; out.push(`<h${n + 1}>${inline(l.replace(/^#+\s*/, ""))}</h${n + 1}>`); }
-    else if (/^\s*[-*]\s+/.test(l)) { if (table.length) flush(); list.push(inline(l.replace(/^\s*[-*]\s+/, ""))); }
-    else if (/^\s*\d+\.\s+/.test(l)) { if (table.length) flush(); ol.push(inline(l.replace(/^\s*\d+\.\s+/, ""))); }
-    else if (!l.trim()) flush();
-    else { flush(); out.push(`<p>${inline(l)}</p>`); }
-  }
-  flush();
-  return out.join("\n");
-}
+export { render } from "./md";

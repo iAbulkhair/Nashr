@@ -4,6 +4,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { ChatMsg, ChatItem } from "@/lib/chat";
 import { AGENTS, type AgentId } from "@/lib/agents";
 import { HireBlock, raiseLimit } from "./LimitModal";
+import { render } from "@/lib/md";
 
 type Conv = { id: string; title: string; updatedAt: string; count: number; agent?: AgentId };
 type Hit = { conversationId: string; title: string; snippet: string; at: string };
@@ -28,7 +29,7 @@ function ItemCard({ item, t, lang }: { item: ChatItem; t: AppDict; lang: "ar" | 
         <span className="flex items-center gap-2 font-semibold"><span aria-hidden>{ICONS[item.channel] ?? "•"}</span>{item.channel}<span className="font-normal text-ink/50" dir="auto">· {item.title}</span></span>
         <span className={`badge ${status === "approved" ? "badge-primary" : "badge-accent"}`}>{status === "approved" ? t.inbox.approved : t.inbox.pending}</span>
       </header>
-      {open && <pre className="whitespace-pre-wrap px-4 py-3 font-body text-sm leading-relaxed" dir="auto">{item.body}</pre>}
+      {open && <div className="prose-nashr prose-compact px-4 py-3 text-sm" dir="auto" dangerouslySetInnerHTML={{ __html: render(item.body) }} />}
       <footer className="flex flex-wrap items-center gap-2 border-t border-ink/5 px-3 py-2 text-xs">
         <span className={`font-mono ${limit && item.body.length > limit ? "text-sadu" : "text-ink/50"}`} dir="ltr">{item.body.length}{limit ? ` / ${limit}` : ""}</span>
         <span className="ms-auto flex gap-1.5">
@@ -181,7 +182,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
             <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`${m.items?.length ? "w-full max-w-[95%]" : "max-w-[85%]"} rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-oasis text-mist" : "bg-salt-dim text-ink"}`} dir="auto">
                 {m.role === "assistant" && <span className="mb-1 block text-[11px] font-semibold text-sadu">{t.agents[m.agent ?? agent].name}</span>}
-                <p className="whitespace-pre-wrap">{m.content}</p>
+                {m.role === "assistant" ? <div className="prose-nashr prose-compact" dangerouslySetInnerHTML={{ __html: render(m.content) }} /> : <p className="whitespace-pre-wrap">{m.content}</p>}
                 {m.items && m.items.length > 0 && <div className="mt-1">{m.items.map((it) => <ItemCard key={it.id} item={it} t={t} lang={lang} />)}</div>}
                 {m.actions && m.actions.length > 0 && <p className="mt-1 font-mono text-[10px] text-ink/50" dir="ltr">{m.actions.join(" · ")}</p>}
                 {m.role === "assistant" && (
