@@ -39,6 +39,12 @@ const TOOLS: Anthropic.Tool[] = [
     strict: true,
   },
   {
+    name: "draft_items",
+    description: "Small ask: write 1-3 items of one type right now (social post/caption, whatsapp message, ad copy, gbp post). 1 credit per item. Items land in the inbox AND you show them in your reply. Use this whenever the owner asks for a few captions, one post, two messages, etc. Never refuse a small ask because batches are bigger.",
+    input_schema: { type: "object", additionalProperties: false, required: ["type", "count", "brief"], properties: { type: { type: "string", enum: ["social", "whatsapp", "ads", "gbp"] }, count: { type: "integer", minimum: 1, maximum: 3 }, brief: { type: "string", description: "What the owner asked for: occasion, product, angle, channel, language." } } },
+    strict: true,
+  },
+  {
     name: "update_brand",
     description: "Update one field of the structured brand file when the owner states a fact or preference (tone, products, offers, banned words, dialect, channels, audience, competitors, city).",
     input_schema: { type: "object", additionalProperties: false, required: ["field", "value"], properties: { field: { type: "string", enum: ["tone", "products", "audience", "offers", "competitors", "banned", "preferred", "dialect", "city", "name"] }, value: { type: "string" } } },
@@ -94,7 +100,7 @@ ${skillsBlock(agent) || "- playbook not loaded; rely on best practice and the br
   return `${intro} Reply in the language the owner writes in (Arabic in light Saudi/Gulf tone unless the brand dialect says otherwise; English if they write English). Keep replies short (2-6 sentences) unless asked for a document.
 
 WHAT YOU CAN DO
-- Create content via generate_content (it lands in the approval inbox; tell the owner it's there and how many credits it used).
+- Create content via generate_content for full batches, or draft_items for 1-3 items (1 credit each); both land in the approval inbox.
 - Remember facts via update_brand and write_file. Read your memory via read_file.
 - Import real products from the store via import_catalog (writes products.md). Generate a visual for an inbox item via generate_image (${IMAGE_COST} credit).
 - CONNECTED PLATFORMS: ${connected.length ? connected.join(", ") : "none"}. You can publish_item to connected ones (articles → WordPress/Shopify as drafts; X posts → live). For anything not connected, the owner copies approved items; say so plainly and point to the Integrations page.
@@ -117,7 +123,7 @@ Pages: /app/chat (you), /app (inbox), /app/files, /app/tasks, /app/governance, /
 REPLY SHAPES
 - Simple asks and small talk: 2-6 sentences.
 - Planning or "what can you do / what should we do this week" questions: answer as a structured plan in the owner's language: "This week (priority order)" with 3-4 numbered sections and 2-4 bullets each, grounded in the brand file, strategy.md and workspace state; a short "Not covered on your current plan" list when relevant (trial: no auto-publishing, connectors need approvals; everything else is included); on the first such question in a conversation add a compact "How I work" table (You ask / I research / I draft / You approve / I publish on connected channels / We learn from your edits); a line "Connected today: …"; a "Suggested focus for the next 7 days" with day ranges; end with a question offering 2-3 lanes to pick.
-- Content asks of 1-3 items: call generate_content, then show the items in the reply itself (formatted, ready to copy), name the angle of each in one line, mention they are also in the inbox, and end with ONE concrete offer (an image, a variant, a discount or end date woven in, a publish date).
+- Content asks of 1-3 items (a caption, three posts, two messages): call draft_items IMMEDIATELY with the owner's brief. Do not ask clarifying questions first and do not argue about timing or batch sizes; unknown facts (discount, end date) become [رقم] / [date] placeholders. Then show the items in the reply (formatted, ready to copy), name the angle of each in one line, mention they are also in the inbox, add at most one sentence of advice (e.g. a closer season), and end with ONE concrete offer (an image, a variant, the discount or end date woven in, a publish date).
 - Content asks of more items: call generate_content and summarize what landed in the inbox with the titles.
 - Credits: if a tool reports insufficient credits or an ended trial, say so in one plain sentence and point to the Subscription page. Never pretend the work was done.
 
@@ -235,6 +241,34 @@ async function runTool(user: User, name: string, input: Record<string, unknown>,
       actions.push(`generated:${type}:${items.length}`);
       const inline = items.length <= 3 ? `\n\nITEM BODIES (show these to the owner in your reply, formatted, since the batch is small):\n${items.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body.slice(0, 1500)}`).join("\n\n")}` : "";
       return `Created ${items.length} ${type} item(s) in the inbox${gov.autoApprove[type] ? " (auto-approved per governance)" : ""}. Credits left: ${user.credits}. Titles: ${items.map((i) => i.title).join(" | ")}${inline}`;
+    }
+    case "draft_items": {
+      const type = input.type as TaskType;
+      const count = Math.max(1, Math.min(3, Number(input.count) || 1));
+      const cost = Math.max(1, Math.ceil((TASK_COST[type] / (TASK_COUNT[type] || 1)) * count));
+      const brand = await getBrand(email);
+      if (!brand) return "No brand file yet. Ask the owner to run onboarding.";
+      if (user.plan === "trial" && new Date(user.trialEnds) < new Date()) { actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page."; }
+      const paid = await charge(user.email, cost);
+      if (!paid.ok) { actions.push("limit:credits"); return `Insufficient credits: need ${cost}, have ${paid.credits}.`; }
+      user.credits = paid.credits;
+      const gov = await getGov(email);
+      let items;
+      try {
+        items = await generate(type, brand, await listPreferences(email), String(input.brief ?? ""), { memory: await memoryBlock(email), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, count });
+      } catch (e) {
+        user.credits = await refund(user.email, cost);
+        throw e;
+      }
+      const created: Task[] = [];
+      for (const it of items) {
+        const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: gov.autoApprove[type] ? "approved" : "pending", createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat" };
+        await saveTask(email, t, true);
+        created.push(t);
+      }
+      judgeLater(email, user.email, brand, created);
+      actions.push(`drafted:${type}:${items.length}`);
+      return `Drafted ${items.length} ${type} item(s) (${cost} credit${cost > 1 ? "s" : ""}); also in the inbox. Credits left: ${user.credits}.\n\nITEM BODIES (show these to the owner, formatted and ready to copy):\n${items.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body}`).join("\n\n")}`;
     }
     case "update_brand": {
       const brand = await getBrand(email);

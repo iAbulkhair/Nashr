@@ -127,17 +127,18 @@ function mock(type: TaskType, brand: Brand): Generated[] {
   }));
 }
 
-export type GenOptions = { /** account email for token metering */ meter?: string; memory?: string; reviewer?: boolean; noEmDash?: boolean; /** WORKSPACE DATA block for report tasks */ stats?: string };
+export type GenOptions = { /** account email for token metering */ meter?: string; memory?: string; reviewer?: boolean; noEmDash?: boolean; /** WORKSPACE DATA block for report tasks */ stats?: string; /** produce exactly this many items instead of the batch size (small asks from chat) */ count?: number };
 
 function stripDashes(items: Generated[]) {
   return items.map((i) => ({ ...i, body: i.body.replace(/\s*[—–]\s*/g, ", ") }));
 }
 
 export async function generate(type: TaskType, brand: Brand, prefs: string[], extra?: string, opts: GenOptions = {}): Promise<Generated[]> {
-  if (!process.env.ANTHROPIC_API_KEY) return mock(type, brand);
+  if (!process.env.ANTHROPIC_API_KEY) return mock(type, brand).slice(0, opts.count && opts.count > 0 ? opts.count : undefined);
   const client = new Anthropic();
   const agent = agentForTask(type);
-  const userMsg = `TASK: ${SPECS[type]}${extra ? `\n\nOWNER NOTES FOR THIS BATCH: ${extra.slice(0, 2000)}` : ""}${opts.stats ? `\n\n${opts.stats}` : ""}\n\nReturn exactly ${TASK_COUNT[type]} item(s) as a JSON array.`;
+  const n = opts.count && opts.count > 0 ? Math.min(opts.count, TASK_COUNT[type]) : TASK_COUNT[type];
+  const userMsg = `TASK: ${SPECS[type]}${n !== TASK_COUNT[type] ? `\n\nOVERRIDE: the owner asked for exactly ${n} item(s) of this type, not the full batch. Pick the most relevant channel(s) and angles; keep every quality rule.` : ""}${extra ? `\n\nOWNER NOTES FOR THIS BATCH: ${extra.slice(0, 2000)}` : ""}${opts.stats ? `\n\n${opts.stats}` : ""}\n\nReturn exactly ${n} item(s) as a JSON array.`;
 
   const params = {
     model: "claude-opus-5",
