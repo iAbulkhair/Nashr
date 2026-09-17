@@ -6,7 +6,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { Task } from "@/lib/brand";
 import type { Lang } from "@/lib/i18n";
 
-export default function Inbox({ t, lang, tasks, brief }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null }) {
+export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[] }) {
   const i = t.inbox;
   const r = useRouter();
   const [filter, setFilter] = useState<"pending" | "approved" | "rejected" | "all">("pending");
@@ -16,6 +16,20 @@ export default function Inbox({ t, lang, tasks, brief }: { t: AppDict; lang: Lan
   const [why, setWhy] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
   const [imaging, setImaging] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState<string | null>(null);
+  const targets = (x: Task) => {
+    const out: string[] = [];
+    if (x.type === "article") for (const p of ["wordpress", "shopify"]) if (connected.includes(p)) out.push(p);
+    if (x.type === "social" && x.channel === "x" && connected.includes("x")) out.push("x");
+    return out;
+  };
+  async function publish(id: string, provider: string) {
+    setPublishing(id + provider);
+    const res = await fetch(`/api/publish/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider }) });
+    setPublishing(null);
+    if (!res.ok) alert(i.publishFail);
+    r.refresh();
+  }
   async function image(id: string) {
     setImaging(id);
     const res = await fetch(`/api/tasks/${id}/image`, { method: "POST" });
@@ -72,6 +86,9 @@ export default function Inbox({ t, lang, tasks, brief }: { t: AppDict; lang: Lan
                 </div>
                 <span className={`text-xs ${x.status === "approved" ? "text-oasis" : x.status === "rejected" ? "text-sadu" : "text-ink/50"}`}>{i[x.status]}</span>
               </div>
+              {x.published && x.published.length > 0 && (
+                <p className="mt-2 text-xs text-oasis">{x.published.map((p) => <a key={p.url} href={p.url} target="_blank" rel="noreferrer" className="me-3 underline">{p.status === "draft" ? i.draftOn : i.published} {p.provider} ↗</a>)}</p>
+              )}
               {x.imageUrl && (
                 <div className="mt-3 flex items-start gap-3">
                   <img src={x.imageUrl} alt="" className="h-40 w-40 rounded-lg object-cover" />
@@ -109,6 +126,9 @@ export default function Inbox({ t, lang, tasks, brief }: { t: AppDict; lang: Lan
                   {x.type !== "weekly_plan" && x.type !== "article" && (
                     <button disabled={imaging === x.id} onClick={() => image(x.id)} className="rounded-full border border-saffron px-4 py-1.5 disabled:opacity-50">{imaging === x.id ? i.imaging : (x.imageUrl ? "↻ " : "") + i.image}</button>
                   )}
+                  {targets(x).map((p) => (
+                    <button key={p} disabled={publishing === x.id + p} onClick={() => publish(x.id, p)} className="rounded-full bg-oasis px-4 py-1.5 font-semibold text-mist disabled:opacity-50">{publishing === x.id + p ? i.publishing : `${i.publishTo} ${p}`}</button>
+                  ))}
                   <label className="ms-auto flex items-center gap-1 text-xs text-ink/60">
                     {i.date}
                     <input type="date" dir="ltr" defaultValue={x.scheduledFor ?? ""} onChange={(e) => patch(x.id, { scheduledFor: e.target.value || null })} className="rounded border border-ink/15 px-2 py-1 text-xs" />

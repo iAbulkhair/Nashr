@@ -195,8 +195,8 @@ export const dict: Record<Lang, Dict> = {
       links: [
         { label: "الأسعار", href: "#pricing" },
         { label: "الأسئلة", href: "#faq" },
-        { label: "سياسة الخصوصية", href: "#" },
-        { label: "الشروط", href: "#" },
+        { label: "سياسة الخصوصية", href: "/ar/privacy" },
+        { label: "الشروط", href: "/ar/terms" },
       ],
     },
   },
@@ -350,8 +350,8 @@ export const dict: Record<Lang, Dict> = {
       links: [
         { label: "Pricing", href: "#pricing" },
         { label: "FAQ", href: "#faq" },
-        { label: "Privacy", href: "#" },
-        { label: "Terms", href: "#" },
+        { label: "Privacy", href: "/en/privacy" },
+        { label: "Terms", href: "/en/terms" },
       ],
     },
   },

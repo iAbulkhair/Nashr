@@ -36,6 +36,7 @@ export type Task = {
   scheduledFor?: string; // YYYY-MM-DD, set by owner in inbox/calendar
   imageUrl?: string;
   imagePrompt?: string;
+  published?: { provider: string; url: string; status: "draft" | "published"; at: string }[];
 };
 export const IMAGE_COST = 1;
 

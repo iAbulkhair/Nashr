@@ -10,6 +10,8 @@ import { getGov } from "./governance";
 import { activeSeasons } from "./seasons";
 import { importCatalog } from "./catalog";
 import { generateImage } from "./images";
+import { listConnections } from "./connectors/store";
+import { publishTask, targetsFor } from "./connectors/publish";
 import { IMAGE_COST, getTask } from "./brand";
 
 export type ChatMsg = { role: "user" | "assistant"; content: string; at: string; actions?: string[] };
@@ -60,6 +62,12 @@ const TOOLS: Anthropic.Tool[] = [
     strict: true,
   },
   {
+    name: "publish_item",
+    description: "Publish an approved inbox item to a connected platform (wordpress or shopify for articles → saved as draft on the site; x for X posts → published). Only when the owner explicitly asks to publish. Needs the item id from list_inbox.",
+    input_schema: { type: "object", additionalProperties: false, required: ["task_id", "provider"], properties: { task_id: { type: "string" }, provider: { type: "string", enum: ["wordpress", "shopify", "x"] } } },
+    strict: true,
+  },
+  {
     name: "list_inbox",
     description: "List the owner's inbox items with status counts. Use when asked what's pending or what was approved.",
     input_schema: { type: "object", additionalProperties: false, properties: {} },
@@ -67,7 +75,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
-function system(brand: Brand | null, user: User, prefs: string[], memory: string, files: string[]) {
+function system(brand: Brand | null, user: User, prefs: string[], memory: string, files: string[], connected: string[]) {
   const seasons = activeSeasons().map((s) => `${s.name} (${s.nameAr}) in ${s.daysLeft} days`).join("; ") || "none within 35 days";
   return `You are Noor (نور), the marketing agent inside Nashr, talking with the owner of "${brand?.name ?? "their business"}". You are warm, direct, and practical, like a senior marketer who is also a friend. Reply in the language the owner writes in (Arabic in light Saudi/Gulf tone unless the brand dialect says otherwise; English if they write English). Keep replies short (2-6 sentences) unless asked for a document.
 
@@ -75,7 +83,7 @@ WHAT YOU CAN DO
 - Create content via generate_content (it lands in the approval inbox; tell the owner it's there and how many credits it used).
 - Remember facts via update_brand and write_file. Read your memory via read_file.
 - Import real products from the store via import_catalog (writes products.md). Generate a visual for an inbox item via generate_image (${IMAGE_COST} credit).
-- You cannot publish to platforms yet; the owner copies approved items. Say so plainly if asked. Auto-publishing arrives after platform approvals.
+- CONNECTED PLATFORMS: ${connected.length ? connected.join(", ") : "none"}. You can publish_item to connected ones (articles → WordPress/Shopify as drafts; X posts → live). For anything not connected, the owner copies approved items; say so plainly and point to the Integrations page.
 
 CREDITS: owner has ${user.credits}. Costs: ${Object.entries(TASK_COST).map(([k, v]) => `${k}=${v}`).join(", ")}. If credits are insufficient, say so and point to the Subscription page.
 PLAN: ${user.plan}${user.plan === "trial" ? ` (trial ends ${user.trialEnds.slice(0, 10)})` : ""}.
@@ -107,11 +115,12 @@ export async function chat(user: User, text: string): Promise<ChatMsg> {
   const prefs = await listPreferences(email);
   const memory = await memoryBlock(email);
   const files = (await listFiles(email)).map((f) => f.name);
+  const connected = (await listConnections(email)).map((c) => c.provider);
   const past = (await history(email)).slice(-16);
   const messages: Anthropic.MessageParam[] = past.map((m) => ({ role: m.role, content: m.content }));
   if (!messages.length || messages[messages.length - 1].role !== "user") messages.push({ role: "user", content: text });
 
-  const sys = system(brand, user, prefs, memory, files);
+  const sys = system(brand, user, prefs, memory, files, connected);
 
   for (let turn = 0; turn < 5; turn++) {
     const res = await client.messages
@@ -186,6 +195,19 @@ async function runTool(user: User, name: string, input: Record<string, unknown>,
       const f = await writeFile(email, String(input.name), String(input.content), "noor");
       actions.push(`file:${f.name}`);
       return `Saved ${f.name} (${f.content.length} chars).`;
+    }
+    case "publish_item": {
+      const t = await getTask(email, String(input.task_id));
+      if (!t) return "Item not found.";
+      const connected = (await listConnections(email)).map((c) => c.provider);
+      const provider = String(input.provider);
+      if (!targetsFor(t, connected).includes(provider)) return `Cannot publish this ${t.type}/${t.channel} item to ${provider} (not connected or wrong type).`;
+      const r = await publishTask(email, t, provider);
+      t.published = [...(t.published ?? []), { provider: r.provider, url: r.url, status: r.status, at: new Date().toISOString() }];
+      t.status = "approved";
+      await saveTask(email, t);
+      actions.push(`published:${provider}`);
+      return `Published to ${provider} as ${r.status}: ${r.url}`;
     }
     case "list_inbox": {
       const tasks = await listTasks(email);

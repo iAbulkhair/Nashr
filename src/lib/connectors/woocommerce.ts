@@ -1,0 +1,16 @@
+import type { Connection } from "./store";
+import { writeFile } from "../files";
+
+export async function verifyWoo(data: Record<string, string>) {
+  const r = await fetch(`${data.site.replace(/\/+$/, "")}/wp-json/wc/v3/products?per_page=1`, { headers: { Authorization: "Basic " + Buffer.from(`${data.consumerKey}:${data.consumerSecret}`).toString("base64") } });
+  return r.ok ? { ok: true } : { ok: false, error: `HTTP ${r.status}` };
+}
+
+export async function importWoo(email: string, c: Connection) {
+  const r = await fetch(`${c.data.site.replace(/\/+$/, "")}/wp-json/wc/v3/products?per_page=50&status=publish`, { headers: { Authorization: "Basic " + Buffer.from(`${c.data.consumerKey}:${c.data.consumerSecret}`).toString("base64") } });
+  if (!r.ok) throw new Error(`woo ${r.status}`);
+  const items = (await r.json()) as { name: string; price: string; permalink: string; short_description?: string }[];
+  const md = [`# Product catalog (WooCommerce, ${new Date().toISOString().slice(0, 10)})`, "", ...items.map((p) => `- **${p.name}** — ${p.price} \n  ${(p.short_description ?? "").replace(/<[^>]+>/g, "").slice(0, 200)}\n  ${p.permalink}`)].join("\n");
+  await writeFile(email, "products.md", md, "noor");
+  return items.length;
+}
