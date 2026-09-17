@@ -27,8 +27,12 @@ export async function importOdoo(email: string, c: Connection) {
 // ---------- PrestaShop (Webservice key) ----------
 function psAuth(d: Record<string, string>) { return "Basic " + Buffer.from(`${d.apiKey}:`).toString("base64"); }
 export async function verifyPrestaShop(d: Record<string, string>) {
-  const r = await fetch(`${d.site.replace(/\/+$/, "")}/api/products?limit=1&output_format=JSON`, { headers: { Authorization: psAuth(d) } });
-  return r.ok ? { ok: true } : { ok: false, error: `HTTP ${r.status} (enable Webservice + key with products GET permission)` };
+  try {
+    const r = await fetch(`${d.site.replace(/\/+$/, "")}/api/products?limit=1&output_format=JSON`, { headers: { Authorization: psAuth(d) } });
+    return r.ok ? { ok: true } : { ok: false, error: `HTTP ${r.status} (enable Webservice + key with products GET permission)` };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "unreachable" };
+  }
 }
 export async function importPrestaShop(email: string, c: Connection) {
   const base = c.data.site.replace(/\/+$/, "");
@@ -44,9 +48,13 @@ export async function importPrestaShop(email: string, c: Connection) {
 
 // ---------- Telegram (bot token + channel) ----------
 export async function verifyTelegram(d: Record<string, string>) {
+  try {
   const r = await fetch(`https://api.telegram.org/bot${d.botToken}/getChat?chat_id=${encodeURIComponent(d.chatId)}`);
   const j = (await r.json()) as { ok: boolean; result?: { title?: string; username?: string }; description?: string };
   return j.ok ? { ok: true, name: j.result?.title ?? j.result?.username } : { ok: false, error: j.description ?? "bot cannot see this chat (add the bot as channel admin)" };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "unreachable" };
+  }
 }
 export async function postTelegram(c: Connection, text: string): Promise<{ id: string; url: string }> {
   const r = await fetch(`https://api.telegram.org/bot${c.data.botToken}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: c.data.chatId, text: text.slice(0, 4000) }) });
@@ -58,8 +66,12 @@ export async function postTelegram(c: Connection, text: string): Promise<{ id: s
 
 // ---------- Brevo (API key) ----------
 export async function verifyBrevo(d: Record<string, string>) {
-  const r = await fetch("https://api.brevo.com/v3/account", { headers: { "api-key": d.apiKey } });
-  if (!r.ok) return { ok: false, error: `HTTP ${r.status}` };
-  const j = (await r.json()) as { companyName?: string; email?: string };
-  return { ok: true, name: j.companyName ?? j.email };
+  try {
+    const r = await fetch("https://api.brevo.com/v3/account", { headers: { "api-key": d.apiKey } });
+    if (!r.ok) return { ok: false, error: `HTTP ${r.status}` };
+    const j = (await r.json()) as { companyName?: string; email?: string };
+    return { ok: true, name: j.companyName ?? j.email };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "unreachable" };
+  }
 }
