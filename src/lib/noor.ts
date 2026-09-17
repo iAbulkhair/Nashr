@@ -1,5 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Brand, TaskType } from "./brand";
+import { pickPlaybook } from "./playbooks";
+import { activeSeasons } from "./seasons";
 
 export type Generated = { channel: string; title: string; body: string };
 
@@ -45,11 +47,27 @@ RULES
 - Emojis: light, tasteful, max 2 per post unless the tone says otherwise.
 - Every item must be complete and ready to paste. No meta commentary.
 
+${playbookBlock(brand)}
+
+GULF CALENDAR — LIVE OR WITHIN 35 DAYS (plan for these)
+${seasonBlock()}
+
 OWNER PREFERENCES LEARNED FROM PAST EDITS (highest priority)
 ${prefs.length ? prefs.map((p) => "- " + p).join("\n") : "- none yet"}
 
 OUTPUT FORMAT
 Return ONLY a JSON array. Each element: {"channel": string, "title": string, "body": string}. "title" is a short internal label (≤ 60 chars). "body" is the full content (Markdown allowed). No text before or after the JSON.`;
+}
+
+function playbookBlock(brand: Brand) {
+  const pb = pickPlaybook(brand.industry);
+  return pb ? pb.text : "INDUSTRY PLAYBOOK\n- General SMB: one clear offer, one CTA, local proof, WhatsApp as the conversion channel.";
+}
+
+function seasonBlock() {
+  const s = activeSeasons();
+  if (!s.length) return "- No major season in the next 35 days. Focus on evergreen content and audience building.";
+  return s.map((x) => `- ${x.name} (${x.nameAr}) in ${x.daysLeft} days: ${x.play}`).join("\n");
 }
 
 function parseItems(text: string): Generated[] {
@@ -103,5 +121,44 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
       throw e;
     }
   }
-  return parseItems(text);
+  const items = parseItems(text);
+  return critique(client, brand, prefs, type, items);
+}
+
+/**
+ * Second pass: a cheaper model reviews every item against the brand file, Gulf
+ * compliance rules and the owner's preferences, and rewrites what fails.
+ */
+async function critique(client: Anthropic, brand: Brand, prefs: string[], type: TaskType, items: Generated[]): Promise<Generated[]> {
+  if (!items.length) return items;
+  try {
+    const review = await client.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 16000,
+      thinking: { type: "adaptive" },
+      output_config: { effort: "low" },
+      system: `You are the quality reviewer for Noor, a Gulf marketing agent. You receive the brand file and a batch of generated items. For EACH item check:
+1. Language policy and dialect match the brand file.
+2. No invented prices, discounts, certifications, medical/legal/financial guarantees, or fake social proof (numbers not in the brand file must be placeholders like [رقم]).
+3. Gulf/Saudi advertising compliance for the industry (health, legal, real estate license placeholders).
+4. Banned words absent, preferred words used where natural.
+5. Owner preferences respected.
+6. Platform fit (length, hashtags, CTA present, no meta commentary, complete and paste-ready).
+Return ONLY a JSON array, same length and order as input: {"ok": true} if the item passes, or {"ok": false, "body": "<full corrected body>"} with the minimal fix applied. Never change the item's language or intent; never add commentary.`,
+      messages: [
+        {
+          role: "user",
+          content: `BRAND FILE\n${JSON.stringify({ name: brand.name, industry: brand.industry, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, banned: brand.banned, preferred: brand.preferred, offers: brand.offers }, null, 0)}\n\nOWNER PREFERENCES\n${prefs.join("\n") || "none"}\n\nTASK TYPE: ${type}\n\nITEMS\n${JSON.stringify(items.map((i) => ({ channel: i.channel, body: i.body })))}`,
+        },
+      ],
+    });
+    const raw = review.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
+    const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+    const verdicts = JSON.parse(cleaned.slice(cleaned.indexOf("["), cleaned.lastIndexOf("]") + 1)) as Array<{ ok: boolean; body?: string }>;
+    return items.map((it, i) => (verdicts[i] && verdicts[i].ok === false && typeof verdicts[i].body === "string" && verdicts[i].body!.length > 20 ? { ...it, body: verdicts[i].body! } : it));
+  } catch (e) {
+    // Reviewer failure must never block delivery; ship the first pass.
+    console.warn("critique skipped", e instanceof Error ? e.message : e);
+    return items;
+  }
 }
