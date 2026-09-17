@@ -4,6 +4,7 @@ import { getTask, saveTask, type Brand, type Task } from "./brand";
 import { taskSpec } from "./noor";
 import { agentForTask } from "./agents";
 import { meter } from "./usage";
+import { notifyItem } from "./notifications";
 
 /**
  * Automated quality judge. A cheaper model scores every generated item against
@@ -60,6 +61,11 @@ Return ONLY a JSON array, same length and order as ITEMS: {"completeness":n,"bra
     fresh.quality = q;
     await saveTask(scope, fresh);
     out.push(q);
+  }
+  const weak = out.filter((q) => q.score < 70).length;
+  if (weak) {
+    const lang = tasks[0].lang ?? "ar";
+    await notifyItem(email, lang, { kind: "quality", agent: "dana", title: lang === "ar" ? `${weak} من ${tasks.length} عناصر ${agent.name.ar} بدرجة أقل من 70` : `${weak} of ${tasks.length} ${agent.name.en} item(s) scored below 70`, body: out.find((q) => q.score < 70)?.notes ?? "", href: "" }, `judge:${tasks[0].id}`, 7);
   }
   return out;
 }

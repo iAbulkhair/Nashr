@@ -5,6 +5,7 @@ import { once, sendEmail } from "@/lib/notify";
 import { runLifecycle } from "@/lib/lifecycle";
 import { db } from "@/lib/db";
 import { renewIfDue } from "@/lib/credits";
+import { followUps, notifEmailText } from "@/lib/notifications";
 import { getUser } from "@/lib/auth";
 
 export const maxDuration = 120;
@@ -12,7 +13,7 @@ export const maxDuration = 120;
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) return NextResponse.json({ ok: false }, { status: 401 });
-  let n = 0, emails = 0, nudges = 0, lifecycle = 0, renewed = 0;
+  let n = 0, emails = 0, nudges = 0, lifecycle = 0, renewed = 0, follow = 0;
   const wa = process.env.SUPPORT_WHATSAPP ? `https://wa.me/${process.env.SUPPORT_WHATSAPP.replace(/\D/g, "")}` : "";
   for (const u of await allUsers()) {
     // Monthly credit renewal for paid plans (no-op after the first brand of a multi-brand account).
@@ -35,12 +36,17 @@ export async function GET(req: Request) {
     const lc = await runLifecycle(u);
     lifecycle += lc.length;
     const brief = await runDaily(u);
+    const fu = await followUps(u, u.scope ?? u.email);
+    follow += fu.length;
+    const pref = ((await db.get<{ emails?: string }>(`profile:${u.email}`)) ?? {}).emails ?? "all";
     if (brief) {
       n++;
-      const pref = ((await db.get<{ emails?: string }>(`profile:${u.email}`)) ?? {}).emails ?? "all";
-      const worth = pref === "all" || (pref === "important" && brief.pending > 0);
-      if (worth && await sendEmail(u.email, u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, brief.text + `\n\nhttps://nashr-tau.vercel.app/${u.lang}/app`)) emails++;
+      const worth = pref === "all" || (pref === "important" && (brief.pending > 0 || fu.length > 0));
+      const extra = fu.length ? `\n\n${notifEmailText(u, fu)}` : "";
+      if (worth && await sendEmail(u.email, u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, brief.text + extra + `\n\nhttps://nashr-tau.vercel.app/${u.lang}/app`)) emails++;
+    } else if (fu.length && pref !== "none") {
+      if (await sendEmail(u.email, u.lang === "ar" ? "متابعة من فريق نشر" : "Follow-up from your Nashr team", notifEmailText(u, fu))) emails++;
     }
   }
-  return NextResponse.json({ ok: true, briefs: n, emails, nudges, lifecycle, renewed, emailConfigured: !!process.env.RESEND_API_KEY });
+  return NextResponse.json({ ok: true, briefs: n, emails, nudges, lifecycle, renewed, followUps: follow, emailConfigured: !!process.env.RESEND_API_KEY });
 }

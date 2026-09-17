@@ -10,8 +10,8 @@ import { getGov } from "./governance";
 import { activeSeasons } from "./seasons";
 
 /** Per-user recurring tasks. Cron hits /api/cron/* → we loop users. */
-export type Schedule = { weeklyPlan: boolean; dailyBrief: boolean; lastWeekly?: string; lastDaily?: string };
-export const DEFAULT_SCHEDULE: Schedule = { weeklyPlan: true, dailyBrief: true };
+export type Schedule = { weeklyPlan: boolean; dailyBrief: boolean; followUps: boolean; lastWeekly?: string; lastDaily?: string };
+export const DEFAULT_SCHEDULE: Schedule = { weeklyPlan: true, dailyBrief: true, followUps: true };
 
 export async function getSchedule(email: string): Promise<Schedule> {
   return { ...DEFAULT_SCHEDULE, ...((await db.get<Partial<Schedule>>(`schedule:${email}`)) ?? {}) };
@@ -60,6 +60,8 @@ export async function runWeekly(user: User): Promise<string> {
   }
   judgeLater(email, user.email, brand, created);
   await saveSchedule(email, { lastWeekly: new Date().toISOString() });
+  const { notifyItem } = await import("./notifications");
+  await notifyItem(user.email, user.lang, { kind: "weekly", agent: "noor", title: user.lang === "ar" ? "خطة الأسبوع جاهزة في صندوق الموافقة" : "This week's plan is ready in your inbox", body: user.lang === "ar" ? `${items.length} عنصر من نور. اعتمد ما يعجبك وعيّن تواريخ النشر.` : `${items.length} item(s) from Noor. Approve what you like and set publish dates.`, href: "" }, `weekly:${new Date().toISOString().slice(0, 10)}`, 2);
   return `ok:${items.length}`;
 }
 

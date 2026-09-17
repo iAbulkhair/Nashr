@@ -10,7 +10,7 @@ export default function TasksPanel({ t, initial }: { t: AppDict; initial: Schedu
   const [s, setS] = useState(initial);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState("");
-  async function toggle(key: "weeklyPlan" | "dailyBrief") {
+  async function toggle(key: "weeklyPlan" | "dailyBrief" | "followUps") {
     const res = await fetch("/api/schedule", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [key]: !s[key] }) });
     const j = await res.json();
     if (j.ok) setS(j.schedule);
@@ -23,7 +23,7 @@ export default function TasksPanel({ t, initial }: { t: AppDict; initial: Schedu
     setMsg(`${k.ran}: ${which === "weekly" ? j.result : j.brief ? j.brief.text.split("\n")[1] : "off"}`);
     r.refresh();
   }
-  const Card = ({ title, desc, on, last, which }: { title: string; desc: string; on: boolean; last?: string; which: "weekly" | "daily" }) => (
+  const Card = ({ title, desc, on, last, which }: { title: string; desc: string; on: boolean; last?: string; which: "weekly" | "daily" | "followups" }) => (
     <div className="rounded-xl border border-ink/10 bg-white p-5">
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -32,8 +32,8 @@ export default function TasksPanel({ t, initial }: { t: AppDict; initial: Schedu
           <p className="mt-2 font-mono text-xs text-ink/50" dir="ltr">{k.lastRun}: {last ? last.slice(0, 16).replace("T", " ") : k.never}</p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <button onClick={() => toggle(which === "weekly" ? "weeklyPlan" : "dailyBrief")} className={`rounded-full px-3 py-1 text-xs font-semibold ${on ? "bg-oasis text-mist" : "bg-ink/10 text-ink/60"}`}>{on ? k.on : k.off}</button>
-          <button disabled={!!busy} onClick={() => run(which)} className="rounded-full border border-ink/20 px-3 py-1 text-xs disabled:opacity-50">{busy === which ? "…" : k.runNow}</button>
+          <button onClick={() => toggle(which === "weekly" ? "weeklyPlan" : which === "daily" ? "dailyBrief" : "followUps")} className={`rounded-full px-3 py-1 text-xs font-semibold ${on ? "bg-oasis text-mist" : "bg-ink/10 text-ink/60"}`}>{on ? k.on : k.off}</button>
+          {which !== "followups" && <button disabled={!!busy} onClick={() => run(which)} className="rounded-full border border-ink/20 px-3 py-1 text-xs disabled:opacity-50">{busy === which ? "…" : k.runNow}</button>}
         </div>
       </div>
     </div>
@@ -45,6 +45,7 @@ export default function TasksPanel({ t, initial }: { t: AppDict; initial: Schedu
       <div className="mt-6 grid gap-4">
         <Card title={k.weekly} desc={k.weeklyDesc} on={s.weeklyPlan} last={s.lastWeekly} which="weekly" />
         <Card title={k.daily} desc={k.dailyDesc} on={s.dailyBrief} last={s.lastDaily} which="daily" />
+        <Card title={k.followups} desc={k.followupsDesc} on={s.followUps !== false} which="followups" />
       </div>
       <p className="mt-3 text-xs text-ink/50">{k.capNote}</p>
       {msg && <p role="status" className="mt-4 rounded-lg bg-salt-dim p-3 text-sm text-oasis">{msg}</p>}

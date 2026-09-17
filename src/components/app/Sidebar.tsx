@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
 import LogoutButton from "./LogoutButton";
@@ -12,6 +12,8 @@ type Item = { href: string; label: string; accent?: boolean };
 export default function Sidebar({ t, lang, user, brandName, admin }: { t: AppDict; lang: Lang; user: { name: string; email: string; credits: number; plan: string }; brandName?: string; admin?: boolean }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
+  useEffect(() => { fetch("/api/notifications?count=1").then((r) => r.json()).then((j) => j.ok && setUnread(j.unread)).catch(() => {}); }, [path]);
   const base = `/${lang}/app`;
   const work: Item[] = [
     { href: `${base}/chat`, label: t.nav.chat, accent: true },
@@ -22,6 +24,7 @@ export default function Sidebar({ t, lang, user, brandName, admin }: { t: AppDic
     { href: `${base}/inspo`, label: t.nav.inspo },
     { href: `${base}/generate`, label: t.nav.generate },
     { href: `${base}/reports`, label: t.nav.reports },
+    { href: `${base}/notifications`, label: unread ? `${t.nav.notifications} (${unread})` : t.nav.notifications, accent: unread > 0 },
   ];
   const settings: Item[] = [
     { href: `${base}/onboarding`, label: t.nav.brand },
@@ -76,6 +79,7 @@ export default function Sidebar({ t, lang, user, brandName, admin }: { t: AppDic
       <header className="sticky top-0 z-40 flex items-center justify-between bg-oasis-deep px-4 py-3 text-mist lg:hidden">
         <Link href={`${base}/chat`} className="font-display text-xl font-bold">{t.appName}</Link>
         <div className="flex items-center gap-3">
+          <Link href={`${base}/notifications`} aria-label={t.nav.notifications} className="relative text-base">🔔{unread > 0 && <span className="absolute -end-2 -top-1 rounded-full bg-sadu px-1 font-mono text-[10px] text-white" dir="ltr">{unread}</span>}</Link>
           <Link href={`${base}/billing`} className="font-mono text-xs text-saffron" dir="ltr">{user.credits}</Link>
           <LangToggle lang={lang} size="sm" />
           <button onClick={() => setOpen(!open)} aria-label={t.nav.menu} className="rounded-md border border-mist/20 px-2 py-1 text-sm">☰</button>
