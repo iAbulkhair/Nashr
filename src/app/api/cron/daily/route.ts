@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { allUsers, runDaily } from "@/lib/schedule";
 import { getBrand } from "@/lib/brand";
 import { once, sendEmail } from "@/lib/notify";
+import { runLifecycle } from "@/lib/lifecycle";
 
 export const maxDuration = 120;
 
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) return NextResponse.json({ ok: false }, { status: 401 });
-  let n = 0, emails = 0, nudges = 0;
+  let n = 0, emails = 0, nudges = 0, lifecycle = 0;
   const wa = process.env.SUPPORT_WHATSAPP ? `https://wa.me/${process.env.SUPPORT_WHATSAPP.replace(/\D/g, "")}` : "";
   for (const u of await allUsers()) {
     const brand = await getBrand(u.email);
@@ -22,11 +23,13 @@ export async function GET(req: Request) {
       if (ok) nudges++;
       continue;
     }
+    const lc = await runLifecycle(u);
+    lifecycle += lc.length;
     const brief = await runDaily(u);
     if (brief) {
       n++;
       if (await sendEmail(u.email, u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, brief.text + `\n\nhttps://nashr-tau.vercel.app/${u.lang}/app`)) emails++;
     }
   }
-  return NextResponse.json({ ok: true, briefs: n, emails, nudges, emailConfigured: !!process.env.RESEND_API_KEY });
+  return NextResponse.json({ ok: true, briefs: n, emails, nudges, lifecycle, emailConfigured: !!process.env.RESEND_API_KEY });
 }

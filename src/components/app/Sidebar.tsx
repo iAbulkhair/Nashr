@@ -27,6 +27,7 @@ export default function Sidebar({ t, lang, user }: { t: AppDict; lang: Lang; use
     { href: `${base}/integrations`, label: t.nav.integrations },
     { href: `${base}/billing`, label: t.nav.billing },
     { href: `${base}/refer`, label: t.nav.refer },
+    { href: `${base}/mcp`, label: "MCP" },
   ];
   const active = (h: string) => (h === base ? path === base : path.startsWith(h));
   const Group = ({ title, items }: { title: string; items: Item[] }) => (
