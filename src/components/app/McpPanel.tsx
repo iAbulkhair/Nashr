@@ -16,14 +16,14 @@ export default function McpPanel({ lang, origin }: { lang: Lang; origin: string 
   const tok = token || "nashr_…";
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="font-display text-3xl font-bold text-oasis">{ar ? "نور داخل Claude و ChatGPT (MCP)" : "Noor inside Claude and ChatGPT (MCP)"}</h1>
+      <h1 className="page-title">{ar ? "نور داخل Claude و ChatGPT (MCP)" : "Noor inside Claude and ChatGPT (MCP)"}</h1>
       <p className="mt-2 text-ink/70">{ar ? "اربط نور بأي مساعد يدعم MCP. تكتب في Claude «جهزي 10 منشورات» وتظهر في صندوق موافقتك هنا." : "Connect Noor to any MCP-capable assistant. Type “prepare 10 posts” in Claude and they land in your inbox here."}</p>
-      <div className="mt-6 rounded-xl border border-ink/10 bg-white p-5">
+      <div className="mt-6 card">
         <p className="text-xs uppercase tracking-wide text-ink/50">{ar ? "رمز الوصول" : "Access token"}</p>
         {token ? <code className="mt-1 block break-all rounded bg-salt-dim p-3 text-sm" dir="ltr">{token}</code> : <p className="mt-1 text-sm text-ink/60">{exists ? (ar ? "يوجد رمز نشط. أنشئ رمزاً جديداً لعرضه (القديم يُلغى)." : "A token exists. Generate a new one to see it (old one is revoked).") : ar ? "لا يوجد رمز بعد." : "No token yet."}</p>}
         {token && <p className="mt-2 text-xs text-sadu">{ar ? "يظهر مرة واحدة. انسخه الآن." : "Shown once. Copy it now."}</p>}
         <div className="mt-3 flex gap-2">
-          <button onClick={gen} className="rounded-full bg-oasis px-4 py-2 text-sm font-semibold text-mist">{ar ? "أنشئ رمزاً" : "Generate token"}</button>
+          <button onClick={gen} className="btn btn-primary btn-pill">{ar ? "أنشئ رمزاً" : "Generate token"}</button>
           {exists && <button onClick={revoke} className="rounded-full border border-sadu/40 px-4 py-2 text-sm text-sadu">{ar ? "ألغِ" : "Revoke"}</button>}
         </div>
       </div>

@@ -13,7 +13,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   return (
     <>
       <Nav t={t} lang={lang} />
-      <main className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
+      <main className="page-wrap">
         <h1 className="font-display text-4xl font-bold text-oasis">{lang === "ar" ? "المدونة" : "Blog"}</h1>
         <ul className="mt-10 grid gap-8">
           {posts.map((p) => (

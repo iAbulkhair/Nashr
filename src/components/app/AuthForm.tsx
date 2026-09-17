@@ -5,7 +5,7 @@ import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
 
-const input = "w-full rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm";
+const input = "input";
 
 export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
   const r = useRouter();
@@ -30,7 +30,7 @@ export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
   }
   return (
     <div className="mx-auto max-w-md">
-      <h1 className="font-display text-3xl font-bold text-oasis">{t.signup.title}</h1>
+      <h1 className="page-title">{t.signup.title}</h1>
       <p className="mt-2 text-ink/70">{t.signup.sub}</p>
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
         <input name="name" required placeholder={t.signup.name} className={input} />
@@ -38,7 +38,7 @@ export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
         <input name="email" required type="email" dir="ltr" placeholder={t.signup.email} className={input} />
         <input name="password" required type="password" minLength={8} placeholder={t.signup.password} className={input} />
         {err && <p role="alert" className="text-sm text-sadu">{err}</p>}
-        <button disabled={busy} className="rounded-lg bg-oasis px-5 py-3 font-semibold text-mist disabled:opacity-60">{t.signup.submit}</button>
+        <button disabled={busy} className="btn btn-primary">{t.signup.submit}</button>
       </form>
       <p className="mt-4 text-sm text-ink/70">
         {t.signup.have} <Link href={`/${lang}/app/login`} className="font-medium text-oasis underline">{t.signup.login}</Link>
@@ -67,12 +67,12 @@ export function LoginForm({ t, lang }: { t: AppDict; lang: Lang }) {
   }
   return (
     <div className="mx-auto max-w-md">
-      <h1 className="font-display text-3xl font-bold text-oasis">{t.login.title}</h1>
+      <h1 className="page-title">{t.login.title}</h1>
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
         <input name="email" required type="email" dir="ltr" placeholder={t.login.email} className={input} />
         <input name="password" required type="password" placeholder={t.login.password} className={input} />
         {err && <p role="alert" className="text-sm text-sadu">{err}</p>}
-        <button disabled={busy} className="rounded-lg bg-oasis px-5 py-3 font-semibold text-mist disabled:opacity-60">{t.login.submit}</button>
+        <button disabled={busy} className="btn btn-primary">{t.login.submit}</button>
       </form>
       <p className="mt-4 text-sm text-ink/70">
         {t.login.noAccount} <Link href={`/${lang}/app/signup`} className="font-medium text-oasis underline">{t.login.signup}</Link>

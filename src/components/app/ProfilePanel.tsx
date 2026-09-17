@@ -15,7 +15,7 @@ type Data = {
 };
 
 function Card({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
-  return <section className="rounded-xl border border-ink/10 bg-white p-5"><h2 className="font-display text-lg font-bold">{title}</h2>{sub && <p className="mt-1 text-sm text-ink/60">{sub}</p>}<div className="mt-3">{children}</div></section>;
+  return <section className="card"><h2 className="font-display text-lg font-bold">{title}</h2>{sub && <p className="mt-1 text-sm text-ink/60">{sub}</p>}<div className="mt-3">{children}</div></section>;
 }
 const L = (k: string) => <label className="block text-[11px] font-semibold uppercase tracking-wide text-ink/50">{k}</label>;
 
@@ -26,7 +26,7 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
   const [msg, setMsg] = useState("");
   useEffect(() => { fetch("/api/profile").then((x) => x.json()).then((j) => j.ok && setD(j)); }, []);
   if (!d) return <p className="text-ink/60">…</p>;
-  const input = "w-full rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm";
+  const input = "input";
   const usedCredits = Object.values(d.usage).reduce((s, x) => s + x.credits, 0) + d.images;
   const pct = Math.min(100, Math.round((usedCredits / Math.max(1, d.allowance)) * 100));
 
@@ -59,7 +59,7 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
 
   return (
     <div className="mx-auto grid max-w-3xl gap-5">
-      <div><h1 className="font-display text-3xl font-bold text-oasis">{ar ? "حسابك" : "Your profile"}</h1><p className="mt-1 text-ink/60">{ar ? "إدارة الحساب والتفضيلات وما يعرفه الفريق عن علامتك." : "Manage your account, preferences and what the team knows about your brand."}</p></div>
+      <div><h1 className="page-title">{ar ? "حسابك" : "Your profile"}</h1><p className="mt-1 text-ink/60">{ar ? "إدارة الحساب والتفضيلات وما يعرفه الفريق عن علامتك." : "Manage your account, preferences and what the team knows about your brand."}</p></div>
       {msg && <p role="status" className="rounded-lg bg-salt-dim p-3 text-sm text-oasis">{msg}</p>}
 
       <Card title={ar ? "استخدام الكريدت" : "Credit usage"} sub={rules}>
@@ -75,12 +75,12 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
             <tr className="border-t border-ink/5"><td className="py-1">{ar ? "توليد صورة" : "Image generation"}</td><td className="text-center font-mono">1</td><td className="text-center font-mono">{d.images}</td><td className="text-center font-mono">{d.images}</td></tr>
             <tr className="border-t border-ink/5"><td className="py-1">{ar ? "الدردشة مع الفريق / الإعداد من الرابط" : "Chat with the team / URL onboarding"}</td><td className="text-center font-mono">0</td><td className="text-center font-mono">—</td><td className="text-center font-mono">0</td></tr>
           </tbody></table></div>
-        {d.user.plan === "trial" && <Link href={`/${lang}/app/billing`} className="mt-4 inline-block rounded-lg bg-saffron px-5 py-2.5 text-sm font-semibold text-ink">{ar ? "ابدأ الاشتراك" : "Start subscription"}</Link>}
+        {d.user.plan === "trial" && <Link href={`/${lang}/app/billing`} className="mt-4 inline-block btn btn-accent btn-sm">{ar ? "ابدأ الاشتراك" : "Start subscription"}</Link>}
       </Card>
 
       <Card title={ar ? "الاشتراك" : "Subscription"}>
         <p className="text-sm">{ar ? "أنت الآن على خطة" : "You're currently on the"} <b>{planLabel[d.user.plan]?.[ar ? 0 : 1] ?? d.user.plan}</b>{ar ? "" : " plan"}.</p>
-        <Link href={`/${lang}/app/billing`} className="mt-3 inline-block rounded-lg border border-ink/20 px-5 py-2.5 text-sm">{ar ? "إدارة الاشتراك" : "Manage subscription"}</Link>
+        <Link href={`/${lang}/app/billing`} className="mt-3 inline-block btn btn-secondary btn-sm">{ar ? "إدارة الاشتراك" : "Manage subscription"}</Link>
       </Card>
 
       <form onSubmit={save} className="grid gap-5">
@@ -123,7 +123,7 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
             <div>{L(ar ? "رابط خريطة الموقع" : "Sitemap URL")}<input name="sitemap" defaultValue={d.brand?.sitemap ?? ""} dir="ltr" placeholder="https://example.com/sitemap.xml" className={input} /></div>
           </div>
         </Card>
-        <button className="justify-self-start rounded-lg bg-oasis px-6 py-3 text-sm font-semibold text-mist">{ar ? "حفظ التغييرات" : "Save changes"}</button>
+        <button className="justify-self-start btn btn-primary">{ar ? "حفظ التغييرات" : "Save changes"}</button>
       </form>
 
       <form onSubmit={password}><Card title={ar ? "كلمة المرور" : "Password"}>
@@ -131,12 +131,12 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
           <input name="currentPassword" type="password" required placeholder={ar ? "الحالية" : "Current"} className={input} />
           <input name="newPassword" type="password" required minLength={8} placeholder={ar ? "الجديدة (8+)" : "New (8+)"} className={input} />
         </div>
-        <button className="mt-4 rounded-lg border border-ink/20 px-5 py-2.5 text-sm">{ar ? "غيّر" : "Change"}</button>
+        <button className="mt-4 btn btn-secondary btn-sm">{ar ? "غيّر" : "Change"}</button>
       </Card></form>
 
       <Card title={ar ? "حذف الحساب" : "Delete account"}>
         <p className="text-sm text-ink/60">{ar ? "يحذف حسابك وكل بياناته نهائياً. لا رجوع." : "Permanently delete your account and all associated data. This action cannot be undone."}</p>
-        <button onClick={del} className="mt-3 rounded-lg border border-sadu px-5 py-2.5 text-sm text-sadu">{ar ? "احذف حسابي" : "Delete account"}</button>
+        <button onClick={del} className="mt-3 btn btn-danger btn-sm">{ar ? "احذف حسابي" : "Delete account"}</button>
       </Card>
     </div>
   );

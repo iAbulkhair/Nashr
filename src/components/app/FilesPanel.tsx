@@ -56,10 +56,10 @@ export default function FilesPanel({ t, files }: { t: AppDict; files: WFile[] })
 
   return (
     <div>
-      <h1 className="font-display text-3xl font-bold text-oasis">{f.title}</h1>
+      <h1 className="page-title">{f.title}</h1>
       <p className="mt-2 text-ink/70">{f.sub}</p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <button disabled={importing} onClick={importCatalog} className="rounded-full bg-oasis px-4 py-2 text-sm font-semibold text-mist disabled:opacity-60">{f.importCatalog}</button>
+        <button disabled={importing} onClick={importCatalog} className="btn btn-primary btn-pill disabled:opacity-60">{f.importCatalog}</button>
         {importMsg && <span role="status" className="text-sm text-ink/60">{importMsg}</span>}
       </div>
       <div className="mt-6 grid gap-4 md:grid-cols-[260px_1fr]">
@@ -80,7 +80,7 @@ export default function FilesPanel({ t, files }: { t: AppDict; files: WFile[] })
             <button className="rounded bg-oasis px-2 text-xs text-mist">+</button>
           </form>
         </aside>
-        <section className="rounded-xl border border-ink/10 bg-white p-5">
+        <section className="card">
           {cur ? (
             <>
               <div className="flex items-center justify-between gap-2">
@@ -88,13 +88,13 @@ export default function FilesPanel({ t, files }: { t: AppDict; files: WFile[] })
                 <div className="flex gap-2 text-sm">
                   {editing ? (
                     <>
-                      <button onClick={() => save(cur.name, draft)} className="rounded-full bg-oasis px-4 py-1.5 font-semibold text-mist">{f.save}</button>
-                      <button onClick={() => setEditing(false)} className="rounded-full border border-ink/20 px-4 py-1.5">{f.cancel}</button>
+                      <button onClick={() => save(cur.name, draft)} className="btn btn-primary btn-pill">{f.save}</button>
+                      <button onClick={() => setEditing(false)} className="btn btn-secondary btn-pill">{f.cancel}</button>
                     </>
                   ) : (
                     <>
-                      <button onClick={() => { setDraft(cur.content); setEditing(true); }} className="rounded-full border border-ink/20 px-4 py-1.5">{f.edit}</button>
-                      <button onClick={() => del(cur.name)} className="rounded-full border border-sadu/40 px-4 py-1.5 text-sadu">{f.delete}</button>
+                      <button onClick={() => { setDraft(cur.content); setEditing(true); }} className="btn btn-secondary btn-pill">{f.edit}</button>
+                      <button onClick={() => del(cur.name)} className="btn btn-danger btn-pill">{f.delete}</button>
                     </>
                   )}
                 </div>

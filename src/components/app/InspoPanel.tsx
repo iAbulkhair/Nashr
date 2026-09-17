@@ -27,7 +27,7 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
   );
   return (
     <div>
-      <h1 className="font-display text-3xl font-bold text-oasis">{p.title}</h1>
+      <h1 className="page-title">{p.title}</h1>
       <p className="mt-2 text-ink/70">{p.sub}</p>
       <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
         <span className="text-ink/50">{p.channel}:</span>
@@ -39,7 +39,7 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
       </div>
       <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {shown.map((i) => (
-          <article key={i.id} className="flex flex-col rounded-xl border border-ink/10 bg-white p-4">
+          <article key={i.id} className="flex flex-col card card-sm">
             <div className="flex items-center gap-2 text-[11px]">
               <span className="rounded bg-oasis/10 px-2 py-0.5 text-oasis">{i.channel}</span>
               <span className="rounded bg-salt-dim px-2 py-0.5">{(p.kinds as Record<string, string>)[i.kind]}</span>

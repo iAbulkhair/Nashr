@@ -54,21 +54,21 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality }: { 
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h1 className="font-display text-3xl font-bold text-oasis">{R.title}</h1>
+      <h1 className="page-title">{R.title}</h1>
       <p className="mt-2 text-ink/70">{R.sub}</p>
 
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {tiles.map((x) => (
-          <div key={x.label} className="rounded-xl border border-ink/10 bg-white p-4">
+          <div key={x.label} className="card card-sm">
             <p className="text-xs text-ink/60">{x.label}</p>
-            <p className="mt-1 font-display text-3xl font-bold text-oasis" dir="ltr">{x.value}</p>
+            <p className="mt-1 page-title" dir="ltr">{x.value}</p>
             {x.sub && <p className="mt-0.5 text-[11px] text-ink/50" dir="auto">{x.sub}</p>}
           </div>
         ))}
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <div className="rounded-xl border border-ink/10 bg-white p-4">
+        <div className="card card-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-ink/60">{R.weeks}</p>
           <div className="mt-4 flex h-40 items-end gap-2" dir="ltr">
             {k.weeks.map((w) => (
@@ -84,7 +84,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality }: { 
         </div>
         <div className="grid gap-4">
           {lists.map((l) => (
-            <div key={l.label} className="rounded-xl border border-ink/10 bg-white p-4">
+            <div key={l.label} className="card card-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-ink/60">{l.label}</p>
               <ul className="mt-2 space-y-1 text-sm">
                 {l.rows.length === 0 && <li className="text-ink/40">—</li>}
@@ -124,7 +124,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality }: { 
       <section className="mt-8 rounded-xl border border-oasis/20 bg-salt-dim p-5">
         <h2 className="font-display text-lg font-semibold text-oasis">{R.ask} <span className="text-sm font-normal text-ink/60">· {t.agents.dana.role}</span></h2>
         <p className="mt-1 text-xs text-ink/60">{R.note}</p>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder={t.generate.notes} className="mt-3 w-full rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm" />
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder={t.generate.notes} className="mt-3 input" />
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
           {agentById("dana").tasks.map((type) => {
             const cost = TASK_COST[type];
@@ -151,8 +151,8 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality }: { 
                   <p className="text-xs text-ink/50"><span>{typeLabel(x.type)}</span> · <span className="font-mono" dir="ltr">{x.createdAt.slice(0, 10)}</span> · {x.status}</p>
                 </div>
                 <div className="flex gap-2">
-                  {x.type === "board_deck" && <a href={`/api/tasks/${x.id}/pptx`} className="rounded-full bg-saffron px-3 py-1 text-xs font-semibold text-ink">{t.inbox.pptx}</a>}
-                  <Link href={`/${lang}/app`} className="rounded-full border border-ink/20 px-3 py-1 text-xs">{R.open}</Link>
+                  {x.type === "board_deck" && <a href={`/api/tasks/${x.id}/pptx`} className="btn btn-accent btn-xs">{t.inbox.pptx}</a>}
+                  <Link href={`/${lang}/app`} className="btn btn-secondary btn-xs">{R.open}</Link>
                 </div>
               </li>
             ))}

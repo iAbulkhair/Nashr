@@ -5,7 +5,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { Brand } from "@/lib/brand";
 import type { Lang } from "@/lib/i18n";
 
-const input = "w-full rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm";
+const input = "input";
 const CHANNELS = ["instagram", "snapchat", "tiktok", "x", "linkedin", "whatsapp", "google"];
 
 export default function BrandForm({ t, lang, initial }: { t: AppDict; lang: Lang; initial: Brand | null }) {
@@ -32,7 +32,7 @@ export default function BrandForm({ t, lang, initial }: { t: AppDict; lang: Lang
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="font-display text-3xl font-bold text-oasis">{o.title}</h1>
+      <h1 className="page-title">{o.title}</h1>
       <p className="mt-2 text-ink/70">{o.sub}</p>
       <form onSubmit={onSubmit} className="mt-6 grid gap-4">
         <div className="grid gap-3 sm:grid-cols-2">
@@ -73,7 +73,7 @@ export default function BrandForm({ t, lang, initial }: { t: AppDict; lang: Lang
             </button>
           ))}
         </fieldset>
-        <button disabled={busy} className="rounded-lg bg-oasis px-5 py-3 font-semibold text-mist disabled:opacity-60">{o.save}</button>
+        <button disabled={busy} className="btn btn-primary">{o.save}</button>
         {msg && <p role="status" className="text-sm text-oasis">{msg}</p>}
       </form>
     </div>

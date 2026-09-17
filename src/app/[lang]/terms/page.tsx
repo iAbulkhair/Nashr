@@ -12,8 +12,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   return (
     <>
       <Nav t={t} lang={lang} />
-      <main className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
-        <h1 className="font-display text-3xl font-bold text-oasis">{doc.title}</h1>
+      <main className="page-wrap">
+        <h1 className="page-title">{doc.title}</h1>
         <p className="mt-2 text-sm text-ink/50">{doc.updated}</p>
         {doc.sections.map((s) => (
           <section key={s.h} className="mt-8">

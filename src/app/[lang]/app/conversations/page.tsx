@@ -18,11 +18,11 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const fromChat = tasks.filter((x) => x.source === "chat").length;
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="font-display text-3xl font-bold text-oasis">{t.history.title}</h1>
+      <h1 className="page-title">{t.history.title}</h1>
       <p className="mt-2 text-ink/70">{t.history.sub}</p>
       <div className="mt-6 grid grid-cols-2 gap-4">
-        <div className="rounded-xl border border-ink/10 bg-white p-5"><p className="text-xs text-ink/50">{t.history.conversations}</p><p className="font-display text-3xl font-bold text-oasis" dir="ltr">{convs.length + 1}</p></div>
-        <div className="rounded-xl border border-ink/10 bg-white p-5"><p className="text-xs text-ink/50">{t.history.tasks}</p><p className="font-display text-3xl font-bold text-oasis" dir="ltr">{fromChat}</p></div>
+        <div className="card"><p className="text-xs text-ink/50">{t.history.conversations}</p><p className="page-title" dir="ltr">{convs.length + 1}</p></div>
+        <div className="card"><p className="text-xs text-ink/50">{t.history.tasks}</p><p className="page-title" dir="ltr">{fromChat}</p></div>
       </div>
       <ul className="mt-6 divide-y divide-ink/10 rounded-xl border border-ink/10 bg-white">
         <li className="flex items-center justify-between px-4 py-3 text-sm"><Link href={`/${lang}/app/chat`} className="font-medium hover:text-oasis">{t.history.gettingStarted}</Link><span className="text-xs text-ink/50">{t.agents.noor.name}</span></li>

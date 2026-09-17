@@ -7,7 +7,13 @@ type T = { id: string; type: string; channel: string; title: string; status: str
 type TM = { type: string; n: number; approvalRate: number | null; editRate: number | null; editMagnitude: number | null; published: number; avgScore: number | null; low: number; avgHoursToDecide: number | null };
 type AM = { agent: string; n: number; approvalRate: number | null; editRate: number | null; avgScore: number | null; low: number; thumbsUp: number; thumbsDown: number; types: TM[] };
 
-export default function AdminConsole() {
+const STR = {
+  en: { users: "Users", paying: "Paying", today: "Signed up today", trial: "Trial", cost: "Model cost this month $", tokens: "Tokens this month", calls: "Model calls", suspended: "Suspended", search: "Search email, name, phone, plan…", email: "Email", name: "Name", phone: "Phone", plan: "Plan", credits: "Credits", tokensMo: "Tokens (mo)", costMo: "Cost $ (mo)", trialEnds: "Trial ends", joined: "Joined", addCredits: "+ credits", planNote: "Changing the plan resets the balance to that plan's monthly allowance and starts the renewal cycle (balance resets on the 1st of each month, UTC). Use \"+ credits\" for top-ups within the month. Tokens and cost are this month's real model usage.", quality: "Agent quality · last 30 days · all workspaces", qualityNote: "Approval = approved ÷ decided. Edited = approved items the owner changed (magnitude = % of text changed). Judge = automated score /100 (85+ ready, <70 regenerate). Thumbs = chat replies.", agentType: "Agent / type", items: "Items", approval: "Approval", edited: "Edited", magnitude: "Magnitude", published: "Published", judge: "Judge", low: "<70", hours: "Hours to decide", perWorkspace: "Per workspace", loading: "Loading…", close: "close", impersonate: "Log in as user", extend: "Extend trial", reset: "Reset password", emailsIn: "Emails in", suspend: "Suspend", unsuspend: "Unsuspend", del: "Delete account", usage: "Model usage (month)", trialRenewed: "Trial ends / renewed", integrations: "Integrations", brandsEtc: "Brands · conversations · referrals · judge", brandFile: "Brand file", notCompleted: "— not completed —", generated: "Generated items", approved: "approved", rejected: "rejected", promptCredits: "Credits to add (negative to remove):", promptDays: "Extend trial by days:", promptDelete: "Type the email to permanently delete this account and all its data:", promptTemp: "Temporary password (shown once, send it on WhatsApp):", arabic: "Arabic", english: "English" },
+  ar: { users: "المستخدمون", paying: "مشتركون", today: "سجّلوا اليوم", trial: "تجربة", cost: "تكلفة النماذج هذا الشهر $", tokens: "توكنز هذا الشهر", calls: "استدعاءات النماذج", suspended: "موقوفون", search: "ابحث بالبريد أو الاسم أو الجوال أو الخطة…", email: "البريد", name: "الاسم", phone: "الجوال", plan: "الخطة", credits: "الكريدت", tokensMo: "توكنز (الشهر)", costMo: "التكلفة $ (الشهر)", trialEnds: "نهاية التجربة", joined: "انضم", addCredits: "+ كريدت", planNote: "تغيير الخطة يعيد الرصيد إلى مخصص الخطة الشهري ويبدأ دورة التجديد (يتجدد الرصيد في أول كل شهر UTC). استخدم «+ كريدت» للإضافات خلال الشهر. التوكنز والتكلفة هي الاستهلاك الحقيقي للنماذج هذا الشهر.", quality: "جودة الوكلاء · آخر 30 يوماً · كل المساحات", qualityNote: "الاعتماد = معتمد ÷ محسوم. التعديل = عناصر معتمدة غيّرها المالك (الحجم = % النص المتغيّر). الحَكَم = درجة آلية من 100 (85+ جاهز، أقل من 70 أعد التوليد). الإبهام = ردود الدردشة.", agentType: "الوكيل / النوع", items: "عناصر", approval: "اعتماد", edited: "تعديل", magnitude: "الحجم", published: "نُشر", judge: "الحَكَم", low: "<70", hours: "ساعات حتى القرار", perWorkspace: "لكل مساحة", loading: "جارٍ التحميل…", close: "إغلاق", impersonate: "دخول كالمستخدم", extend: "تمديد التجربة", reset: "إعادة تعيين كلمة المرور", emailsIn: "الإيميلات بـ", suspend: "إيقاف", unsuspend: "إلغاء الإيقاف", del: "حذف الحساب", usage: "استهلاك النماذج (الشهر)", trialRenewed: "نهاية التجربة / التجديد", integrations: "التكاملات", brandsEtc: "علامات · محادثات · إحالات · الحَكَم", brandFile: "ملف العلامة", notCompleted: "— غير مكتمل —", generated: "العناصر المولّدة", approved: "معتمد", rejected: "مرفوض", promptCredits: "كريدت للإضافة (سالب للخصم):", promptDays: "تمديد التجربة بالأيام:", promptDelete: "اكتب البريد لحذف الحساب وكل بياناته نهائياً:", promptTemp: "كلمة مرور مؤقتة (تظهر مرة واحدة، أرسلها على واتساب):", arabic: "العربية", english: "الإنجليزية" },
+} as const;
+
+export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
+  const S = STR[lang];
   const [users, setUsers] = useState<U[] | null>(null);
   const [sel, setSel] = useState<Detail | null>(null);
   const [q, setQ] = useState("");
@@ -29,7 +35,7 @@ export default function AdminConsole() {
     const j = await r.json();
     setBusy(false);
     if (!j.ok) { setMsg(`${action} failed: ${j.error ?? r.status}`); return j; }
-    if (action === "resetPassword") { window.prompt(`Temporary password for ${email} (shown once, send it on WhatsApp):`, j.tempPassword); setMsg(`${email}: password reset`); }
+    if (action === "resetPassword") { window.prompt(`${email}: ${S.promptTemp}`, j.tempPassword); setMsg(`${email}: password reset`); }
     else if (action === "impersonate") { window.location.assign(j.redirect); return j; }
     else if (action === "delete") { setMsg(`${email} deleted`); setSel(null); }
     else setMsg(`${email}: ${action} ✓`);
@@ -47,7 +53,7 @@ export default function AdminConsole() {
     setBusy(false);
   }
   async function addCredits(email: string) {
-    const n = Number(prompt("Credits to add (negative to remove):", "100"));
+    const n = Number(prompt(S.promptCredits, "100"));
     if (!n) return;
     setBusy(true);
     await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, addCredits: n }) });
@@ -61,24 +67,24 @@ export default function AdminConsole() {
     if (j.ok) setSel(j);
   }
 
-  if (users === null) return <p className="text-ink/60">Loading…</p>;
+  if (users === null) return <p className="text-ink/60">{S.loading}</p>;
   const paying = users.filter((u) => u.plan !== "trial").length;
   const shown = users.filter((u) => !q || [u.email, u.name, u.phone, u.plan].some((x) => (x ?? "").toLowerCase().includes(q.toLowerCase())));
   const today = users.filter((u) => u.createdAt.slice(0, 10) === new Date().toISOString().slice(0, 10)).length;
 
   return (
-    <div dir="ltr" className="grid gap-6">
+    <div className="grid gap-6">
       <div className="grid gap-3 sm:grid-cols-4">
-        {[["Users", users.length], ["Paying", paying], ["Signed up today", today], ["Trial", users.length - paying], ["Model cost this month $", total ? total.usd.toFixed(2) : "…"], ["Tokens this month", total ? `${Math.round((total.in + total.out) / 1000)}k` : "…"], ["Model calls", total ? total.calls : "…"], ["Suspended", users.filter((u) => u.suspended).length]].map(([l, v]) => (
-          <div key={String(l)} className="rounded-xl border border-ink/10 bg-white p-4"><p className="text-xs text-ink/60">{l}</p><p className="font-display text-2xl font-bold text-oasis">{v}</p></div>
+        {[[S.users, users.length], [S.paying, paying], [S.today, today], [S.trial, users.length - paying], [S.cost, total ? total.usd.toFixed(2) : "…"], [S.tokens, total ? `${Math.round((total.in + total.out) / 1000)}k` : "…"], [S.calls, total ? total.calls : "…"], [S.suspended, users.filter((u) => u.suspended).length]].map(([l, v]) => (
+          <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="font-display text-2xl font-bold text-oasis">{v}</p></div>
         ))}
       </div>
       {msg && <p className="text-sm text-oasis">{msg}</p>}
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search email, name, phone, plan…" className="w-full max-w-md rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm" />
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={S.search} className="w-full max-w-md rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm" />
       <div className="overflow-x-auto rounded-xl border border-ink/10 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-salt-dim text-left text-xs uppercase tracking-wide text-ink/60">
-            <tr><th className="p-3">Email</th><th>Name</th><th>Phone</th><th>Plan</th><th>Credits</th><th>Tokens (mo)</th><th>Cost $ (mo)</th><th>Trial ends</th><th>Joined</th><th></th></tr>
+            <tr><th className="p-3">{S.email}</th><th>{S.name}</th><th>{S.phone}</th><th>{S.plan}</th><th>{S.credits}</th><th>{S.tokensMo}</th><th>{S.costMo}</th><th>{S.trialEnds}</th><th>{S.joined}</th><th></th></tr>
           </thead>
           <tbody>
             {shown.map((u) => (
@@ -96,18 +102,18 @@ export default function AdminConsole() {
                 <td className="font-mono text-xs">{(u.usd ?? 0).toFixed(2)}</td>
                 <td className="font-mono text-xs">{u.plan === "trial" ? u.trialEnds.slice(0, 10) : "—"}</td>
                 <td className="font-mono text-xs">{u.createdAt.slice(0, 10)}</td>
-                <td className="p-3"><button disabled={busy} onClick={() => addCredits(u.email)} className="rounded-full border border-ink/20 px-3 py-1 text-xs">+ credits</button></td>
+                <td className="p-3"><button disabled={busy} onClick={() => addCredits(u.email)} className="btn btn-secondary btn-xs">{S.addCredits}</button></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <section className="rounded-xl border border-ink/10 bg-white p-4">
-        <h2 className="font-display text-lg font-semibold text-oasis">Agent quality · last 30 days · all workspaces</h2>
-        <p className="text-xs text-ink/50">Approval = approved ÷ decided. Edited = approved items the owner changed (magnitude = % of text changed). Judge = automated score /100 (85+ ready, &lt;70 regenerate). Thumbs = chat replies.</p>
-        {!evals ? <p className="mt-2 text-sm text-ink/50">Loading…</p> : (
+      <section className="card card-sm">
+        <h2 className="font-display text-lg font-semibold text-oasis">{S.quality}</h2>
+        <p className="text-xs text-ink/50">{S.qualityNote}</p>
+        {!evals ? <p className="mt-2 text-sm text-ink/50">{S.loading}</p> : (
           <table className="mt-3 w-full text-sm">
-            <thead className="bg-salt-dim text-left text-xs uppercase tracking-wide text-ink/60"><tr><th className="p-2">Agent / type</th><th>Items</th><th>Approval</th><th>Edited</th><th>Magnitude</th><th>Published</th><th>Judge</th><th>&lt;70</th><th>Hours to decide</th><th>👍/👎</th></tr></thead>
+            <thead className="bg-salt-dim text-left text-xs uppercase tracking-wide text-ink/60"><tr><th className="p-2">{S.agentType}</th><th>{S.items}</th><th>{S.approval}</th><th>{S.edited}</th><th>{S.magnitude}</th><th>{S.published}</th><th>{S.judge}</th><th>{S.low}</th><th>{S.hours}</th><th>👍/👎</th></tr></thead>
             <tbody>
               {evals.agents.map((a) => (
                 <Fragment key={a.agent}>
@@ -127,34 +133,34 @@ export default function AdminConsole() {
           </table>
         )}
         {evals && evals.users.length > 0 && (
-          <p className="mt-3 text-xs text-ink/60">Per workspace: {evals.users.slice(0, 12).map((u) => `${u.email} (${u.n} items, approval ${u.approvalRate ?? "—"}${u.approvalRate !== null ? "%" : ""}, judge ${u.avgScore ?? "—"})`).join(" · ")}</p>
+          <p className="mt-3 text-xs text-ink/60">{S.perWorkspace}: {evals.users.slice(0, 12).map((u) => `${u.email} (${u.n} items, approval ${u.approvalRate ?? "—"}${u.approvalRate !== null ? "%" : ""}, judge ${u.avgScore ?? "—"})`).join(" · ")}</p>
         )}
       </section>
-      <p className="text-xs text-ink/50">Changing the plan resets the balance to that plan&apos;s monthly allowance and starts the renewal cycle (balance resets on the 1st of each month, UTC). Use &quot;+ credits&quot; for top-ups within the month. Tokens and cost are this month&apos;s real model usage.</p>
+      <p className="text-xs text-ink/50">{S.planNote}</p>
 
       {sel && (
         <div className="rounded-xl border border-oasis/30 bg-white p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-lg font-bold text-oasis">{sel.user.email} <span className="text-sm font-normal text-ink/60">· {sel.user.name} · {sel.user.phone} · {sel.user.plan} · {sel.user.credits} credits{sel.user.suspended ? " · SUSPENDED" : ""}</span></h2>
-            <button onClick={() => setSel(null)} className="text-sm text-ink/60">close</button>
+            <button onClick={() => setSel(null)} className="text-sm text-ink/60">{S.close}</button>
           </div>
           <div className="mt-3 flex flex-wrap gap-2 text-xs">
-            <button disabled={busy} onClick={() => act(sel.user.email, "impersonate")} className="rounded-full bg-oasis px-3 py-1 font-semibold text-mist">Log in as user</button>
-            <button disabled={busy} onClick={() => act(sel.user.email, "extendTrial", { days: Number(prompt("Extend trial by days:", "7")) || 7 })} className="rounded-full border border-ink/20 px-3 py-1">Extend trial</button>
-            <button disabled={busy} onClick={() => act(sel.user.email, "resetPassword")} className="rounded-full border border-ink/20 px-3 py-1">Reset password</button>
-            <button disabled={busy} onClick={() => act(sel.user.email, "setLang", { lang: sel.user.lang === "ar" ? "en" : "ar" })} className="rounded-full border border-ink/20 px-3 py-1">Emails in {sel.user.lang === "ar" ? "English" : "Arabic"}</button>
-            <button disabled={busy} onClick={() => act(sel.user.email, sel.user.suspended ? "unsuspend" : "suspend")} className={`rounded-full px-3 py-1 font-semibold ${sel.user.suspended ? "bg-oasis text-mist" : "border border-sadu text-sadu"}`}>{sel.user.suspended ? "Unsuspend" : "Suspend"}</button>
-            <button disabled={busy} onClick={() => { if (prompt(`Type the email to permanently delete this account and all its data:`) === sel.user.email) act(sel.user.email, "delete"); }} className="rounded-full bg-sadu px-3 py-1 font-semibold text-white">Delete account</button>
+            <button disabled={busy} onClick={() => act(sel.user.email, "impersonate")} className="rounded-full bg-oasis px-3 py-1 font-semibold text-mist">{S.impersonate}</button>
+            <button disabled={busy} onClick={() => act(sel.user.email, "extendTrial", { days: Number(prompt(S.promptDays, "7")) || 7 })} className="btn btn-secondary btn-xs">{S.extend}</button>
+            <button disabled={busy} onClick={() => act(sel.user.email, "resetPassword")} className="btn btn-secondary btn-xs">{S.reset}</button>
+            <button disabled={busy} onClick={() => act(sel.user.email, "setLang", { lang: sel.user.lang === "ar" ? "en" : "ar" })} className="btn btn-secondary btn-xs">{S.emailsIn} {sel.user.lang === "ar" ? S.english : S.arabic}</button>
+            <button disabled={busy} onClick={() => act(sel.user.email, sel.user.suspended ? "unsuspend" : "suspend")} className={`rounded-full px-3 py-1 font-semibold ${sel.user.suspended ? "bg-oasis text-mist" : "border border-sadu text-sadu"}`}>{sel.user.suspended ? S.unsuspend : S.suspend}</button>
+            <button disabled={busy} onClick={() => { if (prompt(S.promptDelete) === sel.user.email) act(sel.user.email, "delete"); }} className="btn btn-danger-solid btn-xs">{S.del}</button>
           </div>
           <div className="mt-4 grid gap-2 text-xs sm:grid-cols-4">
-            <div className="rounded border border-ink/10 p-2"><p className="text-ink/50">Model usage (month)</p><p className="font-mono">{Math.round((sel.usage.in + sel.usage.out) / 1000)}k tokens · ${sel.usage.usd.toFixed(2)} · {sel.usage.calls} calls</p><p className="font-mono text-[10px] text-ink/50">{Object.entries(sel.usage.kinds).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}</p></div>
-            <div className="rounded border border-ink/10 p-2"><p className="text-ink/50">Trial ends / renewed</p><p className="font-mono">{sel.user.trialEnds.slice(0, 10)} · {sel.user.renewedAt ?? "—"}</p><p className="font-mono text-[10px] text-ink/50">joined {sel.user.createdAt.slice(0, 10)}</p></div>
-            <div className="rounded border border-ink/10 p-2"><p className="text-ink/50">Integrations</p><p className="font-mono">{sel.connections.length ? sel.connections.map((c) => c.provider).join(", ") : "none"}</p></div>
-            <div className="rounded border border-ink/10 p-2"><p className="text-ink/50">Brands · conversations · referrals · judge</p><p className="font-mono">{sel.brands.length} · {sel.conversations} · {sel.referrals} · {sel.avgScore ?? "—"}</p></div>
+            <div className="rounded border border-ink/10 p-2"><p className="text-ink/50">{S.usage}</p><p className="font-mono">{Math.round((sel.usage.in + sel.usage.out) / 1000)}k tokens · ${sel.usage.usd.toFixed(2)} · {sel.usage.calls} calls</p><p className="font-mono text-[10px] text-ink/50">{Object.entries(sel.usage.kinds).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}</p></div>
+            <div className="rounded border border-ink/10 p-2"><p className="text-ink/50">{S.trialRenewed}</p><p className="font-mono">{sel.user.trialEnds.slice(0, 10)} · {sel.user.renewedAt ?? "—"}</p><p className="font-mono text-[10px] text-ink/50">joined {sel.user.createdAt.slice(0, 10)}</p></div>
+            <div className="rounded border border-ink/10 p-2"><p className="text-ink/50">{S.integrations}</p><p className="font-mono">{sel.connections.length ? sel.connections.map((c) => c.provider).join(", ") : "none"}</p></div>
+            <div className="rounded border border-ink/10 p-2"><p className="text-ink/50">{S.brandsEtc}</p><p className="font-mono">{sel.brands.length} · {sel.conversations} · {sel.referrals} · {sel.avgScore ?? "—"}</p></div>
           </div>
-          <h3 className="mt-4 text-xs uppercase tracking-wide text-ink/60">Brand file</h3>
+          <h3 className="mt-4 text-xs uppercase tracking-wide text-ink/60">{S.brandFile}</h3>
           <pre className="mt-1 max-h-48 overflow-auto rounded bg-salt-dim p-3 text-xs" dir="auto">{sel.brand ? JSON.stringify(sel.brand, null, 2) : "— not completed —"}</pre>
-          <h3 className="mt-4 text-xs uppercase tracking-wide text-ink/60">Generated items ({sel.tasks.length}) — approved {sel.tasks.filter((t) => t.status === "approved").length}, rejected {sel.tasks.filter((t) => t.status === "rejected").length}</h3>
+          <h3 className="mt-4 text-xs uppercase tracking-wide text-ink/60">{S.generated} ({sel.tasks.length}) · {S.approved} {sel.tasks.filter((t) => t.status === "approved").length} · {S.rejected} {sel.tasks.filter((t) => t.status === "rejected").length}</h3>
           <ul className="mt-2 grid max-h-96 gap-2 overflow-auto">
             {sel.tasks.map((t) => (
               <li key={t.id} className="rounded border border-ink/10 p-3 text-xs">

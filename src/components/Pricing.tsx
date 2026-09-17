@@ -5,9 +5,9 @@ export default function Pricing({ t, lang }: { t: Dict; lang: Lang }) {
   const p = t.pricing;
   return (
     <section id="pricing" className="scroll-mt-20 bg-oasis-deep text-mist">
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-saffron">{p.eyebrow}</p>
-        <h2 className="font-display text-3xl font-bold leading-tight tracking-tight sm:text-4xl">{p.title}</h2>
+      <div className="section-wrap">
+        <p className="mb-3 eyebrow eyebrow-accent">{p.eyebrow}</p>
+        <h2 className="section-title">{p.title}</h2>
         <p className="mt-3 text-mist-dim">{p.sub}</p>
         <div className="mt-4 flex flex-wrap gap-2 text-xs">
           <span className="rounded-full border border-saffron/50 px-3 py-1 text-saffron">{p.trial}</span>

@@ -1,0 +1,96 @@
+/* Design Tokens - Auto-generated */
+/* Do not edit directly - modify tokens.json instead */
+
+/* === PRIMITIVES === */
+:root {
+  --primitive-color-oasis-500: #0F3D3A;
+  --primitive-color-oasis-700: #0A2B29;
+  --primitive-color-oasis-900: #061C1B;
+  --primitive-color-salt-50: #FFFFFF;
+  --primitive-color-salt-100: #F6F4EE;
+  --primitive-color-salt-200: #EBE7DC;
+  --primitive-color-salt-300: #DDD8C9;
+  --primitive-color-saffron-400: #F5C25E;
+  --primitive-color-saffron-500: #F2B33D;
+  --primitive-color-saffron-600: #D99A1F;
+  --primitive-color-sadu-500: #D9503F;
+  --primitive-color-sadu-600: #B93F30;
+  --primitive-color-ink-500: #101418;
+  --primitive-color-mist-100: #E9F0EC;
+  --primitive-color-mist-300: #A9BFB8;
+  --primitive-spacing-1: 0.25rem;
+  --primitive-spacing-2: 0.5rem;
+  --primitive-spacing-3: 0.75rem;
+  --primitive-spacing-4: 1rem;
+  --primitive-spacing-5: 1.25rem;
+  --primitive-spacing-6: 1.5rem;
+  --primitive-spacing-8: 2rem;
+  --primitive-spacing-12: 3rem;
+  --primitive-spacing-20: 5rem;
+  --primitive-fontSize-xs: 0.75rem;
+  --primitive-fontSize-sm: 0.875rem;
+  --primitive-fontSize-base: 1rem;
+  --primitive-fontSize-lg: 1.125rem;
+  --primitive-fontSize-xl: 1.25rem;
+  --primitive-fontSize-3xl: 1.875rem;
+  --primitive-fontSize-4xl: 2.25rem;
+  --primitive-radius-sm: 0.375rem;
+  --primitive-radius-md: 0.5rem;
+  --primitive-radius-lg: 0.75rem;
+  --primitive-radius-xl: 1rem;
+  --primitive-radius-full: 9999px;
+  --primitive-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --primitive-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --primitive-shadow-xl: 0 25px 50px -12px rgb(0 0 0 / 0.3);
+  --primitive-duration-fast: 150ms;
+  --primitive-duration-normal: 200ms;
+}
+
+/* === SEMANTIC === */
+:root {
+  --color-background: #F6F4EE;
+  --color-background-muted: #EBE7DC;
+  --color-surface: #FFFFFF;
+  --color-foreground: #101418;
+  --color-primary: #0F3D3A;
+  --color-primary-hover: #0A2B29;
+  --color-primary-active: #061C1B;
+  --color-primary-foreground: #E9F0EC;
+  --color-accent: #F2B33D;
+  --color-accent-hover: #F5C25E;
+  --color-accent-active: #D99A1F;
+  --color-accent-foreground: #101418;
+  --color-danger: #D9503F;
+  --color-danger-hover: #B93F30;
+  --color-danger-foreground: #FFFFFF;
+  --color-inverse-background: #0A2B29;
+  --color-inverse-surface: #0F3D3A;
+  --color-inverse-foreground: #E9F0EC;
+  --color-inverse-muted: #A9BFB8;
+  --color-ring: #F2B33D;
+  --spacing-component: 1rem;
+  --spacing-section: 5rem;
+}
+
+/* === COMPONENTS === */
+:root {
+  --button-bg: #0F3D3A;
+  --button-fg: #E9F0EC;
+  --button-hover-bg: #0A2B29;
+  --button-active-bg: #061C1B;
+  --button-padding-x: 1.25rem;
+  --button-padding-y: 0.75rem;
+  --button-radius: 0.5rem;
+  --button-font-size: 0.875rem;
+  --input-bg: #FFFFFF;
+  --input-border: rgb(16 20 24 / 0.15);
+  --input-focus-ring: #F2B33D;
+  --input-padding-x: 1rem;
+  --input-padding-y: 0.75rem;
+  --input-radius: 0.5rem;
+  --card-bg: #FFFFFF;
+  --card-border: rgb(16 20 24 / 0.10);
+  --card-shadow: none;
+  --card-padding: 1.25rem;
+  --card-radius: 0.75rem;
+}

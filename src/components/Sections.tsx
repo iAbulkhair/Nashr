@@ -3,11 +3,11 @@ import type { Dict, Lang } from "@/lib/i18n";
 const INDUSTRY_LINKS = ["ecommerce", "real-estate", "legal", "startups", "clinics", "restaurants", "agencies", "agencies"];
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
-  return <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-sadu">{children}</p>;
+  return <p className="mb-3 eyebrow">{children}</p>;
 }
 
 function H2({ children }: { children: React.ReactNode }) {
-  return <h2 className="font-display text-3xl font-bold leading-tight tracking-tight sm:text-4xl">{children}</h2>;
+  return <h2 className="section-title">{children}</h2>;
 }
 
 export function Proof({ t }: { t: Dict }) {
@@ -30,7 +30,7 @@ export function Proof({ t }: { t: Dict }) {
 export function How({ t }: { t: Dict }) {
   return (
     <section id="how" className="scroll-mt-20">
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+      <div className="section-wrap">
         <Eyebrow>{t.how.eyebrow}</Eyebrow>
         <H2>{t.how.title}</H2>
         <ol className="mt-10 grid gap-6 md:grid-cols-5">
@@ -52,7 +52,7 @@ export function How({ t }: { t: Dict }) {
 export function Agents({ t }: { t: Dict }) {
   return (
     <section id="agents" className="scroll-mt-20 bg-oasis-deep text-mist">
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+      <div className="section-wrap">
         <Eyebrow>{t.agents.eyebrow}</Eyebrow>
         <H2>{t.agents.title}</H2>
         <p className="mt-3 max-w-xl text-mist-dim">{t.agents.sub}</p>
@@ -88,7 +88,7 @@ export function Agents({ t }: { t: Dict }) {
 export function Industries({ t, lang = "ar" }: { t: Dict; lang?: Lang }) {
   return (
     <section id="industries" className="scroll-mt-20">
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+      <div className="section-wrap">
         <Eyebrow>{t.industries.eyebrow}</Eyebrow>
         <H2>{t.industries.title}</H2>
         <div className="mt-10 grid gap-px overflow-hidden rounded-xl border border-ink/10 bg-ink/10 sm:grid-cols-2 lg:grid-cols-4">
@@ -107,7 +107,7 @@ export function Industries({ t, lang = "ar" }: { t: Dict; lang?: Lang }) {
 export function Integrations({ t }: { t: Dict }) {
   return (
     <section className="bg-salt-dim">
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+      <div className="section-wrap">
         <Eyebrow>{t.integrations.eyebrow}</Eyebrow>
         <H2>{t.integrations.title}</H2>
         <p className="mt-3 text-ink/70">{t.integrations.sub}</p>
@@ -133,7 +133,7 @@ export function Integrations({ t }: { t: Dict }) {
 export function Calendar({ t }: { t: Dict }) {
   return (
     <section>
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+      <div className="section-wrap">
         <Eyebrow>{t.calendar.eyebrow}</Eyebrow>
         <H2>{t.calendar.title}</H2>
         <p className="mt-3 max-w-xl text-ink/70">{t.calendar.sub}</p>

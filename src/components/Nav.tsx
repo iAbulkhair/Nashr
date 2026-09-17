@@ -27,7 +27,7 @@ export default function Nav({ t, lang }: { t: Dict; lang: Lang }) {
         </nav>
         <div className="flex items-center gap-3">
           <LangToggle lang={lang} />
-          <Link href={`/${lang}/app/signup`} className="rounded-full bg-saffron px-4 py-2 text-sm font-semibold text-ink transition hover:bg-saffron/90">
+          <Link href={`/${lang}/app/signup`} className="btn btn-accent btn-pill">
             {t.nav.cta}
           </Link>
         </div>

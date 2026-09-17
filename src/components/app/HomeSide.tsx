@@ -13,7 +13,7 @@ type Props = {
 
 function Box({ title, children, href, action }: { title: string; children: React.ReactNode; href?: string; action?: string }) {
   return (
-    <section className="rounded-xl border border-ink/10 bg-white p-4">
+    <section className="card card-sm">
       <div className="flex items-center justify-between"><h3 className="text-xs font-semibold uppercase tracking-wide text-ink/60">{title}</h3>{href && action && <Link href={href} className="text-xs text-oasis hover:underline">{action}</Link>}</div>
       <div className="mt-3">{children}</div>
     </section>
@@ -45,7 +45,7 @@ export default function HomeSide({ t, lang, k, connections, schedule, files }: P
       </Box>
       <Box title={H.channels} href={`${base}/integrations`} action={H.addChannel}>
         {connections.length === 0 ? <p className="text-xs text-ink/50">{H.noChannels}</p> : (
-          <ul className="flex flex-wrap gap-1.5">{connections.map((c) => <li key={c.provider} className="rounded-full bg-oasis/10 px-2 py-0.5 text-xs text-oasis">{c.provider}</li>)}</ul>
+          <ul className="flex flex-wrap gap-1.5">{connections.map((c) => <li key={c.provider} className="badge badge-primary">{c.provider}</li>)}</ul>
         )}
       </Box>
       <Box title={H.taskFeed} href={`${base}/tasks`} action={H.manage}>

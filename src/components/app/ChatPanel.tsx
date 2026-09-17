@@ -117,7 +117,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
             </button>
           ))}
         </div>
-        <div className="mt-2 flex-1 space-y-4 overflow-y-auto rounded-xl border border-ink/10 bg-white p-4">
+        <div className="mt-2 flex-1 space-y-4 overflow-y-auto card card-sm">
           {msgs.length === 0 && (
             <div>
               <p className="text-ink/70">{agent === "noor" ? t.chat.empty : t.agents[agent].blurb}</p>
@@ -143,7 +143,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           <div ref={end} />
         </div>
         <form onSubmit={(e) => { e.preventDefault(); send(text); }} className="mt-3 flex gap-2">
-          <input value={text} onChange={(e) => setText(e.target.value)} placeholder={t.chat.placeholder} className="flex-1 rounded-full border border-ink/15 bg-white px-4 py-3 text-sm" />
+          <input value={text} onChange={(e) => setText(e.target.value)} placeholder={t.chat.placeholder} className="flex-1 input rounded-full" />
           <button disabled={busy || !text.trim()} className="rounded-full bg-saffron px-5 py-3 text-sm font-semibold text-ink disabled:opacity-50">{t.chat.send}</button>
         </form>
       </div>

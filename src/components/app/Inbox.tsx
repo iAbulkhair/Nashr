@@ -52,7 +52,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-3xl font-bold text-oasis">{i.title}</h1>
+        <h1 className="page-title">{i.title}</h1>
         <div className="flex gap-1 text-sm">
           {(["pending", "approved", "rejected", "all"] as const).map((f) => (
             <button key={f} onClick={() => setFilter(f)} className={`rounded-full px-3 py-1 ${filter === f ? "bg-oasis text-mist" : "bg-salt-dim"}`}>
@@ -79,10 +79,10 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
         {shown.map((x) => {
           const body = x.editedBody ?? x.body;
           return (
-            <li key={x.id} className="rounded-xl border border-ink/10 bg-white p-5">
+            <li key={x.id} className="card">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="rounded bg-oasis/10 px-2 py-0.5 text-xs font-medium text-oasis">{x.channel}</span>
+                  <span className="badge badge-primary">{x.channel}</span>
                   <span className="font-display font-medium">{x.title}</span>
                 </div>
                 <span className="flex items-center gap-2 text-xs">
@@ -104,7 +104,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
                   <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={10} className="w-full rounded-lg border border-ink/15 p-3 text-sm" />
                   <div className="flex gap-2">
                     <button onClick={() => patch(x.id, { editedBody: draft, status: "approved" })} className="rounded-full bg-oasis px-4 py-1.5 text-sm font-semibold text-mist">{i.save}</button>
-                    <button onClick={() => setEditing(null)} className="rounded-full border border-ink/20 px-4 py-1.5 text-sm">{i.cancel}</button>
+                    <button onClick={() => setEditing(null)} className="btn btn-secondary btn-pill">{i.cancel}</button>
                   </div>
                 </div>
               ) : (
@@ -114,27 +114,27 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
                 <div className="mt-3 grid gap-2">
                   <input value={why} onChange={(e) => setWhy(e.target.value)} placeholder={i.why} className="w-full rounded-lg border border-ink/15 p-2 text-sm" />
                   <div className="flex gap-2">
-                    <button onClick={() => patch(x.id, { status: "rejected", note: why })} className="rounded-full bg-sadu px-4 py-1.5 text-sm font-semibold text-white">{i.reject}</button>
-                    <button onClick={() => setRejecting(null)} className="rounded-full border border-ink/20 px-4 py-1.5 text-sm">{i.cancel}</button>
+                    <button onClick={() => patch(x.id, { status: "rejected", note: why })} className="btn btn-danger-solid btn-pill">{i.reject}</button>
+                    <button onClick={() => setRejecting(null)} className="btn btn-secondary btn-pill">{i.cancel}</button>
                   </div>
                 </div>
               )}
               {editing !== x.id && rejecting !== x.id && (
                 <div className="mt-4 flex flex-wrap gap-2 text-sm">
-                  {x.status !== "approved" && <button onClick={() => patch(x.id, { status: "approved" })} className="rounded-full bg-oasis px-4 py-1.5 font-semibold text-mist">{i.approve}</button>}
-                  <button onClick={() => { setEditing(x.id); setDraft(body); }} className="rounded-full border border-ink/20 px-4 py-1.5">{i.edit}</button>
-                  {x.status !== "rejected" && <button onClick={() => setRejecting(x.id)} className="rounded-full border border-sadu/40 px-4 py-1.5 text-sadu">{i.reject}</button>}
-                  <button onClick={async () => { await navigator.clipboard.writeText(body); setCopied(x.id); setTimeout(() => setCopied(null), 1500); }} className="rounded-full border border-ink/20 px-4 py-1.5">
+                  {x.status !== "approved" && <button onClick={() => patch(x.id, { status: "approved" })} className="btn btn-primary btn-pill">{i.approve}</button>}
+                  <button onClick={() => { setEditing(x.id); setDraft(body); }} className="btn btn-secondary btn-pill">{i.edit}</button>
+                  {x.status !== "rejected" && <button onClick={() => setRejecting(x.id)} className="btn btn-danger btn-pill">{i.reject}</button>}
+                  <button onClick={async () => { await navigator.clipboard.writeText(body); setCopied(x.id); setTimeout(() => setCopied(null), 1500); }} className="btn btn-secondary btn-pill">
                     {copied === x.id ? i.copied : i.copy}
                   </button>
                   {x.type === "board_deck" && (
-                    <a href={`/api/tasks/${x.id}/pptx`} className="rounded-full bg-saffron px-4 py-1.5 font-semibold text-ink">{i.pptx}</a>
+                    <a href={`/api/tasks/${x.id}/pptx`} className="btn btn-accent btn-pill">{i.pptx}</a>
                   )}
                   {IMAGE_TYPES.includes(x.type) && (
                     <button disabled={imaging === x.id} onClick={() => image(x.id)} className="rounded-full border border-saffron px-4 py-1.5 disabled:opacity-50">{imaging === x.id ? i.imaging : (x.imageUrl ? "↻ " : "") + i.image}</button>
                   )}
                   {targets(x).map((p) => (
-                    <button key={p} disabled={publishing === x.id + p} onClick={() => publish(x.id, p)} className="rounded-full bg-oasis px-4 py-1.5 font-semibold text-mist disabled:opacity-50">{publishing === x.id + p ? i.publishing : `${i.publishTo} ${p}`}</button>
+                    <button key={p} disabled={publishing === x.id + p} onClick={() => publish(x.id, p)} className="btn btn-primary btn-pill">{publishing === x.id + p ? i.publishing : `${i.publishTo} ${p}`}</button>
                   ))}
                   <label className="ms-auto flex items-center gap-1 text-xs text-ink/60">
                     {i.date}

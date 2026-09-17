@@ -19,12 +19,12 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
     <>
       <Nav t={t} lang={lang} />
       <main className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sadu">{lang === "ar" ? "أدوات مجانية" : "Free tools"}</p>
+        <p className="eyebrow">{lang === "ar" ? "أدوات مجانية" : "Free tools"}</p>
         <h1 className="mt-3 font-display text-4xl font-bold text-oasis">{lang === "ar" ? `${TOOLS.length} أداة تسويق مجانية بالعربي` : `${TOOLS.length} free Arabic marketing tools`}</h1>
         <p className="mt-3 max-w-2xl text-ink/70">{lang === "ar" ? "كلها تعمل بنور، بلهجتك، بدون تسجيل — 5 استخدامات يومياً." : "All powered by Noor, in your dialect, no signup — 5 uses a day."}</p>
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {TOOLS.map((x) => (
-            <Link key={x.slug} href={`/${lang}/tools/${x.slug}`} className="rounded-xl border border-ink/10 bg-white p-5 transition hover:border-oasis">
+            <Link key={x.slug} href={`/${lang}/tools/${x.slug}`} className="card transition hover:border-oasis">
               <h2 className="font-display text-lg font-medium">{x.name[lang]}</h2>
               <p className="mt-1 text-sm text-ink/70">{x.desc[lang]}</p>
             </Link>

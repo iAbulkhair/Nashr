@@ -24,7 +24,7 @@ export default function TasksPanel({ t, initial }: { t: AppDict; initial: Schedu
     r.refresh();
   }
   const Card = ({ title, desc, on, last, which }: { title: string; desc: string; on: boolean; last?: string; which: "weekly" | "daily" | "followups" }) => (
-    <div className="rounded-xl border border-ink/10 bg-white p-5">
+    <div className="card">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="font-display text-lg font-medium">{title}</h2>
@@ -33,14 +33,14 @@ export default function TasksPanel({ t, initial }: { t: AppDict; initial: Schedu
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
           <button onClick={() => toggle(which === "weekly" ? "weeklyPlan" : which === "daily" ? "dailyBrief" : "followUps")} className={`rounded-full px-3 py-1 text-xs font-semibold ${on ? "bg-oasis text-mist" : "bg-ink/10 text-ink/60"}`}>{on ? k.on : k.off}</button>
-          {which !== "followups" && <button disabled={!!busy} onClick={() => run(which)} className="rounded-full border border-ink/20 px-3 py-1 text-xs disabled:opacity-50">{busy === which ? "…" : k.runNow}</button>}
+          {which !== "followups" && <button disabled={!!busy} onClick={() => run(which)} className="btn btn-secondary btn-xs disabled:opacity-50">{busy === which ? "…" : k.runNow}</button>}
         </div>
       </div>
     </div>
   );
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="font-display text-3xl font-bold text-oasis">{k.title}</h1>
+      <h1 className="page-title">{k.title}</h1>
       <p className="mt-2 text-ink/70">{k.sub}</p>
       <div className="mt-6 grid gap-4">
         <Card title={k.weekly} desc={k.weeklyDesc} on={s.weeklyPlan} last={s.lastWeekly} which="weekly" />

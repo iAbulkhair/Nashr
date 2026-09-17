@@ -25,7 +25,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
   return (
     <>
       <Nav t={t} lang={lang} />
-      <main className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
+      <main className="page-wrap">
         <p className="font-mono text-xs text-ink/50" dir="ltr">{p.date}</p>
         <h1 className="mt-2 font-display text-3xl font-bold leading-tight text-oasis sm:text-5xl">{p.title}</h1>
         <p className="mt-4 text-lg text-ink/70">{p.desc}</p>

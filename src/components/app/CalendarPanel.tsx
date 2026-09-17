@@ -25,11 +25,11 @@ export default function CalendarPanel({ t, tasks }: { t: AppDict; tasks: Task[] 
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h1 className="font-display text-3xl font-bold text-oasis">{c.title}</h1><p className="mt-1 text-ink/70">{c.sub}</p></div>
+        <div><h1 className="page-title">{c.title}</h1><p className="mt-1 text-ink/70">{c.sub}</p></div>
         <div className="flex items-center gap-2 text-sm">
-          <button onClick={() => setYm(ym.m === 0 ? { y: ym.y - 1, m: 11 } : { y: ym.y, m: ym.m - 1 })} className="rounded-full border border-ink/20 px-3 py-1">{c.prev}</button>
+          <button onClick={() => setYm(ym.m === 0 ? { y: ym.y - 1, m: 11 } : { y: ym.y, m: ym.m - 1 })} className="btn btn-secondary btn-xs">{c.prev}</button>
           <span className="font-display font-medium" dir="ltr">{monthName}</span>
-          <button onClick={() => setYm(ym.m === 11 ? { y: ym.y + 1, m: 0 } : { y: ym.y, m: ym.m + 1 })} className="rounded-full border border-ink/20 px-3 py-1">{c.next}</button>
+          <button onClick={() => setYm(ym.m === 11 ? { y: ym.y + 1, m: 0 } : { y: ym.y, m: ym.m + 1 })} className="btn btn-secondary btn-xs">{c.next}</button>
           <button onClick={() => { setYm({ y: now.getFullYear(), m: now.getMonth() }); setSel(now.toISOString().slice(0, 10)); }} className="rounded-full bg-oasis px-3 py-1 text-mist">{c.today}</button>
         </div>
       </div>
@@ -52,7 +52,7 @@ export default function CalendarPanel({ t, tasks }: { t: AppDict; tasks: Task[] 
             })}
           </div>
         </div>
-        <aside className="rounded-xl border border-ink/10 bg-white p-4">
+        <aside className="card card-sm">
           <h2 className="font-mono text-sm text-oasis" dir="ltr">{sel}</h2>
           {selected.length === 0 ? <p className="mt-2 text-sm text-ink/60">{c.none}</p> : (
             <ul className="mt-2 grid gap-2">{selected.map((x) => <li key={x.id} className="rounded border border-ink/10 p-2 text-xs"><span className="text-oasis">{x.channel}</span> · {x.title}<p className="mt-1 line-clamp-3 whitespace-pre-wrap text-ink/70" dir="auto">{(x.editedBody ?? x.body).slice(0, 160)}</p></li>)}</ul>

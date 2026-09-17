@@ -28,7 +28,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
     <>
       <Nav t={t} lang={lang} />
       <main className="mx-auto max-w-4xl px-4 py-16 sm:px-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sadu">{lang === "ar" ? "مقارنة" : "Comparison"}</p>
+        <p className="eyebrow">{lang === "ar" ? "مقارنة" : "Comparison"}</p>
         <h1 className="mt-3 font-display text-3xl font-bold leading-tight text-oasis sm:text-5xl">{p.title}</h1>
         <p className="mt-6 rounded-xl border border-saffron/40 bg-saffron/10 p-5 text-lg leading-relaxed">{p.tldr}</p>
         <div className="mt-10 overflow-x-auto rounded-xl border border-ink/10">
@@ -38,7 +38,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
           </table>
         </div>
         <div className="mt-10 grid gap-6 sm:grid-cols-2">
-          <div className="rounded-xl border border-ink/10 bg-white p-5"><h2 className="font-display font-medium">{lang === "ar" ? `اختر ${p.competitor} إذا:` : `Choose ${p.competitor} if:`}</h2><ul className="mt-3 space-y-2 text-sm text-ink/70">{p.chooseThem.map((x) => <li key={x}>• {x}</li>)}</ul></div>
+          <div className="card"><h2 className="font-display font-medium">{lang === "ar" ? `اختر ${p.competitor} إذا:` : `Choose ${p.competitor} if:`}</h2><ul className="mt-3 space-y-2 text-sm text-ink/70">{p.chooseThem.map((x) => <li key={x}>• {x}</li>)}</ul></div>
           <div className="rounded-xl border border-oasis bg-white p-5"><h2 className="font-display font-medium text-oasis">{lang === "ar" ? "اختر نور إذا:" : "Choose Noor if:"}</h2><ul className="mt-3 space-y-2 text-sm">{p.chooseUs.map((x) => <li key={x}>• {x}</li>)}</ul></div>
         </div>
         <p className="mt-10 font-display text-2xl font-bold">{p.verdict}</p>

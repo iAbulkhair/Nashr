@@ -5,10 +5,10 @@ import { useState } from "react";
 import type { Dict, Lang } from "@/lib/i18n";
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
-  return <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-sadu">{children}</p>;
+  return <p className="mb-3 eyebrow">{children}</p>;
 }
 function H2({ children, light }: { children: React.ReactNode; light?: boolean }) {
-  return <h2 className={`font-display text-3xl font-bold leading-tight tracking-tight sm:text-4xl ${light ? "text-mist" : ""}`}>{children}</h2>;
+  return <h2 className={`section-title ${light ? "text-mist" : ""}`}>{children}</h2>;
 }
 
 /** Hero: one field, your website URL. Same promise as the app's start wizard. */
@@ -44,7 +44,7 @@ export function Highlights({ t }: { t: Dict }) {
   const L = t.land.highlights;
   return (
     <section className="bg-salt-dim">
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+      <div className="section-wrap">
         <H2>{L.title}</H2>
         <p className="mt-3 max-w-xl text-ink/70">{L.sub}</p>
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -73,7 +73,7 @@ export function Teammate({ t }: { t: Dict }) {
           <div className="mt-8 grid gap-6 sm:grid-cols-2">
             {L.cards.map((c) => (
               <div key={c.label}>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-saffron">{c.label}</p>
+                <p className="eyebrow eyebrow-accent">{c.label}</p>
                 <h3 className="mt-2 font-display text-lg font-medium">{c.title}</h3>
                 <p className="mt-1 text-sm leading-relaxed text-mist-dim">{c.body}</p>
               </div>
@@ -104,7 +104,7 @@ export function OldWay({ t }: { t: Dict }) {
   const L = t.land.oldway;
   return (
     <section>
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+      <div className="section-wrap">
         <H2>{L.title}</H2>
         <p className="mt-3 max-w-xl text-ink/70">{L.sub}</p>
         <div className="mt-10 grid gap-4 md:grid-cols-2">
@@ -113,7 +113,7 @@ export function OldWay({ t }: { t: Dict }) {
             <ul className="mt-4 space-y-3">{L.old.items.map((x) => <li key={x} className="flex gap-3 text-sm text-ink/70"><span className="text-sadu">✕</span>{x}</li>)}</ul>
           </div>
           <div className="rounded-xl border border-oasis bg-oasis p-6 text-mist">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-saffron">{L.new.label}</p>
+            <p className="eyebrow eyebrow-accent">{L.new.label}</p>
             <ul className="mt-4 space-y-3">{L.new.items.map((x) => <li key={x} className="flex gap-3 text-sm"><span className="text-saffron">✓</span>{x}</li>)}</ul>
           </div>
         </div>
@@ -126,13 +126,13 @@ export function Runs({ t }: { t: Dict }) {
   const L = t.land.runs;
   return (
     <section className="bg-salt-dim">
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+      <div className="section-wrap">
         <H2>{L.title}</H2>
         <p className="mt-3 max-w-xl text-ink/70">{L.sub}</p>
         <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {L.items.map((it) => (
             <article key={it.tag} className="flex flex-col rounded-xl border border-ink/10 bg-salt p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sadu">{it.tag}</p>
+              <p className="eyebrow">{it.tag}</p>
               <p className="mt-3 font-display text-lg font-medium leading-snug">“{it.quote}”</p>
               <p className="mt-3 text-sm leading-relaxed text-ink/70">{it.does}</p>
               <p className="mt-auto pt-4 text-xs font-medium text-oasis">{it.proof}</p>
@@ -149,7 +149,7 @@ export function Deliverables({ t }: { t: Dict }) {
   const L = t.land.deliverables;
   return (
     <section>
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+      <div className="section-wrap">
         <Eyebrow>{L.eyebrow}</Eyebrow>
         <H2>{L.title}</H2>
         <p className="mt-3 max-w-xl text-ink/70">{L.sub}</p>
@@ -171,7 +171,7 @@ export function Pillars({ t }: { t: Dict }) {
   const L = t.land.pillars;
   return (
     <section className="bg-oasis-deep text-mist">
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+      <div className="section-wrap">
         <H2 light>{L.title}</H2>
         <p className="mt-3 max-w-xl text-mist-dim">{L.sub}</p>
         <div className="mt-10 grid gap-4 lg:grid-cols-3">
@@ -194,9 +194,9 @@ export function Cta({ t, lang }: { t: Dict; lang: Lang }) {
   return (
     <section id="start" className="scroll-mt-20 bg-salt-dim">
       <div className="mx-auto max-w-3xl px-4 py-20 text-center sm:px-6">
-        <h2 className="font-display text-3xl font-bold leading-tight tracking-tight sm:text-4xl">{L.title}</h2>
+        <h2 className="section-title">{L.title}</h2>
         <p className="mt-3 text-ink/70">{L.sub}</p>
-        <Link href={`/${lang}/app/signup`} className="mt-8 inline-block rounded-full bg-oasis px-8 py-3 font-semibold text-mist transition hover:bg-oasis-deep">{L.button}</Link>
+        <Link href={`/${lang}/app/signup`} className="mt-8 inline-block btn btn-primary btn-lg">{L.button}</Link>
       </div>
     </section>
   );

@@ -31,9 +31,9 @@ export default function GeneratePanel({ t, lang, credits }: { t: AppDict; lang: 
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="font-display text-3xl font-bold text-oasis">{g.title}</h1>
+      <h1 className="page-title">{g.title}</h1>
       <p className="mt-2 text-ink/70">{g.sub}</p>
-      <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder={g.notes} className="mt-5 w-full rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm" />
+      <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder={g.notes} className="mt-5 input" />
       {AGENTS.map((a) => {
         const info = t.agents[a.id];
         return (

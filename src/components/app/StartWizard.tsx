@@ -56,13 +56,13 @@ export default function StartWizard({ t, lang, initialUrl = "" }: { t: AppDict; 
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="font-display text-3xl font-bold text-oasis">{s.title}</h1>
+      <h1 className="page-title">{s.title}</h1>
       <p className="mt-2 text-ink/70">{s.sub}</p>
       {!done && (
         <form onSubmit={onSubmit} className="mt-6 grid gap-3">
-          <input name="url" required dir="ltr" defaultValue={initialUrl} placeholder={s.url} className="w-full rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm" />
-          <textarea name="hints" rows={2} placeholder={s.hints} className="w-full rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm" />
-          <button disabled={busy} className="rounded-lg bg-oasis px-5 py-3 font-semibold text-mist disabled:opacity-60">{busy ? s.steps.brand + "…" : s.go}</button>
+          <input name="url" required dir="ltr" defaultValue={initialUrl} placeholder={s.url} className="input" />
+          <textarea name="hints" rows={2} placeholder={s.hints} className="input" />
+          <button disabled={busy} className="btn btn-primary">{busy ? s.steps.brand + "…" : s.go}</button>
           <Link href={`/${lang}/app/onboarding`} className="text-center text-sm text-ink/60 underline">{s.manual}</Link>
         </form>
       )}

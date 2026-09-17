@@ -10,6 +10,6 @@ export const dynamic = "force-dynamic";
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
   if (!isLang(lang)) notFound();
-  if (!(await isAdminCookie())) return <AdminLogin />;
-  return <AdminConsole />;
+  if (!(await isAdminCookie())) return <AdminLogin lang={lang} />;
+  return <AdminConsole lang={lang} />;
 }

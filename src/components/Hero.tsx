@@ -16,10 +16,10 @@ export default function Hero({ t, lang }: { t: Dict; lang: Lang }) {
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-mist-dim">{t.hero.sub}</p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href={`/${lang}/app/signup`} className="rounded-full bg-saffron px-6 py-3 font-semibold text-ink transition hover:bg-saffron/90">
+            <Link href={`/${lang}/app/signup`} className="btn btn-accent btn-lg">
               {t.hero.cta}
             </Link>
-            <a href="#log" className="rounded-full border border-mist/25 px-6 py-3 font-medium text-mist transition hover:border-mist/60">
+            <a href="#log" className="btn btn-ghost-inverse btn-lg">
               {t.hero.cta2}
             </a>
           </div>

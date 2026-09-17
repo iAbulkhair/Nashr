@@ -12,7 +12,7 @@ export default function AffiliateForm({ lang }: { lang: Lang }) {
     const res = await fetch("/api/affiliates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fd, lang }) });
     setState(res.ok ? "ok" : "err");
   }
-  const input = "w-full rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm";
+  const input = "input";
   if (state === "ok") return <div className="rounded-2xl border border-oasis bg-white p-6 text-oasis">{ar ? "وصلنا طلبك. نرد خلال يوم عمل على واتساب أو الإيميل." : "Got it. We reply within one business day on WhatsApp or email."}</div>;
   return (
     <form onSubmit={onSubmit} className="grid gap-3 rounded-2xl border border-ink/10 bg-salt-dim p-6">
@@ -22,7 +22,7 @@ export default function AffiliateForm({ lang }: { lang: Lang }) {
       <input name="phone" required dir="ltr" placeholder={ar ? "واتساب +966…" : "WhatsApp +966…"} className={input} />
       <input name="channel" required placeholder={ar ? "أين ستروّج؟ (وكالة، يوتيوب، نشرة، لينكدإن…)" : "Where will you promote? (agency, YouTube, newsletter, LinkedIn…)"} className={input} />
       <input name="audience" placeholder={ar ? "حجم جمهورك / عدد عملائك" : "Audience size / number of clients"} className={input} />
-      <button disabled={state === "busy"} className="rounded-lg bg-oasis px-5 py-3 font-semibold text-mist disabled:opacity-60">{ar ? "أرسل الطلب" : "Send application"}</button>
+      <button disabled={state === "busy"} className="btn btn-primary">{ar ? "أرسل الطلب" : "Send application"}</button>
       {state === "err" && <p className="text-sm text-sadu">{ar ? "لم يُرسل. حاول مرة أخرى." : "Didn't send. Try again."}</p>}
     </form>
   );

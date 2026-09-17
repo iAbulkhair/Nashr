@@ -74,7 +74,7 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
 
   return (
     <div>
-      <h1 className="font-display text-3xl font-bold text-oasis">{g.title}</h1>
+      <h1 className="page-title">{g.title}</h1>
       <p className="mt-2 text-ink/70">{g.sub}</p>
       {flash && <p role="status" className="mt-3 rounded-lg bg-salt-dim p-3 text-sm text-oasis">{flash}</p>}
       <p className="mt-2 rounded-lg border border-saffron/40 bg-saffron/10 p-3 text-sm">{g.note}</p>
@@ -102,7 +102,7 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
 
       {groups.map((grp) => (
         <section key={grp} className="mt-8">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-sadu">{g.groups[grp]}</h2>
+          <h2 className="eyebrow">{g.groups[grp]}</h2>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {items.filter((i) => i.group === grp).map((i) => {
               const p = providerById.get(connectorId(i));
@@ -110,7 +110,7 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
               const canConnect = p?.available && !isConnected;
               const status = isConnected ? "live" : p?.available ? "ready" : i.status;
               return (
-                <div key={i.id} className="flex items-start justify-between gap-3 rounded-xl border border-ink/10 bg-white p-4">
+                <div key={i.id} className="flex items-start justify-between gap-3 card card-sm">
                   <div>
                     <p className="font-display font-medium">{i.name}</p>
                     {i.note && <p className="mt-1 text-xs text-ink/60">{i.note}</p>}

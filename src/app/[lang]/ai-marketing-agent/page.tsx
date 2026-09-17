@@ -52,15 +52,15 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(artLd) }} />
       <Nav t={t} lang={lang} />
-      <main className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
+      <main className="page-wrap">
         <p className="font-mono text-xs text-ink/50" dir="ltr">2026-09-17</p>
         <h1 className="mt-2 font-display text-3xl font-bold leading-tight text-oasis sm:text-5xl">{c.title}</h1>
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-ink/60">
           <span>{c.askAi}:</span>
-          {ask.map(([n, u]) => <a key={n} href={u} target="_blank" rel="noreferrer" className="rounded-full border border-ink/20 px-3 py-1 hover:border-oasis">{n}</a>)}
+          {ask.map(([n, u]) => <a key={n} href={u} target="_blank" rel="noreferrer" className="btn btn-secondary btn-xs hover:border-oasis">{n}</a>)}
         </div>
         <section className="mt-8 rounded-2xl border-2 border-oasis bg-white p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sadu">{lang === "ar" ? "التعريف" : "Definition"}</p>
+          <p className="eyebrow">{lang === "ar" ? "التعريف" : "Definition"}</p>
           <p className="mt-2 text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: c.definition.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>") }} />
         </section>
         <h2 className="mt-12 font-display text-2xl font-bold">{lang === "ar" ? "كيف يعمل" : "How it works"}</h2>

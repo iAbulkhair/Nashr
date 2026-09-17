@@ -14,7 +14,7 @@ export default function NotificationsPanel({ t, initial }: { t: AppDict; initial
   }, [initial]);
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="font-display text-3xl font-bold text-oasis">{N.title}</h1>
+      <h1 className="page-title">{N.title}</h1>
       <p className="mt-2 text-ink/70">{N.sub}</p>
       {items.length === 0 ? <p className="mt-6 rounded-xl border border-ink/10 bg-white p-6 text-sm text-ink/60">{N.empty}</p> : (
         <ul className="mt-6 divide-y divide-ink/10 rounded-xl border border-ink/10 bg-white">

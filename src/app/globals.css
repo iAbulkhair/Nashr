@@ -1,15 +1,23 @@
 @import "tailwindcss";
+@import "./tokens.css";
 
-@theme {
-  --color-oasis: #0f3d3a;
-  --color-oasis-deep: #0a2b29;
-  --color-salt: #f6f4ee;
-  --color-salt-dim: #ebe7dc;
-  --color-saffron: #f2b33d;
-  --color-sadu: #d9503f;
-  --color-ink: #101418;
-  --color-mist: #e9f0ec;
-  --color-mist-dim: #a9bfb8;
+/*
+ * Nashr design system
+ * Layer 1 primitives and layer 2 semantics live in tokens.css (generated from
+ * assets/design-tokens.json). Tailwind utilities map onto the primitives here;
+ * layer 3 component classes below use the semantic tokens only.
+ */
+@theme inline {
+  --color-oasis: var(--primitive-color-oasis-500);
+  --color-oasis-deep: var(--primitive-color-oasis-700);
+  --color-salt: var(--primitive-color-salt-100);
+  --color-salt-dim: var(--primitive-color-salt-200);
+  --color-saffron: var(--primitive-color-saffron-500);
+  --color-sadu: var(--primitive-color-sadu-500);
+  --color-ink: var(--primitive-color-ink-500);
+  --color-mist: var(--primitive-color-mist-100);
+  --color-mist-dim: var(--primitive-color-mist-300);
+  --color-white: var(--primitive-color-salt-50);
 
   --font-display: var(--font-readex);
   --font-body: var(--font-plex-arabic);
@@ -21,8 +29,8 @@ html {
 }
 
 body {
-  background: var(--color-salt);
-  color: var(--color-ink);
+  background: var(--color-background);
+  color: var(--color-foreground);
   font-family: var(--font-body), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
@@ -31,55 +39,100 @@ body {
   font-family: var(--font-display), var(--font-body), sans-serif;
 }
 
-/* Sadu weave band — the signature divider. Says: this is Gulf-made. */
+/* ---------- Layer 3: components (states: default / hover / active / focus / disabled) ---------- */
+@layer components {
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+    padding: var(--button-padding-y) var(--button-padding-x);
+    border-radius: var(--button-radius);
+    font-size: var(--button-font-size); font-weight: 600; line-height: 1.25;
+    border: 1px solid transparent; cursor: pointer; text-decoration: none;
+    transition: background-color var(--primitive-duration-fast), border-color var(--primitive-duration-fast), color var(--primitive-duration-fast), opacity var(--primitive-duration-fast);
+  }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: var(--button-bg); color: var(--button-fg); }
+  .btn-primary:hover:not(:disabled) { background: var(--button-hover-bg); }
+  .btn-primary:active:not(:disabled) { background: var(--button-active-bg); }
+  .btn-accent { background: var(--color-accent); color: var(--color-accent-foreground); }
+  .btn-accent:hover:not(:disabled) { background: var(--color-accent-hover); }
+  .btn-accent:active:not(:disabled) { background: var(--color-accent-active); }
+  .btn-secondary { background: transparent; color: var(--color-foreground); border-color: color-mix(in oklab, var(--color-foreground) 20%, transparent); }
+  .btn-secondary:hover:not(:disabled) { border-color: var(--color-primary); color: var(--color-primary); }
+  .btn-secondary:active:not(:disabled) { background: var(--color-background-muted); }
+  .btn-danger { background: transparent; color: var(--color-danger); border-color: color-mix(in oklab, var(--color-danger) 40%, transparent); }
+  .btn-danger:hover:not(:disabled) { background: var(--color-danger); color: var(--color-danger-foreground); }
+  .btn-danger-solid { background: var(--color-danger); color: var(--color-danger-foreground); }
+  .btn-danger-solid:hover:not(:disabled) { background: var(--color-danger-hover); }
+  .btn-ghost-inverse { background: transparent; color: var(--color-inverse-foreground); border-color: color-mix(in oklab, var(--color-inverse-foreground) 25%, transparent); }
+  .btn-ghost-inverse:hover:not(:disabled) { border-color: color-mix(in oklab, var(--color-inverse-foreground) 60%, transparent); }
+  .btn-pill { border-radius: var(--primitive-radius-full); padding: 0.375rem 1rem; }
+  .btn-sm { padding: 0.625rem 1.25rem; }
+  .btn-xs { border-radius: var(--primitive-radius-full); padding: 0.25rem 0.75rem; font-size: var(--primitive-fontSize-xs); font-weight: 500; }
+  .btn-lg { border-radius: var(--primitive-radius-full); padding: 0.75rem 1.5rem; font-size: var(--primitive-fontSize-base); }
+
+  /* Cards */
+  .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--card-radius); padding: var(--card-padding); box-shadow: var(--card-shadow); }
+  .card-sm { padding: var(--primitive-spacing-4); }
+  .card-inverse { background: var(--color-inverse-surface); color: var(--color-inverse-foreground); border-color: color-mix(in oklab, var(--color-inverse-foreground) 10%, transparent); }
+  .card-title { font-family: var(--font-display), var(--font-body), sans-serif; font-size: var(--primitive-fontSize-lg); font-weight: 700; }
+
+  /* Inputs */
+  .input { width: 100%; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: var(--input-radius); padding: var(--input-padding-y) var(--input-padding-x); font-size: var(--primitive-fontSize-sm); color: var(--color-foreground); transition: border-color var(--primitive-duration-fast); }
+  .input:hover { border-color: color-mix(in oklab, var(--color-foreground) 30%, transparent); }
+  .input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px color-mix(in oklab, var(--input-focus-ring) 45%, transparent); }
+  .input:disabled { opacity: 0.6; cursor: not-allowed; }
+  .input[aria-invalid="true"] { border-color: var(--color-danger); }
+
+  /* Badges */
+  .badge { display: inline-flex; align-items: center; border-radius: var(--primitive-radius-full); padding: 0.125rem 0.5rem; font-size: var(--primitive-fontSize-xs); font-weight: 500; }
+  .badge-primary { background: color-mix(in oklab, var(--color-primary) 10%, transparent); color: var(--color-primary); }
+  .badge-accent { background: color-mix(in oklab, var(--color-accent) 20%, transparent); color: var(--color-foreground); }
+  .badge-danger { background: color-mix(in oklab, var(--color-danger) 10%, transparent); color: var(--color-danger); }
+
+  /* Typography */
+  .page-title { font-family: var(--font-display), var(--font-body), sans-serif; font-size: var(--primitive-fontSize-3xl); font-weight: 700; line-height: 1.2; color: var(--color-primary); }
+  .page-sub { margin-top: 0.5rem; color: color-mix(in oklab, var(--color-foreground) 70%, transparent); }
+  .section-title { font-family: var(--font-display), var(--font-body), sans-serif; font-size: var(--primitive-fontSize-3xl); font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; }
+  @media (min-width: 640px) { .section-title { font-size: var(--primitive-fontSize-4xl); } }
+  .eyebrow { margin-bottom: 0.75rem; font-size: var(--primitive-fontSize-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.2em; color: var(--color-danger); }
+  .eyebrow-accent { color: var(--color-accent); }
+
+  /* Layout */
+  .section-wrap { margin-inline: auto; max-width: 72rem; padding: var(--spacing-section) 1rem; }
+  @media (min-width: 640px) { .section-wrap { padding-inline: 1.5rem; } }
+  .page-wrap { margin-inline: auto; max-width: 48rem; padding: 4rem 1rem; }
+  @media (min-width: 640px) { .page-wrap { padding-inline: 1.5rem; } }
+}
+
+/* Sadu weave band: the signature divider. Says: this is Gulf-made. */
 .sadu {
   height: 14px;
-  background-image: repeating-linear-gradient(
-    90deg,
-    var(--color-sadu) 0 12px,
-    var(--color-ink) 12px 16px,
-    var(--color-salt) 16px 22px,
-    var(--color-ink) 22px 26px,
-    var(--color-saffron) 26px 38px,
-    var(--color-ink) 38px 42px,
-    var(--color-salt) 42px 48px,
-    var(--color-ink) 48px 52px
-  );
+  background-image: repeating-linear-gradient(90deg, var(--color-danger) 0 12px, var(--color-foreground) 12px 16px, var(--color-background) 16px 22px, var(--color-foreground) 22px 26px, var(--color-accent) 26px 38px, var(--color-foreground) 38px 42px, var(--color-background) 42px 48px, var(--color-foreground) 48px 52px);
 }
 .sadu-thin {
   height: 4px;
-  background-image: repeating-linear-gradient(90deg, var(--color-sadu) 0 8px, var(--color-saffron) 8px 16px, var(--color-ink) 16px 20px);
+  background-image: repeating-linear-gradient(90deg, var(--color-danger) 0 8px, var(--color-accent) 8px 16px, var(--color-foreground) 16px 20px);
 }
 
 /* Overnight log rows rise one by one on load */
-@keyframes rise {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.log-row {
-  animation: rise 0.5s ease-out both;
-}
-@media (prefers-reduced-motion: reduce) {
-  .log-row { animation: none; }
-  html { scroll-behavior: auto; }
-}
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.log-row { animation: rise 0.5s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .log-row { animation: none; } html { scroll-behavior: auto; } }
 
-:focus-visible {
-  outline: 3px solid var(--color-saffron);
-  outline-offset: 2px;
-}
+:focus-visible { outline: 3px solid var(--color-ring); outline-offset: 2px; }
 
 details > summary { list-style: none; cursor: pointer; }
 details > summary::-webkit-details-marker { display: none; }
 
 /* Blog article typography */
-.prose-nashr h2 { font-family: var(--font-display), var(--font-body), sans-serif; font-size: 1.5rem; font-weight: 700; margin-top: 2.5rem; color: var(--color-oasis); }
+.prose-nashr h2 { font-family: var(--font-display), var(--font-body), sans-serif; font-size: 1.5rem; font-weight: 700; margin-top: 2.5rem; color: var(--color-primary); }
 .prose-nashr h3 { font-family: var(--font-display), var(--font-body), sans-serif; font-size: 1.2rem; font-weight: 600; margin-top: 1.75rem; }
-.prose-nashr p, .prose-nashr li { line-height: 1.8; margin-top: 0.75rem; color: color-mix(in oklab, var(--color-ink) 85%, transparent); }
+.prose-nashr p, .prose-nashr li { line-height: 1.8; margin-top: 0.75rem; color: color-mix(in oklab, var(--color-foreground) 85%, transparent); }
 .prose-nashr ul { list-style: disc; padding-inline-start: 1.5rem; }
 .prose-nashr ol { list-style: decimal; padding-inline-start: 1.5rem; }
-.prose-nashr a { color: var(--color-oasis); text-decoration: underline; }
+.prose-nashr a { color: var(--color-primary); text-decoration: underline; }
 .prose-nashr table { width: 100%; margin-top: 1rem; border-collapse: collapse; font-size: 0.9rem; }
-.prose-nashr th { background: var(--color-oasis); color: var(--color-mist); text-align: start; padding: 0.5rem 0.75rem; }
-.prose-nashr td { border-top: 1px solid color-mix(in oklab, var(--color-ink) 10%, transparent); padding: 0.5rem 0.75rem; }
+.prose-nashr th { background: var(--color-primary); color: var(--color-primary-foreground); text-align: start; padding: 0.5rem 0.75rem; }
+.prose-nashr td { border-top: 1px solid color-mix(in oklab, var(--color-foreground) 10%, transparent); padding: 0.5rem 0.75rem; }
 .prose-nashr strong { font-weight: 600; }

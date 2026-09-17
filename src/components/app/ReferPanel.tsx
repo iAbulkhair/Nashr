@@ -24,32 +24,32 @@ export default function ReferPanel({ t, lang, code, count, earned, origin }: { t
   }
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="font-display text-3xl font-bold text-oasis">{r.title}</h1>
+      <h1 className="page-title">{r.title}</h1>
       <p className="mt-2 text-ink/70">{r.sub}</p>
       <div className="mt-5 flex gap-2">
         {(["refer", "social"] as const).map((k) => <button key={k} onClick={() => setTab(k)} className={`rounded-full px-4 py-1.5 text-sm ${tab === k ? "bg-oasis text-mist" : "border border-ink/15"}`}>{k === "refer" ? r.tabRefer : r.tabSocial}</button>)}
       </div>
       {msg && <p className="mt-3 text-sm text-oasis">{msg}</p>}
       {tab === "social" && (
-        <div className="mt-4 rounded-xl border border-ink/10 bg-white p-5">
+        <div className="mt-4 card">
           <p className="text-sm text-ink/70">{r.socialSub}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {shares.map((s) => <button key={s.id} onClick={() => shared(s.id, s.url)} disabled={done.includes(s.id)} className="rounded-full border border-oasis px-4 py-2 text-sm text-oasis disabled:opacity-50">{done.includes(s.id) ? "✓ " : ""}{s.label}</button>)}
           </div>
         </div>
       )}
-      <div className={`mt-4 rounded-xl border border-ink/10 bg-white p-5 ${tab !== "refer" ? "hidden" : ""}`}>
+      <div className={`mt-4 card ${tab !== "refer" ? "hidden" : ""}`}>
         <p className="text-xs uppercase tracking-wide text-ink/50">{r.link}</p>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <code className="flex-1 break-all rounded bg-salt-dim px-3 py-2 text-sm" dir="ltr">{link}</code>
-          <button onClick={async () => { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="rounded-full bg-oasis px-4 py-2 text-sm font-semibold text-mist">{copied ? r.copied : r.copy}</button>
+          <button onClick={async () => { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="btn btn-primary btn-pill">{copied ? r.copied : r.copy}</button>
           <a href={`https://wa.me/?text=${encodeURIComponent(r.shareText + " " + link)}`} target="_blank" rel="noreferrer" className="rounded-full border border-oasis px-4 py-2 text-sm text-oasis">{r.share}</a>
         </div>
         <p className="mt-3 text-xs text-ink/50">{r.code}: <span className="font-mono">{code}</span></p>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-4">
-        <div className="rounded-xl border border-ink/10 bg-white p-5"><p className="text-xs text-ink/50">{r.count}</p><p className="font-display text-3xl font-bold text-oasis">{count}</p></div>
-        <div className="rounded-xl border border-ink/10 bg-white p-5"><p className="text-xs text-ink/50">{r.earned}</p><p className="font-display text-3xl font-bold text-oasis">{earned}</p></div>
+        <div className="card"><p className="text-xs text-ink/50">{r.count}</p><p className="page-title">{count}</p></div>
+        <div className="card"><p className="text-xs text-ink/50">{r.earned}</p><p className="page-title">{earned}</p></div>
       </div>
     </div>
   );

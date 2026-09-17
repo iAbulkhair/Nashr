@@ -2,7 +2,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export default function AdminLogin() {
+export default function AdminLogin({ lang = "en" }: { lang?: "ar" | "en" }) {
+  const ar = lang === "ar";
   const r = useRouter();
   const [err, setErr] = useState(false);
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -13,11 +14,11 @@ export default function AdminLogin() {
     else setErr(true);
   }
   return (
-    <form onSubmit={onSubmit} dir="ltr" className="mx-auto grid max-w-sm gap-3">
-      <h1 className="font-display text-2xl font-bold text-oasis">Founder console</h1>
-      <input name="key" type="password" placeholder="Admin key" className="rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm" />
-      {err && <p className="text-sm text-sadu">Wrong key.</p>}
-      <button className="rounded-lg bg-oasis px-5 py-3 font-semibold text-mist">Enter</button>
+    <form onSubmit={onSubmit} className="mx-auto grid max-w-sm gap-3">
+      <h1 className="font-display text-2xl font-bold text-oasis">{ar ? "لوحة المؤسس" : "Founder console"}</h1>
+      <input name="key" type="password" placeholder={ar ? "مفتاح الأدمن" : "Admin key"} dir="ltr" className="input" />
+      {err && <p className="text-sm text-sadu">{ar ? "المفتاح غير صحيح." : "Wrong key."}</p>}
+      <button className="btn btn-primary">{ar ? "دخول" : "Enter"}</button>
     </form>
   );
 }

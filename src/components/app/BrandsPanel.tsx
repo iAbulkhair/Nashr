@@ -26,9 +26,9 @@ export default function BrandsPanel({ lang }: { lang: Lang }) {
   const activeCount = brands.filter((b) => b.status === "active").length;
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="font-display text-3xl font-bold text-oasis">{ar ? "العلامات" : "Brands"}</h1>
+      <h1 className="page-title">{ar ? "العلامات" : "Brands"}</h1>
       <p className="mt-2 text-ink/70">{ar ? "لكل علامة ملفها ومحتواها وقنواتها وإعداداتها. الكريدت مشترك بين علاماتك." : "Each brand has its own file, content, channels and settings. Credits are shared across brands."}</p>
-      <div className="mt-4 flex items-center justify-between rounded-xl border border-ink/10 bg-white p-4 text-sm">
+      <div className="mt-4 flex items-center justify-between card card-sm text-sm">
         <span>{ar ? "العلامات" : "Brands"}: <b dir="ltr">{activeCount} / {limit}</b></span>
         <form onSubmit={(e) => { e.preventDefault(); act({ action: "add", name }); }} className="flex gap-2">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder={ar ? "اسم العلامة الجديدة" : "New brand name"} className="rounded-lg border border-ink/15 px-3 py-2 text-sm" />
@@ -45,8 +45,8 @@ export default function BrandsPanel({ lang }: { lang: Lang }) {
             </div>
             <div className="flex gap-2 text-xs">
               {b.id !== active && b.status === "active" && <button onClick={() => act({ action: "switch", id: b.id })} className="rounded-full bg-oasis px-3 py-1 font-semibold text-mist">{ar ? "انتقل" : "Switch"}</button>}
-              <button onClick={() => { const n = prompt(ar ? "الاسم الجديد:" : "New name:", b.name); if (n) act({ action: "rename", id: b.id, name: n }); }} className="rounded-full border border-ink/20 px-3 py-1">{ar ? "إعادة تسمية" : "Rename"}</button>
-              {b.id !== "default" && <button onClick={() => act({ action: "archive", id: b.id })} className="rounded-full border border-ink/20 px-3 py-1">{b.status === "archived" ? (ar ? "استعادة" : "Restore") : (ar ? "أرشفة" : "Archive")}</button>}
+              <button onClick={() => { const n = prompt(ar ? "الاسم الجديد:" : "New name:", b.name); if (n) act({ action: "rename", id: b.id, name: n }); }} className="btn btn-secondary btn-xs">{ar ? "إعادة تسمية" : "Rename"}</button>
+              {b.id !== "default" && <button onClick={() => act({ action: "archive", id: b.id })} className="btn btn-secondary btn-xs">{b.status === "archived" ? (ar ? "استعادة" : "Restore") : (ar ? "أرشفة" : "Archive")}</button>}
             </div>
           </li>
         ))}

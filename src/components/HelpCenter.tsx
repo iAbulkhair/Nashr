@@ -17,10 +17,10 @@ export default function HelpCenter({ lang, wa, inApp = false }: { lang: Lang; wa
     const res = await fetch("/api/support", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fd, lang, page: location.pathname }) });
     setSent(res.ok ? "ok" : "err");
   }
-  const input = "w-full rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm";
+  const input = "input";
   return (
     <div className={inApp ? "" : "mx-auto max-w-4xl px-4 py-16 sm:px-6"}>
-      <h1 className="font-display text-3xl font-bold text-oasis sm:text-4xl">{ar ? "مركز المساعدة" : "Help center"}</h1>
+      <h1 className="page-title sm:text-4xl">{ar ? "مركز المساعدة" : "Help center"}</h1>
       <p className="mt-2 text-ink/70">{ar ? "ابحث، أو اسأل نور في الدردشة «كيف أسوي…»، أو راسلنا." : "Search, ask Noor in chat “how do I…”, or message us."}</p>
       <div className="mt-6 flex flex-wrap gap-2">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={ar ? "ابحث في المساعدة…" : "Search help…"} className="min-w-[240px] flex-1 rounded-full border border-ink/15 bg-white px-4 py-2 text-sm" />
@@ -55,7 +55,7 @@ export default function HelpCenter({ lang, wa, inApp = false }: { lang: Lang; wa
             <input name="email" required type="email" dir="ltr" placeholder="Email" className={input} />
             <select name="type" className={input}><option value="question">{ar ? "سؤال" : "Question"}</option><option value="bug">{ar ? "مشكلة" : "Bug"}</option><option value="billing">{ar ? "فوترة" : "Billing"}</option><option value="feature">{ar ? "اقتراح ميزة" : "Feature request"}</option></select>
             <textarea name="message" required rows={4} placeholder={ar ? "اكتب ما حدث بالتفصيل…" : "Describe what happened…"} className={input} />
-            <button disabled={sent === "busy"} className="rounded-lg bg-oasis px-5 py-3 font-semibold text-mist disabled:opacity-60">{ar ? "أرسل" : "Send"}</button>
+            <button disabled={sent === "busy"} className="btn btn-primary">{ar ? "أرسل" : "Send"}</button>
             {sent === "err" && <p className="text-sm text-sadu">{ar ? "لم يُرسل. حاول مرة أخرى." : "Didn't send. Try again."}</p>}
           </form>
         )}
