@@ -1,4 +1,5 @@
 import { charge, refund } from "@/lib/credits";
+import { statsFor } from "@/lib/stats";
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { currentUser, sc } from "@/lib/auth";
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
   const gov = await getGov(sc(u));
   let items;
   try {
-    items = await generate(type, brand, await listPreferences(sc(u)), b.notes, { memory: await memoryBlock(sc(u)), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: u.email });
+    items = await generate(type, brand, await listPreferences(sc(u)), b.notes, { memory: await memoryBlock(sc(u)), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: u.email, stats: await statsFor(type, sc(u)) });
   } catch (e) {
     console.error("generate failed", e);
     u.credits = await refund(u.email, cost);

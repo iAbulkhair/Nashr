@@ -1,4 +1,7 @@
 import { charge, refund } from "./credits";
+import { AGENTS, agentById, type AgentId } from "./agents";
+import { skillsBlock } from "./skills";
+import { statsFor } from "./stats";
 import { meter } from "./usage";
 import Anthropic from "@anthropic-ai/sdk";
 import { randomBytes } from "crypto";
@@ -16,7 +19,7 @@ import { publishTask, targetsFor } from "./connectors/publish";
 import { HELP } from "./help";
 import { IMAGE_COST, getTask } from "./brand";
 
-export type ChatMsg = { role: "user" | "assistant"; content: string; at: string; actions?: string[] };
+export type ChatMsg = { role: "user" | "assistant"; content: string; at: string; actions?: string[]; agent?: AgentId };
 
 const key = (email: string, conv?: string) => (conv && conv !== "default" ? `chat:${email}:${conv}` : `chat:${email}`);
 export async function history(email: string, conv?: string): Promise<ChatMsg[]> {
@@ -30,8 +33,8 @@ async function push(email: string, m: ChatMsg, conv?: string) {
 const TOOLS: Anthropic.Tool[] = [
   {
     name: "generate_content",
-    description: "Create marketing items and put them in the owner's approval inbox. Deducts credits. Use when the owner asks for posts, an article, WhatsApp messages, ads, Google Business posts, or a weekly plan.",
-    input_schema: { type: "object", additionalProperties: false, required: ["type"], properties: { type: { type: "string", enum: ["weekly_plan", "social", "article", "whatsapp", "ads", "gbp"] }, notes: { type: "string", description: "Owner's specific instructions for this batch (product, season, angle)." } } },
+    description: "Create items and put them in the owner's approval inbox. Deducts credits. Marketing (Noor): weekly_plan, social (10 posts), article, whatsapp (3), ads (5), gbp (3). Sales (Sami): sales_script, lead_qualifier, followup_seq. Finance (Razan): pricing_review, unit_economics, cash_forecast. Growth (Faris): gtm_plan, growth_experiments, retention_play. Reports (Dana): weekly_report, board_deck, dashboard_spec. Any agent may call any type; the item is written by the agent who owns that type.",
+    input_schema: { type: "object", additionalProperties: false, required: ["type"], properties: { type: { type: "string", enum: Object.keys(TASK_COST) }, notes: { type: "string", description: "Owner's specific instructions for this batch (product, season, angle)." } } },
     strict: true,
   },
   {
@@ -78,9 +81,16 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
-function system(brand: Brand | null, user: User, prefs: string[], memory: string, files: string[], connected: string[]) {
+function system(brand: Brand | null, user: User, prefs: string[], memory: string, files: string[], connected: string[], agentId: AgentId = "noor") {
+  const agent = agentById(agentId);
   const seasons = activeSeasons().map((s) => `${s.name} (${s.nameAr}) in ${s.daysLeft} days`).join("; ") || "none within 35 days";
-  return `You are Noor (نور), the marketing agent inside Nashr, talking with the owner of "${brand?.name ?? "their business"}". You are warm, direct, and practical, like a senior marketer who is also a friend. Reply in the language the owner writes in (Arabic in light Saudi/Gulf tone unless the brand dialect says otherwise; English if they write English). Keep replies short (2-6 sentences) unless asked for a document.
+  const intro = agent.id === "noor"
+    ? `You are Noor (نور), the marketing agent inside Nashr, talking with the owner of "${brand?.name ?? "their business"}". You are warm, direct, and practical, like a senior marketer who is also a friend.`
+    : `${agent.persona} You are talking with the owner of "${brand?.name ?? "their business"}" inside Nashr. You share Noor's workspace (brand file, memory files, inbox, credits). If the owner asks for marketing content, say Noor handles it and call generate_content with a marketing type anyway; it works from any chat.
+TEAM: ${AGENTS.map((a) => `${a.name.en} (${a.name.ar}) = ${a.role.en}`).join("; ")}.
+SKILLS PLAYBOOK (follow its frameworks, templates and rules)
+${skillsBlock(agent) || "- playbook not loaded; rely on best practice and the brand file"}`;
+  return `${intro} Reply in the language the owner writes in (Arabic in light Saudi/Gulf tone unless the brand dialect says otherwise; English if they write English). Keep replies short (2-6 sentences) unless asked for a document.
 
 WHAT YOU CAN DO
 - Create content via generate_content (it lands in the approval inbox; tell the owner it's there and how many credits it used).
@@ -106,7 +116,7 @@ Pages: /app/chat (you), /app (inbox), /app/files, /app/tasks, /app/governance, /
 RULES: never invent prices/claims; respect Saudi advertising norms; one clear next step per reply; when you used a tool, say what happened in one line. Do not include internal or system XML tags in your response.`;
 }
 
-export async function chat(user: User, text: string, conv?: string): Promise<ChatMsg> {
+export async function chat(user: User, text: string, conv?: string, agentId: AgentId = "noor"): Promise<ChatMsg> {
   const email = user.scope ?? user.email;
   await push(email, { role: "user", content: text, at: new Date().toISOString() }, conv);
   const actions: string[] = [];
@@ -127,7 +137,7 @@ export async function chat(user: User, text: string, conv?: string): Promise<Cha
   const messages: Anthropic.MessageParam[] = past.map((m) => ({ role: m.role, content: m.content }));
   if (!messages.length || messages[messages.length - 1].role !== "user") messages.push({ role: "user", content: text });
 
-  const sys = system(brand, user, prefs, memory, files, connected);
+  const sys = system(brand, user, prefs, memory, files, connected, agentId);
 
   for (let turn = 0; turn < 5; turn++) {
     const res = await client.messages
@@ -139,7 +149,7 @@ export async function chat(user: User, text: string, conv?: string): Promise<Cha
     const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
     if (!uses.length) {
       const reply = res.content.filter((b) => b.type === "text").map((b) => (b as Anthropic.TextBlock).text).join("\n").trim();
-      const m: ChatMsg = { role: "assistant", content: reply || "…", at: new Date().toISOString(), actions };
+      const m: ChatMsg = { role: "assistant", content: reply || "…", at: new Date().toISOString(), actions, agent: agentId };
       await push(email, m, conv);
       return m;
     }
@@ -177,7 +187,7 @@ async function runTool(user: User, name: string, input: Record<string, unknown>,
       const gov = await getGov(email);
       let items;
       try {
-        items = await generate(type, brand, await listPreferences(email), String(input.notes ?? ""), { memory: await memoryBlock(email), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email });
+        items = await generate(type, brand, await listPreferences(email), String(input.notes ?? ""), { memory: await memoryBlock(email), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats: await statsFor(type, email) });
       } catch (e) {
         user.credits = await refund(user.email, cost);
         throw e;

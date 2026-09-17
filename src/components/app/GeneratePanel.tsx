@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import { TASK_COST, type TaskType } from "@/lib/brand";
+import { AGENTS } from "@/lib/agents";
 import type { Lang } from "@/lib/i18n";
 
 export default function GeneratePanel({ t, lang, credits }: { t: AppDict; lang: Lang; credits: number }) {
@@ -33,22 +34,36 @@ export default function GeneratePanel({ t, lang, credits }: { t: AppDict; lang: 
       <h1 className="font-display text-3xl font-bold text-oasis">{g.title}</h1>
       <p className="mt-2 text-ink/70">{g.sub}</p>
       <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder={g.notes} className="mt-5 w-full rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm" />
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        {(Object.keys(TASK_COST) as TaskType[]).map((type) => {
-          const cost = TASK_COST[type];
-          const can = credits >= cost && !busy;
-          return (
-            <button key={type} disabled={!can} onClick={() => run(type)} className={`rounded-xl border p-4 text-start transition ${busy === type ? "border-saffron bg-oasis text-mist" : "border-ink/10 bg-white hover:border-oasis"} disabled:opacity-50`}>
-              <div className="flex items-center justify-between">
-                <span className="font-display font-medium">{g.types[type].t}</span>
-                <span className="font-mono text-xs text-sadu" dir="ltr">{cost} {g.cost}</span>
+      {AGENTS.map((a) => {
+        const info = t.agents[a.id];
+        return (
+          <section key={a.id} className="mt-7">
+            <div className="flex items-center gap-3">
+              <span className="grid h-9 w-9 place-items-center rounded-full bg-oasis font-display text-base font-bold text-saffron" aria-hidden>{info.name[0]}</span>
+              <div>
+                <h2 className="font-display text-lg font-semibold text-oasis">{info.name} <span className="text-sm font-normal text-ink/60">· {info.role}</span></h2>
+                <p className="text-xs text-ink/60">{info.blurb}</p>
               </div>
-              <p className={`mt-1 text-sm ${busy === type ? "text-mist-dim" : "text-ink/70"}`}>{g.types[type].d}</p>
-            </button>
-          );
-        })}
-      </div>
-      {msg && <p role="status" className="mt-5 rounded-lg border border-oasis/30 bg-salt-dim p-3 text-sm text-oasis">{msg}</p>}
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {a.tasks.map((type) => {
+                const cost = TASK_COST[type];
+                const can = credits >= cost && !busy;
+                return (
+                  <button key={type} disabled={!can} onClick={() => run(type)} className={`rounded-xl border p-4 text-start transition ${busy === type ? "border-saffron bg-oasis text-mist" : "border-ink/10 bg-white hover:border-oasis"} disabled:opacity-50`}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-display font-medium">{g.types[type].t}</span>
+                      <span className="font-mono text-xs text-sadu" dir="ltr">{cost} {g.cost}</span>
+                    </div>
+                    <p className={`mt-1 text-sm ${busy === type ? "text-mist-dim" : "text-ink/70"}`}>{g.types[type].d}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+      {msg && <p role="status" className="sticky bottom-4 mt-5 rounded-lg border border-oasis/30 bg-salt-dim p-3 text-sm text-oasis">{msg}</p>}
     </div>
   );
 }

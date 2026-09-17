@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
-import type { Task } from "@/lib/brand";
+import { IMAGE_TYPES, type Task } from "@/lib/brand";
 import type { Lang } from "@/lib/i18n";
 
 export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[] }) {
@@ -124,7 +124,10 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
                   <button onClick={async () => { await navigator.clipboard.writeText(body); setCopied(x.id); setTimeout(() => setCopied(null), 1500); }} className="rounded-full border border-ink/20 px-4 py-1.5">
                     {copied === x.id ? i.copied : i.copy}
                   </button>
-                  {x.type !== "weekly_plan" && x.type !== "article" && (
+                  {x.type === "board_deck" && (
+                    <a href={`/api/tasks/${x.id}/pptx`} className="rounded-full bg-saffron px-4 py-1.5 font-semibold text-ink">{i.pptx}</a>
+                  )}
+                  {IMAGE_TYPES.includes(x.type) && (
                     <button disabled={imaging === x.id} onClick={() => image(x.id)} className="rounded-full border border-saffron px-4 py-1.5 disabled:opacity-50">{imaging === x.id ? i.imaging : (x.imageUrl ? "↻ " : "") + i.image}</button>
                   )}
                   {targets(x).map((p) => (

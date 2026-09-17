@@ -1,9 +1,10 @@
 import { randomBytes } from "crypto";
 import { db } from "./db";
 import type { ChatMsg } from "./chat";
+import type { AgentId } from "./agents";
 
 /** Multiple conversations per scope, searchable. `chat:{scope}` stays the legacy default thread. */
-export type Conversation = { id: string; title: string; createdAt: string; updatedAt: string; count: number };
+export type Conversation = { id: string; title: string; createdAt: string; updatedAt: string; count: number; agent?: AgentId };
 
 export async function listConversations(scope: string): Promise<Conversation[]> {
   const ids = await db.lrange(`convs:${scope}`, 0, 99);
@@ -11,8 +12,8 @@ export async function listConversations(scope: string): Promise<Conversation[]> 
   for (const id of ids) { const c = await db.get<Conversation>(`conv:${scope}:${id}`); if (c) out.push(c); }
   return out.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 }
-export async function createConversation(scope: string, title: string): Promise<Conversation> {
-  const c: Conversation = { id: randomBytes(6).toString("hex"), title: title.slice(0, 80), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), count: 0 };
+export async function createConversation(scope: string, title: string, agent: AgentId = "noor"): Promise<Conversation> {
+  const c: Conversation = { id: randomBytes(6).toString("hex"), title: title.slice(0, 80), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), count: 0, agent };
   await db.set(`conv:${scope}:${c.id}`, c);
   await db.lpush(`convs:${scope}`, c.id);
   return c;

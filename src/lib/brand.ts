@@ -18,9 +18,31 @@ export type Brand = {
   updatedAt: string;
 };
 
-export type TaskType = "weekly_plan" | "social" | "article" | "whatsapp" | "ads" | "gbp";
+export type TaskType =
+  | "weekly_plan" | "social" | "article" | "whatsapp" | "ads" | "gbp"
+  | "sales_script" | "lead_qualifier" | "followup_seq"
+  | "pricing_review" | "unit_economics" | "cash_forecast"
+  | "gtm_plan" | "growth_experiments" | "retention_play"
+  | "weekly_report" | "board_deck" | "dashboard_spec";
 
-export const TASK_COST: Record<TaskType, number> = { weekly_plan: 1, social: 10, article: 2, whatsapp: 3, ads: 5, gbp: 3 };
+/** Credits per batch. */
+export const TASK_COST: Record<TaskType, number> = {
+  weekly_plan: 1, social: 10, article: 2, whatsapp: 3, ads: 5, gbp: 3,
+  sales_script: 4, lead_qualifier: 2, followup_seq: 3,
+  pricing_review: 4, unit_economics: 3, cash_forecast: 4,
+  gtm_plan: 5, growth_experiments: 4, retention_play: 4,
+  weekly_report: 2, board_deck: 5, dashboard_spec: 2,
+};
+/** Items produced per batch. */
+export const TASK_COUNT: Record<TaskType, number> = {
+  weekly_plan: 1, social: 10, article: 1, whatsapp: 3, ads: 5, gbp: 3,
+  sales_script: 3, lead_qualifier: 1, followup_seq: 7,
+  pricing_review: 1, unit_economics: 1, cash_forecast: 1,
+  gtm_plan: 1, growth_experiments: 5, retention_play: 3,
+  weekly_report: 1, board_deck: 1, dashboard_spec: 1,
+};
+/** Types that get a generated image button in the inbox. */
+export const IMAGE_TYPES: TaskType[] = ["social", "ads", "gbp", "whatsapp"];
 
 export type Task = {
   id: string;

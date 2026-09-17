@@ -2,8 +2,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { ChatMsg } from "@/lib/chat";
+import { AGENTS, type AgentId } from "@/lib/agents";
 
-type Conv = { id: string; title: string; updatedAt: string; count: number };
+type Conv = { id: string; title: string; updatedAt: string; count: number; agent?: AgentId };
 type Hit = { conversationId: string; title: string; snippet: string; at: string };
 
 export default function ChatPanel({ t, initial, credits: c0, lang }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en" }) {
@@ -14,6 +15,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang }: { t: AppDic
   const [credits, setCredits] = useState(c0);
   const [convs, setConvs] = useState<Conv[]>([]);
   const [conv, setConv] = useState("default");
+  const [agent, setAgent] = useState<AgentId>("noor");
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [showList, setShowList] = useState(false);
@@ -23,12 +25,22 @@ export default function ChatPanel({ t, initial, credits: c0, lang }: { t: AppDic
 
   async function open(id: string) {
     setConv(id); setHits(null); setShowList(false);
+    setAgent(id === "default" ? "noor" : convs.find((c) => c.id === id)?.agent ?? "noor");
     const j = await (await fetch(`/api/chat?conv=${id}`)).json();
     if (j.ok) setMsgs(j.messages);
   }
-  async function newConv() {
-    const j = await (await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "…" }) })).json();
-    if (j.ok) { setConvs((p) => [j.conversation, ...p]); setConv(j.conversation.id); setMsgs([]); setShowList(false); }
+  async function newConv(withAgent: AgentId = agent) {
+    const j = await (await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "…", agent: withAgent }) })).json();
+    if (j.ok) { setConvs((p) => [j.conversation, ...p]); setConv(j.conversation.id); setAgent(withAgent); setMsgs([]); setShowList(false); }
+  }
+  /** Switching agent: the default thread belongs to Noor; another agent gets its own conversation. */
+  async function pick(id: AgentId) {
+    if (id === agent) return;
+    if (conv === "default") { if (id !== "noor") await newConv(id); return; }
+    const cur = convs.find((c) => c.id === conv);
+    if (cur && cur.count > 0) { await newConv(id); return; }
+    setAgent(id);
+    setConvs((p) => p.map((c) => (c.id === conv ? { ...c, agent: id } : c)));
   }
   async function search(v: string) {
     setQ(v);
@@ -48,7 +60,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang }: { t: AppDic
     setMsgs((p) => [...p, { role: "user", content: m, at: new Date().toISOString() }]);
     setBusy(true);
     try {
-      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: m, conv }) });
+      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: m, conv, agent }) });
       const j = await res.json();
       if (j.ok) { setMsgs((p) => [...p, j.message]); setCredits(j.credits); if (conv !== "default") setConvs((p) => p.map((c) => (c.id === conv && c.title === "…" ? { ...c, title: m.slice(0, 60) } : c))); }
       else setMsgs((p) => [...p, { role: "assistant", content: "⚠︎ " + (j.error ?? "error"), at: new Date().toISOString() }]);
@@ -58,7 +70,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang }: { t: AppDic
 
   const list = (
     <aside className="flex h-full flex-col rounded-xl border border-ink/10 bg-white p-3">
-      <button onClick={newConv} className="rounded-lg bg-saffron px-3 py-2 text-sm font-semibold text-ink">+ {ar ? "محادثة جديدة" : "New conversation"}</button>
+      <button onClick={() => newConv()} className="rounded-lg bg-saffron px-3 py-2 text-sm font-semibold text-ink">+ {ar ? "محادثة جديدة" : "New conversation"}</button>
       <input value={q} onChange={(e) => search(e.target.value)} placeholder={ar ? "ابحث في المحادثات…" : "Search conversations…"} className="mt-2 rounded-lg border border-ink/15 px-3 py-2 text-sm" />
       <div className="mt-2 flex-1 overflow-y-auto">
         {hits ? (
@@ -68,7 +80,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang }: { t: AppDic
             <button onClick={() => open("default")} className={`block w-full rounded-lg px-2 py-2 text-start text-sm ${conv === "default" ? "bg-oasis text-mist" : "hover:bg-salt-dim"}`}>{ar ? "البداية" : "Getting started"}</button>
             {convs.map((c) => (
               <div key={c.id} className={`group flex items-center rounded-lg ${conv === c.id ? "bg-oasis text-mist" : "hover:bg-salt-dim"}`}>
-                <button onClick={() => open(c.id)} className="min-w-0 flex-1 truncate px-2 py-2 text-start text-sm" dir="auto">{c.title}</button>
+                <button onClick={() => open(c.id)} className="min-w-0 flex-1 truncate px-2 py-2 text-start text-sm" dir="auto"><span className="me-1 text-[10px] opacity-70">{t.agents[c.agent ?? "noor"].name}</span>{c.title}</button>
                 <button onClick={() => del(c.id)} className="px-2 text-xs opacity-0 group-hover:opacity-100" aria-label="delete">✕</button>
               </div>
             ))}
@@ -86,27 +98,34 @@ export default function ChatPanel({ t, initial, credits: c0, lang }: { t: AppDic
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <button onClick={() => setShowList(true)} className="rounded-md border border-ink/15 px-2 py-1 text-xs lg:hidden">☰</button>
-            <h1 className="font-display text-xl font-bold text-oasis">{t.chat.title} <span className="text-sm font-normal text-ink/50">· {title}</span></h1>
+            <h1 className="font-display text-xl font-bold text-oasis">{t.agents[agent].name} <span className="text-sm font-normal text-ink/50">· {title}</span></h1>
           </div>
           <span className="font-mono text-xs text-ink/60" dir="ltr">{credits} {t.nav.credits}</span>
         </div>
-        <div className="mt-3 flex-1 space-y-4 overflow-y-auto rounded-xl border border-ink/10 bg-white p-4">
+        <div className="mt-2 flex flex-wrap gap-1.5" role="tablist" aria-label={t.agents.pick}>
+          {AGENTS.map((a) => (
+            <button key={a.id} role="tab" aria-selected={agent === a.id} onClick={() => pick(a.id)} title={t.agents[a.id].blurb} className={`rounded-full border px-3 py-1 text-xs transition ${agent === a.id ? "border-oasis bg-oasis text-mist" : "border-ink/15 bg-white text-ink/70 hover:border-oasis"}`}>
+              <span className="font-semibold">{t.agents[a.id].name}</span> <span className="opacity-70">· {t.agents[a.id].role}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 flex-1 space-y-4 overflow-y-auto rounded-xl border border-ink/10 bg-white p-4">
           {msgs.length === 0 && (
             <div>
-              <p className="text-ink/70">{t.chat.empty}</p>
-              <div className="mt-4 flex flex-wrap gap-2">{t.chat.suggestions.map((s) => <button key={s} onClick={() => send(s)} className="rounded-full border border-oasis/30 px-3 py-1.5 text-sm text-oasis hover:bg-oasis hover:text-mist">{s}</button>)}</div>
+              <p className="text-ink/70">{agent === "noor" ? t.chat.empty : t.agents[agent].blurb}</p>
+              <div className="mt-4 flex flex-wrap gap-2">{t.agents[agent].suggestions.map((s) => <button key={s} onClick={() => send(s)} className="rounded-full border border-oasis/30 px-3 py-1.5 text-sm text-oasis hover:bg-oasis hover:text-mist">{s}</button>)}</div>
             </div>
           )}
           {msgs.map((m, i) => (
             <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-oasis text-mist" : "bg-salt-dim text-ink"}`} dir="auto">
-                {m.role === "assistant" && <span className="mb-1 block text-[11px] font-semibold text-sadu">{t.chat.title}</span>}
+                {m.role === "assistant" && <span className="mb-1 block text-[11px] font-semibold text-sadu">{t.agents[m.agent ?? agent].name}</span>}
                 <p className="whitespace-pre-wrap">{m.content}</p>
                 {m.actions && m.actions.length > 0 && <p className="mt-1 font-mono text-[10px] text-ink/50" dir="ltr">{m.actions.join(" · ")}</p>}
               </div>
             </div>
           ))}
-          {busy && <p className="text-sm text-ink/50">{t.chat.thinking}</p>}
+          {busy && <p className="text-sm text-ink/50">{agent === "noor" ? t.chat.thinking : `${t.agents[agent].name}…`}</p>}
           <div ref={end} />
         </div>
         <form onSubmit={(e) => { e.preventDefault(); send(text); }} className="mt-3 flex gap-2">

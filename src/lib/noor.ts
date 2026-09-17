@@ -1,4 +1,7 @@
 import { meter } from "./usage";
+import { agentForTask, type Agent } from "./agents";
+import { skillsBlock } from "./skills";
+import { TASK_COUNT } from "./brand";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Brand, TaskType } from "./brand";
 import { pickPlaybook } from "./playbooks";
@@ -14,17 +17,29 @@ const DIALECT: Record<Brand["dialect"], string> = {
   english: "English only.",
 };
 
-const SPECS: Record<TaskType, { count: number; spec: string }> = {
-  weekly_plan: { count: 1, spec: "One weekly marketing plan for the next 7 days: 7 day-by-day entries (channel, post idea, best posting time in local time, CTA), plus 2 ad ideas and 1 WhatsApp message idea. Consider upcoming Gulf seasons (Ramadan, Eids, Founding Day 22 Feb, Saudi National Day 23 Sep, UAE National Day 2 Dec, White Friday, back to school). channel = 'plan'." },
-  social: { count: 10, spec: "10 social media posts ready to publish. Mix: 4 Instagram captions (with 5-8 Arabic+English hashtags), 3 Snapchat story scripts (short, spoken tone), 2 TikTok video scripts (hook, 3 beats, CTA, ≤30s), 1 X post. Each body must be complete and copy-paste ready. channel = instagram | snapchat | tiktok | x." },
-  article: { count: 1, spec: "One SEO article of 1,200-1,600 words in the brand's primary language, targeting a keyword a competitor is likely missing. Include: title, meta description (≤155 chars), H2/H3 structure in Markdown, FAQ section with 3 questions, internal CTA. channel = 'blog'." },
-  whatsapp: { count: 3, spec: "3 WhatsApp Business messages: (1) abandoned-cart or lead follow-up, (2) seasonal offer announcement, (3) post-purchase thank-you with review request. Each ≤ 700 characters, template-friendly (use {{1}} placeholders for name/order), respectful tone, one clear CTA, opt-out line. channel = 'whatsapp'." },
-  ads: { count: 5, spec: "5 paid ad copies: 2 Snapchat (headline ≤34 chars + primary text ≤ 3 lines + CTA), 2 Meta/Instagram (primary text, headline ≤40 chars, description), 1 TikTok (spoken script ≤15s). Each with a target audience note and a suggested daily budget in SAR. channel = snapchat | meta | tiktok." },
-  gbp: { count: 3, spec: "3 Google Business Profile posts (≤ 300 chars each): 1 offer, 1 update, 1 event/seasonal. Include CTA type (Call / Book / Order / Learn more). channel = 'gbp'." },
+const SPECS: Record<TaskType, string> = {
+  weekly_plan: "One weekly marketing plan for the next 7 days: 7 day-by-day entries (channel, post idea, best posting time in local time, CTA), plus 2 ad ideas and 1 WhatsApp message idea. Consider upcoming Gulf seasons (Ramadan, Eids, Founding Day 22 Feb, Saudi National Day 23 Sep, UAE National Day 2 Dec, White Friday, back to school). channel = 'plan'.",
+  social: "10 social media posts ready to publish. Mix: 4 Instagram captions (with 5-8 Arabic+English hashtags), 3 Snapchat story scripts (short, spoken tone), 2 TikTok video scripts (hook, 3 beats, CTA, ≤30s), 1 X post. Each body must be complete and copy-paste ready. channel = instagram | snapchat | tiktok | x.",
+  article: "One SEO article of 1,200-1,600 words in the brand's primary language, targeting a keyword a competitor is likely missing. Include: title, meta description (≤155 chars), H2/H3 structure in Markdown, FAQ section with 3 questions, internal CTA. channel = 'blog'.",
+  whatsapp: "3 WhatsApp Business messages: (1) abandoned-cart or lead follow-up, (2) seasonal offer announcement, (3) post-purchase thank-you with review request. Each ≤ 700 characters, template-friendly (use {{1}} placeholders for name/order), respectful tone, one clear CTA, opt-out line. channel = 'whatsapp'.",
+  ads: "5 paid ad copies: 2 Snapchat (headline ≤34 chars + primary text ≤ 3 lines + CTA), 2 Meta/Instagram (primary text, headline ≤40 chars, description), 1 TikTok (spoken script ≤15s). Each with a target audience note and a suggested daily budget in SAR. channel = snapchat | meta | tiktok.",
+  gbp: "3 Google Business Profile posts (≤ 300 chars each): 1 offer, 1 update, 1 event/seasonal. Include CTA type (Call / Book / Order / Learn more). channel = 'gbp'.",
+  sales_script: "Three sales assets for this brand: (1) a discovery call script: opening, 8 questions grouped by stage (situation, pain, impact, decision), and a closing next step, under 500 words; (2) a WhatsApp first-contact script with 3 variants (inbound lead, referral, warm intro), each under 500 characters; (3) an objection-handling sheet as a Markdown table with the 8 most likely objections in this industry: objection, root cause, response, proof to show. channel = 'sales'.",
+  lead_qualifier: "One lead qualification card for this brand's ideal customer: ICP definition, 10 qualifying questions in the owner's language, a 0-100 scoring rubric (fit, intent, budget, timing, authority) with bands and the next action per band, and disqualifiers. Ready to paste into a CRM note. channel = 'sales'.",
+  followup_seq: "Seven follow-up messages forming one cadence for a lead who went quiet after a quote or visit. Touches on day 0, 1, 3, 6, 10, 15, 21. Five WhatsApp messages under 400 characters, one email, one call script. Each with its intent in the title, one CTA, respectful tone, opt-out line on the last touch. channel = 'whatsapp' | 'email' | 'call'.",
+  pricing_review: "One pricing review memo: current pricing summary (use [رقم] where unknown), three packaging options (good, better, best) with SAR price points and a VAT-inclusive note, anchoring and psychological price logic, discount policy, what to test first, and risks. Every assumption labeled. channel = 'finance'.",
+  unit_economics: "One unit-economics worksheet as a Markdown table with the formulas explained: price, COGS, gross margin, CAC by channel, LTV, LTV:CAC, payback period, break-even units. Fill known numbers from the brand file, mark every assumption, add industry benchmark ranges and the three levers that move the result most. channel = 'finance'.",
+  cash_forecast: "One 90-day cash-flow forecast template for this brand: a 13-week Markdown table with inflow and outflow categories, VAT payment timing, seasonality notes for the upcoming Gulf seasons, best/base/worst scenario summary, and cash triggers with the action for each. Placeholders for unknown figures. channel = 'finance'.",
+  gtm_plan: "One 90-day go-to-market plan: positioning statement, ICP, message hierarchy, three phases with goals, channel sequencing for this industry, weekly milestones, budget split as percentages, KPIs with target placeholders, and an owner per workstream. channel = 'growth'.",
+  growth_experiments: "Five growth experiment cards, ordered by ICE score. Each: hypothesis, channel, ICE (impact, confidence, ease, 1-10 each), setup steps, metric and success threshold, duration, cost estimate in SAR as a placeholder. channel = 'growth'.",
+  retention_play: "Three retention plays ready to implement: (1) activation and onboarding sequence for new customers, (2) churn-prevention play with early-warning signals and interventions, (3) referral or loyalty program with mechanics and rewards in SAR. channel = 'growth'.",
+  weekly_report: "One weekly performance report built ONLY from the WORKSPACE DATA and owner notes provided: headline (what changed and why), 6-8 KPI lines with prior-period comparison, content output and approval rate, published items, wins, misses, and next week's three actions. Never invent numbers; where data is missing write [رقم] and say what to track. channel = 'report'.",
+  board_deck: "One board or investor deck outline of 10-12 slides. Format strictly: a line '## Slide N: Title', then 3-5 bullet lines starting with '- ', then one line starting with 'Notes:' holding speaker notes. Cover: executive summary, market and customer, offer, traction (from WORKSPACE DATA), marketing engine, sales pipeline, unit economics, financial snapshot, next-quarter plan, asks. Numbers only from the data provided or as [رقم] placeholders. channel = 'deck'.",
+  dashboard_spec: "One KPI dashboard specification: 8-10 tiles as a Markdown table (metric, definition, data source, target, chart type, refresh cadence, owner), layout order, RTL notes, alert thresholds, and the five questions the dashboard must answer. channel = 'dashboard'.",
 };
 
-function systemPrompt(brand: Brand, prefs: string[]) {
-  return `You are Noor (نور), the autonomous marketing agent of Nashr, working for a Gulf business. You produce publish-ready marketing content that a busy owner approves in one click.
+function systemPrompt(brand: Brand, prefs: string[], agent: Agent) {
+  return `${agent.persona}
 
 BRAND FILE
 - Name: ${brand.name}
@@ -49,7 +64,7 @@ RULES
 - Every item must be complete and ready to paste. No meta commentary.
 
 ${playbookBlock(brand)}
-
+${agent.skills ? `\nSKILLS PLAYBOOK (${agent.name.en}; follow its frameworks, templates and rules)\n${skillsBlock(agent) || "- playbook not loaded; rely on best practice and the brand file"}\n` : ""}
 GULF CALENDAR — LIVE OR WITHIN 35 DAYS (plan for these)
 ${seasonBlock()}
 
@@ -71,7 +86,7 @@ function seasonBlock() {
   return s.map((x) => `- ${x.name} (${x.nameAr}) in ${x.daysLeft} days: ${x.play}`).join("\n");
 }
 
-const CHANNELS = ["instagram", "snapchat", "tiktok", "whatsapp", "meta", "linkedin", "gbp", "blog", "plan", "x"];
+const CHANNELS = ["instagram", "snapchat", "tiktok", "whatsapp", "meta", "linkedin", "gbp", "blog", "plan", "x", "sales", "finance", "growth", "report", "deck", "dashboard", "email", "call"];
 function normalizeChannel(raw: string): string {
   const c = raw.toLowerCase().trim();
   if (c === "x" || c === "twitter") return "x";
@@ -94,7 +109,7 @@ function parseItems(text: string): Generated[] {
 }
 
 function mock(type: TaskType, brand: Brand): Generated[] {
-  const n = SPECS[type].count;
+  const n = TASK_COUNT[type];
   return Array.from({ length: n }, (_, i) => ({
     channel: type === "social" ? ["instagram", "snapchat", "tiktok", "x"][i % 4] : type,
     title: `[DEV MOCK] ${type} #${i + 1} for ${brand.name}`,
@@ -102,7 +117,7 @@ function mock(type: TaskType, brand: Brand): Generated[] {
   }));
 }
 
-export type GenOptions = { /** account email for token metering */ meter?: string; memory?: string; reviewer?: boolean; noEmDash?: boolean };
+export type GenOptions = { /** account email for token metering */ meter?: string; memory?: string; reviewer?: boolean; noEmDash?: boolean; /** WORKSPACE DATA block for report tasks */ stats?: string };
 
 function stripDashes(items: Generated[]) {
   return items.map((i) => ({ ...i, body: i.body.replace(/\s*[—–]\s*/g, ", ") }));
@@ -111,12 +126,13 @@ function stripDashes(items: Generated[]) {
 export async function generate(type: TaskType, brand: Brand, prefs: string[], extra?: string, opts: GenOptions = {}): Promise<Generated[]> {
   if (!process.env.ANTHROPIC_API_KEY) return mock(type, brand);
   const client = new Anthropic();
-  const userMsg = `TASK: ${SPECS[type].spec}${extra ? `\n\nOWNER NOTES FOR THIS BATCH: ${extra.slice(0, 1000)}` : ""}\n\nReturn exactly ${SPECS[type].count} item(s) as a JSON array.`;
+  const agent = agentForTask(type);
+  const userMsg = `TASK: ${SPECS[type]}${extra ? `\n\nOWNER NOTES FOR THIS BATCH: ${extra.slice(0, 2000)}` : ""}${opts.stats ? `\n\n${opts.stats}` : ""}\n\nReturn exactly ${TASK_COUNT[type]} item(s) as a JSON array.`;
 
   const params = {
     model: "claude-opus-5",
     max_tokens: 16000,
-    system: [{ type: "text" as const, text: systemPrompt(brand, prefs) + (opts.memory ? "\n\nWORKSPACE FILES (Noor's memory — follow them)\n" + opts.memory : ""), cache_control: { type: "ephemeral" as const } }],
+    system: [{ type: "text" as const, text: systemPrompt(brand, prefs, agent) + (opts.memory ? "\n\nWORKSPACE FILES (Noor's memory — follow them)\n" + opts.memory : ""), cache_control: { type: "ephemeral" as const } }],
     messages: [{ role: "user" as const, content: userMsg }],
     thinking: { type: "adaptive" as const },
     output_config: { effort: "medium" as const },

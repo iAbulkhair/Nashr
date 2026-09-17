@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
+import { isAgentId } from "@/lib/agents";
 import { createConversation, deleteConversation, listConversations, renameConversation, searchConversations } from "@/lib/conversations";
 
 export async function GET(req: Request) {
@@ -12,8 +13,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  const b = (await req.json().catch(() => ({}))) as { title?: string };
-  return NextResponse.json({ ok: true, conversation: await createConversation(sc(u), b.title ?? "…") });
+  const b = (await req.json().catch(() => ({}))) as { title?: string; agent?: string };
+  return NextResponse.json({ ok: true, conversation: await createConversation(sc(u), b.title ?? "…", isAgentId(b.agent) ? b.agent : "noor") });
 }
 export async function PATCH(req: Request) {
   const u = await currentUser();

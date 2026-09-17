@@ -1,4 +1,5 @@
 # Nashr (نشر) — Product Requirements Document
+> **Status update (2026-09-17):** agent roster expanded to Noor (marketing), Sami (sales enablement), Razan (finance/pricing/revenue), Faris (GTM/growth), Dana (reports/dashboards/decks) with distilled skill playbooks in `content/skills/`; 12 new task types; Reports dashboard; PowerPoint export; atomic credit ledger with monthly renewal and token metering.
 
 **Product:** Nashr — an autonomous AI marketing agent ("Noor") for GCC businesses
 **Version:** 1.0 (MVP scope) · **Date:** 17 September 2026 · **Owner:** Founder

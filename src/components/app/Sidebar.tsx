@@ -21,6 +21,7 @@ export default function Sidebar({ t, lang, user, brandName }: { t: AppDict; lang
     { href: `${base}/tasks`, label: t.nav.tasks },
     { href: `${base}/inspo`, label: t.nav.inspo },
     { href: `${base}/generate`, label: t.nav.generate },
+    { href: `${base}/reports`, label: t.nav.reports },
   ];
   const settings: Item[] = [
     { href: `${base}/onboarding`, label: t.nav.brand },

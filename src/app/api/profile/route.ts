@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser, saveUser, sc } from "@/lib/auth";
-import { listTasks, TASK_COST } from "@/lib/brand";
+import { listTasks, TASK_COST, TASK_COUNT, type TaskType } from "@/lib/brand";
 import { db } from "@/lib/db";
 
 export type EmailPrefs = "all" | "important" | "none";
@@ -15,9 +15,8 @@ export async function GET() {
     if (new Date(t.createdAt) < monthStart) continue;
     const k = t.type; usage[k] ??= { count: 0, credits: 0 }; usage[k].count++;
   }
-  // credits per batch, not per item: social=10 items/10cr, ads=5/5, whatsapp=3/3, gbp=3/3, article=1/2, weekly_plan=1/1
-  const per: Record<string, number> = { social: 1, ads: 1, whatsapp: 1, gbp: 1, article: TASK_COST.article, weekly_plan: TASK_COST.weekly_plan };
-  for (const k of Object.keys(usage)) usage[k].credits = usage[k].count * (per[k] ?? 1);
+  // credits are per batch; convert item counts back to credits via items-per-batch
+  for (const k of Object.keys(usage)) { const t = k as TaskType; usage[k].credits = Math.round((usage[k].count / (TASK_COUNT[t] ?? 1)) * (TASK_COST[t] ?? 1)); }
   const images = tasks.filter((t) => t.imageUrl && new Date(t.createdAt) >= monthStart).length;
   const prefs = (await db.get<{ emails?: EmailPrefs }>(`profile:${sc(u)}`)) ?? {};
   const { passHash: _p, ...safe } = u; void _p;

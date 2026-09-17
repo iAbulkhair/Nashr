@@ -2,7 +2,7 @@ import type { Lang } from "./i18n";
 
 const ar = {
   appName: "نشر",
-  nav: { inbox: "صندوق الموافقة", generate: "اطلب من نور", brand: "ملف العلامة", billing: "الاشتراك", logout: "خروج", credits: "كريدت", chat: "نور", files: "الملفات", governance: "الحوكمة", tasks: "المهام", calendar: "التقويم", refer: "اكسب كريدت", integrations: "التكاملات", inspo: "إلهام", menu: "القائمة", workspace: "مساحة العمل", settings: "الإعدادات" },
+  nav: { inbox: "صندوق الموافقة", generate: "اطلب من نور", brand: "ملف العلامة", billing: "الاشتراك", logout: "خروج", credits: "كريدت", chat: "نور", files: "الملفات", governance: "الحوكمة", tasks: "المهام", calendar: "التقويم", refer: "اكسب كريدت", integrations: "التكاملات", inspo: "إلهام", reports: "التقارير", menu: "القائمة", workspace: "مساحة العمل", settings: "الإعدادات" },
   start: {
     title: "أعطي نور رابط موقعك.", sub: "تقرأه، تبحث عن سوقك، وتكتب ملفات علامتك أمامك خلال دقيقة. بدون نماذج.",
     url: "رابط الموقع أو المتجر (سلة / زد / شوبيفاي / أي موقع)", hints: "أي شيء تبيه تعرفه نور؟ (اختياري) مثال: نبيع عطور، جمهورنا شباب الرياض، ما نبي كلمة رخيص",
@@ -42,6 +42,18 @@ const ar = {
       whatsapp: { t: "3 رسائل واتساب", d: "سلة متروكة، عرض موسمي، شكر بعد الشراء." },
       ads: { t: "5 إعلانات مدفوعة", d: "سناب، ميتا، تيك توك — نص + جمهور + ميزانية." },
       gbp: { t: "3 منشورات Google Business", d: "عرض، تحديث، مناسبة." },
+      sales_script: { t: "سكربتات المبيعات", d: "سكربت مكالمة اكتشاف + 3 رسائل واتساب للتواصل الأول + جدول الاعتراضات." },
+      lead_qualifier: { t: "بطاقة تأهيل العملاء", d: "تعريف العميل المثالي، 10 أسئلة، تقييم 0-100 والخطوة التالية." },
+      followup_seq: { t: "سلسلة متابعة (7 رسائل)", d: "لعميل صامت بعد عرض السعر: واتساب + إيميل + مكالمة على 21 يوماً." },
+      pricing_review: { t: "مراجعة التسعير", d: "3 باقات مقترحة بالريال، منطق التسعير، سياسة الخصم، ما تختبره أولاً." },
+      unit_economics: { t: "اقتصاديات الوحدة", d: "الهامش، CAC، LTV، فترة الاسترداد، نقطة التعادل، جدول مع الافتراضات." },
+      cash_forecast: { t: "توقع التدفق النقدي 90 يوماً", d: "جدول 13 أسبوعاً، توقيت الضريبة، المواسم، 3 سيناريوهات." },
+      gtm_plan: { t: "خطة الدخول للسوق (90 يوماً)", d: "التموضع، العميل المثالي، تسلسل القنوات، المعالم الأسبوعية، الميزانية." },
+      growth_experiments: { t: "5 تجارب نمو", d: "فرضية، قناة، تقييم ICE، خطوات التنفيذ، مقياس النجاح." },
+      retention_play: { t: "3 خطط احتفاظ", d: "تفعيل العملاء الجدد، منع التسرب، برنامج إحالة/ولاء." },
+      weekly_report: { t: "التقرير الأسبوعي", d: "ما تغيّر ولماذا، المؤشرات مقارنة بالأسبوع السابق، 3 إجراءات." },
+      board_deck: { t: "عرض مجلس الإدارة / المستثمرين", d: "10-12 شريحة بملاحظات المتحدث. يُحمَّل PowerPoint." },
+      dashboard_spec: { t: "مواصفة لوحة المؤشرات", d: "8-10 مؤشرات: التعريف، المصدر، الهدف، نوع الرسم، التنبيهات." },
     },
     cost: "كريدت", noCredits: "الكريدت غير كافي. رقّ خطتك.", trialOver: "انتهت التجربة. اشترك للمتابعة.", failed: "تعذّر التوليد. حاول مرة أخرى.", noBrand: "أكمل ملف العلامة أولاً.",
   },
@@ -51,6 +63,7 @@ const ar = {
   integrations: { title: "التكاملات", sub: "الخليج أولاً. أخبرنا ماذا تريد بعد ذلك — الأكثر طلباً يُبنى أولاً.", groups: { commerce: "التجارة", ads: "الإعلانات", messaging: "الرسائل", publishing: "النشر", data: "البيانات", payments: "الدفع" }, status: { live: "متاح", soon: "قريباً", planned: "مخطط" }, request: "أريد هذا", requested: "سُجّل طلبك", other: "تكامل آخر تحتاجه؟", send: "أرسل", connect: "اربط", connected: "متصل", disconnect: "فصل", shopPrompt: "اسم متجرك (مثال: mystore.myshopify.com)", keyTitle: "أدخل بيانات الربط", keyHelp: "أين أجدها؟", verifying: "جارٍ التحقق…", verifyFailed: "فشل التحقق. راجع البيانات.", importProducts: "استورد المنتجات", ready: "جاهز للربط", waiting: "بانتظار موافقة المنصة", note: "النشر التلقائي يعتمد على موافقات المنصات (ميتا، سناب، تيك توك). قدّمنا الطلبات وسنفعّلها فور الموافقة." },
   inspo: { title: "إلهام خليجي", sub: "أنماط تنجح في السعودية والخليج، بالقناة والقطاع. اضغط «استخدم كمرجع» ونور تبني عليه.", use: "استخدم كمرجع", why: "لماذا ينجح", sample: "مثال", all: "الكل", channel: "القناة", kind: "النوع", kinds: { hook: "هوك", offer: "عرض", seasonal: "موسمي", ugc: "UGC", retention: "احتفاظ", launch: "إطلاق", education: "توعية" } },
   inbox: {
+    pptx: "تحميل PowerPoint",
     title: "صندوق الموافقة", empty: "لا يوجد شيء بانتظارك. اطلب من نور أول دفعة.", pending: "بانتظارك", approved: "معتمد", rejected: "مرفوض", all: "الكل",
     approve: "اعتمد", reject: "ارفض", edit: "عدّل", save: "احفظ التعديل", cancel: "إلغاء", copy: "انسخ", copied: "تم النسخ", why: "سبب الرفض (تتعلم منه نور)", regenerate: "اطلب دفعة جديدة", date: "تاريخ النشر", brief: "ملخص نور", image: "ولّدي صورة", imaging: "نور ترسم…", imageFail: "تعذّر توليد الصورة.", download: "تنزيل", publishTo: "انشر على", publishing: "جارٍ النشر…", published: "نُشر", draftOn: "مسودة على", publishFail: "فشل النشر.",
   },
@@ -59,11 +72,25 @@ const ar = {
     sub: "ادفع عبر الرابط، ثم يُفعَّل حسابك خلال ساعات العمل. أرسل إيصال الدفع على واتساب لتفعيل أسرع.",
     pay: "اشترك الآن", contact: "تواصل معنا على واتساب", plans: { starter: "البداية", pro: "الاحتراف", agency: "الوكالة", trial: "تجربة", enterprise: "مؤسسات" },
   },
+  agents: {
+    title: "الفريق", pick: "اختر من تتحدث معه",
+    noor: { name: "نور", role: "التسويق", blurb: "محتوى ومنشورات ومقالات ورسائل وإعلانات.", suggestions: ["اكتبي خطة الأسبوع", "10 منشورات لليوم الوطني", "3 رسائل واتساب لاسترجاع السلات", "ما الذي بانتظار موافقتي؟"] },
+    sami: { name: "سامي", role: "المبيعات", blurb: "تأهيل العملاء، سكربتات، اعتراضات، متابعة، عروض.", suggestions: ["جهّز سكربت مكالمة لعميل جديد", "كيف أرد على «السعر غالي»؟", "سلسلة متابعة لعميل ما رد بعد عرض السعر", "بطاقة تأهيل لعملائنا"] },
+    razan: { name: "رزان", role: "المالية والتسعير", blurb: "التسعير، اقتصاديات الوحدة، التدفق النقدي، الإيرادات.", suggestions: ["راجعي تسعيرنا واقترحي 3 باقات", "احسبي اقتصاديات الوحدة لمنتجنا الرئيسي", "توقع تدفق نقدي لرمضان", "ما المؤشرات المالية التي أتابعها شهرياً؟"] },
+    faris: { name: "فارس", role: "الدخول للسوق والنمو", blurb: "التموضع، خطة 90 يوماً، تجارب النمو، الاحتفاظ والإحالة.", suggestions: ["خطة دخول للسوق 90 يوماً", "5 تجارب نمو نبدأ بها هذا الشهر", "برنامج إحالة يناسب عملاءنا", "أي قناة نركّز عليها أولاً؟"] },
+    dana: { name: "دانة", role: "التقارير والعروض", blurb: "التقرير الأسبوعي، لوحة المؤشرات، عرض مجلس الإدارة.", suggestions: ["اكتبي تقرير هذا الأسبوع", "جهّزي عرض للمستثمرين", "أي مؤشرات أضعها في لوحتي؟", "لخّصي أداء الشهر في 5 أسطر"] },
+  },
+  reports: {
+    title: "التقارير ولوحة المؤشرات", sub: "أرقام مساحة عملك هذا الشهر، وما تجهّزه دانة منها.",
+    created: "عناصر أُنشئت", approved: "معتمدة", approvalRate: "نسبة الاعتماد", pending: "بانتظارك", published: "نُشرت عبر التكاملات", images: "صور مولّدة", creditsUsed: "كريدت مستهلك", scheduled: "مجدولة قادمة",
+    vsPrev: "عن الشهر الماضي", weeks: "آخر 8 أسابيع (أُنشئ / اعتُمد)", byType: "حسب النوع", byChannel: "حسب القناة",
+    ask: "اطلب من دانة", items: "تقارير وعروض دانة", empty: "لا تقارير بعد. اطلب التقرير الأسبوعي أو عرضاً.", open: "افتح في صندوق الموافقة", note: "أرقام المبيعات والإيرادات لا تُجمع تلقائياً بعد. اكتبها لدانة في الملاحظات أو في ملف، وتُدرجها في التقرير.",
+  },
 };
 
 const en: typeof ar = {
   appName: "Nashr",
-  nav: { inbox: "Approval inbox", generate: "Ask Noor", brand: "Brand file", billing: "Subscription", logout: "Log out", credits: "credits", chat: "Noor", files: "Files", governance: "Governance", tasks: "Tasks", calendar: "Calendar", refer: "Earn credits", integrations: "Integrations", inspo: "Inspiration", menu: "Menu", workspace: "Workspace", settings: "Settings" },
+  nav: { inbox: "Approval inbox", generate: "Ask Noor", brand: "Brand file", billing: "Subscription", logout: "Log out", credits: "credits", chat: "Noor", files: "Files", governance: "Governance", tasks: "Tasks", calendar: "Calendar", refer: "Earn credits", integrations: "Integrations", inspo: "Inspiration", reports: "Reports", menu: "Menu", workspace: "Workspace", settings: "Settings" },
   start: {
     title: "Give Noor your website.", sub: "She reads it, researches your market, and writes your brand files in front of you in about a minute. No forms.",
     url: "Website or store URL (Salla / Zid / Shopify / any site)", hints: "Anything Noor should know? (optional) e.g. we sell perfume, audience is young Riyadh, never say 'cheap'",
@@ -103,6 +130,18 @@ const en: typeof ar = {
       whatsapp: { t: "3 WhatsApp messages", d: "Abandoned cart, seasonal offer, post-purchase thanks." },
       ads: { t: "5 paid ads", d: "Snapchat, Meta, TikTok — copy + audience + budget." },
       gbp: { t: "3 Google Business posts", d: "Offer, update, event." },
+      sales_script: { t: "Sales scripts", d: "Discovery call script + 3 WhatsApp first-contact messages + objection sheet." },
+      lead_qualifier: { t: "Lead qualification card", d: "ICP, 10 questions, 0-100 scoring and the next action per band." },
+      followup_seq: { t: "Follow-up cadence (7 touches)", d: "For a lead who went quiet after a quote: WhatsApp + email + call over 21 days." },
+      pricing_review: { t: "Pricing review", d: "3 packaging options in SAR, pricing logic, discount policy, what to test first." },
+      unit_economics: { t: "Unit economics", d: "Margin, CAC, LTV, payback, break-even, a worksheet with labeled assumptions." },
+      cash_forecast: { t: "90-day cash-flow forecast", d: "13-week table, VAT timing, seasonality, 3 scenarios." },
+      gtm_plan: { t: "Go-to-market plan (90 days)", d: "Positioning, ICP, channel sequencing, weekly milestones, budget split." },
+      growth_experiments: { t: "5 growth experiments", d: "Hypothesis, channel, ICE score, setup steps, success metric." },
+      retention_play: { t: "3 retention plays", d: "New-customer activation, churn prevention, referral/loyalty program." },
+      weekly_report: { t: "Weekly report", d: "What changed and why, KPIs vs last week, 3 actions." },
+      board_deck: { t: "Board / investor deck", d: "10-12 slides with speaker notes. Downloads as PowerPoint." },
+      dashboard_spec: { t: "Dashboard spec", d: "8-10 KPIs: definition, source, target, chart type, alerts." },
     },
     cost: "credits", noCredits: "Not enough credits. Upgrade your plan.", trialOver: "Trial ended. Subscribe to continue.", failed: "Generation failed. Try again.", noBrand: "Complete your brand file first.",
   },
@@ -112,6 +151,7 @@ const en: typeof ar = {
   integrations: { title: "Integrations", sub: "Gulf first. Tell us what you need next — most requested gets built first.", groups: { commerce: "Commerce", ads: "Ads", messaging: "Messaging", publishing: "Publishing", data: "Data", payments: "Payments" }, status: { live: "Live", soon: "Coming soon", planned: "Planned" }, request: "I want this", requested: "Requested", other: "Need another integration?", send: "Send", connect: "Connect", connected: "Connected", disconnect: "Disconnect", shopPrompt: "Your store (e.g. mystore.myshopify.com)", keyTitle: "Enter connection details", keyHelp: "Where do I find these?", verifying: "Verifying…", verifyFailed: "Verification failed. Check the details.", importProducts: "Import products", ready: "Ready to connect", waiting: "Awaiting platform approval", note: "Auto-publishing depends on platform approvals (Meta, Snap, TikTok). Applications are submitted; we switch each on the day it's approved." },
   inspo: { title: "Gulf inspiration", sub: "Patterns that work in KSA and the Gulf, by channel and industry. Hit “Use as reference” and Noor builds on it.", use: "Use as reference", why: "Why it works", sample: "Sample", all: "All", channel: "Channel", kind: "Type", kinds: { hook: "Hook", offer: "Offer", seasonal: "Seasonal", ugc: "UGC", retention: "Retention", launch: "Launch", education: "Education" } },
   inbox: {
+    pptx: "Download PowerPoint",
     title: "Approval inbox", empty: "Nothing waiting. Ask Noor for a first batch.", pending: "Waiting", approved: "Approved", rejected: "Rejected", all: "All",
     approve: "Approve", reject: "Reject", edit: "Edit", save: "Save edit", cancel: "Cancel", copy: "Copy", copied: "Copied", why: "Why? (Noor learns from this)", regenerate: "Ask for a new batch", date: "Publish date", brief: "Noor's brief", image: "Generate image", imaging: "Noor is drawing…", imageFail: "Image failed.", download: "Download", publishTo: "Publish to", publishing: "Publishing…", published: "Published", draftOn: "Draft on", publishFail: "Publish failed.",
   },
@@ -119,6 +159,20 @@ const en: typeof ar = {
     title: "Subscription", current: "Current plan", credits: "Credits left", trialEnds: "Trial ends",
     sub: "Pay via the link; your account is activated within business hours. Send the receipt on WhatsApp for faster activation.",
     pay: "Subscribe", contact: "Contact us on WhatsApp", plans: { starter: "Starter", pro: "Pro", agency: "Agency", trial: "Trial", enterprise: "Enterprise" },
+  },
+  agents: {
+    title: "The team", pick: "Choose who you talk to",
+    noor: { name: "Noor", role: "Marketing", blurb: "Content, posts, articles, messages, ads.", suggestions: ["Write this week's plan", "10 posts for National Day", "3 WhatsApp cart-recovery messages", "What's waiting for my approval?"] },
+    sami: { name: "Sami", role: "Sales", blurb: "Lead qualification, scripts, objections, follow-ups, proposals.", suggestions: ["Prepare a discovery call script for a new lead", "How do I answer 'it's too expensive'?", "Follow-up cadence for a lead who went quiet after a quote", "A qualification card for our customers"] },
+    razan: { name: "Razan", role: "Finance and pricing", blurb: "Pricing, unit economics, cash flow, revenue.", suggestions: ["Review our pricing and propose 3 tiers", "Unit economics for our main product", "Cash-flow forecast for Ramadan", "Which financial metrics should I track monthly?"] },
+    faris: { name: "Faris", role: "Go-to-market and growth", blurb: "Positioning, 90-day plan, growth experiments, retention and referrals.", suggestions: ["A 90-day go-to-market plan", "5 growth experiments to start this month", "A referral program that fits our customers", "Which channel should we focus on first?"] },
+    dana: { name: "Dana", role: "Reports and decks", blurb: "Weekly report, dashboard spec, board deck.", suggestions: ["Write this week's report", "Prepare an investor deck", "Which KPIs belong on my dashboard?", "Summarize the month in 5 lines"] },
+  },
+  reports: {
+    title: "Reports and dashboard", sub: "Your workspace numbers this month, and what Dana builds from them.",
+    created: "Items created", approved: "Approved", approvalRate: "Approval rate", pending: "Waiting for you", published: "Published via integrations", images: "Images generated", creditsUsed: "Credits used", scheduled: "Scheduled ahead",
+    vsPrev: "vs last month", weeks: "Last 8 weeks (created / approved)", byType: "By type", byChannel: "By channel",
+    ask: "Ask Dana", items: "Dana's reports and decks", empty: "No reports yet. Ask for the weekly report or a deck.", open: "Open in inbox", note: "Sales and revenue figures are not collected automatically yet. Give them to Dana in the notes or in a file and she includes them.",
   },
 };
 
