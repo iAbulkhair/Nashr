@@ -9,7 +9,7 @@ import LangToggle from "../LangToggle";
 
 type Item = { href: string; label: string; accent?: boolean };
 
-export default function Sidebar({ t, lang, user, brandName }: { t: AppDict; lang: Lang; user: { name: string; email: string; credits: number; plan: string }; brandName?: string }) {
+export default function Sidebar({ t, lang, user, brandName, admin }: { t: AppDict; lang: Lang; user: { name: string; email: string; credits: number; plan: string }; brandName?: string; admin?: boolean }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const base = `/${lang}/app`;
@@ -31,6 +31,7 @@ export default function Sidebar({ t, lang, user, brandName }: { t: AppDict; lang
     { href: `${base}/refer`, label: t.nav.refer },
     { href: `${base}/mcp`, label: "MCP" },
     { href: `${base}/help`, label: lang === "ar" ? "المساعدة" : "Help" },
+    ...(admin ? [{ href: `${base}/admin`, label: lang === "ar" ? "لوحة المؤسس" : "Founder console", accent: true }] : []),
   ];
   const active = (h: string) => (h === base ? path === base : path.startsWith(h));
   const Group = ({ title, items }: { title: string; items: Item[] }) => (

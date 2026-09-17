@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
-import { currentUser } from "@/lib/auth";
+import { currentUser, isFounder } from "@/lib/auth";
 import Sidebar from "@/components/app/Sidebar";
 import TrialBanner from "@/components/app/TrialBanner";
 import LangToggle from "@/components/LangToggle";
@@ -39,7 +39,7 @@ export default async function AppLayout({ children, params }: { children: React.
   const brand = await getBrand(sc(user));
   return (
     <div className="flex min-h-screen flex-col bg-salt lg:flex-row">
-      <Sidebar t={t} lang={lang} user={{ name: user.name, email: user.email, credits: user.credits, plan: user.plan }} brandName={brand?.name} />
+      <Sidebar t={t} lang={lang} user={{ name: user.name, email: user.email, credits: user.credits, plan: user.plan }} brandName={brand?.name} admin={isFounder(user.email)} />
       <main className="min-w-0 flex-1 px-4 py-6 sm:px-8">
         {!path.endsWith("/billing") && !path.endsWith("/start") && <TrialBanner lang={lang} trialEnds={user.trialEnds} plan={user.plan} industry={brand?.industry} />}
         {children}

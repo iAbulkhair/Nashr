@@ -104,19 +104,33 @@ export async function currentUser(): Promise<User | null> {
   return u;
 }
 
+/** Founder accounts: ADMIN_EMAILS env (comma-separated) with the founder's own email as the default. */
+export function adminEmails(): string[] {
+  return (process.env.ADMIN_EMAILS ?? "hejazy@gmail.com").split(",").map((e) => normalizeEmail(e)).filter(Boolean);
+}
+export const isFounder = (email: string | undefined | null) => !!email && adminEmails().includes(normalizeEmail(email));
+
+/** API access: admin key (query/header/cookie) or a logged-in founder account. */
 export async function isAdmin(req: Request) {
   const key = process.env.WAITLIST_ADMIN_KEY;
-  if (!key) return false;
-  const url = new URL(req.url);
-  const given = url.searchParams.get("key") ?? req.headers.get("x-admin-key");
-  if (given === key) return true;
-  const jar = await cookies();
-  return jar.get("nashr_admin")?.value === key;
+  if (key) {
+    const url = new URL(req.url);
+    const given = url.searchParams.get("key") ?? req.headers.get("x-admin-key");
+    if (given === key) return true;
+    const jar = await cookies();
+    if (jar.get("nashr_admin")?.value === key) return true;
+  }
+  const u = await currentUser();
+  return isFounder(u?.email);
 }
 
+/** Page access: admin cookie or a logged-in founder account. */
 export async function isAdminCookie() {
   const key = process.env.WAITLIST_ADMIN_KEY;
-  if (!key) return false;
-  const jar = await cookies();
-  return jar.get("nashr_admin")?.value === key;
+  if (key) {
+    const jar = await cookies();
+    if (jar.get("nashr_admin")?.value === key) return true;
+  }
+  const u = await currentUser();
+  return isFounder(u?.email);
 }
