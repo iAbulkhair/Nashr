@@ -19,8 +19,8 @@
 
 ## ب. البريد (Resend)
 - ملاحظة: استرداد كلمة المرور (`/app/forgot`) بُني في 2026-09-18 لكنه لا يرسل الرابط إلا بعد ضبط `RESEND_API_KEY`. قبل ذلك يوجّه المستخدم إلى دعم واتساب، وتعيد أنت التعيين من لوحة المؤسس.
-- [ ] إنشاء حساب Resend وتوثيق الدومين
-- [ ] `vercel env add RESEND_API_KEY production`
+- [~] إنشاء حساب Resend وتوثيق الدومين (الحساب والمفتاح جاهزان 2026-09-18؛ توثيق الدومين ينتظر شراء الدومين. بدونه ترسل Resend إلى بريد صاحب الحساب فقط، لا إلى العملاء)
+- [x] `vercel env add RESEND_API_KEY production` (أُضيف 2026-09-18، نوعه Secret، وتحققت من الاسم على Vercel)
 - [ ] `vercel env add MAIL_FROM production` (مثل `Nashr <noor@yourdomain>`)
 - [ ] `vercel env add WAITLIST_TO production` (بريد يستقبل تسجيلات قائمة الانتظار)
 
