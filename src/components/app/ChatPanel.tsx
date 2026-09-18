@@ -53,6 +53,17 @@ export function ItemCard({ item, t, lang, onApproved }: { item: ChatItem; t: App
   );
 }
 
+/** Owner-readable labels for tool actions; internal tags that mean nothing to the owner are dropped. */
+function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[] {
+  const out = new Set<string>();
+  for (const a of actions ?? []) {
+    const [kind, , n] = a.split(":");
+    if (kind === "brand") out.add(lang === "ar" ? "حُدّث ملف العلامة" : "Brand file updated");
+    else if (kind === "generated" || kind === "drafted") out.add(lang === "ar" ? `أُضيف ${n ?? ""} إلى صندوق الموافقات`.replace("  ", " ") : `${n ?? ""} added to approvals`.trim());
+  }
+  return [...out];
+}
+
 export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean }) {
   const [msgs, setMsgs] = useState<ChatMsg[]>(initial);
   const [text, setText] = useState(initialPrompt);
@@ -158,7 +169,21 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           else if (ev.type === "error") done({ ok: false, error: ev.error });
         }
       }
-    } catch { done({ ok: false, error: "network" }); }
+    } catch {
+      // The server keeps working and saves the reply even when the connection drops: look for it before giving up.
+      setSteps((p) => [...p, lang === "ar" ? "انقطع الاتصال، أسترجع الرد…" : "Connection dropped, recovering the reply…"]);
+      const sentAt = Date.now() - 5000;
+      let found: ChatMsg | null = null;
+      for (let n = 0; n < 40 && !found; n++) {
+        await new Promise((r) => setTimeout(r, 5000));
+        try {
+          const j = await (await fetch(`/api/chat?conv=${encodeURIComponent(conv)}`)).json();
+          const last = (j.messages as ChatMsg[] | undefined)?.at(-1);
+          if (last && last.role === "assistant" && new Date(last.at).getTime() >= sentAt) found = last;
+        } catch { /* still offline, keep trying */ }
+      }
+      if (found) done({ ok: true, message: found }); else done({ ok: false, error: "network" });
+    }
     finally { setBusy(false); setSteps([]); }
   }
   async function vote(m: ChatMsg, value: 1 | -1) {
@@ -232,7 +257,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
               {m.items && m.items.length > 0 && <div className="mt-1">{m.items.map((it) => <ItemCard key={it.id} item={it} t={t} lang={lang} />)}</div>}
               {m.files && m.files.length > 0 && <div className="mt-1">{m.files.map((f, n) => <FileCard key={f.name} file={f} lang={lang} defaultOpen={n === 0 && m.files!.length === 1} />)}</div>}
               {m.plan && m.plan.length > 0 && <PlanCard plan={m.plan} lang={lang} onStart={(prompt) => send(prompt)} />}
-              {m.actions && m.actions.length > 0 && <p className="tnum mt-1 text-xs text-ink/60" dir="ltr">{m.actions.join(" · ")}</p>}
+              {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-ink/60" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}
               {m.role === "assistant" && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
                   <button onClick={() => vote(m, 1)} aria-label={t.chat.helpful} title={t.chat.helpful} className={`rounded p-1 ${voted[m.at] === 1 ? "bg-oasis text-mist" : "text-ink/50 hover:text-oasis"}`}><Icon name="thumbUp" className="h-4 w-4" /></button>

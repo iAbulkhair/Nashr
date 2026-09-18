@@ -118,15 +118,17 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
     if (j.ok) setSel(j);
   }
 
-  if (users === null) return <p className="text-ink/60">{S.loading}</p>;
-  const paying = users.filter((u) => u.plan !== "trial").length;
-  const shown = users.filter((u) => !q || [u.email, u.name, u.phone, u.plan].some((x) => (x ?? "").toLowerCase().includes(q.toLowerCase())));
-  const today = users.filter((u) => u.createdAt.slice(0, 10) === new Date().toISOString().slice(0, 10)).length;
+  // Render the shell at once; each tab shows its own loading state. Waiting for the user list hid the whole console.
+  const loadingUsers = users === null;
+  const list = users ?? [];
+  const paying = list.filter((u) => u.plan !== "trial").length;
+  const shown = list.filter((u) => !q || [u.email, u.name, u.phone, u.plan].some((x) => (x ?? "").toLowerCase().includes(q.toLowerCase())));
+  const today = list.filter((u) => u.createdAt.slice(0, 10) === new Date().toISOString().slice(0, 10)).length;
 
   return (
     <div className="grid gap-6">
       <div className="grid gap-3 sm:grid-cols-4">
-        {[[S.users, users.length], [S.paying, paying], [S.today, today], [S.trial, users.length - paying], [S.cost, total ? total.usd.toFixed(2) : "…"], [S.tokens, total ? `${Math.round((total.in + total.out) / 1000)}k` : "…"], [S.calls, total ? total.calls : "…"], [S.suspended, users.filter((u) => u.suspended).length]].map(([l, v]) => (
+        {[[S.users, loadingUsers ? "…" : list.length], [S.paying, loadingUsers ? "…" : paying], [S.today, loadingUsers ? "…" : today], [S.trial, loadingUsers ? "…" : list.length - paying], [S.cost, total ? total.usd.toFixed(2) : "…"], [S.tokens, total ? `${Math.round((total.in + total.out) / 1000)}k` : "…"], [S.calls, total ? total.calls : "…"], [S.suspended, list.filter((u) => u.suspended).length]].map(([l, v]) => (
           <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="font-display text-2xl font-bold text-oasis">{v}</p></div>
         ))}
       </div>
@@ -206,6 +208,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
       )}
 
       <div className={tab === "users" ? "grid gap-6" : "hidden"}>
+      {loadingUsers && <p className="text-sm text-ink/60">{S.loading}</p>}
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={S.search} className="w-full max-w-md rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm" />
       <div className="overflow-x-auto rounded-xl border border-ink/10 bg-white">
         <table className="w-full text-sm">

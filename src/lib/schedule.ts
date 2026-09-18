@@ -104,13 +104,11 @@ export async function runDaily(user: User): Promise<Brief | null> {
 export async function allUsers(): Promise<User[]> {
   const { listBrands, scopeFor } = await import("./brands");
   const emails = await db.smembers("users:all");
-  const out: User[] = [];
-  for (const e of emails) {
+  const { pmap } = await import("./parallel");
+  const groups = await pmap(emails, async (e) => {
     const u = await getUser(e);
-    if (!u) continue;
-    for (const b of (await listBrands(e)).filter((x) => x.status === "active")) {
-      out.push({ ...u, brandId: b.id, scope: scopeFor(e, b.id) });
-    }
-  }
-  return out;
+    if (!u) return [] as User[];
+    return (await listBrands(e)).filter((x) => x.status === "active").map((b) => ({ ...u, brandId: b.id, scope: scopeFor(e, b.id) }));
+  });
+  return groups.flat();
 }

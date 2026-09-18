@@ -35,6 +35,7 @@ export async function POST(req: Request) {
       const send = (o: unknown) => { try { ctrl.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`)); } catch { /* client went away; keep working so the thread is complete on reload */ } };
       const say = async (m: Omit<ChatMsg, "role" | "at" | "agent">) => { const msg: ChatMsg = { role: "assistant", agent: "noor", at: new Date().toISOString(), ...m }; await push(scope, msg); send({ type: "message", message: msg }); };
       let timer: ReturnType<typeof setInterval> | undefined;
+      const beat = setInterval(() => { try { ctrl.enqueue(enc.encode(": ping\n\n")); } catch { /* closed */ } }, 10000);
       try {
         await say({ content: t.intro });
         send({ type: "status", text: t.crawl });
@@ -63,6 +64,7 @@ export async function POST(req: Request) {
         send({ type: "error", error: e instanceof Error ? e.message.slice(0, 160) : "failed" });
       } finally {
         if (timer) clearInterval(timer);
+        clearInterval(beat);
         await db.unlock(`onboardlock:${scope}`).catch(() => {});
         try { ctrl.close(); } catch { /* already closed */ }
       }

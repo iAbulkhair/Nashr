@@ -2,6 +2,7 @@ import { db } from "./db";
 import { PLAN_CREDITS, getUser, type Plan } from "./auth";
 import { getBrand, listTasks, TASK_COST, TASK_COUNT, IMAGE_COST } from "./brand";
 import { getUsage } from "./usage";
+import { pmap } from "./parallel";
 import { EVENTS, activeCount, day, dayCount, firstEvent, isoWeek, lastActive, userEvents, type Event } from "./track";
 
 /** Founder overview: growth, activation, engagement, revenue estimate, health. All from Redis; no external tool. */
@@ -22,11 +23,10 @@ export type Overview = {
 export async function overview(): Promise<Overview> {
   const emails = await db.smembers("users:all");
   const now = Date.now();
-  const users = [];
-  for (const e of emails) { const u = await getUser(e); if (u) users.push(u); }
+  const users = (await pmap(emails, (e) => getUser(e))).filter((u): u is NonNullable<typeof u> => !!u);
   const ageDays = (iso: string) => (now - new Date(iso).getTime()) / 864e5;
   const brands = new Map<string, boolean>();
-  for (const u of users) brands.set(u.email, !!(await getBrand(u.email)));
+  (await pmap(users, (u) => getBrand(u.email))).forEach((b, i) => brands.set(users[i].email, !!b));
   const activated = [...brands.values()].filter(Boolean).length;
   const paying = users.filter((u) => u.plan !== "trial").length;
   const trialActive = users.filter((u) => u.plan === "trial" && new Date(u.trialEnds).getTime() > now).length;
@@ -36,9 +36,7 @@ export async function overview(): Promise<Overview> {
   const mrr = users.reduce((s, u) => s + (PLAN_PRICE_SAR[u.plan] ?? 0), 0);
 
   const d = day();
-  const dau = await activeCount(`active:d:${d}`);
-  const wau = await activeCount(`active:w:${isoWeek()}`);
-  const mau = await activeCount(`active:m:${d.slice(0, 7)}`);
+  const [dau, wau, mau] = await Promise.all([activeCount(`active:d:${d}`), activeCount(`active:w:${isoWeek()}`), activeCount(`active:m:${d.slice(0, 7)}`)]);
   // 7-day retention: users who signed up 7-30 days ago and were active this week
   const cohort = users.filter((u) => ageDays(u.createdAt) >= 7 && ageDays(u.createdAt) <= 30);
   const weekSet = new Set(await db.smembers(`active:w:${isoWeek()}`));
@@ -46,39 +44,35 @@ export async function overview(): Promise<Overview> {
 
   // funnel over the last 30 days
   const recentUsers = users.filter((u) => ageDays(u.createdAt) <= 30);
-  let generated30 = 0, approved30 = 0;
-  for (const u of recentUsers) {
-    if (await firstEvent(u.email, "generate")) generated30++;
-    if (await firstEvent(u.email, "approve")) approved30++;
-  }
+  const firsts = await pmap(recentUsers, (u) => Promise.all([firstEvent(u.email, "generate"), firstEvent(u.email, "approve")]));
+  const generated30 = firsts.filter((f) => f[0]).length, approved30 = firsts.filter((f) => f[1]).length;
 
   // events per day, last 14 days
   const events: Overview["events"] = [];
   const features: Record<string, number> = {};
-  for (let i = 13; i >= 0; i--) {
-    const dd = day(new Date(now - i * 864e5));
+  const days = Array.from({ length: 14 }, (_, k) => day(new Date(now - (13 - k) * 864e5)));
+  // 14 days x 11 events used to be 154 sequential round trips.
+  const grid = await pmap(days, (dd) => Promise.all(EVENTS.map((ev) => dayCount(dd, ev as Event))), 7);
+  days.forEach((dd, k) => {
     const counts: Record<string, number> = {};
-    for (const ev of EVENTS) { const n = await dayCount(dd, ev as Event); if (n) { counts[ev] = n; features[ev] = (features[ev] ?? 0) + n; } }
+    EVENTS.forEach((ev, e) => { const n = grid[k][e]; if (n) { counts[ev] = n; features[ev] = (features[ev] ?? 0) + n; } });
     events.push({ date: dd, counts });
-  }
+  });
   const errors7d = events.slice(-7).reduce((s, x) => s + (x.counts.error ?? 0), 0);
   const errorsToday = events[events.length - 1]?.counts.error ?? 0;
 
   // credits consumed this month across all workspaces (from tasks), model cost from usage totals
   const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).getTime();
-  let creditsUsed = 0;
-  for (const u of users) {
-    const tasks = (await listTasks(u.email)).filter((t) => new Date(t.createdAt).getTime() >= monthStart);
-    creditsUsed += tasks.reduce((s, t) => s + (TASK_COST[t.type] ?? 1) / (TASK_COUNT[t.type] ?? 1) + (t.imageUrl ? IMAGE_COST : 0), 0);
-  }
+  const perUser = await pmap(users, async (u) => (await listTasks(u.email)).filter((t) => new Date(t.createdAt).getTime() >= monthStart).reduce((s, t) => s + (TASK_COST[t.type] ?? 1) / (TASK_COUNT[t.type] ?? 1) + (t.imageUrl ? IMAGE_COST : 0), 0), 6);
+  const creditsUsed = perUser.reduce((s, x) => s + x, 0);
   const total = await getUsage("_all");
   const usdToSar = 3.75;
   const grossMargin = mrr > 0 ? Math.round(((mrr - total.usd * usdToSar) / mrr) * 100) : null;
 
-  const recent = [];
-  for (const u of [...users].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 25)) {
-    recent.push({ email: u.email, name: u.name, plan: u.plan, credits: u.credits, createdAt: u.createdAt, lastActive: await lastActive(u.email), activated: brands.get(u.email) ?? false, events: await userEvents(u.email) });
-  }
+  const recent = await pmap([...users].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 25), async (u) => {
+    const [last, evs] = await Promise.all([lastActive(u.email), userEvents(u.email)]);
+    return { email: u.email, name: u.name, plan: u.plan, credits: u.credits, createdAt: u.createdAt, lastActive: last, activated: brands.get(u.email) ?? false, events: evs };
+  }, 8);
 
   return {
     generatedAt: new Date().toISOString(),

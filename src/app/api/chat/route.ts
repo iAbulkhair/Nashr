@@ -44,7 +44,9 @@ export async function POST(req: Request) {
   const enc = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (obj: unknown) => controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
+      const send = (obj: unknown) => { try { controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`)); } catch { /* client went away; the reply is still saved to history */ } };
+      // Mobile carriers and proxies drop connections that stay silent for 30-60 s, and a batch takes longer than that.
+      const beat = setInterval(() => { try { controller.enqueue(enc.encode(": ping\n\n")); } catch { /* closed */ } }, 10000);
       try {
         const m = await chat(u, text, b.conv, agent, { lang, onStatus: (s) => send({ type: "status", text: s }) });
         await track(u.email, "chat");
@@ -55,7 +57,8 @@ export async function POST(req: Request) {
         await track(u.email, "error");
         send({ type: "error", error: "chat_failed" });
       } finally {
-        controller.close();
+        clearInterval(beat);
+        try { controller.close(); } catch { /* already closed */ }
       }
     },
   });

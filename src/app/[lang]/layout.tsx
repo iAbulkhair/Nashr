@@ -20,6 +20,7 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
     title: lang === "ar" ? "نشر — نور، وكيلة تسويق تعمل 24/7 للخليج" : "Nashr — Noor, the 24/7 AI marketing agent for the Gulf",
     description: t.hero.sub,
     alternates: { languages: { ar: "/ar", en: "/en" } },
+    other: { google: "notranslate" },
     openGraph: { title: t.brand, description: t.hero.sub, locale: lang === "ar" ? "ar_SA" : "en_US" },
   };
 }
@@ -29,7 +30,7 @@ export default async function RootLayout({ children, params }: { children: React
   if (!isLang(lang)) notFound();
   const t = dict[lang];
   return (
-    <html lang={lang} dir={t.dir} className={`${readex.variable} ${plexArabic.variable} ${plexMono.variable}`}>
+    <html lang={lang} dir={t.dir} translate="no" className={`${readex.variable} ${plexArabic.variable} ${plexMono.variable}`}>
       <body>{children}</body>
     </html>
   );

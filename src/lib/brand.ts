@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { pmap } from "./parallel";
 
 export type Brand = {
   name: string;
@@ -86,12 +87,9 @@ export async function saveBrand(email: string, b: Brand) {
 }
 export async function listTasks(email: string): Promise<Task[]> {
   const ids = await db.lrange(`tasks:${email}`, 0, 199);
-  const out: Task[] = [];
-  for (const id of ids) {
-    const t = await db.get<Task>(`task:${email}:${id}`);
-    if (t) out.push(t);
-  }
-  return out;
+  // Parallel reads: 200 sequential round trips made every page that lists tasks slow.
+  const rows = await pmap(ids, (id) => db.get<Task>(`task:${email}:${id}`));
+  return rows.filter((t): t is Task => !!t);
 }
 export async function saveTask(email: string, t: Task, isNew = false) {
   await db.set(`task:${email}:${t.id}`, t);

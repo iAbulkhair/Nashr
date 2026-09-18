@@ -3,19 +3,20 @@ import { PLAN_CREDITS, getUser, isAdmin, saveUser, type Plan } from "@/lib/auth"
 import { db } from "@/lib/db";
 import { monthKey, withUserLock } from "@/lib/credits";
 import { getUsage } from "@/lib/usage";
+import { pmap } from "@/lib/parallel";
 
 // GET  /api/admin/plan            → list users with this month's model usage
 // POST /api/admin/plan {email, plan?, addCredits?} → set plan (resets to plan allowance, starts renewal cycle) / add credits
 export async function GET(req: Request) {
   if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
   const emails = await db.smembers("users:all");
-  const users = [];
-  for (const e of emails) {
+  const rows = await pmap(emails, async (e) => {
     const u = await getUser(e);
-    if (!u) continue;
+    if (!u) return null;
     const usage = await getUsage(u.email);
-    users.push({ email: u.email, name: u.name, phone: u.phone, plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt, renewedAt: u.renewedAt ?? null, suspended: !!u.suspended, lang: u.lang, tokens: usage.in + usage.out, usd: usage.usd, calls: usage.calls });
-  }
+    return ({ email: u.email, name: u.name, phone: u.phone, plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt, renewedAt: u.renewedAt ?? null, suspended: !!u.suspended, lang: u.lang, tokens: usage.in + usage.out, usd: usage.usd, calls: usage.calls });
+  });
+  const users = rows.filter((x): x is NonNullable<typeof x> => !!x);
   users.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   const total = await getUsage("_all");
   return NextResponse.json({ ok: true, count: users.length, users, total });

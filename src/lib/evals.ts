@@ -63,8 +63,8 @@ export async function agentMetrics(tasks: Task[], emails: string[]): Promise<Age
     const approved = ts.filter((t) => t.status === "approved"), decided = approved.length + ts.filter((t) => t.status === "rejected").length;
     const edited = approved.filter((t) => t.editedBody && t.editedBody !== t.body).length;
     const scores = ts.filter((t) => t.quality).map((t) => t.quality!.score);
-    let up = 0, down = 0;
-    for (const e of [...new Set(emails)]) { const f = await thumbs(e, a.id); up += f.up; down += f.down; }
+    const fb = await Promise.all([...new Set(emails)].map((e) => thumbs(e, a.id)));
+    const up = fb.reduce((s, f) => s + f.up, 0), down = fb.reduce((s, f) => s + f.down, 0);
     out.push({ agent: a.id, n: ts.length, approvalRate: pct(approved.length, decided), editRate: pct(edited, approved.length), avgScore: avg(scores), low: scores.filter((s) => s < 70).length, thumbsUp: up, thumbsDown: down, types: mine });
   }
   return out;
@@ -83,9 +83,12 @@ export async function globalMetrics(sinceDays = 30) {
   const all: Task[] = [];
   const emails: string[] = [];
   const users: { email: string; scope: string; n: number; approvalRate: number | null; avgScore: number | null }[] = [];
-  for (const u of await allUsers()) {
+  const list = await allUsers();
+  const { pmap } = await import("./parallel");
+  const taskSets = await pmap(list, (u) => listTasks(u.scope ?? u.email), 6);
+  for (const [i, u] of list.entries()) {
     const scope = u.scope ?? u.email;
-    const tasks = (await listTasks(scope)).filter((t) => new Date(t.createdAt).getTime() >= since);
+    const tasks = taskSets[i].filter((t) => new Date(t.createdAt).getTime() >= since);
     all.push(...tasks);
     emails.push(u.email);
     const approved = tasks.filter((t) => t.status === "approved").length, decided = approved + tasks.filter((t) => t.status === "rejected").length;

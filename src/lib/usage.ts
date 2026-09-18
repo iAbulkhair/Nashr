@@ -60,9 +60,7 @@ export async function getUsage(email: string | "_all", month = monthKey()): Prom
   const n = async (s: string) => Number((await db.get<number>(`${k}:${s}`)) ?? 0);
   const [inp, out, calls, micro] = await Promise.all([n("in"), n("out"), n("calls"), n("usd_micro")]);
   const kinds: Record<string, number> = {};
-  for (const kind of KINDS) {
-    const c = await n(`kind:${kind}`);
-    if (c) kinds[kind] = c;
-  }
+  const counts = await Promise.all(KINDS.map((kind) => n(`kind:${kind}`)));
+  KINDS.forEach((kind, i) => { if (counts[i]) kinds[kind] = counts[i]; });
   return { month, in: inp, out, calls, usd: Math.round(micro / 1e4) / 100, kinds };
 }
