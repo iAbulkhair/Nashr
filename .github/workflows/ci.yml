@@ -1,8 +1,8 @@
 name: CI
 
 # Type-check, lint and unit tests on every push and pull request.
-# Note: Vercel deploys from Git on its own. To make a red run block production,
-# enable "Required checks" for this workflow in the Vercel project's Git settings.
+# Vercel deploys from Git on its own. To make a red run block production, add the "Nashr CI" check under
+# Vercel project Settings > Build and Deployment > Deployment Checks (provider: GitHub).
 on:
   push:
     branches: [main]
@@ -17,6 +17,8 @@ permissions:
 
 jobs:
   check:
+    # Vercel Deployment Checks identify a check by this job name. Renaming it means re-selecting it in Vercel.
+    name: Nashr CI
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
