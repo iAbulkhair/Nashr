@@ -11,7 +11,7 @@ import LimitModal from "@/components/app/LimitModal";
 import { getBrand } from "@/lib/brand";
 import { sc } from "@/lib/auth";
 
-const PUBLIC = ["/login", "/signup", "/admin"];
+const PUBLIC = ["/login", "/signup", "/forgot", "/reset", "/admin"];
 
 export default async function AppLayout({ children, params }: { children: React.ReactNode; params: Promise<{ lang: string }> }) {
   const { lang } = await params;

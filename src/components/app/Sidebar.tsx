@@ -124,6 +124,8 @@ export default function Sidebar({ t, lang, user, brandName, admin, supportWa }: 
           <li>{row(`${base}/refer`, N.refer, "gift")}</li>
           <li>{row(`${base}/governance`, N.governance, "shield")}</li>
           <li>{row(`${base}/integrations`, N.integrations, "grid")}</li>
+          {/* Founder accounts only: platform console (users, usage, billing, quality, audit log). */}
+          {admin && <li>{row(`${base}/admin`, N.founder, "dashboard")}</li>}
           <li><a href={supportWa ? `https://wa.me/${supportWa}` : `${base}/help#support`} target={supportWa ? "_blank" : undefined} rel="noreferrer" className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-mist-dim hover:bg-oasis/60 hover:text-mist"><Icon name="whatsapp" className="h-4 w-4 opacity-80" />{N.contact}</a></li>
         </ul>
       </div>
