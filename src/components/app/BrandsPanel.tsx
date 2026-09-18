@@ -14,7 +14,7 @@ export default function BrandsPanel({ lang }: { lang: Lang }) {
   const [name, setName] = useState("");
   const [err, setErr] = useState("");
   async function load() { const j = await (await fetch("/api/brands")).json(); if (j.ok) { setBrands(j.brands); setActive(j.active); setLimit(j.limit); } }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { void Promise.resolve().then(load); }, []);
   async function act(body: Record<string, string>) {
     const res = await fetch("/api/brands", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const j = await res.json();

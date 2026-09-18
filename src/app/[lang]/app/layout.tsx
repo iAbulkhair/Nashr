@@ -3,7 +3,7 @@ import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
-import { currentUser, isFounder } from "@/lib/auth";
+import { currentUser, isFounder, trialDaysLeft } from "@/lib/auth";
 import Sidebar from "@/components/app/Sidebar";
 import TrialBanner from "@/components/app/TrialBanner";
 import LangToggle from "@/components/LangToggle";
@@ -50,7 +50,7 @@ export default async function AppLayout({ children, params }: { children: React.
             <button type="submit" className="btn btn-danger btn-xs">{lang === "ar" ? "إنهاء والعودة للوحة" : "Stop and return to console"}</button>
           </form>
         )}
-        {!path.endsWith("/billing") && !path.endsWith("/start") && <TrialBanner lang={lang} trialEnds={user.trialEnds} plan={user.plan} industry={brand?.industry} />}
+        {!path.endsWith("/billing") && !path.endsWith("/start") && <TrialBanner lang={lang} days={trialDaysLeft(user.trialEnds)} plan={user.plan} industry={brand?.industry} />}
         {children}
       </main>
       <LimitModal t={t} lang={lang} />

@@ -28,7 +28,7 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
     const j = await (await fetch("/api/connect")).json();
     if (j.ok) { setProviders(j.providers); setConns(j.connections); }
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { void Promise.resolve().then(load); }, []);
 
   async function req(id: string, name: string) {
     const res = await fetch("/api/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, name }) });
@@ -61,7 +61,7 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
   }
   const startOAuth = (p: P) => {
     if (p.needsShop) { setShopFor(p); return; }
-    window.location.href = `/api/connect/${p.id}/start?lang=${lang}`;
+    window.location.assign(`/api/connect/${p.id}/start?lang=${lang}`);
   };
 
   const connectedIds = new Set(conns.map((c) => c.provider));

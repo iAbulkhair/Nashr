@@ -30,7 +30,8 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
   const [picked, setPicked] = useState<MetricKey[]>(["created", "approved", "approvalRate", "published"]);
   const [adding, setAdding] = useState(false);
   const [series, setSeries] = useState<Record<"created" | "approved" | "published", boolean>>({ created: true, approved: true, published: true });
-  useEffect(() => { try { const s = localStorage.getItem("nashr:metrics"); if (s) setPicked(JSON.parse(s)); } catch { /* ignore */ } }, []);
+  // Saved tiles are read after mount (not in the initial state) so server and client render the same first frame.
+  useEffect(() => { void Promise.resolve().then(() => { try { const s = localStorage.getItem("nashr:metrics"); if (s) setPicked(JSON.parse(s)); } catch { /* ignore */ } }); }, []);
   const savePicked = (p: MetricKey[]) => { setPicked(p); try { localStorage.setItem("nashr:metrics", JSON.stringify(p)); } catch { /* ignore */ } };
 
   async function run(type: TaskType) {

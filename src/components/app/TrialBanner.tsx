@@ -2,10 +2,9 @@ import Link from "next/link";
 import type { Lang } from "@/lib/i18n";
 
 /** Persistent activation strip for trial users: days left + concrete 30-day promise + Activate. */
-export default function TrialBanner({ lang, trialEnds, plan, industry }: { lang: Lang; trialEnds: string; plan: string; industry?: string }) {
+export default function TrialBanner({ lang, days, plan, industry }: { lang: Lang; /** whole days left, from trialDaysLeft() in the server layout */ days: number; plan: string; industry?: string }) {
   if (plan !== "trial") return null;
   const ar = lang === "ar";
-  const days = Math.max(0, Math.ceil((new Date(trialEnds).getTime() - Date.now()) / 864e5));
   const promise = ar
     ? `أول 30 يوماً مع نور: 40 منشوراً بلهجتك، 4 مقالات SEO، 12 رسالة واتساب، 20 نسخة إعلانية — كلها تنتظر موافقتك، لا تُنشر بدونك.`
     : `Your first 30 days with Noor: 40 posts in your dialect, 4 SEO articles, 12 WhatsApp messages, 20 ad variants — all waiting for your approval, nothing published without you.`;

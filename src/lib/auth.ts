@@ -29,6 +29,9 @@ export const PLAN_CREDITS: Record<Plan, number> = { trial: 50, starter: 200, pro
 const SESSION_TTL = 60 * 60 * 24 * 30;
 const COOKIE = "nashr_session";
 
+/** Whole days left in a trial (0 when it has ended). Server-side: the clock is read per request here, never inside a component. */
+export const trialDaysLeft = (trialEnds: string) => Math.max(0, Math.ceil((new Date(trialEnds).getTime() - Date.now()) / 864e5));
+
 /** One password rule for signup, change and reset: 8+ characters with a letter and a digit. */
 export const strongPassword = (pw: string) => pw.length >= 8 && /\p{L}/u.test(pw) && /\d/.test(pw);
 /** Emails become part of Redis keys (prefix:{scope}[:id], extra brands are email#brandId), so ":" and "#" could make two accounts share keys. */

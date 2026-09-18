@@ -12,6 +12,16 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
   );
 }
 
+/** Declared at module scope: a component created during render is remounted on every keystroke and loses focus. */
+function Row({ title, sub, children }: { title: string; sub: string; children: React.ReactNode }) {
+  return (
+      <div className="flex items-start justify-between gap-6 card">
+        <div><h2 className="font-display font-medium">{title}</h2><p className="mt-1 text-sm text-ink/60">{sub}</p></div>
+        <div className="shrink-0">{children}</div>
+      </div>
+  );
+}
+
 export default function GovernancePanel({ t, initial }: { t: AppDict; initial: Governance }) {
   const g = t.governance;
   const [gov, setGov] = useState<Governance>(initial);
@@ -20,12 +30,6 @@ export default function GovernancePanel({ t, initial }: { t: AppDict; initial: G
     const res = await fetch("/api/governance", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(gov) });
     if (res.ok) setMsg(g.saved);
   }
-  const Row = ({ title, sub, children }: { title: string; sub: string; children: React.ReactNode }) => (
-    <div className="flex items-start justify-between gap-6 card">
-      <div><h2 className="font-display font-medium">{title}</h2><p className="mt-1 text-sm text-ink/60">{sub}</p></div>
-      <div className="shrink-0">{children}</div>
-    </div>
-  );
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="page-title">{g.title}</h1>
