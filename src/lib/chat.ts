@@ -229,7 +229,8 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   return m;
 }
 
-async function runTool(user: User, name: string, input: Record<string, unknown>, actions: string[], made: Task[] = []): Promise<string> {
+/** Exported for tests: the code-level gates on tools (approval before publishing) must hold without a model in the loop. */
+export async function runTool(user: User, name: string, input: Record<string, unknown>, actions: string[], made: Task[] = []): Promise<string> {
   const email = user.scope ?? user.email;
   switch (name) {
     case "generate_content": {

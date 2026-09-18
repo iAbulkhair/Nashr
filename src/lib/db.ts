@@ -80,20 +80,27 @@ function upstash(): Store | null {
   };
 }
 
-const mem = globalThis as unknown as { __nashrMem?: { kv: Map<string, unknown>; lists: Map<string, string[]>; sets: Map<string, Set<string>>; hashes?: Map<string, Map<string, unknown>> } };
+const mem = globalThis as unknown as { __nashrMem?: { kv: Map<string, unknown>; lists: Map<string, string[]>; sets: Map<string, Set<string>>; hashes?: Map<string, Map<string, unknown>>; exp?: Map<string, number> } };
 function memory(): Store {
   if (!mem.__nashrMem) mem.__nashrMem = { kv: new Map(), lists: new Map(), sets: new Map(), hashes: new Map() };
   const m = mem.__nashrMem;
   const hashes = (m.hashes ??= new Map<string, Map<string, unknown>>());
+  // Expiry is honoured like Redis, so sessions, reset tokens and rate windows behave the same locally and in tests.
+  const exp = (m.exp ??= new Map<string, number>());
+  const live = (key: string) => { const at = exp.get(key); if (at !== undefined && at <= Date.now()) { exp.delete(key); m.kv.delete(key); } };
   return {
     async get<T>(key: string) {
+      live(key);
       return (m.kv.get(key) as T) ?? null;
     },
-    async set(key, value) {
+    async set(key, value, ttl) {
       m.kv.set(key, value);
+      if (ttl) exp.set(key, Date.now() + ttl * 1000);
+      else exp.delete(key);
     },
     async del(key) {
       m.kv.delete(key);
+      exp.delete(key);
       m.lists.delete(key);
       m.sets.delete(key);
       hashes.delete(key);
@@ -136,6 +143,7 @@ function memory(): Store {
       m.sets.get(key)?.delete(member);
     },
     async incrby(key, n) {
+      live(key);
       const v = ((m.kv.get(key) as number) ?? 0) + n;
       m.kv.set(key, v);
       return v;
