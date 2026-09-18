@@ -24,6 +24,10 @@
 - [ ] `vercel env add MAIL_FROM production` (مثل `Nashr <noor@yourdomain>`)
 - [x] `vercel env add WAITLIST_TO production` (أُضيف 2026-09-18 وتحققت من الاسم على Vercel. يستقبل تسجيلات قائمة الانتظار ورسائل نموذجي المؤسسات والعملاء الأوائل. بدون دومين موثَّق يصل البريد فقط إن كان هذا هو بريد حساب Resend نفسه)
 
+- [ ] تجربة بريد 1: افتح `nashr-tau.vercel.app/ar/enterprise`، املأ نموذج «تحدث معنا» ببيانات تجريبية وأرسله، ثم تأكد هل وصلتك الرسالة على بريد `WAITLIST_TO` (تفقّد Spam)
+- [ ] تجربة بريد 2: افتح `nashr-tau.vercel.app/ar/app/forgot` وأنت خارج حسابك، اكتب بريدك، ثم تأكد هل وصلك رابط الاسترداد (تفقّد Spam)
+- ملاحظة: بدون دومين موثَّق في Resend تصل الرسالتان فقط إن كان العنوان هو بريد حساب Resend نفسه. أخبرني أيهما وصل
+
 ## ج. الصور (fal.ai)
 - [ ] إنشاء حساب fal.ai وأخذ المفتاح
 - [ ] `vercel env add FAL_KEY production`
