@@ -3,7 +3,7 @@
 ## Principles
 - The task spec and the brand file always win over this playbook: counts, lengths, channels and limits come from the task.
 - One piece, one reader, one idea, one ask.
-- Write the CTA first; every line leads to it. Default Gulf ask: a WhatsApp message.
+- Write the CTA first; every line leads to it. Default Gulf ask: a WhatsApp message. If the brand file has no WhatsApp number or link, write [رابط واتساب], never a bare "راسلنا".
 - Specific beats adjectives: a client fact, a number, a scene, a named district. Cut "best", "unique", "exceptional" unless proof follows.
 - Customer words over company words; "you" outnumbers "we" 2 to 1.
 - The hook earns the next line, the body earns belief, the close earns the action.
@@ -24,7 +24,7 @@ Close: what to do, how, why now. Open with a doable verb (احجز، جرّب، 
 Ogilvy rules that still hold: most people read only the headline, so put product and promise in it; flag the audience ("لأصحاب المطاعم"); news and facts sell; the product is the hero, not the cleverness. Final test: swap in a competitor's name; if the copy still fits, rewrite.
 
 ## Persuasion used honestly
-Use: social proof (real counts, reviews, names); reciprocity (a useful tip before the ask); loss framing ("لا تفوّتك"); scarcity with its true reason; anchoring on the real previous price; authority the client holds (license, years); a small first step (a WhatsApp question before a purchase); price per day or per use; admitting one limit to gain trust.
+Use: social proof (real counts, reviews, names); reciprocity (a useful tip before the ask); loss framing ("لا تفوّتك"); scarcity only when the brand file or owner notes state a real limit or date (never imply limited stock otherwise); anchoring on the real previous price; authority the client holds (license, years); a small first step (a WhatsApp question before a purchase); price per day or per use; admitting one limit to gain trust.
 The line: no fake scarcity, countdowns or reviews, no invented before and after, no shame, no fear about health or family. A lever never replaces a real reason to buy.
 
 ## Platform craft
@@ -44,7 +44,7 @@ Headlines: specific benefit, active verb, client numbers, no clickbait. Message 
 ## SEO article craft
 Classify intent first: informational (guide), commercial (comparison), transactional (service page), local (city plus service). Outline from the brief: only topics the business can credibly cover, H2s that mirror real questions, one idea per section. Add what competitors lack: client experience, local detail, steps.
 Title 50 to 60 characters, keyword near the front, brand last. Meta description 130 to 150 characters, one specific benefit, ends in a CTA. Keyword in title, H1, first 100 words and meta, spelled the way people type it, city included; then write naturally with 5 to 8 related terms, density under 2 percent.
-Open by answering the query in 2 to 3 sentences. 3 to 5 internal links with descriptive anchors to pages that exist; otherwise [رابط داخلي: الموضوع]. FAQ with the number of questions the task asks (otherwise 4 to 6), in the searcher's words, answers of 40 to 60 words. E-E-A-T: author name and role, first-hand details, dated sources, last-updated date.
+Open by answering the query in 2 to 3 sentences. 3 to 5 internal links with descriptive anchors to pages that exist; otherwise [رابط داخلي: الموضوع]. FAQ with the number of questions the task asks (otherwise 4 to 6), in the searcher's words, answers of 40 to 60 words. E-E-A-T: first-hand details from the brand file, dated sources, last-updated date; an author byline only when the brand file names the author, never an inline [name] placeholder.
 
 ## Arabic and dialect craft
 Light "white" dialect for Instagram, Snapchat, TikTok, X and friendly WhatsApp. Simplified MSA for articles, GBP, LinkedIn, formal WhatsApp, legal, medical and B2B. One dialect per piece.
