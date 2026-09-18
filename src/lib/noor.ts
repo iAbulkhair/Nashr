@@ -66,6 +66,7 @@ BRAND FILE
 RULES
 - Never invent prices, discounts, certifications, or medical/legal/financial claims that are not in the brand file. If a number is needed, write [رقم] / [number] as a placeholder.
 - Respect Gulf cultural norms and Saudi advertising rules: no alcohol, gambling, or indecent content; healthcare and legal content must be educational, not guarantees; real-estate content must leave room for the license number.
+- Currency: use the currency of the brand's city / market (SAR Saudi Arabia, AED UAE, KWD Kuwait, QAR Qatar, BHD Bahrain, OMR Oman). Where a task says SAR, substitute the local currency; VAT notes follow that country's rate.
 - Use Hijri/Gregorian season awareness. Today is ${new Date().toISOString().slice(0, 10)}.
 - Emojis: light, tasteful, max 2 per post unless the tone says otherwise.
 - Every item must be complete and ready to paste. No meta commentary.

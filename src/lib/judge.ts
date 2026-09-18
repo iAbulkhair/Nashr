@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { after } from "next/server";
-import { getTask, saveTask, type Brand, type Task, type TaskType } from "./brand";
+import { TASK_COUNT, getTask, saveTask, type Brand, type Task, type TaskType } from "./brand";
 import { taskSpec } from "./noor";
 import { agentForTask } from "./agents";
 import { meter } from "./usage";
@@ -47,7 +47,7 @@ Be strict but fair: 85+ means ready to use as is; 70-84 needs a light edit; belo
 Return ONLY a JSON array, same length and order as ITEMS: {"completeness":n,"brand":n,"honesty":n,"language":n,"format":n,"notes":"<= 25 words in the item's language: the single most important fix, or 'ready'"}.`,
     messages: [{
       role: "user",
-      content: `TASK SPEC\n${taskSpec(type)}\n\nBRAND FILE\n${JSON.stringify({ name: brand.name, industry: brand.industry, city: brand.city, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, products: brand.products.slice(0, 600), audience: brand.audience.slice(0, 400), offers: brand.offers, banned: brand.banned, preferred: brand.preferred })}\n\nITEMS\n${JSON.stringify(items.map((t) => ({ channel: t.channel, title: t.title, body: t.body.slice(0, JUDGE_BODY_CHARS) })))}`,
+      content: `TASK SPEC\n${taskSpec(type)}${items.length < TASK_COUNT[type] ? `\n\nOVERRIDE: the owner asked for exactly ${items.length} item(s) of this type, not the full batch of ${TASK_COUNT[type]}. Do not penalize the missing rest of the batch or the channel mix; judge each item against the part of the spec it covers.` : ""}\n\nBRAND FILE\n${JSON.stringify({ name: brand.name, industry: brand.industry, city: brand.city, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, products: brand.products.slice(0, 600), audience: brand.audience.slice(0, 400), offers: brand.offers, banned: brand.banned, preferred: brand.preferred })}\n\nITEMS\n${JSON.stringify(items.map((t) => ({ channel: t.channel, title: t.title, body: t.body.slice(0, JUDGE_BODY_CHARS) })))}`,
     }],
   });
   await meter(email, res.model, "judge", res.usage);

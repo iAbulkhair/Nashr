@@ -16,7 +16,7 @@ import { getUsage } from "./usage";
  * Bump GOLDEN_VERSION when cases or brands change: deltas only compare runs of
  * the same version.
  */
-export const GOLDEN_VERSION = 2; // v2: judge reads full bodies; banned-word check limited to customer-facing types
+export const GOLDEN_VERSION = 3; // v2: judge reads full bodies. v3: judge knows reduced counts; local currency rule; quoted banned words ignored
 export const GOLDEN_EMAIL = "golden@nashr.internal";
 const CONCURRENCY = 8;
 /** Do not start new cases after this many ms; the route has maxDuration 300. */
@@ -102,7 +102,9 @@ export function hardChecks(c: GoldenCase, brand: Brand, items: Generated[]): Che
   // Internal documents may quote banned words to warn against them; only customer-facing copy is checked.
   if (CUSTOMER_FACING.includes(c.type)) {
     const banned = brand.banned.split(/[,،]/).map((w) => w.trim()).filter((w) => w.length > 2);
-    const hit = banned.filter((w) => all.toLowerCase().includes(w.toLowerCase()));
+    // A compliance note may quote a banned word ("no words like \"مضمون\""); quoted text does not count.
+    const unquoted = all.replace(/"[^"\n]{1,40}"|«[^»\n]{1,40}»|“[^”\n]{1,40}”/g, " ").toLowerCase();
+    const hit = banned.filter((w) => unquoted.includes(w.toLowerCase()));
     out.push({ name: "banned words absent", pass: hit.length === 0, detail: hit.join("، ") || undefined });
   }
 
