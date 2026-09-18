@@ -3,7 +3,7 @@ import { db } from "./db";
 import { getUser, type User } from "./auth";
 import { charge, refund } from "./credits";
 import { judgeLater } from "./judge";
-import { TASK_COST, getBrand, listPreferences, listTasks, saveTask, type Brand, type Task } from "./brand";
+import { TASK_COST, getBrand, listPreferences, listTasks, rebuildPending, saveTask, type Brand, type Task } from "./brand";
 import { generate } from "./noor";
 import { memoryBlock } from "./files";
 import { getGov } from "./governance";
@@ -83,6 +83,7 @@ export async function runDaily(user: User): Promise<Brief | null> {
   if (!sched.dailyBrief) return null;
   const brand = await getBrand(email);
   const tasks = await listTasks(email);
+  await rebuildPending(email, tasks); // daily reconcile of the pending-ids set (also drops ids that left the 200-task window)
   const dayAgo = Date.now() - 7 * 864e5;
   const pending = tasks.filter((t) => t.status === "pending").length;
   const approved7d = tasks.filter((t) => t.status === "approved" && new Date(t.createdAt).getTime() > dayAgo).length;

@@ -94,6 +94,26 @@ export async function listTasks(email: string): Promise<Task[]> {
 export async function saveTask(email: string, t: Task, isNew = false) {
   await db.set(`task:${email}:${t.id}`, t);
   if (isNew) await db.lpush(`tasks:${email}`, t.id);
+  // Pending ids live in a set so badges cost one command instead of reading every task. Every path that changes a
+  // task goes through saveTask, and add/remove are idempotent, so the set cannot drift the way a +1/-1 counter would.
+  if (t.status === "pending") await db.sadd(`pending:${email}`, t.id);
+  else await db.srem(`pending:${email}`, t.id);
+}
+
+/** Rebuild the pending set from the task list (first use on an existing workspace, and the daily reconcile). */
+export async function rebuildPending(email: string, tasks?: Task[]): Promise<number> {
+  const list = tasks ?? (await listTasks(email));
+  const want = new Set(list.filter((t) => t.status === "pending").map((t) => t.id));
+  const have = await db.smembers(`pending:${email}`);
+  await Promise.all([...have.filter((id) => !want.has(id)).map((id) => db.srem(`pending:${email}`, id)), ...[...want].filter((id) => !have.includes(id)).map((id) => db.sadd(`pending:${email}`, id))]);
+  await db.set(`pendingidx:${email}`, new Date().toISOString());
+  return want.size;
+}
+
+/** Number of items waiting for the owner's approval: one read once the workspace has been indexed. */
+export async function pendingCount(email: string): Promise<number> {
+  if (!(await db.get(`pendingidx:${email}`))) return rebuildPending(email);
+  return (await db.smembers(`pending:${email}`)).length;
 }
 export async function getTask(email: string, id: string) {
   return db.get<Task>(`task:${email}:${id}`);
