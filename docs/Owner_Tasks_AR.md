@@ -22,7 +22,7 @@
 - [~] إنشاء حساب Resend وتوثيق الدومين (الحساب والمفتاح جاهزان 2026-09-18؛ توثيق الدومين ينتظر شراء الدومين. بدونه ترسل Resend إلى بريد صاحب الحساب فقط، لا إلى العملاء)
 - [x] `vercel env add RESEND_API_KEY production` (أُضيف 2026-09-18، نوعه Secret، وتحققت من الاسم على Vercel)
 - [ ] `vercel env add MAIL_FROM production` (مثل `Nashr <noor@yourdomain>`)
-- [ ] `vercel env add WAITLIST_TO production` (بريد يستقبل تسجيلات قائمة الانتظار)
+- [x] `vercel env add WAITLIST_TO production` (أُضيف 2026-09-18 وتحققت من الاسم على Vercel. يستقبل تسجيلات قائمة الانتظار ورسائل نموذجي المؤسسات والعملاء الأوائل. بدون دومين موثَّق يصل البريد فقط إن كان هذا هو بريد حساب Resend نفسه)
 
 ## ج. الصور (fal.ai)
 - [ ] إنشاء حساب fal.ai وأخذ المفتاح
