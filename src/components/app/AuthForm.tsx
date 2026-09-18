@@ -20,7 +20,7 @@ export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
   const ref = sp.get("ref") ?? "";
   const site = (sp.get("url") ?? "").slice(0, 300);
   const nextParam = sp.get("next") ?? "";
-  const next = nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "";
+  const next = /^\/(?![\/\\])/.test(nextParam) ? nextParam : "";
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState("");
@@ -72,7 +72,7 @@ export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
 export function LoginForm({ t, lang }: { t: AppDict; lang: Lang }) {
   const r = useRouter();
   const nextParam = useSearchParams().get("next") ?? "";
-  const next = nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "";
+  const next = /^\/(?![\/\\])/.test(nextParam) ? nextParam : "";
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {

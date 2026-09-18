@@ -10,8 +10,16 @@ export type Connection = {
   expiresAt?: string;
 };
 
+/** Production must use its own CONNECT_SECRET: reusing the admin key would let one leaked secret decrypt every tenant's platform credentials. */
+function connectSecret(): string {
+  const v = process.env.CONNECT_SECRET;
+  if (v) return v;
+  if (process.env.NODE_ENV === "production") throw new Error("CONNECT_SECRET is not set");
+  return process.env.WAITLIST_ADMIN_KEY ?? "dev-only-insecure";
+}
+
 function key() {
-  const secret = process.env.CONNECT_SECRET ?? process.env.WAITLIST_ADMIN_KEY ?? "dev-only-insecure";
+  const secret = connectSecret();
   return createHash("sha256").update(secret).digest();
 }
 export function encrypt(text: string) {

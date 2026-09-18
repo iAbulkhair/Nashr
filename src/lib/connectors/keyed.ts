@@ -1,15 +1,16 @@
 import type { Connection } from "./store";
 import { writeFile } from "../files";
+import { safeFetch } from "../safe-fetch";
 
 /** Key-based connectors that need no partner registration: Odoo, PrestaShop, Telegram, Brevo. */
 
 // ---------- Odoo (JSON-RPC, per-customer API key) ----------
 async function odooCall(c: Record<string, string>, model: string, method: string, args: unknown[], kwargs: Record<string, unknown> = {}) {
   const url = c.url.replace(/\/+$/, "") + "/jsonrpc";
-  const auth = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", id: 1, params: { service: "common", method: "authenticate", args: [c.db, c.username, c.apiKey, {}] } }) });
+  const auth = await safeFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", id: 1, params: { service: "common", method: "authenticate", args: [c.db, c.username, c.apiKey, {}] } }) });
   const aj = (await auth.json()) as { result?: number; error?: { message: string } };
   if (!aj.result) throw new Error(aj.error?.message ?? "odoo auth failed");
-  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", id: 2, params: { service: "object", method: "execute_kw", args: [c.db, aj.result, c.apiKey, model, method, args, kwargs] } }) });
+  const r = await safeFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", id: 2, params: { service: "object", method: "execute_kw", args: [c.db, aj.result, c.apiKey, model, method, args, kwargs] } }) });
   const j = (await r.json()) as { result?: unknown; error?: { message: string } };
   if (j.error) throw new Error(j.error.message);
   return j.result;
@@ -28,7 +29,7 @@ export async function importOdoo(email: string, c: Connection) {
 function psAuth(d: Record<string, string>) { return "Basic " + Buffer.from(`${d.apiKey}:`).toString("base64"); }
 export async function verifyPrestaShop(d: Record<string, string>) {
   try {
-    const r = await fetch(`${d.site.replace(/\/+$/, "")}/api/products?limit=1&output_format=JSON`, { headers: { Authorization: psAuth(d) } });
+    const r = await safeFetch(`${d.site.replace(/\/+$/, "")}/api/products?limit=1&output_format=JSON`, { headers: { Authorization: psAuth(d) } });
     return r.ok ? { ok: true } : { ok: false, error: `HTTP ${r.status} (enable Webservice + key with products GET permission)` };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "unreachable" };
@@ -36,7 +37,7 @@ export async function verifyPrestaShop(d: Record<string, string>) {
 }
 export async function importPrestaShop(email: string, c: Connection) {
   const base = c.data.site.replace(/\/+$/, "");
-  const r = await fetch(`${base}/api/products?display=[id,name,price,link_rewrite,description_short]&limit=60&output_format=JSON`, { headers: { Authorization: psAuth(c.data) } });
+  const r = await safeFetch(`${base}/api/products?display=[id,name,price,link_rewrite,description_short]&limit=60&output_format=JSON`, { headers: { Authorization: psAuth(c.data) } });
   if (!r.ok) throw new Error(`prestashop ${r.status}`);
   const j = (await r.json()) as { products?: { id: number; name: string | { value: string }[]; price: string; link_rewrite: string | { value: string }[]; description_short?: string | { value: string }[] }[] };
   const txt = (v: unknown) => (Array.isArray(v) ? String((v[0] as { value: string })?.value ?? "") : String(v ?? ""));

@@ -12,6 +12,7 @@ type Store = {
   lrange(key: string, start: number, stop: number): Promise<string[]>;
   sadd(key: string, member: string): Promise<number>;
   smembers(key: string): Promise<string[]>;
+  srem(key: string, member: string): Promise<void>;
   incrby(key: string, n: number): Promise<number>;
   /** SET NX with TTL. True when this caller won the lock. */
   lock(key: string, ttlSeconds: number): Promise<boolean>;
@@ -46,6 +47,9 @@ function upstash(): Store | null {
     },
     async smembers(key) {
       return await r.smembers(key);
+    },
+    async srem(key, m) {
+      await r.srem(key, m);
     },
     async incrby(key, n) {
       return await r.incrby(key, n);
@@ -91,6 +95,9 @@ function memory(): Store {
     },
     async smembers(key) {
       return [...(m.sets.get(key) ?? [])];
+    },
+    async srem(key, member) {
+      m.sets.get(key)?.delete(member);
     },
     async incrby(key, n) {
       const v = ((m.kv.get(key) as number) ?? 0) + n;

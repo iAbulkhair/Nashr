@@ -107,7 +107,7 @@ export async function allUsers(): Promise<User[]> {
   const { pmap } = await import("./parallel");
   const groups = await pmap(emails, async (e) => {
     const u = await getUser(e);
-    if (!u) return [] as User[];
+    if (!u || u.suspended) return [] as User[]; // suspended accounts get no scheduled work, no charges and no email
     return (await listBrands(e)).filter((x) => x.status === "active").map((b) => ({ ...u, brandId: b.id, scope: scopeFor(e, b.id) }));
   });
   return groups.flat();

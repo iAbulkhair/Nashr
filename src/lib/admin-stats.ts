@@ -87,8 +87,11 @@ export async function overview(): Promise<Overview> {
   };
 }
 
+/** Spreadsheet apps run cells that start with = + - @ (or tab / CR) as formulas; user-supplied names must not. */
+export const csvSafe = (v: string) => (/^[=+\-@\t\r]/.test(v) && !/^[+-]?\d[\d\s.-]*$/.test(v) ? `'${v}` : v); // plain phone numbers and negative numbers stay as they are
+
 export function usersCsv(rows: { email: string; name: string; phone: string; plan: string; credits: number; trialEnds: string; createdAt: string; renewedAt?: string }[]) {
-  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const esc = (v: unknown) => `"${csvSafe(String(v ?? "")).replace(/"/g, '""')}"`;
   const head = ["email", "name", "phone", "plan", "credits", "trial_ends", "created_at", "renewed_at", "monthly_price_sar"].join(",");
   return [head, ...rows.map((r) => [r.email, r.name, r.phone, r.plan, r.credits, r.trialEnds.slice(0, 10), r.createdAt.slice(0, 10), r.renewedAt ?? "", PLAN_PRICE_SAR[r.plan as Plan] ?? 0].map(esc).join(","))].join("\n");
 }

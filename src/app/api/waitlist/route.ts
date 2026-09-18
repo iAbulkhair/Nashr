@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
+import { isAdmin } from "@/lib/auth";
+import { csvSafe } from "@/lib/admin-stats";
 
 const LIST_KEY = "waitlist:entries";
 const EMAIL_SET = "waitlist:emails";
@@ -49,13 +51,10 @@ export async function POST(req: Request) {
   }
 }
 
-// Admin export: GET /api/waitlist?key=<WAITLIST_ADMIN_KEY>[&format=csv]
+// Admin export: GET /api/waitlist[?format=csv] with the x-admin-key header, the admin cookie or a founder session
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const adminKey = process.env.WAITLIST_ADMIN_KEY;
-  if (!adminKey || url.searchParams.get("key") !== adminKey) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-  }
+  if (!(await isAdmin(req))) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const kv = redis();
   if (!kv) return NextResponse.json({ ok: false, error: "no_storage" }, { status: 503 });
 
@@ -63,7 +62,7 @@ export async function GET(req: Request) {
   const rows = raw.map((r) => (typeof r === "string" ? JSON.parse(r) : r)) as Array<Record<string, string>>;
 
   if (url.searchParams.get("format") === "csv") {
-    const esc = (v: string) => `"${(v ?? "").replace(/"/g, '""')}"`;
+    const esc = (v: string) => `"${csvSafe(v ?? "").replace(/"/g, '""')}"`;
     const csv = ["email,company,industry,lang,at", ...rows.map((r) => [r.email, r.company, r.industry, r.lang, r.at].map(esc).join(","))].join("\n");
     return new NextResponse(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": "attachment; filename=nashr-waitlist.csv" } });
   }

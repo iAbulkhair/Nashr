@@ -22,5 +22,7 @@ export async function userFromBearer(req: Request): Promise<User | null> {
   const m = h.match(/^Bearer\s+(nashr_[A-Za-z0-9_.-]+)$/);
   if (!m) return null;
   const email = await db.get<string>(`mcptoken:${m[1]}`);
-  return email ? getUser(email) : null;
+  const u = email ? await getUser(email) : null;
+  // A suspended account is blocked everywhere, including tokens issued before the suspension.
+  return u && !u.suspended ? u : null;
 }

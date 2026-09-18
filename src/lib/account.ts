@@ -12,10 +12,12 @@ export async function wipeAccount(email: string) {
     for (const t of await listTasks(s)) await db.del(`task:${s}:${t.id}`);
     for (const f of await listFiles(s)) await db.del(`file:${s}:${f.name}`);
     for (const c of await listConversations(s)) { await db.del(`conv:${s}:${c.id}`); await db.del(`chat:${s}:${c.id}`); }
-    for (const k of [`tasks:${s}`, `files:${s}`, `brand:${s}`, `prefs:${s}`, `chat:${s}`, `convs:${s}`, `gov:${s}`, `schedule:${s}`, `brief:${s}`, `conns:${s}`]) await db.del(k);
+    for (const p of await db.smembers(`conns:${s}`)) await db.del(`conn:${s}:${p}`); // encrypted third-party credentials
+    for (const k of [`onboardplan:${s}`, `tasks:${s}`, `files:${s}`, `brand:${s}`, `prefs:${s}`, `chat:${s}`, `convs:${s}`, `gov:${s}`, `schedule:${s}`, `brief:${s}`, `conns:${s}`]) await db.del(k);
   }
   const token = await db.get<string>(`mcptoken-of:${e}`);
   if (token) await db.del(`mcptoken:${token}`);
   for (const k of [`profile:${e}`, `mcptoken-of:${e}`, `brands:${e}`, `activebrand:${e}`, `user:${e}`]) await db.del(k);
+  await db.srem("users:all", e);
   await db.lpush("deleted-accounts", JSON.stringify({ email: e, at: new Date().toISOString() }));
 }

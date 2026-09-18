@@ -29,6 +29,11 @@ export const PLAN_CREDITS: Record<Plan, number> = { trial: 50, starter: 200, pro
 const SESSION_TTL = 60 * 60 * 24 * 30;
 const COOKIE = "nashr_session";
 
+/** One password rule for signup, change and reset: 8+ characters with a letter and a digit. */
+export const strongPassword = (pw: string) => pw.length >= 8 && /\p{L}/u.test(pw) && /\d/.test(pw);
+/** Emails become part of Redis keys (prefix:{scope}[:id], extra brands are email#brandId), so ":" and "#" could make two accounts share keys. */
+export const validEmail = (e: string) => /^[^\s@:#]+@[^\s@:#]+\.[^\s@:#]+$/.test(e) && e.length <= 120;
+
 export function normalizeEmail(e: string) {
   return e.trim().toLowerCase();
 }
@@ -76,11 +81,11 @@ export async function verifyPassword(u: User, password: string) {
   return bcrypt.compare(password, u.passHash);
 }
 
-export async function createSession(email: string) {
+export async function createSession(email: string, ttlSeconds: number = SESSION_TTL) {
   const token = randomBytes(32).toString("hex");
-  await db.set(`session:${token}`, email, SESSION_TTL);
+  await db.set(`session:${token}`, email, ttlSeconds);
   const jar = await cookies();
-  jar.set(COOKIE, token, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: SESSION_TTL });
+  jar.set(COOKIE, token, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: ttlSeconds });
 }
 
 export async function destroySession() {
@@ -110,15 +115,19 @@ export function adminEmails(): string[] {
 }
 export const isFounder = (email: string | undefined | null) => !!email && adminEmails().includes(normalizeEmail(email));
 
-/** API access: admin key (query/header/cookie) or a logged-in founder account. */
+/** API access: admin key (header or cookie, never the URL: query strings end up in logs and history) or a logged-in founder account. */
 export async function isAdmin(req: Request) {
   const key = process.env.WAITLIST_ADMIN_KEY;
   if (key) {
-    const url = new URL(req.url);
-    const given = url.searchParams.get("key") ?? req.headers.get("x-admin-key");
-    if (given === key) return true;
+    const { sameSecret, allow, clientIp } = await import("./rate");
+    const given = req.headers.get("x-admin-key");
+    if (given !== null) {
+      // Key guesses sent as a header are throttled like the login form.
+      if (!(await allow(`adminhdr:${clientIp(req)}`, 30, 900))) return false;
+      if (sameSecret(given, key)) return true;
+    }
     const jar = await cookies();
-    if (jar.get("nashr_admin")?.value === key) return true;
+    if (sameSecret(jar.get("nashr_admin")?.value, key)) return true;
   }
   const u = await currentUser();
   return isFounder(u?.email);

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
-import { createSession, getUser, isAdmin, saveUser } from "@/lib/auth";
+import { createSession, getUser, isAdmin, saveUser, normalizeEmail } from "@/lib/auth";
 import { getBrand, listTasks } from "@/lib/brand";
 import { getUsage } from "@/lib/usage";
 import { listConnections } from "@/lib/connectors/store";
@@ -44,7 +44,7 @@ type Action = { action: "suspend" | "unsuspend" | "extendTrial" | "resetPassword
 export async function POST(req: Request, ctx: { params: Promise<{ email: string }> }) {
   if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
   const { email: raw } = await ctx.params;
-  const email = decodeURIComponent(raw);
+  const email = normalizeEmail(decodeURIComponent(raw)); // the same normalized key for lookup, locks and deletion
   const u = await getUser(email);
   if (!u) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   const b = (await req.json().catch(() => ({}))) as Action;
@@ -86,7 +86,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       const mine = jar.get("nashr_session")?.value;
       if (mine) jar.set("nashr_return", mine, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 2 });
       jar.set("nashr_impersonate", email, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 2 });
-      await createSession(email);
+      await createSession(email, 60 * 60 * 2);
       await log("impersonate", { expiresInMin: 120 });
       return NextResponse.json({ ok: true, redirect: `/${u.lang}/app` });
     }

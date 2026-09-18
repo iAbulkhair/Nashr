@@ -1,3 +1,4 @@
+import { safeFetch } from "./safe-fetch";
 /** Fetch a public site and reduce it to text Noor can read. No JS rendering. */
 export type SiteSnapshot = { url: string; ok: boolean; title: string; description: string; text: string; links: string[]; platform: string; error?: string; /** most frequent hex colours in inline CSS, for brand guidelines */ colors?: string[]; fonts?: string[] };
 
@@ -47,7 +48,7 @@ export async function crawl(input: string): Promise<SiteSnapshot> {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 9000);
-    const res = await fetch(url, { signal: ctrl.signal, redirect: "follow", headers: { "User-Agent": "Mozilla/5.0 (compatible; NashrBot/0.1; +https://nashr-tau.vercel.app)", "Accept-Language": "ar,en;q=0.8" } });
+    const res = await safeFetch(url, { signal: ctrl.signal, headers: { "User-Agent": "Mozilla/5.0 (compatible; NashrBot/0.1; +https://nashr-tau.vercel.app)", "Accept-Language": "ar,en;q=0.8" } });
     clearTimeout(t);
     const html = (await res.text()).slice(0, 600000);
     const title = strip(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "").slice(0, 200);

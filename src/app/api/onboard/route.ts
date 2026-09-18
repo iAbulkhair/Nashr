@@ -2,7 +2,8 @@ import { track } from "@/lib/track";
 import { currentUser, sc } from "@/lib/auth";
 import { crawl } from "@/lib/crawl";
 import { buildFromSite } from "@/lib/onboard";
-import { saveBrand } from "@/lib/brand";
+import { getBrand, saveBrand } from "@/lib/brand";
+import { allow } from "@/lib/rate";
 import { readFile, writeFile } from "@/lib/files";
 import { push, type ChatMsg } from "@/lib/chat";
 import { db } from "@/lib/db";
@@ -27,6 +28,9 @@ export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as { url?: string; hints?: string };
   if (!b.url || b.url.trim().length < 4) return new Response("bad_url", { status: 400 });
   const scope = sc(u), t = T[u.lang === "en" ? "en" : "ar"];
+  // Free and backed by a large model: run once per workspace and at most three times a day per account.
+  if (await getBrand(scope)) return new Response("already_onboarded", { status: 409 });
+  if (!(await allow(`onboard:${u.email}`, 3, 86400))) return new Response("slow_down", { status: 429 });
   // One run at a time per workspace: a reload during the run must not start a second one.
   if (!(await db.lock(`onboardlock:${scope}`, 240))) return new Response("busy", { status: 409 });
   const enc = new TextEncoder();

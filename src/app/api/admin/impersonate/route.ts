@@ -8,6 +8,9 @@ export async function POST(req: Request) {
   const jar = await cookies();
   const back = jar.get("nashr_return")?.value;
   const who = jar.get("nashr_impersonate")?.value;
+  // Burn the impersonated session so it cannot be reused after the founder returns.
+  const temp = jar.get("nashr_session")?.value;
+  if (who && temp && temp !== back) await db.del(`session:${temp}`);
   if (back && (await db.get(`session:${back}`))) jar.set("nashr_session", back, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 30 });
   else jar.delete("nashr_session");
   jar.delete("nashr_return");

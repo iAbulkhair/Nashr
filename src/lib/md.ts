@@ -1,6 +1,6 @@
 /** Tiny Markdown → HTML renderer (headings, bold, links, lists, tables, hr). Escapes HTML; pure, safe for client components. */
 export function render(md: string) {
-  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const safeHref = (h: string) => (/^(https?:|mailto:|\/|#)/i.test(h.trim()) ? h.trim() : "#");
   const inline = (s: string) => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\[(.+?)\]\(([^)]+)\)/g, (_m, t, h) => `<a href="${safeHref(h)}" rel="noreferrer">${t}</a>`);
   const lines = md.split("\n");

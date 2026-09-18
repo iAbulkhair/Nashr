@@ -1,4 +1,5 @@
 import { writeFile } from "./files";
+import { safeFetch } from "./safe-fetch";
 
 /** Import a store's products from its sitemap → products.md. No API keys, works for Salla/Zid/Shopify/Woo. */
 export type Product = { url: string; title: string; price?: string; description?: string };
@@ -9,7 +10,7 @@ async function get(url: string, ms = 8000) {
   const c = new AbortController();
   const t = setTimeout(() => c.abort(), ms);
   try {
-    const r = await fetch(url, { signal: c.signal, headers: UA, redirect: "follow" });
+    const r = await safeFetch(url, { signal: c.signal, headers: UA });
     return r.ok ? await r.text() : "";
   } catch {
     return "";
@@ -23,7 +24,7 @@ async function resolve(base: string): Promise<{ origin: string; html: string }> 
   const c = new AbortController();
   const t = setTimeout(() => c.abort(), 8000);
   try {
-    const r = await fetch(base, { signal: c.signal, headers: UA, redirect: "follow" });
+    const r = await safeFetch(base, { signal: c.signal, headers: UA });
     const origin = new URL(r.url || base).origin;
     return { origin, html: r.ok ? await r.text() : "" };
   } catch {

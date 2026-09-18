@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import { db } from "./db";
 
 /** Fixed-window rate limit. True when the caller is still inside the allowance. */
@@ -9,4 +10,13 @@ export async function allow(bucket: string, max: number, windowSeconds: number):
   return n <= max;
 }
 
-export const clientIp = (req: Request) => (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
+/** Client IP for throttling. Platform-set headers first; the caller-suppliable x-forwarded-for is the last resort and its LAST hop is used. */
+export const clientIp = (req: Request) =>
+  (req.headers.get("x-vercel-forwarded-for") ?? req.headers.get("x-real-ip") ?? "").split(",")[0].trim() ||
+  (req.headers.get("x-forwarded-for") ?? "").split(",").pop()!.trim() || "unknown";
+
+/** Constant-time string comparison for secrets. */
+export function sameSecret(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = Buffer.from(a ?? ""), y = Buffer.from(b ?? "");
+  return x.length > 0 && x.length === y.length && timingSafeEqual(x, y);
+}

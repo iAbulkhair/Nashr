@@ -1,4 +1,5 @@
 import type { Connection } from "./store";
+import { safeFetch } from "../safe-fetch";
 
 function auth(c: Connection) {
   return "Basic " + Buffer.from(`${c.data.username}:${c.data.appPassword.replace(/\s+/g, "")}`).toString("base64");
@@ -10,7 +11,7 @@ function base(c: Connection) {
 export async function verifyWordPress(data: Record<string, string>): Promise<{ ok: boolean; name?: string; error?: string }> {
   const c = { provider: "wordpress", data, connectedAt: "" } as Connection;
   try {
-    const r = await fetch(`${base(c)}/wp-json/wp/v2/users/me?context=edit`, { headers: { Authorization: auth(c) } });
+    const r = await safeFetch(`${base(c)}/wp-json/wp/v2/users/me?context=edit`, { headers: { Authorization: auth(c) } });
     if (!r.ok) return { ok: false, error: `HTTP ${r.status}` };
     const j = (await r.json()) as { name?: string; capabilities?: Record<string, boolean> };
     if (j.capabilities && !j.capabilities.publish_posts && !j.capabilities.edit_posts) return { ok: false, error: "user cannot publish posts" };
@@ -40,7 +41,7 @@ export function mdToHtml(md: string) {
 }
 
 export async function publishWordPress(c: Connection, post: { title: string; body: string; status?: "draft" | "publish" }): Promise<{ url: string; id: number }> {
-  const r = await fetch(`${base(c)}/wp-json/wp/v2/posts`, {
+  const r = await safeFetch(`${base(c)}/wp-json/wp/v2/posts`, {
     method: "POST",
     headers: { Authorization: auth(c), "Content-Type": "application/json" },
     body: JSON.stringify({ title: post.title, content: mdToHtml(post.body), status: post.status ?? "draft" }),
