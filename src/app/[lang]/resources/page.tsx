@@ -43,7 +43,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
             </div>
           </section>
         )}
-        <section className="mx-auto max-w-6xl px-4 py-14 sm:px-6">
+        <section id="compare" className="mx-auto max-w-6xl scroll-mt-24 px-4 py-14 sm:px-6">
           <h2 className="font-display text-2xl font-bold">{s.compare}</h2>
           <ul className="mt-4 flex flex-wrap gap-2">{VS_PAGES[lang].map((v) => <li key={v.slug}><Link href={`/${lang}/vs/${v.slug}`} className="inline-block rounded-full border border-oasis/30 px-3 py-1.5 text-sm text-oasis hover:bg-oasis hover:text-mist">{v.title}</Link></li>)}</ul>
         </section>
