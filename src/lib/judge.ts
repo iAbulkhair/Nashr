@@ -21,6 +21,8 @@ export type Quality = {
 };
 
 const WEIGHTS = { completeness: 0.3, brand: 0.2, honesty: 0.25, language: 0.15, format: 0.1 } as const;
+/** The judge reads whole items. A 3500-char cut made every long-form item (articles, memos, PRDs) score as "cut off". */
+const JUDGE_BODY_CHARS = 24000;
 const clamp = (n: unknown) => Math.max(0, Math.min(100, Math.round(Number(n) || 0)));
 
 export type JudgeItem = { channel: string; title: string; body: string };
@@ -32,7 +34,7 @@ export async function scoreItems(email: string | undefined, brand: Brand, type: 
   const client = new Anthropic();
   const res = await client.messages.create({
     model: "claude-sonnet-5",
-    max_tokens: 4000,
+    max_tokens: 8000,
     thinking: { type: "adaptive" },
     output_config: { effort: "low" },
     system: `You are the quality judge for Nashr, a Gulf AI agent team. You receive the TASK SPEC the agent (${agent.name.en}, ${agent.role.en}) was given, the BRAND FILE, and the ITEMS produced. Score EACH item independently, 0-100 per dimension:
@@ -45,13 +47,15 @@ Be strict but fair: 85+ means ready to use as is; 70-84 needs a light edit; belo
 Return ONLY a JSON array, same length and order as ITEMS: {"completeness":n,"brand":n,"honesty":n,"language":n,"format":n,"notes":"<= 25 words in the item's language: the single most important fix, or 'ready'"}.`,
     messages: [{
       role: "user",
-      content: `TASK SPEC\n${taskSpec(type)}\n\nBRAND FILE\n${JSON.stringify({ name: brand.name, industry: brand.industry, city: brand.city, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, products: brand.products.slice(0, 600), audience: brand.audience.slice(0, 400), offers: brand.offers, banned: brand.banned, preferred: brand.preferred })}\n\nITEMS\n${JSON.stringify(items.map((t) => ({ channel: t.channel, title: t.title, body: t.body.slice(0, 3500) })))}`,
+      content: `TASK SPEC\n${taskSpec(type)}\n\nBRAND FILE\n${JSON.stringify({ name: brand.name, industry: brand.industry, city: brand.city, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, products: brand.products.slice(0, 600), audience: brand.audience.slice(0, 400), offers: brand.offers, banned: brand.banned, preferred: brand.preferred })}\n\nITEMS\n${JSON.stringify(items.map((t) => ({ channel: t.channel, title: t.title, body: t.body.slice(0, JUDGE_BODY_CHARS) })))}`,
     }],
   });
   await meter(email, res.model, "judge", res.usage);
   const raw = res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
   const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-  const arr = JSON.parse(cleaned.slice(cleaned.indexOf("["), cleaned.lastIndexOf("]") + 1)) as Array<Record<string, unknown>>;
+  const a = cleaned.indexOf("["), z = cleaned.lastIndexOf("]");
+  if (a < 0 || z <= a) throw new Error(`judge_no_json (stop: ${res.stop_reason})`);
+  const arr = JSON.parse(cleaned.slice(a, z + 1)) as Array<Record<string, unknown>>;
   return items.map((_, i) => {
     const v = arr[i] ?? {};
     const dims = { completeness: clamp(v.completeness), brand: clamp(v.brand), honesty: clamp(v.honesty), language: clamp(v.language), format: clamp(v.format) };

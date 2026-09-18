@@ -16,7 +16,7 @@ import { getUsage } from "./usage";
  * Bump GOLDEN_VERSION when cases or brands change: deltas only compare runs of
  * the same version.
  */
-export const GOLDEN_VERSION = 1;
+export const GOLDEN_VERSION = 2; // v2: judge reads full bodies; banned-word check limited to customer-facing types
 export const GOLDEN_EMAIL = "golden@nashr.internal";
 const CONCURRENCY = 8;
 /** Do not start new cases after this many ms; the route has maxDuration 300. */
@@ -80,7 +80,8 @@ export type GoldenRun = {
   results: GoldenResult[]; regressions: string[];
 };
 
-const AR = /[؀-ۿ]/g, LAT = /[A-Za-z]/g;
+const CUSTOMER_FACING: TaskType[] = ["social", "article", "whatsapp", "ads", "gbp", "followup_seq"];
+const AR = /[\u0600-\u06FF]/g, LAT = /[A-Za-z]/g;
 const mean = (xs: number[]) => (xs.length ? Math.round((xs.reduce((s, x) => s + x, 0) / xs.length) * 10) / 10 : null);
 const digits = (s: string) => s.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).replace(/[,٬]/g, "");
 
@@ -98,9 +99,12 @@ export function hardChecks(c: GoldenCase, brand: Brand, items: Generated[]): Che
   const langOk = langs === "ar" ? ratio >= 0.6 : langs === "en" ? ratio <= 0.05 : ratio >= 0.2 && ratio <= 0.85;
   out.push({ name: `language ${langs}`, pass: langOk, detail: `arabic ${Math.round(ratio * 100)}%` });
 
-  const banned = brand.banned.split(/[,،]/).map((w) => w.trim()).filter((w) => w.length > 2);
-  const hit = banned.filter((w) => all.toLowerCase().includes(w.toLowerCase()));
-  out.push({ name: "banned words absent", pass: hit.length === 0, detail: hit.join("، ") || undefined });
+  // Internal documents may quote banned words to warn against them; only customer-facing copy is checked.
+  if (CUSTOMER_FACING.includes(c.type)) {
+    const banned = brand.banned.split(/[,،]/).map((w) => w.trim()).filter((w) => w.length > 2);
+    const hit = banned.filter((w) => all.toLowerCase().includes(w.toLowerCase()));
+    out.push({ name: "banned words absent", pass: hit.length === 0, detail: hit.join("، ") || undefined });
+  }
 
   if (c.noPrices) {
     const known = digits(`${brand.products} ${brand.offers} ${c.extra ?? ""} ${c.stats ?? ""}`);
@@ -116,18 +120,23 @@ export function hardChecks(c: GoldenCase, brand: Brand, items: Generated[]): Che
   return out;
 }
 
+const trim = (i: Generated) => ({ ...i, body: i.body.length > 3000 ? `${i.body.slice(0, 3000)}\n… [+${i.body.length - 3000} chars]` : i.body });
+
 async function runCase(c: GoldenCase): Promise<GoldenResult> {
   const t0 = Date.now();
   const brand = GOLDEN_BRANDS[c.brand];
   const head = { id: c.id, agent: agentForTask(c.type).id, type: c.type, brand: brand.name, delta: null };
+  let items: Generated[] = [];
+  let stage = "generate";
   try {
-    const items = await generate(c.type, brand, [], c.extra, { meter: GOLDEN_EMAIL, stats: c.stats, count: c.count });
+    items = await generate(c.type, brand, [], c.extra, { meter: GOLDEN_EMAIL, stats: c.stats, count: c.count });
+    stage = "judge";
     const q = await scoreItems(GOLDEN_EMAIL, brand, c.type, items);
-    const checks = hardChecks(c, brand, items);
     const dims = q.length ? (Object.fromEntries((Object.keys(q[0].dims) as (keyof Quality["dims"])[]).map((k) => [k, Math.round(mean(q.map((x) => x.dims[k])) ?? 0)])) as Quality["dims"]) : null;
-    return { ...head, ok: true, score: mean(q.map((x) => x.score)), dims, notes: q.map((x) => x.notes).filter(Boolean), checks, items: items.map((i) => ({ ...i, body: i.body.slice(0, 1500) })), ms: Date.now() - t0 };
+    return { ...head, ok: true, score: mean(q.map((x) => x.score)), dims, notes: q.map((x) => x.notes).filter(Boolean), checks: hardChecks(c, brand, items), items: items.map(trim), ms: Date.now() - t0 };
   } catch (e) {
-    return { ...head, ok: false, error: (e instanceof Error ? e.message : String(e)).slice(0, 200), score: null, dims: null, notes: [], checks: [], items: [], ms: Date.now() - t0 };
+    // Keep the output and the deterministic checks when only the judge failed.
+    return { ...head, ok: false, error: `${stage}: ${(e instanceof Error ? e.message : String(e)).slice(0, 180)}`, score: null, dims: null, notes: [], checks: items.length ? hardChecks(c, brand, items) : [], items: items.map(trim), ms: Date.now() - t0 };
   }
 }
 
