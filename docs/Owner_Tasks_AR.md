@@ -83,7 +83,7 @@
 
 ## ح2. بعد تدقيق الإطلاق (2026-09-18) — التفاصيل في `docs/Shipping_Packet_2026-09-18_AR.md`
 - [ ] تدوير `WAITLIST_ADMIN_KEY`: كان يُقبل في الروابط حتى 18 سبتمبر وقد يكون في سجلات سابقة. `vercel env rm WAITLIST_ADMIN_KEY production` ثم `vercel env add WAITLIST_ADMIN_KEY production` بقيمة جديدة، وحدّث `~/projects/nashr/.env.admin.local`
-- [ ] في Vercel: المشروع `nashr` ← Settings ← Build and Deployment ← قسم «Deployment Checks» ← Add Checks ← المزوّد GitHub ← اختر «Nashr CI». (تأكد قبلها من Settings ← Environments ← Production أن الربط التلقائي للدومين مفعّل.) بدونها يبقى فشل الاختبارات غير مانع للنشر. للتجاوز عند الضرورة: Force Promote من صفحة النشر
+- [x] (فُعّل 2026-09-18) في Vercel: المشروع `nashr` ← Settings ← Build and Deployment ← قسم «Deployment Checks» ← Add Checks ← المزوّد GitHub ← اختر «Nashr CI». (تأكد قبلها من Settings ← Environments ← Production أن الربط التلقائي للدومين مفعّل.) بدونها يبقى فشل الاختبارات غير مانع للنشر. للتجاوز عند الضرورة: Force Promote من صفحة النشر
 - [ ] قرار: التحقق من البريد عند التسجيل قبل منح كريدت التجربة والتهيئة المجانية (يحتاج `RESEND_API_KEY` أولاً)
 - [x] قرار: الأهم فالمهم (2026-09-18). أُصلحت المهام المجدولة أولاً (`0198cac`)، ثم الاختبارات وCI
 - [ ] صباح الأحد 20 سبتمبر: تأكد أن خطة الأسبوع وصلت صندوق الموافقات. أول تشغيل حقيقي للمهمة الأسبوعية الجديدة، ولم تُجرَّب على الإنتاج عمداً حتى لا تُخصم كريدت في غير موعدها
