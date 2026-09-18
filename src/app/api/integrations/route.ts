@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser, isAdmin } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { CAPS, db, pushCapped } from "@/lib/db";
 import { INTEGRATIONS } from "@/lib/integrations";
 
 export async function GET(req: Request) {
@@ -17,7 +17,7 @@ export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as { id?: string; name?: string };
   const name = (b.name ?? b.id ?? "").toString().slice(0, 80);
   if (!name) return NextResponse.json({ ok: false, error: "missing" }, { status: 400 });
-  await db.lpush("integration-requests", JSON.stringify({ email: u.email, name, at: new Date().toISOString() }));
+  await pushCapped("integration-requests", JSON.stringify({ email: u.email, name, at: new Date().toISOString() }), CAPS.tickets);
   const n = await db.incrby(`integration-votes:${name.toLowerCase()}`, 1);
   return NextResponse.json({ ok: true, votes: n });
 }

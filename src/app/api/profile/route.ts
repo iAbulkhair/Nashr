@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser, PLAN_CREDITS, saveUser, sc } from "@/lib/auth";
-import { getBrand, listTasks, saveBrand, TASK_COST, TASK_COUNT, type TaskType } from "@/lib/brand";
+import { getBrand, listLite, saveBrand, TASK_COST, TASK_COUNT, type TaskType } from "@/lib/brand";
 import { db } from "@/lib/db";
 
 export type EmailPrefs = "all" | "important" | "none";
@@ -8,8 +8,8 @@ export type EmailPrefs = "all" | "important" | "none";
 export async function GET() {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  const tasks = await listTasks(sc(u));
   const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
+  const tasks = await listLite(sc(u), monthStart);
   const usage: Record<string, { count: number; credits: number }> = {};
   for (const t of tasks) {
     if (new Date(t.createdAt) < monthStart) continue;
@@ -17,7 +17,7 @@ export async function GET() {
   }
   // credits are per batch; convert item counts back to credits via items-per-batch
   for (const k of Object.keys(usage)) { const t = k as TaskType; usage[k].credits = Math.round((usage[k].count / (TASK_COUNT[t] ?? 1)) * (TASK_COST[t] ?? 1)); }
-  const images = tasks.filter((t) => t.imageUrl && new Date(t.createdAt) >= monthStart).length;
+  const images = tasks.filter((t) => t.image).length;
   const prefs = (await db.get<{ emails?: EmailPrefs }>(`profile:${sc(u)}`)) ?? {};
   const { passHash: _p, ...safe } = u; void _p;
   const brand = await getBrand(sc(u));

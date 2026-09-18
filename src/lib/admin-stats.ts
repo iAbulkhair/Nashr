@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { PLAN_CREDITS, getUser, type Plan } from "./auth";
-import { getBrand, listTasks, TASK_COST, TASK_COUNT, IMAGE_COST } from "./brand";
+import { getBrand, listLite, TASK_COST, TASK_COUNT, IMAGE_COST } from "./brand";
 import { getUsage } from "./usage";
 import { pmap } from "./parallel";
 import { EVENTS, activeCount, day, dayCount, firstEvent, isoWeek, lastActive, userEvents, type Event } from "./track";
@@ -63,7 +63,7 @@ export async function overview(): Promise<Overview> {
 
   // credits consumed this month across all workspaces (from tasks), model cost from usage totals
   const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).getTime();
-  const perUser = await pmap(users, async (u) => (await listTasks(u.email)).filter((t) => new Date(t.createdAt).getTime() >= monthStart).reduce((s, t) => s + (TASK_COST[t.type] ?? 1) / (TASK_COUNT[t.type] ?? 1) + (t.imageUrl ? IMAGE_COST : 0), 0), 6);
+  const perUser = await pmap(users, async (u) => (await listLite(u.email, new Date(monthStart))).reduce((s, t) => s + (TASK_COST[t.type] ?? 1) / (TASK_COUNT[t.type] ?? 1) + (t.image ? IMAGE_COST : 0), 0), 6);
   const creditsUsed = perUser.reduce((s, x) => s + x, 0);
   const total = await getUsage("_all");
   const usdToSar = 3.75;

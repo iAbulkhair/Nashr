@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
 import { isAgentId } from "@/lib/agents";
-import { db } from "@/lib/db";
+import { CAPS, pushCapped } from "@/lib/db";
 import { playbook } from "@/lib/skills";
 import { GOLDEN_CASES, GOLDEN_VERSION, listGoldenRuns, runGolden } from "@/lib/golden";
 
@@ -21,6 +21,6 @@ export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as { agent?: string; resume?: boolean };
   const run = await runGolden("manual", { agent: isAgentId(b.agent) ? b.agent : undefined, resume: !!b.resume });
   if (!run) return NextResponse.json({ ok: false, error: process.env.ANTHROPIC_API_KEY ? "already_running" : "no_model_key" }, { status: 409 });
-  await db.lpush("admin:log", JSON.stringify({ actor: "founder", email: "golden-set", what: `golden:run${b.agent ? `:${b.agent}` : ""}${b.resume ? ":resume" : ""}`, after: { id: run.id, status: run.status, overall: run.overall, usd: run.usd }, at: new Date().toISOString() }));
+  await pushCapped("admin:log", JSON.stringify({ actor: "founder", email: "golden-set", what: `golden:run${b.agent ? `:${b.agent}` : ""}${b.resume ? ":resume" : ""}`, after: { id: run.id, status: run.status, overall: run.overall, usd: run.usd }, at: new Date().toISOString() }), CAPS.adminLog);
   return NextResponse.json({ ok: true, run });
 }

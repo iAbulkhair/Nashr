@@ -38,7 +38,6 @@ export async function POST(req: Request) {
     async start(ctrl) {
       const send = (o: unknown) => { try { ctrl.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`)); } catch { /* client went away; keep working so the thread is complete on reload */ } };
       const say = async (m: Omit<ChatMsg, "role" | "at" | "agent">) => { const msg: ChatMsg = { role: "assistant", agent: "noor", at: new Date().toISOString(), ...m }; await push(scope, msg); send({ type: "message", message: msg }); };
-      let timer: ReturnType<typeof setInterval> | undefined;
       const beat = setInterval(() => { try { ctrl.enqueue(enc.encode(": ping\n\n")); } catch { /* closed */ } }, 10000);
       try {
         await say({ content: t.intro });
@@ -46,19 +45,20 @@ export async function POST(req: Request) {
         const site = await crawl(b.url!);
         send({ type: "status", text: t.visuals });
         if (!site.ok) await say({ content: t.unreachable });
-        // One model call does research, files and plan; surface its stages while it runs.
+        // Three model calls run side by side (src/lib/onboard.ts). The status line moves when a part really lands.
         const stages = [t.research, t.files, t.plan];
-        let i = 0;
-        send({ type: "status", text: stages[i++] });
-        timer = setInterval(() => { if (i < stages.length) send({ type: "status", text: stages[i++] }); }, 25000);
-        const r = await buildFromSite(site, u.lang, b.hints, u.email);
-        clearInterval(timer);
+        let landed = 0;
+        send({ type: "status", text: stages[0] });
+        const r = await buildFromSite(site, u.lang, b.hints, u.email, () => { landed++; if (landed < stages.length) send({ type: "status", text: stages[landed] }); });
         await track(u.email, "onboard");
         await saveBrand(scope, r.brand);
-        const files: { name: string; content: string }[] = [];
-        for (const f of r.files) { const saved = await writeFile(scope, f.name, f.content, "noor"); files.push({ name: saved.name, content: saved.content }); }
-        if (!(await readFile(scope, "preferences.md"))) await writeFile(scope, "preferences.md", "# Preferences learned from the owner\n", "noor");
-        await db.set(`onboardplan:${scope}`, { goal: r.goal, plan: r.plan, at: new Date().toISOString() });
+        const [saved, prefs] = await Promise.all([
+          Promise.all(r.files.map((f) => writeFile(scope, f.name, f.content, "noor"))),
+          readFile(scope, "preferences.md"),
+          db.set(`onboardplan:${scope}`, { goal: r.goal, plan: r.plan, at: new Date().toISOString() }),
+        ]);
+        const files = saved.map((f) => ({ name: f.name, content: f.content }));
+        if (!prefs) await writeFile(scope, "preferences.md", "# Preferences learned from the owner\n", "noor");
         await say({ content: t.filesMsg, files });
         await say({ content: `**${t.planTitle}**\n\n${r.summary}`, plan: r.plan });
         send({ type: "done", brand: r.brand.name, goal: r.goal });
@@ -67,7 +67,6 @@ export async function POST(req: Request) {
         await track(u.email, "error").catch(() => {});
         send({ type: "error", error: e instanceof Error ? e.message.slice(0, 160) : "failed" });
       } finally {
-        if (timer) clearInterval(timer);
         clearInterval(beat);
         await db.unlock(`onboardlock:${scope}`).catch(() => {});
         try { ctrl.close(); } catch { /* already closed */ }

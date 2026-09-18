@@ -9,7 +9,7 @@ import { listBrands, scopeFor } from "@/lib/brands";
 import { listConversations } from "@/lib/conversations";
 import { withUserLock } from "@/lib/credits";
 import { wipeAccount } from "@/lib/account";
-import { db } from "@/lib/db";
+import { CAPS, db, pushCapped } from "@/lib/db";
 import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +48,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
   const u = await getUser(email);
   if (!u) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   const b = (await req.json().catch(() => ({}))) as Action;
-  const log = (what: string, extra: Record<string, unknown> = {}) => db.lpush("admin:log", JSON.stringify({ actor: "founder", email, what, reason: (b.reason ?? "").slice(0, 200) || undefined, ...extra, at: new Date().toISOString() }));
+  const log = (what: string, extra: Record<string, unknown> = {}) => pushCapped("admin:log", JSON.stringify({ actor: "founder", email, what, reason: (b.reason ?? "").slice(0, 200) || undefined, ...extra, at: new Date().toISOString() }), CAPS.adminLog);
 
   switch (b.action) {
     case "suspend":

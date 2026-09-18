@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
-import type { Task } from "@/lib/brand";
+import type { TaskLite } from "@/lib/brand";
 import type { Lang } from "@/lib/i18n";
 import { Icon, channelIcon } from "./Icons";
 
@@ -10,7 +10,7 @@ const DEFAULT_ROWS = ["instagram", "snapchat", "tiktok", "x", "whatsapp", "gbp",
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 /** Marketing calendar: week view with one row per channel (Enrich-style) plus the month view. */
-export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: AppDict; tasks: Task[]; lang: Lang; channels?: string[] }) {
+export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: AppDict; tasks: TaskLite[]; lang: Lang; channels?: string[] }) {
   const c = t.calendar;
   const today = iso(new Date());
   const [view, setView] = useState<"week" | "month">("week");
@@ -19,7 +19,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
   const [sel, setSel] = useState<string>(today);
 
   const scheduled = tasks.filter((x) => x.status !== "rejected" && (x.scheduledFor || x.status === "approved"));
-  const byDay = new Map<string, Task[]>();
+  const byDay = new Map<string, TaskLite[]>();
   for (const x of scheduled) { const d = x.scheduledFor ?? x.createdAt.slice(0, 10); byDay.set(d, [...(byDay.get(d) ?? []), x]); }
   const rows = [...new Set([...channels, ...DEFAULT_ROWS, ...scheduled.map((x) => x.channel)])].filter((ch) => ch !== "plan" && ch !== "general").slice(0, 10);
   const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(anchor); d.setUTCDate(anchor.getUTCDate() + i); return d; });
@@ -129,7 +129,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
             <Link href={`/${lang}/app/chat?prompt=${encodeURIComponent((lang === "ar" ? "جهّزي محتوى ليوم " : "Prepare content for ") + sel)}`} className="btn btn-primary mt-4">{c.addContent}</Link>
           </div>
         ) : (
-          <ul className="mt-2 grid gap-2 md:grid-cols-2">{selected.map((x) => <li key={x.id} className="rounded border border-ink/10 p-2 text-xs"><span className="inline-flex items-center gap-1 text-oasis"><Icon name={channelIcon(x.channel)} className="h-3.5 w-3.5" />{(t.channelNames as Record<string, string>)[x.channel] ?? x.channel}</span> · {x.title} <span className={`badge ${x.status === "approved" ? "badge-primary" : "badge-accent"}`}>{x.status === "approved" ? t.inbox.approved : t.inbox.pending}</span><p className="mt-1 line-clamp-3 whitespace-pre-wrap text-ink/70" dir="auto">{(x.editedBody ?? x.body).slice(0, 200)}</p></li>)}</ul>
+          <ul className="mt-2 grid gap-2 md:grid-cols-2">{selected.map((x) => <li key={x.id} className="rounded border border-ink/10 p-2 text-xs"><span className="inline-flex items-center gap-1 text-oasis"><Icon name={channelIcon(x.channel)} className="h-3.5 w-3.5" />{(t.channelNames as Record<string, string>)[x.channel] ?? x.channel}</span> · {x.title} <span className={`badge ${x.status === "approved" ? "badge-primary" : "badge-accent"}`}>{x.status === "approved" ? t.inbox.approved : t.inbox.pending}</span><p className="mt-1 line-clamp-3 whitespace-pre-wrap text-ink/70" dir="auto">{x.preview}</p></li>)}</ul>
         )}
         {unscheduled.length > 0 && <p className="mt-3 text-xs text-ink/50">{c.unscheduled}: {unscheduled.length} · <Link href={`/${lang}/app`} className="text-oasis underline">{c.setDates}</Link></p>}
       </aside>

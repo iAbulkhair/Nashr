@@ -54,7 +54,7 @@ Per-route authorization is in `permissions.md`.
 | `judge.ts` | Post-response quality scoring of generated tasks (`judgeLater` via `after()`). |
 | `evals.ts` | Behavioural metrics per agent, chat thumbs storage. |
 | `golden.ts` | Weekly fixed "golden set" regression run across agents. |
-| `onboard.ts` | Builds brand file, workspace files and starter plan from a crawled site in one model call. |
+| `onboard.ts` | Builds brand file, workspace files and starter plan from a crawled site in three parallel model calls (`PARTS`: core, identity, market), one retry per part. |
 | `crawl.ts` | Fetches a user-supplied URL server-side and reduces HTML to text, colors, fonts, platform. |
 | `catalog.ts` | Discovers product URLs via sitemaps/robots and scrapes product pages into `products.md`. |
 | `files.ts` | Workspace Markdown files ("memory"), `memoryBlock` for prompts. |
@@ -121,7 +121,10 @@ All three require `Authorization: Bearer ${CRON_SECRET}` and return 401 when the
 | `brand:{scope}` | json | `Brand` file | `brand.ts:83` | none |
 | `tasks:{scope}` | list | Task ids, newest first (reads cap at 200) | `brand.ts:89,96` | none |
 | `task:{scope}:{id}` | json | `Task` | `brand.ts:95` | none |
-| `prefs:{scope}` | list | Learned preference notes (reads cap at 30) | `brand.ts:102` | none |
+| `pending:{scope}`, `pendingidx:{scope}` | set / string | Ids waiting for approval, maintained by `saveTask`; marker of the first indexing | `brand.ts` | none |
+| `tidx:{scope}:{YYYY-MM}` | hash | Light task rows (`TaskLite`, no body) by creation month, written by `saveTask`; read by KPIs, calendar, briefs, follow-ups, metrics | `brand.ts` (`listLite`) | none |
+| `tidxm:{scope}`, `tidxv:{scope}` | set / string | Months that have an index hash; when the index was last rebuilt from the tasks (first use, then weekly in `runDaily`) | `brand.ts` | none |
+| `prefs:{scope}` | list | Learned preference notes (reads cap at 30, list trimmed to 100) | `brand.ts:102` | none |
 | `files:{scope}` | set | Workspace file names | `files.ts:6` | none |
 | `file:{scope}:{name}` | json | `WFile`; delete writes `null` tombstone, the set member stays (`files.ts:32-37`) | `files.ts:7` | none |
 | `chat:{scope}` | list | Default thread messages (JSON `ChatMsg`) | `chat.ts:27` | none |
@@ -160,8 +163,10 @@ All three require `Authorization: Bearer ${CRON_SECRET}` and return 401 when the
 | `support-tickets` | list | Support and contact tickets | `api/support/route.ts:11` | none |
 | `affiliate-applications` | list | Affiliate applications | `api/affiliates/route.ts:9` | none |
 | `integration-requests`, `integration-votes:{name}` | list / int | Integration requests | `api/integrations/route.ts:20-21` | none |
-| `toolrate:{ip}:{date}`, `toolusage:{slug}` | int | Free tool anonymous daily counter, per-tool usage | `api/tools/[tool]/route.ts:18,36` | none (no expiry is set) |
+| `rate:tool:{ip}`, `toolusage:{slug}` | int | Free tool anonymous daily allowance (through `allow()`, platform IP), per-tool usage | `api/tools/[tool]/route.ts` | 24 h / none |
 | `waitlist:entries`, `waitlist:emails` | list / set | Waitlist (direct Upstash client, bypasses `db.ts`) | `api/waitlist/route.ts:4-5` | none |
+
+Bounded lists (2026-09-18): `pushCapped` in `db.ts` trims on write. Caps in `CAPS`: chat threads 400 messages, `admin:log` 2000, `support-tickets` / `affiliate-applications` / `integration-requests` 2000, `fblog:{email}` 500, `prefs:{scope}` 100. The task id list `tasks:{scope}` is never trimmed (owner data); `listTasks` still reads the newest 200 full tasks (approvals inbox, MCP, founder user card).
 
 ## 4. Request lifecycles
 

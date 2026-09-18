@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { CAPS, db, pushCapped } from "@/lib/db";
 import { currentUser, isAdmin } from "@/lib/auth";
 import { sendEmail } from "@/lib/notify";
 
@@ -8,7 +8,7 @@ export async function POST(req: Request) {
   if (!b.email || !b.message) return NextResponse.json({ ok: false }, { status: 400 });
   const u = await currentUser();
   const rec = { email: b.email.slice(0, 120), user: u?.email ?? null, type: (b.type ?? "question").slice(0, 20), message: b.message.slice(0, 4000), page: (b.page ?? "").slice(0, 200), lang: b.lang === "en" ? "en" : "ar", at: new Date().toISOString(), status: "open" };
-  await db.lpush("support-tickets", JSON.stringify(rec));
+  await pushCapped("support-tickets", JSON.stringify(rec), CAPS.tickets);
   if (process.env.WAITLIST_TO) await sendEmail(process.env.WAITLIST_TO, `Nashr support [${rec.type}] ${rec.email}`, JSON.stringify(rec, null, 2));
   return NextResponse.json({ ok: true });
 }

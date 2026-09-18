@@ -69,7 +69,7 @@ Files: `start/page.tsx`, `src/components/app/StartWizard.tsx`, `chat/page.tsx:26
 1. A user without `brand:{scope}` is redirected from the inbox, chat and reports pages to `/{lang}/app/start`. The wizard collects a site URL and routes to `/{lang}/app/chat?onboard={url}`; a manual alternative links to `/{lang}/app/onboarding` (brand form, `PUT /api/brand`).
 2. `ChatPanel` posts `{url}` to `POST /api/onboard`. Server requires session and a URL of length >= 4.
 3. Lock `onboardlock:{scope}` (240 s). A second concurrent run gets 409 `busy`.
-4. SSE stream (10 s ping). Steps: intro message, `crawl(url)` (server-side fetch of the user URL, 9 s timeout, follows redirects, `crawl.ts:44`), then one model call `buildFromSite` (`claude-opus-5`, `onboard.ts:106`) with rotating status lines.
+4. SSE stream (10 s ping). Steps: intro message, `crawl(url)` (server-side fetch of the user URL, 9 s timeout, follows redirects, `crawl.ts:44`), then `buildFromSite`: three parallel `claude-opus-5` calls from the same snapshot (core: brand, brand.md, plan, goal, summary; identity: guidelines, opportunities; market: research, strategy), one retry per part; the status line advances as each part lands.
 5. Writes: `saveBrand(scope)`, each returned file via `writeFile(scope, ...)`, `preferences.md` if absent, `onboardplan:{scope}`. Every assistant message is persisted to `chat:{scope}` via `push`.
 6. Onboarding charges no credits (`onboard/route.ts:22`) and is not limited to a single run per workspace beyond the lock; re-running overwrites the brand file and files.
 7. `GET /api/onboard/plan` returns the stored plan; `POST {index, added}` flips the `added` flag. Phone is requested in-thread and saved through `PUT /api/profile` (`OnboardCards.tsx:75`).

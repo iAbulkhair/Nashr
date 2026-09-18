@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { CAPS, db, pushCapped } from "@/lib/db";
 
 /** POST /api/admin/impersonate (stop): restore the founder's own session saved when impersonation started. */
 export async function POST(req: Request) {
@@ -15,6 +15,6 @@ export async function POST(req: Request) {
   else jar.delete("nashr_session");
   jar.delete("nashr_return");
   jar.delete("nashr_impersonate");
-  if (who) await db.lpush("admin:log", JSON.stringify({ actor: "founder", email: who, what: "impersonate:stop", at: new Date().toISOString() }));
+  if (who) await pushCapped("admin:log", JSON.stringify({ actor: "founder", email: who, what: "impersonate:stop", at: new Date().toISOString() }), CAPS.adminLog);
   return NextResponse.redirect(new URL(`/${lang}/app/admin`, req.url), 303);
 }

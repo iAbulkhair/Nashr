@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 import { db } from "./db";
 import type { User } from "./auth";
-import { listTasks, type Task } from "./brand";
+import { listLite } from "./brand";
 import { getSchedule } from "./schedule";
 import type { AgentId } from "./agents";
 
@@ -47,14 +47,14 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   if (sched.followUps === false) return [];
   const ar = user.lang === "ar";
   const app = `/${user.lang}/app`;
-  const tasks = await listTasks(scope);
+  const tasks = await listLite(scope, new Date(Date.now() - 180 * 864e5));
   const today = new Date().toISOString().slice(0, 10);
   const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
   const out: Notif[] = [];
   const add = async (n: Omit<Notif, "id" | "at">, fp: string, ttl = 3) => { const x = await pushNotif(user.email, n, fp, ttl); if (x) out.push(x); };
 
   // 1. Scheduled items due today or tomorrow and not yet published through a connector.
-  const due = tasks.filter((t) => t.status === "approved" && (t.scheduledFor === today || t.scheduledFor === tomorrow) && !t.published?.length);
+  const due = tasks.filter((t) => t.status === "approved" && (t.scheduledFor === today || t.scheduledFor === tomorrow) && !t.published);
   if (due.length) {
     const titles = due.slice(0, 3).map((t) => t.title).join(" · ");
     await add({ kind: "due", agent: "noor", href: `${app}/calendar`, title: ar ? `${due.length} عنصر موعده اليوم أو غداً` : `${due.length} item(s) due today or tomorrow`, body: ar ? `انشرها الآن أو اربط المنصة لتُنشر تلقائياً: ${titles}` : `Publish now or connect the platform so it goes out automatically: ${titles}` }, `due:${today}`, 2);
@@ -74,9 +74,9 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
     if (left > 0 && left < 864e5) await add({ kind: "trial", href: `${app}/billing`, title: ar ? "تجربتك تنتهي خلال 24 ساعة" : "Your trial ends within 24 hours", body: ar ? "اشترك لتبقى دفعاتك وجدولك تعمل." : "Subscribe to keep your batches and schedule running." }, "trial", 3);
   }
   // 5. Items the judge scored below 70 and still pending.
-  const weak = tasks.filter((t) => t.status === "pending" && t.quality && t.quality.score < 70);
+  const weak = tasks.filter((t) => t.status === "pending" && typeof t.score === "number" && t.score < 70);
   if (weak.length) {
-    await add({ kind: "quality", agent: "dana", href: app, title: ar ? `${weak.length} عنصر بدرجة جودة أقل من 70` : `${weak.length} item(s) scored below 70`, body: ar ? `${weak[0].quality!.notes} أعد التوليد بملاحظة أوضح أو عدّل قبل الاعتماد.` : `${weak[0].quality!.notes} Regenerate with a clearer note or edit before approving.` }, `quality:${weak.map((t) => t.id).sort().join(",").slice(0, 60)}`, 7);
+    await add({ kind: "quality", agent: "dana", href: app, title: ar ? `${weak.length} عنصر بدرجة جودة أقل من 70` : `${weak.length} item(s) scored below 70`, body: ar ? `${weak[0].notes ?? ""} أعد التوليد بملاحظة أوضح أو عدّل قبل الاعتماد.` : `${weak[0].notes ?? ""} Regenerate with a clearer note or edit before approving.` }, `quality:${weak.map((t) => t.id).sort().join(",").slice(0, 60)}`, 7);
   }
   return out;
 }
@@ -90,4 +90,3 @@ export function notifEmailText(user: User, items: Notif[]) {
 export async function notifyItem(email: string, lang: "ar" | "en", n: { kind: NotifKind; agent?: AgentId; title: string; body: string; href: string }, fp?: string, ttl?: number) {
   return pushNotif(email, { ...n, href: n.href.startsWith("/") ? n.href : `/${lang}/app/${n.href}` }, fp, ttl);
 }
-export type { Task };

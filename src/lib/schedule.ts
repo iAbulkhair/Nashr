@@ -3,7 +3,7 @@ import { db } from "./db";
 import { getUser, type User } from "./auth";
 import { charge, refund } from "./credits";
 import { judgeLater } from "./judge";
-import { TASK_COST, getBrand, listPreferences, listTasks, rebuildPending, saveTask, type Brand, type Task } from "./brand";
+import { TASK_COST, getBrand, indexedAt, listLite, listPreferences, rebuildIndex, rebuildPending, saveTask, type Brand, type Task } from "./brand";
 import { generate } from "./noor";
 import { memoryBlock } from "./files";
 import { getGov } from "./governance";
@@ -51,7 +51,7 @@ async function weeklyFor(user: User, email: string, brand: Brand): Promise<strin
   if (user.plan === "trial" && new Date(user.trialEnds) < new Date()) return "trial_over";
   // weekly cap: count items Noor created on her own in the last 7 days
   const weekAgo = Date.now() - 7 * 864e5;
-  const auto = (await listTasks(email)).filter((t) => t.source === "scheduled" && new Date(t.createdAt).getTime() > weekAgo).length;
+  const auto = (await listLite(email, new Date(weekAgo))).filter((t) => t.source === "scheduled").length;
   if (auto >= gov.weeklyCap) return "cap_reached";
   const paid = await charge(user.email, cost);
   if (!paid.ok) return "no_credits";
@@ -82,8 +82,10 @@ export async function runDaily(user: User): Promise<Brief | null> {
   const sched = await getSchedule(email);
   if (!sched.dailyBrief) return null;
   const brand = await getBrand(email);
-  const tasks = await listTasks(email);
-  await rebuildPending(email, tasks); // daily reconcile of the pending-ids set (also drops ids that left the 200-task window)
+  // Weekly: rebuild the light index from the tasks themselves, so a write that failed half way cannot stay wrong for long.
+  const stamp = await indexedAt(email);
+  const tasks = stamp && Date.now() - new Date(stamp).getTime() < 7 * 864e5 ? await listLite(email) : await rebuildIndex(email);
+  await rebuildPending(email, tasks); // daily reconcile of the pending-ids set
   const dayAgo = Date.now() - 7 * 864e5;
   const pending = tasks.filter((t) => t.status === "pending").length;
   const approved7d = tasks.filter((t) => t.status === "approved" && new Date(t.createdAt).getTime() > dayAgo).length;

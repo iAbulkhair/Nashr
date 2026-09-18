@@ -10,6 +10,11 @@ type Store = {
   del(key: string): Promise<void>;
   lpush(key: string, value: string): Promise<void>;
   lrange(key: string, start: number, stop: number): Promise<string[]>;
+  /** Keep only the newest `keep` entries of a list written with lpush. */
+  ltrim(key: string, keep: number): Promise<void>;
+  hset(key: string, field: string, value: unknown): Promise<void>;
+  hgetall<T = unknown>(key: string): Promise<Record<string, T>>;
+  hdel(key: string, field: string): Promise<void>;
   sadd(key: string, member: string): Promise<number>;
   smembers(key: string): Promise<string[]>;
   srem(key: string, member: string): Promise<void>;
@@ -42,6 +47,18 @@ function upstash(): Store | null {
       const rows = await r.lrange<string>(key, a, b);
       return rows.map((x) => (typeof x === "string" ? x : JSON.stringify(x)));
     },
+    async ltrim(key, keep) {
+      await r.ltrim(key, 0, keep - 1);
+    },
+    async hset(key, field, value) {
+      await r.hset(key, { [field]: value });
+    },
+    async hgetall<T>(key: string) {
+      return ((await r.hgetall<Record<string, T>>(key)) ?? {}) as Record<string, T>;
+    },
+    async hdel(key, field) {
+      await r.hdel(key, field);
+    },
     async sadd(key, m) {
       return await r.sadd(key, m);
     },
@@ -63,10 +80,11 @@ function upstash(): Store | null {
   };
 }
 
-const mem = globalThis as unknown as { __nashrMem?: { kv: Map<string, unknown>; lists: Map<string, string[]>; sets: Map<string, Set<string>> } };
+const mem = globalThis as unknown as { __nashrMem?: { kv: Map<string, unknown>; lists: Map<string, string[]>; sets: Map<string, Set<string>>; hashes?: Map<string, Map<string, unknown>> } };
 function memory(): Store {
-  if (!mem.__nashrMem) mem.__nashrMem = { kv: new Map(), lists: new Map(), sets: new Map() };
+  if (!mem.__nashrMem) mem.__nashrMem = { kv: new Map(), lists: new Map(), sets: new Map(), hashes: new Map() };
   const m = mem.__nashrMem;
+  const hashes = (m.hashes ??= new Map<string, Map<string, unknown>>());
   return {
     async get<T>(key: string) {
       return (m.kv.get(key) as T) ?? null;
@@ -76,6 +94,9 @@ function memory(): Store {
     },
     async del(key) {
       m.kv.delete(key);
+      m.lists.delete(key);
+      m.sets.delete(key);
+      hashes.delete(key);
     },
     async lpush(key, value) {
       const l = m.lists.get(key) ?? [];
@@ -85,6 +106,21 @@ function memory(): Store {
     async lrange(key, a, b) {
       const l = m.lists.get(key) ?? [];
       return l.slice(a, b === -1 ? undefined : b + 1);
+    },
+    async ltrim(key, keep) {
+      const l = m.lists.get(key);
+      if (l && l.length > keep) l.length = keep;
+    },
+    async hset(key, field, value) {
+      const h = hashes.get(key) ?? new Map<string, unknown>();
+      h.set(field, structuredClone(value));
+      hashes.set(key, h);
+    },
+    async hgetall<T>(key: string) {
+      return Object.fromEntries(hashes.get(key) ?? []) as Record<string, T>;
+    },
+    async hdel(key, field) {
+      hashes.get(key)?.delete(field);
     },
     async sadd(key, member) {
       const s = m.sets.get(key) ?? new Set<string>();
@@ -118,3 +154,13 @@ function memory(): Store {
 
 export const db: Store = upstash() ?? memory();
 export const usingPersistentStore = upstash() !== null;
+
+/**
+ * lpush for lists that only ever grow (chat threads, logs, tickets): keeps the newest `cap` entries. Both commands go out
+ * together, so the list may hold cap + 1 for a moment, which is harmless.
+ */
+export async function pushCapped(key: string, value: string, cap: number) {
+  await Promise.all([db.lpush(key, value), db.ltrim(key, cap)]);
+}
+/** Caps for the lists above. Reads never look past these, so trimming loses nothing a page shows. */
+export const CAPS = { chat: 400, adminLog: 2000, tickets: 2000, feedback: 500, prefs: 100 } as const;

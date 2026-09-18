@@ -4,7 +4,7 @@ import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, sc } from "@/lib/auth";
 import { listConversations, searchConversations } from "@/lib/conversations";
-import { listTasks } from "@/lib/brand";
+import { listLite } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
   const t = appDict[lang];
-  const [convs, tasks] = await Promise.all([listConversations(sc(u)), listTasks(sc(u))]);
+  const [convs, tasks] = await Promise.all([listConversations(sc(u)), listLite(sc(u))]);
   const fromChat = tasks.filter((x) => x.source === "chat").length;
   const hits = q ? await searchConversations(sc(u), q) : null;
   return (

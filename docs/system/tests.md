@@ -1,6 +1,6 @@
 # Test coverage map
 
-Status on 2026-09-18 (evening): Vitest is set up (`npm test`, 8 files, 60 tests, under one second, memory store only, no network or model calls) and `.github/workflows/ci.yml` runs type-check, lint and tests on every push and pull request. First green run: commit `21ccd57` on 2026-09-18 (npm ci, type-check, whole-repo lint with 0 errors, 52 tests). Vercel still deploys from Git on its own: a red CI run does not block production until the "Nashr CI" check is added under Vercel Settings > Build and Deployment > Deployment Checks. Rules without a test below are still unverified.
+Status on 2026-09-18 (evening): Vitest is set up (`npm test`, 10 files, 75 tests, under one second, memory store only, no network or model calls) and `.github/workflows/ci.yml` runs type-check, lint and tests on every push and pull request. First green run: commit `21ccd57` on 2026-09-18 (npm ci, type-check, whole-repo lint with 0 errors, 52 tests). Vercel still deploys from Git on its own: a red CI run does not block production until the "Nashr CI" check is added under Vercel Settings > Build and Deployment > Deployment Checks. Rules without a test below are still unverified.
 
 Legend: **test** = pinned by an automated test in `tests/` · **none** = nothing verifies the rule today · **manual** = checked by hand once (date) · **live** = guarded by a production probe.
 
@@ -26,5 +26,8 @@ Legend: **test** = pinned by an automated test in `tests/` · **none** = nothing
 | 18 | MCP OAuth: PKCE required, codes single use, redirect_uri bound to the registered client | none (audit read it as sound) | API tests on `/api/oauth/*` |
 | 19 | Chat stream sends a heartbeat every 10 s and the client recovers a saved reply after a drop | none | integration test with a slow fake model |
 | 20 | Weekly and daily cron serve every eligible user within the function time limit | test for the runner (`cron-batch.test.ts`: concurrency, budget, done markers, retries, chain cap, Sunday key); daily verified on prod 2026-09-18 (12 of 12, second run skipped all); weekly first real run is Sunday 2026-09-20 | fix first, then a test with 50 fake users and a fake model |
+| 21 | Light task index: no body in a row, follows every save, survives parallel saves, sees past the 200 newest tasks, reads only the months of the window, indexes old workspaces once, rebuild repairs drift, never mixes workspaces; KPIs and edit metrics computed from it match the tasks | test (`task-index.test.ts`) | done |
+| 22 | Lists that only grow are trimmed on write; account deletion removes every task and the whole index, not only the newest 200 | test (`task-index.test.ts`) | done |
+| 23 | Onboarding parts: every output key is asked for by exactly one of the three parallel calls; each part requires its keys and allows nothing else | test (`onboard-parts.test.ts`); the split itself is not measured on prod yet | time a real onboarding before and after |
 
 Next: rules 1, 6, 8, 9, 12, 13 and 14 as route-level tests against the memory store (they need a small helper that fakes the session cookie), rule 3 once `runTool` is exported for testing, then add the "Nashr CI" Deployment Check in Vercel so a red run blocks production.

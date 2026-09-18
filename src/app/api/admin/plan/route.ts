@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { PLAN_CREDITS, getUser, isAdmin, saveUser, type Plan } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { CAPS, db, pushCapped } from "@/lib/db";
 import { monthKey, withUserLock } from "@/lib/credits";
 import { getUsage } from "@/lib/usage";
 import { pmap } from "@/lib/parallel";
@@ -38,6 +38,6 @@ export async function POST(req: Request) {
     await saveUser(u);
     return u;
   });
-  await db.lpush("admin:log", JSON.stringify({ actor: "founder", email: user.email, what: b.plan ? `plan:${b.plan}` : `credits:${b.addCredits}`, before, after: { plan: user.plan, credits: user.credits }, reason: (b.reason ?? "").slice(0, 200) || undefined, at: new Date().toISOString() }));
+  await pushCapped("admin:log", JSON.stringify({ actor: "founder", email: user.email, what: b.plan ? `plan:${b.plan}` : `credits:${b.addCredits}`, before, after: { plan: user.plan, credits: user.credits }, reason: (b.reason ?? "").slice(0, 200) || undefined, at: new Date().toISOString() }), CAPS.adminLog);
   return NextResponse.json({ ok: true, user: { email: user.email, plan: user.plan, credits: user.credits, renewedAt: user.renewedAt } });
 }

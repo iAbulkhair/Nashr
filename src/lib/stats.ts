@@ -1,4 +1,5 @@
-import { IMAGE_COST, TASK_COST, TASK_COUNT, listTasks, type Task, type TaskType } from "./brand";
+import { IMAGE_COST, TASK_COST, TASK_COUNT, listLite, type TaskLite, type TaskType } from "./brand";
+import { db } from "./db";
 import { agentForTask } from "./agents";
 
 /** Workspace KPIs for the Reports page and for Dana's prompts. Computed from stored tasks only; no model call. */
@@ -39,14 +40,21 @@ export function rangeWindow(range: string | undefined, from?: string, to?: strin
 
 const perItem = (t: TaskType) => (TASK_COST[t] ?? 1) / (TASK_COUNT[t] ?? 1);
 
-export async function kpis(scope: string, days?: number, win?: { from: Date; to: Date; label: string; prevFrom: Date }): Promise<Kpis> {
-  const tasks = await listTasks(scope);
+/** How far back a KPI read has to go: the comparison window, the 8-week chart and scheduled items, whichever is oldest. */
+export function kpiSince(win?: { prevFrom: Date } | null): Date {
+  const floor = Date.now() - 90 * 864e5;
+  return new Date(Math.min(floor, win ? win.prevFrom.getTime() : floor));
+}
+
+/** `rows` lets a page that already read the light index (with `kpiSince`) share it instead of reading twice. */
+export async function kpis(scope: string, days?: number, win?: { from: Date; to: Date; label: string; prevFrom: Date }, rows?: TaskLite[]): Promise<Kpis> {
   const now = new Date();
   const w = win ?? (days ? rangeWindow(String(days)) : null);
+  const [tasks, pendingIds] = await Promise.all([rows ?? listLite(scope, kpiSince(w)), db.smembers(`pending:${scope}`)]);
   const month = w ? w.label : now.toISOString().slice(0, 7);
   const prevMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
-  const inMonth = (t: Task, m: string) => t.createdAt.slice(0, 7) === m;
-  const ms = (t: Task) => new Date(t.createdAt).getTime();
+  const inMonth = (t: TaskLite, m: string) => t.createdAt.slice(0, 7) === m;
+  const ms = (t: TaskLite) => new Date(t.createdAt).getTime();
   const cur = w ? tasks.filter((t) => ms(t) >= w.from.getTime() && ms(t) <= w.to.getTime()) : tasks.filter((t) => inMonth(t, now.toISOString().slice(0, 7)));
   const prev = w ? tasks.filter((t) => ms(t) >= w.prevFrom.getTime() && ms(t) < w.from.getTime()) : tasks.filter((t) => inMonth(t, prevMonth));
   // daily series across the window (capped at 120 points)
@@ -57,18 +65,19 @@ export async function kpis(scope: string, days?: number, win?: { from: Date; to:
   for (let i = 0; i < nDays; i++) {
     const a = new Date(wf.getTime() + i * 864e5); const b = new Date(a.getTime() + 864e5);
     const inDay = tasks.filter((t) => ms(t) >= a.getTime() && ms(t) < b.getTime());
-    daily.push({ date: a.toISOString().slice(0, 10), created: inDay.length, approved: inDay.filter((t) => t.status === "approved").length, published: inDay.filter((t) => t.published?.length).length });
+    daily.push({ date: a.toISOString().slice(0, 10), created: inDay.length, approved: inDay.filter((t) => t.status === "approved").length, published: inDay.filter((t) => t.published > 0).length });
   }
   const approved = cur.filter((t) => t.status === "approved").length;
   const rejected = cur.filter((t) => t.status === "rejected").length;
-  const pending = tasks.filter((t) => t.status === "pending").length;
+  // The pending set covers every age; the rows only cover the window.
+  const pending = Math.max(pendingIds.length, tasks.filter((t) => t.status === "pending").length);
   const byType: Record<string, number> = {};
   const byChannel: Record<string, number> = {};
   for (const t of cur) {
     byType[t.type] = (byType[t.type] ?? 0) + 1;
     byChannel[t.channel] = (byChannel[t.channel] ?? 0) + 1;
   }
-  const credits = (list: Task[]) => Math.round(list.reduce((s, t) => s + perItem(t.type) + (t.imageUrl ? IMAGE_COST : 0), 0));
+  const credits = (list: TaskLite[]) => Math.round(list.reduce((s, t) => s + perItem(t.type) + (t.image ? IMAGE_COST : 0), 0));
   // last 8 weeks, Sunday to Saturday, oldest first
   const weeks: Kpis["weeks"] = [];
   const start = new Date(now);
@@ -88,8 +97,8 @@ export async function kpis(scope: string, days?: number, win?: { from: Date; to:
     rejected,
     pending,
     approvalRate: approved + rejected ? Math.round((approved / (approved + rejected)) * 100) : null,
-    published: cur.filter((t) => t.published?.length).length,
-    images: cur.filter((t) => t.imageUrl).length,
+    published: cur.filter((t) => t.published > 0).length,
+    images: cur.filter((t) => t.image).length,
     scheduled: tasks.filter((t) => t.scheduledFor && t.scheduledFor >= now.toISOString().slice(0, 10)).length,
     creditsUsed: credits(cur),
     creditsUsedPrev: credits(prev),

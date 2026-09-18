@@ -6,9 +6,9 @@ import { judgeLater } from "./judge";
 import { meter } from "./usage";
 import Anthropic from "@anthropic-ai/sdk";
 import { randomBytes } from "crypto";
-import { db } from "./db";
+import { CAPS, db, pushCapped } from "./db";
 import type { User } from "./auth";
-import { TASK_COST, TASK_COUNT, getBrand, listPreferences, saveBrand, saveTask, listTasks, type Brand, type Task, type TaskType } from "./brand";
+import { TASK_COST, TASK_COUNT, getBrand, listPreferences, saveBrand, saveTask, listLite, type Brand, type Task, type TaskType } from "./brand";
 import { generate } from "./noor";
 import { listFiles, memoryBlock, readFile, writeFile } from "./files";
 import { getGov } from "./governance";
@@ -31,7 +31,7 @@ export async function history(email: string, conv?: string): Promise<ChatMsg[]> 
 }
 /** Append a message to a thread (used by chat turns and the onboarding run). */
 export async function push(email: string, m: ChatMsg, conv?: string) {
-  await db.lpush(key(email, conv), JSON.stringify(m));
+  await pushCapped(key(email, conv), JSON.stringify(m), CAPS.chat);
 }
 
 const TOOLS: Anthropic.Tool[] = [
@@ -328,9 +328,9 @@ async function runTool(user: User, name: string, input: Record<string, unknown>,
       return `Published to ${provider} as ${r.status}: ${r.url}`;
     }
     case "list_inbox": {
-      const tasks = await listTasks(email);
+      const tasks = await listLite(email, new Date(Date.now() - 90 * 864e5));
       const c = (s: string) => tasks.filter((t) => t.status === s).length;
-      return `Inbox: ${c("pending")} pending, ${c("approved")} approved, ${c("rejected")} rejected. Latest: ${tasks.slice(0, 8).map((t) => `[id=${t.id}] ${t.type}/${t.channel}: ${t.title} [${t.status}]${t.imageUrl ? " (has image)" : ""}`).join("; ")}`;
+      return `Inbox: ${c("pending")} pending, ${c("approved")} approved, ${c("rejected")} rejected. Latest: ${tasks.slice(0, 8).map((t) => `[id=${t.id}] ${t.type}/${t.channel}: ${t.title} [${t.status}]${t.image ? " (has image)" : ""}`).join("; ")}`;
     }
     case "import_catalog": {
       const brand = await getBrand(email);
