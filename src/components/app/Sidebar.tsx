@@ -29,7 +29,8 @@ export default function Sidebar({ t, lang, user, brandName, admin, supportWa }: 
   const [q, setQ] = useState("");
   useEffect(() => {
     fetch("/api/notifications?count=1").then((x) => x.json()).then((j) => j.ok && setUnread(j.unread)).catch(() => {});
-    fetch("/api/tasks").then((x) => x.json()).then((j) => j.ok && setPending((j.tasks as { status: string }[]).filter((x) => x.status === "pending").length)).catch(() => {});
+    // Only the number: the full list (up to 200 task bodies) was downloaded on every navigation for this badge.
+    fetch("/api/tasks?count=pending").then((x) => x.json()).then((j) => j.ok && setPending(j.pending)).catch(() => {});
     fetch("/api/conversations").then((x) => x.json()).then((j) => j.ok && setConvs(j.conversations)).catch(() => {});
   }, [path]);
   useEffect(() => {
