@@ -3,7 +3,7 @@ import { db } from "./db";
 import { getUser, type User } from "./auth";
 import { charge, refund } from "./credits";
 import { judgeLater } from "./judge";
-import { TASK_COST, getBrand, listPreferences, listTasks, saveTask, type Task } from "./brand";
+import { TASK_COST, getBrand, listPreferences, listTasks, saveTask, type Brand, type Task } from "./brand";
 import { generate } from "./noor";
 import { memoryBlock } from "./files";
 import { getGov } from "./governance";
@@ -35,6 +35,17 @@ export async function runWeekly(user: User): Promise<string> {
   if (!brand) return "no_brand";
   const sched = await getSchedule(email);
   if (!sched.weeklyPlan) return "off";
+  // Belt and braces next to the cron markers: never charge or generate twice for the same week.
+  if (sched.lastWeekly && Date.now() - new Date(sched.lastWeekly).getTime() < 5 * 864e5) return "already_this_week";
+  if (!(await db.lock(`weeklylock:${email}`, 300))) return "retry:locked";
+  try {
+    return await weeklyFor(user, email, brand);
+  } finally {
+    await db.unlock(`weeklylock:${email}`);
+  }
+}
+
+async function weeklyFor(user: User, email: string, brand: Brand): Promise<string> {
   const gov = await getGov(email);
   const cost = TASK_COST.weekly_plan;
   if (user.plan === "trial" && new Date(user.trialEnds) < new Date()) return "trial_over";

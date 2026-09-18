@@ -1,0 +1,73 @@
+import { after } from "next/server";
+import { db } from "./db";
+import { pmap } from "./parallel";
+
+/**
+ * Runs a per-user cron job so that EVERY user is served, whatever the count.
+ * - bounded concurrency instead of one user after another
+ * - a "done" marker per (job, period, user): a user is never processed twice in a period
+ * - one failing user never stops the others; a user is retried at most twice
+ * - a start budget: no new user is started once the function is close to its time limit
+ * - when users remain, the route calls itself again (same bearer secret) until the list is empty
+ */
+export type BatchReport = { job: string; period: string; chain: number; total: number; alreadyDone: number; processed: number; failed: number; remaining: number; chained: boolean; results: Record<string, string> };
+
+const MAX_ATTEMPTS = 2;
+
+export async function runCronBatch<T>(o: {
+  job: string; period: string; items: T[]; id: (t: T) => string; run: (t: T) => Promise<string>;
+  concurrency: number; /** stop starting new users after this many ms (function limit minus the longest single run) */ startBudgetMs: number;
+  markerTtlSeconds: number; req: Request; maxChain?: number;
+}): Promise<BatchReport> {
+  const t0 = Date.now();
+  const url = new URL(o.req.url);
+  const chain = Math.max(0, Number(url.searchParams.get("chain") ?? 0) || 0);
+  const mark = (t: T) => `crondone:${o.job}:${o.period}:${o.id(t)}`;
+  const tries = (t: T) => `crontry:${o.job}:${o.period}:${o.id(t)}`;
+
+  const state = await pmap(o.items, async (t) => ({ t, done: !!(await db.get(mark(t))), attempts: Number((await db.get<number>(tries(t))) ?? 0) }));
+  const pending = state.filter((s) => !s.done && s.attempts < MAX_ATTEMPTS).map((s) => s.t);
+  const results: Record<string, string> = {};
+  let next = 0, processed = 0, failed = 0, retryLater = 0;
+
+  await Promise.all(Array.from({ length: Math.min(o.concurrency, pending.length) }, async () => {
+    while (next < pending.length && Date.now() - t0 < o.startBudgetMs) {
+      const t = pending[next++];
+      try {
+        const r = await o.run(t);
+        results[o.id(t)] = r;
+        if (r.startsWith("retry")) { retryLater++; continue; }
+        await db.set(mark(t), r.slice(0, 80), o.markerTtlSeconds);
+        processed++;
+      } catch (e) {
+        failed++;
+        results[o.id(t)] = "error:" + (e instanceof Error ? e.message : "x").slice(0, 120);
+        const n = await db.incrby(tries(t), 1);
+        await db.set(tries(t), n, o.markerTtlSeconds);
+        console.error(`cron ${o.job} failed for ${o.id(t)}`, e);
+      }
+    }
+  }));
+
+  const notStarted = pending.length - next;
+  const remaining = notStarted + failed + retryLater;
+  // Chain only for users that never started or failed. A user that answered "retry" (locked by another run) would
+  // just spin the chain; the next scheduled run or the daily catch-up picks it up.
+  const chained = notStarted + failed > 0 && chain < (o.maxChain ?? 30);
+  if (chained) {
+    url.searchParams.set("chain", String(chain + 1));
+    const headers = { authorization: o.req.headers.get("authorization") ?? "" };
+    // Hand the rest to a fresh invocation. Only the request needs to leave; the new run reports for itself.
+    const kick = () => fetch(url.toString(), { headers, signal: AbortSignal.timeout(8000) }).then(() => undefined, () => undefined);
+    // `after` needs a request scope; outside one (scripts, tests) fire the request directly, as judge.ts does.
+    try { after(kick); } catch { void kick(); }
+  }
+  return { job: o.job, period: o.period, chain, total: o.items.length, alreadyDone: state.filter((s) => s.done).length, processed, failed, remaining, chained, results };
+}
+
+/** Date (UTC) of the most recent Sunday: the weekly plan period, stable through the Monday and Tuesday catch-up runs. */
+export function lastSundayUtc(now = new Date()): string {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  d.setUTCDate(d.getUTCDate() - d.getUTCDay());
+  return d.toISOString().slice(0, 10);
+}
