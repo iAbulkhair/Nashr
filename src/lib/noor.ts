@@ -1,6 +1,7 @@
 import { meter } from "./usage";
 import { agentForTask, type Agent } from "./agents";
 import { reviewBlock, skillsBlock } from "./skills";
+import { parseObjectArray } from "./json";
 import { TASK_COUNT } from "./brand";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Brand, TaskType } from "./brand";
@@ -203,8 +204,7 @@ Return ONLY a JSON array, same length and order as input: {"ok": true} if the it
     });
     await meter(meterEmail, review.model, "review", review.usage);
     const raw = review.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
-    const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-    const verdicts = JSON.parse(cleaned.slice(cleaned.indexOf("["), cleaned.lastIndexOf("]") + 1)) as Array<{ ok: boolean; body?: string }>;
+    const verdicts = parseObjectArray(raw) as Array<{ ok?: boolean; body?: string }>;
     return items.map((it, i) => (verdicts[i] && verdicts[i].ok === false && typeof verdicts[i].body === "string" && verdicts[i].body!.length > 20 ? { ...it, body: verdicts[i].body! } : it));
   } catch (e) {
     // Reviewer failure must never block delivery; ship the first pass.

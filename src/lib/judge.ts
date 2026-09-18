@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { TASK_COUNT, getTask, saveTask, type Brand, type Task, type TaskType } from "./brand";
 import { taskSpec } from "./noor";
 import { reviewBlock } from "./skills";
+import { parseObjectArray } from "./json";
 import { agentForTask } from "./agents";
 import { meter } from "./usage";
 import { notifyItem } from "./notifications";
@@ -53,10 +54,12 @@ Return ONLY a JSON array, same length and order as ITEMS: {"completeness":n,"bra
   });
   await meter(email, res.model, "judge", res.usage);
   const raw = res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
-  const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-  const a = cleaned.indexOf("["), z = cleaned.lastIndexOf("]");
-  if (a < 0 || z <= a) throw new Error(`judge_no_json (stop: ${res.stop_reason})`);
-  const arr = JSON.parse(cleaned.slice(a, z + 1)) as Array<Record<string, unknown>>;
+  let arr: Array<Record<string, unknown>>;
+  try {
+    arr = parseObjectArray(raw);
+  } catch (e) {
+    throw new Error(`judge_bad_json (stop: ${res.stop_reason}): ${e instanceof Error ? e.message : e}`);
+  }
   return items.map((_, i) => {
     const v = arr[i] ?? {};
     const dims = { completeness: clamp(v.completeness), brand: clamp(v.brand), honesty: clamp(v.honesty), language: clamp(v.language), format: clamp(v.format) };
