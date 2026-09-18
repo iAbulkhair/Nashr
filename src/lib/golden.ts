@@ -62,6 +62,8 @@ export const GOLDEN_CASES: GoldenCase[] = [
   { id: "dana-report-roastery", brand: "roastery", type: "weekly_report", stats: STATS, must: [{ name: "placeholder for missing data", re: "\\[رقم\\]|\\[number\\]", flags: "i" }] },
   { id: "dana-dashboard-saas", brand: "saas", type: "dashboard_spec", must: [{ name: "Markdown table", re: "\\|.+\\|" }] },
   { id: "majed-memo-clinic", brand: "clinic", type: "decision_memo", extra: "السؤال: هل نفتح فرعاً ثانياً في أبوظبي أم نستثمر في خدمة الاستشارات عن بُعد؟" },
+  { id: "majed-ai-roastery", brand: "roastery", type: "decision_memo", extra: "السؤال: هل نستخدم الذكاء الاصطناعي للرد على عملاء واتساب وكتابة أوصاف المنتجات؟ الفريق 6 أشخاص ولا أحد تقني.", must: [{ name: "human review stated", re: "مراجع|اعتماد|موافق|يراجع|إشراف" }] },
+  { id: "majed-portfolio-roastery", brand: "roastery", type: "strategy_review", extra: "عندنا ثلاثة خطوط: حبوب القهوة، أدوات التحضير، والاشتراك الشهري. لا أعرف أيها أركّز عليه. لا أرقام دقيقة عندي الآن.", must: [{ name: "placeholder for unknowns", re: "\\[رقم\\]|\\[number\\]", flags: "i" }] },
   { id: "majed-okrs-saas", brand: "saas", type: "okrs", extra: "Company of 9 people. Goal this quarter: first 100 paying customers." },
   { id: "layan-prd-saas", brand: "saas", type: "prd", extra: "Feature: send invoices and payment reminders over WhatsApp." },
   { id: "layan-feedback-roastery", brand: "roastery", type: "feedback_synthesis", extra: FEEDBACK },
@@ -172,7 +174,7 @@ function summarize(run: GoldenRun, prev: GoldenRun | undefined) {
 }
 
 /**
- * Run the set. `agent` limits to one agent's cases; `resume` reruns only the
+ * Run the set. `agent` reruns one agent's cases and carries the rest over from the latest run; `resume` reruns only the
  * cases that errored or never started in the latest run and merges them in.
  * Returns null when another run holds the lock or no model key is set.
  */
@@ -184,7 +186,9 @@ export async function runGolden(trigger: "cron" | "manual", opts: { agent?: Agen
     const history = await listGoldenRuns(6);
     const last = history[0];
     const resuming = !!(opts.resume && last && last.version === GOLDEN_VERSION && last.status === "partial");
-    const done = resuming ? last.results.filter((r) => r.ok) : [];
+    // Single-agent run: carry the other agents' results over from the latest run so the panel stays complete.
+    const carried = !resuming && opts.agent && last && last.version === GOLDEN_VERSION ? last.results.filter((r) => r.agent !== opts.agent) : [];
+    const done = resuming ? last.results.filter((r) => r.ok) : carried;
     const queue = GOLDEN_CASES.filter((c) => (!opts.agent || agentForTask(c.type).id === opts.agent) && !done.some((r) => r.id === c.id));
     const usdBefore = (await getUsage(GOLDEN_EMAIL)).usd;
 
@@ -206,7 +210,7 @@ export async function runGolden(trigger: "cron" | "manual", opts: { agent?: Agen
     const run: GoldenRun = {
       id: resuming ? last.id : `${new Date().toISOString().slice(0, 10)}-${randomBytes(3).toString("hex")}`,
       version: GOLDEN_VERSION, trigger: resuming ? last.trigger : trigger, startedAt: resuming ? last.startedAt : new Date(t0).toISOString(), finishedAt: new Date().toISOString(),
-      status: merged.every((r) => r.ok) ? "complete" : "partial", overall: null,
+      status: merged.every((r) => r.ok) && merged.length === GOLDEN_CASES.length ? "complete" : "partial", overall: null,
       usd: Math.round(((resuming ? last.usd : 0) + (await getUsage(GOLDEN_EMAIL)).usd - usdBefore) * 100) / 100,
       agents: [], results: merged, regressions: [],
     };
