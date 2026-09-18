@@ -16,7 +16,7 @@ import { getUsage } from "./usage";
  * Bump GOLDEN_VERSION when cases or brands change: deltas only compare runs of
  * the same version.
  */
-export const GOLDEN_VERSION = 3; // v2: judge reads full bodies. v3: judge knows reduced counts; local currency rule; quoted banned words ignored
+export const GOLDEN_VERSION = 4; // v2: judge reads full bodies. v3: reduced counts, local currency. v4: reviewer and judge share content/skills/review.md
 export const GOLDEN_EMAIL = "golden@nashr.internal";
 const CONCURRENCY = 8;
 /** Do not start new cases after this many ms; the route has maxDuration 300. */

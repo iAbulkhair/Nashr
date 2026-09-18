@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
 import { isAgentId } from "@/lib/agents";
 import { db } from "@/lib/db";
+import { playbook } from "@/lib/skills";
 import { GOLDEN_CASES, GOLDEN_VERSION, listGoldenRuns, runGolden } from "@/lib/golden";
 
 export const maxDuration = 300;
@@ -11,7 +12,7 @@ export async function GET(req: Request) {
   if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
   const runs = await listGoldenRuns(12);
   const history = runs.map((r) => ({ id: r.id, version: r.version, trigger: r.trigger, startedAt: r.startedAt, status: r.status, overall: r.overall, usd: r.usd, regressions: r.regressions.length, agents: r.agents }));
-  return NextResponse.json({ ok: true, version: GOLDEN_VERSION, cases: GOLDEN_CASES.length, modelKey: !!process.env.ANTHROPIC_API_KEY, latest: runs[0] ?? null, history });
+  return NextResponse.json({ ok: true, version: GOLDEN_VERSION, cases: GOLDEN_CASES.length, modelKey: !!process.env.ANTHROPIC_API_KEY, playbooks: Object.fromEntries(["marketing", "sales", "finance", "gtm", "reporting", "executive", "product", "review"].map((n) => [n, playbook(n).length])), latest: runs[0] ?? null, history });
 }
 
 // POST /api/admin/golden { agent?, resume? } → run now (up to 5 minutes)

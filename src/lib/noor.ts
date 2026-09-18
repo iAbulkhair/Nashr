@@ -1,6 +1,6 @@
 import { meter } from "./usage";
 import { agentForTask, type Agent } from "./agents";
-import { skillsBlock } from "./skills";
+import { reviewBlock, skillsBlock } from "./skills";
 import { TASK_COUNT } from "./brand";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Brand, TaskType } from "./brand";
@@ -193,7 +193,7 @@ async function critique(client: Anthropic, brand: Brand, prefs: string[], type: 
 4. Banned words absent, preferred words used where natural.
 5. Owner preferences respected.
 6. Platform fit (length, hashtags, CTA present, no meta commentary, complete and paste-ready).
-Return ONLY a JSON array, same length and order as input: {"ok": true} if the item passes, or {"ok": false, "body": "<full corrected body>"} with the minimal fix applied. Never change the item's language or intent; never add commentary.`,
+Return ONLY a JSON array, same length and order as input: {"ok": true} if the item passes, or {"ok": false, "body": "<full corrected body>"} with the minimal fix applied. Never change the item's language or intent; never add commentary.${reviewBlock()}`,
       messages: [
         {
           role: "user",
