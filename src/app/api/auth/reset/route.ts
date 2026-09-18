@@ -1,7 +1,9 @@
 import { createHash } from "crypto";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
-import { createSession, getUser, saveUser, strongPassword } from "@/lib/auth";
+import { createSession, getUser, revokeSessions, saveUser, strongPassword } from "@/lib/auth";
+import { withUserLock } from "@/lib/credits";
+import { revokeAllMcp } from "@/lib/mcp";
 import { db } from "@/lib/db";
 import { allow, clientIp } from "@/lib/rate";
 
@@ -18,8 +20,10 @@ export async function POST(req: Request) {
   if (!rec || !u) return NextResponse.json({ ok: false, error: "bad_token" }, { status: 400 });
   await db.del(key);
   if (u.suspended) return NextResponse.json({ ok: false, error: "suspended" }, { status: 403 });
-  u.passHash = await bcrypt.hash(pw, 10);
-  await saveUser(u);
+  const hash = await bcrypt.hash(pw, 10);
+  await withUserLock(u.email, async (x) => { x.passHash = hash; revokeSessions(x); await saveUser(x); });
+  // A reset is what an owner does after losing control of the account: old sessions and every MCP token die with the old password.
+  await revokeAllMcp(u.email);
   await createSession(u.email);
   return NextResponse.json({ ok: true });
 }

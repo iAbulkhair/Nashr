@@ -1,6 +1,6 @@
 # Test coverage map
 
-Status on 2026-09-18 (evening): Vitest is set up (`npm test`, 14 files, 101 tests, under one second, memory store only, no network or model calls) and `.github/workflows/ci.yml` runs type-check, lint and tests on every push and pull request. First green run: commit `21ccd57` on 2026-09-18 (npm ci, type-check, whole-repo lint with 0 errors, 52 tests). Vercel still deploys from Git on its own: a red CI run does not block production until the "Nashr CI" check is added under Vercel Settings > Build and Deployment > Deployment Checks. Rules without a test below are still unverified.
+Status on 2026-09-18 (evening): Vitest is set up (`npm test`, 16 files, 110 tests, under one second, memory store only, no network or model calls) and `.github/workflows/ci.yml` runs type-check, lint and tests on every push and pull request. First green run: commit `21ccd57` on 2026-09-18 (npm ci, type-check, whole-repo lint with 0 errors, 52 tests). Vercel still deploys from Git on its own: a red CI run does not block production until the "Nashr CI" check is added under Vercel Settings > Build and Deployment > Deployment Checks. Rules without a test below are still unverified.
 
 Legend: **test** = pinned by an automated test in `tests/` · **none** = nothing verifies the rule today · **manual** = checked by hand once (date) · **live** = guarded by a production probe.
 
@@ -23,12 +23,15 @@ Legend: **test** = pinned by an automated test in `tests/` · **none** = nothing
 | 15 | Markdown renderer never emits an attribute or tag from user or model text | test (`output-safety.test.ts`) | unit tests on `render` with link, quote and tag payloads |
 | 16 | CSV exports neutralise formula cells and keep phone numbers intact | test (`output-safety.test.ts`) | unit test on `csvSafe` |
 | 17 | Judge and reviewer parse a single JSON object, fenced JSON and bracketed placeholders | test (`output-safety.test.ts`) | unit tests on `parseObjectArray` |
-| 18 | MCP OAuth: PKCE required, codes single use, redirect_uri bound to the registered client | none (audit read it as sound) | API tests on `/api/oauth/*` |
+| 18 | MCP OAuth: PKCE required, codes single use, redirect_uri bound to the registered client | test (`revocation.test.ts`: PKCE required, redirect bound to the client, code single use and burned by a failed try, unknown scopes never written) | token endpoint client authentication |
 | 19 | Chat stream sends a heartbeat every 10 s and the client recovers a saved reply after a drop | none | integration test with a slow fake model |
 | 20 | Weekly and daily cron serve every eligible user within the function time limit | test for the runner (`cron-batch.test.ts`: concurrency, budget, done markers, retries, chain cap, Sunday key); daily verified on prod 2026-09-18 (12 of 12, second run skipped all); weekly first real run is Sunday 2026-09-20 | fix first, then a test with 50 fake users and a fake model |
 | 21 | Light task index: no body in a row, follows every save, survives parallel saves, sees past the 200 newest tasks, reads only the months of the window, indexes old workspaces once, rebuild repairs drift, never mixes workspaces; KPIs and edit metrics computed from it match the tasks | test (`task-index.test.ts`) | done |
 | 22 | Lists that only grow are trimmed on write; account deletion removes every task and the whole index, not only the newest 200 | test (`task-index.test.ts`) | done |
 | 23 | Onboarding parts: every output key is asked for by exactly one of the three parallel calls; each part requires its keys and allows nothing else | test (`onboard-parts.test.ts`); the split itself is not measured on prod yet | time a real onboarding before and after |
+| 24 | Sessions issued before a password change, reset or founder reset stop working (legacy records included); the changing device keeps a fresh session; the password write does not undo a concurrent credit charge | test (`revocation.test.ts`) | done |
+| 25 | OAuth grants: listed without tokens, revoked at once, another account's grant id is a 404, refresh keeps one grant and kills the previous access token, a reset revokes all | test (`revocation.test.ts`) | done |
+| 26 | Pages and customer API routes pass the active scope, never the bare account email, to workspace readers | test (`scope-usage.test.ts`, static) | done |
 
 Route-level tests call the real handlers. `tests/helpers/setup.ts` replaces `next/headers` cookies with a jar the test controls and runs `after()` at once; `tests/helpers/session.ts` has `signIn(email)` (a real `session:{token}` record plus its cookie), `signOut()`, `newUser()`, `json()`, `params()` and `settle()`. The memory store honours TTL since 2026-09-18, so expiry rules are testable with fake clocks. Each rule above was checked once by breaking the code and watching the test fail (publish gate, task scope, suspended check, admin check).
 

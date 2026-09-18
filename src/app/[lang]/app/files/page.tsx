@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
-import { currentUser } from "@/lib/auth";
+import { currentUser, sc } from "@/lib/auth";
 import { listFiles } from "@/lib/files";
 import FilesPanel from "@/components/app/FilesPanel";
 
@@ -12,5 +12,5 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
-  return <FilesPanel t={appDict[lang]} files={await listFiles(u.email)} />;
+  return <FilesPanel t={appDict[lang]} files={await listFiles(sc(u))} />;
 }

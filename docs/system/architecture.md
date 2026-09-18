@@ -112,7 +112,7 @@ All three require `Authorization: Bearer ${CRON_SECRET}` and return 401 when the
 |---|---|---|---|---|
 | `user:{email}` | json | `User` without `scope`/`brandId` (includes `passHash`, plan, credits, `suspended`) | `auth.ts:47,53` | none |
 | `users:all` | set | All account emails | `auth.ts:54`; read by `schedule.ts:106`, `admin-stats.ts:24`, `api/admin/plan`, `api/admin/export` | none |
-| `session:{token}` | string | Email for a 32-byte hex session token | `auth.ts:81,97` | 30 days |
+| `session:{token}` | json | `{email, at}` for a 32-byte hex session token (records from before 2026-09-18 are a bare email); dead when `at` is older than the user's `sessionsAfter` | `auth.ts:81,97` | 30 days |
 | `pwreset:{sha256(token)}` | json | `{email}` for a password reset | `api/auth/forgot/route.ts:27`, `api/auth/reset/route.ts:16` | 1 hour |
 | `rate:{bucket}` | int | Fixed-window counter. Buckets: `forgot:ip:{ip}`, `forgot:em:{email}`, `reset:ip:{ip}`, `adminkey:{ip}` | `rate.ts:5` | window seconds |
 | `lock:user:{email}` | lock | Per-user credit/ledger mutex | `credits.ts:12` | 10 s |
@@ -144,10 +144,11 @@ All three require `Authorization: Bearer ${CRON_SECRET}` and return 401 when the
 | `notifseen:{email}:{fingerprint}` | flag | Follow-up dedupe | `notifications.ts:32` | `ttlDays` (default 3 d) |
 | `notified:{email}:{key}` | string | Once-only email guard (`nudge1`, `lifecycle:dayN`) | `notify.ts:20` | none |
 | `mcptoken:{token}` | string | Email for a personal MCP token (no TTL, `mcp.ts:8`) or an OAuth access token (30 d, `oauth.ts:64`) | `mcp.ts`, `oauth.ts` | none / 30 days |
+| `mcpgrant:{email}:{id}`, `mcpgrants:{email}` | json / set | One OAuth grant per connected app: client name, scope, dates and the live token pair, so a revoke deletes both | `oauth.ts` | 90 days / none |
 | `mcptoken-of:{email}` | string | The current personal MCP token in clear | `mcp.ts:9` | none |
 | `oauthclient:{client_id}` | json | Registered OAuth client (may hold `client_secret` in clear) | `oauth.ts:40` | none |
 | `oauthcode:{code}` | json | Authorization code payload | `oauth.ts:49` | 10 min |
-| `oauthrefresh:{token}` | json | `{email, client_id, scope}` | `oauth.ts:65` | 90 days |
+| `oauthrefresh:{token}` | json | `{email, client_id, scope, grant}` | `oauth.ts:65` | 90 days |
 | `ref:{CODE}` | string | Referral code to email | `referral.ts:13` | none |
 | `referrals:{email}` | list | Referred signups | `referral.ts:27` | none |
 | `referredBy:{email}` | string | Referrer email | `referral.ts:28` | none |

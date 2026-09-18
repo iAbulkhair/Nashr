@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { currentUser, destroySession, verifyPassword, strongPassword } from "@/lib/auth";
+import { createSession, currentUser, destroySession, revokeSessions, verifyPassword, strongPassword } from "@/lib/auth";
+import { withUserLock } from "@/lib/credits";
 import { wipeAccount } from "@/lib/account";
 import bcrypt from "bcryptjs";
 import { saveUser } from "@/lib/auth";
@@ -12,8 +13,12 @@ export async function PATCH(req: Request) {
   const pw = b.newPassword ?? "";
   if (!strongPassword(pw)) return NextResponse.json({ ok: false, error: "weak_password" }, { status: 400 });
   if (!(await verifyPassword(u, b.currentPassword ?? ""))) return NextResponse.json({ ok: false, error: "wrong_password" }, { status: 401 });
-  u.passHash = await bcrypt.hash(pw, 10);
-  await saveUser(u);
+  const hash = await bcrypt.hash(pw, 10);
+  // Inside the user lock, on the fresh record: saving the copy read at the start of the request could undo a credit charge.
+  await withUserLock(u.email, async (x) => { x.passHash = hash; revokeSessions(x); await saveUser(x); });
+  // Every other device is signed out; this one gets a new session.
+  await destroySession();
+  await createSession(u.email);
   return NextResponse.json({ ok: true });
 }
 

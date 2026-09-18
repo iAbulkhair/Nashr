@@ -203,3 +203,9 @@ See `architecture.md` 2.6 and 4(d). Details:
 ## 18. Waitlist
 
 `src/app/api/waitlist/route.ts`. `POST {email, company?, industry?, lang?}`: anonymous; dedupes on `waitlist:emails`; without Redis it only logs to the console and returns `stored:false`. `GET ?key=...[&format=csv]`: accepts only the query-string key compared with `!==` to `WAITLIST_ADMIN_KEY`; founder sessions and the admin cookie are not accepted here. No UI in `src/` posts to this route at present.
+
+## Revocation (2026-09-18)
+
+- Password change (`PATCH /api/account`): new hash and `sessionsAfter = now` saved inside the user lock, the caller's session is destroyed and a new one issued. Every other session of the account fails at its next request.
+- Password reset (`POST /api/auth/reset`) and founder `resetPassword`: the same, plus `revokeAllMcp` (personal MCP token and every OAuth grant).
+- Connected apps: `GET /api/mcp/grants` lists OAuth grants of the signed-in account; `DELETE /api/mcp/grants?id=` revokes one, `?all=1` all. A grant id of another account is a 404. Refreshing a token keeps the grant and deletes the previous access token.

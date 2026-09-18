@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
-import { createSession, getUser, isAdmin, saveUser, normalizeEmail } from "@/lib/auth";
+import { createSession, getUser, isAdmin, revokeSessions, saveUser, normalizeEmail } from "@/lib/auth";
+import { revokeAllMcp } from "@/lib/mcp";
 import { getBrand, listTasks } from "@/lib/brand";
 import { getUsage } from "@/lib/usage";
 import { listConnections } from "@/lib/connectors/store";
@@ -71,7 +72,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     }
     case "resetPassword": {
       const temp = randomBytes(6).toString("base64url").slice(0, 10) + "!";
-      await withUserLock(email, async (x) => { x.passHash = await bcrypt.hash(temp, 10); await saveUser(x); });
+      await withUserLock(email, async (x) => { x.passHash = await bcrypt.hash(temp, 10); revokeSessions(x); await saveUser(x); });
+      await revokeAllMcp(email);
       await log("resetPassword");
       // Shown once to the admin; never stored in clear.
       return NextResponse.json({ ok: true, tempPassword: temp });

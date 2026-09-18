@@ -1,0 +1,20 @@
+import { NextResponse } from "next/server";
+import { currentUser } from "@/lib/auth";
+import { listGrants, revokeAllGrants, revokeGrant } from "@/lib/oauth";
+
+/** Apps connected through OAuth (Claude and others). GET lists them; DELETE ?id= revokes one, DELETE ?all=1 revokes all. */
+export async function GET() {
+  const u = await currentUser();
+  if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  return NextResponse.json({ ok: true, grants: await listGrants(u.email) });
+}
+export async function DELETE(req: Request) {
+  const u = await currentUser();
+  if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  const q = new URL(req.url).searchParams;
+  if (q.get("all") === "1") return NextResponse.json({ ok: true, revoked: await revokeAllGrants(u.email) });
+  const id = q.get("id") ?? "";
+  if (!/^[a-f0-9]{16}$/.test(id)) return NextResponse.json({ ok: false, error: "bad_id" }, { status: 400 });
+  // Looked up under the caller's own email only: another account's grant id is simply not found.
+  return (await revokeGrant(u.email, id)) ? NextResponse.json({ ok: true }) : NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+}

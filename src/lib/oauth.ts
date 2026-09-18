@@ -58,16 +58,52 @@ export async function redeemCode(code: string, client_id: string, redirect_uri: 
   if (expected !== p.challenge) return null;
   return p;
 }
-export async function issueTokens(email: string, client_id: string, scope: string) {
+/**
+ * One grant per connected client per account: the record the owner sees under "Connected apps" and can revoke. It holds the
+ * live token pair so revoking deletes both at once, with no extra read on the MCP request path.
+ */
+export type Grant = { id: string; client_id: string; client_name: string; scope: string; createdAt: string; lastIssuedAt: string; access: string; refresh: string };
+const grantKey = (email: string, id: string) => `mcpgrant:${email}:${id}`;
+
+export async function issueTokens(email: string, client_id: string, scope: string, grantId?: string) {
   const access = "nashr_" + randomBytes(24).toString("base64url");
   const refresh = "nashr_r_" + randomBytes(24).toString("base64url");
-  await db.set(`mcptoken:${access}`, email, ACCESS_TTL);
-  await db.set(`oauthrefresh:${refresh}`, { email, client_id, scope }, REFRESH_TTL);
+  const id = grantId ?? randomBytes(8).toString("hex");
+  const [prev, client] = await Promise.all([grantId ? db.get<Grant>(grantKey(email, id)) : null, getClient(client_id)]);
+  const now = new Date().toISOString();
+  const grant: Grant = { id, client_id, client_name: client?.client_name || client_id, scope, createdAt: prev?.createdAt ?? now, lastIssuedAt: now, access, refresh };
+  await Promise.all([
+    db.set(`mcptoken:${access}`, email, ACCESS_TTL),
+    db.set(`oauthrefresh:${refresh}`, { email, client_id, scope, grant: id }, REFRESH_TTL),
+    db.set(grantKey(email, id), grant, REFRESH_TTL),
+    db.sadd(`mcpgrants:${email}`, id),
+    // Rotation: the previous access token must not stay valid for the rest of its 30 days.
+    prev?.access ? db.del(`mcptoken:${prev.access}`) : null,
+  ]);
   return { access_token: access, token_type: "Bearer", expires_in: ACCESS_TTL, refresh_token: refresh, scope };
 }
 export async function rotateRefresh(refresh: string, client_id: string) {
-  const p = await db.get<{ email: string; client_id: string; scope: string }>(`oauthrefresh:${refresh}`);
+  const p = await db.get<{ email: string; client_id: string; scope: string; grant?: string }>(`oauthrefresh:${refresh}`);
   if (!p || p.client_id !== client_id) return null;
   await db.del(`oauthrefresh:${refresh}`);
-  return issueTokens(p.email, client_id, p.scope);
+  return issueTokens(p.email, client_id, p.scope, p.grant);
+}
+
+/** Connected apps of an account, newest first, without the tokens. Expired grants drop out of the index here. */
+export async function listGrants(email: string): Promise<Omit<Grant, "access" | "refresh">[]> {
+  const ids = await db.smembers(`mcpgrants:${email}`);
+  const rows = await Promise.all(ids.map((id) => db.get<Grant>(grantKey(email, id))));
+  await Promise.all(ids.filter((_, i) => !rows[i]).map((id) => db.srem(`mcpgrants:${email}`, id)));
+  return rows.filter((g): g is Grant => !!g).map(({ access: _a, refresh: _r, ...g }) => { void _a; void _r; return g; }).sort((a, b) => (a.lastIssuedAt < b.lastIssuedAt ? 1 : -1));
+}
+/** Revoke one connected app: both tokens stop working at once. The grant is looked up under the caller's own email only. */
+export async function revokeGrant(email: string, id: string): Promise<boolean> {
+  const g = await db.get<Grant>(grantKey(email, id));
+  if (!g) return false;
+  await Promise.all([db.del(`mcptoken:${g.access}`), db.del(`oauthrefresh:${g.refresh}`), db.del(grantKey(email, id)), db.srem(`mcpgrants:${email}`, id)]);
+  return true;
+}
+export async function revokeAllGrants(email: string): Promise<number> {
+  const ids = await db.smembers(`mcpgrants:${email}`);
+  return (await Promise.all(ids.map((id) => revokeGrant(email, id)))).filter(Boolean).length;
 }

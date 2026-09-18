@@ -36,7 +36,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const conv = typeof sp.conv === "string" && /^[a-f0-9]{6,16}$/.test(sp.conv) ? sp.conv : undefined;
   const agentParam = typeof sp.agent === "string" && ["sami", "razan", "faris", "dana", "majed", "layan"].includes(sp.agent) ? sp.agent : undefined;
   // One light read feeds both the side panel numbers and the "waiting for you" card; only that one card needs a body.
-  const [initial, connections, schedule, files, brief, notifs, brand, rows, op] = await Promise.all([history(sc(u), conv), listConnections(u.email), getSchedule(sc(u)), listFiles(sc(u)), latestBrief(sc(u)), listNotifs(u.email), getBrand(sc(u)), listLite(sc(u), kpiSince()), db.get<{ goal: string; plan: PlanItem[] }>(`onboardplan:${sc(u)}`)]);
+  const [initial, connections, schedule, files, brief, notifs, brand, rows, op] = await Promise.all([history(sc(u), conv), listConnections(sc(u)), getSchedule(sc(u)), listFiles(sc(u)), latestBrief(sc(u)), listNotifs(u.email), getBrand(sc(u)), listLite(sc(u), kpiSince()), db.get<{ goal: string; plan: PlanItem[] }>(`onboardplan:${sc(u)}`)]);
   const firstPending = rows.find((x) => x.status === "pending");
   const [k, pendingTask] = await Promise.all([kpis(sc(u), undefined, undefined, rows), firstPending ? getTask(sc(u), firstPending.id) : null]);
   const starter = op?.goal ? { goal: op.goal, first: (op.plan.find((x) => !x.added) ?? op.plan[0])?.title } : null;

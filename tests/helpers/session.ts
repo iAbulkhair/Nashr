@@ -11,7 +11,7 @@ export const signOut = () => g.__testJar.clear();
 /** Act as this account: a real session record plus its cookie, exactly what login creates. */
 export async function signIn(email: string) {
   const token = randomBytes(32).toString("hex");
-  await db.set(`session:${token}`, email, 3600);
+  await db.set(`session:${token}`, { email, at: Date.now() }, 3600);
   g.__testJar.clear();
   g.__testJar.set("nashr_session", token);
   return token;

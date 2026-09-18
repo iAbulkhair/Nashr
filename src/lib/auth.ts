@@ -19,6 +19,8 @@ export type User = {
   renewedAt?: string;
   /** Set by the admin: login and all API access blocked. */
   suspended?: boolean;
+  /** ISO time of the last password change: every session issued before it is dead (src/lib/auth.ts `currentUser`). */
+  sessionsAfter?: string;
   /** Runtime only: storage scope of the active brand (email for the default brand). Never persisted. */
   scope?: string;
   brandId?: string;
@@ -84,9 +86,22 @@ export async function verifyPassword(u: User, password: string) {
   return bcrypt.compare(password, u.passHash);
 }
 
+/** A session record. Sessions written before 2026-09-18 are a bare email with no issue time, which counts as "issued at 0". */
+type SessionRec = string | { email: string; at: number };
+const sessionOf = (rec: SessionRec | null) => (!rec ? null : typeof rec === "string" ? { email: rec, at: 0 } : rec);
+
+/**
+ * Sign every device out: sessions issued before this moment stop working at their next request. Called whenever the
+ * password changes, so a stolen cookie does not outlive the password it was obtained with. Only marks the record: the
+ * caller saves it, inside the user lock.
+ */
+export function revokeSessions(u: User) {
+  u.sessionsAfter = new Date().toISOString();
+}
+
 export async function createSession(email: string, ttlSeconds: number = SESSION_TTL) {
   const token = randomBytes(32).toString("hex");
-  await db.set(`session:${token}`, email, ttlSeconds);
+  await db.set(`session:${token}`, { email, at: Date.now() } satisfies SessionRec, ttlSeconds);
   const jar = await cookies();
   jar.set(COOKIE, token, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: ttlSeconds });
 }
@@ -102,10 +117,12 @@ export async function currentUser(): Promise<User | null> {
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
   if (!token) return null;
-  const email = await db.get<string>(`session:${token}`);
-  if (!email) return null;
+  const s = sessionOf(await db.get<SessionRec>(`session:${token}`));
+  if (!s) return null;
+  const email = s.email;
   const u = await getUser(email);
   if (!u || u.suspended) return null;
+  if (u.sessionsAfter && s.at < new Date(u.sessionsAfter).getTime()) return null; // issued before the last password change
   const { activeBrandId, scopeFor } = await import("./brands");
   u.brandId = await activeBrandId(email);
   u.scope = scopeFor(email, u.brandId);

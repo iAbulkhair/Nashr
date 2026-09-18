@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
-import { currentUser } from "@/lib/auth";
+import { currentUser, sc } from "@/lib/auth";
 import { getBrand } from "@/lib/brand";
 import GeneratePanel from "@/components/app/GeneratePanel";
 
@@ -10,6 +10,6 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
-  if (!(await getBrand(u.email))) redirect(`/${lang}/app/start`);
+  if (!(await getBrand(sc(u)))) redirect(`/${lang}/app/start`);
   return <GeneratePanel t={appDict[lang]} lang={lang} credits={u.credits} />;
 }

@@ -17,6 +17,11 @@ export async function revokeMcpToken(email: string) {
   if (t) await db.del(`mcptoken:${t}`);
   await db.del(`mcptoken-of:${email}`);
 }
+/** Personal token and every OAuth grant of the account (password reset, founder reset, account deletion). */
+export async function revokeAllMcp(email: string) {
+  const { revokeAllGrants } = await import("./oauth");
+  await Promise.all([revokeMcpToken(email), revokeAllGrants(email)]);
+}
 export async function userFromBearer(req: Request): Promise<User | null> {
   const h = req.headers.get("authorization") ?? "";
   const m = h.match(/^Bearer\s+(nashr_[A-Za-z0-9_.-]+)$/);

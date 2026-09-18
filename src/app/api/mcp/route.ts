@@ -67,6 +67,7 @@ export async function POST(req: Request) {
         if (!(type in TASK_COST)) return ok(id, { ...text("Unknown type."), isError: true });
         const brand = await getBrand((user.scope ?? user.email));
         if (!brand) return ok(id, { ...text("No brand file yet. Run onboarding in the app first."), isError: true });
+        if (user.plan === "trial" && new Date(user.trialEnds) < new Date()) return ok(id, { ...text("The trial has ended. Subscribe in the app to keep generating."), isError: true });
         const cost = TASK_COST[type];
         const paid = await charge(user.email, cost);
         if (!paid.ok) return ok(id, { ...text(`Insufficient credits: need ${cost}, have ${paid.credits}.`), isError: true });

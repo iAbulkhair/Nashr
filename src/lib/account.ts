@@ -2,6 +2,7 @@ import { db } from "./db";
 import { listFiles } from "./files";
 import { listBrands, scopeFor } from "./brands";
 import { pmap } from "./parallel";
+import { revokeAllGrants } from "./oauth";
 
 /** Wipe every record of an account: all brand scopes, files, tasks, chats, connections, tokens, the user itself. */
 export async function wipeAccount(email: string) {
@@ -22,6 +23,8 @@ export async function wipeAccount(email: string) {
   }
   const token = await db.get<string>(`mcptoken-of:${e}`);
   if (token) keys.push(`mcptoken:${token}`);
+  await revokeAllGrants(e); // OAuth tokens issued to connected apps
+  keys.push(`mcpgrants:${e}`);
   keys.push(`profile:${e}`, `mcptoken-of:${e}`, `brands:${e}`, `activebrand:${e}`, `user:${e}`);
   await pmap(keys, (k) => db.del(k));
   await Promise.all([db.srem("users:all", e), db.lpush("deleted-accounts", JSON.stringify({ email: e, at: new Date().toISOString() }))]);

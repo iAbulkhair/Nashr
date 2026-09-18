@@ -21,7 +21,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   if (!u) redirect(`/${lang}/app/login`);
   if (!(await getBrand(sc(u)))) redirect(`/${lang}/app/start`);
   const tasks = await listLite(sc(u), kpiSince(win));
-  const [k, quality, connections] = await Promise.all([kpis(sc(u), undefined, win, tasks), scopeMetrics(sc(u), u.email, days), listConnections(u.email)]);
+  const [k, quality, connections] = await Promise.all([kpis(sc(u), undefined, win, tasks), scopeMetrics(sc(u), u.email, days), listConnections(sc(u))]);
   const dana = agentById("dana").tasks;
   const items = tasks.filter((t) => dana.includes(t.type)).slice(0, 20).map((t) => ({ id: t.id, type: t.type, title: t.title, status: t.status, createdAt: t.createdAt }));
   return <ReportsPanel t={appDict[lang]} lang={lang} k={k} items={items} credits={u.credits} quality={quality} range={range ?? "7"} connected={connections.map((c) => c.provider)} />;
