@@ -46,10 +46,27 @@ const SPECS: Record<TaskType, string> = {
   dashboard_spec: "One KPI dashboard specification: 8-10 tiles as a Markdown table (metric, definition, data source, target, chart type, refresh cadence, owner), layout order, RTL notes, alert thresholds, and the five questions the dashboard must answer. channel = 'dashboard'.",
 };
 
-function systemPrompt(brand: Brand, prefs: string[], agent: Agent) {
-  return `${agent.persona}
+/**
+ * The generation prompt as three blocks, ordered for prompt caching (a hit needs an identical prefix):
+ * 1. static per agent: persona, rules, skills playbook, output format. Shared by every workspace and every day.
+ * 2. per workspace: brand file, industry playbook, memory files.
+ * 3. volatile: today's date, the live Gulf calendar, preferences learned from the owner's edits.
+ * Before this split the brand file and the date came first, so the cache was written on every call and never read.
+ */
+export function systemPrompt(brand: Brand, prefs: string[], agent: Agent, memory?: string) {
+  const fixed = `${agent.persona}
 
-BRAND FILE
+RULES
+- Never invent prices, discounts, certifications, or medical/legal/financial claims that are not in the brand file. If a number is needed, write [رقم] / [number] as a placeholder.
+- Respect Gulf cultural norms and Saudi advertising rules: no alcohol, gambling, or indecent content; healthcare and legal content must be educational, not guarantees; real-estate content must leave room for the license number.
+- Currency: use the currency of the brand's city / market (SAR Saudi Arabia, AED UAE, KWD Kuwait, QAR Qatar, BHD Bahrain, OMR Oman). Where a task says SAR, substitute the local currency; VAT notes follow that country's rate.
+- Use Hijri/Gregorian season awareness; today's date and the live calendar are given under TODAY.
+- Emojis: light, tasteful, max 2 per post unless the tone says otherwise.
+- Every item must be complete and ready to paste. No meta commentary.
+${agent.skills ? `\nSKILLS PLAYBOOK (${agent.name.en}; follow its frameworks, templates and rules)\n${skillsBlock(agent) || "- playbook not loaded; rely on best practice and the brand file"}\n` : ""}
+OUTPUT FORMAT
+Return ONLY a JSON array. Each element: {"channel": string, "title": string, "body": string}. "title" is a short internal label (≤ 60 chars). "body" is the full content (Markdown allowed). No text before or after the JSON.`;
+  const workspace = `BRAND FILE
 - Name: ${brand.name}
 - Website: ${brand.website || "n/a"}
 - Industry: ${brand.industry}
@@ -64,24 +81,19 @@ BRAND FILE
 - Preferred words/phrases: ${brand.preferred || "none"}
 - Active channels: ${brand.channels.join(", ") || "instagram, snapchat, tiktok, whatsapp"}${brand.valueProp ? `\n- Value proposition: ${brand.valueProp}` : ""}${brand.social && Object.keys(brand.social).length ? `\n- Handles: ${Object.entries(brand.social).map(([k, v]) => `${k} ${v}`).join(", ")}` : ""}
 
-RULES
-- Never invent prices, discounts, certifications, or medical/legal/financial claims that are not in the brand file. If a number is needed, write [رقم] / [number] as a placeholder.
-- Respect Gulf cultural norms and Saudi advertising rules: no alcohol, gambling, or indecent content; healthcare and legal content must be educational, not guarantees; real-estate content must leave room for the license number.
-- Currency: use the currency of the brand's city / market (SAR Saudi Arabia, AED UAE, KWD Kuwait, QAR Qatar, BHD Bahrain, OMR Oman). Where a task says SAR, substitute the local currency; VAT notes follow that country's rate.
-- Use Hijri/Gregorian season awareness. Today is ${new Date().toISOString().slice(0, 10)}.
-- Emojis: light, tasteful, max 2 per post unless the tone says otherwise.
-- Every item must be complete and ready to paste. No meta commentary.
+${playbookBlock(brand)}${memory ? "\n\nWORKSPACE FILES (Noor's memory — follow them)\n" + memory : ""}`;
+  const today = `TODAY: ${new Date().toISOString().slice(0, 10)}.
 
-${playbookBlock(brand)}
-${agent.skills ? `\nSKILLS PLAYBOOK (${agent.name.en}; follow its frameworks, templates and rules)\n${skillsBlock(agent) || "- playbook not loaded; rely on best practice and the brand file"}\n` : ""}
 GULF CALENDAR — LIVE OR WITHIN 35 DAYS (plan for these)
 ${seasonBlock()}
 
 OWNER PREFERENCES LEARNED FROM PAST EDITS (highest priority)
-${prefs.length ? prefs.map((p) => "- " + p).join("\n") : "- none yet"}
-
-OUTPUT FORMAT
-Return ONLY a JSON array. Each element: {"channel": string, "title": string, "body": string}. "title" is a short internal label (≤ 60 chars). "body" is the full content (Markdown allowed). No text before or after the JSON.`;
+${prefs.length ? prefs.map((p) => "- " + p).join("\n") : "- none yet"}`;
+  return [
+    { type: "text" as const, text: fixed, cache_control: { type: "ephemeral" as const } },
+    { type: "text" as const, text: workspace, cache_control: { type: "ephemeral" as const } },
+    { type: "text" as const, text: today },
+  ];
 }
 
 /** The spec text an agent was given for a task type (used by the judge). */
@@ -145,7 +157,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   const params = {
     model: "claude-opus-5",
     max_tokens: 16000,
-    system: [{ type: "text" as const, text: systemPrompt(brand, prefs, agent) + (opts.memory ? "\n\nWORKSPACE FILES (Noor's memory — follow them)\n" + opts.memory : ""), cache_control: { type: "ephemeral" as const } }],
+    system: systemPrompt(brand, prefs, agent, opts.memory),
     messages: [{ role: "user" as const, content: userMsg }],
     thinking: { type: "adaptive" as const },
     output_config: { effort: "medium" as const },
@@ -187,14 +199,15 @@ async function critique(client: Anthropic, brand: Brand, prefs: string[], type: 
       max_tokens: 16000,
       thinking: { type: "adaptive" },
       output_config: { effort: "low" },
-      system: `You are the quality reviewer for Noor, a Gulf marketing agent. You receive the brand file and a batch of generated items. For EACH item check:
+      // Identical for every user and every batch: the best cache candidate in the pipeline.
+      system: [{ type: "text", text: `You are the quality reviewer for Noor, a Gulf marketing agent. You receive the brand file and a batch of generated items. For EACH item check:
 1. Language policy and dialect match the brand file.
 2. No invented prices, discounts, certifications, medical/legal/financial guarantees, or fake social proof (numbers not in the brand file must be placeholders like [رقم]).
 3. Gulf/Saudi advertising compliance for the industry (health, legal, real estate license placeholders).
 4. Banned words absent, preferred words used where natural.
 5. Owner preferences respected.
 6. Platform fit (length, hashtags, CTA present, no meta commentary, complete and paste-ready).
-Return ONLY a JSON array, same length and order as input: {"ok": true} if the item passes, or {"ok": false, "body": "<full corrected body>"} with the minimal fix applied. Never change the item's language or intent; never add commentary.${reviewBlock()}`,
+Return ONLY a JSON array, same length and order as input: {"ok": true} if the item passes, or {"ok": false, "body": "<full corrected body>"} with the minimal fix applied. Never change the item's language or intent; never add commentary.${reviewBlock()}`, cache_control: { type: "ephemeral" } }],
       messages: [
         {
           role: "user",

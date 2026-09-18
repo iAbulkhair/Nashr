@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { pmap } from "./parallel";
 
 /** Workspace files = Noor's memory. Markdown the user can read, edit, delete. */
 export type WFile = { name: string; content: string; updatedAt: string; by: "noor" | "user" };
@@ -12,11 +13,7 @@ export function safeName(n: string) {
 
 export async function listFiles(email: string): Promise<WFile[]> {
   const names = await db.smembers(SET(email));
-  const out: WFile[] = [];
-  for (const n of names) {
-    const f = await db.get<WFile>(KEY(email, n));
-    if (f) out.push(f);
-  }
+  const out = (await pmap(names, (n) => db.get<WFile>(KEY(email, n)))).filter((f): f is WFile => !!f);
   return out.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 }
 export async function readFile(email: string, name: string) {
@@ -38,10 +35,7 @@ export async function deleteFile(email: string, name: string) {
 /** Core files Noor reads on every generation. */
 export async function memoryBlock(email: string) {
   const wanted = ["brand.md", "products.md", "strategy.md", "market-research.md", "preferences.md"];
-  const parts: string[] = [];
-  for (const n of wanted) {
-    const f = await readFile(email, n);
-    if (f?.content) parts.push(`--- ${n} ---\n${f.content.slice(0, 6000)}`);
-  }
-  return parts.join("\n\n");
+  // Five files, one round trip each: read together, keep the fixed order (stable text also helps prompt caching).
+  const files = await Promise.all(wanted.map((n) => readFile(email, n)));
+  return wanted.map((n, i) => (files[i]?.content ? `--- ${n} ---\n${files[i]!.content.slice(0, 6000)}` : "")).filter(Boolean).join("\n\n");
 }

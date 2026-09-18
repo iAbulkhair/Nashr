@@ -1,5 +1,6 @@
 import { randomBytes } from "crypto";
 import { db } from "./db";
+import { pmap } from "./parallel";
 import type { ChatMsg } from "./chat";
 import type { AgentId } from "./agents";
 
@@ -8,8 +9,8 @@ export type Conversation = { id: string; title: string; createdAt: string; updat
 
 export async function listConversations(scope: string): Promise<Conversation[]> {
   const ids = await db.lrange(`convs:${scope}`, 0, 99);
-  const out: Conversation[] = [];
-  for (const id of ids) { const c = await db.get<Conversation>(`conv:${scope}:${id}`); if (c) out.push(c); }
+  // Up to 100 conversations: read together instead of one round trip after another (the sidebar asks on every navigation).
+  const out = (await pmap(ids, (id) => db.get<Conversation>(`conv:${scope}:${id}`))).filter((c): c is Conversation => !!c);
   return out.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 }
 export async function createConversation(scope: string, title: string, agent: AgentId = "noor"): Promise<Conversation> {

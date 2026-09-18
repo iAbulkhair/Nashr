@@ -46,6 +46,9 @@ export async function meter(email: string | undefined, model: string, kind: Kind
         db.incrby(`${k}:calls`, 1),
         db.incrby(`${k}:usd_micro`, micro),
         db.incrby(`${k}:kind:${kind}`, 1),
+        // Prompt caching is only worth its write premium when reads follow; these two counters show whether they do.
+        ...(usage.cache_read_input_tokens ? [db.incrby(`${k}:cache_read`, usage.cache_read_input_tokens)] : []),
+        ...(usage.cache_creation_input_tokens ? [db.incrby(`${k}:cache_write`, usage.cache_creation_input_tokens)] : []),
       ]),
     );
   } catch (e) {
@@ -53,14 +56,14 @@ export async function meter(email: string | undefined, model: string, kind: Kind
   }
 }
 
-export type UsageSummary = { month: string; in: number; out: number; calls: number; usd: number; kinds: Record<string, number> };
+export type UsageSummary = { month: string; in: number; out: number; calls: number; usd: number; kinds: Record<string, number>; /** input tokens served from the prompt cache / written to it */ cacheRead: number; cacheWrite: number };
 
 export async function getUsage(email: string | "_all", month = monthKey()): Promise<UsageSummary> {
   const k = `usage:${email}:${month}`;
   const n = async (s: string) => Number((await db.get<number>(`${k}:${s}`)) ?? 0);
-  const [inp, out, calls, micro] = await Promise.all([n("in"), n("out"), n("calls"), n("usd_micro")]);
+  const [inp, out, calls, micro, cacheRead, cacheWrite] = await Promise.all([n("in"), n("out"), n("calls"), n("usd_micro"), n("cache_read"), n("cache_write")]);
   const kinds: Record<string, number> = {};
   const counts = await Promise.all(KINDS.map((kind) => n(`kind:${kind}`)));
   KINDS.forEach((kind, i) => { if (counts[i]) kinds[kind] = counts[i]; });
-  return { month, in: inp, out, calls, usd: Math.round(micro / 1e4) / 100, kinds };
+  return { month, in: inp, out, calls, usd: Math.round(micro / 1e4) / 100, kinds, cacheRead, cacheWrite };
 }

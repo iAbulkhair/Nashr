@@ -49,12 +49,8 @@ export async function getConnection(email: string, provider: string): Promise<Co
 }
 export async function listConnections(email: string): Promise<Omit<Connection, "data">[]> {
   const ids = await db.smembers(`conns:${email}`);
-  const out: Omit<Connection, "data">[] = [];
-  for (const id of ids) {
-    const s = await db.get<Stored>(`conn:${email}:${id}`);
-    if (s) out.push({ provider: s.provider, meta: s.meta, connectedAt: s.connectedAt, expiresAt: s.expiresAt });
-  }
-  return out;
+  const rows = await Promise.all(ids.map((id) => db.get<Stored>(`conn:${email}:${id}`)));
+  return rows.filter((s): s is Stored => !!s).map((s) => ({ provider: s.provider, meta: s.meta, connectedAt: s.connectedAt, expiresAt: s.expiresAt }));
 }
 export async function deleteConnection(email: string, provider: string) {
   await db.set(`conn:${email}:${provider}`, null);
