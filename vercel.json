@@ -1,6 +1,7 @@
 {
   "crons": [
     { "path": "/api/cron/weekly", "schedule": "0 3 * * 0" },
-    { "path": "/api/cron/daily", "schedule": "0 5 * * *" }
+    { "path": "/api/cron/daily", "schedule": "0 5 * * *" },
+    { "path": "/api/cron/golden", "schedule": "0 1 * * 6" }
   ]
 }

@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { after } from "next/server";
-import { getTask, saveTask, type Brand, type Task } from "./brand";
+import { getTask, saveTask, type Brand, type Task, type TaskType } from "./brand";
 import { taskSpec } from "./noor";
 import { agentForTask } from "./agents";
 import { meter } from "./usage";
@@ -23,9 +23,11 @@ export type Quality = {
 const WEIGHTS = { completeness: 0.3, brand: 0.2, honesty: 0.25, language: 0.15, format: 0.1 } as const;
 const clamp = (n: unknown) => Math.max(0, Math.min(100, Math.round(Number(n) || 0)));
 
-export async function judgeTasks(scope: string, email: string, brand: Brand, tasks: Task[]): Promise<Quality[]> {
-  if (!tasks.length || !process.env.ANTHROPIC_API_KEY) return [];
-  const type = tasks[0].type;
+export type JudgeItem = { channel: string; title: string; body: string };
+
+/** Score items without touching storage. Used by judgeTasks and the golden set (src/lib/golden.ts). */
+export async function scoreItems(email: string | undefined, brand: Brand, type: TaskType, items: JudgeItem[]): Promise<Quality[]> {
+  if (!items.length || !process.env.ANTHROPIC_API_KEY) return [];
   const agent = agentForTask(type);
   const client = new Anthropic();
   const res = await client.messages.create({
@@ -43,24 +45,30 @@ Be strict but fair: 85+ means ready to use as is; 70-84 needs a light edit; belo
 Return ONLY a JSON array, same length and order as ITEMS: {"completeness":n,"brand":n,"honesty":n,"language":n,"format":n,"notes":"<= 25 words in the item's language: the single most important fix, or 'ready'"}.`,
     messages: [{
       role: "user",
-      content: `TASK SPEC\n${taskSpec(type)}\n\nBRAND FILE\n${JSON.stringify({ name: brand.name, industry: brand.industry, city: brand.city, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, products: brand.products.slice(0, 600), audience: brand.audience.slice(0, 400), offers: brand.offers, banned: brand.banned, preferred: brand.preferred })}\n\nITEMS\n${JSON.stringify(tasks.map((t) => ({ channel: t.channel, title: t.title, body: t.body.slice(0, 3500) })))}`,
+      content: `TASK SPEC\n${taskSpec(type)}\n\nBRAND FILE\n${JSON.stringify({ name: brand.name, industry: brand.industry, city: brand.city, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, products: brand.products.slice(0, 600), audience: brand.audience.slice(0, 400), offers: brand.offers, banned: brand.banned, preferred: brand.preferred })}\n\nITEMS\n${JSON.stringify(items.map((t) => ({ channel: t.channel, title: t.title, body: t.body.slice(0, 3500) })))}`,
     }],
   });
   await meter(email, res.model, "judge", res.usage);
   const raw = res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
   const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   const arr = JSON.parse(cleaned.slice(cleaned.indexOf("["), cleaned.lastIndexOf("]") + 1)) as Array<Record<string, unknown>>;
-  const out: Quality[] = [];
-  for (let i = 0; i < tasks.length; i++) {
+  return items.map((_, i) => {
     const v = arr[i] ?? {};
     const dims = { completeness: clamp(v.completeness), brand: clamp(v.brand), honesty: clamp(v.honesty), language: clamp(v.language), format: clamp(v.format) };
     const score = Math.round(Object.entries(WEIGHTS).reduce((s, [k, w]) => s + dims[k as keyof typeof dims] * w, 0));
-    const q: Quality = { score, dims, notes: String(v.notes ?? "").slice(0, 200), model: res.model, at: new Date().toISOString() };
+    return { score, dims, notes: String(v.notes ?? "").slice(0, 200), model: res.model, at: new Date().toISOString() };
+  });
+}
+
+export async function judgeTasks(scope: string, email: string, brand: Brand, tasks: Task[]): Promise<Quality[]> {
+  if (!tasks.length) return [];
+  const agent = agentForTask(tasks[0].type);
+  const out = await scoreItems(email, brand, tasks[0].type, tasks);
+  for (let i = 0; i < out.length; i++) {
     // Reload before saving: the owner may have approved or edited meanwhile.
     const fresh = (await getTask(scope, tasks[i].id)) ?? tasks[i];
-    fresh.quality = q;
+    fresh.quality = out[i];
     await saveTask(scope, fresh);
-    out.push(q);
   }
   const weak = out.filter((q) => q.score < 70).length;
   if (weak) {
