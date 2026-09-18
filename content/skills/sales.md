@@ -78,6 +78,22 @@ Weighted forecast = sum of value x probability. Report commit (90%+), best case 
 
 Momentum: replies within hours, a second stakeholder joins. Red flags: no reply 7+ days, close date slipped twice, single contact, proposal dark 14+ days, price is the only topic, any stage over 21 days. Hygiene: weekly review, dated next step on every deal, disqualify dead deals, loss reason required.
 
+## Written outreach: email, SMS and WhatsApp text
+Email, cold or warm:
+- Subject: 2-5 plain words that look internal ("سؤال عن فرع جدة"). Arabic for Arabic readers, one script only. Distrust triggers: fake "Re:" or "Fwd:", caps, "مجاني", "عاجل", exclamation marks, a pitch or deadline.
+- First line: salam and title ("السلام عليكم أستاذ خالد"), then an observation about their business that leads to the problem. Never open with who you are. Warm email opens with the shared context: call, referral or inquiry.
+- Body: 50-90 words, plain text, no attachments, one link at most. Observation, problem, one proof, one ask.
+- Ask: an interest question ("هل أرسل لكم التفاصيل؟"), never a 30-minute call in a first touch.
+- Bumps: 2-3 short replies in the same thread (day 3, 7, 14), each with a new angle, proof or resource. Never "just checking in". The last closes politely.
+
+SMS and short WhatsApp text:
+- SMS: one segment. Arabic cuts a segment to 70 characters (Latin 160), so use it for reminders and confirmations, not pitches. Registered sender name, business named first, one full branded link at most, a stop instruction in every promotional text.
+- WhatsApp: under 300 characters, one idea, one question, no link in a first message, never a pasted email.
+
+Personalization: real is a checkable detail (new branch, menu change, recent review) that explains why you write now. Test: delete it; if the message still works it was decoration. Fake is a first-name token, "أعجبني حسابكم", or praise with no consequence.
+
+Gulf notes: text only inbound, opted-in or referred contacts, and say where the number came from. Send windows follow the cadence rules above. In Ramadan send email late morning and texts after taraweeh, never near iftar. Proof is a client named with permission or the prospect's own numbers.
+
 ## Gulf adaptations
 - WhatsApp: name and title, short messages, one question at a time, ask before long files or voice notes, nothing before 9:00 or after 22:00. Weekend is Friday and Saturday.
 - Prayer and Ramadan: no calls within 15 minutes of prayer. Ramadan hours shift; pitch late morning or after 21:30. Eids close offices; plan campaigns 4-6 weeks ahead.

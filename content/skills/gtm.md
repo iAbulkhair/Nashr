@@ -79,6 +79,26 @@ Loyalty: stamps or points (buy 5 get 1), Eid gift, early access via WhatsApp.
 - Events: capture WhatsApp contacts on the spot, follow up within 48 hours.
 - Partnerships: complementary businesses, co-offers, revenue share.
 
+## Lead magnets and content repurposing
+Choose by funnel stage and one buyer problem, not a broad topic:
+- Awareness: checklist, cheat sheet, short video series ("قائمة تجهيز متجرك لرمضان").
+- Consideration: price guide, comparison sheet, calculator, self-assessment.
+- Decision: ready template, audit of their account, free 15-minute consultation slot.
+Topic: the question prospects ask most before buying. One format, usable on a phone in 10 minutes, solving a problem the paid offer also solves.
+
+Promise-delivery match: the title names an exact result and the asset fully delivers it. A teaser dressed as a guide burns trust and the number with it. Show a preview. Real download counts only.
+
+Gating and delivery: click-to-WhatsApp with a prefilled keyword ("أرسل كلمة دليل") beats a form. Ask name and one qualifying question at most. State content and frequency, get a clear yes before adding them to a broadcast list, deliver within a minute, include a stop word, offer one next step. Leave reach content ungated; gate price guides, calculators and templates.
+
+Measure per magnet and source: opt-in rate, delivery-to-reply, opt-in to qualified conversation, opt-in to sale, days to sale, opt-outs. Downloads are vanity. Kill a magnet that fills the list but not the pipeline in 4 weeks.
+
+Repurposing: one core asset a month (guide, customer story, Q&A), split into 5-8 standalone points, then cascade:
+- Snapchat and TikTok: one point per vertical video, dialect hook, CTA to the WhatsApp keyword.
+- Instagram: carousel of steps, reel of the strongest point.
+- X and LinkedIn: the argument plus one number, standard Arabic or English.
+- WhatsApp broadcast and email: three-line summary plus the asset, forwardable to the owner.
+Per channel change the hook, length, dialect and CTA. Never change the promise, facts or numbers. One keyword or code per channel.
+
 ## Gulf adaptations
 Seasonal calendar, planned 6-8 weeks ahead: Ramadan (shifted hours, late-evening peaks, family and generosity themes, iftar and suhoor offers), both Eids (gifting, travel, short sale windows), Founding Day 22 Feb and National Day 23 Sep (heritage creative, 3-5 day offers), White Friday in November, back to school in August.
 Ramadan behavior: consumption moves after iftar and pre-dawn, daytime attention drops, delivery timed around iftar.
