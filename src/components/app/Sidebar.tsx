@@ -30,8 +30,11 @@ export default function Sidebar({ t, lang, user, brandName, admin, supportWa }: 
   useEffect(() => {
     fetch("/api/notifications?count=1").then((x) => x.json()).then((j) => j.ok && setUnread(j.unread)).catch(() => {});
     // Only the number: the full list (up to 200 task bodies) was downloaded on every navigation for this badge.
-    fetch("/api/tasks?count=pending").then((x) => x.json()).then((j) => j.ok && setPending(j.pending)).catch(() => {});
+    const loadPending = () => fetch("/api/tasks?count=pending").then((x) => x.json()).then((j) => j.ok && setPending(j.pending)).catch(() => {});
+    void loadPending();
+    window.addEventListener("nashr:pending-changed", loadPending);
     fetch("/api/conversations").then((x) => x.json()).then((j) => j.ok && setConvs(j.conversations)).catch(() => {});
+    return () => window.removeEventListener("nashr:pending-changed", loadPending);
   }, [path]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); setMenu(false); } };

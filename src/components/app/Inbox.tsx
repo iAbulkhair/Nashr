@@ -22,6 +22,10 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
   const [copied, setCopied] = useState<string | null>(null);
   const [imaging, setImaging] = useState<string | null>(null);
   const [publishing, setPublishing] = useState<string | null>(null);
+  // Tasks the owner changed in this session, layered over the server-rendered list.
+  const [local, setLocal] = useState<Record<string, Task>>({});
+  const [failed, setFailed] = useState<string | null>(null);
+  const view = tasks.map((x) => local[x.id] ?? x);
   const targets = (x: Task) => {
     const out: string[] = [];
     if (x.type === "article") for (const p of ["wordpress", "shopify"]) if (connected.includes(p)) out.push(p);
@@ -44,7 +48,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
     r.refresh();
   }
 
-  const shown = tasks.filter((x) => filter === "all" || x.status === filter);
+  const shown = view.filter((x) => filter === "all" || x.status === filter);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const dayLabel = (iso: string) => new Intl.DateTimeFormat(lang === "ar" ? "ar-SA-u-nu-latn" : "en", { weekday: "long", month: "long", day: "numeric" }).format(new Date(iso));
   async function share(x: Task, body: string) {
@@ -53,12 +57,27 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
   }
 
+  // The card changes the moment the owner clicks; the server's copy replaces it when it arrives, and a failure puts the
+  // old card back with a message. No page refresh: that re-read every task for each click.
   async function patch(id: string, body: Record<string, unknown>) {
-    await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const before = view.find((x) => x.id === id);
+    if (!before) return;
+    const guess: Task = { ...before, ...(typeof body.status === "string" ? { status: body.status as Task["status"] } : {}), ...(typeof body.editedBody === "string" ? { editedBody: body.editedBody } : {}), ...("scheduledFor" in body ? { scheduledFor: (body.scheduledFor as string | null) ?? undefined } : {}) };
+    setLocal((p) => ({ ...p, [id]: guess }));
     setEditing(null);
     setRejecting(null);
     setWhy("");
-    r.refresh();
+    setFailed(null);
+    try {
+      const res = await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; task?: Task };
+      if (!res.ok || !j.ok || !j.task) throw new Error("patch_failed");
+      setLocal((p) => ({ ...p, [id]: j.task! }));
+      window.dispatchEvent(new Event("nashr:pending-changed"));
+    } catch {
+      setLocal((p) => ({ ...p, [id]: before }));
+      setFailed(id);
+    }
   }
 
   return (
@@ -72,7 +91,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
         <div className="flex gap-1 text-sm">
           {(["pending", "approved", "rejected", "all"] as const).map((f) => (
             <button key={f} onClick={() => setFilter(f)} className={`rounded-full px-3 py-1 ${filter === f ? "bg-oasis text-mist" : "bg-salt-dim"}`}>
-              {i[f]} {f !== "all" && <span className="font-mono text-xs">({tasks.filter((x) => x.status === f).length})</span>}
+              {i[f]} {f !== "all" && <span className="font-mono text-xs">({view.filter((x) => x.status === f).length})</span>}
             </button>
           ))}
         </div>
@@ -118,7 +137,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
               )}
               {x.imageUrl && (
                 <div className="mt-3 flex items-start gap-3">
-                  <img src={x.imageUrl} alt="" className="h-40 w-40 rounded-lg object-cover" />
+                  <img loading="lazy" decoding="async" src={x.imageUrl} alt="" className="h-40 w-40 rounded-lg object-cover" />
                   <div className="text-xs text-ink/50"><a href={x.imageUrl} target="_blank" rel="noreferrer" className="underline">{i.download}</a>{x.imagePrompt && <p className="mt-1 line-clamp-4" dir="ltr">{x.imagePrompt}</p>}</div>
                 </div>
               )}
@@ -153,6 +172,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
               </div>
               {editing !== x.id && rejecting !== x.id && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-ink/5 bg-salt px-4 py-3 text-sm">
+                  {failed === x.id && <p role="alert" className="w-full text-sm text-sadu-deep">{lang === "ar" ? "لم يُحفظ التغيير. تحقق من الاتصال وحاول مرة أخرى." : "The change was not saved. Check your connection and try again."}</p>}
                   {x.status !== "approved" && <button onClick={() => patch(x.id, { status: "approved" })} className="btn btn-primary btn-pill">{i.approve}</button>}
                   <button onClick={() => { setEditing(x.id); setDraft(body); }} className="btn btn-secondary btn-pill">{i.edit}</button>
                   {x.status !== "rejected" && <button onClick={() => setRejecting(x.id)} className="btn btn-danger btn-pill">{i.reject}</button>}
