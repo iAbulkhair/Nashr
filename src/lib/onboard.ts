@@ -4,12 +4,17 @@ import type { Brand } from "./brand";
 import { activeSeasons } from "./seasons";
 import type { SiteSnapshot } from "./crawl";
 
-export type OnboardResult = { brand: Brand; files: { name: string; content: string }[] };
+import type { PlanItem } from "./chat";
+
+export type OnboardResult = { brand: Brand; files: { name: string; content: string }[]; /** three starter tasks the owner can add with one tap */ plan: PlanItem[]; /** an output goal Nashr controls (items shipped), never a results promise */ goal: string; /** closing chat message */ summary: string };
+
+/** Task types the starter plan may use: small, fast, visibly useful in the first session. */
+const PLAN_TYPES = ["social", "article", "whatsapp", "ads", "gbp", "weekly_plan", "followup_seq", "pricing_review", "growth_experiments"] as const;
 
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["brand", "brand_md", "market_research_md", "strategy_md"],
+  required: ["brand", "brand_md", "brand_guidelines_md", "opportunities_md", "market_research_md", "strategy_md", "plan", "goal", "summary"],
   properties: {
     brand: {
       type: "object",
@@ -30,8 +35,16 @@ const SCHEMA = {
       },
     },
     brand_md: { type: "string" },
+    brand_guidelines_md: { type: "string" },
+    opportunities_md: { type: "string" },
     market_research_md: { type: "string" },
     strategy_md: { type: "string" },
+    plan: {
+      type: "array",
+      items: { type: "object", additionalProperties: false, required: ["title", "type", "brief"], properties: { title: { type: "string" }, type: { type: "string", enum: [...PLAN_TYPES] }, brief: { type: "string" } } },
+    },
+    goal: { type: "string" },
+    summary: { type: "string" },
   },
 } as const;
 
@@ -41,9 +54,18 @@ function mock(site: SiteSnapshot, lang: "ar" | "en"): OnboardResult {
     brand: { name, website: site.url, industry: "متجر إلكتروني", city: "الرياض", dialect: "saudi", languages: [lang, lang === "ar" ? "en" : "ar"], tone: "ودود، واضح", products: site.description || "(dev mock)", audience: "عملاء في السعودية", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram", "snapchat", "tiktok", "whatsapp"], updatedAt: new Date().toISOString() },
     files: [
       { name: "brand.md", content: `# ${name}\n\n(DEV MOCK — set ANTHROPIC_API_KEY)\n\nSite: ${site.url}\nPlatform: ${site.platform}` },
+      { name: "brand-guidelines.md", content: `# Brand guidelines\n\n(DEV MOCK)\n\nColours: ${(site.colors ?? []).join(", ") || "not detected"}\nFonts: ${(site.fonts ?? []).join(", ") || "not detected"}` },
+      { name: "opportunities.md", content: "# Opportunities\n\n(DEV MOCK)" },
       { name: "market-research.md", content: "# Market research\n\n(DEV MOCK)" },
       { name: "strategy.md", content: "# 90-day strategy\n\n(DEV MOCK)" },
     ],
+    plan: [
+      { title: lang === "ar" ? "3 منشورات إنستقرام تعريفية" : "3 introductory Instagram posts", type: "social", brief: "DEV MOCK" },
+      { title: lang === "ar" ? "رسالتا واتساب للمتابعة" : "2 WhatsApp follow-up messages", type: "whatsapp", brief: "DEV MOCK" },
+      { title: lang === "ar" ? "مقالة SEO واحدة" : "One SEO article", type: "article", brief: "DEV MOCK" },
+    ],
+    goal: lang === "ar" ? "أول 20 عنصراً معتمداً خلال 14 يوماً" : "First 20 approved items in 14 days",
+    summary: lang === "ar" ? "(DEV MOCK) قرأت موقعك وجهزت ملفاتك. بماذا نبدأ؟" : "(DEV MOCK) I read your site and prepared your files. Where do we start?",
   };
 }
 
@@ -58,6 +80,11 @@ Write the markdown files in ${lang === "ar" ? "Arabic (simplified MSA), with Eng
 brand_md: brand profile — name, what they sell, audience, positioning, tone of voice, dialect policy, banned/preferred words (suggest 5 each), visual/cultural notes for the Gulf, payment/delivery trust signals to mention (mada, Apple Pay, Tabby/Tamara, delivery cities) if e-commerce.
 market_research_md: KSA/GCC market notes for this industry — where customers discover (Snap/TikTok/IG/X/Google), 3-5 likely competitors (name only if confident, else describe types), seasonal opportunities (upcoming: ${seasons}), quick wins.
 strategy_md: 90-day plan in 3 phases with concrete weekly cadence per channel, the first 5 tasks Noor should run, and 3 measurable targets.
+brand_guidelines_md: visual and verbal identity. Colour palette with hex codes and the role of each colour, and fonts, taken ONLY from DETECTED VISUALS below (if none were detected say so plainly and tell the owner to upload the logo and brand colours; never invent hex codes). Then tone of voice, 4-6 messaging principles, do and do-not wording examples in the brand's dialect.
+opportunities_md: "money on the table" audit as a Markdown table (opportunity, status, source, benefit, fit or gaps, next step). Cover what is relevant: Gulf SME programs (Monsha'at, Kafalah, Saudi Business Center, or the UAE/Kuwait equivalents for that market), ad-platform credits for new advertisers, store-platform app perks (Salla, Zid, Shopify) when that platform was detected, payment and BNPL options missing from the site, and tracking or conversion leaks visible in the snapshot (no WhatsApp link, no clear CTA, no reviews, missing meta description). Status is exactly one of "يحتاج تحققاً" / "Needs verification" or "قابل للتنفيذ الآن" / "Actionable now". Never state amounts, eligibility or deadlines you cannot see: say what to verify and where.
+plan: exactly 3 starter tasks Noor's team can deliver today, most valuable first, each quantified and specific to this business (for example "3 Instagram posts introducing the monthly subscription"). title is what the owner reads on the button (<= 90 chars, in the output language); type is the task type; brief is the instruction the agent will receive (2-3 sentences, concrete, in the output language).
+goal: one line, an OUTPUT goal Nashr controls (items drafted, approved or published in a period), never a results promise such as traffic, leads or revenue growth.
+summary: the closing chat message, 2-3 sentences in the output language, first person as Noor: what you read, what you prepared (five files and a plan), then ask what to tackle first. No greetings, no emojis.
 
 brand.industry must be one of the allowed Arabic labels. dialect: saudi unless the site is clearly UAE (emirati), Kuwait (kuwaiti), or English-only (english).`;
 
@@ -68,6 +95,7 @@ Platform detected: ${site.platform}
 Title: ${site.title}
 Description: ${site.description}
 Links sample: ${site.links.slice(0, 25).join(", ")}
+DETECTED VISUALS: colours ${(site.colors ?? []).join(", ") || "none detected"}; fonts ${(site.fonts ?? []).join(", ") || "none detected"}
 ${hints ? "\nOWNER HINTS: " + hints.slice(0, 800) : ""}
 
 PAGE TEXT (truncated):
@@ -76,7 +104,7 @@ ${site.text.slice(0, 9000)}`;
   const msg = await client.messages
     .stream({
       model: "claude-opus-5",
-      max_tokens: 16000,
+      max_tokens: 24000,
       system: sys,
       messages: [{ role: "user", content: user }],
       thinking: { type: "adaptive" },
@@ -85,14 +113,19 @@ ${site.text.slice(0, 9000)}`;
     .finalMessage();
   await meter(email, msg.model, "onboard", msg.usage);
   const text = msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("");
-  const j = JSON.parse(text) as { brand: Omit<Brand, "website" | "banned" | "preferred" | "updatedAt">; brand_md: string; market_research_md: string; strategy_md: string };
+  const j = JSON.parse(text) as { brand: Omit<Brand, "website" | "banned" | "preferred" | "updatedAt">; brand_md: string; brand_guidelines_md: string; opportunities_md: string; market_research_md: string; strategy_md: string; plan: PlanItem[]; goal: string; summary: string };
   const brand: Brand = { ...j.brand, website: site.url, banned: "", preferred: "", updatedAt: new Date().toISOString() } as Brand;
   return {
     brand,
     files: [
       { name: "brand.md", content: j.brand_md },
+      { name: "brand-guidelines.md", content: j.brand_guidelines_md },
+      { name: "opportunities.md", content: j.opportunities_md },
       { name: "market-research.md", content: j.market_research_md },
       { name: "strategy.md", content: j.strategy_md },
     ],
+    plan: (j.plan ?? []).slice(0, 3).map((x) => ({ title: String(x.title).slice(0, 120), type: x.type, brief: String(x.brief).slice(0, 600) })),
+    goal: String(j.goal ?? "").slice(0, 140),
+    summary: String(j.summary ?? "").slice(0, 600),
   };
 }

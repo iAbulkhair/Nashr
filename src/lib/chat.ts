@@ -21,14 +21,16 @@ import { HELP } from "./help";
 import { IMAGE_COST, getTask } from "./brand";
 
 export type ChatItem = { id: string; type: TaskType; channel: string; title: string; body: string; status: string };
-export type ChatMsg = { role: "user" | "assistant"; content: string; at: string; actions?: string[]; agent?: AgentId; /** items created by tools during this turn, rendered as cards */ items?: ChatItem[] };
+export type ChatMsg = { role: "user" | "assistant"; content: string; at: string; actions?: string[]; agent?: AgentId; /** items created by tools during this turn, rendered as cards */ items?: ChatItem[]; /** workspace files written during this turn, rendered as collapsible cards (first-run onboarding) */ files?: { name: string; content: string }[]; /** starter plan proposed at the end of onboarding */ plan?: PlanItem[] };
+export type PlanItem = { title: string; type: TaskType; brief: string; added?: boolean };
 
 const key = (email: string, conv?: string) => (conv && conv !== "default" ? `chat:${email}:${conv}` : `chat:${email}`);
 export async function history(email: string, conv?: string): Promise<ChatMsg[]> {
   const rows = await db.lrange(key(email, conv), 0, 39);
   return rows.map((r) => JSON.parse(r) as ChatMsg).reverse();
 }
-async function push(email: string, m: ChatMsg, conv?: string) {
+/** Append a message to a thread (used by chat turns and the onboarding run). */
+export async function push(email: string, m: ChatMsg, conv?: string) {
   await db.lpush(key(email, conv), JSON.stringify(m));
 }
 

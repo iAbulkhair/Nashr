@@ -60,7 +60,7 @@ export async function createUser(input: { email: string; name: string; phone: st
   const u: User = {
     email,
     name: input.name.trim().slice(0, 80),
-    phone: normalizePhone(input.phone),
+    phone: input.phone.trim() ? normalizePhone(input.phone) : "",
     passHash: await bcrypt.hash(input.password, 10),
     plan: "trial",
     credits: PLAN_CREDITS.trial,

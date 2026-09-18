@@ -7,25 +7,39 @@ import type { Lang } from "@/lib/i18n";
 
 const input = "input";
 
+const SU = {
+  ar: { emailStep: "ابدأ مجاناً", cont: "متابعة", edit: "تعديل", rules: ["8 أحرف على الأقل", "حرف واحد على الأقل", "رقم واحد على الأقل"], trial: "تجربة 3 أيام · 50 كريدت · بدون بطاقة دفع", legal1: "بالمتابعة أنت توافق على", terms: "الشروط", and: "و", privacy: "سياسة الخصوصية", nameOpt: "اسمك" },
+  en: { emailStep: "Start free", cont: "Continue", edit: "Edit", rules: ["At least 8 characters", "At least one letter", "At least one number"], trial: "3-day trial · 50 credits · no card required", legal1: "By continuing you agree to the", terms: "Terms", and: "and", privacy: "Privacy Policy", nameOpt: "Your name" },
+} as const;
+
+/** Email first, then name and password with live requirements. Phone is asked later, inside onboarding. */
 export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
   const r = useRouter();
   const sp = useSearchParams();
+  const S = SU[lang];
   const ref = sp.get("ref") ?? "";
+  const site = (sp.get("url") ?? "").slice(0, 300);
   const nextParam = sp.get("next") ?? "";
   const next = nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "";
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [email, setEmail] = useState("");
+  const [step, setStep] = useState<1 | 2>(1);
+  const [pw, setPw] = useState("");
+  const checks = [pw.length >= 8, /\p{L}/u.test(pw), /\d/.test(pw)];
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setBusy(true);
     setErr("");
+    if (step === 1) { if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) setStep(2); else setErr((t.signup as Record<string, string>).bad_email ?? "bad_email"); return; }
+    if (!checks.every(Boolean)) return;
+    setBusy(true);
     const fd = Object.fromEntries(new FormData(e.currentTarget));
-    const res = await fetch("/api/auth/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fd, lang, ref }) });
+    const res = await fetch("/api/auth/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fd, email: email.trim(), lang, ref }) });
     const j = await res.json();
     setBusy(false);
     if (!j.ok) return setErr((t.signup as Record<string, string>)[j.error] ?? j.error);
     if (next) { window.location.assign(next); return; }
-    r.push(`/${lang}/app/start`);
+    r.push(site.length >= 4 ? `/${lang}/app/chat?onboard=${encodeURIComponent(site)}` : `/${lang}/app/start`);
     r.refresh();
   }
   return (
@@ -33,16 +47,24 @@ export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
       <h1 className="page-title">{t.signup.title}</h1>
       <p className="mt-2 text-ink/70">{t.signup.sub}</p>
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
-        <input name="name" required placeholder={t.signup.name} className={input} />
-        <input name="phone" required type="tel" inputMode="tel" dir="ltr" placeholder="+9665xxxxxxxx" aria-label={t.signup.phone} className={input} />
-        <input name="email" required type="email" dir="ltr" placeholder={t.signup.email} className={input} />
-        <input name="password" required type="password" minLength={8} placeholder={t.signup.password} className={input} />
-        {err && <p role="alert" className="text-sm text-sadu">{err}</p>}
-        <button disabled={busy} className="btn btn-primary">{t.signup.submit}</button>
+        {step === 1 ? (
+          <input name="email" required autoFocus type="email" autoComplete="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.signup.email} aria-label={t.signup.email} className={input} />
+        ) : (
+          <>
+            <p className="flex items-center justify-between gap-2 rounded-lg bg-salt-dim px-3 py-2 text-sm"><span dir="ltr" className="clip">{email}</span><button type="button" onClick={() => setStep(1)} className="text-xs text-oasis underline">{S.edit}</button></p>
+            <input name="name" required autoFocus autoComplete="name" placeholder={S.nameOpt} aria-label={S.nameOpt} className={input} />
+            <input name="password" required type="password" autoComplete="new-password" minLength={8} value={pw} onChange={(e) => setPw(e.target.value)} placeholder={t.signup.password} aria-label={t.signup.password} className={input} />
+            <ul className="grid gap-1 text-xs" aria-live="polite">{S.rules.map((rule, i) => <li key={rule} className={`flex items-center gap-2 ${checks[i] ? "text-oasis" : "text-ink/60"}`}><span aria-hidden className={`h-1.5 w-1.5 rounded-full ${checks[i] ? "bg-oasis" : "bg-ink/30"}`} />{rule}</li>)}</ul>
+          </>
+        )}
+        {err && <p role="alert" className="text-sm text-sadu-deep">{err}</p>}
+        <button disabled={busy || (step === 2 && !checks.every(Boolean))} className="btn btn-primary">{step === 1 ? S.cont : t.signup.submit}</button>
       </form>
+      <p className="mt-3 text-center text-xs text-ink/60">{S.trial}</p>
       <p className="mt-4 text-sm text-ink/70">
         {t.signup.have} <Link href={`/${lang}/app/login`} className="font-medium text-oasis underline">{t.signup.login}</Link>
       </p>
+      <p className="mt-2 text-xs text-ink/60">{S.legal1} <Link href={`/${lang}/terms`} className="underline">{S.terms}</Link> {S.and} <Link href={`/${lang}/privacy`} className="underline">{S.privacy}</Link>.</p>
     </div>
   );
 }

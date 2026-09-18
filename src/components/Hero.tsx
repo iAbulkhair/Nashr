@@ -15,14 +15,17 @@ export default function Hero({ t, lang }: { t: Dict; lang: Lang }) {
             <span className="block">{t.hero.title2}</span>
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-mist-dim">{t.hero.sub}</p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link href={`/${lang}/app/signup`} className="btn btn-accent btn-lg">
-              {t.hero.cta}
-            </Link>
-            <a href="#log" className="btn btn-ghost-inverse btn-lg">
-              {t.hero.cta2}
-            </a>
-          </div>
+          {/* URL first, like the product: the site goes with the visitor into signup and straight into Noor's first run. */}
+          <form action={`/${lang}/app/signup`} method="get" className="mt-8 flex max-w-xl flex-wrap gap-2 sm:flex-nowrap">
+            <input name="url" dir="ltr" inputMode="url" autoComplete="url" placeholder={lang === "ar" ? "رابط موقعك أو متجرك" : "Your website or store URL"} aria-label={lang === "ar" ? "رابط موقعك أو متجرك" : "Your website or store URL"} className="min-w-0 flex-1 rounded-full border border-mist/25 bg-oasis px-5 py-3 text-base text-mist placeholder:text-mist-dim/70 focus:border-saffron focus:outline-none" />
+            <button className="btn btn-accent btn-lg shrink-0">{t.hero.cta}</button>
+          </form>
+          <p className="mt-3 text-sm text-mist-dim">
+            {lang === "ar" ? "بدون بطاقة دفع. ما عندك موقع؟ " : "No card required. No website? "}
+            <Link href={`/${lang}/app/signup`} className="underline">{lang === "ar" ? "ابدأ بدونه" : "Start without one"}</Link>
+            {" · "}
+            <a href="#log" className="underline">{t.hero.cta2}</a>
+          </p>
         </div>
 
         <div id="log" className="rounded-2xl border border-mist/10 bg-oasis p-5 shadow-2xl shadow-black/30 sm:p-6">

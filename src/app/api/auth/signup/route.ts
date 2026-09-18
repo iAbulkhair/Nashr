@@ -8,9 +8,10 @@ export async function POST(req: Request) {
   const email = normalizeEmail(b.email ?? "");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ ok: false, error: "bad_email" }, { status: 400 });
   if (!b.password || b.password.length < 8) return NextResponse.json({ ok: false, error: "weak_password" }, { status: 400 });
-  if (!b.phone || b.phone.replace(/\D/g, "").length < 9) return NextResponse.json({ ok: false, error: "bad_phone" }, { status: 400 });
+  // Phone is optional at signup (asked later inside onboarding); validate only when given.
+  if (b.phone && b.phone.replace(/\D/g, "").length < 9) return NextResponse.json({ ok: false, error: "bad_phone" }, { status: 400 });
   if (await getUser(email)) return NextResponse.json({ ok: false, error: "exists" }, { status: 409 });
-  const u = await createUser({ email, name: b.name ?? "", phone: b.phone, password: b.password, lang: b.lang === "en" ? "en" : "ar" });
+  const u = await createUser({ email, name: b.name ?? "", phone: b.phone ?? "", password: b.password, lang: b.lang === "en" ? "en" : "ar" });
   await registerCode(u.email);
   let referred = false;
   if (b.ref && /^[A-Za-z0-9]{6,10}$/.test(b.ref)) referred = await applyReferral(u.email, b.ref);

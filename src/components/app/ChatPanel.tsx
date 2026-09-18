@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { ChatMsg, ChatItem } from "@/lib/chat";
@@ -7,6 +8,7 @@ import { AGENTS, type AgentId } from "@/lib/agents";
 import { raiseLimit } from "./LimitModal";
 import { render } from "@/lib/md";
 import { Icon, channelIcon } from "./Icons";
+import { ActivationBar, FileCard, PlanCard, WhatsAppCard } from "./OnboardCards";
 
 type Conv = { id: string; title: string; updatedAt: string; count: number; agent?: AgentId };
 const LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250, tiktok: 2200, whatsapp: 1024, gbp: 1500, meta: 63206, linkedin: 3000 };
@@ -51,7 +53,7 @@ export function ItemCard({ item, t, lang, onApproved }: { item: ChatItem; t: App
   );
 }
 
-export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null }) {
+export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean }) {
   const [msgs, setMsgs] = useState<ChatMsg[]>(initial);
   const [text, setText] = useState(initialPrompt);
   const [busy, setBusy] = useState(false);
@@ -66,6 +68,10 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
   const [steps, setSteps] = useState<string[]>([]);
   const [left, setLeft] = useState(pendingCount);
   const list = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  const ranOnboard = useRef(false);
+  const [goal, setGoal] = useState(starter ?? null);
+  const [onboarded, setOnboarded] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { const el = list.current; if (el) el.scrollTop = el.scrollHeight; }, [msgs, busy, steps]);
   useEffect(() => { fetch("/api/conversations").then((r) => r.json()).then((j) => { if (j.ok) { setConvs(j.conversations); if (initialConv) setAgent((j.conversations as Conv[]).find((c) => c.id === initialConv)?.agent ?? "noor"); } }); }, [initialConv]);
@@ -78,6 +84,38 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // First run: Noor builds the workspace inside this thread (Enrich-style onboarding, no form).
+  useEffect(() => {
+    if (!onboardUrl || ranOnboard.current) return;
+    ranOnboard.current = true;
+    (async () => {
+      setBusy(true); setSteps([]);
+      const fail = (code?: string) => setMsgs((p) => [...p, { role: "assistant", agent: "noor", at: new Date().toISOString(), content: code === "busy" ? (lang === "ar" ? "التجهيز جارٍ في الخلفية. حدّث الصفحة بعد دقيقة." : "Setup is still running. Refresh in a minute.") : (lang === "ar" ? "⚠︎ تعذّر تجهيز المساحة. حدّث الصفحة للمحاولة مرة أخرى." : "⚠︎ Could not set up the workspace. Refresh to try again.") }]);
+      try {
+        const res = await fetch("/api/onboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: onboardUrl }) });
+        if (res.status === 409) return fail("busy");
+        if (!res.ok || !res.body) return fail();
+        const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+        for (;;) {
+          const { value, done: end } = await reader.read();
+          if (end) break;
+          buf += dec.decode(value, { stream: true });
+          let i;
+          while ((i = buf.indexOf("\n\n")) >= 0) {
+            const line = buf.slice(0, i).trim(); buf = buf.slice(i + 2);
+            if (!line.startsWith("data:")) continue;
+            const ev = JSON.parse(line.slice(5));
+            if (ev.type === "status") setSteps((p) => [...p, ev.text]);
+            else if (ev.type === "message") { setMsgs((p) => [...p, ev.message]); if (ev.message.plan?.length) setGoal((g) => ({ goal: g?.goal ?? "", first: ev.message.plan[0].title })); }
+            else if (ev.type === "done") { setGoal((g) => ({ goal: ev.goal ?? "", first: g?.first })); setOnboarded(true); router.replace(`/${lang}/app/chat`); router.refresh(); }
+            else if (ev.type === "error") fail();
+          }
+        }
+      } catch { fail(); }
+      finally { setBusy(false); setSteps([]); }
+    })();
+  }, [onboardUrl, lang, router]);
 
   async function newConv(withAgent: AgentId = agent) {
     const j = await (await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "…", agent: withAgent }) })).json();
@@ -180,7 +218,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
             {pending[0] && <ItemCard item={pending[0]} t={t} lang={lang} onApproved={() => setLeft((n) => Math.max(0, n - 1))} />}
           </section>
         )}
-        {msgs.length === 0 && (
+        {msgs.length === 0 && !onboardUrl && (
           <div>
             <p className="text-ink/70">{agent === "noor" ? t.chat.empty : A[agent].blurb}</p>
             <div className="mt-4 flex flex-wrap gap-2">{A[agent].suggestions.map((s) => <button key={s} onClick={() => send(s)} className="rounded-full border border-oasis/30 px-3 py-1.5 text-sm text-oasis hover:bg-oasis hover:text-mist">{s}</button>)}</div>
@@ -188,10 +226,12 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         )}
         {msgs.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`${m.items?.length ? "w-full max-w-[95%]" : "max-w-[85%]"} rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-oasis text-mist" : "bg-salt-dim text-ink"}`} dir="auto">
+            <div className={`${m.items?.length || m.files?.length || m.plan?.length ? "w-full max-w-[95%]" : "max-w-[85%]"} rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-oasis text-mist" : "bg-salt-dim text-ink"}`} dir="auto">
               {m.role === "assistant" && <span className="mb-1 block text-xs font-semibold text-sadu-deep">{A[m.agent ?? agent].name}</span>}
               {m.role === "assistant" ? <div className="prose-nashr prose-compact" dangerouslySetInnerHTML={{ __html: render(m.content) }} /> : <p className="whitespace-pre-wrap">{m.content}</p>}
               {m.items && m.items.length > 0 && <div className="mt-1">{m.items.map((it) => <ItemCard key={it.id} item={it} t={t} lang={lang} />)}</div>}
+              {m.files && m.files.length > 0 && <div className="mt-1">{m.files.map((f, n) => <FileCard key={f.name} file={f} lang={lang} defaultOpen={n === 0 && m.files!.length === 1} />)}</div>}
+              {m.plan && m.plan.length > 0 && <PlanCard plan={m.plan} lang={lang} onStart={(prompt) => send(prompt)} />}
               {m.actions && m.actions.length > 0 && <p className="tnum mt-1 text-xs text-ink/60" dir="ltr">{m.actions.join(" · ")}</p>}
               {m.role === "assistant" && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
@@ -208,6 +248,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
             </div>
           </div>
         ))}
+        {needPhone && (onboarded || (msgs.some((m) => m.plan?.length) && !busy)) && <WhatsAppCard lang={lang} />}
         {busy && (
           <div className="text-sm text-ink/70">
             {steps.map((s, i) => <p key={i} className={`flex items-center gap-2 ${i < steps.length - 1 ? "opacity-70" : ""}`}><span className={`h-2 w-2 rounded-full ${i < steps.length - 1 ? "bg-oasis" : "animate-pulse bg-saffron"}`} />{A[agent].name}: {s}</p>)}
@@ -216,11 +257,12 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         )}
       </div>
 
+      {plan === "trial" && goal?.goal && <ActivationBar lang={lang} goal={goal.goal} first={goal.first} />}
       <form onSubmit={(e) => { e.preventDefault(); send(text); }} className="mt-3 flex gap-2">
         <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder={t.chat.placeholder} aria-label={t.chat.placeholder} className="input rounded-full" />
         <button disabled={busy || !text.trim()} className="btn btn-accent btn-lg shrink-0" aria-label={t.chat.send}><Icon name="send" className="h-4 w-4" /><span className="hidden sm:inline">{t.chat.send}</span></button>
       </form>
-      {step && plan === "trial" && <p className="mt-2 flex items-center gap-2 text-xs text-ink/70"><Icon name="spark" className="h-3.5 w-3.5 text-saffron" />{t.limit.firstUp}: {step}</p>}
+      {step && plan === "trial" && !goal?.goal && <p className="mt-2 flex items-center gap-2 text-xs text-ink/70"><Icon name="spark" className="h-3.5 w-3.5 text-saffron" />{t.limit.firstUp}: {step}</p>}
     </div>
   );
 }
