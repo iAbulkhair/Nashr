@@ -183,3 +183,78 @@ describe("an ended trial cannot buy an image", () => {
     expect((await getUser(u.email))!.credits).toBe(50);
   });
 });
+
+/**
+ * Credits are charged against the ACCOUNT, but the profile read usage from the active brand's scope alone and then
+ * rendered it directly beside the account balance. On an agency plan the page contradicted itself, and the figure
+ * moved when the owner switched brand while the balance stayed put.
+ */
+describe("profile usage covers every brand the account owns", () => {
+  it("sums all scopes, so used and remaining describe the same money", async () => {
+    const u = await newUser("agency");
+    const { saveUser } = await import("@/lib/auth");
+    await saveUser({ ...u, plan: "agency" });
+    const fresh = (await import("@/lib/auth")).getUser;
+    const acct = (await fresh(u.email))!;
+
+    const { addBrand, scopeFor } = await import("@/lib/brands");
+    const second = await addBrand(acct, "Second");
+    expect("id" in second, "the agency plan must allow a second brand").toBe(true);
+    const secondScope = scopeFor(u.email, (second as { id: string }).id);
+
+    const { saveTask } = await import("@/lib/brand");
+    const task = (id: string) => ({ id, type: "social" as const, channel: "instagram", title: "t", body: "b", status: "approved" as const, createdAt: new Date().toISOString(), lang: "ar" as const });
+    await saveTask(u.email, task("d1"), true);
+    await saveTask(secondScope, task("s1"), true);
+    await saveTask(secondScope, task("s2"), true);
+
+    await signIn(u.email);
+    const profileRoute = await import("@/app/api/profile/route");
+    const body = (await (await profileRoute.GET()).json()) as { usage: Record<string, { count: number }> };
+    expect(body.usage.social.count, "one task in the default brand and two in the second").toBe(3);
+  });
+});
+
+/**
+ * PUT /api/files was the one write with no rate limit and no ceiling. `listFiles` reads every file in the index on
+ * the Files page and on several routes, so an index grown without bound stops the page answering at all — and
+ * nothing could bring the count down except deleting entries one by one.
+ */
+describe("the workspace file index is bounded", () => {
+  it("refuses a new file past the ceiling but still allows edits to existing ones", async () => {
+    const { MAX_FILES, FileLimitError, writeFile: wf } = await import("@/lib/files");
+    const who = "capped@test.example";
+    for (let i = 0; i < MAX_FILES; i++) await wf(who, `f${i}.md`, "x", "user");
+
+    await expect(wf(who, "one-too-many.md", "x", "user")).rejects.toBeInstanceOf(FileLimitError);
+    // An existing file is still editable: a full workspace must be tidyable, not frozen.
+    const edited = await wf(who, "f0.md", "updated", "user");
+    expect(edited.content).toBe("updated");
+  });
+
+  it("the route answers 409 rather than throwing, and throttles repeated writes", async () => {
+    const u = await newUser("filecap");
+    await signIn(u.email);
+    const put = (name: string) => filesRoute.PUT(json("/api/files", "PUT", { name, content: "hello" }));
+
+    expect((await put("first.md")).status).toBe(200);
+
+    // 60 writes an hour per scope; the 61st is refused.
+    for (let i = 1; i < 60; i++) await put(`f${i}.md`);
+    const throttled = await put("too-fast.md");
+    expect(throttled.status).toBe(429);
+    expect((await throttled.json()).error).toBe("slow_down");
+  });
+
+  it("rejects an oversized body before parsing it", async () => {
+    const u = await newUser("filebig");
+    await signIn(u.email);
+    const req = new Request("https://nashr.test/api/files", {
+      method: "PUT",
+      headers: { "content-type": "application/json", "content-length": "5000000" },
+      body: JSON.stringify({ name: "big.md", content: "x" }),
+    });
+    const res = await filesRoute.PUT(req);
+    expect(res.status).toBe(413);
+  });
+});

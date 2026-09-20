@@ -11,7 +11,7 @@ import { trialOver, type User } from "./auth";
 import { getBrand, listPreferences, saveBrand, saveTask, listLite, type Brand, type Task } from "./brand";
 import { TASK_COST, TASK_COUNT, TASK_TYPES, isTaskType, type TaskType } from "./tasks";
 import { generate } from "./noor";
-import { listFileNames, memoryBlock, readFile, writeFile } from "./files";
+import { FileLimitError, MAX_FILES, listFileNames, memoryBlock, readFile, writeFile } from "./files";
 import { getGov } from "./governance";
 import { activeSeasons } from "./seasons";
 import { importCatalog } from "./catalog";
@@ -319,7 +319,15 @@ export async function runTool(user: User, name: string, input: Record<string, un
       return f ? f.content.slice(0, 12000) : "File not found.";
     }
     case "write_file": {
-      const f = await writeFile(email, String(input.name), String(input.content), "noor");
+      // The workspace has a file ceiling. Tell the agent plainly rather than throwing out of the turn: it can then
+      // say so to the owner, or overwrite an existing file, instead of the message failing with nothing shown.
+      let f;
+      try {
+        f = await writeFile(email, String(input.name), String(input.content), "noor");
+      } catch (e) {
+        if (e instanceof FileLimitError) return `This workspace already holds ${MAX_FILES} files, the maximum. Ask the owner to delete one from the Files page, or write to a file that already exists.`;
+        throw e;
+      }
       actions.push(`file:${f.name}`);
       return `Saved ${f.name} (${f.content.length} chars).`;
     }

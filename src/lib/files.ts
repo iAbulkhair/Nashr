@@ -54,6 +54,17 @@ export async function listFileNames(email: string): Promise<string[]> {
 export async function readFile(email: string, name: string) {
   return db.get<WFile>(KEY(email, safeName(name)));
 }
+/**
+ * How many files one workspace may hold. `listFiles` reads every one of them on the Files page and on several API
+ * routes, so an unbounded index is not merely untidy: past a few thousand entries the page stops answering at all,
+ * and nothing could ever bring the count back down except deleting them one at a time. Nothing legitimate comes
+ * close — the core memory is five files.
+ */
+export const MAX_FILES = 200;
+export class FileLimitError extends Error {
+  constructor() { super("file_limit"); this.name = "FileLimitError"; }
+}
+
 export async function writeFile(email: string, name: string, content: string, by: WFile["by"] = "noor") {
   let n = safeName(name);
   // The agent must not destroy what the owner wrote by hand. import_catalog and write_file are chosen by the model,
@@ -67,6 +78,11 @@ export async function writeFile(email: string, name: string, content: string, by
       const ext = dot > 0 ? n.slice(dot) : "";
       n = safeName((ext ? n.slice(0, dot) : n) + "-imported" + ext);
     }
+  }
+  // Only a NEW name counts against the ceiling: rewriting products.md for the thousandth time is free, and a
+  // workspace already over the limit can still be edited and tidied rather than being frozen outright.
+  if (!(await db.get<WFile>(KEY(email, n)))) {
+    if ((await db.smembers(SET(email))).length >= MAX_FILES) throw new FileLimitError();
   }
   const f: WFile = { name: n, content: content.slice(0, 40000), updatedAt: new Date().toISOString(), by };
   await db.set(KEY(email, n), f);

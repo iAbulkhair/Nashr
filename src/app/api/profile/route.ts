@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { currentUser, PLAN_CREDITS, saveUser, sc } from "@/lib/auth";
 import { getBrand, listLite, saveBrand, TASK_COST, TASK_COUNT, type TaskType } from "@/lib/brand";
 import { db } from "@/lib/db";
+import { listBrands, scopeFor } from "@/lib/brands";
+import { pmap } from "@/lib/parallel";
 import { withUserLock } from "@/lib/credits";
 
 export type EmailPrefs = "all" | "important" | "none";
@@ -10,7 +12,13 @@ export async function GET() {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
-  const tasks = await listLite(sc(u), monthStart);
+  // Every brand this account owns, not just the one that happens to be active. Credits are charged against the
+  // ACCOUNT (`charge(u.email, ...)` everywhere), but usage was read from a single brand scope and then rendered
+  // directly beside the account balance: an agency running three brands saw "Credits used 10 / 2000" above "1970
+  // remaining", and the used figure changed when it switched brand while the balance did not. The admin route and
+  // wipeAccount already take this union; the profile was the outlier.
+  const scopes = (await listBrands(u.email)).map((b) => scopeFor(u.email, b.id));
+  const tasks = (await pmap(scopes, (s) => listLite(s, monthStart))).flat();
   const usage: Record<string, { count: number; credits: number }> = {};
   for (const t of tasks) {
     if (new Date(t.createdAt) < monthStart) continue;
