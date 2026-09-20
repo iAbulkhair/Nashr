@@ -28,6 +28,9 @@ export type User = {
 export const sc = (u: User) => u.scope ?? u.email;
 
 export const PLAN_CREDITS: Record<Plan, number> = { trial: 50, starter: 200, pro: 700, agency: 2000, enterprise: 10000 };
+/** Membership test for a plan name from a request body. Not `in`: that walks the prototype chain (see `isTaskType`). */
+export const PLANS = Object.keys(PLAN_CREDITS) as Plan[];
+export const isPlan = (v: unknown): v is Plan => typeof v === "string" && (PLANS as string[]).includes(v);
 const SESSION_TTL = 60 * 60 * 24 * 30;
 const COOKIE = "nashr_session";
 

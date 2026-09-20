@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { PLAN_CREDITS, getUser, isAdmin, saveUser, type Plan } from "@/lib/auth";
+import { PLAN_CREDITS, getUser, isAdmin, isPlan, saveUser, type Plan } from "@/lib/auth";
 import { CAPS, db, pushCapped } from "@/lib/db";
 import { monthKey, withUserLock } from "@/lib/credits";
 import { getUsage } from "@/lib/usage";
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
   const prev = await getUser(b.email);
   const before = prev ? { plan: String(prev.plan), credits: Number(prev.credits) } : undefined;
   const user = await withUserLock(b.email, async (u) => {
-    if (b.plan && b.plan in PLAN_CREDITS) {
+    if (isPlan(b.plan)) {
       u.plan = b.plan;
       u.credits = PLAN_CREDITS[b.plan];
       u.renewedAt = monthKey();

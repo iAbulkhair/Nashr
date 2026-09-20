@@ -27,9 +27,18 @@ export async function withUserLock<T>(email: string, fn: (u: User) => Promise<T>
 
 export type ChargeResult = { ok: true; credits: number } | { ok: false; credits: number; need: number };
 
-/** Atomically reserve `cost` credits. Fails without changing the balance when insufficient. */
+/**
+ * Atomically reserve `cost` credits. Fails without changing the balance when insufficient.
+ *
+ * The balance and the cost are both checked for being real numbers first. Every comparison against NaN is false, so a
+ * single non-numeric cost would otherwise pass the "enough credits" test at a zero balance AND write NaN into the
+ * record, after which the account can never be charged correctly again. The callers validate their input, and this is
+ * the ledger refusing to be the place where that ever matters.
+ */
 export async function charge(email: string, cost: number): Promise<ChargeResult> {
+  if (!Number.isFinite(cost) || cost < 0) throw new Error(`invalid_cost:${String(cost)}`);
   return withUserLock(email, async (u) => {
+    if (!Number.isFinite(u.credits)) u.credits = 0; // repair a record damaged before this guard existed
     if (u.credits < cost) return { ok: false, credits: u.credits, need: cost };
     u.credits -= cost;
     await saveUser(u);
@@ -39,8 +48,10 @@ export async function charge(email: string, cost: number): Promise<ChargeResult>
 
 /** Add (or remove) credits atomically. Balance never goes below zero. Returns the new balance. */
 export async function adjust(email: string, delta: number): Promise<number> {
+  if (!Number.isFinite(delta)) throw new Error(`invalid_delta:${String(delta)}`);
   return withUserLock(email, async (u) => {
-    u.credits = Math.max(0, u.credits + Math.trunc(delta));
+    const current = Number.isFinite(u.credits) ? u.credits : 0;
+    u.credits = Math.max(0, current + Math.trunc(delta));
     await saveUser(u);
     return u.credits;
   });

@@ -8,7 +8,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { randomBytes } from "crypto";
 import { CAPS, db, pushCapped } from "./db";
 import type { User } from "./auth";
-import { TASK_COST, TASK_COUNT, getBrand, listPreferences, saveBrand, saveTask, listLite, type Brand, type Task, type TaskType } from "./brand";
+import { getBrand, listPreferences, saveBrand, saveTask, listLite, type Brand, type Task } from "./brand";
+import { TASK_COST, TASK_COUNT, TASK_TYPES, isTaskType, type TaskType } from "./tasks";
 import { generate } from "./noor";
 import { listFiles, memoryBlock, readFile, writeFile } from "./files";
 import { getGov } from "./governance";
@@ -238,7 +239,9 @@ export async function runTool(user: User, name: string, input: Record<string, un
   const email = user.scope ?? user.email;
   switch (name) {
     case "generate_content": {
-      const type = input.type as TaskType;
+      // The model chooses this value, and crawled pages and catalogs reach the model: it is request input, not a fact.
+      if (!isTaskType(input.type)) return `Unknown type. Valid types: ${TASK_TYPES.join(", ")}.`;
+      const type = input.type;
       const cost = TASK_COST[type];
       const brand = await getBrand(email);
       if (!brand) return "No brand file yet. Ask the owner to run onboarding.";
@@ -267,7 +270,8 @@ export async function runTool(user: User, name: string, input: Record<string, un
       return `Created ${items.length} ${type} item(s) in the inbox${gov.autoApprove[type] ? " (auto-approved per governance)" : ""}. Credits left: ${user.credits}. Titles: ${items.map((i) => i.title).join(" | ")}${inline}`;
     }
     case "draft_items": {
-      const type = input.type as TaskType;
+      if (!isTaskType(input.type)) return `Unknown type. Valid types: ${TASK_TYPES.join(", ")}.`;
+      const type = input.type;
       const count = Math.max(1, Math.min(3, Number(input.count) || 1));
       const cost = Math.max(1, Math.ceil((TASK_COST[type] / (TASK_COUNT[type] || 1)) * count));
       const brand = await getBrand(email);

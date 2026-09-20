@@ -6,7 +6,8 @@ import { randomBytes } from "crypto";
 import { userFromBearer } from "@/lib/mcp";
 import { chatAllowed } from "@/lib/rate";
 import { chat } from "@/lib/chat";
-import { TASK_COST, getBrand, listPreferences, listTasks, saveTask, type Task, type TaskType } from "@/lib/brand";
+import { getBrand, listPreferences, listTasks, saveTask, type Task } from "@/lib/brand";
+import { TASK_COST, isTaskType } from "@/lib/tasks";
 import { generate } from "@/lib/noor";
 import { listFiles, memoryBlock, readFile } from "@/lib/files";
 import { getGov } from "@/lib/governance";
@@ -66,8 +67,8 @@ export async function POST(req: Request) {
         return ok(id, text(m.content + (m.actions?.length ? `\n\n[actions: ${m.actions.join(", ")}]` : "")));
       }
       case "generate_content": {
-        const type = String(args.type) as TaskType;
-        if (!(type in TASK_COST)) return ok(id, { ...text("Unknown type."), isError: true });
+        if (!isTaskType(args.type)) return ok(id, { ...text("Unknown type."), isError: true });
+        const type = args.type;
         const brand = await getBrand((user.scope ?? user.email));
         if (!brand) return ok(id, { ...text("No brand file yet. Run onboarding in the app first."), isError: true });
         if (user.plan === "trial" && new Date(user.trialEnds) < new Date()) return ok(id, { ...text("The trial has ended. Subscribe in the app to keep generating."), isError: true });
