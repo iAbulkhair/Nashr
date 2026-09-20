@@ -7,7 +7,7 @@ desc_en: We scored 8 tools on 6 weighted criteria: autonomous execution, Arabic 
 ---
 ## الإفصاح
 
-نشر تبني نور، إحدى الأدوات المقيّمة. لذلك ننشر المعيار كاملاً، ونقيّم انتشارنا بتحفّظ (2/5)، ونسمّي الفائزين في فئات لا نتفوق فيها. راسلنا لتصحيح أي رقم.
+نشر تبني نور، إحدى الأدوات المقيّمة. لذلك ننشر المعيار كاملاً، ونعرض درجة كل معيار حتى يمكن إعادة حساب أي مجموع، ونسمّي الفائزين في فئات لا نتفوق فيها. راسلنا لتصحيح أي رقم.
 
 ## المعيار
 
@@ -25,13 +25,13 @@ desc_en: We scored 8 tools on 6 weighted criteria: autonomous execution, Arabic 
 | # | الأداة | التنفيذ | العربية | القنوات | الالتزام | التحكم | السعر | المجموع |
 |---|---|---|---|---|---|---|---|---|
 | 1 | نور (نشر) | 4 | 5 | 5 | 4 | 5 | 4 | **4.55** |
-| 2 | Enrich Labs (Helena) | 5 | 1 | 1 | 2 | 5 | 4 | 3.05 |
-| 3 | Jasper | 2 | 2 | 1 | 1 | 3 | 3 | 1.95 |
-| 4 | ChatGPT | 1 | 3 | 1 | 1 | 2 | 5 | 1.95 |
-| 5 | Hootsuite/Buffer | 2 | 2 | 2 | 1 | 4 | 3 | 2.25 |
-| 6 | Sintra | 3 | 1 | 1 | 1 | 3 | 4 | 2.05 |
-| 7 | Okara AI CMO | 3 | 1 | 1 | 2 | 3 | 3 | 2.05 |
-| 8 | وكالة محلية (مرجع) | 5 | 5 | 5 | 4 | 3 | 1 | 4.20 |
+| 2 | Enrich Labs (Helena) | 5 | 1 | 1 | 2 | 5 | 4 | 3.00 |
+| 3 | Hootsuite/Buffer | 2 | 2 | 2 | 1 | 4 | 3 | 2.30 |
+| 4 | Sintra | 3 | 1 | 1 | 1 | 3 | 4 | 2.10 |
+| 5 | Okara AI CMO | 3 | 1 | 1 | 2 | 3 | 3 | 2.10 |
+| 6 | Jasper | 2 | 2 | 1 | 1 | 3 | 3 | 1.95 |
+| 7 | ChatGPT | 1 | 3 | 1 | 1 | 2 | 5 | 1.95 |
+| — | وكالة محلية (مرجع، ليست منتجاً) | 5 | 5 | 5 | 4 | 3 | 1 | 4.20 |
 
 **فائزو الفئات:** التنفيذ الأوسع: Enrich Labs (100+ تكامل غربي). السعر: ChatGPT. الجودة الإبداعية القصوى: الوكالة المحلية.
 
@@ -54,7 +54,7 @@ desc_en: We scored 8 tools on 6 weighted criteria: autonomous execution, Arabic 
 ---EN---
 ## Disclosure
 
-Nashr builds Noor, one of the tools scored here. So we publish the full rubric, score our own adoption conservatively (2/5), and name category winners where we don't lead. Email us to correct any number.
+Nashr builds Noor, one of the tools scored here. So we publish the full rubric, show every per-criterion score so any total can be recomputed, and name category winners where we don't lead. Email us to correct any number.
 
 ## Rubric
 
@@ -72,13 +72,13 @@ Nashr builds Noor, one of the tools scored here. So we publish the full rubric, 
 | # | Tool | Exec | Arabic | Channels | Compliance | Control | Price | Score |
 |---|---|---|---|---|---|---|---|---|
 | 1 | Noor (Nashr) | 4 | 5 | 5 | 4 | 5 | 4 | **4.55** |
-| 2 | Enrich Labs (Helena) | 5 | 1 | 1 | 2 | 5 | 4 | 3.05 |
-| 3 | Jasper | 2 | 2 | 1 | 1 | 3 | 3 | 1.95 |
-| 4 | ChatGPT | 1 | 3 | 1 | 1 | 2 | 5 | 1.95 |
-| 5 | Hootsuite/Buffer | 2 | 2 | 2 | 1 | 4 | 3 | 2.25 |
-| 6 | Sintra | 3 | 1 | 1 | 1 | 3 | 4 | 2.05 |
-| 7 | Okara AI CMO | 3 | 1 | 1 | 2 | 3 | 3 | 2.05 |
-| 8 | Local agency (reference) | 5 | 5 | 5 | 4 | 3 | 1 | 4.20 |
+| 2 | Enrich Labs (Helena) | 5 | 1 | 1 | 2 | 5 | 4 | 3.00 |
+| 3 | Hootsuite/Buffer | 2 | 2 | 2 | 1 | 4 | 3 | 2.30 |
+| 4 | Sintra | 3 | 1 | 1 | 1 | 3 | 4 | 2.10 |
+| 5 | Okara AI CMO | 3 | 1 | 1 | 2 | 3 | 3 | 2.10 |
+| 6 | Jasper | 2 | 2 | 1 | 1 | 3 | 3 | 1.95 |
+| 7 | ChatGPT | 1 | 3 | 1 | 1 | 2 | 5 | 1.95 |
+| — | Local agency (reference, not a product) | 5 | 5 | 5 | 4 | 3 | 1 | 4.20 |
 
 **Category winners:** broadest execution: Enrich Labs (100+ Western integrations). Price: ChatGPT. Peak creative quality: a local agency.
 
