@@ -1,0 +1,15 @@
+{
+  "cookies": [
+    {
+      "name": "nashr_session",
+      "value": "2aaf0d54cb8b22e7dec961ac8bf315e531cdb5bc729cdcf70a95d0022423678f",
+      "domain": "localhost",
+      "path": "/",
+      "expires": 1792507585.319,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": []
+}
