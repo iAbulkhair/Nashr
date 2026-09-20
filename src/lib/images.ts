@@ -31,8 +31,12 @@ export async function generateImage(brand: Brand, task: Task, email?: string): P
   if (!key) {
     return { url: `https://placehold.co/1024x1024/0f3d3a/f2b33d.png?text=${encodeURIComponent(brand.name.slice(0, 24))}`, prompt, provider: "placeholder" };
   }
+  // The route charges the credit BEFORE this call and its ceiling is 120s. A provider that accepts the connection and
+  // then stalls would run past that ceiling, the platform would terminate the invocation, and the route catch — with
+  // its refund — would never run. Fail here first, with room to spare.
   const res = await fetch("https://fal.run/fal-ai/flux/schnell", {
     method: "POST",
+    signal: AbortSignal.timeout(60_000),
     headers: { Authorization: `Key ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ prompt, image_size: task.channel === "tiktok" || task.channel === "snapchat" ? "portrait_16_9" : "square_hd", num_images: 1, enable_safety_checker: true }),
   });
