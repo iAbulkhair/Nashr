@@ -16,24 +16,10 @@ Test timeout of 45000ms exceeded.
 ```
 
 ```
-Error: browser console errors during this test
+Error: locator.fill: Test timeout of 45000ms exceeded.
+Call log:
+  - waiting for getByRole('textbox', { name: 'Your name' })
 
-expect(received).toEqual(expected) // deep equality
-
-- Expected  - 1
-+ Received  + 3
-
-- Array []
-+ Array [
-+   "Failed to load resource: the server responded with a status of 429 (Too Many Requests)",
-+ ]
-```
-
-```
-Error: page.waitForURL: Test timeout of 45000ms exceeded.
-=========================== logs ===========================
-waiting for navigation to "**/en/app/start" until "load"
-============================================================
 ```
 
 # Page snapshot
@@ -57,31 +43,23 @@ waiting for navigation to "**/en/app/start" until "load"
         - heading "Start your free trial" [level=1] [ref=e12]
         - paragraph [ref=e13]: 3 days, 50 credits, no card.
         - generic [ref=e14]:
-          - paragraph [ref=e15]:
-            - generic [ref=e16]: e2e-signup-mu9xjwda@test.example
-            - button "Edit" [ref=e17]
-          - textbox "Your name" [ref=e18]: E2E Signup
-          - textbox "Password (8+ characters)" [ref=e19]: signup12345
-          - list [ref=e20]:
-            - listitem [ref=e21]: At least 8 characters
-            - listitem [ref=e23]: At least one letter
-            - listitem [ref=e25]: At least one number
-          - alert [ref=e27]: slow_down
-          - button "Create account" [ref=e28] [cursor=pointer]
-        - paragraph [ref=e29]: 3-day trial · 50 credits · no card required
-        - paragraph [ref=e30]:
+          - textbox "Email" [ref=e15]
+          - alert [ref=e16]: Invalid email.
+          - button "Continue" [ref=e17] [cursor=pointer]
+        - paragraph [ref=e18]: 3-day trial · 50 credits · no card required
+        - paragraph [ref=e19]:
           - text: Have an account?
-          - link "Log in" [ref=e31]:
+          - link "Log in" [ref=e20]:
             - /url: /en/app/login
-        - paragraph [ref=e32]:
+        - paragraph [ref=e21]:
           - text: By continuing you agree to the
-          - link "Terms" [ref=e33]:
+          - link "Terms" [ref=e22]:
             - /url: /en/terms
           - text: and
-          - link "Privacy Policy" [ref=e34]:
+          - link "Privacy Policy" [ref=e23]:
             - /url: /en/privacy
           - text: .
-  - alert [ref=e35]
+  - alert [ref=e24]
 ```
 
 # Test source
@@ -110,12 +88,12 @@ waiting for navigation to "**/en/app/start" until "load"
   21  |     await page.getByRole("textbox", { name: "Email" }).fill(freshEmail());
   22  |     await page.getByRole("button", { name: "Continue" }).click();
   23  | 
-  24  |     await page.getByRole("textbox", { name: "Your name" }).fill("E2E Signup");
+> 24  |     await page.getByRole("textbox", { name: "Your name" }).fill("E2E Signup");
+      |                                                            ^ Error: locator.fill: Test timeout of 45000ms exceeded.
   25  |     await page.getByRole("textbox", { name: "Password (8+ characters)" }).fill("signup12345");
   26  |     await page.getByRole("button", { name: "Create account" }).click();
   27  | 
-> 28  |     await page.waitForURL("**/en/app/start");
-      |                ^ Error: page.waitForURL: Test timeout of 45000ms exceeded.
+  28  |     await page.waitForURL("**/en/app/start");
   29  |     await expect(page.getByRole("heading", { level: 1 })).toContainText("Give Noor your website");
   30  |   });
   31  | 
@@ -212,8 +190,4 @@ waiting for navigation to "**/en/app/start" until "load"
   122 |     const signedIn = await browser.newContext({ storageState: "e2e/.auth/owner.json" });
   123 |     const authed = await signedIn.newPage();
   124 |     await authed.goto("/en/app/login", { waitUntil: "domcontentloaded" });
-  125 |     expect(new URL(authed.url()).pathname).toBe("/en/app");
-  126 |     await signedIn.close();
-  127 |     void page;
-  128 |   });
 ```

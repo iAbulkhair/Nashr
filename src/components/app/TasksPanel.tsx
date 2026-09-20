@@ -39,11 +39,22 @@ export default function TasksPanel({ t, initial }: { t: AppDict; initial: Schedu
   }
   async function run(which: "weekly" | "daily") {
     setBusy(which);
-    const res = await fetch("/api/schedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run: which }) });
-    const j = await res.json();
-    setBusy("");
-    setMsg(`${k.ran}: ${which === "weekly" ? j.result : j.brief ? j.brief.text.split("\n")[1] : "off"}`);
-    r.refresh();
+    try {
+      const res = await fetch("/api/schedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run: which }) });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; result?: string; brief?: { text: string } };
+      if (!res.ok || !j.ok) { setMsg(t.generate.failed); return; }
+      // `runWeekly` answers "ok:N" when it really produced items and a reason otherwise — "no_credits", "trial_over",
+      // "cap_reached", "already_this_week". Prefixing all of them with "Ran:" told the owner their plan had been
+      // generated when nothing had happened and no credits had moved.
+      const outcome = which === "weekly" ? (j.result ?? "") : j.brief ? j.brief.text.split("\n")[1] : "off";
+      const ran = which === "weekly" ? outcome.startsWith("ok:") : !!j.brief;
+      setMsg(ran ? `${k.ran}: ${outcome}` : `${t.generate.failed} (${outcome})`);
+    } catch {
+      setMsg(t.generate.failed);
+    } finally {
+      setBusy("");
+      r.refresh();
+    }
   }
   return (
     <div className="mx-auto max-w-3xl">

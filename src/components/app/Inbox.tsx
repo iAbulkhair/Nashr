@@ -27,6 +27,8 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
   const [local, setLocal] = useState<Record<string, Task>>({});
   const [failed, setFailed] = useState<string | null>(null);
   const view = tasks.map((x) => local[x.id] ?? x);
+  /** Drop the optimistic copy of one task so the next server render is what the owner sees. */
+  const forgetLocal = (id: string) => setLocal((p) => { const next = { ...p }; delete next[id]; return next; });
   const targets = (x: Task) => {
     const out: string[] = [];
     if (x.type === "article") for (const p of ["wordpress", "shopify"]) if (connected.includes(p)) out.push(p);
@@ -39,6 +41,9 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
     const res = await fetch(`/api/publish/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider }) });
     setPublishing(null);
     if (!res.ok) alert(i.publishFail);
+    // `view` renders `local[id] ?? task`, so an entry left over from an earlier approve would mask this task's server
+    // copy for ever: the publish landed and the image was generated, but the card never showed either.
+    forgetLocal(id);
     r.refresh();
   }
   async function image(id: string) {
@@ -46,12 +51,13 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
     const res = await fetch(`/api/tasks/${id}/image`, { method: "POST" });
     setImaging(null);
     if (!res.ok) { const j = await res.json().catch(() => ({} as { error?: string })); if (!limitFromError(j.error)) alert(i.imageFail); }
+    forgetLocal(id);
     r.refresh();
   }
 
   const shown = view.filter((x) => filter === "all" || x.status === filter);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const dayLabel = (iso: string) => new Intl.DateTimeFormat(lang === "ar" ? "ar-SA-u-nu-latn" : "en", { weekday: "long", month: "long", day: "numeric" }).format(new Date(iso));
+  const dayLabel = (iso: string) => new Intl.DateTimeFormat(lang === "ar" ? "ar-SA-u-nu-latn" : "en", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }).format(new Date(iso));
   async function share(x: Task, body: string) {
     const text = `${x.title}\n\n${body}`;
     if (navigator.share) { try { await navigator.share({ title: x.title, text }); return; } catch { /* cancelled */ } }

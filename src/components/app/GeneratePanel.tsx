@@ -17,18 +17,26 @@ export default function GeneratePanel({ t, lang, credits }: { t: AppDict; lang: 
   async function run(type: TaskType) {
     setBusy(type);
     setMsg(g.running);
-    const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, notes }) });
-    const j = await res.json();
-    setBusy(null);
-    if (j.ok) {
-      setMsg(g.done);
-      r.push(`/${lang}/app`);
-      r.refresh();
-      return;
+    // /api/generate runs a long Opus call (maxDuration 300). A dropped connection makes fetch throw and a gateway 502
+    // returns HTML, so res.json() throws too. Without this, `busy` was never cleared and EVERY generate button on the
+    // page stayed disabled with the status frozen on "running" until the owner reloaded.
+    try {
+      const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, notes }) });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (res.ok && j.ok) {
+        setMsg(g.done);
+        r.push(`/${lang}/app`);
+        r.refresh();
+        return;
+      }
+      limitFromError(j.error);
+      const map: Record<string, string> = { no_credits: g.noCredits, trial_over: g.trialOver, no_brand: g.noBrand };
+      setMsg((j.error && map[j.error]) || g.failed);
+    } catch {
+      setMsg(g.failed);
+    } finally {
+      setBusy(null);
     }
-    limitFromError(j.error);
-    const map: Record<string, string> = { no_credits: g.noCredits, trial_over: g.trialOver, no_brand: g.noBrand };
-    setMsg(map[j.error] ?? g.failed);
   }
 
   return (

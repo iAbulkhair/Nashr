@@ -222,7 +222,6 @@ Expected: not "نشر — نور، وكيلة تسويق تعمل 24/7 للخل�
           - link "English" [ref=e156] [cursor=pointer]:
             - /url: /en/blog
             - text: EN
-  - alert [ref=e157]
 ```
 
 # Test source
