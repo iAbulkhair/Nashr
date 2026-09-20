@@ -1,13 +1,19 @@
 import Link from "next/link";
 import type { Dict, Lang } from "@/lib/i18n";
 
-export default function Pricing({ t, lang }: { t: Dict; lang: Lang }) {
+/**
+ * `headingLevel` exists because this section is reused on the home page and the industry pages, which have their own
+ * h1, and on /pricing, which had none at all — that page opened its document outline at h2, so it shipped with no
+ * first-level heading in either language.
+ */
+export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: Lang; headingLevel?: 1 | 2 }) {
   const p = t.pricing;
+  const Heading = headingLevel === 1 ? "h1" : "h2";
   return (
     <section id="pricing" className="scroll-mt-20 bg-oasis-deep text-mist">
       <div className="section-wrap">
         <p className="mb-3 eyebrow eyebrow-accent">{p.eyebrow}</p>
-        <h2 className="section-title">{p.title}</h2>
+        <Heading className="section-title">{p.title}</Heading>
         <p className="mt-3 text-mist-dim">{p.sub}</p>
         <div className="mt-4 flex flex-wrap gap-2 text-xs">
           <span className="rounded-full border border-saffron/50 px-3 py-1 text-saffron">{p.trial}</span>

@@ -1,8 +1,19 @@
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { dict, isLang } from "@/lib/i18n";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import AffiliateForm from "@/components/AffiliateForm";
+
+export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
+  const { lang } = await params;
+  const ar = lang === "ar";
+  return {
+    title: ar ? "برنامج الشركاء — اكسب 25% متكررة | نشر" : "Affiliate programme — earn 25% recurring | Nashr",
+    description: ar ? "اكسب 25% متكررة على كل عميل تحيله إلى نشر." : "Earn 25% recurring on every customer you refer to Nashr.",
+    alternates: { canonical: `/${lang}/affiliates`, languages: { ar: "/ar/affiliates", en: "/en/affiliates" } },
+  };
+}
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
