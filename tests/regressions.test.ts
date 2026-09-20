@@ -375,3 +375,39 @@ describe("a placeholder image is not charged", () => {
     expect((await getUser(u.email))!.credits, "no credit may be kept for an outage").toBe(50);
   });
 });
+
+/**
+ * `Secure` describes the transport, not the build. It was `NODE_ENV === "production"`, so a production build served
+ * over plain http marked the cookie Secure, every conforming client discarded it, and nobody could log in — silently,
+ * because the next request simply arrives with no cookie. WebKit does exactly that on http://localhost, which is how
+ * 40 signed-in route tests failed on CI while passing on Chromium.
+ */
+describe("the session cookie's Secure flag follows the connection", () => {
+  const opts = async (h: Record<string, string>) => {
+    const { withHeaders } = await import("./helpers/session");
+    const { sessionCookie } = await import("@/lib/auth");
+    return withHeaders(h, () => sessionCookie(60));
+  };
+
+  it("is dropped only for plain http on the loopback interface", async () => {
+    expect((await opts({ host: "localhost:3000" })).secure, "the local harness").toBe(false);
+    expect((await opts({ host: "127.0.0.1:3000" })).secure).toBe(false);
+    expect((await opts({ host: "[::1]:3000" })).secure).toBe(false);
+  });
+
+  it("is kept for https, and for any real host even over http", async () => {
+    expect((await opts({ host: "localhost:3000", "x-forwarded-proto": "https" })).secure).toBe(true);
+    expect((await opts({ host: "nashr.example.com", "x-forwarded-proto": "https" })).secure, "production").toBe(true);
+    // A real host over plain http keeps the flag and therefore stops working. That is the right way for that
+    // deployment mistake to fail: loudly, and never by quietly dropping the flag on live traffic.
+    expect((await opts({ host: "nashr.example.com" })).secure).toBe(true);
+    expect((await opts({ host: "localhost.evil.example" })).secure, "a host that merely starts with localhost").toBe(true);
+  });
+
+  it("is never anything but httpOnly and lax", async () => {
+    const o = await opts({ host: "localhost:3000" });
+    expect(o.httpOnly).toBe(true);
+    expect(o.sameSite).toBe("lax");
+    expect(o.path).toBe("/");
+  });
+});

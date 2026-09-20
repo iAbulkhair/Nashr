@@ -2,7 +2,7 @@ import { randomBytes } from "crypto";
 import { createUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 
-const g = globalThis as unknown as { __testJar: Map<string, string>; __testAfter: Promise<unknown>[]; __testAfterInScope: boolean };
+const g = globalThis as unknown as { __testJar: Map<string, string>; __testAfter: Promise<unknown>[]; __testAfterInScope: boolean; __testHeaders?: Record<string, string> };
 
 /** The cookie jar route handlers see. */
 export const jar = () => g.__testJar;
@@ -18,6 +18,13 @@ export async function signIn(email: string) {
 }
 /** Wait for work a handler scheduled with `after()`. */
 export const settle = async () => { await Promise.all(g.__testAfter.splice(0)); };
+
+/** Run `fn` with these request headers visible to `headers()`, which decides whether a cookie is marked Secure. */
+export async function withHeaders<T>(h: Record<string, string>, fn: () => Promise<T>): Promise<T> {
+  const before = g.__testHeaders;
+  g.__testHeaders = h;
+  try { return await fn(); } finally { g.__testHeaders = before; }
+}
 
 /**
  * Run `fn` as if there were no request in progress, so `after()` throws exactly as it does in production.

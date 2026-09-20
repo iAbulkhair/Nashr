@@ -5,7 +5,7 @@ import { vi } from "vitest";
  * outside a request, so tests get a cookie jar they control (tests/helpers/session.ts) and `after` runs at once.
  */
 type Jar = Map<string, string>;
-const g = globalThis as unknown as { __testJar?: Jar; __testAfter?: Promise<unknown>[]; __testAfterInScope?: boolean };
+const g = globalThis as unknown as { __testJar?: Jar; __testAfter?: Promise<unknown>[]; __testAfterInScope?: boolean; __testHeaders?: Record<string, string> };
 g.__testJar ??= new Map();
 g.__testAfter ??= [];
 // `after()` is only callable while a request is being handled. The mock used to accept it anywhere, which made the
@@ -19,7 +19,8 @@ vi.mock("next/headers", () => ({
     set: (a: string | { name: string; value: string }, value?: string) => { if (typeof a === "string") g.__testJar!.set(a, value ?? ""); else g.__testJar!.set(a.name, a.value); },
     delete: (name: string) => { g.__testJar!.delete(name); },
   }),
-  headers: async () => new Headers(),
+  // Settable, because whether a cookie is marked Secure depends on the request's host and protocol.
+  headers: async () => new Headers(g.__testHeaders ?? {}),
 }));
 
 vi.mock("next/server", async (orig) => ({

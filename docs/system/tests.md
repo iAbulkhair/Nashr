@@ -42,6 +42,7 @@ Legend: **test** = pinned by an automated test in `tests/` · **none** = nothing
 | 34 | The Shopify OAuth callback refuses a shop that is not a `myshopify.com` host before the client secret is posted to it | test (`regressions.test.ts`) | done |
 | 36 | Every task the approvals badge counts is reachable in the inbox, past the 200 newest tasks: buried pending items are returned with their bodies, never duplicated, newest-first and stably ordered, and a pending id whose record is gone is cleared rather than counted | test (`pending-reachable.test.ts`) | done |
 | 35 | Token cost is recorded per kind of call per account, so the cost of one request type is a read | test (`e2e-journey.test.ts`: generate/review/judge, arithmetic against the rates in `src/lib/usage.ts`) | done |
+| 48 | A session cookie is marked `Secure` unless the connection is plain http to the loopback interface; the flag follows the transport, never `NODE_ENV` | test (`regressions.test.ts`: loopback forms, https, a real host over http, and a `localhost.evil.example` look-alike) | done |
 | 46 | An OAuth redirect URI is https, or http only on the loopback interface, and never carries a fragment | test (`regressions.test.ts`: the loopback forms, look-alike hosts such as `127.0.0.1.evil.example`, and that registerClient drops a bad URI while keeping a good one) | done |
 | 47 | A placeholder image is refunded: the owner is not charged when the image service is unreachable | test (`regressions.test.ts`: the route reports the restored balance and the record shows it) | the chat tool's refund, which is covered only by the shared code path |
 | 38 | A repeated query parameter cannot crash a page: searchParams are typed as they actually arrive (`PageProps`) and narrowed at the point of use | E2E (`app-routes.spec.ts`: real repeated keys on conversations, reports and chat) | done |
@@ -62,6 +63,13 @@ Rule 8 was marked "done" on 2026-09-20 for the first time honestly. The row had 
 text admitted that signup and admin key login were "still manual", and reset was not mentioned at all — three of the
 five throttles it names had no test. All three now have one, each asserting the exact attempt at which the limiter
 bites; widening any of the three limits fails its test.
+
+Rule 48 was added on 2026-09-20 after CI failed on the pull request. All five session cookies were marked Secure
+when `NODE_ENV === "production"`, which describes the build and not the connection. The end-to-end harness serves a
+production build over plain http, so WebKit — which, unlike Chromium and unlike WebKit on macOS, does not treat
+http://localhost as a trustworthy origin — discarded the cookie, and 40 signed-in route tests were bounced to the
+login page on Linux while passing locally. Verified against a running server: loopback http emits no Secure,
+`x-forwarded-proto: https` and a real Host both still emit it.
 
 Rules 46-47 were added on 2026-09-20 after the pull request was opened. Rule 46 closed the last finding that had been
 left alone for needing sign-off: `registerClient` filtered redirect URIs with `/^https?:\/\//`, so a client could
