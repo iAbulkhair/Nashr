@@ -42,6 +42,14 @@ Legend: **test** = pinned by an automated test in `tests/` · **none** = nothing
 | 34 | The Shopify OAuth callback refuses a shop that is not a `myshopify.com` host before the client secret is posted to it | test (`regressions.test.ts`) | done |
 | 36 | Every task the approvals badge counts is reachable in the inbox, past the 200 newest tasks: buried pending items are returned with their bodies, never duplicated, newest-first and stably ordered, and a pending id whose record is gone is cleared rather than counted | test (`pending-reachable.test.ts`) | done |
 | 35 | Token cost is recorded per kind of call per account, so the cost of one request type is a read | test (`e2e-journey.test.ts`: generate/review/judge, arithmetic against the rates in `src/lib/usage.ts`) | done |
+| 38 | A repeated query parameter cannot crash a page: searchParams are typed as they actually arrive (`PageProps`) and narrowed at the point of use | E2E (`app-routes.spec.ts`: real repeated keys on conversations, reports and chat) | done |
+| 39 | The in-memory store copies on read and on write, as Upstash does, so a mutate-without-save is a no-op in tests exactly as it is in production; `charge` persists its NaN repair on the refusal path too | test (`store-copy.test.ts`, `type-guards.test.ts`) | done |
+| 40 | An ended trial cannot spend on either image path, and every spending path shares one `trialOver` check | test (`regressions.test.ts`: the route's 402 and the chat tool's refusal, balance untouched) | done |
+| 41 | A cron item that is killed rather than failing still consumes an attempt, so a timeout after a charge cannot re-charge without bound; a "retry" answer gives the attempt back | test (`cron-batch.test.ts`) | done |
+| 42 | Profile usage sums every brand scope the account owns, because credits are charged against the account | test (`regressions.test.ts`: an agency account with two brands) | done |
+| 43 | Workspace files are bounded (200 per scope, 60 writes per hour, oversized bodies refused) and an existing file stays editable at the ceiling | test (`regressions.test.ts`) | done |
+| 44 | A placeholder image is recorded as one on the task and labelled in the inbox | test (`regressions.test.ts`) | the label's rendering, which is E2E-visible only |
+| 45 | Lifecycle mail stops being due once its window passes, and nothing is read on a day when nothing is due | test (`regressions.test.ts`) | done |
 | 37 | Dates are formatted through `dateFormat` in `src/lib/dates.ts`: never the `ar-SA` locale, always UTC, and no direct `Intl.DateTimeFormat` outside `dates.ts` and the deliberate Hijri lookup in `seasons.ts` | test (`date-locale.test.ts`: the resolved calendar and time zone, plus a scan of every file under `src/`) and E2E (`app-routes.spec.ts` fails the route on any browser console error) | done |
 
 Route-level tests call the real handlers. `tests/helpers/setup.ts` replaces `next/headers` cookies with a jar the test controls and runs `after()` at once; `tests/helpers/session.ts` has `signIn(email)` (a real `session:{token}` record plus its cookie), `signOut()`, `newUser()`, `json()`, `params()` and `settle()`. The memory store honours TTL since 2026-09-18, so expiry rules are testable with fake clocks. Each rule above was checked once by breaking the code and watching the test fail (publish gate, task scope, suspended check, admin check).
@@ -52,6 +60,12 @@ Rule 8 was marked "done" on 2026-09-20 for the first time honestly. The row had 
 text admitted that signup and admin key login were "still manual", and reset was not mentioned at all — three of the
 five throttles it names had no test. All three now have one, each asserting the exact attempt at which the limiter
 bites; widening any of the three limits fails its test.
+
+Rules 38-45 were added on 2026-09-20 from the second audit pass. Each was checked by reverting its fix and watching
+its test fail: the conversations page 500s again on "?q=a&q=b", the profile reports 2 of 3 tasks, the third charge
+goes through after two kills, both trial gates let an expired trial buy an image, and a year-old trial is still owed
+its day-one mail. Rule 39 is the one that found a defect rather than pinning one: making the test store copy, as
+Upstash does, immediately failed an existing test, and the test was right.
 
 Rule 37 was added on 2026-09-20 for a hydration failure that only Safari saw. `/ar/app/calendar` asked for `ar-SA`,
 which WebKit's system ICU resolves to the Umm al-Qura calendar and Node's bundled ICU resolves to the Gregorian one, so
