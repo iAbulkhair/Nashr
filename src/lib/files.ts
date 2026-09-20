@@ -7,8 +7,17 @@ export type WFile = { name: string; content: string; updatedAt: string; by: "noo
 const SET = (e: string) => `files:${e}`;
 const KEY = (e: string, n: string) => `file:${e}:${n}`;
 
+/**
+ * Normalise a file name into something safe to put in a Redis key.
+ *
+ * Unicode letters and digits are KEPT. The previous version allowed only `[a-z0-9._-]`, which turned every Arabic name
+ * into a row of dashes — "ملاحظات.md" and "خطة-التسويق.md" both became "-.md" — so in an Arabic-first product the
+ * second file the owner created silently destroyed the first. What must still never survive is anything that could
+ * split or forge a key: ":" and "#" separate scope from id (src/lib/auth.ts `validEmail`), and "/" would let a name
+ * imitate a path.
+ */
 export function safeName(n: string) {
-  return n.toLowerCase().replace(/[^a-z0-9._-]/g, "-").replace(/-+/g, "-").slice(0, 60) || "file.md";
+  return n.toLowerCase().replace(/[^\p{L}\p{N}._-]/gu, "-").replace(/-+/g, "-").slice(0, 60) || "file.md";
 }
 
 export async function listFiles(email: string): Promise<WFile[]> {

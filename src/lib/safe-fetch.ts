@@ -48,15 +48,30 @@ export async function assertPublicUrl(raw: string): Promise<URL> {
 }
 
 /** Same signature as fetch. Redirects are followed by hand (max 5), each hop re-validated. */
+/** Headers that authenticate the caller. They belong to the origin they were issued for and to no other. */
+const CREDENTIAL_HEADERS = ["authorization", "cookie", "proxy-authorization", "x-shopify-access-token", "api-key"];
+
+function stripCredentials(init: RequestInit): RequestInit {
+  const headers = new Headers(init.headers);
+  for (const h of CREDENTIAL_HEADERS) headers.delete(h);
+  return { ...init, headers };
+}
+
 export async function safeFetch(input: string, init: RequestInit = {}): Promise<Response> {
   let url = input;
+  let current = init;
   for (let hop = 0; hop < 5; hop++) {
     await assertPublicUrl(url);
-    const res = await fetch(url, { ...init, redirect: "manual" });
+    const res = await fetch(url, { ...current, redirect: "manual" });
     if (res.status < 300 || res.status >= 400 || !res.headers.get("location")) return res;
-    url = new URL(res.headers.get("location")!, url).toString();
-    // A redirect must never carry credentials or a request body to another host.
+    const next = new URL(res.headers.get("location")!, url);
+    // A redirect must never carry credentials or a request body to another host. Connector calls pass the owner's
+    // store credentials through here (WooCommerce, PrestaShop and WordPress all send Authorization), and a store that
+    // redirects elsewhere — by misconfiguration or by an attacker who controls the configured URL — would otherwise
+    // hand that credential to whatever host answered.
     if (init.method && init.method !== "GET") throw new UnsafeUrlError("redirect_on_write");
+    if (new URL(url).origin !== next.origin) current = stripCredentials(current);
+    url = next.toString();
   }
   throw new UnsafeUrlError("too_many_redirects");
 }

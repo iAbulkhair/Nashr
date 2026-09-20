@@ -12,6 +12,8 @@ type Store = {
   lrange(key: string, start: number, stop: number): Promise<string[]>;
   /** Keep only the newest `keep` entries of a list written with lpush. */
   ltrim(key: string, keep: number): Promise<void>;
+  /** Remove every occurrence of `value` from a list. Deleting the record a list points at does not shorten the list. */
+  lrem(key: string, value: string): Promise<void>;
   hset(key: string, field: string, value: unknown): Promise<void>;
   hgetall<T = unknown>(key: string): Promise<Record<string, T>>;
   hdel(key: string, field: string): Promise<void>;
@@ -49,6 +51,9 @@ function upstash(): Store | null {
     },
     async ltrim(key, keep) {
       await r.ltrim(key, 0, keep - 1);
+    },
+    async lrem(key, value) {
+      await r.lrem(key, 0, value);
     },
     async hset(key, field, value) {
       await r.hset(key, { [field]: value });
@@ -117,6 +122,10 @@ function memory(): Store {
     async ltrim(key, keep) {
       const l = m.lists.get(key);
       if (l && l.length > keep) l.length = keep;
+    },
+    async lrem(key, value) {
+      const l = m.lists.get(key);
+      if (l) m.lists.set(key, l.filter((x) => x !== value));
     },
     async hset(key, field, value) {
       const h = hashes.get(key) ?? new Map<string, unknown>();
