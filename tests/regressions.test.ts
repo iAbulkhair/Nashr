@@ -411,3 +411,38 @@ describe("the session cookie's Secure flag follows the connection", () => {
     expect(o.path).toBe("/");
   });
 });
+
+/**
+ * Registration is where the https rule is applied, but a client registered before that rule existed still carries
+ * whatever it asked for, and the stored list is the only thing the approval step used to check. The code is about to
+ * be sent somewhere, so the rule is applied again at that moment.
+ */
+describe("a legacy client cannot still receive a code over plaintext", () => {
+  it("approval refuses a stored http redirect", async () => {
+    const { registerClient } = await import("@/lib/oauth");
+    const client = await registerClient({ redirect_uris: ["https://good.example/cb"], client_name: "Legacy" });
+
+    // Exactly what a client registered before the rule looks like on disk: a plaintext URI in its stored list.
+    client.redirect_uris.push("http://evil.example/cb");
+    await db.set(`oauthclient:${client.client_id}`, client);
+
+    const u = await newUser("legacy");
+    await signIn(u.email);
+    const approve = await import("@/app/api/oauth/approve/route");
+    const form = (uri: string) =>
+      new Request("https://nashr.test/api/oauth/approve", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ client_id: client.client_id, redirect_uri: uri, decision: "allow", code_challenge: "c".repeat(43), code_challenge_method: "S256", scope: "noor" }).toString(),
+      });
+
+    const refused = await approve.POST(form("http://evil.example/cb"));
+    expect(refused.status, "the stored list says yes; the rule says no, and the rule wins").toBe(400);
+
+    // The good URI on the same client still works, so this refuses the URI and not the client. Success is the 303
+    // back to the client with the code on it.
+    const allowed = await approve.POST(form("https://good.example/cb"));
+    expect(allowed.status).toBe(303);
+    expect(new URL(allowed.headers.get("location")!).searchParams.get("code")).toBeTruthy();
+  });
+});

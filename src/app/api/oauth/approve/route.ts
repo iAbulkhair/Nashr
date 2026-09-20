@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth";
-import { SCOPES, getClient, issueCode } from "@/lib/oauth";
+import { SCOPES, getClient, issueCode, validRedirectUri } from "@/lib/oauth";
 
 /** Consent form POST → authorization code → redirect back to the client. */
 export async function POST(req: Request) {
@@ -8,7 +8,10 @@ export async function POST(req: Request) {
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const f = Object.fromEntries(new URLSearchParams(await req.text()));
   const client = await getClient(f.client_id ?? "");
-  if (!client || !client.redirect_uris.includes(f.redirect_uri)) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+  // Checked against the stored list AND against the rule itself. Registration is where the https requirement is
+  // applied, but a client registered before that requirement existed still carries whatever it asked for, and this
+  // is the moment an authorization code is about to be sent somewhere. Validate at the point of trust.
+  if (!client || !client.redirect_uris.includes(f.redirect_uri) || !validRedirectUri(f.redirect_uri)) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   const u2 = new URL(f.redirect_uri);
   if (f.decision !== "allow") {
     u2.searchParams.set("error", "access_denied");

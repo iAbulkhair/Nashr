@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
-import { getClient } from "@/lib/oauth";
+import { getClient, validRedirectUri } from "@/lib/oauth";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const self = "/oauth/authorize?" + new URLSearchParams(Object.entries(q).filter(([, v]) => v != null) as [string, string][]).toString();
   if (!u) redirect(`/ar/app/login?next=${encodeURIComponent(self)}`);
   const client = q.client_id ? await getClient(q.client_id) : null;
-  const bad = !client ? "unknown client" : !q.redirect_uri || !client.redirect_uris.includes(q.redirect_uri) ? "redirect_uri not registered" : q.response_type !== "code" ? "response_type must be code" : !q.code_challenge ? "PKCE required" : null;
+  const bad = !client ? "unknown client" : !q.redirect_uri || !client.redirect_uris.includes(q.redirect_uri) ? "redirect_uri not registered" : !validRedirectUri(q.redirect_uri) ? "redirect_uri must be https, or http on the loopback interface" : q.response_type !== "code" ? "response_type must be code" : !q.code_challenge ? "PKCE required" : null;
   // Client registration is open, so the name on this screen is whatever the app called itself — "Nashr Mobile" is a
   // name anyone can claim. The one fact the owner can actually judge is where the authorization code will be sent, so
   // show that host rather than leaving it buried in a hidden input.
