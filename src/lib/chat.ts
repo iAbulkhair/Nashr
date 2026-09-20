@@ -11,7 +11,7 @@ import type { User } from "./auth";
 import { getBrand, listPreferences, saveBrand, saveTask, listLite, type Brand, type Task } from "./brand";
 import { TASK_COST, TASK_COUNT, TASK_TYPES, isTaskType, type TaskType } from "./tasks";
 import { generate } from "./noor";
-import { listFiles, memoryBlock, readFile, writeFile } from "./files";
+import { listFileNames, memoryBlock, readFile, writeFile } from "./files";
 import { getGov } from "./governance";
 import { activeSeasons } from "./seasons";
 import { importCatalog } from "./catalog";
@@ -189,8 +189,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
 
   const client = new Anthropic();
   // Independent reads, fetched together: one after another they cost 1-2 s of silence before every model call.
-  const [brand, prefs, memory, fileList, conns, thread] = await Promise.all([getBrand(email), listPreferences(email), memoryBlock(email), listFiles(email), listConnections(email), history(email, conv)]);
-  const files = fileList.map((f) => f.name);
+  const [brand, prefs, memory, files, conns, thread] = await Promise.all([getBrand(email), listPreferences(email), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv)]);
   const connected = conns.map((c) => c.provider);
   const past = thread.slice(-16);
   const messages: Anthropic.MessageParam[] = past.map((m) => ({ role: m.role, content: m.content }));

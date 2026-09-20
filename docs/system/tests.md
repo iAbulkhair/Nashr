@@ -13,7 +13,7 @@ Legend: **test** = pinned by an automated test in `tests/` · **none** = nothing
 | 5 | Credits: charge before the model call, refund on failure, never negative, no double spend under concurrency | test (`credits.test.ts`: charge, refusal, refund, floor at zero, 12 concurrent charges on a balance of 50) | unit tests on `credits.ts` with the memory store and parallel charges |
 | 6 | Admin routes reject everyone except founders and the admin key; the key is never accepted in the URL | test (`routes-admin-cron.test.ts`: every `/api/admin/*` handler refuses anonymous callers, customers, the key in the URL and a wrong header key; accepts the header key and a founder session) + manual on prod | done |
 | 7 | Cron routes require the exact bearer secret | test (`routes-admin-cron.test.ts`: missing, wrong, empty and unset secret are 401 on all three; daily runs with the right one) | done |
-| 8 | Login throttles per IP and per account; signup per IP; forgot, reset and admin key login are throttled | test for login (`routes-auth.test.ts`: 8 per account, 20 per IP, window reopens) and forgot (3 links per account); signup and admin key login still manual | done |
+| 8 | Login throttles per IP and per account; signup per IP; forgot, reset and admin key login are throttled | test (`routes-auth.test.ts`) for all five: login 8 per account and 20 per IP with the window reopening, forgot 3 links per account, signup 5 per IP per hour, reset 10 token guesses per IP, admin key 5 per IP — the last checked before the key is compared | done |
 | 9 | Password reset token is single use, expires in one hour, never reveals whether the email exists | test (`routes-auth.test.ts`: same answer for known and unknown email, token stored hashed, single use, dead after one hour, no token without mail) | done |
 | 10 | One password rule (8+, a letter, a digit) on signup, change and reset | test (`auth-rules.test.ts`) + manual on prod | unit test on `strongPassword` |
 | 11 | Suspended accounts are blocked in the app, in MCP and in cron | test (`routes-auth.test.ts`: `currentUser`, `userFromBearer`, `allUsers`, login) | done |
@@ -47,6 +47,11 @@ Legend: **test** = pinned by an automated test in `tests/` · **none** = nothing
 Route-level tests call the real handlers. `tests/helpers/setup.ts` replaces `next/headers` cookies with a jar the test controls and runs `after()` at once; `tests/helpers/session.ts` has `signIn(email)` (a real `session:{token}` record plus its cookie), `signOut()`, `newUser()`, `json()`, `params()` and `settle()`. The memory store honours TTL since 2026-09-18, so expiry rules are testable with fake clocks. Each rule above was checked once by breaking the code and watching the test fail (publish gate, task scope, suspended check, admin check).
 
 Rule 36 was added on 2026-09-20 with the fix it pins, and checked the same way: reverting `listTasks` fails four of its seven tests. It also corrected `task-index.test.ts`, whose 230 all-pending fixture asserted that `listTasks` returned only 200 of them — the defect written down as a pin; those tasks are now created decided, so the test still pins what it was for.
+
+Rule 8 was marked "done" on 2026-09-20 for the first time honestly. The row had always claimed done while its own
+text admitted that signup and admin key login were "still manual", and reset was not mentioned at all — three of the
+five throttles it names had no test. All three now have one, each asserting the exact attempt at which the limiter
+bites; widening any of the three limits fails its test.
 
 Rule 37 was added on 2026-09-20 for a hydration failure that only Safari saw. `/ar/app/calendar` asked for `ar-SA`,
 which WebKit's system ICU resolves to the Umm al-Qura calendar and Node's bundled ICU resolves to the Gregorian one, so

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 
 /**
@@ -36,5 +36,34 @@ describe("the store hands out copies, as Upstash does", () => {
     await db.set("copy:str", "hello");
     expect(await db.get<string>("copy:str")).toBe("hello");
     expect(await db.get("copy:absent")).toBeNull();
+  });
+});
+
+/**
+ * The chat turn shows the agent a list of file names. It used to get them from `listFiles`, which pulls every file's
+ * full body over HTTP — the entire workspace fetched and discarded on every message, including the five core files
+ * `memoryBlock` was already fetching in the same Promise.all.
+ */
+describe("listing file names", () => {
+  it("reads the index only, never the file bodies", async () => {
+    const { writeFile, listFileNames, listFiles } = await import("@/lib/files");
+    const who = "names@test.example";
+    await writeFile(who, "b-strategy.md", "b".repeat(5000));
+    await writeFile(who, "a-brand.md", "a".repeat(5000));
+
+    const spy = vi.spyOn(db, "get");
+    const names = await listFileNames(who);
+    const bodyReads = spy.mock.calls.filter((c) => String(c[0]).startsWith(`file:${who}:`)).length;
+    spy.mockRestore();
+
+    expect(names, "sorted, so the system prompt text is stable for the prompt cache").toEqual(["a-brand.md", "b-strategy.md"]);
+    expect(bodyReads, "the names live in the index; nothing needs the contents").toBe(0);
+
+    // The contrast proves the assertion above is not vacuous: the full read really does fetch each body.
+    const spy2 = vi.spyOn(db, "get");
+    await listFiles(who);
+    const fullReads = spy2.mock.calls.filter((c) => String(c[0]).startsWith(`file:${who}:`)).length;
+    spy2.mockRestore();
+    expect(fullReads).toBe(2);
   });
 });

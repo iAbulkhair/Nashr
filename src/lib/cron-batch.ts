@@ -25,7 +25,12 @@ export async function runCronBatch<T>(o: {
   const mark = (t: T) => `crondone:${o.job}:${o.period}:${o.id(t)}`;
   const tries = (t: T) => `crontry:${o.job}:${o.period}:${o.id(t)}`;
 
-  const state = await pmap(o.items, async (t) => ({ t, done: !!(await db.get(mark(t))), attempts: Number((await db.get<number>(tries(t))) ?? 0) }));
+  // The two markers are independent, so they are read together. One after the other cost every item two sequential
+  // HTTP round trips, and that scan runs again on each of the chain's hops.
+  const state = await pmap(o.items, async (t) => {
+    const [done, attempts] = await Promise.all([db.get(mark(t)), db.get<number>(tries(t))]);
+    return { t, done: !!done, attempts: Number(attempts ?? 0) };
+  });
   const pending = state.filter((s) => !s.done && s.attempts < MAX_ATTEMPTS).map((s) => s.t);
   const results: Record<string, string> = {};
   let next = 0, processed = 0, failed = 0, retryLater = 0;

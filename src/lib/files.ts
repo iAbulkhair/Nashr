@@ -40,6 +40,17 @@ export async function listFiles(email: string): Promise<WFile[]> {
   const out = (await pmap(names, (n) => db.get<WFile>(KEY(email, n)))).filter((f): f is WFile => !!f);
   return out.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 }
+/**
+ * Just the names, one Redis command.
+ *
+ * The chat turn only ever shows the agent a list of file names, but it used to call `listFiles`, which fetches every
+ * file's full body — the whole workspace pulled over HTTP and thrown away on every message, including the five files
+ * `memoryBlock` was fetching alongside it in the same Promise.all. Sorted so the prompt text is stable: `listFiles`
+ * orders by updatedAt, which changes the system prompt on every save and costs the prompt cache.
+ */
+export async function listFileNames(email: string): Promise<string[]> {
+  return (await db.smembers(SET(email))).sort();
+}
 export async function readFile(email: string, name: string) {
   return db.get<WFile>(KEY(email, safeName(name)));
 }
