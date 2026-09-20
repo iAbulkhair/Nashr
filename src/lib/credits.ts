@@ -38,8 +38,17 @@ export type ChargeResult = { ok: true; credits: number } | { ok: false; credits:
 export async function charge(email: string, cost: number): Promise<ChargeResult> {
   if (!Number.isFinite(cost) || cost < 0) throw new Error(`invalid_cost:${String(cost)}`);
   return withUserLock(email, async (u) => {
-    if (!Number.isFinite(u.credits)) u.credits = 0; // repair a record damaged before this guard existed
-    if (u.credits < cost) return { ok: false, credits: u.credits, need: cost };
+    // Repair a record damaged before this guard existed — and write the repair back. The insufficient-credits path
+    // returns without saving, so correcting the balance only in memory left NaN in the record for ever: every later
+    // charge re-read NaN, repaired it again, refused again, and the account could never spend or be topped up past
+    // a number it could not compare. The in-memory store used to hand out the stored object itself, which made the
+    // missing save invisible to the test that covers this.
+    const damaged = !Number.isFinite(u.credits);
+    if (damaged) u.credits = 0;
+    if (u.credits < cost) {
+      if (damaged) await saveUser(u);
+      return { ok: false, credits: u.credits, need: cost };
+    }
     u.credits -= cost;
     await saveUser(u);
     return { ok: true, credits: u.credits };

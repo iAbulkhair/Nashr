@@ -70,9 +70,32 @@ describe("sessions end when the password changes", () => {
   it("saving the new password does not undo a credit charge made meanwhile", async () => {
     const u = await newUser("sess");
     await signIn(u.email);
-    await charge(u.email, 10); // after currentUser() would have read 50
-    await account.PATCH(json("/api/account", "PATCH", { currentPassword: "abc12345", newPassword: "newpass123" }));
-    expect((await getUser(u.email))!.credits).toBe(40);
+
+    // The charge has to land INSIDE the window, not before it. Charging first only proves that PATCH does not
+    // invent credits: the handler would read 40, write 40, and the test passed whether or not the fix was there.
+    // The lost update happens when the charge commits after the request has read the record and before it saves,
+    // so the charge is fired from the request's own first read of that record, and the stale snapshot is returned
+    // to the caller exactly as a real concurrent request would have seen it.
+    const userKey = `user:${u.email}`;
+    let fired = false;
+    const realGet = db.get.bind(db);
+    const spy = vi.spyOn(db, "get").mockImplementation(async <T,>(key: string) => {
+      const before = await realGet<T>(key);
+      if (key === userKey && !fired) {
+        fired = true;
+        await charge(u.email, 10); // commits 50 -> 40 while the handler still holds the 50 it just read
+      }
+      return before;
+    });
+
+    try {
+      await account.PATCH(json("/api/account", "PATCH", { currentPassword: "abc12345", newPassword: "newpass123" }));
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(fired, "the charge must have raced the request, or this test proves nothing").toBe(true);
+    expect((await getUser(u.email))!.credits, "the password write must not roll the balance back to 50").toBe(40);
   });
 });
 
