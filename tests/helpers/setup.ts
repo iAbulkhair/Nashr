@@ -5,9 +5,13 @@ import { vi } from "vitest";
  * outside a request, so tests get a cookie jar they control (tests/helpers/session.ts) and `after` runs at once.
  */
 type Jar = Map<string, string>;
-const g = globalThis as unknown as { __testJar?: Jar; __testAfter?: Promise<unknown>[] };
+const g = globalThis as unknown as { __testJar?: Jar; __testAfter?: Promise<unknown>[]; __testAfterInScope?: boolean };
 g.__testJar ??= new Map();
 g.__testAfter ??= [];
+// `after()` is only callable while a request is being handled. The mock used to accept it anywhere, which made the
+// `catch` fallback in cron-batch.ts and judge.ts unreachable in every test: the branch that runs when a cron chain
+// continues outside a request was never once executed. `outsideRequestScope()` in ./session.ts flips this.
+g.__testAfterInScope ??= true;
 
 vi.mock("next/headers", () => ({
   cookies: async () => ({
@@ -20,5 +24,8 @@ vi.mock("next/headers", () => ({
 
 vi.mock("next/server", async (orig) => ({
   ...(await orig<typeof import("next/server")>()),
-  after: (fn: () => unknown) => { g.__testAfter!.push(Promise.resolve().then(fn)); },
+  after: (fn: () => unknown) => {
+    if (!g.__testAfterInScope) throw new Error("`after()` was called outside a request scope.");
+    g.__testAfter!.push(Promise.resolve().then(fn));
+  },
 }));

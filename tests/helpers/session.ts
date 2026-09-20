@@ -2,7 +2,7 @@ import { randomBytes } from "crypto";
 import { createUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 
-const g = globalThis as unknown as { __testJar: Map<string, string>; __testAfter: Promise<unknown>[] };
+const g = globalThis as unknown as { __testJar: Map<string, string>; __testAfter: Promise<unknown>[]; __testAfterInScope: boolean };
 
 /** The cookie jar route handlers see. */
 export const jar = () => g.__testJar;
@@ -18,6 +18,18 @@ export async function signIn(email: string) {
 }
 /** Wait for work a handler scheduled with `after()`. */
 export const settle = async () => { await Promise.all(g.__testAfter.splice(0)); };
+
+/**
+ * Run `fn` as if there were no request in progress, so `after()` throws exactly as it does in production.
+ *
+ * A cron chain continues itself from work scheduled by the previous hop, which is no longer inside a request. The
+ * code has a fallback for that — `try { after(kick); } catch { void kick(); }` — and the mock's unconditional accept
+ * meant the fallback had never been executed by a test.
+ */
+export async function outsideRequestScope<T>(fn: () => Promise<T>): Promise<T> {
+  g.__testAfterInScope = false;
+  try { return await fn(); } finally { g.__testAfterInScope = true; }
+}
 
 let n = 0;
 export async function newUser(prefix = "u"): Promise<User> {

@@ -63,3 +63,25 @@ describe("lastSundayUtc", () => {
     expect(lastSundayUtc(new Date("2026-09-19T23:59:00Z"))).toBe("2026-09-13");
   });
 });
+
+/**
+ * A chain hop continues from work the previous hop scheduled, which is no longer inside a request. `after()` throws
+ * there, and the code falls back to firing the request itself. The test mock used to accept `after()` anywhere, so
+ * this branch had never once been executed by a test even though it is the one that runs in production for hops
+ * two and beyond.
+ */
+describe("continuing the chain outside a request scope", () => {
+  it("fires the next hop directly when after() refuses", async () => {
+    const { outsideRequestScope, settle } = await import("./helpers/session");
+    const run = async () => { await sleep(60); return "ok"; };
+    const r = await outsideRequestScope(() =>
+      runCronBatch({ job: "t", period: `p${period}`, items, id: (x) => x, run, concurrency: 2, startBudgetMs: 100, markerTtlSeconds: 60, req: req() }),
+    );
+    // Without the fallback the throw from after() would escape and runCronBatch would reject, losing the report and
+    // every remaining user with it. It resolves, and the hop went out.
+    expect(r.chained, "there must be leftovers, or the fallback is never reached").toBe(true);
+    await settle();
+    expect(calls, "the fallback must fire the hop itself").toHaveLength(1);
+    expect(calls[0]).toContain("chain=1");
+  });
+});
