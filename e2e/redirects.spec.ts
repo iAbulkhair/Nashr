@@ -51,11 +51,27 @@ test.describe("not found", () => {
     });
   }
 
-  test("the 404 page states its language and direction", async ({ page }) => {
-    await open(page, "/ar/nope");
-    // Without a not-found.tsx the framework default renders <html id="__next_error__"> with no lang and no dir, which
-    // is the wrong document for an Arabic-first, right-to-left product.
-    await expect(page.locator("html")).toHaveAttribute("lang", "ar");
-    await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
-  });
+  /**
+   * What a 404 must do here, and what it cannot.
+   *
+   * CAN: render the product's own page — a title, both languages, a way back — for BOTH kinds of miss: a path that
+   * matches no route (`/ar/nope`, caught by `[lang]/[...rest]`) and a path that matches a route which then calls
+   * `notFound()` (`/ar/tools/not-a-tool`). Before this they were two different pages, one of them Next's untitled
+   * English default.
+   *
+   * CANNOT: carry `lang`/`dir` on <html>. That element is owned by `[lang]/layout.tsx`, and Next renders
+   * `not-found.tsx` outside it, as `<html id="__next_error__">`. Moving <html> to a root layout would mean the root
+   * reading the language from `headers()`, which opts every page out of static rendering and would un-prerender all
+   * 114 marketing URLs. The body carries `dir` on its Arabic block instead.
+   */
+  for (const path of ["/ar/nope", "/ar/tools/not-a-tool"]) {
+    test(`${path} renders the product's own 404, not the framework's`, async ({ page }) => {
+      const res = await open(page, path);
+      expect(res.status()).toBe(404);
+      await expect(page.getByRole("heading", { name: "الصفحة غير موجودة" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Home" })).toBeVisible();
+      await expect(page).not.toHaveTitle(/This page could not be found/);
+    });
+  }
 });
