@@ -1,25 +1,28 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { getTool } from "@/lib/tools";
+import { getTool, toolLang } from "@/lib/tools";
+import { meter } from "@/lib/usage";
 import { db } from "@/lib/db";
 import { allow, clientIp } from "@/lib/rate";
 import { currentUser } from "@/lib/auth";
 
 export const maxDuration = 60;
 const FREE_PER_DAY = 5;
+/** A signed-in caller is not anonymous, but this route still makes a real model call and charges no credits. */
+export const SIGNED_IN_PER_DAY = 50;
 
 export async function POST(req: Request, ctx: { params: Promise<{ tool: string }> }) {
   const { tool } = await ctx.params;
   const t = getTool(tool);
   if (!t) return NextResponse.json({ ok: false, error: "unknown_tool" }, { status: 404 });
   const u = await currentUser();
-  if (!u) {
-    // Platform IP, and a counter that expires: the old per-day keys never did and trusted a caller-set header.
-    if (!(await allow(`tool:${clientIp(req)}`, FREE_PER_DAY, 86400))) return NextResponse.json({ ok: false, error: "rate_limited", limit: FREE_PER_DAY }, { status: 429 });
-  }
+  // Every caller gets a ceiling. Signing up is free and unthrottled beyond five accounts per IP per hour, so leaving
+  // authenticated callers unlimited made this the cheapest way to spend our model budget: no credits, no trial check.
+  const [bucket, limit] = u ? [`tool:u:${u.email}`, SIGNED_IN_PER_DAY] : [`tool:${clientIp(req)}`, FREE_PER_DAY];
+  if (!(await allow(bucket, limit, 86400))) return NextResponse.json({ ok: false, error: "rate_limited", limit }, { status: 429 });
   const b = (await req.json().catch(() => ({}))) as Record<string, string>;
   const inputs = t.fields.map((f) => `${f.label.en}: ${(b[f.name] ?? "").toString().slice(0, 600)}`).join("\n");
-  const lang = b.lang ?? "عربي سعودي";
+  const lang = toolLang(b.lang);
   if (!process.env.ANTHROPIC_API_KEY) return NextResponse.json({ ok: true, output: `[DEV MOCK] ${t.slug}\n${inputs}` });
   try {
     const client = new Anthropic();
@@ -32,6 +35,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ tool: string }
       messages: [{ role: "user", content: `${t.prompt}\n\nINPUTS\n${inputs}` }],
     });
     const output = res.content.filter((x) => x.type === "text").map((x) => (x as { text: string }).text).join("\n").trim();
+    // Without this the free tools were invisible to the margin figures in the founder console.
+    await meter(u?.email, res.model, "tool", res.usage);
     await db.incrby(`toolusage:${t.slug}`, 1);
     return NextResponse.json({ ok: true, output });
   } catch (e) {

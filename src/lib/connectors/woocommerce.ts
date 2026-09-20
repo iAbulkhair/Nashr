@@ -3,8 +3,14 @@ import { writeFile } from "../files";
 import { safeFetch } from "../safe-fetch";
 
 export async function verifyWoo(data: Record<string, string>) {
-  const r = await safeFetch(`${data.site.replace(/\/+$/, "")}/wp-json/wc/v3/products?per_page=1`, { headers: { Authorization: "Basic " + Buffer.from(`${data.consumerKey}:${data.consumerSecret}`).toString("base64") } });
-  return r.ok ? { ok: true } : { ok: false, error: `HTTP ${r.status}` };
+  // A typo'd or private host makes safeFetch throw. Uncaught, that became a 500 with a non-JSON body, the client's
+  // `await res.json()` rejected, and the connect dialog stayed disabled with no message. Answer like the siblings.
+  try {
+    const r = await safeFetch(`${data.site.replace(/\/+$/, "")}/wp-json/wc/v3/products?per_page=1`, { headers: { Authorization: "Basic " + Buffer.from(`${data.consumerKey}:${data.consumerSecret}`).toString("base64") } });
+    return r.ok ? { ok: true } : { ok: false, error: `HTTP ${r.status}` };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "unreachable" };
+  }
 }
 
 export async function importWoo(email: string, c: Connection) {

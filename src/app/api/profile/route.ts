@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUser, PLAN_CREDITS, saveUser, sc } from "@/lib/auth";
 import { getBrand, listLite, saveBrand, TASK_COST, TASK_COUNT, type TaskType } from "@/lib/brand";
 import { db } from "@/lib/db";
+import { withUserLock } from "@/lib/credits";
 
 export type EmailPrefs = "all" | "important" | "none";
 
@@ -33,10 +34,15 @@ export async function PUT(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const b = (await req.json().catch(() => ({}))) as Record<string, string | undefined> & { emails?: EmailPrefs };
-  if (typeof b.name === "string") u.name = b.name.trim().slice(0, 80);
-  if (typeof b.phone === "string" && b.phone.replace(/\D/g, "").length >= 9) u.phone = b.phone.trim().slice(0, 30);
-  if (b.lang === "ar" || b.lang === "en") u.lang = b.lang;
-  await saveUser(u);
+  // Inside the lock, on the record as it is NOW. `saveUser` writes the whole user, so mutating the copy this request
+  // read at its start would put that request's stale `credits` back over any charge committed in between — the work
+  // would be delivered and the charge silently reversed. Same shape as /api/account.
+  await withUserLock(u.email, async (x) => {
+    if (typeof b.name === "string") x.name = b.name.trim().slice(0, 80);
+    if (typeof b.phone === "string" && b.phone.replace(/\D/g, "").length >= 9) x.phone = b.phone.trim().slice(0, 30);
+    if (b.lang === "ar" || b.lang === "en") x.lang = b.lang;
+    await saveUser(x);
+  });
   if (b.emails && ["all", "important", "none"].includes(b.emails)) await db.set(`profile:${sc(u)}`, { emails: b.emails });
   // Brand-level fields shown on the profile (Enrich-style): business name, description, customers, voice, value prop, website, sitemap, social handles.
   const brand = await getBrand(sc(u));
