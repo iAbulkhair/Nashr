@@ -4,7 +4,7 @@ import { statsFor } from "@/lib/stats";
 import { judgeLater } from "@/lib/judge";
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
-import { currentUser, sc } from "@/lib/auth";
+import { currentUser, sc, trialOver } from "@/lib/auth";
 import { getBrand, listPreferences, saveTask, type Task } from "@/lib/brand";
 import { TASK_COST, isTaskType } from "@/lib/tasks";
 import { generate } from "@/lib/noor";
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   const type = b.type;
   const brand = await getBrand(sc(u));
   if (!brand) return NextResponse.json({ ok: false, error: "no_brand" }, { status: 400 });
-  if (u.plan === "trial" && new Date(u.trialEnds) < new Date()) return NextResponse.json({ ok: false, error: "trial_over" }, { status: 402 });
+  if (trialOver(u)) return NextResponse.json({ ok: false, error: "trial_over" }, { status: 402 });
   const cost = TASK_COST[type];
   const paid = await charge(u.email, cost);
   if (!paid.ok) return NextResponse.json({ ok: false, error: "no_credits", need: cost, have: paid.credits }, { status: 402 });

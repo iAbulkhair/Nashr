@@ -7,7 +7,7 @@ import { meter } from "./usage";
 import Anthropic from "@anthropic-ai/sdk";
 import { randomBytes } from "crypto";
 import { CAPS, db, pushCapped } from "./db";
-import type { User } from "./auth";
+import { trialOver, type User } from "./auth";
 import { getBrand, listPreferences, saveBrand, saveTask, listLite, type Brand, type Task } from "./brand";
 import { TASK_COST, TASK_COUNT, TASK_TYPES, isTaskType, type TaskType } from "./tasks";
 import { generate } from "./noor";
@@ -244,7 +244,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const cost = TASK_COST[type];
       const brand = await getBrand(email);
       if (!brand) return "No brand file yet. Ask the owner to run onboarding.";
-      if (user.plan === "trial" && new Date(user.trialEnds) < new Date()) { actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page."; }
+      if (trialOver(user)) { actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page."; }
       const paid = await charge(user.email, cost);
       if (!paid.ok) { actions.push("limit:credits"); return `Insufficient credits: need ${cost}, have ${paid.credits}. Tell the owner plainly and point to the Subscription page.`; }
       user.credits = paid.credits;
@@ -275,7 +275,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const cost = Math.max(1, Math.ceil((TASK_COST[type] / (TASK_COUNT[type] || 1)) * count));
       const brand = await getBrand(email);
       if (!brand) return "No brand file yet. Ask the owner to run onboarding.";
-      if (user.plan === "trial" && new Date(user.trialEnds) < new Date()) { actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page."; }
+      if (trialOver(user)) { actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page."; }
       const paid = await charge(user.email, cost);
       if (!paid.ok) { actions.push("limit:credits"); return `Insufficient credits: need ${cost}, have ${paid.credits}.`; }
       user.credits = paid.credits;
@@ -356,6 +356,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const brand = await getBrand(email);
       const t = await getTask(email, String(input.task_id));
       if (!brand || !t) return "Item not found.";
+      if (trialOver(user)) { actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page."; }
       const paid = await charge(user.email, IMAGE_COST);
       if (!paid.ok) { actions.push("limit:credits"); return "Insufficient credits for an image."; }
       user.credits = paid.credits;

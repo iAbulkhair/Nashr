@@ -138,3 +138,48 @@ describe("the admin cookie is compared like a secret", () => {
     }
   });
 });
+
+/**
+ * Every spending path checks the trial before it charges — except the two that generate images, which never got the
+ * check. An ended trial went on paying for fal.ai and Anthropic calls with no ceiling but the credit balance.
+ */
+describe("an ended trial cannot buy an image", () => {
+  const expired = async () => {
+    const u = await newUser("trial");
+    const { saveUser } = await import("@/lib/auth");
+    await saveUser({ ...u, plan: "trial", trialEnds: new Date(Date.now() - 864e5).toISOString() });
+    await signIn(u.email);
+    return u;
+  };
+
+  it("the image route refuses with the same 402 as every other spending route", async () => {
+    const u = await expired();
+    const { saveTask, getBrand: gb } = await import("@/lib/brand");
+    void gb;
+    await saveBrand(u.email, brand());
+    await saveTask(u.email, { id: "img1", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" });
+
+    const imageRoute = await import("@/app/api/tasks/[id]/image/route");
+    const res = await imageRoute.POST(json("/api/tasks/img1/image", "POST"), params({ id: "img1" }));
+    expect(res.status).toBe(402);
+    expect((await res.json()).error).toBe("trial_over");
+
+    const { getUser } = await import("@/lib/auth");
+    expect((await getUser(u.email))!.credits, "a refused request must not have charged").toBe(50);
+  });
+
+  it("the chat's generate_image tool refuses too, and says why", async () => {
+    const u = await expired();
+    await saveBrand(u.email, brand());
+    const { saveTask } = await import("@/lib/brand");
+    await saveTask(u.email, { id: "img2", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" });
+
+    const { getUser } = await import("@/lib/auth");
+    const fresh = (await getUser(u.email))!;
+    const actions: string[] = [];
+    const out = await runTool(fresh, "generate_image", { task_id: "img2" }, actions);
+    expect(out).toMatch(/Trial ended/);
+    expect(actions).toContain("limit:trial");
+    expect((await getUser(u.email))!.credits).toBe(50);
+  });
+});

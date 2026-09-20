@@ -35,6 +35,13 @@ const SESSION_TTL = 60 * 60 * 24 * 30;
 const COOKIE = "nashr_session";
 
 /** Whole days left in a trial (0 when it has ended). Server-side: the clock is read per request here, never inside a component. */
+/**
+ * An ended trial may not spend. Written once because it was written five times: the image route and the chat's
+ * generate_image tool were the two spending paths that never got a copy, so an expired trial went on paying for
+ * fal.ai and Anthropic calls indefinitely.
+ */
+export const trialOver = (u: Pick<User, "plan" | "trialEnds">) => u.plan === "trial" && new Date(u.trialEnds) < new Date();
+
 export const trialDaysLeft = (trialEnds: string) => Math.max(0, Math.ceil((new Date(trialEnds).getTime() - Date.now()) / 864e5));
 
 /** One password rule for signup, change and reset: 8+ characters with a letter and a digit. */

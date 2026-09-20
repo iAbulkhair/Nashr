@@ -4,6 +4,7 @@ import { judgeLater } from "@/lib/judge";
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { userFromBearer } from "@/lib/mcp";
+import { trialOver } from "@/lib/auth";
 import { chatAllowed } from "@/lib/rate";
 import { chat } from "@/lib/chat";
 import { getBrand, listPreferences, listTasks, saveTask, type Task } from "@/lib/brand";
@@ -71,7 +72,7 @@ export async function POST(req: Request) {
         const type = args.type;
         const brand = await getBrand((user.scope ?? user.email));
         if (!brand) return ok(id, { ...text("No brand file yet. Run onboarding in the app first."), isError: true });
-        if (user.plan === "trial" && new Date(user.trialEnds) < new Date()) return ok(id, { ...text("The trial has ended. Subscribe in the app to keep generating."), isError: true });
+        if (trialOver(user)) return ok(id, { ...text("The trial has ended. Subscribe in the app to keep generating."), isError: true });
         const cost = TASK_COST[type];
         const paid = await charge(user.email, cost);
         if (!paid.ok) return ok(id, { ...text(`Insufficient credits: need ${cost}, have ${paid.credits}.`), isError: true });

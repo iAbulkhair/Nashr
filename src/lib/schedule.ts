@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 import { db } from "./db";
-import { getUser, type User } from "./auth";
+import { getUser, trialOver, type User } from "./auth";
 import { charge, refund } from "./credits";
 import { judgeLater } from "./judge";
 import { TASK_COST, getBrand, indexedAt, listLite, listPreferences, rebuildIndex, rebuildPending, saveTask, type Brand, type Task } from "./brand";
@@ -65,7 +65,7 @@ export async function runWeekly(user: User): Promise<string> {
 async function weeklyFor(user: User, email: string, brand: Brand): Promise<string> {
   const gov = await getGov(email);
   const cost = TASK_COST.weekly_plan;
-  if (user.plan === "trial" && new Date(user.trialEnds) < new Date()) return "trial_over";
+  if (trialOver(user)) return "trial_over";
   // weekly cap: count items Noor created on her own in the last 7 days
   const weekAgo = Date.now() - 7 * 864e5;
   const auto = (await listLite(email, new Date(weekAgo))).filter((t) => t.source === "scheduled").length;
