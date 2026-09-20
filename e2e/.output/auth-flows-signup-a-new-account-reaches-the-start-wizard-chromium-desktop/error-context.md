@@ -58,7 +58,7 @@ waiting for navigation to "**/en/app/start" until "load"
         - paragraph [ref=e13]: 3 days, 50 credits, no card.
         - generic [ref=e14]:
           - paragraph [ref=e15]:
-            - generic [ref=e16]: e2e-signup-mu9zqo2y@test.example
+            - generic [ref=e16]: e2e-signup-mu9zwkul@test.example
             - button "Edit" [ref=e17]
           - textbox "Your name" [ref=e18]: E2E Signup
           - textbox "Password (8+ characters)" [ref=e19]: signup12345

@@ -44,7 +44,19 @@ export async function readFile(email: string, name: string) {
   return db.get<WFile>(KEY(email, safeName(name)));
 }
 export async function writeFile(email: string, name: string, content: string, by: WFile["by"] = "noor") {
-  const n = safeName(name);
+  let n = safeName(name);
+  // The agent must not destroy what the owner wrote by hand. import_catalog and write_file are chosen by the model,
+  // and crawled pages and catalogs reach that model, so an ordinary chat turn could replace a curated products.md —
+  // margins, "do not promote X", Ramadan bundles — with a scrape, unrecoverably. An agent write over an owner-written
+  // file goes to a sibling name instead, and the caller reports the name it actually got.
+  if (by === "noor") {
+    const existing = await db.get<WFile>(KEY(email, n));
+    if (existing && existing.by === "user" && existing.content !== content) {
+      const dot = n.lastIndexOf(".");
+      const ext = dot > 0 ? n.slice(dot) : "";
+      n = safeName((ext ? n.slice(0, dot) : n) + "-imported" + ext);
+    }
+  }
   const f: WFile = { name: n, content: content.slice(0, 40000), updatedAt: new Date().toISOString(), by };
   await db.set(KEY(email, n), f);
   await db.sadd(SET(email), n);

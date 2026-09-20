@@ -25,7 +25,15 @@ export function parseSlides(md: string, fallbackTitle: string): Slide[] {
     if (n) { cur.notes = (cur.notes ? cur.notes + " " : "") + n[1]; continue; }
     const b = line.match(/^(?:[-*•]|\d+[.)])\s+(.+)$/);
     if (b) { cur.bullets.push(b[1].replace(/\*\*/g, "")); continue; }
-    if (line && !line.startsWith("|") && !line.startsWith("---")) cur.bullets.push(line.replace(/\*\*/g, ""));
+    if (line.startsWith("|")) {
+      // A deck slide is often a scorecard, and the reporting playbook teaches the model to write those as markdown
+      // tables. Dropping every pipe line exported the slide with all of its numbers gone. Flatten each row instead;
+      // the separator row (|---|---|) carries nothing.
+      const cells = line.split("|").slice(1, -1).map((c) => c.trim());
+      if (cells.length && !cells.every((c) => /^:?-+:?$/.test(c))) cur.bullets.push(cells.join(" · ").replace(/\*\*/g, ""));
+      continue;
+    }
+    if (line && !line.startsWith("---")) cur.bullets.push(line.replace(/\*\*/g, ""));
   }
   return slides.filter((s) => s.title || s.bullets.length).slice(0, 30);
 }

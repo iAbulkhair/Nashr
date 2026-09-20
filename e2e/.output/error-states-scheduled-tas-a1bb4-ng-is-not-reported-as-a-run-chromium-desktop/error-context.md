@@ -12,46 +12,21 @@
 # Error details
 
 ```
-Test timeout of 45000ms exceeded.
-```
+Error: expect(locator).toBeVisible() failed
 
-```
-Error: locator.click: Test timeout of 45000ms exceeded.
+Locator: getByText(/Generation failed/)
+Expected: visible
+Timeout: 10000ms
+Error: element(s) not found
+
 Call log:
-  - waiting for getByRole('button', { name: 'Run now' }).first()
+  - Expect "toBeVisible" getByText(/Generation failed/) with timeout 10000ms
+  - waiting for getByText(/Generation failed/)
 
 ```
-
-# Page snapshot
 
 ```yaml
-- generic [active] [ref=e1]:
-  - generic [ref=e2]:
-    - banner [ref=e3]:
-      - generic [ref=e4]:
-        - link "Nashr" [ref=e5] [cursor=pointer]:
-          - /url: /en
-        - group "Language" [ref=e7]:
-          - link "العربية" [ref=e8] [cursor=pointer]:
-            - /url: /ar/app/login
-            - text: عربي
-          - link "English" [ref=e9] [cursor=pointer]:
-            - /url: /en/app/login
-            - text: EN
-    - main [ref=e10]:
-      - generic [ref=e11]:
-        - heading "Log in" [level=1] [ref=e12]
-        - generic [ref=e13]:
-          - textbox "Email" [ref=e14]
-          - textbox "Password" [ref=e15]
-          - button "Log in" [ref=e16] [cursor=pointer]
-          - link "Forgot your password?" [ref=e17] [cursor=pointer]:
-            - /url: /en/app/forgot
-        - paragraph [ref=e18]:
-          - text: No account?
-          - link "Create one" [ref=e19] [cursor=pointer]:
-            - /url: /en/app/signup
-  - alert [ref=e20]
+- alert: Nashr — Noor, the 24/7 AI marketing agent for the Gulf
 ```
 
 # Test source
@@ -105,11 +80,11 @@ Call log:
   46 |         : route.continue());
   47 | 
   48 |     const run = page.getByRole("button", { name: "Run now" }).first();
-> 49 |     await run.click();
-     |               ^ Error: locator.click: Test timeout of 45000ms exceeded.
+  49 |     await run.click();
   50 |     // The success prefix in English is "Done" (app-i18n `tasks.ran`). Before the fix the owner was shown
   51 |     // "Done: no_credits" for a run that generated nothing and moved no credits.
-  52 |     await expect(page.getByText(/Generation failed/)).toBeVisible();
+> 52 |     await expect(page.getByText(/Generation failed/)).toBeVisible();
+     |                                                       ^ Error: expect(locator).toBeVisible() failed
   53 |     await expect(page.getByText(/Done: no_credits/), "a run that did nothing must not be reported as done").toHaveCount(0);
   54 |     await expect(run, "the button must come back either way").toBeEnabled({ timeout: 15_000 });
   55 |   });

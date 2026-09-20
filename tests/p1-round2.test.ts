@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { rangeWindow } from "@/lib/stats";
-import { safeName, memoryBlock, writeFile } from "@/lib/files";
+import { safeName, memoryBlock, writeFile, readFile, listFiles } from "@/lib/files";
 import { newUser } from "./helpers/session";
 
 describe("a custom report range is request input, not a Date (P1: reports 500)", () => {
@@ -107,5 +107,54 @@ describe("a stalled image provider still reaches the refund (P1: credit lost)", 
     // never refunded. The bound has to be comfortably below that ceiling.
     expect(seen?.signal, "the provider call must be abortable").toBeDefined();
     expect(seen!.signal!.aborted).toBe(false);
+  });
+});
+
+describe("the agent cannot destroy an owner-written file (P1: curated products.md lost)", () => {
+  it("an agent write over an owner-written file goes to a sibling, and the caller learns the real name", async () => {
+    const u = await newUser("filesafe");
+
+    await writeFile(u.email, "products.md", "12 hero SKUs, real margins, do not promote X", "user");
+    const written = await writeFile(u.email, "products.md", "# scraped catalog\n- thing", "noor");
+
+    expect(written.name, "the agent's write must not take the owner's name").toBe("products-imported.md");
+    expect((await readFile(u.email, "products.md"))!.content).toContain("do not promote X");
+    expect((await readFile(u.email, "products-imported.md"))!.content).toContain("scraped catalog");
+    expect((await listFiles(u.email)).map((f) => f.name).sort()).toEqual(["products-imported.md", "products.md"]);
+  });
+
+  it("the agent still owns the files it wrote itself", async () => {
+    const u = await newUser("filesafe");
+    await writeFile(u.email, "market-research.md", "v1", "noor");
+    const second = await writeFile(u.email, "market-research.md", "v2", "noor");
+    expect(second.name).toBe("market-research.md");
+    expect((await readFile(u.email, "market-research.md"))!.content).toBe("v2");
+  });
+
+  it("the owner can still overwrite their own file", async () => {
+    const u = await newUser("filesafe");
+    await writeFile(u.email, "notes.md", "first", "user");
+    const again = await writeFile(u.email, "notes.md", "second", "user");
+    expect(again.name).toBe("notes.md");
+    expect((await readFile(u.email, "notes.md"))!.content).toBe("second");
+  });
+});
+
+describe("a deck slide keeps its table (P1: numbers dropped from the export)", () => {
+  it("table rows survive as bullets instead of vanishing", async () => {
+    const { parseSlides } = await import("@/app/api/tasks/[id]/pptx/route");
+    const body = [
+      "## Slide 3: Scorecard",
+      "| Metric | Target | Actual |",
+      "|---|---|---|",
+      "| Revenue | 100k | 92k |",
+      "| Approvals | 40 | 51 |",
+    ].join("\n");
+    const slides = parseSlides(body, "Deck");
+    const bullets = slides.flatMap((s) => s.bullets);
+    expect(bullets.join(" ")).toContain("92k");
+    expect(bullets.join(" ")).toContain("51");
+    // The separator row carries nothing and must not become a bullet.
+    expect(bullets.some((b) => /^[-|: ]+$/.test(b))).toBe(false);
   });
 });
