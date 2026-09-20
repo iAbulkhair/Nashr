@@ -50,7 +50,7 @@ export async function assertPublicUrl(raw: string): Promise<URL> {
 /** Same signature as fetch. Redirects are followed by hand (max 5), each hop re-validated. */
 export async function safeFetch(input: string, init: RequestInit = {}): Promise<Response> {
   let url = input;
-  for (let hop = 0; hop <= 5; hop++) {
+  for (let hop = 0; hop < 5; hop++) {
     await assertPublicUrl(url);
     const res = await fetch(url, { ...init, redirect: "manual" });
     if (res.status < 300 || res.status >= 400 || !res.headers.get("location")) return res;

@@ -4,6 +4,7 @@ import { judgeLater } from "@/lib/judge";
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { userFromBearer } from "@/lib/mcp";
+import { chatAllowed } from "@/lib/rate";
 import { chat } from "@/lib/chat";
 import { TASK_COST, getBrand, listPreferences, listTasks, saveTask, type Task, type TaskType } from "@/lib/brand";
 import { generate } from "@/lib/noor";
@@ -59,6 +60,8 @@ export async function POST(req: Request) {
   try {
     switch (name) {
       case "ask_noor": {
+        // Same ceiling as the web chat: a bearer token must not be a cheaper way to spend the same models.
+        if (!(await chatAllowed(user.email))) return ok(id, { ...text("Too many messages in a short time. Wait a few minutes and try again."), isError: true });
         const m = await chat(user, String(args.message ?? ""));
         return ok(id, text(m.content + (m.actions?.length ? `\n\n[actions: ${m.actions.join(", ")}]` : "")));
       }

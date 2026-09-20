@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSession, currentUser, destroySession, revokeSessions, verifyPassword, strongPassword } from "@/lib/auth";
 import { withUserLock } from "@/lib/credits";
 import { wipeAccount } from "@/lib/account";
+import { revokeAllMcp } from "@/lib/mcp";
 import bcrypt from "bcryptjs";
 import { saveUser } from "@/lib/auth";
 
@@ -16,7 +17,9 @@ export async function PATCH(req: Request) {
   const hash = await bcrypt.hash(pw, 10);
   // Inside the user lock, on the fresh record: saving the copy read at the start of the request could undo a credit charge.
   await withUserLock(u.email, async (x) => { x.passHash = hash; revokeSessions(x); await saveUser(x); });
-  // Every other device is signed out; this one gets a new session.
+  // Every other device is signed out, and every MCP token and connected app dies with the old password, exactly as in
+  // the reset route: a stolen bearer token must not outlive the password it was obtained with.
+  await revokeAllMcp(u.email);
   await destroySession();
   await createSession(u.email);
   return NextResponse.json({ ok: true });

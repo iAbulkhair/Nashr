@@ -28,9 +28,9 @@ export async function writeFile(email: string, name: string, content: string, by
 }
 export async function deleteFile(email: string, name: string) {
   const n = safeName(name);
-  await db.del(KEY(email, n));
-  // sets have no srem in our adapter; mark tombstone
-  await db.set(KEY(email, n), null);
+  // Both halves: the record and its name in the index. Leaving the name behind made every listFiles pay a read for a
+  // file that is gone, and the set grew without a bound.
+  await Promise.all([db.del(KEY(email, n)), db.srem(SET(email), n)]);
 }
 /** Core files Noor reads on every generation. */
 export async function memoryBlock(email: string) {

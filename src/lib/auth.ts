@@ -157,8 +157,9 @@ export async function isAdmin(req: Request) {
 export async function isAdminCookie() {
   const key = process.env.WAITLIST_ADMIN_KEY;
   if (key) {
+    const { sameSecret } = await import("./rate");
     const jar = await cookies();
-    if (jar.get("nashr_admin")?.value === key) return true;
+    if (sameSecret(jar.get("nashr_admin")?.value, key)) return true;
   }
   const u = await currentUser();
   return isFounder(u?.email);

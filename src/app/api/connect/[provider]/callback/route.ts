@@ -19,6 +19,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   if (!p) return back("error=unknown_provider");
   try {
     const shop = st.shop || (p.id === "shopify" ? url.searchParams.get("shop") ?? "" : "");
+    // The shop becomes the host of the token URL, and that request carries our client secret: only a real Shopify
+    // domain may appear there, whether it came from our own state or from the query string.
+    if (p.id === "shopify" && !/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(shop)) return back("error=bad_shop");
     const data = await exchangeCode(p, code, { shop, verifier: st.verifier || undefined });
     const meta: Record<string, string> = {};
     if (shop) meta.shop = shop;

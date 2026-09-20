@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
 import { isAdmin } from "@/lib/auth";
 import { csvSafe } from "@/lib/admin-stats";
+import { allow, clientIp } from "@/lib/rate";
 
 const LIST_KEY = "waitlist:entries";
 const EMAIL_SET = "waitlist:emails";
@@ -14,6 +15,8 @@ function redis(): Redis | null {
 }
 
 export async function POST(req: Request) {
+  // Public, unauthenticated write: throttled per IP like every other open endpoint.
+  if (!(await allow(`waitlist:ip:${clientIp(req)}`, 10, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
   let body: { email?: string; company?: string; industry?: string; lang?: string };
   try {
     body = await req.json();

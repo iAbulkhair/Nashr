@@ -53,7 +53,8 @@ export async function listConnections(email: string): Promise<Omit<Connection, "
   return rows.filter((s): s is Stored => !!s).map((s) => ({ provider: s.provider, meta: s.meta, connectedAt: s.connectedAt, expiresAt: s.expiresAt }));
 }
 export async function deleteConnection(email: string, provider: string) {
-  await db.set(`conn:${email}:${provider}`, null);
+  // Encrypted credentials go, and the provider leaves the index with them.
+  await Promise.all([db.del(`conn:${email}:${provider}`), db.srem(`conns:${email}`, provider)]);
 }
 /** Short-lived OAuth state (10 min). */
 export async function saveState(state: string, payload: Record<string, string>) {

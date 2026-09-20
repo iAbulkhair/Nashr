@@ -3,7 +3,11 @@ import { PLAN_CREDITS, getUser, isAdmin, saveUser, type Plan } from "@/lib/auth"
 import { CAPS, db, pushCapped } from "@/lib/db";
 import { monthKey, withUserLock } from "@/lib/credits";
 import { getUsage } from "@/lib/usage";
+import { PLAN_PRICE_SAR } from "@/lib/admin-stats";
 import { pmap } from "@/lib/parallel";
+
+/** SAR per USD, for the margin column. One place, so the number is not repeated across the console. */
+const SAR_PER_USD = 3.75;
 
 // GET  /api/admin/plan            → list users with this month's model usage
 // POST /api/admin/plan {email, plan?, addCredits?} → set plan (resets to plan allowance, starts renewal cycle) / add credits
@@ -14,7 +18,16 @@ export async function GET(req: Request) {
     const u = await getUser(e);
     if (!u) return null;
     const usage = await getUsage(u.email);
-    return ({ email: u.email, name: u.name, phone: u.phone, plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt, renewedAt: u.renewedAt ?? null, suspended: !!u.suspended, lang: u.lang, tokens: usage.in + usage.out, usd: usage.usd, calls: usage.calls });
+    const priceSar = PLAN_PRICE_SAR[u.plan] ?? 0;
+    const costSar = usage.usd * SAR_PER_USD;
+    return ({
+      email: u.email, name: u.name, phone: u.phone, plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt,
+      renewedAt: u.renewedAt ?? null, suspended: !!u.suspended, lang: u.lang,
+      tokens: usage.in + usage.out, usd: usage.usd, calls: usage.calls, byKind: usage.byKind,
+      priceSar,
+      // Trial and enterprise have no list price, so a margin would be meaningless rather than negative.
+      marginPct: priceSar > 0 ? Math.round(((priceSar - costSar) / priceSar) * 100) : null,
+    });
   });
   const users = rows.filter((x): x is NonNullable<typeof x> => !!x);
   users.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));

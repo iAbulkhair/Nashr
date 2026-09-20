@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import { CAPS, db, pushCapped } from "@/lib/db";
 import { currentUser, isAdmin } from "@/lib/auth";
 import { sendEmail } from "@/lib/notify";
+import { allow, clientIp } from "@/lib/rate";
 
 export async function POST(req: Request) {
+  // Public and unauthenticated, and every accepted ticket sends an email to the founder: throttled per IP.
+  if (!(await allow(`support:ip:${clientIp(req)}`, 10, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
   const b = (await req.json().catch(() => ({}))) as Record<string, string>;
   if (!b.email || !b.message) return NextResponse.json({ ok: false }, { status: 400 });
   const u = await currentUser();

@@ -1,6 +1,6 @@
 # Test coverage map
 
-Status on 2026-09-18 (evening): Vitest is set up (`npm test`, 16 files, 110 tests, under one second, memory store only, no network or model calls) and `.github/workflows/ci.yml` runs type-check, lint and tests on every push and pull request. First green run: commit `21ccd57` on 2026-09-18 (npm ci, type-check, whole-repo lint with 0 errors, 52 tests). Vercel still deploys from Git on its own: a red CI run does not block production until the "Nashr CI" check is added under Vercel Settings > Build and Deployment > Deployment Checks. Rules without a test below are still unverified.
+Status on 2026-09-20: Vitest is set up (`npm test`, 18 files, 123 tests, under two seconds, memory store only, no network or model calls) and `.github/workflows/ci.yml` runs type-check, lint and tests on every push and pull request. First green run: commit `21ccd57` on 2026-09-18 (npm ci, type-check, whole-repo lint with 0 errors, 52 tests). Vercel still deploys from Git on its own: a red CI run does not block production until the "Nashr CI" check is added under Vercel Settings > Build and Deployment > Deployment Checks. Rules without a test below are still unverified.
 
 Legend: **test** = pinned by an automated test in `tests/` · **none** = nothing verifies the rule today · **manual** = checked by hand once (date) · **live** = guarded by a production probe.
 
@@ -32,7 +32,18 @@ Legend: **test** = pinned by an automated test in `tests/` · **none** = nothing
 | 24 | Sessions issued before a password change, reset or founder reset stop working (legacy records included); the changing device keeps a fresh session; the password write does not undo a concurrent credit charge | test (`revocation.test.ts`) | done |
 | 25 | OAuth grants: listed without tokens, revoked at once, another account's grant id is a 404, refresh keeps one grant and kills the previous access token, a reset revokes all | test (`revocation.test.ts`) | done |
 | 26 | Pages and customer API routes pass the active scope, never the bare account email, to workspace readers | test (`scope-usage.test.ts`, static) | done |
+| 27 | A whole customer path holds together: sign up, onboard, generate, approve with an edit, publish, and the pending count, the light index and the credit balance follow each step | test (`e2e-journey.test.ts`) | done |
+| 28 | An MCP bearer token works in the brand the owner has active, not always the default one | test (`e2e-journey.test.ts`: an agency account's second brand; `regressions` for the scope itself) | done |
+| 29 | A password change from Settings kills every other session **and** every MCP token and OAuth grant, exactly as a reset does | test (`e2e-journey.test.ts`) | done |
+| 30 | Deleting a workspace file or a connection removes it from its index, not only its record | test (`regressions.test.ts`) | done |
+| 31 | `update_brand` from a tool call writes only the allowlisted text fields; arrays (`channels`, `languages`) and structures are owner-only | test (`regressions.test.ts`) | done |
+| 32 | The public write endpoints (`/api/waitlist`, `/api/support`, `/api/affiliates`) are throttled per IP | test (`regressions.test.ts`) | done |
+| 33 | Chat is bounded per account (40/hour, 200/day) on the web route and on MCP `ask_noor` | test (`regressions.test.ts`: the ceiling and the 429) | the MCP side of the ceiling |
+| 34 | The Shopify OAuth callback refuses a shop that is not a `myshopify.com` host before the client secret is posted to it | test (`regressions.test.ts`) | done |
+| 35 | Token cost is recorded per kind of call per account, so the cost of one request type is a read | test (`e2e-journey.test.ts`: generate/review/judge, arithmetic against the rates in `src/lib/usage.ts`) | done |
 
 Route-level tests call the real handlers. `tests/helpers/setup.ts` replaces `next/headers` cookies with a jar the test controls and runs `after()` at once; `tests/helpers/session.ts` has `signIn(email)` (a real `session:{token}` record plus its cookie), `signOut()`, `newUser()`, `json()`, `params()` and `settle()`. The memory store honours TTL since 2026-09-18, so expiry rules are testable with fake clocks. Each rule above was checked once by breaking the code and watching the test fail (publish gate, task scope, suspended check, admin check).
 
-Next: rule 18 (MCP OAuth), rule 19 (chat heartbeat), signup throttle, and multi-brand scope (a second brand of the same account).
+Rules 27-35 were added on 2026-09-20 with the fixes they pin; each was checked by reverting its fix and watching the test fail (six of them did; the admin-cookie comparison has no observable behaviour difference, so its test guards behaviour only, not the constant-time property).
+
+Next: rule 19 (chat heartbeat), the token endpoint's client authentication, and a cron test with 50 fake users.

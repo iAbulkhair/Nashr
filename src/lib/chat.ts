@@ -34,6 +34,10 @@ export async function push(email: string, m: ChatMsg, conv?: string) {
   await pushCapped(key(email, conv), JSON.stringify(m), CAPS.chat);
 }
 
+/** Brand fields a tool call may write: every one of them is a plain string on `Brand`. */
+export const EDITABLE_BRAND_FIELDS = ["tone", "products", "audience", "offers", "competitors", "banned", "preferred", "dialect", "city", "name"] as const;
+export type EditableBrandField = (typeof EDITABLE_BRAND_FIELDS)[number];
+
 const TOOLS: Anthropic.Tool[] = [
   {
     name: "generate_content",
@@ -50,7 +54,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "update_brand",
     description: "Update one field of the structured brand file when the owner states a fact or preference (tone, products, offers, banned words, dialect, channels, audience, competitors, city).",
-    input_schema: { type: "object", additionalProperties: false, required: ["field", "value"], properties: { field: { type: "string", enum: ["tone", "products", "audience", "offers", "competitors", "banned", "preferred", "dialect", "city", "name"] }, value: { type: "string" } } },
+    input_schema: { type: "object", additionalProperties: false, required: ["field", "value"], properties: { field: { type: "string", enum: [...EDITABLE_BRAND_FIELDS] }, value: { type: "string" } } },
     strict: true,
   },
   {
@@ -294,8 +298,12 @@ export async function runTool(user: User, name: string, input: Record<string, un
     case "update_brand": {
       const brand = await getBrand(email);
       if (!brand) return "No brand file yet.";
-      const field = String(input.field) as keyof Brand;
+      const field = String(input.field);
       const value = String(input.value).slice(0, 1000);
+      // Code-level gate, not a prompt rule: only these text fields may be written from a tool call, and only with a
+      // string. Arrays (channels, languages) and structures (social) are owner-only, from the brand form; a string
+      // written into one of them broke every later generation.
+      if (!EDITABLE_BRAND_FIELDS.includes(field as EditableBrandField)) return `Cannot change brand.${field} from chat. Editable fields: ${EDITABLE_BRAND_FIELDS.join(", ")}. Channels, languages and handles are changed by the owner on the Brand page.`;
       if (field === "dialect") (brand as Brand).dialect = (["msa", "saudi", "emirati", "kuwaiti", "english"].includes(value) ? value : brand.dialect) as Brand["dialect"];
       else (brand as unknown as Record<string, string>)[field] = value;
       brand.updatedAt = new Date().toISOString();
