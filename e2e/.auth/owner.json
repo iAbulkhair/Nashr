@@ -2,10 +2,10 @@
   "cookies": [
     {
       "name": "nashr_session",
-      "value": "9b722a9d3973d2d0074e06370121b04083ae185878cf8e91e2d2603e860ea9d4",
+      "value": "44ba88f0b02fcdfe6b94329a62c53c9587e61b8e65aa1db237b35882daf7dcb0",
       "domain": "localhost",
       "path": "/",
-      "expires": 1792511579.177,
+      "expires": 1792513185.626,
       "httpOnly": true,
       "secure": true,
       "sameSite": "Lax"

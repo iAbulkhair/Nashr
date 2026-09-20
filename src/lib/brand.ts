@@ -59,11 +59,47 @@ export async function getBrand(email: string) {
 export async function saveBrand(email: string, b: Brand) {
   await db.set(`brand:${email}`, b);
 }
+/**
+ * Ids waiting for the owner's decision, seeding the set on first use exactly as the badge does. The badge and the
+ * inbox both read THIS, so they cannot drift apart: one read used twice, not two that happen to agree.
+ */
+async function pendingIds(email: string): Promise<string[]> {
+  if (!(await db.get(`pendingidx:${email}`))) await rebuildPending(email);
+  return db.smembers(`pending:${email}`);
+}
+
+/**
+ * What the approvals inbox holds: the newest 200 tasks, plus every task still waiting for a decision.
+ *
+ * The second half is the point. The inbox is the surface that approves or rejects, it used to read the newest 200 ids
+ * alone, and the sidebar badge counts the whole `pending:{scope}` set — so past 200 tasks an owner saw "Approvals 50"
+ * above an inbox showing none of them, and the backlog was unreachable for good. The pending chip is therefore
+ * exhaustive while the approved and rejected chips stay a recency window, and a buried item leaves the list once it is
+ * decided. Nothing is lost: listLite and the reports still see every task.
+ *
+ * Cost is bounded by 200 + the backlog the owner still has to clear, never by the size of the workspace.
+ */
 export async function listTasks(email: string): Promise<Task[]> {
-  const ids = await db.lrange(`tasks:${email}`, 0, 199);
+  const [head, pending] = await Promise.all([db.lrange(`tasks:${email}`, 0, 199), pendingIds(email)]);
+  // Dedupe BEFORE fetching. A pending task inside the newest 200 must appear once: twice would give React duplicate
+  // keys and make the optimistic overlay in Inbox.tsx apply to both copies of the same card.
+  const seen = new Set(head);
+  const tail = pending.filter((id) => !seen.has(id));
   // Parallel reads: 200 sequential round trips made every page that lists tasks slow.
-  const rows = await pmap(ids, (id) => db.get<Task>(`task:${email}:${id}`));
-  return rows.filter((t): t is Task => !!t);
+  const rows = await pmap([...head, ...tail], (id) => db.get<Task>(`task:${email}:${id}`));
+  const tailRows = rows.slice(head.length);
+
+  // A pending id whose task record is gone is counted by the badge and dropped here — the same disagreement in
+  // miniature. This read already knows which ones they are, so it clears them; the badge is fetched after the render.
+  const ghosts = tail.filter((_, i) => !tailRows[i]);
+  if (ghosts.length) void Promise.all(ghosts.map((id) => db.srem(`pending:${email}`, id))).catch(() => {});
+
+  // The head keeps the list's own order. The tail is newest-first too, ordered by (createdAt, id) so a batch written
+  // inside one millisecond does not reshuffle under an owner working through it.
+  const older = tailRows
+    .filter((t): t is Task => !!t)
+    .sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1));
+  return [...rows.slice(0, head.length).filter((t): t is Task => !!t), ...older];
 }
 
 /**
@@ -158,8 +194,7 @@ export async function rebuildPending(email: string, tasks?: Pick<Task, "id" | "s
 
 /** Number of items waiting for the owner's approval: one read once the workspace has been indexed. */
 export async function pendingCount(email: string): Promise<number> {
-  if (!(await db.get(`pendingidx:${email}`))) return rebuildPending(email);
-  return (await db.smembers(`pending:${email}`)).length;
+  return (await pendingIds(email)).length;
 }
 export async function getTask(email: string, id: string) {
   return db.get<Task>(`task:${email}:${id}`);

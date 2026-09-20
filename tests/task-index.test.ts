@@ -31,11 +31,14 @@ describe("light task index", () => {
     expect(await listLite(s)).toHaveLength(25);
   });
 
-  it("sees past the 200 newest tasks, which the full list cannot", async () => {
+  it("sees past the 200 newest DECIDED tasks, which the full list does not carry", async () => {
     const s = scope();
-    await Promise.all(Array.from({ length: 230 }, (_, i) => saveTask(s, task(`t${i}`, { createdAt: daysAgo(i % 80) }), true)));
-    expect(await listTasks(s)).toHaveLength(200);
-    expect(await listLite(s)).toHaveLength(230);
+    // Decided on purpose. These 230 used to default to "pending", and the assertion that `listTasks` returned only
+    // 200 of them was the approvals defect written down as a pin: the sidebar counted all 230 while the inbox could
+    // reach 200. `listTasks` now always carries every pending task, so the recency window is only about decided work.
+    await Promise.all(Array.from({ length: 230 }, (_, i) => saveTask(s, task(`t${i}`, { createdAt: daysAgo(i % 80), status: "approved" }), true)));
+    expect(await listTasks(s), "the full list is still a 200-task recency window for decided work").toHaveLength(200);
+    expect(await listLite(s), "the light index still sees all of them").toHaveLength(230);
   });
 
   it("reads only the months a window needs and filters inside the first month", async () => {

@@ -15,5 +15,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
   if (!(await getBrand(sc(u)))) redirect(`/${lang}/app/start`);
-  return <Inbox t={appDict[lang]} lang={lang} tasks={await listTasks(sc(u))} brief={(await latestBrief(sc(u)))?.text ?? null} connected={(await listConnections(sc(u))).map((c) => c.provider)} />;
+  // One round, not three. These were three awaits in argument position, so they ran one after another — the same
+  // instinct as the project's rule against `await db.*` inside a loop, just without the loop.
+  const [tasks, brief, connections] = await Promise.all([listTasks(sc(u)), latestBrief(sc(u)), listConnections(sc(u))]);
+  return <Inbox t={appDict[lang]} lang={lang} tasks={tasks} brief={brief?.text ?? null} connected={connections.map((c) => c.provider)} />;
 }
