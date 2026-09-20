@@ -29,5 +29,11 @@ export async function userFromBearer(req: Request): Promise<User | null> {
   const email = await db.get<string>(`mcptoken:${m[1]}`);
   const u = email ? await getUser(email) : null;
   // A suspended account is blocked everywhere, including tokens issued before the suspension.
-  return u && !u.suspended ? u : null;
+  if (!u || u.suspended) return null;
+  // Same scope resolution as a browser session (src/lib/auth.ts `currentUser`): without it every MCP call read and
+  // wrote the default brand even while the owner had another brand active.
+  const { activeBrandId, scopeFor } = await import("./brands");
+  u.brandId = await activeBrandId(u.email);
+  u.scope = scopeFor(u.email, u.brandId);
+  return u;
 }

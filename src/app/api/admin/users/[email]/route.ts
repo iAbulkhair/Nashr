@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
-import { createSession, getUser, isAdmin, revokeSessions, saveUser, normalizeEmail } from "@/lib/auth";
+import { createSession, getUser, isAdmin, revokeSessions, saveUser, normalizeEmail, sessionCookie } from "@/lib/auth";
 import { revokeAllMcp } from "@/lib/mcp";
 import { getBrand, listTasks } from "@/lib/brand";
 import { getUsage } from "@/lib/usage";
@@ -86,8 +86,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     case "impersonate": {
       const jar = await cookies();
       const mine = jar.get("nashr_session")?.value;
-      if (mine) jar.set("nashr_return", mine, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 2 });
-      jar.set("nashr_impersonate", email, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 2 });
+      if (mine) jar.set("nashr_return", mine, await sessionCookie(60 * 60 * 2));
+      jar.set("nashr_impersonate", email, await sessionCookie(60 * 60 * 2));
       await createSession(email, 60 * 60 * 2);
       await log("impersonate", { expiresInMin: 120 });
       return NextResponse.json({ ok: true, redirect: `/${u.lang}/app` });

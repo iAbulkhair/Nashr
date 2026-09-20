@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { timingSafeEqual } from "crypto";
 import { allow, clientIp } from "@/lib/rate";
+import { sessionCookie } from "@/lib/auth";
 
 const COOKIE = "nashr_admin";
 export const ADMIN_COOKIE = COOKIE;
@@ -15,7 +16,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
   const jar = await cookies();
-  jar.set(COOKIE, String(key), { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 30 });
+  jar.set(COOKIE, String(key), await sessionCookie(60 * 60 * 24 * 30));
   return NextResponse.json({ ok: true });
 }
 

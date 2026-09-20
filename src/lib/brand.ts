@@ -26,37 +26,11 @@ export type Brand = {
   social?: Record<string, string>;
 };
 
-export type TaskType =
-  | "weekly_plan" | "social" | "article" | "whatsapp" | "ads" | "gbp"
-  | "sales_script" | "lead_qualifier" | "followup_seq"
-  | "pricing_review" | "unit_economics" | "cash_forecast"
-  | "gtm_plan" | "growth_experiments" | "retention_play"
-  | "weekly_report" | "board_deck" | "dashboard_spec"
-  | "strategy_review" | "okrs" | "decision_memo"
-  | "prd" | "roadmap" | "feedback_synthesis" | "onboarding_flow";
-
-/** Credits per batch. */
-export const TASK_COST: Record<TaskType, number> = {
-  weekly_plan: 1, social: 10, article: 2, whatsapp: 3, ads: 5, gbp: 3,
-  sales_script: 4, lead_qualifier: 2, followup_seq: 3,
-  pricing_review: 4, unit_economics: 3, cash_forecast: 4,
-  gtm_plan: 5, growth_experiments: 4, retention_play: 4,
-  weekly_report: 2, board_deck: 5, dashboard_spec: 2,
-  strategy_review: 5, okrs: 3, decision_memo: 3,
-  prd: 4, roadmap: 4, feedback_synthesis: 3, onboarding_flow: 3,
-};
-/** Items produced per batch. */
-export const TASK_COUNT: Record<TaskType, number> = {
-  weekly_plan: 1, social: 10, article: 1, whatsapp: 3, ads: 5, gbp: 3,
-  sales_script: 3, lead_qualifier: 1, followup_seq: 7,
-  pricing_review: 1, unit_economics: 1, cash_forecast: 1,
-  gtm_plan: 1, growth_experiments: 5, retention_play: 3,
-  weekly_report: 1, board_deck: 1, dashboard_spec: 1,
-  strategy_review: 1, okrs: 1, decision_memo: 1,
-  prd: 1, roadmap: 1, feedback_synthesis: 1, onboarding_flow: 1,
-};
-/** Types that get a generated image button in the inbox. */
-export const IMAGE_TYPES: TaskType[] = ["social", "ads", "gbp", "whatsapp"];
+// The task catalogue lives in ./tasks, which imports nothing: client components read the costs from there instead of
+// from this module, which would drag the Redis client into their bundle. Re-exported so server callers are unaffected.
+export type { TaskType } from "./tasks";
+export { TASK_COST, TASK_COUNT, IMAGE_TYPES, IMAGE_COST } from "./tasks";
+import type { TaskType } from "./tasks";
 
 export type Task = {
   id: string;
@@ -72,13 +46,18 @@ export type Task = {
   scheduledFor?: string; // YYYY-MM-DD, set by owner in inbox/calendar
   imageUrl?: string;
   imagePrompt?: string;
+  /**
+   * Which service produced imageUrl. When the image provider is unreachable or unconfigured, generateImage falls back
+   * to a placehold.co card carrying the brand name. That is not artwork, and presenting it as the generated image the
+   * owner just paid for is a lie the interface was telling on our behalf.
+   */
+  imageProvider?: "fal" | "placeholder";
   published?: { provider: string; url: string; status: "draft" | "published"; at: string }[];
   /** When the owner approved or rejected (for time-to-decision). */
   decidedAt?: string;
   /** Automated judge score (src/lib/judge.ts). */
   quality?: { score: number; dims: { completeness: number; brand: number; honesty: number; language: number; format: number }; notes: string; model: string; at: string };
 };
-export const IMAGE_COST = 1;
 
 export async function getBrand(email: string) {
   return db.get<Brand>(`brand:${email}`);
@@ -86,11 +65,47 @@ export async function getBrand(email: string) {
 export async function saveBrand(email: string, b: Brand) {
   await db.set(`brand:${email}`, b);
 }
+/**
+ * Ids waiting for the owner's decision, seeding the set on first use exactly as the badge does. The badge and the
+ * inbox both read THIS, so they cannot drift apart: one read used twice, not two that happen to agree.
+ */
+async function pendingIds(email: string): Promise<string[]> {
+  if (!(await db.get(`pendingidx:${email}`))) await rebuildPending(email);
+  return db.smembers(`pending:${email}`);
+}
+
+/**
+ * What the approvals inbox holds: the newest 200 tasks, plus every task still waiting for a decision.
+ *
+ * The second half is the point. The inbox is the surface that approves or rejects, it used to read the newest 200 ids
+ * alone, and the sidebar badge counts the whole `pending:{scope}` set — so past 200 tasks an owner saw "Approvals 50"
+ * above an inbox showing none of them, and the backlog was unreachable for good. The pending chip is therefore
+ * exhaustive while the approved and rejected chips stay a recency window, and a buried item leaves the list once it is
+ * decided. Nothing is lost: listLite and the reports still see every task.
+ *
+ * Cost is bounded by 200 + the backlog the owner still has to clear, never by the size of the workspace.
+ */
 export async function listTasks(email: string): Promise<Task[]> {
-  const ids = await db.lrange(`tasks:${email}`, 0, 199);
+  const [head, pending] = await Promise.all([db.lrange(`tasks:${email}`, 0, 199), pendingIds(email)]);
+  // Dedupe BEFORE fetching. A pending task inside the newest 200 must appear once: twice would give React duplicate
+  // keys and make the optimistic overlay in Inbox.tsx apply to both copies of the same card.
+  const seen = new Set(head);
+  const tail = pending.filter((id) => !seen.has(id));
   // Parallel reads: 200 sequential round trips made every page that lists tasks slow.
-  const rows = await pmap(ids, (id) => db.get<Task>(`task:${email}:${id}`));
-  return rows.filter((t): t is Task => !!t);
+  const rows = await pmap([...head, ...tail], (id) => db.get<Task>(`task:${email}:${id}`));
+  const tailRows = rows.slice(head.length);
+
+  // A pending id whose task record is gone is counted by the badge and dropped here — the same disagreement in
+  // miniature. This read already knows which ones they are, so it clears them; the badge is fetched after the render.
+  const ghosts = tail.filter((_, i) => !tailRows[i]);
+  if (ghosts.length) void Promise.all(ghosts.map((id) => db.srem(`pending:${email}`, id))).catch(() => {});
+
+  // The head keeps the list's own order. The tail is newest-first too, ordered by (createdAt, id) so a batch written
+  // inside one millisecond does not reshuffle under an owner working through it.
+  const older = tailRows
+    .filter((t): t is Task => !!t)
+    .sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1));
+  return [...rows.slice(0, head.length).filter((t): t is Task => !!t), ...older];
 }
 
 /**
@@ -185,8 +200,7 @@ export async function rebuildPending(email: string, tasks?: Pick<Task, "id" | "s
 
 /** Number of items waiting for the owner's approval: one read once the workspace has been indexed. */
 export async function pendingCount(email: string): Promise<number> {
-  if (!(await db.get(`pendingidx:${email}`))) return rebuildPending(email);
-  return (await db.smembers(`pending:${email}`)).length;
+  return (await pendingIds(email)).length;
 }
 export async function getTask(email: string, id: string) {
   return db.get<Task>(`task:${email}:${id}`);

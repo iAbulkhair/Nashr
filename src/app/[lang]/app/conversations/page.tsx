@@ -5,17 +5,25 @@ import { appDict } from "@/lib/app-i18n";
 import { currentUser, sc } from "@/lib/auth";
 import { listConversations, searchConversations } from "@/lib/conversations";
 import { listLite } from "@/lib/brand";
+import { kpiSince } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
 
-export default async function Page({ params, searchParams }: { params: Promise<{ lang: string }>; searchParams: Promise<{ q?: string }> }) {
+export default async function Page({ params, searchParams }: PageProps<"/[lang]/app/conversations">) {
   const { lang } = await params;
-  const { q } = await searchParams;
+  // A query key can repeat: "?q=a&q=b" reaches a page as ["a", "b"], and searchConversations calls q.trim().
+  // Typing it as `string` hid that from the compiler and the page answered 500. Anything but a single string is
+  // treated as no query, which is what "?q=" already does.
+  const { q: rawQ } = await searchParams;
+  const q = typeof rawQ === "string" ? rawQ : undefined;
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
   const t = appDict[lang];
-  const [convs, tasks] = await Promise.all([listConversations(sc(u)), listLite(sc(u))]);
+  // Bounded to the same 90-day window every other KPI on the site uses. Unbounded, this read pulled every task the
+  // workspace had ever created — every month of the light index, megabytes over HTTP — to render a single integer.
+  // The tile says "(90 days)" in both languages so the number still means what it says.
+  const [convs, tasks] = await Promise.all([listConversations(sc(u)), listLite(sc(u), kpiSince())]);
   const fromChat = tasks.filter((x) => x.source === "chat").length;
   const hits = q ? await searchConversations(sc(u), q) : null;
   return (

@@ -46,6 +46,10 @@ export async function meter(email: string | undefined, model: string, kind: Kind
         db.incrby(`${k}:calls`, 1),
         db.incrby(`${k}:usd_micro`, micro),
         db.incrby(`${k}:kind:${kind}`, 1),
+        // Same three numbers per kind, so cost per request type per account is a read, not an estimate.
+        db.incrby(`${k}:kind:${kind}:in`, inp),
+        db.incrby(`${k}:kind:${kind}:out`, out),
+        db.incrby(`${k}:kind:${kind}:usd_micro`, micro),
         // Prompt caching is only worth its write premium when reads follow; these two counters show whether they do.
         ...(usage.cache_read_input_tokens ? [db.incrby(`${k}:cache_read`, usage.cache_read_input_tokens)] : []),
         ...(usage.cache_creation_input_tokens ? [db.incrby(`${k}:cache_write`, usage.cache_creation_input_tokens)] : []),
@@ -56,14 +60,22 @@ export async function meter(email: string | undefined, model: string, kind: Kind
   }
 }
 
-export type UsageSummary = { month: string; in: number; out: number; calls: number; usd: number; kinds: Record<string, number>; /** input tokens served from the prompt cache / written to it */ cacheRead: number; cacheWrite: number };
+/** Tokens and money for one kind of model call. */
+export type KindUsage = { calls: number; in: number; out: number; usd: number };
+export type UsageSummary = { month: string; in: number; out: number; calls: number; usd: number; kinds: Record<string, number>; /** tokens and cost per kind; the average of one request of that kind is usd / calls */ byKind: Record<string, KindUsage>; /** input tokens served from the prompt cache / written to it */ cacheRead: number; cacheWrite: number };
 
 export async function getUsage(email: string | "_all", month = monthKey()): Promise<UsageSummary> {
   const k = `usage:${email}:${month}`;
   const n = async (s: string) => Number((await db.get<number>(`${k}:${s}`)) ?? 0);
   const [inp, out, calls, micro, cacheRead, cacheWrite] = await Promise.all([n("in"), n("out"), n("calls"), n("usd_micro"), n("cache_read"), n("cache_write")]);
   const kinds: Record<string, number> = {};
-  const counts = await Promise.all(KINDS.map((kind) => n(`kind:${kind}`)));
-  KINDS.forEach((kind, i) => { if (counts[i]) kinds[kind] = counts[i]; });
-  return { month, in: inp, out, calls, usd: Math.round(micro / 1e4) / 100, kinds, cacheRead, cacheWrite };
+  const byKind: Record<string, KindUsage> = {};
+  const per = await Promise.all(KINDS.map((kind) => Promise.all([n(`kind:${kind}`), n(`kind:${kind}:in`), n(`kind:${kind}:out`), n(`kind:${kind}:usd_micro`)])));
+  KINDS.forEach((kind, i) => {
+    const [c, ki, ko, km] = per[i];
+    if (!c) return;
+    kinds[kind] = c;
+    byKind[kind] = { calls: c, in: ki, out: ko, usd: Math.round(km / 100) / 1e4 };
+  });
+  return { month, in: inp, out, calls, usd: Math.round(micro / 1e4) / 100, kinds, byKind, cacheRead, cacheWrite };
 }

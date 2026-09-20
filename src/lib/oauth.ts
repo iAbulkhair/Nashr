@@ -32,8 +32,31 @@ export function resourceMetadata() {
   return { resource: `${o}/api/mcp`, authorization_servers: [o], bearer_methods_supported: ["header"], scopes_supported: SCOPES, resource_name: "Nashr — Noor" };
 }
 
+/**
+ * Hosts that may be reached over plain http. OAuth 2.1 (§4.1.3) requires https for every redirect URI, with one
+ * exception: a native client listening on the loopback interface, which cannot obtain a certificate. Anything else
+ * over http means the authorization code — and with it the account — crosses the network in the clear.
+ *
+ * RFC 8252 §7.3 prefers the IP literals because "localhost" depends on a resolver. It is accepted anyway: the MCP
+ * clients that register here use it, it still resolves to the loopback interface on every system this runs on, and
+ * refusing it would push those clients to register a real http host, which is the outcome this guards against.
+ */
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "[::1]", "localhost"]);
+
+export function validRedirectUri(u: unknown): u is string {
+  if (typeof u !== "string") return false;
+  let url: URL;
+  try { url = new URL(u); } catch { return false; }
+  // RFC 6749 §3.1.2: a redirect URI is absolute and carries no fragment.
+  if (url.hash) return false;
+  if (url.protocol === "https:") return true;
+  return url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname);
+}
+
 export async function registerClient(body: { redirect_uris?: string[]; client_name?: string; token_endpoint_auth_method?: string }): Promise<Client> {
-  const uris = (body.redirect_uris ?? []).filter((u) => typeof u === "string" && /^https?:\/\//.test(u)).slice(0, 10);
+  // Was /^https?:\/\//, which accepted http://anywhere. A client could register a plaintext redirect on a host it
+  // controlled and receive an authorization code for someone else's account over the open network.
+  const uris = (body.redirect_uris ?? []).filter(validRedirectUri).slice(0, 10);
   if (!uris.length) throw new Error("invalid_redirect_uri");
   const c: Client = { client_id: "nc_" + randomBytes(12).toString("hex"), client_name: (body.client_name ?? "").slice(0, 100), redirect_uris: uris, created_at: Math.floor(Date.now() / 1000) };
   if (body.token_endpoint_auth_method === "client_secret_post") c.client_secret = randomBytes(24).toString("base64url");

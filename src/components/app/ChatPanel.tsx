@@ -28,6 +28,9 @@ export function ItemCard({ item, t, lang, onApproved }: { item: ChatItem; t: App
     const r = await fetch(`/api/tasks/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: next }) });
     if (!r.ok) { setErr(t.chat.approveFail); return; }
     setStatus(next);
+    // The sidebar badge listens for this; only the inbox used to send it, so approving from a chat card left the badge
+    // one too high until the owner navigated. That matters more now the badge is exhaustive and therefore trusted.
+    window.dispatchEvent(new Event("nashr:pending-changed"));
     if (next === "approved") { setUndoAt(Date.now()); onApproved?.(item.id); setTimeout(() => setUndoAt((v) => (Date.now() - v >= 4000 ? 0 : v)), 4200); }
     else setUndoAt(0);
   }

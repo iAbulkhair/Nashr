@@ -1,9 +1,20 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { dict, isLang } from "@/lib/i18n";
 import { listPosts } from "@/lib/blog";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
+
+export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
+  const { lang } = await params;
+  const ar = lang === "ar";
+  return {
+    title: ar ? "المدونة — أدلة تسويق للخليج | نشر" : "Blog — Gulf marketing guides | Nashr",
+    description: ar ? "أدلة عملية للتسويق في السعودية والخليج: المواسم، القنوات، والقطاعات." : "Practical guides to marketing in Saudi Arabia and the Gulf: seasons, channels and sectors.",
+    alternates: { canonical: `/${lang}/blog`, languages: { ar: "/ar/blog", en: "/en/blog" } },
+  };
+}
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;

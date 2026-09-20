@@ -4,6 +4,7 @@ import { currentUser, sc } from "@/lib/auth";
 import { chat, history } from "@/lib/chat";
 import { touchConversation } from "@/lib/conversations";
 import { isAgentId } from "@/lib/agents";
+import { chatAllowed } from "@/lib/rate";
 
 export const maxDuration = 300;
 
@@ -27,6 +28,8 @@ export async function POST(req: Request) {
   if (!text) return NextResponse.json({ ok: false, error: "empty" }, { status: 400 });
   const agent = isAgentId(b.agent) ? b.agent : "noor";
   const lang = req.headers.get("x-lang") === "en" ? "en" : u.lang;
+  // Chat costs no credits, so the only ceiling on what one account can spend on models is this one.
+  if (!(await chatAllowed(u.email))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
 
   if (!b.stream) {
     try {

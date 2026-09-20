@@ -3,11 +3,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
-import { IMAGE_TYPES, type Task } from "@/lib/brand";
+import { IMAGE_TYPES } from "@/lib/tasks";
+import type { Task } from "@/lib/brand";
 import { limitFromError } from "./LimitModal";
 import { render } from "@/lib/md";
 import { Icon, channelIcon } from "./Icons";
 import type { Lang } from "@/lib/i18n";
+import { dateFormat } from "@/lib/dates";
 
 const CHAR_LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250, tiktok: 2200, whatsapp: 1024, gbp: 1500, linkedin: 3000 };
 
@@ -26,6 +28,8 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
   const [local, setLocal] = useState<Record<string, Task>>({});
   const [failed, setFailed] = useState<string | null>(null);
   const view = tasks.map((x) => local[x.id] ?? x);
+  /** Drop the optimistic copy of one task so the next server render is what the owner sees. */
+  const forgetLocal = (id: string) => setLocal((p) => { const next = { ...p }; delete next[id]; return next; });
   const targets = (x: Task) => {
     const out: string[] = [];
     if (x.type === "article") for (const p of ["wordpress", "shopify"]) if (connected.includes(p)) out.push(p);
@@ -38,6 +42,9 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
     const res = await fetch(`/api/publish/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider }) });
     setPublishing(null);
     if (!res.ok) alert(i.publishFail);
+    // `view` renders `local[id] ?? task`, so an entry left over from an earlier approve would mask this task's server
+    // copy for ever: the publish landed and the image was generated, but the card never showed either.
+    forgetLocal(id);
     r.refresh();
   }
   async function image(id: string) {
@@ -45,12 +52,13 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
     const res = await fetch(`/api/tasks/${id}/image`, { method: "POST" });
     setImaging(null);
     if (!res.ok) { const j = await res.json().catch(() => ({} as { error?: string })); if (!limitFromError(j.error)) alert(i.imageFail); }
+    forgetLocal(id);
     r.refresh();
   }
 
   const shown = view.filter((x) => filter === "all" || x.status === filter);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const dayLabel = (iso: string) => new Intl.DateTimeFormat(lang === "ar" ? "ar-SA-u-nu-latn" : "en", { weekday: "long", month: "long", day: "numeric" }).format(new Date(iso));
+  const dayLabel = (iso: string) => dateFormat(lang, { weekday: "long", month: "long", day: "numeric" }).format(new Date(iso));
   async function share(x: Task, body: string) {
     const text = `${x.title}\n\n${body}`;
     if (navigator.share) { try { await navigator.share({ title: x.title, text }); return; } catch { /* cancelled */ } }
@@ -118,7 +126,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
           const isCollapsed = !!collapsed[x.id];
           return (
             <li key={x.id} className="grid gap-4">
-              {newDay && <p className="flex items-center gap-3 text-xs text-ink/70"><span className="sadu-thin h-1 flex-1 rounded-full opacity-60" /><span className="rounded-full border border-ink/10 bg-white px-3 py-1">{dayLabel(x.createdAt)}</span><span className="sadu-thin h-1 flex-1 rounded-full opacity-60" /></p>}
+              {newDay && <p className="flex items-center gap-3 text-xs text-ink/70"><span className="sadu-thin h-1 flex-1 rounded-full opacity-60" /><span className="rounded-full border border-ink/10 bg-white px-3 py-1" suppressHydrationWarning>{dayLabel(x.createdAt)}</span><span className="sadu-thin h-1 flex-1 rounded-full opacity-60" /></p>}
               <article className="card overflow-hidden p-0">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink/5 px-4 py-2.5">
                 <div className="flex min-w-0 items-center gap-2">
@@ -137,8 +145,12 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
               )}
               {x.imageUrl && (
                 <div className="mt-3 flex items-start gap-3">
+                  {/* Deliberately not next/image. These URLs come from the image provider and from placehold.co, so
+                      optimising them means allowing arbitrary remote hosts in remotePatterns and paying to proxy
+                      third-party images we already pay to generate. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element -- third-party image host, not a local asset */}
                   <img loading="lazy" decoding="async" src={x.imageUrl} alt="" className="h-40 w-40 rounded-lg object-cover" />
-                  <div className="text-xs text-ink/50"><a href={x.imageUrl} target="_blank" rel="noreferrer" className="underline">{i.download}</a>{x.imagePrompt && <p className="mt-1 line-clamp-4" dir="ltr">{x.imagePrompt}</p>}</div>
+                  <div className="text-xs text-ink/50">{x.imageProvider === "placeholder" && <p className="mb-1 rounded-full bg-saffron/20 px-2 py-0.5 font-semibold text-sadu-deep" dir="auto">{i.placeholder}</p>}<a href={x.imageUrl} target="_blank" rel="noreferrer" className="underline">{i.download}</a>{x.imagePrompt && <p className="mt-1 line-clamp-4" dir="ltr">{x.imagePrompt}</p>}</div>
                 </div>
               )}
               {editing === x.id ? (

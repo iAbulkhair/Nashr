@@ -3,7 +3,16 @@ import type { Lang } from "./i18n";
 /** Free tools = programmatic SEO engine. Each is a tiny Claude call; 5/day per IP without an account. */
 export type Tool = { slug: string; name: Record<Lang, string>; desc: Record<Lang, string>; h1: Record<Lang, string>; fields: { name: string; label: Record<Lang, string>; placeholder?: Record<Lang, string>; type?: "text" | "textarea" | "select"; options?: string[] }[]; prompt: string; count?: number };
 
-const langField = { name: "lang", label: { ar: "اللغة", en: "Language" }, type: "select" as const, options: ["عربي سعودي", "عربي فصحى", "English", "عربي + English"] };
+/** The only values the language field may take. The form is a select; the API must not trust that. */
+export const LANG_CHOICES = ["عربي سعودي", "عربي فصحى", "English", "عربي + English"] as const;
+/**
+ * Normalise the `lang` field of a free-tool request. It is interpolated into the system prompt, so an unvalidated
+ * value is both a prompt-injection point and an unbounded input billed to us: a 500 KB string became ~125k input
+ * tokens on a call that charges no credits.
+ */
+export const toolLang = (v: unknown): string => (typeof v === "string" && (LANG_CHOICES as readonly string[]).includes(v) ? v : LANG_CHOICES[0]);
+
+const langField = { name: "lang", label: { ar: "اللغة", en: "Language" }, type: "select" as const, options: [...LANG_CHOICES] };
 const brand = { name: "brand", label: { ar: "اسم العلامة / المنتج", en: "Brand / product" }, placeholder: { ar: "مثال: عطور الواحة، عود كمبودي", en: "e.g. Oasis Perfumes, Cambodian oud" } };
 const audience = { name: "audience", label: { ar: "الجمهور", en: "Audience" }, placeholder: { ar: "مثال: شباب الرياض 25-35", en: "e.g. Riyadh men 25-35" } };
 

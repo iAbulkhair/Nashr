@@ -7,10 +7,11 @@ import { meter } from "./usage";
 import Anthropic from "@anthropic-ai/sdk";
 import { randomBytes } from "crypto";
 import { CAPS, db, pushCapped } from "./db";
-import type { User } from "./auth";
-import { TASK_COST, TASK_COUNT, getBrand, listPreferences, saveBrand, saveTask, listLite, type Brand, type Task, type TaskType } from "./brand";
+import { trialOver, type User } from "./auth";
+import { getBrand, listPreferences, saveBrand, saveTask, listLite, type Brand, type Task } from "./brand";
+import { TASK_COST, TASK_COUNT, TASK_TYPES, isTaskType, type TaskType } from "./tasks";
 import { generate } from "./noor";
-import { listFiles, memoryBlock, readFile, writeFile } from "./files";
+import { FileLimitError, MAX_FILES, listFileNames, memoryBlock, readFile, writeFile } from "./files";
 import { getGov } from "./governance";
 import { activeSeasons } from "./seasons";
 import { importCatalog } from "./catalog";
@@ -34,6 +35,10 @@ export async function push(email: string, m: ChatMsg, conv?: string) {
   await pushCapped(key(email, conv), JSON.stringify(m), CAPS.chat);
 }
 
+/** Brand fields a tool call may write: every one of them is a plain string on `Brand`. */
+export const EDITABLE_BRAND_FIELDS = ["tone", "products", "audience", "offers", "competitors", "banned", "preferred", "dialect", "city", "name"] as const;
+export type EditableBrandField = (typeof EDITABLE_BRAND_FIELDS)[number];
+
 const TOOLS: Anthropic.Tool[] = [
   {
     name: "generate_content",
@@ -50,7 +55,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "update_brand",
     description: "Update one field of the structured brand file when the owner states a fact or preference (tone, products, offers, banned words, dialect, channels, audience, competitors, city).",
-    input_schema: { type: "object", additionalProperties: false, required: ["field", "value"], properties: { field: { type: "string", enum: ["tone", "products", "audience", "offers", "competitors", "banned", "preferred", "dialect", "city", "name"] }, value: { type: "string" } } },
+    input_schema: { type: "object", additionalProperties: false, required: ["field", "value"], properties: { field: { type: "string", enum: [...EDITABLE_BRAND_FIELDS] }, value: { type: "string" } } },
     strict: true,
   },
   {
@@ -184,8 +189,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
 
   const client = new Anthropic();
   // Independent reads, fetched together: one after another they cost 1-2 s of silence before every model call.
-  const [brand, prefs, memory, fileList, conns, thread] = await Promise.all([getBrand(email), listPreferences(email), memoryBlock(email), listFiles(email), listConnections(email), history(email, conv)]);
-  const files = fileList.map((f) => f.name);
+  const [brand, prefs, memory, files, conns, thread] = await Promise.all([getBrand(email), listPreferences(email), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv)]);
   const connected = conns.map((c) => c.provider);
   const past = thread.slice(-16);
   const messages: Anthropic.MessageParam[] = past.map((m) => ({ role: m.role, content: m.content }));
@@ -234,11 +238,13 @@ export async function runTool(user: User, name: string, input: Record<string, un
   const email = user.scope ?? user.email;
   switch (name) {
     case "generate_content": {
-      const type = input.type as TaskType;
+      // The model chooses this value, and crawled pages and catalogs reach the model: it is request input, not a fact.
+      if (!isTaskType(input.type)) return `Unknown type. Valid types: ${TASK_TYPES.join(", ")}.`;
+      const type = input.type;
       const cost = TASK_COST[type];
       const brand = await getBrand(email);
       if (!brand) return "No brand file yet. Ask the owner to run onboarding.";
-      if (user.plan === "trial" && new Date(user.trialEnds) < new Date()) { actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page."; }
+      if (trialOver(user)) { actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page."; }
       const paid = await charge(user.email, cost);
       if (!paid.ok) { actions.push("limit:credits"); return `Insufficient credits: need ${cost}, have ${paid.credits}. Tell the owner plainly and point to the Subscription page.`; }
       user.credits = paid.credits;
@@ -263,12 +269,13 @@ export async function runTool(user: User, name: string, input: Record<string, un
       return `Created ${items.length} ${type} item(s) in the inbox${gov.autoApprove[type] ? " (auto-approved per governance)" : ""}. Credits left: ${user.credits}. Titles: ${items.map((i) => i.title).join(" | ")}${inline}`;
     }
     case "draft_items": {
-      const type = input.type as TaskType;
+      if (!isTaskType(input.type)) return `Unknown type. Valid types: ${TASK_TYPES.join(", ")}.`;
+      const type = input.type;
       const count = Math.max(1, Math.min(3, Number(input.count) || 1));
       const cost = Math.max(1, Math.ceil((TASK_COST[type] / (TASK_COUNT[type] || 1)) * count));
       const brand = await getBrand(email);
       if (!brand) return "No brand file yet. Ask the owner to run onboarding.";
-      if (user.plan === "trial" && new Date(user.trialEnds) < new Date()) { actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page."; }
+      if (trialOver(user)) { actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page."; }
       const paid = await charge(user.email, cost);
       if (!paid.ok) { actions.push("limit:credits"); return `Insufficient credits: need ${cost}, have ${paid.credits}.`; }
       user.credits = paid.credits;
@@ -294,8 +301,12 @@ export async function runTool(user: User, name: string, input: Record<string, un
     case "update_brand": {
       const brand = await getBrand(email);
       if (!brand) return "No brand file yet.";
-      const field = String(input.field) as keyof Brand;
+      const field = String(input.field);
       const value = String(input.value).slice(0, 1000);
+      // Code-level gate, not a prompt rule: only these text fields may be written from a tool call, and only with a
+      // string. Arrays (channels, languages) and structures (social) are owner-only, from the brand form; a string
+      // written into one of them broke every later generation.
+      if (!EDITABLE_BRAND_FIELDS.includes(field as EditableBrandField)) return `Cannot change brand.${field} from chat. Editable fields: ${EDITABLE_BRAND_FIELDS.join(", ")}. Channels, languages and handles are changed by the owner on the Brand page.`;
       if (field === "dialect") (brand as Brand).dialect = (["msa", "saudi", "emirati", "kuwaiti", "english"].includes(value) ? value : brand.dialect) as Brand["dialect"];
       else (brand as unknown as Record<string, string>)[field] = value;
       brand.updatedAt = new Date().toISOString();
@@ -308,7 +319,15 @@ export async function runTool(user: User, name: string, input: Record<string, un
       return f ? f.content.slice(0, 12000) : "File not found.";
     }
     case "write_file": {
-      const f = await writeFile(email, String(input.name), String(input.content), "noor");
+      // The workspace has a file ceiling. Tell the agent plainly rather than throwing out of the turn: it can then
+      // say so to the owner, or overwrite an existing file, instead of the message failing with nothing shown.
+      let f;
+      try {
+        f = await writeFile(email, String(input.name), String(input.content), "noor");
+      } catch (e) {
+        if (e instanceof FileLimitError) return `This workspace already holds ${MAX_FILES} files, the maximum. Ask the owner to delete one from the Files page, or write to a file that already exists.`;
+        throw e;
+      }
       actions.push(`file:${f.name}`);
       return `Saved ${f.name} (${f.content.length} chars).`;
     }
@@ -345,6 +364,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const brand = await getBrand(email);
       const t = await getTask(email, String(input.task_id));
       if (!brand || !t) return "Item not found.";
+      if (trialOver(user)) { actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page."; }
       const paid = await charge(user.email, IMAGE_COST);
       if (!paid.ok) { actions.push("limit:credits"); return "Insufficient credits for an image."; }
       user.credits = paid.credits;
@@ -357,8 +377,13 @@ export async function runTool(user: User, name: string, input: Record<string, un
       }
       t.imageUrl = img.url;
       t.imagePrompt = img.prompt;
+      t.imageProvider = img.provider;
+      // A placeholder is not the thing that was paid for. It is a coloured card with the brand name on it, produced
+      // when the image service is unreachable, and charging for it bills the customer for our outage.
+      if (img.provider === "placeholder") user.credits = await refund(user.email, IMAGE_COST);
       await saveTask(email, t);
       actions.push(`image:${t.id}`);
+      if (img.provider === "placeholder") return `The image service was unavailable, so "${t.title}" has a placeholder rather than artwork. The credit was returned; ask again later. Credits left: ${user.credits}.`;
       return `Image generated for "${t.title}" (${img.provider}). It's attached to the item in the inbox. Credits left: ${user.credits}.`;
     }
     default:

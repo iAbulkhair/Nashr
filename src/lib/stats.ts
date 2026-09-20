@@ -25,15 +25,32 @@ export type Kpis = {
 };
 
 export type Range = "1" | "2" | "7" | "30" | "60" | "90" | "ytd" | "ly" | "custom";
+/** A date that actually parsed. from/to come from the query string, which is request input, not a Date. */
+function parsedDate(v: unknown): Date | null {
+  if (typeof v !== "string") return null;
+  const d = new Date(v);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
 /** Resolve a range key (Enrich-style pills) into a UTC window. */
-export function rangeWindow(range: string | undefined, from?: string, to?: string): { from: Date; to: Date; label: string; prevFrom: Date } {
+export function rangeWindow(range: unknown, from?: unknown, to?: unknown): { from: Date; to: Date; label: string; prevFrom: Date } {
   const now = new Date();
   const end = new Date(now);
   const day = 864e5;
-  if (range === "custom" && from && to) { const f = new Date(from), t = new Date(to); t.setUTCHours(23, 59, 59, 999); return { from: f, to: t, label: "custom", prevFrom: new Date(f.getTime() - (t.getTime() - f.getTime())) }; }
+  if (range === "custom") {
+    // "?from=2024-13-01", or a repeated "?from=" which Next hands back as an array, used to yield Invalid Date. The
+    // NaN reached listLite, whose since.toISOString() throws RangeError, and the reports page answered 500. An
+    // unusable custom range now falls through to the default window.
+    const f = parsedDate(from), t = parsedDate(to);
+    if (f && t && f.getTime() <= t.getTime()) {
+      t.setUTCHours(23, 59, 59, 999);
+      return { from: f, to: t, label: "custom", prevFrom: new Date(f.getTime() - (t.getTime() - f.getTime())) };
+    }
+  }
   if (range === "ytd") { const f = new Date(Date.UTC(now.getUTCFullYear(), 0, 1)); return { from: f, to: end, label: "ytd", prevFrom: new Date(Date.UTC(now.getUTCFullYear() - 1, 0, 1)) }; }
   if (range === "ly") { const f = new Date(Date.UTC(now.getUTCFullYear() - 1, 0, 1)); const t = new Date(Date.UTC(now.getUTCFullYear(), 0, 1) - 1); return { from: f, to: t, label: "ly", prevFrom: new Date(Date.UTC(now.getUTCFullYear() - 2, 0, 1)) }; }
-  const days = ["1", "2", "7", "30", "60", "90"].includes(range ?? "") ? Number(range) : 7;
+  const key = typeof range === "string" ? range : "";
+  const days = ["1", "2", "7", "30", "60", "90"].includes(key) ? Number(key) : 7;
   const f = new Date(now.getTime() - days * day);
   return { from: f, to: end, label: `${days}d`, prevFrom: new Date(f.getTime() - days * day) };
 }

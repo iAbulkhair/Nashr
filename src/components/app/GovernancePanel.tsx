@@ -2,7 +2,7 @@
 import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Governance } from "@/lib/governance";
-import { TASK_COST, type TaskType } from "@/lib/brand";
+import { TASK_COST, type TaskType } from "@/lib/tasks";
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (

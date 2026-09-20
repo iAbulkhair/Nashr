@@ -1,6 +1,6 @@
 import { track } from "@/lib/track";
 import { NextResponse } from "next/server";
-import { currentUser, sc } from "@/lib/auth";
+import { currentUser, sc, trialOver } from "@/lib/auth";
 import { IMAGE_COST, getBrand, getTask, saveTask } from "@/lib/brand";
 import { generateImage } from "@/lib/images";
 import { charge, refund } from "@/lib/credits";
@@ -13,15 +13,22 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   const { id } = await ctx.params;
   const [t, brand] = await Promise.all([getTask(sc(u), id), getBrand(sc(u))]);
   if (!t || !brand) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  // Same gate, same 402, same error string as /api/generate: an ended trial may not spend, and an image costs both
+  // credits and real money at fal.ai.
+  if (trialOver(u)) return NextResponse.json({ ok: false, error: "trial_over" }, { status: 402 });
   const paid = await charge(u.email, IMAGE_COST);
   if (!paid.ok) return NextResponse.json({ ok: false, error: "no_credits", need: IMAGE_COST, have: paid.credits }, { status: 402 });
   try {
     const img = await generateImage(brand, t, u.email);
     t.imageUrl = img.url;
     t.imagePrompt = img.prompt;
+    t.imageProvider = img.provider;
+    // The placeholder is what comes back when the image service is unreachable: a coloured card carrying the brand
+    // name, not artwork. The owner is shown it — labelled — but is not billed for our outage.
+    const credits = img.provider === "placeholder" ? await refund(u.email, IMAGE_COST) : paid.credits;
     await saveTask(sc(u), t);
     await track(u.email, "image");
-    return NextResponse.json({ ok: true, task: t, credits: paid.credits, provider: img.provider });
+    return NextResponse.json({ ok: true, task: t, credits, provider: img.provider });
   } catch (e) {
     console.error("image failed", e);
     const credits = await refund(u.email, IMAGE_COST);

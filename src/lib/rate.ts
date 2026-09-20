@@ -15,6 +15,18 @@ export const clientIp = (req: Request) =>
   (req.headers.get("x-vercel-forwarded-for") ?? req.headers.get("x-real-ip") ?? "").split(",")[0].trim() ||
   (req.headers.get("x-forwarded-for") ?? "").split(",").pop()!.trim() || "unknown";
 
+/**
+ * Chat turns per account. A turn is free in credits but is the most expensive call in the product (up to five model
+ * calls with the full workspace in the prompt), so the spend of a single account is bounded here. Generous enough that
+ * no real conversation hits it: the ceiling is roughly a day of continuous use.
+ */
+export const CHAT_PER_HOUR = 40;
+export const CHAT_PER_DAY = 200;
+export async function chatAllowed(email: string): Promise<boolean> {
+  const [hour, day] = await Promise.all([allow(`chat:h:${email}`, CHAT_PER_HOUR, 3600), allow(`chat:d:${email}`, CHAT_PER_DAY, 86400)]);
+  return hour && day;
+}
+
 /** Constant-time string comparison for secrets. */
 export function sameSecret(a: string | null | undefined, b: string | null | undefined): boolean {
   const x = Buffer.from(a ?? ""), y = Buffer.from(b ?? "");

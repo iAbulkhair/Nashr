@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
-import { TASK_COST, type TaskType } from "@/lib/brand";
+import { TASK_COST, type TaskType } from "@/lib/tasks";
 import { agentById } from "@/lib/agents";
 import { limitFromError } from "./LimitModal";
 import type { Kpis } from "@/lib/stats";

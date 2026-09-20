@@ -32,8 +32,9 @@ export async function renameConversation(scope: string, id: string, title: strin
   if (c) { c.title = title.slice(0, 80); await db.set(`conv:${scope}:${id}`, c); }
 }
 export async function deleteConversation(scope: string, id: string) {
-  await db.del(`conv:${scope}:${id}`);
-  await db.del(`chat:${scope}:${id}`);
+  // The id has to leave the index as well as the record. `listConversations` reads only the newest 100 ids, so dead
+  // ids left behind push live conversations out of that window and they disappear from the owner's list for good.
+  await Promise.all([db.del(`conv:${scope}:${id}`), db.del(`chat:${scope}:${id}`), db.lrem(`convs:${scope}`, id)]);
 }
 /** Substring search across all conversations (server-side, bounded). */
 export async function searchConversations(scope: string, q: string) {

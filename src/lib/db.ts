@@ -12,6 +12,8 @@ type Store = {
   lrange(key: string, start: number, stop: number): Promise<string[]>;
   /** Keep only the newest `keep` entries of a list written with lpush. */
   ltrim(key: string, keep: number): Promise<void>;
+  /** Remove every occurrence of `value` from a list. Deleting the record a list points at does not shorten the list. */
+  lrem(key: string, value: string): Promise<void>;
   hset(key: string, field: string, value: unknown): Promise<void>;
   hgetall<T = unknown>(key: string): Promise<Record<string, T>>;
   hdel(key: string, field: string): Promise<void>;
@@ -49,6 +51,9 @@ function upstash(): Store | null {
     },
     async ltrim(key, keep) {
       await r.ltrim(key, 0, keep - 1);
+    },
+    async lrem(key, value) {
+      await r.lrem(key, 0, value);
     },
     async hset(key, field, value) {
       await r.hset(key, { [field]: value });
@@ -88,13 +93,23 @@ function memory(): Store {
   // Expiry is honoured like Redis, so sessions, reset tokens and rate windows behave the same locally and in tests.
   const exp = (m.exp ??= new Map<string, number>());
   const live = (key: string) => { const at = exp.get(key); if (at !== undefined && at <= Date.now()) { exp.delete(key); m.kv.delete(key); } };
+  /**
+   * Copy on the way in and on the way out, because Upstash does.
+   *
+   * Over HTTP a value is serialised on write and parsed on read, so a caller can never hold a reference to what the
+   * database holds. This store used to hand out the live object: `const u = await db.get(...); u.credits -= 10;`
+   * silently updated the store even when the code forgot to save. That bug passes every test and loses the write in
+   * production — the worst possible direction for a divergence to run. `hset` already cloned; `set` and `get` did not.
+   */
+  const copy = <T>(v: T): T => (v === null || typeof v !== "object" ? v : structuredClone(v));
   return {
     async get<T>(key: string) {
       live(key);
-      return (m.kv.get(key) as T) ?? null;
+      const v = m.kv.get(key);
+      return v === undefined ? null : copy(v as T);
     },
     async set(key, value, ttl) {
-      m.kv.set(key, value);
+      m.kv.set(key, copy(value));
       if (ttl) exp.set(key, Date.now() + ttl * 1000);
       else exp.delete(key);
     },
@@ -118,13 +133,17 @@ function memory(): Store {
       const l = m.lists.get(key);
       if (l && l.length > keep) l.length = keep;
     },
+    async lrem(key, value) {
+      const l = m.lists.get(key);
+      if (l) m.lists.set(key, l.filter((x) => x !== value));
+    },
     async hset(key, field, value) {
       const h = hashes.get(key) ?? new Map<string, unknown>();
       h.set(field, structuredClone(value));
       hashes.set(key, h);
     },
     async hgetall<T>(key: string) {
-      return Object.fromEntries(hashes.get(key) ?? []) as Record<string, T>;
+      return copy(Object.fromEntries(hashes.get(key) ?? [])) as Record<string, T>;
     },
     async hdel(key, field) {
       hashes.get(key)?.delete(field);

@@ -40,3 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env.admin.local
+
+# Playwright: regenerated on every run, and .auth holds a live session cookie.
+e2e/.auth/
+e2e/.output/
+e2e/.report/

@@ -25,7 +25,12 @@ export async function runCronBatch<T>(o: {
   const mark = (t: T) => `crondone:${o.job}:${o.period}:${o.id(t)}`;
   const tries = (t: T) => `crontry:${o.job}:${o.period}:${o.id(t)}`;
 
-  const state = await pmap(o.items, async (t) => ({ t, done: !!(await db.get(mark(t))), attempts: Number((await db.get<number>(tries(t))) ?? 0) }));
+  // The two markers are independent, so they are read together. One after the other cost every item two sequential
+  // HTTP round trips, and that scan runs again on each of the chain's hops.
+  const state = await pmap(o.items, async (t) => {
+    const [done, attempts] = await Promise.all([db.get(mark(t)), db.get<number>(tries(t))]);
+    return { t, done: !!done, attempts: Number(attempts ?? 0) };
+  });
   const pending = state.filter((s) => !s.done && s.attempts < MAX_ATTEMPTS).map((s) => s.t);
   const results: Record<string, string> = {};
   let next = 0, processed = 0, failed = 0, retryLater = 0;
@@ -33,17 +38,22 @@ export async function runCronBatch<T>(o: {
   await Promise.all(Array.from({ length: Math.min(o.concurrency, pending.length) }, async () => {
     while (next < pending.length && Date.now() - t0 < o.startBudgetMs) {
       const t = pending[next++];
+      // The attempt is recorded BEFORE the work, not after it fails. A platform timeout kills the invocation without
+      // throwing anything, so a run that had already charged credits and called the model left no trace at all: no
+      // done-marker, no attempt, nothing. The next hop — and every daily catch-up after it — saw an untouched user
+      // and charged again, without bound. Counting starts rather than caught failures bounds that at MAX_ATTEMPTS.
+      const attempt = await db.incrby(tries(t), 1);
+      await db.set(tries(t), attempt, o.markerTtlSeconds); // incrby alone leaves the counter without an expiry
       try {
         const r = await o.run(t);
         results[o.id(t)] = r;
-        if (r.startsWith("retry")) { retryLater++; continue; }
+        // "retry" means the work never began (someone else holds the lock), so it must not consume an attempt.
+        if (r.startsWith("retry")) { retryLater++; await db.set(tries(t), attempt - 1, o.markerTtlSeconds); continue; }
         await db.set(mark(t), r.slice(0, 80), o.markerTtlSeconds);
         processed++;
       } catch (e) {
         failed++;
         results[o.id(t)] = "error:" + (e instanceof Error ? e.message : "x").slice(0, 120);
-        const n = await db.incrby(tries(t), 1);
-        await db.set(tries(t), n, o.markerTtlSeconds);
         console.error(`cron ${o.job} failed for ${o.id(t)}`, e);
       }
     }

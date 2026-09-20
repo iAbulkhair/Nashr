@@ -61,6 +61,9 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
   }
   const startOAuth = (p: P) => {
     if (p.needsShop) { setShopFor(p); return; }
+    // Not an internal page: this route answers 302 to the provider's own consent screen. router.push() performs a
+    // client-side RSC navigation, which cannot leave the origin, so the hand-off has to be a real navigation.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- leaves the origin via a 302
     window.location.assign(`/api/connect/${p.id}/start?lang=${lang}`);
   };
 
@@ -157,7 +160,12 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
       )}
       {shopFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShopFor(null)}>
-          <form onSubmit={(e) => { e.preventDefault(); window.location.href = `/api/connect/${shopFor.id}/start?lang=${lang}&shop=${encodeURIComponent(shop)}`; }} onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-white p-6">
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            // Same hand-off as startOAuth: the route redirects off-origin to the provider.
+            // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- leaves the origin via a 302
+            window.location.href = `/api/connect/${shopFor.id}/start?lang=${lang}&shop=${encodeURIComponent(shop)}`;
+          }} onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-white p-6">
             <h2 className="font-display text-lg font-bold text-oasis">{shopFor.name}</h2>
             <input value={shop} onChange={(e) => setShop(e.target.value)} dir="ltr" placeholder={g.shopPrompt} required className="mt-4 w-full rounded-lg border border-ink/15 px-3 py-2 text-sm" />
             <button className="mt-4 rounded-full bg-oasis px-5 py-2 text-sm font-semibold text-mist">{g.connect}</button>

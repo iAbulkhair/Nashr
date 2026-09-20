@@ -2,8 +2,8 @@
 title_ar: كيف تستبدل وكالتك التسويقية بالذكاء الاصطناعي في 2026 — دليل عملي للخليج
 title_en: How to Replace Your Marketing Agency with AI in 2026 — a Gulf Playbook
 date: 2026-09-17
-desc_ar: الوكالة تكلّفك 5,000–25,000 ريال شهرياً على تنفيذ يومي يمكن لوكيل ذكاء اصطناعي إنجازه بأقل من 1,000. خطة 30 يوماً للانتقال، وما الذي يبقى للبشر.
-desc_en: Agencies charge SAR 5,000–25,000 a month for daily execution an AI agent does for under 1,000. A 30-day migration plan, and what stays human.
+desc_ar: تنفيذ تسويقي يومي يقوم به وكيل ذكاء اصطناعي ابتداءً من 399 ريالاً شهرياً. احسب تكلفة وكالتك بنفسك، ثم خطة 30 يوماً للانتقال، وما الذي يبقى للبشر.
+desc_en: Daily marketing execution by an AI agent from SAR 399 a month. Work out what your own agency costs, then a 30-day migration plan, and what stays human.
 ---
 ## لماذا الآن
 
@@ -21,16 +21,18 @@ desc_en: Agencies charge SAR 5,000–25,000 a month for daily execution an AI ag
 
 الموقع الاستراتيجي للعلامة، الإطلاقات الكبرى، الفيديو الاحترافي، صفقات المؤثرين، والقرارات المالية.
 
-## الحسبة (متجر بمبيعات 3 مليون ريال)
+## الحسبة (املأ عمودك بنفسك)
 
-| | وكالة | وكيل ذكاء اصطناعي |
+أسعار الوكالات تختلف كثيراً، ومتوسط منشور لن يعني شيئاً. ضع أرقامك الحقيقية في العمود الأيمن. أرقامنا هي أسعار خططنا المعلنة.
+
+| | وكالتك اليوم | نور |
 |---|---|---|
-| شهرياً | 12,000 ريال | 399–799 ريال |
-| سنوياً | 144,000 ريال | 4,800–9,600 ريال |
-| الحجم | 10 منشورات | 50+ منشور + مقالات + رسائل |
-| التسليم | 3–5 أيام | دقائق |
+| شهرياً | — | 399–799 ريال |
+| سنوياً | — | 4,800–9,600 ريال |
+| العناصر شهرياً | — | حسب كريدت خطتك (ستارتر 200، برو 700) |
+| التسليم | — | دقائق |
 
-الوفر: ~135,000 ريال سنوياً — أعد استثمار ثلثه في إعلانات، وثلثه في إنتاج فيديو حقيقي.
+اطرح الرقمين السنويين. أياً كان الفرق فهو لك — ونحن نرى أن أفضل مكان له الإعلانات ثم إنتاج فيديو حقيقي.
 
 ## خطة 30 يوماً
 
@@ -41,7 +43,7 @@ desc_en: Agencies charge SAR 5,000–25,000 a month for daily execution an AI ag
 
 ## اعتراضات شائعة
 
-- **"الجودة أقل."** في الأسبوع الأول ربما. بعد 20 تعديلاً منك، الوكيل يكتب بصوتك أفضل من كاتب جديد في الوكالة.
+- **"الجودة أقل."** في الأسبوع الأول ربما. الوكيل يتعلّم من كل تعديل تجريه، وكل ما ينتجه يمر بصندوق موافقتك قبل أي شيء آخر — فأنت من يقرر، عنصراً عنصراً، إن كان جيداً بما يكفي.
 - **"من يفهم السوق؟"** الوكيل المبني للخليج يعرف رمضان واليوم الوطني وسناب وواتساب. الوكيل الأمريكي لا.
 - **"من يتحمل المسؤولية؟"** أنت — كما كان دائماً. لكن الآن كل شيء يمر بصندوق موافقتك.
 
@@ -64,16 +66,18 @@ Three forces: AI agents now execute instead of suggesting; agency prices never a
 
 Brand positioning, big launches, professional video, influencer deals, money decisions.
 
-## The math (a store doing SAR 3M/yr)
+## The math (fill in your own column)
 
-| | Agency | AI agent |
+Agency pricing varies too much for a published average to mean anything, so put your real numbers in the left column. Ours are our public plan prices.
+
+| | Your agency today | Noor |
 |---|---|---|
-| Monthly | SAR 12,000 | SAR 399–799 |
-| Yearly | SAR 144,000 | SAR 4,800–9,600 |
-| Volume | 10 posts | 50+ posts + articles + messages |
-| Turnaround | 3–5 days | minutes |
+| Monthly | — | SAR 399–799 |
+| Yearly | — | SAR 4,800–9,600 |
+| Items per month | — | what your plan's credits buy (Starter 200, Pro 700) |
+| Turnaround | — | minutes |
 
-Savings ≈ SAR 135,000 a year. Reinvest a third in ads, a third in real video.
+Subtract the two yearly figures. Whatever the gap is, it is yours to reinvest — we would put it into ads and real video before anything else.
 
 ## 30-day plan
 
@@ -84,7 +88,7 @@ Savings ≈ SAR 135,000 a year. Reinvest a third in ads, a third in real video.
 
 ## Objections
 
-- **"Quality is lower."** Week one, maybe. After 20 of your edits the agent writes in your voice better than a new agency writer.
+- **"Quality is lower."** Week one, maybe. The agent learns from every edit you make, and what it produces goes to your approval inbox before it goes anywhere else — so you decide, item by item, whether it is good enough.
 - **"Who understands the market?"** A Gulf-built agent knows Ramadan, National Day, Snap and WhatsApp. A US agent doesn't.
 - **"Who's accountable?"** You — as always. Now everything passes your approval inbox.
 

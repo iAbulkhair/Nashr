@@ -101,3 +101,43 @@ describe("suspended accounts (rule 11)", () => {
     expect((await login.POST(json("/api/auth/login", "POST", { email: u.email, password: "abc12345" }, ip()))).status).toBe(403);
   });
 });
+
+/**
+ * The three throttles rule 8 named but nobody exercised. Each protects a different abuse: signup against bulk account
+ * creation from one host, reset against brute-forcing a 64-hex token, and the admin key against guessing the console
+ * password. A limiter with no test is a limiter one refactor away from being a no-op.
+ */
+describe("the remaining rule 8 throttles", () => {
+  it("signup stops after five accounts from one IP in the hour, and the window reopens", async () => {
+    const signup = await import("@/app/api/auth/signup/route");
+    const h = ip();
+    const body = (n: number) => ({ email: `bulk-${ipN}-${n}@test.example`, password: "abc12345", name: "Bulk" });
+    for (let i = 0; i < 5; i++) expect((await signup.POST(json("/api/auth/signup", "POST", body(i), h))).status).toBe(200);
+    expect((await signup.POST(json("/api/auth/signup", "POST", body(5), h))).status, "the sixth must be refused").toBe(429);
+    // A different host is unaffected: the bucket is per IP, not global.
+    expect((await signup.POST(json("/api/auth/signup", "POST", body(6), ip()))).status).toBe(200);
+
+    vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 3601e3);
+    const after = await signup.POST(json("/api/auth/signup", "POST", body(7), h));
+    vi.useRealTimers();
+    expect(after.status, "an hour later the same host may sign up again").toBe(200);
+  });
+
+  it("reset stops after ten token attempts from one IP, before the token is even looked at", async () => {
+    const h = ip();
+    const guess = () => json("/api/auth/reset", "POST", { token: "a".repeat(64), password: "brandnew123" }, h);
+    for (let i = 0; i < 10; i++) expect((await reset.POST(guess())).status, `attempt ${i + 1}`).toBe(400);
+    expect((await reset.POST(guess())).status, "the eleventh guess must be refused").toBe(429);
+  });
+
+  it("admin key login stops after five attempts from one IP", async () => {
+    vi.stubEnv("ADMIN_KEY", "the-real-admin-key");
+    const adminLogin = await import("@/app/api/admin/login/route");
+    const h = ip();
+    const attempt = (key: string) => adminLogin.POST(json("/api/admin/login", "POST", { key }, h));
+    for (let i = 0; i < 5; i++) expect((await attempt("wrong-key")).status, `attempt ${i + 1}`).toBe(401);
+    const blocked = await attempt("the-real-admin-key");
+    expect(blocked.status, "even the correct key must be refused once the budget is spent").toBe(429);
+  });
+});

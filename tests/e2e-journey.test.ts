@@ -1,0 +1,179 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { json, jar, newUser, params, settle, signIn, signOut } from "./helpers/session";
+import { getUser, saveUser } from "@/lib/auth";
+import { getBrand, getTask, listLite, type Task } from "@/lib/brand";
+import { listFiles } from "@/lib/files";
+import { saveConnection } from "@/lib/connectors/store";
+import { createMcpToken } from "@/lib/mcp";
+import { db } from "@/lib/db";
+import { getUsage } from "@/lib/usage";
+
+/**
+ * End-to-end journeys: a whole customer path through the real route handlers, in order, with the state each step leaves
+ * behind checked by the next one. No model key and no network, so every agent call takes its mock path; storage is the
+ * in-memory adapter. What these cover that the per-route tests do not is the joins — a task created by one route being
+ * approved by a second and published by a third, under the brand the session had active at the time.
+ */
+vi.mock("@/lib/crawl", () => ({ crawl: async (url: string) => ({ url: `https://${url}`, ok: true, title: "Roastery | Home", description: "Coffee", text: "", links: [], platform: "unknown", colors: [], fonts: [] }) }));
+const published: { id: string; scope: string }[] = [];
+vi.mock("@/lib/connectors/publish", async (orig) => ({
+  ...(await orig<typeof import("@/lib/connectors/publish")>()),
+  publishTask: async (scope: string, t: Task, provider: string) => { published.push({ id: t.id, scope }); return { provider, url: "https://t.me/nashr/1", status: "published" as const }; },
+}));
+
+import * as signupRoute from "@/app/api/auth/signup/route";
+import * as loginRoute from "@/app/api/auth/login/route";
+import * as accountRoute from "@/app/api/account/route";
+import * as onboardRoute from "@/app/api/onboard/route";
+import * as generateRoute from "@/app/api/generate/route";
+import * as tasksRoute from "@/app/api/tasks/route";
+import * as taskRoute from "@/app/api/tasks/[id]/route";
+import * as publishRoute from "@/app/api/publish/[id]/route";
+import * as filesRoute from "@/app/api/files/route";
+import * as brandsRoute from "@/app/api/brands/route";
+import * as mcpRoute from "@/app/api/mcp/route";
+
+const body = async (res: Response) => (await res.json()) as Record<string, never>;
+const drain = async (res: Response) => (await res.text()).split("\n\n").filter((l) => l.startsWith("data: ")).map((l) => JSON.parse(l.slice(6)) as { type: string });
+const rpc = (method: string, p: Record<string, unknown>, token: string) =>
+  new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: p }) });
+const rpcText = async (res: Response) => ((await res.json()) as { result: { content: { text: string }[] } }).result.content[0].text;
+
+beforeEach(() => { published.length = 0; signOut(); });
+
+describe("journey: sign up, build the workspace, generate, approve, publish", () => {
+  it("carries one item from generation to a published post, and the credits and the inbox follow it", async () => {
+    const email = `journey-${Math.random().toString(36).slice(2, 8)}@test.example`;
+
+    // 1. Sign up. The response sets a session cookie, so every later step is this account.
+    expect((await signupRoute.POST(json("/api/auth/signup", "POST", { email, name: "Roastery", password: "coffee123", lang: "ar" }))).status).toBe(200);
+    expect(jar().get("nashr_session")).toBeTruthy();
+    expect((await getUser(email))!.credits).toBe(50);
+
+    // 2. Onboarding: free, once, and it leaves a brand file and the workspace files behind.
+    const events = await drain(await onboardRoute.POST(json("/api/onboard", "POST", { url: "roastery.example" })));
+    expect(events.at(-1)!.type).toBe("done");
+    expect(await getBrand(email)).not.toBeNull();
+    expect((await listFiles(email)).map((f) => f.name)).toContain("brand.md");
+    expect((await getUser(email))!.credits).toBe(50); // onboarding never charges
+
+    // 3. Generate a batch of social posts: ten items, ten credits.
+    const gen = await body(await generateRoute.POST(json("/api/generate", "POST", { type: "social" })));
+    expect(gen).toMatchObject({ ok: true, created: 10, credits: 40 });
+
+    // 4. The inbox shows them, all pending, and the sidebar badge agrees.
+    const inbox = (await body(await tasksRoute.GET(json("/api/tasks", "GET")))) as unknown as { tasks: Task[] };
+    expect(inbox.tasks).toHaveLength(10);
+    expect(inbox.tasks.every((t) => t.status === "pending")).toBe(true);
+    const badge = (await body(await tasksRoute.GET(json("/api/tasks?count=pending", "GET")))) as unknown as { pending: number };
+    expect(badge.pending).toBe(10);
+
+    // 5. The owner edits one item and approves it.
+    const target = inbox.tasks[0];
+    const patched = await body(await taskRoute.PATCH(json(`/api/tasks/${target.id}`, "PATCH", { status: "approved", editedBody: "نص المالك بعد التعديل" }), params({ id: target.id })));
+    expect(patched).toMatchObject({ ok: true });
+    await settle();
+    const saved = (await getTask(email, target.id))!;
+    expect(saved.status).toBe("approved");
+    expect(saved.editedBody).toBe("نص المالك بعد التعديل");
+    expect(saved.decidedAt).toBeTruthy();
+
+    // 6. Approving takes it out of the pending set, and the light index the dashboards read agrees with the task.
+    expect((await body(await tasksRoute.GET(json("/api/tasks?count=pending", "GET")))) as unknown as { pending: number }).toMatchObject({ pending: 9 });
+    expect((await listLite(email)).find((l) => l.id === target.id)).toMatchObject({ status: "approved", edited: true });
+
+    // 7. Publishing needs a connected platform; then the item records where it went.
+    expect((await publishRoute.POST(json(`/api/publish/${target.id}`, "POST", { provider: "telegram" }), params({ id: target.id }))).status).toBe(400); // nothing connected yet
+    await saveConnection(email, { provider: "telegram", data: { botToken: "t", chatId: "c" }, connectedAt: new Date().toISOString() });
+    expect((await publishRoute.POST(json(`/api/publish/${target.id}`, "POST", { provider: "telegram" }), params({ id: target.id }))).status).toBe(200);
+    expect(published).toEqual([{ id: target.id, scope: email }]);
+    expect((await getTask(email, target.id))!.published).toHaveLength(1);
+
+    // 8. The owner's own workspace file survives the whole run and can be deleted again.
+    await filesRoute.PUT(json("/api/files", "PUT", { name: "notes.md", content: "ملاحظاتي" }));
+    expect((await listFiles(email)).map((f) => f.name)).toContain("notes.md");
+    await filesRoute.DELETE(json("/api/files?name=notes.md", "DELETE"));
+    expect((await listFiles(email)).map((f) => f.name)).not.toContain("notes.md");
+    // The index must lose the name too, not just the record: it is what listFiles reads.
+    expect(await db.smembers(`files:${email}`)).not.toContain("notes.md");
+  });
+});
+
+describe("journey: an agency account works in a second brand", () => {
+  it("keeps the two workspaces apart, and a bearer token follows the brand the owner has active", async () => {
+    const u = await newUser("agency");
+    await saveUser({ ...u, plan: "agency" });
+    await signIn(u.email);
+
+    // A second brand, and the app switches to it.
+    const added = (await body(await brandsRoute.POST(json("/api/brands", "POST", { action: "add", name: "Second" })))) as unknown as { ok: boolean; brand: { id: string } };
+    expect(added.ok).toBe(true);
+    const second = added.brand.id;
+    const scope = `${u.email}#${second}`;
+
+    // Onboarding runs again for the new brand: it has its own brand file and its own files.
+    expect((await drain(await onboardRoute.POST(json("/api/onboard", "POST", { url: "second.example" })))).at(-1)!.type).toBe("done");
+    expect(await getBrand(scope)).not.toBeNull();
+    expect(await getBrand(u.email)).toBeNull(); // the default brand was never onboarded
+
+    // Items generated now belong to the second brand only.
+    expect(await body(await generateRoute.POST(json("/api/generate", "POST", { type: "whatsapp" })))).toMatchObject({ ok: true, created: 3 });
+    expect(await listLite(scope)).toHaveLength(3);
+    expect(await listLite(u.email)).toHaveLength(0);
+
+    // The MCP bearer token is the same account: it must land in the brand the owner has active, not in the default one.
+    const token = await createMcpToken(u.email);
+    expect(await rpcText(await mcpRoute.POST(rpc("tools/call", { name: "list_inbox", arguments: { status: "pending" } }, token)))).toMatch(/pending/);
+    expect(await rpcText(await mcpRoute.POST(rpc("tools/call", { name: "list_files", arguments: {} }, token)))).toMatch(/brand\.md/);
+
+    // Switching back makes the default brand's empty workspace the one the token sees.
+    await brandsRoute.POST(json("/api/brands", "POST", { action: "switch", id: "default" }));
+    expect(await rpcText(await mcpRoute.POST(rpc("tools/call", { name: "list_files", arguments: {} }, token)))).toBe("No files.");
+  });
+});
+
+describe("journey: losing and regaining control of an account", () => {
+  it("a password change ends every other session and every bearer token issued under the old password", async () => {
+    const u = await newUser("pw");
+    const stolenSession = await signIn(u.email);
+    const stolenToken = await createMcpToken(u.email);
+    // The token works while the password stands.
+    expect((await mcpRoute.POST(rpc("tools/call", { name: "list_files", arguments: {} }, stolenToken))).status).toBe(200);
+    expect(await rpcText(await mcpRoute.POST(rpc("tools/call", { name: "list_files", arguments: {} }, stolenToken)))).toBe("No files.");
+
+    // The owner changes the password from Settings.
+    expect((await accountRoute.PATCH(json("/api/account", "PATCH", { currentPassword: "abc12345", newPassword: "newpass123" }))).status).toBe(200);
+
+    // The old cookie is dead…
+    signOut();
+    jar().set("nashr_session", stolenSession);
+    expect((await tasksRoute.GET(json("/api/tasks", "GET"))).status).toBe(401);
+    // …and so is the bearer token that was created with the old password.
+    expect((await mcpRoute.POST(rpc("tools/call", { name: "list_files", arguments: {} }, stolenToken))).status).toBe(401);
+
+    // The new password is the one that logs in.
+    signOut();
+    expect((await loginRoute.POST(json("/api/auth/login", "POST", { email: u.email, password: "abc12345" }))).status).toBe(401);
+    expect((await loginRoute.POST(json("/api/auth/login", "POST", { email: u.email, password: "newpass123" }))).status).toBe(200);
+    expect((await tasksRoute.GET(json("/api/tasks", "GET"))).status).toBe(200);
+  });
+});
+
+describe("journey: what a batch costs the business", () => {
+  it("records tokens and money per kind of call, so the cost of one request type per account is a read", async () => {
+    const u = await newUser("cost");
+    const { meter } = await import("@/lib/usage");
+    await meter(u.email, "claude-opus-5", "generate", { input_tokens: 1200, output_tokens: 4700, cache_read_input_tokens: 7500 });
+    await meter(u.email, "claude-sonnet-5", "review", { input_tokens: 4100, output_tokens: 1800 });
+    await meter(u.email, "claude-sonnet-5", "judge", { input_tokens: 4400, output_tokens: 1500 });
+
+    const usage = await getUsage(u.email);
+    expect(usage.calls).toBe(3);
+    expect(Object.keys(usage.byKind).sort()).toEqual(["generate", "judge", "review"]);
+    // Opus output at $25/M is what a batch actually costs; the two Sonnet passes together are a fraction of it.
+    expect(usage.byKind.generate.usd).toBeCloseTo(1200 * 5e-6 + 4700 * 25e-6 + 7500 * 0.5e-6, 4);
+    expect(usage.byKind.review.usd).toBeCloseTo(4100 * 3e-6 + 1800 * 15e-6, 4);
+    expect(usage.byKind.generate.usd).toBeGreaterThan(usage.byKind.review.usd + usage.byKind.judge.usd);
+    expect(usage.usd).toBeCloseTo(usage.byKind.generate.usd + usage.byKind.review.usd + usage.byKind.judge.usd, 2);
+  });
+});

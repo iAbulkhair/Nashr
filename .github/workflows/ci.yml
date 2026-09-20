@@ -1,6 +1,6 @@
 name: CI
 
-# Type-check, lint and unit tests on every push and pull request.
+# Build, type-check, lint, unit tests and the end-to-end suite on every push and pull request.
 # Vercel deploys from Git on its own. To make a red run block production, add the "Nashr CI" check under
 # Vercel project Settings > Build and Deployment > Deployment Checks (provider: GitHub).
 on:
@@ -20,7 +20,7 @@ jobs:
     # Vercel Deployment Checks identify a check by this job name. Renaming it means re-selecting it in Vercel.
     name: Nashr CI
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,9 +28,26 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Must run BEFORE the type-check. tsconfig includes `.next/types/**` and `next-env.d.ts`, and .gitignore ignores
+      # both, so in a fresh checkout they do not exist and `tsc --noEmit` checks a strictly smaller program than a
+      # developer's local run — every one of Next's generated route-signature validators is skipped. A renamed route
+      # segment merged green and left main undeployable until someone opened the Vercel dashboard.
+      - name: Build
+        run: npx next build
       - name: Type-check
         run: npx tsc --noEmit -p .
       - name: Lint
         run: npx eslint
       - name: Unit tests
         run: npx vitest run
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+      - name: End-to-end tests
+        run: npx playwright test
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: e2e/.report
+          retention-days: 7

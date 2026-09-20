@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { db } from "./db";
@@ -28,10 +28,20 @@ export type User = {
 export const sc = (u: User) => u.scope ?? u.email;
 
 export const PLAN_CREDITS: Record<Plan, number> = { trial: 50, starter: 200, pro: 700, agency: 2000, enterprise: 10000 };
+/** Membership test for a plan name from a request body. Not `in`: that walks the prototype chain (see `isTaskType`). */
+export const PLANS = Object.keys(PLAN_CREDITS) as Plan[];
+export const isPlan = (v: unknown): v is Plan => typeof v === "string" && (PLANS as string[]).includes(v);
 const SESSION_TTL = 60 * 60 * 24 * 30;
 const COOKIE = "nashr_session";
 
 /** Whole days left in a trial (0 when it has ended). Server-side: the clock is read per request here, never inside a component. */
+/**
+ * An ended trial may not spend. Written once because it was written five times: the image route and the chat's
+ * generate_image tool were the two spending paths that never got a copy, so an expired trial went on paying for
+ * fal.ai and Anthropic calls indefinitely.
+ */
+export const trialOver = (u: Pick<User, "plan" | "trialEnds">) => u.plan === "trial" && new Date(u.trialEnds) < new Date();
+
 export const trialDaysLeft = (trialEnds: string) => Math.max(0, Math.ceil((new Date(trialEnds).getTime() - Date.now()) / 864e5));
 
 /** One password rule for signup, change and reset: 8+ characters with a letter and a digit. */
@@ -99,11 +109,32 @@ export function revokeSessions(u: User) {
   u.sessionsAfter = new Date().toISOString();
 }
 
+/**
+ * Cookie options every session-bearing cookie shares.
+ *
+ * `Secure` describes the TRANSPORT, not the build. It used to be `process.env.NODE_ENV === "production"`, which says
+ * nothing about how the response travels: a production build served over plain http marks the cookie Secure, every
+ * conforming client throws it away, and nobody can log in — with no error anywhere, because the request simply
+ * arrives without a cookie. That is what happened to the end-to-end suite on WebKit, which (unlike Chromium, and
+ * unlike WebKit on macOS) does not treat http://localhost as a trustworthy origin.
+ *
+ * So: Secure unless this is plain http to the loopback interface, which is the only case where no real traffic is at
+ * risk. A deployment on a real host over http still gets Secure and still refuses to work, which is the right way for
+ * that mistake to fail — loudly and locally, never by quietly dropping the flag on live traffic.
+ */
+export async function sessionCookie(maxAge: number) {
+  const h = await headers();
+  const host = (h.get("host") ?? "").toLowerCase();
+  const plainHttp = (h.get("x-forwarded-proto") ?? "http") === "http";
+  const loopback = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
+  return { httpOnly: true, sameSite: "lax", secure: !(plainHttp && loopback), path: "/", maxAge } as const;
+}
+
 export async function createSession(email: string, ttlSeconds: number = SESSION_TTL) {
   const token = randomBytes(32).toString("hex");
   await db.set(`session:${token}`, { email, at: Date.now() } satisfies SessionRec, ttlSeconds);
   const jar = await cookies();
-  jar.set(COOKIE, token, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: ttlSeconds });
+  jar.set(COOKIE, token, await sessionCookie(ttlSeconds));
 }
 
 export async function destroySession() {
@@ -157,8 +188,9 @@ export async function isAdmin(req: Request) {
 export async function isAdminCookie() {
   const key = process.env.WAITLIST_ADMIN_KEY;
   if (key) {
+    const { sameSecret } = await import("./rate");
     const jar = await cookies();
-    if (jar.get("nashr_admin")?.value === key) return true;
+    if (sameSecret(jar.get("nashr_admin")?.value, key)) return true;
   }
   const u = await currentUser();
   return isFounder(u?.email);
