@@ -12,46 +12,46 @@
 # Error details
 
 ```
-Error: expect(locator).toBeVisible() failed
-
-Locator: getByText(/link arrives within minutes|Email delivery is not enabled/)
-Expected: visible
-Timeout: 10000ms
-Error: element(s) not found
+Error: locator.innerText: Error: strict mode violation: locator('main, body') resolved to 2 elements:
+    1) <body>…</body> aka locator('body')
+    2) <main class="mx-auto max-w-6xl px-4 py-10 sm:px-6">…</main> aka getByRole('main')
 
 Call log:
-  - Expect "toBeVisible" getByText(/link arrives within minutes|Email delivery is not enabled/) with timeout 10000ms
-  - waiting for getByText(/link arrives within minutes|Email delivery is not enabled/)
+  - waiting for locator('main, body')
 
 ```
 
+# Page snapshot
+
 ```yaml
-- banner:
-  - link "Nashr":
-    - /url: /en
-  - group "Language":
-    - link "العربية":
-      - /url: /ar/app/forgot
-      - text: عربي
-    - link "English":
-      - /url: /en/app/forgot
-      - text: EN
-- main:
-  - heading "Reset your password" [level=1]
-  - paragraph: Enter your account email and we send a link valid for one hour.
-  - textbox "Reset your password":
-    - /placeholder: name@company.com
-  - button "Send the link"
-  - paragraph:
-    - link "Back to log in":
-      - /url: /en/app/login
-- alert
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - link "Nashr" [ref=e5] [cursor=pointer]:
+          - /url: /en
+        - group "Language" [ref=e7]:
+          - link "العربية" [ref=e8] [cursor=pointer]:
+            - /url: /ar/app/forgot
+            - text: عربي
+          - link "English" [ref=e9] [cursor=pointer]:
+            - /url: /en/app/forgot
+            - text: EN
+    - main [ref=e10]:
+      - generic [ref=e11]:
+        - heading "Reset your password" [level=1] [ref=e12]
+        - paragraph [ref=e13]: Enter your account email and we send a link valid for one hour.
+        - status [ref=e14]:
+          - paragraph [ref=e15]: Email delivery is not enabled on Nashr yet, so no link can reach you. Contact support and we reset your password manually.
+        - paragraph [ref=e16]:
+          - link "Back to log in" [ref=e17] [cursor=pointer]:
+            - /url: /en/app/login
+  - alert [ref=e18]
 ```
 
 # Test source
 
 ```ts
-  56  |     await password.fill("goodpass1");
   57  |     await expect(submit, "meets every rule").toBeEnabled();
   58  |   });
   59  | 
@@ -151,9 +151,9 @@ Call log:
   153 |       // announces so the test states the real, defective contract instead of the one we wish existed.
   154 |       await page.getByRole("textbox", { name: "Reset your password" }).fill(email);
   155 |       await page.getByRole("button", { name: "Send the link" }).click();
-> 156 |       await expect(page.getByText(/link arrives within minutes|Email delivery is not enabled/)).toBeVisible();
-      |                                                                                                 ^ Error: expect(locator).toBeVisible() failed
-  157 |       return (await page.locator("main, body").innerText()).includes("Email delivery is not enabled");
+  156 |       await expect(page.getByText(/link arrives within minutes|Email delivery is not enabled/)).toBeVisible();
+> 157 |       return (await page.locator("main, body").innerText()).includes("Email delivery is not enabled");
+      |                                                ^ Error: locator.innerText: Error: strict mode violation: locator('main, body') resolved to 2 elements:
   158 |     };
   159 |     const known = await message(OWNER.email);
   160 |     const unknown = await message("nobody-here@test.example");

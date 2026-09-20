@@ -12,6 +12,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   if (!u) redirect(`/ar/app/login?next=${encodeURIComponent(self)}`);
   const client = q.client_id ? await getClient(q.client_id) : null;
   const bad = !client ? "unknown client" : !q.redirect_uri || !client.redirect_uris.includes(q.redirect_uri) ? "redirect_uri not registered" : q.response_type !== "code" ? "response_type must be code" : !q.code_challenge ? "PKCE required" : null;
+  // Client registration is open, so the name on this screen is whatever the app called itself — "Nashr Mobile" is a
+  // name anyone can claim. The one fact the owner can actually judge is where the authorization code will be sent, so
+  // show that host rather than leaving it buried in a hidden input.
+  const destination = (() => { try { return new URL(q.redirect_uri ?? "").host; } catch { return ""; } })();
   return (
     <html lang="en" dir="ltr">
       <body style={{ fontFamily: "system-ui, sans-serif", background: "#f6f4ee", color: "#101418", margin: 0 }}>
@@ -23,6 +27,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
             <>
               <h1 style={{ fontSize: 22, margin: "8px 0 4px" }}>Allow <b>{client!.client_name || client!.client_id}</b> to use Noor?</h1>
               <p style={{ color: "#555", fontSize: 14 }}>Signed in as <b>{u.email}</b>. The app will be able to: chat with Noor, create content in your inbox (uses credits), read your workspace files.</p>
+              <p style={{ background: "#fdf3f1", border: "1px solid #f0d5cf", borderRadius: 10, padding: "10px 12px", fontSize: 14, color: "#101418" }}>
+                Approving sends your authorization code to <b style={{ wordBreak: "break-all" }}>{destination || "an unknown address"}</b>.
+                <br />
+                <span style={{ color: "#777", fontSize: 12 }}>Any developer can register an app under any name. Only continue if you recognise that address.</span>
+              </p>
               <form method="post" action="/api/oauth/approve">
                 {(["client_id", "redirect_uri", "state", "scope", "code_challenge", "code_challenge_method"] as const).map((k) => <input key={k} type="hidden" name={k} value={q[k] ?? ""} />)}
                 <div style={{ display: "flex", gap: 8, marginTop: 20 }}>

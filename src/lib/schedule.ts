@@ -28,6 +28,22 @@ export async function latestBrief(email: string) {
   return db.get<Brief>(`brief:${email}`);
 }
 
+/** The Sunday that starts the current UTC week, as YYYY-MM-DD. The weekly cron keys its markers to the same day. */
+export function weekStartUtc(now: Date = new Date()): string {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  d.setUTCDate(d.getUTCDate() - d.getUTCDay());
+  return d.toISOString().slice(0, 10);
+}
+/**
+ * Has the weekly plan already run in THIS Sunday-to-Saturday week?
+ *
+ * A rolling five-day window was wrong because it straddles the period boundary: a manual "Run now" on Wednesday, or a
+ * Tuesday catch-up, sat less than five days before the next Sunday, so that Sunday's run was refused and the cron
+ * marker recorded the week as done. The owner simply got no plan that week, with no error anywhere.
+ */
+export const ranThisWeek = (lastWeekly: string | undefined, now: Date = new Date()): boolean =>
+  !!lastWeekly && lastWeekly.slice(0, 10) >= weekStartUtc(now);
+
 /** Weekly plan for one user. Returns what happened. */
 export async function runWeekly(user: User): Promise<string> {
   const email = user.scope ?? user.email;
@@ -36,7 +52,7 @@ export async function runWeekly(user: User): Promise<string> {
   const sched = await getSchedule(email);
   if (!sched.weeklyPlan) return "off";
   // Belt and braces next to the cron markers: never charge or generate twice for the same week.
-  if (sched.lastWeekly && Date.now() - new Date(sched.lastWeekly).getTime() < 5 * 864e5) return "already_this_week";
+  if (ranThisWeek(sched.lastWeekly)) return "already_this_week";
   if (!(await db.lock(`weeklylock:${email}`, 300))) return "retry:locked";
   try {
     return await weeklyFor(user, email, brand);

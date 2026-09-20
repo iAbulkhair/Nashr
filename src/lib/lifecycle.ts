@@ -37,15 +37,34 @@ function t(u: User, key: string, ctx: { firstTitle?: string; pending: number; ap
   }
 }
 
+/**
+ * Which lifecycle emails are due for this account right now.
+ *
+ * The trial-deadline notes are gated on the time LEFT, not on days elapsed since signup. Elapsed days were wrong for
+ * every account that did not sign up at the cron hour: the daily job runs at 05:00 UTC, so someone who signed up at
+ * 10:00 got "your trial ends tomorrow" on the morning it actually expired, and "today is your last day" nineteen hours
+ * AFTER it had already ended. The onboarding note (day1) and the win-back (day10) stay on elapsed days, because those
+ * are about how long the account has existed, not about the deadline.
+ */
+export function lifecyclePlan(u: Pick<User, "createdAt" | "trialEnds" | "plan">, now: number = Date.now()): [string, boolean][] {
+  const days = Math.floor((now - new Date(u.createdAt).getTime()) / 864e5);
+  const paying = u.plan !== "trial";
+  const hoursLeft = (new Date(u.trialEnds).getTime() - now) / 36e5;
+  return [
+    ["day1", days >= 1],
+    ["day2", !paying && hoursLeft > 24 && hoursLeft <= 48],
+    ["day3", !paying && hoursLeft > 0 && hoursLeft <= 24],
+    ["day10", !paying && days >= 10],
+  ];
+}
+
 export async function runLifecycle(u: User): Promise<string[]> {
   if (!process.env.RESEND_API_KEY) return [];
-  const days = Math.floor((Date.now() - new Date(u.createdAt).getTime()) / 864e5);
-  const paying = u.plan !== "trial";
   const brand = await getBrand(u.scope ?? u.email);
   if (!brand) return []; // signup nudge handles no-brand users
   const tasks = await listLite(u.scope ?? u.email);
   const ctx = { firstTitle: tasks.at(-1)?.title, pending: tasks.filter((x) => x.status === "pending").length, approved: tasks.filter((x) => x.status === "approved").length, trialEnds: u.trialEnds.slice(0, 10) };
-  const plan: [string, boolean][] = [["day1", days >= 1], ["day2", days >= 2 && !paying], ["day3", days >= 3 && !paying], ["day10", days >= 10 && !paying]];
+  const plan = lifecyclePlan(u);
   const sent: string[] = [];
   for (const [key, due] of plan) {
     if (!due) continue;
