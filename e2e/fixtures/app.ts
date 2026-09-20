@@ -1,4 +1,4 @@
-import { test as base, expect, type ConsoleMessage, type Page, type Request, type Response } from "@playwright/test";
+import { test as base, expect, type ConsoleMessage, type Locator, type Page, type Request, type Response } from "@playwright/test";
 
 /**
  * The shared fixture. Every test gets a page already watching for the two failure classes the suite treats as automatic
@@ -85,6 +85,27 @@ export async function open(page: Page, path: string) {
   const res = await page.goto(path, { waitUntil: "domcontentloaded" });
   if (!res) throw new Error(`no response for ${path}`);
   return res;
+}
+
+/**
+ * Type into a React-controlled field, but only once React owns it.
+ *
+ * `page.goto(..., { waitUntil: "domcontentloaded" })` returns while the client bundle may still be evaluating. A
+ * `fill()` in that window writes straight to the DOM node; React then hydrates, finds its own state still empty and
+ * puts the input back to "". The form submits blank and the app answers "Invalid email." — correctly, because that
+ * is what its state held. A person cannot type faster than hydration, so the race is the harness's, not the
+ * product's. React tags every node it has attached to with a `__reactFiber$…` key, which is the signal to wait for.
+ */
+export async function fillWhenReady(field: Locator, value: string) {
+  await field.waitFor({ state: "visible" });
+  await expect
+    .poll(() => field.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactFiber$"))), {
+      message: "React never hydrated this field",
+    })
+    .toBe(true);
+  await field.fill(value);
+  // The value has to survive the round trip through React's state, not merely sit in the DOM.
+  await expect(field).toHaveValue(value);
 }
 
 /** The document direction the layout must set: Arabic is right-to-left, English is left-to-right. */

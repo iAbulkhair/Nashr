@@ -24,19 +24,13 @@ for (const lang of LANGS) {
         await expect(html).toHaveAttribute("dir", dirFor(lang));
 
         // Every page must name itself. A page whose only heading lives in the shared sidebar is indistinguishable
-        // from every other page for a screen reader and for anyone landing on it from a link.
-        await expect(page.locator("h1"), `${path} must have exactly one h1`).toHaveCount(1);
+        // from every other page for a screen reader and for anyone landing on it from a link. Asserted in the same
+        // visit rather than a second one: re-navigating to all twenty routes bought no extra coverage and doubled the
+        // load on the single server both projects share, which showed up as timeouts on whichever route lost the race.
+        const h1 = page.locator("h1");
+        await expect(h1, `${path} must have exactly one h1`).toHaveCount(1);
+        if (lang === "en") await expect(h1, `${path} must name itself`).toContainText(route.heading.en);
       });
-    }
-
-    // The heading text is language-specific and only recorded for English; assert it there.
-    if (lang === "en") {
-      for (const route of APP_ROUTES) {
-        test(`/en${route.path} names itself in its heading`, async ({ page }) => {
-          await open(page, `/en${route.path}`);
-          await expect(page.locator("h1")).toContainText(route.heading.en);
-        });
-      }
     }
   });
 }

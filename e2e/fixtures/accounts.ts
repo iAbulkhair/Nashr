@@ -10,6 +10,13 @@ export const SECOND = { email: "e2e-second@test.example", password: "e2epass123"
 
 export type Account = typeof OWNER;
 
+/** A stable dotted-quad derived from a name, so each simulated client keeps its own rate-limit bucket across a run. */
+export function simulatedIp(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return `203.0.113.${(h % 254) + 1}`; // TEST-NET-3, reserved for documentation
+}
+
 /** The brand the owner workspace is seeded with, so app pages render their real content instead of the start wizard. */
 export const SEEDED_BRAND = {
   name: "E2E Roastery",
@@ -36,9 +43,13 @@ export const SEEDED_BRAND = {
  * throttle deliberately runs first so that signup cannot be used to probe which addresses have accounts, which means a
  * suite rerunning against a still-live server sees 429 rather than 409 from the sixth run onward.
  */
-export async function signUpOrLogIn(request: APIRequestContext, account: Account) {
+export async function signUpOrLogIn(request: APIRequestContext, account: Account, clientIp = account.email) {
   const signup = await request.post("/api/auth/signup", {
     data: { email: account.email, name: account.name, password: account.password, lang: "en" },
+    // Sign-up is capped at five per IP per hour, and every spec in the suite shares one address. `clientIp()` in
+    // src/lib/rate.ts reads x-real-ip first — the header the platform sets — so giving each account its own value
+    // makes the suite look like the separate clients it is simulating, instead of one client tripping a real limit.
+    headers: { "x-real-ip": simulatedIp(clientIp) },
   });
   if (signup.ok()) return;
 

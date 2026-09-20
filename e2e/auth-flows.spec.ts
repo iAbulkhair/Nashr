@@ -1,5 +1,5 @@
-import { test, expect, open, formAlert } from "./fixtures/app";
-import { OWNER, SECOND, signUpOrLogIn } from "./fixtures/accounts";
+import { test, expect, open, formAlert, fillWhenReady } from "./fixtures/app";
+import { OWNER, SECOND, signUpOrLogIn, simulatedIp } from "./fixtures/accounts";
 
 /**
  * The sign-up / log-in / log-out journeys, signed out. Each flow is covered for the happy path, for invalid input, and
@@ -11,18 +11,28 @@ import { OWNER, SECOND, signUpOrLogIn } from "./fixtures/accounts";
  */
 test.use({ storageState: { cookies: [], origins: [] } });
 
+/**
+ * Serial, unlike every other spec file. These tests drive the endpoints the application deliberately rate-limits —
+ * sign-up, log-in, forgot — and the runner defaults to one worker per core. Sixteen of them racing through those
+ * routes makes the suite compete with the product's own limiter and fail on it rather than on a defect. Running this
+ * one file in order costs a few seconds and makes the result mean something.
+ */
+test.describe.configure({ mode: "serial" });
+
 const freshEmail = () => `e2e-signup-${Date.now().toString(36)}@test.example`;
 
 test.describe("signup", () => {
+  test.use({ extraHTTPHeaders: { "x-real-ip": simulatedIp("browser-signup") } });
+
   test("a new account reaches the start wizard", async ({ page, failures }) => {
     void failures;
     await open(page, "/en/app/signup");
 
-    await page.getByRole("textbox", { name: "Email" }).fill(freshEmail());
+    await fillWhenReady(page.getByRole("textbox", { name: "Email" }), freshEmail());
     await page.getByRole("button", { name: "Continue" }).click();
 
-    await page.getByRole("textbox", { name: "Your name" }).fill("E2E Signup");
-    await page.getByRole("textbox", { name: "Password (8+ characters)" }).fill("signup12345");
+    await fillWhenReady(page.getByRole("textbox", { name: "Your name" }), "E2E Signup");
+    await fillWhenReady(page.getByRole("textbox", { name: "Password (8+ characters)" }), "signup12345");
     await page.getByRole("button", { name: "Create account" }).click();
 
     await page.waitForURL("**/en/app/start");
@@ -31,7 +41,7 @@ test.describe("signup", () => {
 
   test("an invalid address never leaves the first step", async ({ page }) => {
     await open(page, "/en/app/signup");
-    await page.getByRole("textbox", { name: "Email" }).fill("not-an-address");
+    await fillWhenReady(page.getByRole("textbox", { name: "Email" }), "not-an-address");
     await page.getByRole("button", { name: "Continue" }).click();
     // Still on step one: the name field belongs to step two and must not appear.
     await expect(page.getByRole("textbox", { name: "Your name" })).toHaveCount(0);
@@ -40,9 +50,9 @@ test.describe("signup", () => {
 
   test("the submit button stays disabled until the password meets every rule", async ({ page }) => {
     await open(page, "/en/app/signup");
-    await page.getByRole("textbox", { name: "Email" }).fill(freshEmail());
+    await fillWhenReady(page.getByRole("textbox", { name: "Email" }), freshEmail());
     await page.getByRole("button", { name: "Continue" }).click();
-    await page.getByRole("textbox", { name: "Your name" }).fill("E2E");
+    await fillWhenReady(page.getByRole("textbox", { name: "Your name" }), "E2E");
 
     const submit = page.getByRole("button", { name: "Create account" });
     const password = page.getByRole("textbox", { name: "Password (8+ characters)" });
@@ -59,10 +69,10 @@ test.describe("signup", () => {
 
   test("an address that already has an account is refused with a reason", async ({ page }) => {
     await open(page, "/en/app/signup");
-    await page.getByRole("textbox", { name: "Email" }).fill(OWNER.email);
+    await fillWhenReady(page.getByRole("textbox", { name: "Email" }), OWNER.email);
     await page.getByRole("button", { name: "Continue" }).click();
-    await page.getByRole("textbox", { name: "Your name" }).fill("Duplicate");
-    await page.getByRole("textbox", { name: "Password (8+ characters)" }).fill("another123");
+    await fillWhenReady(page.getByRole("textbox", { name: "Your name" }), "Duplicate");
+    await fillWhenReady(page.getByRole("textbox", { name: "Password (8+ characters)" }), "another123");
     await page.getByRole("button", { name: "Create account" }).click();
 
     // 409 already registered, or 429 when the throttle answers first — both must surface a message, not a blank screen.
@@ -80,8 +90,8 @@ test.describe("login", () => {
     void failures;
     await signUpOrLogIn(request, SECOND);
     await open(page, "/en/app/login");
-    await page.getByRole("textbox", { name: "Email" }).fill(SECOND.email);
-    await page.getByRole("textbox", { name: "Password" }).fill(SECOND.password);
+    await fillWhenReady(page.getByRole("textbox", { name: "Email" }), SECOND.email);
+    await fillWhenReady(page.getByRole("textbox", { name: "Password" }), SECOND.password);
     await page.getByRole("button", { name: "Log in" }).click();
 
     // No brand file on this account, so the inbox hands off to the start wizard. That redirect is the proof the
@@ -92,8 +102,8 @@ test.describe("login", () => {
 
   test("a wrong password says so and stays put", async ({ page }) => {
     await open(page, "/en/app/login");
-    await page.getByRole("textbox", { name: "Email" }).fill(OWNER.email);
-    await page.getByRole("textbox", { name: "Password" }).fill("definitely-wrong");
+    await fillWhenReady(page.getByRole("textbox", { name: "Email" }), OWNER.email);
+    await fillWhenReady(page.getByRole("textbox", { name: "Password" }), "definitely-wrong");
     await page.getByRole("button", { name: "Log in" }).click();
 
     await expect(formAlert(page)).toHaveText("Wrong email or password.");
@@ -102,8 +112,8 @@ test.describe("login", () => {
 
   test("an unknown address gets the same message as a wrong password", async ({ page }) => {
     await open(page, "/en/app/login");
-    await page.getByRole("textbox", { name: "Email" }).fill("nobody-here@test.example");
-    await page.getByRole("textbox", { name: "Password" }).fill("whatever123");
+    await fillWhenReady(page.getByRole("textbox", { name: "Email" }), "nobody-here@test.example");
+    await fillWhenReady(page.getByRole("textbox", { name: "Password" }), "whatever123");
     await page.getByRole("button", { name: "Log in" }).click();
     // Identical wording for both cases: the form must not reveal which addresses have accounts.
     await expect(formAlert(page)).toHaveText("Wrong email or password.");
@@ -129,13 +139,22 @@ test.describe("login", () => {
 });
 
 test.describe("logout", () => {
-  test("ends the session and the app is closed again", async ({ browser }) => {
-    const signedIn = await browser.newContext({ storageState: "e2e/.auth/owner.json" });
+  /**
+   * Uses its own account, never the shared owner. Logging out deletes the session RECORD on the server, so doing it
+   * with the owner's saved storage state invalidates the cookie every other spec is using — every app-route test
+   * running in parallel is then bounced to the login page. The bug was in this spec, not in the app.
+   */
+  test("ends the session and the app is closed again", async ({ browser, request }) => {
+    const solo = { email: `e2e-logout-${Date.now().toString(36)}@test.example`, password: "logoutpass1", name: "E2E Logout" };
+    await signUpOrLogIn(request, solo);
+    const state = await request.storageState();
+    const signedIn = await browser.newContext();
+    await signedIn.addCookies(state.cookies);
     const authed = await signedIn.newPage();
     await authed.goto("/en/app/profile", { waitUntil: "domcontentloaded" });
     // Log out lives in the sidebar's account menu, which has to be opened first — the trigger is the button showing
     // the signed-in address.
-    await authed.getByRole("button").filter({ hasText: OWNER.email }).click();
+    await authed.getByRole("button").filter({ hasText: solo.email }).click();
     await authed.getByRole("button", { name: "Log out" }).click();
     await authed.waitForURL("**/app/login");
 
@@ -151,10 +170,13 @@ test.describe("forgot password", () => {
       await open(page, "/en/app/forgot");
       // The field's accessible name is the page title rather than "Email" (see D15); select it by what it actually
       // announces so the test states the real, defective contract instead of the one we wish existed.
-      await page.getByRole("textbox", { name: "Reset your password" }).fill(email);
+      await fillWhenReady(page.getByRole("textbox", { name: "Reset your password" }), email);
       await page.getByRole("button", { name: "Send the link" }).click();
-      await expect(page.getByText(/link arrives within minutes|Email delivery is not enabled/)).toBeVisible();
-      return (await page.locator("main, body").innerText()).includes("Email delivery is not enabled");
+      // Read the banner itself, not the page: a `main, body` locator matches two elements and dies on strict mode.
+      // Either wording is accepted here; the assertion below is that BOTH addresses are answered with the same one.
+      const banner = page.getByText(/link arrives within minutes|Email delivery is not enabled/);
+      await expect(banner).toBeVisible();
+      return (await banner.innerText()).includes("Email delivery is not enabled");
     };
     const known = await message(OWNER.email);
     const unknown = await message("nobody-here@test.example");
@@ -165,7 +187,7 @@ test.describe("forgot password", () => {
 test.describe("password reset", () => {
   test("a made-up token is refused", async ({ page }) => {
     await open(page, `/en/app/reset?token=${"a".repeat(64)}`);
-    await page.getByRole("textbox", { name: /password/i }).fill("brandnew123");
+    await fillWhenReady(page.getByRole("textbox", { name: /password/i }), "brandnew123");
     await page.getByRole("button", { name: "Save and log in" }).click();
     await expect(formAlert(page)).toBeVisible();
   });

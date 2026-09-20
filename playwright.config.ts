@@ -46,6 +46,12 @@ export default defineConfig({
       name: "mobile-safari",
       use: { ...devices["iPhone 14 Pro"], viewport: { width: 390, height: 844 } },
       dependencies: ["setup"],
+      // Layout-sensitive specs only. The auth and error-state specs drive real sign-ups and log-ins, and the app
+      // throttles those per IP (five sign-ups an hour) and per account — limits shared by every project, since they
+      // all hit one server from one address. Running them on a second browser in parallel makes the suite compete
+      // with itself and fail on the product's own rate limiter rather than on a defect. They exercise logic, not
+      // layout, so chromium covers them; everything that could break at 390px still runs here.
+      testIgnore: [/auth-flows\.spec\.ts/, /error-states\.spec\.ts/, /api-guards\.spec\.ts/],
     },
   ],
 
