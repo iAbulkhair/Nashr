@@ -9,6 +9,7 @@ import { limitFromError } from "./LimitModal";
 import { render } from "@/lib/md";
 import { Icon, channelIcon } from "./Icons";
 import type { Lang } from "@/lib/i18n";
+import { dateFormat } from "@/lib/dates";
 
 const CHAR_LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250, tiktok: 2200, whatsapp: 1024, gbp: 1500, linkedin: 3000 };
 
@@ -57,7 +58,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
 
   const shown = view.filter((x) => filter === "all" || x.status === filter);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const dayLabel = (iso: string) => new Intl.DateTimeFormat(lang === "ar" ? "ar-SA-u-nu-latn" : "en", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }).format(new Date(iso));
+  const dayLabel = (iso: string) => dateFormat(lang, { weekday: "long", month: "long", day: "numeric" }).format(new Date(iso));
   async function share(x: Task, body: string) {
     const text = `${x.title}\n\n${body}`;
     if (navigator.share) { try { await navigator.share({ title: x.title, text }); return; } catch { /* cancelled */ } }
@@ -125,7 +126,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
           const isCollapsed = !!collapsed[x.id];
           return (
             <li key={x.id} className="grid gap-4">
-              {newDay && <p className="flex items-center gap-3 text-xs text-ink/70"><span className="sadu-thin h-1 flex-1 rounded-full opacity-60" /><span className="rounded-full border border-ink/10 bg-white px-3 py-1">{dayLabel(x.createdAt)}</span><span className="sadu-thin h-1 flex-1 rounded-full opacity-60" /></p>}
+              {newDay && <p className="flex items-center gap-3 text-xs text-ink/70"><span className="sadu-thin h-1 flex-1 rounded-full opacity-60" /><span className="rounded-full border border-ink/10 bg-white px-3 py-1" suppressHydrationWarning>{dayLabel(x.createdAt)}</span><span className="sadu-thin h-1 flex-1 rounded-full opacity-60" /></p>}
               <article className="card overflow-hidden p-0">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink/5 px-4 py-2.5">
                 <div className="flex min-w-0 items-center gap-2">

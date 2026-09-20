@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { TaskLite } from "@/lib/brand";
 import type { Lang } from "@/lib/i18n";
+import { dateFormat } from "@/lib/dates";
 import { Icon, channelIcon } from "./Icons";
 
 const DEFAULT_ROWS = ["instagram", "snapchat", "tiktok", "x", "whatsapp", "gbp", "blog"];
@@ -23,7 +24,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
   for (const x of scheduled) { const d = x.scheduledFor ?? x.createdAt.slice(0, 10); byDay.set(d, [...(byDay.get(d) ?? []), x]); }
   const rows = [...new Set([...channels, ...DEFAULT_ROWS, ...scheduled.map((x) => x.channel)])].filter((ch) => ch !== "plan" && ch !== "general").slice(0, 10);
   const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(anchor); d.setUTCDate(anchor.getUTCDate() + i); return d; });
-  const fmt = new Intl.DateTimeFormat(lang === "ar" ? "ar-SA-u-nu-latn" : "en", { month: "short", day: "numeric", timeZone: "UTC" });
+  const fmt = dateFormat(lang, { month: "short", day: "numeric" });
   const range = `${fmt.format(days[0])} – ${fmt.format(days[6])}`;
 
   function shift(n: number) {
@@ -48,7 +49,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
   const daysIn = new Date(Date.UTC(ym.y, ym.m + 1, 0)).getUTCDate();
   const startDow = first.getUTCDay();
   const key = (d: number) => `${ym.y}-${String(ym.m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  const monthName = new Intl.DateTimeFormat(lang === "ar" ? "ar-SA-u-nu-latn" : "en", { month: "long", year: "numeric", timeZone: "UTC" }).format(first);
+  const monthName = dateFormat(lang, { month: "long", year: "numeric" }).format(first);
   const selected = byDay.get(sel) ?? [];
   const unscheduled = tasks.filter((x) => x.status === "approved" && !x.scheduledFor);
 
@@ -67,7 +68,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
       </div>
       <div className="mt-4 flex items-center justify-center gap-3">
         <button onClick={() => shift(-1)} className="btn btn-secondary btn-xs" aria-label={c.prev}>‹</button>
-        <span className="font-display text-lg font-semibold" dir="auto">{view === "week" ? range : monthName}</span>
+        <span className="font-display text-lg font-semibold" dir="auto" suppressHydrationWarning>{view === "week" ? range : monthName}</span>
         <button onClick={() => shift(1)} className="btn btn-secondary btn-xs" aria-label={c.next}>›</button>
       </div>
 
@@ -120,7 +121,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
       <aside className="card mt-4">
         <div className="flex items-center justify-between">
           <button onClick={() => { const d = new Date(sel); d.setUTCDate(d.getUTCDate() - 1); setSel(iso(d)); }} className="grid h-10 w-10 place-items-center rounded-full border border-oasis text-oasis hover:bg-oasis hover:text-mist" aria-label={c.prev}>‹</button>
-          <h2 className="font-display text-lg font-semibold" dir="auto">{new Intl.DateTimeFormat(lang === "ar" ? "ar-SA-u-nu-latn" : "en", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(sel))}</h2>
+          <h2 className="font-display text-lg font-semibold" dir="auto" suppressHydrationWarning>{dateFormat(lang, { weekday: "short", month: "short", day: "numeric" }).format(new Date(sel))}</h2>
           <button onClick={() => { const d = new Date(sel); d.setUTCDate(d.getUTCDate() + 1); setSel(iso(d)); }} className="grid h-10 w-10 place-items-center rounded-full border border-oasis text-oasis hover:bg-oasis hover:text-mist" aria-label={c.next}>›</button>
         </div>
         {selected.length === 0 ? (

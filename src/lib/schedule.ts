@@ -8,6 +8,7 @@ import { generate } from "./noor";
 import { memoryBlock } from "./files";
 import { getGov } from "./governance";
 import { activeSeasons } from "./seasons";
+import { dateFormat } from "./dates";
 
 /** Per-user recurring tasks. Cron hits /api/cron/* → we loop users. */
 export type Schedule = { weeklyPlan: boolean; dailyBrief: boolean; followUps: boolean; lastWeekly?: string; lastDaily?: string };
@@ -112,7 +113,7 @@ export async function runDaily(user: User): Promise<Brief | null> {
         `صباح الخير ${user.name || ""} ☀️ ملخص نور لليوم:`,
         `• بانتظار موافقتك: ${pending} عنصر`,
         `• اعتمدت خلال 7 أيام: ${approved7d} عنصر`,
-        `• رصيدك: ${user.credits} كريدت${user.plan === "trial" ? ` (التجربة تنتهي ${new Intl.DateTimeFormat("ar-SA-u-nu-latn", { day: "numeric", month: "long" }).format(new Date(user.trialEnds))})` : ""}`,
+        `• رصيدك: ${user.credits} كريدت${user.plan === "trial" ? ` (التجربة تنتهي ${dateFormat("ar", { day: "numeric", month: "long" }).format(new Date(user.trialEnds))})` : ""}`,
         seasons.length ? `• المواسم القريبة: ${seasons.join("، ")}` : "• لا مواسم كبرى خلال 35 يوماً — وقت مناسب لبناء الجمهور",
         pending ? "الخطوة التالية: افتح صندوق الموافقة واعتمد ما يعجبك." : "الخطوة التالية: اطلب من نور دفعة جديدة في الدردشة.",
       ]
@@ -120,7 +121,7 @@ export async function runDaily(user: User): Promise<Brief | null> {
         `Good morning ${user.name || ""} ☀️ Noor's brief for today:`,
         `• Waiting for your approval: ${pending}`,
         `• Approved in the last 7 days: ${approved7d}`,
-        `• Credits: ${user.credits}${user.plan === "trial" ? ` (trial ends ${new Intl.DateTimeFormat("en", { day: "numeric", month: "long" }).format(new Date(user.trialEnds))})` : ""}`,
+        `• Credits: ${user.credits}${user.plan === "trial" ? ` (trial ends ${dateFormat("en", { day: "numeric", month: "long" }).format(new Date(user.trialEnds))})` : ""}`,
         seasons.length ? `• Upcoming seasons: ${seasons.join(", ")}` : "• No major season within 35 days — good time to build audience",
         pending ? "Next step: open the inbox and approve what you like." : "Next step: ask Noor for a new batch in chat.",
       ];

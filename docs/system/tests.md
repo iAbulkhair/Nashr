@@ -42,10 +42,19 @@ Legend: **test** = pinned by an automated test in `tests/` · **none** = nothing
 | 34 | The Shopify OAuth callback refuses a shop that is not a `myshopify.com` host before the client secret is posted to it | test (`regressions.test.ts`) | done |
 | 36 | Every task the approvals badge counts is reachable in the inbox, past the 200 newest tasks: buried pending items are returned with their bodies, never duplicated, newest-first and stably ordered, and a pending id whose record is gone is cleared rather than counted | test (`pending-reachable.test.ts`) | done |
 | 35 | Token cost is recorded per kind of call per account, so the cost of one request type is a read | test (`e2e-journey.test.ts`: generate/review/judge, arithmetic against the rates in `src/lib/usage.ts`) | done |
+| 37 | Dates are formatted through `dateFormat` in `src/lib/dates.ts`: never the `ar-SA` locale, always UTC, and no direct `Intl.DateTimeFormat` outside `dates.ts` and the deliberate Hijri lookup in `seasons.ts` | test (`date-locale.test.ts`: the resolved calendar and time zone, plus a scan of every file under `src/`) and E2E (`app-routes.spec.ts` fails the route on any browser console error) | done |
 
 Route-level tests call the real handlers. `tests/helpers/setup.ts` replaces `next/headers` cookies with a jar the test controls and runs `after()` at once; `tests/helpers/session.ts` has `signIn(email)` (a real `session:{token}` record plus its cookie), `signOut()`, `newUser()`, `json()`, `params()` and `settle()`. The memory store honours TTL since 2026-09-18, so expiry rules are testable with fake clocks. Each rule above was checked once by breaking the code and watching the test fail (publish gate, task scope, suspended check, admin check).
 
 Rule 36 was added on 2026-09-20 with the fix it pins, and checked the same way: reverting `listTasks` fails four of its seven tests. It also corrected `task-index.test.ts`, whose 230 all-pending fixture asserted that `listTasks` returned only 200 of them — the defect written down as a pin; those tasks are now created decided, so the test still pins what it was for.
+
+Rule 37 was added on 2026-09-20 for a hydration failure that only Safari saw. `/ar/app/calendar` asked for `ar-SA`,
+which WebKit's system ICU resolves to the Umm al-Qura calendar and Node's bundled ICU resolves to the Gregorian one, so
+the server sent "20 سبتمبر" and the iPhone rendered "9 ربيع الآخر" above Gregorian day numbers. React threw the whole
+tree away (error #418). Two separate causes were confirmed by running the same formatter in both engines: the calendar
+divergence above, and the abbreviated Arabic weekday, which is "الأحد" in Node's CLDR and "أحد" in WebKit's whatever
+locale is asked for. The first is fixed, the second cannot be — it is data, not configuration — so the three elements
+that render `Intl` output inside a client component carry `suppressHydrationWarning`, scoped to their own text.
 
 Rules 27-35 were added on 2026-09-20 with the fixes they pin; each was checked by reverting its fix and watching the test fail (six of them did; the admin-cookie comparison has no observable behaviour difference, so its test guards behaviour only, not the constant-time property).
 
