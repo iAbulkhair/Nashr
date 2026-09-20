@@ -2,7 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
-import { TASK_COST, type TaskType } from "@/lib/brand";
+import { TASK_COST, type TaskType } from "@/lib/tasks";
 import { AGENTS } from "@/lib/agents";
 import { limitFromError } from "./LimitModal";
 import type { Lang } from "@/lib/i18n";

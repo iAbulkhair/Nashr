@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Lang } from "@/lib/i18n";
 import type { AppDict } from "@/lib/app-i18n";
-import { TASK_COST, TASK_COUNT, type TaskType } from "@/lib/brand";
+import { TASK_COST, TASK_COUNT, type TaskType } from "@/lib/tasks";
 import { AGENTS } from "@/lib/agents";
 
 type Data = {
