@@ -446,3 +446,49 @@ describe("a legacy client cannot still receive a code over plaintext", () => {
     expect(new URL(allowed.headers.get("location")!).searchParams.get("code")).toBeTruthy();
   });
 });
+
+/**
+ * Resend's `emails.send` RESOLVES with { data, error }; it does not throw when the API refuses the message. The old
+ * code awaited it and returned true regardless, so a refused email was reported as sent — password resets, trial
+ * mail and weekly plans went nowhere while every screen said they had been sent.
+ */
+describe("a refused email is reported as refused", () => {
+  const load = async () => {
+    vi.resetModules();
+    vi.stubEnv("RESEND_API_KEY", "re_test_key");
+    return import("@/lib/notify");
+  };
+
+  it("returns false when Resend answers with an error, and records it for the operator", async () => {
+    vi.doMock("resend", () => ({
+      Resend: class { emails = { send: async () => ({ data: null, error: { name: "validation_error", message: "You can only send testing emails to your own email address" }, headers: null }) }; },
+    }));
+    const { sendEmail } = await load();
+    expect(await sendEmail("someone@example.com", "s", "t"), "a refused message is not a sent message").toBe(false);
+
+    const rows = await db.lrange("admin:log", 0, 9);
+    const entry = rows.map((r) => JSON.parse(r) as { what?: string; after?: { reason?: string } }).find((r) => r.what === "mail:refused");
+    expect(entry, "the founder console must be able to see that mail is being refused").toBeTruthy();
+    expect(entry!.after!.reason).toMatch(/your own email address/);
+    expect(JSON.stringify(rows), "the recipient must not be logged: this would become a list of who asked for a reset").not.toContain("someone@example.com");
+    vi.doUnmock("resend");
+  });
+
+  it("returns true only when Resend accepts it", async () => {
+    vi.doMock("resend", () => ({
+      Resend: class { emails = { send: async () => ({ data: { id: "re_1" }, error: null, headers: null }) }; },
+    }));
+    const { sendEmail } = await load();
+    expect(await sendEmail("someone@example.com", "s", "t")).toBe(true);
+    vi.doUnmock("resend");
+  });
+
+  it("a transport failure is still false", async () => {
+    vi.doMock("resend", () => ({
+      Resend: class { emails = { send: async () => { throw new Error("socket hang up"); } }; },
+    }));
+    const { sendEmail } = await load();
+    expect(await sendEmail("someone@example.com", "s", "t")).toBe(false);
+    vi.doUnmock("resend");
+  });
+});
