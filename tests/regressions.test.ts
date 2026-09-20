@@ -258,3 +258,66 @@ describe("the workspace file index is bounded", () => {
     expect(res.status).toBe(413);
   });
 });
+
+/**
+ * When the image service is unreachable, generateImage returns a placehold.co card with the brand name on it. The
+ * task never recorded which service produced the image, so the Inbox showed that card exactly as it shows real
+ * artwork — the owner paid a credit and was told nothing.
+ */
+describe("a placeholder image is recorded as one", () => {
+  it("the route stores the provider alongside the url", async () => {
+    const u = await newUser("img");
+    await signIn(u.email);
+    await saveBrand(u.email, brand());
+    const { saveTask, getTask } = await import("@/lib/brand");
+    await saveTask(u.email, { id: "ph1", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" }, true);
+
+    // No image provider configured is exactly the case that yields a placeholder.
+    vi.stubEnv("FAL_KEY", "");
+    const imageRoute = await import("@/app/api/tasks/[id]/image/route");
+    const res = await imageRoute.POST(json("/api/tasks/ph1/image", "POST"), params({ id: "ph1" }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).provider).toBe("placeholder");
+
+    const saved = (await getTask(u.email, "ph1"))!;
+    expect(saved.imageUrl).toContain("placehold.co");
+    expect(saved.imageProvider, "the card must be readable as a placeholder after a reload, not only in the response").toBe("placeholder");
+  });
+});
+
+/**
+ * The daily cron reads every brand's task history to decide whether to send a lifecycle email. On most days nothing
+ * is due, so the read bought nothing — and doing it for every brand is what exhausted the 30-hop chain at roughly
+ * 2,232 brands, leaving every account past that point with no lifecycle mail at all.
+ */
+describe("the daily lifecycle read", () => {
+  it("does not touch the workspace on a day when no message is due", async () => {
+    vi.stubEnv("RESEND_API_KEY", "test-key");
+    const u = await newUser("life");
+    const { saveUser, getUser } = await import("@/lib/auth");
+    // Five days in, paying: nothing in the plan is due.
+    await saveUser({ ...u, plan: "pro", createdAt: new Date(Date.now() - 5 * 864e5).toISOString() });
+    const fresh = (await getUser(u.email))!;
+
+    const { runLifecycle } = await import("@/lib/lifecycle");
+    const spy = vi.spyOn(db, "get");
+    const sentKeys = await runLifecycle(fresh);
+    const reads = spy.mock.calls.map((c) => String(c[0]));
+    spy.mockRestore();
+
+    expect(sentKeys).toEqual([]);
+    expect(reads.filter((k) => k.startsWith("tidxv:") || k.startsWith("brand:")), "nothing was due, so nothing needed reading").toEqual([]);
+  });
+
+  it("stops being due at all once the windows have passed", async () => {
+    const { lifecyclePlan } = await import("@/lib/lifecycle");
+    const long = { createdAt: new Date(Date.now() - 400 * 864e5).toISOString(), trialEnds: new Date(Date.now() - 397 * 864e5).toISOString(), plan: "trial" as const };
+    expect(lifecyclePlan(long).some(([, due]) => due), "a year-old trial must not still be owed its day-one mail").toBe(false);
+
+    // The windows themselves still fire, and still have the slack a missed cron run needs.
+    const day = (n: number) => ({ createdAt: new Date(Date.now() - n * 864e5).toISOString(), trialEnds: new Date(Date.now() + 1 * 864e5).toISOString(), plan: "trial" as const });
+    expect(lifecyclePlan(day(1)).find(([k]) => k === "day1")![1]).toBe(true);
+    expect(lifecyclePlan(day(3)).find(([k]) => k === "day1")![1], "three days of slack for a missed run").toBe(true);
+    expect(lifecyclePlan(day(4)).find(([k]) => k === "day1")![1]).toBe(false);
+  });
+});

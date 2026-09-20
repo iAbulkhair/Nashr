@@ -377,6 +377,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       }
       t.imageUrl = img.url;
       t.imagePrompt = img.prompt;
+      t.imageProvider = img.provider;
       await saveTask(email, t);
       actions.push(`image:${t.id}`);
       return `Image generated for "${t.title}" (${img.provider}). It's attached to the item in the inbox. Credits left: ${user.credits}.`;

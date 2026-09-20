@@ -46,6 +46,12 @@ export type Task = {
   scheduledFor?: string; // YYYY-MM-DD, set by owner in inbox/calendar
   imageUrl?: string;
   imagePrompt?: string;
+  /**
+   * Which service produced imageUrl. When the image provider is unreachable or unconfigured, generateImage falls back
+   * to a placehold.co card carrying the brand name. That is not artwork, and presenting it as the generated image the
+   * owner just paid for is a lie the interface was telling on our behalf.
+   */
+  imageProvider?: "fal" | "placeholder";
   published?: { provider: string; url: string; status: "draft" | "published"; at: string }[];
   /** When the owner approved or rejected (for time-to-decision). */
   decidedAt?: string;

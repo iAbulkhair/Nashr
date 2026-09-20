@@ -10,8 +10,15 @@ import { Icon, channelIcon } from "./Icons";
 const DEFAULT_ROWS = ["instagram", "snapchat", "tiktok", "x", "whatsapp", "gbp", "blog"];
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
+/**
+ * Exactly what the calendar draws, and nothing else. A TaskLite carries sixteen fields; this view reads seven, and
+ * the rest — the judge's score and notes, the edit percentage, the decision timestamp, the publish count — were
+ * being serialised into the RSC payload for thirteen months of history and then dropped on the floor by the browser.
+ */
+export type CalendarRow = Pick<TaskLite, "id" | "title" | "channel" | "status" | "scheduledFor" | "createdAt" | "preview">;
+
 /** Marketing calendar: week view with one row per channel (Enrich-style) plus the month view. */
-export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: AppDict; tasks: TaskLite[]; lang: Lang; channels?: string[] }) {
+export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: AppDict; tasks: CalendarRow[]; lang: Lang; channels?: string[] }) {
   const c = t.calendar;
   const today = iso(new Date());
   const [view, setView] = useState<"week" | "month">("week");
@@ -20,7 +27,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
   const [sel, setSel] = useState<string>(today);
 
   const scheduled = tasks.filter((x) => x.status !== "rejected" && (x.scheduledFor || x.status === "approved"));
-  const byDay = new Map<string, TaskLite[]>();
+  const byDay = new Map<string, CalendarRow[]>();
   for (const x of scheduled) { const d = x.scheduledFor ?? x.createdAt.slice(0, 10); byDay.set(d, [...(byDay.get(d) ?? []), x]); }
   const rows = [...new Set([...channels, ...DEFAULT_ROWS, ...scheduled.map((x) => x.channel)])].filter((ch) => ch !== "plan" && ch !== "general").slice(0, 10);
   const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(anchor); d.setUTCDate(anchor.getUTCDate() + i); return d; });

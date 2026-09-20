@@ -146,7 +146,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
               {x.imageUrl && (
                 <div className="mt-3 flex items-start gap-3">
                   <img loading="lazy" decoding="async" src={x.imageUrl} alt="" className="h-40 w-40 rounded-lg object-cover" />
-                  <div className="text-xs text-ink/50"><a href={x.imageUrl} target="_blank" rel="noreferrer" className="underline">{i.download}</a>{x.imagePrompt && <p className="mt-1 line-clamp-4" dir="ltr">{x.imagePrompt}</p>}</div>
+                  <div className="text-xs text-ink/50">{x.imageProvider === "placeholder" && <p className="mb-1 rounded-full bg-saffron/20 px-2 py-0.5 font-semibold text-sadu-deep" dir="auto">{i.placeholder}</p>}<a href={x.imageUrl} target="_blank" rel="noreferrer" className="underline">{i.download}</a>{x.imagePrompt && <p className="mt-1 line-clamp-4" dir="ltr">{x.imagePrompt}</p>}</div>
                 </div>
               )}
               {editing === x.id ? (

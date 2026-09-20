@@ -22,6 +22,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     const img = await generateImage(brand, t, u.email);
     t.imageUrl = img.url;
     t.imagePrompt = img.prompt;
+    t.imageProvider = img.provider;
     await saveTask(sc(u), t);
     await track(u.email, "image");
     return NextResponse.json({ ok: true, task: t, credits: paid.credits, provider: img.provider });
