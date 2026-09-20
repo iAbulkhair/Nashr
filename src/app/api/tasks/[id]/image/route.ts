@@ -23,9 +23,12 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     t.imageUrl = img.url;
     t.imagePrompt = img.prompt;
     t.imageProvider = img.provider;
+    // The placeholder is what comes back when the image service is unreachable: a coloured card carrying the brand
+    // name, not artwork. The owner is shown it — labelled — but is not billed for our outage.
+    const credits = img.provider === "placeholder" ? await refund(u.email, IMAGE_COST) : paid.credits;
     await saveTask(sc(u), t);
     await track(u.email, "image");
-    return NextResponse.json({ ok: true, task: t, credits: paid.credits, provider: img.provider });
+    return NextResponse.json({ ok: true, task: t, credits, provider: img.provider });
   } catch (e) {
     console.error("image failed", e);
     const credits = await refund(u.email, IMAGE_COST);

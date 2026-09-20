@@ -42,6 +42,8 @@ Legend: **test** = pinned by an automated test in `tests/` · **none** = nothing
 | 34 | The Shopify OAuth callback refuses a shop that is not a `myshopify.com` host before the client secret is posted to it | test (`regressions.test.ts`) | done |
 | 36 | Every task the approvals badge counts is reachable in the inbox, past the 200 newest tasks: buried pending items are returned with their bodies, never duplicated, newest-first and stably ordered, and a pending id whose record is gone is cleared rather than counted | test (`pending-reachable.test.ts`) | done |
 | 35 | Token cost is recorded per kind of call per account, so the cost of one request type is a read | test (`e2e-journey.test.ts`: generate/review/judge, arithmetic against the rates in `src/lib/usage.ts`) | done |
+| 46 | An OAuth redirect URI is https, or http only on the loopback interface, and never carries a fragment | test (`regressions.test.ts`: the loopback forms, look-alike hosts such as `127.0.0.1.evil.example`, and that registerClient drops a bad URI while keeping a good one) | done |
+| 47 | A placeholder image is refunded: the owner is not charged when the image service is unreachable | test (`regressions.test.ts`: the route reports the restored balance and the record shows it) | the chat tool's refund, which is covered only by the shared code path |
 | 38 | A repeated query parameter cannot crash a page: searchParams are typed as they actually arrive (`PageProps`) and narrowed at the point of use | E2E (`app-routes.spec.ts`: real repeated keys on conversations, reports and chat) | done |
 | 39 | The in-memory store copies on read and on write, as Upstash does, so a mutate-without-save is a no-op in tests exactly as it is in production; `charge` persists its NaN repair on the refusal path too | test (`store-copy.test.ts`, `type-guards.test.ts`) | done |
 | 40 | An ended trial cannot spend on either image path, and every spending path shares one `trialOver` check | test (`regressions.test.ts`: the route's 402 and the chat tool's refusal, balance untouched) | done |
@@ -60,6 +62,11 @@ Rule 8 was marked "done" on 2026-09-20 for the first time honestly. The row had 
 text admitted that signup and admin key login were "still manual", and reset was not mentioned at all — three of the
 five throttles it names had no test. All three now have one, each asserting the exact attempt at which the limiter
 bites; widening any of the three limits fails its test.
+
+Rules 46-47 were added on 2026-09-20 after the pull request was opened. Rule 46 closed the last finding that had been
+left alone for needing sign-off: `registerClient` filtered redirect URIs with `/^https?:\/\//`, so a client could
+register `http://evil.example/cb` and be handed an authorization code over plaintext. Rule 47 is the decision that
+went with it — a placeholder card is not the artwork that was paid for, so the credit goes back on both paths.
 
 Rules 38-45 were added on 2026-09-20 from the second audit pass. Each was checked by reverting its fix and watching
 its test fail: the conversations page 500s again on "?q=a&q=b", the profile reports 2 of 3 tasks, the third charge

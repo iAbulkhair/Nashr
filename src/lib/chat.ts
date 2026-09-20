@@ -378,8 +378,12 @@ export async function runTool(user: User, name: string, input: Record<string, un
       t.imageUrl = img.url;
       t.imagePrompt = img.prompt;
       t.imageProvider = img.provider;
+      // A placeholder is not the thing that was paid for. It is a coloured card with the brand name on it, produced
+      // when the image service is unreachable, and charging for it bills the customer for our outage.
+      if (img.provider === "placeholder") user.credits = await refund(user.email, IMAGE_COST);
       await saveTask(email, t);
       actions.push(`image:${t.id}`);
+      if (img.provider === "placeholder") return `The image service was unavailable, so "${t.title}" has a placeholder rather than artwork. The credit was returned; ask again later. Credits left: ${user.credits}.`;
       return `Image generated for "${t.title}" (${img.provider}). It's attached to the item in the inbox. Credits left: ${user.credits}.`;
     }
     default:

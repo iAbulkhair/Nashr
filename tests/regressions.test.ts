@@ -321,3 +321,57 @@ describe("the daily lifecycle read", () => {
     expect(lifecyclePlan(day(4)).find(([k]) => k === "day1")![1]).toBe(false);
   });
 });
+
+/**
+ * OAuth 2.1 §4.1.3: every redirect URI is https, with one exception for a native client on the loopback interface.
+ * Registration accepted /^https?:\/\// — any plaintext host at all — so a client could register a redirect on a host
+ * it controlled and be handed an authorization code for someone's account over the open network.
+ */
+describe("OAuth client registration refuses a plaintext redirect", () => {
+  it("takes https anywhere and http only on loopback", async () => {
+    const { validRedirectUri } = await import("@/lib/oauth");
+    expect(validRedirectUri("https://claude.example/cb")).toBe(true);
+    expect(validRedirectUri("http://127.0.0.1:8080/cb")).toBe(true);
+    expect(validRedirectUri("http://[::1]:8080/cb")).toBe(true);
+    expect(validRedirectUri("http://localhost:3000/cb")).toBe(true);
+
+    expect(validRedirectUri("http://evil.example/cb"), "the whole point").toBe(false);
+    expect(validRedirectUri("http://127.0.0.1.evil.example/cb"), "a host that merely starts with the loopback IP").toBe(false);
+    expect(validRedirectUri("http://localhost.evil.example/cb")).toBe(false);
+    expect(validRedirectUri("https://claude.example/cb#frag"), "RFC 6749 §3.1.2 forbids a fragment").toBe(false);
+    expect(validRedirectUri("not-a-url")).toBe(false);
+    expect(validRedirectUri("javascript:alert(1)")).toBe(false);
+    expect(validRedirectUri(undefined)).toBe(false);
+  });
+
+  it("registerClient drops the bad ones and refuses when none survive", async () => {
+    const { registerClient } = await import("@/lib/oauth");
+    const c = await registerClient({ redirect_uris: ["http://evil.example/cb", "https://good.example/cb"], client_name: "Mixed" });
+    expect(c.redirect_uris, "the plaintext host must not be registered alongside the good one").toEqual(["https://good.example/cb"]);
+    await expect(registerClient({ redirect_uris: ["http://evil.example/cb"], client_name: "Bad" })).rejects.toThrow(/invalid_redirect_uri/);
+  });
+});
+
+/**
+ * When the image service is unreachable the owner gets a placehold.co card instead of artwork. Charging a credit for
+ * that bills the customer for our outage.
+ */
+describe("a placeholder image is not charged", () => {
+  it("the route returns the credit and reports the restored balance", async () => {
+    const u = await newUser("refund");
+    await signIn(u.email);
+    await saveBrand(u.email, brand());
+    const { saveTask } = await import("@/lib/brand");
+    await saveTask(u.email, { id: "ph2", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" }, true);
+
+    vi.stubEnv("FAL_KEY", "");
+    const imageRoute = await import("@/app/api/tasks/[id]/image/route");
+    const res = await imageRoute.POST(json("/api/tasks/ph2/image", "POST"), params({ id: "ph2" }));
+    const body = (await res.json()) as { provider: string; credits: number };
+
+    expect(body.provider).toBe("placeholder");
+    expect(body.credits, "the response must report the balance after the refund, not before").toBe(50);
+    const { getUser } = await import("@/lib/auth");
+    expect((await getUser(u.email))!.credits, "no credit may be kept for an outage").toBe(50);
+  });
+});
