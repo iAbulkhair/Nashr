@@ -158,3 +158,32 @@ describe("a deck slide keeps its table (P1: numbers dropped from the export)", (
     expect(bullets.some((b) => /^[-|: ]+$/.test(b))).toBe(false);
   });
 });
+
+describe("deck outlines at any heading depth", () => {
+  it("starts a slide on h4-h6 instead of printing the markdown as a bullet", async () => {
+    const { parseSlides } = await import("@/app/api/tasks/[id]/pptx/route");
+    const slides = parseSlides("#### Opening\n- one\n##### Middle\n- two\n###### Close\n- three", "Deck");
+    expect(slides.map((s) => s.title)).toEqual(["Opening", "Middle", "Close"]);
+    expect(JSON.stringify(slides), "no heading marker may survive into the slide text").not.toContain("#");
+    expect(slides.every((s) => s.bullets.length === 1)).toBe(true);
+  });
+
+  it("continues a long section onto numbered slides rather than off the bottom edge", async () => {
+    const { parseSlides } = await import("@/app/api/tasks/[id]/pptx/route");
+    const body = "## Findings\n" + Array.from({ length: 20 }, (_, i) => `- point ${i + 1}`).join("\n");
+    const slides = parseSlides(body, "Deck");
+    expect(slides.length).toBe(3);
+    expect(slides.map((s) => s.title)).toEqual(["Findings", "Findings (2)", "Findings (3)"]);
+    expect(slides.every((s) => s.bullets.length <= 8), "nothing may exceed what the text box holds").toBe(true);
+    // Nothing is dropped on the way.
+    expect(slides.flatMap((s) => s.bullets)).toEqual(Array.from({ length: 20 }, (_, i) => `point ${i + 1}`));
+  });
+
+  it("keeps the speaker notes on the slide that owns them", async () => {
+    const { parseSlides } = await import("@/app/api/tasks/[id]/pptx/route");
+    const body = "## Findings\nNotes: say this once\n" + Array.from({ length: 12 }, (_, i) => `- p${i}`).join("\n");
+    const slides = parseSlides(body, "Deck");
+    expect(slides[0].notes).toBe("say this once");
+    expect(slides[1].notes, "the continuation must not repeat the notes into the speaker view").toBe("");
+  });
+});

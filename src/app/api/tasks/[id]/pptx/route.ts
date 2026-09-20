@@ -7,15 +7,24 @@ export const maxDuration = 60;
 
 type Slide = { title: string; bullets: string[]; notes: string };
 
-/** Parse Dana's deck outline ("## Slide N: Title" + "- bullets" + "Notes: ...") or any Markdown into slides. */
+/** How many bullets fit in the 3.6in body box at the smaller of the two font sizes used below. */
+const MAX_BULLETS = 8;
+
+/**
+ * Parse Dana's deck outline ("## Slide N: Title" + "- bullets" + "Notes: ...") or any Markdown into slides.
+ *
+ * Every heading depth starts a slide. Only #, ## and ### used to, so a deck written with #### or deeper never broke:
+ * the heading line failed the bullet and table tests, fell through to the catch-all below and was pushed as a bullet
+ * with its own "####" still attached. The whole outline landed on one slide, with the markdown showing.
+ */
 export function parseSlides(md: string, fallbackTitle: string): Slide[] {
   const lines = md.replace(/\r/g, "").split("\n");
   const slides: Slide[] = [];
   let cur: Slide | null = null;
   for (const raw of lines) {
     const line = raw.trim();
-    const h = line.match(/^#{1,3}\s*(?:Slide\s*\d+\s*[:：.-]\s*|الشريحة\s*\d+\s*[:：.-]\s*)?(.+)$/i);
-    if (h && /^#{1,3}\s/.test(line)) {
+    const h = line.match(/^#{1,6}\s*(?:Slide\s*\d+\s*[:：.-]\s*|الشريحة\s*\d+\s*[:：.-]\s*)?(.+)$/i);
+    if (h && /^#{1,6}\s/.test(line)) {
       cur = { title: h[1].trim(), bullets: [], notes: "" };
       slides.push(cur);
       continue;
@@ -35,7 +44,17 @@ export function parseSlides(md: string, fallbackTitle: string): Slide[] {
     }
     if (line && !line.startsWith("---")) cur.bullets.push(line.replace(/\*\*/g, ""));
   }
-  return slides.filter((s) => s.title || s.bullets.length).slice(0, 30);
+  // A slide holds what fits on it. The text box is a fixed 3.6 inches tall, so a section that ran long used to print
+  // past the bottom edge of the slide and out of the deck. Overflow continues onto a numbered sibling instead.
+  const out: Slide[] = [];
+  for (const s of slides.filter((x) => x.title || x.bullets.length)) {
+    if (s.bullets.length <= MAX_BULLETS) { out.push(s); continue; }
+    for (let i = 0; i < s.bullets.length; i += MAX_BULLETS) {
+      const part = i / MAX_BULLETS + 1;
+      out.push({ title: part === 1 ? s.title : `${s.title} (${part})`, bullets: s.bullets.slice(i, i + MAX_BULLETS), notes: part === 1 ? s.notes : "" });
+    }
+  }
+  return out.slice(0, 30);
 }
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
