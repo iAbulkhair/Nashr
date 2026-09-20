@@ -33,7 +33,7 @@ function parsedDate(v: unknown): Date | null {
 }
 
 /** Resolve a range key (Enrich-style pills) into a UTC window. */
-export function rangeWindow(range: string | undefined, from?: string, to?: string): { from: Date; to: Date; label: string; prevFrom: Date } {
+export function rangeWindow(range: unknown, from?: unknown, to?: unknown): { from: Date; to: Date; label: string; prevFrom: Date } {
   const now = new Date();
   const end = new Date(now);
   const day = 864e5;
@@ -49,7 +49,8 @@ export function rangeWindow(range: string | undefined, from?: string, to?: strin
   }
   if (range === "ytd") { const f = new Date(Date.UTC(now.getUTCFullYear(), 0, 1)); return { from: f, to: end, label: "ytd", prevFrom: new Date(Date.UTC(now.getUTCFullYear() - 1, 0, 1)) }; }
   if (range === "ly") { const f = new Date(Date.UTC(now.getUTCFullYear() - 1, 0, 1)); const t = new Date(Date.UTC(now.getUTCFullYear(), 0, 1) - 1); return { from: f, to: t, label: "ly", prevFrom: new Date(Date.UTC(now.getUTCFullYear() - 2, 0, 1)) }; }
-  const days = ["1", "2", "7", "30", "60", "90"].includes(range ?? "") ? Number(range) : 7;
+  const key = typeof range === "string" ? range : "";
+  const days = ["1", "2", "7", "30", "60", "90"].includes(key) ? Number(key) : 7;
   const f = new Date(now.getTime() - days * day);
   return { from: f, to: end, label: `${days}d`, prevFrom: new Date(f.getTime() - days * day) };
 }

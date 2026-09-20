@@ -34,3 +34,19 @@ for (const lang of LANGS) {
     }
   });
 }
+
+/**
+ * Query strings a real URL can carry. Next resolves a repeated key to an array, and a page that typed it as a plain
+ * string handed that array to code expecting one — `q.trim()` threw and the route answered 500. The type is now the
+ * truth, so these assert the behaviour that type buys.
+ */
+test.describe("repeated query parameters", () => {
+  for (const path of ["/en/app/conversations?q=one&q=two", "/en/app/reports?range=7&range=30", "/en/app/chat?conv=a&conv=b"]) {
+    test(`${path} is answered, not crashed`, async ({ page, failures }) => {
+      void failures;
+      const res = await open(page, path);
+      expect(res.status(), `${path} must not 500`).toBe(200);
+      await expect(page.locator("h1")).toHaveCount(1);
+    });
+  }
+});

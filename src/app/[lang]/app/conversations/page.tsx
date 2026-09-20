@@ -8,9 +8,13 @@ import { listLite } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
-export default async function Page({ params, searchParams }: { params: Promise<{ lang: string }>; searchParams: Promise<{ q?: string }> }) {
+export default async function Page({ params, searchParams }: PageProps<"/[lang]/app/conversations">) {
   const { lang } = await params;
-  const { q } = await searchParams;
+  // A query key can repeat: "?q=a&q=b" reaches a page as ["a", "b"], and searchConversations calls q.trim().
+  // Typing it as `string` hid that from the compiler and the page answered 500. Anything but a single string is
+  // treated as no query, which is what "?q=" already does.
+  const { q: rawQ } = await searchParams;
+  const q = typeof rawQ === "string" ? rawQ : undefined;
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);

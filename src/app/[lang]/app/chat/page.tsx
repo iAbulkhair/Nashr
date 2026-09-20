@@ -17,7 +17,7 @@ import type { PlanItem } from "@/lib/chat";
 
 export const dynamic = "force-dynamic";
 
-export default async function Page({ params, searchParams }: { params: Promise<{ lang: string }>; searchParams: Promise<{ conv?: string; prompt?: string; agent?: string; onboard?: string }> }) {
+export default async function Page({ params, searchParams }: PageProps<"/[lang]/app/chat">) {
   const { lang } = await params;
   const sp = await searchParams;
   if (!isLang(lang)) notFound();
