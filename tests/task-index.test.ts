@@ -81,7 +81,9 @@ describe("light task index", () => {
 describe("numbers computed from the light index", () => {
   it("kpis match the tasks, including ones older than the 200 newest", async () => {
     const s = scope();
-    await Promise.all(Array.from({ length: 210 }, (_, i) => saveTask(s, task(`k${i}`, { createdAt: daysAgo(2), status: i < 150 ? "approved" : i < 180 ? "rejected" : "pending", imageUrl: i < 10 ? "u" : undefined }), true)));
+    // A person's approval or rejection always carries decidedAt (only the owner's decision writes it); without it the
+    // fixture described 180 AUTO-approvals, which correctly stay out of the approval rate.
+    await Promise.all(Array.from({ length: 210 }, (_, i) => saveTask(s, task(`k${i}`, { createdAt: daysAgo(2), status: i < 150 ? "approved" : i < 180 ? "rejected" : "pending", decidedAt: i < 180 ? daysAgo(1) : undefined, imageUrl: i < 10 ? "u" : undefined }), true)));
     const k = await kpis(s, 7);
     expect(k.created).toBe(210);
     expect(k.approved).toBe(150);
@@ -96,7 +98,8 @@ describe("numbers computed from the light index", () => {
     expect(kpiSince({ prevFrom }).getTime()).toBe(prevFrom.getTime());
   });
   it("edit rate and magnitude come from the row, not from the bodies", () => {
-    const rows = [liteOf(task("a", { status: "approved", editedBody: "completely different words here now" })), liteOf(task("b", { status: "approved" }))];
+    // Both approved by a person, as the edit rate measures what the owner changed in what they reviewed.
+    const rows = [liteOf(task("a", { status: "approved", decidedAt: daysAgo(0), editedBody: "completely different words here now" })), liteOf(task("b", { status: "approved", decidedAt: daysAgo(0) }))];
     const [m] = typeMetrics(rows);
     expect(m.edited).toBe(1);
     expect(m.editRate).toBe(50);

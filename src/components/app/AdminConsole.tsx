@@ -6,8 +6,8 @@ type KindUsage = { calls: number; in: number; out: number; usd: number };
 type U = { email: string; name: string; phone: string; plan: string; credits: number; trialEnds: string; createdAt: string; renewedAt?: string | null; suspended?: boolean; lang?: string; tokens?: number; usd?: number; calls?: number; byKind?: Record<string, KindUsage>; priceSar?: number; marginPct?: number | null };
 type Detail = { user: U; brand: Record<string, unknown> | null; tasks: T[]; usage: { in: number; out: number; calls: number; usd: number; kinds: Record<string, number>; byKind?: Record<string, KindUsage> }; connections: { provider: string; label?: string; connectedAt?: string }[]; brands: { id: string; name: string; status: string }[]; conversations: number; referrals: number; avgScore: number | null };
 type T = { id: string; type: string; channel: string; title: string; status: string; createdAt: string; body: string; editedBody?: string; quality?: { score: number; notes: string } };
-type TM = { type: string; n: number; approvalRate: number | null; editRate: number | null; editMagnitude: number | null; published: number; avgScore: number | null; low: number; avgHoursToDecide: number | null };
-type AM = { agent: string; n: number; approvalRate: number | null; editRate: number | null; avgScore: number | null; low: number; thumbsUp: number; thumbsDown: number; types: TM[] };
+type TM = { type: string; n: number; approved: number; rejected: number; autoApproved: number; approvalRate: number | null; edited: number; editRate: number | null; editMagnitude: number | null; published: number; judged: number; avgScore: number | null; low: number; avgHoursToDecide: number | null };
+type AM = { agent: string; n: number; decided: number; autoApproved: number; approvalRate: number | null; reviewedApproved: number; editRate: number | null; judged: number; avgScore: number | null; low: number; thumbsUp: number; thumbsDown: number; types: TM[] };
 
 const STR = {
   en: { users: "Users", paying: "Paying", today: "Signed up today", trial: "Trial", cost: "Model cost this month $", tokens: "Tokens this month", calls: "Model calls", suspended: "Suspended", search: "Search email, name, phone, plan…", email: "Email", name: "Name", phone: "Phone", plan: "Plan", credits: "Credits", tokensMo: "Tokens (mo)", costMo: "Cost $ (mo)", marginMo: "Margin", perKind: "Cost per request type this month (average of one request, and the total)", trialEnds: "Trial ends", joined: "Joined", addCredits: "+ credits", planNote: "Changing the plan resets the balance to that plan's monthly allowance and starts the renewal cycle (balance resets on the 1st of each month, UTC). Use \"+ credits\" for top-ups within the month. Tokens and cost are this month's real model usage.", quality: "Agent quality · last 30 days · all workspaces", qualityNote: "Approval = approved ÷ decided. Edited = approved items the owner changed (magnitude = % of text changed). Judge = automated score /100 (85+ ready, <70 regenerate). Thumbs = chat replies.", agentType: "Agent / type", items: "Items", approval: "Approval", edited: "Edited", magnitude: "Magnitude", published: "Published", judge: "Judge", low: "<70", hours: "Hours to decide", perWorkspace: "Per workspace", loading: "Loading…", close: "close", impersonate: "Log in as user", extend: "Extend trial", reset: "Reset password", emailsIn: "Emails in", suspend: "Suspend", unsuspend: "Unsuspend", del: "Delete account", usage: "Model usage (month)", trialRenewed: "Trial ends / renewed", integrations: "Integrations", brandsEtc: "Brands · conversations · referrals · judge", brandFile: "Brand file", notCompleted: "— not completed —", generated: "Generated items", approved: "approved", rejected: "rejected", promptCredits: "Credits to add (negative to remove):", promptDays: "Extend trial by days:", promptDelete: "Type the email to permanently delete this account and all its data:", promptTemp: "Temporary password (shown once, send it on WhatsApp):", arabic: "Arabic", english: "English" },
@@ -65,7 +65,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
   const [total, setTotal] = useState<{ usd: number; in: number; out: number; calls: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
-  const [evals, setEvals] = useState<{ agents: AM[]; users: { email: string; n: number; approvalRate: number | null; avgScore: number | null }[] } | null>(null);
+  const [evals, setEvals] = useState<{ agents: AM[]; users: { email: string; n: number; decided: number; approvalRate: number | null; judged: number; avgScore: number | null }[] } | null>(null);
 
   async function load() {
     const r = await fetch("/api/admin/plan");
@@ -253,13 +253,13 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
               {evals.agents.map((a) => (
                 <Fragment key={a.agent}>
                   <tr className="border-t border-ink/10 bg-salt/60 font-medium">
-                    <td className="p-2">{a.agent}</td><td className="font-mono">{a.n}</td><td className="font-mono">{a.approvalRate ?? "—"}{a.approvalRate !== null && "%"}</td><td className="font-mono">{a.editRate ?? "—"}{a.editRate !== null && "%"}</td><td></td><td></td>
-                    <td className={`font-mono ${a.avgScore !== null && a.avgScore < 70 ? "text-sadu" : ""}`}>{a.avgScore ?? "—"}</td><td className="font-mono">{a.low}</td><td></td><td className="font-mono">{a.thumbsUp}/{a.thumbsDown}</td>
+                    <td className="p-2">{a.agent}</td><td className="font-mono">{a.n}{a.autoApproved > 0 && <span className="text-ink/40"> ({a.autoApproved} auto)</span>}</td><td className="font-mono">{a.approvalRate ?? "—"}{a.approvalRate !== null && "%"}<span className="text-ink/40"> · {a.decided}</span></td><td className="font-mono">{a.editRate ?? "—"}{a.editRate !== null && "%"}<span className="text-ink/40"> · {a.reviewedApproved}</span></td><td></td><td></td>
+                    <td className={`font-mono ${a.avgScore !== null && a.avgScore < 70 ? "text-sadu" : ""}`}>{a.avgScore ?? "—"}<span className="text-ink/40"> · {a.judged}</span></td><td className="font-mono">{a.low}/{a.judged}</td><td></td><td className="font-mono">{a.thumbsUp}/{a.thumbsDown}</td>
                   </tr>
                   {a.types.map((x) => (
                     <tr key={a.agent + x.type} className="border-t border-ink/5 text-ink/70">
-                      <td className="p-2 ps-6 font-mono text-xs">{x.type}</td><td className="font-mono">{x.n}</td><td className="font-mono">{x.approvalRate ?? "—"}{x.approvalRate !== null && "%"}</td><td className="font-mono">{x.editRate ?? "—"}{x.editRate !== null && "%"}</td><td className="font-mono">{x.editMagnitude ?? "—"}{x.editMagnitude !== null && "%"}</td><td className="font-mono">{x.published}</td>
-                      <td className={`font-mono ${x.avgScore !== null && x.avgScore < 70 ? "text-sadu" : ""}`}>{x.avgScore ?? "—"}</td><td className="font-mono">{x.low}</td><td className="font-mono">{x.avgHoursToDecide ?? "—"}</td><td></td>
+                      <td className="p-2 ps-6 font-mono text-xs">{x.type}</td><td className="font-mono">{x.n}{x.autoApproved > 0 && <span className="text-ink/40"> ({x.autoApproved} auto)</span>}</td><td className="font-mono">{x.approvalRate ?? "—"}{x.approvalRate !== null && "%"}<span className="text-ink/40"> · {x.approved + x.rejected}</span></td><td className="font-mono">{x.editRate ?? "—"}{x.editRate !== null && "%"}<span className="text-ink/40"> · {x.approved}</span></td><td className="font-mono">{x.editMagnitude ?? "—"}{x.editMagnitude !== null && "%"}</td><td className="font-mono">{x.published}</td>
+                      <td className={`font-mono ${x.avgScore !== null && x.avgScore < 70 ? "text-sadu" : ""}`}>{x.avgScore ?? "—"}<span className="text-ink/40"> · {x.judged}</span></td><td className="font-mono">{x.low}/{x.judged}</td><td className="font-mono">{x.avgHoursToDecide ?? "—"}</td><td></td>
                     </tr>
                   ))}
                 </Fragment>
@@ -268,7 +268,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
           </table>
         )}
         {evals && evals.users.length > 0 && (
-          <p className="mt-3 text-xs text-ink/60">{S.perWorkspace}: {evals.users.slice(0, 12).map((u) => `${u.email} (${u.n} items, approval ${u.approvalRate ?? "—"}${u.approvalRate !== null ? "%" : ""}, judge ${u.avgScore ?? "—"})`).join(" · ")}</p>
+          <p className="mt-3 text-xs text-ink/60">{S.perWorkspace}: {evals.users.slice(0, 12).map((u) => `${u.email} (${u.n} items, approval ${u.approvalRate ?? "—"}${u.approvalRate !== null ? `% of ${u.decided}` : ""}, judge ${u.avgScore ?? "—"}${u.avgScore !== null ? ` of ${u.judged}` : ""})`).join(" · ")}</p>
         )}
       </section>
       {tab === "quality" && <GoldenPanel lang={lang} />}

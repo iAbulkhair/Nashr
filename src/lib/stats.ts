@@ -10,7 +10,10 @@ export type Kpis = {
   approved: number;
   rejected: number;
   pending: number;
+  /** Over items a person decided. Auto-approved items are excluded: nobody reviewed them. */
   approvalRate: number | null;
+  /** Approved by the auto-approve setting, never opened by a person. */
+  autoApproved: number;
   published: number;
   images: number;
   scheduled: number;
@@ -84,8 +87,13 @@ export async function kpis(scope: string, days?: number, win?: { from: Date; to:
     const inDay = tasks.filter((t) => ms(t) >= a.getTime() && ms(t) < b.getTime());
     daily.push({ date: a.toISOString().slice(0, 10), created: inDay.length, approved: inDay.filter((t) => t.status === "approved").length, published: inDay.filter((t) => t.published > 0).length });
   }
+  // `approved` stays a volume: an auto-approved item really is approved and really does get published. The RATE is a
+  // judgment about the agent, so it is computed only over items a person decided (they carry decidedAt) — otherwise
+  // this tile and the agent table beneath it show two different approval rates for the same agents.
   const approved = cur.filter((t) => t.status === "approved").length;
   const rejected = cur.filter((t) => t.status === "rejected").length;
+  const reviewedApproved = cur.filter((t) => t.decidedAt && t.status === "approved").length;
+  const reviewedRejected = cur.filter((t) => t.decidedAt && t.status === "rejected").length;
   // The pending set covers every age; the rows only cover the window.
   const pending = Math.max(pendingIds.length, tasks.filter((t) => t.status === "pending").length);
   const byType: Record<string, number> = {};
@@ -113,7 +121,8 @@ export async function kpis(scope: string, days?: number, win?: { from: Date; to:
     approved,
     rejected,
     pending,
-    approvalRate: approved + rejected ? Math.round((approved / (approved + rejected)) * 100) : null,
+    approvalRate: reviewedApproved + reviewedRejected ? Math.round((reviewedApproved / (reviewedApproved + reviewedRejected)) * 100) : null,
+    autoApproved: approved - reviewedApproved,
     published: cur.filter((t) => t.published > 0).length,
     images: cur.filter((t) => t.image).length,
     scheduled: tasks.filter((t) => t.scheduledFor && t.scheduledFor >= now.toISOString().slice(0, 10)).length,

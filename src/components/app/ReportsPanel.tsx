@@ -168,8 +168,11 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
       </div>
 
       <section className="mt-8">
-        <h2 className="font-display text-lg font-semibold text-oasis">{R.qualityTitle}</h2>
+        {/* The table is computed over the selected range. Its title used to say "last 30 days" whatever was selected,
+            so on the default 7-day view it described a period four times longer than the numbers under it. */}
+        <h2 className="font-display text-lg font-semibold text-oasis">{R.qualityTitle} <span className="text-sm font-normal text-ink/50">· {Object.entries(R.ranges).find(([key]) => key === range)?.[1] ?? R.ranges.custom}</span></h2>
         <p className="mt-1 text-xs text-ink/60">{R.qualitySub}</p>
+        <p className="mt-1 text-xs text-ink/50">{R.denomNote}</p>
         <div className="mt-3 overflow-x-auto rounded-xl border border-ink/10 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-salt-dim text-xs text-ink/60"><tr><th className="p-2 text-start">{R.colAgent}</th><th>{R.colItems}</th><th>{R.colApproval}</th><th>{R.colEdit}</th><th>{R.colJudge}</th><th>{R.colLow}</th><th>{R.colThumbs}</th></tr></thead>
@@ -178,16 +181,18 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
                 <tr key={a.agent} className="border-t border-ink/5 text-center">
                   <td className="p-2 text-start font-medium">{t.agents[a.agent].name} <span className="text-xs text-ink/50">· {t.agents[a.agent].role}</span></td>
                   <td className="font-mono" dir="ltr">{a.n}</td>
-                  <td className="font-mono" dir="ltr">{a.approvalRate === null ? "—" : a.approvalRate + "%"}</td>
-                  <td className="font-mono" dir="ltr">{a.editRate === null ? "—" : a.editRate + "%"}</td>
-                  <td className={`font-mono ${a.avgScore !== null && a.avgScore < 70 ? "text-sadu" : a.avgScore !== null && a.avgScore >= 85 ? "text-oasis" : ""}`} dir="ltr">{a.avgScore ?? "—"}</td>
-                  <td className="font-mono" dir="ltr">{a.low}</td>
+                  {/* Each rate carries its own denominator. "Items" is not the denominator of any of them. */}
+                  <td className="font-mono" dir="ltr" data-testid={`q-approval-${a.agent}`}>{a.approvalRate === null ? "—" : a.approvalRate + "%"}<span className="text-ink/40"> · {a.decided}</span></td>
+                  <td className="font-mono" dir="ltr" data-testid={`q-edit-${a.agent}`}>{a.editRate === null ? "—" : a.editRate + "%"}<span className="text-ink/40"> · {a.reviewedApproved}</span></td>
+                  <td className={`font-mono ${a.avgScore !== null && a.avgScore < 70 ? "text-sadu" : a.avgScore !== null && a.avgScore >= 85 ? "text-oasis" : ""}`} dir="ltr" data-testid={`q-judge-${a.agent}`}>{a.avgScore ?? "—"}<span className="text-ink/40"> · {a.judged}</span></td>
+                  <td className="font-mono" dir="ltr" data-testid={`q-low-${a.agent}`}>{a.low}/{a.judged}</td>
                   <td className="font-mono" dir="ltr">{a.thumbsUp}/{a.thumbsDown}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        {quality.some((a) => a.autoApproved > 0) && <p className="mt-2 text-xs text-ink/50" data-testid="q-auto-note"><span className="font-mono" dir="ltr">{quality.reduce((s, a) => s + a.autoApproved, 0)}</span> {R.autoNote}</p>}
         <p className="mt-2 text-xs text-ink/50">{R.judgeNote}</p>
       </section>
 
