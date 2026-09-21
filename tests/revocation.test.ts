@@ -56,6 +56,7 @@ describe("sessions end when the password changes", () => {
 
     signOut();
     vi.stubEnv("RESEND_API_KEY", "test-key");
+    vi.stubEnv("MAIL_FROM", "Noor <noor@mail.nashr.test>");
     await forgot.POST(json("/api/auth/forgot", "POST", { email: u.email }, ip()));
     const token = lastMail.match(/token=([a-f0-9]{64})/)![1];
     expect((await reset.POST(json("/api/auth/reset", "POST", { token, password: "fresh12345" }, ip()))).status).toBe(200);

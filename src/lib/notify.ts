@@ -1,18 +1,51 @@
-import { db } from "./db";
+import { CAPS, db, pushCapped } from "./db";
+
+/**
+ * Whether email can actually reach a customer. It needs the API key AND a real sender. Without MAIL_FROM the sender is
+ * Resend's shared `onboarding@resend.dev`, which may deliver only to the Resend account owner's own address — so for
+ * every customer, email is effectively off. Screens that promise "a link is on its way" must ask this, not whether a
+ * key happens to be set.
+ */
+export const mailReady = () => !!process.env.RESEND_API_KEY && !!process.env.MAIL_FROM;
 
 /** Notification channels. Email via Resend when RESEND_API_KEY is set; WhatsApp when the Business API is approved. */
 export async function sendEmail(to: string, subject: string, text: string): Promise<boolean> {
   const key = process.env.RESEND_API_KEY;
   if (!key) return false;
+  const from = process.env.MAIL_FROM ?? "Noor at Nashr <onboarding@resend.dev>";
   try {
     const { Resend } = await import("resend");
     const resend = new Resend(key);
-    await resend.emails.send({ from: process.env.MAIL_FROM ?? "Noor at Nashr <onboarding@resend.dev>", to, subject, text });
+    // `send` RESOLVES with { data, error }; it does not throw when the API refuses the message (see the Response type
+    // in resend's own d.ts). The old code awaited it and returned true regardless, so a refused email was reported as
+    // sent: password resets, trial mail and weekly plans all silently went nowhere while every screen said they had
+    // been sent. The catch below only ever caught a transport failure, which is the rarer half of the problem.
+    const res = await resend.emails.send({ from, to, subject, text });
+    if (res.error) {
+      await mailFailed(from, res.error.message ?? res.error.name ?? "unknown");
+      return false;
+    }
     return true;
   } catch (e) {
-    console.error("email failed", e);
+    await mailFailed(from, e instanceof Error ? e.message : "transport error");
     return false;
   }
+}
+
+/**
+ * A refused email is an operational fact, not a log line nobody reads. The commonest cause is the default sender:
+ * without MAIL_FROM the address is Resend's `onboarding@resend.dev`, which may only deliver to the Resend account
+ * owner's own address, so every other recipient is rejected one at a time and in silence.
+ */
+async function mailFailed(from: string, reason: string) {
+  console.error("email refused", { from, reason });
+  // The recipient is deliberately NOT recorded: this ring is read by the founder console and an address here would
+  // turn a delivery log into a list of who asked for a password reset.
+  await pushCapped(
+    "admin:log",
+    JSON.stringify({ actor: "system", email: "mail", what: "mail:refused", after: { from, reason: reason.slice(0, 200) }, at: new Date().toISOString() }),
+    CAPS.adminLog,
+  ).catch(() => {});
 }
 
 /** Once-only guard for a named notification per user. */

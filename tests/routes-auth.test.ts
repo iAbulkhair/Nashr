@@ -17,7 +17,7 @@ let ipN = 0;
 const ip = () => ({ "x-real-ip": `203.0.113.${++ipN}` });
 const tokenFrom = (text: string) => text.match(/token=([a-f0-9]{64})/)![1];
 
-beforeEach(() => { sent.length = 0; signOut(); vi.stubEnv("RESEND_API_KEY", "test-key"); });
+beforeEach(() => { sent.length = 0; signOut(); vi.stubEnv("RESEND_API_KEY", "test-key"); vi.stubEnv("MAIL_FROM", "Noor <noor@mail.nashr.test>"); });
 
 describe("login throttle (rule 8)", () => {
   it("locks an account after 8 attempts in the window, even with the right password, and opens again after it", async () => {
@@ -81,6 +81,19 @@ describe("password reset (rule 9)", () => {
     const body = (await (await forgot.POST(json("/api/auth/forgot", "POST", { email: other.email }, ip()))).json()) as { mail: boolean };
     expect(body.mail).toBe(false);
     expect(sent).toHaveLength(0);
+  });
+
+  /**
+   * The production state on 2026-09-21: an API key, and no sender. Resend's default `onboarding@resend.dev` delivers
+   * only to the Resend account owner, so every customer's reset link was refused — while `mail: true` told the form to
+   * promise "a link arrives within minutes". The honest fallback (WhatsApp support, a manual reset) was never shown.
+   */
+  it("a key without a sender is not working mail: the form is told to send people to support", async () => {
+    vi.stubEnv("MAIL_FROM", "");
+    const u = await newUser("reset");
+    const body = (await (await forgot.POST(json("/api/auth/forgot", "POST", { email: u.email }, ip()))).json()) as { mail: boolean };
+    expect(body.mail, "the key is set, but nothing can reach a customer").toBe(false);
+    expect(sent, "and no link is attempted for a message that would only be refused").toHaveLength(0);
   });
 });
 

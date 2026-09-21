@@ -132,7 +132,10 @@ export function liteOf(t: Task): TaskLite {
     edited,
     editPct: edited ? Math.round((1 - similarity(t.body, t.editedBody!)) * 100) : undefined,
     image: !!t.imageUrl,
-    published: t.published?.length ?? 0,
+    // Only what actually went live. WordPress and Shopify connectors create DRAFTS by default, and counting those made
+    // the "Published via integrations" tile — and Dana's weekly report, which quotes it — claim posts were live that
+    // were sitting unpublished in the owner's CMS.
+    published: t.published?.filter((p) => p.status === "published").length ?? 0,
     score: t.quality?.score,
     notes: t.quality?.notes?.slice(0, 200),
   };

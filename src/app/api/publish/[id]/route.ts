@@ -22,6 +22,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   try {
     const r = await publishTask(sc(u), t, b.provider);
     t.published = [...(t.published ?? []), { provider: r.provider, url: r.url, status: r.status, at: new Date().toISOString() }];
+    // Publishing a pending item is the owner approving it, so it records when that happened. Without this the item was
+    // "approved" with no decidedAt, which the evals treat as auto-approved and leave out of every approval rate and
+    // out of "hours to decide" — the owner's own decision went uncounted.
+    if (t.status === "pending") t.decidedAt = new Date().toISOString();
     t.status = "approved";
     await saveTask(sc(u), t);
     await track(u.email, "publish");

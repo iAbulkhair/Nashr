@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "crypto";
 import { NextResponse } from "next/server";
 import { getUser, normalizeEmail } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { sendEmail } from "@/lib/notify";
+import { mailReady, sendEmail } from "@/lib/notify";
 import { allow, clientIp } from "@/lib/rate";
 
 const ORIGIN = () => process.env.APP_ORIGIN ?? "https://nashr-tau.vercel.app";
@@ -18,7 +18,10 @@ export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as { email?: string; lang?: string };
   const email = normalizeEmail(b.email ?? "");
   const lang = b.lang === "en" ? "en" : "ar";
-  const mail = !!process.env.RESEND_API_KEY;
+  // A key alone is not delivery. With RESEND_API_KEY set but no MAIL_FROM, every reset link was refused by Resend while
+  // this told the form to say "a link arrives within minutes" — so the honest fallback below (WhatsApp support and a
+  // manual reset) was never shown to anyone. It is shown until a real sender exists.
+  const mail = mailReady();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ ok: false, error: "bad_email" }, { status: 400 });
   if (!(await allow(`forgot:ip:${clientIp(req)}`, 8, 900)) || !(await allow(`forgot:em:${email}`, 3, 900))) return NextResponse.json({ ok: true, mail });
   const u = await getUser(email);
