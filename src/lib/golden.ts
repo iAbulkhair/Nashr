@@ -74,11 +74,21 @@ export type GoldenResult = {
   id: string; agent: AgentId; type: TaskType; brand: string; ok: boolean; error?: string;
   score: number | null; dims: Quality["dims"] | null; notes: string[]; checks: Check[];
   items: Generated[]; ms: number; delta: number | null;
+  /**
+   * startedAt of the run that actually measured this case, set when a single-agent rerun copied it forward. Without it
+   * a copied row was indistinguishable from a fresh one: it carried today's run id and date, and its delta against
+   * the run it was copied from was exactly 0 — so weeks-old results read as measured today and perfectly stable.
+   */
+  carried?: string;
 };
 export type GoldenRun = {
   id: string; version: number; trigger: "cron" | "manual"; startedAt: string; finishedAt: string;
   status: "complete" | "partial"; overall: number | null; usd: number;
-  agents: { agent: AgentId; cases: number; score: number | null; delta: number | null; failedChecks: number }[];
+  /**
+   * `checksRun` sits beside `failedChecks` because 0 failures means nothing without it: an agent whose cases all
+   * errored or were skipped ran no checks and showed a green tick, identical to one whose every check passed.
+   */
+  agents: { agent: AgentId; cases: number; score: number | null; delta: number | null; checksRun: number; failedChecks: number }[];
   results: GoldenResult[]; regressions: string[];
 };
 
@@ -158,20 +168,27 @@ export async function listGoldenRuns(limit = 12): Promise<GoldenRun[]> {
   return runs.filter((r): r is GoldenRun => !!r);
 }
 
-function summarize(run: GoldenRun, prev: GoldenRun | undefined) {
+/** Exported for tests: it decides what counts as a regression, and that decision is what the founder is alerted on. */
+export function summarize(run: GoldenRun, prev: GoldenRun | undefined) {
   const before = new Map((prev?.results ?? []).filter((r) => r.score !== null).map((r) => [r.id, r.score!]));
-  for (const r of run.results) r.delta = r.score !== null && before.has(r.id) ? Math.round((r.score - before.get(r.id)!) * 10) / 10 : null;
+  // A carried row was not measured in this run, so it has no delta: comparing it with the run it was copied from gave 0.
+  for (const r of run.results) r.delta = !r.carried && r.score !== null && before.has(r.id) ? Math.round((r.score - before.get(r.id)!) * 10) / 10 : null;
+  const compared = new Map<AgentId, number>();
   run.overall = mean(run.results.filter((r) => r.score !== null).map((r) => r.score!));
   run.agents = AGENTS.map((a) => {
     const mine = run.results.filter((r) => r.agent === a.id);
     const score = mean(mine.filter((r) => r.score !== null).map((r) => r.score!));
     // Agent delta compares the same cases only, so a partial run does not fake a drop.
-    const both = mine.filter((r) => r.score !== null && before.has(r.id));
+    const both = mine.filter((r) => !r.carried && r.score !== null && before.has(r.id));
+    compared.set(a.id, both.length);
     const delta = both.length ? Math.round(((mean(both.map((r) => r.score!)) ?? 0) - (mean(both.map((r) => before.get(r.id)!)) ?? 0)) * 10) / 10 : null;
-    return { agent: a.id, cases: mine.length, score, delta, failedChecks: mine.reduce((s, r) => s + r.checks.filter((c) => !c.pass).length, 0) };
+    return { agent: a.id, cases: mine.length, score, delta, checksRun: mine.reduce((s, r) => s + r.checks.length, 0), failedChecks: mine.reduce((s, r) => s + r.checks.filter((c) => !c.pass).length, 0) };
   }).filter((a) => a.cases > 0);
   const reg: string[] = [];
-  for (const a of run.agents) if (a.delta !== null && a.delta <= -AGENT_DROP) reg.push(`${a.agent}: ${a.delta} vs previous run`);
+  // An agent-level regression needs at least two compared cases. With one, the agent delta IS that case's delta, and
+  // the per-case rule below already judges it at CASE_DROP. Using the lower AGENT_DROP bar for it turned a single case
+  // moving 6-9 points — which the case rule deliberately ignores — into a founder alert naming the whole agent.
+  for (const a of run.agents) if (a.delta !== null && (compared.get(a.agent) ?? 0) >= 2 && a.delta <= -AGENT_DROP) reg.push(`${a.agent}: ${a.delta} vs previous run`);
   for (const r of run.results) {
     if (!r.ok) reg.push(`${r.id}: error ${r.error}`);
     else if (r.score !== null && r.score < LOW) reg.push(`${r.id}: score ${r.score}`);
@@ -195,7 +212,7 @@ export async function runGolden(trigger: "cron" | "manual", opts: { agent?: Agen
     const last = history[0];
     const resuming = !!(opts.resume && last && last.version === GOLDEN_VERSION && last.status === "partial");
     // Single-agent run: carry the other agents' results over from the latest run so the panel stays complete.
-    const carried = !resuming && opts.agent && last && last.version === GOLDEN_VERSION ? last.results.filter((r) => r.agent !== opts.agent) : [];
+    const carried = !resuming && opts.agent && last && last.version === GOLDEN_VERSION ? last.results.filter((r) => r.agent !== opts.agent).map((r) => ({ ...r, carried: r.carried ?? last.startedAt })) : [];
     const done = resuming ? last.results.filter((r) => r.ok) : carried;
     const queue = GOLDEN_CASES.filter((c) => (!opts.agent || agentForTask(c.type).id === opts.agent) && !done.some((r) => r.id === c.id));
     const usdBefore = (await getUsage(GOLDEN_EMAIL)).usd;
