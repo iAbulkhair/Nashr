@@ -1,5 +1,13 @@
 import { CAPS, db, pushCapped } from "./db";
 
+/**
+ * Whether email can actually reach a customer. It needs the API key AND a real sender. Without MAIL_FROM the sender is
+ * Resend's shared `onboarding@resend.dev`, which may deliver only to the Resend account owner's own address — so for
+ * every customer, email is effectively off. Screens that promise "a link is on its way" must ask this, not whether a
+ * key happens to be set.
+ */
+export const mailReady = () => !!process.env.RESEND_API_KEY && !!process.env.MAIL_FROM;
+
 /** Notification channels. Email via Resend when RESEND_API_KEY is set; WhatsApp when the Business API is approved. */
 export async function sendEmail(to: string, subject: string, text: string): Promise<boolean> {
   const key = process.env.RESEND_API_KEY;
