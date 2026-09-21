@@ -82,7 +82,7 @@ describe("the report window is not re-anchored to today", () => {
     await saveTask(scope, task({ createdAt: inLastYear }), true);
     await saveTask(scope, task({ createdAt: thisYear }), true);
     const win = { from: new Date(Date.UTC(now.getUTCFullYear() - 1, 0, 1)), to: new Date(Date.UTC(now.getUTCFullYear(), 0, 1) - 1) };
-    const noor = (await scopeMetrics(scope, scope, win)).find((a) => a.agent === "noor")!;
+    const noor = (await scopeMetrics(scope, win)).find((a) => a.agent === "noor")!;
     expect(noor.n, "this year's item must not appear in last year's table").toBe(1);
   });
 });

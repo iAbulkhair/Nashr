@@ -3,6 +3,7 @@ import { PLAN_CREDITS, getUser, type Plan } from "./auth";
 import { getBrand, listLite, TASK_COST, TASK_COUNT, IMAGE_COST } from "./brand";
 import { getUsage } from "./usage";
 import { pmap } from "./parallel";
+import { listBrands, scopeFor } from "./brands";
 import { EVENTS, activeCount, day, dayCount, firstEvent, isoWeek, lastActive, userEvents, type Event } from "./track";
 
 /** Founder overview: growth, activation, engagement, revenue estimate, health. All from Redis; no external tool. */
@@ -61,10 +62,14 @@ export async function overview(): Promise<Overview> {
   const errors7d = events.slice(-7).reduce((s, x) => s + (x.counts.error ?? 0), 0);
   const errorsToday = events[events.length - 1]?.counts.error ?? 0;
 
-  // credits consumed this month across all workspaces (from tasks), model cost from usage totals
+  // Credits consumed this month across EVERY brand of every account, then model cost from usage totals. This read
+  // `listLite(u.email)`, which is the default brand only — an extra brand's tasks live under `email#brandId` — so an
+  // agency that spent 10 credits on its default brand and 1,500 across four others showed 10, and the gross margin
+  // beside it was computed against a fraction of the real spend.
   const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).getTime();
-  const perUser = await pmap(users, async (u) => (await listLite(u.email, new Date(monthStart))).reduce((s, t) => s + (TASK_COST[t.type] ?? 1) / (TASK_COUNT[t.type] ?? 1) + (t.image ? IMAGE_COST : 0), 0), 6);
-  const creditsUsed = perUser.reduce((s, x) => s + x, 0);
+  const scopes = (await pmap(users, async (u) => (await listBrands(u.email)).map((b) => scopeFor(u.email, b.id)), 6)).flat();
+  const perScope = await pmap(scopes, async (scope) => (await listLite(scope, new Date(monthStart))).reduce((s, t) => s + (TASK_COST[t.type] ?? 1) / (TASK_COUNT[t.type] ?? 1) + (t.image ? IMAGE_COST : 0), 0), 6);
+  const creditsUsed = perScope.reduce((s, x) => s + x, 0);
   const total = await getUsage("_all");
   const usdToSar = 3.75;
   const grossMargin = mrr > 0 ? Math.round(((mrr - total.usd * usdToSar) / mrr) * 100) : null;

@@ -6,6 +6,7 @@ import { revokeAllGrants } from "./oauth";
 import { EVENTS } from "./track";
 import { codeFor } from "./referral";
 import { monthKey } from "./credits";
+import { AGENTS } from "./agents";
 
 /** Every per-month usage counter this account can have, from signup month to now. */
 function usageKeys(email: string): string[] {
@@ -36,6 +37,9 @@ export async function wipeAccount(email: string) {
       ...convIds.flatMap((id) => [`conv:${s}:${id}`, `chat:${s}:${id}`]),
       ...conns.map((p) => `conn:${s}:${p}`), // encrypted third-party credentials
       ...months.map((m) => `tidx:${s}:${m}`),
+      // The chat feedback log: per brand, and it holds the free-text reason the owner typed, so it must not outlive
+      // the account. wipeAccount never deleted it at all.
+      `fblog:${s}`,
       `onboardplan:${s}`, `pending:${s}`, `pendingidx:${s}`, `tidxm:${s}`, `tidxv:${s}`, `tasks:${s}`, `files:${s}`, `brand:${s}`, `prefs:${s}`, `chat:${s}`, `convs:${s}`, `gov:${s}`, `schedule:${s}`, `brief:${s}`, `conns:${s}`,
     );
   }
@@ -64,6 +68,8 @@ export async function wipeAccount(email: string) {
     ...EVENTS.flatMap((ev) => [`uev:${e}:${ev}`, `ufirst:${e}:${ev}`, `ufirst0:${e}:${ev}`]),
     // Model-spend counters for the months this account could have been active.
     ...usageKeys(e),
+    // Lifetime thumbs counters from before the feedback log replaced them. No longer written, but never deleted either.
+    ...AGENTS.flatMap((a) => [`fb:${e}:${a.id}:up`, `fb:${e}:${a.id}:down`]),
   );
   await pmap(keys, (k) => db.del(k));
   await Promise.all([db.srem("users:all", e), db.lpush("deleted-accounts", JSON.stringify({ email: e, at: new Date().toISOString() }))]);

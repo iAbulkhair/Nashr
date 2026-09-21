@@ -84,8 +84,8 @@ export function typeMetrics(tasks: TaskLite[]): TypeMetrics[] {
  * (CAPS.feedback), so on a very long window for a very active account the oldest thumbs fall outside it — an
  * undercount at the far edge, never a thumb counted in the wrong period.
  */
-async function thumbsIn(emails: string[], win: Window): Promise<Map<AgentId, { up: number; down: number }>> {
-  const logs = await pmap(emails, (e) => db.lrange(`fblog:${e}`, 0, -1));
+async function thumbsIn(scopes: string[], win: Window): Promise<Map<AgentId, { up: number; down: number }>> {
+  const logs = await pmap(scopes, (s) => db.lrange(`fblog:${s}`, 0, -1));
   const from = win.from.getTime(), to = win.to.getTime();
   const known = new Set<string>(AGENTS.map((a) => a.id));
   const out = new Map<AgentId, { up: number; down: number }>();
@@ -104,10 +104,10 @@ async function thumbsIn(emails: string[], win: Window): Promise<Map<AgentId, { u
   return out;
 }
 
-/** Roll type metrics up per agent. `emails` are the accounts whose chat thumbs count; `win` bounds the thumbs. */
-export async function agentMetrics(tasks: TaskLite[], emails: string[], win: Window): Promise<AgentMetrics[]> {
+/** Roll type metrics up per agent. `scopes` are the workspaces whose chat thumbs count; `win` bounds the thumbs. */
+export async function agentMetrics(tasks: TaskLite[], scopes: string[], win: Window): Promise<AgentMetrics[]> {
   const types = typeMetrics(tasks);
-  const fb = await thumbsIn([...new Set(emails)], win);
+  const fb = await thumbsIn([...new Set(scopes)], win);
   return AGENTS.map((a) => {
     const ts = tasks.filter((t) => agentForTask(t.type).id === a.id);
     const approved = ts.filter((t) => reviewed(t) && t.status === "approved");
@@ -129,34 +129,65 @@ export async function agentMetrics(tasks: TaskLite[], emails: string[], win: Win
  * year" put 2025 in the KPI tiles and the trailing twelve months in the agent table directly beneath them, under a
  * single range pill — two panels that could not be reconciled and no way to tell which one was wrong.
  */
-export async function scopeMetrics(scope: string, email: string, win: Window) {
+export async function scopeMetrics(scope: string, win: Window) {
   const rows = (await listLite(scope, win.from)).filter((t) => new Date(t.createdAt) <= win.to);
-  return agentMetrics(rows, [email], win);
+  // The thumbs of THIS workspace. They were read by account email while the tasks were read by brand scope, so on a
+  // multi-brand account every brand's report showed every brand's thumbs beside its own approval and judge figures.
+  return agentMetrics(rows, [scope], win);
+}
+
+/**
+ * Every workspace that holds tasks, including suspended accounts and archived brands.
+ *
+ * globalMetrics used `allUsers()`, which is the SCHEDULER's roster and rightly skips both. Reused here, it meant the
+ * table titled "all workspaces" silently dropped them — and their tasks are still in Redis. Each time an account with
+ * poor results was suspended, or a brand whose output was wrong was archived, its rejections and low judge scores left
+ * the fleet figures, so quality appeared to improve at exactly the moment it was causing churn. Those rows are now
+ * counted and flagged instead of hidden.
+ */
+async function everyWorkspace() {
+  const [{ getUser }, { listBrands, scopeFor }] = await Promise.all([import("./auth"), import("./brands")]);
+  const emails = await db.smembers("users:all");
+  const groups = await pmap(emails, async (e) => {
+    const [u, brands] = await Promise.all([getUser(e), listBrands(e)]);
+    if (!u) return [];
+    return brands.map((b) => {
+      const scope = scopeFor(e, b.id);
+      // Per brand, and labelled that way. The rows were one per brand scope but printed as the bare email, so an
+      // agency with five brands appeared five times under one name with five different sets of numbers.
+      const label = scope === e ? e : `${e} · ${b.name || b.id}`;
+      return { email: e, scope, label, suspended: !!u.suspended, archived: b.status !== "active" };
+    });
+  });
+  return groups.flat();
 }
 
 /** Admin: every workspace in the system, over the trailing `sinceDays`. */
 export async function globalMetrics(sinceDays = 30) {
-  const { allUsers } = await import("./schedule");
   const win: Window = { from: new Date(Date.now() - sinceDays * 864e5), to: new Date() };
   const all: TaskLite[] = [];
-  const emails: string[] = [];
-  const users: { email: string; scope: string; n: number; decided: number; approvalRate: number | null; judged: number; avgScore: number | null }[] = [];
-  const list = await allUsers();
-  const taskSets = await pmap(list, (u) => listLite(u.scope ?? u.email, win.from), 6);
-  for (const [i, u] of list.entries()) {
-    const scope = u.scope ?? u.email;
+  const users: { email: string; scope: string; label: string; suspended: boolean; archived: boolean; n: number; decided: number; approvalRate: number | null; judged: number; avgScore: number | null }[] = [];
+  const list = await everyWorkspace();
+  const taskSets = await pmap(list, (w) => listLite(w.scope, win.from), 6);
+  for (const [i, w] of list.entries()) {
     const tasks = taskSets[i];
     all.push(...tasks);
-    emails.push(u.email);
     const approved = tasks.filter((t) => reviewed(t) && t.status === "approved").length;
     const decided = approved + tasks.filter((t) => reviewed(t) && t.status === "rejected").length;
     const scores = tasks.filter((t) => typeof t.score === "number").map((t) => t.score!);
-    users.push({ email: u.email, scope, n: tasks.length, decided, approvalRate: pct(approved, decided), judged: scores.length, avgScore: avg(scores) });
+    users.push({ email: w.email, scope: w.scope, label: w.label, suspended: w.suspended, archived: w.archived, n: tasks.length, decided, approvalRate: pct(approved, decided), judged: scores.length, avgScore: avg(scores) });
   }
-  return { sinceDays, agents: await agentMetrics(all, emails, win), users: users.filter((x) => x.n > 0).sort((a, b) => b.n - a.n) };
+  return { sinceDays, agents: await agentMetrics(all, list.map((w) => w.scope), win), users: users.filter((x) => x.n > 0).sort((a, b) => b.n - a.n) };
 }
 
-export async function recordThumb(email: string, agent: AgentId, value: 1 | -1, reason?: string, at?: string) {
-  await db.incrby(`fb:${email}:${agent}:${value > 0 ? "up" : "down"}`, 1);
-  await pushCapped(`fblog:${email}`, JSON.stringify({ agent, value, reason: (reason ?? "").slice(0, 300), msgAt: at ?? null, at: new Date().toISOString() }), CAPS.feedback);
+/**
+ * A thumb on an agent's chat reply, recorded against the workspace the chat ran in. Chat history is stored per brand,
+ * so its feedback is too. For the default brand the scope IS the email, so thumbs already recorded there are unchanged;
+ * thumbs recorded on another brand before this change remain under the account and now count toward the default.
+ *
+ * The `fb:{email}:{agent}:up|down` counters are no longer written: nothing has read them since thumbs moved to the
+ * timestamped log, and a counter that only grows was the reason the old column could never show an agent improving.
+ */
+export async function recordThumb(scope: string, agent: AgentId, value: 1 | -1, reason?: string, at?: string) {
+  await pushCapped(`fblog:${scope}`, JSON.stringify({ agent, value, reason: (reason ?? "").slice(0, 300), msgAt: at ?? null, at: new Date().toISOString() }), CAPS.feedback);
 }
