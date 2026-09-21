@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentUser } from "@/lib/auth";
+import { currentUser, sc } from "@/lib/auth";
 import { isAgentId } from "@/lib/agents";
 import { recordThumb } from "@/lib/evals";
 
@@ -9,6 +9,7 @@ export async function POST(req: Request) {
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const b = (await req.json().catch(() => ({}))) as { agent?: string; value?: number; reason?: string; at?: string };
   if (!isAgentId(b.agent) || (b.value !== 1 && b.value !== -1)) return NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
-  await recordThumb(u.email, b.agent, b.value, b.reason, b.at);
+  // Against the workspace the chat ran in: chat history is per brand, so a thumb on it is too.
+  await recordThumb(sc(u), b.agent, b.value, b.reason, b.at);
   return NextResponse.json({ ok: true });
 }

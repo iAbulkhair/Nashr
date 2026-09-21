@@ -42,6 +42,14 @@ Legend: **test** = pinned by an automated test in `tests/` · **none** = nothing
 | 34 | The Shopify OAuth callback refuses a shop that is not a `myshopify.com` host before the client secret is posted to it | test (`regressions.test.ts`) | done |
 | 36 | Every task the approvals badge counts is reachable in the inbox, past the 200 newest tasks: buried pending items are returned with their bodies, never duplicated, newest-first and stably ordered, and a pending id whose record is gone is cleared rather than counted | test (`pending-reachable.test.ts`) | done |
 | 35 | Token cost is recorded per kind of call per account, so the cost of one request type is a read | test (`e2e-journey.test.ts`: generate/review/judge, arithmetic against the rates in `src/lib/usage.ts`) | done |
+| 56 | The golden cron compares its secret with `sameSecret` and parses the bearer like its siblings | test (`eval-p2p3.test.ts`) | done |
+| 57 | A KPI change names what it is compared with ("previous period", not "last month") and always shows the base; a change off zero is an absolute number | test (`kpi-delta.ts` via `eval-p2p3.test.ts`) | done |
+| 58 | The admin quality table covers every workspace — suspended accounts and archived brands included and flagged — and labels each row by brand | test (`eval-p2p3.test.ts`) | done |
+| 59 | Chat thumbs are written and read per brand scope, and deleting an account deletes them, including the owner's typed reason | test (`eval-p2p3.test.ts`: the route, the report, and `wipeAccount`) | done |
+| 60 | Founder "credits used this month" sums every brand of every account | test (`eval-p2p3.test.ts`, differential on a second brand) | done |
+| 61 | The golden summary: a row carried from an older run has no delta; checks run are counted beside checks failed; an agent regression needs two compared cases | test (`eval-p2p3.test.ts`, `summarize` exported) | the panel's rendering of carried rows is not asserted |
+| 62 | Untrusted text reaches the judge and the reviewer tagged and escaped as data, with an instruction that text addressing them is itself a failure | test (`eval-p2p3.test.ts`: `asData` round-trips and cannot close its tag; the judge prompt) | the reviewer's prompt is not asserted; a model instruction reduces, not removes, injection risk |
+| 63 | A refused generation is metered before the refusal is raised | test (`eval-p2p3.test.ts`, SDK mocked) | done |
 | 49 | An approval rate counts only items a person decided (`decidedAt`); auto-approved items are counted separately and kept out of every rate, in the agent table and the KPI tile alike. Publishing a pending item records `decidedAt`, because it is the owner's decision | test (`eval-truth.test.ts`: 10 auto-approved + 1 approved + 1 rejected reads 50%, not 92%) | done |
 | 50 | Chat thumbs are counted inside the report window, from the timestamped feedback log, never from lifetime counters | test (`eval-truth.test.ts`) | done |
 | 51 | The agent table covers exactly the selected window; a past range is not re-anchored to today | test (`eval-truth.test.ts`: "last year" excludes this year) | done |
@@ -70,6 +78,12 @@ Rule 8 was marked "done" on 2026-09-20 for the first time honestly. The row had 
 text admitted that signup and admin key login were "still manual", and reset was not mentioned at all — three of the
 five throttles it names had no test. All three now have one, each asserting the exact attempt at which the limiter
 bites; widening any of the three limits fails its test.
+
+Rules 56-63 were added on 2026-09-21 from the P2 and P3 half of the eval audit. Of 39 findings, re-verification
+against main found 13 already fixed by the P1 work, 2 not defects and 5 refuted; the 19 confirmed ones reduced to 12
+root causes, because the audit had found several of the same bugs from different angles. Each fix was checked by
+reverting it (15 reverts, all failing). One defect was found outside the register while doing this: `wipeAccount` had
+never deleted the chat feedback log, so a deleted account's typed feedback survived it.
 
 Rules 49-55 were added on 2026-09-21 from an audit of the eval subsystem itself (7 dimensions, 67 agents, 51 of 60
 claims confirmed, 12 of them P1). The theme was consistent: the numbers a founder would use to widen auto-approve or

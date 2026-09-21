@@ -21,3 +21,11 @@ export function parseObjectArray(text: string): Array<Record<string, unknown>> {
   }
   throw new Error("no_json_in_reply");
 }
+
+/**
+ * Serialise untrusted text for a model prompt so it cannot close the tag it sits in. Item bodies are model output and
+ * brand fields were written by a model from a crawled website: both are untrusted input, and a body containing
+ * "</items>" must not be able to end the data block and start speaking to the model. Still valid JSON — "<" becomes
+ * the escape "\u003c", which any JSON reader turns back into "<".
+ */
+export const asData = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c");

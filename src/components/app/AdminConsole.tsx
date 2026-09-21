@@ -65,7 +65,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
   const [total, setTotal] = useState<{ usd: number; in: number; out: number; calls: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
-  const [evals, setEvals] = useState<{ agents: AM[]; users: { email: string; n: number; decided: number; approvalRate: number | null; judged: number; avgScore: number | null }[] } | null>(null);
+  const [evals, setEvals] = useState<{ agents: AM[]; users: { email: string; label: string; suspended: boolean; archived: boolean; n: number; decided: number; approvalRate: number | null; judged: number; avgScore: number | null }[] } | null>(null);
 
   async function load() {
     const r = await fetch("/api/admin/plan");
@@ -268,7 +268,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
           </table>
         )}
         {evals && evals.users.length > 0 && (
-          <p className="mt-3 text-xs text-ink/60">{S.perWorkspace}: {evals.users.slice(0, 12).map((u) => `${u.email} (${u.n} items, approval ${u.approvalRate ?? "—"}${u.approvalRate !== null ? `% of ${u.decided}` : ""}, judge ${u.avgScore ?? "—"}${u.avgScore !== null ? ` of ${u.judged}` : ""})`).join(" · ")}</p>
+          <p className="mt-3 text-xs text-ink/60">{S.perWorkspace}: {evals.users.slice(0, 12).map((u) => `${u.label}${u.suspended ? " [suspended]" : ""}${u.archived ? " [archived]" : ""} (${u.n} items, approval ${u.approvalRate ?? "—"}${u.approvalRate !== null ? `% of ${u.decided}` : ""}, judge ${u.avgScore ?? "—"}${u.avgScore !== null ? ` of ${u.judged}` : ""})`).join(" · ")}</p>
         )}
       </section>
       {tab === "quality" && <GoldenPanel lang={lang} />}

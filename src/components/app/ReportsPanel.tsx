@@ -9,6 +9,7 @@ import { limitFromError } from "./LimitModal";
 import type { Kpis } from "@/lib/stats";
 import type { AgentMetrics } from "@/lib/evals";
 import type { Lang } from "@/lib/i18n";
+import { kpiDelta } from "@/lib/kpi-delta";
 
 type Item = { id: string; type: TaskType; title: string; status: string; createdAt: string };
 
@@ -45,12 +46,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
     setMsg(map[j.error] ?? t.generate.failed);
   }
 
-  const delta = (cur: number, prev: number) => {
-    if (!prev && !cur) return "";
-    if (!prev) return "↑";
-    const d = Math.round(((cur - prev) / prev) * 100);
-    return `${d >= 0 ? "↑" : "↓"} ${Math.abs(d)}% ${R.vsPrev}`;
-  };
+  const delta = (cur: number, prev: number) => kpiDelta(cur, prev, R.vsPrev);
   const value: Record<MetricKey, { label: string; value: string; sub?: string }> = {
     created: { label: R.created, value: String(k.created), sub: delta(k.created, k.createdPrev) },
     approved: { label: R.approved, value: String(k.approved) },

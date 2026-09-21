@@ -85,7 +85,7 @@ Files: `src/app/api/chat/route.ts`, `src/lib/chat.ts`, `src/lib/noor.ts`, `src/l
 5. `draft_items` (`chat.ts:251`): types `social|whatsapp|ads|gbp`; count clamped to 1..3; cost `max(1, ceil(TASK_COST/TASK_COUNT * count))`; otherwise identical.
 6. Status for new tasks: `approved` when `gov.autoApprove[type]` is true, else `pending`.
 7. Final assistant message stored with `items` (max 10 cards) and returned. `limit` is `credits` or `trial` when a tool hit that wall.
-8. `POST /api/chat/feedback {agent, value: 1|-1, reason?, at?}` records thumbs in `fb:` and `fblog:` keyed by account email.
+8. `POST /api/chat/feedback {agent, value: 1|-1, reason?, at?}` records the thumb in `fblog:{scope}`, keyed by the ACTIVE BRAND's scope (chat history is per brand, so its feedback is too). The old `fb:{email}:{agent}:up|down` lifetime counters are no longer written (2026-09-21).
 9. Without `ANTHROPIC_API_KEY` the chat returns a `[DEV MOCK]` message before any tool runs (`chat.ts:165`), and `generate` returns mock items (`noor.ts:139`). Callers that reach `generate` directly (`/api/generate`, MCP `generate_content`, `runWeekly`) still charge credits for the mock items.
 
 ## 8. Credits: charge and refund
