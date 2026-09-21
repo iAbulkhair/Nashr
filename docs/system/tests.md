@@ -42,6 +42,13 @@ Legend: **test** = pinned by an automated test in `tests/` · **none** = nothing
 | 34 | The Shopify OAuth callback refuses a shop that is not a `myshopify.com` host before the client secret is posted to it | test (`regressions.test.ts`) | done |
 | 36 | Every task the approvals badge counts is reachable in the inbox, past the 200 newest tasks: buried pending items are returned with their bodies, never duplicated, newest-first and stably ordered, and a pending id whose record is gone is cleared rather than counted | test (`pending-reachable.test.ts`) | done |
 | 35 | Token cost is recorded per kind of call per account, so the cost of one request type is a read | test (`e2e-journey.test.ts`: generate/review/judge, arithmetic against the rates in `src/lib/usage.ts`) | done |
+| 49 | An approval rate counts only items a person decided (`decidedAt`); auto-approved items are counted separately and kept out of every rate, in the agent table and the KPI tile alike. Publishing a pending item records `decidedAt`, because it is the owner's decision | test (`eval-truth.test.ts`: 10 auto-approved + 1 approved + 1 rejected reads 50%, not 92%) | done |
+| 50 | Chat thumbs are counted inside the report window, from the timestamped feedback log, never from lifetime counters | test (`eval-truth.test.ts`) | done |
+| 51 | The agent table covers exactly the selected window; a past range is not re-anchored to today | test (`eval-truth.test.ts`: "last year" excludes this year) | done |
+| 52 | Every rate is shown with its own denominator (decided, reviewed-approved, judged); "Items" is the denominator of none of them | test (the counts are returned and asserted) and the rendered cells carry `data-testid`s | the rendered denominators are not asserted in E2E |
+| 53 | "Published" counts only live publications, never CMS drafts | test (`eval-truth.test.ts`) | done |
+| 54 | The judge leaves an item unjudged rather than scoring it 0 when its reply is short or a dimension is missing, and is told about a shortfall against what the owner REQUESTED, not what was delivered | test (`eval-truth.test.ts`, with the SDK mocked) | done |
+| 55 | The golden set's invented-price check compares whole numbers, so a price hiding inside "2025" or "250" is caught | test (`eval-truth.test.ts`) | done |
 | 48 | A session cookie is marked `Secure` unless the connection is plain http to the loopback interface; the flag follows the transport, never `NODE_ENV` | test (`regressions.test.ts`: loopback forms, https, a real host over http, and a `localhost.evil.example` look-alike) | done |
 | 46 | An OAuth redirect URI is https, or http only on the loopback interface, and never carries a fragment — enforced at registration AND again when a code is about to be issued, so a client registered before the rule cannot still be paid out to | test (`regressions.test.ts`: the loopback forms, look-alike hosts such as `127.0.0.1.evil.example`, registerClient dropping a bad URI while keeping a good one, and a stored plaintext URI refused at approval while the client's good URI still works) | done |
 | 47 | A placeholder image is refunded: the owner is not charged when the image service is unreachable | test (`regressions.test.ts`: the route reports the restored balance and the record shows it) | the chat tool's refund, which is covered only by the shared code path |
@@ -63,6 +70,14 @@ Rule 8 was marked "done" on 2026-09-20 for the first time honestly. The row had 
 text admitted that signup and admin key login were "still manual", and reset was not mentioned at all — three of the
 five throttles it names had no test. All three now have one, each asserting the exact attempt at which the limiter
 bites; widening any of the three limits fails its test.
+
+Rules 49-55 were added on 2026-09-21 from an audit of the eval subsystem itself (7 dimensions, 67 agents, 51 of 60
+claims confirmed, 12 of them P1). The theme was consistent: the numbers a founder would use to widen auto-approve or
+drop an agent were each individually computed and collectively false — an approval rate made of items nobody opened,
+thumbs that could never improve, a table covering a different period from the tiles above it. Each rule was checked
+by reverting its fix and watching its test fail. Two first attempts at that check did not load (the reverted code
+had a syntax error) and one did not fail because the fix has two independent guards; all three were redone properly
+before being counted.
 
 Rule 48 was added on 2026-09-20 after CI failed on the pull request. All five session cookies were marked Secure
 when `NODE_ENV === "production"`, which describes the build and not the connection. The end-to-end harness serves a

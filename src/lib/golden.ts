@@ -111,9 +111,12 @@ export function hardChecks(c: GoldenCase, brand: Brand, items: Generated[]): Che
   }
 
   if (c.noPrices) {
-    const known = digits(`${brand.products} ${brand.offers} ${c.extra ?? ""} ${c.stats ?? ""}`);
+    // Compare whole NUMBERS. `known` used to be the brand text itself and the test was `known.includes(n)` — a substring
+    // search — so an invented price of 25 passed whenever "2025", "250" or a phone number appeared anywhere in the
+    // brand file. The check meant to catch fabricated prices passed almost every one of them.
+    const known = new Set([...digits(`${brand.products} ${brand.offers} ${c.extra ?? ""} ${c.stats ?? ""}`).matchAll(/\d+(?:\.\d+)?/g)].map((m) => Number(m[0])));
     const found = [...digits(all).matchAll(/(\d+(?:\.\d+)?)\s*(?:ريال|ر\.س|درهم|SAR|AED|SR)|(?:SAR|AED|SR)\s*(\d+(?:\.\d+)?)/gi)].map((m) => m[1] ?? m[2]);
-    const invented = [...new Set(found.filter((n) => !known.includes(n)))];
+    const invented = [...new Set(found.filter((n) => !known.has(Number(n))))];
     out.push({ name: "no invented prices", pass: invented.length === 0, detail: invented.join(", ") || undefined });
   }
   if (c.maxChars) {
@@ -135,9 +138,14 @@ async function runCase(c: GoldenCase): Promise<GoldenResult> {
   try {
     items = await generate(c.type, brand, [], c.extra, { meter: GOLDEN_EMAIL, stats: c.stats, count: c.count });
     stage = "judge";
-    const q = await scoreItems(GOLDEN_EMAIL, brand, c.type, items);
+    const verdicts = await scoreItems(GOLDEN_EMAIL, brand, c.type, items, c.count);
+    // An unjudged item is left out of the mean rather than counted as 0, and the gap is written into the notes so a
+    // run where the judge answered for half the items does not read as a clean score.
+    const q = verdicts.filter((x): x is Quality => !!x);
+    const missing = verdicts.length - q.length;
     const dims = q.length ? (Object.fromEntries((Object.keys(q[0].dims) as (keyof Quality["dims"])[]).map((k) => [k, Math.round(mean(q.map((x) => x.dims[k])) ?? 0)])) as Quality["dims"]) : null;
-    return { ...head, ok: true, score: mean(q.map((x) => x.score)), dims, notes: q.map((x) => x.notes).filter(Boolean), checks: hardChecks(c, brand, items), items: items.map(trim), ms: Date.now() - t0 };
+    const notes = [...(missing ? [`judge returned no verdict for ${missing} of ${verdicts.length} item(s)`] : []), ...q.map((x) => x.notes).filter(Boolean)];
+    return { ...head, ok: true, score: mean(q.map((x) => x.score)), dims, notes, checks: hardChecks(c, brand, items), items: items.map(trim), ms: Date.now() - t0 };
   } catch (e) {
     // Keep the output and the deterministic checks when only the judge failed.
     return { ...head, ok: false, error: `${stage}: ${(e instanceof Error ? e.message : String(e)).slice(0, 180)}`, score: null, dims: null, notes: [], checks: items.length ? hardChecks(c, brand, items) : [], items: items.map(trim), ms: Date.now() - t0 };

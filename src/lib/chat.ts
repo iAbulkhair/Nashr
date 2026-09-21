@@ -293,7 +293,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
         await saveTask(email, t, true);
         created.push(t);
       }
-      judgeLater(email, user.email, brand, created);
+      judgeLater(email, user.email, brand, created, count);
       made.push(...created);
       actions.push(`drafted:${type}:${items.length}`);
       return `Drafted ${items.length} ${type} item(s) (${cost} credit${cost > 1 ? "s" : ""}); also in the inbox. Credits left: ${user.credits}.\n\nITEM BODIES (show these to the owner, formatted and ready to copy):\n${items.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body}`).join("\n\n")}`;
