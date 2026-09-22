@@ -7,7 +7,7 @@ desc_en: Posting after Iftar, last-ten-nights campaigns, Iftar boxes, Eid gifts,
 ---
 ## الإيقاع اليومي يتغيّر
 
-النشاط ينتقل إلى ما بعد الإفطار (20:30–01:00) وقبل السحور. انشر وأعلن في هذه النوافذ. الصباح شبه ميت.
+النشاط ينتقل إلى ما بعد الإفطار (20:30–01:00) وقبل السحور. انشر وأعلن في هذه النوافذ.
 
 ## المراحل
 
@@ -33,7 +33,7 @@ desc_en: Posting after Iftar, last-ten-nights campaigns, Iftar boxes, Eid gifts,
 ---EN---
 ## The daily rhythm changes
 
-Activity moves to after Iftar (20:30–01:00) and before Suhoor. Post and advertise in those windows. Mornings are nearly dead.
+Activity moves to after Iftar (20:30–01:00) and before Suhoor. Post and advertise in those windows.
 
 ## Phases
 

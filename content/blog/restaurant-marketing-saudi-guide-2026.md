@@ -7,7 +7,7 @@ desc_en: Google Business first, posting times, review replies, delivery apps, di
 ---
 ## الترتيب الصحيح
 
-1. **Google Business Profile** — الأغلبية تقرر من الخريطة. منشور أسبوعي بزر "اطلب"، صور حديثة، ساعات دقيقة، رد على كل مراجعة خلال 24 ساعة.
+1. **Google Business Profile** — منشور أسبوعي بزر "اطلب"، صور حديثة، ساعات دقيقة، رد على كل مراجعة خلال 24 ساعة.
 2. **تطبيقات التوصيل** — عرض واحد فعّال دائماً، وصور موحّدة.
 3. **إنستقرام وسناب** — فيديو الطبق ≤10 ثوانٍ، ما وراء المطبخ، الفرع والحي.
 4. **واتساب** — الطلب المسبق للمناسبات وبوكسات رمضان.
@@ -33,7 +33,7 @@ desc_en: Google Business first, posting times, review replies, delivery apps, di
 ---EN---
 ## The right order
 
-1. **Google Business Profile** — most people decide from the map. Weekly post with an Order button, fresh photos, exact hours, reply to every review within 24 hours.
+1. **Google Business Profile** — weekly post with an Order button, fresh photos, exact hours, reply to every review within 24 hours.
 2. **Delivery apps** — one always-on offer, consistent photos.
 3. **Instagram and Snap** — dish video ≤10s, behind the kitchen, the branch and its neighborhood.
 4. **WhatsApp** — pre-orders for occasions and Ramadan boxes.

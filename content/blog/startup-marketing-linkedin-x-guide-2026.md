@@ -23,13 +23,13 @@ desc_en: Founder voice, weekly cadence, launching with a thread, small-budget ad
 
 ## الإعلانات بميزانية صغيرة
 
-3 هوكات × جمهورين × 50 ريال/يوم. قرار بعد 3 أيام: CTR < 1% = أوقف.
+3 هوكات × جمهورين × 50 ريال/يوم. قرار بعد 7 أيام: CTR < 1% = أوقف.
 
 ## ما يقرؤه المستثمرون
 
 نمو أسبوعي، احتفاظ، CAC مقابل LTV، وقصة عميل. سطران في التحديث الشهري.
 
-**نور** تكتب المنشورات الخمسة بصوتك كل أسبوع — [للشركات الناشئة](/ar/for/startups).
+**نور** تكتب هذه المنشورات بصوتك — [للشركات الناشئة](/ar/for/startups).
 
 ---EN---
 ## The founder is the channel
@@ -50,10 +50,10 @@ Waitlist → closed beta → launch thread (problem → what we built → 6 arro
 
 ## Small-budget ads
 
-3 hooks × 2 audiences × SAR 50/day. Decide after 3 days: CTR < 1% = stop.
+3 hooks × 2 audiences × SAR 50/day. Decide after 7 days: CTR < 1% = stop.
 
 ## What investors read
 
 Weekly growth, retention, CAC vs LTV, a customer story. Two lines in the monthly update.
 
-**Noor** writes the five posts in your voice every week — [for startups](/en/for/startups).
+**Noor** writes these posts in your voice — [for startups](/en/for/startups).

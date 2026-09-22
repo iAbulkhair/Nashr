@@ -11,15 +11,14 @@ desc_en: We tried Helena. Excellent for America. Here is everything it didn't un
 
 ## ما لم تفهمه
 
-1. **اللهجة.** تكتب فصحى مترجمة. عميلك في الرياض يقرأ "تسوّق الآن" ويكمل التمرير.
+1. **اللهجة.** بلا تحكم باللهجة الخليجية.
 2. **القنوات.** لا سناب شات إعلانات، لا واتساب للأعمال، لا سلة، لا زد. 110 تكامل وصفر منها خليجي.
-3. **التقويم.** لا تعرف متى شعبان ولا أن اليوم الوطني أكبر موسم بعد رمضان.
-4. **الالتزام.** لا تعرف ضوابط وزارة الصحة ولا رقم رخصة فال.
-5. **الدفع والبيانات.** دولار وStripe واستضافة أمريكية.
+3. **التقويم.** بلا تقويم هجري أو خليجي.
+4. **الالتزام.** بلا كتيّبات التزام لقطاعات الخليج.
 
 ## ما بنيناه
 
-نور: نفس المعمارية (وكيل + موافقة + ذاكرة ملفات + حوكمة)، مع طبقة خليجية: لهجات، تقويم هجري، ملفات لعب لكل قطاع، مراجِع ثانٍ للالتزام، واتساب كقناة أولى، سلة/زد، ريال ومدى.
+نور: نفس المعمارية (وكيل + موافقة + ذاكرة ملفات + حوكمة)، مع طبقة خليجية: لهجات، تقويم هجري، ملفات لعب لكل قطاع، مراجِع ثانٍ للالتزام، وأسعار بالريال. لا نشر بعد على سناب أو واتساب، ولا ربط مباشر بعد مع سلة أو زد.
 
 ## متى تختار Helena
 
@@ -36,15 +35,14 @@ We gave it a Saudi site that wasn't even resolving. Within a minute it wrote a b
 
 ## What it didn't understand
 
-1. **Dialect.** It writes translated MSA. Your customer in Riyadh reads "تسوّق الآن" and keeps scrolling.
+1. **Dialect.** No Gulf dialect control.
 2. **Channels.** No Snapchat Ads, no WhatsApp Business, no Salla, no Zid. 110 integrations, zero Gulf.
-3. **Calendar.** Doesn't know when Sha'ban is, or that National Day is the biggest season after Ramadan.
-4. **Compliance.** Doesn't know MOH rules or the REGA license number.
-5. **Payment and data.** USD, Stripe, US hosting.
+3. **Calendar.** No Hijri or Gulf calendar.
+4. **Compliance.** No Gulf industry compliance playbooks.
 
 ## What we built
 
-Noor: the same architecture (agent + approval + file memory + governance) with a Gulf layer: dialects, Hijri calendar, playbooks per industry, second reviewer for compliance, WhatsApp as the first channel, Salla/Zid, SAR and mada.
+Noor: the same architecture (agent + approval + file memory + governance) with a Gulf layer: dialects, Hijri calendar, playbooks per industry, second reviewer for compliance, and SAR pricing. No publishing to Snap or WhatsApp yet, and no direct Salla or Zid connection yet.
 
 ## When to choose Helena
 

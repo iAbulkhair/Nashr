@@ -2,17 +2,17 @@
 title_ar: إعلانات سناب شات للمتاجر السعودية: الدليل الكامل 2026
 title_en: Snapchat Ads for Saudi Stores: The Complete Guide 2026
 date: 2026-09-17
-desc_ar: لماذا سناب أولاً في السعودية، هيكل الحساب، الكرييتف الذي ينجح، الميزانيات، القياس، والأخطاء التي تحرق المال.
-desc_en: Why Snap first in Saudi, account structure, creative that works, budgets, measurement, and the mistakes that burn money.
+desc_ar: لماذا سناب في السعودية، هيكل الحساب، الكرييتف الذي ينجح، الميزانيات، القياس، والأخطاء التي تحرق المال.
+desc_en: Why Snap in Saudi, account structure, creative that works, budgets, measurement, and the mistakes that burn money.
 ---
-## لماذا سناب أولاً
+## لماذا سناب
 
-في السعودية سناب شات يصل إلى الأغلبية الساحقة من الشباب 18–34، ومعدل الاستخدام اليومي أعلى من أي منصة أخرى. للمنتجات الاستهلاكية (عطور، أزياء، تجميل، أكل) هو محرك الاكتشاف الأول.
+للمنتجات الاستهلاكية (عطور، أزياء، تجميل، أكل) سناب شات قناة اكتشاف مهمة في السعودية.
 
 ## هيكل الحساب
 
 - **حملة 1 — اكتشاف:** هدف "زيارات الموقع" أو "التحويلات"، جمهور اهتمامات + لوكالايك 1–3% من المشترين.
-- **حملة 2 — إعادة استهداف:** زوار 7/14/30 يوماً، مشاهدو المنتج، مضيفو السلة. هنا أعلى عائد.
+- **حملة 2 — إعادة استهداف:** زوار 7/14/30 يوماً، مشاهدو المنتج، مضيفو السلة.
 - **حملة 3 — الموسم:** تُفتح قبل الموسم بأسبوعين بكرييتف خاص.
 
 ## الكرييتف الذي ينجح
@@ -24,11 +24,11 @@ desc_en: Why Snap first in Saudi, account structure, creative that works, budget
 
 ## الميزانيات
 
-ابدأ بـ 100 ريال/يوم لكل حملة، 3 أيام بدون تعديل، ثم أوقف المجموعات التي تجاوزت ضعف تكلفة التحويل المستهدفة. لا تلمس الميزانية يومياً.
+ابدأ بـ 100 ريال/يوم لكل حملة، 7 أيام بدون تعديل، ثم أوقف المجموعات التي تجاوزت ضعف تكلفة التحويل المستهدفة. لا تلمس الميزانية يومياً.
 
 ## القياس
 
-بكسل سناب + Conversions API. تابع: CPM، CTR (≥0.8% جيد)، تكلفة إضافة السلة، ROAS. اجمعها مع طلبات المتجر لا مع لوحة سناب فقط.
+بكسل سناب + Conversions API. تابع: CPM، CTR، تكلفة إضافة السلة، ROAS. اجمعها مع طلبات المتجر لا مع لوحة سناب فقط.
 
 ## الأخطاء
 
@@ -38,17 +38,17 @@ desc_en: Why Snap first in Saudi, account structure, creative that works, budget
 4. إعلان بالفصحى الثقيلة.
 5. إطلاق الموسم يوم الموسم.
 
-**اختصار:** نور تكتب 5 نسخ إعلانية لسناب مع الجمهور والميزانية في دقيقة — [جرّبها](/ar/app/signup).
+**اختصار:** نور تكتب نسخاً إعلانية لسناب مع جمهور وميزانية مقترحين — [جرّبها](/ar/app/signup).
 
 ---EN---
-## Why Snap first
+## Why Snap
 
-In Saudi Arabia Snapchat reaches the overwhelming majority of 18–34s, with daily usage above any other platform. For consumer products (perfume, fashion, beauty, food) it is the first discovery engine.
+For consumer products (perfume, fashion, beauty, food) in Saudi Arabia, Snapchat is an important discovery channel.
 
 ## Account structure
 
 - **Campaign 1 — discovery:** website visits or conversions, interest audiences + 1–3% lookalikes of buyers.
-- **Campaign 2 — retargeting:** 7/14/30-day visitors, product viewers, add-to-cart. Highest return lives here.
+- **Campaign 2 — retargeting:** 7/14/30-day visitors, product viewers, add-to-cart.
 - **Campaign 3 — season:** opened two weeks before the season with dedicated creative.
 
 ## Creative that works
@@ -60,11 +60,11 @@ In Saudi Arabia Snapchat reaches the overwhelming majority of 18–34s, with dai
 
 ## Budgets
 
-Start at SAR 100/day per campaign, 3 days untouched, then pause ad sets above 2× target cost per conversion. Don't touch budgets daily.
+Start at SAR 100/day per campaign, 7 days untouched, then pause ad sets above 2× target cost per conversion. Don't touch budgets daily.
 
 ## Measurement
 
-Snap Pixel + Conversions API. Watch CPM, CTR (≥0.8% is good), cost per add-to-cart, ROAS. Reconcile with store orders, not just Snap's dashboard.
+Snap Pixel + Conversions API. Watch CPM, CTR, cost per add-to-cart, ROAS. Reconcile with store orders, not just Snap's dashboard.
 
 ## Mistakes
 
@@ -74,4 +74,4 @@ Snap Pixel + Conversions API. Watch CPM, CTR (≥0.8% is good), cost per add-to-
 4. Heavy formal Arabic.
 5. Launching the season on the season's day.
 
-**Shortcut:** Noor writes 5 Snap ad variants with audience and budget in a minute — [try her](/en/app/signup).
+**Shortcut:** Noor writes Snap ad variants with a suggested audience and budget — [try her](/en/app/signup).

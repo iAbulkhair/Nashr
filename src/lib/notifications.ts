@@ -57,7 +57,7 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   const due = tasks.filter((t) => t.status === "approved" && (t.scheduledFor === today || t.scheduledFor === tomorrow) && !t.published);
   if (due.length) {
     const titles = due.slice(0, 3).map((t) => t.title).join(" · ");
-    await add({ kind: "due", agent: "noor", href: `${app}/calendar`, title: ar ? `${due.length} عنصر موعده اليوم أو غداً` : `${due.length} item(s) due today or tomorrow`, body: ar ? `انشرها الآن أو اربط المنصة لتُنشر تلقائياً: ${titles}` : `Publish now or connect the platform so it goes out automatically: ${titles}` }, `due:${today}`, 2);
+    await add({ kind: "due", agent: "noor", href: `${app}/calendar`, title: ar ? `${due.length} عنصر موعده اليوم أو غداً` : `${due.length} item(s) due today or tomorrow`, body: ar ? `انشرها الآن، فلا شيء يُنشر تلقائياً: ${titles}` : `Publish now; nothing goes out automatically: ${titles}` }, `due:${today}`, 2);
   }
   // 2. Approvals waiting more than 48 hours.
   const stale = tasks.filter((t) => t.status === "pending" && Date.now() - new Date(t.createdAt).getTime() > 48 * 36e5);
