@@ -20,7 +20,7 @@ export const DEFAULT_TITLE: Record<Lang, string> = {
 };
 
 export const PUBLIC_ROUTES: PublicRoute[] = [
-  { path: "", unique: { en: "Your whole marketing team", ar: "فريق تسويق ومبيعات كامل" }, ownTitle: false },
+  { path: "", unique: { en: "Drafts ready for your approval", ar: "مسودات جاهزة لموافقتك" }, ownTitle: false },
   { path: "/pricing", unique: { en: "SAR", ar: "ريال" }, ownTitle: true },
   { path: "/tools", unique: { en: "free Arabic marketing tools", ar: "أداة تسويق مجانية" }, ownTitle: true },
   { path: "/agents", unique: { en: "Seven agents", ar: "سبعة وكلاء" }, ownTitle: true },
@@ -35,7 +35,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/ai-marketing-agent", unique: { en: "What is an AI Marketing Agent?", ar: "ما هو وكيل التسويق" }, ownTitle: true },
   { path: "/agents/noor", unique: { en: "Noor", ar: "نور" }, ownTitle: true },
   { path: "/tools/hook-generator", unique: { en: "Hook Generator", ar: "مولّد هوكات" }, ownTitle: true },
-  { path: "/for/ecommerce", unique: { en: "store", ar: "متجرك ينام" }, ownTitle: true },
+  { path: "/for/ecommerce", unique: { en: "store", ar: "متجرك يحتاج محتوى" }, ownTitle: true },
   { path: "/vs/chatgpt", unique: { en: "ChatGPT", ar: "ChatGPT" }, ownTitle: true },
   { path: "/blog/ramadan-marketing-guide-2026", unique: { en: "Ramadan Marketing", ar: "تسويق رمضان" }, ownTitle: true },
 ];
