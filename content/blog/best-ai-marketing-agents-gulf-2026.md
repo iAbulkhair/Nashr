@@ -24,7 +24,7 @@ desc_en: We scored 8 tools on 6 weighted criteria: autonomous execution, Arabic 
 
 | # | الأداة | التنفيذ | العربية | القنوات | الالتزام | التحكم | السعر | المجموع |
 |---|---|---|---|---|---|---|---|---|
-| 1 | نور (نشر) | 4 | 5 | 1 | 4 | 5 | 4 | **3.75** |
+| 1 | نور (نشر) | 3 | 5 | 1 | 4 | 5 | 4 | **3.50** |
 | 2 | Enrich Labs (Helena) | 5 | 1 | 1 | 2 | 5 | 4 | 3.00 |
 | 3 | Hootsuite/Buffer | 2 | 2 | 2 | 1 | 4 | 3 | 2.30 |
 | 4 | Sintra | 3 | 1 | 1 | 1 | 3 | 4 | 2.10 |
@@ -33,11 +33,11 @@ desc_en: We scored 8 tools on 6 weighted criteria: autonomous execution, Arabic 
 | 7 | ChatGPT | 1 | 3 | 1 | 1 | 2 | 5 | 1.95 |
 | — | وكالة محلية (مرجع، ليست منتجاً) | 5 | 5 | 5 | 4 | 3 | 1 | 4.20 |
 
-**فائزو الفئات:** التنفيذ الأوسع: Enrich Labs (100+ تكامل غربي). السعر: ChatGPT. الجودة الإبداعية القصوى: الوكالة المحلية.
+**فائزو الفئات:** التنفيذ الأوسع: Enrich Labs (100+ تكامل غربي). القنوات الخليجية بين الأدوات: Hootsuite/Buffer (والوكالة المحلية تغطيها أفضل). السعر: ChatGPT. الجودة الإبداعية القصوى: الوكالة المحلية.
 
 ## ملاحظات لكل أداة
 
-**نور (نشر):** لهجات، تقويم هجري، مراجِع ثانٍ للالتزام. الضعف: لا نشر بعد على سناب أو واتساب أو سلة، والانتشار جديد.
+**نور (نشر):** لهجات، تقويم هجري، مراجِع ثانٍ للالتزام، وخطة أسبوعية تلقائية. الضعف: النشر بضغطة منك دائماً، اليوم إلى Telegram أو كمسودة في WordPress؛ لا نشر بعد على سناب أو واتساب أو سلة، والانتشار جديد.
 **Enrich Labs:** تنفيذ قوي للسوق الأمريكي. بلا قنوات خليجية.
 **Jasper:** أداة كتابة، لا وكيل خليجي.
 **ChatGPT:** مساعد عام، لا وكيل تسويق.
@@ -71,7 +71,7 @@ Nashr builds Noor, one of the tools scored here. So we publish the full rubric, 
 
 | # | Tool | Exec | Arabic | Channels | Compliance | Control | Price | Score |
 |---|---|---|---|---|---|---|---|---|
-| 1 | Noor (Nashr) | 4 | 5 | 1 | 4 | 5 | 4 | **3.75** |
+| 1 | Noor (Nashr) | 3 | 5 | 1 | 4 | 5 | 4 | **3.50** |
 | 2 | Enrich Labs (Helena) | 5 | 1 | 1 | 2 | 5 | 4 | 3.00 |
 | 3 | Hootsuite/Buffer | 2 | 2 | 2 | 1 | 4 | 3 | 2.30 |
 | 4 | Sintra | 3 | 1 | 1 | 1 | 3 | 4 | 2.10 |
@@ -80,11 +80,11 @@ Nashr builds Noor, one of the tools scored here. So we publish the full rubric, 
 | 7 | ChatGPT | 1 | 3 | 1 | 1 | 2 | 5 | 1.95 |
 | — | Local agency (reference, not a product) | 5 | 5 | 5 | 4 | 3 | 1 | 4.20 |
 
-**Category winners:** broadest execution: Enrich Labs (100+ Western integrations). Price: ChatGPT. Peak creative quality: a local agency.
+**Category winners:** broadest execution: Enrich Labs (100+ Western integrations). Gulf channels among tools: Hootsuite/Buffer (a local agency covers them best). Price: ChatGPT. Peak creative quality: a local agency.
 
 ## Notes per tool
 
-**Noor (Nashr):** dialects, Hijri calendar, second reviewer for compliance. Weak spots: no publishing to Snap, WhatsApp or Salla yet, and adoption is new.
+**Noor (Nashr):** dialects, Hijri calendar, second reviewer for compliance, an automatic weekly plan. Weak spots: publishing is always your click, today to Telegram or as a WordPress draft; no publishing to Snap, WhatsApp or Salla yet, and adoption is new.
 **Enrich Labs:** strong execution for the US market. No Gulf channels.
 **Jasper:** a writing tool, not a Gulf agent.
 **ChatGPT:** a general assistant, not a marketing agent.

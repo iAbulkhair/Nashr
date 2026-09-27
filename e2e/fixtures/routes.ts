@@ -15,8 +15,8 @@ export type PublicRoute = {
 
 /** The title the root layout applies when a page exports no metadata of its own. */
 export const DEFAULT_TITLE: Record<Lang, string> = {
-  en: "Nashr — Noor, the 24/7 AI marketing agent for the Gulf",
-  ar: "نشر — نور، وكيلة تسويق تعمل 24/7 للخليج",
+  en: "Nashr — Noor, the AI marketing agent for the Gulf",
+  ar: "نشر — نور، وكيلة تسويق للخليج",
 };
 
 export const PUBLIC_ROUTES: PublicRoute[] = [

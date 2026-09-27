@@ -110,17 +110,18 @@ describe("no site or product copy asserts an invented result or an unbuilt featu
     { re: /(25 hours every week|استرجع 25 ساعة)/, why: "a time-saved promise" },
     { re: /(SAR 8,000\+|8,000\+ ريال)/, why: "an unsourced agency price" },
     // Always-on and overnight work: generation runs when asked, plus a weekly plan and a daily brief.
-    { re: /(while you sleep|works overnight|sleeps\. Noor doesn't|وأنت نايم|ينام\. نور لا|(?<![\d/])24\/7(?![\d/]))/i, why: "an always-on promise" },
+    { re: /(while you sleep|works overnight|sleeps\. Noor doesn't|وأنت نايم|ينام\. نور لا|(?<![\d/])24\/7(?![\d/])|before you wake up|قبل ما تصحى|One Noor\. Always on|دائماً شغالة|تعمل بالليل|overnight log|سجل نور الليلة|changed overnight|ما تغيّر الليلة)/i, why: "an always-on promise" },
     // Channels and behaviours that are not built.
-    { re: /(brief on WhatsApp|ملخص الصباح على واتساب|ملخصك على واتساب)/i, why: "a WhatsApp brief that is not built" },
-    { re: /(email you within 48 hours|سنراسلك خلال 48 ساعة)/i, why: "a response-time promise nothing implements" },
-    { re: /\d+ concurrent tasks/i, why: "a concurrency limit that does not exist" },
-    { re: /rolls over/i, why: "credits reset monthly; they do not roll over" },
-    { re: /(?<!لا )يترحّل/, why: "credits reset monthly; they do not roll over (Arabic)" },
+    { re: /(brief on WhatsApp|WhatsApp brief|alerts on WhatsApp|ملخص الصباح على واتساب|ملخصك على واتساب|ملخص واتساب|تنبيهات الاعتماد على واتساب)/i, why: "a WhatsApp brief that is not built" },
+    { re: /(email you within 48 hours|سنراسلك خلال 48 ساعة|(reply during|activated within) business hours|(نرد|يُفعَّل حسابك) خلال ساعات العمل)/i, why: "a response-time promise nothing implements" },
+    { re: /(\d+ concurrent tasks|\d+ (مهام|مهمة) متزامنة)/i, why: "a concurrency limit that does not exist" },
+    { re: /\b(rolls|rolling) over\b/i, why: "credits reset monthly; they do not roll over" },
+    { re: /(?<!لا )[يت]ترحّ?ل/, why: "credits reset monthly; they do not roll over (Arabic)" },
     { re: /Data hosted inside Saudi Arabia(?! \(coming soon\))/, why: "Saudi hosting is not built" },
     { re: /استضافة البيانات داخل السعودية(?! \(قريباً\))/, why: "Saudi hosting is not built (Arabic)" },
-    { re: /White-label client reports(?! \(coming soon\))/, why: "white-label reports are not built" },
+    { re: /(White-label (client )?reports|تقارير بعلامتك للعملاء|تقارير بشعارك)(?! \((coming soon|قريباً)\))/i, why: "white-label reports are not built" },
     { re: /Auto ad optimization within your guardrails(?! \(coming soon\))/, why: "ad optimization is not built" },
+    { re: /ضبط الإعلانات تلقائياً ضمن حدودك(?! \(قريباً\))/, why: "ad optimization is not built (Arabic)" },
   ];
 
   const files = ROOTS.flatMap(copyFiles);
