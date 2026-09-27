@@ -146,6 +146,7 @@
   vercel env add X_CLIENT_SECRET production --scope asbunat
   ```
 - بعد شراء `nashr.ai`: أضف في كل تطبيق الرابط نفسه بـ `https://nashr.ai` بدل `https://nashr-tau.vercel.app`، ثم غيّر `APP_ORIGIN`
+- **حزم التسجيل الجاهزة للنسخ واللصق (Shopify، X، سلة، Meta):** `docs/Registration_Packs.md` — كل حقل ونصه ونطاقاته
 - الدليل الكامل لكل منصة: `docs/Platform_Access_Playbook.md`. حدّث الجدول أسبوعياً
 
 ## و. اختبارات على الإنتاج (أنت تجرّبها بحسابك) — #136
