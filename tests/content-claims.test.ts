@@ -78,3 +78,68 @@ describe("no blog post asserts an invented number or promises a result", () => {
     expect(hits).toEqual([]);
   });
 });
+
+/**
+ * The same rule, applied to every place the site and the product speak: the landing page, pricing, plan cards, the
+ * in-app strings, industry and comparison pages, help, legal pages and lifecycle emails. Each pattern below is a claim
+ * that was published and was not true: an invented result, an invented audience, a channel that is not built, a
+ * billing behaviour the code does not have. The list is deliberately narrow, so a hit is a real regression, not noise.
+ */
+describe("no site or product copy asserts an invented result or an unbuilt feature as live", () => {
+  const ROOTS = ["src/app", "src/components", "src/lib", "content/blog"];
+  const COPY = /\.(tsx?|md)$/;
+
+  function copyFiles(dir: string): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) return copyFiles(p);
+      return COPY.test(e.name) ? [p] : [];
+    });
+  }
+
+  const CLAIMS = [
+    // Invented results and audiences from the old homepage log and highlights.
+    { re: /18,420/, why: "an invented revenue figure" },
+    { re: /214 (عميل|customers)/, why: "an invented audience count" },
+    { re: /(expected|متوقع) ?\d+\s*[–-]\s*\d+\s*% ?(conversion|تحويل)/i, why: "an expected-conversion promise" },
+    { re: /\(\+\d+%\)/, why: "an invented growth figure" },
+    { re: /(Acceptance reaches|نسبة القبول تصل) \d+%/, why: "an invented acceptance rate" },
+    { re: /(About|عادةً) 20 (edits|تعديلاً)/, why: "an invented learning curve" },
+    { re: /(90%\+|\+90%)/, why: "an unsourced market statistic" },
+    { re: /(40k\+|ألف متجر على سلة وزد)/, why: "an unsourced market statistic" },
+    { re: /(25 hours every week|استرجع 25 ساعة)/, why: "a time-saved promise" },
+    { re: /(SAR 8,000\+|8,000\+ ريال)/, why: "an unsourced agency price" },
+    // Always-on and overnight work: generation runs when asked, plus a weekly plan and a daily brief.
+    { re: /(while you sleep|works overnight|sleeps\. Noor doesn't|وأنت نايم|ينام\. نور لا|(?<![\d/])24\/7(?![\d/])|before you wake up|قبل ما تصحى|One Noor\. Always on|دائماً شغالة|تعمل بالليل|overnight log|سجل نور الليلة|changed overnight|ما تغيّر الليلة)/i, why: "an always-on promise" },
+    // Channels and behaviours that are not built.
+    { re: /(brief on WhatsApp|WhatsApp brief|alerts on WhatsApp|ملخص الصباح على واتساب|ملخصك على واتساب|ملخص واتساب|تنبيهات الاعتماد على واتساب)/i, why: "a WhatsApp brief that is not built" },
+    { re: /(email you within 48 hours|سنراسلك خلال 48 ساعة|(reply during|activated within) business hours|(نرد|يُفعَّل حسابك) خلال ساعات العمل)/i, why: "a response-time promise nothing implements" },
+    { re: /(\d+ concurrent tasks|\d+ (مهام|مهمة) متزامنة)/i, why: "a concurrency limit that does not exist" },
+    { re: /\b(rolls|rolling) over\b/i, why: "credits reset monthly; they do not roll over" },
+    { re: /(?<!لا )[يت]ترحّ?ل/, why: "credits reset monthly; they do not roll over (Arabic)" },
+    { re: /Data hosted inside Saudi Arabia(?! \(coming soon\))/, why: "Saudi hosting is not built" },
+    { re: /استضافة البيانات داخل السعودية(?! \(قريباً\))/, why: "Saudi hosting is not built (Arabic)" },
+    { re: /(White-label (client )?reports|تقارير بعلامتك للعملاء|تقارير بشعارك)(?! \((coming soon|قريباً)\))/i, why: "white-label reports are not built" },
+    { re: /Auto ad optimization within your guardrails(?! \(coming soon\))/, why: "ad optimization is not built" },
+    { re: /ضبط الإعلانات تلقائياً ضمن حدودك(?! \(قريباً\))/, why: "ad optimization is not built (Arabic)" },
+  ];
+
+  const files = ROOTS.flatMap(copyFiles);
+
+  it("walks the copy tree, so the sweep cannot be empty", () => {
+    expect(files).toContain("src/lib/i18n.ts");
+    expect(files).toContain("src/lib/app-i18n.ts");
+    expect(files.length).toBeGreaterThan(100);
+  });
+
+  it("finds none of the claims that were removed", () => {
+    const hits: string[] = [];
+    for (const file of files) {
+      const lines = readFileSync(file, "utf8").split("\n");
+      lines.forEach((line, i) => {
+        for (const { re, why } of CLAIMS) if (re.test(line)) hits.push(`${file}:${i + 1}: ${why}`);
+      });
+    }
+    expect(hits).toEqual([]);
+  });
+});

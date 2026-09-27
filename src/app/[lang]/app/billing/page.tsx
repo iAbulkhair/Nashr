@@ -24,7 +24,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
       {u.plan === "trial" && (
         <div className="mt-6 rounded-2xl bg-oasis-deep p-6 text-mist">
           <p className="eyebrow eyebrow-accent">{lang === "ar" ? "ماذا يحدث عند التفعيل" : "What happens when you activate"}</p>
-          <h2 className="mt-2 font-display text-2xl font-bold">{lang === "ar" ? "في أول 30 يوماً: 40 منشوراً، 4 مقالات، 12 رسالة واتساب، 20 إعلاناً — بلهجتك، بانتظار موافقتك." : "In your first 30 days: 40 posts, 4 articles, 12 WhatsApp messages, 20 ads — in your dialect, waiting for your approval."}</h2>
+          <h2 className="mt-2 font-display text-2xl font-bold">{lang === "ar" ? "رصيد شهري تطلب به ما تحتاج: 10 منشورات في الدفعة، مقالات SEO، 3 رسائل واتساب، 5 نسخ إعلانية — بلهجتك، بانتظار موافقتك." : "Monthly credits for what you need: 10 posts per batch, SEO articles, 3 WhatsApp messages, 5 ad variants — in your dialect, waiting for your approval."}</h2>
           <p className="mt-2 text-sm text-mist-dim">{lang === "ar" ? "خطة أسبوعية كل أحد، ملخص كل صباح، وتتعلم من كل تعديل. ألغِ في أي وقت." : "A weekly plan every Sunday, a brief every morning, and she learns from every edit. Cancel anytime."}</p>
         </div>
       )}

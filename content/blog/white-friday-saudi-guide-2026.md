@@ -7,7 +7,7 @@ desc_en: A 6-week schedule: warm-up, waitlists, retargeting, WhatsApp, budgets, 
 ---
 ## الحقيقة عن الجمعة البيضاء
 
-الفائزون لا يبدؤون يوم الجمعة. يبدؤون قبل 6 أسابيع ببناء جمهور رخيص يُعاد استهدافه حين تصبح الإعلانات أغلى بثلاث مرات في نوفمبر.
+الفائزون لا يبدؤون يوم الجمعة. يبدؤون قبل 6 أسابيع ببناء جمهور رخيص يُعاد استهدافه حين تغلو الإعلانات في نوفمبر.
 
 ## الجدول
 
@@ -32,12 +32,12 @@ desc_en: A 6-week schedule: warm-up, waitlists, retargeting, WhatsApp, budgets, 
 
 قسّم 20% تسخين، 60% أسبوع الموسم، 20% ما بعده. لا تبدأ بالميزانية الكبيرة يوم الجمعة.
 
-**نور** تبدأ التحضير قبل 4 أسابيع تلقائياً — [جرّبها](/ar/app/signup).
+**نور** تذكّرك بالجمعة البيضاء في ملخص الصباح قبلها بـ35 يوماً، وتراعيها في خطتك الأسبوعية — [جرّبها](/ar/app/signup).
 
 ---EN---
 ## The truth about White Friday
 
-Winners don't start on Friday. They start six weeks earlier building a cheap audience to retarget when ads cost three times more in November.
+Winners don't start on Friday. They start six weeks earlier building a cheap audience to retarget when ads get more expensive in November.
 
 ## Schedule
 
@@ -62,4 +62,4 @@ Winners don't start on Friday. They start six weeks earlier building a cheap aud
 
 Split 20% warm-up, 60% season week, 20% after. Don't start the big budget on Friday.
 
-**Noor** starts preparing 4 weeks ahead automatically — [try her](/en/app/signup).
+**Noor** flags White Friday in your morning brief 35 days ahead and factors it into your weekly plan — [try her](/en/app/signup).

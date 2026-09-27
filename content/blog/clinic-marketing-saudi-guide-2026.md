@@ -1,6 +1,6 @@
 ---
-title_ar: تسويق العيادات في السعودية: الدليل الكامل 2026 (ملتزم بضوابط وزارة الصحة)
-title_en: Clinic Marketing in Saudi Arabia: The Complete Guide 2026 (MOH-compliant)
+title_ar: تسويق العيادات في السعودية: الدليل الكامل 2026
+title_en: Clinic Marketing in Saudi Arabia: The Complete Guide 2026
 date: 2026-09-17
 desc_ar: ما المسموح وما الممنوع في الإعلان الطبي، أفضل القنوات للعيادات ومراكز التجميل والأسنان، محتوى الطبيب، Google Business، والحجز عبر واتساب.
 desc_en: What medical advertising allows and forbids, the best channels for clinics, aesthetics and dental, doctor content, Google Business, and WhatsApp booking.
@@ -19,7 +19,7 @@ desc_en: What medical advertising allows and forbids, the best channels for clin
 
 | القناة | لماذا |
 |---|---|
-| سناب شات | الأقوى للتجميل والأسنان في السعودية؛ ستوري يومي بنبرة راقية |
+| سناب شات | مناسب للتجميل والأسنان في السعودية؛ ستوري يومي بنبرة راقية |
 | Google Business Profile | يظهر وقت البحث "عيادة أسنان قريبة" — منشور أسبوعي + ردود مراجعات |
 | إنستقرام | ريلز الطبيب يجيب سؤالاً |
 | واتساب | الحجز والتذكير والمتابعة بعد الزيارة |
@@ -57,7 +57,7 @@ Content that respects this builds longer-lasting trust than any offer.
 
 | Channel | Why |
 |---|---|
-| Snapchat | strongest for aesthetics and dental in Saudi; daily story in a refined tone |
+| Snapchat | suited to aesthetics and dental in Saudi; daily story in a refined tone |
 | Google Business Profile | shows at "dental clinic near me" — weekly post + review replies |
 | Instagram | doctor-answers-a-question reels |
 | WhatsApp | booking, reminders, post-visit follow-up |

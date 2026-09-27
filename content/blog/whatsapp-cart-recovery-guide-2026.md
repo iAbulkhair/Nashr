@@ -2,12 +2,12 @@
 title_ar: استرجاع السلات المتروكة بواتساب: الدليل الكامل 2026
 title_en: WhatsApp Abandoned Cart Recovery: The Complete Guide 2026
 date: 2026-09-17
-desc_ar: لماذا واتساب يتفوق على الإيميل في الخليج، القوالب المعتمدة، التوقيت 1/24/72، الرسائل الجاهزة، والأرقام المتوقعة.
-desc_en: Why WhatsApp beats email in the Gulf, approved templates, 1/24/72 timing, ready messages, and expected numbers.
+desc_ar: لماذا واتساب لاسترجاع السلات في الخليج، القوالب المعتمدة، التوقيت 1/24/72، والرسائل الجاهزة.
+desc_en: Why WhatsApp for cart recovery in the Gulf, approved templates, 1/24/72 timing, and ready messages.
 ---
 ## لماذا واتساب
 
-معدلات فتح واتساب في الخليج تتجاوز 80%، مقابل أقل من 20% للإيميل. السلة المتروكة قرار شبه مكتمل؛ تحتاج تذكيراً لا إقناعاً.
+السلة المتروكة قرار شبه مكتمل؛ تحتاج تذكيراً لا إقناعاً، ورسالة واتساب قصيرة طريق مباشر لهذا التذكير.
 
 ## القواعد
 
@@ -27,16 +27,12 @@ desc_en: Why WhatsApp beats email in the Gulf, approved templates, 1/24/72 timin
 
 اسم العميل، اسم المنتج، رابط يعيده للسلة نفسها، وذكر تابي/تمارا للسلال الكبيرة.
 
-## الأرقام
-
-8–12% استرجاع في المتاجر السعودية التي تطبق التسلسل الثلاثي. رسالة واحدة فقط: 3–5%.
-
 **نور** تكتب القوالب الثلاثة بلهجتك — [أداة مجانية](/ar/tools/whatsapp-cart-recovery).
 
 ---EN---
 ## Why WhatsApp
 
-WhatsApp open rates in the Gulf exceed 80%, versus under 20% for email. An abandoned cart is a near-complete decision; it needs a reminder, not persuasion.
+An abandoned cart is a near-complete decision; it needs a reminder, not persuasion, and a short WhatsApp message is a direct way to send one.
 
 ## Rules
 
@@ -55,9 +51,5 @@ WhatsApp open rates in the Gulf exceed 80%, versus under 20% for email. An aband
 ## What lifts results
 
 Customer name, product name, a link back to the same cart, and Tabby/Tamara for big baskets.
-
-## Numbers
-
-8–12% recovery in Saudi stores running the three-step sequence. A single message: 3–5%.
 
 **Noor** writes the three templates in your dialect — [free tool](/en/tools/whatsapp-cart-recovery).
