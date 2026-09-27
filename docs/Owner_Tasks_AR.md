@@ -122,7 +122,7 @@
 
 **اختبر قبل المراجعة:** معظم المنصات تسمح بتشغيل التطبيق في «وضع التطوير» لحسابات المطوّرين المضافين إليه قبل أي مراجعة. أضف حسابك الشخصي كمطوّر/مختبِر، واربطه من صفحة التكاملات في نشر، وأخبرني بالنتيجة.
 
-**ما يعمل فعلاً بعد الربط اليوم:** X (نشر تغريدة معتمدة) وShopify (مسودة مقال واستيراد المنتجات). البقية يُحفظ ربطها لكنه لا يفعل شيئاً بعد، وأبنيه منصة منصة بعد وصول مفاتيحها. لذلك الترتيب: ابدأ بما يعمل (X، Shopify)، ثم ما مراجعته طويلة (Meta، سلة، زد).
+**ما يعمل فعلاً بعد الربط اليوم:** X (نشر تغريدة معتمدة) وShopify (مسودة مقال واستيراد المنتجات) وسلة (استيراد المنتجات، منذ 2026-09-27؛ الطلبات والسلات المتروكة لاحقاً). البقية يُحفظ ربطها لكنه لا يفعل شيئاً بعد، وأبنيه منصة منصة بعد وصول مفاتيحها. لذلك الترتيب: ابدأ بما يعمل (X، Shopify)، ثم ما مراجعته طويلة (Meta، سلة، زد).
 
 روابط الرجوع (انسخها كما هي):
 
@@ -131,7 +131,7 @@
 | 1 | X | `https://nashr-tau.vercel.app/api/connect/x/callback` | `tweet.read tweet.write users.read offline.access` — نوع التطبيق Web App، OAuth 2.0 مع PKCE | `X_CLIENT_ID`، `X_CLIENT_SECRET` | | لم يبدأ | النشر يحتاج باقة API مدفوعة من X؛ قرّر الباقة قبل التسجيل |
 | 2 | Shopify | `https://nashr-tau.vercel.app/api/connect/shopify/callback` | `read_products, read_orders, read_checkouts, write_content, read_customers` | `SHOPIFY_CLIENT_ID`، `SHOPIFY_CLIENT_SECRET` | | لم يبدأ | من Shopify Partners ← Apps ← Create app. جرّبه على متجر تطوير مجاني |
 | 3 | Meta | `https://nashr-tau.vercel.app/api/connect/meta/callback` | صفحات فيسبوك، نشر إنستقرام، WhatsApp Business، قراءة الإعلانات | `META_APP_ID`، `META_APP_SECRET` | | لم يبدأ | ابدأ «توثيق النشاط التجاري» اليوم (يحتاج أوراق الشركة، قسم أ0). النشر الفعلي لم يُبنَ بعد |
-| 4 | سلة | `https://nashr-tau.vercel.app/api/connect/salla/callback` | `offline_access` + قراءة المنتجات والطلبات | `SALLA_CLIENT_ID`، `SALLA_CLIENT_SECRET` | | لم يبدأ | من بوابة شركاء سلة. قد يقبل رابط رجوع واحداً: غيّره عند نقل الدومين |
+| 4 | سلة | `https://nashr-tau.vercel.app/api/connect/salla/callback` | `offline_access` + قراءة المنتجات والطلبات | `SALLA_CLIENT_ID`، `SALLA_CLIENT_SECRET` | | لم يبدأ | استيراد المنتجات جاهز ويُختبر على متجر سلة التجريبي فور وصول المفاتيح. من بوابة شركاء سلة. قد يقبل رابط رجوع واحداً: غيّره عند نقل الدومين |
 | 5 | زد | `https://nashr-tau.vercel.app/api/connect/zid/callback` | قراءة المنتجات والطلبات | `ZID_CLIENT_ID`، `ZID_CLIENT_SECRET` | | لم يبدأ | من بوابة شركاء زد |
 | 6 | Snap | `https://nashr-tau.vercel.app/api/connect/snapchat/callback` | `snapchat-marketing-api` | `SNAP_CLIENT_ID`، `SNAP_CLIENT_SECRET` | | لم يبدأ | يحتاج حساب Snap Business أولاً |
 | 7 | LinkedIn | `https://nashr-tau.vercel.app/api/connect/linkedin/callback` | `openid profile w_member_social` | `LINKEDIN_CLIENT_ID`، `LINKEDIN_CLIENT_SECRET` | | لم يبدأ | يحتاج صفحة شركة على LinkedIn مربوطة بالتطبيق |

@@ -103,8 +103,9 @@ Scopes Nashr asks for (nothing to tick; sent at connect time): `tweet.read tweet
 
 ## 3. Salla — 1 day to apply, test on the demo store immediately
 
-**What works once connected:** nothing yet. I am building product import, orders and abandoned carts; it is testable
-on Salla's demo store the day you send the keys, without waiting for Salla's public review.
+**What works once connected:** product import into the brand's `products.md`, and the store name on the Integrations
+card (built 2026-09-27). Orders and abandoned carts come next. It is testable on Salla's demo store the day you send
+the keys, without waiting for Salla's public review.
 
 **Needs:** commercial registration (#47).
 

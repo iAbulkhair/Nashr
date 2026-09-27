@@ -18,7 +18,7 @@ describe("which connectors do something", () => {
   });
 
   it("does not treat a stored connection with no code behind it as working", () => {
-    for (const id of ["klaviyo", "brevo", "google", "meta", "instagram", "whatsapp", "salla", "zid", "tiktok", "snapchat", "linkedin"]) expect(isWorking(id)).toBe(false);
+    for (const id of ["klaviyo", "brevo", "google", "meta", "instagram", "whatsapp", "zid", "tiktok", "snapchat", "linkedin"]) expect(isWorking(id)).toBe(false);
   });
 
   it("reads no platform numbers until a reader ships", () => {

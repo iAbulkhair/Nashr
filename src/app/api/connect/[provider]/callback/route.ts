@@ -7,6 +7,7 @@ import { getProvider } from "@/lib/connectors/registry";
 import { exchangeCode } from "@/lib/connectors/oauth";
 import { OAUTH_COOKIE, saveConnection, takeState } from "@/lib/connectors/store";
 import { xMe } from "@/lib/connectors/x";
+import { sallaStore } from "@/lib/connectors/salla";
 import { SHOP_HOST, validShopifyHmac } from "@/lib/connectors/shopify";
 
 export async function GET(req: Request, ctx: { params: Promise<{ provider: string }> }) {
@@ -43,6 +44,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
     const expiresAt = data.expires_in ? new Date(Date.now() + Number(data.expires_in) * 1000).toISOString() : undefined;
     const conn = { provider: p.id, data, meta, connectedAt: new Date().toISOString(), expiresAt };
     if (p.id === "x") { const me = await xMe(conn); if (me) meta.account = `@${me.username}`; }
+    if (p.id === "salla") { const st2 = await sallaStore(conn); if (st2?.name) meta.account = st2.name; if (st2?.domain) meta.site = st2.domain; }
     await saveConnection(st.email, conn);
     await track(st.email.split("#")[0], "connect");
     return back(`connected=${p.id}`);
