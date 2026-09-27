@@ -41,10 +41,9 @@ export default function HelpCenter({ lang, wa, inApp = false }: { lang: Lang; wa
       <section className="mt-12 grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl bg-oasis-deep p-6 text-mist">
           <h2 className="font-display text-xl font-bold">{ar ? "تواصل مباشر" : "Talk to us"}</h2>
-          <p className="mt-2 text-sm text-mist-dim">{ar ? "نرد خلال ساعات العمل (الأحد–الخميس، 9–6 بتوقيت الرياض)." : "We reply during business hours (Sun–Thu, 9–6 Riyadh)."}</p>
+          <p className="mt-2 text-sm text-mist-dim">{ar ? "نرد عليك على واتساب أو الإيميل." : "We reply on WhatsApp or email."}</p>
           <div className="mt-4 flex flex-wrap gap-2">
             {wa && <a href={wa} target="_blank" rel="noreferrer" className="rounded-full bg-saffron px-4 py-2 text-sm font-semibold text-ink">WhatsApp</a>}
-            <a href="mailto:hello@nashr.ai" className="rounded-full border border-mist/30 px-4 py-2 text-sm">hello@nashr.ai</a>
           </div>
         </div>
         {sent === "ok" ? (

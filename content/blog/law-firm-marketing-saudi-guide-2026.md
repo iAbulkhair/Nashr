@@ -2,8 +2,8 @@
 title_ar: تسويق المكاتب القانونية في السعودية: الدليل الكامل 2026
 title_en: Law Firm Marketing in Saudi Arabia: The Complete Guide 2026
 date: 2026-09-17
-desc_ar: ما يسمح به الإعلان المهني، LinkedIn وX للمحامين، المحتوى الذي تقتبسه إجابات الذكاء الاصطناعي، وتأهيل الاستشارات على واتساب.
-desc_en: What professional advertising allows, LinkedIn and X for lawyers, content that AI answers cite, and consultation intake on WhatsApp.
+desc_ar: ما يسمح به الإعلان المهني، LinkedIn وX للمحامين، محتوى سؤال/جواب، وتأهيل الاستشارات على واتساب.
+desc_en: What professional advertising allows, LinkedIn and X for lawyers, Q&A content, and consultation intake on WhatsApp.
 ---
 ## الحدود المهنية
 
@@ -12,8 +12,8 @@ desc_en: What professional advertising allows, LinkedIn and X for lawyers, conte
 ## القنوات
 
 - **LinkedIn:** منشور أسبوعي باسم الشريك: تعديل نظام، درس من قضية (مجهّلة)، رأي.
-- **X:** سلاسل قصيرة تشرح نظاماً جديداً بالعربي المبسط — تُحفظ وتُقتبس.
-- **الموقع:** مقال شهري طويل (1,500 كلمة) بهيكل سؤال/جواب — هذا ما تقتبسه ChatGPT وGemini عند سؤال "ماذا أفعل إذا…".
+- **X:** سلاسل قصيرة تشرح نظاماً جديداً بالعربي المبسط.
+- **الموقع:** مقال شهري طويل (1,500 كلمة) بهيكل سؤال/جواب يجيب عن "ماذا أفعل إذا…".
 - **Google Business:** للظهور المحلي.
 
 ## المحتوى الذي ينجح
@@ -28,7 +28,7 @@ desc_en: What professional advertising allows, LinkedIn and X for lawyers, conte
 
 استشارات محجوزة شهرياً، ومصدرها. الإعجابات لا تُدفع.
 
-**نور** تكتب بالفصحى المبسطة مع التنويه تلقائياً — [للمكاتب القانونية](/ar/for/legal).
+**نور** تكتب بالفصحى المبسطة، وكتيّب المكاتب القانونية عندها يطلب التنويه في كل محتوى — [للمكاتب القانونية](/ar/for/legal).
 
 ---EN---
 ## Professional boundaries
@@ -38,8 +38,8 @@ No outcome guarantees, no superlative comparisons, no client names without conse
 ## Channels
 
 - **LinkedIn:** a weekly post in the partner's name: a regulation change, a lesson from an (anonymized) case, an opinion.
-- **X:** short threads explaining a new regulation in simple Arabic — saved and quoted.
-- **Website:** a long monthly article (1,500 words) in Q&A structure — what ChatGPT and Gemini cite when asked "what do I do if…".
+- **X:** short threads explaining a new regulation in simple Arabic.
+- **Website:** a long monthly article (1,500 words) in Q&A structure that answers "what do I do if…".
 - **Google Business:** for local visibility.
 
 ## Content that works
@@ -54,4 +54,4 @@ A WhatsApp button everywhere. A message asks: case type, city, urgency. Book wit
 
 Consultations booked per month, and their source. Likes don't pay.
 
-**Noor** writes in simple MSA with the disclaimer added automatically — [for law firms](/en/for/legal).
+**Noor** writes in simple MSA, and her law-firm playbook asks for the disclaimer on every piece — [for law firms](/en/for/legal).

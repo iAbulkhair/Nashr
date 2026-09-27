@@ -26,20 +26,20 @@ desc_en: From setup to ads: how a Salla merchant markets a store in Saudi Arabia
 ## الرسائل التي تبيع في السعودية
 
 - **الشحن:** "يوصلك الرياض وجدة خلال يومين" أقوى من "شحن سريع".
-- **الدفع:** اذكر تابي/تمارا في الإعلان نفسه؛ ترفع التحويل خصوصاً فوق 300 ريال.
+- **الدفع:** اذكر تابي/تمارا في الإعلان نفسه، خصوصاً للسلال الكبيرة.
 - **اللهجة:** سعودي خفيف للسوشال، فصحى مبسطة لصفحات المنتج.
 
 ## استرجاع السلات المتروكة
 
-ثلاث رسائل واتساب: بعد ساعة (تذكير ودود)، بعد 24 ساعة (ندرة: "الكمية محدودة")، بعد 72 ساعة (حافز صغير: شحن مجاني). المتاجر التي تفعّلها تسترجع 8–12%.
+ثلاث رسائل واتساب: بعد ساعة (تذكير ودود)، بعد 24 ساعة (ندرة: "الكمية محدودة")، بعد 72 ساعة (حافز صغير: شحن مجاني).
 
 ## تقويم السنة
 
-شعبان (تحضير رمضان) → رمضان (نشر بعد الإفطار) → العيد → العودة للمدارس (أغسطس) → **اليوم الوطني 23 سبتمبر** (أكبر موسم بعد رمضان، أكواد 95) → الجمعة البيضاء (تسخين من أكتوبر) → يوم التأسيس 22 فبراير (هوية لا خصومات).
+شعبان (تحضير رمضان) → رمضان (نشر بعد الإفطار) → العيد → العودة للمدارس (أغسطس) → **اليوم الوطني 23 سبتمبر** (أكواد برقم الذكرى) → الجمعة البيضاء (تسخين من أكتوبر) → يوم التأسيس 22 فبراير (هوية لا خصومات).
 
-## كم من الوقت أسبوعياً؟
+## أين يذهب وقتك؟
 
-بدون أدوات: 10–15 ساعة. مع وكيل ذكاء اصطناعي يعرف سلة ولهجتك: ساعة واحدة للموافقة. [جرّب نور مع متجرك](/ar/app/signup) — تقرأ متجرك وتستورد منتجاتك في دقيقة.
+مع وكيل ذكاء اصطناعي يكتب بلهجتك، يذهب وقتك إلى الموافقة لا الكتابة. [جرّب نور مع متجرك](/ar/app/signup) — تقرأ متجرك وتستورد منتجاتك من صفحاته العامة.
 
 ---EN---
 ## Before any ad: 5 things inside the store
@@ -63,17 +63,17 @@ desc_en: From setup to ads: how a Salla merchant markets a store in Saudi Arabia
 ## Messages that sell in Saudi
 
 - **Shipping:** "Riyadh and Jeddah in two days" beats "fast shipping".
-- **Payment:** mention Tabby/Tamara in the ad itself; lifts conversion above SAR 300.
+- **Payment:** mention Tabby/Tamara in the ad itself, especially for bigger baskets.
 - **Dialect:** light Saudi for social, simple MSA for product pages.
 
 ## Abandoned cart recovery
 
-Three WhatsApp messages: after 1 hour (friendly reminder), 24 hours (scarcity), 72 hours (small incentive: free shipping). Stores that run it recover 8–12%.
+Three WhatsApp messages: after 1 hour (friendly reminder), 24 hours (scarcity), 72 hours (small incentive: free shipping).
 
 ## The year's calendar
 
-Sha'ban (Ramadan prep) → Ramadan (post after Iftar) → Eid → back to school (August) → **National Day 23 Sep** (biggest after Ramadan, codes 95) → White Friday (warm up from October) → Founding Day 22 Feb (identity, not discounts).
+Sha'ban (Ramadan prep) → Ramadan (post after Iftar) → Eid → back to school (August) → **National Day 23 Sep** (anniversary-number codes) → White Friday (warm up from October) → Founding Day 22 Feb (identity, not discounts).
 
-## How many hours a week?
+## Where your time goes
 
-Without tools: 10–15. With an AI agent that knows Salla and your dialect: one hour of approvals. [Try Noor with your store](/en/app/signup) — she reads it and imports products in a minute.
+With an AI agent that writes in your dialect, your time goes into approvals instead of writing. [Try Noor with your store](/en/app/signup) — she reads it and imports products from its public pages.

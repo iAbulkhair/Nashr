@@ -17,7 +17,7 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   if (!isLang(lang)) return {};
   const t = dict[lang];
   return {
-    title: lang === "ar" ? "نشر — نور، وكيلة تسويق تعمل 24/7 للخليج" : "Nashr — Noor, the 24/7 AI marketing agent for the Gulf",
+    title: lang === "ar" ? "نشر — نور، وكيلة تسويق للخليج" : "Nashr — Noor, the AI marketing agent for the Gulf",
     description: t.hero.sub,
     alternates: { languages: { ar: "/ar", en: "/en" } },
     other: { google: "notranslate" },

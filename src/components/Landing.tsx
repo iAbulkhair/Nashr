@@ -61,7 +61,7 @@ export function Highlights({ t }: { t: Dict }) {
   );
 }
 
-/** "She works while you sleep": the night log becomes the proof. */
+/** The teammate section: a sample week, labelled as an example, shows the approve-then-publish loop. */
 export function Teammate({ t }: { t: Dict }) {
   const L = t.land.teammate;
   return (
@@ -83,7 +83,7 @@ export function Teammate({ t }: { t: Dict }) {
         <div className="rounded-2xl border border-mist/10 bg-oasis p-5 shadow-2xl shadow-black/30 sm:p-6">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="font-display text-base font-medium">{t.hero.logTitle}</h3>
-            <span className="inline-flex items-center gap-2 font-mono text-xs text-mist-dim"><span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-saffron opacity-75" /><span className="relative inline-flex h-2 w-2 rounded-full bg-saffron" /></span>live</span>
+            <span className="inline-flex items-center gap-2 font-mono text-xs text-mist-dim"><span className="relative flex h-2 w-2"><span className="relative inline-flex h-2 w-2 rounded-full bg-saffron" /></span>{t.dir === "rtl" ? "مثال" : "example"}</span>
           </div>
           <ol className="divide-y divide-mist/10">
             {t.hero.log.map((row, i) => (

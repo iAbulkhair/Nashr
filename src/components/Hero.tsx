@@ -31,10 +31,9 @@ export default function Hero({ t, lang }: { t: Dict; lang: Lang }) {
             <h2 className="font-display text-base font-medium">{t.hero.logTitle}</h2>
             <span className="inline-flex items-center gap-2 font-mono text-xs text-mist-dim">
               <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-saffron opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-saffron" />
               </span>
-              live
+              {lang === "ar" ? "مثال" : "example"}
             </span>
           </div>
           <ol className="divide-y divide-mist/10">
