@@ -32,27 +32,28 @@ At roughly 3.3 characters per token for this Arabic/English mix, a full batch pr
 
 ## 3. Cost of one batch
 
-Assumptions, stated so they can be argued with: a cache hit on the two cached blocks; 1,200 tokens of adaptive
+Recomputed on 2026-09-27 for Sonnet 5 at $2/$10 per million tokens (it was $3/$15 in `RATES`, which overstated the
+review and judge columns by half). Assumptions, stated so they can be argued with: a cache hit on the two cached blocks; 1,200 tokens of adaptive
 thinking; and per-item output of 350 tokens (a post, an ad, a GBP entry), 900 (a plan, an OKR set, a script) or 2,500
 (an article, a deck, a memo, a PRD). Everything else is measured.
 
 | Request | Items | Credits | Output tok | generate $ | review $ | judge $ | **Total $** | **$ per credit** |
 |---|---|---|---|---|---|---|---|---|
-| `weekly_plan` | 1 | 1 | 2,100 | 0.062 | 0.021 | 0.019 | **0.102** | **0.1024** |
-| `followup_seq` | 7 | 3 | 7,500 | 0.197 | 0.062 | 0.042 | **0.300** | **0.1002** |
-| `article` | 1 | 2 | 3,700 | 0.102 | 0.033 | 0.024 | **0.159** | **0.0796** |
-| `weekly_report` | 1 | 2 | 3,700 | 0.102 | 0.033 | 0.024 | **0.159** | **0.0796** |
-| `growth_experiments` | 5 | 4 | 5,700 | 0.152 | 0.048 | 0.034 | **0.234** | **0.0586** |
-| `unit_economics`, `decision_memo`, `feedback_synthesis`, `onboarding_flow` | 1 | 3 | 3,700 | 0.102 | 0.033 | 0.024 | **0.159** | **0.0531** |
-| `lead_qualifier`, `dashboard_spec` | 1 | 2 | 2,100 | 0.062 | 0.021 | 0.019 | **0.102** | **0.0512** |
-| `sales_script`, `retention_play` | 3 | 4 | 3,900 | 0.107 | 0.035 | 0.027 | **0.168** | **0.0421** |
-| `pricing_review`, `cash_forecast`, `prd` | 1 | 4 | 3,700 | 0.102 | 0.033 | 0.024 | **0.159** | **0.0398** |
-| `whatsapp`, `gbp` | 3 | 3 | 2,250 | 0.066 | 0.022 | 0.022 | **0.110** | **0.0366** |
-| `okrs` | 1 | 3 | 2,100 | 0.062 | 0.021 | 0.019 | **0.102** | **0.0341** |
-| `gtm_plan`, `board_deck`, `strategy_review` | 1 | 5 | 3,700 | 0.102 | 0.033 | 0.024 | **0.159** | **0.0319** |
-| `ads` | 5 | 5 | 2,950 | 0.083 | 0.028 | 0.026 | **0.137** | **0.0274** |
-| `roadmap` | 1 | 4 | 2,100 | 0.062 | 0.021 | 0.019 | **0.102** | **0.0256** |
-| `social` | 10 | 10 | 4,700 | 0.127 | 0.041 | 0.036 | **0.204** | **0.0204** |
+| `weekly_plan` | 1 | 1 | 2,100 | 0.062 | 0.014 | 0.013 | **0.089** | **0.0887** |
+| `followup_seq` | 7 | 3 | 7,500 | 0.197 | 0.041 | 0.028 | **0.266** | **0.0888** |
+| `article` | 1 | 2 | 3,700 | 0.102 | 0.022 | 0.016 | **0.140** | **0.0700** |
+| `weekly_report` | 1 | 2 | 3,700 | 0.102 | 0.022 | 0.016 | **0.140** | **0.0700** |
+| `growth_experiments` | 5 | 4 | 5,700 | 0.152 | 0.032 | 0.023 | **0.207** | **0.0517** |
+| `unit_economics`, `decision_memo`, `feedback_synthesis`, `onboarding_flow` | 1 | 3 | 3,700 | 0.102 | 0.022 | 0.016 | **0.140** | **0.0467** |
+| `lead_qualifier`, `dashboard_spec` | 1 | 2 | 2,100 | 0.062 | 0.014 | 0.013 | **0.089** | **0.0443** |
+| `sales_script`, `retention_play` | 3 | 4 | 3,900 | 0.107 | 0.023 | 0.018 | **0.148** | **0.0371** |
+| `pricing_review`, `cash_forecast`, `prd` | 1 | 4 | 3,700 | 0.102 | 0.022 | 0.016 | **0.140** | **0.0350** |
+| `whatsapp`, `gbp` | 3 | 3 | 2,250 | 0.066 | 0.015 | 0.015 | **0.095** | **0.0318** |
+| `okrs` | 1 | 3 | 2,100 | 0.062 | 0.014 | 0.013 | **0.089** | **0.0296** |
+| `gtm_plan`, `board_deck`, `strategy_review` | 1 | 5 | 3,700 | 0.102 | 0.022 | 0.016 | **0.140** | **0.0280** |
+| `ads` | 5 | 5 | 2,950 | 0.083 | 0.019 | 0.017 | **0.119** | **0.0238** |
+| `roadmap` | 1 | 4 | 2,100 | 0.062 | 0.014 | 0.013 | **0.089** | **0.0222** |
+| `social` | 10 | 10 | 4,700 | 0.127 | 0.027 | 0.024 | **0.178** | **0.0178** |
 
 The calls with no credit attached:
 
@@ -75,14 +76,14 @@ Revenue per credit, from `PLAN_PRICE_SAR` in `src/lib/admin-stats.ts` and `PLAN_
 
 Put the two tables side by side and three things fall out.
 
-1. **Output tokens are the whole bill.** In a batch, 93% of the cost is Opus output at $25/M. Prompt caching saves about
-   four cents a call at best; halving an output would save ten times that. The reviewer and the judge together are
-   roughly a third of the generation call, not the problem.
-2. **The cheap-credit, long-output types are the hole.** `weekly_plan` costs $0.102 and is priced at **1 credit**; on
-   agency that credit brings in $0.107. It is break-even, and it is the one type the Sunday cron creates on its own for
+1. **Output tokens are the whole bill.** Most of a batch's cost is Opus output at $25/M. Prompt caching saves about
+   four cents a call at best; halving an output would save ten times that. The reviewer and the judge together add
+   35–45% on top of the generation call, not the problem.
+2. **The cheap-credit, long-output types are the hole.** `weekly_plan` costs $0.089 and is priced at **1 credit**; on
+   agency that credit brings in $0.107. It keeps about a sixth, and it is the one type the Sunday cron creates on its own for
    every workspace. `followup_seq` (7 items for 3 credits) is the same shape. `article` and `weekly_report` at 2 credits
-   keep about a fifth of the revenue on agency.
-3. **`social` is the best-priced thing in the product** at $0.020 per credit — a 10-to-19× markup depending on plan.
+   keep about a third of the revenue on agency.
+3. **`social` is the best-priced thing in the product** at $0.018 per credit — a 6-to-11× markup depending on plan.
    The pricing is not wrong on average; it is wrong per type, and the spread is 5×.
 
 The obvious moves, cheapest first: reprice `weekly_plan` to 2 credits and `followup_seq` to 5; cap `max_tokens` per

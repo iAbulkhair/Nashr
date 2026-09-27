@@ -122,6 +122,12 @@ describe("no site or product copy asserts an invented result or an unbuilt featu
     { re: /(White-label (client )?reports|تقارير بعلامتك للعملاء|تقارير بشعارك)(?! \((coming soon|قريباً)\))/i, why: "white-label reports are not built" },
     { re: /Auto ad optimization within your guardrails(?! \(coming soon\))/, why: "ad optimization is not built" },
     { re: /ضبط الإعلانات تلقائياً ضمن حدودك(?! \(قريباً\))/, why: "ad optimization is not built (Arabic)" },
+    // Follow-ups of 27 Sep: the free-tool pages, the inspiration cards, the chat prompt and the prompts injected into
+    // every generation, which customers read or which the model repeats as fact.
+    { re: /(every day — automatically|كل يوم — تلقائياً)/i, why: "a daily automatic-generation promise; only the Sunday plan is automatic" },
+    { re: /no auto-publishing/i, why: "implies a paid plan publishes automatically; none does" },
+    { re: /(Highest reply rate|orders cluster \d|lift Maps ranking|1\.4 إلى 3\.2 ROAS)/, why: "an unsourced result claim on an inspiration card" },
+    { re: /(Biggest KSA sale season|top channel for aesthetics|Tamara[^.]*(lift conversion|raise order value))/, why: "an unsourced superlative injected into generation prompts" },
   ];
 
   const files = ROOTS.flatMap(copyFiles);

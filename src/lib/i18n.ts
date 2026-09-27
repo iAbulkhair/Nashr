@@ -201,7 +201,7 @@ export const dict: Record<Lang, Dict> = {
       title: "الأدوات التي تستخدمها فعلاً.",
       sub: "ليست قائمة أمريكية. القنوات الخليجية أولاً.",
       groups: [
-        { label: "التجارة", items: ["سلة", "زد", "Shopify", "WooCommerce"] },
+        { label: "التجارة", items: ["سلة (استيراد المنتجات من الرابط)", "زد (استيراد المنتجات من الرابط)", "Shopify (استيراد المنتجات من الرابط)", "WooCommerce"] },
         { label: "النشر", items: ["Telegram", "WordPress (مسودات)", "X (قريباً)"] },
       ],
     },
@@ -431,7 +431,7 @@ export const dict: Record<Lang, Dict> = {
       title: "The tools you actually use.",
       sub: "Not a US list. Gulf channels first.",
       groups: [
-        { label: "Commerce", items: ["Salla", "Zid", "Shopify", "WooCommerce"] },
+        { label: "Commerce", items: ["Salla (product import from URL)", "Zid (product import from URL)", "Shopify (product import from URL)", "WooCommerce"] },
         { label: "Publishing", items: ["Telegram", "WordPress (drafts)", "X (coming soon)"] },
       ],
     },

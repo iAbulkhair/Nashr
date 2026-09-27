@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Integration } from "@/lib/integrations";
 import type { KeyField } from "@/lib/connectors/registry";
+import { isWorking } from "@/lib/connectors/working";
 import type { Lang } from "@/lib/i18n";
 
 type P = { id: string; name: string; kind: "oauth" | "key"; capabilities: string[]; available: boolean; keyFields?: KeyField[]; docs?: string; needsShop: boolean };
@@ -108,7 +109,10 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
           <h2 className="eyebrow">{g.groups[grp]}</h2>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {items.filter((i) => i.group === grp).map((i) => {
-              const p = providerById.get(connectorId(i));
+              // A card offers "Connect" or shows "Connected" only when code uses that connection; the others keep their
+              // catalog status. The Connected section above still lists every stored connection so it can be removed.
+              const found = providerById.get(connectorId(i));
+              const p = found && isWorking(found.id) ? found : undefined;
               const isConnected = p ? connectedIds.has(p.id) : false;
               const canConnect = p?.available && !isConnected;
               const status = isConnected ? "live" : p?.available ? "ready" : i.status;

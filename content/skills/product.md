@@ -81,7 +81,7 @@ Timing: WhatsApp 10:00 to 13:00 and 20:00 to 23:00 local, after iftar in Ramadan
 - Arabic UX: RTL layouts and mirrored icons, Hijri dates where relevant, short warm formal Arabic in the local register, English toggle for expats.
 - Ramadan and Eid: plan launches 4 to 6 weeks ahead; activity moves to night; reorder pushes before Eid, quiet week after.
 - Family decision makers: a spouse or parent is often involved; support shareable links, gifting and a second WhatsApp contact.
-- COD and BNPL: COD raises refusals and returns, so confirm by WhatsApp before dispatch and reward prepaid; Tabby/Tamara lift conversion but soften repeat intent, so pair instalments with loyalty points; failed instalments are involuntary churn.
+- COD and BNPL: COD raises refusals and returns, so confirm by WhatsApp before dispatch and reward prepaid; Tabby/Tamara are common at checkout but can soften repeat intent, so pair instalments with loyalty points; failed instalments are involuntary churn.
 - Cities: Riyadh and Jeddah expect next-day delivery and premium packaging; smaller cities need clear ETAs; segment retention by city.
 
 ## Output templates

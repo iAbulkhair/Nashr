@@ -9,7 +9,7 @@ export const PLAYBOOKS: Playbook[] = [
 - Funnel: Snap/TikTok for reach (video-first, first 2 seconds = product in use), Instagram for trust (UGC, reviews), WhatsApp for conversion (cart recovery within 1h, 24h, 72h).
 - Every post needs one product, one benefit, one CTA ("اطلب الآن", "الرابط في البايو", "راسلنا واتساب").
 - Use social proof numbers only if in the brand file; otherwise "آلاف العملاء" style claims are banned.
-- Mention free shipping threshold, COD availability, Tabby/Tamara installments when relevant — they lift conversion in KSA.
+- Mention free shipping threshold, COD availability, Tabby/Tamara installments when relevant — they are common at KSA checkouts.
 - Abandoned cart message: name → product image reference → scarcity (stock/offer end) → one-tap link → opt-out line.
 - Ad copy: headline = benefit + offer; primary text = objection handling (shipping, returns, authenticity); 3 hooks to test.`,
   },
@@ -49,7 +49,7 @@ export const PLAYBOOKS: Playbook[] = [
     text: `CLINIC / AESTHETICS PLAYBOOK
 - Saudi MOH advertising rules: no before/after with guaranteed results, no price-only bait, no "best/most successful", no patient testimonials implying outcomes; doctors named must carry license placeholder "[رقم الترخيص]".
 - Content: procedure explainers, doctor Q&A, safety/hygiene, seasonal skin tips (summer sun, Ramadan fasting and treatments), FAQ on downtime and cost ranges as placeholders.
-- Booking: WhatsApp booking link in every post; GBP posts weekly; Snapchat is the top channel for aesthetics in KSA.
+- Booking: WhatsApp booking link in every post; GBP posts weekly; Snapchat suits aesthetics audiences in KSA.
 - Tone: caring, medical accuracy, female-audience-appropriate imagery references.`,
   },
   {
