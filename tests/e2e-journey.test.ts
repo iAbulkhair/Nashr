@@ -172,7 +172,7 @@ describe("journey: what a batch costs the business", () => {
     expect(Object.keys(usage.byKind).sort()).toEqual(["generate", "judge", "review"]);
     // Opus output at $25/M is what a batch actually costs; the two Sonnet passes together are a fraction of it.
     expect(usage.byKind.generate.usd).toBeCloseTo(1200 * 5e-6 + 4700 * 25e-6 + 7500 * 0.5e-6, 4);
-    expect(usage.byKind.review.usd).toBeCloseTo(4100 * 3e-6 + 1800 * 15e-6, 4);
+    expect(usage.byKind.review.usd).toBeCloseTo(4100 * 2e-6 + 1800 * 10e-6, 4);
     expect(usage.byKind.generate.usd).toBeGreaterThan(usage.byKind.review.usd + usage.byKind.judge.usd);
     expect(usage.usd).toBeCloseTo(usage.byKind.generate.usd + usage.byKind.review.usd + usage.byKind.judge.usd, 2);
   });

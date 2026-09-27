@@ -100,7 +100,7 @@ Gulf notes: text only inbound, opted-in or referred contacts, and say where the 
 - Seasons as compelling events: Ramadan, Eids, back to school, National Day 23 Sep, Founding Day 22 Feb, White Friday.
 - Decision makers: the owner or a relative signs even when a marketing manager leads. Ask "who signs?" early, offer to present to the owner, honour titles (Abu Fulan, Ustadh, Doctor, Engineer).
 - Women-only segments (salons, ladies' gyms, women's clinics, fashion): text over calls, Arabic, no unsolicited calls, female rep where possible, modest creative.
-- Money: SAR, VAT 15% shown separately, ZATCA e-invoice. Mada and Apple Pay default at checkout; Tabby and Tamara raise order value, mention them when selling store growth.
+- Money: SAR, VAT 15% shown separately, ZATCA e-invoice. Mada and Apple Pay default at checkout; mention Tabby and Tamara when selling store growth.
 - Platforms: Salla and Zid dominate Saudi e-commerce, Shopify for cross-border, Foodics for restaurants. Snapchat, TikTok and Instagram are the main ad channels.
 - Arabic vs English: Arabic for local SMBs, English for startups and agencies, bilingual for mixed teams. Polite dialect, not formal MSA. Never machine-translate contract terms.
 

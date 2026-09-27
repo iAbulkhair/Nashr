@@ -66,7 +66,7 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   }
   // 3. Low credits.
   if (user.credits < 10) {
-    await add({ kind: "credits", href: `${app}/billing`, title: ar ? `رصيدك ${user.credits} كريدت` : `Balance: ${user.credits} credits`, body: ar ? "لن يستطيع الفريق توليد دفعات جديدة قريباً. رقّ خطتك أو اطلب رصيداً." : "The team will not be able to generate new batches soon. Upgrade or top up." }, "credits", 5);
+    await add({ kind: "credits", href: `${app}/billing`, title: ar ? `رصيدك ${user.credits} كريدت` : `Balance: ${user.credits} credits`, body: ar ? "لن يستطيع الفريق توليد دفعات جديدة قريباً. رقّ خطتك أو اطلب رصيداً." : "The team will not be able to generate new batches soon. Upgrade or request a top-up." }, "credits", 5);
   }
   // 4. Trial ending within 24h.
   if (user.plan === "trial") {

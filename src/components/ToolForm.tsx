@@ -42,8 +42,8 @@ export default function ToolForm({ tool, lang }: { tool: Tool; lang: Lang }) {
           <p className="text-sm text-ink/50">{ar ? "النتيجة تظهر هنا." : "Output appears here."}</p>
         )}
         <div className="mt-6 rounded-xl bg-oasis-deep p-4 text-mist">
-          <p className="font-display font-medium">{ar ? "نور تسوي هذا كل يوم — تلقائياً." : "Noor does this every day — automatically."}</p>
-          <p className="mt-1 text-sm text-mist-dim">{ar ? "تتعلم علامتك، تخطط أسبوعك، وتنتج المحتوى لكل قنواتك بلهجتك. 3 أيام مجاناً." : "Learns your brand, plans your week, produces content for every channel in your dialect. 3 days free."}</p>
+          <p className="font-display font-medium">{ar ? "نور تكتب هذا لعلامتك متى طلبت." : "Noor writes this for your brand whenever you ask."}</p>
+          <p className="mt-1 text-sm text-mist-dim">{ar ? "تتعلم علامتك، تخطط أسبوعك كل يوم أحد، وتكتب المحتوى بلهجتك عندما تطلبه. 3 أيام مجاناً." : "Learns your brand, plans your week every Sunday, and writes content in your dialect when you ask. 3 days free."}</p>
           <Link href={`/${lang}/app/signup`} className="mt-3 inline-block rounded-full bg-saffron px-4 py-2 text-sm font-semibold text-ink">{ar ? "جرّب نور مجاناً" : "Try Noor free"}</Link>
         </div>
       </div>

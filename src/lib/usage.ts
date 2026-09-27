@@ -14,10 +14,10 @@ export type TokenUsage = {
   cache_creation_input_tokens?: number | null;
 };
 
-/** USD per million tokens. Approximate list prices; update when Anthropic changes them. */
+/** USD per million tokens: Anthropic list prices, checked 2026-09-27. Update when Anthropic changes them. */
 const RATES: Record<string, { in: number; out: number; cacheRead: number; cacheWrite: number }> = {
   "claude-opus-5": { in: 5, out: 25, cacheRead: 0.5, cacheWrite: 6.25 },
-  "claude-sonnet-5": { in: 3, out: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+  "claude-sonnet-5": { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 },
 };
 const DEFAULT_RATE = RATES["claude-opus-5"];
 

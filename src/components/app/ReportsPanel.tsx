@@ -10,6 +10,7 @@ import type { Kpis } from "@/lib/stats";
 import type { AgentMetrics } from "@/lib/evals";
 import type { Lang } from "@/lib/i18n";
 import { kpiDelta } from "@/lib/kpi-delta";
+import { READS_METRICS } from "@/lib/connectors/working";
 
 type Item = { id: string; type: TaskType; title: string; status: string; createdAt: string };
 
@@ -57,7 +58,10 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
     creditsUsed: { label: R.creditsUsed, value: String(k.creditsUsed), sub: delta(k.creditsUsed, k.creditsUsedPrev) },
     scheduled: { label: R.scheduled, value: String(k.scheduled) },
   };
-  const missing = SOURCES.filter((s) => !s.provs.some((p) => connected.includes(p)));
+  // A connection alone reads no numbers: connectors publish and import products today (src/lib/stats.ts reads only
+  // workspace data). A provider joins READS_METRICS when a reader for its orders, revenue or audience ships.
+  const readable = connected.filter((p) => READS_METRICS.includes(p));
+  const missing = SOURCES.filter((s) => !s.provs.some((p) => readable.includes(p)));
   const top = (o: Record<string, number>) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 6);
   const typeLabel = (x: string) => (t.generate.types as Record<string, { t: string }>)[x]?.t ?? x;
   const max = Math.max(1, ...k.weeks.map((w) => w.created));
@@ -113,7 +117,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
           </div>
           <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink/60">{R.platformMetrics}</p>
           <div className="mt-2 flex flex-wrap gap-2">
-            {PLATFORM_METRICS.map((m) => { const on = m.provs.some((p) => connected.includes(p)); return <Link key={m.key} href={`/${lang}/app/integrations`} className={`btn btn-xs ${on ? "btn-primary" : "btn-secondary opacity-70"}`}>{on ? "+" : "🔒"} {R.platform[m.key as keyof typeof R.platform]}{!on && ` · ${R.connectNow}`}</Link>; })}
+            {PLATFORM_METRICS.map((m) => { const on = m.provs.some((p) => readable.includes(p)); return <Link key={m.key} href={`/${lang}/app/integrations`} className={`btn btn-xs ${on ? "btn-primary" : "btn-secondary opacity-70"}`}>{on ? "+" : "🔒"} {R.platform[m.key as keyof typeof R.platform]}{!on && ` · ${R.connectNow}`}</Link>; })}
           </div>
         </div>
       )}

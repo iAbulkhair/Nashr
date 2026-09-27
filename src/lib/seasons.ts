@@ -30,7 +30,7 @@ export function activeSeasons(now = new Date()): Season[] {
   // Gregorian-driven (prep window 35 days)
   const greg: [string, string, string, number, number, string][] = [
     ["founding_day", "Saudi Founding Day (22 Feb)", "يوم التأسيس", 2, 22, "Heritage storytelling, Najdi/Hijazi motifs, limited editions, 'since 1727' pride tone; avoid discount-only messaging."],
-    ["national_day", "Saudi National Day (23 Sep)", "اليوم الوطني السعودي", 9, 23, "Biggest KSA sale season after Ramadan. Discount codes 93/94/95 matching the anniversary, green creative, patriotic but not political, 3-day flash window, stock and delivery promises."],
+    ["national_day", "Saudi National Day (23 Sep)", "اليوم الوطني السعودي", 9, 23, "A major KSA sale season. Discount codes matching this year's anniversary number (year minus 1932), green creative, patriotic but not political, 3-day flash window, stock and delivery promises."],
     ["uae_national_day", "UAE National Day (2 Dec)", "اليوم الوطني الإماراتي", 12, 2, "UAE-facing campaigns, Emirati dialect, red/green/white creative, AED pricing."],
     ["white_friday", "White Friday (last Fri of Nov)", "الجمعة البيضاء", 11, 27, "Warm up 3 weeks early with waitlists and teasers; retargeting heavy; bundle deals; Tabby/Tamara installments highlighted; extend to 'White Week'."],
     ["back_to_school", "Back to school (late Aug)", "العودة للمدارس", 8, 25, "Family bundles, uniforms/supplies, installment plans, early-bird offers from Aug 1."],
