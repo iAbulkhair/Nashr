@@ -126,14 +126,14 @@ Files: `src/app/api/publish/[id]/route.ts`, `src/lib/connectors/publish.ts`, pro
 Files: `src/components/app/IntegrationsPanel.tsx:64,160`, `src/app/api/connect/[provider]/start/route.ts`, `.../callback/route.ts`, `src/lib/connectors/{registry,oauth,store}.ts`.
 
 1. Browser navigates to `GET /api/connect/{provider}/start?lang=&shop=`. Session required. Provider must be `kind:"oauth"` and have both client env vars set (503 otherwise).
-2. `shop` (Shopify only in practice): lowercased, scheme and path stripped, `.myshopify.com` appended when missing (`start/route.ts:18-21`).
-3. State: 16 random bytes hex. `oauthstate:{state}` = `{email: sc(u), provider, lang, shop, verifier}` for 10 min. PKCE pair only when `oauth.pkce` (X).
+2. `shop` (Shopify only in practice): lowercased, scheme and path stripped, `.myshopify.com` appended when missing; anything that is then not `SHOP_HOST` (a single-label `*.myshopify.com`) is refused with 400 `bad_shop` before any redirect.
+3. State: 16 random bytes hex. `oauthstate:{state}` = `{email: sc(u), provider, lang, shop, verifier}` for 10 min. PKCE pair only when `oauth.pkce` (X). The same state goes into the `nashr_oauth` cookie (httpOnly, SameSite=Lax, Secure as the session cookie, path `/api/connect`, 10 min).
 4. Redirect to the provider authorize URL with `redirect_uri = ${APP_ORIGIN}/api/connect/{provider}/callback`.
-5. `GET .../callback?state=&code=`: no session check. `takeState` reads and deletes the state (single use). Missing state or code: redirect to integrations with `error=`.
+5. `GET .../callback?state=&code=`: the `nashr_oauth` cookie is read and cleared, and `takeState` reads and deletes the state (single use). Missing state or code: `error=`. A state issued for another provider: `error=invalid_state`. The cookie must equal the state (`sameSecret`) and the signed-in account must own the state's scope, else `error=session_mismatch` and no code exchange. Shopify also needs a valid `hmac` over the query (`validShopifyHmac`, else `bad_hmac`) and a query `shop` equal to the state's (`bad_shop`).
 6. `exchangeCode` posts to the provider token URL (Basic auth for X, body credentials otherwise; Shopify URL built from `shop`). All scalar fields of the token response are kept as `data`.
 7. `saveConnection(st.email, ...)` writes `conn:{scope}:{provider}` (encrypted) and adds to `conns:{scope}`; the scope comes from the state record, not from the current cookie. `track(scope.split("#")[0], "connect")`.
-8. The `provider` path segment at callback is not compared with `st.provider`.
-9. No refresh-token use exists: `expiresAt` is stored but tokens are never refreshed.
+8. Every use of a stored connection (publishing, product import) goes through `getFreshConnection` (`src/lib/connectors/fresh.ts`): an OAuth token that expires within 5 minutes is refreshed first (`grant_type=refresh_token`) under the lock `connlock:{scope}:{provider}`, and a rotated refresh token is saved. A refused refresh, a missing refresh token, or a 401/403 from the platform sets `needsReconnect` and the call fails with `reconnect_required`; the Integrations page then shows the connection with a Reconnect button.
+9. A new connection saved by the callback replaces the record, which clears `needsReconnect`.
 10. `DELETE /api/connect/{provider}` writes `null` to the connection key (the id remains in `conns:{scope}`; `listConnections` skips nulls). `POST /api/connect/{provider} {action:"import_products"}` imports products for shopify, woocommerce, odoo, prestashop into `products.md`.
 
 ## 12. API-key connectors

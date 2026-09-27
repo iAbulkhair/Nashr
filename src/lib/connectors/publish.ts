@@ -1,5 +1,5 @@
 import type { Task } from "../brand";
-import { getConnection } from "./store";
+import { getFreshConnection, refusedToken } from "./fresh";
 import { publishWordPress } from "./wordpress";
 import { postToX } from "./x";
 import { publishShopifyArticle } from "./shopify";
@@ -17,7 +17,15 @@ export function targetsFor(task: Task, connected: string[]): string[] {
 }
 
 export async function publishTask(email: string, task: Task, provider: string): Promise<PublishResult> {
-  const c = await getConnection(email, provider);
+  try {
+    return await publishWith(email, task, provider);
+  } catch (e) {
+    throw await refusedToken(email, provider, e);
+  }
+}
+
+async function publishWith(email: string, task: Task, provider: string): Promise<PublishResult> {
+  const c = await getFreshConnection(email, provider);
   if (!c) throw new Error("not_connected");
   const body = task.editedBody ?? task.body;
   const title = body.match(/^#\s+(.+)$/m)?.[1] ?? task.title;

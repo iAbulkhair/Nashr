@@ -8,7 +8,12 @@ export type Connection = {
   meta?: Record<string, string>; // display info: account name, shop, site — plain
   connectedAt: string;
   expiresAt?: string;
+  /** Set when the platform refused the token and a refresh could not fix it: the owner must connect again. */
+  needsReconnect?: string;
 };
+
+/** Holds the OAuth state in the browser that started a connect flow; the callback requires it (see start/route.ts). */
+export const OAUTH_COOKIE = "nashr_oauth";
 
 /** Production must use its own CONNECT_SECRET: reusing the admin key would let one leaked secret decrypt every tenant's platform credentials. */
 function connectSecret(): string {
@@ -38,19 +43,19 @@ export function decrypt(blob: string) {
 type Stored = Omit<Connection, "data"> & { enc: string };
 
 export async function saveConnection(email: string, c: Connection) {
-  const s: Stored = { provider: c.provider, meta: c.meta, connectedAt: c.connectedAt, expiresAt: c.expiresAt, enc: encrypt(JSON.stringify(c.data)) };
+  const s: Stored = { provider: c.provider, meta: c.meta, connectedAt: c.connectedAt, expiresAt: c.expiresAt, needsReconnect: c.needsReconnect, enc: encrypt(JSON.stringify(c.data)) };
   await db.set(`conn:${email}:${c.provider}`, s);
   await db.sadd(`conns:${email}`, c.provider);
 }
 export async function getConnection(email: string, provider: string): Promise<Connection | null> {
   const s = await db.get<Stored>(`conn:${email}:${provider}`);
   if (!s) return null;
-  return { provider: s.provider, meta: s.meta, connectedAt: s.connectedAt, expiresAt: s.expiresAt, data: JSON.parse(decrypt(s.enc)) };
+  return { provider: s.provider, meta: s.meta, connectedAt: s.connectedAt, expiresAt: s.expiresAt, needsReconnect: s.needsReconnect, data: JSON.parse(decrypt(s.enc)) };
 }
 export async function listConnections(email: string): Promise<Omit<Connection, "data">[]> {
   const ids = await db.smembers(`conns:${email}`);
   const rows = await Promise.all(ids.map((id) => db.get<Stored>(`conn:${email}:${id}`)));
-  return rows.filter((s): s is Stored => !!s).map((s) => ({ provider: s.provider, meta: s.meta, connectedAt: s.connectedAt, expiresAt: s.expiresAt }));
+  return rows.filter((s): s is Stored => !!s).map((s) => ({ provider: s.provider, meta: s.meta, connectedAt: s.connectedAt, expiresAt: s.expiresAt, needsReconnect: s.needsReconnect }));
 }
 export async function deleteConnection(email: string, provider: string) {
   // Encrypted credentials go, and the provider leaves the index with them.

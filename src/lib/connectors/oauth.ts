@@ -27,18 +27,16 @@ export function authorizeUrl(p: Provider, state: string, opts: { shop?: string; 
   return u.toString();
 }
 
-export async function exchangeCode(p: Provider, code: string, opts: { shop?: string; verifier?: string }): Promise<Record<string, string>> {
+/** POST to the provider's token URL with the client authentication each provider expects, and flatten the answer. */
+async function tokenRequest(p: Provider, body: URLSearchParams, shop?: string): Promise<Record<string, string>> {
   const o = p.oauth!;
-  const url = o.tokenUrl.replace("{shop}", opts.shop ?? "");
+  const url = o.tokenUrl.replace("{shop}", shop ?? "");
   const id = process.env[o.clientIdEnv]!;
   const secret = process.env[o.clientSecretEnv]!;
-  const body = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: REDIRECT(p.id) });
-  if (opts.verifier) body.set("code_verifier", opts.verifier);
   const headers: Record<string, string> = { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" };
   if (o.tokenAuth === "basic") headers.Authorization = "Basic " + Buffer.from(`${id}:${secret}`).toString("base64");
   else if (p.id === "tiktok") { body.set("client_key", id); body.set("client_secret", secret); }
   else { body.set("client_id", id); body.set("client_secret", secret); }
-  if (p.id === "shopify") { body.delete("grant_type"); body.delete("redirect_uri"); }
   const res = await fetch(url, { method: "POST", headers, body });
   const text = await res.text();
   if (!res.ok) throw new Error(`${p.id} token ${res.status}: ${text.slice(0, 200)}`);
@@ -47,4 +45,16 @@ export async function exchangeCode(p: Provider, code: string, opts: { shop?: str
   for (const [k, v] of Object.entries(j)) if (v != null && typeof v !== "object") out[k] = String(v);
   if (typeof j.data === "object" && j.data) for (const [k, v] of Object.entries(j.data as Record<string, unknown>)) if (v != null && typeof v !== "object") out[k] = String(v); // TikTok wraps
   return out;
+}
+
+/** Trade a refresh token for a new access token. Providers that rotate it (X) return a new refresh token too. */
+export async function refreshTokens(p: Provider, refreshToken: string, shop?: string): Promise<Record<string, string>> {
+  return tokenRequest(p, new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken }), shop);
+}
+
+export async function exchangeCode(p: Provider, code: string, opts: { shop?: string; verifier?: string }): Promise<Record<string, string>> {
+  const body = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: REDIRECT(p.id) });
+  if (opts.verifier) body.set("code_verifier", opts.verifier);
+  if (p.id === "shopify") { body.delete("grant_type"); body.delete("redirect_uri"); }
+  return tokenRequest(p, body, opts.shop);
 }

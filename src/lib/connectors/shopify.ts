@@ -1,4 +1,21 @@
+import { createHmac } from "crypto";
 import type { Connection } from "./store";
+import { sameSecret } from "../rate";
+
+/** A real Shopify store domain; anything else must never become the host of an OAuth or API request. */
+export const SHOP_HOST = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/;
+
+/**
+ * Shopify signs every OAuth callback: HMAC-SHA256 with the app secret over every query parameter except `hmac` and
+ * `signature`, sorted by key and joined as key=value with "&". A callback whose signature does not match did not come
+ * from Shopify (#113).
+ */
+export function validShopifyHmac(query: URLSearchParams, secret: string | undefined): boolean {
+  const given = query.get("hmac");
+  if (!given || !secret) return false;
+  const msg = [...query.entries()].filter(([k]) => k !== "hmac" && k !== "signature").sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([k, v]) => `${k}=${v}`).join("&");
+  return sameSecret(createHmac("sha256", secret).update(msg).digest("hex"), given);
+}
 import { writeFile } from "../files";
 import { mdToHtml } from "./wordpress";
 
