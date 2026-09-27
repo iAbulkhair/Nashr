@@ -116,24 +116,37 @@
 - [ ] استشارة محاسب قبل تحصيل أي ضريبة (#48): حد التسجيل وتوقيته، هل تُعرض الأسعار شاملة الضريبة، والفوترة الإلكترونية. #194 أزال عبارة «تُضاف الضريبة عند الدفع» من صفحة الأسعار حتى يُحسم هذا
 
 ## هـ. موصلات المنصات (OAuth) — #10
-كل واحدة تحتاج تطبيق مطوّر على المنصة، وبعض الموافقات يستغرق أسابيع. ابدأ اليوم ما لا يحتاج رابط رجوع: توثيق Meta Business، وطلبات شراكة سلة وزد، وحساب Snap Business، وقرار باقة X المدفوعة، وتسجيل اسم المرسل في Unifonic. سجّل التطبيقات بعد الدومين حتى لا تغيّر روابط الرجوع لاحقاً.
+**قرار المالك (2026-09-27):** نسجّل التطبيقات الآن على الرابط المؤقت `nashr-tau.vercel.app`، ونضيف رابط `nashr.ai` لكل تطبيق بعد شراء الدومين. كل المنصات أدناه تقبل أكثر من رابط رجوع، فلا تحذف القديم إلا بعد نقل `APP_ORIGIN`.
 
-| المنصة | المتغيرات | تاريخ التقديم | الحالة | العائق الحالي |
-|---|---|---|---|---|
-| Meta (فيسبوك/إنستقرام) | `META_APP_ID`، `META_APP_SECRET` | | لم يبدأ | أوراق الشركة (أ0) |
-| سلة | `SALLA_CLIENT_ID`، `SALLA_CLIENT_SECRET` | | لم يبدأ | |
-| زد | `ZID_CLIENT_ID`، `ZID_CLIENT_SECRET` | | لم يبدأ | |
-| Google | `GOOGLE_CLIENT_ID`، `GOOGLE_CLIENT_SECRET` | | لم يبدأ | الدومين |
-| X | `X_CLIENT_ID`، `X_CLIENT_SECRET` | | لم يبدأ | قرار الباقة المدفوعة |
-| TikTok | `TIKTOK_CLIENT_KEY`، `TIKTOK_CLIENT_SECRET` | | لم يبدأ | الدومين |
-| Snap | `SNAP_CLIENT_ID`، `SNAP_CLIENT_SECRET` | | لم يبدأ | |
-| LinkedIn | `LINKEDIN_CLIENT_ID`، `LINKEDIN_CLIENT_SECRET` | | لم يبدأ | الدومين |
-| Shopify | `SHOPIFY_CLIENT_ID`، `SHOPIFY_CLIENT_SECRET` | | لم يبدأ | الدومين |
-| Unifonic (SMS) | — | | لم يبدأ | تسجيل اسم المرسل |
+**أمان الربط أولاً (2026-09-27):** أُغلقت ثغرات الربط قبل وضع أي مفتاح: لا يكتمل الربط إلا في المتصفح وبالحساب الذي بدأه (#37)، ولا يُستعمل رمز منصة لمنصة أخرى (#38)، ومتجر Shopify يُتحقق من نطاقه وتوقيعه (#39، #113)، والرموز تتجدد تلقائياً قبل انتهائها، وإن رفضتها المنصة تظهر في صفحة التكاملات «أعد الربط» (#34).
 
-- رابط الرجوع (callback) لكل منصة: `{APP_ORIGIN}/api/connect/{provider}/callback` على الدومين النهائي. الدليل: `docs/Platform_Access_Playbook.md`
-- أدخل المفاتيح من طرفيتك: `vercel env add NAME production`، لا في المحادثة
-- حدّث الجدول أسبوعياً
+**اختبر قبل المراجعة:** معظم المنصات تسمح بتشغيل التطبيق في «وضع التطوير» لحسابات المطوّرين المضافين إليه قبل أي مراجعة. أضف حسابك الشخصي كمطوّر/مختبِر، واربطه من صفحة التكاملات في نشر، وأخبرني بالنتيجة.
+
+**ما يعمل فعلاً بعد الربط اليوم:** X (نشر تغريدة معتمدة) وShopify (مسودة مقال واستيراد المنتجات). البقية يُحفظ ربطها لكنه لا يفعل شيئاً بعد، وأبنيه منصة منصة بعد وصول مفاتيحها. لذلك الترتيب: ابدأ بما يعمل (X، Shopify)، ثم ما مراجعته طويلة (Meta، سلة، زد).
+
+روابط الرجوع (انسخها كما هي):
+
+| الترتيب | المنصة | رابط الرجوع (Redirect / Callback URL) | الصلاحيات المطلوبة | المتغيرات في Vercel | تاريخ التقديم | الحالة | ملاحظة |
+|---|---|---|---|---|---|---|---|
+| 1 | X | `https://nashr-tau.vercel.app/api/connect/x/callback` | `tweet.read tweet.write users.read offline.access` — نوع التطبيق Web App، OAuth 2.0 مع PKCE | `X_CLIENT_ID`، `X_CLIENT_SECRET` | | لم يبدأ | النشر يحتاج باقة API مدفوعة من X؛ قرّر الباقة قبل التسجيل |
+| 2 | Shopify | `https://nashr-tau.vercel.app/api/connect/shopify/callback` | `read_products, read_orders, read_checkouts, write_content, read_customers` | `SHOPIFY_CLIENT_ID`، `SHOPIFY_CLIENT_SECRET` | | لم يبدأ | من Shopify Partners ← Apps ← Create app. جرّبه على متجر تطوير مجاني |
+| 3 | Meta | `https://nashr-tau.vercel.app/api/connect/meta/callback` | صفحات فيسبوك، نشر إنستقرام، WhatsApp Business، قراءة الإعلانات | `META_APP_ID`، `META_APP_SECRET` | | لم يبدأ | ابدأ «توثيق النشاط التجاري» اليوم (يحتاج أوراق الشركة، قسم أ0). النشر الفعلي لم يُبنَ بعد |
+| 4 | سلة | `https://nashr-tau.vercel.app/api/connect/salla/callback` | `offline_access` + قراءة المنتجات والطلبات | `SALLA_CLIENT_ID`، `SALLA_CLIENT_SECRET` | | لم يبدأ | من بوابة شركاء سلة. قد يقبل رابط رجوع واحداً: غيّره عند نقل الدومين |
+| 5 | زد | `https://nashr-tau.vercel.app/api/connect/zid/callback` | قراءة المنتجات والطلبات | `ZID_CLIENT_ID`، `ZID_CLIENT_SECRET` | | لم يبدأ | من بوابة شركاء زد |
+| 6 | Snap | `https://nashr-tau.vercel.app/api/connect/snapchat/callback` | `snapchat-marketing-api` | `SNAP_CLIENT_ID`، `SNAP_CLIENT_SECRET` | | لم يبدأ | يحتاج حساب Snap Business أولاً |
+| 7 | LinkedIn | `https://nashr-tau.vercel.app/api/connect/linkedin/callback` | `openid profile w_member_social` | `LINKEDIN_CLIENT_ID`، `LINKEDIN_CLIENT_SECRET` | | لم يبدأ | يحتاج صفحة شركة على LinkedIn مربوطة بالتطبيق |
+| 8 | Google | `https://nashr-tau.vercel.app/api/connect/google/callback` | Business Profile، GA4، Search Console | `GOOGLE_CLIENT_ID`، `GOOGLE_CLIENT_SECRET` | | لم يبدأ | **يحتاج الدومين:** توثيق التطبيق عند Google يشترط نطاقاً تملكه، و`vercel.app` لا يمكنك إثبات ملكيته. يعمل لحسابك فقط في وضع الاختبار حتى ذلك الحين |
+| 9 | TikTok | `https://nashr-tau.vercel.app/api/connect/tiktok/callback` | `user.info.basic video.publish video.upload` | `TIKTOK_CLIENT_KEY`، `TIKTOK_CLIENT_SECRET` | | لم يبدأ | **يحتاج الدومين على الأرجح:** TikTok يتحقق من ملكية الموقع قبل الموافقة |
+| — | Unifonic (SMS) | — | — | — | | لم يبدأ | تسجيل اسم المرسل فقط، لا رابط رجوع |
+
+- كل تطبيق يطلب أيضاً رابط سياسة الخصوصية والشروط: `https://nashr-tau.vercel.app/ar/privacy` و`https://nashr-tau.vercel.app/ar/terms`
+- أدخل المفاتيح من طرفيتك فقط، ثم أعد النشر ليصل التغيير:
+  ```bash
+  vercel env add X_CLIENT_ID production --scope asbunat
+  vercel env add X_CLIENT_SECRET production --scope asbunat
+  ```
+- بعد شراء `nashr.ai`: أضف في كل تطبيق الرابط نفسه بـ `https://nashr.ai` بدل `https://nashr-tau.vercel.app`، ثم غيّر `APP_ORIGIN`
+- الدليل الكامل لكل منصة: `docs/Platform_Access_Playbook.md`. حدّث الجدول أسبوعياً
 
 ## و. اختبارات على الإنتاج (أنت تجرّبها بحسابك) — #136
 خصص نصف ساعة يومياً حتى تنتهي القائمة. علّم كل بند بالتاريخ والنتيجة، وأخبرني بأي فشل لأفتح له issue.

@@ -8,7 +8,7 @@ import { isWorking } from "@/lib/connectors/working";
 import type { Lang } from "@/lib/i18n";
 
 type P = { id: string; name: string; kind: "oauth" | "key"; capabilities: string[]; available: boolean; keyFields?: KeyField[]; docs?: string; needsShop: boolean };
-type C = { provider: string; meta?: Record<string, string>; connectedAt: string };
+type C = { provider: string; meta?: Record<string, string>; connectedAt: string; needsReconnect?: string };
 
 export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang: Lang; items: Integration[] }) {
   const g = t.integrations;
@@ -93,8 +93,10 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
                   <p className="font-display font-medium">{providerById.get(c.provider)?.name ?? c.provider}</p>
                   <p className="mt-1 text-xs text-ink/60" dir="ltr">{c.meta?.account ?? c.meta?.shop ?? c.meta?.site ?? ""}</p>
                   <p className="mt-1 text-xs text-ink/40" dir="ltr">{c.connectedAt.slice(0, 10)}</p>
+                  {c.needsReconnect && <p className="mt-1 text-xs font-semibold text-sadu">{g.reconnect}</p>}
                 </div>
                 <div className="flex shrink-0 flex-col gap-1">
+                  {c.needsReconnect && providerById.get(c.provider)?.kind === "oauth" && <button onClick={() => startOAuth(providerById.get(c.provider)!)} className="rounded-full bg-oasis px-3 py-1 text-xs font-semibold text-mist">{g.reconnectBtn}</button>}
                   {["shopify", "woocommerce", "odoo", "prestashop"].includes(c.provider) && <button disabled={busy} onClick={() => importProducts(c.provider)} className="rounded-full border border-oasis/40 px-3 py-1 text-xs text-oasis">{g.importProducts}</button>}
                   <button onClick={() => disconnect(c.provider)} className="rounded-full border border-sadu/40 px-3 py-1 text-xs text-sadu">{g.disconnect}</button>
                 </div>

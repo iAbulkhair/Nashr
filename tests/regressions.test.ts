@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { json, newUser, params, signIn, signOut } from "./helpers/session";
+import { createHmac } from "crypto";
+import { jar, json, newUser, params, signIn, signOut } from "./helpers/session";
 import { db } from "@/lib/db";
 import { deleteFile, listFiles, writeFile } from "@/lib/files";
-import { deleteConnection, listConnections, saveConnection, saveState } from "@/lib/connectors/store";
+import { deleteConnection, listConnections, OAUTH_COOKIE, saveConnection, saveState } from "@/lib/connectors/store";
 import { getBrand, saveBrand, type Brand } from "@/lib/brand";
 import { EDITABLE_BRAND_FIELDS, runTool } from "@/lib/chat";
 import { CHAT_PER_HOUR, chatAllowed } from "@/lib/rate";
@@ -115,7 +116,15 @@ describe("the Shopify callback only ever talks to a Shopify host", () => {
     const exchange = vi.fn();
     vi.doMock("@/lib/connectors/oauth", () => ({ exchangeCode: exchange, REDIRECT: (id: string) => `https://nashr.test/api/connect/${id}/callback` }));
     await saveState("st-evil", { email: u.email, provider: "shopify", lang: "ar", shop: "evil.example", verifier: "" });
-    const res = await callbackRoute.GET(new Request("https://nashr.test/api/connect/shopify/callback?state=st-evil&code=c"), params({ provider: "shopify" }));
+    // Get past the session binding and the signature, so the host check is what refuses it.
+    await signIn(u.email);
+    jar().set(OAUTH_COOKIE, "st-evil");
+    const before = process.env.SHOPIFY_CLIENT_SECRET;
+    process.env.SHOPIFY_CLIENT_SECRET = "test-secret";
+    const q = new URLSearchParams({ code: "c", shop: "evil.example", state: "st-evil" });
+    q.set("hmac", createHmac("sha256", "test-secret").update([...q.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, v]) => `${k}=${v}`).join("&")).digest("hex"));
+    const res = await callbackRoute.GET(new Request(`https://nashr.test/api/connect/shopify/callback?${q}`), params({ provider: "shopify" }));
+    if (before === undefined) delete process.env.SHOPIFY_CLIENT_SECRET; else process.env.SHOPIFY_CLIENT_SECRET = before;
     expect(res.headers.get("location")).toContain("error=bad_shop");
     expect(exchange).not.toHaveBeenCalled();
     expect(await listConnections(u.email)).toEqual([]);

@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
-import { currentUser, sc } from "@/lib/auth";
+import { cookies } from "next/headers";
+import { currentUser, sc, sessionCookie } from "@/lib/auth";
 import { getProvider, isAvailable } from "@/lib/connectors/registry";
 import { authorizeUrl, pkcePair } from "@/lib/connectors/oauth";
-import { saveState } from "@/lib/connectors/store";
+import { OAUTH_COOKIE, saveState } from "@/lib/connectors/store";
+import { SHOP_HOST } from "@/lib/connectors/shopify";
 
 /** GET /api/connect/{provider}/start?shop=xxx.myshopify.com&lang=ar → redirect to provider */
 export async function GET(req: Request, ctx: { params: Promise<{ provider: string }> }) {
@@ -19,9 +21,14 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   if (p.oauth!.needsShop) {
     if (!shop) return NextResponse.json({ ok: false, error: "shop_required" }, { status: 400 });
     if (p.id === "shopify" && !shop.endsWith(".myshopify.com")) shop = `${shop.replace(/\.myshopify\.com$/, "")}.myshopify.com`;
+    // The shop becomes the host of the authorize redirect: only a real Shopify store domain may go there (#39).
+    if (p.id === "shopify" && !SHOP_HOST.test(shop)) return NextResponse.json({ ok: false, error: "bad_shop" }, { status: 400 });
   }
   const state = randomBytes(16).toString("hex");
   const pk = p.oauth!.pkce ? pkcePair() : null;
   await saveState(state, { email: sc(u), provider, lang, shop, verifier: pk?.verifier ?? "" });
+  // The callback completes only in the browser that started the flow: a leaked state alone cannot attach someone
+  // else's platform account to this workspace (#37). Lax, so the provider's top-level redirect back still carries it.
+  (await cookies()).set(OAUTH_COOKIE, state, { ...(await sessionCookie(600)), path: "/api/connect" });
   return NextResponse.redirect(authorizeUrl(p, state, { shop, challenge: pk?.challenge }));
 }

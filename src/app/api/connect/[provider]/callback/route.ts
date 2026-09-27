@@ -1,9 +1,13 @@
 import { track } from "@/lib/track";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { currentUser } from "@/lib/auth";
+import { sameSecret } from "@/lib/rate";
 import { getProvider } from "@/lib/connectors/registry";
 import { exchangeCode } from "@/lib/connectors/oauth";
-import { saveConnection, takeState } from "@/lib/connectors/store";
+import { OAUTH_COOKIE, saveConnection, takeState } from "@/lib/connectors/store";
 import { xMe } from "@/lib/connectors/x";
+import { SHOP_HOST, validShopifyHmac } from "@/lib/connectors/shopify";
 
 export async function GET(req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const { provider } = await ctx.params;
@@ -11,17 +15,28 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   const origin = process.env.APP_ORIGIN ?? `${url.protocol}//${url.host}`;
   const state = url.searchParams.get("state") ?? "";
   const code = url.searchParams.get("code");
+  const jar = await cookies();
+  const bound = jar.get(OAUTH_COOKIE)?.value;
+  jar.delete(OAUTH_COOKIE);
   const st = await takeState(state);
   const lang = st?.lang === "en" ? "en" : "ar";
   const back = (q: string) => NextResponse.redirect(`${origin}/${lang}/app/integrations?${q}`);
   if (!st || !code) return back(`error=${encodeURIComponent(url.searchParams.get("error") ?? "invalid_state")}`);
+  // A state names the provider it was issued for; it cannot complete another provider's flow (#38).
+  if (st.provider !== provider) return back("error=invalid_state");
   const p = getProvider(provider);
   if (!p) return back("error=unknown_provider");
+  // Only the browser and the account that started the flow can finish it (#37). The connection still goes to the
+  // workspace chosen at start (st.email), so switching brand mid-flow does not move it.
+  const u = await currentUser();
+  if (!sameSecret(bound, state) || !u || u.email !== st.email.split("#")[0]) return back("error=session_mismatch");
+  if (p.id === "shopify") {
+    // Shopify signs its callback (#113), and the store must be the one the flow started for, never the unsigned query.
+    if (!validShopifyHmac(url.searchParams, process.env[p.oauth!.clientSecretEnv])) return back("error=bad_hmac");
+    if (!SHOP_HOST.test(st.shop ?? "") || url.searchParams.get("shop") !== st.shop) return back("error=bad_shop");
+  }
   try {
-    const shop = st.shop || (p.id === "shopify" ? url.searchParams.get("shop") ?? "" : "");
-    // The shop becomes the host of the token URL, and that request carries our client secret: only a real Shopify
-    // domain may appear there, whether it came from our own state or from the query string.
-    if (p.id === "shopify" && !/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(shop)) return back("error=bad_shop");
+    const shop = st.shop ?? "";
     const data = await exchangeCode(p, code, { shop, verifier: st.verifier || undefined });
     const meta: Record<string, string> = {};
     if (shop) meta.shop = shop;

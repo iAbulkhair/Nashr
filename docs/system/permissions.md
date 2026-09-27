@@ -83,7 +83,7 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | 43 | DELETE | `/api/connect/{provider}` | O | `currentUser` `connect/[provider]/route.ts:11-12`; `deleteConnection(sc(u), provider)` `:14`. |
 | 44 | POST | `/api/connect/{provider}` | O | `currentUser` `connect/[provider]/route.ts:20-21`; `getConnection(sc(u), provider)` `:23-24`. |
 | 45 | GET | `/api/connect/{provider}/start` | O | `currentUser` `connect/[provider]/start/route.ts:10-11`; scope written into state `:25`. |
-| 46 | GET | `/api/connect/{provider}/callback` | A holding a valid, unused `state` | No session check. `takeState` `connect/[provider]/callback/route.ts:14,17` (`src/lib/connectors/store.ts:58`). Target scope comes from the state record `:28`. |
+| 46 | GET | `/api/connect/{provider}/callback` | O who started the flow: a valid, unused `state` issued for this provider, the matching `nashr_oauth` cookie, and a signed-in account that owns the state's scope | `currentUser` and `sameSecret(cookie, state)` in `connect/[provider]/callback/route.ts`, before any code exchange; Shopify also verifies the query `hmac`. Target scope comes from the state record. |
 | 47 | POST | `/api/connect/{provider}/key` | O | `currentUser` `connect/[provider]/key/route.ts:12-13`; saved under `sc(u)` `:54`. |
 | 48 | POST | `/api/publish/{id}` | O; `id` resolved with `getTask(sc(u), id)`; connection read under `sc(u)` | `currentUser` `publish/[id]/route.ts:10-11`; scope lookup `:13-14`; `publishTask(sc(u), ...)` `:18`. |
 | 49 | GET | `/api/integrations` | A gets the static catalog; F gets the request list | `isAdmin` branch `integrations/route.ts:7`. |
