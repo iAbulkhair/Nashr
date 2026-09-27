@@ -134,7 +134,7 @@ Files: `src/components/app/IntegrationsPanel.tsx:64,160`, `src/app/api/connect/[
 7. `saveConnection(st.email, ...)` writes `conn:{scope}:{provider}` (encrypted) and adds to `conns:{scope}`; the scope comes from the state record, not from the current cookie. `track(scope.split("#")[0], "connect")`.
 8. Every use of a stored connection (publishing, product import) goes through `getFreshConnection` (`src/lib/connectors/fresh.ts`): an OAuth token that expires within 5 minutes is refreshed first (`grant_type=refresh_token`) under the lock `connlock:{scope}:{provider}`, and a rotated refresh token is saved. A refused refresh, a missing refresh token, or a 401/403 from the platform sets `needsReconnect` and the call fails with `reconnect_required`; the Integrations page then shows the connection with a Reconnect button.
 9. A new connection saved by the callback replaces the record, which clears `needsReconnect`.
-10. `DELETE /api/connect/{provider}` writes `null` to the connection key (the id remains in `conns:{scope}`; `listConnections` skips nulls). `POST /api/connect/{provider} {action:"import_products"}` imports products for shopify, woocommerce, odoo, prestashop into `products.md`.
+10. `DELETE /api/connect/{provider}` writes `null` to the connection key (the id remains in `conns:{scope}`; `listConnections` skips nulls). `POST /api/connect/{provider} {action:"import_products"}` imports products for shopify, woocommerce, odoo, prestashop, salla into `products.md`.
 
 ## 12. API-key connectors
 

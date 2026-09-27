@@ -4,6 +4,7 @@ import { deleteConnection } from "@/lib/connectors/store";
 import { getFreshConnection, refusedToken } from "@/lib/connectors/fresh";
 import { importShopify } from "@/lib/connectors/shopify";
 import { importWoo } from "@/lib/connectors/woocommerce";
+import { importSalla } from "@/lib/connectors/salla";
 import { importOdoo, importPrestaShop } from "@/lib/connectors/keyed";
 
 export const maxDuration = 120;
@@ -26,7 +27,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
     const c = await getFreshConnection(sc(u), provider);
     if (!c) return NextResponse.json({ ok: false, error: "not_connected" }, { status: 404 });
     if (b.action === "import_products") {
-      const n = provider === "shopify" ? await importShopify(sc(u), c) : provider === "woocommerce" ? await importWoo(sc(u), c) : provider === "odoo" ? await importOdoo(sc(u), c) : provider === "prestashop" ? await importPrestaShop(sc(u), c) : 0;
+      const n = provider === "shopify" ? await importShopify(sc(u), c) : provider === "woocommerce" ? await importWoo(sc(u), c) : provider === "odoo" ? await importOdoo(sc(u), c) : provider === "prestashop" ? await importPrestaShop(sc(u), c) : provider === "salla" ? await importSalla(sc(u), c) : 0;
       return NextResponse.json({ ok: true, count: n });
     }
     return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });

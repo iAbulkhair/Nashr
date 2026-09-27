@@ -2,12 +2,12 @@
  * Which connectors do something once connected. A provider can verify and store a connection without any code
  * that uses it; the app must not call such a connection "Connected" or read numbers from it.
  * - WORKING_PROVIDERS: publishTask in publish.ts (wordpress, shopify, telegram, x) and the import_products action
- *   in api/connect/[provider] (shopify, woocommerce, odoo, prestashop). tests/connectors-working.test.ts keeps
+ *   in api/connect/[provider] (shopify, woocommerce, odoo, prestashop, salla). tests/connectors-working.test.ts keeps
  *   this list equal to those two code paths.
  * - READS_METRICS: providers whose orders, revenue, traffic, ad spend or audience the Reports page reads. None yet;
  *   src/lib/stats.ts reads only workspace data.
  * No imports, so client components can use it.
  */
-export const WORKING_PROVIDERS: readonly string[] = ["wordpress", "shopify", "telegram", "x", "woocommerce", "odoo", "prestashop"];
+export const WORKING_PROVIDERS: readonly string[] = ["wordpress", "shopify", "telegram", "x", "woocommerce", "odoo", "prestashop", "salla"];
 export const READS_METRICS: readonly string[] = [];
 export const isWorking = (id: string) => WORKING_PROVIDERS.includes(id);
