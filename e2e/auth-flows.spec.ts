@@ -24,9 +24,21 @@ const freshEmail = () => `e2e-signup-${Date.now().toString(36)}@test.example`;
 test.describe("signup", () => {
   test.use({ extraHTTPHeaders: { "x-real-ip": simulatedIp("browser-signup") } });
 
-  test("a new account reaches the start wizard", async ({ page, failures }) => {
+  /**
+   * The public start form (`UrlStart` here, `StartForm` on the new homepage: both a plain GET into signup with `?url=`)
+   * end to end. The carried site used to start the crawl and the brand build straight after signup, so whoever sent the
+   * link chose the new workspace's brand. It now waits on the start page until the owner presses Go (rule 92).
+   */
+  test("a new account with a carried site lands on the review step and builds only after the owner confirms", async ({ page, failures }) => {
     void failures;
-    await open(page, "/en/app/signup");
+    const onboardCalls: string[] = [];
+    page.on("request", (r) => { const path = new URL(r.url()).pathname; if (path.startsWith("/api/onboard")) onboardCalls.push(`${r.method()} ${path}`); });
+
+    await open(page, "/en/agents");
+    const startField = page.getByRole("textbox", { name: "Your website or store URL" }).first();
+    await startField.fill("roastery.example");
+    await startField.press("Enter");
+    await page.waitForURL("**/en/app/signup?url=roastery.example");
 
     await fillWhenReady(page.getByRole("textbox", { name: "Email" }), freshEmail());
     await page.getByRole("button", { name: "Continue" }).click();
@@ -35,8 +47,22 @@ test.describe("signup", () => {
     await fillWhenReady(page.getByRole("textbox", { name: "Password (8+ characters)" }), "signup12345");
     await page.getByRole("button", { name: "Create account" }).click();
 
-    await page.waitForURL("**/en/app/start");
+    await page.waitForURL("**/en/app/start?url=roastery.example");
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Give Noor your website");
+    await expect(page.getByRole("note")).toContainText("Check this link before Noor starts");
+    await expect(page.getByRole("textbox", { name: /Website or store URL/ })).toHaveValue("roastery.example");
+    expect(onboardCalls, "signing up with a carried site reads nothing yet").toEqual([]);
+
+    // The press is the confirmation; the build starts only after it, from that exact URL. The e2e server has no model
+    // key, so the builder takes its mock path and the run is free.
+    const build = page.waitForRequest((r) => new URL(r.url()).pathname === "/api/onboard");
+    await page.getByRole("button", { name: "Go, Noor" }).click();
+    const req = await build;
+    expect(req.postDataJSON()).toEqual({ url: "roastery.example" });
+    expect((await req.response())?.status()).toBe(200);
+    expect(onboardCalls.slice(0, 2)).toEqual(["POST /api/onboard/confirm", "POST /api/onboard"]);
+    // Let the run finish (the thread moves to the plain chat URL on `done`), so the stream is not cut off mid-way.
+    await page.waitForURL(/\/en\/app\/chat$/, { timeout: 30_000 });
   });
 
   test("an invalid address never leaves the first step", async ({ page }) => {
@@ -135,6 +161,32 @@ test.describe("login", () => {
     expect(new URL(authed.url()).pathname).toBe("/en/app");
     await signedIn.close();
     void page;
+  });
+});
+
+test.describe("a shared onboarding link", () => {
+  /**
+   * Its own fixed account, never given a brand: the owner and SECOND carry other specs' login budgets, and this one
+   * only has to be signed in without a workspace. Fixed so a rerun logs in rather than spending a signup.
+   */
+  const LINKED = { email: "e2e-link@test.example", password: "e2epass123", name: "E2E Link" };
+
+  test("pre-fills the start page for review and cannot start a build", async ({ page, failures }) => {
+    void failures;
+    await signUpOrLogIn(page.request, LINKED);
+    const onboardCalls: string[] = [];
+    page.on("request", (r) => { const path = new URL(r.url()).pathname; if (path.startsWith("/api/onboard")) onboardCalls.push(`${r.method()} ${path}`); });
+
+    await open(page, "/en/app/chat?onboard=attacker.example");
+    await page.waitForURL("**/en/app/start?url=attacker.example");
+    await expect(page.getByRole("note")).toContainText("Check this link before Noor starts");
+    await expect(page.getByRole("textbox", { name: /Website or store URL/ })).toHaveValue("attacker.example");
+    expect(onboardCalls, "a link reads nothing on its own").toEqual([]);
+
+    // The server says the same without the page: nobody confirmed this URL for this workspace.
+    const res = await page.request.post("/api/onboard", { data: { url: "attacker.example" } });
+    expect(res.status()).toBe(403);
+    expect(await res.text()).toBe("unconfirmed");
   });
 });
 
