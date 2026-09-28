@@ -5,8 +5,10 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { AGENT_CAST, HOME, SLOGAN } from "@/lib/home";
 import type { Lang } from "@/lib/i18n";
 import Doodle from "./Doodle";
+import MotionToggle from "./MotionToggle";
 import QuestionFlip from "./QuestionFlip";
 import StartForm from "./StartForm";
+import { useMotionPaused, useShowing } from "./motion";
 import styles from "./home.module.css";
 
 /** Chapter 0 is the hero, 1–7 the agents in cast order, 8 the finale. */
@@ -31,11 +33,20 @@ const phase = (k: number, chapter: number): Phase => (k === chapter ? "on" : k >
  * so scrolling back up plays it all in reverse and every question returns. Under reduced motion there is no orbit and
  * nothing travels, but the chapters still step. Without JavaScript the section collapses to the hero (see the CSS).
  * The storm is decorative (`aria-hidden`); the lineup below exposes every agent as text.
+ *
+ * What moves on its own (the storm, the scroll cue's nudge, the chapter's question flip) runs only while the story is
+ * on screen, the tab is showing and the visitor has not paused the page's motion (`data-live`). The pause button on
+ * the stage is the same switch as the lineup's (`./motion`, WCAG 2.2.2).
  */
 export default function Story({ lang }: { lang: Lang }) {
   const section = useRef<HTMLElement>(null);
   const shown = useRef(0);
   const [chapter, setChapter] = useState(0);
+  const paused = useMotionPaused();
+  // Any part of the section: it is nine screens tall, so a share of it would never be reached. The page opens on the
+  // story, so it counts as showing until the first observation says otherwise.
+  const showing = useShowing(section, { initial: true });
+  const live = showing && !paused;
 
   useEffect(() => {
     const el = section.current;
@@ -65,7 +76,7 @@ export default function Story({ lang }: { lang: Lang }) {
   const lead = STORM_CAST.findIndex((s) => s.chapter > chapter);
 
   return (
-    <section ref={section} className={styles.story} data-testid="story" data-chapter={chapter}>
+    <section ref={section} className={styles.story} data-testid="story" data-chapter={chapter} data-live={live || undefined}>
       <div className={styles.stage} data-world={agent?.id}>
         <div className={styles.heroCopy} data-on={chapter === 0 || undefined}>
           <h1 className={styles.line1}>{SLOGAN.line1[lang]}</h1>
@@ -116,13 +127,15 @@ export default function Story({ lang }: { lang: Lang }) {
         {AGENT_CAST.map((a, i) => (
           <div key={a.id} className={styles.agent} data-phase={phase(i + 1, chapter)} aria-hidden="true">
             <div className={styles.above}>
-              <QuestionFlip items={a.questions} lang={lang} paused={chapter !== i + 1} phase="resume" />
+              <QuestionFlip items={a.questions} lang={lang} paused={!live || chapter !== i + 1} phase="resume" />
             </div>
             <div className={styles.stageArt}>
               <Doodle who={a.id} />
             </div>
           </div>
         ))}
+
+        <MotionToggle lang={lang} className={styles.storyToggle} />
       </div>
     </section>
   );

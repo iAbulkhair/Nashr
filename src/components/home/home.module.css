@@ -83,7 +83,7 @@
 }
 :global([dir="rtl"]) .story { --dir: -1; }
 
-/* Phones: the words on top, the owner and the agent side by side below. */
+/* Phones: the words on top, the owner and the agent side by side below, the pause button under them. */
 .stage {
   --wash: var(--ground);
   position: sticky;
@@ -93,6 +93,7 @@
   grid-template:
     "copy copy" auto
     "owner agent" minmax(0, 1fr)
+    "tools tools" auto
     / minmax(0, 1fr) minmax(0, 1fr);
   gap: clamp(0.75rem, 2.5svh, 1.5rem) 12px;
   padding: clamp(1rem, 3svh, 2.5rem) max(16px, (100% - 1200px) / 2) clamp(0.5rem, 2svh, 1.5rem);
@@ -156,6 +157,11 @@
 @keyframes nudge {
   0%, 100% { translate: 0 0; }
   50% { translate: 0 0.25em; }
+}
+/* The nudge rests with the story, and whenever the hero is away: it only fades, so it would run on unseen. */
+.story:not([data-live]) .scrollCue::after,
+.heroCopy:not([data-on]) .scrollCue::after {
+  animation-play-state: paused;
 }
 
 .storyValue {
@@ -222,6 +228,18 @@
   max-width: 100%;
 }
 .agent .qflip { position: relative; z-index: 2; font-size: clamp(0.78rem, 1.1vw, 0.95rem); text-align: center; }
+/*
+ * The page's pause button on the stage (MotionToggle.tsx): on phones in its own row under the figures, always in the
+ * same place in every chapter. Like the words, it sits on the ground colour whatever the world (Majed's is the ink).
+ */
+.stage > .storyToggle {
+  grid-area: tools;
+  align-self: end;
+  justify-self: end;
+  position: relative;
+  z-index: 2;
+  background: var(--ground);
+}
 
 /*
  * Desktops and landscape screens: owner, agent, words, in the reading direction. The middle column is left to the
@@ -237,6 +255,8 @@
   .heroCopy,
   .finaleCopy,
   .agentCopy { align-self: center; }
+  /* No row of its own here: it sits at the foot of the words' column, under the centred card. */
+  .stage > .storyToggle { grid-area: copy; }
 }
 
 /*
@@ -331,6 +351,16 @@
 .stormQ:nth-child(odd),
 .stormQ:nth-child(odd) .stormText {
   animation-direction: reverse;
+}
+/*
+ * The storm holds still while the story rests (paused by the visitor, off screen, or in a hidden tab). A question its
+ * agent has taken stops circling as it leaves: it flies straight across and is hidden 0.9 s later, so its orbit would
+ * only run on unseen.
+ */
+.story:not([data-live]) :is(.stormQ, .stormText),
+.stormQ[data-taken],
+.stormQ[data-taken] .stormText {
+  animation-play-state: paused;
 }
 @keyframes orbit {
   from { transform: rotate(0turn) translateX(var(--r)) rotate(0turn); }
@@ -551,7 +581,7 @@
 
 /* ---------- Life in the lineup: banter, eyes, blinking, breathing (Lineup.tsx, Figure.tsx) ---------- */
 
-/* The AI label and, across from it, the button that pauses the lineup's motion (WCAG 2.2.2). */
+/* The AI label and, across from it, the page's pause button (WCAG 2.2.2), the same switch as the story's. */
 .lineupHead {
   max-width: 1320px;
   margin: 0 auto 1.25rem;
@@ -562,8 +592,11 @@
   gap: 1rem;
 }
 .lineupHead > .aiLabel { max-width: none; margin: 0; padding-inline: 0; }
-/* Both labels sit in one cell, so the button is as wide as the longer one and never changes size. */
-.lineupToggle {
+/*
+ * The page's pause button, in the lineup's head and on the story's stage (MotionToggle.tsx). Both labels sit in one
+ * cell, so the button is as wide as the longer one and never changes size.
+ */
+.motionToggle {
   display: inline-grid;
   flex: none;
   padding: 0.3rem 0.85rem;
@@ -578,13 +611,13 @@
   white-space: nowrap;
   cursor: pointer;
 }
-.lineupToggle > * { grid-area: 1 / 1; text-align: center; }
-.lineupToggle > :not([data-on]) { visibility: hidden; }
-.lineupToggle:hover { border-color: var(--ink); }
-.lineupToggle:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
-/* Without JavaScript nothing moves, so there is nothing to pause. */
+.motionToggle > * { grid-area: 1 / 1; text-align: center; }
+.motionToggle > :not([data-on]) { visibility: hidden; }
+.motionToggle:hover { border-color: var(--ink); }
+.motionToggle:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+/* Without JavaScript nothing could pause anything, so there is no button. */
 @media (scripting: none) {
-  .lineupToggle { display: none; }
+  .motionToggle { display: none; }
 }
 
 /*

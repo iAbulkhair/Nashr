@@ -4,6 +4,8 @@ import { BANTER_FIRST_MS, BANTER_LINE_MS, exchangeTimes } from "@/lib/banter-clo
 import { BANTER, CAST, HOME, type CastId, type CastMember } from "@/lib/home";
 import type { Lang } from "@/lib/i18n";
 import Figure from "./Figure";
+import MotionToggle from "./MotionToggle";
+import { useMotionPaused, useShowing } from "./motion";
 import { useReducedMotion } from "./useReducedMotion";
 import styles from "./home.module.css";
 
@@ -34,54 +36,27 @@ const clamp = (v: number) => Math.max(-1, Math.min(1, v));
  * fit at a readable width, the row scrolls inside its own box (snapping on phones), so the page itself never scrolls
  * sideways. The AI label is permanent (spec §7.1, disclosure).
  *
- * The team is alive (spec §7.3) while the lineup is on screen, the tab is showing and the visitor has not paused it
- * (`data-live`): the banter of §5.3 plays in speech bubbles, the questions flip, the figures blink and breathe (CSS)
- * and the eyes follow the pointer. The pause button stops all of that (WCAG 2.2.2); its label says what pressing it
- * will do. A pressed figure always answers, and only that answer is announced to screen readers: the automatic banter
- * is decoration and stays silent. Under reduced motion the bubbles still come and go, without moving; nothing else
- * moves.
+ * The team is alive (spec §7.3) while the lineup is on screen, the tab is showing and the visitor has not paused the
+ * page's motion (`data-live`): the banter of §5.3 plays in speech bubbles, the questions flip, the figures blink and
+ * breathe (CSS) and the eyes follow the pointer. The pause button here and the one on the story's stage are one switch
+ * (`./motion`, WCAG 2.2.2): either stops all of that and the story's motion too. A pressed figure always answers, and
+ * only that answer is announced to screen readers: the automatic banter is decoration and stays silent. Under reduced
+ * motion the bubbles still come and go, without moving; nothing else moves.
  */
 export default function Lineup({ lang }: { lang: Lang }) {
   const section = useRef<HTMLElement>(null);
   const reduced = useReducedMotion();
-  const [active, setActive] = useState(false);
+  const paused = useMotionPaused();
+  // On screen (a quarter of it) and in a visible tab.
+  const active = useShowing(section, { threshold: 0.25 });
   const [banter, setBanter] = useState<Line | null>(null);
   const [pressed, setPressed] = useState<Line | null>(null);
-  const [paused, setPaused] = useState(false);
   const next = useRef(0);
   const live = active && !paused;
 
-  // On screen and in a visible tab, or not. Either way a change clears the bubble, so a line cut off by a pause never
-  // comes back stale when the lineup does.
-  useEffect(() => {
-    const el = section.current;
-    if (!el) return;
-    let onScreen = false;
-    let was = false;
-    const update = () => {
-      const now = onScreen && document.visibilityState === "visible";
-      if (now === was) return;
-      was = now;
-      setActive(now);
-      setBanter(null);
-    };
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        onScreen = entry.isIntersecting;
-        update();
-      },
-      { threshold: 0.25 },
-    );
-    observer.observe(el);
-    document.addEventListener("visibilitychange", update);
-    return () => {
-      observer.disconnect();
-      document.removeEventListener("visibilitychange", update);
-    };
-  }, []);
-
   // The banter, one line at a time, on the schedule in `@/lib/banter-clock`. An exchange cut off (off screen, hidden
-  // tab, paused) starts again from its first line.
+  // tab, paused) takes its bubble with it, so no stale line comes back with the lineup, and starts again from its first
+  // line.
   useEffect(() => {
     if (!live) return;
     const timers = new Set<ReturnType<typeof setTimeout>>();
@@ -104,7 +79,10 @@ export default function Lineup({ lang }: { lang: Lang }) {
       later(play, at.next);
     };
     later(play, BANTER_FIRST_MS);
-    return () => timers.forEach(clearTimeout);
+    return () => {
+      timers.forEach(clearTimeout);
+      setBanter(null);
+    };
   }, [live, lang]);
 
   // A pressed figure's answer holds for one line's time; pressing again restarts it.
@@ -158,18 +136,7 @@ export default function Lineup({ lang }: { lang: Lang }) {
         <p id="lineup-label" className={styles.aiLabel}>
           {HOME.aiLabel[lang]}
         </p>
-        {/* Both labels share one cell, so the button keeps its width; the hidden one is left out of its name. */}
-        <button
-          type="button"
-          className={styles.lineupToggle}
-          onClick={() => {
-            setPaused((p) => !p);
-            setBanter(null);
-          }}
-        >
-          <span data-on={!paused || undefined}>{HOME.motionPause[lang]}</span>
-          <span data-on={paused || undefined}>{HOME.motionPlay[lang]}</span>
-        </button>
+        <MotionToggle lang={lang} />
       </div>
       <div className={styles.strip}>
         <ul className={styles.row} style={{ "--n": CAST.length } as CSSProperties}>

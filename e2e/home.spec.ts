@@ -228,6 +228,8 @@ test("the motion button stops the banter and the flips, and starts them again", 
   await expect(lineup).toHaveAttribute("data-motion", "paused");
   const toggle = lineup.getByRole("button", { name: "Play motion", exact: true });
   await expect(toggle).toBeVisible();
+  // One switch for the whole page: the story's button has flipped with it.
+  await expect(page.getByTestId("story").getByRole("button", { name: "Play motion", exact: true })).toBeVisible();
   // Playing, the next line would come within 2.2 s and a question would flip within 2.4 s. Paused, neither happens.
   const question = lineup.locator('[data-testid="figure"][data-cast="noor"]').getByTestId("qflip");
   const before = await question.textContent();
@@ -241,12 +243,68 @@ test("the motion button stops the banter and the flips, and starts them again", 
   await expect(bubbles.first()).toBeVisible({ timeout: 4000 });
 });
 
-test("a hidden tab rests the lineup: no new line, no flip", async ({ page }) => {
+test("the story's pause button stops the storm and the flip, and pauses the lineup too", async ({ page }) => {
+  await open(page, "/en");
+  const story = page.getByTestId("story");
+  await expect.poll(() => live(story)).toBe(true);
+  await page.evaluate(() => {
+    const s = document.querySelector('[data-testid="story"]') as HTMLElement;
+    window.scrollTo(0, s.offsetTop + (s.offsetHeight - window.innerHeight) * 0.15);
+  });
+  // Chapter 1: Noor's questions flip on the stage, and the rest of the storm still circles the owner.
+  await expect(story).toHaveAttribute("data-chapter", "1");
+  const storm = story.locator("[data-storm-q]:not([data-taken])");
+  const states = () => storm.evaluateAll((els) => [...new Set(els.map((el) => getComputedStyle(el).animationPlayState))]);
+  await expect.poll(states).toEqual(["running"]);
+  // Whatever the button says, a question already taken and the hidden hero's nudge hold still.
+  expect(await story.locator("[data-storm-q][data-taken]").first().evaluate((el) => getComputedStyle(el).animationPlayState)).toBe("paused");
+  expect(await story.locator("h1 ~ [aria-hidden]").evaluate((el) => getComputedStyle(el, "::after").animationPlayState)).toBe("paused");
+  const toggle = story.getByRole("button", { name: /^(Pause|Play) motion$/ });
+  const box = await toggle.boundingBox();
+  await story.getByRole("button", { name: "Pause motion", exact: true }).click();
+  await expect.poll(states).toEqual(["paused"]);
+  await expect(page.getByTestId("lineup").getByRole("button", { name: "Play motion", exact: true })).toBeVisible();
+  expect(await toggle.boundingBox()).toEqual(box);
+  // Playing, the question on the stage would flip within 2.4 s. Paused, it holds.
+  const flip = story.locator('[data-phase="on"] [data-testid="qflip"]');
+  const before = await flip.textContent();
+  await page.waitForTimeout(3000);
+  expect(await flip.textContent()).toBe(before);
+  await story.getByRole("button", { name: "Play motion", exact: true }).click();
+  await expect.poll(states).toEqual(["running"]);
+  await expect.poll(() => flip.textContent(), { timeout: 4000 }).not.toBe(before);
+  // Scrolled out of sight (past the lineup, whose centring still leaves the stage's foot on screen), the story rests.
+  await page.getByTestId("dictionary").scrollIntoViewIfNeeded();
+  await expect(story).not.toHaveAttribute("data-live");
+});
+
+test.describe("home at 375px with the storm running", () => {
+  test.use({ viewport: { width: 375, height: 812 } });
+  for (const lang of LANGS) {
+    test(`never scrolls sideways, even while questions fly · ${lang}`, async ({ page }) => {
+      await open(page, `/${lang}`);
+      const story = page.getByTestId("story");
+      expect(await story.locator("[data-storm-q]").first().evaluate((el) => getComputedStyle(el).animationName)).not.toBe("none");
+      // Checked as soon as each chapter turns, while its questions are still travelling to the agent.
+      for (const [f, chapter] of [[0.15, "1"], [0.5, "4"], [1, "8"]] as const) {
+        await page.evaluate((f) => {
+          const s = document.querySelector('[data-testid="story"]') as HTMLElement;
+          window.scrollTo(0, s.offsetTop + (s.offsetHeight - window.innerHeight) * f);
+        }, f);
+        await expect(story).toHaveAttribute("data-chapter", chapter);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), chapter).toBe(true);
+      }
+    });
+  }
+});
+
+test("a hidden tab rests the lineup and the story: no new line, no flip, no storm", async ({ page }) => {
   await open(page, "/en");
   const lineup = page.getByTestId("lineup");
   await lineup.scrollIntoViewIfNeeded();
   const bubbles = lineup.getByTestId("bubble");
   await expect(bubbles.first()).toBeVisible({ timeout: 4000 });
+  const story = page.getByTestId("story");
   await page.evaluate(() => {
     Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
     document.dispatchEvent(new Event("visibilitychange"));
@@ -259,6 +317,10 @@ test("a hidden tab rests the lineup: no new line, no flip", async ({ page }) => 
   await page.waitForTimeout(2600);
   await expect(bubbles).toHaveCount(0);
   expect(await question.textContent()).toBe(before);
+  // Back at the top with the tab still hidden, the story's storm holds still.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(story).toHaveAttribute("data-chapter", "0");
+  expect(await story.locator("[data-storm-q]").first().evaluate((el) => getComputedStyle(el).animationPlayState)).toBe("paused");
 });
 
 test("the eyes follow the pointer the right way round in Arabic, and the figures blink and breathe", async ({ page, isMobile }) => {
