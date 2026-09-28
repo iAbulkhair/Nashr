@@ -10,7 +10,7 @@ import type { Kpis } from "@/lib/stats";
 import type { AgentMetrics } from "@/lib/evals";
 import type { Lang } from "@/lib/i18n";
 import { kpiDelta } from "@/lib/kpi-delta";
-import { READS_METRICS } from "@/lib/connectors/working";
+import { PLATFORM_METRICS, reportSources } from "@/lib/report-sources";
 import { PROVIDER_NAME, SALES_PROVIDERS, moneyText, type SalesProvider, type SalesSnapshot } from "@/lib/connectors/sales";
 import { dateFormat } from "@/lib/dates";
 
@@ -18,13 +18,6 @@ type Item = { id: string; type: TaskType; title: string; status: string; created
 
 const METRICS = ["created", "approved", "approvalRate", "pending", "published", "images", "creditsUsed", "scheduled"] as const;
 type MetricKey = (typeof METRICS)[number];
-const PLATFORM_METRICS: { key: string; provs: string[] }[] = [
-  { key: "visitors", provs: ["google"] }, { key: "sessions", provs: ["google"] }, { key: "adSpend", provs: ["meta", "snapchat", "tiktok", "google"] }, { key: "roas", provs: ["meta", "snapchat", "tiktok", "google"] }, { key: "orders", provs: ["shopify", "salla", "zid", "woocommerce"] }, { key: "revenue", provs: ["shopify", "salla", "zid", "woocommerce"] }, { key: "followers", provs: ["instagram", "tiktok", "snapchat", "x"] },
-];
-const SOURCES: { key: string; provs: string[] }[] = [
-  { key: "analytics", provs: ["google"] }, { key: "ads", provs: ["meta", "snapchat", "tiktok", "google"] }, { key: "store", provs: ["shopify", "salla", "zid", "woocommerce"] }, { key: "social", provs: ["instagram", "tiktok", "snapchat", "x", "linkedin"] },
-];
-
 export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null }) {
   const r = useRouter();
   const R = t.reports;
@@ -60,12 +53,10 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
     creditsUsed: { label: R.creditsUsed, value: String(k.creditsUsed), sub: delta(k.creditsUsed, k.creditsUsedPrev) },
     scheduled: { label: R.scheduled, value: String(k.scheduled) },
   };
-  // A connection alone reads no numbers: connectors publish and import products today (src/lib/stats.ts reads only
-  // workspace data). A provider joins READS_METRICS when a reader for its orders, revenue or audience ships.
-  const readable = connected.filter((p) => READS_METRICS.includes(p));
+  // Which sources this page actually reads (report-sources.ts): a connection with no reader behind it counts as missing.
+  const sources = reportSources(connected);
   // One store card per workspace: the store last synced while it is still connected, else the first connected one.
   const salesProvider = store && connected.includes(store.provider) ? store.provider : SALES_PROVIDERS.find((p) => connected.includes(p));
-  const missing = SOURCES.filter((s) => !s.provs.some((p) => readable.includes(p)));
   const top = (o: Record<string, number>) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 6);
   const typeLabel = (x: string) => (t.generate.types as Record<string, { t: string }>)[x]?.t ?? x;
   const max = Math.max(1, ...k.weeks.map((w) => w.created));
@@ -85,11 +76,11 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
 
   return (
     <div className="mx-auto max-w-5xl">
-      {missing.length > 0 && (
-        <div className="mb-5 rounded-xl border border-ink/15 bg-white p-4 text-sm">
-          <p><b>{R.warnTitle}</b> {R.warnBody}</p>
+      {sources.banner && (
+        <div className="mb-5 rounded-xl border border-ink/15 bg-white p-4 text-sm" data-testid="sources-banner">
+          <p>{sources.banner === "some" ? <><b>{R.warnSomeTitle}</b> {R.warnSomeBody}</> : <><b>{R.warnTitle}</b> {R.warnBody}</>}</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {missing.map((s) => <Link key={s.key} href={`/${lang}/app/integrations`} className="btn btn-secondary btn-xs">{R.sources[s.key as keyof typeof R.sources]} · {R.connectNow} →</Link>)}
+            {sources.missing.map((key) => <Link key={key} href={`/${lang}/app/integrations`} className="btn btn-secondary btn-xs">{R.sources[key]} · {key === "store" ? R.connectStore : R.connectNow} →</Link>)}
           </div>
         </div>
       )}
@@ -122,7 +113,13 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
           </div>
           <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink/60">{R.platformMetrics}</p>
           <div className="mt-2 flex flex-wrap gap-2">
-            {PLATFORM_METRICS.map((m) => { const on = m.provs.some((p) => readable.includes(p)); return <Link key={m.key} href={`/${lang}/app/integrations`} className={`btn btn-xs ${on ? "btn-primary" : "btn-secondary opacity-70"}`}>{on ? "+" : "🔒"} {R.platform[m.key as keyof typeof R.platform]}{!on && ` · ${R.connectNow}`}</Link>; })}
+            {PLATFORM_METRICS.map((m) => {
+              const on = sources.read.includes(m.source);
+              // A read source's numbers live in their own card (today only the store card), not in a tile.
+              return on
+                ? <a key={m.key} href="#store-sales" className="btn btn-xs btn-secondary">✓ {R.platform[m.key as keyof typeof R.platform]} · {R.inStoreCard}</a>
+                : <Link key={m.key} href={`/${lang}/app/integrations`} className="btn btn-xs btn-secondary opacity-70">🔒 {R.platform[m.key as keyof typeof R.platform]} · {m.source === "store" ? R.connectStore : R.connectNow}</Link>;
+            })}
           </div>
         </div>
       )}
@@ -268,7 +265,7 @@ function StoreSales({ R, paused, provider, store, lang }: { R: AppDict["reports"
   const fill = (s: string, v: Record<string, number | string>) => s.replace(/\{(\w+)\}/g, (_, k) => String(v[k] ?? ""));
   const name = PROVIDER_NAME[provider];
   return (
-    <div className="card mt-6">
+    <div id="store-sales" className="card mt-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-display text-xl font-bold">{fill(R.title, { store: name })}</h2>
         <button onClick={sync} disabled={busy} className="btn btn-secondary btn-xs">{busy ? R.syncing : fill(R.sync, { store: name })}</button>

@@ -1,6 +1,8 @@
 import { readFileSync } from "fs";
 import { describe, expect, it } from "vitest";
 import { READS_METRICS, WORKING_PROVIDERS, isWorking } from "@/lib/connectors/working";
+import { SALES_PROVIDERS } from "@/lib/connectors/sales";
+import { reportSources } from "@/lib/report-sources";
 import { costUsd } from "@/lib/usage";
 
 // Rule 65: the app calls a connection "Connected", offers "Connect", or reads numbers from it only when code uses it.
@@ -22,9 +24,17 @@ describe("which connectors do something", () => {
     for (const id of ["klaviyo", "brevo", "google", "instagram", "whatsapp", "zid", "tiktok", "snapchat", "linkedin"]) expect(isWorking(id)).toBe(false);
   });
 
-  it("reads no platform numbers until a reader ships", () => {
-    expect(READS_METRICS).toEqual([]);
+  it("reads platform numbers only from the stores the sales sync reads, and stats.ts reads no connection", () => {
+    expect([...READS_METRICS].sort()).toEqual([...SALES_PROVIDERS].sort());
     expect(readFileSync("src/lib/stats.ts", "utf8")).not.toMatch(/getConnection|listConnections/);
+  });
+
+  it("tells Reports which sources are read: a store with a sales reader silences the store warning, a stored connection without one does not", () => {
+    expect(reportSources([])).toEqual({ read: [], missing: ["analytics", "ads", "store", "social"], banner: "none" });
+    expect(reportSources(["salla"])).toEqual({ read: ["store"], missing: ["analytics", "ads", "social"], banner: "some" });
+    expect(reportSources(["shopify", "x"]).read).toEqual(["store"]);
+    // WooCommerce and Meta store a connection, but nothing reads their numbers.
+    expect(reportSources(["woocommerce", "meta", "google"])).toMatchObject({ read: [], banner: "none" });
   });
 });
 
