@@ -1,0 +1,175 @@
+"use client";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
+import { fmt, int, METRICS, type Finding, type MetricId, type PerfSnapshot } from "@/lib/perf-import";
+import { Icon } from "./Icons";
+
+const STR = {
+  ar: {
+    title: "نتائج حملاتك (CSV)", sub: "صدّر تقرير الإعلانات من Meta أو سناب شات أو تيك توك أو Google Ads وارفعه هنا. نور تستخرج ما نجح وتبني عليه خطتك القادمة. بدون رصيد.",
+    how: "كيف أصدّر التقرير؟", howBody: "من مدير الإعلانات افتح التقارير على مستوى الإعلان، وأضف أعمدة الظهور والنقرات والمبلغ المنفق والنتائج (أو قيمة الشراء)، ثم صدّر بصيغة CSV.",
+    drop: "اسحب ملف CSV هنا أو اضغط للاختيار", reading: "نور تقرأ النتائج…", replace: "ارفع ملفاً أحدث", remove: "احذف الاستيراد",
+    rows: "إعلانات في الملف", ranked: "بيانات كافية للترتيب", overall: "المتوسط العام", spend: "الإنفاق",
+    winners: "الأفضل أداءً", weakest: "الأضعف", patterns: "أنماط لاحظتها نور", waste: "إنفاق بلا نتيجة",
+    medium: "يستحق التنفيذ", low: "فكرة للتجربة", sample: "العيّنة", metric: "المقياس",
+    saved: "حُفظت في performance-learnings.md، وتقرؤها نور في كل توليد.", honest: "مقارنة بين إعلاناتك أنت، وليست إثباتاً للسبب. الأنماط منخفضة الثقة أفكار تُجرَّب.",
+    variants: "اطلب من نور ٥ بدائل للفائزين", plan: "خطط الأسبوع القادم بهذه النتائج", excluded: (n: number) => `${n} استُبعدت لأن عيّنتها صغيرة`,
+    errors: { no_columns: "لم أجد أعمدة أعرفها في الملف. تأكد أنه تقرير إعلانات بصيغة CSV.", no_name_column: "الملف بلا عمود لاسم الإعلان أو الحملة.", no_metrics: "الملف بلا أرقام أداء كافية (ظهور ونقرات، أو إنفاق ونتائج).", no_rows: "الملف لا يحتوي صفوف إعلانات.", too_large: "الملف أكبر من ٢ ميغابايت. صدّر فترة أقصر.", slow_down: "استوردت ملفات كثيرة خلال ساعة. حاول لاحقاً.", read: "تعذّرت قراءة الملف.", generic: "تعذّر الاستيراد. حاول مرة أخرى." } as Record<string, string>,
+    variantsPrompt: "اقرأ performance-learnings.md واكتب ٥ بدائل جديدة مبنية على زاوية وأسلوب الإعلانات الأفضل أداءً، واذكر أي نمط اعتمدت عليه وحجم عيّنته.",
+    planPrompt: "اقرأ performance-learnings.md واكتب خطة الأسبوع القادم مبنية على ما نجح، واقترح ما نوقفه أو نعيد كتابته.",
+  },
+  en: {
+    title: "Campaign results (CSV)", sub: "Export an ads report from Meta, Snapchat, TikTok or Google Ads and drop it here. Noor pulls out what worked and builds your next plan on it. No credits.",
+    how: "How do I export it?", howBody: "In your ads manager, open reporting at the ad level, add impressions, clicks, amount spent and results (or purchase value) columns, then export as CSV.",
+    drop: "Drop a CSV here or click to choose", reading: "Noor is reading the results…", replace: "Upload a newer file", remove: "Remove import",
+    rows: "Ads in the file", ranked: "Enough data to rank", overall: "Overall", spend: "Spend",
+    winners: "Best performers", weakest: "Weakest", patterns: "Patterns Noor found", waste: "Spend with no result",
+    medium: "Worth acting on", low: "Idea to test", sample: "sample", metric: "Metric",
+    saved: "Saved as performance-learnings.md; Noor reads it on every generation.", honest: "A comparison of your own ads, not proof of cause. Low-confidence patterns are ideas to test.",
+    variants: "Ask Noor for 5 variants of the winners", plan: "Plan next week on these results", excluded: (n: number) => `${n} left out as too small to judge`,
+    errors: { no_columns: "I couldn't find columns I recognise. Make sure it's an ads report exported as CSV.", no_name_column: "The file has no ad or campaign name column.", no_metrics: "The file doesn't have enough performance numbers (impressions and clicks, or spend and results).", no_rows: "The file has no ad rows.", too_large: "The file is over 2 MB. Export a shorter period.", slow_down: "Too many imports in the last hour. Try again later.", read: "The file could not be read.", generic: "The import failed. Try again." } as Record<string, string>,
+    variantsPrompt: "Read performance-learnings.md and write 5 new variants built on the angle and wording of the best-performing ads. Say which pattern each one relies on and its sample size.",
+    planPrompt: "Read performance-learnings.md and write next week's plan built on what worked, and propose what to pause or rewrite.",
+  },
+} as const;
+
+const MEDAL = ["bg-saffron text-ink", "bg-mist-dim text-ink", "bg-sadu/20 text-sadu-deep"];
+
+export default function PerformanceImport({ lang, initial }: { lang: "ar" | "en"; initial: PerfSnapshot | null }) {
+  const S = STR[lang];
+  const r = useRouter();
+  const [snap, setSnap] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [drag, setDrag] = useState(false);
+  const [fresh, setFresh] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  // The last file uploaded in this visit, kept so the metric can be switched without choosing the file again.
+  const [last, setLast] = useState<{ csv: string; file: string } | null>(null);
+
+  async function send(csv: string, file: string, metric?: MetricId) {
+    setBusy(true); setErr("");
+    try {
+      const res = await fetch("/api/performance", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ csv, file, metric }) });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; snapshot?: PerfSnapshot; error?: string };
+      if (!res.ok || !j.snapshot) { setErr(S.errors[j.error ?? ""] ?? S.errors.generic); return; }
+      setLast({ csv, file });
+      setSnap(j.snapshot); setFresh(true);
+      r.refresh();
+    } catch { setErr(S.errors.generic); } finally { setBusy(false); }
+  }
+  async function pick(f: File | undefined) {
+    if (!f) return;
+    if (f.size > 2_000_000) { setErr(S.errors.too_large); return; }
+    try { await send(await f.text(), f.name); } catch { setErr(S.errors.read); }
+  }
+  async function remove() {
+    await fetch("/api/performance", { method: "DELETE" }).catch(() => {});
+    setSnap(null); setLast(null); r.refresh();
+  }
+
+  const m = snap ? METRICS[snap.metric] : null;
+  // Metrics the file can support, from the totals it reported; switching re-ranks the same file.
+  const fits = snap ? (Object.keys(METRICS) as MetricId[]).filter((id) => { const d = METRICS[id]; return id === "cpa" ? !!snap.totals.spend && !!snap.totals.conversions : !!snap.totals[d.num] && !!snap.totals[d.den]; }) : [];
+  const by = (k: Finding["kind"]) => snap?.findings.filter((f) => f.kind === k) ?? [];
+  const chat = (p: string) => `/${lang}/app/chat?prompt=${encodeURIComponent(p)}`;
+
+  return (
+    <section className="card mt-6 overflow-hidden p-0" aria-label={S.title}>
+      <header className="flex flex-wrap items-start gap-3 border-b border-ink/5 px-5 py-4">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-oasis text-saffron"><Icon name="chart" className="h-5 w-5" /></span>
+        <div className="min-w-0 flex-1">
+          <h2 className="font-display text-xl font-bold">{S.title}</h2>
+          <p className="mt-0.5 text-sm text-ink/70">{S.sub}</p>
+          <details className="mt-1 text-xs text-ink/60"><summary className="underline">{S.how}</summary><p className="mt-1">{S.howBody}</p></details>
+        </div>
+        {snap && <button onClick={remove} className="btn btn-secondary btn-xs">{S.remove}</button>}
+      </header>
+
+      <div className="px-5 py-4">
+        <label
+          onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
+          onDrop={(e) => { e.preventDefault(); setDrag(false); void pick(e.dataTransfer.files[0]); }}
+          className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 ${snap ? "py-3 text-sm" : "py-8"} text-center transition-colors ${drag ? "border-saffron bg-saffron/10" : "border-ink/15 hover:border-oasis hover:bg-salt"}`}
+        >
+          <input ref={input} type="file" accept=".csv,text/csv" className="sr-only" onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }} />
+          {busy ? <><span className="h-2 w-2 animate-pulse rounded-full bg-saffron" />{S.reading}</> : <><Icon name="plus" className="h-4 w-4 text-oasis" /><span className="font-semibold text-oasis">{snap ? S.replace : S.drop}</span></>}
+        </label>
+        {err && <p role="alert" className="mt-2 text-sm text-sadu-deep">{err}</p>}
+
+        {snap && m && (
+          <div className={fresh ? "log-row" : ""}>
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-ink/60">
+              <span className="badge badge-primary">{snap.platform}</span>
+              <span dir="ltr">{snap.file}</span>
+              {snap.range && <span dir="ltr">{snap.range.from} → {snap.range.to}</span>}
+              {fits.length > 1 && last && (
+                <label className="ms-auto flex items-center gap-1">{S.metric}
+                  <select value={snap.metric} disabled={busy} onChange={(e) => send(last.csv, last.file, e.target.value as MetricId)} className="rounded border border-ink/15 bg-white px-2 py-1">
+                    {fits.map((id) => <option key={id} value={id}>{METRICS[id].label[lang]}</option>)}
+                  </select>
+                </label>
+              )}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[[S.rows, String(snap.rows)], [S.ranked, String(snap.ranked)], [`${S.overall} · ${m.label[lang]}`, snap.overall != null ? fmt(snap.metric, snap.overall, lang) : "—"], [S.spend, snap.totals.spend != null ? int(snap.totals.spend) : "—"]].map(([l, v]) => (
+                <div key={l} className="rounded-lg bg-salt-dim p-3"><p className="text-xs text-ink/60">{l}</p><p className="tnum font-display text-xl font-bold text-oasis" dir="ltr">{v}</p></div>
+              ))}
+            </div>
+            {snap.excluded > 0 && <p className="mt-1 text-xs text-ink/50">{S.excluded(snap.excluded)}</p>}
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div>
+                <h3 className="flex items-center gap-1.5 text-sm font-semibold text-oasis"><Icon name="trophy" className="h-4 w-4 text-saffron" />{S.winners}</h3>
+                <ol className="mt-2 grid gap-1.5">
+                  {snap.top.map((w, i) => (
+                    <li key={w.name + i} className="pop-in flex items-center gap-2 rounded-lg border border-ink/10 bg-white px-3 py-2 text-sm" style={{ animationDelay: `${i * 90}ms` }}>
+                      <span className={`tnum grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold ${MEDAL[i]}`}>{i + 1}</span>
+                      <span className="min-w-0 flex-1 truncate" dir="auto" title={w.name}>{w.name}</span>
+                      <span className="tnum shrink-0 font-semibold text-oasis" dir="ltr">{fmt(snap.metric, w.value, lang)}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+              {snap.bottom.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-sadu-deep">{S.weakest}</h3>
+                  <ol className="mt-2 grid gap-1.5">
+                    {snap.bottom.map((w, i) => (
+                      <li key={w.name + i} className="flex items-center gap-2 rounded-lg border border-sadu/20 bg-sadu/5 px-3 py-2 text-sm">
+                        <span className="min-w-0 flex-1 truncate" dir="auto" title={w.name}>{w.name}</span>
+                        <span className="tnum shrink-0 font-semibold text-sadu-deep" dir="ltr">{fmt(snap.metric, w.value, lang)}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </div>
+
+            {[...by("spread"), ...by("pattern"), ...by("group"), ...by("dead_spend")].length > 0 && (
+              <div className="mt-4">
+                <h3 className="flex items-center gap-1.5 text-sm font-semibold text-oasis"><Icon name="spark" className="h-4 w-4 text-saffron" />{S.patterns}</h3>
+                <ul className="mt-2 grid gap-1.5">
+                  {[...by("spread"), ...by("pattern"), ...by("group"), ...by("dead_spend")].map((f, i) => (
+                    <li key={i} className={`flex flex-wrap items-start gap-2 rounded-lg px-3 py-2 text-sm ${f.kind === "dead_spend" ? "border border-sadu/30 bg-sadu/5" : "bg-salt"}`}>
+                      <span className="min-w-0 flex-1" dir="auto">{f.kind === "dead_spend" && <span className="font-semibold text-sadu-deep">{S.waste}: </span>}{f.text[lang]}</span>
+                      <span className={`badge shrink-0 ${f.confidence === "medium" ? "badge-primary" : "badge-accent"}`}>{f.confidence === "medium" ? S.medium : S.low}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <p className="mt-3 text-xs text-ink/60">{S.honest}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink/5 pt-3">
+              <Link href={chat(S.variantsPrompt)} className="btn btn-accent btn-xs"><Icon name="spark" className="h-3.5 w-3.5" />{S.variants}</Link>
+              <Link href={chat(S.planPrompt)} className="btn btn-secondary btn-xs"><Icon name="calendar" className="h-3.5 w-3.5" />{S.plan}</Link>
+              <span className="ms-auto flex items-center gap-1 text-xs text-oasis"><Icon name="check" className="h-3.5 w-3.5" />{S.saved}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}

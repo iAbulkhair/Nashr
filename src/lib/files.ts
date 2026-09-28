@@ -100,8 +100,8 @@ const MEMORY_BUDGET = 6000;
 
 /** Core files Noor reads on every generation. */
 export async function memoryBlock(email: string) {
-  const wanted = ["brand.md", "products.md", "store-sales.md", "strategy.md", "market-research.md", "preferences.md"];
-  // Five files, one round trip each: read together, keep the fixed order (stable text also helps prompt caching).
+  const wanted = ["brand.md", "products.md", "store-sales.md", "performance-learnings.md", "strategy.md", "market-research.md", "preferences.md"];
+  // One round trip per file, read together, keep the fixed order (stable text also helps prompt caching).
   const files = await Promise.all(wanted.map((n) => readFile(email, n)));
   return wanted
     .map((n, i) => {

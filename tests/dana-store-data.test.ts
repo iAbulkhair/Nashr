@@ -7,7 +7,7 @@ import { salesDataBlock, STALE_DAYS } from "@/lib/store-sales";
 import type { SalesSnapshot } from "@/lib/connectors/sales";
 
 /**
- * Rule 83: Dana's report tasks carry the workspace's last store-sales snapshot as STORE DATA, and the workspace block
+ * Rule 86: Dana's report tasks carry the workspace's last store-sales snapshot as STORE DATA, and the workspace block
  * stops telling her that sales are missing. The block is escaped JSON (product names are store data); it says there is
  * no previous period, flags a partial read and a stale sync, and lets only three-letter currency codes through. Other
  * agents get no store block, and a workspace that never synced keeps the "sales are NOT in this data" line.
@@ -25,7 +25,7 @@ const put = (scope: string, s: SalesSnapshot) => db.set(`storesales:${scope}`, s
 const block = (text: string) => JSON.parse(text.match(/<store_data>(.*)<\/store_data>/)![1]) as Record<string, unknown>;
 const now = new Date("2026-09-28T09:00:00Z");
 
-describe("Dana's STORE DATA (rule 83)", () => {
+describe("Dana's STORE DATA (rule 86)", () => {
   it("hands Dana the synced totals and replaces the 'sales are NOT in this data' line", async () => {
     const u = await newUser("dana");
     await put(u.email, snap());
