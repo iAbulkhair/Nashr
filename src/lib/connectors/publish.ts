@@ -4,28 +4,23 @@ import { publishWordPress } from "./wordpress";
 import { postToX } from "./x";
 import { publishShopifyArticle } from "./shopify";
 import { postTelegram } from "./keyed";
+import { postToFacebook, postToInstagram } from "./meta";
+import { CONNECTION_OF } from "./targets";
 
 export type PublishResult = { url: string; id: string; provider: string; status: "draft" | "published" };
 
-/** Which providers can take which task. */
-export function targetsFor(task: Task, connected: string[]): string[] {
-  const out: string[] = [];
-  if (task.type === "article") for (const p of ["wordpress", "shopify"]) if (connected.includes(p)) out.push(p);
-  if (task.type === "social" && task.channel === "x" && connected.includes("x")) out.push("x");
-  if ((task.type === "social" || task.type === "gbp" || task.type === "whatsapp") && connected.includes("telegram")) out.push("telegram");
-  return out;
-}
+export { targetsFor, connectedTargets } from "./targets";
 
 export async function publishTask(email: string, task: Task, provider: string): Promise<PublishResult> {
   try {
     return await publishWith(email, task, provider);
   } catch (e) {
-    throw await refusedToken(email, provider, e);
+    throw await refusedToken(email, CONNECTION_OF[provider] ?? provider, e);
   }
 }
 
 async function publishWith(email: string, task: Task, provider: string): Promise<PublishResult> {
-  const c = await getFreshConnection(email, provider);
+  const c = await getFreshConnection(email, CONNECTION_OF[provider] ?? provider);
   if (!c) throw new Error("not_connected");
   const body = task.editedBody ?? task.body;
   const title = body.match(/^#\s+(.+)$/m)?.[1] ?? task.title;
@@ -44,6 +39,16 @@ async function publishWith(email: string, task: Task, provider: string): Promise
     }
     case "x": {
       const r = await postToX(c, body);
+      return { ...r, provider, status: "published" };
+    }
+    case "facebook": {
+      const r = await postToFacebook(c, body, task.imageProvider === "fal" ? task.imageUrl : undefined);
+      return { ...r, provider, status: "published" };
+    }
+    case "instagram": {
+      // targetsFor already requires a generated image; checked again here because this is the call that posts.
+      if (!task.imageUrl || task.imageProvider !== "fal") throw new Error("instagram_needs_image");
+      const r = await postToInstagram(c, body, task.imageUrl);
       return { ...r, provider, status: "published" };
     }
     default:
