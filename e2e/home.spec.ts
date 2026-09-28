@@ -99,7 +99,10 @@ test.describe("home with reduced motion", () => {
   test("shows no storm and keeps every question still", async ({ page }) => {
     await open(page, "/en");
     await expect(page.getByTestId("storm").locator("[data-storm-q]:visible")).toHaveCount(1);
-    const q = page.getByTestId("qflip").first();
+    // A lineup figure's flip: it is live on load. The story's flips sit paused until their chapter, so they would stay
+    // still whatever reduced motion did. Sample only once React owns it, so the 3 s wait spans a whole 2.4 s flip.
+    const q = page.getByTestId("figure").first().getByTestId("qflip");
+    await expect.poll(() => q.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactFiber$")))).toBe(true);
     const before = await q.textContent();
     await page.waitForTimeout(3000);
     expect(await q.textContent()).toBe(before);
