@@ -1,5 +1,5 @@
 import { charge, refund } from "@/lib/credits";
-import { statsFor } from "@/lib/stats";
+import { reportData } from "@/lib/report-data";
 import { judgeLater } from "@/lib/judge";
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
@@ -80,7 +80,7 @@ export async function POST(req: Request) {
         const gov = await getGov((user.scope ?? user.email));
         let items;
         try {
-          items = await generate(type, brand, await listPreferences((user.scope ?? user.email)), String(args.notes ?? ""), { memory: await memoryBlock((user.scope ?? user.email)), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats: await statsFor(type, user.scope ?? user.email) });
+          items = await generate(type, brand, await listPreferences((user.scope ?? user.email)), String(args.notes ?? ""), { memory: await memoryBlock((user.scope ?? user.email)), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats: await reportData(type, user.scope ?? user.email) });
         } catch (e) {
           user.credits = await refund(user.email, cost);
           throw e;

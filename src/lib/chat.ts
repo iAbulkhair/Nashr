@@ -1,7 +1,7 @@
 import { charge, refund } from "./credits";
 import { AGENTS, agentById, type AgentId } from "./agents";
 import { skillsBlock } from "./skills";
-import { statsFor } from "./stats";
+import { reportData } from "./report-data";
 import { judgeLater } from "./judge";
 import { meter } from "./usage";
 import Anthropic from "@anthropic-ai/sdk";
@@ -251,7 +251,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const gov = await getGov(email);
       let items;
       try {
-        items = await generate(type, brand, await listPreferences(email), String(input.notes ?? ""), { memory: await memoryBlock(email), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats: await statsFor(type, email) });
+        items = await generate(type, brand, await listPreferences(email), String(input.notes ?? ""), { memory: await memoryBlock(email), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats: await reportData(type, email) });
       } catch (e) {
         user.credits = await refund(user.email, cost);
         throw e;

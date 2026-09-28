@@ -1,6 +1,6 @@
 import { track } from "@/lib/track";
 import { charge, refund } from "@/lib/credits";
-import { statsFor } from "@/lib/stats";
+import { reportData } from "@/lib/report-data";
 import { judgeLater } from "@/lib/judge";
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   const gov = await getGov(sc(u));
   let items;
   try {
-    items = await generate(type, brand, await listPreferences(sc(u)), b.notes, { memory: await memoryBlock(sc(u)), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: u.email, stats: await statsFor(type, sc(u)) });
+    items = await generate(type, brand, await listPreferences(sc(u)), b.notes, { memory: await memoryBlock(sc(u)), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: u.email, stats: await reportData(type, sc(u)) });
   } catch (e) {
     console.error("generate failed", e);
     await track(u.email, "error");

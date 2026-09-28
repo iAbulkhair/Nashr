@@ -50,7 +50,8 @@ export function totals(rows: OrderRow[], from: Date, to: Date): Totals {
     const t = new Date(r.at).getTime();
     if (r.void || !Number.isFinite(t) || t < from.getTime() || t > to.getTime()) continue;
     out.orders++;
-    const cur = r.currency || "?";
+    // A currency code comes from the store's API and reaches Dana's prompt: only a three-letter code passes.
+    const cur = /^[A-Za-z]{3}$/.test(r.currency) ? r.currency.toUpperCase() : "?";
     out.revenue[cur] = Math.round(((out.revenue[cur] ?? 0) + r.total) * 100) / 100;
   }
   return out;
