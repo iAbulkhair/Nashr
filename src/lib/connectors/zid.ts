@@ -84,17 +84,23 @@ export async function importZid(email: string, c: Connection) {
 // ---------- Orders and abandoned carts: totals only ----------
 //
 // Shapes from Zid's official Python SDK (zidsa/sdk-python: resources and test fixtures), since docs.zid.sa is not
-// reachable from the build:
-// - GET /managers/store/orders?payload_type=default&page&per_page(≤100)&date_from&date_to answers
-//   `{ orders: [...], total_order_count }` with no next link. `payload_type=default` is the only list payload that
-//   carries `products` ({ name, quantity }). `order_total` is a decimal string ("100.00000000000000"),
-//   `currency_code` a code, `order_status` `{ code, name }` (code sometimes a number), `payment_status` a string,
-//   `created_at` "YYYY-MM-DD HH:MM:SS" with no zone.
-// - GET /managers/store/abandoned-carts?page&page_size(≤100) answers the carts under "abandoned-carts", each with a
-//   numeric `cart_total`, `currency_code` and a `phase` ("completed" = the cart became an order). The list has no
-//   products; GET /managers/store/abandoned-carts/{id} answers `{ abandoned_cart: { products: [...] } }`.
+// reachable from the build. What they establish, and what they do not:
+// - GET /managers/store/orders?payload_type=default&page&per_page(≤100) answers `{ orders: [...], total_order_count }`
+//   with no next link. `payload_type=default` is the only list payload that carries `products` ({ name, quantity }).
+//   `order_total` is a decimal string ("100.00000000000000"), `currency_code` a code, `order_status` `{ code, name }`,
+//   `payment_status` a string, `created_at` "YYYY-MM-DD HH:MM:SS" with no zone.
+//   Not established: what `date_from`/`date_to` filter on, or whether `total_order_count` honours them (it may be the
+//   store's all-time count). So the window is enforced here on `created_at`, newest first (`sort_by=desc`), and
+//   `total_order_count` is never reported as the 30-day count.
+// - GET /managers/store/abandoned-carts?page&page_size(≤100) answers the carts under "abandoned-carts", each with
+//   `cart_total`, `currency_code` and a `phase` ("completed" = the cart became an order). Its pagination block is not
+//   established, so paging stops on a short page. The list has no products; GET /managers/store/abandoned-carts/{id}
+//   answers `{ abandoned_cart: { products: [...] } }`.
+// - 401 is a dead token (reconnect). 403 is a permission the app was not granted: on orders it is `zid_access_denied`
+//   and does not mark the connection; on carts the snapshot says carts are unavailable and the orders still count.
 // Zid allows 60 requests a minute per store, so the sync stays well under it: at most 5 order pages, 3 cart pages and
-// CART_DETAILS detail calls. Customer names, phones, emails and cart links are in these answers and never read.
+// CART_DETAILS detail calls. Customer names, phones, emails, cart links and WhatsApp texts are in these answers and
+// are never read.
 
 const ORDER_PAGES = 5;
 const ORDER_PER_PAGE = 100;
@@ -102,25 +108,34 @@ const CART_PAGES = 3;
 const CART_PER_PAGE = 100;
 /** Carts whose products are read for "most often left", newest first. Each one is a request. */
 export const CART_DETAILS = 20;
+export const ZID_ACCESS_DENIED = "zid_access_denied";
 
-type ZidOrder = { created_at?: string; order_total?: number | string; currency_code?: string; order_status?: { code?: string | number; name?: string } | string; payment_status?: string; products?: Line[] };
+type ZidOrder = { id?: number | string; created_at?: string; order_total?: number | string; currency_code?: string; currency?: string | { order_currency?: { code?: string } }; order_status?: { code?: string | number; name?: string } | string; payment_status?: string; products?: Line[] };
 type ZidCart = { id?: string; phase?: string; cart_total?: number | string; currency_code?: string; created_at?: string };
 
 /** Order statuses that are not a sale (canceled, reversed or being reversed) and payment states that undid one. */
 const VOID_STATUS = new Set(["cancelled", "canceled", "reversed", "reverse_in_progress"]);
 const VOID_PAYMENT = new Set(["refunded", "voided"]);
 const statusCode = (o: ZidOrder) => String(typeof o.order_status === "object" && o.order_status ? o.order_status.code ?? "" : o.order_status ?? "").toLowerCase();
+/** The order's own currency. Never a default: an order with none is summed under "" and shown without a code. */
+const orderCurrency = (o: ZidOrder) => o.currency_code || (typeof o.currency === "object" ? o.currency?.order_currency?.code : o.currency) || "";
 
-/** "2026-09-01 14:05:00" with no zone is read as Riyadh time (UTC+3); unreadable is null. */
+/**
+ * "2026-09-01 14:05:00" with no zone. Zid does not document the zone; it is read as Riyadh time (UTC+3), which at
+ * worst moves an order three hours across the 30-day edge. Unreadable is null.
+ */
 function zidTime(s: string | undefined): number | null {
-  if (!s) return null;
-  const t = new Date(`${s.trim().replace(" ", "T")}+03:00`).getTime();
+  if (!s || !/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(s.trim())) return null;
+  const t = new Date(`${s.trim().slice(0, 19).replace(" ", "T")}+03:00`).getTime();
   return Number.isFinite(t) ? t : null;
 }
 
+class ZidStatus extends Error {
+  constructor(public status: number) { super(`zid ${status}`); }
+}
 async function zidGet<T>(c: Connection, path: string): Promise<T> {
   const r = await fetch(`${ZID_API}${path}`, { headers: zidHeaders(c) });
-  if (!r.ok) throw new Error(`zid ${r.status}`);
+  if (!r.ok) throw new ZidStatus(r.status);
   return (await r.json()) as T;
 }
 
@@ -131,21 +146,33 @@ export async function zidSales(conn: Connection, now = new Date()): Promise<Sale
   const since = now.getTime() - SALES_DAYS * 864e5;
   const range = `date_from=${day(new Date(since))}&date_to=${day(now)}`;
 
-  // Orders. Zid's date filter is used, and every row is also checked against the window: if the filter was not
-  // applied to created_at, rows outside it are dropped and the count becomes what was read, never the store's total.
+  // Orders, newest first. Paging stops at a short or empty page, at a page that reaches past the window, at the
+  // store's count, or at the page cap; only the last one leaves orders unread, and then the count is a floor.
   const rows: ZidOrder[] = [];
-  let total: number | null = null;
-  let outside = 0;
+  const ids = new Set<string>();
+  let capped = false;
   for (let page = 1; page <= ORDER_PAGES; page++) {
-    const j = await zidGet<{ orders?: ZidOrder[]; total_order_count?: number | string }>(c, `/managers/store/orders?payload_type=default&page=${page}&per_page=${ORDER_PER_PAGE}&${range}`);
-    const list = j.orders ?? [];
-    for (const o of list) {
-      const t = zidTime(o.created_at);
-      if (t != null && (t < since || t > now.getTime())) outside++;
-      else rows.push(o);
+    let j: { orders?: unknown; total_order_count?: number | string };
+    try {
+      j = await zidGet(c, `/managers/store/orders?payload_type=default&sort_by=desc&page=${page}&per_page=${ORDER_PER_PAGE}&${range}`);
+    } catch (e) {
+      throw e instanceof ZidStatus && e.status === 403 ? new Error(ZID_ACCESS_DENIED) : e;
     }
-    total ??= Number.isFinite(Number(j.total_order_count)) ? Number(j.total_order_count) : null;
-    if (!list.length || list.length < ORDER_PER_PAGE || (total != null && page * ORDER_PER_PAGE >= total)) break;
+    if (!Array.isArray(j.orders)) throw new Error("zid unexpected_orders");
+    const list = j.orders as ZidOrder[];
+    let past = false;
+    for (const o of list) {
+      const key = o.id == null ? null : String(o.id);
+      if (key && ids.has(key)) continue; // an order that moved to the next page while paging
+      if (key) ids.add(key);
+      const t = zidTime(o.created_at);
+      if (t != null && t < since) { past = true; continue; }
+      if (t != null && t > now.getTime()) continue;
+      rows.push(o);
+    }
+    const total = Number(j.total_order_count);
+    if (past || list.length < ORDER_PER_PAGE || (Number.isFinite(total) && page * ORDER_PER_PAGE >= total)) break;
+    if (page === ORDER_PAGES) capped = true;
   }
   let unread = 0;
   let canceled = 0;
@@ -153,41 +180,50 @@ export async function zidSales(conn: Connection, now = new Date()): Promise<Sale
   const sold = new Map<string, number>();
   for (const o of rows) {
     if (VOID_STATUS.has(statusCode(o)) || VOID_PAYMENT.has(String(o.payment_status ?? "").toLowerCase())) { canceled++; continue; }
-    const a = amountOf(o.order_total, o.currency_code || "SAR");
+    const a = amountOf(o.order_total, orderCurrency(o));
     if (!a) { unread++; continue; }
     addTo(revenue, a);
     tally(o.products, sold);
   }
 
-  // Abandoned carts: completed ones became orders and are left out. More carts than CART_PAGES pages read is `capped`.
+  // Abandoned carts: completed ones became orders and are left out. More than CART_PAGES full pages is `capped`.
+  // A 403 means the app has no access to carts: the snapshot says so, and the orders above still count.
   const carts: ZidCart[] = [];
-  let capped = false;
-  for (let page = 1; page <= CART_PAGES; page++) {
-    const j = await zidGet<Record<string, unknown>>(c, `/managers/store/abandoned-carts?page=${page}&page_size=${CART_PER_PAGE}&${range}`);
-    const list = (Array.isArray(j["abandoned-carts"]) ? j["abandoned-carts"] : []) as ZidCart[];
-    carts.push(...list.filter((x) => String(x.phase ?? "").toLowerCase() !== "completed"));
-    if (list.length < CART_PER_PAGE) break;
-    if (page === CART_PAGES) capped = true;
+  let cartsCapped = false;
+  let unavailable = false;
+  try {
+    for (let page = 1; page <= CART_PAGES; page++) {
+      const j = await zidGet<Record<string, unknown>>(c, `/managers/store/abandoned-carts?page=${page}&page_size=${CART_PER_PAGE}`);
+      const list = j["abandoned-carts"];
+      if (!Array.isArray(list)) throw new Error("zid unexpected_carts");
+      carts.push(...(list as ZidCart[]).filter((x) => String(x.phase ?? "").toLowerCase() !== "completed"));
+      if (list.length < CART_PER_PAGE) break;
+      if (page === CART_PAGES) cartsCapped = true;
+    }
+  } catch (e) {
+    if (!(e instanceof ZidStatus && e.status === 403)) throw e;
+    unavailable = true;
+    carts.length = 0;
   }
   const value: Record<string, number> = {};
   for (const cart of carts) {
-    const a = amountOf(cart.cart_total, cart.currency_code || "SAR");
+    const a = amountOf(cart.cart_total, cart.currency_code || "");
     if (!a) { unread++; continue; }
     addTo(value, a);
   }
-  // Product names only come from the detail view: the newest CART_DETAILS carts, four at a time. The cart id is
-  // Zid's own and only ever becomes a path segment after encoding.
-  const newest = [...carts].sort((a, b) => (zidTime(b.created_at) ?? 0) - (zidTime(a.created_at) ?? 0)).filter((x) => x.id).slice(0, CART_DETAILS);
-  const details = await pmap(newest, (x) => zidGet<{ abandoned_cart?: { products?: Line[] } }>(c, `/managers/store/abandoned-carts/${encodeURIComponent(String(x.id))}`), 4);
+  // Product names only come from the detail view: the newest CART_DETAILS carts, four at a time. A detail that fails
+  // is skipped rather than failing the sync. The cart id is Zid's own and only becomes a path segment after encoding.
+  const newest = [...carts].filter((x) => x.id).sort((a, b) => (zidTime(b.created_at) ?? 0) - (zidTime(a.created_at) ?? 0)).slice(0, CART_DETAILS);
+  const details = await pmap(newest, (x) => zidGet<{ abandoned_cart?: { products?: Line[] } }>(c, `/managers/store/abandoned-carts/${encodeURIComponent(String(x.id))}`).catch(() => null), 4);
   const left = new Map<string, number>();
-  for (const d of details) tally(d.abandoned_cart?.products, left);
+  for (const d of details) tally(d?.abandoned_cart?.products, left);
 
   return {
     provider: "zid",
     at: now.toISOString(),
     days: SALES_DAYS,
-    orders: { count: outside === 0 && total != null ? Math.max(total, rows.length) : rows.length, read: rows.length, canceled, revenue, top: topOf(sold) },
-    carts: { count: carts.length, read: carts.length, value, top: topOf(left), ...(capped ? { capped: true } : {}) },
+    orders: { count: rows.length, read: rows.length, canceled, revenue, top: topOf(sold), ...(capped ? { capped: true } : {}) },
+    carts: { count: carts.length, read: carts.length, value, top: topOf(left), ...(cartsCapped ? { capped: true } : {}), ...(unavailable ? { unavailable: true } : {}) },
     unread,
   };
 }

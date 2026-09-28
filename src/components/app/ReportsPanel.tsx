@@ -263,7 +263,7 @@ function StoreSales({ R, provider, store, lang }: { R: AppDict["reports"]["store
     const res = await fetch(`/api/connect/${provider}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync_sales" }) });
     const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
     setBusy(false);
-    if (j.ok) r.refresh(); else setErr(j.error === "orders_access_denied" ? R.accessDenied : j.error ?? `HTTP ${res.status}`);
+    if (j.ok) r.refresh(); else setErr(j.error === "orders_access_denied" ? R.accessDenied : j.error === "zid_access_denied" ? R.zidDenied : j.error ?? `HTTP ${res.status}`);
   }
   const fill = (s: string, v: Record<string, number | string>) => s.replace(/\{(\w+)\}/g, (_, k) => String(v[k] ?? ""));
   const name = PROVIDER_NAME[provider];
@@ -276,7 +276,7 @@ function StoreSales({ R, provider, store, lang }: { R: AppDict["reports"]["store
       {!store ? <p className="mt-3 text-sm text-ink/60">{R.never}</p> : (
         <>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {[[R.orders, String(store.orders.count)], [R.revenue, moneyText(store.orders.revenue)], [R.carts, store.carts.capped ? `${store.carts.count} ${R.capped}` : String(store.carts.count)], [R.cartValue, moneyText(store.carts.value)]].map(([label, v]) => (
+            {[[R.orders, store.orders.capped ? `${store.orders.count} ${R.capped}` : String(store.orders.count)], [R.revenue, moneyText(store.orders.revenue)], [R.carts, store.carts.unavailable ? "—" : store.carts.capped ? `${store.carts.count} ${R.capped}` : String(store.carts.count)], [R.cartValue, store.carts.unavailable ? "—" : moneyText(store.carts.value)]].map(([label, v]) => (
               <div key={label} className="card card-sm"><p className="text-xs text-ink/60">{label}</p><p className="mt-1 font-display text-2xl font-bold text-oasis" dir="ltr">{v}</p></div>
             ))}
           </div>
@@ -289,6 +289,7 @@ function StoreSales({ R, provider, store, lang }: { R: AppDict["reports"]["store
             {R.asOf}: <span dir="ltr" suppressHydrationWarning>{dateFormat(lang, { dateStyle: "medium", timeStyle: "short" }).format(new Date(store.at))} UTC</span>
             {store.orders.read < store.orders.count && <> · {fill(R.partial, { read: store.orders.read, count: store.orders.count })}</>}
             {store.unread > 0 && <> · {fill(R.unread, { n: store.unread })}</>}
+            {store.carts.unavailable && <> · {R.cartsUnavailable}</>}
           </p>
           <p className="mt-1 text-xs text-ink/40">{R.note}</p>
           {store.carts.top.length > 0 && (

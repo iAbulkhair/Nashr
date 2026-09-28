@@ -122,10 +122,10 @@ describe("connecting Zid records the store (rule 77)", () => {
 describe("Zid orders and abandoned carts, as totals only (rule 77)", () => {
   // Zid's answers carry customer details; none of them may reach the snapshot, the file or the model.
   const NOW = new Date("2026-09-28T09:00:00Z");
-  const order = (created: string, total: string | number | null, code: string, products: { name: string; quantity: number }[] = [], payment = "paid") => ({ id: Math.random(), code: "Z1", created_at: created, order_total: total ?? undefined, order_total_string: `${total} SAR`, currency_code: "SAR", order_status: { name: code, code }, payment_status: payment, customer: { name: "ريم العتيبي", email: "reem@example.com", mobile: "+966500000001" }, products });
+  const order = (created: string, total: string | number | null, code: string, products: { name: string; quantity: number }[] = [], payment = "paid", id: number | string = Math.random()) => ({ id, code: "Z1", created_at: created, order_total: total ?? undefined, order_total_string: `${total} SAR`, currency_code: "SAR", order_status: { name: code, code }, payment_status: payment, customer: { name: "ريم العتيبي", email: "reem@example.com", mobile: "+966500000001" }, products });
   const cart = (id: string, total: number, phase = "shipping_method", created = "2026-09-27 10:00:00") => ({ id, phase, cart_total: total, cart_total_string: `${total} SAR`, currency_code: "SAR", customer_name: "سلمان", customer_mobile: "+966500000002", customer_email: "s@example.com", url: `https://nakhla.example/cart/${id}/secret`, whatsapp_message: "مرحبا سلمان", products_count: 1, created_at: created });
   let salesCalls: string[] = [];
-  function fakeSales(orderPages: unknown[][], cartPages: unknown[][], details: Record<string, { name: string; quantity: number }[]>, opts: { total?: number; status?: number } = {}) {
+  function fakeSales(orderPages: unknown[][], cartPages: unknown[][], details: Record<string, { name: string; quantity: number }[]>, opts: { total?: number; status?: number; orderStatus?: number; cartStatus?: number; ordersBody?: unknown } = {}) {
     salesCalls = [];
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const u = new URL(String(input));
@@ -137,8 +137,11 @@ describe("Zid orders and abandoned carts, as totals only (rule 77)", () => {
       expect(headers["Store-Id"]).toBe("77");
       if (opts.status) return new Response("no", { status: opts.status });
       const page = Number(u.searchParams.get("page") ?? 1);
-      if (u.pathname === "/v1/managers/store/orders") return Response.json({ status: "object", orders: orderPages[page - 1] ?? [], total_order_count: opts.total ?? orderPages.flat().length, grand_total: 0, message: {} });
-      if (u.pathname === "/v1/managers/store/abandoned-carts") return Response.json({ "abandoned-carts": cartPages[page - 1] ?? [] });
+      if (u.pathname === "/v1/managers/store/orders") {
+        if (opts.orderStatus) return new Response("no", { status: opts.orderStatus });
+        return Response.json(opts.ordersBody ?? { status: "object", orders: orderPages[page - 1] ?? [], total_order_count: opts.total ?? orderPages.flat().length, grand_total: 0, message: {} });
+      }
+      if (u.pathname === "/v1/managers/store/abandoned-carts") return opts.cartStatus ? new Response("no", { status: opts.cartStatus }) : Response.json({ "abandoned-carts": cartPages[page - 1] ?? [] });
       const id = decodeURIComponent(u.pathname.split("/").pop()!);
       if (u.pathname.startsWith("/v1/managers/store/abandoned-carts/")) return Response.json({ abandoned_cart: { id, customer_name: "سلمان", customer_mobile: "+966500000002", products: details[id] ?? [] } });
       return new Response("not mocked", { status: 500 });
@@ -155,6 +158,7 @@ describe("Zid orders and abandoned carts, as totals only (rule 77)", () => {
     const s = await zidSales(conn(), NOW);
     const orders = new URL(salesCalls.find((c) => c.includes("/orders"))!);
     expect(orders.searchParams.get("payload_type")).toBe("default");
+    expect(orders.searchParams.get("sort_by")).toBe("desc");
     expect(orders.searchParams.get("date_from")).toBe("2026-08-29");
     expect(orders.searchParams.get("date_to")).toBe("2026-09-28");
     expect(new URL(salesCalls.find((c) => c.includes("/abandoned-carts?"))!).searchParams.get("page_size")).toBe("100");
@@ -169,20 +173,22 @@ describe("Zid orders and abandoned carts, as totals only (rule 77)", () => {
     for (const pii of ["ريم", "reem@example.com", "+9665", "سلمان", "secret", "مرحبا"]) expect(JSON.stringify(s)).not.toContain(pii);
   });
 
-  it("drops orders outside the 30 days when the date filter was not applied, and counts only what it read", async () => {
+  it("drops orders outside the 30 days when the date filter was not applied, stops there, and never reports the store's total", async () => {
     fakeSales([[order("2026-09-20 12:00:00", "100", "delivered"), order("2026-07-01 12:00:00", "999", "delivered")]], [[]], {}, { total: 2689 });
     const { zidSales } = await import("@/lib/connectors/zid");
     const s = await zidSales(conn(), NOW);
     expect(s.orders).toMatchObject({ count: 1, read: 1, revenue: { SAR: 100 } });
   });
 
-  it("pages orders up to the store's count and five pages, and reports how many the totals cover", async () => {
+  it("stops at five pages and reports the count as a floor, never the store's all-time total", async () => {
     const full = (p: number) => Array.from({ length: 100 }, (_, i) => order(`2026-09-${String(10 + (i % 15)).padStart(2, "0")} 12:00:00`, "1", "delivered", [{ name: `p${p}`, quantity: 1 }]));
     fakeSales(Array.from({ length: 9 }, (_, p) => full(p)), [[]], {}, { total: 900 });
     const { zidSales } = await import("@/lib/connectors/zid");
     const s = await zidSales(conn(), NOW);
     expect(salesCalls.filter((c) => c.includes("/orders?"))).toHaveLength(5);
-    expect(s.orders).toMatchObject({ count: 900, read: 500, revenue: { SAR: 500 } });
+    expect(s.orders).toMatchObject({ count: 500, read: 500, capped: true, revenue: { SAR: 500 } });
+    const { salesMarkdown } = await import("@/lib/connectors/sales");
+    expect(salesMarkdown(s)).toContain("Orders: 500 or more (totals below cover the latest 500)");
   });
 
   it("marks carts capped past three full pages and reads products for the newest twenty only", async () => {
@@ -193,6 +199,43 @@ describe("Zid orders and abandoned carts, as totals only (rule 77)", () => {
     expect(salesCalls.filter((c) => c.includes("/abandoned-carts?"))).toHaveLength(3);
     expect(s.carts).toMatchObject({ count: 300, read: 300, capped: true });
     expect(salesCalls.filter((c) => /\/abandoned-carts\/[^?]+$/.test(c))).toHaveLength(CART_DETAILS);
+  });
+
+  it("counts an order once when it shows up on two pages, and never turns a missing currency into SAR", async () => {
+    const dup = order("2026-09-20 12:00:00", "10", "delivered", [], "paid", 42);
+    const noCur = { ...order("2026-09-19 12:00:00", "5", "delivered"), currency_code: undefined };
+    fakeSales([[...Array.from({ length: 99 }, (_, i) => order("2026-09-21 12:00:00", "1", "delivered", [], "paid", `a${i}`)), dup], [dup, noCur]], [[]], {}, { total: 102 });
+    const { zidSales } = await import("@/lib/connectors/zid");
+    const s = await zidSales(conn(), NOW);
+    expect(s.orders).toMatchObject({ count: 101, read: 101, revenue: { SAR: 109, "": 5 } });
+  });
+
+  it("fails the sync on an answer that is not the orders list, instead of reporting zero orders", async () => {
+    fakeSales([], [[]], {}, { ordersBody: { status: "error", message: { type: "object" } } });
+    const { zidSales } = await import("@/lib/connectors/zid");
+    await expect(zidSales(conn(), NOW)).rejects.toThrow("zid unexpected_orders");
+  });
+
+  it("keeps the orders when the store refuses the carts, and says carts are unavailable rather than zero", async () => {
+    fakeSales([[order("2026-09-20 12:00:00", "300", "delivered", [{ name: "سكري القصيم", quantity: 1 }])]], [], {}, { cartStatus: 403 });
+    const { zidSales } = await import("@/lib/connectors/zid");
+    const s = await zidSales(conn(), NOW);
+    expect(s.orders).toMatchObject({ count: 1, revenue: { SAR: 300 } });
+    expect(s.carts).toMatchObject({ count: 0, unavailable: true, top: [] });
+    const { salesMarkdown } = await import("@/lib/connectors/sales");
+    const md = salesMarkdown(s);
+    expect(md).toContain("Their number and value are unknown, not zero.");
+    expect(md).not.toContain("Open abandoned carts: 0");
+  });
+
+  it("reports a refused orders permission without marking the connection for reconnecting", async () => {
+    fakeSales([], [], {}, { orderStatus: 403 });
+    const u = await newUser("zid403");
+    await saveConnection(u.email, conn());
+    await signIn(u.email);
+    const res = await connectRoute.POST(json("/api/connect/zid", "POST", { action: "sync_sales" }), { params: Promise.resolve({ provider: "zid" }) });
+    expect((await res.json()).error).toBe("zid_access_denied");
+    expect((await getConnection(u.email, "zid"))?.needsReconnect).toBeFalsy();
   });
 
   it("syncs through the connect route into the snapshot and store-sales.md, and a refused token asks for a reconnect", async () => {

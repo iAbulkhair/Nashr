@@ -58,7 +58,7 @@ describe("Dana's STORE DATA (rule 78)", () => {
     expect(block(text)).toMatchObject({ orders: { revenue: { "?": 5, USD: 7 } } });
   });
 
-  it("flags a partial read and a stale sync, and names a Zid store", async () => {
+  it("flags a partial read, a stale sync, a capped count and carts the store did not share", async () => {
     const u = await newUser("dana");
     await put(u.email, snap({ orders: { count: 400, read: 250, canceled: 0, revenue: { SAR: 1 }, top: [] } }));
     const fresh = await salesDataBlock(u.email, now);
@@ -67,8 +67,10 @@ describe("Dana's STORE DATA (rule 78)", () => {
     expect(fresh).not.toContain("days old");
     const later = new Date(now.getTime() + (STALE_DAYS + 3) * 864e5);
     expect(await salesDataBlock(u.email, later)).toContain(`The snapshot is ${STALE_DAYS + 4} days old`);
-    await put(u.email, snap({ provider: "zid" }));
-    expect(block(await salesDataBlock(u.email, now))).toMatchObject({ store: "Zid" });
+    await put(u.email, snap({ provider: "zid", orders: { count: 500, read: 500, canceled: 0, revenue: { SAR: 1 }, top: [], capped: true }, carts: { count: 0, read: 0, value: {}, top: [], unavailable: true } }));
+    const zid = await salesDataBlock(u.email, now);
+    expect(block(zid)).toMatchObject({ store: "Zid", orders: { count: 500, capped: true }, abandoned_carts: expect.stringContaining("unknown, not zero") });
+    expect(zid).toContain('When capped is true, the count is a floor');
   });
 
   it("names STORE DATA as a source in the weekly report and deck specs", () => {

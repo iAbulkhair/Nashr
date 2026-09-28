@@ -13,9 +13,11 @@ export type SalesSnapshot = {
   provider: SalesProvider;
   at: string;
   days: number;
-  orders: { count: number; read: number; canceled: number; revenue: Record<string, number>; top: { name: string; qty: number }[] };
-  /** `capped`: the store has more open carts than the sync reads, and it could not say how many. */
-  carts: { count: number; read: number; value: Record<string, number>; top: { name: string; qty: number }[]; capped?: boolean };
+  /** `capped`: the store has more orders in the window than the sync reads, and it could not say how many. */
+  orders: { count: number; read: number; canceled: number; revenue: Record<string, number>; top: { name: string; qty: number }[]; capped?: boolean };
+  /** `capped`: the store has more open carts than the sync reads, and it could not say how many. `unavailable`: the
+   * store refused the app access to its carts, so nothing about them is known (not zero). */
+  carts: { count: number; read: number; value: Record<string, number>; top: { name: string; qty: number }[]; capped?: boolean; unavailable?: boolean };
   /** Records whose total could not be read: a non-zero value means the platform's shape differs from what the code expects. */
   unread: number;
 };
@@ -50,7 +52,7 @@ export const moneyText = (r: Record<string, number>) => Object.entries(r).map(([
 
 /** The snapshot as Noor reads it in store-sales.md: aggregates only, and it says when it is partial. */
 export function salesMarkdown(s: SalesSnapshot, store?: string) {
-  const partialOrders = s.orders.read < s.orders.count ? ` (totals below cover the latest ${s.orders.read} of ${s.orders.count})` : "";
+  const partialOrders = s.orders.capped ? ` or more (totals below cover the latest ${s.orders.read})` : s.orders.read < s.orders.count ? ` (totals below cover the latest ${s.orders.read} of ${s.orders.count})` : "";
   const partialCarts = s.carts.capped ? ` or more (totals below cover the latest ${s.carts.read})` : s.carts.read < s.carts.count ? ` (totals below cover the latest ${s.carts.read} of ${s.carts.count})` : "";
   return [
     `# Store sales (${PROVIDER_NAME[s.provider]}${store ? ` ${store}` : ""}, last ${s.days} days, synced ${s.at.slice(0, 10)})`,
@@ -63,8 +65,9 @@ export function salesMarkdown(s: SalesSnapshot, store?: string) {
     ...(s.orders.top.length ? ["- Best sellers by quantity:", ...s.orders.top.map((t) => `  - ${t.name}: ${t.qty}`)] : []),
     "",
     `## Abandoned carts`,
-    `- Open abandoned carts: ${s.carts.count}${partialCarts}`,
-    `- Value left in them: ${moneyText(s.carts.value)}`,
+    ...(s.carts.unavailable
+      ? ["- Not available: the store did not give the app access to its abandoned carts. Their number and value are unknown, not zero."]
+      : [`- Open abandoned carts: ${s.carts.count}${partialCarts}`, `- Value left in them: ${moneyText(s.carts.value)}`]),
     ...(s.carts.top.length ? ["- Products most often left in carts:", ...s.carts.top.map((t) => `  - ${t.name}: ${t.qty}`)] : []),
   ].join("\n");
 }
