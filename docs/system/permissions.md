@@ -64,7 +64,7 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | 29 | GET | `/api/chat` | O; `conv` from query is a key suffix under `sc(u)` | `currentUser` `chat/route.ts:11-12`; `history(sc(u), conv)` `:14`. |
 | 30 | POST | `/api/chat` | O | `currentUser` `chat/route.ts:23-24`. Tool side effects run under `user.scope` `src/lib/chat.ts:220`. |
 | 31 | POST | `/api/chat/feedback` | U | `currentUser` `chat/feedback/route.ts:8-9`. |
-| 32 | POST | `/api/generate` | O | `currentUser` `generate/route.ts:16-17`; trial check `:23`; `charge` `:25`. |
+| 32 | POST | `/api/generate` | O | `currentUser` `generate/route.ts:16-17`; trial check `:23`; `missingData` (cart-recovery needs a synced store, 409 `no_cart_data` before any charge); `charge`. |
 | 33 | POST | `/api/onboard` | O | `currentUser` `onboard/route.ts:25-26`; per-scope lock `:31`. |
 | 34 | GET | `/api/onboard/plan` | O | `currentUser` `onboard/plan/route.ts:10-11`. |
 | 35 | POST | `/api/onboard/plan` | O | `currentUser` `onboard/plan/route.ts:17-18`. |

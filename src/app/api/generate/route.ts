@@ -10,6 +10,7 @@ import { TASK_COST, isTaskType } from "@/lib/tasks";
 import { generate } from "@/lib/noor";
 import { memoryBlock } from "@/lib/files";
 import { getGov } from "@/lib/governance";
+import { missingData } from "@/lib/cart-recovery";
 
 export const maxDuration = 300;
 
@@ -22,6 +23,8 @@ export async function POST(req: Request) {
   const brand = await getBrand(sc(u));
   if (!brand) return NextResponse.json({ ok: false, error: "no_brand" }, { status: 400 });
   if (trialOver(u)) return NextResponse.json({ ok: false, error: "trial_over" }, { status: 402 });
+  const missing = await missingData(type, sc(u));
+  if (missing) return NextResponse.json({ ok: false, error: missing }, { status: 409 });
   const cost = TASK_COST[type];
   const paid = await charge(u.email, cost);
   if (!paid.ok) return NextResponse.json({ ok: false, error: "no_credits", need: cost, have: paid.credits }, { status: 402 });

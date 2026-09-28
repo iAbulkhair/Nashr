@@ -23,7 +23,7 @@ export const AGENTS: Agent[] = [
     id: "noor",
     name: { ar: "نور", en: "Noor" },
     role: { ar: "التسويق", en: "Marketing" },
-    tasks: ["weekly_plan", "social", "article", "whatsapp", "ads", "gbp"],
+    tasks: ["weekly_plan", "social", "article", "whatsapp", "ads", "gbp", "cart_recovery"],
     skills: "marketing",
     persona: "You are Noor (نور), the autonomous marketing agent of Nashr, working for a Gulf business. You produce publish-ready marketing content that a busy owner approves in one click.",
   },
