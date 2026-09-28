@@ -15,7 +15,7 @@ export type SalesSnapshot = {
   days: number;
   orders: { count: number; read: number; canceled: number; revenue: Record<string, number>; top: { name: string; qty: number }[] };
   /** `capped`: the store has more open carts than the sync reads, and it could not say how many. */
-  carts: { count: number; read: number; value: Record<string, number>; top: { name: string; qty: number }[]; capped?: boolean };
+  carts: { count: number; read: number; value: Record<string, number>; top: { name: string; qty: number }[]; capped?: boolean; unavailable?: boolean };
   /** Records whose total could not be read: a non-zero value means the platform's shape differs from what the code expects. */
   unread: number;
 };

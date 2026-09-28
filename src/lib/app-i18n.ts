@@ -101,7 +101,7 @@ const ar = {
     created: "عناصر أُنشئت", approved: "معتمدة", approvalRate: "نسبة الاعتماد", pending: "بانتظارك", published: "نُشرت عبر التكاملات", images: "صور مولّدة", creditsUsed: "كريدت مستهلك", scheduled: "مجدولة قادمة",
     vsPrev: "الفترة السابقة", weeks: "آخر 8 أسابيع (أُنشئ / اعتُمد)", byType: "حسب النوع", byChannel: "حسب القناة",
     qualityTitle: "جودة الفريق", qualitySub: "ما اعتمدته وعدّلته، ودرجات الحَكَم الآلي لكل وكيل.", denomNote: "كل رقم بجانبه عدده: الاعتماد من العناصر التي قررت فيها، والتعديل من التي اعتمدتها، والحَكَم من التي قيّمها فعلاً.", autoNote: "عنصر اعتُمد تلقائياً ولم يُراجَع، ولا يدخل في أي نسبة.", colAgent: "الوكيل", colItems: "عناصر", colApproval: "اعتماد", colEdit: "تعديل", colJudge: "الحَكَم", colLow: "أقل من 70", colThumbs: "الدردشة 👍/👎", judgeNote: "الحَكَم: تقييم آلي ثانٍ بعد المراجِع يعطي العنصر درجة من 100 (اكتمال، التزام بالعلامة، صدق الأرقام، لغة، تنسيق). 85+ جاهز، 70-84 تعديل خفيف، أقل من 70 أعد التوليد.",
-    ask: "اطلب من دانة", items: "تقارير وعروض دانة", empty: "لا تقارير بعد. اطلب التقرير الأسبوعي أو عرضاً.", open: "افتح في صندوق الموافقة", note: "أرقام المبيعات والإيرادات لا تُجمع تلقائياً بعد. اكتبها لدانة في الملاحظات أدناه، وتُدرجها في التقرير.",
+    ask: "اطلب من دانة", items: "تقارير وعروض دانة", empty: "لا تقارير بعد. اطلب التقرير الأسبوعي أو عرضاً.", open: "افتح في صندوق الموافقة", note: "تقرأ دانة آخر مزامنة لطلبات وإيرادات متجرك. أرقام الزيارات والإعلانات اكتبها لها في الملاحظات أدناه، وتُدرجها في التقرير.",
   },
 };
 
@@ -206,7 +206,7 @@ const en: typeof ar = {
     created: "Items created", approved: "Approved", approvalRate: "Approval rate", pending: "Waiting for you", published: "Published via integrations", images: "Images generated", creditsUsed: "Credits used", scheduled: "Scheduled ahead",
     vsPrev: "previous period", weeks: "Last 8 weeks (created / approved)", byType: "By type", byChannel: "By channel",
     qualityTitle: "Team quality", qualitySub: "What you approved and edited, plus the automated judge's scores per agent.", denomNote: "Each figure shows its own count: approval over the items you decided, edits over the items you approved, the judge over the items it actually scored.", autoNote: "item(s) were auto-approved without review and are not counted in any rate.", colAgent: "Agent", colItems: "Items", colApproval: "Approval", colEdit: "Edited", colJudge: "Judge", colLow: "Below 70", colThumbs: "Chat 👍/👎", judgeNote: "Judge: a second automated pass, after the reviewer, scores items out of 100 (completeness, brand fit, honest numbers, language, format). 85+ ready, 70-84 light edit, below 70 regenerate.",
-    ask: "Ask Dana", items: "Dana's reports and decks", empty: "No reports yet. Ask for the weekly report or a deck.", open: "Open in inbox", note: "Sales and revenue figures are not collected automatically yet. Give them to Dana in the notes below and she includes them.",
+    ask: "Ask Dana", items: "Dana's reports and decks", empty: "No reports yet. Ask for the weekly report or a deck.", open: "Open in inbox", note: "Dana reads your store's last synced orders and revenue. Give her traffic and ad-spend figures in the notes below and she includes them.",
   },
 };
 

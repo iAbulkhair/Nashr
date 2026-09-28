@@ -7,7 +7,7 @@ import * as callback from "@/app/api/connect/[provider]/callback/route";
 import * as connectRoute from "@/app/api/connect/[provider]/route";
 
 /**
- * Rule 72: the Zid connector imports the store's products into products.md from Zid's fixed API host, sending the two
+ * Rule 77: the Zid connector imports the store's products into products.md from Zid's fixed API host, sending the two
  * tokens Zid issues (the bearer `authorization` and the X-Manager-Token `access_token`) and the store id, which the
  * callback records from the manager profile. The network is mocked with the shapes Zid's docs describe: products as
  * `{ count, next, previous, results }` with `{ ar, en }` names, the profile as `{ user: { store: { id, title, url } } }`.
@@ -39,7 +39,7 @@ function fakeZid(pages: unknown[][], opts: { status?: number } = {}) {
 }
 afterEach(() => { globalThis.fetch = realFetch; });
 
-describe("Zid product import (rule 72)", () => {
+describe("Zid product import (rule 77)", () => {
   it("walks the pages with both tokens and the store id, skips unpublished products, and writes a readable catalog", async () => {
     fakeZid([[product("سكري القصيم", { sale_price: 65 }), product("مسودة", { is_published: false })], [product("خلاص الأحساء")]]);
     const u = await newUser("zid");
@@ -93,7 +93,7 @@ describe("Zid product import (rule 72)", () => {
   });
 });
 
-describe("connecting Zid records the store (rule 72)", () => {
+describe("connecting Zid records the store (rule 77)", () => {
   const saved: Record<string, string | undefined> = {};
   beforeAll(() => { for (const k of ["ZID_CLIENT_ID", "ZID_CLIENT_SECRET"]) { saved[k] = process.env[k]; process.env[k] = "test"; } });
   afterAll(() => { for (const k of Object.keys(saved)) if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; });

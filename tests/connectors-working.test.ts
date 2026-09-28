@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import { describe, expect, it } from "vitest";
-import { READS_METRICS, WORKING_PROVIDERS, isWorking } from "@/lib/connectors/working";
+import { IMPORTS_PRODUCTS, READS_METRICS, WORKING_PROVIDERS, isWorking } from "@/lib/connectors/working";
 import { costUsd } from "@/lib/usage";
 
 // Rule 65: the app calls a connection "Connected", offers "Connect", or reads numbers from it only when code uses it.
@@ -19,7 +19,11 @@ describe("which connectors do something", () => {
   });
 
   it("does not treat a stored connection with no code behind it as working", () => {
-    for (const id of ["klaviyo", "brevo", "google", "instagram", "whatsapp", "zid", "tiktok", "snapchat", "linkedin"]) expect(isWorking(id)).toBe(false);
+    for (const id of ["klaviyo", "brevo", "google", "instagram", "whatsapp", "tiktok", "snapchat", "linkedin"]) expect(isWorking(id)).toBe(false);
+  });
+
+  it("offers Import products exactly where import_products imports", () => {
+    expect([...IMPORTS_PRODUCTS].sort()).toEqual([...importers].sort());
   });
 
   it("reads no platform numbers until a reader ships", () => {
