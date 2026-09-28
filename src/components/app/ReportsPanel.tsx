@@ -45,7 +45,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
     setBusy(null);
     if (j.ok) { setMsg(t.generate.done); r.refresh(); return; }
     limitFromError(j.error);
-    const map: Record<string, string> = { no_credits: t.generate.noCredits, trial_over: t.generate.trialOver, no_brand: t.generate.noBrand };
+    const map: Record<string, string> = { no_credits: t.generate.noCredits, trial_over: t.generate.trialOver, no_brand: t.generate.noBrand, model_paused: t.generate.paused };
     setMsg(map[j.error] ?? t.generate.failed);
   }
 
@@ -100,7 +100,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
         <form action={`/${lang}/app/reports`} className="flex items-center gap-1 text-xs"><input type="hidden" name="range" value="custom" /><input type="date" name="from" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><input type="date" name="to" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><button className={`rounded-full px-3 py-1 ${range === "custom" ? "bg-ink text-salt" : "border border-ink/15 text-ink/60"}`}>{R.ranges.custom}</button></form>
       </div>
       <p className="mt-2 font-mono text-xs text-ink/50" dir="ltr">{k.window.from} → {k.window.to}</p>
-      {salesProvider && <StoreSales R={R.store} provider={salesProvider} store={store?.provider === salesProvider ? store : null} lang={lang} />}
+      {salesProvider && <StoreSales R={R.store} paused={t.generate.paused} provider={salesProvider} store={store?.provider === salesProvider ? store : null} lang={lang} />}
 
       <h2 className="mt-8 font-display text-xl font-bold">{R.metricsTitle}</h2>
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -244,7 +244,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
 }
 
 /** Store orders and abandoned carts, as totals from the last sync. The numbers are the store's, never estimated. */
-function StoreSales({ R, provider, store, lang }: { R: AppDict["reports"]["store"]; provider: SalesProvider; store: SalesSnapshot | null; lang: Lang }) {
+function StoreSales({ R, paused, provider, store, lang }: { R: AppDict["reports"]["store"]; paused: string; provider: SalesProvider; store: SalesSnapshot | null; lang: Lang }) {
   const r = useRouter();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -255,7 +255,7 @@ function StoreSales({ R, provider, store, lang }: { R: AppDict["reports"]["store
     try {
       const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "cart_recovery" }) });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (j.ok) { setNote(R.drafted); r.refresh(); } else { limitFromError(j.error); setErr(j.error ?? `HTTP ${res.status}`); }
+      if (j.ok) { setNote(R.drafted); r.refresh(); } else { limitFromError(j.error); setErr(j.error === "model_paused" ? paused : j.error ?? `HTTP ${res.status}`); }
     } catch { setErr("failed"); } finally { setDrafting(false); }
   }
   async function sync() {

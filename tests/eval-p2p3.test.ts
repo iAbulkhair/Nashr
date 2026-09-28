@@ -10,6 +10,7 @@ import { saveBrands, scopeFor, setActiveBrand } from "@/lib/brands";
 import { appDict } from "@/lib/app-i18n";
 import type { AgentId } from "@/lib/agents";
 import { json, newUser, signIn } from "./helpers/session";
+import { claudeOn } from "./helpers/model";
 
 /** The second round of the eval audit: the P2 and P3 findings that survived re-verification against main. */
 const daysAgo = (d: number) => new Date(Date.now() - d * 864e5).toISOString();
@@ -17,7 +18,7 @@ let n = 0;
 const task = (over: Partial<Task> = {}): Task => ({ id: `p${++n}`, type: "social", channel: "instagram", title: "t", body: "b", status: "pending", createdAt: daysAgo(1), lang: "ar", ...over });
 const brand: Brand = { name: "محمصة", website: "", industry: "قهوة", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: daysAgo(0) };
 
-afterEach(() => { vi.doUnmock("@anthropic-ai/sdk"); vi.unstubAllEnvs(); });
+afterEach(() => { vi.doUnmock("@anthropic-ai/sdk"); vi.doUnmock("@/lib/model"); vi.unstubAllEnvs(); });
 
 describe("the golden cron authenticates like its siblings", () => {
   it("refuses a wrong or missing secret, accepts any casing of the scheme, and never matches an unset secret", async () => {
@@ -176,6 +177,7 @@ describe("untrusted text reaching the judge and the reviewer", () => {
     let sent: { system: { text: string }[]; messages: { content: string }[] } | undefined;
     vi.resetModules();
     vi.stubEnv("ANTHROPIC_API_KEY", "test");
+    claudeOn();
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         messages = {
@@ -199,6 +201,7 @@ describe("a refused generation", () => {
   it("is still metered: the API bills it even though nothing is delivered", async () => {
     vi.resetModules();
     vi.stubEnv("ANTHROPIC_API_KEY", "test");
+    claudeOn();
     vi.doMock("@anthropic-ai/sdk", () => {
       const refused = { model: "claude-opus-5", stop_reason: "refusal", usage: { input_tokens: 8000, output_tokens: 40 }, content: [] };
       class BadRequestError extends Error {}

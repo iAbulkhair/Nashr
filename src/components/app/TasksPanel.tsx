@@ -48,7 +48,7 @@ export default function TasksPanel({ t, initial }: { t: AppDict; initial: Schedu
       // generated when nothing had happened and no credits had moved.
       const outcome = which === "weekly" ? (j.result ?? "") : j.brief ? j.brief.text.split("\n")[1] : "off";
       const ran = which === "weekly" ? outcome.startsWith("ok:") : !!j.brief;
-      setMsg(ran ? `${k.ran}: ${outcome}` : `${t.generate.failed} (${outcome})`);
+      setMsg(ran ? `${k.ran}: ${outcome}` : outcome === "retry:paused" ? t.generate.paused : `${t.generate.failed} (${outcome})`);
     } catch {
       setMsg(t.generate.failed);
     } finally {

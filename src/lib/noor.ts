@@ -4,6 +4,7 @@ import { reviewBlock, skillsBlock } from "./skills";
 import { asData, parseObjectArray } from "./json";
 import { TASK_COUNT } from "./brand";
 import Anthropic from "@anthropic-ai/sdk";
+import { ModelPaused, modelState } from "./model";
 import type { Brand, TaskType } from "./brand";
 import { pickPlaybook } from "./playbooks";
 import { activeSeasons } from "./seasons";
@@ -150,7 +151,10 @@ function stripDashes(items: Generated[]) {
 }
 
 export async function generate(type: TaskType, brand: Brand, prefs: string[], extra?: string, opts: GenOptions = {}): Promise<Generated[]> {
-  if (!process.env.ANTHROPIC_API_KEY) return mock(type, brand).slice(0, opts.count && opts.count > 0 ? opts.count : undefined);
+  const state = modelState();
+  // Thrown, not mocked: every caller charged before this call and refunds on a throw.
+  if (state === "paused") throw new ModelPaused();
+  if (state === "mock") return mock(type, brand).slice(0, opts.count && opts.count > 0 ? opts.count : undefined);
   const client = new Anthropic();
   const agent = agentForTask(type);
   const n = opts.count && opts.count > 0 ? Math.min(opts.count, TASK_COUNT[type]) : TASK_COUNT[type];

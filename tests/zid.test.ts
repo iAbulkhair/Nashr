@@ -7,7 +7,7 @@ import * as callback from "@/app/api/connect/[provider]/callback/route";
 import * as connectRoute from "@/app/api/connect/[provider]/route";
 
 /**
- * Rule 77: the Zid connector imports the store's products into products.md from Zid's fixed API host, sending the two
+ * Rule 81: the Zid connector imports the store's products into products.md from Zid's fixed API host, sending the two
  * tokens Zid issues (the bearer `authorization` and the X-Manager-Token `access_token`) and the store id, which the
  * callback records from the manager profile. The network is mocked with the shapes Zid's docs describe: products as
  * `{ count, next, previous, results }` with `{ ar, en }` names, the profile as `{ user: { store: { id, title, url } } }`.
@@ -41,7 +41,7 @@ function fakeZid(pages: unknown[][], opts: { status?: number } = {}) {
 }
 afterEach(() => { globalThis.fetch = realFetch; });
 
-describe("Zid product import (rule 77)", () => {
+describe("Zid product import (rule 81)", () => {
   it("walks the pages with both tokens and the store id, skips unpublished products, and writes a readable catalog", async () => {
     fakeZid([[product("سكري القصيم", { sale_price: 65 }), product("مسودة", { is_published: false })], [product("خلاص الأحساء")]]);
     const u = await newUser("zid");
@@ -117,7 +117,7 @@ describe("Zid product import (rule 77)", () => {
   });
 });
 
-describe("connecting Zid records the store (rule 77)", () => {
+describe("connecting Zid records the store (rule 81)", () => {
   const saved: Record<string, string | undefined> = {};
   beforeAll(() => { for (const k of ["ZID_CLIENT_ID", "ZID_CLIENT_SECRET"]) { saved[k] = process.env[k]; process.env[k] = "test"; } });
   afterAll(() => { for (const k of Object.keys(saved)) if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; });
@@ -141,7 +141,7 @@ describe("connecting Zid records the store (rule 77)", () => {
   });
 });
 
-describe("Zid orders and abandoned carts, as totals only (rule 77)", () => {
+describe("Zid orders and abandoned carts, as totals only (rule 81)", () => {
   // Zid's answers carry customer details; none of them may reach the snapshot, the file or the model.
   const NOW = new Date("2026-09-28T09:00:00Z");
   const order = (created: string, total: string | number | null, code: string, products: { name: string; quantity: number }[] = [], payment = "paid", id: number | string = Math.random()) => ({ id, code: "Z1", created_at: created, order_total: total ?? undefined, order_total_string: `${total} SAR`, currency_code: "SAR", order_status: { name: `label-${code}`, code }, payment_status: payment, customer: { name: "ريم العتيبي", email: "reem@example.com", mobile: "+966500000001" }, products });

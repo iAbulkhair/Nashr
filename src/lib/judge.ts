@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { modelState } from "./model";
 import { after } from "next/server";
 import { TASK_COUNT, getTask, saveTask, type Brand, type Task, type TaskType } from "./brand";
 import { taskSpec } from "./noor";
@@ -43,7 +44,7 @@ export type JudgeItem = { channel: string; title: string; body: string };
  * and raising "scored below 70" alerts about items nobody had evaluated.
  */
 export async function scoreItems(email: string | undefined, brand: Brand, type: TaskType, items: JudgeItem[], requested: number = TASK_COUNT[type]): Promise<(Quality | null)[]> {
-  if (!items.length || !process.env.ANTHROPIC_API_KEY) return [];
+  if (!items.length || modelState() !== "on") return [];
   const agent = agentForTask(type);
   const client = new Anthropic();
   const res = await client.messages.create({

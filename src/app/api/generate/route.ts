@@ -11,12 +11,16 @@ import { generate } from "@/lib/noor";
 import { memoryBlock } from "@/lib/files";
 import { getGov } from "@/lib/governance";
 import { missingData } from "@/lib/cart-recovery";
+import { initialStatus } from "@/lib/brand-rules";
+import { ModelPaused, modelState } from "@/lib/model";
 
 export const maxDuration = 300;
 
 export async function POST(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  // Before the charge: a paused model must not take credits and hand them back.
+  if (modelState() === "paused") return NextResponse.json({ ok: false, error: "model_paused" }, { status: 503 });
   const b = (await req.json().catch(() => ({}))) as { type?: string; notes?: string };
   if (!isTaskType(b.type)) return NextResponse.json({ ok: false, error: "bad_type" }, { status: 400 });
   const type = b.type;
@@ -38,12 +42,13 @@ export async function POST(req: Request) {
     console.error("generate failed", e);
     await track(u.email, "error");
     u.credits = await refund(u.email, cost);
+    if (e instanceof ModelPaused) return NextResponse.json({ ok: false, error: "model_paused", credits: u.credits }, { status: 503 });
     return NextResponse.json({ ok: false, error: "generation_failed" }, { status: 502 });
   }
   const lang = brand.languages[0] ?? "ar";
   const created: Task[] = [];
   for (const it of items) {
-    const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: gov.autoApprove[type] ? "approved" : "pending", createdAt: new Date().toISOString(), lang };
+    const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[type], brand, { type, title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang };
     await saveTask(sc(u), t, true);
     created.push(t);
   }

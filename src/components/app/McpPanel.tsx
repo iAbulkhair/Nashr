@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { Lang } from "@/lib/i18n";
+import { Icon } from "./Icons";
 
 export default function McpPanel({ lang, origin }: { lang: Lang; origin: string }) {
   const ar = lang === "ar";
@@ -56,8 +57,13 @@ export default function McpPanel({ lang, origin }: { lang: Lang; origin: string 
       <pre className="mt-2 overflow-x-auto rounded-xl bg-oasis-deep p-4 text-xs text-mist" dir="ltr">{`claude mcp add --transport http nashr ${url} --header "Authorization: Bearer ${tok}"`}</pre>
       <h2 className="mt-6 font-display text-xl font-bold">Claude Desktop / {ar ? "أي عميل MCP" : "any MCP client"}</h2>
       <pre className="mt-2 overflow-x-auto rounded-xl bg-oasis-deep p-4 text-xs text-mist" dir="ltr">{JSON.stringify({ mcpServers: { nashr: { type: "http", url, headers: { Authorization: `Bearer ${tok}` } } } }, null, 2)}</pre>
+      <section className="mt-6 rounded-xl border border-oasis/25 bg-oasis/5 p-4">
+        <p className="flex items-center gap-2 font-display font-bold text-oasis"><Icon name="shield" className="h-5 w-5" />{ar ? "علامتك داخل ChatGPT وClaude" : "Your brand inside ChatGPT and Claude"}</p>
+        <p className="mt-1 text-sm text-ink/70">{ar ? "بعد الربط، يقرأ مساعدك قواعد علامتك بأداة get_brand_rules، ويفحص أي مسودة يكتبها بأداة check_brand، بنفس الكود الذي يستخدمه زر الاعتماد في نشر. مجاناً، بدون رصيد." : "Once connected, your assistant reads your brand rules with get_brand_rules and checks any draft it writes with check_brand, using the same code as Nashr's approve button. Free, no credits."}</p>
+        <p className="mt-2 rounded-lg bg-white px-3 py-2 font-mono text-xs text-ink/70" dir="ltr">&quot;{ar ? "Use Nashr: get my brand rules, write 3 Instagram captions, then check_brand each one." : "Use Nashr: get my brand rules, write 3 Instagram captions, then check_brand each one."}&quot;</p>
+      </section>
       <h2 className="mt-6 font-display text-xl font-bold">{ar ? "الأدوات المتاحة" : "Tools exposed"}</h2>
-      <ul className="mt-2 grid gap-1 text-sm text-ink/80" dir="ltr">{["ask_noor — chat with Noor (all her tools)", "generate_content — weekly_plan | social | article | whatsapp | ads | gbp", "list_inbox — pending / approved / rejected", "read_file / list_files — brand.md, products.md, strategy.md…"].map((x) => <li key={x} className="font-mono text-xs">• {x}</li>)}</ul>
+      <ul className="mt-2 grid gap-1 text-sm text-ink/80" dir="ltr">{["ask_noor — chat with Noor (all her tools)", "generate_content — weekly_plan | social | article | whatsapp | ads | gbp", "list_inbox — pending / approved / rejected", "read_file / list_files — brand.md, products.md, strategy.md…", "get_brand_rules — tone, dialect, audience, enforced banned words (free)", "check_brand — pass or the rule that fired, with the matched word (free)"].map((x) => <li key={x} className="font-mono text-xs">• {x}</li>)}</ul>
     </div>
   );
 }
