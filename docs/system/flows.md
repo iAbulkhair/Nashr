@@ -248,6 +248,15 @@ Files: `src/lib/connectors/ads.ts`, `src/lib/perf-store.ts` (`syncAds`, `syncAds
 5. Switch account: `{action:"select_ad_account", accountId}` accepts only an id in `meta.adAccounts`.
 6. Nothing creates, edits, pauses or funds an ad. The readers send no request other than GET, apart from Meta's token exchange.
 
+## 22. Ad codes: measuring Nashr's own ads
+
+Files: `src/lib/ad-codes.ts`, `saveTask` in `src/lib/brand.ts`, `analyze` in `src/lib/perf-import.ts`, `Inbox.tsx`, `PerformanceImport.tsx`.
+
+1. `saveTask` gives every new `ads` and `social` item an `adCode` (`NSR-` plus five characters from an alphabet without 0, O, 1, I and L) and writes `adcodes:{scope}` code → task id in the same round of commands. A later save keeps the code.
+2. The inbox card shows the code with a copy button and the hint to put it in the ad's name in the ads manager. Nothing writes names on the platforms: the connectors are read only.
+3. When results come in (CSV upload, section 20, or an ad account, section 21), `analyze` receives the workspace's code index. A row whose name or copy contains one of those codes is a Nashr ad; any other code is ignored. `snapshot.nashr` lists them with their metric and sample, and compares the pooled metric of the ranked Nashr ads with the other ranked ads when there are at least 2 and 3, with a confidence of low or medium by the same rule as the other findings. Codes are removed from the text before the wording patterns run.
+4. `performance-learnings.md` gains a "Nashr's own ads" section with the comparison, telling Noor to build on what worked and to say plainly when Nashr's ads did worse. The results card shows the section, or how to add codes when none are found.
+
 ## Revocation (2026-09-18)
 
 - Password change (`PATCH /api/account`): new hash and `sessionsAfter = now` saved inside the user lock, the caller's session is destroyed and a new one issued. Every other session of the account fails at its next request.

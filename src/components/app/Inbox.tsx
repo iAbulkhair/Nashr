@@ -16,8 +16,8 @@ import type { Journey } from "@/lib/journey";
 import JourneyCard, { milestone } from "./JourneyCard";
 
 const GUARD = {
-  ar: { ok: "يطابق حارس العلامة", held: "محجوز بحارس العلامة", heldBody: "يحتوي على كلمة ممنوعة في ملف علامتك، فلا يُعتمد ولا يُنشر حتى تعدّله:", fix: "عدّل النص", live: "فحص مباشر", liveOk: "لا كلمات ممنوعة. جاهز للاعتماد.", saveDraft: "احفظ دون اعتماد", rule: "قاعدة الكلمات الممنوعة", editBrand: "ملف العلامة" },
-  en: { ok: "Passes brand guard", held: "Held by brand guard", heldBody: "It contains a word your brand file bans, so it cannot be approved or published until you edit it:", fix: "Fix the text", live: "Live check", liveOk: "No banned words. Ready to approve.", saveDraft: "Save without approving", rule: "Banned-words rule", editBrand: "Brand file" },
+  ar: { code: "كود الإعلان", codeHint: "ضعه في اسم الإعلان في مدير الإعلانات، فتقيس نور نتيجته حين تصل.", copyCode: "نسخ الكود", ok: "يطابق حارس العلامة", held: "محجوز بحارس العلامة", heldBody: "يحتوي على كلمة ممنوعة في ملف علامتك، فلا يُعتمد ولا يُنشر حتى تعدّله:", fix: "عدّل النص", live: "فحص مباشر", liveOk: "لا كلمات ممنوعة. جاهز للاعتماد.", saveDraft: "احفظ دون اعتماد", rule: "قاعدة الكلمات الممنوعة", editBrand: "ملف العلامة" },
+  en: { code: "Ad code", codeHint: "Put it in the ad's name in your ads manager, and Noor measures its results when they come in.", copyCode: "Copy code", ok: "Passes brand guard", held: "Held by brand guard", heldBody: "It contains a word your brand file bans, so it cannot be approved or published until you edit it:", fix: "Fix the text", live: "Live check", liveOk: "No banned words. Ready to approve.", saveDraft: "Save without approving", rule: "Banned-words rule", editBrand: "Brand file" },
 } as const;
 
 /** The matched word inside its excerpt, highlighted (both come from the same checker the server runs). */
@@ -256,6 +256,13 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                     <button disabled={imaging === x.id} onClick={() => image(x.id)} className="rounded-full border border-saffron px-4 py-1.5 disabled:opacity-50">{imaging === x.id ? i.imaging : (x.imageUrl ? "↻ " : "") + i.image}</button>
                   )}
                   {x.channel === "instagram" && connected.includes("instagram") && x.imageProvider !== "fal" && <p className="w-full text-xs text-ink/60">{i.igNeedsImage}</p>}
+                  {x.adCode && (
+                    <span title={G.codeHint} className="flex items-center gap-1 rounded-full border border-dashed border-oasis/40 bg-white px-2 py-1 text-xs">
+                      <span className="text-ink/60">{G.code}</span>
+                      <span className="font-mono font-semibold text-oasis" dir="ltr">{x.adCode}</span>
+                      <button onClick={async () => { await navigator.clipboard.writeText(x.adCode!); setCopied(x.adCode!); setTimeout(() => setCopied(null), 1500); }} aria-label={G.copyCode} className="rounded-full px-1 text-oasis hover:bg-oasis/10">{copied === x.adCode ? "✓" : <Icon name="copy" className="h-3.5 w-3.5" />}</button>
+                    </span>
+                  )}
                   {targets(x).map((p) => (
                     <button key={p} disabled={publishing === x.id + p || hits.length > 0} onClick={() => publish(x.id, p)} className="btn btn-primary btn-pill">{publishing === x.id + p ? i.publishing : `${i.publishTo} ${p}`}</button>
                   ))}
