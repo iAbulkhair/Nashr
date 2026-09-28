@@ -101,7 +101,7 @@ All three require `Authorization: Bearer ${CRON_SECRET}` and return 401 when the
 | placehold.co | Placeholder image URL when `FAL_KEY` is absent (`images.ts:32`). URL only, no server fetch. |
 | Resend | Transactional and lifecycle email (`src/lib/notify.ts:4`). |
 | Vercel | Hosting, function runtime, cron. |
-| Connector platforms | X, Shopify, Google, Meta, Salla, Zid, LinkedIn, TikTok, Snapchat (OAuth); WordPress, WooCommerce, Klaviyo, Odoo, PrestaShop, Telegram, Brevo (keys). Actual API use exists for X, Shopify, WordPress, WooCommerce, Odoo, PrestaShop, Telegram, Salla and Zid (product import), Brevo (verify only), Klaviyo (verify only). Salla, Zid, Shopify and WooCommerce also have order readers (`src/lib/connectors/orders.ts`) behind the Reports page's store section (`src/lib/store-metrics.ts`, cached 15 minutes per scope). Google, Meta, LinkedIn, TikTok, Snapchat only complete the OAuth exchange and store tokens. |
+| Connector platforms | X, Shopify, Google, Meta, Salla, Zid, LinkedIn, TikTok, Snapchat (OAuth); WordPress, WooCommerce, Klaviyo, Odoo, PrestaShop, Telegram, Brevo (keys). Actual API use exists for X, Shopify, WordPress, WooCommerce, Odoo, PrestaShop, Telegram, Brevo (verify only), Klaviyo (verify only). Google, Meta, Salla, Zid, LinkedIn, TikTok, Snapchat only complete the OAuth exchange and store tokens. |
 | Arbitrary customer websites | `crawl.ts:50` and `catalog.ts:12,26` fetch URLs supplied by the user or discovered in sitemaps. |
 
 ## 3. Redis key namespace
@@ -139,6 +139,8 @@ All three require `Authorization: Bearer ${CRON_SECRET}` and return 401 when the
 | `conns:{scope}` | set | Connected provider ids (never shrinks) | `connectors/store.ts:35` | none |
 | `conn:{scope}:{provider}` | json | Connection with AES-256-GCM `enc` blob; delete writes `null` | `connectors/store.ts:34,52` | none |
 | `oauthstate:{state}` | json | Connector OAuth state `{email: scope, provider, lang, shop, verifier}` | `connectors/store.ts:56` | 10 min |
+| `storesales:{scope}` | json | Latest store sales snapshot (Salla or Shopify, whichever was synced last): 30-day order count, revenue by currency, canceled count, open abandoned carts and their value, top products. Totals only, no customer data | `store-sales.ts` | none (replaced on each sync) |
+| `connlock:{scope}:{provider}` | string | Held while a connector token is refreshed, so two requests cannot spend one single-use refresh token | `connectors/fresh.ts` | 30 s |
 | `profile:{scope}` (written) / `profile:{email}` (read by cron, deleted by wipe) | json | `{emails: all\|important\|none}` | `api/profile/route.ts:21,40`, `api/cron/daily/route.ts:41`, `account.ts:19` | none |
 | `notifs:{email}` | json | Up to 50 notifications | `notifications.ts:16` | none |
 | `notifseen:{email}:{fingerprint}` | flag | Follow-up dedupe | `notifications.ts:32` | `ttlDays` (default 3 d) |

@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Integration } from "@/lib/integrations";
 import type { KeyField } from "@/lib/connectors/registry";
-import { IMPORTS_PRODUCTS, isWorking } from "@/lib/connectors/working";
+import { isWorking } from "@/lib/connectors/working";
 import type { Lang } from "@/lib/i18n";
 
 type P = { id: string; name: string; kind: "oauth" | "key"; capabilities: string[]; available: boolean; keyFields?: KeyField[]; docs?: string; needsShop: boolean };
@@ -60,6 +60,15 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
     setBusy(false);
     alert(j.ok ? `${g.importProducts}: ${j.count}` : j.error);
   }
+  async function selectPage(pageId: string) {
+    setBusy(true);
+    const res = await fetch("/api/connect/meta", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "select_page", pageId }) });
+    const j = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!j.ok) alert(j.error ?? res.status);
+    await load();
+    r.refresh();
+  }
   const startOAuth = (p: P) => {
     if (p.needsShop) { setShopFor(p); return; }
     // Not an internal page: this route answers 302 to the provider's own consent screen. router.push() performs a
@@ -74,7 +83,8 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
   const badge = (s: string) => (s === "live" ? "bg-oasis text-mist" : s === "soon" ? "bg-saffron/20 text-ink" : "bg-ink/10 text-ink/60");
 
   // Map catalog ids → connector ids where they differ
-  const connectorId = (i: Integration) => ({ snap_ads: "snapchat", meta_ads: "meta", instagram: "meta", whatsapp: "meta", gbp: "google", ga4: "google", gsc: "google" } as Record<string, string>)[i.id] ?? i.id;
+  // Meta Ads and WhatsApp are not built: they keep their catalog status instead of borrowing the Meta connection's.
+  const connectorId = (i: Integration) => ({ snap_ads: "snapchat", instagram: "meta", facebook: "meta", gbp: "google", ga4: "google", gsc: "google" } as Record<string, string>)[i.id] ?? i.id;
 
   return (
     <div>
@@ -94,10 +104,19 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
                   <p className="mt-1 text-xs text-ink/60" dir="ltr">{c.meta?.account ?? c.meta?.shop ?? c.meta?.site ?? ""}</p>
                   <p className="mt-1 text-xs text-ink/40" dir="ltr">{c.connectedAt.slice(0, 10)}</p>
                   {c.needsReconnect && <p className="mt-1 text-xs font-semibold text-sadu">{g.reconnect}</p>}
+                  {c.provider === "meta" && c.meta?.pages && (
+                    <label className="mt-2 grid gap-1 text-xs text-ink/60">
+                      <span>{g.metaPage}</span>
+                      <select value={c.meta.pageId} disabled={busy} onChange={(e) => selectPage(e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1 text-xs" dir="auto">
+                        {(JSON.parse(c.meta.pages) as { id: string; name: string; ig: string }[]).map((pg) => <option key={pg.id} value={pg.id}>{pg.ig ? `${pg.name} · @${pg.ig}` : pg.name}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  {c.provider === "meta" && c.meta?.pageId && !c.meta.igId && <p className="mt-1 text-xs text-ink/60">{g.metaNoIg}</p>}
                 </div>
                 <div className="flex shrink-0 flex-col gap-1">
                   {c.needsReconnect && providerById.get(c.provider)?.kind === "oauth" && <button onClick={() => startOAuth(providerById.get(c.provider)!)} className="rounded-full bg-oasis px-3 py-1 text-xs font-semibold text-mist">{g.reconnectBtn}</button>}
-                  {IMPORTS_PRODUCTS.includes(c.provider) && <button disabled={busy} onClick={() => importProducts(c.provider)} className="rounded-full border border-oasis/40 px-3 py-1 text-xs text-oasis">{g.importProducts}</button>}
+                  {["shopify", "woocommerce", "odoo", "prestashop", "salla"].includes(c.provider) && <button disabled={busy} onClick={() => importProducts(c.provider)} className="rounded-full border border-oasis/40 px-3 py-1 text-xs text-oasis">{g.importProducts}</button>}
                   <button onClick={() => disconnect(c.provider)} className="rounded-full border border-sadu/40 px-3 py-1 text-xs text-sadu">{g.disconnect}</button>
                 </div>
               </div>

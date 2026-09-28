@@ -45,7 +45,9 @@ add features to it that are not built: reviewers test what you describe.
 
 ## 1. Shopify — about 1 hour, no review needed to test
 
-**What works once connected:** product import into the brand's `products.md`, and articles published as blog drafts.
+**What works once connected:** product import into the brand's `products.md`, articles published as blog drafts, and a
+sales sync: last 30 days of orders and abandoned checkouts, as totals with no customer details, shown on Reports and read
+by Noor (built 2026-09-28).
 
 1. Go to **partners.shopify.com** → create a Partner account (your name, company, email).
 2. **Stores → Add store → Development store.** Name: `nashr-test`. This is the free store you test on.
@@ -56,6 +58,11 @@ add features to it that are not built: reviewers test what you describe.
    | App URL | `https://nashr-tau.vercel.app/en/app/integrations` |
    | Allowed redirection URL(s) | `https://nashr-tau.vercel.app/api/connect/shopify/callback` |
 4. **API access / scopes:** `read_products, read_orders, read_checkouts, write_content, read_customers`
+   **Protected customer data access** (same app, API access section): request access for **orders** at the first
+   level only, with no customer fields (name, email, phone, address). Reason to give: "Totals of the merchant's own
+   orders and abandoned checkouts (count, revenue, top products) for their marketing reports; no customer fields are
+   read or stored." Without it Shopify refuses order reads and Nashr shows a message saying so. On development stores
+   this is a setting, not a review; the review comes with the App Store listing.
 5. Copy **Client ID** and **Client secret**, then in your terminal:
    ```bash
    vercel env add SHOPIFY_CLIENT_ID production --scope asbunat
@@ -64,6 +71,8 @@ add features to it that are not built: reviewers test what you describe.
 6. Redeploy. In Nashr → Integrations → Shopify → enter `nashr-test.myshopify.com` → approve on Shopify.
 7. Test: **Import products** (add 2–3 products to the dev store first), then approve an article in the inbox and click
    **Publish to Shopify**; it should appear as a hidden blog draft in the store.
+8. Sales test: place 2–3 test orders on the dev store (Bogus Gateway) and leave one checkout at the payment step,
+   then Reports → **Sync from Shopify**. The card should show the orders, the sales, and one abandoned checkout.
 
 **Later:** listing on the Shopify App Store needs a review (about 2–3 weeks). Until then the app can be installed on
 stores you invite. Tell me before you submit the listing.
@@ -104,7 +113,8 @@ Scopes Nashr asks for (nothing to tick; sent at connect time): `tweet.read tweet
 ## 3. Salla — 1 day to apply, test on the demo store immediately
 
 **What works once connected:** product import into the brand's `products.md`, and the store name on the Integrations
-card (built 2026-09-27). Orders and abandoned carts come next. It is testable on Salla's demo store the day you send
+card (built 2026-09-27), and a sales sync: last 30 days of orders and the open abandoned carts, as totals with no
+customer details, shown on Reports and read by Noor (built 2026-09-28). It is testable on Salla's demo store the day you send
 the keys, without waiting for Salla's public review.
 
 **Needs:** commercial registration (#47).
@@ -132,11 +142,12 @@ the keys, without waiting for Salla's public review.
 
 ---
 
-## 4. Meta (Facebook, Instagram, WhatsApp) — start verification today, submit review later
+## 4. Meta (Facebook, Instagram) — start verification today, test as a tester, then submit review
 
-**What works once connected:** nothing yet. Meta's app review requires a screencast of the working feature, so the
-review can only be submitted after I build Instagram/Facebook publishing. What you can and should start **today** is
-business verification, which is the slowest part (2–10 business days).
+**What works once connected (built 2026-09-28):** publishing an approved post to the Facebook Page you choose, and to
+the Instagram professional account linked to that Page when the post has a generated image (Instagram takes no
+text-only posts). Before app review this works for people with a role on the app (step 8), which is enough to test
+and to record the review screencasts. Business verification is the slowest part (2–10 business days): start it today.
 
 **Needs:** commercial registration (#47), a company phone number, and the website.
 
@@ -159,18 +170,34 @@ business verification, which is the slowest part (2–10 business days).
    | Category | Business and pages |
 6. Add the product **Facebook Login for Business** → **Valid OAuth Redirect URIs:**
    `https://nashr-tau.vercel.app/api/connect/meta/callback`
+   If the product asks for a **configuration**, create one with the six permissions listed under "App review" below
+   and the token type **User access token**, then add its id as `META_CONFIG_ID` (same command as step 7). Without a
+   configuration Nashr sends the permissions itself.
 7. Copy **App ID** and **App Secret**:
    ```bash
    vercel env add META_APP_ID production --scope asbunat
    vercel env add META_APP_SECRET production --scope asbunat
    ```
 8. **Roles → add yourself as a tester** so you can connect your own page before any review.
+9. Your Instagram account must be a **professional** account (Business or Creator) **linked to the Facebook Page**
+   (Instagram app → Settings → Account type; then Page settings → Linked accounts). A personal account cannot be
+   published to through the API.
+10. Test: Nashr → Integrations → Instagram → Connect → approve. The card shows the Page and `@account`; with several
+    Pages, a list lets you pick one. Then in the inbox: an Instagram post → **Generate image** → **Publish to
+    instagram**, and another → **Publish to facebook**.
 
-### Later (after I build publishing): app review
-Permissions to request then: `pages_show_list`, `pages_manage_posts`, `pages_read_engagement`, `instagram_basic`,
-`instagram_content_publish`, `business_management`. WhatsApp and ads permissions come later, with their own features.
-I will record the screencasts for each permission. Do not request permissions for features that do not exist: Meta
+### After business verification: app review
+Permissions to request: `pages_show_list`, `pages_manage_posts`, `pages_read_engagement`, `instagram_basic`,
+`instagram_content_publish`, `business_management`. Nashr asks for exactly these six and nothing else; WhatsApp and
+ads permissions come later, with their own features. Do not request permissions for features that do not exist: Meta
 rejects the whole submission.
+
+**Screencasts** are recorded on your screen, logged in as a tester (I cannot record them from here). One recording
+can cover all six if it shows, in order: Integrations → Connect Instagram → the Meta consent screen listing the
+permissions → back in Nashr, the card with the Page name and `@account` (pages_show_list, business_management,
+instagram_basic) → the inbox: approve a post, generate its image, **Publish to instagram**, then open the post on
+Instagram (instagram_content_publish) → **Publish to facebook** on another post, then open it on the Page
+(pages_manage_posts, pages_read_engagement). Keep the app language English for the recording; reviewers ask for it.
 
 ---
 

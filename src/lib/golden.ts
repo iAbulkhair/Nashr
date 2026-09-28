@@ -92,7 +92,7 @@ export type GoldenRun = {
   results: GoldenResult[]; regressions: string[];
 };
 
-const CUSTOMER_FACING: TaskType[] = ["social", "article", "whatsapp", "ads", "gbp", "followup_seq"];
+const CUSTOMER_FACING: TaskType[] = ["social", "article", "whatsapp", "ads", "gbp", "followup_seq", "cart_recovery"];
 const AR = /[\u0600-\u06FF]/g, LAT = /[A-Za-z]/g;
 const mean = (xs: number[]) => (xs.length ? Math.round((xs.reduce((s, x) => s + x, 0) / xs.length) * 10) / 10 : null);
 const digits = (s: string) => s.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).replace(/[,٬]/g, "");

@@ -24,6 +24,8 @@ export function authorizeUrl(p: Provider, state: string, opts: { shop?: string; 
   }
   if (p.id === "tiktok") { u.searchParams.set("client_key", process.env[o.clientIdEnv]!); u.searchParams.delete("client_id"); }
   for (const [k, v] of Object.entries(o.extraAuthParams ?? {})) u.searchParams.set(k, v);
+  // A Business-type Meta app using Facebook Login for Business names its permissions in a configuration, not in scope.
+  if (p.id === "meta" && process.env.META_CONFIG_ID) { u.searchParams.set("config_id", process.env.META_CONFIG_ID); u.searchParams.delete("scope"); }
   return u.toString();
 }
 

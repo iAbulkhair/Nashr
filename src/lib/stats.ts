@@ -1,5 +1,7 @@
 import { IMAGE_COST, TASK_COST, TASK_COUNT, listLite, type TaskLite, type TaskType } from "./brand";
 import { db } from "./db";
+import { agentForTask } from "./agents";
+import { cartDataBlock } from "./cart-recovery";
 
 /** Workspace KPIs for the Reports page and for Dana's prompts. Computed from stored tasks only; no model call. */
 export type Kpis = {
@@ -136,7 +138,7 @@ export async function kpis(scope: string, days?: number, win?: { from: Date; to:
 }
 
 /** Plain-text block for prompts. */
-export function statsText(k: Kpis, opts: { store?: boolean } = {}): string {
+export function statsText(k: Kpis): string {
   const fmt = (o: Record<string, number>) => Object.entries(o).sort((a, b) => b[1] - a[1]).map(([a, b]) => `${a}=${b}`).join(", ") || "none";
   return [
     `WORKSPACE DATA (month ${k.month}; counts are content items in Nashr, not sales figures)`,
@@ -147,9 +149,14 @@ export function statsText(k: Kpis, opts: { store?: boolean } = {}): string {
     `- By type: ${fmt(k.byType)}`,
     `- By channel: ${fmt(k.byChannel)}`,
     `- Weekly created/approved (oldest first): ${k.weeks.map((w) => `${w.label}: ${w.created}/${w.approved}`).join("; ")}`,
-    opts.store
-      ? `- Store orders and revenue are in STORE DATA below. Traffic and ad-spend figures are NOT in this data. If the owner did not provide them in notes or files, use [رقم] placeholders and list what to track.`
-      : `- Sales, revenue, traffic and ad-spend figures are NOT in this data. If the owner did not provide them in notes or files, use [رقم] placeholders and list what to track.`,
+    `- Sales, revenue, traffic and ad-spend figures are NOT in this data. If the owner did not provide them in notes or files, use [رقم] placeholders and list what to track.`,
   ].join("\n");
 }
 
+/** Returns the data block a task is built on: workspace stats for Dana's reports, the store's abandoned carts for
+ * cart-recovery drafts, and nothing for everything else. */
+export async function statsFor(type: TaskType, scope: string): Promise<string> {
+  if (type === "cart_recovery") return cartDataBlock(scope);
+  if (agentForTask(type).id !== "dana") return "";
+  return statsText(await kpis(scope));
+}

@@ -1,5 +1,5 @@
 import { charge, refund } from "@/lib/credits";
-import { reportData } from "@/lib/report-data";
+import { statsFor } from "@/lib/stats";
 import { judgeLater } from "@/lib/judge";
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
@@ -12,6 +12,7 @@ import { TASK_COST, isTaskType } from "@/lib/tasks";
 import { generate } from "@/lib/noor";
 import { listFiles, memoryBlock, readFile } from "@/lib/files";
 import { getGov } from "@/lib/governance";
+import { missingData } from "@/lib/cart-recovery";
 
 export const maxDuration = 300;
 
@@ -22,7 +23,7 @@ export const maxDuration = 300;
  */
 const TOOLS = [
   { name: "ask_noor", description: "Talk to Noor, the Gulf marketing agent for this account. She knows the brand, products, seasons and inbox, and can create content, update the brand file, and read/write workspace files.", inputSchema: { type: "object", properties: { message: { type: "string" } }, required: ["message"] } },
-  { name: "generate_content", description: "Create items in the approval inbox. Marketing (Noor): weekly_plan | social (10 posts) | article | whatsapp (3) | ads (5) | gbp (3). Sales (Sami): sales_script | lead_qualifier | followup_seq. Finance (Razan): pricing_review | unit_economics | cash_forecast. Growth (Faris): gtm_plan | growth_experiments | retention_play. Reports (Dana): weekly_report | board_deck | dashboard_spec. Executive (Majed): strategy_review | okrs | decision_memo. Product (Layan): prd | roadmap | feedback_synthesis | onboarding_flow. Deducts credits.", inputSchema: { type: "object", properties: { type: { type: "string", enum: Object.keys(TASK_COST) }, notes: { type: "string" } }, required: ["type"] } },
+  { name: "generate_content", description: "Create items in the approval inbox. Marketing (Noor): weekly_plan | social (10 posts) | article | whatsapp (3) | ads (5) | gbp (3) | cart_recovery (5, needs a synced Salla or Shopify store). Sales (Sami): sales_script | lead_qualifier | followup_seq. Finance (Razan): pricing_review | unit_economics | cash_forecast. Growth (Faris): gtm_plan | growth_experiments | retention_play. Reports (Dana): weekly_report | board_deck | dashboard_spec. Executive (Majed): strategy_review | okrs | decision_memo. Product (Layan): prd | roadmap | feedback_synthesis | onboarding_flow. Deducts credits.", inputSchema: { type: "object", properties: { type: { type: "string", enum: Object.keys(TASK_COST) }, notes: { type: "string" } }, required: ["type"] } },
   { name: "list_inbox", description: "List inbox items with status.", inputSchema: { type: "object", properties: { status: { type: "string", enum: ["pending", "approved", "rejected", "all"] } } } },
   { name: "read_file", description: "Read a workspace file (brand.md, products.md, strategy.md, market-research.md, preferences.md).", inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
   { name: "list_files", description: "List workspace files.", inputSchema: { type: "object", properties: {} } },
@@ -73,6 +74,7 @@ export async function POST(req: Request) {
         const brand = await getBrand((user.scope ?? user.email));
         if (!brand) return ok(id, { ...text("No brand file yet. Run onboarding in the app first."), isError: true });
         if (trialOver(user)) return ok(id, { ...text("The trial has ended. Subscribe in the app to keep generating."), isError: true });
+        if (await missingData(type, user.scope ?? user.email)) return ok(id, { ...text("No abandoned-cart data yet: connect Salla or Shopify and sync sales from Reports in the app first. No credits were used."), isError: true });
         const cost = TASK_COST[type];
         const paid = await charge(user.email, cost);
         if (!paid.ok) return ok(id, { ...text(`Insufficient credits: need ${cost}, have ${paid.credits}.`), isError: true });
@@ -80,7 +82,7 @@ export async function POST(req: Request) {
         const gov = await getGov((user.scope ?? user.email));
         let items;
         try {
-          items = await generate(type, brand, await listPreferences((user.scope ?? user.email)), String(args.notes ?? ""), { memory: await memoryBlock((user.scope ?? user.email)), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats: await reportData(type, user.scope ?? user.email) });
+          items = await generate(type, brand, await listPreferences((user.scope ?? user.email)), String(args.notes ?? ""), { memory: await memoryBlock((user.scope ?? user.email)), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats: await statsFor(type, user.scope ?? user.email) });
         } catch (e) {
           user.credits = await refund(user.email, cost);
           throw e;

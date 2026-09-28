@@ -2,9 +2,9 @@
 export type Integration = { id: string; name: string; group: "commerce" | "ads" | "messaging" | "publishing" | "data" | "payments"; status: "live" | "soon" | "planned"; note?: string };
 
 export const INTEGRATIONS: Integration[] = [
-  { id: "salla", name: "Salla (سلة)", group: "commerce", status: "soon", note: "Product import; orders and revenue on Reports (abandoned carts coming soon)" },
-  { id: "zid", name: "Zid (زد)", group: "commerce", status: "soon", note: "Product import; orders and revenue on Reports (abandoned carts coming soon)" },
-  { id: "shopify", name: "Shopify", group: "commerce", status: "soon" },
+  { id: "salla", name: "Salla (سلة)", group: "commerce", status: "soon", note: "Product import, plus 30-day sales and abandoned-cart totals" },
+  { id: "zid", name: "Zid (زد)", group: "commerce", status: "soon", note: "Products, orders, abandoned carts" },
+  { id: "shopify", name: "Shopify", group: "commerce", status: "soon", note: "Product import, blog drafts, plus 30-day sales and abandoned-checkout totals" },
   { id: "woocommerce", name: "WooCommerce", group: "commerce", status: "soon" },
   { id: "odoo", name: "Odoo", group: "commerce", status: "soon", note: "Products via API key — popular with KSA SMEs" },
   { id: "prestashop", name: "PrestaShop", group: "commerce", status: "soon", note: "Products via Webservice key — EU stores" },
@@ -21,7 +21,8 @@ export const INTEGRATIONS: Integration[] = [
   { id: "trustpilot", name: "Trustpilot", group: "data", status: "planned", note: "Reviews — needs partner API" },
   { id: "mailchimp", name: "Mailchimp", group: "messaging", status: "planned" },
   { id: "klaviyo", name: "Klaviyo", group: "messaging", status: "planned" },
-  { id: "instagram", name: "Instagram", group: "publishing", status: "soon" },
+  { id: "instagram", name: "Instagram", group: "publishing", status: "soon", note: "Approved posts with a generated image, through the Facebook Page the account is linked to" },
+  { id: "facebook", name: "Facebook Page", group: "publishing", status: "soon", note: "Approved posts, published to the Page you choose" },
   { id: "tiktok", name: "TikTok", group: "publishing", status: "soon" },
   { id: "snapchat", name: "Snapchat", group: "publishing", status: "soon" },
   { id: "x", name: "X", group: "publishing", status: "soon" },

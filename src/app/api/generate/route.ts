@@ -1,6 +1,6 @@
 import { track } from "@/lib/track";
 import { charge, refund } from "@/lib/credits";
-import { reportData } from "@/lib/report-data";
+import { statsFor } from "@/lib/stats";
 import { judgeLater } from "@/lib/judge";
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
@@ -10,6 +10,7 @@ import { TASK_COST, isTaskType } from "@/lib/tasks";
 import { generate } from "@/lib/noor";
 import { memoryBlock } from "@/lib/files";
 import { getGov } from "@/lib/governance";
+import { missingData } from "@/lib/cart-recovery";
 
 export const maxDuration = 300;
 
@@ -22,6 +23,8 @@ export async function POST(req: Request) {
   const brand = await getBrand(sc(u));
   if (!brand) return NextResponse.json({ ok: false, error: "no_brand" }, { status: 400 });
   if (trialOver(u)) return NextResponse.json({ ok: false, error: "trial_over" }, { status: 402 });
+  const missing = await missingData(type, sc(u));
+  if (missing) return NextResponse.json({ ok: false, error: missing }, { status: 409 });
   const cost = TASK_COST[type];
   const paid = await charge(u.email, cost);
   if (!paid.ok) return NextResponse.json({ ok: false, error: "no_credits", need: cost, have: paid.credits }, { status: 402 });
@@ -30,7 +33,7 @@ export async function POST(req: Request) {
   const gov = await getGov(sc(u));
   let items;
   try {
-    items = await generate(type, brand, await listPreferences(sc(u)), b.notes, { memory: await memoryBlock(sc(u)), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: u.email, stats: await reportData(type, sc(u)) });
+    items = await generate(type, brand, await listPreferences(sc(u)), b.notes, { memory: await memoryBlock(sc(u)), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: u.email, stats: await statsFor(type, sc(u)) });
   } catch (e) {
     console.error("generate failed", e);
     await track(u.email, "error");

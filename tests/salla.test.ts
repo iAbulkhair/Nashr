@@ -103,3 +103,71 @@ describe("connecting Salla shows the store (rule 71)", () => {
     expect(c?.meta).toMatchObject({ account: "متجر الورد", site: "https://ward.example" });
   });
 });
+
+describe("Salla orders and abandoned carts, as totals only (rule 72)", () => {
+  // Salla's list responses carry customer details; none of them may reach the snapshot, the file or the model.
+  const order = (total: number | null, status: string, items: { name: string; quantity: number }[] = []) => ({ id: Math.random(), reference_id: 1001, total: total == null ? undefined : { amount: total, currency: "SAR" }, status: { slug: status, name: status }, customer: { first_name: "ريم", last_name: "العتيبي", mobile: "+966500000001", email: "reem@example.com" }, items });
+  const cart = (total: number, items: { name: string; quantity: number }[]) => ({ id: Math.random(), total: { amount: total, currency: "SAR" }, customer: { name: "سلمان", mobile: "+966500000002" }, checkout_url: "https://ward.example/checkout/secret", items });
+
+  function fakeSales(orderPages: unknown[][], cartPages: unknown[][], opts: { orderTotal?: number } = {}) {
+    calls = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      calls.push(String(input));
+      const page = Number(url.searchParams.get("page") ?? 1);
+      const list = (pages: unknown[][], total?: number) => Response.json({ data: pages[page - 1] ?? [], pagination: { total: total ?? pages.flat().length, currentPage: page, totalPages: pages.length } });
+      if (url.pathname === "/admin/v2/orders") return list(orderPages, opts.orderTotal);
+      if (url.pathname === "/admin/v2/carts/abandoned") return list(cartPages);
+      return new Response("not mocked", { status: 500 });
+    }) as typeof fetch;
+  }
+
+  it("sums the last 30 days of orders without canceled or refunded ones, counts carts and their value, and ranks products", async () => {
+    fakeSales(
+      [[order(300, "completed", [{ name: "عود ملكي", quantity: 2 }]), order(150, "canceled", [{ name: "عود ملكي", quantity: 5 }])], [order(200, "delivered", [{ name: "مسك أبيض", quantity: 1 }, { name: "عود ملكي", quantity: 1 }]), order(null, "completed")]],
+      [[cart(90, [{ name: "مسك أبيض", quantity: 1 }]), cart(60.5, [{ name: "مسك أبيض", quantity: 2 }])]],
+    );
+    const { sallaSales } = await import("@/lib/connectors/salla");
+    const s = await sallaSales(conn(), new Date("2026-09-28T09:00:00Z"));
+    const orders = calls.filter((c) => c.includes("/orders"));
+    expect(new URL(orders[0]).searchParams.get("from_date")).toBe("2026-08-29");
+    expect(new URL(orders[0]).searchParams.get("to_date")).toBe("2026-09-28");
+    expect(orders).toHaveLength(2);
+    expect(s.orders).toMatchObject({ count: 4, read: 4, canceled: 1, revenue: { SAR: 500 } });
+    expect(s.orders.top).toEqual([{ name: "عود ملكي", qty: 3 }, { name: "مسك أبيض", qty: 1 }]);
+    expect(s.carts).toMatchObject({ count: 2, read: 2, value: { SAR: 150.5 } });
+    expect(s.carts.top).toEqual([{ name: "مسك أبيض", qty: 3 }]);
+    expect(s.unread).toBe(1); // the order with no readable total is counted, never guessed
+  });
+
+  it("stores the snapshot and writes store-sales.md with no customer detail, and Noor reads it", async () => {
+    fakeSales([[order(300, "completed", [{ name: "عود ملكي", quantity: 2 }])]], [[cart(90, [{ name: "مسك أبيض", quantity: 1 }])]], { orderTotal: 40 });
+    const u = await newUser("sales");
+    await saveConnection(u.email, conn());
+    await signIn(u.email);
+    const res = await connectRoute.POST(json("/api/connect/salla", "POST", { action: "sync_sales" }), { params: Promise.resolve({ provider: "salla" }) });
+    const j = await res.json();
+    expect(j.ok).toBe(true);
+    const { getSalesSnapshot } = await import("@/lib/store-sales");
+    expect((await getSalesSnapshot(u.email))?.orders.count).toBe(40);
+    const md = (await readFile(u.email, "store-sales.md"))!.content;
+    expect(md).toContain("Orders: 40 (totals below cover the latest 1 of 40)");
+    expect(md).toContain("Revenue (excluding 0 canceled or refunded): 300 SAR");
+    expect(md).toContain("عود ملكي: 2");
+    expect(md).toContain("Value left in them: 90 SAR");
+    for (const pii of ["ريم", "العتيبي", "+9665", "reem@example.com", "سلمان", "checkout/secret"]) {
+      expect(md).not.toContain(pii);
+      expect(JSON.stringify(await getSalesSnapshot(u.email))).not.toContain(pii);
+    }
+    const { memoryBlock } = await import("@/lib/files");
+    expect(await memoryBlock(u.email)).toContain("--- store-sales.md ---");
+  });
+
+  it("offers the sales sync only to store connectors that read sales", async () => {
+    const u = await newUser("sales2");
+    await saveConnection(u.email, { provider: "woocommerce", data: { site: "https://w.example", consumerKey: "k", consumerSecret: "s" }, connectedAt: new Date().toISOString() });
+    await signIn(u.email);
+    const res = await connectRoute.POST(json("/api/connect/woocommerce", "POST", { action: "sync_sales" }), { params: Promise.resolve({ provider: "woocommerce" }) });
+    expect(res.status).toBe(400);
+  });
+});

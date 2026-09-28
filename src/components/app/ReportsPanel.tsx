@@ -11,7 +11,8 @@ import type { AgentMetrics } from "@/lib/evals";
 import type { Lang } from "@/lib/i18n";
 import { kpiDelta } from "@/lib/kpi-delta";
 import { READS_METRICS } from "@/lib/connectors/working";
-import type { StoreMetric } from "@/lib/store-metrics";
+import { PROVIDER_NAME, SALES_PROVIDERS, moneyText, type SalesProvider, type SalesSnapshot } from "@/lib/connectors/sales";
+import { dateFormat } from "@/lib/dates";
 
 type Item = { id: string; type: TaskType; title: string; status: string; createdAt: string };
 
@@ -20,14 +21,11 @@ type MetricKey = (typeof METRICS)[number];
 const PLATFORM_METRICS: { key: string; provs: string[] }[] = [
   { key: "visitors", provs: ["google"] }, { key: "sessions", provs: ["google"] }, { key: "adSpend", provs: ["meta", "snapchat", "tiktok", "google"] }, { key: "roas", provs: ["meta", "snapchat", "tiktok", "google"] }, { key: "orders", provs: ["shopify", "salla", "zid", "woocommerce"] }, { key: "revenue", provs: ["shopify", "salla", "zid", "woocommerce"] }, { key: "followers", provs: ["instagram", "tiktok", "snapchat", "x"] },
 ];
-/** 12,345.5 — spelled by hand: a locale formatter can differ between the server and the browser (see dates.ts). */
-const money = (n: number) => { const [i, d] = n.toFixed(2).replace(/\.?0+$/, "").split("."); return i.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (d ? `.${d}` : ""); };
-const STORE_NAMES: Record<string, string> = { salla: "Salla", zid: "Zid", shopify: "Shopify", woocommerce: "WooCommerce" };
 const SOURCES: { key: string; provs: string[] }[] = [
   { key: "analytics", provs: ["google"] }, { key: "ads", provs: ["meta", "snapchat", "tiktok", "google"] }, { key: "store", provs: ["shopify", "salla", "zid", "woocommerce"] }, { key: "social", provs: ["instagram", "tiktok", "snapchat", "x", "linkedin"] },
 ];
 
-export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = [] }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: StoreMetric[] }) {
+export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null }) {
   const r = useRouter();
   const R = t.reports;
   const [busy, setBusy] = useState<TaskType | null>(null);
@@ -62,9 +60,11 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
     creditsUsed: { label: R.creditsUsed, value: String(k.creditsUsed), sub: delta(k.creditsUsed, k.creditsUsedPrev) },
     scheduled: { label: R.scheduled, value: String(k.scheduled) },
   };
-  // A connection alone reads no numbers. A provider is in READS_METRICS only when a reader for its orders, revenue or
-  // audience exists; today that is the stores (src/lib/store-metrics.ts). src/lib/stats.ts reads only workspace data.
+  // A connection alone reads no numbers: connectors publish and import products today (src/lib/stats.ts reads only
+  // workspace data). A provider joins READS_METRICS when a reader for its orders, revenue or audience ships.
   const readable = connected.filter((p) => READS_METRICS.includes(p));
+  // One store card per workspace: the store last synced while it is still connected, else the first connected one.
+  const salesProvider = store && connected.includes(store.provider) ? store.provider : SALES_PROVIDERS.find((p) => connected.includes(p));
   const missing = SOURCES.filter((s) => !s.provs.some((p) => readable.includes(p)));
   const top = (o: Record<string, number>) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 6);
   const typeLabel = (x: string) => (t.generate.types as Record<string, { t: string }>)[x]?.t ?? x;
@@ -87,9 +87,9 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
     <div className="mx-auto max-w-5xl">
       {missing.length > 0 && (
         <div className="mb-5 rounded-xl border border-ink/15 bg-white p-4 text-sm">
-          <p>{readable.length > 0 ? <><b>{R.warnSomeTitle}</b> {R.warnSomeBody}</> : <><b>{R.warnTitle}</b> {R.warnBody}</>}</p>
+          <p><b>{R.warnTitle}</b> {R.warnBody}</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {missing.map((s) => <Link key={s.key} href={`/${lang}/app/integrations`} className="btn btn-secondary btn-xs">{R.sources[s.key as keyof typeof R.sources]} · {s.key === "store" ? R.connectStore : R.connectNow} →</Link>)}
+            {missing.map((s) => <Link key={s.key} href={`/${lang}/app/integrations`} className="btn btn-secondary btn-xs">{R.sources[s.key as keyof typeof R.sources]} · {R.connectNow} →</Link>)}
           </div>
         </div>
       )}
@@ -100,42 +100,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
         <form action={`/${lang}/app/reports`} className="flex items-center gap-1 text-xs"><input type="hidden" name="range" value="custom" /><input type="date" name="from" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><input type="date" name="to" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><button className={`rounded-full px-3 py-1 ${range === "custom" ? "bg-ink text-salt" : "border border-ink/15 text-ink/60"}`}>{R.ranges.custom}</button></form>
       </div>
       <p className="mt-2 font-mono text-xs text-ink/50" dir="ltr">{k.window.from} → {k.window.to}</p>
-
-      {store.length > 0 && (
-        <section className="mt-8" data-testid="store-metrics">
-          <h2 className="font-display text-xl font-bold">{R.storeTitle}</h2>
-          <p className="mt-1 text-xs text-ink/60">{R.storeNote}</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {store.map((m) => (
-              <div key={m.provider} className="card card-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink/60">{STORE_NAMES[m.provider] ?? m.provider}</p>
-                {m.error ? (
-                  <p className="mt-2 text-sm text-sadu">{m.error === "reconnect_required" ? t.integrations.reconnect : R.storeFailed} <Link href={`/${lang}/app/integrations`} className="underline">→</Link></p>
-                ) : (
-                  <div className="mt-2 grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-xs text-ink/60">{R.storeOrders}</p>
-                      <p className="mt-1 font-display text-3xl font-bold text-oasis" dir="ltr">{m.partial && <span className="text-sm font-normal text-ink/50">{R.atLeast} </span>}{m.cur.orders}</p>
-                      {!m.partial && <p className="mt-0.5 text-xs text-ink/50" dir="auto">{delta(m.cur.orders, m.prev.orders)}</p>}
-                    </div>
-                    <div>
-                      <p className="text-xs text-ink/60">{R.storeRevenue}</p>
-                      {Object.keys(m.cur.revenue).length === 0 && <p className="mt-1 font-display text-3xl font-bold text-oasis" dir="ltr">0</p>}
-                      {Object.entries(m.cur.revenue).map(([cur, amt]) => (
-                        <div key={cur}>
-                          <p className="mt-1 font-display text-2xl font-bold text-oasis" dir="ltr">{m.partial && <span className="text-sm font-normal text-ink/50">{R.atLeast} </span>}{money(amt)} <span className="text-sm font-normal">{cur}</span></p>
-                          {!m.partial && <p className="mt-0.5 text-xs text-ink/50" dir="auto">{delta(Math.round(amt), Math.round(m.prev.revenue[cur] ?? 0))}</p>}
-                        </div>
-                      ))}
-                    </div>
-                    {m.partial && <p className="col-span-2 text-xs text-ink/50">{R.storePartial}</p>}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      {salesProvider && <StoreSales R={R.store} provider={salesProvider} store={store?.provider === salesProvider ? store : null} lang={lang} />}
 
       <h2 className="mt-8 font-display text-xl font-bold">{R.metricsTitle}</h2>
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -274,6 +239,67 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
           </ul>
         )}
       </section>
+    </div>
+  );
+}
+
+/** Store orders and abandoned carts, as totals from the last sync. The numbers are the store's, never estimated. */
+function StoreSales({ R, provider, store, lang }: { R: AppDict["reports"]["store"]; provider: SalesProvider; store: SalesSnapshot | null; lang: Lang }) {
+  const r = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [drafting, setDrafting] = useState(false);
+  const [note, setNote] = useState("");
+  async function draft() {
+    setDrafting(true); setErr(""); setNote("");
+    try {
+      const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "cart_recovery" }) });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (j.ok) { setNote(R.drafted); r.refresh(); } else { limitFromError(j.error); setErr(j.error ?? `HTTP ${res.status}`); }
+    } catch { setErr("failed"); } finally { setDrafting(false); }
+  }
+  async function sync() {
+    setBusy(true); setErr("");
+    const res = await fetch(`/api/connect/${provider}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync_sales" }) });
+    const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    setBusy(false);
+    if (j.ok) r.refresh(); else setErr(j.error === "orders_access_denied" ? R.accessDenied : j.error ?? `HTTP ${res.status}`);
+  }
+  const fill = (s: string, v: Record<string, number | string>) => s.replace(/\{(\w+)\}/g, (_, k) => String(v[k] ?? ""));
+  const name = PROVIDER_NAME[provider];
+  return (
+    <div className="card mt-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-display text-xl font-bold">{fill(R.title, { store: name })}</h2>
+        <button onClick={sync} disabled={busy} className="btn btn-secondary btn-xs">{busy ? R.syncing : fill(R.sync, { store: name })}</button>
+      </div>
+      {!store ? <p className="mt-3 text-sm text-ink/60">{R.never}</p> : (
+        <>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[[R.orders, String(store.orders.count)], [R.revenue, moneyText(store.orders.revenue)], [R.carts, store.carts.capped ? `${store.carts.count} ${R.capped}` : String(store.carts.count)], [R.cartValue, moneyText(store.carts.value)]].map(([label, v]) => (
+              <div key={label} className="card card-sm"><p className="text-xs text-ink/60">{label}</p><p className="mt-1 font-display text-2xl font-bold text-oasis" dir="ltr">{v}</p></div>
+            ))}
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {[[R.top, store.orders.top], [R.topCarts, store.carts.top]].map(([label, rows]) => (rows as { name: string; qty: number }[]).length > 0 && (
+              <div key={label as string}><p className="text-xs font-semibold text-ink/60">{label as string}</p><ul className="mt-1 text-sm">{(rows as { name: string; qty: number }[]).slice(0, 5).map((t) => <li key={t.name} className="flex justify-between gap-2"><span dir="auto">{t.name}</span><span className="font-mono" dir="ltr">{t.qty}</span></li>)}</ul></div>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-ink/50">
+            {R.asOf}: <span dir="ltr" suppressHydrationWarning>{dateFormat(lang, { dateStyle: "medium", timeStyle: "short" }).format(new Date(store.at))} UTC</span>
+            {store.orders.read < store.orders.count && <> · {fill(R.partial, { read: store.orders.read, count: store.orders.count })}</>}
+            {store.unread > 0 && <> · {fill(R.unread, { n: store.unread })}</>}
+          </p>
+          <p className="mt-1 text-xs text-ink/40">{R.note}</p>
+          {store.carts.top.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button onClick={draft} disabled={drafting || busy} className="btn btn-primary btn-xs">{drafting ? R.drafting : R.draft} <span className="font-mono" dir="ltr">· {TASK_COST.cart_recovery}</span></button>
+              {note && <Link href={`/${lang}/app`} className="text-xs text-oasis underline">{note}</Link>}
+            </div>
+          )}
+        </>
+      )}
+      {err && <p className="mt-2 text-xs text-sadu" dir="auto">{err}</p>}
     </div>
   );
 }
