@@ -7,6 +7,7 @@ import { TASK_COUNT, type Brand, type TaskType } from "./brand";
 import { adminEmails } from "./auth";
 import { notifyItem } from "./notifications";
 import { getUsage } from "./usage";
+import { CUSTOMER_FACING, brandRules, checkText } from "./brand-rules";
 import { modelState } from "./model";
 
 /**
@@ -93,7 +94,6 @@ export type GoldenRun = {
   results: GoldenResult[]; regressions: string[];
 };
 
-const CUSTOMER_FACING: TaskType[] = ["social", "article", "whatsapp", "ads", "gbp", "followup_seq", "cart_recovery"];
 const AR = /[\u0600-\u06FF]/g, LAT = /[A-Za-z]/g;
 const mean = (xs: number[]) => (xs.length ? Math.round((xs.reduce((s, x) => s + x, 0) / xs.length) * 10) / 10 : null);
 const digits = (s: string) => s.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).replace(/[,٬]/g, "");
@@ -114,10 +114,10 @@ export function hardChecks(c: GoldenCase, brand: Brand, items: Generated[]): Che
 
   // Internal documents may quote banned words to warn against them; only customer-facing copy is checked.
   if (CUSTOMER_FACING.includes(c.type)) {
-    const banned = brand.banned.split(/[,،]/).map((w) => w.trim()).filter((w) => w.length > 2);
-    // A compliance note may quote a banned word ("no words like \"مضمون\""); quoted text does not count.
-    const unquoted = all.replace(/"[^"\n]{1,40}"|«[^»\n]{1,40}»|“[^”\n]{1,40}”/g, " ").toLowerCase();
-    const hit = banned.filter((w) => unquoted.includes(w.toLowerCase()));
+    // A compliance note may quote a banned word ("no words like \"مضمون\""); quoted text does not count. The match
+    // itself is the production gate's (src/lib/brand-rules.ts), so the evals and the approve button agree on a hit.
+    const unquoted = all.replace(/"[^"\n]{1,40}"|«[^»\n]{1,40}»|“[^”\n]{1,40}”/g, " ");
+    const hit = checkText(brandRules(brand), unquoted).map((v) => v.term);
     out.push({ name: "banned words absent", pass: hit.length === 0, detail: hit.join("، ") || undefined });
   }
 

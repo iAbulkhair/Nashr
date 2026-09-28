@@ -13,6 +13,7 @@ import { generate } from "@/lib/noor";
 import { listFiles, memoryBlock, readFile } from "@/lib/files";
 import { getGov } from "@/lib/governance";
 import { missingData } from "@/lib/cart-recovery";
+import { CUSTOMER_FACING, brandRules, explain, gateTask, initialStatus, isCustomerFacing } from "@/lib/brand-rules";
 import { modelState } from "@/lib/model";
 
 export const maxDuration = 300;
@@ -28,6 +29,8 @@ const TOOLS = [
   { name: "list_inbox", description: "List inbox items with status.", inputSchema: { type: "object", properties: { status: { type: "string", enum: ["pending", "approved", "rejected", "all"] } } } },
   { name: "read_file", description: "Read a workspace file (brand.md, products.md, strategy.md, market-research.md, preferences.md).", inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
   { name: "list_files", description: "List workspace files.", inputSchema: { type: "object", properties: {} } },
+  { name: "get_brand_rules", description: "The active brand's rules as structured data: name, dialect and languages, tone, audience, products, offers, preferred words, channels, and the banned words Nashr enforces in code. Call this before writing anything for this brand in any tool, and write to it. Free, no credits.", inputSchema: { type: "object", properties: {} } },
+  { name: "check_brand", description: "Check a draft against the active brand's rules with the same code Nashr's approve and publish buttons use. Returns pass or the rules that fired, each with the matched word and where it appears. Use it on anything you wrote for this brand before handing it over. Free, no credits.", inputSchema: { type: "object", properties: { text: { type: "string", description: "The draft to check (up to 20,000 characters)." }, type: { type: "string", enum: Object.keys(TASK_COST), description: "Optional Nashr item type. Internal documents (plans, memos) are not held for quoting a banned word; leave empty to check as customer-facing copy." } }, required: ["text"] } },
 ];
 
 type Rpc = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: Record<string, unknown> };
@@ -42,7 +45,7 @@ export async function OPTIONS() { return new NextResponse(null, { headers: CORS 
 const text = (s: string) => ({ content: [{ type: "text", text: s }] });
 
 export async function GET() {
-  return NextResponse.json({ name: "nashr", version: "0.2.0", transport: "streamable-http", auth: ["oauth2.1 (PKCE, DCR) — see /.well-known/oauth-authorization-server", "personal bearer token from /app/mcp"], tools: TOOLS.map((t) => t.name) }, { headers: CORS });
+  return NextResponse.json({ name: "nashr", version: "0.3.0", transport: "streamable-http", auth: ["oauth2.1 (PKCE, DCR) — see /.well-known/oauth-authorization-server", "personal bearer token from /app/mcp"], tools: TOOLS.map((t) => t.name) }, { headers: CORS });
 }
 
 export async function POST(req: Request) {
@@ -51,7 +54,7 @@ export async function POST(req: Request) {
   if (Array.isArray(body)) return err(null, -32600, "Batch not supported", 400);
   const { id, method, params = {} } = body;
 
-  if (method === "initialize") return ok(id, { protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "nashr", version: "0.1.0" } });
+  if (method === "initialize") return ok(id, { protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "nashr", version: "0.3.0" } });
   if (method === "notifications/initialized" || method === "ping") return ok(id, {});
   if (method === "tools/list") return ok(id, { tools: TOOLS });
 
@@ -91,7 +94,7 @@ export async function POST(req: Request) {
         }
         const created: Task[] = [];
         for (const it of items) {
-          const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: gov.autoApprove[type] ? "approved" : "pending", createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat" };
+          const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[type], brand, { type, title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat" };
           await saveTask((user.scope ?? user.email), t, true);
           created.push(t);
         }
@@ -110,6 +113,28 @@ export async function POST(req: Request) {
       case "list_files": {
         const fs = await listFiles((user.scope ?? user.email));
         return ok(id, text(fs.map((f) => `${f.name} (${f.content.length} chars, ${f.updatedAt.slice(0, 10)})`).join("\n") || "No files."));
+      }
+      case "get_brand_rules": {
+        const brand = await getBrand(user.scope ?? user.email);
+        if (!brand) return ok(id, { ...text("No brand file yet. Run onboarding in the app first."), isError: true });
+        const rules = brandRules(brand);
+        // The owner's own brand file, returned as data for the calling assistant to write within.
+        return ok(id, text(JSON.stringify({
+          brand: brand.name, industry: brand.industry, city: brand.city, dialect: brand.dialect, languages: brand.languages,
+          tone: brand.tone, audience: brand.audience, products: brand.products.slice(0, 3000), offers: brand.offers, valueProp: brand.valueProp ?? "",
+          preferredWords: brand.preferred, channels: brand.channels,
+          enforced: rules.map((r) => ({ rule: r.id, kind: r.kind, term: r.term, appliesTo: CUSTOMER_FACING })),
+          howToUse: "Write in the dialect and tone above. Never use an enforced term in customer-facing copy: Nashr refuses to approve or publish text that contains one. Run check_brand on your draft before handing it over.",
+        }, null, 2)));
+      }
+      case "check_brand": {
+        const brand = await getBrand(user.scope ?? user.email);
+        if (!brand) return ok(id, { ...text("No brand file yet. Run onboarding in the app first."), isError: true });
+        const draft = String(args.text ?? "").slice(0, 20000);
+        if (!draft.trim()) return ok(id, { ...text("Nothing to check: pass the draft in `text`."), isError: true });
+        const type = isTaskType(args.type) ? args.type : "social";
+        const violations = gateTask(brand, { type, body: draft });
+        return ok(id, text(JSON.stringify({ pass: violations.length === 0, rulesChecked: brandRules(brand).length, checkedAs: isCustomerFacing(type) ? "customer-facing" : "internal (not held)", violations, summary: explain(violations) }, null, 2)));
       }
       default:
         return err(id, -32602, "Unknown tool");

@@ -95,7 +95,7 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 |---|---|---|---|---|
 | 51 | OPTIONS | `/api/mcp` | A | CORS preflight `mcp/route.ts:36`. |
 | 52 | GET | `/api/mcp` | A | Static descriptor `mcp/route.ts:39`. |
-| 53 | POST | `/api/mcp` | A for `initialize`, `ping`, `notifications/initialized`, `tools/list` (`mcp/route.ts:49-51`); M for `tools/call` | `userFromBearer` `mcp/route.ts:53-54`. All data access uses `user.scope ?? user.email`, which is always the email here (default brand). |
+| 53 | POST | `/api/mcp` | A for `initialize`, `ping`, `notifications/initialized`, `tools/list` (`mcp/route.ts:49-51`); M for `tools/call` | `userFromBearer` `mcp/route.ts:53-54`. All data access uses `user.scope ?? user.email`, which is always the email here (default brand). `get_brand_rules` and `check_brand` read only the caller's own brand and spend nothing. |
 | 54 | GET | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:6-7`. Returns only a 12-char prefix. |
 | 55 | POST | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:12-13`. |
 | 56 | DELETE | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:19-20`. |
@@ -263,3 +263,7 @@ Each item states what the code does and why the intended rule cannot be read fro
 23. **No CSRF token.** State-changing routes rely on `sameSite=lax` cookies and JSON bodies. `POST /api/oauth/approve` and `POST /api/admin/impersonate` accept form posts. MCP and OAuth endpoints send `Access-Control-Allow-Origin: *` (bearer or public by design).
 24. **Anonymous counters without expiry.** Fixed 2026-09-18 for the free tools: the limiter is `allow("tool:{ip}")` with a 24 h window and the platform IP. The in-memory store honours TTL since 2026-09-18.
 25. **Email normalisation on founder actions.** `POST /api/admin/users/{email}` looks the user up with a normalized email but passes the raw decoded path value to `withUserLock` and `wipeAccount` (`admin/users/[email]/route.ts:47-48,94`). With a mixed-case path value the lookup succeeds while the wipe targets different keys and the log still records `delete`.
+
+## Brand rules (2026-09-28)
+
+The owner's banned words are enforced in code, not only in prompts (`src/lib/brand-rules.ts`). A customer-facing item whose text contains one cannot become `approved` through `PATCH /api/tasks/{id}` (409 `brand_violation`), cannot be published through `POST /api/publish/{id}` (409) or the chat tool `publish_item` (refused), and is created `pending` even when its type is auto-approved. The owner can still edit it, save it as pending, or remove the word from the brand file; no other actor can lift the rule.

@@ -43,6 +43,14 @@ const P: Record<string, React.ReactNode> = {
   general: <><circle cx="12" cy="12" r="3" /></>,
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4" /></>,
   menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
+  seed: <><path d="M12 20c-3.5 0-6-2.6-6-6 0-4 3.5-7.5 6-9 2.5 1.5 6 5 6 9 0 3.4-2.5 6-6 6Z" /><path d="M12 20v-7" /></>,
+  sapling: <><path d="M12 21v-9" /><path d="M12 13c-3.5 0-6-2-6-5.5 3.5 0 6 2 6 5.5ZM12 11c0-3.5 2.5-6 6-6 0 3.5-2.5 6-6 6Z" /><path d="M8 21h8" /></>,
+  palm: <><path d="M12 21c0-5 .5-8.5 1-11" /><path d="M13 10c-1.5-2.5-4.5-3.5-8-2.5M13 10c.5-3 3-5 6.5-5M13 10c2.5-.5 5 .5 6.5 3M13 10c-2.5 0-5 1.5-6 4.5" /><path d="M8 21h8" /></>,
+  oasis: <><path d="M3 20c2.5-1.5 5.5-2 9-2s6.5.5 9 2" /><path d="M9 18c0-4 .3-6.5.8-8.5M9.8 9.5C8.6 7.6 6.2 7 3.5 7.7M9.8 9.5c.4-2.3 2.4-3.8 5.2-3.8M9.8 9.5c2 .1 3.7 1.2 4.6 3.2" /><circle cx="17.5" cy="5" r="1.5" /></>,
+  flame: <><path d="M12 21c-3.6 0-6-2.5-6-5.8 0-3.2 2.2-5 3.5-7.7.4 1.6 1.3 2.6 2.3 3 0-3 1.2-5.8 3.7-7.5-.4 2.8.9 4.8 2.2 6.6 1 1.4 1.3 2.6 1.3 4 0 4.4-3 7.4-7 7.4Z" /></>,
+  lock: <><rect x="5" y="10.5" width="14" height="9.5" rx="2" /><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" /></>,
+  trophy: <><path d="M8 4h8v5a4 4 0 0 1-8 0V4Z" /><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8.5 20h7M10 17h4" /></>,
+  plug: <><path d="M9 3v4M15 3v4M7 7h10v3a5 5 0 0 1-10 0V7ZM12 15v6" /></>,
 };
 export type IconName = keyof typeof P;
 export const CHANNEL_ICON: Record<string, IconName> = { instagram: "instagram", snapchat: "snapchat", tiktok: "tiktok", x: "xcom", whatsapp: "whatsapp", gbp: "gbp", blog: "blog", linkedin: "linkedin", email: "email", call: "phone", meta: "instagram", plan: "plan", sales: "sales", finance: "finance", growth: "growth", report: "report", deck: "deck", dashboard: "dashboard", strategy: "strategy", product: "product" };
