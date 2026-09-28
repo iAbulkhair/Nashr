@@ -203,7 +203,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
 
       <section className="mt-8 rounded-xl border border-oasis/20 bg-salt-dim p-5">
         <h2 className="font-display text-lg font-semibold text-oasis">{R.ask} <span className="text-sm font-normal text-ink/60">· {t.agents.dana.role}</span></h2>
-        <p className="mt-1 text-xs text-ink/60">{R.note}</p>
+        <p className="mt-1 text-xs text-ink/60">{store ? R.noteStore : R.note}</p>
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder={t.generate.notes} className="mt-3 input" />
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
           {agentById("dana").tasks.map((type) => {

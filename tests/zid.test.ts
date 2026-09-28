@@ -58,6 +58,17 @@ describe("Zid product import (rule 77)", () => {
     expect(md).not.toContain("مسودة");
   });
 
+  it("prefers Arabic names, shows no discount when the sale price equals the price, and skips the profile when the store id is known", async () => {
+    fakeZid([[product("تمر", { name: { ar: "تمر", en: "Dates" }, sale_price: 80 })]]);
+    const u = await newUser("zid");
+    expect(await importZid(u.email, conn())).toBe(1);
+    const md = (await readFile(u.email, "products.md"))!.content;
+    expect(md).toContain("**تمر** — 80 SAR");
+    expect(md).not.toContain("Dates");
+    expect(md).not.toContain("(was");
+    expect(calls.some((c) => c.url.includes("/managers/account/profile"))).toBe(false);
+  });
+
   it("stops after three pages however large the store is", async () => {
     fakeZid(Array.from({ length: 6 }, (_, i) => [product(`p${i}`)]));
     const u = await newUser("zid");
@@ -133,10 +144,10 @@ describe("connecting Zid records the store (rule 77)", () => {
 describe("Zid orders and abandoned carts, as totals only (rule 77)", () => {
   // Zid's answers carry customer details; none of them may reach the snapshot, the file or the model.
   const NOW = new Date("2026-09-28T09:00:00Z");
-  const order = (created: string, total: string | number | null, code: string, products: { name: string; quantity: number }[] = [], payment = "paid", id: number | string = Math.random()) => ({ id, code: "Z1", created_at: created, order_total: total ?? undefined, order_total_string: `${total} SAR`, currency_code: "SAR", order_status: { name: code, code }, payment_status: payment, customer: { name: "ريم العتيبي", email: "reem@example.com", mobile: "+966500000001" }, products });
-  const cart = (id: string, total: number, phase = "shipping_method", created = "2026-09-27 10:00:00") => ({ id, phase, cart_total: total, cart_total_string: `${total} SAR`, currency_code: "SAR", customer_name: "سلمان", customer_mobile: "+966500000002", customer_email: "s@example.com", url: `https://nakhla.example/cart/${id}/secret`, whatsapp_message: "مرحبا سلمان", products_count: 1, created_at: created });
+  const order = (created: string, total: string | number | null, code: string, products: { name: string; quantity: number }[] = [], payment = "paid", id: number | string = Math.random()) => ({ id, code: "Z1", created_at: created, order_total: total ?? undefined, order_total_string: `${total} SAR`, currency_code: "SAR", order_status: { name: `label-${code}`, code }, payment_status: payment, customer: { name: "ريم العتيبي", email: "reem@example.com", mobile: "+966500000001" }, products });
+  const cart = (id: string, total: number | null, phase = "shipping_method", created = "2026-09-27 10:00:00", currency: string | undefined = "SAR") => ({ id, phase, cart_total: total, cart_total_string: `${total} SAR`, currency_code: currency, customer_name: "سلمان", customer_mobile: "+966500000002", customer_email: "s@example.com", url: `https://nakhla.example/cart/${id}/secret`, whatsapp_message: "مرحبا سلمان", products_count: 1, created_at: created });
   let salesCalls: string[] = [];
-  function fakeSales(orderPages: unknown[][], cartPages: unknown[][], details: Record<string, { name: string; quantity: number }[]>, opts: { total?: number; status?: number; orderStatus?: number; cartStatus?: number; ordersBody?: unknown } = {}) {
+  function fakeSales(orderPages: unknown[][], cartPages: unknown[][], details: Record<string, { name: string; quantity: number }[]>, opts: { total?: number; status?: number; orderStatus?: number; cartStatus?: number; cartStatusPage?: number; ordersBody?: unknown } = {}) {
     salesCalls = [];
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const u = new URL(String(input));
@@ -152,7 +163,7 @@ describe("Zid orders and abandoned carts, as totals only (rule 77)", () => {
         if (opts.orderStatus) return new Response("no", { status: opts.orderStatus });
         return Response.json(opts.ordersBody ?? { status: "object", orders: orderPages[page - 1] ?? [], total_order_count: opts.total ?? orderPages.flat().length, grand_total: 0, message: {} });
       }
-      if (u.pathname === "/v1/managers/store/abandoned-carts") return opts.cartStatus ? new Response("no", { status: opts.cartStatus }) : Response.json({ "abandoned-carts": cartPages[page - 1] ?? [] });
+      if (u.pathname === "/v1/managers/store/abandoned-carts") return opts.cartStatus && (!opts.cartStatusPage || opts.cartStatusPage === page) ? new Response("no", { status: opts.cartStatus }) : Response.json({ "abandoned-carts": cartPages[page - 1] ?? [] });
       const id = decodeURIComponent(u.pathname.split("/").pop()!);
       if (u.pathname.startsWith("/v1/managers/store/abandoned-carts/")) return Response.json({ abandoned_cart: { id, customer_name: "سلمان", customer_mobile: "+966500000002", products: details[id] ?? [] } });
       return new Response("not mocked", { status: 500 });
@@ -161,7 +172,7 @@ describe("Zid orders and abandoned carts, as totals only (rule 77)", () => {
 
   it("sums the last 30 days of orders without canceled, reversed or refunded ones, counts open carts, and ranks products", async () => {
     fakeSales(
-      [[order("2026-09-20 12:00:00", "300.00000000000000", "delivered", [{ name: "سكري القصيم", quantity: 2 }]), order("2026-09-19 12:00:00", "150", "cancelled", [{ name: "سكري القصيم", quantity: 9 }]), order("2026-09-18 12:00:00", "80", "reversed"), order("2026-09-17 12:00:00", "70", "new", [], "refunded"), order("2026-09-16 12:00:00", "200.5", "partially_reversed", [{ name: "خلاص", quantity: 1 }, { name: "سكري القصيم", quantity: 1 }]), order("2026-09-15 12:00:00", null, "new")]],
+      [[order("2026-09-20 12:00:00", "300.00000000000000", "delivered", [{ name: "سكري القصيم", quantity: 2 }]), order("2026-09-19 12:00:00", "150", "cancelled", [{ name: "سكري القصيم", quantity: 9 }]), order("2026-09-18 12:00:00", "80", "reversed"), order("2026-09-17 12:00:00", "70", "new", [], "refunded"), order("2026-09-16 12:00:00", "200.5", "partially_reversed", [{ name: "خلاص", quantity: 1 }, { name: "سكري القصيم", quantity: 1 }]), order("2026-09-15 12:00:00", null, "new"), order("2026-09-14 12:00:00", "40", "canceled"), order("2026-09-13 12:00:00", "30", "reverse_in_progress"), order("2026-09-12 12:00:00", "20", "new", [], "voided")]],
       [[cart("c1", 90), cart("c2", 60.5), cart("c3", 400, "completed")]],
       { c1: [{ name: "خلاص", quantity: 1 }], c2: [{ name: "خلاص", quantity: 2 }], c3: [{ name: "لا يُحتسب", quantity: 5 }] },
     );
@@ -170,11 +181,11 @@ describe("Zid orders and abandoned carts, as totals only (rule 77)", () => {
     const orders = new URL(salesCalls.find((c) => c.includes("/orders"))!);
     expect(orders.searchParams.get("payload_type")).toBe("default");
     expect(orders.searchParams.get("sort_by")).toBe("desc");
-    expect(orders.searchParams.get("date_from")).toBe("2026-08-29");
-    expect(orders.searchParams.get("date_to")).toBe("2026-09-28");
+    expect(orders.searchParams.get("date_from")).toBe("2026-08-28");
+    expect(orders.searchParams.has("date_to")).toBe(false);
     expect(new URL(salesCalls.find((c) => c.includes("/abandoned-carts?"))!).searchParams.get("page_size")).toBe("100");
     expect(s.provider).toBe("zid");
-    expect(s.orders).toMatchObject({ count: 6, read: 6, canceled: 3, revenue: { SAR: 500.5 } });
+    expect(s.orders).toMatchObject({ count: 9, read: 9, canceled: 6, revenue: { SAR: 500.5 } });
     expect(s.orders.top).toEqual([{ name: "سكري القصيم", qty: 3 }, { name: "خلاص", qty: 1 }]);
     // The completed cart became an order: it is neither counted nor read for products.
     expect(s.carts).toMatchObject({ count: 2, read: 2, value: { SAR: 150.5 } });
@@ -210,6 +221,61 @@ describe("Zid orders and abandoned carts, as totals only (rule 77)", () => {
     expect(salesCalls.filter((c) => c.includes("/abandoned-carts?"))).toHaveLength(3);
     expect(s.carts).toMatchObject({ count: 300, read: 300, capped: true });
     expect(salesCalls.filter((c) => /\/abandoned-carts\/[^?]+$/.test(c))).toHaveLength(CART_DETAILS);
+  });
+
+  it("counts a Riyadh after-midnight order on a late-UTC sync, and holds the 30-day edge to the hour", async () => {
+    const late = new Date("2026-09-27T22:30:00Z"); // 01:30 on 28 September in Riyadh
+    fakeSales([[order("2026-09-28 00:45:00", "100", "delivered"), order("2026-08-29 01:31:00", "7", "delivered"), order("2026-08-29 01:29:00", "999", "delivered")]], [[]], {});
+    const { zidSales } = await import("@/lib/connectors/zid");
+    const s = await zidSales(conn(), late);
+    expect(s.orders).toMatchObject({ count: 2, revenue: { SAR: 107 } });
+    expect(new URL(salesCalls.find((c) => c.includes("/orders?"))!).searchParams.has("date_to")).toBe(false);
+  });
+
+  it("stops paging at the first page that reaches past the window, even when the store has many more orders", async () => {
+    const page1 = [...Array.from({ length: 90 }, (_, i) => order("2026-09-20 12:00:00", "1", "delivered", [], "paid", `n${i}`)), ...Array.from({ length: 10 }, (_, i) => order("2026-07-01 12:00:00", "1", "delivered", [], "paid", `o${i}`))];
+    const full = Array.from({ length: 100 }, (_, i) => order("2026-06-01 12:00:00", "1", "delivered", [], "paid", `x${i}`));
+    fakeSales([page1, full, full, full], [[]], {}, { total: 2689 });
+    const { zidSales } = await import("@/lib/connectors/zid");
+    const s = await zidSales(conn(), NOW);
+    expect(salesCalls.filter((c) => c.includes("/orders?"))).toHaveLength(1);
+    expect(s.orders.count).toBe(90);
+    expect(s.orders.capped).toBeUndefined();
+  });
+
+  it("does not mark the count capped when the fifth page was the last", async () => {
+    const full = (p: number) => Array.from({ length: 100 }, (_, i) => order("2026-09-20 12:00:00", "1", "delivered", [], "paid", `${p}-${i}`));
+    fakeSales([full(0), full(1), full(2), full(3), full(4).slice(0, 50)], [[]], {}, { total: 450 });
+    const { zidSales } = await import("@/lib/connectors/zid");
+    const s = await zidSales(conn(), NOW);
+    expect(s.orders).toMatchObject({ count: 450 });
+    expect(s.orders.capped).toBeUndefined();
+  });
+
+  it("reads products for the twenty newest carts, counts a cart once across pages, and keeps unreadable and currency-less carts honest", async () => {
+    const page1 = Array.from({ length: 100 }, (_, i) => cart(`k${i}`, 1, "payment_method", `2026-09-${String(1 + (i % 27)).padStart(2, "0")} ${String(i % 24).padStart(2, "0")}:00:00`));
+    const page2 = [page1[99], { ...cart("nocur", 5, "new", "2026-08-01 10:00:00"), currency_code: undefined }, cart("bad", null, "new", "2026-08-01 10:00:00")];
+    fakeSales([[]], [page1, page2], {});
+    const { zidSales } = await import("@/lib/connectors/zid");
+    const s = await zidSales(conn(), NOW);
+    expect(s.carts).toMatchObject({ count: 102, value: { SAR: 100, "": 5 } });
+    expect(s.unread).toBe(1);
+    const newest = [...page1].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 20).map((c) => c.id).sort();
+    const fetched = salesCalls.filter((c) => /\/abandoned-carts\/[^?]+$/.test(c)).map((c) => c.split("/").pop()!).sort();
+    expect(fetched).toEqual(newest);
+  });
+
+  it("fails the sync on any cart error other than a refused permission, and forgets carts read before a later 403", async () => {
+    fakeSales([[order("2026-09-20 12:00:00", "1", "delivered")]], [[]], {}, { cartStatus: 500 });
+    const { zidSales } = await import("@/lib/connectors/zid");
+    await expect(zidSales(conn(), NOW)).rejects.toThrow("zid 500");
+    fakeSales([[order("2026-09-20 12:00:00", "1", "delivered")]], [[]], {}, { cartStatus: 401 });
+    await expect(zidSales(conn(), NOW)).rejects.toThrow("zid 401");
+    const full = Array.from({ length: 100 }, (_, i) => cart(`c${i}`, 1));
+    fakeSales([[order("2026-09-20 12:00:00", "1", "delivered")]], [full, full], {}, { cartStatus: 403, cartStatusPage: 2 });
+    const s = await zidSales(conn(), NOW);
+    expect(s.carts).toMatchObject({ count: 0, read: 0, value: {}, unavailable: true });
+    expect(salesCalls.some((c) => /\/abandoned-carts\/[^?]+$/.test(c))).toBe(false);
   });
 
   it("counts an order once when it shows up on two pages, and never turns a missing currency into SAR", async () => {

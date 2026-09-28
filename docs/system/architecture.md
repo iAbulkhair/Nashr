@@ -67,7 +67,7 @@ Per-route authorization is in `permissions.md`.
 | `images.ts` | Image prompt (Anthropic) plus fal.ai FLUX call; placeholder image when `FAL_KEY` is absent. |
 | `usage.ts` | Model token and cost metering per account per month. |
 | `track.ts` | Product analytics counters and active-user sets in Redis. |
-| `stats.ts` | Workspace KPIs from stored tasks. |
+| `stats.ts` | Workspace KPIs from stored tasks; `statsFor` also adds Dana's STORE DATA (`salesDataBlock` in `store-sales.ts`) and the cart-recovery CART DATA. |
 | `admin-stats.ts` | Founder overview and users CSV. |
 | `referral.ts` | Deterministic referral codes, two-sided credit grant. |
 | `mcp.ts` | Personal MCP tokens and `userFromBearer`. |
@@ -78,7 +78,7 @@ Per-route authorization is in `permissions.md`.
 | `connectors/store.ts` | AES-256-GCM encrypted connection records, OAuth state records. |
 | `connectors/oauth.ts` | Authorize URL builder, PKCE pair, code exchange. |
 | `connectors/publish.ts` | `targetsFor` and `publishTask` dispatch (WordPress, Shopify, Telegram, X). |
-| `connectors/{wordpress,shopify,woocommerce,keyed,x}.ts` | Provider API calls: verify, import products, publish. |
+| `connectors/{wordpress,shopify,woocommerce,keyed,x,salla,zid,meta}.ts` | Provider API calls: verify, import products, publish, and (Salla, Shopify, Zid) the store-sales sync; `sales.ts` holds the shared snapshot shape. |
 | `agents.ts`, `skills.ts`, `playbooks.ts`, `seasons.ts`, `tools.ts`, `integrations.ts`, `inspo.ts`, `help.ts`, `legal.ts`, `site.ts`, `pages-*.ts`, `blog.ts`, `md.ts`, `json.ts`, `parallel.ts`, `i18n.ts`, `app-i18n.ts` | Static catalogs, prompt material, copy, and small utilities (Markdown renderer, tolerant JSON parser, bounded `pmap`). |
 
 ### 2.6 Cron jobs (`vercel.json`)
@@ -139,7 +139,7 @@ All three require `Authorization: Bearer ${CRON_SECRET}` and return 401 when the
 | `conns:{scope}` | set | Connected provider ids (never shrinks) | `connectors/store.ts:35` | none |
 | `conn:{scope}:{provider}` | json | Connection with AES-256-GCM `enc` blob; delete writes `null` | `connectors/store.ts:34,52` | none |
 | `oauthstate:{state}` | json | Connector OAuth state `{email: scope, provider, lang, shop, verifier}` | `connectors/store.ts:56` | 10 min |
-| `storesales:{scope}` | json | Latest store sales snapshot (Salla or Shopify, whichever was synced last): 30-day order count, revenue by currency, canceled count, open abandoned carts and their value, top products. Totals only, no customer data | `store-sales.ts` | none (replaced on each sync) |
+| `storesales:{scope}` | json | Latest store sales snapshot (Salla, Shopify or Zid, whichever was synced last): 30-day order count, revenue by currency, canceled count, open abandoned carts and their value, top products. Totals only, no customer data | `store-sales.ts` | none (replaced on each sync) |
 | `connlock:{scope}:{provider}` | string | Held while a connector token is refreshed, so two requests cannot spend one single-use refresh token | `connectors/fresh.ts` | 30 s |
 | `profile:{scope}` (written) / `profile:{email}` (read by cron, deleted by wipe) | json | `{emails: all\|important\|none}` | `api/profile/route.ts:21,40`, `api/cron/daily/route.ts:41`, `account.ts:19` | none |
 | `notifs:{email}` | json | Up to 50 notifications | `notifications.ts:16` | none |

@@ -86,7 +86,7 @@ export async function importZid(email: string, c: Connection) {
 //
 // Shapes from Zid's official Python SDK (zidsa/sdk-python: resources and test fixtures), since docs.zid.sa is not
 // reachable from the build. What they establish, and what they do not:
-// - GET /managers/store/orders?payload_type=default&page&per_page(≤100) answers `{ orders: [...], total_order_count }`
+// - GET /managers/store/orders?payload_type=default&page&per_page(≤100)&date_from answers `{ orders: [...], total_order_count }`
 //   with no next link. `payload_type=default` is the only list payload that carries `products` ({ name, quantity }).
 //   `order_total` is a decimal string ("100.00000000000000"), `currency_code` a code, `order_status` `{ code, name }`,
 //   `payment_status` a string, `created_at` "YYYY-MM-DD HH:MM:SS" with no zone.
@@ -145,7 +145,10 @@ export async function zidSales(conn: Connection, now = new Date()): Promise<Sale
   const c = await withStore(conn);
   const day = (d: Date) => d.toISOString().slice(0, 10);
   const since = now.getTime() - SALES_DAYS * 864e5;
-  const range = `date_from=${day(new Date(since))}&date_to=${day(now)}`;
+  // Only a lower bound is sent, a day early so it can never be narrower than the window whatever zone Zid applies.
+  // No date_to: between 21:00 and 24:00 UTC the UTC date is a day behind Riyadh, and a server-side upper bound would
+  // drop the current day's orders, which the check on `now` below already handles.
+  const range = `date_from=${day(new Date(since - 864e5))}`;
 
   // Orders, newest first. Paging stops at a short or empty page, at a page that reaches past the window, at the
   // store's count, or at the page cap; only the last one leaves orders unread, and then the count is a floor.
@@ -187,9 +190,11 @@ export async function zidSales(conn: Connection, now = new Date()): Promise<Sale
     tally(o.products, sold);
   }
 
-  // Abandoned carts: completed ones became orders and are left out. More than CART_PAGES full pages is `capped`.
+  // Abandoned carts open now (like Salla's; not limited to the 30 days): completed ones became orders and are left
+  // out. More than CART_PAGES full pages is `capped`.
   // A 403 means the app has no access to carts: the snapshot says so, and the orders above still count.
   const carts: ZidCart[] = [];
+  const cartIds = new Set<string>();
   let cartsCapped = false;
   let unavailable = false;
   try {
@@ -197,7 +202,13 @@ export async function zidSales(conn: Connection, now = new Date()): Promise<Sale
       const j = await zidGet<Record<string, unknown>>(c, `/managers/store/abandoned-carts?page=${page}&page_size=${CART_PER_PAGE}`);
       const list = j["abandoned-carts"];
       if (!Array.isArray(list)) throw new Error("zid unexpected_carts");
-      carts.push(...(list as ZidCart[]).filter((x) => String(x.phase ?? "").toLowerCase() !== "completed"));
+      for (const x of list as ZidCart[]) {
+        if (String(x.phase ?? "").toLowerCase() === "completed") continue;
+        const key = x.id == null ? null : String(x.id);
+        if (key && cartIds.has(key)) continue; // a cart that moved to the next page while paging
+        if (key) cartIds.add(key);
+        carts.push(x);
+      }
       if (list.length < CART_PER_PAGE) break;
       if (page === CART_PAGES) cartsCapped = true;
     }
