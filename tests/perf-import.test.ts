@@ -23,7 +23,7 @@ const META = [
   "Total,,,,,,,",
 ].join("\n");
 
-describe("CSV parsing (rule 81)", () => {
+describe("CSV parsing (rule 82)", () => {
   it("handles a BOM, quotes, escaped quotes, CRLF, semicolons and newlines inside a cell", () => {
     expect(parseCsv('﻿a,b\r\n"x, y","say ""hi"""\r\n')).toEqual([["a", "b"], ["x, y", 'say "hi"']]);
     expect(parseCsv("a;b\n1;2")).toEqual([["a", "b"], ["1", "2"]]);
@@ -53,7 +53,7 @@ describe("CSV parsing (rule 81)", () => {
   });
 });
 
-describe("findings are computed, sized and honest (rule 82)", () => {
+describe("findings are computed, sized and honest (rule 83)", () => {
   const { rows, platform, range } = readRows(META);
   const snap = analyze(rows, "meta.csv", platform, range, "ctr", "2026-09-28T00:00:00Z");
 
@@ -87,7 +87,7 @@ describe("findings are computed, sized and honest (rule 82)", () => {
   });
 });
 
-describe("the import route (rule 83)", () => {
+describe("the import route (rule 84)", () => {
   const post = (body: unknown) => route.POST(json("/api/performance", "POST", body));
 
   it("needs a session", async () => {
