@@ -157,7 +157,7 @@ export default function Dictionary({ lang }: { lang: Lang }) {
     case 3:
       body = (
         <Sample who={["faris", "majed"]} lang={lang}>
-          <ol className={styles.planList}>
+          <ol className={styles.planList} role="list">
             {samplePlan(s, lang).map((line) => (
               <li key={line}>{line}</li>
             ))}
@@ -220,7 +220,8 @@ export default function Dictionary({ lang }: { lang: Lang }) {
       </h2>
       <p className={styles.dictSub}>{DICT_COPY.subtitle[lang]}</p>
 
-      <ol className={styles.rail}>
+      {/* `role="list"` here and on the plan: Safari drops the list semantics of a list drawn without markers. */}
+      <ol className={styles.rail} role="list">
         {STEPS.map((n) => (
           <li key={n} className={styles.railStep} data-state={n === s.step ? "current" : n < s.step ? "done" : "todo"} aria-current={n === s.step ? "step" : undefined}>
             <span className={styles.railNum}>{num(n, lang)}</span>

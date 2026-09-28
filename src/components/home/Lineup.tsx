@@ -139,7 +139,8 @@ export default function Lineup({ lang }: { lang: Lang }) {
         <MotionToggle lang={lang} />
       </div>
       <div className={styles.strip}>
-        <ul className={styles.row} style={{ "--n": CAST.length } as CSSProperties}>
+        {/* `role="list"`: Safari drops the list semantics of a list drawn without markers. */}
+        <ul className={styles.row} role="list" style={{ "--n": CAST.length } as CSSProperties}>
           {CAST.map((member, index) => (
             <li key={member.id} className={styles.cell}>
               <Figure

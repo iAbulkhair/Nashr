@@ -10,6 +10,10 @@ for (const lang of LANGS) {
       await expect(page.locator("h1")).toContainText(lang === "ar" ? "ذكين. الذكي المكين." : "Thakeen. Smart. Steadfast.");
       await expect(page.getByTestId("figure")).toHaveCount(8);
       await expect(page.getByTestId("storm").locator("[data-storm-q]")).toHaveCount(36);
+      // Drawn without markers, these lists keep their semantics in Safari only with an explicit role.
+      for (const list of [page.getByTestId("lineup").locator("ul"), page.getByTestId("dictionary").locator("ol"), page.locator('[aria-labelledby="truths-title"] ul')]) {
+        await expect(list).toHaveAttribute("role", "list");
+      }
     });
     test("reads Noor first in the reading direction", async ({ page }) => {
       await open(page, `/${lang}`);
@@ -92,6 +96,7 @@ test("the story walks the chapters and gives the questions back on the way up", 
   await expect(story).toHaveAttribute("data-chapter", /^[3-5]$/);
   await scrollTo(1);
   await expect(story).toHaveAttribute("data-chapter", "8");
+  await expect(story.locator("[data-storm-q][data-taken]")).toHaveCount(36);
   await expect(story.getByText("موافق.")).toBeVisible();
   await scrollTo(0);
   await expect(story).toHaveAttribute("data-chapter", "0");

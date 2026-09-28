@@ -10,7 +10,8 @@ export default function Truths({ lang }: { lang: Lang }) {
       <h2 id="truths-title" className={styles.truthsTitle}>
         {HOME.truthsTitle[lang]}
       </h2>
-      <ul className={styles.truthList}>
+      {/* `role="list"`: Safari drops the list semantics of a list drawn without markers. */}
+      <ul className={styles.truthList} role="list">
         {TRUTHS.map((t) => (
           <li key={t.title.en} className={styles.truth}>
             <h3 className={styles.truthTitle}>{t.title[lang]}</h3>

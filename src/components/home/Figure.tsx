@@ -1,3 +1,4 @@
+"use client";
 import { useState, type CSSProperties } from "react";
 import type { CastMember } from "@/lib/home";
 import type { Lang } from "@/lib/i18n";
