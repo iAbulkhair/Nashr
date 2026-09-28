@@ -16,7 +16,7 @@ export default function ToolForm({ tool, lang }: { tool: Tool; lang: Lang }) {
     const res = await fetch(`/api/tools/${tool.slug}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fd) });
     const j = await res.json();
     setBusy(false);
-    if (!j.ok) return setErr(j.error === "rate_limited" ? (ar ? `وصلت حد ${j.limit} استخدامات اليوم. سجّل مجاناً للمزيد.` : `Daily limit of ${j.limit} reached. Sign up free for more.`) : ar ? "حدث خطأ، حاول مرة أخرى." : "Something failed, try again.");
+    if (!j.ok) return setErr(j.error === "rate_limited" ? (ar ? `وصلت حد ${j.limit} استخدامات اليوم. سجّل مجاناً للمزيد.` : `Daily limit of ${j.limit} reached. Sign up free for more.`) : j.error === "paused" ? (ar ? "الأدوات المجانية متوقفة مؤقتاً. عد إليها لاحقاً." : "The free tools are paused for now. Please check back later.") : ar ? "حدث خطأ، حاول مرة أخرى." : "Something failed, try again.");
     setOut(j.output);
   }
   const input = "input";

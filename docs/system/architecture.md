@@ -95,7 +95,7 @@ All three require `Authorization: Bearer ${CRON_SECRET}` and return 401 when the
 
 | Service | Used for | Call sites |
 |---|---|---|
-| Anthropic API | Chat (`claude-opus-5`, `src/lib/chat.ts:185`), generation (`claude-opus-5`, `noor.ts:146`), reviewer (`claude-sonnet-5`, `noor.ts:186`), judge (`judge.ts:38`), onboarding (`onboard.ts:106`), image prompt (`images.ts:16`), free tools (`api/tools/[tool]/route.ts:28`). Key read implicitly by the SDK from `ANTHROPIC_API_KEY`. |
+| Anthropic API | Chat (`claude-opus-5`, `src/lib/chat.ts:185`), generation (`claude-opus-5`, `noor.ts:146`), reviewer (`claude-sonnet-5`, `noor.ts:186`), judge (`judge.ts:38`), onboarding (`onboard.ts:106`), image prompt (`images.ts:16`), free tools (`api/tools/[tool]/route.ts:28`). Key read implicitly by the SDK from `ANTHROPIC_API_KEY`. **Paused since 2026-09-28:** every call site checks `modelState()` in `src/lib/model.ts`, and `CLAUDE_PAUSED = true` there stops all of them on a deployment that has a key (flows.md §7 step 11). |
 | Upstash Redis (REST) | All persistence (`src/lib/db.ts:21`), plus a second direct client in `api/waitlist/route.ts:7`. |
 | fal.ai | Image generation `https://fal.run/fal-ai/flux/schnell` (`src/lib/images.ts:34`). |
 | placehold.co | Placeholder image URL when `FAL_KEY` is absent (`images.ts:32`). URL only, no server fetch. |

@@ -7,7 +7,7 @@ import { getSalesSnapshot } from "@/lib/store-sales";
 import * as connectRoute from "@/app/api/connect/[provider]/route";
 
 /**
- * Rule 73: Shopify orders and abandoned checkouts reach Reports and Noor as totals only. Rule 76: every Shopify call
+ * Rule 73: Shopify orders and abandoned checkouts reach Reports and Noor as totals only. Rule 77: every Shopify call
  * goes through the Admin GraphQL API (required for new public App Store apps) on the connected *.myshopify.com host.
  * The mock answers in the shapes of the Admin GraphQL schema the queries were validated against.
  */
@@ -45,7 +45,7 @@ function fakeShopify(opts: { orders?: unknown[][]; checkouts?: unknown[][]; orde
 }
 afterEach(() => { globalThis.fetch = realFetch; });
 
-describe("Shopify goes through the Admin GraphQL API on the connected shop (rule 76)", () => {
+describe("Shopify goes through the Admin GraphQL API on the connected shop (rule 77)", () => {
   it("posts every call to the shop's GraphQL endpoint at a supported version", async () => {
     fakeShopify({ products: [{ title: "عود ملكي", handle: "oud", description: "عطر  فاخر", onlineStoreUrl: null, priceRangeV2: { minVariantPrice: { amount: "120.0", currencyCode: "SAR" } } }] });
     const u = await newUser("shopimport");

@@ -4,6 +4,7 @@ import { isAgentId } from "@/lib/agents";
 import { CAPS, pushCapped } from "@/lib/db";
 import { playbook } from "@/lib/skills";
 import { GOLDEN_CASES, GOLDEN_VERSION, listGoldenRuns, runGolden } from "@/lib/golden";
+import { modelState } from "@/lib/model";
 
 export const maxDuration = 300;
 
@@ -12,7 +13,7 @@ export async function GET(req: Request) {
   if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
   const runs = await listGoldenRuns(12);
   const history = runs.map((r) => ({ id: r.id, version: r.version, trigger: r.trigger, startedAt: r.startedAt, status: r.status, overall: r.overall, usd: r.usd, regressions: r.regressions.length, agents: r.agents }));
-  return NextResponse.json({ ok: true, version: GOLDEN_VERSION, cases: GOLDEN_CASES.length, modelKey: !!process.env.ANTHROPIC_API_KEY, playbooks: Object.fromEntries(["marketing", "sales", "finance", "gtm", "reporting", "executive", "product", "review"].map((n) => [n, playbook(n).length])), latest: runs[0] ?? null, history });
+  return NextResponse.json({ ok: true, version: GOLDEN_VERSION, cases: GOLDEN_CASES.length, modelKey: !!process.env.ANTHROPIC_API_KEY, paused: modelState() === "paused", playbooks: Object.fromEntries(["marketing", "sales", "finance", "gtm", "reporting", "executive", "product", "review"].map((n) => [n, playbook(n).length])), latest: runs[0] ?? null, history });
 }
 
 // POST /api/admin/golden { agent?, resume? } → run now (up to 5 minutes)
@@ -20,7 +21,8 @@ export async function POST(req: Request) {
   if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
   const b = (await req.json().catch(() => ({}))) as { agent?: string; resume?: boolean };
   const run = await runGolden("manual", { agent: isAgentId(b.agent) ? b.agent : undefined, resume: !!b.resume });
-  if (!run) return NextResponse.json({ ok: false, error: process.env.ANTHROPIC_API_KEY ? "already_running" : "no_model_key" }, { status: 409 });
+  const state = modelState();
+  if (!run) return NextResponse.json({ ok: false, error: state === "on" ? "already_running" : state === "paused" ? "model_paused" : "no_model_key" }, { status: 409 });
   await pushCapped("admin:log", JSON.stringify({ actor: "founder", email: "golden-set", what: `golden:run${b.agent ? `:${b.agent}` : ""}${b.resume ? ":resume" : ""}`, after: { id: run.id, status: run.status, overall: run.overall, usd: run.usd }, at: new Date().toISOString() }), CAPS.adminLog);
   return NextResponse.json({ ok: true, run });
 }
