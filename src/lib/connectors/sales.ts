@@ -1,13 +1,13 @@
 /**
- * Store sales as totals, shared by the store connectors that read orders and abandoned carts (Salla, Shopify).
+ * Store sales as totals, shared by the store connectors that read orders and abandoned carts (Salla, Shopify, Zid).
  * Only counts, money and product names leave a connector: never a customer's name, phone, email, address or
  * checkout link. No imports, so client components can use the type and the formatting.
  */
 
 export const SALES_DAYS = 30;
-export const SALES_PROVIDERS = ["salla", "shopify"] as const;
+export const SALES_PROVIDERS = ["salla", "shopify", "zid"] as const;
 export type SalesProvider = (typeof SALES_PROVIDERS)[number];
-export const PROVIDER_NAME: Record<SalesProvider, string> = { salla: "Salla", shopify: "Shopify" };
+export const PROVIDER_NAME: Record<SalesProvider, string> = { salla: "Salla", shopify: "Shopify", zid: "Zid" };
 
 export type SalesSnapshot = {
   provider: SalesProvider;
@@ -15,7 +15,7 @@ export type SalesSnapshot = {
   days: number;
   orders: { count: number; read: number; canceled: number; revenue: Record<string, number>; top: { name: string; qty: number }[] };
   /** `capped`: the store has more open carts than the sync reads, and it could not say how many. */
-  carts: { count: number; read: number; value: Record<string, number>; top: { name: string; qty: number }[]; capped?: boolean; unavailable?: boolean };
+  carts: { count: number; read: number; value: Record<string, number>; top: { name: string; qty: number }[]; capped?: boolean };
   /** Records whose total could not be read: a non-zero value means the platform's shape differs from what the code expects. */
   unread: number;
 };

@@ -11,6 +11,8 @@ import * as connectRoute from "@/app/api/connect/[provider]/route";
  * tokens Zid issues (the bearer `authorization` and the X-Manager-Token `access_token`) and the store id, which the
  * callback records from the manager profile. The network is mocked with the shapes Zid's docs describe: products as
  * `{ count, next, previous, results }` with `{ ar, en }` names, the profile as `{ user: { store: { id, title, url } } }`.
+ * Orders and abandoned carts reach the workspace as totals only, mocked with the shapes of Zid's official Python SDK
+ * fixtures: `{ orders, total_order_count }` with a decimal-string `order_total`, and carts under "abandoned-carts".
  */
 const conn = (over: Partial<Connection> = {}): Connection => ({ provider: "zid", data: { access_token: "mgr", authorization: "auth", refresh_token: "r" }, meta: { account: "متجر النخلة", storeId: "77" }, connectedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 300 * 864e5).toISOString(), ...over });
 
@@ -114,5 +116,102 @@ describe("connecting Zid records the store (rule 77)", () => {
     const c = await getConnection(u.email, "zid");
     expect(c?.data).toMatchObject({ access_token: "mgr", authorization: "auth" });
     expect(c?.meta).toMatchObject({ storeId: "77", account: "متجر النخلة", site: "https://nakhla.example" });
+  });
+});
+
+describe("Zid orders and abandoned carts, as totals only (rule 77)", () => {
+  // Zid's answers carry customer details; none of them may reach the snapshot, the file or the model.
+  const NOW = new Date("2026-09-28T09:00:00Z");
+  const order = (created: string, total: string | number | null, code: string, products: { name: string; quantity: number }[] = [], payment = "paid") => ({ id: Math.random(), code: "Z1", created_at: created, order_total: total ?? undefined, order_total_string: `${total} SAR`, currency_code: "SAR", order_status: { name: code, code }, payment_status: payment, customer: { name: "ريم العتيبي", email: "reem@example.com", mobile: "+966500000001" }, products });
+  const cart = (id: string, total: number, phase = "shipping_method", created = "2026-09-27 10:00:00") => ({ id, phase, cart_total: total, cart_total_string: `${total} SAR`, currency_code: "SAR", customer_name: "سلمان", customer_mobile: "+966500000002", customer_email: "s@example.com", url: `https://nakhla.example/cart/${id}/secret`, whatsapp_message: "مرحبا سلمان", products_count: 1, created_at: created });
+  let salesCalls: string[] = [];
+  function fakeSales(orderPages: unknown[][], cartPages: unknown[][], details: Record<string, { name: string; quantity: number }[]>, opts: { total?: number; status?: number } = {}) {
+    salesCalls = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const u = new URL(String(input));
+      salesCalls.push(String(input));
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      expect(u.host).toBe("api.zid.sa");
+      expect(headers.Authorization).toBe("Bearer auth");
+      expect(headers["X-Manager-Token"]).toBe("mgr");
+      expect(headers["Store-Id"]).toBe("77");
+      if (opts.status) return new Response("no", { status: opts.status });
+      const page = Number(u.searchParams.get("page") ?? 1);
+      if (u.pathname === "/v1/managers/store/orders") return Response.json({ status: "object", orders: orderPages[page - 1] ?? [], total_order_count: opts.total ?? orderPages.flat().length, grand_total: 0, message: {} });
+      if (u.pathname === "/v1/managers/store/abandoned-carts") return Response.json({ "abandoned-carts": cartPages[page - 1] ?? [] });
+      const id = decodeURIComponent(u.pathname.split("/").pop()!);
+      if (u.pathname.startsWith("/v1/managers/store/abandoned-carts/")) return Response.json({ abandoned_cart: { id, customer_name: "سلمان", customer_mobile: "+966500000002", products: details[id] ?? [] } });
+      return new Response("not mocked", { status: 500 });
+    }) as typeof fetch;
+  }
+
+  it("sums the last 30 days of orders without canceled, reversed or refunded ones, counts open carts, and ranks products", async () => {
+    fakeSales(
+      [[order("2026-09-20 12:00:00", "300.00000000000000", "delivered", [{ name: "سكري القصيم", quantity: 2 }]), order("2026-09-19 12:00:00", "150", "cancelled", [{ name: "سكري القصيم", quantity: 9 }]), order("2026-09-18 12:00:00", "80", "reversed"), order("2026-09-17 12:00:00", "70", "new", [], "refunded"), order("2026-09-16 12:00:00", "200.5", "partially_reversed", [{ name: "خلاص", quantity: 1 }, { name: "سكري القصيم", quantity: 1 }]), order("2026-09-15 12:00:00", null, "new")]],
+      [[cart("c1", 90), cart("c2", 60.5), cart("c3", 400, "completed")]],
+      { c1: [{ name: "خلاص", quantity: 1 }], c2: [{ name: "خلاص", quantity: 2 }], c3: [{ name: "لا يُحتسب", quantity: 5 }] },
+    );
+    const { zidSales } = await import("@/lib/connectors/zid");
+    const s = await zidSales(conn(), NOW);
+    const orders = new URL(salesCalls.find((c) => c.includes("/orders"))!);
+    expect(orders.searchParams.get("payload_type")).toBe("default");
+    expect(orders.searchParams.get("date_from")).toBe("2026-08-29");
+    expect(orders.searchParams.get("date_to")).toBe("2026-09-28");
+    expect(new URL(salesCalls.find((c) => c.includes("/abandoned-carts?"))!).searchParams.get("page_size")).toBe("100");
+    expect(s.provider).toBe("zid");
+    expect(s.orders).toMatchObject({ count: 6, read: 6, canceled: 3, revenue: { SAR: 500.5 } });
+    expect(s.orders.top).toEqual([{ name: "سكري القصيم", qty: 3 }, { name: "خلاص", qty: 1 }]);
+    // The completed cart became an order: it is neither counted nor read for products.
+    expect(s.carts).toMatchObject({ count: 2, read: 2, value: { SAR: 150.5 } });
+    expect(s.carts.top).toEqual([{ name: "خلاص", qty: 3 }]);
+    expect(salesCalls.some((c) => c.endsWith("/abandoned-carts/c3"))).toBe(false);
+    expect(s.unread).toBe(1); // the order with no readable total is counted, never guessed
+    for (const pii of ["ريم", "reem@example.com", "+9665", "سلمان", "secret", "مرحبا"]) expect(JSON.stringify(s)).not.toContain(pii);
+  });
+
+  it("drops orders outside the 30 days when the date filter was not applied, and counts only what it read", async () => {
+    fakeSales([[order("2026-09-20 12:00:00", "100", "delivered"), order("2026-07-01 12:00:00", "999", "delivered")]], [[]], {}, { total: 2689 });
+    const { zidSales } = await import("@/lib/connectors/zid");
+    const s = await zidSales(conn(), NOW);
+    expect(s.orders).toMatchObject({ count: 1, read: 1, revenue: { SAR: 100 } });
+  });
+
+  it("pages orders up to the store's count and five pages, and reports how many the totals cover", async () => {
+    const full = (p: number) => Array.from({ length: 100 }, (_, i) => order(`2026-09-${String(10 + (i % 15)).padStart(2, "0")} 12:00:00`, "1", "delivered", [{ name: `p${p}`, quantity: 1 }]));
+    fakeSales(Array.from({ length: 9 }, (_, p) => full(p)), [[]], {}, { total: 900 });
+    const { zidSales } = await import("@/lib/connectors/zid");
+    const s = await zidSales(conn(), NOW);
+    expect(salesCalls.filter((c) => c.includes("/orders?"))).toHaveLength(5);
+    expect(s.orders).toMatchObject({ count: 900, read: 500, revenue: { SAR: 500 } });
+  });
+
+  it("marks carts capped past three full pages and reads products for the newest twenty only", async () => {
+    const page = (p: number) => Array.from({ length: 100 }, (_, i) => cart(`k${p}-${i}`, 1, "payment_method", `2026-09-${String(1 + ((p * 100 + i) % 27)).padStart(2, "0")} 10:00:00`));
+    fakeSales([[]], [page(0), page(1), page(2), page(3)], {});
+    const { zidSales, CART_DETAILS } = await import("@/lib/connectors/zid");
+    const s = await zidSales(conn(), NOW);
+    expect(salesCalls.filter((c) => c.includes("/abandoned-carts?"))).toHaveLength(3);
+    expect(s.carts).toMatchObject({ count: 300, read: 300, capped: true });
+    expect(salesCalls.filter((c) => /\/abandoned-carts\/[^?]+$/.test(c))).toHaveLength(CART_DETAILS);
+  });
+
+  it("syncs through the connect route into the snapshot and store-sales.md, and a refused token asks for a reconnect", async () => {
+    fakeSales([[order("2026-09-20 12:00:00", "300", "delivered", [{ name: "سكري القصيم", quantity: 2 }])]], [[cart("c1", 90)]], { c1: [{ name: "خلاص", quantity: 1 }] });
+    const u = await newUser("zidsales");
+    await saveConnection(u.email, conn());
+    await signIn(u.email);
+    const res = await connectRoute.POST(json("/api/connect/zid", "POST", { action: "sync_sales" }), { params: Promise.resolve({ provider: "zid" }) });
+    expect((await res.json()).ok).toBe(true);
+    const { getSalesSnapshot } = await import("@/lib/store-sales");
+    expect((await getSalesSnapshot(u.email))?.provider).toBe("zid");
+    const md = (await readFile(u.email, "store-sales.md"))!.content;
+    expect(md).toContain("# Store sales (Zid متجر النخلة, last 30 days");
+    expect(md).toContain("Value left in them: 90 SAR");
+    expect(md).not.toContain("سلمان");
+
+    fakeSales([], [], {}, { status: 401 });
+    const bad = await connectRoute.POST(json("/api/connect/zid", "POST", { action: "sync_sales" }), { params: Promise.resolve({ provider: "zid" }) });
+    expect((await bad.json()).error).toBe("reconnect_required");
+    expect((await getConnection(u.email, "zid"))?.needsReconnect).toBeTruthy();
   });
 });
