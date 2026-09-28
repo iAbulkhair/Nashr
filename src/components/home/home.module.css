@@ -549,6 +549,87 @@
   .qflipItem { animation: none; }
 }
 
+/* ---------- Life in the lineup: banter, eyes, blinking, breathing (Lineup.tsx, Figure.tsx) ---------- */
+
+/*
+ * A speech bubble takes the question's place above the head while its figure talks. Invisible copies of every line
+ * the figure can say sit in `.qsizer` with the questions, so the slot is already tall enough: a bubble never moves
+ * the layout and never reaches the strip's top edge, which clips.
+ */
+.talkBubble {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.35em 0.8em;
+  border: 1.5px solid var(--ink);
+  border-radius: 14px;
+  background: var(--ink);
+  color: var(--paper);
+  font-weight: 600;
+  line-height: 1.4;
+  text-wrap: balance;
+}
+.qslot > .talkBubble {
+  position: relative;
+  transform-origin: 50% 100%;
+  animation: talkIn 0.25s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+/* The tail, pointing down at the head. */
+.qslot > .talkBubble::after {
+  content: "";
+  position: absolute;
+  top: calc(100% - 1px);
+  left: calc(50% - 6px);
+  width: 12px;
+  height: 7px;
+  background: var(--ink);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.figure[data-talking] .qflip { visibility: hidden; }
+@keyframes talkIn {
+  from { opacity: 0; transform: translateY(4px) scale(0.9); }
+  to { opacity: 1; transform: none; }
+}
+
+/*
+ * The eyes look towards the pointer (`--gx` / `--gy`, set on the lineup by Lineup.tsx, at most 3 units each way) and
+ * blink every 4–6 s, each figure on its own beat (`--i` is its place in the row). A figure turned to face you looks
+ * at you. The body breathes: about one unit at the shoulders, feet planted. Blinking and breathing run only while the
+ * lineup is on screen (`data-live`), so they cost nothing anywhere else on the page.
+ */
+.lineup [data-part="eyes"] {
+  transform-box: fill-box;
+  transform-origin: center;
+  translate: var(--gx, 0px) var(--gy, 0px);
+  transition: translate 0.2s ease-out;
+}
+.lineup [data-pose="turn"] [data-part="eyes"] { translate: none; }
+.lineup [data-part="body"] {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+.lineup[data-live] [data-part="eyes"] {
+  animation: lineupBlink calc(4s + var(--i, 0) * 0.28s) linear calc(var(--i, 0) * -0.7s) infinite;
+}
+.lineup[data-live] [data-part="body"] {
+  animation: lineupBreathe 4.4s ease-in-out calc(var(--i, 0) * -0.55s) infinite alternate;
+}
+@keyframes lineupBlink {
+  0%, 94%, 100% { scale: 1; }
+  97% { scale: 1 0.1; }
+}
+@keyframes lineupBreathe {
+  to { scale: 1 1.003; }
+}
+
+/* Reduced motion: bubbles still come and go, but nothing moves, blinks, breathes or follows the pointer. */
+@media (prefers-reduced-motion: reduce) {
+  .qslot > .talkBubble { animation: none; }
+  .lineup [data-part="eyes"],
+  .lineup [data-part="body"],
+  .lineup[data-live] [data-part="eyes"],
+  .lineup[data-live] [data-part="body"] { animation: none; translate: none; transition: none; }
+}
+
 /* ---------- What's true today ---------- */
 
 .truths {

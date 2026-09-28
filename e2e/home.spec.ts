@@ -1,5 +1,6 @@
-import { test, expect, open, LANGS } from "./fixtures/app";
-import { CAST } from "../src/lib/home";
+import type { Locator } from "@playwright/test";
+import { test, expect, open, LANGS, type Lang } from "./fixtures/app";
+import { BANTER, CAST, HOME, type CastMember } from "../src/lib/home";
 
 for (const lang of LANGS) {
   test.describe(`home · ${lang}`, () => {
@@ -70,6 +71,9 @@ test.describe("home without JavaScript", () => {
     await open(page, "/ar");
     await expect(page.locator("h1")).toContainText("ذكين");
     await expect(page.getByTestId("figure")).toHaveCount(8);
+    // With scripts off, DOMContentLoaded does not wait for the stylesheet, and before it applies every form counts as
+    // visible (the story's hidden finale form first). `load` does wait for it.
+    await page.waitForLoadState("load");
     const url = page.locator('form input[name="url"]:visible').first();
     await url.fill("example.sa");
     await url.press("Enter");
@@ -173,3 +177,132 @@ test.describe("the game with reduced motion", () => {
     expect(await bubble.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
   });
 });
+
+test("the team talks and turns to you", async ({ page }) => {
+  await open(page, "/en");
+  const lineup = page.getByTestId("lineup");
+  await lineup.scrollIntoViewIfNeeded();
+  await expect(lineup.getByTestId("bubble").first()).toBeVisible({ timeout: 12000 });
+  const noor = lineup.locator('[data-cast="noor"]').first();
+  await noor.hover();
+  await expect(noor.locator("svg")).toHaveAttribute("data-pose", "turn");
+});
+
+/** True once React has attached to the node, so a click reaches its handler instead of the bare server HTML. */
+const live = (l: Locator) => l.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactFiber$")));
+
+test("a figure answers when you press it, once for screen readers", async ({ page }) => {
+  await open(page, "/en");
+  const lineup = page.getByTestId("lineup");
+  const noor = lineup.locator('[data-testid="figure"][data-cast="noor"]');
+  await expect.poll(() => live(noor)).toBe(true);
+  const name = await noor.getAttribute("aria-label");
+  await noor.click();
+  // Its first line in the banter, in the speaker's bubble. The bubble is hidden from screen readers; the lineup's one
+  // polite live region says it instead, and the button keeps its name.
+  const bubble = noor.getByTestId("bubble");
+  await expect(bubble).toHaveText("“Found a trend!”");
+  await expect(bubble).toHaveAttribute("aria-hidden", "true");
+  await expect(lineup.locator('[aria-live="polite"]')).toHaveText("Noor: “Found a trend!”");
+  await expect(noor).toHaveAccessibleName(name!);
+  await expect(bubble).toHaveCount(0, { timeout: 4000 });
+  // The owner has no banter line: it gives the finale's word. Keyboard activation works the same way.
+  const you = lineup.locator('[data-testid="figure"][data-cast="you"]');
+  await you.focus();
+  await page.keyboard.press("Enter");
+  await expect(you.getByTestId("bubble")).toHaveText("“Approved.”");
+});
+
+test("the eyes follow the pointer the right way round in Arabic, and the figures blink and breathe", async ({ page, isMobile }) => {
+  test.skip(isMobile, "a phone has no pointer to follow");
+  await open(page, "/ar");
+  const lineup = page.getByTestId("lineup");
+  await lineup.scrollIntoViewIfNeeded();
+  const faris = lineup.locator('[data-testid="figure"][data-cast="faris"]');
+  await expect.poll(() => live(faris)).toBe(true);
+  const eyes = faris.locator('[data-part="eyes"]');
+  const gaze = () => eyes.evaluate((el) => parseFloat(getComputedStyle(el).translate) || 0);
+  const box = (await lineup.boundingBox())!;
+  // The strip's side padding, so the pointer is on the lineup but on no figure (a hovered figure faces you instead).
+  await page.mouse.move(box.x + box.width - 4, box.y + box.height / 2);
+  await expect.poll(gaze).toBeGreaterThan(1);
+  expect(await gaze()).toBeLessThanOrEqual(3);
+  await page.mouse.move(box.x + 4, box.y + box.height / 2);
+  await expect.poll(gaze).toBeLessThan(-1);
+  expect(await gaze()).toBeGreaterThanOrEqual(-3);
+  expect(await eyes.evaluate((el) => getComputedStyle(el).animationName)).not.toBe("none");
+  expect(await faris.locator('[data-part="body"]').evaluate((el) => getComputedStyle(el).animationName)).not.toBe("none");
+});
+
+test.describe("the lineup with reduced motion", () => {
+  test.use({ reducedMotion: "reduce" });
+  test("still answers, without moving, blinking, breathing or following the pointer", async ({ page }) => {
+    await open(page, "/en");
+    const lineup = page.getByTestId("lineup");
+    const sami = lineup.locator('[data-testid="figure"][data-cast="sami"]');
+    await expect.poll(() => live(sami)).toBe(true);
+    await sami.click();
+    const bubble = sami.getByTestId("bubble");
+    await expect(bubble).toHaveText("“The customer wants a discount.”");
+    expect(await bubble.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
+    const box = (await lineup.boundingBox())!;
+    await page.mouse.move(box.x + 4, box.y + box.height / 2);
+    await page.waitForTimeout(300);
+    for (const part of ["eyes", "body"]) {
+      const style = await sami.locator(`[data-part="${part}"]`).evaluate((el) => {
+        const s = getComputedStyle(el);
+        return { animation: s.animationName, translate: s.translate };
+      });
+      expect(style, part).toEqual({ animation: "none", translate: "none" });
+    }
+  });
+});
+
+/** Every line a figure can say, as its bubble shows it: its banter lines, and what it answers when pressed. */
+function linesOf(member: CastMember, lang: Lang): string[] {
+  const own = BANTER.flatMap((b) => b.lines).filter((l) => l.who === member.id).map((l) => l.text[lang]);
+  const answer = member.id === "you" ? HOME.finaleWord[lang] : (own[0] ?? member.value[lang]);
+  return [...new Set([...own, answer])].map((t) => (lang === "ar" ? `«${t}»` : `“${t}”`));
+}
+
+for (const width of [375, 768]) {
+  test.describe(`speech bubbles at ${width}px`, () => {
+    test.use({ viewport: { width, height: 900 }, reducedMotion: "reduce" });
+    for (const lang of LANGS) {
+      test(`every line fits above its figure and moves nothing · ${lang}`, async ({ page }) => {
+        await open(page, `/${lang}`);
+        const lineup = page.getByTestId("lineup");
+        const row = lineup.locator("ul");
+        await expect.poll(() => live(row)).toBe(true);
+        const height = await row.evaluate((el) => el.getBoundingClientRect().height);
+        for (const member of CAST) {
+          const figure = lineup.locator(`[data-testid="figure"][data-cast="${member.id}"]`);
+          await figure.click();
+          await expect(figure.getByTestId("bubble")).toBeVisible();
+          // Put each line in turn into the bubble on screen: it must stay inside its figure's question slot, below the
+          // strip's top edge (which clips), inside the figure's column and inside the viewport.
+          const outside = await figure.evaluate((el, lines) => {
+            const bubble = el.querySelector('[data-testid="bubble"]') as HTMLElement;
+            const shown = bubble.textContent;
+            const slot = bubble.parentElement!.getBoundingClientRect();
+            const column = el.getBoundingClientRect();
+            const strip = el.closest("ul")!.parentElement!.getBoundingClientRect();
+            const out: string[] = [];
+            for (const line of lines) {
+              bubble.textContent = line;
+              const b = bubble.getBoundingClientRect();
+              const inside =
+                b.top >= slot.top - 0.5 && b.bottom <= slot.bottom + 0.5 && b.top >= strip.top - 0.5 &&
+                b.left >= column.left - 0.5 && b.right <= column.right + 0.5 && b.left >= -0.5 && b.right <= innerWidth + 0.5;
+              if (!inside) out.push(line);
+            }
+            bubble.textContent = shown;
+            return out;
+          }, linesOf(member, lang));
+          expect(outside, member.id).toEqual([]);
+          expect(await row.evaluate((el) => el.getBoundingClientRect().height), member.id).toBe(height);
+        }
+      });
+    }
+  });
+}
