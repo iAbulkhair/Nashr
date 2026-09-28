@@ -1,0 +1,370 @@
+/*
+ * Thakeen homepage. Light pearl ground, plum ink, one colour world per cast member (spec §3).
+ * Type stays on the system stack until the licensed faces arrive (spec §7.2).
+ */
+.home {
+  --ground: #f7f3f9;
+  --ink: #2b193d;
+  --paper: #ffffff;
+  --gold: #c9a227;
+  --c-noor: #f9f871;
+  --c-sami: #ff5da2;
+  --c-razan: #00d9ff;
+  --c-faris: #b517ff;
+  --c-dana: #efe7f7;
+  --c-majed: #2b193d;
+  --c-layan: #7fe9ff;
+  --c-you: #ffffff;
+  --home-display: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
+  --home-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
+  background: var(--ground);
+  color: var(--ink);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- Doodle: one ink line, flat fill on the body only ---------- */
+
+.doodle {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.doodle[data-cast="noor"] { --fill: var(--c-noor); }
+.doodle[data-cast="sami"] { --fill: var(--c-sami); }
+.doodle[data-cast="razan"] { --fill: var(--c-razan); }
+.doodle[data-cast="faris"] { --fill: var(--c-faris); }
+.doodle[data-cast="dana"] { --fill: var(--c-dana); }
+.doodle[data-cast="majed"] { --fill: var(--c-majed); }
+.doodle[data-cast="layan"] { --fill: var(--c-layan); }
+.doodle[data-cast="you"] { --fill: var(--c-you); }
+
+.doodle :is(path, circle, ellipse, rect, line) {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 3px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.doodle .fill { fill: var(--fill); }
+.doodle .paper { fill: var(--paper); }
+.doodle .inkFill { fill: var(--ink); }
+.doodle .dot { fill: var(--ink); stroke: none; }
+.doodle .fine { stroke-width: 2px; }
+.doodle .gold { stroke: var(--gold); stroke-width: 3.5px; }
+
+/* ---------- Story (static in this task) ---------- */
+
+.story {
+  font-family: var(--home-body);
+  overflow-x: clip;
+  padding: clamp(2.5rem, 6vw, 5rem) 16px clamp(3rem, 8vw, 6rem);
+}
+
+.hero {
+  max-width: 1200px;
+  margin-inline: auto;
+  display: grid;
+  gap: clamp(1.5rem, 4vw, 3rem);
+  align-items: center;
+}
+@media (min-width: 900px) {
+  .hero { grid-template-columns: 1.1fr 1fr; }
+}
+
+.line1 {
+  font-family: var(--home-display);
+  font-size: clamp(2.6rem, 7vw, 5.5rem);
+  font-weight: 800;
+  line-height: 1.12;
+}
+.line2 {
+  margin-top: 1.25rem;
+  max-width: 30ch;
+  font-size: clamp(1.15rem, 2.2vw, 1.6rem);
+  line-height: 1.6;
+}
+
+.owner {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  padding-top: clamp(170px, 22vw, 230px);
+}
+.ownerFigure {
+  width: clamp(140px, 17vw, 200px);
+}
+
+.storm {
+  position: absolute;
+  inset-inline: 0;
+  top: clamp(16px, 3vw, 40px);
+  height: clamp(170px, 22vw, 230px);
+  container-type: inline-size;
+  pointer-events: none;
+  /* The orbit plane, tilted: circles become ellipses. Each question's text is scaled back up, so it stays upright. */
+  transform: scaleY(0.4);
+}
+
+/*
+ * Each question circles the owner's head at a steady speed. `--i` sets its ring (radius), its speed and where on the
+ * ring it starts (golden-ratio spacing, so the ring stays evenly filled); every other one turns the other way.
+ */
+.stormQ {
+  --d: calc(8s + var(--i) * 0.3s);
+  --r: calc(9cqi + var(--i) * 0.8cqi);
+  --phase: calc(var(--d) * var(--i) * -0.382);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  animation: orbit var(--d) linear var(--phase) infinite;
+}
+.stormText {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 0.1em 0.55em;
+  border-radius: 999px;
+  background: var(--ground);
+  font-size: clamp(0.72rem, 1.1vw, 0.9rem);
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+  transform-origin: 0 0;
+  transform: scaleY(2.5) translate(-50%, -50%);
+  animation: depth var(--d) linear var(--phase) infinite;
+}
+.stormQ:nth-child(odd),
+.stormQ:nth-child(odd) .stormText {
+  animation-direction: reverse;
+}
+@keyframes orbit {
+  from { transform: rotate(0turn) translateX(var(--r)) rotate(0turn); }
+  to { transform: rotate(1turn) translateX(var(--r)) rotate(-1turn); }
+}
+/* Front of the ring (bottom) is nearest: full ink; the back (top) recedes. */
+@keyframes depth {
+  0%, 50%, 100% { opacity: 0.7; scale: 0.92; }
+  25% { opacity: 1; scale: 1; }
+  75% { opacity: 0.35; scale: 0.82; }
+}
+
+.finale {
+  max-width: 1200px;
+  margin: clamp(3rem, 8vw, 6rem) auto 0;
+}
+.finaleWord {
+  font-family: var(--home-display);
+  font-size: clamp(3rem, 10vw, 7rem);
+  font-weight: 800;
+  line-height: 1.1;
+}
+.finaleLine {
+  margin-top: 0.75rem;
+  font-size: clamp(1.1rem, 2vw, 1.5rem);
+  line-height: 1.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stormQ, .stormText { animation: none; }
+  .stormQ:not(:first-child) { display: none; }
+}
+
+/* ---------- Start form (plain GET, works without JavaScript) ---------- */
+
+.start {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  max-width: 36rem;
+  margin-top: 1.75rem;
+}
+.startInput {
+  flex: 1 1 14rem;
+  min-width: 0;
+  padding: 0.85rem 1.15rem;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+.startInput::placeholder { color: color-mix(in oklab, var(--ink) 62%, var(--paper)); }
+.startInput:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+.startButton {
+  flex: 0 0 auto;
+  padding: 0.85rem 1.5rem;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--ground);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.startButton:hover { background: color-mix(in oklab, var(--ink) 86%, var(--paper)); }
+.startButton:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+
+/* ---------- Lineup: eight figures in a row ---------- */
+
+.lineup {
+  font-family: var(--home-body);
+  padding: clamp(3rem, 7vw, 6rem) 0;
+}
+.aiLabel {
+  max-width: 1320px;
+  margin: 0 auto 1.25rem;
+  padding-inline: 16px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.aiLabel::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--ink);
+}
+.strip {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-block: 0.5rem 1rem;
+}
+.row {
+  display: flex;
+  gap: clamp(8px, 1.4vw, 20px);
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 16px;
+  list-style: none;
+}
+.cell {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+}
+@media (max-width: 759px) {
+  .strip { scroll-snap-type: x mandatory; }
+  .row { width: max-content; max-width: none; }
+  .cell { flex: 0 0 min(42vw, 200px); scroll-snap-align: start; }
+}
+
+.figure {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.75rem 0.25rem 1rem;
+  border: 0;
+  border-radius: 18px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+.figure:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
+
+.qslot {
+  height: 4.8em;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  font-size: 0.75rem;
+}
+.figureArt { width: min(100%, 150px); }
+.value {
+  font-family: var(--home-display);
+  font-size: clamp(0.98rem, 1.2vw, 1.2rem);
+  font-weight: 700;
+  line-height: 1.4;
+}
+.name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.3;
+  opacity: 0.8;
+}
+
+/* ---------- QuestionFlip: one question at a time ---------- */
+
+.qflip {
+  display: block;
+  max-width: 100%;
+  perspective: 480px;
+  line-height: 1.4;
+}
+.qflipItem {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.35em 0.8em;
+  border: 1.5px solid var(--ink);
+  border-radius: 14px;
+  background: var(--paper);
+  transform-origin: 50% 100%;
+  animation: flipIn 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes flipIn {
+  from { opacity: 0; transform: rotateX(80deg); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .qflipItem { animation: none; }
+}
+
+/* ---------- What's true today ---------- */
+
+.truths {
+  font-family: var(--home-body);
+  max-width: 1200px;
+  margin-inline: auto;
+  padding: clamp(3rem, 7vw, 6rem) 16px;
+}
+.truthsTitle {
+  font-family: var(--home-display);
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  font-weight: 800;
+  line-height: 1.25;
+}
+.truthList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 0 2rem;
+  margin: 2rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.truth {
+  padding: 1.25rem 0;
+  border-top: 3px solid var(--ink);
+}
+.truthTitle {
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.truthBody {
+  margin-top: 0.5rem;
+  line-height: 1.7;
+}
