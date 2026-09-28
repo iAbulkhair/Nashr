@@ -163,7 +163,7 @@ describe("Salla orders and abandoned carts, as totals only (rule 72)", () => {
     expect(await memoryBlock(u.email)).toContain("--- store-sales.md ---");
   });
 
-  it("offers the sales sync only for Salla", async () => {
+  it("offers the sales sync only to store connectors that read sales", async () => {
     const u = await newUser("sales2");
     await saveConnection(u.email, { provider: "woocommerce", data: { site: "https://w.example", consumerKey: "k", consumerSecret: "s" }, connectedAt: new Date().toISOString() });
     await signIn(u.email);

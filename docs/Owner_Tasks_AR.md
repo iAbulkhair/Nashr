@@ -122,14 +122,14 @@
 
 **اختبر قبل المراجعة:** معظم المنصات تسمح بتشغيل التطبيق في «وضع التطوير» لحسابات المطوّرين المضافين إليه قبل أي مراجعة. أضف حسابك الشخصي كمطوّر/مختبِر، واربطه من صفحة التكاملات في نشر، وأخبرني بالنتيجة.
 
-**ما يعمل فعلاً بعد الربط اليوم:** X (نشر تغريدة معتمدة) وShopify (مسودة مقال واستيراد المنتجات) وسلة (استيراد المنتجات، ومزامنة مبيعات آخر 30 يوماً والسلات المتروكة كأرقام مجمّعة بلا بيانات العملاء، منذ 2026-09-28). البقية يُحفظ ربطها لكنه لا يفعل شيئاً بعد، وأبنيه منصة منصة بعد وصول مفاتيحها. لذلك الترتيب: ابدأ بما يعمل (X، Shopify)، ثم ما مراجعته طويلة (Meta، سلة، زد).
+**ما يعمل فعلاً بعد الربط اليوم:** X (نشر تغريدة معتمدة) وShopify (مسودة مقال واستيراد المنتجات، ومزامنة مبيعات آخر 30 يوماً والسلات المتروكة كأرقام مجمّعة، منذ 2026-09-28) وسلة (استيراد المنتجات، ومزامنة مبيعات آخر 30 يوماً والسلات المتروكة كأرقام مجمّعة بلا بيانات العملاء، منذ 2026-09-28). البقية يُحفظ ربطها لكنه لا يفعل شيئاً بعد، وأبنيه منصة منصة بعد وصول مفاتيحها. لذلك الترتيب: ابدأ بما يعمل (X، Shopify)، ثم ما مراجعته طويلة (Meta، سلة، زد).
 
 روابط الرجوع (انسخها كما هي):
 
 | الترتيب | المنصة | رابط الرجوع (Redirect / Callback URL) | الصلاحيات المطلوبة | المتغيرات في Vercel | تاريخ التقديم | الحالة | ملاحظة |
 |---|---|---|---|---|---|---|---|
 | 1 | X | `https://nashr-tau.vercel.app/api/connect/x/callback` | `tweet.read tweet.write users.read offline.access` — نوع التطبيق Web App، OAuth 2.0 مع PKCE | `X_CLIENT_ID`، `X_CLIENT_SECRET` | | لم يبدأ | النشر يحتاج باقة API مدفوعة من X؛ قرّر الباقة قبل التسجيل |
-| 2 | Shopify | `https://nashr-tau.vercel.app/api/connect/shopify/callback` | `read_products, read_orders, read_checkouts, write_content, read_customers` | `SHOPIFY_CLIENT_ID`، `SHOPIFY_CLIENT_SECRET` | | لم يبدأ | من Shopify Partners ← Apps ← Create app. جرّبه على متجر تطوير مجاني |
+| 2 | Shopify | `https://nashr-tau.vercel.app/api/connect/shopify/callback` | `read_products, read_orders, read_checkouts, write_content, read_customers` | `SHOPIFY_CLIENT_ID`، `SHOPIFY_CLIENT_SECRET` | | لم يبدأ | من Shopify Partners ← Apps ← Create app. جرّبه على متجر تطوير مجاني. لقراءة الطلبات: فعّل «Protected customer data access» للطلبات (المستوى الأول، بلا حقول العملاء) في إعدادات التطبيق |
 | 3 | Meta | `https://nashr-tau.vercel.app/api/connect/meta/callback` | صفحات فيسبوك، نشر إنستقرام، WhatsApp Business، قراءة الإعلانات | `META_APP_ID`، `META_APP_SECRET` | | لم يبدأ | ابدأ «توثيق النشاط التجاري» اليوم (يحتاج أوراق الشركة، قسم أ0). النشر الفعلي لم يُبنَ بعد |
 | 4 | سلة | `https://nashr-tau.vercel.app/api/connect/salla/callback` | `offline_access` + قراءة المنتجات والطلبات | `SALLA_CLIENT_ID`، `SALLA_CLIENT_SECRET` | | لم يبدأ | استيراد المنتجات جاهز ويُختبر على متجر سلة التجريبي فور وصول المفاتيح. من بوابة شركاء سلة. قد يقبل رابط رجوع واحداً: غيّره عند نقل الدومين |
 | 5 | زد | `https://nashr-tau.vercel.app/api/connect/zid/callback` | قراءة المنتجات والطلبات | `ZID_CLIENT_ID`، `ZID_CLIENT_SECRET` | | لم يبدأ | من بوابة شركاء زد |

@@ -1,5 +1,6 @@
 import type { Connection } from "./store";
 import { writeFile } from "../files";
+import { SALES_DAYS, addTo, amountOf, tally, topOf, type Line, type SalesSnapshot } from "./sales";
 
 /**
  * Salla Merchant API v2. Endpoints and shapes checked against Salla's own OAuth strategy (@salla.sa/passport-strategy:
@@ -80,41 +81,13 @@ export async function importSalla(email: string, c: Connection) {
 
 const ORDER_PAGES = 10;
 const CART_PAGES = 3;
-export const SALES_DAYS = 30;
 
-type Line = { name?: string; quantity?: number | string; product?: { name?: string } };
 type SallaOrder = { total?: Money; amounts?: { total?: Money }; status?: { slug?: string; name?: string } | string; items?: Line[] };
 type SallaCart = { total?: Money; subtotal?: Money; items?: Line[] };
 type ListPage<T> = { data?: T[]; pagination?: { total?: number; currentPage?: number; current_page?: number; totalPages?: number; total_pages?: number } };
 
-export type SalesSnapshot = {
-  provider: "salla";
-  at: string;
-  days: number;
-  orders: { count: number; read: number; canceled: number; revenue: Record<string, number>; top: { name: string; qty: number }[] };
-  carts: { count: number; read: number; value: Record<string, number>; top: { name: string; qty: number }[] };
-  /** Records whose total could not be read: a non-zero value means Salla's shape differs from what this code expects. */
-  unread: number;
-};
-
-function amountOf(m: Money): { amount: number; currency: string } | null {
-  if (m == null || m === "") return null;
-  const raw = typeof m === "object" ? m.amount : m;
-  const amount = typeof raw === "number" ? raw : Number(String(raw ?? "").replace(/[^\d.-]/g, ""));
-  if (!Number.isFinite(amount)) return null;
-  return { amount, currency: (typeof m === "object" && m.currency) || "SAR" };
-}
-
-function tally(lines: Line[] | undefined, into: Map<string, number>) {
-  for (const l of lines ?? []) {
-    const name = (l.name ?? l.product?.name ?? "").trim();
-    if (!name) continue;
-    const q = Number(l.quantity ?? 1);
-    into.set(name, (into.get(name) ?? 0) + (Number.isFinite(q) && q > 0 ? q : 1));
-  }
-}
-const topOf = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, qty]) => ({ name, qty }));
-const add = (into: Record<string, number>, a: { amount: number; currency: string }) => { into[a.currency] = Math.round(((into[a.currency] ?? 0) + a.amount) * 100) / 100; };
+/** Salla money is `{ amount, currency }`, or a bare number or string in SAR. */
+const sallaAmount = (m: Money) => (m != null && typeof m === "object" ? amountOf(m.amount, m.currency || "SAR") : amountOf(m, "SAR"));
 
 async function pages<T>(c: Connection, path: string, max: number): Promise<{ rows: T[]; total: number | null }> {
   const rows: T[] = [];
@@ -148,17 +121,17 @@ export async function sallaSales(c: Connection, now = new Date()): Promise<Sales
   const sold = new Map<string, number>();
   for (const o of orders.rows) {
     if (/cancel|refund|restor|delet/.test(statusSlug(o))) { canceled++; continue; }
-    const a = amountOf(o.total ?? o.amounts?.total);
+    const a = sallaAmount(o.total ?? o.amounts?.total);
     if (!a) { unread++; continue; }
-    add(revenue, a);
+    addTo(revenue, a);
     tally(o.items, sold);
   }
   const value: Record<string, number> = {};
   const left = new Map<string, number>();
   for (const cart of carts.rows) {
-    const a = amountOf(cart.total ?? cart.subtotal);
+    const a = sallaAmount(cart.total ?? cart.subtotal);
     if (!a) { unread++; continue; }
-    add(value, a);
+    addTo(value, a);
     tally(cart.items, left);
   }
   return {
@@ -169,29 +142,4 @@ export async function sallaSales(c: Connection, now = new Date()): Promise<Sales
     carts: { count: carts.total ?? carts.rows.length, read: carts.rows.length, value, top: topOf(left) },
     unread,
   };
-}
-
-/** 12345.5 → "12,345.5": plain grouping, the same on the server and in every browser. */
-export const grouped = (v: number) => { const [i, f] = String(v).split("."); return i.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (f ? `.${f}` : ""); };
-const money2 = (r: Record<string, number>) => Object.entries(r).map(([cur, v]) => `${grouped(v)} ${cur}`).join(" + ") || "0";
-
-/** The snapshot as Noor reads it in store-sales.md: aggregates only, and it says when it is partial. */
-export function salesMarkdown(s: SalesSnapshot, store?: string) {
-  const partialOrders = s.orders.read < s.orders.count ? ` (totals below cover the latest ${s.orders.read} of ${s.orders.count})` : "";
-  const partialCarts = s.carts.read < s.carts.count ? ` (totals below cover the latest ${s.carts.read} of ${s.carts.count})` : "";
-  return [
-    `# Store sales (Salla${store ? ` ${store}` : ""}, last ${s.days} days, synced ${s.at.slice(0, 10)})`,
-    "",
-    "Totals read from the store. No customer details are stored here. Use these numbers as they are; do not extrapolate them.",
-    "",
-    `## Orders`,
-    `- Orders: ${s.orders.count}${partialOrders}`,
-    `- Revenue (excluding ${s.orders.canceled} canceled or refunded): ${money2(s.orders.revenue)}`,
-    ...(s.orders.top.length ? ["- Best sellers by quantity:", ...s.orders.top.map((t) => `  - ${t.name}: ${t.qty}`)] : []),
-    "",
-    `## Abandoned carts`,
-    `- Open abandoned carts: ${s.carts.count}${partialCarts}`,
-    `- Value left in them: ${money2(s.carts.value)}`,
-    ...(s.carts.top.length ? ["- Products most often left in carts:", ...s.carts.top.map((t) => `  - ${t.name}: ${t.qty}`)] : []),
-  ].join("\n");
 }
