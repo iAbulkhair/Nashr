@@ -1,5 +1,6 @@
 import { meter } from "./usage";
 import Anthropic from "@anthropic-ai/sdk";
+import { modelState } from "./model";
 import type { Brand, Task } from "./brand";
 
 /**
@@ -10,7 +11,8 @@ export type ImageResult = { url: string; prompt: string; provider: "fal" | "plac
 
 async function imagePrompt(brand: Brand, task: Task, email?: string): Promise<string> {
   const fallback = `Premium ${brand.industry} product photo for ${brand.name}, Gulf aesthetic, warm light, clean background, no text, 1:1`;
-  if (!process.env.ANTHROPIC_API_KEY) return fallback;
+  // Paused or no key: the fixed prompt. The picture itself comes from fal.ai, which the pause does not touch.
+  if (modelState() !== "on") return fallback;
   const client = new Anthropic();
   const res = await client.messages.create({
     model: "claude-sonnet-5",

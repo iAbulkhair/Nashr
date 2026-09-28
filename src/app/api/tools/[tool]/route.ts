@@ -5,6 +5,7 @@ import { meter } from "@/lib/usage";
 import { db } from "@/lib/db";
 import { allow, clientIp } from "@/lib/rate";
 import { currentUser } from "@/lib/auth";
+import { modelState } from "@/lib/model";
 
 export const maxDuration = 60;
 const FREE_PER_DAY = 5;
@@ -15,6 +16,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ tool: string }
   const { tool } = await ctx.params;
   const t = getTool(tool);
   if (!t) return NextResponse.json({ ok: false, error: "unknown_tool" }, { status: 404 });
+  // Before the rate limit: a refused call must not use up a visitor's daily allowance.
+  const state = modelState();
+  if (state === "paused") return NextResponse.json({ ok: false, error: "paused" }, { status: 503 });
   const u = await currentUser();
   // Every caller gets a ceiling. Signing up is free and unthrottled beyond five accounts per IP per hour, so leaving
   // authenticated callers unlimited made this the cheapest way to spend our model budget: no credits, no trial check.
@@ -23,7 +27,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ tool: string }
   const b = (await req.json().catch(() => ({}))) as Record<string, string>;
   const inputs = t.fields.map((f) => `${f.label.en}: ${(b[f.name] ?? "").toString().slice(0, 600)}`).join("\n");
   const lang = toolLang(b.lang);
-  if (!process.env.ANTHROPIC_API_KEY) return NextResponse.json({ ok: true, output: `[DEV MOCK] ${t.slug}\n${inputs}` });
+  if (state === "mock") return NextResponse.json({ ok: true, output: `[DEV MOCK] ${t.slug}\n${inputs}` });
   try {
     const client = new Anthropic();
     const res = await client.messages.create({

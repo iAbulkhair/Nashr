@@ -7,6 +7,7 @@ import { TASK_COUNT, type Brand, type TaskType } from "./brand";
 import { adminEmails } from "./auth";
 import { notifyItem } from "./notifications";
 import { getUsage } from "./usage";
+import { modelState } from "./model";
 
 /**
  * Weekly golden set. A fixed list of cases (fictional brand + task type + owner
@@ -201,10 +202,10 @@ export function summarize(run: GoldenRun, prev: GoldenRun | undefined) {
 /**
  * Run the set. `agent` reruns one agent's cases and carries the rest over from the latest run; `resume` reruns only the
  * cases that errored or never started in the latest run and merges them in.
- * Returns null when another run holds the lock or no model key is set.
+ * Returns null when another run holds the lock, no model key is set or Claude is paused (src/lib/model.ts).
  */
 export async function runGolden(trigger: "cron" | "manual", opts: { agent?: AgentId; resume?: boolean } = {}): Promise<GoldenRun | null> {
-  if (!process.env.ANTHROPIC_API_KEY) return null;
+  if (modelState() !== "on") return null;
   if (!(await db.lock("golden:lock", 300))) return null;
   try {
     const t0 = Date.now();
