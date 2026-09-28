@@ -18,7 +18,7 @@ import { activeSeasons } from "./seasons";
 import { importCatalog } from "./catalog";
 import { generateImage } from "./images";
 import { listConnections } from "./connectors/store";
-import { publishTask, targetsFor } from "./connectors/publish";
+import { connectedTargets, publishTask, targetsFor } from "./connectors/publish";
 import { HELP } from "./help";
 import { IMAGE_COST, getTask } from "./brand";
 
@@ -85,8 +85,8 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "publish_item",
-    description: "Publish an approved inbox item to a connected platform (wordpress or shopify for articles → saved as draft on the site; x for X posts → published; telegram for social/gbp/whatsapp items → posted to the channel). Only when the owner explicitly asks to publish. Needs the item id from list_inbox.",
-    input_schema: { type: "object", additionalProperties: false, required: ["task_id", "provider"], properties: { task_id: { type: "string" }, provider: { type: "string", enum: ["wordpress", "shopify", "x", "telegram"] } } },
+    description: "Publish an approved inbox item to a connected platform (wordpress or shopify for articles → saved as draft on the site; x for X posts → published; facebook for Instagram-channel posts → posted to the connected Facebook Page; instagram for Instagram posts that have a generated image → posted to the Instagram account; telegram for social/gbp/whatsapp items → posted to the channel). Only when the owner explicitly asks to publish. Needs the item id from list_inbox.",
+    input_schema: { type: "object", additionalProperties: false, required: ["task_id", "provider"], properties: { task_id: { type: "string" }, provider: { type: "string", enum: ["wordpress", "shopify", "x", "facebook", "instagram", "telegram"] } } },
     strict: true,
   },
   {
@@ -120,7 +120,7 @@ WHAT YOU CAN DO
 - Create content via generate_content for full batches, or draft_items for 1-3 items (1 credit each); both land in the approval inbox.
 - Remember facts via update_brand and write_file. Read your memory via read_file.
 - Import real products from the store via import_catalog (writes products.md). Generate a visual for an inbox item via generate_image (${IMAGE_COST} credit).
-- You can publish_item only to the platforms listed under CONNECTED PLATFORMS, and only items the owner already approved (articles go to WordPress or Shopify as drafts; X and Telegram posts go live). For anything not connected, the owner copies approved items; say so plainly and point to the Integrations page.
+- You can publish_item only to the platforms listed under CONNECTED PLATFORMS, and only items the owner already approved (articles go to WordPress or Shopify as drafts; X, Facebook, Instagram and Telegram posts go live; Instagram needs the item to have a generated image first). For anything not connected, the owner copies approved items; say so plainly and point to the Integrations page.
 - Costs in credits: ${Object.entries(TASK_COST).map(([k, v]) => `${k}=${v}`).join(", ")}. If credits are insufficient, say so and point to the Subscription page.
 
 HOW NASHR WORKS (answer "how do I…" questions from this; point to the page)
@@ -191,7 +191,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   const client = new Anthropic();
   // Independent reads, fetched together: one after another they cost 1-2 s of silence before every model call.
   const [brand, prefs, memory, files, conns, thread] = await Promise.all([getBrand(email), listPreferences(email), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv)]);
-  const connected = conns.map((c) => c.provider);
+  const connected = connectedTargets(conns);
   const past = thread.slice(-16);
   const messages: Anthropic.MessageParam[] = past.map((m) => ({ role: m.role, content: m.content }));
   if (!messages.length || messages[messages.length - 1].role !== "user") messages.push({ role: "user", content: text });
@@ -337,7 +337,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
     case "publish_item": {
       const t = await getTask(email, String(input.task_id));
       if (!t) return "Item not found.";
-      const connected = (await listConnections(email)).map((c) => c.provider);
+      const connected = connectedTargets(await listConnections(email));
       const provider = String(input.provider);
       if (!targetsFor(t, connected).includes(provider)) return `Cannot publish this ${t.type}/${t.channel} item to ${provider} (not connected or wrong type).`;
       // Code-level gate, not a prompt rule: only items the owner already approved in the inbox can be published from chat.

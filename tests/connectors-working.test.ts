@@ -7,7 +7,8 @@ import { costUsd } from "@/lib/usage";
 describe("which connectors do something", () => {
   const publish = readFileSync("src/lib/connectors/publish.ts", "utf8");
   const connect = readFileSync("src/app/api/connect/[provider]/route.ts", "utf8");
-  const publishers = [...publish.matchAll(/case "([a-z]+)":/g)].map((m) => m[1]);
+  // Facebook and Instagram are publish targets of one "meta" connection (targets.ts CONNECTION_OF).
+  const publishers = [...publish.matchAll(/case "([a-z]+)":/g)].map((m) => ({ facebook: "meta", instagram: "meta" } as Record<string, string>)[m[1]] ?? m[1]);
   const importLine = connect.split("\n").find((l) => l.includes("await importShopify(")) ?? "";
   const importers = [...importLine.matchAll(/provider === "([a-z]+)"/g)].map((m) => m[1]);
 
@@ -18,7 +19,7 @@ describe("which connectors do something", () => {
   });
 
   it("does not treat a stored connection with no code behind it as working", () => {
-    for (const id of ["klaviyo", "brevo", "google", "meta", "instagram", "whatsapp", "zid", "tiktok", "snapchat", "linkedin"]) expect(isWorking(id)).toBe(false);
+    for (const id of ["klaviyo", "brevo", "google", "instagram", "whatsapp", "zid", "tiktok", "snapchat", "linkedin"]) expect(isWorking(id)).toBe(false);
   });
 
   it("reads no platform numbers until a reader ships", () => {

@@ -1,4 +1,5 @@
 "use client";
+import { targetsFor } from "@/lib/connectors/targets";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -30,13 +31,9 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
   const view = tasks.map((x) => local[x.id] ?? x);
   /** Drop the optimistic copy of one task so the next server render is what the owner sees. */
   const forgetLocal = (id: string) => setLocal((p) => { const next = { ...p }; delete next[id]; return next; });
-  const targets = (x: Task) => {
-    const out: string[] = [];
-    if (x.type === "article") for (const p of ["wordpress", "shopify"]) if (connected.includes(p)) out.push(p);
-    if (x.type === "social" && x.channel === "x" && connected.includes("x")) out.push("x");
-    if ((x.type === "social" || x.type === "gbp" || x.type === "whatsapp") && connected.includes("telegram")) out.push("telegram");
-    return out;
-  };
+  // The same rule the publish route enforces (src/lib/connectors/targets.ts), so a button never offers a refused target.
+  const targets = (x: Task) => targetsFor(x, connected);
+
   async function publish(id: string, provider: string) {
     setPublishing(id + provider);
     const res = await fetch(`/api/publish/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider }) });
@@ -194,6 +191,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
                   {IMAGE_TYPES.includes(x.type) && (
                     <button disabled={imaging === x.id} onClick={() => image(x.id)} className="rounded-full border border-saffron px-4 py-1.5 disabled:opacity-50">{imaging === x.id ? i.imaging : (x.imageUrl ? "↻ " : "") + i.image}</button>
                   )}
+                  {x.channel === "instagram" && connected.includes("instagram") && x.imageProvider !== "fal" && <p className="w-full text-xs text-ink/60">{i.igNeedsImage}</p>}
                   {targets(x).map((p) => (
                     <button key={p} disabled={publishing === x.id + p} onClick={() => publish(x.id, p)} className="btn btn-primary btn-pill">{publishing === x.id + p ? i.publishing : `${i.publishTo} ${p}`}</button>
                   ))}
