@@ -73,6 +73,7 @@ Files: `start/page.tsx`, `src/components/app/StartWizard.tsx`, `chat/page.tsx:26
 5. Writes: `saveBrand(scope)`, each returned file via `writeFile(scope, ...)`, `preferences.md` if absent, `onboardplan:{scope}`. Every assistant message is persisted to `chat:{scope}` via `push`.
 6. Onboarding charges no credits (`onboard/route.ts:22`) and is not limited to a single run per workspace beyond the lock; re-running overwrites the brand file and files.
 7. `GET /api/onboard/plan` returns the stored plan; `POST {index, added}` flips the `added` flag. Phone is requested in-thread and saved through `PUT /api/profile` (`OnboardCards.tsx:75`).
+8. While the stream runs, `OnboardProgress` (`ChatPanel.tsx`) shows each `status` event as a completed step with a bar that never reaches 100% before `done`. After it, the launch journey (section 19) celebrates its first milestone.
 
 ## 7. Chat turn with `generate_content` and `draft_items`
 
@@ -112,6 +113,8 @@ Files: `src/app/api/tasks/[id]/route.ts`, `src/components/app/Inbox.tsx:57`, `Ch
 3. `editedBody` different from `body`: stored (max 20000 chars). When `gov.learning` is on, a preference note is pushed to `prefs:{scope}` and appended to `preferences.md`.
 4. `status` in `approved|rejected|pending`: sets `decidedAt` on change, tracks `approve`/`reject`, and on reject with a note records a preference.
 5. Any status may be moved to any other status, including after publishing. There is no separate approver role: the account owner is the only actor.
+6. Brand gate (`src/lib/brand-rules.ts`): when the resulting status is `approved` and the item is customer-facing (`CUSTOMER_FACING`: social, article, whatsapp, ads, gbp, followup_seq, cart_recovery), the final text (`title` plus `editedBody ?? body`) is checked against the brand file's banned words. A hit returns 409 `{error: "brand_violation", violations}` and nothing is saved. Saving an edit as `pending` is allowed. Matching folds Arabic diacritics, tatweel and letter variants, accepts the Arabic prefixes و ف ب ل ك ال and suffixes for Arabic terms of three letters or more, and requires whole words for Latin and shorter terms. The inbox runs the same function in the browser to label cards and to check the editor as the owner types.
+7. Auto-approval goes through `initialStatus(autoApprove, brand, item)` at every creation site (`api/generate`, `api/mcp` `generate_content`, chat `generate_content` and `draft_items`, the weekly schedule): an item that breaks a rule is created `pending` even when its type is auto-approved, and the chat tool reports how many were held.
 
 ## 10. Publishing to a connector
 
@@ -119,7 +122,7 @@ Files: `src/app/api/publish/[id]/route.ts`, `src/lib/connectors/publish.ts`, pro
 
 1. `POST /api/publish/{id} {provider}`; session; task from `sc(u)`.
 2. `publishTask(scope, task, provider)`: loads and decrypts `conn:{scope}:{provider}`; throws `not_connected` when absent. WordPress and Shopify create drafts; Telegram and X publish live (`publish.ts:24-40`). Body is `editedBody ?? body`; X clips to 280 chars, Telegram to 4000.
-3. On success the route appends to `task.published`, forces `status = "approved"` and saves. Both the HTTP route and the chat tool refuse a provider `targetsFor` does not list (`wrong_target`); the route refuses a rejected item (the owner's click is the approval), and the chat tool publishes only items already approved.
+3. Before publishing, the route and the chat tool apply the brand gate from section 9 to the item's current text, including items approved before the word was banned: 409 `brand_violation` from the route, a refusal naming the word from the tool. On success the route appends to `task.published`, forces `status = "approved"` and saves. Both the HTTP route and the chat tool refuse a provider `targetsFor` does not list (`wrong_target`); the route refuses a rejected item (the owner's click is the approval), and the chat tool publishes only items already approved.
 4. Provider error messages (up to 200 chars of the remote response) are returned to the caller in `error` (`publish/[id]/route.ts:25`).
 5. Nothing publishes on a schedule. `scheduledFor` only drives calendar display and "due" notifications (`notifications.ts:57`).
 6. Targets (`connectors/targets.ts`, no runtime imports, shared by the route, the chat tool and the inbox buttons): `connectedTargets` turns the stored connections into provider ids and adds `facebook` when the Meta connection has a chosen Page (`meta.pageId`) and `instagram` when that Page has an Instagram professional account (`meta.igId`). `targetsFor` offers `facebook` for `social` and `cart_recovery` items on the `instagram` or `facebook` channel, and `instagram` only for those items on the `instagram` channel that carry a generated image (`imageProvider === "fal"`; a placeholder card is not offered). Both publish through the `meta` connection (`CONNECTION_OF`).
@@ -169,7 +172,7 @@ Files: `src/app/api/mcp/route.ts`, `src/app/api/mcp/token/route.ts`, `src/lib/mc
 7. There is no revocation endpoint and no listing of granted clients. `revokeMcpToken` only removes the personal token.
 
 ### MCP calls
-`POST /api/mcp` JSON-RPC. `initialize`, `ping`, `notifications/initialized`, `tools/list` answer without authentication (`mcp/route.ts:49-51`). Everything else needs `Authorization: Bearer nashr_...` resolved by `userFromBearer` (`mcp.ts:20`), which returns the raw user record: it does not check `suspended` and does not set `scope`, so MCP always acts on the default brand. Tools: `ask_noor` (full chat loop with all nine chat tools, including `publish_item`), `generate_content` (charges credits, no trial-expiry check), `list_inbox`, `read_file`, `list_files`. 401 responses carry `WWW-Authenticate` pointing at the resource metadata. CORS is `*`.
+`POST /api/mcp` JSON-RPC. `initialize`, `ping`, `notifications/initialized`, `tools/list` answer without authentication (`mcp/route.ts:49-51`). Everything else needs `Authorization: Bearer nashr_...` resolved by `userFromBearer` (`mcp.ts:20`), which returns the raw user record: it does not check `suspended` and does not set `scope`, so MCP always acts on the default brand. Tools: `ask_noor` (full chat loop with all nine chat tools, including `publish_item`), `generate_content` (charges credits, no trial-expiry check), `list_inbox`, `read_file`, `list_files`, `get_brand_rules` (the active brand's tone, dialect, audience, products, offers, preferred words, channels and the enforced banned words as JSON; free), `check_brand` (`{text, type?}`, up to 20,000 characters, checked with the same `gateTask` as the approve button; returns `pass`, `violations` and a summary; internal types are not held; free, no model call). 401 responses carry `WWW-Authenticate` pointing at the resource metadata. CORS is `*`.
 
 ## 14. Founder console
 
@@ -210,6 +213,16 @@ See `architecture.md` 2.6 and 4(d). Details:
 ## 18. Waitlist
 
 `src/app/api/waitlist/route.ts`. `POST {email, company?, industry?, lang?}`: anonymous; dedupes on `waitlist:emails`; without Redis it only logs to the console and returns `stored:false`. `GET ?key=...[&format=csv]`: accepts only the query-string key compared with `!==` to `WAITLIST_ADMIN_KEY`; founder sessions and the admin cookie are not accepted here. No UI in `src/` posts to this route at present.
+
+## 19. Launch journey (milestones, levels, streak)
+
+Files: `src/lib/journey.ts` (pure: `computeJourney`, `levelFor`, `decisionStreak`; the browser imports it), `src/lib/journey-load.ts` (server: one parallel round), `src/components/app/JourneyCard.tsx`; shown on the inbox (`app/page.tsx`) and at the top of the chat thread until complete (`chat/page.tsx`).
+
+1. Seven milestones, each read from the workspace, never from a counter the interface keeps: `brand` (brand file exists), `guard` (at least one banned word), `approve` (an item approved by the owner, i.e. with `decidedAt`; auto-approved items do not count), `schedule` (any `scheduledFor`), `connect` (any connection), `publish` (any item with a live publish), `ai` (a personal MCP token or an OAuth grant).
+2. Levels by milestones done: seed 0, sapling 2, palm 4, oasis 7. Points per milestone sum to 150. Points and levels are cosmetic, are not credits and buy nothing; the card says so.
+3. Streak: consecutive UTC days, ending today or yesterday, with at least one owner decision (`decidedAt`).
+4. Celebration: the card compares the done set and level with `localStorage` key `nashr:journey:v1` and plays confetti and a toast once per new milestone (level change louder). First visit in a browser celebrates only `brand`. Storage failures are ignored. The inbox dispatches `nashr:milestone` after a successful approve, date or publish so the card updates before the next server render. Motion is disabled under `prefers-reduced-motion`.
+5. The owner can hide the card; the choice is kept in the same storage key.
 
 ## Revocation (2026-09-18)
 

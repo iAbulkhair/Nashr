@@ -11,6 +11,7 @@ import { generate } from "@/lib/noor";
 import { memoryBlock } from "@/lib/files";
 import { getGov } from "@/lib/governance";
 import { missingData } from "@/lib/cart-recovery";
+import { initialStatus } from "@/lib/brand-rules";
 import { ModelPaused, modelState } from "@/lib/model";
 
 export const maxDuration = 300;
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
   const lang = brand.languages[0] ?? "ar";
   const created: Task[] = [];
   for (const it of items) {
-    const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: gov.autoApprove[type] ? "approved" : "pending", createdAt: new Date().toISOString(), lang };
+    const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[type], brand, { type, title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang };
     await saveTask(sc(u), t, true);
     created.push(t);
   }

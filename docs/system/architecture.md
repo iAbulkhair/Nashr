@@ -60,6 +60,8 @@ Per-route authorization is in `permissions.md`.
 | `files.ts` | Workspace Markdown files ("memory"), `memoryBlock` for prompts. |
 | `conversations.ts` | Multiple chat threads per scope, substring search. |
 | `governance.ts` | Per-scope rules: auto-approve by type, weekly cap, learning, reviewer, dash stripping. |
+| `brand-rules.ts` | Import-free brand gate: banned words as rules (`brandRules`, `checkText`, `gateTask`, `initialStatus`), used by the approve and publish routes, auto-approval, the chat publish tool, the MCP `check_brand` tool, the golden evals and the inbox. |
+| `journey.ts` / `journey-load.ts` | Launch journey: milestones, levels and streak computed from workspace state (pure, browser-safe) and its one-round server loader. |
 | `schedule.ts` | Per-scope schedule flags, weekly plan run, daily brief, `allUsers()` fan-out. |
 | `notifications.ts` | In-app notifications per account, daily follow-ups with dedupe fingerprints. |
 | `lifecycle.ts` | Lifecycle emails (day 1, 2, 3, 10), once per user. |
