@@ -65,78 +65,259 @@
 .doodle .fine { stroke-width: 2px; }
 .doodle .gold { stroke: var(--gold); stroke-width: 3.5px; }
 
-/* ---------- Story (static in this task) ---------- */
+/* ---------- Story: one sticky stage, nine chapters (Story.tsx) ---------- */
 
+/*
+ * The section is nine screens of scroll; the stage stays pinned under the site nav while they pass. svh, not vh or
+ * dvh: a phone's toolbar showing or hiding must not resize the stage.
+ */
 .story {
+  /* The site nav (Nav.tsx: 36 px controls, 12 px padding above and below, 1 px border) is sticky above the stage. */
+  --nav-h: 61px;
+  --dir: 1;
+  /* How flat the storm ring lies: its vertical radius is this share of the horizontal one. */
+  --tilt: 0.55;
+  position: relative;
+  height: 900svh;
   font-family: var(--home-body);
-  overflow-x: clip;
-  padding: clamp(2.5rem, 6vw, 5rem) 16px clamp(3rem, 8vw, 6rem);
+}
+:global([dir="rtl"]) .story { --dir: -1; }
+
+/* Phones: the words on top, the owner and the agent side by side below. */
+.stage {
+  --wash: var(--ground);
+  position: sticky;
+  top: var(--nav-h);
+  height: calc(100svh - var(--nav-h));
+  display: grid;
+  grid-template:
+    "copy copy" auto
+    "owner agent" minmax(0, 1fr)
+    / minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(0.75rem, 2.5svh, 1.5rem) 12px;
+  padding: clamp(1rem, 3svh, 2.5rem) max(16px, (100% - 1200px) / 2) clamp(0.5rem, 2svh, 1.5rem);
+  overflow: hidden;
+  overflow: clip;
+  background-color: var(--wash);
+  transition: background-color 0.6s ease;
+}
+/* Each agent's colour world washes over the ground in its chapter. */
+.stage[data-world="noor"] { --wash: var(--c-noor); }
+.stage[data-world="sami"] { --wash: var(--c-sami); }
+.stage[data-world="razan"] { --wash: var(--c-razan); }
+.stage[data-world="faris"] { --wash: var(--c-faris); }
+.stage[data-world="dana"] { --wash: var(--c-dana); }
+.stage[data-world="majed"] { --wash: var(--c-majed); }
+.stage[data-world="layan"] { --wash: var(--c-layan); }
+/* Majed's world is the ink colour itself: a pearl halo keeps the drawings' outlines on it. */
+.stage[data-world="majed"] .stageArt {
+  filter: drop-shadow(0 0 1px var(--ground)) drop-shadow(0 0 1px var(--ground));
 }
 
-.hero {
-  max-width: 1200px;
-  margin-inline: auto;
-  display: grid;
-  gap: clamp(1.5rem, 4vw, 3rem);
-  align-items: center;
+/* Words: one layer at a time in the copy area. Text always sits on the ground colour, whatever the world. */
+.heroCopy,
+.finaleCopy,
+.agentCopy {
+  grid-area: copy;
+  align-self: start;
+  position: relative;
+  z-index: 1;
+  min-width: 0;
 }
-@media (min-width: 900px) {
-  .hero { grid-template-columns: 1.1fr 1fr; }
+.card {
+  padding: clamp(0.9rem, 2.5svh, 1.75rem) clamp(1rem, 2.5vw, 1.75rem);
+  border-radius: 22px;
+  background: var(--ground);
 }
 
 .line1 {
   font-family: var(--home-display);
-  font-size: clamp(2.6rem, 7vw, 5.5rem);
+  font-size: clamp(2.2rem, min(7vw, 8.5svh), 5.5rem);
   font-weight: 800;
   line-height: 1.12;
 }
 .line2 {
-  margin-top: 1.25rem;
+  margin-top: clamp(0.5rem, 2svh, 1.25rem);
   max-width: 30ch;
-  font-size: clamp(1.15rem, 2.2vw, 1.6rem);
+  font-size: clamp(1.05rem, min(2.2vw, 3svh), 1.6rem);
   line-height: 1.6;
 }
+.scrollCue {
+  margin-top: clamp(0.75rem, 3svh, 2rem);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.scrollCue::after {
+  content: "↓";
+  display: inline-block;
+  margin-inline-start: 0.4em;
+  animation: nudge 1.6s ease-in-out infinite;
+}
+@keyframes nudge {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 0.25em; }
+}
 
-.owner {
+.storyValue {
+  font-family: var(--home-display);
+  font-size: clamp(1.35rem, min(3vw, 4.5svh), 2.75rem);
+  font-weight: 800;
+  line-height: 1.3;
+}
+.storyName {
+  margin-top: 0.4rem;
+  font-size: clamp(0.95rem, 1.4vw, 1.15rem);
+  font-weight: 700;
+  opacity: 0.8;
+}
+.finaleLine {
+  font-size: clamp(1.15rem, min(2.4vw, 3.5svh), 1.75rem);
+  font-weight: 700;
+  line-height: 1.5;
+}
+.finaleCopy .start { margin-top: clamp(0.75rem, 2.5svh, 1.5rem); }
+
+/* The two figures stand on the same line: what is above the head, then the drawing. */
+.owner,
+.agent {
   position: relative;
-  display: grid;
-  justify-items: center;
-  padding-top: clamp(170px, 22vw, 230px);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  min-width: 0;
+  min-height: 0;
 }
-.ownerFigure {
-  width: clamp(140px, 17vw, 200px);
+.owner {
+  grid-area: owner;
+  transition: translate 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
+/* On phones the owner stands alone, centred, until the first agent arrives and after the last one leaves. */
+.story[data-chapter="0"] .owner,
+.story[data-chapter="8"] .owner {
+  translate: calc(var(--dir) * (50% + 6px)) 0;
+}
+.agent { grid-area: agent; }
+.above {
+  position: relative;
+  flex: 0 0 auto;
+  width: 100%;
+  height: min(30%, 240px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 0.5rem;
+}
+.stageArt {
+  flex: 0 1 auto;
+  height: min(66%, 460px);
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.stageArt .doodle {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+}
+.agent .qflip { position: relative; z-index: 2; font-size: clamp(0.78rem, 1.1vw, 0.95rem); text-align: center; }
+
+/*
+ * Desktops and landscape screens: owner, agent, words, in the reading direction. The middle column is left to the
+ * storm in the hero and the finale, so the ring never runs under the words.
+ */
+@media (min-width: 900px), (orientation: landscape) and (min-width: 600px) {
+  .stage {
+    grid-template: "owner agent copy" minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 0.85fr) minmax(0, 1.3fr);
+    column-gap: clamp(16px, 3vw, 48px);
+  }
+  .story { --tilt: 0.4; }
+  .story[data-chapter] .owner { translate: none; }
+  .heroCopy,
+  .finaleCopy,
+  .agentCopy { align-self: center; }
+}
+
+/*
+ * Layers enter and leave; hidden ones are out of the accessibility tree and the tab order. The hero only fades: it holds
+ * the page's one h1, which stays readable to assistive technology wherever the story is.
+ */
+.heroCopy,
+.finaleCopy,
+.finaleWord,
+.agentCopy,
+.agent {
+  transition:
+    opacity 0.45s ease,
+    translate 0.6s cubic-bezier(0.2, 0.7, 0.2, 1),
+    scale 0.6s cubic-bezier(0.2, 0.7, 0.2, 1),
+    visibility 0s;
+}
+.finaleCopy:not([data-on]),
+.finaleWord:not([data-on]),
+.agentCopy:not([data-phase="on"]),
+.agent:not([data-phase="on"]) {
+  opacity: 0;
+  visibility: hidden;
+  transition-delay: 0s, 0s, 0s, 0.6s;
+}
+.heroCopy:not([data-on]) {
+  opacity: 0;
+  translate: 0 -1.5rem;
+  pointer-events: none;
+}
+.finaleCopy:not([data-on]) { translate: 0 1.5rem; }
+.finaleWord:not([data-on]) { scale: 0.6; }
+/* The next agent waits off to the far side and steps in; the one before steps back. */
+.agentCopy[data-phase="next"] { translate: 0 1.25rem; }
+.agent[data-phase="next"] { translate: calc(var(--dir) * 3rem) 0; }
+.agentCopy[data-phase="past"],
+.agent[data-phase="past"] { scale: 0.92; }
+
+/* ---------- The storm above the owner's head ---------- */
 
 .storm {
   position: absolute;
-  inset-inline: 0;
-  top: clamp(16px, 3vw, 40px);
-  height: clamp(170px, 22vw, 230px);
+  inset: 0;
   container-type: inline-size;
   pointer-events: none;
   /* The orbit plane, tilted: circles become ellipses. Each question's text is scaled back up, so it stays upright. */
-  transform: scaleY(0.4);
+  transform: scaleY(var(--tilt));
 }
 
 /*
  * Each question circles the owner's head at a steady speed. `--i` sets its ring (radius), its speed and where on the
- * ring it starts (golden-ratio spacing, so the ring stays evenly filled); every other one turns the other way.
+ * ring it starts (golden-ratio spacing, so the ring stays evenly filled); every other one turns the other way. Once its
+ * agent's chapter comes, it travels across to the agent (`--fly`, one column over) and fades; scrolling back brings it
+ * home.
  */
 .stormQ {
   --d: calc(8s + var(--i) * 0.3s);
-  --r: calc(9cqi + var(--i) * 0.8cqi);
+  --r: calc(10cqi + var(--i) * 1.05cqi);
   --phase: calc(var(--d) * var(--i) * -0.382);
+  --fly: 0px;
   position: absolute;
   left: 50%;
-  top: 50%;
-  width: 0;
-  height: 0;
+  top: 60%;
+  translate: calc(-50% + var(--fly)) -50%;
   animation: orbit var(--d) linear var(--phase) infinite;
+  transition:
+    translate 0.8s cubic-bezier(0.3, 0.6, 0.2, 1),
+    opacity 0.3s ease,
+    visibility 0s;
+}
+.stormQ[data-taken] {
+  --fly: calc(var(--dir) * 105cqi);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    translate 0.9s cubic-bezier(0.5, 0, 0.3, 1),
+    opacity 0.35s ease 0.55s,
+    visibility 0s 0.9s;
 }
 .stormText {
-  position: absolute;
-  left: 0;
-  top: 0;
+  display: block;
   padding: 0.1em 0.55em;
   border-radius: 999px;
   background: var(--ground);
@@ -144,8 +325,7 @@
   font-weight: 500;
   line-height: 1.5;
   white-space: nowrap;
-  transform-origin: 0 0;
-  transform: scaleY(2.5) translate(-50%, -50%);
+  transform: scaleY(calc(1 / var(--tilt)));
   animation: depth var(--d) linear var(--phase) infinite;
 }
 .stormQ:nth-child(odd),
@@ -163,25 +343,39 @@
   75% { opacity: 0.35; scale: 0.82; }
 }
 
-.finale {
-  max-width: 1200px;
-  margin: clamp(3rem, 8vw, 6rem) auto 0;
-}
+/* The finale: one word stays above the owner's head, where the storm was. */
 .finaleWord {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0.75rem;
+  display: flex;
+  justify-content: center;
   font-family: var(--home-display);
-  font-size: clamp(3rem, 10vw, 7rem);
+  font-size: clamp(2.25rem, min(8vw, 9svh), 5.5rem);
   font-weight: 800;
   line-height: 1.1;
-}
-.finaleLine {
-  margin-top: 0.75rem;
-  font-size: clamp(1.1rem, 2vw, 1.5rem);
-  line-height: 1.6;
+  white-space: nowrap;
 }
 
+/*
+ * Reduced motion: no orbit, nothing travels or steps in, no nudge. The storm is one still question, the first one
+ * still on the owner's head (`data-lead`); the chapters still change as you scroll.
+ */
 @media (prefers-reduced-motion: reduce) {
-  .stormQ, .stormText { animation: none; }
-  .stormQ:not(:first-child) { display: none; }
+  .stormQ, .stormText, .scrollCue::after { animation: none; }
+  .stormQ:not([data-lead]) { display: none; }
+  .stormQ, .owner { transition: none; }
+  .heroCopy:not([data-on]),
+  .finaleCopy:not([data-on]),
+  .finaleWord:not([data-on]),
+  .agentCopy[data-phase],
+  .agent[data-phase] { translate: none; scale: none; }
+}
+
+/* Without JavaScript nothing can turn the chapters: the story is just the hero. */
+@media (scripting: none) {
+  .story { height: auto; }
+  .stage { position: relative; top: 0; }
 }
 
 /* ---------- Start form (plain GET, works without JavaScript) ---------- */

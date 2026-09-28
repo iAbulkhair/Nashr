@@ -1,44 +1,128 @@
-import type { CSSProperties } from "react";
-import { AGENT_CAST, HOME, SLOGAN, STORM } from "@/lib/home";
-import type { AgentId } from "@/lib/agents";
+"use client";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { AGENT_CAST, HOME, SLOGAN } from "@/lib/home";
 import type { Lang } from "@/lib/i18n";
 import Doodle from "./Doodle";
+import QuestionFlip from "./QuestionFlip";
 import StartForm from "./StartForm";
 import styles from "./home.module.css";
 
-/** Which agent takes each storm question off the owner's head. STORM is every agent's questions in cast order. */
-const STORM_AGENTS: AgentId[] = STORM.map((q) => AGENT_CAST.find((a) => a.questions.includes(q))!.id);
+/** Chapter 0 is the hero, 1–7 the agents in cast order, 8 the finale. */
+const FINALE = AGENT_CAST.length + 1;
+const CHAPTERS = FINALE + 1;
 
 /**
- * The story: the owner with every question spinning above their head, then the finale. Static in this version; the
- * scroll choreography comes later. The storm is decorative (`aria-hidden`); each figure in the lineup exposes its
- * questions as text.
+ * Every question in the storm with the agent who takes it and the chapter where that happens. Built from the cast
+ * itself, in the same order as `STORM`, so a question can never lose its agent.
+ */
+const STORM_CAST = AGENT_CAST.flatMap((agent, k) => agent.questions.map((q) => ({ q, agent: agent.id, chapter: k + 1 })));
+
+type Phase = "next" | "on" | "past";
+const phase = (k: number, chapter: number): Phase => (k === chapter ? "on" : k > chapter ? "next" : "past");
+
+/**
+ * The story, told on one sticky stage while the section scrolls past it. The owner stands on one side with every
+ * question spinning above their head; each chapter an agent steps in on the other side, the stage takes on its colour,
+ * and its questions leave the owner's head for it. The finale leaves one word above the owner and the start form.
+ *
+ * GSAP's ScrollTrigger only maps the scroll position to a chapter; everything that moves is CSS keyed on that chapter,
+ * so scrolling back up plays it all in reverse and every question returns. Under reduced motion there is no orbit and
+ * nothing travels, but the chapters still step. Without JavaScript the section collapses to the hero (see the CSS).
+ * The storm is decorative (`aria-hidden`); the lineup below exposes every agent as text.
  */
 export default function Story({ lang }: { lang: Lang }) {
+  const section = useRef<HTMLElement>(null);
+  const shown = useRef(0);
+  const [chapter, setChapter] = useState(0);
+
+  useEffect(() => {
+    const el = section.current;
+    if (!el) return;
+    gsap.registerPlugin(ScrollTrigger);
+    // The stage is sized in svh, so a phone's toolbar showing or hiding changes nothing worth a refresh.
+    ScrollTrigger.config({ ignoreMobileResize: true });
+    const show = (progress: number) => {
+      const next = Math.min(FINALE, Math.floor(progress * CHAPTERS));
+      if (next === shown.current) return;
+      shown.current = next;
+      setChapter(next);
+    };
+    const trigger = ScrollTrigger.create({
+      trigger: el,
+      start: "top top",
+      end: "bottom bottom",
+      onUpdate: (self) => show(self.progress),
+      // Also on the first measurement, for a page that loads already scrolled into the story.
+      onRefresh: (self) => show(self.progress),
+    });
+    return () => trigger.kill();
+  }, []);
+
+  const agent = chapter >= 1 && chapter < FINALE ? AGENT_CAST[chapter - 1] : undefined;
+  // Under reduced motion the storm is a single question: the first one still on the owner's head.
+  const lead = STORM_CAST.findIndex((s) => s.chapter > chapter);
+
   return (
-    <section className={styles.story} data-testid="story">
-      <div className={styles.hero}>
-        <div>
+    <section ref={section} className={styles.story} data-testid="story" data-chapter={chapter}>
+      <div className={styles.stage} data-world={agent?.id}>
+        <div className={styles.heroCopy} data-on={chapter === 0 || undefined}>
           <h1 className={styles.line1}>{SLOGAN.line1[lang]}</h1>
           <p className={styles.line2}>{SLOGAN.line2[lang]}</p>
+          <p className={styles.scrollCue} aria-hidden="true">
+            {HOME.scroll[lang]}
+          </p>
         </div>
-        <div className={styles.owner}>
-          <div className={styles.storm} data-testid="storm" aria-hidden="true">
-            {STORM.map((q, i) => (
-              <span key={i} className={styles.stormQ} data-storm-q={i} data-agent={STORM_AGENTS[i]} style={{ "--i": i } as CSSProperties}>
-                <span className={styles.stormText}>{q[lang]}</span>
-              </span>
-            ))}
+
+        {AGENT_CAST.map((a, i) => (
+          <div key={a.id} className={`${styles.card} ${styles.agentCopy}`} data-phase={phase(i + 1, chapter)}>
+            <p className={styles.storyValue}>{a.value[lang]}</p>
+            <p className={styles.storyName}>{a.name[lang]}</p>
           </div>
-          <div className={styles.ownerFigure}>
+        ))}
+
+        <div className={`${styles.card} ${styles.finaleCopy}`} data-on={chapter === FINALE || undefined}>
+          <p className={styles.finaleLine}>{HOME.finaleLine[lang]}</p>
+          <StartForm lang={lang} />
+        </div>
+
+        <div className={styles.owner}>
+          <div className={styles.above}>
+            <div className={styles.storm} data-testid="storm" aria-hidden="true">
+              {STORM_CAST.map((s, i) => (
+                <span
+                  key={i}
+                  className={styles.stormQ}
+                  data-storm-q={i}
+                  data-agent={s.agent}
+                  data-taken={chapter >= s.chapter || undefined}
+                  data-lead={i === lead || undefined}
+                  style={{ "--i": i } as CSSProperties}
+                >
+                  <span className={styles.stormText}>{s.q[lang]}</span>
+                </span>
+              ))}
+            </div>
+            <p className={styles.finaleWord} data-on={chapter === FINALE || undefined}>
+              {HOME.finaleWord[lang]}
+            </p>
+          </div>
+          <div className={styles.stageArt}>
             <Doodle who="you" />
           </div>
         </div>
-      </div>
-      <div className={styles.finale}>
-        <p className={styles.finaleWord}>{HOME.finaleWord[lang]}</p>
-        <p className={styles.finaleLine}>{HOME.finaleLine[lang]}</p>
-        <StartForm lang={lang} />
+
+        {AGENT_CAST.map((a, i) => (
+          <div key={a.id} className={styles.agent} data-phase={phase(i + 1, chapter)} aria-hidden="true">
+            <div className={styles.above}>
+              <QuestionFlip items={a.questions} lang={lang} paused={chapter !== i + 1} />
+            </div>
+            <div className={styles.stageArt}>
+              <Doodle who={a.id} />
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );

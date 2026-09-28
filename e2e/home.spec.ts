@@ -76,3 +76,32 @@ test.describe("home without JavaScript", () => {
     await expect(page).toHaveURL(/\/ar\/app\/signup\?url=example\.sa/);
   });
 });
+
+test("the story walks the chapters and gives the questions back on the way up", async ({ page }) => {
+  await open(page, "/ar");
+  const story = page.getByTestId("story");
+  const scrollTo = (f: number) => page.evaluate((f) => {
+    const s = document.querySelector('[data-testid="story"]') as HTMLElement;
+    window.scrollTo(0, s.offsetTop + (s.offsetHeight - window.innerHeight) * f);
+  }, f);
+  await scrollTo(0.5);
+  await expect(story).toHaveAttribute("data-chapter", /^[3-5]$/);
+  await scrollTo(1);
+  await expect(story).toHaveAttribute("data-chapter", "8");
+  await expect(story.getByText("موافق.")).toBeVisible();
+  await scrollTo(0);
+  await expect(story).toHaveAttribute("data-chapter", "0");
+  await expect(story.locator("[data-storm-q]:not([data-taken])")).toHaveCount(36);
+});
+
+test.describe("home with reduced motion", () => {
+  test.use({ reducedMotion: "reduce" });
+  test("shows no storm and keeps every question still", async ({ page }) => {
+    await open(page, "/en");
+    await expect(page.getByTestId("storm").locator("[data-storm-q]:visible")).toHaveCount(1);
+    const q = page.getByTestId("qflip").first();
+    const before = await q.textContent();
+    await page.waitForTimeout(3000);
+    expect(await q.textContent()).toBe(before);
+  });
+});
