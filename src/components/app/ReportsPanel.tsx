@@ -11,6 +11,8 @@ import type { AgentMetrics } from "@/lib/evals";
 import type { Lang } from "@/lib/i18n";
 import { kpiDelta } from "@/lib/kpi-delta";
 import { READS_METRICS } from "@/lib/connectors/working";
+import type { SalesSnapshot } from "@/lib/connectors/salla";
+import { dateFormat } from "@/lib/dates";
 
 type Item = { id: string; type: TaskType; title: string; status: string; createdAt: string };
 
@@ -23,7 +25,7 @@ const SOURCES: { key: string; provs: string[] }[] = [
   { key: "analytics", provs: ["google"] }, { key: "ads", provs: ["meta", "snapchat", "tiktok", "google"] }, { key: "store", provs: ["shopify", "salla", "zid", "woocommerce"] }, { key: "social", provs: ["instagram", "tiktok", "snapchat", "x", "linkedin"] },
 ];
 
-export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [] }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[] }) {
+export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null }) {
   const r = useRouter();
   const R = t.reports;
   const [busy, setBusy] = useState<TaskType | null>(null);
@@ -96,6 +98,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
         <form action={`/${lang}/app/reports`} className="flex items-center gap-1 text-xs"><input type="hidden" name="range" value="custom" /><input type="date" name="from" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><input type="date" name="to" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><button className={`rounded-full px-3 py-1 ${range === "custom" ? "bg-ink text-salt" : "border border-ink/15 text-ink/60"}`}>{R.ranges.custom}</button></form>
       </div>
       <p className="mt-2 font-mono text-xs text-ink/50" dir="ltr">{k.window.from} → {k.window.to}</p>
+      {connected.includes("salla") && <StoreSales R={R.store} store={store} lang={lang} />}
 
       <h2 className="mt-8 font-display text-xl font-bold">{R.metricsTitle}</h2>
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -234,6 +237,53 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
           </ul>
         )}
       </section>
+    </div>
+  );
+}
+
+const grouped = (v: number) => { const [i, f] = String(v).split("."); return i.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (f ? `.${f}` : ""); };
+const moneyText = (r: Record<string, number>) => Object.entries(r).map(([cur, v]) => `${grouped(v)} ${cur}`).join(" + ") || "0";
+
+/** Salla orders and abandoned carts, as totals from the last sync. The numbers are the store's, never estimated. */
+function StoreSales({ R, store, lang }: { R: AppDict["reports"]["store"]; store: SalesSnapshot | null; lang: Lang }) {
+  const r = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  async function sync() {
+    setBusy(true); setErr("");
+    const res = await fetch("/api/connect/salla", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync_sales" }) });
+    const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    setBusy(false);
+    if (j.ok) r.refresh(); else setErr(j.error ?? `HTTP ${res.status}`);
+  }
+  const fill = (s: string, v: Record<string, number>) => s.replace(/\{(\w+)\}/g, (_, k) => String(v[k] ?? ""));
+  return (
+    <div className="card mt-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-display text-xl font-bold">{R.title}</h2>
+        <button onClick={sync} disabled={busy} className="btn btn-secondary btn-xs">{busy ? R.syncing : R.sync}</button>
+      </div>
+      {!store ? <p className="mt-3 text-sm text-ink/60">{R.never}</p> : (
+        <>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[[R.orders, String(store.orders.count)], [R.revenue, moneyText(store.orders.revenue)], [R.carts, String(store.carts.count)], [R.cartValue, moneyText(store.carts.value)]].map(([label, v]) => (
+              <div key={label} className="card card-sm"><p className="text-xs text-ink/60">{label}</p><p className="mt-1 font-display text-2xl font-bold text-oasis" dir="ltr">{v}</p></div>
+            ))}
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {[[R.top, store.orders.top], [R.topCarts, store.carts.top]].map(([label, rows]) => (rows as { name: string; qty: number }[]).length > 0 && (
+              <div key={label as string}><p className="text-xs font-semibold text-ink/60">{label as string}</p><ul className="mt-1 text-sm">{(rows as { name: string; qty: number }[]).slice(0, 5).map((t) => <li key={t.name} className="flex justify-between gap-2"><span dir="auto">{t.name}</span><span className="font-mono" dir="ltr">{t.qty}</span></li>)}</ul></div>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-ink/50">
+            {R.asOf}: <span dir="ltr" suppressHydrationWarning>{dateFormat(lang, { dateStyle: "medium", timeStyle: "short" }).format(new Date(store.at))} UTC</span>
+            {store.orders.read < store.orders.count && <> · {fill(R.partial, { read: store.orders.read, count: store.orders.count })}</>}
+            {store.unread > 0 && <> · {fill(R.unread, { n: store.unread })}</>}
+          </p>
+          <p className="mt-1 text-xs text-ink/40">{R.note}</p>
+        </>
+      )}
+      {err && <p className="mt-2 text-xs text-sadu" dir="auto">{err}</p>}
     </div>
   );
 }
