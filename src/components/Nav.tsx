@@ -43,7 +43,8 @@ export default function Nav({ t, lang }: { t: Dict; lang: Lang }) {
         <nav className="hidden items-center gap-5 text-sm lg:flex" aria-label="Main">
           {/* The Agents tab leads to Noor: she is the front door to the team. */}
           <Drop label={m.agents} href={`/${lang}/agents/noor`} items={agents} />
-          <Drop label={m.industries} href={`/${lang}#industries`} items={industries} />
+          {/* The homepage has no industries section; the tab leads to who Nashr is built for, the items to each sector. */}
+          <Drop label={m.industries} href={`/${lang}/customers`} items={industries} />
           {flat.slice(0, 2).map((l) => <Link key={l.href} href={l.href} className="text-mist-dim transition hover:text-mist">{l.label}</Link>)}
           <Drop label={m.resources} href={`/${lang}/resources`} items={resources} />
           <Link href={flat[2].href} className="text-mist-dim transition hover:text-mist">{flat[2].label}</Link>

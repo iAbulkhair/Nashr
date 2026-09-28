@@ -247,32 +247,44 @@
   overscroll-behavior-x: contain;
   padding-block: 0.5rem 1rem;
 }
+/*
+ * One column per cast member (`--n`, set by Lineup). A column never gets narrower than `--cell-min`: when the row
+ * does not fit, the strip scrolls sideways inside its own box instead of squeezing the figures. The four rows (question,
+ * drawing, value, name) are shared through subgrid, so every drawing stands on the same line.
+ */
 .row {
-  display: flex;
-  gap: clamp(8px, 1.4vw, 20px);
-  max-width: 1320px;
+  --cell-min: 132px;
+  --gap: clamp(8px, 1.4vw, 20px);
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-rows: repeat(4, auto);
+  column-gap: var(--gap);
+  row-gap: 0.75rem;
+  width: max(min(100%, 1320px), calc(var(--n, 8) * var(--cell-min) + (var(--n, 8) - 1) * var(--gap) + 32px));
   margin: 0 auto;
   padding: 0 16px;
   list-style: none;
 }
 .cell {
-  flex: 1 1 0;
+  display: grid;
+  grid-row: 1 / span 4;
+  grid-template-rows: subgrid;
   min-width: 0;
-  display: flex;
 }
 @media (max-width: 759px) {
   .strip { scroll-snap-type: x mandatory; }
-  .row { width: max-content; max-width: none; }
-  .cell { flex: 0 0 min(42vw, 200px); scroll-snap-align: start; }
+  .row { --cell-min: min(42vw, 200px); }
+  .cell { scroll-snap-align: start; }
 }
 
 .figure {
   position: relative;
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.75rem;
+  display: grid;
+  grid-row: 1 / span 4;
+  grid-template-rows: subgrid;
+  justify-items: center;
   margin: 0;
   padding: 0.75rem 0.25rem 1rem;
   border: 0;
@@ -285,14 +297,24 @@
 }
 .figure:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
 
+/*
+ * The question slot is as tall as this figure's longest question: invisible copies of all of them sit in the same cell
+ * as the one showing. Nothing is clipped at any width, and nothing moves when a question flips.
+ */
 .qslot {
-  height: 4.8em;
   width: 100%;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
+  display: grid;
+  align-items: end;
+  justify-items: center;
   font-size: 0.75rem;
 }
+.qslot > * { grid-area: 1 / 1; }
+.qsizer {
+  display: grid;
+  visibility: hidden;
+  line-height: 1.4;
+}
+.qsizer > * { grid-area: 1 / 1; animation: none; }
 .figureArt { width: min(100%, 150px); }
 .value {
   font-family: var(--home-display);

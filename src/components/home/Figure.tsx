@@ -19,7 +19,20 @@ export default function Figure({ member, lang, index }: { member: CastMember; la
   const described = first ? `figure-q-${member.id}` : undefined;
   return (
     <button type="button" className={styles.figure} data-testid="figure" data-cast={member.id} aria-label={`${name} — ${value}`} aria-describedby={described}>
-      <span className={styles.qslot}>{member.questions.length > 0 && <QuestionFlip items={member.questions} lang={lang} delayMs={index * STAGGER_MS} />}</span>
+      <span className={styles.qslot}>
+        {member.questions.length > 0 && (
+          <>
+            <span className={styles.qsizer} aria-hidden="true">
+              {member.questions.map((q) => (
+                <span key={q.en} className={styles.qflipItem}>
+                  {q[lang]}
+                </span>
+              ))}
+            </span>
+            <QuestionFlip items={member.questions} lang={lang} delayMs={index * STAGGER_MS} />
+          </>
+        )}
+      </span>
       <span className={styles.figureArt}>
         <Doodle who={member.id} />
       </span>

@@ -1,4 +1,5 @@
 import { test, expect, open, LANGS } from "./fixtures/app";
+import { CAST } from "../src/lib/home";
 
 for (const lang of LANGS) {
   test.describe(`home · ${lang}`, () => {
@@ -19,8 +20,49 @@ for (const lang of LANGS) {
       await open(page, `/${lang}`);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     });
+    test("the Industries tab leads to a page that exists", async ({ page }) => {
+      await open(page, `/${lang}`);
+      const industries = page.locator('nav[aria-label="Main"] a[aria-haspopup]', { hasText: lang === "ar" ? "القطاعات" : "Industries" });
+      await expect(industries).toHaveAttribute("href", `/${lang}/customers`);
+      await expect(page.locator('a[href$="#industries"]')).toHaveCount(0);
+    });
   });
 }
+
+test.describe("home on a tablet", () => {
+  test.use({ viewport: { width: 768, height: 1024 }, reducedMotion: "reduce" });
+  for (const lang of LANGS) {
+    test(`every question fits above its figure · ${lang}`, async ({ page }) => {
+      await open(page, `/${lang}`);
+      const lineup = page.getByTestId("lineup");
+      await expect(lineup.getByTestId("qflip")).toHaveCount(CAST.filter((m) => m.questions.length > 0).length);
+      // Put each question in turn into the bubble on screen; it must stay inside its slot and below the strip's top
+      // edge, which clips anything above it.
+      const clipped = await lineup.evaluate(
+        (section, { cast, lang }) => {
+          const strip = section.querySelector("ul")!.parentElement!.getBoundingClientRect();
+          const out: string[] = [];
+          for (const m of cast) {
+            const flip = section.querySelector(`[data-testid="figure"][data-cast="${m.id}"] [data-testid="qflip"]`);
+            if (!flip) continue;
+            const bubble = flip.firstElementChild as HTMLElement;
+            const shown = bubble.textContent;
+            for (const q of m.questions) {
+              bubble.textContent = q[lang];
+              const b = bubble.getBoundingClientRect();
+              const slot = flip.parentElement!.getBoundingClientRect();
+              if (b.top < slot.top - 0.5 || b.bottom > slot.bottom + 0.5 || b.top < strip.top - 0.5) out.push(`${m.id}: ${q[lang]}`);
+            }
+            bubble.textContent = shown;
+          }
+          return out;
+        },
+        { cast: CAST, lang },
+      );
+      expect(clipped).toEqual([]);
+    });
+  }
+});
 
 test.describe("home without JavaScript", () => {
   test.use({ javaScriptEnabled: false });
