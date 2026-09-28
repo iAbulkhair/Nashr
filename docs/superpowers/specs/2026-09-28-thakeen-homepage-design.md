@@ -1,12 +1,12 @@
 # Thakeen homepage: design spec
 
-Date: 2026-09-28 · Status: awaiting founder review · Branch: `claude/nahr-opus-homepage-a8cf3d`
+Date: 2026-09-28 · Status: approved by the founder on 2026-09-28 (decisions in §10) · Branch: `claude/nahr-opus-homepage-a8cf3d`
 
 ## 1. Goal
 
 Replace the current homepage (`src/app/[lang]/page.tsx`) with an interactive, emotional experience that makes a Gulf business owner feel one thing: the questions that spin in my head every day now have a team that solves them. The visitor must leave remembering the **value** each agent brings, then the agent's **name**, then the **questions** they take off the owner's head.
 
-"Nashr" stays the code name (repo, Redis keys, env vars, docs). The public name is **Thakeen · ذكين** (alternative spelling Zakeen · زكين, founder to choose, see §10). The page never names the underlying AI model.
+"Nashr" stays the code name (repo, Redis keys, env vars, docs). The public name is **Thakeen · ذكين** (decided 2026-09-28; Zakeen was dropped). The page never names the underlying AI model.
 
 ## 2. Approved line
 
@@ -21,8 +21,8 @@ References chosen by the founder and what we take from each (structure and mecha
 
 | Reference | What we take |
 |---|---|
-| becaneparis.com | Real people standing full-body in a row on a clean ground; personality from posture and styling; a figure comes alive on hover. |
-| dontlookup.app | A living crowd: figures shift, wander a step, talk in small speech bubbles; wit instead of explanation; the page is playable. |
+| becaneparis.com | Figures standing full-body in a row on a clean light ground; personality from posture and styling; a figure comes alive on hover. We draw them instead of photographing them. |
+| dontlookup.app | A living crowd of hand-drawn characters: figures shift, wander a step, talk in small speech bubbles; wit instead of explanation; the page is playable. |
 | benxrun.com | Chapters named by meaning, not departments (we use the owner's questions instead of verbs). |
 | thejacketcirclegame.maxmara.com | A "dictionary" of words the visitor picks from, a stepped game with a visible counter (0/5). |
 
@@ -44,6 +44,8 @@ References chosen by the founder and what we take from each (structure and mecha
 
 Colour never carries meaning alone: every state also has text.
 
+**Ground:** light pearl (proposal `#f7f3f9`) with plum `#2b193d` for ink and type; each agent's colour washes over the ground during its chapter.
+
 ## 4. Page structure (top to bottom)
 
 1. **Nav**: wordmark ذكين, language switch, "ابدأ · Start".
@@ -53,7 +55,7 @@ Colour never carries meaning alone: every state also has text.
 5. **What's true today**: four facts (starts from your website; everything waits for your yes; weekly plan Sunday morning and a brief daily at 08:00; Arabic first, Gulf seasons and channels).
 6. **Pricing, FAQ, Footer**: existing components (`Pricing`, `Faq`, `Footer`), restyled to the new tokens in a later pass.
 
-Removed from the homepage (components stay in the codebase for other pages or deletion later): `Agents`, `Highlights`, `Teammate`, `OldWay`, `Runs`, `Deliverables`, `Pillars`, `Industries`, `Integrations`, `Calendar`, `Cta`. Founder confirms in review (§10).
+Removed from the homepage (components stay in the codebase for other pages or deletion later): `Agents`, `Highlights`, `Teammate`, `OldWay`, `Runs`, `Deliverables`, `Pillars`, `Industries`, `Integrations`, `Calendar`, `Cta`. Confirmed by the founder on 2026-09-28. Components no other page imports are deleted in the build; the rest stay.
 
 ## 5. Copy
 
@@ -176,13 +178,14 @@ Steps 6–7 are previews on purpose: analysis and measurement need real time and
 
 ## 7. Production and technical design
 
-### 7.1 Figures (the people)
+### 7.1 Figures (illustrated characters)
 
-- **Recommended: a real photoshoot.** Eight people (seven agents plus the owner), full body on a seamless background. Per person: a still turnaround of 8 angles plus three short loops (idle weight shift, turn to camera, one signature gesture). Styling is modern Gulf, one accent per agent in its colour world. Casting follows the names: Noor, Razan, Dana, Layan women; Sami, Faris, Majed men; the owner neutral. Wardrobe and casting are the founder's call.
-- Delivery: transparent video loops, WebM VP9 with alpha plus HEVC with alpha for Safari, at most about 600 KB per loop, with an AVIF poster frame.
-- Development uses placeholder figures (flat silhouettes in the agent colours) so the build does not wait for the shoot.
-- **Disclosure:** the lineup carries a small, permanent label «وكلاء ذكاء اصطناعي · AI agents», so nobody reads the figures as human staff.
-- AI-generated people are the fallback only, not the plan: consistent identity across 24 loops is unreliable and uncanny faces would undo the emotion.
+- **Style (decided 2026-09-28): hand-drawn cartoon, doodle / illustration.** Eight characters (seven agents plus the owner), full body, standing. Art direction: one confident ink line in plum on the light ground, flat fills in each agent's colour, no gradients or 3D, faces drawn with a few strokes (eyes, brows) so expression carries the personality. Adult and editorial rather than childish: think New Yorker or Max Mara sketch energy, with the liveliness of Don't Look Up.
+- Styling is modern Gulf, drawn not caricatured. Characters follow the names: Noor, Razan, Dana, Layan women; Sami, Faris, Majed men; the owner neutral. Each has one signature prop that says its job at a glance, for example Noor's phone on a small ring light, Razan's reading glasses and pocket calculator, Faris's scarf mid-stride, Dana's pearl and clipboard, Majed's bisht, Layan's headphones, Sami's phone to his ear.
+- **Delivery:** layered SVG per character with named groups for head, eyes, brows, arms, prop and body, so the code can animate them (blink, glance at the cursor, turn, gesture). Poses per character: stand, turn to camera, one signature gesture, and talking (for the banter). Optional later: Rive files if we want richer animation.
+- **Who draws:** a commissioned illustrator, briefed from this spec. Style frames first (two characters), approved by the founder, then the full cast.
+- Development uses simple placeholder doodles in the same line style so the build does not wait for the final art.
+- **Disclosure:** the lineup carries a small, permanent label «وكلاء ذكاء اصطناعي · AI agents».
 
 ### 7.2 Typography
 
@@ -192,11 +195,11 @@ Steps 6–7 are previews on purpose: analysis and measurement need real time and
 
 ### 7.3 Motion and interaction
 
-- **Engine:** GSAP with ScrollTrigger (standard licence, free) for the scroll choreography; DOM and CSS for text; `<video>` for the figures. three.js is not needed for v1; revisit only if the question storm cannot reach the look in DOM.
+- **Engine:** GSAP with ScrollTrigger (standard licence, free) for the scroll choreography; DOM and CSS for text; inline SVG for the characters, animated by GSAP (blink, glance, breathing, gesture). three.js is not needed for v1.
 - **Question storm (hero):** up to 36 questions orbit and flip above the owner's head, overlapping and fast. On scroll, each agent's set peels off and flies to its head.
 - **Rotating questions per agent:** one visible at a time, flipping every 2.4 s, staggered across agents so they never flip together; paused on hover or focus.
-- **Life:** idle loops play; every 6–10 s one banter exchange from §5.3 plays in bubbles; a figure turns to the cursor on hover.
-- **Reduced motion:** no storm, no flipping (the first question shows), no wandering, loops replaced by poster frames; scroll still steps chapter by chapter.
+- **Life:** characters breathe and blink; every 6–10 s one banter exchange from §5.3 plays in bubbles; eyes follow the cursor; a character turns to camera on hover.
+- **Reduced motion:** no storm, no flipping (the first question shows), no wandering or breathing, static poses; scroll still steps chapter by chapter.
 
 ### 7.4 Integration with the app
 
@@ -208,8 +211,8 @@ Steps 6–7 are previews on purpose: analysis and measurement need real time and
 
 ### 7.5 Budgets
 
-- LCP under 2.5 s on a mid-range phone over 4G; the first paint shows the slogan and poster frames without waiting for video.
-- Added JavaScript under 90 KB gzipped; videos lazy-load per chapter; initial transfer under 1.5 MB.
+- LCP under 2.5 s on a mid-range phone over 4G; the first paint shows the slogan and the owner character.
+- Added JavaScript under 90 KB gzipped; all eight characters together under 250 KB of SVG; initial transfer under 1 MB.
 - No network calls from the game.
 
 ### 7.6 Accessibility
@@ -229,15 +232,19 @@ Steps 6–7 are previews on purpose: analysis and measurement need real time and
 
 1. Claude is paused (`CLAUDE_PAUSED = true` in `src/lib/model.ts`). The CTA leads into onboarding, which refuses while paused; it must be switched back on before launch.
 2. A site-wide rename from نشر to ذكين (nav, footer, metadata, emails, other pages) is a separate task. Launching this page alone would show two names.
-3. Photoshoot and type licences (§7.1, §7.2).
+3. Final illustrations and type licences (§7.1, §7.2).
 
-## 10. Founder decisions still open
+## 10. Founder decisions
 
-1. Spelling: Thakeen · ذكين or Zakeen · زكين.
-2. Figures: photoshoot (recommended) or AI-generated; budget and casting.
-3. Type: approve the specimen shortlist and licence cost.
-4. Ground colour: light pearl ground with plum type (recommended; human photography reads better on light, and the colour worlds wash over it) or a dark plum ground.
-5. Confirm the removal of the old homepage sections listed in §4.
+Decided on 2026-09-28:
+1. Name: **Thakeen · ذكين**.
+2. Characters: **hand-drawn cartoon, doodle / illustration** (§7.1), not photography.
+3. Ground: **light**.
+4. Old homepage sections: **removed** (§4).
+
+Still open:
+1. Type: approve the specimen shortlist and licence cost (§7.2).
+2. Illustrator: who draws, and budget; style frames approved before the full cast.
 
 ## 11. Out of scope
 
