@@ -99,6 +99,9 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | 54 | GET | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:6-7`. Returns only a 12-char prefix. |
 | 55 | POST | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:12-13`. |
 | 56 | DELETE | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:19-20`. |
+| 56a | GET | `/api/performance` | O | `currentUser` `performance/route.ts`; `getPerf(sc(u))`. |
+| 56b | POST | `/api/performance` | O | `currentUser`; `allow("perf:{email}", 20, 3600)`; body capped at 2,000,000 characters (413); parsed as data; saved under `sc(u)`. No model call, no credits. |
+| 56c | DELETE | `/api/performance` | O | `currentUser`; `clearPerf(sc(u))` deletes `perfimport:{scope}` and `performance-learnings.md`. |
 | 57 | POST | `/api/oauth/register` | A | None. `registerClient` validates redirect URIs only `src/lib/oauth.ts:35-37`. |
 | 58 | OPTIONS | `/api/oauth/register` | A | CORS `oauth/register/route.ts:13`. |
 | 59 | POST | `/api/oauth/approve` | U | `currentUser` `oauth/approve/route.ts:7-8`; client and redirect URI match `:10-11`; PKCE S256 required `:18`. Code is bound to `u.email` `:19`. |

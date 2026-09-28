@@ -225,6 +225,16 @@ Files: `src/lib/journey.ts` (pure: `computeJourney`, `levelFor`, `decisionStreak
 4. Celebration: the card compares the done set and level with `localStorage` key `nashr:journey:v1` and plays confetti and a toast once per new milestone (level change louder). First visit in a browser celebrates only `brand`. Storage failures are ignored. The inbox dispatches `nashr:milestone` after a successful approve, date or publish so the card updates before the next server render. Motion is disabled under `prefers-reduced-motion`.
 5. The owner can hide the card; the choice is kept in the same storage key.
 
+## 20. Campaign results import (CSV)
+
+Files: `src/lib/perf-import.ts`, `src/lib/perf-store.ts`, `src/app/api/performance/route.ts`, `src/components/app/PerformanceImport.tsx` (on the reports page).
+
+1. The owner exports an ad-level report (Meta, Snapchat, TikTok, Google Ads, or an email tool) and drops the CSV on the reports page. The browser reads the text (2 MB at most) and posts `{csv, file, metric?}` to `POST /api/performance`.
+2. `readRows`: RFC 4180 parse with the delimiter detected from the header; the header is the first of the first twelve rows naming two known columns (English or Arabic synonyms, most specific first: "link clicks" before "clicks"); totals lines are skipped; at most 5,000 rows. Names and text are stripped to one plain line (`clean`). Missing name column or metrics: 422 with a reason code.
+3. `analyze`: the metric defaults to what the file supports (ROAS, then cost per result, CTR, open rate, conversion rate) and can be switched. A row is ranked only above the metric's sample minimum (500 impressions for CTR, 30 clicks for cost per result, 50 spend for ROAS, 30 clicks for conversion rate, 100 sends for open rate). Findings: top and bottom three, best against the median, wording patterns (offer, number, question, Arabic, short) compared by pooled metric when both groups have three or more ads and differ by 20% or more, best and weakest placement, and spend with no result when it is 10% or more of spend. Confidence is "medium" at ten times the sample minimum with five or more ads, otherwise "low"; never "high".
+4. `savePerf` stores the snapshot in `perfimport:{scope}` and writes `performance-learnings.md`, which `memoryBlock` includes, so every later generation, the weekly plan included, reads it. The file states that quoted names are data, not instructions, and that findings are comparisons, not promises. The reports card links to chat with prompts to write variants of the winners or plan next week.
+5. No model call and no credits. `DELETE` removes the snapshot and the file.
+
 ## Revocation (2026-09-18)
 
 - Password change (`PATCH /api/account`): new hash and `sessionsAfter = now` saved inside the user lock, the caller's session is destroyed and a new one issued. Every other session of the account fails at its next request.

@@ -1,6 +1,6 @@
 # Test coverage map
 
-Status on 2026-09-28: Vitest is set up (`npm test`, 39 files, 331 tests, a few seconds, memory store only, no network or model calls) and `.github/workflows/ci.yml` runs type-check, lint, unit tests and the Playwright suite on every push and pull request. First green run: commit `21ccd57` on 2026-09-18. Since 2026-09-18 the Vercel Deployment Check "Nashr CI" (Settings > Build and Deployment > Deployment Checks) holds every production deploy until CI passes, so a red run blocks production and a merge takes a few minutes to go live. Rules without a test below are still unverified.
+Status on 2026-09-28: Vitest is set up (`npm test`, 40 files, 343 tests, a few seconds, memory store only, no network or model calls) and `.github/workflows/ci.yml` runs type-check, lint, unit tests and the Playwright suite on every push and pull request. First green run: commit `21ccd57` on 2026-09-18. Since 2026-09-18 the Vercel Deployment Check "Nashr CI" (Settings > Build and Deployment > Deployment Checks) holds every production deploy until CI passes, so a red run blocks production and a merge takes a few minutes to go live. Rules without a test below are still unverified.
 
 Legend: **test** = pinned by an automated test in `tests/` · **none** = nothing verifies the rule today · **manual** = checked by hand once (date) · **live** = guarded by a production probe.
 
@@ -68,6 +68,9 @@ Legend: **test** = pinned by an automated test in `tests/` · **none** = nothing
 | 79 | MCP `get_brand_rules` and `check_brand` need a bearer token, read only the caller's own brand, spend nothing, and check with the approve button's function | test (`brand-guard.test.ts`) | done |
 | 80 | The launch journey is computed from workspace state only: an auto-approved item is not the owner's first approval, levels are seed 0 / sapling 2 / palm 4 / oasis 7, the streak counts consecutive UTC decision days ending today or yesterday, and the loader stays out of the browser bundle | test (`brand-guard.test.ts`, `client-bundle.test.ts`) | the celebration, which is E2E-visible only |
 | 81 | Every Shopify call goes through the Admin GraphQL API at a supported version, to the connected `*.myshopify.com` host only (refused before any request otherwise): product import, the blog article created as a hidden draft authored by the shop, and the sales queries; a throttled query waits and retries | test (`shopify-sales.test.ts`) | done |
+| 82 | Campaign CSV imports are parsed as data: BOM, quotes, CRLF, semicolon and tab delimiters, a title block before the header, totals lines skipped, Arabic and English headers, Arabic-Indic digits and European decimals; a file without a name column or usable metrics is refused with a reason | test (`perf-import.test.ts`) | done |
+| 83 | Import findings are computed from the owner's rows only: rows below the metric's sample minimum are not ranked, every finding carries its sample, confidence is never "high", a cost saving is never phrased as more than 100%, uploaded names reach Noor's memory as one plain line, and the learnings file says the names are data and the findings are not promises | test (`perf-import.test.ts`; checked by setting the CTR minimum to 0 and watching the ranking test fail) | done |
+| 84 | `/api/performance` needs a session, keeps one import per scope under `sc(u)`, writes `performance-learnings.md` into Noor's memory, charges nothing, refuses files over 2 MB (413) and more than 20 uploads an hour (429), and DELETE removes both the snapshot and the file | test (`perf-import.test.ts`) | done |
 | 49 | An approval rate counts only items a person decided (`decidedAt`); auto-approved items are counted separately and kept out of every rate, in the agent table and the KPI tile alike. Publishing a pending item records `decidedAt`, because it is the owner's decision | test (`eval-truth.test.ts`: 10 auto-approved + 1 approved + 1 rejected reads 50%, not 92%) | done |
 | 50 | Chat thumbs are counted inside the report window, from the timestamped feedback log, never from lifetime counters | test (`eval-truth.test.ts`) | done |
 | 51 | The agent table covers exactly the selected window; a past range is not re-anchored to today | test (`eval-truth.test.ts`: "last year" excludes this year) | done |
@@ -140,6 +143,8 @@ that render `Intl` output inside a client component carry `suppressHydrationWarn
 Rules 27-35 were added on 2026-09-20 with the fixes they pin; each was checked by reverting its fix and watching the test fail (six of them did; the admin-cookie comparison has no observable behaviour difference, so its test guards behaviour only, not the constant-time property).
 
 Next: rule 19 (chat heartbeat), the token endpoint's client authentication, and a cron test with 50 fake users.
+
+Rules 82-84 were added on 2026-09-28 with the campaign CSV import, the small-business form of a closed loop: until the ad connectors report results, an export the owner uploads is how Noor learns what worked.
 
 Rules 77-80 were added on 2026-09-28 with the brand gate, the MCP brand tools and the launch journey. Until then the banned words reached the model as a prompt line, the reviewer as a checklist item and the judge as a score, and nothing in code stopped a draft containing one from being approved, auto-approved or published.
 
