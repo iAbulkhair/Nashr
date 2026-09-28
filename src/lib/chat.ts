@@ -21,6 +21,7 @@ import { listConnections } from "./connectors/store";
 import { connectedTargets, publishTask, targetsFor } from "./connectors/publish";
 import { HELP } from "./help";
 import { IMAGE_COST, getTask } from "./brand";
+import { explain, gateTask, initialStatus } from "./brand-rules";
 
 export type ChatItem = { id: string; type: TaskType; channel: string; title: string; body: string; status: string };
 export type ChatMsg = { role: "user" | "assistant"; content: string; at: string; actions?: string[]; agent?: AgentId; /** items created by tools during this turn, rendered as cards */ items?: ChatItem[]; /** workspace files written during this turn, rendered as collapsible cards (first-run onboarding) */ files?: { name: string; content: string }[]; /** starter plan proposed at the end of onboarding */ plan?: PlanItem[] };
@@ -260,7 +261,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       }
       const created: Task[] = [];
       for (const it of items) {
-        const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: gov.autoApprove[type] ? "approved" : "pending", createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat" };
+        const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[type], brand, { type, title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat" };
         await saveTask(email, t, true);
         created.push(t);
       }
@@ -268,7 +269,9 @@ export async function runTool(user: User, name: string, input: Record<string, un
       made.push(...created);
       actions.push(`generated:${type}:${items.length}`);
       const inline = items.length <= 3 ? `\n\nITEM BODIES (show these to the owner in your reply, formatted, since the batch is small):\n${items.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body.slice(0, 1500)}`).join("\n\n")}` : "";
-      return `Created ${items.length} ${type} item(s) in the inbox${gov.autoApprove[type] ? " (auto-approved per governance)" : ""}. Credits left: ${user.credits}. Titles: ${items.map((i) => i.title).join(" | ")}${inline}`;
+      const held = gov.autoApprove[type] ? created.filter((t) => t.status === "pending").length : 0;
+      const auto = gov.autoApprove[type] ? (held ? ` (auto-approve is on, but ${held} item(s) broke a brand rule and wait for the owner in the inbox)` : " (auto-approved per governance)") : "";
+      return `Created ${items.length} ${type} item(s) in the inbox${auto}. Credits left: ${user.credits}. Titles: ${items.map((i) => i.title).join(" | ")}${inline}`;
     }
     case "draft_items": {
       if (!isTaskType(input.type)) return `Unknown type. Valid types: ${TASK_TYPES.join(", ")}.`;
@@ -292,7 +295,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       }
       const created: Task[] = [];
       for (const it of items) {
-        const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: gov.autoApprove[type] ? "approved" : "pending", createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat" };
+        const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[type], brand, { type, title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat" };
         await saveTask(email, t, true);
         created.push(t);
       }
@@ -343,6 +346,9 @@ export async function runTool(user: User, name: string, input: Record<string, un
       // Code-level gate, not a prompt rule: only items the owner already approved in the inbox can be published from chat.
       // Text from crawled sites, catalogs and files reaches this agent, so the model must never be the only approval.
       if (t.status !== "approved") return "Not published: this item is not approved yet. Tell the owner to approve it in the approvals inbox first, then ask again.";
+      // Approved before a banned word was added to the brand file, or edited since: the rule still holds it.
+      const held = gateTask(await getBrand(email), t);
+      if (held.length) return `Not published. ${explain(held)} Tell the owner which word and where; do not work around the rule.`;
       const r = await publishTask(email, t, provider);
       t.published = [...(t.published ?? []), { provider: r.provider, url: r.url, status: r.status, at: new Date().toISOString() }];
       t.status = "approved";

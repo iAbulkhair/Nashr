@@ -9,6 +9,7 @@ import { memoryBlock } from "./files";
 import { getGov } from "./governance";
 import { activeSeasons } from "./seasons";
 import { dateFormat } from "./dates";
+import { initialStatus } from "./brand-rules";
 
 /** Per-user recurring tasks. Cron hits /api/cron/* → we loop users. */
 export type Schedule = { weeklyPlan: boolean; dailyBrief: boolean; followUps: boolean; lastWeekly?: string; lastDaily?: string };
@@ -82,7 +83,7 @@ async function weeklyFor(user: User, email: string, brand: Brand): Promise<strin
   }
   const created: Task[] = [];
   for (const it of items) {
-    const t: Task = { id: randomBytes(8).toString("hex"), type: "weekly_plan", channel: it.channel, title: it.title, body: it.body, status: gov.autoApprove.weekly_plan ? "approved" : "pending", createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "scheduled" };
+    const t: Task = { id: randomBytes(8).toString("hex"), type: "weekly_plan", channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove.weekly_plan, brand, { type: "weekly_plan", title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "scheduled" };
     await saveTask(email, t, true);
     created.push(t);
   }

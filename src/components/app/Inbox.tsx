@@ -2,7 +2,7 @@
 import { targetsFor } from "@/lib/connectors/targets";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import { IMAGE_TYPES } from "@/lib/tasks";
 import type { Task } from "@/lib/brand";
@@ -11,11 +11,31 @@ import { render } from "@/lib/md";
 import { Icon, channelIcon } from "./Icons";
 import type { Lang } from "@/lib/i18n";
 import { dateFormat } from "@/lib/dates";
+import { brandRules, checkText, isCustomerFacing, textOf, type Violation } from "@/lib/brand-rules";
+import type { Journey } from "@/lib/journey";
+import JourneyCard, { milestone } from "./JourneyCard";
+
+const GUARD = {
+  ar: { ok: "يطابق حارس العلامة", held: "محجوز بحارس العلامة", heldBody: "يحتوي على كلمة ممنوعة في ملف علامتك، فلا يُعتمد ولا يُنشر حتى تعدّله:", fix: "عدّل النص", live: "فحص مباشر", liveOk: "لا كلمات ممنوعة. جاهز للاعتماد.", saveDraft: "احفظ دون اعتماد", rule: "قاعدة الكلمات الممنوعة", editBrand: "ملف العلامة" },
+  en: { ok: "Passes brand guard", held: "Held by brand guard", heldBody: "It contains a word your brand file bans, so it cannot be approved or published until you edit it:", fix: "Fix the text", live: "Live check", liveOk: "No banned words. Ready to approve.", saveDraft: "Save without approving", rule: "Banned-words rule", editBrand: "Brand file" },
+} as const;
+
+/** The matched word inside its excerpt, highlighted (both come from the same checker the server runs). */
+function Hit({ v }: { v: Violation }) {
+  const i = v.excerpt.toLowerCase().indexOf(v.term.toLowerCase());
+  if (i < 0) return <span dir="auto">{v.excerpt}</span>;
+  return <span dir="auto">{v.excerpt.slice(0, i)}<mark className="guard-hit text-inherit">{v.excerpt.slice(i, i + v.term.length)}</mark>{v.excerpt.slice(i + v.term.length)}</span>;
+}
 
 const CHAR_LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250, tiktok: 2200, whatsapp: 1024, gbp: 1500, linkedin: 3000 };
 
-export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[] }) {
+export default function Inbox({ t, lang, tasks, brief, connected = [], banned = "", journey }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[]; banned?: string; journey?: Journey }) {
   const i = t.inbox;
+  const G = GUARD[lang];
+  // The brand file's rules, applied here exactly as the approve and publish routes apply them.
+  const rules = useMemo(() => brandRules({ banned }), [banned]);
+  const held = (x: Pick<Task, "type" | "title" | "body" | "editedBody">) => (isCustomerFacing(x.type) ? checkText(rules, textOf(x)) : []);
+  const [refused, setRefused] = useState<Record<string, Violation[]>>({});
   const r = useRouter();
   const [filter, setFilter] = useState<"pending" | "approved" | "rejected" | "all">("pending");
   const [editing, setEditing] = useState<string | null>(null);
@@ -38,7 +58,12 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
     setPublishing(id + provider);
     const res = await fetch(`/api/publish/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider }) });
     setPublishing(null);
-    if (!res.ok) alert(i.publishFail);
+    if (res.ok) milestone("publish");
+    else {
+      const j = (await res.json().catch(() => ({}))) as { error?: string; violations?: Violation[] };
+      if (j.error === "brand_violation" && j.violations) setRefused((p) => ({ ...p, [id]: j.violations! }));
+      else alert(i.publishFail);
+    }
     // `view` renders `local[id] ?? task`, so an entry left over from an earlier approve would mask this task's server
     // copy for ever: the publish landed and the image was generated, but the card never showed either.
     forgetLocal(id);
@@ -75,9 +100,19 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
     setFailed(null);
     try {
       const res = await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; task?: Task };
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; task?: Task; error?: string; violations?: Violation[] };
+      if (res.status === 409 && j.error === "brand_violation") {
+        // Held by the brand rules on the server: put the card back as it was and, for an edit, reopen the editor.
+        setLocal((p) => ({ ...p, [id]: before }));
+        setRefused((p) => ({ ...p, [id]: j.violations ?? [] }));
+        if (typeof body.editedBody === "string") { setEditing(id); setDraft(body.editedBody); }
+        return;
+      }
       if (!res.ok || !j.ok || !j.task) throw new Error("patch_failed");
       setLocal((p) => ({ ...p, [id]: j.task! }));
+      setRefused((p) => { const n = { ...p }; delete n[id]; return n; });
+      if (j.task.status === "approved" && before.status !== "approved") milestone("approve");
+      if (typeof body.scheduledFor === "string") milestone("schedule");
       window.dispatchEvent(new Event("nashr:pending-changed"));
     } catch {
       setLocal((p) => ({ ...p, [id]: before }));
@@ -102,6 +137,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
         </div>
       </div>
 
+      {journey && <div className="mt-5"><JourneyCard journey={journey} lang={lang} /></div>}
       {brief && (
         <div className="mt-5 flex gap-3 rounded-xl border border-saffron/40 bg-saffron/10 p-4 text-sm" dir="auto">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-oasis font-display font-bold text-saffron" aria-hidden>{t.agents.noor.name.charAt(0)}</span>
@@ -118,6 +154,8 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
       <ul className="mt-6 grid gap-4">
         {shown.map((x, idx) => {
           const body = x.editedBody ?? x.body;
+          const hits = refused[x.id]?.length ? refused[x.id] : held(x);
+          const guarded = rules.length > 0 && isCustomerFacing(x.type);
           const day = x.createdAt.slice(0, 10);
           const newDay = idx === 0 || shown[idx - 1].createdAt.slice(0, 10) !== day;
           const isCollapsed = !!collapsed[x.id];
@@ -132,6 +170,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
                   <span className="text-sm text-ink/70" dir="auto">· {x.title}</span>
                 </div>
                 <span className="flex items-center gap-2 text-xs">
+                  {guarded && <span title={hits.length ? G.held : G.ok} className={`flex items-center gap-1 rounded-full px-2 py-0.5 ${hits.length ? "bg-sadu/10 font-semibold text-sadu-deep" : "bg-oasis/10 text-oasis"}`}><Icon name="shield" className="h-3.5 w-3.5" />{hits.length ? G.held : G.ok}</span>}
                   {x.quality && <span title={x.quality.notes} className={`tnum rounded-full px-2 py-0.5 ${x.quality.score >= 85 ? "bg-oasis/10 text-oasis" : x.quality.score >= 70 ? "bg-saffron/20 text-ink" : "bg-sadu/10 text-sadu-deep"}`} dir="ltr">{i.quality} {x.quality.score}</span>}
                   <span className={`badge ${x.status === "approved" ? "badge-primary" : x.status === "rejected" ? "badge-danger" : "badge-accent"}`}>{i[x.status]}</span>
                 </span>
@@ -139,6 +178,17 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
               <div className="px-4 pb-3">
               {x.published && x.published.length > 0 && (
                 <p className="mt-2 text-xs text-oasis">{x.published.map((p) => <a key={p.url} href={p.url} target="_blank" rel="noreferrer" className="me-3 underline">{p.status === "draft" ? i.draftOn : i.published} {p.provider} ↗</a>)}</p>
+              )}
+              {hits.length > 0 && editing !== x.id && (
+                <div role="alert" className="mt-3 rounded-lg border border-sadu/30 bg-sadu/5 p-3 text-sm">
+                  <p className="flex items-center gap-1.5 font-semibold text-sadu-deep"><Icon name="shield" className="h-4 w-4" />{G.held} · <span className="font-normal">{G.rule}</span></p>
+                  <p className="mt-1 text-ink/70">{G.heldBody}</p>
+                  <ul className="mt-1.5 grid gap-1">{hits.map((v) => <li key={v.ruleId} className="text-xs text-ink/80"><span className="font-semibold" dir="auto">«{v.term}»</span> · <Hit v={v} /></li>)}</ul>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button onClick={() => { setEditing(x.id); setDraft(body); }} className="btn btn-primary btn-xs">{G.fix}</button>
+                    <Link href={`/${lang}/app/onboarding`} className="btn btn-secondary btn-xs">{G.editBrand}</Link>
+                  </div>
+                </div>
               )}
               {x.imageUrl && (
                 <div className="mt-3 flex items-start gap-3">
@@ -153,10 +203,24 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
               {editing === x.id ? (
                 <div className="mt-3 grid gap-2">
                   <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={10} className="w-full rounded-lg border border-ink/15 p-3 text-sm" />
-                  <div className="flex gap-2">
-                    <button onClick={() => patch(x.id, { editedBody: draft, status: "approved" })} className="rounded-full bg-oasis px-4 py-1.5 text-sm font-semibold text-mist">{i.save}</button>
-                    <button onClick={() => setEditing(null)} className="btn btn-secondary btn-pill">{i.cancel}</button>
-                  </div>
+                  {(() => {
+                    const live = guarded ? held({ ...x, editedBody: draft }) : [];
+                    return (
+                      <>
+                        {guarded && (
+                          <p aria-live="polite" className={`flex flex-wrap items-center gap-1.5 text-xs ${live.length ? "text-sadu-deep" : "text-oasis"}`}>
+                            <Icon name="shield" className="h-3.5 w-3.5" /><span className="font-semibold">{G.live}:</span>
+                            {live.length ? live.map((v) => <span key={v.ruleId} className="guard-hit font-semibold" dir="auto">{v.term}</span>) : <span>{G.liveOk}</span>}
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-2">
+                          <button disabled={live.length > 0} title={live.length ? G.held : undefined} onClick={() => patch(x.id, { editedBody: draft, status: "approved" })} className="btn btn-primary btn-pill">{i.save}</button>
+                          {live.length > 0 && <button onClick={() => patch(x.id, { editedBody: draft, status: "pending" })} className="btn btn-secondary btn-pill">{G.saveDraft}</button>}
+                          <button onClick={() => setEditing(null)} className="btn btn-secondary btn-pill">{i.cancel}</button>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               ) : (
                 <>{!isCollapsed && <div className="prose-nashr prose-compact mt-3 text-sm text-ink/90" dir="auto" dangerouslySetInnerHTML={{ __html: render(body) }} />}
@@ -182,7 +246,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
               {editing !== x.id && rejecting !== x.id && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-ink/5 bg-salt px-4 py-3 text-sm">
                   {failed === x.id && <p role="alert" className="w-full text-sm text-sadu-deep">{lang === "ar" ? "لم يُحفظ التغيير. تحقق من الاتصال وحاول مرة أخرى." : "The change was not saved. Check your connection and try again."}</p>}
-                  {x.status !== "approved" && <button onClick={() => patch(x.id, { status: "approved" })} className="btn btn-primary btn-pill">{i.approve}</button>}
+                  {x.status !== "approved" && <button disabled={hits.length > 0} title={hits.length ? G.held : undefined} onClick={() => patch(x.id, { status: "approved" })} className="btn btn-primary btn-pill">{i.approve}</button>}
                   <button onClick={() => { setEditing(x.id); setDraft(body); }} className="btn btn-secondary btn-pill">{i.edit}</button>
                   {x.status !== "rejected" && <button onClick={() => setRejecting(x.id)} className="btn btn-danger btn-pill">{i.reject}</button>}
                   {x.type === "board_deck" && (
@@ -193,7 +257,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [] }: { t: Ap
                   )}
                   {x.channel === "instagram" && connected.includes("instagram") && x.imageProvider !== "fal" && <p className="w-full text-xs text-ink/60">{i.igNeedsImage}</p>}
                   {targets(x).map((p) => (
-                    <button key={p} disabled={publishing === x.id + p} onClick={() => publish(x.id, p)} className="btn btn-primary btn-pill">{publishing === x.id + p ? i.publishing : `${i.publishTo} ${p}`}</button>
+                    <button key={p} disabled={publishing === x.id + p || hits.length > 0} onClick={() => publish(x.id, p)} className="btn btn-primary btn-pill">{publishing === x.id + p ? i.publishing : `${i.publishTo} ${p}`}</button>
                   ))}
                   <label className="ms-auto flex items-center gap-1 text-xs text-ink/60">
                     {i.date}

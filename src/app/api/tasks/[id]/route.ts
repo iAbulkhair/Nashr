@@ -1,7 +1,8 @@
 import { track } from "@/lib/track";
 import { NextResponse, after } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
-import { addPreference, getTask, saveTask } from "@/lib/brand";
+import { addPreference, getBrand, getTask, saveTask } from "@/lib/brand";
+import { gateTask } from "@/lib/brand-rules";
 import { getGov } from "@/lib/governance";
 import { readFile, writeFile } from "@/lib/files";
 
@@ -10,7 +11,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const { id } = await ctx.params;
   const scope = sc(u);
-  const [t, gov] = await Promise.all([getTask(scope, id), getGov(scope)]);
+  const [t, gov, brand] = await Promise.all([getTask(scope, id), getGov(scope), getBrand(scope)]);
   if (!t) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   const b = (await req.json().catch(() => ({}))) as { status?: string; editedBody?: string; note?: string; scheduledFor?: string | null };
   if (b.scheduledFor === null) delete t.scheduledFor;
@@ -29,6 +30,13 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (b.status === "approved") events.push("approve");
     if (b.status === "rejected") events.push("reject");
     if (b.status === "rejected" && b.note) notes.push(`Owner rejected a ${t.type} item (${t.channel}). Reason: ${b.note}`);
+  }
+  // The brand file's rules are checked here, in code: an item whose final text breaks one cannot end up approved,
+  // whether the owner clicked approve, saved an edit of an approved item, or the model asked for it. Nothing is saved,
+  // so the card keeps its state and the owner sees which rule fired.
+  if (t.status === "approved") {
+    const violations = gateTask(brand, t);
+    if (violations.length) return NextResponse.json({ ok: false, error: "brand_violation", violations }, { status: 409 });
   }
   await saveTask(scope, t);
 

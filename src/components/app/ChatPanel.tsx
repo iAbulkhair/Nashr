@@ -9,6 +9,8 @@ import { raiseLimit } from "./LimitModal";
 import { render } from "@/lib/md";
 import { Icon, channelIcon } from "./Icons";
 import { ActivationBar, FileCard, PlanCard, WhatsAppCard } from "./OnboardCards";
+import type { Journey } from "@/lib/journey";
+import JourneyCard from "./JourneyCard";
 
 type Conv = { id: string; title: string; updatedAt: string; count: number; agent?: AgentId };
 const LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250, tiktok: 2200, whatsapp: 1024, gbp: 1500, meta: 63206, linkedin: 3000 };
@@ -20,13 +22,20 @@ export function ItemCard({ item, t, lang, onApproved }: { item: ChatItem; t: App
   const [status, setStatus] = useState(item.status);
   const [err, setErr] = useState("");
   const [undoAt, setUndoAt] = useState(0);
+  const [held, setHeld] = useState<string[]>([]);
   const limit = LIMITS[item.channel];
   const ar = lang === "ar";
   const chName = (t.channelNames as Record<string, string>)[item.channel] ?? item.channel;
   async function setState(next: "approved" | "pending") {
     setErr("");
     const r = await fetch(`/api/tasks/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: next }) });
-    if (!r.ok) { setErr(t.chat.approveFail); return; }
+    if (!r.ok) {
+      // The brand rules hold this item on the server: say which word, and send the owner to the inbox to fix it.
+      const j = (await r.json().catch(() => ({}))) as { error?: string; violations?: { term: string }[] };
+      if (r.status === 409 && j.error === "brand_violation") { setHeld((j.violations ?? []).map((v) => v.term)); return; }
+      setErr(t.chat.approveFail);
+      return;
+    }
     setStatus(next);
     // The sidebar badge listens for this; only the inbox used to send it, so approving from a chat card left the badge
     // one too high until the owner navigated. That matters more now the badge is exhaustive and therefore trusted.
@@ -45,11 +54,12 @@ export function ItemCard({ item, t, lang, onApproved }: { item: ChatItem; t: App
       <footer className="flex flex-wrap items-center gap-2 border-t border-ink/5 px-3 py-2 text-xs">
         <span className={`tnum ${over ? "font-semibold text-sadu-deep" : "text-ink/60"}`} dir="ltr">{item.body.length}{limit ? ` / ${limit}` : ""}</span>
         {err && <span className="text-sadu-deep">{err}</span>}
+        {held.length > 0 && <span role="alert" className="flex items-center gap-1 font-semibold text-sadu-deep"><Icon name="shield" className="h-3.5 w-3.5" /><span dir="auto">{ar ? `محجوز بحارس العلامة: ${held.join("، ")}` : `Held by brand guard: ${held.join(", ")}`}</span> · <Link href={`/${lang}/app`} className="underline">{ar ? "عدّله في صندوق الموافقة" : "Fix it in the inbox"}</Link></span>}
         {undoAt > 0 && status === "approved" && <span className="flex items-center gap-2 text-oasis"><Icon name="check" className="h-4 w-4" />{t.chat.approved} · <button onClick={() => setState("pending")} className="underline">{t.chat.undo}</button></span>}
         <span className="ms-auto flex gap-1.5">
           <button onClick={() => setOpen(!open)} className="btn btn-secondary btn-xs">{open ? (ar ? "طيّ" : "Collapse") : (ar ? "عرض" : "Expand")}</button>
           <button onClick={async () => { await navigator.clipboard.writeText(item.body); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="btn btn-secondary btn-xs"><Icon name="copy" className="h-3.5 w-3.5" />{copied ? t.inbox.copied : status === "approved" ? `${t.chat.copyTo} ${chName}` : t.inbox.copy}</button>
-          {status !== "approved" && <button onClick={() => setState("approved")} disabled={over} title={over ? (ar ? "النص أطول من حد القناة" : "Text exceeds the channel limit") : undefined} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{t.inbox.approve}</button>}
+          {status !== "approved" && <button onClick={() => setState("approved")} disabled={over || held.length > 0} title={over ? (ar ? "النص أطول من حد القناة" : "Text exceeds the channel limit") : undefined} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{t.inbox.approve}</button>}
         </span>
       </footer>
     </article>
@@ -67,7 +77,7 @@ function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[
   return [...out];
 }
 
-export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean }) {
+export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey }) {
   const [msgs, setMsgs] = useState<ChatMsg[]>(initial);
   const [text, setText] = useState(initialPrompt);
   const [busy, setBusy] = useState(false);
@@ -236,6 +246,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
       </div>
 
       <div ref={list} className="mt-2 min-h-0 flex-1 space-y-4 overflow-y-auto rounded-xl border border-ink/10 bg-white p-4">
+        {journey?.next && <JourneyCard journey={journey} lang={lang} compact />}
         {(left > 0 || briefLines.length > 0) && msgs.length <= 1 && (
           <section className="rounded-xl border border-oasis/20 bg-salt p-3" aria-label={t.chat.todayFromTeam}>
             <div className="flex items-center justify-between gap-2">
@@ -277,7 +288,10 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           </div>
         ))}
         {needPhone && (onboarded || (msgs.some((m) => m.plan?.length) && !busy)) && <WhatsAppCard lang={lang} />}
-        {busy && (
+        {busy && onboardUrl && (
+          <OnboardProgress lang={lang} steps={steps} name={A.noor.name} />
+        )}
+        {busy && !onboardUrl && (
           <div className="text-sm text-ink/70">
             {steps.map((s, i) => <p key={i} className={`flex items-center gap-2 ${i < steps.length - 1 ? "opacity-70" : ""}`}><span className={`h-2 w-2 rounded-full ${i < steps.length - 1 ? "bg-oasis" : "animate-pulse bg-saffron"}`} />{A[agent].name}: {s}</p>)}
             {steps.length === 0 && <p>{agent === "noor" ? t.chat.thinking : `${A[agent].name}…`}</p>}
@@ -292,5 +306,40 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
       </form>
       {step && plan === "trial" && !goal?.goal && <p className="mt-2 flex items-center gap-2 text-xs text-ink/70"><Icon name="spark" className="h-3.5 w-3.5 text-saffron" />{t.limit.firstUp}: {step}</p>}
     </div>
+  );
+}
+
+/**
+ * First run, while Noor builds the workspace: the stages the server reports, as a path that fills. The bar moves only
+ * when a stage really lands (src/app/api/onboard/route.ts sends one status per stage) and never claims 100% before
+ * the server says done.
+ */
+function OnboardProgress({ lang, steps, name }: { lang: "ar" | "en"; steps: string[]; name: string }) {
+  const ar = lang === "ar";
+  const EXPECTED = 5;
+  const pct = Math.min(92, Math.round(((steps.length + 0.4) / EXPECTED) * 100));
+  return (
+    <section className="rounded-2xl border border-oasis/20 bg-salt p-4" aria-live="polite">
+      <div className="flex items-center gap-3">
+        <span className="journey-next grid h-11 w-11 shrink-0 place-items-center rounded-full bg-oasis font-display text-lg font-bold text-saffron" aria-hidden>{name.charAt(0)}</span>
+        <div className="min-w-0 flex-1">
+          <p className="font-display font-bold text-oasis">{ar ? `${name} تبني مساحة عملك` : `${name} is building your workspace`}</p>
+          <p className="text-xs text-ink/60">{ar ? "تقرأ موقعك وتكتب ملف علامتك وخطة البداية. ابقَ هنا." : "Reading your site, writing your brand file and a starter plan. Stay on this page."}</p>
+        </div>
+      </div>
+      <div className="journey-track mt-3"><div className="journey-fill" style={{ width: `${pct}%` }} /></div>
+      <ol className="mt-3 grid gap-1.5 text-sm">
+        {steps.map((st, i) => {
+          const current = i === steps.length - 1;
+          return (
+            <li key={i} className="log-row flex items-center gap-2">
+              <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${current ? "border-2 border-saffron bg-white" : "pop-in bg-oasis text-saffron"}`}>{current ? <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-saffron" /> : <Icon name="check" className="h-3 w-3" />}</span>
+              <span className={current ? "font-semibold text-ink" : "text-ink/60"} dir="auto">{st}</span>
+            </li>
+          );
+        })}
+      </ol>
+      <p className="mt-3 flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs text-ink/70"><Icon name="seed" className="h-4 w-4 text-oasis" />{ar ? "أول إنجاز في مسار الانطلاق يُفتح حين تنتهي: مستواك الأول «بذرة»." : "Your first launch-path milestone unlocks when this finishes: level one, Seed."}</p>
+    </section>
   );
 }

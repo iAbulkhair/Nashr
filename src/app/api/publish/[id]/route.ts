@@ -1,7 +1,8 @@
 import { track } from "@/lib/track";
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
-import { getTask, saveTask } from "@/lib/brand";
+import { getBrand, getTask, saveTask } from "@/lib/brand";
+import { gateTask } from "@/lib/brand-rules";
 import { connectedTargets, publishTask, targetsFor } from "@/lib/connectors/publish";
 import { listConnections } from "@/lib/connectors/store";
 
@@ -17,7 +18,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!b.provider) return NextResponse.json({ ok: false, error: "provider_required" }, { status: 400 });
   // The owner's click is the approval here, but a rejected item stays unpublished and the target must fit the item type.
   if (t.status === "rejected") return NextResponse.json({ ok: false, error: "rejected_item" }, { status: 409 });
-  const connected = connectedTargets(await listConnections(sc(u)));
+  const [connections, brand] = await Promise.all([listConnections(sc(u)), getBrand(sc(u))]);
+  // Publishing approves the item, so it passes the same brand gate as the approve button.
+  const violations = gateTask(brand, t);
+  if (violations.length) return NextResponse.json({ ok: false, error: "brand_violation", violations }, { status: 409 });
+  const connected = connectedTargets(connections);
   if (!targetsFor(t, connected).includes(b.provider)) return NextResponse.json({ ok: false, error: "wrong_target" }, { status: 400 });
   try {
     const r = await publishTask(sc(u), t, b.provider);

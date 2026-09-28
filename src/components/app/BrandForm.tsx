@@ -4,6 +4,13 @@ import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Brand } from "@/lib/brand";
 import type { Lang } from "@/lib/i18n";
+import { bannedTerms } from "@/lib/brand-rules";
+import { Icon } from "./Icons";
+
+const GUARD = {
+  ar: { title: "حارس العلامة", body: "كلمات لا تريدها في أي منشور. أي مسودة تحتوي واحدة منها لا تُعتمد ولا تُنشر حتى تعدّلها. التحقق في الكود، وليس وعداً من النموذج.", examples: "أمثلة شائعة، اضغط للإضافة:", count: (n: number) => `${n} كلمة محمية`, none: "لا كلمات بعد: الحارس متوقف.", ex: ["مضمون", "الأفضل", "رقم 1", "رخيص", "بدون ألم"] },
+  en: { title: "Brand guard", body: "Words you never want in a post. A draft that contains one cannot be approved or published until you edit it. Checked in code, not promised by the model.", examples: "Common examples, tap to add:", count: (n: number) => `${n} protected ${n === 1 ? "word" : "words"}`, none: "No words yet: the guard is off.", ex: ["guaranteed", "#1", "cheapest", "best in Saudi", "risk-free"] },
+} as const;
 
 const input = "input";
 const CHANNELS = ["instagram", "snapchat", "tiktok", "x", "linkedin", "whatsapp", "google"];
@@ -15,6 +22,10 @@ export default function BrandForm({ t, lang, initial }: { t: AppDict; lang: Lang
   const [msg, setMsg] = useState("");
   const [langs, setLangs] = useState<string[]>(initial?.languages ?? [lang === "en" ? "en" : "ar"]);
   const [channels, setChannels] = useState<string[]>(initial?.channels ?? ["instagram", "snapchat", "tiktok", "whatsapp"]);
+  const [banned, setBanned] = useState(initial?.banned ?? "");
+  const G = GUARD[lang];
+  const terms = bannedTerms(banned);
+  const addTerm = (w: string) => setBanned((b) => (bannedTerms(b).some((x) => x.toLowerCase() === w.toLowerCase()) ? b : [b.trim(), w].filter(Boolean).join(lang === "ar" ? "، " : ", ")));
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -60,11 +71,18 @@ export default function BrandForm({ t, lang, initial }: { t: AppDict; lang: Lang
         <textarea name="products" required rows={3} defaultValue={initial?.products} placeholder={o.products} className={input} />
         <textarea name="audience" required rows={2} defaultValue={initial?.audience} placeholder={o.audience} className={input} />
         <textarea name="offers" rows={2} defaultValue={initial?.offers} placeholder={o.offers} className={input} />
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <input name="competitors" defaultValue={initial?.competitors} placeholder={o.competitors} className={input} />
-          <input name="banned" defaultValue={initial?.banned} placeholder={o.banned} className={input} />
           <input name="preferred" defaultValue={initial?.preferred} placeholder={o.preferred} className={input} />
         </div>
+        <section id="guard" className={`rounded-xl border p-4 ${terms.length ? "border-oasis/30 bg-oasis/5" : "border-saffron/50 bg-saffron/10"}`}>
+          <p className="flex items-center gap-2 font-display font-bold text-oasis"><Icon name="shield" className="h-5 w-5" />{G.title}<span className={`badge ms-auto ${terms.length ? "badge-primary" : "badge-accent"}`}>{terms.length ? G.count(terms.length) : G.none}</span></p>
+          <p className="mt-1 text-xs text-ink/70">{G.body}</p>
+          <input name="banned" value={banned} onChange={(e) => setBanned(e.target.value)} placeholder={o.banned} aria-label={G.title} className={`${input} mt-3`} />
+          {terms.length > 0 && <ul className="mt-2 flex flex-wrap gap-1.5">{terms.map((w) => <li key={w} className="pop-in flex items-center gap-1 rounded-full bg-oasis px-2.5 py-0.5 text-xs text-mist" dir="auto"><Icon name="lock" className="h-3 w-3 text-saffron" />{w}</li>)}</ul>}
+          <p className="mt-3 text-xs text-ink/60">{G.examples}</p>
+          <div className="mt-1 flex flex-wrap gap-1.5">{G.ex.filter((w) => !terms.some((x) => x.toLowerCase() === w.toLowerCase())).map((w) => <button type="button" key={w} onClick={() => addTerm(w)} className="rounded-full border border-dashed border-oasis/40 px-2.5 py-0.5 text-xs text-oasis hover:bg-oasis hover:text-mist" dir="auto">+ {w}</button>)}</div>
+        </section>
         <fieldset className="flex flex-wrap items-center gap-2 text-sm">
           <legend className="mb-1 w-full text-ink/60">{o.channels}</legend>
           {CHANNELS.map((c) => (
