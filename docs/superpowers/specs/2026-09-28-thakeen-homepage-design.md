@@ -246,6 +246,13 @@ Still open:
 1. Type: approve the specimen shortlist and licence cost (§7.2).
 2. Illustrator: who draws, and budget; style frames approved before the full cast.
 
+Build decisions (2026-09-28), recorded as built:
+1. CTA contract: `StartForm` submits to `/{lang}/app/signup?url=…`, the existing UrlStart path, which starts onboarding by itself. §7.4's `signup?next=/{lang}/app/start?url=…` is not used.
+2. Banter bubbles: a figure speaks when pressed (Enter, Space or click), not on hover or focus (ruling R8). Hover and focus turn the figure to face you and hold its question.
+3. Banter cadence: the next exchange starts at the later of 8000 ms after the previous one's start and 2200 ms after its last line (ruling R12).
+4. Motion toggle: one page-level pause button for WCAG 2.2.2, shown on the story's stage and in the lineup. Both are the same switch, and it stops the storm, the scroll cue, the story's flip and all of the lineup's motion (ruling R13, extended to the whole page in the final review).
+5. Game samples: steps 3–4 build their samples from the sector, the brand and the first word's tone only. Variants driven by all five words wait for founder-approved copy.
+
 ## 11. Out of scope
 
 - The "Our story" page (the Dhow Crew concept, النوخذة), which comes after the homepage.
