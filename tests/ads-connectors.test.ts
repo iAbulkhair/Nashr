@@ -3,14 +3,14 @@ import { readFileSync } from "node:fs";
 import { jar, json, newUser, signIn } from "./helpers/session";
 import { getConnection, OAUTH_COOKIE, saveConnection, saveState, type Connection } from "@/lib/connectors/store";
 import { getProvider } from "@/lib/connectors/registry";
-import { READS_METRICS } from "@/lib/connectors/working";
+import { READS_ADS } from "@/lib/connectors/working";
 import { getPerf, syncAdsIfDue } from "@/lib/perf-store";
 import { readFile } from "@/lib/files";
 import * as callback from "@/app/api/connect/[provider]/callback/route";
 import * as connectRoute from "@/app/api/connect/[provider]/route";
 
 /**
- * Rules 85-87: ad results from Meta and Snapchat, read only, into the same analysis as a CSV upload. The platforms are
+ * Rules 87-89: ad results from Meta and Snapchat, read only, into the same analysis as a CSV upload. The platforms are
  * mocked in the shapes their documentation gives (Meta Marketing API Insights, Snap Marketing API measurement).
  */
 const ENV = { META_APP_ID: "mid", META_APP_SECRET: "msecret", SNAP_CLIENT_ID: "sid", SNAP_CLIENT_SECRET: "ssecret" };
@@ -81,11 +81,11 @@ async function oauth(provider: string, tag: string) {
 }
 const act = (provider: string, body: unknown) => connectRoute.POST(json(`/api/connect/${provider}`, "POST", body), ctx(provider));
 
-describe("connecting ad accounts (rule 85)", () => {
+describe("connecting ad accounts (rule 87)", () => {
   it("Meta Ads is its own connection asking only for ads_read, and the Page connection's review pack is unchanged", () => {
     expect(getProvider("meta_ads")!.oauth!.scopes).toEqual(["ads_read"]);
     expect(getProvider("meta")!.oauth!.scopes).not.toContain("ads_read");
-    expect(READS_METRICS).toEqual(["meta_ads", "snapchat"]);
+    expect(READS_ADS).toEqual(["meta_ads", "snapchat"]);
   });
 
   it("Meta: keeps a long-lived token with its expiry, lists only active ad accounts, and never puts a token or the app secret in view", async () => {
@@ -127,7 +127,7 @@ describe("connecting ad accounts (rule 85)", () => {
   });
 });
 
-describe("reading results (rule 86)", () => {
+describe("reading results (rule 88)", () => {
   it("Meta: pages through insights, counts omni purchases once, reads the ad copy, and lands in Noor's memory, free", async () => {
     fake();
     const u = await newUser("metasync");
@@ -191,7 +191,7 @@ describe("reading results (rule 86)", () => {
   });
 });
 
-describe("read only (rule 87)", () => {
+describe("read only (rule 89)", () => {
   it("the ad readers send no POST except Meta's token exchange, and call fixed hosts only", () => {
     const src = readFileSync("src/lib/connectors/ads.ts", "utf8");
     expect(src.match(/method:\s*"POST"/g) ?? []).toHaveLength(1);

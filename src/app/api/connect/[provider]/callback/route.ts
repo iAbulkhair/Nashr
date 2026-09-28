@@ -8,6 +8,7 @@ import { exchangeCode } from "@/lib/connectors/oauth";
 import { OAUTH_COOKIE, saveConnection, takeState, type Connection } from "@/lib/connectors/store";
 import { xMe } from "@/lib/connectors/x";
 import { sallaStore } from "@/lib/connectors/salla";
+import { zidStore } from "@/lib/connectors/zid";
 import { connectMeta } from "@/lib/connectors/meta";
 import { connectAds, isAdProvider } from "@/lib/connectors/ads";
 import { SHOP_HOST, validShopifyHmac } from "@/lib/connectors/shopify";
@@ -47,6 +48,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
     let conn: Connection = { provider: p.id, data, meta, connectedAt: new Date().toISOString(), expiresAt };
     if (p.id === "x") { const me = await xMe(conn); if (me) meta.account = `@${me.username}`; }
     if (p.id === "salla") { const st2 = await sallaStore(conn); if (st2?.name) meta.account = st2.name; if (st2?.domain) meta.site = st2.domain; }
+    if (p.id === "zid") { const z = await zidStore(conn); if (z?.id) meta.storeId = z.id; if (z?.name) meta.account = z.name; if (z?.url) meta.site = z.url; }
     if (p.id === "meta") conn = await connectMeta(conn);
     if (isAdProvider(p.id)) conn = await connectAds(conn);
     await saveConnection(st.email, conn);

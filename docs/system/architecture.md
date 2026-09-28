@@ -71,7 +71,7 @@ Per-route authorization is in `permissions.md`.
 | `images.ts` | Image prompt (Anthropic) plus fal.ai FLUX call; placeholder image when `FAL_KEY` is absent. |
 | `usage.ts` | Model token and cost metering per account per month. |
 | `track.ts` | Product analytics counters and active-user sets in Redis. |
-| `stats.ts` | Workspace KPIs from stored tasks. |
+| `stats.ts` | Workspace KPIs from stored tasks; `statsFor` also adds Dana's STORE DATA (`salesDataBlock` in `store-sales.ts`) and the cart-recovery CART DATA. |
 | `admin-stats.ts` | Founder overview and users CSV. |
 | `referral.ts` | Deterministic referral codes, two-sided credit grant. |
 | `mcp.ts` | Personal MCP tokens and `userFromBearer`. |
@@ -82,7 +82,7 @@ Per-route authorization is in `permissions.md`.
 | `connectors/store.ts` | AES-256-GCM encrypted connection records, OAuth state records. |
 | `connectors/oauth.ts` | Authorize URL builder, PKCE pair, code exchange. |
 | `connectors/publish.ts` | `targetsFor` and `publishTask` dispatch (WordPress, Shopify, Telegram, X). |
-| `connectors/{wordpress,shopify,woocommerce,keyed,x}.ts` | Provider API calls: verify, import products, publish. |
+| `connectors/{wordpress,shopify,woocommerce,keyed,x,salla,zid,meta}.ts` | Provider API calls: verify, import products, publish, and (Salla, Shopify, Zid) the store-sales sync; `sales.ts` holds the shared snapshot shape. |
 | `agents.ts`, `skills.ts`, `playbooks.ts`, `seasons.ts`, `tools.ts`, `integrations.ts`, `inspo.ts`, `help.ts`, `legal.ts`, `site.ts`, `pages-*.ts`, `blog.ts`, `md.ts`, `json.ts`, `parallel.ts`, `i18n.ts`, `app-i18n.ts` | Static catalogs, prompt material, copy, and small utilities (Markdown renderer, tolerant JSON parser, bounded `pmap`). |
 
 ### 2.6 Cron jobs (`vercel.json`)
@@ -105,7 +105,7 @@ All three require `Authorization: Bearer ${CRON_SECRET}` and return 401 when the
 | placehold.co | Placeholder image URL when `FAL_KEY` is absent (`images.ts:32`). URL only, no server fetch. |
 | Resend | Transactional and lifecycle email (`src/lib/notify.ts:4`). |
 | Vercel | Hosting, function runtime, cron. |
-| Connector platforms | X, Shopify, Google, Meta, Salla, Zid, LinkedIn, TikTok, Snapchat (OAuth); WordPress, WooCommerce, Klaviyo, Odoo, PrestaShop, Telegram, Brevo (keys). Actual API use exists for X, Shopify, WordPress, WooCommerce, Odoo, PrestaShop, Telegram, Brevo (verify only), Klaviyo (verify only). Google, Meta, Salla, Zid, LinkedIn, TikTok, Snapchat only complete the OAuth exchange and store tokens. |
+| Connector platforms | X, Shopify, Google, Meta, Salla, Zid, LinkedIn, TikTok, Snapchat (OAuth); WordPress, WooCommerce, Klaviyo, Odoo, PrestaShop, Telegram, Brevo (keys). Actual API use exists for X, Shopify, Meta (Facebook Page and Instagram publishing), WordPress, WooCommerce, Odoo, PrestaShop, Telegram, Salla and Zid (product import and the store-sales sync), Brevo (verify only), Klaviyo (verify only). Google, LinkedIn, TikTok, Snapchat only complete the OAuth exchange and store tokens. |
 | Arbitrary customer websites | `crawl.ts:50` and `catalog.ts:12,26` fetch URLs supplied by the user or discovered in sitemaps. |
 
 ## 3. Redis key namespace
@@ -145,7 +145,7 @@ All three require `Authorization: Bearer ${CRON_SECRET}` and return 401 when the
 | `oauthstate:{state}` | json | Connector OAuth state `{email: scope, provider, lang, shop, verifier}` | `connectors/store.ts:56` | 10 min |
 | `adsync:{scope}:{provider}` | string | When the ad account of `meta_ads` or `snapchat` was last read, for the daily once-in-20-hours rule | `perf-store.ts` | none |
 | `perfimport:{scope}` | json | Latest campaign CSV import: file name, detected platform, metric, row counts, date range, totals, top and bottom three, findings with sample and confidence. No raw rows | `perf-store.ts` | none (replaced on each upload) |
-| `storesales:{scope}` | json | Latest store sales snapshot (Salla or Shopify, whichever was synced last): 30-day order count, revenue by currency, canceled count, open abandoned carts and their value, top products. Totals only, no customer data | `store-sales.ts` | none (replaced on each sync) |
+| `storesales:{scope}` | json | Latest store sales snapshot (Salla, Shopify or Zid, whichever was synced last): 30-day order count, revenue by currency, canceled count, open abandoned carts and their value, top products. Totals only, no customer data | `store-sales.ts` | none (replaced on each sync) |
 | `connlock:{scope}:{provider}` | string | Held while a connector token is refreshed, so two requests cannot spend one single-use refresh token | `connectors/fresh.ts` | 30 s |
 | `profile:{scope}` (written) / `profile:{email}` (read by cron, deleted by wipe) | json | `{emails: all\|important\|none}` | `api/profile/route.ts:21,40`, `api/cron/daily/route.ts:41`, `account.ts:19` | none |
 | `notifs:{email}` | json | Up to 50 notifications | `notifications.ts:16` | none |

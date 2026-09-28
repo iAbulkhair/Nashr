@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Integration } from "@/lib/integrations";
 import type { KeyField } from "@/lib/connectors/registry";
-import { READS_METRICS, isWorking } from "@/lib/connectors/working";
+import { IMPORTS_PRODUCTS, READS_ADS, isWorking } from "@/lib/connectors/working";
 import type { Lang } from "@/lib/i18n";
 
 type P = { id: string; name: string; kind: "oauth" | "key"; capabilities: string[]; available: boolean; keyFields?: KeyField[]; docs?: string; needsShop: boolean };
@@ -58,7 +58,7 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
     const res = await fetch(`/api/connect/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "import_products" }) });
     const j = await res.json();
     setBusy(false);
-    alert(j.ok ? `${g.importProducts}: ${j.count}` : j.error);
+    alert(j.ok ? `${g.importProducts}: ${j.count}` : j.error === "zid_access_denied" ? g.zidDenied : j.error);
   }
   async function selectPage(pageId: string) {
     setBusy(true);
@@ -122,7 +122,7 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
                     </label>
                   )}
                   {c.provider === "meta" && c.meta?.pageId && !c.meta.igId && <p className="mt-1 text-xs text-ink/60">{g.metaNoIg}</p>}
-                  {READS_METRICS.includes(c.provider) && c.meta?.adAccounts && (
+                  {READS_ADS.includes(c.provider) && c.meta?.adAccounts && (
                     <label className="mt-2 grid gap-1 text-xs text-ink/60">
                       <span>{g.adAccount}</span>
                       <select value={c.meta.adAccount} disabled={busy} onChange={(e) => selectAdAccount(c.provider, e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1 text-xs" dir="auto">
@@ -133,7 +133,7 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
                 </div>
                 <div className="flex shrink-0 flex-col gap-1">
                   {c.needsReconnect && providerById.get(c.provider)?.kind === "oauth" && <button onClick={() => startOAuth(providerById.get(c.provider)!)} className="rounded-full bg-oasis px-3 py-1 text-xs font-semibold text-mist">{g.reconnectBtn}</button>}
-                  {["shopify", "woocommerce", "odoo", "prestashop", "salla"].includes(c.provider) && <button disabled={busy} onClick={() => importProducts(c.provider)} className="rounded-full border border-oasis/40 px-3 py-1 text-xs text-oasis">{g.importProducts}</button>}
+                  {IMPORTS_PRODUCTS.includes(c.provider) && <button disabled={busy} onClick={() => importProducts(c.provider)} className="rounded-full border border-oasis/40 px-3 py-1 text-xs text-oasis">{g.importProducts}</button>}
                   <button onClick={() => disconnect(c.provider)} className="rounded-full border border-sadu/40 px-3 py-1 text-xs text-sadu">{g.disconnect}</button>
                 </div>
               </div>
@@ -150,8 +150,8 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
               // A card offers "Connect" or shows "Connected" only when code uses that connection; the others keep their
               // catalog status. The Connected section above still lists every stored connection so it can be removed.
               const found = providerById.get(connectorId(i));
-              // Working: publishes or imports. Reading ad results counts too (READS_METRICS).
-              const p = found && (isWorking(found.id) || READS_METRICS.includes(found.id)) ? found : undefined;
+              // Working: publishes or imports. Reading ad results counts too (READS_ADS).
+              const p = found && (isWorking(found.id) || READS_ADS.includes(found.id)) ? found : undefined;
               const isConnected = p ? connectedIds.has(p.id) : false;
               const canConnect = p?.available && !isConnected;
               const status = isConnected ? "live" : p?.available ? "ready" : i.status;

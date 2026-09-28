@@ -92,7 +92,7 @@ export default function PerformanceImport({ lang, initial, ads = [] }: { lang: "
   const chat = (p: string) => `/${lang}/app/chat?prompt=${encodeURIComponent(p)}`;
 
   return (
-    <section className="card mt-6 overflow-hidden p-0" aria-label={S.title}>
+    <section id="campaign-results" className="card mt-6 overflow-hidden p-0" aria-label={S.title}>
       <header className="flex flex-wrap items-start gap-3 border-b border-ink/5 px-5 py-4">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-oasis text-saffron"><Icon name="chart" className="h-5 w-5" /></span>
         <div className="min-w-0 flex-1">
