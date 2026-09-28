@@ -108,3 +108,68 @@ test.describe("home with reduced motion", () => {
     expect(await q.textContent()).toBe(before);
   });
 });
+
+test("plays steps 1 to 5 by keyboard with no request to the server", async ({ page }) => {
+  await open(page, "/ar");
+  const api: string[] = [];
+  page.on("request", (r) => { if (new URL(r.url()).pathname.startsWith("/api/")) api.push(r.url()); });
+  const game = page.getByTestId("dictionary");
+  await game.getByLabel("وش اسم علامتك؟").fill("<b>قهوة</b>" + " ".repeat(10) + "x".repeat(100));
+  await game.getByRole("radio", { name: "قهوة" }).check();
+  await game.getByRole("button", { name: "التالي" }).press("Enter");
+  await expect(game).toHaveAttribute("data-step", "2");
+  for (const w of ["جريء", "دافي", "راقي", "شعبي", "هادي"]) await game.getByRole("button", { name: w }).press("Enter");
+  await expect(game.getByText("اخترت ٥ من ٥")).toBeVisible();
+  await game.getByRole("button", { name: "التالي" }).press("Enter");
+  await game.getByRole("button", { name: "التالي" }).press("Enter");
+  await expect(game).toHaveAttribute("data-step", "4");
+  await expect(game.getByText("<b>قهوة</b>", { exact: false }).first()).toBeVisible();
+  await game.getByRole("button", { name: "التالي" }).press("Enter");
+  await game.getByRole("button", { name: "موافق" }).press("Enter");
+  await expect(game).toHaveAttribute("data-step", "6");
+  expect(api).toEqual([]);
+});
+
+test("the game moves focus to each new step and ends on a start form that carries the URL", async ({ page }) => {
+  await open(page, "/en");
+  const game = page.getByTestId("dictionary");
+  const heading = game.getByRole("heading", { level: 3 });
+  const next = game.getByRole("button", { name: "Next" });
+  await game.getByLabel("What's your brand called?").fill("Bloom");
+  await game.getByRole("radio", { name: "Clinic" }).check();
+  await next.click();
+  await expect(heading).toBeFocused();
+  await expect(heading).toContainText("2/7");
+  for (const w of ["Bold", "Warm", "Calm", "Local", "Honest"]) await game.getByRole("button", { name: w }).click();
+  await expect(game.getByRole("button", { name: "Bold" })).toHaveAttribute("aria-pressed", "true");
+  await expect(game.getByRole("button", { name: "Playful" })).toHaveAttribute("aria-pressed", "false");
+  await expect(game.getByRole("button", { name: "Playful" })).toBeDisabled();
+  await next.click();
+  await expect(game.getByText("Example", { exact: true })).toHaveCount(1);
+  await next.click();
+  await expect(game.getByText("Example", { exact: true })).toHaveCount(2);
+  await expect(game.getByText("Bloom: your health deserves an appointment today, not tomorrow.")).toBeVisible();
+  await next.click();
+  await game.getByRole("button", { name: "Approve" }).click();
+  await expect(heading).toBeFocused();
+  await next.click();
+  await expect(game).toHaveAttribute("data-step", "7");
+  await expect(heading).toBeFocused();
+  await expect(heading).toContainText("7/7");
+  const url = game.locator('form input[name="url"]');
+  await url.fill("example.sa");
+  await url.press("Enter");
+  await expect(page).toHaveURL(/\/en\/app\/signup\?url=example\.sa/);
+});
+
+test.describe("the game with reduced motion", () => {
+  test.use({ reducedMotion: "reduce" });
+  test("its bubbles appear without moving", async ({ page }) => {
+    await open(page, "/en");
+    const game = page.getByTestId("dictionary");
+    await game.getByLabel("What's your brand called?").fill("Bloom");
+    const bubble = game.getByText("Nice name. Let me get to know you.", { exact: false });
+    await expect(bubble).toBeVisible();
+    expect(await bubble.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
+  });
+});

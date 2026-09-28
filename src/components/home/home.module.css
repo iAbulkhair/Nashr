@@ -584,3 +584,371 @@
   margin-top: 0.5rem;
   line-height: 1.7;
 }
+
+/* ---------- قاموس ذكين: the game (Dictionary.tsx) ---------- */
+
+.dict {
+  font-family: var(--home-body);
+  max-width: 1200px;
+  margin-inline: auto;
+  padding: clamp(3rem, 7vw, 6rem) 16px;
+  /* Under the sticky site nav when reached by #dictionary. */
+  scroll-margin-top: 61px;
+  /* A brand is up to 40 characters with no spaces; it must wrap, never push the page sideways. */
+  overflow-wrap: anywhere;
+}
+.dictTitle {
+  font-family: var(--home-display);
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  font-weight: 800;
+  line-height: 1.25;
+}
+.dictSub {
+  margin-top: 0.5rem;
+  font-size: clamp(1rem, 1.6vw, 1.2rem);
+  line-height: 1.6;
+}
+
+/*
+ * The step rail. The current step is marked three ways: a filled number, its name set bold and underlined, and on
+ * phones it is the only step whose name shows. The panel heading also states it ("3/7 Plan").
+ */
+.rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.1rem;
+  margin: 1.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.railStep {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+.railNum {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 1.9rem;
+  height: 1.9rem;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--paper);
+  font-weight: 700;
+}
+.railStep[data-state="done"] .railNum { background: color-mix(in oklab, var(--ink) 14%, var(--paper)); }
+.railStep[data-state="current"] .railNum { background: var(--ink); color: var(--ground); }
+.railStep[data-state="current"] .railName {
+  font-weight: 800;
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.35em;
+}
+@media (max-width: 759px) {
+  .rail { gap: 0.5rem; }
+  .railStep:not([data-state="current"]) .railName {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+.dictPanel {
+  margin-top: 1.5rem;
+  padding: clamp(1.1rem, 3vw, 2.25rem);
+  border: 2px solid var(--ink);
+  border-radius: 24px;
+  background: var(--paper);
+}
+.dictStep {
+  font-family: var(--home-display);
+  font-size: clamp(1.35rem, 2.6vw, 1.9rem);
+  font-weight: 800;
+  line-height: 1.3;
+  scroll-margin-top: 80px;
+}
+.dictStep:focus { outline: none; }
+.dictStep:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; border-radius: 6px; }
+.dictCount {
+  font-size: 0.75em;
+  font-weight: 700;
+  opacity: 0.75;
+}
+.dictBody {
+  display: grid;
+  align-content: start;
+  gap: 1.25rem;
+  min-height: 13rem;
+  margin-top: 1.25rem;
+}
+
+/* Step 1: the brand and the sector. */
+.dictLabel {
+  display: block;
+  margin-bottom: 0.5rem;
+  padding: 0;
+  font-weight: 700;
+}
+.dictInput {
+  width: 100%;
+  max-width: 28rem;
+  padding: 0.8rem 1.1rem;
+  border: 2px solid var(--ink);
+  border-radius: 14px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+.dictInput:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+.sectors {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.sectorList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.sector {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--paper);
+  font-weight: 600;
+  cursor: pointer;
+}
+.sector input {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  accent-color: var(--ink);
+}
+.sector:has(:checked) { background: color-mix(in oklab, var(--ink) 10%, var(--paper)); }
+/* The whole pill carries the focus ring, in place of the site's ring on the small radio itself. */
+.sector:has(:focus-visible) { outline: 3px solid var(--ink); outline-offset: 2px; }
+.sector input:focus-visible { outline: none; }
+
+/* Step 2: twelve words, five picks. Picked words carry a tick as well as the fill. */
+/* Column counts that divide twelve, so every row is full. */
+.words {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+@media (min-width: 480px) { .words { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 640px) { .words { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 900px) { .words { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.word {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.7rem 0.75rem;
+  border: 2px solid var(--ink);
+  border-radius: 14px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.word[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
+.word:disabled { opacity: 0.45; cursor: not-allowed; }
+.word:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+.tick { font-weight: 800; }
+.dictLive {
+  display: grid;
+  gap: 0.75rem;
+}
+.counter { font-weight: 700; }
+
+/* An agent speaking: a face in a circle, then the bubble. */
+.say {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+.face {
+  position: relative;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--ground);
+  overflow: hidden;
+}
+/* The full figure at twice the circle's width, lifted so the head sits in the middle. */
+.face .doodle {
+  position: absolute;
+  top: -6px;
+  left: -50%;
+  width: 200%;
+  max-width: none;
+}
+.face .doodle :is(path, circle, ellipse, rect, line) { stroke-width: 1.75px; }
+.bubble {
+  max-width: 34rem;
+  padding: 0.7rem 1rem;
+  border: 2px solid var(--ink);
+  border-radius: 18px;
+  border-end-start-radius: 4px;
+  background: var(--paper);
+  line-height: 1.6;
+  animation: dictPop 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.sayName {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  opacity: 0.8;
+}
+@keyframes dictPop {
+  from { opacity: 0; translate: 0 0.4rem; }
+  to { opacity: 1; translate: none; }
+}
+
+/* Steps 3–4: samples, each tagged «مثال». */
+.samples {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 1rem;
+}
+.sample {
+  min-width: 0;
+  padding: 1rem 1.15rem 1.15rem;
+  border: 2px solid var(--ink);
+  border-radius: 18px;
+  background: var(--ground);
+}
+.sampleHead {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.85rem;
+}
+.sampleFaces { display: flex; flex: none; }
+.sampleFaces .face + .face { margin-inline-start: -12px; }
+.sampleWho {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+.exampleTag {
+  flex: none;
+  margin-inline-start: auto;
+  padding: 0.15rem 0.65rem;
+  border: 1.5px solid var(--ink);
+  border-radius: 999px;
+  background: var(--c-noor);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.planList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  line-height: 1.7;
+}
+.planList li + li {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1.5px solid color-mix(in oklab, var(--ink) 25%, var(--ground));
+}
+.post {
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.7;
+}
+.chat {
+  padding: 0.7rem 0.95rem;
+  border: 1.5px solid var(--ink);
+  border-radius: 14px;
+  border-start-start-radius: 4px;
+  background: var(--paper);
+  line-height: 1.7;
+}
+
+/* Step 5: the one button. */
+.approveBox {
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+  padding-block: 1rem;
+  text-align: center;
+}
+.approve {
+  min-width: min(100%, 16rem);
+  padding: 1.1rem 2.5rem;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--ground);
+  font: inherit;
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  font-weight: 800;
+  cursor: pointer;
+}
+.approve:hover { background: color-mix(in oklab, var(--ink) 86%, var(--paper)); }
+.approve:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
+.approveNote { font-weight: 600; }
+
+/* Steps 6–7: previews, drawn dashed; they need real time and real data. */
+.preview {
+  padding: 1.1rem 1.25rem;
+  border: 2px dashed var(--ink);
+  border-radius: 18px;
+  background: var(--ground);
+  line-height: 1.7;
+}
+.dictCtaLine {
+  font-family: var(--home-display);
+  font-size: clamp(1.2rem, 2.4vw, 1.6rem);
+  font-weight: 800;
+}
+.dictCta .start { margin-top: 0.75rem; }
+
+.dictNav {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+.dictBack,
+.dictNext {
+  padding: 0.75rem 1.5rem;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.dictBack { background: var(--paper); color: var(--ink); }
+.dictNext {
+  margin-inline-start: auto;
+  background: var(--ink);
+  color: var(--ground);
+}
+.dictNext:disabled { opacity: 0.45; cursor: not-allowed; }
+.dictBack:focus-visible,
+.dictNext:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+
+/* Reduced motion: the game changes state instantly, nothing pops in. */
+@media (prefers-reduced-motion: reduce) {
+  .bubble { animation: none; }
+}
+
+/* Without JavaScript the game cannot be played: the title, the subtitle and the seven steps stay as a summary. */
+@media (scripting: none) {
+  .dictPanel { display: none; }
+}

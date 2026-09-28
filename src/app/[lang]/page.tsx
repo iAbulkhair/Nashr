@@ -3,6 +3,7 @@ import { dict, isLang } from "@/lib/i18n";
 import Nav from "@/components/Nav";
 import Story from "@/components/home/Story";
 import Lineup from "@/components/home/Lineup";
+import Dictionary from "@/components/home/Dictionary";
 import Truths from "@/components/home/Truths";
 import Pricing from "@/components/Pricing";
 import Faq from "@/components/Faq";
@@ -19,7 +20,7 @@ export default async function Home({ params }: { params: Promise<{ lang: string 
       <main className={styles.home}>
         <Story lang={lang} />
         <Lineup lang={lang} />
-        <section id="dictionary" />
+        <Dictionary lang={lang} />
         <Truths lang={lang} />
         <Pricing t={t} lang={lang} />
         <Faq t={t} />
