@@ -19,9 +19,13 @@ export function flipTick(elapsedMs: number, delayMs: number): number {
   return Math.floor((elapsedMs - delayMs) / FLIP_MS);
 }
 
-/** Which of `count` questions shows at `elapsedMs`: the first until the figure's first flip, then one per period. */
-export function flipIndex(elapsedMs: number, delayMs: number, count: number): number {
-  return count > 0 ? Math.max(0, flipTick(elapsedMs, delayMs)) % count : 0;
+/**
+ * Which of `count` questions shows at `elapsedMs`: question `from` until the figure's first flip, then the next one each
+ * period. The lineup reads the page's shared clock from question 0. A flip that resumes in place (the story's agent,
+ * when its chapter comes back) reads its own clock, started when it resumed, from the question already on screen.
+ */
+export function flipIndex(elapsedMs: number, delayMs: number, count: number, from = 0): number {
+  return count > 0 ? (from + Math.max(0, flipTick(elapsedMs, delayMs))) % count : 0;
 }
 
 /** Milliseconds from `elapsedMs` to this figure's next flip. Always more than 0 and at most one period. */

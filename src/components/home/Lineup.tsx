@@ -1,19 +1,12 @@
 "use client";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { BANTER_FIRST_MS, BANTER_LINE_MS, exchangeTimes } from "@/lib/banter-clock";
 import { BANTER, CAST, HOME, type CastId, type CastMember } from "@/lib/home";
 import type { Lang } from "@/lib/i18n";
 import Figure from "./Figure";
 import { useReducedMotion } from "./useReducedMotion";
 import styles from "./home.module.css";
 
-/** The banter's timing. The first exchange starts this long after the lineup comes into view. */
-const FIRST_MS = 1500;
-/** Each line holds this long; a pressed figure's answer too. */
-const LINE_MS = 2200;
-/** The next exchange starts at least this long after the previous one started… */
-const EXCHANGE_MS = 8000;
-/** …and at least this long after its last line ended, so a long exchange still gets a pause after it. */
-const REST_MS = 2200;
 /** How far the eyes move towards the pointer, in the drawing's units. */
 const GAZE = 3;
 
@@ -87,7 +80,8 @@ export default function Lineup({ lang }: { lang: Lang }) {
     };
   }, []);
 
-  // The banter, one line at a time. An exchange cut off (off screen, hidden tab, paused) starts again from its first line.
+  // The banter, one line at a time, on the schedule in `@/lib/banter-clock`. An exchange cut off (off screen, hidden
+  // tab, paused) starts again from its first line.
   useEffect(() => {
     if (!live) return;
     const timers = new Set<ReturnType<typeof setTimeout>>();
@@ -100,22 +94,23 @@ export default function Lineup({ lang }: { lang: Lang }) {
     };
     const play = () => {
       const exchange = BANTER[next.current % BANTER.length];
-      exchange.lines.forEach((l, i) => later(() => setBanter({ who: l.who, text: l.text[lang] }), i * LINE_MS));
-      const length = exchange.lines.length * LINE_MS;
+      // Moments from this exchange's start: each line, the end of the last one, the next exchange.
+      const at = exchangeTimes(0, exchange.lines.length);
+      exchange.lines.forEach((l, i) => later(() => setBanter({ who: l.who, text: l.text[lang] }), at.lines[i]));
       later(() => {
         setBanter(null);
         next.current += 1;
-      }, length);
-      later(play, Math.max(EXCHANGE_MS, length + REST_MS));
+      }, at.end);
+      later(play, at.next);
     };
-    later(play, FIRST_MS);
+    later(play, BANTER_FIRST_MS);
     return () => timers.forEach(clearTimeout);
   }, [live, lang]);
 
   // A pressed figure's answer holds for one line's time; pressing again restarts it.
   useEffect(() => {
     if (!pressed) return;
-    const t = setTimeout(() => setPressed(null), LINE_MS);
+    const t = setTimeout(() => setPressed(null), BANTER_LINE_MS);
     return () => clearTimeout(t);
   }, [pressed]);
 
@@ -186,7 +181,7 @@ export default function Lineup({ lang }: { lang: Lang }) {
                 index={index}
                 lines={linesOf(member, lang)}
                 say={talk?.who === member.id ? quote(talk.text, lang) : undefined}
-                hold={paused}
+                hold={!live}
                 onPress={() => setPressed({ who: member.id, text: answer(member, lang) })}
               />
             </li>

@@ -241,6 +241,26 @@ test("the motion button stops the banter and the flips, and starts them again", 
   await expect(bubbles.first()).toBeVisible({ timeout: 4000 });
 });
 
+test("a hidden tab rests the lineup: no new line, no flip", async ({ page }) => {
+  await open(page, "/en");
+  const lineup = page.getByTestId("lineup");
+  await lineup.scrollIntoViewIfNeeded();
+  const bubbles = lineup.getByTestId("bubble");
+  await expect(bubbles.first()).toBeVisible({ timeout: 4000 });
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(lineup).not.toHaveAttribute("data-live");
+  // Showing, the next line would come within 2.2 s and a question would flip within 2.4 s.
+  const question = lineup.locator('[data-testid="figure"][data-cast="noor"]').getByTestId("qflip");
+  const before = await question.textContent();
+  await expect(bubbles).toHaveCount(0);
+  await page.waitForTimeout(2600);
+  await expect(bubbles).toHaveCount(0);
+  expect(await question.textContent()).toBe(before);
+});
+
 test("the eyes follow the pointer the right way round in Arabic, and the figures blink and breathe", async ({ page, isMobile }) => {
   test.skip(isMobile, "a phone has no pointer to follow");
   await open(page, "/ar");

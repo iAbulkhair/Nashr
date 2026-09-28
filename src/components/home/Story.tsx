@@ -116,7 +116,7 @@ export default function Story({ lang }: { lang: Lang }) {
         {AGENT_CAST.map((a, i) => (
           <div key={a.id} className={styles.agent} data-phase={phase(i + 1, chapter)} aria-hidden="true">
             <div className={styles.above}>
-              <QuestionFlip items={a.questions} lang={lang} paused={chapter !== i + 1} />
+              <QuestionFlip items={a.questions} lang={lang} paused={chapter !== i + 1} phase="resume" />
             </div>
             <div className={styles.stageArt}>
               <Doodle who={a.id} />

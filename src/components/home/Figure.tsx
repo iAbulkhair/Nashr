@@ -11,10 +11,11 @@ import styles from "./home.module.css";
  * then the questions flipping above the head. The flipping layer is decorative; the value, the name and the first
  * question are exposed as static text.
  *
- * Hovered or focused, the figure turns to face you and holds its question; it also holds it while the lineup's motion
- * is paused (`hold`). When it speaks (`say`), its bubble covers the question slot. The slot is sized from before the
- * first paint for every line this figure can say (`lines`), so a bubble never moves the layout or gets clipped. The
- * bubble is `aria-hidden`, and the button keeps its name; the lineup announces what a pressed figure answers.
+ * Hovered or focused, the figure turns to face you and holds its question; it also holds it while the lineup rests
+ * (`hold`: off screen, in a hidden tab, or paused by the visitor). When it speaks (`say`), its bubble covers the
+ * question slot. The slot is sized from before the first paint for every line this figure can say (`lines`), so a
+ * bubble never moves the layout or gets clipped. The bubble is `aria-hidden`, and the button keeps its name; the
+ * lineup announces what a pressed figure answers.
  */
 export default function Figure({
   member,

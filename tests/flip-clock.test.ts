@@ -36,6 +36,18 @@ describe("the lineup's flip clock", () => {
     }
   });
 
+  it("resumes in place: from the question on screen, one flip 2.4 s after it starts moving again", () => {
+    // The story's agent held question 2 of 4 while its chapter was away; its own clock starts at 0 when it comes back.
+    expect(untilNextFlip(0, 0)).toBe(FLIP_MS);
+    expect(flipIndex(0, 0, 4, 2)).toBe(2);
+    expect(flipIndex(FLIP_MS - 1, 0, 4, 2)).toBe(2);
+    expect(flipIndex(FLIP_MS, 0, 4, 2)).toBe(3);
+    expect(flipIndex(2 * FLIP_MS, 0, 4, 2)).toBe(0);
+    // Never skips a question on the way.
+    const seen = Array.from({ length: 6 }, (_, n) => flipIndex(n * FLIP_MS, 0, 4, 3));
+    expect(seen).toEqual([3, 0, 1, 2, 3, 0]);
+  });
+
   it("cycles through the questions and waits exactly until the next flip", () => {
     const seen = Array.from({ length: 10 }, (_, n) => flipIndex(n * FLIP_MS + flipDelay(2), flipDelay(2), 4));
     expect(seen).toEqual([0, 1, 2, 3, 0, 1, 2, 3, 0, 1]);
