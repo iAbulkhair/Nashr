@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import { describe, expect, it } from "vitest";
-import { READS_METRICS, WORKING_PROVIDERS, isWorking } from "@/lib/connectors/working";
+import { IMPORTS_PRODUCTS, READS_METRICS, WORKING_PROVIDERS, isWorking } from "@/lib/connectors/working";
 import { SALES_PROVIDERS } from "@/lib/connectors/sales";
 import { reportSources } from "@/lib/report-sources";
 import { costUsd } from "@/lib/usage";
@@ -21,7 +21,11 @@ describe("which connectors do something", () => {
   });
 
   it("does not treat a stored connection with no code behind it as working", () => {
-    for (const id of ["klaviyo", "brevo", "google", "instagram", "whatsapp", "zid", "tiktok", "snapchat", "linkedin"]) expect(isWorking(id)).toBe(false);
+    for (const id of ["klaviyo", "brevo", "google", "instagram", "whatsapp", "tiktok", "snapchat", "linkedin"]) expect(isWorking(id)).toBe(false);
+  });
+
+  it("offers Import products exactly where import_products imports", () => {
+    expect([...IMPORTS_PRODUCTS].sort()).toEqual([...importers].sort());
   });
 
   it("reads platform numbers only from the stores the sales sync reads, and stats.ts reads no connection", () => {
@@ -33,6 +37,7 @@ describe("which connectors do something", () => {
     expect(reportSources([])).toEqual({ read: [], missing: ["analytics", "ads", "store", "social"], banner: "none" });
     expect(reportSources(["salla"])).toEqual({ read: ["store"], missing: ["analytics", "ads", "social"], banner: "some" });
     expect(reportSources(["shopify", "x"]).read).toEqual(["store"]);
+    expect(reportSources(["zid"]).read).toEqual(["store"]);
     // WooCommerce and Meta store a connection, but nothing reads their numbers.
     expect(reportSources(["woocommerce", "meta", "google"])).toMatchObject({ read: [], banner: "none" });
   });

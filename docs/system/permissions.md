@@ -81,7 +81,7 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 |---|---|---|---|---|
 | 42 | GET | `/api/connect` | O | `currentUser` `connect/route.ts:7-8`. Returns connection metadata, never decrypted `data`. |
 | 43 | DELETE | `/api/connect/{provider}` | O | `currentUser` `connect/[provider]/route.ts:11-12`; `deleteConnection(sc(u), provider)` `:14`. |
-| 44 | POST | `/api/connect/{provider}` | O | `currentUser` `connect/[provider]/route.ts:20-21`; `getFreshConnection(sc(u), provider)`. Actions: `import_products`, `sync_sales` (Salla, Shopify), `select_page` (Meta; the Page id must be one Meta returned for this connection). |
+| 44 | POST | `/api/connect/{provider}` | O | `currentUser` `connect/[provider]/route.ts:20-21`; `getFreshConnection(sc(u), provider)`. Actions: `import_products` (Shopify, WooCommerce, Odoo, PrestaShop, Salla, Zid), `sync_sales` (Salla, Shopify, Zid), `select_page` (Meta; the Page id must be one Meta returned for this connection). |
 | 45 | GET | `/api/connect/{provider}/start` | O | `currentUser` `connect/[provider]/start/route.ts:10-11`; scope written into state `:25`. |
 | 46 | GET | `/api/connect/{provider}/callback` | O who started the flow: a valid, unused `state` issued for this provider, the matching `nashr_oauth` cookie, and a signed-in account that owns the state's scope | `currentUser` and `sameSecret(cookie, state)` in `connect/[provider]/callback/route.ts`, before any code exchange; Shopify also verifies the query `hmac`. Target scope comes from the state record. |
 | 47 | POST | `/api/connect/{provider}/key` | O | `currentUser` `connect/[provider]/key/route.ts:12-13`; saved under `sc(u)` `:54`. |
@@ -99,6 +99,9 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | 54 | GET | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:6-7`. Returns only a 12-char prefix. |
 | 55 | POST | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:12-13`. |
 | 56 | DELETE | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:19-20`. |
+| 56a | GET | `/api/performance` | O | `currentUser` `performance/route.ts`; `getPerf(sc(u))`. |
+| 56b | POST | `/api/performance` | O | `currentUser`; `allow("perf:{email}", 20, 3600)`; body capped at 2,000,000 characters (413); parsed as data; saved under `sc(u)`. No model call, no credits. |
+| 56c | DELETE | `/api/performance` | O | `currentUser`; `clearPerf(sc(u))` deletes `perfimport:{scope}` and `performance-learnings.md`. |
 | 57 | POST | `/api/oauth/register` | A | None. `registerClient` validates redirect URIs only `src/lib/oauth.ts:35-37`. |
 | 58 | OPTIONS | `/api/oauth/register` | A | CORS `oauth/register/route.ts:13`. |
 | 59 | POST | `/api/oauth/approve` | U | `currentUser` `oauth/approve/route.ts:7-8`; client and redirect URI match `:10-11`; PKCE S256 required `:18`. Code is bound to `u.email` `:19`. |
