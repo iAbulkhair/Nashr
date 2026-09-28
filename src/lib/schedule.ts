@@ -5,6 +5,7 @@ import { charge, refund } from "./credits";
 import { judgeLater } from "./judge";
 import { TASK_COST, getBrand, indexedAt, listLite, listPreferences, rebuildIndex, rebuildPending, saveTask, type Brand, type Task } from "./brand";
 import { generate } from "./noor";
+import { modelState } from "./model";
 import { memoryBlock } from "./files";
 import { getGov } from "./governance";
 import { activeSeasons } from "./seasons";
@@ -55,6 +56,9 @@ export async function runWeekly(user: User): Promise<string> {
   if (!sched.weeklyPlan) return "off";
   // Belt and braces next to the cron markers: never charge or generate twice for the same week.
   if (ranThisWeek(sched.lastWeekly)) return "already_this_week";
+  // Before any charge. "retry" leaves the week open in the cron markers, so the Monday and Tuesday catch-ups still
+  // serve this owner if Claude is back on by then.
+  if (modelState() === "paused") return "retry:paused";
   if (!(await db.lock(`weeklylock:${email}`, 300))) return "retry:locked";
   try {
     return await weeklyFor(user, email, brand);

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { json, newUser, signIn } from "./helpers/session";
+import { claudeOn } from "./helpers/model";
 import { db } from "@/lib/db";
 import { listTasks, type Brand } from "@/lib/brand";
 import { getUser } from "@/lib/auth";
@@ -24,7 +25,7 @@ const snapshot = (over: Partial<SalesSnapshot["carts"]> = {}): SalesSnapshot => 
 });
 const brand: Brand = { name: "متجر الورد", website: "", industry: "عطور", dialect: "saudi", languages: ["ar"], tone: "راقٍ", products: "عطور", audience: "الرياض", offers: "خصم 15% على أول طلب", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-09-28T00:00:00.000Z" };
 
-afterEach(() => { vi.doUnmock("@anthropic-ai/sdk"); vi.unstubAllEnvs(); });
+afterEach(() => { vi.doUnmock("@anthropic-ai/sdk"); vi.doUnmock("@/lib/model"); vi.unstubAllEnvs(); });
 
 describe("cart-recovery drafts need real abandoned carts (rule 74)", () => {
   it("is a Noor task of 5 items for 3 credits", () => {
@@ -100,6 +101,7 @@ describe("no discount the owner did not offer (rule 74)", () => {
     let userMsg = "";
     vi.resetModules();
     vi.stubEnv("ANTHROPIC_API_KEY", "test");
+    claudeOn();
     const first = [{ channel: "whatsapp", title: "تذكير 30%", body: "{{1}}، مسك أبيض بانتظارك بخصم 30%: {{2}}" }, { channel: "instagram", title: "ب", body: "خصم 15% على أول طلب" }];
     const reply = (text: string) => ({ model: "m", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text }] });
     vi.doMock("@anthropic-ai/sdk", () => ({

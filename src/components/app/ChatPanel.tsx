@@ -115,10 +115,11 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
     ranOnboard.current = true;
     (async () => {
       setBusy(true); setSteps([]);
-      const fail = (code?: string) => setMsgs((p) => [...p, { role: "assistant", agent: "noor", at: new Date().toISOString(), content: code === "busy" ? (lang === "ar" ? "التجهيز جارٍ في الخلفية. حدّث الصفحة بعد دقيقة." : "Setup is still running. Refresh in a minute.") : (lang === "ar" ? "⚠︎ تعذّر تجهيز المساحة. حدّث الصفحة للمحاولة مرة أخرى." : "⚠︎ Could not set up the workspace. Refresh to try again.") }]);
+      const fail = (code?: string) => setMsgs((p) => [...p, { role: "assistant", agent: "noor", at: new Date().toISOString(), content: code === "busy" ? (lang === "ar" ? "التجهيز جارٍ في الخلفية. حدّث الصفحة بعد دقيقة." : "Setup is still running. Refresh in a minute.") : code === "paused" ? (lang === "ar" ? "تجهيز المساحة متوقف مؤقتاً، ولم يُحفظ شيء. حدّث الصفحة لاحقاً للمحاولة مرة أخرى." : "Workspace setup is paused for now and nothing was saved. Refresh later to try again.") : (lang === "ar" ? "⚠︎ تعذّر تجهيز المساحة. حدّث الصفحة للمحاولة مرة أخرى." : "⚠︎ Could not set up the workspace. Refresh to try again.") }]);
       try {
         const res = await fetch("/api/onboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: onboardUrl }) });
         if (res.status === 409) return fail("busy");
+        if (res.status === 503) return fail("paused");
         if (!res.ok || !res.body) return fail();
         const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
         for (;;) {

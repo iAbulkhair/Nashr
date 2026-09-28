@@ -5,6 +5,7 @@ import { statsFor } from "./stats";
 import { missingData } from "./cart-recovery";
 import { judgeLater } from "./judge";
 import { meter } from "./usage";
+import { PAUSED_REPLY, modelState } from "./model";
 import Anthropic from "@anthropic-ai/sdk";
 import { randomBytes } from "crypto";
 import { CAPS, db, pushCapped } from "./db";
@@ -183,8 +184,11 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   const actions: string[] = [];
   const made: Task[] = [];
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    const m: ChatMsg = { role: "assistant", content: "[DEV MOCK] ANTHROPIC_API_KEY not set. I would answer here and use tools.", at: new Date().toISOString(), actions };
+  const state = modelState();
+  if (state !== "on") {
+    // Paused: no tool runs, so nothing is charged or written; the owner is told plainly, in their language.
+    const content = state === "paused" ? PAUSED_REPLY[lang] : "[DEV MOCK] ANTHROPIC_API_KEY not set. I would answer here and use tools.";
+    const m: ChatMsg = { role: "assistant", content, at: new Date().toISOString(), actions, ...(state === "paused" ? { agent: agentId } : {}) };
     await push(email, m, conv);
     return m;
   }

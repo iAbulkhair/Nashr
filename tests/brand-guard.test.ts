@@ -20,7 +20,7 @@ const BRAND: Brand = { name: "محمصة ريف", website: "", industry: "coffee
 const task = (id: string, body: string, status: Task["status"] = "pending", type: Task["type"] = "social"): Task => ({ id, type, channel: "instagram", title: id, body, status, createdAt: new Date().toISOString(), lang: "ar" });
 const hits = (text: string, banned = BRAND.banned) => checkText(brandRules({ banned }), text).map((v) => v.term);
 
-describe("brand rules: the banned list as code (rule 76)", () => {
+describe("brand rules: the banned list as code (rule 77)", () => {
   it("splits on Arabic and Latin commas, semicolons and new lines, and drops duplicates and single letters", () => {
     expect(bannedTerms("مضمون، الأفضل, cheap; رخيص\nx\nمضمون")).toEqual(["مضمون", "الأفضل", "cheap", "رخيص"]);
     expect(bannedTerms(undefined)).toEqual([]);
@@ -67,7 +67,7 @@ describe("brand rules: the banned list as code (rule 76)", () => {
   });
 });
 
-describe("the approve and publish routes enforce the brand rules in code (rule 77)", () => {
+describe("the approve and publish routes enforce the brand rules in code (rule 78)", () => {
   const patch = (id: string, body: unknown) => taskRoute.PATCH(json(`/api/tasks/${id}`, "PATCH", body), { params: Promise.resolve({ id }) });
 
   it("refuses to approve an item that breaks a rule, and saves nothing", async () => {
@@ -114,7 +114,7 @@ describe("the approve and publish routes enforce the brand rules in code (rule 7
   });
 });
 
-describe("MCP brand tools (rule 78)", () => {
+describe("MCP brand tools (rule 79)", () => {
   const rpc = (method: string, p: Record<string, unknown>, token?: string) =>
     new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: p }) });
   const call = async (name: string, args: Record<string, unknown>, token?: string) => mcpRoute.POST(rpc("tools/call", { name, arguments: args }, token));
@@ -151,7 +151,7 @@ describe("MCP brand tools (rule 78)", () => {
   });
 });
 
-describe("launch journey (rule 79)", () => {
+describe("launch journey (rule 80)", () => {
   const base = { hasBrand: true, bannedWords: 0, tasks: [], connections: 0, aiLinked: false, today: "2026-09-28" };
   it("reads milestones from the workspace, and an auto-approved item is not the owner's first approval", () => {
     expect(computeJourney({ ...base, hasBrand: false }).done).toBe(0);

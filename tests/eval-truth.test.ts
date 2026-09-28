@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { claudeOn } from "./helpers/model";
 import { db } from "@/lib/db";
 import { liteOf, saveTask, type Brand, type Task } from "@/lib/brand";
 import { agentMetrics, scopeMetrics, typeMetrics } from "@/lib/evals";
@@ -14,7 +15,7 @@ let n = 0;
 const task = (over: Partial<Task> = {}): Task => ({ id: `t${++n}`, type: "social", channel: "instagram", title: "t", body: "b", status: "pending", createdAt: daysAgo(1), lang: "ar", ...over });
 const lastWeek = { from: new Date(Date.now() - 7 * 864e5), to: new Date() };
 
-afterEach(() => { vi.doUnmock("@anthropic-ai/sdk"); vi.unstubAllEnvs(); });
+afterEach(() => { vi.doUnmock("@anthropic-ai/sdk"); vi.doUnmock("@/lib/model"); vi.unstubAllEnvs(); });
 
 describe("an approval rate counts only what a person decided", () => {
   // Auto-approve on: ten items arrive "approved" and nobody opens them. One the owner approved, one they rejected.
@@ -123,6 +124,7 @@ describe("the judge", () => {
     const seen: { content: string }[] = [];
     vi.resetModules();
     vi.stubEnv("ANTHROPIC_API_KEY", "test");
+    claudeOn();
     vi.doMock("@anthropic-ai/sdk", () => ({
       default: class {
         messages = {

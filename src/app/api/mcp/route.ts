@@ -14,6 +14,7 @@ import { listFiles, memoryBlock, readFile } from "@/lib/files";
 import { getGov } from "@/lib/governance";
 import { missingData } from "@/lib/cart-recovery";
 import { CUSTOMER_FACING, brandRules, explain, gateTask, initialStatus, isCustomerFacing } from "@/lib/brand-rules";
+import { modelState } from "@/lib/model";
 
 export const maxDuration = 300;
 
@@ -73,6 +74,7 @@ export async function POST(req: Request) {
       }
       case "generate_content": {
         if (!isTaskType(args.type)) return ok(id, { ...text("Unknown type."), isError: true });
+        if (modelState() === "paused") return ok(id, { ...text("Content generation is paused for now. No credits were used."), isError: true });
         const type = args.type;
         const brand = await getBrand((user.scope ?? user.email));
         if (!brand) return ok(id, { ...text("No brand file yet. Run onboarding in the app first."), isError: true });
