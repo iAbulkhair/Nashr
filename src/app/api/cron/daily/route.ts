@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import { renewIfDue } from "@/lib/credits";
 import { followUps, notifEmailText } from "@/lib/notifications";
 import { getUser } from "@/lib/auth";
+import { syncAdsIfDue } from "@/lib/perf-store";
 
 export const maxDuration = 300;
 
@@ -38,6 +39,9 @@ async function dailyFor(u: User): Promise<string> {
     }
     return out.join("+") || "no_brand";
   }
+  // Yesterday's ad results into Noor's memory before the brief. A refused token or an empty account is reported in
+  // the outcome and never stops the rest of this workspace's day.
+  try { const ads = await syncAdsIfDue(u.scope ?? u.email); if (ads) out.push(`ads:${ads}`); } catch (e) { out.push(`ads_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   const lc = await runLifecycle(u);
   if (lc.length) out.push(`lifecycle:${lc.length}`);
   const brief = await runDaily(u);

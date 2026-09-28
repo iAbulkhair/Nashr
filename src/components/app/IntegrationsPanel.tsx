@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Integration } from "@/lib/integrations";
 import type { KeyField } from "@/lib/connectors/registry";
-import { isWorking } from "@/lib/connectors/working";
+import { READS_METRICS, isWorking } from "@/lib/connectors/working";
 import type { Lang } from "@/lib/i18n";
 
 type P = { id: string; name: string; kind: "oauth" | "key"; capabilities: string[]; available: boolean; keyFields?: KeyField[]; docs?: string; needsShop: boolean };
@@ -69,6 +69,15 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
     await load();
     r.refresh();
   }
+  async function selectAdAccount(provider: string, accountId: string) {
+    setBusy(true);
+    const res = await fetch(`/api/connect/${provider}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "select_ad_account", accountId }) });
+    const j = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!j.ok) alert(j.error ?? res.status);
+    await load();
+    r.refresh();
+  }
   const startOAuth = (p: P) => {
     if (p.needsShop) { setShopFor(p); return; }
     // Not an internal page: this route answers 302 to the provider's own consent screen. router.push() performs a
@@ -113,6 +122,14 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
                     </label>
                   )}
                   {c.provider === "meta" && c.meta?.pageId && !c.meta.igId && <p className="mt-1 text-xs text-ink/60">{g.metaNoIg}</p>}
+                  {READS_METRICS.includes(c.provider) && c.meta?.adAccounts && (
+                    <label className="mt-2 grid gap-1 text-xs text-ink/60">
+                      <span>{g.adAccount}</span>
+                      <select value={c.meta.adAccount} disabled={busy} onChange={(e) => selectAdAccount(c.provider, e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1 text-xs" dir="auto">
+                        {(JSON.parse(c.meta.adAccounts) as { id: string; name: string }[]).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                      </select>
+                    </label>
+                  )}
                 </div>
                 <div className="flex shrink-0 flex-col gap-1">
                   {c.needsReconnect && providerById.get(c.provider)?.kind === "oauth" && <button onClick={() => startOAuth(providerById.get(c.provider)!)} className="rounded-full bg-oasis px-3 py-1 text-xs font-semibold text-mist">{g.reconnectBtn}</button>}
@@ -133,7 +150,8 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
               // A card offers "Connect" or shows "Connected" only when code uses that connection; the others keep their
               // catalog status. The Connected section above still lists every stored connection so it can be removed.
               const found = providerById.get(connectorId(i));
-              const p = found && isWorking(found.id) ? found : undefined;
+              // Working: publishes or imports. Reading ad results counts too (READS_METRICS).
+              const p = found && (isWorking(found.id) || READS_METRICS.includes(found.id)) ? found : undefined;
               const isConnected = p ? connectedIds.has(p.id) : false;
               const canConnect = p?.available && !isConnected;
               const status = isConnected ? "live" : p?.available ? "ready" : i.status;

@@ -61,6 +61,7 @@ Per-route authorization is in `permissions.md`.
 | `conversations.ts` | Multiple chat threads per scope, substring search. |
 | `governance.ts` | Per-scope rules: auto-approve by type, weekly cap, learning, reviewer, dash stripping. |
 | `brand-rules.ts` | Import-free brand gate: banned words as rules (`brandRules`, `checkText`, `gateTask`, `initialStatus`), used by the approve and publish routes, auto-approval, the chat publish tool, the MCP `check_brand` tool, the golden evals and the inbox. |
+| `connectors/ads.ts` | Read-only Meta Ads and Snapchat Ads readers: ad accounts, last-30-day results per ad as import rows, account choice. |
 | `perf-import.ts` / `perf-store.ts` | Campaign CSV import: import-free parser, metric choice and findings (browser-safe), and the store that keeps the snapshot and writes `performance-learnings.md`. |
 | `journey.ts` / `journey-load.ts` | Launch journey: milestones, levels and streak computed from workspace state (pure, browser-safe) and its one-round server loader. |
 | `schedule.ts` | Per-scope schedule flags, weekly plan run, daily brief, `allUsers()` fan-out. |
@@ -142,6 +143,7 @@ All three require `Authorization: Bearer ${CRON_SECRET}` and return 401 when the
 | `conns:{scope}` | set | Connected provider ids (never shrinks) | `connectors/store.ts:35` | none |
 | `conn:{scope}:{provider}` | json | Connection with AES-256-GCM `enc` blob; delete writes `null` | `connectors/store.ts:34,52` | none |
 | `oauthstate:{state}` | json | Connector OAuth state `{email: scope, provider, lang, shop, verifier}` | `connectors/store.ts:56` | 10 min |
+| `adsync:{scope}:{provider}` | string | When the ad account of `meta_ads` or `snapchat` was last read, for the daily once-in-20-hours rule | `perf-store.ts` | none |
 | `perfimport:{scope}` | json | Latest campaign CSV import: file name, detected platform, metric, row counts, date range, totals, top and bottom three, findings with sample and confidence. No raw rows | `perf-store.ts` | none (replaced on each upload) |
 | `storesales:{scope}` | json | Latest store sales snapshot (Salla or Shopify, whichever was synced last): 30-day order count, revenue by currency, canceled count, open abandoned carts and their value, top products. Totals only, no customer data | `store-sales.ts` | none (replaced on each sync) |
 | `connlock:{scope}:{provider}` | string | Held while a connector token is refreshed, so two requests cannot spend one single-use refresh token | `connectors/fresh.ts` | 30 s |

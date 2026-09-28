@@ -235,6 +235,17 @@ Files: `src/lib/perf-import.ts`, `src/lib/perf-store.ts`, `src/app/api/performan
 4. `savePerf` stores the snapshot in `perfimport:{scope}` and writes `performance-learnings.md`, which `memoryBlock` includes, so every later generation, the weekly plan included, reads it. The file states that quoted names are data, not instructions, and that findings are comparisons, not promises. The reports card links to chat with prompts to write variants of the winners or plan next week.
 5. No model call and no credits. `DELETE` removes the snapshot and the file.
 
+## 21. Ad results from Meta and Snapchat (read only)
+
+Files: `src/lib/connectors/ads.ts`, `src/lib/perf-store.ts` (`syncAds`, `syncAdsIfDue`), `api/connect/[provider]` (`sync_ads`, `select_ad_account`), `api/connect/[provider]/callback` (`connectAds`), `api/cron/daily`, `PerformanceImport.tsx`, `IntegrationsPanel.tsx`.
+
+1. Connect: `meta_ads` is a separate OAuth connection from `meta` (Pages) with the scope `ads_read` only, so a pending App Review of `ads_read` never breaks Page publishing; it uses the same `META_APP_ID` and `META_APP_SECRET`. `snapchat` uses `snapchat-marketing-api`. After the code exchange, `connectAds` trades Meta's token for a long-lived one (about 60 days; no refresh token, so `fresh.ts` asks for a reconnect when it lapses) and lists ad accounts (`GET /me/adaccounts`, active only; Snap `GET /me/organizations?with_ad_accounts=true`, ACTIVE only). The first is chosen; `meta.adAccounts` lists the rest by id, name and currency. No active account: the callback returns `error=no_ad_account` and nothing is saved.
+2. Read: `POST /api/connect/{meta_ads|snapchat} {action:"sync_ads"}`. Window: the last 30 whole UTC days ending yesterday. Meta: `GET /{act}/insights?level=ad&fields=ad_id,ad_name,impressions,inline_link_clicks,spend,actions,action_values&time_range=…`, following `paging.next` only on the Graph host (10 pages, 2,000 rows at most); purchases and purchase value from `omni_purchase`, else `purchase`, else the pixel purchase, never summed; ad copy from `GET /?ids=…&fields=creative{body,title}` for up to 50 ads, best effort. Snapchat: ad names from `GET /adaccounts/{id}/ads`, then `GET /adaccounts/{id}/stats?granularity=TOTAL&breakdown=ad&fields=impressions,swipes,spend,conversion_purchases,conversion_purchases_value`; spend and value are micro-currency and divided by 1,000,000; swipes are the clicks.
+3. The rows go through `analyze` (section 20) and `savePerf` with `source` set to the provider, so the latest results, from an upload or an account, are what `performance-learnings.md` holds. `adsync:{scope}:{provider}` records the read time. No model call and no credits.
+4. Daily: `dailyFor` calls `syncAdsIfDue`, which reads the connected ad account whose last read is oldest, once it is more than 20 hours old, one platform a day. A failure is recorded in the outcome (`ads_failed:…`) and does not stop the rest of the workspace's day; a 401 or 403 marks the connection for reconnecting.
+5. Switch account: `{action:"select_ad_account", accountId}` accepts only an id in `meta.adAccounts`.
+6. Nothing creates, edits, pauses or funds an ad. The readers send no request other than GET, apart from Meta's token exchange.
+
 ## Revocation (2026-09-18)
 
 - Password change (`PATCH /api/account`): new hash and `sessionsAfter = now` saved inside the user lock, the caller's session is destroyed and a new one issued. Every other session of the account fails at its next request.

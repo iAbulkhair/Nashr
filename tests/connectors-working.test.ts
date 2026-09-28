@@ -22,8 +22,8 @@ describe("which connectors do something", () => {
     for (const id of ["klaviyo", "brevo", "google", "instagram", "whatsapp", "zid", "tiktok", "snapchat", "linkedin"]) expect(isWorking(id)).toBe(false);
   });
 
-  it("reads no platform numbers until a reader ships", () => {
-    expect(READS_METRICS).toEqual([]);
+  it("reads platform numbers only where a reader shipped: the ad accounts (tests/ads-connectors.test.ts)", () => {
+    expect(READS_METRICS).toEqual(["meta_ads", "snapchat"]);
     expect(readFileSync("src/lib/stats.ts", "utf8")).not.toMatch(/getConnection|listConnections/);
   });
 });

@@ -24,7 +24,7 @@ const PLATFORM_METRICS: { key: string; provs: string[] }[] = [
   { key: "visitors", provs: ["google"] }, { key: "sessions", provs: ["google"] }, { key: "adSpend", provs: ["meta", "snapchat", "tiktok", "google"] }, { key: "roas", provs: ["meta", "snapchat", "tiktok", "google"] }, { key: "orders", provs: ["shopify", "salla", "zid", "woocommerce"] }, { key: "revenue", provs: ["shopify", "salla", "zid", "woocommerce"] }, { key: "followers", provs: ["instagram", "tiktok", "snapchat", "x"] },
 ];
 const SOURCES: { key: string; provs: string[] }[] = [
-  { key: "analytics", provs: ["google"] }, { key: "ads", provs: ["meta", "snapchat", "tiktok", "google"] }, { key: "store", provs: ["shopify", "salla", "zid", "woocommerce"] }, { key: "social", provs: ["instagram", "tiktok", "snapchat", "x", "linkedin"] },
+  { key: "analytics", provs: ["google"] }, { key: "ads", provs: ["meta_ads", "snapchat", "tiktok", "google"] }, { key: "store", provs: ["shopify", "salla", "zid", "woocommerce"] }, { key: "social", provs: ["instagram", "tiktok", "snapchat", "x", "linkedin"] },
 ];
 
 export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null, perf = null }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null; perf?: PerfSnapshot | null }) {
@@ -102,7 +102,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
         <form action={`/${lang}/app/reports`} className="flex items-center gap-1 text-xs"><input type="hidden" name="range" value="custom" /><input type="date" name="from" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><input type="date" name="to" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><button className={`rounded-full px-3 py-1 ${range === "custom" ? "bg-ink text-salt" : "border border-ink/15 text-ink/60"}`}>{R.ranges.custom}</button></form>
       </div>
       <p className="mt-2 font-mono text-xs text-ink/50" dir="ltr">{k.window.from} → {k.window.to}</p>
-      <PerformanceImport lang={lang} initial={perf} />
+      <PerformanceImport lang={lang} initial={perf} ads={readable} />
       {salesProvider && <StoreSales R={R.store} paused={t.generate.paused} provider={salesProvider} store={store?.provider === salesProvider ? store : null} lang={lang} />}
 
       <h2 className="mt-8 font-display text-xl font-bold">{R.metricsTitle}</h2>

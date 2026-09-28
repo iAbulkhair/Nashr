@@ -55,7 +55,7 @@ Read indirectly as `process.env[o.clientIdEnv]` and `process.env[o.clientSecretE
 | `SHOPIFY_CLIENT_SECRET` | Shopify | Yes |
 | `GOOGLE_CLIENT_ID` | Google (Business Profile, GA4, Search Console, YouTube) | No, keep internal |
 | `GOOGLE_CLIENT_SECRET` | Google | Yes |
-| `META_APP_ID` | Meta (Facebook Page and Instagram publishing) | No, keep internal |
+| `META_APP_ID` | Meta (Facebook Page and Instagram publishing, and the separate Meta Ads results connection) | No, keep internal |
 | `META_APP_SECRET` | Meta | Yes |
 | `META_CONFIG_ID` | Meta, optional: the Facebook Login for Business configuration id. When set, the authorize URL sends `config_id` instead of `scope` | No, keep internal |
 | `SALLA_CLIENT_ID` | Salla | No, keep internal |
