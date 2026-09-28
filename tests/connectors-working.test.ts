@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { describe, expect, it } from "vitest";
-import { READS_METRICS, WORKING_PROVIDERS, isWorking } from "@/lib/connectors/working";
+import { IMPORTS_PRODUCTS, READS_METRICS, WORKING_PROVIDERS, isWorking } from "@/lib/connectors/working";
+import { ORDER_READERS } from "@/lib/connectors/orders";
 import { costUsd } from "@/lib/usage";
 
 // Rule 65: the app calls a connection "Connected", offers "Connect", or reads numbers from it only when code uses it.
@@ -18,11 +19,20 @@ describe("which connectors do something", () => {
   });
 
   it("does not treat a stored connection with no code behind it as working", () => {
-    for (const id of ["klaviyo", "brevo", "google", "meta", "instagram", "whatsapp", "zid", "tiktok", "snapchat", "linkedin"]) expect(isWorking(id)).toBe(false);
+    for (const id of ["klaviyo", "brevo", "google", "meta", "instagram", "whatsapp", "tiktok", "snapchat", "linkedin"]) expect(isWorking(id)).toBe(false);
   });
 
-  it("reads no platform numbers until a reader ships", () => {
-    expect(READS_METRICS).toEqual([]);
+  it("offers Import products exactly where import_products imports", () => {
+    expect([...IMPORTS_PRODUCTS].sort()).toEqual([...importers].sort());
+  });
+
+  it("reads platform numbers only from providers with an order reader", () => {
+    const orders = readFileSync("src/lib/connectors/orders.ts", "utf8");
+    const reader = orders.slice(orders.indexOf("export async function readOrders"));
+    const cases = [...reader.slice(0, reader.indexOf("default:")).matchAll(/case "([a-z]+)":/g)].map((m) => m[1]);
+    expect([...READS_METRICS].sort()).toEqual([...ORDER_READERS].sort());
+    expect([...READS_METRICS].sort()).toEqual(cases.sort());
+    // Store numbers come from store-metrics.ts; the workspace KPIs never read a connection.
     expect(readFileSync("src/lib/stats.ts", "utf8")).not.toMatch(/getConnection|listConnections/);
   });
 });

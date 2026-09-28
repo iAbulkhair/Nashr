@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Integration } from "@/lib/integrations";
 import type { KeyField } from "@/lib/connectors/registry";
-import { isWorking } from "@/lib/connectors/working";
+import { IMPORTS_PRODUCTS, isWorking } from "@/lib/connectors/working";
 import type { Lang } from "@/lib/i18n";
 
 type P = { id: string; name: string; kind: "oauth" | "key"; capabilities: string[]; available: boolean; keyFields?: KeyField[]; docs?: string; needsShop: boolean };
@@ -97,7 +97,7 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
                 </div>
                 <div className="flex shrink-0 flex-col gap-1">
                   {c.needsReconnect && providerById.get(c.provider)?.kind === "oauth" && <button onClick={() => startOAuth(providerById.get(c.provider)!)} className="rounded-full bg-oasis px-3 py-1 text-xs font-semibold text-mist">{g.reconnectBtn}</button>}
-                  {["shopify", "woocommerce", "odoo", "prestashop", "salla"].includes(c.provider) && <button disabled={busy} onClick={() => importProducts(c.provider)} className="rounded-full border border-oasis/40 px-3 py-1 text-xs text-oasis">{g.importProducts}</button>}
+                  {IMPORTS_PRODUCTS.includes(c.provider) && <button disabled={busy} onClick={() => importProducts(c.provider)} className="rounded-full border border-oasis/40 px-3 py-1 text-xs text-oasis">{g.importProducts}</button>}
                   <button onClick={() => disconnect(c.provider)} className="rounded-full border border-sadu/40 px-3 py-1 text-xs text-sadu">{g.disconnect}</button>
                 </div>
               </div>

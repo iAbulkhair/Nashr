@@ -101,7 +101,7 @@ All three require `Authorization: Bearer ${CRON_SECRET}` and return 401 when the
 | placehold.co | Placeholder image URL when `FAL_KEY` is absent (`images.ts:32`). URL only, no server fetch. |
 | Resend | Transactional and lifecycle email (`src/lib/notify.ts:4`). |
 | Vercel | Hosting, function runtime, cron. |
-| Connector platforms | X, Shopify, Google, Meta, Salla, Zid, LinkedIn, TikTok, Snapchat (OAuth); WordPress, WooCommerce, Klaviyo, Odoo, PrestaShop, Telegram, Brevo (keys). Actual API use exists for X, Shopify, WordPress, WooCommerce, Odoo, PrestaShop, Telegram, Brevo (verify only), Klaviyo (verify only). Google, Meta, Salla, Zid, LinkedIn, TikTok, Snapchat only complete the OAuth exchange and store tokens. |
+| Connector platforms | X, Shopify, Google, Meta, Salla, Zid, LinkedIn, TikTok, Snapchat (OAuth); WordPress, WooCommerce, Klaviyo, Odoo, PrestaShop, Telegram, Brevo (keys). Actual API use exists for X, Shopify, WordPress, WooCommerce, Odoo, PrestaShop, Telegram, Salla and Zid (product import), Brevo (verify only), Klaviyo (verify only). Salla, Zid, Shopify and WooCommerce also have order readers (`src/lib/connectors/orders.ts`) behind the Reports page's store section (`src/lib/store-metrics.ts`, cached 15 minutes per scope). Google, Meta, LinkedIn, TikTok, Snapchat only complete the OAuth exchange and store tokens. |
 | Arbitrary customer websites | `crawl.ts:50` and `catalog.ts:12,26` fetch URLs supplied by the user or discovered in sitemaps. |
 
 ## 3. Redis key namespace
