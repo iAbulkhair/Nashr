@@ -5,6 +5,7 @@ import { getFreshConnection, refusedToken } from "@/lib/connectors/fresh";
 import { importShopify } from "@/lib/connectors/shopify";
 import { importWoo } from "@/lib/connectors/woocommerce";
 import { importSalla } from "@/lib/connectors/salla";
+import { syncSales } from "@/lib/store-sales";
 import { importOdoo, importPrestaShop } from "@/lib/connectors/keyed";
 
 export const maxDuration = 120;
@@ -17,7 +18,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ provider: s
   return NextResponse.json({ ok: true });
 }
 
-/** POST {action:"import_products"} */
+/** POST {action:"import_products"} or, for Salla, {action:"sync_sales"} */
 export async function POST(req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
@@ -30,6 +31,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
       const n = provider === "shopify" ? await importShopify(sc(u), c) : provider === "woocommerce" ? await importWoo(sc(u), c) : provider === "odoo" ? await importOdoo(sc(u), c) : provider === "prestashop" ? await importPrestaShop(sc(u), c) : provider === "salla" ? await importSalla(sc(u), c) : 0;
       return NextResponse.json({ ok: true, count: n });
     }
+    if (b.action === "sync_sales" && provider === "salla") return NextResponse.json({ ok: true, sales: await syncSales(sc(u), c) });
     return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
   } catch (e) {
     const err = await refusedToken(sc(u), provider, e);

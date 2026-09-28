@@ -2,7 +2,7 @@
 export type Integration = { id: string; name: string; group: "commerce" | "ads" | "messaging" | "publishing" | "data" | "payments"; status: "live" | "soon" | "planned"; note?: string };
 
 export const INTEGRATIONS: Integration[] = [
-  { id: "salla", name: "Salla (سلة)", group: "commerce", status: "soon", note: "Product import (orders and abandoned carts coming soon)" },
+  { id: "salla", name: "Salla (سلة)", group: "commerce", status: "soon", note: "Product import, plus 30-day sales and abandoned-cart totals" },
   { id: "zid", name: "Zid (زد)", group: "commerce", status: "soon", note: "Products, orders, abandoned carts" },
   { id: "shopify", name: "Shopify", group: "commerce", status: "soon" },
   { id: "woocommerce", name: "WooCommerce", group: "commerce", status: "soon" },
