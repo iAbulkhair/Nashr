@@ -21,6 +21,8 @@ Nashr is a single Next.js 16 app-router application (TypeScript, React server co
 
 Root layout `src/app/[lang]/layout.tsx` (static params for `ar`, `en`). Pages: home `page.tsx`, `agents`, `agents/[agent]`, `ai-marketing-agent`, `affiliates`, `blog`, `blog/[slug]`, `customers`, `enterprise`, `for/[industry]`, `help`, `pricing`, `privacy`, `terms`, `resources`, `tools`, `vs`. Content comes from static modules (`src/lib/i18n.ts`, `site.ts`, `pages-vs.ts`, `pages-industry.ts`, `legal.ts`, `help.ts`, `blog.ts` reading `content/`). Public forms post to `/api/support` (`src/components/ContactForm.tsx:15`, `HelpCenter.tsx:17`), `/api/affiliates` (`AffiliateForm.tsx:12`) and `/api/tools/{tool}` (`ToolForm.tsx:16`). No component posts to `/api/waitlist` any more (only the route itself references it).
 
+The homepage (`page.tsx`) renders `Story`, `Lineup`, `Dictionary` and `Truths` from `src/components/home/`, then the existing `Pricing` and `Faq` components. Copy — the slogan, the seven-agent cast plus the owner, the 36-question storm, the banter exchanges and the four truths — comes from `src/lib/home.ts`; the dictionary game's steps, reducer and copy come from `src/lib/dictionary.ts`. GSAP ScrollTrigger drives the Story's scroll choreography; the lineup's flip and banter timing are pure, import-free functions in `src/lib/flip-clock.ts` and `src/lib/banter-clock.ts` (§2.5). There are no server calls from the homepage components: the dictionary game and the story's CTA hold only local state until the final `<form>` submits to `/{lang}/app/signup`. `src/components/Landing.tsx` and `Sections.tsx`, the previous homepage, were deleted.
+
 ### 2.3 App shell (`src/app/[lang]/app/*`)
 
 `layout.tsx` resolves the session (`currentUser()`), redirects anonymous visitors to login unless the path ends with one of `/login /signup /forgot /reset /admin` (`layout.tsx:14-24`), renders the sidebar, trial banner, and an impersonation banner when the `nashr_impersonate` cookie exists (`:41-52`). Pages: inbox (`page.tsx`), `chat`, `conversations`, `generate`, `calendar`, `files`, `tasks` (schedule), `governance`, `integrations`, `mcp`, `billing`, `refer`, `reports`, `notifications`, `profile`, `brands`, `inspo`, `help`, `start`, `onboarding`, `login`, `signup`, `forgot`, `reset`, `admin`. The OAuth consent screen lives outside the language tree at `src/app/oauth/authorize/page.tsx`.
@@ -84,6 +86,10 @@ Per-route authorization is in `permissions.md`.
 | `connectors/publish.ts` | `targetsFor` and `publishTask` dispatch (WordPress, Shopify, Telegram, X). |
 | `connectors/{wordpress,shopify,woocommerce,keyed,x,salla,zid,meta}.ts` | Provider API calls: verify, import products, publish, and (Salla, Shopify, Zid) the store-sales sync; `sales.ts` holds the shared snapshot shape. |
 | `agents.ts`, `skills.ts`, `playbooks.ts`, `seasons.ts`, `tools.ts`, `integrations.ts`, `inspo.ts`, `help.ts`, `legal.ts`, `site.ts`, `pages-*.ts`, `blog.ts`, `md.ts`, `json.ts`, `parallel.ts`, `i18n.ts`, `app-i18n.ts` | Static catalogs, prompt material, copy, and small utilities (Markdown renderer, tolerant JSON parser, bounded `pmap`). |
+| `home.ts` | Homepage copy: the slogan, the seven-agent cast plus the owner, the 36-question storm, the banter exchanges, the four truths. |
+| `dictionary.ts` | قاموس ذكين, the homepage dictionary game: steps, reducer (`reduce`, `canAdvance`), the word and sector catalogues, and the sample post/WhatsApp draft generators. |
+| `flip-clock.ts` | Pure, import-free: the lineup's shared flip clock — per-figure stagger, drift-free elapsed-time math, resume-in-place. |
+| `banter-clock.ts` | Pure, import-free: the lineup's banter exchange timing — first exchange, per-line hold, the floor on the next exchange's start. |
 
 ### 2.6 Cron jobs (`vercel.json`)
 
