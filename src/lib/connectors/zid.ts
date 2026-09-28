@@ -58,7 +58,8 @@ export async function importZid(email: string, c: Connection) {
   const items: ZidProduct[] = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
     const r = await fetch(`${ZID_API}/products/?page=${page}&page_size=${PER_PAGE}`, { headers: zidHeaders(conn) });
-    if (!r.ok) throw new Error(`zid ${r.status}`);
+    // 403 is a permission the app was not granted: a new connection cannot fix it, so it must not ask for one.
+    if (!r.ok) throw new Error(r.status === 403 ? ZID_ACCESS_DENIED : `zid ${r.status}`);
     const j = (await r.json()) as { results?: ZidProduct[]; next?: string | null };
     items.push(...(j.results ?? []));
     if (!j.next || !j.results?.length) break;

@@ -58,7 +58,7 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
     const res = await fetch(`/api/connect/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "import_products" }) });
     const j = await res.json();
     setBusy(false);
-    alert(j.ok ? `${g.importProducts}: ${j.count}` : j.error);
+    alert(j.ok ? `${g.importProducts}: ${j.count}` : j.error === "zid_access_denied" ? g.zidDenied : j.error);
   }
   async function selectPage(pageId: string) {
     setBusy(true);

@@ -201,6 +201,52 @@ Instagram (instagram_content_publish) → **Publish to facebook** on another pos
 
 ---
 
+## 5. Zid — register as a partner, test on your own store
+
+**What works once connected (built 2026-09-28):** product import into the brand's `products.md`; the store name on
+the Integrations card; and a sales sync — the last 30 days of orders and the open abandoned carts, as totals with no
+customer details — shown on Reports, read by Noor, by Dana's reports (STORE DATA) and by the cart-recovery drafts.
+
+**Needs:** a Zid partner account. Zid will probably ask for the commercial registration (#47); I could not confirm
+that from here.
+
+1. Open Zid's partner portal (the **Partners / App Market** link on zid.sa) → register as a partner.
+2. **Create app.**
+   | Field | Value |
+   |---|---|
+   | App name | `نشر - Nashr` |
+   | Category | Marketing |
+   | Description | the Arabic short description above |
+   | Redirect / Callback URL | `https://nashr-tau.vercel.app/api/connect/zid/callback` |
+   | Website, privacy, terms | shared table |
+3. **Scopes / permissions — read only, tick all four:**
+   | Permission | What it enables in Nashr | Without it |
+   |---|---|---|
+   | **Account / store profile** (read) | the store id Nashr sends on every Zid call, and the store name on the card | the card shows no store name and calls go without the store id; Zid's SDK treats it as optional, but some integrations report refusals without it |
+   | **Products** (read) | product import into `products.md` | import answers "Zid refused" (not "reconnect": a new connection does not add a permission) |
+   | **Orders** (read) | orders, revenue and best sellers in the sales sync | the sync answers "Zid refused to read orders" and saves nothing |
+   | **Abandoned carts** (read) | open carts, their value, products most often left, cart-recovery drafts | orders still sync; carts show as "not available" (unknown, not zero) |
+
+   The abandoned-carts permission is reported as `abandoned_carts.read`, but only in search summaries of Zid's docs
+   (docs.zid.sa is not reachable from here), and the portal may label all four differently. Tick the read permission
+   for each of the four areas, whatever it is called, and leave every write permission off. If a permission is
+   missing later, add it in the portal and connect the store again from Integrations.
+4. **Webhooks:** leave off for now. Nashr reads on demand when you press **Sync from Zid** on Reports.
+5. Copy Client ID and Client Secret:
+   ```bash
+   vercel env add ZID_CLIENT_ID production --scope asbunat
+   vercel env add ZID_CLIENT_SECRET production --scope asbunat
+   ```
+6. **Test before publishing:** connect your own Zid store (or a development store, if the portal offers one) from
+   Integrations, press **Import products**, then **Sync from Zid** on Reports, and compare the orders and revenue with
+   Zid's own dashboard for the same 30 days. Tell me the numbers; the order and cart formats were built from Zid's
+   official SDK, not from a live store, so this first comparison is the real check.
+
+**Limits to know:** Zid allows 60 API requests a minute per store; one sync uses about 28 at most. The sync reads up
+to 500 orders (then shows "500 or more") and up to 300 open carts.
+
+---
+
 ## After each platform
 
 Tick its row in `docs/Owner_Tasks_AR.md` §هـ with the date, and tell me: "X keys are in" is enough. I then check the

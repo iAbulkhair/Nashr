@@ -80,6 +80,17 @@ describe("Zid product import (rule 77)", () => {
     expect(await readFile(u.email, "products.md")).toBeNull();
   });
 
+  it("reports a refused products permission without marking the connection for reconnecting", async () => {
+    fakeZid([], { status: 403 });
+    const u = await newUser("zid403p");
+    await saveConnection(u.email, conn());
+    await signIn(u.email);
+    const res = await connectRoute.POST(json("/api/connect/zid", "POST", { action: "import_products" }), { params: Promise.resolve({ provider: "zid" }) });
+    expect((await res.json()).error).toBe("zid_access_denied");
+    expect((await getConnection(u.email, "zid"))?.needsReconnect).toBeFalsy();
+    expect(await readFile(u.email, "products.md")).toBeNull();
+  });
+
   it("imports through the connect route for the signed-in workspace, and a refused token asks for a reconnect", async () => {
     fakeZid([[product("عجوة")]]);
     const u = await newUser("zidr");
