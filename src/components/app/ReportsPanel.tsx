@@ -15,6 +15,7 @@ import { PROVIDER_NAME, SALES_PROVIDERS, moneyText, type SalesProvider, type Sal
 import { dateFormat } from "@/lib/dates";
 import type { PerfSnapshot } from "@/lib/perf-import";
 import PerformanceImport from "./PerformanceImport";
+import { READS_ADS } from "@/lib/connectors/working";
 
 type Item = { id: string; type: TaskType; title: string; status: string; createdAt: string };
 
@@ -93,7 +94,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
         <form action={`/${lang}/app/reports`} className="flex items-center gap-1 text-xs"><input type="hidden" name="range" value="custom" /><input type="date" name="from" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><input type="date" name="to" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><button className={`rounded-full px-3 py-1 ${range === "custom" ? "bg-ink text-salt" : "border border-ink/15 text-ink/60"}`}>{R.ranges.custom}</button></form>
       </div>
       <p className="mt-2 font-mono text-xs text-ink/50" dir="ltr">{k.window.from} → {k.window.to}</p>
-      <PerformanceImport lang={lang} initial={perf} />
+      <PerformanceImport lang={lang} initial={perf} ads={connected.filter((p) => READS_ADS.includes(p))} />
       {salesProvider && <StoreSales R={R.store} paused={t.generate.paused} provider={salesProvider} store={store?.provider === salesProvider ? store : null} lang={lang} />}
 
       <h2 className="mt-8 font-display text-xl font-bold">{R.metricsTitle}</h2>
@@ -120,7 +121,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
               const on = sources.read.includes(m.source);
               // A read source's numbers live in their own card (today only the store card), not in a tile.
               return on
-                ? <a key={m.key} href="#store-sales" className="btn btn-xs btn-secondary">✓ {R.platform[m.key as keyof typeof R.platform]} · {R.inStoreCard}</a>
+                ? <a key={m.key} href={m.source === "ads" ? "#campaign-results" : "#store-sales"} className="btn btn-xs btn-secondary">✓ {R.platform[m.key as keyof typeof R.platform]} · {m.source === "ads" ? R.inResultsCard : R.inStoreCard}</a>
                 : <Link key={m.key} href={`/${lang}/app/integrations`} className="btn btn-xs btn-secondary opacity-70">🔒 {R.platform[m.key as keyof typeof R.platform]} · {m.source === "store" ? R.connectStore : R.connectNow}</Link>;
             })}
           </div>

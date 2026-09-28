@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { describe, expect, it } from "vitest";
-import { IMPORTS_PRODUCTS, READS_METRICS, WORKING_PROVIDERS, isWorking } from "@/lib/connectors/working";
+import { IMPORTS_PRODUCTS, READS_ADS, READS_METRICS, WORKING_PROVIDERS, isWorking } from "@/lib/connectors/working";
+import { AD_PROVIDERS } from "@/lib/connectors/ads";
 import { SALES_PROVIDERS } from "@/lib/connectors/sales";
 import { reportSources } from "@/lib/report-sources";
 import { costUsd } from "@/lib/usage";
@@ -28,8 +29,11 @@ describe("which connectors do something", () => {
     expect([...IMPORTS_PRODUCTS].sort()).toEqual([...importers].sort());
   });
 
-  it("reads platform numbers only from the stores the sales sync reads, and stats.ts reads no connection", () => {
-    expect([...READS_METRICS].sort()).toEqual([...SALES_PROVIDERS].sort());
+  it("reads platform numbers only from the stores the sales sync reads and the ad accounts syncAds reads, and stats.ts reads no connection", () => {
+    expect([...READS_ADS].sort()).toEqual([...AD_PROVIDERS].sort());
+    expect([...READS_METRICS].sort()).toEqual([...SALES_PROVIDERS, ...AD_PROVIDERS].sort());
+    expect(reportSources(["meta_ads"]).read).toEqual(["ads"]);
+    expect(reportSources(["meta"]).read).toEqual([]); // the Page connection publishes; it reads no ad numbers
     expect(readFileSync("src/lib/stats.ts", "utf8")).not.toMatch(/getConnection|listConnections/);
   });
 

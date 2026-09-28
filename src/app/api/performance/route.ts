@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   const metric = typeof b.metric === "string" && b.metric in METRICS ? (b.metric as MetricId) : undefined;
   try {
     const { rows, platform, range } = readRows(b.csv);
-    const snap = analyze(rows, typeof b.file === "string" ? b.file : "export.csv", platform, range, metric);
+    const snap = { ...analyze(rows, typeof b.file === "string" ? b.file : "export.csv", platform, range, metric), source: "csv" as const };
     await savePerf(sc(u), snap);
     return NextResponse.json({ ok: true, snapshot: snap });
   } catch (e) {

@@ -7,11 +7,14 @@
  *   this list equal to those two code paths.
  * - READS_METRICS: providers whose orders, revenue, traffic, ad spend or audience the Reports page reads: the stores
  *   the store-sales sync reads (SALES_PROVIDERS in sales.ts; the test keeps the two equal). src/lib/stats.ts still reads
- *   no connection: store numbers come from the synced snapshot.
+ *   no connection: store numbers come from the synced snapshot. The ad accounts in READS_ADS are read too, into
+ *   the campaign results card (src/lib/connectors/ads.ts).
  * No imports, so client components can use it.
  */
 export const WORKING_PROVIDERS: readonly string[] = ["wordpress", "shopify", "telegram", "x", "woocommerce", "odoo", "prestashop", "salla", "zid", "meta"];
 /** Stores whose products the Integrations card can import (the import_products action). */
 export const IMPORTS_PRODUCTS: readonly string[] = ["shopify", "woocommerce", "odoo", "prestashop", "salla", "zid"];
-export const READS_METRICS: readonly string[] = ["salla", "shopify", "zid"];
+/** Ad accounts whose results are read into the campaign results card (syncAds in src/lib/perf-store.ts). */
+export const READS_ADS: readonly string[] = ["meta_ads", "snapchat"];
+export const READS_METRICS: readonly string[] = ["salla", "shopify", "zid", ...READS_ADS];
 export const isWorking = (id: string) => WORKING_PROVIDERS.includes(id);

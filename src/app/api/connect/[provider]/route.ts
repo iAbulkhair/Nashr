@@ -10,6 +10,8 @@ import { syncSales } from "@/lib/store-sales";
 import { SALES_PROVIDERS, type SalesProvider } from "@/lib/connectors/sales";
 import { importOdoo, importPrestaShop } from "@/lib/connectors/keyed";
 import { selectPage } from "@/lib/connectors/meta";
+import { isAdProvider, selectAdAccount } from "@/lib/connectors/ads";
+import { syncAds } from "@/lib/perf-store";
 import { saveConnection } from "@/lib/connectors/store";
 
 export const maxDuration = 120;
@@ -27,7 +29,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const { provider } = await ctx.params;
-  const b = (await req.json().catch(() => ({}))) as { action?: string; pageId?: string };
+  const b = (await req.json().catch(() => ({}))) as { action?: string; pageId?: string; accountId?: string };
   try {
     const c = await getFreshConnection(sc(u), provider);
     if (!c) return NextResponse.json({ ok: false, error: "not_connected" }, { status: 404 });
@@ -41,6 +43,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
       await saveConnection(sc(u), next);
       return NextResponse.json({ ok: true, account: next.meta?.account });
     }
+    if (b.action === "select_ad_account" && isAdProvider(provider)) {
+      const next = selectAdAccount(c, String(b.accountId ?? ""));
+      if (!next) return NextResponse.json({ ok: false, error: "unknown_account" }, { status: 400 });
+      await saveConnection(sc(u), next);
+      return NextResponse.json({ ok: true, account: next.meta?.account });
+    }
+    // Read only, no model call, no credits: the ads' own numbers into the same analysis as a CSV upload.
+    if (b.action === "sync_ads" && isAdProvider(provider)) return NextResponse.json({ ok: true, snapshot: await syncAds(sc(u), provider, c) });
     if (b.action === "sync_sales" && (SALES_PROVIDERS as readonly string[]).includes(provider)) return NextResponse.json({ ok: true, sales: await syncSales(sc(u), provider as SalesProvider, c) });
     return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
   } catch (e) {

@@ -8,7 +8,7 @@ import { READS_METRICS } from "./connectors/working";
 export type SourceKey = "analytics" | "ads" | "store" | "social";
 export const SOURCES: { key: SourceKey; provs: string[] }[] = [
   { key: "analytics", provs: ["google"] },
-  { key: "ads", provs: ["meta", "snapchat", "tiktok", "google"] },
+  { key: "ads", provs: ["meta_ads", "snapchat", "tiktok", "google"] },
   { key: "store", provs: ["shopify", "salla", "zid", "woocommerce"] },
   { key: "social", provs: ["instagram", "tiktok", "snapchat", "x", "linkedin"] },
 ];

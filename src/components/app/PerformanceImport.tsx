@@ -7,6 +7,8 @@ import { Icon } from "./Icons";
 
 const STR = {
   ar: {
+    live: "مباشر", syncFrom: (p: string) => `اقرأ النتائج من ${p}`, liveNote: "آخر ٣٠ يوماً من حسابك الإعلاني، قراءة فقط. تتحدّث تلقائياً كل يوم.", orUpload: "أو ارفع ملف CSV",
+    adErrors: { reconnect_required: "انتهت صلاحية الربط. أعد ربط الحساب من صفحة التكاملات.", no_ad_results: "لا نتائج إعلانات في آخر ٣٠ يوماً في هذا الحساب.", no_ad_account: "لم نجد حساباً إعلانياً نشطاً في هذا الربط." } as Record<string, string>,
     title: "نتائج حملاتك (CSV)", sub: "صدّر تقرير الإعلانات من Meta أو سناب شات أو تيك توك أو Google Ads وارفعه هنا. نور تستخرج ما نجح وتبني عليه خطتك القادمة. بدون رصيد.",
     how: "كيف أصدّر التقرير؟", howBody: "من مدير الإعلانات افتح التقارير على مستوى الإعلان، وأضف أعمدة الظهور والنقرات والمبلغ المنفق والنتائج (أو قيمة الشراء)، ثم صدّر بصيغة CSV.",
     drop: "اسحب ملف CSV هنا أو اضغط للاختيار", reading: "نور تقرأ النتائج…", replace: "ارفع ملفاً أحدث", remove: "احذف الاستيراد",
@@ -20,6 +22,8 @@ const STR = {
     planPrompt: "اقرأ performance-learnings.md واكتب خطة الأسبوع القادم مبنية على ما نجح، واقترح ما نوقفه أو نعيد كتابته.",
   },
   en: {
+    live: "Live", syncFrom: (p: string) => `Read results from ${p}`, liveNote: "The last 30 days from your ad account, read only. Refreshed automatically every day.", orUpload: "or upload a CSV",
+    adErrors: { reconnect_required: "The connection expired. Reconnect the account on the Integrations page.", no_ad_results: "No ad results in the last 30 days in this account.", no_ad_account: "No active ad account was found on this connection." } as Record<string, string>,
     title: "Campaign results (CSV)", sub: "Export an ads report from Meta, Snapchat, TikTok or Google Ads and drop it here. Noor pulls out what worked and builds your next plan on it. No credits.",
     how: "How do I export it?", howBody: "In your ads manager, open reporting at the ad level, add impressions, clicks, amount spent and results (or purchase value) columns, then export as CSV.",
     drop: "Drop a CSV here or click to choose", reading: "Noor is reading the results…", replace: "Upload a newer file", remove: "Remove import",
@@ -36,7 +40,9 @@ const STR = {
 
 const MEDAL = ["bg-saffron text-ink", "bg-mist-dim text-ink", "bg-sadu/20 text-sadu-deep"];
 
-export default function PerformanceImport({ lang, initial }: { lang: "ar" | "en"; initial: PerfSnapshot | null }) {
+const AD_NAMES: Record<string, string> = { meta_ads: "Meta Ads", snapchat: "Snapchat Ads" };
+
+export default function PerformanceImport({ lang, initial, ads = [] }: { lang: "ar" | "en"; initial: PerfSnapshot | null; /** connected ad accounts it can read from */ ads?: string[] }) {
   const S = STR[lang];
   const r = useRouter();
   const [snap, setSnap] = useState(initial);
@@ -64,6 +70,16 @@ export default function PerformanceImport({ lang, initial }: { lang: "ar" | "en"
     if (f.size > 2_000_000) { setErr(S.errors.too_large); return; }
     try { await send(await f.text(), f.name); } catch { setErr(S.errors.read); }
   }
+  async function sync(provider: string) {
+    setBusy(true); setErr("");
+    try {
+      const res = await fetch(`/api/connect/${provider}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync_ads" }) });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; snapshot?: PerfSnapshot; error?: string };
+      if (!res.ok || !j.snapshot) { setErr(S.adErrors[j.error ?? ""] ?? S.errors.generic); return; }
+      setLast(null); setSnap(j.snapshot); setFresh(true);
+      r.refresh();
+    } catch { setErr(S.errors.generic); } finally { setBusy(false); }
+  }
   async function remove() {
     await fetch("/api/performance", { method: "DELETE" }).catch(() => {});
     setSnap(null); setLast(null); r.refresh();
@@ -76,7 +92,7 @@ export default function PerformanceImport({ lang, initial }: { lang: "ar" | "en"
   const chat = (p: string) => `/${lang}/app/chat?prompt=${encodeURIComponent(p)}`;
 
   return (
-    <section className="card mt-6 overflow-hidden p-0" aria-label={S.title}>
+    <section id="campaign-results" className="card mt-6 overflow-hidden p-0" aria-label={S.title}>
       <header className="flex flex-wrap items-start gap-3 border-b border-ink/5 px-5 py-4">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-oasis text-saffron"><Icon name="chart" className="h-5 w-5" /></span>
         <div className="min-w-0 flex-1">
@@ -88,6 +104,12 @@ export default function PerformanceImport({ lang, initial }: { lang: "ar" | "en"
       </header>
 
       <div className="px-5 py-4">
+        {ads.length > 0 && (
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {ads.map((p) => <button key={p} disabled={busy} onClick={() => sync(p)} className="btn btn-primary btn-xs"><Icon name="chart" className="h-3.5 w-3.5" />{S.syncFrom(AD_NAMES[p] ?? p)}</button>)}
+            <span className="text-xs text-ink/50">{S.orUpload}</span>
+          </div>
+        )}
         <label
           onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
           onDrop={(e) => { e.preventDefault(); setDrag(false); void pick(e.dataTransfer.files[0]); }}
@@ -101,6 +123,7 @@ export default function PerformanceImport({ lang, initial }: { lang: "ar" | "en"
         {snap && m && (
           <div className={fresh ? "log-row" : ""}>
             <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-ink/60">
+              {snap.source && snap.source !== "csv" && <span className="flex items-center gap-1 rounded-full bg-oasis px-2 py-0.5 font-semibold text-mist"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-saffron" />{S.live}</span>}
               <span className="badge badge-primary">{snap.platform}</span>
               <span dir="ltr">{snap.file}</span>
               {snap.range && <span dir="ltr">{snap.range.from} → {snap.range.to}</span>}
@@ -118,6 +141,7 @@ export default function PerformanceImport({ lang, initial }: { lang: "ar" | "en"
               ))}
             </div>
             {snap.excluded > 0 && <p className="mt-1 text-xs text-ink/50">{S.excluded(snap.excluded)}</p>}
+            {snap.source && snap.source !== "csv" && <p className="mt-1 text-xs text-ink/50">{S.liveNote}</p>}
 
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <div>
