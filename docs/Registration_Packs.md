@@ -75,7 +75,9 @@ by Noor (built 2026-09-28).
    then Reports → **Sync from Shopify**. The card should show the orders, the sales, and one abandoned checkout.
 
 **Later:** listing on the Shopify App Store needs a review (about 2–3 weeks). Until then the app can be installed on
-stores you invite. Tell me before you submit the listing.
+stores you invite. Nashr already calls Shopify only through the GraphQL Admin API (version 2026-07), which Shopify
+requires for new public apps (moved 2026-09-28). Shopify retires each API version about a year after release, so the
+version needs a bump roughly every year. Tell me before you submit the listing.
 
 ---
 
