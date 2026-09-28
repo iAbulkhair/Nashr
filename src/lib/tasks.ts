@@ -7,7 +7,7 @@
  * Redis client into five browser bundles. Keep this file free of imports and the cost stays where it belongs.
  */
 export type TaskType =
-  | "weekly_plan" | "social" | "article" | "whatsapp" | "ads" | "gbp"
+  | "weekly_plan" | "social" | "article" | "whatsapp" | "ads" | "gbp" | "cart_recovery"
   | "sales_script" | "lead_qualifier" | "followup_seq"
   | "pricing_review" | "unit_economics" | "cash_forecast"
   | "gtm_plan" | "growth_experiments" | "retention_play"
@@ -17,7 +17,7 @@ export type TaskType =
 
 /** Credits per batch. */
 export const TASK_COST: Record<TaskType, number> = {
-  weekly_plan: 1, social: 10, article: 2, whatsapp: 3, ads: 5, gbp: 3,
+  weekly_plan: 1, social: 10, article: 2, whatsapp: 3, ads: 5, gbp: 3, cart_recovery: 3,
   sales_script: 4, lead_qualifier: 2, followup_seq: 3,
   pricing_review: 4, unit_economics: 3, cash_forecast: 4,
   gtm_plan: 5, growth_experiments: 4, retention_play: 4,
@@ -27,7 +27,7 @@ export const TASK_COST: Record<TaskType, number> = {
 };
 /** Items produced per batch. */
 export const TASK_COUNT: Record<TaskType, number> = {
-  weekly_plan: 1, social: 10, article: 1, whatsapp: 3, ads: 5, gbp: 3,
+  weekly_plan: 1, social: 10, article: 1, whatsapp: 3, ads: 5, gbp: 3, cart_recovery: 5,
   sales_script: 3, lead_qualifier: 1, followup_seq: 7,
   pricing_review: 1, unit_economics: 1, cash_forecast: 1,
   gtm_plan: 1, growth_experiments: 5, retention_play: 3,
@@ -36,7 +36,7 @@ export const TASK_COUNT: Record<TaskType, number> = {
   prd: 1, roadmap: 1, feedback_synthesis: 1, onboarding_flow: 1,
 };
 /** Types that get a generated image button in the inbox. */
-export const IMAGE_TYPES: TaskType[] = ["social", "ads", "gbp", "whatsapp"];
+export const IMAGE_TYPES: TaskType[] = ["social", "ads", "gbp", "whatsapp", "cart_recovery"];
 
 /** Credits charged for one generated image. */
 export const IMAGE_COST = 1;

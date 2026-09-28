@@ -7,6 +7,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { Brand, TaskType } from "./brand";
 import { pickPlaybook } from "./playbooks";
 import { activeSeasons } from "./seasons";
+import { capDiscounts } from "./cart-recovery";
 
 export type Generated = { channel: string; title: string; body: string };
 
@@ -24,6 +25,7 @@ const SPECS: Record<TaskType, string> = {
   article: "One SEO article of 1,200-1,600 words in the brand's primary language, targeting a keyword a competitor is likely missing. Include: title, meta description (≤155 chars), H2/H3 structure in Markdown, FAQ section with 3 questions, internal CTA. channel = 'blog'.",
   whatsapp: "3 WhatsApp Business messages: (1) abandoned-cart or lead follow-up, (2) seasonal offer announcement, (3) post-purchase thank-you with review request. Each ≤ 700 characters, template-friendly (use {{1}} placeholders for name/order), respectful tone, one clear CTA, opt-out line. channel = 'whatsapp'.",
   ads: "5 paid ad copies: 2 Snapchat (headline ≤34 chars + primary text ≤ 3 lines + CTA), 2 Meta/Instagram (primary text, headline ≤40 chars, description), 1 TikTok (spoken script ≤15s). Each with a target audience note and a suggested daily budget in SAR. channel = snapchat | meta | tiktok.",
+  cart_recovery: "Five items that win back shoppers who left products in their carts, built ONLY on the CART DATA block. Items 1-3: one WhatsApp Business recovery sequence sent about 1 hour, 24 hours and 72 hours after the cart was left, each under 500 characters, template-friendly with {{1}} for the shopper's name and {{2}} for the cart link (never write a real link), naming the products most often left from CART DATA where natural, one clear CTA, a respectful tone, and an opt-out line on the third. Items 4-5: one Instagram caption and one Snapchat story script featuring the products most often left in carts, each answering the likely hesitation (price, size, delivery, returns, authenticity) with facts from the brand file only. No discount, free shipping, gift or deadline unless it is in the brand file's current offers; otherwise leave it out or write [رقم]. Never mention cart counts, cart values, or that shopper data was read. These are drafts the owner pastes into the store's own abandoned-cart automation; Nashr never messages shoppers. channel = 'whatsapp' | 'instagram' | 'snapchat'.",
   gbp: "3 Google Business Profile posts (≤ 300 chars each): 1 offer, 1 update, 1 event/seasonal. Include CTA type (Call / Book / Order / Learn more). channel = 'gbp'.",
   sales_script: "Three sales assets for this brand: (1) a discovery call script: opening, 8 questions grouped by stage (situation, pain, impact, decision), and a closing next step, under 500 words; (2) a WhatsApp first-contact script with 3 variants (inbound lead, referral, warm intro), each under 500 characters; (3) an objection-handling sheet as a Markdown table with the 8 most likely objections in this industry: objection, root cause, response, proof to show. channel = 'sales'.",
   lead_qualifier: "One lead qualification card for this brand's ideal customer: ICP definition, 10 qualifying questions in the owner's language, a 0-100 scoring rubric (fit, intent, budget, timing, authority) with bands and the next action per band, and disqualifiers. Ready to paste into a CRM note. channel = 'sales'.",
@@ -189,6 +191,8 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   let items = parseItems(text);
   if (opts.reviewer !== false) items = await critique(client, brand, prefs, type, items, opts.meter);
   if (opts.noEmDash) items = stripDashes(items);
+  // Enforced after the reviewer, so neither pass can reintroduce a discount the owner never offered.
+  if (type === "cart_recovery") items = capDiscounts(items, brand.offers);
   return items;
 }
 

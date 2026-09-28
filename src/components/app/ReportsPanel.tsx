@@ -248,6 +248,16 @@ function StoreSales({ R, provider, store, lang }: { R: AppDict["reports"]["store
   const r = useRouter();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [drafting, setDrafting] = useState(false);
+  const [note, setNote] = useState("");
+  async function draft() {
+    setDrafting(true); setErr(""); setNote("");
+    try {
+      const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "cart_recovery" }) });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (j.ok) { setNote(R.drafted); r.refresh(); } else { limitFromError(j.error); setErr(j.error ?? `HTTP ${res.status}`); }
+    } catch { setErr("failed"); } finally { setDrafting(false); }
+  }
   async function sync() {
     setBusy(true); setErr("");
     const res = await fetch(`/api/connect/${provider}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync_sales" }) });
@@ -281,6 +291,12 @@ function StoreSales({ R, provider, store, lang }: { R: AppDict["reports"]["store
             {store.unread > 0 && <> · {fill(R.unread, { n: store.unread })}</>}
           </p>
           <p className="mt-1 text-xs text-ink/40">{R.note}</p>
+          {store.carts.top.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button onClick={draft} disabled={drafting || busy} className="btn btn-primary btn-xs">{drafting ? R.drafting : R.draft} <span className="font-mono" dir="ltr">· {TASK_COST.cart_recovery}</span></button>
+              {note && <Link href={`/${lang}/app`} className="text-xs text-oasis underline">{note}</Link>}
+            </div>
+          )}
         </>
       )}
       {err && <p className="mt-2 text-xs text-sadu" dir="auto">{err}</p>}

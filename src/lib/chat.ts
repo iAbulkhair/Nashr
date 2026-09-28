@@ -2,6 +2,7 @@ import { charge, refund } from "./credits";
 import { AGENTS, agentById, type AgentId } from "./agents";
 import { skillsBlock } from "./skills";
 import { statsFor } from "./stats";
+import { missingData } from "./cart-recovery";
 import { judgeLater } from "./judge";
 import { meter } from "./usage";
 import Anthropic from "@anthropic-ai/sdk";
@@ -42,7 +43,7 @@ export type EditableBrandField = (typeof EDITABLE_BRAND_FIELDS)[number];
 const TOOLS: Anthropic.Tool[] = [
   {
     name: "generate_content",
-    description: "Create items and put them in the owner's approval inbox. Deducts credits. Marketing (Noor): weekly_plan, social (10 posts), article, whatsapp (3), ads (5), gbp (3). Sales (Sami): sales_script, lead_qualifier, followup_seq. Finance (Razan): pricing_review, unit_economics, cash_forecast. Growth (Faris): gtm_plan, growth_experiments, retention_play. Reports (Dana): weekly_report, board_deck, dashboard_spec. Executive (Majed): strategy_review, okrs, decision_memo. Product and retention (Layan): prd, roadmap, feedback_synthesis, onboarding_flow. Any agent may call any type; the item is written by the agent who owns that type.",
+    description: "Create items and put them in the owner's approval inbox. Deducts credits. Marketing (Noor): weekly_plan, social (10 posts), article, whatsapp (3), ads (5), gbp (3), cart_recovery (5: a 3-message WhatsApp win-back sequence and 2 posts on the products most left in carts; needs a synced Salla or Shopify store). Sales (Sami): sales_script, lead_qualifier, followup_seq. Finance (Razan): pricing_review, unit_economics, cash_forecast. Growth (Faris): gtm_plan, growth_experiments, retention_play. Reports (Dana): weekly_report, board_deck, dashboard_spec. Executive (Majed): strategy_review, okrs, decision_memo. Product and retention (Layan): prd, roadmap, feedback_synthesis, onboarding_flow. Any agent may call any type; the item is written by the agent who owns that type.",
     input_schema: { type: "object", additionalProperties: false, required: ["type"], properties: { type: { type: "string", enum: Object.keys(TASK_COST) }, notes: { type: "string", description: "Owner's specific instructions for this batch (product, season, angle)." } } },
     strict: true,
   },
@@ -245,6 +246,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const brand = await getBrand(email);
       if (!brand) return "No brand file yet. Ask the owner to run onboarding.";
       if (trialOver(user)) { actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page."; }
+      if (await missingData(type, email)) return "No abandoned-cart data yet, so nothing was created and no credits were used. Tell the owner to connect Salla or Shopify on the Integrations page and press Sync on the Reports page, then ask again.";
       const paid = await charge(user.email, cost);
       if (!paid.ok) { actions.push("limit:credits"); return `Insufficient credits: need ${cost}, have ${paid.credits}. Tell the owner plainly and point to the Subscription page.`; }
       user.credits = paid.credits;
@@ -276,13 +278,14 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const brand = await getBrand(email);
       if (!brand) return "No brand file yet. Ask the owner to run onboarding.";
       if (trialOver(user)) { actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page."; }
+      if (await missingData(type, email)) return "No abandoned-cart data yet, so nothing was created and no credits were used. Tell the owner to connect Salla or Shopify on the Integrations page and press Sync on the Reports page, then ask again.";
       const paid = await charge(user.email, cost);
       if (!paid.ok) { actions.push("limit:credits"); return `Insufficient credits: need ${cost}, have ${paid.credits}.`; }
       user.credits = paid.credits;
       const gov = await getGov(email);
       let items;
       try {
-        items = await generate(type, brand, await listPreferences(email), String(input.brief ?? ""), { memory: await memoryBlock(email), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, count });
+        items = await generate(type, brand, await listPreferences(email), String(input.brief ?? ""), { memory: await memoryBlock(email), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, count, stats: await statsFor(type, email) });
       } catch (e) {
         user.credits = await refund(user.email, cost);
         throw e;

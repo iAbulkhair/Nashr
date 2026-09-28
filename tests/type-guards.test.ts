@@ -23,7 +23,7 @@ describe("task type membership", () => {
   });
 
   it("isTaskType accepts every real type and nothing else", () => {
-    expect(TASK_TYPES.length).toBe(25);
+    expect(TASK_TYPES.length).toBe(26);
     expect(TASK_TYPES.every(isTaskType)).toBe(true);
     for (const v of ["", "social ", "SOCIAL", "not_a_type", null, undefined, 0, {}, []]) expect(isTaskType(v)).toBe(false);
   });
