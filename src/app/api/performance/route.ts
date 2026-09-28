@@ -3,6 +3,7 @@ import { currentUser, sc } from "@/lib/auth";
 import { allow } from "@/lib/rate";
 import { analyze, ImportError, MAX_CSV_CHARS, METRICS, readRows, type MetricId } from "@/lib/perf-import";
 import { clearPerf, getPerf, savePerf } from "@/lib/perf-store";
+import { adCodeIndex } from "@/lib/brand";
 
 /**
  * Campaign results imported from a CSV export (src/lib/perf-import.ts). No model call and no credits: the findings
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
   const metric = typeof b.metric === "string" && b.metric in METRICS ? (b.metric as MetricId) : undefined;
   try {
     const { rows, platform, range } = readRows(b.csv);
-    const snap = { ...analyze(rows, typeof b.file === "string" ? b.file : "export.csv", platform, range, metric), source: "csv" as const };
+    const snap = { ...analyze(rows, typeof b.file === "string" ? b.file : "export.csv", platform, range, metric, undefined, await adCodeIndex(sc(u))), source: "csv" as const };
     await savePerf(sc(u), snap);
     return NextResponse.json({ ok: true, snapshot: snap });
   } catch (e) {

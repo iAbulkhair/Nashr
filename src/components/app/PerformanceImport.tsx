@@ -9,6 +9,7 @@ const STR = {
   ar: {
     live: "مباشر", syncFrom: (p: string) => `اقرأ النتائج من ${p}`, liveNote: "آخر ٣٠ يوماً من حسابك الإعلاني، قراءة فقط. تتحدّث تلقائياً كل يوم.", orUpload: "أو ارفع ملف CSV",
     adErrors: { reconnect_required: "انتهت صلاحية الربط. أعد ربط الحساب من صفحة التكاملات.", no_ad_results: "لا نتائج إعلانات في آخر ٣٠ يوماً في هذا الحساب.", no_ad_account: "لم نجد حساباً إعلانياً نشطاً في هذا الربط." } as Record<string, string>,
+    nashrTitle: "إعلانات نشر", nashrNone: "لم نجد بعد إعلاناً يحمل كوداً من نشر. انسخ الكود (NSR-…) من بطاقة الإعلان في صندوق الموافقة وضعه في اسم الإعلان في مدير الإعلانات.", nashrFew: "وجدنا إعلانات نشر، لكن العيّنة لا تكفي بعد للمقارنة مع بقية إعلاناتك.", tooSmall: "عيّنة صغيرة",
     title: "نتائج حملاتك (CSV)", sub: "صدّر تقرير الإعلانات من Meta أو سناب شات أو تيك توك أو Google Ads وارفعه هنا. نور تستخرج ما نجح وتبني عليه خطتك القادمة. بدون رصيد.",
     how: "كيف أصدّر التقرير؟", howBody: "من مدير الإعلانات افتح التقارير على مستوى الإعلان، وأضف أعمدة الظهور والنقرات والمبلغ المنفق والنتائج (أو قيمة الشراء)، ثم صدّر بصيغة CSV.",
     drop: "اسحب ملف CSV هنا أو اضغط للاختيار", reading: "نور تقرأ النتائج…", replace: "ارفع ملفاً أحدث", remove: "احذف الاستيراد",
@@ -24,6 +25,7 @@ const STR = {
   en: {
     live: "Live", syncFrom: (p: string) => `Read results from ${p}`, liveNote: "The last 30 days from your ad account, read only. Refreshed automatically every day.", orUpload: "or upload a CSV",
     adErrors: { reconnect_required: "The connection expired. Reconnect the account on the Integrations page.", no_ad_results: "No ad results in the last 30 days in this account.", no_ad_account: "No active ad account was found on this connection." } as Record<string, string>,
+    nashrTitle: "Nashr's ads", nashrNone: "No ad with a Nashr code yet. Copy the code (NSR-…) from an ad card in the approval inbox into the ad's name in your ads manager.", nashrFew: "Nashr's ads are in, but there is not enough data yet to compare them with your other ads.", tooSmall: "small sample",
     title: "Campaign results (CSV)", sub: "Export an ads report from Meta, Snapchat, TikTok or Google Ads and drop it here. Noor pulls out what worked and builds your next plan on it. No credits.",
     how: "How do I export it?", howBody: "In your ads manager, open reporting at the ad level, add impressions, clicks, amount spent and results (or purchase value) columns, then export as CSV.",
     drop: "Drop a CSV here or click to choose", reading: "Noor is reading the results…", replace: "Upload a newer file", remove: "Remove import",
@@ -185,6 +187,25 @@ export default function PerformanceImport({ lang, initial, ads = [] }: { lang: "
               </div>
             )}
 
+            <div className="mt-4 rounded-xl border border-oasis/20 bg-oasis/5 p-3">
+              <h3 className="flex items-center gap-1.5 text-sm font-semibold text-oasis"><Icon name="seed" className="h-4 w-4" />{S.nashrTitle}</h3>
+              {!snap.nashr ? <p className="mt-1 text-xs text-ink/60">{S.nashrNone}</p> : (
+                <>
+                  {snap.nashr.text ? (
+                    <p className="mt-1 flex flex-wrap items-start gap-2 text-sm"><span className="min-w-0 flex-1" dir="auto">{snap.nashr.text[lang]}</span><span className={`badge shrink-0 ${snap.nashr.confidence === "medium" ? "badge-primary" : "badge-accent"}`}>{snap.nashr.confidence === "medium" ? S.medium : S.low}</span></p>
+                  ) : <p className="mt-1 text-xs text-ink/60">{S.nashrFew}</p>}
+                  <ul className="mt-2 grid gap-1">
+                    {snap.nashr.ads.map((a) => (
+                      <li key={a.code + a.name} className="flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 text-xs">
+                        <span className="font-mono font-semibold text-oasis" dir="ltr">{a.code}</span>
+                        <span className="min-w-0 flex-1 truncate" dir="auto" title={a.name}>{a.name}</span>
+                        <span className="tnum shrink-0 font-semibold" dir="ltr">{a.value == null ? S.tooSmall : fmt(snap.metric, a.value, lang)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
             <p className="mt-3 text-xs text-ink/60">{S.honest}</p>
             <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink/5 pt-3">
               <Link href={chat(S.variantsPrompt)} className="btn btn-accent btn-xs"><Icon name="spark" className="h-3.5 w-3.5" />{S.variants}</Link>
