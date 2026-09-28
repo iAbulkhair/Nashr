@@ -6,10 +6,14 @@ import Figure from "./Figure";
 import { useReducedMotion } from "./useReducedMotion";
 import styles from "./home.module.css";
 
-/** The banter's timing: first exchange 1.5 s after the lineup comes into view, then one every 8 s; a line holds 2.2 s. */
+/** The banter's timing. The first exchange starts this long after the lineup comes into view. */
 const FIRST_MS = 1500;
-const EXCHANGE_MS = 8000;
+/** Each line holds this long; a pressed figure's answer too. */
 const LINE_MS = 2200;
+/** The next exchange starts at least this long after the previous one started… */
+const EXCHANGE_MS = 8000;
+/** …and at least this long after its last line ended, so a long exchange still gets a pause after it. */
+const REST_MS = 2200;
 /** How far the eyes move towards the pointer, in the drawing's units. */
 const GAZE = 3;
 
@@ -37,9 +41,12 @@ const clamp = (v: number) => Math.max(-1, Math.min(1, v));
  * fit at a readable width, the row scrolls inside its own box (snapping on phones), so the page itself never scrolls
  * sideways. The AI label is permanent (spec §7.1, disclosure).
  *
- * The team is alive (spec §7.3) while the lineup is on screen and the tab is showing (`data-live`): the banter of §5.3
- * plays in speech bubbles and the figures blink and breathe (CSS). A pressed figure answers, and the eyes follow the
- * pointer. Under reduced motion the bubbles still come and go, without moving; nothing else moves.
+ * The team is alive (spec §7.3) while the lineup is on screen, the tab is showing and the visitor has not paused it
+ * (`data-live`): the banter of §5.3 plays in speech bubbles, the questions flip, the figures blink and breathe (CSS)
+ * and the eyes follow the pointer. The pause button stops all of that (WCAG 2.2.2); its label says what pressing it
+ * will do. A pressed figure always answers, and only that answer is announced to screen readers: the automatic banter
+ * is decoration and stays silent. Under reduced motion the bubbles still come and go, without moving; nothing else
+ * moves.
  */
 export default function Lineup({ lang }: { lang: Lang }) {
   const section = useRef<HTMLElement>(null);
@@ -47,7 +54,9 @@ export default function Lineup({ lang }: { lang: Lang }) {
   const [active, setActive] = useState(false);
   const [banter, setBanter] = useState<Line | null>(null);
   const [pressed, setPressed] = useState<Line | null>(null);
+  const [paused, setPaused] = useState(false);
   const next = useRef(0);
+  const live = active && !paused;
 
   // On screen and in a visible tab, or not. Either way a change clears the bubble, so a line cut off by a pause never
   // comes back stale when the lineup does.
@@ -78,10 +87,9 @@ export default function Lineup({ lang }: { lang: Lang }) {
     };
   }, []);
 
-  // The banter, one line at a time. An exchange longer than the 8 s beat (four lines) finishes before the next begins;
-  // one cut off by a pause starts again from its first line.
+  // The banter, one line at a time. An exchange cut off (off screen, hidden tab, paused) starts again from its first line.
   useEffect(() => {
-    if (!active) return;
+    if (!live) return;
     const timers = new Set<ReturnType<typeof setTimeout>>();
     const later = (fn: () => void, ms: number) => {
       const t = setTimeout(() => {
@@ -98,11 +106,11 @@ export default function Lineup({ lang }: { lang: Lang }) {
         setBanter(null);
         next.current += 1;
       }, length);
-      later(play, Math.max(EXCHANGE_MS, length));
+      later(play, Math.max(EXCHANGE_MS, length + REST_MS));
     };
     later(play, FIRST_MS);
     return () => timers.forEach(clearTimeout);
-  }, [active, lang]);
+  }, [live, lang]);
 
   // A pressed figure's answer holds for one line's time; pressing again restarts it.
   useEffect(() => {
@@ -112,10 +120,10 @@ export default function Lineup({ lang }: { lang: Lang }) {
   }, [pressed]);
 
   // The eyes: one listener for the whole lineup, at most one update a frame. The gaze is measured on screen, so it
-  // points at the pointer whatever the reading direction.
+  // points at the pointer whatever the reading direction. Paused, the eyes come back to rest.
   useEffect(() => {
     const el = section.current;
-    if (!el || reduced) return;
+    if (!el || reduced || paused) return;
     let frame = 0;
     let x = 0;
     let y = 0;
@@ -137,16 +145,37 @@ export default function Lineup({ lang }: { lang: Lang }) {
       el.style.removeProperty("--gx");
       el.style.removeProperty("--gy");
     };
-  }, [reduced]);
+  }, [reduced, paused]);
 
-  const talk = pressed ?? (active ? banter : null);
-  const said = talk ? `${CAST.find((m) => m.id === talk.who)?.name[lang]}: ${quote(talk.text, lang)}` : "";
+  const talk = pressed ?? (live ? banter : null);
+  const said = pressed ? `${CAST.find((m) => m.id === pressed.who)?.name[lang]}: ${quote(pressed.text, lang)}` : "";
 
   return (
-    <section ref={section} className={styles.lineup} data-testid="lineup" data-live={active || undefined} aria-labelledby="lineup-label">
-      <p id="lineup-label" className={styles.aiLabel}>
-        {HOME.aiLabel[lang]}
-      </p>
+    <section
+      ref={section}
+      className={styles.lineup}
+      data-testid="lineup"
+      data-live={live || undefined}
+      data-motion={paused ? "paused" : "playing"}
+      aria-labelledby="lineup-label"
+    >
+      <div className={styles.lineupHead}>
+        <p id="lineup-label" className={styles.aiLabel}>
+          {HOME.aiLabel[lang]}
+        </p>
+        {/* Both labels share one cell, so the button keeps its width; the hidden one is left out of its name. */}
+        <button
+          type="button"
+          className={styles.lineupToggle}
+          onClick={() => {
+            setPaused((p) => !p);
+            setBanter(null);
+          }}
+        >
+          <span data-on={!paused || undefined}>{HOME.motionPause[lang]}</span>
+          <span data-on={paused || undefined}>{HOME.motionPlay[lang]}</span>
+        </button>
+      </div>
       <div className={styles.strip}>
         <ul className={styles.row} style={{ "--n": CAST.length } as CSSProperties}>
           {CAST.map((member, index) => (
@@ -157,6 +186,7 @@ export default function Lineup({ lang }: { lang: Lang }) {
                 index={index}
                 lines={linesOf(member, lang)}
                 say={talk?.who === member.id ? quote(talk.text, lang) : undefined}
+                hold={paused}
                 onPress={() => setPressed({ who: member.id, text: answer(member, lang) })}
               />
             </li>

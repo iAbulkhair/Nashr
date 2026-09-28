@@ -35,6 +35,8 @@ export const HOME: {
   cta: L;
   urlPlaceholder: L;
   aiLabel: L;
+  motionPause: L;
+  motionPlay: L;
   truthsTitle: L;
 } = {
   scroll: { ar: "مرّر", en: "Scroll" },
@@ -43,6 +45,9 @@ export const HOME: {
   cta: { ar: "ابدأ بموقعك", en: "Start with your website" },
   urlPlaceholder: { ar: "رابط موقعك أو متجرك", en: "Your website or store URL" },
   aiLabel: { ar: "وكلاء ذكاء اصطناعي", en: "AI agents" },
+  // The lineup's motion toggle (WCAG 2.2.2); the label says what pressing it will do.
+  motionPause: { ar: "أوقف الحركة", en: "Pause motion" },
+  motionPlay: { ar: "شغّل الحركة", en: "Play motion" },
   truthsTitle: { ar: "الموجود اليوم", en: "What's true today" },
 };
 

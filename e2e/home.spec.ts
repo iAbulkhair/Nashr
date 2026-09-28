@@ -194,7 +194,12 @@ const live = (l: Locator) => l.evaluate((el) => Object.keys(el).some((k) => k.st
 test("a figure answers when you press it, once for screen readers", async ({ page }) => {
   await open(page, "/en");
   const lineup = page.getByTestId("lineup");
+  const said = lineup.locator('[aria-live="polite"]');
   const noor = lineup.locator('[data-testid="figure"][data-cast="noor"]');
+  // The automatic banter is decoration: its bubbles play, and screen readers hear nothing.
+  await lineup.scrollIntoViewIfNeeded();
+  await expect(lineup.getByTestId("bubble").first()).toBeVisible({ timeout: 4000 });
+  await expect(said).toHaveText("");
   await expect.poll(() => live(noor)).toBe(true);
   const name = await noor.getAttribute("aria-label");
   await noor.click();
@@ -203,7 +208,7 @@ test("a figure answers when you press it, once for screen readers", async ({ pag
   const bubble = noor.getByTestId("bubble");
   await expect(bubble).toHaveText("“Found a trend!”");
   await expect(bubble).toHaveAttribute("aria-hidden", "true");
-  await expect(lineup.locator('[aria-live="polite"]')).toHaveText("Noor: “Found a trend!”");
+  await expect(said).toHaveText("Noor: “Found a trend!”");
   await expect(noor).toHaveAccessibleName(name!);
   await expect(bubble).toHaveCount(0, { timeout: 4000 });
   // The owner has no banter line: it gives the finale's word. Keyboard activation works the same way.
@@ -211,6 +216,29 @@ test("a figure answers when you press it, once for screen readers", async ({ pag
   await you.focus();
   await page.keyboard.press("Enter");
   await expect(you.getByTestId("bubble")).toHaveText("“Approved.”");
+});
+
+test("the motion button stops the banter and the flips, and starts them again", async ({ page }) => {
+  await open(page, "/en");
+  const lineup = page.getByTestId("lineup");
+  await lineup.scrollIntoViewIfNeeded();
+  const bubbles = lineup.getByTestId("bubble");
+  await expect(bubbles.first()).toBeVisible({ timeout: 4000 });
+  await lineup.getByRole("button", { name: "Pause motion", exact: true }).click();
+  await expect(lineup).toHaveAttribute("data-motion", "paused");
+  const toggle = lineup.getByRole("button", { name: "Play motion", exact: true });
+  await expect(toggle).toBeVisible();
+  // Playing, the next line would come within 2.2 s and a question would flip within 2.4 s. Paused, neither happens.
+  const question = lineup.locator('[data-testid="figure"][data-cast="noor"]').getByTestId("qflip");
+  const before = await question.textContent();
+  await expect(bubbles).toHaveCount(0);
+  await page.waitForTimeout(3000);
+  await expect(bubbles).toHaveCount(0);
+  expect(await question.textContent()).toBe(before);
+  expect(await lineup.locator('[data-part="eyes"]').first().evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
+  await toggle.click();
+  await expect(lineup).toHaveAttribute("data-motion", "playing");
+  await expect(bubbles.first()).toBeVisible({ timeout: 4000 });
 });
 
 test("the eyes follow the pointer the right way round in Arabic, and the figures blink and breathe", async ({ page, isMobile }) => {

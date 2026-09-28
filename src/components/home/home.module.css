@@ -551,6 +551,42 @@
 
 /* ---------- Life in the lineup: banter, eyes, blinking, breathing (Lineup.tsx, Figure.tsx) ---------- */
 
+/* The AI label and, across from it, the button that pauses the lineup's motion (WCAG 2.2.2). */
+.lineupHead {
+  max-width: 1320px;
+  margin: 0 auto 1.25rem;
+  padding-inline: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.lineupHead > .aiLabel { max-width: none; margin: 0; padding-inline: 0; }
+/* Both labels sit in one cell, so the button is as wide as the longer one and never changes size. */
+.lineupToggle {
+  display: inline-grid;
+  flex: none;
+  padding: 0.3rem 0.85rem;
+  border: 1.5px solid color-mix(in oklab, var(--ink) 55%, var(--ground));
+  border-radius: 999px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.lineupToggle > * { grid-area: 1 / 1; text-align: center; }
+.lineupToggle > :not([data-on]) { visibility: hidden; }
+.lineupToggle:hover { border-color: var(--ink); }
+.lineupToggle:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+/* Without JavaScript nothing moves, so there is nothing to pause. */
+@media (scripting: none) {
+  .lineupToggle { display: none; }
+}
+
 /*
  * A speech bubble takes the question's place above the head while its figure talks. Invisible copies of every line
  * the figure can say sit in `.qsizer` with the questions, so the slot is already tall enough: a bubble never moves

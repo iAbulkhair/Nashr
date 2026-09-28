@@ -1,22 +1,20 @@
 import { useState, type CSSProperties } from "react";
 import type { CastMember } from "@/lib/home";
 import type { Lang } from "@/lib/i18n";
+import { flipDelay } from "@/lib/flip-clock";
 import Doodle from "./Doodle";
 import QuestionFlip from "./QuestionFlip";
 import styles from "./home.module.css";
-
-/** Figures flip one after another: 7 × 343 ms spreads the seven agents across one 2.4 s flip (spec §7.3). */
-const STAGGER_MS = 343;
 
 /**
  * One cast member standing in the lineup. The founder's order of importance: the value line (largest), then the name,
  * then the questions flipping above the head. The flipping layer is decorative; the value, the name and the first
  * question are exposed as static text.
  *
- * Hovered or focused, the figure turns to face you and holds its question. When it speaks (`say`), its bubble covers
- * the question slot. The slot is sized from before the first paint for every line this figure can say (`lines`), so a
- * bubble never moves the layout or gets clipped. The bubble is `aria-hidden`: the lineup announces the line once in
- * its live region, and the button keeps its name.
+ * Hovered or focused, the figure turns to face you and holds its question; it also holds it while the lineup's motion
+ * is paused (`hold`). When it speaks (`say`), its bubble covers the question slot. The slot is sized from before the
+ * first paint for every line this figure can say (`lines`), so a bubble never moves the layout or gets clipped. The
+ * bubble is `aria-hidden`, and the button keeps its name; the lineup announces what a pressed figure answers.
  */
 export default function Figure({
   member,
@@ -24,6 +22,7 @@ export default function Figure({
   index,
   lines,
   say,
+  hold,
   onPress,
 }: {
   member: CastMember;
@@ -31,6 +30,7 @@ export default function Figure({
   index: number;
   lines: string[];
   say?: string;
+  hold: boolean;
   onPress: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -69,7 +69,7 @@ export default function Figure({
             </span>
           ))}
         </span>
-        {member.questions.length > 0 && <QuestionFlip items={member.questions} lang={lang} delayMs={index * STAGGER_MS} paused={facing} />}
+        {member.questions.length > 0 && <QuestionFlip items={member.questions} lang={lang} delayMs={flipDelay(index)} paused={facing || hold} />}
         {say && (
           <span key={say} className={styles.talkBubble} data-testid="bubble" aria-hidden="true">
             {say}
