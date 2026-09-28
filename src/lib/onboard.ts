@@ -1,5 +1,6 @@
 import { meter } from "./usage";
 import Anthropic from "@anthropic-ai/sdk";
+import { ModelPaused, modelState } from "./model";
 import type { Brand } from "./brand";
 import { activeSeasons } from "./seasons";
 import type { SiteSnapshot } from "./crawl";
@@ -67,7 +68,10 @@ function mock(site: SiteSnapshot, lang: "ar" | "en"): OnboardResult {
 
 /** `onPart` fires as each of the three parts lands, so the chat can show real progress instead of a timer. */
 export async function buildFromSite(site: SiteSnapshot, lang: "ar" | "en", hints?: string, email?: string, onPart?: (part: PartName) => void): Promise<OnboardResult> {
-  if (!process.env.ANTHROPIC_API_KEY) return mock(site, lang);
+  const state = modelState();
+  // Never the mock while paused: the route saves what comes back, and a saved brand ends onboarding for good.
+  if (state === "paused") throw new ModelPaused();
+  if (state === "mock") return mock(site, lang);
   const client = new Anthropic();
   const seasons = activeSeasons().map((s) => `${s.name} in ${s.daysLeft} days`).join("; ") || "none in 35 days";
   const shared = `You are Noor (نور), Nashr's marketing agent for Gulf businesses. From a website snapshot, build part of the founding workspace for this brand. Two other parts are being written at the same time from the same snapshot, so stay strictly inside the fields asked for here. Be specific to what the site actually says; when the site is thin or unreachable, infer carefully from the domain, title, and any hints, and mark inferred facts with "(مُستنتج)" / "(inferred)". Never invent prices, certifications, or numbers. The brand's dialect is saudi unless the site is clearly UAE (emirati), Kuwait (kuwaiti), or English-only (english).

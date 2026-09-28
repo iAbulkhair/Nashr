@@ -7,6 +7,7 @@ import { allow } from "@/lib/rate";
 import { readFile, writeFile } from "@/lib/files";
 import { push, type ChatMsg } from "@/lib/chat";
 import { db } from "@/lib/db";
+import { modelState } from "@/lib/model";
 
 export const maxDuration = 300;
 
@@ -27,6 +28,8 @@ export async function POST(req: Request) {
   if (!u) return new Response("unauthorized", { status: 401 });
   const b = (await req.json().catch(() => ({}))) as { url?: string; hints?: string };
   if (!b.url || b.url.trim().length < 4) return new Response("bad_url", { status: 400 });
+  // Before the daily allowance and the lock, so a paused run costs the owner none of their three tries.
+  if (modelState() === "paused") return new Response("paused", { status: 503 });
   const scope = sc(u), t = T[u.lang === "en" ? "en" : "ar"];
   // Free and backed by a large model: run once per workspace and at most three times a day per account.
   if (await getBrand(scope)) return new Response("already_onboarded", { status: 409 });
