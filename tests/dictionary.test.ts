@@ -46,6 +46,16 @@ describe("قاموس ذكين", () => {
       expect([...plan, draft.post, draft.whatsapp].join(" ")).not.toMatch(/[0-9٠-٩]/);
     }
   });
+  it("puts the brand in literally, even when it spells a replacement pattern", () => {
+    // String.prototype.replace reads `$&`, `$'`, `` $` `` and `$$` in a replacement string; the brand is typed by the
+    // visitor, so it must go in as it is.
+    for (const brand of ["$&", "A$'B", "Ca$$h", "x$`y"]) for (const sector of SECTORS) for (const lang of ["ar", "en"] as const) {
+      const draft = sampleDraft({ ...atStep(4), brand, sector: sector.id }, lang);
+      expect(draft.post.startsWith(`${brand}:`), `${brand} ${sector.id} ${lang}`).toBe(true);
+      expect(draft.whatsapp).toContain(brand);
+      expect(`${draft.post} ${draft.whatsapp}`).not.toContain("{brand}");
+    }
+  });
   it("has twelve words and five sectors, and only agents react", () => {
     expect(WORDS).toHaveLength(12);
     expect(SECTORS).toHaveLength(5);

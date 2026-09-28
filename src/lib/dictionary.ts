@@ -230,20 +230,26 @@ const WHATSAPP: L = {
   en: "Hi! Thanks for asking about {brand}. Shall I send the details here, or would you like a call?",
 };
 
+/**
+ * Puts a value into a template's placeholder as literal text. A replacement string would read `$&`, `$'`, `` $` `` and
+ * `$$` in it, and the brand is whatever the visitor typed; a replacement function is never read that way.
+ */
+const fill = (template: string, placeholder: string, value: string) => template.replaceAll(placeholder, () => value);
+
 export function samplePlan(s: DictState, lang: Lang): string[] {
   const sector = s.sector ?? "coffee";
   const lines = PLAN[sector];
   const firstWord = WORDS.find((w) => w.id === s.words[0]);
   const tone = firstWord ? firstWord.tone[lang] : "";
-  return [lines.line1[lang].replace("{tone}", tone), lines.line2[lang], lines.line3[lang]];
+  return [fill(lines.line1[lang], "{tone}", tone), lines.line2[lang], lines.line3[lang]];
 }
 
 export function sampleDraft(s: DictState, lang: Lang): { post: string; whatsapp: string } {
   const sector = s.sector ?? "coffee";
   const brand = s.brand.trim();
   return {
-    post: POST[sector][lang].replace("{brand}", brand),
-    whatsapp: WHATSAPP[lang].replace("{brand}", brand),
+    post: fill(POST[sector][lang], "{brand}", brand),
+    whatsapp: fill(WHATSAPP[lang], "{brand}", brand),
   };
 }
 
