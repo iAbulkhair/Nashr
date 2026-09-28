@@ -139,7 +139,7 @@ All three require `Authorization: Bearer ${CRON_SECRET}` and return 401 when the
 | `conns:{scope}` | set | Connected provider ids (never shrinks) | `connectors/store.ts:35` | none |
 | `conn:{scope}:{provider}` | json | Connection with AES-256-GCM `enc` blob; delete writes `null` | `connectors/store.ts:34,52` | none |
 | `oauthstate:{state}` | json | Connector OAuth state `{email: scope, provider, lang, shop, verifier}` | `connectors/store.ts:56` | 10 min |
-| `storesales:{scope}` | json | Latest Salla sales snapshot: 30-day order count, revenue by currency, canceled count, open abandoned carts and their value, top products. Totals only, no customer data | `store-sales.ts` | none (replaced on each sync) |
+| `storesales:{scope}` | json | Latest store sales snapshot (Salla or Shopify, whichever was synced last): 30-day order count, revenue by currency, canceled count, open abandoned carts and their value, top products. Totals only, no customer data | `store-sales.ts` | none (replaced on each sync) |
 | `connlock:{scope}:{provider}` | string | Held while a connector token is refreshed, so two requests cannot spend one single-use refresh token | `connectors/fresh.ts` | 30 s |
 | `profile:{scope}` (written) / `profile:{email}` (read by cron, deleted by wipe) | json | `{emails: all\|important\|none}` | `api/profile/route.ts:21,40`, `api/cron/daily/route.ts:41`, `account.ts:19` | none |
 | `notifs:{email}` | json | Up to 50 notifications | `notifications.ts:16` | none |

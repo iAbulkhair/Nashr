@@ -45,7 +45,9 @@ add features to it that are not built: reviewers test what you describe.
 
 ## 1. Shopify — about 1 hour, no review needed to test
 
-**What works once connected:** product import into the brand's `products.md`, and articles published as blog drafts.
+**What works once connected:** product import into the brand's `products.md`, articles published as blog drafts, and a
+sales sync: last 30 days of orders and abandoned checkouts, as totals with no customer details, shown on Reports and read
+by Noor (built 2026-09-28).
 
 1. Go to **partners.shopify.com** → create a Partner account (your name, company, email).
 2. **Stores → Add store → Development store.** Name: `nashr-test`. This is the free store you test on.
@@ -56,6 +58,11 @@ add features to it that are not built: reviewers test what you describe.
    | App URL | `https://nashr-tau.vercel.app/en/app/integrations` |
    | Allowed redirection URL(s) | `https://nashr-tau.vercel.app/api/connect/shopify/callback` |
 4. **API access / scopes:** `read_products, read_orders, read_checkouts, write_content, read_customers`
+   **Protected customer data access** (same app, API access section): request access for **orders** at the first
+   level only, with no customer fields (name, email, phone, address). Reason to give: "Totals of the merchant's own
+   orders and abandoned checkouts (count, revenue, top products) for their marketing reports; no customer fields are
+   read or stored." Without it Shopify refuses order reads and Nashr shows a message saying so. On development stores
+   this is a setting, not a review; the review comes with the App Store listing.
 5. Copy **Client ID** and **Client secret**, then in your terminal:
    ```bash
    vercel env add SHOPIFY_CLIENT_ID production --scope asbunat
@@ -64,6 +71,8 @@ add features to it that are not built: reviewers test what you describe.
 6. Redeploy. In Nashr → Integrations → Shopify → enter `nashr-test.myshopify.com` → approve on Shopify.
 7. Test: **Import products** (add 2–3 products to the dev store first), then approve an article in the inbox and click
    **Publish to Shopify**; it should appear as a hidden blog draft in the store.
+8. Sales test: place 2–3 test orders on the dev store (Bogus Gateway) and leave one checkout at the payment step,
+   then Reports → **Sync from Shopify**. The card should show the orders, the sales, and one abandoned checkout.
 
 **Later:** listing on the Shopify App Store needs a review (about 2–3 weeks). Until then the app can be installed on
 stores you invite. Tell me before you submit the listing.
