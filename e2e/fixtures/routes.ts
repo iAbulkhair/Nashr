@@ -23,7 +23,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "", unique: { en: "Drafts ready for your approval", ar: "مسودات جاهزة لموافقتك" }, ownTitle: false },
   { path: "/pricing", unique: { en: "SAR", ar: "ريال" }, ownTitle: true },
   { path: "/tools", unique: { en: "free Arabic marketing tools", ar: "أداة تسويق مجانية" }, ownTitle: true },
-  { path: "/agents", unique: { en: "Seven agents", ar: "سبعة وكلاء" }, ownTitle: true },
+  { path: "/agents", unique: { en: "Eight agents", ar: "ثمانية وكلاء" }, ownTitle: true },
   { path: "/blog", unique: { en: "Blog", ar: "المدونة" }, ownTitle: true },
   { path: "/help", unique: { en: "Help center", ar: "مركز المساعدة" }, ownTitle: true },
   { path: "/privacy", unique: { en: "Privacy Policy", ar: "سياسة الخصوصية" }, ownTitle: true },
