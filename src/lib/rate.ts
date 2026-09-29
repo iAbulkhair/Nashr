@@ -5,8 +5,18 @@ import { db } from "./db";
 export async function allow(bucket: string, max: number, windowSeconds: number): Promise<boolean> {
   const key = `rate:${bucket}`;
   const n = await db.incrby(key, 1);
-  // First hit in the window sets the expiry; the counter value itself is preserved.
-  if (n === 1) await db.set(key, 1, windowSeconds);
+  // Every hit, not only the first: EXPIRE NX starts the window when the counter has none and never touches the count.
+  // Setting the expiry on the first hit alone, with a SET, reset hits that landed in between, and when that one call
+  // failed the counter kept no expiry and refused every caller for good (rate:kie:create is every tenant's). A failure
+  // here is repaired by the next hit, so it does not fail the request.
+  try {
+    await db.expireNx(key, windowSeconds);
+  } catch (e) {
+    console.error("rate expiry failed", e instanceof Error ? e.name : "error");
+    // A store that refused the NX form must not leave every counter without an expiry: the first hit falls back to the
+    // old SET, which can only reset hits that landed in the same instant.
+    if (n === 1) await db.set(key, 1, windowSeconds).catch(() => {});
+  }
   return n <= max;
 }
 

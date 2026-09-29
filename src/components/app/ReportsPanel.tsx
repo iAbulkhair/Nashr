@@ -19,7 +19,7 @@ import { READS_ADS } from "@/lib/connectors/working";
 
 type Item = { id: string; type: TaskType; title: string; status: string; createdAt: string };
 
-const METRICS = ["created", "approved", "approvalRate", "pending", "published", "images", "creditsUsed", "scheduled"] as const;
+const METRICS = ["created", "approved", "approvalRate", "pending", "published", "images", "videos", "creditsUsed", "scheduled"] as const;
 type MetricKey = (typeof METRICS)[number];
 export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null, perf = null }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null; perf?: PerfSnapshot | null }) {
   const r = useRouter();
@@ -53,6 +53,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
     pending: { label: R.pending, value: String(k.pending) },
     published: { label: R.published, value: String(k.published) },
     images: { label: R.images, value: String(k.images) },
+    videos: { label: R.videos, value: String(k.videos) },
     creditsUsed: { label: R.creditsUsed, value: String(k.creditsUsed), sub: delta(k.creditsUsed, k.creditsUsedPrev) },
     scheduled: { label: R.scheduled, value: String(k.scheduled) },
   };

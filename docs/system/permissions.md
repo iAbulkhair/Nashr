@@ -1,6 +1,6 @@
 # Nashr: permissions (as implemented)
 
-What the code enforces today, at HEAD `4959f7e`. Paths are relative to the repository root; API route files are under `src/app/api/` and are written without that prefix in the tables. `file:line` points at the line where the check happens.
+What the code enforces today, at HEAD `4959f7e`, with the media routes of 2026-09-29 (rows 39 and 91-95, section 3.2, section 5 items 17, 20 and 26) and the review fixes of the same day (rows 38 and 48, section 3.2, section 5 items 13, 24 and 27). Paths are relative to the repository root; API route files are under `src/app/api/` and are written without that prefix in the tables. `file:line` points at the line where the check happens.
 
 ## 0. Actors and the functions that identify them
 
@@ -15,7 +15,9 @@ What the code enforces today, at HEAD `4959f7e`. Paths are relative to the repos
 
 There is no global guard. `src/proxy.ts` does not authenticate (`src/proxy.ts:15-30`); every handler enforces its own rule, and a handler without a check is public.
 
-## 1. API routes (57 route files, 90 exported handlers)
+## 1. API routes (64 route files, 100 exported handlers)
+
+Counted on 2026-09-29: `find src/app/api -name route.ts | wc -l` gives 64 and `grep -rhoE "export (async )?function (GET|POST|PUT|PATCH|DELETE|OPTIONS)" src/app/api | wc -l` gives 100 (5 of them `OPTIONS`). Before the media change the tree had 59 files and 95 handlers while this heading said 57 and 90; rows 56d and 56e (`mcp/grants`) were missing and are added below.
 
 Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the addressed resource (U plus scope binding), F = founder admin, C = cron secret, M = MCP bearer token.
 
@@ -26,7 +28,7 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | 1 | POST | `/api/auth/signup` | A | No auth. Validation only: `auth/signup/route.ts:9-13`. No rate limit. |
 | 2 | POST | `/api/auth/login` | A | Password check `auth/login/route.ts:8`; suspended block `:9`. No rate limit. |
 | 3 | POST | `/api/auth/logout` | A | No check; `destroySession()` acts on the caller's own cookie `auth/logout/route.ts:5`. |
-| 4 | POST | `/api/auth/forgot` | A | Rate limit `auth/forgot/route.ts:23` (`allow`, `src/lib/rate.ts:4`). |
+| 4 | POST | `/api/auth/forgot` | A | Rate limit `auth/forgot/route.ts:23` (`allow`, `src/lib/rate.ts:5`). |
 | 5 | POST | `/api/auth/reset` | A holding a valid reset token | Rate limit `auth/reset/route.ts:11`; token lookup `:15-18`; suspended block `:20`. |
 | 6 | PATCH | `/api/account` | U plus current password | `currentUser` `account/route.ts:9-10`; `verifyPassword` `:13`. |
 | 7 | DELETE | `/api/account` | U plus password | `currentUser` `account/route.ts:20-21`; `verifyPassword` `:23`. Wipes the caller's own email only `:24`. |
@@ -62,7 +64,7 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | # | Method | Path | Who | Enforced by |
 |---|---|---|---|---|
 | 29 | GET | `/api/chat` | O; `conv` from query is a key suffix under `sc(u)` | `currentUser` `chat/route.ts:11-12`; `history(sc(u), conv)` `:14`. |
-| 30 | POST | `/api/chat` | O | `currentUser` `chat/route.ts:23-24`. Tool side effects run under `user.scope` `src/lib/chat.ts:220`. |
+| 30 | POST | `/api/chat` | O | `currentUser` `chat/route.ts:23-24`. Tool side effects run under `user.scope` `src/lib/chat.ts:259`. |
 | 31 | POST | `/api/chat/feedback` | U | `currentUser` `chat/feedback/route.ts:8-9`. |
 | 32 | POST | `/api/generate` | O | `currentUser` `generate/route.ts:16-17`; trial check `:23`; `missingData` (cart-recovery needs a synced store, 409 `no_cart_data` before any charge); `charge`. |
 | 33 | POST | `/api/onboard` | O | `currentUser` `onboard/route.ts:25-26`; per-scope lock `:31`. |
@@ -70,8 +72,9 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | 35 | POST | `/api/onboard/plan` | O | `currentUser` `onboard/plan/route.ts:17-18`. |
 | 36 | POST | `/api/catalog` | O | `currentUser` `catalog/route.ts:9-10`. Fetches a user-supplied URL server-side `:12,19`. |
 | 37 | GET | `/api/tasks` | O | `currentUser` `tasks/route.ts:6-7`. |
-| 38 | PATCH | `/api/tasks/{id}` | O; `id` resolved with `getTask(sc(u), id)` | `currentUser` `tasks/[id]/route.ts:9-10`; scope lookup `:12-13`. |
-| 39 | POST | `/api/tasks/{id}/image` | O | `currentUser` `tasks/[id]/image/route.ts:11-12`; scope lookup `:14-15`; `charge` `:16`. |
+| 38 | PATCH | `/api/tasks/{id}` | O; `id` resolved under `sc(u)` by `updateTask(sc(u), id, …)` | `currentUser` `tasks/[id]/route.ts:12-13`; the change is applied with `updateTask(scope, id, …)` `:24`, under `tasklock:{scope}:{id}`, to the task as stored (404 when there is none under the scope, `:47`); brand gate on an approved result `:41-44`, 409 with nothing saved `:48`. |
+| 39 | POST | `/api/tasks/{id}/image` | O | `currentUser` `tasks/[id]/image/route.ts:15-16`; task and brand under `sc(u)` `:18-19`; `renderImage` `:26` (`src/lib/media/start.ts`): trial ended 402, catalogue model of kind image (default `img-fast`) 400, `IMAGE_TYPES` 400, availability 409, or the uncharged placeholder card for `img-fast`, written through `updateTask` only onto an item without artwork (an item with a generated image keeps it: 409 `model_unavailable`, `start.ts:52`); the charge happens inside `startMedia` (`src/lib/media/jobs.ts`) after the balance pre-check, the flight lock, the per-account limits (30 per hour, 150 per day) and the provider throttle. `maxDuration = 120`. |
+| 91 | POST | `/api/tasks/{id}/video` | O | `currentUser` `tasks/[id]/video/route.ts:15-16`; task and brand under `sc(u)` `:18-19`; `renderVideo` `:25`: trial ended 402 `trial_over`, a catalogue video model (no default) 400, `VIDEO_TYPES` 400, a trial account and a model outside `TRIAL_VIDEO_MODELS` 402 `plan_required`, availability 409, Photo to motion without our image 409; in `startMedia`: one kept video per trial (`mtrialvid:{email}`, 402 `trial_video_used`), 6 per hour and 20 per day per account, then the charge (12 or 24 credits). `maxDuration = 120`. |
 | 40 | GET | `/api/tasks/{id}/pptx` | O | `currentUser` `tasks/[id]/pptx/route.ts:34-35`; scope lookup `:37-38`. |
 | 41 | POST | `/api/tools/{tool}` | A (5 per IP per UTC day) or U (unlimited, no credit charge) | Anonymous counter `tools/[tool]/route.ts:15-20`. |
 
@@ -85,7 +88,7 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | 45 | GET | `/api/connect/{provider}/start` | O | `currentUser` `connect/[provider]/start/route.ts:10-11`; scope written into state `:25`. |
 | 46 | GET | `/api/connect/{provider}/callback` | O who started the flow: a valid, unused `state` issued for this provider, the matching `nashr_oauth` cookie, and a signed-in account that owns the state's scope | `currentUser` and `sameSecret(cookie, state)` in `connect/[provider]/callback/route.ts`, before any code exchange; Shopify also verifies the query `hmac`. Target scope comes from the state record. |
 | 47 | POST | `/api/connect/{provider}/key` | O | `currentUser` `connect/[provider]/key/route.ts:12-13`; saved under `sc(u)` `:54`. |
-| 48 | POST | `/api/publish/{id}` | O; `id` resolved with `getTask(sc(u), id)`; connection read under `sc(u)` | `currentUser` `publish/[id]/route.ts:10-11`; scope lookup `:13-14`; `publishTask(sc(u), ...)` `:18`. |
+| 48 | POST | `/api/publish/{id}` | O; `id` resolved with `getTask(sc(u), id)`; connection read under `sc(u)` | `currentUser` `publish/[id]/route.ts:12-13`; scope lookup `:15-16`; rejected item 409 `:20`; brand gate 409 `:24`; `targetsFor` 400 `wrong_target` `:26`; `publishTask(sc(u), ...)` `:28`; the result written with `updateTask(sc(u), id, …)` `:32` to the task as stored after the publish. |
 | 49 | GET | `/api/integrations` | A gets the static catalog; F gets the request list | `isAdmin` branch `integrations/route.ts:7`. |
 | 50 | POST | `/api/integrations` | U | `currentUser` `integrations/route.ts:15-16`. |
 
@@ -102,6 +105,8 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | 56a | GET | `/api/performance` | O | `currentUser` `performance/route.ts`; `getPerf(sc(u))`. |
 | 56b | POST | `/api/performance` | O | `currentUser`; `allow("perf:{email}", 20, 3600)`; body capped at 2,000,000 characters (413); parsed as data; saved under `sc(u)`. No model call, no credits. |
 | 56c | DELETE | `/api/performance` | O | `currentUser`; `clearPerf(sc(u))` deletes `perfimport:{scope}` and `performance-learnings.md`. |
+| 56d | GET | `/api/mcp/grants` | U (account level) | `currentUser` `mcp/grants/route.ts:7-8`; `listGrants(u.email)` `:9`, without tokens. |
+| 56e | DELETE | `/api/mcp/grants` | U; grant `id` from the query resolved under `u.email` | `currentUser` `mcp/grants/route.ts:12-13`; `?all=1` revokes every grant of the caller `:15`; `id` must match `^[a-f0-9]{16}$` `:17`; another account's id is 404 `:19`. |
 | 57 | POST | `/api/oauth/register` | A | None. `registerClient` validates redirect URIs only `src/lib/oauth.ts:35-37`. |
 | 58 | OPTIONS | `/api/oauth/register` | A | CORS `oauth/register/route.ts:13`. |
 | 59 | POST | `/api/oauth/approve` | U | `currentUser` `oauth/approve/route.ts:7-8`; client and redirect URI match `:10-11`; PKCE S256 required `:18`. Code is bound to `u.email` `:19`. |
@@ -143,14 +148,23 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | 85 | GET | `/api/admin/evals` | F | `isAdmin` `admin/evals/route.ts:7`. |
 | 86 | GET | `/api/admin/golden` | F | `isAdmin` `admin/golden/route.ts:12`. |
 | 87 | POST | `/api/admin/golden` | F | `isAdmin` `admin/golden/route.ts:20`. |
+| 95 | GET | `/api/admin/media` | F | `isAdmin` `admin/media/route.ts:39`, else 401 and no provider call; `maxDuration = 60` `:18`. Calls the kie balance and Higgsfield `/estimate` only for configured providers, writes and deletes one tiny Blob file (`probeBlob`), and reads the open-set sizes, `renderSpend()`, `media:off` and `mjobs:recent`. Answers flags (`configured`), model ids, balances, estimates, error codes and spend; never a variable value, an email or a scope (`recentRow` passes only id, model, state, error, credits, cost and time). |
 
 ### 1.8 Cron
 
 | # | Method | Path | Who | Enforced by |
 |---|---|---|---|---|
-| 88 | GET | `/api/cron/daily` | C | `cron/daily/route.ts:14-15`. |
-| 89 | GET | `/api/cron/weekly` | C | `authorized()` `cron/weekly/route.ts:6-9`, used at `:12`. |
-| 90 | GET | `/api/cron/golden` | C | `cron/golden/route.ts:8-9`. |
+| 88 | GET | `/api/cron/daily` | C | `sameSecret(bearer, CRON_SECRET)` `cron/daily/route.ts:68`. |
+| 89 | GET | `/api/cron/weekly` | C | `sameSecret` `cron/weekly/route.ts:15`. |
+| 90 | GET | `/api/cron/golden` | C | `sameSecret` `cron/golden/route.ts:12`. |
+| 94 | GET | `/api/cron/media` | C | `sameSecret(bearer, CRON_SECRET)` `cron/media/route.ts:17`, 401 otherwise or when the variable is unset; then `sweepMedia` `:18`. `maxDuration = 300` `:7`. Advances only jobs found in the open sets, each under its own stored scope. |
+
+### 1.9 Media jobs and provider callbacks
+
+| # | Method | Path | Who | Enforced by |
+|---|---|---|---|---|
+| 92 | GET | `/api/media/{jobId}` | O; `jobId` resolved with `getJob(sc(u), jobId)` | `currentUser` `media/[jobId]/route.ts:18-19`; `getJob(sc(u), jobId)` `:22-23` reads nothing unless the id matches `^[a-f0-9]{32}$` (`JOB_ID`), and another account's id is 404 with no provider call; `allow("mpoll:u:{email}", 120, 60)` `:24` (429 `slow_down`); `advance` `:27` bounds provider calls to one status call per job per 4 s. The task is read under `sc(u)` `:33`. `maxDuration = 120`. |
+| 93 | POST | `/api/media/hook/{provider}` | A (public webhook) | Only `kie` and `higgsfield`, and only when configured, else 404 `media/hook/[provider]/route.ts:47`; per-IP `allow("mhook:{provider}:{ip}", 240, 60)` `:49` (429), before the body is read; body at most 64 KB on the declared length and a running total `:14,52-53` (413); JSON `:54-57` (400); only the provider task id is read (`kieTaskIdFrom` / `hfRequestIdFrom`) and it must match `PROVIDER_TASK_ID` `:59-60` (400); kie with `KIE_WEBHOOK_HMAC_KEY` set: `verifyKieSignature` (timestamp ±300 s, HMAC compared with `sameSecret`) `:62-65` (401); `jobForHook` `:66` takes the scope from the stored `mjobref` pointer and requires the job's provider and task id to match; `advance` in `after()` without `force` `:68`, so hints share the job's 4 s throttle and job lock and the status is re-fetched with our key. 200 whether or not a job matched. `maxDuration = 120`. |
 
 Related non-API surface: `/oauth/authorize` (`src/app/oauth/authorize/page.tsx:10-12`) requires a session and redirects anonymous visitors to `/ar/app/login?next=...`; `/.well-known/oauth-*` are public rewrites (`next.config.ts:4-11`).
 
@@ -161,7 +175,7 @@ Two layers exist. Layer 1, the layout (`layout.tsx:21-24`): reads `x-pathname` s
 | Page | Access rule | Page-level enforcement | Data scope used by the page |
 |---|---|---|---|
 | `layout.tsx` | see above | `layout.tsx:14-24` | `getBrand(sc(user))` `:40` |
-| `page.tsx` (inbox) | U with a brand; else `/start` | `page.tsx:15-17` | `sc(u)` |
+| `page.tsx` (inbox) | U with a brand; else `/start` | `page.tsx:19-22` | `sc(u)` |
 | `chat/page.tsx` | U; without a brand requires `?onboard=` else `/start` | `chat/page.tsx:24-29` | `sc(u)`, except `listConnections(u.email)` `:38` and `listNotifs(u.email)` |
 | `conversations/page.tsx` | U | `:15-16` | `sc(u)` |
 | `generate/page.tsx` | U with a brand | `:11-13` | brand existence checked with `getBrand(sc(u))` (active brand, fixed 2026-09-18) |
@@ -197,7 +211,7 @@ The sidebar shows the console link when `isFounder(user.email)` (`layout.tsx:44`
 3. The active brand can only be set to an id found in the caller's own `brands:{email}` list (`brands/route.ts:27-30`), or to a brand just created by `addBrand` (`brands.ts:37`). Archiving the active brand resets it to `default` (`brands/route.ts:36`). `activeBrandId` does not re-validate that the stored id still exists or is active.
 4. Brand ids are 8 base36 characters from `Math.random()` (`brands.ts:34`).
 5. Every brand-scoped key embeds the scope string (see `architecture.md` section 3). Isolation between tenants therefore depends on (a) the session to email mapping and (b) scope strings of different accounts never being equal.
-6. Account-level (not brand-level) records: user, credits, sessions, notifications, MCP tokens, referral data, usage, analytics, chat thumbs.
+6. Account-level (not brand-level) records: user, credits, sessions, notifications, MCP tokens, referral data, usage, analytics, chat thumbs. Media: a job record is per scope (`mjob:{sc(u)}:{id}`) but charges and refunds the account (`job.email`); the trial video marker (`mtrialvid:{email}`) and the render limits (`rate:media:*:{email}`) are per account; the render spend counters (`render:_all:*`) are global and carry no email.
 7. Cron and admin code construct scopes with the same `scopeFor` (`schedule.ts:111`, `admin/users/[email]/route.ts:23`, `account.ts:10`).
 8. MCP callers resolve the active brand the same way a browser session does (`userFromBearer`, `src/lib/mcp.ts`), so a bearer token works in the brand the owner has active. Fixed 2026-09-20; it used to always mean the default brand.
 
@@ -205,8 +219,11 @@ The sidebar shows the console link when `isFounder(user.email)` (`layout.tsx:44`
 
 | Route | Locator | Binding to the caller |
 |---|---|---|
-| `PATCH /api/tasks/{id}`, `POST /api/tasks/{id}/image`, `GET /api/tasks/{id}/pptx`, `POST /api/publish/{id}` | task id (path) | Key is `task:{sc(u)}:{id}`; a foreign id yields 404. No format check on `id`. |
-| Chat tools `generate_image`, `publish_item` (`src/lib/chat.ts:302,329`) | `task_id` chosen by the model | `getTask(user.scope, id)`; same binding. |
+| `PATCH /api/tasks/{id}`, `POST /api/tasks/{id}/image`, `POST /api/tasks/{id}/video`, `GET /api/tasks/{id}/pptx`, `POST /api/publish/{id}` | task id (path) | Key is `task:{sc(u)}:{id}`; a foreign id yields 404. No format check on `id`. The media job a render creates stores `scope = sc(u)` and `email = u.email` at creation, and the engine only ever writes the task under that stored scope, through `updateTask`, whose lock `tasklock:{scope}:{id}` is built from the same server-side scope and task id. |
+| `POST /api/tasks/{id}/image` and `/video` body `model` | catalogue model id | `isMediaModelId` is a list membership test (not `in`), so `constructor` and other prototype keys are 400; the model must be of the route's kind. |
+| `GET /api/media/{jobId}` | media job id (path) | `getJob(sc(u), jobId)`: the id must match `^[a-f0-9]{32}$` before a key is built, and the key is `mjob:{sc(u)}:{jobId}`, so another account's job id is 404 and causes no provider call. |
+| `POST /api/media/hook/{provider}` | provider task id (kie `taskId` / `data.taskId` / `data.task_id`; Higgsfield `request_id`) | Format-checked against `PROVIDER_TASK_ID[provider]` (kie `^[A-Za-z0-9_-]{6,80}$`, Higgsfield a UUID) and used only to read the server-written pointer `mjobref:{provider}:{id}`; the workspace is the pointer's stored `scope`, never anything from the request, and the loaded job must carry the same provider and task id (`jobForHook`). Same shape as `oauthstate:{state}` below. Nothing else in the body is read, including result URLs. |
+| Chat tools `generate_image`, `publish_item` (`src/lib/chat.ts:392,359`) | `task_id` chosen by the model | `getTask(user.scope, id)`; same binding. `generate_image` can only render the 1-credit default model: the tool has no `model` argument. |
 | `GET/POST /api/chat` | `conv` (query or body) | Key `chat:{sc(u)}:{conv}`; not checked against `convs:{sc(u)}`; no format check (the chat page applies `^[a-f0-9]{6,16}$` at `chat/page.tsx:36`, the API does not). |
 | `PATCH/DELETE /api/conversations` | conversation id | `conv:{sc(u)}:{id}` and `chat:{sc(u)}:{id}`. |
 | `GET/PUT/DELETE /api/files` | file name | `safeName` reduces to `[a-z0-9._-]`, max 60 chars, then `file:{sc(u)}:{name}`. |
@@ -253,19 +270,21 @@ Each item states what the code does and why the intended rule cannot be read fro
 10. **Impersonation lifetime and audit.** The log says `expiresInMin:120` and the banner says "2 hours max", but the impersonated session is a normal 30-day session and is not deleted on return (`admin/users/[email]/route.ts:87-90`, `admin/impersonate/route.ts:11-14`). Actions performed while impersonating are attributed to the target user; `admin:log` never records which founder acted.
 11. **Admin key handling.** `isAdmin` accepts the key in the URL query (`auth.ts:118`), where it can end up in logs and browser history, and every comparison now goes through `sameSecret` (`isAdminCookie` used `===` until 2026-09-20). The `nashr_admin` cookie stores the key itself rather than a derived session. Rate limiting applies to `/api/admin/login` only, not to guesses sent as `?key=` or `x-admin-key` to other admin routes. The same key doubles as the connector encryption fallback (`connectors/store.ts:14`), with a fixed development string as the last fallback.
 12. **`GET /api/waitlist` uses its own check** (query key only, `waitlist/route.ts:55`) instead of `isAdmin`. Whether founders without the key should reach it is not stated.
-13. **Publishing does not require approval.** `POST /api/publish/{id}` and the chat tool `publish_item` publish a task in any status and then set it to `approved` (`publish/[id]/route.ts:18-20`, `chat.ts:307-309`). The HTTP route also skips `targetsFor`, so any task type can be sent to any connected provider. The product copy describes an approval inbox; the code does not gate publishing on it. For the model-driven path, "only when the owner explicitly asks" is a prompt instruction (`chat.ts:82`), not a code check.
+13. **Publishing and approval.** Changed since the baseline: the chat tool `publish_item` publishes only items the owner already approved (`chat.ts:367`) and only to a target `targetsFor` lists (`chat.ts:364`), and both it and `POST /api/publish/{id}` apply the brand gate (`chat.ts:369-370`, `publish/[id]/route.ts:23-24`). The HTTP route still publishes a pending item (the owner's click is the approval) but refuses a rejected one (`:20`) and a target `targetsFor` does not list (`:26`); afterwards both set the item `approved` through `updateTask` (`publish/[id]/route.ts:32`, `chat.ts:375`), the route recording `decidedAt` for a pending item. Whether the model publishes at all is still decided by the model on the owner's request; the approval it needs is checked in code.
 14. **Model-controlled writes are not re-validated.** `update_brand` writes `brand[field] = value` using the model's `field` (`chat.ts:283-286`); the enum is enforced only by the strict tool schema. Text crawled from user-supplied sites and imported catalogs is placed into prompts and `products.md` without marking it as untrusted.
 15. **Server-side fetches of user-supplied URLs** (`crawl.ts:50`, `catalog.ts:12,26`, WordPress/WooCommerce/Odoo/PrestaShop base URLs in `connect/[provider]/key`) have no allow-list, no private-address or metadata-address block, and follow redirects. Verify errors and publish errors return fragments of the remote response to the caller (`key/route.ts:27`, `publish/[id]/route.ts:25`). No rule is written for acceptable targets.
 16. **Connector OAuth callback is sessionless.** The connection is saved to the scope stored in `state`, whoever completes the redirect (`callback/route.ts:28`); the path provider is not checked against the state's provider; Shopify callbacks are not HMAC-verified. OAuth tokens are never refreshed although `expiresAt` is stored.
-17. **Account deletion leaves data behind.** `wipeAccount` (`account.ts:8-21`) deletes the `conns:{scope}` set but not the `conn:{scope}:{provider}` records holding encrypted third-party credentials; (fixed 2026-09-18: connector records, every task and conversation, the task index, the pending set, the personal MCP token and all OAuth grants are deleted); it still leaves `session:*` (harmless: the user record is gone),  `notifs:`, `notified:`, `notifseen:`, `usage:`, `uev:`/`ulast:`/`ufirst0:`, `fb:`/`fblog:` (fixed 2026-09-21: `fblog:{scope}` for every brand and the legacy `fb:` counters are now deleted — the log holds the free-text reason the owner typed), `ref:`, `referrals:`, `referredBy:`, `shared:`, OAuth tokens, membership in `users:all` and `active:*` sets, tickets, and for non-default brands the `profile:{scope}` key. A `deleted-accounts` entry keeps the email. No retention rule is documented in code.
+17. **Account deletion leaves data behind.** `wipeAccount` (`account.ts:8-21`) deletes the `conns:{scope}` set but not the `conn:{scope}:{provider}` records holding encrypted third-party credentials; (fixed 2026-09-18: connector records, every task and conversation, the task index, the pending set, the personal MCP token and all OAuth grants are deleted); it still leaves `session:*` (harmless: the user record is gone),  `notifs:`, `notified:`, `notifseen:`, `usage:`, `uev:`/`ulast:`/`ufirst0:`, `fb:`/`fblog:` (fixed 2026-09-21: `fblog:{scope}` for every brand and the legacy `fb:` counters are now deleted — the log holds the free-text reason the owner typed), `ref:`, `referrals:`, `referredBy:`, `shared:`, OAuth tokens, membership in `users:all` and `active:*` sets, tickets, and for non-default brands the `profile:{scope}` key. A `deleted-accounts` entry keeps the email. No retention rule is documented in code. Media (2026-09-29, spec A19): generated images and clips on Vercel Blob, and images still hot-linked at fal.ai, survive the wipe (public addresses that cannot be guessed, no tenant identifier in the path); the render records expire by TTL within 14 days (`mjob:` and `mjobref:` 7 days, `mtrialvid:` 14 days, the flight locks and per-account render limits within a day), and the global `render:_all:*` counters and `mjobs:recent` carry no email. A job of a wiped account still running is failed without a refund or a notification (`accountSince`), so `notifs:{email}` is not recreated. The privacy policy and the help centre state all of this; deleting the Blob files and job records with the account is a follow-up.
 18. **Whole-record user saves outside the credit lock.** `PUT /api/profile`, `PATCH /api/account` and `POST /api/auth/reset` call `saveUser` with the record read at request start (`profile/route.ts:39`, `account/route.ts:15`, `reset/route.ts:22`), so a concurrent `charge` or `refund` can be overwritten. `POST /api/referral/share` checks and sets its once-only flag in two steps (`share/route.ts:16-18`), as do `once()` and `pushNotif` fingerprints.
 19. **Brand-scope inconsistencies inside one account.** Pages fixed 2026-09-18: files, governance, tasks, generate, onboarding, and `listConnections` in chat and reports now read `sc(u)`; `tests/scope-usage.test.ts` fails when a page or customer API route passes the bare account email to a workspace reader. Still open: email preferences are written to `profile:{sc(u)}` and cron reads the scope first and the account second; the founder overview counts credits from the default brand only.
-20. **Credits and plan limits not tied to a payment event.** Plans and credits change only through the founder console. Free tools are unlimited and free for signed-in users (`tools/[tool]/route.ts:15`), onboarding and catalog import are uncharged and repeatable, and trial expiry is not checked for image generation. `BRAND_LIMIT` is checked only when adding a brand, not after a downgrade. Whether these are intended is not stated.
+20. **Credits and plan limits not tied to a payment event.** Plans and credits change only through the founder console. Free tools are unlimited and free for signed-in users (`tools/[tool]/route.ts:15`), onboarding and catalog import are uncharged and repeatable. (Trial expiry has been checked on every image and video path since 2026-09-29, through `renderImage` / `renderVideo` in `src/lib/media/start.ts`.) `BRAND_LIMIT` is checked only when adding a brand, not after a downgrade. Whether these are intended is not stated.
 21. **Layout guard depends on a header.** The layout redirect runs only when `x-pathname` is non-empty (`layout.tsx:24`) and public paths are matched with `endsWith`. Every current page has its own guard except `reset` (public by design), so this is defence in depth only; the rule for future pages is unwritten.
 22. **`next` redirect parameter.** Login and signup accept `next` when it starts with `/` and not `//` (`AuthForm.tsx:23,75`). A value beginning with `/\` passes this test; browsers may treat it as protocol-relative. No server-side rule exists for post-login destinations.
 23. **No CSRF token.** State-changing routes rely on `sameSite=lax` cookies and JSON bodies. `POST /api/oauth/approve` and `POST /api/admin/impersonate` accept form posts. MCP and OAuth endpoints send `Access-Control-Allow-Origin: *` (bearer or public by design).
-24. **Anonymous counters without expiry.** Fixed 2026-09-18 for the free tools: the limiter is `allow("tool:{ip}")` with a 24 h window and the platform IP. The in-memory store honours TTL since 2026-09-18.
+24. **Anonymous counters without expiry.** Fixed 2026-09-18 for the free tools: the limiter is `allow("tool:{ip}")` with a 24 h window and the platform IP. The in-memory store honours TTL since 2026-09-18. Since 2026-09-29 every `allow()` window is set with EXPIRE NX on every hit (`rate.ts:13`, `db.expireNx`): before, only the first hit set the TTL with a SET, which reset hits landing in between, and when that one call failed the counter kept no expiry and refused every caller for good (for `rate:kie:create`, every tenant). A failed expiry call is logged and repaired by the next hit; a store that refuses the NX form falls back to the first hit's SET (`:18`).
 25. **Email normalisation on founder actions.** `POST /api/admin/users/{email}` looks the user up with a normalized email but passes the raw decoded path value to `withUserLock` and `wipeAccount` (`admin/users/[email]/route.ts:47-48,94`). With a mixed-case path value the lookup succeeds while the wipe targets different keys and the log still records `delete`.
+26. **Media webhooks are hints, and only kie's can be signed.** Higgsfield does not sign its webhooks, and kie's callbacks are checked (`verifyKieSignature`, `X-Webhook-Timestamp` within ±300 s, `X-Webhook-Signature` compared with `sameSecret`) only when `KIE_WEBHOOK_HMAC_KEY` is set; without it a kie callback is accepted unsigned. Both are therefore treated as hints: the body's only use is the provider task id, which selects a job through a pointer the server wrote, and the job then asks the provider itself, with our key, under the same 4 s throttle and job lock as a poll. A forged hint costs at most that one throttled status call per job per 4 s and cannot write outside the job's own scope; it cannot deliver a result, because result URLs in the body are never read. Anyone may still spend the per-IP allowance (240 per minute per provider and IP). Whether the founder will set `KIE_WEBHOOK_HMAC_KEY` is an owner step (`docs/Owner_Tasks_AR.md`, section ج2).
+27. **Concurrent writes to one task.** Fixed 2026-09-29. `saveTask` replaces the whole task, and the approve and edit route, the publish route, the chat tool `publish_item`, the judge and the media engine each used to save a copy read before their slow work, so one could erase another's change: a publish or an approval undid a paid render that finished meanwhile, and a finalize undid an approval. Each now changes the task through `updateTask` (`src/lib/brand.ts:274`): re-read under `tasklock:{scope}:{id}` (10 s), apply only its own fields, save; a deleted task is not recreated. `tasklock` bounds a writer's wait to 3 s (`task_lock_timeout`) and, like the ledger lock, is released with an unconditional DEL. Whole-record USER saves outside the credit lock (item 18) are unchanged.
 
 ## Brand rules (2026-09-28)
 

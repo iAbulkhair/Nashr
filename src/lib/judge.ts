@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { modelState } from "./model";
 import { after } from "next/server";
-import { TASK_COUNT, getTask, saveTask, type Brand, type Task, type TaskType } from "./brand";
+import { TASK_COUNT, updateTask, type Brand, type Task, type TaskType } from "./brand";
 import { taskSpec } from "./noor";
 import { reviewBlock } from "./skills";
 import { asData, parseObjectArray } from "./json";
@@ -92,14 +92,11 @@ export async function judgeTasks(scope: string, email: string, brand: Brand, tas
   const agent = agentForTask(tasks[0].type);
   const out = await scoreItems(email, brand, tasks[0].type, tasks, requested);
   // Only a real verdict is written. An item without one stays unjudged, which the dashboards count as unjudged.
-  // Read-then-save per item, all items together rather than one round trip after another.
+  // All items together rather than one round trip after another.
   const scored = tasks.flatMap((t, i) => { const q = out[i]; return q ? [{ t, q }] : []; });
-  await pmap(scored, async ({ t, q }) => {
-    // Reload before saving: the owner may have approved or edited meanwhile.
-    const fresh = (await getTask(scope, t.id)) ?? t;
-    fresh.quality = q;
-    await saveTask(scope, fresh);
-  });
+  // Under the task lock, on the task as stored now: an approval, an edit or a render that finished while the judge
+  // worked keeps its fields, and an item deleted meanwhile is not brought back (src/lib/brand.ts, updateTask).
+  await pmap(scored, ({ t, q }) => updateTask(scope, t.id, (cur) => ({ ...cur, quality: q })));
   if (scored.length < tasks.length) console.error("judge: fewer verdicts than items", { type: tasks[0].type, items: tasks.length, verdicts: scored.length });
   const judged = scored.map((x) => x.q);
   const weak = judged.filter((q) => q.score < 70).length;
