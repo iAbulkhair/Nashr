@@ -37,6 +37,14 @@ export async function chatAllowed(email: string): Promise<boolean> {
   return hour && day;
 }
 
+/**
+ * The public OAuth endpoints, per IP. Hosted MCP clients (claude.ai, ChatGPT) register and exchange tokens from shared
+ * egress addresses on behalf of many accounts, and a token pair lives 30 days, so real traffic stays far below these.
+ * Registration is the tighter one: it is open (RFC 7591) and every client is stored with no expiry.
+ */
+export const OAUTH_TOKEN_PER_IP = 60, OAUTH_TOKEN_WINDOW = 900;
+export const OAUTH_REGISTER_PER_IP = 30, OAUTH_REGISTER_WINDOW = 3600;
+
 /** Constant-time string comparison for secrets. */
 export function sameSecret(a: string | null | undefined, b: string | null | undefined): boolean {
   const x = Buffer.from(a ?? ""), y = Buffer.from(b ?? "");

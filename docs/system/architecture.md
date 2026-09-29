@@ -146,7 +146,7 @@ Opportunistic sweep: the image, video and poll routes schedule `maybeSweep(media
 | `users:all` | set | All account emails | `auth.ts:60`; read by `schedule.ts:123`, `admin-stats.ts:57`, `api/admin/plan`, `api/admin/export` | none |
 | `session:{token}` | json | `{email, at}` for a 32-byte hex session token (records from before 2026-09-18 are a bare email); dead when `at` is older than the user's `sessionsAfter` | `auth.ts:87,103` | 30 days |
 | `pwreset:{sha256(token)}` | json | `{email}` for a password reset | `api/auth/forgot/route.ts:27`, `api/auth/reset/route.ts:16` | 1 hour |
-| `rate:{bucket}` | int | Fixed-window counter. Buckets: `forgot:ip:{ip}`, `forgot:em:{email}`, `reset:ip:{ip}`, `adminkey:{ip}`, and the media buckets listed at the end of this table | `rate.ts:5` | window seconds, set with EXPIRE NX on every hit (`rate.ts:13`; a first-hit SET when the store refuses NX, `:18`), so a counter never keeps refusing without an expiry |
+| `rate:{bucket}` | int | Fixed-window counter. Buckets: `forgot:ip:{ip}`, `forgot:em:{email}`, `reset:ip:{ip}`, `adminkey:{ip}`, `oauth:register:ip:{ip}`, `oauth:token:ip:{ip}`, and the media buckets listed at the end of this table | `rate.ts:5` | window seconds, set with EXPIRE NX on every hit (`rate.ts:13`; a first-hit SET when the store refuses NX, `:18`), so a counter never keeps refusing without an expiry |
 | `lock:user:{email}` | lock | Per-user credit/ledger mutex | `credits.ts:13` | 10 s |
 | `brands:{email}` | json | `BrandMeta[]` | `brands.ts:14` | none |
 | `activebrand:{email}` | string | Active brand id | `brands.ts:22` | none |
