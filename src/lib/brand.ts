@@ -1,6 +1,7 @@
 import { CAPS, db, pushCapped } from "./db";
 import { pmap } from "./parallel";
 import { similarity } from "./similarity";
+import { hasAdCode, newAdCode } from "./ad-codes";
 
 export type Brand = {
   name: string;
@@ -55,6 +56,8 @@ export type Task = {
   published?: { provider: string; url: string; status: "draft" | "published"; at: string }[];
   /** When the owner approved or rejected (for time-to-decision). */
   decidedAt?: string;
+  /** Put in the ad's name so its results can be matched back to this item (src/lib/ad-codes.ts). */
+  adCode?: string;
   /** Automated judge score (src/lib/judge.ts). */
   quality?: { score: number; dims: { completeness: number; brand: number; honesty: number; language: number; format: number }; notes: string; model: string; at: string };
 };
@@ -148,6 +151,8 @@ const asLite = (v: unknown): TaskLite | null => {
 
 export async function saveTask(email: string, t: Task, isNew = false) {
   const month = monthOf(t.createdAt);
+  // Every creation path passes here, so every new ad or social item gets its code in one place.
+  if (isNew && !t.adCode && hasAdCode(t.type)) t.adCode = newAdCode();
   // Every path that changes a task goes through here, and each write below is idempotent, so the pending set and the
   // light index cannot drift the way a +1/-1 counter would. One round of parallel commands instead of a chain.
   await Promise.all([
@@ -156,7 +161,13 @@ export async function saveTask(email: string, t: Task, isNew = false) {
     t.status === "pending" ? db.sadd(`pending:${email}`, t.id) : db.srem(`pending:${email}`, t.id),
     db.hset(`tidx:${email}:${month}`, t.id, liteOf(t)),
     db.sadd(`tidxm:${email}`, month),
+    isNew && t.adCode ? db.hset(`adcodes:${email}`, t.adCode, t.id) : null,
   ]);
+}
+
+/** This workspace's ad codes, code → task id: one read, used when results come in. */
+export async function adCodeIndex(email: string): Promise<Record<string, string>> {
+  return db.hgetall<string>(`adcodes:${email}`);
 }
 
 /** Rebuild the light index from the stored tasks (first use on an existing workspace, and the weekly reconcile). */
