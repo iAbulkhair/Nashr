@@ -3,7 +3,7 @@ import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, sc } from "@/lib/auth";
 import { todoPage } from "@/lib/secretary";
-import { AGENDA_BUCKETS, AUTO_CLOSE_RESULT, approvalsLine, formatWhen, nextStepText, partyName, riyadhLocalInput, type AgendaEntry, type SecItem } from "@/lib/secretary-agenda";
+import { AGENDA_BUCKETS, AUTO_CLOSE_RESULT, approvalsLine, formatWhen, nextStepText, noteText, partyName, riyadhLocalInput, type AgendaEntry, type SecItem } from "@/lib/secretary-agenda";
 import TodoPanel, { type TodoRow, type TodoSection } from "@/components/app/TodoPanel";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +36,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
     who: whoOf(it), next: e ? nextStepText(e, lang) : "", badges: badgesOf(it),
     proposed: it.proposedDone ? { by: it.proposedDone.by === "mcp" ? (lang === "ar" ? "مساعدك" : "Your assistant") : partyName(it.proposedDone.by, lang), evidence: it.proposedDone.evidence } : null,
     result: it.result === AUTO_CLOSE_RESULT ? T.autoClosed : it.result,
-    notes: it.notes.slice(-3).map((n) => n.text),
+    // The owner's own page: private notes included, the "Not yet" note worded in the page's language.
+    notes: it.notes.slice(-3).map((n) => noteText(n, lang)),
   });
   const sections: TodoSection[] = AGENDA_BUCKETS.filter((b) => agenda.buckets[b].length).map((b) => ({ bucket: b, title: T.buckets[b], rows: agenda.buckets[b].map((e) => row(e.item, e)) }));
   return (

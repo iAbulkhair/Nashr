@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { after } from "next/server";
-import { allUsers, runDaily } from "@/lib/schedule";
+import { dailyRoster, runDaily } from "@/lib/schedule";
 import { runCronBatch } from "@/lib/cron-batch";
 import { sameSecret } from "@/lib/rate";
 import type { User } from "@/lib/auth";
@@ -12,7 +12,7 @@ import { renewIfDue } from "@/lib/credits";
 import { followUps, notifEmailText } from "@/lib/notifications";
 import { getUser } from "@/lib/auth";
 import { syncAdsIfDue } from "@/lib/perf-store";
-import { secretaryDaily } from "@/lib/secretary";
+import { purgeExpired, secretaryDaily } from "@/lib/secretary";
 
 export const maxDuration = 300;
 
@@ -65,14 +65,29 @@ async function dailyFor(u: User): Promise<string> {
 }
 
 /**
- * Daily job for every workspace: eight at a time, each isolated from the others' failures, resumable through
- * runCronBatch. From Sunday to Tuesday it also kicks the weekly route so anyone Sunday missed still gets a plan.
+ * An archived brand or a suspended account gets no scheduled work, but items deleted there still expire: the purge runs
+ * for those scopes too (bounded per scope like every purge), so a deleted item's text never outlives its 30 days.
+ */
+async function purgeIdle(scope: string): Promise<string> {
+  const n = await purgeExpired(scope);
+  return n ? `todo:${n}p` : "idle";
+}
+
+type DailyItem = { user: User } | { idle: string };
+
+/**
+ * Daily job for every workspace, then Reem's purge for every idle scope (archived brands, suspended accounts): eight at
+ * a time, each isolated from the others' failures, resumable through runCronBatch. From Sunday to Tuesday it also kicks
+ * the weekly route so anyone Sunday missed still gets a plan.
  */
 export async function GET(req: Request) {
   const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!sameSecret(bearer, process.env.CRON_SECRET)) return NextResponse.json({ ok: false }, { status: 401 });
+  const roster = await dailyRoster();
+  const items: DailyItem[] = [...roster.users.map((user) => ({ user })), ...roster.idle.map((idle) => ({ idle }))];
   const report = await runCronBatch({
-    job: "daily", period: new Date().toISOString().slice(0, 10), items: await allUsers(), id: (u) => u.scope ?? u.email, run: dailyFor,
+    job: "daily", period: new Date().toISOString().slice(0, 10), items,
+    id: (x) => ("user" in x ? x.user.scope ?? x.user.email : `idle:${x.idle}`), run: (x) => ("user" in x ? dailyFor(x.user) : purgeIdle(x.idle)),
     concurrency: 8, startBudgetMs: 240_000, markerTtlSeconds: 2 * 86400, req,
   });
   if (!report.chained && new Date().getUTCDay() <= 2) {

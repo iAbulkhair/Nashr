@@ -15,14 +15,16 @@ import { TASK_TYPES } from "@/lib/tasks";
 import { appDict } from "@/lib/app-i18n";
 import { AGENT_PAGES } from "@/lib/site";
 import {
-  SEC_CREATE_PER_DAY, SEC_KEYS, SEC_OPEN_MAX, SEC_PURGE_BATCH, SEC_WRITES_PER_HOUR, agendaFor, changeItem, getItem, purgeExpired,
+  SEC_CREATE_PER_DAY, SEC_KEYS, SEC_OPEN_MAX, SEC_PURGE_BATCH, SEC_READS_PER_HOUR, SEC_WRITES_PER_HOUR, agendaFor, changeItem, getItem, mutateItem, purgeExpired,
 } from "@/lib/secretary";
-import { AUTO_CLOSE_RESULT, computeAgenda, formatWhen, parseWhen, riyadhDay, type SecItem } from "@/lib/secretary-agenda";
+import { AUTO_CLOSE_RESULT, approvalsLine, arCount, computeAgenda, formatWhen, noteText, parseWhen, riyadhDay, type SecItem } from "@/lib/secretary-agenda";
+import { HELP } from "@/lib/help";
 import * as listRoute from "@/app/api/secretary/route";
 import * as itemRoute from "@/app/api/secretary/[id]/route";
 import * as mcpRoute from "@/app/api/mcp/route";
 
-// Rules 156-171 in docs/system/tests.md: Reem, the secretary (phase 1). Rules 166 and 167 are in secretary-brief.test.ts, 171 in secretary-page.test.ts.
+// Rules 156-174 in docs/system/tests.md: Reem, the secretary (phase 1). Rules 166, 167 and the cron part of 160 are in
+// secretary-brief.test.ts, 171 and the governance page of 169 in secretary-page.test.ts.
 
 const BRAND: Brand = { name: "محمصة ريف", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "دافئ", products: "قهوة", audience: "محبو القهوة", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-09-29" };
 const create = (body: unknown) => listRoute.POST(json("/api/secretary", "POST", body));
@@ -67,13 +69,15 @@ describe("every secretary route needs a session (rule 156)", () => {
 });
 
 describe("tenant isolation (rule 157)", () => {
-  it("another account's item id is 404 on every action, and the item is untouched", async () => {
+  it("another account's item id is 404 on every action, whatever scope or email the body names, and the item is untouched", async () => {
     const a = await owner("seca");
     const it1 = await add({ title: "A's private to-do", dueAt: inDays(2) });
     const b = await owner("secb");
     for (const body of [{ title: "hijacked" }, { action: "complete", result: "done" }, { action: "delete" }, { action: "restore" }, { action: "snooze", preset: "2h" }, { action: "reschedule", dueAt: null }, { action: "add_note", text: "x" }, { action: "confirm_done" }, { action: "reject_done" }]) {
-      const r = await patch(it1.id, body);
-      expect(r.status, JSON.stringify(body)).toBe(404);
+      for (const forged of [{}, { scope: a.email, email: a.email }]) {
+        const r = await patch(it1.id, { ...body, ...forged });
+        expect(r.status, JSON.stringify({ ...body, ...forged })).toBe(404);
+      }
     }
     expect(JSON.stringify(await view())).not.toContain("A's private to-do");
     const stored = await getItem(a.email, it1.id);
@@ -173,10 +177,28 @@ describe("only the owner closes an item, and closing needs a result (rule 158)",
     expect((await patch(a2.id, { action: "reject_done" })).status).toBe(200);
     const back = await getItem(u.email, a2.id);
     expect(back).toMatchObject({ completedAt: null, proposedDone: null });
-    expect(back?.notes.at(-1)?.text).toMatch(/Not done yet/);
+    // Stored as the evidence with a kind; worded in the reader's language when shown.
+    expect(back?.notes.at(-1)).toMatchObject({ kind: "not_yet", text: "Venue emailed the booking", by: "owner" });
+    expect(noteText(back!.notes.at(-1)!, "ar")).toBe("لم تُنجز بعد (المقترح: Venue emailed the booking)");
+    expect(await runTool(u, "agenda_get", {}, [])).toContain('last note: "Not done yet (proposed: Venue emailed the booking)"');
     agenda = await agendaFor(u.email);
     expect(agenda.buckets.confirm).toEqual([]);
     expect((await patch(a2.id, { action: "confirm_done" })).status).toBe(409);
+  });
+
+  it("a proposal on a snoozed item ends the snooze and shows under 'needs your confirmation' at once", async () => {
+    const u = await owner("secsnoozeprop");
+    const it1 = await add({ title: "Snoozed then done", dueAt: inDays(-1) });
+    expect((await patch(it1.id, { action: "snooze", preset: "tomorrow" })).status).toBe(200);
+    expect((await agendaFor(u.email)).snoozed).toBe(1);
+    await runTool(u, "todo_propose_done", { id: it1.id, evidence: "Owner said it was sent this morning" }, []);
+    const agenda = await agendaFor(u.email);
+    expect(agenda.buckets.confirm.map((e) => e.item.id)).toEqual([it1.id]);
+    expect(agenda.snoozed).toBe(0);
+    expect(await getItem(u.email, it1.id)).toMatchObject({ snoozeUntil: null, completedAt: null });
+    // A stored proposal wins over a snooze in the pure agenda too.
+    const both = fixture({ id: "s00000000000000aa", snoozeUntil: new Date(Date.now() + 864e5).toISOString(), proposedDone: { at: "x", by: "mcp", evidence: "e" } });
+    expect(computeAgenda([both], Date.now()).buckets.confirm).toHaveLength(1);
   });
 });
 
@@ -200,6 +222,41 @@ describe("the deterministic close: a linked inbox item approved (rule 159)", () 
     expect((await getItem(u.email, onReject.id))?.completedAt).toBeNull();
     const log = (await db.lrange(SEC_KEYS.audit(u.email), 0, -1)).map((x) => JSON.parse(x));
     expect(log.find((l) => l.action === "auto_close")).toMatchObject({ actor: "rule", id: onApprove.id });
+  });
+
+  it("chat and MCP cannot move a link onto an approved item to close it, and link only to a pending item at creation", async () => {
+    const u = await owner("seclinkmcp");
+    await saveTask(u.email, { ...task("aaaaaaaaaaaa0003"), status: "approved" }, true);
+    await saveTask(u.email, task("aaaaaaaaaaaa0004"), true);
+    const it1 = await add({ title: "Still open" });
+    const token = await createMcpToken(u.email);
+    const rpc = async (name: string, args: Record<string, unknown>) => (await (await mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) }))).json()).result;
+    // The schema has no task_id on todo_update, and the MCP route does not check arguments against it: code does.
+    expect((await rpc("todo_update", { id: it1.id, task_id: "aaaaaaaaaaaa0003" })).isError).toBe(true);
+    expect(await runTool(u, "todo_update", { id: it1.id, task_id: "aaaaaaaaaaaa0003", title: "Still open" }, [])).toMatch(/^Updated/);
+    await rpc("agenda_get", {});
+    await agendaFor(u.email);
+    const kept = await getItem(u.email, it1.id);
+    expect(kept).toMatchObject({ completedAt: null, links: {} });
+    // Directly, too: a link change by anyone but the owner in the app is refused.
+    for (const who of [{ actor: "mcp" as const, via: "mcp" as const }, { actor: "reem" as const, via: "chat" as const }, { actor: "owner" as const, via: "chat" as const }]) {
+      const m = mutateItem(structuredClone(kept!), { action: "update", fields: { taskId: "aaaaaaaaaaaa0003" } }, who, Date.now());
+      expect(m.ok ? "ok" : m.error, `${who.actor}/${who.via}`).toBe("owner_only");
+      const r = await changeItem(u.email, it1.id, { action: "update", fields: { taskId: null } }, who);
+      expect(r.ok ? "ok" : r.error).toBe("owner_only");
+    }
+    // At creation, a link from chat or MCP must name an item still pending.
+    const refused = await rpc("todo_create", { title: "Linked to an approved item", task_id: "aaaaaaaaaaaa0003" });
+    expect(refused.isError).toBe(true);
+    expect(refused.content[0].text).toMatch(/still waiting for approval/);
+    expect(await runTool(u, "todo_create", { title: "Linked to an approved item", task_id: "aaaaaaaaaaaa0003" }, [])).toMatch(/^Not done: task_id must be/);
+    const ok = await rpc("todo_create", { title: "Waits for the pending post", task_id: "aaaaaaaaaaaa0004" });
+    const id = /\[id=(s[a-f0-9]{16})\]/.exec(ok.content[0].text)![1];
+    expect(await getItem(u.email, id)).toMatchObject({ links: { taskId: "aaaaaaaaaaaa0004" }, completedAt: null });
+    // The owner, in the app, may still link to anything of this brand; the close then follows the stored task.
+    expect((await patch(it1.id, { taskId: "aaaaaaaaaaaa0003" })).status).toBe(200);
+    await agendaFor(u.email);
+    expect(await getItem(u.email, it1.id)).toMatchObject({ result: AUTO_CLOSE_RESULT });
   });
 
   it("refuses a link to a task that is not this brand's", async () => {
@@ -291,13 +348,27 @@ describe("limits (rule 162)", () => {
     expect(await db.zcard(SEC_KEYS.open(scopeFor(u.email, "b2")))).toBe(0);
   });
 
-  it("holds at most 500 open items per brand", async () => {
+  it("holds at most 500 open items per brand, on create and on restore", async () => {
     const u = await owner("secopen");
+    const back = await add({ title: "Deleted, then restored too late" });
+    expect((await patch(back.id, { action: "delete" })).status).toBe(200);
     await Promise.all(Array.from({ length: SEC_OPEN_MAX }, (_, i) => db.zadd(SEC_KEYS.open(u.email), i, `s${i.toString(16).padStart(16, "0")}`)));
     const r = await create({ title: "One too many" });
     expect(r.status).toBe(409);
     expect((await r.json()).error).toBe("open_limit");
+    const restore = await patch(back.id, { action: "restore" });
+    expect(restore.status).toBe(409);
+    expect((await restore.json()).error).toBe("open_limit");
+    expect((await getItem(u.email, back.id))?.deletedAt).toBeTruthy();
     expect(await db.zcard(SEC_KEYS.open(u.email))).toBe(SEC_OPEN_MAX);
+  });
+
+  it("bounds reads per hour", async () => {
+    const u = await owner("secreads");
+    await db.set(`rate:sec:read:${u.email}`, SEC_READS_PER_HOUR, 3600);
+    const r = await listRoute.GET(json("/api/secretary", "GET"));
+    expect(r.status).toBe(429);
+    expect((await r.json()).error).toBe("too_many");
   });
 
   it("bounds changes per hour, on the route and in chat", async () => {
@@ -426,11 +497,15 @@ describe("the agenda is computed in Riyadh time (rule 164)", () => {
 });
 
 describe("the agenda read is batched (rule 165)", () => {
-  it("makes the same number of store calls for 3 items as for 40", async () => {
+  it("makes the same number of store calls for 3 items as for 40, linked items included", async () => {
+    const pending = (id: string): Task => ({ id, type: "social", channel: "instagram", title: "Post", body: "b", status: "pending", createdAt: new Date().toISOString(), lang: "ar" });
     const small = await owner("secsmall");
-    await Promise.all(Array.from({ length: 3 }, (_, i) => add({ title: `S${i}`, dueAt: inDays(i + 1) })));
+    await Promise.all(["eeeeeeeeeeee0001", "eeeeeeeeeeee0002"].map((id) => saveTask(small.email, pending(id), true)));
+    // Every other item waits on an inbox item, so the agenda also reads the linked tasks.
+    for (let i = 0; i < 3; i++) await add({ title: `S${i}`, dueAt: inDays(i + 1), ...(i % 2 ? {} : { taskId: `eeeeeeeeeeee000${(i % 4) / 2 + 1}` }) });
     const big = await owner("secbig");
-    for (let i = 0; i < 40; i++) await add({ title: `B${i}`, dueAt: inDays((i % 9) + 1) });
+    await Promise.all(["ffffffffffff0001", "ffffffffffff0002"].map((id) => saveTask(big.email, pending(id), true)));
+    for (let i = 0; i < 40; i++) await add({ title: `B${i}`, dueAt: inDays((i % 9) + 1), ...(i % 2 ? {} : { taskId: `ffffffffffff000${(i % 4) / 2 + 1}` }) });
     await agendaFor(small.email);
     await agendaFor(big.email);
     const names = ["get", "mget", "zrangeWithScores", "smembers", "lrange", "hgetall", "scardMany", "zcard", "set", "lock"] as const;
@@ -444,7 +519,9 @@ describe("the agenda read is batched (rule 165)", () => {
     };
     const a = await count(small.email), b = await count(big.email);
     expect(b.calls).toBe(a.calls);
-    expect(b.mget).toBe(1);
+    // One MGET of the items and one of the linked inbox items, whatever the number of either.
+    expect(a.mget).toBe(2);
+    expect(b.mget).toBe(2);
     expect((await agendaFor(big.email)).open).toBe(40);
   });
 });
@@ -489,7 +566,7 @@ describe("Reem is in the registry everywhere (rule 169)", () => {
     expect(walk("src").filter((p) => list.test(readFileSync(p, "utf8")))).toEqual([]);
   });
 
-  it("governance takes a monthly cap for Reem like any agent", async () => {
+  it("governance still takes a monthly cap for Reem on the server (the page offers caps only where they apply)", async () => {
     const u = await newUser("seccap");
     expect((await saveGov(u.email, { agentCaps: { reem: 10 } })).agentCaps.reem).toBe(10);
   });
@@ -524,6 +601,30 @@ describe("chat and MCP tools (rule 170)", () => {
     expect(log[0]).toMatchObject({ actor: "reem", via: "chat", action: "create", id });
     const en = await runTool(u, "todo_create", { title: "Call the bank", due: inDays(3, 15) }, [], [], undefined, { lang: "en" });
     expect(en).toContain("3:00 PM");
+    // The audit names the agent that acted, not Reem by default.
+    await runTool(u, "todo_create", { title: "Asked through Sami" }, [], [], undefined, { lang: "en", agent: "sami" });
+    const sami = (await db.lrange(SEC_KEYS.audit(u.email), 0, -1)).map((x) => JSON.parse(x))[0];
+    expect(sami).toMatchObject({ actor: "sami", via: "chat", action: "create" });
+  });
+
+  it("reach only the caller's active brand: another account's id is 'No item', and scope or email arguments are ignored", async () => {
+    const a = await owner("sectoola");
+    const aItem = await add({ title: "A's secret errand", dueAt: inDays(2) });
+    const b = await owner("sectoolb");
+    const forged = { scope: a.email, email: a.email };
+    expect(await runTool(b, "todo_update", { id: aItem.id, title: "hijacked", ...forged }, [])).toMatch(/^Not done: No item/);
+    expect(await runTool(b, "todo_propose_done", { id: aItem.id, evidence: "done", ...forged }, [])).toMatch(/^Not done: No item/);
+    expect(await runTool(b, "agenda_get", forged, [])).not.toContain("A's secret errand");
+    const token = await createMcpToken(b.email);
+    const rpc = async (name: string, args: Record<string, unknown>) => (await (await mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) }))).json()).result;
+    for (const [name, args] of [["todo_update", { id: aItem.id, title: "hijacked", ...forged }], ["todo_propose_done", { id: aItem.id, evidence: "done", ...forged }]] as const) {
+      const r = await rpc(name, args);
+      expect(r.isError, name).toBe(true);
+      expect(r.content[0].text, name).toMatch(/^Not done: No item/);
+    }
+    expect((await rpc("agenda_get", forged)).content[0].text).not.toContain("A's secret errand");
+    expect(await getItem(a.email, aItem.id)).toMatchObject({ title: "A's secret errand", rev: 1, proposedDone: null, completedAt: null });
+    expect(await getItem(b.email, aItem.id)).toBeNull();
   });
 
   it("answers a failure with a sentence and never throws", async () => {
@@ -562,5 +663,72 @@ describe("chat and MCP tools (rule 170)", () => {
     expect((await getItem(u.email, id))?.completedAt).toBeNull();
     const log = (await db.lrange(SEC_KEYS.audit(u.email), 0, -1)).map((x) => JSON.parse(x));
     expect(log[0]).toMatchObject({ actor: "mcp", via: "mcp", action: "propose_done", id });
+  });
+});
+
+describe("private notes never reach a model (rule 172)", () => {
+  it("keeps the owner's private note out of chat and MCP answers, and only the owner writes one", async () => {
+    const u = await owner("secprivate");
+    const it1 = await add({ title: "Negotiate the rent" });
+    expect((await patch(it1.id, { action: "add_note", text: "secret-xyz: ceiling is 40k", private: true })).status).toBe(200);
+    expect((await getItem(u.email, it1.id))?.notes.at(-1)).toMatchObject({ private: true, by: "owner" });
+    const chat = await runTool(u, "agenda_get", {}, []);
+    expect(chat).toContain("Negotiate the rent");
+    expect(chat).not.toContain("secret-xyz");
+    const token = await createMcpToken(u.email);
+    const res = await mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "agenda_get", arguments: {} } }) }));
+    const mcp = (await res.json()).result.content[0].text as string;
+    expect(mcp).toContain("Negotiate the rent");
+    expect(mcp).not.toContain("secret-xyz");
+    // An agent or MCP asking for a private note gets a shared one.
+    for (const who of [{ actor: "reem" as const, via: "chat" as const }, { actor: "mcp" as const, via: "mcp" as const }]) {
+      expect((await changeItem(u.email, it1.id, { action: "update", fields: {}, note: { text: `from ${who.actor}`, private: true } }, who)).ok).toBe(true);
+      expect((await changeItem(u.email, it1.id, { action: "add_note", text: `plain ${who.actor}`, private: true }, who)).ok).toBe(true);
+    }
+    const notes = (await getItem(u.email, it1.id))!.notes;
+    expect(notes.filter((n) => n.by !== "owner").map((n) => n.private)).toEqual([false, false, false, false]);
+  });
+});
+
+describe("agents know today's Riyadh date, and nothing promises a reminder at the due time (rule 173)", () => {
+  it("puts the current Riyadh date and time in every agent's uncached prompt block", () => {
+    const u = { email: "x@test.example", credits: 5, plan: "starter", trialEnds: "2026-10-01" } as User;
+    for (const agent of AGENTS) {
+      const [fixed, , now] = system(null, u, [], "", [], [], agent.id).map((b) => b.text);
+      expect(now, agent.id).toContain("NOW (Riyadh, UTC+3):");
+      expect(now, agent.id).toContain(`today is ${riyadhDay(Date.now())}`);
+      expect(fixed, agent.id).not.toContain(riyadhDay(Date.now()));
+    }
+    const reem = system(null, u, [], "", [], [], "reem")[0].text;
+    expect(reem).toMatch(/never say you will remind the owner at a specific time/);
+    expect(readFileSync("content/skills/secretary.md", "utf8")).toMatch(/never say you will remind the owner at a specific time/);
+  });
+
+  it("todo_create says so when a saved date has already passed", async () => {
+    const u = await owner("secpast");
+    const late = await runTool(u, "todo_create", { title: "Guessed date", due: inDays(-3, 10) }, [], [], undefined, { lang: "en" });
+    expect(late).toMatch(/That date has already passed/);
+    expect(await runTool(u, "todo_create", { title: "Real date", due: inDays(3, 10) }, [], [], undefined, { lang: "en" })).not.toMatch(/already passed/);
+  });
+
+  it("the app, help and site copy captures to-dos and never promises an alert at the due time", () => {
+    for (const lang of ["ar", "en"] as const) {
+      const copy = [...appDict[lang].agents.reem.suggestions, HELP.flatMap((t) => t.items.map((i) => i.a[lang])).join(" "), JSON.stringify(AGENT_PAGES[lang].reem)].join(" ");
+      expect(copy, lang).not.toMatch(/ذكّريني|remind me/i);
+      expect(copy, lang).not.toMatch(/Reminders in the app|تذكير في التطبيق/);
+    }
+    expect(JSON.stringify(AGENT_PAGES.en.reem)).toContain("no alert at the due time");
+    expect(JSON.stringify(AGENT_PAGES.ar.reem)).toContain("لا تنبيه في موعد المهمة");
+  });
+});
+
+describe("Arabic counts agree with the counted noun (rule 174)", () => {
+  it("uses the singular, dual, plural and the singular after 11 the way Arabic does", () => {
+    const f = { one: "عنصر واحد", two: "عنصران", few: "عناصر", many: "عنصرًا", hundred: "عنصر" };
+    expect([1, 2, 3, 10, 11, 99, 100, 101, 103, 111, 200].map((n) => arCount(n, f))).toEqual(["عنصر واحد", "عنصران", "3 عناصر", "10 عناصر", "11 عنصرًا", "99 عنصرًا", "100 عنصر", "101 عنصر", "103 عناصر", "111 عنصرًا", "200 عنصر"]);
+    expect(approvalsLine(2, "ar")).toBe("عنصران بانتظار موافقتك");
+    expect(approvalsLine(12, "ar")).toBe("12 عنصرًا بانتظار موافقتك");
+    expect(approvalsLine(0, "ar")).toBe("لا شيء بانتظار موافقتك");
+    expect(approvalsLine(0, "en")).toBe("nothing waiting for your approval");
   });
 });

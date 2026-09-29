@@ -162,15 +162,30 @@ export async function runDaily(user: User): Promise<Brief | null> {
   return brief;
 }
 
-/** One entry per (user, active brand). Extra brands get their own copy with scope set. */
-export async function allUsers(): Promise<User[]> {
+/**
+ * The scheduler's roster in one pass: `users`, one entry per (user, active brand), extra brands with their own copy and
+ * scope set; and `idle`, the brand scopes that get no scheduled work (archived brands, and every brand of a suspended
+ * account) but where the daily job still purges Reem's items deleted over 30 days ago.
+ */
+export async function dailyRoster(): Promise<{ users: User[]; idle: string[] }> {
   const { listBrands, scopeFor } = await import("./brands");
   const emails = await db.smembers("users:all");
   const { pmap } = await import("./parallel");
   const groups = await pmap(emails, async (e) => {
     const u = await getUser(e);
-    if (!u || u.suspended) return [] as User[]; // suspended accounts get no scheduled work, no charges and no email
-    return (await listBrands(e)).filter((x) => x.status === "active").map((b) => ({ ...u, brandId: b.id, scope: scopeFor(e, b.id) }));
+    if (!u) return { users: [] as User[], idle: [] as string[] };
+    const brands = (await listBrands(e)).map((b) => ({ b, scope: scopeFor(e, b.id) }));
+    // Suspended accounts get no scheduled work, no charges and no email.
+    if (u.suspended) return { users: [] as User[], idle: brands.map((x) => x.scope) };
+    return {
+      users: brands.filter((x) => x.b.status === "active").map((x) => ({ ...u, brandId: x.b.id, scope: x.scope })),
+      idle: brands.filter((x) => x.b.status !== "active").map((x) => x.scope),
+    };
   });
-  return groups.flat();
+  return { users: groups.flatMap((g) => g.users), idle: groups.flatMap((g) => g.idle) };
+}
+
+/** One entry per (user, active brand). Extra brands get their own copy with scope set. */
+export async function allUsers(): Promise<User[]> {
+  return (await dailyRoster()).users;
 }

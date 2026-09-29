@@ -41,7 +41,7 @@ Pure function over the items and the clock (`computeAgenda`). Buckets, in page o
 - MCP: the same four tools, free, in the bearer's active brand, source `mcp`.
 - Page: `/{lang}/app/todo` (مهامي / My to-dos), server-rendered, linked in the sidebar under Approvals.
 - Brief: counts of overdue, today, waiting and to-confirm, and the first three overdue or due-today titles. Follow-up: one `todo` notification per brand per Riyadh day when something is overdue.
-- Daily cron: purge items deleted over 30 days ago (200 per brand per run) and close linked items whose task was approved.
+- Daily cron: purge items deleted over 30 days ago (200 per brand per run) and close linked items whose task was approved; archived brands and suspended accounts get the purge only.
 
 ## Decisions the brief left open
 
@@ -52,7 +52,16 @@ Pure function over the items and the clock (`computeAgenda`). Buckets, in page o
 - Audit actors: `owner`, the chatting agent's id (Reem or another agent), `mcp`, `cron`, and `rule` for the automatic close.
 - Ids start with `s` so the Redis client never reads one as a number.
 - Snooze presets are computed on the server: 2 hours, tonight 20:00 (offered only while it is ahead), tomorrow 09:00.
-- Phase 1 has no "reopen" of a completed item, no notes editor on the page (the API takes notes, private ones from the owner only), and no sidebar badge.
+- Phase 1 has no "reopen" of a completed item, no notes editor on the page (the API takes notes, private ones from the owner only; the page shows each row's last three notes), and no sidebar badge.
+
+## Review fixes (2026-09-29)
+
+- A link closes an item, so chat and MCP set one only at creation and only to a pending inbox item; `todo_update` never reads `task_id`, and only the owner, in the app, changes a link. The MCP route does not check arguments against the tool schema, so this is decided in code (`toolFields`, `mutateItem`, `createItem`).
+- The daily purge also runs for archived brands and suspended accounts (`dailyRoster().idle`, `purgeIdle`), which otherwise get no scheduled work.
+- A proposal ends a snooze and is classed before it, so the owner can always confirm it. A restore that reopens an item counts against the 500 open items.
+- Every agent's uncached prompt block carries the current Riyadh date and time; `todo_create` says when a saved date has already passed.
+- Honest copy: nothing fires at an item's due time in phase 1, so the chips and help say "Add:" / «سجّل عليّ» instead of "Remind me", the site says "In the morning brief and alerts", and Reem's prompt and playbook forbid promising a reminder at a set time.
+- The page shows notes, words the owner's "Not yet" note in the page's language, reads «اقتراح إغلاق من» before the proposer, shows Undo as a toast, and counts in Arabic with the right noun form. The governance page offers a cap only to agents that own a paid type.
 
 ## Design references (ideas only, no code copied)
 

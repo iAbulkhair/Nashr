@@ -23,7 +23,11 @@ export type SecParty = string;
 export type SecActor = "owner" | AgentId | "mcp" | "cron" | "rule";
 export type SecVia = "web" | "chat" | "mcp" | "cron";
 export type SecSource = "owner" | "chat" | "mcp" | "agent";
-export type SecNote = { at: string; by: SecActor; text: string; private: boolean };
+/**
+ * One note on an item. `kind: "not_yet"` is the note the owner's "Not yet" leaves: `text` holds the evidence that was
+ * proposed, and `noteText` words it in the reader's language (the page in Arabic or English, a tool answer in English).
+ */
+export type SecNote = { at: string; by: SecActor; text: string; private: boolean; kind?: "not_yet" };
 
 export type SecItem = {
   /** Server-generated: `s` and 16 hex characters (`SEC_ID` in secretary.ts). */
@@ -167,8 +171,9 @@ export const UPCOMING_DAYS = 7;
 export function classify(it: SecItem, now: number): { bucket: AgendaBucket | "snoozed"; reason: AgendaReason; actionOwner: SecParty; next: NextStep } | null {
   if (it.deletedAt || it.completedAt) return null;
   const others = it.owedBy !== "owner";
-  if (it.snoozeUntil && Date.parse(it.snoozeUntil) > now) return { bucket: "snoozed", reason: "snoozed", actionOwner: it.owedBy, next: others ? "wait" : "do" };
+  // A proposal waits for the owner even when the item was snoozed before it: the owner must be able to confirm it now.
   if (it.proposedDone) return { bucket: "confirm", reason: "proposed_done", actionOwner: "owner", next: "confirm" };
+  if (it.snoozeUntil && Date.parse(it.snoozeUntil) > now) return { bucket: "snoozed", reason: "snoozed", actionOwner: it.owedBy, next: others ? "wait" : "do" };
   const due = it.dueAt ? Date.parse(it.dueAt) : null;
   // Past due, it is the owner's move either way: do it, or chase whoever is late.
   if (due !== null && due < now) return { bucket: "overdue", reason: "overdue", actionOwner: "owner", next: others ? "chase" : "do" };
@@ -226,10 +231,32 @@ export function nextStepText(e: Pick<AgendaEntry, "next" | "item">, lang: "ar" |
   }
 }
 
+/**
+ * An Arabic count with the counted noun in the form the number takes: 1 and 2 have their own phrases (singular, dual);
+ * 3 to 10 take the plural; 11 to 99 the singular in the accusative (`many`, e.g. «عنصرًا»); a whole hundred and the
+ * two numbers after it the singular in the genitive (`hundred`, e.g. «100 عنصر»; `many` when not given). Past 100 the last
+ * two digits decide: «103 عناصر», «111 عنصرًا». 0 has its own phrase when given.
+ */
+export function arCount(n: number, f: { zero?: string; one: string; two: string; few: string; many: string; hundred?: string }): string {
+  if (n === 0 && f.zero) return f.zero;
+  if (n === 1) return f.one;
+  if (n === 2) return f.two;
+  const r = n % 100;
+  if (r >= 3 && r <= 10) return `${n} ${f.few}`;
+  if (n >= 100 && r <= 2) return `${n} ${f.hundred ?? f.many}`;
+  return `${n} ${f.many}`;
+}
+
 /** The approvals inbox as one agenda line. */
 export function approvalsLine(n: number, lang: "ar" | "en"): string {
-  if (lang === "ar") return n === 1 ? "عنصر واحد بانتظار موافقتك" : n === 2 ? "عنصران بانتظار موافقتك" : `${n} عناصر بانتظار موافقتك`;
-  return n === 1 ? "1 item waiting for your approval" : `${n} items waiting for your approval`;
+  if (lang === "ar") return arCount(n, { zero: "لا شيء بانتظار موافقتك", one: "عنصر واحد بانتظار موافقتك", two: "عنصران بانتظار موافقتك", few: "عناصر بانتظار موافقتك", many: "عنصرًا بانتظار موافقتك", hundred: "عنصر بانتظار موافقتك" });
+  return n === 0 ? "nothing waiting for your approval" : n === 1 ? "1 item waiting for your approval" : `${n} items waiting for your approval`;
+}
+
+/** A note as the reader sees it: the owner's "Not yet" note is worded in the reader's language around its evidence. */
+export function noteText(n: Pick<SecNote, "text" | "kind">, lang: "ar" | "en"): string {
+  if (n.kind === "not_yet") return lang === "ar" ? `لم تُنجز بعد (المقترح: ${n.text})` : `Not done yet (proposed: ${n.text})`;
+  return n.text;
 }
 
 /** The morning brief's agenda block: counts, and the titles of the first three overdue or due-today items. */

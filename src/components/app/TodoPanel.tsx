@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { AgendaBucket } from "@/lib/secretary-agenda";
 
@@ -13,6 +13,7 @@ export type TodoRow = {
 };
 export type TodoSection = { bucket: AgendaBucket; title: string; rows: TodoRow[] };
 type Panel = { id: string; kind: "done" | "snooze" | "reschedule" } | null;
+const UNDO_MS = 8000;
 
 /**
  * My to-dos. The list is rendered on the server; every action here is one PATCH or POST to /api/secretary and then a
@@ -31,6 +32,14 @@ export default function TodoPanel({ t, sections, approvals, snoozed, allClear, e
   const [error, setError] = useState<{ id: string; text: string } | null>(null);
   const [undo, setUndo] = useState<string | null>(null);
   const [form, setForm] = useState({ title: "", dueAt: "", direction: "i_owe" as "i_owe" | "they_owe", party: "" });
+
+  // The Undo prompt is a toast pinned to the bottom of the screen, so a delete far down the page still shows it; it goes
+  // away on its own after a few seconds.
+  useEffect(() => {
+    if (!undo) return;
+    const timer = setTimeout(() => setUndo(null), UNDO_MS);
+    return () => clearTimeout(timer);
+  }, [undo]);
 
   const errText = (code: unknown) => (typeof code === "string" && T.errors[code]) || T.errors.generic;
   async function send(id: string, body: Record<string, unknown>): Promise<boolean> {
@@ -78,7 +87,12 @@ export default function TodoPanel({ t, sections, approvals, snoozed, allClear, e
             {row.badges.map((b) => <span key={b} className={`badge ${b === T.badges.critical ? "badge-danger" : "badge-primary"}`}>{b}</span>)}
           </p>
           {row.description && <p className="mt-1 whitespace-pre-line text-sm text-ink/70" dir="auto">{row.description}</p>}
-          {row.proposed && <p className="mt-1 text-sm text-ink/80" dir="auto"><span className="font-semibold">{row.proposed.by}</span> {T.proposedBy} {row.proposed.evidence}</p>}
+          {row.proposed && <p className="mt-1 text-sm text-ink/80" dir="auto">{T.proposedBy} <span className="font-semibold">{row.proposed.by}</span>: {row.proposed.evidence}</p>}
+          {row.notes.length > 0 && (
+            <ul className="mt-1 space-y-0.5 text-xs text-ink/60" aria-label={T.notes}>
+              {row.notes.map((n, i) => <li key={i} dir="auto">{n}</li>)}
+            </ul>
+          )}
           {row.result && bucket === "done" && <p className="mt-1 text-sm text-ink/70" dir="auto"><span className="text-ink/50">{T.result}: </span>{row.result}</p>}
           {row.next && bucket !== "confirm" && <p className="mt-1 text-xs text-oasis"><span className="text-ink/50">{T.next}: </span>{row.next}</p>}
         </div>
@@ -88,7 +102,7 @@ export default function TodoPanel({ t, sections, approvals, snoozed, allClear, e
             <button disabled={!!busy} onClick={() => act(row, { action: "reject_done" })} className="btn btn-secondary btn-xs">{T.notYet}</button>
           </div>
         ) : bucket === "deleted" ? (
-          <button disabled={!!busy} onClick={() => send(row.id, { action: "restore" })} className="btn btn-secondary btn-xs">{T.restore}</button>
+          <button disabled={!!busy} onClick={async () => { if ((await send(row.id, { action: "restore" })) && undo === row.id) setUndo(null); }} className="btn btn-secondary btn-xs">{T.restore}</button>
         ) : bucket === "done" ? null : (
           <div className="flex flex-wrap gap-2">
             <button disabled={!!busy} onClick={() => open(row.id, "done")} aria-expanded={panel?.id === row.id && panel.kind === "done"} className="btn btn-primary btn-xs">{T.done}</button>
@@ -139,9 +153,9 @@ export default function TodoPanel({ t, sections, approvals, snoozed, allClear, e
         </div>
       )}
       {undo && (
-        <div role="status" className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink/10 bg-white px-4 py-2 text-sm">
+        <div role="status" className="fixed inset-x-4 bottom-4 z-30 mx-auto flex max-w-md flex-wrap items-center justify-between gap-2 rounded-xl border border-ink/10 bg-white px-4 py-2 text-sm shadow-lg">
           <span>{T.removed}</span>
-          <button onClick={async () => { if (await send(undo, { action: "restore" })) setUndo(null); }} className="btn btn-secondary btn-xs">{T.undo}</button>
+          <button onClick={async () => { const id = undo; setUndo(null); await send(id, { action: "restore" }); }} className="btn btn-secondary btn-xs">{T.undo}</button>
         </div>
       )}
 

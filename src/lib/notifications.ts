@@ -7,7 +7,7 @@ import { getSchedule } from "./schedule";
 import { agentById, type AgentId } from "./agents";
 import type { AgentCharge } from "./credits";
 import { agendaFor, overdueFingerprint } from "./secretary";
-import { riyadhDay } from "./secretary-agenda";
+import { arCount, riyadhDay } from "./secretary-agenda";
 
 /**
  * In-app follow-ups from the team. Stored per account (not per brand) as one
@@ -92,7 +92,7 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   if (agenda.counts.overdue > 0) {
     const n = agenda.counts.overdue;
     const first = agenda.buckets.overdue.slice(0, 2).map((e) => `«${e.item.title.slice(0, 60)}»`).join(ar ? "، " : ", ");
-    await add({ kind: "todo", agent: "reem", href: `${app}/todo`, title: ar ? (n === 1 ? "مهمة متأخرة في قائمتك" : `${n} مهام متأخرة في قائمتك`) : `${n} overdue to-do${n === 1 ? "" : "s"} on your list`, body: ar ? `ابدأ بـ ${first}. أنجزها أو أجّلها أو غيّر موعدها.` : `Start with ${first}. Do it, snooze it or reschedule it.` }, overdueFingerprint(scope, riyadhDay(Date.now())), 2);
+    await add({ kind: "todo", agent: "reem", href: `${app}/todo`, title: ar ? arCount(n, { one: "مهمة متأخرة في قائمتك", two: "مهمتان متأخرتان في قائمتك", few: "مهام متأخرة في قائمتك", many: "مهمة متأخرة في قائمتك" }) : `${n} overdue to-do${n === 1 ? "" : "s"} on your list`, body: ar ? `ابدأ بـ ${first}. أنجزها أو أجّلها أو غيّر موعدها.` : `Start with ${first}. Do it, snooze it or reschedule it.` }, overdueFingerprint(scope, riyadhDay(Date.now())), 2);
   }
   return out;
 }
