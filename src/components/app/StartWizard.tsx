@@ -14,6 +14,7 @@ const STR = {
     path: "مسار الانطلاق", pathSub: "٧ إنجازات من أول رابط إلى علامتك داخل مساعدك الذكي. كل إنجاز يرفع مستواك.",
     levels: [["seed", "بذرة"], ["sapling", "فسيلة"], ["palm", "نخلة"], ["oasis", "واحة"]] as const,
     noSite: "ما عندك موقع؟ ضع رابط حساب إنستقرام أو متجرك في سلة أو زد.",
+    review: "راجع الرابط قبل أن تبدأ نور: ستقرأ هذا الموقع وتبني منه ملف علامتك. تأكد أنه موقعك، أو غيّره.",
   },
   en: {
     hello: "Hi, I'm Noor.", intro: "The marketer on your team. Give me one link and I'll start working in front of you.",
@@ -22,20 +23,34 @@ const STR = {
     path: "Launch path", pathSub: "7 milestones from your first link to your brand inside your AI assistant. Each one levels you up.",
     levels: [["seed", "Seed"], ["sapling", "Sapling"], ["palm", "Palm"], ["oasis", "Oasis"]] as const,
     noSite: "No website? Paste your Instagram profile or your Salla or Zid store link.",
+    review: "Check this link before Noor starts: she reads this site and builds your brand file from it. Make sure it is yours, or change it.",
   },
 } as const;
 
 /**
- * The only onboarding question: the website. Submitting opens the "Getting started" thread where Noor builds the
- * workspace live (ChatPanel onboardUrl). Businesses without a site can give an Instagram or store link instead.
+ * The only onboarding question: the website. Submitting records the owner's confirmation (POST /api/onboard/confirm)
+ * and opens the "Getting started" thread where Noor builds the workspace live (ChatPanel onboardUrl). A URL carried in
+ * from a link (signup `?url=`, chat `?onboard=`) only pre-fills the field: nothing is read until the owner presses Go.
+ * Businesses without a site can give an Instagram or store link instead.
  */
 export default function StartWizard({ t, lang, initialUrl = "" }: { t: AppDict; lang: Lang; initialUrl?: string }) {
   const r = useRouter();
   const s = t.start;
   const S = STR[lang];
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(false);
   const [url, setUrl] = useState(initialUrl);
   const ready = url.trim().length >= 4;
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!ready || busy) return;
+    setBusy(true); setErr(false);
+    const site = url.trim().slice(0, 300);
+    const res = await fetch("/api/onboard/confirm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: site }) }).catch(() => null);
+    // 409: this workspace already has a brand, so the chat opens as usual and onboarding does not run again.
+    if (res && (res.ok || res.status === 409)) { r.push(`/${lang}/app/chat?onboard=${encodeURIComponent(site)}`); return; }
+    setBusy(false); setErr(true);
+  }
   return (
     <div className="mx-auto grid max-w-2xl gap-6">
       <section className="card overflow-hidden p-0">
@@ -50,14 +65,13 @@ export default function StartWizard({ t, lang, initialUrl = "" }: { t: AppDict; 
           </div>
           <h1 className="page-title mt-5">{s.title}</h1>
           <p className="mt-1 text-ink/70">{s.sub}</p>
-          <form
-            onSubmit={(e) => { e.preventDefault(); if (!ready) return; setBusy(true); r.push(`/${lang}/app/chat?onboard=${encodeURIComponent(url.trim())}`); }}
-            className="mt-5 grid gap-3"
-          >
+          <form onSubmit={onSubmit} className="mt-5 grid gap-3">
+            {initialUrl && <p role="note" className="rounded-lg border border-saffron/40 bg-saffron/10 px-3 py-2 text-sm text-ink/80">{S.review}</p>}
             <label className="relative block">
               <span className="pointer-events-none absolute inset-y-0 start-3 grid place-items-center text-ink/40"><Icon name="plug" className="h-4 w-4" /></span>
               <input name="url" required autoFocus dir="ltr" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={s.url} aria-label={s.url} className="input py-3 ps-9 text-base" />
             </label>
+            {err && <p role="alert" className="text-sm text-sadu-deep">{s.steps.error}</p>}
             <button disabled={busy || !ready} className="btn btn-accent btn-lg">{busy ? "…" : <><Icon name="spark" className="h-4 w-4" />{s.go}</>}</button>
             <p className="text-center text-xs text-ink/60">{S.noSite}</p>
             <Link href={`/${lang}/app/onboarding`} className="text-center text-sm text-ink/60 underline">{s.manual}</Link>

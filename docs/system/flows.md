@@ -13,7 +13,7 @@ Files: `src/app/[lang]/app/signup/page.tsx`, `src/components/app/AuthForm.tsx:16
 5. `createUser` (`auth.ts:57`): bcrypt cost 10, plan `trial`, 50 credits, `trialEnds` = now + 3 days, name clipped to 80 chars. Writes `user:{email}`, adds to `users:all`.
 6. `registerCode` writes `ref:{CODE}`. If `ref` matches `^[A-Za-z0-9]{6,10}$`, `applyReferral` runs (section 15).
 7. `createSession(email)` sets cookie `nashr_session`. `track(email,"signup")`.
-8. Client navigates to `next`, or `/{lang}/app/chat?onboard={url}` when a site URL was carried, else `/{lang}/app/start`.
+8. Client navigates to `next`, or `/{lang}/app/start?url={url}` when a site URL was carried (the owner reviews and confirms it there before anything is read, section 6), else `/{lang}/app/start`. A carried URL never starts onboarding by itself: until 2026-09-28 it went straight to `/{lang}/app/chat?onboard={url}`, so a link like `/en/app/signup?url=attacker.example` chose the new workspace's brand.
 9. No rate limit, no email verification, no CAPTCHA on this route.
 
 ## 2. Login
@@ -64,16 +64,17 @@ Files: `reset/page.tsx`, `AuthForm.tsx:150-166`, `src/app/api/auth/reset/route.t
 
 ## 6. First-run onboarding inside the chat
 
-Files: `start/page.tsx`, `src/components/app/StartWizard.tsx`, `chat/page.tsx:26-35`, `src/components/app/ChatPanel.tsx:107`, `src/app/api/onboard/route.ts`, `src/lib/crawl.ts`, `src/lib/onboard.ts`, `src/app/api/onboard/plan/route.ts`, `src/components/app/OnboardCards.tsx`.
+Files: `start/page.tsx`, `src/components/app/StartWizard.tsx`, `src/app/api/onboard/confirm/route.ts`, `src/lib/onboard-confirm.ts`, `chat/page.tsx:28-41`, `src/components/app/ChatPanel.tsx:112`, `src/app/api/onboard/route.ts`, `src/lib/crawl.ts`, `src/lib/onboard.ts`, `src/app/api/onboard/plan/route.ts`, `src/components/app/OnboardCards.tsx`.
 
-1. A user without `brand:{scope}` is redirected from the inbox, chat and reports pages to `/{lang}/app/start`. The wizard collects a site URL and routes to `/{lang}/app/chat?onboard={url}`; a manual alternative links to `/{lang}/app/onboarding` (brand form, `PUT /api/brand`).
-2. `ChatPanel` posts `{url}` to `POST /api/onboard`. Server requires session and a URL of length >= 4.
-3. Lock `onboardlock:{scope}` (240 s). A second concurrent run gets 409 `busy`.
-4. SSE stream (10 s ping). Steps: intro message, `crawl(url)` (server-side fetch of the user URL, 9 s timeout, follows redirects, `crawl.ts:44`), then `buildFromSite`: three parallel `claude-opus-5` calls from the same snapshot (core: brand, brand.md, plan, goal, summary; identity: guidelines, opportunities; market: research, strategy), one retry per part; the status line advances as each part lands.
-5. Writes: `saveBrand(scope)`, each returned file via `writeFile(scope, ...)`, `preferences.md` if absent, `onboardplan:{scope}`. Every assistant message is persisted to `chat:{scope}` via `push`.
-6. Onboarding charges no credits (`onboard/route.ts:22`) and is not limited to a single run per workspace beyond the lock; re-running overwrites the brand file and files.
-7. `GET /api/onboard/plan` returns the stored plan; `POST {index, added}` flips the `added` flag. Phone is requested in-thread and saved through `PUT /api/profile` (`OnboardCards.tsx:75`).
-8. While the stream runs, `OnboardProgress` (`ChatPanel.tsx`) shows each `status` event as a completed step with a bar that never reaches 100% before `done`. After it, the launch journey (section 19) celebrates its first milestone.
+1. A user without `brand:{scope}` is redirected from the inbox, chat and reports pages to `/{lang}/app/start`. The wizard collects a site URL; a manual alternative links to `/{lang}/app/onboarding` (brand form, `PUT /api/brand`). A URL carried in from a link (signup `?url=`, start `?url=`, chat `?onboard=`) only pre-fills the field and shows a review note ("Check this link before Noor starts"); nothing is read until the owner presses Go.
+2. Go posts `{url}` to `POST /api/onboard/confirm`: session required, URL trimmed and clipped to 300 characters (`onboardUrl`), length >= 4 else 400 `bad_url`, 409 `already_onboarded` when the workspace has a brand. It writes `onboardok:{scope}` = the URL (1 day) and nothing else: no crawl, no model call. The session cookie is SameSite=Lax, so another site cannot submit it for a signed-in owner. The wizard then routes to `/{lang}/app/chat?onboard={url}` (also on 409, where the chat opens as usual).
+3. The chat page without a brand reads `onboardok:{scope}` and hands that URL to `ChatPanel`. The `?onboard=` value itself is never used to build: without a confirmation the page redirects to `/{lang}/app/start?url={value}` so the owner reviews it.
+4. `ChatPanel` posts `{url}` to `POST /api/onboard`. Server requires a session and a URL of length >= 4, then, in this order: 409 `already_onboarded` when `brand:{scope}` exists; 403 `unconfirmed` unless the URL equals `onboardok:{scope}` (checked in code, before the paused check, the daily allowance, the lock and the crawl, so an unconfirmed URL costs nothing); 503 `paused`; 429 after three runs a day per account; lock `onboardlock:{scope}` (240 s), a second concurrent run gets 409 `busy`.
+5. SSE stream (10 s ping). Steps: intro message, `crawl(url)` of the confirmed URL (server-side fetch of the user URL, 9 s timeout, follows redirects, `crawl.ts:44`), then `buildFromSite`: three parallel `claude-opus-5` calls from the same snapshot (core: brand, brand.md, plan, goal, summary; identity: guidelines, opportunities; market: research, strategy), one retry per part; the status line advances as each part lands.
+6. Writes: `saveBrand(scope)`, each returned file via `writeFile(scope, ...)`, `preferences.md` if absent, `onboardplan:{scope}`, and deletes `onboardok:{scope}`: one confirmation, one build. Every assistant message is persisted to `chat:{scope}` via `push`. A failed or paused run keeps the confirmation, so "refresh to try again" works for a day.
+7. Onboarding charges no credits (`onboard/route.ts:25`) and runs once per workspace (409 once `brand:{scope}` exists) and at most three times a day per account.
+8. `GET /api/onboard/plan` returns the stored plan; `POST {index, added}` flips the `added` flag. Phone is requested in-thread and saved through `PUT /api/profile` (`OnboardCards.tsx:75`).
+9. While the stream runs, `OnboardProgress` (`ChatPanel.tsx`) shows each `status` event as a completed step with a bar that never reaches 100% before `done`. After it, the launch journey (section 19) celebrates its first milestone.
 
 ## 7. Chat turn with `generate_content` and `draft_items`
 

@@ -39,7 +39,8 @@ export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
     setBusy(false);
     if (!j.ok) return setErr((t.signup as Record<string, string>)[j.error] ?? j.error);
     if (next) { window.location.assign(next); return; }
-    r.push(site.length >= 4 ? `/${lang}/app/chat?onboard=${encodeURIComponent(site)}` : `/${lang}/app/start`);
+    // A carried site only pre-fills the start page: the owner confirms it there before anything is read (onboard-confirm.ts).
+    r.push(`/${lang}/app/start${site.length >= 4 ? `?url=${encodeURIComponent(site)}` : ""}`);
     r.refresh();
   }
   return (
