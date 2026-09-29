@@ -120,11 +120,11 @@ export async function warnAgentCap(user: Pick<User, "email" | "lang">, paid: Ext
       title: ar ? `${name}${where}: ${paid.spent} من ${paid.cap} كريدت هذا الشهر` : `${name}${where}: ${paid.spent} of ${paid.cap} credits this month`,
       body: brand
         ? ar
-          ? `اقترب الاستهلاك من الحد الشهري الذي وضعته لهذا الوكيل في صفحة الحوكمة لعلامة «${brand}»، فبدّل إليها لترى الحد أو تغيّره. عند بلوغه تتوقف دفعاته وصوره فيها حتى ترفع الحد أو يبدأ الشهر القادم. الدردشة لا تُحسب.`
-          : `This agent is close to the monthly cap you set for it in Governance for the brand “${brand}”; switch to that brand to see or change it. At the cap its batches and images there stop until you raise the cap or the next month starts. Chat is not counted.`
+          ? `اقترب الاستهلاك من الحد الشهري الذي وضعته لهذا الوكيل في صفحة الحوكمة لعلامة «${brand}»، فبدّل إليها لترى الحد أو تغيّره. عند بلوغه تتوقف دفعاته وصوره ومقاطعه فيها حتى ترفع الحد أو يبدأ الشهر القادم. الدردشة لا تُحسب.`
+          : `This agent is close to the monthly cap you set for it in Governance for the brand “${brand}”; switch to that brand to see or change it. At the cap its batches, images and videos there stop until you raise the cap or the next month starts. Chat is not counted.`
         : ar
-          ? "اقترب الاستهلاك من الحد الشهري الذي وضعته لهذا الوكيل في صفحة الحوكمة لهذه العلامة. عند بلوغه تتوقف دفعاته وصوره حتى ترفع الحد أو يبدأ الشهر القادم. الدردشة لا تُحسب."
-          : "This agent is close to the monthly cap you set for it in Governance for this brand. At the cap its batches and images stop until you raise the cap or the next month starts. Chat is not counted.",
+          ? "اقترب الاستهلاك من الحد الشهري الذي وضعته لهذا الوكيل في صفحة الحوكمة لهذه العلامة. عند بلوغه تتوقف دفعاته وصوره ومقاطعه حتى ترفع الحد أو يبدأ الشهر القادم. الدردشة لا تُحسب."
+          : "This agent is close to the monthly cap you set for it in Governance for this brand. At the cap its batches, images and videos stop until you raise the cap or the next month starts. Chat is not counted.",
       href: "governance",
     }, agentCapFingerprint(paid.scope, paid.agent, paid.month), 35);
   } catch (e) {

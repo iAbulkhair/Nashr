@@ -14,7 +14,7 @@ async function render(lang: "ar" | "en") {
   return new Response(await renderToReadableStream(el)).text();
 }
 
-describe("the updates page renders complete on the server (rule 127)", () => {
+describe("the updates page renders complete on the server (rule 155)", () => {
   it("shows the changelog, the wishlist with real counts, and sign-in links to an anonymous visitor", async () => {
     // One real vote, cast by an account, so the count on the page is not a default.
     const id = SEED_WISHES[10].id;

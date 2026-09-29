@@ -25,7 +25,7 @@ async function owner(prefix = "draft") {
   return { u, token: await createMcpToken(u.email) };
 }
 
-describe("MCP save_draft: the owner's own assistant saves into the inbox (rules 116-120)", () => {
+describe("MCP save_draft: the owner's own assistant saves into the inbox (rules 144-148)", () => {
   it("is listed, and refuses without a bearer token (401) or with an unknown one, saving nothing", async () => {
     const list = await (await mcpRoute.POST(rpc("tools/list", {}))).json();
     expect(list.result.tools.map((t: { name: string }) => t.name)).toContain("save_draft");

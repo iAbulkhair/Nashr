@@ -29,9 +29,9 @@ A team of named Gulf agents that works from one brand file, in the owner's diale
 
 ## Capabilities and Constraints
 - 18 task types across 7 agents; chat with tools; URL onboarding; multi-brand; governance (auto-approve types, weekly cap, reviewer, learning from edits); scheduled tasks (weekly plan, daily brief, follow-ups); notifications; reports dashboard; PowerPoint export; MCP server with OAuth 2.1; free public tools; blog; help center; referrals and share-on-social credits; automated quality judge; behavioural evals; founder admin.
-- Images generate only with `FAL_KEY` (placeholder otherwise). Video is not generated (scripts only). Email delivery needs `RESEND_API_KEY`. Performance numbers from analytics, ads, store and social platforms need their connections; until then the performance page shows workspace data and says so.
+- Images generate with `FAL_KEY` (placeholder otherwise); further image styles and video (generate, preview, download; no video publishing) from kie.ai and Higgsfield appear when their keys, the Blob store and `MEDIA_MODELS_ON` allow them. Email delivery needs `RESEND_API_KEY`. Performance numbers from analytics, ads, store and social platforms need their connections; until then the performance page shows workspace data and says so.
 - Terminology (Arabic first): نور Noor, الفريق the team, صندوق الموافقة approval inbox / الخلاصة feed, كريدت credits, ملف العلامة brand file, المهام المجدولة scheduled tasks, الحوكمة governance, التكاملات integrations.
-- Undecided: payment provider (Moyasar, Tap or Stripe links), domain, video generation, team seats and chat sharing, SMS channel.
+- Undecided: payment provider (Moyasar, Tap or Stripe links), domain, video publishing, team seats and chat sharing, SMS channel.
 
 ## Brand Commitments
 Confirmed binding:
