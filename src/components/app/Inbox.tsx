@@ -2,11 +2,11 @@
 import { targetsFor } from "@/lib/connectors/targets";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { AppDict } from "@/lib/app-i18n";
-import { IMAGE_TYPES } from "@/lib/tasks";
 import type { Task } from "@/lib/brand";
-import { limitFromError } from "./LimitModal";
+import { hasArtwork, isOurBlobUrl, type MediaModelId } from "@/lib/media-catalog";
+import MediaControls from "./MediaControls";
 import { render } from "@/lib/md";
 import { Icon, channelIcon } from "./Icons";
 import type { Lang } from "@/lib/i18n";
@@ -29,7 +29,13 @@ function Hit({ v }: { v: Violation }) {
 
 const CHAR_LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250, tiktok: 2200, whatsapp: 1024, gbp: 1500, linkedin: 3000 };
 
-export default function Inbox({ t, lang, tasks, brief, connected = [], banned = "", journey }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[]; banned?: string; journey?: Journey }) {
+/** Whether the browser has a share sheet: false on the server and in the first client render, so hydration matches. */
+const noSubscribe = () => () => {};
+const shareSheet = () => typeof navigator.canShare === "function";
+/** Our Blob store answers ?download=1 with an attachment header, so the link saves the clip instead of playing it. */
+const saveLink = (url: string) => (isOurBlobUrl(url) ? `${url}?download=1` : url);
+
+export default function Inbox({ t, lang, tasks, brief, connected = [], banned = "", journey, media = [], credits = 0, plan, paused }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[]; banned?: string; journey?: Journey; media?: MediaModelId[]; credits?: number; plan?: string; paused?: boolean }) {
   const i = t.inbox;
   const G = GUARD[lang];
   // The brand file's rules, applied here exactly as the approve and publish routes apply them.
@@ -43,8 +49,13 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [why, setWhy] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
-  const [imaging, setImaging] = useState<string | null>(null);
   const [publishing, setPublishing] = useState<string | null>(null);
+  const canShare = useSyncExternalStore(noSubscribe, shareSheet, () => false);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [ready, setReady] = useState<string | null>(null);
+  // Cards whose clip could not be read here (network or CORS): the button goes and the download link stays.
+  const [noShare, setNoShare] = useState<Record<string, boolean>>({});
+  const clips = useRef(new Map<string, File>());
   // Tasks the owner changed in this session, layered over the server-rendered list.
   const [local, setLocal] = useState<Record<string, Task>>({});
   const [failed, setFailed] = useState<string | null>(null);
@@ -69,13 +80,47 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
     forgetLocal(id);
     r.refresh();
   }
-  async function image(id: string) {
-    setImaging(id);
-    const res = await fetch(`/api/tasks/${id}/image`, { method: "POST" });
-    setImaging(null);
-    if (!res.ok) { const j = await res.json().catch(() => ({} as { error?: string })); if (!limitFromError(j.error)) alert(i.imageFail); }
-    forgetLocal(id);
-    r.refresh();
+
+  /**
+   * Save or share a clip: on a phone the share sheet offers "Save Video" to Photos. Blob URLs answer a plain GET with
+   * `access-control-allow-origin: *`, so the MP4 can be read here. The file is kept after a refusal, because a slow
+   * download can outlast the tap's permission to open the share sheet (NotAllowedError); the next tap shares at once.
+   */
+  async function saveVideo(x: Task) {
+    const url = x.videoUrl;
+    if (!url) return;
+    const link = saveLink(url);
+    let file = clips.current.get(url);
+    if (!file) {
+      setSaving(x.id);
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("fetch_failed");
+        file = new File([await res.blob()], "video.mp4", { type: "video/mp4" });
+        clips.current.set(url, file);
+      } catch {
+        setNoShare((p) => ({ ...p, [x.id]: true }));
+      } finally {
+        setSaving(null);
+      }
+    }
+    if (!file) return window.location.assign(link);
+    if (!navigator.canShare?.({ files: [file] })) {
+      // A share sheet that takes no files: save the copy already in memory instead of downloading it again.
+      const href = URL.createObjectURL(file);
+      const a = Object.assign(document.createElement("a"), { href, download: "video.mp4" });
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(href), 60_000);
+      clips.current.delete(url);
+      return;
+    }
+    try {
+      await navigator.share({ files: [file] });
+      clips.current.delete(url);
+      setReady(null);
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "NotAllowedError") setReady(x.id);
+    }
   }
 
   const shown = view.filter((x) => filter === "all" || x.status === filter);
@@ -192,12 +237,27 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
               )}
               {x.imageUrl && (
                 <div className="mt-3 flex items-start gap-3">
-                  {/* Deliberately not next/image. These URLs come from the image provider and from placehold.co, so
-                      optimising them means allowing arbitrary remote hosts in remotePatterns and paying to proxy
-                      third-party images we already pay to generate. */}
-                  {/* eslint-disable-next-line @next/next/no-img-element -- third-party image host, not a local asset */}
+                  {/* Deliberately not next/image. These URLs come from our Blob store, from fal for items made before
+                      the copy existed, and from placehold.co, so optimising them means allowing those remote hosts in
+                      remotePatterns and paying to proxy images we already pay to generate and store. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element -- remote image host, not a local asset */}
                   <img loading="lazy" decoding="async" src={x.imageUrl} alt="" className="h-40 w-40 rounded-lg object-cover" />
                   <div className="text-xs text-ink/50">{x.imageProvider === "placeholder" && <p className="mb-1 rounded-full bg-saffron/20 px-2 py-0.5 font-semibold text-sadu-deep" dir="auto">{i.placeholder}</p>}<a href={x.imageUrl} target="_blank" rel="noreferrer" className="underline">{i.download}</a>{x.imagePrompt && <p className="mt-1 line-clamp-4" dir="ltr">{x.imagePrompt}</p>}</div>
+                </div>
+              )}
+              {x.videoUrl && (
+                <div className="mt-3 flex items-start gap-3">
+                  {/* iOS Safari shows an empty box for preload="metadata" without a poster or a start offset. */}
+                  <video controls playsInline preload="metadata" poster={hasArtwork(x) ? x.imageUrl : undefined} src={`${x.videoUrl}#t=0.1`} className="h-48 rounded-lg bg-ink/5" />
+                  <div className="grid gap-1 text-xs text-ink/50">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <a href={saveLink(x.videoUrl)} target="_blank" rel="noreferrer" className="underline">{i.videoDownload}</a>
+                      {canShare && !noShare[x.id] && <button disabled={saving === x.id} onClick={() => saveVideo(x)} className="btn btn-secondary btn-xs">{saving === x.id ? `${i.videoSave}…` : i.videoSave}</button>}
+                    </span>
+                    {ready === x.id && <p role="status" className="text-oasis">{i.videoReady}</p>}
+                    <p className="text-ink/60">{i.videoNoPublish}</p>
+                    {x.videoPrompt && <p className="mt-1 line-clamp-4" dir="ltr">{x.videoPrompt}</p>}
+                  </div>
                 </div>
               )}
               {editing === x.id ? (
@@ -252,10 +312,10 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                   {x.type === "board_deck" && (
                     <a href={`/api/tasks/${x.id}/pptx`} className="btn btn-accent btn-pill">{i.pptx}</a>
                   )}
-                  {IMAGE_TYPES.includes(x.type) && (
-                    <button disabled={imaging === x.id} onClick={() => image(x.id)} className="rounded-full border border-saffron px-4 py-1.5 disabled:opacity-50">{imaging === x.id ? i.imaging : (x.imageUrl ? "↻ " : "") + i.image}</button>
-                  )}
-                  {x.channel === "instagram" && connected.includes("instagram") && x.imageProvider !== "fal" && <p className="w-full text-xs text-ink/60">{i.igNeedsImage}</p>}
+                  {/* Model pickers, image and video buttons, and the polling of a running render. It drops the local copy
+                      for the reason given in publish() above; the refresh also re-renders the sidebar balance. */}
+                  <MediaControls task={x} lang={lang} t={t} available={media} credits={credits} plan={plan ?? "trial"} paused={!!paused} onChanged={() => { forgetLocal(x.id); r.refresh(); }} />
+                  {x.channel === "instagram" && connected.includes("instagram") && !hasArtwork(x) && <p className="w-full text-xs text-ink/60">{i.igNeedsImage}</p>}
                   {x.adCode && (
                     <span title={G.codeHint} className="flex items-center gap-1 rounded-full border border-dashed border-oasis/40 bg-white px-2 py-1 text-xs">
                       <span className="text-ink/60">{G.code}</span>

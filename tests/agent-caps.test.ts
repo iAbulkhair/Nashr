@@ -1,5 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { MediaDeps } from "@/lib/media/types";
+
+/**
+ * Renders go through the media engine; the registry is its one seam, so an image test gets scripted providers and no
+ * test reaches a provider or the Blob store. Without `g.deps` the real registry answers, as in production.
+ */
+const g = vi.hoisted(() => ({ deps: null as MediaDeps | null }));
+vi.mock("@/lib/media/registry", async (orig) => {
+  const real = await orig<typeof import("@/lib/media/registry")>();
+  return { mediaDeps: () => g.deps ?? real.mediaDeps() };
+});
+
 import { json, newUser, params, settle, signIn } from "./helpers/session";
+import { fakeAdapter, fakeDeps, mediaEnv, resetMediaCounters } from "./helpers/media";
+import { ProviderError } from "@/lib/media/types";
 import { claudeOn } from "./helpers/model";
 import { getUser, saveUser, type User } from "@/lib/auth";
 import { agentSpendFor, monthKey, refund } from "@/lib/credits";
@@ -74,7 +88,7 @@ function sdk(opts: { genFails?: boolean; chat?: (p: Params) => unknown } = {}) {
   return made;
 }
 
-afterEach(() => { vi.doUnmock("@anthropic-ai/sdk"); vi.doUnmock("@/lib/model"); vi.unstubAllEnvs(); });
+afterEach(() => { vi.doUnmock("@anthropic-ai/sdk"); vi.doUnmock("@/lib/model"); vi.unstubAllEnvs(); vi.restoreAllMocks(); g.deps = null; });
 
 describe("every charging path enforces the agent's cap before charging (rules 107-108)", () => {
   it("/api/generate answers 402 agent_cap before any model call and without debiting; under the cap it charges the owning agent", async () => {
@@ -111,9 +125,15 @@ describe("every charging path enforces the agent's cap before charging (rules 10
     expect(await spend(u.email)).toEqual({ razan: 0 });
   });
 
-  it("the image route charges the owner of the item it illustrates, stops at that agent's cap, and a placeholder refunds both", async () => {
+  it("the image route charges the owner of the item it illustrates, stops at that agent's cap, a failed render refunds both, and a placeholder charges neither", async () => {
+    resetMediaCounters();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mediaEnv({ fal: true });
+    const fal = fakeAdapter("fal");
+    g.deps = fakeDeps({ fal });
     const u = await owner("cap-img");
-    await Promise.all([saveTask(u.email, task("post", "social"), true), saveTask(u.email, task("price", "pricing_review"), true)]);
+    // Every item type that takes an image is Noor's (src/lib/tasks.ts IMAGE_TYPES, src/lib/agents.ts).
+    await Promise.all(["post", "post2", "post3", "post4"].map((id) => saveTask(u.email, task(id, "social"), true)));
     await saveGov(u.email, { agentCaps: { noor: 0, razan: 5 } });
     const post = (id: string) => imageRoute.POST(json(`/api/tasks/${id}/image`, "POST"), params({ id }));
 
@@ -121,12 +141,30 @@ describe("every charging path enforces the agent's cap before charging (rules 10
     expect(stopped.status).toBe(402);
     expect(await stopped.json()).toEqual({ ok: false, error: "agent_cap", agent: "noor", spent: 0, cap: 0 });
     expect(await credits(u.email)).toBe(50);
+    expect(fal.submits, "a capped render reached the provider").toHaveLength(0);
 
-    // Razan's item is Razan's image. No FAL_KEY here, so it is the placeholder: charged, then refunded, counter included.
-    const ok = await post("price");
+    // Under the cap: charged to Noor, the item's owner, in this brand scope.
+    await saveGov(u.email, { agentCaps: { noor: 5, razan: 5 } });
+    const ok = await post("post2");
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toMatchObject({ ok: true, provider: "placeholder", credits: 50 });
-    expect(await spend(u.email)).toEqual({ razan: 0 });
+    expect(await ok.json()).toMatchObject({ ok: true, provider: "fal", credits: 49 });
+    expect(await spend(u.email)).toEqual({ noor: 1 });
+
+    // A render that fails is refunded by the engine: the balance and Noor's counter both come back.
+    g.deps = fakeDeps({ fal: fakeAdapter("fal", { submit: () => { throw new ProviderError("unavailable", 503); } }) });
+    const failed = await post("post3");
+    expect(failed.status).toBe(502);
+    expect(await failed.json()).toMatchObject({ ok: false, error: "media_failed", credits: 49 });
+    expect(await spend(u.email)).toEqual({ noor: 1 });
+
+    // No image service: the placeholder card costs nothing, so neither the balance nor the cap stands in its way.
+    mediaEnv({});
+    await saveGov(u.email, { agentCaps: { noor: 0 } });
+    const card = await post("post4");
+    expect(card.status).toBe(200);
+    expect(await card.json()).toMatchObject({ ok: true, provider: "placeholder", credits: 49 });
+    expect(await credits(u.email)).toBe(49);
+    expect(await spend(u.email)).toEqual({ noor: 1 });
   });
 
   it("MCP generate_content returns a tool error at the cap and charges nothing", async () => {
@@ -143,10 +181,15 @@ describe("every charging path enforces the agent's cap before charging (rules 10
   });
 
   it("chat generate_content, draft_items and generate_image return a sentence to relay and push limit:agent_cap", async () => {
+    resetMediaCounters();
+    // An image service is configured, so generate_image reaches the charge (without one it is a free placeholder).
+    mediaEnv({ fal: true });
+    const fal = fakeAdapter("fal");
+    g.deps = fakeDeps({ fal });
     const u = await owner("cap-chat-tools");
-    await saveTask(u.email, task("price", "pricing_review"), true);
+    await saveTask(u.email, task("post", "social"), true);
     await saveGov(u.email, { agentCaps: { razan: 0, noor: 0 } });
-    for (const [tool, input] of [["generate_content", { type: "pricing_review" }], ["draft_items", { type: "social", count: 1, brief: "منشور" }], ["generate_image", { task_id: "price" }]] as const) {
+    for (const [tool, input] of [["generate_content", { type: "pricing_review" }], ["draft_items", { type: "social", count: 1, brief: "منشور" }], ["generate_image", { task_id: "post" }]] as const) {
       const actions: string[] = [];
       const out = await runTool((await getUser(u.email))!, tool, input, actions);
       expect(out, tool).toMatch(/^Not done: (Razan|Noor) reached the monthly credit cap the owner set for this agent in Governance \(0 of 0 credits this month\), so nothing was created and no credits were used\./);
@@ -154,6 +197,7 @@ describe("every charging path enforces the agent's cap before charging (rules 10
     }
     expect(await credits(u.email)).toBe(50);
     expect(await listTasks(u.email)).toHaveLength(1);
+    expect(fal.submits, "a capped image reached the provider").toHaveLength(0);
   });
 
   it("the chat reply carries limit agent_cap, and the model is told in a sentence", async () => {
@@ -326,8 +370,9 @@ describe("model usage per agent (rule 110)", () => {
     await settle();
     const { chat } = await import("@/lib/chat");
     await chat((await getUser(u.email))!, "مرحبا", undefined, "sami");
-    const { generateImage } = await import("@/lib/images");
-    await generateImage(brand, task("post", "social"), u.email);
+    // The image prompt is written for the item's owner (src/lib/media/prompts.ts), the agent its render is charged to.
+    const { imagePrompt } = await import("@/lib/media/prompts");
+    await imagePrompt(brand, task("post", "social"), "img-fast", "square", u.email);
     const { buildFromSite } = await import("@/lib/onboard");
     await buildFromSite({ url: "https://cafe.example", ok: true, title: "Cafe", description: "", text: "", links: [], platform: "unknown" } as SiteSnapshot, "ar", undefined, u.email);
 
