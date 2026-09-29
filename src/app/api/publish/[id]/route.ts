@@ -6,12 +6,16 @@ import { gateTask } from "@/lib/brand-rules";
 import { connectedTargets, publishTask, targetsFor } from "@/lib/connectors/publish";
 import { listConnections } from "@/lib/connectors/store";
 import { decisionOf, recordDecisions } from "@/lib/decisions";
+import { forbid } from "@/lib/roles";
 
 export const maxDuration = 60;
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  // Publishing is irreversible and approves the item: admin and owner only (src/lib/roles.ts "publish").
+  const no = forbid(u, "publish");
+  if (no) return no;
   const { id } = await ctx.params;
   const t = await getTask(sc(u), id);
   if (!t) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });

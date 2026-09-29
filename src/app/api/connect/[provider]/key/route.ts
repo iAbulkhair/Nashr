@@ -6,11 +6,14 @@ import { saveConnection } from "@/lib/connectors/store";
 import { verifyWordPress } from "@/lib/connectors/wordpress";
 import { verifyWoo } from "@/lib/connectors/woocommerce";
 import { verifyBrevo, verifyOdoo, verifyPrestaShop, verifyTelegram } from "@/lib/connectors/keyed";
+import { forbid } from "@/lib/roles";
 
-/** POST key-based credentials → verify → store encrypted */
+/** POST key-based credentials → verify → store encrypted. Admin and owner only (src/lib/roles.ts "connectors"). */
 export async function POST(req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  const no = forbid(u, "connectors");
+  if (no) return no;
   const { provider } = await ctx.params;
   const p = getProvider(provider);
   if (!p || p.kind !== "key") return NextResponse.json({ ok: false, error: "unknown_provider" }, { status: 404 });

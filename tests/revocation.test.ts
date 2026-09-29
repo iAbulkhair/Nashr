@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createHash, randomBytes } from "crypto";
 import { jar, json, newUser, signIn, signOut } from "./helpers/session";
-import { createSession, currentUser, getUser } from "@/lib/auth";
+import { createSession, currentUser, getUser, saveUser } from "@/lib/auth";
 import { charge } from "@/lib/credits";
 import { createMcpToken, userFromBearer } from "@/lib/mcp";
 import { issueCode, issueTokens, listGrants, redeemCode, registerClient, rotateRefresh } from "@/lib/oauth";
@@ -46,6 +46,9 @@ describe("sessions end when the password changes", () => {
     const u = await newUser("sess");
     const old = await signIn(u.email);
     const legacy = randomBytes(32).toString("hex");
+    // Legacy sessions only exist for accounts from before 2026-09-18, which carry no creation stamp in sessionsAfter
+    // (createUser now sets one, so a re-registered address never inherits an old session).
+    await saveUser({ ...(await getUser(u.email))!, sessionsAfter: undefined });
     await db.set(`session:${legacy}`, u.email); // the format written before 2026-09-18
     jar().set("nashr_session", legacy);
     expect((await currentUser())!.email).toBe(u.email); // legacy sessions keep working until a password change

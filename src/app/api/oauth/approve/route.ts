@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth";
 import { SCOPES, getClient, issueCode, validRedirectUri } from "@/lib/oauth";
+import { forbid } from "@/lib/roles";
 
-/** Consent form POST → authorization code → redirect back to the client. */
+/**
+ * Consent form POST → authorization code → redirect back to the client.
+ *
+ * Owner only, and never while a founder impersonates (src/lib/roles.ts "oauth.approve"): the code becomes tokens that
+ * act as the whole account and outlive any session, so a member or a two-hour impersonation must not mint them.
+ */
 export async function POST(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  const no = forbid(u, "oauth.approve");
+  if (no) return no;
   const f = Object.fromEntries(new URLSearchParams(await req.text()));
   const client = await getClient(f.client_id ?? "");
   // Checked against the stored list AND against the rule itself. Registration is where the https requirement is

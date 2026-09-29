@@ -4,6 +4,7 @@ import { allow } from "@/lib/rate";
 import { analyze, ImportError, MAX_CSV_CHARS, METRICS, readRows, type MetricId } from "@/lib/perf-import";
 import { clearPerf, getPerf, savePerf } from "@/lib/perf-store";
 import { adCodeIndex } from "@/lib/brand";
+import { forbid } from "@/lib/roles";
 
 /**
  * Campaign results imported from a CSV export (src/lib/perf-import.ts). No model call and no credits: the findings
@@ -16,9 +17,16 @@ export async function GET() {
   return NextResponse.json({ ok: true, snapshot: await getPerf(sc(u)) });
 }
 
+/**
+ * An import replaces the last snapshot and rewrites performance-learnings.md, which every agent reads: replacing the
+ * data deletes what was there, so it needs what DELETE needs (admin or owner). A connected ad account's sync
+ * (`sync_ads`) is not this route: it reads the account's own numbers, never ones typed into a file.
+ */
 export async function POST(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  const no = forbid(u, "performance.import");
+  if (no) return no;
   if (!(await allow(`perf:${u.email}`, 20, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
   const b = (await req.json().catch(() => ({}))) as { csv?: unknown; file?: unknown; metric?: unknown };
   if (typeof b.csv !== "string" || !b.csv.trim()) return NextResponse.json({ ok: false, error: "no_file" }, { status: 400 });
@@ -38,6 +46,8 @@ export async function POST(req: Request) {
 export async function DELETE() {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  const no = forbid(u, "performance.delete");
+  if (no) return no;
   await clearPerf(sc(u));
   return NextResponse.json({ ok: true });
 }

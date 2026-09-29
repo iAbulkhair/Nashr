@@ -4,10 +4,11 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { Governance } from "@/lib/governance";
 import { AGENT_IDS, type AgentId } from "@/lib/agents";
 import { TASK_COST, type TaskType } from "@/lib/tasks";
+import ReadOnlyNote from "./ReadOnlyNote";
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
-    <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)} className={`relative h-6 w-11 shrink-0 rounded-full transition ${on ? "bg-oasis" : "bg-ink/20"}`}>
+    <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)} className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-oasis" : "bg-ink/20"}`}>
       <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${on ? "start-[22px]" : "start-0.5"}`} />
     </button>
   );
@@ -35,8 +36,11 @@ const validCap = (v: string) => v.trim() === "" || /^\d+$/.test(v.trim());
 /**
  * `spend` is this brand scope's credits per agent this month, rendered on the server from the User record, so the page
  * makes no request on mount.
+ *
+ * `readOnly` (everyone but the owner): the same settings, with every control disabled by the wrapping fieldset and no
+ * Save button. Display only: PUT /api/governance refuses these roles in code.
  */
-export default function GovernancePanel({ t, initial, spend }: { t: AppDict; initial: Governance; spend: Partial<Record<AgentId, number>> }) {
+export default function GovernancePanel({ t, initial, spend, readOnly = false }: { t: AppDict; initial: Governance; spend: Partial<Record<AgentId, number>>; readOnly?: boolean }) {
   const g = t.governance;
   const [gov, setGov] = useState<Governance>(initial);
   const [caps, setCaps] = useState<Record<AgentId, string>>(() => capText(initial));
@@ -69,14 +73,15 @@ export default function GovernancePanel({ t, initial, spend }: { t: AppDict; ini
     <div className="mx-auto max-w-3xl">
       <h1 className="page-title">{g.title}</h1>
       <p className="mt-2 text-ink/70">{g.sub}</p>
-      <div className="mt-6 grid gap-4">
+      {readOnly && <ReadOnlyNote text={t.readOnly.owner} />}
+      <fieldset disabled={readOnly} className="mt-6 grid min-w-0 gap-4">
         <div className="card">
           <h2 className="font-display font-medium">{g.autoApprove}</h2>
           <p className="mt-1 text-sm text-ink/60">{g.autoApproveSub}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {(Object.keys(TASK_COST) as TaskType[]).map((k) => {
               const on = !!gov.autoApprove[k];
-              return <button key={k} onClick={() => setGov({ ...gov, autoApprove: { ...gov.autoApprove, [k]: !on } })} className={`rounded-full border px-3 py-1 text-sm ${on ? "border-oasis bg-oasis text-mist" : "border-ink/20"}`}>{t.generate.types[k].t}</button>;
+              return <button key={k} onClick={() => setGov({ ...gov, autoApprove: { ...gov.autoApprove, [k]: !on } })} className={`rounded-full border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${on ? "border-oasis bg-oasis text-mist" : "border-ink/20"}`}>{t.generate.types[k].t}</button>;
             })}
           </div>
         </div>
@@ -109,12 +114,14 @@ export default function GovernancePanel({ t, initial, spend }: { t: AppDict; ini
             })}
           </ul>
         </div>
-        <div className="flex items-center gap-3">
-          <button onClick={save} disabled={busy} className="btn btn-primary btn-sm">{busy ? g.saving : g.save}</button>
-          {msg && <span role="status" className="text-sm text-oasis">{msg}</span>}
-          {err && <span role="alert" className="text-sm text-sadu-deep">{err}</span>}
-        </div>
-      </div>
+        {!readOnly && (
+          <div className="flex items-center gap-3">
+            <button onClick={save} disabled={busy} className="btn btn-primary btn-sm">{busy ? g.saving : g.save}</button>
+            {msg && <span role="status" className="text-sm text-oasis">{msg}</span>}
+            {err && <span role="alert" className="text-sm text-sadu-deep">{err}</span>}
+          </div>
+        )}
+      </fieldset>
     </div>
   );
 }
