@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { renderToReadableStream } from "react-dom/server.edge";
-import { json, newUser, signIn } from "./helpers/session";
+import { json, newMember, newUser, signIn } from "./helpers/session";
 import { saveBrand, saveTask, updateTask, type Brand } from "@/lib/brand";
 import { appDict } from "@/lib/app-i18n";
 import { DEFAULT_GOV } from "@/lib/governance";
@@ -12,8 +12,8 @@ import * as listRoute from "@/app/api/secretary/route";
 import * as itemRoute from "@/app/api/secretary/[id]/route";
 import GovernancePanel from "@/components/app/GovernancePanel";
 
-// Rules 171, 177 (the page's part) and 178 in docs/system/tests.md: the My to-dos page renders complete on the server,
-// in the brand's zone, with an agent's claim next to the fact code checked; and the governance page of rule 169.
+// Rules 204, 210 (the page's part) and 211 in docs/system/tests.md: the My to-dos page renders complete on the server,
+// in the brand's zone, with an agent's claim next to the fact code checked; and the governance page of rule 202.
 
 // The app router only exists inside Next: the page's client component gets a router whose refresh does nothing.
 vi.mock("next/navigation", async (orig) => ({ ...(await orig<typeof import("next/navigation")>()), useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
@@ -24,7 +24,7 @@ const render = async (lang: "ar" | "en") => new Response(await renderToReadableS
 const add = async (body: Record<string, unknown>) => (await (await listRoute.POST(json("/api/secretary", "POST", body))).json()).item;
 const patch = (id: string, body: unknown) => itemRoute.PATCH(json(`/api/secretary/${id}`, "PATCH", body), { params: Promise.resolve({ id }) });
 
-describe("the My to-dos page renders complete on the server (rule 171)", () => {
+describe("the My to-dos page renders complete on the server (rule 204)", () => {
   it("shows every bucket with Riyadh dates, the row actions, the approvals line and the add form", async () => {
     const u = await newUser("todopage");
     await saveBrand(u.email, BRAND);
@@ -74,7 +74,7 @@ describe("the My to-dos page renders complete on the server (rule 171)", () => {
     expect(en).toContain(formatWhen(soon.dueAt, false, "en", Date.now()));
   });
 
-  it("shows an agent's 'done' as a claim and, next to it, the fact code read from the linked inbox item (rule 178)", async () => {
+  it("shows an agent's 'done' as a claim and, next to it, the fact code read from the linked inbox item (rule 211)", async () => {
     const u = await newUser("todofact");
     await saveBrand(u.email, BRAND);
     await signIn(u.email);
@@ -104,7 +104,7 @@ describe("the My to-dos page renders complete on the server (rule 171)", () => {
     expect(agenda).toContain("checked by the app: The linked inbox item «منشور اليوم الوطني» is still waiting for your approval.");
   });
 
-  it("writes dates and the zone name in the brand's own time zone (rule 177)", async () => {
+  it("writes dates and the zone name in the brand's own time zone (rule 210)", async () => {
     const u = await newUser("todozone");
     await saveBrand(u.email, { ...BRAND, city: "دبي", timeZone: "Asia/Dubai" });
     await signIn(u.email);
@@ -116,6 +116,24 @@ describe("the My to-dos page renders complete on the server (rule 171)", () => {
     expect(html).toContain("بتوقيت دبي");
     expect(html).toContain(formatWhen(it.dueAt, false, "ar", Date.now(), "Asia/Dubai"));
     expect(html).toContain("10:00 ص");
+  });
+
+  it("hides the closing controls from a plain member (rule 212)", async () => {
+    const o = await newUser("todoroles");
+    await saveBrand(o.email, BRAND);
+    await signIn(o.email);
+    const it = await add({ title: "Shared item" });
+    await runTool(o, "todo_propose_done", { id: it.id, evidence: "Done in the shop" }, []);
+    await add({ title: "Another shared item" });
+    const m = await newMember(o, "member", "todom");
+    await signIn(m.email);
+    const html = await render("en");
+    expect(html).toContain("Shared item");
+    for (const label of [">Done<", ">Delete<", ">Yes, it&#x27;s done<", ">Not yet<"]) expect(html, label).not.toContain(label);
+    expect(html).toContain(">Snooze<");
+    await signIn(o.email);
+    const ownerHtml = await render("en");
+    for (const label of [">Done<", ">Delete<", ">Not yet<"]) expect(ownerHtml, label).toContain(label);
   });
 
   it("uses logical properties only, so it reads right to left", () => {
@@ -131,7 +149,7 @@ describe("the My to-dos page renders complete on the server (rule 171)", () => {
   });
 });
 
-describe("the governance page offers a monthly cap only where it applies (rule 169)", () => {
+describe("the governance page offers a monthly cap only where it applies (rule 202)", () => {
   it("lists every agent that owns a paid type and leaves Reem out", async () => {
     const t = appDict.en;
     const html = await new Response(await renderToReadableStream(createElement(GovernancePanel, { t, initial: DEFAULT_GOV, spend: {} }))).text();

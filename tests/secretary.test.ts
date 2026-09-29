@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { json, newUser, params, signIn, signOut } from "./helpers/session";
+import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { db } from "@/lib/db";
 import { getUser, type User } from "@/lib/auth";
 import { saveBrand, saveTask, updateTask, type Brand, type Task } from "@/lib/brand";
@@ -27,8 +27,8 @@ import * as listRoute from "@/app/api/secretary/route";
 import * as itemRoute from "@/app/api/secretary/[id]/route";
 import * as mcpRoute from "@/app/api/mcp/route";
 
-// Rules 156-178 in docs/system/tests.md: Reem, the secretary (phase 1). Rules 166, 167, 175 and the cron part of 160 are
-// in secretary-brief.test.ts; 171, 178, the page's part of 177 and the governance page of 169 in secretary-page.test.ts.
+// Rules 189-211 in docs/system/tests.md: Reem, the secretary (phase 1). Rules 199, 200, 208 and the cron part of 160 are
+// in secretary-brief.test.ts; 171, 211, the page's part of 177 and the governance page of 169 in secretary-page.test.ts.
 
 const BRAND: Brand = { name: "محمصة ريف", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "دافئ", products: "قهوة", audience: "محبو القهوة", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-09-29" };
 const create = (body: unknown) => listRoute.POST(json("/api/secretary", "POST", body));
@@ -61,7 +61,7 @@ const memKeys = () => { const m = (globalThis as unknown as { __nashrMem: Mem })
 
 afterEach(() => vi.restoreAllMocks());
 
-describe("every secretary route needs a session (rule 156)", () => {
+describe("every secretary route needs a session (rule 189)", () => {
   it("answers 401 to an anonymous caller and stores nothing", async () => {
     signOut();
     const before = memKeys().filter((k) => k.startsWith("sec:")).length;
@@ -72,7 +72,7 @@ describe("every secretary route needs a session (rule 156)", () => {
   });
 });
 
-describe("tenant isolation (rule 157)", () => {
+describe("tenant isolation (rule 190)", () => {
   it("another account's item id is 404 on every action, whatever scope or email the body names, and the item is untouched", async () => {
     const a = await owner("seca");
     const it1 = await add({ title: "A's private to-do", dueAt: inDays(2) });
@@ -126,7 +126,7 @@ describe("tenant isolation (rule 157)", () => {
   });
 });
 
-describe("only the owner closes an item, and closing needs a result (rule 158)", () => {
+describe("only the owner closes an item, and closing needs a result (rule 191)", () => {
   it("refuses a completion without a written result, then completes with one", async () => {
     const u = await owner("secdone");
     const it1 = await add({ title: "Send the quote" });
@@ -206,7 +206,7 @@ describe("only the owner closes an item, and closing needs a result (rule 158)",
   });
 });
 
-describe("the deterministic close: a linked inbox item approved (rule 159)", () => {
+describe("the deterministic close: a linked inbox item approved (rule 192)", () => {
   const task = (id: string): Task => ({ id, type: "social", channel: "instagram", title: "Post", body: "b", status: "pending", createdAt: new Date().toISOString(), lang: "ar" });
 
   it("closes only when the linked task is approved, with the fixed result", async () => {
@@ -273,7 +273,7 @@ describe("the deterministic close: a linked inbox item approved (rule 159)", () 
   });
 });
 
-describe("soft delete, restore and the purge (rule 160)", () => {
+describe("soft delete, restore and the purge (rule 193)", () => {
   it("deletes softly, lists it as restorable, restores it, and refuses other changes while deleted", async () => {
     const u = await owner("secdel");
     const it1 = await add({ title: "Delete me", dueAt: inDays(1) });
@@ -316,7 +316,7 @@ describe("soft delete, restore and the purge (rule 160)", () => {
   });
 });
 
-describe("one writer at a time per item, checked against rev (rule 161)", () => {
+describe("one writer at a time per item, checked against rev (rule 194)", () => {
   it("lands concurrent changes without losing one", async () => {
     const u = await owner("seclock");
     const it1 = await add({ title: "Busy item" });
@@ -340,7 +340,7 @@ describe("one writer at a time per item, checked against rev (rule 161)", () => 
   });
 });
 
-describe("limits (rule 162)", () => {
+describe("limits (rule 195)", () => {
   it("allows 200 new items a day per account, across its brands", async () => {
     const u = await owner("secrate");
     await db.set(`rate:sec:create:${u.email}`, SEC_CREATE_PER_DAY - 1, 86400);
@@ -385,7 +385,7 @@ describe("limits (rule 162)", () => {
   });
 });
 
-describe("input is bounded, typed and cleaned (rule 163)", () => {
+describe("input is bounded, typed and cleaned (rule 196)", () => {
   it("refuses over-long fields instead of cutting them", async () => {
     await owner("secbounds");
     for (const body of [{ title: "x".repeat(201) }, { title: "ok", description: "x".repeat(2001) }, { title: "ok", owedTo: "x".repeat(81) }, { title: "ok", direction: "they_owe", owedBy: "x".repeat(81) }]) {
@@ -431,7 +431,7 @@ describe("input is bounded, typed and cleaned (rule 163)", () => {
   });
 });
 
-describe("the agenda is computed in Riyadh time (rule 164)", () => {
+describe("the agenda is computed in Riyadh time (rule 197)", () => {
   it("reads dates as Riyadh wall time and writes them back the same way", () => {
     const now = Date.parse("2026-09-29T12:00:00Z");
     expect(parseWhen("2026-10-02T10:00", now)).toEqual({ ok: true, at: "2026-10-02T07:00:00.000Z", allDay: false });
@@ -500,7 +500,7 @@ describe("the agenda is computed in Riyadh time (rule 164)", () => {
   });
 });
 
-describe("the agenda read is batched (rule 165)", () => {
+describe("the agenda read is batched (rule 198)", () => {
   it("makes the same number of store calls for 3 items as for 40, linked items included", async () => {
     const pending = (id: string): Task => ({ id, type: "social", channel: "instagram", title: "Post", body: "b", status: "pending", createdAt: new Date().toISOString(), lang: "ar" });
     const small = await owner("secsmall");
@@ -530,7 +530,7 @@ describe("the agenda read is batched (rule 165)", () => {
   });
 });
 
-describe("account deletion removes the whole list (rule 168)", () => {
+describe("account deletion removes the whole list (rule 201)", () => {
   it("deletes every sec:* key of every brand scope", async () => {
     const u = await owner("secwipe");
     await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
@@ -549,7 +549,7 @@ describe("account deletion removes the whole list (rule 168)", () => {
   });
 });
 
-describe("Reem is in the registry everywhere (rule 169)", () => {
+describe("Reem is in the registry everywhere (rule 202)", () => {
   it("is an agent with no deliverable types, and no task type is hers", () => {
     const reem = AGENTS.find((a) => a.id === "reem");
     expect(reem).toMatchObject({ name: { ar: "ريم", en: "Reem" }, role: { ar: "السكرتيرة", en: "Secretary" }, tasks: [], skills: "secretary" });
@@ -586,7 +586,7 @@ describe("Reem is in the registry everywhere (rule 169)", () => {
   });
 });
 
-describe("chat and MCP tools (rule 170)", () => {
+describe("chat and MCP tools (rule 203)", () => {
   it("todo_create is free, saves in the caller's scope and reads the stored date back in the owner's language", async () => {
     const u = await owner("sectool");
     const before = (await getUser(u.email))!.credits;
@@ -670,7 +670,7 @@ describe("chat and MCP tools (rule 170)", () => {
   });
 });
 
-describe("private notes never reach a model (rule 172)", () => {
+describe("private notes never reach a model (rule 205)", () => {
   it("keeps the owner's private note out of chat and MCP answers, and only the owner writes one", async () => {
     const u = await owner("secprivate");
     const it1 = await add({ title: "Negotiate the rent" });
@@ -694,7 +694,7 @@ describe("private notes never reach a model (rule 172)", () => {
   });
 });
 
-describe("agents know today's Riyadh date, and nothing promises a reminder at the due time (rule 173)", () => {
+describe("agents know today's Riyadh date, and nothing promises a reminder at the due time (rule 206)", () => {
   it("puts the current Riyadh date and time in every agent's uncached prompt block", () => {
     const u = { email: "x@test.example", credits: 5, plan: "starter", trialEnds: "2026-10-01" } as User;
     for (const agent of AGENTS) {
@@ -726,7 +726,7 @@ describe("agents know today's Riyadh date, and nothing promises a reminder at th
   });
 });
 
-describe("Arabic counts agree with the counted noun (rule 174)", () => {
+describe("Arabic counts agree with the counted noun (rule 207)", () => {
   it("uses the singular, dual, plural and the singular after 11 the way Arabic does", () => {
     const f = { one: "عنصر واحد", two: "عنصران", few: "عناصر", many: "عنصرًا", hundred: "عنصر" };
     expect([1, 2, 3, 10, 11, 99, 100, 101, 103, 111, 200].map((n) => arCount(n, f))).toEqual(["عنصر واحد", "عنصران", "3 عناصر", "10 عناصر", "11 عنصرًا", "99 عنصرًا", "100 عنصر", "101 عنصر", "103 عناصر", "111 عنصرًا", "200 عنصر"]);
@@ -737,7 +737,7 @@ describe("Arabic counts agree with the counted noun (rule 174)", () => {
   });
 });
 
-describe("the chase clock and cold items (rule 176)", () => {
+describe("the chase clock and cold items (rule 209)", () => {
   // Thursday 1 October 2026, 10:00 in Riyadh (07:00 UTC).
   const THU = Date.parse("2026-10-01T07:00:00Z");
   it("counts working days in the brand's zone, skipping its weekend", () => {
@@ -807,7 +807,7 @@ describe("the chase clock and cold items (rule 176)", () => {
   });
 });
 
-describe("each brand keeps its list in its own Gulf time zone (rule 177)", () => {
+describe("each brand keeps its list in its own Gulf time zone (rule 210)", () => {
   it("reads the zone from the brand, else its city, else its dialect, else Riyadh; only allow-listed zones", () => {
     expect(zoneOf(null)).toBe("Asia/Riyadh");
     expect(zoneOf({ timeZone: "Asia/Muscat" })).toBe("Asia/Muscat");
@@ -854,5 +854,33 @@ describe("each brand keeps its list in its own Gulf time zone (rule 177)", () =>
     expect(await runTool(u, "agenda_get", {}, [])).toMatch(/^Agenda now \(Dubai time, UTC\+4/);
     const text = system({ ...BRAND, timeZone: "Asia/Dubai" }, { email: u.email, credits: 5, plan: "starter", trialEnds: "2026-10-01" } as User, [], "", [], [], "reem")[2].text;
     expect(text).toMatch(/^NOW \(Dubai, UTC\+4\)/);
+  });
+});
+
+describe("a team shares the list: members change items, the owner and admins close them (rule 212)", () => {
+  it("lets a member add, update, snooze and record a follow-up, and refuses the closing actions with nothing changed", async () => {
+    const o = await owner("secteam");
+    const it1 = await add({ title: "Owner's item", dueAt: inDays(2) });
+    const debt = await add({ title: "Invoice from Ahmad", direction: "they_owe", owedBy: "أحمد" });
+    const member = await newMember(o, "member", "secm");
+    await signIn(member.email);
+    const mine = await add({ title: "Added by a member" });
+    expect((await patch(it1.id, { title: "Renamed by a member" })).status).toBe(200);
+    expect((await patch(it1.id, { action: "snooze", preset: "2h" })).status).toBe(200);
+    expect((await patch(debt.id, { action: "chased" })).status).toBe(200);
+    for (const body of [{ action: "complete", result: "done" }, { action: "delete" }, { action: "confirm_done" }, { action: "reject_done" }]) {
+      const r = await patch(mine.id, body);
+      expect(r.status, JSON.stringify(body)).toBe(403);
+    }
+    expect(await getItem(o.email, mine.id)).toMatchObject({ completedAt: null, deletedAt: null, rev: 1 });
+    // The audit names the person who acted.
+    const log = (await db.lrange(SEC_KEYS.audit(o.email), 0, -1)).map((x) => JSON.parse(x));
+    expect(log.find((l) => l.id === mine.id && l.action === "create")).toMatchObject({ actor: "owner", via: "web", login: member.email });
+    // An admin closes.
+    const admin = await newMember(o, "admin", "seca");
+    await signIn(admin.email);
+    expect((await patch(mine.id, { action: "complete", result: "Done by the admin" })).status).toBe(200);
+    expect((await patch(it1.id, { action: "delete" })).status).toBe(200);
+    expect((await patch(it1.id, { action: "restore" })).status).toBe(200);
   });
 });

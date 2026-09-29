@@ -50,6 +50,7 @@ export type AppRoute = { path: string; heading: Partial<Record<Lang, string>> & 
 /** Reachable only with a session. Every one of these redirects a signed-out visitor to the login page. */
 export const APP_ROUTES: AppRoute[] = [
   { path: "/app", heading: { en: "Approval inbox" } },
+  { path: "/app/todo", heading: { en: "My to-dos" } },
   { path: "/app/tasks", heading: { en: "Scheduled tasks" } },
   { path: "/app/calendar", heading: { en: "Calendar" } },
   { path: "/app/chat", heading: { en: "Noor" } },
@@ -59,6 +60,7 @@ export const APP_ROUTES: AppRoute[] = [
   { path: "/app/files", heading: { en: "Files" } },
   { path: "/app/brands", heading: { en: "Brands" } },
   { path: "/app/governance", heading: { en: "Governance" } },
+  { path: "/app/team", heading: { en: "Members" } },
   { path: "/app/integrations", heading: { en: "Integrations" } },
   { path: "/app/inspo", heading: { en: "Gulf inspiration" } },
   { path: "/app/notifications", heading: { en: "Notifications" } },
@@ -72,4 +74,5 @@ export const APP_ROUTES: AppRoute[] = [
 ];
 
 /** Reachable without a session: the layout's PUBLIC list. */
-export const APP_PUBLIC_ROUTES = ["/app/login", "/app/signup", "/app/forgot", "/app/reset", "/app/admin"];
+/** `/app/join` accepts a team invite; its token travels in the URL fragment, so a plain visit shows "link incomplete". */
+export const APP_PUBLIC_ROUTES = ["/app/login", "/app/signup", "/app/forgot", "/app/reset", "/app/admin", "/app/join"];

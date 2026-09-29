@@ -15,7 +15,7 @@ import { briefOf, getBrand, listPreferencesFor, saveBrand, saveTask, listLite, u
 import { feedbackBlock, feedbackFor } from "./feedback";
 import { IMAGE_TYPES, TASK_COST, TASK_COUNT, TASK_TYPES, isTaskType, type TaskType } from "./tasks";
 import { generate } from "./noor";
-import { FileLimitError, MAX_FILES, listFileNames, memoryBlock, readFile, writeFile } from "./files";
+import { CORE_FILES, FileLimitError, MAX_FILES, listFileNames, memoryBlock, readFile, safeName, writeFile } from "./files";
 import { getGov } from "./governance";
 import { warnAgentCap } from "./notifications";
 import { activeSeasons } from "./seasons";
@@ -30,6 +30,7 @@ import { explain, gateTask, initialStatus } from "./brand-rules";
 import { SEC_TOOL_DEFS, isSecTool, runSecretaryTool } from "./secretary";
 import { nowLine } from "./secretary-agenda";
 import { zoneOf } from "./zones";
+import { can, type Action } from "./roles";
 
 export type ChatItem = { id: string; type: TaskType; channel: string; title: string; body: string; status: string };
 export type ChatMsg = { role: "user" | "assistant"; content: string; at: string; actions?: string[]; agent?: AgentId; /** items created by tools during this turn, rendered as cards */ items?: ChatItem[]; /** workspace files written during this turn, rendered as collapsible cards (first-run onboarding) */ files?: { name: string; content: string }[]; /** starter plan proposed at the end of onboarding */ plan?: PlanItem[] };
@@ -285,14 +286,24 @@ function capReached(r: { agent: AgentId; spent: number; cap: number }): string {
 }
 
 /**
+ * Tools that change what the whole account publishes or knows, gated by the acting person's role exactly like the
+ * route that does the same thing (src/lib/roles.ts): the brand form, the publish button, the catalog import. Checked
+ * here in code, so asking Noor — in the app or over MCP — is never a way around the route's gate. A user with no actor
+ * (nothing resolved who is acting) is refused, like every role check.
+ */
+export const TOOL_ACTION: Readonly<Record<string, Action>> = { update_brand: "brand.write", publish_item: "publish", import_catalog: "catalog.import" };
+
+/**
  * Exported for tests: the code-level gates on tools (approval before publishing) must hold without a model in the loop.
  * `deadline` is the chat request's (see chat()); a call outside a chat turn counts as the start of one.
  */
 export async function runTool(user: User, name: string, input: Record<string, unknown>, actions: string[], made: Task[] = [], deadline = deadlineFor(CHAT_MAX_DURATION_S), ctx: { lang?: "ar" | "en"; agent?: AgentId } = {}): Promise<string> {
   const email = user.scope ?? user.email;
+  const needs = Object.prototype.hasOwnProperty.call(TOOL_ACTION, name) ? TOOL_ACTION[name] : null;
+  if (needs && !can(user, needs)) return `Not done: ${name} needs the owner or an admin of this account, and the person chatting is neither. Nothing was changed. Tell them plainly that the account owner or an admin can do this, and do not try another way around it.`;
   // The secretary's tools: free, no model call, scoped to this user's active brand, and unable to close an item.
   if (isSecTool(name)) {
-    const r = await runSecretaryTool(user, name, input, { who: { actor: ctx.agent ?? "reem", via: "chat" }, lang: ctx.lang ?? user.lang });
+    const r = await runSecretaryTool(user, name, input, { who: { actor: ctx.agent ?? "reem", via: "chat", login: user.actor?.email }, lang: ctx.lang ?? user.lang });
     if (!r.isError && name !== "agenda_get") actions.push(`todo:${name}:${r.id ?? ""}`);
     return r.text;
   }
@@ -400,6 +411,10 @@ export async function runTool(user: User, name: string, input: Record<string, un
       return f ? f.content.slice(0, 12000) : "File not found.";
     }
     case "write_file": {
+      // Core memory (brand.md, products.md, strategy.md, …) is what every agent reads; overwriting or blanking one is
+      // a brand change, gated in code like PUT /api/files, never left to the model's judgement.
+      const target = safeName(String(input.name ?? ""));
+      if (CORE_FILES.includes(target) && !can(user, "files.core.write")) return `Not done: ${target} is core memory that every agent reads, and writing it needs the owner or an admin of this account; the person chatting is neither. Nothing was changed. Tell them plainly, and offer to save the text under a different file name instead.`;
       // The workspace has a file ceiling. Tell the agent plainly rather than throwing out of the turn: it can then
       // say so to the owner, or overwrite an existing file, instead of the message failing with nothing shown.
       let f;

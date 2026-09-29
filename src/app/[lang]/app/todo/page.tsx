@@ -4,6 +4,7 @@ import { appDict } from "@/lib/app-i18n";
 import { currentUser, sc } from "@/lib/auth";
 import { todoPage } from "@/lib/secretary";
 import { isAgentId } from "@/lib/agents";
+import { can } from "@/lib/roles";
 import {
   AGENDA_BUCKETS, AUTO_CLOSE_RESULT, approvalsLine, formatWhen, linkFactText, nextStepText, noteText, partyName, zoneLocalInput, zoneTimeLabel,
   type AgendaEntry, type SecItem,
@@ -67,6 +68,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
       done={done.map((it) => row(it))}
       deleted={deleted.map((it) => row(it))}
       tonight={tonight}
+      canClose={can(u, "todo.close")}
     />
   );
 }

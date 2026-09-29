@@ -1,35 +1,78 @@
 import { NextResponse } from "next/server";
-import { createSession, currentUser, destroySession, revokeSessions, verifyPassword, strongPassword } from "@/lib/auth";
+import bcrypt from "bcryptjs";
+import { createSession, currentUser, destroySession, revokeSessions, saveUser, strongPassword, type User } from "@/lib/auth";
 import { withUserLock } from "@/lib/credits";
 import { wipeAccount } from "@/lib/account";
 import { revokeAllMcp } from "@/lib/mcp";
-import bcrypt from "bcryptjs";
-import { saveUser } from "@/lib/auth";
+import { forbid } from "@/lib/roles";
+import { getMember, saveMember, withMemberLock } from "@/lib/team";
 
-/** PATCH {currentPassword, newPassword} · DELETE {password} → wipe account */
+/**
+ * The acting LOGIN's own password hash: the member record for a member, the owner record for the owner. Null for any
+ * other actor (a founder impersonating, a token) and for a member no longer in this account. The account record's
+ * hash is never the answer for a member: knowing the owner's password must not let a member act as the owner.
+ */
+async function ownHash(u: User): Promise<string | null> {
+  const a = u.actor;
+  if (a?.kind === "owner" && a.email === u.email) return u.passHash;
+  if (a?.kind !== "member") return null;
+  const m = await getMember(a.email);
+  return m && m.memberOf === u.email && !m.disabled ? m.passHash : null;
+}
+const matches = async (u: User, password: unknown) => {
+  const hash = await ownHash(u);
+  return !!hash && typeof password === "string" && (await bcrypt.compare(password, hash));
+};
+
+/**
+ * PATCH {currentPassword, newPassword}: the acting login changes ITS OWN password. A member rewrites the member record
+ * and signs out only its own other devices; the owner rewrites the account's and also loses every MCP token and grant.
+ * Refused while a founder impersonates. DELETE {password}: wipe the account, owner only.
+ */
 export async function PATCH(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  const no = forbid(u, "password.change");
+  if (no) return no;
+  const a = u.actor!;
   const b = (await req.json().catch(() => ({}))) as { currentPassword?: string; newPassword?: string };
-  const pw = b.newPassword ?? "";
+  const pw = typeof b.newPassword === "string" ? b.newPassword : "";
   if (!strongPassword(pw)) return NextResponse.json({ ok: false, error: "weak_password" }, { status: 400 });
-  if (!(await verifyPassword(u, b.currentPassword ?? ""))) return NextResponse.json({ ok: false, error: "wrong_password" }, { status: 401 });
+  if (!(await matches(u, b.currentPassword))) return NextResponse.json({ ok: false, error: "wrong_password" }, { status: 401 });
   const hash = await bcrypt.hash(pw, 10);
-  // Inside the user lock, on the fresh record: saving the copy read at the start of the request could undo a credit charge.
-  await withUserLock(u.email, async (x) => { x.passHash = hash; revokeSessions(x); await saveUser(x); });
-  // Every other device is signed out, and every MCP token and connected app dies with the old password, exactly as in
-  // the reset route: a stolen bearer token must not outlive the password it was obtained with.
-  await revokeAllMcp(u.email);
+
+  if (a.kind === "member") {
+    // The member record only, under its own lock. Every other device of this member is signed out; the owner's hash,
+    // sessions, MCP token and connected apps are not touched.
+    const done = await withMemberLock(a.email, async (m) => {
+      if (m.memberOf !== u.email) return false;
+      m.passHash = hash;
+      m.sessionsAfter = new Date().toISOString();
+      await saveMember(m);
+      return true;
+    });
+    if (!done) return NextResponse.json({ ok: false }, { status: 401 });
+  } else {
+    // Inside the user lock, on the fresh record: saving the copy read at the start of the request could undo a credit charge.
+    await withUserLock(u.email, async (x) => { x.passHash = hash; revokeSessions(x); await saveUser(x); });
+    // Every other device is signed out, and every MCP token and connected app dies with the old password, exactly as in
+    // the reset route: a stolen bearer token must not outlive the password it was obtained with.
+    await revokeAllMcp(u.email);
+  }
+  // This device stays signed in, as the same login that made the change.
   await destroySession();
-  await createSession(u.email);
+  await createSession(a.email);
   return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  // Owner only, never while a founder impersonates: the wipe cascades to every member login, invite and brand.
+  const no = forbid(u, "account.delete");
+  if (no) return no;
   const b = (await req.json().catch(() => ({}))) as { password?: string };
-  if (!(await verifyPassword(u, b.password ?? ""))) return NextResponse.json({ ok: false, error: "wrong_password" }, { status: 401 });
+  if (!(await matches(u, b.password))) return NextResponse.json({ ok: false, error: "wrong_password" }, { status: 401 });
   await wipeAccount(u.email);
   await destroySession();
   return NextResponse.json({ ok: true });

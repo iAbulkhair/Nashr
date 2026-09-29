@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
+import { can, forbid } from "@/lib/roles";
 import { allow } from "@/lib/rate";
 import { getTask } from "@/lib/brand";
-import { SEC_ID, SEC_WRITES_PER_HOUR, changeItem, parseOwnerChange, zoneFor } from "@/lib/secretary";
+import { OWNER_ONLY, SEC_ID, SEC_WRITES_PER_HOUR, changeItem, parseOwnerChange, zoneFor } from "@/lib/secretary";
 
 /**
  * The owner's change to one item of the active brand: update fields, complete (a result is required), snooze,
@@ -10,11 +11,14 @@ import { SEC_ID, SEC_WRITES_PER_HOUR, changeItem, parseOwnerChange, zoneFor } fr
  * (`chased`: the chase clock restarts, the item stays open). This route is the only way an item becomes done, apart
  * from the linked-approval rule in code. The id must match `SEC_ID` before any key is built and must exist under
  * `sc(u)`: another account's id is 404 and stays untouched. `rev`, when sent, must match. Dates are read in the brand's
- * zone.
+ * zone. Roles: any member changes items (`todo.write`); closing, confirming or sending back a claim, deleting and
+ * restoring need the owner or an admin (`todo.close`).
  */
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  const no = forbid(u, "todo.write");
+  if (no) return no;
   const { id } = await ctx.params;
   if (!SEC_ID.test(id)) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   if (!(await allow(`sec:write:${u.email}`, SEC_WRITES_PER_HOUR, 3600))) return NextResponse.json({ ok: false, error: "too_many" }, { status: 429 });
@@ -26,10 +30,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const zone = await zoneFor(scope);
   const change = parseOwnerChange(b, Date.now(), zone);
   if ("ok" in change) return NextResponse.json({ ok: false, error: change.error, ...(change.field ? { field: change.field } : {}) }, { status: change.status });
+  if (OWNER_ONLY.has(change.action) && !can(u, "todo.close")) return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
   // A new link must name an inbox item of this same brand.
   if (change.action === "update" && change.fields.taskId && !(await getTask(scope, change.fields.taskId))) return NextResponse.json({ ok: false, error: "unknown_task", field: "taskId" }, { status: 400 });
   const rev = typeof b.rev === "number" && Number.isInteger(b.rev) ? b.rev : undefined;
-  const r = await changeItem(scope, id, change, { actor: "owner", via: "web" }, rev, zone);
+  const r = await changeItem(scope, id, change, { actor: "owner", via: "web", login: u.actor?.email }, rev, zone);
   if (!r.ok) return NextResponse.json({ ok: false, error: r.error, ...(r.field ? { field: r.field } : {}), ...(r.error === "conflict" && r.item ? { item: r.item } : {}) }, { status: r.status });
   return NextResponse.json({ ok: true, item: r.item });
 }

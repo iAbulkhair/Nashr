@@ -2,16 +2,21 @@
 import { useEffect, useState } from "react";
 import type { Lang } from "@/lib/i18n";
 import { Icon } from "./Icons";
+import ReadOnlyNote from "./ReadOnlyNote";
 
-export default function McpPanel({ lang, origin, draftsPerHour }: { lang: Lang; origin: string; draftsPerHour: number }) {
+/**
+ * `canToken` / `canGrants`: the personal token and the connected apps are the owner's in v1, so other roles see neither
+ * and nothing is fetched for them; the routes refuse them regardless. A founder viewing the account sees the apps only.
+ */
+export default function McpPanel({ lang, origin, draftsPerHour, canToken = true, canGrants = true }: { lang: Lang; origin: string; draftsPerHour: number; canToken?: boolean; canGrants?: boolean }) {
   const ar = lang === "ar";
   const [exists, setExists] = useState(false);
   const [token, setToken] = useState("");
   const [grants, setGrants] = useState<{ id: string; client_name: string; createdAt: string; lastIssuedAt: string }[]>([]);
   useEffect(() => {
-    fetch("/api/mcp/token").then((r) => r.json()).then((j) => setExists(!!j.exists));
-    fetch("/api/mcp/grants").then((r) => r.json()).then((j) => setGrants(j.grants ?? []));
-  }, []);
+    if (canToken) fetch("/api/mcp/token").then((r) => r.json()).then((j) => setExists(!!j.exists)).catch(() => {});
+    if (canGrants) fetch("/api/mcp/grants").then((r) => r.json()).then((j) => setGrants(j.grants ?? [])).catch(() => {});
+  }, [canToken, canGrants]);
   async function disconnect(id: string) {
     const r = await fetch(`/api/mcp/grants?id=${id}`, { method: "DELETE" });
     if (r.ok) setGrants((g) => g.filter((x) => x.id !== id));
@@ -27,7 +32,12 @@ export default function McpPanel({ lang, origin, draftsPerHour }: { lang: Lang; 
     <div className="mx-auto max-w-3xl">
       <h1 className="page-title">{ar ? "نور داخل Claude و ChatGPT (MCP)" : "Noor inside Claude and ChatGPT (MCP)"}</h1>
       <p className="mt-2 text-ink/70">{ar ? "اربط نور بأي مساعد يدعم MCP. تكتب في Claude «جهزي 10 منشورات» وتظهر في صندوق موافقتك هنا." : "Connect Noor to any MCP-capable assistant. Type “prepare 10 posts” in Claude and they land in your inbox here."}</p>
-      <div className="mt-6 card">
+      {/* Connected apps without the token is a founder viewing the account: the token is refused while impersonating, the
+          apps are not. Anyone else without the token is a member or admin, for whom both are the owner's alone. */}
+      {!canToken && <ReadOnlyNote className="mt-4" text={canGrants
+        ? (ar ? "أثناء تصفّح هذا الحساب كمؤسس لا يُنشأ الرمز الشخصي ولا يُعرض. تستطيع مراجعة التطبيقات المتصلة وفصلها أدناه." : "While you view this account as the founder, the personal token cannot be created or shown. You can review and disconnect the connected apps below.")
+        : (ar ? "ربط نور بـ Claude و ChatGPT يديره مالك الحساب: الرمز الشخصي والتطبيقات المتصلة له وحده." : "The account owner manages connecting Noor to Claude and ChatGPT: the personal token and connected apps are theirs alone.")} />}
+      {canToken && <div className="mt-6 card">
         <p className="text-xs uppercase tracking-wide text-ink/50">{ar ? "رمز الوصول" : "Access token"}</p>
         {token ? <code className="mt-1 block break-all rounded bg-salt-dim p-3 text-sm" dir="ltr">{token}</code> : <p className="mt-1 text-sm text-ink/60">{exists ? (ar ? "يوجد رمز نشط. أنشئ رمزاً جديداً لعرضه (القديم يُلغى)." : "A token exists. Generate a new one to see it (old one is revoked).") : ar ? "لا يوجد رمز بعد." : "No token yet."}</p>}
         {token && <p className="mt-2 text-xs text-sadu">{ar ? "يظهر مرة واحدة. انسخه الآن." : "Shown once. Copy it now."}</p>}
@@ -35,8 +45,8 @@ export default function McpPanel({ lang, origin, draftsPerHour }: { lang: Lang; 
           <button onClick={gen} className="btn btn-primary btn-pill">{ar ? "أنشئ رمزاً" : "Generate token"}</button>
           {exists && <button onClick={revoke} className="rounded-full border border-sadu/40 px-4 py-2 text-sm text-sadu">{ar ? "ألغِ" : "Revoke"}</button>}
         </div>
-      </div>
-      <div className="mt-6 rounded-xl border border-oasis/30 bg-white p-5">
+      </div>}
+      {canGrants && <div className="mt-6 rounded-xl border border-oasis/30 bg-white p-5">
         <h2 className="font-display text-xl font-bold">{ar ? "الطريقة الأسهل: OAuth (بدون رمز)" : "Easiest: OAuth (no token)"}</h2>
         <p className="mt-1 text-sm text-ink/70">{ar ? "في Claude (الويب/سطح المكتب) → Settings → Connectors → Add custom connector → الصق الرابط. سيفتح صفحة تسجيل دخول نشر ثم «Allow»." : "In Claude (web/desktop) → Settings → Connectors → Add custom connector → paste the URL. It opens Nashr login, then “Allow”."}</p>
         <code className="mt-2 block rounded bg-salt-dim p-3 text-sm" dir="ltr">{url}</code>
@@ -52,11 +62,13 @@ export default function McpPanel({ lang, origin, draftsPerHour }: { lang: Lang; 
           </ul>
         )}
         <p className="mt-2 text-xs text-ink/50">{ar ? "الفصل يوقف وصول التطبيق فوراً. إعادة تعيين كلمة المرور تفصل كل التطبيقات." : "Disconnecting stops the app's access at once. Resetting your password disconnects every app."}</p>
-      </div>
-      <h2 className="mt-8 font-display text-xl font-bold">Claude Code {ar ? "(برمز شخصي)" : "(personal token)"}</h2>
-      <pre className="mt-2 overflow-x-auto rounded-xl bg-oasis-deep p-4 text-xs text-mist" dir="ltr">{`claude mcp add --transport http nashr ${url} --header "Authorization: Bearer ${tok}"`}</pre>
-      <h2 className="mt-6 font-display text-xl font-bold">Claude Desktop / {ar ? "أي عميل MCP" : "any MCP client"}</h2>
-      <pre className="mt-2 overflow-x-auto rounded-xl bg-oasis-deep p-4 text-xs text-mist" dir="ltr">{JSON.stringify({ mcpServers: { nashr: { type: "http", url, headers: { Authorization: `Bearer ${tok}` } } } }, null, 2)}</pre>
+      </div>}
+      {canToken && <>
+        <h2 className="mt-8 font-display text-xl font-bold">Claude Code {ar ? "(برمز شخصي)" : "(personal token)"}</h2>
+        <pre className="mt-2 overflow-x-auto rounded-xl bg-oasis-deep p-4 text-xs text-mist" dir="ltr">{`claude mcp add --transport http nashr ${url} --header "Authorization: Bearer ${tok}"`}</pre>
+        <h2 className="mt-6 font-display text-xl font-bold">Claude Desktop / {ar ? "أي عميل MCP" : "any MCP client"}</h2>
+        <pre className="mt-2 overflow-x-auto rounded-xl bg-oasis-deep p-4 text-xs text-mist" dir="ltr">{JSON.stringify({ mcpServers: { nashr: { type: "http", url, headers: { Authorization: `Bearer ${tok}` } } } }, null, 2)}</pre>
+      </>}
       <section className="mt-6 rounded-xl border border-oasis/25 bg-oasis/5 p-4">
         <p className="flex items-center gap-2 font-display font-bold text-oasis"><Icon name="shield" className="h-5 w-5" />{ar ? "علامتك داخل ChatGPT وClaude" : "Your brand inside ChatGPT and Claude"}</p>
         <p className="mt-1 text-sm text-ink/70">{ar ? "بعد الربط، يقرأ مساعدك قواعد علامتك بأداة get_brand_rules، ويفحص أي مسودة يكتبها بأداة check_brand، بنفس الكود الذي يستخدمه زر الاعتماد في نشر. مجاناً، بدون رصيد." : "Once connected, your assistant reads your brand rules with get_brand_rules and checks any draft it writes with check_brand, using the same code as Nashr's approve button. Free, no credits."}</p>

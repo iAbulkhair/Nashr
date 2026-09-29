@@ -15,8 +15,11 @@ import JourneyCard from "./JourneyCard";
 type Conv = { id: string; title: string; updatedAt: string; count: number; agent?: AgentId };
 const LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250, tiktok: 2200, whatsapp: 1024, gbp: 1500, meta: 63206, linkedin: 3000 };
 
-/** A generated item inside the chat: channel header, rendered body, count vs limit, copy, approve with undo. */
-export function ItemCard({ item, t, lang, onApproved }: { item: ChatItem; t: AppDict; lang: "ar" | "en"; onApproved?: (id: string) => void }) {
+/**
+ * A generated item inside the chat: channel header, rendered body, count vs limit, copy, approve with undo. Approving is
+ * admin and owner only (`canApprove` = `can(u, "publish")` from the page); a member sees a note instead of the button.
+ */
+export function ItemCard({ item, t, lang, onApproved, canApprove = true }: { item: ChatItem; t: AppDict; lang: "ar" | "en"; onApproved?: (id: string) => void; canApprove?: boolean }) {
   const [open, setOpen] = useState(true);
   const [copied, setCopied] = useState(false);
   const [status, setStatus] = useState(item.status);
@@ -33,7 +36,7 @@ export function ItemCard({ item, t, lang, onApproved }: { item: ChatItem; t: App
       // The brand rules hold this item on the server: say which word, and send the owner to the inbox to fix it.
       const j = (await r.json().catch(() => ({}))) as { error?: string; violations?: { term: string }[] };
       if (r.status === 409 && j.error === "brand_violation") { setHeld((j.violations ?? []).map((v) => v.term)); return; }
-      setErr(t.chat.approveFail);
+      setErr(r.status === 403 ? t.team.errors.forbidden : t.chat.approveFail);
       return;
     }
     setStatus(next);
@@ -59,7 +62,8 @@ export function ItemCard({ item, t, lang, onApproved }: { item: ChatItem; t: App
         <span className="ms-auto flex gap-1.5">
           <button onClick={() => setOpen(!open)} className="btn btn-secondary btn-xs">{open ? (ar ? "طيّ" : "Collapse") : (ar ? "عرض" : "Expand")}</button>
           <button onClick={async () => { await navigator.clipboard.writeText(item.body); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="btn btn-secondary btn-xs"><Icon name="copy" className="h-3.5 w-3.5" />{copied ? t.inbox.copied : status === "approved" ? `${t.chat.copyTo} ${chName}` : t.inbox.copy}</button>
-          {status !== "approved" && <button onClick={() => setState("approved")} disabled={over || held.length > 0} title={over ? (ar ? "النص أطول من حد القناة" : "Text exceeds the channel limit") : undefined} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{t.inbox.approve}</button>}
+          {status !== "approved" && !canApprove && <span className="text-ink/60">{t.inbox.waitAdmin}</span>}
+          {status !== "approved" && canApprove && <button onClick={() => setState("approved")} disabled={over || held.length > 0} title={over ? (ar ? "النص أطول من حد القناة" : "Text exceeds the channel limit") : undefined} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{t.inbox.approve}</button>}
         </span>
       </footer>
     </article>
@@ -78,7 +82,7 @@ function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[
   return [...out];
 }
 
-export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey }) {
+export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey, canApprove = true }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey; /** `can(u, "publish")`: approve buttons on item cards */ canApprove?: boolean }) {
   const [msgs, setMsgs] = useState<ChatMsg[]>(initial);
   const [text, setText] = useState(initialPrompt);
   const [busy, setBusy] = useState(false);
@@ -256,7 +260,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
               {left > 0 && <Link href={`/${lang}/app`} className="btn btn-primary btn-xs"><Icon name="inbox" className="h-3.5 w-3.5" />{t.chat.pending} <span className="tnum" dir="ltr">({left})</span> · {t.chat.reviewAll}</Link>}
             </div>
             {briefLines.length > 0 && <ul className="mt-2 text-sm text-ink/80">{briefLines.map((l, i) => <li key={i} dir="auto">{l}</li>)}</ul>}
-            {pending[0] && <ItemCard item={pending[0]} t={t} lang={lang} onApproved={() => setLeft((n) => Math.max(0, n - 1))} />}
+            {pending[0] && <ItemCard item={pending[0]} t={t} lang={lang} canApprove={canApprove} onApproved={() => setLeft((n) => Math.max(0, n - 1))} />}
           </section>
         )}
         {msgs.length === 0 && !onboardUrl && (
@@ -270,7 +274,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
             <div className={`${m.items?.length || m.files?.length || m.plan?.length ? "w-full max-w-[95%]" : "max-w-[85%]"} rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-oasis text-mist" : "bg-salt-dim text-ink"}`} dir="auto">
               {m.role === "assistant" && <span className="mb-1 block text-xs font-semibold text-sadu-deep">{A[m.agent ?? agent].name}</span>}
               {m.role === "assistant" ? <div className="prose-nashr prose-compact" dangerouslySetInnerHTML={{ __html: render(m.content) }} /> : <p className="whitespace-pre-wrap">{m.content}</p>}
-              {m.items && m.items.length > 0 && <div className="mt-1">{m.items.map((it) => <ItemCard key={it.id} item={it} t={t} lang={lang} />)}</div>}
+              {m.items && m.items.length > 0 && <div className="mt-1">{m.items.map((it) => <ItemCard key={it.id} item={it} t={t} lang={lang} canApprove={canApprove} />)}</div>}
               {m.files && m.files.length > 0 && <div className="mt-1">{m.files.map((f, n) => <FileCard key={f.name} file={f} lang={lang} defaultOpen={n === 0 && m.files!.length === 1} />)}</div>}
               {m.plan && m.plan.length > 0 && <PlanCard plan={m.plan} lang={lang} onStart={(prompt) => send(prompt)} />}
               {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-ink/60" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}

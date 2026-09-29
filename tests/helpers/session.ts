@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import { createUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { createMember } from "@/lib/team";
 
 const g = globalThis as unknown as { __testJar: Map<string, string>; __testAfter: Promise<unknown>[]; __testAfterInScope: boolean; __testHeaders?: Record<string, string> };
 
@@ -8,10 +9,13 @@ const g = globalThis as unknown as { __testJar: Map<string, string>; __testAfter
 export const jar = () => g.__testJar;
 /** No cookies at all: an anonymous visitor. */
 export const signOut = () => g.__testJar.clear();
-/** Act as this account: a real session record plus its cookie, exactly what login creates. */
-export async function signIn(email: string) {
+/**
+ * Act as this login: a real session record plus its cookie, exactly what login creates. Works for owners and members
+ * alike (the record holds the login email). `imp` makes it a founder impersonation session, as the console writes it.
+ */
+export async function signIn(email: string, opts: { imp?: string } = {}) {
   const token = randomBytes(32).toString("hex");
-  await db.set(`session:${token}`, { email, at: Date.now() }, 3600);
+  await db.set(`session:${token}`, opts.imp ? { email, at: Date.now(), imp: opts.imp } : { email, at: Date.now() }, 3600);
   g.__testJar.clear();
   g.__testJar.set("nashr_session", token);
   return token;
@@ -41,6 +45,17 @@ export async function outsideRequestScope<T>(fn: () => Promise<T>): Promise<T> {
 let n = 0;
 export async function newUser(prefix = "u"): Promise<User> {
   return createUser({ email: `${prefix}${++n}-${randomBytes(3).toString("hex")}@test.example`, name: "Test", phone: "", password: "abc12345", lang: "ar" });
+}
+
+/**
+ * A real member login in `owner`'s account (src/lib/team.ts `createMember`: member record plus roster entry, no seat
+ * check). Sign in with `signIn(email)`.
+ */
+export async function newMember(owner: User, role: "admin" | "member" = "member", prefix = "m"): Promise<{ email: string; password: string }> {
+  const email = `${prefix}${++n}-${randomBytes(3).toString("hex")}@test.example`;
+  const password = "abc12345";
+  await createMember(owner.email, { email, name: `Member ${n}`, password, lang: "ar", role, invitedBy: owner.email });
+  return { email, password };
 }
 
 export const json = (url: string, method: string, body?: unknown, headers: Record<string, string> = {}) =>

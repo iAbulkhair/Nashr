@@ -70,7 +70,11 @@ export async function zoneFor(scope: string): Promise<Zone> {
   return zoneOf(await getBrand(scope));
 }
 
-export type Who = { actor: SecActor; via: SecVia };
+/**
+ * Who changed an item. `actor` "owner" means a person in the app (the owner or a team member), as opposed to an agent,
+ * MCP, the cron or a rule; `login` is which person (the acting login's email) when one is known.
+ */
+export type Who = { actor: SecActor; via: SecVia; login?: string };
 export type SecError =
   | "bad_id" | "not_found" | "conflict" | "deleted" | "completed" | "title_required" | "too_long" | "bad_text" | "bad_kind" | "bad_direction"
   | "bad_party" | "owed_by_required" | "bad_date" | "date_out_of_range" | "bad_priority" | "bad_flag" | "unknown_task"
@@ -334,7 +338,7 @@ function indexWrites(scope: string, prev: SecItem | null, next: SecItem): Promis
 
 /** One audit line per change: who, through what, which action on which item, and a short description of the change. */
 function audit(scope: string, who: Who, action: string, id: string, diff: string) {
-  return pushCapped(SEC_KEYS.audit(scope), JSON.stringify({ at: new Date().toISOString(), actor: who.actor, via: who.via, action, id, diff: diff.slice(0, 200) }), CAPS.secAudit);
+  return pushCapped(SEC_KEYS.audit(scope), JSON.stringify({ at: new Date().toISOString(), actor: who.actor, via: who.via, ...(who.login ? { login: who.login } : {}), action, id, diff: diff.slice(0, 200) }), CAPS.secAudit);
 }
 function diffOf(prev: SecItem, next: SecItem): string {
   const keys = ["title", "description", "kind", "direction", "owedBy", "owedTo", "dueAt", "allDay", "expectBy", "lastChasedAt", "snoozeUntil", "priority", "critical", "links", "result", "completedAt", "proposedDone", "deletedAt"] as const;

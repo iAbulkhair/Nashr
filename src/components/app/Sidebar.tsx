@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
+import type { Role } from "@/lib/auth";
 import { AGENTS, type AgentId } from "@/lib/agents";
 import LogoutButton from "./LogoutButton";
 import LangToggle from "../LangToggle";
@@ -13,9 +14,12 @@ type Conv = { id: string; title: string; agent?: AgentId; updatedAt: string };
 
 /**
  * Workspace sidebar. Noor is the one visible door; the specialists (every other agent) sit behind
- * one disclosure. Text floor 12px. No decorative badges except the localized "new".
+ * one disclosure. Text floor 12px. No decorative badges except the localized "new" and the acting person's role.
+ *
+ * `user` is who is ACTING (a member sees their own name, email and role); plan and credits are the account's.
+ * `show` hides owner-only entries (referrals, MCP) from other roles: display only, the routes enforce the same rules.
  */
-export default function Sidebar({ t, lang, user, brandName, admin, supportWa }: { t: AppDict; lang: Lang; user: { name: string; email: string; credits: number; plan: string }; brandName?: string; admin?: boolean; supportWa?: string }) {
+export default function Sidebar({ t, lang, user, show, brandName, admin, supportWa }: { t: AppDict; lang: Lang; user: { name: string; email: string; role: Role; credits: number; plan: string }; show: { owner: boolean; refer: boolean; mcp: boolean }; brandName?: string; admin?: boolean; supportWa?: string }) {
   const path = usePathname();
   const r = useRouter();
   const base = `/${lang}/app`;
@@ -126,7 +130,8 @@ export default function Sidebar({ t, lang, user, brandName, admin, supportWa }: 
       <div className="border-t border-mist/10 pt-3">
         <ul className="grid gap-0.5">
           <li>{row(`${base}/files`, N.files, "folder")}</li>
-          <li>{row(`${base}/refer`, N.refer, "gift")}</li>
+          <li>{row(`${base}/team`, N.members, "users")}</li>
+          {show.refer && <li>{row(`${base}/refer`, N.refer, "gift")}</li>}
           <li>{row(`${base}/governance`, N.governance, "shield")}</li>
           <li>{row(`${base}/integrations`, N.integrations, "grid")}</li>
           {/* Public page: what shipped, and the wishlist signed-in owners vote on. */}
@@ -140,14 +145,19 @@ export default function Sidebar({ t, lang, user, brandName, admin, supportWa }: 
       <div className="relative mt-auto border-t border-mist/10 pt-3">
         <button onClick={() => setMenu(!menu)} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-start text-sm text-mist hover:bg-oasis/60" aria-expanded={menu} aria-haspopup="menu">
           <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-mist/15 font-semibold">{(user.name || user.email).charAt(0).toUpperCase()}</span>
-          <span className="min-w-0 flex-1"><span className="clip block" dir="ltr">{user.email}</span><span className="block text-xs text-mist-dim">{planName} · <span className="tnum text-saffron">{user.credits} {N.credits}</span></span></span>
+          <span className="min-w-0 flex-1">
+            <span className="flex min-w-0 items-center gap-1.5"><span className="clip" dir="auto">{user.name || user.email}</span><span className="shrink-0 rounded-full bg-mist/15 px-1.5 text-xs text-mist-dim">{t.team.roles[user.role]}</span></span>
+            <span className="clip block text-xs text-mist-dim" dir="ltr">{user.email}</span>
+            <span className="block text-xs text-mist-dim" title={show.owner ? undefined : N.sharedCredits}>{planName} · <span className="tnum text-saffron">{user.credits} {N.credits}</span></span>
+          </span>
           <Icon name="chevron" className={`h-4 w-4 text-mist-dim transition ${menu ? "rotate-180" : ""}`} />
         </button>
         {menu && (
           <div role="menu" className="absolute inset-x-0 bottom-full mb-1 rounded-xl border border-mist/15 bg-oasis p-2 text-sm shadow-xl">
             <ul className="grid gap-0.5">
               {[
-                [`${base}/profile`, N.profile], [`${base}/notifications`, unread ? `${N.notifications} (${unread})` : N.notifications], [`${base}/tasks`, N.tasks], [`${base}/generate`, N.generate], [`${base}/billing`, N.billing], [`${base}/onboarding`, N.brand], [`${base}/brands`, N.brands], [`${base}/mcp`, "MCP"], [`${base}/help`, N.help],
+                [`${base}/profile`, N.profile], [`${base}/notifications`, unread ? `${N.notifications} (${unread})` : N.notifications], [`${base}/tasks`, N.tasks], [`${base}/generate`, N.generate], [`${base}/billing`, N.billing], [`${base}/onboarding`, N.brand], [`${base}/brands`, N.brands], [`${base}/team`, N.members],
+                ...(show.mcp ? [[`${base}/mcp`, "MCP"]] : []), [`${base}/help`, N.help],
                 ...(admin ? [[`${base}/admin`, N.founder]] : []),
               ].map(([h, l]) => <li key={h}><Link role="menuitem" href={h} onClick={() => { setMenu(false); setOpen(false); }} className="block rounded-lg px-3 py-1.5 text-mist-dim hover:bg-oasis-deep hover:text-mist">{l}</Link></li>)}
             </ul>
@@ -167,7 +177,7 @@ export default function Sidebar({ t, lang, user, brandName, admin, supportWa }: 
         <Link href={`${base}/chat`} className="font-display text-xl font-bold">{t.appName}</Link>
         <div className="flex items-center gap-3">
           <Link href={`${base}/notifications`} aria-label={N.notifications} className="relative text-mist"><Icon name="bell" className="h-5 w-5" />{unread > 0 && <span className="tnum absolute -end-2 -top-1.5 rounded-full bg-sadu px-1.5 text-xs font-semibold text-white" dir="ltr">{unread}</span>}</Link>
-          <Link href={`${base}/billing`} className="tnum text-xs text-saffron">{user.credits} {N.credits}</Link>
+          <Link href={`${base}/billing`} title={show.owner ? undefined : N.sharedCredits} className="tnum text-xs text-saffron">{user.credits} {N.credits}</Link>
           <button onClick={() => setOpen(!open)} aria-label={N.menu} aria-expanded={open} className="rounded-md border border-mist/20 p-1.5"><Icon name="menu" className="h-5 w-5" /></button>
         </div>
       </header>

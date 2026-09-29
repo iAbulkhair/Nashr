@@ -82,6 +82,10 @@ A line-by-line comparison of the phase 1 branch with github.com/ldbumble/taskuar
 4. Time zone per brand. Every date assumed Riyadh (UTC+3); the UAE and Oman are UTC+4 and the UAE weekend is Saturday and Sunday. A brand now has an optional `timeZone`, one of Asia/Riyadh, Asia/Kuwait, Asia/Qatar, Asia/Bahrain, Asia/Dubai, Asia/Muscat (an allow-list in `src/lib/zones.ts`, checked when stored and when read), chosen on the brand form; without one, the zone the brand's city names without doubt, then the Emirati or Kuwaiti dialect, then Riyadh. Local days, "today", overdue, the reading and writing back of dates, the snooze presets, the weekend and the agents' `NOW` line follow it.
 5. An agent's "done" is a claim. `proposedDone.evidence` is the agent's own words. The confirm card now shows it as that agent's claim («ريم تقول: …», "Reem says: …", marked as not checked) next to a separate "Checked by the app" line read in code from the stored linked inbox task (still pending, rejected, approved by the owner on a date, published on a platform), or "Nothing in the app confirms this". `agenda_get` says the same to agents.
 
+## Teams (merged from main, 2026-09-29)
+
+Main's teams change (member logins, admins, one role table in `src/lib/roles.ts`) was merged into this branch the same day. The list is the account's, per brand, shared by its logins: any member adds, updates, snoozes, reschedules, notes and records follow-ups (`todo.write`); completing, confirming or sending back an agent's claim, deleting and restoring need the owner or an admin (`todo.close`). "Owner" in Reem's audit and `OWNER_ONLY` means a person in the app rather than an agent, and every audit line names the acting login. The MCP tools map to `read` and `todo.write`; no chat or MCP tool closes an item whatever the role.
+
 ## Phase 2/3 backlog (from the Taskuary study; no code)
 
 - A reminder cron that claims `sec:due` entries with ZREM, so overlapping runs never double-fire; a global set of scopes with something due, visited with `pmap`; a "next week" snooze preset on the brand's working week (Sunday to Thursday, Monday to Friday in the UAE).

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { getBrand, saveBrand, type Brand } from "@/lib/brand";
 import { isZone } from "@/lib/zones";
+import { forbid } from "@/lib/roles";
 
 export async function GET() {
   const u = await currentUser();
@@ -13,6 +14,9 @@ export async function GET() {
 export async function PUT(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  // The brand file holds the banned words the approve and publish gates enforce: admin and owner only.
+  const no = forbid(u, "brand.write");
+  if (no) return no;
   const b = (await req.json().catch(() => ({}))) as Partial<Brand>;
   if (!b.name || !b.industry || !b.products || !b.audience) return NextResponse.json({ ok: false, error: "missing" }, { status: 400 });
   const s = (v: unknown, n = 1000) => String(v ?? "").slice(0, n);

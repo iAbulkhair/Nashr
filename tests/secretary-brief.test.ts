@@ -9,8 +9,8 @@ import { followUps, listNotifs, pushNotif, type Notif } from "@/lib/notification
 import { SEC_ALERTS_PER_DAY, SEC_KEYS, newSecId, overdueAlertFingerprint } from "@/lib/secretary";
 import { AUTO_CLOSE_RESULT, alertStep, type SecItem } from "@/lib/secretary-agenda";
 
-// Rules 166, 167 and 175 in docs/system/tests.md: Reem's block in the 8 AM brief and email, the overdue alerts, and the
-// atomic notification marker; and the daily cron's part of rule 160: the purge (idle scopes included) and the automatic
+// Rules 199, 200 and 208 in docs/system/tests.md: Reem's block in the 8 AM brief and email, the overdue alerts, and the
+// atomic notification marker; and the daily cron's part of rule 193: the purge (idle scopes included) and the automatic
 // close.
 
 const sent: { to: string; subject: string; text: string }[] = [];
@@ -48,7 +48,7 @@ async function workspace(prefix: string): Promise<User> {
 
 beforeEach(() => { sent.length = 0; });
 
-describe("the morning brief carries Reem's block (rule 166)", () => {
+describe("the morning brief carries Reem's block (rule 199)", () => {
   it("counts overdue, today and waiting items and names the first three overdue or due-today titles, without a model", async () => {
     const u = await workspace("brief");
     await seed(u.email, { title: "Pay the printer", dueAt: ago(30) });
@@ -93,7 +93,7 @@ describe("the morning brief carries Reem's block (rule 166)", () => {
   });
 });
 
-describe("one alert per overdue item, spaced, then only the brief (rule 167)", () => {
+describe("one alert per overdue item, spaced, then only the brief (rule 200)", () => {
   // A fixed clock: Monday 5 October 2026, 12:00 in Riyadh (09:00 UTC). Only Date is faked; timers run.
   const T0 = Date.parse("2026-10-05T09:00:00Z");
   const at = (days: number, hours = 0) => new Date(T0 + days * 864e5 + hours * 3600e3).toISOString();
@@ -168,7 +168,7 @@ describe("one alert per overdue item, spaced, then only the brief (rule 167)", (
   });
 });
 
-describe("a notification's marker is claimed atomically (rule 175)", () => {
+describe("a notification's marker is claimed atomically (rule 208)", () => {
   it("two overlapping pushes with one fingerprint notify once", async () => {
     const u = await workspace("fuatomic");
     const n = { kind: "info" as const, title: "Once", body: "b", href: "/ar/app" };
@@ -205,7 +205,7 @@ describe("a notification's marker is claimed atomically (rule 175)", () => {
   });
 });
 
-describe("the daily cron purges and closes (rule 160)", () => {
+describe("the daily cron purges and closes (rule 193)", () => {
   it("purges expired deleted items in every scope, archived brands and suspended accounts included, and closes approved links", async () => {
     vi.stubEnv("CRON_SECRET", "cron-secret-purge");
     const branded = await workspace("purgebrand");

@@ -24,9 +24,13 @@ const UNDO_MS = 8000;
  * My to-dos. The list is rendered on the server; every action here is one PATCH or POST to /api/secretary and then a
  * refresh of the server render, so what the owner sees is always what is stored. Done needs a written result.
  */
-export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, allClear, empty, done, deleted, tonight }: {
+/**
+ * `canClose`: the owner or an admin (`todo.close`); a member adds, updates, snoozes and records follow-ups, and does not
+ * see Done, Delete, Restore or Confirm / Not yet. Display only: the route refuses the same actions (403).
+ */
+export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, allClear, empty, done, deleted, tonight, canClose }: {
   t: AppDict; zoneLabel: string; sections: TodoSection[]; approvals: { line: string; href: string } | null; snoozed: number; allClear: boolean; empty: boolean;
-  done: TodoRow[]; deleted: TodoRow[]; tonight: boolean;
+  done: TodoRow[]; deleted: TodoRow[]; tonight: boolean; canClose: boolean;
 }) {
   const T = t.todo;
   const router = useRouter();
@@ -108,20 +112,20 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
           {row.result && bucket === "done" && <p className="mt-1 text-sm text-ink/70" dir="auto"><span className="text-ink/50">{T.result}: </span>{row.result}</p>}
           {row.next && bucket !== "confirm" && <p className="mt-1 text-xs text-oasis"><span className="text-ink/50">{T.next}: </span>{row.next}</p>}
         </div>
-        {bucket === "confirm" ? (
+        {bucket === "confirm" ? (canClose && (
           <div className="flex flex-wrap gap-2">
             <button disabled={!!busy} onClick={() => act(row, { action: "confirm_done" })} className="btn btn-primary btn-xs">{T.confirm}</button>
             <button disabled={!!busy} onClick={() => act(row, { action: "reject_done" })} className="btn btn-secondary btn-xs">{T.notYet}</button>
           </div>
-        ) : bucket === "deleted" ? (
+        )) : bucket === "deleted" ? (canClose && (
           <button disabled={!!busy} onClick={async () => { if ((await send(row.id, { action: "restore" })) && undo === row.id) setUndo(null); }} className="btn btn-secondary btn-xs">{T.restore}</button>
-        ) : bucket === "done" ? null : (
+        )) : bucket === "done" ? null : (
           <div className="flex flex-wrap gap-2">
-            <button disabled={!!busy} onClick={() => open(row.id, "done")} aria-expanded={panel?.id === row.id && panel.kind === "done"} className="btn btn-primary btn-xs">{T.done}</button>
+            {canClose && <button disabled={!!busy} onClick={() => open(row.id, "done")} aria-expanded={panel?.id === row.id && panel.kind === "done"} className="btn btn-primary btn-xs">{T.done}</button>}
             <button disabled={!!busy} onClick={() => open(row.id, "snooze")} aria-expanded={panel?.id === row.id && panel.kind === "snooze"} className="btn btn-secondary btn-xs">{T.snooze}</button>
             <button disabled={!!busy} onClick={() => open(row.id, "reschedule", row.dueLocal ?? "")} aria-expanded={panel?.id === row.id && panel.kind === "reschedule"} className="btn btn-secondary btn-xs">{T.reschedule}</button>
             {row.theirs && <button disabled={!!busy} onClick={() => act(row, { action: "chased" })} title={T.chasedHint} className="btn btn-secondary btn-xs">{T.chased}</button>}
-            <button disabled={!!busy} onClick={() => remove(row)} className="btn btn-danger btn-xs">{T.remove}</button>
+            {canClose && <button disabled={!!busy} onClick={() => remove(row)} className="btn btn-danger btn-xs">{T.remove}</button>}
           </div>
         )}
       </div>
