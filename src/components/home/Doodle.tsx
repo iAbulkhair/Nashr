@@ -27,6 +27,8 @@ type Figure = {
   headwear?: ReactNode;
   /** Over the face: hair, agal. */
   crown?: ReactNode;
+  /** Beard and moustache, over the face and under the nose line. */
+  beard?: ReactNode;
   eyes: readonly P[];
   brows: readonly string[];
   /** One fine stroke; the face is eyes, brows and a nose, no mouth (editorial, not cartoon). */
@@ -91,16 +93,6 @@ const DRESS = (
   </>
 );
 
-/** Thobe: a straight column to the ankle. */
-const THOBE = (
-  <>
-    <path className={styles.fill} d="M82 94 C92 91 108 91 118 94 C127 97 132 102 133 112 C136 200 136 330 134 442 C112 448 88 448 66 442 C64 330 64 200 67 112 C68 102 73 97 82 94 Z" />
-    <path d="M100 100 L100 156" />
-    <path d="M90 447 L89 457 M110 447 L111 457" />
-    <path className={styles.inkFill} d="M91 456 L88 456 C84 458 79 460 78 464 L92 464 Z M109 456 L112 456 C116 458 121 460 122 464 L108 464 Z" />
-  </>
-);
-
 /** Shayla: close around the face, one end wrapped across the chest to the far shoulder. */
 const SHAYLA = (
   <>
@@ -109,10 +101,54 @@ const SHAYLA = (
   </>
 );
 
-const GHUTRA = <path className={styles.paper} d="M100 24 C79 24 71 40 71 60 C71 88 68 106 60 132 C70 134 78 130 82 124 C86 110 90 96 100 92 C110 96 114 110 118 124 C122 130 130 134 140 132 C132 106 129 88 129 60 C129 40 121 24 100 24 Z" />;
+/** White thobe for the men: a straight column to the ankle, buttoned placket at the neck. */
+const THOBE_WHITE = (
+  <>
+    <path className={styles.paper} d="M80 94 C92 90 108 90 120 94 C130 97 135 102 136 112 C139 200 139 330 137 442 C114 448 86 448 63 442 C61 330 61 200 64 112 C65 102 70 97 80 94 Z" />
+    <path d="M100 98 L100 160" />
+    <path className={styles.fine} d="M90 96 C94 101 106 101 110 96" />
+    <path d="M90 447 L89 457 M110 447 L111 457" />
+    <path className={styles.inkFill} d="M91 456 L88 456 C84 458 79 460 78 464 L92 464 Z M109 456 L112 456 C116 458 121 460 122 464 L108 464 Z" />
+  </>
+);
 
-/** Agal: the black cord across the crown of the ghutra. */
-const AGAL = <path className={styles.inkFill} d="M77 41 C83 30 117 30 123 41 L122.5 47 C115 38 85 38 77.5 47 Z" />;
+/**
+ * Ghutra or shemagh: symmetric, standing off the face with a pinched peak at the front of the crown, both ends falling
+ * straight down over the shoulders (the shayla, by contrast, hugs the face and wraps across the chest).
+ */
+function Ghutra({ tone = "paper" }: { tone?: "paper" | "fill" }) {
+  return (
+    <>
+      <path className={styles[tone]} d="M100 19 C82 20 69 31 66 50 C63 74 61 104 52 150 C62 156 73 154 81 146 C83 124 85 104 87 90 C90 84 110 84 113 90 C115 104 117 124 119 146 C127 154 138 156 148 150 C139 104 137 74 134 50 C131 31 118 20 100 19 Z" />
+      <path className={styles.fine} d="M94 21 L100 32 L106 21" />
+      <path className={styles.fine} d="M70 96 C68 116 64 134 58 148 M130 96 C132 116 136 134 142 148" />
+    </>
+  );
+}
+
+/** Agal: two thick black cords ringing the crown of the ghutra. */
+const AGAL = (
+  <>
+    <path className={styles.inkFill} d="M72 38 C82 28 118 28 128 38 L127 44 C117 35 83 35 73 44 Z" />
+    <path className={styles.inkFill} d="M73 46 C83 37 117 37 127 46 L126 51 C116 43 84 43 74 51 Z" />
+  </>
+);
+
+/** A trimmed full beard with a moustache: the clearest "this is a man" cue at lineup size. */
+const BEARD = (
+  <>
+    <path className={styles.inkFill} d="M84.5 58 C84.5 71 90.5 80 100 80 C109.5 80 115.5 71 115.5 58 C113.5 66 110.5 71 106.5 72.5 C103.5 70.5 96.5 70.5 93.5 72.5 C89.5 71 86.5 66 84.5 58 Z" />
+    <path className={styles.inkFill} d="M93 69.5 C96 67 104 67 107 69.5 C104 71 96 71 93 69.5 Z" />
+  </>
+);
+
+/** Short beard and moustache for the owner: stubble-length, so he reads younger than the elders. */
+const BEARD_SHORT = (
+  <>
+    <path className={styles.inkFill} d="M86 64 C87 73 92.5 78.5 100 78.5 C107.5 78.5 113 73 114 64 C111 70 107 73 104 73.5 C102 72.5 98 72.5 96 73.5 C93 73 89 70 86 64 Z" />
+    <path className={styles.inkFill} d="M94.5 69.5 C97 68 103 68 105.5 69.5 C103 70.5 97 70.5 94.5 69.5 Z" />
+  </>
+);
 
 const FIGURES: Record<CastId, Figure> = {
   // Noor: content. Hand on hip, phone on a small ring light held up, glancing at it.
@@ -142,14 +178,15 @@ const FIGURES: Record<CastId, Figure> = {
     axis: 160,
   },
 
-  // Sami: sales. Phone to the ear, the other hand open mid-sentence.
+  // Sami: sales. White thobe, his colour in the shemagh. Phone to the ear, the other hand open mid-sentence.
   sami: {
     order: ["body", "arm-l", "head", "prop", "arm-r"],
-    body: THOBE,
-    armL: <Limb pts={[[76, 106], [64, 166], [52, 214]]} w={SLEEVE} />,
-    armR: <Limb pts={[[124, 106], [150, 138], [131, 90]]} w={SLEEVE} />,
-    headwear: GHUTRA,
+    body: THOBE_WHITE,
+    armL: <Limb pts={[[76, 106], [64, 166], [52, 214]]} w={SLEEVE} tone="paper" />,
+    armR: <Limb pts={[[124, 106], [150, 138], [131, 90]]} w={SLEEVE} tone="paper" />,
+    headwear: <Ghutra tone="fill" />,
     crown: AGAL,
+    beard: BEARD,
     eyes: [[93, 58], [104, 58]],
     brows: ["M88 50 q4 -2 9 0", "M101 48 q5 -3 9 0"],
     nose: "M98.5 60 L96.5 66 L99 66.5",
@@ -184,35 +221,28 @@ const FIGURES: Record<CastId, Figure> = {
     axis: 106,
   },
 
-  // Faris: growth. Mid-stride, scarf flying behind.
+  // Faris: growth. The young one: short hair, trimmed beard, open jacket over a white tee, trousers, mid-stride.
   faris: {
     order: ["body", "arm-l", "arm-r", "prop", "head"],
     body: (
       <>
-        <Limb pts={[[92, 296], [82, 372], [70, 446]]} w={[17, 13, 10.5]} hand={false} tone="paper" />
-        <Limb pts={[[108, 296], [121, 372], [135, 446]]} w={[17, 13, 10.5]} hand={false} tone="paper" />
-        <path className={styles.inkFill} d="M60 452 C61 445 71 443 76 447 L76 455 C69 457 62 456 60 452 Z" />
-        <path className={styles.inkFill} d="M128 448 C134 444 146 446 153 452 C153 456 146 458 128 456 Z" />
-        <path className={styles.fill} d="M82 94 C92 91 108 91 118 94 C127 97 132 102 133 112 C136 170 140 236 146 300 C122 310 84 310 60 302 C62 236 64 170 67 112 C68 102 73 97 82 94 Z" />
-        <path d="M100 100 L103 306" />
+        <Limb pts={[[90, 252], [80, 352], [70, 446]]} w={[20, 15, 12]} hand={false} tone="paper" />
+        <Limb pts={[[110, 252], [122, 352], [135, 446]]} w={[20, 15, 12]} hand={false} tone="paper" />
+        <path className={styles.inkFill} d="M58 452 C59 444 71 442 77 446 L77 456 C69 458 60 457 58 452 Z" />
+        <path className={styles.inkFill} d="M128 447 C134 443 147 445 154 451 C154 456 147 458 128 457 Z" />
+        <path className={styles.fill} d="M80 94 C92 90 108 90 120 94 C130 97 135 102 136 112 C137 160 138 210 138 258 C116 264 84 264 62 258 C62 210 63 160 64 112 C65 102 70 97 80 94 Z" />
+        <path className={styles.paper} d="M91 95 C95 99 105 99 109 95 L106 260 L94 260 Z" />
+        <path d="M91 95 L84 126 L94 138 M109 95 L116 126 L106 138" />
         <path d="M95 76 L95 92 M105 76 L105 92" />
       </>
     ),
     armL: <Limb pts={[[76, 106], [70, 168], [82, 222]]} w={SLEEVE} />,
     armR: <Limb pts={[[124, 106], [138, 164], [150, 214]]} w={SLEEVE} />,
-    crown: <path className={styles.inkFill} d="M84.5 56 C82 38 91 31 102 31 C113 31 120 39 116.5 55 C113 46 106 42 99 44 C93 45 88 50 84.5 56 Z" />,
+    crown: <path className={styles.inkFill} d="M85 51 C83 36 91 29 101 29 C111 29 119 35 116 51 C114 44 109 40.5 101 41 C93 40.5 88 44 85 51 Z" />,
+    beard: BEARD,
     eyes: [[97, 58], [108, 58]],
     brows: ["M90 50 L99 51.5", "M103 51.5 L112 49.5"],
     nose: "M101.5 60 L103.5 66 L101 66.5",
-    prop: (
-      <>
-        <path className={styles.paper} d="M86 100 C72 104 58 98 40 108 C45 116 54 119 64 116 C73 113 81 110 90 106 Z" />
-        <path className={styles.fine} d="M52 108 L57 116 M63 105 L67 113" />
-        <path className={styles.paper} d="M104 104 C106 122 109 140 112 158 L100 161 C99 142 98 122 97 106 Z" />
-        <path className={styles.paper} d="M83 86 C90 99 110 99 117 86 C120 92 120 100 116 103 C108 110 92 110 84 103 C80 100 80 92 83 86 Z" />
-      </>
-    ),
-    axis: 100,
   },
 
   // Dana: reports. Clipboard held close, a single pearl.
@@ -252,8 +282,9 @@ const FIGURES: Record<CastId, Figure> = {
     ),
     armL: <Limb pts={[[72, 108], [64, 176], [92, 228]]} w={[18, 16, 13]} />,
     armR: <Limb pts={[[128, 108], [136, 176], [108, 228]]} w={[18, 16, 13]} />,
-    headwear: GHUTRA,
+    headwear: <Ghutra />,
     crown: AGAL,
+    beard: BEARD,
     eyes: [[93, 58], [104, 58]],
     brows: ["M87.5 51 q4.5 -2 9.5 0.5", "M101 51.5 q5 -2.5 9.5 -0.5"],
     nose: "M98.5 60 L96.5 66 L99 66.5",
@@ -304,7 +335,8 @@ const FIGURES: Record<CastId, Figure> = {
         <path d="M115 233 L131 229" />
       </>
     ),
-    crown: <path className={styles.inkFill} d="M84 60 C80 40 90 30 101 30 C113 30 121 40 116.5 60 C115 50 112 44 106 41 C98 46 90 47 85.5 50 Z" />,
+    crown: <path className={styles.inkFill} d="M84.5 53 C81 38 90 30 101 30 C113 30 121 38 116.5 53 C115 47 112 43 106 41 C98 45 90 46 85.5 49 Z" />,
+    beard: BEARD_SHORT,
     eyes: [[94, 55], [106, 55]],
     brows: ["M88 50 L97 47", "M103 47 L112 50"],
     nose: "M100 60 L98.5 66 L100.5 66.5",
@@ -345,6 +377,7 @@ export default function Doodle({ who, pose = "stand" }: { who: CastId; pose?: "s
         {f.headwear}
         <ellipse className={styles.paper} cx="100" cy="58" rx="15.5" ry="20" />
         {f.crown}
+        {f.beard}
         <path className={styles.fine} d={f.nose} />
         <g data-part="eyes">
           {f.eyes.map(([x, y], i) => (
