@@ -11,6 +11,7 @@ import { usageMonthKeys } from "./usage";
 import { routineFingerprints, routineKeys } from "./routines";
 import { agentCapFingerprint, seenKey } from "./notifications";
 import { wipeTeam } from "./team";
+import { forgetWishlistUser } from "./wishlist";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -66,6 +67,8 @@ export async function wipeAccount(email: string) {
   const token = await db.get<string>(`mcptoken-of:${e}`);
   if (token) keys.push(`mcptoken:${token}`);
   await revokeAllGrants(e); // OAuth tokens issued to connected apps
+  // Wishlist: votes are taken back (the counts drop) and suggestions, which carry the email and free text, are removed.
+  keys.push(...(await forgetWishlistUser(e)));
   keys.push(`mcpgrants:${e}`);
   keys.push(`profile:${e}`, `mcptoken-of:${e}`, `brands:${e}`, `activebrand:${e}`, `user:${e}`);
   // Account-level records that are not brand-scoped. Missing these meant a deleted account left its notifications,

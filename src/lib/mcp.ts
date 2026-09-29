@@ -10,7 +10,7 @@ import type { Action } from "./roles";
  * tool missing from this map is refused. ask_noor's own tools (update_brand, publish_item) are gated inside runTool.
  * It lives here rather than in the route file because a Next.js route module may export only handlers and route config.
  */
-export const MCP_TOOL_ACTION: Readonly<Record<string, Action>> = { ask_noor: "chat", generate_content: "generate", list_inbox: "read", read_file: "read", list_files: "read", get_brand_rules: "read", check_brand: "read" };
+export const MCP_TOOL_ACTION: Readonly<Record<string, Action>> = { ask_noor: "chat", generate_content: "generate", list_inbox: "read", read_file: "read", list_files: "read", get_brand_rules: "read", check_brand: "read", save_draft: "drafts" };
 
 /** Personal MCP tokens: `Authorization: Bearer nashr_...` → user. */
 export async function createMcpToken(email: string) {
