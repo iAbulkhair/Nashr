@@ -10,11 +10,11 @@ const middleOf = (chapter: number) => (chapter + 0.5) / CHAPTERS;
 
 for (const lang of LANGS) {
   test.describe(`home · ${lang}`, () => {
-    test("renders the slogan and all nine figures", async ({ page, failures }) => {
+    test("renders the slogan and a figure for every cast member", async ({ page, failures }) => {
       void failures;
       await open(page, `/${lang}`);
       await expect(page.locator("h1")).toContainText(lang === "ar" ? "ذكين. الذكي المكين." : "Thakeen. Smart. Steadfast.");
-      await expect(page.getByTestId("figure")).toHaveCount(9);
+      await expect(page.getByTestId("figure")).toHaveCount(CAST.length);
       await expect(page.getByTestId("storm").locator("[data-storm-q]")).toHaveCount(STORM.length);
       // Drawn without markers, these lists keep their semantics in Safari only with an explicit role.
       for (const list of [page.getByTestId("lineup").locator("ul"), page.getByTestId("dictionary").locator("ol"), page.locator('[aria-labelledby="truths-title"] ul')]) {
@@ -227,6 +227,35 @@ test("a figure answers when you press it, once for screen readers", async ({ pag
   await you.focus();
   await page.keyboard.press("Enter");
   await expect(you.getByTestId("bubble")).toHaveText("“Approved.”");
+});
+
+for (const lang of LANGS) {
+  test(`an agent with no banter line answers with its value line: Reem · ${lang}`, async ({ page }) => {
+    const reem = CAST.find((m) => m.id === "reem")!;
+    // The fallback only applies while she has no line of her own in the banter.
+    expect(BANTER.flatMap((b) => b.lines).some((l) => l.who === "reem")).toBe(false);
+    await open(page, `/${lang}`);
+    const lineup = page.getByTestId("lineup");
+    const figure = lineup.locator('[data-testid="figure"][data-cast="reem"]');
+    await figure.scrollIntoViewIfNeeded();
+    await expect.poll(() => live(figure)).toBe(true);
+    await figure.click();
+    const quoted = lang === "ar" ? `«${reem.value.ar}»` : `“${reem.value.en}”`;
+    await expect(figure.getByTestId("bubble")).toHaveText(quoted);
+    await expect(lineup.locator('[aria-live="polite"]')).toHaveText(`${reem.name[lang]}: ${quoted}`);
+  });
+}
+
+test.describe("the lineup at 1280px", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+  test("fits the whole cast without scrolling its strip or the page", async ({ page }) => {
+    await open(page, "/en");
+    const lineup = page.getByTestId("lineup");
+    await expect(lineup.getByTestId("figure")).toHaveCount(CAST.length);
+    const strip = lineup.locator("ul").locator("..");
+    expect(await strip.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
 });
 
 test("the motion button stops the banter and the flips, and starts them again", async ({ page }) => {

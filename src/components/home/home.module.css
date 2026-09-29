@@ -14,8 +14,8 @@
   --c-dana: #efe7f7;
   --c-majed: #2b193d;
   --c-layan: #7fe9ff;
-  /* DRAFT, pending the founder's approval (spec §3). */
-  --c-reem: #f4b942;
+  /* DRAFT, pending the founder's approval (spec §3): a placeholder soft coral, kept clear of the site's amber accent. */
+  --c-reem: #ffa38a;
   --c-you: #ffffff;
   --home-display: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
   --home-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
@@ -482,7 +482,8 @@
  * drawing, value, name) are shared through subgrid, so every drawing stands on the same line.
  */
 .row {
-  --cell-min: 132px;
+  /* The cast (nine today) fits at 1280 px without the strip scrolling: 9 × 120 + 8 × 1.4vw + 32 ≈ 1256 px. */
+  --cell-min: 120px;
   --gap: clamp(8px, 1.4vw, 20px);
   display: grid;
   grid-auto-flow: column;

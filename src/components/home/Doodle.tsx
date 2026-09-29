@@ -7,8 +7,11 @@ import styles from "./home.module.css";
  *
  * THE PART CONTRACT (the illustrator's delivery spec): each figure is one `<svg viewBox="0 0 200 480">` whose groups
  * carry `data-part` = `body`, `head` (with `eyes` and `brows` inside it, so they turn with the head), `arm-l` (the arm on
- * the viewer's left), `arm-r` and `prop`. A prop worn on the head (glasses, headphones) sits inside `head`; a figure
- * with nothing to hold keeps an empty `prop`. Final SVGs replace these bodies without code changes.
+ * the viewer's left), `arm-r` and `prop`. A prop worn on the head (glasses, headphones) sits inside `head`; a small item
+ * gripped in one hand (Reem's pencil) may sit inside that hand's arm group, so it moves with the hand; a figure with
+ * nothing to hold keeps an empty `prop`. When the figure turns, the head and the `prop` mirror but the arms do not, so
+ * a prop that a hand-held item points into (Reem's planner) is marked to keep its side. Final SVGs replace these
+ * bodies without code changes.
  *
  * Style: one 3 px plum line, flat fill in the member's colour on the clothing only, a few strokes for the face.
  * Server-safe: no hooks, no browser APIs.
@@ -39,6 +42,11 @@ type Figure = {
   prop?: ReactNode;
   /** The vertical line the body prop mirrors across when the figure turns. */
   axis?: number;
+  /**
+   * The body prop keeps its side when the figure turns: for a prop that an item held in an arm group points into, since
+   * the arms never mirror and a mirrored prop would slide away from the hand (and read backwards).
+   */
+  propStays?: boolean;
 };
 
 const r1 = (v: number) => Math.round(v * 10) / 10;
@@ -313,7 +321,8 @@ const FIGURES: Record<CastId, Figure> = {
 
   // Reem: the secretary (DRAFT drawing, pending the founder's approval). A small spiral planner held up at the chest,
   // one item ticked, the pencil on the next line; eyes down on her list. The pencil is in her hand, so it sits in `arm-r`
-  // and stays with it when she turns; only the planner mirrors.
+  // and stays with it when she turns; the planner stays too (`propStays`), so the tick still reads the right way round
+  // and the pencil still lands on the next line. Only her head turns.
   reem: {
     order: ["body", "prop", "arm-l", "arm-r", "head"],
     body: DRESS,
@@ -346,7 +355,7 @@ const FIGURES: Record<CastId, Figure> = {
         <path className={styles.fine} d="M97 131 L112 131 M97 142 L112 142 M97 153 L106 153" />
       </g>
     ),
-    axis: 100,
+    propStays: true,
   },
 
   // The owner: neutral, hands in pockets, looking up at the questions.
@@ -406,7 +415,7 @@ export default function Doodle({ who, pose = "stand" }: { who: CastId; pose?: "s
     // Every figure keeps a `prop` group, empty when it holds nothing (the owner) or only wears it on the head.
     prop:
       f.prop || !f.headProp ? (
-        <g key="prop" data-part="prop" transform={turn && f.prop ? mirror(f.axis ?? 100) : undefined}>
+        <g key="prop" data-part="prop" transform={turn && f.prop && !f.propStays ? mirror(f.axis ?? 100) : undefined}>
           {f.prop}
         </g>
       ) : null,

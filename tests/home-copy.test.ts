@@ -14,6 +14,13 @@ const FEATURES: Record<Feature, { skills: string; page: string }> = {
   todo: { skills: "secretary", page: "src/app/[lang]/app/todo/page.tsx" },
 };
 
+/**
+ * What Reem does not do yet (spec §5.2): no reminder at the due time, no message on WhatsApp or Telegram. Her items
+ * only show on My to-dos and in the morning brief, so her copy may not promise either, in any spelling.
+ */
+const NOT_YET = [/remind/i, /whats\s*app/i, /telegram/i, /ذكّر/, /ذكر(ي)?ني/, /تذكير/, /واتس\s*اب/, /تي?لي?[جغ]رام/];
+const promises = (text: string) => NOT_YET.filter((p) => p.test(text)).map(String);
+
 describe("home copy is true to the product", () => {
   it("lists the eight agents in order, then the owner", () => {
     expect(CAST.map((c) => c.id)).toEqual(["noor", "sami", "razan", "faris", "dana", "majed", "layan", "reem", "you"]);
@@ -51,6 +58,27 @@ describe("home copy is true to the product", () => {
     const reem = AGENT_CAST.find((a) => a.id === "reem")!;
     expect(agentById("reem").tasks).toEqual([]);
     expect(reem.questions.map((q) => q.feature)).toEqual(reem.questions.map(() => "todo"));
+  });
+  it("never has Reem promise a reminder or a channel she does not have", () => {
+    // The guard itself: each of these lines would promise something that does not exist.
+    for (const bad of [
+      "She reminds you on time.",
+      "A reminder on WhatsApp",
+      "Telegram alerts",
+      "وتذكّرك بالموعد",
+      "ذكريني بكرة",
+      "تذكير يومي",
+      "على الواتساب",
+      "على واتس اب",
+      "على تيليجرام",
+      "على تلغرام",
+    ]) {
+      expect(promises(bad), bad).not.toEqual([]);
+    }
+    const reem = AGENT_CAST.find((a) => a.id === "reem")!;
+    for (const text of [reem.value.ar, reem.value.en, ...reem.questions.flatMap((q) => [q.ar, q.en])]) {
+      expect(promises(text), text).toEqual([]);
+    }
   });
   it("builds the storm from exactly the agents' 41 questions", () => {
     expect(STORM).toHaveLength(41);

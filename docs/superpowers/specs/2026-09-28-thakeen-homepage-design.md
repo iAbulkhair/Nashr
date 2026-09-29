@@ -41,7 +41,7 @@ References chosen by the founder and what we take from each (structure and mecha
 | Dana | pearl (new token, proposal `#efe7f7`) | clarity, honesty |
 | Majed | `#2b193d` plum with gold accents | depth, judgement |
 | Layan | mint (new token, proposal `#7fe9ff`) | care, renewal |
-| Reem | amber `#f4b942` (DRAFT, pending founder approval) | order, reliability |
+| Reem | soft coral `#ffa38a` (DRAFT, pending founder approval; changed on 2026-09-30 from amber `#f4b942`, which was nearly the site's accent `#F2B33D`, the CTA and focus colour) | DRAFT: a placeholder for the founder to choose (order, reliability) |
 
 Colour never carries meaning alone: every state also has text.
 
@@ -155,12 +155,12 @@ Reem is the secretary (`src/lib/secretary.ts`): she keeps the owner's own list (
 | Question (AR) | English | Backed by |
 |---|---|---|
 | وش عليّ اليوم؟ | What's on me today? | feature `todo` |
-| مين باقي يدين لي؟ | Who still owes me? | feature `todo` |
+| مين ما رد علي للحين؟ | Who still hasn't got back to me? | feature `todo` |
 | وش المتأخر عندي؟ | What's overdue? | feature `todo` |
 | متى أكلم المورّد؟ | When do I call the supplier? | feature `todo` |
 | كيف ما أنسى أتابع العميل؟ | How do I not forget to follow up with the customer? | feature `todo` |
 
-Drawing (DRAFT): a woman in an abaya and shayla holding a small spiral planner at chest height, one of its three checkbox lines ticked, the other hand holding a pencil on the next line; no glasses (Razan) and no clipboard (Dana). Order: after Layan, before the owner. She adds no banter exchange; pressed in the lineup, she says her value line. Claim line for prototypes only, when she takes a question: «سجّلتها عندي.» / *Noted.*
+Drawing (DRAFT): a woman in an abaya and shayla holding a small spiral planner at chest height, one of its three checkbox lines ticked, the other hand holding a pencil on the next line; no glasses (Razan) and no clipboard (Dana). Turned to face you, only her head turns: the planner and the pencil keep their side, so the tick never reads backwards. Order: after Layan, before the owner. She adds no banter exchange; pressed in the lineup, she says her value line. Claim line for prototypes only, when she takes a question: «سجّلتها عندي.» / *Noted.*
 
 **You · أنت**, value: **أنت توافق.** / *You approve.* The hero storm uses every agent question (36 at approval, 41 with Reem); the finale shows only «موافق.».
 
@@ -260,6 +260,7 @@ Decided on 2026-09-28:
 Still open:
 1. Type: approve the specimen shortlist and licence cost (§7.2).
 2. Illustrator: who draws, and budget; style frames approved before the full cast.
+3. Reem (added 2026-09-29, on the page as a DRAFT): her colour (soft coral `#ffa38a`, a placeholder, §3), her drawing (§5.2, §7.1), her value line and her five questions (§5.2) all await the founder's approval.
 
 Build decisions (2026-09-28), recorded as built:
 1. CTA contract: `StartForm` submits to `/{lang}/app/signup?url=…`, the existing UrlStart path. Since PR #216 that lands on `/{lang}/app/start?url=…`, where the owner confirms the site before any crawl. §7.4's `signup?next=/{lang}/app/start?url=…` is not used.
