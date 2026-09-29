@@ -3,6 +3,7 @@ import { jar, json, newUser, signIn } from "./helpers/session";
 import { getTask, saveTask, type Task } from "@/lib/brand";
 import { getConnection, OAUTH_COOKIE, saveConnection, saveState, type Connection } from "@/lib/connectors/store";
 import { connectedTargets, targetsFor } from "@/lib/connectors/targets";
+import { publishTask } from "@/lib/connectors/publish";
 import { getProvider } from "@/lib/connectors/registry";
 import * as callback from "@/app/api/connect/[provider]/callback/route";
 import * as connectRoute from "@/app/api/connect/[provider]/route";
@@ -11,8 +12,9 @@ import * as publishRoute from "@/app/api/publish/[id]/route";
 /**
  * Rule 75: Facebook Page and Instagram publishing. The connection keeps a long-lived token and the owner's Pages, with
  * the tokens encrypted and only names in the visible metadata; the Page is switched only to one Meta returned;
- * Instagram is offered only for a post with a generated image; posts go out with the Page token through Meta's
- * container-then-publish flow; and a revoked token asks for a reconnect. Graph is mocked in the shapes Meta documents.
+ * Instagram is offered only for a post with a generated image, from any media provider (a placeholder card, an image
+ * with no recorded provider and a clip are not); posts go out with the Page token through Meta's container-then-publish
+ * flow; and a revoked token asks for a reconnect. Graph is mocked in the shapes Meta documents.
  */
 const ENV = { META_APP_ID: "mid", META_APP_SECRET: "msecret" };
 const saved: Record<string, string | undefined> = {};
@@ -56,6 +58,9 @@ const metaConn = (over: Partial<Connection> = {}): Connection => ({
   data: { access_token: "long-user", page_token: "page-tok-2", pages: JSON.stringify(PAGES.map((p) => ({ id: p.id, name: p.name, token: p.access_token, igId: p.instagram_business_account?.id, ig: p.instagram_business_account?.username }))) },
   meta: { pageId: "p2", igId: "ig2", account: "متجر الورد · @ward.sa" }, ...over,
 });
+/** Our own Blob copies (src/lib/media/blob.ts): where kie and Higgsfield results live once stored. */
+const BLOB_IMG = `https://s1.public.blob.vercel-storage.com/media/${"a1".repeat(16)}.jpg`;
+const BLOB_CLIP = `https://s1.public.blob.vercel-storage.com/media/${"b2".repeat(16)}.mp4`;
 const post = (over: Partial<Task> = {}): Task => ({ id: `t${Math.random().toString(16).slice(2, 10)}`, type: "social", channel: "instagram", title: "t", body: "## عود ملكي\n**جديد** في المتجر", status: "approved", createdAt: new Date().toISOString(), lang: "ar", imageUrl: "https://v3.fal.media/files/abc.jpg", imageProvider: "fal", ...over });
 
 async function connectedUser(tag: string, conn = metaConn()) {
@@ -131,6 +136,18 @@ describe("where a post can go (rule 75)", () => {
     expect(targetsFor(post({ type: "article", channel: "blog" }), both)).toEqual([]);
     expect(targetsFor(post(), ["meta", "facebook"])).toEqual(["facebook"]);
   });
+
+  it("counts a generated image from every media provider, and nothing else, as artwork", () => {
+    expect(targetsFor(post({ imageUrl: BLOB_IMG, imageProvider: "kie", imageModel: "img-balanced" }), both)).toEqual(["instagram", "facebook"]);
+    expect(targetsFor(post({ imageUrl: BLOB_IMG, imageProvider: "higgsfield", imageModel: "img-lifestyle" }), both)).toEqual(["instagram", "facebook"]);
+    expect(targetsFor(post({ imageProvider: undefined }), both), "an image saved with no recorded provider is not known artwork").toEqual(["facebook"]);
+    expect(targetsFor(post({ imageUrl: undefined, imageProvider: "kie" }), both), "a provider with no image").toEqual(["facebook"]);
+  });
+
+  it("never offers a clip to Instagram: video is not a publish target in this round", () => {
+    const clipOnly = post({ imageUrl: undefined, imageProvider: undefined, videoUrl: BLOB_CLIP, videoProvider: "kie", videoModel: "vid-quick" });
+    expect(targetsFor(clipOnly, both)).toEqual(["facebook"]);
+  });
 });
 
 describe("publishing to Instagram and Facebook (rule 75)", () => {
@@ -175,6 +192,42 @@ describe("publishing to Instagram and Facebook (rule 75)", () => {
     await saveTask(u.email, photo, true);
     expect((await (await publish(photo.id, "facebook")).json()).result.url).toBe("https://www.facebook.com/p2_222");
     expect(calls.find((k) => k.url.endsWith("/p2/photos"))!.body.get("url")).toBe("https://v3.fal.media/files/abc.jpg");
+  });
+
+  it("publishes a kie image to Instagram and a Higgsfield image to the Page, both from our Blob copy", async () => {
+    fakeGraph();
+    const u = await connectedUser("metamedia");
+    const kie = post({ imageUrl: BLOB_IMG, imageProvider: "kie", imageModel: "img-premium" });
+    await saveTask(u.email, kie, true);
+    expect((await (await publish(kie.id, "instagram")).json()).result).toMatchObject({ provider: "instagram", status: "published" });
+    expect(calls.find((k) => k.url.endsWith("/ig2/media"))!.body.get("image_url")).toBe(BLOB_IMG);
+
+    const hf = post({ imageUrl: BLOB_IMG, imageProvider: "higgsfield", imageModel: "img-design" });
+    await saveTask(u.email, hf, true);
+    expect((await (await publish(hf.id, "facebook")).json()).result.url).toBe("https://www.facebook.com/p2_222");
+    expect(calls.find((k) => k.url.endsWith("/p2/photos"))!.body.get("url")).toBe(BLOB_IMG);
+  });
+
+  it("posts a clip-only item to the Page as text, never with the clip or a placeholder", async () => {
+    fakeGraph();
+    const u = await connectedUser("metaclip");
+    const clip = post({ channel: "facebook", imageUrl: undefined, imageProvider: undefined, videoUrl: BLOB_CLIP, videoProvider: "higgsfield", videoModel: "vid-motion" });
+    await saveTask(u.email, clip, true);
+    await publish(clip.id, "facebook");
+    const placeholder = post({ channel: "facebook", imageUrl: "https://placehold.co/1.png", imageProvider: "placeholder" });
+    await saveTask(u.email, placeholder, true);
+    await publish(placeholder.id, "facebook");
+    expect(calls.filter((k) => k.url.endsWith("/p2/feed"))).toHaveLength(2);
+    expect(calls.some((k) => k.url.endsWith("/p2/photos"))).toBe(false);
+    expect(calls.some((k) => [...k.body.values()].some((v) => v.includes(BLOB_CLIP) || v.includes("placehold.co")))).toBe(false);
+  });
+
+  it("checks for artwork again at the call that posts, not only in the route", async () => {
+    fakeGraph();
+    const u = await connectedUser("metaig3");
+    await expect(publishTask(u.email, post({ imageUrl: "https://placehold.co/1.png", imageProvider: "placeholder" }), "instagram")).rejects.toThrow("instagram_needs_image");
+    await expect(publishTask(u.email, post({ imageProvider: undefined }), "instagram")).rejects.toThrow("instagram_needs_image");
+    expect(calls).toEqual([]);
   });
 
   it("asks for a reconnect when Meta says the token was revoked", async () => {

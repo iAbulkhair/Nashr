@@ -1,4 +1,4 @@
-import { charge, refund, type AgentCharge } from "./credits";
+import { charge, refund } from "./credits";
 import { AGENTS, agentById, agentForTask, type AgentId } from "./agents";
 import { skillsBlock } from "./skills";
 import { statsFor } from "./stats";
@@ -11,16 +11,17 @@ import Anthropic from "@anthropic-ai/sdk";
 import { randomBytes } from "crypto";
 import { CAPS, db, pushCapped } from "./db";
 import { trialOver, type User } from "./auth";
-import { briefOf, getBrand, listPreferencesFor, saveBrand, saveTask, listLite, type Brand, type Task } from "./brand";
+import { briefOf, getBrand, listPreferencesFor, saveBrand, saveTask, listLite, updateTask, type Brand, type Task } from "./brand";
 import { feedbackBlock, feedbackFor } from "./feedback";
-import { TASK_COST, TASK_COUNT, TASK_TYPES, isTaskType, type TaskType } from "./tasks";
+import { IMAGE_TYPES, TASK_COST, TASK_COUNT, TASK_TYPES, isTaskType, type TaskType } from "./tasks";
 import { generate } from "./noor";
 import { FileLimitError, MAX_FILES, listFileNames, memoryBlock, readFile, writeFile } from "./files";
 import { getGov } from "./governance";
 import { warnAgentCap } from "./notifications";
 import { activeSeasons } from "./seasons";
 import { importCatalog } from "./catalog";
-import { generateImage } from "./images";
+import { renderImage } from "./media/start";
+import { deadlineFor } from "./media/keys";
 import { listConnections } from "./connectors/store";
 import { connectedTargets, publishTask, targetsFor } from "./connectors/publish";
 import { HELP } from "./help";
@@ -180,11 +181,22 @@ export function statusFor(tool: string, lang: "ar" | "en", agentName: string): s
   return ar ? a : e;
 }
 
-export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en" };
+/**
+ * The `maxDuration` of the two routes that call chat(), `/api/chat` and `/api/mcp` (route config must be a literal, so
+ * they cannot import this; tests/chat-deadline.test.ts keeps the three equal).
+ */
+export const CHAT_MAX_DURATION_S = 300;
+/** A render started from chat needs the prompt, the submit and the copy inside the request: with less left, none starts. */
+export const CHAT_RENDER_MIN_MS = 60_000;
+
+/** `deadline`: the request's one deadline (spec A23), `deadlineFor(maxDuration)` from the route's start. Without it, counted from chat()'s own start. */
+export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en"; deadline?: number };
 /** Why a tool could not spend: the app raises the matching limit dialog. `agent_cap` is the owner's monthly cap for one agent. */
 export type ChatLimit = "credits" | "trial" | "agent_cap";
 
 export async function chat(user: User, text: string, conv?: string, agentId: AgentId = "noor", opts: ChatOpts = {}): Promise<ChatMsg & { limit?: ChatLimit }> {
+  // Taken first: up to five model turns can use most of the ceiling before a tool starts a render.
+  const deadline = opts.deadline ?? deadlineFor(CHAT_MAX_DURATION_S);
   const lang = opts.lang ?? user.lang;
   const agentName = agentById(agentId).name[lang];
   opts.onStatus?.(lang === "ar" ? "أقرأ ملف علامتك ومذكراتي…" : "Reading your brand file and my notes…");
@@ -234,7 +246,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
       let isError = false;
       opts.onStatus?.(statusFor(u.name, lang, agentName));
       try {
-        out = await runTool(user, u.name, u.input as Record<string, unknown>, actions, made);
+        out = await runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline);
       } catch (e) {
         isError = true;
         out = e instanceof Error ? e.message : "tool_failed";
@@ -249,12 +261,15 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
 }
 
 /** The tool result when an agent's monthly cap stops a charge: a plain sentence for the model to relay. */
-function capReached(r: Extract<AgentCharge, { reason: "agent_cap" }>): string {
+function capReached(r: { agent: AgentId; spent: number; cap: number }): string {
   return `Not done: ${agentById(r.agent).name.en} reached the monthly credit cap the owner set for this agent in Governance (${r.spent} of ${r.cap} credits this month), so nothing was created and no credits were used. Tell the owner plainly: they can raise the cap on the Governance page or wait for next month. Chat itself is not counted.`;
 }
 
-/** Exported for tests: the code-level gates on tools (approval before publishing) must hold without a model in the loop. */
-export async function runTool(user: User, name: string, input: Record<string, unknown>, actions: string[], made: Task[] = []): Promise<string> {
+/**
+ * Exported for tests: the code-level gates on tools (approval before publishing) must hold without a model in the loop.
+ * `deadline` is the chat request's (see chat()); a call outside a chat turn counts as the start of one.
+ */
+export async function runTool(user: User, name: string, input: Record<string, unknown>, actions: string[], made: Task[] = [], deadline = deadlineFor(CHAT_MAX_DURATION_S)): Promise<string> {
   const email = user.scope ?? user.email;
   switch (name) {
     case "generate_content": {
@@ -385,16 +400,17 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const held = gateTask(await getBrand(email), t);
       if (held.length) return `Not published. ${explain(held)} Tell the owner which word and where; do not work around the rule.`;
       const r = await publishTask(email, t, provider);
-      t.published = [...(t.published ?? []), { provider: r.provider, url: r.url, status: r.status, at: new Date().toISOString() }];
-      t.status = "approved";
-      await saveTask(email, t);
+      const at = new Date().toISOString();
+      // Applied to the task as stored now, not to the copy read before the publish: a render that finished meanwhile keeps
+      // its image or clip and its credits.
+      await updateTask(email, t.id, (cur) => ({ ...cur, published: [...(cur.published ?? []), { provider: r.provider, url: r.url, status: r.status, at }], status: "approved" }));
       actions.push(`published:${provider}`);
       return `Published to ${provider} as ${r.status}: ${r.url}`;
     }
     case "list_inbox": {
       const tasks = await listLite(email, new Date(Date.now() - 90 * 864e5));
       const c = (s: string) => tasks.filter((t) => t.status === s).length;
-      return `Inbox: ${c("pending")} pending, ${c("approved")} approved, ${c("rejected")} rejected. Latest: ${tasks.slice(0, 8).map((t) => `[id=${t.id}] ${t.type}/${t.channel}: ${t.title} [${t.status}]${t.image ? " (has image)" : ""}`).join("; ")}`;
+      return `Inbox: ${c("pending")} pending, ${c("approved")} approved, ${c("rejected")} rejected. Latest: ${tasks.slice(0, 8).map((t) => `[id=${t.id}] ${t.type}/${t.channel}: ${t.title} [${t.status}]${t.image ? " (has image)" : ""}${t.video ? " (has video)" : ""}`).join("; ")}`;
     }
     case "import_catalog": {
       const brand = await getBrand(email);
@@ -405,33 +421,44 @@ export async function runTool(user: User, name: string, input: Record<string, un
       return r.count ? `Imported ${r.count} products into products.md. Examples: ${r.products.slice(0, 5).map((p) => `${p.title}${p.price ? " (" + p.price + ")" : ""}`).join("; ")}` : "Could not find product pages (no sitemap or unusual URLs). Ask the owner for 3-5 product links or a product list.";
     }
     case "generate_image": {
-      const [brand, t, gov] = await Promise.all([getBrand(email), getTask(email, String(input.task_id)), getGov(email)]);
+      const [brand, t] = await Promise.all([getBrand(email), getTask(email, String(input.task_id))]);
       if (!brand || !t) return "Item not found.";
-      if (trialOver(user)) { actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page."; }
-      // Charged to the agent who owns the item the image illustrates, against that agent's monthly cap.
-      const agent = agentForTask(t.type).id;
-      const paid = await charge(user.email, IMAGE_COST, { scope: email, agent, cap: gov.agentCaps[agent] });
-      if (!paid.ok && paid.reason === "agent_cap") { actions.push("limit:agent_cap"); return capReached(paid); }
-      if (!paid.ok) { actions.push("limit:credits"); return "Insufficient credits for an image."; }
-      user.credits = paid.credits;
-      await warnAgentCap(user, paid);
-      let img;
-      try {
-        img = await generateImage(brand, t, user.email);
-      } catch (e) {
-        user.credits = await refund(user.email, IMAGE_COST, paid);
-        throw e;
+      // The default model only (spec A2): the model never chooses how much of the owner's money a render costs. The
+      // engine charges before the render, to the agent that owns the item and under the owner's monthly cap for that
+      // agent, and refunds exactly once when it fails. It works to the chat request's own deadline (spec A23), so a
+      // render started late in a long turn is never budgeted past the platform's kill.
+      if (deadline - Date.now() < CHAT_RENDER_MIN_MS) return `Not started: this reply has run too long to draw "${t.title}" now. No credit was used. Tell the owner to ask again, or to press the image button on the item in the inbox.`;
+      const r = await renderImage(user, t, brand, undefined, { deadline });
+      if ("placeholder" in r) {
+        actions.push(`image:${t.id}`);
+        // "Not available right now", not "not configured": the breaker may have switched the default model off for a while.
+        return `The image service is not available right now, so "${t.title}" has a placeholder rather than artwork. No credit was used. Ask again later.`;
       }
-      t.imageUrl = img.url;
-      t.imagePrompt = img.prompt;
-      t.imageProvider = img.provider;
-      // A placeholder is not the thing that was paid for. It is a coloured card with the brand name on it, produced
-      // when the image service is unreachable, and charging for it bills the customer for our outage.
-      if (img.provider === "placeholder") user.credits = await refund(user.email, IMAGE_COST, paid);
-      await saveTask(email, t);
+      if (!r.ok) {
+        // `credits` comes back only with a refund. Without one the reply never says the credit was returned: a charge
+        // whose refund failed stays on its job, which the next poll or sweep ends and refunds.
+        const back = r.credits != null;
+        if (r.credits != null) user.credits = r.credits;
+        switch (r.error) {
+          case "trial_over": actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page.";
+          case "no_credits": actions.push("limit:credits"); return "Insufficient credits for an image.";
+          case "agent_cap": actions.push("limit:agent_cap"); return capReached({ agent: r.agent ?? agentForTask(t.type).id, spent: r.spent ?? 0, cap: r.cap ?? 0 });
+          case "wrong_type": return `Images are only for these item types: ${IMAGE_TYPES.join(", ")}.`;
+          case "in_progress": return "An image for this item is already being drawn.";
+          case "busy": case "one_open": return "The image service is busy; try again in a minute. No credit was used.";
+          case "too_many": return "The image limit for this account was reached (30 an hour, 150 a day). No credit was used.";
+          // The item already has artwork, and a placeholder is never drawn over it (src/lib/media/start.ts).
+          case "model_unavailable": return `No image model is available right now, so "${t.title}" keeps its current image. No credit was used. Ask again later.`;
+          case "nsfw": return `The image service refused this request under its content rules${back ? "; the credit was returned" : ""}.`;
+          default: return back
+            ? "The image could not be generated; the credit was returned."
+            : "The image could not be generated. If a credit was taken for it, it is returned on its own within a few minutes; the owner can try again from the inbox.";
+        }
+      }
+      user.credits = r.credits;
       actions.push(`image:${t.id}`);
-      if (img.provider === "placeholder") return `The image service was unavailable, so "${t.title}" has a placeholder rather than artwork. The credit was returned; ask again later. Credits left: ${user.credits}.`;
-      return `Image generated for "${t.title}" (${img.provider}). It's attached to the item in the inbox. Credits left: ${user.credits}.`;
+      if (r.job.state !== "done") return `The image for "${t.title}" is being drawn and will appear in the inbox shortly. Credits left: ${user.credits}.`;
+      return `Image generated for "${t.title}" (${r.job.provider}). It's attached to the item in the inbox. Credits left: ${user.credits}.`;
     }
     default:
       return "Unknown tool.";

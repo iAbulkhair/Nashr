@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "crypto";
 import { jar, json, newUser, params, signIn, signOut } from "./helpers/session";
+import { mediaEnv, noNetwork } from "./helpers/media";
 import { db } from "@/lib/db";
 import { deleteFile, listFiles, writeFile } from "@/lib/files";
 import { deleteConnection, listConnections, OAUTH_COOKIE, saveConnection, saveState } from "@/lib/connectors/store";
@@ -269,8 +270,8 @@ describe("the workspace file index is bounded", () => {
 });
 
 /**
- * When the image service is unreachable, generateImage returns a placehold.co card with the brand name on it. The
- * task never recorded which service produced the image, so the Inbox showed that card exactly as it shows real
+ * When no image service is configured, the default image model gives a placehold.co card with the brand name on it.
+ * The task never recorded which service produced the image, so the Inbox showed that card exactly as it shows real
  * artwork — the owner paid a credit and was told nothing.
  */
 describe("a placeholder image is recorded as one", () => {
@@ -281,12 +282,14 @@ describe("a placeholder image is recorded as one", () => {
     const { saveTask, getTask } = await import("@/lib/brand");
     await saveTask(u.email, { id: "ph1", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" }, true);
 
-    // No image provider configured is exactly the case that yields a placeholder.
-    vi.stubEnv("FAL_KEY", "");
+    // No media service configured at all is exactly the case that yields a placeholder, and it never reaches the network.
+    mediaEnv({});
     const imageRoute = await import("@/app/api/tasks/[id]/image/route");
-    const res = await imageRoute.POST(json("/api/tasks/ph1/image", "POST"), params({ id: "ph1" }));
+    const net = noNetwork();
+    const res = await imageRoute.POST(json("/api/tasks/ph1/image", "POST"), params({ id: "ph1" })).finally(net.restore);
     expect(res.status).toBe(200);
     expect((await res.json()).provider).toBe("placeholder");
+    expect(net.hosts).toEqual([]);
 
     const saved = (await getTask(u.email, "ph1"))!;
     expect(saved.imageUrl).toContain("placehold.co");
@@ -362,24 +365,26 @@ describe("OAuth client registration refuses a plaintext redirect", () => {
 });
 
 /**
- * When the image service is unreachable the owner gets a placehold.co card instead of artwork. Charging a credit for
- * that bills the customer for our outage.
+ * When no image service is configured the owner gets a placehold.co card instead of artwork. Charging a credit for
+ * that bills the customer for our outage, so the card is not charged at all (it was charged and refunded before).
  */
 describe("a placeholder image is not charged", () => {
-  it("the route returns the credit and reports the restored balance", async () => {
+  it("the route charges nothing and reports the unchanged balance", async () => {
     const u = await newUser("refund");
     await signIn(u.email);
     await saveBrand(u.email, brand());
     const { saveTask } = await import("@/lib/brand");
     await saveTask(u.email, { id: "ph2", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" }, true);
 
-    vi.stubEnv("FAL_KEY", "");
+    mediaEnv({});
     const imageRoute = await import("@/app/api/tasks/[id]/image/route");
-    const res = await imageRoute.POST(json("/api/tasks/ph2/image", "POST"), params({ id: "ph2" }));
+    const net = noNetwork();
+    const res = await imageRoute.POST(json("/api/tasks/ph2/image", "POST"), params({ id: "ph2" })).finally(net.restore);
     const body = (await res.json()) as { provider: string; credits: number };
+    expect(net.hosts).toEqual([]);
 
     expect(body.provider).toBe("placeholder");
-    expect(body.credits, "the response must report the balance after the refund, not before").toBe(50);
+    expect(body.credits, "the response must report the balance, which nothing charged").toBe(50);
     const { getUser } = await import("@/lib/auth");
     expect((await getUser(u.email))!.credits, "no credit may be kept for an outage").toBe(50);
   });
