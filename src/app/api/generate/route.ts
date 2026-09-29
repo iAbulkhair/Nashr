@@ -2,6 +2,7 @@ import { track } from "@/lib/track";
 import { charge, refund } from "@/lib/credits";
 import { statsFor } from "@/lib/stats";
 import { judgeLater } from "@/lib/judge";
+import type { Grounding } from "@/lib/json";
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { currentUser, sc, trialOver } from "@/lib/auth";
@@ -36,8 +37,12 @@ export async function POST(req: Request) {
 
   const gov = await getGov(sc(u));
   let items;
+  // Read inside the try: the credits are already charged, and a failed read must reach the refund below.
+  let ground: Grounding = { notes: b.notes };
   try {
-    items = await generate(type, brand, await listPreferences(sc(u)), b.notes, { memory: await memoryBlock(sc(u)), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: u.email, stats: await statsFor(type, sc(u)) });
+    const [prefs, memory, stats] = await Promise.all([listPreferences(sc(u)), memoryBlock(sc(u)), statsFor(type, sc(u))]);
+    ground = { notes: b.notes, memory, stats };
+    items = await generate(type, brand, prefs, b.notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: u.email, stats });
   } catch (e) {
     console.error("generate failed", e);
     await track(u.email, "error");
@@ -52,7 +57,7 @@ export async function POST(req: Request) {
     await saveTask(sc(u), t, true);
     created.push(t);
   }
-  judgeLater(sc(u), u.email, brand, created);
+  judgeLater(sc(u), u.email, brand, created, undefined, ground);
   await track(u.email, "generate");
   return NextResponse.json({ ok: true, created: created.length, credits: u.credits });
 }

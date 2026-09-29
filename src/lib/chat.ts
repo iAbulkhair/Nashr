@@ -4,6 +4,7 @@ import { skillsBlock } from "./skills";
 import { statsFor } from "./stats";
 import { missingData } from "./cart-recovery";
 import { judgeLater } from "./judge";
+import type { Grounding } from "./json";
 import { meter } from "./usage";
 import { PAUSED_REPLY, modelState } from "./model";
 import Anthropic from "@anthropic-ai/sdk";
@@ -105,7 +106,7 @@ const TOOLS: Anthropic.Tool[] = [
  * 2. per workspace: brand file, preferences, memory files. Stable between messages of one owner.
  * 3. volatile: credits, plan, calendar, file list, connected platforms. Never cached.
  */
-function system(brand: Brand | null, user: User, prefs: string[], memory: string, files: string[], connected: string[], agentId: AgentId = "noor"): Anthropic.TextBlockParam[] {
+export function system(brand: Brand | null, user: User, prefs: string[], memory: string, files: string[], connected: string[], agentId: AgentId = "noor"): Anthropic.TextBlockParam[] {
   const agent = agentById(agentId);
   const seasons = activeSeasons().map((s) => `${s.name} (${s.nameAr}) in ${s.daysLeft} days`).join("; ") || "none within 35 days";
   const intro = agent.id === "noor"
@@ -135,6 +136,8 @@ REPLY SHAPES
 - Content asks of 1-3 items (a caption, three posts, two messages): call draft_items IMMEDIATELY with the owner's brief. Do not ask clarifying questions first and do not argue about timing or batch sizes; unknown facts (discount, end date) become [رقم] / [date] placeholders. The app renders every created item as a card under your reply (with copy and approve buttons), so DO NOT paste the bodies again. Reply with: one line per item naming its angle, that they are also in the inbox, at most one sentence of advice (e.g. a closer season), and ONE concrete offer (an image, a variant, the discount or end date woven in, a publish date).
 - Content asks of more items: call generate_content; the app renders the cards, so summarize the angles in 2-3 lines and end with one offer.
 - Credits: if a tool reports insufficient credits or an ended trial, say so in one plain sentence and point to the Subscription page. Never pretend the work was done.
+
+OWNER GOAL: when the memory files start with one, it is the output target the owner agreed to at onboarding. Ground plans, priorities and suggested next steps in it; it is a target for this work, never a result to promise.
 
 RULES: never invent prices/claims; respect Saudi advertising norms; one clear next step per reply; when you used a tool, say what happened in one line. Do not include internal or system XML tags in your response.`;
   const workspace = `BRAND (structured): ${brand ? JSON.stringify(brand) : "not set — ask for their website and suggest running onboarding"}.
@@ -257,8 +260,13 @@ export async function runTool(user: User, name: string, input: Record<string, un
       user.credits = paid.credits;
       const gov = await getGov(email);
       let items;
+      // Read inside the try: the credits are already charged, and a failed read must reach the refund below.
+      const notes = String(input.notes ?? "");
+      let ground: Grounding = { notes };
       try {
-        items = await generate(type, brand, await listPreferences(email), String(input.notes ?? ""), { memory: await memoryBlock(email), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats: await statsFor(type, email) });
+        const [prefs, memory, stats] = await Promise.all([listPreferences(email), memoryBlock(email), statsFor(type, email)]);
+        ground = { notes, memory, stats };
+        items = await generate(type, brand, prefs, notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats });
       } catch (e) {
         user.credits = await refund(user.email, cost);
         throw e;
@@ -269,7 +277,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
         await saveTask(email, t, true);
         created.push(t);
       }
-      judgeLater(email, user.email, brand, created);
+      judgeLater(email, user.email, brand, created, undefined, ground);
       made.push(...created);
       actions.push(`generated:${type}:${items.length}`);
       const inline = items.length <= 3 ? `\n\nITEM BODIES (show these to the owner in your reply, formatted, since the batch is small):\n${items.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body.slice(0, 1500)}`).join("\n\n")}` : "";
@@ -291,8 +299,13 @@ export async function runTool(user: User, name: string, input: Record<string, un
       user.credits = paid.credits;
       const gov = await getGov(email);
       let items;
+      // Read inside the try: the credits are already charged, and a failed read must reach the refund below.
+      const brief = String(input.brief ?? "");
+      let ground: Grounding = { notes: brief };
       try {
-        items = await generate(type, brand, await listPreferences(email), String(input.brief ?? ""), { memory: await memoryBlock(email), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, count, stats: await statsFor(type, email) });
+        const [prefs, memory, stats] = await Promise.all([listPreferences(email), memoryBlock(email), statsFor(type, email)]);
+        ground = { notes: brief, memory, stats };
+        items = await generate(type, brand, prefs, brief, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, count, stats });
       } catch (e) {
         user.credits = await refund(user.email, cost);
         throw e;
@@ -303,7 +316,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
         await saveTask(email, t, true);
         created.push(t);
       }
-      judgeLater(email, user.email, brand, created, count);
+      judgeLater(email, user.email, brand, created, count, ground);
       made.push(...created);
       actions.push(`drafted:${type}:${items.length}`);
       return `Drafted ${items.length} ${type} item(s) (${cost} credit${cost > 1 ? "s" : ""}); also in the inbox. Credits left: ${user.credits}.\n\nITEM BODIES (show these to the owner, formatted and ready to copy):\n${items.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body}`).join("\n\n")}`;
