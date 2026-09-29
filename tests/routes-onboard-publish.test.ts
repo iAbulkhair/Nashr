@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { json, newUser, signIn, signOut } from "./helpers/session";
-import { getUser } from "@/lib/auth";
+import { currentUser, getUser } from "@/lib/auth";
 import { getBrand, getTask, saveTask, type Task } from "@/lib/brand";
 import { listFiles } from "@/lib/files";
 import { saveConnection } from "@/lib/connectors/store";
@@ -117,11 +117,14 @@ describe("onboarding builds only from a site the owner confirmed (rule 97)", () 
 
 describe("publishing needs an approval made in code (rule 3)", () => {
   it("the chat tool refuses a pending or rejected item and publishes an approved one", async () => {
-    const u = await newUser("pub");
-    await saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
-    await saveTask(u.email, task("pending1", "pending"), true);
-    await saveTask(u.email, task("rejected1", "rejected"), true);
-    await saveTask(u.email, task("approved1", "approved"), true);
+    const owner = await newUser("pub");
+    await saveConnection(owner.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+    await saveTask(owner.email, task("pending1", "pending"), true);
+    await saveTask(owner.email, task("rejected1", "rejected"), true);
+    await saveTask(owner.email, task("approved1", "approved"), true);
+    // The owner as a request resolves them: publish_item is refused to a user with no actor (tests/role-gates.test.ts).
+    await signIn(owner.email);
+    const u = (await currentUser())!;
     const actions: string[] = [];
     // The instruction to publish could come from crawled text; the model's wish is not enough.
     expect(await runTool(u, "publish_item", { task_id: "pending1", provider: "telegram" }, actions)).toMatch(/not approved/i);

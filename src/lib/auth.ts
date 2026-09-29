@@ -3,8 +3,27 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { db } from "./db";
 import type { AgentId } from "./agents";
+import type { Member } from "./team";
 
 export type Plan = "trial" | "starter" | "pro" | "agency" | "enterprise";
+
+/** Who may do what inside an account (src/lib/roles.ts). The owner role belongs to the `user:` record only. */
+export type Role = "owner" | "admin" | "member";
+/**
+ * Who is acting on this request. Runtime only: set by `currentUser` / `userFromBearer`, stripped by `saveUser`, never
+ * read from a request body. A `User` with no actor is denied by every role check (fail closed).
+ */
+export type Actor = {
+  /** founder = a founder impersonating this account (the session carries `imp`). */
+  kind: "owner" | "member" | "token" | "founder";
+  /** The login that is acting: the member's own email for members, the owner email for owner, token and founder. */
+  email: string;
+  name: string;
+  lang: "ar" | "en";
+  role: Role;
+  /** The founder email (or "key" for the console key) behind an impersonation session. Only for kind "founder". */
+  impersonating?: string;
+};
 
 export type User = {
   email: string;
@@ -27,13 +46,24 @@ export type User = {
    * lock and in the same save as the balance). A record whose `month` is not the current one counts as empty.
    */
   agentSpend?: { month: string; by: Record<string, Partial<Record<AgentId, number>>> };
+  /** Founder-console override of the plan's seat count (`PLAN_SEATS`). */
+  seats?: number;
+  /** ISO time: every MEMBER session issued before it is dead (founder reset, owner reset). The owner's own sessions follow `sessionsAfter`. */
+  teamSessionsAfter?: string;
   /** Runtime only: storage scope of the active brand (email for the default brand). Never persisted. */
   scope?: string;
   brandId?: string;
+  /** Runtime only: who is acting (owner, a member of this account, an MCP token, a founder impersonating). Never persisted. */
+  actor?: Actor;
 };
 export const sc = (u: User) => u.scope ?? u.email;
 
 export const PLAN_CREDITS: Record<Plan, number> = { trial: 50, starter: 200, pro: 700, agency: 2000, enterprise: 10000 };
+/** Seats per plan, the owner included (docs/superpowers/specs/2026-09-29-teams-design.md §5). `User.seats` overrides. */
+export const PLAN_SEATS: Record<Plan, number> = { trial: 3, starter: 1, pro: 3, agency: 7, enterprise: 25 };
+/** The account's seat limit, owner included: the founder override when it is a positive integer, else the plan's. */
+export const seatLimit = (u: Pick<User, "plan" | "seats">): number =>
+  typeof u.seats === "number" && Number.isFinite(u.seats) && u.seats >= 1 ? Math.floor(u.seats) : (PLAN_SEATS[u.plan] ?? 1);
 /** Membership test for a plan name from a request body. Not `in`: that walks the prototype chain (see `isTaskType`). */
 export const PLANS = Object.keys(PLAN_CREDITS) as Plan[];
 export const isPlan = (v: unknown): v is Plan => typeof v === "string" && (PLANS as string[]).includes(v);
@@ -73,9 +103,11 @@ export async function getUser(email: string): Promise<User | null> {
   return db.get<User>(`user:${normalizeEmail(email)}`);
 }
 
+/** Owner accounts only. Members live at `member:{email}` (src/lib/team.ts) and never pass through here or `users:all`. */
 export async function saveUser(u: User) {
-  const { scope: _s, brandId: _b, ...persist } = u;
-  void _s; void _b;
+  // The runtime-only fields: the active scope and who is acting are per request, never part of the account.
+  const { scope: _s, brandId: _b, actor: _a, ...persist } = u;
+  void _s; void _b; void _a;
   await db.set(`user:${u.email}`, persist);
   await db.sadd("users:all", u.email);
 }
@@ -93,6 +125,9 @@ export async function createUser(input: { email: string; name: string; phone: st
     trialEnds: new Date(now.getTime() + 3 * 864e5).toISOString(),
     createdAt: now.toISOString(),
     lang: input.lang,
+    // Sessions cannot be enumerated, so a deleted account's cookies outlive it. Stamping the creation time kills every
+    // session issued before this account existed: a re-registered address never inherits an old login.
+    sessionsAfter: now.toISOString(),
   };
   await saveUser(u);
   return u;
@@ -102,9 +137,17 @@ export async function verifyPassword(u: User, password: string) {
   return bcrypt.compare(password, u.passHash);
 }
 
-/** A session record. Sessions written before 2026-09-18 are a bare email with no issue time, which counts as "issued at 0". */
-type SessionRec = string | { email: string; at: number };
-const sessionOf = (rec: SessionRec | null) => (!rec ? null : typeof rec === "string" ? { email: rec, at: 0 } : rec);
+/**
+ * A session record: the LOGIN email (an owner's or a member's), when it was issued, and on an impersonation session the
+ * founder behind it (`imp`, "key" for the console key). Membership is never cached here: it is re-resolved from
+ * `member:{email}` on every request. Sessions written before 2026-09-18 are a bare email with no issue time, which counts
+ * as "issued at 0".
+ */
+export type Session = { email: string; at: number; imp?: string };
+type SessionRec = string | Session;
+const sessionOf = (rec: SessionRec | null): Session | null => (!rec ? null : typeof rec === "string" ? { email: rec, at: 0 } : rec);
+/** True when a session issued at `at` predates the revocation stamp `iso`. */
+const issuedBefore = (at: number, iso?: string) => !!iso && at < new Date(iso).getTime();
 
 /**
  * Sign every device out: sessions issued before this moment stop working at their next request. Called whenever the
@@ -113,6 +156,13 @@ const sessionOf = (rec: SessionRec | null) => (!rec ? null : typeof rec === "str
  */
 export function revokeSessions(u: User) {
   u.sessionsAfter = new Date().toISOString();
+}
+/**
+ * Sign every MEMBER of the account out (founder reset, owner reset). The owner's own sessions follow `revokeSessions`.
+ * Only marks the record: the caller saves it, inside the user lock.
+ */
+export function revokeTeamSessions(u: User) {
+  u.teamSessionsAfter = new Date().toISOString();
 }
 
 /**
@@ -136,9 +186,14 @@ export async function sessionCookie(maxAge: number) {
   return { httpOnly: true, sameSite: "lax", secure: !(plainHttp && loopback), path: "/", maxAge } as const;
 }
 
-export async function createSession(email: string, ttlSeconds: number = SESSION_TTL) {
+/**
+ * Sign this login in. `email` is the login's own address (owner or member), never an account email chosen for a member.
+ * `imp` marks a founder impersonation session (admin console only): it resolves to actor kind "founder".
+ */
+export async function createSession(email: string, ttlSeconds: number = SESSION_TTL, opts: { imp?: string } = {}) {
   const token = randomBytes(32).toString("hex");
-  await db.set(`session:${token}`, { email, at: Date.now() } satisfies SessionRec, ttlSeconds);
+  const rec: Session = opts.imp ? { email, at: Date.now(), imp: opts.imp } : { email, at: Date.now() };
+  await db.set(`session:${token}`, rec satisfies SessionRec, ttlSeconds);
   const jar = await cookies();
   jar.set(COOKIE, token, await sessionCookie(ttlSeconds));
 }
@@ -156,14 +211,69 @@ export async function currentUser(): Promise<User | null> {
   if (!token) return null;
   const s = sessionOf(await db.get<SessionRec>(`session:${token}`));
   if (!s) return null;
-  const email = s.email;
-  const u = await getUser(email);
-  if (!u || u.suspended) return null;
-  if (u.sessionsAfter && s.at < new Date(u.sessionsAfter).getTime()) return null; // issued before the last password change
-  const { activeBrandId, scopeFor } = await import("./brands");
-  u.brandId = await activeBrandId(email);
-  u.scope = scopeFor(email, u.brandId);
-  return u;
+  return resolveSession(s);
+}
+
+/**
+ * Turn a session into the ACCOUNT record with `actor` set (docs/superpowers/specs/2026-09-29-teams-design.md §3).
+ *
+ * The account is always the owner's `User`, so every `sc(u)`, charge and plan check keeps working unchanged. Scope is
+ * built from the OWNER email: a member's own address never becomes a workspace key. A member is refused when disabled,
+ * when the session predates their own or the team's revocation stamp, when the owner is gone or suspended, when the
+ * member is not on the owner's roster (`members:{owner}`), or when the member record predates the owner record (a
+ * re-registered owner address never inherits an old team).
+ */
+async function resolveSession(s: Session): Promise<User | null> {
+  const email = normalizeEmail(s.email);
+  const [{ getMember, onRoster }, { activeBrandId, listBrands, scopeFor }] = await Promise.all([import("./team"), import("./brands")]);
+  // The active brand is per login (`activebrand:{login}`), so it is read in the same round as the login records.
+  const [u, m, brandId] = await Promise.all([getUser(email), getMember(email), activeBrandId(email)]);
+  if (u) {
+    if (u.suspended) return null;
+    if (issuedBefore(s.at, u.sessionsAfter)) return null; // issued before the last password change (or before the account existed)
+    u.brandId = brandId;
+    u.scope = scopeFor(u.email, brandId);
+    const base = { email: u.email, name: u.name, lang: u.lang, role: "owner" as const };
+    u.actor = s.imp ? { ...base, kind: "founder", impersonating: s.imp } : { ...base, kind: "owner" };
+    return u;
+  }
+  // Member login. Impersonation sessions are only ever issued for owner accounts.
+  if (!m || s.imp || m.disabled) return null;
+  if (m.role !== "admin" && m.role !== "member") return null;
+  if (typeof m.memberOf !== "string" || !m.memberOf || m.memberOf === email) return null;
+  if (issuedBefore(s.at, m.sessionsAfter)) return null;
+  // The roster entry too, in the same round: removal deletes both under `lock:member`, and a record that outlived its
+  // entry anyway (restored by a racing write, left by a deleted account) is off the owner's Members page, so it must
+  // not sign in either.
+  const [owner, brands, listed] = await Promise.all([getUser(m.memberOf), listBrands(m.memberOf), onRoster(m.memberOf, email)]);
+  if (!owner || owner.suspended || !listed) return null;
+  if (issuedBefore(s.at, owner.teamSessionsAfter)) return null;
+  // NaN on either side (a malformed date) refuses too.
+  if (!(new Date(m.acceptedAt).getTime() >= new Date(owner.createdAt).getTime())) return null;
+  // The member's own active brand, but only while it is one of the owner's active brands.
+  const bid = brands.some((b) => b.id === brandId && b.status === "active") ? brandId : "default";
+  owner.brandId = bid;
+  owner.scope = scopeFor(owner.email, bid);
+  owner.actor = { kind: "member", email: m.email, name: m.name, lang: m.lang === "en" ? "en" : "ar", role: m.role };
+  return owner;
+}
+
+/** A login: an owner account, or a member login with the account it belongs to (null when that owner is gone). */
+export type Login = { kind: "owner"; user: User } | { kind: "member"; member: Member; owner: User | null };
+/**
+ * What an email signs in as. Login, forgot, reset and signup use this. An email is unique across `user:` and `member:`
+ * (enforced under `lock:login:{email}`); should both ever exist, the owner record wins, as in `currentUser`. A member
+ * record that is not on its owner's roster (the owner deleted, or the record outlived a removal) is no login at all:
+ * it cannot sign in, and it does not keep the address from signing up.
+ */
+export async function getLogin(email: string): Promise<Login | null> {
+  const e = normalizeEmail(email);
+  const { getMember, onRoster } = await import("./team");
+  const [u, m] = await Promise.all([getUser(e), getMember(e)]);
+  if (u) return { kind: "owner", user: u };
+  if (!m) return null;
+  const [owner, listed] = await Promise.all([getUser(m.memberOf), onRoster(m.memberOf, e)]);
+  return listed ? { kind: "member", member: m, owner } : null;
 }
 
 /** Founder accounts: ADMIN_EMAILS env (comma-separated) with the founder's own email as the default. */
@@ -171,26 +281,39 @@ export function adminEmails(): string[] {
   return (process.env.ADMIN_EMAILS ?? "hejazy@gmail.com").split(",").map((e) => normalizeEmail(e)).filter(Boolean);
 }
 export const isFounder = (email: string | undefined | null) => !!email && adminEmails().includes(normalizeEmail(email));
+/**
+ * The founder console follows the ACTOR, not the account: the owner login itself, in ADMIN_EMAILS. A member of the
+ * founder's own account (whose `u.email` is the founder's) and a founder impersonating someone never pass.
+ */
+export const isFounderActor = (u: User | null | undefined) => !!u?.actor && u.actor.kind === "owner" && u.actor.email === u.email && isFounder(u.actor.email);
 
-/** API access: admin key (header or cookie, never the URL: query strings end up in logs and history) or a logged-in founder account. */
-export async function isAdmin(req: Request) {
+/**
+ * Who is acting in the founder console: "key" for the admin key (header or cookie, never the URL: query strings end up
+ * in logs and history), the founder's email for a founder's own session, null for anyone else. `admin:log` records it.
+ */
+export async function adminActor(req: Request): Promise<string | null> {
   const key = process.env.WAITLIST_ADMIN_KEY;
   if (key) {
     const { sameSecret, allow, clientIp } = await import("./rate");
     const given = req.headers.get("x-admin-key");
     if (given !== null) {
       // Key guesses sent as a header are throttled like the login form.
-      if (!(await allow(`adminhdr:${clientIp(req)}`, 30, 900))) return false;
-      if (sameSecret(given, key)) return true;
+      if (!(await allow(`adminhdr:${clientIp(req)}`, 30, 900))) return null;
+      if (sameSecret(given, key)) return "key";
     }
     const jar = await cookies();
-    if (sameSecret(jar.get("nashr_admin")?.value, key)) return true;
+    if (sameSecret(jar.get("nashr_admin")?.value, key)) return "key";
   }
   const u = await currentUser();
-  return isFounder(u?.email);
+  return isFounderActor(u) ? u!.actor!.email : null;
 }
 
-/** Page access: admin cookie or a logged-in founder account. */
+/** API access: admin key (header or cookie) or a founder signed in as themselves (`adminActor`). */
+export async function isAdmin(req: Request) {
+  return (await adminActor(req)) !== null;
+}
+
+/** Page access: admin cookie or a founder signed in as themselves (`isFounderActor`). */
 export async function isAdminCookie() {
   const key = process.env.WAITLIST_ADMIN_KEY;
   if (key) {
@@ -198,6 +321,5 @@ export async function isAdminCookie() {
     const jar = await cookies();
     if (sameSecret(jar.get("nashr_admin")?.value, key)) return true;
   }
-  const u = await currentUser();
-  return isFounder(u?.email);
+  return isFounderActor(await currentUser());
 }

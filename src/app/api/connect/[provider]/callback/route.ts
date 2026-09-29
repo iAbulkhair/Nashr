@@ -12,6 +12,7 @@ import { zidStore } from "@/lib/connectors/zid";
 import { connectMeta } from "@/lib/connectors/meta";
 import { connectAds, isAdProvider } from "@/lib/connectors/ads";
 import { SHOP_HOST, validShopifyHmac } from "@/lib/connectors/shopify";
+import { can } from "@/lib/roles";
 
 export async function GET(req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const { provider } = await ctx.params;
@@ -34,6 +35,11 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   // workspace chosen at start (st.email), so switching brand mid-flow does not move it.
   const u = await currentUser();
   if (!sameSecret(bound, state) || !u || u.email !== st.email.split("#")[0]) return back("error=session_mismatch");
+  // And by the same login within the account. A state from before the actor was recorded names only the account, which
+  // is the owner's own login, so it still completes for the owner and for nobody else.
+  if ((st.actor || u.email) !== (u.actor?.email ?? "")) return back("error=session_mismatch");
+  // Re-checked here, not only at start: a role removed while the provider's page was open does not finish the connection.
+  if (!can(u, "connectors")) return back("error=forbidden");
   if (p.id === "shopify") {
     // Shopify signs its callback (#113), and the store must be the one the flow started for, never the unsigned query.
     if (!validShopifyHmac(url.searchParams, process.env[p.oauth!.clientSecretEnv])) return back("error=bad_hmac");

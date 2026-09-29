@@ -1,10 +1,10 @@
 # Nashr: system architecture (as implemented)
 
-Baseline written from the code on branch `claude/cool-tu-144390` (HEAD `4959f7e`), 2026-09-18. It describes what the code does, not what it should do. Paths are relative to the repository root. `file:line` references point at the first relevant line.
+Baseline written from the code on branch `claude/cool-tu-144390` (HEAD `4959f7e`), 2026-09-18. It describes what the code does, not what it should do. Paths are relative to the repository root. `file:line` references point at the first relevant line. Teams (seats and roles) were added on 2026-09-29: sections 2.3 to 2.5, 3, 4(b) and 4(e) and 5 describe them.
 
 ## 1. Summary
 
-Nashr is a single Next.js 16 app-router application (TypeScript, React server components, no separate backend) deployed on Vercel. It serves a bilingual (Arabic default, English) marketing site and an authenticated app under `/{lang}/app` in which a small-business owner talks to seven AI agents (Noor marketing, Sami sales, Razan finance, Faris growth, Dana reporting, Majed executive, Layan product; `src/lib/agents.ts:21`). Agents call Anthropic models through `@anthropic-ai/sdk`, produce content "tasks" that land in an approval inbox, and can publish approved items to third-party platforms through connectors. All state lives in one Upstash Redis database reached through a thin adapter (`src/lib/db.ts`); when no Redis credentials are present the adapter silently falls back to a process-local in-memory `Map` (`src/lib/db.ts:112`). There is no SQL database, no queue and no background worker: long work runs inside the request (route `maxDuration` up to 300 s), after the response via Next `after()` (`src/lib/judge.ts:90`), or in three Vercel cron jobs. Usage is metered in credits held on the user record. The same agent capabilities are exposed to external AI clients through an MCP endpoint (`/api/mcp`) protected by personal bearer tokens or by a built-in minimal OAuth 2.1 authorization server.
+Nashr is a single Next.js 16 app-router application (TypeScript, React server components, no separate backend) deployed on Vercel. It serves a bilingual (Arabic default, English) marketing site and an authenticated app under `/{lang}/app` in which a small-business owner, and since 2026-09-29 the admins and members the owner invites into the account, talk to seven AI agents (Noor marketing, Sami sales, Razan finance, Faris growth, Dana reporting, Majed executive, Layan product; `src/lib/agents.ts:21`). Agents call Anthropic models through `@anthropic-ai/sdk`, produce content "tasks" that land in an approval inbox, and can publish approved items to third-party platforms through connectors. All state lives in one Upstash Redis database reached through a thin adapter (`src/lib/db.ts`); when no Redis credentials are present the adapter silently falls back to a process-local in-memory `Map` (`src/lib/db.ts:112`). There is no SQL database, no queue and no background worker: long work runs inside the request (route `maxDuration` up to 300 s), after the response via Next `after()` (`src/lib/judge.ts:90`), or in three Vercel cron jobs. Usage is metered in credits held on the owner's user record, shared by everyone in the account; who may do what inside an account is one role table (`src/lib/roles.ts`). The same agent capabilities are exposed to external AI clients through an MCP endpoint (`/api/mcp`) protected by personal bearer tokens or by a built-in minimal OAuth 2.1 authorization server.
 
 ## 2. Component map
 
@@ -23,17 +23,18 @@ Root layout `src/app/[lang]/layout.tsx` (static params for `ar`, `en`). Pages: h
 
 ### 2.3 App shell (`src/app/[lang]/app/*`)
 
-`layout.tsx` resolves the session (`currentUser()`), redirects anonymous visitors to login unless the path ends with one of `/login /signup /forgot /reset /admin` (`layout.tsx:14-24`), renders the sidebar, trial banner, and an impersonation banner when the `nashr_impersonate` cookie exists (`:41-52`). Pages: inbox (`page.tsx`), `chat`, `conversations`, `generate`, `calendar`, `files`, `tasks` (schedule), `governance`, `integrations`, `mcp`, `billing`, `refer`, `reports`, `notifications`, `profile`, `brands`, `inspo`, `help`, `start`, `onboarding`, `login`, `signup`, `forgot`, `reset`, `admin`. The OAuth consent screen lives outside the language tree at `src/app/oauth/authorize/page.tsx`.
+`layout.tsx` resolves the session (`currentUser()`), redirects anonymous visitors to login unless the path ends with one of `/login /signup /forgot /reset /admin /join`, renders the sidebar (the acting person's name, email and role; Members for everyone; Referrals and MCP by role; the console link by `isFounderActor`), trial banner and limit dialog (paying and caps offered to the owner only), and an impersonation banner when the `nashr_impersonate` cookie exists. Pages: inbox (`page.tsx`), `chat`, `conversations`, `generate`, `calendar`, `files`, `tasks` (schedule), `governance`, `integrations`, `mcp`, `billing`, `refer`, `reports`, `notifications`, `profile`, `brands`, `inspo`, `help`, `start`, `onboarding`, `team` (Members, 2026-09-29), `join` (public: accept an invite, 2026-09-29), `login`, `signup`, `forgot`, `reset`, `admin`. Owner-only and admin+ pages render read-only for lower roles from `can()` (`permissions.md` section 2). The OAuth consent screen lives outside the language tree at `src/app/oauth/authorize/page.tsx`.
 
-### 2.4 API routes (60 route files, 86 method handlers plus 5 CORS `OPTIONS`)
+### 2.4 API routes (66 route files, 99 method handlers plus 5 CORS `OPTIONS`, on 2026-09-29)
 
 | Area | Routes |
 |---|---|
 | Auth | `auth/signup`, `auth/login`, `auth/logout`, `auth/forgot`, `auth/reset`, `account` |
+| Team (2026-09-29) | `team`, `team/invite`, `team/accept`, `team/member`, `team/leave` (plus `team/respond.ts`, a shared helper, not a route) |
 | Workspace | `brand`, `brands`, `profile`, `files`, `governance`, `schedule`, `brief`, `notifications`, `conversations` |
 | Agents / content | `chat`, `chat/feedback`, `generate`, `onboard`, `onboard/confirm`, `onboard/plan`, `catalog`, `tasks`, `tasks/[id]`, `tasks/[id]/image`, `tasks/[id]/pptx`, `tools/[tool]` |
 | Connectors | `connect`, `connect/[provider]`, `connect/[provider]/start`, `connect/[provider]/callback`, `connect/[provider]/key`, `publish/[id]`, `integrations` |
-| MCP and OAuth server | `mcp`, `mcp/token`, `oauth/register`, `oauth/approve`, `oauth/token`, `oauth/meta`, `oauth/resource` |
+| MCP and OAuth server | `mcp`, `mcp/token`, `mcp/grants`, `oauth/register`, `oauth/approve`, `oauth/token`, `oauth/meta`, `oauth/resource` |
 | Growth / inbound | `referral`, `referral/share`, `support`, `affiliates`, `waitlist` |
 | Founder console | `admin/login`, `admin/overview`, `admin/plan`, `admin/users/[email]`, `admin/impersonate`, `admin/export`, `admin/log`, `admin/evals`, `admin/golden` |
 | Cron | `cron/daily`, `cron/weekly`, `cron/golden`, `cron/routines` |
@@ -45,8 +46,10 @@ Per-route authorization is in `permissions.md`.
 | Module | One line |
 |---|---|
 | `db.ts` | Storage adapter: Upstash REST client or in-memory fallback; `get/set(ttl)/del/lpush/lrange/sadd/smembers/incrby/lock/unlock`. Memory fallback ignores TTL on `set` (`:70`). |
-| `auth.ts` | `User` type, bcrypt password hashing, session cookie `nashr_session`, `currentUser()`, scope helper `sc(u)`, founder/admin checks. |
-| `brands.ts` | Multi-brand workspaces: brand list, active brand, `scopeFor(email, brandId)`, per-plan brand limit. |
+| `auth.ts` | `User` type (plus `seats`, `teamSessionsAfter` and the runtime-only `actor`), `Role`, `Actor`, bcrypt password hashing, session cookie `nashr_session` and `Session` (`{email, at, imp?}`), `currentUser()` (resolves owner, member and impersonation sessions to the owner's account with `actor` set; a member must also be on the owner's roster, `members:{owner}`), `getLogin` (owner or member login for an email; a member record off its owner's roster is no login), scope helper `sc(u)`, `PLAN_SEATS` and `seatLimit`, revocation stamps (`revokeSessions`, `revokeTeamSessions`), founder checks by actor (`isFounderActor`, `adminActor`, `isAdmin`, `isAdminCookie`). |
+| `roles.ts` | The role table (2026-09-29): `MIN_ROLE` (action to minimum role), `can(u, action)` (fails closed), `forbid(u, action)` (403 or null), `IMPERSONATION_BLOCKED`. Type-only imports, so client components use it too. |
+| `team.ts` | Teams (2026-09-29): member logins (`getMember`, `saveMember`, `withMemberLock`, `onRoster`), invites (`createInvite`, `peekInvite`, `acceptInvite`, `cancelInvite`, `discardInvite` for the invite route's own rollback), roster changes (`removeMember`, `setRole`, `leaveTeam`, `forceRemoveMember` for the founder console), seats (`seatsUsed`, `enforceSeats`, relative to who is active now), `teamView` (the `GET /api/team` body), `withLoginLock`, and `wipeTeam` for account deletion. Lock order is always inviteuse → `lock:team` → `lock:login`, and `lock:team` → `lock:member`. |
+| `brands.ts` | Multi-brand workspaces: brand list, active brand per login (`activebrand:{login}`; `addBrand` activates the new brand for the acting login), `scopeFor(email, brandId)`, per-plan brand limit. |
 | `brand.ts` | `Brand` file, `Task` records, task costs and counts, owner preference notes (`listPreferencesFor` gives one agent's prompts the notes that are not about another agent's work). |
 | `credits.ts` | Credit ledger under a per-user Redis lock: `charge`, `adjust`, `refund`, monthly `renewIfDue`. Since 2026-09-29 a charge carries `{scope, agent, cap}`: it counts the credits against the agent that owns the work in that brand scope (`User.agentSpend`, same save as the balance), refuses with `agent_cap` over the owner's monthly cap before the balance is touched, and `refund` given the charge's result lowers the same counter in the same month only. `agentSpendFor(u, scope)` reads this month's counters. |
 | `chat.ts` | Agent chat loop (Anthropic streaming, up to 5 tool turns), tool definitions and `runTool`, chat history lists. |
@@ -79,10 +82,10 @@ Per-route authorization is in `permissions.md`.
 | `stats.ts` | Workspace KPIs from stored tasks; `statsFor` gives Dana's tasks and Majed's strategy review the WORKSPACE DATA plus STORE DATA (`salesDataBlock` in `store-sales.ts`) when a store was synced, Razan's cash forecast the STORE DATA alone, and cart recovery the CART DATA. |
 | `admin-stats.ts` | Founder overview and users CSV. |
 | `referral.ts` | Deterministic referral codes, two-sided credit grant. |
-| `mcp.ts` | Personal MCP tokens and `userFromBearer`. |
+| `mcp.ts` | Personal MCP tokens and `userFromBearer` (owner accounts only, actor kind `token`; a token naming a member login is refused). |
 | `oauth.ts` | Minimal OAuth 2.1 server: metadata, dynamic client registration, codes, tokens, refresh rotation. |
 | `rate.ts` | Fixed-window rate limiter `allow()` and `clientIp()` (first `x-forwarded-for` hop). |
-| `account.ts` | `wipeAccount` account deletion. |
+| `account.ts` | `wipeAccount` account deletion, including the team (`wipeTeam`). |
 | `connectors/registry.ts` | Provider catalog: 7 key-based, 9 OAuth; env names for client credentials. |
 | `connectors/store.ts` | AES-256-GCM encrypted connection records, OAuth state records. |
 | `connectors/oauth.ts` | Authorize URL builder, PKCE pair, code exchange. |
@@ -116,18 +119,27 @@ All four require `Authorization: Bearer ${CRON_SECRET}` (compared with `sameSecr
 
 ## 3. Redis key namespace
 
-"scope" means `email` for the default brand or `email#brandId` for extra brands (`src/lib/brands.ts:27`). "email" means the normalized account email. No key has a TTL unless stated.
+"scope" means `email` for the default brand or `email#brandId` for extra brands (`src/lib/brands.ts:27`). "email" and "owner" mean the normalized account (owner) email; "login" means the address a person signs in with, an owner's or a member's (2026-09-29). No key has a TTL unless stated.
 
 | Key pattern | Type | Stores | Owner module | TTL |
 |---|---|---|---|---|
-| `user:{email}` | json | `User` without `scope`/`brandId` (includes `passHash`, plan, credits, `suspended`, and `agentSpend: {month, by: {scope: {agent: credits}}}`, the current UTC month's credits per brand scope and agent, written only by `charge` and `refund`) | `auth.ts:47,53`, `credits.ts` | none |
-| `users:all` | set | All account emails | `auth.ts:54`; read by `schedule.ts:106`, `admin-stats.ts:24`, `api/admin/plan`, `api/admin/export` | none |
-| `session:{token}` | json | `{email, at}` for a 32-byte hex session token (records from before 2026-09-18 are a bare email); dead when `at` is older than the user's `sessionsAfter` | `auth.ts:81,97` | 30 days |
-| `pwreset:{sha256(token)}` | json | `{email}` for a password reset | `api/auth/forgot/route.ts:27`, `api/auth/reset/route.ts:16` | 1 hour |
-| `rate:{bucket}` | int | Fixed-window counter. Buckets: `forgot:ip:{ip}`, `forgot:em:{email}`, `reset:ip:{ip}`, `adminkey:{ip}` | `rate.ts:5` | window seconds |
+| `user:{email}` | json | The ACCOUNT, an owner login: `User` without the runtime-only `scope`, `brandId` and `actor` (includes `passHash`, plan, credits, `suspended`, `sessionsAfter` (stamped at creation since 2026-09-29), `teamSessionsAfter` (member sessions issued before it are dead: owner reset, founder reset), `seats` (founder seat override), and `agentSpend: {month, by: {scope: {agent: credits}}}`, the current UTC month's credits per brand scope and agent, written only by `charge` and `refund`) | `auth.ts`, `credits.ts` | none |
+| `users:all` | set | All account (owner) emails; member logins never enter it | `auth.ts` `saveUser`; read by `schedule.ts:106`, `admin-stats.ts:24`, `api/admin/plan`, `api/admin/export` | none |
+| `session:{token}` | json | `{email, at, imp?}` for a 32-byte hex session token: the LOGIN email (an owner's or a member's), the issue time, and on an impersonation session the founder's email or `"key"` (`imp`). Records from before 2026-09-18 are a bare email. Dead when `at` is older than the owner's `sessionsAfter`, or for a member older than its own `sessionsAfter` or the owner's `teamSessionsAfter` | `auth.ts` `createSession`, `currentUser` | 30 days; 2 hours for an impersonation session |
+| `pwreset:{sha256(token)}` | json | `{email, kind}` for a password reset, `kind` `owner` or `member` (records without `kind` are an owner's) | `api/auth/forgot/route.ts`, `api/auth/reset/route.ts` | 1 hour |
+| `pwresetuse:{sha256(token)}` | lock | Single use of a reset link: SET NX before the `pwreset:` record is deleted | `api/auth/reset/route.ts` | 1 hour |
+| `rate:{bucket}` | int | Fixed-window counter. Buckets: `login:ip:{ip}`, `login:em:{email}`, `signup:ip:{ip}`, `forgot:ip:{ip}`, `forgot:em:{email}`, `reset:ip:{ip}`, `adminkey:{ip}`, `adminhdr:{ip}`, `support:ip:{ip}`, `affiliates:ip:{ip}`, `waitlist:ip:{ip}`, `chat:h:{email}`, `chat:d:{email}`, `onboard:{email}`, `perf:{email}`, `files:{scope}`, and since 2026-09-29 `team:invite:acct:{owner}` (20 a day, 5 on a trial), `team:invite:to:{sha256(invited email)}` (5 a day across all accounts), `team:invite:ip:{ip}` (30 an hour), `team:peek:ip:{ip}` (30 per 15 min), `team:accept:ip:{ip}` (10 per 15 min) | `rate.ts` `allow` | window seconds |
 | `lock:user:{email}` | lock | Per-user credit/ledger mutex | `credits.ts:12` | 10 s |
+| `member:{email}` | json | A member login (2026-09-29): `{email, name, lang, passHash, memberOf, role, invitedBy, acceptedAt, sessionsAfter, disabled?}`; `memberOf` is the owner email, `role` is `admin` or `member`, `disabled: "seats"` is set by `enforceSeats`. Never written by `saveUser` | `team.ts` | none |
+| `members:{owner}` | set | Member emails of the account (the roster). `currentUser` and `getLogin` require a member to be in it (`onRoster`, one `SISMEMBER`), so a record that outlived its entry never signs in or holds its address | `team.ts` | none |
+| `invite:{sha256(token)}` | json | A pending invite `{email, role, owner, invitedBy, createdAt, expiresAt, lang}`; the token itself is never stored, and the hash is the invite id `DELETE /api/team/invite` takes | `team.ts` | 7 days |
+| `invites:{owner}` | set | Invite hashes of the account; entries whose invite expired are dropped when listed | `team.ts` | none |
+| `lock:team:{owner}` | lock | The seat count and roster changes of one account: invite, accept (which re-reads the invite, the owner and the inviter under it), cancel, removal, leave, role change, `enforceSeats`, `wipeTeam` | `team.ts` | 10 s |
+| `lock:login:{email}` | lock | Login uniqueness across `user:` and `member:`: signup and invite acceptance create logins under it | `team.ts` `withLoginLock`, `api/auth/signup` | 10 s |
+| `lock:member:{email}` | lock | Read-modify-write AND deletion of one member record: password, name, language, role, seat pause, removal, leave, account deletion. Removal takes it inside `lock:team`, so a profile, password or reset write in flight can never restore a removed login | `team.ts` `withMemberLock` | 10 s |
+| `inviteuse:{sha256(token)}` | lock | Single use of an invite at accept; a second concurrent accept is refused | `team.ts` `acceptInvite` | 30 s |
 | `brands:{email}` | json | `BrandMeta[]` | `brands.ts:14` | none |
-| `activebrand:{email}` | string | Active brand id | `brands.ts:22` | none |
+| `activebrand:{login}` | string | Active brand id of one LOGIN (2026-09-29): the owner's key is unchanged and each member has its own; a member's value is used only while it is one of the owner's active brands | `brands.ts` | none |
 | `brand:{scope}` | json | `Brand` file | `brand.ts:83` | none |
 | `tasks:{scope}` | list | Task ids, newest first (reads cap at 200) | `brand.ts:89,96` | none |
 | `task:{scope}:{id}` | json | `Task`. Since 2026-09-29 every creation path sets `source` (`manual` on `/api/generate`, `chat` for chat and MCP, `scheduled` for the weekly plan and the routines) and `brief`: the batch's notes or brief, first 500 characters, when there were any (`briefOf`); a routine's batch carries the routine id | `brand.ts:95` | none |
@@ -155,14 +167,14 @@ All four require `Authorization: Bearer ${CRON_SECRET}` (compared with `sameSecr
 | `onboardok:{scope}` | string | The site URL the owner confirmed on the start page; the only one `POST /api/onboard` builds from | `lib/onboard-confirm.ts`, `api/onboard/confirm/route.ts`, `api/onboard/route.ts` | 1 day; deleted by a finished build |
 | `conns:{scope}` | set | Connected provider ids (never shrinks) | `connectors/store.ts:35` | none |
 | `conn:{scope}:{provider}` | json | Connection with AES-256-GCM `enc` blob; delete writes `null` | `connectors/store.ts:34,52` | none |
-| `oauthstate:{state}` | json | Connector OAuth state `{email: scope, provider, lang, shop, verifier}` | `connectors/store.ts:56` | 10 min |
+| `oauthstate:{state}` | json | Connector OAuth state `{email: scope, provider, lang, shop, verifier, actor}`; `actor` (2026-09-29) is the login that started the flow and the only one that may finish it | `connectors/store.ts:56` | 10 min |
 | `adcodes:{scope}` | hash | Ad code → task id, one entry per new ads or social item, used to find Nashr's ads in results | `brand.ts` | none |
 | `adsync:{scope}:{provider}` | string | When the ad account of `meta_ads` or `snapchat` was last read, for the daily once-in-20-hours rule | `perf-store.ts` | none |
 | `perfimport:{scope}` | json | Latest campaign CSV import: file name, detected platform, metric, row counts, date range, totals, top and bottom three, findings with sample and confidence. No raw rows | `perf-store.ts` | none (replaced on each upload) |
 | `storesales:{scope}` | json | Latest store sales snapshot (Salla, Shopify or Zid, whichever was synced last): 30-day order count, revenue by currency, canceled count, open abandoned carts and their value, top products. Totals only, no customer data | `store-sales.ts` | none (replaced on each sync) |
 | `connlock:{scope}:{provider}` | string | Held while a connector token is refreshed, so two requests cannot spend one single-use refresh token | `connectors/fresh.ts` | 30 s |
 | `profile:{scope}` (written) / `profile:{email}` (read by cron, deleted by wipe) | json | `{emails: all\|important\|none}` | `api/profile/route.ts:21,40`, `api/cron/daily/route.ts:41`, `account.ts:19` | none |
-| `notifs:{email}` | json | Up to 50 notifications | `notifications.ts:16` | none |
+| `notifs:{email}` | json | Up to 50 notifications of the account, one bell and one read state for the owner and every member | `notifications.ts:16` | none |
 | `notifseen:{email}:{fingerprint}` | flag | Follow-up dedupe (the 80% cap warning uses `agentcap80:{scope}:{agent}:{YYYY-MM}` for 35 days; a routine's run `routine:{scope}:{id}:{period}` for 8 or 35 days; `wipeAccount` deletes these two for this and the previous month or period, the others expire within a week) | `notifications.ts:32` | `ttlDays` (default 3 d) |
 | `notified:{email}:{key}` | string | Once-only email guard (`nudge1`, `lifecycle:dayN`) | `notify.ts:20` | none |
 | `mcptoken:{token}` | string | Email for a personal MCP token (no TTL, `mcp.ts:8`) or an OAuth access token (30 d, `oauth.ts:64`) | `mcp.ts`, `oauth.ts` | none / 30 days |
@@ -181,11 +193,11 @@ All four require `Authorization: Bearer ${CRON_SECRET}` (compared with `sameSecr
 | `uev:{email}:{event}`, `ulast:{email}`, `ufirst0:{email}:{event}` (and transient `ufirst:`) | int / string | Per-user analytics | `track.ts:30-40` | none |
 | `fblog:{scope}` | list | Chat thumbs with timestamp and the owner's reason; counted inside the report window. Per brand since 2026-09-21 (was per account). The legacy `fb:{email}:{agent}:{up\|down}` counters are no longer written; `wipeAccount` deletes both. Since 2026-09-29 the newest 5 thumbs-down reasons of the last 30 days reach that agent's chat prompt (`feedbackFor` with `chat`), never generation | `evals.ts` `recordThumb`, `thumbsIn`; `feedback.ts` | none |
 | `golden:runs`, `golden:run:{id}`, `golden:lock` | list / json / lock | Golden set history and mutex | `golden.ts:148,183,219` | lock 300 s |
-| `admin:log` | list | Founder action audit log | `api/admin/*` | none |
+| `admin:log` | list | Founder action audit log; `actor` is the founder's email or `"key"` on `admin/users` and `admin/plan` actions and on `impersonate:stop` (the burned session's `imp`), the literal `"founder"` on golden runs | `api/admin/*` | none |
 | `deleted-accounts` | list | `{email, at}` tombstones | `account.ts:20` | none |
-| `support-tickets` | list | Support and contact tickets | `api/support/route.ts:11` | none |
+| `support-tickets` | list | Support and contact tickets; `user` is the acting login and `account` the owner's email when a session exists | `api/support/route.ts:11` | none |
 | `affiliate-applications` | list | Affiliate applications | `api/affiliates/route.ts:9` | none |
-| `integration-requests`, `integration-votes:{name}` | list / int | Integration requests | `api/integrations/route.ts:20-21` | none |
+| `integration-requests`, `integration-votes:{name}` | list / int | Integration requests (`email` = the acting login, `account` = the owner's email) | `api/integrations/route.ts:20-21` | none |
 | `rate:tool:{ip}`, `toolusage:{slug}` | int | Free tool anonymous daily allowance (through `allow()`, platform IP), per-tool usage | `api/tools/[tool]/route.ts` | 24 h / none |
 | `waitlist:entries`, `waitlist:emails` | list / set | Waitlist (direct Upstash client, bypasses `db.ts`) | `api/waitlist/route.ts:4-5` | none |
 
@@ -200,7 +212,7 @@ Bounded lists (2026-09-18): `pushCapped` in `db.ts` trims on write. Caps in `CAP
 
 ### (b) Authenticated app page
 1. Request to `/{lang}/app/...` matches the proxy, which sets `x-pathname` (`proxy.ts:27`).
-2. `app/layout.tsx:23` calls `currentUser()`: reads cookie `nashr_session`, loads `session:{token}`, loads `user:{email}`, returns `null` when missing or `suspended`, then attaches `brandId` and `scope` from `activebrand:{email}` (`auth.ts:93-105`).
+2. `app/layout.tsx` calls `currentUser()`, which resolves the session to the ACCOUNT, the owner's `User`, with `actor`, `brandId` and `scope` set, or `null` (section 4(e)).
 3. Anonymous and not a public path: redirect to `/{lang}/app/login` (`layout.tsx:24`). The redirect is skipped when `x-pathname` is empty.
 4. Each page repeats its own guard (`currentUser()` then `redirect`) and reads data with `sc(u)` or, on several pages, `u.email` (see `permissions.md` section 2).
 5. Client components then call JSON APIs with the same cookie.
@@ -221,15 +233,25 @@ Bounded lists (2026-09-18): `pushCapped` in `db.ts` trims on write. Caps in `CAP
 4. Daily: `renewIfDue`, nudge email, `runLifecycle`, `runDaily`, `followUps`, optional brief email. Weekly: `runWeekly` per scope, charging credits and refunding on failure. Golden: `runGolden("cron")` under `golden:lock`. Routines: `dueRoutines` turns the users into (scope, routine) items that are on and due, and `runRoutine` runs each, charging the owning agent and refunding on failure.
 5. JSON summary is returned; weekly returns a map keyed by account email (`cron/weekly/route.ts:21`).
 
+### (e) Resolving who is acting (2026-09-29)
+1. `currentUser()` reads cookie `nashr_session` and `session:{token}` (`{email, at, imp?}`), then, in one parallel round, `user:{login}`, `member:{login}` and `activebrand:{login}` (`resolveSession` in `src/lib/auth.ts`).
+2. Owner login (the `user:` record exists; it wins should a member record exist too): `null` when suspended or when `at` predates `sessionsAfter`. Otherwise the record itself, `scope = scopeFor(owner, brandId)`, and actor `{kind:"owner", role:"owner"}`, or `{kind:"founder", role:"owner", impersonating: imp}` when the session carries `imp`.
+3. Member login: `null` when the record is disabled, its role or `memberOf` is malformed, the session carries `imp`, or `at` predates the member's `sessionsAfter`. Then `user:{memberOf}` and `brands:{memberOf}` in one round: `null` when the owner is missing or suspended, when `at` predates the owner's `teamSessionsAfter`, or when the member's `acceptedAt` is earlier than the owner's `createdAt`. Otherwise the OWNER's record, with `brandId` = the member's own active brand when it is one of the owner's active brands (else `default`), `scope = scopeFor(owner, brandId)`, and actor `{kind:"member", email, name, lang, role}`.
+4. Every caller keeps using `sc(u)`, `u.email` (the account) and `charge(u.email, ...)` unchanged; role checks read `u.actor` through `can()` and `forbid()` (`src/lib/roles.ts`), which refuse a `User` without an actor. `saveUser` strips `actor`, `scope` and `brandId`, so none is ever persisted.
+5. MCP: `userFromBearer` resolves `mcptoken:{token}` to an owner account only (a member login's email is refused), with the owner's active brand and actor `{kind:"token", role:"owner"}`. The cron's `allUsers()` builds users without an actor.
+6. Founder console: `adminActor(req)` answers `"key"` for the admin key (header `x-admin-key` or cookie `nashr_admin`), the founder's email when `isFounderActor(currentUser())` (actor kind `owner`, actor email equal to the account email, in `ADMIN_EMAILS`), else `null`; `isAdmin` and `isAdminCookie` follow it.
+
 ## 5. Trust boundaries
 
 | Boundary | What crosses it | Controls present in code |
 |---|---|---|
-| Browser to Vercel function | Cookies `nashr_session`, `nashr_admin`, `nashr_return`, `nashr_impersonate` (all `httpOnly`, `sameSite=lax`, `secure` in production, `path=/`), `nashr_lang` (client-set, not httpOnly); JSON bodies; query strings | Session lookup per request; no CSRF token (relies on `sameSite=lax` and JSON bodies); input length clamps per route; rate limits only on forgot, reset, admin key login, and anonymous free tools. `clientIp` trusts the first `x-forwarded-for` entry (`rate.ts:12`). |
+| Browser to Vercel function | Cookies `nashr_session`, `nashr_admin`, `nashr_return`, `nashr_impersonate` (all `httpOnly`, `sameSite=lax`, `secure` in production, `path=/`), `nashr_lang` (client-set, not httpOnly); JSON bodies; query strings | Session lookup per request; no CSRF token (relies on `sameSite=lax` and JSON bodies); input length clamps per route; rate limits on login, signup, forgot, reset, the admin key (form and header), support, affiliates, waitlist, chat, onboarding, file writes, CSV imports, anonymous free tools, and the team invite, preview and accept routes. `clientIp` trusts the first `x-forwarded-for` entry (`rate.ts:12`). Every role check is in code (`forbid`/`can` after `currentUser()`); a hidden control is display only. |
 | Vercel function to Redis | Every record, including password hashes, session tokens (clear), personal MCP tokens (clear, both directions), OAuth client secrets (clear), encrypted connector credentials | TLS REST token from env. Tenant isolation is purely by key naming (scope prefix). No Redis ACL separation. |
 | Vercel function to model provider (Anthropic) | Brand file, workspace memory files, owner preferences, the owning agent's recent feedback (decision counts, typed reasons, judge notes, chat thumbs-down reasons), chat history, crawled site text, imported product text, task bodies | Recent feedback is escaped with `asData` inside `<recent_feedback>`, labelled as data, capped in count and length, and only in the uncached prompt block (`feedback.ts`). Model output is parsed as JSON or text; tool inputs are schema-constrained with `strict: true` (`chat.ts:42`) but not re-validated server-side except where noted. Content from crawled sites and imported catalogs enters prompts and the `products.md` memory file, so third-party text can influence agent behaviour including tool calls. |
 | Vercel function to third-party platform APIs | Connector credentials (decrypted in memory), content to publish, user-supplied base URLs | Credentials encrypted at rest with AES-256-GCM, key = SHA-256 of `CONNECT_SECRET`, falling back to `WAITLIST_ADMIN_KEY`, then to a fixed dev string (`connectors/store.ts:13-16`). Base URLs for WordPress, WooCommerce, Odoo, PrestaShop and crawl/catalog targets are user-supplied and fetched server-side with no host allow-list or private-range check. |
 | Vercel function to email (Resend) and fal.ai | Recipient address, email text; image prompt | API keys from env. |
-| External MCP client to `/api/mcp` and OAuth server | Bearer tokens `nashr_...`; OAuth client registration, codes, PKCE verifiers, refresh tokens | `userFromBearer` (`mcp.ts:20`); open dynamic client registration; PKCE S256 required at approve and token; redirect URI exact match; CORS `*` on MCP and OAuth endpoints. |
+| External MCP client to `/api/mcp` and OAuth server | Bearer tokens `nashr_...`; OAuth client registration, codes, PKCE verifiers, refresh tokens | `userFromBearer` (owner accounts only, actor kind `token`); every tool mapped to a role action (`MCP_TOOL_ACTION` in `src/lib/mcp.ts`); OAuth consent owner only; open dynamic client registration; PKCE S256 required at approve and token; redirect URI exact match; CORS `*` on MCP and OAuth endpoints. |
 | Vercel Cron to function | `CRON_SECRET` bearer | Header equality check. |
-| Founder to console | `WAITLIST_ADMIN_KEY` (cookie, header `x-admin-key`, or `?key=`) or a founder session | `isAdmin` / `isAdminCookie` (`auth.ts:114,128`); see `permissions.md` section 4. |
+| Founder to console | `WAITLIST_ADMIN_KEY` (cookie or header `x-admin-key`, never the URL) or a founder session | `adminActor` / `isAdmin` / `isAdminCookie` (`src/lib/auth.ts`): the session path requires the founder's own owner login (`isFounderActor`), so a member of a founder's account and a founder impersonating never pass; see `permissions.md` section 4. |
+| Invitee to the join page and `/api/team/accept` (2026-09-29) | The invite token in the link's URL fragment (read by the page's script, sent in a JSON body, never a query string); name, password | Only the token's SHA-256 is stored (`invite:{hash}`, 7 days); single use under `inviteuse:{hash}`; the invite (record and index entry), the owner (existence, suspension, seat limit) and the inviter re-read under `lock:team:{owner}`, and the address under `lock:login:{email}`; the preview applies the same inviter check; per-IP rate limits for preview and accept. |
+| Member login to the owner's account (2026-09-29) | A session naming the member's own login | Re-resolved on every request (`currentUser`); the member acts in the owner's workspace under the role table; its password, sessions and reset links are its own and never the owner's. |

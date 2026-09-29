@@ -7,6 +7,7 @@ import { getGov } from "@/lib/governance";
 import { readFile, writeFile } from "@/lib/files";
 import { decisionOf, recordDecisions, type DecisionAction } from "@/lib/decisions";
 import { editPctOf } from "@/lib/similarity";
+import { forbid } from "@/lib/roles";
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const u = await currentUser();
@@ -16,6 +17,13 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const [t, gov, brand] = await Promise.all([getTask(scope, id), getGov(scope), getBrand(scope)]);
   if (!t) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   const b = (await req.json().catch(() => ({}))) as { status?: string; editedBody?: string; note?: string; scheduledFor?: string | null };
+  // Any member may edit, reject, reopen and reschedule a draft (src/lib/roles.ts "drafts"). An item that ENDS approved
+  // needs admin or owner ("publish"): approving it, or changing the text of an item that stays approved, because an
+  // approved item is what gets published and the approval must cover the words that go out.
+  const ends = b.status === "approved" || b.status === "rejected" || b.status === "pending" ? b.status : t.status;
+  const rewrites = typeof b.editedBody === "string" && b.editedBody !== t.body && b.editedBody.slice(0, 20000) !== (t.editedBody ?? t.body);
+  const no = forbid(u, ends === "approved" && (t.status !== "approved" || rewrites) ? "publish" : "drafts");
+  if (no) return no;
   if (b.scheduledFor === null) delete t.scheduledFor;
   else if (typeof b.scheduledFor === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.scheduledFor)) t.scheduledFor = b.scheduledFor;
 

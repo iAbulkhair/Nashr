@@ -3,15 +3,19 @@ import { Fragment, useEffect, useState } from "react";
 import GoldenPanel from "./GoldenPanel";
 
 type KindUsage = { calls: number; in: number; out: number; usd: number };
-type U = { email: string; name: string; phone: string; plan: string; credits: number; trialEnds: string; createdAt: string; renewedAt?: string | null; suspended?: boolean; lang?: string; tokens?: number; usd?: number; calls?: number; byKind?: Record<string, KindUsage>; priceSar?: number; marginPct?: number | null };
+type U = { email: string; name: string; phone: string; plan: string; credits: number; trialEnds: string; createdAt: string; renewedAt?: string | null; suspended?: boolean; lang?: string; tokens?: number; usd?: number; calls?: number; byKind?: Record<string, KindUsage>; priceSar?: number; marginPct?: number | null; seats?: number; seatsOverride?: number | null };
+/** GET /api/admin/users/{email} for an address that is a member login, not an account (members never enter users:all). */
+type MemberDetail = { email: string; name: string; role: string; memberOf: string; invitedBy: string; acceptedAt: string; disabled: string | null; ownerExists: boolean; onRoster: boolean };
+/** What POST /api/admin/plan changed in the team when the seat limit moved (src/lib/team.ts `enforceSeats`). */
+type TeamChange = { limit: number; disabled: string[]; enabled: string[]; cancelled: string[] };
 type Detail = { user: U; brand: Record<string, unknown> | null; tasks: T[]; usage: { in: number; out: number; calls: number; usd: number; kinds: Record<string, number>; byKind?: Record<string, KindUsage>; byAgent?: Record<string, { calls: number; usd: number }> }; connections: { provider: string; label?: string; connectedAt?: string }[]; brands: { id: string; name: string; status: string }[]; conversations: number; referrals: number; avgScore: number | null };
 type T = { id: string; type: string; channel: string; title: string; status: string; createdAt: string; body: string; editedBody?: string; quality?: { score: number; notes: string } };
 type TM = { type: string; n: number; approved: number; rejected: number; autoApproved: number; approvalRate: number | null; edited: number; editRate: number | null; editMagnitude: number | null; published: number; judged: number; avgScore: number | null; low: number; avgHoursToDecide: number | null };
 type AM = { agent: string; n: number; decided: number; autoApproved: number; approvalRate: number | null; reviewedApproved: number; editRate: number | null; judged: number; avgScore: number | null; low: number; thumbsUp: number; thumbsDown: number; types: TM[] };
 
 const STR = {
-  en: { users: "Users", paying: "Paying", today: "Signed up today", trial: "Trial", cost: "Model cost this month $", tokens: "Tokens this month", calls: "Model calls", suspended: "Suspended", search: "Search email, name, phone, plan…", email: "Email", name: "Name", phone: "Phone", plan: "Plan", credits: "Credits", tokensMo: "Tokens (mo)", costMo: "Cost $ (mo)", marginMo: "Margin", perKind: "Cost per request type this month (average of one request, and the total)", perAgent: "Cost per agent this month (model calls made for that agent's work: its batches, reviews, judging, images and its chat turns; onboarding counts as Noor)", trialEnds: "Trial ends", joined: "Joined", addCredits: "+ credits", planNote: "Changing the plan resets the balance to that plan's monthly allowance and starts the renewal cycle (balance resets on the 1st of each month, UTC). Use \"+ credits\" for top-ups within the month. Tokens and cost are this month's real model usage.", quality: "Agent quality · last 30 days · all workspaces", qualityNote: "Approval = approved ÷ decided. Edited = approved items the owner changed (magnitude = % of text changed). Judge = automated score /100 (85+ ready, <70 regenerate). Thumbs = chat replies.", agentType: "Agent / type", items: "Items", approval: "Approval", edited: "Edited", magnitude: "Magnitude", published: "Published", judge: "Judge", low: "<70", hours: "Hours to decide", perWorkspace: "Per workspace", loading: "Loading…", close: "close", impersonate: "Log in as user", extend: "Extend trial", reset: "Reset password", emailsIn: "Emails in", suspend: "Suspend", unsuspend: "Unsuspend", del: "Delete account", usage: "Model usage (month)", trialRenewed: "Trial ends / renewed", integrations: "Integrations", brandsEtc: "Brands · conversations · referrals · judge", brandFile: "Brand file", notCompleted: "— not completed —", generated: "Generated items", approved: "approved", rejected: "rejected", promptCredits: "Credits to add (negative to remove):", promptDays: "Extend trial by days:", promptDelete: "Type the email to permanently delete this account and all its data:", promptTemp: "Temporary password (shown once, send it on WhatsApp):", arabic: "Arabic", english: "English" },
-  ar: { users: "المستخدمون", paying: "مشتركون", today: "سجّلوا اليوم", trial: "تجربة", cost: "تكلفة النماذج هذا الشهر $", tokens: "توكنز هذا الشهر", calls: "استدعاءات النماذج", suspended: "موقوفون", search: "ابحث بالبريد أو الاسم أو الجوال أو الخطة…", email: "البريد", name: "الاسم", phone: "الجوال", plan: "الخطة", credits: "الكريدت", tokensMo: "توكنز (الشهر)", costMo: "التكلفة $ (الشهر)", marginMo: "الهامش", perKind: "التكلفة حسب نوع الطلب هذا الشهر (متوسط الطلب الواحد، والإجمالي)", perAgent: "التكلفة لكل وكيل هذا الشهر (استدعاءات النماذج لعمل ذلك الوكيل: دفعاته ومراجعتها وتقييمها وصوره ومحادثاته؛ التهيئة تُحسب لنور)", trialEnds: "نهاية التجربة", joined: "انضم", addCredits: "+ كريدت", planNote: "تغيير الخطة يعيد الرصيد إلى مخصص الخطة الشهري ويبدأ دورة التجديد (يتجدد الرصيد في أول كل شهر UTC). استخدم «+ كريدت» للإضافات خلال الشهر. التوكنز والتكلفة هي الاستهلاك الحقيقي للنماذج هذا الشهر.", quality: "جودة الوكلاء · آخر 30 يوماً · كل المساحات", qualityNote: "الاعتماد = معتمد ÷ محسوم. التعديل = عناصر معتمدة غيّرها المالك (الحجم = % النص المتغيّر). الحَكَم = درجة آلية من 100 (85+ جاهز، أقل من 70 أعد التوليد). الإبهام = ردود الدردشة.", agentType: "الوكيل / النوع", items: "عناصر", approval: "اعتماد", edited: "تعديل", magnitude: "الحجم", published: "نُشر", judge: "الحَكَم", low: "<70", hours: "ساعات حتى القرار", perWorkspace: "لكل مساحة", loading: "جارٍ التحميل…", close: "إغلاق", impersonate: "دخول كالمستخدم", extend: "تمديد التجربة", reset: "إعادة تعيين كلمة المرور", emailsIn: "الإيميلات بـ", suspend: "إيقاف", unsuspend: "إلغاء الإيقاف", del: "حذف الحساب", usage: "استهلاك النماذج (الشهر)", trialRenewed: "نهاية التجربة / التجديد", integrations: "التكاملات", brandsEtc: "علامات · محادثات · إحالات · الحَكَم", brandFile: "ملف العلامة", notCompleted: "— غير مكتمل —", generated: "العناصر المولّدة", approved: "معتمد", rejected: "مرفوض", promptCredits: "كريدت للإضافة (سالب للخصم):", promptDays: "تمديد التجربة بالأيام:", promptDelete: "اكتب البريد لحذف الحساب وكل بياناته نهائياً:", promptTemp: "كلمة مرور مؤقتة (تظهر مرة واحدة، أرسلها على واتساب):", arabic: "العربية", english: "الإنجليزية" },
+  en: { users: "Users", paying: "Paying", today: "Signed up today", trial: "Trial", cost: "Model cost this month $", tokens: "Tokens this month", calls: "Model calls", suspended: "Suspended", search: "Search email, name, phone, plan…", email: "Email", name: "Name", phone: "Phone", plan: "Plan", credits: "Credits", tokensMo: "Tokens (mo)", costMo: "Cost $ (mo)", marginMo: "Margin", perKind: "Cost per request type this month (average of one request, and the total)", perAgent: "Cost per agent this month (model calls made for that agent's work: its batches, reviews, judging, images and its chat turns; onboarding counts as Noor)", trialEnds: "Trial ends", joined: "Joined", addCredits: "+ credits", planNote: "Changing the plan resets the balance to that plan's monthly allowance and starts the renewal cycle (balance resets on the 1st of each month, UTC). Use \"+ credits\" for top-ups within the month. Tokens and cost are this month's real model usage.", quality: "Agent quality · last 30 days · all workspaces", qualityNote: "Approval = approved ÷ decided. Edited = approved items the owner changed (magnitude = % of text changed). Judge = automated score /100 (85+ ready, <70 regenerate). Thumbs = chat replies.", agentType: "Agent / type", items: "Items", approval: "Approval", edited: "Edited", magnitude: "Magnitude", published: "Published", judge: "Judge", low: "<70", hours: "Hours to decide", perWorkspace: "Per workspace", loading: "Loading…", close: "close", impersonate: "Log in as user", extend: "Extend trial", reset: "Reset password", emailsIn: "Emails in", suspend: "Suspend", unsuspend: "Unsuspend", del: "Delete account", usage: "Model usage (month)", trialRenewed: "Trial ends / renewed", integrations: "Integrations", brandsEtc: "Brands · conversations · referrals · judge", brandFile: "Brand file", notCompleted: "— not completed —", generated: "Generated items", approved: "approved", rejected: "rejected", promptCredits: "Credits to add (negative to remove):", promptDays: "Extend trial by days:", promptDelete: "Type the email to permanently delete this account and all its data:", promptTemp: "Temporary password (shown once, send it on WhatsApp):", arabic: "Arabic", english: "English", seats: "Seats", setSeats: "Seats…", promptSeats: "Seat limit, the owner included (1-500). 0 goes back to the plan's number:", seatsOverride: "override", teamPaused: "paused", teamResumed: "back", teamCancelled: "invites cancelled", lookup: "Look up this address", notFound: "No account and no member login at this address.", memberLogin: "Member login", memberOf: "member of", invitedBy: "invited by", ownerMissing: "the owner account is gone", offRoster: "not on the owner's roster", removeMember: "Remove this member login", promptRemoveMember: "Type the email to delete this member login (it frees the address):" },
+  ar: { users: "المستخدمون", paying: "مشتركون", today: "سجّلوا اليوم", trial: "تجربة", cost: "تكلفة النماذج هذا الشهر $", tokens: "توكنز هذا الشهر", calls: "استدعاءات النماذج", suspended: "موقوفون", search: "ابحث بالبريد أو الاسم أو الجوال أو الخطة…", email: "البريد", name: "الاسم", phone: "الجوال", plan: "الخطة", credits: "الكريدت", tokensMo: "توكنز (الشهر)", costMo: "التكلفة $ (الشهر)", marginMo: "الهامش", perKind: "التكلفة حسب نوع الطلب هذا الشهر (متوسط الطلب الواحد، والإجمالي)", perAgent: "التكلفة لكل وكيل هذا الشهر (استدعاءات النماذج لعمل ذلك الوكيل: دفعاته ومراجعتها وتقييمها وصوره ومحادثاته؛ التهيئة تُحسب لنور)", trialEnds: "نهاية التجربة", joined: "انضم", addCredits: "+ كريدت", planNote: "تغيير الخطة يعيد الرصيد إلى مخصص الخطة الشهري ويبدأ دورة التجديد (يتجدد الرصيد في أول كل شهر UTC). استخدم «+ كريدت» للإضافات خلال الشهر. التوكنز والتكلفة هي الاستهلاك الحقيقي للنماذج هذا الشهر.", quality: "جودة الوكلاء · آخر 30 يوماً · كل المساحات", qualityNote: "الاعتماد = معتمد ÷ محسوم. التعديل = عناصر معتمدة غيّرها المالك (الحجم = % النص المتغيّر). الحَكَم = درجة آلية من 100 (85+ جاهز، أقل من 70 أعد التوليد). الإبهام = ردود الدردشة.", agentType: "الوكيل / النوع", items: "عناصر", approval: "اعتماد", edited: "تعديل", magnitude: "الحجم", published: "نُشر", judge: "الحَكَم", low: "<70", hours: "ساعات حتى القرار", perWorkspace: "لكل مساحة", loading: "جارٍ التحميل…", close: "إغلاق", impersonate: "دخول كالمستخدم", extend: "تمديد التجربة", reset: "إعادة تعيين كلمة المرور", emailsIn: "الإيميلات بـ", suspend: "إيقاف", unsuspend: "إلغاء الإيقاف", del: "حذف الحساب", usage: "استهلاك النماذج (الشهر)", trialRenewed: "نهاية التجربة / التجديد", integrations: "التكاملات", brandsEtc: "علامات · محادثات · إحالات · الحَكَم", brandFile: "ملف العلامة", notCompleted: "— غير مكتمل —", generated: "العناصر المولّدة", approved: "معتمد", rejected: "مرفوض", promptCredits: "كريدت للإضافة (سالب للخصم):", promptDays: "تمديد التجربة بالأيام:", promptDelete: "اكتب البريد لحذف الحساب وكل بياناته نهائياً:", promptTemp: "كلمة مرور مؤقتة (تظهر مرة واحدة، أرسلها على واتساب):", arabic: "العربية", english: "الإنجليزية", seats: "المقاعد", setSeats: "المقاعد…", promptSeats: "حد المقاعد شاملاً المالك (1-500). الصفر يعيده إلى عدد الخطة:", seatsOverride: "مخصص", teamPaused: "أُوقف", teamResumed: "عاد", teamCancelled: "دعوات أُلغيت", lookup: "ابحث عن هذا البريد", notFound: "لا حساب ولا دخول عضو بهذا البريد.", memberLogin: "دخول عضو", memberOf: "عضو في", invitedBy: "دعاه", ownerMissing: "حساب المالك غير موجود", offRoster: "ليس في قائمة أعضاء المالك", removeMember: "احذف دخول هذا العضو", promptRemoveMember: "اكتب البريد لحذف دخول هذا العضو (يحرّر البريد):" },
 } as const;
 
 type Overview = {
@@ -61,6 +65,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
   const [log, setLog] = useState<{ actor?: string; email: string; what: string; reason?: string; before?: unknown; after?: unknown; at: string }[] | null>(null);
   const [users, setUsers] = useState<U[] | null>(null);
   const [sel, setSel] = useState<Detail | null>(null);
+  const [memberSel, setMemberSel] = useState<MemberDetail | null>(null);
   const [q, setQ] = useState("");
   const [total, setTotal] = useState<{ usd: number; in: number; out: number; calls: number } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -83,6 +88,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
     if (action === "resetPassword") { window.prompt(`${email}: ${S.promptTemp}`, j.tempPassword); setMsg(`${email}: password reset`); }
     else if (action === "impersonate") { window.location.assign(j.redirect); return j; }
     else if (action === "delete") { setMsg(`${email} deleted`); setSel(null); }
+    else if (action === "removeMember") { setMsg(`${email}: member login removed`); setMemberSel(null); return j; }
     else setMsg(`${email}: ${action} ✓`);
     await load();
     if (sel && action !== "delete") await open(email);
@@ -95,11 +101,28 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
     fetch("/api/admin/log").then((r) => r.json()).then((j) => j.ok && setLog(j.log)).catch(() => {});
   }, []);
 
+  /** The team change a plan or seat change made, in one line: who was paused, who came back, how many invites went. */
+  const teamLine = (t?: TeamChange) => (!t ? "" : [t.disabled.length ? `${S.teamPaused}: ${t.disabled.join(", ")}` : "", t.enabled.length ? `${S.teamResumed}: ${t.enabled.join(", ")}` : "", t.cancelled.length ? `${S.teamCancelled}: ${t.cancelled.length}` : ""].filter(Boolean).join(" · "));
   async function setPlan(email: string, plan: string) {
     const reason = prompt(O.reason, "") ?? "";
     setBusy(true);
-    await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, plan, reason }) });
-    setMsg(`${email} → ${plan}`);
+    const r = await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, plan, reason }) });
+    const j = (await r.json().catch(() => ({}))) as { ok?: boolean; team?: TeamChange; error?: string };
+    setMsg(j.ok ? [`${email} → ${plan}`, teamLine(j.team)].filter(Boolean).join(" · ") : `${email}: ${j.error ?? r.status}`);
+    await load();
+    setBusy(false);
+  }
+  /** The founder seat override (spec §5; Enterprise "seats sized to your team"). 0 clears it back to the plan's number. */
+  async function setSeats(u: U) {
+    const raw = prompt(S.promptSeats, String(u.seatsOverride ?? u.seats ?? ""));
+    if (raw === null || raw.trim() === "") return;
+    const n = Number(raw.trim());
+    if (!Number.isInteger(n) || n < 0 || n > 500) { setMsg(`${u.email}: bad_seats`); return; }
+    const reason = prompt(O.reason, "") ?? "";
+    setBusy(true);
+    const r = await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, seats: n === 0 ? null : n, reason }) });
+    const j = (await r.json().catch(() => ({}))) as { ok?: boolean; user?: { seats: number }; team?: TeamChange; error?: string };
+    setMsg(j.ok ? [`${u.email}: ${S.seats} ${j.user?.seats ?? ""}`, teamLine(j.team)].filter(Boolean).join(" · ") : `${u.email}: ${j.error ?? r.status}`);
     await load();
     setBusy(false);
   }
@@ -115,8 +138,10 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
   }
   async function open(email: string) {
     const r = await fetch(`/api/admin/users/${encodeURIComponent(email)}`);
-    const j = await r.json();
-    if (j.ok) setSel(j);
+    const j = await r.json().catch(() => ({}));
+    if (j.ok && j.kind === "member") { setSel(null); setMemberSel(j.member); return; }
+    if (j.ok) { setMemberSel(null); setSel(j); return; }
+    if (r.status === 404) setMsg(`${email}: ${S.notFound}`);
   }
 
   // Render the shell at once; each tab shows its own loading state. Waiting for the user list hid the whole console.
@@ -210,11 +235,26 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
 
       <div className={tab === "users" ? "grid gap-6" : "hidden"}>
       {loadingUsers && <p className="text-sm text-ink/60">{S.loading}</p>}
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={S.search} className="w-full max-w-md rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm" />
+      <div className="flex flex-wrap items-center gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={S.search} className="w-full max-w-md rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm" />
+        {/* Member logins are not in this list (they never enter users:all): an exact address is looked up instead. */}
+        {q.includes("@") && <button type="button" disabled={busy} onClick={() => open(q.trim().toLowerCase())} className="btn btn-secondary btn-xs">{S.lookup}</button>}
+      </div>
+      {memberSel && (
+        <div className="rounded-xl border border-oasis/30 bg-white p-5 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-display text-lg font-bold text-oasis" dir="ltr">{memberSel.email} <span className="text-sm font-normal text-ink/60">· {S.memberLogin} · {memberSel.role}{memberSel.disabled ? ` · ${memberSel.disabled}` : ""}</span></h2>
+            <button onClick={() => setMemberSel(null)} className="text-sm text-ink/60">{S.close}</button>
+          </div>
+          <p className="mt-2" dir="auto">{memberSel.name} · {S.memberOf} <button onClick={() => open(memberSel.memberOf)} className="text-oasis underline" dir="ltr">{memberSel.memberOf}</button> · {S.invitedBy} <span dir="ltr">{memberSel.invitedBy}</span> · {memberSel.acceptedAt.slice(0, 10)}</p>
+          {(!memberSel.ownerExists || !memberSel.onRoster) && <p className="mt-1 text-sadu-deep">{[!memberSel.ownerExists ? S.ownerMissing : "", !memberSel.onRoster ? S.offRoster : ""].filter(Boolean).join(" · ")}</p>}
+          <button disabled={busy} onClick={() => { if (prompt(S.promptRemoveMember) === memberSel.email) void act(memberSel.email, "removeMember", { reason: prompt(O.reason, "") ?? "" }); }} className="btn btn-danger-solid btn-xs mt-3">{S.removeMember}</button>
+        </div>
+      )}
       <div className="overflow-x-auto rounded-xl border border-ink/10 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-salt-dim text-left text-xs uppercase tracking-wide text-ink/60">
-            <tr><th className="p-3">{S.email}</th><th>{S.name}</th><th>{S.phone}</th><th>{S.plan}</th><th>{S.credits}</th><th>{S.tokensMo}</th><th>{S.costMo}</th><th>{S.marginMo}</th><th>{S.trialEnds}</th><th>{S.joined}</th><th></th></tr>
+            <tr><th className="p-3">{S.email}</th><th>{S.name}</th><th>{S.phone}</th><th>{S.plan}</th><th>{S.seats}</th><th>{S.credits}</th><th>{S.tokensMo}</th><th>{S.costMo}</th><th>{S.marginMo}</th><th>{S.trialEnds}</th><th>{S.joined}</th><th></th></tr>
           </thead>
           <tbody>
             {shown.map((u) => (
@@ -226,6 +266,10 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
                   <select value={u.plan} disabled={busy} onChange={(e) => setPlan(u.email, e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1">
                     {["trial", "starter", "pro", "agency", "enterprise"].map((p) => <option key={p} value={p}>{p}</option>)}
                   </select>
+                </td>
+                <td className="whitespace-nowrap text-xs">
+                  <button disabled={busy} onClick={() => setSeats(u)} title={S.setSeats} className="font-mono underline decoration-dotted">{u.seats ?? "—"}</button>
+                  {u.seatsOverride != null && <span className="ms-1 text-ink/50">({S.seatsOverride})</span>}
                 </td>
                 <td className="font-mono">{u.credits}</td>
                 <td className="font-mono text-xs" title={`${u.calls ?? 0} model calls`}>{((u.tokens ?? 0) / 1000).toFixed(1)}k</td>

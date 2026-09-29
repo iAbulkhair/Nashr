@@ -6,10 +6,24 @@ import type { Lang } from "@/lib/i18n";
 import type { AppDict } from "@/lib/app-i18n";
 import { TASK_COST, TASK_COUNT, type TaskType } from "@/lib/tasks";
 import { AGENTS } from "@/lib/agents";
+import type { Role } from "@/lib/auth";
+import ReadOnlyNote from "./ReadOnlyNote";
 
+/**
+ * GET /api/profile. `me` and `role` are the person acting; `user` is the account summary (the owner also gets the
+ * account's phone and `emails`, a member gets `account` instead). A PUT carrying a field the actor may not write is
+ * refused whole, so the form only submits what this role owns: other fields are hidden or disabled, and disabled
+ * controls are left out of FormData.
+ */
 type Data = {
-  user: { name: string; email: string; phone: string; plan: string; credits: number; trialEnds: string; createdAt: string; lang: Lang; renewedAt?: string };
-  usage: Record<string, { count: number; credits: number }>; images: number; emails: string;
+  me?: { name: string; email: string; lang: Lang; role: Role };
+  role?: Role;
+  /** From `can()` on the server: a founder viewing the account holds the owner role yet may do neither. */
+  may?: { passwordChange: boolean; accountDelete: boolean };
+  impersonating?: boolean;
+  account?: { email: string; name: string };
+  user: { name: string; email: string; phone?: string; plan: string; credits: number; trialEnds: string; createdAt: string; lang: Lang; renewedAt?: string };
+  usage: Record<string, { count: number; credits: number }>; images: number; emails?: string;
   allowance: number; nextReset: string;
   brand: { name: string; website: string; sitemap?: string; products: string; audience: string; tone: string; valueProp?: string; social?: Record<string, string> } | null;
 };
@@ -27,6 +41,14 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
   useEffect(() => { fetch("/api/profile").then((x) => x.json()).then((j) => j.ok && setD(j)); }, []);
   if (!d) return <p className="text-ink/60">…</p>;
   const input = "input";
+  // Owner-only: phone, account language, email preferences, subscription and deleting the account. Admin+: brand fields.
+  const role: Role = d.role ?? d.me?.role ?? "owner";
+  const owner = role === "owner";
+  const brandEdit = role !== "member";
+  const canPassword = d.may?.passwordChange ?? true;
+  const canDelete = owner && (d.may?.accountDelete ?? true);
+  const blockedNote = ar ? "تغيير كلمة المرور وحذف الحساب موقوفان أثناء تصفّح هذا الحساب كمؤسس." : "Changing the password and deleting the account are off while you view this account as the founder.";
+  const me = d.me ?? { name: d.user.name, email: d.user.email, lang: d.user.lang, role };
   const usedCredits = Object.values(d.usage).reduce((s, x) => s + x.credits, 0) + d.images;
   const pct = Math.min(100, Math.round((usedCredits / Math.max(1, d.allowance)) * 100));
 
@@ -42,15 +64,20 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(e.currentTarget));
     const res = await fetch("/api/account", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fd) });
-    const j = await res.json();
-    setMsg(j.ok ? (ar ? "تم تغيير كلمة المرور" : "Password changed") : j.error === "wrong_password" ? (ar ? "كلمة المرور الحالية غير صحيحة" : "Current password is wrong") : (ar ? "كلمة المرور قصيرة" : "Password too short"));
+    const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    setMsg(j.ok ? (ar ? "تم تغيير كلمة المرور" : "Password changed")
+      : res.status === 403 ? t.team.errors.forbidden
+      : j.error === "wrong_password" ? (ar ? "كلمة المرور الحالية غير صحيحة" : "Current password is wrong")
+      : j.error === "weak_password" ? (ar ? "كلمة المرور ضعيفة: 8 أحرف على الأقل، فيها حرف ورقم" : "Password too weak: at least 8 characters, with a letter and a digit")
+      : t.team.errors.failed);
     (e.target as HTMLFormElement).reset();
   }
   async function del() {
     const pw = prompt(ar ? "لتأكيد الحذف النهائي اكتب كلمة المرور:" : "To permanently delete, enter your password:");
     if (!pw) return;
     const res = await fetch("/api/account", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pw }) });
-    if (res.ok) { r.push(`/${lang}`); r.refresh(); } else setMsg(ar ? "كلمة المرور غير صحيحة" : "Wrong password");
+    if (res.ok) { r.push(`/${lang}`); r.refresh(); }
+    else setMsg(res.status === 403 ? t.team.errors.forbidden : res.status === 401 ? (ar ? "كلمة المرور غير صحيحة" : "Wrong password") : t.team.errors.failed);
   }
   const planLabel: Record<string, [string, string]> = { trial: ["التجربة المجانية", "Free trial"], starter: ["البداية", "Starter"], pro: ["الاحتراف", "Pro"], agency: ["الوكالة", "Agency"], enterprise: ["المؤسسات", "Enterprise"] };
   const rules = d.user.plan === "trial"
@@ -75,69 +102,84 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
             <tr className="border-t border-ink/5"><td className="py-1">{ar ? "توليد صورة" : "Image generation"}</td><td className="text-center font-mono">1</td><td className="text-center font-mono">{d.images}</td><td className="text-center font-mono">{d.images}</td></tr>
             <tr className="border-t border-ink/5"><td className="py-1">{ar ? "الدردشة مع الفريق / الإعداد من الرابط" : "Chat with the team / URL onboarding"}</td><td className="text-center font-mono">0</td><td className="text-center font-mono">—</td><td className="text-center font-mono">0</td></tr>
           </tbody></table></div>
-        {d.user.plan === "trial" && <Link href={`/${lang}/app/billing`} className="mt-4 inline-block btn btn-accent btn-sm">{ar ? "ابدأ الاشتراك" : "Start subscription"}</Link>}
+        {owner && d.user.plan === "trial" && <Link href={`/${lang}/app/billing`} className="mt-4 inline-block btn btn-accent btn-sm">{ar ? "ابدأ الاشتراك" : "Start subscription"}</Link>}
       </Card>
 
       <Card title={ar ? "الاشتراك" : "Subscription"}>
-        <p className="text-sm">{ar ? "أنت الآن على خطة" : "You're currently on the"} <b>{planLabel[d.user.plan]?.[ar ? 0 : 1] ?? d.user.plan}</b>{ar ? "" : " plan"}.</p>
-        <Link href={`/${lang}/app/billing`} className="mt-3 inline-block btn btn-secondary btn-sm">{ar ? "إدارة الاشتراك" : "Manage subscription"}</Link>
+        <p className="text-sm">{owner ? (ar ? "أنت الآن على خطة" : "You're currently on the") : (ar ? "الحساب على خطة" : "The account is on the")} <b>{planLabel[d.user.plan]?.[ar ? 0 : 1] ?? d.user.plan}</b>{ar ? "" : " plan"}.</p>
+        {!owner && <p className="mt-1 text-sm text-ink/60">{t.billing.ownerOnly}</p>}
+        <Link href={`/${lang}/app/billing`} className="mt-3 inline-block btn btn-secondary btn-sm">{owner ? (ar ? "إدارة الاشتراك" : "Manage subscription") : t.billing.title}</Link>
       </Card>
 
       <form onSubmit={save} className="grid gap-5">
-        <Card title={ar ? "تفضيلات الإيميل" : "Email preferences"} sub={ar ? "تتحكم في إيميلات الوكلاء والمهام المجدولة. إيميلات الحساب والفوترة تصل دائماً." : "Controls emails from your agents and their scheduled tasks. Account and billing emails always come through."}>
+        {owner && <Card title={ar ? "تفضيلات الإيميل" : "Email preferences"} sub={ar ? "تتحكم في إيميلات الوكلاء والمهام المجدولة. إيميلات الحساب والفوترة تصل دائماً." : "Controls emails from your agents and their scheduled tasks. Account and billing emails always come through."}>
           <div className="grid gap-2 text-sm">
             {[["all", ar ? "كل الإيميلات" : "All emails", ar ? "كل ملخص ومتابعة ومهمة مجدولة." : "Every agent and scheduled task email."], ["important", ar ? "المهم فقط" : "Important only", ar ? "الوكيل يقرر ما يستحق الإرسال: الأخطاء وما ينتظر موافقتك؛ التقارير الروتينية تُتجاوز." : "Your agent decides what is worth emailing: errors and items needing approval come through; routine reports are skipped."], ["none", ar ? "لا شيء" : "None", ar ? "إيقاف كل إيميلات الوكلاء والمهام المجدولة." : "Stop all agent and scheduled task emails."]].map(([v, l, s]) => (
               <label key={v} className="flex items-start gap-2 rounded-lg border border-ink/10 p-3"><input type="radio" name="emails" value={v} defaultChecked={d.emails === v} className="mt-1" /><span><b>{l}</b><span className="block text-xs text-ink/60">{s}</span></span></label>
             ))}
           </div>
-        </Card>
+        </Card>}
 
         <Card title={ar ? "الحساب" : "Account"}>
           <div className="grid gap-3 sm:grid-cols-2">
-            <div>{L(ar ? "الاسم الكامل" : "Full name")}<input name="name" defaultValue={d.user.name} className={input} /></div>
-            <div>{L(ar ? "اسم النشاط" : "Business name")}<input name="business" defaultValue={d.brand?.name ?? ""} className={input} /></div>
-            <div>{L(ar ? "رقم الجوال" : "Phone number")}<input name="phone" defaultValue={d.user.phone} dir="ltr" className={input} /></div>
-            <div>{L(ar ? "البريد" : "Email")}<input value={d.user.email} disabled dir="ltr" className={input + " opacity-60"} /></div>
-            <div>{L(ar ? "لغة التطبيق والإيميلات" : "App and email language")}<select name="lang" defaultValue={d.user.lang} className={input}><option value="ar">العربية</option><option value="en">English</option></select></div>
+            <div>{L(ar ? "الاسم الكامل" : "Full name")}<input name="name" defaultValue={me.name} className={input} /></div>
+            <div>{L(ar ? "اسم النشاط" : "Business name")}<input name="business" defaultValue={d.brand?.name ?? ""} disabled={!brandEdit} className={input} /></div>
+            {owner && <div>{L(ar ? "رقم الجوال" : "Phone number")}<input name="phone" defaultValue={d.user.phone ?? ""} dir="ltr" className={input} /></div>}
+            <div>{L(ar ? "البريد" : "Email")}<input value={me.email} disabled dir="ltr" className={input + " opacity-60"} /></div>
+            <div>{L(owner ? (ar ? "لغة التطبيق والإيميلات" : "App and email language") : (ar ? "لغة التطبيق" : "App language"))}<select name="lang" defaultValue={me.lang} className={input}><option value="ar">العربية</option><option value="en">English</option></select></div>
           </div>
         </Card>
 
-        <Card title={ar ? "حسابات التواصل" : "Social media"} sub={ar ? "حساباتك لتوليد المحتوى والجدولة." : "Your handles for content generation and scheduling."}>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {["instagram", "snapchat", "tiktok", "x", "linkedin"].map((k) => <div key={k}>{L(k === "x" ? "X (Twitter)" : k)}<input name={`social_${k}`} defaultValue={d.brand?.social?.[k] ?? ""} dir="ltr" placeholder="@" className={input} /></div>)}
-          </div>
-        </Card>
+        {!brandEdit && <ReadOnlyNote className="" text={t.readOnly.admin} />}
+        {/* A disabled fieldset keeps the brand fields visible and out of the submitted form for members. */}
+        <fieldset disabled={!brandEdit} className="grid min-w-0 gap-5">
+          <Card title={ar ? "حسابات التواصل" : "Social media"} sub={ar ? "حساباتك لتوليد المحتوى والجدولة." : "Your handles for content generation and scheduling."}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {["instagram", "snapchat", "tiktok", "x", "linkedin"].map((k) => <div key={k}>{L(k === "x" ? "X (Twitter)" : k)}<input name={`social_${k}`} defaultValue={d.brand?.social?.[k] ?? ""} dir="ltr" placeholder="@" className={input} /></div>)}
+            </div>
+          </Card>
 
-        <Card title={ar ? "عن نشاطك" : "About your business"} sub={ar ? "يقرؤه الفريق كله في كل توليد. التفاصيل الكاملة في «ملف العلامة»." : "Read by the whole team on every generation. Full details live in “Brand file”."}>
-          <div className="grid gap-3">
-            <div>{L(ar ? "وصف النشاط والمنتجات" : "Company description")}<textarea name="products" rows={3} defaultValue={d.brand?.products ?? ""} className={input} placeholder={ar ? "ماذا تبيع ولمن، بجملتين." : "What you sell and to whom, in two sentences."} /></div>
-            <div>{L(ar ? "العملاء المستهدفون" : "Target customers")}<textarea name="audience" rows={2} defaultValue={d.brand?.audience ?? ""} className={input} placeholder={ar ? "من عميلك المثالي؟" : "Who are your ideal customers?"} /></div>
-            <div>{L(ar ? "صوت العلامة" : "Brand voice")}<input name="tone" defaultValue={d.brand?.tone ?? ""} className={input} placeholder={ar ? "مثال: فاخر وودود، مباشر، شبابي" : "e.g. premium and warm, direct, playful"} /></div>
-            <div>{L(ar ? "القيمة المميزة" : "Value proposition")}<textarea name="valueProp" rows={2} defaultValue={d.brand?.valueProp ?? ""} className={input} placeholder={ar ? "لماذا يختارك العميل دون غيرك؟" : "Why does a customer choose you over the alternatives?"} /></div>
-          </div>
-        </Card>
+          <Card title={ar ? "عن نشاطك" : "About your business"} sub={ar ? "يقرؤه الفريق كله في كل توليد. التفاصيل الكاملة في «ملف العلامة»." : "Read by the whole team on every generation. Full details live in “Brand file”."}>
+            <div className="grid gap-3">
+              <div>{L(ar ? "وصف النشاط والمنتجات" : "Company description")}<textarea name="products" rows={3} defaultValue={d.brand?.products ?? ""} className={input} placeholder={ar ? "ماذا تبيع ولمن، بجملتين." : "What you sell and to whom, in two sentences."} /></div>
+              <div>{L(ar ? "العملاء المستهدفون" : "Target customers")}<textarea name="audience" rows={2} defaultValue={d.brand?.audience ?? ""} className={input} placeholder={ar ? "من عميلك المثالي؟" : "Who are your ideal customers?"} /></div>
+              <div>{L(ar ? "صوت العلامة" : "Brand voice")}<input name="tone" defaultValue={d.brand?.tone ?? ""} className={input} placeholder={ar ? "مثال: فاخر وودود، مباشر، شبابي" : "e.g. premium and warm, direct, playful"} /></div>
+              <div>{L(ar ? "القيمة المميزة" : "Value proposition")}<textarea name="valueProp" rows={2} defaultValue={d.brand?.valueProp ?? ""} className={input} placeholder={ar ? "لماذا يختارك العميل دون غيرك؟" : "Why does a customer choose you over the alternatives?"} /></div>
+            </div>
+          </Card>
 
-        <Card title={ar ? "SEO والموقع" : "SEO & website configuration"} sub={ar ? "رابط موقعك وخريطته لروابط داخلية أفضل في المقالات واستيراد المنتجات." : "Your website URL and sitemap for better internal linking in SEO content and product import."}>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>{L(ar ? "رابط الموقع" : "Website URL")}<input name="website" defaultValue={d.brand?.website ?? ""} dir="ltr" placeholder="example.com" className={input} /></div>
-            <div>{L(ar ? "رابط خريطة الموقع" : "Sitemap URL")}<input name="sitemap" defaultValue={d.brand?.sitemap ?? ""} dir="ltr" placeholder="https://example.com/sitemap.xml" className={input} /></div>
-          </div>
-        </Card>
+          <Card title={ar ? "SEO والموقع" : "SEO & website configuration"} sub={ar ? "رابط موقعك وخريطته لروابط داخلية أفضل في المقالات واستيراد المنتجات." : "Your website URL and sitemap for better internal linking in SEO content and product import."}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>{L(ar ? "رابط الموقع" : "Website URL")}<input name="website" defaultValue={d.brand?.website ?? ""} dir="ltr" placeholder="example.com" className={input} /></div>
+              <div>{L(ar ? "رابط خريطة الموقع" : "Sitemap URL")}<input name="sitemap" defaultValue={d.brand?.sitemap ?? ""} dir="ltr" placeholder="https://example.com/sitemap.xml" className={input} /></div>
+            </div>
+          </Card>
+        </fieldset>
         <button className="justify-self-start btn btn-primary">{ar ? "حفظ التغييرات" : "Save changes"}</button>
       </form>
 
-      <form onSubmit={password}><Card title={ar ? "كلمة المرور" : "Password"}>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <input name="currentPassword" type="password" required placeholder={ar ? "الحالية" : "Current"} className={input} />
-          <input name="newPassword" type="password" required minLength={8} placeholder={ar ? "الجديدة (8+)" : "New (8+)"} className={input} />
-        </div>
-        <button className="mt-4 btn btn-secondary btn-sm">{ar ? "غيّر" : "Change"}</button>
-      </Card></form>
+      {canPassword ? (
+        <form onSubmit={password}><Card title={ar ? "كلمة المرور" : "Password"}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input name="currentPassword" type="password" required placeholder={ar ? "الحالية" : "Current"} className={input} />
+            <input name="newPassword" type="password" required minLength={8} placeholder={ar ? "الجديدة (8+)" : "New (8+)"} className={input} />
+          </div>
+          <button className="mt-4 btn btn-secondary btn-sm">{ar ? "غيّر" : "Change"}</button>
+        </Card></form>
+      ) : (
+        <ReadOnlyNote className="" text={blockedNote} />
+      )}
 
-      <Card title={ar ? "حذف الحساب" : "Delete account"}>
-        <p className="text-sm text-ink/60">{ar ? "يحذف حسابك وكل بياناته نهائياً. لا رجوع." : "Permanently delete your account and all associated data. This action cannot be undone."}</p>
-        <button onClick={del} className="mt-3 btn btn-danger btn-sm">{ar ? "احذف حسابي" : "Delete account"}</button>
-      </Card>
+      {d.impersonating ? null : canDelete ? (
+        <Card title={ar ? "حذف الحساب" : "Delete account"}>
+          <p className="text-sm text-ink/60">{ar ? "يحذف حسابك وكل بياناته نهائياً. لا رجوع." : "Permanently delete your account and all associated data. This action cannot be undone."}</p>
+          <button onClick={del} className="mt-3 btn btn-danger btn-sm">{ar ? "احذف حسابي" : "Delete account"}</button>
+        </Card>
+      ) : (
+        <Card title={t.team.leave} sub={t.team.leaveSub}>
+          <Link href={`/${lang}/app/team`} className="btn btn-secondary btn-sm">{t.nav.members}</Link>
+        </Card>
+      )}
     </div>
   );
 }

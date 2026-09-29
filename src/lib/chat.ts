@@ -15,7 +15,7 @@ import { briefOf, getBrand, listPreferencesFor, saveBrand, saveTask, listLite, t
 import { feedbackBlock, feedbackFor } from "./feedback";
 import { TASK_COST, TASK_COUNT, TASK_TYPES, isTaskType, type TaskType } from "./tasks";
 import { generate } from "./noor";
-import { FileLimitError, MAX_FILES, listFileNames, memoryBlock, readFile, writeFile } from "./files";
+import { CORE_FILES, FileLimitError, MAX_FILES, listFileNames, memoryBlock, readFile, safeName, writeFile } from "./files";
 import { getGov } from "./governance";
 import { warnAgentCap } from "./notifications";
 import { activeSeasons } from "./seasons";
@@ -26,6 +26,7 @@ import { connectedTargets, publishTask, targetsFor } from "./connectors/publish"
 import { HELP } from "./help";
 import { IMAGE_COST, getTask } from "./brand";
 import { explain, gateTask, initialStatus } from "./brand-rules";
+import { can, type Action } from "./roles";
 
 export type ChatItem = { id: string; type: TaskType; channel: string; title: string; body: string; status: string };
 export type ChatMsg = { role: "user" | "assistant"; content: string; at: string; actions?: string[]; agent?: AgentId; /** items created by tools during this turn, rendered as cards */ items?: ChatItem[]; /** workspace files written during this turn, rendered as collapsible cards (first-run onboarding) */ files?: { name: string; content: string }[]; /** starter plan proposed at the end of onboarding */ plan?: PlanItem[] };
@@ -253,9 +254,19 @@ function capReached(r: Extract<AgentCharge, { reason: "agent_cap" }>): string {
   return `Not done: ${agentById(r.agent).name.en} reached the monthly credit cap the owner set for this agent in Governance (${r.spent} of ${r.cap} credits this month), so nothing was created and no credits were used. Tell the owner plainly: they can raise the cap on the Governance page or wait for next month. Chat itself is not counted.`;
 }
 
+/**
+ * Tools that change what the whole account publishes or knows, gated by the acting person's role exactly like the
+ * route that does the same thing (src/lib/roles.ts): the brand form, the publish button, the catalog import. Checked
+ * here in code, so asking Noor — in the app or over MCP — is never a way around the route's gate. A user with no actor
+ * (nothing resolved who is acting) is refused, like every role check.
+ */
+export const TOOL_ACTION: Readonly<Record<string, Action>> = { update_brand: "brand.write", publish_item: "publish", import_catalog: "catalog.import" };
+
 /** Exported for tests: the code-level gates on tools (approval before publishing) must hold without a model in the loop. */
 export async function runTool(user: User, name: string, input: Record<string, unknown>, actions: string[], made: Task[] = []): Promise<string> {
   const email = user.scope ?? user.email;
+  const needs = Object.prototype.hasOwnProperty.call(TOOL_ACTION, name) ? TOOL_ACTION[name] : null;
+  if (needs && !can(user, needs)) return `Not done: ${name} needs the owner or an admin of this account, and the person chatting is neither. Nothing was changed. Tell them plainly that the account owner or an admin can do this, and do not try another way around it.`;
   switch (name) {
     case "generate_content": {
       // The model chooses this value, and crawled pages and catalogs reach the model: it is request input, not a fact.
@@ -360,6 +371,10 @@ export async function runTool(user: User, name: string, input: Record<string, un
       return f ? f.content.slice(0, 12000) : "File not found.";
     }
     case "write_file": {
+      // Core memory (brand.md, products.md, strategy.md, …) is what every agent reads; overwriting or blanking one is
+      // a brand change, gated in code like PUT /api/files, never left to the model's judgement.
+      const target = safeName(String(input.name ?? ""));
+      if (CORE_FILES.includes(target) && !can(user, "files.core.write")) return `Not done: ${target} is core memory that every agent reads, and writing it needs the owner or an admin of this account; the person chatting is neither. Nothing was changed. Tell them plainly, and offer to save the text under a different file name instead.`;
       // The workspace has a file ceiling. Tell the agent plainly rather than throwing out of the turn: it can then
       // say so to the owner, or overwrite an existing file, instead of the message failing with nothing shown.
       let f;

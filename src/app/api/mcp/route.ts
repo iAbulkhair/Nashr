@@ -4,7 +4,7 @@ import { judgeLater } from "@/lib/judge";
 import type { Grounding } from "@/lib/json";
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
-import { userFromBearer } from "@/lib/mcp";
+import { MCP_TOOL_ACTION, userFromBearer } from "@/lib/mcp";
 import { trialOver } from "@/lib/auth";
 import { chatAllowed } from "@/lib/rate";
 import { chat } from "@/lib/chat";
@@ -19,6 +19,7 @@ import { getGov } from "@/lib/governance";
 import { missingData } from "@/lib/cart-recovery";
 import { CUSTOMER_FACING, brandRules, explain, gateTask, initialStatus, isCustomerFacing } from "@/lib/brand-rules";
 import { modelState } from "@/lib/model";
+import { can } from "@/lib/roles";
 
 export const maxDuration = 300;
 
@@ -36,6 +37,8 @@ const TOOLS = [
   { name: "get_brand_rules", description: "The active brand's rules as structured data: name, dialect and languages, tone, audience, products, offers, preferred words, channels, and the banned words Nashr enforces in code. Call this before writing anything for this brand in any tool, and write to it. Free, no credits.", inputSchema: { type: "object", properties: {} } },
   { name: "check_brand", description: "Check a draft against the active brand's rules with the same code Nashr's approve and publish buttons use. Returns pass or the rules that fired, each with the matched word and where it appears. Use it on anything you wrote for this brand before handing it over. Free, no credits.", inputSchema: { type: "object", properties: { text: { type: "string", description: "The draft to check (up to 20,000 characters)." }, type: { type: "string", enum: Object.keys(TASK_COST), description: "Optional Nashr item type. Internal documents (plans, memos) are not held for quoting a banned word; leave empty to check as customer-facing copy." } }, required: ["text"] } },
 ];
+
+// The role each tool needs is MCP_TOOL_ACTION in src/lib/mcp.ts; a tool missing from it is refused.
 
 type Rpc = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: Record<string, unknown> };
 const ok = (id: Rpc["id"], result: unknown) => NextResponse.json({ jsonrpc: "2.0", id: id ?? null, result }, { headers: CORS });
@@ -68,6 +71,9 @@ export async function POST(req: Request) {
   if (method !== "tools/call") return err(id, -32601, "Method not found");
   const name = String(params.name ?? "");
   const args = (params.arguments ?? {}) as Record<string, unknown>;
+  const need = Object.prototype.hasOwnProperty.call(MCP_TOOL_ACTION, name) ? MCP_TOOL_ACTION[name] : null;
+  if (!need) return err(id, -32602, "Unknown tool");
+  if (!can(user, need)) return ok(id, { ...text("Not allowed: this tool needs a higher role in the account. Nothing was done."), isError: true });
   try {
     switch (name) {
       case "ask_noor": {

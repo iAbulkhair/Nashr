@@ -18,7 +18,11 @@ export function limitFromError(error?: string): boolean {
   return false;
 }
 
-export default function LimitModal({ t, lang }: { t: AppDict; lang: Lang }) {
+/**
+ * `owner`: the acting person may subscribe (`can(u, "billing")`); `governs`: may raise agent caps
+ * (`can(u, "governance.write")`). Anyone else is told to ask the account owner rather than sent to a page they cannot change.
+ */
+export default function LimitModal({ t, lang, owner = true, governs = true }: { t: AppDict; lang: Lang; owner?: boolean; governs?: boolean }) {
   const [kind, setKind] = useState<LimitKind | null>(null);
   useEffect(() => {
     const on = (e: Event) => setKind((e as CustomEvent<{ kind: LimitKind }>).detail.kind);
@@ -30,7 +34,8 @@ export default function LimitModal({ t, lang }: { t: AppDict; lang: Lang }) {
   useEffect(() => { if (kind) document.getElementById("limit-later")?.focus(); }, [kind]);
   if (!kind) return null;
   const L = t.limit;
-  const [title, body] = kind === "credits" ? [L.creditsTitle, L.creditsBody] : kind === "trial" ? [L.trialTitle, L.trialBody] : [L.agentCapTitle, L.agentCapBody];
+  const may = kind === "agent_cap" ? governs : owner;
+  const [title, body] = kind === "credits" ? [L.creditsTitle, may ? L.creditsBody : L.askOwner] : kind === "trial" ? [L.trialTitle, may ? L.trialBody : L.askOwnerTrial] : [L.agentCapTitle, may ? L.agentCapBody : L.askOwnerCap];
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="limit-title" className="fixed inset-0 z-[60] grid place-items-center bg-black/40 p-4" onClick={() => setKind(null)}>
       <div className="card w-full max-w-md p-8 text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -38,8 +43,8 @@ export default function LimitModal({ t, lang }: { t: AppDict; lang: Lang }) {
         <h2 id="limit-title" className="mt-5 font-display text-2xl font-bold">{title}</h2>
         <p className="page-sub">{body}</p>
         <div className="mt-6 flex justify-center gap-3">
-          <button id="limit-later" onClick={() => setKind(null)} className="btn btn-secondary">{L.later}</button>
-          {kind === "agent_cap" ? <Link href={`/${lang}/app/governance`} className="btn btn-primary">{L.governance}</Link> : <Link href={`/${lang}/app/billing`} className="btn btn-primary">{L.plans}</Link>}
+          <button id="limit-later" onClick={() => setKind(null)} className={`btn ${may ? "btn-secondary" : "btn-primary"}`}>{may ? L.later : L.ok}</button>
+          {!may ? null : kind === "agent_cap" ? <Link href={`/${lang}/app/governance`} className="btn btn-primary">{L.governance}</Link> : <Link href={`/${lang}/app/billing`} className="btn btn-primary">{L.plans}</Link>}
         </div>
       </div>
     </div>
