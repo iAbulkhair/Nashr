@@ -6,6 +6,7 @@ import { publishShopifyArticle } from "./shopify";
 import { postTelegram } from "./keyed";
 import { postToFacebook, postToInstagram } from "./meta";
 import { CONNECTION_OF } from "./targets";
+import { hasArtwork } from "../media-catalog";
 
 export type PublishResult = { url: string; id: string; provider: string; status: "draft" | "published" };
 
@@ -42,13 +43,13 @@ async function publishWith(email: string, task: Task, provider: string): Promise
       return { ...r, provider, status: "published" };
     }
     case "facebook": {
-      const r = await postToFacebook(c, body, task.imageProvider === "fal" ? task.imageUrl : undefined);
+      const r = await postToFacebook(c, body, hasArtwork(task) ? task.imageUrl : undefined);
       return { ...r, provider, status: "published" };
     }
     case "instagram": {
       // targetsFor already requires a generated image; checked again here because this is the call that posts.
-      if (!task.imageUrl || task.imageProvider !== "fal") throw new Error("instagram_needs_image");
-      const r = await postToInstagram(c, body, task.imageUrl);
+      if (!hasArtwork(task)) throw new Error("instagram_needs_image");
+      const r = await postToInstagram(c, body, task.imageUrl!);
       return { ...r, provider, status: "published" };
     }
     default:

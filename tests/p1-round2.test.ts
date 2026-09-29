@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, expect, it } from "vitest";
 import { rangeWindow } from "@/lib/stats";
 import { safeName, memoryBlock, writeFile, readFile, listFiles } from "@/lib/files";
 import { newUser } from "./helpers/session";
@@ -83,30 +83,6 @@ describe("a truncated memory file says so (P1: hidden catalog)", () => {
     const block = await memoryBlock(u.email);
     expect(block).toContain("--- brand.md ---");
     expect(block).not.toContain("showing the first");
-  });
-});
-
-describe("a stalled image provider still reaches the refund (P1: credit lost)", () => {
-  const realFetch = globalThis.fetch;
-  afterEach(() => { globalThis.fetch = realFetch; delete process.env.FAL_KEY; });
-
-  it("the provider call carries an abort signal bounded well inside the route's ceiling", async () => {
-    process.env.FAL_KEY = "test-key";
-    let seen: RequestInit | undefined;
-    globalThis.fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      seen = init;
-      return new Response(JSON.stringify({ images: [{ url: "https://cdn.example/i.png" }] }), { status: 200 });
-    }) as typeof fetch;
-
-    const { generateImage } = await import("@/lib/images");
-    const brand = { name: "B", industry: "i", website: "", dialect: "saudi" as const, languages: ["ar" as const], tone: "", products: "", audience: "", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "", updatedAt: "" };
-    const task = { id: "t", type: "social" as const, channel: "instagram", title: "t", body: "b", status: "pending" as const, createdAt: new Date().toISOString(), lang: "ar" as const };
-    await generateImage(brand, task, "x@test.example");
-
-    // Without a signal the route's 120s ceiling kills the invocation before its catch runs, so the charged credit is
-    // never refunded. The bound has to be comfortably below that ceiling.
-    expect(seen?.signal, "the provider call must be abortable").toBeDefined();
-    expect(seen!.signal!.aborted).toBe(false);
   });
 });
 

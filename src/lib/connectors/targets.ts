@@ -1,8 +1,10 @@
 import type { Task } from "../brand";
+import { hasArtwork } from "../media-catalog";
 
 /**
- * Where an inbox item can be published, from the stored connections alone. No runtime imports, so the inbox (a client
- * component) and the server routes use the same rule: the publish route refuses any provider this does not list.
+ * Where an inbox item can be published, from the stored connections alone. Its only runtime import is ../media-catalog,
+ * which imports nothing, so the inbox (a client component) and the server routes use the same rule: the publish route
+ * refuses any provider this does not list.
  *
  * One Meta connection gives two targets: "facebook" when a Page was chosen, and "instagram" when that Page has an
  * Instagram professional account linked. Both publish through the "meta" connection (CONNECTION_OF).
@@ -26,8 +28,9 @@ export function targetsFor(task: Task, connected: string[]): string[] {
   const social = task.type === "social" || task.type === "cart_recovery";
   if (task.type === "article") for (const p of ["wordpress", "shopify"]) if (connected.includes(p)) out.push(p);
   if (task.type === "social" && task.channel === "x" && connected.includes("x")) out.push("x");
-  // Instagram takes only a post with a generated image: it has no text-only posts.
-  if (social && task.channel === "instagram" && connected.includes("instagram") && task.imageUrl && task.imageProvider === "fal") out.push("instagram");
+  // Instagram takes only a post with a generated image, from any provider: it has no text-only posts, and a placeholder
+  // card is not artwork. A clip is never a target in this round, so a post with only a video does not qualify.
+  if (social && task.channel === "instagram" && connected.includes("instagram") && hasArtwork(task)) out.push("instagram");
   if (social && (task.channel === "instagram" || task.channel === "facebook") && connected.includes("facebook")) out.push("facebook");
   if ((task.type === "social" || task.type === "gbp" || task.type === "whatsapp") && connected.includes("telegram")) out.push("telegram");
   return out;

@@ -21,6 +21,8 @@ type Store = {
   smembers(key: string): Promise<string[]>;
   srem(key: string, member: string): Promise<void>;
   incrby(key: string, n: number): Promise<number>;
+  /** EXPIRE NX: give a key a TTL only when it has none. Never touches the value or an expiry already set. */
+  expireNx(key: string, ttlSeconds: number): Promise<void>;
   /** SET NX with TTL. True when this caller won the lock. */
   lock(key: string, ttlSeconds: number): Promise<boolean>;
   unlock(key: string): Promise<void>;
@@ -75,6 +77,9 @@ function upstash(): Store | null {
     },
     async incrby(key, n) {
       return await r.incrby(key, n);
+    },
+    async expireNx(key, ttl) {
+      await r.expire(key, ttl, "NX");
     },
     async lock(key, ttl) {
       return (await r.set(key, "1", { nx: true, ex: ttl })) === "OK";
@@ -166,6 +171,10 @@ function memory(): Store {
       const v = ((m.kv.get(key) as number) ?? 0) + n;
       m.kv.set(key, v);
       return v;
+    },
+    async expireNx(key, ttl) {
+      live(key);
+      if (m.kv.has(key) && !exp.has(key)) exp.set(key, Date.now() + ttl * 1000);
     },
     async lock(key, ttl) {
       const until = m.kv.get(key) as number | undefined;
