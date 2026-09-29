@@ -8,7 +8,7 @@ import { deleteConnection, listConnections, OAUTH_COOKIE, saveConnection, saveSt
 import { getBrand, saveBrand, type Brand } from "@/lib/brand";
 import { EDITABLE_BRAND_FIELDS, runTool } from "@/lib/chat";
 import { CHAT_PER_HOUR, chatAllowed } from "@/lib/rate";
-import { isAdminCookie } from "@/lib/auth";
+import { currentUser, isAdminCookie } from "@/lib/auth";
 
 /** Each test here is a bug that was live in the code and is now fixed; the test is what keeps it fixed. */
 
@@ -60,10 +60,13 @@ describe("the brand file is not writable field by field from a tool call", () =>
   it("refuses a field that is not on the allowlist and leaves the brand untouched", async () => {
     const u = await newUser("brandtool");
     await saveBrand(u.email, brand());
+    // The owner, resolved the way a request is: update_brand is refused to a user with no actor (tests/role-gates.test.ts).
+    await signIn(u.email);
+    const me = (await currentUser())!;
     const actions: string[] = [];
     // Crawled pages, catalogs and uploads reach this agent, so the model naming a field is not permission to write it.
     for (const field of ["channels", "languages", "social", "updatedAt", "__proto__"]) {
-      expect(await runTool(u, "update_brand", { field, value: "instagram" }, actions)).toMatch(/Cannot change brand/);
+      expect(await runTool(me, "update_brand", { field, value: "instagram" }, actions)).toMatch(/Cannot change brand/);
     }
     const after = (await getBrand(u.email))!;
     expect(Array.isArray(after.channels)).toBe(true);
@@ -73,8 +76,9 @@ describe("the brand file is not writable field by field from a tool call", () =>
   it("still writes the fields the tool is meant for", async () => {
     const u = await newUser("brandtool");
     await saveBrand(u.email, brand());
+    await signIn(u.email);
     const actions: string[] = [];
-    expect(await runTool(u, "update_brand", { field: "tone", value: "رسمي" }, actions)).toMatch(/Updated brand\.tone/);
+    expect(await runTool((await currentUser())!, "update_brand", { field: "tone", value: "رسمي" }, actions)).toMatch(/Updated brand\.tone/);
     expect((await getBrand(u.email))!.tone).toBe("رسمي");
     expect(EDITABLE_BRAND_FIELDS).toContain("tone");
     expect(EDITABLE_BRAND_FIELDS).not.toContain("channels");

@@ -16,6 +16,7 @@ import { db } from "@/lib/db";
 import type { PlanItem } from "@/lib/chat";
 import { loadJourney } from "@/lib/journey-load";
 import { confirmedOnboard, onboardUrl } from "@/lib/onboard-confirm";
+import { can } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,11 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
+  // The WhatsApp prompt saves the ACCOUNT's phone (owner only: "profile.account"), so no other role is asked for it.
+  const needPhone = !u.phone && can(u, "profile.account");
   if (!(await getBrand(sc(u)))) {
+    // Building the workspace is admin and owner only ("onboard"): anyone else waits on the start page, which says so.
+    if (!can(u, "onboard")) redirect(`/${lang}/app/start`);
     // First run: the workspace is built inside the "Getting started" thread, not on a form, and only from the site the
     // owner confirmed on the start page. A `?onboard=` from a link goes back there as the pre-filled value to review.
     const [onboard, initial] = await Promise.all([confirmedOnboard(sc(u)), history(sc(u))]);
@@ -35,7 +40,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
     }
     return (
       <div className="grid min-h-0 flex-1">
-        <ChatPanel t={appDict[lang]} initial={initial} credits={u.credits} lang={lang} plan={u.plan} onboardUrl={onboard} needPhone={!u.phone} />
+        <ChatPanel t={appDict[lang]} initial={initial} credits={u.credits} lang={lang} plan={u.plan} onboardUrl={onboard} needPhone={needPhone} />
       </div>
     );
   }
@@ -50,7 +55,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   const firstStep = !hasProducts ? "catalog" : !brand?.offers ? "offer" : connections.length === 0 ? "connect" : "batch";
   return (
     <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[1fr_320px]">
-      <ChatPanel t={appDict[lang]} journey={journey} initial={initial} credits={u.credits} lang={lang} initialConv={conv} starter={starter} needPhone={!u.phone} initialPrompt={typeof sp.prompt === "string" ? sp.prompt.slice(0, 2000) : ""} plan={u.plan} firstStep={firstStep} initialAgent={agentParam} pending={(pendingTask ? [pendingTask] : []).map((x) => ({ id: x.id, type: x.type, channel: x.channel, title: x.title, body: x.editedBody ?? x.body, status: x.status }))} pendingCount={k.pending} brief={brief?.text ?? null} />
+      <ChatPanel t={appDict[lang]} journey={journey} initial={initial} credits={u.credits} lang={lang} initialConv={conv} starter={starter} needPhone={needPhone} canApprove={can(u, "publish")} initialPrompt={typeof sp.prompt === "string" ? sp.prompt.slice(0, 2000) : ""} plan={u.plan} firstStep={firstStep} initialAgent={agentParam} pending={(pendingTask ? [pendingTask] : []).map((x) => ({ id: x.id, type: x.type, channel: x.channel, title: x.title, body: x.editedBody ?? x.body, status: x.status }))} pendingCount={k.pending} brief={brief?.text ?? null} />
       <div className="hidden overflow-y-auto xl:block"><HomeSide t={appDict[lang]} lang={lang} k={k} connections={connections} schedule={schedule} files={files.map((f) => ({ name: f.name, updatedAt: f.updatedAt }))} brief={brief?.text ?? null} action={notifs.find((n) => !n.read) ?? null} /></div>
     </div>
   );

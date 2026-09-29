@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
-import { createSession, getUser, isAdmin, revokeSessions, saveUser, normalizeEmail, sessionCookie } from "@/lib/auth";
+import { adminActor, createSession, getUser, isAdmin, revokeSessions, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie } from "@/lib/auth";
 import { revokeAllMcp } from "@/lib/mcp";
 import { getBrand, listTasks } from "@/lib/brand";
 import { getUsage } from "@/lib/usage";
@@ -13,6 +13,7 @@ import { wipeAccount } from "@/lib/account";
 import { CAPS, db, pushCapped } from "@/lib/db";
 import { listActivity } from "@/lib/activity";
 import { cookies } from "next/headers";
+import { forceRemoveMember, getMember, onRoster } from "@/lib/team";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,17 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
   if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
   const { email } = await ctx.params;
   const u = await getUser(decodeURIComponent(email));
-  if (!u) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  if (!u) {
+    // Member logins never enter users:all, so the list cannot show them: an address is looked up here instead, which is
+    // how support finds (and can remove, below) a member login holding an address its real owner wants to sign up with.
+    const m = await getMember(decodeURIComponent(email));
+    if (!m) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    const [owner, listed] = await Promise.all([getUser(m.memberOf), onRoster(m.memberOf, m.email)]);
+    return NextResponse.json({
+      ok: true, kind: "member",
+      member: { email: m.email, name: m.name, role: m.role, memberOf: m.memberOf, invitedBy: m.invitedBy, acceptedAt: m.acceptedAt, disabled: m.disabled ?? null, ownerExists: !!owner, onRoster: listed },
+    });
+  }
   const brands = await listBrands(u.email);
   const scopes = brands.map((b) => scopeFor(u.email, b.id));
   const tasks = (await Promise.all(scopes.map((s) => listTasks(s)))).flat().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
@@ -42,17 +53,26 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
   });
 }
 
-type Action = { action: "suspend" | "unsuspend" | "extendTrial" | "resetPassword" | "delete" | "impersonate" | "setLang"; days?: number; lang?: "ar" | "en"; reason?: string };
+type Action = { action: "suspend" | "unsuspend" | "extendTrial" | "resetPassword" | "delete" | "impersonate" | "setLang" | "removeMember"; days?: number; lang?: "ar" | "en"; reason?: string };
 
-/** POST actions on one user. Every action is logged to admin:log. */
+/** POST actions on one user. Every action is logged to admin:log with WHO did it: the founder's email, or "key". */
 export async function POST(req: Request, ctx: { params: Promise<{ email: string }> }) {
-  if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
+  const who = await adminActor(req);
+  if (!who) return NextResponse.json({ ok: false }, { status: 401 });
   const { email: raw } = await ctx.params;
   const email = normalizeEmail(decodeURIComponent(raw)); // the same normalized key for lookup, locks and deletion
   const u = await getUser(email);
-  if (!u) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   const b = (await req.json().catch(() => ({}))) as Action;
-  const log = (what: string, extra: Record<string, unknown> = {}) => pushCapped("admin:log", JSON.stringify({ actor: "founder", email, what, reason: (b.reason ?? "").slice(0, 200) || undefined, ...extra, at: new Date().toISOString() }), CAPS.adminLog);
+  const log = (what: string, extra: Record<string, unknown> = {}) => pushCapped("admin:log", JSON.stringify({ actor: who, email, what, reason: (b.reason ?? "").slice(0, 200) || undefined, ...extra, at: new Date().toISOString() }), CAPS.adminLog);
+  if (!u) {
+    // A member login: the one action is removing it (the owner's own removal, done by support), which frees the address.
+    const m = await getMember(email);
+    if (!m) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    if (b.action !== "removeMember") return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
+    if (!(await forceRemoveMember(email))) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    await log("removeMember", { memberOf: m.memberOf, role: m.role });
+    return NextResponse.json({ ok: true });
+  }
 
   switch (b.action) {
     case "suspend":
@@ -75,7 +95,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     }
     case "resetPassword": {
       const temp = randomBytes(6).toString("base64url").slice(0, 10) + "!";
-      await withUserLock(email, async (x) => { x.passHash = await bcrypt.hash(temp, 10); revokeSessions(x); await saveUser(x); });
+      // The owner's sessions and every member's: a founder reset answers "someone else has this account".
+      await withUserLock(email, async (x) => { x.passHash = await bcrypt.hash(temp, 10); revokeSessions(x); revokeTeamSessions(x); await saveUser(x); });
       await revokeAllMcp(email);
       await log("resetPassword");
       // Shown once to the admin; never stored in clear.
@@ -91,7 +112,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       const mine = jar.get("nashr_session")?.value;
       if (mine) jar.set("nashr_return", mine, await sessionCookie(60 * 60 * 2));
       jar.set("nashr_impersonate", email, await sessionCookie(60 * 60 * 2));
-      await createSession(email, 60 * 60 * 2);
+      // The session record carries the founder (`imp`): it resolves to actor kind "founder", which never passes the
+      // founder console and is refused account delete, password change, invites, role changes, MCP tokens and OAuth.
+      await createSession(email, 60 * 60 * 2, { imp: who });
       await log("impersonate", { expiresInMin: 120 });
       return NextResponse.json({ ok: true, redirect: `/${u.lang}/app` });
     }

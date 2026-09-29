@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
+import { forbid } from "@/lib/roles";
 import { CAPS } from "@/lib/db";
 import { listActivity, type Activity } from "@/lib/activity";
 import { csvSafe } from "@/lib/admin-stats";
@@ -24,6 +25,8 @@ const line = (a: Activity) =>
 export async function GET() {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false, error: "auth" }, { status: 401 });
+  const no = forbid(u, "read");
+  if (no) return no;
   if (!(await allow(`activityexport:${u.email}`, ACTIVITY_EXPORTS_PER_HOUR, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429, headers: { "Retry-After": "3600" } });
   const { rows } = await listActivity(sc(u), { limit: CAPS.activity });
   const csv = "\uFEFF" + [COLUMNS.join(","), ...rows.map(line)].join("\n");

@@ -54,8 +54,8 @@ export const ranThisWeek = (lastWeekly: string | undefined, now: Date = new Date
 const WEEKLY_NOTE = "This is the automatic Sunday plan. Reference strategy.md phases and the calendar.";
 
 /**
- * Weekly plan for one user. Returns what happened. `by` is who asked: the owner's "Run now" passes theirs, and the
- * cron's run is the system's.
+ * Weekly plan for one user. Returns what happened. `by` is who asked: "Run now" passes the login that pressed it (any
+ * role may, POST /api/schedule), and the cron's run is the system's.
  */
 export async function runWeekly(user: User, by: By = systemBy("cron")): Promise<string> {
   const email = user.scope ?? user.email;

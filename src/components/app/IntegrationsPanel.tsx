@@ -6,11 +6,16 @@ import type { Integration } from "@/lib/integrations";
 import type { KeyField } from "@/lib/connectors/registry";
 import { IMPORTS_PRODUCTS, READS_ADS, isWorking } from "@/lib/connectors/working";
 import type { Lang } from "@/lib/i18n";
+import ReadOnlyNote from "./ReadOnlyNote";
 
 type P = { id: string; name: string; kind: "oauth" | "key"; capabilities: string[]; available: boolean; keyFields?: KeyField[]; docs?: string; needsShop: boolean };
 type C = { provider: string; meta?: Record<string, string>; connectedAt: string; needsReconnect?: string };
 
-export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang: Lang; items: Integration[] }) {
+/**
+ * `manage` (owner, admin): connect, reconnect, disconnect, keys, page and ad-account choice, product import. Everyone
+ * else sees the connections read-only and can still ask for an integration. Display only: the routes enforce it.
+ */
+export default function IntegrationsPanel({ t, lang, items, manage = true }: { t: AppDict; lang: Lang; items: Integration[]; manage?: boolean }) {
   const g = t.integrations;
   const r = useRouter();
   const sp = useSearchParams();
@@ -101,6 +106,7 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
       <p className="mt-2 text-ink/70">{g.sub}</p>
       {flash && <p role="status" className="mt-3 rounded-lg bg-salt-dim p-3 text-sm text-oasis">{flash}</p>}
       <p className="mt-2 rounded-lg border border-saffron/40 bg-saffron/10 p-3 text-sm">{g.note}</p>
+      {!manage && <ReadOnlyNote className="mt-2" text={t.readOnly.admin} />}
 
       {conns.length > 0 && (
         <section className="mt-6">
@@ -116,7 +122,7 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
                   {c.provider === "meta" && c.meta?.pages && (
                     <label className="mt-2 grid gap-1 text-xs text-ink/60">
                       <span>{g.metaPage}</span>
-                      <select value={c.meta.pageId} disabled={busy} onChange={(e) => selectPage(e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1 text-xs" dir="auto">
+                      <select value={c.meta.pageId} disabled={busy || !manage} onChange={(e) => selectPage(e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1 text-xs" dir="auto">
                         {(JSON.parse(c.meta.pages) as { id: string; name: string; ig: string }[]).map((pg) => <option key={pg.id} value={pg.id}>{pg.ig ? `${pg.name} · @${pg.ig}` : pg.name}</option>)}
                       </select>
                     </label>
@@ -125,17 +131,17 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
                   {READS_ADS.includes(c.provider) && c.meta?.adAccounts && (
                     <label className="mt-2 grid gap-1 text-xs text-ink/60">
                       <span>{g.adAccount}</span>
-                      <select value={c.meta.adAccount} disabled={busy} onChange={(e) => selectAdAccount(c.provider, e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1 text-xs" dir="auto">
+                      <select value={c.meta.adAccount} disabled={busy || !manage} onChange={(e) => selectAdAccount(c.provider, e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1 text-xs" dir="auto">
                         {(JSON.parse(c.meta.adAccounts) as { id: string; name: string }[]).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                       </select>
                     </label>
                   )}
                 </div>
-                <div className="flex shrink-0 flex-col gap-1">
+                {manage && <div className="flex shrink-0 flex-col gap-1">
                   {c.needsReconnect && providerById.get(c.provider)?.kind === "oauth" && <button onClick={() => startOAuth(providerById.get(c.provider)!)} className="rounded-full bg-oasis px-3 py-1 text-xs font-semibold text-mist">{g.reconnectBtn}</button>}
                   {IMPORTS_PRODUCTS.includes(c.provider) && <button disabled={busy} onClick={() => importProducts(c.provider)} className="rounded-full border border-oasis/40 px-3 py-1 text-xs text-oasis">{g.importProducts}</button>}
                   <button onClick={() => disconnect(c.provider)} className="rounded-full border border-sadu/40 px-3 py-1 text-xs text-sadu">{g.disconnect}</button>
-                </div>
+                </div>}
               </div>
             ))}
           </div>
@@ -153,7 +159,9 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
               // Working: publishes or imports. Reading ad results counts too (READS_ADS).
               const p = found && (isWorking(found.id) || READS_ADS.includes(found.id)) ? found : undefined;
               const isConnected = p ? connectedIds.has(p.id) : false;
-              const canConnect = p?.available && !isConnected;
+              const ready = !!p?.available && !isConnected;
+              // A lower role sees "ready to connect" with no button: asking for something that already exists would be noise.
+              const canConnect = manage && ready;
               const status = isConnected ? "live" : p?.available ? "ready" : i.status;
               return (
                 <div key={i.id} className="flex items-start justify-between gap-3 card card-sm">
@@ -164,7 +172,7 @@ export default function IntegrationsPanel({ t, lang, items }: { t: AppDict; lang
                   </div>
                   {canConnect ? (
                     <button onClick={() => (p!.kind === "key" ? setKeyFor(p!) : startOAuth(p!))} className="shrink-0 rounded-full bg-oasis px-3 py-1 text-xs font-semibold text-mist">{g.connect}</button>
-                  ) : !isConnected ? (
+                  ) : !isConnected && !ready ? (
                     <button onClick={() => req(i.id, i.name)} disabled={!!done[i.id]} className="shrink-0 rounded-full border border-oasis/40 px-3 py-1 text-xs text-oasis disabled:border-ink/10 disabled:text-ink/40">{done[i.id] ? `${g.requested} · ${done[i.id]}` : g.request}</button>
                   ) : null}
                 </div>

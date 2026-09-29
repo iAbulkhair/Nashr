@@ -2,7 +2,7 @@ import { randomBytes } from "crypto";
 import { CAPS, db, pushCapped } from "./db";
 import { TASK_TYPES, isTaskType, type TaskType } from "./tasks";
 import { AGENT_IDS, isAgentId, type AgentId } from "./agents";
-import { isBy, type By } from "./actor";
+import { isBy, publicBy, type By } from "./actor";
 import { recordActivity } from "./activity";
 
 export type Governance = {
@@ -195,6 +195,10 @@ function valueAt(g: Governance, path: string): GovValue {
   return typeof v === "boolean" || num(v) ? v : null;
 }
 
-/** The history as the page renders it: only the settings each revision changed, not two whole snapshots per row. */
+/**
+ * The history as the page renders it (and as the save and restore responses return one entry): only the settings each
+ * revision changed, not two whole snapshots per row, and `by` through `publicBy`. Every login of the account reads the
+ * page, so who impersonated stays in `govhist:{scope}`.
+ */
 export const historyView = (revs: GovRevision[]): GovHistoryEntry[] =>
-  revs.map((r) => ({ id: r.id, at: r.at, by: r.by, ...(r.rollbackOf ? { rollbackOf: r.rollbackOf } : {}), changes: r.changed.map((path) => ({ path, before: valueAt(r.before, path), after: valueAt(r.after, path) })) }));
+  revs.map((r) => ({ id: r.id, at: r.at, by: publicBy(r.by), ...(r.rollbackOf ? { rollbackOf: r.rollbackOf } : {}), changes: r.changed.map((path) => ({ path, before: valueAt(r.before, path), after: valueAt(r.after, path) })) }));

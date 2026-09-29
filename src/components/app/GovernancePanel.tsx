@@ -6,10 +6,11 @@ import type { By } from "@/lib/actor";
 import { AGENT_IDS, isAgentId, type AgentId } from "@/lib/agents";
 import { TASK_COST, isTaskType, type TaskType } from "@/lib/tasks";
 import { dateFormat } from "@/lib/dates";
+import ReadOnlyNote from "./ReadOnlyNote";
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
-    <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)} className={`relative h-6 w-11 shrink-0 rounded-full transition ${on ? "bg-oasis" : "bg-ink/20"}`}>
+    <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)} className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-oasis" : "bg-ink/20"}`}>
       <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${on ? "start-[22px]" : "start-0.5"}`} />
     </button>
   );
@@ -39,8 +40,12 @@ const validCap = (v: string) => v.trim() === "" || /^\d+$/.test(v.trim());
  * `history` this brand's governance changes, newest first (`listGovHistory`), so the page makes no request on mount.
  * `historyCap` is how many changes the server keeps (`CAPS.govHistory`): the list here never shows more, so it never
  * offers to restore a change the server has already dropped.
+ *
+ * `readOnly` (everyone but the owner): the same settings, with every control disabled by the wrapping fieldset and no
+ * Save button; the history is still listed (it sits outside the fieldset) but without Restore buttons. Display only:
+ * PUT /api/governance and POST /api/governance/rollback refuse these roles in code.
  */
-export default function GovernancePanel({ t, lang, initial, spend, history: initialHistory, historyCap }: { t: AppDict; lang: "ar" | "en"; initial: Governance; spend: Partial<Record<AgentId, number>>; history: GovHistoryEntry[]; historyCap: number }) {
+export default function GovernancePanel({ t, lang, initial, spend, history: initialHistory, historyCap, readOnly = false }: { t: AppDict; lang: "ar" | "en"; initial: Governance; spend: Partial<Record<AgentId, number>>; history: GovHistoryEntry[]; historyCap: number; readOnly?: boolean }) {
   const g = t.governance;
   const [gov, setGov] = useState<Governance>(initial);
   const [caps, setCaps] = useState<Record<AgentId, string>>(() => capText(initial));
@@ -110,14 +115,15 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
     <div className="mx-auto max-w-3xl">
       <h1 className="page-title">{g.title}</h1>
       <p className="mt-2 text-ink/70">{g.sub}</p>
-      <div className="mt-6 grid gap-4">
+      {readOnly && <ReadOnlyNote text={t.readOnly.owner} />}
+      <fieldset disabled={readOnly} className="mt-6 grid min-w-0 gap-4">
         <div className="card">
           <h2 className="font-display font-medium">{g.autoApprove}</h2>
           <p className="mt-1 text-sm text-ink/60">{g.autoApproveSub}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {(Object.keys(TASK_COST) as TaskType[]).map((k) => {
               const on = !!gov.autoApprove[k];
-              return <button key={k} onClick={() => setGov({ ...gov, autoApprove: { ...gov.autoApprove, [k]: !on } })} className={`rounded-full border px-3 py-1 text-sm ${on ? "border-oasis bg-oasis text-mist" : "border-ink/20"}`}>{t.generate.types[k].t}</button>;
+              return <button key={k} onClick={() => setGov({ ...gov, autoApprove: { ...gov.autoApprove, [k]: !on } })} className={`rounded-full border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${on ? "border-oasis bg-oasis text-mist" : "border-ink/20"}`}>{t.generate.types[k].t}</button>;
             })}
           </div>
         </div>
@@ -150,44 +156,47 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
             })}
           </ul>
         </div>
-        <div className="flex items-center gap-3">
-          <button onClick={save} disabled={busy || !!restoring} className="btn btn-primary btn-sm">{busy ? g.saving : g.save}</button>
-          {msg && <span role="status" className="text-sm text-oasis">{msg}</span>}
-          {err && <span role="alert" className="text-sm text-sadu-deep">{err}</span>}
-        </div>
-        <section className="card" aria-labelledby="gov-history">
-          <h2 id="gov-history" className="font-display font-medium">{g.history}</h2>
-          <p className="mt-1 text-sm text-ink/60">{g.historySub}</p>
-          {histMsg && <p role="status" className="mt-2 text-sm text-oasis">{histMsg}</p>}
-          {histErr && <p role="alert" className="mt-2 text-sm text-sadu-deep">{histErr}</p>}
-          {history.length === 0 ? (
-            <p className="mt-3 text-sm text-ink/60">{g.historyEmpty}</p>
-          ) : (
-            <ul className="mt-3 divide-y divide-ink/10">
-              {history.map((r) => (
-                <li key={r.id} className="py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm">
-                      <time id={`gov-rev-${r.id}`} dateTime={r.at} suppressHydrationWarning>{when.format(new Date(r.at))} UTC</time>
-                      <span className="text-ink/60"> · </span>
-                      <span dir="auto">{who(r.by)}</span>
-                      {r.rollbackOf && <span className="ms-2 badge">{g.restoreOf}</span>}
-                    </p>
-                    <button type="button" onClick={() => restore(r.id)} disabled={busy || !!restoring} aria-describedby={`gov-rev-${r.id}`} className="btn btn-secondary btn-xs">{restoring === r.id ? g.restoring : g.restore}</button>
-                  </div>
-                  <ul className="mt-1 grid gap-0.5 text-xs text-ink/70">
-                    {r.changes.map((c) => (
-                      <li key={c.path}>
-                        <span dir="auto">{label(c.path)}</span>: <bdi>{value(c.path, c.before)}</bdi> {g.arrow} <bdi className="font-medium text-ink">{value(c.path, c.after)}</bdi>
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
+        {!readOnly && (
+          <div className="flex items-center gap-3">
+            <button onClick={save} disabled={busy || !!restoring} className="btn btn-primary btn-sm">{busy ? g.saving : g.save}</button>
+            {msg && <span role="status" className="text-sm text-oasis">{msg}</span>}
+            {err && <span role="alert" className="text-sm text-sadu-deep">{err}</span>}
+          </div>
+        )}
+      </fieldset>
+      {/* Outside the fieldset: every role reads the history; only the owner gets Restore (the server checks it too). */}
+      <section className="card mt-4" aria-labelledby="gov-history">
+        <h2 id="gov-history" className="font-display font-medium">{g.history}</h2>
+        <p className="mt-1 text-sm text-ink/60">{g.historySub}</p>
+        {histMsg && <p role="status" className="mt-2 text-sm text-oasis">{histMsg}</p>}
+        {histErr && <p role="alert" className="mt-2 text-sm text-sadu-deep">{histErr}</p>}
+        {history.length === 0 ? (
+          <p className="mt-3 text-sm text-ink/60">{g.historyEmpty}</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-ink/10">
+            {history.map((r) => (
+              <li key={r.id} className="py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm">
+                    <time id={`gov-rev-${r.id}`} dateTime={r.at} suppressHydrationWarning>{when.format(new Date(r.at))} UTC</time>
+                    <span className="text-ink/60"> · </span>
+                    <span dir="auto">{who(r.by)}</span>
+                    {r.rollbackOf && <span className="ms-2 badge">{g.restoreOf}</span>}
+                  </p>
+                  {!readOnly && <button type="button" onClick={() => restore(r.id)} disabled={busy || !!restoring} aria-describedby={`gov-rev-${r.id}`} className="btn btn-secondary btn-xs">{restoring === r.id ? g.restoring : g.restore}</button>}
+                </div>
+                <ul className="mt-1 grid gap-0.5 text-xs text-ink/70">
+                  {r.changes.map((c) => (
+                    <li key={c.path}>
+                      <span dir="auto">{label(c.path)}</span>: <bdi>{value(c.path, c.before)}</bdi> {g.arrow} <bdi className="font-medium text-ink">{value(c.path, c.after)}</bdi>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

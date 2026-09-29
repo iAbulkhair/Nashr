@@ -11,6 +11,7 @@ import { usageMonthKeys } from "./usage";
 import { routineFingerprints, routineKeys, routineSkipKeys } from "./routines";
 import { activityKey } from "./activity";
 import { agentCapFingerprint, seenKey } from "./notifications";
+import { wipeTeam } from "./team";
 import { forgetWishlistUser } from "./wishlist";
 
 /**
@@ -23,16 +24,22 @@ function usageKeys(email: string): string[] {
   return Array.from({ length: 36 }, (_, back) => usageMonthKeys(email, monthKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1))))).flat();
 }
 
-/** Wipe every record of an account: all brand scopes, files, tasks, chats, connections, tokens, the user itself. */
+/**
+ * Wipe every record of an account: all brand scopes, files, tasks, chats, connections, tokens, the user itself, and the
+ * team (every member login, member active brand, invite and both indexes, `wipeTeam`). Without the team cascade a
+ * member login would point at an email that anyone can register again, and inherit that new account.
+ */
 export async function wipeAccount(email: string) {
   const e = email;
   const scopes = (await listBrands(e)).map((b) => scopeFor(e, b.id));
   const now = new Date();
   const warnMonths = [monthKey(now), monthKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)))];
   const keys: string[] = [];
-  for (const s of scopes) {
-    // Every id, not only the newest 200 tasks or 100 conversations: nothing of a deleted account may stay behind.
-    const [taskIds, files, convIds, conns, months] = await Promise.all([db.lrange(`tasks:${s}`, 0, -1), listFiles(s), db.lrange(`convs:${s}`, 0, -1), db.smembers(`conns:${s}`), db.smembers(`tidxm:${s}`)]);
+  // Every id, not only the newest 200 tasks or 100 conversations: nothing of a deleted account may stay behind. All
+  // scopes are read in parallel (Upstash is HTTP per command).
+  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(`tasks:${s}`, 0, -1), listFiles(s), db.lrange(`convs:${s}`, 0, -1), db.smembers(`conns:${s}`), db.smembers(`tidxm:${s}`)]));
+  scopes.forEach((s, i) => {
+    const [taskIds, files, convIds, conns, months] = perScope[i];
     keys.push(
       ...taskIds.map((id) => `task:${s}:${id}`),
       ...files.map((f) => `file:${s}:${f.name}`),
@@ -57,7 +64,7 @@ export async function wipeAccount(email: string) {
       ...routineFingerprints(s).map((fp) => seenKey(e, fp)),
       `onboardplan:${s}`, `pending:${s}`, `pendingidx:${s}`, `tidxm:${s}`, `tidxv:${s}`, `tasks:${s}`, `files:${s}`, `brand:${s}`, `prefs:${s}`, `chat:${s}`, `convs:${s}`, `gov:${s}`, `schedule:${s}`, `brief:${s}`, `conns:${s}`,
     );
-  }
+  });
   // Named notification markers: the names are only knowable from the index `once()` keeps.
   const onceNames = await db.smembers(`notifiedkeys:${e}`);
   keys.push(...onceNames.map((k) => `notified:${e}:${k}`), `notifiedkeys:${e}`);
@@ -89,6 +96,9 @@ export async function wipeAccount(email: string) {
     // Lifetime thumbs counters from before the feedback log replaced them. No longer written, but never deleted either.
     ...AGENTS.flatMap((a) => [`fb:${e}:${a.id}:up`, `fb:${e}:${a.id}:down`]),
   );
+  // The account record goes first, then the team under its lock: an invite accepted while this runs either finished
+  // before `wipeTeam` took `lock:team` (and its member is deleted there) or re-reads the owner after it and finds none.
   await pmap(keys, (k) => db.del(k));
+  await wipeTeam(e);
   await Promise.all([db.srem("users:all", e), db.lpush("deleted-accounts", JSON.stringify({ email: e, at: new Date().toISOString() }))]);
 }

@@ -3,8 +3,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AppDict } from "@/lib/app-i18n";
 import type { WFile } from "@/lib/files";
+import ReadOnlyNote from "./ReadOnlyNote";
 
-export default function FilesPanel({ t, files }: { t: AppDict; files: WFile[] }) {
+/**
+ * `canImport` = `can(u, "catalog.import")`; `locked` = the core memory files this person may not write or delete
+ * ("files.core.write" / "files.core.delete", admin and owner), computed on the server from CORE_FILES. Display only:
+ * /api/catalog and /api/files refuse the same roles. Every call's answer is checked, so a refusal is never shown as
+ * a success or as an import that never finishes.
+ */
+export default function FilesPanel({ t, files, canImport = true, locked = [] }: { t: AppDict; files: WFile[]; canImport?: boolean; locked?: string[] }) {
   const r = useRouter();
   const f = t.files;
   const [open, setOpen] = useState<string | null>(files[0]?.name ?? null);
@@ -14,11 +21,21 @@ export default function FilesPanel({ t, files }: { t: AppDict; files: WFile[] })
   const cur = files.find((x) => x.name === open) ?? null;
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
+  const [err, setErr] = useState("");
+  const isLocked = (name: string) => locked.includes(name);
+  /** The message for a refused call: the role for a 403, otherwise the generic failure. */
+  const refusal = (status: number, generic: string) => (status === 403 ? t.team.errors.forbidden : generic);
   async function importCatalog() {
     setImporting(true);
     setImportMsg(f.importing);
-    const res = await fetch("/api/catalog", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-    if (!res.body) { setImporting(false); return; }
+    const res = await fetch("/api/catalog", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => null);
+    // Only a 200 event stream is read as one. A refusal (403 JSON) or a plain-text error (400 no_site) has a body too,
+    // but no event in it, so reading it as a stream left "Importing…" on screen for good.
+    if (!res || !res.ok || !res.body || !(res.headers.get("content-type") ?? "").includes("text/event-stream")) {
+      setImportMsg(res ? refusal(res.status, f.importFail) : f.importFail);
+      setImporting(false);
+      return;
+    }
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
@@ -43,13 +60,18 @@ export default function FilesPanel({ t, files }: { t: AppDict; files: WFile[] })
   }
 
   async function save(name: string, content: string) {
-    await fetch("/api/files", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, content }) });
+    setErr("");
+    const res = await fetch("/api/files", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, content }) }).catch(() => null);
+    // A refused save keeps the editor open with the text in it.
+    if (!res?.ok) { setErr(res ? refusal(res.status, t.team.errors.failed) : t.team.errors.failed); return; }
     setEditing(false);
     r.refresh();
   }
   async function del(name: string) {
     if (!confirm(`${f.delete} ${name}?`)) return;
-    await fetch(`/api/files?name=${encodeURIComponent(name)}`, { method: "DELETE" });
+    setErr("");
+    const res = await fetch(`/api/files?name=${encodeURIComponent(name)}`, { method: "DELETE" }).catch(() => null);
+    if (!res?.ok) { setErr(res ? refusal(res.status, t.team.errors.failed) : t.team.errors.failed); return; }
     setOpen(null);
     r.refresh();
   }
@@ -59,9 +81,11 @@ export default function FilesPanel({ t, files }: { t: AppDict; files: WFile[] })
       <h1 className="page-title">{f.title}</h1>
       <p className="mt-2 text-ink/70">{f.sub}</p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <button disabled={importing} onClick={importCatalog} className="btn btn-primary btn-pill disabled:opacity-60">{f.importCatalog}</button>
+        {canImport && <button disabled={importing} onClick={importCatalog} className="btn btn-primary btn-pill disabled:opacity-60">{f.importCatalog}</button>}
         {importMsg && <span role="status" className="text-sm text-ink/60">{importMsg}</span>}
       </div>
+      {locked.length > 0 && <ReadOnlyNote text={t.readOnly.admin} />}
+      {err && <p role="alert" className="mt-3 text-sm text-sadu-deep">{err}</p>}
       <div className="mt-6 grid gap-4 md:grid-cols-[260px_1fr]">
         <aside className="rounded-xl border border-ink/10 bg-white p-3">
           {files.length === 0 && <p className="p-2 text-sm text-ink/60">{f.empty}</p>}
@@ -91,9 +115,9 @@ export default function FilesPanel({ t, files }: { t: AppDict; files: WFile[] })
                       <button onClick={() => save(cur.name, draft)} className="btn btn-primary btn-pill">{f.save}</button>
                       <button onClick={() => setEditing(false)} className="btn btn-secondary btn-pill">{f.cancel}</button>
                     </>
-                  ) : (
+                  ) : isLocked(cur.name) ? null : (
                     <>
-                      <button onClick={() => { setDraft(cur.content); setEditing(true); }} className="btn btn-secondary btn-pill">{f.edit}</button>
+                      <button onClick={() => { setDraft(cur.content); setEditing(true); setErr(""); }} className="btn btn-secondary btn-pill">{f.edit}</button>
                       <button onClick={() => del(cur.name)} className="btn btn-danger btn-pill">{f.delete}</button>
                     </>
                   )}

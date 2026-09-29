@@ -2,16 +2,20 @@ import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { historyView, isRevisionId, rollbackGov } from "@/lib/governance";
 import { byOf } from "@/lib/actor";
+import { forbid } from "@/lib/roles";
 import { allow, GOV_ROLLBACKS_PER_HOUR } from "@/lib/rate";
 
 /**
  * POST {id} — put the governance settings back as they were before revision `id`. The id is looked up only in the
  * caller's own history (`govhist:{sc(u)}`): no scope, email or key is taken from the body. The restore goes through the
- * same checks as a save and is recorded as a new revision; the history itself is never changed.
+ * same checks as a save and is recorded as a new revision; the history itself is never changed. A restore is a
+ * governance write: owner only (`governance.write`, src/lib/roles.ts), refused before any read, like PUT /api/governance.
  */
 export async function POST(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false, error: "auth" }, { status: 401 });
+  const no = forbid(u, "governance.write");
+  if (no) return no;
   if (!(await allow(`govrollback:${u.email}`, GOV_ROLLBACKS_PER_HOUR, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
   const b = (await req.json().catch(() => ({}))) as { id?: unknown };
   if (!isRevisionId(b.id)) return NextResponse.json({ ok: false, error: "bad_id" }, { status: 400 });

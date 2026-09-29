@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { userFromBearer } from "@/lib/mcp";
+import { MCP_TOOL_ACTION, userFromBearer } from "@/lib/mcp";
 import { DRAFTS_PER_HOUR, chatAllowed } from "@/lib/rate";
 import { DRAFT_LIMITS, draftReport, parseDraft, saveExternalDraft } from "@/lib/external-drafts";
 import { chat } from "@/lib/chat";
@@ -10,6 +10,7 @@ import { generateBatch } from "@/lib/generate-batch";
 import { listFiles, readFile } from "@/lib/files";
 import { CUSTOMER_FACING, brandRules, explain, gateTask, isCustomerFacing } from "@/lib/brand-rules";
 import { tokenBy } from "@/lib/actor";
+import { can } from "@/lib/roles";
 
 export const maxDuration = 300;
 
@@ -28,6 +29,8 @@ const TOOLS = [
   { name: "check_brand", description: "Check a draft against the active brand's rules with the same code Nashr's approve and publish buttons use. Returns pass or the rules that fired, each with the matched word and where it appears. Use it on anything you wrote for this brand before handing it over. Free, no credits.", inputSchema: { type: "object", properties: { text: { type: "string", description: "The draft to check (up to 20,000 characters)." }, type: { type: "string", enum: Object.keys(TASK_COST), description: "Optional Nashr item type. Internal documents (plans, memos) are not held for quoting a banned word; leave empty to check as customer-facing copy." } }, required: ["text"] } },
   { name: "save_draft", description: `Save one draft you wrote into the owner's Nashr approvals inbox as a pending item, for the owner to approve, edit or reject. Nothing is published and nothing is approved automatically. The brand rules are checked in code on save: a draft with a banned word is kept but held, and the answer names the rule, so run check_brand first and fix it. One item per call. Free, no credits, no model call; limited to ${DRAFTS_PER_HOUR} drafts an hour per account.`, inputSchema: { type: "object", properties: { type: { type: "string", enum: Object.keys(TASK_COST), description: "Nashr item type, e.g. social, article, whatsapp, ads, gbp." }, channel: { type: "string", description: "Optional short channel name: instagram, snapchat, tiktok, x, whatsapp, blog, meta… Defaults to the type." }, title: { type: "string", description: `Optional short title (up to ${DRAFT_LIMITS.title} characters). Defaults to the first line of the body.` }, body: { type: "string", description: `The draft text, ready to use (up to ${DRAFT_LIMITS.body} characters).` }, notes: { type: "string", description: `Optional note for the owner: what this draft is for (up to ${DRAFT_LIMITS.notes} characters).` }, lang: { type: "string", enum: ["ar", "en"], description: "Optional language of the draft. Defaults to the brand's first language." } }, required: ["type", "body"] } },
 ];
+
+// The role each tool needs is MCP_TOOL_ACTION in src/lib/mcp.ts; a tool missing from it is refused.
 
 type Rpc = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: Record<string, unknown> };
 const ok = (id: Rpc["id"], result: unknown) => NextResponse.json({ jsonrpc: "2.0", id: id ?? null, result }, { headers: CORS });
@@ -60,6 +63,9 @@ export async function POST(req: Request) {
   if (method !== "tools/call") return err(id, -32601, "Method not found");
   const name = String(params.name ?? "");
   const args = (params.arguments ?? {}) as Record<string, unknown>;
+  const need = Object.prototype.hasOwnProperty.call(MCP_TOOL_ACTION, name) ? MCP_TOOL_ACTION[name] : null;
+  if (!need) return err(id, -32602, "Unknown tool");
+  if (!can(user, need)) return ok(id, { ...text("Not allowed: this tool needs a higher role in the account. Nothing was done."), isError: true });
   try {
     switch (name) {
       case "ask_noor": {

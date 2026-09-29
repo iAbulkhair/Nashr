@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { getGov, historyView, saveGovAs, type GovPatch } from "@/lib/governance";
 import { byOf } from "@/lib/actor";
+import { forbid } from "@/lib/roles";
 
 export async function GET() {
   const u = await currentUser();
@@ -11,6 +12,9 @@ export async function GET() {
 export async function PUT(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  // Agent caps, auto-approve and the reviewer decide what is spent and what skips the human gate: the owner's call only.
+  const no = forbid(u, "governance.write");
+  if (no) return no;
   // Every field is validated in `saveGov`'s merge; the body is only ever written to the caller's own scope. Who saved
   // comes from the session, never from the body, and a save that changes something is kept in the history.
   const [b, by] = await Promise.all([req.json().catch(() => ({})) as Promise<GovPatch>, byOf(u)]);

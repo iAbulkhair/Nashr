@@ -58,7 +58,7 @@ export type BatchOpts = {
   settle?: () => Promise<unknown>;
   /**
    * Who asked, for the activity log: the chat turn's login, `tokenBy` for MCP. By default `byOf(user)` from the session,
-   * and the system job for the scheduled paths (the Sunday plan's "Run now" passes the owner).
+   * and the system job for the scheduled paths (the Sunday plan's "Run now" passes the login that pressed it).
    */
   by?: By;
 };

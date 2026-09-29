@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToReadableStream } from "react-dom/server.edge";
-import { jar, json, newUser, params, settle, signIn, signOut, supportAccess } from "./helpers/session";
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { jar, json, newMember, newUser, params, settle, signIn, signOut, supportAccess } from "./helpers/session";
+import { currentUser, getUser, saveUser, type User } from "@/lib/auth";
 import { addBrand, scopeFor } from "@/lib/brands";
 import { saveTask, type Task } from "@/lib/brand";
 import { CAPS, db } from "@/lib/db";
@@ -18,18 +18,19 @@ import Page from "@/app/[lang]/app/governance/page";
 import { appDict } from "@/lib/app-i18n";
 
 /**
- * Rules 160-163 and 166: who acted is worked out in code (160); a governance save that changes something is kept as a
- * revision, under a lock, and a save that changes nothing is not (161); a restore puts a whole snapshot back through
- * today's checks and is itself a revision, looked up only in the caller's own history (162); the Governance page shows
- * the history from the server (163); and the history goes with the account (166).
+ * Rules 193-196 and 199: who acted is worked out in code (193); a governance save that changes something is kept as a
+ * revision, under a lock, and a save that changes nothing is not (194); a restore puts a whole snapshot back through
+ * today's checks and is itself a revision, looked up only in the caller's own history (195); the Governance page shows
+ * the history from the server, with support access as support and never who impersonated (196); and the history goes
+ * with the account (199).
  */
 const put = async (body: unknown) => {
   const res = await govRoute.PUT(json("/api/governance", "PUT", body));
-  return { status: res.status, body: (await res.json()) as { ok: boolean; error?: string; governance?: Governance; entry?: { id: string; changes: { path: string }[] } | null } };
+  return { status: res.status, body: (await res.json()) as { ok: boolean; error?: string; governance?: Governance; entry?: { id: string; by?: unknown; changes: { path: string }[] } | null } };
 };
 const restore = async (id: unknown) => {
   const res = await rollbackRoute.POST(json("/api/governance/rollback", "POST", { id }));
-  return { status: res.status, body: (await res.json()) as { ok: boolean; error?: string; governance?: Governance; entry?: { id: string; rollbackOf?: string; changes: { path: string }[] } | null } };
+  return { status: res.status, body: (await res.json()) as { ok: boolean; error?: string; governance?: Governance; entry?: { id: string; by?: unknown; rollbackOf?: string; changes: { path: string }[] } | null } };
 };
 const owner = async (prefix: string) => {
   const u = await newUser(prefix);
@@ -38,49 +39,51 @@ const owner = async (prefix: string) => {
 };
 const OWNER = (u: User) => ({ kind: "owner", email: u.email });
 
-describe("who acted is worked out in code (rule 160)", () => {
-  it("on main: the owner, or the founder while the impersonation cookie names this account and the founder's own session backs it", async () => {
-    const u = await owner("by-main");
-    const FOUNDER = { kind: "founder", email: u.email, imp: "founder" };
+describe("who acted is worked out in code (rule 193)", () => {
+  /** What a request resolves to for this login: `currentUser` sets `u.actor` from the session record. */
+  const session = async (email: string, opts: { imp?: string } = {}) => {
+    await signIn(email, opts);
+    return (await currentUser())!;
+  };
+
+  it("from the session: the owner, and a founder's support access (a session carrying `imp`) as the founder by their own email", async () => {
+    const u = await newUser("by-session");
+    expect(byOf(await session(u.email))).toEqual(OWNER(u));
+    // The console's impersonation session names the founder in `imp`; `actor.email` there is the owner's and is never who.
+    const imp = await session(u.email, { imp: "founder@test.example" });
+    expect(imp.actor).toMatchObject({ kind: "founder", email: u.email, impersonating: "founder@test.example" });
+    expect(byOf(imp)).toEqual({ kind: "founder", email: u.email, imp: "founder@test.example" });
+    expect(byOf(await session(u.email, { imp: "key" }))).toEqual({ kind: "founder", email: u.email, imp: "key" });
+  });
+
+  it("the impersonation cookies are not a way to be recorded as support: only the session record is read", async () => {
+    const u = await newUser("by-cookie");
+    const own = await session(u.email);
     try {
-      expect(await byOf(u)).toEqual(OWNER(u));
-      // The impersonation cookie alone is a value any browser can set: an owner cannot make their own actions Nashr support's.
-      jar().set("nashr_impersonate", u.email);
-      expect(await byOf(u)).toEqual(OWNER(u));
-      // Nor with their own session, a token that is no live session, or something that is not a token at all.
-      for (const back of [jar().get("nashr_session")!, "a".repeat(64), "../user:x"]) {
-        jar().set("nashr_return", back);
-        expect(await byOf(u), back).toEqual(OWNER(u));
-      }
-      // Support access as the console starts it: the founder's own live session saved in nashr_return.
-      const token = await supportAccess(u.email);
-      expect(await byOf(u)).toEqual(FOUNDER);
-      await db.del(`session:${token}`);
-      expect(await byOf(u), "the founder's session has ended").toEqual(OWNER(u));
-      // Or the admin key cookie, when the founder had no session to save; a wrong key is nothing.
-      jar().delete("nashr_return");
+      // The cookies the console leaves, with the founder's own live session in nashr_return and the admin key cookie:
+      // values any browser can set, so an owner's own actions stay the owner's.
+      await supportAccess(u.email);
       vi.stubEnv("WAITLIST_ADMIN_KEY", "test-admin-key-0123456789");
-      jar().set("nashr_admin", "test-admin-key-012345678x");
-      expect(await byOf(u)).toEqual(OWNER(u));
       jar().set("nashr_admin", "test-admin-key-0123456789");
-      expect(await byOf(u)).toEqual(FOUNDER);
-      // A cookie left over for another account is not this one's support access.
-      jar().set("nashr_impersonate", "someone-else@test.example");
-      expect(await byOf(u)).toEqual(OWNER(u));
+      expect(byOf((await currentUser())!)).toEqual(OWNER(u));
+      expect(byOf(own)).toEqual(OWNER(u));
     } finally {
       vi.unstubAllEnvs();
     }
   });
 
-  it("reads a teams actor structurally: a member's own login and role, the founder's own email, a connected app", async () => {
+  it("a member's own login and role, a connected app, and no actor at all (a cron or a script) is the system, never the owner", async () => {
     const u = await newUser("by-actor");
     const as = (actor: unknown) => byOf({ ...u, actor } as User);
-    expect(await as({ kind: "member", email: "m@test.example", role: "admin" })).toEqual({ kind: "member", email: "m@test.example", role: "admin" });
-    expect(await as({ kind: "member", email: "m@test.example", role: "root" })).toEqual({ kind: "member", email: "m@test.example" });
-    // On PR #223 a founder's `actor.email` is the owner's: who acted is `impersonating`, never recorded as the owner.
-    expect(await as({ kind: "founder", email: u.email, role: "owner", impersonating: "founder@test.example" })).toEqual({ kind: "founder", email: u.email, imp: "founder@test.example" });
-    expect(await as({ kind: "token", email: u.email, role: "owner" })).toEqual({ kind: "token", email: u.email });
-    expect(await as({ kind: "owner", email: u.email, role: "owner" })).toEqual({ kind: "owner", email: u.email });
+    const m = await newMember(u, "admin", "by-mem");
+    expect(byOf(await session(m.email))).toEqual({ kind: "member", email: m.email, role: "admin" });
+    expect(as({ kind: "member", email: "m@test.example", role: "member" })).toEqual({ kind: "member", email: "m@test.example", role: "member" });
+    // A role a member can never hold is dropped, not recorded.
+    expect(as({ kind: "member", email: "m@test.example", role: "owner" })).toEqual({ kind: "member", email: "m@test.example" });
+    expect(as({ kind: "member", email: "m@test.example", role: "root" })).toEqual({ kind: "member", email: "m@test.example" });
+    expect(as({ kind: "token", email: u.email, role: "owner" })).toEqual({ kind: "token", email: u.email });
+    expect(as({ kind: "robot", email: u.email, role: "owner" })).toEqual({ kind: "system", job: "cron" });
+    expect(byOf(u), "a user loaded with getUser carries no actor").toEqual({ kind: "system", job: "cron" });
     expect(systemBy("auto_handoff")).toEqual({ kind: "system", job: "auto_handoff" });
   });
 
@@ -100,7 +103,7 @@ describe("who acted is worked out in code (rule 160)", () => {
       await signIn(founder.email);
       const res = await adminUser.POST(json(`/api/admin/users/x`, "POST", { action: "impersonate" }), params({ email: encodeURIComponent(u.email) }));
       expect(res.status).toBe(200);
-      await taskRoute.PATCH(json("/api/tasks/imp", "PATCH", { status: "rejected", note: "no" }), params({ id: "imp" }));
+      await taskRoute.PATCH(json("/api/tasks/imp", "PATCH", { status: "rejected", note: "no", by: { kind: "owner", email: u.email } }), params({ id: "imp" }));
       await settle();
     } finally {
       vi.unstubAllEnvs();
@@ -108,11 +111,12 @@ describe("who acted is worked out in code (rule 160)", () => {
 
     const [imp, own] = await listDecisions(u.email);
     expect(own).toMatchObject({ task: "own", action: "approve", by: OWNER(u) });
-    expect(imp).toMatchObject({ task: "imp", action: "reject", by: { kind: "founder", email: u.email, imp: "founder" } });
+    // Who impersonated comes from the session the console wrote: the founder's own email.
+    expect(imp).toMatchObject({ task: "imp", action: "reject", by: { kind: "founder", email: u.email, imp: founder.email } });
   });
 });
 
-describe("a governance save that changes something is kept, once (rule 161)", () => {
+describe("a governance save that changes something is kept, once (rule 194)", () => {
   it("names what changed as dotted paths; off equals unset for auto-approve and null equals unset for a cap", () => {
     const after: Governance = { ...DEFAULT_GOV, autoApprove: { social: true, ads: false }, weeklyCap: 30, reviewer: false, agentCaps: { razan: 5 } };
     expect(govDiff(DEFAULT_GOV, after)).toEqual(["autoApprove.social", "weeklyCap", "reviewer", "agentCaps.razan"]);
@@ -175,7 +179,20 @@ describe("a governance save that changes something is kept, once (rule 161)", ()
   });
 });
 
-describe("a restore puts a whole snapshot back through today's checks (rule 162)", () => {
+describe("a restore puts a whole snapshot back through today's checks (rule 195)", () => {
+  it("is the owner's alone: a member or an admin gets 403 before the id is even checked, and nothing changes", async () => {
+    const u = await owner("rb-role");
+    const mine = await put({ reviewer: false });
+    for (const role of ["admin", "member"] as const) {
+      const m = await newMember(u, role, `rb-${role}`);
+      await signIn(m.email);
+      expect(await restore(mine.body.entry!.id), role).toEqual({ status: 403, body: { error: "forbidden" } });
+      expect((await restore("not-an-id")).status, role).toBe(403);
+    }
+    expect((await getGov(u.email)).reviewer).toBe(false);
+    expect(await listGovHistory(u.email)).toHaveLength(1);
+  });
+
   it("needs a session, a well-formed id and an id from the caller's own history", async () => {
     signOut();
     expect((await restore("aaaaaaaaaaaa")).status).toBe(401);
@@ -253,7 +270,7 @@ describe("a restore puts a whole snapshot back through today's checks (rule 162)
   });
 });
 
-describe("the Governance page shows the history from the server (rule 163)", () => {
+describe("the Governance page shows the history from the server (rule 196)", () => {
   async function render(lang: "ar" | "en") {
     const el = await Page({ params: Promise.resolve({ lang }) });
     return new Response(await renderToReadableStream(el)).text();
@@ -292,6 +309,41 @@ describe("the Governance page shows the history from the server (rule 163)", () 
     for (const lang of ["ar", "en"] as const) expect(appDict[lang].governance.restoreGone, lang).not.toBe(appDict[lang].governance.restoreFailed);
   });
 
+  it("an admin and a member see the same history, with no Restore button (only the owner restores)", async () => {
+    const u = await owner("page-hist-team");
+    await put({ reviewer: false });
+    for (const role of ["admin", "member"] as const) {
+      const m = await newMember(u, role, `page-hist-${role}`);
+      await signIn(m.email);
+      const hist = (await render("en")).split('id="gov-history"')[1] ?? "";
+      expect(hist, role).toMatch(/<span dir="auto">Second reviewer<\/span>/);
+      expect(hist, role).not.toContain(">Restore<");
+    }
+  });
+
+  it("a change made through support access reads as Nashr support: no page prop or response carries who impersonated", async () => {
+    const founder = "founder@test.example";
+    const u = await owner("page-hist-imp");
+    await signIn(u.email, { imp: founder });
+    const saved = await put({ reviewer: false });
+    const restored = await restore(saved.body.entry!.id);
+    // The history itself keeps who impersonated, for the founder's side.
+    const kept = { kind: "founder", email: u.email, imp: founder };
+    expect((await listGovHistory(u.email)).map((r) => r.by)).toEqual([kept, kept]);
+    const shown = { kind: "founder", email: u.email };
+    expect([saved.body.entry!.by, restored.body.entry!.by]).toEqual([shown, shown]);
+
+    // A plain member opens the page: its props, serialized into the page, and the rendered history name support only.
+    const m = await newMember(u, "member", "page-hist-imp-m");
+    await signIn(m.email);
+    const el = (await Page({ params: Promise.resolve({ lang: "en" }) })) as { props: { history: { by: unknown }[] } };
+    expect(el.props.history.map((r) => r.by)).toEqual([shown, shown]);
+    expect(JSON.stringify(el.props)).not.toContain(founder);
+    const hist = (await render("en")).split('id="gov-history"')[1] ?? "";
+    expect((hist.match(/>Nashr support</g) ?? []).length).toBe(2);
+    expect(hist).not.toContain(founder);
+  });
+
   it("in Arabic, and another account sees none of it", async () => {
     await owner("page-hist-ar");
     await put({ learning: false });
@@ -305,7 +357,7 @@ describe("the Governance page shows the history from the server (rule 163)", () 
   });
 });
 
-describe("the history goes with the account (rule 166)", () => {
+describe("the history goes with the account (rule 199)", () => {
   it("wipeAccount deletes govhist and govlock for every brand", async () => {
     const u = await newUser("hist-wipe");
     await saveUser({ ...u, plan: "agency" });

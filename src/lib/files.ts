@@ -105,6 +105,14 @@ const MEMORY_BUDGET = 6000;
  */
 export const goalLine = (goal: unknown) => String(goal ?? "").replace(/\s+/g, " ").replace(/-{2,}/g, "-").trim().slice(0, 140);
 
+/**
+ * The core memory: the files every agent reads on every generation and chat turn (`memoryBlock` below).
+ * Deleting one changes what every agent knows about the business, so DELETE /api/files needs admin or owner for these;
+ * any member may delete the other files. tests/role-gates.test.ts keeps this list equal to the one `memoryBlock` reads.
+ * It lives here rather than in the route file because a Next.js route module may export only handlers and route config.
+ */
+export const CORE_FILES: readonly string[] = ["brand.md", "products.md", "store-sales.md", "performance-learnings.md", "strategy.md", "market-research.md", "preferences.md"];
+
 /** Core files every agent reads on every generation and chat turn, preceded by the owner's goal when there is one. */
 export async function memoryBlock(email: string) {
   const wanted = ["brand.md", "products.md", "store-sales.md", "performance-learnings.md", "strategy.md", "market-research.md", "preferences.md"];

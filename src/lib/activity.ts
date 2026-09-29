@@ -1,7 +1,7 @@
 import { CAPS, db, pushCapped } from "./db";
 import { isAgentId, type AgentId } from "./agents";
 import { isTaskType, type TaskType } from "./tasks";
-import { isBy, type By } from "./actor";
+import { isBy, publicBy, type By } from "./actor";
 
 /**
  * The per-agent activity log: what each agent did in one brand, and what was done to its work, newest first in
@@ -117,6 +117,12 @@ function readRow(r: string): Activity | null {
     return null;
   }
 }
+
+/**
+ * A row as the account's own logins receive it (GET /api/activity, the Activity page): `by` through `publicBy`, so who
+ * impersonated stays with the founder console, which reads the rows whole.
+ */
+export const publicActivity = (a: Activity): Activity => ({ ...a, by: publicBy(a.by) });
 
 export type ActivityQuery = { agent?: AgentId; kind?: ActivityKind; before?: string; limit?: number };
 export type ActivityPage = { rows: Activity[]; next: string | null };

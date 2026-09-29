@@ -3,6 +3,7 @@ import { currentUser, sc } from "@/lib/auth";
 import { getSchedule, runDaily, runWeekly, saveSchedule, type Schedule } from "@/lib/schedule";
 import { isRoutineId, type RoutineId } from "@/lib/routines";
 import { byOf } from "@/lib/actor";
+import { forbid } from "@/lib/roles";
 
 export const maxDuration = 300;
 
@@ -14,6 +15,9 @@ export async function GET() {
 export async function PUT(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  // Switches that make cron spend credits with nobody asking: admin and owner only (src/lib/roles.ts "schedule.write").
+  const no = forbid(u, "schedule.write");
+  if (no) return no;
   // A JSON null or array is not a patch; reading a field off null used to answer 500.
   const raw: unknown = await req.json().catch(() => ({}));
   const b = (raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}) as { weeklyPlan?: unknown; dailyBrief?: unknown; followUps?: unknown; routines?: unknown };
@@ -34,7 +38,7 @@ export async function POST(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const b = (await req.json().catch(() => ({}))) as { run?: string };
-  // The owner's own "Run now": its activity rows name them (or the founder), not the cron.
+  // A login's own "Run now" (any role): its activity rows name that login (or the founder), not the cron.
   if (b.run === "weekly") return NextResponse.json({ ok: true, result: await runWeekly(u, await byOf(u)) });
   if (b.run === "daily") return NextResponse.json({ ok: true, brief: await runDaily(u) });
   return NextResponse.json({ ok: false, error: "bad_run" }, { status: 400 });

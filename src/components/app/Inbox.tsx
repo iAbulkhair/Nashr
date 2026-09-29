@@ -35,7 +35,12 @@ const shareSheet = () => typeof navigator.canShare === "function";
 /** Our Blob store answers ?download=1 with an attachment header, so the link saves the clip instead of playing it. */
 const saveLink = (url: string) => (isOurBlobUrl(url) ? `${url}?download=1` : url);
 
-export default function Inbox({ t, lang, tasks, brief, connected = [], banned = "", journey, media = [], credits = 0, plan, paused }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[]; banned?: string; journey?: Journey; media?: MediaModelId[]; credits?: number; plan?: string; paused?: boolean }) {
+/**
+ * `canPublish` is `can(u, "publish")` from the page (approve and publish are admin and owner). Without it the inbox offers
+ * what a plain member may do, edit and reject, and never a control the server would refuse: an edit is saved without
+ * approving (an approved item goes back to pending), and Approve and Publish give way to a note.
+ */
+export default function Inbox({ t, lang, tasks, brief, connected = [], banned = "", journey, media = [], credits = 0, plan, paused, canPublish = true }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[]; banned?: string; journey?: Journey; media?: MediaModelId[]; credits?: number; plan?: string; paused?: boolean; canPublish?: boolean }) {
   const i = t.inbox;
   const G = GUARD[lang];
   // The brand file's rules, applied here exactly as the approve and publish routes apply them.
@@ -58,12 +63,14 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
   const clips = useRef(new Map<string, File>());
   // Tasks the owner changed in this session, layered over the server-rendered list.
   const [local, setLocal] = useState<Record<string, Task>>({});
-  const [failed, setFailed] = useState<string | null>(null);
+  /** The card whose last change was refused, and why: a role refusal is never reported as a connection problem. */
+  const [failed, setFailed] = useState<{ id: string; why: "forbidden" | "network" } | null>(null);
   const view = tasks.map((x) => local[x.id] ?? x);
   /** Drop the optimistic copy of one task so the next server render is what the owner sees. */
   const forgetLocal = (id: string) => setLocal((p) => { const next = { ...p }; delete next[id]; return next; });
   // The same rule the publish route enforces (src/lib/connectors/targets.ts), so a button never offers a refused target.
-  const targets = (x: Task) => targetsFor(x, connected);
+  // Publishing is admin and owner only (src/lib/roles.ts "publish"), so a member is offered no target at all.
+  const targets = (x: Task) => (canPublish ? targetsFor(x, connected) : []);
 
   async function publish(id: string, provider: string) {
     setPublishing(id + provider);
@@ -73,7 +80,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
     else {
       const j = (await res.json().catch(() => ({}))) as { error?: string; violations?: Violation[] };
       if (j.error === "brand_violation" && j.violations) setRefused((p) => ({ ...p, [id]: j.violations! }));
-      else alert(i.publishFail);
+      else alert(res.status === 403 ? t.team.errors.forbidden : i.publishFail);
     }
     // `view` renders `local[id] ?? task`, so an entry left over from an earlier approve would mask this task's server
     // copy for ever: the publish landed and the image was generated, but the card never showed either.
@@ -153,6 +160,13 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
         if (typeof body.editedBody === "string") { setEditing(id); setDraft(body.editedBody); }
         return;
       }
+      if (res.status === 403) {
+        // Refused for the role: say so, and give an edit back to its editor rather than dropping the typed text.
+        setLocal((p) => ({ ...p, [id]: before }));
+        setFailed({ id, why: "forbidden" });
+        if (typeof body.editedBody === "string") { setEditing(id); setDraft(body.editedBody); }
+        return;
+      }
       if (!res.ok || !j.ok || !j.task) throw new Error("patch_failed");
       setLocal((p) => ({ ...p, [id]: j.task! }));
       setRefused((p) => { const n = { ...p }; delete n[id]; return n; });
@@ -161,7 +175,8 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
       window.dispatchEvent(new Event("nashr:pending-changed"));
     } catch {
       setLocal((p) => ({ ...p, [id]: before }));
-      setFailed(id);
+      setFailed({ id, why: "network" });
+      if (typeof body.editedBody === "string") { setEditing(id); setDraft(body.editedBody); }
     }
   }
 
@@ -273,10 +288,19 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                             {live.length ? live.map((v) => <span key={v.ruleId} className="guard-hit font-semibold" dir="auto">{v.term}</span>) : <span>{G.liveOk}</span>}
                           </p>
                         )}
+                        {failed?.id === x.id && <p role="alert" className="text-sm text-sadu-deep">{failed.why === "forbidden" ? t.team.errors.forbidden : lang === "ar" ? "لم يُحفظ التغيير. تحقق من الاتصال وحاول مرة أخرى." : "The change was not saved. Check your connection and try again."}</p>}
                         <div className="flex flex-wrap gap-2">
-                          <button disabled={live.length > 0} title={live.length ? G.held : undefined} onClick={() => patch(x.id, { editedBody: draft, status: "approved" })} className="btn btn-primary btn-pill">{i.save}</button>
-                          {live.length > 0 && <button onClick={() => patch(x.id, { editedBody: draft, status: "pending" })} className="btn btn-secondary btn-pill">{G.saveDraft}</button>}
-                          <button onClick={() => setEditing(null)} className="btn btn-secondary btn-pill">{i.cancel}</button>
+                          {canPublish ? (
+                            <>
+                              <button disabled={live.length > 0} title={live.length ? G.held : undefined} onClick={() => patch(x.id, { editedBody: draft, status: "approved" })} className="btn btn-primary btn-pill">{i.save}</button>
+                              {live.length > 0 && <button onClick={() => patch(x.id, { editedBody: draft, status: "pending" })} className="btn btn-secondary btn-pill">{G.saveDraft}</button>}
+                            </>
+                          ) : (
+                            // A member's edit never approves: it is saved as it stands, and an approved item goes back to
+                            // pending so an admin sees the new text before anything is published.
+                            <button onClick={() => patch(x.id, { editedBody: draft, ...(x.status === "approved" ? { status: "pending" } : {}) })} className="btn btn-primary btn-pill">{x.status === "approved" ? i.saveReopen : i.saveEdit}</button>
+                          )}
+                          <button onClick={() => { setEditing(null); setFailed(null); }} className="btn btn-secondary btn-pill">{i.cancel}</button>
                         </div>
                       </>
                     );
@@ -305,8 +329,9 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
               </div>
               {editing !== x.id && rejecting !== x.id && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-ink/5 bg-salt px-4 py-3 text-sm">
-                  {failed === x.id && <p role="alert" className="w-full text-sm text-sadu-deep">{lang === "ar" ? "لم يُحفظ التغيير. تحقق من الاتصال وحاول مرة أخرى." : "The change was not saved. Check your connection and try again."}</p>}
-                  {x.status !== "approved" && <button disabled={hits.length > 0} title={hits.length ? G.held : undefined} onClick={() => patch(x.id, { status: "approved" })} className="btn btn-primary btn-pill">{i.approve}</button>}
+                  {failed?.id === x.id && <p role="alert" className="w-full text-sm text-sadu-deep">{failed.why === "forbidden" ? t.team.errors.forbidden : lang === "ar" ? "لم يُحفظ التغيير. تحقق من الاتصال وحاول مرة أخرى." : "The change was not saved. Check your connection and try again."}</p>}
+                  {x.status !== "approved" && canPublish && <button disabled={hits.length > 0} title={hits.length ? G.held : undefined} onClick={() => patch(x.id, { status: "approved" })} className="btn btn-primary btn-pill">{i.approve}</button>}
+                  {x.status === "pending" && !canPublish && <p className="w-full text-xs text-ink/60">{i.waitAdmin}</p>}
                   <button onClick={() => { setEditing(x.id); setDraft(body); }} className="btn btn-secondary btn-pill">{i.edit}</button>
                   {x.status !== "rejected" && <button onClick={() => setRejecting(x.id)} className="btn btn-danger btn-pill">{i.reject}</button>}
                   {x.type === "board_deck" && (

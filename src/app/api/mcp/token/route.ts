@@ -1,23 +1,40 @@
 import { NextResponse } from "next/server";
-import { currentUser } from "@/lib/auth";
+import { currentUser, type User } from "@/lib/auth";
 import { createMcpToken, getMcpToken, revokeMcpToken } from "@/lib/mcp";
+import { forbid } from "@/lib/roles";
+
+/**
+ * The personal MCP token is an owner credential: a bearer resolves to the whole account (src/lib/mcp.ts
+ * `userFromBearer`), so only the owner, signed in as themselves, may see, mint or revoke it. A member, and a founder
+ * impersonating the account, get 403 (src/lib/roles.ts "mcp.token").
+ *
+ * The slot is keyed by the acting login. Past the gate that is always the owner's own address; should members ever get
+ * tokens, theirs would map to their own login, which `userFromBearer` refuses, so the rule fails closed.
+ */
+const holder = (u: User) => u.actor!.email;
 
 export async function GET() {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  const t = await getMcpToken(u.email);
+  const no = forbid(u, "mcp.token");
+  if (no) return no;
+  const t = await getMcpToken(holder(u));
   return NextResponse.json({ ok: true, token: t ? `${t.slice(0, 12)}…` : null, exists: !!t });
 }
 export async function POST() {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  await revokeMcpToken(u.email);
-  const token = await createMcpToken(u.email);
+  const no = forbid(u, "mcp.token");
+  if (no) return no;
+  await revokeMcpToken(holder(u));
+  const token = await createMcpToken(holder(u));
   return NextResponse.json({ ok: true, token }); // shown once
 }
 export async function DELETE() {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  await revokeMcpToken(u.email);
+  const no = forbid(u, "mcp.token");
+  if (no) return no;
+  await revokeMcpToken(holder(u));
   return NextResponse.json({ ok: true });
 }

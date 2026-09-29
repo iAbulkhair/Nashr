@@ -9,6 +9,7 @@ import { push, type ChatMsg } from "@/lib/chat";
 import { db } from "@/lib/db";
 import { modelState } from "@/lib/model";
 import { clearOnboard, confirmedOnboard, onboardUrl } from "@/lib/onboard-confirm";
+import { forbid } from "@/lib/roles";
 
 export const maxDuration = 300;
 
@@ -27,6 +28,9 @@ const T = {
 export async function POST(req: Request) {
   const u = await currentUser();
   if (!u) return new Response("unauthorized", { status: 401 });
+  // Onboarding writes the brand file and the core memory: admin and owner only (src/lib/roles.ts "onboard").
+  const no = forbid(u, "onboard");
+  if (no) return no;
   const b = (await req.json().catch(() => ({}))) as { url?: unknown; hints?: string };
   const url = onboardUrl(b.url);
   if (url.length < 4) return new Response("bad_url", { status: 400 });

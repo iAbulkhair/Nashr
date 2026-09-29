@@ -4,9 +4,9 @@ import { renderToReadableStream } from "react-dom/server.edge";
 // Publishing reaches a platform; here it succeeds at once and nothing leaves the test.
 vi.mock("@/lib/connectors/publish", async (orig) => ({ ...(await orig<typeof import("@/lib/connectors/publish")>()), publishTask: async (_s: string, _t: unknown, provider: string) => ({ provider, url: "https://t.me/x/1", status: "published" as const }) }));
 
-import { json, newUser, params, settle, signIn, signOut, supportAccess } from "./helpers/session";
+import { json, newMember, newUser, params, settle, signIn, signOut, supportAccess } from "./helpers/session";
 import { CAPS, db } from "@/lib/db";
-import { getUser, saveUser } from "@/lib/auth";
+import { currentUser, getUser, saveUser } from "@/lib/auth";
 import { saveTask, type Task } from "@/lib/brand";
 import { addBrand, scopeFor } from "@/lib/brands";
 import { saveConnection } from "@/lib/connectors/store";
@@ -29,16 +29,17 @@ import * as adminUser from "@/app/api/admin/users/[email]/route";
 import Page from "@/app/[lang]/app/activity/page";
 
 /**
- * Rules 167-175: the per-agent activity log (src/lib/activity.ts). This file pins the store, the owner actions that
+ * Rules 200-208: the per-agent activity log (src/lib/activity.ts). This file pins the store, the owner actions that
  * record without a model, the list and export routes, the page, the founder console and the wipe;
  * tests/activity-sources.test.ts pins the generation, routine and media rows.
  */
 const brand = { name: "مقهى الفنجان", website: "", industry: "مقاهي", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-09-29T00:00:00.000Z" };
+/** An owner with a brand, signed in; the user a request resolves to (`currentUser` sets `actor`, which the role gates need). */
 const owner = async (prefix: string) => {
   const u = await newUser(prefix);
   await db.set(`brand:${u.email}`, brand);
   await signIn(u.email);
-  return (await getUser(u.email))!;
+  return (await currentUser())!;
 };
 const task = (id: string, over: Partial<Task> = {}): Task => ({ id, type: "pricing_review", channel: "doc", title: "مراجعة الأسعار", body: "نص", status: "pending", createdAt: new Date().toISOString(), lang: "ar", ...over });
 const rows = async (scope: string) => (await listActivity(scope, { limit: CAPS.activity })).rows;
@@ -52,7 +53,7 @@ afterEach(async () => {
   signOut();
 });
 
-describe("the log itself: bounded rows, a recorder that never throws, one sorted and filtered read (rule 171)", () => {
+describe("the log itself: bounded rows, a recorder that never throws, one sorted and filtered read (rule 204)", () => {
   it("keeps only the known fields, at most ten task ids and 200 characters of one-line note", async () => {
     const u = await newUser("act-bound");
     await recordActivity(u.email, [row({ tasks: Array.from({ length: 12 }, (_, i) => `t${i}`), note: `a\nb\u0000${"x".repeat(300)}`, count: Number.NaN, ...({ extra: "dropped" } as object) }), null, false, undefined]);
@@ -115,20 +116,23 @@ describe("the log itself: bounded rows, a recorder that never throws, one sorted
   });
 });
 
-describe("the owner's own actions are recorded once, in the caller's scope, with who acted (rule 168)", () => {
+describe("the owner's own actions are recorded once, in the caller's scope, with who acted (rule 201)", () => {
   it("a decision on an item: one row with the action, the owning agent, the title and `by` from the session; a founder is the founder", async () => {
     const u = await owner("act-dec");
     await saveTask(u.email, task("d1"), true);
     await saveTask(u.email, task("d2"), true);
     const patch = (id: string, body: unknown) => taskRoute.PATCH(json(`/api/tasks/${id}`, "PATCH", body), params({ id }));
+    // The impersonation cookies alone, set on the owner's own session, change nothing: still the owner.
+    await supportAccess(u.email);
     expect((await patch("d1", { status: "approved" })).status).toBe(200);
-    await supportAccess(u.email); // the founder's support access to this account
+    // The founder's support access to this account: the session record the console writes names the founder (`imp`).
+    await signIn(u.email, { imp: "support-founder@test.example" });
     expect((await patch("d2", { status: "rejected", note: "too long", by: { kind: "owner" } })).status).toBe(200);
     await settle();
     const got = await rows(u.email);
     expect(got).toHaveLength(2);
     expect(got.find((r) => r.tasks?.[0] === "d1")).toMatchObject({ kind: "decision", agent: "razan", type: "pricing_review", via: "app", outcome: "approve", note: "مراجعة الأسعار", by: { kind: "owner", email: u.email } });
-    expect(got.find((r) => r.tasks?.[0] === "d2")).toMatchObject({ kind: "decision", outcome: "reject", by: { kind: "founder", email: u.email, imp: "founder" } });
+    expect(got.find((r) => r.tasks?.[0] === "d2")).toMatchObject({ kind: "decision", outcome: "reject", by: { kind: "founder", email: u.email, imp: "support-founder@test.example" } });
   });
 
   it("every publish is one `published` row with the provider, from the app or from chat; a publish never adds a `decision` row", async () => {
@@ -192,7 +196,7 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
   });
 });
 
-describe("GET /api/activity and the CSV export read only the caller's own log (rule 172)", () => {
+describe("GET /api/activity and the CSV export read only the caller's own log (rule 205)", () => {
   it("401 without a session; 400 for an unknown agent, kind or cursor; 429 past the hourly reads", async () => {
     signOut();
     expect((await listRoute.GET(json("/api/activity", "GET"))).status).toBe(401);
@@ -249,7 +253,39 @@ describe("GET /api/activity and the CSV export read only the caller's own log (r
   });
 });
 
-describe("the Activity page renders the first page on the server (rule 173)", () => {
+describe("support access reaches the account's logins as support, never as which login (rules 193, 205, 206, 207)", () => {
+  it("a member reading the list or the page gets the row without `imp`; storage and the founder console keep it", async () => {
+    vi.stubEnv("WAITLIST_ADMIN_KEY", "test-admin-key-0123456789");
+    const founder = "support-founder@test.example";
+    const u = await owner("act-imp");
+    await saveTask(u.email, task("i1"), true);
+    // The founder's support access rejects an item: the row is stored with `imp`, the founder's own console login.
+    await signIn(u.email, { imp: founder });
+    expect((await taskRoute.PATCH(json("/api/tasks/i1", "PATCH", { status: "rejected", note: "no" }), params({ id: "i1" }))).status).toBe(200);
+    await settle();
+    expect((await rows(u.email)).map((r) => r.by)).toEqual([{ kind: "founder", email: u.email, imp: founder }]);
+
+    // A plain member of the account: GET /api/activity and the page's props (serialized into the page) name support only.
+    const m = await newMember(u, "member", "act-imp-m");
+    await signIn(m.email);
+    const res = await listRoute.GET(json("/api/activity", "GET"));
+    const text = await res.text();
+    expect(res.status).toBe(200);
+    expect((JSON.parse(text) as { rows: Activity[] }).rows.map((r) => r.by)).toEqual([{ kind: "founder", email: u.email }]);
+    expect(text).not.toContain(founder);
+    const el = await Page({ params: Promise.resolve({ lang: "en" }) });
+    const props = (el as unknown as { props: { initial: Activity[] } }).props;
+    expect(props.initial.map((r) => r.by)).toEqual([{ kind: "founder", email: u.email }]);
+    expect(JSON.stringify(props)).not.toContain(founder);
+    expect(await new Response(await renderToReadableStream(el)).text()).toContain("Nashr support");
+
+    // The founder console reads the rows whole.
+    const admin = (await (await adminUser.GET(json(`/api/admin/users/x`, "GET", undefined, { "x-admin-key": "test-admin-key-0123456789" }), params({ email: encodeURIComponent(u.email) }))).json()) as { activity: { rows: Activity[] }[] };
+    expect(admin.activity[0].rows.map((r) => r.by)).toEqual([{ kind: "founder", email: u.email, imp: founder }]);
+  });
+});
+
+describe("the Activity page renders the first page on the server (rule 206)", () => {
   const html = async (lang: "ar" | "en") => new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang }) }))).text();
 
   it("one h1, the rows in plain words with who and via, the filters and the download, in Arabic too; another account sees none", async () => {
@@ -281,7 +317,7 @@ describe("the Activity page renders the first page on the server (rule 173)", ()
   });
 });
 
-describe("the founder console shows each brand's latest 100 rows (rule 174)", () => {
+describe("the founder console shows each brand's latest 100 rows (rule 207)", () => {
   it("GET /api/admin/users/{email} returns the rows per brand, and refuses without the founder key", async () => {
     vi.stubEnv("WAITLIST_ADMIN_KEY", "test-admin-key-0123456789");
     const u = await newUser("act-admin");
@@ -299,7 +335,7 @@ describe("the founder console shows each brand's latest 100 rows (rule 174)", ()
   });
 });
 
-describe("the log goes with the account (rule 175)", () => {
+describe("the log goes with the account (rule 208)", () => {
   it("wipeAccount deletes activity:{s} and the routines' markers for every brand", async () => {
     const u = await newUser("act-wipe");
     await saveUser({ ...u, plan: "agency" });

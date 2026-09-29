@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { getBrand } from "@/lib/brand";
 import { confirmOnboard, onboardUrl } from "@/lib/onboard-confirm";
+import { forbid } from "@/lib/roles";
 
 /**
  * The owner's "build my workspace from this site", pressed on the start page. POST {url} → {ok}.
@@ -11,6 +12,8 @@ import { confirmOnboard, onboardUrl } from "@/lib/onboard-confirm";
 export async function POST(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  const no = forbid(u, "onboard");
+  if (no) return no;
   const b = (await req.json().catch(() => ({}))) as { url?: unknown };
   const url = onboardUrl(b.url);
   if (url.length < 4) return NextResponse.json({ ok: false, error: "bad_url" }, { status: 400 });

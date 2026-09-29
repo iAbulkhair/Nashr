@@ -19,6 +19,8 @@ type Store = {
   hdel(key: string, field: string): Promise<void>;
   sadd(key: string, member: string): Promise<number>;
   smembers(key: string): Promise<string[]>;
+  /** One membership test: a single command, where `smembers` would fetch the whole set. */
+  sismember(key: string, member: string): Promise<boolean>;
   srem(key: string, member: string): Promise<void>;
   /** Sizes of many sets in ONE request (an Upstash pipeline), in the order of `keys`. For counters shown in a list. */
   scardMany(keys: string[]): Promise<number[]>;
@@ -73,6 +75,9 @@ function upstash(): Store | null {
     },
     async smembers(key) {
       return await r.smembers(key);
+    },
+    async sismember(key, m) {
+      return (await r.sismember(key, m)) === 1;
     },
     async srem(key, m) {
       await r.srem(key, m);
@@ -170,6 +175,9 @@ function memory(): Store {
     },
     async smembers(key) {
       return [...(m.sets.get(key) ?? [])];
+    },
+    async sismember(key, member) {
+      return m.sets.get(key)?.has(member) ?? false;
     },
     async srem(key, member) {
       m.sets.get(key)?.delete(member);

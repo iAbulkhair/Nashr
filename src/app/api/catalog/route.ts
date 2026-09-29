@@ -1,13 +1,16 @@
 import { currentUser, sc } from "@/lib/auth";
 import { getBrand } from "@/lib/brand";
 import { importCatalog } from "@/lib/catalog";
+import { forbid } from "@/lib/roles";
 
 export const maxDuration = 300;
 
-/** POST {url?} → SSE progress; writes products.md */
+/** POST {url?} → SSE progress; writes products.md. Admin and owner only (src/lib/roles.ts "catalog.import"). */
 export async function POST(req: Request) {
   const u = await currentUser();
   if (!u) return new Response("unauthorized", { status: 401 });
+  const no = forbid(u, "catalog.import");
+  if (no) return no;
   const b = (await req.json().catch(() => ({}))) as { url?: string };
   const site = b.url || (await getBrand(sc(u)))?.website;
   if (!site) return new Response("no_site", { status: 400 });
