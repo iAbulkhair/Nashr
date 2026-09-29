@@ -14,11 +14,17 @@ export type L = Record<Lang, string>;
 
 export type Question = { ar: string; en: string; task: TaskType };
 
-export type CastId = AgentId | "you";
+/**
+ * The agents drawn on the homepage. An explicit subset of `AgentId`: an agent added to the platform (Reem, for one)
+ * joins the homepage only once its drawing, value line and questions are approved, so adding an agent never breaks
+ * the page or its tests. `Extract` keeps every name here a real agent id.
+ */
+export type HomeAgentId = Extract<AgentId, "noor" | "sami" | "razan" | "faris" | "dana" | "majed" | "layan">;
+export type CastId = HomeAgentId | "you";
 
 export type CastMember = { id: CastId; name: L; value: L; color: string; questions: Question[] };
 
-export type AgentMember = CastMember & { id: AgentId };
+export type AgentMember = CastMember & { id: HomeAgentId };
 
 export const SLOGAN: { line1: L; line2: L } = {
   line1: { ar: "ذكين. الذكي المكين.", en: "Thakeen. Smart. Steadfast." },
@@ -159,7 +165,7 @@ export const CAST: CastMember[] = [
 
 export const STORM: Question[] = AGENT_CAST.flatMap((a) => a.questions);
 
-export type Banter = { lines: { who: AgentId; text: L }[]; rule: string };
+export type Banter = { lines: { who: HomeAgentId; text: L }[]; rule: string };
 
 export const BANTER: Banter[] = [
   {

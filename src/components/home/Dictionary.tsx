@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useId, useReducer, useRef, useSyncExternalStore, type ReactNode } from "react";
-import type { AgentId } from "@/lib/agents";
+import type { HomeAgentId } from "@/lib/home";
 import { AGENT_CAST, type L } from "@/lib/home";
 import { DICT_COPY, INITIAL, MAX_WORDS, SECTORS, WORDS, canAdvance, reduce, sampleDraft, samplePlan, type Step } from "@/lib/dictionary";
 import type { Lang } from "@/lib/i18n";
@@ -10,7 +10,7 @@ import styles from "./home.module.css";
 
 const STEPS: readonly Step[] = [1, 2, 3, 4, 5, 6, 7];
 
-const NAME = Object.fromEntries(AGENT_CAST.map((a) => [a.id, a.name])) as Record<AgentId, L>;
+const NAME = Object.fromEntries(AGENT_CAST.map((a) => [a.id, a.name])) as Record<HomeAgentId, L>;
 
 const AR_DIGITS = "٠١٢٣٤٥٦٧٨٩";
 /** Arabic-Indic digits on the Arabic page, Western digits on the English one. */
@@ -24,7 +24,7 @@ const noSubscribe = () => () => {};
 const useReady = () => useSyncExternalStore(noSubscribe, () => true, () => false);
 
 /** An agent's head in a circle: the full figure, cropped to the face and shoulders. */
-function Face({ who }: { who: AgentId }) {
+function Face({ who }: { who: HomeAgentId }) {
   return (
     <span className={styles.face} aria-hidden="true">
       <Doodle who={who} />
@@ -33,7 +33,7 @@ function Face({ who }: { who: AgentId }) {
 }
 
 /** One agent speaking: their face, their name, their line. */
-function Say({ who, lang, text }: { who: AgentId; lang: Lang; text: string }) {
+function Say({ who, lang, text }: { who: HomeAgentId; lang: Lang; text: string }) {
   return (
     <div className={styles.say}>
       <Face who={who} />
@@ -46,7 +46,7 @@ function Say({ who, lang, text }: { who: AgentId; lang: Lang; text: string }) {
 }
 
 /** A sample the agents prepared, always tagged «مثال»: pre-written, not generated for this visitor. */
-function Sample({ who, lang, children }: { who: readonly AgentId[]; lang: Lang; children: ReactNode }) {
+function Sample({ who, lang, children }: { who: readonly HomeAgentId[]; lang: Lang; children: ReactNode }) {
   return (
     <div className={styles.sample}>
       <div className={styles.sampleHead}>

@@ -23,7 +23,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "", unique: { en: "Thakeen solves them", ar: "وذكين يحلها" }, ownTitle: false },
   { path: "/pricing", unique: { en: "SAR", ar: "ريال" }, ownTitle: true },
   { path: "/tools", unique: { en: "free Arabic marketing tools", ar: "أداة تسويق مجانية" }, ownTitle: true },
-  { path: "/agents", unique: { en: "Seven agents", ar: "سبعة وكلاء" }, ownTitle: true },
+  { path: "/agents", unique: { en: "Eight agents", ar: "ثمانية وكلاء" }, ownTitle: true },
   { path: "/blog", unique: { en: "Blog", ar: "المدونة" }, ownTitle: true },
   { path: "/help", unique: { en: "Help center", ar: "مركز المساعدة" }, ownTitle: true },
   { path: "/privacy", unique: { en: "Privacy Policy", ar: "سياسة الخصوصية" }, ownTitle: true },
@@ -50,6 +50,7 @@ export type AppRoute = { path: string; heading: Partial<Record<Lang, string>> & 
 /** Reachable only with a session. Every one of these redirects a signed-out visitor to the login page. */
 export const APP_ROUTES: AppRoute[] = [
   { path: "/app", heading: { en: "Approval inbox" } },
+  { path: "/app/todo", heading: { en: "My to-dos" } },
   { path: "/app/tasks", heading: { en: "Scheduled tasks" } },
   { path: "/app/calendar", heading: { en: "Calendar" } },
   { path: "/app/chat", heading: { en: "Noor" } },

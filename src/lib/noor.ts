@@ -217,6 +217,9 @@ const REVIEW_FOCUS: Record<Agent["id"], string> = {
   dana: "Report fit: every number comes from <workspace_data> (when present), the brand file or the owner's notes, or is written as [رقم]; each comparison names its period; the spec's required headers (\"## Slide N: Title\", \"Notes:\") and table columns are present; no trend or cause the data does not show.",
   majed: "Executive fit: the number of options the spec asks for, each with cost, upside, risk and reversibility; the recommendation follows from the stated facts; assumptions are labelled; figures only from the brand file, the owner's notes or [رقم]; no promised outcomes.",
   layan: "Product fit: requirements, metrics and RICE inputs use placeholders where data is missing; customer quotes, counts and themes come only from the owner's notes or files, never invented; scope in and out is explicit; onboarding and retention steps name their trigger and timing; no dark patterns or fake scarcity.",
+  // Reem owns no deliverable type (agentForTask never returns her), so this line is never sent today; it is here so the
+  // map stays complete and a future Reem deliverable is reviewed as hers.
+  reem: "Secretary fit: every date, time, name and amount is one the owner gave, with dates in the brand's local time; nothing is marked done or promised on the owner's behalf; quoted customer or supplier text is kept as quoted data.",
 };
 
 /** The reviewer's system prompt for the agent who owns `type`. Stable per agent, so each agent's copy is cached. */

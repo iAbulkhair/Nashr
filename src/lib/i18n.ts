@@ -98,6 +98,7 @@ export const dict: Record<Lang, Dict> = {
         { name: "دانة", role: "التقارير والعروض", body: "تقرير أسبوعي صادق من بياناتك، مواصفة لوحة المؤشرات، وعرض مجلس إدارة يُحمَّل PowerPoint.", does: ["التقرير الأسبوعي", "لوحة المؤشرات", "عرض المستثمرين", "الملخص التنفيذي"] },
         { name: "ماجد", role: "المستشار التنفيذي", body: "فريقك التنفيذي في شخص واحد: مراجعة استراتيجية، أهداف الربع، مذكرات قرار، قرارات محفظة المنتجات، وأين يفيدك الذكاء الاصطناعي فعلاً.", does: ["مراجعة 90 يوماً", "OKRs", "مذكرة قرار", "محفظة المنتجات", "خطة تبنّي الذكاء الاصطناعي"] },
         { name: "ليان", role: "المنتج والاحتفاظ", body: "من فكرة إلى PRD وخارطة طريق، ومن عميل جديد إلى عميل يعود: التفعيل والاحتفاظ والمتابعة.", does: ["PRD", "خارطة طريق RICE", "تحليل آراء العملاء", "رحلة التفعيل"] },
+        { name: "ريم", role: "السكرتيرة", body: "تحفظ مهامك ومتابعاتك وما لك عند غيرك، بمواعيد بتوقيت بلدك تعيدها عليك. لا تغلق شيئاً إلا بتأكيدك.", does: ["قائمة المهام", "المتابعات", "ما لك عند غيرك", "المتأخر في ملخص الصباح"] },
       ],
     },
     industries: {
@@ -174,7 +175,7 @@ export const dict: Record<Lang, Dict> = {
         { q: "الخصوصية؟", a: "بياناتك لمساحة عملك فقط: لا تستخدمها منصة نشر لتدريب النماذج، ولا تشاركها بين الحسابات. مفاتيح التكاملات مشفّرة. تحذف حسابك وبيانات مساحة عملك بنفسك من صفحة «حسابك»." },
         { q: "هل تتعلم صوت علامتي؟", a: "نعم. من موقعك أولاً، ثم من كل تعديل ورفض تكتبه، يُحفظ في preferences.md وتلتزم به." },
         { q: "أقدر ألغي؟", a: "نعم. تجربة 3 أيام بدون بطاقة، وبعدها تختار خطتك من صفحة الاشتراك. ولتغيير خطتك أو إلغائها، تواصل معنا." },
-        { q: "من هم بقية الفريق؟", a: "سامي للمبيعات، رزان للمالية والتسعير، فارس للنمو، دانة للتقارير والعروض، ماجد المستشار التنفيذي، ليان للمنتج والاحتفاظ. كلهم في الدردشة نفسها ومن ملف العلامة نفسه." },
+        { q: "من هم بقية الفريق؟", a: "سامي للمبيعات، رزان للمالية والتسعير، فارس للنمو، دانة للتقارير والعروض، ماجد المستشار التنفيذي، ليان للمنتج والاحتفاظ، وريم السكرتيرة لمهامك ومتابعاتك. كلهم في الدردشة نفسها ومن ملف العلامة نفسه." },
       ],
     },
     waitlist: {
@@ -256,6 +257,7 @@ export const dict: Record<Lang, Dict> = {
         { name: "Dana", role: "Reports and decks", body: "An honest weekly report from your data, a dashboard spec, and a board deck that downloads as PowerPoint.", does: ["Weekly report", "Dashboard spec", "Investor deck", "Executive summary"] },
         { name: "Majed", role: "Executive advisor", body: "Your executive team in one person: strategy review, quarterly OKRs, decision memos, product portfolio calls, and where AI actually pays off.", does: ["90-day review", "OKRs", "Decision memo", "Product portfolio", "AI adoption plan"] },
         { name: "Layan", role: "Product and retention", body: "From idea to PRD and roadmap, and from new customer to returning customer: activation, retention, follow-ups.", does: ["PRD", "RICE roadmap", "Feedback synthesis", "Activation flow"] },
+        { name: "Reem", role: "Secretary", body: "Keeps your to-dos, follow-ups and what others owe you, with dates in your local time that she reads back. Nothing closes without your confirmation.", does: ["To-do list", "Follow-ups", "What others owe you", "Overdue items in the morning brief"] },
       ],
     },
     industries: {
@@ -332,7 +334,7 @@ export const dict: Record<Lang, Dict> = {
         { q: "What about privacy?", a: "Your data stays in your workspace, is never used by Nashr to train models and never shared across accounts. Integration keys are encrypted. Delete your account and its workspace data yourself from Profile." },
         { q: "Does Noor learn my brand voice?", a: "Yes. From your website first, then from every edit and rejection you write, saved to preferences.md and followed." },
         { q: "Can I cancel anytime?", a: "Yes. 3-day trial with no card. Upgrade from Subscription; to change or cancel your plan, contact us." },
-        { q: "Who else is on the team?", a: "Sami for sales, Razan for finance and pricing, Faris for growth, Dana for reports and decks, Majed the executive advisor, Layan for product and retention. All in the same chat, from the same brand file." },
+        { q: "Who else is on the team?", a: "Sami for sales, Razan for finance and pricing, Faris for growth, Dana for reports and decks, Majed the executive advisor, Layan for product and retention, and Reem the secretary for your to-dos and follow-ups. All in the same chat, from the same brand file." },
       ],
     },
     waitlist: {

@@ -13,7 +13,7 @@ import { Icon, type IconName } from "./Icons";
 type Conv = { id: string; title: string; agent?: AgentId; updatedAt: string };
 
 /**
- * Workspace sidebar. Noor is the one visible door; the six specialists sit behind
+ * Workspace sidebar. Noor is the one visible door; the specialists (every other agent) sit behind
  * one disclosure. Text floor 12px. No decorative badges except the localized "new" and the acting person's role.
  *
  * `user` is who is ACTING (a member sees their own name, email and role); plan and credits are the account's.
@@ -76,6 +76,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
         <ul className="grid gap-0.5">
           <li>{row(`${base}/chat`, N.main, "chat")}</li>
           <li>{row(base, N.approvals, "inbox", pending)}</li>
+          <li>{row(`${base}/todo`, N.todo, "check")}</li>
           <li>{row(`${base}/calendar`, N.calendarCh, "calendar")}</li>
           <li>{row(`${base}/reports`, N.performance, "chart")}</li>
           <li>{row(`${base}/inspo`, N.contentInspo, "spark")}</li>

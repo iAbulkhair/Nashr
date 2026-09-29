@@ -1,5 +1,5 @@
 import type { L } from "./home";
-import type { AgentId } from "./agents";
+import type { HomeAgentId } from "./home";
 import type { Lang } from "./i18n";
 
 /**
@@ -97,7 +97,7 @@ export const SECTORS: { id: SectorId; name: L }[] = [
   { id: "services", name: { ar: "خدمات", en: "Services" } },
 ];
 
-export const WORDS: { id: WordId; name: L; tone: L; react: { who: AgentId; text: L } }[] = [
+export const WORDS: { id: WordId; name: L; tone: L; react: { who: HomeAgentId; text: L } }[] = [
   {
     id: "bold",
     name: { ar: "جريء", en: "Bold" },
@@ -258,10 +258,10 @@ export const DICT_COPY: {
   subtitle: L;
   steps: Record<Step, L>;
   example: L;
-  greet: { who: AgentId; text: L };
+  greet: { who: HomeAgentId; text: L };
   approve: L;
   approveNote: L;
-  analysis: { who: AgentId; text: L };
+  analysis: { who: HomeAgentId; text: L };
   measure: L;
   cta: L;
   brandLabel: L;
