@@ -56,6 +56,7 @@ Per-route authorization is in `permissions.md`.
 | `decisions.ts` | The owner's decision records per scope (`decisionOf`, `recordDecisions`, `listDecisions`), written by the approve and publish routes. |
 | `feedback.ts` | `feedbackFor(scope, agent)`: the last 30 days of the owner's decisions, typed reasons, the judge's low scores and (chat only) thumbs-down reasons on one agent's own work, as escaped data for that agent's next prompt (uncached block, `feedbackBlock`); empty when `gov.learning` is off. |
 | `golden.ts` | Weekly fixed "golden set" regression run across agents. |
+| `jev.ts`, `jev-compare.ts` | Evaluation only, called by `scripts/jev-compare.ts` and nothing in the app: TypeSafe Jev scores golden-set items with the judge's rubric as typed Score and Choice questions (weights and automatic-fail caps applied in code), and `compare` measures agreement with the Sonnet judge against the switch gates (automatic fails and honesty ≥ 90% in every language, no automatic fail missed). Only fictional golden brands are sent; customer content must not reach TypeSafe before a DPA. |
 | `onboard.ts` | Builds brand file, workspace files and starter plan from a crawled site in three parallel model calls (`PARTS`: core, identity, market), one retry per part. |
 | `onboard-confirm.ts` | The owner's confirmation of the site onboarding builds from (`onboardok:{scope}`); a link only pre-fills the start page. |
 | `crawl.ts` | Fetches a user-supplied URL server-side and reduces HTML to text, colors, fonts, platform. |
