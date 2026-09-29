@@ -27,6 +27,26 @@ export async function chatAllowed(email: string): Promise<boolean> {
   return hour && day;
 }
 
+/**
+ * Drafts saved into the inbox by the owner's own assistant (MCP `save_draft`). Free in credits and without a model
+ * call, so nothing else bounds it: without this a looping client could fill the approvals inbox. Per account, across
+ * its brands. Well above what an owner reviews in an hour.
+ */
+export const DRAFTS_PER_HOUR = 30;
+export const DRAFTS_PER_DAY = 150;
+export async function draftAllowed(email: string): Promise<boolean> {
+  const [hour, day] = await Promise.all([allow(`draft:h:${email}`, DRAFTS_PER_HOUR, 3600), allow(`draft:d:${email}`, DRAFTS_PER_DAY, 86400)]);
+  return hour && day;
+}
+
+/**
+ * The public OAuth endpoints, per IP. Hosted MCP clients (claude.ai, ChatGPT) register and exchange tokens from shared
+ * egress addresses on behalf of many accounts, and a token pair lives 30 days, so real traffic stays far below these.
+ * Registration is the tighter one: it is open (RFC 7591) and every client is stored with no expiry.
+ */
+export const OAUTH_TOKEN_PER_IP = 60, OAUTH_TOKEN_WINDOW = 900;
+export const OAUTH_REGISTER_PER_IP = 30, OAUTH_REGISTER_WINDOW = 3600;
+
 /** Constant-time string comparison for secrets. */
 export function sameSecret(a: string | null | undefined, b: string | null | undefined): boolean {
   const x = Buffer.from(a ?? ""), y = Buffer.from(b ?? "");

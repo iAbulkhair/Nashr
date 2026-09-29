@@ -10,7 +10,7 @@ import * as vote from "@/app/api/wishlist/vote/route";
 import * as suggest from "@/app/api/wishlist/suggest/route";
 import * as admin from "@/app/api/admin/wishlist/route";
 
-// Rules 116-122 in docs/system/tests.md: the public Updates & wishlist page (/{lang}/updates).
+// Rules 121-127 in docs/system/tests.md: the public Updates & wishlist page (/{lang}/updates).
 
 const FOUNDER = "wishfounder@test.example";
 let founder: User;
@@ -27,7 +27,7 @@ beforeAll(async () => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-describe("voting (rule 116)", () => {
+describe("voting (rule 121)", () => {
   it("needs a signed-in account, and an anonymous request stores nothing", async () => {
     signOut();
     const before = await count(ITEM);
@@ -90,7 +90,7 @@ describe("voting (rule 116)", () => {
   });
 });
 
-describe("suggestions (rule 117)", () => {
+describe("suggestions (rule 122)", () => {
   it("need a signed-in account", async () => {
     signOut();
     const before = (await listSuggestions()).length;
@@ -133,7 +133,7 @@ describe("suggestions (rule 117)", () => {
   });
 });
 
-describe("founder console wishlist routes (rule 118)", () => {
+describe("founder console wishlist routes (rule 123)", () => {
   it("refuse anonymous callers and customers, and nothing changes", async () => {
     const customer = await newUser("customer");
     for (const who of [null, customer.email]) {
@@ -203,7 +203,7 @@ describe("founder console wishlist routes (rule 118)", () => {
   });
 });
 
-describe("reads are batched (rule 119)", () => {
+describe("reads are batched (rule 124)", () => {
   it("every count comes from one pipelined call, whatever the number of items", async () => {
     const u = await newUser("reader");
     const spies = { scardMany: vi.spyOn(db, "scardMany"), smembers: vi.spyOn(db, "smembers"), hgetall: vi.spyOn(db, "hgetall"), get: vi.spyOn(db, "get") };
@@ -216,7 +216,7 @@ describe("reads are batched (rule 119)", () => {
   });
 });
 
-describe("account deletion (rule 120)", () => {
+describe("account deletion (rule 125)", () => {
   it("takes the account's votes back and drops its suggestions", async () => {
     const u = await newUser("leaver");
     await signIn(u.email);
@@ -232,7 +232,7 @@ describe("account deletion (rule 120)", () => {
   });
 });
 
-describe("page content (rule 121)", () => {
+describe("page content (rule 126)", () => {
   it("dates every changelog entry, newest first, and names no competitor", () => {
     for (const e of CHANGELOG) expect(e.date).toMatch(/^2026-\d\d-\d\d$/);
     const dates = CHANGELOG.map((e) => e.date);
