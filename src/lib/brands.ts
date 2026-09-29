@@ -18,6 +18,12 @@ export async function listBrands(email: string): Promise<BrandMeta[]> {
 export async function saveBrands(email: string, rows: BrandMeta[]) {
   await db.set(`brands:${email}`, rows);
 }
+/**
+ * The active brand is per LOGIN (`activebrand:{loginEmail}`): the owner's key is unchanged, and each member has their
+ * own, so one person switching brands never moves the owner, the other members or the owner's MCP token. Pass the
+ * actor's email (`u.actor?.email ?? u.email`), never the account email for a member. `currentUser` validates a member's
+ * value against the owner's active brands.
+ */
 export async function activeBrandId(email: string) {
   return (await db.get<string>(`activebrand:${email}`)) ?? "default";
 }
@@ -34,6 +40,7 @@ export async function addBrand(u: User, name: string): Promise<BrandMeta | { err
   const b: BrandMeta = { id: Math.random().toString(36).slice(2, 10), name: name.slice(0, 80) || "…", createdAt: new Date().toISOString(), status: "active" };
   rows.push(b);
   await saveBrands(u.email, rows);
-  await setActiveBrand(u.email, b.id);
+  // The new brand becomes active for whoever added it (the acting login), not for the whole account.
+  await setActiveBrand(u.actor?.email ?? u.email, b.id);
   return b;
 }

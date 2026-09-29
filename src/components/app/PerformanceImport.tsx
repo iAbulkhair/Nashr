@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { fmt, int, METRICS, type Finding, type MetricId, type PerfSnapshot } from "@/lib/perf-import";
 import { Icon } from "./Icons";
+import ReadOnlyNote from "./ReadOnlyNote";
 
 const STR = {
   ar: {
@@ -12,7 +13,7 @@ const STR = {
     nashrTitle: "إعلانات نشر", nashrNone: "لم نجد بعد إعلاناً يحمل كوداً من نشر. انسخ الكود (NSR-…) من بطاقة الإعلان في صندوق الموافقة وضعه في اسم الإعلان في مدير الإعلانات.", nashrFew: "وجدنا إعلانات نشر، لكن العيّنة لا تكفي بعد للمقارنة مع بقية إعلاناتك.", tooSmall: "عيّنة صغيرة",
     title: "نتائج حملاتك (CSV)", sub: "صدّر تقرير الإعلانات من Meta أو سناب شات أو تيك توك أو Google Ads وارفعه هنا. نور تستخرج ما نجح وتبني عليه خطتك القادمة. بدون رصيد.",
     how: "كيف أصدّر التقرير؟", howBody: "من مدير الإعلانات افتح التقارير على مستوى الإعلان، وأضف أعمدة الظهور والنقرات والمبلغ المنفق والنتائج (أو قيمة الشراء)، ثم صدّر بصيغة CSV.",
-    drop: "اسحب ملف CSV هنا أو اضغط للاختيار", reading: "نور تقرأ النتائج…", replace: "ارفع ملفاً أحدث", remove: "احذف الاستيراد",
+    drop: "اسحب ملف CSV هنا أو اضغط للاختيار", reading: "نور تقرأ النتائج…", replace: "ارفع ملفاً أحدث", remove: "احذف الاستيراد", removeFail: "لم يُحذف الاستيراد. حاول مرة أخرى.", readOnly: "استيراد نتائج الحملات من ملف أو حذفها لمالك الحساب أو المدير. النتائج هنا للقراءة.",
     rows: "إعلانات في الملف", ranked: "بيانات كافية للترتيب", overall: "المتوسط العام", spend: "الإنفاق",
     winners: "الأفضل أداءً", weakest: "الأضعف", patterns: "أنماط لاحظتها نور", waste: "إنفاق بلا نتيجة",
     medium: "يستحق التنفيذ", low: "فكرة للتجربة", sample: "العيّنة", metric: "المقياس",
@@ -28,7 +29,7 @@ const STR = {
     nashrTitle: "Nashr's ads", nashrNone: "No ad with a Nashr code yet. Copy the code (NSR-…) from an ad card in the approval inbox into the ad's name in your ads manager.", nashrFew: "Nashr's ads are in, but there is not enough data yet to compare them with your other ads.", tooSmall: "small sample",
     title: "Campaign results (CSV)", sub: "Export an ads report from Meta, Snapchat, TikTok or Google Ads and drop it here. Noor pulls out what worked and builds your next plan on it. No credits.",
     how: "How do I export it?", howBody: "In your ads manager, open reporting at the ad level, add impressions, clicks, amount spent and results (or purchase value) columns, then export as CSV.",
-    drop: "Drop a CSV here or click to choose", reading: "Noor is reading the results…", replace: "Upload a newer file", remove: "Remove import",
+    drop: "Drop a CSV here or click to choose", reading: "Noor is reading the results…", replace: "Upload a newer file", remove: "Remove import", removeFail: "The import was not removed. Try again.", readOnly: "Importing campaign results from a file, or removing them, is for the account owner or an admin. The findings are here to read.",
     rows: "Ads in the file", ranked: "Enough data to rank", overall: "Overall", spend: "Spend",
     winners: "Best performers", weakest: "Weakest", patterns: "Patterns Noor found", waste: "Spend with no result",
     medium: "Worth acting on", low: "Idea to test", sample: "sample", metric: "Metric",
@@ -44,7 +45,11 @@ const MEDAL = ["bg-saffron text-ink", "bg-mist-dim text-ink", "bg-sadu/20 text-s
 
 const AD_NAMES: Record<string, string> = { meta_ads: "Meta Ads", snapchat: "Snapchat Ads" };
 
-export default function PerformanceImport({ lang, initial, ads = [] }: { lang: "ar" | "en"; initial: PerfSnapshot | null; /** connected ad accounts it can read from */ ads?: string[] }) {
+/**
+ * `canImport` / `canDelete` come from `can()` on the server ("performance.import", "performance.delete": admin and
+ * owner). Without them the upload and the remove button are not offered; the route refuses them regardless.
+ */
+export default function PerformanceImport({ lang, initial, ads = [], canImport = true, canDelete = true }: { lang: "ar" | "en"; initial: PerfSnapshot | null; /** connected ad accounts it can read from */ ads?: string[]; canImport?: boolean; canDelete?: boolean }) {
   const S = STR[lang];
   const r = useRouter();
   const [snap, setSnap] = useState(initial);
@@ -83,7 +88,10 @@ export default function PerformanceImport({ lang, initial, ads = [] }: { lang: "
     } catch { setErr(S.errors.generic); } finally { setBusy(false); }
   }
   async function remove() {
-    await fetch("/api/performance", { method: "DELETE" }).catch(() => {});
+    setErr("");
+    // Cleared only once the server said so: a refused or failed delete must not look like one that happened.
+    const res = await fetch("/api/performance", { method: "DELETE" }).catch(() => null);
+    if (!res?.ok) { setErr(S.removeFail); return; }
     setSnap(null); setLast(null); r.refresh();
   }
 
@@ -102,7 +110,7 @@ export default function PerformanceImport({ lang, initial, ads = [] }: { lang: "
           <p className="mt-0.5 text-sm text-ink/70">{S.sub}</p>
           <details className="mt-1 text-xs text-ink/60"><summary className="underline">{S.how}</summary><p className="mt-1">{S.howBody}</p></details>
         </div>
-        {snap && <button onClick={remove} className="btn btn-secondary btn-xs">{S.remove}</button>}
+        {snap && canDelete && <button onClick={remove} className="btn btn-secondary btn-xs">{S.remove}</button>}
       </header>
 
       <div className="px-5 py-4">
@@ -112,14 +120,15 @@ export default function PerformanceImport({ lang, initial, ads = [] }: { lang: "
             <span className="text-xs text-ink/50">{S.orUpload}</span>
           </div>
         )}
-        <label
+        {!canImport && <ReadOnlyNote className="" text={S.readOnly} />}
+        {canImport && <label
           onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
           onDrop={(e) => { e.preventDefault(); setDrag(false); void pick(e.dataTransfer.files[0]); }}
           className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 ${snap ? "py-3 text-sm" : "py-8"} text-center transition-colors ${drag ? "border-saffron bg-saffron/10" : "border-ink/15 hover:border-oasis hover:bg-salt"}`}
         >
           <input ref={input} type="file" accept=".csv,text/csv" className="sr-only" onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }} />
           {busy ? <><span className="h-2 w-2 animate-pulse rounded-full bg-saffron" />{S.reading}</> : <><Icon name="plus" className="h-4 w-4 text-oasis" /><span className="font-semibold text-oasis">{snap ? S.replace : S.drop}</span></>}
-        </label>
+        </label>}
         {err && <p role="alert" className="mt-2 text-sm text-sadu-deep">{err}</p>}
 
         {snap && m && (
@@ -129,7 +138,7 @@ export default function PerformanceImport({ lang, initial, ads = [] }: { lang: "
               <span className="badge badge-primary">{snap.platform}</span>
               <span dir="ltr">{snap.file}</span>
               {snap.range && <span dir="ltr">{snap.range.from} → {snap.range.to}</span>}
-              {fits.length > 1 && last && (
+              {fits.length > 1 && last && canImport && (
                 <label className="ms-auto flex items-center gap-1">{S.metric}
                   <select value={snap.metric} disabled={busy} onChange={(e) => send(last.csv, last.file, e.target.value as MetricId)} className="rounded border border-ink/15 bg-white px-2 py-1">
                     {fits.map((id) => <option key={id} value={id}>{METRICS[id].label[lang]}</option>)}

@@ -7,6 +7,7 @@ import { getGov } from "@/lib/governance";
 import { readFile, writeFile } from "@/lib/files";
 import { decisionOf, recordDecisions, type DecisionAction } from "@/lib/decisions";
 import { editPctOf } from "@/lib/similarity";
+import { can, forbid } from "@/lib/roles";
 
 type Patch = { status?: string; editedBody?: string; note?: string; scheduledFor?: string | null };
 
@@ -16,6 +17,13 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const { id } = await ctx.params;
   const scope = sc(u);
   const [b, gov, brand] = await Promise.all([req.json().catch(() => ({})) as Promise<Patch>, getGov(scope), getBrand(scope)]);
+  // Any member may edit, reject, reopen and reschedule a draft (src/lib/roles.ts "drafts"). An item that ENDS approved
+  // needs admin or owner ("publish"): approving it, or changing the text of an item that stays approved, because an
+  // approved item is what gets published and the approval must cover the words that go out. The publish check runs
+  // inside the task lock below, on the task as stored now, so an approval landing mid-request is judged correctly.
+  const no = forbid(u, "drafts");
+  if (no) return no;
+  const gate = { refused: false };
 
   // What the owner waits for is the saved task. Preference learning, event tracking and the decision records are
   // collected here and run after the response.
@@ -27,6 +35,13 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   // The owner's change is applied to the task as stored now, under the task lock: a render that finished while this
   // request was in flight keeps its image or clip (src/lib/brand.ts, updateTask).
   const t = await updateTask(scope, id, (t) => {
+    const ends = b.status === "approved" || b.status === "rejected" || b.status === "pending" ? b.status : t.status;
+    const rewrites = typeof b.editedBody === "string" && b.editedBody !== t.body && b.editedBody.slice(0, 20000) !== (t.editedBody ?? t.body);
+    const need = ends === "approved" && (t.status !== "approved" || rewrites) ? "publish" : "drafts";
+    if (!can(u, need)) {
+      gate.refused = true;
+      return null;
+    }
     if (b.scheduledFor === null) delete t.scheduledFor;
     else if (typeof b.scheduledFor === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.scheduledFor)) t.scheduledFor = b.scheduledFor;
     if (typeof b.editedBody === "string" && b.editedBody !== t.body) {
@@ -55,6 +70,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
     return t;
   });
+  if (gate.refused) return forbid(u, "publish") ?? NextResponse.json({ error: "forbidden" }, { status: 403 });
   if (!t) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   if (violations.length) return NextResponse.json({ ok: false, error: "brand_violation", violations }, { status: 409 });
   // The owner's typed reason belongs to the rejection when there is one, else to the edit: one note, one record.

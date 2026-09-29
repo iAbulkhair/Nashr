@@ -1,16 +1,24 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth";
 import { listGrants, revokeAllGrants, revokeGrant } from "@/lib/oauth";
+import { forbid } from "@/lib/roles";
 
-/** Apps connected through OAuth (Claude and others). GET lists them; DELETE ?id= revokes one, DELETE ?all=1 revokes all. */
+/**
+ * Apps connected through OAuth (Claude and others). GET lists them; DELETE ?id= revokes one, DELETE ?all=1 revokes all.
+ * Owner only (src/lib/roles.ts "oauth.grants"): every grant acts as the whole account, and only the owner approves them.
+ */
 export async function GET() {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  const no = forbid(u, "oauth.grants");
+  if (no) return no;
   return NextResponse.json({ ok: true, grants: await listGrants(u.email) });
 }
 export async function DELETE(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  const no = forbid(u, "oauth.grants");
+  if (no) return no;
   const q = new URL(req.url).searchParams;
   if (q.get("all") === "1") return NextResponse.json({ ok: true, revoked: await revokeAllGrants(u.email) });
   const id = q.get("id") ?? "";

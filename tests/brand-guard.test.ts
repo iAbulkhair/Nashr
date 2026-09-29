@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { json, newUser, signIn } from "./helpers/session";
+import { currentUser } from "@/lib/auth";
 import { getTask, saveBrand, saveTask, type Brand, type Task } from "@/lib/brand";
 import { bannedTerms, brandRules, checkText, gateTask, initialStatus } from "@/lib/brand-rules";
 import { saveConnection } from "@/lib/connectors/store";
@@ -106,7 +107,7 @@ describe("the approve and publish routes enforce the brand rules in code (rule 7
     const res = await publishRoute.POST(json("/api/publish/old", "POST", { provider: "telegram" }), { params: Promise.resolve({ id: "old" }) });
     expect(res.status).toBe(409);
     expect((await res.json()).error).toBe("brand_violation");
-    expect(await runTool(u, "publish_item", { task_id: "old", provider: "telegram" }, [])).toMatch(/Not published.*رخيص/);
+    expect(await runTool((await currentUser())!, "publish_item", { task_id: "old", provider: "telegram" }, [])).toMatch(/Not published.*رخيص/);
     expect(published).toEqual([]);
     await saveTask(u.email, task("clean", "قهوة طازجة من المحمصة", "approved"), true);
     expect((await publishRoute.POST(json("/api/publish/clean", "POST", { provider: "telegram" }), { params: Promise.resolve({ id: "clean" }) })).status).toBe(200);

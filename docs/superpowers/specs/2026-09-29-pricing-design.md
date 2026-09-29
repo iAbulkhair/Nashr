@@ -1,0 +1,143 @@
+# Thakeen plan pricing — design
+
+Decided with the founder on 2026-09-29 in a question-by-question session. Every number below is arithmetic over
+`RATES` in `src/lib/usage.ts`, the measured prompt sizes in `docs/system/costs.md`, and the market research listed in
+section 3. The one assumption is the "typical" usage mix in section 5, and it is marked as such.
+
+## 1. Decision in one paragraph
+
+Prices are set from value and the market, not from API cost. API cost only sets a **floor**: every task type keeps at
+least 60% gross margin on the cheapest self-serve credit. Text generation is never priced as "cost plus a markup";
+media (image and video) is, per model, because the owner picks the model and sees its credit price. Three self-serve
+tiers — Starter 299, Pro 499, Business 999 SAR a month plus VAT — and a sales-led Agency tier. Every paid tier is
+compared on the pricing page to a human alternative, never to ChatGPT.
+
+## 2. Tiers
+
+| | Starter | Pro | Business | Agency |
+|---|---|---|---|---|
+| Price (SAR / month, + VAT) | 299 | 499 | 999 | Contact us |
+| Compared against | a freelancer | a freelancer or small agency | a junior hire | staff hours per client |
+| Credits / month | 300 | 700 | 1,500 | custom, never below 0.67 SAR / credit |
+| Chat messages / month | 250 | 650 | 1,300 | custom |
+| Seats (owner included) | 1 | 3 | 7 | paid extras |
+| Brands | unlimited | unlimited | unlimited | unlimited |
+| Net revenue (USD at 3.75) | $79.73 | $133.07 | $266.40 | ≥ Business rate |
+| Revenue per credit | $0.266 | $0.190 | $0.178 | ≥ $0.178 |
+
+- **Trial:** 7 days, 50 credits, no card, about 30 chat messages, 3 seats, no video.
+- **Agency** absorbs today's `enterprise` plan: annual contract, at least about 2,000 SAR a month, credits never below
+  the Business rate; agencies pay for extras (more seats, client-ready reports, white-label, SLA) instead of cheaper
+  credits.
+- **Pricing page** shows outputs ("≈ N posts or M articles a month"); credits stay the internal ledger. ChatGPT appears
+  only in a feature comparison and as the trial's hook, never as a price anchor.
+
+## 3. Evidence (checked 2026-09-29)
+
+**Comparable AI tools (vendor pricing pages, monthly):**
+
+| Tool | Tiers | Value metric |
+|---|---|---|
+| Enrich Labs | $39 (200 cr) / $99 (700) / $199 (2,000) / custom; 25% off yearly; 3-day trial | credits, brands |
+| Predis.ai | $24 / $55 / $212; 3-day trial with card | credits, brands |
+| Ocoya | $29 / $79 / $199; yearly = 2 months free; 7-day trial | users, profiles, AI credits |
+| Jasper | $69 per seat ($59 yearly); 7-day trial | seats |
+| Copy.ai | $29 (5 seats) | seats, workflow credits |
+| Higgsfield | $15 / $39 / $99 (yearly) | credits |
+| HubSpot Marketing Starter | $20 per seat + 500 credits | seats + credits |
+| ChatGPT | Go SAR 35, Plus SAR 90, Pro from SAR 430 | seat |
+| BeTrend (Saudi) | SAR 49 / 69, tax-inclusive | points |
+| Adly AI | $19 / $29 / $49 / $119 | credits, brands |
+
+Sources: enrichlabs.ai/pricing, predis.ai/pricing, ocoya.com/pricing, jasper.ai/pricing, copy.ai/prices,
+higgsfield.ai/pricing, hubspot.com/pricing/marketing, chatgpt.com/pricing, betrendai.com, getadly.com.
+
+**Human alternatives in Saudi Arabia:**
+
+- Agency entry packages: SAR 500–2,500 a month for about 8–12 posts on one platform (zeinahost.com, wamidah.com,
+  naktublak.com, mediastationsa.com, sigmadsllc.com).
+- Freelancers: typically SAR 940–2,500 a month (Mostaql postings 1273147, 1277385, 1258160; low confidence, no rate
+  survey found). Micro-gigs from SAR 94.
+- Hire: since 2026-04-19 a Saudi marketing specialist counts toward Saudization only if paid at least SAR 5,500 a
+  month (hrsd.gov.sa). Business at 999 is 18% of that floor, before GOSI and benefits.
+
+**VAT:** ZATCA's Guideline on Professional Services (v3, May 2026, citing Art. 25 of the GCC VAT Agreement) says prices
+announced to the public must include VAT. No B2B exception was found.
+
+## 4. The margin floor
+
+- Cheapest self-serve credit: Business, $266.40 / 1,500 = **$0.1776**.
+- 60% floor: a credit may cost at most 0.4 × $0.1776 = **$0.0710**.
+- Types over it today, reweighted: `weekly_plan` **1 → 2** credits ($0.0444 / credit), `followup_seq` **3 → 4**
+  ($0.0665). `article` and `weekly_report` pass at $0.0700 with 1.4% headroom: they are the first to watch when an
+  output grows or a model price moves.
+- The floor is recomputed whenever a plan price, a plan's credits or a model rate changes. It is a test, not a comment
+  (see the plan).
+
+## 5. Unit economics per tier
+
+Cost per credit: best case all `social` ($0.018), **typical $0.030 (assumption:** a realistic month of 4 weekly plans,
+8 social batches, 2 ad sets, 4 WhatsApp batches, 4 articles, 4 reports and 40 images comes to $0.024; rounded up), worst
+case all `article` / `weekly_report` ($0.070). Chat on Sonnet at about $0.032 a message (estimate: an Opus turn at about
+$0.08, divided by the 2.5× rate gap), full allowance used. Every row assumes 100% of credits and chat are used.
+
+| | Starter | Pro | Business |
+|---|---|---|---|
+| Credit cost best / typical / worst | $5.34 / $9.00 / $21.00 | $12.46 / $21.00 / $49.00 | $26.70 / $45.00 / $105.00 |
+| Chat cost | $8.00 | $20.80 | $41.60 |
+| Total cost best / typical / worst | $13.34 / $17.00 / $29.00 | $33.26 / $41.80 / $69.80 | $68.30 / $86.60 / $146.60 |
+| **Gross margin best / typical / worst** | **83% / 79% / 64%** | **75% / 69% / 48%** | **74% / 68% / 45%** |
+| Margin on credits alone, worst | 74% | 63% | 61% |
+| Generation output tokens / month | 141k – 555k | 329k – 1.30M | 705k – 2.78M |
+
+Not included: payment provider fees (provider not chosen) and fixed hosting (Vercel, Upstash, Blob). The worst total
+needs every credit spent on articles and every chat message used at once; the founder console's margin column (red
+under 50%) flags it.
+
+## 6. Rules
+
+1. **Chat allowance.** 250 / 650 / 1,300 messages a month by tier, about 30 in the trial. When it runs out, chat pauses
+   until the next month or a top-up. Generation from chat (`generate_content`, `draft_items`, `generate_image`) keeps
+   charging credits as today.
+2. **Chat model.** Conversation turns move from Opus to Sonnet only after the golden eval plus a Gulf-dialect chat check
+   pass on Sonnet. Generation stays on Opus.
+3. **Media.** `credits = ceil(total cost ÷ $0.0710)`, where total cost = provider price + Blob storage + 10% buffer for
+   failed renders. Recomputed per model when a provider changes price.
+4. **Unlimited brands, with two guardrails.** The first brand's onboarding stays free; each additional brand's onboarding
+   costs **9 credits** (ceil($0.60 ÷ $0.0710)), shown before the owner confirms. The Sunday weekly plan runs by default
+   only for the first brand; added brands opt in.
+5. **Top-ups.** 1 SAR per credit + VAT, packs of 100 / 300 / 1,000, valid 90 days, spent after the monthly allowance.
+   Monthly credits never roll over. Worst-case top-up margin 74%.
+6. **Annual.** 2 months free; credits still arrive monthly, never 12 months at once.
+7. **Launch offer.** The first 100 *paying accounts* keep their launch price for 12 months, plus personal onboarding.
+   Replaces "the first 100 brands get two months free on Pro" in `src/lib/i18n.ts`.
+8. **Seats.** 1 / 3 / 7 including the owner; trial 3; Agency custom. Seats share the account's credits, chat allowance
+   and brands, so a seat adds no model cost.
+9. **Agency deals.** Credits never below 0.67 SAR (the Business rate). Annual. Extras are what agencies pay for.
+10. **VAT display.** Prices shown "+ VAT", **conditional on an accountant confirming it is allowed in Saudi Arabia.** If
+    not, the fallback is 299 / 499 / 999 including VAT: net 260 / 434 / 869 SAR, cheapest credit $0.1544, floor
+    $0.0618, and `article` and `weekly_report` then need 2 → 3 credits.
+11. **GCC countries.** Each country gets its own price list in local currency, set against that country's human
+    alternative (agency packages, freelancer rates, junior salary), then clamped to the floor. Launch with Saudi Arabia
+    and the UAE. Floors in USD: Starter ≥ $52.50, Pro ≥ $122.50, Business ≥ $262.50 (credits × $0.175). Only Starter
+    has real room to go below the Saudi price.
+12. **Review.** At 50 paying accounts or 90 days, whichever comes first. Measure trial-to-paid conversion, tier mix,
+    share of credits used, real $/credit from `byKind.generate`, top-up rate, and a willingness-to-pay survey to the first
+    50. Increases apply to new customers only; the price-locked first 100 are untouched.
+
+## 7. Open before launch
+
+1. Accountant: "+ VAT" display in Saudi Arabia; VAT registration or reverse charge for each other GCC country.
+2. Payment provider that takes SAR, AED, KWD, QAR, BHD and OMR with local cards (mada, KNET, Benefit). Tap appears to
+   cover more of the GCC than Moyasar; verify before choosing.
+3. Sonnet chat eval (golden set + Gulf-dialect check).
+4. UAE price research, same method as Saudi.
+
+## 8. What this replaces
+
+`PLAN_PRICE_SAR` (149 / 399 / 799), `PLAN_CREDITS` (200 / 700 / 2,000), `BRAND_LIMIT` (1 / 1 / 5), the 3-day trial, free
+unlimited chat within 40 an hour and 200 a day, the "SAR 99 / seat" line and the "two months free" launch offer. The
+current prices were an SAR copy of Enrich Labs' $39 / $99 / $199.
+
+Implementation plan: `docs/superpowers/plans/2026-09-29-pricing.md`. Teams (seats) design:
+`docs/superpowers/specs/2026-09-29-teams-design.md`.

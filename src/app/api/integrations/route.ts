@@ -17,7 +17,8 @@ export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as { id?: string; name?: string };
   const name = (b.name ?? b.id ?? "").toString().slice(0, 80);
   if (!name) return NextResponse.json({ ok: false, error: "missing" }, { status: 400 });
-  await pushCapped("integration-requests", JSON.stringify({ email: u.email, name, at: new Date().toISOString() }), CAPS.tickets);
+  // The person asking (a member's own login for a member), and the account they asked from.
+  await pushCapped("integration-requests", JSON.stringify({ email: u.actor?.email ?? u.email, account: u.email, name, at: new Date().toISOString() }), CAPS.tickets);
   const n = await db.incrby(`integration-votes:${name.toLowerCase()}`, 1);
   return NextResponse.json({ ok: true, votes: n });
 }

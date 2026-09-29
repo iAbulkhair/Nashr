@@ -6,11 +6,17 @@ import { getProvider, isAvailable } from "@/lib/connectors/registry";
 import { authorizeUrl, pkcePair } from "@/lib/connectors/oauth";
 import { OAUTH_COOKIE, saveState } from "@/lib/connectors/store";
 import { SHOP_HOST } from "@/lib/connectors/shopify";
+import { forbid } from "@/lib/roles";
 
-/** GET /api/connect/{provider}/start?shop=xxx.myshopify.com&lang=ar → redirect to provider */
+/**
+ * GET /api/connect/{provider}/start?shop=xxx.myshopify.com&lang=ar → redirect to provider.
+ * Admin and owner only (src/lib/roles.ts "connectors"): a connection is what the workspace publishes through.
+ */
 export async function GET(req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  const no = forbid(u, "connectors");
+  if (no) return no;
   const { provider } = await ctx.params;
   const p = getProvider(provider);
   if (!p || p.kind !== "oauth") return NextResponse.json({ ok: false, error: "unknown_provider" }, { status: 404 });
@@ -26,7 +32,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   }
   const state = randomBytes(16).toString("hex");
   const pk = p.oauth!.pkce ? pkcePair() : null;
-  await saveState(state, { email: sc(u), provider, lang, shop, verifier: pk?.verifier ?? "" });
+  // `actor` is the login that started the flow: the callback must be finished by the same person, not merely the same account.
+  await saveState(state, { email: sc(u), provider, lang, shop, verifier: pk?.verifier ?? "", actor: u.actor?.email ?? u.email });
   // The callback completes only in the browser that started the flow: a leaked state alone cannot attach someone
   // else's platform account to this workspace (#37). Lax, so the provider's top-level redirect back still carries it.
   (await cookies()).set(OAUTH_COOKIE, state, { ...(await sessionCookie(600)), path: "/api/connect" });

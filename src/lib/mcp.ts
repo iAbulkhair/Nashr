@@ -1,6 +1,16 @@
 import { randomBytes } from "crypto";
 import { db } from "./db";
 import { getUser, type User } from "./auth";
+import type { Action } from "./roles";
+
+/**
+ * The role each /api/mcp tool needs, the same action the web route for that work checks (src/lib/roles.ts). A bearer
+ * resolves only to an owner today (userFromBearer below), so these all pass for a valid token; they are here so that a
+ * token ever issued to a lower role, or a user resolved with no actor, is held to the same table and never to less. A
+ * tool missing from this map is refused. ask_noor's own tools (update_brand, publish_item) are gated inside runTool.
+ * It lives here rather than in the route file because a Next.js route module may export only handlers and route config.
+ */
+export const MCP_TOOL_ACTION: Readonly<Record<string, Action>> = { ask_noor: "chat", generate_content: "generate", list_inbox: "read", read_file: "read", list_files: "read", get_brand_rules: "read", check_brand: "read", save_draft: "drafts" };
 
 /** Personal MCP tokens: `Authorization: Bearer nashr_...` → user. */
 export async function createMcpToken(email: string) {
@@ -27,13 +37,17 @@ export async function userFromBearer(req: Request): Promise<User | null> {
   const m = h.match(/^Bearer\s+(nashr_[A-Za-z0-9_.-]+)$/);
   if (!m) return null;
   const email = await db.get<string>(`mcptoken:${m[1]}`);
-  const u = email ? await getUser(email) : null;
+  if (!email) return null;
+  // Tokens (personal and OAuth) are minted by owners only, so a bearer resolves only to an owner account. A token whose
+  // email is a member login is refused, even should an owner record exist at the same address.
+  const [{ getMember }, { activeBrandId, scopeFor }] = await Promise.all([import("./team"), import("./brands")]);
+  const [u, member, brandId] = await Promise.all([getUser(email), getMember(email), activeBrandId(email)]);
   // A suspended account is blocked everywhere, including tokens issued before the suspension.
-  if (!u || u.suspended) return null;
+  if (!u || u.suspended || member) return null;
   // Same scope resolution as a browser session (src/lib/auth.ts `currentUser`): without it every MCP call read and
   // wrote the default brand even while the owner had another brand active.
-  const { activeBrandId, scopeFor } = await import("./brands");
-  u.brandId = await activeBrandId(u.email);
-  u.scope = scopeFor(u.email, u.brandId);
+  u.brandId = brandId;
+  u.scope = scopeFor(u.email, brandId);
+  u.actor = { kind: "token", email: u.email, name: u.name, lang: u.lang, role: "owner" };
   return u;
 }

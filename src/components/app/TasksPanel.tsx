@@ -5,12 +5,13 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { Schedule } from "@/lib/schedule";
 import type { RoutineId, RoutineView } from "@/lib/routines";
 import { TASK_COST } from "@/lib/tasks";
+import ReadOnlyNote from "./ReadOnlyNote";
 
 type Which = "weekly" | "daily" | "followups";
 type ScheduleKey = "weeklyPlan" | "dailyBrief" | "followUps";
 
 /** Declared at module scope so React keeps one component identity across renders. */
-function Card({ k, busy, title, desc, on, last, which, onToggle, onRun }: { k: AppDict["tasks"]; busy: string; title: string; desc: string; on: boolean; last?: string; which: Which; onToggle: (key: ScheduleKey) => void; onRun: (which: "weekly" | "daily") => void }) {
+function Card({ k, busy, title, desc, on, last, which, onToggle, onRun, readOnly }: { k: AppDict["tasks"]; busy: string; title: string; desc: string; on: boolean; last?: string; which: Which; onToggle: (key: ScheduleKey) => void; onRun: (which: "weekly" | "daily") => void; readOnly: boolean }) {
   return (
       <div className="card">
         <div className="flex items-start justify-between gap-4">
@@ -20,7 +21,7 @@ function Card({ k, busy, title, desc, on, last, which, onToggle, onRun }: { k: A
             <p className="mt-2 font-mono text-xs text-ink/50" dir="ltr">{k.lastRun}: {last ? last.slice(0, 16).replace("T", " ") : k.never}</p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">
-            <button onClick={() => onToggle(which === "weekly" ? "weeklyPlan" : which === "daily" ? "dailyBrief" : "followUps")} className={`rounded-full px-3 py-1 text-xs font-semibold ${on ? "bg-oasis text-mist" : "bg-ink/10 text-ink/60"}`}>{on ? k.on : k.off}</button>
+            <button onClick={() => onToggle(which === "weekly" ? "weeklyPlan" : which === "daily" ? "dailyBrief" : "followUps")} disabled={readOnly} aria-pressed={on} className={`rounded-full px-3 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-oasis text-mist" : "bg-ink/10 text-ink/60"}`}>{on ? k.on : k.off}</button>
             {which !== "followups" && <button disabled={!!busy} onClick={() => onRun(which)} className="btn btn-secondary btn-xs disabled:opacity-50">{busy === which ? "…" : k.runNow}</button>}
           </div>
         </div>
@@ -29,7 +30,7 @@ function Card({ k, busy, title, desc, on, last, which, onToggle, onRun }: { k: A
 }
 
 /** One routine: who, what it produces, how often, what a run costs, when it skips, and its switch. */
-function RoutineRow({ t, r, on, saving, onToggle }: { t: AppDict; r: RoutineView; on: boolean; saving: boolean; onToggle: (id: RoutineId, on: boolean) => void }) {
+function RoutineRow({ t, r, on, saving, onToggle, readOnly }: { t: AppDict; r: RoutineView; on: boolean; saving: boolean; onToggle: (id: RoutineId, on: boolean) => void; readOnly: boolean }) {
   const k = t.tasks;
   const what = t.generate.types[r.type];
   return (
@@ -41,15 +42,18 @@ function RoutineRow({ t, r, on, saving, onToggle }: { t: AppDict; r: RoutineView
         <p className="mt-1 text-xs text-ink/60">{k.routineWhen[r.id]}</p>
         <p className="mt-1 font-mono text-xs text-ink/50" dir="ltr">{k.lastRun}: {r.last ? r.last.slice(0, 16).replace("T", " ") : k.never}</p>
       </div>
-      <button type="button" role="switch" aria-checked={on} aria-label={`${t.agents[r.agent].name}: ${what.t}`} disabled={saving} onClick={() => onToggle(r.id, !on)} className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition disabled:opacity-50 ${on ? "bg-oasis" : "bg-ink/20"}`}>
+      <button type="button" role="switch" aria-checked={on} aria-label={`${t.agents[r.agent].name}: ${what.t}`} disabled={saving || readOnly} onClick={() => onToggle(r.id, !on)} className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${on ? "bg-oasis" : "bg-ink/20"}`}>
         <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${on ? "start-[22px]" : "start-0.5"}`} />
       </button>
     </li>
   );
 }
 
-/** `routines` and their last runs are rendered on the server, so the page makes no request on mount. */
-export default function TasksPanel({ t, initial, routines }: { t: AppDict; initial: Schedule; routines: RoutineView[] }) {
+/**
+ * `routines` and their last runs are rendered on the server, so the page makes no request on mount.
+ * `readOnly` (plain members): the switches are disabled with a note; "Run now" stays, it is an explicit request.
+ */
+export default function TasksPanel({ t, initial, routines, readOnly = false }: { t: AppDict; initial: Schedule; routines: RoutineView[]; readOnly?: boolean }) {
   const r = useRouter();
   const k = t.tasks;
   const [s, setS] = useState(initial);
@@ -96,16 +100,17 @@ export default function TasksPanel({ t, initial, routines }: { t: AppDict; initi
     <div className="mx-auto max-w-3xl">
       <h1 className="page-title">{k.title}</h1>
       <p className="mt-2 text-ink/70">{k.sub}</p>
+      {readOnly && <ReadOnlyNote text={t.readOnly.admin} />}
       <div className="mt-6 grid gap-4">
-        <Card title={k.weekly} desc={k.weeklyDesc} on={s.weeklyPlan} last={s.lastWeekly} which="weekly" k={k} busy={busy} onToggle={toggle} onRun={run} />
-        <Card title={k.daily} desc={k.dailyDesc} on={s.dailyBrief} last={s.lastDaily} which="daily" k={k} busy={busy} onToggle={toggle} onRun={run} />
-        <Card title={k.followups} desc={k.followupsDesc} on={s.followUps !== false} which="followups" k={k} busy={busy} onToggle={toggle} onRun={run} />
+        <Card title={k.weekly} desc={k.weeklyDesc} on={s.weeklyPlan} last={s.lastWeekly} which="weekly" k={k} busy={busy} onToggle={toggle} onRun={run} readOnly={readOnly} />
+        <Card title={k.daily} desc={k.dailyDesc} on={s.dailyBrief} last={s.lastDaily} which="daily" k={k} busy={busy} onToggle={toggle} onRun={run} readOnly={readOnly} />
+        <Card title={k.followups} desc={k.followupsDesc} on={s.followUps !== false} which="followups" k={k} busy={busy} onToggle={toggle} onRun={run} readOnly={readOnly} />
         {/* After the three cards: the e2e suite clicks the first "Run now", and routines have none. */}
         <div className="card">
           <h2 className="font-display text-lg font-medium">{k.routines}</h2>
           <p className="mt-1 text-sm text-ink/60">{k.routinesSub}</p>
           <ul className="mt-3 divide-y divide-ink/10">
-            {routines.map((x) => <RoutineRow key={x.id} t={t} r={x} on={s.routines?.[x.id] === true} saving={!!saving} onToggle={toggleRoutine} />)}
+            {routines.map((x) => <RoutineRow key={x.id} t={t} r={x} on={s.routines?.[x.id] === true} saving={!!saving} onToggle={toggleRoutine} readOnly={readOnly} />)}
           </ul>
         </div>
       </div>

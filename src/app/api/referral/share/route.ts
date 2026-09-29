@@ -2,16 +2,22 @@ import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth";
 import { adjust } from "@/lib/credits";
 import { db } from "@/lib/db";
+import { forbid } from "@/lib/roles";
 
 export const SHARE_CREDITS = 20;
 const PLATFORMS = ["x", "linkedin", "whatsapp", "instagram"];
 /** Accounts that claimed before the marker moved into a set still have their per-platform key. */
 const legacyKey = (email: string, platform: string) => `shared:${email}:${platform}`;
 
-/** POST {platform} → one-time credits for sharing Nashr on a social platform (once per platform per account). */
+/**
+ * POST {platform} → one-time credits for sharing Nashr on a social platform (once per platform per account).
+ * Owner only, like the rest of the refer page (src/lib/roles.ts "referral"): the bonus lands on the account's balance.
+ */
 export async function POST(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  const no = forbid(u, "referral");
+  if (no) return no;
   const b = (await req.json().catch(() => ({}))) as { platform?: string };
   if (!b.platform || !PLATFORMS.includes(b.platform)) return NextResponse.json({ ok: false, error: "bad_platform" }, { status: 400 });
   // Read-then-write was a race: ten concurrent POSTs each saw no marker and each took the bonus, minting ten times the
@@ -25,6 +31,8 @@ export async function POST(req: Request) {
 export async function GET() {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  const no = forbid(u, "referral");
+  if (no) return no;
   const [claimed, legacy] = await Promise.all([
     db.smembers(`shared:${u.email}`),
     Promise.all(PLATFORMS.map(async (p) => ((await db.get(legacyKey(u.email, p))) ? p : ""))),
