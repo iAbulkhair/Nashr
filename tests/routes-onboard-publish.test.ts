@@ -59,7 +59,7 @@ describe("onboarding limits (rule 14)", () => {
  * and the brand build on its own, so whoever sent it chose the brand of the new workspace. The owner's confirmation is
  * now a record the route checks in code (src/lib/onboard-confirm.ts); the link only pre-fills the start page.
  */
-describe("onboarding builds only from a site the owner confirmed (rule 92)", () => {
+describe("onboarding builds only from a site the owner confirmed (rule 97)", () => {
   it("confirming needs a session and a URL, records nothing once the workspace has a brand, and is used up by the build", async () => {
     signOut();
     expect((await confirm("roastery.example")).status).toBe(401);

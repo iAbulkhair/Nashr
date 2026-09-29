@@ -1,6 +1,7 @@
 import { charge, refund } from "@/lib/credits";
 import { statsFor } from "@/lib/stats";
 import { judgeLater } from "@/lib/judge";
+import type { Grounding } from "@/lib/json";
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { userFromBearer } from "@/lib/mcp";
@@ -86,8 +87,13 @@ export async function POST(req: Request) {
         user.credits = paid.credits;
         const gov = await getGov((user.scope ?? user.email));
         let items;
+        // Read inside the try: the credits are already charged, and a failed read must reach the refund below.
+        const scope = user.scope ?? user.email, notes = String(args.notes ?? "");
+        let ground: Grounding = { notes };
         try {
-          items = await generate(type, brand, await listPreferences((user.scope ?? user.email)), String(args.notes ?? ""), { memory: await memoryBlock((user.scope ?? user.email)), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats: await statsFor(type, user.scope ?? user.email) });
+          const [prefs, memory, stats] = await Promise.all([listPreferences(scope), memoryBlock(scope), statsFor(type, scope)]);
+          ground = { notes, memory, stats };
+          items = await generate(type, brand, prefs, notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats });
         } catch (e) {
           user.credits = await refund(user.email, cost);
           throw e;
@@ -98,7 +104,7 @@ export async function POST(req: Request) {
           await saveTask((user.scope ?? user.email), t, true);
           created.push(t);
         }
-        judgeLater(user.scope ?? user.email, user.email, brand, created);
+        judgeLater(scope, user.email, brand, created, undefined, ground);
         return ok(id, text(`Created ${items.length} ${type} item(s). Credits left: ${user.credits}.\n\n` + items.map((i) => `## ${i.title} (${i.channel})\n${i.body}`).join("\n\n")));
       }
       case "list_inbox": {

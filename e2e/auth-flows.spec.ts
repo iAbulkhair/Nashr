@@ -27,7 +27,7 @@ test.describe("signup", () => {
   /**
    * The public start form (`UrlStart` here, `StartForm` on the new homepage: both a plain GET into signup with `?url=`)
    * end to end. The carried site used to start the crawl and the brand build straight after signup, so whoever sent the
-   * link chose the new workspace's brand. It now waits on the start page until the owner presses Go (rule 92).
+   * link chose the new workspace's brand. It now waits on the start page until the owner presses Go (rule 97).
    */
   test("a new account with a carried site lands on the review step and builds only after the owner confirms", async ({ page, failures }) => {
     void failures;

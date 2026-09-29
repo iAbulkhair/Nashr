@@ -98,12 +98,21 @@ export async function deleteFile(email: string, name: string) {
 /** Characters of each core file that go into a prompt. Beyond this the file is cut and the cut is declared. */
 const MEMORY_BUDGET = 6000;
 
-/** Core files Noor reads on every generation. */
+/**
+ * The one-line OUTPUT goal written at onboarding (`onboardplan:{scope}`, src/lib/onboard.ts). It used to reach only the
+ * trial activation bar, so no agent knew what the owner had agreed to aim for. The model wrote it from the crawled site,
+ * so it is flattened to one short line: it must not be able to open a "--- file ---" section of its own.
+ */
+export const goalLine = (goal: unknown) => String(goal ?? "").replace(/\s+/g, " ").replace(/-{2,}/g, "-").trim().slice(0, 140);
+
+/** Core files every agent reads on every generation and chat turn, preceded by the owner's goal when there is one. */
 export async function memoryBlock(email: string) {
   const wanted = ["brand.md", "products.md", "store-sales.md", "performance-learnings.md", "strategy.md", "market-research.md", "preferences.md"];
   // One round trip per file, read together, keep the fixed order (stable text also helps prompt caching).
-  const files = await Promise.all(wanted.map((n) => readFile(email, n)));
-  return wanted
+  const [files, plan] = await Promise.all([Promise.all(wanted.map((n) => readFile(email, n))), db.get<{ goal?: string }>(`onboardplan:${email}`)]);
+  const goal = goalLine(plan?.goal);
+  const head = goal ? `--- OWNER GOAL (output target agreed at onboarding; not a file) ---\n${goal}` : "";
+  return [head, ...wanted
     .map((n, i) => {
       const content = files[i]?.content;
       if (!content) return "";
@@ -111,7 +120,7 @@ export async function memoryBlock(email: string) {
       // An imported catalog of 50 products is ~16,000 characters, so the budget hides most of it. Declaring the cut is
       // what lets the agent call read_file for the rest instead of writing as though those products do not exist.
       return `--- ${n} (showing the first ${MEMORY_BUDGET} of ${content.length} characters; use read_file for the rest) ---\n${content.slice(0, MEMORY_BUDGET)}`;
-    })
+    })]
     .filter(Boolean)
     .join("\n\n");
 }

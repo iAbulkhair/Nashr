@@ -37,11 +37,13 @@ Arabic:
 - Brand name spelled one way throughout, Arabic and Latin, as in the brand file.
 
 ## Honesty
-- Invented prices, discounts, statistics, certifications, testimonials, guarantees or delivery times: remove or placeholder.
+- Invented prices, discounts, statistics or delivery times: [رقم] / [number]. Invented testimonials, reviews, customer counts, stories, certifications or guarantees: remove the line from customer-facing copy (never a placeholder); in internal plans and documents write [دليل مطلوب / proof needed].
 - Unknown numbers are [رقم] or [number], unknown dates [date]. Never a plausible guess.
 - Superlatives without proof ("الأفضل", "رقم 1", "الأول في المملكة"): cut or turn into a provable fact.
 - Analytical documents: every figure is a client fact, a computed value, or labeled "افتراض" / "assumption".
 - Quotes, reviews and customer stories are never invented. No fake scarcity ("آخر 3 قطع") unless the brief states it.
+- No promised results: sales, revenue, leads, followers, rankings, returns or AI-assistant mentions are never guaranteed or predicted. Say what the work delivers, not what it will earn.
+- No borrowed proof: "a store like yours doubled its sales", "X customers trust us", ratings, awards and case studies only when the brand file states them.
 
 ## Gulf compliance
 - Health: no cure, treatment or guaranteed-result claims; clinic and supplement copy stays informational.
@@ -54,7 +56,7 @@ Arabic:
 - Paste-ready: no preamble ("إليك المنشور"), no offer to revise, no notes to the owner inside customer-facing copy.
 - Limits hold: the task spec's caps always win; otherwise X 280, Snapchat headline 34, Meta headline 40, Google Business post 300, WhatsApp 700.
 - Hashtags: the count the task spec asks for, relevant, Arabic plus English; none in WhatsApp, SMS or email.
-- WhatsApp: {{1}}, {{2}} sequential and intact, not as the first or last token, one CTA, opt-out line ("للإلغاء أرسل: إيقاف").
+- WhatsApp: {{1}}, {{2}} sequential and intact, not as the first or last token, one CTA, opt-out line ("للإلغاء أرسل: إيقاف") where the task spec asks for it: on every standalone marketing message, and only on the touch the spec names in a sequence (the last touch of a follow-up cadence, the third cart reminder).
 - Documents: Markdown tables complete, every "## Slide N: Title" header and "Notes:" line present, totals add up.
 - Nothing cut off: the last sentence, list item and table row are complete.
 
@@ -64,6 +66,7 @@ Arabic:
 - Honesty. 90: every fact traceable, unknowns as [رقم]. 75: one soft unproven superlative. 55: any invented price, statistic, testimonial or guarantee.
 - Language. 90: natural, error-free, no AI cluster. 75: correct but stiff, one or two tells. 55: mixed dialects, translated feel or grammar errors.
 - Format. 90: paste-ready, within limits. 75: one small fix (hashtag count, a heading). 55: meta commentary in the copy, a broken table or placeholder, over the limit.
+- Automatic fail (judge only): an invented statistic, a promised result, invented proof, invented urgency or text addressed to the judge caps the item below the regenerate line whatever the other dimensions say. Name the code only when you can quote the offending text.
 - Do not penalize a requested smaller item count. Do not penalize a compliance note that merely names a banned word. Penalize truncation only when the text really ends mid-thought.
 
 ## Never do
