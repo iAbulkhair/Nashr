@@ -19,13 +19,13 @@ Nashr is a single Next.js 16 app-router application (TypeScript, React server co
 
 ### 2.2 Marketing site (public, `src/app/[lang]/*`)
 
-Root layout `src/app/[lang]/layout.tsx` (static params for `ar`, `en`). Pages: home `page.tsx`, `agents`, `agents/[agent]`, `ai-marketing-agent`, `affiliates`, `blog`, `blog/[slug]`, `customers`, `enterprise`, `for/[industry]`, `help`, `pricing`, `privacy`, `terms`, `resources`, `tools`, `vs`. Content comes from static modules (`src/lib/i18n.ts`, `site.ts`, `pages-vs.ts`, `pages-industry.ts`, `legal.ts`, `help.ts`, `blog.ts` reading `content/`). Public forms post to `/api/support` (`src/components/ContactForm.tsx:15`, `HelpCenter.tsx:17`), `/api/affiliates` (`AffiliateForm.tsx:12`) and `/api/tools/{tool}` (`ToolForm.tsx:16`). No component posts to `/api/waitlist` any more (only the route itself references it).
+Root layout `src/app/[lang]/layout.tsx` (static params for `ar`, `en`). Pages: home `page.tsx`, `agents`, `agents/[agent]`, `ai-marketing-agent`, `affiliates`, `blog`, `blog/[slug]`, `customers`, `enterprise`, `for/[industry]`, `help`, `pricing`, `privacy`, `terms`, `resources`, `tools`, `updates`, `vs`. Content comes from static modules (`src/lib/i18n.ts`, `site.ts`, `changelog.ts`, `pages-vs.ts`, `pages-industry.ts`, `legal.ts`, `help.ts`, `blog.ts` reading `content/`). Public forms post to `/api/support` (`src/components/ContactForm.tsx:15`, `HelpCenter.tsx:17`), `/api/affiliates` (`AffiliateForm.tsx:12`) and `/api/tools/{tool}` (`ToolForm.tsx:16`). No component posts to `/api/waitlist` any more (only the route itself references it).
 
 ### 2.3 App shell (`src/app/[lang]/app/*`)
 
 `layout.tsx` resolves the session (`currentUser()`), redirects anonymous visitors to login unless the path ends with one of `/login /signup /forgot /reset /admin` (`layout.tsx:14-24`), renders the sidebar, trial banner, and an impersonation banner when the `nashr_impersonate` cookie exists (`:41-52`). Pages: inbox (`page.tsx`), `chat`, `conversations`, `generate`, `calendar`, `files`, `tasks` (schedule), `governance`, `integrations`, `mcp`, `billing`, `refer`, `reports`, `notifications`, `profile`, `brands`, `inspo`, `help`, `start`, `onboarding`, `login`, `signup`, `forgot`, `reset`, `admin`. The OAuth consent screen lives outside the language tree at `src/app/oauth/authorize/page.tsx`.
 
-### 2.4 API routes (60 route files, 86 method handlers plus 5 CORS `OPTIONS`)
+### 2.4 API routes (63 route files, 90 method handlers plus 5 CORS `OPTIONS`)
 
 | Area | Routes |
 |---|---|
@@ -34,8 +34,8 @@ Root layout `src/app/[lang]/layout.tsx` (static params for `ar`, `en`). Pages: h
 | Agents / content | `chat`, `chat/feedback`, `generate`, `onboard`, `onboard/confirm`, `onboard/plan`, `catalog`, `tasks`, `tasks/[id]`, `tasks/[id]/image`, `tasks/[id]/pptx`, `tools/[tool]` |
 | Connectors | `connect`, `connect/[provider]`, `connect/[provider]/start`, `connect/[provider]/callback`, `connect/[provider]/key`, `publish/[id]`, `integrations` |
 | MCP and OAuth server | `mcp`, `mcp/token`, `oauth/register`, `oauth/approve`, `oauth/token`, `oauth/meta`, `oauth/resource` |
-| Growth / inbound | `referral`, `referral/share`, `support`, `affiliates`, `waitlist` |
-| Founder console | `admin/login`, `admin/overview`, `admin/plan`, `admin/users/[email]`, `admin/impersonate`, `admin/export`, `admin/log`, `admin/evals`, `admin/golden` |
+| Growth / inbound | `referral`, `referral/share`, `support`, `affiliates`, `waitlist`, `wishlist/vote`, `wishlist/suggest` |
+| Founder console | `admin/login`, `admin/overview`, `admin/plan`, `admin/users/[email]`, `admin/impersonate`, `admin/export`, `admin/log`, `admin/evals`, `admin/golden`, `admin/wishlist` |
 | Cron | `cron/daily`, `cron/weekly`, `cron/golden`, `cron/routines` |
 
 Per-route authorization is in `permissions.md`.
@@ -44,7 +44,7 @@ Per-route authorization is in `permissions.md`.
 
 | Module | One line |
 |---|---|
-| `db.ts` | Storage adapter: Upstash REST client or in-memory fallback; `get/set(ttl)/del/lpush/lrange/sadd/smembers/incrby/lock/unlock`. Memory fallback ignores TTL on `set` (`:70`). |
+| `db.ts` | Storage adapter: Upstash REST client or in-memory fallback; `get/set(ttl)/del/lpush/lrange/sadd/smembers/scardMany (every set size in one pipelined request)/incrby/lock/unlock`. Memory fallback ignores TTL on `set` (`:70`). |
 | `auth.ts` | `User` type, bcrypt password hashing, session cookie `nashr_session`, `currentUser()`, scope helper `sc(u)`, founder/admin checks. |
 | `brands.ts` | Multi-brand workspaces: brand list, active brand, `scopeFor(email, brandId)`, per-plan brand limit. |
 | `brand.ts` | `Brand` file, `Task` records, task costs and counts, owner preference notes (`listPreferencesFor` gives one agent's prompts the notes that are not about another agent's work). |
@@ -70,6 +70,8 @@ Per-route authorization is in `permissions.md`.
 | `journey.ts` / `journey-load.ts` | Launch journey: milestones, levels and streak computed from workspace state (pure, browser-safe) and its one-round server loader. |
 | `schedule.ts` | Per-scope schedule flags and routine switches (`Schedule.routines`, merged per id), weekly plan run, daily brief, `allUsers()` fan-out. |
 | `routines.ts` | Owner-enabled routines for agents with real input data (`ROUTINES`: Dana's weekly report, Noor's cart recovery, Razan's cash forecast, Majed's monthly review), each with a gate checked in code; `runRoutine` (period, model state, lock, trial, gate, weekly cap, charge with the agent's cap, refunding generation, save, judge, notify) and `dueRoutines` for the cron. |
+| `changelog.ts` | Import-free content for `/{lang}/updates`: `CHANGELOG` (dated, tagged, bilingual entries of merged work), `SEED_WISHES` (wishlist items with stable ids), statuses and the page copy. Safe to import from client components. |
+| `wishlist.ts` | Wishlist storage: `listWishes` (counts in one `scardMany`), `setVote`, `votableId` / `existingId`, suggestions queue, founder promote / status / hide / delete, `cleanText`, and `forgetWishlistUser` for account deletion. Server only. |
 | `notifications.ts` | In-app notifications per account, daily follow-ups with dedupe fingerprints. |
 | `lifecycle.ts` | Lifecycle emails (day 1, 2, 3, 10), once per user. |
 | `notify.ts` | `sendEmail` via Resend, `once()` guard. |
@@ -186,10 +188,17 @@ All four require `Authorization: Bearer ${CRON_SECRET}` (compared with `sameSecr
 | `support-tickets` | list | Support and contact tickets | `api/support/route.ts:11` | none |
 | `affiliate-applications` | list | Affiliate applications | `api/affiliates/route.ts:9` | none |
 | `integration-requests`, `integration-votes:{name}` | list / int | Integration requests | `api/integrations/route.ts:20-21` | none |
+| `wish:votes:{itemId}` | set | Account emails that voted for a wishlist item. `itemId` is checked against the seeded ids in `changelog.ts` and the promoted ids in `wish:items` before any key is built; the email is the session's (2026-09-29) | `wishlist.ts` | none |
+| `wish:mine:{email}` | set | Item ids this account voted for, so the page reads the viewer's votes in one call; deleted with the account, whose votes are taken back first | `wishlist.ts`, `account.ts` | none |
+| `wish:items` | hash | id `w-{8 hex}` to `{id, title: {ar, en}, area?, at}`: suggestions the founder promoted, under a title the founder wrote | `wishlist.ts` | none |
+| `wish:status` | hash | item id to `planned` / `in_progress` / `shipped`; missing means planned | `wishlist.ts` | none |
+| `wish:hidden` | set | Seeded item ids the founder removed from the public list (seeded items live in code and cannot be deleted) | `wishlist.ts` | none |
+| `wish:suggestions` | list | `{id, email, text, lang, at}` suggestions awaiting review. Never read by a public route; entries of a deleted account are removed | `wishlist.ts` | none |
+| `rate:wishvote:{email}`, `rate:wishsuggest:{email}` | int | Wishlist vote (60 per hour) and suggestion (5 per day) allowances, through `allow()` | `api/wishlist/*` | 1 h / 24 h |
 | `rate:tool:{ip}`, `toolusage:{slug}` | int | Free tool anonymous daily allowance (through `allow()`, platform IP), per-tool usage | `api/tools/[tool]/route.ts` | 24 h / none |
 | `waitlist:entries`, `waitlist:emails` | list / set | Waitlist (direct Upstash client, bypasses `db.ts`) | `api/waitlist/route.ts:4-5` | none |
 
-Bounded lists (2026-09-18): `pushCapped` in `db.ts` trims on write. Caps in `CAPS`: chat threads 400 messages, `admin:log` 2000, `support-tickets` / `affiliate-applications` / `integration-requests` 2000, `fblog:{scope}` 500, `prefs:{scope}` 100, `decisions:{scope}` 500. The task id list `tasks:{scope}` is never trimmed (owner data); `listTasks` reads the newest 200 full tasks **plus every id in `pending:{scope}`** (approvals inbox, MCP `list_inbox`, founder user card). That second half is what stops the sidebar badge from counting work the inbox cannot show: past 200 tasks an owner used to see "Approvals 50" above an inbox holding none of them. Consequences worth knowing: the pending chip is exhaustive while the approved and rejected chips are a recency window, a buried item leaves the list once it is decided (nothing is lost — `listLite` and the reports still see it), and the payload is bounded by 200 + the backlog rather than by the size of the workspace. `pendingCount` and `listTasks` share one `pendingIds` read, so they cannot drift; a pending id whose task record is gone is cleared by that read rather than waiting for the daily reconcile. The chat page's "waiting for you" card is a separate 90-day recency view of the same queue and is deliberately not exhaustive.
+Bounded lists (2026-09-18): `pushCapped` in `db.ts` trims on write. Caps in `CAPS`: chat threads 400 messages, `admin:log` 2000, `support-tickets` / `affiliate-applications` / `integration-requests` 2000, `fblog:{scope}` 500, `prefs:{scope}` 100, `decisions:{scope}` 500, `wish:suggestions` 500. The task id list `tasks:{scope}` is never trimmed (owner data); `listTasks` reads the newest 200 full tasks **plus every id in `pending:{scope}`** (approvals inbox, MCP `list_inbox`, founder user card). That second half is what stops the sidebar badge from counting work the inbox cannot show: past 200 tasks an owner used to see "Approvals 50" above an inbox holding none of them. Consequences worth knowing: the pending chip is exhaustive while the approved and rejected chips are a recency window, a buried item leaves the list once it is decided (nothing is lost — `listLite` and the reports still see it), and the payload is bounded by 200 + the backlog rather than by the size of the workspace. `pendingCount` and `listTasks` share one `pendingIds` read, so they cannot drift; a pending id whose task record is gone is cleared by that read rather than waiting for the daily reconcile. The chat page's "waiting for you" card is a separate 90-day recency view of the same queue and is deliberately not exhaustive.
 
 ## 4. Request lifecycles
 

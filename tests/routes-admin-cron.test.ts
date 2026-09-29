@@ -11,6 +11,7 @@ import * as log from "@/app/api/admin/log/route";
 import * as evals from "@/app/api/admin/evals/route";
 import * as golden from "@/app/api/admin/golden/route";
 import * as impersonate from "@/app/api/admin/impersonate/route";
+import * as wishlist from "@/app/api/admin/wishlist/route";
 import * as cronDaily from "@/app/api/cron/daily/route";
 import * as cronWeekly from "@/app/api/cron/weekly/route";
 import * as cronGolden from "@/app/api/cron/golden/route";
@@ -33,6 +34,8 @@ const adminCalls = (headers: Record<string, string> = {}, query = ""): (() => Pr
     () => evals.GET(json(`/api/admin/evals${query}`, "GET", undefined, headers)),
     () => golden.GET(json(`/api/admin/golden${query}`, "GET", undefined, headers)),
     () => golden.POST(json(`/api/admin/golden${query}`, "POST", {}, headers)),
+    () => wishlist.GET(json(`/api/admin/wishlist${query}`, "GET", undefined, headers)),
+    () => wishlist.POST(json(`/api/admin/wishlist${query}`, "POST", { action: "promote", title: { ar: "عنوان", en: "Title" } }, headers)),
   ];
 };
 const statuses = async (calls: (() => Promise<Response>)[]) => { const out: number[] = []; for (const c of calls) out.push((await c()).status); return out; };

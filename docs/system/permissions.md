@@ -15,7 +15,7 @@ What the code enforces today, at HEAD `4959f7e`. Paths are relative to the repos
 
 There is no global guard. `src/proxy.ts` does not authenticate (`src/proxy.ts:15-30`); every handler enforces its own rule, and a handler without a check is public.
 
-## 1. API routes (60 route files, 91 exported handlers)
+## 1. API routes (63 route files, 95 exported handlers)
 
 Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the addressed resource (U plus scope binding), F = founder admin, C = cron secret, M = MCP bearer token.
 
@@ -126,6 +126,8 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | 72 | GET | `/api/affiliates` | F | `isAdmin` `affiliates/route.ts:13`. |
 | 73 | POST | `/api/waitlist` | A | Rate limit 10 per IP per hour `waitlist/route.ts:18`. |
 | 74 | GET | `/api/waitlist` | Holder of `WAITLIST_ADMIN_KEY` in the query string only | Inline compare `waitlist/route.ts:55-58`. Does not use `isAdmin`; founder session and admin cookie are not accepted. |
+| 92 | POST | `/api/wishlist/vote` | U | `currentUser` first (401); rate limit 60 per account per hour (`rate:wishvote:{email}`); the item id must be a known item (`votableId`: a seeded id not hidden, or a promoted id; 400 `unknown_item` before any key is built). The voter is always the session's `u.email`: an email, user or scope in the body is ignored. Votes are per account, not per brand. |
+| 93 | POST | `/api/wishlist/suggest` | U | `currentUser` first (401); text cleaned (`cleanText`: control, invisible and direction-override characters removed, one line) and bounded to 5..280 characters (400); then 5 per account per day (`rate:wishsuggest:{email}`, 429). Goes to the `wish:suggestions` queue only; no public route reads it. |
 
 ### 1.7 Founder console
 
@@ -144,6 +146,8 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | 85 | GET | `/api/admin/evals` | F | `isAdmin` `admin/evals/route.ts:7`. |
 | 86 | GET | `/api/admin/golden` | F | `isAdmin` `admin/golden/route.ts:12`. |
 | 87 | POST | `/api/admin/golden` | F | `isAdmin` `admin/golden/route.ts:20`. |
+| 94 | GET | `/api/admin/wishlist` | F | `isAdmin` first. Returns the suggestion queue (with the suggesters' emails) and every wishlist item, hidden ones included, with counts. |
+| 95 | POST | `/api/admin/wishlist` | F | `isAdmin` first. Actions `promote` (the founder writes the public title in both languages, each cleaned and at most 120 characters; the suggester's text is never published), `status` (`planned`/`in_progress`/`shipped`), `delete` (hides a seeded item, deletes a promoted one with its votes), `restore`, `dismiss`. Ids are checked with `existingId` / `wellFormedId`; every action is written to `admin:log`. |
 
 ### 1.8 Cron
 
@@ -189,7 +193,9 @@ Two layers exist. Layer 1, the layout (`layout.tsx:21-24`): reads `x-pathname` s
 | `reset/page.tsx` | A | none (`:8` language check only) | none |
 | `admin/page.tsx` | F; others get 404, or the key form when `?login=1` | `isAdminCookie()` `admin/page.tsx:15-18` | global |
 
-The sidebar shows the console link when `isFounder(user.email)` (`layout.tsx:44`); this is display only.
+The sidebar shows the console link when `isFounder(user.email)` (`layout.tsx:44`); this is display only. It also links every signed-in user to the public `/{lang}/updates` page.
+
+Public page `/{lang}/updates` (outside the app shell, 2026-09-29): anyone can read it. It reads `currentUser()` only to show the viewer's own votes and the vote and suggestion controls; anonymous visitors get the counts and sign-in links. The page reads wishlist data through `listWishes` only and never reads `wish:suggestions`.
 
 ## 3. Cross-tenant isolation
 

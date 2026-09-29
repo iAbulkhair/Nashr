@@ -272,6 +272,19 @@ Files: `src/lib/ad-codes.ts`, `saveTask` in `src/lib/brand.ts`, `analyze` in `sr
 3. When results come in (CSV upload, section 20, or an ad account, section 21), `analyze` receives the workspace's code index. A row whose name or copy contains one of those codes is a Nashr ad; any other code is ignored. `snapshot.nashr` lists them with their metric and sample, and compares the pooled metric of the ranked Nashr ads with the other ranked ads when there are at least 2 and 3, with a confidence of low or medium by the same rule as the other findings. Codes are removed from the text before the wording patterns run.
 4. `performance-learnings.md` gains a "Nashr's own ads" section with the comparison, telling Noor to build on what worked and to say plainly when Nashr's ads did worse. The results card shows the section, or how to add codes when none are found.
 
+## 23. Updates and wishlist (`/{lang}/updates`, 2026-09-29)
+
+Files: `src/app/[lang]/updates/page.tsx`, `src/lib/changelog.ts` (content), `src/lib/wishlist.ts` (storage), `src/components/WishVote.tsx`, `src/components/WishSuggest.tsx`, `src/app/api/wishlist/vote/route.ts`, `src/app/api/wishlist/suggest/route.ts`, `src/app/api/admin/wishlist/route.ts`, `src/components/app/WishlistPanel.tsx`.
+
+1. Linked from the marketing nav and footer (the Resources cards in `site.ts`), the sitemap, and the app sidebar (`N.updates`).
+2. The page is dynamic. It reads `currentUser()` (optional) and `listWishes(email)`: the hidden set, the viewer's `wish:mine:{email}`, `wish:items` and `wish:status` side by side, then every item's count in one pipelined `scardMany`. Counts and the viewer's pressed state are in the server HTML; the two sections ("What's new", "Wishlist") are anchors, so nothing needs JavaScript to read.
+3. "What's new" is `CHANGELOG` in `changelog.ts`: dated entries (merge date on main), tag new / improved / fixed, bilingual title and one line. Edited in code, with the change it describes.
+4. The wishlist is `SEED_WISHES` (code; from the «أمنية: نعم» rows of `docs/Competitor_Features_AR.md`, no competitor names, no vote numbers) plus items the founder promoted (`wish:items`), less seeded items the founder hid (`wish:hidden`), with status from `wish:status` (default planned). Order: in progress, planned, shipped; most votes first; ties keep the seed order.
+5. Vote: the button posts `{id, on}` to `/api/wishlist/vote`. Session first (401 sends the browser to login with `next=/{lang}/updates`), 60 per hour per account, id must be votable, then `sadd`/`srem` on `wish:votes:{id}` and `wish:mine:{email}` side by side, and the new count. `on` states the wanted result, so repeating a request is harmless; without `on` it toggles. The button updates at the click and restores its state if the request fails.
+6. Suggest: signed-in users post `{text, lang}` to `/api/wishlist/suggest`; cleaned, 5..280 characters, 5 per day; stored in `wish:suggestions` (capped at 500). Never shown publicly.
+7. Founder console, Wishlist tab (`WishlistPanel`): reads `GET /api/admin/wishlist`; promotes a suggestion under a bilingual title the founder writes (the matching-language field is pre-filled with the suggestion as a draft), adds a wish directly, sets statuses, hides / restores seeded items, deletes promoted items with their votes, dismisses suggestions. Each action goes to `admin:log` as `wish:*`.
+8. Account deletion (`wipeAccount`): `forgetWishlistUser` removes the account from every item it voted for, removes its suggestions, and deletes `wish:mine:{email}`.
+
 ## Revocation (2026-09-18)
 
 - Password change (`PATCH /api/account`): new hash and `sessionsAfter = now` saved inside the user lock, the caller's session is destroyed and a new one issued. Every other session of the account fails at its next request.
