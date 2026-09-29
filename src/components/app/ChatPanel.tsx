@@ -77,6 +77,7 @@ function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[
     const [kind, , n] = a.split(":");
     if (kind === "brand") out.add(lang === "ar" ? "حُدّث ملف العلامة" : "Brand file updated");
     else if (kind === "generated" || kind === "drafted") out.add(lang === "ar" ? `أُضيف ${n ?? ""} إلى صندوق الموافقات`.replace("  ", " ") : `${n ?? ""} added to approvals`.trim());
+    else if (kind === "todo") out.add(lang === "ar" ? "حُدّثت قائمة مهامك" : "Your to-do list was updated");
   }
   return [...out];
 }
