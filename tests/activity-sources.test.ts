@@ -17,7 +17,7 @@ import type { AdvanceOpts, MediaJob, StartInput, StartResult } from "@/lib/media
 import type { SalesSnapshot } from "@/lib/connectors/sales";
 
 /**
- * Rules 200, 202 and 203: the activity rows of the paid and scheduled work. A batch is one `generated` row (and a
+ * Rules 224, 226 and 227: the activity rows of the paid and scheduled work. A batch is one `generated` row (and a
  * refusal at the charge one `cap_reached` or `no_credits` row) with the owning agent, who asked and where; the judge adds
  * one `judged` row and one `autofail` row per trigger; a routine or the Sunday plan adds its outcome once; a render adds
  * its start and its end under the scope and agent the server stored on the job.
@@ -80,7 +80,7 @@ afterEach(async () => {
   signOut();
 });
 
-describe("a batch is one row with the owning agent, who asked and where; the judge adds its own (rule 200)", () => {
+describe("a batch is one row with the owning agent, who asked and where; the judge adds its own (rule 224)", () => {
   it("the generate route: one `generated` row, then one `judged` row with the mean score and one `autofail` row per trigger", async () => {
     const m = await load({ verdicts: [clean, { ...clean, honesty: 30, autofail: "invented_fact", notes: "made up" }] });
     const u = await owner("as-gen");
@@ -164,7 +164,7 @@ describe("a batch is one row with the owning agent, who asked and where; the jud
 
 const snap = (): SalesSnapshot => ({ provider: "salla", at: new Date().toISOString(), days: 30, orders: { count: 4, read: 4, canceled: 0, revenue: { SAR: 900 }, top: [{ name: "عود", qty: 2 }] }, carts: { count: 0, read: 0, value: {}, top: [] }, unread: 0 });
 
-describe("a scheduled run adds its outcome once; nothing-new at most once a period (rule 202)", () => {
+describe("a scheduled run adds its outcome once; nothing-new at most once a period (rule 226)", () => {
   it("a routine that ran: `generated` by the routine and `routine_ran`; at the agent's cap: only `routine_skipped`, no second refusal row", async () => {
     const m = await load({ state: "on" });
     const u = await owner("as-rt");
@@ -232,7 +232,7 @@ describe("a scheduled run adds its outcome once; nothing-new at most once a peri
   });
 });
 
-describe("a render is recorded at its start and its end, under the job's own scope and agent (rule 203)", () => {
+describe("a render is recorded at its start and its end, under the job's own scope and agent (rule 227)", () => {
   const net = noNetwork();
   beforeAll(() => { vi.resetModules(); });
   afterAll(() => net.restore());

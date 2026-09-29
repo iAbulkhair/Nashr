@@ -29,7 +29,7 @@ import * as adminUser from "@/app/api/admin/users/[email]/route";
 import Page from "@/app/[lang]/app/activity/page";
 
 /**
- * Rules 200-208: the per-agent activity log (src/lib/activity.ts). This file pins the store, the owner actions that
+ * Rules 224-232: the per-agent activity log (src/lib/activity.ts). This file pins the store, the owner actions that
  * record without a model, the list and export routes, the page, the founder console and the wipe;
  * tests/activity-sources.test.ts pins the generation, routine and media rows.
  */
@@ -53,7 +53,7 @@ afterEach(async () => {
   signOut();
 });
 
-describe("the log itself: bounded rows, a recorder that never throws, one sorted and filtered read (rule 204)", () => {
+describe("the log itself: bounded rows, a recorder that never throws, one sorted and filtered read (rule 228)", () => {
   it("keeps only the known fields, at most ten task ids and 200 characters of one-line note", async () => {
     const u = await newUser("act-bound");
     await recordActivity(u.email, [row({ tasks: Array.from({ length: 12 }, (_, i) => `t${i}`), note: `a\nb\u0000${"x".repeat(300)}`, count: Number.NaN, ...({ extra: "dropped" } as object) }), null, false, undefined]);
@@ -116,7 +116,7 @@ describe("the log itself: bounded rows, a recorder that never throws, one sorted
   });
 });
 
-describe("the owner's own actions are recorded once, in the caller's scope, with who acted (rule 201)", () => {
+describe("the owner's own actions are recorded once, in the caller's scope, with who acted (rule 225)", () => {
   it("a decision on an item: one row with the action, the owning agent, the title and `by` from the session; a founder is the founder", async () => {
     const u = await owner("act-dec");
     await saveTask(u.email, task("d1"), true);
@@ -196,7 +196,7 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
   });
 });
 
-describe("GET /api/activity and the CSV export read only the caller's own log (rule 205)", () => {
+describe("GET /api/activity and the CSV export read only the caller's own log (rule 229)", () => {
   it("401 without a session; 400 for an unknown agent, kind or cursor; 429 past the hourly reads", async () => {
     signOut();
     expect((await listRoute.GET(json("/api/activity", "GET"))).status).toBe(401);
@@ -253,7 +253,7 @@ describe("GET /api/activity and the CSV export read only the caller's own log (r
   });
 });
 
-describe("support access reaches the account's logins as support, never as which login (rules 193, 205, 206, 207)", () => {
+describe("support access reaches the account's logins as support, never as which login (rules 217, 229, 230, 231)", () => {
   it("a member reading the list or the page gets the row without `imp`; storage and the founder console keep it", async () => {
     vi.stubEnv("WAITLIST_ADMIN_KEY", "test-admin-key-0123456789");
     const founder = "support-founder@test.example";
@@ -285,7 +285,7 @@ describe("support access reaches the account's logins as support, never as which
   });
 });
 
-describe("the Activity page renders the first page on the server (rule 206)", () => {
+describe("the Activity page renders the first page on the server (rule 230)", () => {
   const html = async (lang: "ar" | "en") => new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang }) }))).text();
 
   it("one h1, the rows in plain words with who and via, the filters and the download, in Arabic too; another account sees none", async () => {
@@ -317,7 +317,7 @@ describe("the Activity page renders the first page on the server (rule 206)", ()
   });
 });
 
-describe("the founder console shows each brand's latest 100 rows (rule 207)", () => {
+describe("the founder console shows each brand's latest 100 rows (rule 231)", () => {
   it("GET /api/admin/users/{email} returns the rows per brand, and refuses without the founder key", async () => {
     vi.stubEnv("WAITLIST_ADMIN_KEY", "test-admin-key-0123456789");
     const u = await newUser("act-admin");
@@ -335,7 +335,7 @@ describe("the founder console shows each brand's latest 100 rows (rule 207)", ()
   });
 });
 
-describe("the log goes with the account (rule 208)", () => {
+describe("the log goes with the account (rule 232)", () => {
   it("wipeAccount deletes activity:{s} and the routines' markers for every brand", async () => {
     const u = await newUser("act-wipe");
     await saveUser({ ...u, plan: "agency" });

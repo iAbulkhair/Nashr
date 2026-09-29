@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { GovHistoryEntry, GovValue, Governance } from "@/lib/governance";
 import type { By } from "@/lib/actor";
-import { AGENT_IDS, isAgentId, type AgentId } from "@/lib/agents";
+import { AGENTS, AGENT_IDS, isAgentId, type AgentId } from "@/lib/agents";
 import { TASK_COST, isTaskType, type TaskType } from "@/lib/tasks";
 import { dateFormat } from "@/lib/dates";
 import ReadOnlyNote from "./ReadOnlyNote";
@@ -26,6 +26,12 @@ function Row({ title, sub, children }: { title: string; sub: string; children: R
   );
 }
 
+/**
+ * The agents a monthly cap can stop: the ones that own a paid task type. Spend is charged to the agent that owns the
+ * type, so an agent without one (Reem, free) would show a cap that never applies. The server still accepts a cap for
+ * every agent id.
+ */
+const CAPPED: AgentId[] = AGENTS.filter((a) => a.tasks.length > 0).map((a) => a.id);
 /** The cap fields as typed: "" is no cap, so clearing a field removes the cap instead of setting it to 0. */
 const capText = (g: Governance) => Object.fromEntries(AGENT_IDS.map((id) => [id, g.agentCaps?.[id] === undefined ? "" : String(g.agentCaps[id])])) as Record<AgentId, string>;
 /**
@@ -66,12 +72,12 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
   async function save() {
     setMsg(""); setErr(""); setHistMsg(""); setHistErr("");
     // Nothing is sent while a cap is not a whole number: dropping the field and saying "Saved" hid the mistake.
-    if (AGENT_IDS.some((id) => !validCap(caps[id]))) { setErr(g.capInvalid); return; }
+    if (CAPPED.some((id) => !validCap(caps[id]))) { setErr(g.capInvalid); return; }
     setBusy(true);
     try {
       // Empty sends null, which removes the cap.
       const agentCaps: Partial<Record<AgentId, number | null>> = {};
-      for (const id of AGENT_IDS) agentCaps[id] = caps[id].trim() === "" ? null : Number(caps[id].trim());
+      for (const id of CAPPED) agentCaps[id] = caps[id].trim() === "" ? null : Number(caps[id].trim());
       const res = await fetch("/api/governance", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...gov, agentCaps }) });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; governance?: Governance; entry?: GovHistoryEntry | null };
       if (!res.ok || !j.ok || !j.governance) { setErr(j.error === "busy" ? g.busy : g.saveFailed); return; }
@@ -136,7 +142,7 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
           <h2 className="font-display font-medium">{g.agentCaps}</h2>
           <p className="mt-1 text-sm text-ink/60">{g.agentCapsSub}</p>
           <ul className="mt-3 divide-y divide-ink/10">
-            {AGENT_IDS.map((id) => {
+            {CAPPED.map((id) => {
               const used = spend[id] ?? 0;
               const cap = gov.agentCaps?.[id];
               // A cap of 0 stops every paid request, so it reads as reached.

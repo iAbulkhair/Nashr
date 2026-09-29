@@ -12,7 +12,7 @@ import { TASK_COST } from "@/lib/tasks";
 import type { SalesSnapshot } from "@/lib/connectors/sales";
 
 /**
- * Rules 189-192: one generation pipeline (src/lib/generate-batch.ts). Every paid text batch goes through
+ * Rules 213-216: one generation pipeline (src/lib/generate-batch.ts). Every paid text batch goes through
  * `generateBatch`: the same order of checks before the charge, the same refund with the charge's receipt, one task
  * builder, one concurrent save and the same grounding to the judge. `load()` wraps it so every call from any caller is
  * recorded while the real pipeline runs, so "each caller goes through it" is a list, not a hope.
@@ -96,7 +96,7 @@ afterEach(async () => {
   calls.length = 0;
 });
 
-describe("the checks before the charge come in one order, typed, and charge nothing (rule 189)", () => {
+describe("the checks before the charge come in one order, typed, and charge nothing (rule 213)", () => {
   it("while paused, every path but chat refuses before reading the brand or charging; chat keeps the throw-and-refund backstop", async () => {
     const { generateBatch, seen } = await load({ state: "paused" });
     // No brand file: "paused" coming back rather than "no_brand" shows the model switch is checked first.
@@ -157,7 +157,7 @@ describe("the checks before the charge come in one order, typed, and charge noth
   });
 });
 
-describe("a failed read or a failed generation is refunded with the receipt (rule 190)", () => {
+describe("a failed read or a failed generation is refunded with the receipt (rule 214)", () => {
   it("a read inside the try that fails gives back the credits and the agent's counter, and settles once", async () => {
     const { generateBatch, seen } = await load({ statsFail: true });
     const u = await owner("gb-readfail");
@@ -181,7 +181,7 @@ describe("a failed read or a failed generation is refunded with the receipt (rul
   });
 });
 
-describe("tasks are built in one place, saved together and judged with what the agent had (rule 191)", () => {
+describe("tasks are built in one place, saved together and judged with what the agent had (rule 215)", () => {
   it("source, brief, lang and one creation time; auto-approve still goes through the brand gate; a forced batch waits", async () => {
     const items = [ITEM, { channel: "instagram", title: "عرض", body: "قهوة رخيص اليوم فقط للمراجعة" }];
     const { generateBatch, seen } = await load({ items });
@@ -224,7 +224,7 @@ describe("tasks are built in one place, saved together and judged with what the 
   });
 });
 
-describe("every paid text batch goes through generateBatch (rule 192)", () => {
+describe("every paid text batch goes through generateBatch (rule 216)", () => {
   it("the generate route, both chat tools, MCP and the weekly plan, each with its own source and via, in the caller's scope", async () => {
     await load({ state: "mock" });
     const u = await owner("gb-callers");

@@ -10,7 +10,8 @@ const wa = (body: string) => ({ channel: "whatsapp", title: "t", body });
 
 describe("golden set", () => {
   it("covers every agent with unique case ids", () => {
-    for (const a of AGENTS) expect(GOLDEN_CASES.some((c) => agentForTask(c.type).id === a.id)).toBe(true);
+    // Every agent that owns deliverable types; Reem keeps the owner's to-dos and generates nothing to score.
+    for (const a of AGENTS.filter((x) => x.tasks.length > 0)) expect(GOLDEN_CASES.some((c) => agentForTask(c.type).id === a.id)).toBe(true);
     expect(new Set(GOLDEN_CASES.map((c) => c.id)).size).toBe(GOLDEN_CASES.length);
   });
   it("passes clean WhatsApp copy", () => {

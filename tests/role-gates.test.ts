@@ -125,6 +125,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/team/invite": g("admin", "team.invite.member"),
   "DELETE /api/team/invite": g("admin", "team.invite.cancel"),
   "DELETE /api/team/member": g("admin", "team.remove.member"),
+  // Reem's list: any member adds and changes items; closing, confirming or sending back a claim, deleting and restoring
+  // need an admin (the same handler serves both, like PATCH /api/tasks/[id]).
+  "PATCH /api/secretary/[id]": g("admin", "todo.write", "todo.close"),
 
   // Every member of the account.
   "PATCH /api/account": g("member", "password.change"),
@@ -142,6 +145,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/tasks/[id]/video": "member",
   "POST /api/wishlist/suggest": "member",
   "POST /api/wishlist/vote": "member",
+  "POST /api/secretary": g("member", "todo.write"),
   "POST /api/admin/wishlist": "admin-console",
   "POST /api/media/hook/[provider]": "public",
 };
@@ -198,6 +202,7 @@ const READS: Record<string, Gate> = {
   "GET /api/schedule": "member",
   "GET /api/tasks": "member",
   "GET /api/tasks/[id]/pptx": "member",
+  "GET /api/secretary": "member",
 
   "GET /api/mcp": "public-read",
   "GET /api/oauth/meta": "public-read",
@@ -520,7 +525,7 @@ describe("approval is admin and owner only, in the inbox as on the publish butto
   });
 });
 
-describe("a governance restore is a governance write; the activity log is a read (rules 195 and 205)", () => {
+describe("a governance restore is a governance write; the activity log is a read (rules 219 and 229)", () => {
   it("a member and an admin are refused a restore before anything is read, and nothing changes; the owner may", async () => {
     const { owner, member, admin } = await team();
     const saved = await saveGovAs(owner.email, { reviewer: false }, { kind: "owner", email: owner.email });

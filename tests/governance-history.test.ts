@@ -18,11 +18,11 @@ import Page from "@/app/[lang]/app/governance/page";
 import { appDict } from "@/lib/app-i18n";
 
 /**
- * Rules 193-196 and 199: who acted is worked out in code (193); a governance save that changes something is kept as a
- * revision, under a lock, and a save that changes nothing is not (194); a restore puts a whole snapshot back through
- * today's checks and is itself a revision, looked up only in the caller's own history (195); the Governance page shows
- * the history from the server, with support access as support and never who impersonated (196); and the history goes
- * with the account (199).
+ * Rules 217-220 and 223: who acted is worked out in code (217); a governance save that changes something is kept as a
+ * revision, under a lock, and a save that changes nothing is not (218); a restore puts a whole snapshot back through
+ * today's checks and is itself a revision, looked up only in the caller's own history (219); the Governance page shows
+ * the history from the server, with support access as support and never who impersonated (220); and the history goes
+ * with the account (223).
  */
 const put = async (body: unknown) => {
   const res = await govRoute.PUT(json("/api/governance", "PUT", body));
@@ -39,7 +39,7 @@ const owner = async (prefix: string) => {
 };
 const OWNER = (u: User) => ({ kind: "owner", email: u.email });
 
-describe("who acted is worked out in code (rule 193)", () => {
+describe("who acted is worked out in code (rule 217)", () => {
   /** What a request resolves to for this login: `currentUser` sets `u.actor` from the session record. */
   const session = async (email: string, opts: { imp?: string } = {}) => {
     await signIn(email, opts);
@@ -116,7 +116,7 @@ describe("who acted is worked out in code (rule 193)", () => {
   });
 });
 
-describe("a governance save that changes something is kept, once (rule 194)", () => {
+describe("a governance save that changes something is kept, once (rule 218)", () => {
   it("names what changed as dotted paths; off equals unset for auto-approve and null equals unset for a cap", () => {
     const after: Governance = { ...DEFAULT_GOV, autoApprove: { social: true, ads: false }, weeklyCap: 30, reviewer: false, agentCaps: { razan: 5 } };
     expect(govDiff(DEFAULT_GOV, after)).toEqual(["autoApprove.social", "weeklyCap", "reviewer", "agentCaps.razan"]);
@@ -179,7 +179,7 @@ describe("a governance save that changes something is kept, once (rule 194)", ()
   });
 });
 
-describe("a restore puts a whole snapshot back through today's checks (rule 195)", () => {
+describe("a restore puts a whole snapshot back through today's checks (rule 219)", () => {
   it("is the owner's alone: a member or an admin gets 403 before the id is even checked, and nothing changes", async () => {
     const u = await owner("rb-role");
     const mine = await put({ reviewer: false });
@@ -270,7 +270,7 @@ describe("a restore puts a whole snapshot back through today's checks (rule 195)
   });
 });
 
-describe("the Governance page shows the history from the server (rule 196)", () => {
+describe("the Governance page shows the history from the server (rule 220)", () => {
   async function render(lang: "ar" | "en") {
     const el = await Page({ params: Promise.resolve({ lang }) });
     return new Response(await renderToReadableStream(el)).text();
@@ -357,7 +357,7 @@ describe("the Governance page shows the history from the server (rule 196)", () 
   });
 });
 
-describe("the history goes with the account (rule 199)", () => {
+describe("the history goes with the account (rule 223)", () => {
   it("wipeAccount deletes govhist and govlock for every brand", async () => {
     const u = await newUser("hist-wipe");
     await saveUser({ ...u, plan: "agency" });

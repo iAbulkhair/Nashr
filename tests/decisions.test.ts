@@ -45,7 +45,7 @@ describe("decision records (rule 98)", () => {
 
     expect((await patch("a1", { status: "approved" })).status).toBe(200);
     expect(await listDecisions(u.email)).toEqual([
-      // Who decided comes from the session (rule 193): the owner here, with the account's email.
+      // Who decided comes from the session (rule 217): the owner here, with the account's email.
       { task: "a1", agent: "noor", type: "social", channel: "instagram", action: "approve", at: (await getTask(u.email, "a1"))!.decidedAt, title: "title a1", score: 88, by: { kind: "owner", email: u.email } },
     ]);
 
