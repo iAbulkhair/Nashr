@@ -1,16 +1,17 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { newUser } from "./helpers/session";
 import { db } from "@/lib/db";
 import { getUser, saveUser, type User } from "@/lib/auth";
 import { saveBrand, saveTask, type Brand } from "@/lib/brand";
 import { saveBrands, scopeFor } from "@/lib/brands";
 import { runDaily, saveSchedule } from "@/lib/schedule";
-import { followUps, listNotifs } from "@/lib/notifications";
-import { SEC_KEYS, newSecId, overdueFingerprint } from "@/lib/secretary";
-import { AUTO_CLOSE_RESULT, riyadhDay, type SecItem } from "@/lib/secretary-agenda";
+import { followUps, listNotifs, pushNotif, type Notif } from "@/lib/notifications";
+import { SEC_ALERTS_PER_DAY, SEC_KEYS, newSecId, overdueAlertFingerprint } from "@/lib/secretary";
+import { AUTO_CLOSE_RESULT, alertStep, type SecItem } from "@/lib/secretary-agenda";
 
-// Rules 166 and 167 in docs/system/tests.md: Reem's block in the 8 AM brief and email, and the overdue follow-up; and
-// the daily cron's part of rule 160: the purge (idle scopes included) and the automatic close.
+// Rules 166, 167 and 175 in docs/system/tests.md: Reem's block in the 8 AM brief and email, the overdue alerts, and the
+// atomic notification marker; and the daily cron's part of rule 160: the purge (idle scopes included) and the automatic
+// close.
 
 const sent: { to: string; subject: string; text: string }[] = [];
 vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (to: string, subject: string, text: string) => { sent.push({ to, subject, text }); return true; } }));
@@ -92,51 +93,115 @@ describe("the morning brief carries Reem's block (rule 166)", () => {
   });
 });
 
-describe("one overdue follow-up per brand per day (rule 167)", () => {
-  it("adds one in-app notification from Reem linking to My to-dos, and not again the same day", async () => {
-    const u = await workspace("fu");
-    await seed(u.email, { title: "Send the contract", dueAt: ago(6) });
-    await seed(u.email, { title: "Book the photographer", dueAt: ago(3) });
-    const first = await followUps(u, u.email);
-    const todo = first.filter((n) => n.kind === "todo");
-    expect(todo).toHaveLength(1);
-    expect(todo[0]).toMatchObject({ agent: "reem", href: `/${u.lang}/app/todo` });
-    expect(todo[0].title).toBe("مهمتان متأخرتان في قائمتك");
-    expect((await followUps(u, u.email)).filter((n) => n.kind === "todo")).toEqual([]);
-    expect((await listNotifs(u.email)).filter((n) => n.kind === "todo")).toHaveLength(1);
-    expect(await db.get(`notifseen:${u.email}:${overdueFingerprint(u.email, riyadhDay(Date.now()))}`)).toBeTruthy();
+describe("one alert per overdue item, spaced, then only the brief (rule 167)", () => {
+  // A fixed clock: Monday 5 October 2026, 12:00 in Riyadh (09:00 UTC). Only Date is faked; timers run.
+  const T0 = Date.parse("2026-10-05T09:00:00Z");
+  const at = (days: number, hours = 0) => new Date(T0 + days * 864e5 + hours * 3600e3).toISOString();
+  const todos = (ns: Notif[]) => ns.filter((n) => n.kind === "todo");
+  beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(T0); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("alerts on the day an item falls behind and 1, 3 and 7 days later, each step once, then stops", async () => {
+    const u = await workspace("fusteps");
+    const late = await seed(u.email, { title: "Send the contract", dueAt: at(0, -3) }); // 09:00 Riyadh today
+    const sent: Record<number, number> = {};
+    // Past the markers' five days, too: nothing comes back after the seventh day.
+    for (let day = 0; day <= 14; day++) {
+      vi.setSystemTime(T0 + day * 864e5);
+      const first = todos(await followUps(u, u.email));
+      const again = todos(await followUps(u, u.email));
+      expect(again, `day ${day}, second run`).toEqual([]);
+      sent[day] = first.length;
+      if (first.length) {
+        expect(first[0]).toMatchObject({ agent: "reem", href: `/${u.lang}/app/todo`, title: "متأخرة: «Send the contract»" });
+        expect(first[0].body.includes("آخر تنبيه"), `day ${day}`).toBe(day === 7);
+      }
+    }
+    expect(sent).toEqual({ 0: 1, 1: 1, 2: 0, 3: 1, 4: 0, 5: 0, 6: 0, 7: 1, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0 });
+    expect([...Array(10).keys()].map(alertStep)).toEqual([0, 1, 1, 3, 3, 3, 3, 7, null, null]);
+    vi.setSystemTime(T0 + 9 * 864e5);
+    // Silent from the eighth day, still in the morning brief.
+    expect((await runDaily(u))!.agenda).toMatchObject({ overdue: 1, top: ["Send the contract"] });
+    // Each marker lives five days: on day 9 only the seventh day's is left.
+    const marker = async (step: number) => db.get(`notifseen:${u.email}:${overdueAlertFingerprint(u.email, late.id, late.dueAt!, step)}`);
+    expect(await Promise.all([0, 1, 3, 7].map(marker))).toEqual([null, null, null, 1]);
   });
 
-  it("nudges again the next Riyadh day, and each brand of an account gets its own", async () => {
-    const u = await workspace("fudays");
+  it("a new due date is a new signature: a rescheduled item that falls behind again alerts afresh", async () => {
+    const u = await workspace("furesched");
+    const it = await seed(u.email, { title: "Pay the printer", dueAt: at(0, -3) });
+    expect(todos(await followUps(u, u.email))).toHaveLength(1);
+    expect(todos(await followUps(u, u.email))).toEqual([]);
+    // Rescheduled to an hour ago, still today: the same step, a different signature.
+    await db.set(SEC_KEYS.item(u.email, it.id), { ...it, dueAt: at(0, -1), rev: 2 });
+    expect(todos(await followUps(u, u.email))).toHaveLength(1);
+  });
+
+  it("sends at most five a brand a day, critical and earliest first, and each brand of an account counts its own", async () => {
+    const u = await workspace("fucap");
+    const titles = Array.from({ length: 7 }, (_, i) => `Late ${i}`);
+    const items = await Promise.all(titles.map((title, i) => seed(u.email, { title, dueAt: at(0, -1 - i), critical: i === 6 })));
+    const first = todos(await followUps(u, u.email));
+    expect(first).toHaveLength(SEC_ALERTS_PER_DAY);
+    // Critical first, then the earliest due: "Late 6" (critical), then 5, 4, 3, 2; "Late 1" and "Late 0" wait.
+    expect(first.map((n) => n.title)).toEqual(["Late 6", "Late 5", "Late 4", "Late 3", "Late 2"].map((t) => `متأخرة: «${t}»`));
+    expect(todos(await followUps(u, u.email))).toEqual([]);
+    expect(await db.get(SEC_KEYS.alerts(u.email, "2026-10-05"))).toBe(SEC_ALERTS_PER_DAY);
+    // The two held back were handed back, not burnt: their markers are free for another day of their window.
+    const marker = (it: SecItem) => db.get(`notifseen:${u.email}:${overdueAlertFingerprint(u.email, it.id, it.dueAt!, 0)}`);
+    expect(await Promise.all(items.map(marker))).toEqual([null, null, 1, 1, 1, 1, 1]);
+    // A second brand of the same account has its own allowance the same day.
     const second = scopeFor(u.email, "b2");
-    await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
-    await seed(u.email, { title: "Late on the first brand", dueAt: ago(6) });
-    await seed(second, { title: "Late on the second brand", dueAt: ago(6) });
-    expect((await followUps(u, u.email)).filter((n) => n.kind === "todo")).toHaveLength(1);
-    expect((await followUps(u, second)).filter((n) => n.kind === "todo")).toHaveLength(1);
-    const today = riyadhDay(Date.now());
-    for (const scope of [u.email, second]) expect(await db.get(`notifseen:${u.email}:${overdueFingerprint(scope, today)}`), scope).toBeTruthy();
-    vi.useFakeTimers({ toFake: ["Date"] });
-    try {
-      vi.setSystemTime(Date.now() + 864e5);
-      expect(riyadhDay(Date.now())).not.toBe(today);
-      expect((await followUps(u, u.email)).filter((n) => n.kind === "todo")).toHaveLength(1);
-      expect((await followUps(u, u.email)).filter((n) => n.kind === "todo")).toEqual([]);
-    } finally {
-      vi.useRealTimers();
-    }
-    expect((await listNotifs(u.email)).filter((n) => n.kind === "todo")).toHaveLength(3);
+    await saveBrands(u.email, [{ id: "default", name: "", createdAt: at(0), status: "active" }, { id: "b2", name: "Two", createdAt: at(0), status: "active" }]);
+    await seed(second, { title: "Late on the second brand", dueAt: at(0, -2) });
+    expect(todos(await followUps(u, second))).toHaveLength(1);
   });
 
   it("stays quiet with nothing overdue, and when follow-ups are off", async () => {
     const u = await workspace("fuquiet");
-    await seed(u.email, { title: "Next week", dueAt: ahead(5) });
-    expect((await followUps(u, u.email)).filter((n) => n.kind === "todo")).toEqual([]);
+    await seed(u.email, { title: "Next week", dueAt: at(5) });
+    expect(todos(await followUps(u, u.email))).toEqual([]);
     const off = await workspace("fuoff");
-    await seed(off.email, { title: "Late", dueAt: ago(5) });
+    await seed(off.email, { title: "Late", dueAt: at(0, -5) });
     await saveSchedule(off.email, { followUps: false });
     expect(await followUps(off, off.email)).toEqual([]);
+  });
+});
+
+describe("a notification's marker is claimed atomically (rule 175)", () => {
+  it("two overlapping pushes with one fingerprint notify once", async () => {
+    const u = await workspace("fuatomic");
+    const n = { kind: "info" as const, title: "Once", body: "b", href: "/ar/app" };
+    const both = await Promise.all([pushNotif(u.email, n, "same-fp"), pushNotif(u.email, n, "same-fp")]);
+    expect(both.filter(Boolean)).toHaveLength(1);
+    expect((await listNotifs(u.email)).filter((x) => x.title === "Once")).toHaveLength(1);
+    // Without a fingerprint nothing is deduplicated, as before; and a marker that expired can be claimed again.
+    await pushNotif(u.email, { ...n, title: "Twice" });
+    await pushNotif(u.email, { ...n, title: "Twice" });
+    expect((await listNotifs(u.email)).filter((x) => x.title === "Twice")).toHaveLength(2);
+    expect(await pushNotif(u.email, n, "short-fp", 1)).not.toBeNull();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now() + 864e5 + 1000);
+      expect(await pushNotif(u.email, n, "short-fp", 1)).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("two overlapping follow-up runs alert each overdue item once", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.parse("2026-10-05T09:00:00Z"));
+      const u = await workspace("fuoverlap");
+      await seed(u.email, { title: "One", dueAt: "2026-10-05T06:00:00.000Z" });
+      await seed(u.email, { title: "Two", dueAt: "2026-10-05T07:00:00.000Z" });
+      const [a, b] = await Promise.all([followUps(u, u.email), followUps(u, u.email)]);
+      expect([...a, ...b].filter((x) => x.kind === "todo").map((x) => x.title).sort()).toEqual(["متأخرة: «One»", "متأخرة: «Two»"]);
+      expect((await listNotifs(u.email)).filter((x) => x.kind === "todo")).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

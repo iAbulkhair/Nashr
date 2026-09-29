@@ -180,7 +180,7 @@ export const dict: Record<Lang, Dict> = {
         { name: "دانة", role: "التقارير والعروض", body: "تقرير أسبوعي صادق من بياناتك، مواصفة لوحة المؤشرات، وعرض مجلس إدارة يُحمَّل PowerPoint.", does: ["التقرير الأسبوعي", "لوحة المؤشرات", "عرض المستثمرين", "الملخص التنفيذي"] },
         { name: "ماجد", role: "المستشار التنفيذي", body: "فريقك التنفيذي في شخص واحد: مراجعة استراتيجية، أهداف الربع، مذكرات قرار، قرارات محفظة المنتجات، وأين يفيدك الذكاء الاصطناعي فعلاً.", does: ["مراجعة 90 يوماً", "OKRs", "مذكرة قرار", "محفظة المنتجات", "خطة تبنّي الذكاء الاصطناعي"] },
         { name: "ليان", role: "المنتج والاحتفاظ", body: "من فكرة إلى PRD وخارطة طريق، ومن عميل جديد إلى عميل يعود: التفعيل والاحتفاظ والمتابعة.", does: ["PRD", "خارطة طريق RICE", "تحليل آراء العملاء", "رحلة التفعيل"] },
-        { name: "ريم", role: "السكرتيرة", body: "تحفظ مهامك ومتابعاتك وما لك عند غيرك، بمواعيد بتوقيت الرياض تعيدها عليك. لا تغلق شيئاً إلا بتأكيدك.", does: ["قائمة المهام", "المتابعات", "ما لك عند غيرك", "المتأخر في ملخص الصباح"] },
+        { name: "ريم", role: "السكرتيرة", body: "تحفظ مهامك ومتابعاتك وما لك عند غيرك، بمواعيد بتوقيت بلدك تعيدها عليك. لا تغلق شيئاً إلا بتأكيدك.", does: ["قائمة المهام", "المتابعات", "ما لك عند غيرك", "المتأخر في ملخص الصباح"] },
       ],
     },
     industries: {
@@ -411,7 +411,7 @@ export const dict: Record<Lang, Dict> = {
         { name: "Dana", role: "Reports and decks", body: "An honest weekly report from your data, a dashboard spec, and a board deck that downloads as PowerPoint.", does: ["Weekly report", "Dashboard spec", "Investor deck", "Executive summary"] },
         { name: "Majed", role: "Executive advisor", body: "Your executive team in one person: strategy review, quarterly OKRs, decision memos, product portfolio calls, and where AI actually pays off.", does: ["90-day review", "OKRs", "Decision memo", "Product portfolio", "AI adoption plan"] },
         { name: "Layan", role: "Product and retention", body: "From idea to PRD and roadmap, and from new customer to returning customer: activation, retention, follow-ups.", does: ["PRD", "RICE roadmap", "Feedback synthesis", "Activation flow"] },
-        { name: "Reem", role: "Secretary", body: "Keeps your to-dos, follow-ups and what others owe you, with dates in Riyadh time that she reads back. Nothing closes without your confirmation.", does: ["To-do list", "Follow-ups", "What others owe you", "Overdue items in the morning brief"] },
+        { name: "Reem", role: "Secretary", body: "Keeps your to-dos, follow-ups and what others owe you, with dates in your local time that she reads back. Nothing closes without your confirmation.", does: ["To-do list", "Follow-ups", "What others owe you", "Overdue items in the morning brief"] },
       ],
     },
     industries: {

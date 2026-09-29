@@ -34,6 +34,11 @@ type Store = {
   expireNx(key: string, ttlSeconds: number): Promise<void>;
   /** SET NX with TTL. True when this caller won the lock. */
   lock(key: string, ttlSeconds: number): Promise<boolean>;
+  /**
+   * SET key value NX EX ttl: stores the value only when the key is absent, in one command. True when this caller wrote
+   * it, so of two overlapping writers exactly one wins (a "seen" marker claimed, not read then written).
+   */
+  setNx(key: string, value: unknown, ttlSeconds: number): Promise<boolean>;
   unlock(key: string): Promise<void>;
 };
 
@@ -118,6 +123,9 @@ function upstash(): Store | null {
     },
     async lock(key, ttl) {
       return (await r.set(key, "1", { nx: true, ex: ttl })) === "OK";
+    },
+    async setNx(key, value, ttl) {
+      return (await r.set(key, value, { nx: true, ex: ttl })) === "OK";
     },
     async unlock(key) {
       await r.del(key);
@@ -238,6 +246,14 @@ function memory(): Store {
       const until = m.kv.get(key) as number | undefined;
       if (until && until > Date.now()) return false;
       m.kv.set(key, Date.now() + ttl * 1000);
+      return true;
+    },
+    async setNx(key, value, ttl) {
+      // Check and write with no await between them: one caller wins, as with Redis.
+      live(key);
+      if (m.kv.has(key)) return false;
+      m.kv.set(key, copy(value));
+      exp.set(key, Date.now() + ttl * 1000);
       return true;
     },
     async unlock(key) {

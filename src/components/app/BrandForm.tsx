@@ -5,6 +5,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { Brand } from "@/lib/brand";
 import type { Lang } from "@/lib/i18n";
 import { bannedTerms } from "@/lib/brand-rules";
+import { ZONES, ZONE_IDS, zoneOf, zoneUtcLabel } from "@/lib/zones";
 import { Icon } from "./Icons";
 
 const GUARD = {
@@ -57,6 +58,11 @@ export default function BrandForm({ t, lang, initial }: { t: AppDict; lang: Lang
           <select name="dialect" defaultValue={initial?.dialect ?? "saudi"} className={input} aria-label={o.dialect}>
             {Object.entries(o.dialects).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
+          <label className="text-xs text-ink/70 sm:col-span-2">{o.timeZone}
+            <select name="timeZone" defaultValue={zoneOf(initial)} className={`${input} mt-1`} dir="auto">
+              {ZONE_IDS.map((z) => <option key={z} value={z}>{`${ZONES[z].city[lang]} (${zoneUtcLabel(z)})`}</option>)}
+            </select>
+          </label>
           <fieldset className="flex items-center gap-4 text-sm">
             <legend className="sr-only">{o.languages}</legend>
             <span className="text-ink/60">{o.languages}:</span>

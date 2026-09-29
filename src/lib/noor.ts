@@ -219,7 +219,7 @@ const REVIEW_FOCUS: Record<Agent["id"], string> = {
   layan: "Product fit: requirements, metrics and RICE inputs use placeholders where data is missing; customer quotes, counts and themes come only from the owner's notes or files, never invented; scope in and out is explicit; onboarding and retention steps name their trigger and timing; no dark patterns or fake scarcity.",
   // Reem owns no deliverable type (agentForTask never returns her), so this line is never sent today; it is here so the
   // map stays complete and a future Reem deliverable is reviewed as hers.
-  reem: "Secretary fit: every date, time, name and amount is one the owner gave, with dates in Riyadh time; nothing is marked done or promised on the owner's behalf; quoted customer or supplier text is kept as quoted data.",
+  reem: "Secretary fit: every date, time, name and amount is one the owner gave, with dates in the brand's local time; nothing is marked done or promised on the owner's behalf; quoted customer or supplier text is kept as quoted data.",
 };
 
 /** The reviewer's system prompt for the agent who owns `type`. Stable per agent, so each agent's copy is cached. */

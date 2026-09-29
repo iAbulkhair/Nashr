@@ -6,8 +6,8 @@ import { listBrands, scopeFor } from "./brands";
 import { getSchedule } from "./schedule";
 import { agentById, type AgentId } from "./agents";
 import type { AgentCharge } from "./credits";
-import { agendaFor, overdueFingerprint } from "./secretary";
-import { arCount, riyadhDay } from "./secretary-agenda";
+import { SEC_ALERTS_PER_DAY, SEC_KEYS, agendaFor, overdueAlertFingerprint } from "./secretary";
+import { overdueAlerts, partyName, zoneDay } from "./secretary-agenda";
 
 /**
  * In-app follow-ups from the team. Stored per account (not per brand) as one
@@ -35,17 +35,24 @@ export const seenKey = (email: string, fingerprint: string) => `notifseen:${emai
 /** The 80% warning's fingerprint: one per brand scope, agent and month. */
 export const agentCapFingerprint = (scope: string, agent: AgentId, month: string) => `agentcap80:${scope}:${agent}:${month}`;
 
-/** Push one follow-up. `fingerprint` + `ttlDays` suppress repeats of the same situation. */
-export async function pushNotif(email: string, n: Omit<Notif, "id" | "at">, fingerprint?: string, ttlDays = 3): Promise<Notif | null> {
-  if (fingerprint) {
-    const k = seenKey(email, fingerprint);
-    if (await db.get(k)) return null;
-    await db.set(k, 1, ttlDays * 86400);
-  }
-  const item: Notif = { id: randomBytes(5).toString("hex"), at: new Date().toISOString(), ...n };
+type Push = { n: Omit<Notif, "id" | "at">; fingerprint?: string; ttlDays?: number };
+/**
+ * Claim each fingerprint with SET NX and its TTL, all in one round; only what this caller claimed is pushed, in one
+ * write of the bell. A marker read then written let two overlapping runs (a chain hop and a catch-up) both notify.
+ */
+async function pushMany(email: string, entries: Push[]): Promise<Notif[]> {
+  const won = await Promise.all(entries.map((e) => (e.fingerprint ? db.setNx(seenKey(email, e.fingerprint), 1, (e.ttlDays ?? 3) * 86400) : true)));
+  const at = new Date().toISOString();
+  const items: Notif[] = entries.filter((_, i) => won[i]).map((e) => ({ id: randomBytes(5).toString("hex"), at, ...e.n }));
+  if (!items.length) return [];
   const all = await listNotifs(email);
-  await db.set(KEY(email), [item, ...all].slice(0, MAX));
-  return item;
+  await db.set(KEY(email), [...items, ...all].slice(0, MAX));
+  return items;
+}
+
+/** Push one follow-up. `fingerprint` + `ttlDays` suppress repeats of the same situation, claimed atomically. */
+export async function pushNotif(email: string, n: Omit<Notif, "id" | "at">, fingerprint?: string, ttlDays = 3): Promise<Notif | null> {
+  return (await pushMany(email, [{ n, fingerprint, ttlDays }]))[0] ?? null;
 }
 
 const ORIGIN = () => process.env.APP_ORIGIN ?? "https://nashr-tau.vercel.app";
@@ -87,14 +94,56 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   if (weak.length) {
     await add({ kind: "quality", agent: "dana", href: app, title: ar ? `${weak.length} عنصر بدرجة جودة أقل من 70` : `${weak.length} item(s) scored below 70`, body: ar ? `${weak[0].notes ?? ""} أعد التوليد بملاحظة أوضح أو عدّل قبل الاعتماد.` : `${weak[0].notes ?? ""} Regenerate with a clearer note or edit before approving.` }, `quality:${weak.map((t) => t.id).sort().join(",").slice(0, 60)}`, 7);
   }
-  // 6. Overdue to-dos on Reem's list: one nudge per brand per Riyadh day, whatever the number of items.
-  const agenda = await agendaFor(scope, Date.now(), { actor: "cron", via: "cron" });
-  if (agenda.counts.overdue > 0) {
-    const n = agenda.counts.overdue;
-    const first = agenda.buckets.overdue.slice(0, 2).map((e) => `«${e.item.title.slice(0, 60)}»`).join(ar ? "، " : ", ");
-    await add({ kind: "todo", agent: "reem", href: `${app}/todo`, title: ar ? arCount(n, { one: "مهمة متأخرة في قائمتك", two: "مهمتان متأخرتان في قائمتك", few: "مهام متأخرة في قائمتك", many: "مهمة متأخرة في قائمتك" }) : `${n} overdue to-do${n === 1 ? "" : "s"} on your list`, body: ar ? `ابدأ بـ ${first}. أنجزها أو أجّلها أو غيّر موعدها.` : `Start with ${first}. Do it, snooze it or reschedule it.` }, overdueFingerprint(scope, riyadhDay(Date.now())), 2);
-  }
+  // 6. Overdue to-dos on Reem's list.
+  out.push(...(await overdueTodoAlerts(user, scope)));
   return out;
+}
+
+/** How long an overdue alert's marker lives: past the longest window between two steps (days 3 to 6). */
+const ALERT_TTL_DAYS = 5;
+
+/**
+ * One alert per overdue item, spaced, then silence: on the day it became overdue and the 1st, 3rd and 7th local day
+ * after (`overdueAlerts`), each step once, keyed by (scope, item, due time, step), so a new due date starts afresh and
+ * the same text never repeats every day. After the 7th day the item is only in the morning brief. At most
+ * `SEC_ALERTS_PER_DAY` a brand a local day, critical and earliest first. The markers are claimed with SET NX before
+ * anything is pushed; a claim beyond the day's allowance is handed back, so that item can still go on another day of
+ * its window. Reads and writes are batched: no store call per item in turn.
+ */
+async function overdueTodoAlerts(user: User, scope: string): Promise<Notif[]> {
+  const now = Date.now();
+  const agenda = await agendaFor(scope, now, { actor: "cron", via: "cron" });
+  const due = overdueAlerts(agenda.buckets.overdue, now, agenda.zone);
+  if (!due.length) return [];
+  const ar = user.lang === "ar";
+  const lang = user.lang;
+  const fps = due.map((a) => overdueAlertFingerprint(scope, a.entry.item.id, a.entry.item.dueAt!, a.step));
+  const won = await Promise.all(fps.map((fp) => db.setNx(seenKey(user.email, fp), 1, ALERT_TTL_DAYS * 86400)));
+  const claimed = due.filter((_, i) => won[i]);
+  if (!claimed.length) return [];
+  const counter = SEC_KEYS.alerts(scope, zoneDay(now, agenda.zone));
+  const total = await db.incrby(counter, claimed.length);
+  const allowed = Math.max(0, SEC_ALERTS_PER_DAY - (total - claimed.length));
+  const send = claimed.slice(0, allowed), back = claimed.slice(allowed);
+  await Promise.all([
+    db.expireNx(counter, 2 * 86400),
+    ...(back.length ? [db.incrby(counter, -back.length), ...back.map((a) => db.del(seenKey(user.email, fps[due.indexOf(a)])))] : []),
+  ]);
+  if (!send.length) return [];
+  // Already claimed above: pushed without a fingerprint, in one write of the bell.
+  return pushMany(user.email, send.map(({ entry, step }): Push => {
+    const t = `«${entry.item.title.slice(0, 80)}»`;
+    const chase = entry.next === "chase";
+    const who = partyName(entry.item.owedBy, lang);
+    const last = step === 7 ? (ar ? " هذا آخر تنبيه لها؛ بعده تظهر في ملخص الصباح فقط." : " This is its last alert; after today it is only in the morning brief.") : "";
+    return {
+      n: {
+        kind: "todo", agent: "reem", href: `/${lang}/app/todo`,
+        title: ar ? `متأخرة: ${t}` : `Overdue: ${t}`,
+        body: (ar ? (chase ? `تابِع مع ${who}، أو غيّر الموعد.` : "أنجزها أو أجّلها أو غيّر موعدها.") : chase ? `Follow up with ${who}, or change the date.` : "Do it, snooze it or reschedule it.") + last,
+      },
+    };
+  }));
 }
 
 export function notifEmailText(user: User, items: Notif[]) {

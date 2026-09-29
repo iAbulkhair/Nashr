@@ -17,14 +17,18 @@ import { AGENT_PAGES } from "@/lib/site";
 import {
   SEC_CREATE_PER_DAY, SEC_KEYS, SEC_OPEN_MAX, SEC_PURGE_BATCH, SEC_READS_PER_HOUR, SEC_WRITES_PER_HOUR, agendaFor, changeItem, getItem, mutateItem, purgeExpired,
 } from "@/lib/secretary";
-import { AUTO_CLOSE_RESULT, approvalsLine, arCount, computeAgenda, formatWhen, noteText, parseWhen, riyadhDay, type SecItem } from "@/lib/secretary-agenda";
+import {
+  AUTO_CLOSE_RESULT, addWorkingDays, approvalsLine, arCount, chaseAt, computeAgenda, formatWhen, nowLine, noteText, parseWhen, riyadhDay, zoneDay, type SecItem,
+} from "@/lib/secretary-agenda";
+import { zoneOf } from "@/lib/zones";
+import * as brandRoute from "@/app/api/brand/route";
 import { HELP } from "@/lib/help";
 import * as listRoute from "@/app/api/secretary/route";
 import * as itemRoute from "@/app/api/secretary/[id]/route";
 import * as mcpRoute from "@/app/api/mcp/route";
 
-// Rules 156-174 in docs/system/tests.md: Reem, the secretary (phase 1). Rules 166, 167 and the cron part of 160 are in
-// secretary-brief.test.ts, 171 and the governance page of 169 in secretary-page.test.ts.
+// Rules 156-178 in docs/system/tests.md: Reem, the secretary (phase 1). Rules 166, 167, 175 and the cron part of 160 are
+// in secretary-brief.test.ts; 171, 178, the page's part of 177 and the governance page of 169 in secretary-page.test.ts.
 
 const BRAND: Brand = { name: "محمصة ريف", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "دافئ", products: "قهوة", audience: "محبو القهوة", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-09-29" };
 const create = (body: unknown) => listRoute.POST(json("/api/secretary", "POST", body));
@@ -730,5 +734,125 @@ describe("Arabic counts agree with the counted noun (rule 174)", () => {
     expect(approvalsLine(12, "ar")).toBe("12 عنصرًا بانتظار موافقتك");
     expect(approvalsLine(0, "ar")).toBe("لا شيء بانتظار موافقتك");
     expect(approvalsLine(0, "en")).toBe("nothing waiting for your approval");
+  });
+});
+
+describe("the chase clock and cold items (rule 176)", () => {
+  // Thursday 1 October 2026, 10:00 in Riyadh (07:00 UTC).
+  const THU = Date.parse("2026-10-01T07:00:00Z");
+  it("counts working days in the brand's zone, skipping its weekend", () => {
+    // Riyadh: Friday and Saturday off, so two working days after Thursday is Monday, same time.
+    expect(new Date(addWorkingDays(THU, 2, "Asia/Riyadh")).toISOString()).toBe("2026-10-05T07:00:00.000Z");
+    // Dubai: Saturday and Sunday off, so two working days after Thursday is Monday too; after Friday it is Tuesday.
+    expect(new Date(addWorkingDays(THU, 2, "Asia/Dubai")).toISOString()).toBe("2026-10-05T07:00:00.000Z");
+    const FRI = Date.parse("2026-10-02T06:00:00Z"); // 10:00 in Dubai
+    expect(new Date(addWorkingDays(FRI, 2, "Asia/Dubai")).toISOString()).toBe("2026-10-06T06:00:00.000Z");
+    expect(new Date(addWorkingDays(FRI, 2, "Asia/Riyadh")).toISOString()).toBe("2026-10-05T06:00:00.000Z");
+  });
+
+  it("turns an undated debt into 'time to follow up' once it is expected, and a follow-up restarts the clock", () => {
+    const debt = fixture({ id: "s00000000000000c1", direction: "they_owe", owedBy: "أحمد", owedTo: "owner", createdAt: new Date(THU).toISOString(), updatedAt: new Date(THU).toISOString() });
+    expect(chaseAt(debt, "Asia/Riyadh")).toBe(Date.parse("2026-10-05T07:00:00Z"));
+    const bucket = (it: SecItem, at: string) => { const a = computeAgenda([it], Date.parse(at)); return Object.entries(a.buckets).find(([, v]) => v.length)?.[0]; };
+    expect(bucket(debt, "2026-10-04T12:00:00Z")).toBe("waiting");
+    expect(bucket(debt, "2026-10-05T07:00:00Z")).toBe("chase");
+    expect(computeAgenda([debt], Date.parse("2026-10-05T08:00:00Z")).buckets.chase[0]).toMatchObject({ reason: "chase_due", next: "chase", actionOwner: "owner" });
+    // Followed up Monday 11:00: waiting again until Wednesday 11:00.
+    const chased = { ...debt, lastChasedAt: "2026-10-05T08:00:00.000Z" };
+    expect(bucket(chased, "2026-10-06T12:00:00Z")).toBe("waiting");
+    expect(bucket(chased, "2026-10-07T08:00:00Z")).toBe("chase");
+    // An owner-set expectBy wins over the default.
+    expect(bucket({ ...debt, expectBy: "2026-10-10T07:00:00.000Z" }, "2026-10-06T12:00:00Z")).toBe("waiting");
+    // Dated and past due: overdue, a chase; right after a follow-up, waiting (reason "chased") until the clock passes.
+    const late = { ...debt, dueAt: "2026-10-02T07:00:00.000Z" };
+    expect(computeAgenda([late], Date.parse("2026-10-04T07:00:00Z")).buckets.overdue[0]).toMatchObject({ next: "chase" });
+    expect(computeAgenda([{ ...late, lastChasedAt: "2026-10-04T06:00:00.000Z" }], Date.parse("2026-10-04T07:00:00Z")).buckets.waiting[0]).toMatchObject({ reason: "chased", next: "wait" });
+  });
+
+  it("puts an undated to-do of the owner's own that nobody touched for 14 days under 'cold'", () => {
+    const now = Date.parse("2026-10-20T09:00:00Z");
+    const stale = fixture({ id: "s00000000000000c2", updatedAt: new Date(now - 14 * 864e5).toISOString() });
+    const fresh = fixture({ id: "s00000000000000c3", updatedAt: new Date(now - 13 * 864e5).toISOString() });
+    const a = computeAgenda([stale, fresh], now);
+    expect(a.buckets.cold.map((e) => e.item.id)).toEqual([stale.id]);
+    expect(a.buckets.cold[0]).toMatchObject({ reason: "cold", next: "decide" });
+    expect(a.buckets.undated.map((e) => e.item.id)).toEqual([fresh.id]);
+  });
+
+  it("sets the expected date at creation, records a follow-up without closing, and refuses one on the owner's own item", async () => {
+    const u = await owner("secchase");
+    const debt = await add({ title: "Samples from the supplier", direction: "they_owe", owedBy: "المورّد" });
+    expect(debt.expectBy).toBe(new Date(addWorkingDays(Date.parse(debt.createdAt), 2, "Asia/Riyadh")).toISOString());
+    const r = await patch(debt.id, { action: "chased" });
+    expect(r.status).toBe(200);
+    const after = await getItem(u.email, debt.id);
+    expect(after).toMatchObject({ completedAt: null, rev: 2 });
+    expect(after?.lastChasedAt).toBeTruthy();
+    expect(after?.notes.at(-1)).toMatchObject({ kind: "chased", by: "owner" });
+    expect(noteText(after!.notes.at(-1)!, "ar")).toBe("تمت المتابعة");
+    const log = (await db.lrange(SEC_KEYS.audit(u.email), 0, -1)).map((x) => JSON.parse(x));
+    expect(log[0]).toMatchObject({ action: "chased", actor: "owner" });
+    const mine = await add({ title: "My own task" });
+    const refused = await patch(mine.id, { action: "chased" });
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).error).toBe("not_theirs");
+    // Chat records the owner's follow-up the same way; it never closes.
+    const out = await runTool(u, "todo_update", { id: debt.id, chased: true }, [], [], undefined, { lang: "en", agent: "reem" });
+    expect(out).toMatch(/the item stays open/);
+    expect(await getItem(u.email, debt.id)).toMatchObject({ completedAt: null, rev: 3 });
+    // A debt created in chat with an owner's date keeps it.
+    await runTool(u, "todo_create", { title: "Invoice from Ahmad", direction: "they_owe", owed_by: "Ahmad", expect_by: inDays(5, 12) }, [], [], undefined, { lang: "en" });
+    const agenda = await runTool(u, "agenda_get", {}, []);
+    expect(agenda).toContain("Invoice from Ahmad");
+  });
+});
+
+describe("each brand keeps its list in its own Gulf time zone (rule 177)", () => {
+  it("reads the zone from the brand, else its city, else its dialect, else Riyadh; only allow-listed zones", () => {
+    expect(zoneOf(null)).toBe("Asia/Riyadh");
+    expect(zoneOf({ timeZone: "Asia/Muscat" })).toBe("Asia/Muscat");
+    expect(zoneOf({ timeZone: "Europe/London", city: "Riyadh" })).toBe("Asia/Riyadh");
+    expect(zoneOf({ city: "دبي" })).toBe("Asia/Dubai");
+    expect(zoneOf({ city: "Abu Dhabi" })).toBe("Asia/Dubai");
+    expect(zoneOf({ city: "الدوحة" })).toBe("Asia/Qatar");
+    // «عمان» alone is also Amman: decides nothing. Romania is not Oman.
+    expect(zoneOf({ city: "عمان" })).toBe("Asia/Riyadh");
+    expect(zoneOf({ city: "Romania" })).toBe("Asia/Riyadh");
+    expect(zoneOf({ city: "Dubai and Riyadh" })).toBe("Asia/Riyadh");
+    expect(zoneOf({ dialect: "emirati" })).toBe("Asia/Dubai");
+    expect(zoneOf({ dialect: "kuwaiti" })).toBe("Asia/Kuwait");
+    expect(zoneOf({ timeZone: "__proto__" })).toBe("Asia/Riyadh");
+  });
+
+  it("puts day boundaries, 'today' and 'overdue' at local midnight: UTC+3 and UTC+4 differ at 20:30 UTC", () => {
+    const now = Date.parse("2026-10-01T20:30:00Z"); // 23:30 in Riyadh, 00:30 on 2 October in Dubai
+    const it = fixture({ id: "s00000000000000d1", dueAt: "2026-10-01T21:00:00Z" }); // 00:00 Riyadh, 01:00 Dubai, on 2 October
+    const riyadh = computeAgenda([it], now, { zone: "Asia/Riyadh" }), dubai = computeAgenda([it], now, { zone: "Asia/Dubai" });
+    expect([riyadh.today, dubai.today]).toEqual(["2026-10-01", "2026-10-02"]);
+    expect(riyadh.buckets.upcoming).toHaveLength(1);
+    expect(dubai.buckets.today).toHaveLength(1);
+    // An all-day item is due until the end of its local day.
+    expect(parseWhen("2026-10-02", now, "Asia/Dubai")).toEqual({ ok: true, at: "2026-10-02T19:59:00.000Z", allDay: true });
+    expect(parseWhen("2026-10-02T10:00", now, "Asia/Muscat")).toEqual({ ok: true, at: "2026-10-02T06:00:00.000Z", allDay: false });
+    expect(formatWhen("2026-10-02T06:00:00.000Z", false, "en", now, "Asia/Dubai")).toBe("Friday, October 2, 10:00 AM");
+    expect(zoneDay(Date.parse("2026-10-01T20:00:00Z"), "Asia/Dubai")).toBe("2026-10-02");
+    expect(nowLine(now, "Asia/Dubai")).toMatch(/^NOW \(Dubai, UTC\+4\): .*today is 2026-10-02\. The work week starts on Monday\.$/);
+    expect(nowLine(now, "Asia/Riyadh")).toMatch(/today is 2026-10-01\. The work week starts on Sunday\.$/);
+  });
+
+  it("stores only an allow-listed zone from the brand form, and the tools read dates back in it", async () => {
+    const u = await owner("seczone");
+    const put = (timeZone: string) => brandRoute.PUT(json("/api/brand", "PUT", { ...BRAND, timeZone }));
+    expect((await (await put("Europe/London")).json()).brand.timeZone).toBeUndefined();
+    expect((await (await put("Asia/Dubai")).json()).brand.timeZone).toBe("Asia/Dubai");
+    const due = inDays(3, 10);
+    const out = await runTool(u, "todo_create", { title: "Call the Dubai supplier", due }, [], [], undefined, { lang: "en" });
+    expect(out).toContain("10:00 AM (Dubai time)");
+    const id = /\[id=(s[a-f0-9]{16})\]/.exec(out)![1];
+    // 10:00 in Dubai is 06:00 UTC, not 07:00.
+    expect((await getItem(u.email, id))?.dueAt).toBe(`${due.slice(0, 10)}T06:00:00.000Z`);
+    expect(await runTool(u, "agenda_get", {}, [])).toMatch(/^Agenda now \(Dubai time, UTC\+4/);
+    const text = system({ ...BRAND, timeZone: "Asia/Dubai" }, { email: u.email, credits: 5, plan: "starter", trialEnds: "2026-10-01" } as User, [], "", [], [], "reem")[2].text;
+    expect(text).toMatch(/^NOW \(Dubai, UTC\+4\)/);
   });
 });

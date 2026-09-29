@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { renderToReadableStream } from "react-dom/server.edge";
 import { json, newUser, signIn } from "./helpers/session";
-import { saveBrand, saveTask, type Brand } from "@/lib/brand";
+import { saveBrand, saveTask, updateTask, type Brand } from "@/lib/brand";
 import { appDict } from "@/lib/app-i18n";
 import { DEFAULT_GOV } from "@/lib/governance";
 import { createElement } from "react";
@@ -12,7 +12,8 @@ import * as listRoute from "@/app/api/secretary/route";
 import * as itemRoute from "@/app/api/secretary/[id]/route";
 import GovernancePanel from "@/components/app/GovernancePanel";
 
-// Rule 171 in docs/system/tests.md: the My to-dos page renders complete on the server; and the governance page of rule 169.
+// Rules 171, 177 (the page's part) and 178 in docs/system/tests.md: the My to-dos page renders complete on the server,
+// in the brand's zone, with an agent's claim next to the fact code checked; and the governance page of rule 169.
 
 // The app router only exists inside Next: the page's client component gets a router whose refresh does nothing.
 vi.mock("next/navigation", async (orig) => ({ ...(await orig<typeof import("next/navigation")>()), useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
@@ -32,6 +33,7 @@ describe("the My to-dos page renders complete on the server (rule 171)", () => {
     const day = riyadhDay(Date.now() + 3 * 864e5);
     const soon = await add({ title: "أرسل عرض السعر", dueAt: `${day}T10:00`, owedTo: "مؤسسة النخبة" });
     await add({ title: "فاتورة من أحمد", direction: "they_owe", owedBy: "أحمد", dueAt: `${day}T12:00` });
+    await add({ title: "عينات من المورّد", direction: "they_owe", owedBy: "المورّد" }); // undated: expected in two working days
     const proposed = await add({ title: "ادفع للمطبعة" });
     await runTool(u, "todo_propose_done", { id: proposed.id, evidence: "حوّلت المبلغ اليوم" }, []);
     const noted = await add({ title: "احجز القاعة" });
@@ -49,9 +51,14 @@ describe("the My to-dos page renders complete on the server (rule 171)", () => {
     expect(html).toContain("لـمؤسسة النخبة");
     expect(html).toContain("على أحمد");
     expect(html).toContain("حوّلت المبلغ اليوم");
-    // "Proposed as done by" in a form that does not depend on who proposed it.
-    expect(html).toContain("اقتراح إغلاق من");
-    expect(html).not.toContain("تقول إنها تمت");
+    // The agent's words are its claim, attributed with the right verb, next to what the app checked (here: nothing).
+    expect(html).toContain("ريم تقول: «حوّلت المبلغ اليوم»");
+    expect(html).toContain("ادعاء لم يتحقق منه التطبيق");
+    expect(html).toContain("تحقّق التطبيق:");
+    expect(html).toContain("لا شيء في التطبيق يؤكد ذلك");
+    // Someone else owes it: "Followed up" and when it is expected.
+    expect(html).toContain("تابعت");
+    expect(html).toContain("متوقع حتى");
     // Notes are shown to the owner: an agent's, the owner's own private one, and the "Not yet" note in Arabic.
     expect(html).toContain("المورّد قال الأحد");
     expect(html).toContain("سقف الميزانية 5 آلاف");
@@ -62,8 +69,53 @@ describe("the My to-dos page renders complete on the server (rule 171)", () => {
     const en = await render("en");
     expect(en).toContain("My to-dos");
     expect(en).toContain("Not done yet (proposed: أرسلته أمس)");
-    expect(en).toContain("Proposed as done by");
+    expect(en).toContain("Reem says: «حوّلت المبلغ اليوم»");
+    expect(en).toContain("Nothing in the app confirms this");
     expect(en).toContain(formatWhen(soon.dueAt, false, "en", Date.now()));
+  });
+
+  it("shows an agent's 'done' as a claim and, next to it, the fact code read from the linked inbox item (rule 178)", async () => {
+    const u = await newUser("todofact");
+    await saveBrand(u.email, BRAND);
+    await signIn(u.email);
+    const post = (id: string, title: string) => ({ id, type: "social" as const, channel: "instagram", title, body: "b", status: "pending" as const, createdAt: new Date().toISOString(), lang: "ar" as const });
+    await saveTask(u.email, post("dddddddddddd0101", "منشور اليوم الوطني"), true);
+    await saveTask(u.email, post("dddddddddddd0102", "منشور العرض"), true);
+    const waits = await add({ title: "انتظر منشور اليوم الوطني", taskId: "dddddddddddd0101" });
+    // Sami claims the linked post was approved and published; the stored task says it is still pending.
+    await runTool(u, "todo_propose_done", { id: waits.id, evidence: "The post was approved and published on Instagram" }, [], [], undefined, { lang: "en", agent: "sami" });
+    const closes = await add({ title: "انتظر منشور العرض", taskId: "dddddddddddd0102" });
+    await updateTask(u.email, "dddddddddddd0102", (t) => ({ ...t, status: "approved", decidedAt: "2026-10-01T07:00:00.000Z", published: [{ provider: "x", url: "https://x.example/1", status: "published", at: "2026-10-01T08:00:00.000Z" }] }));
+    const html = await render("ar");
+    expect(html).toContain("سامي يقول: «The post was approved and published on Instagram»");
+    expect(html).toContain("العنصر المرتبط «منشور اليوم الوطني» ما زال بانتظار موافقتك.");
+    // The claim's words never become the checked fact.
+    expect(html).not.toMatch(/تحقّق التطبيق:<\/span> <!-- -->[^<]*(approved|published)/);
+    // The item closed by code shows, under "done", when the owner approved it and where it was published.
+    expect(html).toContain("العنصر المرتبط «منشور العرض» اعتمدته أنت");
+    expect(html).toContain("ونُشر على x");
+    expect(closes.id).toBeTruthy();
+    const en = await render("en");
+    expect(en).toContain("Sami says: «The post was approved and published on Instagram»");
+    expect(en).toContain("The linked inbox item «منشور اليوم الوطني» is still waiting for your approval.");
+    expect(en).toContain("You approved the linked inbox item «منشور العرض»");
+    const agenda = await runTool(u, "agenda_get", {}, []);
+    expect(agenda).toContain("claimed done by Sami (a claim, not checked)");
+    expect(agenda).toContain("checked by the app: The linked inbox item «منشور اليوم الوطني» is still waiting for your approval.");
+  });
+
+  it("writes dates and the zone name in the brand's own time zone (rule 177)", async () => {
+    const u = await newUser("todozone");
+    await saveBrand(u.email, { ...BRAND, city: "دبي", timeZone: "Asia/Dubai" });
+    await signIn(u.email);
+    const day = riyadhDay(Date.now() + 3 * 864e5);
+    const it = await add({ title: "اجتماع دبي", dueAt: `${day}T10:00` });
+    // 10:00 in Dubai is 06:00 UTC.
+    expect(it.dueAt).toBe(`${day}T06:00:00.000Z`);
+    const html = await render("ar");
+    expect(html).toContain("بتوقيت دبي");
+    expect(html).toContain(formatWhen(it.dueAt, false, "ar", Date.now(), "Asia/Dubai"));
+    expect(html).toContain("10:00 ص");
   });
 
   it("uses logical properties only, so it reads right to left", () => {

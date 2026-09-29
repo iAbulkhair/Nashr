@@ -50,10 +50,12 @@ describe("the browser bundle stays free of server-only code", () => {
     expect(imports, "src/lib/media-catalog.ts must stay import-free or the leak comes back through it").toEqual([]);
   });
 
-  it("the agenda module the to-do page reads imports only the import-free date helper and the agent registry", () => {
+  it("the agenda module the to-do page reads imports only the import-free date and zone helpers and the agent registry", () => {
     const src = readFileSync("src/lib/secretary-agenda.ts", "utf8");
     const imports = src.split("\n").filter((l) => /^\s*import\s/.test(l)).map((l) => /from\s+["']([^"']+)["']/.exec(l)?.[1]);
-    expect(imports, "src/lib/secretary-agenda.ts is shared with the browser; storage belongs in secretary.ts").toEqual(["./dates", "./agents"]);
+    expect(imports, "src/lib/secretary-agenda.ts is shared with the browser; storage belongs in secretary.ts").toEqual(["./dates", "./agents", "./zones"]);
+    // The brand form (a client component) reads the zone list too.
+    expect(readFileSync("src/lib/zones.ts", "utf8").split("\n").filter((l) => /^\s*import\s/.test(l)), "src/lib/zones.ts must stay import-free").toEqual([]);
     const agents = readFileSync("src/lib/agents.ts", "utf8").split("\n").filter((l) => /^\s*import\s/.test(l));
     expect(agents.every((l) => /^\s*import\s+type\s/.test(l)), "agents.ts may only import types").toBe(true);
   });

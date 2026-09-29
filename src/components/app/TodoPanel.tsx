@@ -5,11 +5,16 @@ import { useEffect, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { AgendaBucket } from "@/lib/secretary-agenda";
 
-/** One item as the page shows it: every date already formatted on the server, in Riyadh time. */
+/**
+ * One item as the page shows it: every date already formatted on the server, in the brand's zone. `proposed.claim` is
+ * an agent's words, attributed to it; `fact` is what code read about the linked inbox item ("" when there is none).
+ */
 export type TodoRow = {
   id: string; rev: number; title: string; description: string;
   due: string | null; dueLocal: string | null; who: string; next: string; badges: string[];
-  proposed: { by: string; evidence: string } | null; result: string | null; notes: string[];
+  /** Someone else owes it: the row offers "Followed up". `chase`: when it is expected, and the last follow-up. */
+  theirs: boolean; chase: string;
+  proposed: { claim: string } | null; fact: string; result: string | null; notes: string[];
 };
 export type TodoSection = { bucket: AgendaBucket; title: string; rows: TodoRow[] };
 type Panel = { id: string; kind: "done" | "snooze" | "reschedule" } | null;
@@ -19,8 +24,8 @@ const UNDO_MS = 8000;
  * My to-dos. The list is rendered on the server; every action here is one PATCH or POST to /api/secretary and then a
  * refresh of the server render, so what the owner sees is always what is stored. Done needs a written result.
  */
-export default function TodoPanel({ t, sections, approvals, snoozed, allClear, empty, done, deleted, tonight }: {
-  t: AppDict; sections: TodoSection[]; approvals: { line: string; href: string } | null; snoozed: number; allClear: boolean; empty: boolean;
+export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, allClear, empty, done, deleted, tonight }: {
+  t: AppDict; zoneLabel: string; sections: TodoSection[]; approvals: { line: string; href: string } | null; snoozed: number; allClear: boolean; empty: boolean;
   done: TodoRow[]; deleted: TodoRow[]; tonight: boolean;
 }) {
   const T = t.todo;
@@ -87,7 +92,14 @@ export default function TodoPanel({ t, sections, approvals, snoozed, allClear, e
             {row.badges.map((b) => <span key={b} className={`badge ${b === T.badges.critical ? "badge-danger" : "badge-primary"}`}>{b}</span>)}
           </p>
           {row.description && <p className="mt-1 whitespace-pre-line text-sm text-ink/70" dir="auto">{row.description}</p>}
-          {row.proposed && <p className="mt-1 text-sm text-ink/80" dir="auto">{T.proposedBy} <span className="font-semibold">{row.proposed.by}</span>: {row.proposed.evidence}</p>}
+          {row.chase && <p className="mt-1 text-xs text-ink/60" dir="auto">{row.chase}</p>}
+          {row.proposed && (
+            <div className="mt-1 space-y-1 text-sm">
+              <p className="text-ink/80" dir="auto">{row.proposed.claim} <span className="text-xs text-ink/50">({T.claimNote})</span></p>
+              <p className={row.fact ? "text-oasis" : "text-ink/60"} dir="auto"><span className="font-semibold">{T.checked}</span> {row.fact || T.nothingChecked}</p>
+            </div>
+          )}
+          {!row.proposed && row.fact && bucket === "done" && <p className="mt-1 text-xs text-oasis" dir="auto"><span className="font-semibold">{T.checked}</span> {row.fact}</p>}
           {row.notes.length > 0 && (
             <ul className="mt-1 space-y-0.5 text-xs text-ink/60" aria-label={T.notes}>
               {row.notes.map((n, i) => <li key={i} dir="auto">{n}</li>)}
@@ -108,6 +120,7 @@ export default function TodoPanel({ t, sections, approvals, snoozed, allClear, e
             <button disabled={!!busy} onClick={() => open(row.id, "done")} aria-expanded={panel?.id === row.id && panel.kind === "done"} className="btn btn-primary btn-xs">{T.done}</button>
             <button disabled={!!busy} onClick={() => open(row.id, "snooze")} aria-expanded={panel?.id === row.id && panel.kind === "snooze"} className="btn btn-secondary btn-xs">{T.snooze}</button>
             <button disabled={!!busy} onClick={() => open(row.id, "reschedule", row.dueLocal ?? "")} aria-expanded={panel?.id === row.id && panel.kind === "reschedule"} className="btn btn-secondary btn-xs">{T.reschedule}</button>
+            {row.theirs && <button disabled={!!busy} onClick={() => act(row, { action: "chased" })} title={T.chasedHint} className="btn btn-secondary btn-xs">{T.chased}</button>}
             <button disabled={!!busy} onClick={() => remove(row)} className="btn btn-danger btn-xs">{T.remove}</button>
           </div>
         )}
@@ -130,7 +143,7 @@ export default function TodoPanel({ t, sections, approvals, snoozed, allClear, e
       )}
       {panel?.id === row.id && panel.kind === "reschedule" && (
         <form onSubmit={(e) => { e.preventDefault(); void act(row, { action: "reschedule", dueAt: when || null }); }} className="mt-3 flex flex-wrap items-end gap-2">
-          <label className="min-w-0 flex-1 text-xs text-ink/70">{T.add.due}
+          <label className="min-w-0 flex-1 text-xs text-ink/70">{T.add.due.replace("{zone}", zoneLabel)}
             <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} dir="ltr" className="input mt-1" />
           </label>
           <button disabled={!!busy} className="btn btn-primary btn-sm">{T.save}</button>
@@ -144,7 +157,7 @@ export default function TodoPanel({ t, sections, approvals, snoozed, allClear, e
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="page-title">{T.title}</h1>
-      <p className="page-sub">{T.sub}</p>
+      <p className="page-sub">{T.sub.replace("{zone}", zoneLabel)}</p>
 
       {approvals && (
         <div className="mt-5 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-saffron/40 bg-saffron/10 px-4 py-3 text-sm">
@@ -174,7 +187,7 @@ export default function TodoPanel({ t, sections, approvals, snoozed, allClear, e
           <label className="text-xs text-ink/70 sm:col-span-2">{T.add.what}
             <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder={T.add.whatPh} maxLength={200} required dir="auto" className="input mt-1" />
           </label>
-          <label className="text-xs text-ink/70">{T.add.due}
+          <label className="text-xs text-ink/70">{T.add.due.replace("{zone}", zoneLabel)}
             <input type="datetime-local" value={form.dueAt} onChange={(e) => setForm({ ...form, dueAt: e.target.value })} dir="ltr" className="input mt-1" />
           </label>
           <fieldset className="text-xs text-ink/70">
