@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { getClient, issueTokens, redeemCode, rotateRefresh } from "@/lib/oauth";
+import { allow, clientIp, OAUTH_TOKEN_PER_IP, OAUTH_TOKEN_WINDOW, sameSecret } from "@/lib/rate";
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "*", "Cache-Control": "no-store" };
 const err = (e: string, d?: string) => NextResponse.json({ error: e, error_description: d }, { status: 400, headers: cors });
 
 export async function POST(req: Request) {
+  // Before the body is read or any client is looked up.
+  if (!(await allow(`oauth:token:ip:${clientIp(req)}`, OAUTH_TOKEN_PER_IP, OAUTH_TOKEN_WINDOW)))
+    return NextResponse.json({ error: "slow_down", error_description: "too many requests" }, { status: 429, headers: { ...cors, "Retry-After": String(OAUTH_TOKEN_WINDOW) } });
   const ct = req.headers.get("content-type") ?? "";
   let b: Record<string, string> = {};
   if (ct.includes("application/json")) b = await req.json().catch(() => ({}));
@@ -13,7 +17,8 @@ export async function POST(req: Request) {
   if (basic) { const [id, sec] = Buffer.from(basic[1], "base64").toString().split(":"); b.client_id ??= id; b.client_secret ??= sec; }
   const client = b.client_id ? await getClient(b.client_id) : null;
   if (!client) return err("invalid_client");
-  if (client.client_secret && client.client_secret !== b.client_secret) return err("invalid_client", "bad secret");
+  // Constant time. A JSON body can carry a non-string secret, which Buffer.from would throw on: it is simply wrong.
+  if (client.client_secret && !sameSecret(client.client_secret, typeof b.client_secret === "string" ? b.client_secret : "")) return err("invalid_client", "bad secret");
 
   if (b.grant_type === "authorization_code") {
     if (!b.code || !b.code_verifier || !b.redirect_uri) return err("invalid_request", "code, code_verifier, redirect_uri required");
