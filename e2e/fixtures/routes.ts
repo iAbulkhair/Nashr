@@ -31,6 +31,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/customers", unique: { en: "Who Nashr is built for", ar: "لمن بُنيت نشر" }, ownTitle: true },
   { path: "/enterprise", unique: { en: "Many brands, one team", ar: "عدة علامات، فريق واحد" }, ownTitle: true },
   { path: "/resources", unique: { en: "Learn, try and compare", ar: "تعلّم، جرّب، وقارن" }, ownTitle: true },
+  { path: "/updates", unique: { en: "What we shipped, and what we build next", ar: "ما أطلقناه، وما نبنيه بعده" }, ownTitle: true },
   { path: "/affiliates", unique: { en: "25%", ar: "اكسب 25%" }, ownTitle: true },
   { path: "/ai-marketing-agent", unique: { en: "What is an AI Marketing Agent?", ar: "ما هو وكيل التسويق" }, ownTitle: true },
   { path: "/agents/noor", unique: { en: "Noor", ar: "نور" }, ownTitle: true },

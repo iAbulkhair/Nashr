@@ -1,0 +1,149 @@
+import type { Lang } from "./i18n";
+
+/**
+ * The public "Updates & wishlist" page (/{lang}/updates): what shipped, and what owners can vote on next.
+ *
+ * Import-free apart from types on purpose: client components read the labels and statuses from here, and anything this
+ * file imported would be dragged into their bundles. The Redis side (votes, suggestions, promoted items, status
+ * overrides) lives in src/lib/wishlist.ts.
+ *
+ * Every changelog entry is a change merged into main (the PR or commit is named next to it) and is dated with the
+ * merge date. Every wishlist item comes from a row marked «أمنية: نعم» in docs/Competitor_Features_AR.md. Nothing here
+ * names a competitor, and seeded wishes start with no votes: the only numbers on the page are real votes.
+ */
+
+export type Bi = { ar: string; en: string };
+export type ChangeTag = "new" | "improved" | "fixed";
+export type ChangeEntry = { date: string; tag: ChangeTag; title: Bi; desc: Bi };
+
+export type WishStatus = "planned" | "in_progress" | "shipped";
+export const WISH_STATUSES: readonly WishStatus[] = ["planned", "in_progress", "shipped"];
+export const isWishStatus = (v: unknown): v is WishStatus => typeof v === "string" && (WISH_STATUSES as readonly string[]).includes(v);
+
+export type WishArea = "agents" | "onboarding" | "content" | "channels" | "commerce" | "ads" | "reports" | "team" | "billing" | "integrations" | "app";
+export type SeedWish = { id: string; area: WishArea; title: Bi };
+
+/** Newest first. Dates are merge dates on main. */
+export const CHANGELOG: readonly ChangeEntry[] = [
+  // #217
+  { date: "2026-09-29", tag: "new", title: { ar: "مهام دورية لمزيد من الوكلاء", en: "Recurring routines for more agents" }, desc: { ar: "فعّل ما تريد منها: تقرير دانة الأسبوعي، ورسائل نور لاسترجاع السلات المتروكة، وتوقع رزان النقدي الشهري، ومراجعة ماجد الشهرية.", en: "Turn on the ones you want: Dana's weekly report, Noor's cart-recovery messages, Razan's monthly cash forecast and Majed's monthly review." } },
+  { date: "2026-09-29", tag: "new", title: { ar: "سقف كريدت شهري لكل وكيل", en: "A monthly credit cap per agent" }, desc: { ar: "حدّد من صفحة الحوكمة كم يصرف كل وكيل في الشهر، ويصلك تنبيه عند 80%.", en: "Set in Governance how much each agent may spend a month, with a notice at 80%." } },
+  { date: "2026-09-29", tag: "improved", title: { ar: "الوكلاء يتعلمون من قراراتك", en: "Agents learn from your decisions" }, desc: { ar: "كل وكيل يرى اعتماداتك وتعديلاتك وملاحظاتك الأخيرة على عمله قبل أن يكتب الدفعة التالية، ويمكنك إيقاف ذلك من الحوكمة.", en: "Each agent sees your recent approvals, edits and notes on its own work before it drafts the next batch. You can switch this off in Governance." } },
+  // #216
+  { date: "2026-09-29", tag: "fixed", title: { ar: "الرابط المشارك لا يبني مساحتك وحده", en: "A shared link no longer sets up your workspace" }, desc: { ar: "إذا فتحت رابط تسجيل يحمل عنوان موقع، تؤكد الموقع بنفسك أولاً قبل أن يُبنى ملف علامتك.", en: "When a signup link carries a site address, you confirm the site yourself before your brand file is built." } },
+  // #214
+  { date: "2026-09-29", tag: "improved", title: { ar: "مراجع لكل وكيل، وهدفك في كل مهمة", en: "A reviewer for every agent, and your goal in every task" }, desc: { ar: "مسودات كل وكيل يراجعها مراجع يعرف دوره، وهدفك من التهيئة يصل إلى كل الوكلاء.", en: "Each agent's drafts are checked by a reviewer that knows its role, and the goal you set at onboarding reaches every agent." } },
+  // #206
+  { date: "2026-09-28", tag: "new", title: { ar: "حارس كلمات العلامة", en: "Brand word guard" }, desc: { ar: "الكلمات التي تمنعها في ملف علامتك تمنع اعتماد ونشر أي مسودة تحتويها، والمحرر ينبّهك وأنت تكتب.", en: "Words you ban in your brand file now block approving and publishing any draft that contains them, and the editor flags them as you type." } },
+  { date: "2026-09-28", tag: "new", title: { ar: "رحلة الإطلاق في صفحة البداية", en: "A launch journey on the start page" }, desc: { ar: "سبع محطات تتقدم فيها من ملف العلامة إلى أول نشر، مقروءة من حالة مساحتك.", en: "Seven milestones from your brand file to your first publish, read from the state of your workspace." } },
+  // #203
+  { date: "2026-09-28", tag: "new", title: { ar: "النشر على فيسبوك وإنستقرام", en: "Publish to Facebook and Instagram" }, desc: { ar: "انشر المنشورات المعتمدة على صفحتك في فيسبوك وحساب إنستقرام الاحترافي المربوط بها.", en: "Publish approved posts to your Facebook Page and the Instagram business account linked to it." } },
+  // #205
+  { date: "2026-09-28", tag: "new", title: { ar: "ربط متجر زد", en: "Zid store connection" }, desc: { ar: "اربط متجرك في زد لاستيراد المنتجات، وقراءة الطلبات والسلات المتروكة في التقارير.", en: "Connect your Zid store to import products and read orders and abandoned carts in Reports." } },
+  // #200, #201
+  { date: "2026-09-28", tag: "new", title: { ar: "مبيعات متجرك في التقارير", en: "Your store's sales in Reports" }, desc: { ar: "طلبات سلة وشوبيفاي وسلاتهما المتروكة تظهر كمجاميع في التقارير وفي ذاكرة نور.", en: "Orders and abandoned carts from Salla and Shopify show as totals in Reports and in Noor's memory." } },
+  // #202
+  { date: "2026-09-28", tag: "new", title: { ar: "استرجاع السلات من سلاتك الحقيقية", en: "Cart recovery from your real abandoned carts" }, desc: { ar: "مسودات رسائل الاسترجاع تُبنى على السلات المتروكة الفعلية في متجرك.", en: "Cart-recovery drafts are built on the abandoned carts actually in your store." } },
+  // #211
+  { date: "2026-09-28", tag: "new", title: { ar: "نتائج إعلانات Meta وسناب شات", en: "Results from Meta Ads and Snapchat Ads" }, desc: { ar: "اربط حسابك الإعلاني لتقرأ التقارير نتائج حملاتك.", en: "Connect your ad account and Reports reads your campaign results." } },
+  // #208
+  { date: "2026-09-28", tag: "new", title: { ar: "استيراد نتائج الحملات من ملف CSV", en: "Import campaign results from a CSV file" }, desc: { ar: "صدّر النتائج من منصة الإعلانات وارفعها، لتبني نور اقتراحاتها التالية عليها.", en: "Export results from your ad platform and upload them, so Noor builds her next suggestions on them." } },
+  // #212
+  { date: "2026-09-28", tag: "new", title: { ar: "رموز الإعلانات", en: "Ad codes" }, desc: { ar: "كل مسودة إعلان أو منشور تحمل رمزاً قصيراً. ضعه في اسم الإعلان لترى أداء إعلاناتك منّا مقارنة ببقية إعلاناتك.", en: "Every ad or social draft carries a short code. Put it in the ad's name to see how those ads did against your other ads." } },
+  // #209
+  { date: "2026-09-28", tag: "fixed", title: { ar: "تنبيه المبيعات في التقارير", en: "Sales notice in Reports" }, desc: { ar: "التقارير لم تعد تقول إن مبيعاتك غير مقروءة حين يكون متجرك متزامناً.", en: "Reports no longer say your sales are not read when your store is synced." } },
+  // #199
+  { date: "2026-09-27", tag: "new", title: { ar: "استيراد منتجات سلة", en: "Import products from Salla" }, desc: { ar: "اربط متجرك في سلة لاستيراد منتجاتك، مع اسم المتجر الذي رُبط.", en: "Connect your Salla store to import your products, and see which store is connected." } },
+  // #197
+  { date: "2026-09-27", tag: "improved", title: { ar: "ربط أكثر أماناً للمنصات", en: "Safer platform connections" }, desc: { ar: "خطوات ربط حساباتك على المنصات أصبحت محمية من الطلبات المزوّرة.", en: "The steps that connect your platform accounts are now protected against forged requests." } },
+  // #2
+  { date: "2026-09-21", tag: "fixed", title: { ar: "رسالة استعادة كلمة المرور", en: "Password reset message" }, desc: { ar: "إذا تعذّر إرسال بريد الاستعادة، تخبرك الصفحة بذلك بدل أن تعدك برابط لن يصل.", en: "If the reset email cannot be sent, the page tells you instead of promising a link that will not arrive." } },
+  // e1445d6
+  { date: "2026-09-18", tag: "improved", title: { ar: "تغيير كلمة المرور يخرج بقية الأجهزة", en: "Changing your password signs out other devices" }, desc: { ar: "وصارت التطبيقات المتصلة بحسابك تظهر في صفحة MCP ويمكنك إلغاؤها.", en: "Apps connected to your account are also listed on the MCP page, where you can revoke them." } },
+  // 7835949
+  { date: "2026-09-18", tag: "improved", title: { ar: "اعتماد ورفض فوري", en: "Instant approve and reject" }, desc: { ar: "صندوق الموافقات يستجيب لحظة الضغط دون إعادة تحميل الصفحة.", en: "The approvals inbox responds the moment you tap, without reloading the page." } },
+];
+
+/**
+ * Seeded wishes, in the order of the source table. Ids are stable: votes are stored under them.
+ * Promoted suggestions are added by the founder console and stored in Redis (wishlist.ts).
+ */
+export const SEED_WISHES: readonly SeedWish[] = [
+  { id: "custom-agent", area: "agents", title: { ar: "ابنِ وكيلاً مخصصاً لعملك", en: "Build your own custom agent" } },
+  { id: "secretary-agent", area: "agents", title: { ar: "وكيل سكرتير يتابع مهامك ويذكّرك بها", en: "A secretary agent that tracks your to-dos and follows up" } },
+  { id: "timed-reminders", area: "agents", title: { ar: "تذكيرات في وقتها على واتساب أو تيليجرام", en: "Reminders on time, by WhatsApp or Telegram" } },
+  { id: "calendar-sync", area: "integrations", title: { ar: "مزامنة مع تقويم Google أو Outlook", en: "Sync with Google or Outlook Calendar" } },
+  { id: "free-check", area: "onboarding", title: { ar: "تقييم مجاني لتسويقك قبل التسجيل", en: "A free marketing check before you sign up" } },
+  { id: "store-link-start", area: "onboarding", title: { ar: "ابدأ برابط متجرك في سلة أو زد", en: "Start from your Salla or Zid store link" } },
+  { id: "product-images", area: "content", title: { ar: "صور منتجات وتصاميم", en: "Product images and designs" } },
+  { id: "background-removal", area: "content", title: { ar: "إزالة الخلفية ودمج الصور", en: "Background removal and image blending" } },
+  { id: "short-video", area: "content", title: { ar: "فيديو قصير بأسلوب صنّاع المحتوى", en: "Short creator-style videos" } },
+  { id: "dialect-voice-ads", area: "content", title: { ar: "إعلانات صوتية باللهجة", en: "Voice ads in local dialects" } },
+  { id: "landing-pages", area: "content", title: { ar: "صفحات هبوط", en: "Landing pages" } },
+  { id: "bulk-product-copy", area: "commerce", title: { ar: "أوصاف منتجات بالجملة لسلة وزد", en: "Bulk product descriptions for Salla and Zid" } },
+  { id: "post-to-ad", area: "ads", title: { ar: "تحويل منشور إلى إعلان", en: "Turn a post into an ad" } },
+  { id: "publish-linkedin", area: "channels", title: { ar: "النشر على LinkedIn", en: "Publish to LinkedIn" } },
+  { id: "publish-tiktok", area: "channels", title: { ar: "النشر على تيك توك", en: "Publish to TikTok" } },
+  { id: "publish-snapchat", area: "channels", title: { ar: "النشر على سناب شات", en: "Publish to Snapchat" } },
+  { id: "whatsapp-send", area: "channels", title: { ar: "إرسال رسائل واتساب", en: "Send WhatsApp messages" } },
+  { id: "salla-app", area: "commerce", title: { ar: "تطبيق نشر في متجر تطبيقات سلة", en: "Nashr in the Salla App Store" } },
+  { id: "zid-app", area: "commerce", title: { ar: "تطبيق نشر في سوق تطبيقات زد", en: "Nashr in the Zid App Market" } },
+  { id: "meta-campaigns", area: "ads", title: { ar: "إطلاق حملات Meta", en: "Launch Meta ad campaigns" } },
+  { id: "more-campaigns", area: "ads", title: { ar: "إطلاق حملات تيك توك وسناب شات وجوجل", en: "Launch TikTok, Snapchat and Google campaigns" } },
+  { id: "budget-limits", area: "ads", title: { ar: "ضبط ميزانية الإعلانات ضمن حدود تضعها", en: "Ad budgets kept within limits you set" } },
+  { id: "ad-waste-audit", area: "ads", title: { ar: "تدقيق أسبوعي لهدر الإعلانات", en: "A weekly ad waste audit" } },
+  { id: "ga4-search-console", area: "reports", title: { ar: "قراءة Google Analytics وSearch Console", en: "Read Google Analytics and Search Console" } },
+  { id: "competitor-watch", area: "reports", title: { ar: "رصد المنافسين باستمرار", en: "Ongoing competitor monitoring" } },
+  { id: "ai-search-visibility", area: "reports", title: { ar: "تتبع ظهورك في إجابات مساعدات الذكاء الاصطناعي", en: "Track how you show up in AI assistant answers" } },
+  { id: "team-seats", area: "team", title: { ar: "مقاعد وأدوار للفريق", en: "Team seats and roles" } },
+  { id: "client-branded-reports", area: "team", title: { ar: "تقارير بعلامة عميلك", en: "Reports under your client's brand" } },
+  { id: "shared-workspace", area: "team", title: { ar: "مساحة عمل مشتركة للفريق", en: "A shared workspace for your team" } },
+  { id: "credit-top-up", area: "billing", title: { ar: "شحن رصيد كريدت إضافي", en: "Top up extra credits" } },
+  { id: "claude-directory", area: "integrations", title: { ar: "نشر في دليل موصّلات Claude", en: "Nashr in the Claude connector directory" } },
+  { id: "chatgpt-app", area: "integrations", title: { ar: "تطبيق نشر في دليل تطبيقات ChatGPT", en: "A Nashr app in the ChatGPT app directory" } },
+  { id: "chat-control", area: "integrations", title: { ar: "كلّم وكلاءك من واتساب أو تيليجرام", en: "Talk to your agents from WhatsApp or Telegram" } },
+  { id: "mobile-app", area: "app", title: { ar: "تطبيق جوال", en: "A mobile app" } },
+];
+
+export const SEED_WISH_IDS: ReadonlySet<string> = new Set(SEED_WISHES.map((w) => w.id));
+
+/** Suggestion text limits: short enough to read in a list, long enough for one idea. */
+export const SUGGESTION_MIN = 5;
+export const SUGGESTION_MAX = 280;
+export const TITLE_MAX = 120;
+
+type Copy = {
+  eyebrow: string; title: string; sub: string; tabNew: string; tabWish: string;
+  newTitle: string; newSub: string; wishTitle: string; wishSub: string;
+  tags: Record<ChangeTag, string>; statuses: Record<WishStatus, string>; areas: Record<WishArea, string>;
+  vote: string; voted: string; votesLabel: string; signIn: string; signInNote: string; failed: string; slowDown: string;
+  suggestTitle: string; suggestSub: string; suggestPlaceholder: string; suggestSend: string; suggestSent: string; suggestPrivate: string; suggestSlowDown: string; signInSuggest: string; tooShort: string; tooLong: string;
+  empty: string;
+};
+
+export const UPDATES: Record<Lang, Copy> = {
+  ar: {
+    eyebrow: "التحديثات والأمنيات", title: "ما أطلقناه، وما نبنيه بعده", sub: "سجل بما وصل إلى المنتج فعلاً، وقائمة أمنيات تصوّت عليها لتحدد ما نبنيه أولاً.",
+    tabNew: "ما الجديد", tabWish: "قائمة الأمنيات",
+    newTitle: "ما الجديد", newSub: "كل بند هنا وصل إلى المنتج في التاريخ المذكور.",
+    wishTitle: "قائمة الأمنيات", wishSub: "صوّت لما تريده أولاً. صوت واحد لكل حساب في كل أمنية، ويمكنك سحبه.",
+    tags: { new: "جديد", improved: "تحسين", fixed: "إصلاح" },
+    statuses: { planned: "مخطط", in_progress: "قيد العمل", shipped: "أُطلق" },
+    areas: { agents: "الوكلاء", onboarding: "البداية", content: "المحتوى", channels: "القنوات", commerce: "التجارة", ads: "الإعلانات", reports: "التقارير", team: "الفرق", billing: "الفوترة", integrations: "التكاملات", app: "التطبيق" },
+    vote: "صوّت", voted: "صوّتَّ", votesLabel: "صوت", signIn: "سجّل الدخول للتصويت", signInNote: "التصويت واقتراح الأمنيات لأصحاب الحسابات.", failed: "تعذّر حفظ صوتك. حاول مرة أخرى.", slowDown: "أصوات كثيرة في وقت قصير. حاول بعد قليل.",
+    suggestTitle: "اقترح أمنية", suggestSub: "فكرة واحدة في سطر أو سطرين.", suggestPlaceholder: "مثال: جدولة المنشورات حسب أوقات الصلاة", suggestSend: "أرسل الاقتراح", suggestSent: "وصلنا اقتراحك. نراجعه قبل أن يظهر في القائمة.", suggestPrivate: "الاقتراحات لا تُنشر مباشرة: نراجعها ونضيف ما يناسب إلى القائمة.", suggestSlowDown: "وصلت إلى حد الاقتراحات اليومي. عد غداً.", signInSuggest: "سجّل الدخول لتقترح", tooShort: "اكتب فكرتك بكلمات أكثر قليلاً.", tooLong: "الاقتراح أطول من المسموح.",
+    empty: "لا شيء هنا بعد.",
+  },
+  en: {
+    eyebrow: "Updates & wishlist", title: "What we shipped, and what we build next", sub: "A log of what actually reached the product, and a wishlist you vote on to decide what we build first.",
+    tabNew: "What's new", tabWish: "Wishlist",
+    newTitle: "What's new", newSub: "Every entry here reached the product on the date shown.",
+    wishTitle: "Wishlist", wishSub: "Vote for what you want first. One vote per account per wish, and you can take it back.",
+    tags: { new: "New", improved: "Improved", fixed: "Fixed" },
+    statuses: { planned: "Planned", in_progress: "In progress", shipped: "Shipped" },
+    areas: { agents: "Agents", onboarding: "Getting started", content: "Content", channels: "Channels", commerce: "Commerce", ads: "Ads", reports: "Reports", team: "Teams", billing: "Billing", integrations: "Integrations", app: "App" },
+    vote: "Vote", voted: "Voted", votesLabel: "votes", signIn: "Sign in to vote", signInNote: "Voting and suggesting wishes are for account holders.", failed: "Could not save your vote. Please try again.", slowDown: "Too many votes in a short time. Try again shortly.",
+    suggestTitle: "Suggest a wish", suggestSub: "One idea in a line or two.", suggestPlaceholder: "For example: schedule posts around prayer times", suggestSend: "Send suggestion", suggestSent: "Thanks, we got it. We review suggestions before they appear in the list.", suggestPrivate: "Suggestions are not published directly: we review them and add what fits to the list.", suggestSlowDown: "You reached today's limit for suggestions. Come back tomorrow.", signInSuggest: "Sign in to suggest", tooShort: "Write your idea in a few more words.", tooLong: "The suggestion is longer than allowed.",
+    empty: "Nothing here yet.",
+  },
+};

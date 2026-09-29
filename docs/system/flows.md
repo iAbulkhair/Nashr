@@ -326,6 +326,19 @@ Files: `src/lib/media-catalog.ts`, `src/lib/media/{types,keys,config,fal,kie,hig
 14. Video in the inbox: a preview with a poster frame (`#t=0.1`), save or share (`navigator.share` with files, else a `?download=1` link on our Blob host), and `videoNoPublish` under every clip.
 15. Retention. Blob files and images hot-linked at fal.ai survive account deletion: `wipeAccount` does not touch them (a follow-up in the spec, section 9). The job records (`mjob:`, 7 days from the last save), the webhook pointers (`mjobref:`, 7 days), the trial marker (`mtrialvid:`, 14 days), the flight locks and the per-account render counters expire by TTL, so the render records of a deleted account are gone within 14 days. The privacy policy and the help centre say this.
 
+## 24. Updates and wishlist (`/{lang}/updates`, 2026-09-29)
+
+Files: `src/app/[lang]/updates/page.tsx`, `src/lib/changelog.ts` (content), `src/lib/wishlist.ts` (storage), `src/components/WishVote.tsx`, `src/components/WishSuggest.tsx`, `src/app/api/wishlist/vote/route.ts`, `src/app/api/wishlist/suggest/route.ts`, `src/app/api/admin/wishlist/route.ts`, `src/components/app/WishlistPanel.tsx`.
+
+1. Linked from the marketing nav and footer (the Resources cards in `site.ts`), the sitemap, and the app sidebar (`N.updates`).
+2. The page is dynamic. It reads `currentUser()` (optional) and `listWishes(email)`: the hidden set, the viewer's `wish:mine:{email}`, `wish:items` and `wish:status` side by side, then every item's count in one pipelined `scardMany`. Counts and the viewer's pressed state are in the server HTML; the two sections ("What's new", "Wishlist") are anchors, so nothing needs JavaScript to read.
+3. "What's new" is `CHANGELOG` in `changelog.ts`: dated entries (merge date on main), tag new / improved / fixed, bilingual title and one line. Edited in code, with the change it describes.
+4. The wishlist is `SEED_WISHES` (code; from the «أمنية: نعم» rows of `docs/Competitor_Features_AR.md`, no competitor names, no vote numbers) plus items the founder promoted (`wish:items`), less seeded items the founder hid (`wish:hidden`), with status from `wish:status` (default planned). Order: in progress, planned, shipped; most votes first; ties keep the seed order.
+5. Vote: the button posts `{id, on}` to `/api/wishlist/vote`. Session first (401 sends the browser to login with `next=/{lang}/updates`), 60 per hour per account, id must be votable, then `sadd`/`srem` on `wish:votes:{id}` and `wish:mine:{email}` side by side, and the new count. `on` states the wanted result, so repeating a request is harmless; without `on` it toggles. The button updates at the click and restores its state if the request fails.
+6. Suggest: signed-in users post `{text, lang}` to `/api/wishlist/suggest`; cleaned, 5..280 characters, 5 per day; stored in `wish:suggestions` (capped at 500). Never shown publicly.
+7. Founder console, Wishlist tab (`WishlistPanel`): reads `GET /api/admin/wishlist`; promotes a suggestion under a bilingual title the founder writes (the matching-language field is pre-filled with the suggestion as a draft), adds a wish directly, sets statuses, hides / restores seeded items, deletes promoted items with their votes, dismisses suggestions. Each action goes to `admin:log` as `wish:*`.
+8. Account deletion (`wipeAccount`): `forgetWishlistUser` removes the account from every item it voted for, removes its suggestions, and deletes `wish:mine:{email}`.
+
 ## Revocation (2026-09-18)
 
 - Password change (`PATCH /api/account`): new hash and `sessionsAfter = now` saved inside the user lock, the caller's session is destroyed and a new one issued. Every other session of the account fails at its next request.
