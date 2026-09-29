@@ -8,7 +8,7 @@ vi.mock("@/lib/credits", async (orig) => {
 });
 
 import { db } from "@/lib/db";
-import { charge, monthKey, refund } from "@/lib/credits";
+import { agentSpendFor, charge, monthKey, refund } from "@/lib/credits";
 import { createUser, getUser, saveUser, type User } from "@/lib/auth";
 import { getTask, saveTask, type Task } from "@/lib/brand";
 import { wipeAccount } from "@/lib/account";
@@ -53,7 +53,7 @@ async function taskFor(u: User, over: Partial<Task> = {}): Promise<Task> {
 }
 /** plan "pro" unless a test is about trials: the engine reads the plan from here, not from the account. */
 const input = (u: User, t: Task, model: MediaModelId, over: Partial<StartInput> = {}): StartInput => ({
-  scope: u.email, email: u.email, lang: u.lang, accountSince: u.createdAt, plan: "pro", balance: u.credits, taskId: t.id, model,
+  scope: u.email, email: u.email, lang: u.lang, accountSince: u.createdAt, plan: "pro", balance: u.credits, agent: "noor", taskId: t.id, model,
   aspect: "square", deadline: Date.now() + 100_000, prompt: async () => "a test prompt", ...over,
 });
 const balance = async (u: User) => (await getUser(u.email))!.credits;
@@ -274,6 +274,36 @@ describe("starting a render: charge, submit, deliver", () => {
     expect(await startMedia(input(u, t, "vid-quick"), fakeDeps({ kie: fakeAdapter("kie") }))).toEqual({ ok: false, status: 402, error: "no_credits", need: 12, have: 0 });
     expect(await flightFree(u, t, "video")).toBe(true);
     expect(await db.get(`rate:media:video:h:${u.email}`)).toBeNull();
+  });
+
+  it("the agent's monthly cap: a pre-check 402 moves nothing, the ledger decides for a stale session, and a later refund lowers the agent's counter", async () => {
+    const u = await owner();
+    const t = await taskFor(u);
+    const kie = fakeAdapter("kie", { submit: () => ({ state: "pending", providerTaskId: kieId() }), status: () => ({ state: "failed", reason: "provider_failed" }) });
+    const deps = fakeDeps({ kie });
+    const noorSpent = async () => agentSpendFor((await getUser(u.email))!, u.email);
+
+    // The session already shows the cap reached: refused before any limit, throttle, flight or charge.
+    expect(await startMedia(input(u, t, "vid-quick", { cap: 12, spent: 1 }), deps)).toEqual({ ok: false, status: 402, error: "agent_cap", agent: "noor", spent: 1, cap: 12 });
+    expect(await db.get(`rate:media:video:h:${u.email}`)).toBeNull();
+    expect(await flightFree(u, t, "video")).toBe(true);
+    expect(vi.mocked(charge)).not.toHaveBeenCalled();
+
+    // Under the cap: charged to the agent that owns the item, in the job's scope, and the job keeps what its refund needs.
+    const job = started(await startMedia(input(u, t, "vid-quick", { cap: 12, spent: 0 }), deps));
+    expect(job.spend).toEqual({ scope: u.email, agent: "noor", month: monthKey() });
+    expect(await noorSpent()).toEqual({ noor: 12 });
+
+    // A stale session that still reads 0 passes the pre-check, and the ledger refuses it: nothing charged, the flight free.
+    const t2 = await taskFor(u);
+    expect(await startMedia(input(u, t2, "img-balanced", { cap: 12, spent: 0 }), deps)).toEqual({ ok: false, status: 402, error: "agent_cap", agent: "noor", spent: 12, cap: 12 });
+    expect(await balance(u)).toBe(38);
+    expect(await flightFree(u, t2)).toBe(true);
+
+    // The render fails at a later sweep: the balance and the agent's counter both come back.
+    expect((await advance(job, deps, sweep())).state).toBe("failed");
+    expect(await balance(u)).toBe(50);
+    expect(await noorSpent()).toEqual({ noor: 0 });
   });
 
   it("a ledger lock timeout at the charge answers 429 busy: nothing charged, the flight free", async () => {

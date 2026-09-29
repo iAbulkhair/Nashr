@@ -203,8 +203,9 @@ export default function MediaControls({ task, lang, t, available, credits, plan,
     if (e === "in_progress") return j.job ? follow(kind, j.job) : say(kind, { text: i.mediaErr.in_progress, waiting: true });
     // Sent without a model, and the item has artwork the server would not draw a placeholder over.
     if (e === "model_unavailable" && !m) return say(kind, { text: i.keepsImage });
-    // The modal's text ("you've used this month's credits") is true only at a zero balance.
-    if (e === "trial_over" || (e === "no_credits" && !(typeof j.have === "number" && j.have > 0))) { limitFromError(e); return; }
+    // The modal's text ("you've used this month's credits") is true only at a zero balance. An agent at the monthly cap
+    // the owner set in Governance gets the same dialog /api/generate raises, which points to Governance, not billing.
+    if (e === "trial_over" || e === "agent_cap" || (e === "no_credits" && !(typeof j.have === "number" && j.have > 0))) { limitFromError(e); return; }
     if (e === "no_credits") {
       const need = j.need ?? m?.credits;
       return say(kind, { text: plural(i.needCredits, need ?? 0, { need: need ?? "", have: String(j.have) }), billing: true });

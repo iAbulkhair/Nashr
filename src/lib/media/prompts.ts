@@ -6,6 +6,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { meter } from "../usage";
 import { modelState } from "../model";
+import { agentForTask } from "../agents";
 import { mediaModel, type Aspect, type ImageModelId, type VideoModelId } from "../media-catalog";
 import type { Brand, Task } from "../brand";
 
@@ -77,8 +78,9 @@ async function write(system: string, brand: Brand, task: Task, fallback: string,
       { model: "claude-sonnet-5", max_tokens: 400, thinking: { type: "adaptive" }, output_config: { effort: "low" }, system, messages: [{ role: "user", content: postOf(brand, task) }] },
       { timeout: Math.min(PROMPT_MAX_MS, timeoutMs), maxRetries: 0 },
     );
-    // Spec A18: video prompts are metered as image_prompt too.
-    await meter(email, res.model, "image_prompt", res.usage);
+    // Spec A18: video prompts are metered as image_prompt too. The render is for the agent who owns the item, the same
+    // agent its credit is charged to.
+    await meter(email, res.model, "image_prompt", res.usage, agentForTask(task.type).id);
     const text = res.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join(" ").trim();
     if (text) return text;
     console.error("media prompt failed", "empty");

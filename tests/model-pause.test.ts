@@ -23,10 +23,12 @@ import { buildFromSite } from "@/lib/onboard";
 import { scoreItems } from "@/lib/judge";
 import { imagePrompt, videoPrompt } from "@/lib/media/prompts";
 import { runGolden } from "@/lib/golden";
-import { runWeekly } from "@/lib/schedule";
+import { runWeekly, saveSchedule } from "@/lib/schedule";
+import { ROUTINE_IDS, runRoutine } from "@/lib/routines";
 import { ModelPaused, PAUSED_REPLY } from "@/lib/model";
 import * as generateRoute from "@/app/api/generate/route";
 import * as onboardRoute from "@/app/api/onboard/route";
+import * as confirmRoute from "@/app/api/onboard/confirm/route";
 import * as toolRoute from "@/app/api/tools/[tool]/route";
 import * as mcpRoute from "@/app/api/mcp/route";
 import { TOOLS } from "@/lib/tools";
@@ -93,6 +95,7 @@ describe("while Claude is paused (rule 76)", () => {
   it("onboarding refuses before crawling, so no mock brand file is saved to end it for good", async () => {
     const u = await newUser("paused");
     await signIn(u.email);
+    await confirmRoute.POST(json("/api/onboard/confirm", "POST", { url: "roastery.example" }));
     const res = await onboardRoute.POST(json("/api/onboard", "POST", { url: "roastery.example" }));
     expect(res.status).toBe(503);
     expect(await res.text()).toBe("paused");
@@ -114,6 +117,10 @@ describe("while Claude is paused (rule 76)", () => {
   it("the weekly plan leaves the week open for a catch-up, charges nothing, and the judge, image and video prompts and golden set stand down", async () => {
     const u = await withBrand();
     expect(await runWeekly(u)).toBe("retry:paused");
+    expect(sdk.charged).toBe(0);
+    // The routines the owner turned on leave their day open the same way.
+    await saveSchedule(u.email, { routines: Object.fromEntries(ROUTINE_IDS.map((id) => [id, true])) });
+    for (const id of ROUTINE_IDS) expect(await runRoutine(u, id), id).toBe("retry:paused");
     expect(sdk.charged).toBe(0);
     expect(await scoreItems(u.email, brand, "social", [{ channel: "instagram", title: "t", body: "b" }])).toEqual([]);
     const task: Task = { id: "img1", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: "2026-09-28T00:00:00.000Z", lang: "ar" };

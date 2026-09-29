@@ -1,7 +1,8 @@
 import { CAPS, db, pushCapped } from "./db";
 import { pmap } from "./parallel";
-import { similarity } from "./similarity";
+import { editPctOf } from "./similarity";
 import { hasAdCode, newAdCode } from "./ad-codes";
+import { agentForTask, type AgentId } from "./agents";
 
 export type Brand = {
   name: string;
@@ -31,7 +32,7 @@ export type Brand = {
 // from this module, which would drag the Redis client into their bundle. Re-exported so server callers are unaffected.
 export type { TaskType } from "./tasks";
 export { TASK_COST, TASK_COUNT, IMAGE_TYPES, VIDEO_TYPES, IMAGE_COST } from "./tasks";
-import type { TaskType } from "./tasks";
+import { isTaskType, type TaskType } from "./tasks";
 import type { ImageModelId, MediaFailure, MediaProviderId, VideoModelId } from "./media-catalog";
 
 /** The last render of one kind that ended without a result, kept on the card until the next render of that kind. */
@@ -85,9 +86,14 @@ export type Task = {
   decidedAt?: string;
   /** Put in the ad's name so its results can be matched back to this item (src/lib/ad-codes.ts). */
   adCode?: string;
-  /** Automated judge score (src/lib/judge.ts). */
-  quality?: { score: number; dims: { completeness: number; brand: number; honesty: number; language: number; format: number }; notes: string; model: string; at: string };
+  /** What the agent was asked for this batch: the owner's notes or brief, first 500 characters (`briefOf`). */
+  brief?: string;
+  /** Automated judge score (src/lib/judge.ts). `autofail` is the judge's automatic-fail code, when one was set. */
+  quality?: { score: number; dims: { completeness: number; brand: number; honesty: number; language: number; format: number }; notes: string; model: string; at: string; autofail?: string };
 };
+
+/** The notes or brief of one batch as each of its tasks keeps it: first 500 characters, or nothing when there were none. */
+export const briefOf = (notes: unknown): string | undefined => (typeof notes === "string" && notes.trim() ? notes.trim().slice(0, 500) : undefined);
 
 export async function getBrand(email: string) {
   return db.get<Brand>(`brand:${email}`);
@@ -161,6 +167,8 @@ export type TaskLite = Pick<Task, "id" | "type" | "channel" | "title" | "status"
   published: number;
   score?: number;
   notes?: string;
+  /** The judge's automatic-fail code, when it set one (the notes then start with "[code]"). */
+  autofail?: string;
 };
 export function liteOf(t: Task): TaskLite {
   const edited = !!t.editedBody && t.editedBody !== t.body;
@@ -168,7 +176,7 @@ export function liteOf(t: Task): TaskLite {
     id: t.id, type: t.type, channel: t.channel, title: t.title, status: t.status, createdAt: t.createdAt, lang: t.lang, source: t.source, scheduledFor: t.scheduledFor, decidedAt: t.decidedAt,
     preview: (t.editedBody ?? t.body ?? "").slice(0, 200),
     edited,
-    editPct: edited ? Math.round((1 - similarity(t.body, t.editedBody!)) * 100) : undefined,
+    editPct: edited ? editPctOf(t.body, t.editedBody!) : undefined,
     // A placeholder card is not an image anyone made or paid for: it counts in neither "images generated" nor, through
     // the readers' `image ? IMAGE_COST : 0` fallback, credits used. Not hasArtwork: images saved before providers were
     // recorded have no provider and are real.
@@ -181,6 +189,7 @@ export function liteOf(t: Task): TaskLite {
     published: t.published?.filter((p) => p.status === "published").length ?? 0,
     score: t.quality?.score,
     notes: t.quality?.notes?.slice(0, 200),
+    autofail: t.quality?.autofail,
   };
 }
 const monthOf = (iso: string) => (/^\d{4}-\d{2}/.test(iso) ? iso.slice(0, 7) : "0000-00");
@@ -297,4 +306,17 @@ export async function addPreference(email: string, note: string) {
 }
 export async function listPreferences(email: string) {
   return db.lrange(`prefs:${email}`, 0, 29);
+}
+
+/** The task type a learned note names ("Owner edited a social item (instagram). ..."), when it names one. */
+const noteType = (note: string) => /^Owner (?:edited|rejected) an? ([a-z_]+) item\b/.exec(note)?.[1];
+
+/**
+ * The newest 30 preference notes for one agent's prompts. A note about another agent's work is left out, so the
+ * owner's edits to Noor's posts do not steer Razan's pricing review; a note that names no task type is about the brand
+ * and stays. The whole capped list is read in one command, so notes filtered out do not shrink the 30.
+ */
+export async function listPreferencesFor(email: string, agent: AgentId) {
+  const notes = await db.lrange(`prefs:${email}`, 0, CAPS.prefs - 1);
+  return notes.filter((n) => { const type = noteType(n); return !isTaskType(type) || agentForTask(type).id === agent; }).slice(0, 30);
 }

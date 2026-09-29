@@ -60,7 +60,7 @@ async function taskFor(u: User, over: Partial<Task> = {}): Promise<Task> {
 async function runningVideo(u: User, t: Task) {
   const deps = fakeDeps({ kie: fakeAdapter("kie", { status: () => ({ state: "done", urls: [CLIP] }) }) });
   const input: StartInput = {
-    scope: u.email, email: u.email, lang: u.lang, accountSince: u.createdAt, plan: "pro", balance: u.credits, taskId: t.id, model: "vid-quick",
+    scope: u.email, email: u.email, lang: u.lang, accountSince: u.createdAt, plan: "pro", balance: u.credits, agent: "noor", taskId: t.id, model: "vid-quick",
     aspect: "portrait", deadline: Date.now() + 100_000, prompt: async () => "a test prompt",
   };
   const r = await startMedia(input, deps);

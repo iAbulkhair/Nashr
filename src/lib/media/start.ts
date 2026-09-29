@@ -5,6 +5,9 @@
  */
 import { sc, trialOver, type User } from "../auth";
 import { getTask, updateTask, type Brand, type Task } from "../brand";
+import { agentForTask, type AgentId } from "../agents";
+import { agentSpendFor } from "../credits";
+import { getGov } from "../governance";
 import { IMAGE_TYPES, VIDEO_TYPES } from "../tasks";
 import {
   DEFAULT_IMAGE_MODEL, TRIAL_VIDEO_MODELS, aspectFor, hasArtwork, isMediaModelId, mediaImageFor, mediaModel,
@@ -23,6 +26,17 @@ type Opts = { deadline: number; deps?: MediaDeps };
 const refuse = (status: 400 | 402 | 409, error: StartError): StartResult => ({ ok: false, status, error });
 /** A catalogue id of this kind, from request input. `isMediaModelId` is a list test, so "constructor" is refused. */
 const ofKind = (v: unknown, kind: MediaKind): v is MediaModelId => isMediaModelId(v) && mediaModel(v).kind === kind;
+
+/**
+ * Who a render of `t` is charged to: the agent that owns the item (computed in code, never from the request), the owner's
+ * monthly cap for that agent in this brand scope, and what it spent this month as the session read it (a pre-check; the
+ * ledger decides under its lock). Read here, so the image and video routes and the chat tool cannot disagree.
+ */
+async function spendFor(u: User, t: Task): Promise<{ agent: AgentId; cap?: number; spent: number }> {
+  const agent = agentForTask(t.type).id;
+  const gov = await getGov(sc(u));
+  return { agent, cap: gov.agentCaps[agent], spent: agentSpendFor(u, sc(u))[agent] ?? 0 };
+}
 
 /**
  * The card shown when the default image model is unavailable: brand name on a coloured card, marked so it never passes
@@ -59,11 +73,13 @@ export async function renderImage(u: User, t: Task, brand: Brand, requested: unk
   if (!ofKind(asked, "image")) return refuse(400, "bad_model");
   const model = asked as ImageModelId;
   if (!IMAGE_TYPES.includes(t.type)) return refuse(400, "wrong_type");
-  if (!modelAvailable(model, await offModels())) return model === DEFAULT_IMAGE_MODEL ? placeholder(u, t, brand) : refuse(409, "model_unavailable");
+  const [off, spend] = await Promise.all([offModels(), spendFor(u, t)]);
+  // The placeholder costs nothing, so neither the balance nor the agent's cap stands in its way.
+  if (!modelAvailable(model, off)) return model === DEFAULT_IMAGE_MODEL ? placeholder(u, t, brand) : refuse(409, "model_unavailable");
   const m = mediaModel(model);
   const aspect = aspectFor("image", t.channel);
   return startMedia({
-    scope: sc(u), email: u.email, lang: u.lang, accountSince: u.createdAt, plan: u.plan, balance: u.credits,
+    scope: sc(u), email: u.email, lang: u.lang, accountSince: u.createdAt, plan: u.plan, balance: u.credits, ...spend,
     taskId: t.id, model, aspect, imageUrl: mediaImageFor(m, t), deadline: opts.deadline,
     prompt: (ms) => imagePrompt(brand, t, model, aspect, u.email, ms),
   }, opts.deps ?? mediaDeps());
@@ -76,12 +92,13 @@ export async function renderVideo(u: User, t: Task, brand: Brand, requested: unk
   const model = requested as VideoModelId;
   if (!VIDEO_TYPES.includes(t.type)) return refuse(400, "wrong_type");
   if (u.plan === "trial" && !TRIAL_VIDEO_MODELS.includes(model)) return refuse(402, "plan_required");
-  if (!modelAvailable(model, await offModels())) return refuse(409, "model_unavailable");
+  const [off, spend] = await Promise.all([offModels(), spendFor(u, t)]);
+  if (!modelAvailable(model, off)) return refuse(409, "model_unavailable");
   const m = mediaModel(model);
   const imageUrl = mediaImageFor(m, t);
   if (m.needsImage && !imageUrl) return refuse(409, "needs_image");
   return startMedia({
-    scope: sc(u), email: u.email, lang: u.lang, accountSince: u.createdAt, plan: u.plan, balance: u.credits,
+    scope: sc(u), email: u.email, lang: u.lang, accountSince: u.createdAt, plan: u.plan, balance: u.credits, ...spend,
     taskId: t.id, model, aspect: "portrait", imageUrl, deadline: opts.deadline,
     prompt: (ms) => videoPrompt(brand, t, model, !!imageUrl, u.email, ms),
   }, opts.deps ?? mediaDeps());
@@ -101,11 +118,15 @@ export function mediaResponse(r: ImageOutcome): MediaHttp {
   if ("placeholder" in r) return { status: 200, body: { ok: true, task: r.task, credits: r.credits, provider: "placeholder" } };
   if (r.ok && r.job.state === "done") return { status: 200, body: { ok: true, task: r.task, credits: r.credits, provider: r.job.provider, job: publicJob(r.job) } };
   if (r.ok) return { status: 202, body: { ok: true, job: publicJob(r.job), task: r.task, credits: r.credits } };
-  const { status, need, have, credits, job } = r;
+  const { status, need, have, credits, job, agent, spent, cap } = r;
   const error = r.error === "media_failed" && credits == null ? "media_pending" : r.error;
   return {
     status,
-    body: { ok: false, error, ...(need != null ? { need } : {}), ...(have != null ? { have } : {}), ...(credits != null ? { credits } : {}), ...(job ? { job } : {}) },
+    body: {
+      ok: false, error, ...(need != null ? { need } : {}), ...(have != null ? { have } : {}), ...(credits != null ? { credits } : {}), ...(job ? { job } : {}),
+      // The same body /api/generate answers at an agent's cap, so the app raises the same dialog.
+      ...(agent ? { agent, spent, cap } : {}),
+    },
   };
 }
 

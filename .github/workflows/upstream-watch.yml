@@ -1,0 +1,79 @@
+name: Upstream watch
+
+# Weekly check of the third-party repositories listed in docs/upstreams.json. When a tracked file changed, or a new
+# file appeared in a watched folder, since the pinned commit, it opens (or refreshes) one issue per repository.
+# It never copies anything: a person reviews the change, takes what is worth taking, and bumps the pin.
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const { upstreams } = JSON.parse(fs.readFileSync("docs/upstreams.json", "utf8"));
+            for (const u of upstreams) {
+              const [owner, repo] = u.repo.split("/");
+              const { data: meta } = await github.rest.repos.get({ owner, repo });
+              const branch = meta.default_branch;
+              const { data: head } = await github.rest.repos.getBranch({ owner, repo, branch });
+              if (head.commit.sha === u.sha) { core.info(`${u.repo}: unchanged`); continue; }
+
+              // Per tracked path, the commits since the pin. One call each, so a busy repository cannot hide a change
+              // behind the 300-file limit of the compare API.
+              const changed = [];
+              for (const path of u.paths) {
+                const { data: commits } = await github.rest.repos.listCommits({ owner, repo, sha: branch, path, since: u.date, per_page: 30 });
+                const fresh = commits.filter((c) => c.sha !== u.sha);
+                if (fresh.length) changed.push({ path, count: fresh.length, last: fresh[0].commit.committer.date.slice(0, 10) });
+              }
+
+              // New files in watched folders, from one compare call.
+              const added = [];
+              let truncated = false;
+              if (u.watchNewFilesIn.length) {
+                const { data: cmp } = await github.rest.repos.compareCommits({ owner, repo, base: u.sha, head: head.commit.sha });
+                truncated = (cmp.files ?? []).length >= 300;
+                for (const f of cmp.files ?? []) {
+                  if (f.status === "added" && u.watchNewFilesIn.some((d) => f.filename.startsWith(d))) added.push(f.filename);
+                }
+              }
+              if (!changed.length && !added.length) { core.info(`${u.repo}: moved, but nothing tracked changed`); continue; }
+
+              const compare = `https://github.com/${u.repo}/compare/${u.sha.slice(0, 7)}...${head.commit.sha.slice(0, 7)}`;
+              const title = `Upstream update: ${u.repo}`;
+              const body = [
+                `Tracked changes in [${u.repo}](https://github.com/${u.repo}) since the pinned commit \`${u.sha.slice(0, 7)}\` (${u.date.slice(0, 10)}).`,
+                `Why we track it: ${u.why}`,
+                "",
+                changed.length ? "**Changed tracked files**" : "",
+                ...changed.map((c) => `- [\`${c.path}\`](https://github.com/${u.repo}/commits/${branch}/${c.path}): ${c.count} commit(s), latest ${c.last}`),
+                added.length ? "\n**New files in watched folders**" : "",
+                ...added.map((f) => `- [\`${f}\`](https://github.com/${u.repo}/blob/${branch}/${f})`),
+                truncated ? "\n_The compare listing hit its 300-file limit; new files beyond it are not shown._" : "",
+                "",
+                `Full diff: ${compare}`,
+                "",
+                "Next: review what changed (ask Claude to \"review upstream updates\"), take only structure, never their statistics, then bump `sha` and `date` in `docs/upstreams.json`.",
+              ].filter((l, i, a) => l !== "" || a[i - 1] !== "").join("\n");
+
+              const { data: open } = await github.rest.issues.listForRepo({ owner: context.repo.owner, repo: context.repo.repo, state: "open", per_page: 100 });
+              const existing = open.find((i) => !i.pull_request && i.title === title);
+              if (existing) {
+                await github.rest.issues.update({ owner: context.repo.owner, repo: context.repo.repo, issue_number: existing.number, body });
+                core.info(`${u.repo}: refreshed #${existing.number}`);
+              } else {
+                const { data: created } = await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body });
+                core.info(`${u.repo}: opened #${created.number}`);
+              }
+            }

@@ -3,7 +3,8 @@ import { db } from "./db";
 import { getUser, trialOver, type User } from "./auth";
 import { charge, refund } from "./credits";
 import { judgeLater } from "./judge";
-import { TASK_COST, getBrand, indexedAt, listLite, listPreferences, rebuildIndex, rebuildPending, saveTask, type Brand, type Task } from "./brand";
+import { TASK_COST, getBrand, indexedAt, listLite, listPreferencesFor, rebuildIndex, rebuildPending, saveTask, type Brand, type Task } from "./brand";
+import { feedbackFor } from "./feedback";
 import { generate } from "./noor";
 import { modelState } from "./model";
 import { memoryBlock } from "./files";
@@ -11,16 +12,22 @@ import { getGov } from "./governance";
 import { activeSeasons } from "./seasons";
 import { dateFormat } from "./dates";
 import { initialStatus } from "./brand-rules";
+import type { RoutineId } from "./routines";
 
-/** Per-user recurring tasks. Cron hits /api/cron/* → we loop users. */
-export type Schedule = { weeklyPlan: boolean; dailyBrief: boolean; followUps: boolean; lastWeekly?: string; lastDaily?: string };
+/**
+ * Per-user recurring tasks. Cron hits /api/cron/* → we loop users. `routines` holds the owner's opt-ins for the
+ * routines in src/lib/routines.ts: all off unless turned on; their last runs live in their own keys, not here.
+ */
+export type Schedule = { weeklyPlan: boolean; dailyBrief: boolean; followUps: boolean; lastWeekly?: string; lastDaily?: string; routines?: Partial<Record<RoutineId, boolean>> };
 export const DEFAULT_SCHEDULE: Schedule = { weeklyPlan: true, dailyBrief: true, followUps: true };
 
 export async function getSchedule(email: string): Promise<Schedule> {
   return { ...DEFAULT_SCHEDULE, ...((await db.get<Partial<Schedule>>(`schedule:${email}`)) ?? {}) };
 }
+/** `routines` is merged per id, so turning one routine on or off leaves the others as they were. */
 export async function saveSchedule(email: string, s: Partial<Schedule>) {
-  const next = { ...(await getSchedule(email)), ...s };
+  const cur = await getSchedule(email);
+  const next = { ...cur, ...s, ...(s.routines ? { routines: { ...cur.routines, ...s.routines } } : {}) };
   await db.set(`schedule:${email}`, next);
   return next;
 }
@@ -46,6 +53,9 @@ export function weekStartUtc(now: Date = new Date()): string {
  */
 export const ranThisWeek = (lastWeekly: string | undefined, now: Date = new Date()): boolean =>
   !!lastWeekly && lastWeekly.slice(0, 10) >= weekStartUtc(now);
+
+/** The owner-notes line of the automatic Sunday plan; the judge is given the same text the agent was. */
+const WEEKLY_NOTE = "This is the automatic Sunday plan. Reference strategy.md phases and the calendar.";
 
 /** Weekly plan for one user. Returns what happened. */
 export async function runWeekly(user: User): Promise<string> {
@@ -75,25 +85,32 @@ async function weeklyFor(user: User, email: string, brand: Brand): Promise<strin
   const weekAgo = Date.now() - 7 * 864e5;
   const auto = (await listLite(email, new Date(weekAgo))).filter((t) => t.source === "scheduled").length;
   if (auto >= gov.weeklyCap) return "cap_reached";
-  const paid = await charge(user.email, cost);
-  if (!paid.ok) return "no_credits";
+  // Loaded before the charge (notifications imports this module, hence the dynamic import), so nothing between the
+  // charge and the refunding try below can throw.
+  const { notifyItem, warnAgentCap } = await import("./notifications");
+  // weekly_plan is Noor's, so it counts against her monthly cap in this brand, like a batch she was asked for.
+  const paid = await charge(user.email, cost, { scope: email, agent: "noor", cap: gov.agentCaps.noor });
+  if (!paid.ok) return paid.reason;
   user.credits = paid.credits;
+  await warnAgentCap(user, paid);
   let items;
+  let memory = "";
   try {
-    items = await generate("weekly_plan", brand, await listPreferences(email), "This is the automatic Sunday plan. Reference strategy.md phases and the calendar.", { memory: await memoryBlock(email), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email });
+    const [prefs, mem, feedback] = await Promise.all([listPreferencesFor(email, "noor"), memoryBlock(email), feedbackFor(email, "noor", { gov })]);
+    memory = mem;
+    items = await generate("weekly_plan", brand, prefs, WEEKLY_NOTE, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, feedback });
   } catch (e) {
-    user.credits = await refund(user.email, cost);
+    user.credits = await refund(user.email, cost, paid);
     throw e;
   }
   const created: Task[] = [];
   for (const it of items) {
-    const t: Task = { id: randomBytes(8).toString("hex"), type: "weekly_plan", channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove.weekly_plan, brand, { type: "weekly_plan", title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "scheduled" };
+    const t: Task = { id: randomBytes(8).toString("hex"), type: "weekly_plan", channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove.weekly_plan, brand, { type: "weekly_plan", title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "scheduled", brief: WEEKLY_NOTE };
     await saveTask(email, t, true);
     created.push(t);
   }
-  judgeLater(email, user.email, brand, created);
+  judgeLater(email, user.email, brand, created, undefined, { notes: WEEKLY_NOTE, memory });
   await saveSchedule(email, { lastWeekly: new Date().toISOString() });
-  const { notifyItem } = await import("./notifications");
   await notifyItem(user.email, user.lang, { kind: "weekly", agent: "noor", title: user.lang === "ar" ? "خطة الأسبوع جاهزة في صندوق الموافقة" : "This week's plan is ready in your inbox", body: user.lang === "ar" ? `${items.length} عنصر من نور. اعتمد ما يعجبك وعيّن تواريخ النشر.` : `${items.length} item(s) from Noor. Approve what you like and set publish dates.`, href: "" }, `weekly:${new Date().toISOString().slice(0, 10)}`, 2);
   return `ok:${items.length}`;
 }

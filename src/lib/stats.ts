@@ -161,11 +161,13 @@ export function statsText(k: Kpis, opts: { store?: boolean } = {}): string {
   ].join("\n");
 }
 
-/** Returns the data block a task is built on: workspace stats for Dana's reports, plus STORE DATA when a store was
- * synced; the store's abandoned carts for cart-recovery drafts; and nothing for everything else. */
+/** Returns the data block a task is built on: workspace stats for Dana's reports and Majed's strategy review, plus
+ * STORE DATA when a store was synced; STORE DATA alone for Razan's cash forecast ("" when no store was synced); the
+ * store's abandoned carts for cart-recovery drafts; and nothing for everything else. Each block is labelled as data. */
 export async function statsFor(type: TaskType, scope: string): Promise<string> {
   if (type === "cart_recovery") return cartDataBlock(scope);
-  if (agentForTask(type).id !== "dana") return "";
+  if (type === "cash_forecast") return salesDataBlock(scope);
+  if (agentForTask(type).id !== "dana" && type !== "strategy_review") return "";
   const [k, store] = await Promise.all([kpis(scope), salesDataBlock(scope)]);
   return store ? `${statsText(k, { store: true })}\n\n${store}` : statsText(k);
 }

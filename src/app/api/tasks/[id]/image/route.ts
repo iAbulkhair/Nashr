@@ -19,7 +19,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!t || !brand) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   const b: unknown = await req.json().catch(() => ({}));
   const model = b && typeof b === "object" ? (b as { model?: unknown }).model : undefined;
-  // The engine charges before the render and refunds exactly once when it fails, so nothing here touches credits. A
+  // The engine charges before the render, to the agent that owns the item and under the owner's monthly cap for that
+  // agent (402 agent_cap, as /api/generate), and refunds exactly once when it fails, so nothing here touches credits. A
   // throw after the charge leaves a durable job, not yet refunded, that the next poll or a sweep settles: the answer
   // points the inbox at it and never says credits were returned.
   try {

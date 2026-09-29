@@ -15,6 +15,7 @@ import { listNotifs } from "@/lib/notifications";
 import { db } from "@/lib/db";
 import type { PlanItem } from "@/lib/chat";
 import { loadJourney } from "@/lib/journey-load";
+import { confirmedOnboard, onboardUrl } from "@/lib/onboard-confirm";
 
 export const dynamic = "force-dynamic";
 
@@ -25,12 +26,16 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
   if (!(await getBrand(sc(u)))) {
-    // First run: the workspace is built inside the "Getting started" thread, not on a form.
-    const onboard = typeof sp.onboard === "string" ? sp.onboard.trim().slice(0, 300) : "";
-    if (onboard.length < 4) redirect(`/${lang}/app/start`);
+    // First run: the workspace is built inside the "Getting started" thread, not on a form, and only from the site the
+    // owner confirmed on the start page. A `?onboard=` from a link goes back there as the pre-filled value to review.
+    const [onboard, initial] = await Promise.all([confirmedOnboard(sc(u)), history(sc(u))]);
+    if (!onboard) {
+      const asked = onboardUrl(sp.onboard);
+      redirect(`/${lang}/app/start${asked.length >= 4 ? `?url=${encodeURIComponent(asked)}` : ""}`);
+    }
     return (
       <div className="grid min-h-0 flex-1">
-        <ChatPanel t={appDict[lang]} initial={await history(sc(u))} credits={u.credits} lang={lang} plan={u.plan} onboardUrl={onboard} needPhone={!u.phone} />
+        <ChatPanel t={appDict[lang]} initial={initial} credits={u.credits} lang={lang} plan={u.plan} onboardUrl={onboard} needPhone={!u.phone} />
       </div>
     );
   }

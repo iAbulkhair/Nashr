@@ -7,18 +7,20 @@
  *   and every refusal before the job is durable releases the flight lock (spec A24);
  * - a job becomes terminal only under `mjoblock:{id}`, after a re-read, and never changes again;
  * - a refund happens only after winning `mrefund:{id}`, and only to the account that paid (spec A32);
+ * - the charge counts against the agent that owns the task in `scope`, under the owner's monthly cap for that agent, and
+ *   the refund lowers that agent's counter with the balance (`job.spend`, src/lib/credits.ts);
  * - a job reads and writes only under its own `scope`, which the server set when it created the job;
  * - the task is changed only through `updateTask` (src/lib/brand.ts), never by saving a copy read earlier.
  */
 import { randomBytes } from "crypto";
 import { db, pushCapped } from "../db";
-import { charge, monthKey, refund } from "../credits";
+import { capOf, charge, monthKey, refund, type AgentCharge } from "../credits";
 import { getUser } from "../auth";
 import { IMAGE_COST, getTask, updateTask, type MediaLast, type Task } from "../brand";
 import { allow } from "../rate";
 import { pmap } from "../parallel";
 import { track } from "../track";
-import { pushNotif } from "../notifications";
+import { pushNotif, warnAgentCap } from "../notifications";
 import {
   MEDIA_MAX_AGE_MS, MEDIA_MODELS, hasArtwork, isMediaModelId, mediaModel,
   type ImageModelId, type MediaFailure, type MediaKind, type MediaModelId, type MediaProviderId, type VideoModelId,
@@ -117,15 +119,17 @@ export async function startMedia(input: StartInput, deps: MediaDeps): Promise<St
   if (!isMediaModelId(input.model)) return { ok: false, status: 400, error: "bad_model" };
   const m = mediaModel(input.model);
   const { scope, email, taskId } = input;
-  // 1-2. Refusals that cost nothing and move no counter.
+  // 1-2. Refusals that cost nothing and move no counter. The agent's monthly cap before the balance, as the ledger checks them.
   if (m.provider !== "fal" && !deps.blobReady()) return { ok: false, status: 409, error: "model_unavailable" };
+  const cap = capOf(input.cap), spent = input.spent ?? 0;
+  if (cap !== undefined && spent + m.credits > cap) return { ok: false, status: 402, error: "agent_cap", agent: input.agent, spent, cap };
   if (input.balance < m.credits) return { ok: false, status: 402, error: "no_credits", need: m.credits, have: input.balance };
   // 3. One render per task and kind.
   const flight = mk.flight(scope, taskId, m.kind);
   if (!(await db.lock(flight, FLIGHT_TTL_S[m.kind]))) return inProgress(scope, taskId, m.kind);
 
   let keepFlight = false, trialVideo = false;
-  let job: MediaJob, task: Task | null = null, credits: number;
+  let job: MediaJob, task: Task | null = null, credits: number, spend: Extract<AgentCharge, { ok: true }>;
   try {
     // 5. Account limits, counted only for requests that got this far.
     const lim = RENDER_LIMITS[m.kind];
@@ -142,16 +146,20 @@ export async function startMedia(input: StartInput, deps: MediaDeps): Promise<St
       const refused = await hfAdmission(email, m.kind, deps, input.deadline);
       if (refused) return { ok: false, status: 429, error: refused };
     }
-    // 8. The charge. A throw (the ledger lock timed out) charged nothing.
-    let paid: Awaited<ReturnType<typeof charge>>;
+    // 8. The charge, to the agent that owns the task in this scope, under the owner's monthly cap for that agent: the
+    // ledger checks the cap and moves the agent's counter in the same save as the balance. A throw (the ledger lock timed
+    // out) charged nothing.
+    let paid: AgentCharge;
     try {
-      paid = await charge(email, m.credits);
+      paid = await charge(email, m.credits, { scope, agent: input.agent, cap: input.cap });
     } catch (e) {
       console.error("media charge failed", codeOf(e));
       return { ok: false, status: 429, error: "busy" };
     }
+    if (!paid.ok && paid.reason === "agent_cap") return { ok: false, status: 402, error: "agent_cap", agent: paid.agent, spent: paid.spent, cap: paid.cap };
     if (!paid.ok) return { ok: false, status: 402, error: "no_credits", need: m.credits, have: paid.credits };
     credits = paid.credits;
+    spend = paid;
 
     // 9. Round A: the job, its open-set member and task.mediaJob together. From here a start request killed by the
     // platform is recovered as submit_lost by the next poll or sweep, because the task points at the job. The task write
@@ -163,6 +171,8 @@ export async function startMedia(input: StartInput, deps: MediaDeps): Promise<St
       ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}),
       state: "queued", createdAt: at, updatedAt: at,
       ...(trialVideo ? { trialVideo: true } : {}),
+      // What a refund needs to lower the agent's counter this charge raised, in the month it was raised.
+      spend: { scope: paid.scope, agent: paid.agent, month: paid.month },
     };
     const kind = m.kind, prior: { last?: MediaLast } = {};
     // All three settle before anything is decided, so a cleanup never races a task write still in flight.
@@ -191,7 +201,9 @@ export async function startMedia(input: StartInput, deps: MediaDeps): Promise<St
   // 11. A fresh id, so always won. Held until this request returns: polls and sweeps leave the job to it meanwhile.
   await db.lock(mk.jobLock(job.id), JOB_LOCK_S);
   try {
-    return await submitLocked(job, task, credits, input, deps);
+    // The one 80% warning of the agent's cap goes out beside the render, never in its way: warnAgentCap never throws.
+    const [r] = await Promise.all([submitLocked(job, task, credits, input, deps), warnAgentCap({ email, lang: input.lang }, spend)]);
+    return r;
   } finally {
     await db.unlock(mk.jobLock(job.id)).catch(() => {});
   }
@@ -489,7 +501,8 @@ async function refundOnce(j: MediaJob): Promise<{ refunded: boolean; credits?: n
   if (!(await db.lock(marker, REFUND_CLAIM_S))) throw new Error("refund_pending");
   let credits: number | undefined;
   try {
-    if (await sameAccount(j)) credits = await refund(j.email, j.credits);
+    // With the charge's agent and month, so the agent's monthly counter comes down with the balance (src/lib/credits.ts).
+    if (await sameAccount(j)) credits = await refund(j.email, j.credits, j.spend);
   } catch (e) {
     // The account was wiped between the check and the ledger call: nothing is owed.
     if (!(e instanceof Error && e.message === "user_not_found")) {

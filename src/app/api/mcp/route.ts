@@ -1,13 +1,17 @@
 import { charge, refund } from "@/lib/credits";
 import { statsFor } from "@/lib/stats";
 import { judgeLater } from "@/lib/judge";
+import type { Grounding } from "@/lib/json";
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { userFromBearer } from "@/lib/mcp";
 import { trialOver } from "@/lib/auth";
 import { chatAllowed } from "@/lib/rate";
 import { chat } from "@/lib/chat";
-import { getBrand, listPreferences, listTasks, saveTask, type Task } from "@/lib/brand";
+import { briefOf, getBrand, listPreferencesFor, listTasks, saveTask, type Task } from "@/lib/brand";
+import { feedbackFor } from "@/lib/feedback";
+import { agentById, agentForTask } from "@/lib/agents";
+import { warnAgentCap } from "@/lib/notifications";
 import { TASK_COST, isTaskType } from "@/lib/tasks";
 import { generate } from "@/lib/noor";
 import { listFiles, memoryBlock, readFile } from "@/lib/files";
@@ -76,29 +80,39 @@ export async function POST(req: Request) {
         if (!isTaskType(args.type)) return ok(id, { ...text("Unknown type."), isError: true });
         if (modelState() === "paused") return ok(id, { ...text("Content generation is paused for now. No credits were used."), isError: true });
         const type = args.type;
-        const brand = await getBrand((user.scope ?? user.email));
+        const scope = user.scope ?? user.email, notes = String(args.notes ?? "");
+        // Governance before the charge: the owner's monthly cap for this agent is checked inside the ledger's lock.
+        const [brand, gov] = await Promise.all([getBrand(scope), getGov(scope)]);
         if (!brand) return ok(id, { ...text("No brand file yet. Run onboarding in the app first."), isError: true });
         if (trialOver(user)) return ok(id, { ...text("The trial has ended. Subscribe in the app to keep generating."), isError: true });
-        if (await missingData(type, user.scope ?? user.email)) return ok(id, { ...text("No abandoned-cart data yet: connect Salla or Shopify and sync sales from Reports in the app first. No credits were used."), isError: true });
+        if (await missingData(type, scope)) return ok(id, { ...text("No abandoned-cart data yet: connect Salla or Shopify and sync sales from Reports in the app first. No credits were used."), isError: true });
         const cost = TASK_COST[type];
-        const paid = await charge(user.email, cost);
+        const agent = agentForTask(type).id;
+        const paid = await charge(user.email, cost, { scope, agent, cap: gov.agentCaps[agent] });
+        // A tool error, like insufficient credits: a JSON-RPC client reads the result, not an HTTP status.
+        if (!paid.ok && paid.reason === "agent_cap") return ok(id, { ...text(`${agentById(agent).name.en} reached the monthly credit cap the owner set in Governance (${paid.spent} of ${paid.cap} credits this month). No credits were used. The owner can raise the cap on the Governance page or wait for next month.`), isError: true });
         if (!paid.ok) return ok(id, { ...text(`Insufficient credits: need ${cost}, have ${paid.credits}.`), isError: true });
         user.credits = paid.credits;
-        const gov = await getGov((user.scope ?? user.email));
+        await warnAgentCap(user, paid);
         let items;
+        // Read inside the try: the credits are already charged, and a failed read must reach the refund below.
+        let ground: Grounding = { notes };
         try {
-          items = await generate(type, brand, await listPreferences((user.scope ?? user.email)), String(args.notes ?? ""), { memory: await memoryBlock((user.scope ?? user.email)), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats: await statsFor(type, user.scope ?? user.email) });
+          const [prefs, memory, stats, feedback] = await Promise.all([listPreferencesFor(scope, agent), memoryBlock(scope), statsFor(type, scope), feedbackFor(scope, agent, { gov })]);
+          ground = { notes, memory, stats };
+          items = await generate(type, brand, prefs, notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats, feedback });
         } catch (e) {
-          user.credits = await refund(user.email, cost);
+          user.credits = await refund(user.email, cost, paid);
           throw e;
         }
+        const brief = briefOf(notes);
         const created: Task[] = [];
         for (const it of items) {
-          const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[type], brand, { type, title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat" };
+          const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[type], brand, { type, title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat", ...(brief ? { brief } : {}) };
           await saveTask((user.scope ?? user.email), t, true);
           created.push(t);
         }
-        judgeLater(user.scope ?? user.email, user.email, brand, created);
+        judgeLater(scope, user.email, brand, created, undefined, ground);
         return ok(id, text(`Created ${items.length} ${type} item(s). Credits left: ${user.credits}.\n\n` + items.map((i) => `## ${i.title} (${i.channel})\n${i.body}`).join("\n\n")));
       }
       case "list_inbox": {

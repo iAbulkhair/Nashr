@@ -4,6 +4,8 @@
  */
 import type { Aspect, MediaFailure, MediaKind, MediaModelId, MediaProviderId } from "../media-catalog";
 import type { Task } from "../brand";
+import type { AgentId } from "../agents";
+import type { SpendRef } from "../credits";
 
 /** What the engine hands an adapter. `imageUrl` is set only when mediaImageFor allowed it. */
 export type SubmitInput = { model: MediaModelId; prompt: string; aspect: Aspect; imageUrl?: string };
@@ -82,6 +84,11 @@ export type MediaJob = {
   refunded?: boolean;
   /** Holds the account's one trial video (mtrialvid): released if this job is refunded. */
   trialVideo?: boolean;
+  /**
+   * The agent this render was charged to in `scope`, and the month of the charge: the refund lowers that agent's monthly
+   * counter by the same credits (src/lib/credits.ts). Absent on jobs started before agent caps: those refund the balance only.
+   */
+  spend?: SpendRef;
 };
 
 /** What the browser sees of a job. */
@@ -108,6 +115,12 @@ export type StartInput = {
   plan: string;
   /** The balance read with the session: a pre-check so a request that cannot pay moves no counter (spec A24). */
   balance: number;
+  /** The agent that owns the task (`agentForTask`, computed in code): the charge counts against its monthly cap in `scope`. */
+  agent: AgentId;
+  /** The owner's monthly cap for that agent in this scope (`gov.agentCaps`), read before the start; absent is no cap. */
+  cap?: number;
+  /** That agent's credits this month in this scope, read with the session: a pre-check like `balance`; the ledger decides. */
+  spent?: number;
   taskId: string;
   model: MediaModelId;
   aspect: Aspect;
@@ -118,9 +131,13 @@ export type StartInput = {
 };
 export type StartError =
   | "trial_over" | "bad_model" | "wrong_type" | "plan_required" | "trial_video_used" | "model_unavailable" | "needs_image"
-  | "in_progress" | "busy" | "one_open" | "too_many" | "no_credits" | "nsfw" | "media_failed";
+  | "in_progress" | "busy" | "one_open" | "too_many" | "no_credits" | "agent_cap" | "nsfw" | "media_failed";
 export type StartResult =
   | { ok: true; job: MediaJob; task: Task | null; credits: number }
-  | { ok: false; status: 400 | 402 | 409 | 422 | 429 | 502; error: StartError; credits?: number; need?: number; have?: number; job?: PublicJob };
+  | {
+      ok: false; status: 400 | 402 | 409 | 422 | 429 | 502; error: StartError; credits?: number; need?: number; have?: number; job?: PublicJob;
+      /** With agent_cap: the agent, its credits this month and the owner's cap, as /api/generate answers them. */
+      agent?: AgentId; spent?: number; cap?: number;
+    };
 
 export type SweepReport = { open: number; advanced: number; done: number; failed: number; dropped: number; skipped: number };
