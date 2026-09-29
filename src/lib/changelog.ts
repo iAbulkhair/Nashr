@@ -28,8 +28,8 @@ export type SeedWish = { id: string; area: WishArea; title: Bi };
 
 /** Newest first. Dates are merge dates on main. */
 export const CHANGELOG: readonly ChangeEntry[] = [
-  // Pricing phase 1 (docs/superpowers/plans/2026-09-29-pricing.md). Dated the day it was finished; at merge, set the date
-  // to the merge date on main and name the PR here (docs/Owner_Tasks_AR.md ح3).
+  // Pricing phase 1 (docs/superpowers/plans/2026-09-29-pricing.md). Dated 2026-09-30; if #228 merges later, set the date
+  // to its merge date on main.
   // #228
   { date: "2026-09-30", tag: "new", title: { ar: "خطط وأسعار جديدة، وعلامات بلا حد", en: "New plans and prices, and unlimited brands" }, desc: { ar: `البداية ${P.starter} والاحتراف ${P.pro} والأعمال ${P.business} ريال شهرياً غير شاملة الضريبة، والوكالات بعقد. العلامات بلا حد في كل الخطط: إعداد علامتك الأولى مجاني، وإعداد كل علامة إضافية من رابطها ${ONBOARD_EXTRA_BRAND_COST} كريدت، وخطة الأحد تعمل تلقائياً لعلامتك الأولى وتفعّلها للعلامات المضافة من «المهام». وارتفعت كلفة ثلاث مهام: خطة الأسبوع ${TASK_COST.weekly_plan} كريدت، والتقرير الأسبوعي ${TASK_COST.weekly_report}، وسلسلة المتابعة ${TASK_COST.followup_seq}.`, en: `Starter ${P.starter}, Pro ${P.pro} and Business ${P.business} SAR a month, excluding VAT, and Agency by contract. Unlimited brands on every plan: your first brand's setup is free, setting up each added brand from its URL is ${ONBOARD_EXTRA_BRAND_COST} credits, and the Sunday plan runs on its own for your first brand while added brands switch it on in Tasks. Three tasks now cost more: the weekly plan ${TASK_COST.weekly_plan} credits, the weekly report ${TASK_COST.weekly_report} and the follow-up cadence ${TASK_COST.followup_seq}.` } },
   // #217
