@@ -1,6 +1,6 @@
 # Test coverage map
 
-Status on 2026-09-28: Vitest is set up (`npm test`, 44 files, 391 tests, a few seconds, memory store only, no network or model calls) and `.github/workflows/ci.yml` runs type-check, lint, unit tests and the Playwright suite on every push and pull request. First green run: commit `21ccd57` on 2026-09-18. Since 2026-09-18 the Vercel Deployment Check "Nashr CI" (Settings > Build and Deployment > Deployment Checks) holds every production deploy until CI passes, so a red run blocks production and a merge takes a few minutes to go live. Rules without a test below are still unverified.
+Status on 2026-09-28: Vitest is set up (`npm test`, 46 files, 416 tests, a few seconds, memory store only, no network or model calls) and `.github/workflows/ci.yml` runs type-check, lint, unit tests and the Playwright suite on every push and pull request. First green run: commit `21ccd57` on 2026-09-18. Since 2026-09-18 the Vercel Deployment Check "Nashr CI" (Settings > Build and Deployment > Deployment Checks) holds every production deploy until CI passes, so a red run blocks production and a merge takes a few minutes to go live. Rules without a test below are still unverified.
 
 Legend: **test** = pinned by an automated test in `tests/` · **none** = nothing verifies the rule today · **manual** = checked by hand once (date) · **live** = guarded by a production probe.
 

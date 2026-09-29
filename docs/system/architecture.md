@@ -31,7 +31,7 @@ Root layout `src/app/[lang]/layout.tsx` (static params for `ar`, `en`). Pages: h
 |---|---|
 | Auth | `auth/signup`, `auth/login`, `auth/logout`, `auth/forgot`, `auth/reset`, `account` |
 | Workspace | `brand`, `brands`, `profile`, `files`, `governance`, `schedule`, `brief`, `notifications`, `conversations` |
-| Agents / content | `chat`, `chat/feedback`, `generate`, `onboard`, `onboard/plan`, `catalog`, `tasks`, `tasks/[id]`, `tasks/[id]/image`, `tasks/[id]/pptx`, `tools/[tool]` |
+| Agents / content | `chat`, `chat/feedback`, `generate`, `onboard`, `onboard/confirm`, `onboard/plan`, `catalog`, `tasks`, `tasks/[id]`, `tasks/[id]/image`, `tasks/[id]/pptx`, `tools/[tool]` |
 | Connectors | `connect`, `connect/[provider]`, `connect/[provider]/start`, `connect/[provider]/callback`, `connect/[provider]/key`, `publish/[id]`, `integrations` |
 | MCP and OAuth server | `mcp`, `mcp/token`, `oauth/register`, `oauth/approve`, `oauth/token`, `oauth/meta`, `oauth/resource` |
 | Growth / inbound | `referral`, `referral/share`, `support`, `affiliates`, `waitlist` |
@@ -57,6 +57,7 @@ Per-route authorization is in `permissions.md`.
 | `feedback.ts` | `feedbackFor(scope, agent)`: the last 30 days of the owner's decisions, typed reasons, the judge's low scores and (chat only) thumbs-down reasons on one agent's own work, as escaped data for that agent's next prompt (uncached block, `feedbackBlock`); empty when `gov.learning` is off. |
 | `golden.ts` | Weekly fixed "golden set" regression run across agents. |
 | `onboard.ts` | Builds brand file, workspace files and starter plan from a crawled site in three parallel model calls (`PARTS`: core, identity, market), one retry per part. |
+| `onboard-confirm.ts` | The owner's confirmation of the site onboarding builds from (`onboardok:{scope}`); a link only pre-fills the start page. |
 | `crawl.ts` | Fetches a user-supplied URL server-side and reduces HTML to text, colors, fonts, platform. |
 | `catalog.ts` | Discovers product URLs via sitemaps/robots and scrapes product pages into `products.md`. |
 | `files.ts` | Workspace Markdown files ("memory"), `memoryBlock` for prompts (opens with the owner's onboarding goal). |
@@ -149,8 +150,9 @@ All four require `Authorization: Bearer ${CRON_SECRET}` (compared with `sameSecr
 | `routinehold:{scope}:{routineId}` | number | `TASK_COUNT` of a batch that passed the weekly-cap check and is not saved yet; the brand's other routines count it, and the run deletes it after saving | `routines.ts` | 360 s |
 | `routinetry:{scope}:{routineId}:{period}` | number | Charges of the routine in this week (`YYYY-MM-DD` of the Sunday) or month (`YYYY-MM`) that were neither refunded nor refused, i.e. left by a killed run; at more than 2 the routine waits for its next period | `routines.ts` | 8 or 35 d |
 | `brief:{scope}` | json | Latest daily brief | `schedule.ts:28,98` | none |
-| `onboardplan:{scope}` | json | Starter plan and one-line output goal from onboarding; the goal opens every agent's `memoryBlock` | `api/onboard/route.ts:57`, `api/onboard/plan/route.ts`, `files.ts` `memoryBlock` | none |
-| `onboardlock:{scope}` | lock | One onboarding run at a time | `api/onboard/route.ts:31` | 240 s |
+| `onboardplan:{scope}` | json | Starter plan and one-line output goal from onboarding; the goal opens every agent's `memoryBlock` | `api/onboard/route.ts:67`, `api/onboard/plan/route.ts`, `files.ts` `memoryBlock` | none |
+| `onboardlock:{scope}` | lock | One onboarding run at a time | `api/onboard/route.ts:44` | 240 s |
+| `onboardok:{scope}` | string | The site URL the owner confirmed on the start page; the only one `POST /api/onboard` builds from | `lib/onboard-confirm.ts`, `api/onboard/confirm/route.ts`, `api/onboard/route.ts` | 1 day; deleted by a finished build |
 | `conns:{scope}` | set | Connected provider ids (never shrinks) | `connectors/store.ts:35` | none |
 | `conn:{scope}:{provider}` | json | Connection with AES-256-GCM `enc` blob; delete writes `null` | `connectors/store.ts:34,52` | none |
 | `oauthstate:{state}` | json | Connector OAuth state `{email: scope, provider, lang, shop, verifier}` | `connectors/store.ts:56` | 10 min |

@@ -28,6 +28,7 @@ import { ROUTINE_IDS, runRoutine } from "@/lib/routines";
 import { ModelPaused, PAUSED_REPLY } from "@/lib/model";
 import * as generateRoute from "@/app/api/generate/route";
 import * as onboardRoute from "@/app/api/onboard/route";
+import * as confirmRoute from "@/app/api/onboard/confirm/route";
 import * as toolRoute from "@/app/api/tools/[tool]/route";
 import * as mcpRoute from "@/app/api/mcp/route";
 import { TOOLS } from "@/lib/tools";
@@ -94,6 +95,7 @@ describe("while Claude is paused (rule 76)", () => {
   it("onboarding refuses before crawling, so no mock brand file is saved to end it for good", async () => {
     const u = await newUser("paused");
     await signIn(u.email);
+    await confirmRoute.POST(json("/api/onboard/confirm", "POST", { url: "roastery.example" }));
     const res = await onboardRoute.POST(json("/api/onboard", "POST", { url: "roastery.example" }));
     expect(res.status).toBe(503);
     expect(await res.text()).toBe("paused");

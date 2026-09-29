@@ -65,7 +65,8 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | 30 | POST | `/api/chat` | O | `currentUser` `chat/route.ts:23-24`. Tool side effects run under `user.scope` `src/lib/chat.ts:220`. |
 | 31 | POST | `/api/chat/feedback` | U | `currentUser` `chat/feedback/route.ts:8-9`; written to `fblog:{sc(u)}` `:13`. Since 2026-09-29 a thumbs-down reason reaches that agent's chat prompt in the same scope, escaped as data (`feedbackFor`, `src/lib/feedback.ts`), never generation, publishing, spending or the brand file. No rate limit; the prompt takes only the 5 newest reasons, 200 characters each. |
 | 32 | POST | `/api/generate` | O | `currentUser` `generate/route.ts:16-17`; trial check `:23`; `missingData` (cart-recovery needs a synced store, 409 `no_cart_data` before any charge); `charge` with the owning agent and the owner's cap for it in `gov:{sc(u)}`, 402 `agent_cap` before any model call and without debiting (`flows.md` 8.9-8.10). |
-| 33 | POST | `/api/onboard` | O | `currentUser` `onboard/route.ts:25-26`; per-scope lock `:31`. |
+| 33 | POST | `/api/onboard` | O | `currentUser` `onboard/route.ts:28-29`; builds only from the URL the owner confirmed, `onboardok:{sc(u)}` (403 `unconfirmed` `:39`, before the crawl, the model and the daily allowance); per-scope lock `:44`. |
+| 33a | POST | `/api/onboard/confirm` | O | `currentUser` `onboard/confirm/route.ts:12-13`; writes only `onboardok:{sc(u)}` (1 day), 409 when the scope already has a brand `:18`. No crawl, no model call. Cross-site submission is stopped by the SameSite=Lax session cookie. |
 | 34 | GET | `/api/onboard/plan` | O | `currentUser` `onboard/plan/route.ts:10-11`. |
 | 35 | POST | `/api/onboard/plan` | O | `currentUser` `onboard/plan/route.ts:17-18`. |
 | 36 | POST | `/api/catalog` | O | `currentUser` `catalog/route.ts:9-10`. Fetches a user-supplied URL server-side `:12,19`. |
@@ -163,7 +164,7 @@ Two layers exist. Layer 1, the layout (`layout.tsx:21-24`): reads `x-pathname` s
 |---|---|---|---|
 | `layout.tsx` | see above | `layout.tsx:14-24` | `getBrand(sc(user))` `:40` |
 | `page.tsx` (inbox) | U with a brand; else `/start` | `page.tsx:15-17` | `sc(u)` |
-| `chat/page.tsx` | U; without a brand requires `?onboard=` else `/start` | `chat/page.tsx:24-29` | `sc(u)`, except `listConnections(u.email)` `:38` and `listNotifs(u.email)` |
+| `chat/page.tsx` | U; without a brand runs onboarding only for the URL confirmed in `onboardok:{sc(u)}`, else `/start?url=` with the `?onboard=` value pre-filled for review | `chat/page.tsx:26-41` | `sc(u)`, except `listConnections(u.email)` `:38` and `listNotifs(u.email)` |
 | `conversations/page.tsx` | U | `:15-16` | `sc(u)` |
 | `generate/page.tsx` | U with a brand | `:11-13` | brand existence checked with `getBrand(sc(u))` (active brand, fixed 2026-09-18) |
 | `calendar/page.tsx` | U | `:11-12` | `sc(u)` |
