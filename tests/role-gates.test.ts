@@ -199,8 +199,6 @@ const READS: Record<string, Gate> = {
  */
 const PUBLIC_WITHOUT_LIMIT: Record<string, string> = {
   "POST /api/auth/logout": "ends only the caller's own session",
-  "POST /api/oauth/register": "KNOWN GAP: open dynamic client registration has no per-IP limit yet",
-  "POST /api/oauth/token": "KNOWN GAP: the token endpoint has no per-IP limit yet",
 };
 /** Founder-console handlers that act only on the caller's own cookies, so they check no founder identity. */
 const CONSOLE_SELF: Record<string, string> = {
