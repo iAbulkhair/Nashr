@@ -48,7 +48,8 @@ export type Task = {
   status: "pending" | "approved" | "rejected";
   createdAt: string;
   lang: "ar" | "en";
-  source?: "manual" | "chat" | "scheduled";
+  /** `external`: written by the owner's own assistant and saved through MCP `save_draft` (src/lib/external-drafts.ts). */
+  source?: "manual" | "chat" | "scheduled" | "external";
   scheduledFor?: string; // YYYY-MM-DD, set by owner in inbox/calendar
   imageUrl?: string;
   imagePrompt?: string;

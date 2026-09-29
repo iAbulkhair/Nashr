@@ -97,9 +97,9 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 
 | # | Method | Path | Who | Enforced by |
 |---|---|---|---|---|
-| 51 | OPTIONS | `/api/mcp` | A | CORS preflight `mcp/route.ts:40`. |
-| 52 | GET | `/api/mcp` | A | Static descriptor `mcp/route.ts:43`. |
-| 53 | POST | `/api/mcp` | A for `initialize`, `ping`, `notifications/initialized`, `tools/list` (`mcp/route.ts:49-51`); M for `tools/call` | `userFromBearer` `mcp/route.ts:53-54`. All data access uses `user.scope ?? user.email`, which is always the email here (default brand). `get_brand_rules` and `check_brand` read only the caller's own brand and spend nothing. `generate_content` charges against the owning agent's monthly cap in the active brand and returns a tool error at the cap, charging nothing. |
+| 51 | OPTIONS | `/api/mcp` | A | CORS preflight `mcp/route.ts:50`. |
+| 52 | GET | `/api/mcp` | A | Static descriptor `mcp/route.ts:53`. |
+| 53 | POST | `/api/mcp` | A for `initialize`, `ping`, `notifications/initialized`, `tools/list` (`mcp/route.ts:63-65`); M for `tools/call` | `userFromBearer` `mcp/route.ts:67-68`. All data access uses `user.scope ?? user.email` (`sc(u)`), the bearer's active brand. `get_brand_rules` and `check_brand` read only the caller's own brand and spend nothing. `save_draft` writes one `pending` task with `source:"external"` to `sc(u)` only (arguments naming a scope, email or id are ignored), is never auto-approved, runs the brand gate in code, spends no credits and calls no model, and is rate limited per account by `draftAllowed` (30 an hour, 150 a day). `generate_content` charges against the owning agent's monthly cap in the active brand and returns a tool error at the cap, charging nothing. |
 | 54 | GET | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:6-7`. Returns only a 12-char prefix. |
 | 55 | POST | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:12-13`. |
 | 56 | DELETE | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:19-20`. |
@@ -291,3 +291,7 @@ Each item states what the code does and why the intended rule cannot be read fro
 ## Brand rules (2026-09-28)
 
 The owner's banned words are enforced in code, not only in prompts (`src/lib/brand-rules.ts`). A customer-facing item whose text contains one cannot become `approved` through `PATCH /api/tasks/{id}` (409 `brand_violation`), cannot be published through `POST /api/publish/{id}` (409) or the chat tool `publish_item` (refused), and is created `pending` even when its type is auto-approved. The owner can still edit it, save it as pending, or remove the word from the brand file; no other actor can lift the rule.
+
+## Drafts from the owner's own assistant (2026-09-29)
+
+MCP `save_draft` lets a bearer (the owner's Claude, ChatGPT or any MCP client, through a personal token or an OAuth grant) put text into the approval inbox of its own active brand. It can create, never decide: the item is always `pending` whatever `gov.autoApprove` says, the brand gate applies to it like to any agent's draft, and approving, editing, rejecting and publishing stay with the signed-in owner in the app. It spends no credits, so its only bound is `draftAllowed` (30 an hour, 150 a day per account). The text is untrusted input: typed and bounded by `parseDraft`, rendered in the inbox like model output (`render`), never executed or followed.
