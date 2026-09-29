@@ -33,7 +33,7 @@ The homepage (`page.tsx`) renders `Story`, `Lineup`, `Dictionary` and `Truths` f
 |---|---|
 | Auth | `auth/signup`, `auth/login`, `auth/logout`, `auth/forgot`, `auth/reset`, `account` |
 | Workspace | `brand`, `brands`, `profile`, `files`, `governance`, `schedule`, `brief`, `notifications`, `conversations` |
-| Agents / content | `chat`, `chat/feedback`, `generate`, `onboard`, `onboard/plan`, `catalog`, `tasks`, `tasks/[id]`, `tasks/[id]/image`, `tasks/[id]/pptx`, `tools/[tool]` |
+| Agents / content | `chat`, `chat/feedback`, `generate`, `onboard`, `onboard/confirm`, `onboard/plan`, `catalog`, `tasks`, `tasks/[id]`, `tasks/[id]/image`, `tasks/[id]/pptx`, `tools/[tool]` |
 | Connectors | `connect`, `connect/[provider]`, `connect/[provider]/start`, `connect/[provider]/callback`, `connect/[provider]/key`, `publish/[id]`, `integrations` |
 | MCP and OAuth server | `mcp`, `mcp/token`, `oauth/register`, `oauth/approve`, `oauth/token`, `oauth/meta`, `oauth/resource` |
 | Growth / inbound | `referral`, `referral/share`, `support`, `affiliates`, `waitlist` |
@@ -52,14 +52,15 @@ Per-route authorization is in `permissions.md`.
 | `brand.ts` | `Brand` file, `Task` records, task costs and counts, owner preference notes. |
 | `credits.ts` | Credit ledger under a per-user Redis lock: `charge`, `adjust`, `refund`, monthly `renewIfDue`. |
 | `chat.ts` | Agent chat loop (Anthropic streaming, up to 5 tool turns), tool definitions and `runTool`, chat history lists. |
-| `noor.ts` | Batch content generation (`generate`), task specs, second-pass reviewer `critique`. |
-| `judge.ts` | Post-response quality scoring of generated tasks (`judgeLater` via `after()`). |
+| `noor.ts` | Batch content generation (`generate`), task specs, second-pass reviewer `critique` (one prompt per owning agent, `reviewerPrompt`). |
+| `judge.ts` | Post-response quality scoring of generated tasks (`judgeLater` via `after()`), scored against the owner's notes and workspace data, with automatic-fail caps (`AUTOFAIL`). |
 | `evals.ts` | Behavioural metrics per agent, chat thumbs storage. |
 | `golden.ts` | Weekly fixed "golden set" regression run across agents. |
 | `onboard.ts` | Builds brand file, workspace files and starter plan from a crawled site in three parallel model calls (`PARTS`: core, identity, market), one retry per part. |
+| `onboard-confirm.ts` | The owner's confirmation of the site onboarding builds from (`onboardok:{scope}`); a link only pre-fills the start page. |
 | `crawl.ts` | Fetches a user-supplied URL server-side and reduces HTML to text, colors, fonts, platform. |
 | `catalog.ts` | Discovers product URLs via sitemaps/robots and scrapes product pages into `products.md`. |
-| `files.ts` | Workspace Markdown files ("memory"), `memoryBlock` for prompts. |
+| `files.ts` | Workspace Markdown files ("memory"), `memoryBlock` for prompts (opens with the owner's onboarding goal). |
 | `conversations.ts` | Multiple chat threads per scope, substring search. |
 | `governance.ts` | Per-scope rules: auto-approve by type, weekly cap, learning, reviewer, dash stripping. |
 | `brand-rules.ts` | Import-free brand gate: banned words as rules (`brandRules`, `checkText`, `gateTask`, `initialStatus`), used by the approve and publish routes, auto-approval, the chat publish tool, the MCP `check_brand` tool, the golden evals and the inbox. |
@@ -145,8 +146,9 @@ All three require `Authorization: Bearer ${CRON_SECRET}` and return 401 when the
 | `gov:{scope}` | json | `Governance` | `governance.ts:16` | none |
 | `schedule:{scope}` | json | `Schedule` | `schedule.ts:17` | none |
 | `brief:{scope}` | json | Latest daily brief | `schedule.ts:28,98` | none |
-| `onboardplan:{scope}` | json | Starter plan from onboarding | `api/onboard/route.ts:57`, `api/onboard/plan/route.ts` | none |
-| `onboardlock:{scope}` | lock | One onboarding run at a time | `api/onboard/route.ts:31` | 240 s |
+| `onboardplan:{scope}` | json | Starter plan and one-line output goal from onboarding; the goal opens every agent's `memoryBlock` | `api/onboard/route.ts:67`, `api/onboard/plan/route.ts`, `files.ts` `memoryBlock` | none |
+| `onboardlock:{scope}` | lock | One onboarding run at a time | `api/onboard/route.ts:44` | 240 s |
+| `onboardok:{scope}` | string | The site URL the owner confirmed on the start page; the only one `POST /api/onboard` builds from | `lib/onboard-confirm.ts`, `api/onboard/confirm/route.ts`, `api/onboard/route.ts` | 1 day; deleted by a finished build |
 | `conns:{scope}` | set | Connected provider ids (never shrinks) | `connectors/store.ts:35` | none |
 | `conn:{scope}:{provider}` | json | Connection with AES-256-GCM `enc` blob; delete writes `null` | `connectors/store.ts:34,52` | none |
 | `oauthstate:{state}` | json | Connector OAuth state `{email: scope, provider, lang, shop, verifier}` | `connectors/store.ts:56` | 10 min |

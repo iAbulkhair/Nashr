@@ -25,6 +25,7 @@ import * as signupRoute from "@/app/api/auth/signup/route";
 import * as loginRoute from "@/app/api/auth/login/route";
 import * as accountRoute from "@/app/api/account/route";
 import * as onboardRoute from "@/app/api/onboard/route";
+import * as confirmRoute from "@/app/api/onboard/confirm/route";
 import * as generateRoute from "@/app/api/generate/route";
 import * as tasksRoute from "@/app/api/tasks/route";
 import * as taskRoute from "@/app/api/tasks/[id]/route";
@@ -50,7 +51,9 @@ describe("journey: sign up, build the workspace, generate, approve, publish", ()
     expect(jar().get("nashr_session")).toBeTruthy();
     expect((await getUser(email))!.credits).toBe(50);
 
-    // 2. Onboarding: free, once, and it leaves a brand file and the workspace files behind.
+    // 2. Onboarding: the owner confirms the site on the start page, then it is free, once, and it leaves a brand file
+    // and the workspace files behind.
+    expect((await confirmRoute.POST(json("/api/onboard/confirm", "POST", { url: "roastery.example" }))).status).toBe(200);
     const events = await drain(await onboardRoute.POST(json("/api/onboard", "POST", { url: "roastery.example" })));
     expect(events.at(-1)!.type).toBe("done");
     expect(await getBrand(email)).not.toBeNull();
@@ -111,7 +114,10 @@ describe("journey: an agency account works in a second brand", () => {
     const second = added.brand.id;
     const scope = `${u.email}#${second}`;
 
-    // Onboarding runs again for the new brand: it has its own brand file and its own files.
+    // Onboarding runs again for the new brand: it has its own brand file and its own files. The confirmation is the
+    // active brand's own, like everything else in the scope.
+    expect((await confirmRoute.POST(json("/api/onboard/confirm", "POST", { url: "second.example" }))).status).toBe(200);
+    expect(await db.get(`onboardok:${u.email}`), "the default brand confirmed nothing").toBeNull();
     expect((await drain(await onboardRoute.POST(json("/api/onboard", "POST", { url: "second.example" })))).at(-1)!.type).toBe("done");
     expect(await getBrand(scope)).not.toBeNull();
     expect(await getBrand(u.email)).toBeNull(); // the default brand was never onboarded

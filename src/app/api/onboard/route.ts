@@ -8,6 +8,7 @@ import { readFile, writeFile } from "@/lib/files";
 import { push, type ChatMsg } from "@/lib/chat";
 import { db } from "@/lib/db";
 import { modelState } from "@/lib/model";
+import { clearOnboard, confirmedOnboard, onboardUrl } from "@/lib/onboard-confirm";
 
 export const maxDuration = 300;
 
@@ -21,18 +22,23 @@ const T = {
  * conversation). POST {url, hints?} → text/event-stream in the chat protocol:
  * {type:"status",text} · {type:"message",message} (several) · {type:"done"} · {type:"error",error}.
  * Every message is also persisted, so a reload shows the same thread.
- * Free: onboarding never charges credits.
+ * Free: onboarding never charges credits. Builds only from the URL the owner confirmed (src/lib/onboard-confirm.ts).
  */
 export async function POST(req: Request) {
   const u = await currentUser();
   if (!u) return new Response("unauthorized", { status: 401 });
-  const b = (await req.json().catch(() => ({}))) as { url?: string; hints?: string };
-  if (!b.url || b.url.trim().length < 4) return new Response("bad_url", { status: 400 });
+  const b = (await req.json().catch(() => ({}))) as { url?: unknown; hints?: string };
+  const url = onboardUrl(b.url);
+  if (url.length < 4) return new Response("bad_url", { status: 400 });
+  const scope = sc(u), t = T[u.lang === "en" ? "en" : "ar"];
+  const [brand, confirmed] = await Promise.all([getBrand(scope), confirmedOnboard(scope)]);
+  // Free and backed by a large model: run once per workspace and at most three times a day per account.
+  if (brand) return new Response("already_onboarded", { status: 409 });
+  // Only the site the owner confirmed on the start page (POST /api/onboard/confirm). A link someone else sent can
+  // pre-fill that page but cannot choose what this workspace is built from: nothing below runs for it.
+  if (confirmed !== url) return new Response("unconfirmed", { status: 403 });
   // Before the daily allowance and the lock, so a paused run costs the owner none of their three tries.
   if (modelState() === "paused") return new Response("paused", { status: 503 });
-  const scope = sc(u), t = T[u.lang === "en" ? "en" : "ar"];
-  // Free and backed by a large model: run once per workspace and at most three times a day per account.
-  if (await getBrand(scope)) return new Response("already_onboarded", { status: 409 });
   if (!(await allow(`onboard:${u.email}`, 3, 86400))) return new Response("slow_down", { status: 429 });
   // One run at a time per workspace: a reload during the run must not start a second one.
   if (!(await db.lock(`onboardlock:${scope}`, 240))) return new Response("busy", { status: 409 });
@@ -45,7 +51,7 @@ export async function POST(req: Request) {
       try {
         await say({ content: t.intro });
         send({ type: "status", text: t.crawl });
-        const site = await crawl(b.url!);
+        const site = await crawl(url);
         send({ type: "status", text: t.visuals });
         if (!site.ok) await say({ content: t.unreachable });
         // Three model calls run side by side (src/lib/onboard.ts). The status line moves when a part really lands.
@@ -59,6 +65,7 @@ export async function POST(req: Request) {
           Promise.all(r.files.map((f) => writeFile(scope, f.name, f.content, "noor"))),
           readFile(scope, "preferences.md"),
           db.set(`onboardplan:${scope}`, { goal: r.goal, plan: r.plan, at: new Date().toISOString() }),
+          clearOnboard(scope),
         ]);
         const files = saved.map((f) => ({ name: f.name, content: f.content }));
         if (!prefs) await writeFile(scope, "preferences.md", "# Preferences learned from the owner\n", "noor");

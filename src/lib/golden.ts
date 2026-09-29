@@ -18,7 +18,7 @@ import { modelState } from "./model";
  * Bump GOLDEN_VERSION when cases or brands change: deltas only compare runs of
  * the same version.
  */
-export const GOLDEN_VERSION = 4; // v2: judge reads full bodies. v3: reduced counts, local currency. v4: reviewer and judge share content/skills/review.md
+export const GOLDEN_VERSION = 5; // v2: judge reads full bodies. v3: reduced counts, local currency. v4: reviewer and judge share content/skills/review.md. v5: judge sees owner notes + workspace data and caps auto-fails; reviewer is per agent
 export const GOLDEN_EMAIL = "golden@nashr.internal";
 const CONCURRENCY = 8;
 /** Do not start new cases after this many ms; the route has maxDuration 300. */
@@ -149,7 +149,7 @@ async function runCase(c: GoldenCase): Promise<GoldenResult> {
   try {
     items = await generate(c.type, brand, [], c.extra, { meter: GOLDEN_EMAIL, stats: c.stats, count: c.count });
     stage = "judge";
-    const verdicts = await scoreItems(GOLDEN_EMAIL, brand, c.type, items, c.count);
+    const verdicts = await scoreItems(GOLDEN_EMAIL, brand, c.type, items, c.count, { notes: c.extra, stats: c.stats });
     // An unjudged item is left out of the mean rather than counted as 0, and the gap is written into the notes so a
     // run where the judge answered for half the items does not read as a clean score.
     const q = verdicts.filter((x): x is Quality => !!x);

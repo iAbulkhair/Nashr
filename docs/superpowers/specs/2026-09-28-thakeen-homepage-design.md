@@ -247,7 +247,7 @@ Still open:
 2. Illustrator: who draws, and budget; style frames approved before the full cast.
 
 Build decisions (2026-09-28), recorded as built:
-1. CTA contract: `StartForm` submits to `/{lang}/app/signup?url=…`, the existing UrlStart path, which starts onboarding by itself. §7.4's `signup?next=/{lang}/app/start?url=…` is not used.
+1. CTA contract: `StartForm` submits to `/{lang}/app/signup?url=…`, the existing UrlStart path. Since PR #216 that lands on `/{lang}/app/start?url=…`, where the owner confirms the site before any crawl. §7.4's `signup?next=/{lang}/app/start?url=…` is not used.
 2. Banter bubbles: a figure speaks when pressed (Enter, Space or click), not on hover or focus (ruling R8). Hover and focus turn the figure to face you and hold its question.
 3. Banter cadence: the next exchange starts at the later of 8000 ms after the previous one's start and 2200 ms after its last line (ruling R12).
 4. Motion toggle: one page-level pause button for WCAG 2.2.2, shown on the story's stage and in the lineup. Both are the same switch, and it stops the storm, the scroll cue, the story's flip and all of the lineup's motion (ruling R13, extended to the whole page in the final review).
