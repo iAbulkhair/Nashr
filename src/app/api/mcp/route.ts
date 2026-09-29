@@ -20,6 +20,7 @@ import { getGov } from "@/lib/governance";
 import { missingData } from "@/lib/cart-recovery";
 import { CUSTOMER_FACING, brandRules, explain, gateTask, initialStatus, isCustomerFacing } from "@/lib/brand-rules";
 import { modelState } from "@/lib/model";
+import { SEC_TOOL_DEFS, isSecTool, runSecretaryTool } from "@/lib/secretary";
 
 export const maxDuration = 300;
 
@@ -36,6 +37,8 @@ const TOOLS = [
   { name: "list_files", description: "List workspace files.", inputSchema: { type: "object", properties: {} } },
   { name: "get_brand_rules", description: "The active brand's rules as structured data: name, dialect and languages, tone, audience, products, offers, preferred words, channels, and the banned words Nashr enforces in code. Call this before writing anything for this brand in any tool, and write to it. Free, no credits.", inputSchema: { type: "object", properties: {} } },
   { name: "check_brand", description: "Check a draft against the active brand's rules with the same code Nashr's approve and publish buttons use. Returns pass or the rules that fired, each with the matched word and where it appears. Use it on anything you wrote for this brand before handing it over. Free, no credits.", inputSchema: { type: "object", properties: { text: { type: "string", description: "The draft to check (up to 20,000 characters)." }, type: { type: "string", enum: Object.keys(TASK_COST), description: "Optional Nashr item type. Internal documents (plans, memos) are not held for quoting a banned word; leave empty to check as customer-facing copy." } }, required: ["text"] } },
+  // Reem's to-do tools: free, no model call, the bearer's active brand only; none of them completes, deletes or restores.
+  ...SEC_TOOL_DEFS.map((d) => ({ name: d.name, description: d.description, inputSchema: d.schema })),
   { name: "save_draft", description: `Save one draft you wrote into the owner's Nashr approvals inbox as a pending item, for the owner to approve, edit or reject. Nothing is published and nothing is approved automatically. The brand rules are checked in code on save: a draft with a banned word is kept but held, and the answer names the rule, so run check_brand first and fix it. One item per call. Free, no credits, no model call; limited to ${DRAFTS_PER_HOUR} drafts an hour per account.`, inputSchema: { type: "object", properties: { type: { type: "string", enum: Object.keys(TASK_COST), description: "Nashr item type, e.g. social, article, whatsapp, ads, gbp." }, channel: { type: "string", description: "Optional short channel name: instagram, snapchat, tiktok, x, whatsapp, blog, meta… Defaults to the type." }, title: { type: "string", description: `Optional short title (up to ${DRAFT_LIMITS.title} characters). Defaults to the first line of the body.` }, body: { type: "string", description: `The draft text, ready to use (up to ${DRAFT_LIMITS.body} characters).` }, notes: { type: "string", description: `Optional note for the owner: what this draft is for (up to ${DRAFT_LIMITS.notes} characters).` }, lang: { type: "string", enum: ["ar", "en"], description: "Optional language of the draft. Defaults to the brand's first language." } }, required: ["type", "body"] } },
 ];
 
@@ -161,8 +164,14 @@ export async function POST(req: Request) {
         if (!saved.ok) return ok(id, { ...text("No brand file yet. Run onboarding in the app first. Nothing was saved."), isError: true });
         return ok(id, text(JSON.stringify(draftReport(saved.task, saved.violations), null, 2)));
       }
-      default:
+      default: {
+        if (isSecTool(name)) {
+          // The scope is the bearer's (`userFromBearer` sets it), never an argument; `source` is "mcp".
+          const r = await runSecretaryTool(user, name, args, { who: { actor: "mcp", via: "mcp" }, lang: user.lang });
+          return ok(id, r.isError ? { ...text(r.text), isError: true } : text(r.text));
+        }
         return err(id, -32602, "Unknown tool");
+      }
     }
   } catch (e) {
     return ok(id, { ...text(e instanceof Error ? e.message : "failed"), isError: true });

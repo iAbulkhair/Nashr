@@ -1,6 +1,6 @@
 # Nashr: permissions (as implemented)
 
-What the code enforces today, at HEAD `4959f7e`, with the media routes of 2026-09-29 (rows 39 and 92-96, section 3.2, section 5 items 17, 20 and 26), the review fixes of the same day (rows 38 and 48, section 3.2, section 5 items 13, 24 and 27), and main's changes of the same day merged into them: the agent-team steps 1 and 2 (rows 18, 20, 21, 31, 32, 38, 39, 48, 53 and 91, section 3.1 items 6 and 7, section 5 items 6, 17 and 18) and the shared-link onboarding fix (rows 33 and 33a, the chat page in section 2). Paths are relative to the repository root; API route files are under `src/app/api/` and are written without that prefix in the tables. `file:line` points at the line where the check happens.
+What the code enforces today, at HEAD `4959f7e`, with the media routes of 2026-09-29 (rows 39 and 92-96, section 3.2, section 5 items 17, 20 and 26), the review fixes of the same day (rows 38 and 48, section 3.2, section 5 items 13, 24 and 27), and main's changes of the same day merged into them: the agent-team steps 1 and 2 (rows 18, 20, 21, 31, 32, 38, 39, 48, 53 and 91, section 3.1 items 6 and 7, section 5 items 6, 17 and 18) and the shared-link onboarding fix (rows 33 and 33a, the chat page in section 2), and phase 1 of Reem, the secretary (rows 30, 53 and 101-103, the `todo` page in section 2, section 3.2, and the section "Reem, the secretary" at the end). Paths are relative to the repository root; API route files are under `src/app/api/` and are written without that prefix in the tables. `file:line` points at the line where the check happens.
 
 ## 0. Actors and the functions that identify them
 
@@ -15,9 +15,9 @@ What the code enforces today, at HEAD `4959f7e`, with the media routes of 2026-0
 
 There is no global guard. `src/proxy.ts` does not authenticate (`src/proxy.ts:15-30`); every handler enforces its own rule, and a handler without a check is public.
 
-## 1. API routes (69 route files, 106 exported handlers)
+## 1. API routes (71 route files, 109 exported handlers)
 
-Counted on 2026-09-29 after main was merged into the media change: `find src/app/api -name route.ts | wc -l` gives 66 and `grep -rhoE "export (async )?function (GET|POST|PUT|PATCH|DELETE|OPTIONS)" src/app/api | wc -l` gives 102 (5 of them `OPTIONS`). Before the media change the tree had 59 files and 95 handlers while this heading said 57 and 90; the media change added 5 files and 5 handlers (rows 92-96), and main added 2 of each the same day (`onboard/confirm`, row 33a, and `cron/routines`, row 91; main's heading said 60 and 91). Rows 56d and 56e (`mcp/grants`) were missing and are added below. The updates and wishlist change added 3 files and 4 exports (rows 97-100), giving 69 and 106.
+Counted on 2026-09-29 after main was merged into the media change: `find src/app/api -name route.ts | wc -l` gives 66 and `grep -rhoE "export (async )?function (GET|POST|PUT|PATCH|DELETE|OPTIONS)" src/app/api | wc -l` gives 102 (5 of them `OPTIONS`). Before the media change the tree had 59 files and 95 handlers while this heading said 57 and 90; the media change added 5 files and 5 handlers (rows 92-96), and main added 2 of each the same day (`onboard/confirm`, row 33a, and `cron/routines`, row 91; main's heading said 60 and 91). Rows 56d and 56e (`mcp/grants`) were missing and are added below. The updates and wishlist change added 3 files and 4 exports (rows 97-100), giving 69 and 106. Reem's phase 1 added 2 files and 3 exports (rows 101-103), giving 71 and 109.
 
 Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the addressed resource (U plus scope binding), F = founder admin, C = cron secret, M = MCP bearer token.
 
@@ -58,13 +58,16 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | 26 | POST | `/api/conversations` | O | `currentUser` `conversations/route.ts:14-15`. |
 | 27 | PATCH | `/api/conversations` | O; `id` from body resolved under `sc(u)` | `currentUser` `conversations/route.ts:20-21`; `renameConversation(sc(u), id)` `:24`. |
 | 28 | DELETE | `/api/conversations` | O; `id` from query resolved under `sc(u)` | `currentUser` `conversations/route.ts:28-29`; `deleteConversation(sc(u), id)` `:32`. |
+| 101 | GET | `/api/secretary` | O | `currentUser` first (401); `allow("sec:read:{email}", 600, 3600)` (429); `agendaFor(sc(u))` (the agenda computed now, with the approvals count; items whose linked inbox task under `sc(u)` is approved are closed by code first), or `?view=done` (`listDone`) / `?view=deleted` (`listDeleted`, restorable only). |
+| 102 | POST | `/api/secretary` | O | `currentUser` first (401); `createItem` in `src/lib/secretary.ts`: fields typed, cleaned (control and direction-override characters removed) and bounded (title 200, description 2000, party 80; too long is 400, never cut), dates parsed as Riyadh time and refused when impossible or outside a year back to five years ahead; then `allow("sec:create:{email}", 200, 86400)` per account across its brands (429), at most 500 open items per brand (409 `open_limit`), and a `taskId` must be a task of `sc(u)` (400 `unknown_task`). An `id`, `scope`, `email`, `source`, `rev` or state field in the body is ignored. Free: no credits, no model call. |
+| 103 | PATCH | `/api/secretary/{id}` | O; `id` must match `^s[a-f0-9]{16}$` before any key is built and resolve under `sc(u)` | `currentUser` first (401); format check (404); `allow("sec:write:{email}", 600, 3600)` (429); `parseOwnerChange` validates the action and its arguments; `changeItem(sc(u), id, …, {actor: "owner", via: "web"}, rev)` under `sec:lock:{scope}:{id}` (another account's id is 404 and untouched; a stale `rev` is 409 `conflict` with the current item). The only route that completes (a written result is required), confirms or rejects a proposed "done", deletes (soft, 30 days) or restores (410 after expiry). |
 
 ### 1.3 Agents, content, tasks
 
 | # | Method | Path | Who | Enforced by |
 |---|---|---|---|---|
 | 29 | GET | `/api/chat` | O; `conv` from query is a key suffix under `sc(u)` | `currentUser` `chat/route.ts:11-12`; `history(sc(u), conv)` `:14`. |
-| 30 | POST | `/api/chat` | O | `currentUser` `chat/route.ts:23-24`. Tool side effects run under `user.scope` `src/lib/chat.ts:273`. |
+| 30 | POST | `/api/chat` | O | `currentUser` `chat/route.ts:23-24`. Tool side effects run under `user.scope` `src/lib/chat.ts:273`. Reem's four tools (`agenda_get`, `todo_create`, `todo_update`, `todo_propose_done`, offered to every agent) are free and cannot complete, delete or restore an item: `changeItem` refuses the owner-only actions unless the actor is the owner on the web (`owner_only`). |
 | 31 | POST | `/api/chat/feedback` | U | `currentUser` `chat/feedback/route.ts:8-9`; written to `fblog:{sc(u)}` `:13`. Since 2026-09-29 a thumbs-down reason reaches that agent's chat prompt in the same scope, escaped as data (`feedbackFor`, `src/lib/feedback.ts`), never generation, publishing, spending or the brand file. No rate limit; the prompt takes only the 5 newest reasons, 200 characters each. |
 | 32 | POST | `/api/generate` | O | `currentUser` `generate/route.ts:16-17`; trial check `:23`; `missingData` (cart-recovery needs a synced store, 409 `no_cart_data` before any charge); `charge` with the owning agent and the owner's cap for it in `gov:{sc(u)}`, 402 `agent_cap` before any model call and without debiting (`flows.md` 8.9-8.10). |
 | 33 | POST | `/api/onboard` | O | `currentUser` `onboard/route.ts:28-29`; builds only from the URL the owner confirmed, `onboardok:{sc(u)}` (403 `unconfirmed` `:39`, before the crawl, the model and the daily allowance); per-scope lock `:44`. |
@@ -99,7 +102,7 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 |---|---|---|---|---|
 | 51 | OPTIONS | `/api/mcp` | A | CORS preflight `mcp/route.ts:50`. |
 | 52 | GET | `/api/mcp` | A | Static descriptor `mcp/route.ts:53`. |
-| 53 | POST | `/api/mcp` | A for `initialize`, `ping`, `notifications/initialized`, `tools/list` (`mcp/route.ts:63-65`); M for `tools/call` | `userFromBearer` `mcp/route.ts:67-68`. All data access uses `user.scope ?? user.email` (`sc(u)`), the bearer's active brand. `get_brand_rules` and `check_brand` read only the caller's own brand and spend nothing. `save_draft` writes one `pending` task with `source:"external"` to `sc(u)` only (arguments naming a scope, email or id are ignored), is never auto-approved, runs the brand gate in code, spends no credits and calls no model, and is rate limited per account by `draftAllowed` (30 an hour, 150 a day). `generate_content` charges against the owning agent's monthly cap in the active brand and returns a tool error at the cap, charging nothing. |
+| 53 | POST | `/api/mcp` | A for `initialize`, `ping`, `notifications/initialized`, `tools/list` (`mcp/route.ts:63-65`); M for `tools/call` | `userFromBearer` `mcp/route.ts:67-68`. All data access uses `user.scope ?? user.email` (`sc(u)`), the bearer's active brand. `get_brand_rules` and `check_brand` read only the caller's own brand and spend nothing. `save_draft` writes one `pending` task with `source:"external"` to `sc(u)` only (arguments naming a scope, email or id are ignored), is never auto-approved, runs the brand gate in code, spends no credits and calls no model, and is rate limited per account by `draftAllowed` (30 an hour, 150 a day). `generate_content` charges against the owning agent's monthly cap in the active brand and returns a tool error at the cap, charging nothing. Reem's `agenda_get`, `todo_create`, `todo_update` and `todo_propose_done` (2026-09-29) are free, run in the bearer's active brand with `source:"mcp"`, share the per-account allowances of rows 102-103, and cannot complete, delete or restore an item. |
 | 54 | GET | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:6-7`. Returns only a 12-char prefix. |
 | 55 | POST | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:12-13`. |
 | 56 | DELETE | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:19-20`. |
@@ -195,6 +198,7 @@ Two layers exist. Layer 1, the layout (`layout.tsx:21-24`): reads `x-pathname` s
 | `refer/page.tsx` | U | `:12-13` | account |
 | `reports/page.tsx` | U with a brand | `:20-22` | `sc(u)`, except `listConnections(u.email)` `:23` |
 | `notifications/page.tsx` | U | `:13-14` | account |
+| `todo/page.tsx` | U | `currentUser` then `redirect` | `todoPage(sc(u))`: Reem's agenda, recent done and restorable deleted items of the active brand; dates formatted on the server in Riyadh time |
 | `profile/page.tsx` | U | `:10` | via `/api/profile` |
 | `brands/page.tsx` | U | `:9` | account |
 | `inspo/page.tsx` | U | `:10` | static |
@@ -245,6 +249,8 @@ Public page `/{lang}/updates` (outside the app shell, 2026-09-29): anyone can re
 | `POST /api/support`, `/api/affiliates`, `/api/waitlist` | `email` in body | Not bound; free text. Support additionally records the session email separately as `user`. |
 | `GET/POST /api/admin/users/{email}`, `POST /api/admin/plan` | target email | Founder only; no binding by design. The decoded path value is used raw for lock keys and for `wipeAccount` (`admin/users/[email]/route.ts:47,94`), while `getUser` normalizes case. |
 | `POST /api/mcp` | bearer token | Email from `mcptoken:{token}`. |
+| `PATCH /api/secretary/{id}`, chat and MCP `todo_update` / `todo_propose_done` | item id (path or tool argument) | Must match `^s[a-f0-9]{16}$` before a key is built; the key is `sec:item:{sc(u)}:{id}`, so another account's or another brand's id is 404 (tools: "No item with that id") and the item is untouched. |
+| `POST /api/secretary`, `PATCH /api/secretary/{id}`, chat and MCP `todo_create` / `todo_update` | `taskId` / `task_id` (a link to an inbox item) | Must match `^[a-f0-9]{16}$` and exist as `task:{sc(u)}:{taskId}` (400 `unknown_task`); the automatic close reads the task under the same scope. |
 
 No route accepts an email or scope from a non-founder request and uses it to read or write another tenant's workspace data.
 
@@ -301,3 +307,15 @@ The owner's banned words are enforced in code, not only in prompts (`src/lib/bra
 ## Drafts from the owner's own assistant (2026-09-29)
 
 MCP `save_draft` lets a bearer (the owner's Claude, ChatGPT or any MCP client, through a personal token or an OAuth grant) put text into the approval inbox of its own active brand. It can create, never decide: the item is always `pending` whatever `gov.autoApprove` says, the brand gate applies to it like to any agent's draft, and approving, editing, rejecting and publishing stay with the signed-in owner in the app. It spends no credits, so its only bound is `draftAllowed` (30 an hour, 150 a day per account). The text is untrusted input: typed and bounded by `parseDraft`, rendered in the inbox like model output (`render`), never executed or followed.
+
+## Reem, the secretary (2026-09-29)
+
+Phase 1 of the secretary agent keeps the owner's own to-dos, follow-ups and "who owes what" per brand scope (`src/lib/secretary.ts`, spec `docs/superpowers/specs/2026-09-29-secretary-reem-phase1.md`). What code enforces, not prompts:
+
+1. Scope. Every key is built from `sc(u)` (the session's or the bearer's active brand); an item id from a request is format-checked and resolved under that scope only (rows 101-103, section 3.2).
+2. Only the owner closes. `complete` (a written result is required), `confirm_done`, `reject_done`, `delete` and `restore` are `OWNER_ONLY`: `changeItem` and `mutateItem` refuse them unless the actor is the owner through the web route. Chat and MCP tools can create, update, snooze, add notes and propose "done" with evidence; a proposal waits under "needs your confirmation". The one other close is deterministic: an item linked to an inbox task of the same scope closes with the result "linked item approved" when that task is approved (`closeLinked`, re-checked under the item lock).
+3. Concurrency. Writes to one item go through `sec:lock:{scope}:{id}` and bump `rev`; a request that sends an older `rev` gets 409.
+4. Limits. 200 new items a day and 600 changes an hour per account (across brands), 600 reads an hour, 500 open items per brand.
+5. Untrusted text. Titles, notes and evidence are cleaned and bounded; the chat tool answers quote them as JSON under a line that says they are data; private notes never reach a model.
+6. Deletion. A delete is soft for 30 days; the daily cron purges after that; `wipeAccount` deletes every `sec:*` key of every brand scope (`secretaryKeys`).
+7. No new vendor, no new environment variable, no WhatsApp or Telegram delivery, no time-based reminder job: reminders reach the owner through the page, the 8 AM brief (and its email, per the owner's preference) and one in-app follow-up per brand per Riyadh day.

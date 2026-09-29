@@ -13,6 +13,8 @@ import { activeSeasons } from "./seasons";
 import { dateFormat } from "./dates";
 import { initialStatus } from "./brand-rules";
 import type { RoutineId } from "./routines";
+import { briefAgenda, type BriefAgenda } from "./secretary-agenda";
+import { agendaFor } from "./secretary";
 
 /**
  * Per-user recurring tasks. Cron hits /api/cron/* → we loop users. `routines` holds the owner's opt-ins for the
@@ -32,7 +34,8 @@ export async function saveSchedule(email: string, s: Partial<Schedule>) {
   return next;
 }
 
-export type Brief = { date: string; text: string; pending: number; approved7d: number; credits: number; seasons: string[] };
+/** `agenda`: Reem's counts and the first three overdue or due-today titles (absent on briefs written before 2026-09-29). */
+export type Brief = { date: string; text: string; pending: number; approved7d: number; credits: number; seasons: string[]; agenda?: BriefAgenda };
 
 export async function latestBrief(email: string) {
   return db.get<Brief>(`brief:${email}`);
@@ -130,6 +133,10 @@ export async function runDaily(user: User): Promise<Brief | null> {
   const approved7d = tasks.filter((t) => t.status === "approved" && new Date(t.createdAt).getTime() > dayAgo).length;
   const seasons = activeSeasons().slice(0, 2).map((s) => `${s.nameAr} (${s.daysLeft} يوم)`);
   const ar = (brand?.languages[0] ?? user.lang) === "ar";
+  // Reem's block: counts from the computed agenda (no model), and the titles of the first three overdue or due-today items.
+  const agenda = briefAgenda(await agendaFor(email, Date.now(), { actor: "cron", via: "cron" }));
+  const hasAgenda = agenda.overdue + agenda.today + agenda.waiting + agenda.confirm > 0;
+  const top = agenda.top.map((t) => `«${t.slice(0, 80)}»`).join(ar ? "، " : ", ");
   const lines = ar
     ? [
         `صباح الخير ${user.name || ""} ☀️ ملخص نور لليوم:`,
@@ -137,7 +144,8 @@ export async function runDaily(user: User): Promise<Brief | null> {
         `• اعتمدت خلال 7 أيام: ${approved7d} عنصر`,
         `• رصيدك: ${user.credits} كريدت${user.plan === "trial" ? ` (التجربة تنتهي ${dateFormat("ar", { day: "numeric", month: "long" }).format(new Date(user.trialEnds))})` : ""}`,
         seasons.length ? `• المواسم القريبة: ${seasons.join("، ")}` : "• لا مواسم كبرى خلال 35 يوماً — وقت مناسب لبناء الجمهور",
-        pending ? "الخطوة التالية: افتح صندوق الموافقة واعتمد ما يعجبك." : "الخطوة التالية: اطلب من نور دفعة جديدة في الدردشة.",
+        ...(hasAgenda ? [`• مهامك (ريم): ${agenda.overdue} متأخرة، ${agenda.today} لليوم، ${agenda.waiting} بانتظار غيرك${agenda.confirm ? `، ${agenda.confirm} تحتاج تأكيدك` : ""}`, ...(top ? [`  أولها: ${top}`] : [])] : []),
+        pending ? "الخطوة التالية: افتح صندوق الموافقة واعتمد ما يعجبك." : agenda.overdue + agenda.today ? "الخطوة التالية: افتح «مهامي» وابدأ بالمتأخر." : "الخطوة التالية: اطلب من نور دفعة جديدة في الدردشة.",
       ]
     : [
         `Good morning ${user.name || ""} ☀️ Noor's brief for today:`,
@@ -145,9 +153,10 @@ export async function runDaily(user: User): Promise<Brief | null> {
         `• Approved in the last 7 days: ${approved7d}`,
         `• Credits: ${user.credits}${user.plan === "trial" ? ` (trial ends ${dateFormat("en", { day: "numeric", month: "long" }).format(new Date(user.trialEnds))})` : ""}`,
         seasons.length ? `• Upcoming seasons: ${seasons.join(", ")}` : "• No major season within 35 days — good time to build audience",
-        pending ? "Next step: open the inbox and approve what you like." : "Next step: ask Noor for a new batch in chat.",
+        ...(hasAgenda ? [`• Your to-dos (Reem): ${agenda.overdue} overdue, ${agenda.today} due today, ${agenda.waiting} waiting on others${agenda.confirm ? `, ${agenda.confirm} to confirm` : ""}`, ...(top ? [`  First: ${top}`] : [])] : []),
+        pending ? "Next step: open the inbox and approve what you like." : agenda.overdue + agenda.today ? "Next step: open My to-dos and start with what is overdue." : "Next step: ask Noor for a new batch in chat.",
       ];
-  const brief: Brief = { date: new Date().toISOString().slice(0, 10), text: lines.join("\n"), pending, approved7d, credits: user.credits, seasons };
+  const brief: Brief = { date: new Date().toISOString().slice(0, 10), text: lines.join("\n"), pending, approved7d, credits: user.credits, seasons, agenda };
   await db.set(`brief:${email}`, brief);
   await saveSchedule(email, { lastDaily: new Date().toISOString() });
   return brief;

@@ -91,8 +91,11 @@ describe("each agent's work is reviewed as that agent's work (rule 93)", () => {
   it("is identical for every type of one agent (one cached copy per agent) and different between agents", () => {
     expect(reviewerPrompt("pricing_review")).toBe(reviewerPrompt("cash_forecast"));
     expect(reviewerPrompt("social")).toBe(reviewerPrompt("ads"));
-    const distinct = new Set(AGENTS.map((a) => reviewerPrompt(TASK_TYPES.find((t) => agentForTask(t).id === a.id)!)));
-    expect(distinct.size).toBe(AGENTS.length);
+    // Agents that own a type (Reem owns none, so agentForTask never names her and no reviewer prompt is hers).
+    const owners = AGENTS.filter((a) => a.tasks.length > 0);
+    expect(owners.length).toBe(AGENTS.length - 1);
+    const distinct = new Set(owners.map((a) => reviewerPrompt(TASK_TYPES.find((t) => agentForTask(t).id === a.id)!)));
+    expect(distinct.size).toBe(owners.length);
     expect(reviewerPrompt("pricing_review")).toMatch(/Finance fit/);
     expect(reviewerPrompt("weekly_report")).toMatch(/Report fit/);
     expect(reviewerPrompt("pricing_review")).not.toMatch(/Platform fit/);

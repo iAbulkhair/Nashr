@@ -6,13 +6,15 @@ import { listBrands, scopeFor } from "./brands";
 import { getSchedule } from "./schedule";
 import { agentById, type AgentId } from "./agents";
 import type { AgentCharge } from "./credits";
+import { agendaFor, overdueFingerprint } from "./secretary";
+import { riyadhDay } from "./secretary-agenda";
 
 /**
  * In-app follow-ups from the team. Stored per account (not per brand) as one
  * capped JSON array so the bell is cheap to read. Each follow-up is deduped by a
  * fingerprint so the owner is nudged once per situation, not every day.
  */
-export type NotifKind = "due" | "pending" | "weekly" | "credits" | "trial" | "quality" | "info";
+export type NotifKind = "due" | "pending" | "weekly" | "credits" | "trial" | "quality" | "info" | "todo";
 export type Notif = { id: string; kind: NotifKind; title: string; body: string; href: string; at: string; read?: boolean; agent?: AgentId };
 
 const KEY = (email: string) => `notifs:${email}`;
@@ -84,6 +86,13 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   const weak = tasks.filter((t) => t.status === "pending" && typeof t.score === "number" && t.score < 70);
   if (weak.length) {
     await add({ kind: "quality", agent: "dana", href: app, title: ar ? `${weak.length} عنصر بدرجة جودة أقل من 70` : `${weak.length} item(s) scored below 70`, body: ar ? `${weak[0].notes ?? ""} أعد التوليد بملاحظة أوضح أو عدّل قبل الاعتماد.` : `${weak[0].notes ?? ""} Regenerate with a clearer note or edit before approving.` }, `quality:${weak.map((t) => t.id).sort().join(",").slice(0, 60)}`, 7);
+  }
+  // 6. Overdue to-dos on Reem's list: one nudge per brand per Riyadh day, whatever the number of items.
+  const agenda = await agendaFor(scope, Date.now(), { actor: "cron", via: "cron" });
+  if (agenda.counts.overdue > 0) {
+    const n = agenda.counts.overdue;
+    const first = agenda.buckets.overdue.slice(0, 2).map((e) => `«${e.item.title.slice(0, 60)}»`).join(ar ? "، " : ", ");
+    await add({ kind: "todo", agent: "reem", href: `${app}/todo`, title: ar ? (n === 1 ? "مهمة متأخرة في قائمتك" : `${n} مهام متأخرة في قائمتك`) : `${n} overdue to-do${n === 1 ? "" : "s"} on your list`, body: ar ? `ابدأ بـ ${first}. أنجزها أو أجّلها أو غيّر موعدها.` : `Start with ${first}. Do it, snooze it or reschedule it.` }, overdueFingerprint(scope, riyadhDay(Date.now())), 2);
   }
   return out;
 }

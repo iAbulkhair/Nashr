@@ -44,7 +44,8 @@ export default function GeneratePanel({ t, lang, credits }: { t: AppDict; lang: 
       <h1 className="page-title">{g.title}</h1>
       <p className="mt-2 text-ink/70">{g.sub}</p>
       <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder={g.notes} className="mt-5 input" />
-      {AGENTS.map((a) => {
+      {/* Agents that own deliverables; Reem keeps the owner's to-dos and has none. */}
+      {AGENTS.filter((a) => a.tasks.length > 0).map((a) => {
         const info = t.agents[a.id];
         return (
           <section key={a.id} className="mt-7">

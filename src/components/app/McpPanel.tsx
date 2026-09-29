@@ -72,7 +72,7 @@ export default function McpPanel({ lang, origin, draftsPerHour }: { lang: Lang; 
         <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <div className="rounded-lg bg-oasis/5 p-3">
             <p className="font-semibold text-oasis">{ar ? "مجانية، بدون رصيد" : "Free, no credits"}</p>
-            <p className="mt-1 font-mono text-xs text-ink/70" dir="ltr">save_draft · check_brand · get_brand_rules · list_inbox · read_file · list_files</p>
+            <p className="mt-1 font-mono text-xs text-ink/70" dir="ltr">save_draft · check_brand · get_brand_rules · list_inbox · read_file · list_files · agenda_get · todo_create · todo_update · todo_propose_done</p>
             <p className="mt-1 text-xs text-ink/60">{ar ? `save_draft: حتى ${draftsPerHour} مسودة في الساعة لكل حساب.` : `save_draft: up to ${draftsPerHour} drafts an hour per account.`}</p>
           </div>
           <div className="rounded-lg bg-sadu/5 p-3">
@@ -84,7 +84,7 @@ export default function McpPanel({ lang, origin, draftsPerHour }: { lang: Lang; 
         <p className="mt-3 rounded-lg bg-salt-dim px-3 py-2 font-mono text-xs text-ink/70" dir="ltr">&quot;Use Nashr: get my brand rules, write 3 Instagram captions, check_brand each one, then save_draft the ones that pass.&quot;</p>
       </section>
       <h2 className="mt-6 font-display text-xl font-bold">{ar ? "الأدوات المتاحة" : "Tools exposed"}</h2>
-      <ul className="mt-2 grid gap-1 text-sm text-ink/80" dir="ltr">{["ask_noor — chat with Noor (all her tools)", "generate_content — weekly_plan | social | article | whatsapp | ads | gbp", "list_inbox — pending / approved / rejected", "read_file / list_files — brand.md, products.md, strategy.md…", "get_brand_rules — tone, dialect, audience, enforced banned words (free)", "check_brand — pass or the rule that fired, with the matched word (free)", "save_draft — save your own draft to the approvals inbox as pending (free)"].map((x) => <li key={x} className="font-mono text-xs">• {x}</li>)}</ul>
+      <ul className="mt-2 grid gap-1 text-sm text-ink/80" dir="ltr">{["ask_noor — chat with Noor (all her tools)", "generate_content — weekly_plan | social | article | whatsapp | ads | gbp", "list_inbox — pending / approved / rejected", "read_file / list_files — brand.md, products.md, strategy.md…", "get_brand_rules — tone, dialect, audience, enforced banned words (free)", "check_brand — pass or the rule that fired, with the matched word (free)", "save_draft — save your own draft to the approvals inbox as pending (free)", "agenda_get — Reem's to-do agenda in Riyadh time, plus approvals waiting (free)", "todo_create / todo_update — add or change a to-do on your list (free)", "todo_propose_done — ask you to confirm an item is done; only you close it, in the app (free)"].map((x) => <li key={x} className="font-mono text-xs">• {x}</li>)}</ul>
     </div>
   );
 }

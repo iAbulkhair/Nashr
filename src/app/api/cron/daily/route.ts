@@ -12,6 +12,7 @@ import { renewIfDue } from "@/lib/credits";
 import { followUps, notifEmailText } from "@/lib/notifications";
 import { getUser } from "@/lib/auth";
 import { syncAdsIfDue } from "@/lib/perf-store";
+import { secretaryDaily } from "@/lib/secretary";
 
 export const maxDuration = 300;
 
@@ -26,6 +27,9 @@ async function dailyFor(u: User): Promise<string> {
     const fresh = await getUser(u.email);
     if (fresh) u.credits = fresh.credits;
   }
+  // Reem's list, for every scope with or without a brand: purge items deleted over 30 days ago and close the ones whose
+  // linked inbox item was approved. A failure is reported and never stops the rest of this workspace's day.
+  try { const sec = await secretaryDaily(u.scope ?? u.email); if (sec.purged || sec.closed) out.push(`todo:${sec.purged}p${sec.closed}c`); } catch (e) { out.push(`todo_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   const brand = await getBrand(u.scope ?? u.email);
   // Signup nudge: registered but never built a brand (Enrich-style founder follow-up)
   if (!brand) {
@@ -50,7 +54,8 @@ async function dailyFor(u: User): Promise<string> {
   const pref = ((await db.get<{ emails?: string }>(`profile:${u.scope ?? u.email}`)) ?? (await db.get<{ emails?: string }>(`profile:${u.email}`)) ?? {}).emails ?? "all";
   if (brief) {
     out.push("brief");
-    const worth = pref === "all" || (pref === "important" && (brief.pending > 0 || fu.length > 0));
+    // "important": something waits for a decision, a follow-up fired, or a to-do is overdue or due today.
+    const worth = pref === "all" || (pref === "important" && (brief.pending > 0 || fu.length > 0 || (brief.agenda?.overdue ?? 0) + (brief.agenda?.today ?? 0) > 0));
     const extra = fu.length ? `\n\n${notifEmailText(u, fu)}` : "";
     if (worth && (await sendEmail(u.email, u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, brief.text + extra + `\n\n${ORIGIN()}/${u.lang}/app`))) out.push("email");
   } else if (fu.length && pref !== "none") {
