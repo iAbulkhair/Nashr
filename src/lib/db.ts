@@ -20,6 +20,8 @@ type Store = {
   sadd(key: string, member: string): Promise<number>;
   smembers(key: string): Promise<string[]>;
   srem(key: string, member: string): Promise<void>;
+  /** Sizes of many sets in ONE request (an Upstash pipeline), in the order of `keys`. For counters shown in a list. */
+  scardMany(keys: string[]): Promise<number[]>;
   incrby(key: string, n: number): Promise<number>;
   /** EXPIRE NX: give a key a TTL only when it has none. Never touches the value or an expiry already set. */
   expireNx(key: string, ttlSeconds: number): Promise<void>;
@@ -74,6 +76,12 @@ function upstash(): Store | null {
     },
     async srem(key, m) {
       await r.srem(key, m);
+    },
+    async scardMany(keys) {
+      if (!keys.length) return [];
+      const p = r.pipeline();
+      for (const k of keys) p.scard(k); // queued, not sent: exec() sends every command in one HTTP request
+      return (await p.exec()).map((n) => Number(n) || 0);
     },
     async incrby(key, n) {
       return await r.incrby(key, n);
@@ -166,6 +174,9 @@ function memory(): Store {
     async srem(key, member) {
       m.sets.get(key)?.delete(member);
     },
+    async scardMany(keys) {
+      return keys.map((k) => m.sets.get(k)?.size ?? 0);
+    },
     async incrby(key, n) {
       live(key);
       const v = ((m.kv.get(key) as number) ?? 0) + n;
@@ -199,4 +210,4 @@ export async function pushCapped(key: string, value: string, cap: number) {
   await Promise.all([db.lpush(key, value), db.ltrim(key, cap)]);
 }
 /** Caps for the lists above. Reads never look past these, so trimming loses nothing a page shows. */
-export const CAPS = { chat: 400, adminLog: 2000, tickets: 2000, feedback: 500, prefs: 100, decisions: 500 } as const;
+export const CAPS = { chat: 400, adminLog: 2000, tickets: 2000, feedback: 500, prefs: 100, decisions: 500, wishSuggestions: 500 } as const;

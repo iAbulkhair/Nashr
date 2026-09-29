@@ -15,9 +15,9 @@ What the code enforces today, at HEAD `4959f7e`, with the media routes of 2026-0
 
 There is no global guard. `src/proxy.ts` does not authenticate (`src/proxy.ts:15-30`); every handler enforces its own rule, and a handler without a check is public.
 
-## 1. API routes (66 route files, 102 exported handlers)
+## 1. API routes (69 route files, 106 exported handlers)
 
-Counted on 2026-09-29 after main was merged into the media change: `find src/app/api -name route.ts | wc -l` gives 66 and `grep -rhoE "export (async )?function (GET|POST|PUT|PATCH|DELETE|OPTIONS)" src/app/api | wc -l` gives 102 (5 of them `OPTIONS`). Before the media change the tree had 59 files and 95 handlers while this heading said 57 and 90; the media change added 5 files and 5 handlers (rows 92-96), and main added 2 of each the same day (`onboard/confirm`, row 33a, and `cron/routines`, row 91; main's heading said 60 and 91). Rows 56d and 56e (`mcp/grants`) were missing and are added below.
+Counted on 2026-09-29 after main was merged into the media change: `find src/app/api -name route.ts | wc -l` gives 66 and `grep -rhoE "export (async )?function (GET|POST|PUT|PATCH|DELETE|OPTIONS)" src/app/api | wc -l` gives 102 (5 of them `OPTIONS`). Before the media change the tree had 59 files and 95 handlers while this heading said 57 and 90; the media change added 5 files and 5 handlers (rows 92-96), and main added 2 of each the same day (`onboard/confirm`, row 33a, and `cron/routines`, row 91; main's heading said 60 and 91). Rows 56d and 56e (`mcp/grants`) were missing and are added below. The updates and wishlist change added 3 files and 4 exports (rows 97-100), giving 69 and 106.
 
 Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the addressed resource (U plus scope binding), F = founder admin, C = cron secret, M = MCP bearer token.
 
@@ -97,9 +97,9 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 
 | # | Method | Path | Who | Enforced by |
 |---|---|---|---|---|
-| 51 | OPTIONS | `/api/mcp` | A | CORS preflight `mcp/route.ts:40`. |
-| 52 | GET | `/api/mcp` | A | Static descriptor `mcp/route.ts:43`. |
-| 53 | POST | `/api/mcp` | A for `initialize`, `ping`, `notifications/initialized`, `tools/list` (`mcp/route.ts:49-51`); M for `tools/call` | `userFromBearer` `mcp/route.ts:53-54`. All data access uses `user.scope ?? user.email`, which is always the email here (default brand). `get_brand_rules` and `check_brand` read only the caller's own brand and spend nothing. `generate_content` charges against the owning agent's monthly cap in the active brand and returns a tool error at the cap, charging nothing. |
+| 51 | OPTIONS | `/api/mcp` | A | CORS preflight `mcp/route.ts:50`. |
+| 52 | GET | `/api/mcp` | A | Static descriptor `mcp/route.ts:53`. |
+| 53 | POST | `/api/mcp` | A for `initialize`, `ping`, `notifications/initialized`, `tools/list` (`mcp/route.ts:63-65`); M for `tools/call` | `userFromBearer` `mcp/route.ts:67-68`. All data access uses `user.scope ?? user.email` (`sc(u)`), the bearer's active brand. `get_brand_rules` and `check_brand` read only the caller's own brand and spend nothing. `save_draft` writes one `pending` task with `source:"external"` to `sc(u)` only (arguments naming a scope, email or id are ignored), is never auto-approved, runs the brand gate in code, spends no credits and calls no model, and is rate limited per account by `draftAllowed` (30 an hour, 150 a day). `generate_content` charges against the owning agent's monthly cap in the active brand and returns a tool error at the cap, charging nothing. |
 | 54 | GET | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:6-7`. Returns only a 12-char prefix. |
 | 55 | POST | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:12-13`. |
 | 56 | DELETE | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:19-20`. |
@@ -131,6 +131,8 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | 72 | GET | `/api/affiliates` | F | `isAdmin` `affiliates/route.ts:13`. |
 | 73 | POST | `/api/waitlist` | A | Rate limit 10 per IP per hour `waitlist/route.ts:18`. |
 | 74 | GET | `/api/waitlist` | Holder of `WAITLIST_ADMIN_KEY` in the query string only | Inline compare `waitlist/route.ts:55-58`. Does not use `isAdmin`; founder session and admin cookie are not accepted. |
+| 97 | POST | `/api/wishlist/vote` | U | `currentUser` first (401); rate limit 60 per account per hour (`rate:wishvote:{email}`); the item id must be a known item (`votableId`: a seeded id not hidden, or a promoted id; 400 `unknown_item` before any key is built). The voter is always the session's `u.email`: an email, user or scope in the body is ignored. Votes are per account, not per brand. |
+| 98 | POST | `/api/wishlist/suggest` | U | `currentUser` first (401); text cleaned (`cleanText`: control, invisible and direction-override characters removed, one line) and bounded to 5..280 characters (400); then 5 per account per day (`rate:wishsuggest:{email}`, 429). Goes to the `wish:suggestions` queue only; no public route reads it. |
 
 ### 1.7 Founder console
 
@@ -150,6 +152,8 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | 86 | GET | `/api/admin/golden` | F | `isAdmin` `admin/golden/route.ts:12`. |
 | 87 | POST | `/api/admin/golden` | F | `isAdmin` `admin/golden/route.ts:20`. |
 | 96 | GET | `/api/admin/media` | F | `isAdmin` `admin/media/route.ts:39`, else 401 and no provider call; `maxDuration = 60` `:18`. Calls the kie balance and Higgsfield `/estimate` only for configured providers, writes and deletes one tiny Blob file (`probeBlob`), and reads the open-set sizes, `renderSpend()`, `media:off` and `mjobs:recent`. Answers flags (`configured`), model ids, balances, estimates, error codes and spend; never a variable value, an email or a scope (`recentRow` passes only id, model, state, error, credits, cost and time). |
+| 99 | GET | `/api/admin/wishlist` | F | `isAdmin` first. Returns the suggestion queue (with the suggesters' emails) and every wishlist item, hidden ones included, with counts. |
+| 100 | POST | `/api/admin/wishlist` | F | `isAdmin` first. Actions `promote` (the founder writes the public title in both languages, each cleaned and at most 120 characters; the suggester's text is never published), `status` (`planned`/`in_progress`/`shipped`), `delete` (hides a seeded item, deletes a promoted one with its votes), `restore`, `dismiss`. Ids are checked with `existingId` / `wellFormedId`; every action is written to `admin:log`. |
 
 ### 1.8 Cron
 
@@ -203,7 +207,9 @@ Two layers exist. Layer 1, the layout (`layout.tsx:21-24`): reads `x-pathname` s
 | `reset/page.tsx` | A | none (`:8` language check only) | none |
 | `admin/page.tsx` | F; others get 404, or the key form when `?login=1` | `isAdminCookie()` `admin/page.tsx:15-18` | global |
 
-The sidebar shows the console link when `isFounder(user.email)` (`layout.tsx:44`); this is display only.
+The sidebar shows the console link when `isFounder(user.email)` (`layout.tsx:44`); this is display only. It also links every signed-in user to the public `/{lang}/updates` page.
+
+Public page `/{lang}/updates` (outside the app shell, 2026-09-29): anyone can read it. It reads `currentUser()` only to show the viewer's own votes and the vote and suggestion controls; anonymous visitors get the counts and sign-in links. The page reads wishlist data through `listWishes` only and never reads `wish:suggestions`.
 
 ## 3. Cross-tenant isolation
 
@@ -291,3 +297,7 @@ Each item states what the code does and why the intended rule cannot be read fro
 ## Brand rules (2026-09-28)
 
 The owner's banned words are enforced in code, not only in prompts (`src/lib/brand-rules.ts`). A customer-facing item whose text contains one cannot become `approved` through `PATCH /api/tasks/{id}` (409 `brand_violation`), cannot be published through `POST /api/publish/{id}` (409) or the chat tool `publish_item` (refused), and is created `pending` even when its type is auto-approved. The owner can still edit it, save it as pending, or remove the word from the brand file; no other actor can lift the rule.
+
+## Drafts from the owner's own assistant (2026-09-29)
+
+MCP `save_draft` lets a bearer (the owner's Claude, ChatGPT or any MCP client, through a personal token or an OAuth grant) put text into the approval inbox of its own active brand. It can create, never decide: the item is always `pending` whatever `gov.autoApprove` says, the brand gate applies to it like to any agent's draft, and approving, editing, rejecting and publishing stay with the signed-in owner in the app. It spends no credits, so its only bound is `draftAllowed` (30 an hour, 150 a day per account). The text is untrusted input: typed and bounded by `parseDraft`, rendered in the inbox like model output (`render`), never executed or followed.
