@@ -4,7 +4,7 @@ Baseline written from the code on branch `claude/cool-tu-144390` (HEAD `4959f7e`
 
 ## 1. Summary
 
-Nashr is a single Next.js 16 app-router application (TypeScript, React server components, no separate backend) deployed on Vercel. It serves a bilingual (Arabic default, English) marketing site and an authenticated app under `/{lang}/app` in which a small-business owner talks to seven AI agents (Noor marketing, Sami sales, Razan finance, Faris growth, Dana reporting, Majed executive, Layan product; `src/lib/agents.ts:21`). Agents call Anthropic models through `@anthropic-ai/sdk`, produce content "tasks" that land in an approval inbox, and can publish approved items to third-party platforms through connectors. All state lives in one Upstash Redis database reached through a thin adapter (`src/lib/db.ts`); when no Redis credentials are present the adapter silently falls back to a process-local in-memory `Map` (`src/lib/db.ts:112`). There is no SQL database, no queue and no background worker: long work runs inside the request (route `maxDuration` up to 300 s), after the response via Next `after()` (`src/lib/judge.ts:90`), or in three Vercel cron jobs. Usage is metered in credits held on the user record. The same agent capabilities are exposed to external AI clients through an MCP endpoint (`/api/mcp`) protected by personal bearer tokens or by a built-in minimal OAuth 2.1 authorization server.
+Nashr is a single Next.js 16 app-router application (TypeScript, React server components, no separate backend) deployed on Vercel. It serves a bilingual (Arabic default, English) marketing site and an authenticated app under `/{lang}/app` in which a small-business owner talks to seven AI agents (Noor marketing, Sami sales, Razan finance, Faris growth, Dana reporting, Majed executive, Layan product; `src/lib/agents.ts:21`). Agents call Anthropic models through `@anthropic-ai/sdk`, produce content "tasks" that land in an approval inbox, and can publish approved items to third-party platforms through connectors. All state lives in one Upstash Redis database reached through a thin adapter (`src/lib/db.ts`); when no Redis credentials are present the adapter silently falls back to a process-local in-memory `Map` (`src/lib/db.ts:112`). There is no SQL database, no queue and no background worker: long work runs inside the request (route `maxDuration` up to 300 s), after the response via Next `after()` (`src/lib/judge.ts:90`), or in three Vercel cron jobs. Usage is metered in credits held on the user record. The same agent capabilities are exposed to external AI clients through an MCP endpoint (`/api/mcp`) protected by personal bearer tokens or by a built-in minimal OAuth 2.1 authorization server; through it an owner's own Claude or ChatGPT subscription can also read the brand rules, check a draft and save it into the approval inbox without spending credits (`save_draft`, `src/lib/external-drafts.ts`).
 
 ## 2. Component map
 
@@ -63,7 +63,7 @@ Per-route authorization is in `permissions.md`.
 | `files.ts` | Workspace Markdown files ("memory"), `memoryBlock` for prompts (opens with the owner's onboarding goal). |
 | `conversations.ts` | Multiple chat threads per scope, substring search. |
 | `governance.ts` | Per-scope rules: auto-approve by type, weekly cap, learning, reviewer, dash stripping, and a monthly credit cap per agent (`agentCaps`). `saveGov` validates every field of the request body (agent ids, task types, booleans, finite numbers, clamps). |
-| `brand-rules.ts` | Import-free brand gate: banned words as rules (`brandRules`, `checkText`, `gateTask`, `initialStatus`), used by the approve and publish routes, auto-approval, the chat publish tool, the MCP `check_brand` tool, the golden evals and the inbox. |
+| `brand-rules.ts` | Import-free brand gate: banned words as rules (`brandRules`, `checkText`, `gateTask`, `initialStatus`), used by the approve and publish routes, auto-approval, the chat publish tool, the MCP `check_brand` and `save_draft` tools, the golden evals and the inbox. |
 | `ad-codes.ts` | Import-free ad codes: `newAdCode`, `codesIn`, `withoutCodes`, and which item types carry one. |
 | `connectors/ads.ts` | Read-only Meta Ads and Snapchat Ads readers: ad accounts, last-30-day results per ad as import rows, account choice. |
 | `perf-import.ts` / `perf-store.ts` | Campaign CSV import: import-free parser, metric choice and findings (browser-safe), and the store that keeps the snapshot and writes `performance-learnings.md`. |
@@ -80,6 +80,7 @@ Per-route authorization is in `permissions.md`.
 | `admin-stats.ts` | Founder overview and users CSV. |
 | `referral.ts` | Deterministic referral codes, two-sided credit grant. |
 | `mcp.ts` | Personal MCP tokens and `userFromBearer`. |
+| `external-drafts.ts` | MCP `save_draft` (2026-09-29): `parseDraft` types and bounds a draft the owner's own assistant wrote (type from `TASK_TYPES`, body up to 20,000 characters, title 200, notes 500, channel a short `[a-z0-9_-]` name; control and direction-override characters stripped; too long is refused, not cut), and `saveExternalDraft` saves it as one `pending` task with `source:"external"` in `sc(u)` after `draftAllowed` and the brand gate. Free: no credits, no model call, no judge. |
 | `oauth.ts` | Minimal OAuth 2.1 server: metadata, dynamic client registration, codes, tokens, refresh rotation. |
 | `rate.ts` | Fixed-window rate limiter `allow()` and `clientIp()` (first `x-forwarded-for` hop). |
 | `account.ts` | `wipeAccount` account deletion. |
@@ -124,13 +125,13 @@ All four require `Authorization: Bearer ${CRON_SECRET}` (compared with `sameSecr
 | `users:all` | set | All account emails | `auth.ts:54`; read by `schedule.ts:106`, `admin-stats.ts:24`, `api/admin/plan`, `api/admin/export` | none |
 | `session:{token}` | json | `{email, at}` for a 32-byte hex session token (records from before 2026-09-18 are a bare email); dead when `at` is older than the user's `sessionsAfter` | `auth.ts:81,97` | 30 days |
 | `pwreset:{sha256(token)}` | json | `{email}` for a password reset | `api/auth/forgot/route.ts:27`, `api/auth/reset/route.ts:16` | 1 hour |
-| `rate:{bucket}` | int | Fixed-window counter. Buckets: `forgot:ip:{ip}`, `forgot:em:{email}`, `reset:ip:{ip}`, `adminkey:{ip}` | `rate.ts:5` | window seconds |
+| `rate:{bucket}` | int | Fixed-window counter. Buckets: `forgot:ip:{ip}`, `forgot:em:{email}`, `reset:ip:{ip}`, `adminkey:{ip}`, `draft:h:{email}` and `draft:d:{email}` (MCP `save_draft`, 30 an hour and 150 a day per account) | `rate.ts:5` | window seconds |
 | `lock:user:{email}` | lock | Per-user credit/ledger mutex | `credits.ts:12` | 10 s |
 | `brands:{email}` | json | `BrandMeta[]` | `brands.ts:14` | none |
 | `activebrand:{email}` | string | Active brand id | `brands.ts:22` | none |
 | `brand:{scope}` | json | `Brand` file | `brand.ts:83` | none |
 | `tasks:{scope}` | list | Task ids, newest first (reads cap at 200) | `brand.ts:89,96` | none |
-| `task:{scope}:{id}` | json | `Task`. Since 2026-09-29 every creation path sets `source` (`manual` on `/api/generate`, `chat` for chat and MCP, `scheduled` for the weekly plan and the routines) and `brief`: the batch's notes or brief, first 500 characters, when there were any (`briefOf`); a routine's batch carries the routine id | `brand.ts:95` | none |
+| `task:{scope}:{id}` | json | `Task`. Since 2026-09-29 every creation path sets `source` (`manual` on `/api/generate`, `chat` for chat and MCP `generate_content`, `scheduled` for the weekly plan and the routines, `external` for MCP `save_draft`) and `brief`: the batch's notes or brief, first 500 characters, when there were any (`briefOf`); a routine's batch carries the routine id | `brand.ts:95` | none |
 | `pending:{scope}`, `pendingidx:{scope}` | set / string | Ids waiting for approval, maintained by `saveTask`; marker of the first indexing | `brand.ts` | none |
 | `tidx:{scope}:{YYYY-MM}` | hash | Light task rows (`TaskLite`, no body; the judge's score, notes and, since 2026-09-29, automatic-fail code) by creation month, written by `saveTask`; read by KPIs, calendar, briefs, follow-ups, metrics | `brand.ts` (`listLite`) | none |
 | `tidxm:{scope}`, `tidxv:{scope}` | set / string | Months that have an index hash; when the index was last rebuilt from the tasks (first use, then weekly in `runDaily`) | `brand.ts` | none |
