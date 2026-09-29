@@ -124,7 +124,7 @@ All four require `Authorization: Bearer ${CRON_SECRET}` (compared with `sameSecr
 | `users:all` | set | All account emails | `auth.ts:54`; read by `schedule.ts:106`, `admin-stats.ts:24`, `api/admin/plan`, `api/admin/export` | none |
 | `session:{token}` | json | `{email, at}` for a 32-byte hex session token (records from before 2026-09-18 are a bare email); dead when `at` is older than the user's `sessionsAfter` | `auth.ts:81,97` | 30 days |
 | `pwreset:{sha256(token)}` | json | `{email}` for a password reset | `api/auth/forgot/route.ts:27`, `api/auth/reset/route.ts:16` | 1 hour |
-| `rate:{bucket}` | int | Fixed-window counter. Buckets: `forgot:ip:{ip}`, `forgot:em:{email}`, `reset:ip:{ip}`, `adminkey:{ip}` | `rate.ts:5` | window seconds |
+| `rate:{bucket}` | int | Fixed-window counter. Buckets: `forgot:ip:{ip}`, `forgot:em:{email}`, `reset:ip:{ip}`, `adminkey:{ip}`, `oauth:register:ip:{ip}`, `oauth:token:ip:{ip}` | `rate.ts:5` | window seconds |
 | `lock:user:{email}` | lock | Per-user credit/ledger mutex | `credits.ts:12` | 10 s |
 | `brands:{email}` | json | `BrandMeta[]` | `brands.ts:14` | none |
 | `activebrand:{email}` | string | Active brand id | `brands.ts:22` | none |
