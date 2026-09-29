@@ -47,6 +47,9 @@ export function weekStartUtc(now: Date = new Date()): string {
 export const ranThisWeek = (lastWeekly: string | undefined, now: Date = new Date()): boolean =>
   !!lastWeekly && lastWeekly.slice(0, 10) >= weekStartUtc(now);
 
+/** The owner-notes line of the automatic Sunday plan; the judge is given the same text the agent was. */
+const WEEKLY_NOTE = "This is the automatic Sunday plan. Reference strategy.md phases and the calendar.";
+
 /** Weekly plan for one user. Returns what happened. */
 export async function runWeekly(user: User): Promise<string> {
   const email = user.scope ?? user.email;
@@ -79,8 +82,11 @@ async function weeklyFor(user: User, email: string, brand: Brand): Promise<strin
   if (!paid.ok) return "no_credits";
   user.credits = paid.credits;
   let items;
+  let memory = "";
   try {
-    items = await generate("weekly_plan", brand, await listPreferences(email), "This is the automatic Sunday plan. Reference strategy.md phases and the calendar.", { memory: await memoryBlock(email), reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email });
+    const [prefs, mem] = await Promise.all([listPreferences(email), memoryBlock(email)]);
+    memory = mem;
+    items = await generate("weekly_plan", brand, prefs, WEEKLY_NOTE, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email });
   } catch (e) {
     user.credits = await refund(user.email, cost);
     throw e;
@@ -91,7 +97,7 @@ async function weeklyFor(user: User, email: string, brand: Brand): Promise<strin
     await saveTask(email, t, true);
     created.push(t);
   }
-  judgeLater(email, user.email, brand, created);
+  judgeLater(email, user.email, brand, created, undefined, { notes: WEEKLY_NOTE, memory });
   await saveSchedule(email, { lastWeekly: new Date().toISOString() });
   const { notifyItem } = await import("./notifications");
   await notifyItem(user.email, user.lang, { kind: "weekly", agent: "noor", title: user.lang === "ar" ? "خطة الأسبوع جاهزة في صندوق الموافقة" : "This week's plan is ready in your inbox", body: user.lang === "ar" ? `${items.length} عنصر من نور. اعتمد ما يعجبك وعيّن تواريخ النشر.` : `${items.length} item(s) from Noor. Approve what you like and set publish dates.`, href: "" }, `weekly:${new Date().toISOString().slice(0, 10)}`, 2);
