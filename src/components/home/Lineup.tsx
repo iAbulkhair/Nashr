@@ -32,7 +32,7 @@ function linesOf(member: CastMember, lang: Lang): string[] {
 const clamp = (v: number) => Math.max(-1, Math.min(1, v));
 
 /**
- * The team standing in a row, Noor first in the reading direction (from the right in Arabic). When eight figures do not
+ * The team standing in a row, Noor first in the reading direction (from the right in Arabic). When the figures do not
  * fit at a readable width, the row scrolls inside its own box (snapping on phones), so the page itself never scrolls
  * sideways. The AI label is permanent (spec §7.1, disclosure).
  *

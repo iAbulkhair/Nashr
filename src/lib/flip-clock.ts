@@ -8,8 +8,11 @@
 /** One question on screen for 2.4 s. */
 export const FLIP_MS = 2400;
 
-/** 7 × 343 ms spreads the seven agents across one 2.4 s flip. */
-export const STAGGER_MS = 343;
+/**
+ * 8 × 300 ms spreads the eight agents across one 2.4 s flip. It must shrink when an agent joins the homepage, or the last
+ * one wraps round onto the first one's beat (`tests/flip-clock.test.ts` checks it against the cast).
+ */
+export const STAGGER_MS = 300;
 
 /** The figure at `index` runs this far behind the shared clock: its first flip comes at `flipDelay + FLIP_MS`. */
 export const flipDelay = (index: number): number => index * STAGGER_MS;

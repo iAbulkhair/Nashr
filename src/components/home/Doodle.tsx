@@ -311,6 +311,44 @@ const FIGURES: Record<CastId, Figure> = {
     ),
   },
 
+  // Reem: the secretary (DRAFT drawing, pending the founder's approval). A small spiral planner held up at the chest,
+  // one item ticked, the pencil on the next line; eyes down on her list. The pencil is in her hand, so it sits in `arm-r`
+  // and stays with it when she turns; only the planner mirrors.
+  reem: {
+    order: ["body", "prop", "arm-l", "arm-r", "head"],
+    body: DRESS,
+    armL: <Limb pts={[[76, 106], [62, 166], [84, 163]]} w={SLEEVE} />,
+    armR: (
+      <>
+        <g transform="translate(107 152.6) rotate(-58)">
+          <path className={`${styles.paper} ${styles.fine}`} d="M0 0 L7 -3 L29 -3 L29 3 L7 3 Z" />
+          <path className={styles.inkFill} d="M0 0 L2.8 -1.2 L2.8 1.2 Z" />
+          <path className={styles.fine} d="M7 -3 L7 3 M25 -3 L25 3" />
+        </g>
+        <Limb pts={[[124, 106], [142, 164], [118.5, 146]]} w={SLEEVE} />
+      </>
+    ),
+    headwear: SHAYLA,
+    eyes: [[95, 60], [106, 60]],
+    brows: ["M89 52.5 q4.5 -2 9 -0.5", "M102 52 q4.5 -1.5 9 0.5"],
+    nose: "M100 61 L98.5 66.5 L100.5 67",
+    prop: (
+      <g transform="rotate(-4 100 142)">
+        <rect className={styles.paper} x="82" y="120" width="36" height="44" rx="3" />
+        <path
+          className={styles.fine}
+          d="M86.5 124 C86.5 115.5 90.5 115.5 90.5 124 M93 124 C93 115.5 97 115.5 97 124 M99.5 124 C99.5 115.5 103.5 115.5 103.5 124 M106 124 C106 115.5 110 115.5 110 124 M112.5 124 C112.5 115.5 116.5 115.5 116.5 124"
+        />
+        {[131, 142, 153].map((y) => (
+          <rect key={y} className={styles.fine} x="87" y={y - 3} width="6" height="6" rx="1" />
+        ))}
+        <path className={styles.fine} d="M86.5 130.5 L89.5 134 L95.5 126" />
+        <path className={styles.fine} d="M97 131 L112 131 M97 142 L112 142 M97 153 L106 153" />
+      </g>
+    ),
+    axis: 100,
+  },
+
   // The owner: neutral, hands in pockets, looking up at the questions.
   you: {
     order: ["body", "arm-l", "arm-r", "prop", "head"],

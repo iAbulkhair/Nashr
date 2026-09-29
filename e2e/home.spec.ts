@@ -1,15 +1,21 @@
 import type { Locator } from "@playwright/test";
 import { test, expect, open, LANGS, type Lang } from "./fixtures/app";
-import { BANTER, CAST, HOME, type CastMember } from "../src/lib/home";
+import { AGENT_CAST, BANTER, CAST, HOME, STORM, type CastMember } from "../src/lib/home";
+
+/** The story's chapters, as Story.tsx counts them: the hero (0), one per agent, then the finale. */
+const FINALE = AGENT_CAST.length + 1;
+const CHAPTERS = FINALE + 1;
+/** The share of the story's scroll that lands in the middle of `chapter`. */
+const middleOf = (chapter: number) => (chapter + 0.5) / CHAPTERS;
 
 for (const lang of LANGS) {
   test.describe(`home · ${lang}`, () => {
-    test("renders the slogan and all eight figures", async ({ page, failures }) => {
+    test("renders the slogan and all nine figures", async ({ page, failures }) => {
       void failures;
       await open(page, `/${lang}`);
       await expect(page.locator("h1")).toContainText(lang === "ar" ? "ذكين. الذكي المكين." : "Thakeen. Smart. Steadfast.");
-      await expect(page.getByTestId("figure")).toHaveCount(8);
-      await expect(page.getByTestId("storm").locator("[data-storm-q]")).toHaveCount(36);
+      await expect(page.getByTestId("figure")).toHaveCount(9);
+      await expect(page.getByTestId("storm").locator("[data-storm-q]")).toHaveCount(STORM.length);
       // Drawn without markers, these lists keep their semantics in Safari only with an explicit role.
       for (const list of [page.getByTestId("lineup").locator("ul"), page.getByTestId("dictionary").locator("ol"), page.locator('[aria-labelledby="truths-title"] ul')]) {
         await expect(list).toHaveAttribute("role", "list");
@@ -74,7 +80,7 @@ test.describe("home without JavaScript", () => {
   test("still shows the slogan, the lineup and a working start form", async ({ page }) => {
     await open(page, "/ar");
     await expect(page.locator("h1")).toContainText("ذكين");
-    await expect(page.getByTestId("figure")).toHaveCount(8);
+    await expect(page.getByTestId("figure")).toHaveCount(CAST.length);
     // With scripts off, DOMContentLoaded does not wait for the stylesheet, and before it applies every form counts as
     // visible (the story's hidden finale form first). `load` does wait for it.
     await page.waitForLoadState("load");
@@ -92,15 +98,15 @@ test("the story walks the chapters and gives the questions back on the way up", 
     const s = document.querySelector('[data-testid="story"]') as HTMLElement;
     window.scrollTo(0, s.offsetTop + (s.offsetHeight - window.innerHeight) * f);
   }, f);
-  await scrollTo(0.5);
-  await expect(story).toHaveAttribute("data-chapter", /^[3-5]$/);
+  await scrollTo(middleOf(4));
+  await expect(story).toHaveAttribute("data-chapter", "4");
   await scrollTo(1);
-  await expect(story).toHaveAttribute("data-chapter", "8");
-  await expect(story.locator("[data-storm-q][data-taken]")).toHaveCount(36);
+  await expect(story).toHaveAttribute("data-chapter", String(FINALE));
+  await expect(story.locator("[data-storm-q][data-taken]")).toHaveCount(STORM.length);
   await expect(story.getByText("موافق.")).toBeVisible();
   await scrollTo(0);
   await expect(story).toHaveAttribute("data-chapter", "0");
-  await expect(story.locator("[data-storm-q]:not([data-taken])")).toHaveCount(36);
+  await expect(story.locator("[data-storm-q]:not([data-taken])")).toHaveCount(STORM.length);
 });
 
 test.describe("home with reduced motion", () => {
@@ -252,10 +258,10 @@ test("the story's pause button stops the storm and the flip, and pauses the line
   await open(page, "/en");
   const story = page.getByTestId("story");
   await expect.poll(() => live(story)).toBe(true);
-  await page.evaluate(() => {
+  await page.evaluate((f) => {
     const s = document.querySelector('[data-testid="story"]') as HTMLElement;
-    window.scrollTo(0, s.offsetTop + (s.offsetHeight - window.innerHeight) * 0.15);
-  });
+    window.scrollTo(0, s.offsetTop + (s.offsetHeight - window.innerHeight) * f);
+  }, middleOf(1));
   // Chapter 1: Noor's questions flip on the stage, and the rest of the storm still circles the owner.
   await expect(story).toHaveAttribute("data-chapter", "1");
   const storm = story.locator("[data-storm-q]:not([data-taken])");
@@ -291,7 +297,7 @@ test.describe("home at 375px with the storm running", () => {
       const story = page.getByTestId("story");
       expect(await story.locator("[data-storm-q]").first().evaluate((el) => getComputedStyle(el).animationName)).not.toBe("none");
       // Checked as soon as each chapter turns, while its questions are still travelling to the agent.
-      for (const [f, chapter] of [[0.15, "1"], [0.5, "4"], [1, "8"]] as const) {
+      for (const [f, chapter] of [[middleOf(1), "1"], [middleOf(4), "4"], [1, String(FINALE)]] as const) {
         await page.evaluate((f) => {
           const s = document.querySelector('[data-testid="story"]') as HTMLElement;
           window.scrollTo(0, s.offsetTop + (s.offsetHeight - window.innerHeight) * f);

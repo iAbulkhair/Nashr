@@ -26,7 +26,7 @@ References chosen by the founder and what we take from each (structure and mecha
 | benxrun.com | Chapters named by meaning, not departments (we use the owner's questions instead of verbs). |
 | thejacketcirclegame.maxmara.com | A "dictionary" of words the visitor picks from, a stepped game with a visible counter (0/5). |
 
-**Story.** At the top, the visitor sees the owner (a standing figure) with a storm of questions spinning above their head, which is "تدور في راسك" made literal. Scrolling, the seven agents step in one by one; each pulls its own questions off the owner's head, and they start spinning calmly above the agent instead. At the end one word stays fixed above the owner: **«موافق.»**
+**Story.** At the top, the visitor sees the owner (a standing figure) with a storm of questions spinning above their head, which is "تدور في راسك" made literal. Scrolling, the agents (seven at approval, eight with Reem) step in one by one; each pulls its own questions off the owner's head, and they start spinning calmly above the agent instead. At the end one word stays fixed above the owner: **«موافق.»**
 
 **Hierarchy per agent (founder's rule):** 1) value line, largest; 2) name; 3) rotating questions above the head, flipping continuously, each one showing a different task the agent really does.
 
@@ -41,6 +41,7 @@ References chosen by the founder and what we take from each (structure and mecha
 | Dana | pearl (new token, proposal `#efe7f7`) | clarity, honesty |
 | Majed | `#2b193d` plum with gold accents | depth, judgement |
 | Layan | mint (new token, proposal `#7fe9ff`) | care, renewal |
+| Reem | amber `#f4b942` (DRAFT, pending founder approval) | order, reliability |
 
 Colour never carries meaning alone: every state also has text.
 
@@ -49,8 +50,8 @@ Colour never carries meaning alone: every state also has text.
 ## 4. Page structure (top to bottom)
 
 1. **Nav**: wordmark ذكين, language switch, "ابدأ · Start".
-2. **Story (sticky scroll)**: hero with the question storm → seven agent chapters → finale «موافق.».
-3. **The team lineup**: all eight figures standing in a row (Bécane layout). Hover or focus a figure: it turns to camera, its value line and rotating questions show, and a banter bubble plays (§5.3).
+2. **Story (sticky scroll)**: hero with the question storm → one chapter per agent (eight with Reem) → finale «موافق.».
+3. **The team lineup**: all figures standing in a row (Bécane layout): eight at approval, nine with Reem. Hover or focus a figure: it turns to camera, its value line and rotating questions show, and a banter bubble plays (§5.3).
 4. **قاموس ذكين (the game)**: §6.
 5. **What's true today**: four facts (starts from your website; everything waits for your yes; weekly plan Sunday morning and a brief daily at 08:00; Arabic first, Gulf seasons and channels).
 6. **Pricing, FAQ, Footer**: existing components (`Pricing`, `Faq`, `Footer`), restyled to the new tokens in a later pass.
@@ -74,7 +75,7 @@ All copy lives in a new typed module `src/lib/home.ts` (`{ ar, en }` per string,
 
 ### 5.2 Agents (approved)
 
-Each question is tied to a task type that exists in `src/lib/agents.ts` / `TASK_COST` in `src/lib/brand.ts`; the test in §8 enforces it.
+Each question is tied to a task type that exists in `src/lib/agents.ts` / `TASK_COST` in `src/lib/brand.ts`, or, for an agent that owns no task type (Reem), to the free feature it runs; the test in §8 enforces it.
 
 **Noor · نور**, value: **محتوى أسبوعك جاهز، بصوت علامتك.** / *Your week of content, ready, in your voice.*
 
@@ -147,7 +148,21 @@ Each question is tied to a task type that exists in `src/lib/agents.ts` / `TASK_
 | كيف أول تجربة تصير أحلى؟ | How do we make the first experience better? | `onboarding_flow` |
 | وش الميزة اللي يطلبونها؟ | Which feature are they asking for? | `prd` |
 
-**You · أنت**, value: **أنت توافق.** / *You approve.* The hero storm uses all 36 agent questions; the finale shows only «موافق.».
+**Reem · ريم** (DRAFT, added 2026-09-29, pending the founder's approval), value: **مهامك ومواعيدك ومتابعاتك، في قائمة وحدة.** / *Your to-dos, dates and follow-ups, in one list.*
+
+Reem is the secretary (`src/lib/secretary.ts`): she keeps the owner's own list (to-dos, follow-ups, what the owner owes and is owed) with dates in the brand's local time, read back for confirmation; free, no credits; she never closes an item herself. Today's and overdue items show on My to-dos (`/app/todo`) and in the 08:00 morning brief, with in-app alerts for overdue items. Not available yet, so never promised here: reminders on WhatsApp or Telegram, and an alert at the due time itself. She owns no task type, so each question is backed by the `todo` feature instead of a task.
+
+| Question (AR) | English | Backed by |
+|---|---|---|
+| وش عليّ اليوم؟ | What's on me today? | feature `todo` |
+| مين باقي يدين لي؟ | Who still owes me? | feature `todo` |
+| وش المتأخر عندي؟ | What's overdue? | feature `todo` |
+| متى أكلم المورّد؟ | When do I call the supplier? | feature `todo` |
+| كيف ما أنسى أتابع العميل؟ | How do I not forget to follow up with the customer? | feature `todo` |
+
+Drawing (DRAFT): a woman in an abaya and shayla holding a small spiral planner at chest height, one of its three checkbox lines ticked, the other hand holding a pencil on the next line; no glasses (Razan) and no clipboard (Dana). Order: after Layan, before the owner. She adds no banter exchange; pressed in the lineup, she says her value line. Claim line for prototypes only, when she takes a question: «سجّلتها عندي.» / *Noted.*
+
+**You · أنت**, value: **أنت توافق.** / *You approve.* The hero storm uses every agent question (36 at approval, 41 with Reem); the finale shows only «موافق.».
 
 ### 5.3 Team banter (speech bubbles, lineup and chapters)
 
@@ -180,8 +195,8 @@ Steps 6–7 are previews on purpose: analysis and measurement need real time and
 
 ### 7.1 Figures (illustrated characters)
 
-- **Style (decided 2026-09-28): hand-drawn cartoon, doodle / illustration.** Eight characters (seven agents plus the owner), full body, standing. Art direction: one confident ink line in plum on the light ground, flat fills in each agent's colour, no gradients or 3D, faces drawn with a few strokes (eyes, brows) so expression carries the personality. Adult and editorial rather than childish: think New Yorker or Max Mara sketch energy, with the liveliness of Don't Look Up.
-- Styling is modern Gulf, drawn not caricatured. Characters follow the names: Noor, Razan, Dana, Layan women; Sami, Faris, Majed men; the owner neutral. Each has one signature prop that says its job at a glance, for example Noor's phone on a small ring light, Razan's reading glasses and pocket calculator, Faris's scarf mid-stride, Dana's pearl and clipboard, Majed's bisht, Layan's headphones, Sami's phone to his ear.
+- **Style (decided 2026-09-28): hand-drawn cartoon, doodle / illustration.** Eight characters (seven agents plus the owner) at approval, nine with Reem, full body, standing. Art direction: one confident ink line in plum on the light ground, flat fills in each agent's colour, no gradients or 3D, faces drawn with a few strokes (eyes, brows) so expression carries the personality. Adult and editorial rather than childish: think New Yorker or Max Mara sketch energy, with the liveliness of Don't Look Up.
+- Styling is modern Gulf, drawn not caricatured. Characters follow the names: Noor, Razan, Dana, Layan and Reem women; Sami, Faris, Majed men; the owner neutral. Each has one signature prop that says its job at a glance, for example Noor's phone on a small ring light, Razan's reading glasses and pocket calculator, Faris's scarf mid-stride, Dana's pearl and clipboard, Majed's bisht, Layan's headphones, Sami's phone to his ear, Reem's spiral planner and pencil (draft).
 - **Delivery:** layered SVG per character with named groups for head, eyes, brows, arms, prop and body, so the code can animate them (blink, glance at the cursor, turn, gesture). Poses per character: stand, turn to camera, one signature gesture, and talking (for the banter). Optional later: Rive files if we want richer animation.
 - **Who draws:** a commissioned illustrator, briefed from this spec. Style frames first (two characters), approved by the founder, then the full cast.
 - Development uses simple placeholder doodles in the same line style so the build does not wait for the final art.
@@ -196,7 +211,7 @@ Steps 6–7 are previews on purpose: analysis and measurement need real time and
 ### 7.3 Motion and interaction
 
 - **Engine:** GSAP with ScrollTrigger (standard licence, free) for the scroll choreography; DOM and CSS for text; inline SVG for the characters, animated by GSAP (blink, glance, breathing, gesture). three.js is not needed for v1.
-- **Question storm (hero):** up to 36 questions orbit and flip above the owner's head, overlapping and fast. On scroll, each agent's set peels off and flies to its head.
+- **Question storm (hero):** every agent question (41 with Reem) orbits and flip above the owner's head, overlapping and fast. On scroll, each agent's set peels off and flies to its head.
 - **Rotating questions per agent:** one visible at a time, flipping every 2.4 s, staggered across agents so they never flip together; paused on hover or focus.
 - **Life:** characters breathe and blink; every 6–10 s one banter exchange from §5.3 plays in bubbles; eyes follow the cursor; a character turns to camera on hover.
 - **Reduced motion:** no storm, no flipping (the first question shows), no wandering or breathing, static poses; scroll still steps chapter by chapter.
@@ -212,7 +227,7 @@ Steps 6–7 are previews on purpose: analysis and measurement need real time and
 ### 7.5 Budgets
 
 - LCP under 2.5 s on a mid-range phone over 4G; the first paint shows the slogan and the owner character.
-- Added JavaScript under 90 KB gzipped; all eight characters together under 250 KB of SVG; initial transfer under 1 MB.
+- Added JavaScript under 90 KB gzipped; all the characters together under 250 KB of SVG; initial transfer under 1 MB.
 - No network calls from the game.
 
 ### 7.6 Accessibility
@@ -223,9 +238,9 @@ Steps 6–7 are previews on purpose: analysis and measurement need real time and
 
 ## 8. Tests
 
-- `tests/home-copy.test.ts` (new): every agent has a value line, a name and at least four questions in both languages, with equal counts; every question's task exists in `TASK_COST`; the hero storm equals the union of agent questions.
+- `tests/home-copy.test.ts` (new): every agent has a value line, a name and at least four questions in both languages, with equal counts; every question's task exists in `TASK_COST` and belongs to that agent, or its feature is one that agent's capability runs; the hero storm equals the union of agent questions.
 - `tests/content-claims.test.ts` passes over the new copy (no invented numbers, customers or result promises).
-- Playwright: the homepage renders the slogan and eight figures in both languages; the game runs steps 1–5 with no `/api/*` request; the CTA lands on signup with the URL carried; reduced motion shows static questions. Update the home markers in `e2e/fixtures/routes.ts`.
+- Playwright: the homepage renders the slogan and every figure (nine with Reem) in both languages; the game runs steps 1–5 with no `/api/*` request; the CTA lands on signup with the URL carried; reduced motion shows static questions. Update the home markers in `e2e/fixtures/routes.ts`.
 - Add the new rules to `docs/system/tests.md`.
 
 ## 9. Launch dependencies (outside this page)

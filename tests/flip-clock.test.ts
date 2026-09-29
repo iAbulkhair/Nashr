@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { FLIP_MS, STAGGER_MS, flipDelay, flipIndex, flipTick, untilNextFlip } from "@/lib/flip-clock";
+import { AGENT_CAST } from "@/lib/home";
+
+/** The lineup's figures that flip: the agents, in their places in the row (the owner, last, has no questions). */
+const AGENTS = AGENT_CAST.map((_, i) => i);
 
 /** The moments in (from, to) at which the figure at `index` shows a new question, stepping the clock 1 ms at a time. */
 function flipsBetween(index: number, from: number, to: number): number[] {
@@ -11,10 +15,18 @@ function flipsBetween(index: number, from: number, to: number): number[] {
 
 describe("the lineup's flip clock", () => {
   it("staggers the figures by their place in the row, so no two flip together", () => {
-    // In the first round each agent flips 343 ms after the one before it, and no two flips ever share a moment.
-    const flips = [0, 1, 2, 3, 4, 5, 6].map((i) => flipsBetween(i, 0, FLIP_MS + 7 * STAGGER_MS));
-    expect(flips.map((f) => f[0])).toEqual([0, 1, 2, 3, 4, 5, 6].map((i) => FLIP_MS + i * STAGGER_MS));
+    // In the first round each agent flips 300 ms after the one before it, and no two flips ever share a moment.
+    const flips = AGENTS.map((i) => flipsBetween(i, 0, FLIP_MS + AGENTS.length * STAGGER_MS));
+    expect(flips.map((f) => f[0])).toEqual(AGENTS.map((i) => FLIP_MS + i * STAGGER_MS));
     expect(new Set(flips.flat()).size).toBe(flips.flat().length);
+  });
+
+  it("spreads every agent on the homepage evenly across one flip, so none flips right after another's turn", () => {
+    // Where in the 2.4 s period each agent flips. With a stagger too long for the cast, the last agent wraps round and
+    // flips a moment after the first (8 × 343 ms: 1 ms apart).
+    const beats = AGENTS.map((i) => flipDelay(i) % FLIP_MS).sort((a, b) => a - b);
+    const gaps = beats.map((b, k) => (k + 1 < beats.length ? beats[k + 1] : beats[0] + FLIP_MS) - b);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(Math.floor(FLIP_MS / AGENTS.length));
   });
 
   it("shows the first question until a figure's first flip, even before the clock reaches its delay", () => {

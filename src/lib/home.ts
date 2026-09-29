@@ -5,21 +5,28 @@ import type { TaskType } from "./tasks";
 /**
  * Copy for the Thakeen homepage. Approved by the founder on 2026-09-28, spec §5
  * (`docs/superpowers/specs/2026-09-28-thakeen-homepage-design.md`). Every question below maps to a task type the
- * agent it belongs to really performs (see `src/lib/agents.ts`); the homepage never invents a number, a customer or
- * a result promise. Type-only imports on purpose: this module is imported by client components and must not pull
+ * agent it belongs to really performs (see `src/lib/agents.ts`), or, for Reem, who owns no task type, to the free
+ * feature she runs (her to-do list); the homepage never invents a number, a customer or a result promise. Type-only imports on purpose: this module is imported by client components and must not pull
  * in any server-only value (see `tests/client-bundle.test.ts`).
  */
 
 export type L = Record<Lang, string>;
 
-export type Question = { ar: string; en: string; task: TaskType };
+/**
+ * A free feature of the app that answers a question when no task type does: `todo` is Reem's list (`src/lib/secretary.ts`,
+ * the My to-dos page and the morning brief). `tests/home-copy.test.ts` ties each one to the agent capability that runs it.
+ */
+export type Feature = "todo";
+
+/** A question the owner asks, backed by exactly one real thing: a task type its agent delivers, or a feature it runs. */
+export type Question = { ar: string; en: string } & ({ task: TaskType; feature?: never } | { feature: Feature; task?: never });
 
 /**
- * The agents drawn on the homepage. An explicit subset of `AgentId`: an agent added to the platform (Reem, for one)
- * joins the homepage only once its drawing, value line and questions are approved, so adding an agent never breaks
- * the page or its tests. `Extract` keeps every name here a real agent id.
+ * The agents drawn on the homepage. An explicit subset of `AgentId`: an agent added to the platform joins the homepage
+ * only once its drawing, value line and questions are written, so adding an agent never breaks the page or its tests.
+ * `Extract` keeps every name here a real agent id.
  */
-export type HomeAgentId = Extract<AgentId, "noor" | "sami" | "razan" | "faris" | "dana" | "majed" | "layan">;
+export type HomeAgentId = Extract<AgentId, "noor" | "sami" | "razan" | "faris" | "dana" | "majed" | "layan" | "reem">;
 export type CastId = HomeAgentId | "you";
 
 export type CastMember = { id: CastId; name: L; value: L; color: string; questions: Question[] };
@@ -148,6 +155,21 @@ export const AGENT_CAST: AgentMember[] = [
       { ar: "وش نطلق بعدها؟", en: "What do we launch next?", task: "roadmap" },
       { ar: "كيف أول تجربة تصير أحلى؟", en: "How do we make the first experience better?", task: "onboarding_flow" },
       { ar: "وش الميزة اللي يطلبونها؟", en: "Which feature are they asking for?", task: "prd" },
+    ],
+  },
+  // DRAFT, pending the founder's approval (spec §5.2): Reem's colour, value line and questions. She owns no task type;
+  // every question is one her free to-do list answers (today's and overdue items on My to-dos and in the morning brief).
+  {
+    id: "reem",
+    name: { ar: "ريم", en: "Reem" },
+    value: { ar: "مهامك ومواعيدك ومتابعاتك، في قائمة وحدة.", en: "Your to-dos, dates and follow-ups, in one list." },
+    color: "#f4b942",
+    questions: [
+      { ar: "وش عليّ اليوم؟", en: "What's on me today?", feature: "todo" },
+      { ar: "مين باقي يدين لي؟", en: "Who still owes me?", feature: "todo" },
+      { ar: "وش المتأخر عندي؟", en: "What's overdue?", feature: "todo" },
+      { ar: "متى أكلم المورّد؟", en: "When do I call the supplier?", feature: "todo" },
+      { ar: "كيف ما أنسى أتابع العميل؟", en: "How do I not forget to follow up with the customer?", feature: "todo" },
     ],
   },
 ];

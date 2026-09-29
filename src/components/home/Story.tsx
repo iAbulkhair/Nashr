@@ -11,7 +11,7 @@ import StartForm from "./StartForm";
 import { useMotionPaused, useShowing } from "./motion";
 import styles from "./home.module.css";
 
-/** Chapter 0 is the hero, 1–7 the agents in cast order, 8 the finale. */
+/** Chapter 0 is the hero, then one chapter per agent in cast order (1–8), then the finale (9). */
 const FINALE = AGENT_CAST.length + 1;
 const CHAPTERS = FINALE + 1;
 
@@ -43,7 +43,7 @@ export default function Story({ lang }: { lang: Lang }) {
   const shown = useRef(0);
   const [chapter, setChapter] = useState(0);
   const paused = useMotionPaused();
-  // Any part of the section: it is nine screens tall, so a share of it would never be reached. The page opens on the
+  // Any part of the section: it is one screen tall per chapter, so a share of it would never be reached. The page opens on the
   // story, so it counts as showing until the first observation says otherwise.
   const showing = useShowing(section, { initial: true });
   const live = showing && !paused;
@@ -76,7 +76,15 @@ export default function Story({ lang }: { lang: Lang }) {
   const lead = STORM_CAST.findIndex((s) => s.chapter > chapter);
 
   return (
-    <section ref={section} className={styles.story} data-testid="story" data-chapter={chapter} data-live={live || undefined}>
+    <section
+      ref={section}
+      className={styles.story}
+      style={{ "--chapters": CHAPTERS } as CSSProperties}
+      data-testid="story"
+      data-chapter={chapter}
+      data-alone={!agent || undefined}
+      data-live={live || undefined}
+    >
       <div className={styles.stage} data-world={agent?.id}>
         <div className={styles.heroCopy} data-on={chapter === 0 || undefined}>
           <h1 className={styles.line1}>{SLOGAN.line1[lang]}</h1>
@@ -100,7 +108,7 @@ export default function Story({ lang }: { lang: Lang }) {
 
         <div className={styles.owner}>
           <div className={styles.above}>
-            <div className={styles.storm} data-testid="storm" aria-hidden="true">
+            <div className={styles.storm} style={{ "--count": STORM_CAST.length } as CSSProperties} data-testid="storm" aria-hidden="true">
               {STORM_CAST.map((s, i) => (
                 <span
                   key={i}

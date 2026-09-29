@@ -14,6 +14,8 @@
   --c-dana: #efe7f7;
   --c-majed: #2b193d;
   --c-layan: #7fe9ff;
+  /* DRAFT, pending the founder's approval (spec §3). */
+  --c-reem: #f4b942;
   --c-you: #ffffff;
   --home-display: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
   --home-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
@@ -48,6 +50,7 @@
 .doodle[data-cast="dana"] { --fill: var(--c-dana); }
 .doodle[data-cast="majed"] { --fill: var(--c-majed); }
 .doodle[data-cast="layan"] { --fill: var(--c-layan); }
+.doodle[data-cast="reem"] { --fill: var(--c-reem); }
 .doodle[data-cast="you"] { --fill: var(--c-you); }
 
 .doodle :is(path, circle, ellipse, rect, line) {
@@ -65,11 +68,12 @@
 .doodle .fine { stroke-width: 2px; }
 .doodle .gold { stroke: var(--gold); stroke-width: 3.5px; }
 
-/* ---------- Story: one sticky stage, nine chapters (Story.tsx) ---------- */
+/* ---------- Story: one sticky stage, one chapter per screen (Story.tsx) ---------- */
 
 /*
- * The section is nine screens of scroll; the stage stays pinned under the site nav while they pass. svh, not vh or
- * dvh: a phone's toolbar showing or hiding must not resize the stage.
+ * The section is one screen of scroll per chapter (`--chapters`, set by Story from the cast: the hero, one per agent,
+ * the finale); the stage stays pinned under the site nav while they pass. svh, not vh or dvh: a phone's toolbar showing
+ * or hiding must not resize the stage.
  */
 .story {
   /* The site nav (Nav.tsx: 36 px controls, 12 px padding above and below, 1 px border) is sticky above the stage. */
@@ -78,7 +82,7 @@
   /* How flat the storm ring lies: its vertical radius is this share of the horizontal one. */
   --tilt: 0.55;
   position: relative;
-  height: 900svh;
+  height: calc(var(--chapters, 10) * 100svh);
   font-family: var(--home-body);
 }
 :global([dir="rtl"]) .story { --dir: -1; }
@@ -110,6 +114,7 @@
 .stage[data-world="dana"] { --wash: var(--c-dana); }
 .stage[data-world="majed"] { --wash: var(--c-majed); }
 .stage[data-world="layan"] { --wash: var(--c-layan); }
+.stage[data-world="reem"] { --wash: var(--c-reem); }
 /* Majed's world is the ink colour itself: a pearl halo keeps the drawings' outlines on it. */
 .stage[data-world="majed"] .stageArt {
   filter: drop-shadow(0 0 1px var(--ground)) drop-shadow(0 0 1px var(--ground));
@@ -199,8 +204,7 @@
   transition: translate 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 /* On phones the owner stands alone, centred, until the first agent arrives and after the last one leaves. */
-.story[data-chapter="0"] .owner,
-.story[data-chapter="8"] .owner {
+.story[data-alone] .owner {
   translate: calc(var(--dir) * (50% + 6px)) 0;
 }
 .agent { grid-area: agent; }
@@ -251,7 +255,7 @@
     column-gap: clamp(16px, 3vw, 48px);
   }
   .story { --tilt: 0.4; }
-  .story[data-chapter] .owner { translate: none; }
+  .story[data-alone] .owner { translate: none; }
   .heroCopy,
   .finaleCopy,
   .agentCopy { align-self: center; }
@@ -308,13 +312,14 @@
 
 /*
  * Each question circles the owner's head at a steady speed. `--i` sets its ring (radius), its speed and where on the
- * ring it starts (golden-ratio spacing, so the ring stays evenly filled); every other one turns the other way. Once its
+ * ring it starts (golden-ratio spacing, so the ring stays evenly filled); every other one turns the other way. The rings
+ * run from 10 to 46.75 of the column's width whatever the number of questions (`--count`, set by Story). Once its
  * agent's chapter comes, it travels across to the agent (`--fly`, one column over) and fades; scrolling back brings it
  * home.
  */
 .stormQ {
   --d: calc(8s + var(--i) * 0.3s);
-  --r: calc(10cqi + var(--i) * 1.05cqi);
+  --r: calc(10cqi + var(--i) * 36.75cqi / max(1, var(--count, 36) - 1));
   --phase: calc(var(--d) * var(--i) * -0.382);
   --fly: 0px;
   position: absolute;
@@ -443,7 +448,7 @@
 .startButton:hover { background: color-mix(in oklab, var(--ink) 86%, var(--paper)); }
 .startButton:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
 
-/* ---------- Lineup: eight figures in a row ---------- */
+/* ---------- Lineup: the whole cast in a row ---------- */
 
 .lineup {
   font-family: var(--home-body);
@@ -485,7 +490,7 @@
   grid-template-rows: repeat(4, auto);
   column-gap: var(--gap);
   row-gap: 0.75rem;
-  width: max(min(100%, 1320px), calc(var(--n, 8) * var(--cell-min) + (var(--n, 8) - 1) * var(--gap) + 32px));
+  width: max(min(100%, 1320px), calc(var(--n, 9) * var(--cell-min) + (var(--n, 9) - 1) * var(--gap) + 32px));
   margin: 0 auto;
   padding: 0 16px;
   list-style: none;
