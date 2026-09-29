@@ -70,6 +70,9 @@ export const CHANGELOG: readonly ChangeEntry[] = [
  */
 export const SEED_WISHES: readonly SeedWish[] = [
   { id: "custom-agent", area: "agents", title: { ar: "ابنِ وكيلاً مخصصاً لعملك", en: "Build your own custom agent" } },
+  { id: "secretary-agent", area: "agents", title: { ar: "وكيل سكرتير يتابع مهامك ويذكّرك بها", en: "A secretary agent that tracks your to-dos and follows up" } },
+  { id: "timed-reminders", area: "agents", title: { ar: "تذكيرات في وقتها على واتساب أو تيليجرام", en: "Reminders on time, by WhatsApp or Telegram" } },
+  { id: "calendar-sync", area: "integrations", title: { ar: "مزامنة مع تقويم Google أو Outlook", en: "Sync with Google or Outlook Calendar" } },
   { id: "free-check", area: "onboarding", title: { ar: "تقييم مجاني لتسويقك قبل التسجيل", en: "A free marketing check before you sign up" } },
   { id: "store-link-start", area: "onboarding", title: { ar: "ابدأ برابط متجرك في سلة أو زد", en: "Start from your Salla or Zid store link" } },
   { id: "product-images", area: "content", title: { ar: "صور منتجات وتصاميم", en: "Product images and designs" } },
