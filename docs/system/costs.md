@@ -19,13 +19,14 @@ the founder console — see "Where the real numbers live" at the end.
 ## 2. Prompt size, measured
 
 `systemPrompt` (`noor.ts`) builds three blocks. The first two carry `cache_control`, the third never can (it holds
-today's date, the live calendar and the owner's preferences, all of which move).
+today's date, the live calendar, the owner's preferences and, since 2026-09-29, the recent feedback on the agent's own
+work from `feedbackFor`, all of which move).
 
 | Block | Characters | Cacheable |
 |---|---|---|
 | fixed (rules + the agent's playbook from `content/skills/`) | 10,374 (Razan) – 16,657 (Majed) | yes |
 | workspace (brand file + up to 5 × 6,000 chars of memory files) | 1,500 with an empty workspace, 31,500 at the cap | yes |
-| today (date, seasons, up to 30 preferences) | 500 – 6,500 | no |
+| today (date, seasons, up to 30 preferences, recent feedback) | 500 – 8,800 (the feedback block is at most about 2,300 characters: counts, 5 notes of 200, 3 judge flags of 120; absent when there is none or learning is off) | no |
 
 At roughly 3.3 characters per token for this Arabic/English mix, a full batch prompt is **≈ 8,700 input tokens**: about
 7,500 of them cacheable and about 1,200 fresh every time.
@@ -92,11 +93,25 @@ type instead of a flat 16,000; and move the judge to a sampled run (every third 
 ## 5. What bounds the spend today
 
 - **Credits** bound generation: `charge` runs before the model call, `refund` on failure (`src/lib/credits.ts`).
+- **Per-agent monthly caps** (since 2026-09-29), set by the owner per brand on the Governance page, bound what one
+  agent can spend in a UTC month: every charging path passes the owning agent and its cap to `charge`, which refuses
+  over the cap before the balance moves or a model is called. They bound batches, drafts and images; chat is never
+  charged credits, so it stays bounded by the rate limits below.
 - **Chat** costs no credits, so `CHAT_PER_HOUR` (40) and `CHAT_PER_DAY` (200) in `src/lib/rate.ts` bound it per account,
   on the web route and on MCP `ask_noor`. Before 2026-09-20 nothing did.
 - **Onboarding** is free: once per workspace, three runs per account per day, and signup is five per IP per hour. The
   worst case an attacker can drive from one address is therefore about $9 an hour.
 - **Cron** charges credits for the weekly plan and makes no model call for the daily brief.
+- **Routines** (since 2026-09-29) are opt-in per brand and charge like a batch the owner asked for: `TASK_COST` of the
+  type (Dana's weekly report 2, Noor's cart recovery 3, Razan's cash forecast 4, Majed's strategy review 5), one
+  generation plus the reviewer and the judge per run, at most once per UTC week or month. Every run passes the owning
+  agent and its monthly cap to `charge`, and the weekly cap on scheduled items counts the whole batch before charging,
+  including the batches of the brand's other routines running at the same moment (`routinehold:`). A gate checked in
+  code skips a run without the input it needs ("idle" or "no_data", no charge, no model call; the next day's cron asks
+  again), no run is charged while Claude is paused or without a key, and a failed generation is refunded. A run the
+  platform kills after the charge is not refunded, so each routine may leave at most two such charges per week or
+  month (`routinetry:`) before it waits for its next period. The worst case for one brand with all four on is 2 + 3 per
+  week and 4 + 5 per month in credits, plus at most two lost charges per routine and period when runs are killed.
 
 ## 6. Where the real numbers live
 
@@ -105,7 +120,10 @@ cost in micro-dollars, and since 2026-09-20 the same three numbers **per kind of
 per account:
 
 - **Users tab:** tokens, cost this month, and a **margin** column (plan price against model cost; red under 50%).
-- **User detail:** a cost-per-request-type table — calls, average cost of one call of that kind, total, tokens.
+- **User detail:** a cost-per-request-type table — calls, average cost of one call of that kind, total, tokens — and,
+  since 2026-09-29, a cost-per-agent table (calls, average, total) from `usage:{email}:{YYYY-MM}:agent:{id}:*`.
+  Generation, the reviewer and the judge count for the agent that owns the task type, a chat turn for the agent in
+  the chat, an image prompt for the owner of the item, onboarding for Noor.
 
 That makes section 3 checkable: compare the estimate against `byKind.generate.usd / byKind.generate.calls` for a real
 account and correct the assumptions here.

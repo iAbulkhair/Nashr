@@ -117,7 +117,8 @@ ${site.text.slice(0, 9000)}`;
           output_config: { effort: "medium", format: { type: "json_schema", schema: PARTS[name].schema } },
         })
         .finalMessage();
-      await meter(email, msg.model, "onboard", msg.usage);
+      // Onboarding is Noor's first-run work (it writes the brand file she opens with).
+      await meter(email, msg.model, "onboard", msg.usage, "noor");
       const out = JSON.parse(msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("")) as Record<string, unknown>;
       onPart?.(name);
       return out;

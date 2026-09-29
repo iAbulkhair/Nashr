@@ -30,7 +30,7 @@ export default function GeneratePanel({ t, lang, credits }: { t: AppDict; lang: 
         return;
       }
       limitFromError(j.error);
-      const map: Record<string, string> = { no_credits: g.noCredits, trial_over: g.trialOver, no_brand: g.noBrand, no_cart_data: g.noCartData, model_paused: g.paused };
+      const map: Record<string, string> = { no_credits: g.noCredits, trial_over: g.trialOver, no_brand: g.noBrand, no_cart_data: g.noCartData, model_paused: g.paused, agent_cap: t.limit.agentCapTitle };
       setMsg((j.error && map[j.error]) || g.failed);
     } catch {
       setMsg(g.failed);

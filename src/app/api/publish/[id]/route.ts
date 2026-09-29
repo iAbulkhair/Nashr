@@ -5,6 +5,7 @@ import { getBrand, getTask, saveTask } from "@/lib/brand";
 import { gateTask } from "@/lib/brand-rules";
 import { connectedTargets, publishTask, targetsFor } from "@/lib/connectors/publish";
 import { listConnections } from "@/lib/connectors/store";
+import { decisionOf, recordDecisions } from "@/lib/decisions";
 
 export const maxDuration = 60;
 
@@ -30,10 +31,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     // Publishing a pending item is the owner approving it, so it records when that happened. Without this the item was
     // "approved" with no decidedAt, which the evals treat as auto-approved and leave out of every approval rate and
     // out of "hours to decide" — the owner's own decision went uncounted.
-    if (t.status === "pending") t.decidedAt = new Date().toISOString();
+    const approving = t.status === "pending", now = new Date().toISOString();
+    if (approving) t.decidedAt = now;
     t.status = "approved";
     await saveTask(sc(u), t);
-    await track(u.email, "publish");
+    // The same approval goes into the owner's decision records. An item that was already approved, by the owner or by
+    // auto-approve, adds nothing. The item has already gone to the platform, so a failed record is logged, not reported
+    // as a failed publish.
+    await Promise.all([
+      track(u.email, "publish"),
+      approving ? recordDecisions(sc(u), [decisionOf(t, "publish", now)]).catch((e) => console.error("decision record failed", e)) : null,
+    ]);
     return NextResponse.json({ ok: true, result: r, task: t });
   } catch (e) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : "publish_failed" }, { status: 502 });

@@ -41,7 +41,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
     setBusy(null);
     if (j.ok) { setMsg(t.generate.done); r.refresh(); return; }
     limitFromError(j.error);
-    const map: Record<string, string> = { no_credits: t.generate.noCredits, trial_over: t.generate.trialOver, no_brand: t.generate.noBrand, model_paused: t.generate.paused };
+    const map: Record<string, string> = { no_credits: t.generate.noCredits, trial_over: t.generate.trialOver, no_brand: t.generate.noBrand, model_paused: t.generate.paused, agent_cap: t.limit.agentCapTitle };
     setMsg(map[j.error] ?? t.generate.failed);
   }
 

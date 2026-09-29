@@ -18,7 +18,7 @@ export async function GET(req: Request) {
 /**
  * POST {text, conv?, agent?, stream?} → JSON reply, or with stream=true a text/event-stream:
  *   data: {"type":"status","text":"…"}  (one per working step)
- *   data: {"type":"message","message":…,"credits":n,"limit":"credits"|"trial"|null}
+ *   data: {"type":"message","message":…,"credits":n,"limit":"credits"|"trial"|"agent_cap"|null}
  */
 export async function POST(req: Request) {
   const u = await currentUser();

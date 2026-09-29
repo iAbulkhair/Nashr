@@ -91,7 +91,7 @@ Return ONLY a JSON array, same length and order as the items in <items>: {"compl
       content: `AGENT: ${agent.name.en}, ${agent.role.en}\n\nTASK SPEC\n${taskSpec(type)}${requested < TASK_COUNT[type] ? `\n\nOVERRIDE: the owner asked for exactly ${requested} item(s) of this type, not the full batch of ${TASK_COUNT[type]}. Do not penalize the missing rest of the batch or the channel mix; judge each item against the part of the spec it covers.` : ""}${items.length < requested ? `\n\nSHORTFALL: the owner asked for ${requested} item(s) and only ${items.length} were delivered. That is a completeness failure of the batch: reflect it in the completeness score of every item, and say so in the notes.` : ""}\n\n<brand_file>\n${asData({ name: brand.name, industry: brand.industry, city: brand.city, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, products: brand.products.slice(0, 600), audience: brand.audience.slice(0, 400), offers: brand.offers, banned: brand.banned, preferred: brand.preferred })}\n</brand_file>${groundingBlocks(ctx)}\n\n<items>\n${asData(items.map((t) => ({ channel: t.channel, title: t.title, body: t.body.slice(0, JUDGE_BODY_CHARS) })))}\n</items>`,
     }],
   });
-  await meter(email, res.model, "judge", res.usage);
+  await meter(email, res.model, "judge", res.usage, agent.id);
   const raw = res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
   let arr: Array<Record<string, unknown>>;
   try {
