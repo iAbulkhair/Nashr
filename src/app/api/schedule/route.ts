@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
-import { getSchedule, runDaily, runWeekly, saveSchedule } from "@/lib/schedule";
+import { getSchedule, runDaily, runWeekly, saveSchedule, type Schedule } from "@/lib/schedule";
+import { isRoutineId, type RoutineId } from "@/lib/routines";
 
 export const maxDuration = 300;
 
@@ -12,11 +13,19 @@ export async function GET() {
 export async function PUT(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  const b = (await req.json().catch(() => ({}))) as { weeklyPlan?: boolean; dailyBrief?: boolean; followUps?: boolean };
-  const patch: Record<string, boolean> = {};
+  // A JSON null or array is not a patch; reading a field off null used to answer 500.
+  const raw: unknown = await req.json().catch(() => ({}));
+  const b = (raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}) as { weeklyPlan?: unknown; dailyBrief?: unknown; followUps?: unknown; routines?: unknown };
+  const patch: Partial<Schedule> = {};
   if (typeof b.weeklyPlan === "boolean") patch.weeklyPlan = b.weeklyPlan;
   if (typeof b.dailyBrief === "boolean") patch.dailyBrief = b.dailyBrief;
   if (typeof b.followUps === "boolean") patch.followUps = b.followUps;
+  // Routine switches: only ids of routines that exist, only booleans; anything else is dropped.
+  if (b.routines && typeof b.routines === "object" && !Array.isArray(b.routines)) {
+    const routines: Partial<Record<RoutineId, boolean>> = {};
+    for (const [id, on] of Object.entries(b.routines)) if (isRoutineId(id) && typeof on === "boolean") routines[id] = on;
+    if (Object.keys(routines).length) patch.routines = routines;
+  }
   return NextResponse.json({ ok: true, schedule: await saveSchedule(sc(u), patch) });
 }
 /** POST {run: "weekly"|"daily"} → run now */

@@ -7,3 +7,5 @@ export function similarity(a: string, b: string): number {
   const size = [...A.values()].reduce((s, n) => s + n, 0) + [...B.values()].reduce((s, n) => s + n, 0);
   return size ? (2 * inter) / size : 0;
 }
+/** How much an edit changed the agent's text, 0..100: the light task index and the decision records share this measure. */
+export const editPctOf = (body: string, edited: string): number => Math.round((1 - similarity(body, edited)) * 100);

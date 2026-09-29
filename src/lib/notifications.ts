@@ -1,9 +1,11 @@
 import { randomBytes } from "crypto";
 import { db } from "./db";
 import type { User } from "./auth";
-import { listLite } from "./brand";
+import { getBrand, listLite } from "./brand";
+import { listBrands, scopeFor } from "./brands";
 import { getSchedule } from "./schedule";
-import type { AgentId } from "./agents";
+import { agentById, type AgentId } from "./agents";
+import type { AgentCharge } from "./credits";
 
 /**
  * In-app follow-ups from the team. Stored per account (not per brand) as one
@@ -26,10 +28,15 @@ export async function markAllRead(email: string) {
   const all = await listNotifs(email);
   if (all.some((n) => !n.read)) await db.set(KEY(email), all.map((n) => ({ ...n, read: true })));
 }
+/** The marker that suppresses a repeat of one situation; exported so `wipeAccount` can name the ones it can list. */
+export const seenKey = (email: string, fingerprint: string) => `notifseen:${email}:${fingerprint}`;
+/** The 80% warning's fingerprint: one per brand scope, agent and month. */
+export const agentCapFingerprint = (scope: string, agent: AgentId, month: string) => `agentcap80:${scope}:${agent}:${month}`;
+
 /** Push one follow-up. `fingerprint` + `ttlDays` suppress repeats of the same situation. */
 export async function pushNotif(email: string, n: Omit<Notif, "id" | "at">, fingerprint?: string, ttlDays = 3): Promise<Notif | null> {
   if (fingerprint) {
-    const k = `notifseen:${email}:${fingerprint}`;
+    const k = seenKey(email, fingerprint);
     if (await db.get(k)) return null;
     await db.set(k, 1, ttlDays * 86400);
   }
@@ -89,4 +96,38 @@ export function notifEmailText(user: User, items: Notif[]) {
 /** Helper for other modules (weekly cron, judge). */
 export async function notifyItem(email: string, lang: "ar" | "en", n: { kind: NotifKind; agent?: AgentId; title: string; body: string; href: string }, fp?: string, ttl?: number) {
   return pushNotif(email, { ...n, href: n.href.startsWith("/") ? n.href : `/${lang}/app/${n.href}` }, fp, ttl);
+}
+
+/**
+ * The one 80% warning of an agent's monthly credit cap, for every charging path: pass the charge result. It fires on the
+ * charge that crossed 80% (`warn80`) and the fingerprint keeps it to one per brand scope, agent and month, even when a
+ * refund dips below the line and the next charge crosses it again. The bell is per account and Governance shows the
+ * brand that is open, so the warning names the brand the cap belongs to. It never throws: the credits are already
+ * charged, and a failed notification must not skip the refund that follows a failed generation.
+ */
+export async function warnAgentCap(user: Pick<User, "email" | "lang">, paid: Extract<AgentCharge, { ok: true }>) {
+  if (!paid.warn80 || paid.cap === undefined) return;
+  const ar = user.lang === "ar";
+  const name = agentById(paid.agent).name[user.lang];
+  try {
+    // Named as the brand switcher names it: the name given to the brand, else its brand file's.
+    const [rows, file] = await Promise.all([listBrands(user.email), getBrand(paid.scope)]);
+    const brand = (rows.find((b) => scopeFor(user.email, b.id) === paid.scope)?.name || file?.name || "").trim().slice(0, 60);
+    const where = brand ? (ar ? ` في «${brand}»` : ` in “${brand}”`) : "";
+    await notifyItem(user.email, user.lang, {
+      kind: "credits",
+      agent: paid.agent,
+      title: ar ? `${name}${where}: ${paid.spent} من ${paid.cap} كريدت هذا الشهر` : `${name}${where}: ${paid.spent} of ${paid.cap} credits this month`,
+      body: brand
+        ? ar
+          ? `اقترب الاستهلاك من الحد الشهري الذي وضعته لهذا الوكيل في صفحة الحوكمة لعلامة «${brand}»، فبدّل إليها لترى الحد أو تغيّره. عند بلوغه تتوقف دفعاته وصوره فيها حتى ترفع الحد أو يبدأ الشهر القادم. الدردشة لا تُحسب.`
+          : `This agent is close to the monthly cap you set for it in Governance for the brand “${brand}”; switch to that brand to see or change it. At the cap its batches and images there stop until you raise the cap or the next month starts. Chat is not counted.`
+        : ar
+          ? "اقترب الاستهلاك من الحد الشهري الذي وضعته لهذا الوكيل في صفحة الحوكمة لهذه العلامة. عند بلوغه تتوقف دفعاته وصوره حتى ترفع الحد أو يبدأ الشهر القادم. الدردشة لا تُحسب."
+          : "This agent is close to the monthly cap you set for it in Governance for this brand. At the cap its batches and images stop until you raise the cap or the next month starts. Chat is not counted.",
+      href: "governance",
+    }, agentCapFingerprint(paid.scope, paid.agent, paid.month), 35);
+  } catch (e) {
+    console.error("agent cap warning failed", e);
+  }
 }

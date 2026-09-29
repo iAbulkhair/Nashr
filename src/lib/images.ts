@@ -2,6 +2,7 @@ import { meter } from "./usage";
 import Anthropic from "@anthropic-ai/sdk";
 import { modelState } from "./model";
 import type { Brand, Task } from "./brand";
+import { agentForTask } from "./agents";
 
 /**
  * Image generation for posts. Provider: fal.ai FLUX (FAL_KEY). Without a key,
@@ -22,7 +23,8 @@ async function imagePrompt(brand: Brand, task: Task, email?: string): Promise<st
     system: "You write one image-generation prompt (English, ≤ 60 words) for a social post. Photographic, specific subject, lighting, composition, Gulf/Saudi cultural fit (modest, no faces unless generic, no text or logos in image, no alcohol). Output the prompt only.",
     messages: [{ role: "user", content: `Brand: ${brand.name} (${brand.industry}). Tone: ${brand.tone}. Products: ${brand.products.slice(0, 300)}.\nChannel: ${task.channel}\nPost:\n${(task.editedBody ?? task.body).slice(0, 1200)}` }],
   });
-  await meter(email, res.model, "image_prompt", res.usage);
+  // The image is for the agent who owns the item, the same agent its credit is charged to.
+  await meter(email, res.model, "image_prompt", res.usage, agentForTask(task.type).id);
   const text = res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join(" ").trim();
   return text || fallback;
 }

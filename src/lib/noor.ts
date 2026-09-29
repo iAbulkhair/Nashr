@@ -9,6 +9,7 @@ import type { Brand, TaskType } from "./brand";
 import { pickPlaybook } from "./playbooks";
 import { activeSeasons } from "./seasons";
 import { capDiscounts } from "./cart-recovery";
+import { feedbackBlock } from "./feedback";
 
 export type Generated = { channel: string; title: string; body: string };
 
@@ -53,10 +54,11 @@ const SPECS: Record<TaskType, string> = {
  * The generation prompt as three blocks, ordered for prompt caching (a hit needs an identical prefix):
  * 1. static per agent: persona, rules, skills playbook, output format. Shared by every workspace and every day.
  * 2. per workspace: brand file, industry playbook, memory files.
- * 3. volatile: today's date, the live Gulf calendar, preferences learned from the owner's edits.
+ * 3. volatile: today's date, the live Gulf calendar, preferences learned from the owner's edits, and the recent feedback
+ *    on this agent's own work (`feedbackFor`), which moves with every decision and so must never sit in a cached block.
  * Before this split the brand file and the date came first, so the cache was written on every call and never read.
  */
-export function systemPrompt(brand: Brand, prefs: string[], agent: Agent, memory?: string) {
+export function systemPrompt(brand: Brand, prefs: string[], agent: Agent, memory?: string, feedback?: string) {
   const fixed = `${agent.persona}
 
 RULES
@@ -86,13 +88,14 @@ Return ONLY a JSON array. Each element: {"channel": string, "title": string, "bo
 - Active channels: ${brand.channels.join(", ") || "instagram, snapchat, tiktok, whatsapp"}${brand.valueProp ? `\n- Value proposition: ${brand.valueProp}` : ""}${brand.social && Object.keys(brand.social).length ? `\n- Handles: ${Object.entries(brand.social).map(([k, v]) => `${k} ${v}`).join(", ")}` : ""}
 
 ${playbookBlock(brand)}${memory ? "\n\nWORKSPACE FILES (Noor's memory — follow them)\n" + memory : ""}`;
+  const recent = feedbackBlock(feedback);
   const today = `TODAY: ${new Date().toISOString().slice(0, 10)}.
 
 GULF CALENDAR — LIVE OR WITHIN 35 DAYS (plan for these)
 ${seasonBlock()}
 
 OWNER PREFERENCES LEARNED FROM PAST EDITS (highest priority)
-${prefs.length ? prefs.map((p) => "- " + p).join("\n") : "- none yet"}`;
+${prefs.length ? prefs.map((p) => "- " + p).join("\n") : "- none yet"}${recent ? `\n\n${recent}` : ""}`;
   return [
     { type: "text" as const, text: fixed, cache_control: { type: "ephemeral" as const } },
     { type: "text" as const, text: workspace, cache_control: { type: "ephemeral" as const } },
@@ -145,7 +148,7 @@ function mock(type: TaskType, brand: Brand): Generated[] {
   }));
 }
 
-export type GenOptions = { /** account email for token metering */ meter?: string; memory?: string; reviewer?: boolean; noEmDash?: boolean; /** WORKSPACE DATA block for report tasks */ stats?: string; /** produce exactly this many items instead of the batch size (small asks from chat) */ count?: number };
+export type GenOptions = { /** account email for token metering */ meter?: string; memory?: string; reviewer?: boolean; noEmDash?: boolean; /** WORKSPACE DATA block for report tasks */ stats?: string; /** produce exactly this many items instead of the batch size (small asks from chat) */ count?: number; /** `feedbackFor` output for the owning agent, placed in the uncached block; the golden set passes none */ feedback?: string };
 
 function stripDashes(items: Generated[]) {
   return items.map((i) => ({ ...i, body: i.body.replace(/\s*[—–]\s*/g, ", ") }));
@@ -164,7 +167,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   const params = {
     model: "claude-opus-5",
     max_tokens: 16000,
-    system: systemPrompt(brand, prefs, agent, opts.memory),
+    system: systemPrompt(brand, prefs, agent, opts.memory, opts.feedback),
     messages: [{ role: "user" as const, content: userMsg }],
     thinking: { type: "adaptive" as const },
     output_config: { effort: "medium" as const },
@@ -178,14 +181,14 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
     // Meter first. A refused call is still billed by the API — input, thinking and output — but this threw before
     // metering, so the account showed a free event (the route refunds the credits) and the founder console never saw
     // what it cost. Golden runs left refused cases out of their spend the same way.
-    await meter(opts.meter, msg.model, "generate", msg.usage);
+    await meter(opts.meter, msg.model, "generate", msg.usage, agent.id);
     if (msg.stop_reason === "refusal") throw new Error("refused");
     text = msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
   } catch (e) {
     // Fallback parameter not accepted (older org/plan) → plain request.
     if (e instanceof Anthropic.BadRequestError) {
       const msg = await client.messages.stream(params).finalMessage();
-      await meter(opts.meter, msg.model, "generate", msg.usage);
+      await meter(opts.meter, msg.model, "generate", msg.usage, agent.id);
       // The same refusal check as the main path; without it a refused fallback fell through with empty text.
       if (msg.stop_reason === "refusal") throw new Error("refused");
       text = msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
@@ -254,7 +257,7 @@ async function critique(client: Anthropic, brand: Brand, prefs: string[], type: 
         },
       ],
     });
-    await meter(ctx.meter, review.model, "review", review.usage);
+    await meter(ctx.meter, review.model, "review", review.usage, agentForTask(type).id);
     const raw = review.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
     const verdicts = parseObjectArray(raw) as Array<{ ok?: boolean; body?: string }>;
     return items.map((it, i) => (verdicts[i] && verdicts[i].ok === false && typeof verdicts[i].body === "string" && verdicts[i].body!.length > 20 ? { ...it, body: verdicts[i].body! } : it));

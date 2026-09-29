@@ -14,6 +14,7 @@ import * as impersonate from "@/app/api/admin/impersonate/route";
 import * as cronDaily from "@/app/api/cron/daily/route";
 import * as cronWeekly from "@/app/api/cron/weekly/route";
 import * as cronGolden from "@/app/api/cron/golden/route";
+import * as cronRoutines from "@/app/api/cron/routines/route";
 
 const KEY = "test-admin-key-0123456789";
 let customer: User, founder: User;
@@ -102,7 +103,7 @@ describe("impersonation (rule 12)", () => {
 });
 
 describe("cron routes (rule 7)", () => {
-  const routes = [cronDaily, cronWeekly, cronGolden];
+  const routes = [cronDaily, cronWeekly, cronGolden, cronRoutines];
   const call = (r: { GET: (req: Request) => Promise<Response> }, auth?: string) => r.GET(new Request("https://nashr.test/api/cron/x", { headers: auth ? { authorization: auth } : {} }));
   it("answer 401 without the exact bearer secret", async () => {
     vi.stubEnv("CRON_SECRET", "cron-secret-abcdef");

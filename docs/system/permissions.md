@@ -11,11 +11,11 @@ What the code enforces today, at HEAD `4959f7e`. Paths are relative to the repos
 | Workspace owner of the resource | Same as signed-in user, and the record is read under the caller's own scope `sc(u)` (`src/lib/auth.ts:26`) so ids from the request only resolve inside that scope. There is no membership or role model: one account owns its brands and nobody else can be granted access. | `sc(u)` plus the scoped getters in `src/lib/brand.ts`, `files.ts`, `conversations.ts`, `connectors/store.ts` |
 | Founder admin | `WAITLIST_ADMIN_KEY` presented as `?key=`, header `x-admin-key`, or cookie `nashr_admin`; or a signed-in user whose email is in `ADMIN_EMAILS` | `isAdmin(req)` `src/lib/auth.ts:114-125` (APIs), `isAdminCookie()` `src/lib/auth.ts:128-136` (pages) |
 | Cron | Header `Authorization: Bearer ${CRON_SECRET}`; denied when the variable is unset | inline in each cron route |
-| MCP bearer | Header `Authorization: Bearer nashr_...` to `mcptoken:{token}` to `user:{email}`; does not check `suspended`, does not set `scope` | `userFromBearer(req)` `src/lib/mcp.ts:20-26` |
+| MCP bearer | Header `Authorization: Bearer nashr_...` to `mcptoken:{token}` to `user:{email}`; refuses a `suspended` account and sets `scope` from the active brand like a session | `userFromBearer(req)` `src/lib/mcp.ts:25-39` |
 
 There is no global guard. `src/proxy.ts` does not authenticate (`src/proxy.ts:15-30`); every handler enforces its own rule, and a handler without a check is public.
 
-## 1. API routes (57 route files, 90 exported handlers)
+## 1. API routes (60 route files, 91 exported handlers)
 
 Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the addressed resource (U plus scope binding), F = founder admin, C = cron secret, M = MCP bearer token.
 
@@ -45,10 +45,10 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | 15 | PUT | `/api/files` | O | `currentUser` `files/route.ts:13-14`; name sanitized by `safeName` `src/lib/files.ts:9`. |
 | 16 | DELETE | `/api/files` | O | `currentUser` `files/route.ts:20-21`. |
 | 17 | GET | `/api/governance` | O | `currentUser` `governance/route.ts:6-7`. |
-| 18 | PUT | `/api/governance` | O | `currentUser` `governance/route.ts:11-12`; field clamps in `saveGov` `src/lib/governance.ts:18-29`. |
+| 18 | PUT | `/api/governance` | O | `currentUser` `governance/route.ts:11-12`; written to `gov:{sc(u)}` only. `saveGov` validates every field (2026-09-29): `autoApprove` keys must be task types with boolean values, `agentCaps` keys must be agent ids with finite values (truncated, clamped 0..100000; `null` or "" removes a cap), NaN never replaces `weeklyCap` or `notifyMinutes`, unknown keys and a non-object body change nothing. |
 | 19 | GET | `/api/schedule` | O | `currentUser` `schedule/route.ts:8-9`. |
-| 20 | PUT | `/api/schedule` | O | `currentUser` `schedule/route.ts:13-14`. |
-| 21 | POST | `/api/schedule` | O | `currentUser` `schedule/route.ts:24-25`. Runs weekly (charges credits) or daily for the caller. |
+| 20 | PUT | `/api/schedule` | O | `currentUser` `schedule/route.ts:14-15`. Writes `schedule:{sc(u)}` only; scope-like body fields are ignored. Routine switches (`routines: {id: boolean}`) keep only ids in `ROUTINES` (membership test, not `in`) with boolean values and are merged per id; a non-object body changes nothing. |
+| 21 | POST | `/api/schedule` | O | `currentUser` `schedule/route.ts:32-33`. Runs weekly (charges credits) or daily for the caller. Routines have no "Run now": they run only from the cron. |
 | 22 | GET | `/api/brief` | O | `currentUser` `brief/route.ts:6-7`. |
 | 23 | GET | `/api/notifications` | U (account level, keyed by `u.email`) | `currentUser` `notifications/route.ts:6-7`. |
 | 24 | POST | `/api/notifications` | U | `currentUser` `notifications/route.ts:14-15`. |
@@ -63,15 +63,15 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 |---|---|---|---|---|
 | 29 | GET | `/api/chat` | O; `conv` from query is a key suffix under `sc(u)` | `currentUser` `chat/route.ts:11-12`; `history(sc(u), conv)` `:14`. |
 | 30 | POST | `/api/chat` | O | `currentUser` `chat/route.ts:23-24`. Tool side effects run under `user.scope` `src/lib/chat.ts:220`. |
-| 31 | POST | `/api/chat/feedback` | U | `currentUser` `chat/feedback/route.ts:8-9`. |
-| 32 | POST | `/api/generate` | O | `currentUser` `generate/route.ts:16-17`; trial check `:23`; `missingData` (cart-recovery needs a synced store, 409 `no_cart_data` before any charge); `charge`. |
+| 31 | POST | `/api/chat/feedback` | U | `currentUser` `chat/feedback/route.ts:8-9`; written to `fblog:{sc(u)}` `:13`. Since 2026-09-29 a thumbs-down reason reaches that agent's chat prompt in the same scope, escaped as data (`feedbackFor`, `src/lib/feedback.ts`), never generation, publishing, spending or the brand file. No rate limit; the prompt takes only the 5 newest reasons, 200 characters each. |
+| 32 | POST | `/api/generate` | O | `currentUser` `generate/route.ts:16-17`; trial check `:23`; `missingData` (cart-recovery needs a synced store, 409 `no_cart_data` before any charge); `charge` with the owning agent and the owner's cap for it in `gov:{sc(u)}`, 402 `agent_cap` before any model call and without debiting (`flows.md` 8.9-8.10). |
 | 33 | POST | `/api/onboard` | O | `currentUser` `onboard/route.ts:25-26`; per-scope lock `:31`. |
 | 34 | GET | `/api/onboard/plan` | O | `currentUser` `onboard/plan/route.ts:10-11`. |
 | 35 | POST | `/api/onboard/plan` | O | `currentUser` `onboard/plan/route.ts:17-18`. |
 | 36 | POST | `/api/catalog` | O | `currentUser` `catalog/route.ts:9-10`. Fetches a user-supplied URL server-side `:12,19`. |
 | 37 | GET | `/api/tasks` | O | `currentUser` `tasks/route.ts:6-7`. |
-| 38 | PATCH | `/api/tasks/{id}` | O; `id` resolved with `getTask(sc(u), id)` | `currentUser` `tasks/[id]/route.ts:9-10`; scope lookup `:12-13`. |
-| 39 | POST | `/api/tasks/{id}/image` | O | `currentUser` `tasks/[id]/image/route.ts:11-12`; scope lookup `:14-15`; `charge` `:16`. |
+| 38 | PATCH | `/api/tasks/{id}` | O; `id` resolved with `getTask(sc(u), id)`; decision records appended to `decisions:{sc(u)}` only (the body cannot name a scope) | `currentUser` `tasks/[id]/route.ts:9-10`; scope lookup `:12-13`; `recordDecisions(scope, ...)` inside `after()`. |
+| 39 | POST | `/api/tasks/{id}/image` | O | `currentUser` `tasks/[id]/image/route.ts:11-12`; scope lookup `:14-15`; `charge` against the agent that owns the item and its cap (402 `agent_cap`); a placeholder or a failure refunds the credit and the agent's counter. |
 | 40 | GET | `/api/tasks/{id}/pptx` | O | `currentUser` `tasks/[id]/pptx/route.ts:34-35`; scope lookup `:37-38`. |
 | 41 | POST | `/api/tools/{tool}` | A (5 per IP per UTC day) or U (unlimited, no credit charge) | Anonymous counter `tools/[tool]/route.ts:15-20`. |
 
@@ -85,7 +85,7 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 | 45 | GET | `/api/connect/{provider}/start` | O | `currentUser` `connect/[provider]/start/route.ts:10-11`; scope written into state `:25`. |
 | 46 | GET | `/api/connect/{provider}/callback` | O who started the flow: a valid, unused `state` issued for this provider, the matching `nashr_oauth` cookie, and a signed-in account that owns the state's scope | `currentUser` and `sameSecret(cookie, state)` in `connect/[provider]/callback/route.ts`, before any code exchange; Shopify also verifies the query `hmac`. Target scope comes from the state record. |
 | 47 | POST | `/api/connect/{provider}/key` | O | `currentUser` `connect/[provider]/key/route.ts:12-13`; saved under `sc(u)` `:54`. |
-| 48 | POST | `/api/publish/{id}` | O; `id` resolved with `getTask(sc(u), id)`; connection read under `sc(u)` | `currentUser` `publish/[id]/route.ts:10-11`; scope lookup `:13-14`; `publishTask(sc(u), ...)` `:18`. |
+| 48 | POST | `/api/publish/{id}` | O; `id` resolved with `getTask(sc(u), id)`; connection read under `sc(u)`; a `publish` decision recorded under `sc(u)` when the item was pending | `currentUser` `publish/[id]/route.ts:10-11`; scope lookup `:13-14`; `publishTask(sc(u), ...)` `:18`; `recordDecisions(sc(u), ...)`. |
 | 49 | GET | `/api/integrations` | A gets the static catalog; F gets the request list | `isAdmin` branch `integrations/route.ts:7`. |
 | 50 | POST | `/api/integrations` | U | `currentUser` `integrations/route.ts:15-16`. |
 
@@ -95,7 +95,7 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 |---|---|---|---|---|
 | 51 | OPTIONS | `/api/mcp` | A | CORS preflight `mcp/route.ts:36`. |
 | 52 | GET | `/api/mcp` | A | Static descriptor `mcp/route.ts:39`. |
-| 53 | POST | `/api/mcp` | A for `initialize`, `ping`, `notifications/initialized`, `tools/list` (`mcp/route.ts:49-51`); M for `tools/call` | `userFromBearer` `mcp/route.ts:53-54`. All data access uses `user.scope ?? user.email`, which is always the email here (default brand). `get_brand_rules` and `check_brand` read only the caller's own brand and spend nothing. |
+| 53 | POST | `/api/mcp` | A for `initialize`, `ping`, `notifications/initialized`, `tools/list` (`mcp/route.ts:49-51`); M for `tools/call` | `userFromBearer` `mcp/route.ts:53-54`. All data access uses `user.scope ?? user.email`, which is always the email here (default brand). `get_brand_rules` and `check_brand` read only the caller's own brand and spend nothing. `generate_content` charges against the owning agent's monthly cap in the active brand and returns a tool error at the cap, charging nothing. |
 | 54 | GET | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:6-7`. Returns only a 12-char prefix. |
 | 55 | POST | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:12-13`. |
 | 56 | DELETE | `/api/mcp/token` | U | `currentUser` `mcp/token/route.ts:19-20`. |
@@ -148,9 +148,10 @@ Legend for "Who": A = anonymous, U = signed-in user, O = workspace owner of the 
 
 | # | Method | Path | Who | Enforced by |
 |---|---|---|---|---|
-| 88 | GET | `/api/cron/daily` | C | `cron/daily/route.ts:14-15`. |
-| 89 | GET | `/api/cron/weekly` | C | `authorized()` `cron/weekly/route.ts:6-9`, used at `:12`. |
-| 90 | GET | `/api/cron/golden` | C | `cron/golden/route.ts:8-9`. |
+| 88 | GET | `/api/cron/daily` | C | `sameSecret` `cron/daily/route.ts:67-68`. |
+| 89 | GET | `/api/cron/weekly` | C | `sameSecret` `cron/weekly/route.ts:14-15`. |
+| 90 | GET | `/api/cron/golden` | C | `sameSecret` `cron/golden/route.ts:11-12`. |
+| 91 | GET | `/api/cron/routines` | C | `sameSecret` `cron/routines/route.ts:17-18`. Runs the routines owners turned on (`src/lib/routines.ts`), each under its own brand scope from `allUsers()`; charges credits against the owning agent's cap in that scope. |
 
 Related non-API surface: `/oauth/authorize` (`src/app/oauth/authorize/page.tsx:10-12`) requires a session and redirects anonymous visitors to `/ar/app/login?next=...`; `/.well-known/oauth-*` are public rewrites (`next.config.ts:4-11`).
 
@@ -192,13 +193,13 @@ The sidebar shows the console link when `isFounder(user.email)` (`layout.tsx:44`
 ## 3. Cross-tenant isolation
 
 ### 3.1 How a scope is derived
-1. `currentUser()` loads the user, then `activeBrandId(email)` reads `activebrand:{email}` (default `"default"`) and `scopeFor(email, brandId)` returns `email` for the default brand or `` `${email}#${brandId}` `` otherwise (`src/lib/auth.ts:101-103`, `src/lib/brands.ts:21-29`).
+1. `currentUser()` loads the user, then `activeBrandId(email)` reads `activebrand:{email}` (default `"default"`) and `scopeFor(email, brandId)` returns `email` for the default brand or `` `${email}#${brandId}` `` otherwise (`src/lib/auth.ts:163-165`, `src/lib/brands.ts:21-29`).
 2. `sc(u) = u.scope ?? u.email` (`src/lib/auth.ts:26`). `scope` and `brandId` are runtime only and stripped by `saveUser` (`auth.ts:51`).
 3. The active brand can only be set to an id found in the caller's own `brands:{email}` list (`brands/route.ts:27-30`), or to a brand just created by `addBrand` (`brands.ts:37`). Archiving the active brand resets it to `default` (`brands/route.ts:36`). `activeBrandId` does not re-validate that the stored id still exists or is active.
 4. Brand ids are 8 base36 characters from `Math.random()` (`brands.ts:34`).
 5. Every brand-scoped key embeds the scope string (see `architecture.md` section 3). Isolation between tenants therefore depends on (a) the session to email mapping and (b) scope strings of different accounts never being equal.
-6. Account-level (not brand-level) records: user, credits, sessions, notifications, MCP tokens, referral data, usage, analytics, chat thumbs.
-7. Cron and admin code construct scopes with the same `scopeFor` (`schedule.ts:111`, `admin/users/[email]/route.ts:23`, `account.ts:10`).
+6. Account-level (not brand-level) records: user, credits, sessions, notifications, MCP tokens, referral data, usage, analytics. The per-agent monthly counters live on the account's user record but are keyed by brand scope (`agentSpend.by[scope]`), and the caps they are checked against are per brand (`gov:{scope}.agentCaps`), so one brand's spend and caps never apply to another. Chat thumbs are per brand scope since 2026-09-21 (`fblog:{scope}`), and so is the feedback built from them, the decision records and the judge's notes for an agent's prompts (`feedbackFor`, 2026-09-29).
+7. Cron and admin code construct scopes with the same `scopeFor` (`allUsers()` in `schedule.ts:157-167`, `admin/users/[email]/route.ts:24`, `account.ts:26`). The routines cron keys every read and write by the `scope` `allUsers()` set (`routinelast:{scope}:{id}`, `routinelock:{scope}:{id}`, `routinecap:{scope}`, `routinehold:{scope}:{id}`, `routinetry:{scope}:{id}:{period}`, `schedule:{scope}`, `gov:{scope}`, the tasks).
 8. MCP callers resolve the active brand the same way a browser session does (`userFromBearer`, `src/lib/mcp.ts`), so a bearer token works in the brand the owner has active. Fixed 2026-09-20; it used to always mean the default brand.
 
 ### 3.2 Routes that accept an id, email or other locator from the request
@@ -246,7 +247,7 @@ Each item states what the code does and why the intended rule cannot be read fro
 3. **No rate limit on OAuth client registration or `/api/oauth/token`.** Login and signup are throttled per IP and per email; support, affiliates and waitlist were given a per-IP limit on 2026-09-20; chat is bounded per account (`CHAT_PER_HOUR`, `CHAT_PER_DAY` in `src/lib/rate.ts`) because a turn costs no credits and can run up to five model calls. `clientIp` prefers the platform headers and falls back to the last `x-forwarded-for` hop (`rate.ts`).
 4. **Password policy differs by route.** Reset requires 8 chars plus a letter and a digit (`auth/reset/route.ts:13`); signup and change-password require only 8 chars server-side (`auth/signup/route.ts:10`, `account/route.ts:12`); the signup form enforces the stricter rule client-side only.
 5. **Sessions end when the password changes.** Fixed 2026-09-18. A session record is `{email, at}`; the user record carries `sessionsAfter`, set on password change, password reset and founder `resetPassword`; `currentUser` refuses any session issued before it, including the older bare-email records (treated as issued at 0). The device that changed the password gets a new session. Password writes now happen inside the user lock on the fresh record. Suspension is still enforced on read.
-6. **Suspension does not cover every entry point.** `userFromBearer` (`mcp.ts:20-26`) does not check `suspended`, so MCP personal and OAuth tokens keep working for a suspended account. `allUsers()` (`schedule.ts:104`) does not filter suspended users, so cron still generates weekly plans (charging credits) and sends emails for them. The `User.suspended` comment says "login and all API access blocked" (`auth.ts:20`).
+6. **Suspension.** Fixed: `userFromBearer` (`mcp.ts:31-32`) refuses a suspended account, so its MCP personal and OAuth tokens stop working, and `allUsers()` (`schedule.ts:163`) skips suspended accounts, so no cron (weekly plan, routines, daily emails) charges or emails them. The `User.suspended` comment says "login and all API access blocked" (`auth.ts:21`).
 7. **MCP token revocation.** Fixed 2026-09-18. Every OAuth token pair belongs to a grant (`mcpgrant:{email}:{id}`, index `mcpgrants:{email}`). `GET /api/mcp/grants` lists connected apps without tokens, `DELETE ?id=` or `?all=1` revokes; the MCP page shows the list. Refresh rotation deletes the previous access token. Password reset, founder reset and `wipeAccount` revoke the personal token and every grant. Tokens issued before this change have no grant and cannot be listed; they expire on their own (30 d access, 90 d refresh) or die at the next password reset only if they were the personal token.
 8. **MCP scope.** Partly fixed 2026-09-18: the approve route only writes scopes this server defines (`SCOPES`, today `noor`), and MCP `generate_content` applies the same trial-expiry check as `/api/generate`. On 2026-09-20 a token started resolving the active brand like a session, and `ask_noor` was put under the same per-account chat ceiling as the web route. Still open: there is one OAuth scope, so every token grants every MCP tool including `ask_noor` (which reaches `write_file`, `update_brand` and credit-spending tools; `publish_item` still needs an approved item).
 9. **`POST /api/admin/impersonate` has no admin check.** It acts only on the caller's own cookies and requires `nashr_return` to be a live session token, so it cannot mint access, but the rule "founder only" is not enforced there.
@@ -257,8 +258,8 @@ Each item states what the code does and why the intended rule cannot be read fro
 14. **Model-controlled writes are not re-validated.** `update_brand` writes `brand[field] = value` using the model's `field` (`chat.ts:283-286`); the enum is enforced only by the strict tool schema. Text crawled from user-supplied sites and imported catalogs is placed into prompts and `products.md` without marking it as untrusted.
 15. **Server-side fetches of user-supplied URLs** (`crawl.ts:50`, `catalog.ts:12,26`, WordPress/WooCommerce/Odoo/PrestaShop base URLs in `connect/[provider]/key`) have no allow-list, no private-address or metadata-address block, and follow redirects. Verify errors and publish errors return fragments of the remote response to the caller (`key/route.ts:27`, `publish/[id]/route.ts:25`). No rule is written for acceptable targets.
 16. **Connector OAuth callback is sessionless.** The connection is saved to the scope stored in `state`, whoever completes the redirect (`callback/route.ts:28`); the path provider is not checked against the state's provider; Shopify callbacks are not HMAC-verified. OAuth tokens are never refreshed although `expiresAt` is stored.
-17. **Account deletion leaves data behind.** `wipeAccount` (`account.ts:8-21`) deletes the `conns:{scope}` set but not the `conn:{scope}:{provider}` records holding encrypted third-party credentials; (fixed 2026-09-18: connector records, every task and conversation, the task index, the pending set, the personal MCP token and all OAuth grants are deleted); it still leaves `session:*` (harmless: the user record is gone),  `notifs:`, `notified:`, `notifseen:`, `usage:`, `uev:`/`ulast:`/`ufirst0:`, `fb:`/`fblog:` (fixed 2026-09-21: `fblog:{scope}` for every brand and the legacy `fb:` counters are now deleted — the log holds the free-text reason the owner typed), `ref:`, `referrals:`, `referredBy:`, `shared:`, OAuth tokens, membership in `users:all` and `active:*` sets, tickets, and for non-default brands the `profile:{scope}` key. A `deleted-accounts` entry keeps the email. No retention rule is documented in code.
-18. **Whole-record user saves outside the credit lock.** `PUT /api/profile`, `PATCH /api/account` and `POST /api/auth/reset` call `saveUser` with the record read at request start (`profile/route.ts:39`, `account/route.ts:15`, `reset/route.ts:22`), so a concurrent `charge` or `refund` can be overwritten. `POST /api/referral/share` checks and sets its once-only flag in two steps (`share/route.ts:16-18`), as do `once()` and `pushNotif` fingerprints.
+17. **Account deletion leaves data behind.** `wipeAccount` (`account.ts:8-21`) deletes the `conns:{scope}` set but not the `conn:{scope}:{provider}` records holding encrypted third-party credentials; (fixed 2026-09-18: connector records, every task and conversation, the task index, the pending set, the personal MCP token and all OAuth grants are deleted); it still leaves `session:*` (harmless: the user record is gone),  `notifs:`, `notified:`, `notifseen:`, `usage:`, `uev:`/`ulast:`/`ufirst0:`, `fb:`/`fblog:` (fixed 2026-09-21: `fblog:{scope}` for every brand and the legacy `fb:` counters are now deleted — the log holds the free-text reason the owner typed; `decisions:{scope}`, added 2026-09-29, is deleted for every brand for the same reason; the `usage:` counters of the last 36 months are deleted from the list `usageMonthKeys` builds from `KINDS` and `AGENT_IDS`, so the per-agent counters added 2026-09-29 go too), `ref:`, `referrals:`, `referredBy:`, `shared:`, OAuth tokens, membership in `users:all` and `active:*` sets, tickets, and for non-default brands the `profile:{scope}` key. A `deleted-accounts` entry keeps the email. No retention rule is documented in code.
+18. **Whole-record user saves outside the credit lock.** `PUT /api/profile`, `PATCH /api/account` and `POST /api/auth/reset` call `saveUser` with the record read at request start (`profile/route.ts:39`, `account/route.ts:15`, `reset/route.ts:22`), so a concurrent `charge` or `refund` can be overwritten, and since 2026-09-29 that includes the per-agent counters (`agentSpend`) the charge wrote. `POST /api/referral/share` checks and sets its once-only flag in two steps (`share/route.ts:16-18`), as do `once()` and `pushNotif` fingerprints.
 19. **Brand-scope inconsistencies inside one account.** Pages fixed 2026-09-18: files, governance, tasks, generate, onboarding, and `listConnections` in chat and reports now read `sc(u)`; `tests/scope-usage.test.ts` fails when a page or customer API route passes the bare account email to a workspace reader. Still open: email preferences are written to `profile:{sc(u)}` and cron reads the scope first and the account second; the founder overview counts credits from the default brand only.
 20. **Credits and plan limits not tied to a payment event.** Plans and credits change only through the founder console. Free tools are unlimited and free for signed-in users (`tools/[tool]/route.ts:15`), onboarding and catalog import are uncharged and repeatable, and trial expiry is not checked for image generation. `BRAND_LIMIT` is checked only when adding a brand, not after a downgrade. Whether these are intended is not stated.
 21. **Layout guard depends on a header.** The layout redirect runs only when `x-pathname` is non-empty (`layout.tsx:24`) and public paths are matched with `endsWith`. Every current page has its own guard except `reset` (public by design), so this is defence in depth only; the rule for future pages is unwritten.
