@@ -1,10 +1,13 @@
 import type { Lang } from "./i18n";
+import { ONBOARD_EXTRA_BRAND_COST, PLAN_PRICE_SAR as P } from "./pricing";
+import { TASK_COST } from "./tasks";
 
 /**
  * The public "Updates & wishlist" page (/{lang}/updates): what shipped, and what owners can vote on next.
  *
- * Import-free apart from types on purpose: client components read the labels and statuses from here, and anything this
- * file imported would be dragged into their bundles. The Redis side (votes, suggestions, promoted items, status
+ * Import-free apart from types, src/lib/pricing.ts and src/lib/tasks.ts (both import-free, so they drag nothing else
+ * along) on purpose: client components read the labels and statuses from here, and anything this file imported would be
+ * dragged into their bundles. The prices and task costs in the pricing entry come from those tables (rule 220). The Redis side (votes, suggestions, promoted items, status
  * overrides) lives in src/lib/wishlist.ts.
  *
  * Every changelog entry is a change merged into main (the PR or commit is named next to it) and is dated with the
@@ -25,6 +28,9 @@ export type SeedWish = { id: string; area: WishArea; title: Bi };
 
 /** Newest first. Dates are merge dates on main. */
 export const CHANGELOG: readonly ChangeEntry[] = [
+  // Pricing phase 1 (docs/superpowers/plans/2026-09-29-pricing.md). Dated the day it was finished; at merge, set the date
+  // to the merge date on main and name the PR here (docs/Owner_Tasks_AR.md ح3).
+  { date: "2026-09-30", tag: "new", title: { ar: "خطط وأسعار جديدة، وعلامات بلا حد", en: "New plans and prices, and unlimited brands" }, desc: { ar: `البداية ${P.starter} والاحتراف ${P.pro} والأعمال ${P.business} ريال شهرياً غير شاملة الضريبة، والوكالات بعقد. العلامات بلا حد في كل الخطط: إعداد علامتك الأولى مجاني، وإعداد كل علامة إضافية من رابطها ${ONBOARD_EXTRA_BRAND_COST} كريدت، وخطة الأحد تعمل تلقائياً لعلامتك الأولى وتفعّلها للعلامات المضافة من «المهام». وارتفعت كلفة ثلاث مهام: خطة الأسبوع ${TASK_COST.weekly_plan} كريدت، والتقرير الأسبوعي ${TASK_COST.weekly_report}، وسلسلة المتابعة ${TASK_COST.followup_seq}.`, en: `Starter ${P.starter}, Pro ${P.pro} and Business ${P.business} SAR a month, excluding VAT, and Agency by contract. Unlimited brands on every plan: your first brand's setup is free, setting up each added brand from its URL is ${ONBOARD_EXTRA_BRAND_COST} credits, and the Sunday plan runs on its own for your first brand while added brands switch it on in Tasks. Three tasks now cost more: the weekly plan ${TASK_COST.weekly_plan} credits, the weekly report ${TASK_COST.weekly_report} and the follow-up cadence ${TASK_COST.followup_seq}.` } },
   // #217
   { date: "2026-09-29", tag: "new", title: { ar: "مهام دورية لمزيد من الوكلاء", en: "Recurring routines for more agents" }, desc: { ar: "فعّل ما تريد منها: تقرير دانة الأسبوعي، ورسائل نور لاسترجاع السلات المتروكة، وتوقع رزان النقدي الشهري، ومراجعة ماجد الشهرية.", en: "Turn on the ones you want: Dana's weekly report, Noor's cart-recovery messages, Razan's monthly cash forecast and Majed's monthly review." } },
   { date: "2026-09-29", tag: "new", title: { ar: "سقف كريدت شهري لكل وكيل", en: "A monthly credit cap per agent" }, desc: { ar: "حدّد من صفحة الحوكمة كم يصرف كل وكيل في الشهر، ويصلك تنبيه عند 80%.", en: "Set in Governance how much each agent may spend a month, with a notice at 80%." } },

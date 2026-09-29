@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { json, jar, newUser, params, settle, signIn, signOut } from "./helpers/session";
-import { getUser, saveUser } from "@/lib/auth";
+import { getUser } from "@/lib/auth";
 import { getBrand, getTask, listLite, type Task } from "@/lib/brand";
 import { listFiles } from "@/lib/files";
 import { saveConnection } from "@/lib/connectors/store";
 import { createMcpToken } from "@/lib/mcp";
 import { db } from "@/lib/db";
 import { getUsage } from "@/lib/usage";
+import { ONBOARD_EXTRA_BRAND_COST } from "@/lib/pricing";
+import { TASK_COST } from "@/lib/tasks";
 
 /**
  * End-to-end journeys: a whole customer path through the real route handlers, in order, with the state each step leaves
@@ -51,14 +53,15 @@ describe("journey: sign up, build the workspace, generate, approve, publish", ()
     expect(jar().get("nashr_session")).toBeTruthy();
     expect((await getUser(email))!.credits).toBe(50);
 
-    // 2. Onboarding: the owner confirms the site on the start page, then it is free, once, and it leaves a brand file
-    // and the workspace files behind.
-    expect((await confirmRoute.POST(json("/api/onboard/confirm", "POST", { url: "roastery.example" }))).status).toBe(200);
+    // 2. Onboarding: the owner confirms the site on the start page, then it is free for the first brand, once, and it
+    // leaves a brand file and the workspace files behind.
+    const confirmed = await confirmRoute.POST(json("/api/onboard/confirm", "POST", { url: "roastery.example" }));
+    expect(await confirmed.json()).toEqual({ ok: true, cost: 0 });
     const events = await drain(await onboardRoute.POST(json("/api/onboard", "POST", { url: "roastery.example" })));
     expect(events.at(-1)!.type).toBe("done");
     expect(await getBrand(email)).not.toBeNull();
     expect((await listFiles(email)).map((f) => f.name)).toContain("brand.md");
-    expect((await getUser(email))!.credits).toBe(50); // onboarding never charges
+    expect((await getUser(email))!.credits).toBe(50); // the first brand's onboarding never charges
 
     // 3. Generate a batch of social posts: ten items, ten credits.
     const gen = await body(await generateRoute.POST(json("/api/generate", "POST", { type: "social" })));
@@ -102,11 +105,12 @@ describe("journey: sign up, build the workspace, generate, approve, publish", ()
   });
 });
 
-describe("journey: an agency account works in a second brand", () => {
-  it("keeps the two workspaces apart, and a bearer token follows the brand the owner has active", async () => {
-    const u = await newUser("agency");
-    await saveUser({ ...u, plan: "agency" });
+describe("journey: an account works in a second brand", () => {
+  it("keeps the two workspaces apart, charges the second brand's setup once, and a bearer token follows the active brand", async () => {
+    // Any plan, a trial included: brands are unlimited on every plan (rule 217).
+    const u = await newUser("second");
     await signIn(u.email);
+    expect((await getUser(u.email))!.credits).toBe(50);
 
     // A second brand, and the app switches to it.
     const added = (await body(await brandsRoute.POST(json("/api/brands", "POST", { action: "add", name: "Second" })))) as unknown as { ok: boolean; brand: { id: string } };
@@ -115,15 +119,20 @@ describe("journey: an agency account works in a second brand", () => {
     const scope = `${u.email}#${second}`;
 
     // Onboarding runs again for the new brand: it has its own brand file and its own files. The confirmation is the
-    // active brand's own, like everything else in the scope.
-    expect((await confirmRoute.POST(json("/api/onboard/confirm", "POST", { url: "second.example" }))).status).toBe(200);
+    // active brand's own, like everything else in the scope, and it shows what the build will cost (rule 218).
+    const confirmed = await confirmRoute.POST(json("/api/onboard/confirm", "POST", { url: "second.example" }));
+    expect(await confirmed.json()).toEqual({ ok: true, cost: ONBOARD_EXTRA_BRAND_COST });
     expect(await db.get(`onboardok:${u.email}`), "the default brand confirmed nothing").toBeNull();
     expect((await drain(await onboardRoute.POST(json("/api/onboard", "POST", { url: "second.example" })))).at(-1)!.type).toBe("done");
     expect(await getBrand(scope)).not.toBeNull();
+    // An added brand's setup is charged once, to Noor in that brand: 50 → 41.
+    expect(ONBOARD_EXTRA_BRAND_COST).toBe(9);
+    expect((await getUser(u.email))!.credits).toBe(41);
+    expect((await getUser(u.email))!.agentSpend?.by[scope]).toEqual({ noor: ONBOARD_EXTRA_BRAND_COST });
     expect(await getBrand(u.email)).toBeNull(); // the default brand was never onboarded
 
     // Items generated now belong to the second brand only.
-    expect(await body(await generateRoute.POST(json("/api/generate", "POST", { type: "whatsapp" })))).toMatchObject({ ok: true, created: 3 });
+    expect(await body(await generateRoute.POST(json("/api/generate", "POST", { type: "whatsapp" })))).toMatchObject({ ok: true, created: 3, credits: 41 - TASK_COST.whatsapp });
     expect(await listLite(scope)).toHaveLength(3);
     expect(await listLite(u.email)).toHaveLength(0);
 

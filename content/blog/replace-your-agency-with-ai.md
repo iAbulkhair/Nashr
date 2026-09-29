@@ -2,8 +2,8 @@
 title_ar: كيف تستبدل وكالتك التسويقية بالذكاء الاصطناعي في 2026 — دليل عملي للخليج
 title_en: How to Replace Your Marketing Agency with AI in 2026 — a Gulf Playbook
 date: 2026-09-17
-desc_ar: عمل تسويقي يومي يقوم به وكيل ذكاء اصطناعي ابتداءً من 149 ريالاً شهرياً. احسب تكلفة وكالتك بنفسك، ثم خطة 30 يوماً للانتقال، وما الذي يبقى للبشر.
-desc_en: Daily marketing work by an AI agent from SAR 149 a month. Work out what your own agency costs, then a 30-day migration plan, and what stays human.
+desc_ar: عمل تسويقي يومي يقوم به وكيل ذكاء اصطناعي ابتداءً من 299 ريالاً شهرياً. احسب تكلفة وكالتك بنفسك، ثم خطة 30 يوماً للانتقال، وما الذي يبقى للبشر.
+desc_en: Daily marketing work by an AI agent from SAR 299 a month. Work out what your own agency costs, then a 30-day migration plan, and what stays human.
 ---
 ## لماذا الآن
 
@@ -27,9 +27,9 @@ desc_en: Daily marketing work by an AI agent from SAR 149 a month. Work out what
 
 | | وكالتك اليوم | نور |
 |---|---|---|
-| شهرياً | — | 149–799 ريال |
+| شهرياً | — | 299–999 ريال |
 | سنوياً | — | الشهري × 12 |
-| العناصر شهرياً | — | حسب كريدت خطتك (ستارتر 200، برو 700) |
+| العناصر شهرياً | — | حسب كريدت خطتك (البداية 300، الاحتراف 700) |
 | التسليم | — | دقائق |
 
 اطرح الرقمين السنويين. أياً كان الفرق فهو لك — ونحن نرى أن أفضل مكان له الإعلانات ثم إنتاج فيديو حقيقي.
@@ -72,9 +72,9 @@ Agency pricing varies too much for a published average to mean anything, so put 
 
 | | Your agency today | Noor |
 |---|---|---|
-| Monthly | — | SAR 149–799 |
+| Monthly | — | SAR 299–999 |
 | Yearly | — | 12 × monthly |
-| Items per month | — | what your plan's credits buy (Starter 200, Pro 700) |
+| Items per month | — | what your plan's credits buy (Starter 300, Pro 700) |
 | Turnaround | — | minutes |
 
 Subtract the two yearly figures. Whatever the gap is, it is yours to reinvest — we would put it into ads and real video before anything else.

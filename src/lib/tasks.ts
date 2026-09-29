@@ -15,13 +15,18 @@ export type TaskType =
   | "strategy_review" | "okrs" | "decision_memo"
   | "prd" | "roadmap" | "feedback_synthesis" | "onboarding_flow";
 
-/** Credits per batch. */
+/**
+ * Credits per batch. Every value is floor-checked by tests/pricing-floor.test.ts via src/lib/task-costs.ts (rule 213): at
+ * most 40% of the cheapest self-serve credit (src/lib/pricing.ts). weekly_plan, weekly_report and followup_seq were
+ * raised in pricing phase 1 (1 → 2, 2 → 3, 3 → 4); the cron-driven types are checked on a cold prompt cache. Keep this
+ * file import-free: the estimate table lives in task-costs.ts, never here.
+ */
 export const TASK_COST: Record<TaskType, number> = {
-  weekly_plan: 1, social: 10, article: 2, whatsapp: 3, ads: 5, gbp: 3, cart_recovery: 3,
-  sales_script: 4, lead_qualifier: 2, followup_seq: 3,
+  weekly_plan: 2, social: 10, article: 2, whatsapp: 3, ads: 5, gbp: 3, cart_recovery: 3,
+  sales_script: 4, lead_qualifier: 2, followup_seq: 4,
   pricing_review: 4, unit_economics: 3, cash_forecast: 4,
   gtm_plan: 5, growth_experiments: 4, retention_play: 4,
-  weekly_report: 2, board_deck: 5, dashboard_spec: 2,
+  weekly_report: 3, board_deck: 5, dashboard_spec: 2,
   strategy_review: 5, okrs: 3, decision_memo: 3,
   prd: 4, roadmap: 4, feedback_synthesis: 3, onboarding_flow: 3,
 };
@@ -44,6 +49,13 @@ export const VIDEO_TYPES: TaskType[] = ["social", "ads"];
 export const IMAGE_COST = 1;
 
 /**
+ * The types the chat's `draft_items` tool may draft (1-3 items, charged pro rata from TASK_COST / TASK_COUNT). The tool
+ * schema's enum is not the approval: src/lib/chat.ts checks `isDraftType` in code (rule 222), and
+ * tests/pricing-floor.test.ts floor-checks every draft of these types (rule 213, with the named one-item exemption).
+ */
+export const DRAFT_TYPES: readonly TaskType[] = ["social", "whatsapp", "ads", "gbp"];
+
+/**
  * Membership test for a task type taken from a request body or from model output.
  *
  * `type in TASK_COST` is NOT this test: `in` walks the prototype chain, so "constructor", "toString", "valueOf" and
@@ -53,3 +65,5 @@ export const IMAGE_COST = 1;
  */
 export const TASK_TYPES = Object.keys(TASK_COST) as TaskType[];
 export const isTaskType = (v: unknown): v is TaskType => typeof v === "string" && (TASK_TYPES as string[]).includes(v);
+/** Membership test for a `draft_items` type from model output. Same shape as `isTaskType`. */
+export const isDraftType = (v: unknown): v is TaskType => typeof v === "string" && (DRAFT_TYPES as readonly string[]).includes(v);

@@ -5,6 +5,9 @@ import type { Dict, Lang } from "@/lib/i18n";
  * `headingLevel` exists because this section is reused on the home page and the industry pages, which have their own
  * h1, and on /pricing, which had none at all — that page opened its document outline at h2, so it shipped with no
  * first-level heading in either language.
+ *
+ * Prices, credits and seats on the cards are built in the dictionary from src/lib/pricing.ts (rule 220). The Agency card
+ * has no list price: its call to action goes to the contact form on /enterprise, the others to signup.
  */
 export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: Lang; headingLevel?: 1 | 2 }) {
   const p = t.pricing;
@@ -22,11 +25,11 @@ export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: 
 
         <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {p.plans.map((plan) => (
-            <article key={plan.name} className={`flex flex-col rounded-2xl border p-6 ${plan.highlight ? "border-saffron bg-oasis" : "border-mist/10 bg-oasis/50"}`}>
+            <article key={plan.id} data-tier={plan.id} className={`flex flex-col rounded-2xl border p-6 ${plan.highlight ? "border-saffron bg-oasis" : "border-mist/10 bg-oasis/50"}`}>
               <h3 className="font-display text-xl font-medium">{plan.name}</h3>
               <p className="mt-1 text-xs text-mist-dim">{plan.tagline}</p>
               <p className="mt-5 flex items-baseline gap-2">
-                <span className="font-display text-4xl font-bold" dir="ltr">
+                <span className="font-display text-4xl font-bold" dir={plan.id === "agency" ? undefined : "ltr"}>
                   {plan.price}
                 </span>
                 <span className="text-xs text-mist-dim">{plan.period}</span>
@@ -40,7 +43,7 @@ export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: 
                   </li>
                 ))}
               </ul>
-              <Link href={`/${lang}/app/signup`} className={`mt-6 rounded-full px-4 py-2.5 text-center text-sm font-semibold transition ${plan.highlight ? "bg-saffron text-ink hover:bg-saffron/90" : "border border-mist/25 text-mist hover:border-mist/60"}`}>
+              <Link href={plan.id === "agency" ? `/${lang}/enterprise#contact` : `/${lang}/app/signup`} className={`mt-6 rounded-full px-4 py-2.5 text-center text-sm font-semibold transition ${plan.highlight ? "bg-saffron text-ink hover:bg-saffron/90" : "border border-mist/25 text-mist hover:border-mist/60"}`}>
                 {plan.cta}
               </Link>
             </article>

@@ -4,8 +4,12 @@ import { randomBytes } from "crypto";
 import { db } from "./db";
 import type { AgentId } from "./agents";
 import type { Member } from "./team";
+import { PLAN_CREDITS, planFromStore, type AgencyDeal, type Plan } from "./pricing";
 
-export type Plan = "trial" | "starter" | "pro" | "agency" | "enterprise";
+// The plan table lives in src/lib/pricing.ts (import-free, so client components can read it). Re-exported here so the
+// existing `@/lib/auth` imports keep working.
+export { PLANS, PLAN_CREDITS, PLAN_SEATS, isPlan, seatLimit } from "./pricing";
+export type { AgencyDeal, Plan } from "./pricing";
 
 /** Who may do what inside an account (src/lib/roles.ts). The owner role belongs to the `user:` record only. */
 export type Role = "owner" | "admin" | "member";
@@ -24,6 +28,13 @@ export type Actor = {
   /** The founder email (or "key" for the console key) behind an impersonation session. Only for kind "founder". */
   impersonating?: string;
 };
+
+/**
+ * A held onboarding charge (`User.onboardPaid`): the charge's scope, agent and month (what a refund needs to lower the
+ * agent's counter), the credits it took, and when a run last charged or reused it (the daily sweep refunds a hold nobody
+ * used for a day, src/lib/credits.ts `resolveOnboardHolds`).
+ */
+export type OnboardHold = { scope: string; agent: AgentId; month: string; credits: number; at: string };
 
 export type User = {
   email: string;
@@ -46,8 +57,23 @@ export type User = {
    * lock and in the same save as the balance). A record whose `month` is not the current one counts as empty.
    */
   agentSpend?: { month: string; by: Record<string, Partial<Record<AgentId, number>>> };
-  /** Founder-console override of the plan's seat count (`PLAN_SEATS`). */
+  /**
+   * Founder-console override of the plan's seat count (`PLAN_SEATS` in src/lib/pricing.ts). An Agency deal's seats live
+   * here too: one seat source for every plan (`seatLimit`).
+   */
   seats?: number;
+  /**
+   * The Agency contract: monthly credits and price (src/lib/pricing.ts `allowanceOf`, `priceOf`). Written only by the
+   * founder console (POST /api/admin/plan, under `withUserLock`), never taken from any other request, and cleared when
+   * the account leaves Agency. A deal below the Business rate is ignored. Its seats are in `seats`.
+   */
+  deal?: AgencyDeal;
+  /**
+   * An added brand's onboarding charge, held per brand scope until that brand is built (src/lib/credits.ts
+   * `chargeOnboard`). Written in the same locked save as the debit, dropped in the same save as its refund (or once the
+   * brand is saved), so a run can reuse a charge, refund it, or be swept, but never both reuse and refund one. Rule 218.
+   */
+  onboardPaid?: Record<string, OnboardHold>;
   /** ISO time: every MEMBER session issued before it is dead (founder reset, owner reset). The owner's own sessions follow `sessionsAfter`. */
   teamSessionsAfter?: string;
   /** Runtime only: storage scope of the active brand (email for the default brand). Never persisted. */
@@ -58,15 +84,6 @@ export type User = {
 };
 export const sc = (u: User) => u.scope ?? u.email;
 
-export const PLAN_CREDITS: Record<Plan, number> = { trial: 50, starter: 200, pro: 700, agency: 2000, enterprise: 10000 };
-/** Seats per plan, the owner included (docs/superpowers/specs/2026-09-29-teams-design.md §5). `User.seats` overrides. */
-export const PLAN_SEATS: Record<Plan, number> = { trial: 3, starter: 1, pro: 3, agency: 7, enterprise: 25 };
-/** The account's seat limit, owner included: the founder override when it is a positive integer, else the plan's. */
-export const seatLimit = (u: Pick<User, "plan" | "seats">): number =>
-  typeof u.seats === "number" && Number.isFinite(u.seats) && u.seats >= 1 ? Math.floor(u.seats) : (PLAN_SEATS[u.plan] ?? 1);
-/** Membership test for a plan name from a request body. Not `in`: that walks the prototype chain (see `isTaskType`). */
-export const PLANS = Object.keys(PLAN_CREDITS) as Plan[];
-export const isPlan = (v: unknown): v is Plan => typeof v === "string" && (PLANS as string[]).includes(v);
 const SESSION_TTL = 60 * 60 * 24 * 30;
 const COOKIE = "nashr_session";
 
@@ -99,8 +116,15 @@ export function normalizePhone(p: string) {
   return d;
 }
 
+/**
+ * The only reader of `user:{email}`. The stored plan is mapped on read (src/lib/pricing.ts `planFromStore`): the retired
+ * "enterprise" reads as "agency", and any other unknown value as "trial", so no caller ever sees a plan outside `PLANS`.
+ * The next locked save writes the mapped value back.
+ */
 export async function getUser(email: string): Promise<User | null> {
-  return db.get<User>(`user:${normalizeEmail(email)}`);
+  const u = await db.get<User>(`user:${normalizeEmail(email)}`);
+  if (u) u.plan = planFromStore(u.plan);
+  return u;
 }
 
 /** Owner accounts only. Members live at `member:{email}` (src/lib/team.ts) and never pass through here or `users:all`. */

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { ChatMsg, ChatItem } from "@/lib/chat";
 import { AGENTS, type AgentId } from "@/lib/agents";
-import { raiseLimit } from "./LimitModal";
+import { limitFromError, raiseLimit } from "./LimitModal";
 import { render } from "@/lib/md";
 import { Icon, channelIcon } from "./Icons";
 import { ActivationBar, FileCard, PlanCard, WhatsAppCard } from "./OnboardCards";
@@ -119,11 +119,18 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
     ranOnboard.current = true;
     (async () => {
       setBusy(true); setSteps([]);
-      const fail = (code?: string) => setMsgs((p) => [...p, { role: "assistant", agent: "noor", at: new Date().toISOString(), content: code === "busy" ? (lang === "ar" ? "التجهيز جارٍ في الخلفية. حدّث الصفحة بعد دقيقة." : "Setup is still running. Refresh in a minute.") : code === "paused" ? (lang === "ar" ? "تجهيز المساحة متوقف مؤقتاً، ولم يُحفظ شيء. حدّث الصفحة لاحقاً للمحاولة مرة أخرى." : "Workspace setup is paused for now and nothing was saved. Refresh later to try again.") : (lang === "ar" ? "⚠︎ تعذّر تجهيز المساحة. حدّث الصفحة للمحاولة مرة أخرى." : "⚠︎ Could not set up the workspace. Refresh to try again.") }]);
+      const S = t.start;
+      const fill = (text: string, n: number, have: number) => text.split("{n}").join(String(n)).split("{credits}").join(String(have));
+      const fail = (code?: string, ev?: { refunded?: number; credits?: number }) => setMsgs((p) => [...p, { role: "assistant", agent: "noor", at: new Date().toISOString(), content: code === "charge" ? S.notCharged : code === "refunded" ? fill(S.refunded, ev?.refunded ?? 0, ev?.credits ?? 0) : code === "saved" ? S.partial : code === "daily" ? (lang === "ar" ? "وصلت إلى حد إعداد العلامات لهذا اليوم. هذه المحاولة لم تخصم شيئاً، والإعداد المدفوع مسبقاً يبقى محسوباً لك. حاول غداً." : "You reached today's brand setup limit. This try charged nothing, and a setup already paid for stays paid. Try again tomorrow.") : code === "busy" ? (lang === "ar" ? "التجهيز جارٍ في الخلفية. حدّث الصفحة بعد دقيقة." : "Setup is still running. Refresh in a minute.") : code === "paused" ? (lang === "ar" ? "تجهيز المساحة متوقف مؤقتاً، ولم يُحفظ شيء. حدّث الصفحة لاحقاً للمحاولة مرة أخرى." : "Workspace setup is paused for now and nothing was saved. Refresh later to try again.") : (lang === "ar" ? "⚠︎ تعذّر تجهيز المساحة. حدّث الصفحة للمحاولة مرة أخرى." : "⚠︎ Could not set up the workspace. Refresh to try again.") }]);
       try {
         const res = await fetch("/api/onboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: onboardUrl }) });
         if (res.status === 409) return fail("busy");
         if (res.status === 503) return fail("paused");
+        // 402, before any stream: an added brand's setup the balance, the agent cap or the trial cannot cover (rule 218).
+        // Nothing was charged; the paywall says why and the thread says nothing was used.
+        if (res.status === 402) { const j = (await res.json().catch(() => ({}))) as { error?: string }; limitFromError(j.error); return fail("charge"); }
+        // 429: the account's daily setup allowance, checked before any charge.
+        if (res.status === 429) return fail("daily");
         if (!res.ok || !res.body) return fail();
         const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
         for (;;) {
@@ -137,14 +144,18 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
             const ev = JSON.parse(line.slice(5));
             if (ev.type === "status") setSteps((p) => [...p, ev.text]);
             else if (ev.type === "message") { setMsgs((p) => [...p, ev.message]); if (ev.message.plan?.length) setGoal((g) => ({ goal: g?.goal ?? "", first: ev.message.plan[0].title })); }
-            else if (ev.type === "done") { setGoal((g) => ({ goal: ev.goal ?? "", first: g?.first })); setOnboarded(true); router.replace(`/${lang}/app/chat`); router.refresh(); }
-            else if (ev.type === "error") fail();
+            // The balance after an added brand's setup charge: the page keeps this component (and its state) across the
+            // refresh below, so the header's pill would otherwise show the balance from before the charge.
+            else if (ev.type === "done") { if (typeof ev.credits === "number") setCredits(ev.credits); setGoal((g) => ({ goal: ev.goal ?? "", first: g?.first })); setOnboarded(true); router.replace(`/${lang}/app/chat`); router.refresh(); }
+            // A paid setup that failed before the brand file was saved was refunded: say so, with the balance, and that a
+            // retry pays again. One that failed after it was saved kept the brand: say that instead of "could not set up".
+            else if (ev.type === "error") { if (typeof ev.credits === "number") setCredits(ev.credits); fail(ev.refunded ? "refunded" : ev.saved ? "saved" : undefined, ev); }
           }
         }
       } catch { fail(); }
       finally { setBusy(false); setSteps([]); }
     })();
-  }, [onboardUrl, lang, router]);
+  }, [onboardUrl, lang, router, t.start]);
 
   async function newConv(withAgent: AgentId = agent) {
     const j = await (await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "…", agent: withAgent }) })).json();

@@ -24,7 +24,7 @@ desc_en: We scored 8 tools on 6 weighted criteria: autonomous execution, Arabic 
 
 | # | الأداة | التنفيذ | العربية | القنوات | الالتزام | التحكم | السعر | المجموع |
 |---|---|---|---|---|---|---|---|---|
-| 1 | نور (نشر) | 3 | 5 | 1 | 4 | 5 | 4 | **3.50** |
+| 1 | نور (نشر) | 3 | 5 | 1 | 4 | 5 | 3 | **3.40** |
 | 2 | Enrich Labs (Helena) | 5 | 1 | 1 | 2 | 5 | 4 | 3.00 |
 | 3 | Hootsuite/Buffer | 2 | 2 | 2 | 1 | 4 | 3 | 2.30 |
 | 4 | Sintra | 3 | 1 | 1 | 1 | 3 | 4 | 2.10 |
@@ -71,7 +71,7 @@ Nashr builds Noor, one of the tools scored here. So we publish the full rubric, 
 
 | # | Tool | Exec | Arabic | Channels | Compliance | Control | Price | Score |
 |---|---|---|---|---|---|---|---|---|
-| 1 | Noor (Nashr) | 3 | 5 | 1 | 4 | 5 | 4 | **3.50** |
+| 1 | Noor (Nashr) | 3 | 5 | 1 | 4 | 5 | 3 | **3.40** |
 | 2 | Enrich Labs (Helena) | 5 | 1 | 1 | 2 | 5 | 4 | 3.00 |
 | 3 | Hootsuite/Buffer | 2 | 2 | 2 | 1 | 4 | 3 | 2.30 |
 | 4 | Sintra | 3 | 1 | 1 | 1 | 3 | 4 | 2.10 |

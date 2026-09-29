@@ -50,6 +50,27 @@ export async function draftAllowed(email: string): Promise<boolean> {
 }
 
 /**
+ * Brands added per account (POST /api/brands add). Brands are unlimited on every plan (src/lib/pricing.ts), so nothing
+ * else bounds how many an account creates, and every active brand fans out into each cron (the daily brief, the
+ * routines, and the Sunday plan once the owner switches it on). These buckets are the only bound, and they are a rate,
+ * never a cap: an agency can keep adding brands every hour. Well above a real agency's onboarding pace, and the
+ * onboarding itself stays at three a day per account (src/app/api/onboard/route.ts). Rule 217, tests/brand-guardrails.test.ts.
+ */
+export const BRANDS_PER_HOUR = 10;
+export const BRANDS_PER_DAY = 30;
+/**
+ * Null when the add may go ahead, else which window refused it, so the owner is told "in an hour" or "tomorrow" rather
+ * than "shortly" (a full day window can last up to 24 hours). The hour is checked first and the day only when the hour
+ * allowed it: an add refused by the hour does not use one of the day's 30. One refused by the day uses an hourly slot,
+ * which only matters within the hour and never outlasts the day's refusal.
+ */
+export async function brandAddRefusal(email: string): Promise<"hour" | "day" | null> {
+  if (!(await allow(`brandadd:h:${email}`, BRANDS_PER_HOUR, 3600))) return "hour";
+  if (!(await allow(`brandadd:d:${email}`, BRANDS_PER_DAY, 86400))) return "day";
+  return null;
+}
+
+/**
  * The public OAuth endpoints, per IP. Hosted MCP clients (claude.ai, ChatGPT) register and exchange tokens from shared
  * egress addresses on behalf of many accounts, and a token pair lives 30 days, so real traffic stays far below these.
  * Registration is the tighter one: it is open (RFC 7591) and every client is stored with no expiry.

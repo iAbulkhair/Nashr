@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TASK_COST, TASK_TYPES, isTaskType } from "@/lib/tasks";
-import { PLAN_CREDITS, PLANS, isPlan } from "@/lib/auth";
+import { PLAN_CREDITS, PLANS, isPlan, seatLimit, type Plan } from "@/lib/auth";
+import { allowanceOf, priceOf } from "@/lib/pricing";
 import { charge, adjust } from "@/lib/credits";
 import { newUser } from "./helpers/session";
 import { getUser } from "@/lib/auth";
@@ -38,6 +39,25 @@ describe("plan membership", () => {
     expect(PROTOTYPE_KEYS.filter((k) => k in PLAN_CREDITS)).toEqual(PROTOTYPE_KEYS);
     expect(PROTOTYPE_KEYS.filter(isPlan)).toEqual([]);
     expect(PLANS.every(isPlan)).toBe(true);
+  });
+
+  it("business is a plan and the retired enterprise is not (rule 214)", () => {
+    expect(PLANS).toContain("business");
+    expect(isPlan("business")).toBe(true);
+    expect(isPlan("enterprise"), "enterprise is read as agency, never offered or accepted").toBe(false);
+    expect(PLANS).not.toContain("enterprise");
+  });
+
+  it("every plan has a finite allowance, price and seat count, and prototype keys get nothing", () => {
+    for (const plan of PLANS) {
+      expect(Number.isFinite(allowanceOf({ plan })), plan).toBe(true);
+      expect(Number.isFinite(priceOf({ plan })), plan).toBe(true);
+      expect(Number.isInteger(seatLimit({ plan })), plan).toBe(true);
+    }
+    for (const k of PROTOTYPE_KEYS) {
+      const junk = { plan: k as Plan };
+      expect([allowanceOf(junk), priceOf(junk), seatLimit(junk)], k).toEqual([0, 0, 1]);
+    }
   });
 });
 

@@ -131,6 +131,19 @@ describe("no site or product copy asserts an invented result or an unbuilt featu
     { re: /no auto-publishing/i, why: "implies a paid plan publishes automatically; none does" },
     { re: /(Highest reply rate|orders cluster \d|lift Maps ranking|1\.4 إلى 3\.2 ROAS)/, why: "an unsourced result claim on an inspiration card" },
     { re: /(Biggest KSA sale season|top channel for aesthetics|Tamara[^.]*(lift conversion|raise order value))/, why: "an unsourced superlative injected into generation prompts" },
+    // Pricing phase 1 (rule 220): the retired prices, allowances and brand limits. Prices now render from
+    // src/lib/pricing.ts and TASK_COST; a typed copy of an old one is a regression, wherever it appears.
+    { re: /(SAR ?(149|399|799)\b|\b(149|399|799) ?(SAR|ريال)|\b149[–-]799\b|"(149|399|799)", l: "(SAR|ريال))/, why: "a retired plan price (149 / 399 / 799)" },
+    { re: /(Starter|Pro|Agency|البداية|الاحتراف|الوكالة) (149|399|799)\b/, why: "a retired plan price next to a tier name" },
+    { re: /(\b200 credits|\b200 كريدت|2,000 credits|2,000 كريدت|"2,000", l: "(credits|كريدت)|(Starter|ستارتر) 200\b)/, why: "a retired allowance (Starter 200, Agency 2,000)" },
+    { re: /(5 included|5 brands included|5 مشمولة|5 علامات مشمولة|runs 5 brands|تدير 5 علامات|for 5 brands|لـ 5 علامات)/, why: "a brand limit; brands are unlimited on every plan" },
+    { re: /(Extra brand SAR 99|علامة إضافية (بـ )?99)/, why: "a paid extra brand; an added brand costs its setup credits only" },
+    { re: /(Unlimited brands \(coming soon\)|علامات بلا حد \(قريباً\))/, why: "unlimited brands are live on every plan" },
+    { re: /(Upgrade to Agency for 5 brands|لخطة الوكالة لـ 5 علامات)/, why: "a brand-limit upsell" },
+    { re: /(ten thousand credits|عشرة آلاف كريدت|بعشرة آلاف كريدت)/i, why: "the retired Enterprise allowance" },
+    { re: /(limits by plan|بحدود حسب الخطة)/i, why: "brands have no plan limit" },
+    { re: /plans differ only in monthly credits and number of brands/, why: "plans differ in credits and seats; brands are unlimited (the chat prompt repeats this to owners)" },
+    { re: /(\bplan\b[^.()]{0,60}\(1 credit\)|خطة[^.()]{0,60}\(1 كريدت\))/i, why: "the weekly plan costs TASK_COST.weekly_plan, not 1" },
   ];
 
   const files = ROOTS.flatMap(copyFiles);
@@ -139,6 +152,33 @@ describe("no site or product copy asserts an invented result or an unbuilt featu
     expect(files).toContain("src/lib/i18n.ts");
     expect(files).toContain("src/lib/app-i18n.ts");
     expect(files.length).toBeGreaterThan(100);
+  });
+
+  it("the pricing bans catch the copy they retired, so a pattern cannot pass by matching nothing (rule 220)", () => {
+    const RETIRED = [
+      `{ name: "Starter", price: "149", period: "SAR / month", credits: "200 credits / month"`,
+      `"فريق كامل من 149 ريالاً شهرياً"`,
+      `us: "SAR 149–799" }`,
+      `proof: [{ n: "799", l: "ريال/شهر لـ 5 علامات" }`,
+      `{ n: "2,000", l: "credits a month, reset monthly" }`,
+      `a: "Monthly credits by plan: Starter 149, Pro 399, Agency 799 SAR."`,
+      `features: ["Multi-brand (5 included)", "Extra brand SAR 99 (coming soon)"]`,
+      `"علامات متعددة (5 مشمولة)", "علامة إضافية 99 ريال (قريباً)"`,
+      `"Unlimited brands (coming soon)"`,
+      `"علامات بلا حد (قريباً)"`,
+      "`You've reached your plan's limit of ${j.limit}. Upgrade to Agency for 5 brands.`",
+      `d: "The enterprise plan carries ten thousand credits a month"`,
+      `d: "ملف علامة وصندوق اعتماد مستقل لكل علامة، بحدود حسب الخطة."`,
+      `plans differ only in monthly credits and number of brands, and the trial is 3 days`,
+      `weeklyDesc: "Every Sunday 06:00 KSA — a 7-day plan lands in your inbox (1 credit)."`,
+      `a: { ar: "خطة أسبوعية كل أحد 06:00 (1 كريدت) وملخص صباحي" }`,
+      `| Items per month | — | what your plan's credits buy (Starter 200, Pro 700) |`,
+    ];
+    const missed = RETIRED.filter((line) => !CLAIMS.some(({ re }) => re.test(line)));
+    expect(missed).toEqual([]);
+    // And the copy that replaced them is not caught.
+    const CURRENT = [`us: "from SAR 299" }`, `"(2 credits)"`, `"1,500 credits / month, reset monthly"`, `"Unlimited brands, 1 seat"`, `"7 seats including the owner"`];
+    expect(CURRENT.filter((line) => CLAIMS.some(({ re }) => re.test(line)))).toEqual([]);
   });
 
   it("finds none of the claims that were removed", () => {

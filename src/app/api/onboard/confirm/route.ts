@@ -1,13 +1,21 @@
 import { NextResponse } from "next/server";
-import { currentUser, sc } from "@/lib/auth";
+import { currentUser, sc, trialOver } from "@/lib/auth";
 import { getBrand } from "@/lib/brand";
-import { confirmOnboard, onboardUrl } from "@/lib/onboard-confirm";
+import { confirmOnboard, heldOnboard, onboardUrl } from "@/lib/onboard-confirm";
+import { onboardCost } from "@/lib/pricing";
 import { forbid } from "@/lib/roles";
 
 /**
- * The owner's "build my workspace from this site", pressed on the start page. POST {url} → {ok}.
- * Nothing is crawled and no model is called here: it only records the one URL `POST /api/onboard` may build from
- * (src/lib/onboard-confirm.ts). The session cookie is SameSite=Lax, so another site cannot submit this for a signed-in owner.
+ * The owner's "build my workspace from this site", pressed on the start page. POST {url} → {ok, cost, paid?}.
+ * Nothing is crawled, no model is called and nothing is charged here: it only records the one URL `POST /api/onboard`
+ * may build from (src/lib/onboard-confirm.ts). The session cookie is SameSite=Lax, so another site cannot submit this
+ * for a signed-in owner.
+ *
+ * `cost` is what the build will charge (src/lib/pricing.ts `onboardCost`): 0 for the first brand, ONBOARD_EXTRA_BRAND_COST
+ * for an added one, which the start page shows before Go. An added brand the account cannot pay for is refused here
+ * with 402 {error: "no_credits" | "trial_over", need, credits}, so the owner sees the paywall on the start page instead
+ * of a failed build in chat; a build already paid for (a charge held on the account, `User.onboardPaid`) is not asked
+ * again and answers `paid: true`. The charge itself, and its authoritative checks, are in POST /api/onboard. Rule 218.
  */
 export async function POST(req: Request) {
   const u = await currentUser();
@@ -18,7 +26,15 @@ export async function POST(req: Request) {
   const url = onboardUrl(b.url);
   if (url.length < 4) return NextResponse.json({ ok: false, error: "bad_url" }, { status: 400 });
   const scope = sc(u);
-  if (await getBrand(scope)) return NextResponse.json({ ok: false, error: "already_onboarded" }, { status: 409 });
+  const cost = onboardCost(u.brandId);
+  const marker = cost > 0 ? heldOnboard(u, scope) : null;
+  const brand = await getBrand(scope);
+  if (brand) return NextResponse.json({ ok: false, error: "already_onboarded" }, { status: 409 });
+  if (cost > 0 && !marker) {
+    const credits = Number.isFinite(u.credits) ? u.credits : 0;
+    if (trialOver(u)) return NextResponse.json({ ok: false, error: "trial_over", need: cost, credits }, { status: 402 });
+    if (credits < cost) return NextResponse.json({ ok: false, error: "no_credits", need: cost, credits }, { status: 402 });
+  }
   await confirmOnboard(scope, url);
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, cost, ...(marker ? { paid: true } : {}) });
 }

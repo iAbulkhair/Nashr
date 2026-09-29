@@ -3,6 +3,8 @@ import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, sc } from "@/lib/auth";
 import { getBrand } from "@/lib/brand";
+import { onboardCost } from "@/lib/pricing";
+import { heldOnboard } from "@/lib/onboard-confirm";
 import { can } from "@/lib/roles";
 import StartWizard from "@/components/app/StartWizard";
 import ReadOnlyNote from "@/components/app/ReadOnlyNote";
@@ -26,5 +28,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       </div>
     );
   }
-  return <StartWizard t={appDict[lang]} lang={lang} initialUrl={typeof url === "string" ? url.slice(0, 300) : ""} />;
+  // An added brand's setup costs credits (rule 218): the wizard states the cost and the balance before the owner presses
+  // Go, or that the setup is already paid for (a charge held from a run that did not finish, which the next run reuses:
+  // the balance is then not asked again). Display only: POST /api/onboard/confirm and /api/onboard check the balance and
+  // the hold, and charge, on the server.
+  const setupCost = onboardCost(u.brandId);
+  return <StartWizard t={appDict[lang]} lang={lang} initialUrl={typeof url === "string" ? url.slice(0, 300) : ""} setupCost={setupCost} setupPaid={setupCost > 0 && !!heldOnboard(u, sc(u))} credits={u.credits} />;
 }

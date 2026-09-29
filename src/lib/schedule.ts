@@ -19,17 +19,47 @@ import type { RoutineId } from "./routines";
  * routines in src/lib/routines.ts: all off unless turned on; their last runs live in their own keys, not here.
  */
 export type Schedule = { weeklyPlan: boolean; dailyBrief: boolean; followUps: boolean; lastWeekly?: string; lastDaily?: string; routines?: Partial<Record<RoutineId, boolean>> };
+/** The defaults of the default brand. An added brand's `weeklyPlan` defaults to off (`defaultsFor`). */
 export const DEFAULT_SCHEDULE: Schedule = { weeklyPlan: true, dailyBrief: true, followUps: true };
 
-export async function getSchedule(email: string): Promise<Schedule> {
-  return { ...DEFAULT_SCHEDULE, ...((await db.get<Partial<Schedule>>(`schedule:${email}`)) ?? {}) };
+/**
+ * The Sunday plan charges TASK_COST.weekly_plan with nobody asking, so it is on by default only for the account's
+ * default brand (scope = the account email). An added brand (`email#brandId`, src/lib/brands.ts `scopeFor`; an email
+ * cannot contain "#") starts with it off, and the owner switches it on in Scheduled tasks. Rule 219.
+ */
+const defaultsFor = (scope: string): Schedule => ({ ...DEFAULT_SCHEDULE, weeklyPlan: !scope.includes("#") });
+
+/**
+ * What `schedule:{scope}` holds: only fields set explicitly, plus `weeklyPlanSetAt`, stamped whenever a save sets
+ * `weeklyPlan` (only the owner's switch, PUT /api/schedule, does). Before 2026-09-30 every save wrote the merged
+ * defaults back, and the daily run saves every brand every day, so every added brand that had seen one daily run stored
+ * `weeklyPlan: true` although nobody chose it. On an added brand a stored `weeklyPlan` therefore counts only with the
+ * stamp: an unstamped one is that old default, and the new default (off) applies. On the default brand the old and new
+ * defaults agree (on), so a stored value counts as it always did, an owner's "off" included.
+ */
+type Stored = Partial<Schedule> & { weeklyPlanSetAt?: string };
+function view(scope: string, stored: Stored): Schedule {
+  const { weeklyPlanSetAt, weeklyPlan, ...rest } = stored;
+  const s: Schedule = { ...defaultsFor(scope), ...rest };
+  if (weeklyPlan !== undefined && (weeklyPlanSetAt || !scope.includes("#"))) s.weeklyPlan = weeklyPlan;
+  return s;
 }
-/** `routines` is merged per id, so turning one routine on or off leaves the others as they were. */
-export async function saveSchedule(email: string, s: Partial<Schedule>) {
-  const cur = await getSchedule(email);
-  const next = { ...cur, ...s, ...(s.routines ? { routines: { ...cur.routines, ...s.routines } } : {}) };
-  await db.set(`schedule:${email}`, next);
-  return next;
+
+export async function getSchedule(scope: string): Promise<Schedule> {
+  return view(scope, (await db.get<Stored>(`schedule:${scope}`)) ?? {});
+}
+/**
+ * Stores only what was ever set explicitly (the stored fields plus this patch), never the defaults, and returns the
+ * merged view. Storing the merged view froze every default into the record on the first save, and runDaily saves
+ * `lastDaily` for every brand every day: a default changed later (an added brand's Sunday plan) never reached a brand
+ * that had seen one daily run. `routines` is merged per id, so turning one routine on or off leaves the others as they
+ * were. Setting `weeklyPlan` stamps `weeklyPlanSetAt` (see `view`).
+ */
+export async function saveSchedule(scope: string, s: Partial<Schedule>): Promise<Schedule> {
+  const stored = (await db.get<Stored>(`schedule:${scope}`)) ?? {};
+  const next: Stored = { ...stored, ...s, ...(s.routines ? { routines: { ...stored.routines, ...s.routines } } : {}), ...(s.weeklyPlan !== undefined ? { weeklyPlanSetAt: new Date().toISOString() } : {}) };
+  await db.set(`schedule:${scope}`, next);
+  return view(scope, next);
 }
 
 export type Brief = { date: string; text: string; pending: number; approved7d: number; credits: number; seasons: string[] };
