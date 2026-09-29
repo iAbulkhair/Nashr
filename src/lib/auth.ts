@@ -2,6 +2,7 @@ import { cookies, headers } from "next/headers";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { db } from "./db";
+import type { AgentId } from "./agents";
 
 export type Plan = "trial" | "starter" | "pro" | "agency" | "enterprise";
 
@@ -21,6 +22,11 @@ export type User = {
   suspended?: boolean;
   /** ISO time of the last password change: every session issued before it is dead (src/lib/auth.ts `currentUser`). */
   sessionsAfter?: string;
+  /**
+   * Credits charged this UTC calendar month per brand scope and agent (`charge` in src/lib/credits.ts, under the same
+   * lock and in the same save as the balance). A record whose `month` is not the current one counts as empty.
+   */
+  agentSpend?: { month: string; by: Record<string, Partial<Record<AgentId, number>>> };
   /** Runtime only: storage scope of the active brand (email for the default brand). Never persisted. */
   scope?: string;
   brandId?: string;

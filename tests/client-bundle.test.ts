@@ -12,7 +12,7 @@ import { join } from "node:path";
 const walk = (dir: string): string[] => readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? walk(p) : /\.(ts|tsx)$/.test(f) ? [p] : []; });
 
 /** Modules that reach the store, a provider SDK or a secret, directly or through one hop. */
-const SERVER_ONLY = ["@/lib/db", "@/lib/brand", "@/lib/auth", "@/lib/credits", "@/lib/usage", "@/lib/mcp", "@/lib/oauth", "@/lib/files", "@/lib/chat", "@/lib/noor", "@/lib/judge", "@/lib/golden", "@/lib/account", "@/lib/connectors/store", "@/lib/journey-load", "@/lib/perf-store", "@anthropic-ai/sdk", "@upstash/redis"];
+const SERVER_ONLY = ["@/lib/db", "@/lib/brand", "@/lib/auth", "@/lib/credits", "@/lib/usage", "@/lib/mcp", "@/lib/oauth", "@/lib/files", "@/lib/chat", "@/lib/noor", "@/lib/judge", "@/lib/golden", "@/lib/account", "@/lib/connectors/store", "@/lib/journey-load", "@/lib/perf-store", "@/lib/decisions", "@/lib/feedback", "@/lib/governance", "@/lib/notifications", "@/lib/routines", "@/lib/media/config", "@/lib/media/jobs", "@/lib/media/registry", "@/lib/media/start", "@/lib/media/fal", "@/lib/media/kie", "@/lib/media/higgsfield", "@/lib/media/blob", "@/lib/media/prompts", "@anthropic-ai/sdk", "@upstash/redis"];
 
 const clientFiles = () => walk("src").filter((p) => /^\s*["']use client["']/.test(readFileSync(p, "utf8")));
 
@@ -44,12 +44,19 @@ describe("the browser bundle stays free of server-only code", () => {
     expect(imports, "src/lib/tasks.ts must stay import-free or the leak comes back through it").toEqual([]);
   });
 
+  it("the media catalogue the inbox reads imports nothing at all", () => {
+    const src = readFileSync("src/lib/media-catalog.ts", "utf8");
+    const imports = src.split("\n").filter((l) => /^\s*import\s/.test(l));
+    expect(imports, "src/lib/media-catalog.ts must stay import-free or the leak comes back through it").toEqual([]);
+  });
+
   it("brand.ts still re-exports the catalogue, so server callers are unaffected", async () => {
     const brand = await import("@/lib/brand");
     const tasks = await import("@/lib/tasks");
     expect(brand.TASK_COST).toBe(tasks.TASK_COST);
     expect(brand.TASK_COUNT).toBe(tasks.TASK_COUNT);
     expect(brand.IMAGE_TYPES).toBe(tasks.IMAGE_TYPES);
+    expect(brand.VIDEO_TYPES).toBe(tasks.VIDEO_TYPES);
     expect(brand.IMAGE_COST).toBe(tasks.IMAGE_COST);
   });
 });

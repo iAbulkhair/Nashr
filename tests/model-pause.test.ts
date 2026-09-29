@@ -21,9 +21,10 @@ import { chat, history, runTool } from "@/lib/chat";
 import { generate } from "@/lib/noor";
 import { buildFromSite } from "@/lib/onboard";
 import { scoreItems } from "@/lib/judge";
-import { generateImage } from "@/lib/images";
+import { imagePrompt, videoPrompt } from "@/lib/media/prompts";
 import { runGolden } from "@/lib/golden";
-import { runWeekly } from "@/lib/schedule";
+import { runWeekly, saveSchedule } from "@/lib/schedule";
+import { ROUTINE_IDS, runRoutine } from "@/lib/routines";
 import { ModelPaused, PAUSED_REPLY } from "@/lib/model";
 import * as generateRoute from "@/app/api/generate/route";
 import * as onboardRoute from "@/app/api/onboard/route";
@@ -113,14 +114,18 @@ describe("while Claude is paused (rule 76)", () => {
     expect(codes, "never 429: a refusal is not a use").toEqual(Array(7).fill(503));
   });
 
-  it("the weekly plan leaves the week open for a catch-up, charges nothing, and the judge, image prompt and golden set stand down", async () => {
+  it("the weekly plan leaves the week open for a catch-up, charges nothing, and the judge, image and video prompts and golden set stand down", async () => {
     const u = await withBrand();
     expect(await runWeekly(u)).toBe("retry:paused");
     expect(sdk.charged).toBe(0);
+    // The routines the owner turned on leave their day open the same way.
+    await saveSchedule(u.email, { routines: Object.fromEntries(ROUTINE_IDS.map((id) => [id, true])) });
+    for (const id of ROUTINE_IDS) expect(await runRoutine(u, id), id).toBe("retry:paused");
+    expect(sdk.charged).toBe(0);
     expect(await scoreItems(u.email, brand, "social", [{ channel: "instagram", title: "t", body: "b" }])).toEqual([]);
     const task: Task = { id: "img1", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: "2026-09-28T00:00:00.000Z", lang: "ar" };
-    vi.stubEnv("FAL_KEY", "");
-    expect((await generateImage(brand, task)).prompt, "the fixed prompt, not a model call").toMatch(/^Premium قهوة product photo/);
+    expect(await imagePrompt(brand, task, "img-fast", "square"), "the fixed prompt, not a model call").toMatch(/^Premium قهوة product photo/);
+    expect(await videoPrompt(brand, task, "vid-quick", false), "the fixed video prompt, not a model call").toMatch(/second vertical social video/);
     expect(await runGolden("manual")).toBeNull();
   });
 });

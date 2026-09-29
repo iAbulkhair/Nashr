@@ -18,6 +18,8 @@ export type Kpis = {
   autoApproved: number;
   published: number;
   images: number;
+  /** Items with a generated clip. */
+  videos: number;
   scheduled: number;
   creditsUsed: number;
   creditsUsedPrev: number;
@@ -104,7 +106,9 @@ export async function kpis(scope: string, days?: number, win?: { from: Date; to:
     byType[t.type] = (byType[t.type] ?? 0) + 1;
     byChannel[t.channel] = (byChannel[t.channel] ?? 0) + 1;
   }
-  const credits = (list: TaskLite[]) => Math.round(list.reduce((s, t) => s + perItem(t.type) + (t.image ? IMAGE_COST : 0), 0));
+  // mediaCredits is what renders of the item kept after refunds (a video is 12 or 24), and 0 on a free placeholder card,
+  // which writes it (src/lib/media/start.ts); rows from before it existed fall back to the one image credit (spec A14).
+  const credits = (list: TaskLite[]) => Math.round(list.reduce((s, t) => s + perItem(t.type) + (t.mediaCredits ?? (t.image ? IMAGE_COST : 0)), 0));
   // last 8 weeks, Sunday to Saturday, oldest first
   const weeks: Kpis["weeks"] = [];
   const start = new Date(now);
@@ -127,6 +131,7 @@ export async function kpis(scope: string, days?: number, win?: { from: Date; to:
     autoApproved: approved - reviewedApproved,
     published: cur.filter((t) => t.published > 0).length,
     images: cur.filter((t) => t.image).length,
+    videos: cur.filter((t) => t.video).length,
     scheduled: tasks.filter((t) => t.scheduledFor && t.scheduledFor >= now.toISOString().slice(0, 10)).length,
     creditsUsed: credits(cur),
     creditsUsedPrev: credits(prev),
@@ -145,7 +150,7 @@ export function statsText(k: Kpis, opts: { store?: boolean } = {}): string {
     `WORKSPACE DATA (month ${k.month}; counts are content items in Nashr, not sales figures)`,
     `- Items created this month: ${k.created} (previous month: ${k.createdPrev})`,
     `- Approved: ${k.approved}, rejected: ${k.rejected}, approval rate: ${k.approvalRate === null ? "n/a" : k.approvalRate + "%"}, pending now: ${k.pending}`,
-    `- Published through connectors: ${k.published}; images generated: ${k.images}; scheduled ahead: ${k.scheduled}`,
+    `- Published through connectors: ${k.published}; images generated: ${k.images}; videos generated: ${k.videos}; scheduled ahead: ${k.scheduled}`,
     `- Credits used: ${k.creditsUsed} (previous month: ${k.creditsUsedPrev})`,
     `- By type: ${fmt(k.byType)}`,
     `- By channel: ${fmt(k.byChannel)}`,
@@ -156,11 +161,13 @@ export function statsText(k: Kpis, opts: { store?: boolean } = {}): string {
   ].join("\n");
 }
 
-/** Returns the data block a task is built on: workspace stats for Dana's reports, plus STORE DATA when a store was
- * synced; the store's abandoned carts for cart-recovery drafts; and nothing for everything else. */
+/** Returns the data block a task is built on: workspace stats for Dana's reports and Majed's strategy review, plus
+ * STORE DATA when a store was synced; STORE DATA alone for Razan's cash forecast ("" when no store was synced); the
+ * store's abandoned carts for cart-recovery drafts; and nothing for everything else. Each block is labelled as data. */
 export async function statsFor(type: TaskType, scope: string): Promise<string> {
   if (type === "cart_recovery") return cartDataBlock(scope);
-  if (agentForTask(type).id !== "dana") return "";
+  if (type === "cash_forecast") return salesDataBlock(scope);
+  if (agentForTask(type).id !== "dana" && type !== "strategy_review") return "";
   const [k, store] = await Promise.all([kpis(scope), salesDataBlock(scope)]);
   return store ? `${statsText(k, { store: true })}\n\n${store}` : statsText(k);
 }

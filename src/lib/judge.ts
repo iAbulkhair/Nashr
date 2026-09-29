@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { modelState } from "./model";
 import { after } from "next/server";
-import { TASK_COUNT, getTask, saveTask, type Brand, type Task, type TaskType } from "./brand";
+import { TASK_COUNT, updateTask, type Brand, type Task, type TaskType } from "./brand";
 import { taskSpec } from "./noor";
 import { reviewBlock } from "./skills";
 import { asData, groundingBlocks, parseObjectArray, type Grounding } from "./json";
@@ -91,7 +91,7 @@ Return ONLY a JSON array, same length and order as the items in <items>: {"compl
       content: `AGENT: ${agent.name.en}, ${agent.role.en}\n\nTASK SPEC\n${taskSpec(type)}${requested < TASK_COUNT[type] ? `\n\nOVERRIDE: the owner asked for exactly ${requested} item(s) of this type, not the full batch of ${TASK_COUNT[type]}. Do not penalize the missing rest of the batch or the channel mix; judge each item against the part of the spec it covers.` : ""}${items.length < requested ? `\n\nSHORTFALL: the owner asked for ${requested} item(s) and only ${items.length} were delivered. That is a completeness failure of the batch: reflect it in the completeness score of every item, and say so in the notes.` : ""}\n\n<brand_file>\n${asData({ name: brand.name, industry: brand.industry, city: brand.city, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, products: brand.products.slice(0, 600), audience: brand.audience.slice(0, 400), offers: brand.offers, banned: brand.banned, preferred: brand.preferred })}\n</brand_file>${groundingBlocks(ctx)}\n\n<items>\n${asData(items.map((t) => ({ channel: t.channel, title: t.title, body: t.body.slice(0, JUDGE_BODY_CHARS) })))}\n</items>`,
     }],
   });
-  await meter(email, res.model, "judge", res.usage);
+  await meter(email, res.model, "judge", res.usage, agent.id);
   const raw = res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
   let arr: Array<Record<string, unknown>>;
   try {
@@ -122,14 +122,11 @@ export async function judgeTasks(scope: string, email: string, brand: Brand, tas
   const agent = agentForTask(tasks[0].type);
   const out = await scoreItems(email, brand, tasks[0].type, tasks, requested, ctx);
   // Only a real verdict is written. An item without one stays unjudged, which the dashboards count as unjudged.
-  // Read-then-save per item, all items together rather than one round trip after another.
+  // All items together rather than one round trip after another.
   const scored = tasks.flatMap((t, i) => { const q = out[i]; return q ? [{ t, q }] : []; });
-  await pmap(scored, async ({ t, q }) => {
-    // Reload before saving: the owner may have approved or edited meanwhile.
-    const fresh = (await getTask(scope, t.id)) ?? t;
-    fresh.quality = q;
-    await saveTask(scope, fresh);
-  });
+  // Under the task lock, on the task as stored now: an approval, an edit or a render that finished while the judge
+  // worked keeps its fields, and an item deleted meanwhile is not brought back (src/lib/brand.ts, updateTask).
+  await pmap(scored, ({ t, q }) => updateTask(scope, t.id, (cur) => ({ ...cur, quality: q })));
   if (scored.length < tasks.length) console.error("judge: fewer verdicts than items", { type: tasks[0].type, items: tasks.length, verdicts: scored.length });
   const judged = scored.map((x) => x.q);
   const weak = judged.filter((q) => q.score < 70).length;

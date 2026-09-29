@@ -29,8 +29,9 @@ export const STALE_DAYS = 7;
 const codes = (r: Record<string, number>) => Object.fromEntries(Object.entries(r).map(([k, v]) => [/^[A-Za-z]{3}$/.test(k) ? k.toUpperCase() : "?", v]));
 
 /**
- * The STORE DATA block for Dana's report tasks: the last synced snapshot as escaped JSON (product names are store
- * data, never instructions), with the rules that keep her from inventing what it does not hold. The snapshot is one
+ * The STORE DATA block for Dana's report tasks, Razan's cash forecast and Majed's strategy review: the last synced
+ * snapshot as escaped JSON (product names are store data, never instructions), with the rules that keep the agent from
+ * inventing what it does not hold. The snapshot is one
  * window of `days` before the sync, so there is no previous period to compare with; the block says so. "" when the
  * workspace never synced a store.
  */

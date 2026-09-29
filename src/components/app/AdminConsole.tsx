@@ -4,25 +4,38 @@ import GoldenPanel from "./GoldenPanel";
 
 type KindUsage = { calls: number; in: number; out: number; usd: number };
 type U = { email: string; name: string; phone: string; plan: string; credits: number; trialEnds: string; createdAt: string; renewedAt?: string | null; suspended?: boolean; lang?: string; tokens?: number; usd?: number; calls?: number; byKind?: Record<string, KindUsage>; priceSar?: number; marginPct?: number | null };
-type Detail = { user: U; brand: Record<string, unknown> | null; tasks: T[]; usage: { in: number; out: number; calls: number; usd: number; kinds: Record<string, number>; byKind?: Record<string, KindUsage> }; connections: { provider: string; label?: string; connectedAt?: string }[]; brands: { id: string; name: string; status: string }[]; conversations: number; referrals: number; avgScore: number | null };
+type Detail = { user: U; brand: Record<string, unknown> | null; tasks: T[]; usage: { in: number; out: number; calls: number; usd: number; kinds: Record<string, number>; byKind?: Record<string, KindUsage>; byAgent?: Record<string, { calls: number; usd: number }> }; connections: { provider: string; label?: string; connectedAt?: string }[]; brands: { id: string; name: string; status: string }[]; conversations: number; referrals: number; avgScore: number | null };
 type T = { id: string; type: string; channel: string; title: string; status: string; createdAt: string; body: string; editedBody?: string; quality?: { score: number; notes: string } };
 type TM = { type: string; n: number; approved: number; rejected: number; autoApproved: number; approvalRate: number | null; edited: number; editRate: number | null; editMagnitude: number | null; published: number; judged: number; avgScore: number | null; low: number; avgHoursToDecide: number | null };
 type AM = { agent: string; n: number; decided: number; autoApproved: number; approvalRate: number | null; reviewedApproved: number; editRate: number | null; judged: number; avgScore: number | null; low: number; thumbsUp: number; thumbsDown: number; types: TM[] };
 
 const STR = {
-  en: { users: "Users", paying: "Paying", today: "Signed up today", trial: "Trial", cost: "Model cost this month $", tokens: "Tokens this month", calls: "Model calls", suspended: "Suspended", search: "Search email, name, phone, plan…", email: "Email", name: "Name", phone: "Phone", plan: "Plan", credits: "Credits", tokensMo: "Tokens (mo)", costMo: "Cost $ (mo)", marginMo: "Margin", perKind: "Cost per request type this month (average of one request, and the total)", trialEnds: "Trial ends", joined: "Joined", addCredits: "+ credits", planNote: "Changing the plan resets the balance to that plan's monthly allowance and starts the renewal cycle (balance resets on the 1st of each month, UTC). Use \"+ credits\" for top-ups within the month. Tokens and cost are this month's real model usage.", quality: "Agent quality · last 30 days · all workspaces", qualityNote: "Approval = approved ÷ decided. Edited = approved items the owner changed (magnitude = % of text changed). Judge = automated score /100 (85+ ready, <70 regenerate). Thumbs = chat replies.", agentType: "Agent / type", items: "Items", approval: "Approval", edited: "Edited", magnitude: "Magnitude", published: "Published", judge: "Judge", low: "<70", hours: "Hours to decide", perWorkspace: "Per workspace", loading: "Loading…", close: "close", impersonate: "Log in as user", extend: "Extend trial", reset: "Reset password", emailsIn: "Emails in", suspend: "Suspend", unsuspend: "Unsuspend", del: "Delete account", usage: "Model usage (month)", trialRenewed: "Trial ends / renewed", integrations: "Integrations", brandsEtc: "Brands · conversations · referrals · judge", brandFile: "Brand file", notCompleted: "— not completed —", generated: "Generated items", approved: "approved", rejected: "rejected", promptCredits: "Credits to add (negative to remove):", promptDays: "Extend trial by days:", promptDelete: "Type the email to permanently delete this account and all its data:", promptTemp: "Temporary password (shown once, send it on WhatsApp):", arabic: "Arabic", english: "English" },
-  ar: { users: "المستخدمون", paying: "مشتركون", today: "سجّلوا اليوم", trial: "تجربة", cost: "تكلفة النماذج هذا الشهر $", tokens: "توكنز هذا الشهر", calls: "استدعاءات النماذج", suspended: "موقوفون", search: "ابحث بالبريد أو الاسم أو الجوال أو الخطة…", email: "البريد", name: "الاسم", phone: "الجوال", plan: "الخطة", credits: "الكريدت", tokensMo: "توكنز (الشهر)", costMo: "التكلفة $ (الشهر)", marginMo: "الهامش", perKind: "التكلفة حسب نوع الطلب هذا الشهر (متوسط الطلب الواحد، والإجمالي)", trialEnds: "نهاية التجربة", joined: "انضم", addCredits: "+ كريدت", planNote: "تغيير الخطة يعيد الرصيد إلى مخصص الخطة الشهري ويبدأ دورة التجديد (يتجدد الرصيد في أول كل شهر UTC). استخدم «+ كريدت» للإضافات خلال الشهر. التوكنز والتكلفة هي الاستهلاك الحقيقي للنماذج هذا الشهر.", quality: "جودة الوكلاء · آخر 30 يوماً · كل المساحات", qualityNote: "الاعتماد = معتمد ÷ محسوم. التعديل = عناصر معتمدة غيّرها المالك (الحجم = % النص المتغيّر). الحَكَم = درجة آلية من 100 (85+ جاهز، أقل من 70 أعد التوليد). الإبهام = ردود الدردشة.", agentType: "الوكيل / النوع", items: "عناصر", approval: "اعتماد", edited: "تعديل", magnitude: "الحجم", published: "نُشر", judge: "الحَكَم", low: "<70", hours: "ساعات حتى القرار", perWorkspace: "لكل مساحة", loading: "جارٍ التحميل…", close: "إغلاق", impersonate: "دخول كالمستخدم", extend: "تمديد التجربة", reset: "إعادة تعيين كلمة المرور", emailsIn: "الإيميلات بـ", suspend: "إيقاف", unsuspend: "إلغاء الإيقاف", del: "حذف الحساب", usage: "استهلاك النماذج (الشهر)", trialRenewed: "نهاية التجربة / التجديد", integrations: "التكاملات", brandsEtc: "علامات · محادثات · إحالات · الحَكَم", brandFile: "ملف العلامة", notCompleted: "— غير مكتمل —", generated: "العناصر المولّدة", approved: "معتمد", rejected: "مرفوض", promptCredits: "كريدت للإضافة (سالب للخصم):", promptDays: "تمديد التجربة بالأيام:", promptDelete: "اكتب البريد لحذف الحساب وكل بياناته نهائياً:", promptTemp: "كلمة مرور مؤقتة (تظهر مرة واحدة، أرسلها على واتساب):", arabic: "العربية", english: "الإنجليزية" },
+  en: { users: "Users", paying: "Paying", today: "Signed up today", trial: "Trial", cost: "Model cost this month $", tokens: "Tokens this month", calls: "Model calls", suspended: "Suspended", search: "Search email, name, phone, plan…", email: "Email", name: "Name", phone: "Phone", plan: "Plan", credits: "Credits", tokensMo: "Tokens (mo)", costMo: "Cost $ (mo)", marginMo: "Margin", perKind: "Cost per request type this month (average of one request, and the total)", perAgent: "Cost per agent this month (model calls made for that agent's work: its batches, reviews, judging, images and its chat turns; onboarding counts as Noor)", trialEnds: "Trial ends", joined: "Joined", addCredits: "+ credits", planNote: "Changing the plan resets the balance to that plan's monthly allowance and starts the renewal cycle (balance resets on the 1st of each month, UTC). Use \"+ credits\" for top-ups within the month. Tokens and cost are this month's real model usage.", quality: "Agent quality · last 30 days · all workspaces", qualityNote: "Approval = approved ÷ decided. Edited = approved items the owner changed (magnitude = % of text changed). Judge = automated score /100 (85+ ready, <70 regenerate). Thumbs = chat replies.", agentType: "Agent / type", items: "Items", approval: "Approval", edited: "Edited", magnitude: "Magnitude", published: "Published", judge: "Judge", low: "<70", hours: "Hours to decide", perWorkspace: "Per workspace", loading: "Loading…", close: "close", impersonate: "Log in as user", extend: "Extend trial", reset: "Reset password", emailsIn: "Emails in", suspend: "Suspend", unsuspend: "Unsuspend", del: "Delete account", usage: "Model usage (month)", trialRenewed: "Trial ends / renewed", integrations: "Integrations", brandsEtc: "Brands · conversations · referrals · judge", brandFile: "Brand file", notCompleted: "— not completed —", generated: "Generated items", approved: "approved", rejected: "rejected", promptCredits: "Credits to add (negative to remove):", promptDays: "Extend trial by days:", promptDelete: "Type the email to permanently delete this account and all its data:", promptTemp: "Temporary password (shown once, send it on WhatsApp):", arabic: "Arabic", english: "English" },
+  ar: { users: "المستخدمون", paying: "مشتركون", today: "سجّلوا اليوم", trial: "تجربة", cost: "تكلفة النماذج هذا الشهر $", tokens: "توكنز هذا الشهر", calls: "استدعاءات النماذج", suspended: "موقوفون", search: "ابحث بالبريد أو الاسم أو الجوال أو الخطة…", email: "البريد", name: "الاسم", phone: "الجوال", plan: "الخطة", credits: "الكريدت", tokensMo: "توكنز (الشهر)", costMo: "التكلفة $ (الشهر)", marginMo: "الهامش", perKind: "التكلفة حسب نوع الطلب هذا الشهر (متوسط الطلب الواحد، والإجمالي)", perAgent: "التكلفة لكل وكيل هذا الشهر (استدعاءات النماذج لعمل ذلك الوكيل: دفعاته ومراجعتها وتقييمها وصوره ومحادثاته؛ التهيئة تُحسب لنور)", trialEnds: "نهاية التجربة", joined: "انضم", addCredits: "+ كريدت", planNote: "تغيير الخطة يعيد الرصيد إلى مخصص الخطة الشهري ويبدأ دورة التجديد (يتجدد الرصيد في أول كل شهر UTC). استخدم «+ كريدت» للإضافات خلال الشهر. التوكنز والتكلفة هي الاستهلاك الحقيقي للنماذج هذا الشهر.", quality: "جودة الوكلاء · آخر 30 يوماً · كل المساحات", qualityNote: "الاعتماد = معتمد ÷ محسوم. التعديل = عناصر معتمدة غيّرها المالك (الحجم = % النص المتغيّر). الحَكَم = درجة آلية من 100 (85+ جاهز، أقل من 70 أعد التوليد). الإبهام = ردود الدردشة.", agentType: "الوكيل / النوع", items: "عناصر", approval: "اعتماد", edited: "تعديل", magnitude: "الحجم", published: "نُشر", judge: "الحَكَم", low: "<70", hours: "ساعات حتى القرار", perWorkspace: "لكل مساحة", loading: "جارٍ التحميل…", close: "إغلاق", impersonate: "دخول كالمستخدم", extend: "تمديد التجربة", reset: "إعادة تعيين كلمة المرور", emailsIn: "الإيميلات بـ", suspend: "إيقاف", unsuspend: "إلغاء الإيقاف", del: "حذف الحساب", usage: "استهلاك النماذج (الشهر)", trialRenewed: "نهاية التجربة / التجديد", integrations: "التكاملات", brandsEtc: "علامات · محادثات · إحالات · الحَكَم", brandFile: "ملف العلامة", notCompleted: "— غير مكتمل —", generated: "العناصر المولّدة", approved: "معتمد", rejected: "مرفوض", promptCredits: "كريدت للإضافة (سالب للخصم):", promptDays: "تمديد التجربة بالأيام:", promptDelete: "اكتب البريد لحذف الحساب وكل بياناته نهائياً:", promptTemp: "كلمة مرور مؤقتة (تظهر مرة واحدة، أرسلها على واتساب):", arabic: "العربية", english: "الإنجليزية" },
 } as const;
 
 type Overview = {
   users: { total: number; new1d: number; new7d: number; new30d: number; activated: number; activationRate: number | null; paying: number; trialActive: number; trialExpired: number; suspended: number };
   engagement: { dau: number; wau: number; mau: number; stickiness: number | null; retention7: number | null };
   funnel: { signups30: number; activated30: number; generated30: number; approved30: number; paid30: number };
-  revenue: { mrrSar: number; planMix: Record<string, number>; arpuSar: number | null; creditsUsedMonth: number; modelCostUsd: number; grossMarginPct: number | null };
+  revenue: { mrrSar: number; planMix: Record<string, number>; arpuSar: number | null; creditsUsedMonth: number; modelCostUsd: number; grossMarginPct: number | null; renderCostUsd: number; renderByProvider: Record<string, { usd: number; jobs: number; failed: number }>; renderByModel: Record<string, { jobs: number; failed: number; credits: number; usd: number }> };
   events: { date: string; counts: Record<string, number> }[];
   features: Record<string, number>;
   health: { errors7d: number; errorsToday: number; modelCalls: number; avgCostPerCallUsd: number | null };
   recent: { email: string; name: string; plan: string; credits: number; createdAt: string; lastActive: string | null; activated: boolean; events: Record<string, number> }[];
+};
+/** GET /api/admin/media. A check value that is a string is an error code; a provider not configured is null. */
+type MediaCheck = {
+  configured: { fal: boolean; kie: boolean; higgsfield: boolean; blob: boolean; webhooks: boolean };
+  modelsOn: string[];
+  available: string[];
+  blob: string;
+  kie: Record<string, number | string> | null;
+  higgsfield: Record<string, number | string> | null;
+  open: Record<string, number>;
+  spend: { kieCredits: number };
+  off: Record<string, { until: number; reason: string }>;
+  recent: { id: string; model: string; state: string; error?: string; providerCredits?: number; costUsd?: number; at?: string }[];
 };
 const TABS = ["overview", "users", "usage", "billing", "quality", "log"] as const;
 type Tab = (typeof TABS)[number];
@@ -31,9 +44,39 @@ const TAB_LABEL: Record<"en" | "ar", Record<Tab, string>> = {
   ar: { overview: "نظرة عامة", users: "المستخدمون", usage: "الاستخدام", billing: "الفوترة", quality: "الجودة", log: "سجل الإجراءات" },
 };
 const OV: Record<"en" | "ar", Record<string, string>> = {
-  en: { total: "Users", new7: "New (7d)", new30: "New (30d)", activated: "Activated (brand file)", dau: "Active today", wau: "Active this week", mau: "Active this month", stickiness: "Stickiness DAU/MAU", retention: "7-day retention", mrr: "MRR (SAR, est.)", arpu: "ARPU (SAR)", credits: "Credits used (month)", cost: "Model cost (USD, month)", margin: "Gross margin", errors: "Errors (7d)", calls: "Model calls (month)", funnel: "Funnel, last 30 days", events: "Events per day, last 14 days", features: "Feature usage (14d)", recent: "Recent users", lastActive: "Last active", planMix: "Plan mix", invoices: "Invoices", invoicesNote: "No payment provider connected. Once Moyasar or Tap is wired, subscriptions, payments, failed charges and refunds appear here. ZATCA tax invoices must be generated by Nashr (VAT number, QR, sequential numbering); neither provider issues them.", export: "Export users CSV", reason: "Reason (logged)", health: "Platform health", log: "Every founder action with before/after and reason", signup: "signup", activated30: "activated", generated: "first batch", approved: "first approval", paid: "paid" },
-  ar: { total: "المستخدمون", new7: "جدد (7 أيام)", new30: "جدد (30 يوماً)", activated: "مفعّلون (ملف علامة)", dau: "نشطون اليوم", wau: "نشطون هذا الأسبوع", mau: "نشطون هذا الشهر", stickiness: "الالتصاق DAU/MAU", retention: "احتفاظ 7 أيام", mrr: "الإيراد الشهري المتكرر (ريال، تقدير)", arpu: "متوسط الإيراد لكل مشترك", credits: "كريدت مستهلك (الشهر)", cost: "تكلفة النماذج (دولار، الشهر)", margin: "هامش الربح الإجمالي", errors: "أخطاء (7 أيام)", calls: "استدعاءات النماذج (الشهر)", funnel: "مسار التحويل، آخر 30 يوماً", events: "الأحداث يومياً، آخر 14 يوماً", features: "استخدام المزايا (14 يوماً)", recent: "أحدث المستخدمين", lastActive: "آخر نشاط", planMix: "توزيع الخطط", invoices: "الفواتير", invoicesNote: "لا مزوّد دفع مربوط بعد. عند ربط Moyasar أو Tap تظهر هنا الاشتراكات والمدفوعات والمدفوعات الفاشلة والاسترجاعات. الفواتير الضريبية (ZATCA) يجب أن تولّدها نشر بنفسها (الرقم الضريبي، QR، ترقيم متسلسل)؛ لا يصدرها المزوّدان.", export: "تصدير المستخدمين CSV", reason: "السبب (يُسجَّل)", health: "صحة المنصة", log: "كل إجراء للمؤسس مع قبل/بعد والسبب", signup: "تسجيل", activated30: "تفعيل", generated: "أول دفعة", approved: "أول اعتماد", paid: "دفع" },
+  en: { total: "Users", new7: "New (7d)", new30: "New (30d)", activated: "Activated (brand file)", dau: "Active today", wau: "Active this week", mau: "Active this month", stickiness: "Stickiness DAU/MAU", retention: "7-day retention", mrr: "MRR (SAR, est.)", arpu: "ARPU (SAR)", credits: "Credits used (month)", cost: "Model cost (USD, month)", margin: "Gross margin", errors: "Errors (7d)", calls: "Model calls (month)", funnel: "Funnel, last 30 days", events: "Events per day, last 14 days", features: "Feature usage (14d)", recent: "Recent users", lastActive: "Last active", planMix: "Plan mix", invoices: "Invoices", invoicesNote: "No payment provider connected. Once Moyasar or Tap is wired, subscriptions, payments, failed charges and refunds appear here. ZATCA tax invoices must be generated by Nashr (VAT number, QR, sequential numbering); neither provider issues them.", export: "Export users CSV", reason: "Reason (logged)", health: "Platform health", log: "Every founder action with before/after and reason", signup: "signup", activated30: "activated", generated: "first batch", approved: "first approval", paid: "paid", render: "Render cost this month $", check: "Check media providers", models: "Per model", lastRenders: "Last renders", off: "Switched off", model: "Model", done: "Done", failed: "Failed", creditsKept: "Credits kept", usd: "USD", perCredit: "$ per credit", checkFailed: "Check failed" },
+  ar: { total: "المستخدمون", new7: "جدد (7 أيام)", new30: "جدد (30 يوماً)", activated: "مفعّلون (ملف علامة)", dau: "نشطون اليوم", wau: "نشطون هذا الأسبوع", mau: "نشطون هذا الشهر", stickiness: "الالتصاق DAU/MAU", retention: "احتفاظ 7 أيام", mrr: "الإيراد الشهري المتكرر (ريال، تقدير)", arpu: "متوسط الإيراد لكل مشترك", credits: "كريدت مستهلك (الشهر)", cost: "تكلفة النماذج (دولار، الشهر)", margin: "هامش الربح الإجمالي", errors: "أخطاء (7 أيام)", calls: "استدعاءات النماذج (الشهر)", funnel: "مسار التحويل، آخر 30 يوماً", events: "الأحداث يومياً، آخر 14 يوماً", features: "استخدام المزايا (14 يوماً)", recent: "أحدث المستخدمين", lastActive: "آخر نشاط", planMix: "توزيع الخطط", invoices: "الفواتير", invoicesNote: "لا مزوّد دفع مربوط بعد. عند ربط Moyasar أو Tap تظهر هنا الاشتراكات والمدفوعات والمدفوعات الفاشلة والاسترجاعات. الفواتير الضريبية (ZATCA) يجب أن تولّدها نشر بنفسها (الرقم الضريبي، QR، ترقيم متسلسل)؛ لا يصدرها المزوّدان.", export: "تصدير المستخدمين CSV", reason: "السبب (يُسجَّل)", health: "صحة المنصة", log: "كل إجراء للمؤسس مع قبل/بعد والسبب", signup: "تسجيل", activated30: "تفعيل", generated: "أول دفعة", approved: "أول اعتماد", paid: "دفع", render: "تكلفة توليد الصور والفيديو هذا الشهر $", check: "فحص مزوّدي الوسائط", models: "حسب النوع", lastRenders: "آخر عمليات التوليد", off: "متوقف مؤقتاً", model: "النوع", done: "مكتملة", failed: "فاشلة", creditsKept: "الكريدت المحتسب", usd: "دولار", perCredit: "دولار لكل كريدت", checkFailed: "تعذّر الفحص" },
 };
+
+/** The provider check as plain text: green when working, red when not (a false flag, webhooks off, a Blob probe that is not ok). */
+function MediaReport({ m, O }: { m: MediaCheck; O: Record<string, string> }) {
+  const mark = (good: boolean, text: string) => <span className={good ? "text-oasis" : "font-semibold text-sadu"}>{text}</span>;
+  const at = (v: number | string | undefined) => { const d = new Date(v ?? NaN); return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 16).replace("T", " ") : "—"; };
+  const check = (r: Record<string, number | string> | null, num: (n: number) => string) =>
+    r === null ? <span className="text-ink/50">not configured</span> : Object.entries(r).map(([k, v], i) => <Fragment key={k}>{i > 0 && " · "}{k} {typeof v === "number" ? num(v) : mark(false, v)}</Fragment>);
+  const offRows = Object.entries(m.off);
+  return (
+    <div className="mt-3 grid gap-1.5 font-mono text-xs" dir="ltr" data-testid="media-check">
+      <p>{(["fal", "kie", "higgsfield", "blob", "webhooks"] as const).map((k, i) => <Fragment key={k}>{i > 0 && " · "}{mark(m.configured[k], `${k}: ${m.configured[k] ? "on" : "off"}`)}</Fragment>)}</p>
+      <p>blob probe: {mark(m.blob === "ok", m.blob)}</p>
+      <p>models on: {m.modelsOn.join(", ")}</p>
+      <p>offered now: {m.available.join(", ") || "—"}</p>
+      <p>kie: {check(m.kie, (n) => `${n} credits`)} <span className="text-ink/50">(used this month: {m.spend.kieCredits})</span></p>
+      <p>higgsfield: {check(m.higgsfield, (n) => `$${n.toFixed(3)}`)}</p>
+      <p>open jobs: {Object.entries(m.open).map(([p, n]) => `${p} ${n}`).join(" · ")}</p>
+      <p>{O.off}: {offRows.length === 0 ? "—" : offRows.map(([id, v], i) => <Fragment key={id}>{i > 0 && " · "}{mark(false, id)} {v.reason} → {at(v.until)}</Fragment>)}</p>
+      <p className="mt-2 font-sans font-semibold text-ink/60">{O.lastRenders}</p>
+      {m.recent.length === 0 ? <p>—</p> : (
+        <div className="max-h-80 overflow-auto">
+          <table className="w-full">
+            <thead className="text-ink/60"><tr><th className="p-1 text-start">at</th><th className="text-start">model</th><th className="text-start">state</th><th className="text-start">error</th><th>kie cr</th><th>$</th><th className="text-start">id</th></tr></thead>
+            <tbody>{m.recent.map((r, i) => <tr key={`${r.id}${i}`} className="border-t border-ink/5"><td className="p-1">{at(r.at)}</td><td>{r.model}</td><td>{mark(r.state === "done", r.state)}</td><td>{r.error ?? ""}</td><td className="text-center">{r.providerCredits ?? ""}</td><td className="text-center">{r.costUsd === undefined ? "" : r.costUsd.toFixed(3)}</td><td className="text-ink/50">{r.id.slice(0, 8)}</td></tr>)}</tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Events({ data }: { data: Overview["events"] }) {
   const keys = ["signup", "chat", "generate", "approve"] as const;
@@ -65,6 +108,9 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
   const [total, setTotal] = useState<{ usd: number; in: number; out: number; calls: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [media, setMedia] = useState<MediaCheck | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [mediaErr, setMediaErr] = useState("");
   const [evals, setEvals] = useState<{ agents: AM[]; users: { email: string; label: string; suspended: boolean; archived: boolean; n: number; decided: number; approvalRate: number | null; judged: number; avgScore: number | null }[] } | null>(null);
 
   async function load() {
@@ -95,6 +141,19 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
     fetch("/api/admin/log").then((r) => r.json()).then((j) => j.ok && setLog(j.log)).catch(() => {});
   }, []);
 
+  // Founder-only and on demand: it writes and deletes a Blob file and asks Higgsfield for five estimates.
+  async function checkMedia() {
+    setChecking(true); setMediaErr("");
+    try {
+      const r = await fetch("/api/admin/media");
+      const j = await r.json().catch(() => ({}));
+      if (j.ok) setMedia(j); else setMediaErr(`${O.checkFailed}: HTTP ${r.status}`);
+    } catch {
+      setMediaErr(O.checkFailed);
+    } finally {
+      setChecking(false);
+    }
+  }
   async function setPlan(email: string, plan: string) {
     const reason = prompt(O.reason, "") ?? "";
     setBusy(true);
@@ -188,9 +247,19 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
 
       {tab === "billing" && (!ov ? <p className="text-sm text-ink/50">{S.loading}</p> : (
         <div className="grid gap-6">
-          <div className="grid gap-3 sm:grid-cols-4">
-            {[[O.mrr, ov.revenue.mrrSar], [O.arpu, ov.revenue.arpuSar ?? "—"], [O.cost, ov.revenue.modelCostUsd.toFixed(2)], [O.margin, ov.revenue.grossMarginPct === null ? "—" : `${ov.revenue.grossMarginPct}%`]].map(([l, v]) => <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="tnum font-display text-2xl font-bold text-oasis">{v}</p></div>)}
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {[[O.mrr, ov.revenue.mrrSar], [O.arpu, ov.revenue.arpuSar ?? "—"], [O.cost, ov.revenue.modelCostUsd.toFixed(2)], [O.render, ov.revenue.renderCostUsd.toFixed(2)], [O.margin, ov.revenue.grossMarginPct === null ? "—" : `${ov.revenue.grossMarginPct}%`]].map(([l, v]) => <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="tnum font-display text-2xl font-bold text-oasis">{v}</p></div>)}
           </div>
+          <section className="card card-sm"><h2 className="text-xs font-semibold uppercase tracking-wide text-ink/60">{O.models}</h2>
+            <div className="overflow-x-auto">
+              <table className="mt-2 w-full text-xs"><thead className="text-ink/60"><tr><th className="p-1 text-start">{O.model}</th><th>{O.done}</th><th>{O.failed}</th><th>{O.creditsKept}</th><th>{O.usd}</th><th>{O.perCredit}</th></tr></thead>
+                <tbody>{Object.entries(ov.revenue.renderByModel).map(([id, m]) => <tr key={id} className={`border-t border-ink/5 ${m.jobs + m.failed === 0 ? "text-ink/40" : ""}`}><td className="p-1 font-mono" dir="ltr">{id}</td><td className="tnum text-center">{m.jobs}</td><td className={`tnum text-center ${m.failed ? "text-sadu-deep" : ""}`}>{m.failed}</td><td className="tnum text-center">{m.credits}</td><td className="tnum text-center">{m.usd.toFixed(3)}</td><td className="tnum text-center">{m.credits ? (m.usd / m.credits).toFixed(3) : "—"}</td></tr>)}</tbody></table>
+            </div>
+            <p className="mt-2 font-mono text-xs text-ink/60" dir="ltr">{Object.entries(ov.revenue.renderByProvider).map(([p, v]) => `${p} $${v.usd.toFixed(2)} (${v.jobs}/${v.failed})`).join(" · ")}</p>
+            <button type="button" onClick={checkMedia} disabled={checking} className="btn btn-secondary btn-sm mt-3">{checking ? S.loading : O.check}</button>
+            {mediaErr && <p className="mt-2 text-xs text-sadu">{mediaErr}</p>}
+            {media && <MediaReport m={media} O={O} />}
+          </section>
           <section className="card card-sm"><h2 className="text-xs font-semibold uppercase tracking-wide text-ink/60">{O.planMix}</h2>
             <ul className="mt-2 flex flex-wrap gap-2 text-sm">{Object.entries(ov.revenue.planMix).map(([k, v]) => <li key={k} className="rounded-full bg-salt-dim px-3 py-1">{k}: <b className="tnum">{v}</b></li>)}</ul>
             <button type="button" onClick={() => window.open("/api/admin/export", "_blank")} className="btn btn-secondary btn-sm mt-3">{O.export}</button>
@@ -301,6 +370,23 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
                         <td className="text-end">${(v.usd / Math.max(1, v.calls)).toFixed(4)}</td>
                         <td className="text-end">${v.usd.toFixed(2)}</td>
                         <td className="text-end text-ink/50">{Math.round((v.in + v.out) / 1000)}k tok</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {sel.usage.byAgent && Object.keys(sel.usage.byAgent).length > 0 && (
+              <div className="col-span-full rounded border border-ink/10 p-2">
+                <p className="text-ink/50">{S.perAgent}</p>
+                <table className="mt-1 w-full font-mono text-xs">
+                  <tbody>
+                    {Object.entries(sel.usage.byAgent).sort((a, b) => b[1].usd - a[1].usd).map(([k, v]) => (
+                      <tr key={k} className="border-t border-ink/5">
+                        <td className="py-0.5">{k}</td>
+                        <td className="text-end">{v.calls}×</td>
+                        <td className="text-end">${(v.usd / Math.max(1, v.calls)).toFixed(4)}</td>
+                        <td className="text-end">${v.usd.toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -1,7 +1,8 @@
 import { CAPS, db, pushCapped } from "./db";
 import { pmap } from "./parallel";
-import { similarity } from "./similarity";
+import { editPctOf } from "./similarity";
 import { hasAdCode, newAdCode } from "./ad-codes";
+import { agentForTask, type AgentId } from "./agents";
 
 export type Brand = {
   name: string;
@@ -30,8 +31,12 @@ export type Brand = {
 // The task catalogue lives in ./tasks, which imports nothing: client components read the costs from there instead of
 // from this module, which would drag the Redis client into their bundle. Re-exported so server callers are unaffected.
 export type { TaskType } from "./tasks";
-export { TASK_COST, TASK_COUNT, IMAGE_TYPES, IMAGE_COST } from "./tasks";
-import type { TaskType } from "./tasks";
+export { TASK_COST, TASK_COUNT, IMAGE_TYPES, VIDEO_TYPES, IMAGE_COST } from "./tasks";
+import { isTaskType, type TaskType } from "./tasks";
+import type { ImageModelId, MediaFailure, MediaProviderId, VideoModelId } from "./media-catalog";
+
+/** The last render of one kind that ended without a result, kept on the card until the next render of that kind. */
+export type MediaLast = { error: MediaFailure; credits: number; refunded: boolean; at: string };
 
 export type Task = {
   id: string;
@@ -48,19 +53,47 @@ export type Task = {
   imageUrl?: string;
   imagePrompt?: string;
   /**
-   * Which service produced imageUrl. When the image provider is unreachable or unconfigured, generateImage falls back
-   * to a placehold.co card carrying the brand name. That is not artwork, and presenting it as the generated image the
-   * owner just paid for is a lie the interface was telling on our behalf.
+   * Which service produced imageUrl: "fal", "kie" or "higgsfield" for a generated image (src/lib/media/), absent on
+   * images saved before providers were recorded. When the default image model is unavailable, the owner gets a
+   * placehold.co card carrying the brand name instead, marked "placeholder". That is not artwork, and presenting it as
+   * the generated image the owner just paid for is a lie the interface was telling on our behalf. Test for artwork with
+   * hasArtwork (src/lib/media-catalog.ts), never by comparing with one provider.
    */
-  imageProvider?: "fal" | "placeholder";
+  imageProvider?: MediaProviderId | "placeholder";
+  /** Catalogue model that made imageUrl. Absent on placeholder cards and on images made before 2026-09-29 (all fal's default model). */
+  imageModel?: ImageModelId;
+  /** Our Blob copy of the generated clip (video/mp4). Downloaded by the owner; never a publish target in this round. */
+  videoUrl?: string;
+  /** The prompt the clip was rendered from, shown under the video as imagePrompt is under the image. */
+  videoPrompt?: string;
+  /** Which service rendered videoUrl. fal has no video model. */
+  videoProvider?: Exclude<MediaProviderId, "fal">;
+  /** Catalogue model that made videoUrl. */
+  videoModel?: VideoModelId;
+  /** Credits kept for renders of this task, after refunds. Absent before 2026-09-29: start from `hasArtwork(t) ? IMAGE_COST : 0` (spec A14). */
+  mediaCredits?: number;
+  /** The media job of each kind still in progress, set when the job is saved queued and cleared when it ends. */
+  mediaJob?: { image?: string; video?: string };
+  /**
+   * The latest finished render jobs whose result or credits this task already took (at most 8, oldest first). A finalize
+   * retried after a failed write finds its job here and changes nothing, so no render is counted twice.
+   */
+  mediaApplied?: string[];
+  /** The last failed render of each kind, until the next render of that kind starts (spec A28). */
+  mediaLast?: { image?: MediaLast; video?: MediaLast };
   published?: { provider: string; url: string; status: "draft" | "published"; at: string }[];
   /** When the owner approved or rejected (for time-to-decision). */
   decidedAt?: string;
   /** Put in the ad's name so its results can be matched back to this item (src/lib/ad-codes.ts). */
   adCode?: string;
-  /** Automated judge score (src/lib/judge.ts). */
-  quality?: { score: number; dims: { completeness: number; brand: number; honesty: number; language: number; format: number }; notes: string; model: string; at: string };
+  /** What the agent was asked for this batch: the owner's notes or brief, first 500 characters (`briefOf`). */
+  brief?: string;
+  /** Automated judge score (src/lib/judge.ts). `autofail` is the judge's automatic-fail code, when one was set. */
+  quality?: { score: number; dims: { completeness: number; brand: number; honesty: number; language: number; format: number }; notes: string; model: string; at: string; autofail?: string };
 };
+
+/** The notes or brief of one batch as each of its tasks keeps it: first 500 characters, or nothing when there were none. */
+export const briefOf = (notes: unknown): string | undefined => (typeof notes === "string" && notes.trim() ? notes.trim().slice(0, 500) : undefined);
 
 export async function getBrand(email: string) {
   return db.get<Brand>(`brand:${email}`);
@@ -122,10 +155,20 @@ export type TaskLite = Pick<Task, "id" | "type" | "channel" | "title" | "status"
   edited: boolean;
   /** How much the owner changed the text before approving, 0..100. Only set when edited. */
   editPct?: number;
+  /** Has an image that is not a placeholder card. Rows written before 2026-09-29 count a placeholder too, until re-saved. */
   image: boolean;
+  /** Absent, so false, on rows written before 2026-09-29. */
+  video: boolean;
+  /**
+   * Credits spent on renders of this task. Optional: rows written before 2026-09-29 lack it; readers use
+   * `t.mediaCredits ?? (t.image ? IMAGE_COST : 0)`.
+   */
+  mediaCredits?: number;
   published: number;
   score?: number;
   notes?: string;
+  /** The judge's automatic-fail code, when it set one (the notes then start with "[code]"). */
+  autofail?: string;
 };
 export function liteOf(t: Task): TaskLite {
   const edited = !!t.editedBody && t.editedBody !== t.body;
@@ -133,14 +176,20 @@ export function liteOf(t: Task): TaskLite {
     id: t.id, type: t.type, channel: t.channel, title: t.title, status: t.status, createdAt: t.createdAt, lang: t.lang, source: t.source, scheduledFor: t.scheduledFor, decidedAt: t.decidedAt,
     preview: (t.editedBody ?? t.body ?? "").slice(0, 200),
     edited,
-    editPct: edited ? Math.round((1 - similarity(t.body, t.editedBody!)) * 100) : undefined,
-    image: !!t.imageUrl,
+    editPct: edited ? editPctOf(t.body, t.editedBody!) : undefined,
+    // A placeholder card is not an image anyone made or paid for: it counts in neither "images generated" nor, through
+    // the readers' `image ? IMAGE_COST : 0` fallback, credits used. Not hasArtwork: images saved before providers were
+    // recorded have no provider and are real.
+    image: !!t.imageUrl && t.imageProvider !== "placeholder",
+    video: !!t.videoUrl,
+    mediaCredits: t.mediaCredits,
     // Only what actually went live. WordPress and Shopify connectors create DRAFTS by default, and counting those made
     // the "Published via integrations" tile — and Dana's weekly report, which quotes it — claim posts were live that
     // were sitting unpublished in the owner's CMS.
     published: t.published?.filter((p) => p.status === "published").length ?? 0,
     score: t.quality?.score,
     notes: t.quality?.notes?.slice(0, 200),
+    autofail: t.quality?.autofail,
   };
 }
 const monthOf = (iso: string) => (/^\d{4}-\d{2}/.test(iso) ? iso.slice(0, 7) : "0000-00");
@@ -219,9 +268,55 @@ export async function pendingCount(email: string): Promise<number> {
 export async function getTask(email: string, id: string) {
   return db.get<Task>(`task:${email}:${id}`);
 }
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/**
+ * Change one existing task under a short per-task lock: re-read, apply `mutate`, save. saveTask writes the whole task,
+ * so a writer that read the task before slow work (a publish, the owner's approve or edit, a render finishing by poll,
+ * webhook or sweep) and saved its copy afterwards erased whatever landed in between, a paid render included. Every such
+ * writer goes through here instead, so each one applies only its own fields to the task as it is now.
+ *
+ * `mutate` gets the stored task and returns the task to save, or null to leave it as it is. It runs once, under the lock,
+ * so it must not wait on anything slow. Returns the task as stored afterwards, or null when there is none: a task deleted
+ * meanwhile is never recreated. `scope` is the caller's own (`sc(u)`, or the scope the server stored on a media job).
+ */
+export async function updateTask(scope: string, id: string, mutate: (t: Task) => Task | null): Promise<Task | null> {
+  const key = `tasklock:${scope}:${id}`;
+  let got = false;
+  for (let i = 0; i < 60 && !got; i++) {
+    got = await db.lock(key, 10);
+    if (!got) await sleep(50);
+  }
+  if (!got) throw new Error("task_lock_timeout");
+  try {
+    const t = await getTask(scope, id);
+    if (!t) return null;
+    // A copy, so a mutate that edits in place and then declines leaves what this returns equal to what is stored.
+    const next = mutate(structuredClone(t));
+    if (!next) return t;
+    await saveTask(scope, next);
+    return next;
+  } finally {
+    // As in withUserLock: a failed release must not turn a saved change into a throw. The 10 s TTL frees the lock.
+    await db.unlock(key).catch((e) => console.error("task lock release failed", e instanceof Error ? e.name : "error"));
+  }
+}
 export async function addPreference(email: string, note: string) {
   await pushCapped(`prefs:${email}`, note.slice(0, 500), CAPS.prefs);
 }
 export async function listPreferences(email: string) {
   return db.lrange(`prefs:${email}`, 0, 29);
+}
+
+/** The task type a learned note names ("Owner edited a social item (instagram). ..."), when it names one. */
+const noteType = (note: string) => /^Owner (?:edited|rejected) an? ([a-z_]+) item\b/.exec(note)?.[1];
+
+/**
+ * The newest 30 preference notes for one agent's prompts. A note about another agent's work is left out, so the
+ * owner's edits to Noor's posts do not steer Razan's pricing review; a note that names no task type is about the brand
+ * and stays. The whole capped list is read in one command, so notes filtered out do not shrink the 30.
+ */
+export async function listPreferencesFor(email: string, agent: AgentId) {
+  const notes = await db.lrange(`prefs:${email}`, 0, CAPS.prefs - 1);
+  return notes.filter((n) => { const type = noteType(n); return !isTaskType(type) || agentForTask(type).id === agent; }).slice(0, 30);
 }
