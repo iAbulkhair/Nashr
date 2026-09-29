@@ -34,7 +34,7 @@ const section = (text: string, title: string) => {
 
 describe("agent playbooks keep their shape, size and honesty (rule 96)", () => {
   it("every agent has a playbook file with its own title", () => {
-    expect(playbooks).toHaveLength(7);
+    expect(playbooks).toHaveLength(8);
     for (const { agent, name, text } of playbooks) {
       expect(name, agent.id).not.toBe("");
       expect(text.split("\n")[0], name).toMatch(new RegExp(`^# .+ playbook \\(${agent.name.en}\\)$`));

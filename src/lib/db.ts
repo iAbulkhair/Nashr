@@ -24,11 +24,23 @@ type Store = {
   srem(key: string, member: string): Promise<void>;
   /** Sizes of many sets in ONE request (an Upstash pipeline), in the order of `keys`. For counters shown in a list. */
   scardMany(keys: string[]): Promise<number[]>;
+  /** Many JSON values in ONE request (MGET), in the order of `keys`; null where a key is missing. Empty `keys` sends nothing. */
+  mget<T = unknown>(keys: string[]): Promise<(T | null)[]>;
+  /** Sorted sets: add or re-score one member, remove one, count, and read the whole set ordered by score (then member). */
+  zadd(key: string, score: number, member: string): Promise<void>;
+  zrem(key: string, member: string): Promise<void>;
+  zcard(key: string): Promise<number>;
+  zrangeWithScores(key: string): Promise<{ member: string; score: number }[]>;
   incrby(key: string, n: number): Promise<number>;
   /** EXPIRE NX: give a key a TTL only when it has none. Never touches the value or an expiry already set. */
   expireNx(key: string, ttlSeconds: number): Promise<void>;
   /** SET NX with TTL. True when this caller won the lock. */
   lock(key: string, ttlSeconds: number): Promise<boolean>;
+  /**
+   * SET key value NX EX ttl: stores the value only when the key is absent, in one command. True when this caller wrote
+   * it, so of two overlapping writers exactly one wins (a "seen" marker claimed, not read then written).
+   */
+  setNx(key: string, value: unknown, ttlSeconds: number): Promise<boolean>;
   unlock(key: string): Promise<void>;
 };
 
@@ -88,6 +100,26 @@ function upstash(): Store | null {
       for (const k of keys) p.scard(k); // queued, not sent: exec() sends every command in one HTTP request
       return (await p.exec()).map((n) => Number(n) || 0);
     },
+    async mget<T>(keys: string[]) {
+      if (!keys.length) return [];
+      return ((await r.mget<(T | null)[]>(...keys)) ?? []).map((v) => v ?? null);
+    },
+    async zadd(key, score, member) {
+      await r.zadd(key, { score, member });
+    },
+    async zrem(key, member) {
+      await r.zrem(key, member);
+    },
+    async zcard(key) {
+      return await r.zcard(key);
+    },
+    async zrangeWithScores(key) {
+      // [member, score, member, score, ...]. Members are stringified: the client parses anything that looks like JSON.
+      const flat = await r.zrange<(string | number)[]>(key, 0, -1, { withScores: true });
+      const out: { member: string; score: number }[] = [];
+      for (let i = 0; i + 1 < flat.length; i += 2) out.push({ member: String(flat[i]), score: Number(flat[i + 1]) });
+      return out;
+    },
     async incrby(key, n) {
       return await r.incrby(key, n);
     },
@@ -97,17 +129,21 @@ function upstash(): Store | null {
     async lock(key, ttl) {
       return (await r.set(key, "1", { nx: true, ex: ttl })) === "OK";
     },
+    async setNx(key, value, ttl) {
+      return (await r.set(key, value, { nx: true, ex: ttl })) === "OK";
+    },
     async unlock(key) {
       await r.del(key);
     },
   };
 }
 
-const mem = globalThis as unknown as { __nashrMem?: { kv: Map<string, unknown>; lists: Map<string, string[]>; sets: Map<string, Set<string>>; hashes?: Map<string, Map<string, unknown>>; exp?: Map<string, number> } };
+const mem = globalThis as unknown as { __nashrMem?: { kv: Map<string, unknown>; lists: Map<string, string[]>; sets: Map<string, Set<string>>; hashes?: Map<string, Map<string, unknown>>; exp?: Map<string, number>; zsets?: Map<string, Map<string, number>> } };
 function memory(): Store {
   if (!mem.__nashrMem) mem.__nashrMem = { kv: new Map(), lists: new Map(), sets: new Map(), hashes: new Map() };
   const m = mem.__nashrMem;
   const hashes = (m.hashes ??= new Map<string, Map<string, unknown>>());
+  const zsets = (m.zsets ??= new Map<string, Map<string, number>>());
   // Expiry is honoured like Redis, so sessions, reset tokens and rate windows behave the same locally and in tests.
   const exp = (m.exp ??= new Map<string, number>());
   const live = (key: string) => { const at = exp.get(key); if (at !== undefined && at <= Date.now()) { exp.delete(key); m.kv.delete(key); } };
@@ -137,6 +173,7 @@ function memory(): Store {
       m.lists.delete(key);
       m.sets.delete(key);
       hashes.delete(key);
+      zsets.delete(key);
     },
     async lpush(key, value) {
       const l = m.lists.get(key) ?? [];
@@ -185,6 +222,24 @@ function memory(): Store {
     async scardMany(keys) {
       return keys.map((k) => m.sets.get(k)?.size ?? 0);
     },
+    async mget<T>(keys: string[]) {
+      return keys.map((k) => { live(k); const v = m.kv.get(k); return v === undefined ? null : copy(v as T); });
+    },
+    async zadd(key, score, member) {
+      const z = zsets.get(key) ?? new Map<string, number>();
+      z.set(member, score);
+      zsets.set(key, z);
+    },
+    async zrem(key, member) {
+      zsets.get(key)?.delete(member);
+    },
+    async zcard(key) {
+      return zsets.get(key)?.size ?? 0;
+    },
+    async zrangeWithScores(key) {
+      // Redis order: by score, then by member (binary), for equal scores.
+      return [...(zsets.get(key) ?? new Map<string, number>())].map(([member, score]) => ({ member, score })).sort((a, b) => a.score - b.score || (a.member < b.member ? -1 : a.member > b.member ? 1 : 0));
+    },
     async incrby(key, n) {
       live(key);
       const v = ((m.kv.get(key) as number) ?? 0) + n;
@@ -199,6 +254,14 @@ function memory(): Store {
       const until = m.kv.get(key) as number | undefined;
       if (until && until > Date.now()) return false;
       m.kv.set(key, Date.now() + ttl * 1000);
+      return true;
+    },
+    async setNx(key, value, ttl) {
+      // Check and write with no await between them: one caller wins, as with Redis.
+      live(key);
+      if (m.kv.has(key)) return false;
+      m.kv.set(key, copy(value));
+      exp.set(key, Date.now() + ttl * 1000);
       return true;
     },
     async unlock(key) {
@@ -218,4 +281,4 @@ export async function pushCapped(key: string, value: string, cap: number) {
   await Promise.all([db.lpush(key, value), db.ltrim(key, cap)]);
 }
 /** Caps for the lists above. Reads never look past these, so trimming loses nothing a page shows. */
-export const CAPS = { chat: 400, adminLog: 2000, tickets: 2000, feedback: 500, prefs: 100, decisions: 500, wishSuggestions: 500 } as const;
+export const CAPS = { chat: 400, adminLog: 2000, tickets: 2000, feedback: 500, prefs: 100, decisions: 500, wishSuggestions: 500, secDone: 200, secAudit: 500 } as const;

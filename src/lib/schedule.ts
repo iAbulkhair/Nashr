@@ -13,6 +13,8 @@ import { activeSeasons } from "./seasons";
 import { dateFormat } from "./dates";
 import { initialStatus } from "./brand-rules";
 import type { RoutineId } from "./routines";
+import { briefAgenda, type BriefAgenda } from "./secretary-agenda";
+import { agendaFor } from "./secretary";
 
 /**
  * Per-user recurring tasks. Cron hits /api/cron/* → we loop users. `routines` holds the owner's opt-ins for the
@@ -32,7 +34,8 @@ export async function saveSchedule(email: string, s: Partial<Schedule>) {
   return next;
 }
 
-export type Brief = { date: string; text: string; pending: number; approved7d: number; credits: number; seasons: string[] };
+/** `agenda`: Reem's counts and the first three overdue or due-today titles (absent on briefs written before 2026-09-29). */
+export type Brief = { date: string; text: string; pending: number; approved7d: number; credits: number; seasons: string[]; agenda?: BriefAgenda };
 
 export async function latestBrief(email: string) {
   return db.get<Brief>(`brief:${email}`);
@@ -130,6 +133,11 @@ export async function runDaily(user: User): Promise<Brief | null> {
   const approved7d = tasks.filter((t) => t.status === "approved" && new Date(t.createdAt).getTime() > dayAgo).length;
   const seasons = activeSeasons().slice(0, 2).map((s) => `${s.nameAr} (${s.daysLeft} يوم)`);
   const ar = (brand?.languages[0] ?? user.lang) === "ar";
+  // Reem's block: counts from the computed agenda (no model), and the titles of the first three overdue or due-today items.
+  const agenda = briefAgenda(await agendaFor(email, Date.now(), { actor: "cron", via: "cron" }));
+  const chase = agenda.chase ?? 0;
+  const hasAgenda = agenda.overdue + agenda.today + agenda.waiting + agenda.confirm + chase > 0;
+  const top = agenda.top.map((t) => `«${t.slice(0, 80)}»`).join(ar ? "، " : ", ");
   const lines = ar
     ? [
         `صباح الخير ${user.name || ""} ☀️ ملخص نور لليوم:`,
@@ -137,7 +145,8 @@ export async function runDaily(user: User): Promise<Brief | null> {
         `• اعتمدت خلال 7 أيام: ${approved7d} عنصر`,
         `• رصيدك: ${user.credits} كريدت${user.plan === "trial" ? ` (التجربة تنتهي ${dateFormat("ar", { day: "numeric", month: "long" }).format(new Date(user.trialEnds))})` : ""}`,
         seasons.length ? `• المواسم القريبة: ${seasons.join("، ")}` : "• لا مواسم كبرى خلال 35 يوماً — وقت مناسب لبناء الجمهور",
-        pending ? "الخطوة التالية: افتح صندوق الموافقة واعتمد ما يعجبك." : "الخطوة التالية: اطلب من نور دفعة جديدة في الدردشة.",
+        ...(hasAgenda ? [`• مهامك (ريم): ${agenda.overdue} متأخرة، ${agenda.today} لليوم، ${agenda.waiting} بانتظار غيرك${chase ? `، ${chase} حان وقت متابعتها` : ""}${agenda.confirm ? `، ${agenda.confirm} تحتاج تأكيدك` : ""}`, ...(top ? [`  أولها: ${top}`] : [])] : []),
+        pending ? "الخطوة التالية: افتح صندوق الموافقة واعتمد ما يعجبك." : agenda.overdue + agenda.today ? "الخطوة التالية: افتح «مهامي» وابدأ بالمتأخر." : "الخطوة التالية: اطلب من نور دفعة جديدة في الدردشة.",
       ]
     : [
         `Good morning ${user.name || ""} ☀️ Noor's brief for today:`,
@@ -145,23 +154,39 @@ export async function runDaily(user: User): Promise<Brief | null> {
         `• Approved in the last 7 days: ${approved7d}`,
         `• Credits: ${user.credits}${user.plan === "trial" ? ` (trial ends ${dateFormat("en", { day: "numeric", month: "long" }).format(new Date(user.trialEnds))})` : ""}`,
         seasons.length ? `• Upcoming seasons: ${seasons.join(", ")}` : "• No major season within 35 days — good time to build audience",
-        pending ? "Next step: open the inbox and approve what you like." : "Next step: ask Noor for a new batch in chat.",
+        ...(hasAgenda ? [`• Your to-dos (Reem): ${agenda.overdue} overdue, ${agenda.today} due today, ${agenda.waiting} waiting on others${chase ? `, ${chase} to follow up` : ""}${agenda.confirm ? `, ${agenda.confirm} to confirm` : ""}`, ...(top ? [`  First: ${top}`] : [])] : []),
+        pending ? "Next step: open the inbox and approve what you like." : agenda.overdue + agenda.today ? "Next step: open My to-dos and start with what is overdue." : "Next step: ask Noor for a new batch in chat.",
       ];
-  const brief: Brief = { date: new Date().toISOString().slice(0, 10), text: lines.join("\n"), pending, approved7d, credits: user.credits, seasons };
+  const brief: Brief = { date: new Date().toISOString().slice(0, 10), text: lines.join("\n"), pending, approved7d, credits: user.credits, seasons, agenda };
   await db.set(`brief:${email}`, brief);
   await saveSchedule(email, { lastDaily: new Date().toISOString() });
   return brief;
 }
 
-/** One entry per (user, active brand). Extra brands get their own copy with scope set. */
-export async function allUsers(): Promise<User[]> {
+/**
+ * The scheduler's roster in one pass: `users`, one entry per (user, active brand), extra brands with their own copy and
+ * scope set; and `idle`, the brand scopes that get no scheduled work (archived brands, and every brand of a suspended
+ * account) but where the daily job still purges Reem's items deleted over 30 days ago.
+ */
+export async function dailyRoster(): Promise<{ users: User[]; idle: string[] }> {
   const { listBrands, scopeFor } = await import("./brands");
   const emails = await db.smembers("users:all");
   const { pmap } = await import("./parallel");
   const groups = await pmap(emails, async (e) => {
     const u = await getUser(e);
-    if (!u || u.suspended) return [] as User[]; // suspended accounts get no scheduled work, no charges and no email
-    return (await listBrands(e)).filter((x) => x.status === "active").map((b) => ({ ...u, brandId: b.id, scope: scopeFor(e, b.id) }));
+    if (!u) return { users: [] as User[], idle: [] as string[] };
+    const brands = (await listBrands(e)).map((b) => ({ b, scope: scopeFor(e, b.id) }));
+    // Suspended accounts get no scheduled work, no charges and no email.
+    if (u.suspended) return { users: [] as User[], idle: brands.map((x) => x.scope) };
+    return {
+      users: brands.filter((x) => x.b.status === "active").map((x) => ({ ...u, brandId: x.b.id, scope: x.scope })),
+      idle: brands.filter((x) => x.b.status !== "active").map((x) => x.scope),
+    };
   });
-  return groups.flat();
+  return { users: groups.flatMap((g) => g.users), idle: groups.flatMap((g) => g.idle) };
+}
+
+/** One entry per (user, active brand). Extra brands get their own copy with scope set. */
+export async function allUsers(): Promise<User[]> {
+  return (await dailyRoster()).users;
 }

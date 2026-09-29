@@ -65,6 +65,11 @@ export const MIN_ROLE = {
   "team.invites.view": "admin",
   /** Cancel a pending invite (an admin only one for role "member"; see team.ts `cancelInvite`). */
   "team.invite.cancel": "admin",
+  /**
+   * Reem's list: close an item (complete with a result, confirm or send back an agent's claim), delete or restore it
+   * (PATCH /api/secretary/{id}). Chat and MCP never close whatever the role (secretary.ts `OWNER_ONLY`).
+   */
+  "todo.close": "admin",
 
   // ── Every member ──
   chat: "member",
@@ -78,6 +83,8 @@ export const MIN_ROLE = {
   tools: "member",
   support: "member",
   "integrations.request": "member",
+  /** Reem's list: add, update, snooze, reschedule, note, record a follow-up (POST /api/secretary, PATCH, the tools). */
+  "todo.write": "member",
   /** Switch the active brand (per login). */
   "brands.switch": "member",
   /** Read anything in the workspace. */

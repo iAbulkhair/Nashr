@@ -26,6 +26,12 @@ export type Brand = {
   sitemap?: string;
   /** Social handles by platform (instagram, snapchat, tiktok, x, linkedin). */
   social?: Record<string, string>;
+  /**
+   * The time zone Reem keeps this brand's to-dos in: one of `ZONE_IDS` (src/lib/zones.ts), checked on write and again on
+   * read (`zoneOf`, which falls back to the city, then the dialect, then Riyadh). Absent on brands saved before
+   * 2026-09-29.
+   */
+  timeZone?: string;
 };
 
 // The task catalogue lives in ./tasks, which imports nothing: client components read the costs from there instead of
