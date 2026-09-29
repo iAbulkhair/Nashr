@@ -6,6 +6,9 @@ import { gateTask } from "@/lib/brand-rules";
 import { connectedTargets, publishTask, targetsFor } from "@/lib/connectors/publish";
 import { listConnections } from "@/lib/connectors/store";
 import { decisionOf, recordDecisions } from "@/lib/decisions";
+import { byOf } from "@/lib/actor";
+import { recordActivity } from "@/lib/activity";
+import { agentForTask } from "@/lib/agents";
 
 export const maxDuration = 60;
 
@@ -19,7 +22,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!b.provider) return NextResponse.json({ ok: false, error: "provider_required" }, { status: 400 });
   // The owner's click is the approval here, but a rejected item stays unpublished and the target must fit the item type.
   if (t.status === "rejected") return NextResponse.json({ ok: false, error: "rejected_item" }, { status: 409 });
-  const [connections, brand] = await Promise.all([listConnections(sc(u)), getBrand(sc(u))]);
+  // Who publishes, from the session (never the body), for the decision record below.
+  const [connections, brand, by] = await Promise.all([listConnections(sc(u)), getBrand(sc(u)), byOf(u)]);
   // Publishing approves the item, so it passes the same brand gate as the approve button.
   const violations = gateTask(brand, t);
   if (violations.length) return NextResponse.json({ ok: false, error: "brand_violation", violations }, { status: 409 });
@@ -43,10 +47,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     });
     // The same approval goes into the owner's decision records. An item that was already approved, by the owner or by
     // auto-approve, adds nothing. The item has already gone to the platform, so a failed record is logged, not reported
-    // as a failed publish.
+    // as a failed publish. Every publish is one row of the activity log (which never throws).
     await Promise.all([
       track(u.email, "publish"),
-      approving && saved ? recordDecisions(sc(u), [decisionOf(saved, "publish", at)]).catch((e) => console.error("decision record failed", e)) : null,
+      approving && saved ? recordDecisions(sc(u), [decisionOf(saved, "publish", at, { by })]).catch((e) => console.error("decision record failed", e)) : null,
+      recordActivity(sc(u), [{ at, kind: "published", agent: agentForTask(t.type).id, by, via: "app", type: t.type, tasks: [t.id], outcome: r.provider, note: t.title }]),
     ]);
     return NextResponse.json({ ok: true, result: r, task: saved ?? t });
   } catch (e) {

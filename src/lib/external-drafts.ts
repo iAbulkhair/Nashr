@@ -16,6 +16,8 @@ import { briefOf, getBrand, saveTask, type Task } from "./brand";
 import { explain, gateTask, initialStatus, isCustomerFacing, type Violation } from "./brand-rules";
 import { draftAllowed } from "./rate";
 import { isTaskType, type TaskType } from "./tasks";
+import { tokenBy } from "./actor";
+import { recordActivity } from "./activity";
 
 export const DRAFT_LIMITS = { title: 200, body: 20000, notes: 500, channel: 30 } as const;
 
@@ -63,7 +65,11 @@ export async function saveExternalDraft(user: User, d: DraftInput): Promise<Save
     status: initialStatus(false, brand, draft),
     createdAt: new Date().toISOString(), lang: d.lang ?? brand.languages[0] ?? "ar", source: "external", ...(brief ? { brief } : {}),
   };
-  await saveTask(scope, t, true);
+  // One activity row, with no agent: no Nashr agent wrote it. The title is the outside model's text, kept as a note.
+  await Promise.all([
+    saveTask(scope, t, true),
+    recordActivity(scope, [{ at: t.createdAt, kind: "external_draft", by: tokenBy(user), via: "mcp", type: t.type, tasks: [t.id], count: 1, note: t.title }]),
+  ]);
   return { ok: true, task: t, violations };
 }
 

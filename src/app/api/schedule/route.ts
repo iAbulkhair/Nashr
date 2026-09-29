@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { getSchedule, runDaily, runWeekly, saveSchedule, type Schedule } from "@/lib/schedule";
 import { isRoutineId, type RoutineId } from "@/lib/routines";
+import { byOf } from "@/lib/actor";
 
 export const maxDuration = 300;
 
@@ -33,7 +34,8 @@ export async function POST(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const b = (await req.json().catch(() => ({}))) as { run?: string };
-  if (b.run === "weekly") return NextResponse.json({ ok: true, result: await runWeekly(u) });
+  // The owner's own "Run now": its activity rows name them (or the founder), not the cron.
+  if (b.run === "weekly") return NextResponse.json({ ok: true, result: await runWeekly(u, await byOf(u)) });
   if (b.run === "daily") return NextResponse.json({ ok: true, brief: await runDaily(u) });
   return NextResponse.json({ ok: false, error: "bad_run" }, { status: 400 });
 }

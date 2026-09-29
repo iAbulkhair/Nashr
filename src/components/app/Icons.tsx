@@ -8,6 +8,7 @@ const P: Record<string, React.ReactNode> = {
   folder: <><path d="M3.5 7A2.5 2.5 0 0 1 6 4.5h3.5l2 2H18A2.5 2.5 0 0 1 20.5 9v8a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 17V7Z" /></>,
   gift: <><rect x="3.5" y="9" width="17" height="11" rx="2" /><path d="M3.5 13h17M12 9v11M12 9c-2.5 0-4.5-1-4.5-3a2 2 0 0 1 4-.5c.2.8.5 2.5.5 3.5Zm0 0c2.5 0 4.5-1 4.5-3a2 2 0 0 0-4-.5c-.2.8-.5 2.5-.5 3.5Z" /></>,
   shield: <><path d="M12 3.5 5 6v6c0 4.2 3 7.2 7 8.5 4-1.3 7-4.3 7-8.5V6l-7-2.5Z" /><path d="m9.5 12 1.8 1.8 3.4-3.6" /></>,
+  clock: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>,
   grid: <><rect x="4" y="4" width="6.5" height="6.5" rx="1.5" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5" /></>,
   help: <><circle cx="12" cy="12" r="8.5" /><path d="M9.8 9.5a2.3 2.3 0 1 1 3.3 2.1c-.8.4-1.1.9-1.1 1.7M12 16.5h.01" /></>,
   bell: <><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 1.5h-15L6 16Z" /><path d="M10 19.5a2 2 0 0 0 4 0" /></>,

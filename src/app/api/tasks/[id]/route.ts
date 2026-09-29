@@ -7,6 +7,7 @@ import { getGov } from "@/lib/governance";
 import { readFile, writeFile } from "@/lib/files";
 import { decisionOf, recordDecisions, type DecisionAction } from "@/lib/decisions";
 import { editPctOf } from "@/lib/similarity";
+import { byOf } from "@/lib/actor";
 
 type Patch = { status?: string; editedBody?: string; note?: string; scheduledFor?: string | null };
 
@@ -15,7 +16,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const { id } = await ctx.params;
   const scope = sc(u);
-  const [b, gov, brand] = await Promise.all([req.json().catch(() => ({})) as Promise<Patch>, getGov(scope), getBrand(scope)]);
+  // Who decides is worked out from the session now, while the request's cookies can still be read, never from the body.
+  const [b, gov, brand, by] = await Promise.all([req.json().catch(() => ({})) as Promise<Patch>, getGov(scope), getBrand(scope), byOf(u)]);
 
   // What the owner waits for is the saved task. Preference learning, event tracking and the decision records are
   // collected here and run after the response.
@@ -60,7 +62,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   // The owner's typed reason belongs to the rejection when there is one, else to the edit: one note, one record.
   const reasoned = decided.find((d) => d.action === "reject") ?? decided.find((d) => d.action === "edit");
   if (reasoned) reasoned.note = b.note;
-  const records = decided.map((d) => decisionOf(t, d.action, now, d));
+  const records = decided.map((d) => decisionOf(t, d.action, now, { ...d, by }));
 
   const later = async () => {
     try {

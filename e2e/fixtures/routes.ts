@@ -59,6 +59,7 @@ export const APP_ROUTES: AppRoute[] = [
   { path: "/app/files", heading: { en: "Files" } },
   { path: "/app/brands", heading: { en: "Brands" } },
   { path: "/app/governance", heading: { en: "Governance" } },
+  { path: "/app/activity", heading: { en: "Activity" } },
   { path: "/app/integrations", heading: { en: "Integrations" } },
   { path: "/app/inspo", heading: { en: "Gulf inspiration" } },
   { path: "/app/notifications", heading: { en: "Notifications" } },

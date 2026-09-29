@@ -8,7 +8,8 @@ import { codeFor } from "./referral";
 import { monthKey } from "./credits";
 import { AGENTS, AGENT_IDS } from "./agents";
 import { usageMonthKeys } from "./usage";
-import { routineFingerprints, routineKeys } from "./routines";
+import { routineFingerprints, routineKeys, routineSkipKeys } from "./routines";
+import { activityKey } from "./activity";
 import { agentCapFingerprint, seenKey } from "./notifications";
 import { forgetWishlistUser } from "./wishlist";
 
@@ -43,6 +44,10 @@ export async function wipeAccount(email: string) {
       `fblog:${s}`,
       // The owner's decision records: per brand, with the reasons the owner typed.
       `decisions:${s}`,
+      // The governance history (who changed which setting, with their email) and its save lock (10 s TTL).
+      `govhist:${s}`, `govlock:${s}`,
+      // The activity log (titles, file names, member emails) and the routines' "nothing new" markers (8 or 35 days).
+      activityKey(s), ...routineSkipKeys(s),
       // Each routine's last run, locks, hold and attempt counts, for every routine id (routines.ts).
       ...routineKeys(s),
       // Follow-up markers that name this brand and live for weeks: the 80% cap warning (35 days) and a routine's run

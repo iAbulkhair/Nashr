@@ -25,6 +25,10 @@ export type SeedWish = { id: string; area: WishArea; title: Bi };
 
 /** Newest first. Dates are merge dates on main. */
 export const CHANGELOG: readonly ChangeEntry[] = [
+  // agent-team step 3, part L
+  { date: "2026-09-29", tag: "new", title: { ar: "سجل نشاط لكل وكيل", en: "An activity log for every agent" }, desc: { ar: "صفحة «النشاط» تعرض ما فعله كل وكيل في علامتك: الدفعات، وتقييم الحَكَم، والقرارات، والنشر، والصور والفيديو، والمهام الدورية، وتغييرات الحوكمة، مع من قام بها ومتى. صفِّ حسب الوكيل أو الحدث، ونزّل السجل ملف CSV.", en: "The Activity page shows what each agent did in your brand: batches, judging, decisions, publishing, images and videos, routines and governance changes, with who did it and when. Filter by agent or event, and download the log as a CSV file." } },
+  // agent-team step 3, part H
+  { date: "2026-09-29", tag: "new", title: { ar: "سجل تغييرات الحوكمة مع الاسترجاع", en: "Governance change history with restore" }, desc: { ar: "صفحة الحوكمة تعرض آخر تغييرات إعداداتها: متى، ومن غيّرها، وما الذي تغيّر. واسترجع الإعدادات كما كانت قبل أي تغيير، ويُسجَّل الاسترجاع تغييراً جديداً.", en: "The Governance page lists the latest changes to its settings: when, who made each, and what changed. Restore the settings as they were before any change; the restore is recorded as a new change." } },
   // #217
   { date: "2026-09-29", tag: "new", title: { ar: "مهام دورية لمزيد من الوكلاء", en: "Recurring routines for more agents" }, desc: { ar: "فعّل ما تريد منها: تقرير دانة الأسبوعي، ورسائل نور لاسترجاع السلات المتروكة، وتوقع رزان النقدي الشهري، ومراجعة ماجد الشهرية.", en: "Turn on the ones you want: Dana's weekly report, Noor's cart-recovery messages, Razan's monthly cash forecast and Majed's monthly review." } },
   { date: "2026-09-29", tag: "new", title: { ar: "سقف كريدت شهري لكل وكيل", en: "A monthly credit cap per agent" }, desc: { ar: "حدّد من صفحة الحوكمة كم يصرف كل وكيل في الشهر، ويصلك تنبيه عند 80%.", en: "Set in Governance how much each agent may spend a month, with a notice at 80%." } },

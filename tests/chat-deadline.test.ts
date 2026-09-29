@@ -68,7 +68,8 @@ describe("generate_image works to the chat request's own deadline", () => {
     const deadline = Date.now() + 200_000;
     await runTool(u, "generate_image", { task_id: t.id }, [], [], deadline);
     expect(vi.mocked(renderImage)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(renderImage).mock.calls[0][4]).toEqual({ deadline });
+    // With who asked and from where, for the render's activity rows (rule 167).
+    expect(vi.mocked(renderImage).mock.calls[0][4]).toEqual({ deadline, by: { kind: "owner", email: u.email }, from: "chat" });
   });
 
   it("with less than a minute left nothing is started or charged", async () => {
@@ -103,7 +104,7 @@ describe("generate_image works to the chat request's own deadline", () => {
     ];
     const deadline = deadlineFor(CHAT_MAX_DURATION_S, t0);
     await chat(u, "draw it", undefined, "noor", { lang: "en", deadline });
-    expect(vi.mocked(renderImage).mock.calls[0][4]).toEqual({ deadline });
+    expect(vi.mocked(renderImage).mock.calls[0][4]).toEqual({ deadline, by: { kind: "owner", email: u.email }, from: "chat" });
   });
 
   it("the ceiling chat() assumes is the one both routes that call it declare", () => {

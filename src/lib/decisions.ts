@@ -1,6 +1,8 @@
 import { CAPS, db, pushCapped } from "./db";
 import { agentForTask, type AgentId } from "./agents";
 import type { Task, TaskType } from "./brand";
+import type { By } from "./actor";
+import { recordActivity, type Activity } from "./activity";
 
 /**
  * The owner's decisions on the agents' work, one record per human decision, newest first in `decisions:{scope}`.
@@ -31,12 +33,17 @@ export type Decision = {
   /** The judge's score and automatic-fail code at the time of the decision, when the item had been judged. */
   score?: number;
   autofail?: string;
+  /**
+   * Who decided (`byOf(u)` in src/lib/actor.ts): the owner, a member, or the founder through support access. Worked out
+   * from the session before the response, never from the body. Absent on records written before 2026-09-29.
+   */
+  by?: By;
 };
 
 const key = (scope: string) => `decisions:${scope}`;
 
 /** One record from the task as it stands after the decision. */
-export function decisionOf(t: Task, action: DecisionAction, at: string, extra: { note?: unknown; editPct?: number } = {}): Decision {
+export function decisionOf(t: Task, action: DecisionAction, at: string, extra: { note?: unknown; editPct?: number; by?: By } = {}): Decision {
   const note = typeof extra.note === "string" ? extra.note.trim().slice(0, 300) : "";
   return {
     task: t.id, agent: agentForTask(t.type).id, type: t.type, channel: t.channel, action, at, title: String(t.title ?? "").slice(0, 80),
@@ -44,12 +51,20 @@ export function decisionOf(t: Task, action: DecisionAction, at: string, extra: {
     ...(typeof extra.editPct === "number" ? { editPct: extra.editPct } : {}),
     ...(t.quality ? { score: t.quality.score } : {}),
     ...(t.quality?.autofail ? { autofail: t.quality.autofail } : {}),
+    ...(extra.by ? { by: extra.by } : {}),
   };
 }
 
-/** Append the decisions of one request. The scope is always the caller's `sc(u)`; one round of parallel commands. */
+/**
+ * A decision in the activity log, with its `by` and the item's title as the note. A publish is left to the publish
+ * paths, which record every publish (`published`, with the provider) and not only the ones that approved the item.
+ */
+const activityOf = (d: Decision): Activity | null =>
+  d.action === "publish" ? null : { at: d.at, kind: "decision", agent: d.agent, by: d.by ?? { kind: "owner" }, via: "app", type: d.type, tasks: [d.task], outcome: d.action, note: d.title, ...(d.score !== undefined ? { score: d.score } : {}), ...(d.autofail ? { autofail: d.autofail } : {}) };
+
+/** Append the decisions of one request, and their activity rows. The scope is always the caller's `sc(u)`; one round of parallel commands. */
 export async function recordDecisions(scope: string, ds: Decision[]) {
-  await Promise.all(ds.map((d) => pushCapped(key(scope), JSON.stringify(d), CAPS.decisions)));
+  await Promise.all([...ds.map((d) => pushCapped(key(scope), JSON.stringify(d), CAPS.decisions)), recordActivity(scope, ds.map(activityOf))]);
 }
 
 /** The newest `limit` decisions of one scope, newest first. Unreadable rows are skipped rather than guessed at. */

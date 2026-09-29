@@ -11,6 +11,7 @@ import { listConversations } from "@/lib/conversations";
 import { withUserLock } from "@/lib/credits";
 import { wipeAccount } from "@/lib/account";
 import { CAPS, db, pushCapped } from "@/lib/db";
+import { listActivity } from "@/lib/activity";
 import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
@@ -23,18 +24,20 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
   const brands = await listBrands(u.email);
   const scopes = brands.map((b) => scopeFor(u.email, b.id));
   const tasks = (await Promise.all(scopes.map((s) => listTasks(s)))).flat().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  const [brand, usage, connections, convs, referrals] = await Promise.all([
+  const [brand, usage, connections, convs, referrals, activity] = await Promise.all([
     getBrand(u.email),
     getUsage(u.email),
     listConnections(u.email),
     Promise.all(scopes.map((s) => listConversations(s))).then((x) => x.flat().length),
     db.lrange(`referrals:${u.email}`, 0, 99).then((x) => x.length),
+    // The latest 100 activity rows of each brand, every brand in parallel (the scopes come from the account's own list).
+    Promise.all(brands.map((b, i) => listActivity(scopes[i], { limit: 100 }).then((p) => ({ brand: b.id, name: b.name, rows: p.rows })))),
   ]);
   const scores = tasks.filter((t) => t.quality).map((t) => t.quality!.score);
   const { passHash: _omit, ...safe } = u;
   void _omit;
   return NextResponse.json({
-    ok: true, user: safe, brand, tasks, usage, connections, brands, conversations: convs, referrals,
+    ok: true, user: safe, brand, tasks, usage, connections, brands, conversations: convs, referrals, activity,
     avgScore: scores.length ? Math.round(scores.reduce((s, x) => s + x, 0) / scores.length) : null,
   });
 }

@@ -1,4 +1,5 @@
 import { randomBytes } from "crypto";
+import { vi } from "vitest";
 import { createUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 
@@ -14,6 +15,19 @@ export async function signIn(email: string) {
   await db.set(`session:${token}`, { email, at: Date.now() }, 3600);
   g.__testJar.clear();
   g.__testJar.set("nashr_session", token);
+  return token;
+}
+/**
+ * The founder's support access to `email`'s account, as the console's Impersonate action leaves the cookies: the
+ * founder's own live session saved in `nashr_return`, and `nashr_impersonate` naming the account. Only the helper
+ * cookies are added, so the caller's `nashr_session` stays. Stubs ADMIN_EMAILS to `founder` (vi.unstubAllEnvs undoes it).
+ */
+export async function supportAccess(email: string, founder = "support-founder@test.example") {
+  vi.stubEnv("ADMIN_EMAILS", founder);
+  const token = randomBytes(32).toString("hex");
+  await db.set(`session:${token}`, { email: founder, at: Date.now() }, 3600);
+  g.__testJar.set("nashr_return", token);
+  g.__testJar.set("nashr_impersonate", email);
   return token;
 }
 /** Wait for work a handler scheduled with `after()`. */

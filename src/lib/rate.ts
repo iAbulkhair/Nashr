@@ -57,6 +57,20 @@ export async function draftAllowed(email: string): Promise<boolean> {
 export const OAUTH_TOKEN_PER_IP = 60, OAUTH_TOKEN_WINDOW = 900;
 export const OAUTH_REGISTER_PER_IP = 30, OAUTH_REGISTER_WINDOW = 3600;
 
+/**
+ * Governance restores per account (`POST /api/governance/rollback`). Each one rewrites every setting and adds a history
+ * record, so a script must not be able to churn them; an owner undoing a few changes stays far below this.
+ */
+export const GOV_ROLLBACKS_PER_HOUR = 20;
+
+/**
+ * The owner's activity log, per account: pages and filters (`GET /api/activity`) and CSV downloads
+ * (`GET /api/activity/export`). Every read loads the brand's whole capped log (CAPS.activity rows), so a script paging
+ * in a loop is bounded here; an owner filtering and pressing "Load more" stays far below it.
+ */
+export const ACTIVITY_READS_PER_HOUR = 300;
+export const ACTIVITY_EXPORTS_PER_HOUR = 10;
+
 /** Constant-time string comparison for secrets. */
 export function sameSecret(a: string | null | undefined, b: string | null | undefined): boolean {
   const x = Buffer.from(a ?? ""), y = Buffer.from(b ?? "");
