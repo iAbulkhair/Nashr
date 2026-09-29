@@ -47,7 +47,6 @@ export async function assertPublicUrl(raw: string): Promise<URL> {
   return u;
 }
 
-/** Same signature as fetch. Redirects are followed by hand (max 5), each hop re-validated. */
 /** Headers that authenticate the caller. They belong to the origin they were issued for and to no other. */
 const CREDENTIAL_HEADERS = ["authorization", "cookie", "proxy-authorization", "x-shopify-access-token", "api-key"];
 
@@ -57,11 +56,18 @@ function stripCredentials(init: RequestInit): RequestInit {
   return { ...init, headers };
 }
 
-export async function safeFetch(input: string, init: RequestInit = {}): Promise<Response> {
+export type SafeFetchOptions = {
+  /** Every hop, the first and each redirect, must be https: a download that must not travel in cleartext on any leg. */
+  httpsOnly?: boolean;
+};
+
+/** fetch's signature plus options. Redirects are followed by hand (max 5), each hop re-validated. */
+export async function safeFetch(input: string, init: RequestInit = {}, opts: SafeFetchOptions = {}): Promise<Response> {
   let url = input;
   let current = init;
   for (let hop = 0; hop < 5; hop++) {
-    await assertPublicUrl(url);
+    const u = await assertPublicUrl(url);
+    if (opts.httpsOnly && u.protocol !== "https:") throw new UnsafeUrlError("not_https");
     const res = await fetch(url, { ...current, redirect: "manual" });
     if (res.status < 300 || res.status >= 400 || !res.headers.get("location")) return res;
     const next = new URL(res.headers.get("location")!, url);

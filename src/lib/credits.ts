@@ -22,7 +22,9 @@ export async function withUserLock<T>(email: string, fn: (u: User) => Promise<T>
     if (!u) throw new Error("user_not_found");
     return await fn(u);
   } finally {
-    await db.unlock(key);
+    // A failed release must not turn a balance change that was saved into a throw: callers read a throw as "nothing
+    // changed" (a charge answered busy while kept, a refund released for a second time). The 10 s TTL frees the lock.
+    await db.unlock(key).catch((e) => console.error("user lock release failed", e instanceof Error ? e.name : "error"));
   }
 }
 
@@ -43,7 +45,7 @@ export type AgentCharge =
   | { ok: false; reason: "agent_cap"; credits: number; agent: AgentId; spent: number; cap: number };
 
 /** A cap is a finite number of at least 0; anything else (none set, NaN, negative) is no cap. */
-const capOf = (cap: number | undefined) => (typeof cap === "number" && Number.isFinite(cap) && cap >= 0 ? cap : undefined);
+export const capOf = (cap: number | undefined) => (typeof cap === "number" && Number.isFinite(cap) && cap >= 0 ? cap : undefined);
 
 /** This month's credits per agent in one brand scope. A record written in an earlier month counts as empty. */
 export function agentSpendFor(u: Pick<User, "agentSpend">, scope: string, month = monthKey()): Partial<Record<AgentId, number>> {

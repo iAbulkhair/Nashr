@@ -134,6 +134,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/notifications": "member",
   "POST /api/schedule": "member", // run now: an explicit request, charged like generate
   "POST /api/tasks/[id]/image": "member",
+  "POST /api/tasks/[id]/video": "member",
+  "POST /api/media/hook/[provider]": "public",
 };
 
 /**
@@ -150,15 +152,18 @@ const READS: Record<string, Gate> = {
   "GET /api/referral/share": g("owner", "referral"),
   "GET /api/team": g("member", "team.view"),
   "GET /api/profile": g("member", "read"),
+  "GET /api/media/[jobId]": "member",
 
   "GET /api/cron/daily": "cron",
   "GET /api/cron/weekly": "cron",
   "GET /api/cron/golden": "cron",
   "GET /api/cron/routines": "cron",
+  "GET /api/cron/media": "cron",
 
   "GET /api/admin/evals": "admin-console",
   "GET /api/admin/export": "admin-console",
   "GET /api/admin/golden": "admin-console",
+  "GET /api/admin/media": "admin-console",
   "GET /api/admin/log": "admin-console",
   "GET /api/admin/overview": "admin-console",
   "GET /api/admin/plan": "admin-console",

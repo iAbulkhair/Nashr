@@ -33,4 +33,33 @@ describe("safeFetch", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("ok", { status: 200 })));
     expect(await (await safeFetch("https://8.8.8.8/")).text()).toBe("ok");
   });
+
+  /** An https start that redirects to plain http, then answers 200 there. */
+  const downgrade = () => vi.fn(async (url: string | URL | Request) =>
+    String(url).startsWith("https:") ? new Response(null, { status: 302, headers: { location: "http://8.8.4.4/file.mp4" } }) : new Response("swapped", { status: 200 }));
+
+  it("httpsOnly refuses a redirect from https to http, and never requests the http hop", async () => {
+    const fetchMock = downgrade();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(safeFetch("https://8.8.8.8/file.mp4", {}, { httpsOnly: true })).rejects.toThrow(/unsafe_url:not_https/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe("https://8.8.8.8/file.mp4");
+  });
+
+  it("httpsOnly refuses an http start without a request, and still follows https to https", async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request) =>
+      String(url).endsWith("/start") ? new Response(null, { status: 302, headers: { location: "https://8.8.4.4/end" } }) : new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(safeFetch("http://8.8.8.8/start", {}, { httpsOnly: true })).rejects.toThrow(/unsafe_url:not_https/);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await (await safeFetch("https://8.8.8.8/start", {}, { httpsOnly: true })).text()).toBe("ok");
+    expect(fetchMock.mock.calls.map((c) => String(c[0]))).toEqual(["https://8.8.8.8/start", "https://8.8.4.4/end"]);
+  });
+
+  it("without httpsOnly, other callers keep following a public http hop (crawl, catalogs, connectors)", async () => {
+    const fetchMock = downgrade();
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await (await safeFetch("https://8.8.8.8/file.mp4")).text()).toBe("swapped");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

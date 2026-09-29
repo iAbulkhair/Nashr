@@ -37,6 +37,8 @@ export const TASK_COUNT: Record<TaskType, number> = {
 };
 /** Types that get a generated image button in the inbox. */
 export const IMAGE_TYPES: TaskType[] = ["social", "ads", "gbp", "whatsapp", "cart_recovery"];
+/** Types that get a video button in the inbox, checked again on the server. */
+export const VIDEO_TYPES: TaskType[] = ["social", "ads"];
 
 /** Credits charged for one generated image. */
 export const IMAGE_COST = 1;

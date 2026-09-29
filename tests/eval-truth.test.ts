@@ -161,6 +161,49 @@ describe("the judge", () => {
     expect(seen[0].content, "and must NOT be told the owner asked for 3").not.toMatch(/asked for exactly 3/);
   });
 
+  it("writes its verdict to the item as stored now, and never brings back an item deleted meanwhile", async () => {
+    const during = { fn: async () => {} };
+    vi.resetModules();
+    vi.stubEnv("ANTHROPIC_API_KEY", "test");
+    claudeOn();
+    vi.doMock("@anthropic-ai/sdk", () => ({
+      default: class {
+        messages = {
+          create: async () => {
+            await during.fn();
+            return { model: "claude-sonnet-5", stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: JSON.stringify([verdict, verdict]) }] };
+          },
+        };
+      },
+    }));
+    const { judgeTasks } = await import("@/lib/judge");
+    const store = await import("@/lib/brand");
+    const { db: fresh } = await import("@/lib/db");
+    const scope = `judgew${Date.now()}@test.example`, clip = "https://s1.public.blob.vercel-storage.com/media/clip.mp4";
+    const a = task({ createdAt: daysAgo(0) }), b = task({ createdAt: daysAgo(0) });
+    await Promise.all([store.saveTask(scope, a, true), store.saveTask(scope, b, true)]);
+    // While the judge thinks, the owner deletes b.
+    during.fn = async () => { await fresh.del(`task:${scope}:${b.id}`); };
+    // And a render finishes on a between the judge's read of it and its write.
+    const key = `task:${scope}:${a.id}`;
+    const get = fresh.get.bind(fresh);
+    let landing: Promise<unknown> | undefined;
+    vi.spyOn(fresh, "get").mockImplementation(async (k: string) => {
+      const v = await get(k);
+      if (k === key && !landing) {
+        landing = store.updateTask(scope, a.id, (t) => ({ ...t, videoUrl: clip }));
+        // Waiting for it would deadlock under the task lock; a read-then-save let it land in full before saving.
+        await Promise.race([landing, new Promise((r) => setTimeout(r, 300))]);
+      }
+      return v as never;
+    });
+    await judgeTasks(scope, scope, brand, [a, b]);
+    await landing;
+    vi.mocked(fresh.get).mockRestore();
+    expect(await store.getTask(scope, a.id), "the clip and the verdict both stay").toMatchObject({ videoUrl: clip, quality: { score: 90 } });
+    expect(await store.getTask(scope, b.id), "a deleted item stays deleted").toBeNull();
+  });
+
   it("still honours a genuinely small request", async () => {
     const { scoreItems, seen } = await withJudgeReply([verdict, verdict]);
     await scoreItems("j@test.example", brand, "social", items.slice(0, 2), 2);
