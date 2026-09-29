@@ -2,10 +2,15 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Lang } from "@/lib/i18n";
+import ReadOnlyNote from "./ReadOnlyNote";
 
 type B = { id: string; name: string; createdAt: string; status: "active" | "archived"; hasBrandFile: boolean };
 
-export default function BrandsPanel({ lang }: { lang: Lang }) {
+/**
+ * `manage` (owner, admin): add, rename and archive. Everyone else can only switch their own active brand, and sees a
+ * note instead of the add form. Display only: POST /api/brands refuses the same roles.
+ */
+export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: { lang: Lang; manage?: boolean; readOnlyNote?: string }) {
   const ar = lang === "ar";
   const r = useRouter();
   const [brands, setBrands] = useState<B[]>([]);
@@ -28,13 +33,16 @@ export default function BrandsPanel({ lang }: { lang: Lang }) {
     <div className="mx-auto max-w-3xl">
       <h1 className="page-title">{ar ? "العلامات" : "Brands"}</h1>
       <p className="mt-2 text-ink/70">{ar ? "لكل علامة ملفها ومحتواها وقنواتها وإعداداتها. الكريدت مشترك بين علاماتك." : "Each brand has its own file, content, channels and settings. Credits are shared across brands."}</p>
-      <div className="mt-4 flex items-center justify-between card card-sm text-sm">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 card card-sm text-sm">
         <span>{ar ? "العلامات" : "Brands"}: <b dir="ltr">{activeCount} / {limit}</b></span>
-        <form onSubmit={(e) => { e.preventDefault(); act({ action: "add", name }); }} className="flex gap-2">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={ar ? "اسم العلامة الجديدة" : "New brand name"} className="rounded-lg border border-ink/15 px-3 py-2 text-sm" />
-          <button disabled={activeCount >= limit} className="rounded-lg bg-oasis px-4 py-2 text-sm font-semibold text-mist disabled:opacity-50">+ {ar ? "أضف" : "Add"}</button>
-        </form>
+        {manage && (
+          <form onSubmit={(e) => { e.preventDefault(); act({ action: "add", name }); }} className="flex gap-2">
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={ar ? "اسم العلامة الجديدة" : "New brand name"} className="rounded-lg border border-ink/15 px-3 py-2 text-sm" />
+            <button disabled={activeCount >= limit} className="rounded-lg bg-oasis px-4 py-2 text-sm font-semibold text-mist disabled:opacity-50">+ {ar ? "أضف" : "Add"}</button>
+          </form>
+        )}
       </div>
+      {!manage && readOnlyNote && <ReadOnlyNote text={readOnlyNote} />}
       {err && <p className="mt-3 text-sm text-sadu">{err} {err.includes("Agency") || err.includes("الوكالة") ? <a href={`/${lang}/app/billing`} className="underline">{ar ? "الاشتراك" : "Subscription"}</a> : null}</p>}
       <ul className="mt-6 grid gap-3">
         {brands.map((b) => (
@@ -45,8 +53,8 @@ export default function BrandsPanel({ lang }: { lang: Lang }) {
             </div>
             <div className="flex gap-2 text-xs">
               {b.id !== active && b.status === "active" && <button onClick={() => act({ action: "switch", id: b.id })} className="rounded-full bg-oasis px-3 py-1 font-semibold text-mist">{ar ? "انتقل" : "Switch"}</button>}
-              <button onClick={() => { const n = prompt(ar ? "الاسم الجديد:" : "New name:", b.name); if (n) act({ action: "rename", id: b.id, name: n }); }} className="btn btn-secondary btn-xs">{ar ? "إعادة تسمية" : "Rename"}</button>
-              {b.id !== "default" && <button onClick={() => act({ action: "archive", id: b.id })} className="btn btn-secondary btn-xs">{b.status === "archived" ? (ar ? "استعادة" : "Restore") : (ar ? "أرشفة" : "Archive")}</button>}
+              {manage && <button onClick={() => { const n = prompt(ar ? "الاسم الجديد:" : "New name:", b.name); if (n) act({ action: "rename", id: b.id, name: n }); }} className="btn btn-secondary btn-xs">{ar ? "إعادة تسمية" : "Rename"}</button>}
+              {manage && b.id !== "default" && <button onClick={() => act({ action: "archive", id: b.id })} className="btn btn-secondary btn-xs">{b.status === "archived" ? (ar ? "استعادة" : "Restore") : (ar ? "أرشفة" : "Archive")}</button>}
             </div>
           </li>
         ))}

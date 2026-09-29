@@ -31,7 +31,7 @@ import { advance, startMedia } from "@/lib/media/jobs";
 import type { MediaJob, StartInput } from "@/lib/media/types";
 import { fakeAdapter, fakeDeps, noNetwork, resetMediaCounters } from "./helpers/media";
 import { json, newUser, params, settle, signIn } from "./helpers/session";
-import type { User } from "@/lib/auth";
+import { currentUser, type User } from "@/lib/auth";
 import * as publishRoute from "@/app/api/publish/[id]/route";
 import * as taskRoute from "@/app/api/tasks/[id]/route";
 
@@ -117,7 +117,10 @@ describe("a render finishing while another writer holds the task", () => {
     const t = await taskFor(u, { status: "approved" });
     const video = await runningVideo(u, t);
     h.duringPublish = video.finish;
-    expect(await runTool(u, "publish_item", { task_id: t.id, provider: "telegram" }, [])).toMatch(/^Published to telegram/);
+    // The owner, resolved the way a request is: publish_item is refused to a user with no actor (tests/role-gates.test.ts).
+    await signIn(u.email);
+    const me = (await currentUser())!;
+    expect(await runTool(me, "publish_item", { task_id: t.id, provider: "telegram" }, [])).toMatch(/^Published to telegram/);
     expect((await getTask(u.email, t.id))!).toMatchObject({ videoUrl: video.deps.stored[0].url, mediaCredits: 12, published: [{ provider: "telegram" }] });
   });
 

@@ -4,6 +4,7 @@ import { appDict } from "@/lib/app-i18n";
 import { currentUser, sc } from "@/lib/auth";
 import { getGov } from "@/lib/governance";
 import { agentSpendFor } from "@/lib/credits";
+import { can } from "@/lib/roles";
 import GovernancePanel from "@/components/app/GovernancePanel";
 
 export const dynamic = "force-dynamic";
@@ -14,5 +15,6 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
   // This brand's credits per agent this month, from the User record the ledger writes: rendered here, never fetched on mount.
-  return <GovernancePanel t={appDict[lang]} initial={await getGov(sc(u))} spend={agentSpendFor(u, sc(u))} />;
+  // Every role reads the settings; only the owner changes them (PUT /api/governance checks the same `can()`).
+  return <GovernancePanel t={appDict[lang]} initial={await getGov(sc(u))} spend={agentSpendFor(u, sc(u))} readOnly={!can(u, "governance.write")} />;
 }
