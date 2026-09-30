@@ -35,19 +35,24 @@ export const seenKey = (email: string, fingerprint: string) => `notifseen:${emai
 /** The 80% warning's fingerprint: one per brand scope, agent and month. */
 export const agentCapFingerprint = (scope: string, agent: AgentId, month: string) => `agentcap80:${scope}:${agent}:${month}`;
 
-type Push = { n: Omit<Notif, "id" | "at">; fingerprint?: string; ttlDays?: number };
+export type Push = { n: Omit<Notif, "id" | "at">; fingerprint?: string; ttlDays?: number };
 /**
  * Claim each fingerprint with SET NX and its TTL, all in one round; only what this caller claimed is pushed, in one
  * write of the bell. A marker read then written let two overlapping runs (a chain hop and a catch-up) both notify.
+ * Answers per entry, in order: the notification pushed, or null when its fingerprint was already claimed.
  */
-async function pushMany(email: string, entries: Push[]): Promise<Notif[]> {
+export async function pushNotifs(email: string, entries: Push[]): Promise<(Notif | null)[]> {
   const won = await Promise.all(entries.map((e) => (e.fingerprint ? db.setNx(seenKey(email, e.fingerprint), 1, (e.ttlDays ?? 3) * 86400) : true)));
   const at = new Date().toISOString();
-  const items: Notif[] = entries.filter((_, i) => won[i]).map((e) => ({ id: randomBytes(5).toString("hex"), at, ...e.n }));
-  if (!items.length) return [];
+  const aligned: (Notif | null)[] = entries.map((e, i) => (won[i] ? { id: randomBytes(5).toString("hex"), at, ...e.n } : null));
+  const items = aligned.filter((x): x is Notif => !!x);
+  if (!items.length) return aligned;
   const all = await listNotifs(email);
   await db.set(KEY(email), [...items, ...all].slice(0, MAX));
-  return items;
+  return aligned;
+}
+async function pushMany(email: string, entries: Push[]): Promise<Notif[]> {
+  return (await pushNotifs(email, entries)).filter((x): x is Notif => !!x);
 }
 
 /** Push one follow-up. `fingerprint` + `ttlDays` suppress repeats of the same situation, claimed atomically. */

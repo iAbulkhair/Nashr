@@ -27,11 +27,12 @@ export type SecActor = "owner" | AgentId | "mcp" | "cron" | "rule";
 export type SecVia = "web" | "chat" | "mcp" | "cron";
 export type SecSource = "owner" | "chat" | "mcp" | "agent";
 /**
- * One note on an item. Two notes are written by code with a `kind`, and `noteText` words them in the reader's
+ * One note on an item. Some notes are written by code with a `kind`, and `noteText` words them in the reader's
  * language (the page in Arabic or English, a tool answer in English): `not_yet`, left by the owner's "Not yet", whose
- * `text` holds the claim that was sent back; `chased`, left when the owner followed up («تمت المتابعة», never "sent").
+ * `text` holds the claim that was sent back; `chased`, left when the owner followed up («تمت المتابعة», never "sent");
+ * `reminded`, left when a reminder the owner asked for fired; `reopened`, left when the owner reopened a done item.
  */
-export type SecNote = { at: string; by: SecActor; text: string; private: boolean; kind?: "not_yet" | "chased" };
+export type SecNote = { at: string; by: SecActor; text: string; private: boolean; kind?: "not_yet" | "chased" | "reminded" | "reopened" };
 
 export type SecItem = {
   /** Server-generated: `s` and 16 hex characters (`SEC_ID` in secretary.ts). */
@@ -74,6 +75,18 @@ export type SecItem = {
   expectBy?: string | null;
   /** When the owner last followed up. The chase clock restarts from it; a follow-up never closes the item. */
   lastChasedAt?: string | null;
+  /**
+   * One reminder instant the owner (in the app) or an agent (`remind_at`) asked for; in the future when set. The sweep
+   * (src/lib/secretary-remind.ts) fires it once, leaves a `reminded` note and clears it. Absent on items before 2026-09-30.
+   */
+  remindAt?: string | null;
+  /**
+   * A they-owe item's contact number for WhatsApp, digits only (8 to 15). Set by the owner in the app only; it never
+   * reaches a tool answer, a prompt or an agent. The page links to wa.me with a fixed message; nothing is sent by the app.
+   */
+  phone?: string | null;
+  /** The agent whose `handoff_note` (kind "blocked") opened this item, so a second similar note joins it as a note. */
+  handoffFrom?: AgentId | null;
   /** Bumped on every write; a writer that read an older rev gets 409 `conflict`. */
   rev: number;
 };
@@ -345,10 +358,12 @@ export function approvalsLine(n: number, lang: "ar" | "en"): string {
   return n === 0 ? "nothing waiting for your approval" : n === 1 ? "1 item waiting for your approval" : `${n} items waiting for your approval`;
 }
 
-/** A note as the reader sees it: the notes code writes (`not_yet`, `chased`) are worded in the reader's language. */
+/** A note as the reader sees it: the notes code writes (`not_yet`, `chased`, …) are worded in the reader's language. */
 export function noteText(n: Pick<SecNote, "text" | "kind">, lang: "ar" | "en"): string {
   if (n.kind === "not_yet") return lang === "ar" ? `لم تُنجز بعد (المقترح: ${n.text})` : `Not done yet (proposed: ${n.text})`;
   if (n.kind === "chased") return lang === "ar" ? "تمت المتابعة" : "Followed up";
+  if (n.kind === "reminded") return lang === "ar" ? "طلبت تذكيرك اليوم" : "You asked to be reminded";
+  if (n.kind === "reopened") return lang === "ar" ? "أُعيد فتحها" : "Reopened";
   return n.text;
 }
 

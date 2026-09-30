@@ -694,7 +694,7 @@ describe("private notes never reach a model (rule 205)", () => {
   });
 });
 
-describe("agents know today's Riyadh date, and nothing promises a reminder at the due time (rule 206)", () => {
+describe("agents know today's Riyadh date, and nothing promises a reminder at the due time or at a time that is not running (rule 206)", () => {
   it("puts the current Riyadh date and time in every agent's uncached prompt block", () => {
     const u = { email: "x@test.example", credits: 5, plan: "starter", trialEnds: "2026-10-01" } as User;
     for (const agent of AGENTS) {
@@ -704,8 +704,10 @@ describe("agents know today's Riyadh date, and nothing promises a reminder at th
       expect(fixed, agent.id).not.toContain(riyadhDay(Date.now()));
     }
     const reem = system(null, u, [], "", [], [], "reem")[0].text;
-    expect(reem).toMatch(/never say you will remind the owner at a specific time/);
-    expect(readFileSync("content/skills/secretary.md", "utf8")).toMatch(/never say you will remind the owner at a specific time/);
+    // Phase 2: a reminder is set with remind_at, and its arrival is said exactly as the tool answer says it.
+    expect(reem).toMatch(/There is no alert at the due time itself/);
+    expect(reem).toMatch(/set remind_at[\s\S]*never promise a time the answer does not give/);
+    expect(readFileSync("content/skills/secretary.md", "utf8")).toMatch(/Never say you will remind the owner at a specific time unless the tool answer for remind_at says it comes at that time/);
   });
 
   it("todo_create says so when a saved date has already passed", async () => {

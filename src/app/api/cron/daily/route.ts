@@ -13,6 +13,7 @@ import { followUps, notifEmailText } from "@/lib/notifications";
 import { getUser } from "@/lib/auth";
 import { syncAdsIfDue } from "@/lib/perf-store";
 import { purgeExpired, secretaryDaily } from "@/lib/secretary";
+import { sweepReminders, type SweepReport } from "@/lib/secretary-remind";
 
 export const maxDuration = 300;
 
@@ -78,11 +79,16 @@ type DailyItem = { user: User } | { idle: string };
 /**
  * Daily job for every workspace, then Reem's purge for every idle scope (archived brands, suspended accounts): eight at
  * a time, each isolated from the others' failures, resumable through runCronBatch. From Sunday to Tuesday it also kicks
- * the weekly route so anyone Sunday missed still gets a plan.
+ * the weekly route so anyone Sunday missed still gets a plan. Its first hop also sweeps Reem's due reminders once
+ * (`sweepReminders`): without the QStash tick, that is when a reminder arrives, late but never lost.
  */
 export async function GET(req: Request) {
   const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!sameSecret(bearer, process.env.CRON_SECRET)) return NextResponse.json({ ok: false }, { status: 401 });
+  let reminders: SweepReport | { error: string } | null = null;
+  if (!Number(new URL(req.url).searchParams.get("chain") ?? 0)) {
+    try { reminders = await sweepReminders(Date.now()); } catch (e) { reminders = { error: e instanceof Error ? e.name : "error" }; }
+  }
   const roster = await dailyRoster();
   const items: DailyItem[] = [...roster.users.map((user) => ({ user })), ...roster.idle.map((idle) => ({ idle }))];
   const report = await runCronBatch({
@@ -96,5 +102,5 @@ export async function GET(req: Request) {
     after(() => fetch(weekly, { headers, signal: AbortSignal.timeout(8000) }).then(() => undefined, () => undefined));
   }
   const count = (word: string) => Object.values(report.results).filter((r) => r.split("+").some((x) => x.startsWith(word))).length;
-  return NextResponse.json({ ok: true, ...report, briefs: count("brief"), emails: count("email"), nudges: count("nudge"), renewed: count("renewed"), emailConfigured: !!process.env.RESEND_API_KEY });
+  return NextResponse.json({ ok: true, ...report, briefs: count("brief"), emails: count("email"), nudges: count("nudge"), renewed: count("renewed"), emailConfigured: !!process.env.RESEND_API_KEY, reminders });
 }

@@ -8,9 +8,10 @@ import type { Action } from "./roles";
  * resolves only to an owner today (userFromBearer below), so these all pass for a valid token; they are here so that a
  * token ever issued to a lower role, or a user resolved with no actor, is held to the same table and never to less. A
  * tool missing from this map is refused. ask_noor's own tools (update_brand, publish_item) are gated inside runTool.
+ * `handoff_note` (a chat tool) is deliberately absent: it is not offered over MCP, and runTool refuses it there.
  * It lives here rather than in the route file because a Next.js route module may export only handlers and route config.
  */
-export const MCP_TOOL_ACTION: Readonly<Record<string, Action>> = { ask_noor: "chat", generate_content: "generate", list_inbox: "read", read_file: "read", list_files: "read", get_brand_rules: "read", check_brand: "read", save_draft: "drafts", agenda_get: "read", todo_create: "todo.write", todo_update: "todo.write", todo_propose_done: "todo.write" };
+export const MCP_TOOL_ACTION: Readonly<Record<string, Action>> = { ask_noor: "chat", generate_content: "generate", list_inbox: "read", read_file: "read", list_files: "read", get_brand_rules: "read", check_brand: "read", save_draft: "drafts", agenda_get: "read", agenda_next: "read", todo_create: "todo.write", todo_update: "todo.write", todo_propose_done: "todo.write" };
 
 /** Personal MCP tokens: `Authorization: Bearer nashr_...` → user. */
 export async function createMcpToken(email: string) {

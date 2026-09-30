@@ -15,7 +15,9 @@ export const dynamic = "force-dynamic";
 
 /**
  * My to-dos (Reem's list) for the active brand, rendered on the server: every date is formatted here in the brand's
- * zone and handed to the client as text, so the browser never formats a date and nothing differs at hydration.
+ * zone and handed to the client as text, so the browser never formats a date and nothing differs at hydration. A
+ * reminder reads "at {time}" only while timed reminders run (`timed`); otherwise it says it comes with the next
+ * morning brief. A they-owe item with a contact number gets a wa.me link with a fixed message: nothing is sent.
  */
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
@@ -25,13 +27,13 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const scope = sc(u);
   const t = appDict[lang];
   const T = t.todo;
-  const { now, zone, agenda, done, deleted, facts, tonight } = await todoPage(scope);
+  const { now, zone, agenda, done, deleted, facts, tonight, timed } = await todoPage(scope);
   const when = (iso: string, allDay = false) => formatWhen(iso, allDay, lang, now, zone);
 
   const badgesOf = (it: SecItem): string[] => [
     it.critical ? T.badges.critical : "",
     it.priority === 3 ? T.badges.urgent : it.priority === 2 ? T.badges.high : "",
-    it.source === "chat" ? T.badges.chat : it.source === "mcp" ? T.badges.mcp : "",
+    it.source === "chat" ? T.badges.chat : it.source === "mcp" ? T.badges.mcp : it.source === "agent" && it.handoffFrom && isAgentId(it.handoffFrom) ? T.badges.agent.replace("{name}", t.agents[it.handoffFrom].name) : "",
     it.links?.taskId ? T.badges.linked : "",
   ].filter(Boolean);
   const whoOf = (it: SecItem) => (it.direction === "they_owe" ? `${T.owedBy} ${partyName(it.owedBy, lang)}` : it.owedTo ? `${T.owedTo}${lang === "ar" ? "" : " "}${partyName(it.owedTo, lang)}` : "");
@@ -39,6 +41,10 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const claimBy = (by: NonNullable<SecItem["proposedDone"]>) => (isAgentId(by.by) ? `${t.agents[by.by].name} ${t.agents[by.by].says}` : T.assistantSays);
   // The fact comes from the stored inbox task, read by code; never from the claim.
   const factOf = (it: SecItem) => (it.links?.taskId ? linkFactText(facts[it.links.taskId], lang, now, zone) : "");
+  // The WhatsApp link of a they-owe item with a number: a fixed message in the page's language, opened by the owner.
+  const whatsapp = (it: SecItem) => (it.phone && it.owedBy !== "owner" && !it.completedAt && !it.deletedAt
+    ? `https://wa.me/${it.phone}?text=${encodeURIComponent(T.waMsg.replace("{name}", partyName(it.owedBy, lang)).replace("{title}", it.title))}`
+    : null);
   const row = (it: SecItem, e?: AgendaEntry): TodoRow => ({
     id: it.id, rev: it.rev, title: it.title, description: it.description,
     due: it.dueAt ? when(it.dueAt, it.allDay) : null,
@@ -54,6 +60,10 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
     result: it.result === AUTO_CLOSE_RESULT ? T.autoClosed : it.result,
     // The owner's own page: private notes included, the notes code writes worded in the page's language.
     notes: it.notes.slice(-3).map((n) => noteText(n, lang)),
+    remind: it.remindAt ? (timed ? T.remindAt : T.remindBrief).replace("{when}", when(it.remindAt)) : null,
+    remindLocal: it.remindAt ? zoneLocalInput(Date.parse(it.remindAt), zone) : null,
+    phone: it.owedBy !== "owner" ? (it.phone ?? null) : null,
+    whatsapp: whatsapp(it),
   });
   const sections: TodoSection[] = AGENDA_BUCKETS.filter((b) => agenda.buckets[b].length).map((b) => ({ bucket: b, title: T.buckets[b], rows: agenda.buckets[b].map((e) => row(e.item, e)) }));
   return (
@@ -69,6 +79,9 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
       deleted={deleted.map((it) => row(it))}
       tonight={tonight}
       canClose={can(u, "todo.close")}
+      timed={timed}
+      lang={lang}
+      inboxHref={`/${lang}/app`}
     />
   );
 }

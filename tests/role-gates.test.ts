@@ -80,6 +80,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/oauth/token": "public",
 
   "POST /api/mcp": "bearer",
+  // Reem's tick: a signed QStash call (src/lib/qstash.ts) or the CRON_SECRET bearer, rate limited per IP first.
+  "POST /api/cron/secretary": "cron",
 
   "POST /api/admin/login": "admin-console",
   "DELETE /api/admin/login": "admin-console",
@@ -142,6 +144,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/wishlist/suggest": "member",
   "POST /api/wishlist/vote": "member",
   "POST /api/secretary": g("member", "todo.write"),
+  // "Walk me through": skipping a card is a change to the list's state; the card's own buttons call gated routes.
+  "POST /api/secretary/walk": g("member", "todo.write"),
   "POST /api/admin/wishlist": "admin-console",
   "POST /api/media/hook/[provider]": "public",
 };
@@ -167,6 +171,7 @@ const READS: Record<string, Gate> = {
   "GET /api/cron/golden": "cron",
   "GET /api/cron/routines": "cron",
   "GET /api/cron/media": "cron",
+  "GET /api/cron/evening": "cron",
 
   "GET /api/admin/evals": "admin-console",
   "GET /api/admin/export": "admin-console",
@@ -197,6 +202,7 @@ const READS: Record<string, Gate> = {
   "GET /api/tasks": "member",
   "GET /api/tasks/[id]/pptx": "member",
   "GET /api/secretary": "member",
+  "GET /api/secretary/walk": g("member", "read"),
 
   "GET /api/mcp": "public-read",
   "GET /api/oauth/meta": "public-read",

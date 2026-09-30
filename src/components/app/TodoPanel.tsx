@@ -15,10 +15,16 @@ export type TodoRow = {
   /** Someone else owes it: the row offers "Followed up". `chase`: when it is expected, and the last follow-up. */
   theirs: boolean; chase: string;
   proposed: { claim: string } | null; fact: string; result: string | null; notes: string[];
+  /** The reminder as the owner reads it ("at" only while timed reminders run), and its datetime-local value. */
+  remind: string | null; remindLocal: string | null;
+  /** A they-owe item's contact number (the owner's own page only), and its wa.me link with a fixed message. */
+  phone: string | null; whatsapp: string | null;
 };
 export type TodoSection = { bucket: AgendaBucket; title: string; rows: TodoRow[] };
-type Panel = { id: string; kind: "done" | "snooze" | "reschedule" } | null;
+type Panel = { id: string; kind: "done" | "snooze" | "reschedule" | "remind" | "phone" } | null;
 const UNDO_MS = 8000;
+/** One card of "Walk me through" (GET/POST /api/secretary/walk). Its buttons call the item's own routes. */
+type WalkCard = { key: string; kind: "todo" | "approval"; id: string; title: string; line: string; actions: ("done" | "confirm" | "not_yet" | "snooze" | "chased" | "approve" | "open")[] };
 
 /**
  * My to-dos. The list is rendered on the server; every action here is one PATCH or POST to /api/secretary and then a
@@ -28,9 +34,9 @@ const UNDO_MS = 8000;
  * `canClose`: the owner or an admin (`todo.close`); a member adds, updates, snoozes and records follow-ups, and does not
  * see Done, Delete, Restore or Confirm / Not yet. Display only: the route refuses the same actions (403).
  */
-export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, allClear, empty, done, deleted, tonight, canClose }: {
+export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, allClear, empty, done, deleted, tonight, canClose, timed, lang, inboxHref }: {
   t: AppDict; zoneLabel: string; sections: TodoSection[]; approvals: { line: string; href: string } | null; snoozed: number; allClear: boolean; empty: boolean;
-  done: TodoRow[]; deleted: TodoRow[]; tonight: boolean; canClose: boolean;
+  done: TodoRow[]; deleted: TodoRow[]; tonight: boolean; canClose: boolean; timed: boolean; lang: "ar" | "en"; inboxHref: string;
 }) {
   const T = t.todo;
   const router = useRouter();
@@ -40,7 +46,10 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<{ id: string; text: string } | null>(null);
   const [undo, setUndo] = useState<string | null>(null);
-  const [form, setForm] = useState({ title: "", dueAt: "", direction: "i_owe" as "i_owe" | "they_owe", party: "" });
+  const [form, setForm] = useState({ title: "", dueAt: "", direction: "i_owe" as "i_owe" | "they_owe", party: "", remindAt: "", phone: "" });
+  const [phone, setPhone] = useState("");
+  const [walk, setWalk] = useState<{ card: WalkCard | null; left: number } | null>(null);
+  const [walkResult, setWalkResult] = useState<string | null>(null);
 
   // The Undo prompt is a toast pinned to the bottom of the screen, so a delete far down the page still shows it; it goes
   // away on its own after a few seconds.
@@ -71,7 +80,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
       setBusy(null);
     }
   }
-  const open = (id: string, kind: "done" | "snooze" | "reschedule", initial = "") => { setPanel(panel?.id === id && panel.kind === kind ? null : { id, kind }); setResult(""); setWhen(initial); setError(null); };
+  const open = (id: string, kind: NonNullable<Panel>["kind"], initial = "") => { setPanel(panel?.id === id && panel.kind === kind ? null : { id, kind }); setResult(""); setWhen(initial); setPhone(initial); setError(null); };
   async function act(row: TodoRow, body: Record<string, unknown>) {
     if (await send(row.id, { ...body, rev: row.rev })) setPanel(null);
   }
@@ -82,8 +91,51 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
     e.preventDefault();
     const body: Record<string, unknown> = { title: form.title, direction: form.direction, dueAt: form.dueAt || null };
     if (form.party.trim()) body[form.direction === "they_owe" ? "owedBy" : "owedTo"] = form.party;
-    if (await send("new", body)) setForm({ title: "", dueAt: "", direction: form.direction, party: "" });
+    if (form.remindAt) body.remindAt = form.remindAt;
+    if (form.direction === "they_owe" && form.phone.trim()) body.phone = form.phone;
+    if (await send("new", body)) setForm({ title: "", dueAt: "", direction: form.direction, party: "", remindAt: "", phone: "" });
   }
+  // Tapping the WhatsApp link records the follow-up; the request outlives the tab switch (keepalive). Nothing is sent.
+  function chasedByWhatsApp(row: TodoRow) {
+    void fetch(`/api/secretary/${row.id}`, { method: "PATCH", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "chased" }) }).then(() => router.refresh(), () => {});
+  }
+
+  // "Walk me through": one card at a time from the server; each button calls the item's own route, then the next card.
+  async function walkLoad(next?: string) {
+    setBusy("walk");
+    setError(null);
+    try {
+      const r = await fetch(`/api/secretary/walk?lang=${lang}`, next ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "next", key: next }) } : undefined);
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) { setError({ id: "walk", text: errText(j.error) }); return; }
+      setWalk({ card: j.card ?? null, left: j.left ?? 0 });
+      setWalkResult(null);
+    } catch {
+      setError({ id: "walk", text: T.errors.generic });
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function walkAct(card: WalkCard, action: WalkCard["actions"][number]) {
+    if (action === "done" && walkResult === null) { setWalkResult(""); return; }
+    if (action === "done" && !walkResult?.trim()) { setError({ id: "walk", text: T.errors.result_required }); return; }
+    const body = action === "done" ? { action: "complete", result: walkResult } : action === "confirm" ? { action: "confirm_done" } : action === "not_yet" ? { action: "reject_done" } : action === "snooze" ? { action: "snooze", preset: "tomorrow" } : action === "chased" ? { action: "chased" } : { status: "approved" };
+    setBusy("walk");
+    setError(null);
+    try {
+      const r = await fetch(card.kind === "approval" ? `/api/tasks/${card.id}` : `/api/secretary/${card.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.ok === false) { setError({ id: "walk", text: errText(j.error) }); return; }
+    } catch {
+      setError({ id: "walk", text: T.errors.generic });
+      return;
+    } finally {
+      setBusy(null);
+    }
+    router.refresh();
+    await walkLoad();
+  }
+  const walkLabel = (a: WalkCard["actions"][number]) => ({ done: T.done, confirm: T.confirm, not_yet: T.notYet, snooze: T.snoozeTomorrow, chased: T.chased, approve: T.walk.approve, open: T.walk.open })[a];
 
   const item = (row: TodoRow, bucket: AgendaBucket | "done" | "deleted") => (
     <li key={row.id} className="px-4 py-3">
@@ -97,6 +149,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
           </p>
           {row.description && <p className="mt-1 whitespace-pre-line text-sm text-ink/70" dir="auto">{row.description}</p>}
           {row.chase && <p className="mt-1 text-xs text-ink/60" dir="auto">{row.chase}</p>}
+          {row.remind && bucket !== "done" && bucket !== "deleted" && <p className="mt-1 text-xs text-oasis" dir="auto">{row.remind}</p>}
           {row.proposed && (
             <div className="mt-1 space-y-1 text-sm">
               <p className="text-ink/80" dir="auto">{row.proposed.claim} <span className="text-xs text-ink/50">({T.claimNote})</span></p>
@@ -119,12 +172,17 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
           </div>
         )) : bucket === "deleted" ? (canClose && (
           <button disabled={!!busy} onClick={async () => { if ((await send(row.id, { action: "restore" })) && undo === row.id) setUndo(null); }} className="btn btn-secondary btn-xs">{T.restore}</button>
-        )) : bucket === "done" ? null : (
+        )) : bucket === "done" ? (canClose && (
+          <button disabled={!!busy} onClick={() => send(row.id, { action: "reopen", rev: row.rev })} className="btn btn-secondary btn-xs">{T.reopen}</button>
+        )) : (
           <div className="flex flex-wrap gap-2">
             {canClose && <button disabled={!!busy} onClick={() => open(row.id, "done")} aria-expanded={panel?.id === row.id && panel.kind === "done"} className="btn btn-primary btn-xs">{T.done}</button>}
             <button disabled={!!busy} onClick={() => open(row.id, "snooze")} aria-expanded={panel?.id === row.id && panel.kind === "snooze"} className="btn btn-secondary btn-xs">{T.snooze}</button>
             <button disabled={!!busy} onClick={() => open(row.id, "reschedule", row.dueLocal ?? "")} aria-expanded={panel?.id === row.id && panel.kind === "reschedule"} className="btn btn-secondary btn-xs">{T.reschedule}</button>
+            <button disabled={!!busy} onClick={() => open(row.id, "remind", row.remindLocal ?? "")} aria-expanded={panel?.id === row.id && panel.kind === "remind"} className="btn btn-secondary btn-xs">{T.remind}</button>
             {row.theirs && <button disabled={!!busy} onClick={() => act(row, { action: "chased" })} title={T.chasedHint} className="btn btn-secondary btn-xs">{T.chased}</button>}
+            {row.whatsapp && <a href={row.whatsapp} target="_blank" rel="noopener noreferrer" onClick={() => chasedByWhatsApp(row)} title={T.whatsappHint} className="btn btn-secondary btn-xs">{T.whatsapp}</a>}
+            {row.theirs && <button disabled={!!busy} onClick={() => open(row.id, "phone", row.phone ?? "")} aria-expanded={panel?.id === row.id && panel.kind === "phone"} className="btn btn-secondary btn-xs">{T.phone}</button>}
             {canClose && <button disabled={!!busy} onClick={() => remove(row)} className="btn btn-danger btn-xs">{T.remove}</button>}
           </div>
         )}
@@ -143,7 +201,28 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
           <button disabled={!!busy} onClick={() => act(row, { action: "snooze", preset: "2h" })} className="btn btn-secondary btn-xs">{T.snooze2h}</button>
           {tonight && <button disabled={!!busy} onClick={() => act(row, { action: "snooze", preset: "tonight" })} className="btn btn-secondary btn-xs">{T.snoozeTonight}</button>}
           <button disabled={!!busy} onClick={() => act(row, { action: "snooze", preset: "tomorrow" })} className="btn btn-secondary btn-xs">{T.snoozeTomorrow}</button>
+          <button disabled={!!busy} onClick={() => act(row, { action: "snooze", preset: "nextweek" })} className="btn btn-secondary btn-xs">{T.snoozeNextWeek}</button>
         </div>
+      )}
+      {panel?.id === row.id && panel.kind === "remind" && (
+        <form onSubmit={(e) => { e.preventDefault(); void act(row, { remindAt: when || null }); }} className="mt-3 flex flex-wrap items-end gap-2">
+          <label className="min-w-0 flex-1 text-xs text-ink/70">{T.remindLabel.replace("{zone}", zoneLabel)}
+            <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} dir="ltr" className="input mt-1" />
+          </label>
+          <button disabled={!!busy} className="btn btn-primary btn-sm">{T.save}</button>
+          {row.remind && <button type="button" disabled={!!busy} onClick={() => act(row, { remindAt: null })} className="btn btn-secondary btn-sm">{T.remindClear}</button>}
+          <button type="button" onClick={() => setPanel(null)} className="btn btn-secondary btn-sm">{T.cancel}</button>
+          <p className="w-full text-xs text-ink/50">{timed ? T.timedOn : T.timedOff}</p>
+        </form>
+      )}
+      {panel?.id === row.id && panel.kind === "phone" && (
+        <form onSubmit={(e) => { e.preventDefault(); void act(row, { phone: phone.trim() || null }); }} className="mt-3 flex flex-wrap items-end gap-2">
+          <label className="min-w-0 flex-1 text-xs text-ink/70">{T.phone}
+            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={T.add.phonePh} maxLength={40} dir="ltr" className="input mt-1" />
+          </label>
+          <button disabled={!!busy} className="btn btn-primary btn-sm">{T.save}</button>
+          <button type="button" onClick={() => setPanel(null)} className="btn btn-secondary btn-sm">{T.cancel}</button>
+        </form>
       )}
       {panel?.id === row.id && panel.kind === "reschedule" && (
         <form onSubmit={(e) => { e.preventDefault(); void act(row, { action: "reschedule", dueAt: when || null }); }} className="mt-3 flex flex-wrap items-end gap-2">
@@ -169,6 +248,42 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
           <Link href={approvals.href} className="btn btn-accent btn-xs">{T.openInbox}</Link>
         </div>
       )}
+      <div className="mt-5">
+        {!walk ? (
+          <button disabled={!!busy} onClick={() => walkLoad()} className="btn btn-secondary btn-sm">{busy === "walk" ? T.walk.loading : T.walk.start}</button>
+        ) : (
+          <section aria-labelledby="todo-walk" className="card">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 id="todo-walk" className="card-title">{T.walk.start}</h2>
+              {walk.card && <span className="tnum text-xs text-ink/50">{T.walk.left.replace("{n}", String(walk.left))}</span>}
+            </div>
+            {walk.card ? (
+              <div className="mt-3">
+                <p className="font-medium" dir="auto">{walk.card.title}</p>
+                <p className="mt-1 text-xs text-ink/60" dir="auto">{walk.card.line}</p>
+                {walkResult !== null && (
+                  <label className="mt-3 block text-xs text-ink/70">{T.doneLabel}
+                    <input value={walkResult} onChange={(e) => setWalkResult(e.target.value)} placeholder={T.donePh} maxLength={1000} dir="auto" className="input mt-1" autoFocus />
+                  </label>
+                )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {walk.card.actions.map((a) => a === "open"
+                    ? <Link key={a} href={inboxHref} className="btn btn-secondary btn-xs">{walkLabel(a)}</Link>
+                    : <button key={a} disabled={!!busy} onClick={() => walkAct(walk.card!, a)} className={`btn btn-xs ${a === "done" || a === "confirm" || a === "approve" ? "btn-primary" : "btn-secondary"}`}>{walkLabel(a)}</button>)}
+                  <button disabled={!!busy} onClick={() => walkLoad(walk.card!.key)} className="btn btn-secondary btn-xs">{T.walk.next}</button>
+                  <button onClick={() => { setWalk(null); setWalkResult(null); }} className="btn btn-secondary btn-xs">{T.walk.close}</button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-ink/60">
+                <span>{T.walk.empty}</span>
+                <button onClick={() => setWalk(null)} className="btn btn-secondary btn-xs">{T.walk.close}</button>
+              </div>
+            )}
+            {error?.id === "walk" && <p role="alert" className="mt-2 text-sm text-sadu">{error.text}</p>}
+          </section>
+        )}
+      </div>
       {undo && (
         <div role="status" className="fixed inset-x-4 bottom-4 z-30 mx-auto flex max-w-md flex-wrap items-center justify-between gap-2 rounded-xl border border-ink/10 bg-white px-4 py-2 text-sm shadow-lg">
           <span>{T.removed}</span>
@@ -204,7 +319,16 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
           <label className="text-xs text-ink/70 sm:col-span-2">{form.direction === "they_owe" ? T.add.owedBy : T.add.owedTo}
             <input value={form.party} onChange={(e) => setForm({ ...form, party: e.target.value })} placeholder={T.add.owedByPh} maxLength={80} required={form.direction === "they_owe"} dir="auto" className="input mt-1" />
           </label>
+          <label className="text-xs text-ink/70">{T.add.remind.replace("{zone}", zoneLabel)}
+            <input type="datetime-local" value={form.remindAt} onChange={(e) => setForm({ ...form, remindAt: e.target.value })} dir="ltr" className="input mt-1" />
+          </label>
+          {form.direction === "they_owe" && (
+            <label className="text-xs text-ink/70">{T.add.phone}
+              <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder={T.add.phonePh} maxLength={40} dir="ltr" className="input mt-1" />
+            </label>
+          )}
         </div>
+        <p className="mt-2 text-xs text-ink/50">{timed ? T.timedOn : T.timedOff}</p>
         {error?.id === "new" && <p role="alert" className="mt-2 text-sm text-sadu">{error.text}</p>}
         <button disabled={!!busy || !form.title.trim()} className="btn btn-primary btn-sm mt-4">{busy === "new" ? T.add.saving : T.add.save}</button>
       </form>
