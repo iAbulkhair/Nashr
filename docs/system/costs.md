@@ -12,7 +12,7 @@ the founder console — see "Where the real numbers live" at the end.
 | `generate` | `claude-opus-5`, `max_tokens` 16000, effort medium | `src/lib/noor.ts` `generate`; every paid batch reaches it through `generateBatch` (`src/lib/generate-batch.ts`), the golden set directly | credits, per `TASK_COST` (a chat `draft_items` pays `countCost`), charged in `generateBatch` before the call |
 | `review` | `claude-sonnet-5`, 16000, effort low | `noor.ts` `critique`, runs after every batch unless governance turns it off | free (inside the batch) |
 | `judge` | `claude-sonnet-5`, 8000, effort low | `src/lib/judge.ts`, runs after the response via `after()` | free |
-| `xreview` | `claude-sonnet-5`, 4000, effort low, one call per reviewing agent | `noor.ts` `crossReview` (since 2026-09-30): the cross-agent review of `gtm_plan` (two calls, Razan and Majed), `growth_experiments`, `retention_play`, `board_deck`, `decision_memo`, `strategy_review` (Razan) and `pricing_review` (Majed); no other type; skipped when governance turns it off and in golden runs. **Metered to the reviewing agent**, not the author: it is the cost of Razan's and Majed's review work | free (inside the batch) |
+| `xreview` | `claude-sonnet-5`, 4000, effort low, one call per reviewing agent | `noor.ts` `crossReview` (since 2026-09-30): the cross-agent review of `gtm_plan` (two calls, Razan and Majed), `growth_experiments`, `retention_play`, `board_deck`, `decision_memo`, `strategy_review` (Razan) and `pricing_review` (Majed); no other type; skipped when governance turns it off, in golden runs, and with less than 60 s of the caller's deadline left; one attempt of at most 45 s per call, no SDK retries. **Metered to the reviewing agent**, not the author: it is the cost of Razan's and Majed's review work | free (inside the batch) |
 | `chat` | `claude-opus-5`, 8000, effort medium, **up to 5 calls per turn** (tool loop) | `src/lib/chat.ts` | **nothing** |
 | `onboard` | `claude-opus-5` × 3 parallel, 10000 + 12000 + 12000 | `src/lib/onboard.ts` | **nothing**, once per workspace |
 | `image_prompt` | `claude-sonnet-5`, 400, effort low, one attempt of at most 20 s, no SDK retries | `src/lib/media/prompts.ts` (image **and** video prompts; video is metered under this kind too, spec A18) | charged with the render (section 3.1); a fixed template, and no model call, while Claude is paused |
@@ -160,7 +160,18 @@ type instead of a flat 16,000; and move the judge to a sampled run (every third 
 - **Cron** charges credits for the weekly plan and makes no model call for the daily brief.
 - **The cross-agent review** (since 2026-09-30) makes no call of its own: it runs inside a paid batch of one of seven
   types, one call per reviewing agent (two for `gtm_plan`), so the credits and caps that bound batches bound it too.
-  The owner can switch it off on the Governance page (`Governance.crossReview`); golden runs never make it.
+  The owner can switch it off on the Governance page (`Governance.crossReview`); golden runs never make it. Each call
+  is one attempt of at most 45 s (`CROSS_REVIEW_TIMEOUT_MS`, `maxRetries: 0`), and none starts with less than 60 s of
+  the caller's deadline left (`CROSS_REVIEW_MIN_MS`), so a slow reviewer can never push a charged batch past the
+  platform's 300 s limit, where the credits would be kept and nothing saved; the batch is then saved without notes.
+- **Majed's handoffs** (since 2026-09-30) add no model call of their own. Proposing is a tool call inside a chat turn
+  (free, bounded like chat) and writes a record; each item runs only when a login presses Run (or, opt-in, from Majed's
+  auto-run below), as one batch through
+  `generateBatch` (charged `TASK_COST[type]` to the item's owning agent under its cap, refunded on failure), one item per
+  request, at most `HANDOFF_RUNS_PER_HOUR` (60) runs per account an hour, under a lock that lets one run of a handoff at a
+  time. The brief block adds about 900 characters to that batch's generation, reviewer, cross-review and judge messages:
+  the brief (at most 600 characters, JSON-quoted by `asData`, so a little more when it holds characters that must be
+  escaped), its label (`LEAD_BRIEF_LABEL`, 259 characters) and the tags around it (about 30).
 - **Media renders** (spec 4.8, `src/lib/media/jobs.ts`) are bounded in several layers, all but the last in code:
   - credits are charged before the submit and refunded exactly once when the render fails (`refundOnce`: a 60 s claim on
     `mrefund:{jobId}`, then `"done"` once the refund was made), so an owner never pays for a failure, and the chat tool
@@ -193,10 +204,25 @@ type instead of a flat 16,000; and move the judge to a sampled run (every third 
   agent and its monthly cap to `charge`, and the weekly cap on scheduled items counts the whole batch before charging,
   including the batches of the brand's other routines running at the same moment (`routinehold:`). A gate checked in
   code skips a run without the input it needs ("idle" or "no_data", no charge, no model call; the next day's cron asks
-  again), no run is charged while Claude is paused or without a key, and a failed generation is refunded. A run the
-  platform kills after the charge is not refunded, so each routine may leave at most two such charges per week or
-  month (`routinetry:`) before it waits for its next period. The worst case for one brand with all four on is 2 + 3 per
+  again), no run is charged while Claude is paused or without a key, and a failed generation is refunded. No run is
+  started with less than 180 s of the cron's invocation left (`retry:late`, before the charge; a later hop runs it),
+  and the cross-agent review of Majed's strategy review is bounded by that deadline, so a kill is left to a model call
+  far slower than usual. A run the platform kills after the charge is not refunded, so each routine may leave at most
+  two such charges per week or month (`routinetry:`) before it waits for its next period. The worst case for one brand with all four on is 2 + 3 per
   week and 4 + 5 per month in credits, plus at most two lost charges per routine and period when runs are killed.
+- **Majed's auto-run** (since 2026-09-30, `src/lib/handoff-auto.ts`) is the only spend on a handoff without a login
+  pressing Run, and it is off until the owner switches it on in Governance, which needs a monthly cap on at least one
+  agent Majed hands work to and an explicit confirmation. The routines cron then starts at most one item a day per
+  brand, of a proposal the owner made in chat in the last 7 days whose card reached the owner (the reply carrying it
+  was saved, and its conversation was not deleted; the Governance page lists what may start next, with Decline), of at most 3 items and 12 credits in all, and only for
+  an agent with an owner-set cap: each item is one batch charged `TASK_COST[type]` to that agent under that cap (so the
+  owner's cap is the bound on what the auto-run can spend on an agent in a month), inside the weekly cap on items made
+  on their own (`isAutonomous`, shared with the Sunday plan and the routines). Today's dearest item a 12-credit proposal
+  can hold is `social` at 10 credits, so one brand's auto-run spends at most 10 credits a day, within those caps. It
+  never runs while Claude is paused or without a key, a refused charge costs nothing, a failed generation is refunded,
+  and a run the platform kills after the charge is not started again (at most two such charges per item,
+  `handofftry:`). Its batches wait for the owner like any other (`forcePending`), so nothing it makes is published or
+  approved on its own.
 
 ## 6. Where the real numbers live
 

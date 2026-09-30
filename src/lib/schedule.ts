@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { getUser, trialOver, type User } from "./auth";
-import { getBrand, indexedAt, listLite, rebuildIndex, rebuildPending, type Brand } from "./brand";
+import { getBrand, indexedAt, isAutonomous, listLite, rebuildIndex, rebuildPending, type Brand } from "./brand";
 import { generateBatch } from "./generate-batch";
 import { modelState } from "./model";
 import { getGov } from "./governance";
@@ -88,9 +88,10 @@ export async function runWeekly(user: User, by: By = systemBy("cron")): Promise<
 async function weeklyFor(user: User, email: string, brand: Brand, by: By): Promise<string> {
   const gov = await getGov(email);
   if (trialOver(user)) return "trial_over";
-  // weekly cap: count items Noor created on her own in the last 7 days
+  // weekly cap: count items the team created on its own in the last 7 days (`isAutonomous`: the Sunday plan, the
+  // routines and Majed's auto-run; not an MCP draft, which the owner's own assistant wrote)
   const weekAgo = Date.now() - 7 * 864e5;
-  const auto = (await listLite(email, new Date(weekAgo))).filter((t) => t.source === "scheduled").length;
+  const auto = (await listLite(email, new Date(weekAgo))).filter(isAutonomous).length;
   if (auto >= gov.weeklyCap) return "cap_reached";
   // Loaded before the charge (notifications imports this module, hence the dynamic import), so nothing after a kept
   // charge can fail before the week is recorded.

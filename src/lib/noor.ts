@@ -1,7 +1,7 @@
 import { meter } from "./usage";
 import { agentById, agentForTask, type Agent } from "./agents";
 import { playbookSection, reviewBlock, skillsBlock } from "./skills";
-import { asData, groundingBlocks, parseObjectArray, type Grounding } from "./json";
+import { asData, groundingBlocks, leadBriefBlock, parseObjectArray, type Grounding } from "./json";
 import { TASK_COUNT } from "./brand";
 import Anthropic from "@anthropic-ai/sdk";
 import { ModelPaused, modelState } from "./model";
@@ -162,7 +162,7 @@ function mock(type: TaskType, brand: Brand): Generated[] {
   }));
 }
 
-export type GenOptions = { /** account email for token metering */ meter?: string; memory?: string; reviewer?: boolean; noEmDash?: boolean; /** WORKSPACE DATA block for report tasks */ stats?: string; /** produce exactly this many items instead of the batch size (small asks from chat) */ count?: number; /** `feedbackFor` output for the owning agent, placed in the uncached block; the golden set passes none */ feedback?: string; /** the cross-agent review (`Governance.crossReview`); on unless false. The golden set passes false */ crossReview?: boolean };
+export type GenOptions = { /** account email for token metering */ meter?: string; memory?: string; reviewer?: boolean; noEmDash?: boolean; /** WORKSPACE DATA block for report tasks */ stats?: string; /** produce exactly this many items instead of the batch size (small asks from chat) */ count?: number; /** `feedbackFor` output for the owning agent, placed in the uncached block; the golden set passes none */ feedback?: string; /** the cross-agent review (`Governance.crossReview`); on unless false. The golden set passes false */ crossReview?: boolean; /** an item of Majed's handoff (src/lib/handoffs.ts): his brief, a labelled data block for the agent, the reviewer, the cross-reviewers and the judge; never owner notes */ leadBrief?: string; /** when the caller's request ends (epoch ms): the cross-agent review, notes only, is skipped when less than CROSS_REVIEW_MIN_MS of it is left */ deadline?: number };
 
 function stripDashes(items: Generated[]) {
   return items.map((i) => ({ ...i, body: i.body.replace(/\s*[—–]\s*/g, ", ") }));
@@ -176,7 +176,10 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   const client = new Anthropic();
   const agent = agentForTask(type);
   const n = opts.count && opts.count > 0 ? Math.min(opts.count, TASK_COUNT[type]) : TASK_COUNT[type];
-  const userMsg = `TASK: ${SPECS[type]}${n !== TASK_COUNT[type] ? `\n\nOVERRIDE: the owner asked for exactly ${n} item(s) of this type, not the full batch. Pick the most relevant channel(s) and angles; keep every quality rule.` : ""}${extra ? `\n\nOWNER NOTES FOR THIS BATCH: ${extra.slice(0, 2000)}` : ""}${opts.stats ? `\n\n${opts.stats}` : ""}\n\nReturn exactly ${n} item(s) as a JSON array.`;
+  // A lead brief (a handoff item) is its own labelled data block after the owner's notes, and only when there is one:
+  // a batch without it sends exactly the message it sent before handoffs existed.
+  const lead = leadBriefBlock(opts.leadBrief);
+  const userMsg = `TASK: ${SPECS[type]}${n !== TASK_COUNT[type] ? `\n\nOVERRIDE: the owner asked for exactly ${n} item(s) of this type, not the full batch. Pick the most relevant channel(s) and angles; keep every quality rule.` : ""}${extra ? `\n\nOWNER NOTES FOR THIS BATCH: ${extra.slice(0, 2000)}` : ""}${lead ? `\n\n${lead}` : ""}${opts.stats ? `\n\n${opts.stats}` : ""}\n\nReturn exactly ${n} item(s) as a JSON array.`;
 
   const params = {
     model: "claude-opus-5",
@@ -211,12 +214,19 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
     }
   }
   let items = parseItems(text);
-  if (opts.reviewer !== false) items = await critique(client, brand, prefs, type, items, { meter: opts.meter, notes: extra, memory: opts.memory, stats: opts.stats });
+  // The grounding the reviewer, the cross-reviewers and (through generateBatch) the judge read; `leadBrief` only when set.
+  const ground: Grounding = { notes: extra, memory: opts.memory, stats: opts.stats, ...(opts.leadBrief ? { leadBrief: opts.leadBrief } : {}) };
+  if (opts.reviewer !== false) items = await critique(client, brand, prefs, type, items, { meter: opts.meter, ...ground });
   if (opts.noEmDash) items = stripDashes(items);
   // Enforced after the reviewer, so neither pass can reintroduce a discount the owner never offered.
   if (type === "cart_recovery") items = capDiscounts(items, brand.offers);
-  // Last, after every pass that changes text, so the reviewing agents read what the owner will read. Notes only.
-  if (opts.crossReview !== false) items = await crossReview(client, brand, type, items, { meter: opts.meter, notes: extra, memory: opts.memory, stats: opts.stats });
+  // Last, after every pass that changes text, so the reviewing agents read what the owner will read. Notes only, so it
+  // yields to the request's deadline: with too little of it left the batch is saved without notes, never killed with its
+  // charge kept.
+  if (opts.crossReview !== false) {
+    if (opts.deadline !== undefined && opts.deadline - Date.now() < CROSS_REVIEW_MIN_MS) console.warn("cross review skipped", "too little time left");
+    else items = await crossReview(client, brand, type, items, { meter: opts.meter, ...ground });
+  }
   return items;
 }
 
@@ -338,6 +348,17 @@ const CROSS_PLAYBOOK: Record<CrossReviewer, readonly string[]> = {
 
 /** Longest notes one verdict keeps, in characters. */
 export const CROSS_NOTES_MAX = 300;
+/**
+ * One reviewer's call may take this long, once: no SDK retries (the default would be a 10-minute timeout and two
+ * retries). The notes are optional, and a slow call must not push a charged batch past the platform's 300 s limit, where
+ * it would be killed before it is saved or refunded. Two reviewers run in parallel, so a batch waits at most this long.
+ */
+export const CROSS_REVIEW_TIMEOUT_MS = 45_000;
+/**
+ * With less than this left before the caller's deadline (`GenOptions.deadline`) the review is not started: the call's
+ * own limit plus time to save the batch.
+ */
+export const CROSS_REVIEW_MIN_MS = 60_000;
 /** The items as the reviewer reads them, cut like the judge's (judge.ts): long-form items are read whole. */
 const CROSS_BODY_CHARS = 24000;
 
@@ -415,7 +436,8 @@ export function parseCrossVerdicts(raw: string, n: number, by: CrossReviewer, mo
  * Ask each of the type's reviewers, in parallel, for notes on the batch. Runs only while the model is on (while paused
  * `generate` has thrown before it, and the mock path returns before it). Metered as `xreview` to the REVIEWING agent.
  * Never blocks delivery and never changes an item: on any failure (a reviewer's call, its reply, anything) the items
- * come back as they were, without that reviewer's verdicts.
+ * come back as they were, without that reviewer's verdicts. Bounded in time: one attempt of at most
+ * CROSS_REVIEW_TIMEOUT_MS per reviewer, and `generate` does not start it with less than CROSS_REVIEW_MIN_MS left.
  */
 async function crossReview(client: Anthropic, brand: Brand, type: TaskType, items: Generated[], ctx: Grounding & { meter?: string } = {}): Promise<Generated[]> {
   const reviewers = crossReviewers(type);
@@ -431,7 +453,7 @@ async function crossReview(client: Anthropic, brand: Brand, type: TaskType, item
           output_config: { effort: "low" },
           system: [{ type: "text", text: crossReviewPrompt(r), cache_control: { type: "ephemeral" } }],
           messages: [{ role: "user", content }],
-        });
+        }, { timeout: CROSS_REVIEW_TIMEOUT_MS, maxRetries: 0 });
         await meter(ctx.meter, res.model, "xreview", res.usage, r);
         if (res.stop_reason === "refusal") return [];
         const raw = res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");

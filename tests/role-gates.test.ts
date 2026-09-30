@@ -146,6 +146,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/wishlist/suggest": "member",
   "POST /api/wishlist/vote": "member",
   "POST /api/secretary": g("member", "todo.write"),
+  // Majed's handoffs: a run spends credits like a generation; a decline is a draft decision, like rejecting an item.
+  "POST /api/handoffs/[id]/run": g("member", "generate"),
+  "POST /api/handoffs/[id]/decline": g("member", "drafts"),
   "POST /api/admin/wishlist": "admin-console",
   "POST /api/media/hook/[provider]": "public",
 };
@@ -166,6 +169,7 @@ const READS: Record<string, Gate> = {
   "GET /api/profile": g("member", "read"),
   "GET /api/activity": g("member", "read"),
   "GET /api/activity/export": g("member", "read"),
+  "GET /api/handoffs/[id]": g("member", "read"),
   "GET /api/media/[jobId]": "member",
 
   "GET /api/cron/daily": "cron",

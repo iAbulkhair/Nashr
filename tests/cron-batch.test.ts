@@ -54,6 +54,25 @@ describe("runCronBatch", () => {
     const capped = await runCronBatch({ ...o, period: `cap${period}`, run: async () => { throw new Error("x"); }, req: req(30) });
     expect(capped.chained).toBe(false);
   });
+  it("chains for items refused only as late (retry:late) when the hop ran something; the next hop starts them first", async () => {
+    // Rule 263: a brand late in the list is served by a fresh invocation the same day, not the next day.
+    const o = { job: "t", id: (x: string) => x, concurrency: 1, startBudgetMs: 5000, markerTtlSeconds: 60 };
+    const ran: string[] = [];
+    const first = await runCronBatch({ ...o, period: `late${period}`, items: ["a", "b"], run: async (x) => { ran.push(x); return x === "a" ? "ok" : "retry:late"; }, req: req() });
+    expect(first).toMatchObject({ processed: 1, remaining: 1, chained: true });
+    await sleep(10);
+    expect(calls[0]).toBe("https://nashr.example/api/cron/weekly?chain=1");
+    // The late item kept its attempt: the next hop starts it.
+    const second = await runCronBatch({ ...o, period: `late${period}`, items: ["a", "b"], run: async (x) => { ran.push(x); return "ok"; }, req: req(1) });
+    expect(second).toMatchObject({ alreadyDone: 1, processed: 1, remaining: 0, chained: false });
+    expect(ran).toEqual(["a", "b", "b"]);
+    // A hop in which every item it took was late ran nothing: the next one would be just as late, so it does not chain.
+    const allLate = await runCronBatch({ ...o, period: `alllate${period}`, items: ["a", "b"], run: async () => "retry:late", req: req() });
+    expect(allLate).toMatchObject({ processed: 0, remaining: 2, chained: false });
+    // Only "retry:late" chains among the retries: a locked or paused item next to a finished one still does not.
+    const locked = await runCronBatch({ ...o, period: `lockok${period}`, items: ["a", "b"], run: async (x) => (x === "a" ? "ok" : "retry:locked"), req: req() });
+    expect(locked).toMatchObject({ processed: 1, remaining: 1, chained: false });
+  });
 });
 
 describe("lastSundayUtc", () => {

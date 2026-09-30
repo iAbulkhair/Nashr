@@ -240,16 +240,24 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                   <span className="font-semibold">{(t.channelNames as Record<string, string>)[x.channel] ?? x.channel}</span>
                   <span className="text-sm text-ink/70" dir="auto">· {x.title}</span>
                 </div>
-                <span className="flex items-center gap-2 text-xs">
-                  {guarded && <span title={hits.length ? G.held : G.ok} className={`flex items-center gap-1 rounded-full px-2 py-0.5 ${hits.length ? "bg-sadu/10 font-semibold text-sadu-deep" : "bg-oasis/10 text-oasis"}`}><Icon name="shield" className="h-3.5 w-3.5" />{hits.length ? G.held : G.ok}</span>}
-                  {x.quality && <span title={x.quality.notes} className={`tnum rounded-full px-2 py-0.5 ${x.quality.score >= 85 ? "bg-oasis/10 text-oasis" : x.quality.score >= 70 ? "bg-saffron/20 text-ink" : "bg-sadu/10 text-sadu-deep"}`} dir="ltr">{i.quality} {x.quality.score}</span>}
+                {/* Wraps whole pills onto a new line on a phone: a card can carry the guard, the judge, two reviewers, the
+                    handoff chip and the status at once. The short pills never break inside; the long handoff chip may,
+                    only when it alone is wider than the row. */}
+                <span className="flex flex-wrap items-center gap-2 text-xs">
+                  {guarded && <span title={hits.length ? G.held : G.ok} className={`flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 ${hits.length ? "bg-sadu/10 font-semibold text-sadu-deep" : "bg-oasis/10 text-oasis"}`}><Icon name="shield" className="h-3.5 w-3.5" />{hits.length ? G.held : G.ok}</span>}
+                  {x.quality && <span title={x.quality.notes} className={`tnum whitespace-nowrap rounded-full px-2 py-0.5 ${x.quality.score >= 85 ? "bg-oasis/10 text-oasis" : x.quality.score >= 70 ? "bg-saffron/20 text-ink" : "bg-sadu/10 text-sadu-deep"}`} dir="ltr">{i.quality} {x.quality.score}</span>}
                   {verdictsOf(x).map((v) => {
                     const name = t.agents[v.by].name;
                     const n = noteCount(v.notes);
-                    return <span key={v.by} className={`rounded-full px-2 py-0.5 ${v.verdict === "flag" ? "bg-saffron/20 font-semibold text-sadu-deep" : "bg-oasis/10 text-oasis"}`}>{v.verdict === "flag" ? (n === 1 ? fill(i.xNote, { name }) : fill(i.xNotes, { name, n })) : fill(i.xChecked, { name })}</span>;
+                    return <span key={v.by} className={`whitespace-nowrap rounded-full px-2 py-0.5 ${v.verdict === "flag" ? "bg-saffron/20 font-semibold text-sadu-deep" : "bg-oasis/10 text-oasis"}`}>{v.verdict === "flag" ? (n === 1 ? fill(i.xNote, { name }) : fill(i.xNotes, { name, n })) : fill(i.xChecked, { name })}</span>;
                   })}
-                  {x.source === "external" && <span title={i.externalHint} className="rounded-full bg-ink/5 px-2 py-0.5 text-ink/70">{i.external}</span>}
-                  <span className={`badge ${x.status === "approved" ? "badge-primary" : x.status === "rejected" ? "badge-danger" : "badge-accent"}`}>{i[x.status]}</span>
+                  {x.source === "external" && <span title={i.externalHint} className="max-w-full rounded-full bg-ink/5 px-2 py-0.5 text-ink/70">{i.external}</span>}
+                  {/* Made by a run of one of Majed's handoffs (`Task.parent`, set in code): back to the conversation that proposed it.
+                      `parent.auto`: his auto-run started it, not a login pressing Run. */}
+                  {x.source === "handoff" && x.parent && (x.parent.conv && /^[a-f0-9]{6,16}$/.test(x.parent.conv)
+                    ? <Link href={`/${lang}/app/chat?conv=${x.parent.conv}`} className="max-w-full rounded-full bg-oasis/10 px-2 py-0.5 text-oasis underline-offset-2 hover:underline">{fill(x.parent.auto ? i.fromHandoffAuto : i.fromHandoff, { name: t.agents.majed.name })}</Link>
+                    : <span className="max-w-full rounded-full bg-oasis/10 px-2 py-0.5 text-oasis">{fill(x.parent.auto ? i.fromHandoffAuto : i.fromHandoff, { name: t.agents.majed.name })}</span>)}
+                  <span className={`badge whitespace-nowrap ${x.status === "approved" ? "badge-primary" : x.status === "rejected" ? "badge-danger" : "badge-accent"}`}>{i[x.status]}</span>
                 </span>
               </div>
               <div className="px-4 pb-3">

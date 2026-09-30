@@ -12,6 +12,7 @@ import { CUSTOMER_FACING, brandRules, explain, gateTask, isCustomerFacing } from
 import { tokenBy } from "@/lib/actor";
 import { SEC_TOOL_DEFS, isSecTool, runSecretaryTool } from "@/lib/secretary";
 import { can } from "@/lib/roles";
+import { deadlineFor } from "@/lib/media/keys";
 
 export const maxDuration = 300;
 
@@ -51,6 +52,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const deadline = deadlineFor(maxDuration);
   let body: Rpc | Rpc[];
   try { body = await req.json(); } catch { return err(null, -32700, "Parse error", 400); }
   if (Array.isArray(body)) return err(null, -32600, "Batch not supported", 400);
@@ -81,7 +83,8 @@ export async function POST(req: Request) {
       case "generate_content": {
         if (!isTaskType(args.type)) return ok(id, { ...text("Unknown type."), isError: true });
         const type = args.type;
-        const r = await generateBatch(user, user.scope ?? user.email, { type, notes: String(args.notes ?? ""), source: "chat", via: "mcp", by: tokenBy(user) });
+        // The request's own deadline bounds the batch's cross-agent review (notes only, skipped when too little is left).
+        const r = await generateBatch(user, user.scope ?? user.email, { type, notes: String(args.notes ?? ""), source: "chat", via: "mcp", by: tokenBy(user), deadline });
         // A tool error, like insufficient credits: a JSON-RPC client reads the result, not an HTTP status.
         if (!r.ok) {
           switch (r.reason) {

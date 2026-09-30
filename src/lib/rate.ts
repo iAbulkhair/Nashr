@@ -71,6 +71,16 @@ export const GOV_ROLLBACKS_PER_HOUR = 20;
 export const ACTIVITY_READS_PER_HOUR = 300;
 export const ACTIVITY_EXPORTS_PER_HOUR = 10;
 
+/**
+ * Majed's handoffs, per account (src/lib/handoffs.ts). Reads: the chat's handoff cards fetch their record on show and
+ * after every action. Runs: each is a paid batch (the credits and the agent caps bound it too), and a run holds the
+ * handoff's lock for its whole length, so a script cannot stack them; "Run all" on a three-item card is three. Declines
+ * write the record and a log row, so they are bounded like any other write.
+ */
+export const HANDOFF_READS_PER_HOUR = 600;
+export const HANDOFF_RUNS_PER_HOUR = 60;
+export const HANDOFF_DECLINES_PER_HOUR = 120;
+
 /** Constant-time string comparison for secrets. */
 export function sameSecret(a: string | null | undefined, b: string | null | undefined): boolean {
   const x = Buffer.from(a ?? ""), y = Buffer.from(b ?? "");

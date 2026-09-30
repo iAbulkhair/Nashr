@@ -142,7 +142,8 @@ describe("a batch is one row with the owning agent, who asked and where; the jud
 
     const v = await owner("as-chat");
     const member = { kind: "member" as const, email: "sara@team.example", role: "member" as const };
-    await m.chat.runTool(v, "draft_items", { type: "sales_script", count: 1, brief: "b" }, [], [], undefined, { agent: "majed", by: member });
+    // Faris talking, not Majed: since step 3b Majed leads and proposes other agents' work instead (rule 245).
+    await m.chat.runTool(v, "draft_items", { type: "sales_script", count: 1, brief: "b" }, [], [], undefined, { agent: "faris", by: member });
     // The batch's agent is the type's owner, not the talking agent; `by` is the turn's.
     expect(await rows(v.email)).toEqual([expect.objectContaining({ kind: "generated", agent: "sami", by: member, via: "chat", count: 1 })]);
   });

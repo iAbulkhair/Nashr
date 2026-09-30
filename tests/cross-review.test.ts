@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -68,19 +68,19 @@ async function load(o: { items?: Item[]; cross?: (by: Reviewer, p: Params) => st
   vi.stubEnv("ANTHROPIC_API_KEY", state === "mock" ? "" : "test");
   if (state === "on") claudeOn();
   else vi.doMock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => state }));
-  const seen = { gen: [] as Params[], review: [] as Params[], judge: [] as Params[], cross: [] as { by: string; p: Params }[] };
+  const seen = { gen: [] as Params[], review: [] as Params[], judge: [] as Params[], cross: [] as { by: string; p: Params; opts?: unknown }[] };
   const items = o.items ?? [MEMO];
   vi.doMock("@anthropic-ai/sdk", () => ({
     default: class {
       static BadRequestError = class extends Error {};
       beta = { messages: { stream: (p: Params) => { seen.gen.push(p); return { finalMessage: async () => reply(JSON.stringify(items), { model: "claude-opus-5" }) }; } } };
       messages = {
-        create: async (p: Params) => {
+        create: async (p: Params, opts?: unknown) => {
           const sys = p.system[0].text;
           if (sys.startsWith("You are the quality reviewer")) { seen.review.push(p); return reply(JSON.stringify(items.map(() => ({ ok: true })))); }
           if (sys.startsWith("You are the quality judge")) { seen.judge.push(p); return reply(JSON.stringify(items.map(() => JUDGE))); }
           const by = sys.startsWith("You are Razan") ? "razan" : sys.startsWith("You are Majed") ? "majed" : "unknown";
-          seen.cross.push({ by, p });
+          seen.cross.push({ by, p, opts });
           return reply((o.cross ?? (() => "[]"))(by as Reviewer, p), o.stop ? { stop_reason: o.stop } : {});
         },
       };
@@ -149,8 +149,19 @@ describe("each reviewer's prompt is stable, and the batch reaches it as data (ru
     }
     expect(crossReviewPrompt("razan").startsWith("You are Razan (رزان)")).toBe(true);
     expect(crossReviewPrompt("majed").startsWith("You are Majed (ماجد)")).toBe(true);
-    expect(crossReviewPrompt("razan")).toContain(playbookSection("finance", ["Assumptions, scenarios and sensitivity"]));
-    expect(crossReviewPrompt("majed")).toContain(playbookSection("executive", ["Evidence and stress test"]));
+    // Each named section by its heading, so a renamed heading (whose slice would be "", which every string contains)
+    // fails here instead of silently leaving the reviewer without it.
+    const razanHeads = ["## Principles", "## Assumptions, scenarios and sensitivity", "## Gulf adaptations", "## Never do"];
+    const majedHeads = ["## Principles", "## Evidence and stress test", "## Never do"];
+    for (const h of razanHeads) expect(crossReviewPrompt("razan"), h).toContain(`\n${h}\n`);
+    for (const h of majedHeads) expect(crossReviewPrompt("majed"), h).toContain(`\n${h}\n`);
+    for (const [file, heads] of [["finance", razanHeads], ["executive", majedHeads]] as const) {
+      for (const h of heads) {
+        const slice = playbookSection(file, [h.slice(3)]);
+        expect(slice.startsWith(`${h}\n`), `${file}: ${h}`).toBe(true);
+        expect(crossReviewPrompt(file === "finance" ? "razan" : "majed")).toContain(slice);
+      }
+    }
     expect(crossReviewPrompt("razan")).not.toBe(crossReviewPrompt("majed"));
   });
 
@@ -316,6 +327,22 @@ describe("the owner's switch: Governance.crossReview (rule 237)", () => {
     expect((await getGov(u.email)).crossReview, "a setting missing from an old snapshot takes its default").toBe(true);
   });
 
+  it("golden runs never cross-review: no reviewer's call and no xreview usage, for the cross-reviewed types in the set", async () => {
+    const { seen } = await load({ cross: () => says({ id: 1, verdict: "flag", notes: ["would hold it"] }) });
+    const golden = await import("@/lib/golden");
+    const { getUsage: usageOf } = await import("@/lib/usage");
+    const faris = golden.GOLDEN_CASES.filter((c) => agentForTask(c.type).id === "faris");
+    expect(faris.length).toBeGreaterThan(0);
+    expect(faris.every((c) => crossReviewers(c.type).length > 0), "every case of this run is a type the review would read").toBe(true);
+    const run = await golden.runGolden("manual", { agent: "faris" });
+    expect(run).not.toBeNull();
+    expect(seen.gen.length).toBeGreaterThanOrEqual(faris.length);
+    expect(seen.cross).toHaveLength(0);
+    const usage = await usageOf(golden.GOLDEN_EMAIL);
+    expect(usage.byKind.xreview?.calls ?? 0).toBe(0);
+    expect(run!.results.filter((r) => !r.carried).flatMap((r) => r.items).every((i) => !("crossReview" in i))).toBe(true);
+  });
+
   it("the Governance page shows the switch and the change in its history, in both languages", async () => {
     const u = await newUser("xr-page");
     await signIn(u.email);
@@ -358,6 +385,41 @@ describe("a failed review never blocks the batch (rule 238)", () => {
     const { generate } = await load({ cross: (by) => { if (by === "razan") throw new Error("timeout"); return says({ id: 1, verdict: "flag", notes: ["no stress test of the channel assumption"] }); } });
     const [item] = await generate("gtm_plan", brand, [], "");
     expect(item.crossReview!.map((v) => [v.by, v.verdict])).toEqual([["majed", "flag"]]);
+  });
+
+  it("bounded in time: one attempt of at most 45 s per reviewer, and none with less than 60 s of the caller's deadline left", async () => {
+    const { generate, generateBatch, seen, CROSS_REVIEW_TIMEOUT_MS, CROSS_REVIEW_MIN_MS } = await load({ cross: () => says({ id: 1, verdict: "flag", notes: ["n"] }) });
+    expect([CROSS_REVIEW_TIMEOUT_MS, CROSS_REVIEW_MIN_MS]).toEqual([45_000, 60_000]);
+    await generate("gtm_plan", brand, [], "");
+    // No SDK retries and no 10-minute default: a slow reviewer cannot push a charged batch past the platform's limit.
+    expect(seen.cross.map((c) => c.opts)).toEqual([{ timeout: 45_000, maxRetries: 0 }, { timeout: 45_000, maxRetries: 0 }]);
+    seen.cross.length = 0;
+    const late = await generate("gtm_plan", brand, [], "", { deadline: Date.now() + CROSS_REVIEW_MIN_MS - 1_000 });
+    expect(seen.cross).toHaveLength(0);
+    expect(late.every((i) => !i.crossReview)).toBe(true);
+    await generate("gtm_plan", brand, [], "", { deadline: Date.now() + CROSS_REVIEW_MIN_MS + 5_000 });
+    expect(seen.cross).toHaveLength(2);
+    // Through generateBatch: the caller's deadline reaches the review. A late batch is saved and charged once, with no
+    // notes, and auto-approve applies as it does when a review fails.
+    seen.cross.length = 0;
+    const u = await owner("xr-late");
+    await saveGov(u.email, { autoApprove: { pricing_review: true } });
+    const r = await generateBatch(u, u.email, { type: "pricing_review", source: "manual", via: "app", deadline: Date.now() + 30_000 });
+    if (!r.ok) throw new Error(r.reason);
+    expect(seen.cross).toHaveLength(0);
+    expect(r.tasks[0]).not.toHaveProperty("crossReview");
+    expect(r.tasks[0].status).toBe("approved");
+    expect((await getUser(u.email))!.credits).toBe(50 - TASK_COST.pricing_review);
+  });
+
+  it("every caller with a request or invocation deadline hands it to the batch; the Sunday plan's type is not cross-reviewed", () => {
+    const calls = (f: string) => readFileSync(f, "utf8").split("\n").filter((l) => /\bgenerateBatch\(/.test(l) && !/^import|function generateBatch/.test(l.trim()));
+    for (const f of ["src/app/api/generate/route.ts", "src/app/api/mcp/route.ts", "src/lib/chat.ts", "src/lib/handoffs.ts", "src/lib/routines.ts"]) {
+      const lines = calls(f);
+      expect(lines.length, f).toBeGreaterThan(0);
+      for (const l of lines) expect(l, f).toMatch(/\bdeadline\b/);
+    }
+    expect(crossReviewers("weekly_plan")).toEqual([]);
   });
 
   it("no review call while paused or without a key: the paused batch is refused before any charge, the mock batch is placeholders", async () => {
@@ -420,6 +482,29 @@ describe("the inbox card shows the review, and an outside draft says it had none
     const arHtml = await page("ar");
     expect(arHtml).toContain(fill(ar.inbox.xNotes, { name: "رزان", n: 2 }));
     expect(arHtml).toContain(ar.inbox.external);
+    // The notes block comes before the item's text on the card, so the hint names no direction.
+    const notesAt = html.indexOf(esc(fill(en.inbox.xNotesTitle, { name: "Razan" })));
+    const hintAt = html.indexOf(esc(en.inbox.xNotesHint), notesAt);
+    expect(hintAt).toBeGreaterThan(notesAt);
+    expect(html.indexOf("Phase 1", notesAt), "the card's body follows its notes").toBeGreaterThan(hintAt);
+    expect(en.inbox.xNotesHint).not.toMatch(/\babove\b|\bbelow\b/i);
+    expect(ar.inbox.xNotesHint).not.toMatch(/أعلاه|أدناه/);
+  });
+
+  it("on a phone the header's pills wrap as whole pills instead of breaking inside or pushing the status off the card", async () => {
+    const u = await owner("xr-chips");
+    await signIn(u.email);
+    await saveTask(u.email, task("xw", { source: "handoff", parent: { handoff: "0123456789abcdef", item: 0, conv: "abc123def456", auto: true }, crossReview: [V("razan", "flag", "a\nb"), V("majed", "ok")], quality: { score: 80, dims: { completeness: 80, brand: 80, honesty: 80, language: 80, format: 80 }, notes: "ok", model: "m", at: "t" } }), true);
+    const html = await page("en");
+    const row = html.slice(html.indexOf('<span class="flex flex-wrap items-center gap-2 text-xs">'));
+    expect(row.length, "the chip row wraps").toBeLessThan(html.length);
+    const chips = row.slice(0, row.indexOf("</span></div>"));
+    for (const pill of [fill(en.inbox.xNotes, { name: "Razan", n: 2 }), fill(en.inbox.xChecked, { name: "Majed" }), en.inbox.pending]) {
+      const at = chips.indexOf(`>${pill}<`);
+      expect(at, pill).toBeGreaterThan(0);
+      expect(chips.slice(chips.lastIndexOf("<", at), at), pill).toContain("whitespace-nowrap");
+    }
+    expect(chips).toContain(esc(fill(en.inbox.fromHandoffAuto, { name: "Majed" })));
   });
 
   it("MCP save_draft drafts are never cross-reviewed: no model call, no verdicts, pending", async () => {

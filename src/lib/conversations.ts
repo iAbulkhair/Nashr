@@ -31,6 +31,17 @@ export async function renameConversation(scope: string, id: string, title: strin
   const c = await db.get<Conversation>(`conv:${scope}:${id}`);
   if (c) { c.title = title.slice(0, 80); await db.set(`conv:${scope}:${id}`, c); }
 }
+/**
+ * Which of `ids` are conversations that still exist under `scope`, in ONE request (MGET of their records). A deleted
+ * conversation has no record: `deleteConversation` removes it with the thread. Majed's auto-run reads this so a
+ * handoff whose card was in a thread the owner deleted never starts on its own (src/lib/handoff-auto.ts).
+ */
+export async function liveConversations(scope: string, ids: readonly string[]): Promise<Set<string>> {
+  const uniq = [...new Set(ids)];
+  if (!uniq.length) return new Set();
+  const rows = await db.mget<Conversation>(uniq.map((id) => `conv:${scope}:${id}`));
+  return new Set(uniq.filter((_, i) => rows[i] !== null));
+}
 export async function deleteConversation(scope: string, id: string) {
   // The id has to leave the index as well as the record. `listConversations` reads only the newest 100 ids, so dead
   // ids left behind push live conversations out of that window and they disappear from the owner's list for good.

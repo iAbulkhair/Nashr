@@ -7,6 +7,7 @@ import { agentSpendFor } from "@/lib/credits";
 import { CAPS } from "@/lib/db";
 import { can } from "@/lib/roles";
 import GovernancePanel from "@/components/app/GovernancePanel";
+import { autoQueue } from "@/lib/handoff-auto";
 
 export const dynamic = "force-dynamic";
 
@@ -20,5 +21,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   // Every role reads the settings and their history; only the owner changes or restores them (PUT /api/governance and
   // POST /api/governance/rollback refuse the other roles for the same action).
   const [gov, history] = await Promise.all([getGov(sc(u)), listGovHistory(sc(u))]);
-  return <GovernancePanel t={appDict[lang]} lang={lang} initial={gov} spend={agentSpendFor(u, sc(u))} history={historyView(history)} historyCap={CAPS.govHistory} readOnly={!can(u, "governance.write")} />;
+  // What Majed's auto-run may start next (empty while it is off): the owner can decline any of it here, including an
+  // item whose card has scrolled out of its thread.
+  const queue = await autoQueue(sc(u), gov);
+  return <GovernancePanel t={appDict[lang]} lang={lang} initial={gov} spend={agentSpendFor(u, sc(u))} history={historyView(history)} historyCap={CAPS.govHistory} readOnly={!can(u, "governance.write")} queue={queue} canDecline={can(u, "drafts")} />;
 }

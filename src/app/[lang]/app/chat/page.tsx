@@ -18,6 +18,8 @@ import { loadJourney } from "@/lib/journey-load";
 import { confirmedOnboard, onboardUrl } from "@/lib/onboard-confirm";
 import { isAgentId } from "@/lib/agents";
 import { can } from "@/lib/roles";
+import { chatItemOf, getHandoffs, handoffViews, type Handoff, type HandoffView } from "@/lib/handoffs";
+import { getGov } from "@/lib/governance";
 
 export const dynamic = "force-dynamic";
 
@@ -51,13 +53,25 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   // One light read feeds both the side panel numbers and the "waiting for you" card; only that one card needs a body.
   const [initial, connections, schedule, files, brief, notifs, brand, rows, op, journey] = await Promise.all([history(sc(u), conv), listConnections(sc(u)), getSchedule(sc(u)), listFiles(sc(u)), latestBrief(sc(u)), listNotifs(u.email), getBrand(sc(u)), listLite(sc(u), kpiSince()), db.get<{ goal: string; plan: PlanItem[] }>(`onboardplan:${sc(u)}`), loadJourney(sc(u), u.email)]);
   const firstPending = rows.find((x) => x.status === "pending");
-  const [k, pendingTask] = await Promise.all([kpis(sc(u), undefined, undefined, rows), firstPending ? getTask(sc(u), firstPending.id) : null]);
+  // Majed's handoff cards in this thread (every one it names: the thread holds at most 40 messages, one card each), read
+  // here with their stored state: the records in one MGET, the tasks they made in another, the settings once. A card
+  // whose record is gone (180 days, or pushed off the index) is sent as null, so the page shows "no longer available"
+  // without a request that could only answer 404.
+  const refs = [...new Set(initial.flatMap((m) => (m.handoff ? [m.handoff.id] : [])))];
+  const cards = async (): Promise<Record<string, HandoffView | null>> => {
+    if (!refs.length) return {};
+    const [hs, gov] = await Promise.all([getHandoffs(sc(u), refs), getGov(sc(u))]);
+    const found = hs.filter((h): h is Handoff => h !== null);
+    const views = new Map((await handoffViews(sc(u), found, gov)).map((v) => [v.id, v]));
+    return Object.fromEntries(refs.map((id) => [id, views.get(id) ?? null]));
+  };
+  const [k, pendingTask, handoffs] = await Promise.all([kpis(sc(u), undefined, undefined, rows), firstPending ? getTask(sc(u), firstPending.id) : null, cards()]);
   const starter = op?.goal ? { goal: op.goal, first: (op.plan.find((x) => !x.added) ?? op.plan[0])?.title } : null;
   const hasProducts = files.some((f) => f.name === "products.md");
   const firstStep = !hasProducts ? "catalog" : !brand?.offers ? "offer" : connections.length === 0 ? "connect" : "batch";
   return (
     <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[1fr_320px]">
-      <ChatPanel t={appDict[lang]} journey={journey} initial={initial} credits={u.credits} lang={lang} initialConv={conv} starter={starter} needPhone={needPhone} canApprove={can(u, "publish")} initialPrompt={typeof sp.prompt === "string" ? sp.prompt.slice(0, 2000) : ""} plan={u.plan} firstStep={firstStep} initialAgent={agentParam} pending={(pendingTask ? [pendingTask] : []).map((x) => ({ id: x.id, type: x.type, channel: x.channel, title: x.title, body: x.editedBody ?? x.body, status: x.status }))} pendingCount={k.pending} brief={brief?.text ?? null} />
+      <ChatPanel t={appDict[lang]} journey={journey} initial={initial} credits={u.credits} lang={lang} initialConv={conv} starter={starter} needPhone={needPhone} canApprove={can(u, "publish")} canRun={can(u, "generate")} canDecline={can(u, "drafts")} handoffs={handoffs} initialPrompt={typeof sp.prompt === "string" ? sp.prompt.slice(0, 2000) : ""} plan={u.plan} firstStep={firstStep} initialAgent={agentParam} pending={(pendingTask ? [pendingTask] : []).map(chatItemOf)} pendingCount={k.pending} brief={brief?.text ?? null} />
       <div className="hidden overflow-y-auto xl:block"><HomeSide t={appDict[lang]} lang={lang} k={k} connections={connections} schedule={schedule} files={files.map((f) => ({ name: f.name, updatedAt: f.updatedAt }))} brief={brief?.text ?? null} action={notifs.find((n) => !n.read) ?? null} /></div>
     </div>
   );
