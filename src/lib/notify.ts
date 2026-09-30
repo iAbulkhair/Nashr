@@ -8,11 +8,19 @@ import { CAPS, db, pushCapped } from "./db";
  */
 export const mailReady = () => !!process.env.RESEND_API_KEY && !!process.env.MAIL_FROM;
 
+/**
+ * How long one send may take. The Resend client takes no abort signal, so the call is raced against this: a hung call
+ * must not hold a cron slot (or Reem's reminder lease, src/lib/secretary-remind.ts) until the platform kills the
+ * function. A send that times out answers false like a refused one: it is not known to have gone.
+ */
+export const EMAIL_TIMEOUT_MS = 10_000;
+
 /** Notification channels. Email via Resend when RESEND_API_KEY is set; WhatsApp when the Business API is approved. */
 export async function sendEmail(to: string, subject: string, text: string): Promise<boolean> {
   const key = process.env.RESEND_API_KEY;
   if (!key) return false;
   const from = process.env.MAIL_FROM ?? "Noor at Nashr <onboarding@resend.dev>";
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const { Resend } = await import("resend");
     const resend = new Resend(key);
@@ -20,7 +28,15 @@ export async function sendEmail(to: string, subject: string, text: string): Prom
     // in resend's own d.ts). The old code awaited it and returned true regardless, so a refused email was reported as
     // sent: password resets, trial mail and weekly plans all silently went nowhere while every screen said they had
     // been sent. The catch below only ever caught a transport failure, which is the rarer half of the problem.
-    const res = await resend.emails.send({ from, to, subject, text });
+    const timeout = new Promise<"timeout">((resolve) => {
+      timer = setTimeout(() => resolve("timeout"), EMAIL_TIMEOUT_MS);
+      (timer as { unref?: () => void }).unref?.();
+    });
+    const res = await Promise.race([resend.emails.send({ from, to, subject, text }), timeout]);
+    if (res === "timeout") {
+      await mailFailed(from, `no answer within ${EMAIL_TIMEOUT_MS / 1000} s`);
+      return false;
+    }
     if (res.error) {
       await mailFailed(from, res.error.message ?? res.error.name ?? "unknown");
       return false;
@@ -29,6 +45,8 @@ export async function sendEmail(to: string, subject: string, text: string): Prom
   } catch (e) {
     await mailFailed(from, e instanceof Error ? e.message : "transport error");
     return false;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 

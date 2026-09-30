@@ -10,17 +10,19 @@ import { saveBrands, scopeFor } from "@/lib/brands";
 import { wipeAccount } from "@/lib/account";
 import { MCP_TOOL_ACTION, createMcpToken } from "@/lib/mcp";
 import { CHAT_TOOL_NAMES, runTool, system } from "@/lib/chat";
-import { listNotifs, seenKey } from "@/lib/notifications";
+import { listNotifs, markAllRead, pushNotif, pushNotifs, seenKey } from "@/lib/notifications";
 import { decisionOf, recordDecisions } from "@/lib/decisions";
 import { saveSchedule } from "@/lib/schedule";
 import { can } from "@/lib/roles";
-import { SEC_KEYS, SEC_OPEN_MAX, agendaFor, changeItem, getItem, listDone, nextWeekStart, purgeExpired, snoozePreset, timedReminders } from "@/lib/secretary";
-import { formatWhen, noteText, zoneLocalInput, type SecItem } from "@/lib/secretary-agenda";
-import { remindFingerprint, sweepReminders } from "@/lib/secretary-remind";
+import { SEC_KEYS, SEC_OPEN_MAX, agendaFor, changeItem, createItem, getItem, listDone, nextWeekStart, purgeExpired, snoozePreset, timedReminders } from "@/lib/secretary";
+import { DAILY_CRON_UTC_HOUR, briefAgenda, briefClock, formatWhen, noteText, zoneDay, zoneLocalInput, type SecItem } from "@/lib/secretary-agenda";
+import { REMIND_LEASE_S, SUSPENDED_HOLD_MS, SWEEP_SCOPES, remindFingerprint, sweepReminders } from "@/lib/secretary-remind";
+import { fill } from "@/lib/fill";
+import { editPctOf, similarity } from "@/lib/similarity";
 import { verifyQstash } from "@/lib/qstash";
-import { WALK_NEEDS, WALK_TABLE, walkNext, walkSkip } from "@/lib/secretary-walk";
-import { eveningAt, eveningWrap, isRamadan, zonesDue } from "@/lib/secretary-evening";
-import { HANDOFF_BLOCKED_PER_DAY, handoffBlock, handoffNotesFor, sameBlock } from "@/lib/secretary-handoff";
+import { WALK_APPROVALS_MAX, WALK_NEEDS, WALK_TABLE, walkNext, walkSkip, walkToolLine } from "@/lib/secretary-walk";
+import { buildWrap, eveningAt, eveningWrap, isRamadan, previousEveningAt, wrapText, zonesDue } from "@/lib/secretary-evening";
+import { HANDOFF_BLOCKED_PER_DAY, handoffBlock, handoffNotesFor, sameBlock, symmetricWordDiff } from "@/lib/secretary-handoff";
 import { appDict } from "@/lib/app-i18n";
 
 // Rules 221-230 in docs/system/tests.md: Reem, the secretary (phase 2): timed reminders and their sweep, the QStash
@@ -76,7 +78,7 @@ beforeEach(() => { sent.length = 0; });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("a reminder is one future instant, indexed only by indexWrites, and every close path cleans it (rule 221)", () => {
-  it("stores remindAt in the brand's zone, refuses one in the past, reads a date alone as 09:00, and indexes item and scope", async () => {
+  it("stores remindAt in the brand's zone, refuses one in the past, reads a date alone as 08:00, and indexes item and scope", async () => {
     const u = await owner("p2rem");
     const inTwo = local(Date.now() + 2 * H);
     const it = await add({ title: "Call the bank", remindAt: inTwo });
@@ -87,7 +89,11 @@ describe("a reminder is one future instant, indexed only by indexWrites, and eve
     expect(past.status).toBe(400);
     expect(await past.json()).toMatchObject({ error: "remind_past", field: "remindAt" });
     const day = local(Date.now() + 3 * 864e5).slice(0, 10);
-    expect((await add({ title: "A date alone", remindAt: day })).remindAt).toBe(`${day}T06:00:00.000Z`);
+    // 08:00 in Riyadh is 05:00 UTC: due by that morning's daily run, so even the fallback fires it that morning.
+    const alone = await add({ title: "A date alone", remindAt: day });
+    expect(alone.remindAt).toBe(`${day}T05:00:00.000Z`);
+    await sweepReminders(Date.parse(`${day}T0${DAILY_CRON_UTC_HOUR}:00:00Z`));
+    expect((await getItem(u.email, alone.id))?.remindAt).toBeNull();
     // Cleared: out of the index.
     expect((await patch(it.id, { remindAt: null })).status).toBe(200);
     expect(await dueIds(u.email)).not.toContain(it.id);
@@ -164,14 +170,14 @@ describe("the sweep fires each reminder once, only on an open item whose time ca
     expect(s.notes.filter((n) => n.kind === "reminded")).toHaveLength(1);
     expect(s.rev).toBe(2);
     expect((await listNotifs(u.email)).filter((n) => n.title === "تذكير: «Pay the printer»")).toHaveLength(1);
-    // The store's claim: of two removals of one member, exactly one reports it removed it; the range reads by score.
+    // The lease is released when the attempt ends; the store reads a range by score.
+    expect(await db.get(SEC_KEYS.firing(u.email, it.id))).toBeNull();
     await Promise.all([db.zadd("p2:z", 5, "a"), db.zadd("p2:z", 1, "b"), db.zadd("p2:z", 9, "c")]);
     expect(await db.zrangeByScore("p2:z", 5, 10)).toEqual([{ member: "b", score: 1 }, { member: "a", score: 5 }]);
     expect(await db.zrangeByScore("p2:z", Infinity, 1)).toEqual([{ member: "b", score: 1 }]);
-    expect(await Promise.all([db.zremClaim("p2:z", "a"), db.zremClaim("p2:z", "a")])).toEqual([true, false]);
     await db.zadd("p2:z", 7, "b", { lt: true });
     await db.zadd("p2:z", 0, "c", { lt: true });
-    expect(await db.zrangeWithScores("p2:z")).toEqual([{ member: "c", score: 0 }, { member: "b", score: 1 }]);
+    expect(await db.zrangeWithScores("p2:z")).toEqual([{ member: "c", score: 0 }, { member: "b", score: 1 }, { member: "a", score: 5 }]);
   });
 
   it("a reminder on a closed or deleted item never fires, even from a stale index entry", async () => {
@@ -224,6 +230,133 @@ describe("the sweep fires each reminder once, only on an open item whose time ca
     await sweepReminders(Date.now());
     expect(sent.filter((m) => m.to === all.email)).toHaveLength(1);
     expect((await getItem(all.email, a.id))!.rev).toBe(2);
+  });
+
+  it("a lease another run holds leaves the id due; once that lease is gone the next sweep fires it once", async () => {
+    const u = await owner("p2lease");
+    const it = await seedDue(u.email, "Leased elsewhere");
+    await db.setNx(SEC_KEYS.firing(u.email, it.id), 1, REMIND_LEASE_S);
+    await sweepReminders(Date.now());
+    expect((await getItem(u.email, it.id))?.remindAt).toBe(it.remindAt);
+    expect(await dueIds(u.email)).toEqual([it.id]);
+    expect(await scopeScore(u.email)).toBe(Date.parse(it.remindAt!));
+    // The run that held it was killed: its lease expires, and the reminder is only late.
+    await db.del(SEC_KEYS.firing(u.email, it.id));
+    await sweepReminders(Date.now());
+    const s = (await getItem(u.email, it.id))!;
+    expect(s.remindAt).toBeNull();
+    expect(s.notes.filter((n) => n.kind === "reminded")).toHaveLength(1);
+    expect((await listNotifs(u.email)).filter((n) => n.title === "تذكير: «Leased elsewhere»")).toHaveLength(1);
+    expect(await dueIds(u.email)).toEqual([]);
+  });
+
+  it("a bell write that fails releases its fingerprint and leaves the reminder due; the next sweep delivers it once, with one email", async () => {
+    vi.stubEnv("RESEND_API_KEY", "test-key");
+    const u = await owner("p2bellfail");
+    const it = await seedDue(u.email, "Bell down");
+    const set = db.set.bind(db);
+    let failed = 0;
+    vi.spyOn(db, "set").mockImplementation(async (key: string, value: unknown, ttl?: number) => { if (key === `notifs:${u.email}` && !failed++) throw new Error("down"); return set(key, value, ttl); });
+    await sweepReminders(Date.now());
+    expect(failed).toBeGreaterThan(0);
+    expect((await getItem(u.email, it.id))?.remindAt).toBe(it.remindAt);
+    expect(await dueIds(u.email)).toEqual([it.id]);
+    expect(await db.get(seenKey(u.email, remindFingerprint(u.email, it.id, Date.parse(it.remindAt!))))).toBeNull();
+    expect(sent.filter((m) => m.to === u.email)).toEqual([]);
+    await sweepReminders(Date.now());
+    expect((await getItem(u.email, it.id))?.remindAt).toBeNull();
+    expect((await listNotifs(u.email)).filter((n) => n.title === "تذكير: «Bell down»")).toHaveLength(1);
+    expect(sent.filter((m) => m.to === u.email)).toHaveLength(1);
+  });
+
+  it("a run stopped after delivering and before writing the item: the retry writes it, with no second bell entry and no second email", async () => {
+    vi.stubEnv("RESEND_API_KEY", "test-key");
+    const u = await owner("p2crash");
+    const it = await seedDue(u.email, "Stopped after the bell");
+    const set = db.set.bind(db);
+    let failed = 0;
+    vi.spyOn(db, "set").mockImplementation(async (key: string, value: unknown, ttl?: number) => { if (key === SEC_KEYS.item(u.email, it.id) && !failed++) throw new Error("killed"); return set(key, value, ttl); });
+    await sweepReminders(Date.now());
+    expect((await getItem(u.email, it.id))?.remindAt).toBe(it.remindAt);
+    expect(await dueIds(u.email)).toEqual([it.id]);
+    const bell = async () => (await listNotifs(u.email)).filter((n) => n.title === "تذكير: «Stopped after the bell»");
+    expect(await bell()).toHaveLength(1);
+    expect(sent.filter((m) => m.to === u.email)).toHaveLength(1);
+    await sweepReminders(Date.now());
+    const s = (await getItem(u.email, it.id))!;
+    expect(s.remindAt).toBeNull();
+    expect(s.notes.filter((n) => n.kind === "reminded")).toHaveLength(1);
+    expect(await bell()).toHaveLength(1);
+    expect(sent.filter((m) => m.to === u.email)).toHaveLength(1);
+  });
+
+  it("a reminder whose bell entry an earlier run already pushed fires with no second entry and no email", async () => {
+    vi.stubEnv("RESEND_API_KEY", "test-key");
+    const u = await owner("p2claimed");
+    const it = await seedDue(u.email, "Already pushed");
+    await seedDue(u.email, "Pushed now");
+    await db.setNx(seenKey(u.email, remindFingerprint(u.email, it.id, Date.parse(it.remindAt!))), 1, 86400);
+    await sweepReminders(Date.now());
+    const s = (await getItem(u.email, it.id))!;
+    expect(s.remindAt).toBeNull();
+    expect(s.notes.filter((n) => n.kind === "reminded")).toHaveLength(1);
+    expect((await listNotifs(u.email)).map((n) => n.title).filter((t) => t.startsWith("تذكير"))).toEqual(["تذكير: «Pushed now»"]);
+    expect(sent.filter((m) => m.to === u.email).map((m) => m.subject)).toEqual(["تذكير من ريم: Pushed now"]);
+  });
+
+  it("one scope's failure never stops another scope's delivery, and the failed one is swept again", async () => {
+    const u = await owner("p2iso");
+    const at = new Date().toISOString();
+    await saveBrands(u.email, [{ id: "default", name: "", createdAt: at, status: "active" }, { id: "b2", name: "Two", createdAt: at, status: "active" }]);
+    const second = scopeFor(u.email, "b2");
+    const a = await seedDue(u.email, "First brand");
+    const b = await seedDue(second, "Second brand");
+    const range = db.zrangeByScore.bind(db);
+    vi.spyOn(db, "zrangeByScore").mockImplementation(async (key: string, max: number, limit: number) => { if (key === SEC_KEYS.due(second)) throw new Error("down"); return range(key, max, limit); });
+    await sweepReminders(Date.now());
+    expect((await getItem(u.email, a.id))?.remindAt).toBeNull();
+    expect((await listNotifs(u.email)).map((n) => n.title)).toContain("تذكير: «First brand»");
+    expect((await getItem(second, b.id))?.remindAt).toBe(b.remindAt);
+    vi.restoreAllMocks();
+    await sweepReminders(Date.now());
+    expect((await getItem(second, b.id))?.remindAt).toBeNull();
+  });
+
+  it("an archived brand's reminders wait, like a suspended account's, and fire once it is active again", async () => {
+    const u = await owner("p2arch");
+    const at = new Date().toISOString();
+    await saveBrands(u.email, [{ id: "default", name: "", createdAt: at, status: "active" }, { id: "b3", name: "Old", createdAt: at, status: "archived" }]);
+    const old = scopeFor(u.email, "b3");
+    const it = await seedDue(old, "Archived brand reminder");
+    await sweepReminders(Date.now());
+    expect((await getItem(old, it.id))?.remindAt).toBe(it.remindAt);
+    expect(await dueIds(old)).toEqual([it.id]);
+    expect(await scopeScore(old)).toBeGreaterThan(Date.now() + SUSPENDED_HOLD_MS - 60_000);
+    expect((await listNotifs(u.email)).map((n) => n.title)).not.toContain("تذكير: «Archived brand reminder»");
+    await saveBrands(u.email, [{ id: "default", name: "", createdAt: at, status: "active" }, { id: "b3", name: "Old", createdAt: at, status: "active" }]);
+    await sweepReminders(Date.now() + SUSPENDED_HOLD_MS + 1000);
+    expect((await getItem(old, it.id))?.remindAt).toBeNull();
+  });
+
+  it("starts nothing after its deadline: what is due stays due for the next sweep", async () => {
+    const u = await owner("p2deadline");
+    const it = await seedDue(u.email, "After the deadline");
+    const r = await sweepReminders(Date.now(), { deadline: Date.now() - 1 });
+    expect(r).toMatchObject({ fired: 0, claimed: 0 });
+    expect(r.deferred).toBeGreaterThan(0);
+    expect((await getItem(u.email, it.id))?.remindAt).toBe(it.remindAt);
+    expect(await dueIds(u.email)).toEqual([it.id]);
+    await sweepReminders(Date.now());
+    expect((await getItem(u.email, it.id))?.remindAt).toBeNull();
+  });
+
+  it("the bell is written under the account's lock: concurrent pushes and a mark-all-read keep every entry", async () => {
+    const u = await owner("p2bell");
+    const n = (title: string) => ({ kind: "info" as const, title, body: "", href: "/ar/app" });
+    await Promise.all([pushNotif(u.email, n("one")), pushNotif(u.email, n("two")), markAllRead(u.email), pushNotifs(u.email, [{ n: n("three") }, { n: n("four") }]), pushNotif(u.email, n("five"))]);
+    expect((await listNotifs(u.email)).map((x) => x.title)).toEqual(expect.arrayContaining(["one", "two", "three", "four", "five"]));
+    expect(await db.get(`notiflock:${u.email}`)).toBeNull();
+    expect(readFileSync("src/lib/notifications.ts", "utf8")).toMatch(/export async function markAllRead[\s\S]{0,80}withBellLock/);
   });
 });
 
@@ -278,21 +411,40 @@ describe("timed reminders are promised only while the QStash tick runs (rule 223
     const byQstash = await tick({ ...ip, "upstash-signature": qsign("", NEXT) });
     expect(await byQstash.json()).toMatchObject({ ok: true, via: "qstash" });
     expect(await timedReminders()).toBe(true);
+    // Only failed calls count against the per-IP limit: a bucket strangers filled never refuses the real tick.
     await db.set("rate:cronsec:203.0.113.22", 60, 60);
-    expect((await tick({ "x-real-ip": "203.0.113.22", authorization: "Bearer cron-p2-tick" })).status).toBe(429);
+    const full = { "x-real-ip": "203.0.113.22" };
+    expect((await tick({ ...full, authorization: "Bearer cron-p2-tick" })).status).toBe(200);
+    expect((await tick({ ...full, "upstash-signature": qsign("", KEY) })).status).toBe(200);
+    expect((await tick(full)).status).toBe(429);
+    expect((await tick({ "x-real-ip": "203.0.113.23" })).status).toBe(401);
+    expect(await db.get("rate:cronsec:203.0.113.23")).toBe(1);
+    expect(await db.get("rate:cronsec:203.0.113.24")).toBeNull();
+    await tick({ "x-real-ip": "203.0.113.24", authorization: "Bearer cron-p2-tick" });
+    expect(await db.get("rate:cronsec:203.0.113.24")).toBeNull();
+    // Oversized input is refused unread, before any check or store call: nothing fires.
+    const big = await seedDue(u.email, "Not for a big body");
+    expect((await tick({ ...ip, authorization: "Bearer cron-p2-tick", "content-length": String(64 * 1024 + 1) }, "x".repeat(64 * 1024 + 1))).status).toBe(413);
+    expect((await tick({ ...ip, authorization: "Bearer cron-p2-tick" }, "x".repeat(64 * 1024 + 1))).status).toBe(413);
+    expect((await tick({ ...ip, "upstash-signature": "x".repeat(4097) })).status).toBe(401);
+    expect((await getItem(u.email, big.id))?.remindAt).toBe(big.remindAt);
     await db.del(SEC_KEYS.tick);
   });
 
-  it("tool answers say 'at {time}' only while the tick is fresh, else 'by the next morning brief (08:00)'; the page says the same", async () => {
+  it("tool answers say 'at {time}' only while the tick is fresh, else the next morning brief at its local time in the brand's zone; the page says the same", async () => {
     await db.del(SEC_KEYS.tick);
     const u = await owner("p2words");
     expect(await timedReminders()).toBe(false);
     const out = await runTool(u, "todo_create", { title: "Call the supplier", remind_at: local(Date.now() + 2 * H) }, [], [], undefined, { lang: "en" });
     const id = /\[id=(s[a-f0-9]{16})\]/.exec(out)![1];
     const when = formatWhen((await getItem(u.email, id))!.remindAt!, false, "en", Date.now());
-    expect(out).toContain("by the next morning brief (08:00)");
+    expect(out).toContain("with the next morning brief after that time (the brief comes at 08:00 Riyadh time)");
     expect(out).not.toContain(`at ${when}`);
-    expect(await render("en")).toContain(appDict.en.todo.remindBrief.replace("{when}", when));
+    expect(out).not.toContain("(08:00)");
+    const page = await render("en");
+    expect(page).toContain(fill(appDict.en.todo.remindBrief, { when, brief: "08:00" }));
+    // React writes an apostrophe in text as &#x27;.
+    expect(page).toContain(fill(appDict.en.todo.timedOff, { brief: "08:00" }).replace(/'/g, "&#x27;"));
     await db.set(SEC_KEYS.tick, Date.now(), 7200);
     expect(await timedReminders()).toBe(true);
     const later = local(Date.now() + 3 * H);
@@ -327,6 +479,36 @@ describe("timed reminders are promised only while the QStash tick runs (rule 223
     const crons = JSON.parse(readFileSync("vercel.json", "utf8")).crons as { path: string; schedule: string }[];
     expect(crons).toContainEqual({ path: "/api/cron/evening", schedule: "0 15 * * *" });
     expect(crons.map((c) => c.path)).not.toContain("/api/cron/secretary");
+  });
+
+  it("without timed reminders, a brand in Dubai is told the brief's 09:00 Dubai time, never 08:00; a date alone is 08:00 local", async () => {
+    await db.del(SEC_KEYS.tick);
+    const u = await owner("p2dubaibrief", { ...BRAND, timeZone: "Asia/Dubai" });
+    for (const z of ["Asia/Riyadh", "Asia/Kuwait", "Asia/Qatar", "Asia/Bahrain"] as const) expect(briefClock(z)).toBe("08:00");
+    expect(briefClock("Asia/Dubai")).toBe("09:00");
+    expect(briefClock("Asia/Muscat")).toBe("09:00");
+    const out = await runTool(u, "todo_create", { title: "Dubai reminder", remind_at: zoneLocalInput(Date.now() + 2 * H, "Asia/Dubai") }, [], [], undefined, { lang: "en" });
+    expect(out).toContain("the brief comes at 09:00 Dubai time");
+    expect(out).not.toContain("08:00");
+    const day = zoneLocalInput(Date.now() + 3 * 864e5, "Asia/Dubai").slice(0, 10);
+    expect((await add({ title: "Dubai date alone", remindAt: day })).remindAt).toBe(`${day}T04:00:00.000Z`);
+    const page = await render("ar");
+    expect(page).toContain(fill(appDict.ar.todo.timedOff, { brief: "09:00" }));
+    for (const lang of ["ar", "en"] as const) for (const k of ["remindBrief", "timedOff", "note"] as const) expect(appDict[lang].todo[k], `${lang}.${k}`).not.toContain("08:00");
+    // The brief's hour is the daily cron's.
+    expect(JSON.parse(readFileSync("vercel.json", "utf8")).crons).toContainEqual({ path: "/api/cron/daily", schedule: `0 ${DAILY_CRON_UTC_HOUR} * * *` });
+  });
+
+  it("the daily route sweeps again while a sweep hits its scope cap, and the sweep's time comes out of the batch's start budget", async () => {
+    vi.stubEnv("CRON_SECRET", "cron-p2-cap");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
+    const gone = Array.from({ length: SWEEP_SCOPES + 1 }, (_, i) => `p2cap${i}@gone.example`);
+    await Promise.all(gone.map((s) => db.zadd(SEC_KEYS.dueScopes, Date.now() - 60_000, s)));
+    const res = await dailyRoute.GET(new Request("https://nashr.test/api/cron/daily", { headers: { authorization: "Bearer cron-p2-cap" } }));
+    expect((await res.json()).reminders.scopes).toBeGreaterThan(SWEEP_SCOPES);
+    const left = new Set((await db.zrangeWithScores(SEC_KEYS.dueScopes)).map((m) => m.member));
+    expect(gone.filter((s) => left.has(s))).toEqual([]);
+    expect(readFileSync("src/app/api/cron/daily/route.ts", "utf8")).toMatch(/startBudgetMs: Math\.max\(0, START_BUDGET_MS - \(Date\.now\(\) - routeStart\)\)/);
   });
 });
 
@@ -396,6 +578,23 @@ describe("only the owner or an admin reopens a done item (rule 225)", () => {
     await db.del(SEC_KEYS.open(o.email));
     expect(await render("ar")).not.toContain(`>${appDict.ar.todo.reopen}<`);
   });
+
+  it("a reopen of an item its linked inbox item closed drops the link, so the next agenda read leaves it open", async () => {
+    const o = await owner("p2reopenlink");
+    await saveTask(o.email, pending("eeee0000eeee0001"), true);
+    const it = await add({ title: "Wait for the post", taskId: "eeee0000eeee0001" });
+    await updateTask(o.email, "eeee0000eeee0001", (t) => ({ ...t, status: "approved" }));
+    expect((await agendaFor(o.email)).closed).toBe(1);
+    expect((await getItem(o.email, it.id))?.completedAt).toBeTruthy();
+    expect((await patch(it.id, { action: "reopen" })).status).toBe(200);
+    expect((await agendaFor(o.email)).closed).toBe(0);
+    expect(await render("en")).toContain("Wait for the post");
+    const s = (await getItem(o.email, it.id))!;
+    expect(s).toMatchObject({ completedAt: null, links: {} });
+    expect(noteText(s.notes.at(-1)!, "en")).toBe("Reopened, and unlinked from inbox item eeee0000eeee0001");
+    expect(noteText(s.notes.at(-1)!, "ar")).toContain("eeee0000eeee0001");
+    expect((await audit(o.email)).filter((l) => l.action === "auto_close" && l.id === it.id)).toHaveLength(1);
+  });
 });
 
 describe("a they-owe contact's WhatsApp number: the owner's, in the app, never an agent's (rule 226)", () => {
@@ -453,6 +652,45 @@ describe("a they-owe contact's WhatsApp number: the owner's, in the app, never a
     const src = readFileSync("src/components/app/TodoPanel.tsx", "utf8");
     expect(src).toMatch(/keepalive: true[^\n]*action: "chased"/);
     expect(src).toMatch(/target="_blank" rel="noopener noreferrer" onClick=\{\(\) => chasedByWhatsApp\(row\)\}/);
+  });
+
+  it("takes a number only in the international form: a local number is refused, Arabic digits, 00 and punctuation are cleaned", async () => {
+    await owner("p2phoneform");
+    const withPhone = (phone: string) => create({ title: "x", direction: "they_owe", owedBy: "x", phone });
+    for (const phone of ["0501234567", "050 123 4567", "٠٥٠١٢٣٤٥٦٧"]) {
+      const r = await withPhone(phone);
+      expect(r.status, phone).toBe(400);
+      expect((await r.json()).error).toBe("bad_phone");
+    }
+    for (const phone of ["+٩٦٦٥٠١٢٣٤٥٦٧", "00966501234567", "(966) 50.123.4567", "۹۶۶۵۰۱۲۳۴۵۶۷"]) expect((await (await withPhone(phone)).json()).item.phone, phone).toBe("966501234567");
+    expect(appDict.ar.todo.errors.bad_phone).toContain("رمز الدولة");
+    expect(appDict.en.todo.errors.bad_phone).toContain("country code");
+  });
+
+  it("a new party drops the old party's number, whoever changes it, unless the owner gives the new number in the same change", async () => {
+    const u = await owner("p2phoneparty");
+    const debt = await add({ title: "Invoice", direction: "they_owe", owedBy: "Ahmad", phone: "966501234567" });
+    await runTool(u, "todo_update", { id: debt.id, owed_by: "Sara" }, []);
+    expect((await getItem(u.email, debt.id))?.phone ?? null).toBeNull();
+    expect(await render("en")).not.toContain("https://wa.me/");
+    const two = await add({ title: "Invoice two", direction: "they_owe", owedBy: "Ahmad", phone: "966501234567" });
+    await patch(two.id, { title: "Invoice two, renamed" });
+    expect((await getItem(u.email, two.id))?.phone).toBe("966501234567");
+    await patch(two.id, { owedBy: "Sara", phone: "966507654321" });
+    expect((await getItem(u.email, two.id))?.phone).toBe("966507654321");
+    await patch(two.id, { owedBy: "Khalid" });
+    expect((await getItem(u.email, two.id))?.phone ?? null).toBeNull();
+  });
+
+  it("fills the WhatsApp message in one pass: a title's $' and $& and a name holding {title} stay as typed", async () => {
+    await owner("p2wafill");
+    const title = "Pay $' balance $& now";
+    const name = "Ahmad {title}";
+    await add({ title, direction: "they_owe", owedBy: name, phone: "966501234567" });
+    const href = /href="(https:\/\/wa\.me\/966501234567\?text=[^"]+)"/.exec(await render("en"))![1].replace(/&#x27;/g, "'").replace(/&amp;/g, "&");
+    expect(decodeURIComponent(href.slice(href.indexOf("?text=") + 6))).toBe(`Hi ${name}, following up on: ${title}. Thank you.`);
+    expect(fill("{a}-{b}-{c}", { a: "$&", b: "{a}" })).toBe("$&-{a}-{c}");
+    expect(readFileSync("src/app/[lang]/app/todo/page.tsx", "utf8")).not.toMatch(/\.replace\("\{/);
   });
 });
 
@@ -534,12 +772,77 @@ describe("walk me through: one card at a time, in a fixed order, only with actio
     expect((await rpc("tools/list", {})).tools.map((t: { name: string }) => t.name)).toContain("agenda_next");
     expect((await rpc("tools/call", { name: "agenda_next", arguments: {} })).content[0].text).toContain(`[id=${overdue.id}]`);
   });
+
+  it("a confirm card carries the claim and what the app checked; an approval card the draft's opening; a held draft offers no Approve and says why", async () => {
+    const u = await owner("p2walkclaim", { ...BRAND, banned: "رخيص" });
+    await saveTask(u.email, pending("ffff0000ffff0001"), true);
+    await saveTask(u.email, { ...pending("ffff0000ffff0002", "2026-10-01T09:00:00.000Z"), body: `عرض رخيص جداً ${"ا".repeat(600)}` }, true);
+    const linked = await add({ title: "Post the offer", taskId: "ffff0000ffff0001" });
+    await runTool(u, "todo_propose_done", { id: linked.id, evidence: "I posted it this morning" }, [], [], undefined, { agent: "reem", lang: "en" });
+    const viewer = (await currentUser())!;
+    let w = await walkNext(u.email, Date.now(), { viewer, lang: "en" });
+    expect(w.card).toMatchObject({ key: `todo:${linked.id}`, claim: { by: "Reem says", text: "I posted it this morning" }, actions: ["confirm", "not_yet"] });
+    expect(w.card!.fact).toContain("is still waiting for your approval");
+    expect(walkToolLine(w)).toMatch(/claimed done by "Reem says" \(a claim, not checked\): "I posted it this morning"; checked by the app: "The linked inbox item/);
+    await walkSkip(u.email, w.card!.key, Date.now());
+    // The held draft is the oldest: no Approve, and why.
+    w = await walkNext(u.email, Date.now(), { viewer, lang: "en" });
+    expect(w.card).toMatchObject({ key: "task:ffff0000ffff0002", actions: ["open"] });
+    expect(w.card!.held).toContain("رخيص");
+    expect(w.card!.excerpt).toHaveLength(500);
+    expect(walkToolLine(w)).toContain("held by the brand guard, so it cannot be approved as it is");
+    await walkSkip(u.email, w.card!.key, Date.now());
+    w = await walkNext(u.email, Date.now(), { viewer, lang: "en" });
+    expect(w.card).toMatchObject({ key: "task:ffff0000ffff0001", actions: ["approve", "open"], excerpt: "b" });
+    expect(w.card!.held).toBeUndefined();
+    // The page shows them as text, and names the brand guard's refusal instead of "Could not save".
+    const panel = readFileSync("src/components/app/TodoPanel.tsx", "utf8");
+    expect(panel).not.toContain("dangerouslySetInnerHTML");
+    expect(panel).toMatch(/walk\.card\.excerpt/);
+    expect(panel).toMatch(/walk\.card\.claim\.by/);
+    for (const lang of ["ar", "en"] as const) expect(appDict[lang].todo.errors.brand_violation).toBeTruthy();
+  });
+
+  it("past 50 pending, the oldest come first by the inbox's order, skips go before the cap, and left counts them all", async () => {
+    const u = await owner("p2walk60");
+    const n = WALK_APPROVALS_MAX + 10;
+    // Created oldest first; the oldest has the largest id, so no ordering by id finds it.
+    const ids = Array.from({ length: n }, (_, i) => (0xffff - i).toString(16).padStart(4, "0").repeat(4));
+    for (let i = 0; i < n; i++) await saveTask(u.email, pending(ids[i], new Date(Date.parse("2026-09-01T00:00:00Z") + i * 60_000).toISOString()), true);
+    const viewer = (await currentUser())!;
+    let w = await walkNext(u.email, Date.now(), { viewer, lang: "en" });
+    expect(w.card?.id).toBe(ids[0]);
+    expect(w.left).toBe(n);
+    for (const id of ids.slice(0, WALK_APPROVALS_MAX)) await walkSkip(u.email, `task:${id}`, Date.now());
+    w = await walkNext(u.email, Date.now(), { viewer, lang: "en" });
+    expect(w.card?.id).toBe(ids[WALK_APPROVALS_MAX]);
+    expect(w.left).toBe(n - WALK_APPROVALS_MAX);
+  });
+
+  it("the tool line keeps done, confirm and approve for the owner, and lets the agent snooze or record a follow-up with todo_update", async () => {
+    const { confirm, overdue, today, chase } = await seedWalk("p2walkline");
+    const u = (await currentUser())!;
+    const first = await runTool(u, "agenda_next", {}, []);
+    expect(first).toMatch(/can confirm it is done, send it back \(not yet\) on the My to-dos page \(\/app\/todo\); you cannot do these yourself/);
+    expect(first).not.toContain("todo_update");
+    const second = await runTool(u, "agenda_next", { skip_id: confirm.id }, []);
+    expect(second).toContain(`[id=${overdue.id}]`);
+    expect(second).toMatch(/can mark it done with what was done on the My to-dos page \(\/app\/todo\); you cannot do these yourself/);
+    expect(second).toContain(`you can snooze it (todo_update with snooze_until) [id=${overdue.id}]`);
+    await runTool(u, "agenda_next", { skip_id: overdue.id }, []);
+    const fourth = await runTool(u, "agenda_next", { skip_id: today.id }, []);
+    expect(fourth).toContain(`[id=${chase.id}]`);
+    expect(fourth).toContain("record that the owner followed up (todo_update with chased: true)");
+    const approval = await runTool(u, "agenda_next", { skip_id: chase.id }, []);
+    expect(approval).toMatch(/can approve it, open it in the inbox in the approval inbox \(\/app\); you cannot do these yourself/);
+    expect(approval).not.toContain("todo_update");
+  });
 });
 
 describe("the evening wrap: from stored facts, silent when nothing happened, once a day, after Taraweeh in Ramadan (rule 228)", () => {
   const T0 = Date.parse("2026-10-05T12:00:00Z"); // 15:00 in Riyadh, not Ramadan
   const RAMADAN = Date.parse("2027-02-20T12:00:00Z");
-  const wraps = async (email: string) => (await listNotifs(email)).filter((n) => n.title === "ملخص المساء من ريم" || n.title === "Reem's evening wrap");
+  const wraps = async (email: string) => (await listNotifs(email)).filter((n) => n.title.startsWith("ملخص المساء من ريم") || n.title.startsWith("Reem's evening wrap"));
 
   it("is 18:00 local, 21:30 in Ramadan, and a tick starts the zones whose time just passed", () => {
     expect(isRamadan(T0)).toBe(false);
@@ -578,7 +881,7 @@ describe("the evening wrap: from stored facts, silent when nothing happened, onc
     expect(w[0].body).toContain("• أُنجز اليوم (1):");
     expect(w[0].body).toContain("«Send the quote»: Sent by email");
     expect(w[0].body).toContain("اعتماد 1، رفض 1");
-    expect(w[0].body).toContain("• تأخّر اليوم: «Pay the printer»");
+    expect(w[0].body).toContain("• تأخّر منذ ملخص الأمس: «Pay the printer»");
     expect(w[0].body).toContain("• أول ما ينتظرك غداً 9 ص: «Pay the printer»");
     expect(w[0].body).not.toContain("Next month");
     expect(sent.filter((m) => m.to === u.email)).toHaveLength(1);
@@ -596,11 +899,74 @@ describe("the evening wrap: from stored facts, silent when nothing happened, onc
     expect(await eveningWrap(off, T0)).toBe("off");
   });
 
+  it("counts publish as an approval, closes approved linked items first, and lists what fell overdue since the previous wrap", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+    const u = await owner("p2wrapfacts");
+    await recordDecisions(u.email, [decisionOf(pending("cccc0000cccc0003"), "publish", new Date(T0).toISOString())]);
+    const only = await buildWrap(u.email, T0);
+    expect(only.approved).toBe(1);
+    // A to-do linked to an inbox item the owner approved in the inbox today, the list never opened: done, not overdue.
+    await saveTask(u.email, pending("cccc0000cccc0004"), true);
+    await add({ title: "Approve the Ramadan post", dueAt: "2026-10-05T12:00", taskId: "cccc0000cccc0004" });
+    await updateTask(u.email, "cccc0000cccc0004", (t) => ({ ...t, status: "approved" }));
+    await add({ title: "All day yesterday", dueAt: "2026-10-04" });
+    await add({ title: "Yesterday 20:00", dueAt: "2026-10-04T20:00" });
+    await add({ title: "Today 11:00", dueAt: "2026-10-05T11:00" });
+    await add({ title: "Yesterday 11:00", dueAt: "2026-10-04T11:00" });
+    const w = await buildWrap(u.email, T0);
+    expect(w.completed).toContainEqual(expect.objectContaining({ title: "Approve the Ramadan post", auto: true }));
+    expect([...w.fellOverdue].sort()).toEqual(["All day yesterday", "Today 11:00", "Yesterday 20:00"]);
+    expect(w.tomorrow).not.toContain("Approve the Ramadan post");
+    expect(wrapText(w, "en").body).toContain("• Fell overdue since yesterday's wrap:");
+    expect(previousEveningAt(T0, "Asia/Riyadh")).toBe(Date.parse("2026-10-04T15:00:00Z"));
+    expect(previousEveningAt(Date.parse("2027-02-21T12:00:00Z"), "Asia/Riyadh")).toBe(Date.parse("2027-02-20T18:30:00Z"));
+  });
+
+  it("releases the day's marker when the in-app notification cannot be written, so the retry sends it", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+    const u = await owner("p2wrapretry");
+    const it = await add({ title: "Done before the retry" });
+    await patch(it.id, { action: "complete", result: "ok" });
+    const set = db.set.bind(db);
+    let failed = 0;
+    vi.spyOn(db, "set").mockImplementation(async (key: string, value: unknown, ttl?: number) => { if (key === `notifs:${u.email}` && !failed++) throw new Error("down"); return set(key, value, ttl); });
+    await expect(eveningWrap(u, T0)).rejects.toThrow("down");
+    expect(await db.get(SEC_KEYS.wrap(u.email, "2026-10-05"))).toBeNull();
+    expect(await eveningWrap(u, T0)).toBe("sent");
+    expect(await wraps(u.email)).toHaveLength(1);
+  });
+
+  it("with more than one active brand, each wrap's title names its brand; the switch's text says it silences the wrap", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+    const u = await owner("p2wrapbrands");
+    const at = new Date().toISOString();
+    await saveBrands(u.email, [{ id: "default", name: "Rif", createdAt: at, status: "active" }, { id: "b9", name: "Second shop", createdAt: at, status: "active" }]);
+    const it = await add({ title: "Default brand done" });
+    await patch(it.id, { action: "complete", result: "ok" });
+    const second = scopeFor(u.email, "b9");
+    const made = await createItem({ email: u.email, scope: second }, { title: "Second brand done" }, { actor: "owner", via: "web", source: "owner" });
+    expect(made.ok).toBe(true);
+    if (made.ok) await changeItem(second, made.item.id, { action: "complete", result: "ok" }, { actor: "owner", via: "web" });
+    expect(await eveningWrap(u, T0)).toBe("sent");
+    expect(await eveningWrap({ ...u, scope: second }, T0)).toBe("sent");
+    const titles = (await listNotifs(u.email)).map((n) => n.title).filter((t) => t.startsWith("ملخص المساء من ريم"));
+    expect(titles.sort()).toEqual(["ملخص المساء من ريم — «Rif»", "ملخص المساء من ريم — «Second shop»"]);
+    expect(appDict.en.tasks.followupsDesc).toContain("silences Reem's evening wrap");
+    expect(appDict.ar.tasks.followupsDesc).toContain("ملخص ريم المسائي");
+    expect(appDict.en.notifications.note).toContain("Reminders you set ignore that switch");
+    expect(appDict.ar.notifications.note).toContain("لا يوقفها هذا الإعداد");
+  });
+
   it("the evening cron needs the bearer, rests in Ramadan unless the tick names zones, and serves only those zones", async () => {
     vi.stubEnv("CRON_SECRET", "cron-p2-evening");
     const call = (q = "", bearer = "cron-p2-evening") => eveningRoute.GET(new Request(`https://nashr.test/api/cron/evening${q}`, { headers: { authorization: `Bearer ${bearer}` } }));
     expect((await call("", "wrong")).status).toBe(401);
     expect((await call("?zones=Europe/London")).status).toBe(400);
+    // A list is never trimmed to its valid part: one zone off the allow-list refuses it all.
+    expect((await call(`?zones=${encodeURIComponent("Asia/Riyadh,Europe/London")}`)).status).toBe(400);
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(Date.parse("2027-02-20T15:00:00Z"));
     expect(await (await call()).json()).toMatchObject({ ok: true, skipped: "ramadan" });
@@ -667,6 +1033,40 @@ describe("handoff notes: a blocked agent opens one item, similar notes join it, 
     expect((await agendaFor(u.email)).open).toBe(3);
     expect(sameBlock("أنتظر موافقتك على قائمة الأسعار الجديدة.", "أنتظر موافقتك على قائمة الأسعار الجديدة")).toBe(true);
     expect(sameBlock("Need the logo files", "Need the April sales numbers")).toBe(false);
+  });
+
+  it("a blocked note to the owner is due all day today in the brand's zone, so it reaches the brief and the walk, and the answer says so from the item", async () => {
+    const u = await owner("p2handdue", { ...BRAND, timeZone: "Asia/Dubai" });
+    const out = await runTool(u, "handoff_note", { to: "owner", kind: "blocked", body: "I need the new price list" }, [], [], undefined, { agent: "sami", lang: "en" });
+    const id = /\[id=(s[a-f0-9]{16})\]/.exec(out)![1];
+    const it = (await getItem(u.email, id))!;
+    expect(it.allDay).toBe(true);
+    expect(zoneDay(Date.parse(it.dueAt!), "Asia/Dubai")).toBe(zoneDay(Date.now(), "Asia/Dubai"));
+    expect(out).toContain("It is due today (all day).");
+    expect(out).toContain("in the morning brief (09:00 Dubai time)");
+    expect(briefAgenda(await agendaFor(u.email)).top).toContain(it.title);
+    expect((await walkNext(u.email, Date.now(), { viewer: (await currentUser())!, lang: "en" })).card?.id).toBe(id);
+    // To another agent: that agent owes it, with the usual chase date and no due date.
+    const other = await runTool(u, "handoff_note", { to: "dana", kind: "blocked", body: "I need last week's numbers" }, [], [], undefined, { agent: "sami", lang: "en" });
+    const oid = /\[id=(s[a-f0-9]{16})\]/.exec(other)![1];
+    expect(await getItem(u.email, oid)).toMatchObject({ dueAt: null, owedBy: "dana" });
+    expect(other).toContain("in the morning brief");
+    expect(other).not.toContain("due today");
+  });
+
+  it("merges only what says the same thing: templated requests for different things and one-word bodies stay apart", () => {
+    expect(similarity("Photos", "Budget")).toBe(0);
+    expect(similarity("Photos", "photos")).toBe(1);
+    expect(sameBlock("Photos", "Budget")).toBe(false);
+    expect(sameBlock("الصور", "الميزانية")).toBe(false);
+    expect(sameBlock("Photos", "photos.")).toBe(true);
+    expect(sameBlock("I need the owner to send the April sales numbers", "I need the owner to send the new logo files")).toBe(false);
+    expect(sameBlock("I need the owner to send the April sales numbers before I can plan the campaign", "I need the owner to send the new logo files before I can plan the campaign")).toBe(false);
+    expect(sameBlock("أحتاج من المالك أن يرسل أرقام مبيعات شهر أبريل قبل أن أكمل الخطة", "أحتاج من المالك أن يرسل ملفات الشعار الجديدة قبل أن أكمل الخطة")).toBe(false);
+    expect(sameBlock("Waiting for the owner to approve the new price list", "Still waiting for the owner to approve the new price list")).toBe(true);
+    expect(symmetricWordDiff("a b c", "a b d")).toBe(2);
+    // The same measure no longer calls a one-word text replaced by another a 0% edit.
+    expect(editPctOf("Photos", "Budget")).toBe(100);
   });
 
   it("refuses bad input, caps blocked notes at 20 a day per account, and is not available over MCP", async () => {

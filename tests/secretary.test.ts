@@ -709,6 +709,14 @@ describe("agents know today's Riyadh date, and nothing promises a reminder at th
     expect(reem).toMatch(/There is no alert at the due time itself/);
     expect(reem).toMatch(/set remind_at[\s\S]*never promise a time the answer does not give/);
     expect(readFileSync("content/skills/secretary.md", "utf8")).toMatch(/Never say you will remind the owner at a specific time unless the tool answer for remind_at says it comes at that time/);
+    // Email only per the owner's preference, and the brief's time comes from the answer, never a fixed 08:00.
+    expect(reem).not.toContain("in the app and by email");
+    expect(reem).toContain("by email only when the owner's email preference allows it");
+    expect(reem).not.toMatch(/morning brief \(08:00\)/);
+    const playbook = readFileSync("content/skills/secretary.md", "utf8");
+    expect(playbook).not.toContain("(08:00)");
+    expect(playbook).toContain("a date alone means 08:00 that day");
+    expect(playbook).toContain("by email only when the owner's email preference allows it");
   });
 
   it("todo_create says so when a saved date has already passed", async () => {

@@ -23,8 +23,15 @@ export type TodoRow = {
 export type TodoSection = { bucket: AgendaBucket; title: string; rows: TodoRow[] };
 type Panel = { id: string; kind: "done" | "snooze" | "reschedule" | "remind" | "phone" } | null;
 const UNDO_MS = 8000;
-/** One card of "Walk me through" (GET/POST /api/secretary/walk). Its buttons call the item's own routes. */
-type WalkCard = { key: string; kind: "todo" | "approval"; id: string; title: string; line: string; actions: ("done" | "confirm" | "not_yet" | "snooze" | "chased" | "approve" | "open")[] };
+/**
+ * One card of "Walk me through" (GET/POST /api/secretary/walk). Its buttons call the item's own routes. A confirm card
+ * carries the agent's claim and what the app checked; an approval card the draft's opening and, when the brand guard
+ * holds it, why (and no Approve). All plain text, rendered as text.
+ */
+type WalkCard = {
+  key: string; kind: "todo" | "approval"; id: string; title: string; line: string; actions: ("done" | "confirm" | "not_yet" | "snooze" | "chased" | "approve" | "open")[];
+  claim?: { by: string; text: string }; fact?: string; excerpt?: string; held?: string;
+};
 
 /**
  * My to-dos. The list is rendered on the server; every action here is one PATCH or POST to /api/secretary and then a
@@ -34,11 +41,14 @@ type WalkCard = { key: string; kind: "todo" | "approval"; id: string; title: str
  * `canClose`: the owner or an admin (`todo.close`); a member adds, updates, snoozes and records follow-ups, and does not
  * see Done, Delete, Restore or Confirm / Not yet. Display only: the route refuses the same actions (403).
  */
-export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, allClear, empty, done, deleted, tonight, canClose, timed, lang, inboxHref }: {
+export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, allClear, empty, done, deleted, tonight, canClose, timed, briefAt, lang, inboxHref }: {
   t: AppDict; zoneLabel: string; sections: TodoSection[]; approvals: { line: string; href: string } | null; snoozed: number; allClear: boolean; empty: boolean;
   done: TodoRow[]; deleted: TodoRow[]; tonight: boolean; canClose: boolean; timed: boolean; lang: "ar" | "en"; inboxHref: string;
+  /** The morning brief's local time in the brand's zone ("08:00", "09:00"): when a reminder comes without timed reminders. */
+  briefAt: string;
 }) {
   const T = t.todo;
+  const timedText = timed ? T.timedOn : T.timedOff.replace("{brief}", () => briefAt);
   const router = useRouter();
   const [panel, setPanel] = useState<Panel>(null);
   const [result, setResult] = useState("");
@@ -212,7 +222,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
           <button disabled={!!busy} className="btn btn-primary btn-sm">{T.save}</button>
           {row.remind && <button type="button" disabled={!!busy} onClick={() => act(row, { remindAt: null })} className="btn btn-secondary btn-sm">{T.remindClear}</button>}
           <button type="button" onClick={() => setPanel(null)} className="btn btn-secondary btn-sm">{T.cancel}</button>
-          <p className="w-full text-xs text-ink/50">{timed ? T.timedOn : T.timedOff}</p>
+          <p className="w-full text-xs text-ink/50">{timedText}</p>
         </form>
       )}
       {panel?.id === row.id && panel.kind === "phone" && (
@@ -261,6 +271,14 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
               <div className="mt-3">
                 <p className="font-medium" dir="auto">{walk.card.title}</p>
                 <p className="mt-1 text-xs text-ink/60" dir="auto">{walk.card.line}</p>
+                {walk.card.claim && (
+                  <div className="mt-2 space-y-1 text-sm">
+                    <p className="text-ink/80" dir="auto">{walk.card.claim.by}: «{walk.card.claim.text}» <span className="text-xs text-ink/50">({T.claimNote})</span></p>
+                    <p className={walk.card.fact ? "text-oasis" : "text-ink/60"} dir="auto"><span className="font-semibold">{T.checked}</span> {walk.card.fact || T.nothingChecked}</p>
+                  </div>
+                )}
+                {walk.card.excerpt && <p className="mt-2 max-h-40 overflow-y-auto whitespace-pre-line rounded-lg bg-ink/5 px-3 py-2 text-sm text-ink/80" dir="auto">{walk.card.excerpt}</p>}
+                {walk.card.held && <p className="mt-2 text-sm text-sadu" dir="auto"><span className="font-semibold">{T.walk.held}</span> {walk.card.held}</p>}
                 {walkResult !== null && (
                   <label className="mt-3 block text-xs text-ink/70">{T.doneLabel}
                     <input value={walkResult} onChange={(e) => setWalkResult(e.target.value)} placeholder={T.donePh} maxLength={1000} dir="auto" className="input mt-1" autoFocus />
@@ -328,7 +346,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
             </label>
           )}
         </div>
-        <p className="mt-2 text-xs text-ink/50">{timed ? T.timedOn : T.timedOff}</p>
+        <p className="mt-2 text-xs text-ink/50">{timedText}</p>
         {error?.id === "new" && <p role="alert" className="mt-2 text-sm text-sadu">{error.text}</p>}
         <button disabled={!!busy || !form.title.trim()} className="btn btn-primary btn-sm mt-4">{busy === "new" ? T.add.saving : T.add.save}</button>
       </form>
@@ -345,7 +363,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
           <ul className="mt-2 divide-y divide-ink/10 rounded-xl border border-ink/10 bg-white">{deleted.map((r) => item(r, "deleted"))}</ul>
         </section>
       )}
-      <p className="mt-6 text-xs text-ink/50">{T.note}</p>
+      <p className="mt-6 text-xs text-ink/50">{T.note.replace("{brief}", () => briefAt)}</p>
     </div>
   );
 }

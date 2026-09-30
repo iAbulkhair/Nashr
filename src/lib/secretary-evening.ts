@@ -2,26 +2,33 @@
  * Reem's evening wrap: what happened today and what comes first tomorrow, built in code from stored facts. Server only.
  *
  * Rules held in code:
- * - Four parts, all read from the store, never from a model: items completed today (the brand's local day) with their
- *   result; the approvals and rejections the owner decided today (`decisions:{scope}`, human decisions only); items
- *   that fell overdue today; the first three items the 09:00 agenda tomorrow would put in front of the owner (overdue,
- *   due, to confirm, to chase). No motivational line.
+ * - Four parts, all read from the store, never from a model, after the agenda closed the items whose linked inbox item
+ *   was approved (`agendaFor`, so an approved item shows as done, not as overdue): items completed today (the brand's
+ *   local day) with their result; the approvals (approve, and publish, which approves) and rejections the owner decided
+ *   today (`decisions:{scope}`, human decisions only); items that fell overdue since the previous evening's wrap time
+ *   (an all-day item due yesterday included); the first three items the 09:00 agenda tomorrow would put in front of the
+ *   owner (overdue, due, to confirm, to chase). No motivational line.
  * - Silent when all four are empty. Sent at most once per scope and local day: `sec:wrap:{scope}:{day}` is claimed
- *   with SET NX before anything is sent.
- * - One in-app notification; one email only when email is set up and the preference is "all".
+ *   with SET NX before anything is sent, and released when the in-app notification could not be written, so a retry
+ *   can still send it (never after that notification was written: an email failure keeps it).
+ * - One in-app notification; one email only when email is set up and the preference is "all". With more than one active
+ *   brand, the title and the email's subject name the brand the wrap is about.
  * - When: 18:00 local; during Ramadan 21:30 local, after Taraweeh. The Vercel cron `/api/cron/evening` (15:00 UTC)
  *   serves every workspace outside Ramadan; the QStash tick (`/api/cron/secretary`) starts it for the zones whose
  *   target time just passed, and in Ramadan it is the only path (without QStash, no wrap in Ramadan).
+ * - Switched off with the follow-ups in Scheduled tasks (`followUps: false`).
  * - Free: no credits, no model call.
  */
 import { db } from "./db";
 import { sc, type User } from "./auth";
+import { getBrand } from "./brand";
+import { listBrands, scopeFor } from "./brands";
 import { listDecisions } from "./decisions";
 import { getSchedule } from "./schedule";
 import { notifyItem } from "./notifications";
 import { sendEmail } from "./notify";
 import { activeSeasons } from "./seasons";
-import { SEC_KEYS, listDone, listOpenItems, zoneFor } from "./secretary";
+import { SEC_KEYS, agendaFor, listDone, listOpenItems } from "./secretary";
 import { AUTO_CLOSE_RESULT, addDays, computeAgenda, zoneDay, zoneTime } from "./secretary-agenda";
 import { ZONE_IDS, type Zone } from "./zones";
 
@@ -67,60 +74,103 @@ export type Wrap = {
   tomorrow: string[];
 };
 
+/** The previous evening's wrap instant in a zone: 18:00, or 21:30 when that day was in Ramadan. */
+export function previousEveningAt(now: number, zone: Zone): number {
+  const prev = addDays(zoneDay(now, zone), -1);
+  const t = isRamadan(zoneTime(prev, 12, 0, zone)) ? RAMADAN_EVENING_AT : EVENING_AT;
+  return zoneTime(prev, t.hh, t.mm, zone);
+}
+
+/** A decision the wrap counts: approve and publish (publishing a pending item approves it), and reject. */
+const APPROVALS = new Set(["approve", "publish"]);
+
 /**
- * The four parts of one scope's wrap at `now`, in its zone. Reads: the brand file (zone), the open set and its items,
- * the newest 50 done items, the newest 100 decisions: the same number whatever the size of the list.
+ * The four parts of one scope's wrap at `now`, in its zone. First the agenda (`agendaFor`, as the cron): it closes the
+ * items whose linked inbox item was approved, so they count as done today and never as overdue. Then one round of
+ * reads: the open set and its items, the newest 50 done items, the newest 100 decisions: the same number whatever the
+ * size of the list. "Fell overdue" is every open item whose due time passed since the previous evening's wrap time.
  */
 export async function buildWrap(scope: string, now: number): Promise<Wrap> {
-  const [zone, open, done, decisions] = await Promise.all([zoneFor(scope), listOpenItems(scope), listDone(scope, 50), listDecisions(scope, DECISIONS_READ)]);
+  const { zone } = await agendaFor(scope, now, { actor: "cron", via: "cron" });
+  const [open, done, decisions] = await Promise.all([listOpenItems(scope), listDone(scope, 50), listDecisions(scope, DECISIONS_READ)]);
   const day = zoneDay(now, zone);
   const today = (iso: string | null | undefined) => !!iso && Number.isFinite(Date.parse(iso)) && zoneDay(Date.parse(iso), zone) === day;
   const completed = done.filter((it) => today(it.completedAt)).map((it) => ({ title: it.title, result: it.result, auto: it.result === AUTO_CLOSE_RESULT }));
-  const decided = decisions.filter((d) => (d.action === "approve" || d.action === "reject") && today(d.at));
-  const fellOverdue = computeAgenda(open, now, { zone }).buckets.overdue.filter((e) => today(e.item.dueAt)).map((e) => e.item.title);
+  const decided = decisions.filter((d) => (APPROVALS.has(d.action) || d.action === "reject") && today(d.at));
+  const since = previousEveningAt(now, zone);
+  const fellOverdue = computeAgenda(open, now, { zone }).buckets.overdue.filter((e) => { const due = Date.parse(e.item.dueAt ?? ""); return due > since && due <= now; }).map((e) => e.item.title);
   const next = computeAgenda(open, zoneTime(addDays(day, 1), 9, 0, zone), { zone });
   const tomorrow = [...next.buckets.overdue, ...next.buckets.today, ...next.buckets.confirm, ...next.buckets.chase].slice(0, 3).map((e) => e.item.title);
-  return { day, zone, completed, approved: decided.filter((d) => d.action === "approve").length, rejected: decided.filter((d) => d.action === "reject").length, fellOverdue, tomorrow };
+  return { day, zone, completed, approved: decided.filter((d) => APPROVALS.has(d.action)).length, rejected: decided.filter((d) => d.action === "reject").length, fellOverdue, tomorrow };
 }
 
 export const wrapEmpty = (w: Wrap) => !w.completed.length && !w.approved && !w.rejected && !w.fellOverdue.length && !w.tomorrow.length;
 
+/** The wrap's title: named after the brand when the account has more than one active brand (`brand`). */
+export function wrapTitle(lang: "ar" | "en", brand = ""): string {
+  if (lang === "ar") return brand ? `ملخص المساء من ريم — «${brand}»` : "ملخص المساء من ريم";
+  return brand ? `Reem's evening wrap — “${brand}”` : "Reem's evening wrap";
+}
+
 /** The wrap in the owner's language: a title and one line per part that has something. */
-export function wrapText(w: Wrap, lang: "ar" | "en"): { title: string; body: string } {
+export function wrapText(w: Wrap, lang: "ar" | "en", brand = ""): { title: string; body: string } {
   const q = (t: string) => `«${t.slice(0, 80)}»`;
   if (lang === "ar") {
     const lines = [
       ...(w.completed.length ? [`• أُنجز اليوم (${w.completed.length}):`, ...w.completed.slice(0, 5).map((c) => `  – ${q(c.title)}: ${c.auto ? "أُغلقت تلقائياً لأن العنصر المرتبط اعتُمد" : (c.result ?? "").slice(0, 120)}`)] : []),
       ...(w.approved || w.rejected ? [`• قراراتك اليوم في صندوق الموافقة: اعتماد ${w.approved}، رفض ${w.rejected}`] : []),
-      ...(w.fellOverdue.length ? [`• تأخّر اليوم: ${w.fellOverdue.slice(0, 5).map(q).join("، ")}`] : []),
+      ...(w.fellOverdue.length ? [`• تأخّر منذ ملخص الأمس: ${w.fellOverdue.slice(0, 5).map(q).join("، ")}`] : []),
       ...(w.tomorrow.length ? [`• أول ما ينتظرك غداً 9 ص: ${w.tomorrow.map(q).join("، ")}`] : []),
     ];
-    return { title: "ملخص المساء من ريم", body: lines.join("\n") };
+    return { title: wrapTitle("ar", brand), body: lines.join("\n") };
   }
   const lines = [
     ...(w.completed.length ? [`• Done today (${w.completed.length}):`, ...w.completed.slice(0, 5).map((c) => `  – ${q(c.title)}: ${c.auto ? "closed automatically, the linked item was approved" : (c.result ?? "").slice(0, 120)}`)] : []),
     ...(w.approved || w.rejected ? [`• Your decisions today in the approval inbox: ${w.approved} approved, ${w.rejected} rejected`] : []),
-    ...(w.fellOverdue.length ? [`• Fell overdue today: ${w.fellOverdue.slice(0, 5).map(q).join(", ")}`] : []),
+    ...(w.fellOverdue.length ? [`• Fell overdue since yesterday's wrap: ${w.fellOverdue.slice(0, 5).map(q).join(", ")}`] : []),
     ...(w.tomorrow.length ? [`• First for tomorrow at 9 AM: ${w.tomorrow.map(q).join(", ")}`] : []),
   ];
-  return { title: "Reem's evening wrap", body: lines.join("\n") };
+  return { title: wrapTitle("en", brand), body: lines.join("\n") };
+}
+
+/**
+ * The brand a wrap names: "" when the account has one active brand (nothing to tell apart), else the name given to the
+ * brand, else its brand file's, as the brand switcher names it. One read of the brand list, one of the brand file only
+ * when the list has no name.
+ */
+async function wrapBrand(email: string, scope: string): Promise<string> {
+  const rows = await listBrands(email);
+  if (rows.filter((b) => b.status === "active").length < 2) return "";
+  const listed = rows.find((b) => scopeFor(email, b.id) === scope)?.name?.trim();
+  return (listed || (await getBrand(scope))?.name || "").trim().slice(0, 60);
 }
 
 /**
  * One workspace's wrap at `now`: built, and when it has something, sent once for the local day. "off" when the owner
- * switched follow-ups off in Scheduled tasks (the wrap is one).
+ * switched follow-ups off in Scheduled tasks (the wrap is one of them; the switch's text says so). The once-a-day
+ * marker is released when the in-app notification cannot be written, so the batch's retry sends it; an email failure
+ * after that keeps the marker, or the retry would push a second notification.
  */
 export async function eveningWrap(user: User, now = Date.now()): Promise<"sent" | "silent" | "already" | "off"> {
   const scope = sc(user);
   if ((await getSchedule(scope)).followUps === false) return "off";
   const w = await buildWrap(scope, now);
   if (wrapEmpty(w)) return "silent";
-  if (!(await db.setNx(SEC_KEYS.wrap(scope, w.day), 1, WRAP_TTL_S))) return "already";
-  const { title, body } = wrapText(w, user.lang);
-  await notifyItem(user.email, user.lang, { kind: "todo", agent: "reem", title, body, href: `/${user.lang}/app/todo` });
+  const marker = SEC_KEYS.wrap(scope, w.day);
+  if (!(await db.setNx(marker, 1, WRAP_TTL_S))) return "already";
+  let brand = "", title = "", body = "";
+  try {
+    brand = await wrapBrand(user.email, scope);
+    ({ title, body } = wrapText(w, user.lang, brand));
+    await notifyItem(user.email, user.lang, { kind: "todo", agent: "reem", title, body, href: `/${user.lang}/app/todo` });
+  } catch (e) {
+    await db.del(marker).catch(() => {});
+    throw e;
+  }
   if (process.env.RESEND_API_KEY) {
     const pref = ((await db.get<{ emails?: string }>(`profile:${scope}`)) ?? (await db.get<{ emails?: string }>(`profile:${user.email}`)) ?? {}).emails ?? "all";
-    if (pref === "all") await sendEmail(user.email, user.lang === "ar" ? `ملخص المساء — ${w.day}` : `Evening wrap — ${w.day}`, `${title}\n\n${body}\n\n${ORIGIN()}/${user.lang}/app/todo`);
+    const subject = user.lang === "ar" ? `ملخص المساء — ${w.day}${brand ? ` — «${brand}»` : ""}` : `Evening wrap — ${w.day}${brand ? ` — “${brand}”` : ""}`;
+    if (pref === "all") await sendEmail(user.email, subject, `${title}\n\n${body}\n\n${ORIGIN()}/${user.lang}/app/todo`);
   }
   return "sent";
 }

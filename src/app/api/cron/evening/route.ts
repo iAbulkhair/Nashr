@@ -17,14 +17,17 @@ export const maxDuration = 300;
  * Two callers, both with the CRON_SECRET bearer (compared with `sameSecret`): the Vercel cron at 15:00 UTC (18:00
  * Riyadh, 19:00 Dubai), which serves every workspace and does nothing in Ramadan (the wrap then waits for 21:30 local,
  * after Taraweeh); and the QStash tick (`/api/cron/secretary`), which passes `?zones=` when those zones' wrap time has
- * just passed, in and out of Ramadan. Without QStash there is no wrap in Ramadan.
+ * just passed, in and out of Ramadan. Without QStash there is no wrap in Ramadan. `?zones=` must name only allow-listed
+ * zones (`isZone`), else 400 and nothing runs.
  */
 export async function GET(req: Request) {
   const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!sameSecret(bearer, process.env.CRON_SECRET)) return NextResponse.json({ ok: false }, { status: 401 });
   const param = new URL(req.url).searchParams.get("zones");
-  const zones: Zone[] | null = param === null ? null : param.split(",").filter(isZone);
-  if (zones && !zones.length) return NextResponse.json({ ok: false, error: "bad_zones" }, { status: 400 });
+  // Every listed zone must be on the allow-list, else nothing runs: a list is never quietly trimmed to its valid part.
+  const parts = param === null ? null : param.split(",");
+  if (parts && (!parts.length || !parts.every(isZone))) return NextResponse.json({ ok: false, error: "bad_zones" }, { status: 400 });
+  const zones = parts as Zone[] | null;
   const now = Date.now();
   if (!zones && isRamadan(now)) return NextResponse.json({ ok: true, skipped: "ramadan" });
   const roster = await dailyRoster();

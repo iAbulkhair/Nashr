@@ -37,8 +37,6 @@ type Store = {
   zrangeWithScores(key: string): Promise<{ member: string; score: number }[]>;
   /** Members with a score <= `max`, lowest score first (then member), at most `limit` (ZRANGE BYSCORE LIMIT). */
   zrangeByScore(key: string, max: number, limit: number): Promise<{ member: string; score: number }[]>;
-  /** ZREM of one member, true only when THIS call removed it: of two overlapping callers exactly one gets true. */
-  zremClaim(key: string, member: string): Promise<boolean>;
   incrby(key: string, n: number): Promise<number>;
   /** EXPIRE NX: give a key a TTL only when it has none. Never touches the value or an expiry already set. */
   expireNx(key: string, ttlSeconds: number): Promise<void>;
@@ -147,9 +145,6 @@ function upstash(): Store | null {
       const out: { member: string; score: number }[] = [];
       for (let i = 0; i + 1 < flat.length; i += 2) out.push({ member: String(flat[i]), score: Number(flat[i + 1]) });
       return out;
-    },
-    async zremClaim(key, member) {
-      return (await r.zrem(key, member)) === 1;
     },
     async incrby(key, n) {
       return await r.incrby(key, n);
@@ -291,10 +286,6 @@ function memory(): Store {
         .map(([member, score]) => ({ member, score }))
         .sort((a, b) => a.score - b.score || (a.member < b.member ? -1 : a.member > b.member ? 1 : 0))
         .slice(0, limit);
-    },
-    async zremClaim(key, member) {
-      // Check and delete with no await between them: one caller wins, as with Redis.
-      return zsets.get(key)?.delete(member) ?? false;
     },
     async incrby(key, n) {
       live(key);

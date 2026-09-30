@@ -30,7 +30,8 @@ export type SecSource = "owner" | "chat" | "mcp" | "agent";
  * One note on an item. Some notes are written by code with a `kind`, and `noteText` words them in the reader's
  * language (the page in Arabic or English, a tool answer in English): `not_yet`, left by the owner's "Not yet", whose
  * `text` holds the claim that was sent back; `chased`, left when the owner followed up («تمت المتابعة», never "sent");
- * `reminded`, left when a reminder the owner asked for fired; `reopened`, left when the owner reopened a done item.
+ * `reminded`, left when a reminder the owner asked for fired; `reopened`, left when the owner reopened a done item
+ * (its `text` is the id of the inbox item the reopen unlinked it from, or empty).
  */
 export type SecNote = { at: string; by: SecActor; text: string; private: boolean; kind?: "not_yet" | "chased" | "reminded" | "reopened" };
 
@@ -192,6 +193,20 @@ export function formatWhen(iso: string, allDay: boolean, lang: "ar" | "en", nowM
 
 /** "Riyadh time" / «بتوقيت الرياض»: how a date's zone is named next to it. */
 export const zoneTimeLabel = (z: Zone, lang: "ar" | "en") => (lang === "ar" ? `بتوقيت ${ZONES[z].city.ar}` : `${ZONES[z].city.en} time`);
+
+/**
+ * The UTC hour the daily cron runs (`vercel.json`: `0 5 * * *`): the morning brief, and the reminder sweep that stands
+ * in for the QStash tick when it is not running. Pinned against vercel.json in tests/secretary-phase2.test.ts.
+ */
+export const DAILY_CRON_UTC_HOUR = 5;
+/**
+ * The morning brief's local clock time in a zone, "08:00" in Riyadh, Kuwait, Doha and Manama, "09:00" in Dubai and
+ * Muscat: what the owner is told when a reminder can only come with the next brief. Never a fixed "08:00".
+ */
+export const briefClock = (z: Zone) => {
+  const min = (DAILY_CRON_UTC_HOUR * 60 + ZONES[z].offsetMin) % 1440;
+  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+};
 
 /**
  * The line every agent's prompt starts its volatile block with: the brand's local date and time, so relative dates
@@ -363,7 +378,8 @@ export function noteText(n: Pick<SecNote, "text" | "kind">, lang: "ar" | "en"): 
   if (n.kind === "not_yet") return lang === "ar" ? `لم تُنجز بعد (المقترح: ${n.text})` : `Not done yet (proposed: ${n.text})`;
   if (n.kind === "chased") return lang === "ar" ? "تمت المتابعة" : "Followed up";
   if (n.kind === "reminded") return lang === "ar" ? "طلبت تذكيرك اليوم" : "You asked to be reminded";
-  if (n.kind === "reopened") return lang === "ar" ? "أُعيد فتحها" : "Reopened";
+  // A reopened item that was linked to an inbox item keeps that item's id in the note: the link itself goes on reopen.
+  if (n.kind === "reopened") return n.text ? (lang === "ar" ? `أُعيد فتحها، وفُكّ ربطها بعنصر الصندوق ${n.text}` : `Reopened, and unlinked from inbox item ${n.text}`) : lang === "ar" ? "أُعيد فتحها" : "Reopened";
   return n.text;
 }
 
