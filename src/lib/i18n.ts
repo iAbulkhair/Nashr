@@ -1,3 +1,7 @@
+import { AGENCY_MIN, ONBOARD_EXTRA_BRAND_COST, PLAN_CREDITS, PLAN_PRICE_SAR, PLAN_SEATS, formatCount, type PublicTier } from "./pricing";
+import { TASK_COST, TASK_COUNT, type TaskType } from "./tasks";
+import { MEDIA_MODELS } from "./media-catalog";
+
 export type Lang = "ar" | "en";
 export const LANGS: Lang[] = ["ar", "en"];
 
@@ -5,7 +9,80 @@ export function isLang(v: string): v is Lang {
   return v === "ar" || v === "en";
 }
 
-export type Plan = {
+// Every price, credit amount, seat count and task cost below is read from src/lib/pricing.ts, src/lib/tasks.ts or the
+// media catalogue, never typed here: tests/pricing-copy.test.ts (rule 248) pins the cards, the credits table, the FAQ
+// and the other public pages to those tables. The three modules imported above import nothing themselves.
+
+/** "1 seat", "3 seats"; in Arabic "مقعد واحد", "مقعدان", "3 مقاعد" (3-10) and "11 مقعداً" (11 and up). */
+export function seatsText(lang: Lang, n: number): string {
+  if (lang === "en") return `${n} ${n === 1 ? "seat" : "seats"}`;
+  return n === 1 ? "مقعد واحد" : n === 2 ? "مقعدان" : n <= 10 ? `${n} مقاعد` : `${n} مقعداً`;
+}
+/** "1 credit", "2 credits". */
+const enCredits = (n: number) => `${n} ${n === 1 ? "credit" : "credits"}`;
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** A task's cost as the credits table shows it: the batch, or one item of it (a post is one of ten). */
+export const creditCost = (type: TaskType, perItem = false): number => (perItem ? TASK_COST[type] / (TASK_COUNT[type] || 1) : TASK_COST[type]);
+/** "1–2": the lowest and highest price of a media kind in the catalogue. */
+const mediaRange = (kind: "image" | "video") => {
+  const c = MEDIA_MODELS.filter((m) => m.kind === kind).map((m) => m.credits);
+  const lo = Math.min(...c), hi = Math.max(...c);
+  return { lo, text: lo === hi ? String(lo) : `${lo}–${hi}` };
+};
+
+/**
+ * The task types the pricing page's credits table names, in reading order. `perItem`: the row prices one item of the
+ * batch. Rows are grouped by cost from TASK_COST / TASK_COUNT, so a price change moves a type to its new row by itself.
+ */
+export const CREDIT_TABLE_TYPES: readonly { type: TaskType; perItem?: boolean; label: Record<Lang, string> }[] = [
+  { type: "social", perItem: true, label: { ar: "منشور سوشال", en: "social post" } },
+  { type: "ads", perItem: true, label: { ar: "إعلان", en: "ad" } },
+  { type: "whatsapp", perItem: true, label: { ar: "رسالة واتساب", en: "WhatsApp message" } },
+  { type: "article", label: { ar: "مقال SEO", en: "SEO article" } },
+  { type: "lead_qualifier", label: { ar: "بطاقة تأهيل", en: "lead qualification card" } },
+  { type: "weekly_plan", label: { ar: "خطة الأسبوع", en: "weekly plan" } },
+  { type: "weekly_report", label: { ar: "تقرير أسبوعي", en: "weekly report" } },
+  { type: "unit_economics", label: { ar: "اقتصاديات الوحدة", en: "unit economics" } },
+  { type: "sales_script", label: { ar: "سكربتات مبيعات", en: "sales scripts" } },
+  { type: "pricing_review", label: { ar: "مراجعة تسعير", en: "pricing review" } },
+  { type: "cash_forecast", label: { ar: "تدفق نقدي", en: "cash forecast" } },
+  { type: "growth_experiments", label: { ar: "تجارب نمو", en: "growth experiments" } },
+  { type: "followup_seq", label: { ar: "سلسلة متابعة", en: "follow-up cadence" } },
+  { type: "gtm_plan", label: { ar: "خطة دخول للسوق", en: "go-to-market plan" } },
+  { type: "board_deck", label: { ar: "عرض مجلس الإدارة", en: "board deck" } },
+  { type: "strategy_review", label: { ar: "مراجعة استراتيجية", en: "strategy review" } },
+];
+
+/** The credits table: task rows by cost, the image range, then the free row and the added-brand setup row. */
+function creditRows(lang: Lang): { action: string; cost: string }[] {
+  const byCost = new Map<number, string[]>();
+  for (const t of CREDIT_TABLE_TYPES) {
+    const c = creditCost(t.type, t.perItem);
+    byCost.set(c, [...(byCost.get(c) ?? []), t.label[lang]]);
+  }
+  const image = mediaRange("image");
+  const priced = [
+    ...[...byCost].map(([c, labels]) => ({ lo: c, action: cap(labels.join(" / ")), cost: String(c) })),
+    { lo: image.lo, action: lang === "ar" ? "صورة" : "Image", cost: image.text },
+  ].sort((a, b) => a.lo - b.lo); // stable: the image follows the task row of its lowest price
+  return [
+    ...priced.map(({ action, cost }) => ({ action, cost })),
+    lang === "ar"
+      ? { action: "الدردشة مع الفريق وإعداد علامتك الأولى من رابط موقعك", cost: "مجاناً" }
+      : { action: "Chatting with the team and setting up your first brand from your URL", cost: "Free" },
+    lang === "ar"
+      ? { action: "إعداد كل علامة إضافية من رابطها (يُعاد إن تعذّر بناء ملف العلامة، والنموذج اليدوي مجاني)", cost: String(ONBOARD_EXTRA_BRAND_COST) }
+      : { action: "Setting up each added brand from its URL (refunded if the brand file cannot be built; the manual form is free)", cost: String(ONBOARD_EXTRA_BRAND_COST) },
+  ];
+}
+
+/** List prices for the pricing cards, the FAQ and the help copy, read from the plan table. */
+const P = PLAN_PRICE_SAR;
+const perPost = creditCost("social", true);
+
+/** One card on the pricing page. `id` joins it to src/lib/pricing.ts (the billing page finds its card by id). */
+export type PlanCard = {
+  id: PublicTier;
   name: string;
   price: string;
   period: string;
@@ -38,7 +115,7 @@ export type Dict = {
   industries: { eyebrow: string; title: string; items: { name: string; body: string }[] };
   integrations: { eyebrow: string; title: string; sub: string; groups: { label: string; items: string[] }[] };
   calendar: { eyebrow: string; title: string; sub: string; items: { when: string; name: string; play: string }[] };
-  pricing: { eyebrow: string; title: string; sub: string; trial: string; annual: string; plans: Plan[]; creditsTitle: string; credits: { action: string; cost: string }[] };
+  pricing: { eyebrow: string; title: string; sub: string; trial: string; annual: string; plans: PlanCard[]; creditsTitle: string; credits: { action: string; cost: string }[] };
   faq: { eyebrow: string; title: string; items: { q: string; a: string }[] };
   waitlist: { title: string; sub: string; email: string; company: string; industry: string; industries: string[]; submit: string; ok: string; err: string };
   footer: { tagline: string; rights: string; links: { label: string; href: string }[] };
@@ -111,7 +188,7 @@ export const dict: Record<Lang, Dict> = {
         { name: "الشركات الناشئة", body: "إطلاق منتج، LinkedIn وX، تجارب نمو أسبوعية بميزانية محدودة." },
         { name: "العيادات والتجميل", body: "منشورات Google Business Profile، رسائل حجز عبر واتساب، ومحتوى يراعي ضوابط الإعلان الطبي." },
         { name: "المطاعم والضيافة", body: "عروض يومية، مراجعات، توصيل، محتوى مرئي بلهجة محلية." },
-        { name: "وكالات التسويق", body: "عدة علامات من حساب واحد على خطة الوكالة، ولكل علامة ملفها وصندوق موافقتها." },
+        { name: "وكالات التسويق", body: "عدة علامات من حساب واحد على أي خطة، ولكل علامة ملفها وصندوق موافقتها." },
         { name: "الخدمات المهنية", body: "محاسبة، استشارات، تعليم — محتوى يبني الثقة، مقالات SEO ومنشورات Google Business." },
       ],
     },
@@ -148,20 +225,13 @@ export const dict: Record<Lang, Dict> = {
       trial: "تجربة 3 أيام مجاناً — بدون بطاقة",
       annual: "ادفع سنوياً ووفّر شهرين (قريباً)",
       plans: [
-        { name: "البداية", price: "149", period: "ريال / شهر", credits: "200 كريدت شهرياً", tagline: "للتاجر الفرد والمبدع", features: ["علامة واحدة، مقعد واحد", "منشورات سوشال (الصور قريباً)", "مقالات SEO بالعربي", "نسخ إعلانية لسناب وميتا", "ملخص يومي 8 صباحاً", "كتيّبات جاهزة لقطاعات الخليج", "وصول MCP"], cta: "ابدأ مجاناً" },
-        { name: "الاحتراف", price: "399", period: "ريال / شهر", credits: "700 كريدت شهرياً", tagline: "للمؤسس والمتجر والعيادة", highlight: true, features: ["كل ما في البداية", "3 مقاعد تشمل المالك، بدورَي مدير وعضو", "ضبط الإعلانات تلقائياً ضمن حدودك (قريباً)", "حملات واتساب + استرجاع السلات (قريباً)", "تدقيق إعلانات أسبوعي وكشف الهدر (قريباً)"], cta: "ابدأ مجاناً" },
-        { name: "الوكالة", price: "799", period: "ريال / شهر", credits: "2,000 كريدت شهرياً — يتجدد كل شهر ولا يترحّل", tagline: "للوكالات ومتعدد الفروع", features: ["كل ما في الاحتراف", "7 مقاعد تشمل المالك", "علامات متعددة (5 مشمولة)", "علامة إضافية 99 ريال (قريباً)", "تقارير بعلامتك للعملاء (قريباً)", "ضبط الإعلانات كل ساعتين (قريباً)"], cta: "ابدأ مجاناً" },
-        { name: "المؤسسات", price: "حسب الطلب", period: "فوترة سنوية", credits: "كريدت مخصص", tagline: "للمجموعات والجهات الكبيرة", features: ["الوكلاء المتخصصون كلهم", "استضافة البيانات داخل السعودية (قريباً)", "ربط CRM ومستودع البيانات (قريباً)", "تدريب نموذج على صوت علامتك (قريباً)", "مدير نجاح مخصص", "SLA ساعة واحدة (قريباً)", "عدد مقاعد حسب فريقك", "علامات بلا حد (قريباً)"], cta: "احجز عرضاً" },
+        { id: "starter", name: "البداية", price: String(P.starter), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.starter)} كريدت شهرياً`, tagline: "للتاجر الفرد والمبدع", features: [`علامات بلا حد، ${seatsText("ar", PLAN_SEATS.starter)}`, "منشورات سوشال (الصور قريباً)", "مقالات SEO بالعربي", "نسخ إعلانية لسناب وميتا", "ملخص يومي 8 صباحاً", "كتيّبات جاهزة لقطاعات الخليج", "وصول MCP"], cta: "ابدأ مجاناً" },
+        { id: "pro", name: "الاحتراف", price: String(P.pro), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.pro)} كريدت شهرياً`, tagline: "للمؤسس والمتجر والعيادة", highlight: true, features: ["كل ما في البداية", `${seatsText("ar", PLAN_SEATS.pro)} تشمل المالك، بدورَي مدير وعضو`, "ضبط الإعلانات تلقائياً ضمن حدودك (قريباً)", "حملات واتساب + استرجاع السلات (قريباً)", "تدقيق إعلانات أسبوعي وكشف الهدر (قريباً)"], cta: "ابدأ مجاناً" },
+        { id: "business", name: "الأعمال", price: String(P.business), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.business)} كريدت شهرياً — يتجدد كل شهر ولا يترحّل`, tagline: "للفرق والشركات الأكبر", features: ["كل ما في الاحتراف", `${seatsText("ar", PLAN_SEATS.business)} تشمل المالك`, "تقارير بعلامتك للعملاء (قريباً)", "ضبط الإعلانات كل ساعتين (قريباً)"], cta: "ابدأ مجاناً" },
+        { id: "agency", name: "الوكالات", price: "تواصل معنا", period: "فوترة سنوية", credits: `رصيد مخصص، من ${formatCount(AGENCY_MIN.credits)} كريدت شهرياً`, tagline: "للوكالات والمجموعات الكبيرة", features: ["الوكلاء المتخصصون كلهم", "استضافة البيانات داخل السعودية (قريباً)", "ربط CRM ومستودع البيانات (قريباً)", "تدريب نموذج على صوت علامتك (قريباً)", "مدير نجاح مخصص", "SLA ساعة واحدة (قريباً)", "عدد مقاعد حسب فريقك"], cta: "تواصل معنا" },
       ],
       creditsTitle: "كم تكلّف كل مهمة؟",
-      credits: [
-        { action: "منشور سوشال / إعلان / رسالة واتساب / صورة", cost: "1" },
-        { action: "مقال SEO / بطاقة تأهيل / تقرير أسبوعي", cost: "2" },
-        { action: "اقتصاديات الوحدة / سلسلة متابعة", cost: "3" },
-        { action: "سكربتات مبيعات / مراجعة تسعير / تدفق نقدي / تجارب نمو", cost: "4" },
-        { action: "خطة دخول للسوق / عرض مجلس الإدارة / مراجعة استراتيجية", cost: "5" },
-        { action: "الدردشة مع الفريق والإعداد من رابط موقعك", cost: "مجاناً" },
-      ],
+      credits: creditRows("ar"),
     },
     faq: {
       eyebrow: "الأسئلة الشائعة",
@@ -171,7 +241,7 @@ export const dict: Record<Lang, Dict> = {
         { q: "هل تنشر نور بدون إذني؟", a: "لا. كل عنصر ينتظر موافقتك في الصندوق، والنشر دائماً بقرار منك. بعد أن تثق بها، تقدر تعتمد أنواعاً محددة تلقائياً من صفحة الحوكمة." },
         { q: "وش يعني ملخص الصباح؟", a: "كل يوم 08:00 بتوقيت السعودية: ما ينتظر موافقتك، ما اعتُمد، رصيدك، المواسم القريبة، ومتابعات الفريق (عناصر موعدها اليوم، أشياء تنتظرك من يومين). في التطبيق." },
         { q: "متى أشوف نتائج؟", a: "تكتب نور ملف العلامة وخطة 90 يوماً من رابط موقعك أثناء الإعداد، ثم تصلك أول دفعة محتوى عندما تطلبها." },
-        { q: "كم تكلّف؟", a: "كريدت شهري حسب الخطة: البداية 149، الاحتراف 399، الوكالة 799 ريال. منشور = 1 كريدت، مقال = 2، عرض مجلس إدارة = 5. الدردشة مع الفريق مجانية. ولتغيير الخطة تواصل معنا." },
+        { q: "كم تكلّف؟", a: `كريدت شهري حسب الخطة: البداية ${P.starter}، الاحتراف ${P.pro}، الأعمال ${P.business} ريال، والوكالات بعقد. منشور = ${perPost} كريدت، مقال = ${TASK_COST.article}، عرض مجلس إدارة = ${TASK_COST.board_deck}. الدردشة مع الفريق وإعداد علامتك الأولى مجاناً، وإعداد كل علامة إضافية من رابطها ${ONBOARD_EXTRA_BRAND_COST} كريدت. ولتغيير الخطة تواصل معنا.` },
         { q: "الخصوصية؟", a: "بياناتك لمساحة عملك فقط: لا تستخدمها منصة نشر لتدريب النماذج، ولا تشاركها بين الحسابات. مفاتيح التكاملات مشفّرة. تحذف حسابك وبيانات مساحة عملك بنفسك من صفحة «حسابك»." },
         { q: "هل تتعلم صوت علامتي؟", a: "نعم. من موقعك أولاً، ثم من كل تعديل ورفض تكتبه، يُحفظ في preferences.md وتلتزم به." },
         { q: "أقدر ألغي؟", a: "نعم. تجربة 3 أيام بدون بطاقة، وبعدها تختار خطتك من صفحة الاشتراك. ولتغيير خطتك أو إلغائها، تواصل معنا." },
@@ -270,7 +340,7 @@ export const dict: Record<Lang, Dict> = {
         { name: "Startups", body: "Product launches, LinkedIn and X, weekly growth experiments on a tight budget." },
         { name: "Clinics & aesthetics", body: "Google Business Profile posts, WhatsApp booking messages, content written with MOH advertising rules in mind." },
         { name: "Restaurants & hospitality", body: "Daily offers, reviews, delivery, visual content in local dialect." },
-        { name: "Marketing agencies", body: "Several brands from one account on the Agency plan, each with its own brand file and approval inbox." },
+        { name: "Marketing agencies", body: "Several brands from one account on any plan, each with its own brand file and approval inbox." },
         { name: "Professional services", body: "Accounting, consulting, education — authority content, SEO articles and Google Business posts." },
       ],
     },
@@ -307,20 +377,13 @@ export const dict: Record<Lang, Dict> = {
       trial: "3-day free trial — no card",
       annual: "Pay yearly, get two months free (coming soon)",
       plans: [
-        { name: "Starter", price: "149", period: "SAR / month", credits: "200 credits / month", tagline: "For solo sellers and creators", features: ["1 brand, 1 seat", "Social posts (images coming soon)", "Arabic SEO articles", "Snap & Meta ad copy suggestions", "Daily 8 AM brief", "Gulf industry playbooks", "MCP server access"], cta: "Start free" },
-        { name: "Pro", price: "399", period: "SAR / month", credits: "700 credits / month", tagline: "For founders, stores, and clinics", highlight: true, features: ["Everything in Starter", "3 seats including the owner, with admin and member roles", "Auto ad optimization within your guardrails (coming soon)", "WhatsApp campaigns + cart recovery (coming soon)", "Weekly ad audit and waste detection (coming soon)"], cta: "Start free" },
-        { name: "Agency", price: "799", period: "SAR / month", credits: "2,000 credits / month, reset monthly", tagline: "For agencies and multi-branch", features: ["Everything in Pro", "7 seats including the owner", "Multi-brand (5 included)", "Extra brand SAR 99 (coming soon)", "White-label client reports (coming soon)", "Ad optimization every 2 hours (coming soon)"], cta: "Start free" },
-        { name: "Enterprise", price: "Custom", period: "annual billing", credits: "Custom credits", tagline: "For groups and large organizations", features: ["All specialist agents", "Data hosted inside Saudi Arabia (coming soon)", "CRM and data warehouse connections (coming soon)", "Model trained on your brand voice (coming soon)", "Dedicated success manager", "1-hour SLA (coming soon)", "Seats sized to your team", "Unlimited brands (coming soon)"], cta: "Book a demo" },
+        { id: "starter", name: "Starter", price: String(P.starter), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.starter)} credits / month`, tagline: "For solo sellers and creators", features: [`Unlimited brands, ${seatsText("en", PLAN_SEATS.starter)}`, "Social posts (images coming soon)", "Arabic SEO articles", "Snap & Meta ad copy suggestions", "Daily 8 AM brief", "Gulf industry playbooks", "MCP server access"], cta: "Start free" },
+        { id: "pro", name: "Pro", price: String(P.pro), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.pro)} credits / month`, tagline: "For founders, stores, and clinics", highlight: true, features: ["Everything in Starter", `${seatsText("en", PLAN_SEATS.pro)} including the owner, with admin and member roles`, "Auto ad optimization within your guardrails (coming soon)", "WhatsApp campaigns + cart recovery (coming soon)", "Weekly ad audit and waste detection (coming soon)"], cta: "Start free" },
+        { id: "business", name: "Business", price: String(P.business), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.business)} credits / month, reset monthly`, tagline: "For bigger teams and businesses", features: ["Everything in Pro", `${seatsText("en", PLAN_SEATS.business)} including the owner`, "White-label client reports (coming soon)", "Ad optimization every 2 hours (coming soon)"], cta: "Start free" },
+        { id: "agency", name: "Agency", price: "Contact us", period: "annual billing", credits: `Custom credits, from ${formatCount(AGENCY_MIN.credits)} a month`, tagline: "For agencies and large groups", features: ["All specialist agents", "Data hosted inside Saudi Arabia (coming soon)", "CRM and data warehouse connections (coming soon)", "Model trained on your brand voice (coming soon)", "Dedicated success manager", "1-hour SLA (coming soon)", "Seats sized to your team"], cta: "Contact us" },
       ],
       creditsTitle: "What does each task cost?",
-      credits: [
-        { action: "Social post / ad / WhatsApp message / image", cost: "1" },
-        { action: "SEO article / lead qualification card / weekly report", cost: "2" },
-        { action: "Unit economics / follow-up cadence", cost: "3" },
-        { action: "Sales scripts / pricing review / cash forecast / growth experiments", cost: "4" },
-        { action: "Go-to-market plan / board deck / strategy review", cost: "5" },
-        { action: "Chatting with the team and onboarding from your URL", cost: "Free" },
-      ],
+      credits: creditRows("en"),
     },
     faq: {
       eyebrow: "FAQ",
@@ -330,7 +393,7 @@ export const dict: Record<Lang, Dict> = {
         { q: "Does Noor publish without permission?", a: "No. Every item waits in your inbox, and publishing is always your call. Once you trust her, you can auto-approve specific types from Governance." },
         { q: "What is the morning brief?", a: "Every day at 08:00 KSA: what waits for approval, what was approved, your balance, upcoming seasons, and team follow-ups (items due today, things waiting for two days). In the app." },
         { q: "How long until I see results?", a: "Your brand file and 90-day plan are written from your URL during onboarding, and your first content batch arrives when you ask Noor for it." },
-        { q: "How much does it cost?", a: "Monthly credits by plan: Starter 149, Pro 399, Agency 799 SAR. A post is 1 credit, an article 2, a board deck 5. Chatting with the team is free. To change plans, contact us." },
+        { q: "How much does it cost?", a: `Monthly credits by plan: Starter ${P.starter}, Pro ${P.pro}, Business ${P.business} SAR, and Agency by contract. A post is ${enCredits(perPost)}, an article ${TASK_COST.article}, a board deck ${TASK_COST.board_deck}. Chatting with the team and setting up your first brand are free; setting up each added brand from its URL is ${enCredits(ONBOARD_EXTRA_BRAND_COST)}. To change plans, contact us.` },
         { q: "What about privacy?", a: "Your data stays in your workspace, is never used by Nashr to train models and never shared across accounts. Integration keys are encrypted. Delete your account and its workspace data yourself from Profile." },
         { q: "Does Noor learn my brand voice?", a: "Yes. From your website first, then from every edit and rejection you write, saved to preferences.md and followed." },
         { q: "Can I cancel anytime?", a: "Yes. 3-day trial with no card. Upgrade from Subscription; to change or cancel your plan, contact us." },

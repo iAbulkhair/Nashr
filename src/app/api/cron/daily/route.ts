@@ -12,6 +12,7 @@ import { renewIfDue } from "@/lib/credits";
 import { followUps, notifEmailText } from "@/lib/notifications";
 import { getUser } from "@/lib/auth";
 import { syncAdsIfDue } from "@/lib/perf-store";
+import { sweepOnboardHolds } from "@/lib/onboard-confirm";
 import { purgeExpired, secretaryDaily } from "@/lib/secretary";
 
 export const maxDuration = 300;
@@ -26,6 +27,21 @@ async function dailyFor(u: User): Promise<string> {
     out.push("renewed");
     const fresh = await getUser(u.email);
     if (fresh) u.credits = fresh.credits;
+  }
+  // Once per account, on its default brand's entry: an added brand's setup charge that no run charged or reused for a day
+  // is refunded, or only dropped when its brand exists (src/lib/onboard-confirm.ts `sweepOnboardHolds`, rule 246). Covers
+  // archived brands too, which have no entry of their own. A failure is reported and never stops the rest of the day.
+  if ((u.brandId ?? "default") === "default" && u.onboardPaid) {
+    try {
+      const swept = await sweepOnboardHolds(u);
+      if (swept) {
+        u.credits = swept.credits;
+        if (swept.refunded.length) out.push(`onboard_refunded:${swept.refunded.length}`);
+        if (swept.dropped.length) out.push(`onboard_settled:${swept.dropped.length}`);
+      }
+    } catch (e) {
+      out.push(`onboard_sweep_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`);
+    }
   }
   // Reem's list, for every scope with or without a brand: purge items deleted over 30 days ago and close the ones whose
   // linked inbox item was approved. A failure is reported and never stops the rest of this workspace's day.

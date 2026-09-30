@@ -2,9 +2,10 @@
 import { Fragment, useEffect, useState } from "react";
 import GoldenPanel from "./GoldenPanel";
 import WishlistPanel from "./WishlistPanel";
+import { AGENCY_MIN, MAX_DEAL_CREDITS, MAX_SEAT_OVERRIDE, PLANS, PLAN_CREDITS, PLAN_PRICE_SAR, PLAN_SEATS, formatCount, parseDeal, type AgencyDeal } from "@/lib/pricing";
 
 type KindUsage = { calls: number; in: number; out: number; usd: number };
-type U = { email: string; name: string; phone: string; plan: string; credits: number; trialEnds: string; createdAt: string; renewedAt?: string | null; suspended?: boolean; lang?: string; tokens?: number; usd?: number; calls?: number; byKind?: Record<string, KindUsage>; priceSar?: number; marginPct?: number | null; seats?: number; seatsOverride?: number | null };
+type U = { email: string; name: string; phone: string; plan: string; credits: number; trialEnds: string; createdAt: string; renewedAt?: string | null; suspended?: boolean; lang?: string; tokens?: number; usd?: number; calls?: number; byKind?: Record<string, KindUsage>; priceSar?: number; marginPct?: number | null; seats?: number; seatsOverride?: number | null; deal?: AgencyDeal | null; allowance?: number };
 /** GET /api/admin/users/{email} for an address that is a member login, not an account (members never enter users:all). */
 type MemberDetail = { email: string; name: string; role: string; memberOf: string; invitedBy: string; acceptedAt: string; disabled: string | null; ownerExists: boolean; onRoster: boolean };
 /** What POST /api/admin/plan changed in the team when the seat limit moved (src/lib/team.ts `enforceSeats`). */
@@ -15,8 +16,8 @@ type TM = { type: string; n: number; approved: number; rejected: number; autoApp
 type AM = { agent: string; n: number; decided: number; autoApproved: number; approvalRate: number | null; reviewedApproved: number; editRate: number | null; judged: number; avgScore: number | null; low: number; thumbsUp: number; thumbsDown: number; types: TM[] };
 
 const STR = {
-  en: { users: "Users", paying: "Paying", today: "Signed up today", trial: "Trial", cost: "Model cost this month $", tokens: "Tokens this month", calls: "Model calls", suspended: "Suspended", search: "Search email, name, phone, plan…", email: "Email", name: "Name", phone: "Phone", plan: "Plan", credits: "Credits", tokensMo: "Tokens (mo)", costMo: "Cost $ (mo)", marginMo: "Margin", perKind: "Cost per request type this month (average of one request, and the total)", perAgent: "Cost per agent this month (model calls made for that agent's work: its batches, reviews, judging, images and its chat turns; onboarding counts as Noor)", trialEnds: "Trial ends", joined: "Joined", addCredits: "+ credits", planNote: "Changing the plan resets the balance to that plan's monthly allowance and starts the renewal cycle (balance resets on the 1st of each month, UTC). Use \"+ credits\" for top-ups within the month. Tokens and cost are this month's real model usage.", quality: "Agent quality · last 30 days · all workspaces", qualityNote: "Approval = approved ÷ decided. Edited = approved items the owner changed (magnitude = % of text changed). Judge = automated score /100 (85+ ready, <70 regenerate). Thumbs = chat replies.", agentType: "Agent / type", items: "Items", approval: "Approval", edited: "Edited", magnitude: "Magnitude", published: "Published", judge: "Judge", low: "<70", hours: "Hours to decide", perWorkspace: "Per workspace", loading: "Loading…", close: "close", impersonate: "Log in as user", extend: "Extend trial", reset: "Reset password", emailsIn: "Emails in", suspend: "Suspend", unsuspend: "Unsuspend", del: "Delete account", usage: "Model usage (month)", trialRenewed: "Trial ends / renewed", integrations: "Integrations", brandsEtc: "Brands · conversations · referrals · judge", brandFile: "Brand file", notCompleted: "— not completed —", generated: "Generated items", approved: "approved", rejected: "rejected", promptCredits: "Credits to add (negative to remove):", promptDays: "Extend trial by days:", promptDelete: "Type the email to permanently delete this account and all its data:", promptTemp: "Temporary password (shown once, send it on WhatsApp):", arabic: "Arabic", english: "English", seats: "Seats", setSeats: "Seats…", promptSeats: "Seat limit, the owner included (1-500). 0 goes back to the plan's number:", seatsOverride: "override", teamPaused: "paused", teamResumed: "back", teamCancelled: "invites cancelled", lookup: "Look up this address", notFound: "No account and no member login at this address.", memberLogin: "Member login", memberOf: "member of", invitedBy: "invited by", ownerMissing: "the owner account is gone", offRoster: "not on the owner's roster", removeMember: "Remove this member login", promptRemoveMember: "Type the email to delete this member login (it frees the address):" },
-  ar: { users: "المستخدمون", paying: "مشتركون", today: "سجّلوا اليوم", trial: "تجربة", cost: "تكلفة النماذج هذا الشهر $", tokens: "توكنز هذا الشهر", calls: "استدعاءات النماذج", suspended: "موقوفون", search: "ابحث بالبريد أو الاسم أو الجوال أو الخطة…", email: "البريد", name: "الاسم", phone: "الجوال", plan: "الخطة", credits: "الكريدت", tokensMo: "توكنز (الشهر)", costMo: "التكلفة $ (الشهر)", marginMo: "الهامش", perKind: "التكلفة حسب نوع الطلب هذا الشهر (متوسط الطلب الواحد، والإجمالي)", perAgent: "التكلفة لكل وكيل هذا الشهر (استدعاءات النماذج لعمل ذلك الوكيل: دفعاته ومراجعتها وتقييمها وصوره ومحادثاته؛ التهيئة تُحسب لنور)", trialEnds: "نهاية التجربة", joined: "انضم", addCredits: "+ كريدت", planNote: "تغيير الخطة يعيد الرصيد إلى مخصص الخطة الشهري ويبدأ دورة التجديد (يتجدد الرصيد في أول كل شهر UTC). استخدم «+ كريدت» للإضافات خلال الشهر. التوكنز والتكلفة هي الاستهلاك الحقيقي للنماذج هذا الشهر.", quality: "جودة الوكلاء · آخر 30 يوماً · كل المساحات", qualityNote: "الاعتماد = معتمد ÷ محسوم. التعديل = عناصر معتمدة غيّرها المالك (الحجم = % النص المتغيّر). الحَكَم = درجة آلية من 100 (85+ جاهز، أقل من 70 أعد التوليد). الإبهام = ردود الدردشة.", agentType: "الوكيل / النوع", items: "عناصر", approval: "اعتماد", edited: "تعديل", magnitude: "الحجم", published: "نُشر", judge: "الحَكَم", low: "<70", hours: "ساعات حتى القرار", perWorkspace: "لكل مساحة", loading: "جارٍ التحميل…", close: "إغلاق", impersonate: "دخول كالمستخدم", extend: "تمديد التجربة", reset: "إعادة تعيين كلمة المرور", emailsIn: "الإيميلات بـ", suspend: "إيقاف", unsuspend: "إلغاء الإيقاف", del: "حذف الحساب", usage: "استهلاك النماذج (الشهر)", trialRenewed: "نهاية التجربة / التجديد", integrations: "التكاملات", brandsEtc: "علامات · محادثات · إحالات · الحَكَم", brandFile: "ملف العلامة", notCompleted: "— غير مكتمل —", generated: "العناصر المولّدة", approved: "معتمد", rejected: "مرفوض", promptCredits: "كريدت للإضافة (سالب للخصم):", promptDays: "تمديد التجربة بالأيام:", promptDelete: "اكتب البريد لحذف الحساب وكل بياناته نهائياً:", promptTemp: "كلمة مرور مؤقتة (تظهر مرة واحدة، أرسلها على واتساب):", arabic: "العربية", english: "الإنجليزية", seats: "المقاعد", setSeats: "المقاعد…", promptSeats: "حد المقاعد شاملاً المالك (1-500). الصفر يعيده إلى عدد الخطة:", seatsOverride: "مخصص", teamPaused: "أُوقف", teamResumed: "عاد", teamCancelled: "دعوات أُلغيت", lookup: "ابحث عن هذا البريد", notFound: "لا حساب ولا دخول عضو بهذا البريد.", memberLogin: "دخول عضو", memberOf: "عضو في", invitedBy: "دعاه", ownerMissing: "حساب المالك غير موجود", offRoster: "ليس في قائمة أعضاء المالك", removeMember: "احذف دخول هذا العضو", promptRemoveMember: "اكتب البريد لحذف دخول هذا العضو (يحرّر البريد):" },
+  en: { users: "Users", paying: "Paying", today: "Signed up today", trial: "Trial", cost: "Model cost this month $", tokens: "Tokens this month", calls: "Model calls", suspended: "Suspended", search: "Search email, name, phone, plan…", email: "Email", name: "Name", phone: "Phone", plan: "Plan", credits: "Credits", tokensMo: "Tokens (mo)", costMo: "Cost $ (mo)", marginMo: "Margin", perKind: "Cost per request type this month (average of one request, and the total)", perAgent: "Cost per agent this month (model calls made for that agent's work: its batches, reviews, judging, images and its chat turns; onboarding counts as Noor)", trialEnds: "Trial ends", joined: "Joined", addCredits: "+ credits", planNote: `Changing the plan resets the balance to that plan's monthly allowance and starts the renewal cycle (balance resets on the 1st of each month, UTC). Agency uses its deal (credits, price and seats, set with "Agency deal…" next to the plan); without a deal it behaves like Business: ${formatCount(PLAN_CREDITS.business)} credits, ${PLAN_SEATS.business} seats and ${PLAN_PRICE_SAR.business} SAR in MRR. An account's first deal applies at once (the balance becomes the deal's credits); changing a deal asks whether to apply it now or at the next renewal. Clearing a deal, or leaving Agency, also clears the deal's seats. Use "+ credits" for top-ups within the month. Tokens and cost are this month's real model usage.`, quality: "Agent quality · last 30 days · all workspaces", qualityNote: "Approval = approved ÷ decided. Edited = approved items the owner changed (magnitude = % of text changed). Judge = automated score /100 (85+ ready, <70 regenerate). Thumbs = chat replies.", agentType: "Agent / type", items: "Items", approval: "Approval", edited: "Edited", magnitude: "Magnitude", published: "Published", judge: "Judge", low: "<70", hours: "Hours to decide", perWorkspace: "Per workspace", loading: "Loading…", close: "close", impersonate: "Log in as user", extend: "Extend trial", reset: "Reset password", emailsIn: "Emails in", suspend: "Suspend", unsuspend: "Unsuspend", del: "Delete account", usage: "Model usage (month)", trialRenewed: "Trial ends / renewed", integrations: "Integrations", brandsEtc: "Brands · conversations · referrals · judge", brandFile: "Brand file", notCompleted: "— not completed —", generated: "Generated items", approved: "approved", rejected: "rejected", promptCredits: "Credits to add (negative to remove):", promptDays: "Extend trial by days:", promptDelete: "Type the email to permanently delete this account and all its data:", promptTemp: "Temporary password (shown once, send it on WhatsApp):", arabic: "Arabic", english: "English", seats: "Seats", setSeats: "Seats…", promptSeats: `Seat limit, the owner included (1-${MAX_SEAT_OVERRIDE}). 0 goes back to the plan's number:`, deal: "Deal", setDeal: "Agency deal…", noDeal: "no deal: Business", dealApplyNow: "Apply the new deal now? OK sets the balance to the deal's credits today and starts the renewal cycle; Cancel keeps the balance until the next renewal.", promptDealCredits: `Agency deal, monthly credits (${formatCount(AGENCY_MIN.credits)} to ${formatCount(MAX_DEAL_CREDITS)}). Leave empty to clear the deal:`, promptDealPrice: `Monthly price in SAR, excluding VAT: at least ${AGENCY_MIN.priceSar}, and never cheaper per credit than Business (${PLAN_PRICE_SAR.business} SAR for ${formatCount(PLAN_CREDITS.business)} credits):`, promptDealSeats: `Seats, the owner included (1-${MAX_SEAT_OVERRIDE}). Leave empty to keep the current number:`, seatsOverride: "override", teamPaused: "paused", teamResumed: "back", teamCancelled: "invites cancelled", lookup: "Look up this address", notFound: "No account and no member login at this address.", memberLogin: "Member login", memberOf: "member of", invitedBy: "invited by", ownerMissing: "the owner account is gone", offRoster: "not on the owner's roster", removeMember: "Remove this member login", promptRemoveMember: "Type the email to delete this member login (it frees the address):" },
+  ar: { users: "المستخدمون", paying: "مشتركون", today: "سجّلوا اليوم", trial: "تجربة", cost: "تكلفة النماذج هذا الشهر $", tokens: "توكنز هذا الشهر", calls: "استدعاءات النماذج", suspended: "موقوفون", search: "ابحث بالبريد أو الاسم أو الجوال أو الخطة…", email: "البريد", name: "الاسم", phone: "الجوال", plan: "الخطة", credits: "الكريدت", tokensMo: "توكنز (الشهر)", costMo: "التكلفة $ (الشهر)", marginMo: "الهامش", perKind: "التكلفة حسب نوع الطلب هذا الشهر (متوسط الطلب الواحد، والإجمالي)", perAgent: "التكلفة لكل وكيل هذا الشهر (استدعاءات النماذج لعمل ذلك الوكيل: دفعاته ومراجعتها وتقييمها وصوره ومحادثاته؛ التهيئة تُحسب لنور)", trialEnds: "نهاية التجربة", joined: "انضم", addCredits: "+ كريدت", planNote: `تغيير الخطة يعيد الرصيد إلى مخصص الخطة الشهري ويبدأ دورة التجديد (يتجدد الرصيد في أول كل شهر UTC). خطة الوكالات تعمل بعقدها (الكريدت والسعر والمقاعد من «عقد الوكالات…» بجانب الخطة)، وبلا عقد تُعامل كخطة الأعمال: ${formatCount(PLAN_CREDITS.business)} كريدت و${PLAN_SEATS.business} مقاعد و${PLAN_PRICE_SAR.business} ريال في الإيراد الشهري. أول عقد للحساب يسري فوراً (يصبح الرصيد كريدت العقد)، وتغيير العقد يسألك: الآن أم من التجديد القادم. إلغاء العقد أو الخروج من خطة الوكالات يلغي مقاعد العقد أيضاً. استخدم «+ كريدت» للإضافات خلال الشهر. التوكنز والتكلفة هي الاستهلاك الحقيقي للنماذج هذا الشهر.`, quality: "جودة الوكلاء · آخر 30 يوماً · كل المساحات", qualityNote: "الاعتماد = معتمد ÷ محسوم. التعديل = عناصر معتمدة غيّرها المالك (الحجم = % النص المتغيّر). الحَكَم = درجة آلية من 100 (85+ جاهز، أقل من 70 أعد التوليد). الإبهام = ردود الدردشة.", agentType: "الوكيل / النوع", items: "عناصر", approval: "اعتماد", edited: "تعديل", magnitude: "الحجم", published: "نُشر", judge: "الحَكَم", low: "<70", hours: "ساعات حتى القرار", perWorkspace: "لكل مساحة", loading: "جارٍ التحميل…", close: "إغلاق", impersonate: "دخول كالمستخدم", extend: "تمديد التجربة", reset: "إعادة تعيين كلمة المرور", emailsIn: "الإيميلات بـ", suspend: "إيقاف", unsuspend: "إلغاء الإيقاف", del: "حذف الحساب", usage: "استهلاك النماذج (الشهر)", trialRenewed: "نهاية التجربة / التجديد", integrations: "التكاملات", brandsEtc: "علامات · محادثات · إحالات · الحَكَم", brandFile: "ملف العلامة", notCompleted: "— غير مكتمل —", generated: "العناصر المولّدة", approved: "معتمد", rejected: "مرفوض", promptCredits: "كريدت للإضافة (سالب للخصم):", promptDays: "تمديد التجربة بالأيام:", promptDelete: "اكتب البريد لحذف الحساب وكل بياناته نهائياً:", promptTemp: "كلمة مرور مؤقتة (تظهر مرة واحدة، أرسلها على واتساب):", arabic: "العربية", english: "الإنجليزية", seats: "المقاعد", setSeats: "المقاعد…", promptSeats: `حد المقاعد شاملاً المالك (1-${MAX_SEAT_OVERRIDE}). الصفر يعيده إلى عدد الخطة:`, deal: "العقد", setDeal: "عقد الوكالات…", noDeal: "بلا عقد: الأعمال", dealApplyNow: "تطبيق العقد الجديد الآن؟ «موافق» يجعل الرصيد كريدت العقد اليوم ويبدأ دورة التجديد، و«إلغاء» يبقي الرصيد حتى التجديد القادم.", promptDealCredits: `عقد الوكالات، الكريدت الشهري (من ${formatCount(AGENCY_MIN.credits)} إلى ${formatCount(MAX_DEAL_CREDITS)}). اتركه فارغاً لإلغاء العقد:`, promptDealPrice: `السعر الشهري بالريال غير شامل الضريبة: ${AGENCY_MIN.priceSar} على الأقل، ولا يكون الكريدت أرخص من خطة الأعمال (${PLAN_PRICE_SAR.business} ريال لكل ${formatCount(PLAN_CREDITS.business)} كريدت):`, promptDealSeats: `المقاعد شاملاً المالك (1-${MAX_SEAT_OVERRIDE}). اتركه فارغاً لإبقاء العدد الحالي:`, seatsOverride: "مخصص", teamPaused: "أُوقف", teamResumed: "عاد", teamCancelled: "دعوات أُلغيت", lookup: "ابحث عن هذا البريد", notFound: "لا حساب ولا دخول عضو بهذا البريد.", memberLogin: "دخول عضو", memberOf: "عضو في", invitedBy: "دعاه", ownerMissing: "حساب المالك غير موجود", offRoster: "ليس في قائمة أعضاء المالك", removeMember: "احذف دخول هذا العضو", promptRemoveMember: "اكتب البريد لحذف دخول هذا العضو (يحرّر البريد):" },
 } as const;
 
 type Overview = {
@@ -148,6 +149,8 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
     fetch("/api/admin/log").then((r) => r.json()).then((j) => j.ok && setLog(j.log)).catch(() => {});
   }, []);
 
+  /** A deal as "credits @ price SAR", or that the account has no deal and counts as Business. */
+  const dealText = (d?: AgencyDeal | null) => (d ? `${formatCount(d.credits)} @ ${formatCount(d.priceSar)} SAR` : S.noDeal);
   /** The team change a plan or seat change made, in one line: who was paused, who came back, how many invites went. */
   const teamLine = (t?: TeamChange) => (!t ? "" : [t.disabled.length ? `${S.teamPaused}: ${t.disabled.join(", ")}` : "", t.enabled.length ? `${S.teamResumed}: ${t.enabled.join(", ")}` : "", t.cancelled.length ? `${S.teamCancelled}: ${t.cancelled.length}` : ""].filter(Boolean).join(" · "));
   // Founder-only and on demand: it writes and deletes a Blob file and asks Higgsfield for five estimates.
@@ -172,12 +175,12 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
     await load();
     setBusy(false);
   }
-  /** The founder seat override (spec §5; Enterprise "seats sized to your team"). 0 clears it back to the plan's number. */
+  /** The founder seat override (spec §5; Agency "seats sized to your team"). 0 clears it back to the plan's number. */
   async function setSeats(u: U) {
     const raw = prompt(S.promptSeats, String(u.seatsOverride ?? u.seats ?? ""));
     if (raw === null || raw.trim() === "") return;
     const n = Number(raw.trim());
-    if (!Number.isInteger(n) || n < 0 || n > 500) { setMsg(`${u.email}: bad_seats`); return; }
+    if (!Number.isInteger(n) || n < 0 || n > MAX_SEAT_OVERRIDE) { setMsg(`${u.email}: bad_seats`); return; }
     const reason = prompt(O.reason, "") ?? "";
     setBusy(true);
     const r = await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, seats: n === 0 ? null : n, reason }) });
@@ -186,13 +189,53 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
     await load();
     setBusy(false);
   }
+  /**
+   * An Agency deal: monthly credits and a SAR price at or above the Business rate, and optionally the seats. Checked here
+   * with the same parser the server uses (src/lib/pricing.ts) so a typo is caught before the request; the server checks
+   * it again and refuses a deal on any plan but agency. Empty credits clears the deal (the account then counts as Business,
+   * and the server clears the deal's seats too).
+   *
+   * The account's first deal is sent with plan "agency", which grants the deal's allowance at once: the plan change that
+   * made the account Agency gave it Business's credits, and a deal sent alone keeps the balance until the next renewal,
+   * so a new 3,000-credit customer would otherwise hold Business's credits for the first month. A change to an existing
+   * deal asks whether to apply it now (the same) or at the next renewal (the deal alone).
+   */
+  async function setDeal(u: U) {
+    const rawCredits = prompt(S.promptDealCredits, String(u.deal?.credits ?? AGENCY_MIN.credits));
+    if (rawCredits === null) return;
+    const body: Record<string, unknown> = {};
+    if (rawCredits.trim() === "") body.deal = null;
+    else {
+      const rawPrice = prompt(S.promptDealPrice, String(u.deal?.priceSar ?? AGENCY_MIN.priceSar));
+      if (rawPrice === null) return;
+      const parsed = parseDeal({ credits: Number(rawCredits.trim()), priceSar: Number(rawPrice.trim()) });
+      if (!parsed.ok) { setMsg(`${u.email}: ${parsed.error}`); return; }
+      body.deal = parsed.deal;
+      if (!u.deal || confirm(S.dealApplyNow)) body.plan = "agency";
+      const rawSeats = prompt(S.promptDealSeats, String(u.seatsOverride ?? ""));
+      if (rawSeats === null) return;
+      if (rawSeats.trim() !== "") {
+        const n = Number(rawSeats.trim());
+        if (!Number.isInteger(n) || n < 1 || n > MAX_SEAT_OVERRIDE) { setMsg(`${u.email}: bad_seats`); return; }
+        body.seats = n;
+      }
+    }
+    const reason = prompt(O.reason, "") ?? "";
+    setBusy(true);
+    const r = await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, ...body, reason }) });
+    const j = (await r.json().catch(() => ({}))) as { ok?: boolean; user?: { deal?: AgencyDeal | null }; team?: TeamChange; error?: string };
+    setMsg(j.ok ? [`${u.email}: ${S.deal} ${dealText(j.user?.deal)}`, teamLine(j.team)].filter(Boolean).join(" · ") : `${u.email}: ${j.error ?? r.status}`);
+    await load();
+    setBusy(false);
+  }
   async function addCredits(email: string) {
     const n = Number(prompt(S.promptCredits, "100"));
     if (!n) return;
     const reason = prompt(O.reason, "") ?? "";
     setBusy(true);
-    await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, addCredits: n, reason }) });
-    setMsg(`${email} +${n} credits`);
+    const r = await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, addCredits: n, reason }) });
+    const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    setMsg(j.ok ? `${email} +${n} credits` : `${email}: ${j.error ?? r.status}`);
     await load();
     setBusy(false);
   }
@@ -207,14 +250,18 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
   // Render the shell at once; each tab shows its own loading state. Waiting for the user list hid the whole console.
   const loadingUsers = users === null;
   const list = users ?? [];
-  const paying = list.filter((u) => u.plan !== "trial").length;
+  // Paying and Trial count live accounts only, like MRR and ARPU (src/lib/admin-stats.ts): a suspended account has its
+  // own tile and pays nothing.
+  const live = list.filter((u) => !u.suspended);
+  const paying = live.filter((u) => u.plan !== "trial").length;
+  const trialing = live.filter((u) => u.plan === "trial").length;
   const shown = list.filter((u) => !q || [u.email, u.name, u.phone, u.plan].some((x) => (x ?? "").toLowerCase().includes(q.toLowerCase())));
   const today = list.filter((u) => u.createdAt.slice(0, 10) === new Date().toISOString().slice(0, 10)).length;
 
   return (
     <div className="grid gap-6">
       <div className="grid gap-3 sm:grid-cols-4">
-        {[[S.users, loadingUsers ? "…" : list.length], [S.paying, loadingUsers ? "…" : paying], [S.today, loadingUsers ? "…" : today], [S.trial, loadingUsers ? "…" : list.length - paying], [S.cost, total ? total.usd.toFixed(2) : "…"], [S.tokens, total ? `${Math.round((total.in + total.out) / 1000)}k` : "…"], [S.calls, total ? total.calls : "…"], [S.suspended, list.filter((u) => u.suspended).length]].map(([l, v]) => (
+        {[[S.users, loadingUsers ? "…" : list.length], [S.paying, loadingUsers ? "…" : paying], [S.today, loadingUsers ? "…" : today], [S.trial, loadingUsers ? "…" : trialing], [S.cost, total ? total.usd.toFixed(2) : "…"], [S.tokens, total ? `${Math.round((total.in + total.out) / 1000)}k` : "…"], [S.calls, total ? total.calls : "…"], [S.suspended, list.filter((u) => u.suspended).length]].map(([l, v]) => (
           <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="font-display text-2xl font-bold text-oasis">{v}</p></div>
         ))}
       </div>
@@ -334,8 +381,9 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
                 <td className="font-mono text-xs"><a href={`https://wa.me/${u.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="underline">{u.phone}</a></td>
                 <td>
                   <select value={u.plan} disabled={busy} onChange={(e) => setPlan(u.email, e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1">
-                    {["trial", "starter", "pro", "agency", "enterprise"].map((p) => <option key={p} value={p}>{p}</option>)}
+                    {PLANS.map((p) => <option key={p} value={p}>{p}</option>)}
                   </select>
+                  {u.plan === "agency" && <button disabled={busy} onClick={() => setDeal(u)} title={S.setDeal} className="ms-2 whitespace-nowrap text-xs underline decoration-dotted">{S.setDeal} <span className="font-mono">{dealText(u.deal)}</span></button>}
                 </td>
                 <td className="whitespace-nowrap text-xs">
                   <button disabled={busy} onClick={() => setSeats(u)} title={S.setSeats} className="font-mono underline decoration-dotted">{u.seats ?? "—"}</button>
@@ -391,7 +439,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
       {sel && tab === "users" && (
         <div className="rounded-xl border border-oasis/30 bg-white p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-display text-lg font-bold text-oasis">{sel.user.email} <span className="text-sm font-normal text-ink/60">· {sel.user.name} · {sel.user.phone} · {sel.user.plan} · {sel.user.credits} credits{sel.user.suspended ? " · SUSPENDED" : ""}</span></h2>
+            <h2 className="font-display text-lg font-bold text-oasis">{sel.user.email} <span className="text-sm font-normal text-ink/60">· {sel.user.name} · {sel.user.phone} · {sel.user.plan}{sel.user.plan === "agency" ? ` (${dealText(sel.user.deal)})` : ""} · {sel.user.credits} credits{sel.user.suspended ? " · SUSPENDED" : ""}</span></h2>
             <button onClick={() => setSel(null)} className="text-sm text-ink/60">{S.close}</button>
           </div>
           <div className="mt-3 flex flex-wrap gap-2 text-xs">
