@@ -695,7 +695,7 @@ describe("private notes never reach a model (rule 205)", () => {
   });
 });
 
-describe("agents know today's Riyadh date, and nothing promises a reminder at the due time (rule 206)", () => {
+describe("agents know today's Riyadh date, and nothing promises a reminder at the due time or at a time that is not running (rule 206)", () => {
   it("puts the current Riyadh date and time in every agent's uncached prompt block", () => {
     const u = { email: "x@test.example", credits: 5, plan: "starter", trialEnds: "2026-10-01" } as User;
     for (const agent of AGENTS) {
@@ -705,8 +705,18 @@ describe("agents know today's Riyadh date, and nothing promises a reminder at th
       expect(fixed, agent.id).not.toContain(riyadhDay(Date.now()));
     }
     const reem = system(null, u, [], "", [], [], "reem")[0].text;
-    expect(reem).toMatch(/never say you will remind the owner at a specific time/);
-    expect(readFileSync("content/skills/secretary.md", "utf8")).toMatch(/never say you will remind the owner at a specific time/);
+    // Phase 2: a reminder is set with remind_at, and its arrival is said exactly as the tool answer says it.
+    expect(reem).toMatch(/There is no alert at the due time itself/);
+    expect(reem).toMatch(/set remind_at[\s\S]*never promise a time the answer does not give/);
+    expect(readFileSync("content/skills/secretary.md", "utf8")).toMatch(/Never say you will remind the owner at a specific time unless the tool answer for remind_at says it comes at that time/);
+    // Email only per the owner's preference, and the brief's time comes from the answer, never a fixed 08:00.
+    expect(reem).not.toContain("in the app and by email");
+    expect(reem).toContain("by email only when the owner's email preference allows it");
+    expect(reem).not.toMatch(/morning brief \(08:00\)/);
+    const playbook = readFileSync("content/skills/secretary.md", "utf8");
+    expect(playbook).not.toContain("(08:00)");
+    expect(playbook).toContain("a date alone means 08:00 that day");
+    expect(playbook).toContain("by email only when the owner's email preference allows it");
   });
 
   it("todo_create says so when a saved date has already passed", async () => {

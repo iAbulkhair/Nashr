@@ -155,9 +155,10 @@ export async function saveBrand(email: string, b: Brand) {
 }
 /**
  * Ids waiting for the owner's decision, seeding the set on first use exactly as the badge does. The badge and the
- * inbox both read THIS, so they cannot drift apart: one read used twice, not two that happen to agree.
+ * inbox both read THIS, so they cannot drift apart: one read used twice, not two that happen to agree. Also read by
+ * Reem's "walk me through" (src/lib/secretary-walk.ts), so its approval cards are the badge's items.
  */
-async function pendingIds(email: string): Promise<string[]> {
+export async function pendingIds(email: string): Promise<string[]> {
   if (!(await db.get(`pendingidx:${email}`))) await rebuildPending(email);
   return db.smembers(`pending:${email}`);
 }

@@ -15,8 +15,10 @@ const FEATURES: Record<Feature, { skills: string; page: string }> = {
 };
 
 /**
- * What Reem does not do yet (spec §5.2): no reminder at the due time, no message on WhatsApp or Telegram. Her items
- * only show on My to-dos and in the morning brief, so her copy may not promise either, in any spelling.
+ * Reem's homepage copy is a draft (spec §5.2), written when she had no reminders and no WhatsApp or Telegram. Phase 2
+ * (PR #231) added timed reminders, in the app and by email; she still sends nothing on WhatsApp or Telegram (Telegram
+ * is deferred). Until the founder approves copy that names the reminders, her lines stay free of all of these words,
+ * in any spelling.
  */
 const NOT_YET = [/remind/i, /whats\s*app/i, /telegram/i, /ذكّر/, /ذكر(ي)?ني/, /تذكير/, /واتس\s*اب/, /تي?لي?[جغ]رام/];
 const promises = (text: string) => NOT_YET.filter((p) => p.test(text)).map(String);

@@ -509,4 +509,26 @@ describe("a refused email is reported as refused", () => {
     expect(await sendEmail("someone@example.com", "s", "t")).toBe(false);
     vi.doUnmock("resend");
   });
+
+  it("a send with no answer within EMAIL_TIMEOUT_MS is false, and never holds its caller longer", async () => {
+    vi.doMock("resend", () => ({
+      Resend: class { emails = { send: () => new Promise(() => {}) }; },
+    }));
+    const { sendEmail, EMAIL_TIMEOUT_MS } = await load();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      let done: boolean | undefined;
+      void sendEmail("someone@example.com", "s", "t").then((v) => { done = v; });
+      for (let i = 0; i < 200 && done === undefined; i++) {
+        await new Promise((r) => setImmediate(r));
+        await vi.advanceTimersByTimeAsync(EMAIL_TIMEOUT_MS / 10);
+      }
+      expect(done).toBe(false);
+      const rows = await db.lrange("admin:log", 0, 9);
+      expect(rows.some((r) => r.includes(`no answer within ${EMAIL_TIMEOUT_MS / 1000} s`))).toBe(true);
+    } finally {
+      vi.useRealTimers();
+      vi.doUnmock("resend");
+    }
+  });
 });

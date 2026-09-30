@@ -4,6 +4,7 @@
     { "path": "/api/cron/daily", "schedule": "0 5 * * *" },
     { "path": "/api/cron/golden", "schedule": "0 1 * * 6" },
     { "path": "/api/cron/media", "schedule": "20 5 * * *" },
-    { "path": "/api/cron/routines", "schedule": "0 6 * * *" }
+    { "path": "/api/cron/routines", "schedule": "0 6 * * *" },
+    { "path": "/api/cron/evening", "schedule": "0 15 * * *" }
   ]
 }

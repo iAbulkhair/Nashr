@@ -27,11 +27,16 @@ type Store = {
   scardMany(keys: string[]): Promise<number[]>;
   /** Many JSON values in ONE request (MGET), in the order of `keys`; null where a key is missing. Empty `keys` sends nothing. */
   mget<T = unknown>(keys: string[]): Promise<(T | null)[]>;
-  /** Sorted sets: add or re-score one member, remove one, count, and read the whole set ordered by score (then member). */
-  zadd(key: string, score: number, member: string): Promise<void>;
+  /**
+   * Sorted sets: add or re-score one member, remove one, count, and read the whole set ordered by score (then member).
+   * `zadd` with `{ lt: true }` (ZADD LT) adds a new member, and re-scores an existing one only to a LOWER score.
+   */
+  zadd(key: string, score: number, member: string, opts?: { lt?: boolean }): Promise<void>;
   zrem(key: string, member: string): Promise<void>;
   zcard(key: string): Promise<number>;
   zrangeWithScores(key: string): Promise<{ member: string; score: number }[]>;
+  /** Members with a score <= `max`, lowest score first (then member), at most `limit` (ZRANGE BYSCORE LIMIT). */
+  zrangeByScore(key: string, max: number, limit: number): Promise<{ member: string; score: number }[]>;
   incrby(key: string, n: number): Promise<number>;
   /** EXPIRE NX: give a key a TTL only when it has none. Never touches the value or an expiry already set. */
   expireNx(key: string, ttlSeconds: number): Promise<void>;
@@ -122,8 +127,9 @@ function upstash(): Store | null {
       if (!keys.length) return [];
       return ((await r.mget<(T | null)[]>(...keys)) ?? []).map((v) => v ?? null);
     },
-    async zadd(key, score, member) {
-      await r.zadd(key, { score, member });
+    async zadd(key, score, member, opts) {
+      if (opts?.lt) await r.zadd(key, { lt: true }, { score, member });
+      else await r.zadd(key, { score, member });
     },
     async zrem(key, member) {
       await r.zrem(key, member);
@@ -134,6 +140,13 @@ function upstash(): Store | null {
     async zrangeWithScores(key) {
       // [member, score, member, score, ...]. Members are stringified: the client parses anything that looks like JSON.
       const flat = await r.zrange<(string | number)[]>(key, 0, -1, { withScores: true });
+      const out: { member: string; score: number }[] = [];
+      for (let i = 0; i + 1 < flat.length; i += 2) out.push({ member: String(flat[i]), score: Number(flat[i + 1]) });
+      return out;
+    },
+    async zrangeByScore(key, max, limit) {
+      if (limit <= 0) return [];
+      const flat = await r.zrange<(string | number)[]>(key, "-inf", Number.isFinite(max) ? max : "+inf", { byScore: true, offset: 0, count: limit, withScores: true });
       const out: { member: string; score: number }[] = [];
       for (let i = 0; i + 1 < flat.length; i += 2) out.push({ member: String(flat[i]), score: Number(flat[i + 1]) });
       return out;
@@ -257,9 +270,11 @@ function memory(): Store {
     async mget<T>(keys: string[]) {
       return keys.map((k) => { live(k); const v = m.kv.get(k); return v === undefined ? null : copy(v as T); });
     },
-    async zadd(key, score, member) {
+    async zadd(key, score, member, opts) {
       const z = zsets.get(key) ?? new Map<string, number>();
-      z.set(member, score);
+      // LT: a new member is added; an existing one moves only to a lower score, as Redis does.
+      const cur = z.get(member);
+      if (!opts?.lt || cur === undefined || score < cur) z.set(member, score);
       zsets.set(key, z);
     },
     async zrem(key, member) {
@@ -271,6 +286,14 @@ function memory(): Store {
     async zrangeWithScores(key) {
       // Redis order: by score, then by member (binary), for equal scores.
       return [...(zsets.get(key) ?? new Map<string, number>())].map(([member, score]) => ({ member, score })).sort((a, b) => a.score - b.score || (a.member < b.member ? -1 : a.member > b.member ? 1 : 0));
+    },
+    async zrangeByScore(key, max, limit) {
+      if (limit <= 0) return [];
+      return [...(zsets.get(key) ?? new Map<string, number>())]
+        .filter(([, score]) => score <= max)
+        .map(([member, score]) => ({ member, score }))
+        .sort((a, b) => a.score - b.score || (a.member < b.member ? -1 : a.member > b.member ? 1 : 0))
+        .slice(0, limit);
     },
     async incrby(key, n) {
       live(key);
