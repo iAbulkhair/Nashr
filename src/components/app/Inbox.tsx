@@ -14,6 +14,7 @@ import { dateFormat } from "@/lib/dates";
 import { brandRules, checkText, isCustomerFacing, textOf, type Violation } from "@/lib/brand-rules";
 import type { Journey } from "@/lib/journey";
 import JourneyCard, { milestone } from "./JourneyCard";
+import { isAgentId } from "@/lib/agents";
 
 const GUARD = {
   ar: { code: "كود الإعلان", codeHint: "ضعه في اسم الإعلان في مدير الإعلانات، فتقيس نور نتيجته حين تصل.", copyCode: "نسخ الكود", ok: "يطابق حارس العلامة", held: "محجوز بحارس العلامة", heldBody: "يحتوي على كلمة ممنوعة في ملف علامتك، فلا يُعتمد ولا يُنشر حتى تعدّله:", fix: "عدّل النص", live: "فحص مباشر", liveOk: "لا كلمات ممنوعة. جاهز للاعتماد.", saveDraft: "احفظ دون اعتماد", rule: "قاعدة الكلمات الممنوعة", editBrand: "ملف العلامة" },
@@ -28,6 +29,16 @@ function Hit({ v }: { v: Violation }) {
 }
 
 const CHAR_LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250, tiktok: 2200, whatsapp: 1024, gbp: 1500, linkedin: 3000 };
+
+/** A string from the dictionary with its {placeholders} filled. */
+const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
+/** Notes are stored one point per line (`parseCrossVerdicts`, noor.ts). */
+const noteCount = (notes: string) => notes.split("\n").filter((l) => l.trim()).length;
+/**
+ * Another agent's verdicts on the item, for the card (`Task.crossReview`). Never for an MCP `save_draft` draft, which
+ * carries the "written outside Nashr" chip instead; a verdict naming no known agent is left out.
+ */
+const verdictsOf = (x: Pick<Task, "source" | "crossReview">) => (x.source === "external" ? [] : (x.crossReview ?? []).filter((v) => isAgentId(v.by)));
 
 /** Whether the browser has a share sheet: false on the server and in the first client render, so hydration matches. */
 const noSubscribe = () => () => {};
@@ -232,6 +243,12 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                 <span className="flex items-center gap-2 text-xs">
                   {guarded && <span title={hits.length ? G.held : G.ok} className={`flex items-center gap-1 rounded-full px-2 py-0.5 ${hits.length ? "bg-sadu/10 font-semibold text-sadu-deep" : "bg-oasis/10 text-oasis"}`}><Icon name="shield" className="h-3.5 w-3.5" />{hits.length ? G.held : G.ok}</span>}
                   {x.quality && <span title={x.quality.notes} className={`tnum rounded-full px-2 py-0.5 ${x.quality.score >= 85 ? "bg-oasis/10 text-oasis" : x.quality.score >= 70 ? "bg-saffron/20 text-ink" : "bg-sadu/10 text-sadu-deep"}`} dir="ltr">{i.quality} {x.quality.score}</span>}
+                  {verdictsOf(x).map((v) => {
+                    const name = t.agents[v.by].name;
+                    const n = noteCount(v.notes);
+                    return <span key={v.by} className={`rounded-full px-2 py-0.5 ${v.verdict === "flag" ? "bg-saffron/20 font-semibold text-sadu-deep" : "bg-oasis/10 text-oasis"}`}>{v.verdict === "flag" ? (n === 1 ? fill(i.xNote, { name }) : fill(i.xNotes, { name, n })) : fill(i.xChecked, { name })}</span>;
+                  })}
+                  {x.source === "external" && <span title={i.externalHint} className="rounded-full bg-ink/5 px-2 py-0.5 text-ink/70">{i.external}</span>}
                   <span className={`badge ${x.status === "approved" ? "badge-primary" : x.status === "rejected" ? "badge-danger" : "badge-accent"}`}>{i[x.status]}</span>
                 </span>
               </div>
@@ -250,6 +267,14 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                   </div>
                 </div>
               )}
+              {verdictsOf(x).filter((v) => v.verdict === "flag").map((v) => (
+                // Model-written notes: rendered as text, never as HTML, in the item's own language.
+                <div key={v.by} className="mt-3 rounded-lg border border-saffron/40 bg-saffron/10 p-3 text-sm">
+                  <p className="font-semibold text-sadu-deep">{fill(i.xNotesTitle, { name: t.agents[v.by].name })}</p>
+                  <p className="mt-1 whitespace-pre-line break-words leading-relaxed text-ink/90" dir="auto">{v.notes}</p>
+                  <p className="mt-1.5 text-xs text-ink/60">{i.xNotesHint}</p>
+                </div>
+              ))}
               {x.imageUrl && (
                 <div className="mt-3 flex items-start gap-3">
                   {/* Deliberately not next/image. These URLs come from our Blob store, from fal for items made before

@@ -103,7 +103,19 @@ export type Task = {
   pb?: { skills: string; review: string; industry?: string; code: string };
   /** Automated judge score (src/lib/judge.ts). `autofail` is the judge's automatic-fail code, when one was set. */
   quality?: { score: number; dims: { completeness: number; brand: number; honesty: number; language: number; format: number }; notes: string; model: string; at: string; autofail?: string };
+  /**
+   * Another agent's second opinion on this item, one verdict per reviewing agent (`crossReview` in noor.ts; Razan checks
+   * the arithmetic of growth, deck and strategy work, Majed the strategy of pricing and GTM work). Notes only: the item's
+   * text is never changed by it. A "flag" holds the item pending even when its type is auto-approved. Absent on types
+   * nobody cross-reviews, when the owner switched it off, when the review failed, and on MCP `save_draft` drafts.
+   */
+  crossReview?: CrossVerdict[];
 };
+
+/** One reviewing agent's verdict on one item: "ok", or "flag" with up to 300 characters of notes in the item's language. */
+export type CrossVerdict = { by: AgentId; verdict: "ok" | "flag"; notes: string; at: string; model: string };
+/** Whether any reviewing agent flagged the item. */
+export const crossFlagged = (t: Pick<Task, "crossReview">): boolean => !!t.crossReview?.some((v) => v.verdict === "flag");
 
 /** The notes or brief of one batch as each of its tasks keeps it: first 500 characters, or nothing when there were none. */
 export const briefOf = (notes: unknown): string | undefined => (typeof notes === "string" && notes.trim() ? notes.trim().slice(0, 500) : undefined);
@@ -182,6 +194,8 @@ export type TaskLite = Pick<Task, "id" | "type" | "channel" | "title" | "status"
   notes?: string;
   /** The judge's automatic-fail code, when it set one (the notes then start with "[code]"). */
   autofail?: string;
+  /** Another agent flagged it in the cross-agent review (`Task.crossReview`). Absent, so false, when none did. */
+  xflag?: boolean;
 };
 export function liteOf(t: Task): TaskLite {
   const edited = !!t.editedBody && t.editedBody !== t.body;
@@ -203,6 +217,8 @@ export function liteOf(t: Task): TaskLite {
     score: t.quality?.score,
     notes: t.quality?.notes?.slice(0, 200),
     autofail: t.quality?.autofail,
+    // Built here, so saveTask, updateTask and rebuildIndex all keep it: every path that writes a row goes through liteOf.
+    xflag: crossFlagged(t) || undefined,
   };
 }
 const monthOf = (iso: string) => (/^\d{4}-\d{2}/.test(iso) ? iso.slice(0, 7) : "0000-00");

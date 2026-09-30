@@ -20,6 +20,7 @@ import { isBy, publicBy, type By } from "./actor";
 export const ACTIVITY_KINDS = [
   "generated", "judged", "autofail", "published", "decision", "image_started", "render_done", "render_failed", "routine_ran", "routine_skipped",
   "cap_reached", "no_credits", "external_draft", "brand_changed", "file_written", "gov_changed", "gov_rollback",
+  "cross_reviewed",
 ] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 /** Where it happened. Not a task's `source`: chat and MCP batches are both `source: "chat"`. */
@@ -39,7 +40,7 @@ export type Activity = {
   count?: number;
   /** Charged (generated, image_started), not charged (cap_reached, no_credits: what it would have cost), or the render's price (render_*). */
   credits?: number;
-  /** A code-made result: a provider, a decision action, a routine outcome, a failure reason, "spent/cap". */
+  /** A code-made result: a provider, a decision action, a routine outcome, a failure reason, "spent/cap", a cross review's "flags:N". */
   outcome?: string;
   score?: number;
   autofail?: string;

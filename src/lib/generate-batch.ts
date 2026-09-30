@@ -96,15 +96,36 @@ export type ItemContext = {
  * One generated item as a new task. Every batch builds its tasks here, so a field every new task must carry is added
  * in one place. Auto-approval never skips the brand gate (`initialStatus`), and a forced batch is never auto-approved.
  * `pb` records which prompts made it (src/lib/prompt-stamp.ts), so a change in quality can be traced to a prompt change.
+ *
+ * The cross-agent review's verdicts (`it.crossReview`, noor.ts) are kept on the task, and a "flag" holds it pending
+ * the way `forcePending` does, so another agent's concern always reaches the owner before the item counts as approved.
+ * An `external` item (MCP `save_draft`) is never cross-reviewed: no Nashr agent wrote it, so it keeps no verdicts.
  */
 export function taskFromItem(it: Generated, c: ItemContext): Task {
   const draft = { type: c.type, title: it.title, body: it.body };
+  const verdicts = c.source !== "external" && it.crossReview?.length ? it.crossReview : undefined;
+  const flagged = !!verdicts?.some((v) => v.verdict === "flag");
   return {
     id: randomBytes(8).toString("hex"), type: c.type, channel: it.channel, title: it.title, body: it.body,
-    status: initialStatus(c.forcePending ? false : c.autoApprove, c.brand, draft),
+    status: initialStatus(c.forcePending || flagged ? false : c.autoApprove, c.brand, draft),
     createdAt: c.createdAt, lang: c.brand.languages[0] ?? "ar", source: c.source, ...(c.brief ? { brief: c.brief } : {}),
     pb: promptStamp(c.type, c.brand),
+    ...(verdicts ? { crossReview: verdicts } : {}),
   };
+}
+
+/**
+ * The batch's cross-agent review in the activity log: one `cross_reviewed` row per reviewing agent that gave verdicts,
+ * with the items it read, how many, and how many it flagged (`outcome` "flags:N"). The review runs by itself, so `by` is
+ * the system's, with the batch's `via`, like the judge's rows.
+ */
+export function crossReviewRows(tasks: Task[], at: string, via: BatchVia): Activity[] {
+  const by = new Map<AgentId, Task[]>();
+  for (const t of tasks) for (const v of t.crossReview ?? []) by.set(v.by, [...(by.get(v.by) ?? []), t]);
+  return [...by].map(([agent, ts]) => {
+    const flags = ts.filter((t) => t.crossReview!.some((v) => v.by === agent && v.verdict === "flag")).length;
+    return { at, kind: "cross_reviewed", agent, by: { kind: "system" }, via, type: ts[0].type, tasks: ts.map((t) => t.id), count: ts.length, outcome: `flags:${flags}` };
+  });
 }
 
 export async function generateBatch(user: User, scope: string, opts: BatchOpts): Promise<BatchResult> {
@@ -142,7 +163,7 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   try {
     const [prefs, memory, stats, feedback] = await Promise.all([listPreferencesFor(scope, agent), memoryBlock(scope), statsFor(type, scope), feedbackFor(scope, agent, { gov })]);
     ground = { notes: opts.notes, memory, stats };
-    items = await generate(type, brand, prefs, opts.notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats, feedback, ...(opts.count ? { count: opts.count } : {}) });
+    items = await generate(type, brand, prefs, opts.notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, crossReview: gov.crossReview !== false, meter: user.email, stats, feedback, ...(opts.count ? { count: opts.count } : {}) });
   } catch (error) {
     // With the receipt, so the agent's monthly counter comes down with the balance.
     const [credits] = await Promise.all([refund(user.email, cost, paid), opts.settle?.()]);
@@ -153,9 +174,10 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   const createdAt = new Date().toISOString();
   const brief = opts.brief ?? briefOf(opts.notes);
   const tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt }));
-  // Together, not one round trip after another (Redis is HTTP per command), with the batch's one activity row.
+  // Together, not one round trip after another (Redis is HTTP per command), with the batch's one activity row and, when
+  // other agents reviewed it, one row per reviewer.
   const done: Activity = { at: createdAt, kind: "generated", agent, by: await who(), via: opts.via, type, tasks: tasks.map((t) => t.id), count: tasks.length, credits: cost };
-  await Promise.all([...tasks.map((t) => saveTask(scope, t, true)), recordActivity(scope, [done])]);
+  await Promise.all([...tasks.map((t) => saveTask(scope, t, true)), recordActivity(scope, [done, ...crossReviewRows(tasks, createdAt, opts.via)])]);
   // The judge scores against what the agent had, and against the count the owner asked for.
   judgeLater(scope, user.email, brand, tasks, opts.count, { ...ground, via: opts.via });
   return { ok: true, tasks, credits: user.credits, receipt: paid, cost, agent, gov };

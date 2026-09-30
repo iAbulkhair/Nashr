@@ -25,6 +25,8 @@ export type SeedWish = { id: string; area: WishArea; title: Bi };
 
 /** Newest first. Dates are merge dates on main. */
 export const CHANGELOG: readonly ChangeEntry[] = [
+  // agent-team step 3b, part R
+  { date: "2026-09-30", tag: "new", title: { ar: "الوكلاء يراجعون عمل بعضهم", en: "Agents review one another" }, desc: { ar: "رزان تراجع الأرقام في خطط النمو والعروض والمذكرات الاستراتيجية، وماجد يراجع الاستراتيجية في مراجعات التسعير وخطط الدخول للسوق. ملاحظات فقط تظهر على بطاقة العنصر، والعنصر الذي عليه ملاحظة ينتظر قرارك حتى مع الاعتماد التلقائي. بلا كريدت، ويمكن إيقافها من الحوكمة.", en: "Razan checks the numbers in growth plans, decks and strategy memos, and Majed checks the strategy in pricing reviews and go-to-market plans. Notes only, shown on the item's card, and an item with a note waits for your decision even under auto-approve. No credits; you can switch it off in Governance." } },
   // agent-team step 3, part L
   { date: "2026-09-29", tag: "new", title: { ar: "سجل نشاط لكل وكيل", en: "An activity log for every agent" }, desc: { ar: "صفحة «النشاط» تعرض ما فعله كل وكيل في علامتك: الدفعات، وتقييم الحَكَم، والقرارات، والنشر، والصور والفيديو، والمهام الدورية، وتغييرات الحوكمة، مع من قام بها ومتى. صفِّ حسب الوكيل أو الحدث، ونزّل السجل ملف CSV.", en: "The Activity page shows what each agent did in your brand: batches, judging, decisions, publishing, images and videos, routines and governance changes, with who did it and when. Filter by agent or event, and download the log as a CSV file." } },
   // agent-team step 3, part H

@@ -362,7 +362,7 @@ describe("model usage per agent (rule 110)", () => {
     expect(usage.byAgent).toEqual({ faris: { calls: 2, usd: 0.032 } });
   });
 
-  it("every model call is attributed: generation, review and judge to the type's owner, a chat turn to its agent, an image prompt to the item's owner, onboarding to Noor", async () => {
+  it("every model call is attributed: generation, review and judge to the type's owner, the cross-agent review to the reviewer, a chat turn to its agent, an image prompt to the item's owner, onboarding to Noor", async () => {
     sdk();
     const u = await owner("usage-pipeline");
     const route = await import("@/app/api/generate/route");
@@ -381,6 +381,9 @@ describe("model usage per agent (rule 110)", () => {
     const k = (kind: string) => usage.byKind[kind]?.calls ?? 0;
     expect(usage.byAgent.razan?.calls).toBe(k("generate") + k("review") + k("judge"));
     expect(k("generate") + k("review") + k("judge")).toBe(3);
+    // Razan's pricing review is cross-reviewed by Majed: that call is his work, metered to him (rule 239).
+    expect(usage.byAgent.majed?.calls).toBe(k("xreview"));
+    expect(k("xreview")).toBe(1);
     expect(usage.byAgent.sami?.calls).toBe(k("chat"));
     expect(k("chat")).toBe(1);
     expect(usage.byAgent.noor?.calls).toBe(k("image_prompt") + k("onboard"));

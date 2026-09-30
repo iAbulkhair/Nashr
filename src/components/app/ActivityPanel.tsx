@@ -77,6 +77,11 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
         case "no_credits": return [typeOf(r) || media, n(a.needed, r.credits), a.notCharged];
         case "external_draft": return [typeOf(r), r.note ?? ""];
         case "gov_changed": case "gov_rollback": return [r.note ? fill(a.changed, { list: r.note }) : ""];
+        // The reviewing agent is the row's agent; `outcome` is "flags:N", written in code.
+        case "cross_reviewed": {
+          const flags = Number(/^flags:(\d+)$/.exec(r.outcome ?? "")?.[1] ?? NaN);
+          return [typeOf(r), n(a.items, r.count), Number.isNaN(flags) ? "" : flags ? fill(a.flags, { n: flags }) : a.noFlags];
+        }
         default: return [r.note ?? ""];
       }
     })();

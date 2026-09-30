@@ -113,7 +113,7 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
     const [head, sub] = path.split(".", 2);
     if (head === "autoApprove" && isTaskType(sub)) return `${g.autoApproveShort}: ${t.generate.types[sub].t}`;
     if (head === "agentCaps" && isAgentId(sub)) return `${g.capShort}: ${t.agents[sub].name}`;
-    const top: Record<string, string> = { reviewer: g.reviewer, learning: g.learning, noEmDash: g.noEmDash, weeklyCap: g.weeklyCap, notifyMinutes: g.notify };
+    const top: Record<string, string> = { reviewer: g.reviewer, crossReview: g.crossReview, learning: g.learning, noEmDash: g.noEmDash, weeklyCap: g.weeklyCap, notifyMinutes: g.notify };
     return Object.hasOwn(top, head) ? top[head] : path;
   };
   const value = (path: string, v: GovValue) => (v === null ? (path.startsWith("agentCaps.") ? g.noCap : "—") : typeof v === "boolean" ? (v ? g.on : g.off) : String(v));
@@ -134,6 +134,8 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
           </div>
         </div>
         <Row title={g.reviewer} sub={g.reviewerSub}><Toggle on={gov.reviewer} onChange={(v) => setGov({ ...gov, reviewer: v })} /></Row>
+        {/* A record saved before the switch existed has no value: the server reads it as on, and so does the page. */}
+        <Row title={g.crossReview} sub={g.crossReviewSub}><Toggle on={gov.crossReview !== false} onChange={(v) => setGov({ ...gov, crossReview: v })} /></Row>
         <Row title={g.learning} sub={g.learningSub}><Toggle on={gov.learning} onChange={(v) => setGov({ ...gov, learning: v })} /></Row>
         <Row title={g.noEmDash} sub={g.noEmDashSub}><Toggle on={gov.noEmDash} onChange={(v) => setGov({ ...gov, noEmDash: v })} /></Row>
         <Row title={g.weeklyCap} sub={g.weeklyCapSub}><input type="number" min={0} max={200} value={gov.weeklyCap} onChange={(e) => setGov({ ...gov, weeklyCap: Number(e.target.value) })} className="w-24 rounded border border-ink/15 px-2 py-1 text-sm" dir="ltr" /></Row>

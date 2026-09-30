@@ -12,6 +12,7 @@ the founder console — see "Where the real numbers live" at the end.
 | `generate` | `claude-opus-5`, `max_tokens` 16000, effort medium | `src/lib/noor.ts` `generate`; every paid batch reaches it through `generateBatch` (`src/lib/generate-batch.ts`), the golden set directly | credits, per `TASK_COST` (a chat `draft_items` pays `countCost`), charged in `generateBatch` before the call |
 | `review` | `claude-sonnet-5`, 16000, effort low | `noor.ts` `critique`, runs after every batch unless governance turns it off | free (inside the batch) |
 | `judge` | `claude-sonnet-5`, 8000, effort low | `src/lib/judge.ts`, runs after the response via `after()` | free |
+| `xreview` | `claude-sonnet-5`, 4000, effort low, one call per reviewing agent | `noor.ts` `crossReview` (since 2026-09-30): the cross-agent review of `gtm_plan` (two calls, Razan and Majed), `growth_experiments`, `retention_play`, `board_deck`, `decision_memo`, `strategy_review` (Razan) and `pricing_review` (Majed); no other type; skipped when governance turns it off and in golden runs. **Metered to the reviewing agent**, not the author: it is the cost of Razan's and Majed's review work | free (inside the batch) |
 | `chat` | `claude-opus-5`, 8000, effort medium, **up to 5 calls per turn** (tool loop) | `src/lib/chat.ts` | **nothing** |
 | `onboard` | `claude-opus-5` × 3 parallel, 10000 + 12000 + 12000 | `src/lib/onboard.ts` | **nothing**, once per workspace |
 | `image_prompt` | `claude-sonnet-5`, 400, effort low, one attempt of at most 20 s, no SDK retries | `src/lib/media/prompts.ts` (image **and** video prompts; video is metered under this kind too, spec A18) | charged with the render (section 3.1); a fixed template, and no model call, while Claude is paused |
@@ -55,6 +56,25 @@ thinking; and per-item output of 350 tokens (a post, an ad, a GBP entry), 900 (a
 | `ads` | 5 | 5 | 2,950 | 0.083 | 0.019 | 0.017 | **0.119** | **0.0238** |
 | `roadmap` | 1 | 4 | 2,100 | 0.062 | 0.014 | 0.013 | **0.089** | **0.0222** |
 | `social` | 10 | 10 | 4,700 | 0.127 | 0.027 | 0.024 | **0.178** | **0.0178** |
+
+The cross-agent review (`xreview`, since 2026-09-30) adds one Sonnet call per reviewing agent to seven types, on top of
+the table above. Worked out with the same assumptions plus these, all estimates: its system prompt is measured
+(`crossReviewPrompt`: 6,088 characters for Razan, 4,936 for Majed, about 1,850 and 1,500 tokens, read from the cache after the
+first call of the five minutes); its user message is the spec and brand file (about 550 tokens) plus the items as the
+generation wrote them (2,500 tokens per long item, 900 per plan item), with an empty workspace; and it writes about 600
+tokens of thinking and 80 to 150 per verdict. A cold cache adds about $0.004 per call; the owner's notes and workspace
+files add their size as input, up to about 10,000 tokens (about $0.02) at the cap.
+
+| Request | Reviewers | xreview $ | **Total $ with it** | **$ per credit** |
+|---|---|---|---|---|
+| `pricing_review` | Majed | 0.014 | **0.154** | **0.0385** |
+| `decision_memo` | Razan | 0.014 | **0.154** | **0.0513** |
+| `board_deck`, `strategy_review` | Razan | 0.014 | **0.154** | **0.0308** |
+| `gtm_plan` | Razan and Majed | 0.028 | **0.168** | **0.0336** |
+| `growth_experiments` | Razan | 0.021 | **0.228** | **0.0570** |
+| `retention_play` | Razan | 0.015 | **0.163** | **0.0408** |
+
+The real numbers are in the founder console under the `xreview` kind and, per agent, under Razan and Majed.
 
 The calls with no credit attached:
 
@@ -138,6 +158,9 @@ type instead of a flat 16,000; and move the judge to a sampled run (every third 
 - **Onboarding** is free: once per workspace, three runs per account per day, and signup is five per IP per hour. The
   worst case an attacker can drive from one address is therefore about $9 an hour.
 - **Cron** charges credits for the weekly plan and makes no model call for the daily brief.
+- **The cross-agent review** (since 2026-09-30) makes no call of its own: it runs inside a paid batch of one of seven
+  types, one call per reviewing agent (two for `gtm_plan`), so the credits and caps that bound batches bound it too.
+  The owner can switch it off on the Governance page (`Governance.crossReview`); golden runs never make it.
 - **Media renders** (spec 4.8, `src/lib/media/jobs.ts`) are bounded in several layers, all but the last in code:
   - credits are charged before the submit and refunded exactly once when the render fails (`refundOnce`: a 60 s claim on
     `mrefund:{jobId}`, then `"done"` once the refund was made), so an owner never pays for a failure, and the chat tool

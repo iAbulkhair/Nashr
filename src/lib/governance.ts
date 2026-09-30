@@ -14,9 +14,14 @@ export type Governance = {
   notifyMinutes: number; // minutes before a scheduled post to notify (future: WhatsApp/email)
   /** Monthly credit cap per agent in this brand scope (`charge` in credits.ts enforces it); an agent with no entry has no cap. */
   agentCaps: Partial<Record<AgentId, number>>;
+  /**
+   * Cross-agent review (`crossReview` in noor.ts): Razan and Majed add notes to the money and strategy work of the other
+   * agents, and a flagged item waits for the owner. On by default; a record saved before 2026-09-30 reads it as on.
+   */
+  crossReview: boolean;
 };
 
-export const DEFAULT_GOV: Governance = { autoApprove: {}, weeklyCap: 20, learning: true, reviewer: true, noEmDash: false, notifyMinutes: 60, agentCaps: {} };
+export const DEFAULT_GOV: Governance = { autoApprove: {}, weeklyCap: 20, learning: true, reviewer: true, noEmDash: false, notifyMinutes: 60, agentCaps: {}, crossReview: true };
 /** Highest monthly cap an owner can set for one agent. */
 export const AGENT_CAP_MAX = 100000;
 
@@ -63,6 +68,8 @@ function mergeGov(cur: Governance, patch: GovPatch): Governance {
     noEmDash: typeof g.noEmDash === "boolean" ? g.noEmDash : cur.noEmDash,
     notifyMinutes: num(g.notifyMinutes) ? Math.max(0, Math.min(1440, g.notifyMinutes)) : cur.notifyMinutes,
     agentCaps,
+    // Only a real boolean changes it: "false", 0 or null from a request leave the stored value, which defaults to on.
+    crossReview: typeof g.crossReview === "boolean" ? g.crossReview : cur.crossReview !== false,
   };
   return next;
 }

@@ -15,6 +15,8 @@ import { promptHashes, promptStamp, type PromptStamp } from "./prompt-stamp";
  * Weekly golden set. A fixed list of cases (fictional brand + task type + owner
  * notes) runs through the real pipeline (generate → reviewer → judge) so agent
  * quality is comparable week over week, independent of what real users asked.
+ * The cross-agent review (noor.ts) is left out on purpose (`crossReview: false`):
+ * it only adds notes, never changes an item, and would cost a call per reviewer.
  * Every case also gets deterministic checks that do not depend on the judge.
  * Bump GOLDEN_VERSION when cases or brands change: deltas only compare runs of
  * the same version.
@@ -161,7 +163,9 @@ async function runCase(c: GoldenCase): Promise<GoldenResult> {
   let items: Generated[] = [];
   let stage = "generate";
   try {
-    items = await generate(c.type, brand, [], c.extra, { meter: GOLDEN_EMAIL, stats: c.stats, count: c.count });
+    // No cross-agent review: it costs a model call per reviewer, writes notes only, and the golden set measures the
+    // agents' own output with the reviewer and the judge. The prompts it measures are the same either way.
+    items = await generate(c.type, brand, [], c.extra, { meter: GOLDEN_EMAIL, stats: c.stats, count: c.count, crossReview: false });
     stage = "judge";
     const verdicts = await scoreItems(GOLDEN_EMAIL, brand, c.type, items, c.count, { notes: c.extra, stats: c.stats });
     // An unjudged item is left out of the mean rather than counted as 0, and the gap is written into the notes so a
