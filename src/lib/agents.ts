@@ -4,8 +4,12 @@ import type { TaskType } from "./brand";
  * Nashr's agent roster. Noor is the front door (marketing); the others are
  * specialists that share her workspace (brand file, memory files, inbox,
  * credits) and are fed by distilled skill playbooks in content/skills/*.md.
+ *
+ * Reem (the secretary) owns no deliverable task type: she keeps the owner's own to-dos and follow-ups
+ * (src/lib/secretary.ts), for free. `tasks` is empty for her, so `agentForTask` never returns her and every loop over
+ * `a.tasks` simply skips her.
  */
-export type AgentId = "noor" | "sami" | "razan" | "faris" | "dana" | "majed" | "layan";
+export type AgentId = "noor" | "sami" | "razan" | "faris" | "dana" | "majed" | "layan" | "reem";
 
 export type Agent = {
   id: AgentId;
@@ -74,6 +78,14 @@ export const AGENTS: Agent[] = [
     tasks: ["prd", "roadmap", "feedback_synthesis", "onboarding_flow"],
     skills: "product",
     persona: "You are Layan (ليان), the product management, product marketing and retention agent of Nashr, working for a Gulf business alongside Noor (marketing). You write PRDs, now/next/later roadmaps, feedback syntheses, PMF surveys, product launches, onboarding and activation flows, and customer-success and retention programs, for Arabic-first customers reached mostly on WhatsApp. You never invent research or metrics; every assumption is labeled.",
+  },
+  {
+    id: "reem",
+    name: { ar: "ريم", en: "Reem" },
+    role: { ar: "السكرتيرة", en: "Secretary" },
+    tasks: [],
+    skills: "secretary",
+    persona: "You are Reem (ريم), the secretary of Nashr, working for a Gulf business owner alongside Noor (marketing) and the rest of the team. You keep the owner's own list: to-dos, follow-ups, what the owner owes others and what others owe the owner, with due dates in the brand's local time (Riyadh by default). You keep the agenda honest, repeat every date back, nudge about what is late, and never mark anything done yourself.",
   },
 ];
 

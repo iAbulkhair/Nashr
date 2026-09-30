@@ -20,6 +20,7 @@ import { getGov } from "@/lib/governance";
 import { missingData } from "@/lib/cart-recovery";
 import { CUSTOMER_FACING, brandRules, explain, gateTask, initialStatus, isCustomerFacing } from "@/lib/brand-rules";
 import { modelState } from "@/lib/model";
+import { SEC_TOOL_DEFS, isSecTool, runSecretaryTool } from "@/lib/secretary";
 import { can } from "@/lib/roles";
 
 export const maxDuration = 300;
@@ -30,13 +31,15 @@ export const maxDuration = 300;
  *   URL: https://nashr-tau.vercel.app/api/mcp   Header: Authorization: Bearer nashr_...
  */
 const TOOLS = [
-  { name: "ask_noor", description: "Talk to Noor, the Gulf marketing agent for this account. She knows the brand, products, seasons and inbox, and can create content, update the brand file, and read/write workspace files.", inputSchema: { type: "object", properties: { message: { type: "string" } }, required: ["message"] } },
+  { name: "ask_noor", description: "Talk to Noor, the Gulf marketing agent for this account. She knows the brand, products, seasons and inbox, and can create content, update the brand file, and read/write workspace files. Over MCP she never publishes and never rewrites core memory files, and a change to the offers or removing a banned word waits for the owner's Save in the app.", inputSchema: { type: "object", properties: { message: { type: "string" } }, required: ["message"] } },
   { name: "generate_content", description: "Create items in the approval inbox. Marketing (Noor): weekly_plan | social (10 posts) | article | whatsapp (3) | ads (5) | gbp (3) | cart_recovery (5, needs a synced Salla or Shopify store). Sales (Sami): sales_script | lead_qualifier | followup_seq. Finance (Razan): pricing_review | unit_economics | cash_forecast. Growth (Faris): gtm_plan | growth_experiments | retention_play. Reports (Dana): weekly_report | board_deck | dashboard_spec. Executive (Majed): strategy_review | okrs | decision_memo. Product (Layan): prd | roadmap | feedback_synthesis | onboarding_flow. Deducts credits.", inputSchema: { type: "object", properties: { type: { type: "string", enum: Object.keys(TASK_COST) }, notes: { type: "string" } }, required: ["type"] } },
   { name: "list_inbox", description: "List inbox items with status.", inputSchema: { type: "object", properties: { status: { type: "string", enum: ["pending", "approved", "rejected", "all"] } } } },
   { name: "read_file", description: "Read a workspace file (brand.md, products.md, strategy.md, market-research.md, preferences.md).", inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
   { name: "list_files", description: "List workspace files.", inputSchema: { type: "object", properties: {} } },
   { name: "get_brand_rules", description: "The active brand's rules as structured data: name, dialect and languages, tone, audience, products, offers, preferred words, channels, and the banned words Nashr enforces in code. Call this before writing anything for this brand in any tool, and write to it. Free, no credits.", inputSchema: { type: "object", properties: {} } },
-  { name: "check_brand", description: "Check a draft against the active brand's rules with the same code Nashr's approve and publish buttons use. Returns pass or the rules that fired, each with the matched word and where it appears. Use it on anything you wrote for this brand before handing it over. Free, no credits.", inputSchema: { type: "object", properties: { text: { type: "string", description: "The draft to check (up to 20,000 characters)." }, type: { type: "string", enum: Object.keys(TASK_COST), description: "Optional Nashr item type. Internal documents (plans, memos) are not held for quoting a banned word; leave empty to check as customer-facing copy." } }, required: ["text"] } },
+  { name: "check_brand", description: "Check a draft against the active brand's rules with the same code Nashr's approve and publish buttons use. Returns pass or the rules that fired, each with the matched word and where it appears. Use it on anything you wrote for this brand before handing it over. Free, no credits.", inputSchema: { type: "object", properties: { text: { type: "string", description: "The draft to check (up to 20,000 characters)." }, type: { type: "string", enum: Object.keys(TASK_COST), description: "Optional Nashr item type. Internal documents (plans, memos) are not held for quoting a banned word; leave empty to check as customer-facing copy." }, channel: { type: "string", description: "Optional channel (whatsapp, email, sms, instagram…). Defaults to the type. A personalisation slot such as {{1}} or [name] passes only on whatsapp, email, sms and call drafts, and is never published; an unfilled placeholder such as [رقم] or [date] never passes." } }, required: ["text"] } },
+  // Reem's to-do tools: free, no model call, the bearer's active brand only; none of them completes, deletes or restores.
+  ...SEC_TOOL_DEFS.map((d) => ({ name: d.name, description: d.description, inputSchema: d.schema })),
   { name: "save_draft", description: `Save one draft you wrote into the owner's Nashr approvals inbox as a pending item, for the owner to approve, edit or reject. Nothing is published and nothing is approved automatically. The brand rules are checked in code on save: a draft with a banned word is kept but held, and the answer names the rule, so run check_brand first and fix it. One item per call. Free, no credits, no model call; limited to ${DRAFTS_PER_HOUR} drafts an hour per account.`, inputSchema: { type: "object", properties: { type: { type: "string", enum: Object.keys(TASK_COST), description: "Nashr item type, e.g. social, article, whatsapp, ads, gbp." }, channel: { type: "string", description: "Optional short channel name: instagram, snapchat, tiktok, x, whatsapp, blog, meta… Defaults to the type." }, title: { type: "string", description: `Optional short title (up to ${DRAFT_LIMITS.title} characters). Defaults to the first line of the body.` }, body: { type: "string", description: `The draft text, ready to use (up to ${DRAFT_LIMITS.body} characters).` }, notes: { type: "string", description: `Optional note for the owner: what this draft is for (up to ${DRAFT_LIMITS.notes} characters).` }, lang: { type: "string", enum: ["ar", "en"], description: "Optional language of the draft. Defaults to the brand's first language." } }, required: ["type", "body"] } },
 ];
 
@@ -81,7 +84,9 @@ export async function POST(req: Request) {
       case "ask_noor": {
         // Same ceiling as the web chat: a bearer token must not be a cheaper way to spend the same models.
         if (!(await chatAllowed(user.email))) return ok(id, { ...text("Too many messages in a short time. Wait a few minutes and try again."), isError: true });
-        const m = await chat(user, String(args.message ?? ""));
+        // As "mcp": the words come from another assistant, so publishing and core-memory writes are refused in runTool,
+        // and a change to the offers or a banned-word removal waits for the owner's Save in the app.
+        const m = await chat(user, String(args.message ?? ""), undefined, "noor", { via: "mcp" });
         return ok(id, text(m.content + (m.actions?.length ? `\n\n[actions: ${m.actions.join(", ")}]` : "")));
       }
       case "generate_content": {
@@ -116,7 +121,7 @@ export async function POST(req: Request) {
         const brief = briefOf(notes);
         const created: Task[] = [];
         for (const it of items) {
-          const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[type], brand, { type, title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat", ...(brief ? { brief } : {}) };
+          const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[type], brand, { type, channel: it.channel, title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat", ...(brief ? { brief } : {}) };
           await saveTask((user.scope ?? user.email), t, true);
           created.push(t);
         }
@@ -146,7 +151,7 @@ export async function POST(req: Request) {
           tone: brand.tone, audience: brand.audience, products: brand.products.slice(0, 3000), offers: brand.offers, valueProp: brand.valueProp ?? "",
           preferredWords: brand.preferred, channels: brand.channels,
           enforced: rules.map((r) => ({ rule: r.id, kind: r.kind, term: r.term, appliesTo: CUSTOMER_FACING })),
-          howToUse: "Write in the dialect and tone above. Never use an enforced term in customer-facing copy: Nashr refuses to approve or publish text that contains one. Run check_brand on your draft before handing it over.",
+          howToUse: "Write in the dialect and tone above. Never use an enforced term in customer-facing copy: Nashr refuses to approve or publish text that contains one. The same holds for an unfilled placeholder such as [رقم], [date] or [proof needed]: fill it in or leave the sentence out. Personalisation slots such as {{1}} are fine only in WhatsApp, email, SMS and call-script drafts, and are never published. Run check_brand on your draft before handing it over.",
         }, null, 2)));
       }
       case "check_brand": {
@@ -155,8 +160,13 @@ export async function POST(req: Request) {
         const draft = String(args.text ?? "").slice(0, 20000);
         if (!draft.trim()) return ok(id, { ...text("Nothing to check: pass the draft in `text`."), isError: true });
         const type = isTaskType(args.type) ? args.type : "social";
-        const violations = gateTask(brand, { type, body: draft });
-        return ok(id, text(JSON.stringify({ pass: violations.length === 0, rulesChecked: brandRules(brand).length, checkedAs: isCustomerFacing(type) ? "customer-facing" : "internal (not held)", violations, summary: explain(violations) }, null, 2)));
+        // The channel decides whether a personalisation slot such as {{1}} may stay (WhatsApp, email, SMS drafts), as for
+        // save_draft, whose channel defaults to the type.
+        const channel = (typeof args.channel === "string" && args.channel.trim() ? args.channel.trim().toLowerCase() : type).slice(0, 20);
+        const violations = gateTask(brand, { type, channel, body: draft });
+        // What the publish button would say: no placeholder of any kind is ever published, a {{1}} slot included.
+        const atPublish = gateTask(brand, { type, channel, body: draft }, { publish: true });
+        return ok(id, text(JSON.stringify({ pass: violations.length === 0, rulesChecked: brandRules(brand).length, checkedAs: isCustomerFacing(type) ? "customer-facing" : "internal (not held)", violations, summary: explain(violations), publishable: atPublish.length === 0, ...(atPublish.length > violations.length ? { atPublish: explain(atPublish) } : {}) }, null, 2)));
       }
       case "save_draft": {
         // Free and without a model call; the scope is the bearer's, never an argument (src/lib/external-drafts.ts).
@@ -167,8 +177,14 @@ export async function POST(req: Request) {
         if (!saved.ok) return ok(id, { ...text("No brand file yet. Run onboarding in the app first. Nothing was saved."), isError: true });
         return ok(id, text(JSON.stringify(draftReport(saved.task, saved.violations), null, 2)));
       }
-      default:
+      default: {
+        if (isSecTool(name)) {
+          // The scope is the bearer's (`userFromBearer` sets it), never an argument; `source` is "mcp".
+          const r = await runSecretaryTool(user, name, args, { who: { actor: "mcp", via: "mcp" }, lang: user.lang });
+          return ok(id, r.isError ? { ...text(r.text), isError: true } : text(r.text));
+        }
         return err(id, -32602, "Unknown tool");
+      }
     }
   } catch (e) {
     return ok(id, { ...text(e instanceof Error ? e.message : "failed"), isError: true });

@@ -2,6 +2,7 @@ import { track } from "@/lib/track";
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { getBrand, saveBrand, type Brand } from "@/lib/brand";
+import { isZone } from "@/lib/zones";
 import { forbid } from "@/lib/roles";
 
 export async function GET() {
@@ -38,6 +39,8 @@ export async function PUT(req: Request) {
     ...(b.valueProp ? { valueProp: s(b.valueProp, 500) } : {}),
     ...(b.sitemap ? { sitemap: s(b.sitemap, 300) } : {}),
     ...(b.social && typeof b.social === "object" ? { social: Object.fromEntries(Object.entries(b.social).slice(0, 8).map(([k, v]) => [s(k, 20), s(v, 80)])) } : {}),
+    // Only a zone on the fixed list is stored; anything else is dropped and the list falls back to the city.
+    ...(isZone(b.timeZone) ? { timeZone: b.timeZone } : {}),
   };
   await saveBrand(sc(u), brand);
   await track(u.email, "onboard");

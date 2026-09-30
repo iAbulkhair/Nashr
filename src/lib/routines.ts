@@ -250,7 +250,7 @@ async function routineFor(user: User, scope: string, brand: Brand, r: Routine): 
   }
   const lang = brand.languages[0] ?? "ar";
   const at = new Date().toISOString();
-  const created: Task[] = items.map((it) => ({ id: randomBytes(8).toString("hex"), type: r.type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[r.type], brand, { type: r.type, title: it.title, body: it.body }), createdAt: at, lang, source: "scheduled", brief: r.id }));
+  const created: Task[] = items.map((it) => ({ id: randomBytes(8).toString("hex"), type: r.type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[r.type], brand, { type: r.type, channel: it.channel, title: it.title, body: it.body }), createdAt: at, lang, source: "scheduled", brief: r.id }));
   await Promise.all(created.map((t) => saveTask(scope, t, true)));
   judgeLater(scope, user.email, brand, created, undefined, { notes: note, memory, stats });
   await db.set(lastKey(scope, r.id), new Date().toISOString());

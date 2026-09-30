@@ -103,7 +103,7 @@ describe("the approve and publish routes enforce the brand rules in code (rule 7
     await signIn(u.email);
     await saveBrand(u.email, BRAND);
     await saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
-    await saveTask(u.email, task("old", "أفضل قهوة وأرخص... رخيص", "approved"), true);
+    await saveTask(u.email, { ...task("old", "أفضل قهوة وأرخص... رخيص", "approved"), decidedAt: new Date().toISOString() }, true);
     const res = await publishRoute.POST(json("/api/publish/old", "POST", { provider: "telegram" }), { params: Promise.resolve({ id: "old" }) });
     expect(res.status).toBe(409);
     expect((await res.json()).error).toBe("brand_violation");

@@ -50,9 +50,15 @@ function offeredPercents(offers: string | undefined): Set<string> {
   return new Set([...(offers ?? "").matchAll(PERCENT)].map((m) => String(Number(ascii(m[1])))));
 }
 
-/** Replaces every percentage that is not one of the owner's stated offers with a placeholder the owner must fill. */
+/**
+ * Replaces every percentage in the body that is not one of the owner's stated offers with a placeholder the owner must
+ * fill (the approve gate holds it until they do). In the title, which no screen edits, the percentage is dropped: a
+ * placeholder there could never be filled, so the item could never be approved.
+ */
 export function capDiscounts<T extends { body: string; title: string }>(items: T[], offers: string | undefined): T[] {
   const allowed = offeredPercents(offers);
-  const fix = (text: string) => text.replace(PERCENT, (all, n: string, sign: string) => (allowed.has(String(Number(ascii(n)))) ? all : `[رقم]${sign}`));
-  return items.map((i) => ({ ...i, title: fix(i.title), body: fix(i.body) }));
+  const ok = (n: string) => allowed.has(String(Number(ascii(n))));
+  const fix = (text: string) => text.replace(PERCENT, (all, n: string, sign: string) => (ok(n) ? all : `[رقم]${sign}`));
+  const drop = (text: string) => text.replace(PERCENT, (all, n: string) => (ok(n) ? all : "")).replace(/\s{2,}/g, " ").trim();
+  return items.map((i) => ({ ...i, title: drop(i.title), body: fix(i.body) }));
 }

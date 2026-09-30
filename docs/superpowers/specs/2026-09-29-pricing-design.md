@@ -4,6 +4,13 @@ Decided with the founder on 2026-09-29 in a question-by-question session. Every 
 `RATES` in `src/lib/usage.ts`, the measured prompt sizes in `docs/system/costs.md`, and the market research listed in
 section 3. The one assumption is the "typical" usage mix in section 5, and it is marked as such.
 
+**Status (2026-09-30):** phase 1 of the plan is built on branch `claude/pricing-phase-1`: the tier prices, credits and
+seats in one table (`src/lib/pricing.ts`), the Agency deal floor, the 60% floor as a test, unlimited brands with a
+9-credit setup for each added brand, and the public numbers rendered from the table. It deploys after the owner's
+blocking items (`docs/Owner_Tasks_AR.md` section ح3). The 7-day trial, the chat allowance, outputs instead of credits,
+the human anchors and payments are later phases; until then the code keeps a 3-day, 50-credit trial and chat bounded by
+the hourly and daily rate limits.
+
 ## 1. Decision in one paragraph
 
 Prices are set from value and the market, not from API cost. API cost only sets a **floor**: every task type keeps at
@@ -18,7 +25,7 @@ compared on the pricing page to a human alternative, never to ChatGPT.
 |---|---|---|---|---|
 | Price (SAR / month, + VAT) | 299 | 499 | 999 | Contact us |
 | Compared against | a freelancer | a freelancer or small agency | a junior hire | staff hours per client |
-| Credits / month | 300 | 700 | 1,500 | custom, never below 0.67 SAR / credit |
+| Credits / month | 300 | 700 | 1,500 | custom, never cheaper than Business (999 / 1,500 ≈ 0.666 SAR / credit) |
 | Chat messages / month | 250 | 650 | 1,300 | custom |
 | Seats (owner included) | 1 | 3 | 7 | paid extras |
 | Brands | unlimited | unlimited | unlimited | unlimited |
@@ -71,6 +78,12 @@ announced to the public must include VAT. No B2B exception was found.
 - Types over it today, reweighted: `weekly_plan` **1 → 2** credits ($0.0444 / credit), `followup_seq` **3 → 4**
   ($0.0665). `article` and `weekly_report` pass at $0.0700 with 1.4% headroom: they are the first to watch when an
   output grows or a model price moves.
+- As implemented (2026-09-30, `src/lib/task-costs.ts` and `tests/pricing-floor.test.ts`): the ceiling is $0.07104.
+  Cron-driven types (the Sunday plan and every routine's type) are checked on a cold cache, since the cron usually
+  finds the workspace block uncached (founder decision 2026-09-29). Cold, `weekly_report` at 2 credits cost $0.0918, so
+  it went **2 → 3** ($0.0612 cold); the cold Sunday plan at 2 is $0.0662. On a hit `weekly_plan` is $0.0446 and
+  `followup_seq` $0.0666. `article` ($0.0702, 1.1% headroom) is the only type above 95% of the ceiling. A one-item chat
+  draft ($0.0716 for 1 credit) stays at 1 credit as a named exemption capped at that figure.
 - The floor is recomputed whenever a plan price, a plan's credits or a model rate changes. It is a test, not a comment
   (see the plan).
 
@@ -113,10 +126,15 @@ under 50%) flags it.
    Replaces "the first 100 brands get two months free on Pro" in `src/lib/i18n.ts`.
 8. **Seats.** 1 / 3 / 7 including the owner; trial 3; Agency custom. Seats share the account's credits, chat allowance
    and brands, so a seat adds no model cost.
-9. **Agency deals.** Credits never below 0.67 SAR (the Business rate). Annual. Extras are what agencies pay for.
+9. **Agency deals.** Credits never cheaper than the Business rate, 999 SAR for 1,500 credits (≈ 0.666 SAR a credit;
+   the earlier "0.67" was that rate rounded). The code checks it in whole numbers, price × 1,500 ≥ credits × 999, with
+   at least 999 SAR and 1,500 credits, so a deal at exactly the Business rate passes; a rounded 0.67 would have refused
+   it. Annual. Extras are what agencies pay for. The "about 2,000 SAR a month" minimum is sales guidance, not enforced.
 10. **VAT display.** Prices shown "+ VAT", **conditional on an accountant confirming it is allowed in Saudi Arabia.** If
     not, the fallback is 299 / 499 / 999 including VAT: net 260 / 434 / 869 SAR, cheapest credit $0.1544, floor
-    $0.0618, and `article` and `weekly_report` then need 2 → 3 credits.
+    $0.0618, and `article` and `weekly_report` then need 2 → 3 credits. As implemented (`weekly_report` is already 3,
+    and cron types are checked cold), the floor test says `article`, `followup_seq` and the cold `weekly_plan` would
+    fail and must be repriced before `PRICES_INCLUDE_VAT` is switched on.
 11. **GCC countries.** Each country gets its own price list in local currency, set against that country's human
     alternative (agency packages, freelancer rates, junior salary), then clamped to the floor. Launch with Saudi Arabia
     and the UAE. Floors in USD: Starter ≥ $52.50, Pro ≥ $122.50, Business ≥ $262.50 (credits × $0.175). Only Starter

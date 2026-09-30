@@ -11,8 +11,11 @@ import { join } from "node:path";
  */
 const walk = (dir: string): string[] => readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? walk(p) : /\.(ts|tsx)$/.test(f) ? [p] : []; });
 
-/** Modules that reach the store, a provider SDK or a secret, directly or through one hop. */
-const SERVER_ONLY = ["@/lib/db", "@/lib/brand", "@/lib/auth", "@/lib/credits", "@/lib/usage", "@/lib/mcp", "@/lib/oauth", "@/lib/files", "@/lib/chat", "@/lib/noor", "@/lib/judge", "@/lib/golden", "@/lib/account", "@/lib/connectors/store", "@/lib/journey-load", "@/lib/perf-store", "@/lib/decisions", "@/lib/feedback", "@/lib/governance", "@/lib/notifications", "@/lib/routines", "@/lib/media/config", "@/lib/media/jobs", "@/lib/media/registry", "@/lib/media/start", "@/lib/media/fal", "@/lib/media/kie", "@/lib/media/higgsfield", "@/lib/media/blob", "@/lib/media/prompts", "@anthropic-ai/sdk", "@upstash/redis", "@/lib/wishlist"];
+/**
+ * Modules that reach the store, a provider SDK or a secret, directly or through one hop. `@/lib/task-costs` is here for
+ * rule 249: it imports usage.ts (the store) and its estimates are our margins.
+ */
+const SERVER_ONLY = ["@/lib/db", "@/lib/brand", "@/lib/auth", "@/lib/credits", "@/lib/usage", "@/lib/mcp", "@/lib/oauth", "@/lib/files", "@/lib/chat", "@/lib/noor", "@/lib/judge", "@/lib/golden", "@/lib/account", "@/lib/connectors/store", "@/lib/journey-load", "@/lib/perf-store", "@/lib/decisions", "@/lib/feedback", "@/lib/governance", "@/lib/notifications", "@/lib/routines", "@/lib/media/config", "@/lib/media/jobs", "@/lib/media/registry", "@/lib/media/start", "@/lib/media/fal", "@/lib/media/kie", "@/lib/media/higgsfield", "@/lib/media/blob", "@/lib/media/prompts", "@anthropic-ai/sdk", "@upstash/redis", "@/lib/wishlist", "@/lib/task-costs", "@/lib/secretary"];
 
 const clientFiles = () => walk("src").filter((p) => /^\s*["']use client["']/.test(readFileSync(p, "utf8")));
 
@@ -44,10 +47,26 @@ describe("the browser bundle stays free of server-only code", () => {
     expect(imports, "src/lib/tasks.ts must stay import-free or the leak comes back through it").toEqual([]);
   });
 
+  it("the plan table the pricing page and the client read imports nothing at all (rule 249)", () => {
+    const src = readFileSync("src/lib/pricing.ts", "utf8");
+    const imports = src.split("\n").filter((l) => /^\s*(import|export\s+(\*|\{[^}]*\}|type\s+\{[^}]*\})\s+from)\s/.test(l) || /\brequire\(|\bimport\(/.test(l));
+    expect(imports, "src/lib/pricing.ts must stay import-free: client components read prices from it").toEqual([]);
+  });
+
   it("the media catalogue the inbox reads imports nothing at all", () => {
     const src = readFileSync("src/lib/media-catalog.ts", "utf8");
     const imports = src.split("\n").filter((l) => /^\s*import\s/.test(l));
     expect(imports, "src/lib/media-catalog.ts must stay import-free or the leak comes back through it").toEqual([]);
+  });
+
+  it("the agenda module the to-do page reads imports only the import-free date and zone helpers and the agent registry", () => {
+    const src = readFileSync("src/lib/secretary-agenda.ts", "utf8");
+    const imports = src.split("\n").filter((l) => /^\s*import\s/.test(l)).map((l) => /from\s+["']([^"']+)["']/.exec(l)?.[1]);
+    expect(imports, "src/lib/secretary-agenda.ts is shared with the browser; storage belongs in secretary.ts").toEqual(["./dates", "./agents", "./zones"]);
+    // The brand form (a client component) reads the zone list too.
+    expect(readFileSync("src/lib/zones.ts", "utf8").split("\n").filter((l) => /^\s*import\s/.test(l)), "src/lib/zones.ts must stay import-free").toEqual([]);
+    const agents = readFileSync("src/lib/agents.ts", "utf8").split("\n").filter((l) => /^\s*import\s/.test(l));
+    expect(agents.every((l) => /^\s*import\s+type\s/.test(l)), "agents.ts may only import types").toBe(true);
   });
 
   it("brand.ts still re-exports the catalogue, so server callers are unaffected", async () => {

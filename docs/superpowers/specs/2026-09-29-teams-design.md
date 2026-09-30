@@ -98,7 +98,10 @@ and its refusal returned.
 
 ## 5. Seats
 
-`PLAN_SEATS`: trial 3, starter 1, pro 3, agency 7, enterprise 25; `User.seats` overrides (founder console). Seats used =
+`PLAN_SEATS`: trial 3, starter 1, pro 3, agency 7, enterprise 25; `User.seats` overrides (founder console). Since
+pricing phase 1 (2026-09-30) `PLAN_SEATS` lives in `src/lib/pricing.ts` and reads trial 3, starter 1, pro 3, business 7;
+Agency has no fixed number (`seatLimit` gives it Business's 7 unless `User.seats` is set for its contract), and a stored
+`enterprise` reads as agency. Seats used =
 1 (owner) + members not disabled + unexpired invites, counted under `lock:team:{owner}` at invite and again at accept.
 `enforceSeats(owner)` runs on every plan change: newest members over the limit get `disabled: "seats"` (kept, never
 deleted), and are re-enabled oldest-first when the limit grows. Trial → Starter therefore disables up to two members

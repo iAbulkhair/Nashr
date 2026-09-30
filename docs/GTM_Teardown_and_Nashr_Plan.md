@@ -87,7 +87,7 @@ Subject: An AI marketer that speaks Saudi — for your readers
 "Nashr is the first AI marketing agent built for GCC businesses: Arabic dialects, Snapchat/TikTok, WhatsApp, Salla/Zid, the Gulf calendar. 7-day free trial. We'd like to sponsor an issue / offer your readers 2 months free with code [NEWSLETTER]. Rates?"
 
 ### Affiliate outreach (to agencies / creators)
-"You already advise merchants on marketing. Nashr pays 25% recurring for every customer you refer, for life. Your clients get an Arabic AI marketer for SAR 149–799/mo instead of a SAR 5k freelancer. Link + dashboard: nashr-tau.vercel.app/ar/affiliates"
+"You already advise merchants on marketing. Nashr pays 25% recurring for every customer you refer, for life. Your clients get an Arabic AI marketer for SAR 299–999/mo + VAT instead of a SAR 5k freelancer. Link + dashboard: nashr-tau.vercel.app/ar/affiliates"
 
 ### Directory blurb (EN, ≤ 300 chars)
 "Nashr (نشر) — Noor, an autonomous AI marketing agent for Gulf businesses. Reads your Salla/Zid/Shopify store, writes posts, WhatsApp flows, SEO articles and ads in Saudi/Gulf Arabic and English, learns from your edits. Approval inbox. 7-day free trial."

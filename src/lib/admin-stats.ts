@@ -1,5 +1,6 @@
 import { db } from "./db";
-import { PLAN_CREDITS, getUser, type Plan } from "./auth";
+import { getUser, type AgencyDeal, type Plan } from "./auth";
+import { SAR_PER_USD, allowanceOf, priceOf, seatLimit } from "./pricing";
 import { getBrand, listLite, TASK_COST, TASK_COUNT, IMAGE_COST } from "./brand";
 import { getUsage } from "./usage";
 import { pmap } from "./parallel";
@@ -9,8 +10,10 @@ import { monthKey } from "./credits";
 import { MEDIA_MODELS, type MediaModelId, type MediaProviderId } from "./media-catalog";
 import { mk } from "./media/keys";
 
-/** Founder overview: growth, activation, engagement, revenue estimate, health. All from Redis; no external tool. */
-export const PLAN_PRICE_SAR: Record<Plan, number> = { trial: 0, starter: 149, pro: 399, agency: 799, enterprise: 0 };
+/**
+ * Founder overview: growth, activation, engagement, revenue estimate, health. All from Redis; no external tool. Prices,
+ * allowances and seats come from src/lib/pricing.ts (`priceOf`: the list price, or an Agency account's deal price).
+ */
 
 export type Overview = {
   generatedAt: string;
@@ -61,12 +64,14 @@ export async function overview(): Promise<Overview> {
   const brands = new Map<string, boolean>();
   (await pmap(users, (u) => getBrand(u.email))).forEach((b, i) => brands.set(users[i].email, !!b));
   const activated = [...brands.values()].filter(Boolean).length;
-  const paying = users.filter((u) => u.plan !== "trial").length;
+  // A suspended account neither pays nor counts towards MRR (docs/Admin_Console_Benchmark.md: MRR over unsuspended users).
+  const live = users.filter((u) => !u.suspended);
+  const paying = live.filter((u) => u.plan !== "trial").length;
   const trialActive = users.filter((u) => u.plan === "trial" && new Date(u.trialEnds).getTime() > now).length;
   const trialExpired = users.filter((u) => u.plan === "trial" && new Date(u.trialEnds).getTime() <= now).length;
   const planMix: Record<string, number> = {};
   for (const u of users) planMix[u.plan] = (planMix[u.plan] ?? 0) + 1;
-  const mrr = users.reduce((s, u) => s + (PLAN_PRICE_SAR[u.plan] ?? 0), 0);
+  const mrr = live.reduce((s, u) => s + priceOf(u), 0);
 
   const d = day();
   const [dau, wau, mau] = await Promise.all([activeCount(`active:d:${d}`), activeCount(`active:w:${isoWeek()}`), activeCount(`active:m:${d.slice(0, 7)}`)]);
@@ -103,9 +108,8 @@ export async function overview(): Promise<Overview> {
   const perScope = await pmap(scopes, async (scope) => (await listLite(scope, new Date(monthStart))).reduce((s, t) => s + (TASK_COST[t.type] ?? 1) / (TASK_COUNT[t.type] ?? 1) + (t.mediaCredits ?? (t.image ? IMAGE_COST : 0)), 0), 6);
   const creditsUsed = perScope.reduce((s, x) => s + x, 0);
   const [total, render] = await Promise.all([getUsage("_all"), renderSpend()]);
-  const usdToSar = 3.75;
   // Renders are billed to us like model calls: a video can cost more than a month of text for the same account.
-  const grossMargin = mrr > 0 ? Math.round(((mrr - (total.usd + render.usd) * usdToSar) / mrr) * 100) : null;
+  const grossMargin = mrr > 0 ? Math.round(((mrr - (total.usd + render.usd) * SAR_PER_USD) / mrr) * 100) : null;
 
   const recent = await pmap([...users].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 25), async (u) => {
     const [last, evs] = await Promise.all([lastActive(u.email), userEvents(u.email)]);
@@ -128,9 +132,16 @@ export async function overview(): Promise<Overview> {
 /** Spreadsheet apps run cells that start with = + - @ (or tab / CR) as formulas; user-supplied names must not. */
 export const csvSafe = (v: string) => (/^[=+\-@\t\r]/.test(v) && !/^[+-]?\d[\d\s.-]*$/.test(v) ? `'${v}` : v); // plain phone numbers and negative numbers stay as they are
 
-export function usersCsv(rows: { email: string; name: string; phone: string; plan: string; credits: number; trialEnds: string; createdAt: string; renewedAt?: string }[]) {
+/** One users-export row: the stored account fields the CSV reads (a `User` from `getUser` fits). */
+export type CsvUserRow = { email: string; name: string; phone: string; plan: Plan; credits: number; trialEnds: string; createdAt: string; renewedAt?: string; deal?: AgencyDeal | null; seats?: number };
+
+/**
+ * The founder's users export. monthly_price_sar = `priceOf`, monthly_credits = `allowanceOf`, seats = `seatLimit`, and
+ * deal = "credits@priceSar" for an Agency deal (empty otherwise). Every cell goes through `csvSafe`.
+ */
+export function usersCsv(rows: CsvUserRow[]) {
   const esc = (v: unknown) => `"${csvSafe(String(v ?? "")).replace(/"/g, '""')}"`;
-  const head = ["email", "name", "phone", "plan", "credits", "trial_ends", "created_at", "renewed_at", "monthly_price_sar"].join(",");
-  return [head, ...rows.map((r) => [r.email, r.name, r.phone, r.plan, r.credits, r.trialEnds.slice(0, 10), r.createdAt.slice(0, 10), r.renewedAt ?? "", PLAN_PRICE_SAR[r.plan as Plan] ?? 0].map(esc).join(","))].join("\n");
+  const head = ["email", "name", "phone", "plan", "credits", "trial_ends", "created_at", "renewed_at", "monthly_price_sar", "monthly_credits", "seats", "deal"].join(",");
+  const deal = (r: CsvUserRow) => (r.deal ? `${r.deal.credits}@${r.deal.priceSar}` : "");
+  return [head, ...rows.map((r) => [r.email, r.name, r.phone, r.plan, r.credits, r.trialEnds.slice(0, 10), r.createdAt.slice(0, 10), r.renewedAt ?? "", priceOf(r), allowanceOf(r), seatLimit(r), deal(r)].map(esc).join(","))].join("\n");
 }
-export { PLAN_CREDITS };

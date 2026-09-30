@@ -28,7 +28,7 @@ import { wipeAccount } from "@/lib/account";
 import { AGENT_IDS, type AgentId } from "@/lib/agents";
 import { runTool } from "@/lib/chat";
 import { runWeekly } from "@/lib/schedule";
-import type { TaskType } from "@/lib/tasks";
+import { TASK_COST, type TaskType } from "@/lib/tasks";
 import type { SiteSnapshot } from "@/lib/crawl";
 import * as generateRoute from "@/app/api/generate/route";
 import * as imageRoute from "@/app/api/tasks/[id]/image/route";
@@ -221,7 +221,7 @@ describe("every charging path enforces the agent's cap before charging (rules 10
     expect(await credits(u.email)).toBe(50);
     await saveGov(u.email, { agentCaps: { noor: 5 } });
     expect(await runWeekly((await getUser(u.email))!)).toMatch(/^ok:/);
-    expect(await spend(u.email)).toEqual({ noor: 1 });
+    expect(await spend(u.email)).toEqual({ noor: TASK_COST.weekly_plan });
     await settle();
   });
 

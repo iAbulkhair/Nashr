@@ -126,7 +126,20 @@ export async function judgeTasks(scope: string, email: string, brand: Brand, tas
   const scored = tasks.flatMap((t, i) => { const q = out[i]; return q ? [{ t, q }] : []; });
   // Under the task lock, on the task as stored now: an approval, an edit or a render that finished while the judge
   // worked keeps its fields, and an item deleted meanwhile is not brought back (src/lib/brand.ts, updateTask).
-  await pmap(scored, ({ t, q }) => updateTask(scope, t.id, (cur) => ({ ...cur, quality: q })));
+  // A model may withhold an approval, never grant one. An item that auto-approval passed (approved, no decidedAt: no person
+  // decided it) and that the judge auto-fails with a quoted reason (an invented figure, a results promise, fake proof, an
+  // injected instruction) goes back to the inbox as pending before anyone publishes it. The owner's own approvals, and
+  // anything already published, are left alone.
+  const vetoed: Quality[] = [];
+  await pmap(scored, ({ t, q }) => updateTask(scope, t.id, (cur) => {
+    const back = !!q.autofail && cur.status === "approved" && !cur.decidedAt && !cur.published?.length;
+    if (back) vetoed.push(q);
+    return { ...cur, quality: q, ...(back ? { status: "pending" as const } : {}) };
+  }));
+  if (vetoed.length) {
+    const lang = tasks[0].lang ?? "ar";
+    await notifyItem(email, lang, { kind: "quality", agent: "dana", title: lang === "ar" ? `أُعيد ${vetoed.length} من عناصر ${agent.name.ar} المعتمدة آلياً إلى صندوق الموافقة` : `${vetoed.length} auto-approved ${agent.name.en} item(s) sent back to your inbox`, body: vetoed[0].notes, href: "" }, `judgeveto:${tasks[0].id}`, 7);
+  }
   if (scored.length < tasks.length) console.error("judge: fewer verdicts than items", { type: tasks[0].type, items: tasks.length, verdicts: scored.length });
   const judged = scored.map((x) => x.q);
   const weak = judged.filter((q) => q.score < 70).length;

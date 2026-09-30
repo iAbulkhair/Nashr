@@ -102,6 +102,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // Admin and owner (some handlers also serve a member-level action, listed with it, or member-level names such as
   // non-core files, which need no action of their own).
   "PUT /api/brand": g("admin", "brand.write"),
+  "POST /api/brand/proposals/[id]": g("admin", "brand.write"),
   "POST /api/brands": g("admin", "brands.manage", "brands.switch"),
   "POST /api/catalog": g("admin", "catalog.import"),
   "POST /api/connect/[provider]": g("admin", "connectors", "catalog.import", "read"),
@@ -120,6 +121,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/team/invite": g("admin", "team.invite.member"),
   "DELETE /api/team/invite": g("admin", "team.invite.cancel"),
   "DELETE /api/team/member": g("admin", "team.remove.member"),
+  // Reem's list: any member adds and changes items; closing, confirming or sending back a claim, deleting and restoring
+  // need an admin (the same handler serves both, like PATCH /api/tasks/[id]).
+  "PATCH /api/secretary/[id]": g("admin", "todo.write", "todo.close"),
 
   // Every member of the account.
   "PATCH /api/account": g("member", "password.change"),
@@ -137,6 +141,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/tasks/[id]/video": "member",
   "POST /api/wishlist/suggest": "member",
   "POST /api/wishlist/vote": "member",
+  "POST /api/secretary": g("member", "todo.write"),
   "POST /api/admin/wishlist": "admin-console",
   "POST /api/media/hook/[provider]": "public",
 };
@@ -191,6 +196,7 @@ const READS: Record<string, Gate> = {
   "GET /api/schedule": "member",
   "GET /api/tasks": "member",
   "GET /api/tasks/[id]/pptx": "member",
+  "GET /api/secretary": "member",
 
   "GET /api/mcp": "public-read",
   "GET /api/oauth/meta": "public-read",
