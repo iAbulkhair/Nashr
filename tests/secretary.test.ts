@@ -27,8 +27,9 @@ import * as listRoute from "@/app/api/secretary/route";
 import * as itemRoute from "@/app/api/secretary/[id]/route";
 import * as mcpRoute from "@/app/api/mcp/route";
 
-// Rules 189-211 in docs/system/tests.md: Reem, the secretary (phase 1). Rules 199, 200, 208 and the cron part of 160 are
-// in secretary-brief.test.ts; 171, 211, the page's part of 177 and the governance page of 169 in secretary-page.test.ts.
+// Rules 189-212 in docs/system/tests.md: Reem, the secretary (phase 1). Rules 199, 200, 208 and the cron part of 193 are
+// in secretary-brief.test.ts; 204, 211, the page's parts of 210 and 212 and the governance page of 202 in
+// secretary-page.test.ts.
 
 const BRAND: Brand = { name: "محمصة ريف", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "دافئ", products: "قهوة", audience: "محبو القهوة", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-09-29" };
 const create = (body: unknown) => listRoute.POST(json("/api/secretary", "POST", body));
