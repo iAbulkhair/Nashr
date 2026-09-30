@@ -25,7 +25,7 @@ import { buildWrap, eveningAt, eveningWrap, isRamadan, previousEveningAt, wrapTe
 import { HANDOFF_BLOCKED_PER_DAY, handoffBlock, handoffNotesFor, sameBlock, symmetricWordDiff } from "@/lib/secretary-handoff";
 import { appDict } from "@/lib/app-i18n";
 
-// Rules 221-230 in docs/system/tests.md: Reem, the secretary (phase 2): timed reminders and their sweep, the QStash
+// Rules 251-260 in docs/system/tests.md: Reem, the secretary (phase 2): timed reminders and their sweep, the QStash
 // tick, the next-week snooze, reopen, the WhatsApp follow-up, "walk me through", the evening wrap and handoff notes.
 
 const sent: { to: string; subject: string; text: string }[] = [];
@@ -77,7 +77,7 @@ async function seedDue(scope: string, title: string, ago = 60_000): Promise<SecI
 beforeEach(() => { sent.length = 0; });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
-describe("a reminder is one future instant, indexed only by indexWrites, and every close path cleans it (rule 221)", () => {
+describe("a reminder is one future instant, indexed only by indexWrites, and every close path cleans it (rule 251)", () => {
   it("stores remindAt in the brand's zone, refuses one in the past, reads a date alone as 08:00, and indexes item and scope", async () => {
     const u = await owner("p2rem");
     const inTwo = local(Date.now() + 2 * H);
@@ -141,7 +141,7 @@ describe("a reminder is one future instant, indexed only by indexWrites, and eve
   });
 });
 
-describe("the sweep fires each reminder once, only on an open item whose time came (rule 222)", () => {
+describe("the sweep fires each reminder once, only on an open item whose time came (rule 252)", () => {
   it("fires: a reminded note, remindAt cleared, rev bumped, audited by the cron, one notification, the scope leaves the index", async () => {
     const u = await owner("p2fire");
     const it = await add({ title: "Call the bank", remindAt: local(Date.now() + H) });
@@ -360,7 +360,7 @@ describe("the sweep fires each reminder once, only on an open item whose time ca
   });
 });
 
-describe("timed reminders are promised only while the QStash tick runs (rule 223)", () => {
+describe("timed reminders are promised only while the QStash tick runs (rule 253)", () => {
   const KEY = "sig_current_for_tests", NEXT = "sig_next_for_tests", PATH = "/api/cron/secretary";
   const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
   function qsign(body: string, key: string, over: Record<string, unknown> = {}, header: Record<string, unknown> = { alg: "HS256", typ: "JWT" }) {
@@ -512,7 +512,7 @@ describe("timed reminders are promised only while the QStash tick runs (rule 223
   });
 });
 
-describe("the next-week snooze (rule 224)", () => {
+describe("the next-week snooze (rule 254)", () => {
   it("snoozes to 09:00 local on the first working day of next week: Sunday, Monday in the UAE", () => {
     // Thursday 1 October 2026, 10:00 in Riyadh.
     const THU = Date.parse("2026-10-01T07:00:00Z");
@@ -535,7 +535,7 @@ describe("the next-week snooze (rule 224)", () => {
   });
 });
 
-describe("only the owner or an admin reopens a done item (rule 225)", () => {
+describe("only the owner or an admin reopens a done item (rule 255)", () => {
   it("reopens: open again, result cleared, a reopened note, out of 'recently done', and nothing else can", async () => {
     const o = await owner("p2reopen");
     const it = await add({ title: "Send the contract" });
@@ -597,7 +597,7 @@ describe("only the owner or an admin reopens a done item (rule 225)", () => {
   });
 });
 
-describe("a they-owe contact's WhatsApp number: the owner's, in the app, never an agent's (rule 226)", () => {
+describe("a they-owe contact's WhatsApp number: the owner's, in the app, never an agent's (rule 256)", () => {
   it("cleans and checks the number, drops it when the item is the owner's own, and only the owner writes it", async () => {
     const u = await owner("p2phone");
     const debt = await add({ title: "Invoice from Ahmad", direction: "they_owe", owedBy: "أحمد", phone: "+966 50-123-4567" });
@@ -694,7 +694,7 @@ describe("a they-owe contact's WhatsApp number: the owner's, in the app, never a
   });
 });
 
-describe("walk me through: one card at a time, in a fixed order, only with actions the viewer may take (rule 227)", () => {
+describe("walk me through: one card at a time, in a fixed order, only with actions the viewer may take (rule 257)", () => {
   // Monday 5 October 2026, 15:00 in Riyadh.
   const T0 = Date.parse("2026-10-05T12:00:00Z");
   beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(T0); });
@@ -839,7 +839,7 @@ describe("walk me through: one card at a time, in a fixed order, only with actio
   });
 });
 
-describe("the evening wrap: from stored facts, silent when nothing happened, once a day, after Taraweeh in Ramadan (rule 228)", () => {
+describe("the evening wrap: from stored facts, silent when nothing happened, once a day, after Taraweeh in Ramadan (rule 258)", () => {
   const T0 = Date.parse("2026-10-05T12:00:00Z"); // 15:00 in Riyadh, not Ramadan
   const RAMADAN = Date.parse("2027-02-20T12:00:00Z");
   const wraps = async (email: string) => (await listNotifs(email)).filter((n) => n.title.startsWith("ملخص المساء من ريم") || n.title.startsWith("Reem's evening wrap"));
@@ -999,7 +999,7 @@ describe("the evening wrap: from stored facts, silent when nothing happened, onc
   });
 });
 
-describe("handoff notes: a blocked agent opens one item, similar notes join it, never over MCP, shown to the receiver as data (rule 229)", () => {
+describe("handoff notes: a blocked agent opens one item, similar notes join it, never over MCP, shown to the receiver as data (rule 259)", () => {
   it("a blocked note to the owner creates exactly one item the owner owes the agent; to another agent, one that agent owes", async () => {
     const u = await owner("p2hand");
     const out = await runTool(u, "handoff_note", { to: "owner", kind: "blocked", body: "I need the new price list before I write the follow-up script" }, [], [], undefined, { agent: "sami", lang: "en" });
@@ -1112,7 +1112,7 @@ describe("handoff notes: a blocked agent opens one item, similar notes join it, 
   });
 });
 
-describe("account deletion removes phase 2's keys and the scope's reminder index entry (rule 230)", () => {
+describe("account deletion removes phase 2's keys and the scope's reminder index entry (rule 260)", () => {
   it("deletes sec:due, sec:walk, sec:wrap, notes and leaves sec:duescopes without the account's scopes", async () => {
     const u = await owner("p2wipe");
     await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
