@@ -6,13 +6,14 @@ import { getTask } from "@/lib/brand";
 import { OWNER_ONLY, SEC_ID, SEC_WRITES_PER_HOUR, changeItem, parseOwnerChange, zoneFor } from "@/lib/secretary";
 
 /**
- * The owner's change to one item of the active brand: update fields, complete (a result is required), snooze,
- * reschedule, confirm or reject a proposed "done", delete (soft, 30 days), restore, add a note, record a follow-up
- * (`chased`: the chase clock restarts, the item stays open). This route is the only way an item becomes done, apart
- * from the linked-approval rule in code. The id must match `SEC_ID` before any key is built and must exist under
+ * The owner's change to one item of the active brand: update fields (a reminder `remindAt`, a they-owe contact's
+ * `phone` included), complete (a result is required), snooze (presets 2h, tonight, tomorrow, nextweek), reschedule,
+ * confirm or reject a proposed "done", delete (soft, 30 days), restore, reopen a done item, add a note, record a
+ * follow-up (`chased`: the chase clock restarts, the item stays open). This route is the only way an item becomes done,
+ * apart from the linked-approval rule in code. The id must match `SEC_ID` before any key is built and must exist under
  * `sc(u)`: another account's id is 404 and stays untouched. `rev`, when sent, must match. Dates are read in the brand's
- * zone. Roles: any member changes items (`todo.write`); closing, confirming or sending back a claim, deleting and
- * restoring need the owner or an admin (`todo.close`).
+ * zone. Roles: any member changes items (`todo.write`); closing, confirming or sending back a claim, deleting,
+ * restoring and reopening need the owner or an admin (`todo.close`).
  */
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const u = await currentUser();
