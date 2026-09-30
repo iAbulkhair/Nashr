@@ -1,13 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderToReadableStream } from "react-dom/server.edge";
 
-// Publishing reaches a platform; here it succeeds at once and nothing leaves the test.
-vi.mock("@/lib/connectors/publish", async (orig) => ({ ...(await orig<typeof import("@/lib/connectors/publish")>()), publishTask: async (_s: string, _t: unknown, provider: string) => ({ provider, url: "https://t.me/x/1", status: "published" as const }) }));
+// Publishing reaches a platform; here it succeeds at once, or throws `pub.fail`, and nothing leaves the test.
+const pub = vi.hoisted(() => ({ fail: null as Error | null }));
+vi.mock("@/lib/connectors/publish", async (orig) => ({
+  ...(await orig<typeof import("@/lib/connectors/publish")>()),
+  publishTask: async (_s: string, _t: unknown, provider: string) => {
+    if (pub.fail) throw pub.fail;
+    return { provider, url: "https://t.me/x/1", status: "published" as const };
+  },
+}));
 
 import { json, newMember, newUser, params, settle, signIn, signOut, supportAccess } from "./helpers/session";
 import { CAPS, db } from "@/lib/db";
 import { currentUser, getUser, saveUser } from "@/lib/auth";
-import { saveTask, type Task } from "@/lib/brand";
+import { getTask, saveTask, type Task } from "@/lib/brand";
+import { listDecisions } from "@/lib/decisions";
 import { addBrand, scopeFor } from "@/lib/brands";
 import { saveConnection } from "@/lib/connectors/store";
 import { createMcpToken } from "@/lib/mcp";
@@ -16,6 +24,7 @@ import { ACTIVITY_KINDS, ACTIVITY_VIAS, actSkipKey, listActivity, recordActivity
 import { ACTIVITY_EXPORTS_PER_HOUR, ACTIVITY_READS_PER_HOUR } from "@/lib/rate";
 import { periodOf, routineSkipKeys } from "@/lib/routines";
 import { runTool } from "@/lib/chat";
+import type { BrandProposal } from "@/lib/brand-proposals";
 import { appDict } from "@/lib/app-i18n";
 import { wipeAccount } from "@/lib/account";
 import * as listRoute from "@/app/api/activity/route";
@@ -24,12 +33,13 @@ import * as govRoute from "@/app/api/governance/route";
 import * as rollbackRoute from "@/app/api/governance/rollback/route";
 import * as taskRoute from "@/app/api/tasks/[id]/route";
 import * as publishRoute from "@/app/api/publish/[id]/route";
+import * as proposalRoute from "@/app/api/brand/proposals/[id]/route";
 import * as mcpRoute from "@/app/api/mcp/route";
 import * as adminUser from "@/app/api/admin/users/[email]/route";
 import Page from "@/app/[lang]/app/activity/page";
 
 /**
- * Rules 224-232: the per-agent activity log (src/lib/activity.ts). This file pins the store, the owner actions that
+ * Rules 232-240: the per-agent activity log (src/lib/activity.ts). This file pins the store, the owner actions that
  * record without a model, the list and export routes, the page, the founder console and the wipe;
  * tests/activity-sources.test.ts pins the generation, routine and media rows.
  */
@@ -48,12 +58,13 @@ const iso = (ms: number) => new Date(ms).toISOString();
 
 afterEach(async () => {
   await settle();
+  pub.fail = null;
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
   signOut();
 });
 
-describe("the log itself: bounded rows, a recorder that never throws, one sorted and filtered read (rule 228)", () => {
+describe("the log itself: bounded rows, a recorder that never throws, one sorted and filtered read (rule 236)", () => {
   it("keeps only the known fields, at most ten task ids and 200 characters of one-line note", async () => {
     const u = await newUser("act-bound");
     await recordActivity(u.email, [row({ tasks: Array.from({ length: 12 }, (_, i) => `t${i}`), note: `a\nb\u0000${"x".repeat(300)}`, count: Number.NaN, ...({ extra: "dropped" } as object) }), null, false, undefined]);
@@ -116,7 +127,7 @@ describe("the log itself: bounded rows, a recorder that never throws, one sorted
   });
 });
 
-describe("the owner's own actions are recorded once, in the caller's scope, with who acted (rule 225)", () => {
+describe("the owner's own actions are recorded once, in the caller's scope, with who acted (rule 233)", () => {
   it("a decision on an item: one row with the action, the owning agent, the title and `by` from the session; a founder is the founder", async () => {
     const u = await owner("act-dec");
     await saveTask(u.email, task("d1"), true);
@@ -139,13 +150,44 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
     const u = await owner("act-pub");
     await saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
     await saveTask(u.email, task("p1", { type: "social", channel: "instagram", title: "عرض الجمعة" }), true);
-    await saveTask(u.email, task("p2", { type: "social", channel: "instagram", status: "approved" }), true);
+    // Approved by a person (`decidedAt`): chat publishes nothing that only auto-approval passed (rule 214).
+    await saveTask(u.email, task("p2", { type: "social", channel: "instagram", status: "approved", decidedAt: new Date().toISOString() }), true);
+    await saveTask(u.email, task("p3", { type: "social", channel: "instagram", status: "approved" }), true);
     expect((await publishRoute.POST(json("/api/publish/p1", "POST", { provider: "telegram" }), params({ id: "p1" }))).status).toBe(200);
     expect(await runTool(u, "publish_item", { task_id: "p2", provider: "telegram" }, [])).toMatch(/^Published/);
+    // A publish that did not go out is no row: a repeat refused by `publishOnce` (route and chat), an auto-approved item.
+    expect((await publishRoute.POST(json("/api/publish/p1", "POST", { provider: "telegram" }), params({ id: "p1" }))).status).toBe(409);
+    expect(await runTool(u, "publish_item", { task_id: "p2", provider: "telegram" }, [])).toMatch(/Not published again/);
+    expect(await runTool(u, "publish_item", { task_id: "p3", provider: "telegram" }, [])).toMatch(/approved automatically/);
     const got = await rows(u.email);
     expect(got.map((r) => r.kind)).toEqual(["published", "published"]);
     expect(got.find((r) => r.via === "app")).toMatchObject({ agent: "noor", type: "social", tasks: ["p1"], outcome: "telegram", note: "عرض الجمعة", by: { kind: "owner", email: u.email } });
     expect(got.find((r) => r.via === "chat")).toMatchObject({ agent: "noor", tasks: ["p2"], outcome: "telegram", by: { kind: "owner", email: u.email } });
+  });
+
+  it("a post found live after an unknown attempt (`earlier_live`) is one `published` row at the attempt's time, and a pending item's publish decision", async () => {
+    const u = await owner("act-earlier");
+    await saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+    await saveTask(u.email, task("e1", { type: "social", channel: "instagram", title: "عرض الجمعة" }), true);
+    const publish = (body: Record<string, unknown>) => publishRoute.POST(json("/api/publish/e1", "POST", body), params({ id: "e1" }));
+    // No answer: it may be live, so nothing is recorded yet.
+    pub.fail = new Error("fetch failed");
+    expect((await (await publish({ provider: "telegram" })).json()).error).toBe("publish_unknown");
+    await settle();
+    expect(await rows(u.email)).toEqual([]);
+    // The owner's "Publish again" gets "already posted": the first attempt went out, and is recorded now.
+    pub.fail = new Error("x_duplicate");
+    const res = await publish({ provider: "telegram", again: true });
+    expect(res.status).toBe(409);
+    const { error, at } = await res.json();
+    expect(error).toBe("earlier_live");
+    await settle();
+    const got = await rows(u.email);
+    expect(got).toHaveLength(1);
+    expect(got[0]).toMatchObject({ at, kind: "published", agent: "noor", via: "app", type: "social", tasks: ["e1"], outcome: "telegram", note: "عرض الجمعة", by: { kind: "owner", email: u.email } });
+    // The owner's publish approved the pending item when that attempt went out: `decidedAt` and a `publish` decision.
+    expect(await getTask(u.email, "e1")).toMatchObject({ status: "approved", decidedAt: at });
+    expect(await listDecisions(u.email)).toMatchObject([{ task: "e1", action: "publish", at, by: { kind: "owner", email: u.email } }]);
   });
 
   it("chat changes to the brand file and the files: the talking agent and the field or file name, never the value", async () => {
@@ -159,6 +201,25 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
     expect(got.find((r) => r.kind === "file_written")).toMatchObject({ agent: "majed", via: "chat", by: member, note: "offers.md" });
     expect(got.filter((r) => r.kind === "brand_changed").map((r) => [r.agent, r.note, r.by.kind])).toEqual(expect.arrayContaining([["sami", "tone", "member"], [undefined, "city", "owner"]]));
     expect(JSON.stringify(got)).not.toContain("calc");
+  });
+
+  it("a brand change is a row only when the brand file changed: banned words added, or a proposal applied with Save", async () => {
+    const u = await owner("act-prop");
+    const proposed: BrandProposal[] = [];
+    expect(await runTool(u, "update_brand", { field: "banned", value: "مضمون، رخيص" }, [], [], undefined, { agent: "noor", proposed })).toMatch(/^Added to the banned words/);
+    // Proposals change nothing, so they are no rows; neither is a dismissal.
+    expect(await runTool(u, "update_brand", { field: "banned_remove", value: "رخيص" }, [], [], undefined, { agent: "sami", proposed })).toMatch(/^Not saved yet/);
+    expect(await runTool(u, "update_brand", { field: "offers", value: "خصم 50% على كل شيء" }, [], [], undefined, { agent: "sami", proposed })).toMatch(/^Not saved yet/);
+    expect((await rows(u.email)).map((r) => [r.kind, r.agent, r.note, r.via])).toEqual([["brand_changed", "noor", "banned", "chat"]]);
+    const decide = (id: string, action: string) => proposalRoute.POST(json(`/api/brand/proposals/${id}`, "POST", { action }), params({ id }));
+    expect((await decide(proposed[1].id, "dismiss")).status).toBe(200);
+    expect(await rows(u.email)).toHaveLength(1);
+    expect((await decide(proposed[0].id, "apply")).status).toBe(200);
+    const got = await rows(u.email);
+    expect(got).toHaveLength(2);
+    // By whoever pressed Save (from the session), for the agent that proposed it; the field's name, never the words.
+    expect(got.find((r) => r.via === "app")).toMatchObject({ kind: "brand_changed", agent: "sami", by: { kind: "owner", email: u.email }, note: "banned" });
+    expect(JSON.stringify(got)).not.toContain("رخيص");
   });
 
   it("a draft saved by a connected app: `external_draft`, no agent, by the token, via MCP, its title kept as text", async () => {
@@ -196,7 +257,7 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
   });
 });
 
-describe("GET /api/activity and the CSV export read only the caller's own log (rule 229)", () => {
+describe("GET /api/activity and the CSV export read only the caller's own log (rule 237)", () => {
   it("401 without a session; 400 for an unknown agent, kind or cursor; 429 past the hourly reads", async () => {
     signOut();
     expect((await listRoute.GET(json("/api/activity", "GET"))).status).toBe(401);
@@ -253,7 +314,7 @@ describe("GET /api/activity and the CSV export read only the caller's own log (r
   });
 });
 
-describe("support access reaches the account's logins as support, never as which login (rules 217, 229, 230, 231)", () => {
+describe("support access reaches the account's logins as support, never as which login (rules 225, 237, 238, 239)", () => {
   it("a member reading the list or the page gets the row without `imp`; storage and the founder console keep it", async () => {
     vi.stubEnv("WAITLIST_ADMIN_KEY", "test-admin-key-0123456789");
     const founder = "support-founder@test.example";
@@ -285,7 +346,7 @@ describe("support access reaches the account's logins as support, never as which
   });
 });
 
-describe("the Activity page renders the first page on the server (rule 230)", () => {
+describe("the Activity page renders the first page on the server (rule 238)", () => {
   const html = async (lang: "ar" | "en") => new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang }) }))).text();
 
   it("one h1, the rows in plain words with who and via, the filters and the download, in Arabic too; another account sees none", async () => {
@@ -317,7 +378,7 @@ describe("the Activity page renders the first page on the server (rule 230)", ()
   });
 });
 
-describe("the founder console shows each brand's latest 100 rows (rule 231)", () => {
+describe("the founder console shows each brand's latest 100 rows (rule 239)", () => {
   it("GET /api/admin/users/{email} returns the rows per brand, and refuses without the founder key", async () => {
     vi.stubEnv("WAITLIST_ADMIN_KEY", "test-admin-key-0123456789");
     const u = await newUser("act-admin");
@@ -335,7 +396,7 @@ describe("the founder console shows each brand's latest 100 rows (rule 231)", ()
   });
 });
 
-describe("the log goes with the account (rule 232)", () => {
+describe("the log goes with the account (rule 240)", () => {
   it("wipeAccount deletes activity:{s} and the routines' markers for every brand", async () => {
     const u = await newUser("act-wipe");
     await saveUser({ ...u, plan: "agency" });

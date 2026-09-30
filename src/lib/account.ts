@@ -14,6 +14,7 @@ import { agentCapFingerprint, seenKey } from "./notifications";
 import { wipeTeam } from "./team";
 import { forgetWishlistUser } from "./wishlist";
 import { secretaryKeys } from "./secretary";
+import { proposalKeys } from "./brand-proposals";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -38,9 +39,9 @@ export async function wipeAccount(email: string) {
   const keys: string[] = [];
   // Every id, not only the newest 200 tasks or 100 conversations: nothing of a deleted account may stay behind. All
   // scopes are read in parallel (Upstash is HTTP per command).
-  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(`tasks:${s}`, 0, -1), listFiles(s), db.lrange(`convs:${s}`, 0, -1), db.smembers(`conns:${s}`), db.smembers(`tidxm:${s}`), secretaryKeys(s)]));
+  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(`tasks:${s}`, 0, -1), listFiles(s), db.lrange(`convs:${s}`, 0, -1), db.smembers(`conns:${s}`), db.smembers(`tidxm:${s}`), secretaryKeys(s), proposalKeys(s)]));
   scopes.forEach((s, i) => {
-    const [taskIds, files, convIds, conns, months, sec] = perScope[i];
+    const [taskIds, files, convIds, conns, months, sec, proposals] = perScope[i];
     keys.push(
       ...taskIds.map((id) => `task:${s}:${id}`),
       ...files.map((f) => `file:${s}:${f.name}`),
@@ -58,6 +59,10 @@ export async function wipeAccount(email: string) {
       activityKey(s), ...routineSkipKeys(s),
       // Reem's list: every item ever created and not yet purged (open, done and deleted), its indexes and its audit log.
       ...sec,
+      // Brand changes an agent proposed (7 days, the brand's old and new offers or banned words), their outcomes, answer
+      // claims and index, and the brand lock. The publish markers (`pubtry:`, `publock:`) are left to their TTL (3 days
+      // at most): they hold a time or a lock, not account data, and finding them would take every item on every platform.
+      ...proposals,
       // Each routine's last run, locks, hold and attempt counts, for every routine id (routines.ts).
       ...routineKeys(s),
       // Follow-up markers that name this brand and live for weeks: the 80% cap warning (35 days) and a routine's run

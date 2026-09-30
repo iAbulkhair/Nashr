@@ -70,7 +70,7 @@ describe("generate_image works to the chat request's own deadline", () => {
     const deadline = Date.now() + 200_000;
     await runTool(u, "generate_image", { task_id: t.id }, [], [], deadline);
     expect(vi.mocked(renderImage)).toHaveBeenCalledTimes(1);
-    // With who asked and from where, for the render's activity rows (rule 224).
+    // With who asked and from where, for the render's activity rows (rule 232).
     expect(vi.mocked(renderImage).mock.calls[0][4]).toEqual({ deadline, by: { kind: "owner", email: u.email }, from: "chat" });
   });
 

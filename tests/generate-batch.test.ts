@@ -12,7 +12,7 @@ import { TASK_COST } from "@/lib/tasks";
 import type { SalesSnapshot } from "@/lib/connectors/sales";
 
 /**
- * Rules 213-216: one generation pipeline (src/lib/generate-batch.ts). Every paid text batch goes through
+ * Rules 221-224: one generation pipeline (src/lib/generate-batch.ts). Every paid text batch goes through
  * `generateBatch`: the same order of checks before the charge, the same refund with the charge's receipt, one task
  * builder, one concurrent save and the same grounding to the judge. `load()` wraps it so every call from any caller is
  * recorded while the real pipeline runs, so "each caller goes through it" is a list, not a hope.
@@ -96,7 +96,7 @@ afterEach(async () => {
   calls.length = 0;
 });
 
-describe("the checks before the charge come in one order, typed, and charge nothing (rule 213)", () => {
+describe("the checks before the charge come in one order, typed, and charge nothing (rule 221)", () => {
   it("while paused, every path but chat refuses before reading the brand or charging; chat keeps the throw-and-refund backstop", async () => {
     const { generateBatch, seen } = await load({ state: "paused" });
     // No brand file: "paused" coming back rather than "no_brand" shows the model switch is checked first.
@@ -157,7 +157,7 @@ describe("the checks before the charge come in one order, typed, and charge noth
   });
 });
 
-describe("a failed read or a failed generation is refunded with the receipt (rule 214)", () => {
+describe("a failed read or a failed generation is refunded with the receipt (rule 222)", () => {
   it("a read inside the try that fails gives back the credits and the agent's counter, and settles once", async () => {
     const { generateBatch, seen } = await load({ statsFail: true });
     const u = await owner("gb-readfail");
@@ -181,7 +181,7 @@ describe("a failed read or a failed generation is refunded with the receipt (rul
   });
 });
 
-describe("tasks are built in one place, saved together and judged with what the agent had (rule 215)", () => {
+describe("tasks are built in one place, saved together and judged with what the agent had (rule 223)", () => {
   it("source, brief, lang and one creation time; auto-approve still goes through the brand gate; a forced batch waits", async () => {
     const items = [ITEM, { channel: "instagram", title: "عرض", body: "قهوة رخيص اليوم فقط للمراجعة" }];
     const { generateBatch, seen } = await load({ items });
@@ -209,6 +209,34 @@ describe("tasks are built in one place, saved together and judged with what the 
     expect(plain.ok && plain.tasks.every((t) => !("brief" in t))).toBe(true);
   });
 
+  it("each item reaches the brand gate with its own channel: a {{1}} slot is auto-approved on WhatsApp and held on a post (rule 213)", async () => {
+    const body = "أهلاً {{1}}، قهوتك المفضلة بانتظارك اليوم في الفرع";
+    const { generateBatch } = await load({ items: [{ channel: "whatsapp", title: "تذكير", body }, { channel: "instagram", title: "تذكير", body }] });
+    const u = await owner("gb-slot");
+    await saveGov(u.email, { autoApprove: { whatsapp: true }, reviewer: false });
+    const r = await generateBatch(u, u.email, { type: "whatsapp", source: "manual", via: "app" });
+    // One batch, one type and one body: only the channel tells the two apart.
+    expect(r.ok && r.tasks.map((t) => [t.channel, t.status])).toEqual([["whatsapp", "approved"], ["instagram", "pending"]]);
+  });
+
+  it("the same gate holds for every caller's source and via: chat, MCP, the Sunday plan and a routine (rules 213 and 223)", async () => {
+    const slot = "أهلاً {{1}}، قهوتك المفضلة بانتظارك اليوم في الفرع";
+    const items = [
+      { channel: "whatsapp", title: "تذكير", body: slot },
+      { channel: "instagram", title: "تذكير", body: slot },
+      { channel: "whatsapp", title: "عرض", body: "خصم [رقم] على كل كوب اليوم في الفرع" },
+    ];
+    const { generateBatch } = await load({ items });
+    const u = await owner("gb-gate-all");
+    await saveGov(u.email, { autoApprove: { whatsapp: true }, reviewer: false });
+    // Each pair is one a caller passes (rule 224): the gate must not depend on who asked.
+    const pairs = [["manual", "app"], ["chat", "chat"], ["chat", "mcp"], ["scheduled", "weekly"], ["scheduled", "routine"]] as const;
+    for (const [source, via] of pairs) {
+      const r = await generateBatch((await getUser(u.email))!, u.email, { type: "whatsapp", source, via });
+      expect(r.ok && r.tasks.map((t) => [t.channel, t.status]), `${source}/${via}`).toEqual([["whatsapp", "approved"], ["instagram", "pending"], ["whatsapp", "pending"]]);
+    }
+  });
+
   it("the judge gets the notes, the workspace files, the data block and the count the owner asked for", async () => {
     const { generateBatch, seen } = await load();
     const u = await owner("gb-judge");
@@ -224,7 +252,7 @@ describe("tasks are built in one place, saved together and judged with what the 
   });
 });
 
-describe("every paid text batch goes through generateBatch (rule 216)", () => {
+describe("every paid text batch goes through generateBatch (rule 224)", () => {
   it("the generate route, both chat tools, MCP and the weekly plan, each with its own source and via, in the caller's scope", async () => {
     await load({ state: "mock" });
     const u = await owner("gb-callers");

@@ -95,10 +95,12 @@ export type ItemContext = {
 /**
  * One generated item as a new task. Every batch builds its tasks here, so a field every new task must carry is added
  * in one place. Auto-approval never skips the brand gate (`initialStatus`), and a forced batch is never auto-approved.
+ * The gate reads the item's channel: a personalisation slot such as {{1}} passes only on a WhatsApp, email, SMS or call
+ * draft, and an unfilled placeholder such as [رقم] holds approval on every channel (src/lib/brand-rules.ts, rule 213).
  * `pb` records which prompts made it (src/lib/prompt-stamp.ts), so a change in quality can be traced to a prompt change.
  */
 export function taskFromItem(it: Generated, c: ItemContext): Task {
-  const draft = { type: c.type, title: it.title, body: it.body };
+  const draft = { type: c.type, channel: it.channel, title: it.title, body: it.body };
   return {
     id: randomBytes(8).toString("hex"), type: c.type, channel: it.channel, title: it.title, body: it.body,
     status: initialStatus(c.forcePending ? false : c.autoApprove, c.brand, draft),
