@@ -62,7 +62,7 @@ export async function POST(req: Request) {
   const brief = briefOf(b.notes);
   const created: Task[] = [];
   for (const it of items) {
-    const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[type], brand, { type, title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang, source: "manual", ...(brief ? { brief } : {}) };
+    const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[type], brand, { type, channel: it.channel, title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang, source: "manual", ...(brief ? { brief } : {}) };
     await saveTask(sc(u), t, true);
     created.push(t);
   }

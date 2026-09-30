@@ -108,7 +108,7 @@ async function weeklyFor(user: User, email: string, brand: Brand): Promise<strin
   }
   const created: Task[] = [];
   for (const it of items) {
-    const t: Task = { id: randomBytes(8).toString("hex"), type: "weekly_plan", channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove.weekly_plan, brand, { type: "weekly_plan", title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "scheduled", brief: WEEKLY_NOTE };
+    const t: Task = { id: randomBytes(8).toString("hex"), type: "weekly_plan", channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove.weekly_plan, brand, { type: "weekly_plan", channel: it.channel, title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "scheduled", brief: WEEKLY_NOTE };
     await saveTask(email, t, true);
     created.push(t);
   }

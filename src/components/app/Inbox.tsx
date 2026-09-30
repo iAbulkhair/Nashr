@@ -11,13 +11,19 @@ import { render } from "@/lib/md";
 import { Icon, channelIcon } from "./Icons";
 import type { Lang } from "@/lib/i18n";
 import { dateFormat } from "@/lib/dates";
-import { brandRules, checkText, isCustomerFacing, textOf, type Violation } from "@/lib/brand-rules";
+import { brandRules, gateTask, isCustomerFacing, type Violation } from "@/lib/brand-rules";
 import type { Journey } from "@/lib/journey";
 import JourneyCard, { milestone } from "./JourneyCard";
 
 const GUARD = {
-  ar: { code: "كود الإعلان", codeHint: "ضعه في اسم الإعلان في مدير الإعلانات، فتقيس نور نتيجته حين تصل.", copyCode: "نسخ الكود", ok: "يطابق حارس العلامة", held: "محجوز بحارس العلامة", heldBody: "يحتوي على كلمة ممنوعة في ملف علامتك، فلا يُعتمد ولا يُنشر حتى تعدّله:", fix: "عدّل النص", live: "فحص مباشر", liveOk: "لا كلمات ممنوعة. جاهز للاعتماد.", saveDraft: "احفظ دون اعتماد", rule: "قاعدة الكلمات الممنوعة", editBrand: "ملف العلامة" },
-  en: { code: "Ad code", codeHint: "Put it in the ad's name in your ads manager, and Noor measures its results when they come in.", copyCode: "Copy code", ok: "Passes brand guard", held: "Held by brand guard", heldBody: "It contains a word your brand file bans, so it cannot be approved or published until you edit it:", fix: "Fix the text", live: "Live check", liveOk: "No banned words. Ready to approve.", saveDraft: "Save without approving", rule: "Banned-words rule", editBrand: "Brand file" },
+  ar: { code: "كود الإعلان", codeHint: "ضعه في اسم الإعلان في مدير الإعلانات، فتقيس نور نتيجته حين تصل.", copyCode: "نسخ الكود", ok: "يطابق حارس العلامة", held: "محجوز بحارس العلامة", heldBody: "يحتوي على كلمة ممنوعة في ملف علامتك، فلا يُعتمد ولا يُنشر حتى تعدّله:", heldPh: "فيه خانات لم تُعبّأ بعد (مثل [رقم] أو [date])، فلا يُعتمد ولا يُنشر حتى تضع القيمة الحقيقية مكانها أو تحذفها:", fix: "عدّل النص", live: "فحص مباشر", liveOk: "لا كلمات ممنوعة ولا خانات فارغة. جاهز للاعتماد.", saveDraft: "احفظ دون اعتماد", rule: "قاعدة الكلمات الممنوعة", rulePh: "قاعدة الخانات الفارغة", editBrand: "ملف العلامة" },
+  en: { code: "Ad code", codeHint: "Put it in the ad's name in your ads manager, and Noor measures its results when they come in.", copyCode: "Copy code", ok: "Passes brand guard", held: "Held by brand guard", heldBody: "It contains a word your brand file bans, so it cannot be approved or published until you edit it:", heldPh: "It has placeholders nobody filled in yet (like [رقم] or [date]), so it cannot be approved or published until you put in the real value or remove them:", fix: "Fix the text", live: "Live check", liveOk: "No banned words or empty placeholders. Ready to approve.", saveDraft: "Save without approving", rule: "Banned-words rule", rulePh: "Empty-placeholder rule", editBrand: "Brand file" },
+} as const;
+
+/** A second publish to the same platform, or one after a publish whose result never came back: the owner decides. */
+const AGAIN = {
+  ar: { already: (p: string) => `نُشر هذا العنصر على ${p} من قبل. هل يُنشر مرة ثانية؟`, unknown: (p: string) => `محاولة النشر على ${p} انتهت دون رد، فقد يكون المنشور ظهر فعلاً. تحقّق من ${p} أولاً، ثم انشر مرة أخرى إن لم تجده.`, busy: "النشر جارٍ الآن. انتظر دقيقة ثم حدّث الصفحة.", duplicate: (p: string) => `رفض ${p} هذا النص لأنه نُشر عنده من قبل. لم يُنشر شيء، والاتصال سليم. غيّر الصياغة ثم انشر.`, earlier: (p: string) => `${p} يقول إن هذا النص منشور عنده، فالمحاولة السابقة ظهرت فعلاً. سُجّلت على العنصر، ولم يُنشر شيء جديد.`, slots: "لا يُنشر كما هو: فيه خانات مثل {{1}} تُعبّأ لكل مستلم أو توجيهات تصوير مثل [VO]. انسخه إلى المكان الذي يُستخدم فيه.", again: "انشر مرة أخرى" },
+  en: { already: (p: string) => `This item was already published to ${p}. Publish it again?`, unknown: (p: string) => `The publish to ${p} ended without an answer, so the post may already be live. Check ${p} first, then publish again if it is not there.`, busy: "A publish is already running. Wait a minute, then refresh.", duplicate: (p: string) => `${p} refused this text because it was already posted there. Nothing went out and the connection is fine. Change the wording, then publish.`, earlier: (p: string) => `${p} says this text is already there, so the earlier attempt went live. It is now recorded on the item; nothing new was posted.`, slots: "Not published as written: it has slots such as {{1}} filled per recipient, or script directions such as [VO]. Copy it to where it is used.", again: "Publish again" },
 } as const;
 
 /** The matched word inside its excerpt, highlighted (both come from the same checker the server runs). */
@@ -43,9 +49,13 @@ const saveLink = (url: string) => (isOurBlobUrl(url) ? `${url}?download=1` : url
 export default function Inbox({ t, lang, tasks, brief, connected = [], banned = "", journey, media = [], credits = 0, plan, paused, canPublish = true }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[]; banned?: string; journey?: Journey; media?: MediaModelId[]; credits?: number; plan?: string; paused?: boolean; canPublish?: boolean }) {
   const i = t.inbox;
   const G = GUARD[lang];
-  // The brand file's rules, applied here exactly as the approve and publish routes apply them.
-  const rules = useMemo(() => brandRules({ banned }), [banned]);
-  const held = (x: Pick<Task, "type" | "title" | "body" | "editedBody">) => (isCustomerFacing(x.type) ? checkText(rules, textOf(x)) : []);
+  // The brand file's rules and the empty-placeholder rule, applied here exactly as the approve route applies them.
+  const hasBanned = useMemo(() => brandRules({ banned }).length > 0, [banned]);
+  const held = (x: Pick<Task, "type" | "channel" | "title" | "body" | "editedBody">) => gateTask({ banned }, x);
+  // What the publish route checks: stricter than approval, since no placeholder of any kind is ever published.
+  const pubHeld = (x: Task) => gateTask({ banned }, x, { publish: true });
+  const A = AGAIN[lang];
+  const [again, setAgain] = useState<{ id: string; provider: string; kind: "already" | "unknown" | "busy" | "duplicate" | "earlier"; url?: string } | null>(null);
   const [refused, setRefused] = useState<Record<string, Violation[]>>({});
   const r = useRouter();
   const [filter, setFilter] = useState<"pending" | "approved" | "rejected" | "all">("pending");
@@ -72,14 +82,20 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
   // Publishing is admin and owner only (src/lib/roles.ts "publish"), so a member is offered no target at all.
   const targets = (x: Task) => (canPublish ? targetsFor(x, connected) : []);
 
-  async function publish(id: string, provider: string) {
+  async function publish(id: string, provider: string, repeat = false) {
     setPublishing(id + provider);
-    const res = await fetch(`/api/publish/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider }) });
+    setAgain(null);
+    const res = await fetch(`/api/publish/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(repeat ? { provider, again: true } : { provider }) }).catch(() => null);
     setPublishing(null);
+    // No answer, or the platform's time limit (a 5xx with no reason): the post may be live, so the owner checks first.
+    if (!res || (res.status >= 500 && res.status !== 502)) { setAgain({ id, provider, kind: "unknown" }); forgetLocal(id); r.refresh(); return; }
     if (res.ok) milestone("publish");
     else {
-      const j = (await res.json().catch(() => ({}))) as { error?: string; violations?: Violation[] };
+      const j = (await res.json().catch(() => ({}))) as { error?: string; violations?: Violation[]; url?: string };
       if (j.error === "brand_violation" && j.violations) setRefused((p) => ({ ...p, [id]: j.violations! }));
+      // Already on that platform, a result nobody saw, or a publish still running: the server did not post, and the
+      // owner is asked, never a silent second post (src/lib/publish-once.ts).
+      else if (j.error === "already_published" || j.error === "publish_unknown" || j.error === "publish_busy" || j.error === "duplicate_post" || j.error === "earlier_live") setAgain({ id, provider, kind: j.error === "already_published" ? "already" : j.error === "publish_unknown" ? "unknown" : j.error === "duplicate_post" ? "duplicate" : j.error === "earlier_live" ? "earlier" : "busy", url: j.url });
       else alert(res.status === 403 ? t.team.errors.forbidden : i.publishFail);
     }
     // `view` renders `local[id] ?? task`, so an entry left over from an earlier approve would mask this task's server
@@ -215,7 +231,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
         {shown.map((x, idx) => {
           const body = x.editedBody ?? x.body;
           const hits = refused[x.id]?.length ? refused[x.id] : held(x);
-          const guarded = rules.length > 0 && isCustomerFacing(x.type);
+          const guarded = isCustomerFacing(x.type) && (hasBanned || hits.length > 0);
           const day = x.createdAt.slice(0, 10);
           const newDay = idx === 0 || shown[idx - 1].createdAt.slice(0, 10) !== day;
           const isCollapsed = !!collapsed[x.id];
@@ -237,16 +253,28 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
               </div>
               <div className="px-4 pb-3">
               {x.published && x.published.length > 0 && (
-                <p className="mt-2 text-xs text-oasis">{x.published.map((p) => <a key={p.url} href={p.url} target="_blank" rel="noreferrer" className="me-3 underline">{p.status === "draft" ? i.draftOn : i.published} {p.provider} ↗</a>)}</p>
+                <p className="mt-2 text-xs text-oasis">{x.published.map((p, n) => (p.url ? <a key={`${p.url}${n}`} href={p.url} target="_blank" rel="noreferrer" className="me-3 underline">{p.status === "draft" ? i.draftOn : i.published} {p.provider} ↗</a> : <span key={`${p.provider}${n}`} className="me-3">{i.published} {p.provider}</span>))}</p>
+              )}
+              {again?.id === x.id && (
+                <div role="alert" className="mt-3 rounded-lg border border-saffron/40 bg-saffron/10 p-3 text-sm">
+                  <p className="text-ink/80" dir="auto">{again.kind === "busy" ? A.busy : A[again.kind](again.provider)}{again.url && <> <a href={again.url} target="_blank" rel="noreferrer" className="underline">↗</a></>}</p>
+                  {(again.kind === "already" || again.kind === "unknown") && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button disabled={publishing === x.id + again.provider} onClick={() => publish(x.id, again.provider, true)} className="btn btn-primary btn-xs">{A.again}</button>
+                      <button onClick={() => setAgain(null)} className="btn btn-secondary btn-xs">{i.cancel}</button>
+                    </div>
+                  )}
+                </div>
               )}
               {hits.length > 0 && editing !== x.id && (
                 <div role="alert" className="mt-3 rounded-lg border border-sadu/30 bg-sadu/5 p-3 text-sm">
-                  <p className="flex items-center gap-1.5 font-semibold text-sadu-deep"><Icon name="shield" className="h-4 w-4" />{G.held} · <span className="font-normal">{G.rule}</span></p>
-                  <p className="mt-1 text-ink/70">{G.heldBody}</p>
+                  <p className="flex items-center gap-1.5 font-semibold text-sadu-deep"><Icon name="shield" className="h-4 w-4" />{G.held} · <span className="font-normal">{[hits.some((v) => v.kind === "banned") && G.rule, hits.some((v) => v.kind === "placeholder") && G.rulePh].filter(Boolean).join(" · ")}</span></p>
+                  {hits.some((v) => v.kind === "banned") && <p className="mt-1 text-ink/70">{G.heldBody}</p>}
+                  {hits.some((v) => v.kind === "placeholder") && <p className="mt-1 text-ink/70">{G.heldPh}</p>}
                   <ul className="mt-1.5 grid gap-1">{hits.map((v) => <li key={v.ruleId} className="text-xs text-ink/80"><span className="font-semibold" dir="auto">«{v.term}»</span> · <Hit v={v} /></li>)}</ul>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button onClick={() => { setEditing(x.id); setDraft(body); }} className="btn btn-primary btn-xs">{G.fix}</button>
-                    <Link href={`/${lang}/app/onboarding`} className="btn btn-secondary btn-xs">{G.editBrand}</Link>
+                    {hits.some((v) => v.kind === "banned") && <Link href={`/${lang}/app/onboarding`} className="btn btn-secondary btn-xs">{G.editBrand}</Link>}
                   </div>
                 </div>
               )}
@@ -279,10 +307,11 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                 <div className="mt-3 grid gap-2">
                   <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={10} className="w-full rounded-lg border border-ink/15 p-3 text-sm" />
                   {(() => {
-                    const live = guarded ? held({ ...x, editedBody: draft }) : [];
+                    const checking = isCustomerFacing(x.type);
+                    const live = checking ? held({ ...x, editedBody: draft }) : [];
                     return (
                       <>
-                        {guarded && (
+                        {checking && (
                           <p aria-live="polite" className={`flex flex-wrap items-center gap-1.5 text-xs ${live.length ? "text-sadu-deep" : "text-oasis"}`}>
                             <Icon name="shield" className="h-3.5 w-3.5" /><span className="font-semibold">{G.live}:</span>
                             {live.length ? live.map((v) => <span key={v.ruleId} className="guard-hit font-semibold" dir="auto">{v.term}</span>) : <span>{G.liveOk}</span>}
@@ -348,9 +377,22 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                       <button onClick={async () => { await navigator.clipboard.writeText(x.adCode!); setCopied(x.adCode!); setTimeout(() => setCopied(null), 1500); }} aria-label={G.copyCode} className="rounded-full px-1 text-oasis hover:bg-oasis/10">{copied === x.adCode ? "✓" : <Icon name="copy" className="h-3.5 w-3.5" />}</button>
                     </span>
                   )}
-                  {targets(x).map((p) => (
-                    <button key={p} disabled={publishing === x.id + p || hits.length > 0} onClick={() => publish(x.id, p)} className="btn btn-primary btn-pill">{publishing === x.id + p ? i.publishing : `${i.publishTo} ${p}`}</button>
-                  ))}
+                  {(() => {
+                    // Publish buttons follow the publish gate, so a WhatsApp draft with {{1}} (fine to approve) never
+                    // offers a Telegram post the server would refuse.
+                    const pub = pubHeld(x);
+                    const slotsOnly = pub.length > 0 && hits.length === 0;
+                    const list = targets(x);
+                    return (
+                      <>
+                        {list.map((p) => (
+                          <button key={p} disabled={publishing === x.id + p || pub.length > 0} title={slotsOnly ? A.slots : pub.length ? G.held : undefined} onClick={() => publish(x.id, p)} className="btn btn-primary btn-pill">{publishing === x.id + p ? i.publishing : `${i.publishTo} ${p}`}</button>
+                        ))}
+                        {/* The reason in words, not only on hover: most owners use the inbox on a phone. */}
+                        {slotsOnly && list.length > 0 && <p className="w-full text-xs text-ink/60" dir="auto">{A.slots}</p>}
+                      </>
+                    );
+                  })()}
                   <label className="ms-auto flex items-center gap-1 text-xs text-ink/60">
                     {i.date}
                     <input type="date" dir="ltr" defaultValue={x.scheduledFor ?? ""} onChange={(e) => patch(x.id, { scheduledFor: e.target.value || null })} className="rounded border border-ink/15 px-2 py-1 text-xs" />

@@ -114,7 +114,8 @@ describe("a render finishing while another writer holds the task", () => {
   it("the chat tool publish_item keeps a clip that finished during the publish", async () => {
     const u = await newUser("tw");
     await saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
-    const t = await taskFor(u, { status: "approved" });
+    // Approved by a person (decidedAt): publish_item refuses an item only auto-approval passed (rule 214).
+    const t = await taskFor(u, { status: "approved", decidedAt: new Date().toISOString() });
     const video = await runningVideo(u, t);
     h.duringPublish = video.finish;
     // The owner, resolved the way a request is: publish_item is refused to a user with no actor (tests/role-gates.test.ts).

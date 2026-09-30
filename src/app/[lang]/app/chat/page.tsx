@@ -57,7 +57,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   const firstStep = !hasProducts ? "catalog" : !brand?.offers ? "offer" : connections.length === 0 ? "connect" : "batch";
   return (
     <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[1fr_320px]">
-      <ChatPanel t={appDict[lang]} journey={journey} initial={initial} credits={u.credits} lang={lang} initialConv={conv} starter={starter} needPhone={needPhone} canApprove={can(u, "publish")} initialPrompt={typeof sp.prompt === "string" ? sp.prompt.slice(0, 2000) : ""} plan={u.plan} firstStep={firstStep} initialAgent={agentParam} pending={(pendingTask ? [pendingTask] : []).map((x) => ({ id: x.id, type: x.type, channel: x.channel, title: x.title, body: x.editedBody ?? x.body, status: x.status }))} pendingCount={k.pending} brief={brief?.text ?? null} />
+      <ChatPanel t={appDict[lang]} journey={journey} initial={initial} credits={u.credits} lang={lang} initialConv={conv} starter={starter} needPhone={needPhone} canApprove={can(u, "publish")} canBrand={can(u, "brand.write")} initialPrompt={typeof sp.prompt === "string" ? sp.prompt.slice(0, 2000) : ""} plan={u.plan} firstStep={firstStep} initialAgent={agentParam} pending={(pendingTask ? [pendingTask] : []).map((x) => ({ id: x.id, type: x.type, channel: x.channel, title: x.title, body: x.editedBody ?? x.body, status: x.status }))} pendingCount={k.pending} brief={brief?.text ?? null} />
       <div className="hidden overflow-y-auto xl:block"><HomeSide t={appDict[lang]} lang={lang} k={k} connections={connections} schedule={schedule} files={files.map((f) => ({ name: f.name, updatedAt: f.updatedAt }))} brief={brief?.text ?? null} action={notifs.find((n) => !n.read) ?? null} /></div>
     </div>
   );

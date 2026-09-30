@@ -55,7 +55,8 @@ export async function saveExternalDraft(user: User, d: DraftInput): Promise<Save
   const brand = await getBrand(scope);
   if (!brand) return { ok: false, reason: "no_brand" };
   const brief = briefOf(d.notes);
-  const draft = { type: d.type, title: d.title, body: d.body };
+  // The channel decides whether a personalisation slot such as {{1}} may stay (brand-rules.ts), as on the approve route.
+  const draft = { type: d.type, channel: d.channel, title: d.title, body: d.body };
   const violations = gateTask(brand, draft);
   const t: Task = {
     id: randomBytes(8).toString("hex"), type: d.type, channel: d.channel, title: d.title, body: d.body,
@@ -73,7 +74,7 @@ export function draftReport(t: Task, violations: Violation[]) {
     saved: true, id: t.id, status: t.status, type: t.type, channel: t.channel, title: t.title,
     brandCheck: { pass: violations.length === 0, checkedAs: isCustomerFacing(t.type) ? "customer-facing" : "internal (not held)", violations, summary: explain(violations) },
     next: violations.length
-      ? "Saved as pending, but the owner cannot approve or publish it until the text is edited: it contains a banned word. Fix the draft and save it again, or tell the owner which rule fired."
+      ? `Saved as pending, but the owner cannot approve or publish it until the text is edited: ${[violations.some((v) => v.kind === "banned") && "it contains a banned word", violations.some((v) => v.kind === "placeholder") && "it has an unfilled placeholder (fill it in; {{1}}-style slots pass only on whatsapp, email, sms and call drafts)"].filter(Boolean).join(", and ")}. Fix the draft and save it again, or tell the owner which rule fired.`
       : "Saved as pending in the approvals inbox. The owner approves, edits or rejects it there; nothing is published until they do.",
     credits: 0,
   };
