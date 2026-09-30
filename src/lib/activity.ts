@@ -19,7 +19,7 @@ import { isBy, publicBy, type By } from "./actor";
  */
 export const ACTIVITY_KINDS = [
   "generated", "judged", "autofail", "published", "decision", "image_started", "render_done", "render_failed", "routine_ran", "routine_skipped",
-  "cap_reached", "no_credits", "external_draft", "brand_changed", "file_written", "gov_changed", "gov_rollback",
+  "cap_reached", "no_credits", "external_draft", "brand_changed", "file_written", "gov_changed", "gov_rollback", "onboard_charged", "onboard_refunded",
 ] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 /** Where it happened. Not a task's `source`: chat and MCP batches are both `source: "chat"`. */
@@ -29,7 +29,10 @@ export type ActivityVia = (typeof ACTIVITY_VIAS)[number];
 export type Activity = {
   at: string;
   kind: ActivityKind;
-  /** The agent whose work it is (`agentForTask`, a job's stored `spend.agent`, the talking agent in chat); absent for account-level rows. */
+  /**
+   * The agent whose work it is (`agentForTask`, a job's stored `spend.agent`, the talking agent in chat, Noor for an added
+   * brand's setup and the hold's agent for its sweep refund); absent for account-level rows.
+   */
   agent?: AgentId;
   by: By;
   via: ActivityVia;
@@ -37,7 +40,10 @@ export type Activity = {
   /** Up to ten task ids. */
   tasks?: string[];
   count?: number;
-  /** Charged (generated, image_started), not charged (cap_reached, no_credits: what it would have cost), or the render's price (render_*). */
+  /**
+   * Charged (generated, image_started, onboard_charged), not charged (cap_reached, no_credits: what it would have cost),
+   * given back (onboard_refunded), or the render's price (render_*).
+   */
   credits?: number;
   /** A code-made result: a provider, a decision action, a routine outcome, a failure reason, "spent/cap". */
   outcome?: string;
@@ -46,7 +52,7 @@ export type Activity = {
   /** Up to 200 characters of untrusted text. */
   note?: string;
   media?: "image" | "video";
-  /** render_failed: whether the credits went back. */
+  /** render_failed: whether the credits went back; onboard_refunded: always true. */
   refunded?: boolean;
 };
 

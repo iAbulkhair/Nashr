@@ -70,11 +70,14 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
         case "image_started": case "render_done": return [media];
         case "render_failed": return [media, r.refunded ? a.refunded : a.notRefunded];
         case "routine_skipped": return [typeOf(r), r.outcome && Object.hasOwn(a.outcomes, r.outcome) ? a.outcomes[r.outcome as keyof typeof a.outcomes] : ""];
+        // A refused charge names its batch type or its render; an added brand's setup is the one charge with neither.
         case "cap_reached": {
           const [spent, cap] = (r.outcome ?? "").split("/");
-          return [typeOf(r) || media, spent && cap ? fill(a.capUsed, { spent, cap }) : "", a.notCharged];
+          return [typeOf(r) || media || a.setup, spent && cap ? fill(a.capUsed, { spent, cap }) : "", a.notCharged];
         }
-        case "no_credits": return [typeOf(r) || media, n(a.needed, r.credits), a.notCharged];
+        case "no_credits": return [typeOf(r) || media || a.setup, n(a.needed, r.credits), a.notCharged];
+        case "onboard_charged": return [];
+        case "onboard_refunded": return [n(a.credits, r.credits), a.refunded];
         case "external_draft": return [typeOf(r), r.note ?? ""];
         case "gov_changed": case "gov_rollback": return [r.note ? fill(a.changed, { list: r.note }) : ""];
         default: return [r.note ?? ""];
@@ -83,7 +86,7 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
     return parts.filter(Boolean).join(" · ");
   }
   /** Credits the row's action spent; refusals say "nothing charged" in their detail instead. */
-  const spent = (r: Activity) => ((r.kind === "generated" || r.kind === "image_started") && r.credits !== undefined ? fill(a.credits, { n: r.credits }) : "");
+  const spent = (r: Activity) => ((r.kind === "generated" || r.kind === "image_started" || r.kind === "onboard_charged") && r.credits !== undefined ? fill(a.credits, { n: r.credits }) : "");
 
   return (
     <div className="mx-auto max-w-3xl">

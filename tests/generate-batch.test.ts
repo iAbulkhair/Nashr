@@ -155,6 +155,17 @@ describe("the checks before the charge come in one order, typed, and charge noth
     expect(seen.made, "no refusal reaches the model").toBe(0);
     expect([await credits(b.email), await credits(c.email), await spend(d.email)]).toEqual([50, 50, {}]);
   });
+
+  it("a small ask is only for DRAFT_TYPES: any other type with a count throws before any read or charge (rule 250)", async () => {
+    const { generateBatch, seen } = await load();
+    const u = await owner("gb-draft-type");
+    for (const type of ["article", "weekly_plan", "cart_recovery", "board_deck"] as const) {
+      await expect(generateBatch(u, u.email, { type, count: 1, source: "chat", via: "chat" })).rejects.toThrow(`not_draft_type:${type}`);
+    }
+    expect([seen.charged, seen.made]).toEqual([0, 0]);
+    expect(await credits(u.email)).toBe(50);
+    expect(await listTasks(u.email)).toEqual([]);
+  });
 });
 
 describe("a failed read or a failed generation is refunded with the receipt (rule 222)", () => {
@@ -178,6 +189,16 @@ describe("a failed read or a failed generation is refunded with the receipt (rul
     expect(seen.made).toBeGreaterThan(0);
     expect([await credits(u.email), await spend(u.email)]).toEqual([50, { razan: 0 }]);
     expect(await listTasks(u.email)).toEqual([]);
+  });
+
+  it("a small ask that fails gives back exactly what it was charged, not the full batch price (rules 222 and 241)", async () => {
+    const { generateBatch, countCost } = await load({ genFails: true });
+    const u = await owner("gb-smallfail");
+    // One social draft costs less than a full social batch, so a refund of the batch price would add credits.
+    expect(countCost("social", 1)).toBeLessThan(TASK_COST.social);
+    const r = await generateBatch(u, u.email, { type: "social", count: 1, brief: "b", source: "chat", via: "chat" });
+    expect(r).toMatchObject({ ok: false, reason: "failed", credits: 50 });
+    expect([await credits(u.email), await spend(u.email)]).toEqual([50, { noor: 0 }]);
   });
 });
 

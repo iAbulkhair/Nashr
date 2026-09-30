@@ -117,8 +117,8 @@ Existing keys: `users:all`, `user:{email}` (plan, credits, trialEnds, createdAt,
 | Signups | users created in window | **new** `signups:YYYY-MM-DD` INCR in `createUser`; backfill from `createdAt` |
 | Trials active / expiring 24h | plan=trial, trialEnds > now / < now+24h | scan `users:all` → `user:*` |
 | Trial → paid (30d) | paid in window ÷ trials ended in window (Stripe definition) | **new** `conv:YYYY-MM-DD` INCR on upgrade |
-| Paid by plan | plan ∈ {starter, pro, agency}, not suspended | `user:*` |
-| MRR (SAR) | Σ plan price (149/399/799) for paid, unsuspended users | `user:*`; later subscription records |
+| Paid by plan | plan ∈ {starter, pro, business, agency}, not suspended | `user:*` |
+| MRR (SAR) | Σ `priceOf(u)` (`src/lib/pricing.ts`) for paid, unsuspended users: the list price (299 / 499 / 999 since 2026-09-30), or an Agency account's deal price (999 without a valid deal) | `user:*`; later subscription records |
 | Model cost (USD) | `usd_micro`/1e6 this month | `usage:_all:{M}:usd_micro` |
 | Gross margin | (MRR÷3.75 − model cost) ÷ (MRR÷3.75) | derived |
 | Cost per credit | model cost ÷ credits consumed | **new** `credits:spent:_all:{M}` INCR in `charge()` |

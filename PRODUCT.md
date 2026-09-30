@@ -24,7 +24,7 @@ A team of named Gulf agents that works from one brand file, in the owner's diale
 ## Operating Context
 - Owner logs in a few times a week; the morning brief and follow-up notifications bring them back. Approval happens in chat cards or the approvals feed; scheduling in the calendar; performance on the performance page.
 - Content is copied to platforms manually until connectors are live; WordPress, WooCommerce, Klaviyo, Odoo, PrestaShop, Telegram, Brevo work today; Shopify, X, Google, Meta, Salla, Zid, Snapchat, TikTok, LinkedIn activate when their platform keys are added.
-- Credits are the unit of value (flat per batch); trial is 3 days and 50 credits; paid plans Starter 149, Pro 399, Agency 799 SAR per month; enterprise by request.
+- Credits are the unit of value (flat per batch); trial is 3 days and 50 credits; paid plans Starter 299 (300 credits, 1 seat), Pro 499 (700 credits, 3 seats) and Business 999 (1,500 credits, 7 seats) SAR per month plus VAT, and Agency by contract (never cheaper per credit than Business); brands are unlimited on every plan, the first brand's setup is free and each added brand's costs 9 credits. One table in code: `src/lib/pricing.ts` (pricing phase 1, 2026-09-30).
 - Founder operates alone: admin console, Vercel, GitHub, Upstash Redis, Anthropic models; secrets are added by the founder in their own terminal.
 
 ## Capabilities and Constraints

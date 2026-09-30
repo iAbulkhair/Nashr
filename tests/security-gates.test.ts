@@ -24,8 +24,8 @@ import { taskFromItem } from "@/lib/generate-batch";
  * The gates the Taskuary study (2026-09-29) found missing, each checked in code with no model in the loop:
  * placeholders (213), publishing only what a person approved (214), brand changes an agent may only propose (215),
  * one publish per platform (216), the judge's veto on auto-approval (217), fenced memory (218), the newest preferences
- * (219) and core memory over MCP (220). Rule 241, added when these were merged into step 3a, pins that a deleted
- * account's brand proposals go with it.
+ * (219) and core memory over MCP (220). Rule 240 (the account wipe; first added as 241 when these were merged into
+ * step 3a) also pins that a deleted account's brand proposals go with it.
  */
 const h = vi.hoisted(() => ({ posts: [] as string[], fail: null as Error | null, slow: 0 }));
 vi.mock("@/lib/connectors/publish", async (orig) => ({
@@ -286,7 +286,7 @@ describe("an agent adds banned words; offers and removals wait for the owner's S
   });
 });
 
-describe("a deleted account leaves no brand proposal behind (rule 241)", () => {
+describe("a deleted account leaves no brand proposal behind (rule 240)", () => {
   it("wipeAccount deletes every proposal, its outcome, claim and index, and the brand lock, for every brand", async () => {
     const u = await owner("prop-wipe");
     await saveUser({ ...(await getUser(u.email))!, plan: "agency" });

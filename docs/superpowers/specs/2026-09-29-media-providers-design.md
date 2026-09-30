@@ -111,6 +111,9 @@ The design template asks for no lettering, so the label says "graphic design", n
 Every video prompt forbids speech, dialogue and voice-over ("sound" means ambient sound and music): no provider documents
 the language of generated speech. `vid-cinematic` is above the ~$0.05 per credit target at list price (open risk R3).
 Revenue per credit is $0.1065 on the agency plan (`docs/system/costs.md:75`), so every row still has a margin.
+Since pricing phase 1 (2026-09-30) the cheapest credit is Business's $0.1776 and the 60% floor allows at most $0.0710 of
+cost per credit; `tests/pricing-floor.test.ts` (rule 241) checks every row, prompt included, against it, and
+`vid-cinematic` is the highest at $0.0588 (`docs/system/costs.md` sections 3.1 and 4).
 
 ### 3.3 Where each doubtful field is confirmed
 

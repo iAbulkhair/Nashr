@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { dict, isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, seatLimit } from "@/lib/auth";
+import { SELF_SERVE_PLANS, type SelfServePlan } from "@/lib/pricing";
 import { can } from "@/lib/roles";
 import { seatsUsed } from "@/lib/team";
 import ReadOnlyNote from "@/components/app/ReadOnlyNote";
@@ -17,9 +18,13 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   // Paying is the owner's: pay links and the WhatsApp activation thread (which carries the account email) are built and
   // shown for the owner only. Everyone sees the plan, credits and seats, and is told to ask the owner.
   const owner = can(u, "billing");
-  const links: Record<string, string | undefined> = owner ? { starter: process.env.PAY_LINK_STARTER, pro: process.env.PAY_LINK_PRO, agency: process.env.PAY_LINK_AGENCY } : {};
+  // One pay link per self-serve tier, keyed by plan id: each card finds its own copy by id, never by position, so a card
+  // can never show one tier's price with another tier's link. Agency has no pay link (PAY_LINK_AGENCY is not read): it is
+  // sold by contract, through the contact card below.
+  const links: Partial<Record<SelfServePlan, string>> = owner ? { starter: process.env.PAY_LINK_STARTER, pro: process.env.PAY_LINK_PRO, business: process.env.PAY_LINK_BUSINESS } : {};
   const wa = owner && process.env.SUPPORT_WHATSAPP ? `https://wa.me/${process.env.SUPPORT_WHATSAPP.replace(/\D/g, "")}?text=${encodeURIComponent(`Nashr ${u.email}`)}` : null;
-  const keys = ["starter", "pro", "agency"] as const;
+  const card = (id: SelfServePlan | "agency") => m.plans.find((p) => p.id === id);
+  const agency = card("agency");
   const used = await seatsUsed(u.email);
   return (
     <div className="mx-auto max-w-4xl">
@@ -39,12 +44,13 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
         </div>
       )}
       {owner && <p className="mt-6 text-ink/70">{t.billing.sub}</p>}
-      <div className="mt-4 grid gap-4 sm:grid-cols-3">
-        {keys.map((k, idx) => {
-          const plan = m.plans[idx];
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {SELF_SERVE_PLANS.map((k) => {
+          const plan = card(k);
+          if (!plan) return null;
           const href = links[k] ?? wa;
           return (
-            <div key={k} className="flex flex-col card">
+            <div key={k} data-tier={k} className="flex flex-col card">
               <h2 className="font-display text-lg font-medium">{plan.name}</h2>
               <p className="mt-2 font-display text-3xl font-bold" dir="ltr">{plan.price} <span className="text-xs font-normal text-ink/60">{plan.period}</span></p>
               <p className="text-sm text-sadu">{plan.credits}</p>
@@ -57,6 +63,16 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
             </div>
           );
         })}
+        {agency && (
+          <div data-tier="agency" className="flex flex-col card">
+            <h2 className="font-display text-lg font-medium">{agency.name}</h2>
+            <p className="mt-2 font-display text-2xl font-bold">{agency.price} <span className="text-xs font-normal text-ink/60">{agency.period}</span></p>
+            <p className="text-sm text-sadu">{agency.credits}</p>
+            <ul className="mt-3 flex-1 space-y-1 text-xs text-ink/70">{agency.features.filter((f) => !/coming soon|قريباً/.test(f)).slice(0, 4).map((f) => <li key={f}>• {f}</li>)}</ul>
+            {/* Contact only, and only for the owner: the WhatsApp thread carries the account email. */}
+            {owner && <a href={wa ?? `/${lang}/enterprise#contact`} target={wa ? "_blank" : undefined} rel={wa ? "noreferrer" : undefined} className="mt-4 rounded-full border border-ink/20 px-4 py-2 text-center text-sm">{agency.cta}</a>}
+          </div>
+        )}
       </div>
     </div>
   );

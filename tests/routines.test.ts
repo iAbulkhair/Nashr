@@ -13,6 +13,7 @@ import { decisionOf, recordDecisions } from "@/lib/decisions";
 import { getSchedule, saveSchedule } from "@/lib/schedule";
 import { statsFor } from "@/lib/stats";
 import { listNotifs } from "@/lib/notifications";
+import { TASK_COST } from "@/lib/tasks";
 import { ROUTINES, ROUTINE_IDS, dueRoutines, isRoutineId, periodOf, ranThisPeriod, routineKeys, runRoutine, type RoutineId } from "@/lib/routines";
 import type { SalesSnapshot } from "@/lib/connectors/sales";
 import * as scheduleRoute from "@/app/api/schedule/route";
@@ -175,8 +176,8 @@ describe("a routine runs only on real input (rule 113)", () => {
       const u = await owner("rt-dana", { dana_weekly_report: true });
       await add(u);
       expect(await run(u, "dana_weekly_report"), what).toBe("ok:1");
-      expect(await credits(u.email), what).toBe(48);
-      expect(await spend(u.email), what).toEqual({ dana: 2 });
+      expect(await credits(u.email), what).toBe(50 - TASK_COST.weekly_report);
+      expect(await spend(u.email), what).toEqual({ dana: TASK_COST.weekly_report });
     }
     await settle();
   });
@@ -265,7 +266,7 @@ describe("once per period, inside the weekly cap and the agent's cap (rule 114)"
     expect(await run(u, "dana_weekly_report")).toBe("already_this_period");
     expect(await run(u, "razan_cash_forecast")).toBe("ok:1");
     expect(await run(u, "razan_cash_forecast")).toBe("already_this_period");
-    expect(await credits(u.email)).toBe(50 - 2 - 4);
+    expect(await credits(u.email)).toBe(50 - TASK_COST.weekly_report - TASK_COST.cash_forecast);
     expect(await dueRoutines([u])).toEqual([]);
     await settle();
   });
@@ -362,8 +363,9 @@ describe("once per period, inside the weekly cap and the agent's cap (rule 114)"
     expect((await listTasks(u.email)).filter((t) => t.source === "scheduled")).toHaveLength(1);
     expect(seen.prompts).toHaveLength(1);
     const won = out[0] === "ok:1" ? "dana" : "razan";
-    expect(await spend(u.email)).toEqual({ [won]: won === "dana" ? 2 : 4 });
-    expect(await credits(u.email)).toBe(50 - (won === "dana" ? 2 : 4));
+    const cost = TASK_COST[won === "dana" ? "weekly_report" : "cash_forecast"];
+    expect(await spend(u.email)).toEqual({ [won]: cost });
+    expect(await credits(u.email)).toBe(50 - cost);
     for (const id of ROUTINE_IDS) expect(await db.get(`routinehold:${u.email}:${id}`), id).toBeNull();
     expect(await db.get(`routinecap:${u.email}`)).toBeNull();
     await settle();
@@ -381,15 +383,15 @@ describe("once per period, inside the weekly cap and the agent's cap (rule 114)"
       void run(u, "dana_weekly_report");
       await vi.waitFor(() => expect(seen.prompts).toHaveLength(day));
       await Promise.all([db.unlock(`routinelock:${u.email}:dana_weekly_report`), db.del(`routinehold:${u.email}:dana_weekly_report`)]);
-      expect(await credits(u.email)).toBe(50 - 2 * day);
+      expect(await credits(u.email)).toBe(50 - TASK_COST.weekly_report * day);
     }
     expect(await dueRoutines([u]), "still due: it never ran").toHaveLength(1);
     hang.on = false;
     expect(await run(u, "dana_weekly_report")).toBe("attempts_exhausted");
     expect(await run(u, "dana_weekly_report")).toBe("attempts_exhausted");
     expect(seen.prompts, "no third generation").toHaveLength(2);
-    expect(await credits(u.email)).toBe(46);
-    expect(await spend(u.email)).toEqual({ dana: 4 });
+    expect(await credits(u.email)).toBe(50 - 2 * TASK_COST.weekly_report);
+    expect(await spend(u.email)).toEqual({ dana: 2 * TASK_COST.weekly_report });
   });
 });
 
