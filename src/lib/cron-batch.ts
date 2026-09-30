@@ -12,6 +12,13 @@ import { pmap } from "./parallel";
  */
 export type BatchReport = { job: string; period: string; chain: number; total: number; alreadyDone: number; processed: number; failed: number; remaining: number; chained: boolean; results: Record<string, string> };
 
+/**
+ * What a run answers when it refused only because this invocation had too little time left for it (its deadline check,
+ * before any charge). Like any "retry" it keeps its attempt and its day open; unlike the others it hands the rest to a
+ * fresh invocation.
+ */
+export const RETRY_LATE = "retry:late";
+
 const MAX_ATTEMPTS = 2;
 
 export async function runCronBatch<T>(o: {
@@ -33,7 +40,7 @@ export async function runCronBatch<T>(o: {
   });
   const pending = state.filter((s) => !s.done && s.attempts < MAX_ATTEMPTS).map((s) => s.t);
   const results: Record<string, string> = {};
-  let next = 0, processed = 0, failed = 0, retryLater = 0;
+  let next = 0, processed = 0, failed = 0, retryLater = 0, late = 0;
 
   await Promise.all(Array.from({ length: Math.min(o.concurrency, pending.length) }, async () => {
     while (next < pending.length && Date.now() - t0 < o.startBudgetMs) {
@@ -48,7 +55,7 @@ export async function runCronBatch<T>(o: {
         const r = await o.run(t);
         results[o.id(t)] = r;
         // "retry" means the work never began (someone else holds the lock), so it must not consume an attempt.
-        if (r.startsWith("retry")) { retryLater++; await db.set(tries(t), attempt - 1, o.markerTtlSeconds); continue; }
+        if (r.startsWith("retry")) { retryLater++; if (r === RETRY_LATE) late++; await db.set(tries(t), attempt - 1, o.markerTtlSeconds); continue; }
         await db.set(mark(t), r.slice(0, 80), o.markerTtlSeconds);
         processed++;
       } catch (e) {
@@ -61,9 +68,12 @@ export async function runCronBatch<T>(o: {
 
   const notStarted = pending.length - next;
   const remaining = notStarted + failed + retryLater;
-  // Chain only for users that never started or failed. A user that answered "retry" (locked by another run) would
-  // just spin the chain; the next scheduled run or the daily catch-up picks it up.
-  const chained = notStarted + failed > 0 && chain < (o.maxChain ?? 30);
+  // Chain for users that never started or failed. A user that answered "retry" because someone else holds its lock or
+  // the model is paused would just spin the chain; the next scheduled run or the daily catch-up picks it up. "retry:late"
+  // is different: the work was refused only because this invocation had too little time left, and a fresh one starts it
+  // in its first wave. So it chains too, when this hop did run something (the time went to work, not to the listing
+  // before the first item: a hop that ran nothing would find the next one just as late).
+  const chained = (notStarted + failed > 0 || (late > 0 && processed + failed > 0)) && chain < (o.maxChain ?? 30);
   if (chained) {
     url.searchParams.set("chain", String(chain + 1));
     const headers = { authorization: o.req.headers.get("authorization") ?? "" };

@@ -18,7 +18,7 @@ import { randomBytes } from "crypto";
 import { trialOver, type User } from "./auth";
 import { charge, refund, type AgentCharge } from "./credits";
 import { agentForTask, type AgentId } from "./agents";
-import { briefOf, getBrand, listPreferencesFor, saveTask, type Brand, type Task } from "./brand";
+import { briefOf, getBrand, listPreferencesFor, saveTask, type Brand, type Task, type TaskParent } from "./brand";
 import { TASK_COST, TASK_COUNT, isDraftType, type TaskType } from "./tasks";
 import { getGov, type Governance } from "./governance";
 import { missingData } from "./cart-recovery";
@@ -61,7 +61,31 @@ export type BatchOpts = {
    * and the system job for the scheduled paths (the Sunday plan's "Run now" passes the login that pressed it).
    */
   by?: By;
+  /**
+   * An item of Majed's handoff (src/lib/handoffs.ts): his brief for this item. It reaches the agent, the reviewer, the
+   * cross-reviewers and the judge as its own labelled data block (`leadBriefBlock`, src/lib/json.ts), never as the
+   * owner's notes and never as a source of figures; a batch without it is prompted exactly as before handoffs existed.
+   */
+  leadBrief?: string;
+  /**
+   * The handoff item the batch is run for: kept on every task it makes (`Task.parent`). Set by the run, in code; `auto`
+   * when Majed's auto-run started it (such tasks count as autonomous, `isAutonomous` in brand.ts).
+   */
+  parent?: TaskParent;
+  /**
+   * When the caller's request or cron invocation ends (epoch ms). Only the cross-agent review reads it: notes only, it is
+   * skipped with too little time left (`CROSS_REVIEW_MIN_MS`, noor.ts), so it never pushes a charged batch past the
+   * platform's limit. Callers that start a batch late check `BATCH_RUN_MIN_MS` themselves, before the charge.
+   */
+  deadline?: number;
 };
+
+/**
+ * What a batch (generation, reviewer, cross-review) needs of its request or invocation before it is charged: a caller with
+ * less left refuses before the charge (the handoff run "too_late", the auto-run and the routines "retry:late"). A platform
+ * timeout kills a function without throwing, so a batch cut short keeps its charge and saves nothing.
+ */
+export const BATCH_RUN_MIN_MS = 180_000;
 
 export type BatchRefusal =
   | { ok: false; reason: "paused" }
@@ -94,6 +118,8 @@ export type ItemContext = {
   forcePending?: boolean;
   /** One creation time for the whole batch. */
   createdAt: string;
+  /** The handoff item the batch was run for (`Task.parent`). */
+  parent?: TaskParent;
 };
 
 /**
@@ -102,15 +128,37 @@ export type ItemContext = {
  * The gate reads the item's channel: a personalisation slot such as {{1}} passes only on a WhatsApp, email, SMS or call
  * draft, and an unfilled placeholder such as [رقم] holds approval on every channel (src/lib/brand-rules.ts, rule 213).
  * `pb` records which prompts made it (src/lib/prompt-stamp.ts), so a change in quality can be traced to a prompt change.
+ *
+ * The cross-agent review's verdicts (`it.crossReview`, noor.ts) are kept on the task, and a "flag" holds it pending
+ * the way `forcePending` does, so another agent's concern always reaches the owner before the item counts as approved.
+ * An `external` item (MCP `save_draft`) is never cross-reviewed: no Nashr agent wrote it, so it keeps no verdicts.
  */
 export function taskFromItem(it: Generated, c: ItemContext): Task {
   const draft = { type: c.type, channel: it.channel, title: it.title, body: it.body };
+  const verdicts = c.source !== "external" && it.crossReview?.length ? it.crossReview : undefined;
+  const flagged = !!verdicts?.some((v) => v.verdict === "flag");
   return {
     id: randomBytes(8).toString("hex"), type: c.type, channel: it.channel, title: it.title, body: it.body,
-    status: initialStatus(c.forcePending ? false : c.autoApprove, c.brand, draft),
+    status: initialStatus(c.forcePending || flagged ? false : c.autoApprove, c.brand, draft),
     createdAt: c.createdAt, lang: c.brand.languages[0] ?? "ar", source: c.source, ...(c.brief ? { brief: c.brief } : {}),
     pb: promptStamp(c.type, c.brand),
+    ...(verdicts ? { crossReview: verdicts } : {}),
+    ...(c.parent ? { parent: { handoff: c.parent.handoff, item: c.parent.item, ...(c.parent.conv ? { conv: c.parent.conv } : {}), ...(c.parent.auto === true ? { auto: true as const } : {}) } } : {}),
   };
+}
+
+/**
+ * The batch's cross-agent review in the activity log: one `cross_reviewed` row per reviewing agent that gave verdicts,
+ * with the items it read, how many, and how many it flagged (`outcome` "flags:N"). The review runs by itself, so `by` is
+ * the system's, with the batch's `via`, like the judge's rows.
+ */
+export function crossReviewRows(tasks: Task[], at: string, via: BatchVia): Activity[] {
+  const by = new Map<AgentId, Task[]>();
+  for (const t of tasks) for (const v of t.crossReview ?? []) by.set(v.by, [...(by.get(v.by) ?? []), t]);
+  return [...by].map(([agent, ts]) => {
+    const flags = ts.filter((t) => t.crossReview!.some((v) => v.by === agent && v.verdict === "flag")).length;
+    return { at, kind: "cross_reviewed", agent, by: { kind: "system" }, via, type: ts[0].type, tasks: ts.map((t) => t.id), count: ts.length, outcome: `flags:${flags}` };
+  });
 }
 
 export async function generateBatch(user: User, scope: string, opts: BatchOpts): Promise<BatchResult> {
@@ -151,8 +199,10 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   // Read inside the try: the credits are already charged, and a failed read must reach the refund below.
   try {
     const [prefs, memory, stats, feedback] = await Promise.all([listPreferencesFor(scope, agent), memoryBlock(scope), statsFor(type, scope), feedbackFor(scope, agent, { gov })]);
-    ground = { notes: opts.notes, memory, stats };
-    items = await generate(type, brand, prefs, opts.notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats, feedback, ...(opts.count ? { count: opts.count } : {}) });
+    // A lead brief rides along only when there is one, so every other batch's prompts and judge grounding are unchanged.
+    const lead = opts.leadBrief?.trim() ? { leadBrief: opts.leadBrief } : {};
+    ground = { notes: opts.notes, memory, stats, ...lead };
+    items = await generate(type, brand, prefs, opts.notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, crossReview: gov.crossReview !== false, meter: user.email, stats, feedback, ...(opts.count ? { count: opts.count } : {}), ...(opts.deadline !== undefined ? { deadline: opts.deadline } : {}), ...lead });
   } catch (error) {
     // With the receipt, so the agent's monthly counter comes down with the balance.
     const [credits] = await Promise.all([refund(user.email, cost, paid), opts.settle?.()]);
@@ -162,10 +212,11 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
 
   const createdAt = new Date().toISOString();
   const brief = opts.brief ?? briefOf(opts.notes);
-  const tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt }));
-  // Together, not one round trip after another (Redis is HTTP per command), with the batch's one activity row.
+  const tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt, parent: opts.parent }));
+  // Together, not one round trip after another (Redis is HTTP per command), with the batch's one activity row and, when
+  // other agents reviewed it, one row per reviewer.
   const done: Activity = { at: createdAt, kind: "generated", agent, by: await who(), via: opts.via, type, tasks: tasks.map((t) => t.id), count: tasks.length, credits: cost };
-  await Promise.all([...tasks.map((t) => saveTask(scope, t, true)), recordActivity(scope, [done])]);
+  await Promise.all([...tasks.map((t) => saveTask(scope, t, true)), recordActivity(scope, [done, ...crossReviewRows(tasks, createdAt, opts.via)])]);
   // The judge scores against what the agent had, and against the count the owner asked for.
   judgeLater(scope, user.email, brand, tasks, opts.count, { ...ground, via: opts.via });
   return { ok: true, tasks, credits: user.credits, receipt: paid, cost, agent, gov };
