@@ -1,4 +1,9 @@
 import { db } from "./db";
+import type { User } from "./auth";
+import { getBrand } from "./brand";
+import { ONBOARD_HOLD_MS, resolveOnboardHolds } from "./credits";
+import { recordActivity } from "./activity";
+import { systemBy } from "./actor";
 
 /**
  * Which site a workspace is built from is the owner's choice, made on the start page and checked here in code.
@@ -16,3 +21,32 @@ export const onboardUrl = (raw: unknown) => (typeof raw === "string" ? raw.trim(
 export const confirmOnboard = (scope: string, url: string) => db.set(key(scope), url, TTL);
 export const confirmedOnboard = async (scope: string) => (await db.get<string>(key(scope))) ?? "";
 export const clearOnboard = (scope: string) => db.del(key(scope));
+
+/**
+ * An added brand's onboarding charge (src/lib/pricing.ts ONBOARD_EXTRA_BRAND_COST) is held on the account record, not
+ * here: `User.onboardPaid[scope]`, written and dropped in the same locked save as the charge and its refund
+ * (src/lib/credits.ts `chargeOnboard`, `refundOnboard`, `settleOnboard`). A separate key could not be kept in step with
+ * the balance: a refund whose marker delete failed left a marker that made the next build free, or refunded twice.
+ *
+ * The hold has no TTL, so it cannot expire between a killed run and the owner's retry (the confirmation, a day long, is
+ * written first and always expired first). While it exists a retry, and the start page, treat the setup as paid. The
+ * daily cron resolves any hold that no run charged or reused for a day: refunded when its brand was never built (a run
+ * the platform killed before saving the brand), dropped when it was. Rule 246, tests/brand-guardrails.test.ts.
+ */
+export const heldOnboard = (u: Pick<User, "onboardPaid">, scope: string) => u.onboardPaid?.[scope] ?? null;
+
+/**
+ * The daily sweep of one account's stale holds: reads the brand of each stale scope side by side, then resolves them in
+ * one save. Each refund is one `onboard_refunded` row in that brand's activity log, by the cron, with the credits the
+ * ledger gave back (rule 232): the setup's charge was a row there, so its refund is too. A dropped hold adds none (its
+ * charge stands).
+ */
+export async function sweepOnboardHolds(u: Pick<User, "email" | "onboardPaid">, now = Date.now()) {
+  const stale = Object.entries(u.onboardPaid ?? {}).filter(([, h]) => !(now - new Date(h.at).getTime() < ONBOARD_HOLD_MS)).map(([scope]) => scope);
+  if (!stale.length) return null;
+  const brands = await Promise.all(stale.map((scope) => getBrand(scope)));
+  const done = await resolveOnboardHolds(u.email, Object.fromEntries(stale.map((scope, i) => [scope, !!brands[i]])), now);
+  const at = new Date().toISOString();
+  await Promise.all(done.refunded.map((r) => recordActivity(r.scope, [{ at, kind: "onboard_refunded", agent: r.agent, by: systemBy("cron"), via: "cron", credits: r.credits, refunded: true }])));
+  return done;
+}

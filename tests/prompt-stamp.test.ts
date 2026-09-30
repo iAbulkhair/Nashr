@@ -17,8 +17,8 @@ import type { AgentId } from "@/lib/agents";
 import * as generateRoute from "@/app/api/generate/route";
 
 /**
- * Rules 221-222: every generated task records which prompts made it (221), and the golden set says when an agent's
- * prompts changed between two runs, so a drop in its score is looked at next to the prompt change (222).
+ * Rules 229-230: every generated task records which prompts made it (229), and the golden set says when an agent's
+ * prompts changed between two runs, so a drop in its score is looked at next to the prompt change (230).
  */
 const brand: Brand = { name: "متجر العود", website: "", industry: "متجر إلكتروني", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "عود", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-09-29T00:00:00.000Z" };
 const HEX = /^[a-f0-9]{12}$/;
@@ -30,7 +30,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("every generated task records which prompts made it (rule 221)", () => {
+describe("every generated task records which prompts made it (rule 229)", () => {
   it("one hash per source: the owning agent's playbook, review.md, the brand's industry playbook, and the prompts in code", () => {
     const s = promptStamp("social", brand);
     const ecommerce = PLAYBOOKS.find((p) => p.id === "ecommerce")!;
@@ -111,7 +111,7 @@ describe("every generated task records which prompts made it (rule 221)", () => 
   });
 });
 
-describe("the golden set says when an agent's prompts changed (rule 222)", () => {
+describe("the golden set says when an agent's prompts changed (rule 230)", () => {
   const P = { skills: "aaaaaaaaaaaa", review: "cccccccccccc", code: "dddddddddddd" };
   const res = (id: string, agent: AgentId, score: number | null, over: Partial<GoldenResult> = {}): GoldenResult =>
     ({ id, agent, type: agent === "noor" ? "social" : "sales_script", brand: "roastery", ok: true, score, dims: null, notes: [], checks: [{ name: "c", pass: true }], items: [], ms: 1, delta: null, pb: P, ...over });

@@ -17,13 +17,16 @@ import { saveSchedule, runWeekly } from "@/lib/schedule";
 import { wipeAccount } from "@/lib/account";
 import { addBrand, scopeFor } from "@/lib/brands";
 import { runTool } from "@/lib/chat";
-import { AUTO_HANDOFF_MAX_AGE_DAYS, AUTO_HANDOFF_MAX_CREDITS, AUTO_HANDOFF_MAX_ITEMS, HANDOFF_TYPES, autoBlock, autoItems, createHandoff, getHandoff, handoffKeys, handoffView, markShown, proposalText, type Handoff, type HandoffView } from "@/lib/handoffs";
+import { AUTO_HANDOFF_MAX_AGE_DAYS, AUTO_HANDOFF_MAX_CREDITS, AUTO_HANDOFF_MAX_ITEMS, HANDOFF_TYPES, autoBlock, autoItems, autoUnderFloor, createHandoff, getHandoff, handoffKeys, handoffView, markShown, proposalText, type Handoff, type HandoffView } from "@/lib/handoffs";
 import { AUTO_HANDOFF_CRON_ID, AUTO_HANDOFF_MAX_UNSETTLED, AUTO_HANDOFF_SCAN, autoQueue, dueHandoffs } from "@/lib/handoff-auto";
 import { deleteConversation } from "@/lib/conversations";
 import { leadBriefBlock } from "@/lib/json";
 import type { By } from "@/lib/actor";
 import { appDict } from "@/lib/app-i18n";
 import { CHANGELOG } from "@/lib/changelog";
+import { HELP } from "@/lib/help";
+import { estimateBatch } from "@/lib/task-costs";
+import { maxCostPerCreditUsd } from "@/lib/pricing";
 import * as govRoute from "@/app/api/governance/route";
 import * as rollbackRoute from "@/app/api/governance/rollback/route";
 import GovPage from "@/app/[lang]/app/governance/page";
@@ -32,16 +35,17 @@ import ActivityPage from "@/app/[lang]/app/activity/page";
 import { HandoffCard } from "@/components/app/ChatPanel";
 
 /**
- * Rules 255-264: Majed's auto-run (step 3b, part O item 5). The Governance switch is off by default and can be on only
- * with a cap on an agent Majed hands work to, and only with an explicit confirmation (255); the page shows it truly
- * (256); the cron finds at most one item per brand without scanning everything (257); every guard, checked under the
- * handoff's lock, leaves the item and the credits alone (258); a run charges the agent under its cap, keeps every task
- * pending, tells the owner once and logs itself as the system's `auto_handoff` job (259); a failure is refunded and the
- * item is left to the owner (260); `isAutonomous` is the one test the weekly cap and Dana's routine use, and MCP drafts
- * are not autonomous (261); the chat reply, the card and the inbox never say "nothing runs" when it may, and only a
- * proposal whose card reached the thread is ever eligible (262); the cron route runs one item per brand a day, and every
- * item needs 180 s of the invocation left (263); the wipe (264); and the Governance page lists what may start, with
- * Decline (267).
+ * Rules 283-292: Majed's auto-run (step 3b, part O item 5). The Governance switch is off by default and can be on only
+ * with a cap on an agent Majed hands work to, and only with an explicit confirmation (283); the page shows it truly
+ * (284); the cron finds at most one item per brand without scanning everything (285); every guard, checked under the
+ * handoff's lock, leaves the item and the credits alone (286); a run charges the agent under its cap, keeps every task
+ * pending, tells the owner once and logs itself as the system's `auto_handoff` job (287); a failure is refunded and the
+ * item is left to the owner (288); `isAutonomous` is the one test the weekly cap and Dana's routine use, and MCP drafts
+ * are not autonomous (289); the chat reply, the card and the inbox never say "nothing runs" when it may, and only a
+ * proposal whose card reached the thread is ever eligible (290); the cron route runs one item per brand a day, and every
+ * item needs 180 s of the invocation left (291); the wipe (292); the Governance page lists what may start, with
+ * Decline (295); and it never starts a type whose batch breaks the 60% margin floor on the cold cache its cron usually
+ * finds (296).
  */
 
 // Client components read the router; outside Next there is none. Server-only helpers (redirect, notFound) stay real.
@@ -75,7 +79,7 @@ const ownerBy = (u: User): By => ({ kind: "owner", email: u.email });
 const thread = (scope: string, id: string) => db.set(`conv:${scope}:${id}`, { id, title: "t", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), count: 2, agent: "majed" });
 /**
  * An owner with the switch on and a cap on Layan, and one proposal made in chat by the owner (or `by`), in a thread that
- * exists, whose reply with the card was saved (chat() marks it shown, rule 262).
+ * exists, whose reply with the card was saved (chat() marks it shown, rule 290).
  */
 async function eligible(prefix: string, o: { items?: { type: TaskType; brief: string }[]; by?: (u: User) => By; caps?: Partial<Record<AgentId, number>>; credits?: number; origin?: "web_chat" | "mcp" } = {}) {
   const u = await owner(prefix, o.credits);
@@ -130,9 +134,9 @@ afterEach(async () => {
   signOut();
 });
 
-// ── Rule 255: the switch ─────────────────────────────────────────────────────────────────────────────────────────
+// ── Rule 283: the switch ─────────────────────────────────────────────────────────────────────────────────────────
 
-describe("the Governance switch: off by default, a cap and a confirmation to turn on (rule 255)", () => {
+describe("the Governance switch: off by default, a cap and a confirmation to turn on (rule 283)", () => {
   const put = async (body: unknown) => { const r = await govRoute.PUT(json("/api/governance", "PUT", body)); return { status: r.status, body: (await r.json()) as { ok: boolean; error?: string; governance?: Governance; entry?: { id: string; changes: { path: string; before: unknown; after: unknown }[] } | null } }; };
   const restore = async (body: unknown) => { const r = await rollbackRoute.POST(json("/api/governance/rollback", "POST", body)); return { status: r.status, body: (await r.json()) as { ok: boolean; error?: string; governance?: Governance } }; };
 
@@ -233,9 +237,9 @@ describe("the Governance switch: off by default, a cap and a confirmation to tur
   });
 });
 
-// ── Rule 256: the page ───────────────────────────────────────────────────────────────────────────────────────────
+// ── Rule 284: the page ───────────────────────────────────────────────────────────────────────────────────────────
 
-describe("the Governance page shows the switch truly (rule 256)", () => {
+describe("the Governance page shows the switch truly (rule 284)", () => {
   it("the switch, its words and the change in the history, in both languages; read-only for other roles", async () => {
     const u = await owner("ha-page");
     await signIn(u.email);
@@ -288,9 +292,9 @@ describe("the Governance page shows the switch truly (rule 256)", () => {
   });
 });
 
-// ── Rule 257: finding candidates ─────────────────────────────────────────────────────────────────────────────────
+// ── Rule 285: finding candidates ─────────────────────────────────────────────────────────────────────────────────
 
-describe("the cron finds at most one item per brand, only where the switch is on (rule 257)", () => {
+describe("the cron finds at most one item per brand, only where the switch is on (rule 285)", () => {
   it("off, no cap, a member's proposal, an old one: nothing; else the oldest open item whose agent has a cap", async () => {
     const off = await owner("ha-due-off");
     await createHandoff(off.email, { proposal: { items: ONE }, requestedBy: ownerBy(off), origin: "web_chat", ownerMsg: "m" });
@@ -325,9 +329,9 @@ describe("the cron finds at most one item per brand, only where the switch is on
   });
 });
 
-// ── Rule 258: every guard ────────────────────────────────────────────────────────────────────────────────────────
+// ── Rule 286: every guard ────────────────────────────────────────────────────────────────────────────────────────
 
-describe("every guard is checked in code under the lock, and leaves the item and the credits alone (rule 258)", () => {
+describe("every guard is checked in code under the lock, and leaves the item and the credits alone (rule 286)", () => {
   /** Nothing moved: the credits, the item, no task, no model client, the lock and the hold free. */
   async function untouched(u: User, h: Handoff, seen: { made: number }, before: number) {
     expect(await credits(u.email)).toBe(before);
@@ -423,6 +427,10 @@ describe("every guard is checked in code under the lock, and leaves the item and
     const nocap = await eligible("ha-g-nocap", { caps: { razan: 20 } });
     expect(await autoRunHandoff(nocap.u, nocap.h.id, 0, LATE())).toBe("skip:no_cap");
     await untouched(nocap.u, nocap.h, seen, 50);
+    // An article, with a cap on its agent: over the margin ceiling on a cold cache (rule 296).
+    const art = await eligible("ha-g-floor", { items: [{ type: "article", brief: "مقال عن العود" }], caps: { [agentForTask("article").id]: 50 } });
+    expect(await autoRunHandoff(art.u, art.h.id, 0, LATE())).toBe("skip:floor");
+    await untouched(art.u, art.h, seen, 50);
     // social (10) + prd (4) = 14 credits, over the 12-credit ceiling; four items are over it whatever they cost.
     const big = await eligible("ha-g-ceiling", { items: [...ONE, { type: "social", brief: "منشورات" }], caps: { [PRD_AGENT]: 20, noor: 50 } });
     expect(TASK_COST.prd + TASK_COST.social).toBeGreaterThan(AUTO_HANDOFF_MAX_CREDITS);
@@ -491,9 +499,9 @@ describe("every guard is checked in code under the lock, and leaves the item and
   });
 });
 
-// ── Rule 259: a run ──────────────────────────────────────────────────────────────────────────────────────────────
+// ── Rule 287: a run ──────────────────────────────────────────────────────────────────────────────────────────────
 
-describe("a run: charged under the cap, every task pending, the owner told once, logged as the system's (rule 259)", () => {
+describe("a run: charged under the cap, every task pending, the owner told once, logged as the system's (rule 287)", () => {
   it("runs the item through the shared path as the system's auto_handoff job", async () => {
     const seen = sdk();
     const { autoRunHandoff } = await loadAuto();
@@ -518,7 +526,7 @@ describe("a run: charged under the cap, every task pending, the owner told once,
     expect(agentSpendFor((await getUser(u.email))!, u.email)).toEqual({ [PRD_AGENT]: TASK_COST.prd });
     expect(seen.prompts).toHaveLength(1);
     expect(seen.prompts[0]).toContain("<lead_brief>");
-    // Through generateBatch to the judge too (rule 246): the same block, once, in the judge's message.
+    // Through generateBatch to the judge too (rule 274): the same block, once, in the judge's message.
     expect(seen.judge).toHaveLength(1);
     expect(seen.judge[0].split(leadBriefBlock(ONE[0].brief)).length - 1).toBe(1);
     const system = { kind: "system", job: "auto_handoff" };
@@ -562,9 +570,9 @@ describe("a run: charged under the cap, every task pending, the owner told once,
   });
 });
 
-// ── Rule 260: failures ───────────────────────────────────────────────────────────────────────────────────────────
+// ── Rule 288: failures ───────────────────────────────────────────────────────────────────────────────────────────
 
-describe("a failure is refunded and the item is left to the owner (rule 260)", () => {
+describe("a failure is refunded and the item is left to the owner (rule 288)", () => {
   it("a failed generation: credits back, attempt given back, item failed and never auto-started again, no notice", async () => {
     sdk({ genFails: true });
     const { autoRunHandoff } = await loadAuto();
@@ -615,9 +623,9 @@ describe("a failure is refunded and the item is left to the owner (rule 260)", (
   });
 });
 
-// ── Rule 261: isAutonomous ───────────────────────────────────────────────────────────────────────────────────────
+// ── Rule 289: isAutonomous ───────────────────────────────────────────────────────────────────────────────────────
 
-describe("isAutonomous is the one test of work made on its own (rule 261)", () => {
+describe("isAutonomous is the one test of work made on its own (rule 289)", () => {
   const parent = { handoff: "0123456789abcdef", item: 0 };
   const task = (id: string, over: Partial<Task>): Task => ({ id, type: "prd", channel: "doc", title: "t", body: "نص", status: "pending", createdAt: new Date().toISOString(), lang: "ar", source: "manual", ...over });
 
@@ -672,9 +680,9 @@ describe("isAutonomous is the one test of work made on its own (rule 261)", () =
   });
 });
 
-// ── Rule 262: the words never promise "nothing runs" when something may ─────────────────────────────────────────
+// ── Rule 290: the words never promise "nothing runs" when something may ─────────────────────────────────────────
 
-describe("the chat reply, the card and the tool never say 'nothing runs' when the auto-run may (rule 262)", () => {
+describe("the chat reply, the card and the tool never say 'nothing runs' when the auto-run may (rule 290)", () => {
   it("proposalText and Majed's tool reply name the items that may start by themselves, only when they may", async () => {
     const { u, h } = await eligible("ha-text");
     expect(proposalText(h, 50)).toContain("Say plainly that nothing runs or is charged until the owner presses Run on the card.");
@@ -752,9 +760,9 @@ describe("the chat reply, the card and the tool never say 'nothing runs' when th
   });
 });
 
-// ── Rule 263: the cron route ─────────────────────────────────────────────────────────────────────────────────────
+// ── Rule 291: the cron route ─────────────────────────────────────────────────────────────────────────────────────
 
-describe("the routines cron runs one auto-run item per brand a day (rule 263)", () => {
+describe("the routines cron runs one auto-run item per brand a day (rule 291)", () => {
   it("the item runs first under its own id; a second call the same day runs no other item of that brand", async () => {
     vi.stubEnv("CRON_SECRET", "cron-secret-abcdef");
     sdk();
@@ -802,9 +810,9 @@ describe("the routines cron runs one auto-run item per brand a day (rule 263)", 
   });
 });
 
-// ── Rule 267: the Governance page lists what the auto-run may start, with Decline ─────────────────────────────────
+// ── Rule 295: the Governance page lists what the auto-run may start, with Decline ─────────────────────────────────
 
-describe("the Governance page lists what Majed's auto-run may start, with Decline (rule 267)", () => {
+describe("the Governance page lists what Majed's auto-run may start, with Decline (rule 295)", () => {
   it("every eligible item, oldest first, with its agent, cost and conversation; nothing it may not start; Decline for who may", async () => {
     const { u, h } = await eligible("ha-queue", { items: [{ type: "pricing_review", brief: "b" }, ...ONE] });
     const newer = await createHandoff(u.email, { proposal: { items: TWO }, requestedBy: ownerBy(u), origin: "web_chat", ownerMsg: "m" });
@@ -855,9 +863,55 @@ describe("the Governance page lists what Majed's auto-run may start, with Declin
   });
 });
 
-// ── Rule 264: the wipe ───────────────────────────────────────────────────────────────────────────────────────────
+// ── Rule 296: the margin floor on the auto-run's cold cache ──────────────────────────────────────────────────────
 
-describe("the auto-run's keys go with the account (rule 264)", () => {
+describe("the auto-run starts only types that keep the margin floor on a cold cache (rule 296)", () => {
+  /** A one-item proposal of `type` that passes every other rule: the owner's, shown, fresh, a cap on the type's agent. */
+  const one = (type: TaskType): Handoff => {
+    const at = new Date().toISOString();
+    return { id: "0123456789abcdef", agent: "majed", requestedBy: { kind: "owner", email: "o@floor.example" }, origin: "web_chat", ownerMsg: "", items: [{ type, agent: agentForTask(type).id, brief: "b", cost: TASK_COST[type], status: "proposed" }], status: "proposed", createdAt: at, shownAt: at };
+  };
+  const capped = (type: TaskType) => ({ majedAutoHandoff: true, agentCaps: { [agentForTask(type).id]: 50 } });
+  const ceiling = maxCostPerCreditUsd();
+
+  it("autoBlock refuses (`floor`) exactly the handoff types over the ceiling on a cold cache: today article and followup_seq", () => {
+    const refused = HANDOFF_TYPES.filter((t) => autoBlock(one(t), 0, capped(t)) !== null);
+    expect(refused).toEqual(["article", "followup_seq"]);
+    for (const t of refused) expect(autoBlock(one(t), 0, capped(t)), t).toBe("floor");
+    // The same estimate and ceiling as the floor test (rule 241), read by the code, not copied into it.
+    for (const t of HANDOFF_TYPES) expect(autoUnderFloor(t), t).toBe(estimateBatch(t, { cache: "cold" }).usdPerCredit <= ceiling);
+    // Not vacuous: both are over the ceiling cold ($0.0918 and $0.0773 per credit) and under it on a hit (a login's Run).
+    for (const t of refused) {
+      expect(estimateBatch(t, { cache: "cold" }).usdPerCredit, t).toBeGreaterThan(ceiling);
+      expect(estimateBatch(t).usdPerCredit, t).toBeLessThanOrEqual(ceiling);
+    }
+    // A type the estimate cannot price is never started.
+    expect(autoUnderFloor("not_a_type" as TaskType)).toBe(false);
+  });
+
+  it("the cron, the Governance queue, the card and Majed's reply skip such an item and take the next one", async () => {
+    const x = await eligible("ha-floor", { items: [{ type: "article", brief: "مقال عن العود" }, ...ONE], caps: { [agentForTask("article").id]: 50, [PRD_AGENT]: 20 } });
+    const gov = await getGov(x.u.email);
+    expect((await dueHandoffs([x.u])).map((c) => [c.id, c.item])).toEqual([[x.h.id, 1]]);
+    expect((await autoQueue(x.u.email, gov)).map((q) => [q.type, q.item])).toEqual([["prd", 1]]);
+    expect((await handoffView(x.u.email, x.h)).auto).toEqual([1]);
+    expect(autoItems(x.h, gov, Date.now(), { beforeCard: true })).toEqual([1]);
+    expect(proposalText(x.h, 50, autoItems(x.h, gov))).toContain("may start item 2 by itself");
+  });
+
+  it("the words name the types it leaves to Run, in both languages", () => {
+    expect(HANDOFF_TYPES.filter((t) => !autoUnderFloor(t)), "a new type here needs the words below").toEqual(["article", "followup_seq"]);
+    expect(en.governance.autoHandoffSub).toContain("SEO articles and follow-up cadences never start on their own: they wait for you to press Run.");
+    expect(ar.governance.autoHandoffSub).toContain("مقالات SEO وسلاسل المتابعة لا تبدأ تلقائياً أبداً: تنتظر أن تضغط «نفّذ».");
+    const faq = HELP.flatMap((t) => t.items).find((i) => i.q.en === "Majed's auto-run?")!;
+    expect(faq.a.en).toContain("SEO articles and follow-up cadences never start on their own; they wait for Run.");
+    expect(faq.a.ar).toContain("مقالات SEO وسلاسل المتابعة لا تبدأ تلقائياً أبداً، بل تنتظر «نفّذ».");
+  });
+});
+
+// ── Rule 292: the wipe ───────────────────────────────────────────────────────────────────────────────────────────
+
+describe("the auto-run's keys go with the account (rule 292)", () => {
   it("attempt counters, notice markers and the hold of every brand are deleted; nothing named after the account is left", async () => {
     const u = await owner("ha-wipe");
     await saveUser({ ...(await getUser(u.email))!, plan: "agency" });

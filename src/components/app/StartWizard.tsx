@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
 import { Icon } from "./Icons";
+import { limitFromError, raiseLimit } from "./LimitModal";
 
 const STR = {
   ar: {
@@ -32,24 +33,40 @@ const STR = {
  * and opens the "Getting started" thread where Noor builds the workspace live (ChatPanel onboardUrl). A URL carried in
  * from a link (signup `?url=`, chat `?onboard=`) only pre-fills the field: nothing is read until the owner presses Go.
  * Businesses without a site can give an Instagram or store link instead.
+ *
+ * `setupCost` (from `onboardCost(u.brandId)` on the server): 0 for the first brand; an added brand's setup costs credits,
+ * stated here with the balance before Go, and Go is off when the balance cannot cover it. `setupPaid`: a charge for this
+ * brand is already held (a run that did not finish), so the balance is not asked again and Go stays on, as on the server.
+ * The server checks the same rule (402 from confirm) and charges only when the build starts, refunding a build that
+ * could not save the brand file.
  */
-export default function StartWizard({ t, lang, initialUrl = "" }: { t: AppDict; lang: Lang; initialUrl?: string }) {
+export default function StartWizard({ t, lang, initialUrl = "", setupCost = 0, setupPaid = false, credits = 0 }: { t: AppDict; lang: Lang; initialUrl?: string; setupCost?: number; setupPaid?: boolean; credits?: number }) {
   const r = useRouter();
   const s = t.start;
   const S = STR[lang];
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState(false);
+  const [err, setErr] = useState("");
   const [url, setUrl] = useState(initialUrl);
-  const ready = url.trim().length >= 4;
+  const short = setupCost > 0 && !setupPaid && credits < setupCost;
+  const ready = url.trim().length >= 4 && !short;
+  const fill = (text: string, n: number, have: number) => text.replace("{n}", String(n)).replace("{credits}", String(have));
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!ready || busy) return;
-    setBusy(true); setErr(false);
+    setBusy(true); setErr("");
     const site = url.trim().slice(0, 300);
     const res = await fetch("/api/onboard/confirm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: site }) }).catch(() => null);
     // 409: this workspace already has a brand, so the chat opens as usual and onboarding does not run again.
     if (res && (res.ok || res.status === 409)) { r.push(`/${lang}/app/chat?onboard=${encodeURIComponent(site)}`); return; }
-    setBusy(false); setErr(true);
+    setBusy(false);
+    // 402: an added brand's setup the balance cannot cover, or a trial that ended. Nothing was charged.
+    if (res?.status === 402) {
+      const j = (await res.json().catch(() => ({}))) as { error?: string; need?: number; credits?: number };
+      limitFromError(j.error);
+      setErr(j.error === "no_credits" ? fill(s.noCredits, j.need ?? setupCost, j.credits ?? credits) : j.error === "trial_over" ? t.generate.trialOver : s.notCharged);
+      return;
+    }
+    setErr(s.steps.error);
   }
   return (
     <div className="mx-auto grid max-w-2xl gap-6">
@@ -71,7 +88,15 @@ export default function StartWizard({ t, lang, initialUrl = "" }: { t: AppDict; 
               <span className="pointer-events-none absolute inset-y-0 start-3 grid place-items-center text-ink/40"><Icon name="plug" className="h-4 w-4" /></span>
               <input name="url" required autoFocus dir="ltr" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={s.url} aria-label={s.url} className="input py-3 ps-9 text-base" />
             </label>
-            {err && <p role="alert" className="text-sm text-sadu-deep">{s.steps.error}</p>}
+            {setupCost > 0 ? (
+              <p role="note" className="rounded-lg border border-saffron/40 bg-saffron/10 px-3 py-2 text-sm text-ink/80">
+                {setupPaid ? fill(s.setupPaid, setupCost, credits) : short ? fill(s.noCredits, setupCost, credits) : fill(s.setupCost, setupCost, credits)}
+                {short && <> <button type="button" onClick={() => raiseLimit("credits")} className="underline">{t.limit.plans}</button></>}
+              </p>
+            ) : (
+              <p className="text-xs text-ink/60">{s.setupFree}</p>
+            )}
+            {err && <p role="alert" className="text-sm text-sadu-deep">{err}</p>}
             <button disabled={busy || !ready} className="btn btn-accent btn-lg">{busy ? "…" : <><Icon name="spark" className="h-4 w-4" />{s.go}</>}</button>
             <p className="text-center text-xs text-ink/60">{S.noSite}</p>
             <Link href={`/${lang}/app/onboarding`} className="text-center text-sm text-ink/60 underline">{s.manual}</Link>

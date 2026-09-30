@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import type { Lang } from "@/lib/i18n";
 import type { AppDict } from "@/lib/app-i18n";
 import { TASK_COST, TASK_COUNT, type TaskType } from "@/lib/tasks";
+import { MEDIA_MODELS, type MediaKind } from "@/lib/media-catalog";
+import { ONBOARD_EXTRA_BRAND_COST } from "@/lib/pricing";
 import { AGENTS } from "@/lib/agents";
 import type { Role } from "@/lib/auth";
 import ReadOnlyNote from "./ReadOnlyNote";
@@ -15,6 +17,13 @@ import ReadOnlyNote from "./ReadOnlyNote";
  * refused whole, so the form only submits what this role owns: other fields are hidden or disabled, and disabled
  * controls are left out of FormData.
  */
+/** "1–2": the lowest and highest price of a media kind in the catalogue, as the pricing page shows it. */
+const mediaRange = (kind: MediaKind) => {
+  const c = MEDIA_MODELS.filter((m) => m.kind === kind).map((m) => m.credits);
+  const lo = Math.min(...c), hi = Math.max(...c);
+  return lo === hi ? String(lo) : `${lo}–${hi}`;
+};
+
 type Data = {
   me?: { name: string; email: string; lang: Lang; role: Role };
   role?: Role;
@@ -23,7 +32,7 @@ type Data = {
   impersonating?: boolean;
   account?: { email: string; name: string };
   user: { name: string; email: string; phone?: string; plan: string; credits: number; trialEnds: string; createdAt: string; lang: Lang; renewedAt?: string };
-  usage: Record<string, { count: number; credits: number }>; images: number; emails?: string;
+  usage: Record<string, { count: number; credits: number }>; images: number; /** What this month's renders charged (image 1-2, video 12-24 by model). */ mediaCredits?: number; emails?: string;
   allowance: number; nextReset: string;
   brand: { name: string; website: string; sitemap?: string; products: string; audience: string; tone: string; valueProp?: string; social?: Record<string, string> } | null;
 };
@@ -49,7 +58,8 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
   const canDelete = owner && (d.may?.accountDelete ?? true);
   const blockedNote = ar ? "تغيير كلمة المرور وحذف الحساب موقوفان أثناء تصفّح هذا الحساب كمؤسس." : "Changing the password and deleting the account are off while you view this account as the founder.";
   const me = d.me ?? { name: d.user.name, email: d.user.email, lang: d.user.lang, role };
-  const usedCredits = Object.values(d.usage).reduce((s, x) => s + x.credits, 0) + d.images;
+  const mediaUsed = d.mediaCredits ?? d.images;
+  const usedCredits = Object.values(d.usage).reduce((s, x) => s + x.credits, 0) + mediaUsed;
   const pct = Math.min(100, Math.round((usedCredits / Math.max(1, d.allowance)) * 100));
 
   async function save(e: React.FormEvent<HTMLFormElement>) {
@@ -79,7 +89,8 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
     if (res.ok) { r.push(`/${lang}`); r.refresh(); }
     else setMsg(res.status === 403 ? t.team.errors.forbidden : res.status === 401 ? (ar ? "كلمة المرور غير صحيحة" : "Wrong password") : t.team.errors.failed);
   }
-  const planLabel: Record<string, [string, string]> = { trial: ["التجربة المجانية", "Free trial"], starter: ["البداية", "Starter"], pro: ["الاحتراف", "Pro"], agency: ["الوكالة", "Agency"], enterprise: ["المؤسسات", "Enterprise"] };
+  // One label source for every plan, business included: the sidebar and the billing page read the same names.
+  const planLabel = (t.nav.plans as Record<string, string>)[d.user.plan] ?? d.user.plan;
   const rules = d.user.plan === "trial"
     ? (ar ? `تجربتك تشمل ${d.allowance} كريدت لمدة 3 أيام. تنتهي ${d.user.trialEnds.slice(0, 10)}.` : `Your trial includes ${d.allowance} credits for 3 days. Ends ${d.user.trialEnds.slice(0, 10)}.`)
     : (ar ? `خطتك تشمل ${d.allowance} كريدت شهرياً. يتجدد الرصيد في اليوم الأول من كل شهر (UTC). التجديد القادم: ${d.nextReset}.` : `Your plan includes ${d.allowance} credits per month. The balance resets on the 1st of each month (UTC). Next reset: ${d.nextReset}.`);
@@ -99,14 +110,18 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
             {AGENTS.map((a) => a.tasks.map((k: TaskType) => (
               <tr key={k} className="border-t border-ink/5"><td className="py-1"><span className="text-xs text-ink/50">{t.agents[a.id].name} · </span>{t.generate.types[k].t}</td><td className="text-center font-mono">{TASK_COST[k]}</td><td className="text-center font-mono">{Math.round((d.usage[k]?.count ?? 0) / TASK_COUNT[k])}</td><td className="text-center font-mono">{d.usage[k]?.credits ?? 0}</td></tr>
             )))}
-            <tr className="border-t border-ink/5"><td className="py-1">{ar ? "توليد صورة" : "Image generation"}</td><td className="text-center font-mono">1</td><td className="text-center font-mono">{d.images}</td><td className="text-center font-mono">{d.images}</td></tr>
-            <tr className="border-t border-ink/5"><td className="py-1">{ar ? "الدردشة مع الفريق / الإعداد من الرابط" : "Chat with the team / URL onboarding"}</td><td className="text-center font-mono">0</td><td className="text-center font-mono">—</td><td className="text-center font-mono">0</td></tr>
+            {/* The catalogue's prices (src/lib/media-catalog.ts), as the pricing page states them, and what the renders really charged. */}
+            <tr className="border-t border-ink/5"><td className="py-1">{ar ? "الصور ومقاطع الفيديو" : "Images and videos"}</td><td className="text-center font-mono" dir="ltr">{mediaRange("image")} · {mediaRange("video")}</td><td className="text-center font-mono">{d.images}</td><td className="text-center font-mono">{mediaUsed}</td></tr>
+            <tr className="border-t border-ink/5"><td className="py-1">{ar ? "الدردشة مع الفريق" : "Chat with the team"}</td><td className="text-center font-mono">0</td><td className="text-center font-mono">—</td><td className="text-center font-mono">0</td></tr>
+            <tr className="border-t border-ink/5"><td className="py-1">{ar ? "إعداد علامتك الأولى من الرابط" : "Setting up your first brand from its URL"}</td><td className="text-center font-mono">0</td><td className="text-center font-mono">—</td><td className="text-center font-mono">0</td></tr>
+            {/* Not a task, so it is not in the usage counts above: the setup charge shows in the balance only. */}
+            <tr className="border-t border-ink/5"><td className="py-1">{ar ? "إعداد كل علامة إضافية من رابطها" : "Setting up each added brand from its URL"}</td><td className="text-center font-mono">{ONBOARD_EXTRA_BRAND_COST}</td><td className="text-center font-mono">—</td><td className="text-center font-mono">—</td></tr>
           </tbody></table></div>
         {owner && d.user.plan === "trial" && <Link href={`/${lang}/app/billing`} className="mt-4 inline-block btn btn-accent btn-sm">{ar ? "ابدأ الاشتراك" : "Start subscription"}</Link>}
       </Card>
 
       <Card title={ar ? "الاشتراك" : "Subscription"}>
-        <p className="text-sm">{owner ? (ar ? "أنت الآن على خطة" : "You're currently on the") : (ar ? "الحساب على خطة" : "The account is on the")} <b>{planLabel[d.user.plan]?.[ar ? 0 : 1] ?? d.user.plan}</b>{ar ? "" : " plan"}.</p>
+        <p className="text-sm">{owner ? (ar ? "أنت الآن على خطة" : "You're currently on the") : (ar ? "الحساب على خطة" : "The account is on the")} <b>{planLabel}</b>{ar ? "" : " plan"}.</p>
         {!owner && <p className="mt-1 text-sm text-ink/60">{t.billing.ownerOnly}</p>}
         <Link href={`/${lang}/app/billing`} className="mt-3 inline-block btn btn-secondary btn-sm">{owner ? (ar ? "إدارة الاشتراك" : "Manage subscription") : t.billing.title}</Link>
       </Card>

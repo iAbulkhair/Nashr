@@ -131,7 +131,9 @@ export function hardChecks(c: GoldenCase, brand: Brand, items: Generated[]): Che
   // Internal documents may quote banned words to warn against them; only customer-facing copy is checked.
   if (CUSTOMER_FACING.includes(c.type)) {
     // A compliance note may quote a banned word ("no words like \"مضمون\""); quoted text does not count. The match
-    // itself is the production gate's (src/lib/brand-rules.ts), so the evals and the approve button agree on a hit.
+    // itself is the production gate's (src/lib/brand-rules.ts), so the evals and the approve button agree on a banned-word
+    // hit. The gate's placeholder rule is not scored here: an honest [رقم] for an unknown fact is what the golden set asks
+    // for, and the owner fills it in before approving.
     const unquoted = all.replace(/"[^"\n]{1,40}"|«[^»\n]{1,40}»|“[^”\n]{1,40}”/g, " ");
     const hit = checkText(brandRules(brand), unquoted).map((v) => v.term);
     out.push({ name: "banned words absent", pass: hit.length === 0, detail: hit.join("، ") || undefined });

@@ -1,6 +1,6 @@
 # What a request costs, and where the money goes
 
-Written 2026-09-20. Every number in the tables is arithmetic over two inputs: the list prices in `src/lib/usage.ts`
+Written 2026-09-20; sections 1, 3, 3.1, 4 and 5 updated on 2026-09-30 for pricing phase 1 (`src/lib/pricing.ts`, `src/lib/task-costs.ts`). Every number in the tables is arithmetic over two inputs: the list prices in `src/lib/usage.ts`
 (`RATES`) and the prompt sizes the code actually builds. Nothing here is a guess about Anthropic's billing; the guesses
 are only in the *output* token counts, and those are marked as such. Real per-account numbers are metered and shown in
 the founder console — see "Where the real numbers live" at the end.
@@ -14,7 +14,7 @@ the founder console — see "Where the real numbers live" at the end.
 | `judge` | `claude-sonnet-5`, 8000, effort low | `src/lib/judge.ts`, runs after the response via `after()` | free |
 | `xreview` | `claude-sonnet-5`, 4000, effort low, one call per reviewing agent | `noor.ts` `crossReview` (since 2026-09-30): the cross-agent review of `gtm_plan` (two calls, Razan and Majed), `growth_experiments`, `retention_play`, `board_deck`, `decision_memo`, `strategy_review` (Razan) and `pricing_review` (Majed); no other type; skipped when governance turns it off, in golden runs, and with less than 60 s of the caller's deadline left; one attempt of at most 45 s per call, no SDK retries. **Metered to the reviewing agent**, not the author: it is the cost of Razan's and Majed's review work | free (inside the batch) |
 | `chat` | `claude-opus-5`, 8000, effort medium, **up to 5 calls per turn** (tool loop) | `src/lib/chat.ts` | **nothing** |
-| `onboard` | `claude-opus-5` × 3 parallel, 10000 + 12000 + 12000 | `src/lib/onboard.ts` | **nothing**, once per workspace |
+| `onboard` | `claude-opus-5` × 3 parallel, 10000 + 12000 + 12000 | `src/lib/onboard.ts` | **nothing** for the first brand (the default scope); **9 credits** for each added brand since 2026-09-30 (`ONBOARD_EXTRA_BRAND_COST`, `src/lib/pricing.ts`), charged to Noor in that brand's scope before the stream and refunded when the brand is not saved; once per workspace |
 | `image_prompt` | `claude-sonnet-5`, 400, effort low, one attempt of at most 20 s, no SDK retries | `src/lib/media/prompts.ts` (image **and** video prompts; video is metered under this kind too, spec A18) | charged with the render (section 3.1); a fixed template, and no model call, while Claude is paused |
 
 ## 2. Prompt size, measured
@@ -35,32 +35,64 @@ At roughly 3.3 characters per token for this Arabic/English mix, a full batch pr
 ## 3. Cost of one batch
 
 Recomputed on 2026-09-27 for Sonnet 5 at $2/$10 per million tokens (it was $3/$15 in `RATES`, which overstated the
-review and judge columns by half). Assumptions, stated so they can be argued with: a cache hit on the two cached blocks; 1,200 tokens of adaptive
-thinking; and per-item output of 350 tokens (a post, an ad, a GBP entry), 900 (a plan, an OKR set, a script) or 2,500
-(an article, a deck, a memo, a PRD). Everything else is measured.
+review and judge columns by half). Since 2026-09-30 the table is what `estimateBatch` in `src/lib/task-costs.ts`
+prints: that file holds the token assumptions below and prices them through `costUsd` (`src/lib/usage.ts`), so a rate
+change moves every row, and `tests/pricing-floor.test.ts` (rule 241) fails the build when a row crosses the ceiling in
+section 4. Assumptions, stated so they can be argued with: 1,200 fresh input tokens and the 7,500-token cached
+workspace block; 1,200 tokens of adaptive thinking; per-item output of 350 tokens (a post, an ad, a GBP entry, a cart
+message), 900 (a plan, an OKR set, a script) or 2,500 (an article, a deck, a memo, a PRD) (`ITEM_SIZE`, exhaustive over
+the 26 types). The reviewer and judge constants were fitted to reproduce the 2026-09-27 table within $0.001; they were
+not measured. Replace them with the console's `byKind` averages after a month of real traffic (section 6).
 
-| Request | Items | Credits | Output tok | generate $ | review $ | judge $ | **Total $** | **$ per credit** |
-|---|---|---|---|---|---|---|---|---|
-| `weekly_plan` | 1 | 1 | 2,100 | 0.062 | 0.014 | 0.013 | **0.089** | **0.0887** |
-| `followup_seq` | 7 | 3 | 7,500 | 0.197 | 0.041 | 0.028 | **0.266** | **0.0888** |
-| `article` | 1 | 2 | 3,700 | 0.102 | 0.022 | 0.016 | **0.140** | **0.0700** |
-| `weekly_report` | 1 | 2 | 3,700 | 0.102 | 0.022 | 0.016 | **0.140** | **0.0700** |
-| `growth_experiments` | 5 | 4 | 5,700 | 0.152 | 0.032 | 0.023 | **0.207** | **0.0517** |
-| `unit_economics`, `decision_memo`, `feedback_synthesis`, `onboarding_flow` | 1 | 3 | 3,700 | 0.102 | 0.022 | 0.016 | **0.140** | **0.0467** |
-| `lead_qualifier`, `dashboard_spec` | 1 | 2 | 2,100 | 0.062 | 0.014 | 0.013 | **0.089** | **0.0443** |
-| `sales_script`, `retention_play` | 3 | 4 | 3,900 | 0.107 | 0.023 | 0.018 | **0.148** | **0.0371** |
-| `pricing_review`, `cash_forecast`, `prd` | 1 | 4 | 3,700 | 0.102 | 0.022 | 0.016 | **0.140** | **0.0350** |
-| `whatsapp`, `gbp` | 3 | 3 | 2,250 | 0.066 | 0.015 | 0.015 | **0.095** | **0.0318** |
-| `okrs` | 1 | 3 | 2,100 | 0.062 | 0.014 | 0.013 | **0.089** | **0.0296** |
-| `gtm_plan`, `board_deck`, `strategy_review` | 1 | 5 | 3,700 | 0.102 | 0.022 | 0.016 | **0.140** | **0.0280** |
-| `ads` | 5 | 5 | 2,950 | 0.083 | 0.019 | 0.017 | **0.119** | **0.0238** |
-| `roadmap` | 1 | 4 | 2,100 | 0.062 | 0.014 | 0.013 | **0.089** | **0.0222** |
-| `social` | 10 | 10 | 4,700 | 0.127 | 0.027 | 0.024 | **0.178** | **0.0178** |
+**Hit** is a cache hit on the workspace block (an owner working in the app). **Cold** writes the block instead of
+reading it, about $0.043 more per batch, which is what a cron run usually finds: the Sunday plan and each routine run
+once a week or a month per brand. The floor test checks the cron-driven types (marked *cron*: `weekly_plan` and the
+task type of every routine in `src/lib/routines.ts`) on the cold figure, and every other type on the hit figure
+(founder decision, 2026-09-29). The checked figure is in bold. Majed's auto-run (section 5, since step 3b) starts
+handoff items from the same 06:00 cron, so every type it may start is also checked on its cold figure (not bold in the
+table, which bolds the hit a login's Run is checked on); `article` ($0.0918 cold) and
+`followup_seq` ($0.0773) are over the ceiling cold, so the code never lets it start them (`autoBlock` answers `floor`,
+`autoUnderFloor` in `src/lib/handoffs.ts`, rule 296) and they run only when a login presses Run, checked on the hit.
+
+| Request | Items | Credits | Output tok | generate $ | review $ | judge $ | Total $ (hit) | $ per credit, hit | $ per credit, cold |
+|---|---|---|---|---|---|---|---|---|---|
+| `article` | 1 | 2 | 3,700 | 0.102 | 0.022 | 0.016 | 0.140 | **0.0702** | 0.0918 |
+| `followup_seq` | 7 | 4 | 7,500 | 0.197 | 0.041 | 0.028 | 0.266 | **0.0666** | 0.0773 |
+| `weekly_plan` *cron* | 1 | 2 | 2,100 | 0.062 | 0.014 | 0.013 | 0.089 | 0.0446 | **0.0662** |
+| `weekly_report` *cron* | 1 | 3 | 3,700 | 0.102 | 0.022 | 0.016 | 0.140 | 0.0468 | **0.0612** |
+| `cart_recovery` *cron* | 5 | 3 | 2,950 | 0.084 | 0.018 | 0.018 | 0.119 | 0.0398 | **0.0541** |
+| `growth_experiments` | 5 | 4 | 5,700 | 0.152 | 0.032 | 0.023 | 0.207 | **0.0518** | 0.0626 |
+| `unit_economics`, `decision_memo`, `feedback_synthesis`, `onboarding_flow` | 1 | 3 | 3,700 | 0.102 | 0.022 | 0.016 | 0.140 | **0.0468** | 0.0612 |
+| `cash_forecast` *cron* | 1 | 4 | 3,700 | 0.102 | 0.022 | 0.016 | 0.140 | 0.0351 | **0.0459** |
+| `lead_qualifier`, `dashboard_spec` | 1 | 2 | 2,100 | 0.062 | 0.014 | 0.013 | 0.089 | **0.0446** | 0.0662 |
+| `strategy_review` *cron* | 1 | 5 | 3,700 | 0.102 | 0.022 | 0.016 | 0.140 | 0.0281 | **0.0367** |
+| `sales_script`, `retention_play` | 3 | 4 | 3,900 | 0.107 | 0.023 | 0.018 | 0.148 | **0.0371** | 0.0478 |
+| `pricing_review`, `prd` | 1 | 4 | 3,700 | 0.102 | 0.022 | 0.016 | 0.140 | **0.0351** | 0.0459 |
+| `whatsapp`, `gbp` | 3 | 3 | 2,250 | 0.066 | 0.015 | 0.015 | 0.095 | **0.0318** | 0.0462 |
+| `okrs` | 1 | 3 | 2,100 | 0.062 | 0.014 | 0.013 | 0.089 | **0.0297** | 0.0441 |
+| `gtm_plan`, `board_deck` | 1 | 5 | 3,700 | 0.102 | 0.022 | 0.016 | 0.140 | **0.0281** | 0.0367 |
+| `ads` | 5 | 5 | 2,950 | 0.084 | 0.018 | 0.018 | 0.119 | **0.0239** | 0.0325 |
+| `roadmap` | 1 | 4 | 2,100 | 0.062 | 0.014 | 0.013 | 0.089 | **0.0223** | 0.0331 |
+| `social` | 10 | 10 | 4,700 | 0.127 | 0.027 | 0.025 | 0.179 | **0.0179** | 0.0222 |
+
+- **The watch list is `article` alone**: $0.0702 against the $0.0710 ceiling, 1.1% of headroom. The floor test pins
+  the list of types above 95% of the ceiling, so a second type drifting close fails it before it crosses.
+- **Repriced on 2026-09-30** because they crossed the ceiling: `weekly_plan` 1 → 2 credits (it was $0.0893 per credit
+  on a hit), `followup_seq` 3 → 4 ($0.0888), and `weekly_report` 2 → 3 (the routine runs it cold: $0.0918). The floor
+  test keeps the old prices as cases that must fail, so it cannot pass vacuously.
+- **Chat drafts** (`draft_items`, social, whatsapp, ads and gbp only, checked in code: rule 250) charge the batch price
+  pro rata and at least 1 credit, so 1, 2 or 3 items cost 1, 2 or 3 credits. On a cache hit two items cost $0.0418 per
+  credit and three $0.0318. **One item costs $0.0716 for 1 credit, 0.9% over the ceiling**: the reviewer and the judge
+  run on one short item almost as on a whole batch. It stays at 1 credit as a named exemption in the floor test
+  (`ONE_ITEM_DRAFT_EXEMPTION`, founder decision 2026-09-29, reason written there), capped at today's $0.07165: if these
+  drafts get dearer the test fails and the price or the exemption is decided again. Two- and three-item drafts are not
+  exempt.
 
 The cross-agent review (`xreview`, since 2026-09-30) adds one Sonnet call per reviewing agent to seven types, on top of
 the table above. Worked out with the same assumptions plus these, all estimates: its system prompt is measured
-(`crossReviewPrompt`: 6,088 characters for Razan, 4,936 for Majed, about 1,850 and 1,500 tokens, read from the cache after the
-first call of the five minutes); its user message is the spec and brand file (about 550 tokens) plus the items as the
+(`crossReviewPrompt`: 6,102 characters for Razan, 4,950 for Majed, about 1,850 and 1,500 tokens, read from the cache after the
+first call of the five minutes; 14 characters more than before step 3a was merged into step 3b, which added `<lead_brief>`
+to its data tags; `tests/cross-review.test.ts` checks these two numbers against the prompt it builds); its user message is the spec and brand file (about 550 tokens) plus the items as the
 generation wrote them (2,500 tokens per long item, 900 per plan item), with an empty workspace; and it writes about 600
 tokens of thinking and 80 to 150 per verdict. A cold cache adds about $0.004 per call; the owner's notes and workspace
 files add their size as input, up to about 10,000 tokens (about $0.02) at the cap.
@@ -76,12 +108,17 @@ files add their size as input, up to about 10,000 tokens (about $0.02) at the ca
 
 The real numbers are in the founder console under the `xreview` kind and, per agent, under Razan and Majed.
 
-The calls with no credit attached:
+With this call every row stays under the section 4 ceiling ($0.07104 per credit), on a cold cache too (the cold
+column above plus the call and its cold cache: `growth_experiments`, the closest, about $0.069). The floor test
+(`tests/pricing-floor.test.ts`, rule 241, `estimateBatch`) does not count this call yet, so a change that makes the
+review dearer is checked here by hand, not by the build.
+
+The calls with no credit attached, or a fixed one:
 
 | Request | Cost | Note |
 |---|---|---|
 | One chat message | **$0.05 – $0.26** | $0.05 per model call; a turn that uses tools runs up to five, and a `generate_content` tool call adds a whole batch on top |
-| One onboarding run | **≈ $0.60** | three Opus calls, 20k output tokens between them; free, once per workspace, three per account per day |
+| One onboarding run | **≈ $0.57** (`onboardEstimateUsd`: 13,500 tokens in and 20,000 out on Opus, three calls between them) | free for the first brand; **9 credits** for each added brand, $0.64 at the ceiling, which the floor test checks covers the typical run. Each of the three parts retries once on failure (`src/lib/onboard.ts:127`), so a bad run can make up to six Opus calls, about twice the typical cost and up to roughly $1.8 when every part hits its `max_tokens`; 9 credits do not cover that case. Three runs per account per day |
 Images and video are charged in credits too; their cost per model is in section 3.1.
 
 ## 3.1 Media renders
@@ -107,8 +144,9 @@ and transfer are extra, billed by Vercel and not metered per render or per tenan
 | `vid-cinematic` (Cinematic · 5s) | Higgsfield | 12 | ~$0.70 (list $0.1407 per second) | 0.058 | — |
 | `vid-motion` (Photo to motion · 6s) | Higgsfield | 12 | $0.28 | 0.023 | — |
 
-- The target was at most about $0.05 per credit (founder decision F3). Every model but `vid-cinematic` meets it; at the
-  agency plan's $0.1065 per credit (section 4) every row still has a margin.
+- The target was at most about $0.05 per credit (founder decision F3). Every model but `vid-cinematic` meets it. Since
+  2026-09-30 the floor test (rule 241) checks every row, with the prompt's $0.005 added, against the $0.0710 ceiling of
+  section 4: `vid-cinematic` is the highest at $0.0588 per credit and passes with 17% of headroom.
 - `vid-cinematic` is above the target at list price (spec R3), and Higgsfield prices change and promotions expire on
   2026-10-01. The console's "Check media providers" shows Higgsfield's own `/estimate` for it; if that exceeds $0.70, the
   choice is `resolution: "480p"` in `HF_MODELS` or a new price (founder question Q4). Until then it stays 12 credits at 720p.
@@ -121,29 +159,39 @@ and transfer are extra, billed by Vercel and not metered per render or per tenan
 
 ## 4. Where the margin actually is
 
-Revenue per credit, from `PLAN_PRICE_SAR` in `src/lib/admin-stats.ts` and `PLAN_CREDITS` in `src/lib/auth.ts`, at
-3.75 SAR to the dollar:
+Rewritten on 2026-09-30 for pricing phase 1. Revenue per credit comes from `PLAN_PRICE_SAR` and `PLAN_CREDITS` in
+`src/lib/pricing.ts`, the single plan table, at 3.75 SAR to the dollar (`SAR_PER_USD`), on the list price excluding VAT
+(`PRICES_INCLUDE_VAT` is false while the site says so):
 
 | Plan | Price | Credits | Revenue per credit |
 |---|---|---|---|
-| starter | 149 SAR ($39.72) | 200 | **$0.1986** |
-| pro | 399 SAR ($106.37) | 700 | **$0.1520** |
-| agency | 799 SAR ($213.01) | 2000 | **$0.1065** |
+| starter | 299 SAR ($79.73) | 300 | **$0.2658** |
+| pro | 499 SAR ($133.07) | 700 | **$0.1901** |
+| business | 999 SAR ($266.40) | 1,500 | **$0.1776** |
+| agency | the deal's price | the deal's credits | at least Business's **$0.1776**: `dealRespectsFloor` refuses a deal under 999 SAR, under 1,500 credits, or cheaper per credit than Business (integer check: price × 1,500 ≥ credits × 999). An Agency account without a valid deal is granted and counted as Business |
 
-Put the two tables side by side and three things fall out.
+**The ceiling.** `MARGIN_FLOOR` is 0.6: at least 60% of the cheapest self-serve credit is margin, so what one credit
+may cost us is at most 40% of $0.1776, **$0.07104** (`maxCostPerCreditUsd`). `tests/pricing-floor.test.ts` (rule 241)
+holds every task type (section 3), every chat draft but the named exemption, the added-brand onboarding and every media
+model (section 3.1) under it. A price cut or a larger allowance lowers the ceiling: Business at 899 SAR, or at 1,700
+credits, puts `article` over and fails the build. If the accountant says prices must include VAT (`PRICES_INCLUDE_VAT`
+true, 999 / 1.15), the ceiling falls to **$0.0618** and `article`, `followup_seq` and the cold `weekly_plan` fail: they
+must be repriced before that switch.
+
+Put the tables side by side and three things fall out.
 
 1. **Output tokens are the whole bill.** Most of a batch's cost is Opus output at $25/M. Prompt caching saves about
    four cents a call at best; halving an output would save ten times that. The reviewer and the judge together add
    35–45% on top of the generation call, not the problem.
-2. **The cheap-credit, long-output types are the hole.** `weekly_plan` costs $0.089 and is priced at **1 credit**; on
-   agency that credit brings in $0.107. It keeps about a sixth, and it is the one type the Sunday cron creates on its own for
-   every workspace. `followup_seq` (7 items for 3 credits) is the same shape. `article` and `weekly_report` at 2 credits
-   keep about a third of the revenue on agency.
-3. **`social` is the best-priced thing in the product** at $0.018 per credit — a 6-to-11× markup depending on plan.
-   The pricing is not wrong on average; it is wrong per type, and the spread is 5×.
+2. **The cheap-credit, long-output types were the hole.** Before 2026-09-30 `weekly_plan` cost $0.089 at 1 credit,
+   `followup_seq` $0.266 at 3 credits, and the routine's cold `weekly_report` $0.184 at 2 credits: all three were over
+   the ceiling, and the Sunday plan is the one type the cron creates on its own for every default brand. Phase 1 priced
+   them at 2, 4 and 3 (`followup_seq` at 4, not 5: 4 already passes at $0.0666). `article` is the tightest type left.
+3. **`social` is the best-priced thing in the product** at $0.018 per credit, a 10-to-15× markup depending on plan.
+   The pricing is not wrong on average; the spread per type is still about 4×.
 
-The obvious moves, cheapest first: reprice `weekly_plan` to 2 credits and `followup_seq` to 5; cap `max_tokens` per
-type instead of a flat 16,000; and move the judge to a sampled run (every third batch) rather than every batch.
+The next moves, cheapest first: cap `max_tokens` per type instead of a flat 16,000, and move the judge to a sampled run
+(every third batch) rather than every batch. Either would give `article` and the one-item draft room again.
 
 ## 5. What bounds the spend today
 
@@ -155,9 +203,26 @@ type instead of a flat 16,000; and move the judge to a sampled run (every third 
   bounded by the rate limits below.
 - **Chat** costs no credits, so `CHAT_PER_HOUR` (40) and `CHAT_PER_DAY` (200) in `src/lib/rate.ts` bound it per account,
   on the web route and on MCP `ask_noor`. Before 2026-09-20 nothing did.
-- **Onboarding** is free: once per workspace, three runs per account per day, and signup is five per IP per hour. The
-  worst case an attacker can drive from one address is therefore about $9 an hour.
-- **Cron** charges credits for the weekly plan and makes no model call for the daily brief.
+- **Onboarding** is free for the first brand and 9 credits for each added brand built from its URL (since 2026-09-30,
+  rule 246; the manual brand form makes no model call and is free): the charge goes to Noor in that brand's scope under
+  her monthly cap there, after every other refusal and under the run's lock (330 s, owner-token release, so two runs
+  never build on one charge), before the stream. It is held on the account record (`User.onboardPaid[scope]`) in the same
+  save as the debit: a retry or a revisit reuses it instead of paying twice, a build that fails before the brand is
+  saved refunds it and drops the hold in one save (once), and the daily cron refunds a hold no run used for a day, so a
+  run the platform killed is never charged twice and never kept without a brand. A failure after the brand was saved is
+  not refunded (the brand is delivered and a rerun answers 409). Once per workspace, three runs per
+  account per day, so an agency sets up at most three brands a day, and signup is five per IP per hour. The worst case
+  an attacker can drive from one address through free first brands is therefore still about $9 an hour; an added
+  brand's run is paid for.
+- **Brands** are unlimited on every plan (since 2026-09-30, rule 245). What bounds them is a creation rate, not a count:
+  10 an hour and 30 a day per account (`brandAddRefusal` in `src/lib/rate.ts`, which says which window refused), plus
+  the 9-credit setup and the daily
+  onboarding allowance above. Every brand fans out into every cron, which is why an added brand's Sunday plan starts off.
+- **Cron** charges `TASK_COST.weekly_plan` (2 credits since 2026-09-30) for the Sunday plan and makes no model call for
+  the daily brief. The Sunday plan is on by default only for the default brand; an added brand's is off until the owner
+  switches it on in Scheduled tasks (`getSchedule` in `src/lib/schedule.ts`, rule 247). Added brands created before
+  2026-09-30 stored the old default (on) in `schedule:{scope}`; on an added brand a stored `weeklyPlan` counts only with
+  the `weeklyPlanSetAt` stamp the owner's switch writes, so those brands start off too and are not charged.
 - **The cross-agent review** (since 2026-09-30) makes no call of its own: it runs inside a paid batch of one of seven
   types, one call per reviewing agent (two for `gtm_plan`), so the credits and caps that bound batches bound it too.
   The owner can switch it off on the Governance page (`Governance.crossReview`); golden runs never make it. Each call
@@ -171,7 +236,13 @@ type instead of a flat 16,000; and move the judge to a sampled run (every third 
   request, at most `HANDOFF_RUNS_PER_HOUR` (60) runs per account an hour, under a lock that lets one run of a handoff at a
   time. The brief block adds about 900 characters to that batch's generation, reviewer, cross-review and judge messages:
   the brief (at most 600 characters, JSON-quoted by `asData`, so a little more when it holds characters that must be
-  escaped), its label (`LEAD_BRIEF_LABEL`, 259 characters) and the tags around it (about 30).
+  escaped), its label (`LEAD_BRIEF_LABEL`, 259 characters) and the tags around it (about 30). At a full brief that is
+  889 characters, about 270 input tokens on each call: about $0.0024 per batch (Opus for the generation, Sonnet for the
+  reviewer and the judge) and $0.0030 with one cross-review call. `estimateBatch` does not count it, so the floor test
+  (rule 241) does not either. It matters for one type: a handed-off `article` that a login runs on a cache hit costs
+  about $0.0714 per credit with a full brief, 0.6% over the $0.07104 ceiling (a shorter brief costs less). That is not
+  checked by the build and needs a founder decision, a price or a named exemption like the one-item drafts'; Majed's
+  auto-run never starts an article (rule 296).
 - **Media renders** (spec 4.8, `src/lib/media/jobs.ts`) are bounded in several layers, all but the last in code:
   - credits are charged before the submit and refunded exactly once when the render fails (`refundOnce`: a 60 s claim on
     `mrefund:{jobId}`, then `"done"` once the refund was made), so an owner never pays for a failure, and the chat tool
@@ -199,7 +270,7 @@ type instead of a flat 16,000; and move the judge to a sampled run (every third 
   timed out ambiguously and rendered anyway after the refund (spec R9); the breaker bounds the first, the limits and the
   kie caps the second.
 - **Routines** (since 2026-09-29) are opt-in per brand and charge like a batch the owner asked for: `TASK_COST` of the
-  type (Dana's weekly report 2, Noor's cart recovery 3, Razan's cash forecast 4, Majed's strategy review 5), one
+  type (Dana's weekly report 3 since 2026-09-30, Noor's cart recovery 3, Razan's cash forecast 4, Majed's strategy review 5), one
   generation plus the reviewer and the judge per run, at most once per UTC week or month. Every run passes the owning
   agent and its monthly cap to `charge`, and the weekly cap on scheduled items counts the whole batch before charging,
   including the batches of the brand's other routines running at the same moment (`routinehold:`). A gate checked in
@@ -208,14 +279,24 @@ type instead of a flat 16,000; and move the judge to a sampled run (every third 
   started with less than 180 s of the cron's invocation left (`retry:late`, before the charge; a later hop runs it),
   and the cross-agent review of Majed's strategy review is bounded by that deadline, so a kill is left to a model call
   far slower than usual. A run the platform kills after the charge is not refunded, so each routine may leave at most
-  two such charges per week or month (`routinetry:`) before it waits for its next period. The worst case for one brand with all four on is 2 + 3 per
+  two such charges per week or month (`routinetry:`) before it waits for its next period. The worst case for one brand with all four on is 3 + 3 per
   week and 4 + 5 per month in credits, plus at most two lost charges per routine and period when runs are killed.
+- **Reports reprice past work.** The profile, the owner's Reports page and the founder overview count credits used as
+  items × today's per-item price, `TASK_COST / TASK_COUNT` (`src/app/api/profile/route.ts`, `src/lib/stats.ts`, `src/lib/admin-stats.ts`), so in the
+  month of a price change the earlier weekly plans, weekly reports and follow-up sequences are counted at 2, 3 and 4.
+  The 9-credit onboarding charge is not a task and is in no "credits used" total; it shows in the balance and in Noor's
+  monthly spend for that brand (`agentSpend`). Storing the credits charged on each task is left for a later phase.
+  Renders are the exception: every reader counts what they really charged, `t.mediaCredits ?? (t.image ? IMAGE_COST : 0)`
+  (an image 1 or 2 by model, a video 12 or 24); since 2026-09-30 the profile does too (`mediaCredits`), and its usage
+  row shows the catalogue's image and video ranges instead of a flat 1.
 - **Majed's auto-run** (since 2026-09-30, `src/lib/handoff-auto.ts`) is the only spend on a handoff without a login
   pressing Run, and it is off until the owner switches it on in Governance, which needs a monthly cap on at least one
   agent Majed hands work to and an explicit confirmation. The routines cron then starts at most one item a day per
   brand, of a proposal the owner made in chat in the last 7 days whose card reached the owner (the reply carrying it
-  was saved, and its conversation was not deleted; the Governance page lists what may start next, with Decline), of at most 3 items and 12 credits in all, and only for
-  an agent with an owner-set cap: each item is one batch charged `TASK_COST[type]` to that agent under that cap (so the
+  was saved, and its conversation was not deleted; the Governance page lists what may start next, with Decline), of at most 3 items and 12 credits in all, only for
+  an agent with an owner-set cap, and only for a type that keeps the 60% margin floor on the cold cache this cron usually
+  finds (`autoUnderFloor`, rule 296: never `article` or `followup_seq` today; the dearest it may start, with the
+  cross-agent review and a full brief, is `growth_experiments` at about $0.0696 per credit): each item is one batch charged `TASK_COST[type]` to that agent under that cap (so the
   owner's cap is the bound on what the auto-run can spend on an agent in a month), inside the weekly cap on items made
   on their own (`isAutonomous`, shared with the Sunday plan and the routines). Today's dearest item a 12-credit proposal
   can hold is `social` at 10 credits, so one brand's auto-run spends at most 10 credits a day, within those caps. It
@@ -230,7 +311,9 @@ type instead of a flat 16,000; and move the judge to a sampled run (every third 
 cost in micro-dollars, and since 2026-09-20 the same three numbers **per kind of call**. So the founder console shows,
 per account:
 
-- **Users tab:** tokens, cost this month, and a **margin** column (plan price against model cost; red under 50%).
+- **Users tab:** tokens, cost this month, and a **margin** column (`priceOf`: the plan's list price, or an Agency
+  account's deal price, against model cost; red under 50%). Since 2026-09-30 the rows also carry the deal and the
+  monthly allowance (`allowanceOf`).
 - **User detail:** a cost-per-request-type table — calls, average cost of one call of that kind, total, tokens — and,
   since 2026-09-29, a cost-per-agent table (calls, average, total) from `usage:{email}:{YYYY-MM}:agent:{id}:*`.
   Generation, the reviewer and the judge count for the agent that owns the task type, a chat turn for the agent in

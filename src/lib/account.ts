@@ -15,6 +15,7 @@ import { wipeTeam } from "./team";
 import { forgetWishlistUser } from "./wishlist";
 import { secretaryKeys } from "./secretary";
 import { handoffKeys } from "./handoffs";
+import { proposalKeys } from "./brand-proposals";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -39,9 +40,9 @@ export async function wipeAccount(email: string) {
   const keys: string[] = [];
   // Every id, not only the newest 200 tasks or 100 conversations: nothing of a deleted account may stay behind. All
   // scopes are read in parallel (Upstash is HTTP per command).
-  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(`tasks:${s}`, 0, -1), listFiles(s), db.lrange(`convs:${s}`, 0, -1), db.smembers(`conns:${s}`), db.smembers(`tidxm:${s}`), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp))]));
+  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(`tasks:${s}`, 0, -1), listFiles(s), db.lrange(`convs:${s}`, 0, -1), db.smembers(`conns:${s}`), db.smembers(`tidxm:${s}`), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s)]));
   scopes.forEach((s, i) => {
-    const [taskIds, files, convIds, conns, months, sec, handoffs] = perScope[i];
+    const [taskIds, files, convIds, conns, months, sec, handoffs, proposals] = perScope[i];
     keys.push(
       ...taskIds.map((id) => `task:${s}:${id}`),
       ...files.map((f) => `file:${s}:${f.name}`),
@@ -63,6 +64,10 @@ export async function wipeAccount(email: string) {
       // item's auto-run attempt counter and notification marker (8 days), and the index itself, from the one read above.
       // A record that fell off the index was deleted when it fell.
       ...handoffs,
+      // Brand changes an agent proposed (7 days, the brand's old and new offers or banned words), their outcomes, answer
+      // claims and index, and the brand lock. The publish markers (`pubtry:`, `publock:`) are left to their TTL (3 days
+      // at most): they hold a time or a lock, not account data, and finding them would take every item on every platform.
+      ...proposals,
       // Each routine's last run, locks, hold and attempt counts, for every routine id (routines.ts), and the hold of
       // Majed's auto-run under the same weekly cap (360 s).
       ...routineKeys(s), autoHoldKey(s),
@@ -71,6 +76,10 @@ export async function wipeAccount(email: string) {
       // would never get those follow-ups, and the deleted scope would stay in key names for a month.
       ...AGENT_IDS.flatMap((a) => warnMonths.map((m) => seenKey(e, agentCapFingerprint(s, a, m)))),
       ...routineFingerprints(s).map((fp) => seenKey(e, fp)),
+      // Onboarding's per-brand records: the owner's confirmed site and the run's lock (src/lib/onboard-confirm.ts). Only
+      // the default brand's lock was deleted, and the confirmation never was. An added brand's held setup charge lives on
+      // the account record (`User.onboardPaid`) and goes with it.
+      `onboardok:${s}`, `onboardlock:${s}`,
       `onboardplan:${s}`, `pending:${s}`, `pendingidx:${s}`, `tidxm:${s}`, `tidxv:${s}`, `tasks:${s}`, `files:${s}`, `brand:${s}`, `prefs:${s}`, `chat:${s}`, `convs:${s}`, `gov:${s}`, `schedule:${s}`, `brief:${s}`, `conns:${s}`,
     );
   });
@@ -98,7 +107,6 @@ export async function wipeAccount(email: string) {
     ...["x", "linkedin", "whatsapp", "instagram"].map((p) => `shared:${e}:${p}`), // pre-set markers
     `ulast:${e}`,
     `weeklylock:${e}`,
-    `onboardlock:${e}`,
     ...EVENTS.flatMap((ev) => [`uev:${e}:${ev}`, `ufirst:${e}:${ev}`, `ufirst0:${e}:${ev}`]),
     // Model-spend counters for the months this account could have been active.
     ...usageKeys(e),

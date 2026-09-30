@@ -21,6 +21,11 @@ const RATES: Record<string, { in: number; out: number; cacheRead: number; cacheW
   "claude-sonnet-5": { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 },
 };
 const DEFAULT_RATE = RATES["claude-opus-5"];
+/**
+ * True when `model` has its own entry in RATES. `costUsd` prices an unknown id as Opus, so the floor test
+ * (tests/pricing-floor.test.ts) asks this for every model the estimates assume. RATES itself stays private.
+ */
+export const hasRate = (model: string): boolean => Object.prototype.hasOwnProperty.call(RATES, model);
 
 /**
  * `xreview` is the cross-agent review (`crossReview` in noor.ts): Razan's and Majed's notes on another agent's batch. It

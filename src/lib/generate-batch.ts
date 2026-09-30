@@ -19,7 +19,7 @@ import { trialOver, type User } from "./auth";
 import { charge, refund, type AgentCharge } from "./credits";
 import { agentForTask, type AgentId } from "./agents";
 import { briefOf, getBrand, listPreferencesFor, saveTask, type Brand, type Task, type TaskParent } from "./brand";
-import { TASK_COST, TASK_COUNT, type TaskType } from "./tasks";
+import { TASK_COST, TASK_COUNT, isDraftType, type TaskType } from "./tasks";
 import { getGov, type Governance } from "./governance";
 import { missingData } from "./cart-recovery";
 import { modelState } from "./model";
@@ -100,7 +100,11 @@ export type BatchRefusal =
 export type BatchDone = { ok: true; tasks: Task[]; credits: number; receipt: Extract<AgentCharge, { ok: true }>; cost: number; agent: AgentId; gov: Governance };
 export type BatchResult = BatchDone | BatchRefusal;
 
-/** What `count` items of a type cost: their share of the full batch, rounded up, never less than 1 credit. */
+/**
+ * What `count` items of a type cost: their share of the full batch, rounded up, never less than 1 credit. The same
+ * formula as `draftCredits` in src/lib/task-costs.ts, whose estimate the margin-floor test checks; that test pins the two
+ * equal (tests/pricing-floor.test.ts, rule 241).
+ */
 export const countCost = (type: TaskType, count: number) => Math.max(1, Math.ceil((TASK_COST[type] / (TASK_COUNT[type] || 1)) * count));
 
 export type ItemContext = {
@@ -121,6 +125,8 @@ export type ItemContext = {
 /**
  * One generated item as a new task. Every batch builds its tasks here, so a field every new task must carry is added
  * in one place. Auto-approval never skips the brand gate (`initialStatus`), and a forced batch is never auto-approved.
+ * The gate reads the item's channel: a personalisation slot such as {{1}} passes only on a WhatsApp, email, SMS or call
+ * draft, and an unfilled placeholder such as [رقم] holds approval on every channel (src/lib/brand-rules.ts, rule 213).
  * `pb` records which prompts made it (src/lib/prompt-stamp.ts), so a change in quality can be traced to a prompt change.
  *
  * The cross-agent review's verdicts (`it.crossReview`, noor.ts) are kept on the task, and a "flag" holds it pending
@@ -128,7 +134,7 @@ export type ItemContext = {
  * An `external` item (MCP `save_draft`) is never cross-reviewed: no Nashr agent wrote it, so it keeps no verdicts.
  */
 export function taskFromItem(it: Generated, c: ItemContext): Task {
-  const draft = { type: c.type, title: it.title, body: it.body };
+  const draft = { type: c.type, channel: it.channel, title: it.title, body: it.body };
   const verdicts = c.source !== "external" && it.crossReview?.length ? it.crossReview : undefined;
   const flagged = !!verdicts?.some((v) => v.verdict === "flag");
   return {
@@ -157,6 +163,10 @@ export function crossReviewRows(tasks: Task[], at: string, via: BatchVia): Activ
 
 export async function generateBatch(user: User, scope: string, opts: BatchOpts): Promise<BatchResult> {
   const { type } = opts;
+  // A small ask is only for DRAFT_TYPES (rule 250). The chat's `draft_items` refuses any other type in code before it
+  // calls this; here it is an invariant, before any read or charge, so no caller can buy one item of a batch type at
+  // its pro-rata price.
+  if (opts.count !== undefined && !isDraftType(type)) throw new Error(`not_draft_type:${type}`);
   // A scheduled run records its own outcome (`recordRun`), so a refusal at its charge is one row there, not two.
   const scheduled = opts.via === "weekly" || opts.via === "routine";
   const refuse = async (r: BatchRefusal, row?: Activity): Promise<BatchRefusal> => {

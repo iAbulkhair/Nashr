@@ -40,6 +40,8 @@ import { recordActivity } from "./activity";
 import { BATCH_RUN_MIN_MS, generateBatch, type BatchRefusal } from "./generate-batch";
 import { LEAD_BRIEF_MAX } from "./json";
 import { getGov, type Governance } from "./governance";
+import { estimateBatch } from "./task-costs";
+import { maxCostPerCreditUsd } from "./pricing";
 
 /** A handoff id: 16 hex characters, checked before any key is built from it. */
 export const HANDOFF_ID = /^[a-f0-9]{16}$/;
@@ -140,7 +142,25 @@ export const AUTO_HANDOFF_MAX_ITEMS = 3;
 export const AUTO_HANDOFF_MAX_CREDITS = 12;
 
 /** Why the auto-run may not start an item. Every reason leaves the item exactly as it is, for the owner. */
-export type AutoBlock = "off" | "not_majed" | "origin" | "requester" | "not_shown" | "thread_gone" | "bad_item" | "not_proposed" | "too_old" | "no_cap" | "ceiling";
+export type AutoBlock = "off" | "not_majed" | "origin" | "requester" | "not_shown" | "thread_gone" | "bad_item" | "not_proposed" | "too_old" | "no_cap" | "floor" | "ceiling";
+
+/**
+ * Whether the auto-run may start a batch of `type` at all: the 60% margin floor (rule 241) checked the way it is for
+ * every cron-driven type. The auto-run starts from the routines cron at 06:00 UTC, once a day per brand, so it usually
+ * finds the prompt cache cold, and the floor checks cron types on a cold cache (founder decision, 2026-09-29): the
+ * batch's estimated cost per credit on a COLD cache (`estimateBatch`, src/lib/task-costs.ts) must be at most the
+ * ceiling (`maxCostPerCreditUsd`, src/lib/pricing.ts). Today that leaves out `article` ($0.0918 per credit cold) and
+ * `followup_seq` ($0.0773): they run only when a login presses Run. A change to a price, a credit count or a rate moves
+ * the list with it. The estimate counts neither the lead brief nor the cross-agent review (docs/system/costs.md §3 and
+ * §5 work those out by hand). Fails closed: a type the estimate cannot price is never started.
+ */
+export function autoUnderFloor(type: TaskType): boolean {
+  try {
+    return estimateBatch(type, { cache: "cold" }).usdPerCredit <= maxCostPerCreditUsd();
+  } catch {
+    return false;
+  }
+}
 
 /**
  * What `autoBlock` cannot read from the record. `threadGone`: the conversation the card sits in was deleted (read by the
@@ -159,6 +179,7 @@ export type AutoContext = { threadGone?: boolean; beforeCard?: boolean };
  * - the item is `proposed`: never one that ran, failed, is running or was declined (a failed item waits for the owner);
  * - the proposal is at most AUTO_HANDOFF_MAX_AGE_DAYS old;
  * - the agent that owns the item's type has an owner-set monthly cap, so every auto-run charge is capped by the owner;
+ * - the item's type keeps the margin floor on a cold cache (`autoUnderFloor`): never `article` or `followup_seq` today;
  * - the whole proposal is within the ceiling: at most AUTO_HANDOFF_MAX_ITEMS items and AUTO_HANDOFF_MAX_CREDITS credits.
  */
 export function autoBlock(h: Pick<Handoff, "agent" | "origin" | "requestedBy" | "items" | "createdAt" | "shownAt">, n: number, gov: Pick<Governance, "majedAutoHandoff" | "agentCaps">, now: number = Date.now(), ctx: AutoContext = {}): AutoBlock | null {
@@ -175,6 +196,7 @@ export function autoBlock(h: Pick<Handoff, "agent" | "origin" | "requestedBy" | 
   if (Number.isNaN(at) || now - at > AUTO_HANDOFF_MAX_AGE_DAYS * DAY_MS) return "too_old";
   const cap = gov.agentCaps?.[agentForTask(it.type).id];
   if (typeof cap !== "number" || !Number.isFinite(cap)) return "no_cap";
+  if (!autoUnderFloor(it.type)) return "floor";
   if (h.items.length > AUTO_HANDOFF_MAX_ITEMS || h.items.reduce((s, i) => s + TASK_COST[i.type], 0) > AUTO_HANDOFF_MAX_CREDITS) return "ceiling";
   return null;
 }

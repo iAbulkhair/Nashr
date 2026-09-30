@@ -48,15 +48,21 @@ describe("cart-recovery drafts need real abandoned carts (rule 74)", () => {
     }
   });
 
-  it("refuses the same way from chat, both for a batch and for a small ask", async () => {
+  // A batch from chat meets the same data gate. A small ask never reaches it: cart_recovery is not a draft type, so
+  // draft_items refuses it in code before any read (rule 250). Neither path charges.
+  it("refuses from chat too: a batch without carts, and a small ask as not a draft type", async () => {
     const u = await newUser("cartchat");
     await db.set(`brand:${u.email}`, brand);
     const user = (await getUser(u.email))!;
     const before = user.credits;
-    for (const [tool, input] of [["generate_content", { type: "cart_recovery" }], ["draft_items", { type: "cart_recovery", count: 2, brief: "x" }]] as const) {
-      expect(await runTool(user, tool, input, [])).toMatch(/No abandoned-cart data yet/);
+    for (const [tool, input, answer] of [
+      ["generate_content", { type: "cart_recovery" }, /No abandoned-cart data yet/],
+      ["draft_items", { type: "cart_recovery", count: 2, brief: "x" }, /Not a draft type/],
+    ] as const) {
+      expect(await runTool(user, tool, input, [])).toMatch(answer);
     }
     expect((await getUser(u.email))!.credits).toBe(before);
+    expect(await listTasks(u.email)).toEqual([]);
   });
 
   it("charges and fills the inbox once the store has abandoned-cart products", async () => {
@@ -92,7 +98,8 @@ describe("cart-recovery drafts need real abandoned carts (rule 74)", () => {
 describe("no discount the owner did not offer (rule 74)", () => {
   it("keeps the owner's own percentage and replaces any other, in Latin or Arabic digits", () => {
     const [out] = capDiscounts([{ title: "خصم 20%", body: "خصم 15% لأول طلب، أو ٢٠٪ اليوم فقط، أو 15 % هدية، أو ١٥٪" }], brand.offers);
-    expect(out.title).toBe("خصم [رقم]%");
+    // No screen edits a title, so an unoffered percentage is dropped there rather than turned into a placeholder (rule 213).
+    expect(out.title).toBe("خصم");
     expect(out.body).toBe("خصم 15% لأول طلب، أو [رقم]٪ اليوم فقط، أو 15 % هدية، أو ١٥٪");
     expect(capDiscounts([{ title: "t", body: "10% off" }], "")[0].body).toBe("[رقم]% off");
   });
@@ -114,7 +121,7 @@ describe("no discount the owner did not offer (rule 74)", () => {
     const { generate } = await import("@/lib/noor");
     const items = await generate("cart_recovery", brand, [], "", { stats: "CART DATA (test)\n<cart_data>{}</cart_data>" });
     expect(userMsg).toContain("CART DATA (test)");
-    expect(items[0].title).toBe("تذكير [رقم]%");
+    expect(items[0].title).toBe("تذكير");
     expect(items[0].body).toBe("{{1}}، مسك أبيض بانتظارك بخصم [رقم]%: {{2}}");
     expect(items[1].body).toBe("خصم [رقم]% اليوم على مسك أبيض فقط");
   });

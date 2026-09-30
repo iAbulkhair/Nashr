@@ -31,6 +31,14 @@ export function parseObjectArray(text: string): Array<Record<string, unknown>> {
 export const asData = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c");
 
 /**
+ * The memory files (memoryBlock) as a data block for the generating and chatting agents. The files hold text crawled
+ * from the owner's site, imported catalogs and uploads; joined with "--- name ---" lines, a file could fake a separator
+ * or close a label and start speaking to the model. Serialised with asData inside <workspace_files>, the same form the
+ * reviewer and the judge read, no file can end the block.
+ */
+export const fenceMemory = (memory: string) => `<workspace_files>\n${asData(memory || "")}\n</workspace_files>`;
+
+/**
  * What the generating agent had besides the brand file: the batch notes, its memory files and its data block, and, for
  * an item of Majed's handoff (src/lib/handoffs.ts), the lead's brief. The brief is never the owner's notes: see
  * `leadBriefBlock`.

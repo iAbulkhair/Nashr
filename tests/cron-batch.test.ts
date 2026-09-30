@@ -55,7 +55,7 @@ describe("runCronBatch", () => {
     expect(capped.chained).toBe(false);
   });
   it("chains for items refused only as late (retry:late) when the hop ran something; the next hop starts them first", async () => {
-    // Rule 263: a brand late in the list is served by a fresh invocation the same day, not the next day.
+    // Rule 291: a brand late in the list is served by a fresh invocation the same day, not the next day.
     const o = { job: "t", id: (x: string) => x, concurrency: 1, startBudgetMs: 5000, markerTtlSeconds: 60 };
     const ran: string[] = [];
     const first = await runCronBatch({ ...o, period: `late${period}`, items: ["a", "b"], run: async (x) => { ran.push(x); return x === "a" ? "ok" : "retry:late"; }, req: req() });

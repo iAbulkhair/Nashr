@@ -28,7 +28,7 @@ import { wipeAccount } from "@/lib/account";
 import { AGENT_IDS, type AgentId } from "@/lib/agents";
 import { runTool } from "@/lib/chat";
 import { runWeekly } from "@/lib/schedule";
-import type { TaskType } from "@/lib/tasks";
+import { TASK_COST, type TaskType } from "@/lib/tasks";
 import type { SiteSnapshot } from "@/lib/crawl";
 import * as generateRoute from "@/app/api/generate/route";
 import * as imageRoute from "@/app/api/tasks/[id]/image/route";
@@ -221,7 +221,7 @@ describe("every charging path enforces the agent's cap before charging (rules 10
     expect(await credits(u.email)).toBe(50);
     await saveGov(u.email, { agentCaps: { noor: 5 } });
     expect(await runWeekly((await getUser(u.email))!)).toMatch(/^ok:/);
-    expect(await spend(u.email)).toEqual({ noor: 1 });
+    expect(await spend(u.email)).toEqual({ noor: TASK_COST.weekly_plan });
     await settle();
   });
 
@@ -381,7 +381,7 @@ describe("model usage per agent (rule 110)", () => {
     const k = (kind: string) => usage.byKind[kind]?.calls ?? 0;
     expect(usage.byAgent.razan?.calls).toBe(k("generate") + k("review") + k("judge"));
     expect(k("generate") + k("review") + k("judge")).toBe(3);
-    // Razan's pricing review is cross-reviewed by Majed: that call is his work, metered to him (rule 239).
+    // Razan's pricing review is cross-reviewed by Majed: that call is his work, metered to him (rule 267).
     expect(usage.byAgent.majed?.calls).toBe(k("xreview"));
     expect(k("xreview")).toBe(1);
     expect(usage.byAgent.sami?.calls).toBe(k("chat"));

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { currentUser, PLAN_CREDITS, saveUser, sc } from "@/lib/auth";
-import { getBrand, listLite, saveBrand, TASK_COST, TASK_COUNT, type TaskType } from "@/lib/brand";
+import { currentUser, saveUser, sc } from "@/lib/auth";
+import { allowanceOf } from "@/lib/pricing";
+import { getBrand, IMAGE_COST, listLite, saveBrand, TASK_COST, TASK_COUNT, type TaskType } from "@/lib/brand";
 import { db } from "@/lib/db";
 import { listBrands, scopeFor } from "@/lib/brands";
 import { pmap } from "@/lib/parallel";
@@ -45,19 +46,27 @@ export async function GET() {
   }
   // credits are per batch; convert item counts back to credits via items-per-batch
   for (const k of Object.keys(usage)) { const t = k as TaskType; usage[k].credits = Math.round((usage[k].count / (TASK_COUNT[t] ?? 1)) * (TASK_COST[t] ?? 1)); }
-  const images = tasks.filter((t) => t.image).length;
+  // Renders: the items with an image or a video this month, and what their renders really charged (`mediaCredits`, what
+  // src/lib/media/jobs.ts kept after refunds: an image is 1 or 2 by model, a video 12 or 24), as the owner reports and the
+  // founder overview count it. Rows from before mediaCredits existed fall back to the one image credit.
+  const month = tasks.filter((t) => new Date(t.createdAt) >= monthStart);
+  const images = month.filter((t) => t.image || t.video).length;
+  const mediaCredits = Math.round(month.reduce((sum, t) => sum + (t.mediaCredits ?? (t.image ? IMAGE_COST : 0)), 0));
   const now = new Date();
   const nextReset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
   const me = { name: a.name, email: a.email, lang: a.lang, role: a.role };
   const summary = { plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt, ...(u.renewedAt ? { renewedAt: u.renewedAt } : {}) };
   // The owner (or a founder acting as the owner) gets the account record as before, minus the hash and runtime fields.
-  const { passHash: _p, actor: _a, ...safe } = u; void _p; void _a;
-  const user = a.kind === "member" ? { ...me, ...summary } : { ...safe, role: a.role };
+  // An Agency deal is shown as its terms only: who set it in the founder console is not the customer's to see.
+  const { passHash: _p, actor: _a, deal: _d, ...safe } = u; void _p; void _a; void _d;
+  const deal = u.deal ? { deal: { credits: u.deal.credits, priceSar: u.deal.priceSar } } : {};
+  const user = a.kind === "member" ? { ...me, ...summary } : { ...safe, ...deal, role: a.role };
   // What this person may do with the password and account forms: a founder viewing the account has the owner role but
   // is refused both (IMPERSONATION_BLOCKED), so the role alone cannot tell the page which forms to offer.
   const may = { passwordChange: can(u, "password.change"), accountDelete: can(u, "account.delete") };
+  // `allowance`: the monthly credits the balance renews to (src/lib/pricing.ts), the plan's or an Agency account's deal.
   return NextResponse.json({
-    ok: true, me, role: a.role, may, impersonating: a.kind === "founder", user, usage, images, allowance: PLAN_CREDITS[u.plan], nextReset,
+    ok: true, me, role: a.role, may, impersonating: a.kind === "founder", user, usage, images, mediaCredits, allowance: allowanceOf(u), nextReset,
     ...(a.kind === "member" ? { account: { email: u.email, name: u.name } } : { emails: prefs?.emails ?? "all" }),
     brand: brand ? { name: brand.name, website: brand.website, sitemap: brand.sitemap ?? "", products: brand.products, audience: brand.audience, tone: brand.tone, valueProp: brand.valueProp ?? "", social: brand.social ?? {} } : null,
   });

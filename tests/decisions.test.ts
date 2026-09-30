@@ -29,7 +29,7 @@ const brand: Brand = { name: "مقهى الفنجان", website: "", industry: "
 const quality = (score: number, autofail?: string): Task["quality"] => ({ score, dims: { completeness: 80, brand: 80, honesty: 80, language: 80, format: 80 }, notes: "ready", model: "m", at: "2026-09-29T00:00:00.000Z", ...(autofail ? { autofail } : {}) });
 const task = (id: string, over: Partial<Task> = {}): Task => ({ id, type: "social", channel: "instagram", title: `title ${id}`, body: "قهوة اليوم من محمصتنا في الرياض مع حليب طازج", status: "pending", createdAt: new Date().toISOString(), lang: "ar", ...over });
 const patch = async (id: string, body: unknown) => { const res = await taskRoute.PATCH(json(`/api/tasks/${id}`, "PATCH", body), params({ id })); await settle(); return res; };
-const publish = (id: string) => publishRoute.POST(json(`/api/publish/${id}`, "POST", { provider: "telegram" }), params({ id }));
+const publish = (id: string, again = false) => publishRoute.POST(json(`/api/publish/${id}`, "POST", again ? { provider: "telegram", again: true } : { provider: "telegram" }), params({ id }));
 const withBrand = async (prefix: string) => { const u = await newUser(prefix); await db.set(`brand:${u.email}`, brand); await signIn(u.email); return u; };
 const rpc = (token: string, name: string, args: Record<string, unknown>) =>
   mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) }));
@@ -45,7 +45,7 @@ describe("decision records (rule 98)", () => {
 
     expect((await patch("a1", { status: "approved" })).status).toBe(200);
     expect(await listDecisions(u.email)).toEqual([
-      // Who decided comes from the session (rule 217): the owner here, with the account's email.
+      // Who decided comes from the session (rule 225): the owner here, with the account's email.
       { task: "a1", agent: "noor", type: "social", channel: "instagram", action: "approve", at: (await getTask(u.email, "a1"))!.decidedAt, title: "title a1", score: 88, by: { kind: "owner", email: u.email } },
     ]);
 
@@ -142,7 +142,9 @@ describe("decision records (rule 98)", () => {
     // Already approved by the owner: the approval was the decision, the publish is not another one.
     await patch("p2", { status: "approved" });
     expect((await publish("p2")).status).toBe(200);
-    expect((await publish("p1")).status).toBe(200);
+    // A second publish to the same platform needs the owner's "again" (rule 216), and is not a decision either.
+    expect((await publish("p1")).status).toBe(409);
+    expect((await publish("p1", true)).status).toBe(200);
     expect((await listDecisions(u.email)).map((d) => `${d.task}:${d.action}`)).toEqual(["p2:approve", "p1:publish"]);
   });
 });

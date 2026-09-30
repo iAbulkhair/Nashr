@@ -1,10 +1,13 @@
 import type { Lang } from "./i18n";
+import { ONBOARD_EXTRA_BRAND_COST, PLAN_PRICE_SAR as P } from "./pricing";
+import { TASK_COST } from "./tasks";
 
 /**
  * The public "Updates & wishlist" page (/{lang}/updates): what shipped, and what owners can vote on next.
  *
- * Import-free apart from types on purpose: client components read the labels and statuses from here, and anything this
- * file imported would be dragged into their bundles. The Redis side (votes, suggestions, promoted items, status
+ * Import-free apart from types, src/lib/pricing.ts and src/lib/tasks.ts (both import-free, so they drag nothing else
+ * along) on purpose: client components read the labels and statuses from here, and anything this file imported would be
+ * dragged into their bundles. The prices and task costs in the pricing entry come from those tables (rule 248). The Redis side (votes, suggestions, promoted items, status
  * overrides) lives in src/lib/wishlist.ts.
  *
  * Every changelog entry is a change merged into main (the PR or commit is named next to it) and is dated with the
@@ -31,6 +34,10 @@ export const CHANGELOG: readonly ChangeEntry[] = [
   { date: "2026-09-30", tag: "new", title: { ar: "ماجد يقود الفريق بتسليمات", en: "Majed leads the team with handoffs" }, desc: { ar: "حين يحتاج هدفك عمل وكيل آخر، يقترح ماجد في الدردشة تسليماً من بند إلى ثلاثة: لكل بند الوكيل الذي سيكتبه وطلب ماجد وتكلفته. لا يُنفَّذ شيء ولا يُخصم كريدت حتى تضغط «نفّذ» (إلا إن فعّلت تشغيل ماجد التلقائي في الحوكمة)، ولك أن ترفض أي بند. ما يُكتب يصل إلى صندوق الموافقة وعليه علامة «من تسليم ماجد».", en: "When your goal needs another agent's work, Majed proposes a handoff of one to three items in chat: each with the agent who will write it, his brief and its cost. Nothing runs and no credits are charged until you press Run (unless you turn on Majed's auto-run in Governance), and you can decline any item. The work lands in the approval inbox marked \"from Majed's handoff\"." } },
   // agent-team step 3b, part R
   { date: "2026-09-30", tag: "new", title: { ar: "الوكلاء يراجعون عمل بعضهم", en: "Agents review one another" }, desc: { ar: "رزان تراجع الأرقام في خطط النمو والعروض والمذكرات الاستراتيجية، وماجد يراجع الاستراتيجية في مراجعات التسعير وخطط الدخول للسوق. ملاحظات فقط تظهر على بطاقة العنصر، والعنصر الذي عليه ملاحظة ينتظر قرارك حتى مع الاعتماد التلقائي. بلا كريدت، ويمكن إيقافها من الحوكمة.", en: "Razan checks the numbers in growth plans, decks and strategy memos, and Majed checks the strategy in pricing reviews and go-to-market plans. Notes only, shown on the item's card, and an item with a note waits for your decision even under auto-approve. No credits; you can switch it off in Governance." } },
+  // Pricing phase 1 (docs/superpowers/plans/2026-09-29-pricing.md). Dated 2026-09-30; if #228 merges later, set the date
+  // to its merge date on main.
+  // #228
+  { date: "2026-09-30", tag: "new", title: { ar: "خطط وأسعار جديدة، وعلامات بلا حد", en: "New plans and prices, and unlimited brands" }, desc: { ar: `البداية ${P.starter} والاحتراف ${P.pro} والأعمال ${P.business} ريال شهرياً غير شاملة الضريبة، والوكالات بعقد. العلامات بلا حد في كل الخطط: إعداد علامتك الأولى مجاني، وإعداد كل علامة إضافية من رابطها ${ONBOARD_EXTRA_BRAND_COST} كريدت، وخطة الأحد تعمل تلقائياً لعلامتك الأولى وتفعّلها للعلامات المضافة من «المهام». وارتفعت كلفة ثلاث مهام: خطة الأسبوع ${TASK_COST.weekly_plan} كريدت، والتقرير الأسبوعي ${TASK_COST.weekly_report}، وسلسلة المتابعة ${TASK_COST.followup_seq}.`, en: `Starter ${P.starter}, Pro ${P.pro} and Business ${P.business} SAR a month, excluding VAT, and Agency by contract. Unlimited brands on every plan: your first brand's setup is free, setting up each added brand from its URL is ${ONBOARD_EXTRA_BRAND_COST} credits, and the Sunday plan runs on its own for your first brand while added brands switch it on in Tasks. Three tasks now cost more: the weekly plan ${TASK_COST.weekly_plan} credits, the weekly report ${TASK_COST.weekly_report} and the follow-up cadence ${TASK_COST.followup_seq}.` } },
   // agent-team step 3, part L
   { date: "2026-09-29", tag: "new", title: { ar: "سجل نشاط لكل وكيل", en: "An activity log for every agent" }, desc: { ar: "صفحة «النشاط» تعرض ما فعله كل وكيل في علامتك: الدفعات، وتقييم الحَكَم، والقرارات، والنشر، والصور والفيديو، والمهام الدورية، وتغييرات الحوكمة، مع من قام بها ومتى. صفِّ حسب الوكيل أو الحدث، ونزّل السجل ملف CSV.", en: "The Activity page shows what each agent did in your brand: batches, judging, decisions, publishing, images and videos, routines and governance changes, with who did it and when. Filter by agent or event, and download the log as a CSV file." } },
   // agent-team step 3, part H

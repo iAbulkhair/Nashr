@@ -1,6 +1,7 @@
 import type { User } from "./auth";
 import { getBrand, listLiteDays } from "./brand";
 import { once, sendEmail } from "./notify";
+import { PLAN_CREDITS, PLAN_PRICE_SAR, formatCount } from "./pricing";
 
 /**
  * Lifecycle emails (plain text, from the founder). Runs inside the daily cron.
@@ -22,8 +23,8 @@ function t(u: User, key: string, ctx: { firstTitle?: string; pending: number; ap
         : { subject: ctx.firstTitle ? `Noor wrote: “${ctx.firstTitle}”` : "Day one with Noor", body: `Hi ${u.name} 👋\n\n${ctx.firstTitle ? `Noor prepared “${ctx.firstTitle}” and it's in your inbox. Approve or edit it — every edit teaches her your voice.` : "Noor is ready. Ask her for a first batch in chat: “prepare 10 posts for the week”."}\n\nTip for today: tell her “import my products” in chat; after that she can write with your real product names and the prices your store showed.\n\n${app}${sig}` };
     case "day2":
       return ar
-        ? { subject: "تجربتك تنتهي غداً", body: `${u.name}، تجربتك تنتهي ${ctx.trialEnds}.\n\nحتى الآن: ${ctx.approved} عنصر معتمد، ${ctx.pending} بانتظارك.\n\nإذا نور وفّرت عليك ساعة هذا الأسبوع، خطة الاحتراف 399 ريال/شهر تعطيك 700 كريدت شهرياً وضبطاً تلقائياً للإعلانات (قريباً). الاشتراك من هنا: ${app}/billing\n\nوإذا فيه شيء ما عجبك، رد على هذا الإيميل وقل لي.${sig}` }
-        : { subject: "Your trial ends tomorrow", body: `${u.name}, your trial ends ${ctx.trialEnds}.\n\nSo far: ${ctx.approved} approved, ${ctx.pending} waiting.\n\nIf Noor saved you an hour this week, Pro at SAR 399/mo gives you 700 credits a month and auto ad optimization (coming soon). Subscribe: ${app}/billing\n\nIf something didn't work, reply and tell me.${sig}` };
+        ? { subject: "تجربتك تنتهي غداً", body: `${u.name}، تجربتك تنتهي ${ctx.trialEnds}.\n\nحتى الآن: ${ctx.approved} عنصر معتمد، ${ctx.pending} بانتظارك.\n\nإذا نور وفّرت عليك ساعة هذا الأسبوع، خطة الاحتراف ${PLAN_PRICE_SAR.pro} ريال/شهر تعطيك ${formatCount(PLAN_CREDITS.pro)} كريدت شهرياً وضبطاً تلقائياً للإعلانات (قريباً). الاشتراك من هنا: ${app}/billing\n\nوإذا فيه شيء ما عجبك، رد على هذا الإيميل وقل لي.${sig}` }
+        : { subject: "Your trial ends tomorrow", body: `${u.name}, your trial ends ${ctx.trialEnds}.\n\nSo far: ${ctx.approved} approved, ${ctx.pending} waiting.\n\nIf Noor saved you an hour this week, Pro at SAR ${PLAN_PRICE_SAR.pro}/mo gives you ${formatCount(PLAN_CREDITS.pro)} credits a month and auto ad optimization (coming soon). Subscribe: ${app}/billing\n\nIf something didn't work, reply and tell me.${sig}` };
     case "day3":
       return ar
         ? { subject: "آخر يوم في التجربة", body: `${u.name}، اليوم آخر يوم.\n\nنور كتبت لك ${ctx.approved + ctx.pending} عنصراً. لو تبي تكمل: ${app}/billing — أو راسلني على واتساب وأفعّل لك شهراً بخصم الشركاء الأوائل.${sig}` }

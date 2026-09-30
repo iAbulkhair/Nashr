@@ -125,6 +125,9 @@ export async function memoryBlock(email: string) {
       const content = files[i]?.content;
       if (!content) return "";
       if (content.length <= MEMORY_BUDGET) return `--- ${n} ---\n${content}`;
+      // preferences.md grows at the end (one dated line per owner edit or reason, cut from the front at 20,000
+      // characters), so its first 6,000 characters were the OLDEST notes and every agent stopped seeing the newest.
+      if (n === "preferences.md") return `--- ${n} (showing the newest ${MEMORY_BUDGET} of ${content.length} characters; use read_file for the older notes) ---\n${content.slice(-MEMORY_BUDGET)}`;
       // An imported catalog of 50 products is ~16,000 characters, so the budget hides most of it. Declaring the cut is
       // what lets the agent call read_file for the rest instead of writing as though those products do not exist.
       return `--- ${n} (showing the first ${MEMORY_BUDGET} of ${content.length} characters; use read_file for the rest) ---\n${content.slice(0, MEMORY_BUDGET)}`;

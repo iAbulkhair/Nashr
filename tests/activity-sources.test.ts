@@ -3,10 +3,14 @@ import { randomBytes } from "crypto";
 import { json, newUser, settle, signIn, signOut } from "./helpers/session";
 import { fakeAdapter, fakeDeps, mediaEnv, noNetwork, resetMediaCounters } from "./helpers/media";
 import { CAPS, db } from "@/lib/db";
-import { currentUser, getUser, type User } from "@/lib/auth";
+import { currentUser, getUser, saveUser, type User } from "@/lib/auth";
 import { saveGov } from "@/lib/governance";
 import { getBrand, saveTask, type Brand, type Task } from "@/lib/brand";
+import { scopeFor } from "@/lib/brands";
+import { chargeOnboard, ONBOARD_HOLD_MS } from "@/lib/credits";
 import { createMcpToken } from "@/lib/mcp";
+import { confirmOnboard, sweepOnboardHolds } from "@/lib/onboard-confirm";
+import { ONBOARD_EXTRA_BRAND_COST } from "@/lib/pricing";
 import { saveSchedule } from "@/lib/schedule";
 import { TASK_COST } from "@/lib/tasks";
 import { actSkipKey, listActivity, recordRun } from "@/lib/activity";
@@ -16,11 +20,21 @@ import type { MediaModelId } from "@/lib/media-catalog";
 import type { AdvanceOpts, MediaJob, StartInput, StartResult } from "@/lib/media/types";
 import type { SalesSnapshot } from "@/lib/connectors/sales";
 
+// Onboarding reads the confirmed site through `crawl`: no network here, and a site whose name says "fail" throws mid-run,
+// after the setup was charged.
+vi.mock("@/lib/crawl", () => ({
+  crawl: async (url: string) => {
+    if (url.includes("fail")) throw new Error("crawl down");
+    return { url: `https://${url}`, ok: true, title: "Roastery | Home", description: "Coffee", text: "", links: [], platform: "unknown", colors: [], fonts: [] };
+  },
+}));
+
 /**
- * Rules 224, 226 and 227: the activity rows of the paid and scheduled work. A batch is one `generated` row (and a
+ * Rules 232, 234 and 235: the activity rows of the paid and scheduled work. A batch is one `generated` row (and a
  * refusal at the charge one `cap_reached` or `no_credits` row) with the owning agent, who asked and where; the judge adds
  * one `judged` row and one `autofail` row per trigger; a routine or the Sunday plan adds its outcome once; a render adds
- * its start and its end under the scope and agent the server stored on the job.
+ * its start and its end under the scope and agent the server stored on the job; an added brand's setup adds its charge,
+ * a refusal to pay and a refund (the route's or the daily sweep's) in that brand.
  */
 const brand: Brand = { name: "مقهى الفنجان", website: "", industry: "مقاهي", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة مختصة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-09-29T00:00:00.000Z" };
 type Item = { channel: string; title: string; body: string };
@@ -80,7 +94,7 @@ afterEach(async () => {
   signOut();
 });
 
-describe("a batch is one row with the owning agent, who asked and where; the judge adds its own (rule 224)", () => {
+describe("a batch is one row with the owning agent, who asked and where; the judge adds its own (rule 232)", () => {
   it("the generate route: one `generated` row, then one `judged` row with the mean score and one `autofail` row per trigger", async () => {
     const m = await load({ verdicts: [clean, { ...clean, honesty: 30, autofail: "invented_fact", notes: "made up" }] });
     const u = await owner("as-gen");
@@ -142,10 +156,13 @@ describe("a batch is one row with the owning agent, who asked and where; the jud
 
     const v = await owner("as-chat");
     const member = { kind: "member" as const, email: "sara@team.example", role: "member" as const };
-    // Faris talking, not Majed: since step 3b Majed leads and proposes other agents' work instead (rule 245).
-    await m.chat.runTool(v, "draft_items", { type: "sales_script", count: 1, brief: "b" }, [], [], undefined, { agent: "faris", by: member });
-    // The batch's agent is the type's owner, not the talking agent; `by` is the turn's.
-    expect(await rows(v.email)).toEqual([expect.objectContaining({ kind: "generated", agent: "sami", by: member, via: "chat", count: 1 })]);
+    // A type draft_items refuses (rule 250: only DRAFT_TYPES) reaches no batch and writes no row.
+    expect(await m.chat.runTool(v, "draft_items", { type: "sales_script", count: 1, brief: "b" }, [], [], undefined, { agent: "faris", by: member })).toMatch(/^Not a draft type/);
+    expect(await rows(v.email)).toEqual([]);
+    // Faris talking, not Majed: since step 3b Majed leads and proposes other agents' work instead (rule 273).
+    await m.chat.runTool(v, "draft_items", { type: "whatsapp", count: 1, brief: "b" }, [], [], undefined, { agent: "faris", by: member });
+    // The batch's agent is the type's owner (Noor), not the talking agent (Faris); `by` is the turn's.
+    expect(await rows(v.email)).toEqual([expect.objectContaining({ kind: "generated", agent: "noor", by: member, via: "chat", type: "whatsapp", count: 1 })]);
   });
 
   it("a chat turn passes its agent and its login: the founder's support access talking to Sami is recorded as the founder, with Sami", async () => {
@@ -163,9 +180,95 @@ describe("a batch is one row with the owning agent, who asked and where; the jud
   });
 });
 
+describe("an added brand's setup is Noor's charge in that brand: its charge, a refusal and a refund are rows too (rule 232)", () => {
+  const COST = ONBOARD_EXTRA_BRAND_COST;
+  const drain = async (res: Response) => (await res.text()).split("\n\n").filter((l) => l.startsWith("data: ")).map((l) => JSON.parse(l.slice(6)) as { type: string; refunded?: number });
+
+  /** The onboarding route in the module graph `load` made (the model in mock mode), and an owner whose active brand was just added. */
+  async function added(prefix: string) {
+    const m = await load({ state: "mock" });
+    const [onboard, brands] = await Promise.all([import("@/app/api/onboard/route"), import("@/app/api/brands/route")]);
+    const u = await owner(prefix);
+    await signIn(u.email);
+    const res = await brands.POST(json("/api/brands", "POST", { action: "add", name: "Second" }));
+    const scope = scopeFor(u.email, ((await res.json()) as { brand: { id: string } }).brand.id);
+    /** A confirmed site (the start page's confirm, written as it writes it), then the build. */
+    const run = async (url: string) => {
+      await confirmOnboard(scope, url);
+      return onboard.POST(json("/api/onboard", "POST", { url }));
+    };
+    return { u, scope, run, db: m.db, by: { kind: "owner", email: u.email } };
+  }
+
+  it("a new charge is one `onboard_charged` row in the new brand with the credits; a failed build's refund one `onboard_refunded` row", async () => {
+    const { u, scope, run, by } = await added("as-onb");
+    expect((await drain(await run("second.example"))).at(-1)!.type).toBe("done");
+    await settle();
+    // What Governance counts against Noor in that brand is in its log too.
+    expect((await getUser(u.email))!.agentSpend?.by[scope]?.noor).toBe(COST);
+    expect(await rows(scope)).toEqual([expect.objectContaining({ kind: "onboard_charged", agent: "noor", by, via: "app", credits: COST })]);
+    expect(await rows(u.email), "nothing in the default brand").toEqual([]);
+
+    const v = await added("as-onb-fail");
+    expect((await drain(await v.run("fail.example"))).at(-1)).toMatchObject({ type: "error", refunded: COST });
+    const got = await rows(v.scope);
+    expect(got.map((r) => r.kind).sort()).toEqual(["onboard_charged", "onboard_refunded"]);
+    expect(got.find((r) => r.kind === "onboard_refunded")).toMatchObject({ agent: "noor", by: v.by, via: "app", credits: COST, refunded: true });
+
+    // A run that reuses the charge a killed run held adds no second charge row: the charge was taken once.
+    const w = await added("as-onb-reuse");
+    const held = await chargeOnboard(w.u.email, COST, { scope: w.scope, agent: "noor" });
+    expect(held).toMatchObject({ ok: true, reused: false });
+    expect((await drain(await w.run("killed.example"))).at(-1)!.type).toBe("done");
+    await settle();
+    expect(await rows(w.scope)).toEqual([]);
+  });
+
+  it("a refusal to pay is one `cap_reached` or `no_credits` row with what the setup would have cost, before the lock and at the ledger; an ended trial none", async () => {
+    const { u, scope, run, db: store, by } = await added("as-onb-cap");
+    // Before the lock: Noor's cap in the new brand.
+    await saveGov(scope, { agentCaps: { noor: COST - 1 } });
+    expect((await run("capped.example")).status).toBe(402);
+    expect(await rows(scope)).toEqual([expect.objectContaining({ kind: "cap_reached", agent: "noor", by, via: "app", credits: COST, outcome: `0/${COST - 1}` })]);
+    // At the ledger: the balance went to 0 after the early check read it (another brand spent it meanwhile).
+    await saveGov(scope, { agentCaps: { noor: COST } });
+    const lockOwned = store.lockOwned.bind(store);
+    vi.spyOn(store, "lockOwned").mockImplementationOnce(async (key, ttl) => {
+      await saveUser({ ...(await getUser(u.email))!, credits: 0 });
+      return lockOwned(key, ttl);
+    });
+    const res = await run("capped.example");
+    expect(res.status).toBe(402);
+    expect(await res.json()).toMatchObject({ error: "no_credits", need: COST, credits: 0 });
+    const got = await rows(scope);
+    expect(got).toHaveLength(2);
+    expect(got.find((r) => r.kind === "no_credits")).toMatchObject({ agent: "noor", by, via: "app", credits: COST });
+    // An ended trial is refused and adds nothing, as for a text batch.
+    await saveUser({ ...(await getUser(u.email))!, credits: 50, trialEnds: new Date(Date.now() - 864e5).toISOString() });
+    expect(await (await run("capped.example")).json()).toMatchObject({ error: "trial_over" });
+    expect(await rows(scope)).toHaveLength(2);
+    expect((await getUser(u.email))!.agentSpend?.by[scope]?.noor ?? 0, "nothing charged").toBe(0);
+  });
+
+  it("the daily sweep's refund is one `onboard_refunded` row by the cron in that brand; a hold it only drops adds none", async () => {
+    const u = await owner("as-onb-sweep");
+    const [lost, built] = [scopeFor(u.email, "b2"), scopeFor(u.email, "b3")];
+    // Two runs the platform killed after their charge, a day ago; the second brand was saved, the first never was.
+    const a = await chargeOnboard(u.email, COST, { scope: lost, agent: "noor" });
+    const b = await chargeOnboard(u.email, COST, { scope: built, agent: "noor" });
+    if (!a.ok || !b.ok) throw new Error("charge failed");
+    const old = new Date(Date.now() - ONBOARD_HOLD_MS - 60e3).toISOString();
+    await Promise.all([saveUser({ ...(await getUser(u.email))!, onboardPaid: { [lost]: { ...a.hold, at: old }, [built]: { ...b.hold, at: old } } }), db.set(`brand:${built}`, brand)]);
+    const swept = await sweepOnboardHolds((await getUser(u.email))!);
+    expect(swept).toMatchObject({ refunded: [{ scope: lost, agent: "noor", credits: COST }], dropped: [built], credits: 50 - COST });
+    expect(await rows(lost)).toEqual([expect.objectContaining({ kind: "onboard_refunded", agent: "noor", by: { kind: "system", job: "cron" }, via: "cron", credits: COST, refunded: true })]);
+    expect(await rows(built), "its charge stands: nothing to record").toEqual([]);
+  });
+});
+
 const snap = (): SalesSnapshot => ({ provider: "salla", at: new Date().toISOString(), days: 30, orders: { count: 4, read: 4, canceled: 0, revenue: { SAR: 900 }, top: [{ name: "عود", qty: 2 }] }, carts: { count: 0, read: 0, value: {}, top: [] }, unread: 0 });
 
-describe("a scheduled run adds its outcome once; nothing-new at most once a period (rule 226)", () => {
+describe("a scheduled run adds its outcome once; nothing-new at most once a period (rule 234)", () => {
   it("a routine that ran: `generated` by the routine and `routine_ran`; at the agent's cap: only `routine_skipped`, no second refusal row", async () => {
     const m = await load({ state: "on" });
     const u = await owner("as-rt");
@@ -233,7 +336,7 @@ describe("a scheduled run adds its outcome once; nothing-new at most once a peri
   });
 });
 
-describe("a render is recorded at its start and its end, under the job's own scope and agent (rule 227)", () => {
+describe("a render is recorded at its start and its end, under the job's own scope and agent (rule 235)", () => {
   const net = noNetwork();
   beforeAll(() => { vi.resetModules(); });
   afterAll(() => net.restore());
