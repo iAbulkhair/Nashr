@@ -1,25 +1,15 @@
-import { charge, refund } from "@/lib/credits";
-import { statsFor } from "@/lib/stats";
-import { judgeLater } from "@/lib/judge";
-import type { Grounding } from "@/lib/json";
 import { NextResponse } from "next/server";
-import { randomBytes } from "crypto";
 import { MCP_TOOL_ACTION, userFromBearer } from "@/lib/mcp";
-import { trialOver } from "@/lib/auth";
 import { DRAFTS_PER_HOUR, chatAllowed } from "@/lib/rate";
 import { DRAFT_LIMITS, draftReport, parseDraft, saveExternalDraft } from "@/lib/external-drafts";
 import { chat } from "@/lib/chat";
-import { briefOf, getBrand, listPreferencesFor, listTasks, saveTask, type Task } from "@/lib/brand";
-import { feedbackFor } from "@/lib/feedback";
-import { agentById, agentForTask } from "@/lib/agents";
-import { warnAgentCap } from "@/lib/notifications";
+import { getBrand, listTasks } from "@/lib/brand";
+import { agentById } from "@/lib/agents";
 import { TASK_COST, isTaskType } from "@/lib/tasks";
-import { generate } from "@/lib/noor";
-import { listFiles, memoryBlock, readFile } from "@/lib/files";
-import { getGov } from "@/lib/governance";
-import { missingData } from "@/lib/cart-recovery";
-import { CUSTOMER_FACING, brandRules, explain, gateTask, initialStatus, isCustomerFacing } from "@/lib/brand-rules";
-import { modelState } from "@/lib/model";
+import { generateBatch } from "@/lib/generate-batch";
+import { listFiles, readFile } from "@/lib/files";
+import { CUSTOMER_FACING, brandRules, explain, gateTask, isCustomerFacing } from "@/lib/brand-rules";
+import { tokenBy } from "@/lib/actor";
 import { SEC_TOOL_DEFS, isSecTool, runSecretaryTool } from "@/lib/secretary";
 import { can } from "@/lib/roles";
 
@@ -84,49 +74,30 @@ export async function POST(req: Request) {
       case "ask_noor": {
         // Same ceiling as the web chat: a bearer token must not be a cheaper way to spend the same models.
         if (!(await chatAllowed(user.email))) return ok(id, { ...text("Too many messages in a short time. Wait a few minutes and try again."), isError: true });
-        // As "mcp": the words come from another assistant, so publishing and core-memory writes are refused in runTool,
-        // and a change to the offers or a banned-word removal waits for the owner's Save in the app.
-        const m = await chat(user, String(args.message ?? ""), undefined, "noor", { via: "mcp" });
+        // A connected app is talking: its activity rows say so (`tokenBy`), not "owner". As "mcp": the words come from
+        // another assistant, so publishing and core-memory writes are refused in runTool, and a change to the offers or a
+        // banned-word removal waits for the owner's Save in the app.
+        const m = await chat(user, String(args.message ?? ""), undefined, "noor", { by: tokenBy(user), via: "mcp" });
         return ok(id, text(m.content + (m.actions?.length ? `\n\n[actions: ${m.actions.join(", ")}]` : "")));
       }
       case "generate_content": {
         if (!isTaskType(args.type)) return ok(id, { ...text("Unknown type."), isError: true });
-        if (modelState() === "paused") return ok(id, { ...text("Content generation is paused for now. No credits were used."), isError: true });
         const type = args.type;
-        const scope = user.scope ?? user.email, notes = String(args.notes ?? "");
-        // Governance before the charge: the owner's monthly cap for this agent is checked inside the ledger's lock.
-        const [brand, gov] = await Promise.all([getBrand(scope), getGov(scope)]);
-        if (!brand) return ok(id, { ...text("No brand file yet. Run onboarding in the app first."), isError: true });
-        if (trialOver(user)) return ok(id, { ...text("The trial has ended. Subscribe in the app to keep generating."), isError: true });
-        if (await missingData(type, scope)) return ok(id, { ...text("No abandoned-cart data yet: connect Salla or Shopify and sync sales from Reports in the app first. No credits were used."), isError: true });
-        const cost = TASK_COST[type];
-        const agent = agentForTask(type).id;
-        const paid = await charge(user.email, cost, { scope, agent, cap: gov.agentCaps[agent] });
+        const r = await generateBatch(user, user.scope ?? user.email, { type, notes: String(args.notes ?? ""), source: "chat", via: "mcp", by: tokenBy(user) });
         // A tool error, like insufficient credits: a JSON-RPC client reads the result, not an HTTP status.
-        if (!paid.ok && paid.reason === "agent_cap") return ok(id, { ...text(`${agentById(agent).name.en} reached the monthly credit cap the owner set in Governance (${paid.spent} of ${paid.cap} credits this month). No credits were used. The owner can raise the cap on the Governance page or wait for next month.`), isError: true });
-        if (!paid.ok) return ok(id, { ...text(`Insufficient credits: need ${cost}, have ${paid.credits}.`), isError: true });
-        user.credits = paid.credits;
-        await warnAgentCap(user, paid);
-        let items;
-        // Read inside the try: the credits are already charged, and a failed read must reach the refund below.
-        let ground: Grounding = { notes };
-        try {
-          const [prefs, memory, stats, feedback] = await Promise.all([listPreferencesFor(scope, agent), memoryBlock(scope), statsFor(type, scope), feedbackFor(scope, agent, { gov })]);
-          ground = { notes, memory, stats };
-          items = await generate(type, brand, prefs, notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats, feedback });
-        } catch (e) {
-          user.credits = await refund(user.email, cost, paid);
-          throw e;
+        if (!r.ok) {
+          switch (r.reason) {
+            case "paused": return ok(id, { ...text("Content generation is paused for now. No credits were used."), isError: true });
+            case "no_brand": return ok(id, { ...text("No brand file yet. Run onboarding in the app first."), isError: true });
+            case "trial_over": return ok(id, { ...text("The trial has ended. Subscribe in the app to keep generating."), isError: true });
+            case "missing_data": return ok(id, { ...text("No abandoned-cart data yet: connect Salla or Shopify and sync sales from Reports in the app first. No credits were used."), isError: true });
+            case "agent_cap": return ok(id, { ...text(`${agentById(r.agent).name.en} reached the monthly credit cap the owner set in Governance (${r.spent} of ${r.cap} credits this month). No credits were used. The owner can raise the cap on the Governance page or wait for next month.`), isError: true });
+            case "no_credits": return ok(id, { ...text(`Insufficient credits: need ${r.need}, have ${r.credits}.`), isError: true });
+            // Refunded already; answered as a tool error by the catch below.
+            case "failed": throw r.error;
+          }
         }
-        const brief = briefOf(notes);
-        const created: Task[] = [];
-        for (const it of items) {
-          const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[type], brand, { type, channel: it.channel, title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat", ...(brief ? { brief } : {}) };
-          await saveTask((user.scope ?? user.email), t, true);
-          created.push(t);
-        }
-        judgeLater(scope, user.email, brand, created, undefined, ground);
-        return ok(id, text(`Created ${items.length} ${type} item(s). Credits left: ${user.credits}.\n\n` + items.map((i) => `## ${i.title} (${i.channel})\n${i.body}`).join("\n\n")));
+        return ok(id, text(`Created ${r.tasks.length} ${type} item(s). Credits left: ${user.credits}.\n\n` + r.tasks.map((i) => `## ${i.title} (${i.channel})\n${i.body}`).join("\n\n")));
       }
       case "list_inbox": {
         const status = String(args.status ?? "pending");

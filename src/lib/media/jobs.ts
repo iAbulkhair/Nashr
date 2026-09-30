@@ -26,6 +26,7 @@ import {
   type ImageModelId, type MediaFailure, type MediaKind, type MediaModelId, type MediaProviderId, type VideoModelId,
 } from "../media-catalog";
 import { JOB_ID, JOB_TTL_S, PROVIDER_TASK_ID, abortAfter, budget, mk, parseOpenMember } from "./keys";
+import { recordActivity, type Activity, type ActivityVia } from "../activity";
 import { COST_USD, EXPECTED_KIE_CREDITS, KIE_USD_PER_CREDIT, type OffMap } from "./config";
 import {
   ProviderError, StoreError,
@@ -119,11 +120,18 @@ export async function startMedia(input: StartInput, deps: MediaDeps): Promise<St
   if (!isMediaModelId(input.model)) return { ok: false, status: 400, error: "bad_model" };
   const m = mediaModel(input.model);
   const { scope, email, taskId } = input;
+  // The activity log's view of this render: who started it, from where, for which agent (the server's, never the request's).
+  const row = { agent: input.agent, by: input.by ?? { kind: "owner" as const, email }, via: input.from ?? "app", tasks: [taskId], credits: m.credits, media: m.kind };
+  /** A refusal at the cap or the balance is a row too; nothing was charged (`credits` is what it would have cost). */
+  const refused = async (kind: "cap_reached" | "no_credits", r: StartResult, outcome?: string): Promise<StartResult> => {
+    await recordActivity(scope, [{ ...row, at: iso(now()), kind, ...(outcome ? { outcome } : {}) }]);
+    return r;
+  };
   // 1-2. Refusals that cost nothing and move no counter. The agent's monthly cap before the balance, as the ledger checks them.
   if (m.provider !== "fal" && !deps.blobReady()) return { ok: false, status: 409, error: "model_unavailable" };
   const cap = capOf(input.cap), spent = input.spent ?? 0;
-  if (cap !== undefined && spent + m.credits > cap) return { ok: false, status: 402, error: "agent_cap", agent: input.agent, spent, cap };
-  if (input.balance < m.credits) return { ok: false, status: 402, error: "no_credits", need: m.credits, have: input.balance };
+  if (cap !== undefined && spent + m.credits > cap) return refused("cap_reached", { ok: false, status: 402, error: "agent_cap", agent: input.agent, spent, cap }, `${spent}/${cap}`);
+  if (input.balance < m.credits) return refused("no_credits", { ok: false, status: 402, error: "no_credits", need: m.credits, have: input.balance });
   // 3. One render per task and kind.
   const flight = mk.flight(scope, taskId, m.kind);
   if (!(await db.lock(flight, FLIGHT_TTL_S[m.kind]))) return inProgress(scope, taskId, m.kind);
@@ -156,8 +164,8 @@ export async function startMedia(input: StartInput, deps: MediaDeps): Promise<St
       console.error("media charge failed", codeOf(e));
       return { ok: false, status: 429, error: "busy" };
     }
-    if (!paid.ok && paid.reason === "agent_cap") return { ok: false, status: 402, error: "agent_cap", agent: paid.agent, spent: paid.spent, cap: paid.cap };
-    if (!paid.ok) return { ok: false, status: 402, error: "no_credits", need: m.credits, have: paid.credits };
+    if (!paid.ok && paid.reason === "agent_cap") return refused("cap_reached", { ok: false, status: 402, error: "agent_cap", agent: paid.agent, spent: paid.spent, cap: paid.cap }, `${paid.spent}/${paid.cap}`);
+    if (!paid.ok) return refused("no_credits", { ok: false, status: 402, error: "no_credits", need: m.credits, have: paid.credits });
     credits = paid.credits;
     spend = paid;
 
@@ -201,8 +209,13 @@ export async function startMedia(input: StartInput, deps: MediaDeps): Promise<St
   // 11. A fresh id, so always won. Held until this request returns: polls and sweeps leave the job to it meanwhile.
   await db.lock(mk.jobLock(job.id), JOB_LOCK_S);
   try {
-    // The one 80% warning of the agent's cap goes out beside the render, never in its way: warnAgentCap never throws.
-    const [r] = await Promise.all([submitLocked(job, task, credits, input, deps), warnAgentCap({ email, lang: input.lang }, spend)]);
+    // The one 80% warning of the agent's cap goes out beside the render, never in its way: warnAgentCap never throws, and
+    // neither does the activity row of the charge (for the agent the charge counted against).
+    const [r] = await Promise.all([
+      submitLocked(job, task, credits, input, deps),
+      warnAgentCap({ email, lang: input.lang }, spend),
+      recordActivity(scope, [{ ...row, at: job.createdAt, kind: "image_started", agent: spend.agent }]),
+    ]);
     return r;
   } finally {
     await db.unlock(mk.jobLock(job.id)).catch(() => {});
@@ -461,17 +474,18 @@ async function finalizeLocked(job: MediaJob, urls: string[], providerCredits: nu
   }
   const at = iso(now());
   const done: MediaJob = { ...cur, state: "done", url, costUsd, ...credited, resultUrls: undefined, finishedAt: at, updatedAt: at };
-  // One account check for the analytics and the notice: a render that finishes after its account was deleted rebuilds
-  // none of the per-account records wipeAccount removed, and tells nobody (spec A32).
-  const own = cur.kind === "image" || unattended(ctx) ? sameAccount(cur) : null;
+  // One account check for the analytics, the notice and the activity row: a render that finishes after its account was
+  // deleted rebuilds none of the per-account records wipeAccount removed, and tells nobody (spec A32).
+  const own = sameAccount(cur);
   await Promise.all([
     saveJob(done),
     quiet(db.srem(mk.open(cur.provider), mk.openMember(cur.scope, cur.id)), "media open-set remove failed"),
     quiet(releaseFlight(done, now()), "media flight release failed"),
     recordOutcome(done, ctx),
-    own && cur.kind === "image" ? quiet(own.then((ok) => (ok ? track(cur.email, "image") : undefined)), "media track failed") : null,
+    cur.kind === "image" ? quiet(own.then((ok) => (ok ? track(cur.email, "image") : undefined)), "media track failed") : null,
     overbilled ? quiet(setOff(cur.model, "overbilled", BREAKER.offMs), "media breaker failed") : null,
-    own && unattended(ctx) ? quiet(notifyOwner(done, task, own), "media notice failed") : null,
+    unattended(ctx) ? quiet(notifyOwner(done, task, own), "media notice failed") : null,
+    quiet(own.then((ok) => (ok ? recordActivity(cur.scope, [terminalRow(done, task, ctx)]) : undefined)), "media activity failed"),
   ]);
   return { job: done, task };
 }
@@ -548,8 +562,23 @@ async function failLocked(job: MediaJob, reason: MediaFailure, deps: MediaDeps, 
     recordOutcome(failed, ctx),
     cur.trialVideo && refunded ? quiet(db.del(mk.trialVideo(cur.email)), "media trial release failed") : null,
     unattended(ctx) && refunded ? quiet(notifyOwner(failed, task), "media notice failed") : null,
+    quiet(sameAccount(cur).then((ok) => (ok ? recordActivity(cur.scope, [terminalRow(failed, task, ctx)]) : undefined)), "media activity failed"),
   ]);
   return { job: failed, task, credits };
+}
+
+/**
+ * A job's end in the activity log: under the scope and agent the server stored on the job, never a request's. The
+ * engine ended it (a poll, a webhook or the sweep), so the row is the system's; the sweep is the cron.
+ */
+function terminalRow(j: MediaJob, task: Task | null | undefined, ctx: AdvanceOpts): Activity {
+  const via: ActivityVia = ctx.via === "sweep" ? "cron" : "media";
+  return {
+    at: j.finishedAt ?? j.updatedAt, kind: j.state === "done" ? "render_done" : "render_failed", by: { kind: "system" }, via,
+    ...(j.spend?.agent ? { agent: j.spend.agent } : {}), ...(task ? { type: task.type } : {}),
+    tasks: [j.taskId], credits: j.credits, media: j.kind,
+    ...(j.state === "failed" ? { outcome: j.error, refunded: !!j.refunded } : {}),
+  };
 }
 
 /** The flight lock DEL is unconditional (docs/system/flows.md), so a job older than the lock must not free a newer job's hold. */

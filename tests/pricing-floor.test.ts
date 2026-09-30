@@ -7,6 +7,7 @@ import { ASSUME, ESTIMATE_MODELS, ITEM_SIZE, draftCredits, estimateBatch, estima
 import { DRAFT_TYPES, TASK_COST, TASK_COUNT, TASK_TYPES, type TaskType } from "@/lib/tasks";
 import { hasRate } from "@/lib/usage";
 import { ROUTINES } from "@/lib/routines";
+import { countCost } from "@/lib/generate-batch";
 import { MEDIA_MODELS } from "@/lib/media-catalog";
 import { COST_USD } from "@/lib/media/config";
 
@@ -147,8 +148,12 @@ describe("chat drafts (rules 241, 250)", () => {
   it("drafts are charged by the chat's formula: the batch price pro rata, at least 1", () => {
     expect([...DRAFT_TYPES]).toEqual(["social", "whatsapp", "ads", "gbp"]);
     for (const t of DRAFT_TYPES) expect([1, 2, 3].map((n) => draftCredits(t, n)), t).toEqual([1, 2, 3]);
-    // The estimate uses the same formula as the chat's draft_items charge (src/lib/chat.ts).
-    expect(src().replace(/\s+/g, "")).toContain("Math.max(1,Math.ceil((TASK_COST[type]/(TASK_COUNT[type]||1))*count))");
+    // The estimate uses the same formula as the chat's draft_items charge: the tool passes `count` to generateBatch
+    // (src/lib/chat.ts), which charges `countCost` (src/lib/generate-batch.ts).
+    for (const t of TASK_TYPES) expect([1, 2, 3].map((n) => countCost(t, n)), t).toEqual([1, 2, 3].map((n) => draftCredits(t, n)));
+    expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain("Math.max(1,Math.ceil((TASK_COST[type]/(TASK_COUNT[type]||1))*count))");
+    expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain("constcost=opts.count?countCost(type,opts.count):TASK_COST[type];");
+    expect(src("src/lib/chat.ts").replace(/\s+/g, "")).toContain('generateBatch(user,email,{type,notes:String(input.brief??""),count,');
   });
 
   it("only the named exemption is over the ceiling: one-item drafts, at no more than today's estimate", () => {
@@ -161,8 +166,8 @@ describe("chat drafts (rules 241, 250)", () => {
     expect(over.map((e) => e.type), "the exemption is real today: remove it once it is no longer needed").toEqual([...DRAFT_TYPES]);
   });
 
-  function src() {
-    return readFileSync("src/lib/chat.ts", "utf8");
+  function src(path: string) {
+    return readFileSync(path, "utf8");
   }
 });
 
