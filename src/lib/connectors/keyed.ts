@@ -58,9 +58,13 @@ export async function verifyTelegram(d: Record<string, string>) {
   }
 }
 export async function postTelegram(c: Connection, text: string): Promise<{ id: string; url: string }> {
-  const r = await fetch(`https://api.telegram.org/bot${c.data.botToken}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: c.data.chatId, text: text.slice(0, 4000) }) });
-  const j = (await r.json()) as { ok: boolean; result?: { message_id: number; chat: { username?: string; id: number } }; description?: string };
-  if (!j.ok || !j.result) throw new Error(j.description ?? "telegram failed");
+  // Bounded inside the publish route's 60 s: a timeout is reported as "result unknown" (publish-once.ts), never a kill.
+  const r = await fetch(`https://api.telegram.org/bot${c.data.botToken}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: c.data.chatId, text: text.slice(0, 4000) }), signal: AbortSignal.timeout(45_000) });
+  // The status goes into the error so a publish can tell a refusal (4xx: the post was not made) from a server error or
+  // an unreadable answer (it may have been), src/lib/publish-once.ts.
+  const j = (await r.json().catch(() => null)) as { ok: boolean; error_code?: number; result?: { message_id: number; chat: { username?: string; id: number } }; description?: string } | null;
+  if (!j) throw new Error(`telegram ${r.status}: unreadable answer`);
+  if (!j.ok || !j.result) throw new Error(`telegram ${j.error_code ?? r.status}: ${j.description ?? "failed"}`);
   const u = j.result.chat.username;
   return { id: String(j.result.message_id), url: u ? `https://t.me/${u}/${j.result.message_id}` : `https://t.me/c/${String(j.result.chat.id).replace(/^-100/, "")}/${j.result.message_id}` };
 }

@@ -102,6 +102,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // Admin and owner (some handlers also serve a member-level action, listed with it, or member-level names such as
   // non-core files, which need no action of their own).
   "PUT /api/brand": g("admin", "brand.write"),
+  "POST /api/brand/proposals/[id]": g("admin", "brand.write"),
   "POST /api/brands": g("admin", "brands.manage", "brands.switch"),
   "POST /api/catalog": g("admin", "catalog.import"),
   "POST /api/connect/[provider]": g("admin", "connectors", "catalog.import", "read"),
