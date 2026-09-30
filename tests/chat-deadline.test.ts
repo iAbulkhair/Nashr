@@ -35,8 +35,8 @@ import { saveBrand, saveTask, type Brand, type Task } from "@/lib/brand";
 import { CHAT_MAX_DURATION_S, CHAT_RENDER_MIN_MS, chat, runTool } from "@/lib/chat";
 import { renderImage } from "@/lib/media/start";
 import { deadlineFor } from "@/lib/media/keys";
-import type { User } from "@/lib/auth";
-import { newUser } from "./helpers/session";
+import { currentUser, type User } from "@/lib/auth";
+import { newUser, signIn } from "./helpers/session";
 import * as chatRoute from "@/app/api/chat/route";
 import * as mcpRoute from "@/app/api/mcp/route";
 
@@ -46,7 +46,9 @@ async function ownerWithTask(): Promise<{ u: User; t: Task }> {
   await saveBrand(u.email, brand);
   const t: Task = { id: `cd${Date.now()}`, type: "social", channel: "instagram", title: "Weekend offer", body: "Two for one.", status: "pending", createdAt: new Date().toISOString(), lang: "ar" };
   await saveTask(u.email, t, true);
-  return { u, t };
+  // The owner signed in: the user a request resolves to carries its actor (`currentUser`), which says who asked.
+  await signIn(u.email);
+  return { u: (await currentUser())!, t };
 }
 const usage = { input_tokens: 1, output_tokens: 1 };
 
@@ -68,7 +70,8 @@ describe("generate_image works to the chat request's own deadline", () => {
     const deadline = Date.now() + 200_000;
     await runTool(u, "generate_image", { task_id: t.id }, [], [], deadline);
     expect(vi.mocked(renderImage)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(renderImage).mock.calls[0][4]).toEqual({ deadline });
+    // With who asked and from where, for the render's activity rows (rule 232).
+    expect(vi.mocked(renderImage).mock.calls[0][4]).toEqual({ deadline, by: { kind: "owner", email: u.email }, from: "chat" });
   });
 
   it("with less than a minute left nothing is started or charged", async () => {
@@ -103,7 +106,7 @@ describe("generate_image works to the chat request's own deadline", () => {
     ];
     const deadline = deadlineFor(CHAT_MAX_DURATION_S, t0);
     await chat(u, "draw it", undefined, "noor", { lang: "en", deadline });
-    expect(vi.mocked(renderImage).mock.calls[0][4]).toEqual({ deadline });
+    expect(vi.mocked(renderImage).mock.calls[0][4]).toEqual({ deadline, by: { kind: "owner", email: u.email }, from: "chat" });
   });
 
   it("the ceiling chat() assumes is the one both routes that call it declare", () => {

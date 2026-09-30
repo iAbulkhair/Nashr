@@ -7,7 +7,7 @@ import { join } from "node:path";
  * shows the default brand while the API next to it writes to the active one. The founder console is the exception: it
  * looks at accounts from outside.
  */
-const READERS = ["getBrand", "saveBrand", "listFiles", "readFile", "writeFile", "getGov", "saveGov", "getSchedule", "saveSchedule", "listConnections", "getConnection", "saveConnection", "listTasks", "listLite", "listLiteDays", "getTask", "saveTask", "history", "kpis", "scopeMetrics", "listConversations", "latestBrief", "pendingCount", "memoryBlock", "listPreferences", "listPreferencesFor", "feedbackFor", "listDecisions", "routineLastRuns", "agendaFor", "todoPage", "listOpenItems", "listDone", "listDeleted", "getItem", "changeItem", "purgeExpired"];
+const READERS = ["getBrand", "saveBrand", "listFiles", "readFile", "writeFile", "getGov", "saveGov", "getSchedule", "saveSchedule", "listConnections", "getConnection", "saveConnection", "listTasks", "listLite", "listLiteDays", "getTask", "saveTask", "history", "kpis", "scopeMetrics", "listConversations", "latestBrief", "pendingCount", "memoryBlock", "listPreferences", "listPreferencesFor", "feedbackFor", "listDecisions", "routineLastRuns", "agendaFor", "todoPage", "listOpenItems", "listDone", "listDeleted", "getItem", "changeItem", "purgeExpired", "listGovHistory", "saveGovAs", "rollbackGov", "listActivity", "recordActivity", "getHandoff", "getHandoffs", "createHandoff", "handoffView", "handoffViews", "declineHandoff", "markShown", "handoffKeys", "recentHandoffs", "autoQueue", "liveConversations"];
 const walk = (dir: string): string[] => readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? walk(p) : /\.(ts|tsx)$/.test(f) ? [p] : []; });
 
 const customerFiles = () => walk("src/app").filter((p) => !p.includes("/api/admin/") && !p.includes("/api/cron/"));
@@ -33,5 +33,31 @@ describe("workspace readers take the active scope", () => {
     const re = new RegExp(`\\b(${READERS.join("|")})\\(${WHO}`);
     for (const line of ["getBrand(u.actor!.email)", "listTasks(u.actor?.email)", "readFile(actor.email, n)", "getGov(member.email)", "saveBrand(owner.email, b)", "listFiles(m.email)"]) expect(re.test(line), line).toBe(true);
     for (const line of ["getBrand(sc(u))", "listTasks(scope)", "getGov(sc(owner))"]) expect(re.test(line), line).toBe(false);
+  });
+
+  /**
+   * The handoff runners take the User first (it is charged) and the scope second, so the first-argument check above can
+   * never see them. Every call must pass the active scope there: `sc(u)` or a `scope` taken from it.
+   */
+  it("the handoff runners get the active scope as their second argument, never the account email", () => {
+    const re = /\b(runHandoffItem|runItemLocked)\(\s*\w+\s*,\s*(u|user)\.email\b/;
+    const scoped = /\b(runHandoffItem|runItemLocked)\(\s*\w+\s*,\s*(scope|sc\(\w+\))\s*,/;
+    const uses = walk("src").flatMap((p) => readFileSync(p, "utf8").split("\n").map((line, i) => (/\b(runHandoffItem|runItemLocked)\(/.test(line) && !/function (runHandoffItem|runItemLocked)/.test(line) ? { at: `${p}:${i + 1}`, line } : null)).filter((x) => x !== null));
+    expect(uses.length, "the scan finds the run route and the owner's and the auto-run's runs").toBeGreaterThanOrEqual(3);
+    expect(uses.filter((x) => re.test(x.line)).map((x) => x.at)).toEqual([]);
+    expect(uses.filter((x) => !scoped.test(x.line)).map((x) => x.at)).toEqual([]);
+    for (const line of ["runHandoffItem(u, u.email, id, item, { by })", "runItemLocked(user, user.email, h, n, o)"]) expect(re.test(line) && !scoped.test(line), line).toBe(true);
+    for (const line of ["runHandoffItem(u, scope, id, item, { by })", "runItemLocked(user, scope, h, n, o)", "runHandoffItem(u, sc(u), id, n, o)"]) expect(scoped.test(line), line).toBe(true);
+    // The run route takes the scope from the session, and the auto-run from the cron's user, never from a request.
+    expect(readFileSync("src/app/api/handoffs/[id]/run/route.ts", "utf8")).toMatch(/const scope = sc\(u\);\s*\n\s*const r = await runHandoffItem\(u, scope,/);
+    expect(readFileSync("src/lib/handoff-auto.ts", "utf8")).toMatch(/const scope = user\.scope \?\? user\.email;\s*\n\s*return \(await withRunLock\(scope, id, \(\) => runLocked\(user, scope,/);
+  });
+
+  it("the generation pipeline gets the active scope as its second argument, never the account email", () => {
+    // `generateBatch(user, scope, opts)` charges the account (`user.email`) and writes the batch under `scope`.
+    const re = /\bgenerateBatch\(\s*\w+\s*,\s*(u|user)\.email\b/;
+    const uses = walk("src").flatMap((p) => readFileSync(p, "utf8").split("\n").map((line, i) => (/\bgenerateBatch\(/.test(line) && !line.includes("function generateBatch") ? { at: `${p}:${i + 1}`, line } : null)).filter((x) => x !== null));
+    expect(uses.length, "the scan finds the callers").toBeGreaterThanOrEqual(6);
+    expect(uses.filter((x) => re.test(x.line)).map((x) => x.at)).toEqual([]);
   });
 });

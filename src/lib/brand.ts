@@ -54,8 +54,16 @@ export type Task = {
   status: "pending" | "approved" | "rejected";
   createdAt: string;
   lang: "ar" | "en";
-  /** `external`: written by the owner's own assistant and saved through MCP `save_draft` (src/lib/external-drafts.ts). */
-  source?: "manual" | "chat" | "scheduled" | "external";
+  /**
+   * `external`: written by the owner's own assistant and saved through MCP `save_draft` (src/lib/external-drafts.ts).
+   * `handoff`: an item of Majed's handoff, run by a login pressing Run on its card (src/lib/handoffs.ts); see `parent`.
+   */
+  source?: "manual" | "chat" | "scheduled" | "external" | "handoff";
+  /**
+   * The handoff item this task was made for (`source: "handoff"`): the handoff's id, the item's position in it (0-based)
+   * and the conversation it was proposed in. Set in code by the run (`runHandoffItem`), never from a request or the model.
+   */
+  parent?: TaskParent;
   scheduledFor?: string; // YYYY-MM-DD, set by owner in inbox/calendar
   imageUrl?: string;
   imagePrompt?: string;
@@ -95,9 +103,46 @@ export type Task = {
   adCode?: string;
   /** What the agent was asked for this batch: the owner's notes or brief, first 500 characters (`briefOf`). */
   brief?: string;
+  /**
+   * Which prompts made this item (src/lib/prompt-stamp.ts): 12-hex hashes of the owning agent's playbook, review.md, the
+   * industry playbook (`id:hash`) and the prompts written in code; "none" for a playbook that did not load. Set on every
+   * generated batch (`taskFromItem`); absent on older tasks and on MCP `save_draft` drafts, which no Nashr prompt wrote.
+   */
+  pb?: { skills: string; review: string; industry?: string; code: string };
   /** Automated judge score (src/lib/judge.ts). `autofail` is the judge's automatic-fail code, when one was set. */
   quality?: { score: number; dims: { completeness: number; brand: number; honesty: number; language: number; format: number }; notes: string; model: string; at: string; autofail?: string };
+  /**
+   * Another agent's second opinion on this item, one verdict per reviewing agent (`crossReview` in noor.ts; Razan checks
+   * the arithmetic of growth, deck and strategy work, Majed the strategy of pricing and GTM work). Notes only: the item's
+   * text is never changed by it. A "flag" holds the item pending even when its type is auto-approved. Absent on types
+   * nobody cross-reviews, when the owner switched it off, when the review failed, and on MCP `save_draft` drafts.
+   */
+  crossReview?: CrossVerdict[];
 };
+
+/**
+ * Where a handoff item's task came from: `Task.parent`. `auto` marks a task Majed's auto-run made (the cron started the
+ * item, not a login pressing Run; src/lib/handoff-auto.ts). Set in code by the run, never from a request or the model.
+ */
+export type TaskParent = { handoff: string; item: number; conv?: string; auto?: true };
+
+/**
+ * Work the product made on its own, with no login asking for it at that moment: the Sunday plan and the routines
+ * (`source: "scheduled"`), and the items Majed's auto-run made from a handoff (`parent.auto`). The one test for it: the
+ * weekly cap (`Governance.weeklyCap`) counts these in the routines' `holdBatch`, the auto-run and `runWeekly`, and
+ * Dana's routine does not take them as the owner's own activity.
+ *
+ * `external` (MCP `save_draft`) is NOT autonomous: the owner's own assistant wrote it at the owner's request, through a
+ * token the owner created; it costs nothing and always waits for the owner. Counting it would let the owner's own tool
+ * use up the cap and silently stop the Sunday plan, the routines and the auto-run, which are what the cap bounds.
+ * A handoff item a login ran from its card is not autonomous either: a person pressed Run.
+ */
+export const isAutonomous = (t: Pick<Task, "source" | "parent">): boolean => t.source === "scheduled" || (t.source === "handoff" && t.parent?.auto === true);
+
+/** One reviewing agent's verdict on one item: "ok", or "flag" with up to 300 characters of notes in the item's language. */
+export type CrossVerdict = { by: AgentId; verdict: "ok" | "flag"; notes: string; at: string; model: string };
+/** Whether any reviewing agent flagged the item. */
+export const crossFlagged = (t: Pick<Task, "crossReview">): boolean => !!t.crossReview?.some((v) => v.verdict === "flag");
 
 /** The notes or brief of one batch as each of its tasks keeps it: first 500 characters, or nothing when there were none. */
 export const briefOf = (notes: unknown): string | undefined => (typeof notes === "string" && notes.trim() ? notes.trim().slice(0, 500) : undefined);
@@ -157,7 +202,7 @@ export async function listTasks(email: string): Promise<Task[]> {
  * Redis hash per workspace per creation month (`tidx:{scope}:{YYYY-MM}`), so a page costs one command per month it looks
  * at instead of one per task, and nothing falls off after the 200 newest tasks.
  */
-export type TaskLite = Pick<Task, "id" | "type" | "channel" | "title" | "status" | "createdAt" | "lang" | "source" | "scheduledFor" | "decidedAt"> & {
+export type TaskLite = Pick<Task, "id" | "type" | "channel" | "title" | "status" | "createdAt" | "lang" | "source" | "scheduledFor" | "decidedAt" | "parent"> & {
   /** First 200 characters of the current text (edited text when the owner edited it). */
   preview: string;
   edited: boolean;
@@ -177,11 +222,15 @@ export type TaskLite = Pick<Task, "id" | "type" | "channel" | "title" | "status"
   notes?: string;
   /** The judge's automatic-fail code, when it set one (the notes then start with "[code]"). */
   autofail?: string;
+  /** Another agent flagged it in the cross-agent review (`Task.crossReview`). Absent, so false, when none did. */
+  xflag?: boolean;
 };
 export function liteOf(t: Task): TaskLite {
   const edited = !!t.editedBody && t.editedBody !== t.body;
   return {
     id: t.id, type: t.type, channel: t.channel, title: t.title, status: t.status, createdAt: t.createdAt, lang: t.lang, source: t.source, scheduledFor: t.scheduledFor, decidedAt: t.decidedAt,
+    // The handoff item a task was made for, so the lists can say so without loading the task.
+    ...(t.parent ? { parent: t.parent } : {}),
     preview: (t.editedBody ?? t.body ?? "").slice(0, 200),
     edited,
     editPct: edited ? editPctOf(t.body, t.editedBody!) : undefined,
@@ -198,6 +247,8 @@ export function liteOf(t: Task): TaskLite {
     score: t.quality?.score,
     notes: t.quality?.notes?.slice(0, 200),
     autofail: t.quality?.autofail,
+    // Built here, so saveTask, updateTask and rebuildIndex all keep it: every path that writes a row goes through liteOf.
+    xflag: crossFlagged(t) || undefined,
   };
 }
 const monthOf = (iso: string) => (/^\d{4}-\d{2}/.test(iso) ? iso.slice(0, 7) : "0000-00");

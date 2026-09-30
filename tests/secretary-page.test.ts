@@ -152,7 +152,7 @@ describe("the My to-dos page renders complete on the server (rule 204)", () => {
 describe("the governance page offers a monthly cap only where it applies (rule 202)", () => {
   it("lists every agent that owns a paid type and leaves Reem out", async () => {
     const t = appDict.en;
-    const html = await new Response(await renderToReadableStream(createElement(GovernancePanel, { t, initial: DEFAULT_GOV, spend: {} }))).text();
+    const html = await new Response(await renderToReadableStream(createElement(GovernancePanel, { t, lang: "en", initial: DEFAULT_GOV, spend: {}, history: [], historyCap: 100 }))).text();
     for (const id of ["noor", "sami", "razan", "faris", "dana", "majed", "layan"] as const) expect(html, id).toContain(t.governance.capFor.replace("{name}", t.agents[id].name));
     expect(html).not.toContain(t.governance.capFor.replace("{name}", t.agents.reem.name));
   });

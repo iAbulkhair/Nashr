@@ -2,6 +2,8 @@ import { db } from "./db";
 import type { User } from "./auth";
 import { getBrand } from "./brand";
 import { ONBOARD_HOLD_MS, resolveOnboardHolds } from "./credits";
+import { recordActivity } from "./activity";
+import { systemBy } from "./actor";
 
 /**
  * Which site a workspace is built from is the owner's choice, made on the start page and checked here in code.
@@ -33,10 +35,18 @@ export const clearOnboard = (scope: string) => db.del(key(scope));
  */
 export const heldOnboard = (u: Pick<User, "onboardPaid">, scope: string) => u.onboardPaid?.[scope] ?? null;
 
-/** The daily sweep of one account's stale holds: reads the brand of each stale scope side by side, then resolves them in one save. */
+/**
+ * The daily sweep of one account's stale holds: reads the brand of each stale scope side by side, then resolves them in
+ * one save. Each refund is one `onboard_refunded` row in that brand's activity log, by the cron, with the credits the
+ * ledger gave back (rule 232): the setup's charge was a row there, so its refund is too. A dropped hold adds none (its
+ * charge stands).
+ */
 export async function sweepOnboardHolds(u: Pick<User, "email" | "onboardPaid">, now = Date.now()) {
   const stale = Object.entries(u.onboardPaid ?? {}).filter(([, h]) => !(now - new Date(h.at).getTime() < ONBOARD_HOLD_MS)).map(([scope]) => scope);
   if (!stale.length) return null;
   const brands = await Promise.all(stale.map((scope) => getBrand(scope)));
-  return resolveOnboardHolds(u.email, Object.fromEntries(stale.map((scope, i) => [scope, !!brands[i]])), now);
+  const done = await resolveOnboardHolds(u.email, Object.fromEntries(stale.map((scope, i) => [scope, !!brands[i]])), now);
+  const at = new Date().toISOString();
+  await Promise.all(done.refunded.map((r) => recordActivity(r.scope, [{ at, kind: "onboard_refunded", agent: r.agent, by: systemBy("cron"), via: "cron", credits: r.credits, refunded: true }])));
+  return done;
 }

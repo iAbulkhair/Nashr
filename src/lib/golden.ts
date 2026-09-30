@@ -9,11 +9,14 @@ import { notifyItem } from "./notifications";
 import { getUsage } from "./usage";
 import { CUSTOMER_FACING, brandRules, checkText } from "./brand-rules";
 import { modelState } from "./model";
+import { promptHashes, promptStamp, type PromptStamp } from "./prompt-stamp";
 
 /**
  * Weekly golden set. A fixed list of cases (fictional brand + task type + owner
  * notes) runs through the real pipeline (generate → reviewer → judge) so agent
  * quality is comparable week over week, independent of what real users asked.
+ * The cross-agent review (noor.ts) is left out on purpose (`crossReview: false`):
+ * it only adds notes, never changes an item, and would cost a call per reviewer.
  * Every case also gets deterministic checks that do not depend on the judge.
  * Bump GOLDEN_VERSION when cases or brands change: deltas only compare runs of
  * the same version.
@@ -82,6 +85,8 @@ export type GoldenResult = {
    * the run it was copied from was exactly 0 — so weeks-old results read as measured today and perfectly stable.
    */
   carried?: string;
+  /** Which prompts produced this row (src/lib/prompt-stamp.ts). A carried row keeps the stamp of the run that measured it. */
+  pb?: PromptStamp;
 };
 export type GoldenRun = {
   id: string; version: number; trigger: "cron" | "manual"; startedAt: string; finishedAt: string;
@@ -90,8 +95,19 @@ export type GoldenRun = {
    * `checksRun` sits beside `failedChecks` because 0 failures means nothing without it: an agent whose cases all
    * errored or were skipped ran no checks and showed a green tick, identical to one whose every check passed.
    */
-  agents: { agent: AgentId; cases: number; score: number | null; delta: number | null; checksRun: number; failedChecks: number }[];
+  /**
+   * `promptChanged`: whether the prompts behind the agent's cases measured in this run differ from those behind the same
+   * cases in the previous run, compared by each case's stamp (see `promptChangeOf`); null when there is nothing to compare.
+   */
+  agents: { agent: AgentId; cases: number; score: number | null; delta: number | null; checksRun: number; failedChecks: number; promptChanged: boolean | null }[];
   results: GoldenResult[]; regressions: string[];
+  /**
+   * The prompt versions this run started with (`promptHashes`): every agent playbook and review.md by file name, and
+   * `code:<type>` for each case type. A resumed run keeps its first attempt's. A record for the console only: carried
+   * rows and a resumed run's earlier rows were made with other prompts, so `promptChanged` compares each case's `pb`.
+   * Absent on runs before 2026-09-29. GOLDEN_VERSION still decides which runs compare.
+   */
+  playbooks?: Record<string, string>;
 };
 
 const AR = /[\u0600-\u06FF]/g, LAT = /[A-Za-z]/g;
@@ -145,11 +161,13 @@ const trim = (i: Generated) => ({ ...i, body: i.body.length > 3000 ? `${i.body.s
 async function runCase(c: GoldenCase): Promise<GoldenResult> {
   const t0 = Date.now();
   const brand = GOLDEN_BRANDS[c.brand];
-  const head = { id: c.id, agent: agentForTask(c.type).id, type: c.type, brand: brand.name, delta: null };
+  const head = { id: c.id, agent: agentForTask(c.type).id, type: c.type, brand: brand.name, delta: null, pb: promptStamp(c.type, brand) };
   let items: Generated[] = [];
   let stage = "generate";
   try {
-    items = await generate(c.type, brand, [], c.extra, { meter: GOLDEN_EMAIL, stats: c.stats, count: c.count });
+    // No cross-agent review: it costs a model call per reviewer, writes notes only, and the golden set measures the
+    // agents' own output with the reviewer and the judge. The prompts it measures are the same either way.
+    items = await generate(c.type, brand, [], c.extra, { meter: GOLDEN_EMAIL, stats: c.stats, count: c.count, crossReview: false });
     stage = "judge";
     const verdicts = await scoreItems(GOLDEN_EMAIL, brand, c.type, items, c.count, { notes: c.extra, stats: c.stats });
     // An unjudged item is left out of the mean rather than counted as 0, and the gap is written into the notes so a
@@ -171,6 +189,24 @@ export async function listGoldenRuns(limit = 12): Promise<GoldenRun[]> {
   return runs.filter((r): r is GoldenRun => !!r);
 }
 
+/**
+ * Whether the prompts behind an agent's cases changed since the previous run: for each case measured in this run, its
+ * stamp (`pb`: the playbook, review.md, the code prompts of its type and its brand's industry playbook) against the stamp
+ * of the same case in the previous run. Row by row, never the runs' `playbooks`: a run's rows are not all made with the
+ * prompts it started with. A single-agent rerun carries the other agents' rows forward from an older run, so the
+ * previous run can hold rows made with older prompts than its own; a resumed run keeps the rows its first attempt
+ * measured. Each row's stamp moved with it, so the comparison is exact. Only rows measured in this run count (a carried
+ * row was not). null when there is nothing to compare: no measured row has a stamped row in the previous run (runs
+ * before 2026-09-29), or every row of the agent was carried.
+ */
+function promptChangeOf(mine: GoldenResult[], prev: GoldenRun | undefined): boolean | null {
+  const was = new Map((prev?.results ?? []).flatMap((r) => (r.pb ? [[r.id, r.pb] as const] : [])));
+  const pairs = mine.flatMap((r) => (!r.carried && r.pb && was.has(r.id) ? [[r.pb, was.get(r.id)!] as const] : []));
+  if (!pairs.length) return null;
+  // The industry part is left out of a brand-less stamp, so it is compared only when both rows have one.
+  return pairs.some(([now, then]) => now.skills !== then.skills || now.review !== then.review || now.code !== then.code || (!!now.industry && !!then.industry && now.industry !== then.industry));
+}
+
 /** Exported for tests: it decides what counts as a regression, and that decision is what the founder is alerted on. */
 export function summarize(run: GoldenRun, prev: GoldenRun | undefined) {
   const before = new Map((prev?.results ?? []).filter((r) => r.score !== null).map((r) => [r.id, r.score!]));
@@ -185,18 +221,22 @@ export function summarize(run: GoldenRun, prev: GoldenRun | undefined) {
     const both = mine.filter((r) => !r.carried && r.score !== null && before.has(r.id));
     compared.set(a.id, both.length);
     const delta = both.length ? Math.round(((mean(both.map((r) => r.score!)) ?? 0) - (mean(both.map((r) => before.get(r.id)!)) ?? 0)) * 10) / 10 : null;
-    return { agent: a.id, cases: mine.length, score, delta, checksRun: mine.reduce((s, r) => s + r.checks.length, 0), failedChecks: mine.reduce((s, r) => s + r.checks.filter((c) => !c.pass).length, 0) };
+    return { agent: a.id, cases: mine.length, score, delta, checksRun: mine.reduce((s, r) => s + r.checks.length, 0), failedChecks: mine.reduce((s, r) => s + r.checks.filter((c) => !c.pass).length, 0), promptChanged: promptChangeOf(mine, prev) };
   }).filter((a) => a.cases > 0);
+  // A drop that came with a prompt change says so, so the founder looks at the prompt first. Carried rows are not tagged.
+  const changed = new Set(run.agents.filter((a) => a.promptChanged === true).map((a) => a.agent));
+  const tag = (agent: AgentId, carried?: string) => (!carried && changed.has(agent) ? " (prompt changed)" : "");
   const reg: string[] = [];
   // An agent-level regression needs at least two compared cases. With one, the agent delta IS that case's delta, and
   // the per-case rule below already judges it at CASE_DROP. Using the lower AGENT_DROP bar for it turned a single case
   // moving 6-9 points — which the case rule deliberately ignores — into a founder alert naming the whole agent.
-  for (const a of run.agents) if (a.delta !== null && (compared.get(a.agent) ?? 0) >= 2 && a.delta <= -AGENT_DROP) reg.push(`${a.agent}: ${a.delta} vs previous run`);
+  for (const a of run.agents) if (a.delta !== null && (compared.get(a.agent) ?? 0) >= 2 && a.delta <= -AGENT_DROP) reg.push(`${a.agent}: ${a.delta} vs previous run${tag(a.agent)}`);
   for (const r of run.results) {
-    if (!r.ok) reg.push(`${r.id}: error ${r.error}`);
-    else if (r.score !== null && r.score < LOW) reg.push(`${r.id}: score ${r.score}`);
-    else if (r.delta !== null && r.delta <= -CASE_DROP) reg.push(`${r.id}: ${r.delta} vs previous run`);
-    for (const c of r.checks) if (!c.pass) reg.push(`${r.id}: check "${c.name}" failed${c.detail ? ` (${c.detail})` : ""}`);
+    const t = tag(r.agent, r.carried);
+    if (!r.ok) reg.push(`${r.id}: error ${r.error}${t}`);
+    else if (r.score !== null && r.score < LOW) reg.push(`${r.id}: score ${r.score}${t}`);
+    else if (r.delta !== null && r.delta <= -CASE_DROP) reg.push(`${r.id}: ${r.delta} vs previous run${t}`);
+    for (const c of r.checks) if (!c.pass) reg.push(`${r.id}: check "${c.name}" failed${c.detail ? ` (${c.detail})` : ""}${t}`);
   }
   run.regressions = reg;
 }
@@ -211,6 +251,8 @@ export async function runGolden(trigger: "cron" | "manual", opts: { agent?: Agen
   if (!(await db.lock("golden:lock", 300))) return null;
   try {
     const t0 = Date.now();
+    // The prompt versions this run starts with, kept on the run for the console (`summarize` compares each case's stamp).
+    const playbooks = promptHashes(GOLDEN_CASES.map((c) => c.type));
     const history = await listGoldenRuns(6);
     const last = history[0];
     const resuming = !!(opts.resume && last && last.version === GOLDEN_VERSION && last.status === "partial");
@@ -226,7 +268,7 @@ export async function runGolden(trigger: "cron" | "manual", opts: { agent?: Agen
       while (next < queue.length) {
         const c = queue[next++];
         if (Date.now() - t0 > START_BUDGET_MS) {
-          results.push({ id: c.id, agent: agentForTask(c.type).id, type: c.type, brand: GOLDEN_BRANDS[c.brand].name, ok: false, error: "skipped_time_budget", score: null, dims: null, notes: [], checks: [], items: [], ms: 0, delta: null });
+          results.push({ id: c.id, agent: agentForTask(c.type).id, type: c.type, brand: GOLDEN_BRANDS[c.brand].name, ok: false, error: "skipped_time_budget", score: null, dims: null, notes: [], checks: [], items: [], ms: 0, delta: null, pb: promptStamp(c.type, GOLDEN_BRANDS[c.brand]) });
           continue;
         }
         results.push(await runCase(c));
@@ -240,7 +282,8 @@ export async function runGolden(trigger: "cron" | "manual", opts: { agent?: Agen
       version: GOLDEN_VERSION, trigger: resuming ? last.trigger : trigger, startedAt: resuming ? last.startedAt : new Date(t0).toISOString(), finishedAt: new Date().toISOString(),
       status: merged.every((r) => r.ok) && merged.length === GOLDEN_CASES.length ? "complete" : "partial", overall: null,
       usd: Math.round(((resuming ? last.usd : 0) + (await getUsage(GOLDEN_EMAIL)).usd - usdBefore) * 100) / 100,
-      agents: [], results: merged, regressions: [],
+      // A resumed run started with its first attempt's prompts; today's may differ (a deploy in between).
+      agents: [], results: merged, regressions: [], playbooks: resuming ? last.playbooks : playbooks,
     };
     // Compare with the latest earlier run of the same version.
     summarize(run, history.find((h) => h.id !== run.id && h.version === GOLDEN_VERSION));

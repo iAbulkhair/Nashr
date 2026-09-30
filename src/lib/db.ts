@@ -47,6 +47,11 @@ type Store = {
    * it, so of two overlapping writers exactly one wins (a "seen" marker claimed, not read then written).
    */
   setNx(key: string, value: unknown, ttlSeconds: number): Promise<boolean>;
+  /**
+   * SET key value XX EX ttl: overwrites the value only while the key exists, in one command. True when it wrote. A writer
+   * that read a record before someone deleted it cannot bring the record back (a handoff pushed off its capped index).
+   */
+  setXx(key: string, value: unknown, ttlSeconds: number): Promise<boolean>;
   unlock(key: string): Promise<void>;
   /**
    * SET NX with TTL and an owner token: the token when this caller won the lock, null when someone holds it. Release it
@@ -157,6 +162,9 @@ function upstash(): Store | null {
     },
     async setNx(key, value, ttl) {
       return (await r.set(key, value, { nx: true, ex: ttl })) === "OK";
+    },
+    async setXx(key, value, ttl) {
+      return (await r.set(key, value, { xx: true, ex: ttl })) === "OK";
     },
     async unlock(key) {
       await r.del(key);
@@ -312,6 +320,14 @@ function memory(): Store {
       exp.set(key, Date.now() + ttl * 1000);
       return true;
     },
+    async setXx(key, value, ttl) {
+      // Check and write with no await between them, as with Redis.
+      live(key);
+      if (!m.kv.has(key)) return false;
+      m.kv.set(key, copy(value));
+      exp.set(key, Date.now() + ttl * 1000);
+      return true;
+    },
     async unlock(key) {
       m.kv.delete(key);
       owners.delete(key);
@@ -343,4 +359,4 @@ export async function pushCapped(key: string, value: string, cap: number) {
   await Promise.all([db.lpush(key, value), db.ltrim(key, cap)]);
 }
 /** Caps for the lists above. Reads never look past these, so trimming loses nothing a page shows. */
-export const CAPS = { chat: 400, adminLog: 2000, tickets: 2000, feedback: 500, prefs: 100, decisions: 500, wishSuggestions: 500, secDone: 200, secAudit: 500 } as const;
+export const CAPS = { chat: 400, adminLog: 2000, tickets: 2000, feedback: 500, prefs: 100, decisions: 500, wishSuggestions: 500, govHistory: 100, activity: 2000, secDone: 200, secAudit: 500, handoffs: 200 } as const;

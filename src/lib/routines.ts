@@ -1,25 +1,21 @@
-import { randomBytes } from "crypto";
 import { db } from "./db";
 import { trialOver, type User } from "./auth";
-import { charge, monthKey, refund } from "./credits";
-import { judgeLater } from "./judge";
-import { TASK_COST, TASK_COUNT, getBrand, listLite, listPreferencesFor, saveTask, type Brand, type Task, type TaskLite, type TaskType } from "./brand";
-import { feedbackFor } from "./feedback";
-import { generate } from "./noor";
+import { monthKey } from "./credits";
+import { TASK_COUNT, getBrand, isAutonomous, listLite, type Brand, type TaskLite, type TaskType } from "./brand";
+import { BATCH_RUN_MIN_MS, generateBatch } from "./generate-batch";
 import { modelState } from "./model";
-import { memoryBlock } from "./files";
 import { getGov } from "./governance";
-import { statsFor } from "./stats";
-import { initialStatus } from "./brand-rules";
 import { getSchedule, weekStartUtc } from "./schedule";
 import { listDecisions } from "./decisions";
 import { getSalesSnapshot } from "./store-sales";
 import { missingData } from "./cart-recovery";
 import { AD_PROVIDERS } from "./connectors/ads";
 import { agentById, type AgentId } from "./agents";
-import { notifyItem, warnAgentCap } from "./notifications";
+import { notifyItem } from "./notifications";
 import { pmap } from "./parallel";
 import { appDict } from "./app-i18n";
+import { actSkipKey, recordRun } from "./activity";
+import { systemBy } from "./actor";
 
 /**
  * Routines: recurring work for agents other than Noor's Sunday plan, each OFF until the owner turns it on for a brand.
@@ -46,12 +42,12 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const newer =(iso: string | null | undefined, from: number) => !!iso && Date.parse(iso) >= from;
 
 /**
- * Dana: something happened in the last 7 days. Items the weekly plan or a routine created on their own do not count,
- * or the routines would keep each other busy for an owner who is away; a decision on one does.
+ * Dana: something happened in the last 7 days. Items the weekly plan, a routine or Majed's auto-run created on their
+ * own (`isAutonomous`) do not count, or the team would keep itself busy for an owner who is away; a decision on one does.
  */
 async function activity(c: GateCtx) {
   const from = c.now - 7 * DAY;
-  if (c.lite.some((l) => (l.source !== "scheduled" && newer(l.createdAt, from)) || newer(l.decidedAt, from))) return null;
+  if (c.lite.some((l) => (!isAutonomous(l) && newer(l.createdAt, from)) || newer(l.decidedAt, from))) return null;
   const [decided, snap, ads] = await Promise.all([listDecisions(c.scope, 1), getSalesSnapshot(c.scope), Promise.all(AD_PROVIDERS.map((p) => db.get<string>(`adsync:${c.scope}:${p}`)))]);
   return newer(decided[0]?.at, from) || newer(snap?.at, from) || ads.some((a) => newer(a, from)) ? null : "idle";
 }
@@ -99,6 +95,13 @@ const lockKey = (scope: string, id: RoutineId) => `routinelock:${scope}:${id}`;
 const capLockKey = (scope: string) => `routinecap:${scope}`;
 /** A batch that passed the weekly-cap check and is not saved yet, counted by the brand's other routines. */
 const holdKey = (scope: string, id: RoutineId) => `routinehold:${scope}:${id}`;
+/**
+ * The same hold for Majed's auto-run (src/lib/handoff-auto.ts), which draws on the same weekly cap and runs in the same
+ * cron as the routines. Its own key, deleted by `wipeAccount`.
+ */
+export const autoHoldKey = (scope: string) => `handoffhold:${scope}`;
+/** Every hold a brand can have: one per routine, and the auto-run's. */
+const holdKeys = (scope: string) => [...ROUTINE_IDS.map((id) => holdKey(scope, id)), autoHoldKey(scope)];
 /** Charges of one routine in one period that were neither refunded nor refused (see `routineFor`). */
 const tryKey = (scope: string, id: RoutineId, period: string) => `routinetry:${scope}:${id}:${period}`;
 /** The notification fingerprint of a run, one per routine and period. */
@@ -112,16 +115,22 @@ const MAX_UNSETTLED = 2;
 export const periodOf = (cadence: Cadence, now: Date = new Date()) => (cadence === "weekly" ? weekStartUtc(now) : monthKey(now));
 export const ranThisPeriod = (cadence: Cadence, last: string | null | undefined, now: Date = new Date()) =>
   !!last && last.slice(0, cadence === "weekly" ? 10 : 7) >= periodOf(cadence, now);
-/** This period and the one before: records of the previous one live on for up to `periodDays`. */
-function recentPeriods(cadence: Cadence, now = new Date()) {
-  const before = cadence === "weekly" ? new Date(now.getTime() - 7 * DAY) : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-  return [periodOf(cadence, now), periodOf(cadence, before)];
+/** This period and the `back` before it (one by default): records of an earlier period live on for up to `periodDays`. */
+function recentPeriods(cadence: Cadence, now = new Date(), back = 1) {
+  return Array.from({ length: back + 1 }, (_, i) => periodOf(cadence, cadence === "weekly" ? new Date(now.getTime() - 7 * i * DAY) : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1))));
 }
 /** Every key the routines keep for one brand scope, for `wipeAccount`. */
 export const routineKeys = (scope: string) => [
   capLockKey(scope),
   ...ROUTINES.flatMap((r) => [lastKey(scope, r.id), lockKey(scope, r.id), holdKey(scope, r.id), ...recentPeriods(r.cadence).map((p) => tryKey(scope, r.id, p))]),
 ];
+/**
+ * The "nothing new" markers of the activity log (`recordRun`) that can still be alive for one brand scope, for
+ * `wipeAccount`. A marker lives `periodDays` from the first idle day of its period, so one set on a period's last day
+ * outlives the next period: 35 days from 31 August is 5 October. Three periods cover it (the month or week after next
+ * starts later than any marker of the first can live).
+ */
+export const routineSkipKeys = (scope: string) => ROUTINES.flatMap((r) => recentPeriods(r.cadence, new Date(), 2).map((p) => actSkipKey(scope, r.id, p)));
 /** The run notifications' fingerprints that can still be alive for one brand scope, for `wipeAccount`. */
 export const routineFingerprints = (scope: string) => ROUTINES.flatMap((r) => recentPeriods(r.cadence).map((p) => runFingerprint(scope, r.id, p)));
 
@@ -152,12 +161,17 @@ const routineNote = (r: Routine) =>
   `This is an automatic ${r.cadence} routine the owner turned on in Scheduled tasks; nobody wrote notes for this batch. Build it only on the data blocks and memory files given.`;
 
 /**
- * One routine for one brand scope. Only "retry:paused" and "retry:locked" start with "retry": they leave the cron's
- * day open. Every other outcome, "idle", "no_data" and "attempts_exhausted" included, is final for the day and charges
- * nothing unless it is "ok:N". Missed days catch up by themselves: the daily cron asks again, and the period check here
- * decides.
+ * One routine for one brand scope. Only "retry:paused", "retry:locked" and "retry:late" start with "retry": they leave
+ * the cron's day open. Every other outcome, "idle", "no_data" and "attempts_exhausted" included, is final for the day and
+ * charges nothing unless it is "ok:N". Missed days catch up by themselves: the daily cron asks again, and the period
+ * check here decides.
+ *
+ * `deadline` is when the cron's invocation ends. With less than BATCH_RUN_MIN_MS of it left the routine answers
+ * "retry:late" before the weekly-cap hold, the attempt counter and the charge: a batch the platform kills after the
+ * charge keeps it and saves nothing, and "retry:late" hands the routine to the chain's next hop (src/lib/cron-batch.ts).
+ * The same deadline bounds the batch's cross-agent review.
  */
-export async function runRoutine(user: User, id: RoutineId): Promise<string> {
+export async function runRoutine(user: User, id: RoutineId, deadline?: number): Promise<string> {
   const r = ROUTINES.find((x) => x.id === id);
   if (!r) return "unknown_routine";
   const scope = user.scope ?? user.email;
@@ -170,22 +184,32 @@ export async function runRoutine(user: User, id: RoutineId): Promise<string> {
   if (state === "paused") return "retry:paused";
   if (state === "mock") return "skip:mock";
   if (!(await db.lock(lockKey(scope, id), 300))) return "retry:locked";
+  // What happened, for the activity log; a throw is "error" (the charge was refunded first, see routineFor).
+  let outcome = "error";
   try {
-    return await routineFor(user, scope, brand, r);
+    outcome = await routineFor(user, scope, brand, r, deadline);
+    return outcome;
   } finally {
     // The hold goes only after the batch is saved: until then the brand's other routines count it, and after it the items.
-    await Promise.all([db.del(holdKey(scope, id)), db.unlock(lockKey(scope, id))]);
+    await Promise.all([
+      db.del(holdKey(scope, id)),
+      db.unlock(lockKey(scope, id)),
+      recordRun(scope, { id, agent: r.agent, type: r.type, via: "routine", by: systemBy("routine"), period: periodOf(r.cadence), ttlS: periodDays(r.cadence) * 86400 }, outcome),
+    ]);
   }
 }
 
 /**
- * The weekly cap counts everything created on its own in 7 days, plus this whole batch, plus the batches the brand's
- * other routines are making right now. The cron runs a brand's routines side by side and each saves its items only
- * after a generation of 30-120 s, so a count of saved items alone let two of them pass on the same number. The check
- * and the hold are made one routine at a time under a short lock per brand; holds are read before the items, and a run
- * drops its hold only after its items are saved, so every batch is counted in one of the two.
+ * The weekly cap counts everything created on its own in 7 days (`isAutonomous`: the Sunday plan, the routines and
+ * Majed's auto-run), plus this whole batch, plus the batches the brand's other routines or the auto-run are making
+ * right now. The cron runs a brand's routines and its auto-run side by side and each saves its items only after a
+ * generation of 30-120 s, so a count of saved items alone let two of them pass on the same number. The check and the
+ * hold are made one batch at a time under a short lock per brand; holds are read before the items, and a run drops its
+ * hold only after its items are saved, so every batch is counted in one of the two.
+ *
+ * `hold` is the key this batch holds its place with (a routine's `routinehold:`, or `autoHoldKey`), `count` its items.
  */
-async function holdBatch(scope: string, r: Routine, cap: number): Promise<null | "cap_reached" | "retry:locked"> {
+export async function holdBatch(scope: string, hold: string, count: number, cap: number): Promise<null | "cap_reached" | "retry:locked"> {
   const key = capLockKey(scope);
   let got = false;
   for (let i = 0; i < 40 && !got; i++) {
@@ -194,19 +218,19 @@ async function holdBatch(scope: string, r: Routine, cap: number): Promise<null |
   }
   if (!got) return "retry:locked";
   try {
-    const holds = await Promise.all(ROUTINE_IDS.filter((id) => id !== r.id).map((id) => db.get<number>(holdKey(scope, id))));
+    const holds = await Promise.all(holdKeys(scope).filter((k) => k !== hold).map((k) => db.get<number>(k)));
     const now = Date.now();
     const lite = await listLite(scope, new Date(now - 7 * DAY));
-    const auto = lite.filter((t) => t.source === "scheduled" && newer(t.createdAt, now - 7 * DAY)).length + holds.reduce<number>((n, h) => n + (Number(h) || 0), 0);
-    if (auto + TASK_COUNT[r.type] > cap) return "cap_reached";
-    await db.set(holdKey(scope, r.id), TASK_COUNT[r.type], 360); // outlives the run's 300 s limit, then goes by itself
+    const auto = lite.filter((t) => isAutonomous(t) && newer(t.createdAt, now - 7 * DAY)).length + holds.reduce<number>((n, h) => n + (Number(h) || 0), 0);
+    if (auto + count > cap) return "cap_reached";
+    await db.set(hold, count, 360); // outlives a run's 300 s limit, then goes by itself
     return null;
   } finally {
     await db.unlock(key);
   }
 }
 
-async function routineFor(user: User, scope: string, brand: Brand, r: Routine): Promise<string> {
+async function routineFor(user: User, scope: string, brand: Brand, r: Routine, deadline?: number): Promise<string> {
   if (trialOver(user)) return "trial_over";
   const now = Date.now();
   // The last run is read again under the lock: a run that finished between the check above and the lock has set it.
@@ -214,7 +238,9 @@ async function routineFor(user: User, scope: string, brand: Brand, r: Routine): 
   if (ranThisPeriod(r.cadence, last)) return "already_this_period";
   const gate = await r.gate({ scope, last, lite, now });
   if (gate) return gate;
-  const held = await holdBatch(scope, r, gov.weeklyCap);
+  // Before the hold and the charge: a batch started this late could be killed after it is charged.
+  if (deadline !== undefined && deadline - Date.now() < BATCH_RUN_MIN_MS) return "retry:late";
+  const held = await holdBatch(scope, holdKey(scope, r.id), TASK_COUNT[r.type], gov.weeklyCap);
   if (held) return held;
   // A platform timeout kills a run without throwing: its charge is neither refunded nor turned into items, no last run
   // is recorded, and the cron's own attempt count starts again every day. So every charge is counted per routine and
@@ -226,33 +252,15 @@ async function routineFor(user: User, scope: string, brand: Brand, r: Routine): 
   await db.set(tries, attempt, ttl); // incrby alone leaves the counter without an expiry
   if (attempt > MAX_UNSETTLED) return "attempts_exhausted";
   const settle = () => db.set(tries, attempt - 1, ttl);
-  const cost = TASK_COST[r.type];
-  const paid = await charge(user.email, cost, { scope, agent: r.agent, cap: gov.agentCaps[r.agent] });
-  if (!paid.ok) {
-    await settle();
-    return paid.reason;
-  }
-  user.credits = paid.credits;
-  await warnAgentCap(user, paid);
   const note = routineNote(r);
-  let items;
-  let memory = "", stats = "";
-  // Read inside the try: the credits are already charged, and a failed read must reach the refund below.
-  try {
-    const [prefs, mem, st, feedback] = await Promise.all([listPreferencesFor(scope, r.agent), memoryBlock(scope), statsFor(r.type, scope), feedbackFor(scope, r.agent, { gov })]);
-    memory = mem;
-    stats = st;
-    items = await generate(r.type, brand, prefs, note, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats, feedback });
-  } catch (e) {
-    const [credits] = await Promise.all([refund(user.email, cost, paid), settle()]);
-    user.credits = credits;
-    throw e;
+  // Charged to the agent that owns the type (r.agent, pinned equal in tests/routines.test.ts), under its cap; a refusal
+  // or a refund settles the attempt above.
+  const b = await generateBatch(user, scope, { type: r.type, notes: note, brief: r.id, source: "scheduled", via: "routine", gov, brand, settle, ...(deadline !== undefined ? { deadline } : {}) });
+  if (!b.ok) {
+    if (b.reason === "failed") throw b.error;
+    return b.reason === "paused" ? "retry:paused" : b.reason === "missing_data" ? "no_data" : b.reason;
   }
-  const lang = brand.languages[0] ?? "ar";
-  const at = new Date().toISOString();
-  const created: Task[] = items.map((it) => ({ id: randomBytes(8).toString("hex"), type: r.type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[r.type], brand, { type: r.type, channel: it.channel, title: it.title, body: it.body }), createdAt: at, lang, source: "scheduled", brief: r.id }));
-  await Promise.all(created.map((t) => saveTask(scope, t, true)));
-  judgeLater(scope, user.email, brand, created, undefined, { notes: note, memory, stats });
+  const created = b.tasks;
   await db.set(lastKey(scope, r.id), new Date().toISOString());
   // The batch is saved and paid for by now, so an unexpected language on an old record must not throw here.
   const ul = user.lang === "en" ? "en" : "ar";

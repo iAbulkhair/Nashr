@@ -23,7 +23,9 @@ import { ReconnectRequired } from "./connectors/fresh";
 export type Refusal = { error: string; [k: string]: unknown };
 export type PublishOnce =
   | { ok: true; result: PublishResult; task: Task; approving: boolean }
-  | { ok: false; error: "not_found" | "publish_busy" | "already_published" | "publish_unknown" | "earlier_live"; at?: string; url?: string }
+  | { ok: false; error: "not_found" | "publish_busy" | "already_published" | "publish_unknown"; at?: string; url?: string }
+  /** Nothing new was posted, but the attempt whose answer nobody saw went live: recorded on `task`, as a success is. */
+  | { ok: false; error: "earlier_live"; at: string; task: Task; approving: boolean }
   | { ok: false; error: "refused"; refusal: Refusal }
   | { ok: false; error: "publish_failed"; cause: unknown };
 
@@ -81,11 +83,20 @@ export async function publishOnce(scope: string, id: string, provider: string, o
     } catch (e) {
       if (mayHavePosted(e)) return { ok: false, error: "publish_unknown", at: tryAt };
       // "Already posted" after an attempt whose result nobody saw is the answer to that attempt: it went live. It is
-      // recorded, so the item is protected from a third try and the owner is not told to reword and post again.
+      // recorded, so the item is protected from a third try and the owner is not told to reword and post again. It is
+      // recorded as a success is: a pending item was approved by the owner's publish when that attempt went out, so it
+      // gets `decidedAt` then, and the caller writes the decision and activity records the unknown attempt never wrote.
       if (tried && isDuplicate(e instanceof Error ? e.message : "")) {
-        await updateTask(scope, id, (cur) => ({ ...cur, published: [...(cur.published ?? []), { provider, url: "", status: "published", at: tried.at }], status: "approved" }));
+        let approving = false;
+        const saved = await updateTask(scope, id, (cur) => {
+          cur.published = [...(cur.published ?? []), { provider, url: "", status: "published", at: tried.at }];
+          approving = cur.status === "pending";
+          if (approving) cur.decidedAt = tried.at;
+          cur.status = "approved";
+          return cur;
+        });
         await quietly(db.del(mk), "marker clear");
-        return { ok: false, error: "earlier_live", at: tried.at };
+        return { ok: false, error: "earlier_live", at: tried.at, task: saved ?? t, approving };
       }
       await quietly(db.del(mk), "marker clear");
       return { ok: false, error: "publish_failed", cause: e };

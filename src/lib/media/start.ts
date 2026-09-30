@@ -18,10 +18,12 @@ import { fixedImagePrompt, imagePrompt, videoPrompt } from "./prompts";
 import { getJob, publicJob, startMedia } from "./jobs";
 import { mediaDeps } from "./registry";
 import type { MediaDeps, StartError, StartResult } from "./types";
+import { byOf, type By } from "../actor";
 
 /** The default image model with no provider behind it: the old placeholder card, and nothing charged (spec A1, 4.4 G). */
 export type ImageOutcome = StartResult | { ok: true; placeholder: true; task: Task; credits: number };
-type Opts = { deadline: number; deps?: MediaDeps };
+/** `by` and `from`: who started the render and where, for the activity log; without them, the session's login and the app. */
+type Opts = { deadline: number; deps?: MediaDeps; by?: By; from?: "app" | "chat" };
 
 const refuse = (status: 400 | 402 | 409, error: StartError): StartResult => ({ ok: false, status, error });
 /** A catalogue id of this kind, from request input. `isMediaModelId` is a list test, so "constructor" is refused. */
@@ -73,7 +75,7 @@ export async function renderImage(u: User, t: Task, brand: Brand, requested: unk
   if (!ofKind(asked, "image")) return refuse(400, "bad_model");
   const model = asked as ImageModelId;
   if (!IMAGE_TYPES.includes(t.type)) return refuse(400, "wrong_type");
-  const [off, spend] = await Promise.all([offModels(), spendFor(u, t)]);
+  const [off, spend, by] = await Promise.all([offModels(), spendFor(u, t), opts.by ?? byOf(u)]);
   // The placeholder costs nothing, so neither the balance nor the agent's cap stands in its way.
   if (!modelAvailable(model, off)) return model === DEFAULT_IMAGE_MODEL ? placeholder(u, t, brand) : refuse(409, "model_unavailable");
   const m = mediaModel(model);
@@ -82,6 +84,7 @@ export async function renderImage(u: User, t: Task, brand: Brand, requested: unk
     scope: sc(u), email: u.email, lang: u.lang, accountSince: u.createdAt, plan: u.plan, balance: u.credits, ...spend,
     taskId: t.id, model, aspect, imageUrl: mediaImageFor(m, t), deadline: opts.deadline,
     prompt: (ms) => imagePrompt(brand, t, model, aspect, u.email, ms),
+    by, from: opts.from ?? "app",
   }, opts.deps ?? mediaDeps());
 }
 
@@ -92,7 +95,7 @@ export async function renderVideo(u: User, t: Task, brand: Brand, requested: unk
   const model = requested as VideoModelId;
   if (!VIDEO_TYPES.includes(t.type)) return refuse(400, "wrong_type");
   if (u.plan === "trial" && !TRIAL_VIDEO_MODELS.includes(model)) return refuse(402, "plan_required");
-  const [off, spend] = await Promise.all([offModels(), spendFor(u, t)]);
+  const [off, spend, by] = await Promise.all([offModels(), spendFor(u, t), opts.by ?? byOf(u)]);
   if (!modelAvailable(model, off)) return refuse(409, "model_unavailable");
   const m = mediaModel(model);
   const imageUrl = mediaImageFor(m, t);
@@ -101,6 +104,7 @@ export async function renderVideo(u: User, t: Task, brand: Brand, requested: unk
     scope: sc(u), email: u.email, lang: u.lang, accountSince: u.createdAt, plan: u.plan, balance: u.credits, ...spend,
     taskId: t.id, model, aspect: "portrait", imageUrl, deadline: opts.deadline,
     prompt: (ms) => videoPrompt(brand, t, model, !!imageUrl, u.email, ms),
+    by, from: opts.from ?? "app",
   }, opts.deps ?? mediaDeps());
 }
 

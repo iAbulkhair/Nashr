@@ -7,8 +7,11 @@ import { ASSUME, ESTIMATE_MODELS, ITEM_SIZE, draftCredits, estimateBatch, estima
 import { DRAFT_TYPES, TASK_COST, TASK_COUNT, TASK_TYPES, type TaskType } from "@/lib/tasks";
 import { hasRate } from "@/lib/usage";
 import { ROUTINES } from "@/lib/routines";
+import { countCost } from "@/lib/generate-batch";
 import { MEDIA_MODELS } from "@/lib/media-catalog";
 import { COST_USD } from "@/lib/media/config";
+import { HANDOFF_TYPES, autoBlock, type Handoff } from "@/lib/handoffs";
+import { agentForTask } from "@/lib/agents";
 
 /**
  * Rule 241: the 60% margin floor is a test, not a comment. What one credit may cost us is at most 40% of the cheapest
@@ -19,7 +22,9 @@ import { COST_USD } from "@/lib/media/config";
  *
  * Cache: an owner working in the app finds the workspace block cached, so on-demand types are checked on a cache hit.
  * The cron runs once a week or month per brand, so its cache is usually cold: the weekly plan and every routine's task
- * type (src/lib/routines.ts) are checked on a cold cache (founder decision, 2026-09-29).
+ * type (src/lib/routines.ts) are checked on a cold cache (founder decision, 2026-09-29). Since step 3b, Majed's auto-run
+ * (src/lib/handoff-auto.ts) starts handoff items from the same 06:00 cron, once a day per brand: every type it may start
+ * is checked on a cold cache too (below, "Majed's auto-run is a cron path").
  */
 const ceiling = maxCostPerCreditUsd();
 const CRON_TYPES: readonly TaskType[] = [...new Set<TaskType>(["weekly_plan", ...ROUTINES.map((r) => r.type)])];
@@ -56,7 +61,7 @@ describe("the ceiling (rule 241)", () => {
 });
 
 describe("every task type is under the ceiling (rule 241)", () => {
-  it("the cron-driven types are the weekly plan and every routine's type", () => {
+  it("the scheduled cron types are the weekly plan and every routine's type (the auto-run's types are checked cold below)", () => {
     expect([...CRON_TYPES].sort()).toEqual(["cart_recovery", "cash_forecast", "strategy_review", "weekly_plan", "weekly_report"]);
   });
 
@@ -114,12 +119,37 @@ describe("every task type is under the ceiling (rule 241)", () => {
   });
 });
 
+describe("Majed's auto-run is a cron path: every type it may start keeps the floor on a cold cache (rules 241, 296)", () => {
+  /**
+   * The types the auto-run may start, asked of `autoBlock` itself: a one-item proposal of each handoff type that passes
+   * every other rule (the owner's, shown, fresh, a cap on the type's agent). Nothing here repeats the code's filter.
+   */
+  const at = new Date().toISOString();
+  const one = (type: TaskType): Handoff => ({ id: "0123456789abcdef", agent: "majed", requestedBy: { kind: "owner", email: "o@floor.example" }, origin: "web_chat", ownerMsg: "", items: [{ type, agent: agentForTask(type).id, brief: "b", cost: TASK_COST[type], status: "proposed" }], status: "proposed", createdAt: at, shownAt: at });
+  const AUTO_TYPES = HANDOFF_TYPES.filter((t) => autoBlock(one(t), 0, { majedAutoHandoff: true, agentCaps: { [agentForTask(t).id]: 100 } }) === null);
+
+  it("no type the auto-run may start costs more per credit than the ceiling on a cold cache", () => {
+    const over = AUTO_TYPES.map((t) => estimateBatch(t, { cache: "cold" })).filter((e) => e.usdPerCredit > ceiling);
+    expect(over.map((e) => `${e.type}: ${usd(e.usdPerCredit)} per credit cold at ${e.credits} credits (ceiling ${usd(ceiling)})`)).toEqual([]);
+  });
+
+  it("it leaves exactly article and followup_seq to a login's Run, the handoff types over the ceiling cold", () => {
+    const left = HANDOFF_TYPES.filter((t) => !AUTO_TYPES.includes(t));
+    expect(left).toEqual(["article", "followup_seq"]);
+    expect(left.map((t) => estimateBatch(t, { cache: "cold" }).usdPerCredit)).toEqual([expect.closeTo(0.0917875, 6), expect.closeTo(0.0773438, 6)]);
+    // On a hit (the owner pressing Run in the app) both keep the floor, as the table above checks them.
+    for (const t of left) expect(estimateBatch(t).usdPerCredit, t).toBeLessThanOrEqual(ceiling);
+  });
+});
+
 describe("the estimates price the models the code calls (rule 241)", () => {
   const src = (p: string) => readFileSync(p, "utf8");
 
   it("noor.ts, judge.ts, onboard.ts and media/prompts.ts call the models the estimates assume", () => {
     expect(src("src/lib/noor.ts")).toContain(`model: "${ESTIMATE_MODELS.generate}"`);
-    expect(src("src/lib/noor.ts")).toContain(`model: "${ESTIMATE_MODELS.review}"`);
+    // The reviewer (`critique`) and, since step 3b, the cross-agent review call Sonnet through one constant in noor.ts.
+    expect(src("src/lib/noor.ts")).toContain(`const REVIEW_MODEL = "${ESTIMATE_MODELS.review}";`);
+    expect(src("src/lib/noor.ts").match(/model: REVIEW_MODEL,/g)?.length).toBe(2);
     expect(src("src/lib/judge.ts")).toContain(`model: "${ESTIMATE_MODELS.judge}"`);
     expect(src("src/lib/onboard.ts")).toContain(`model: "${ESTIMATE_MODELS.onboard}"`);
     expect(src("src/lib/media/prompts.ts")).toContain(`model: "${ESTIMATE_MODELS.mediaPrompt}"`);
@@ -147,8 +177,12 @@ describe("chat drafts (rules 241, 250)", () => {
   it("drafts are charged by the chat's formula: the batch price pro rata, at least 1", () => {
     expect([...DRAFT_TYPES]).toEqual(["social", "whatsapp", "ads", "gbp"]);
     for (const t of DRAFT_TYPES) expect([1, 2, 3].map((n) => draftCredits(t, n)), t).toEqual([1, 2, 3]);
-    // The estimate uses the same formula as the chat's draft_items charge (src/lib/chat.ts).
-    expect(src().replace(/\s+/g, "")).toContain("Math.max(1,Math.ceil((TASK_COST[type]/(TASK_COUNT[type]||1))*count))");
+    // The estimate uses the same formula as the chat's draft_items charge: the tool passes `count` to generateBatch
+    // (src/lib/chat.ts), which charges `countCost` (src/lib/generate-batch.ts).
+    for (const t of TASK_TYPES) expect([1, 2, 3].map((n) => countCost(t, n)), t).toEqual([1, 2, 3].map((n) => draftCredits(t, n)));
+    expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain("Math.max(1,Math.ceil((TASK_COST[type]/(TASK_COUNT[type]||1))*count))");
+    expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain("constcost=opts.count?countCost(type,opts.count):TASK_COST[type];");
+    expect(src("src/lib/chat.ts").replace(/\s+/g, "")).toContain('generateBatch(user,email,{type,notes:String(input.brief??""),count,');
   });
 
   it("only the named exemption is over the ceiling: one-item drafts, at no more than today's estimate", () => {
@@ -161,8 +195,8 @@ describe("chat drafts (rules 241, 250)", () => {
     expect(over.map((e) => e.type), "the exemption is real today: remove it once it is no longer needed").toEqual([...DRAFT_TYPES]);
   });
 
-  function src() {
-    return readFileSync("src/lib/chat.ts", "utf8");
+  function src(path: string) {
+    return readFileSync(path, "utf8");
   }
 });
 

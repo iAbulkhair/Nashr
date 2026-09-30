@@ -9,9 +9,10 @@ the founder console — see "Where the real numbers live" at the end.
 
 | Call | Model | Where | Charged to the customer |
 |---|---|---|---|
-| `generate` | `claude-opus-5`, `max_tokens` 16000, effort medium | `src/lib/noor.ts` `generate` | credits, per `TASK_COST` |
+| `generate` | `claude-opus-5`, `max_tokens` 16000, effort medium | `src/lib/noor.ts` `generate`; every paid batch reaches it through `generateBatch` (`src/lib/generate-batch.ts`), the golden set directly | credits, per `TASK_COST` (a chat `draft_items` pays `countCost`), charged in `generateBatch` before the call |
 | `review` | `claude-sonnet-5`, 16000, effort low | `noor.ts` `critique`, runs after every batch unless governance turns it off | free (inside the batch) |
 | `judge` | `claude-sonnet-5`, 8000, effort low | `src/lib/judge.ts`, runs after the response via `after()` | free |
+| `xreview` | `claude-sonnet-5`, 4000, effort low, one call per reviewing agent | `noor.ts` `crossReview` (since 2026-09-30): the cross-agent review of `gtm_plan` (two calls, Razan and Majed), `growth_experiments`, `retention_play`, `board_deck`, `decision_memo`, `strategy_review` (Razan) and `pricing_review` (Majed); no other type; skipped when governance turns it off, in golden runs, and with less than 60 s of the caller's deadline left; one attempt of at most 45 s per call, no SDK retries. **Metered to the reviewing agent**, not the author: it is the cost of Razan's and Majed's review work | free (inside the batch) |
 | `chat` | `claude-opus-5`, 8000, effort medium, **up to 5 calls per turn** (tool loop) | `src/lib/chat.ts` | **nothing** |
 | `onboard` | `claude-opus-5` × 3 parallel, 10000 + 12000 + 12000 | `src/lib/onboard.ts` | **nothing** for the first brand (the default scope); **9 credits** for each added brand since 2026-09-30 (`ONBOARD_EXTRA_BRAND_COST`, `src/lib/pricing.ts`), charged to Noor in that brand's scope before the stream and refunded when the brand is not saved; once per workspace |
 | `image_prompt` | `claude-sonnet-5`, 400, effort low, one attempt of at most 20 s, no SDK retries | `src/lib/media/prompts.ts` (image **and** video prompts; video is metered under this kind too, spec A18) | charged with the render (section 3.1); a fixed template, and no model call, while Claude is paused |
@@ -47,7 +48,11 @@ not measured. Replace them with the console's `byKind` averages after a month of
 reading it, about $0.043 more per batch, which is what a cron run usually finds: the Sunday plan and each routine run
 once a week or a month per brand. The floor test checks the cron-driven types (marked *cron*: `weekly_plan` and the
 task type of every routine in `src/lib/routines.ts`) on the cold figure, and every other type on the hit figure
-(founder decision, 2026-09-29). The checked figure is in bold.
+(founder decision, 2026-09-29). The checked figure is in bold. Majed's auto-run (section 5, since step 3b) starts
+handoff items from the same 06:00 cron, so every type it may start is also checked on its cold figure (not bold in the
+table, which bolds the hit a login's Run is checked on); `article` ($0.0918 cold) and
+`followup_seq` ($0.0773) are over the ceiling cold, so the code never lets it start them (`autoBlock` answers `floor`,
+`autoUnderFloor` in `src/lib/handoffs.ts`, rule 296) and they run only when a login presses Run, checked on the hit.
 
 | Request | Items | Credits | Output tok | generate $ | review $ | judge $ | Total $ (hit) | $ per credit, hit | $ per credit, cold |
 |---|---|---|---|---|---|---|---|---|---|
@@ -82,6 +87,31 @@ task type of every routine in `src/lib/routines.ts`) on the cold figure, and eve
   (`ONE_ITEM_DRAFT_EXEMPTION`, founder decision 2026-09-29, reason written there), capped at today's $0.07165: if these
   drafts get dearer the test fails and the price or the exemption is decided again. Two- and three-item drafts are not
   exempt.
+
+The cross-agent review (`xreview`, since 2026-09-30) adds one Sonnet call per reviewing agent to seven types, on top of
+the table above. Worked out with the same assumptions plus these, all estimates: its system prompt is measured
+(`crossReviewPrompt`: 6,102 characters for Razan, 4,950 for Majed, about 1,850 and 1,500 tokens, read from the cache after the
+first call of the five minutes; 14 characters more than before step 3a was merged into step 3b, which added `<lead_brief>`
+to its data tags; `tests/cross-review.test.ts` checks these two numbers against the prompt it builds); its user message is the spec and brand file (about 550 tokens) plus the items as the
+generation wrote them (2,500 tokens per long item, 900 per plan item), with an empty workspace; and it writes about 600
+tokens of thinking and 80 to 150 per verdict. A cold cache adds about $0.004 per call; the owner's notes and workspace
+files add their size as input, up to about 10,000 tokens (about $0.02) at the cap.
+
+| Request | Reviewers | xreview $ | **Total $ with it** | **$ per credit** |
+|---|---|---|---|---|
+| `pricing_review` | Majed | 0.014 | **0.154** | **0.0385** |
+| `decision_memo` | Razan | 0.014 | **0.154** | **0.0513** |
+| `board_deck`, `strategy_review` | Razan | 0.014 | **0.154** | **0.0308** |
+| `gtm_plan` | Razan and Majed | 0.028 | **0.168** | **0.0336** |
+| `growth_experiments` | Razan | 0.021 | **0.228** | **0.0570** |
+| `retention_play` | Razan | 0.015 | **0.163** | **0.0408** |
+
+The real numbers are in the founder console under the `xreview` kind and, per agent, under Razan and Majed.
+
+With this call every row stays under the section 4 ceiling ($0.07104 per credit), on a cold cache too (the cold
+column above plus the call and its cold cache: `growth_experiments`, the closest, about $0.069). The floor test
+(`tests/pricing-floor.test.ts`, rule 241, `estimateBatch`) does not count this call yet, so a change that makes the
+review dearer is checked here by hand, not by the build.
 
 The calls with no credit attached, or a fixed one:
 
@@ -193,6 +223,26 @@ The next moves, cheapest first: cap `max_tokens` per type instead of a flat 16,0
   switches it on in Scheduled tasks (`getSchedule` in `src/lib/schedule.ts`, rule 247). Added brands created before
   2026-09-30 stored the old default (on) in `schedule:{scope}`; on an added brand a stored `weeklyPlan` counts only with
   the `weeklyPlanSetAt` stamp the owner's switch writes, so those brands start off too and are not charged.
+- **The cross-agent review** (since 2026-09-30) makes no call of its own: it runs inside a paid batch of one of seven
+  types, one call per reviewing agent (two for `gtm_plan`), so the credits and caps that bound batches bound it too.
+  The owner can switch it off on the Governance page (`Governance.crossReview`); golden runs never make it. Each call
+  is one attempt of at most 45 s (`CROSS_REVIEW_TIMEOUT_MS`, `maxRetries: 0`), and none starts with less than 60 s of
+  the caller's deadline left (`CROSS_REVIEW_MIN_MS`), so a slow reviewer can never push a charged batch past the
+  platform's 300 s limit, where the credits would be kept and nothing saved; the batch is then saved without notes.
+- **Majed's handoffs** (since 2026-09-30) add no model call of their own. Proposing is a tool call inside a chat turn
+  (free, bounded like chat) and writes a record; each item runs only when a login presses Run (or, opt-in, from Majed's
+  auto-run below), as one batch through
+  `generateBatch` (charged `TASK_COST[type]` to the item's owning agent under its cap, refunded on failure), one item per
+  request, at most `HANDOFF_RUNS_PER_HOUR` (60) runs per account an hour, under a lock that lets one run of a handoff at a
+  time. The brief block adds about 900 characters to that batch's generation, reviewer, cross-review and judge messages:
+  the brief (at most 600 characters, JSON-quoted by `asData`, so a little more when it holds characters that must be
+  escaped), its label (`LEAD_BRIEF_LABEL`, 259 characters) and the tags around it (about 30). At a full brief that is
+  889 characters, about 270 input tokens on each call: about $0.0024 per batch (Opus for the generation, Sonnet for the
+  reviewer and the judge) and $0.0030 with one cross-review call. `estimateBatch` does not count it, so the floor test
+  (rule 241) does not either. It matters for one type: a handed-off `article` that a login runs on a cache hit costs
+  about $0.0714 per credit with a full brief, 0.6% over the $0.07104 ceiling (a shorter brief costs less). That is not
+  checked by the build and needs a founder decision, a price or a named exemption like the one-item drafts'; Majed's
+  auto-run never starts an article (rule 296).
 - **Media renders** (spec 4.8, `src/lib/media/jobs.ts`) are bounded in several layers, all but the last in code:
   - credits are charged before the submit and refunded exactly once when the render fails (`refundOnce`: a 60 s claim on
     `mrefund:{jobId}`, then `"done"` once the refund was made), so an owner never pays for a failure, and the chat tool
@@ -225,9 +275,11 @@ The next moves, cheapest first: cap `max_tokens` per type instead of a flat 16,0
   agent and its monthly cap to `charge`, and the weekly cap on scheduled items counts the whole batch before charging,
   including the batches of the brand's other routines running at the same moment (`routinehold:`). A gate checked in
   code skips a run without the input it needs ("idle" or "no_data", no charge, no model call; the next day's cron asks
-  again), no run is charged while Claude is paused or without a key, and a failed generation is refunded. A run the
-  platform kills after the charge is not refunded, so each routine may leave at most two such charges per week or
-  month (`routinetry:`) before it waits for its next period. The worst case for one brand with all four on is 3 + 3 per
+  again), no run is charged while Claude is paused or without a key, and a failed generation is refunded. No run is
+  started with less than 180 s of the cron's invocation left (`retry:late`, before the charge; a later hop runs it),
+  and the cross-agent review of Majed's strategy review is bounded by that deadline, so a kill is left to a model call
+  far slower than usual. A run the platform kills after the charge is not refunded, so each routine may leave at most
+  two such charges per week or month (`routinetry:`) before it waits for its next period. The worst case for one brand with all four on is 3 + 3 per
   week and 4 + 5 per month in credits, plus at most two lost charges per routine and period when runs are killed.
 - **Reports reprice past work.** The profile, the owner's Reports page and the founder overview count credits used as
   items × today's per-item price, `TASK_COST / TASK_COUNT` (`src/app/api/profile/route.ts`, `src/lib/stats.ts`, `src/lib/admin-stats.ts`), so in the
@@ -237,6 +289,21 @@ The next moves, cheapest first: cap `max_tokens` per type instead of a flat 16,0
   Renders are the exception: every reader counts what they really charged, `t.mediaCredits ?? (t.image ? IMAGE_COST : 0)`
   (an image 1 or 2 by model, a video 12 or 24); since 2026-09-30 the profile does too (`mediaCredits`), and its usage
   row shows the catalogue's image and video ranges instead of a flat 1.
+- **Majed's auto-run** (since 2026-09-30, `src/lib/handoff-auto.ts`) is the only spend on a handoff without a login
+  pressing Run, and it is off until the owner switches it on in Governance, which needs a monthly cap on at least one
+  agent Majed hands work to and an explicit confirmation. The routines cron then starts at most one item a day per
+  brand, of a proposal the owner made in chat in the last 7 days whose card reached the owner (the reply carrying it
+  was saved, and its conversation was not deleted; the Governance page lists what may start next, with Decline), of at most 3 items and 12 credits in all, only for
+  an agent with an owner-set cap, and only for a type that keeps the 60% margin floor on the cold cache this cron usually
+  finds (`autoUnderFloor`, rule 296: never `article` or `followup_seq` today; the dearest it may start, with the
+  cross-agent review and a full brief, is `growth_experiments` at about $0.0696 per credit): each item is one batch charged `TASK_COST[type]` to that agent under that cap (so the
+  owner's cap is the bound on what the auto-run can spend on an agent in a month), inside the weekly cap on items made
+  on their own (`isAutonomous`, shared with the Sunday plan and the routines). Today's dearest item a 12-credit proposal
+  can hold is `social` at 10 credits, so one brand's auto-run spends at most 10 credits a day, within those caps. It
+  never runs while Claude is paused or without a key, a refused charge costs nothing, a failed generation is refunded,
+  and a run the platform kills after the charge is not started again (at most two such charges per item,
+  `handofftry:`). Its batches wait for the owner like any other (`forcePending`), so nothing it makes is published or
+  approved on its own.
 
 ## 6. Where the real numbers live
 
