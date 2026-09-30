@@ -61,6 +61,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       if (b.status === "rejected") events.push("reject");
       if (b.status === "rejected" && b.note) notes.push(`Owner rejected a ${t.type} item (${t.channel}). Reason: ${b.note}`);
     }
+    // An admin or owner who rewrites an item that stays approved has decided it (the role check above needed "publish"):
+    // an item only auto-approval had passed becomes theirs, so the judge's veto and the chat's "nobody reviewed it" no
+    // longer apply to it (src/lib/judge.ts, chat.ts publish_item).
+    if (t.status === "approved" && rewrites && !t.decidedAt) t.decidedAt = now;
     // The brand file's rules are checked here, in code: an item whose final text breaks one cannot end up approved,
     // whether the owner clicked approve, saved an edit of an approved item, or the model asked for it. Nothing is saved,
     // so the card keeps its state and the owner sees which rule fired.
