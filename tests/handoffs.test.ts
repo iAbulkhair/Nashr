@@ -1106,3 +1106,19 @@ describe("the card reads the stored state while an item runs or a Run's answer w
     expect(keepReading({ gone: false, inFlight: false, running: view.items.some((i) => i.status === "running"), lost: false })).toBe(true);
   });
 });
+
+describe("an agents' handoff note in the same reply never takes Majed's card (rules 271 and 305)", () => {
+  it("tags the note `note:{id}`, so the proposal after it still saves and carries the reply's one handoff card", async () => {
+    const u = await owner("hn-card", 50);
+    const actions: string[] = [];
+    const note = await runTool(u, "handoff_note", { to: "owner", kind: "blocked", body: "I need the April price list before I can plan the quarter" }, actions, [], undefined, { agent: "majed", by: ownerBy(u), lang: "en" });
+    expect(note).not.toMatch(/^Not done/);
+    expect(actions.filter((a) => a.startsWith("note:"))).toHaveLength(1);
+    expect(actions.some((a) => a.startsWith("handoff:"))).toBe(false);
+    const p = await propose(u, TWO, {}, actions);
+    expect(p.text).not.toMatch(/^Not done/);
+    expect(p.id).toBeTruthy();
+    expect(p.id).not.toBe(actions.find((a) => a.startsWith("note:"))!.slice(5));
+    expect(await getHandoff(u.email, p.id!)).not.toBeNull();
+  });
+});

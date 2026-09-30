@@ -7,8 +7,9 @@ import { SEC_READS_PER_HOUR, agendaFor, createItem, listDeleted, listDone } from
 /**
  * Reem's list for the signed-in account's active brand (`sc(u)`), shared by its team.
  * GET: the agenda (computed now, with the approvals count), or `?view=done` / `?view=deleted`: any member.
- * POST: add one item (`todo.write`, any member). The body's fields are validated in `createItem`; an `id`, `scope`,
- * `email` or `source` in it is ignored. 200 new items a day per account, 500 open items per brand.
+ * POST: add one item (`todo.write`, any member). The body's fields are validated in `createItem` (a reminder
+ * `remindAt` in the future, and on a they-owe item the contact's WhatsApp `phone`, which only a person in the app sets);
+ * an `id`, `scope`, `email` or `source` in it is ignored. 200 new items a day per account, 500 open items per brand.
  */
 export async function GET(req: Request) {
   const u = await currentUser();

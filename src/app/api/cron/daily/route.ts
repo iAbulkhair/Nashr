@@ -14,6 +14,7 @@ import { getUser } from "@/lib/auth";
 import { syncAdsIfDue } from "@/lib/perf-store";
 import { sweepOnboardHolds } from "@/lib/onboard-confirm";
 import { purgeExpired, secretaryDaily } from "@/lib/secretary";
+import { SWEEP_BUDGET_DAILY_MS, SWEEP_SCOPES, mergeReports, sweepReminders, type SweepReport } from "@/lib/secretary-remind";
 
 export const maxDuration = 300;
 
@@ -91,20 +92,48 @@ async function purgeIdle(scope: string): Promise<string> {
 
 type DailyItem = { user: User } | { idle: string };
 
+/** How long the batch may start workspaces, counted from the route's start: the function limit minus the longest run. */
+const START_BUDGET_MS = 240_000;
+/** The reminder sweep repeats while it keeps hitting its scope cap, at most this many more times, within its budget. */
+const SWEEP_REPEATS = 4;
+
+/**
+ * Reem's due reminders, the fallback when the QStash tick is not running: nothing new starts after
+ * `SWEEP_BUDGET_DAILY_MS` from the route's start, and while a sweep read a full `SWEEP_SCOPES` it runs again (each
+ * depends on the one before, so one after the other), at most `SWEEP_REPEATS` more times.
+ */
+async function sweepDaily(routeStart: number): Promise<SweepReport> {
+  const deadline = routeStart + SWEEP_BUDGET_DAILY_MS;
+  let last = await sweepReminders(Date.now(), { deadline });
+  let total = last;
+  for (let i = 0; i < SWEEP_REPEATS && last.scopes === SWEEP_SCOPES && Date.now() < deadline; i++) {
+    last = await sweepReminders(Date.now(), { deadline });
+    total = mergeReports(total, last);
+  }
+  return total;
+}
+
 /**
  * Daily job for every workspace, then Reem's purge for every idle scope (archived brands, suspended accounts): eight at
  * a time, each isolated from the others' failures, resumable through runCronBatch. From Sunday to Tuesday it also kicks
- * the weekly route so anyone Sunday missed still gets a plan.
+ * the weekly route so anyone Sunday missed still gets a plan. Its first hop also sweeps Reem's due reminders
+ * (`sweepDaily`): without the QStash tick, that is when a reminder arrives, late but never lost. The sweep's time comes
+ * out of the batch's start budget, so the batch never runs past the function's limit.
  */
 export async function GET(req: Request) {
   const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!sameSecret(bearer, process.env.CRON_SECRET)) return NextResponse.json({ ok: false }, { status: 401 });
+  const routeStart = Date.now();
+  let reminders: SweepReport | { error: string } | null = null;
+  if (!Number(new URL(req.url).searchParams.get("chain") ?? 0)) {
+    try { reminders = await sweepDaily(routeStart); } catch (e) { reminders = { error: e instanceof Error ? e.name : "error" }; }
+  }
   const roster = await dailyRoster();
   const items: DailyItem[] = [...roster.users.map((user) => ({ user })), ...roster.idle.map((idle) => ({ idle }))];
   const report = await runCronBatch({
     job: "daily", period: new Date().toISOString().slice(0, 10), items,
     id: (x) => ("user" in x ? x.user.scope ?? x.user.email : `idle:${x.idle}`), run: (x) => ("user" in x ? dailyFor(x.user) : purgeIdle(x.idle)),
-    concurrency: 8, startBudgetMs: 240_000, markerTtlSeconds: 2 * 86400, req,
+    concurrency: 8, startBudgetMs: Math.max(0, START_BUDGET_MS - (Date.now() - routeStart)), markerTtlSeconds: 2 * 86400, req,
   });
   if (!report.chained && new Date().getUTCDay() <= 2) {
     const weekly = new URL("/api/cron/weekly", req.url).toString();
@@ -112,5 +141,5 @@ export async function GET(req: Request) {
     after(() => fetch(weekly, { headers, signal: AbortSignal.timeout(8000) }).then(() => undefined, () => undefined));
   }
   const count = (word: string) => Object.values(report.results).filter((r) => r.split("+").some((x) => x.startsWith(word))).length;
-  return NextResponse.json({ ok: true, ...report, briefs: count("brief"), emails: count("email"), nudges: count("nudge"), renewed: count("renewed"), emailConfigured: !!process.env.RESEND_API_KEY });
+  return NextResponse.json({ ok: true, ...report, briefs: count("brief"), emails: count("email"), nudges: count("nudge"), renewed: count("renewed"), emailConfigured: !!process.env.RESEND_API_KEY, reminders });
 }

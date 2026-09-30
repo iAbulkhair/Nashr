@@ -13,7 +13,7 @@ import { activityKey } from "./activity";
 import { agentCapFingerprint, seenKey } from "./notifications";
 import { wipeTeam } from "./team";
 import { forgetWishlistUser } from "./wishlist";
-import { secretaryKeys } from "./secretary";
+import { forgetDueScope, secretaryKeys } from "./secretary";
 import { handoffKeys } from "./handoffs";
 import { proposalKeys } from "./brand-proposals";
 
@@ -58,7 +58,9 @@ export async function wipeAccount(email: string) {
       `govhist:${s}`, `govlock:${s}`,
       // The activity log (titles, file names, member emails) and the routines' "nothing new" markers (8 or 35 days).
       activityKey(s), ...routineSkipKeys(s),
-      // Reem's list: every item ever created and not yet purged (open, done and deleted), its indexes and its audit log.
+      // Reem's list: every item ever created and not yet purged (open, done and deleted), its indexes (the reminder index
+      // included), its audit log, the walk's skips, the evening wrap markers and the agents' handoff notes (`notes:`, a
+      // blocked agent's note; not Majed's handoffs below).
       ...sec,
       // Majed's handoffs (the owner's own words and the logins that ran them): every record in the index, its lock, each
       // item's auto-run attempt counter and notification marker (8 days), and the index itself, from the one read above.
@@ -116,6 +118,8 @@ export async function wipeAccount(email: string) {
   // The account record goes first, then the team under its lock: an invite accepted while this runs either finished
   // before `wipeTeam` took `lock:team` (and its member is deleted there) or re-reads the owner after it and finds none.
   await pmap(keys, (k) => db.del(k));
+  // The global reminder index names every scope with a reminder: this account's leave it.
+  await Promise.all(scopes.map((s) => forgetDueScope(s)));
   await wipeTeam(e);
   await Promise.all([db.srem("users:all", e), db.lpush("deleted-accounts", JSON.stringify({ email: e, at: new Date().toISOString() }))]);
 }

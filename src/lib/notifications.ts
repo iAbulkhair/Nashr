@@ -27,27 +27,68 @@ export async function unreadCount(email: string) {
   return (await listNotifs(email)).filter((n) => !n.read).length;
 }
 export async function markAllRead(email: string) {
-  const all = await listNotifs(email);
-  if (all.some((n) => !n.read)) await db.set(KEY(email), all.map((n) => ({ ...n, read: true })));
+  await withBellLock(email, async () => {
+    const all = await listNotifs(email);
+    if (all.some((n) => !n.read)) await db.set(KEY(email), all.map((n) => ({ ...n, read: true })));
+  });
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** The bell's lock key, per account: every read-then-write of `notifs:{email}` holds it. */
+export const bellLockKey = (email: string) => `notiflock:${email}`;
+/**
+ * Run one read-then-write of the bell under the account's lock (SET NX for 10 s, 60 tries 50 ms apart, as the item lock
+ * in secretary.ts), so two writers landing together (the reminder tick, the daily follow-ups, an evening wrap, the owner
+ * opening the bell) never overwrite each other's entries. If the lock cannot be taken in about 3 s the write goes ahead
+ * anyway, as it did before the lock: a late entry that might race is better than one dropped.
+ */
+export async function withBellLock<T>(email: string, fn: () => Promise<T>): Promise<T> {
+  const key = bellLockKey(email);
+  let got = false;
+  for (let i = 0; i < 60 && !got; i++) {
+    got = await db.lock(key, 10);
+    if (!got) await sleep(50);
+  }
+  if (!got) console.error("bell lock not taken; writing without it");
+  try {
+    return await fn();
+  } finally {
+    if (got) await db.unlock(key).catch((e) => console.error("bell lock release failed", e instanceof Error ? e.name : "error"));
+  }
 }
 /** The marker that suppresses a repeat of one situation; exported so `wipeAccount` can name the ones it can list. */
 export const seenKey = (email: string, fingerprint: string) => `notifseen:${email}:${fingerprint}`;
 /** The 80% warning's fingerprint: one per brand scope, agent and month. */
 export const agentCapFingerprint = (scope: string, agent: AgentId, month: string) => `agentcap80:${scope}:${agent}:${month}`;
 
-type Push = { n: Omit<Notif, "id" | "at">; fingerprint?: string; ttlDays?: number };
+export type Push = { n: Omit<Notif, "id" | "at">; fingerprint?: string; ttlDays?: number };
 /**
  * Claim each fingerprint with SET NX and its TTL, all in one round; only what this caller claimed is pushed, in one
- * write of the bell. A marker read then written let two overlapping runs (a chain hop and a catch-up) both notify.
+ * write of the bell under the account's bell lock (`withBellLock`). A marker read then written let two overlapping runs
+ * (a chain hop and a catch-up) both notify. Answers per entry, in order: the notification pushed, or null when its
+ * fingerprint was already claimed. When the bell write fails, the fingerprints this call claimed are released before
+ * the error goes on, so a retry can still deliver: a claimed fingerprint with no entry would silence it for good.
  */
-async function pushMany(email: string, entries: Push[]): Promise<Notif[]> {
+export async function pushNotifs(email: string, entries: Push[]): Promise<(Notif | null)[]> {
   const won = await Promise.all(entries.map((e) => (e.fingerprint ? db.setNx(seenKey(email, e.fingerprint), 1, (e.ttlDays ?? 3) * 86400) : true)));
   const at = new Date().toISOString();
-  const items: Notif[] = entries.filter((_, i) => won[i]).map((e) => ({ id: randomBytes(5).toString("hex"), at, ...e.n }));
-  if (!items.length) return [];
-  const all = await listNotifs(email);
-  await db.set(KEY(email), [...items, ...all].slice(0, MAX));
-  return items;
+  const aligned: (Notif | null)[] = entries.map((e, i) => (won[i] ? { id: randomBytes(5).toString("hex"), at, ...e.n } : null));
+  const items = aligned.filter((x): x is Notif => !!x);
+  if (!items.length) return aligned;
+  try {
+    await withBellLock(email, async () => {
+      const all = await listNotifs(email);
+      await db.set(KEY(email), [...items, ...all].slice(0, MAX));
+    });
+  } catch (e) {
+    const mine = entries.filter((x, i) => won[i] && x.fingerprint).map((x) => seenKey(email, x.fingerprint!));
+    await Promise.all(mine.map((k) => db.del(k).catch(() => {})));
+    throw e;
+  }
+  return aligned;
+}
+async function pushMany(email: string, entries: Push[]): Promise<Notif[]> {
+  return (await pushNotifs(email, entries)).filter((x): x is Notif => !!x);
 }
 
 /** Push one follow-up. `fingerprint` + `ttlDays` suppress repeats of the same situation, claimed atomically. */
