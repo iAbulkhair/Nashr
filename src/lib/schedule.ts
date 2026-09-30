@@ -27,7 +27,7 @@ export const DEFAULT_SCHEDULE: Schedule = { weeklyPlan: true, dailyBrief: true, 
 /**
  * The Sunday plan charges TASK_COST.weekly_plan with nobody asking, so it is on by default only for the account's
  * default brand (scope = the account email). An added brand (`email#brandId`, src/lib/brands.ts `scopeFor`; an email
- * cannot contain "#") starts with it off, and the owner switches it on in Scheduled tasks. Rule 227.
+ * cannot contain "#") starts with it off, and the owner switches it on in Scheduled tasks. Rule 247.
  */
 const defaultsFor = (scope: string): Schedule => ({ ...DEFAULT_SCHEDULE, weeklyPlan: !scope.includes("#") });
 

@@ -20,7 +20,7 @@ import { wipeAccount } from "@/lib/account";
  * an added brand's onboarding costs ONBOARD_EXTRA_BRAND_COST credits (shown at confirm, 402 before any stream,
  * refunded when the brand is not saved, never charged twice), and the paid Sunday plan is on by default only for the
  * default brand. Brand creation is bounded by a rate and a lock, never by a cap.
- * Rules 225 (unlimited brands, rate, lock), 218 (added-brand onboarding), 219 (weekly plan per brand) and 222
+ * Rules 245 (unlimited brands, rate, lock), 246 (added-brand onboarding), 247 (weekly plan per brand) and 250
  * (draft_items types checked in code). No model key and no network: every agent call takes its mock path.
  */
 const crawled: string[] = [];
@@ -74,7 +74,7 @@ async function withAddedBrand(plan: Plan = "trial", prefix = "gr"): Promise<{ u:
   return { u, id, scope: scopeFor(u.email, id) };
 }
 
-describe("unlimited brands, a creation rate and a locked add (rule 225)", () => {
+describe("unlimited brands, a creation rate and a locked add (rule 245)", () => {
   it("trial, starter, pro and business accounts add a 2nd and a 3rd brand, and GET returns no limit", async () => {
     for (const plan of ["trial", "starter", "pro", "business"] as const) {
       const u = await newUser(`p-${plan}`);
@@ -147,7 +147,7 @@ describe("unlimited brands, a creation rate and a locked add (rule 225)", () => 
   });
 });
 
-describe("an added brand's onboarding costs ONBOARD_EXTRA_BRAND_COST credits (rule 226)", () => {
+describe("an added brand's onboarding costs ONBOARD_EXTRA_BRAND_COST credits (rule 246)", () => {
   it("the first brand is free and the confirm says so", async () => {
     const u = await newUser("first");
     await signIn(u.email);
@@ -392,7 +392,7 @@ describe("an added brand's onboarding costs ONBOARD_EXTRA_BRAND_COST credits (ru
   });
 });
 
-describe("the Sunday plan is on by default only for the default brand (rule 227)", () => {
+describe("the Sunday plan is on by default only for the default brand (rule 247)", () => {
   it("an added brand starts off; Run now answers off and charges nothing until the owner switches it on", async () => {
     const { u, id, scope } = await withAddedBrand();
     await Promise.all([db.set(`brand:${u.email}`, brand), db.set(`brand:${scope}`, brand)]);
@@ -450,7 +450,7 @@ describe("the Sunday plan is on by default only for the default brand (rule 227)
   });
 });
 
-describe("draft_items takes only the draft types, checked in code (rule 230)", () => {
+describe("draft_items takes only the draft types, checked in code (rule 250)", () => {
   it("a batch type is refused before any charge, whatever the model sends", async () => {
     const u = await newUser("draft");
     await db.set(`brand:${u.email}`, brand);

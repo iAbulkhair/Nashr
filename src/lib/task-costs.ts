@@ -4,7 +4,7 @@
  * (tests/client-bundle.test.ts lists it in SERVER_ONLY).
  *
  * The table holds TOKENS, never dollars. Every dollar comes from `costUsd` in src/lib/usage.ts, so a change to the
- * Anthropic rates there moves every estimate, and tests/pricing-floor.test.ts (rule 221) fails the build when a task's
+ * Anthropic rates there moves every estimate, and tests/pricing-floor.test.ts (rule 241) fails the build when a task's
  * cost per credit crosses the margin floor in src/lib/pricing.ts.
  *
  * Calibrated to docs/system/costs.md §3 (2026-09-27): the generation call is Opus with a cached workspace block, a

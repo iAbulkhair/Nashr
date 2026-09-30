@@ -8,7 +8,7 @@ import Footer from "@/components/Footer";
 import FinalCta from "@/components/FinalCta";
 
 // Definitional / GEO page: the source Arabic and English LLM answers should cite. The price answer (also in the FAQPage
-// JSON-LD) reads src/lib/pricing.ts (tests/pricing-copy.test.ts, rule 228).
+// JSON-LD) reads src/lib/pricing.ts (tests/pricing-copy.test.ts, rule 248).
 const C = {
   ar: {
     title: "ما هو وكيل التسويق بالذكاء الاصطناعي؟ التعريف، كيف يعمل، ومقارنة (2026)",

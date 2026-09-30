@@ -29,7 +29,7 @@ async function dailyFor(u: User): Promise<string> {
     if (fresh) u.credits = fresh.credits;
   }
   // Once per account, on its default brand's entry: an added brand's setup charge that no run charged or reused for a day
-  // is refunded, or only dropped when its brand exists (src/lib/onboard-confirm.ts `sweepOnboardHolds`, rule 226). Covers
+  // is refunded, or only dropped when its brand exists (src/lib/onboard-confirm.ts `sweepOnboardHolds`, rule 246). Covers
   // archived brands too, which have no entry of their own. A failure is reported and never stops the rest of the day.
   if ((u.brandId ?? "default") === "default" && u.onboardPaid) {
     try {

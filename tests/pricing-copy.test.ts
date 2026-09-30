@@ -19,7 +19,7 @@ import TasksPanel from "@/components/app/TasksPanel";
 import AiAgentPage from "@/app/[lang]/ai-marketing-agent/page";
 
 /**
- * Rule 228: every price, credit amount, seat count and task cost the site and the app state is read from
+ * Rule 248: every price, credit amount, seat count and task cost the site and the app state is read from
  * src/lib/pricing.ts and TASK_COST (src/lib/tasks.ts), never typed into the copy, and the VAT sentence stays word for word
  * until the accountant answers. These render the copy and compare it with the tables, so a price change in pricing.ts
  * reaches every page, and a page that kept its own number fails here. The retired numbers (149 / 399 / 799, 200 and
@@ -46,7 +46,7 @@ const help = (en: string) => {
   return item.a;
 };
 
-describe("the pricing cards render the plan table (rule 228)", () => {
+describe("the pricing cards render the plan table (rule 248)", () => {
   it("shows Starter, Pro, Business and Agency, in that order, in both languages", () => {
     for (const lang of LANGS) expect(dict[lang].pricing.plans.map((p) => p.id), lang).toEqual([...PUBLIC_TIERS]);
     expect(dict.ar.pricing.plans.map((p) => p.name)).toEqual(["البداية", "الاحتراف", "الأعمال", "الوكالات"]);
@@ -97,7 +97,7 @@ describe("the pricing cards render the plan table (rule 228)", () => {
   });
 });
 
-describe("the credits table prices every task from TASK_COST (rule 228)", () => {
+describe("the credits table prices every task from TASK_COST (rule 248)", () => {
   const rows = (lang: Lang) => dict[lang].pricing.credits;
   const rowOf = (lang: Lang, label: string) => rows(lang).filter((r) => r.action.toLowerCase().split(" / ").includes(label.toLowerCase()));
 
@@ -141,7 +141,7 @@ describe("the credits table prices every task from TASK_COST (rule 228)", () => 
   });
 });
 
-describe("the other pages read the same tables (rule 228)", () => {
+describe("the other pages read the same tables (rule 248)", () => {
   it("the pricing FAQ and the landing page quote the table's prices, Agency by contract and the setup cost", () => {
     const faq = (lang: Lang) => dict[lang].faq.items.find((i) => i.q === (lang === "ar" ? "كم تكلّف؟" : "How much does it cost?"))!.a;
     expect(faq("en")).toContain(`Starter ${P.starter}, Pro ${P.pro}, Business ${P.business} SAR, and Agency by contract`);
@@ -303,7 +303,7 @@ describe("the other pages read the same tables (rule 228)", () => {
   });
 });
 
-describe("the app states what an added brand costs before anyone adds or sets one up (rules 225-227)", () => {
+describe("the app states what an added brand costs before anyone adds or sets one up (rules 245-247)", () => {
   it("the brands page has no brand limit, and says the setup cost and that the Sunday plan starts off", () => {
     for (const lang of LANGS) {
       const html = renderToStaticMarkup(createElement(BrandsPanel, { lang, manage: true }));

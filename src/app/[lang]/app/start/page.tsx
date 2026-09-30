@@ -28,7 +28,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       </div>
     );
   }
-  // An added brand's setup costs credits (rule 226): the wizard states the cost and the balance before the owner presses
+  // An added brand's setup costs credits (rule 246): the wizard states the cost and the balance before the owner presses
   // Go, or that the setup is already paid for (a charge held from a run that did not finish, which the next run reuses:
   // the balance is then not asked again). Display only: POST /api/onboard/confirm and /api/onboard check the balance and
   // the hold, and charge, on the server.

@@ -150,7 +150,7 @@ function giveBack(u: User, n: number, spend: SpendRef) {
  * a hold reuses it instead of charging (a run the platform killed at maxDuration runs no catch, and the chat page starts
  * the build again by itself while a confirmation exists), and restarts its clock, so the daily sweep never refunds a
  * charge a run is using. Only a run that charged or reused a hold can refund it, and only once: a second refund finds no
- * hold and gives back nothing. With no hold, an ended trial is refused here, in the same lock as the charge. Rule 226.
+ * hold and gives back nothing. With no hold, an ended trial is refused here, in the same lock as the charge. Rule 246.
  */
 export type OnboardCharge =
   | { ok: true; reused: true; credits: number; hold: OnboardHold }
@@ -248,7 +248,7 @@ export const monthKey = (d = new Date()) => d.toISOString().slice(0, 7);
  * Monthly renewal for paid plans: on the first cron run of a new month the balance is reset to the account's allowance
  * (src/lib/pricing.ts `allowanceOf`: the plan's credits; for Agency, the deal's credits, or Business's when there is no
  * deal at or above the floor). Unused credits do not roll over, same as Enrich. Trial users are never renewed, and
- * neither is a stored plan `getUser` could not recognise (it reads as trial). Rule 223, tests/pricing.test.ts.
+ * neither is a stored plan `getUser` could not recognise (it reads as trial). Rule 243, tests/pricing.test.ts.
  */
 export async function renewIfDue(email: string): Promise<boolean> {
   return withUserLock(email, async (u) => {

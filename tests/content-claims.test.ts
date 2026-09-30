@@ -131,7 +131,7 @@ describe("no site or product copy asserts an invented result or an unbuilt featu
     { re: /no auto-publishing/i, why: "implies a paid plan publishes automatically; none does" },
     { re: /(Highest reply rate|orders cluster \d|lift Maps ranking|1\.4 إلى 3\.2 ROAS)/, why: "an unsourced result claim on an inspiration card" },
     { re: /(Biggest KSA sale season|top channel for aesthetics|Tamara[^.]*(lift conversion|raise order value))/, why: "an unsourced superlative injected into generation prompts" },
-    // Pricing phase 1 (rule 228): the retired prices, allowances and brand limits. Prices now render from
+    // Pricing phase 1 (rule 248): the retired prices, allowances and brand limits. Prices now render from
     // src/lib/pricing.ts and TASK_COST; a typed copy of an old one is a regression, wherever it appears.
     { re: /(SAR ?(149|399|799)\b|\b(149|399|799) ?(SAR|ريال)|\b149[–-]799\b|"(149|399|799)", l: "(SAR|ريال))/, why: "a retired plan price (149 / 399 / 799)" },
     { re: /(Starter|Pro|Agency|البداية|الاحتراف|الوكالة) (149|399|799)\b/, why: "a retired plan price next to a tier name" },
@@ -154,7 +154,7 @@ describe("no site or product copy asserts an invented result or an unbuilt featu
     expect(files.length).toBeGreaterThan(100);
   });
 
-  it("the pricing bans catch the copy they retired, so a pattern cannot pass by matching nothing (rule 228)", () => {
+  it("the pricing bans catch the copy they retired, so a pattern cannot pass by matching nothing (rule 248)", () => {
     const RETIRED = [
       `{ name: "Starter", price: "149", period: "SAR / month", credits: "200 credits / month"`,
       `"فريق كامل من 149 ريالاً شهرياً"`,

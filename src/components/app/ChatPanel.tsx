@@ -186,7 +186,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         const res = await fetch("/api/onboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: onboardUrl }) });
         if (res.status === 409) return fail("busy");
         if (res.status === 503) return fail("paused");
-        // 402, before any stream: an added brand's setup the balance, the agent cap or the trial cannot cover (rule 226).
+        // 402, before any stream: an added brand's setup the balance, the agent cap or the trial cannot cover (rule 246).
         // Nothing was charged; the paywall says why and the thread says nothing was used.
         if (res.status === 402) { const j = (await res.json().catch(() => ({}))) as { error?: string }; limitFromError(j.error); return fail("charge"); }
         // 429: the account's daily setup allowance, checked before any charge.

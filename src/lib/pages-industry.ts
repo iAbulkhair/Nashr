@@ -1,7 +1,7 @@
 import { seatsText, type Lang } from "./i18n";
 import { ONBOARD_EXTRA_BRAND_COST as SETUP, PLAN_CREDITS, PLAN_PRICE_SAR as P, PLAN_SEATS, formatCount } from "./pricing";
 
-// Prices, credits and seats come from src/lib/pricing.ts (tests/pricing-copy.test.ts, rule 228).
+// Prices, credits and seats come from src/lib/pricing.ts (tests/pricing-copy.test.ts, rule 248).
 
 export type IndustryPage = {
   slug: string;

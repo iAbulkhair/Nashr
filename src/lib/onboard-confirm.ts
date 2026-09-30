@@ -29,7 +29,7 @@ export const clearOnboard = (scope: string) => db.del(key(scope));
  * The hold has no TTL, so it cannot expire between a killed run and the owner's retry (the confirmation, a day long, is
  * written first and always expired first). While it exists a retry, and the start page, treat the setup as paid. The
  * daily cron resolves any hold that no run charged or reused for a day: refunded when its brand was never built (a run
- * the platform killed before saving the brand), dropped when it was. Rule 226, tests/brand-guardrails.test.ts.
+ * the platform killed before saving the brand), dropped when it was. Rule 246, tests/brand-guardrails.test.ts.
  */
 export const heldOnboard = (u: Pick<User, "onboardPaid">, scope: string) => u.onboardPaid?.[scope] ?? null;
 

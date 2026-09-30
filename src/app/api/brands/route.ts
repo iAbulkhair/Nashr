@@ -31,7 +31,7 @@ export async function GET() {
  * Adding is never refused for the plan (brands are unlimited on every plan; never 402). It is bounded by a creation
  * rate per account (src/lib/rate.ts `brandAddRefusal`: 429 `slow_down` with `retry` "hour" or "day" and a Retry-After
  * header), and every change to the list is made under the
- * list's lock (src/lib/brands.ts `withBrandsLock`: 409 `busy` when it cannot be taken). Rule 225.
+ * list's lock (src/lib/brands.ts `withBrandsLock`: 409 `busy` when it cannot be taken). Rule 245.
  */
 export async function POST(req: Request) {
   const u = await currentUser();

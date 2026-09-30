@@ -49,7 +49,7 @@ describe("cart-recovery drafts need real abandoned carts (rule 74)", () => {
   });
 
   // A batch from chat meets the same data gate. A small ask never reaches it: cart_recovery is not a draft type, so
-  // draft_items refuses it in code before any read (rule 230). Neither path charges.
+  // draft_items refuses it in code before any read (rule 250). Neither path charges.
   it("refuses from chat too: a batch without carts, and a small ask as not a draft type", async () => {
     const u = await newUser("cartchat");
     await db.set(`brand:${u.email}`, brand);

@@ -15,7 +15,7 @@ import { forbid } from "@/lib/roles";
  * for an added one, which the start page shows before Go. An added brand the account cannot pay for is refused here
  * with 402 {error: "no_credits" | "trial_over", need, credits}, so the owner sees the paywall on the start page instead
  * of a failed build in chat; a build already paid for (a charge held on the account, `User.onboardPaid`) is not asked
- * again and answers `paid: true`. The charge itself, and its authoritative checks, are in POST /api/onboard. Rule 226.
+ * again and answers `paid: true`. The charge itself, and its authoritative checks, are in POST /api/onboard. Rule 246.
  */
 export async function POST(req: Request) {
   const u = await currentUser();

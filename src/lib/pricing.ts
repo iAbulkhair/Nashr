@@ -6,11 +6,11 @@
  *
  * This module imports NOTHING on purpose. Client components (the pricing page, the start wizard, the brands panel),
  * i18n.ts, app-i18n.ts, help.ts, site.ts and the pages-*.ts copy read it, so an import here would carry whatever it
- * pulls into the browser bundle (tests/client-bundle.test.ts, rule 229). auth.ts re-exports Plan, AgencyDeal, PLANS,
+ * pulls into the browser bundle (tests/client-bundle.test.ts, rule 249). auth.ts re-exports Plan, AgencyDeal, PLANS,
  * isPlan, PLAN_CREDITS, PLAN_SEATS and seatLimit, so existing `@/lib/auth` imports keep working.
  *
- * Pinned by tests/pricing.test.ts (rules 222-224: the tables, the account helpers, renewal and the deal floor) and
- * tests/pricing-floor.test.ts (rule 221: every task type, priced by src/lib/task-costs.ts, stays under the margin floor).
+ * Pinned by tests/pricing.test.ts (rules 242-244: the tables, the account helpers, renewal and the deal floor) and
+ * tests/pricing-floor.test.ts (rule 241: every task type, priced by src/lib/task-costs.ts, stays under the margin floor).
  */
 
 export type Plan = "trial" | "starter" | "pro" | "business" | "agency";
@@ -122,7 +122,7 @@ export function seatLimit(u: { plan: Plan; seats?: number }): number {
   return isFixedPlan(u.plan) ? PLAN_SEATS[u.plan] : 1;
 }
 
-// ---- The margin floor (rule 221, tests/pricing-floor.test.ts) ----
+// ---- The margin floor (rule 241, tests/pricing-floor.test.ts) ----
 
 export const SAR_PER_USD = 3.75;
 export const VAT_RATE = 0.15;
@@ -156,7 +156,7 @@ export function maxCostPerCreditUsd(prices: Prices = PLAN_PRICE_SAR, credits: Pr
   return (1 - MARGIN_FLOOR) * cheapestCreditUsd(prices, credits, includesVat);
 }
 
-// ---- Brands (rules 225-227) ----
+// ---- Brands (rules 245-247) ----
 
 /**
  * Credits to onboard a second or later brand (any scope but the default). The first brand is free. Shown before the

@@ -7,7 +7,7 @@ import { TASK_COST } from "./tasks";
  *
  * Import-free apart from types, src/lib/pricing.ts and src/lib/tasks.ts (both import-free, so they drag nothing else
  * along) on purpose: client components read the labels and statuses from here, and anything this file imported would be
- * dragged into their bundles. The prices and task costs in the pricing entry come from those tables (rule 228). The Redis side (votes, suggestions, promoted items, status
+ * dragged into their bundles. The prices and task costs in the pricing entry come from those tables (rule 248). The Redis side (votes, suggestions, promoted items, status
  * overrides) lives in src/lib/wishlist.ts.
  *
  * Every changelog entry is a change merged into main (the PR or commit is named next to it) and is dated with the

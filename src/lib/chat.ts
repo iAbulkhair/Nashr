@@ -378,7 +378,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
     }
     case "draft_items": {
       // The tool schema's enum is not the approval (the model is never the only approval): a type outside DRAFT_TYPES
-      // would be charged pro rata for the one item a batch type gives back (rule 230, tests/brand-guardrails.test.ts).
+      // would be charged pro rata for the one item a batch type gives back (rule 250, tests/brand-guardrails.test.ts).
       if (!isDraftType(input.type)) return `Not a draft type. draft_items takes: ${DRAFT_TYPES.join(", ")}; use generate_content for other types. Nothing was created and no credits were used.`;
       const type = input.type;
       const count = Math.max(1, Math.min(3, Number(input.count) || 1));

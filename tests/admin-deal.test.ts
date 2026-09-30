@@ -11,7 +11,7 @@ import * as exportRoute from "@/app/api/admin/export/route";
 import * as profileRoute from "@/app/api/profile/route";
 
 /**
- * The founder console's plan API with Agency deals (rules 223 and 224): a deal is validated in code against the
+ * The founder console's plan API with Agency deals (rules 243 and 244): a deal is validated in code against the
  * Business rate (src/lib/pricing.ts `parseDeal`), lives only on Agency, is cleared when the account leaves Agency, is
  * logged before and after, and is what renewal and a plan change grant (`allowanceOf`). addCredits is bounded.
  */
@@ -34,7 +34,7 @@ async function account(p: Plan, prefix = "deal"): Promise<User> {
   return x;
 }
 
-describe("an Agency deal is checked in code (rule 224)", () => {
+describe("an Agency deal is checked in code (rule 244)", () => {
   it("a deal below the Business rate, malformed or not in whole numbers is refused and writes nothing", async () => {
     const u = await account("agency");
     const logged = await logLength();
@@ -79,7 +79,7 @@ describe("an Agency deal is checked in code (rule 224)", () => {
 
     await saveUser({ ...after, renewedAt: "2020-01" });
     expect(await renewIfDue(u.email)).toBe(true);
-    expect((await getUser(u.email))!.credits, "renewal grants the deal's credits (rule 223)").toBe(3003);
+    expect((await getUser(u.email))!.credits, "renewal grants the deal's credits (rule 243)").toBe(3003);
   });
 
   it("plan agency with a deal grants the deal at once and starts the renewal cycle", async () => {
@@ -158,7 +158,7 @@ describe("an Agency deal is checked in code (rule 224)", () => {
   });
 });
 
-describe("the owner's profile states the allowance the balance renews to (rule 223)", () => {
+describe("the owner's profile states the allowance the balance renews to (rule 243)", () => {
   it("an Agency deal's credits, Business's without one; the deal's terms without who set it", async () => {
     const u = await account("agency");
     await signIn(u.email);

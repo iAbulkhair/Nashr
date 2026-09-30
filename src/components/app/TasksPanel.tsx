@@ -88,7 +88,7 @@ export default function TasksPanel({ t, initial, routines, readOnly = false }: {
       // generated when nothing had happened and no credits had moved.
       const outcome = which === "weekly" ? (j.result ?? "") : j.brief ? j.brief.text.split("\n")[1] : "off";
       const ran = which === "weekly" ? outcome.startsWith("ok:") : !!j.brief;
-      // "off": an added brand's Sunday plan starts off (rule 227), and running it refuses before any charge.
+      // "off": an added brand's Sunday plan starts off (rule 247), and running it refuses before any charge.
       setMsg(ran ? `${k.ran}: ${outcome}` : outcome === "retry:paused" ? t.generate.paused : outcome === "agent_cap" ? t.limit.agentCapTitle : which === "weekly" && outcome === "off" ? k.weeklyOff : `${t.generate.failed} (${outcome})`);
     } catch {
       setMsg(t.generate.failed);

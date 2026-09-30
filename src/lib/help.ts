@@ -4,7 +4,7 @@ import { TASK_COST as C, TASK_COUNT as N } from "./tasks";
 
 // Plan prices, credits and task costs come from src/lib/pricing.ts and src/lib/tasks.ts (both import-free: HelpCenter is a
 // client component). The image and video ranges are pinned to the media catalogue by tests/content-claims.test.ts; the
-// rest by tests/pricing-copy.test.ts (rule 228). The chat prompt repeats these answers to the model as fact.
+// rest by tests/pricing-copy.test.ts (rule 248). The chat prompt repeats these answers to the model as fact.
 
 export type HelpTopic = { id: string; title: Record<Lang, string>; items: { q: Record<Lang, string>; a: Record<Lang, string> }[] };
 

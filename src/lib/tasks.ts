@@ -16,7 +16,7 @@ export type TaskType =
   | "prd" | "roadmap" | "feedback_synthesis" | "onboarding_flow";
 
 /**
- * Credits per batch. Every value is floor-checked by tests/pricing-floor.test.ts via src/lib/task-costs.ts (rule 221): at
+ * Credits per batch. Every value is floor-checked by tests/pricing-floor.test.ts via src/lib/task-costs.ts (rule 241): at
  * most 40% of the cheapest self-serve credit (src/lib/pricing.ts). weekly_plan, weekly_report and followup_seq were
  * raised in pricing phase 1 (1 → 2, 2 → 3, 3 → 4); the cron-driven types are checked on a cold prompt cache. Keep this
  * file import-free: the estimate table lives in task-costs.ts, never here.
@@ -50,8 +50,8 @@ export const IMAGE_COST = 1;
 
 /**
  * The types the chat's `draft_items` tool may draft (1-3 items, charged pro rata from TASK_COST / TASK_COUNT). The tool
- * schema's enum is not the approval: src/lib/chat.ts checks `isDraftType` in code (rule 230), and
- * tests/pricing-floor.test.ts floor-checks every draft of these types (rule 221, with the named one-item exemption).
+ * schema's enum is not the approval: src/lib/chat.ts checks `isDraftType` in code (rule 250), and
+ * tests/pricing-floor.test.ts floor-checks every draft of these types (rule 241, with the named one-item exemption).
  */
 export const DRAFT_TYPES: readonly TaskType[] = ["social", "whatsapp", "ads", "gbp"];
 

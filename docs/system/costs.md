@@ -36,7 +36,7 @@ At roughly 3.3 characters per token for this Arabic/English mix, a full batch pr
 Recomputed on 2026-09-27 for Sonnet 5 at $2/$10 per million tokens (it was $3/$15 in `RATES`, which overstated the
 review and judge columns by half). Since 2026-09-30 the table is what `estimateBatch` in `src/lib/task-costs.ts`
 prints: that file holds the token assumptions below and prices them through `costUsd` (`src/lib/usage.ts`), so a rate
-change moves every row, and `tests/pricing-floor.test.ts` (rule 221) fails the build when a row crosses the ceiling in
+change moves every row, and `tests/pricing-floor.test.ts` (rule 241) fails the build when a row crosses the ceiling in
 section 4. Assumptions, stated so they can be argued with: 1,200 fresh input tokens and the 7,500-token cached
 workspace block; 1,200 tokens of adaptive thinking; per-item output of 350 tokens (a post, an ad, a GBP entry, a cart
 message), 900 (a plan, an OKR set, a script) or 2,500 (an article, a deck, a memo, a PRD) (`ITEM_SIZE`, exhaustive over
@@ -75,7 +75,7 @@ task type of every routine in `src/lib/routines.ts`) on the cold figure, and eve
 - **Repriced on 2026-09-30** because they crossed the ceiling: `weekly_plan` 1 → 2 credits (it was $0.0893 per credit
   on a hit), `followup_seq` 3 → 4 ($0.0888), and `weekly_report` 2 → 3 (the routine runs it cold: $0.0918). The floor
   test keeps the old prices as cases that must fail, so it cannot pass vacuously.
-- **Chat drafts** (`draft_items`, social, whatsapp, ads and gbp only, checked in code: rule 230) charge the batch price
+- **Chat drafts** (`draft_items`, social, whatsapp, ads and gbp only, checked in code: rule 250) charge the batch price
   pro rata and at least 1 credit, so 1, 2 or 3 items cost 1, 2 or 3 credits. On a cache hit two items cost $0.0418 per
   credit and three $0.0318. **One item costs $0.0716 for 1 credit, 0.9% over the ceiling**: the reviewer and the judge
   run on one short item almost as on a whole batch. It stays at 1 credit as a named exemption in the floor test
@@ -115,7 +115,7 @@ and transfer are extra, billed by Vercel and not metered per render or per tenan
 | `vid-motion` (Photo to motion · 6s) | Higgsfield | 12 | $0.28 | 0.023 | — |
 
 - The target was at most about $0.05 per credit (founder decision F3). Every model but `vid-cinematic` meets it. Since
-  2026-09-30 the floor test (rule 221) checks every row, with the prompt's $0.005 added, against the $0.0710 ceiling of
+  2026-09-30 the floor test (rule 241) checks every row, with the prompt's $0.005 added, against the $0.0710 ceiling of
   section 4: `vid-cinematic` is the highest at $0.0588 per credit and passes with 17% of headroom.
 - `vid-cinematic` is above the target at list price (spec R3), and Higgsfield prices change and promotions expire on
   2026-10-01. The console's "Check media providers" shows Higgsfield's own `/estimate` for it; if that exceeds $0.70, the
@@ -141,7 +141,7 @@ Rewritten on 2026-09-30 for pricing phase 1. Revenue per credit comes from `PLAN
 | agency | the deal's price | the deal's credits | at least Business's **$0.1776**: `dealRespectsFloor` refuses a deal under 999 SAR, under 1,500 credits, or cheaper per credit than Business (integer check: price × 1,500 ≥ credits × 999). An Agency account without a valid deal is granted and counted as Business |
 
 **The ceiling.** `MARGIN_FLOOR` is 0.6: at least 60% of the cheapest self-serve credit is margin, so what one credit
-may cost us is at most 40% of $0.1776, **$0.07104** (`maxCostPerCreditUsd`). `tests/pricing-floor.test.ts` (rule 221)
+may cost us is at most 40% of $0.1776, **$0.07104** (`maxCostPerCreditUsd`). `tests/pricing-floor.test.ts` (rule 241)
 holds every task type (section 3), every chat draft but the named exemption, the added-brand onboarding and every media
 model (section 3.1) under it. A price cut or a larger allowance lowers the ceiling: Business at 899 SAR, or at 1,700
 credits, puts `article` over and fails the build. If the accountant says prices must include VAT (`PRICES_INCLUDE_VAT`
@@ -174,7 +174,7 @@ The next moves, cheapest first: cap `max_tokens` per type instead of a flat 16,0
 - **Chat** costs no credits, so `CHAT_PER_HOUR` (40) and `CHAT_PER_DAY` (200) in `src/lib/rate.ts` bound it per account,
   on the web route and on MCP `ask_noor`. Before 2026-09-20 nothing did.
 - **Onboarding** is free for the first brand and 9 credits for each added brand built from its URL (since 2026-09-30,
-  rule 226; the manual brand form makes no model call and is free): the charge goes to Noor in that brand's scope under
+  rule 246; the manual brand form makes no model call and is free): the charge goes to Noor in that brand's scope under
   her monthly cap there, after every other refusal and under the run's lock (330 s, owner-token release, so two runs
   never build on one charge), before the stream. It is held on the account record (`User.onboardPaid[scope]`) in the same
   save as the debit: a retry or a revisit reuses it instead of paying twice, a build that fails before the brand is
@@ -184,13 +184,13 @@ The next moves, cheapest first: cap `max_tokens` per type instead of a flat 16,0
   account per day, so an agency sets up at most three brands a day, and signup is five per IP per hour. The worst case
   an attacker can drive from one address through free first brands is therefore still about $9 an hour; an added
   brand's run is paid for.
-- **Brands** are unlimited on every plan (since 2026-09-30, rule 225). What bounds them is a creation rate, not a count:
+- **Brands** are unlimited on every plan (since 2026-09-30, rule 245). What bounds them is a creation rate, not a count:
   10 an hour and 30 a day per account (`brandAddRefusal` in `src/lib/rate.ts`, which says which window refused), plus
   the 9-credit setup and the daily
   onboarding allowance above. Every brand fans out into every cron, which is why an added brand's Sunday plan starts off.
 - **Cron** charges `TASK_COST.weekly_plan` (2 credits since 2026-09-30) for the Sunday plan and makes no model call for
   the daily brief. The Sunday plan is on by default only for the default brand; an added brand's is off until the owner
-  switches it on in Scheduled tasks (`getSchedule` in `src/lib/schedule.ts`, rule 227). Added brands created before
+  switches it on in Scheduled tasks (`getSchedule` in `src/lib/schedule.ts`, rule 247). Added brands created before
   2026-09-30 stored the old default (on) in `schedule:{scope}`; on an added brand a stored `weeklyPlan` counts only with
   the `weeklyPlanSetAt` stamp the owner's switch writes, so those brands start off too and are not charged.
 - **Media renders** (spec 4.8, `src/lib/media/jobs.ts`) are bounded in several layers, all but the last in code:
