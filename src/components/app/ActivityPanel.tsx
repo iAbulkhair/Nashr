@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Activity, ActivityKind } from "@/lib/activity";
 import type { By } from "@/lib/actor";
-import { AGENT_IDS, isAgentId, type AgentId } from "@/lib/agents";
+import { AGENT_IDS, agentForTask, isAgentId, type AgentId } from "@/lib/agents";
 import { isTaskType } from "@/lib/tasks";
 import { dateFormat } from "@/lib/dates";
 
@@ -54,8 +54,11 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
 
   const when = dateFormat(lang, { dateStyle: "medium", timeStyle: "short" });
   const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
-  const who = (b: By) => (b.kind === "member" ? `${a.by.member}${b.email ? ` · ${b.email}` : ""}` : a.by[b.kind]);
+  // Majed's auto-run is the system's `auto_handoff` job: named, so the owner can tell it from the other automatic work.
+  const who = (b: By) => (b.kind === "member" ? `${a.by.member}${b.email ? ` · ${b.email}` : ""}` : b.kind === "system" && b.job === "auto_handoff" ? a.autoRun : a.by[b.kind]);
   const typeOf = (r: Activity) => (r.type && isTaskType(r.type) ? t.generate.types[r.type].t : "");
+  /** A comma list of task types (a handoff's `note`) as their names; anything that is not a type is left out. */
+  const typesOf = (note: string | undefined) => (note ?? "").split(",").filter(isTaskType).map((x) => t.generate.types[x].t).join(lang === "ar" ? "، " : ", ");
   /** What happened, in plain words from the dictionary; the codes themselves are in the CSV. */
   function detail(r: Activity): string {
     const n = (s: string, v: number | undefined) => (v === undefined ? "" : fill(s, { n: v }));
@@ -80,6 +83,19 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
         case "onboard_refunded": return [n(a.credits, r.credits), a.refunded];
         case "external_draft": return [typeOf(r), r.note ?? ""];
         case "gov_changed": case "gov_rollback": return [r.note ? fill(a.changed, { list: r.note }) : ""];
+        // The reviewing agent is the row's agent; `outcome` is "flags:N", written in code.
+        case "cross_reviewed": {
+          const flags = Number(/^flags:(\d+)$/.exec(r.outcome ?? "")?.[1] ?? NaN);
+          return [typeOf(r), n(a.items, r.count), Number.isNaN(flags) ? "" : flags ? fill(a.flags, { n: flags }) : a.noFlags];
+        }
+        // Majed's handoffs: `note` is the item types, written in code; each is named, with the agent who owns it.
+        case "handoff_proposed": return [typesOf(r.note), n(a.items, r.count), n(a.handoffCost, r.credits), a.notCharged];
+        case "handoff_declined": return [typesOf(r.note), n(a.items, r.count)];
+        case "handoff_run": {
+          const owner = r.type && isTaskType(r.type) ? agentForTask(r.type).id : undefined;
+          const failed = (r.outcome ?? "").startsWith("failed:");
+          return [typeOf(r), owner ? fill(a.handoffFor, { name: t.agents[owner].name }) : "", failed ? a.handoffFailed : n(a.items, r.count)];
+        }
         default: return [r.note ?? ""];
       }
     })();

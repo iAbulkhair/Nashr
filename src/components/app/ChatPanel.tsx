@@ -1,11 +1,12 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { ChatMsg, ChatItem } from "@/lib/chat";
+import type { HandoffItemStatus, HandoffView } from "@/lib/handoffs";
 import type { BrandProposal } from "@/lib/brand-proposals";
-import { AGENTS, type AgentId } from "@/lib/agents";
+import { AGENTS, isAgentId, type AgentId } from "@/lib/agents";
 import { limitFromError, raiseLimit } from "./LimitModal";
 import { render } from "@/lib/md";
 import { Icon, channelIcon } from "./Icons";
@@ -19,6 +20,8 @@ const LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250,
 /**
  * A generated item inside the chat: channel header, rendered body, count vs limit, copy, approve with undo. Approving is
  * admin and owner only (`canApprove` = `can(u, "publish")` from the page); a member sees a note instead of the button.
+ * An item another agent flagged in the cross-agent review (`item.xflag`) shows each reviewer's pill and, instead of
+ * Approve, a link to the inbox, where the notes are: it is never approved from here unread.
  */
 export function ItemCard({ item, t, lang, onApproved, canApprove = true }: { item: ChatItem; t: AppDict; lang: "ar" | "en"; onApproved?: (id: string) => void; canApprove?: boolean }) {
   const [open, setOpen] = useState(true);
@@ -48,11 +51,16 @@ export function ItemCard({ item, t, lang, onApproved, canApprove = true }: { ite
     else setUndoAt(0);
   }
   const over = !!limit && item.body.length > limit;
+  const flags = (item.xflag ?? []).filter((f) => isAgentId(f.by));
+  const flagged = flags.length > 0 && status !== "approved";
   return (
     <article className="mt-3 overflow-hidden rounded-xl border border-ink/10 bg-white text-ink">
       <header className="flex items-center justify-between gap-2 border-b border-ink/5 px-3 py-2 text-xs">
         <span className="flex min-w-0 items-center gap-2 font-semibold"><Icon name={channelIcon(item.channel)} className="h-4 w-4 text-oasis" />{chName}<span className="clip font-normal text-ink/60" dir="auto">· {item.title}</span></span>
-        <span className={`badge ${status === "approved" ? "badge-primary" : "badge-accent"}`}>{status === "approved" ? t.inbox.approved : t.inbox.pending}</span>
+        <span className="flex flex-wrap items-center justify-end gap-1.5">
+          {flags.map((f) => <span key={f.by} className="whitespace-nowrap rounded-full bg-saffron/20 px-2 py-0.5 font-semibold text-sadu-deep">{f.n === 1 ? fill(t.inbox.xNote, { name: t.agents[f.by].name }) : fill(t.inbox.xNotes, { name: t.agents[f.by].name, n: f.n })}</span>)}
+          <span className={`badge whitespace-nowrap ${status === "approved" ? "badge-primary" : "badge-accent"}`}>{status === "approved" ? t.inbox.approved : t.inbox.pending}</span>
+        </span>
       </header>
       {open && <div className="prose-nashr prose-compact px-4 py-3 text-sm" dir="auto" dangerouslySetInnerHTML={{ __html: render(item.body) }} />}
       <footer className="flex flex-wrap items-center gap-2 border-t border-ink/5 px-3 py-2 text-xs">
@@ -60,14 +68,200 @@ export function ItemCard({ item, t, lang, onApproved, canApprove = true }: { ite
         {err && <span className="text-sadu-deep">{err}</span>}
         {held.length > 0 && <span role="alert" className="flex items-center gap-1 font-semibold text-sadu-deep"><Icon name="shield" className="h-3.5 w-3.5" /><span dir="auto">{ar ? `محجوز بحارس العلامة: ${held.join("، ")}` : `Held by brand guard: ${held.join(", ")}`}</span> · <Link href={`/${lang}/app`} className="underline">{ar ? "عدّله في صندوق الموافقة" : "Fix it in the inbox"}</Link></span>}
         {undoAt > 0 && status === "approved" && <span className="flex items-center gap-2 text-oasis"><Icon name="check" className="h-4 w-4" />{t.chat.approved} · <button onClick={() => setState("pending")} className="underline">{t.chat.undo}</button></span>}
+        {flagged && <span className="font-semibold text-sadu-deep">{t.chat.xflagHint}</span>}
         <span className="ms-auto flex gap-1.5">
           <button onClick={() => setOpen(!open)} className="btn btn-secondary btn-xs">{open ? (ar ? "طيّ" : "Collapse") : (ar ? "عرض" : "Expand")}</button>
           <button onClick={async () => { await navigator.clipboard.writeText(item.body); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="btn btn-secondary btn-xs"><Icon name="copy" className="h-3.5 w-3.5" />{copied ? t.inbox.copied : status === "approved" ? `${t.chat.copyTo} ${chName}` : t.inbox.copy}</button>
           {status !== "approved" && !canApprove && <span className="text-ink/60">{t.inbox.waitAdmin}</span>}
-          {status !== "approved" && canApprove && <button onClick={() => setState("approved")} disabled={over || held.length > 0} title={over ? (ar ? "النص أطول من حد القناة" : "Text exceeds the channel limit") : undefined} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{t.inbox.approve}</button>}
+          {flagged && canApprove && <Link href={`/${lang}/app`} className="btn btn-primary btn-xs">{t.chat.readNotes}</Link>}
+          {status !== "approved" && canApprove && !flagged && <button onClick={() => setState("approved")} disabled={over || held.length > 0} title={over ? (ar ? "النص أطول من حد القناة" : "Text exceeds the channel limit") : undefined} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{t.inbox.approve}</button>}
         </span>
       </footer>
     </article>
+  );
+}
+
+/** A string from the dictionary with its {placeholders} filled. */
+const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
+const RUNNABLE: ReadonlySet<HandoffItemStatus> = new Set(["proposed", "failed"]);
+/** While an item runs, the card reads the stored state again this often, at most HANDOFF_POLLS times in a row. */
+export const HANDOFF_POLL_MS = 10_000;
+const HANDOFF_POLLS = 60;
+
+/**
+ * What the card makes of a Run request's answer. "lost": no answer from the route (the connection dropped, or a gateway
+ * answered in its place without the route's JSON): the run may still be going on the server and may already be
+ * charged, so the card reads the stored state and never says "try again". "refresh": another request holds the handoff
+ * and the answer carries no state: the card reads it, so it shows the item that runs. "ran" or "refused" otherwise.
+ */
+export function runAnswer(res: { ok: boolean } | null, j: { ok?: boolean; handoff?: unknown; error?: string }): "ran" | "lost" | "refresh" | "refused" {
+  if (!res || (!res.ok && !j.error)) return "lost";
+  if (res.ok && j.ok) return "ran";
+  if (j.error === "busy" && !j.handoff) return "refresh";
+  return "refused";
+}
+/** Whether the card keeps reading the stored state: while an item runs or a Run's answer was lost, and nothing is in flight. */
+export const keepReading = (s: { gone: boolean; inFlight: boolean; running: boolean; lost: boolean }) => !s.gone && !s.inFlight && (s.running || s.lost);
+
+/**
+ * One of Majed's handoffs under his reply: each item with the agent who will write it, its type, his brief (as text),
+ * its cost and status, with Run and Decline, and the inbox items a run made as item cards. It takes the server's state
+ * with the page (`initial`, or null when the record is gone) or reads it once on show, and takes the server's new state
+ * after every action, so what it shows is what is stored. While an item runs (a run from another tab or login, Majed's
+ * auto-run, or this card's own request whose answer was lost) it reads the stored state again every HANDOFF_POLL_MS
+ * until nothing runs. "Run all" is one request per item, in order, stopping at the first refusal. The buttons follow the
+ * login's role (`canRun` = `can(u, "generate")`, `canDecline` = `can(u, "drafts")`); the routes check the same actions.
+ */
+export function HandoffCard({ id, t, lang, initial, canRun = true, canDecline = true, canApprove = true, onCredits }: { id: string; t: AppDict; lang: "ar" | "en"; /** read on the server with the thread (chat page): the view, or null when the record is gone; without it the card reads it on show */ initial?: HandoffView | null; canRun?: boolean; canDecline?: boolean; canApprove?: boolean; onCredits?: (n: number) => void }) {
+  const H = t.handoff;
+  const [view, setView] = useState<HandoffView | null>(initial ?? null);
+  const [gone, setGone] = useState(initial === null);
+  // The item whose request is in flight, or "decline"; `all` while "Run all" works through the items one by one.
+  const [busy, setBusy] = useState<number | "decline" | null>(null);
+  const [all, setAll] = useState(false);
+  const [err, setErr] = useState("");
+  // A Run whose answer never arrived: the server may still be running it, and may have charged it. The card reads the
+  // stored state until it knows, instead of offering Run again on what may be a stale "Proposed".
+  const [lost, setLost] = useState(false);
+  const errText = (code: unknown, status: number) => (status === 403 ? H.errors.forbidden : typeof code === "string" && Object.hasOwn(H.errors, code) ? H.errors[code as keyof typeof H.errors] : H.errors.failed);
+  /** The stored state, read again. */
+  const refresh = useCallback(async () => {
+    const r = await fetch(`/api/handoffs/${id}`).catch(() => null);
+    if (!r) return;
+    const j = (await r.json().catch(() => ({}))) as { ok?: boolean; handoff?: HandoffView };
+    if (r.ok && j.ok && j.handoff) {
+      setView(j.handoff);
+      if (!j.handoff.items.some((it) => it.status === "running")) setLost(false);
+    } else if (r.status === 404) {
+      setGone(true);
+      setLost(false);
+    }
+  }, [id]);
+  const running = !!view?.items.some((it) => it.status === "running");
+  useEffect(() => {
+    if (!keepReading({ gone, inFlight: busy !== null || all, running, lost })) return;
+    let n = 0;
+    const timer = setInterval(() => { if (++n > HANDOFF_POLLS) clearInterval(timer); else void refresh(); }, HANDOFF_POLL_MS);
+    return () => clearInterval(timer);
+  }, [gone, busy, all, running, lost, refresh]);
+  useEffect(() => {
+    // A card the server rendered already shows what is stored, or that it is gone; one proposed in this session reads it once.
+    if (initial !== undefined) return;
+    let live = true;
+    fetch(`/api/handoffs/${id}`)
+      .then(async (r) => {
+        const j = (await r.json().catch(() => ({}))) as { ok?: boolean; handoff?: HandoffView; error?: string };
+        if (!live) return;
+        if (r.ok && j.ok && j.handoff) setView(j.handoff);
+        else if (r.status === 404) setGone(true);
+        else setErr(errText(j.error, r.status));
+      })
+      .catch(() => { if (live) setErr(H.errors.failed); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, initial]);
+
+  /** One request for one item; true when it ran. The card takes the server's state, whatever the answer. */
+  async function runOne(n: number): Promise<boolean> {
+    setErr("");
+    const r = await fetch(`/api/handoffs/${id}/run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ item: n }) }).catch(() => null);
+    const j = r ? ((await r.json().catch(() => ({}))) as { ok?: boolean; handoff?: HandoffView; credits?: number; error?: string }) : {};
+    const a = runAnswer(r, j);
+    // The run may still be going on the server: never "try again" here; the card reads what is stored until it knows.
+    if (a === "lost") { setErr(H.errors.network); setLost(true); void refresh(); return false; }
+    if (j.handoff) setView(j.handoff);
+    if (typeof j.credits === "number") onCredits?.(j.credits);
+    if (a === "ran") { window.dispatchEvent(new Event("nashr:pending-changed")); return true; }
+    if (a === "refresh") void refresh();
+    // Credits, the trial or an agent's cap: the app's own limit dialog, as for any batch.
+    if (!limitFromError(j.error)) setErr(errText(j.error, r?.status ?? 0));
+    return false;
+  }
+  async function run(n: number) {
+    if (busy !== null || all || lost) return;
+    setBusy(n);
+    try { await runOne(n); } finally { setBusy(null); }
+  }
+  async function runAll() {
+    if (busy !== null || all || lost || !view) return;
+    setAll(true);
+    try {
+      for (const [n, it] of view.items.entries()) {
+        if (!RUNNABLE.has(it.status)) continue;
+        setBusy(n);
+        if (!(await runOne(n))) break;
+      }
+    } finally { setBusy(null); setAll(false); }
+  }
+  async function decline(n?: number) {
+    if (busy !== null || all) return;
+    setBusy("decline"); setErr("");
+    try {
+      const r = await fetch(`/api/handoffs/${id}/decline`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(n === undefined ? {} : { item: n }) }).catch(() => null);
+      if (!r) { setErr(H.errors.failed); return; }
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; handoff?: HandoffView; error?: string };
+      if (j.handoff) setView(j.handoff);
+      if (!(r.ok && j.ok)) setErr(errText(j.error, r.status));
+    } finally { setBusy(null); }
+  }
+
+  const open = view ? view.items.filter((it) => RUNNABLE.has(it.status)) : [];
+  const total = open.reduce((sum, it) => sum + it.cost, 0);
+  const badge = (s: HandoffItemStatus) => (s === "done" ? "badge-primary" : s === "declined" ? "badge-danger" : "badge-accent");
+  return (
+    <section className="mt-3 overflow-hidden rounded-xl border border-oasis/25 bg-white text-ink" aria-label={fill(H.title, { name: t.agents.majed.name })} aria-busy={busy !== null || all}>
+      <header className="border-b border-ink/5 px-3 py-2">
+        <p className="flex items-center gap-2 text-sm font-semibold text-oasis"><Icon name="users" className="h-4 w-4" />{fill(H.title, { name: t.agents.majed.name })}</p>
+        {/* "Nothing runs until you press Run" is untrue while Majed's auto-run may start an item: the server says which. */}
+        <p className="mt-0.5 text-xs text-ink/60">{view?.auto?.length ? H.subAuto : H.sub}</p>
+        {/* The label follows the page's language; Majed's line is isolated, so it takes its own direction from its own text. */}
+        {view?.why && <p className="mt-1 text-xs text-ink/80"><span className="font-semibold">{H.why}:</span> <bdi dir="auto">{view.why}</bdi></p>}
+      </header>
+      {!view && !gone && !err && <p className="px-3 py-2 text-xs text-ink/60">{H.loading}</p>}
+      {gone && <p className="px-3 py-2 text-xs text-ink/60">{H.gone}</p>}
+      {view && (
+        <ol className="divide-y divide-ink/5">
+          {view.items.map((it, n) => {
+            const can = RUNNABLE.has(it.status);
+            return (
+              <li key={n} className="px-3 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="font-semibold">{fill(H.to, { agent: t.agents[it.agent].name, type: t.generate.types[it.type].t })}</span>
+                  <span className="flex items-center gap-2">
+                    {it.status === "proposed" && view.auto?.includes(n) && <span className="badge">{H.autoItem}</span>}
+                    {it.ranAuto && <span className="text-ink/60">{H.ranAuto}</span>}
+                    <span className="tnum text-ink/70">{fill(H.cost, { n: it.cost })}</span>
+                    <span className={`badge ${badge(it.status)}`}>{busy === n ? H.status.running : H.status[it.status]}</span>
+                  </span>
+                </div>
+                <p className="mt-1.5 text-xs font-semibold text-sadu-deep">{fill(H.brief, { name: t.agents.majed.name })}</p>
+                {/* Model-written: rendered as text, never as HTML. */}
+                <p className="mt-0.5 whitespace-pre-line break-words text-sm leading-relaxed text-ink/85" dir="auto">{it.brief}</p>
+                {can && (canRun || canDecline) && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {/* While a Run's answer is lost, the item may be running already: no second Run until the card knows. */}
+                    {canRun && <button type="button" onClick={() => run(n)} disabled={busy !== null || all || lost} className="btn btn-primary btn-xs"><Icon name="spark" className="h-3.5 w-3.5" />{busy === n ? H.running : it.status === "failed" ? H.retry : H.run}</button>}
+                    {canDecline && <button type="button" onClick={() => decline(n)} disabled={busy !== null || all} className="btn btn-secondary btn-xs">{H.decline}</button>}
+                  </div>
+                )}
+                {it.made.length > 0 && <div className="mt-1">{it.made.map((m) => <ItemCard key={m.id} item={m} t={t} lang={lang} canApprove={canApprove} />)}</div>}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {view && open.length > 0 && (
+        <footer className="flex flex-wrap items-center gap-2 border-t border-ink/5 px-3 py-2 text-xs">
+          <span className="tnum text-ink/70">{fill(H.total, { n: total })}</span>
+          <span className="ms-auto flex flex-wrap gap-1.5">
+            {canRun && open.length > 1 && <button type="button" onClick={runAll} disabled={busy !== null || all || lost} className="btn btn-primary btn-xs">{all ? H.running : H.runAll}</button>}
+            {canDecline && open.length > 1 && <button type="button" onClick={() => decline()} disabled={busy !== null || all} className="btn btn-secondary btn-xs">{H.declineAll}</button>}
+          </span>
+          {!canRun && !canDecline && <p className="w-full text-ink/60">{H.memberNote}</p>}
+        </footer>
+      )}
+      {err && <p role="alert" className="border-t border-ink/5 px-3 py-2 text-xs font-semibold text-sadu-deep" dir="auto">{err}</p>}
+    </section>
   );
 }
 
@@ -141,7 +335,7 @@ function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[
   return [...out];
 }
 
-export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey, canApprove = true, canBrand = true }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey; /** `can(u, "publish")`: approve buttons on item cards */ canApprove?: boolean; /** `can(u, "brand.write")`: Save and Dismiss on brand-change cards */ canBrand?: boolean }) {
+export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey, canApprove = true, canBrand = true, canRun = true, canDecline = true, handoffs }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey; /** `can(u, "publish")`: approve buttons on item cards */ canApprove?: boolean; /** `can(u, "brand.write")`: Save and Dismiss on brand-change cards */ canBrand?: boolean; /** `can(u, "generate")` and `can(u, "drafts")`: Run and Decline on Majed's handoff cards */ canRun?: boolean; canDecline?: boolean; /** the handoffs this thread names, read on the server (`handoffViews`): null for one whose record is gone */ handoffs?: Record<string, HandoffView | null> }) {
   const [msgs, setMsgs] = useState<ChatMsg[]>(initial);
   const [text, setText] = useState(initialPrompt);
   const [busy, setBusy] = useState(false);
@@ -341,12 +535,13 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         )}
         {msgs.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`${m.items?.length || m.files?.length || m.plan?.length || m.proposals?.length ? "w-full max-w-[95%]" : "max-w-[85%]"} rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-oasis text-mist" : "bg-salt-dim text-ink"}`} dir="auto">
+            <div className={`${m.items?.length || m.files?.length || m.plan?.length || m.handoff || m.proposals?.length ? "w-full max-w-[95%]" : "max-w-[85%]"} rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-oasis text-mist" : "bg-salt-dim text-ink"}`} dir="auto">
               {m.role === "assistant" && <span className="mb-1 block text-xs font-semibold text-sadu-deep">{A[m.agent ?? agent].name}</span>}
               {m.role === "assistant" ? <div className="prose-nashr prose-compact" dangerouslySetInnerHTML={{ __html: render(m.content) }} /> : <p className="whitespace-pre-wrap">{m.content}</p>}
               {m.items && m.items.length > 0 && <div className="mt-1">{m.items.map((it) => <ItemCard key={it.id} item={it} t={t} lang={lang} canApprove={canApprove} />)}</div>}
               {m.files && m.files.length > 0 && <div className="mt-1">{m.files.map((f, n) => <FileCard key={f.name} file={f} lang={lang} defaultOpen={n === 0 && m.files!.length === 1} />)}</div>}
               {m.plan && m.plan.length > 0 && <PlanCard plan={m.plan} lang={lang} onStart={(prompt) => send(prompt)} />}
+              {m.handoff && <HandoffCard id={m.handoff.id} t={t} lang={lang} initial={handoffs?.[m.handoff.id]} canRun={canRun} canDecline={canDecline} canApprove={canApprove} onCredits={setCredits} />}
               {m.proposals && m.proposals.length > 0 && <div className="mt-1">{m.proposals.map((p) => <ProposalCard key={p.id} p={p} t={t} lang={lang} canBrand={canBrand} />)}</div>}
               {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-ink/60" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}
               {m.role === "assistant" && (

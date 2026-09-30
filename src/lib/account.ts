@@ -8,12 +8,13 @@ import { codeFor } from "./referral";
 import { monthKey } from "./credits";
 import { AGENTS, AGENT_IDS } from "./agents";
 import { usageMonthKeys } from "./usage";
-import { routineFingerprints, routineKeys, routineSkipKeys } from "./routines";
+import { autoHoldKey, routineFingerprints, routineKeys, routineSkipKeys } from "./routines";
 import { activityKey } from "./activity";
 import { agentCapFingerprint, seenKey } from "./notifications";
 import { wipeTeam } from "./team";
 import { forgetWishlistUser } from "./wishlist";
 import { secretaryKeys } from "./secretary";
+import { handoffKeys } from "./handoffs";
 import { proposalKeys } from "./brand-proposals";
 
 /**
@@ -39,9 +40,9 @@ export async function wipeAccount(email: string) {
   const keys: string[] = [];
   // Every id, not only the newest 200 tasks or 100 conversations: nothing of a deleted account may stay behind. All
   // scopes are read in parallel (Upstash is HTTP per command).
-  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(`tasks:${s}`, 0, -1), listFiles(s), db.lrange(`convs:${s}`, 0, -1), db.smembers(`conns:${s}`), db.smembers(`tidxm:${s}`), secretaryKeys(s), proposalKeys(s)]));
+  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(`tasks:${s}`, 0, -1), listFiles(s), db.lrange(`convs:${s}`, 0, -1), db.smembers(`conns:${s}`), db.smembers(`tidxm:${s}`), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s)]));
   scopes.forEach((s, i) => {
-    const [taskIds, files, convIds, conns, months, sec, proposals] = perScope[i];
+    const [taskIds, files, convIds, conns, months, sec, handoffs, proposals] = perScope[i];
     keys.push(
       ...taskIds.map((id) => `task:${s}:${id}`),
       ...files.map((f) => `file:${s}:${f.name}`),
@@ -59,12 +60,17 @@ export async function wipeAccount(email: string) {
       activityKey(s), ...routineSkipKeys(s),
       // Reem's list: every item ever created and not yet purged (open, done and deleted), its indexes and its audit log.
       ...sec,
+      // Majed's handoffs (the owner's own words and the logins that ran them): every record in the index, its lock, each
+      // item's auto-run attempt counter and notification marker (8 days), and the index itself, from the one read above.
+      // A record that fell off the index was deleted when it fell.
+      ...handoffs,
       // Brand changes an agent proposed (7 days, the brand's old and new offers or banned words), their outcomes, answer
       // claims and index, and the brand lock. The publish markers (`pubtry:`, `publock:`) are left to their TTL (3 days
       // at most): they hold a time or a lock, not account data, and finding them would take every item on every platform.
       ...proposals,
-      // Each routine's last run, locks, hold and attempt counts, for every routine id (routines.ts).
-      ...routineKeys(s),
+      // Each routine's last run, locks, hold and attempt counts, for every routine id (routines.ts), and the hold of
+      // Majed's auto-run under the same weekly cap (360 s).
+      ...routineKeys(s), autoHoldKey(s),
       // Follow-up markers that name this brand and live for weeks: the 80% cap warning (35 days) and a routine's run
       // (8 or 35 days), for this and the previous month or period. Left behind, a new account at the same address
       // would never get those follow-ups, and the deleted scope would stay in key names for a month.

@@ -5,7 +5,8 @@
  *
  * The table holds TOKENS, never dollars. Every dollar comes from `costUsd` in src/lib/usage.ts, so a change to the
  * Anthropic rates there moves every estimate, and tests/pricing-floor.test.ts (rule 241) fails the build when a task's
- * cost per credit crosses the margin floor in src/lib/pricing.ts.
+ * cost per credit crosses the margin floor in src/lib/pricing.ts. One app reader: Majed's auto-run starts only the
+ * types whose cold-cache estimate keeps that floor (`autoUnderFloor`, src/lib/handoffs.ts, rule 296).
  *
  * Calibrated to docs/system/costs.md §3 (2026-09-27): the generation call is Opus with a cached workspace block, a
  * fresh brief and adaptive thinking; the reviewer and the judge are Sonnet. The review and judge constants are fitted

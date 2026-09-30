@@ -27,7 +27,11 @@ const DEFAULT_RATE = RATES["claude-opus-5"];
  */
 export const hasRate = (model: string): boolean => Object.prototype.hasOwnProperty.call(RATES, model);
 
-export const KINDS = ["generate", "review", "chat", "onboard", "image_prompt", "tool", "judge"] as const;
+/**
+ * `xreview` is the cross-agent review (`crossReview` in noor.ts): Razan's and Majed's notes on another agent's batch. It
+ * is metered to the REVIEWING agent, not to the batch's owner, so it reads as what their review work costs.
+ */
+export const KINDS = ["generate", "review", "chat", "onboard", "image_prompt", "tool", "judge", "xreview"] as const;
 export type Kind = (typeof KINDS)[number];
 
 export function costUsd(model: string, u: TokenUsage): number {

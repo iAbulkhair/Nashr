@@ -32,6 +32,24 @@ export function playbookHash(name: string): string {
 /** The playbook injected into an agent's system prompt. */
 export const skillsBlock = (agent: Agent): string => (agent.skills ? playbook(agent.skills) : "");
 
+/**
+ * Only the named `## ` sections of a playbook, each with its heading, in the playbook's own order: a slice for a prompt
+ * that needs an agent's rules but not all of its templates (the cross-agent review in noor.ts). A heading the file does
+ * not have is skipped; "" when none is found or the file is missing. Pure over the cached text, so it is stable.
+ */
+export function playbookSection(name: string, headings: readonly string[]): string {
+  const want = new Set(headings.map((h) => h.trim().toLowerCase()));
+  const out: string[] = [];
+  let keep = false;
+  for (const line of playbook(name).split("\n")) {
+    const h = /^##\s+(.+?)\s*$/.exec(line);
+    if (h) keep = want.has(h[1].toLowerCase());
+    else if (/^#\s/.test(line)) keep = false;
+    if (keep) out.push(line);
+  }
+  return out.join("\n").trim();
+}
+
 /** Editorial rubric shared by the reviewer pass (noor.ts) and the judge (judge.ts). */
 export const reviewBlock = (): string => {
   const text = playbook("review");

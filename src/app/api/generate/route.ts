@@ -4,10 +4,13 @@ import { currentUser, sc } from "@/lib/auth";
 import { isTaskType } from "@/lib/tasks";
 import { generateBatch } from "@/lib/generate-batch";
 import { ModelPaused, modelState } from "@/lib/model";
+import { deadlineFor } from "@/lib/media/keys";
 
 export const maxDuration = 300;
 
 export async function POST(req: Request) {
+  // Taken first: the batch's cross-agent review (notes only) is skipped when too little of this request is left.
+  const deadline = deadlineFor(maxDuration);
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   // Before the charge: a paused model must not take credits and hand them back.
@@ -15,7 +18,7 @@ export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as { type?: string; notes?: string };
   if (!isTaskType(b.type)) return NextResponse.json({ ok: false, error: "bad_type" }, { status: 400 });
   // Brand, trial, missing data, the owning agent's cap and the charge, in that order (src/lib/generate-batch.ts).
-  const r = await generateBatch(u, sc(u), { type: b.type, notes: b.notes, source: "manual", via: "app" });
+  const r = await generateBatch(u, sc(u), { type: b.type, notes: b.notes, source: "manual", via: "app", deadline });
   if (!r.ok) {
     switch (r.reason) {
       case "paused": return NextResponse.json({ ok: false, error: "model_paused" }, { status: 503 });

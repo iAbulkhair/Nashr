@@ -20,6 +20,9 @@ import { isBy, publicBy, type By } from "./actor";
 export const ACTIVITY_KINDS = [
   "generated", "judged", "autofail", "published", "decision", "image_started", "render_done", "render_failed", "routine_ran", "routine_skipped",
   "cap_reached", "no_credits", "external_draft", "brand_changed", "file_written", "gov_changed", "gov_rollback", "onboard_charged", "onboard_refunded",
+  "cross_reviewed",
+  // Majed's handoffs (src/lib/handoffs.ts): the proposal in chat, an item run from its card, items declined.
+  "handoff_proposed", "handoff_run", "handoff_declined",
 ] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 /** Where it happened. Not a task's `source`: chat and MCP batches are both `source: "chat"`. */
@@ -41,11 +44,14 @@ export type Activity = {
   tasks?: string[];
   count?: number;
   /**
-   * Charged (generated, image_started, onboard_charged), not charged (cap_reached, no_credits: what it would have cost),
-   * given back (onboard_refunded), or the render's price (render_*).
+   * Charged (generated, image_started, onboard_charged), not charged (cap_reached, no_credits: what it would have cost;
+   * handoff_proposed: what every item would cost), given back (onboard_refunded), or the render's price (render_*).
    */
   credits?: number;
-  /** A code-made result: a provider, a decision action, a routine outcome, a failure reason, "spent/cap". */
+  /**
+   * A code-made result: a provider, a decision action, a routine outcome, a failure reason, "spent/cap", a cross review's
+   * "flags:N", a handoff's `handoff:{id}` (proposed, declined), or a handoff item's run, `done:{id}:{n}` or `failed:{id}:{n}`.
+   */
   outcome?: string;
   score?: number;
   autofail?: string;

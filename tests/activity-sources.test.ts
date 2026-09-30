@@ -157,10 +157,11 @@ describe("a batch is one row with the owning agent, who asked and where; the jud
     const v = await owner("as-chat");
     const member = { kind: "member" as const, email: "sara@team.example", role: "member" as const };
     // A type draft_items refuses (rule 250: only DRAFT_TYPES) reaches no batch and writes no row.
-    expect(await m.chat.runTool(v, "draft_items", { type: "sales_script", count: 1, brief: "b" }, [], [], undefined, { agent: "majed", by: member })).toMatch(/^Not a draft type/);
+    expect(await m.chat.runTool(v, "draft_items", { type: "sales_script", count: 1, brief: "b" }, [], [], undefined, { agent: "faris", by: member })).toMatch(/^Not a draft type/);
     expect(await rows(v.email)).toEqual([]);
-    await m.chat.runTool(v, "draft_items", { type: "whatsapp", count: 1, brief: "b" }, [], [], undefined, { agent: "majed", by: member });
-    // The batch's agent is the type's owner (Noor), not the talking agent (Majed); `by` is the turn's.
+    // Faris talking, not Majed: since step 3b Majed leads and proposes other agents' work instead (rule 273).
+    await m.chat.runTool(v, "draft_items", { type: "whatsapp", count: 1, brief: "b" }, [], [], undefined, { agent: "faris", by: member });
+    // The batch's agent is the type's owner (Noor), not the talking agent (Faris); `by` is the turn's.
     expect(await rows(v.email)).toEqual([expect.objectContaining({ kind: "generated", agent: "noor", by: member, via: "chat", type: "whatsapp", count: 1 })]);
   });
 

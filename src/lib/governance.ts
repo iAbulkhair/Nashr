@@ -1,22 +1,35 @@
 import { randomBytes } from "crypto";
 import { CAPS, db, pushCapped } from "./db";
 import { TASK_TYPES, isTaskType, type TaskType } from "./tasks";
-import { AGENT_IDS, isAgentId, type AgentId } from "./agents";
+import { AGENTS, AGENT_IDS, isAgentId, type AgentId } from "./agents";
 import { isBy, publicBy, type By } from "./actor";
 import { recordActivity } from "./activity";
 
 export type Governance = {
   autoApprove: Partial<Record<TaskType, boolean>>; // skip inbox for these types
-  weeklyCap: number; // max items created per week on their own: the weekly plan and the routines (schedule.ts, routines.ts)
+  // max items created per week on their own (`isAutonomous`, brand.ts): the weekly plan, the routines and Majed's auto-run
+  weeklyCap: number;
   learning: boolean; // write preferences from edits/rejections
   reviewer: boolean; // second-pass quality reviewer
   noEmDash: boolean; // strip em/en dashes from output
   notifyMinutes: number; // minutes before a scheduled post to notify (future: WhatsApp/email)
   /** Monthly credit cap per agent in this brand scope (`charge` in credits.ts enforces it); an agent with no entry has no cap. */
   agentCaps: Partial<Record<AgentId, number>>;
+  /**
+   * Cross-agent review (`crossReview` in noor.ts): Razan and Majed add notes to the money and strategy work of the other
+   * agents, and a flagged item waits for the owner. On by default; a record saved before 2026-09-30 reads it as on.
+   */
+  crossReview: boolean;
+  /**
+   * Majed's auto-run (src/lib/handoff-auto.ts): the daily routines cron may start, itself, one item a day of a handoff
+   * Majed proposed to the owner, inside that agent's monthly cap; everything it makes waits for the owner. OFF by
+   * default. It can be on only while at least one agent Majed hands work to has a cap, and turning it on (by a save or
+   * a restore) needs an explicit confirmation in the request (`govRefusal`). A record without it reads it as off.
+   */
+  majedAutoHandoff: boolean;
 };
 
-export const DEFAULT_GOV: Governance = { autoApprove: {}, weeklyCap: 20, learning: true, reviewer: true, noEmDash: false, notifyMinutes: 60, agentCaps: {} };
+export const DEFAULT_GOV: Governance = { autoApprove: {}, weeklyCap: 20, learning: true, reviewer: true, noEmDash: false, notifyMinutes: 60, agentCaps: {}, crossReview: true, majedAutoHandoff: false };
 /** Highest monthly cap an owner can set for one agent. */
 export const AGENT_CAP_MAX = 100000;
 
@@ -31,14 +44,47 @@ const isObj = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 
 const num = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
 
 /**
+ * The agents Majed hands work to: every agent that owns a task type, except Majed himself (Reem owns none). The same
+ * set as the owners of `HANDOFF_TYPES` (src/lib/handoffs.ts), pinned in tests/handoff-auto.test.ts.
+ */
+export const HANDOFF_AGENTS: readonly AgentId[] = AGENTS.filter((a) => a.id !== "majed" && a.tasks.length > 0).map((a) => a.id);
+/** At least one of those agents has an owner-set monthly cap (0 counts: it stops every paid request). */
+export const hasHandoffCap = (g: Pick<Governance, "agentCaps">) => HANDOFF_AGENTS.some((a) => num(g.agentCaps?.[a]));
+
+/**
+ * Why settings may not be saved as `after`, or null. Only Majed's auto-run has such a rule, checked in code on every
+ * path: it may be on only while `hasHandoffCap` (an auto-run is always charged under a cap the owner chose), and a save
+ * or a restore that switches it from off to on must carry the owner's explicit confirmation (`confirmed`), which the
+ * Governance page sends only after its dialog. Keeping it on needs no new confirmation.
+ */
+export type GovRefusal = "auto_handoff_needs_cap" | "auto_handoff_confirm";
+export function govRefusal(before: Pick<Governance, "majedAutoHandoff">, after: Governance, confirmed: boolean): GovRefusal | null {
+  if (after.majedAutoHandoff !== true) return null;
+  if (!hasHandoffCap(after)) return "auto_handoff_needs_cap";
+  if (before.majedAutoHandoff !== true && !confirmed) return "auto_handoff_confirm";
+  return null;
+}
+/** `saveGov` refusing settings: the same codes as the typed answer of `saveGovAs`. */
+export class GovRefusedError extends Error {
+  constructor(readonly code: GovRefusal) {
+    super(code);
+    this.name = "GovRefusedError";
+  }
+}
+
+/**
  * Merge a patch into the stored governance. The patch is a request body, so every field is checked here, not trusted:
  * auto-approve keys must be task types with boolean values, caps must name an agent and be finite, NaN never replaces a
  * number, and unknown keys are dropped. `typeof NaN === "number"` used to let NaN through as a weekly cap.
  *
- * No lock and no history: a change made by a login goes through `saveGovAs` below, which applies these same checks.
+ * No lock and no history, and no login to confirm anything (scripts and tests): a change made by a login goes through
+ * `saveGovAs` below, which applies these same checks. The auto-run's cap rule holds here too: settings that would have
+ * it on with no cap on an agent Majed hands work to throw `GovRefusedError` and nothing is written.
  */
 export async function saveGov(email: string, patch: GovPatch) {
   const next = mergeGov(await getGov(email), patch);
+  const no = govRefusal(next, next, true);
+  if (no) throw new GovRefusedError(no);
   await db.set(`gov:${email}`, next);
   return next;
 }
@@ -63,6 +109,10 @@ function mergeGov(cur: Governance, patch: GovPatch): Governance {
     noEmDash: typeof g.noEmDash === "boolean" ? g.noEmDash : cur.noEmDash,
     notifyMinutes: num(g.notifyMinutes) ? Math.max(0, Math.min(1440, g.notifyMinutes)) : cur.notifyMinutes,
     agentCaps,
+    // Only a real boolean changes it: "false", 0 or null from a request leave the stored value, which defaults to on.
+    crossReview: typeof g.crossReview === "boolean" ? g.crossReview : cur.crossReview !== false,
+    // The same rule, the other default: only `true` itself is on, so a missing or malformed value is off.
+    majedAutoHandoff: typeof g.majedAutoHandoff === "boolean" ? g.majedAutoHandoff : cur.majedAutoHandoff === true,
   };
   return next;
 }
@@ -101,6 +151,8 @@ export function govDiff(before: Governance, after: Governance): string[] {
 
 export type GovSaved = { ok: true; governance: Governance; revision: GovRevision | null };
 export type GovBusy = { ok: false; error: "busy" };
+/** Settings refused by `govRefusal`: nothing is written and no revision is recorded. */
+export type GovRefused = { ok: false; error: GovRefusal };
 
 /**
  * `saveGov` for a login: read, merge and write under `govlock:{scope}`, so two saves (or a save and a restore) cannot
@@ -108,8 +160,12 @@ export type GovBusy = { ok: false; error: "busy" };
  * changed: the panel sends every field on every Save, and a history of no-ops would push real changes out of the cap.
  * Nothing is written then either. When the lock stays taken for about two seconds the answer is `busy` and nothing
  * changes.
+ *
+ * `confirmAutoHandoff` is the owner's explicit confirmation for switching Majed's auto-run on (`govRefusal`); it is
+ * checked against the settings read under the lock, so only a change from off to on needs it. A refused change writes
+ * nothing.
  */
-export async function saveGovAs(scope: string, patch: GovPatch, by: By, rollbackOf?: string): Promise<GovSaved | GovBusy> {
+export async function saveGovAs(scope: string, patch: GovPatch, by: By, rollbackOf?: string, opts: { confirmAutoHandoff?: boolean } = {}): Promise<GovSaved | GovBusy | GovRefused> {
   const lock = lockKey(scope);
   let got = false;
   for (let i = 0; i < 40 && !got; i++) {
@@ -123,6 +179,8 @@ export async function saveGovAs(scope: string, patch: GovPatch, by: By, rollback
     const after = mergeGov(before, patch);
     const changed = govDiff(before, after);
     if (!changed.length) return { ok: true, governance: before, revision: null };
+    const no = govRefusal(before, after, opts.confirmAutoHandoff === true);
+    if (no) return { ok: false, error: no };
     const revision: GovRevision = { id: randomBytes(6).toString("hex"), at: new Date().toISOString(), by, changed, before, after, ...(rollbackOf ? { rollbackOf } : {}) };
     await Promise.all([
       db.set(`gov:${scope}`, after),
@@ -176,12 +234,13 @@ export function restorePatch(snapshot: Partial<Governance>): GovPatch {
 
 /**
  * Put back the settings as they were before revision `id`, looked up only in this scope's own history. The restore
- * goes through `saveGovAs`, so today's checks apply to the old values and it is recorded as a new revision.
+ * goes through `saveGovAs`, so today's checks apply to the old values and it is recorded as a new revision: a restore
+ * that would switch Majed's auto-run back on needs the same confirmation as a save (`confirmAutoHandoff`).
  */
-export async function rollbackGov(scope: string, id: string, by: By): Promise<GovSaved | GovBusy | { ok: false; error: "not_found" }> {
+export async function rollbackGov(scope: string, id: string, by: By, opts: { confirmAutoHandoff?: boolean } = {}): Promise<GovSaved | GovBusy | GovRefused | { ok: false; error: "not_found" }> {
   const rev = isRevisionId(id) ? (await listGovHistory(scope)).find((r) => r.id === id) : undefined;
   if (!rev) return { ok: false, error: "not_found" };
-  return saveGovAs(scope, restorePatch(rev.before), by, rev.id);
+  return saveGovAs(scope, restorePatch(rev.before), by, rev.id, opts);
 }
 
 /** One changed setting as the Governance page shows it: on or off, a number, or no cap (`null`). */
