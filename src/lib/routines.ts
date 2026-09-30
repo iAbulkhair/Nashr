@@ -1,25 +1,21 @@
-import { randomBytes } from "crypto";
 import { db } from "./db";
 import { trialOver, type User } from "./auth";
-import { charge, monthKey, refund } from "./credits";
-import { judgeLater } from "./judge";
-import { TASK_COST, TASK_COUNT, getBrand, listLite, listPreferencesFor, saveTask, type Brand, type Task, type TaskLite, type TaskType } from "./brand";
-import { feedbackFor } from "./feedback";
-import { generate } from "./noor";
+import { monthKey } from "./credits";
+import { TASK_COUNT, getBrand, listLite, type Brand, type TaskLite, type TaskType } from "./brand";
+import { generateBatch } from "./generate-batch";
 import { modelState } from "./model";
-import { memoryBlock } from "./files";
 import { getGov } from "./governance";
-import { statsFor } from "./stats";
-import { initialStatus } from "./brand-rules";
 import { getSchedule, weekStartUtc } from "./schedule";
 import { listDecisions } from "./decisions";
 import { getSalesSnapshot } from "./store-sales";
 import { missingData } from "./cart-recovery";
 import { AD_PROVIDERS } from "./connectors/ads";
 import { agentById, type AgentId } from "./agents";
-import { notifyItem, warnAgentCap } from "./notifications";
+import { notifyItem } from "./notifications";
 import { pmap } from "./parallel";
 import { appDict } from "./app-i18n";
+import { actSkipKey, recordRun } from "./activity";
+import { systemBy } from "./actor";
 
 /**
  * Routines: recurring work for agents other than Noor's Sunday plan, each OFF until the owner turns it on for a brand.
@@ -112,16 +108,22 @@ const MAX_UNSETTLED = 2;
 export const periodOf = (cadence: Cadence, now: Date = new Date()) => (cadence === "weekly" ? weekStartUtc(now) : monthKey(now));
 export const ranThisPeriod = (cadence: Cadence, last: string | null | undefined, now: Date = new Date()) =>
   !!last && last.slice(0, cadence === "weekly" ? 10 : 7) >= periodOf(cadence, now);
-/** This period and the one before: records of the previous one live on for up to `periodDays`. */
-function recentPeriods(cadence: Cadence, now = new Date()) {
-  const before = cadence === "weekly" ? new Date(now.getTime() - 7 * DAY) : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-  return [periodOf(cadence, now), periodOf(cadence, before)];
+/** This period and the `back` before it (one by default): records of an earlier period live on for up to `periodDays`. */
+function recentPeriods(cadence: Cadence, now = new Date(), back = 1) {
+  return Array.from({ length: back + 1 }, (_, i) => periodOf(cadence, cadence === "weekly" ? new Date(now.getTime() - 7 * i * DAY) : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1))));
 }
 /** Every key the routines keep for one brand scope, for `wipeAccount`. */
 export const routineKeys = (scope: string) => [
   capLockKey(scope),
   ...ROUTINES.flatMap((r) => [lastKey(scope, r.id), lockKey(scope, r.id), holdKey(scope, r.id), ...recentPeriods(r.cadence).map((p) => tryKey(scope, r.id, p))]),
 ];
+/**
+ * The "nothing new" markers of the activity log (`recordRun`) that can still be alive for one brand scope, for
+ * `wipeAccount`. A marker lives `periodDays` from the first idle day of its period, so one set on a period's last day
+ * outlives the next period: 35 days from 31 August is 5 October. Three periods cover it (the month or week after next
+ * starts later than any marker of the first can live).
+ */
+export const routineSkipKeys = (scope: string) => ROUTINES.flatMap((r) => recentPeriods(r.cadence, new Date(), 2).map((p) => actSkipKey(scope, r.id, p)));
 /** The run notifications' fingerprints that can still be alive for one brand scope, for `wipeAccount`. */
 export const routineFingerprints = (scope: string) => ROUTINES.flatMap((r) => recentPeriods(r.cadence).map((p) => runFingerprint(scope, r.id, p)));
 
@@ -170,11 +172,18 @@ export async function runRoutine(user: User, id: RoutineId): Promise<string> {
   if (state === "paused") return "retry:paused";
   if (state === "mock") return "skip:mock";
   if (!(await db.lock(lockKey(scope, id), 300))) return "retry:locked";
+  // What happened, for the activity log; a throw is "error" (the charge was refunded first, see routineFor).
+  let outcome = "error";
   try {
-    return await routineFor(user, scope, brand, r);
+    outcome = await routineFor(user, scope, brand, r);
+    return outcome;
   } finally {
     // The hold goes only after the batch is saved: until then the brand's other routines count it, and after it the items.
-    await Promise.all([db.del(holdKey(scope, id)), db.unlock(lockKey(scope, id))]);
+    await Promise.all([
+      db.del(holdKey(scope, id)),
+      db.unlock(lockKey(scope, id)),
+      recordRun(scope, { id, agent: r.agent, type: r.type, via: "routine", by: systemBy("routine"), period: periodOf(r.cadence), ttlS: periodDays(r.cadence) * 86400 }, outcome),
+    ]);
   }
 }
 
@@ -226,33 +235,15 @@ async function routineFor(user: User, scope: string, brand: Brand, r: Routine): 
   await db.set(tries, attempt, ttl); // incrby alone leaves the counter without an expiry
   if (attempt > MAX_UNSETTLED) return "attempts_exhausted";
   const settle = () => db.set(tries, attempt - 1, ttl);
-  const cost = TASK_COST[r.type];
-  const paid = await charge(user.email, cost, { scope, agent: r.agent, cap: gov.agentCaps[r.agent] });
-  if (!paid.ok) {
-    await settle();
-    return paid.reason;
-  }
-  user.credits = paid.credits;
-  await warnAgentCap(user, paid);
   const note = routineNote(r);
-  let items;
-  let memory = "", stats = "";
-  // Read inside the try: the credits are already charged, and a failed read must reach the refund below.
-  try {
-    const [prefs, mem, st, feedback] = await Promise.all([listPreferencesFor(scope, r.agent), memoryBlock(scope), statsFor(r.type, scope), feedbackFor(scope, r.agent, { gov })]);
-    memory = mem;
-    stats = st;
-    items = await generate(r.type, brand, prefs, note, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats, feedback });
-  } catch (e) {
-    const [credits] = await Promise.all([refund(user.email, cost, paid), settle()]);
-    user.credits = credits;
-    throw e;
+  // Charged to the agent that owns the type (r.agent, pinned equal in tests/routines.test.ts), under its cap; a refusal
+  // or a refund settles the attempt above.
+  const b = await generateBatch(user, scope, { type: r.type, notes: note, brief: r.id, source: "scheduled", via: "routine", gov, brand, settle });
+  if (!b.ok) {
+    if (b.reason === "failed") throw b.error;
+    return b.reason === "paused" ? "retry:paused" : b.reason === "missing_data" ? "no_data" : b.reason;
   }
-  const lang = brand.languages[0] ?? "ar";
-  const at = new Date().toISOString();
-  const created: Task[] = items.map((it) => ({ id: randomBytes(8).toString("hex"), type: r.type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[r.type], brand, { type: r.type, channel: it.channel, title: it.title, body: it.body }), createdAt: at, lang, source: "scheduled", brief: r.id }));
-  await Promise.all(created.map((t) => saveTask(scope, t, true)));
-  judgeLater(scope, user.email, brand, created, undefined, { notes: note, memory, stats });
+  const created = b.tasks;
   await db.set(lastKey(scope, r.id), new Date().toISOString());
   // The batch is saved and paid for by now, so an unexpected language on an old record must not throw here.
   const ul = user.lang === "en" ? "en" : "ar";

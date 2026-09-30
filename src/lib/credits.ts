@@ -221,18 +221,21 @@ export const ONBOARD_HOLD_MS = 864e5;
  * The daily sweep (src/app/api/cron/daily/route.ts): every hold of the account that no run charged or reused for
  * ONBOARD_HOLD_MS is resolved, in one save. `built[scope]` says whether that brand exists: a built brand's hold is dropped
  * (a success whose own drop failed), any other is refunded (a run killed before the brand was saved, whose owner never
- * came back). Returns what was refunded and dropped, by scope, and the balance after.
+ * came back). Returns each refund as the ledger made it (scope, agent, credits given back: the sweep's activity row), the
+ * dropped scopes, and the balance after.
  */
-export async function resolveOnboardHolds(email: string, built: Readonly<Record<string, boolean>>, now = Date.now()): Promise<{ refunded: string[]; dropped: string[]; credits: number }> {
+export type HoldRefund = { scope: string; agent: AgentId; credits: number };
+export async function resolveOnboardHolds(email: string, built: Readonly<Record<string, boolean>>, now = Date.now()): Promise<{ refunded: HoldRefund[]; dropped: string[]; credits: number }> {
   return withUserLock(email, async (u) => {
-    const done = { refunded: [] as string[], dropped: [] as string[] };
+    const done = { refunded: [] as HoldRefund[], dropped: [] as string[] };
     for (const [scope, hold] of Object.entries(u.onboardPaid ?? {})) {
       const age = now - new Date(hold.at).getTime();
       if (age < ONBOARD_HOLD_MS) continue; // NaN (a malformed time) is not "recent": it is resolved
       if (built[scope]) done.dropped.push(scope);
       else {
-        giveBack(u, Number.isFinite(hold.credits) ? Math.max(0, Math.trunc(hold.credits)) : 0, hold);
-        done.refunded.push(scope);
+        const n = Number.isFinite(hold.credits) ? Math.max(0, Math.trunc(hold.credits)) : 0;
+        giveBack(u, n, hold);
+        done.refunded.push({ scope, agent: hold.agent, credits: n });
       }
       dropHold(u, scope);
     }

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { json, newMember, newUser, params, signIn } from "./helpers/session";
 import { claudeOn } from "./helpers/model";
-import { currentUser, type User } from "@/lib/auth";
+import { currentUser, getUser, saveUser, type User } from "@/lib/auth";
 import { getBrand, getTask, saveBrand, saveTask, type Brand, type Task } from "@/lib/brand";
 import { explain, gateTask, initialStatus, placeholderHits } from "@/lib/brand-rules";
 import { saveConnection } from "@/lib/connectors/store";
@@ -15,13 +15,17 @@ import { db } from "@/lib/db";
 import { attemptKey, mayHavePosted, publishOnce } from "@/lib/publish-once";
 import { history, push } from "@/lib/chat";
 import { saveExternalDraft } from "@/lib/external-drafts";
-import type { BrandProposal } from "@/lib/brand-proposals";
+import { decideProposal, proposeBrandChange, type BrandProposal } from "@/lib/brand-proposals";
+import { addBrand, scopeFor } from "@/lib/brands";
+import { wipeAccount } from "@/lib/account";
+import { taskFromItem } from "@/lib/generate-batch";
 
 /**
  * The gates the Taskuary study (2026-09-29) found missing, each checked in code with no model in the loop:
  * placeholders (213), publishing only what a person approved (214), brand changes an agent may only propose (215),
  * one publish per platform (216), the judge's veto on auto-approval (217), fenced memory (218), the newest preferences
- * (219) and core memory over MCP (220).
+ * (219) and core memory over MCP (220). Rule 240 (the account wipe; first added as 241 when these were merged into
+ * step 3a) also pins that a deleted account's brand proposals go with it.
  */
 const h = vi.hoisted(() => ({ posts: [] as string[], fail: null as Error | null, slow: 0 }));
 vi.mock("@/lib/connectors/publish", async (orig) => ({
@@ -87,10 +91,16 @@ describe("unfilled placeholders hold an item (rule 213)", () => {
     const call = item("c", "مرحبا [اسم العميل]، معك فريق ريف", { type: "followup_seq", channel: "call" });
     expect(gateTask(BRAND, call)).toEqual([]);
     expect(gateTask(BRAND, call, { publish: true }).map((x) => x.term)).toEqual(["[اسم العميل]"]);
+    // Every generation path builds its tasks in one place, `taskFromItem` (src/lib/generate-batch.ts, rules 223-224), so
+    // the item's channel reaches the check once for all of them, and none of the callers calls initialStatus itself.
+    const at = new Date().toISOString();
+    const made = (type: Task["type"], channel: string, body: string) => taskFromItem({ channel, title: "t", body }, { type, brand: BRAND, autoApprove: true, source: "manual", createdAt: at });
+    expect(made("whatsapp", "whatsapp", "هلا {{1}}، قهوتك جاهزة")).toMatchObject({ channel: "whatsapp", status: "approved" });
+    expect(made("social", "instagram", "هلا {{1}}، قهوتك جاهزة").status).toBe("pending");
+    expect(made("followup_seq", "call", "مرحبا [اسم العميل]، معك فريق ريف").status).toBe("approved");
+    expect(readFileSync("src/lib/generate-batch.ts", "utf8")).toMatch(/const draft = \{ type: c\.type, channel: it\.channel, /);
     for (const f of ["src/lib/chat.ts", "src/app/api/generate/route.ts", "src/app/api/mcp/route.ts", "src/lib/routines.ts", "src/lib/schedule.ts"]) {
-      const calls = readFileSync(f, "utf8").match(/initialStatus\([^\n]*/g) ?? [];
-      expect(calls.length, f).toBeGreaterThan(0);
-      for (const c of calls) expect(c, f).toMatch(/channel: it\.channel/);
+      expect(readFileSync(f, "utf8"), f).not.toMatch(/initialStatus\(/);
     }
   });
 
@@ -180,7 +190,7 @@ describe("chat publishes only what a person approved, and never over MCP (rule 2
     expect(await runTool(u, "publish_item", { task_id: "mine2", provider: "telegram" }, [], [], undefined, { via: "mcp" })).toMatch(/never over MCP/);
     expect(h.posts).toEqual([]);
     // ask_noor is the only way MCP reaches the chat tools, and it runs as "mcp".
-    expect(readFileSync("src/app/api/mcp/route.ts", "utf8")).toMatch(/chat\(user, [^\n]*\{ via: "mcp" \}\)/);
+    expect(readFileSync("src/app/api/mcp/route.ts", "utf8")).toMatch(/chat\(user, [^\n]*\{[^\n]*\bvia: "mcp"[^\n]*\}\)/);
   });
 });
 
@@ -273,6 +283,31 @@ describe("an agent adds banned words; offers and removals wait for the owner's S
     expect((await decide(proposed[0].id, "apply")).status).toBe(409);
     await saveBrand(u.email, { ...BRAND });
     expect((await decide(proposed[0].id, "apply")).status).toBe(200);
+  });
+});
+
+describe("a deleted account leaves no brand proposal behind (rule 240)", () => {
+  it("wipeAccount deletes every proposal, its outcome, claim and index, and the brand lock, for every brand", async () => {
+    const u = await owner("prop-wipe");
+    await saveUser({ ...(await getUser(u.email))!, plan: "agency" });
+    const second = await addBrand((await getUser(u.email))!, "Second");
+    if ("error" in second) throw new Error(second.error);
+    const scopes = [u.email, scopeFor(u.email, second.id)];
+    for (const s of scopes) {
+      await saveBrand(s, { ...BRAND });
+      // One still open (it holds the old and the new offers), one dismissed, and an answer whose claim was never released.
+      const open = await proposeBrandChange(s, { field: "offers", from: BRAND.offers, to: "خصم 50% على كل شيء", agent: "noor", via: "chat" });
+      const done = await proposeBrandChange(s, { field: "banned", from: BRAND.banned, to: "مضمون", dropped: ["رخيص"], agent: "noor", via: "mcp" });
+      expect(await decideProposal(s, done.id, "dismiss")).toEqual({ ok: true, applied: false });
+      expect(await db.setNx(`brandprop-claim:${s}:${open.id}`, 1, 60)).toBe(true);
+      expect(await db.lock(`brandlock:${s}`, 10)).toBe(true);
+    }
+    const mem = (globalThis as unknown as { __nashrMem: { kv: Map<string, unknown>; sets: Map<string, Set<string>> } }).__nashrMem;
+    const left = () => [...mem.kv.keys(), ...mem.sets.keys()].filter((k) => /^brand(prop|props|prop-done|prop-claim|lock):/.test(k) && k.includes(u.email));
+    // Per brand: the open proposal, the dismissed one's outcome, the claim, the index and the lock.
+    expect(left()).toHaveLength(scopes.length * 5);
+    await wipeAccount(u.email);
+    expect(left()).toEqual([]);
   });
 });
 
@@ -450,6 +485,12 @@ describe("the judge takes back an approval only auto-approval gave (rule 217)", 
     expect((await store.getTask(scope, "mine"))!.status).toBe("approved");
     expect((await store.getTask(scope, "out"))!.status).toBe("approved");
     expect((await listNotifs(scope)).map((n) => n.title)).toContain("أُعيد 1 من عناصر نور المعتمدة آلياً إلى صندوق الموافقة");
+    // The judge's activity rows are written with the withdrawal, as before it (rule 232): one `judged` row for the batch
+    // and one `autofail` row naming the three items.
+    const { listActivity } = await import("@/lib/activity");
+    const logged = (await listActivity(scope, { limit: 50 })).rows;
+    expect(logged.map((r) => r.kind).sort()).toEqual(["autofail", "judged"]);
+    expect(logged.find((r) => r.kind === "autofail")).toMatchObject({ autofail: "invented_fact", count: 3, tasks: expect.arrayContaining(["auto", "mine", "out"]) });
     // A weak score without an automatic fail is the owner's call: the auto-approval stands.
     const weak = item("weak", "قهوة طازجة", { status: "approved" });
     await store.saveTask(scope, weak, true);

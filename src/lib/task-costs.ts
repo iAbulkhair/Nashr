@@ -96,7 +96,10 @@ export function estimateBatch(type: TaskType, opts: { items?: number; credits?: 
   return { type, items, credits, outTokens, generateUsd, reviewUsd, judgeUsd, totalUsd, usdPerCredit: totalUsd / credits };
 }
 
-/** Credits a chat draft of `count` items costs: the batch price pro rata, at least 1 (the formula in src/lib/chat.ts `draft_items`). */
+/**
+ * Credits a chat draft of `count` items costs: the batch price pro rata, at least 1. The same formula as `countCost` in
+ * src/lib/generate-batch.ts, which charges the chat's `draft_items` (tests/pricing-floor.test.ts pins them equal).
+ */
 export const draftCredits = (type: TaskType, count: number): number => Math.max(1, Math.ceil((TASK_COST[type] / (TASK_COUNT[type] || 1)) * count));
 
 /** A chat draft of 1-3 items (`draft_items`): the owner is in the app, so the cache is warm. */

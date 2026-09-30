@@ -6,6 +6,7 @@ import type { Aspect, MediaFailure, MediaKind, MediaModelId, MediaProviderId } f
 import type { Task } from "../brand";
 import type { AgentId } from "../agents";
 import type { SpendRef } from "../credits";
+import type { By } from "../actor";
 
 /** What the engine hands an adapter. `imageUrl` is set only when mediaImageFor allowed it. */
 export type SubmitInput = { model: MediaModelId; prompt: string; aspect: Aspect; imageUrl?: string };
@@ -128,6 +129,9 @@ export type StartInput = {
   deadline: number;
   /** Called after the charge. Must not throw: prompts fall back to a fixed template. */
   prompt(timeoutMs: number): Promise<string>;
+  /** Who started it and from where, for the activity log (`byOf` in ./start; chat passes its turn's). */
+  by?: By;
+  from?: "app" | "chat";
 };
 export type StartError =
   | "trial_over" | "bad_model" | "wrong_type" | "plan_required" | "trial_video_used" | "model_unavailable" | "needs_image"

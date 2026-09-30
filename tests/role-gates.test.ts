@@ -5,7 +5,7 @@ import { json, newMember, newUser, params, signIn, signOut, jar } from "./helper
 import { currentUser, getUser, saveUser, type User } from "@/lib/auth";
 import { getBrand, getTask, saveBrand, saveTask, type Brand, type Task } from "@/lib/brand";
 import { db } from "@/lib/db";
-import { getGov } from "@/lib/governance";
+import { getGov, listGovHistory, saveGovAs } from "@/lib/governance";
 import { getSchedule } from "@/lib/schedule";
 import { MCP_TOOL_ACTION, createMcpToken, getMcpToken } from "@/lib/mcp";
 import { CORE_FILES, readFile, writeFile } from "@/lib/files";
@@ -19,6 +19,10 @@ const published: string[] = [];
 vi.mock("@/lib/connectors/publish", async (orig) => ({ ...(await orig<typeof import("@/lib/connectors/publish")>()), publishTask: async (_e: string, t: Task, provider: string) => { published.push(t.id); return { provider, url: "https://t.me/x/1", status: "published" as const }; } }));
 
 import * as governanceRoute from "@/app/api/governance/route";
+import * as rollbackRoute from "@/app/api/governance/rollback/route";
+import * as activityRoute from "@/app/api/activity/route";
+import * as activityExportRoute from "@/app/api/activity/export/route";
+import { recordActivity } from "@/lib/activity";
 import * as tokenRoute from "@/app/api/mcp/token/route";
 import * as grantsRoute from "@/app/api/mcp/grants/route";
 import * as mcpRoute from "@/app/api/mcp/route";
@@ -90,6 +94,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
 
   // Owner only.
   "PUT /api/governance": g("owner", "governance.write"),
+  "POST /api/governance/rollback": g("owner", "governance.write"), // a restore is a governance write
   "POST /api/mcp/token": g("owner", "mcp.token"),
   "DELETE /api/mcp/token": g("owner", "mcp.token"),
   "DELETE /api/mcp/grants": g("owner", "oauth.grants"),
@@ -160,6 +165,8 @@ const READS: Record<string, Gate> = {
   "GET /api/referral/share": g("owner", "referral"),
   "GET /api/team": g("member", "team.view"),
   "GET /api/profile": g("member", "read"),
+  "GET /api/activity": g("member", "read"),
+  "GET /api/activity/export": g("member", "read"),
   "GET /api/media/[jobId]": "member",
 
   "GET /api/cron/daily": "cron",
@@ -516,6 +523,43 @@ describe("approval is admin and owner only, in the inbox as on the publish butto
     await as(admin);
     expect(await status(taskRoute.PATCH(json("/api/tasks/p1", "PATCH", { status: "approved" }), ctx({ id: "p1" })))).toBe(200);
     expect((await getTask(owner.email, "p1"))!.status).toBe("approved");
+  });
+});
+
+describe("a governance restore is a governance write; the activity log is a read (rules 227 and 237)", () => {
+  it("a member and an admin are refused a restore before anything is read, and nothing changes; the owner may", async () => {
+    const { owner, member, admin } = await team();
+    const saved = await saveGovAs(owner.email, { reviewer: false }, { kind: "owner", email: owner.email });
+    if (!saved.ok || !saved.revision) throw new Error("not saved");
+    const id = saved.revision.id;
+    const [gov, hist] = await Promise.all([getGov(owner.email), listGovHistory(owner.email)]);
+    const restore = () => rollbackRoute.POST(json("/api/governance/rollback", "POST", { id }));
+    for (const login of [member, admin]) {
+      await as(login);
+      const lrange = vi.spyOn(db, "lrange");
+      expect(await status(restore()), login).toBe(403);
+      expect(lrange, "refused before the history is read").not.toHaveBeenCalled();
+      lrange.mockRestore();
+    }
+    expect(await getGov(owner.email)).toEqual(gov);
+    expect(await listGovHistory(owner.email)).toEqual(hist);
+    await as(owner.email);
+    expect(await status(restore())).toBe(200);
+    expect((await getGov(owner.email)).reviewer).toBe(true);
+  });
+
+  it("every member reads the account's activity log and its export, and only that account's", async () => {
+    const { owner, member } = await team();
+    await recordActivity(owner.email, [{ at: new Date().toISOString(), kind: "published", by: { kind: "owner", email: owner.email }, via: "app", note: "the owner's post" }]);
+    await as(member);
+    const page = await activityRoute.GET(json("/api/activity", "GET"));
+    expect(page.status).toBe(200);
+    expect(((await page.json()) as { rows: { note?: string }[] }).rows.map((r) => r.note)).toEqual(["the owner's post"]);
+    const csv = await activityExportRoute.GET();
+    expect(csv.status).toBe(200);
+    expect(await csv.text()).toContain("the owner's post");
+    signOut();
+    expect(await status(activityExportRoute.GET())).toBe(401);
   });
 });
 

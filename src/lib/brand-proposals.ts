@@ -22,6 +22,14 @@ export type BrandProposal = { id: string; field: ProposalField; from: string; to
 const TTL_S = 7 * 86400;
 const key = (scope: string, id: string) => `brandprop:${scope}:${id}`;
 const doneKey = (scope: string, id: string) => `brandprop-done:${scope}:${id}`;
+const claimKey = (scope: string, id: string) => `brandprop-claim:${scope}:${id}`;
+const lockKey = (scope: string) => `brandlock:${scope}`;
+/**
+ * Every proposal id of a scope. An id is random and a proposal holds the brand's old and new offers or banned words, so
+ * without this set `wipeAccount` could not find one, and it would outlive the account by up to 7 days. One 16-character
+ * id per proposal an agent ever made in the brand; it goes with the account.
+ */
+const indexKey = (scope: string) => `brandprops:${scope}`;
 const ID = /^[a-f0-9]{16}$/;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -30,7 +38,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * proposal the owner applies cannot overwrite each other. (The Brand page saves the whole form, as before.)
  */
 export async function withBrandLock<T>(scope: string, fn: () => Promise<T>): Promise<T> {
-  const k = `brandlock:${scope}`;
+  const k = lockKey(scope);
   let got = false;
   for (let i = 0; i < 60 && !got; i++) {
     got = await db.lock(k, 10);
@@ -46,8 +54,16 @@ export async function withBrandLock<T>(scope: string, fn: () => Promise<T>): Pro
 
 export async function proposeBrandChange(scope: string, p: Omit<BrandProposal, "id" | "at" | "state">): Promise<BrandProposal> {
   const out: BrandProposal = { ...p, id: randomBytes(8).toString("hex"), at: new Date().toISOString() };
+  // The id first: a proposal saved is always one `wipeAccount` can find.
+  await db.sadd(indexKey(scope), out.id);
   await db.set(key(scope, out.id), out, TTL_S);
   return out;
+}
+
+/** Every key the proposals of one scope can leave behind, for `wipeAccount`: each proposal, its outcome and claim, the index and the brand lock. */
+export async function proposalKeys(scope: string): Promise<string[]> {
+  const ids = await db.smembers(indexKey(scope));
+  return [...ids.flatMap((id) => [key(scope, id), doneKey(scope, id), claimKey(scope, id)]), indexKey(scope), lockKey(scope)];
 }
 
 export async function getProposal(scope: string, id: string): Promise<BrandProposal | null> {
@@ -66,7 +82,8 @@ export async function proposalStates(scope: string, ids: string[]): Promise<Reco
   }));
 }
 
-export type Decided = { ok: true; applied: boolean; brand?: Brand } | { ok: false; error: "not_found" | "stale" | "no_brand" | "busy" };
+/** An applied proposal names its field and the agent that proposed it, for the activity row the route writes. */
+export type Decided = { ok: true; applied: boolean; brand?: Brand; field?: ProposalField; agent?: AgentId } | { ok: false; error: "not_found" | "stale" | "no_brand" | "busy" };
 
 /**
  * Apply or dismiss one proposal, once.
@@ -78,7 +95,7 @@ export type Decided = { ok: true; applied: boolean; brand?: Brand } | { ok: fals
  */
 export async function decideProposal(scope: string, id: string, action: "apply" | "dismiss"): Promise<Decided> {
   if (!ID.test(id)) return { ok: false, error: "not_found" };
-  const claim = `brandprop-claim:${scope}:${id}`;
+  const claim = claimKey(scope, id);
   if (!(await db.setNx(claim, 1, 60))) return { ok: false, error: "busy" };
   const close = async (state: "applied" | "dismissed" | "stale") => {
     await Promise.all([db.del(key(scope, id)), db.set(doneKey(scope, id), state, TTL_S)]);
@@ -103,7 +120,7 @@ export async function decideProposal(scope: string, id: string, action: "apply" 
       brand.updatedAt = new Date().toISOString();
       await saveBrand(scope, brand);
       await close("applied");
-      return { ok: true, applied: true, brand };
+      return { ok: true, applied: true, brand, field: p.field, agent: p.agent };
     });
   } finally {
     // The claim only orders answers that arrive together. A decided proposal is gone (the next answer is not_found), and
