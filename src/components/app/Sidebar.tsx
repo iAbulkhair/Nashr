@@ -133,6 +133,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
           <li>{row(`${base}/team`, N.members, "users")}</li>
           {show.refer && <li>{row(`${base}/refer`, N.refer, "gift")}</li>}
           <li>{row(`${base}/governance`, N.governance, "shield")}</li>
+          <li>{row(`${base}/activity`, N.activity, "clock")}</li>
           <li>{row(`${base}/integrations`, N.integrations, "grid")}</li>
           {/* Public page: what shipped, and the wishlist signed-in owners vote on. */}
           <li>{row(`/${lang}/updates`, N.updates, "sapling")}</li>

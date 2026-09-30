@@ -10,10 +10,12 @@ import { db } from "@/lib/db";
 import { modelState } from "@/lib/model";
 import { clearOnboard, confirmedOnboard, heldOnboard, onboardUrl } from "@/lib/onboard-confirm";
 import { forbid } from "@/lib/roles";
-import { agentSpendFor, capOf, chargeOnboard, refundOnboard, settleOnboard } from "@/lib/credits";
+import { agentSpendFor, capOf, chargeOnboard, refundOnboard, settleOnboard, type OnboardCharge } from "@/lib/credits";
 import { getGov } from "@/lib/governance";
 import { warnAgentCap } from "@/lib/notifications";
 import { onboardCost } from "@/lib/pricing";
+import { recordActivity, type Activity } from "@/lib/activity";
+import { byOf } from "@/lib/actor";
 
 export const maxDuration = 300;
 /**
@@ -32,18 +34,37 @@ const T = {
 const owe = (error: "no_credits" | "trial_over" | "agent_cap", need: number, credits: number, extra: Record<string, unknown> = {}) =>
   Response.json({ ok: false, error, need, credits, ...extra }, { status: 402 });
 
+type PayRefusal = Exclude<OnboardCharge, { ok: true }>;
+
 /**
  * What the ledger would refuse, read from the account as the request found it, so a certain refusal is answered before
  * the daily allowance and the lock (it costs none of the three tries). The ledger checks the same things again, in the
- * same order, inside its lock (src/lib/credits.ts `charge`): this only answers early.
+ * same order, inside its lock (src/lib/credits.ts `chargeOnboard`): this only answers early.
  */
-function cannotPay(u: User, cost: number, scope: string, noorCap: number | undefined): Response | null {
-  if (trialOver(u)) return owe("trial_over", cost, u.credits);
+function cannotPay(u: User, cost: number, scope: string, noorCap: number | undefined): PayRefusal | null {
+  if (trialOver(u)) return { ok: false, reason: "trial_over", credits: u.credits };
   const cap = capOf(noorCap);
   const spent = agentSpendFor(u, scope).noor ?? 0;
-  if (cap !== undefined && spent + cost > cap) return owe("agent_cap", cost, u.credits, { agent: "noor", spent, cap });
-  if (!(Number.isFinite(u.credits) && u.credits >= cost)) return owe("no_credits", cost, Number.isFinite(u.credits) ? u.credits : 0);
+  if (cap !== undefined && spent + cost > cap) return { ok: false, reason: "agent_cap", credits: u.credits, agent: "noor", spent, cap };
+  if (!(Number.isFinite(u.credits) && u.credits >= cost)) return { ok: false, reason: "no_credits", credits: Number.isFinite(u.credits) ? u.credits : 0, need: cost };
   return null;
+}
+
+/** An activity row of the setup in the added brand's own scope (src/lib/activity.ts): Noor's work, asked for by this login in the app. */
+const setupRow = (u: User, kind: Activity["kind"], credits: number, extra: Partial<Activity> = {}): Activity => ({ at: new Date().toISOString(), kind, agent: "noor", by: byOf(u), via: "app", credits, ...extra });
+
+/**
+ * A refusal to pay, answered and recorded: at Noor's cap a `cap_reached` row (`spent/cap`), without the balance a
+ * `no_credits` row, each with what the setup would have cost and nothing charged, the same rows a text batch or a render
+ * adds when its charge is refused (rule 232). An ended trial adds none, as there. Before the lock and at the ledger alike.
+ */
+async function refuse(u: User, scope: string, cost: number, r: PayRefusal): Promise<Response> {
+  if (r.reason === "agent_cap") {
+    await recordActivity(scope, [setupRow(u, "cap_reached", cost, { agent: r.agent, outcome: `${r.spent}/${r.cap}` })]);
+    return owe("agent_cap", cost, r.credits, { agent: r.agent, spent: r.spent, cap: r.cap });
+  }
+  if (r.reason === "no_credits") await recordActivity(scope, [setupRow(u, "no_credits", cost)]);
+  return owe(r.reason, cost, r.credits);
 }
 
 /**
@@ -61,6 +82,11 @@ function cannotPay(u: User, cost: number, scope: string, noorCap: number | undef
  * gives it back and drops the hold in one save (so it can happen once), and the daily cron refunds a hold nobody used for
  * a day. A failure after the brand file was saved is not refunded (the brand was delivered) and says so (`saved`).
  * Charged in mock mode too, like /api/generate. Rule 246, tests/brand-guardrails.test.ts.
+ *
+ * The brand's activity log gets what Governance counts against Noor there: `onboard_charged` for a new charge (a reused
+ * hold was recorded when it was taken), `cap_reached` / `no_credits` for a refusal to pay, and `onboard_refunded` for the
+ * refund of a failed build (the daily sweep records its own, src/lib/onboard-confirm.ts). Rule 232,
+ * tests/activity-sources.test.ts.
  */
 export async function POST(req: Request) {
   const u = await currentUser();
@@ -86,7 +112,7 @@ export async function POST(req: Request) {
   // An added brand that cannot be paid for is refused here, for the same reason. A run already paid for is not asked again.
   if (cost > 0 && !marker) {
     const refusal = cannotPay(u, cost, scope, gov?.agentCaps.noor);
-    if (refusal) return refusal;
+    if (refusal) return refuse(u, scope, cost, refusal);
   }
   if (!(await allow(`onboard:${u.email}`, 3, 86400))) return new Response("slow_down", { status: 429 });
   // One run at a time per workspace: a reload during the run must not start a second one.
@@ -104,12 +130,13 @@ export async function POST(req: Request) {
   if (cost > 0) {
     const c = await chargeOnboard(u.email, cost, { scope, agent: "noor", cap: gov?.agentCaps.noor }).catch(async (e) => { await release(); throw e; });
     if (!c.ok) {
-      await release();
-      return c.reason === "agent_cap" ? owe("agent_cap", cost, c.credits, { agent: c.agent, spent: c.spent, cap: c.cap }) : owe(c.reason, cost, c.credits);
+      const [res] = await Promise.all([refuse(u, scope, cost, c), release()]);
+      return res;
     }
     held = true;
     u.credits = c.credits;
-    if (!c.reused) await warnAgentCap(u, c);
+    // A new charge only: a reused hold's row was written by the run that took it.
+    if (!c.reused) await Promise.all([warnAgentCap(u, c), recordActivity(scope, [setupRow(u, "onboard_charged", cost, { agent: c.agent })])]);
   }
   const enc = new TextEncoder();
   const stream = new ReadableStream({
@@ -154,7 +181,10 @@ export async function POST(req: Request) {
           // confirmed run pays afresh. Null when another run already refunded it: nothing is given back twice. When the
           // refund fails the hold stays: the next run reuses it, or the daily sweep refunds it.
           refunded = await refundOnboard(u.email, scope).catch((err) => (console.error("onboard refund failed", err instanceof Error ? err.name : "error"), null));
-          if (refunded) u.credits = refunded.credits;
+          if (refunded) {
+            u.credits = refunded.credits;
+            await recordActivity(scope, [setupRow(u, "onboard_refunded", refunded.refunded, { refunded: true })]);
+          }
         } else if (held) {
           // The brand file was saved, so the owner has the brand they paid for: the charge stands and the hold goes.
           await settleOnboard(u.email, scope).catch((err) => console.error("onboard hold drop failed", err instanceof Error ? err.name : "error"));

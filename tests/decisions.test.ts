@@ -45,7 +45,8 @@ describe("decision records (rule 98)", () => {
 
     expect((await patch("a1", { status: "approved" })).status).toBe(200);
     expect(await listDecisions(u.email)).toEqual([
-      { task: "a1", agent: "noor", type: "social", channel: "instagram", action: "approve", at: (await getTask(u.email, "a1"))!.decidedAt, title: "title a1", score: 88 },
+      // Who decided comes from the session (rule 225): the owner here, with the account's email.
+      { task: "a1", agent: "noor", type: "social", channel: "instagram", action: "approve", at: (await getTask(u.email, "a1"))!.decidedAt, title: "title a1", score: 88, by: { kind: "owner", email: u.email } },
     ]);
 
     await patch("r1", { status: "rejected", note: "  الأرقام غير صحيحة  " });
@@ -137,7 +138,7 @@ describe("decision records (rule 98)", () => {
     await Promise.all([saveTask(u.email, task("p1", { quality: quality(91) }), true), saveTask(u.email, task("p2"), true)]);
     expect((await publish("p1")).status).toBe(200);
     const t = (await getTask(u.email, "p1"))!;
-    expect(await listDecisions(u.email)).toEqual([{ task: "p1", agent: "noor", type: "social", channel: "instagram", action: "publish", at: t.decidedAt, title: "title p1", score: 91 }]);
+    expect(await listDecisions(u.email)).toEqual([{ task: "p1", agent: "noor", type: "social", channel: "instagram", action: "publish", at: t.decidedAt, title: "title p1", score: 91, by: { kind: "owner", email: u.email } }]);
     // Already approved by the owner: the approval was the decision, the publish is not another one.
     await patch("p2", { status: "approved" });
     expect((await publish("p2")).status).toBe(200);

@@ -1,23 +1,16 @@
-import { charge, refund } from "./credits";
 import { AGENTS, agentById, agentForTask, type AgentId } from "./agents";
 import { skillsBlock } from "./skills";
-import { statsFor } from "./stats";
-import { missingData } from "./cart-recovery";
-import { judgeLater } from "./judge";
-import { fenceMemory, type Grounding } from "./json";
+import { fenceMemory } from "./json";
 import { meter } from "./usage";
-import { PAUSED_REPLY, modelState } from "./model";
+import { ModelPaused, PAUSED_REPLY, modelState } from "./model";
 import Anthropic from "@anthropic-ai/sdk";
-import { randomBytes } from "crypto";
 import { CAPS, db, pushCapped } from "./db";
-import { trialOver, type User } from "./auth";
-import { briefOf, getBrand, listPreferencesFor, saveBrand, saveTask, listLite, type Brand, type Task } from "./brand";
+import type { User } from "./auth";
+import { getBrand, listPreferencesFor, saveBrand, listLite, type Brand, type Task } from "./brand";
 import { feedbackBlock, feedbackFor } from "./feedback";
-import { DRAFT_TYPES, IMAGE_TYPES, TASK_COST, TASK_COUNT, TASK_TYPES, isDraftType, isTaskType, type TaskType } from "./tasks";
-import { generate } from "./noor";
+import { DRAFT_TYPES, IMAGE_TYPES, TASK_COST, TASK_TYPES, isDraftType, isTaskType, type TaskType } from "./tasks";
+import { generateBatch, type BatchRefusal } from "./generate-batch";
 import { CORE_FILES, FileLimitError, MAX_FILES, listFileNames, memoryBlock, readFile, safeName, writeFile } from "./files";
-import { getGov } from "./governance";
-import { warnAgentCap } from "./notifications";
 import { activeSeasons } from "./seasons";
 import { importCatalog } from "./catalog";
 import { renderImage } from "./media/start";
@@ -29,8 +22,10 @@ import { HELP } from "./help";
 import { getTask } from "./brand";
 import { DEFAULT_IMAGE_MODEL, MEDIA_MODELS, mediaModel } from "./media-catalog";
 import { ONBOARD_EXTRA_BRAND_COST, PLAN_CREDITS } from "./pricing";
-import { bannedTerms, explain, gateTask, initialStatus, normalize, type Violation } from "./brand-rules";
+import { bannedTerms, explain, gateTask, normalize, type Violation } from "./brand-rules";
 import { proposalStates, proposeBrandChange, withBrandLock, type BrandProposal, type ProposalField } from "./brand-proposals";
+import { byOf, type By } from "./actor";
+import { recordActivity } from "./activity";
 import { SEC_TOOL_DEFS, isSecTool, runSecretaryTool } from "./secretary";
 import { nowLine } from "./secretary-agenda";
 import { zoneOf } from "./zones";
@@ -168,7 +163,7 @@ WHAT YOU CAN DO
 
 HOW NASHR WORKS (answer "how do I…" questions from this; point to the page)
 ${HELP.map((t) => t.items.map((i) => `- ${i.q.en} → ${i.a.en}`).join("\n")).join("\n")}
-Pages: /app/chat (you), /app (inbox), /app/todo (my to-dos), /app/files, /app/tasks (scheduled routines), /app/governance, /app/integrations, /app/mcp, /app/billing, /app/refer, /app/help.
+Pages: /app/chat (you), /app (inbox), /app/todo (my to-dos), /app/files, /app/tasks (scheduled routines), /app/governance, /app/activity (what each agent did, with a CSV download), /app/integrations, /app/mcp, /app/billing, /app/refer, /app/help.
 
 REPLY SHAPES
 - Simple asks and small talk: 2-6 sentences.
@@ -232,8 +227,12 @@ export const CHAT_MAX_DURATION_S = 300;
 /** A render started from chat needs the prompt, the submit and the copy inside the request: with less left, none starts. */
 export const CHAT_RENDER_MIN_MS = 60_000;
 
-/** `deadline`: the request's one deadline (spec A23), `deadlineFor(maxDuration)` from the route's start. Without it, counted from chat()'s own start. */
-export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en"; deadline?: number; /** "mcp": the turn came through ask_noor, so tools that publish or rewrite core memory are refused (runTool) */ via?: "app" | "mcp" };
+/**
+ * `deadline`: the request's one deadline (spec A23), `deadlineFor(maxDuration)` from the route's start. Without it, counted from chat()'s own start.
+ * `by`: who is talking, for the activity log; the MCP route passes `tokenBy(user)`, and without it `byOf(user)` reads the session.
+ * `via`: "mcp" when the turn came through ask_noor, so tools that publish or rewrite core memory are refused (runTool).
+ */
+export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en"; deadline?: number; by?: By; via?: "app" | "mcp" };
 /** Why a tool could not spend: the app raises the matching limit dialog. `agent_cap` is the owner's monthly cap for one agent. */
 export type ChatLimit = "credits" | "trial" | "agent_cap";
 
@@ -261,7 +260,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
 
   const client = new Anthropic();
   // Independent reads, fetched together: one after another they cost 1-2 s of silence before every model call.
-  const [brand, prefs, memory, files, conns, thread, feedback] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true })]);
+  const [brand, prefs, memory, files, conns, thread, feedback, by] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), opts.by ?? byOf(user)]);
   const connected = connectedTargets(conns);
   const past = thread.slice(-16);
   const messages: Anthropic.MessageParam[] = past.map((m) => ({ role: m.role, content: m.content }));
@@ -291,7 +290,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
       let isError = false;
       opts.onStatus?.(statusFor(u.name, lang, agentName));
       try {
-        out = await runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, { lang, agent: agentId, via, proposed });
+        out = await runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, { lang, agent: agentId, by, via, proposed });
       } catch (e) {
         isError = true;
         out = e instanceof Error ? e.message : "tool_failed";
@@ -311,6 +310,23 @@ function capReached(r: { agent: AgentId; spent: number; cap: number }): string {
 }
 
 /**
+ * A batch that did not run, as the tool result the model relays, with the `limit:*` action that raises the app's limit
+ * dialog. A failed generation was already refunded; it is thrown into the turn, which hands the model the error.
+ */
+function batchRefused(r: BatchRefusal, actions: string[], lowCredits: (need: number, have: number) => string): string {
+  switch (r.reason) {
+    case "no_brand": return "No brand file yet. Ask the owner to run onboarding.";
+    case "trial_over": actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page.";
+    case "missing_data": return "No abandoned-cart data yet, so nothing was created and no credits were used. Tell the owner to connect Salla or Shopify on the Integrations page and press Sync on the Reports page, then ask again.";
+    case "agent_cap": actions.push("limit:agent_cap"); return capReached(r);
+    case "no_credits": actions.push("limit:credits"); return lowCredits(r.need, r.credits);
+    // Never answered to chat (its turn is the gate while paused); thrown as generate() would throw it.
+    case "paused": throw new ModelPaused();
+    case "failed": throw r.error;
+  }
+}
+
+/**
  * Tools that change what the whole account publishes or knows, gated by the acting person's role exactly like the
  * route that does the same thing (src/lib/roles.ts): the brand form, the publish button, the catalog import. Checked
  * here in code, so asking Noor — in the app or over MCP — is never a way around the route's gate. A user with no actor
@@ -319,13 +335,23 @@ function capReached(r: { agent: AgentId; spent: number; cap: number }): string {
 export const TOOL_ACTION: Readonly<Record<string, Action>> = { update_brand: "brand.write", publish_item: "publish", import_catalog: "catalog.import" };
 
 /**
- * Exported for tests: the code-level gates on tools (approval before publishing) must hold without a model in the loop.
- * `deadline` is the chat request's (see chat()); a call outside a chat turn counts as the start of one.
+ * The turn a tool runs in: the talking agent, who is talking (for the activity log), whether the turn came over MCP
+ * (`via: "mcp"`: publishing and core-memory writes are refused), and where a brand-change proposal is collected for the
+ * turn's reply card.
  */
-export async function runTool(user: User, name: string, input: Record<string, unknown>, actions: string[], made: Task[] = [], deadline = deadlineFor(CHAT_MAX_DURATION_S), ctx: { lang?: "ar" | "en"; agent?: AgentId; via?: "app" | "mcp"; proposed?: BrandProposal[] } = {}): Promise<string> {
+export type ToolCtx = { lang?: "ar" | "en"; agent?: AgentId; by?: By; via?: "app" | "mcp"; proposed?: BrandProposal[] };
+
+/**
+ * Exported for tests: the code-level gates on tools (approval before publishing) must hold without a model in the loop.
+ * `deadline` is the chat request's (see chat()); a call outside a chat turn counts as the start of one. `ctx` comes from
+ * chat(); without it `by` is read from the session and the talking agent is not known.
+ */
+export async function runTool(user: User, name: string, input: Record<string, unknown>, actions: string[], made: Task[] = [], deadline = deadlineFor(CHAT_MAX_DURATION_S), ctx: ToolCtx = {}): Promise<string> {
   const email = user.scope ?? user.email;
+  // The role gate comes first: a refused tool reaches no pipeline, write or activity row.
   const needs = Object.prototype.hasOwnProperty.call(TOOL_ACTION, name) ? TOOL_ACTION[name] : null;
   if (needs && !can(user, needs)) return `Not done: ${name} needs the owner or an admin of this account, and the person chatting is neither. Nothing was changed. Tell them plainly that the account owner or an admin can do this, and do not try another way around it.`;
+  const who = async () => ctx.by ?? (await byOf(user));
   // The secretary's tools: free, no model call, scoped to this user's active brand, and unable to close an item.
   if (isSecTool(name)) {
     const r = await runSecretaryTool(user, name, input, { who: { actor: ctx.agent ?? "reem", via: "chat", login: user.actor?.email }, lang: ctx.lang ?? user.lang });
@@ -337,44 +363,15 @@ export async function runTool(user: User, name: string, input: Record<string, un
       // The model chooses this value, and crawled pages and catalogs reach the model: it is request input, not a fact.
       if (!isTaskType(input.type)) return `Unknown type. Valid types: ${TASK_TYPES.join(", ")}.`;
       const type = input.type;
-      const cost = TASK_COST[type];
-      // Governance before the charge: the owner's monthly cap for the agent who owns this type is checked in the ledger.
-      const [brand, gov] = await Promise.all([getBrand(email), getGov(email)]);
-      if (!brand) return "No brand file yet. Ask the owner to run onboarding.";
-      if (trialOver(user)) { actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page."; }
-      if (await missingData(type, email)) return "No abandoned-cart data yet, so nothing was created and no credits were used. Tell the owner to connect Salla or Shopify on the Integrations page and press Sync on the Reports page, then ask again.";
-      const agent = agentForTask(type).id;
-      const paid = await charge(user.email, cost, { scope: email, agent, cap: gov.agentCaps[agent] });
-      if (!paid.ok && paid.reason === "agent_cap") { actions.push("limit:agent_cap"); return capReached(paid); }
-      if (!paid.ok) { actions.push("limit:credits"); return `Insufficient credits: need ${cost}, have ${paid.credits}. Tell the owner plainly and point to the Subscription page.`; }
-      user.credits = paid.credits;
-      await warnAgentCap(user, paid);
-      let items;
-      // Read inside the try: the credits are already charged, and a failed read must reach the refund below.
-      const notes = String(input.notes ?? "");
-      let ground: Grounding = { notes };
-      try {
-        const [prefs, memory, stats, feedback] = await Promise.all([listPreferencesFor(email, agent), memoryBlock(email), statsFor(type, email), feedbackFor(email, agent, { gov })]);
-        ground = { notes, memory, stats };
-        items = await generate(type, brand, prefs, notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, stats, feedback });
-      } catch (e) {
-        user.credits = await refund(user.email, cost, paid);
-        throw e;
-      }
-      const kept = briefOf(notes);
-      const created: Task[] = [];
-      for (const it of items) {
-        const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[type], brand, { type, channel: it.channel, title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat", ...(kept ? { brief: kept } : {}) };
-        await saveTask(email, t, true);
-        created.push(t);
-      }
-      judgeLater(email, user.email, brand, created, undefined, ground);
+      const r = await generateBatch(user, email, { type, notes: String(input.notes ?? ""), source: "chat", via: "chat", by: ctx.by });
+      if (!r.ok) return batchRefused(r, actions, (need, have) => `Insufficient credits: need ${need}, have ${have}. Tell the owner plainly and point to the Subscription page.`);
+      const created = r.tasks;
       made.push(...created);
-      actions.push(`generated:${type}:${items.length}`);
-      const inline = items.length <= 3 ? `\n\nITEM BODIES (show these to the owner in your reply, formatted, since the batch is small):\n${items.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body.slice(0, 1500)}`).join("\n\n")}` : "";
-      const held = gov.autoApprove[type] ? created.filter((t) => t.status === "pending").length : 0;
-      const auto = gov.autoApprove[type] ? (held ? ` (auto-approve is on, but ${held} item(s) broke a brand rule and wait for the owner in the inbox)` : " (auto-approved per governance)") : "";
-      return `Created ${items.length} ${type} item(s) in the inbox${auto}. Credits left: ${user.credits}. Titles: ${items.map((i) => i.title).join(" | ")}${inline}`;
+      actions.push(`generated:${type}:${created.length}`);
+      const inline = created.length <= 3 ? `\n\nITEM BODIES (show these to the owner in your reply, formatted, since the batch is small):\n${created.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body.slice(0, 1500)}`).join("\n\n")}` : "";
+      const held = r.gov.autoApprove[type] ? created.filter((t) => t.status === "pending").length : 0;
+      const auto = r.gov.autoApprove[type] ? (held ? ` (auto-approve is on, but ${held} item(s) broke a brand rule and wait for the owner in the inbox)` : " (auto-approved per governance)") : "";
+      return `Created ${created.length} ${type} item(s) in the inbox${auto}. Credits left: ${user.credits}. Titles: ${created.map((i) => i.title).join(" | ")}${inline}`;
     }
     case "draft_items": {
       // The tool schema's enum is not the approval (the model is never the only approval): a type outside DRAFT_TYPES
@@ -382,40 +379,13 @@ export async function runTool(user: User, name: string, input: Record<string, un
       if (!isDraftType(input.type)) return `Not a draft type. draft_items takes: ${DRAFT_TYPES.join(", ")}; use generate_content for other types. Nothing was created and no credits were used.`;
       const type = input.type;
       const count = Math.max(1, Math.min(3, Number(input.count) || 1));
-      const cost = Math.max(1, Math.ceil((TASK_COST[type] / (TASK_COUNT[type] || 1)) * count));
-      const [brand, gov] = await Promise.all([getBrand(email), getGov(email)]);
-      if (!brand) return "No brand file yet. Ask the owner to run onboarding.";
-      if (trialOver(user)) { actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page."; }
-      if (await missingData(type, email)) return "No abandoned-cart data yet, so nothing was created and no credits were used. Tell the owner to connect Salla or Shopify on the Integrations page and press Sync on the Reports page, then ask again.";
-      const agent = agentForTask(type).id;
-      const paid = await charge(user.email, cost, { scope: email, agent, cap: gov.agentCaps[agent] });
-      if (!paid.ok && paid.reason === "agent_cap") { actions.push("limit:agent_cap"); return capReached(paid); }
-      if (!paid.ok) { actions.push("limit:credits"); return `Insufficient credits: need ${cost}, have ${paid.credits}.`; }
-      user.credits = paid.credits;
-      await warnAgentCap(user, paid);
-      let items;
-      // Read inside the try: the credits are already charged, and a failed read must reach the refund below.
-      const brief = String(input.brief ?? "");
-      let ground: Grounding = { notes: brief };
-      try {
-        const [prefs, memory, stats, feedback] = await Promise.all([listPreferencesFor(email, agent), memoryBlock(email), statsFor(type, email), feedbackFor(email, agent, { gov })]);
-        ground = { notes: brief, memory, stats };
-        items = await generate(type, brand, prefs, brief, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, count, stats, feedback });
-      } catch (e) {
-        user.credits = await refund(user.email, cost, paid);
-        throw e;
-      }
-      const kept = briefOf(brief);
-      const created: Task[] = [];
-      for (const it of items) {
-        const t: Task = { id: randomBytes(8).toString("hex"), type, channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove[type], brand, { type, channel: it.channel, title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "chat", ...(kept ? { brief: kept } : {}) };
-        await saveTask(email, t, true);
-        created.push(t);
-      }
-      judgeLater(email, user.email, brand, created, count, ground);
+      const r = await generateBatch(user, email, { type, notes: String(input.brief ?? ""), count, source: "chat", via: "chat", by: ctx.by });
+      if (!r.ok) return batchRefused(r, actions, (need, have) => `Insufficient credits: need ${need}, have ${have}.`);
+      const created = r.tasks;
+      const cost = r.cost;
       made.push(...created);
-      actions.push(`drafted:${type}:${items.length}`);
-      return `Drafted ${items.length} ${type} item(s) (${cost} credit${cost > 1 ? "s" : ""}); also in the inbox. Credits left: ${user.credits}.\n\nITEM BODIES (show these to the owner, formatted and ready to copy):\n${items.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body}`).join("\n\n")}`;
+      actions.push(`drafted:${type}:${created.length}`);
+      return `Drafted ${created.length} ${type} item(s) (${cost} credit${cost > 1 ? "s" : ""}); also in the inbox. Credits left: ${user.credits}.\n\nITEM BODIES (show these to the owner, formatted and ready to copy):\n${created.map((i, n) => `${n + 1}. [${i.channel}] ${i.title}\n${i.body}`).join("\n\n")}`;
     }
     case "update_brand": {
       // One read-change-write of the brand file at a time with the owner's Save on a proposal (brand-proposals.ts).
@@ -448,6 +418,8 @@ export async function runTool(user: User, name: string, input: Record<string, un
             brand.banned = merged;
             brand.updatedAt = new Date().toISOString();
             await saveBrand(email, brand);
+            // By the talking agent, from chat: the field's name, never the words the model wrote.
+            await recordActivity(email, [{ at: brand.updatedAt, kind: "brand_changed", agent: ctx.agent, by: await who(), via: "chat", note: "banned" }]);
             actions.push("brand:banned");
             return `Added to the banned words: ${added.join(", ")}. The words already there stay; taking one out needs the owner's Save.`;
           }
@@ -459,6 +431,8 @@ export async function runTool(user: User, name: string, input: Record<string, un
             to = have.filter((t) => !out.has(normalize(t))).join(", ");
           }
           if (normalize(to) === normalize(from)) return `No change: brand.${key} already says that.`;
+          // A proposal changes nothing, so it is no brand_changed row: that row is written when the owner applies it
+          // (POST /api/brand/proposals/{id}).
           const p = await proposeBrandChange(email, { field: key, from, to, agent: ctx.agent ?? "noor", via: ctx.via === "mcp" ? "mcp" : "chat", ...(dropped.length ? { dropped } : {}) });
           ctx.proposed?.push(p);
           actions.push(`brandprop:${key}`);
@@ -469,6 +443,8 @@ export async function runTool(user: User, name: string, input: Record<string, un
         else (brand as unknown as Record<string, string>)[field] = value;
         brand.updatedAt = new Date().toISOString();
         await saveBrand(email, brand);
+        // By the talking agent, from chat: the field's name, never the value the model wrote.
+        await recordActivity(email, [{ at: brand.updatedAt, kind: "brand_changed", agent: ctx.agent, by: await who(), via: "chat", note: field }]);
         actions.push(`brand:${field}`);
         return `Updated brand.${field}.`;
       });
@@ -493,6 +469,8 @@ export async function runTool(user: User, name: string, input: Record<string, un
         if (e instanceof FileLimitError) return `This workspace already holds ${MAX_FILES} files, the maximum. Ask the owner to delete one from the Files page, or write to a file that already exists.`;
         throw e;
       }
+      // The file keeps its author label ("noor", the Files page's two-value "written by"); the log names the talking agent.
+      await recordActivity(email, [{ at: f.updatedAt, kind: "file_written", agent: ctx.agent, by: await who(), via: "chat", note: f.name }]);
       actions.push(`file:${f.name}`);
       return `Saved ${f.name} (${f.content.length} chars).`;
     }
@@ -539,6 +517,9 @@ export async function runTool(user: User, name: string, input: Record<string, un
           }
         }
       }
+      // A real publish only: a refusal, a duplicate or an unknown result above returned before this row. `earlier_live`
+      // needs an `again`, which only the inbox sends. The item's owning agent, computed in code, as on the publish route.
+      await recordActivity(email, [{ at: r.task.published?.at(-1)?.at ?? new Date().toISOString(), kind: "published", agent: agentForTask(t.type).id, by: await who(), via: "chat", type: t.type, tasks: [t.id], outcome: r.result.provider, note: t.title }]);
       actions.push(`published:${provider}`);
       return `Published to ${provider} as ${r.result.status}: ${r.result.url}`;
     }
@@ -565,7 +546,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       // agent, and refunds exactly once when it fails. It works to the chat request's own deadline (spec A23), so a
       // render started late in a long turn is never budgeted past the platform's kill.
       if (deadline - Date.now() < CHAT_RENDER_MIN_MS) return `Not started: this reply has run too long to draw "${t.title}" now. No credit was used. Tell the owner to ask again, or to press the image button on the item in the inbox.`;
-      const r = await renderImage(user, t, brand, undefined, { deadline });
+      const r = await renderImage(user, t, brand, undefined, { deadline, by: await who(), from: "chat" });
       if ("placeholder" in r) {
         actions.push(`image:${t.id}`);
         // "Not available right now", not "not configured": the breaker may have switched the default model off for a while.

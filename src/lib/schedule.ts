@@ -1,18 +1,14 @@
-import { randomBytes } from "crypto";
 import { db } from "./db";
 import { getUser, trialOver, type User } from "./auth";
-import { charge, refund } from "./credits";
-import { judgeLater } from "./judge";
-import { TASK_COST, getBrand, indexedAt, listLite, listPreferencesFor, rebuildIndex, rebuildPending, saveTask, type Brand, type Task } from "./brand";
-import { feedbackFor } from "./feedback";
-import { generate } from "./noor";
+import { getBrand, indexedAt, listLite, rebuildIndex, rebuildPending, type Brand } from "./brand";
+import { generateBatch } from "./generate-batch";
 import { modelState } from "./model";
-import { memoryBlock } from "./files";
 import { getGov } from "./governance";
 import { activeSeasons } from "./seasons";
 import { dateFormat } from "./dates";
-import { initialStatus } from "./brand-rules";
 import type { RoutineId } from "./routines";
+import { systemBy, type By } from "./actor";
+import { recordRun } from "./activity";
 import { briefAgenda, type BriefAgenda } from "./secretary-agenda";
 import { agendaFor } from "./secretary";
 
@@ -90,8 +86,11 @@ export const ranThisWeek = (lastWeekly: string | undefined, now: Date = new Date
 /** The owner-notes line of the automatic Sunday plan; the judge is given the same text the agent was. */
 const WEEKLY_NOTE = "This is the automatic Sunday plan. Reference strategy.md phases and the calendar.";
 
-/** Weekly plan for one user. Returns what happened. */
-export async function runWeekly(user: User): Promise<string> {
+/**
+ * Weekly plan for one user. Returns what happened. `by` is who asked: "Run now" passes the login that pressed it (any
+ * role may, POST /api/schedule), and the cron's run is the system's.
+ */
+export async function runWeekly(user: User, by: By = systemBy("cron")): Promise<string> {
   const email = user.scope ?? user.email;
   const brand = await getBrand(email);
   if (!brand) return "no_brand";
@@ -103,49 +102,38 @@ export async function runWeekly(user: User): Promise<string> {
   // serve this owner if Claude is back on by then.
   if (modelState() === "paused") return "retry:paused";
   if (!(await db.lock(`weeklylock:${email}`, 300))) return "retry:locked";
+  // What happened, for the activity log, like a routine's; a throw is "error" (the charge was refunded first).
+  let outcome = "error";
   try {
-    return await weeklyFor(user, email, brand);
+    outcome = await weeklyFor(user, email, brand, by);
+    return outcome;
   } finally {
-    await db.unlock(`weeklylock:${email}`);
+    await Promise.all([
+      db.unlock(`weeklylock:${email}`),
+      recordRun(email, { id: "weekly_plan", agent: "noor", type: "weekly_plan", via: "weekly", by, period: weekStartUtc(), ttlS: 8 * 86400 }, outcome),
+    ]);
   }
 }
 
-async function weeklyFor(user: User, email: string, brand: Brand): Promise<string> {
+async function weeklyFor(user: User, email: string, brand: Brand, by: By): Promise<string> {
   const gov = await getGov(email);
-  const cost = TASK_COST.weekly_plan;
   if (trialOver(user)) return "trial_over";
   // weekly cap: count items Noor created on her own in the last 7 days
   const weekAgo = Date.now() - 7 * 864e5;
   const auto = (await listLite(email, new Date(weekAgo))).filter((t) => t.source === "scheduled").length;
   if (auto >= gov.weeklyCap) return "cap_reached";
-  // Loaded before the charge (notifications imports this module, hence the dynamic import), so nothing between the
-  // charge and the refunding try below can throw.
-  const { notifyItem, warnAgentCap } = await import("./notifications");
+  // Loaded before the charge (notifications imports this module, hence the dynamic import), so nothing after a kept
+  // charge can fail before the week is recorded.
+  const { notifyItem } = await import("./notifications");
   // weekly_plan is Noor's, so it counts against her monthly cap in this brand, like a batch she was asked for.
-  const paid = await charge(user.email, cost, { scope: email, agent: "noor", cap: gov.agentCaps.noor });
-  if (!paid.ok) return paid.reason;
-  user.credits = paid.credits;
-  await warnAgentCap(user, paid);
-  let items;
-  let memory = "";
-  try {
-    const [prefs, mem, feedback] = await Promise.all([listPreferencesFor(email, "noor"), memoryBlock(email), feedbackFor(email, "noor", { gov })]);
-    memory = mem;
-    items = await generate("weekly_plan", brand, prefs, WEEKLY_NOTE, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, meter: user.email, feedback });
-  } catch (e) {
-    user.credits = await refund(user.email, cost, paid);
-    throw e;
+  const r = await generateBatch(user, email, { type: "weekly_plan", notes: WEEKLY_NOTE, brief: WEEKLY_NOTE, source: "scheduled", via: "weekly", gov, brand, by });
+  if (!r.ok) {
+    if (r.reason === "failed") throw r.error;
+    return r.reason === "paused" ? "retry:paused" : r.reason;
   }
-  const created: Task[] = [];
-  for (const it of items) {
-    const t: Task = { id: randomBytes(8).toString("hex"), type: "weekly_plan", channel: it.channel, title: it.title, body: it.body, status: initialStatus(gov.autoApprove.weekly_plan, brand, { type: "weekly_plan", channel: it.channel, title: it.title, body: it.body }), createdAt: new Date().toISOString(), lang: brand.languages[0] ?? "ar", source: "scheduled", brief: WEEKLY_NOTE };
-    await saveTask(email, t, true);
-    created.push(t);
-  }
-  judgeLater(email, user.email, brand, created, undefined, { notes: WEEKLY_NOTE, memory });
   await saveSchedule(email, { lastWeekly: new Date().toISOString() });
-  await notifyItem(user.email, user.lang, { kind: "weekly", agent: "noor", title: user.lang === "ar" ? "خطة الأسبوع جاهزة في صندوق الموافقة" : "This week's plan is ready in your inbox", body: user.lang === "ar" ? `${items.length} عنصر من نور. اعتمد ما يعجبك وعيّن تواريخ النشر.` : `${items.length} item(s) from Noor. Approve what you like and set publish dates.`, href: "" }, `weekly:${new Date().toISOString().slice(0, 10)}`, 2);
-  return `ok:${items.length}`;
+  await notifyItem(user.email, user.lang, { kind: "weekly", agent: "noor", title: user.lang === "ar" ? "خطة الأسبوع جاهزة في صندوق الموافقة" : "This week's plan is ready in your inbox", body: user.lang === "ar" ? `${r.tasks.length} عنصر من نور. اعتمد ما يعجبك وعيّن تواريخ النشر.` : `${r.tasks.length} item(s) from Noor. Approve what you like and set publish dates.`, href: "" }, `weekly:${new Date().toISOString().slice(0, 10)}`, 2);
+  return `ok:${r.tasks.length}`;
 }
 
 /** Daily brief: no model call, no credits. Pure summary from stored data. */

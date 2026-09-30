@@ -7,6 +7,7 @@ import { getGov } from "@/lib/governance";
 import { readFile, writeFile } from "@/lib/files";
 import { decisionOf, recordDecisions, type DecisionAction } from "@/lib/decisions";
 import { editPctOf } from "@/lib/similarity";
+import { byOf } from "@/lib/actor";
 import { can, forbid } from "@/lib/roles";
 
 type Patch = { status?: string; editedBody?: string; note?: string; scheduledFor?: string | null };
@@ -16,7 +17,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const { id } = await ctx.params;
   const scope = sc(u);
-  const [b, gov, brand] = await Promise.all([req.json().catch(() => ({})) as Promise<Patch>, getGov(scope), getBrand(scope)]);
   // Any member may edit, reject, reopen and reschedule a draft (src/lib/roles.ts "drafts"). An item that ENDS approved
   // needs admin or owner ("publish"): approving it, or changing the text of an item that stays approved, because an
   // approved item is what gets published and the approval must cover the words that go out. The publish check runs
@@ -24,6 +24,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const no = forbid(u, "drafts");
   if (no) return no;
   const gate = { refused: false };
+  // Who decides is worked out from the session's actor (`byOf`), never from the body.
+  const [b, gov, brand, by] = await Promise.all([req.json().catch(() => ({})) as Promise<Patch>, getGov(scope), getBrand(scope), byOf(u)]);
 
   // What the owner waits for is the saved task. Preference learning, event tracking and the decision records are
   // collected here and run after the response.
@@ -80,7 +82,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   // The owner's typed reason belongs to the rejection when there is one, else to the edit: one note, one record.
   const reasoned = decided.find((d) => d.action === "reject") ?? decided.find((d) => d.action === "edit");
   if (reasoned) reasoned.note = b.note;
-  const records = decided.map((d) => decisionOf(t, d.action, now, d));
+  const records = decided.map((d) => decisionOf(t, d.action, now, { ...d, by }));
 
   const later = async () => {
     try {

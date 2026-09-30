@@ -95,6 +95,12 @@ export type Task = {
   adCode?: string;
   /** What the agent was asked for this batch: the owner's notes or brief, first 500 characters (`briefOf`). */
   brief?: string;
+  /**
+   * Which prompts made this item (src/lib/prompt-stamp.ts): 12-hex hashes of the owning agent's playbook, review.md, the
+   * industry playbook (`id:hash`) and the prompts written in code; "none" for a playbook that did not load. Set on every
+   * generated batch (`taskFromItem`); absent on older tasks and on MCP `save_draft` drafts, which no Nashr prompt wrote.
+   */
+  pb?: { skills: string; review: string; industry?: string; code: string };
   /** Automated judge score (src/lib/judge.ts). `autofail` is the judge's automatic-fail code, when one was set. */
   quality?: { score: number; dims: { completeness: number; brand: number; honesty: number; language: number; format: number }; notes: string; model: string; at: string; autofail?: string };
 };
