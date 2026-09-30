@@ -71,7 +71,7 @@ Rules that apply everywhere:
 **Noor will:** nothing; this is Nashr's own subscription checkout (mada, Apple Pay, cards, STC Pay).
 - **Moyasar:** https://moyasar.com → Sign up → upload CR, IBAN letter, ID → approval → Dashboard → API keys. **Send me:** `MOYASAR_SECRET_KEY`, `MOYASAR_PUBLISHABLE_KEY`.
 - **Tap:** https://www.tap.company → Sign up → same docs → dashboard → API keys. **Send me:** `TAP_SECRET_KEY`, `TAP_PUBLIC_KEY`.
-Until approved: create manual payment links in either dashboard and set `PAY_LINK_STARTER/PRO/AGENCY`.
+Until approved: create manual payment links in either dashboard (299 / 499 / 999 SAR since 2026-09-30) and set `PAY_LINK_STARTER/PRO/BUSINESS`. Agency has no pay link: it is sold by contract, and `PAY_LINK_AGENCY` is no longer read.
 
 ---
 
@@ -143,7 +143,7 @@ GOOGLE    client id+secret ✔ / consent screen submitted
 META      app id+secret ✔ / business verification status / portfolio id
 SALLA     client id+secret+webhook secret ✔ / demo store
 ZID       client id+secret ✔
-PAYMENTS  moyasar or tap keys ✔  (or PAY_LINK_* set)
+PAYMENTS  moyasar or tap keys ✔  (or PAY_LINK_STARTER/PRO/BUSINESS set)
 SNAP      client id+secret ✔ / marketing API approval status
 TIKTOK    client key+secret ✔ / domain verification file sent
 LINKEDIN  client id+secret ✔

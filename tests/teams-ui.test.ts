@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PLAN_SEATS, type User } from "@/lib/auth";
+import { PLAN_PRICE_SAR } from "@/lib/pricing";
 import { appDict } from "@/lib/app-i18n";
 import { dict } from "@/lib/i18n";
 import { INDUSTRY_PAGES } from "@/lib/pages-industry";
@@ -213,26 +214,44 @@ describe("the join page", () => {
 
 describe("owner-only and admin screens render read-only for lower roles", () => {
   it("billing: pay links and activation for the owner only; seats for everyone", async () => {
-    const before = process.env.PAY_LINK_PRO;
-    process.env.PAY_LINK_PRO = "https://pay.test.example/pro";
+    // Each self-serve card carries its own tier's link, found by plan id (rule 248): the page once paired cards and links
+    // by position, which would have shown Business at its price with another tier's link. Agency has no pay link.
+    const LINKS = { PAY_LINK_STARTER: "https://pay.test.example/starter", PAY_LINK_PRO: "https://pay.test.example/pro", PAY_LINK_BUSINESS: "https://pay.test.example/business", PAY_LINK_AGENCY: "https://pay.test.example/agency" } as const;
+    // Without SUPPORT_WHATSAPP the owner's Agency card falls back to the contact form, which is what this checks.
+    const before = Object.fromEntries([...Object.keys(LINKS), "SUPPORT_WHATSAPP"].map((k) => [k, process.env[k]]));
+    Object.assign(process.env, LINKS);
+    delete process.env.SUPPORT_WHATSAPP;
+    /** The markup of each billing card, keyed by its `data-tier`. */
+    const cards = (h: string) => Object.fromEntries(h.split('data-tier="').slice(1).map((chunk) => [chunk.slice(0, chunk.indexOf('"')), chunk]));
     try {
       await signIn(owner.email);
       const o = await html(BillingPage);
-      expect(o).toContain("https://pay.test.example/pro");
+      const c = cards(o);
+      expect(Object.keys(c)).toEqual(["starter", "pro", "business", "agency"]);
+      for (const k of ["starter", "pro", "business"] as const) {
+        expect(c[k], k).toContain(`href="${LINKS[`PAY_LINK_${k.toUpperCase()}` as keyof typeof LINKS]}"`);
+        expect(c[k], k).toContain(`>${PLAN_PRICE_SAR[k]} <`);
+        for (const other of ["starter", "pro", "business", "agency"].filter((x) => x !== k)) expect(c[k], `${k} carries ${other}'s link`).not.toContain(`pay.test.example/${other}`);
+      }
+      expect(o).not.toContain(LINKS.PAY_LINK_AGENCY);
+      expect(c.agency).toContain("/en/enterprise#contact");
       expect(o).toContain(en.billing.seats);
       expect(o).not.toContain(en.billing.ownerOnly);
       for (const who of [admin.email, member.email]) {
         await signIn(who);
         const h = await html(BillingPage);
-        expect(h).not.toContain("https://pay.test.example/pro");
+        expect(h).not.toContain("pay.test.example");
         expect(h).not.toContain("wa.me");
         expect(h).not.toContain("mailto:");
+        expect(h).not.toContain("/enterprise#contact");
         expect(h).toContain(en.billing.seats);
         expect(h).toContain(en.billing.ownerOnly);
       }
     } finally {
-      if (before === undefined) delete process.env.PAY_LINK_PRO;
-      else process.env.PAY_LINK_PRO = before;
+      for (const [k, v] of Object.entries(before)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
     }
   });
 
@@ -391,15 +410,18 @@ describe("account-level prompts tell other roles to ask the owner", () => {
 });
 
 describe("pricing copy states the seats that exist", () => {
-  it("Starter 1, Pro and Agency match PLAN_SEATS, Enterprise is custom; no seat or role line is 'coming soon'", () => {
+  it("Starter 1, Pro and Business match PLAN_SEATS, Agency is sized to the team; no seat or role line is 'coming soon'", () => {
     for (const lang of ["ar", "en"] as const) {
-      const [starter, pro, agency, enterprise] = dict[lang].pricing.plans;
+      const [starter, pro, business, agency] = dict[lang].pricing.plans;
+      expect([starter, pro, business, agency].map((p) => p.id)).toEqual(["starter", "pro", "business", "agency"]);
       const seatWord = lang === "en" ? /\bseats?\b/i : /مقعد|مقاعد/;
       const seatLine = (features: readonly string[]) => features.find((f) => seatWord.test(f)) ?? "";
       expect(seatLine(starter.features)).toMatch(lang === "en" ? new RegExp(`\\b${PLAN_SEATS.starter} seat\\b`) : /مقعد واحد/);
       expect(seatLine(pro.features)).toContain(lang === "en" ? `${PLAN_SEATS.pro} seats` : `${PLAN_SEATS.pro} مقاعد`);
-      expect(seatLine(agency.features)).toContain(lang === "en" ? `${PLAN_SEATS.agency} seats` : `${PLAN_SEATS.agency} مقاعد`);
-      expect(seatLine(enterprise.features)).not.toBe("");
+      expect(seatLine(business.features)).toContain(lang === "en" ? `${PLAN_SEATS.business} seats` : `${PLAN_SEATS.business} مقاعد`);
+      // Agency seats go through the founder's seat override (the deal), so the card states no number.
+      expect(seatLine(agency.features)).not.toBe("");
+      expect(seatLine(agency.features)).not.toMatch(/\d/);
       const all = dict[lang].pricing.plans.flatMap((p) => p.features);
       const soon = lang === "en" ? /coming soon/i : /قريباً/;
       const people = lang === "en" ? /\b(seats?|users?|roles?)\b/i : /مقعد|مقاعد|مستخدم|أدوار|صلاحيات/;
@@ -417,7 +439,8 @@ describe("pricing copy states the seats that exist", () => {
       expect(lines.filter((l) => (lang === "en" ? /\b(editor|viewer)\b/i : /محرر|مشاهد/).test(l)), "roles that do not exist").toEqual([]);
       const agencies = INDUSTRY_PAGES[lang].find((p) => p.slug === "agencies")!;
       const seatLine = agencies.workflows.map((w) => w.d).find((d) => (lang === "en" ? /\bseats\b/ : /مقاعد/).test(d)) ?? "";
-      expect(seatLine).toContain(lang === "en" ? `${PLAN_SEATS.agency} seats` : `${PLAN_SEATS.agency} مقاعد`);
+      expect(seatLine).toContain(lang === "en" ? `${PLAN_SEATS.business} seats on Business` : `${PLAN_SEATS.business} مقاعد في خطة الأعمال`);
+      expect(seatLine).toMatch(lang === "en" ? /on Agency, sized to your team/ : /الوكالات حسب فريقك/);
     }
   });
 

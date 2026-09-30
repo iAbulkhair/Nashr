@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { Redis } from "@upstash/redis";
 
 /**
@@ -49,7 +50,19 @@ type Store = {
    */
   setNx(key: string, value: unknown, ttlSeconds: number): Promise<boolean>;
   unlock(key: string): Promise<void>;
+  /**
+   * SET NX with TTL and an owner token: the token when this caller won the lock, null when someone holds it. Release it
+   * with `unlockOwned`, which deletes the key only while it still holds this token, so a run whose lock expired can never
+   * free the lock of the run that took it next (plain `unlock` deletes whatever is there).
+   */
+  lockOwned(key: string, ttlSeconds: number): Promise<string | null>;
+  unlockOwned(key: string, token: string): Promise<void>;
 };
+
+/** A lock owner's token. Never valid JSON (the Upstash client parses what it reads back), never guessable. */
+const lockToken = () => `lk_${randomBytes(12).toString("hex")}`;
+/** Compare-and-delete in one step on the server: GET then DEL from here could delete a lock someone took in between. */
+const UNLOCK_OWNED = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) end return 0`;
 
 function upstash(): Store | null {
   const url = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
@@ -153,10 +166,17 @@ function upstash(): Store | null {
     async unlock(key) {
       await r.del(key);
     },
+    async lockOwned(key, ttl) {
+      const token = lockToken();
+      return (await r.set(key, token, { nx: true, ex: ttl })) === "OK" ? token : null;
+    },
+    async unlockOwned(key, token) {
+      await r.eval(UNLOCK_OWNED, [key], [token]);
+    },
   };
 }
 
-const mem = globalThis as unknown as { __nashrMem?: { kv: Map<string, unknown>; lists: Map<string, string[]>; sets: Map<string, Set<string>>; hashes?: Map<string, Map<string, unknown>>; exp?: Map<string, number>; zsets?: Map<string, Map<string, number>> } };
+const mem = globalThis as unknown as { __nashrMem?: { kv: Map<string, unknown>; lists: Map<string, string[]>; sets: Map<string, Set<string>>; hashes?: Map<string, Map<string, unknown>>; exp?: Map<string, number>; owners?: Map<string, string>; zsets?: Map<string, Map<string, number>> } };
 function memory(): Store {
   if (!mem.__nashrMem) mem.__nashrMem = { kv: new Map(), lists: new Map(), sets: new Map(), hashes: new Map() };
   const m = mem.__nashrMem;
@@ -164,6 +184,8 @@ function memory(): Store {
   const zsets = (m.zsets ??= new Map<string, Map<string, number>>());
   // Expiry is honoured like Redis, so sessions, reset tokens and rate windows behave the same locally and in tests.
   const exp = (m.exp ??= new Map<string, number>());
+  // Who holds each owned lock (`lockOwned`). Any other write to the key forgets its owner.
+  const owners = (m.owners ??= new Map<string, string>());
   const live = (key: string) => { const at = exp.get(key); if (at !== undefined && at <= Date.now()) { exp.delete(key); m.kv.delete(key); } };
   /**
    * Copy on the way in and on the way out, because Upstash does.
@@ -182,12 +204,14 @@ function memory(): Store {
     },
     async set(key, value, ttl) {
       m.kv.set(key, copy(value));
+      owners.delete(key);
       if (ttl) exp.set(key, Date.now() + ttl * 1000);
       else exp.delete(key);
     },
     async del(key) {
       m.kv.delete(key);
       exp.delete(key);
+      owners.delete(key);
       m.lists.delete(key);
       m.sets.delete(key);
       hashes.delete(key);
@@ -286,6 +310,7 @@ function memory(): Store {
       const until = m.kv.get(key) as number | undefined;
       if (until && until > Date.now()) return false;
       m.kv.set(key, Date.now() + ttl * 1000);
+      owners.delete(key);
       return true;
     },
     async setNx(key, value, ttl) {
@@ -298,6 +323,20 @@ function memory(): Store {
     },
     async unlock(key) {
       m.kv.delete(key);
+      owners.delete(key);
+    },
+    async lockOwned(key, ttl) {
+      const until = m.kv.get(key) as number | undefined;
+      if (until && until > Date.now()) return null;
+      const token = lockToken();
+      m.kv.set(key, Date.now() + ttl * 1000);
+      owners.set(key, token);
+      return token;
+    },
+    async unlockOwned(key, token) {
+      if (owners.get(key) !== token) return;
+      m.kv.delete(key);
+      owners.delete(key);
     },
   };
 }

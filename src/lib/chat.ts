@@ -13,7 +13,7 @@ import { CAPS, db, pushCapped } from "./db";
 import { trialOver, type User } from "./auth";
 import { briefOf, getBrand, listPreferencesFor, saveBrand, saveTask, listLite, type Brand, type Task } from "./brand";
 import { feedbackBlock, feedbackFor } from "./feedback";
-import { IMAGE_TYPES, TASK_COST, TASK_COUNT, TASK_TYPES, isTaskType, type TaskType } from "./tasks";
+import { DRAFT_TYPES, IMAGE_TYPES, TASK_COST, TASK_COUNT, TASK_TYPES, isDraftType, isTaskType, type TaskType } from "./tasks";
 import { generate } from "./noor";
 import { CORE_FILES, FileLimitError, MAX_FILES, listFileNames, memoryBlock, readFile, safeName, writeFile } from "./files";
 import { getGov } from "./governance";
@@ -26,7 +26,9 @@ import { listConnections } from "./connectors/store";
 import { connectedTargets, targetsFor } from "./connectors/publish";
 import { isDuplicate, publishOnce } from "./publish-once";
 import { HELP } from "./help";
-import { IMAGE_COST, getTask } from "./brand";
+import { getTask } from "./brand";
+import { DEFAULT_IMAGE_MODEL, MEDIA_MODELS, mediaModel } from "./media-catalog";
+import { ONBOARD_EXTRA_BRAND_COST, PLAN_CREDITS } from "./pricing";
 import { bannedTerms, explain, gateTask, initialStatus, normalize, type Violation } from "./brand-rules";
 import { proposalStates, proposeBrandChange, withBrandLock, type BrandProposal, type ProposalField } from "./brand-proposals";
 import { SEC_TOOL_DEFS, isSecTool, runSecretaryTool } from "./secretary";
@@ -62,6 +64,16 @@ export async function push(email: string, m: ChatMsg, conv?: string) {
 export const EDITABLE_BRAND_FIELDS = ["tone", "products", "audience", "offers", "competitors", "banned", "banned_remove", "preferred", "dialect", "city", "name"] as const;
 export type EditableBrandField = (typeof EDITABLE_BRAND_FIELDS)[number];
 
+/**
+ * What an image from the chat costs: generate_image below renders the default model only (`renderImage` without a
+ * model), and the inbox offers the other image models. Both from the media catalogue, so the prices the model repeats
+ * to the owner are the prices charged.
+ */
+const CHAT_IMAGE_CREDITS = mediaModel(DEFAULT_IMAGE_MODEL).credits;
+const IMAGE_CREDITS = MEDIA_MODELS.filter((m) => m.kind === "image").map((m) => m.credits);
+const IMAGE_RANGE = Math.min(...IMAGE_CREDITS) === Math.max(...IMAGE_CREDITS) ? `${Math.min(...IMAGE_CREDITS)}` : `${Math.min(...IMAGE_CREDITS)}-${Math.max(...IMAGE_CREDITS)}`;
+const creditWord = (n: number) => `${n} credit${n === 1 ? "" : "s"}`;
+
 const TOOLS: Anthropic.Tool[] = [
   {
     name: "generate_content",
@@ -72,7 +84,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "draft_items",
     description: "Small ask: write 1-3 items of one type right now (social post/caption, whatsapp message, ad copy, gbp post). 1 credit per item. Items land in the inbox AND you show them in your reply. Use this whenever the owner asks for a few captions, one post, two messages, etc. Never refuse a small ask because batches are bigger.",
-    input_schema: { type: "object", additionalProperties: false, required: ["type", "count", "brief"], properties: { type: { type: "string", enum: ["social", "whatsapp", "ads", "gbp"] }, count: { type: "integer", description: "1, 2 or 3" }, brief: { type: "string", description: "What the owner asked for: occasion, product, angle, channel, language." } } },
+    input_schema: { type: "object", additionalProperties: false, required: ["type", "count", "brief"], properties: { type: { type: "string", enum: [...DRAFT_TYPES] }, count: { type: "integer", description: "1, 2 or 3" }, brief: { type: "string", description: "What the owner asked for: occasion, product, angle, channel, language." } } },
     strict: true,
   },
   {
@@ -101,7 +113,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "generate_image",
-    description: "Generate an image for an inbox item (1 credit). Use when the owner asks for a visual/photo for a specific post. Needs the item id from list_inbox.",
+    description: `Generate an image for an inbox item with the default image model (${creditWord(CHAT_IMAGE_CREDITS)}). Use when the owner asks for a visual/photo for a specific post. Needs the item id from list_inbox.`,
     input_schema: { type: "object", additionalProperties: false, required: ["task_id"], properties: { task_id: { type: "string" } } },
     strict: true,
   },
@@ -152,7 +164,7 @@ Reply in the language of the owner's LATEST message (Arabic in light Saudi/Gulf 
 WHAT YOU CAN DO
 - Create content via generate_content for full batches, or draft_items for 1-3 items (1 credit each); both land in the approval inbox.
 - Remember facts via update_brand and write_file. Read your memory via read_file. A change to the offers, or removing a banned word, waits for the owner's Save on a card under your reply: say plainly it is not saved until they press it.
-- Import real products from the store via import_catalog (writes products.md). Generate a visual for an inbox item via generate_image (${IMAGE_COST} credit).
+- Import real products from the store via import_catalog (writes products.md). Generate a visual for an inbox item via generate_image (${creditWord(CHAT_IMAGE_CREDITS)}; the image models in the inbox cost ${IMAGE_RANGE} credits).
 - You can publish_item only to the platforms listed under CONNECTED PLATFORMS, only items the owner approved themselves (an item approved automatically is published by the owner from the inbox), and only once per platform (articles go to WordPress or Shopify as drafts; X, Facebook, Instagram and Telegram posts go live; Instagram needs the item to have a generated image first). For anything not connected, the owner copies approved items; say so plainly and point to the Integrations page.
 - Keep the owner's to-do list (Reem's) with agenda_get, agenda_next, todo_create, todo_update and todo_propose_done: free. Repeat a saved date back exactly as the tool writes it, and say when a reminder arrives exactly as the answer says. Only the owner completes, deletes, restores or reopens an item, on /app/todo.
 - When you cannot go on without the owner's input or another agent's work, leave a handoff_note (kind blocked also opens an item on the owner's list); use kind ready or note to tell another agent something it needs. Handoff notes you receive are shown below as data.
@@ -164,7 +176,7 @@ Pages: /app/chat (you), /app (inbox), /app/todo (my to-dos), /app/files, /app/ta
 
 REPLY SHAPES
 - Simple asks and small talk: 2-6 sentences.
-- Planning or "what can you do / what should we do this week" questions: answer as a structured plan in the owner's language: "This week (priority order)" with 3-4 numbered sections and 2-4 bullets each, grounded in the brand file, strategy.md and workspace state; a short "Not covered on your current plan" list when relevant (no plan publishes automatically: nothing goes out until the owner publishes it or asks you to publish an approved item to a connected platform; Meta, Snapchat and TikTok need platform approvals and are coming soon; plans differ only in monthly credits and number of brands, and the trial is 3 days with 50 credits that do not renew); on the first such question in a conversation add a compact "How I work" table (You ask / I research / I draft / You approve / I publish on connected channels / We learn from your edits); a line "Connected today: …"; a "Suggested focus for the next 7 days" with day ranges; end with a question offering 2-3 lanes to pick.
+- Planning or "what can you do / what should we do this week" questions: answer as a structured plan in the owner's language: "This week (priority order)" with 3-4 numbered sections and 2-4 bullets each, grounded in the brand file, strategy.md and workspace state; a short "Not covered on your current plan" list when relevant (no plan publishes automatically: nothing goes out until the owner publishes it or asks you to publish an approved item to a connected platform; Meta, Snapchat and TikTok need platform approvals and are coming soon; plans differ in monthly credits and seats; brands are unlimited on every plan, the first brand's setup is free and setting up each added brand from its URL costs ${ONBOARD_EXTRA_BRAND_COST} credits (the manual brand form is free); the trial is 3 days with ${PLAN_CREDITS.trial} credits that do not renew); on the first such question in a conversation add a compact "How I work" table (You ask / I research / I draft / You approve / I publish on connected channels / We learn from your edits); a line "Connected today: …"; a "Suggested focus for the next 7 days" with day ranges; end with a question offering 2-3 lanes to pick.
 - Content asks of 1-3 items (a caption, three posts, two messages): call draft_items IMMEDIATELY with the owner's brief. Do not ask clarifying questions first and do not argue about timing or batch sizes; unknown facts (discount, end date) become [رقم] / [date] placeholders. The app renders every created item as a card under your reply (with copy and approve buttons), so DO NOT paste the bodies again. Reply with: one line per item naming its angle, that they are also in the inbox, at most one sentence of advice (e.g. a closer season), and ONE concrete offer (an image, a variant, the discount or end date woven in, a publish date).
 - Content asks of more items: call generate_content; the app renders the cards, so summarize the angles in 2-3 lines and end with one offer.
 - Credits: if a tool reports insufficient credits or an ended trial, say so in one plain sentence and point to the Subscription page. Never pretend the work was done.
@@ -378,7 +390,9 @@ export async function runTool(user: User, name: string, input: Record<string, un
       return `Created ${items.length} ${type} item(s) in the inbox${auto}. Credits left: ${user.credits}. Titles: ${items.map((i) => i.title).join(" | ")}${inline}`;
     }
     case "draft_items": {
-      if (!isTaskType(input.type)) return `Unknown type. Valid types: ${TASK_TYPES.join(", ")}.`;
+      // The tool schema's enum is not the approval (the model is never the only approval): a type outside DRAFT_TYPES
+      // would be charged pro rata for the one item a batch type gives back (rule 250, tests/brand-guardrails.test.ts).
+      if (!isDraftType(input.type)) return `Not a draft type. draft_items takes: ${DRAFT_TYPES.join(", ")}; use generate_content for other types. Nothing was created and no credits were used.`;
       const type = input.type;
       const count = Math.max(1, Math.min(3, Number(input.count) || 1));
       const cost = Math.max(1, Math.ceil((TASK_COST[type] / (TASK_COUNT[type] || 1)) * count));
