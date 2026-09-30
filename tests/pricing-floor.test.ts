@@ -11,7 +11,7 @@ import { MEDIA_MODELS } from "@/lib/media-catalog";
 import { COST_USD } from "@/lib/media/config";
 
 /**
- * Rule 213: the 60% margin floor is a test, not a comment. What one credit may cost us is at most 40% of the cheapest
+ * Rule 221: the 60% margin floor is a test, not a comment. What one credit may cost us is at most 40% of the cheapest
  * self-serve credit (src/lib/pricing.ts: Business, 999 SAR / 3.75 / 1,500 = $0.1776, so $0.07104). Every task type's
  * estimated batch cost (src/lib/task-costs.ts: tokens priced by `costUsd`, so a rate change moves it) divided by its
  * TASK_COST must stay under that. A change to a price, a credit count, a task cost, a batch size or a model rate that
@@ -42,7 +42,7 @@ const ONE_ITEM_DRAFT_EXEMPTION = {
   reason: "1 credit per item is the promise for small chat asks; a one-item draft runs the full reviewer and judge",
 } as const;
 
-describe("the ceiling (rule 213)", () => {
+describe("the ceiling (rule 221)", () => {
   it("60% floor: at most 40% of the cheapest self-serve credit, which is Business's $0.1776", () => {
     expect(MARGIN_FLOOR).toBe(0.6);
     expect(PRICES_INCLUDE_VAT, "the site says prices exclude VAT; flipping this lowers the ceiling (below)").toBe(false);
@@ -55,7 +55,7 @@ describe("the ceiling (rule 213)", () => {
   });
 });
 
-describe("every task type is under the ceiling (rule 213)", () => {
+describe("every task type is under the ceiling (rule 221)", () => {
   it("the cron-driven types are the weekly plan and every routine's type", () => {
     expect([...CRON_TYPES].sort()).toEqual(["cart_recovery", "cash_forecast", "strategy_review", "weekly_plan", "weekly_report"]);
   });
@@ -114,7 +114,7 @@ describe("every task type is under the ceiling (rule 213)", () => {
   });
 });
 
-describe("the estimates price the models the code calls (rule 213)", () => {
+describe("the estimates price the models the code calls (rule 221)", () => {
   const src = (p: string) => readFileSync(p, "utf8");
 
   it("noor.ts, judge.ts, onboard.ts and media/prompts.ts call the models the estimates assume", () => {
@@ -132,7 +132,7 @@ describe("the estimates price the models the code calls (rule 213)", () => {
   });
 });
 
-describe("added-brand onboarding covers its cost (rules 213, 218)", () => {
+describe("added-brand onboarding covers its cost (rules 221, 226)", () => {
   it("9 credits at the ceiling cover one onboarding run (≈ $0.57)", () => {
     expect(ONBOARD_EXTRA_BRAND_COST).toBe(9);
     expect(onboardEstimateUsd()).toBeCloseTo(0.5675, 6);
@@ -141,7 +141,7 @@ describe("added-brand onboarding covers its cost (rules 213, 218)", () => {
   });
 });
 
-describe("chat drafts (rules 213, 222)", () => {
+describe("chat drafts (rules 221, 230)", () => {
   const rows = DRAFT_TYPES.flatMap((t) => ([1, 2, 3] as const).map((n) => estimateDraft(t, n)));
 
   it("drafts are charged by the chat's formula: the batch price pro rata, at least 1", () => {
@@ -166,7 +166,7 @@ describe("chat drafts (rules 213, 222)", () => {
   }
 });
 
-describe("media renders are under the ceiling too (rule 213)", () => {
+describe("media renders are under the ceiling too (rule 221)", () => {
   it("every model's list cost plus its prompt, per credit, is at or under the ceiling; vid-cinematic is the highest", () => {
     const per = MEDIA_MODELS.map((m) => ({ id: m.id, usdPerCredit: (COST_USD[m.id] + mediaPromptUsd()) / m.credits }));
     expect(per.filter((r) => r.usdPerCredit > ceiling).map((r) => `${r.id}: ${usd(r.usdPerCredit)}`)).toEqual([]);

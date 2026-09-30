@@ -9,7 +9,7 @@ import type { User } from "./auth";
  * Brands are unlimited on every plan (src/lib/pricing.ts; there is no brand cap anywhere). What bounds them is a rate,
  * not a count: `brandAddRefusal` in src/lib/rate.ts, checked by POST /api/brands before `addBrand`. An added brand's
  * onboarding costs ONBOARD_EXTRA_BRAND_COST credits (src/app/api/onboard/route.ts) and its Sunday plan is off until the
- * owner switches it on (src/lib/schedule.ts `getSchedule`). Rules 217-219, tests/brand-guardrails.test.ts.
+ * owner switches it on (src/lib/schedule.ts `getSchedule`). Rules 225-227, tests/brand-guardrails.test.ts.
  */
 export type BrandMeta = { id: string; name: string; createdAt: string; status: "active" | "archived" };
 

@@ -26,7 +26,7 @@ const dealLabel = (d: AgencyDeal | null | undefined) => (d ? `${d.credits}@${d.p
 //      seats: set or clear (null or 0) the seat override.
 //      A plan or seat change fits the team to the new limit at once (src/lib/team.ts `enforceSeats`): the newest
 //      members over it are paused, never deleted. Every change is logged in admin:log with the deal before and after.
-//      Rules 215-216, tests/admin-deal.test.ts.
+//      Rules 223-224, tests/admin-deal.test.ts.
 export async function GET(req: Request) {
   if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
   const emails = await db.smembers("users:all");

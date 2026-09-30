@@ -10,7 +10,7 @@ export function isLang(v: string): v is Lang {
 }
 
 // Every price, credit amount, seat count and task cost below is read from src/lib/pricing.ts, src/lib/tasks.ts or the
-// media catalogue, never typed here: tests/pricing-copy.test.ts (rule 220) pins the cards, the credits table, the FAQ
+// media catalogue, never typed here: tests/pricing-copy.test.ts (rule 228) pins the cards, the credits table, the FAQ
 // and the other public pages to those tables. The three modules imported above import nothing themselves.
 
 /** "1 seat", "3 seats"; in Arabic "مقعد واحد", "مقعدان", "3 مقاعد" (3-10) and "11 مقعداً" (11 and up). */

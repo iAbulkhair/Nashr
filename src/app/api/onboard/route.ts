@@ -60,7 +60,7 @@ function cannotPay(u: User, cost: number, scope: string, noorCap: number | undef
  * a retry reuses a held charge instead of paying twice, the refund of a build that failed before the brand was saved
  * gives it back and drops the hold in one save (so it can happen once), and the daily cron refunds a hold nobody used for
  * a day. A failure after the brand file was saved is not refunded (the brand was delivered) and says so (`saved`).
- * Charged in mock mode too, like /api/generate. Rule 218, tests/brand-guardrails.test.ts.
+ * Charged in mock mode too, like /api/generate. Rule 226, tests/brand-guardrails.test.ts.
  */
 export async function POST(req: Request) {
   const u = await currentUser();

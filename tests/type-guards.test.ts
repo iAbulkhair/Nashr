@@ -41,7 +41,7 @@ describe("plan membership", () => {
     expect(PLANS.every(isPlan)).toBe(true);
   });
 
-  it("business is a plan and the retired enterprise is not (rule 214)", () => {
+  it("business is a plan and the retired enterprise is not (rule 222)", () => {
     expect(PLANS).toContain("business");
     expect(isPlan("business")).toBe(true);
     expect(isPlan("enterprise"), "enterprise is read as agency, never offered or accepted").toBe(false);

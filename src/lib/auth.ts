@@ -71,7 +71,7 @@ export type User = {
   /**
    * An added brand's onboarding charge, held per brand scope until that brand is built (src/lib/credits.ts
    * `chargeOnboard`). Written in the same locked save as the debit, dropped in the same save as its refund (or once the
-   * brand is saved), so a run can reuse a charge, refund it, or be swept, but never both reuse and refund one. Rule 218.
+   * brand is saved), so a run can reuse a charge, refund it, or be swept, but never both reuse and refund one. Rule 226.
    */
   onboardPaid?: Record<string, OnboardHold>;
   /** ISO time: every MEMBER session issued before it is dead (founder reset, owner reset). The owner's own sessions follow `sessionsAfter`. */

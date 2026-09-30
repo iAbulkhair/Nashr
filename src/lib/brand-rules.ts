@@ -14,7 +14,8 @@ import type { Brand } from "./brand";
 import type { TaskType } from "./tasks";
 
 export type BrandRule = { id: string; kind: "banned"; term: string };
-export type Violation = { ruleId: string; kind: BrandRule["kind"]; term: string; excerpt: string };
+/** `placeholder`: an unfilled slot such as [رقم] or {{1}} (placeholderHits below), held like a banned word. */
+export type Violation = { ruleId: string; kind: BrandRule["kind"] | "placeholder"; term: string; excerpt: string };
 
 /**
  * Types whose text reaches the business's customers. Internal documents (a strategy review, a pricing memo, a sales
@@ -100,14 +101,85 @@ export function checkText(rules: BrandRule[], text: string): Violation[] {
   return out;
 }
 
-type Checkable = { type: TaskType; title?: string; body: string; editedBody?: string };
+/**
+ * Unfilled placeholders. The agents are told to write an unknown fact as [رقم], [date] or [دليل مطلوب / proof needed]
+ * rather than invent it (noor.ts, chat.ts), cart recovery replaces a discount the offers do not allow with [رقم]%, and
+ * WhatsApp drafts carry {{1}} variables. Nothing held any of them, so a post could be approved, auto-approved and
+ * published to X, Telegram or Facebook with "[رقم]" in it. Brackets in customer-facing copy are read as placeholders:
+ * a markdown link ([text](https://…)), a checkbox ([ ], [x]), a footnote ([1], [^2]) and a script's direction label
+ * ([VO], [VISUAL], [TEXT], which the marketing playbook asks for in TikTok and Reels scripts) are not. "[رقم](تقريبي)"
+ * is: only a link target that looks like an address makes brackets a link.
+ *
+ * A personalisation slot ({{1}}, [الاسم], [name]) is filled per recipient by whoever sends it, so a WhatsApp, email,
+ * SMS or call-script draft may be approved with one: the owner pastes it into a template, or the caller says the name.
+ * No connector personalises, so at publish every placeholder holds the item.
+ */
+const BRACKET = /\[([^[\]\n{}]{1,80})\](?!\((?:https?:|www\.|mailto:|tel:|\/|#))/g;
+const CURLY = /\{\{[^{}\n]{0,30}\}\}/g;
+const SLOT_WORD = /^(?:(?:first|last|full|customer|client|shopper|contact)\s+)?name$|^(?:ال)?اسم(?:\s+(?:ال)?(?:عميل|متسوق|شخص|اول|كامل|مستلم))?$/;
+/**
+ * Direction labels of a video, story or voice script: stage directions for the creator, never text waiting for a value.
+ * Matched on the folded label (normalize: ة→ه, ى→ي, lower case). A scene label may carry a number, a time range and a
+ * description ("[Scene 1: المحمصة]", "[لقطة قريبة للقهوة]", "[Hook 0-2s]"); a bare label only a number or a colon
+ * note ("[CTA]", "[TEXT: قهوة ريف]"). A label that names a value ("[VO: السعر]") is still a placeholder.
+ */
+const SCENE_LABEL = "vo|v\\.o\\.?|voice ?over|visuals?|sfx|music|audio|b-?roll|shot|scene|snap|slide|frame|transition|intro|outro|hook|صوت|تعليق صوتي|مشهد|لقطه|مؤثرات|موسيقي|سناب|شريحه|انتقال|الخطاف|خطاف";
+const BARE_LABEL = "text|on-?screen text|super|cta|cut|beat|نص|النص|نص علي الشاشه|النص علي الشاشه|دعوه لاتخاذ اجراء";
+const DIRECTION = new RegExp(`^(?:(?:${SCENE_LABEL})(?:[\\s:：\\-–—\\d].{0,79})?|(?:${BARE_LABEL})(?:\\s*\\d+(?:\\s*[-–]\\s*\\d+\\s*s?)?)?(?:\\s*[:：\\-–—]\\s*.{0,70})?)$`);
+const VALUE_WORD = /رقم|number|date|تاريخ|price|سعر|دليل|proof|اسم|name/;
+const PERSONAL_CHANNELS = ["whatsapp", "email", "sms", "call"];
+
+/**
+ * The placeholders in `text`, each once, in order. `slot` marks a personalisation slot. With `publish`, a script's
+ * direction labels count too: a post that goes out never carries "[VO]" or "[CTA]".
+ */
+export function placeholderHits(text: string, opts: { publish?: boolean } = {}): { term: string; slot: boolean; at: number }[] {
+  const out: { term: string; slot: boolean; at: number }[] = [];
+  const seen = new Set<string>();
+  const add = (term: string, slot: boolean, at: number) => {
+    const k = normalize(term);
+    if (seen.has(k) || out.length >= 10) return;
+    seen.add(k);
+    out.push({ term, slot, at });
+  };
+  for (const m of text.matchAll(BRACKET)) {
+    const inner = m[1].trim();
+    // A slot needs words: two letters at least, and no link or address inside. A script's direction label is not one.
+    if ((inner.match(/\p{L}/gu) ?? []).length < 2 || /https?:|www\.|@/.test(inner)) continue;
+    const folded = normalize(inner);
+    if (!opts.publish && DIRECTION.test(folded) && !VALUE_WORD.test(folded)) continue;
+    add(m[0], SLOT_WORD.test(normalize(inner)), m.index ?? 0);
+  }
+  for (const m of text.matchAll(CURLY)) add(m[0], true, m.index ?? 0);
+  return out.sort((a, b) => a.at - b.at);
+}
+
+type Checkable = { type: TaskType; channel?: string; title?: string; body: string; editedBody?: string };
 
 /** What the owner would approve or publish: the edited text when there is one, plus the title customers may see. */
 export const textOf = (t: Checkable) => `${t.title ?? ""}\n${t.editedBody ?? t.body}`;
 
-/** Violations that hold this item back from approval and publishing. Internal documents are not held. */
-export function gateTask(brand: Pick<Brand, "banned"> | null | undefined, t: Checkable): Violation[] {
-  return isCustomerFacing(t.type) ? checkText(brandRules(brand), textOf(t)) : [];
+/**
+ * The text a placeholder is looked for in: the body the owner can edit, and the title only where a connector publishes it
+ * (an article's title becomes the post title on WordPress or Shopify). No screen edits a title, so a placeholder there
+ * on any other type could never be cleared.
+ */
+const placeholderText = (t: Checkable) => (t.type === "article" ? textOf(t) : t.editedBody ?? t.body);
+
+function placeholderViolations(t: Checkable, publish: boolean): Violation[] {
+  const text = placeholderText(t);
+  const personal = !publish && PERSONAL_CHANNELS.includes(String(t.channel ?? ""));
+  return placeholderHits(text, { publish })
+    .filter((h) => !(h.slot && personal))
+    .map((h) => ({ ruleId: `placeholder:${normalize(h.term)}`, kind: "placeholder" as const, term: h.term, excerpt: `${h.at > 30 ? "…" : ""}${text.slice(Math.max(0, h.at - 30), h.at + h.term.length + 30).replace(/\s+/g, " ").trim()}${h.at + h.term.length + 30 < text.length ? "…" : ""}` }));
+}
+
+/**
+ * Violations that hold this item back from approval and publishing. Internal documents are not held. `publish` is the
+ * stricter check of the publish route and tool: a personalisation slot is fine in a WhatsApp draft, never in a post.
+ */
+export function gateTask(brand: Pick<Brand, "banned"> | null | undefined, t: Checkable, opts: { publish?: boolean } = {}): Violation[] {
+  return isCustomerFacing(t.type) ? [...checkText(brandRules(brand), textOf(t)), ...placeholderViolations(t, !!opts.publish)] : [];
 }
 
 /** Auto-approval never skips the gate: an item that breaks a rule waits in the inbox with the rule named. */
@@ -118,8 +190,10 @@ export function initialStatus(autoApprove: boolean | undefined, brand: Pick<Bran
 /** One line for an agent, a tool result or an error message: which rule fired and on what. */
 export function explain(v: Violation[], lang: "ar" | "en" = "en"): string {
   if (!v.length) return lang === "ar" ? "يطابق قواعد العلامة." : "Passes the brand rules.";
-  const terms = v.map((x) => `"${x.term}"`).join(lang === "ar" ? "، " : ", ");
-  return lang === "ar"
-    ? `محجوز بقاعدة الكلمات الممنوعة في ملف العلامة: ${terms}. عدّل النص أو احذف الكلمة من ملف العلامة.`
-    : `Held by the brand file's banned-words rule: ${terms}. Edit the text, or remove the word from the brand file.`;
+  const list = (kind: Violation["kind"]) => v.filter((x) => x.kind === kind).map((x) => `"${x.term}"`).join(lang === "ar" ? "، " : ", ");
+  const banned = list("banned"), slots = list("placeholder");
+  const parts = lang === "ar"
+    ? [banned && `محجوز بقاعدة الكلمات الممنوعة في ملف العلامة: ${banned}. عدّل النص أو احذف الكلمة من ملف العلامة.`, slots && `فيه خانات لم تُعبّأ: ${slots}. ضع القيمة الحقيقية مكان كل خانة أو احذفها، فلا يُعتمد ولا يُنشر نص فيه خانة فارغة، ولا يُنشر كما هو نص فيه توجيه تصوير مثل [VO] أو خانة مثل {{1}}.`]
+    : [banned && `Held by the brand file's banned-words rule: ${banned}. Edit the text, or remove the word from the brand file.`, slots && `Held for unfilled placeholders: ${slots}. Replace each with the real value or remove it; text with an empty placeholder is never approved or published, and a script direction such as [VO] or a slot such as {{1}} is never published as written.`];
+  return parts.filter(Boolean).join(" ");
 }

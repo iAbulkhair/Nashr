@@ -54,7 +54,7 @@ export async function draftAllowed(email: string): Promise<boolean> {
  * else bounds how many an account creates, and every active brand fans out into each cron (the daily brief, the
  * routines, and the Sunday plan once the owner switches it on). These buckets are the only bound, and they are a rate,
  * never a cap: an agency can keep adding brands every hour. Well above a real agency's onboarding pace, and the
- * onboarding itself stays at three a day per account (src/app/api/onboard/route.ts). Rule 217, tests/brand-guardrails.test.ts.
+ * onboarding itself stays at three a day per account (src/app/api/onboard/route.ts). Rule 225, tests/brand-guardrails.test.ts.
  */
 export const BRANDS_PER_HOUR = 10;
 export const BRANDS_PER_DAY = 30;

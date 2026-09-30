@@ -1,7 +1,7 @@
 import type { Lang } from "./i18n";
 import { PLAN_CREDITS, PLAN_PRICE_SAR as P } from "./pricing";
 
-// Our prices and the trial credits come from src/lib/pricing.ts (tests/pricing-copy.test.ts, rule 220). Competitor prices
+// Our prices and the trial credits come from src/lib/pricing.ts (tests/pricing-copy.test.ts, rule 228). Competitor prices
 // are theirs, as checked on the date in the pricing spec.
 
 export type VsPage = { slug: string; competitor: string; title: string; tldr: string; rows: { dim: string; them: string; us: string }[]; verdict: string; chooseThem: string[]; chooseUs: string[]; faq: { q: string; a: string }[] };

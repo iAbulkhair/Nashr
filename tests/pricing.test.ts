@@ -12,14 +12,14 @@ import { overview, usersCsv } from "@/lib/admin-stats";
 import { newUser } from "./helpers/session";
 
 /**
- * Rule 214: one plan table (src/lib/pricing.ts) and the account helpers that read it: allowanceOf, priceOf, seatLimit
- * and the stored-plan mapping. Rule 215: the monthly renewal grants allowanceOf(u), never a per-plan lookup, so an
- * Agency deal renews to its own credits and a legacy enterprise record to Business's. Rule 216 (the deal floor) is
+ * Rule 222: one plan table (src/lib/pricing.ts) and the account helpers that read it: allowanceOf, priceOf, seatLimit
+ * and the stored-plan mapping. Rule 223: the monthly renewal grants allowanceOf(u), never a per-plan lookup, so an
+ * Agency deal renews to its own credits and a legacy enterprise record to Business's. Rule 224 (the deal floor) is
  * pinned here at the helper level; the founder console route is in tests/admin-deal.test.ts.
  */
 const deal = (credits: number, priceSar: number): AgencyDeal => ({ credits, priceSar, setAt: "2026-09-29T00:00:00.000Z", setBy: "test" });
 
-describe("the plan table (rule 214)", () => {
+describe("the plan table (rule 222)", () => {
   it("prices, credits and seats are the phase-1 numbers", () => {
     expect(PLAN_PRICE_SAR).toEqual({ trial: 0, starter: 299, pro: 499, business: 999 });
     expect(PLAN_CREDITS).toEqual({ trial: 50, starter: 300, pro: 700, business: 1500 });
@@ -68,7 +68,7 @@ describe("the plan table (rule 214)", () => {
   });
 });
 
-describe("allowanceOf, priceOf and seatLimit (rule 214)", () => {
+describe("allowanceOf, priceOf and seatLimit (rule 222)", () => {
   it("fixed plans read the table", () => {
     for (const plan of ["trial", "starter", "pro", "business"] as const) {
       expect(allowanceOf({ plan }), plan).toBe(PLAN_CREDITS[plan]);
@@ -114,7 +114,7 @@ describe("allowanceOf, priceOf and seatLimit (rule 214)", () => {
   });
 });
 
-describe("the Agency deal floor (rule 216)", () => {
+describe("the Agency deal floor (rule 224)", () => {
   it("dealRespectsFloor: integers only, at or above 999 SAR and 1,500 credits and the Business rate", () => {
     expect(dealRespectsFloor(999, 1500)).toBe(true);
     expect(dealRespectsFloor(2000, 3003)).toBe(true);
@@ -137,7 +137,7 @@ describe("the Agency deal floor (rule 216)", () => {
   });
 });
 
-describe("renewal grants allowanceOf (rule 215)", () => {
+describe("renewal grants allowanceOf (rule 223)", () => {
   const due = async (over: Partial<User>) => {
     const u = await newUser("renew");
     await saveUser({ ...u, credits: 3, renewedAt: "2020-01", ...over });
@@ -192,7 +192,7 @@ describe("renewal grants allowanceOf (rule 215)", () => {
   });
 });
 
-describe("founder reporting reads priceOf (rules 214-215)", () => {
+describe("founder reporting reads priceOf (rules 222-223)", () => {
   it("MRR counts an Agency deal at its price and skips suspended accounts", async () => {
     const before = await overview();
     const agency = await newUser("mrr");

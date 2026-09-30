@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { ChatMsg, ChatItem } from "@/lib/chat";
+import type { BrandProposal } from "@/lib/brand-proposals";
 import { AGENTS, type AgentId } from "@/lib/agents";
 import { limitFromError, raiseLimit } from "./LimitModal";
 import { render } from "@/lib/md";
@@ -70,19 +71,77 @@ export function ItemCard({ item, t, lang, onApproved, canApprove = true }: { ite
   );
 }
 
+/**
+ * A brand change an agent proposed (src/lib/brand-proposals.ts): the offers, or banned words taken out. Nothing changed
+ * yet; the owner sees the old and the new value and applies it with Save, or dismisses it.
+ */
+export function ProposalCard({ p, t, lang, canBrand = true }: { p: BrandProposal; t: AppDict; lang: "ar" | "en"; /** `can(u, "brand.write")`: a plain member sees the change but cannot decide it */ canBrand?: boolean }) {
+  const ar = lang === "ar";
+  // A reloaded thread carries where the proposal stands now (history() reads it), so a decided change stays decided.
+  const [state, setState] = useState<"open" | "saving" | "applied" | "dismissed" | "gone" | "stale" | "forbidden" | "busy" | "error">(p.state === "applied" || p.state === "dismissed" || p.state === "stale" ? p.state : p.state === "expired" ? "gone" : "open");
+  async function decide(action: "apply" | "dismiss") {
+    setState("saving");
+    const r = await fetch(`/api/brand/proposals/${p.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) }).catch(() => null);
+    if (!r) return setState("error");
+    if (r.ok) return setState(action === "apply" ? "applied" : "dismissed");
+    const j = (await r.json().catch(() => ({}))) as { error?: string };
+    setState(r.status === 403 ? "forbidden" : r.status === 404 ? "gone" : j.error === "stale" ? "stale" : j.error === "busy" ? "busy" : "error");
+  }
+  const label = p.field === "offers" ? (ar ? "العروض الحالية" : "Current offers") : (ar ? "الكلمات الممنوعة" : "Banned words");
+  const why = p.field === "offers"
+    ? (ar ? "العروض تحدد الخصومات والهدايا والمواعيد التي يَعِد بها الوكلاء، فلا تتغير إلا بحفظك." : "The offers decide which discounts, gifts and deadlines the agents may promise, so they change only when you press Save.")
+    : (ar ? `يُخرج من الكلمات الممنوعة: ${(p.dropped ?? []).join("، ")}. بعدها تمر هذه الكلمات في العناصر المعتمدة والمنشورة.` : `Takes out of the banned words: ${(p.dropped ?? []).join(", ")}. After that these words pass in approved and published items.`);
+  const done: Partial<Record<typeof state, string>> = {
+    applied: ar ? "حُفظ في ملف العلامة." : "Saved to the brand file.",
+    dismissed: ar ? "تُجوهل. لم يتغير شيء." : "Dismissed. Nothing changed.",
+    gone: ar ? "حُسم هذا التغيير من قبل أو انتهت مدته (7 أيام)." : "This change was already decided or has expired (7 days).",
+    stale: ar ? "تغيّر هذا الحقل بعد الاقتراح، فلم يُحفظ شيء. عدّله من صفحة ملف العلامة." : "This field changed after the proposal, so nothing was saved. Change it on the Brand page.",
+    forbidden: t.team.errors.forbidden,
+    busy: ar ? "يُحسم هذا التغيير الآن في نافذة أخرى. انتظر لحظة ثم حدّث الصفحة." : "This change is being decided in another window. Wait a moment, then refresh.",
+    error: ar ? "لم يُحفظ. حاول مرة أخرى." : "Not saved. Try again.",
+  };
+  const closed = state === "applied" || state === "dismissed" || state === "gone" || state === "stale";
+  return (
+    <article className="mt-3 overflow-hidden rounded-xl border border-saffron/40 bg-white text-ink">
+      <header className="flex items-center gap-2 border-b border-ink/5 px-3 py-2 text-xs font-semibold">
+        <Icon name="shield" className="h-4 w-4 text-sadu-deep" />{canBrand ? (ar ? "تغيير في ملف العلامة ينتظر حفظك" : "A brand change waiting for your Save") : (ar ? "تغيير في ملف العلامة ينتظر قرار المالك أو المشرف" : "A brand change waiting for the owner or an admin")}<span className="font-normal text-ink/60">· {label}</span>
+      </header>
+      <div className="grid gap-2 px-4 py-3 text-sm">
+        {p.via === "mcp" && <p className="text-xs font-semibold text-sadu-deep">{ar ? "طلب هذا التغيير مساعد آخر متصل عبر MCP، لا هذه المحادثة. احفظه فقط إن كنت طلبته بنفسك." : "Another assistant connected over MCP asked for this change, not this chat. Save it only if you asked for it yourself."}</p>}
+        <p className="text-ink/70">{why}</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="min-w-0 rounded-lg bg-salt-dim p-2"><p className="text-xs text-ink/60">{ar ? "الآن" : "Now"}</p><p className="whitespace-pre-wrap break-words" dir="auto">{p.from || "—"}</p></div>
+          <div className="min-w-0 rounded-lg bg-oasis/5 p-2"><p className="text-xs text-ink/60">{ar ? "بعد الحفظ" : "After Save"}</p><p className="whitespace-pre-wrap break-words" dir="auto">{p.to || "—"}</p></div>
+        </div>
+      </div>
+      <footer className="flex flex-wrap items-center gap-2 border-t border-ink/5 px-3 py-2 text-xs">
+        {done[state] && <span role="status" className={state === "applied" || state === "dismissed" ? "text-oasis" : "text-sadu-deep"}>{done[state]}</span>}
+        {!closed && !canBrand && <span className="ms-auto text-ink/60">{t.inbox.waitAdmin}</span>}
+        {!closed && canBrand && (
+          <span className="ms-auto flex gap-1.5">
+            <button disabled={state === "saving"} onClick={() => decide("dismiss")} className="btn btn-secondary btn-xs">{ar ? "تجاهل" : "Dismiss"}</button>
+            <button disabled={state === "saving"} onClick={() => decide("apply")} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{ar ? "احفظ في ملف العلامة" : "Save to brand file"}</button>
+          </span>
+        )}
+      </footer>
+    </article>
+  );
+}
+
 /** Owner-readable labels for tool actions; internal tags that mean nothing to the owner are dropped. */
 function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[] {
   const out = new Set<string>();
   for (const a of actions ?? []) {
     const [kind, , n] = a.split(":");
     if (kind === "brand") out.add(lang === "ar" ? "حُدّث ملف العلامة" : "Brand file updated");
+    else if (kind === "brandprop") out.add(lang === "ar" ? "تغيير في ملف العلامة ينتظر حفظك" : "A brand change waits for your Save");
     else if (kind === "generated" || kind === "drafted") out.add(lang === "ar" ? `أُضيف ${n ?? ""} إلى صندوق الموافقات`.replace("  ", " ") : `${n ?? ""} added to approvals`.trim());
     else if (kind === "todo") out.add(lang === "ar" ? "حُدّثت قائمة مهامك" : "Your to-do list was updated");
   }
   return [...out];
 }
 
-export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey, canApprove = true }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey; /** `can(u, "publish")`: approve buttons on item cards */ canApprove?: boolean }) {
+export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey, canApprove = true, canBrand = true }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey; /** `can(u, "publish")`: approve buttons on item cards */ canApprove?: boolean; /** `can(u, "brand.write")`: Save and Dismiss on brand-change cards */ canBrand?: boolean }) {
   const [msgs, setMsgs] = useState<ChatMsg[]>(initial);
   const [text, setText] = useState(initialPrompt);
   const [busy, setBusy] = useState(false);
@@ -127,7 +186,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         const res = await fetch("/api/onboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: onboardUrl }) });
         if (res.status === 409) return fail("busy");
         if (res.status === 503) return fail("paused");
-        // 402, before any stream: an added brand's setup the balance, the agent cap or the trial cannot cover (rule 218).
+        // 402, before any stream: an added brand's setup the balance, the agent cap or the trial cannot cover (rule 226).
         // Nothing was charged; the paywall says why and the thread says nothing was used.
         if (res.status === 402) { const j = (await res.json().catch(() => ({}))) as { error?: string }; limitFromError(j.error); return fail("charge"); }
         // 429: the account's daily setup allowance, checked before any charge.
@@ -282,12 +341,13 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         )}
         {msgs.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`${m.items?.length || m.files?.length || m.plan?.length ? "w-full max-w-[95%]" : "max-w-[85%]"} rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-oasis text-mist" : "bg-salt-dim text-ink"}`} dir="auto">
+            <div className={`${m.items?.length || m.files?.length || m.plan?.length || m.proposals?.length ? "w-full max-w-[95%]" : "max-w-[85%]"} rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-oasis text-mist" : "bg-salt-dim text-ink"}`} dir="auto">
               {m.role === "assistant" && <span className="mb-1 block text-xs font-semibold text-sadu-deep">{A[m.agent ?? agent].name}</span>}
               {m.role === "assistant" ? <div className="prose-nashr prose-compact" dangerouslySetInnerHTML={{ __html: render(m.content) }} /> : <p className="whitespace-pre-wrap">{m.content}</p>}
               {m.items && m.items.length > 0 && <div className="mt-1">{m.items.map((it) => <ItemCard key={it.id} item={it} t={t} lang={lang} canApprove={canApprove} />)}</div>}
               {m.files && m.files.length > 0 && <div className="mt-1">{m.files.map((f, n) => <FileCard key={f.name} file={f} lang={lang} defaultOpen={n === 0 && m.files!.length === 1} />)}</div>}
               {m.plan && m.plan.length > 0 && <PlanCard plan={m.plan} lang={lang} onStart={(prompt) => send(prompt)} />}
+              {m.proposals && m.proposals.length > 0 && <div className="mt-1">{m.proposals.map((p) => <ProposalCard key={p.id} p={p} t={t} lang={lang} canBrand={canBrand} />)}</div>}
               {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-ink/60" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}
               {m.role === "assistant" && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">

@@ -214,7 +214,7 @@ describe("the join page", () => {
 
 describe("owner-only and admin screens render read-only for lower roles", () => {
   it("billing: pay links and activation for the owner only; seats for everyone", async () => {
-    // Each self-serve card carries its own tier's link, found by plan id (rule 220): the page once paired cards and links
+    // Each self-serve card carries its own tier's link, found by plan id (rule 228): the page once paired cards and links
     // by position, which would have shown Business at its price with another tier's link. Agency has no pay link.
     const LINKS = { PAY_LINK_STARTER: "https://pay.test.example/starter", PAY_LINK_PRO: "https://pay.test.example/pro", PAY_LINK_BUSINESS: "https://pay.test.example/business", PAY_LINK_AGENCY: "https://pay.test.example/agency" } as const;
     // Without SUPPORT_WHATSAPP the owner's Agency card falls back to the contact form, which is what this checks.

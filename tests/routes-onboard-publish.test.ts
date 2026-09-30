@@ -121,7 +121,8 @@ describe("publishing needs an approval made in code (rule 3)", () => {
     await saveConnection(owner.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
     await saveTask(owner.email, task("pending1", "pending"), true);
     await saveTask(owner.email, task("rejected1", "rejected"), true);
-    await saveTask(owner.email, task("approved1", "approved"), true);
+    // Approved by a person (decidedAt): an item auto-approval passed is published from the inbox only (rule 214).
+    await saveTask(owner.email, { ...task("approved1", "approved"), decidedAt: new Date().toISOString() }, true);
     // The owner as a request resolves them: publish_item is refused to a user with no actor (tests/role-gates.test.ts).
     await signIn(owner.email);
     const u = (await currentUser())!;

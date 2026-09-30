@@ -11,9 +11,9 @@ type B = { id: string; name: string; createdAt: string; status: "active" | "arch
  * `manage` (owner, admin): add, rename and archive. Everyone else can only switch their own active brand, and sees a
  * note instead of the add form. Display only: POST /api/brands refuses the same roles.
  *
- * Brands are unlimited on every plan (rule 217): no count limit, no upsell. Adding is bounded on the server by a rate
+ * Brands are unlimited on every plan (rule 225): no count limit, no upsell. Adding is bounded on the server by a rate
  * limit (429 slow_down) and a lock (409 busy). What an added brand costs is said here before anyone adds one: its setup
- * from its URL uses ONBOARD_EXTRA_BRAND_COST credits (rule 218), and its Sunday plan starts off until switched on (rule 219).
+ * from its URL uses ONBOARD_EXTRA_BRAND_COST credits (rule 226), and its Sunday plan starts off until switched on (rule 227).
  */
 export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: { lang: Lang; manage?: boolean; readOnlyNote?: string }) {
   const ar = lang === "ar";

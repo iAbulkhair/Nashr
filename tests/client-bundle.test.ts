@@ -13,7 +13,7 @@ const walk = (dir: string): string[] => readdirSync(dir).flatMap((f) => { const 
 
 /**
  * Modules that reach the store, a provider SDK or a secret, directly or through one hop. `@/lib/task-costs` is here for
- * rule 221: it imports usage.ts (the store) and its estimates are our margins.
+ * rule 229: it imports usage.ts (the store) and its estimates are our margins.
  */
 const SERVER_ONLY = ["@/lib/db", "@/lib/brand", "@/lib/auth", "@/lib/credits", "@/lib/usage", "@/lib/mcp", "@/lib/oauth", "@/lib/files", "@/lib/chat", "@/lib/noor", "@/lib/judge", "@/lib/golden", "@/lib/account", "@/lib/connectors/store", "@/lib/journey-load", "@/lib/perf-store", "@/lib/decisions", "@/lib/feedback", "@/lib/governance", "@/lib/notifications", "@/lib/routines", "@/lib/media/config", "@/lib/media/jobs", "@/lib/media/registry", "@/lib/media/start", "@/lib/media/fal", "@/lib/media/kie", "@/lib/media/higgsfield", "@/lib/media/blob", "@/lib/media/prompts", "@anthropic-ai/sdk", "@upstash/redis", "@/lib/wishlist", "@/lib/task-costs", "@/lib/secretary"];
 
@@ -47,7 +47,7 @@ describe("the browser bundle stays free of server-only code", () => {
     expect(imports, "src/lib/tasks.ts must stay import-free or the leak comes back through it").toEqual([]);
   });
 
-  it("the plan table the pricing page and the client read imports nothing at all (rule 221)", () => {
+  it("the plan table the pricing page and the client read imports nothing at all (rule 229)", () => {
     const src = readFileSync("src/lib/pricing.ts", "utf8");
     const imports = src.split("\n").filter((l) => /^\s*(import|export\s+(\*|\{[^}]*\}|type\s+\{[^}]*\})\s+from)\s/.test(l) || /\brequire\(|\bimport\(/.test(l));
     expect(imports, "src/lib/pricing.ts must stay import-free: client components read prices from it").toEqual([]);

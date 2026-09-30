@@ -107,7 +107,7 @@ describe("journey: sign up, build the workspace, generate, approve, publish", ()
 
 describe("journey: an account works in a second brand", () => {
   it("keeps the two workspaces apart, charges the second brand's setup once, and a bearer token follows the active brand", async () => {
-    // Any plan, a trial included: brands are unlimited on every plan (rule 217).
+    // Any plan, a trial included: brands are unlimited on every plan (rule 225).
     const u = await newUser("second");
     await signIn(u.email);
     expect((await getUser(u.email))!.credits).toBe(50);
@@ -119,7 +119,7 @@ describe("journey: an account works in a second brand", () => {
     const scope = `${u.email}#${second}`;
 
     // Onboarding runs again for the new brand: it has its own brand file and its own files. The confirmation is the
-    // active brand's own, like everything else in the scope, and it shows what the build will cost (rule 218).
+    // active brand's own, like everything else in the scope, and it shows what the build will cost (rule 226).
     const confirmed = await confirmRoute.POST(json("/api/onboard/confirm", "POST", { url: "second.example" }));
     expect(await confirmed.json()).toEqual({ ok: true, cost: ONBOARD_EXTRA_BRAND_COST });
     expect(await db.get(`onboardok:${u.email}`), "the default brand confirmed nothing").toBeNull();

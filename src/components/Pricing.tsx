@@ -6,7 +6,7 @@ import type { Dict, Lang } from "@/lib/i18n";
  * h1, and on /pricing, which had none at all — that page opened its document outline at h2, so it shipped with no
  * first-level heading in either language.
  *
- * Prices, credits and seats on the cards are built in the dictionary from src/lib/pricing.ts (rule 220). The Agency card
+ * Prices, credits and seats on the cards are built in the dictionary from src/lib/pricing.ts (rule 228). The Agency card
  * has no list price: its call to action goes to the contact form on /enterprise, the others to signup.
  */
 export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: Lang; headingLevel?: 1 | 2 }) {
