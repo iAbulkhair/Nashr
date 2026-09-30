@@ -88,7 +88,8 @@ export default function TasksPanel({ t, initial, routines, readOnly = false }: {
       // generated when nothing had happened and no credits had moved.
       const outcome = which === "weekly" ? (j.result ?? "") : j.brief ? j.brief.text.split("\n")[1] : "off";
       const ran = which === "weekly" ? outcome.startsWith("ok:") : !!j.brief;
-      setMsg(ran ? `${k.ran}: ${outcome}` : outcome === "retry:paused" ? t.generate.paused : outcome === "agent_cap" ? t.limit.agentCapTitle : `${t.generate.failed} (${outcome})`);
+      // "off": an added brand's Sunday plan starts off (rule 247), and running it refuses before any charge.
+      setMsg(ran ? `${k.ran}: ${outcome}` : outcome === "retry:paused" ? t.generate.paused : outcome === "agent_cap" ? t.limit.agentCapTitle : which === "weekly" && outcome === "off" ? k.weeklyOff : `${t.generate.failed} (${outcome})`);
     } catch {
       setMsg(t.generate.failed);
     } finally {
@@ -102,7 +103,7 @@ export default function TasksPanel({ t, initial, routines, readOnly = false }: {
       <p className="mt-2 text-ink/70">{k.sub}</p>
       {readOnly && <ReadOnlyNote text={t.readOnly.admin} />}
       <div className="mt-6 grid gap-4">
-        <Card title={k.weekly} desc={k.weeklyDesc} on={s.weeklyPlan} last={s.lastWeekly} which="weekly" k={k} busy={busy} onToggle={toggle} onRun={run} readOnly={readOnly} />
+        <Card title={k.weekly} desc={k.weeklyDesc.replace("{n}", String(TASK_COST.weekly_plan))} on={s.weeklyPlan} last={s.lastWeekly} which="weekly" k={k} busy={busy} onToggle={toggle} onRun={run} readOnly={readOnly} />
         <Card title={k.daily} desc={k.dailyDesc} on={s.dailyBrief} last={s.lastDaily} which="daily" k={k} busy={busy} onToggle={toggle} onRun={run} readOnly={readOnly} />
         <Card title={k.followups} desc={k.followupsDesc} on={s.followUps !== false} which="followups" k={k} busy={busy} onToggle={toggle} onRun={run} readOnly={readOnly} />
         {/* After the three cards: the e2e suite clicks the first "Run now", and routines have none. */}
