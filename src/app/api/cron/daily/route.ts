@@ -9,6 +9,7 @@ import { mailReady, sendEmail, sendOnce } from "@/lib/notify";
 import { runLifecycle } from "@/lib/lifecycle";
 import { db } from "@/lib/db";
 import { renewIfDue } from "@/lib/credits";
+import { earlyOfferDue, grantEarlyOffer } from "@/lib/partners";
 import { followUps, notifEmailText } from "@/lib/notifications";
 import { getUser } from "@/lib/auth";
 import { syncAdsIfDue } from "@/lib/perf-store";
@@ -42,6 +43,11 @@ async function dailyFor(u: User): Promise<string> {
     } catch (e) {
       out.push(`onboard_sweep_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`);
     }
+  }
+  // Once per account, on its default brand's entry: the trial's last day grants the 15% first-month offer the day-3 note
+  // names, whether or not mail is set up (the billing page shows it). src/lib/partners.ts, rule 394.
+  if ((u.brandId ?? "default") === "default" && earlyOfferDue(u)) {
+    try { if (await grantEarlyOffer(u.email, (x) => earlyOfferDue(x))) out.push("offer"); } catch (e) { out.push(`offer_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   }
   // Once per account too: a Sunday plan's charge whose run was killed and never retried in its week is refunded, or its
   // hold dropped when the week's plan exists (src/lib/schedule.ts `sweepWeeklyHolds`, rule 337). Reported, never fatal.

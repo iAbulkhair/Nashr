@@ -3,12 +3,15 @@ import { notFound, redirect } from "next/navigation";
 import { dict, isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, seatLimit } from "@/lib/auth";
-import { SELF_SERVE_PLANS, type SelfServePlan } from "@/lib/pricing";
+import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, firstMonthPriceSar, type SelfServePlan } from "@/lib/pricing";
 import { can } from "@/lib/roles";
 import { seatsUsed } from "@/lib/team";
 import { chatStatus } from "@/lib/chat-allowance";
 import { paceStart, runway } from "@/lib/usage-view";
 import ReadOnlyNote from "@/components/app/ReadOnlyNote";
+import { OFFER_COPY, OfferBanner } from "@/components/app/BillingOffer";
+import PartnerCodeForm from "@/components/app/PartnerCodeForm";
+import { grantEarlyOffer, lastDayOfferOwed, offerLastDay, openOffer } from "@/lib/partners";
 import ChatAllowanceCard from "@/components/app/ChatAllowanceCard";
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
@@ -37,6 +40,20 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const trial = chat.period === "trial";
   // A trial's messages count from signup for the whole trial; a plan's from the 1st (or from signup, when later).
   const chatRunway = runway({ used: chat.used, left: chat.left, periodStart: trial ? u.createdAt : paceStart(u.createdAt, now), resetAt: trial ? null : nextReset, trialEnds: u.trialEnds, now });
+  // The 15% first-month offer (src/lib/partners.ts, rules 393-395, 409-410), owner only. A trial from its last day
+  // through the early-partner offer's last day (7 days after the trial's last day) that has none yet gets it here (the
+  // cron grants it on the last day; this covers a missed run while the offer can still be used). Never while the founder
+  // impersonates the account: looking is not the customer's visit. An early-partner offer past its last day is not shown
+  // (`openOffer`). The discount comes off the price before VAT and VAT is computed on the discounted price (rule 409).
+  // Fixed-price pay links cannot carry a discount, so a discounted month is activated on WhatsApp for the discounted
+  // amount. Shown while the account is still on its trial: a paid plan needs no "activate" offer (the console still
+  // applies an open offer to the first payment it records). A busy lock only delays the grant to the next visit.
+  if (owner && u.actor?.kind !== "founder" && lastDayOfferOwed(u) && (await grantEarlyOffer(u.email, (x) => lastDayOfferOwed(x)).catch(() => false))) u.firstMonthOffer = { kind: "early", pct: FIRST_MONTH_DISCOUNT_PCT, at: new Date().toISOString() };
+  const offer = owner && u.plan === "trial" ? openOffer(u) : null;
+  const offerUntil = offer ? offerLastDay(u, offer) : null;
+  const O = OFFER_COPY[lang];
+  const waNumber = (process.env.SUPPORT_WHATSAPP ?? "").replace(/\D/g, "");
+  const offerHref = (k: SelfServePlan) => (waNumber ? `https://wa.me/${waNumber}?text=${encodeURIComponent(O.wa(u.email, card(k)?.name ?? k, firstMonthPriceSar(k)))}` : null);
   return (
     <div className="mx-auto max-w-4xl">
       <h1 className="page-title">{t.billing.title}</h1>
@@ -55,23 +72,27 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
           <p className="mt-2 text-sm text-mist-dim">{lang === "ar" ? "خطة أسبوعية كل أحد، ملخص كل صباح، وتتعلم من كل تعديل. ألغِ في أي وقت." : "A weekly plan every Sunday, a brief every morning, and she learns from every edit. Cancel anytime."}</p>
         </div>
       )}
+      {offer && <OfferBanner lang={lang} kind={offer.kind} code={u.referredBy?.code} until={offerUntil} />}
+      {owner && u.plan === "trial" && !u.referredBy && !u.firstPaidOn && <PartnerCodeForm lang={lang} />}
       {owner && <p className="mt-6 text-ink/70">{t.billing.sub}</p>}
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {SELF_SERVE_PLANS.map((k) => {
           const plan = card(k);
           if (!plan) return null;
-          const href = links[k] ?? wa;
+          const href = offer ? offerHref(k) : links[k] ?? wa;
           return (
             <div key={k} data-tier={k} className="flex flex-col card">
               <h2 className="font-display text-lg font-medium">{plan.name}</h2>
               <p className="mt-2 font-display text-3xl font-bold" dir="ltr">{plan.price} <span className="text-xs font-normal text-ink/60">{plan.period}</span></p>
+              {offer && <p data-offer-price className="text-sm font-semibold text-oasis">{O.card(firstMonthPriceSar(k), PLAN_PRICE_SAR[k])}</p>}
               <p className="text-sm text-sadu">{plan.credits}</p>
               <ul className="mt-3 flex-1 space-y-1 text-xs text-ink/70">{plan.features.slice(0, 4).map((f) => <li key={f}>• {f}</li>)}</ul>
               {!owner ? null : href ? (
-                <a href={href} target="_blank" rel="noreferrer" className="mt-4 rounded-full bg-oasis px-4 py-2 text-center text-sm font-semibold text-mist">{links[k] ? t.billing.pay : t.billing.contact}</a>
+                <a href={href} target="_blank" rel="noreferrer" className="mt-4 rounded-full bg-oasis px-4 py-2 text-center text-sm font-semibold text-mist">{offer ? O.activate : links[k] ? t.billing.pay : t.billing.contact}</a>
               ) : (
-                <a href="mailto:hello@nashr.ai" className="mt-4 rounded-full border border-ink/20 px-4 py-2 text-center text-sm">hello@nashr.ai</a>
+                <a href="mailto:hello@nashr.ai" className="mt-4 rounded-full border border-ink/20 px-4 py-2 text-center text-sm">{offer ? `${O.noWa} ` : ""}hello@nashr.ai</a>
               )}
+              {offer && links[k] && <a href={links[k]} target="_blank" rel="noreferrer" className="mt-2 text-center text-xs text-ink/60 underline">{O.fullPrice}</a>}
             </div>
           );
         })}

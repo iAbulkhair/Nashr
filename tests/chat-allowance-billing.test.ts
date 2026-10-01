@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -11,6 +11,15 @@ import { json, newMember, newUser, signIn, signOut } from "./helpers/session";
 import * as profileRoute from "@/app/api/profile/route";
 import * as overflowRoute from "@/app/api/billing/chat-overflow/route";
 import BillingPage from "@/app/[lang]/app/billing/page";
+
+// The billing page also renders client components that read the router (the partner-code field of a trial owner,
+// src/components/app/PartnerCodeForm.tsx); outside Next there is none. Server-only helpers (redirect, notFound) stay real.
+vi.mock("next/navigation", async (orig) => ({
+  ...(await orig<typeof import("next/navigation")>()),
+  useRouter: () => ({ push: () => {}, refresh: () => {}, replace: () => {}, back: () => {}, prefetch: () => {} }),
+  usePathname: () => "/en/app/billing",
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 /**
  * Rule 315: what the owner (and every seat) is shown about the account's chat messages. The profile API carries the

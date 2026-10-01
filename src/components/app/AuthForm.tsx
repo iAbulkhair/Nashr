@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
+import PartnerCodeField from "./PartnerCodeField";
 import { PLAN_CREDITS } from "@/lib/pricing";
 import { authMessage, failureCode, passwordChecks, postJson, succeeded, unmetRules } from "@/lib/auth-client";
 import { PasswordRules } from "./PasswordRules";
@@ -77,6 +78,7 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
             {turnstileKey && <Turnstile siteKey={turnstileKey} onToken={setToken} resetKey={resetKey} lang={lang} />}
           </>
         )}
+        {step === 2 && <PartnerCodeField lang={lang} />}
         {err && <p role="alert" className="text-sm text-sadu-deep">{err}</p>}
         <button disabled={busy} aria-disabled={step === 2 && !ready ? true : undefined} aria-describedby={step === 2 ? "signup-rules" : undefined} className="btn btn-primary">{step === 1 ? S.cont : t.signup.submit}</button>
       </form>
