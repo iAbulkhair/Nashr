@@ -206,7 +206,7 @@ Written 2026-10-01 for pricing phase 2. Net revenue is `creditRevenueUsd(plan) �
 
 Agency gets Business's 1,300 unless the founder sets an override (`User.chatAllowance`), against the deal's price.
 
-- **At the ceiling the allowance can cost more than the plan earns.** 250 Starter messages × $0.35 = $87.50 against $79.73 of revenue; Pro's and Business's are about 1.7 times theirs. The ceiling bounds one runaway turn; it is not a typical cost, and only abuse reaches it on every message (long, tool-heavy turns written to fill each reply). The burst limit (40 an hour, 200 a day) slows that down but does not stop it within a month.
+- **At the ceiling the allowance can cost more than the plan earns.** 250 Starter messages × $0.35 = $87.50 against $79.73 of revenue; Pro's and Business's are about 1.7 times theirs. The ceiling bounds one runaway turn; it is not a typical cost, and only abuse reaches it on every message (long, tool-heavy turns written to fill each reply). The burst limit (30 an hour and 150 a day on a paid plan since 2026-10-01) slows that down but does not stop it within a month: the monthly allowance remains the real monthly ceiling.
 - **Where it shows.** The founder console's per-account margin column (users tab, `marginPct`: the price against this month's model cost, chat included; red under 50%), and since 2026-10-01 the Chat column, whose tooltip gives the account's chat cost this month and per message (`usdPerMsg`, `chatUsdPerMessage` in `src/lib/admin-stats.ts`: the cost over every message sent, the raw count `ChatStatus.counted` plus the messages continued on credits, so an allowance lowered mid-month does not inflate it), and the credits the messages on credits were billed (`chatCredits`). A trial's cost per message reads low when the trial spans two months: the cost is this month's, the count the trial's.
 - **The spec assumed Sonnet.** Spec section 5's margins counted chat at about $0.032 a message ($8.00 / $20.80 / $41.60 for full allowances). On Opus at $0.08 the same allowances cost $20.00 / $52.00 / $104.00.
 - **Messages continued on credits keep the floor.** Nothing is taken before such a message: the gate only checks the balance is at least `chatOverflowHold()` (5 credits), so the message's own tools (a batch it asks for) can spend the whole balance. After the reply it is billed its metered cost at $0.07104 a credit, so it keeps at least 60% margin on Business's credit (73% on Starter's, 63% on Pro's). The bill is at most 5 credits ($0.355 at that rate), which covers the $0.35 ceiling, so no message's model cost goes beyond what it can be billed; the remainder under one credit waits on the account (`User.chatCarryMicro`) for the next one. The one leak: a message whose tools emptied the balance is billed only what is left, and the rest of its cost (at most $0.35) is not billed; the next message is then refused until the balance holds 5 credits again. A failed message is not billed.
@@ -245,11 +245,15 @@ Agency gets Business's 1,300 unless the founder sets an override (`User.chatAllo
     output tokens (`CHAT_FIRST_MIN_OUT`, `fitFirstCall`), so a full workspace shortens the thread's memory rather than
     the answer. When even the newest message alone leaves less than 2,048, no call is made, the reply says the
     workspace is too large for one message, and the message is not counted;
-  - the burst limit: `CHAT_PER_HOUR` (40) and `CHAT_PER_DAY` (200) in `src/lib/rate.ts` per account on every plan
-    (429 with `retry` "hour" or "day", `chatRefusal`, rule 331), checked first, so a burst never touches the month's
-    count. A trial has no lower ceiling of its own: its 30 messages for the whole trial bound it (at most 30 × $0.35 =
-    $10.50 of chat per trial account). Before 2026-09-20 nothing bounded chat; from then until 2026-10-01 this limit
-    was the only bound.
+  - the burst limit: `chatCaps(u)` in `src/lib/rate.ts` per account, by plan (`CHAT_CAPS`): 30 an hour and 150 a day
+    on a paid plan (Agency included), 10 an hour and 30 a day on a trial (429 with `retry` "hour" or "day",
+    `chatRefusal`, rule 331), checked first, so a burst never touches the month's count. Founder decision 2026-10-01:
+    lowered from 40 an hour and 200 a day on every plan until the Sonnet chat eval passes. At the ceiling, one paid
+    account's worst day is 150 turns × $0.35 = $52.50 of chat (it was 200 × $0.35 = $70.00). The burst limit only paces
+    the month: the monthly allowance remains the real monthly ceiling (Starter's 250 messages are under two such days).
+    A trial's day of 30 equals its 30 messages for the whole trial, so it never binds before the allowance does (at most
+    30 × $0.35 = $10.50 of chat per trial account); the 10 an hour paces a trial. Before 2026-09-20 nothing bounded
+    chat; from then until 2026-10-01 this limit was the only bound.
 - **Onboarding** is free for the first brand and 9 credits for each added brand built from its URL (since 2026-09-30,
   rule 246; the manual brand form makes no model call and is free): the charge goes to Noor in that brand's scope under
   her monthly cap there, after every other refusal and under the run's lock (330 s, owner-token release, so two runs
