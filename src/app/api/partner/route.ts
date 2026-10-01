@@ -5,11 +5,12 @@ import { forbid } from "@/lib/roles";
 import { saveBank } from "@/lib/partners";
 
 /**
- * PUT /api/partner {holder, iban, country, taxNumber?}: the partner's own payout details, where commission is paid
- * (rules 399, 411). The owner only ("partner.bank", refused while a founder impersonates), throttled per account, and only
- * for an approved partner. Partners may live in any country: the IBAN is checked for its country's length (when known)
- * and checksum, `country` is the partner's country of residence and `taxNumber` an optional VAT or tax registration
- * number. The answer carries the IBAN masked, and none of it is ever logged.
+ * PUT /api/partner {holder, iban, country, taxNumber?, vatRegistered?}: the partner's own payout details, where commission
+ * is paid (rules 399, 411). The owner only ("partner.bank", refused while a founder impersonates), throttled per account,
+ * and only for an approved partner. Partners may live in any country: the IBAN is checked for its country's length (when
+ * known) and checksum, `country` is the partner's country of residence, `taxNumber` an optional VAT or tax registration
+ * number and `vatRegistered` the partner's own answer that they are VAT-registered (only `true` counts, and it needs the
+ * number: vat_number_required). The answer carries the IBAN masked, and none of it is ever logged.
  */
 export async function PUT(req: Request) {
   const u = await currentUser();
@@ -17,8 +18,8 @@ export async function PUT(req: Request) {
   const no = forbid(u, "partner.bank");
   if (no) return no;
   if (!(await allow(`partnerbank:${u.email}`, 10, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
-  const b = (await req.json().catch(() => ({}))) as { holder?: unknown; iban?: unknown; country?: unknown; taxNumber?: unknown };
-  const res = await saveBank(u.email, { holder: b.holder, iban: b.iban, country: b.country, taxNumber: b.taxNumber });
+  const b = (await req.json().catch(() => ({}))) as { holder?: unknown; iban?: unknown; country?: unknown; taxNumber?: unknown; vatRegistered?: unknown };
+  const res = await saveBank(u.email, { holder: b.holder, iban: b.iban, country: b.country, taxNumber: b.taxNumber, vatRegistered: b.vatRegistered });
   if (!res.ok) return NextResponse.json(res, { status: res.error === "not_partner" ? 404 : 400 });
   return NextResponse.json(res);
 }

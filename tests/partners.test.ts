@@ -12,7 +12,7 @@ import {
   ATTRIBUTION_DAYS, COMMISSION_MONTHS, COMMISSION_PCT, COUNTRY_CODES, EARLY_OFFER_DAYS, IBAN_LENGTHS, NEW_TERMS_FROM, PARTNER_COOKIE,
   PARTNER_TERMS_VERSION, PAYOUT_MIN_SAR, attributionDeadline, balances, bankConfirmed, codeProblem, commissionDecision, commissionSar,
   countryOptions, earlyOfferLastDay, ksaDay, maskIban, normalizeCode, optionalTax, parsePartnerCookie, partnerCookieValue, payoutProblem,
-  referralStatus, suggestCode, taxFlags, taxNumberOf, taxTotals, trialLastDay, validAmount, validCountry, validIban, windowEnd, type LedgerRow,
+  referralStatus, suggestCode, taxField, taxFlags, taxNumberOf, taxTotals, trialLastDay, validAmount, validCountry, validIban, windowEnd, type LedgerRow,
 } from "@/lib/partner-rules";
 import {
   APPLICATIONS, customerLabel, earlyOfferDue, getPartner, grantEarlyOffer, lastDayOfferOwed, listPartners, offerLastDay, openOffer, partnerByCode,
@@ -63,9 +63,10 @@ type AsyncPage = (p: { params: Promise<{ lang: string }> }) => Promise<ReactElem
 const html = async (page: unknown, lang = "en") => renderToStaticMarkup(await (page as AsyncPage)({ params: Promise.resolve({ lang }) }));
 
 const asFounder = () => signIn(FOUNDER);
+/** A founder approval; the founder states the partner agreed to the terms outside the form unless `extra` says otherwise (rule 415). */
 async function approve(email: string, c: string, extra: Record<string, unknown> = {}) {
   await asFounder();
-  return adminPartners.POST(json("/api/admin/partners", "POST", { action: "approve", email, code: c, name: "Partner", ...extra }));
+  return adminPartners.POST(json("/api/admin/partners", "POST", { action: "approve", email, code: c, name: "Partner", consentOutOfBand: true, ...extra }));
 }
 async function partner(prefix = "partner"): Promise<{ user: User; code: string }> {
   const user = await newUser(prefix);
@@ -133,7 +134,7 @@ describe("rule 390: partner codes are the founder's to approve, unique, uppercas
     expect((await partnerByCode(c.toLowerCase()))!.email).toBe(u.email);
     expect((await getUser(u.email))!.partnerCode).toBe(c);
     const log = JSON.parse((await db.lrange("admin:log", 0, 0))[0]) as { actor: string; what: string };
-    expect(log).toMatchObject({ actor: FOUNDER, what: `partner:approve code:${c}` });
+    expect(log).toMatchObject({ actor: FOUNDER, what: `partner:approve code:${c} terms:founder` });
   });
 
   it("a taken code, a second approval, a reserved word, a credits-referral code and a member login are refused", async () => {
@@ -1127,7 +1128,7 @@ describe("rule 412: Thakeen bears the taxes: payouts record VAT on top and withh
     expect(balances(rows)).toMatchObject({ earned: 300, paid: 300, balance: 0 });
     expect(taxTotals(rows)).toEqual({ vatPaid: 45, whtBorne: 15 });
     expect(taxFlags({ country: "SA" })).toEqual({ vatRegistered: false, outsideSaudi: false, noCountry: false });
-    expect(taxFlags({ country: "SA", taxNumber: "300000000000003" })).toMatchObject({ vatRegistered: true, outsideSaudi: false });
+    expect(taxFlags({ country: "SA", taxNumber: "300000000000003", vatRegistered: true })).toMatchObject({ vatRegistered: true, outsideSaudi: false });
     expect(taxFlags({ country: "EG" })).toMatchObject({ vatRegistered: false, outsideSaudi: true });
     expect(taxFlags({})).toMatchObject({ noCountry: true });
     expect(taxFlags(null)).toEqual({ vatRegistered: false, outsideSaudi: false, noCountry: false });
@@ -1135,7 +1136,7 @@ describe("rule 412: Thakeen bears the taxes: payouts record VAT on top and withh
 
   it("a VAT-registered partner outside Saudi Arabia: flagged, paid the full commission, the taxes recorded as entered", async () => {
     const a = await partner("tax");
-    await bankReady(a.user.email, { iban: ibanFor("EG", digits(25)), country: "EG", taxNumber: "EG-123-456" });
+    await bankReady(a.user.email, { iban: ibanFor("EG", digits(25)), country: "EG", taxNumber: "EG-123-456", vatRegistered: true });
     await earn(a.code, 2000); // 300 SAR commission
     expect(await body(payout(a.user.email, { amountSar: 300, vatSar: -5 }))).toMatchObject({ ok: false, error: "bad_vat" });
     expect(await body(payout(a.user.email, { amountSar: 300, whtSar: 1.234 }))).toMatchObject({ ok: false, error: "bad_wht" });
@@ -1251,5 +1252,128 @@ describe("rule 414: an application needs consent to the terms, and records when 
     const ar = await html(AffiliatesPage, "ar");
     expect(ar.replace(/<[^>]+>/g, "")).toContain("أوافق على شروط برنامج الشركاء");
     expect(ar).toContain(`href="/ar/affiliates/terms"`);
+  });
+});
+
+describe("rule 415: no partner without a recorded agreement to the terms, carried onto the partner record", () => {
+  const apply = (b: Record<string, unknown>) => affiliates.POST(json("/api/affiliates", "POST", { name: "Sara Ali", phone: "+971500000000", channel: "Newsletter", ...b }, { "x-real-ip": ip() }));
+  const appOf = async (email: string) => {
+    await asFounder();
+    return (await body<{ applications: { id: string; email: string; consentAt: string | null }[] }>(adminPartners.GET(json("/api/admin/partners", "GET")))).applications.find((a) => a.email === email)!;
+  };
+  const row = async (email: string) => (await listPartners()).find((p) => p.email === email);
+  const lastLog = async () => (JSON.parse((await db.lrange("admin:log", 0, 0))[0]) as { what: string }).what;
+
+  it("an application that consented: the date and version move onto the partner, and the log says so", async () => {
+    const email = `cons-${randomBytes(4).toString("hex")}@test.example`;
+    expect(await status(apply({ email, consent: true }))).toBe(200);
+    const app = await appOf(email);
+    const c = code();
+    expect(await status(approve(email, c, { appId: app.id, consentOutOfBand: undefined }))).toBe(200);
+    expect((await getPartner(email))!.terms).toEqual({ at: app.consentAt, version: PARTNER_TERMS_VERSION, via: "application" });
+    expect((await row(email))!.terms).toMatchObject({ via: "application", version: PARTNER_TERMS_VERSION });
+    expect(await lastLog()).toBe(`partner:approve code:${c} terms:application`);
+  });
+
+  it("no consent on record is refused and nothing is written; the founder's explicit statement is recorded and logged", async () => {
+    const email = `nocons-${randomBytes(4).toString("hex")}@test.example`;
+    const id = `app_${randomBytes(8).toString("hex")}`;
+    await db.lpush(APPLICATIONS, JSON.stringify({ id, name: "Old", email, phone: "", channel: "", audience: "", lang: "en", at: "2026-09-20T10:00:00.000Z" }));
+    const c = code();
+    for (const consentOutOfBand of [undefined, false, "true", 1]) {
+      const r = await approve(email, c, { appId: id, consentOutOfBand });
+      expect(r.status, String(consentOutOfBand)).toBe(400);
+      expect(await body(r)).toMatchObject({ ok: false, error: "no_consent" });
+    }
+    expect(await partnerByCode(c)).toBeNull();
+    expect(await getPartner(email)).toBeNull();
+    expect(await body(approve(email, c, { consentOutOfBand: undefined })), "manual, no application").toMatchObject({ ok: false, error: "no_consent" });
+    expect(await status(approve(email, c, { appId: id, consentOutOfBand: true }))).toBe(200);
+    const terms = (await getPartner(email))!.terms!;
+    expect(terms).toMatchObject({ version: PARTNER_TERMS_VERSION, via: "founder", by: FOUNDER });
+    expect(Date.now() - Date.parse(terms.at)).toBeLessThan(60_000);
+    expect(await lastLog()).toBe(`partner:approve code:${c} terms:founder`);
+  });
+
+  it("another applicant's consent does not count for a different email", async () => {
+    const email = `consa-${randomBytes(4).toString("hex")}@test.example`;
+    expect(await status(apply({ email, consent: true }))).toBe(200);
+    const app = await appOf(email);
+    const other = `consb-${randomBytes(4).toString("hex")}@test.example`;
+    expect(await body(approve(other, code(), { appId: app.id, consentOutOfBand: undefined }))).toMatchObject({ ok: false, error: "no_consent" });
+  });
+
+  it("a partner record with no agreement shows none, and the console flags it and asks for the statement", async () => {
+    const email = `legacy-${randomBytes(4).toString("hex")}@test.example`;
+    const c = code();
+    await Promise.all([
+      db.set(`partner:${email}`, { email, name: "Legacy", code: c, approvedAt: new Date().toISOString(), approvedBy: FOUNDER }),
+      db.set(`partnercode:${c}`, email), db.sadd("partners:all", email),
+    ]);
+    expect((await row(email))!.terms).toBeNull();
+    const src = readFileSync("src/components/app/PartnersPanel.tsx", "utf8");
+    for (const t of ["data-partner-no-consent", "data-partner-consent", "data-out-of-band", "consentOutOfBand"]) expect(src, t).toContain(t);
+  });
+});
+
+describe("rule 416: VAT registration is the partner's own answer, separate from the tax number", () => {
+  const put = (b: Record<string, unknown>) => partnerRoute.PUT(json("/api/partner", "PUT", { holder: "Partner Name", iban: VALID_IBAN, country: "EG", ...b }));
+  const flags = async (email: string) => (await listPartners()).find((p) => p.email === email)!.tax;
+
+  it("a tax number alone (an income-tax id) flags nothing; the box needs a number; only true counts", async () => {
+    const a = await partner("vat");
+    await signIn(a.user.email);
+    expect(await body(put({ taxNumber: "TIN-998877" }))).toMatchObject({ ok: true, bank: { taxNumber: "TIN-998877", vatRegistered: false } });
+    expect(await flags(a.user.email)).toMatchObject({ vatRegistered: false, outsideSaudi: true });
+    await signIn(a.user.email);
+    const r = await put({ vatRegistered: true });
+    expect(r.status).toBe(400);
+    expect(await body(r)).toMatchObject({ ok: false, error: "vat_number_required" });
+    await signIn(a.user.email);
+    expect(await body(put({ taxNumber: "EG-123-456", vatRegistered: "true" }))).toMatchObject({ ok: true, bank: { vatRegistered: false } });
+    await signIn(a.user.email);
+    expect(await body(put({ taxNumber: "EG-123-456", vatRegistered: true }))).toMatchObject({ ok: true, bank: { vatRegistered: true } });
+    expect((await getPartner(a.user.email))!.bank).toMatchObject({ taxNumber: "EG-123-456", vatRegistered: true });
+    expect(await flags(a.user.email)).toMatchObject({ vatRegistered: true });
+    expect((await partnerDashboard(a.user.email))!.bank).toMatchObject({ vatRegistered: true });
+    expect(taxFlags({ country: "EG", taxNumber: "TIN-1" })).toMatchObject({ vatRegistered: false });
+    expect(taxFlags({ country: "EG", vatRegistered: true }), "no number, no flag").toMatchObject({ vatRegistered: false });
+  });
+
+  it("the bank form has the box in both languages and the tax note points to it", async () => {
+    const a = await partner("vatform");
+    await signIn(a.user.email);
+    const en = await html(PartnerPage, "en");
+    expect(en).toMatch(/<input[^>]*type="checkbox"[^>]*name="vatRegistered"/);
+    expect(en).toContain("I am VAT-registered");
+    expect(en).toContain("tick the box and enter your VAT number");
+    expect((await html(PartnerPage, "ar")).replace(/<[^>]+>/g, "")).toContain("أنا مسجّل في ضريبة القيمة المضافة");
+  });
+});
+
+describe("rule 417: a tax amount typed wrong on the payout form is refused, never dropped", () => {
+  it("taxField keeps what is not a number as text, so the server refuses it after the JSON round trip", () => {
+    expect(taxField("")).toBeUndefined();
+    expect(taxField("  ")).toBeUndefined();
+    expect(taxField(" 12.5 ")).toBe(12.5);
+    expect(taxField("1,500")).toBe("1,500");
+    expect(taxField("12,5")).toBe("12,5");
+    const wire = (v: unknown) => (JSON.parse(JSON.stringify({ v })) as { v: unknown }).v;
+    expect(optionalTax(wire(Number("1,500"))), "the old way: NaN became null and read as no amount").toEqual({ ok: true });
+    expect(optionalTax(wire(taxField("1,500")))).toEqual({ ok: false });
+    expect(optionalTax(wire(taxField("12.34")))).toEqual({ ok: true, sar: 12.34 });
+  });
+
+  it("the payout is refused with bad_vat or bad_wht and nothing is recorded; the console sends taxField", async () => {
+    const a = await partner("typo");
+    await bankReady(a.user.email);
+    const { email } = await signupVia({ partnerCode: a.code });
+    await record(email, { amountSar: 2000, plan: "business", date: day() });
+    const payout = async (extra: Record<string, unknown>) => { await asFounder(); return adminPartners.POST(json("/api/admin/partners", "POST", { action: "payout", email: a.user.email, date: day(), amountSar: 300, ...extra })); };
+    expect(await body(payout({ vatSar: taxField("1,500") }))).toMatchObject({ ok: false, error: "bad_vat" });
+    expect(await body(payout({ whtSar: taxField("12,5") }))).toMatchObject({ ok: false, error: "bad_wht" });
+    expect((await ledger(a.user.email)).filter((r) => r.kind === "payout")).toHaveLength(0);
+    const src = readFileSync("src/components/app/PartnersPanel.tsx", "utf8");
+    expect(src).toContain("vatSar: taxField(vat), whtSar: taxField(wht)");
   });
 });

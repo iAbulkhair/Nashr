@@ -233,17 +233,30 @@ export function optionalTax(v: unknown): { ok: true; sar?: number } | { ok: fals
   if (v === undefined || v === null || v === "" || v === 0) return { ok: true };
   return validAmount(v) ? { ok: true, sar: v } : { ok: false };
 }
+/**
+ * What the payout form sends for an optional tax field: absent when empty, the number when the text is one, and the text
+ * itself otherwise ("1,500", "12,5"), so `optionalTax` refuses it with bad_vat or bad_wht. Never `Number(text)` alone:
+ * NaN becomes null in JSON, which reads as "no amount", and the tax the founder meant to record would be lost unseen.
+ */
+export function taxField(text: string): number | string | undefined {
+  const t = text.trim();
+  if (!t) return undefined;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : t;
+}
 
 // ---- Bank details ----
 
 /**
  * The partner's payout details. `country` is where the partner lives (ISO 3166-1 alpha-2), which may differ from the
- * IBAN's country; `taxNumber` is the partner's VAT or tax registration number, when they have one. `confirmedAt` is set
+ * IBAN's country; `taxNumber` is the partner's VAT or tax registration number, when they have one; `vatRegistered` is the
+ * partner's own answer that they are registered for VAT (a tax number alone may be an income-tax id), and needs the
+ * number. `confirmedAt` is set
  * by the founder after checking the details with the partner out of band (by phone, from the application); every save
  * by the partner clears it. No payout is marked paid to unconfirmed details. `country` is missing only on details saved
  * before it was asked (none in production: the programme ships with it).
  */
-export type Bank = { holder: string; iban: string; country?: string; taxNumber?: string; savedAt: string; confirmedAt?: string; confirmedBy?: string };
+export type Bank = { holder: string; iban: string; country?: string; taxNumber?: string; vatRegistered?: boolean; savedAt: string; confirmedAt?: string; confirmedBy?: string };
 /** True when the founder confirmed these exact details after their last change. */
 export const bankConfirmed = (b: Pick<Bank, "savedAt" | "confirmedAt"> | null | undefined): boolean => !!b?.confirmedAt && b.confirmedAt >= b.savedAt;
 
@@ -332,12 +345,13 @@ export function taxNumberOf(raw: unknown): string | undefined | "bad" {
   return /^[A-Z0-9][A-Z0-9 ./-]{1,28}[A-Z0-9]$/.test(t) ? t : "bad";
 }
 /**
- * What the founder checks before a transfer (rule 412), never a rate: a VAT-registered partner (a tax number given) adds
- * VAT on top of the commission, which Thakeen pays; a partner living outside Saudi Arabia may be subject to withholding
- * tax, which Thakeen bears. `noCountry`: details saved before the country was asked.
+ * What the founder checks before a transfer (rule 412), never a rate: a VAT-registered partner (the partner ticked "I am
+ * VAT-registered" and gave the number; a tax number alone may be an income-tax id and flags nothing) adds VAT on top of
+ * the commission, which Thakeen pays; a partner living outside Saudi Arabia may be subject to withholding tax, which
+ * Thakeen bears. `noCountry`: details saved before the country was asked.
  */
-export function taxFlags(b: Pick<Bank, "country" | "taxNumber"> | null | undefined): { vatRegistered: boolean; outsideSaudi: boolean; noCountry: boolean } {
-  return { vatRegistered: !!b?.taxNumber, outsideSaudi: !!b?.country && b.country !== "SA", noCountry: !!b && !b.country };
+export function taxFlags(b: Pick<Bank, "country" | "taxNumber" | "vatRegistered"> | null | undefined): { vatRegistered: boolean; outsideSaudi: boolean; noCountry: boolean } {
+  return { vatRegistered: !!b?.vatRegistered && !!b.taxNumber, outsideSaudi: !!b?.country && b.country !== "SA", noCountry: !!b && !b.country };
 }
 
 /**

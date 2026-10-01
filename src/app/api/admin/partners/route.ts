@@ -19,7 +19,10 @@ export async function GET(req: Request) {
 
 /**
  * POST /api/admin/partners
- *   {action:"approve", email, name?, code, appId?}  claim a unique code and link it to the applicant's email
+ *   {action:"approve", email, name?, code, appId?, consentOutOfBand?}  claim a unique code and link it to the applicant's
+ *   email. Refused (no_consent, 400) unless the application `appId` of that email recorded consent to the terms, or the
+ *   founder states with `consentOutOfBand: true` that the applicant agreed outside the form; the consent is carried onto
+ *   the partner record and the log line says which (rule 415)
  *   {action:"reject", appId}
  *   {action:"payout", email, id?, amountSar, vatSar?, whtSar?, date, reference?}  mark a bank transfer paid; only a payable
  *   balance (SAR 200 or more) is paid down, never past it, to confirmed bank details, under the partner's lock; a retried
@@ -36,9 +39,9 @@ export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const log = (email: string, what: string) => pushCapped("admin:log", JSON.stringify({ actor: who, email, what, at: new Date().toISOString() }), CAPS.adminLog);
   if (b.action === "approve") {
-    const res = await approvePartner({ email: b.email, name: b.name, code: b.code, appId: b.appId }, who);
+    const res = await approvePartner({ email: b.email, name: b.name, code: b.code, appId: b.appId, consentOutOfBand: b.consentOutOfBand }, who);
     if (!res.ok) return NextResponse.json(res, { status: res.error === "already_partner" || res.error === "code_taken" || res.error === "member_login" ? 409 : 400 });
-    await log(res.partner.email, `partner:approve code:${res.partner.code}`);
+    await log(res.partner.email, `partner:approve code:${res.partner.code} terms:${res.partner.terms?.via ?? "none"}`);
     return NextResponse.json(res);
   }
   if (b.action === "reject") {

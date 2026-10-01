@@ -9,7 +9,7 @@ import { lifecyclePlan } from "./lifecycle";
 import { FIRST_MONTH_DISCOUNT_PCT, SELF_SERVE_PLANS, firstMonthPriceSar, type SelfServePlan } from "./pricing";
 import {
   CUSTOMER_LABEL_PREFIX, PARTNER_COOKIE, PARTNER_COOKIE_DAYS, balances, bankConfirmed, codeProblem, commissionDecision, commissionSar,
-  earlyOfferLastDay, ksaDay, maskIban, normalizeCode, optionalTax, parsePartnerCookie, payoutProblem, referralStatus, suggestCode,
+  PARTNER_TERMS_VERSION, earlyOfferLastDay, ksaDay, maskIban, normalizeCode, optionalTax, parsePartnerCookie, payoutProblem, referralStatus, suggestCode,
   taxFlags, taxNumberOf, taxTotals, validAmount, validCountry, validDay, validIban,
   type Attribution, type Bank, type Commission, type LedgerRow, type NotCounted, type Payout, type ReferralStatus,
 } from "./partner-rules";
@@ -32,8 +32,14 @@ import {
  */
 
 export type { Bank };
+/**
+ * The partner's agreement to the programme terms (rule 415), carried onto the partner record at approval: from the
+ * application (`via: "application"`, the date and version the applicant ticked) or, for an applicant who agreed outside
+ * the form, the founder's explicit statement (`via: "founder"`, who and when, at the current version), which is logged.
+ */
+export type TermsConsent = { at: string; version: string; via: "application" | "founder"; by?: string };
 /** `hadAccount`: the address already had an owner account at approval; when false, whoever signed up with it later holds it. */
-export type Partner = { email: string; name: string; code: string; approvedAt: string; approvedBy: string; appId?: string; hadAccount?: boolean; bank?: Bank };
+export type Partner = { email: string; name: string; code: string; approvedAt: string; approvedBy: string; appId?: string; hadAccount?: boolean; terms?: TermsConsent; bank?: Bank };
 export type FirstMonthOffer = NonNullable<User["firstMonthOffer"]>;
 export type Payment = {
   id: string; amountSar: number; plan: Plan; date: string; reference: string; recordedAt: string; recordedBy: string;
@@ -391,13 +397,27 @@ export async function listApplications(): Promise<(Omit<Application, "consentAt"
   });
 }
 
-export type ApproveError = "bad_code" | "reserved_code" | "bad_email" | "member_login" | "already_partner" | "code_taken";
+/** The stored application with this id, or null (the same 500 the console lists). */
+async function applicationById(appId: string): Promise<Partial<Application> | null> {
+  for (const r of await db.lrange(APPLICATIONS, 0, 499)) {
+    try {
+      const a = JSON.parse(r) as Partial<Application>;
+      if (applicationId(a) === appId) return a;
+    } catch { /* a malformed row is skipped, as in listApplications */ }
+  }
+  return null;
+}
+
+export type ApproveError = "bad_code" | "reserved_code" | "bad_email" | "member_login" | "already_partner" | "code_taken" | "no_consent";
 /**
  * Approve a partner: claim the code (unique among partners and the credits-referral codes) and link it to the
  * applicant's email. The account need not exist yet: whoever signs up with that address later gets the partner page
  * (`afterSignup`). A member login cannot be a partner: it has no account of its own to be paid through.
+ * No partner without a recorded agreement to the terms (rule 415): the consent is taken from the application (same
+ * email, consent date and version stored), or the founder states that the applicant agreed outside the form
+ * (`consentOutOfBand: true`, recorded with who and when, and logged by the route); otherwise `no_consent`.
  */
-export async function approvePartner(input: { email: unknown; name?: unknown; code: unknown; appId?: unknown }, by: string): Promise<{ ok: true; partner: Partner } | { ok: false; error: ApproveError }> {
+export async function approvePartner(input: { email: unknown; name?: unknown; code: unknown; appId?: unknown; consentOutOfBand?: unknown }, by: string): Promise<{ ok: true; partner: Partner } | { ok: false; error: ApproveError }> {
   const code = normalizeCode(input.code);
   const problem = codeProblem(code);
   if (problem) return { ok: false, error: problem };
@@ -407,11 +427,17 @@ export async function approvePartner(input: { email: unknown; name?: unknown; co
   if (login?.kind === "member") return { ok: false, error: "member_login" };
   const appId = typeof input.appId === "string" && /^app_[a-f0-9]{8,32}$/.test(input.appId) ? input.appId : undefined;
   const now = new Date().toISOString();
+  const app = appId ? await applicationById(appId) : null;
+  const terms: TermsConsent | null =
+    app?.consentAt && app.termsVersion && normalizeEmail(app.email ?? "") === email ? { at: app.consentAt, version: app.termsVersion, via: "application" }
+      : input.consentOutOfBand === true ? { at: now, version: PARTNER_TERMS_VERSION, via: "founder", by }
+        : null;
+  if (!terms) return { ok: false, error: "no_consent" };
   const res = await withRegistryLock(async (): Promise<Partner | ApproveError> => {
     const [existing, holder, credits] = await Promise.all([getPartner(email), db.get<string>(codeKey(code)), db.get<string>(`ref:${code}`)]);
     if (existing) return "already_partner";
     if (holder || credits) return "code_taken";
-    const partner: Partner = { email, name: cleanText(input.name, 80) || (login?.kind === "owner" ? login.user.name : ""), code, approvedAt: now, approvedBy: by, hadAccount: login?.kind === "owner", ...(appId ? { appId } : {}) };
+    const partner: Partner = { email, name: cleanText(input.name, 80) || (login?.kind === "owner" ? login.user.name : ""), code, approvedAt: now, approvedBy: by, hadAccount: login?.kind === "owner", ...(appId ? { appId } : {}), terms };
     await Promise.all([
       db.set(partnerKey(email), partner),
       db.set(codeKey(code), email),
@@ -504,6 +530,7 @@ const byNewest = <T extends { at: string }>(a: T, b: T) => (a.at < b.at ? 1 : -1
  * claimed by whoever signed up with it first: confirm the person before paying). A commission shows its customer's email
  * while that customer is still a referral; a deleted customer shows only the label. `tax`: the flags the founder checks
  * before a transfer (VAT-registered, outside Saudi Arabia, rule 412), and the VAT paid and withholding borne so far.
+ * `terms`: the partner's recorded agreement to the programme terms (rule 415), null when none was recorded.
  */
 export async function listPartners() {
   const emails = await db.smembers(PARTNERS);
@@ -522,7 +549,7 @@ export async function listPartners() {
     const rows = Object.values(ledgers[i]);
     const owner = owners[i];
     return [{
-      email: p.email, name: p.name, code: p.code, approvedAt: p.approvedAt, bank: p.bank ?? null, bankConfirmed: bankConfirmed(p.bank),
+      email: p.email, name: p.name, code: p.code, approvedAt: p.approvedAt, terms: p.terms ?? null, bank: p.bank ?? null, bankConfirmed: bankConfirmed(p.bank),
       accountAfterApproval: !!owner && (p.hadAccount === undefined ? owner.createdAt > p.approvedAt : !p.hadAccount), hasAccount: !!owner, referrals: refSets[i].length,
       ...balances(rows),
       tax: { ...taxFlags(p.bank), ...taxTotals(rows) },
@@ -557,7 +584,7 @@ export async function partnerDashboard(email: string, now: number = Date.now()) 
   return {
     code: partner.code, name: partner.name,
     bank: partner.bank ? {
-      holder: partner.bank.holder, iban: maskIban(partner.bank.iban), country: partner.bank.country ?? null, taxNumber: partner.bank.taxNumber ?? null,
+      holder: partner.bank.holder, iban: maskIban(partner.bank.iban), country: partner.bank.country ?? null, taxNumber: partner.bank.taxNumber ?? null, vatRegistered: !!partner.bank.vatRegistered,
       savedAt: partner.bank.savedAt, confirmed: bankConfirmed(partner.bank),
     } : null,
     referrals,
@@ -568,14 +595,15 @@ export async function partnerDashboard(email: string, now: number = Date.now()) 
   };
 }
 
-export type BankError = "not_partner" | "bad_holder" | "bad_iban" | "bad_country" | "bad_tax_number";
-export type BankInput = { holder?: unknown; iban?: unknown; country?: unknown; taxNumber?: unknown };
+export type BankError = "not_partner" | "bad_holder" | "bad_iban" | "bad_country" | "bad_tax_number" | "vat_number_required";
+export type BankInput = { holder?: unknown; iban?: unknown; country?: unknown; taxNumber?: unknown; vatRegistered?: unknown };
 /**
  * The partner's own payout details (rule 411): account holder, any country's valid IBAN, the country the partner lives
- * in, and an optional VAT or tax registration number. Never logged; the partner gets the IBAN back masked. Every save
- * clears the founder's confirmation, so no payout is marked paid to details nobody checked with the partner.
+ * in, an optional VAT or tax registration number and, separately, whether the partner is VAT-registered (only `true`
+ * counts; it needs the number). Never logged; the partner gets the IBAN back masked. Every save clears the founder's
+ * confirmation, so no payout is marked paid to details nobody checked with the partner.
  */
-export async function saveBank(email: string, input: BankInput): Promise<{ ok: true; bank: { holder: string; iban: string; country: string; taxNumber: string | null } } | { ok: false; error: BankError }> {
+export async function saveBank(email: string, input: BankInput): Promise<{ ok: true; bank: { holder: string; iban: string; country: string; taxNumber: string | null; vatRegistered: boolean } } | { ok: false; error: BankError }> {
   const holder = cleanText(input.holder, 80);
   if (holder.length < 2) return { ok: false, error: "bad_holder" };
   const iban = validIban(input.iban);
@@ -584,15 +612,17 @@ export async function saveBank(email: string, input: BankInput): Promise<{ ok: t
   if (!country) return { ok: false, error: "bad_country" };
   const taxNumber = taxNumberOf(input.taxNumber);
   if (taxNumber === "bad") return { ok: false, error: "bad_tax_number" };
+  const vatRegistered = input.vatRegistered === true;
+  if (vatRegistered && !taxNumber) return { ok: false, error: "vat_number_required" };
   const e = normalizeEmail(email);
   const res = await withPartnerLock(e, async () => {
     const p = await getPartner(e);
     if (!p) return false;
-    const bank: Bank = { holder, iban, country, ...(taxNumber ? { taxNumber } : {}), savedAt: new Date().toISOString() };
+    const bank: Bank = { holder, iban, country, ...(taxNumber ? { taxNumber } : {}), ...(vatRegistered ? { vatRegistered } : {}), savedAt: new Date().toISOString() };
     await db.set(partnerKey(e), { ...p, bank } satisfies Partner);
     return true;
   });
-  return res ? { ok: true, bank: { holder, iban: maskIban(iban), country, taxNumber: taxNumber ?? null } } : { ok: false, error: "not_partner" };
+  return res ? { ok: true, bank: { holder, iban: maskIban(iban), country, taxNumber: taxNumber ?? null, vatRegistered } } : { ok: false, error: "not_partner" };
 }
 
 // ---- Account deletion (src/lib/account.ts `wipeAccount`) ----

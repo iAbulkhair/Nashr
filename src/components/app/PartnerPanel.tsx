@@ -20,8 +20,9 @@ function CopyButton({ text, label, done }: { text: string; label: string; done: 
 /**
  * The partner page body (rules 399, 411-413). Everything shown comes from `partnerDashboard`: no customer name or email
  * (each referral is a stable label), the IBAN masked. The bank form posts to PUT /api/partner, owner only: any country's
- * IBAN, the country the partner lives in (the options come from the server, `countryOptions`) and an optional VAT or
- * tax registration number. The page links the programme terms.
+ * IBAN, the country the partner lives in (the options come from the server, `countryOptions`), an optional VAT or tax
+ * registration number and a separate "I am VAT-registered" box (a tax number alone flags nothing for the founder). The
+ * page links the programme terms.
  */
 export default function PartnerPanel({ lang, link, data, bankEditable, countries }: { lang: Lang; link: string; data: Data; bankEditable: boolean; countries: [string, string][] }) {
   const S = PARTNER_COPY[lang];
@@ -31,6 +32,7 @@ export default function PartnerPanel({ lang, link, data, bankEditable, countries
   const [iban, setIban] = useState("");
   const [country, setCountry] = useState(data.bank?.country ?? "SA");
   const [taxNumber, setTaxNumber] = useState(data.bank?.taxNumber ?? "");
+  const [vatRegistered, setVatRegistered] = useState(data.bank?.vatRegistered ?? false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,8 +41,8 @@ export default function PartnerPanel({ lang, link, data, bankEditable, countries
     if (busy) return;
     setBusy(true); setErr(""); setMsg("");
     try {
-      const res = await fetch("/api/partner", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ holder, iban, country, taxNumber }) });
-      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; bank?: { holder: string; iban: string; country: string; taxNumber: string | null } };
+      const res = await fetch("/api/partner", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ holder, iban, country, taxNumber, vatRegistered }) });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; bank?: { holder: string; iban: string; country: string; taxNumber: string | null; vatRegistered: boolean } };
       if (!j.ok || !j.bank) return setErr(S.errors[j.error ?? "server"] ?? S.errors.server);
       setBank({ ...j.bank, savedAt: new Date().toISOString(), confirmed: false });
       setIban("");
@@ -149,6 +151,7 @@ export default function PartnerPanel({ lang, link, data, bankEditable, countries
               </select>
             </label>
             <input value={taxNumber} onChange={(e) => setTaxNumber(e.target.value)} maxLength={30} autoComplete="off" dir="ltr" placeholder={S.taxNumber} aria-label={S.taxNumber} className="input font-mono" />
+            <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="vatRegistered" checked={vatRegistered} onChange={(e) => setVatRegistered(e.target.checked)} className="mt-1" /><span>{S.vatRegistered}</span></label>
             <button disabled={busy} className="btn btn-primary">{S.save}</button>
             {msg && <p className="text-sm text-oasis">{msg}</p>}
             {err && <p role="alert" className="text-sm text-sadu-deep">{err}</p>}
