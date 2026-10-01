@@ -328,9 +328,10 @@ export const isFounderActor = (u: User | null | undefined) => !!u?.actor && u.ac
  * session at once; removing the key disables the path. The raw key in the cookie is no longer accepted. The record is
  * stored under a hash of the id, so a read of the database does not hand out live cookies.
  *
- * Lifetime (founder decision 2026-10-01): the session ends after 15 minutes without an admin request
- * (`ADMIN_SESSION_IDLE`) and never lives past 12 hours from the key entry (`ADMIN_SESSION_MAX`). Every admin request
- * that finds the session live renews it, at most once a minute per session (`ADMIN_SESSION_RENEW`), with one
+ * Lifetime (founder decision 2026-10-01): the session ends after 15 minutes of inactivity (`ADMIN_SESSION_IDLE`) and
+ * never lives past 12 hours from the key entry (`ADMIN_SESSION_MAX`). Every admin request that finds the session live,
+ * and every request through a customer impersonation it opened (`keyImpLive`), renews it, at most once a minute per
+ * session (`ADMIN_SESSION_RENEW`), with one
  * `SET XX EX` that rewrites `seen` and the record's TTL; a request inside that minute writes nothing. The idle window
  * therefore counts from the last renewal: between 14 and 15 minutes after the last request, never longer. The record's
  * TTL never runs past the 12-hour cap, and both limits are also checked in code against `at` and `seen`, so a record
@@ -385,13 +386,22 @@ export async function adminKeySession(): Promise<boolean> {
   if (!sameSecret(rec.kp, adminKeyPrint(key))) return false;
   const now = Date.now();
   if (!adminSessionInTime(rec, now)) return false;
+  await renewAdminSession(k, rec, now);
+  return true;
+}
+
+/**
+ * Renew a live key session record: at most once per `ADMIN_SESSION_RENEW` seconds (a request inside that minute writes
+ * nothing), one `setXx` that rewrites `seen` and the TTL (the idle window cut at the 12-hour cap) only while the record
+ * still exists, so a renewal racing a logout never brings it back. A failed renewal only shortens the session; it never
+ * fails the request it rode on.
+ */
+async function renewAdminSession(k: string, rec: AdminSession, now: number): Promise<void> {
   const last = typeof rec.seen === "number" ? rec.seen : rec.at;
   const ttl = adminSessionTtl(rec, now);
   if (now - last >= ADMIN_SESSION_RENEW * 1000 && ttl > 0) {
-    // A failed renewal only shortens the session; it never fails the request it rode on.
     await db.setXx(k, { kp: rec.kp, at: rec.at, seen: now } satisfies AdminSession, ttl).catch(() => false);
   }
-  return true;
 }
 
 /**
@@ -410,6 +420,12 @@ export async function keyImpBinding(): Promise<{ kp: string; as?: string } | nul
 /**
  * An `imp: "key"` session works only while the key that opened it is still the current key and, when a key session
  * opened it, while that key session is still live. A record without `kp` (written before this check) is refused.
+ *
+ * The founder working in the customer view is not idle (founder decision 2026-10-01: the key session ends after 15
+ * minutes of INACTIVITY), so a request through an impersonation opened from a key session renews that key session the
+ * same way an admin request does (`renewAdminSession`: at most once a minute, `SET XX`, never past the 12-hour cap).
+ * The impersonation itself still ends 2 hours after it began, at "End key session", at a key rotation, and 15 minutes
+ * after the founder's last request on either side (rules 319, 325).
  */
 async function keyImpLive(s: Session): Promise<boolean> {
   const key = process.env.WAITLIST_ADMIN_KEY;
@@ -417,9 +433,14 @@ async function keyImpLive(s: Session): Promise<boolean> {
   const { sameSecret } = await import("./rate");
   if (!sameSecret(s.kp, adminKeyPrint(key))) return false;
   if (typeof s.as !== "string") return true;
-  const rec = await db.get<AdminSession>(`adminsession:${s.as}`);
-  // Read only: customer-side requests made while impersonating are not admin requests and do not renew the key session.
-  return !!rec && typeof rec.kp === "string" && sameSecret(rec.kp, s.kp) && adminSessionInTime(rec, Date.now());
+  if (!/^[0-9a-f]{64}$/.test(s.as)) return false;
+  const k = `adminsession:${s.as}`;
+  const rec = await db.get<AdminSession>(k);
+  if (!rec || typeof rec.kp !== "string" || !sameSecret(rec.kp, s.kp)) return false;
+  const now = Date.now();
+  if (!adminSessionInTime(rec, now)) return false;
+  await renewAdminSession(k, rec, now);
+  return true;
 }
 
 /** Log the key session out: the server record goes, so the same cookie value never works again. */

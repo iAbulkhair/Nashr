@@ -150,21 +150,79 @@ describe("the founder console's key session (rules 310-314, 319, 325)", () => {
     expect(await isAdminCookie(), "past 12 hours").toBe(false);
   });
 
-  it("325: an impersonation opened from a key session ends when that key session goes idle; customer requests do not renew it", async () => {
+  it("325: work in the customer view keeps the key session alive (one write a minute at most); 16 idle minutes end both", async () => {
     const users = await import("@/app/api/admin/users/[email]/route");
     const { currentUser } = await import("@/lib/auth");
     const customer = await createUser({ email: `idle-${Date.now().toString(36)}@test.example`, name: "Customer", phone: "", password: "abc12345", lang: "en" });
     vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
     const t0 = Date.now();
-    await adminSignIn();
+    const id = await adminSignIn();
+    const rec = `adminsession:${createHash("sha256").update(id).digest("hex")}`;
     const res = await users.POST(json("/api/admin/users/x", "POST", { action: "impersonate", reason: "support" }), { params: Promise.resolve({ email: encodeURIComponent(customer.email) }) });
     expect(res.status).toBe(200);
-    for (const m of [5, 10, 14]) {
-      vi.setSystemTime(t0 + m * 60 * 1000);
-      expect((await currentUser())?.email, `customer view at ${m} minutes`).toBe(customer.email);
+    // The founder is busy in the customer view for 40 minutes, never touching the console: the key session stays open.
+    const setXx = vi.spyOn(db, "setXx");
+    try {
+      for (const m of [5, 10, 14, 20, 28, 40]) {
+        vi.setSystemTime(t0 + m * 60 * 1000);
+        expect((await currentUser())?.email, `customer view at ${m} minutes`).toBe(customer.email);
+        expect((await currentUser())?.email, "a second request in the same minute").toBe(customer.email);
+      }
+      expect(setXx.mock.calls.every((c) => c[0] === rec), "only the key session's record is renewed").toBe(true);
+      expect(setXx, "one renewal per request minute, not per request").toHaveBeenCalledTimes(6);
+    } finally {
+      vi.restoreAllMocks();
     }
-    vi.setSystemTime(t0 + 16 * 60 * 1000);
-    expect(await currentUser(), "16 minutes without an admin request").toBeNull();
+    expect(await db.get(rec), "the key session is still there").not.toBeNull();
+    // 16 minutes without a request on either side: the impersonation and the key session end together.
+    vi.setSystemTime(t0 + 56 * 60 * 1000);
+    expect(await currentUser(), "16 idle minutes").toBeNull();
+    expect(await isAdminCookie(), "the key session went with it").toBe(false);
+  });
+
+  it("325: a customer request through a key impersonation never outruns the key session's 12-hour cap", async () => {
+    const users = await import("@/app/api/admin/users/[email]/route");
+    const { currentUser } = await import("@/lib/auth");
+    const customer = await createUser({ email: `cap-${Date.now().toString(36)}@test.example`, name: "Customer", phone: "", password: "abc12345", lang: "en" });
+    vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
+    const t0 = Date.now();
+    const id = await adminSignIn();
+    const rec = `adminsession:${createHash("sha256").update(id).digest("hex")}`;
+    // Twelve hours of console use (a request every 10 minutes), then an impersonation in its last minutes.
+    for (let m = 10; m < 12 * 60 - 5; m += 10) {
+      vi.setSystemTime(t0 + m * 60 * 1000);
+      expect(await isAdminCookie()).toBe(true);
+    }
+    vi.setSystemTime(t0 + (12 * 60 - 4) * 60 * 1000);
+    const res = await users.POST(json("/api/admin/users/x", "POST", { action: "impersonate" }), { params: Promise.resolve({ email: encodeURIComponent(customer.email) }) });
+    expect(res.status).toBe(200);
+    const setXx = vi.spyOn(db, "setXx");
+    try {
+      vi.setSystemTime(t0 + (12 * 60 - 2) * 60 * 1000);
+      expect((await currentUser())?.email).toBe(customer.email);
+      expect(setXx.mock.calls[0]?.[2], "the renewal's TTL stops at the cap").toBeLessThanOrEqual(2 * 60);
+    } finally {
+      vi.restoreAllMocks();
+    }
+    vi.setSystemTime(t0 + ADMIN_SESSION_MAX * 1000 + 1000);
+    expect(await currentUser(), "one second past 12 hours").toBeNull();
+    expect(await db.get(rec)).toBeNull();
+  });
+
+  it("325: the audit log states how long a key impersonation really lasts", async () => {
+    const users = await import("@/app/api/admin/users/[email]/route");
+    const customer = await createUser({ email: `audit-${Date.now().toString(36)}@test.example`, name: "Customer", phone: "", password: "abc12345", lang: "en" });
+    const entry = async () => (await db.lrange("admin:log", 0, 49)).map((r) => JSON.parse(r)).find((e) => e.email === customer.email && e.what === "impersonate");
+    await adminSignIn();
+    expect((await users.POST(json("/api/admin/users/x", "POST", { action: "impersonate" }), { params: Promise.resolve({ email: encodeURIComponent(customer.email) }) })).status).toBe(200);
+    expect(await entry()).toMatchObject({ actor: "key", expiresInMin: 120, idleMin: 15, endsWithKeySession: true });
+    // Opened with the header (no key session): 2 hours, tied to the key alone, no idle limit to report.
+    await db.del("admin:log");
+    signOut();
+    expect((await users.POST(json("/api/admin/users/x", "POST", { action: "impersonate" }, { "x-admin-key": KEY, ...ip() }), { params: Promise.resolve({ email: encodeURIComponent(customer.email) }) })).status).toBe(200);
+    const e = await entry();
+    expect(e).toMatchObject({ actor: "key", expiresInMin: 120 });
+    expect(e.idleMin).toBeUndefined();
   });
 
   it("313: rotating WAITLIST_ADMIN_KEY ends every key session; removing it disables the path", async () => {
@@ -236,6 +294,54 @@ describe("the founder console's key session (rules 310-314, 319, 325)", () => {
     expect(src).toContain("sameSecret(");
     expect(src).not.toMatch(/timingSafeEqual/);
     expect(src).not.toMatch(/jar\.set\(/);
+  });
+});
+
+describe("the console says when its session ended and links back in (rule 326)", () => {
+  it("adminFetch announces a 401 on window and passes every response through unchanged", async () => {
+    const { adminFetch, ADMIN_ENDED_EVENT } = await import("@/lib/admin-fetch");
+    const target = new EventTarget();
+    vi.stubGlobal("window", target);
+    let fired = 0;
+    target.addEventListener(ADMIN_ENDED_EVENT, () => fired++);
+    try {
+      const answer = (status: number) => (async () => Response.json({ ok: status === 200 }, { status })) as unknown as typeof fetch;
+      expect((await adminFetch("/api/admin/plan", undefined, answer(200))).status).toBe(200);
+      expect((await adminFetch("/api/admin/plan", undefined, answer(403))).status).toBe(403);
+      expect((await adminFetch("/api/admin/plan", undefined, answer(500))).status).toBe(500);
+      expect(fired, "only a 401 means the session ended").toBe(0);
+      const r = await adminFetch("/api/admin/evals", undefined, answer(401));
+      expect(r.status).toBe(401);
+      expect(await r.json()).toEqual({ ok: false });
+      expect(fired).toBe(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("the message is bilingual, names both limits, and the link goes to the key form or the sign-in page", async () => {
+    const { ADMIN_ENDED, adminEndedHref } = await import("@/lib/admin-fetch");
+    for (const lang of ["ar", "en"] as const) {
+      expect(ADMIN_ENDED[lang].key).toMatch(/15/);
+      expect(ADMIN_ENDED[lang].key).toMatch(/12/);
+      expect(ADMIN_ENDED[lang].founder.length).toBeGreaterThan(10);
+      expect(adminEndedHref(lang, true)).toBe(`/${lang}/app/admin?login=1`);
+      expect(adminEndedHref(lang, false)).toBe(`/${lang}/app/login`);
+    }
+    expect(ADMIN_ENDED.ar.key).toMatch(/[\u0600-\u06FF]/);
+    expect(ADMIN_ENDED.en.key).not.toMatch(/[\u0600-\u06FF]/);
+  });
+
+  it("every admin call in the console and its panels goes through adminFetch; a 401 shows the message, never an empty table", () => {
+    for (const f of ["AdminConsole", "GoldenPanel", "WishlistPanel"]) {
+      const src = readFileSync(`src/components/app/${f}.tsx`, "utf8");
+      expect(src, f).not.toMatch(/(?<![A-Za-z])fetch\(["`]\/api\/admin/);
+      expect(src, f).toMatch(/adminFetch\(["`]\/api\/admin/);
+    }
+    const src = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
+    expect(src).not.toMatch(/status === 401\) return setUsers\(\[\]\)/);
+    expect(src).toContain("window.addEventListener(ADMIN_ENDED_EVENT, onEnded)");
+    expect(src).toMatch(/if \(ended\) \{[\s\S]*?role="alert"[\s\S]*?adminEndedHref\(lang, keySession\)/);
   });
 });
 
