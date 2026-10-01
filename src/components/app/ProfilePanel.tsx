@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Lang } from "@/lib/i18n";
@@ -40,16 +40,21 @@ type Data = {
 function Card({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
   return <section className="card"><h2 className="font-display text-lg font-bold">{title}</h2>{sub && <p className="mt-1 text-sm text-ink/60">{sub}</p>}<div className="mt-3">{children}</div></section>;
 }
-const L = (k: string) => <label className="block text-xs font-semibold uppercase tracking-wide text-ink/50">{k}</label>;
+/** A field's visible label, linked to its control by `id` (#14): a screen reader reads it on focus, a click focuses the field. */
+const L = (k: string, id: string) => <label htmlFor={id} className="block text-xs font-semibold uppercase tracking-wide text-ink/50">{k}</label>;
 /** GET /api/profile: read on load and again after every save, so the form shows what the server stored. */
 const fetchProfile = () => fetch("/api/profile", { cache: "no-store" }).then((x) => x.json() as Promise<Data & { ok?: boolean }>);
 /** What PUT /api/profile answers: the stored values on 200, the refused field on 400. */
 type Saved = { ok?: boolean; error?: "required" | "bad_phone"; field?: string; saved?: { me: { name: string; lang: Lang }; phone?: string; emails?: string; brand?: Data["brand"] } };
 
-export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
+/** `initial`: the profile as GET /api/profile answers it, to render without a fetch (tests). */
+export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: Lang; initial?: Data }) {
   const ar = lang === "ar";
   const r = useRouter();
-  const [d, setD] = useState<Data | null>(null);
+  const [d, setD] = useState<Data | null>(initial ?? null);
+  // One id per control, so each label names exactly one field. Called before the early return: hooks run every render.
+  const uid = useId();
+  const fid = (k: string) => `${uid}-${k}`;
   const [msg, setMsg] = useState("");
   // Bumped after a save: the form's fields are uncontrolled (defaultValue), so a new key re-mounts them with the
   // values the server stored instead of what was typed.
@@ -81,6 +86,7 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
         : j.error === "required" && j.field === "business" ? (ar ? "اسم النشاط مطلوب. لم يُحفظ شيء." : "Business name is required. Nothing was saved.")
         : j.error === "required" && j.field === "name" ? (ar ? "الاسم الكامل مطلوب. لم يُحفظ شيء." : "Full name is required. Nothing was saved.")
         : (ar ? "تعذّر الحفظ. لم يُحفظ شيء، حاول مرة أخرى." : "Could not save. Nothing was saved; try again."));
+      if (j.field) document.getElementById(fid(j.field))?.focus();
       return;
     }
     // Show what the server stored: read the profile again, or at least apply the values the save answered with.
@@ -168,11 +174,11 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
 
         <Card title={ar ? "الحساب" : "Account"}>
           <div className="grid gap-3 sm:grid-cols-2">
-            <div>{L(ar ? "الاسم الكامل" : "Full name")}<input name="name" defaultValue={me.name} className={input} /></div>
-            <div>{L(ar ? "اسم النشاط" : "Business name")}<input name="business" defaultValue={d.brand?.name ?? ""} disabled={!brandEdit} className={input} /></div>
-            {owner && <div>{L(ar ? "رقم الجوال" : "Phone number")}<input name="phone" defaultValue={d.user.phone ?? ""} dir="ltr" className={input} /></div>}
-            <div>{L(ar ? "البريد" : "Email")}<input value={me.email} disabled dir="ltr" className={input + " opacity-60"} /></div>
-            <div>{L(owner ? (ar ? "لغة التطبيق والإيميلات" : "App and email language") : (ar ? "لغة التطبيق" : "App language"))}<select name="lang" defaultValue={me.lang} className={input}><option value="ar">العربية</option><option value="en">English</option></select></div>
+            <div>{L(ar ? "الاسم الكامل" : "Full name", fid("name"))}<input id={fid("name")} name="name" required defaultValue={me.name} className={input} /></div>
+            <div>{L(ar ? "اسم النشاط" : "Business name", fid("business"))}<input id={fid("business")} name="business" required defaultValue={d.brand?.name ?? ""} disabled={!brandEdit || !d.brand} className={input} /></div>
+            {owner && <div>{L(ar ? "رقم الجوال" : "Phone number", fid("phone"))}<input id={fid("phone")} name="phone" type="tel" autoComplete="tel" defaultValue={d.user.phone ?? ""} dir="ltr" className={input} /></div>}
+            <div>{L(ar ? "البريد" : "Email", fid("email"))}<input id={fid("email")} value={me.email} disabled dir="ltr" className={input + " opacity-60"} /></div>
+            <div>{L(owner ? (ar ? "لغة التطبيق والإيميلات" : "App and email language") : (ar ? "لغة التطبيق" : "App language"), fid("lang"))}<select id={fid("lang")} name="lang" defaultValue={me.lang} className={input}><option value="ar">العربية</option><option value="en">English</option></select></div>
           </div>
         </Card>
 
@@ -181,23 +187,23 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
         <fieldset disabled={!brandEdit} className="grid min-w-0 gap-5">
           <Card title={ar ? "حسابات التواصل" : "Social media"} sub={ar ? "حساباتك لتوليد المحتوى والجدولة." : "Your handles for content generation and scheduling."}>
             <div className="grid gap-3 sm:grid-cols-2">
-              {["instagram", "snapchat", "tiktok", "x", "linkedin"].map((k) => <div key={k}>{L(k === "x" ? "X (Twitter)" : k)}<input name={`social_${k}`} defaultValue={d.brand?.social?.[k] ?? ""} dir="ltr" placeholder="@" className={input} /></div>)}
+              {["instagram", "snapchat", "tiktok", "x", "linkedin"].map((k) => <div key={k}>{L(k === "x" ? "X (Twitter)" : k, fid(`social_${k}`))}<input id={fid(`social_${k}`)} name={`social_${k}`} defaultValue={d.brand?.social?.[k] ?? ""} dir="ltr" placeholder="@" className={input} /></div>)}
             </div>
           </Card>
 
           <Card title={ar ? "عن نشاطك" : "About your business"} sub={ar ? "يقرؤه الفريق كله في كل توليد. التفاصيل الكاملة في «ملف العلامة»." : "Read by the whole team on every generation. Full details live in “Brand file”."}>
             <div className="grid gap-3">
-              <div>{L(ar ? "وصف النشاط والمنتجات" : "Company description")}<textarea name="products" rows={3} defaultValue={d.brand?.products ?? ""} className={input} placeholder={ar ? "ماذا تبيع ولمن، بجملتين." : "What you sell and to whom, in two sentences."} /></div>
-              <div>{L(ar ? "العملاء المستهدفون" : "Target customers")}<textarea name="audience" rows={2} defaultValue={d.brand?.audience ?? ""} className={input} placeholder={ar ? "من عميلك المثالي؟" : "Who are your ideal customers?"} /></div>
-              <div>{L(ar ? "صوت العلامة" : "Brand voice")}<input name="tone" defaultValue={d.brand?.tone ?? ""} className={input} placeholder={ar ? "مثال: فاخر وودود، مباشر، شبابي" : "e.g. premium and warm, direct, playful"} /></div>
-              <div>{L(ar ? "القيمة المميزة" : "Value proposition")}<textarea name="valueProp" rows={2} defaultValue={d.brand?.valueProp ?? ""} className={input} placeholder={ar ? "لماذا يختارك العميل دون غيرك؟" : "Why does a customer choose you over the alternatives?"} /></div>
+              <div>{L(ar ? "وصف النشاط والمنتجات" : "Company description", fid("products"))}<textarea id={fid("products")} name="products" rows={3} defaultValue={d.brand?.products ?? ""} className={input} placeholder={ar ? "ماذا تبيع ولمن، بجملتين." : "What you sell and to whom, in two sentences."} /></div>
+              <div>{L(ar ? "العملاء المستهدفون" : "Target customers", fid("audience"))}<textarea id={fid("audience")} name="audience" rows={2} defaultValue={d.brand?.audience ?? ""} className={input} placeholder={ar ? "من عميلك المثالي؟" : "Who are your ideal customers?"} /></div>
+              <div>{L(ar ? "صوت العلامة" : "Brand voice", fid("tone"))}<input id={fid("tone")} name="tone" defaultValue={d.brand?.tone ?? ""} className={input} placeholder={ar ? "مثال: فاخر وودود، مباشر، شبابي" : "e.g. premium and warm, direct, playful"} /></div>
+              <div>{L(ar ? "القيمة المميزة" : "Value proposition", fid("valueProp"))}<textarea id={fid("valueProp")} name="valueProp" rows={2} defaultValue={d.brand?.valueProp ?? ""} className={input} placeholder={ar ? "لماذا يختارك العميل دون غيرك؟" : "Why does a customer choose you over the alternatives?"} /></div>
             </div>
           </Card>
 
           <Card title={ar ? "SEO والموقع" : "SEO & website configuration"} sub={ar ? "رابط موقعك وخريطته لروابط داخلية أفضل في المقالات واستيراد المنتجات." : "Your website URL and sitemap for better internal linking in SEO content and product import."}>
             <div className="grid gap-3 sm:grid-cols-2">
-              <div>{L(ar ? "رابط الموقع" : "Website URL")}<input name="website" defaultValue={d.brand?.website ?? ""} dir="ltr" placeholder="example.com" className={input} /></div>
-              <div>{L(ar ? "رابط خريطة الموقع" : "Sitemap URL")}<input name="sitemap" defaultValue={d.brand?.sitemap ?? ""} dir="ltr" placeholder="https://example.com/sitemap.xml" className={input} /></div>
+              <div>{L(ar ? "رابط الموقع" : "Website URL", fid("website"))}<input id={fid("website")} name="website" defaultValue={d.brand?.website ?? ""} dir="ltr" placeholder="example.com" className={input} /></div>
+              <div>{L(ar ? "رابط خريطة الموقع" : "Sitemap URL", fid("sitemap"))}<input id={fid("sitemap")} name="sitemap" defaultValue={d.brand?.sitemap ?? ""} dir="ltr" placeholder="https://example.com/sitemap.xml" className={input} /></div>
             </div>
           </Card>
         </fieldset>
@@ -207,8 +213,8 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
       {canPassword ? (
         <form onSubmit={password}><Card title={ar ? "كلمة المرور" : "Password"}>
           <div className="grid gap-3 sm:grid-cols-2">
-            <input name="currentPassword" type="password" required placeholder={ar ? "الحالية" : "Current"} className={input} />
-            <input name="newPassword" type="password" required minLength={8} placeholder={ar ? "الجديدة (8+)" : "New (8+)"} className={input} />
+            <div>{L(ar ? "كلمة المرور الحالية" : "Current password", fid("currentPassword"))}<input id={fid("currentPassword")} name="currentPassword" type="password" autoComplete="current-password" required className={input} /></div>
+            <div>{L(ar ? "كلمة المرور الجديدة (8 أحرف على الأقل)" : "New password (at least 8 characters)", fid("newPassword"))}<input id={fid("newPassword")} name="newPassword" type="password" autoComplete="new-password" required minLength={8} className={input} /></div>
           </div>
           <button className="mt-4 btn btn-secondary btn-sm">{ar ? "غيّر" : "Change"}</button>
         </Card></form>
