@@ -59,6 +59,30 @@ export async function withBellLock<T>(email: string, fn: () => Promise<T>): Prom
 }
 /** The marker that suppresses a repeat of one situation; exported so `wipeAccount` can name the ones it can list. */
 export const seenKey = (email: string, fingerprint: string) => `notifseen:${email}:${fingerprint}`;
+/**
+ * A brand-level situation's fingerprint (#15). The daily and weekly jobs run once per brand, but the marker
+ * `notifseen:{email}:...` is per account, so `due:{day}` claimed by the first brand silenced the same notice for every
+ * other brand of the account. An added brand (`email#brandId`) now adds its id; the default brand (scope = the account
+ * email) keeps the fingerprint it always had, so a notice it already sent today is not sent again on the day this ships.
+ * Account-level situations (`credits`, `trial`) keep a plain fingerprint: they describe the account, once.
+ */
+export const brandFingerprint = (scope: string, fp: string) => {
+  const i = scope.indexOf("#");
+  return i < 0 ? fp : `${fp}#${scope.slice(i + 1)}`;
+};
+/**
+ * The brand a brand-level notice is about, for its title: "" when the account has one active brand (nothing to tell
+ * apart), else the name the brand switcher shows (the name given to the brand, else its brand file's).
+ */
+export async function brandTag(email: string, scope: string): Promise<string> {
+  const rows = await listBrands(email);
+  if (rows.filter((b) => b.status === "active").length < 2) return "";
+  const row = rows.find((b) => scopeFor(email, b.id) === scope);
+  return (row?.name || (await getBrand(scope))?.name || "").trim().slice(0, 60);
+}
+/** A notice title with its brand named, when there is one to name. */
+export const withBrand = (title: string, tag: string) => (tag ? `${title} — ${tag}` : title);
+
 /** The 80% warning's fingerprint: one per brand scope, agent and month. */
 export const agentCapFingerprint = (scope: string, agent: AgentId, month: string) => `agentcap80:${scope}:${agent}:${month}`;
 
@@ -109,17 +133,19 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
   const out: Notif[] = [];
   const add = async (n: Omit<Notif, "id" | "at">, fp: string, ttl = 3) => { const x = await pushNotif(user.email, n, fp, ttl); if (x) out.push(x); };
+  // Due items and old approvals belong to this brand: its fingerprint and, on a multi-brand account, its name (#15).
+  const due = tasks.filter((t) => t.status === "approved" && (t.scheduledFor === today || t.scheduledFor === tomorrow) && !t.published);
+  const stale = tasks.filter((t) => t.status === "pending" && Date.now() - new Date(t.createdAt).getTime() > 48 * 36e5);
+  const tag = due.length || stale.length ? await brandTag(user.email, scope) : "";
 
   // 1. Scheduled items due today or tomorrow and not yet published through a connector.
-  const due = tasks.filter((t) => t.status === "approved" && (t.scheduledFor === today || t.scheduledFor === tomorrow) && !t.published);
   if (due.length) {
     const titles = due.slice(0, 3).map((t) => t.title).join(" · ");
-    await add({ kind: "due", agent: "noor", href: `${app}/calendar`, title: ar ? `${due.length} عنصر موعده اليوم أو غداً` : `${due.length} item(s) due today or tomorrow`, body: ar ? `انشرها الآن، فلا شيء يُنشر تلقائياً: ${titles}` : `Publish now; nothing goes out automatically: ${titles}` }, `due:${today}`, 2);
+    await add({ kind: "due", agent: "noor", href: `${app}/calendar`, title: withBrand(ar ? `${due.length} عنصر موعده اليوم أو غداً` : `${due.length} item(s) due today or tomorrow`, tag), body: ar ? `انشرها الآن، فلا شيء يُنشر تلقائياً: ${titles}` : `Publish now; nothing goes out automatically: ${titles}` }, brandFingerprint(scope, `due:${today}`), 2);
   }
   // 2. Approvals waiting more than 48 hours.
-  const stale = tasks.filter((t) => t.status === "pending" && Date.now() - new Date(t.createdAt).getTime() > 48 * 36e5);
   if (stale.length) {
-    await add({ kind: "pending", agent: "noor", href: app, title: ar ? `${stale.length} عنصر بانتظارك منذ أكثر من يومين` : `${stale.length} item(s) waiting for you for over 2 days`, body: ar ? "اعتمد أو ارفض مع سبب، وتتعلم نور من قرارك." : "Approve or reject with a reason; Noor learns from your decision." }, `pending:${Math.floor(stale.length / 5)}`, 3);
+    await add({ kind: "pending", agent: "noor", href: app, title: withBrand(ar ? `${stale.length} عنصر بانتظارك منذ أكثر من يومين` : `${stale.length} item(s) waiting for you for over 2 days`, tag), body: ar ? "اعتمد أو ارفض مع سبب، وتتعلم نور من قرارك." : "Approve or reject with a reason; Noor learns from your decision." }, brandFingerprint(scope, `pending:${Math.floor(stale.length / 5)}`), 3);
   }
   // 3. Low credits.
   if (user.credits < 10) {

@@ -5,12 +5,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const req = (chain = 0) => new Request(`https://nashr.example/api/cron/weekly${chain ? `?chain=${chain}` : ""}`, { headers: { authorization: "Bearer test" } });
 const items = Array.from({ length: 10 }, (_, i) => `user${i}`);
 let period = 0;
-let calls: string[] = [];
+/** Each hop the chain sent: where, and the Authorization header it carried (#41: the stub used to drop `init`). */
+let calls: { url: string; auth: string | null }[] = [];
 
 beforeEach(() => {
   period++;
   calls = [];
-  vi.stubGlobal("fetch", vi.fn(async (u: string) => { calls.push(String(u)); return new Response("{}"); }));
+  vi.stubGlobal("fetch", vi.fn(async (u: string, init?: RequestInit) => { calls.push({ url: String(u), auth: new Headers(init?.headers).get("authorization") }); return new Response("{}"); }));
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -29,7 +30,8 @@ describe("runCronBatch", () => {
     expect(first.processed).toBeLessThan(10);
     expect(first.chained).toBe(true);
     await sleep(10);
-    expect(calls[0]).toBe("https://nashr.example/api/cron/weekly?chain=1");
+    expect(calls[0].url).toBe("https://nashr.example/api/cron/weekly?chain=1");
+    expect(calls[0].auth, "a hop without the cron bearer is refused 401 and serves nobody (rule 379)").toBe("Bearer test");
     const second = await runCronBatch({ job: "t", period: `p${period}`, items, id: (x) => x, run, concurrency: 5, startBudgetMs: 5000, markerTtlSeconds: 60, req: req(1) });
     expect(second.alreadyDone).toBe(first.processed);
     expect(second.processed).toBe(10 - first.processed);
@@ -61,7 +63,7 @@ describe("runCronBatch", () => {
     const first = await runCronBatch({ ...o, period: `late${period}`, items: ["a", "b"], run: async (x) => { ran.push(x); return x === "a" ? "ok" : "retry:late"; }, req: req() });
     expect(first).toMatchObject({ processed: 1, remaining: 1, chained: true });
     await sleep(10);
-    expect(calls[0]).toBe("https://nashr.example/api/cron/weekly?chain=1");
+    expect(calls[0].url).toBe("https://nashr.example/api/cron/weekly?chain=1");
     // The late item kept its attempt: the next hop starts it.
     const second = await runCronBatch({ ...o, period: `late${period}`, items: ["a", "b"], run: async (x) => { ran.push(x); return "ok"; }, req: req(1) });
     expect(second).toMatchObject({ alreadyDone: 1, processed: 1, remaining: 0, chained: false });
@@ -101,7 +103,8 @@ describe("continuing the chain outside a request scope", () => {
     expect(r.chained, "there must be leftovers, or the fallback is never reached").toBe(true);
     await settle();
     expect(calls, "the fallback must fire the hop itself").toHaveLength(1);
-    expect(calls[0]).toContain("chain=1");
+    expect(calls[0].url).toContain("chain=1");
+    expect(calls[0].auth, "the fallback hop carries the cron bearer too, or the route answers 401 (rule 379)").toBe("Bearer test");
   });
 });
 
