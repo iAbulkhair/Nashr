@@ -7,7 +7,7 @@ import { EVENTS } from "./track";
 import { codeFor } from "./referral";
 import { monthKey } from "./credits";
 import { AGENTS, AGENT_IDS } from "./agents";
-import { usageMonthKeys } from "./usage";
+import { chatTrialKey, usageMonthKeys } from "./usage";
 import { autoHoldKey, routineFingerprints, routineKeys, routineSkipKeys } from "./routines";
 import { activityKey } from "./activity";
 import { agentCapFingerprint, seenKey } from "./notifications";
@@ -112,8 +112,10 @@ export async function wipeAccount(email: string) {
     `ulast:${e}`,
     `weeklylock:${e}`,
     ...EVENTS.flatMap((ev) => [`uev:${e}:${ev}`, `ufirst:${e}:${ev}`, `ufirst0:${e}:${ev}`]),
-    // Model-spend counters for the months this account could have been active.
+    // Model-spend counters for the months this account could have been active (the monthly chat messages among them),
+    // and the trial's chat messages, which are counted once for the trial and not per month.
     ...usageKeys(e),
+    chatTrialKey(e),
     // Lifetime thumbs counters from before the feedback log replaced them. No longer written, but never deleted either.
     ...AGENTS.flatMap((a) => [`fb:${e}:${a.id}:up`, `fb:${e}:${a.id}:down`]),
   );

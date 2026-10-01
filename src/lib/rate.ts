@@ -26,9 +26,10 @@ export const clientIp = (req: Request) =>
   (req.headers.get("x-forwarded-for") ?? "").split(",").pop()!.trim() || "unknown";
 
 /**
- * Chat turns per account. A turn is free in credits but is the most expensive call in the product (up to five model
- * calls with the full workspace in the prompt), so the spend of a single account is bounded here. Generous enough that
- * no real conversation hits it: the ceiling is roughly a day of continuous use.
+ * Chat turns per account, in a short window. A turn is the most expensive call in the product (up to five model calls
+ * with the full workspace in the prompt), so a burst from one account is bounded here, before the month's message
+ * allowance is touched (src/lib/chat-allowance.ts). Generous enough that no real conversation hits it: the ceiling is
+ * roughly a day of continuous use.
  */
 export const CHAT_PER_HOUR = 40;
 export const CHAT_PER_DAY = 200;
