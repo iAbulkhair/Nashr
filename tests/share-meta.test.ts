@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import type { Metadata } from "next";
 
 /**
- * Rules 359-362 (#45). Every shared link used to show the same card: og:title was the brand word on every page, with no
+ * Rules 359-362 and 366 (#45). Every shared link used to show the same card: og:title was the brand word on every page, with no
  * share image and no metadataBase. The layout now sets the base, the share image (src/app/[lang]/opengraph-image.png)
  * and a large twitter card, with no og title or description of its own, so Next fills them from each page's metadata.
  * The rendered tags are checked end to end in e2e/public-pages.spec.ts.
@@ -103,4 +104,44 @@ describe("rule 362: every public page with metadata names itself in both languag
       expect(titles[0]).not.toBe(titles[1]);
     });
   }
+});
+
+describe("rule 366: the default share card carries the public name and the founder's slogan, not an agent's tagline", () => {
+  const NO_AGENT_OR_MODEL = /نور|Noor|claude|anthropic|opus|sonnet|haiku|gpt|gemini/i;
+
+  it("the layout's default title and description (the homepage's og:title and og:description)", async () => {
+    const { generateMetadata } = await import("@/app/[lang]/layout");
+    const { SLOGAN_AR } = await import("@/lib/page-meta");
+    expect(SLOGAN_AR).toBe("ذكين. الذكي المكين.");
+    const ar = await generateMetadata(P("ar"));
+    expect(ar.title).toBe(SLOGAN_AR);
+    expect(String(ar.description).startsWith(SLOGAN_AR)).toBe(true);
+    const en = await generateMetadata(P("en"));
+    // No English slogan is approved in src/lib/i18n.ts, so English is the name with the existing English tagline.
+    const { dict } = await import("@/lib/i18n");
+    expect(dict.en.footer.tagline).not.toMatch(NO_AGENT_OR_MODEL);
+    expect(en.title).toBe(`Thakeen — ${dict.en.footer.tagline.replace(/\.$/, "")}`);
+    expect(en.description).toBe(`Thakeen. ${dict.en.footer.tagline}`);
+    for (const m of [ar, en]) {
+      expect(String(m.title)).not.toMatch(NO_AGENT_OR_MODEL);
+      expect(String(m.description)).not.toMatch(NO_AGENT_OR_MODEL);
+    }
+  });
+
+  it("the share image's alt text says the same, and the e2e default title matches the layout", async () => {
+    const alt = readFileSync(join(LANG_DIR, "opengraph-image.alt.txt"), "utf8");
+    expect(alt).toContain("ذكين. الذكي المكين.");
+    expect(alt).toContain("Thakeen. A marketing agent built for the Gulf.");
+    expect(alt).not.toMatch(NO_AGENT_OR_MODEL);
+    const { DEFAULT_TITLE } = await import("../e2e/fixtures/routes");
+    const { SITE_DEFAULT } = await import("@/lib/page-meta");
+    expect(DEFAULT_TITLE).toEqual({ ar: SITE_DEFAULT.ar.title, en: SITE_DEFAULT.en.title });
+  });
+
+  it("the share image is a new file, not the card with the agent's tagline", () => {
+    const png = readFileSync(join(LANG_DIR, "opengraph-image.png"));
+    // SHA-256 of the #45 card that read "نور، وكيلة تسويق للخليج / Noor, the AI marketing agent for the Gulf".
+    const OLD_CARD_SHA256 = "66093f6d401a0228cc8a57cf2c971cc8c31bb62a391a9bac89dd9e82a0cf40f6";
+    expect(createHash("sha256").update(png).digest("hex")).not.toBe(OLD_CARD_SHA256);
+  });
 });

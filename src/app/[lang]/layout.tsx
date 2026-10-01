@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import "../globals.css";
 import { LANGS, dict, isLang } from "@/lib/i18n";
 import { appOrigin } from "@/lib/origin";
+import { SITE_DEFAULT } from "@/lib/page-meta";
 
 const readex = Readex_Pro({ subsets: ["latin", "arabic"], weight: ["300", "500", "700"], variable: "--font-readex" });
 const plexArabic = IBM_Plex_Sans_Arabic({ subsets: ["latin", "arabic"], weight: ["400", "500", "600"], variable: "--font-plex-arabic" });
@@ -24,8 +25,9 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   // pages set only title, description and alternates (src/lib/page-meta.ts; tests/share-meta.test.ts).
   return {
     metadataBase: new URL(appOrigin()),
-    title: lang === "ar" ? "ذكين — نور، وكيلة تسويق للخليج" : "Thakeen — Noor, the AI marketing agent for the Gulf",
-    description: t.hero.sub,
+    // The public name and the founder's slogan (2026-10-01), not an agent's tagline: src/lib/page-meta.ts `SITE_DEFAULT`.
+    title: SITE_DEFAULT[lang].title,
+    description: SITE_DEFAULT[lang].description,
     alternates: { languages: { ar: "/ar", en: "/en" } },
     other: { google: "notranslate" },
     openGraph: { siteName: t.brand, type: "website", locale: lang === "ar" ? "ar_SA" : "en_US", alternateLocale: lang === "ar" ? "en_US" : "ar_SA" },

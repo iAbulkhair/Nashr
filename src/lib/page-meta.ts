@@ -1,5 +1,20 @@
 import type { Metadata } from "next";
-import type { Lang } from "./i18n";
+import { dict, type Lang } from "./i18n";
+
+/** The founder's slogan (decision of 2026-10-01). Arabic only: there is no approved English slogan in src/lib/i18n.ts. */
+export const SLOGAN_AR = "ذكين. الذكي المكين.";
+
+/**
+ * The site's default title and description, shown by any page without metadata of its own (the homepage) and copied by
+ * Next into og:title and og:description for its share card (founder decision 2026-10-01). Arabic is the public name with
+ * the slogan; English is the name with the site's existing English tagline (the footer's), since no English slogan has
+ * been approved. Neither names an agent or a model: the share card speaks for the product, and the image says the same
+ * (src/app/[lang]/opengraph-image.png and its alt text; tests/share-meta.test.ts).
+ */
+export const SITE_DEFAULT: Record<Lang, { title: string; description: string }> = {
+  ar: { title: SLOGAN_AR, description: `${SLOGAN_AR} ${dict.ar.footer.tagline}` },
+  en: { title: `Thakeen — ${dict.en.footer.tagline.replace(/\.$/, "")}`, description: `Thakeen. ${dict.en.footer.tagline}` },
+};
 
 /**
  * Metadata for one public page at `/{lang}{path}` (#45): its own title and description, its canonical URL, and hreflang

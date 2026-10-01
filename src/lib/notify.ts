@@ -79,18 +79,34 @@ async function mailFailed(from: string, reason: string) {
  * The marker is re-read under the claim: a run that sent and released between this run's first read and its claim has
  * marked it by then. A process that dies between the send and the marker can send once more after the claim expires,
  * which is the lesser failure: a duplicate note against a note that never arrives.
+ *
+ * Burned markers (founder decision 2026-10-01). A marker the old guard wrote proves nothing was delivered: RESEND_API_KEY
+ * arrived on 2026-09-18, MAIL_FROM never did, so every such marker stands for a refused send (the one exception is the
+ * Resend account owner's own address, which may get that one note twice). `markSent` now stores a dated record
+ * (`{ sent }`), which the old guard never wrote, so the two are told apart by the value alone. When mail can reach
+ * customers (`mailReady()`) and the message is due again (the callers only ask for due messages: the nudge while the
+ * account has no brand, a lifecycle note inside its window), an old-guard marker is cleared ONCE, under the claim, and
+ * the message goes out through the normal path. The once-only part is a 400-day repair flag per (account, message)
+ * (`onceRepairKey`, SET NX): a second run, a second instance, or a send that is refused after the repair can never clear
+ * an old marker again. A marker written by `markSent` is never cleared.
  */
 export async function sendOnce(email: string, key: string, subject: string, text: string): Promise<OnceResult> {
   const marker = onceKey(email, key);
-  if (await db.get(marker)) return "already";
+  if (!repairable(await db.get(marker))) return "already";
   const claim = onceClaimKey(email, key);
   const token = await db.lockOwned(claim, ONCE_CLAIM_TTL_SECONDS);
   if (!token) return "busy";
   try {
     // The suffix is caller-chosen (`nudge1`, `lifecycle:day1`, …) and the store has no key scan, so the name is recorded
-    // before anything else is written: an account deletion finds the marker and the claim through this index.
+    // before anything else is written: an account deletion finds the marker, the claim and the repair flag through it.
     await db.sadd(ONCE_INDEX(email), key);
-    if (await db.get(marker)) return "already";
+    const held = await db.get(marker);
+    if (!repairable(held)) return "already";
+    if (held !== null && held !== undefined) {
+      // An old-guard marker on a message that is due again: clear it once, never twice.
+      if (!(await db.lock(onceRepairKey(email, key), ONCE_TTL_SECONDS))) return "already";
+      await db.del(marker);
+    }
     if (!(await sendEmail(email, subject, text))) return "failed";
     await markSent(email, key);
     return "sent";
@@ -100,13 +116,26 @@ export async function sendOnce(email: string, key: string, subject: string, text
 }
 export type OnceResult = "sent" | "already" | "busy" | "failed";
 
+/** What `markSent` stores: the moment Resend accepted the message. The old claim-before-send guard stored a bare lock. */
+type SentRecord = { sent: string };
+/** Whether a marker value was written by `markSent`, i.e. after Resend accepted the message. */
+export const confirmedMarker = (v: unknown): v is SentRecord => typeof v === "object" && v !== null && typeof (v as SentRecord).sent === "string";
+/**
+ * Whether `sendOnce` may go on with this marker value: no marker, or an old-guard marker (no proof of delivery) while mail
+ * can reach customers. The repair flag is checked under the claim, not here.
+ */
+const repairable = (v: unknown) => v === null || v === undefined || (!confirmedMarker(v) && mailReady());
+
 /** Record a named one-time email as sent. Only `sendOnce` calls this in the product, after Resend accepted the message. */
 export async function markSent(email: string, key: string): Promise<void> {
-  await Promise.all([db.lock(onceKey(email, key), ONCE_TTL_SECONDS), db.sadd(ONCE_INDEX(email), key)]);
+  const record: SentRecord = { sent: new Date().toISOString() };
+  await Promise.all([db.set(onceKey(email, key), record, ONCE_TTL_SECONDS), db.sadd(ONCE_INDEX(email), key)]);
 }
 export const onceKey = (email: string, key: string) => `notified:${email}:${key}`;
 /** The in-flight claim for one named email. Short: it only has to outlast one send (`EMAIL_TIMEOUT_MS`) and the marker write. */
 export const onceClaimKey = (email: string, key: string) => `notifying:${email}:${key}`;
+/** Set the one time an old-guard (burned) marker for this message was cleared, so it is never cleared again. */
+export const onceRepairKey = (email: string, key: string) => `notifyrepair:${email}:${key}`;
 export const ONCE_INDEX = (email: string) => `notifiedkeys:${email}`;
 /** Long enough that a "once ever" nudge is never repeated in practice, short enough that the key does not outlive the account. */
 const ONCE_TTL_SECONDS = 400 * 86400;

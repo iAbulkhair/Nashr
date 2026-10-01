@@ -15,8 +15,9 @@ export type PublicRoute = {
 
 /** The title the root layout applies when a page exports no metadata of its own. */
 export const DEFAULT_TITLE: Record<Lang, string> = {
-  en: "Thakeen — Noor, the AI marketing agent for the Gulf",
-  ar: "ذكين — نور، وكيلة تسويق للخليج",
+  // The public name and the founder's slogan (2026-10-01): src/lib/page-meta.ts `SITE_DEFAULT`.
+  en: "Thakeen — A marketing agent built for the Gulf",
+  ar: "ذكين. الذكي المكين.",
 };
 
 export const PUBLIC_ROUTES: PublicRoute[] = [
