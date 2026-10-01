@@ -213,7 +213,7 @@ export async function sessionCookie(maxAge: number) {
 /**
  * Sign this login in. `email` is the login's own address (owner or member), never an account email chosen for a member.
  * `imp` marks a founder impersonation session (admin console only): it resolves to actor kind "founder". One opened
- * with the console key also carries `kp` and `as` from `keyImpBinding` (rule 319).
+ * with the console key also carries `kp` and `as` from `keyImpBinding` (rule 429).
  */
 export async function createSession(email: string, ttlSeconds: number = SESSION_TTL, opts: { imp?: string; kp?: string; as?: string } = {}) {
   const token = randomBytes(32).toString("hex");
@@ -306,7 +306,7 @@ export async function getLogin(email: string): Promise<Login | null> {
  * Founder accounts: ADMIN_EMAILS (comma-separated). Fails closed: with the variable unset or empty no email is a
  * founder, and only the console key (WAITLIST_ADMIN_KEY) opens the console. There is no default address in the code,
  * so a fresh or restored database, a preview or a fork never hands the console to whoever registers a listed email.
- * Rule 315, tests/launch-security.test.ts.
+ * Rule 425, tests/launch-security.test.ts.
  */
 export function adminEmails(): string[] {
   return (process.env.ADMIN_EMAILS ?? "").split(",").map((e) => normalizeEmail(e)).filter(Boolean);
@@ -319,7 +319,7 @@ export const isFounder = (email: string | undefined | null) => !!email && adminE
 export const isFounderActor = (u: User | null | undefined) => !!u?.actor && u.actor.kind === "owner" && u.actor.email === u.email && isFounder(u.actor.email);
 
 /**
- * The founder console's key session (rules 310-314, 325, tests/launch-security.test.ts).
+ * The founder console's key session (rules 420-424, 435, tests/launch-security.test.ts).
  *
  * The key form (POST /api/admin/login) used to put WAITLIST_ADMIN_KEY itself in this cookie for 30 days, so anyone who
  * copied the cookie held the master key, and "log out" only deleted it in one browser. Now the cookie holds a random
@@ -405,7 +405,7 @@ async function renewAdminSession(k: string, rec: AdminSession, now: number): Pro
 }
 
 /**
- * What ties an impersonation session opened with the console key to that key (rule 319): `kp`, the key's fingerprint,
+ * What ties an impersonation session opened with the console key to that key (rule 429): `kp`, the key's fingerprint,
  * and, when the console's key session opened it, `as`, the hash its server record is stored under. Without this the
  * 2-hour customer session outlived both "End key session" and a key rotation. Null when no key is set.
  */
@@ -425,7 +425,7 @@ export async function keyImpBinding(): Promise<{ kp: string; as?: string } | nul
  * minutes of INACTIVITY), so a request through an impersonation opened from a key session renews that key session the
  * same way an admin request does (`renewAdminSession`: at most once a minute, `SET XX`, never past the 12-hour cap).
  * The impersonation itself still ends 2 hours after it began, at "End key session", at a key rotation, and 15 minutes
- * after the founder's last request on either side (rules 319, 325).
+ * after the founder's last request on either side (rules 429, 435).
  */
 async function keyImpLive(s: Session): Promise<boolean> {
   const key = process.env.WAITLIST_ADMIN_KEY;

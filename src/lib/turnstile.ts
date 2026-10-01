@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { clientIp } from "./rate";
 
 /**
- * Cloudflare Turnstile on signup and forgot-password (rules 316-318, tests/launch-security.test.ts; issue #49, the
+ * Cloudflare Turnstile on signup and forgot-password (rules 426-428, tests/launch-security.test.ts; issue #49, the
  * interim brake until email verification exists).
  *
  * On only when BOTH keys are set: TURNSTILE_SITE_KEY (public, handed to the form by the server page as a prop) and

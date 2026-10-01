@@ -2,7 +2,7 @@ import type { Lang } from "@/lib/i18n";
 import { RULE_TEXT, rulesStatus } from "@/lib/auth-client";
 
 /**
- * The password rules with a state that does not depend on colour (rule 324): a visible check or cross, the words
+ * The password rules with a state that does not depend on colour (rule 434): a visible check or cross, the words
  * "met" / "not met" for screen readers inside each item, and ONE live status line whose text changes ("2 of 3 password
  * rules met"). The list itself is not live: its text used to stay the same while only the colour changed, so a screen
  * reader announced nothing. The password inputs carry no native `minLength`: the browser would block the submit with

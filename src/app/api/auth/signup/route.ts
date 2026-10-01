@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   // Phone is optional at signup (asked later inside onboarding); validate only when given.
   if (b.phone && String(b.phone).replace(/\D/g, "").length < 9) return NextResponse.json({ ok: false, error: "bad_phone" }, { status: 400 });
   // Cloudflare Turnstile when both keys are set (src/lib/turnstile.ts): checked before the address is looked up, so a
-  // script can neither create accounts nor learn which addresses exist without passing it. Rule 316.
+  // script can neither create accounts nor learn which addresses exist without passing it. Rule 426.
   const refused = await captchaRefusal(req, b.turnstile);
   if (refused) return refused;
   // An email is ONE login across owner accounts and member logins (docs/superpowers/specs/2026-09-29-teams-design.md §3).

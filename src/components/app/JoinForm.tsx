@@ -69,7 +69,7 @@ export default function JoinForm({ t, lang, signedInAs }: { t: AppDict; lang: La
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!name.trim()) return;
-    // The button stays focusable (aria-disabled), so pressing it early says which rules are still unmet (rule 324).
+    // The button stays focusable (aria-disabled), so pressing it early says which rules are still unmet (rule 434).
     if (!checks.every(Boolean)) { setErr(unmetRules(checks, J.rules, lang)); pwRef.current?.focus(); return; }
     setBusy(true);
     setErr("");

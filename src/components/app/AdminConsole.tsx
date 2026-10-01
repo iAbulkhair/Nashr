@@ -124,7 +124,7 @@ export default function AdminConsole({ lang = "en", keySession = false }: { lang
   const [mediaErr, setMediaErr] = useState("");
   const [evals, setEvals] = useState<{ agents: AM[]; users: { email: string; label: string; suspended: boolean; archived: boolean; n: number; decided: number; approvalRate: number | null; judged: number; avgScore: number | null }[] } | null>(null);
 
-  // Set when any admin call answers 401 (`adminFetch`, rule 326): the key session went idle or the founder's sign-in
+  // Set when any admin call answers 401 (`adminFetch`, rule 436): the key session went idle or the founder's sign-in
   // ended. The console then says so and links back in, never an empty user table or a bare "unauthorized".
   const [ended, setEnded] = useState(false);
   useEffect(() => {

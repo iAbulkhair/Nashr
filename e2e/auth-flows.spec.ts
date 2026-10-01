@@ -94,7 +94,7 @@ test.describe("signup", () => {
   });
 
   /**
-   * Rule 324: the rules are not colour-only. Each item says "met" / "not met" in its text, one live line counts them,
+   * Rule 434: the rules are not colour-only. Each item says "met" / "not met" in its text, one live line counts them,
    * and the submit button stays focusable (aria-disabled) and says which rules are unmet when pressed early.
    */
   test("the password rules say met or not met in text, and an early press names the unmet ones", async ({ page }) => {
@@ -267,7 +267,7 @@ test.describe("forgot password", () => {
 });
 
 /**
- * Rule 323: a failed request never leaves an auth form stuck. These answers are forced with route interception (no
+ * Rule 433: a failed request never leaves an auth form stuck. These answers are forced with route interception (no
  * request reaches the server, so no throttle budget is used): a rate limit, a dropped connection and a gateway's HTML
  * error page each get their own message, and the button comes back.
  */

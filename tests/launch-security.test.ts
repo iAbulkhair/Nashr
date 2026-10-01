@@ -10,7 +10,7 @@ import * as overview from "@/app/api/admin/overview/route";
 import * as log from "@/app/api/admin/log/route";
 
 /**
- * Launch security (rules 310-329, docs/system/tests.md): the founder console's key session, the admin email list that
+ * Launch security (rules 420-436, docs/system/tests.md): the founder console's key session, the admin email list that
  * fails closed, Cloudflare Turnstile on signup and forgot-password, the auth forms' error states, and production never
  * running on the memory store or the model mock.
  */
@@ -22,10 +22,10 @@ const ip = () => ({ "x-real-ip": `198.51.100.${++ipN}` });
 
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
 
-describe("the founder console's key session (rules 310-314, 319, 325)", () => {
+describe("the founder console's key session (rules 420-424, 429, 435)", () => {
   beforeEach(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); signOut(); });
 
-  it("310: a right key sets an opaque session id, never the key, and opens the console", async () => {
+  it("420: a right key sets an opaque session id, never the key, and opens the console", async () => {
     const res = await adminLogin.POST(json("/api/admin/login", "POST", { key: KEY }, ip()));
     expect(res.status).toBe(200);
     const cookie = jar().get("nashr_admin")!;
@@ -38,7 +38,7 @@ describe("the founder console's key session (rules 310-314, 319, 325)", () => {
     expect(await db.get(`adminsession:${cookie}`)).toBeNull();
   });
 
-  it("310: a wrong key, a prefix of it and a non-string key are refused and set no cookie", async () => {
+  it("420: a wrong key, a prefix of it and a non-string key are refused and set no cookie", async () => {
     const h = ip();
     for (const key of [KEY.slice(0, -1), `${KEY}x`, "", 12345, null]) {
       expect((await adminLogin.POST(json("/api/admin/login", "POST", { key }, h))).status).toBe(401);
@@ -46,7 +46,7 @@ describe("the founder console's key session (rules 310-314, 319, 325)", () => {
     expect(jar().has("nashr_admin")).toBe(false);
   });
 
-  it("311: logging out deletes the server record, so putting the same cookie back opens nothing", async () => {
+  it("421: logging out deletes the server record, so putting the same cookie back opens nothing", async () => {
     const id = await adminSignIn();
     expect(await isAdminCookie()).toBe(true);
     expect((await adminLogin.DELETE()).status).toBe(200);
@@ -57,7 +57,7 @@ describe("the founder console's key session (rules 310-314, 319, 325)", () => {
     expect((await log.GET(json("/api/admin/log", "GET"))).status).toBe(401);
   });
 
-  it("312: a key session ends after 15 minutes without an admin request; each admin request renews it", async () => {
+  it("422: a key session ends after 15 minutes without an admin request; each admin request renews it", async () => {
     expect(ADMIN_SESSION_IDLE).toBe(15 * 60);
     vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
     const min = (n: number) => vi.setSystemTime(Date.now() + n * 60 * 1000);
@@ -81,7 +81,7 @@ describe("the founder console's key session (rules 310-314, 319, 325)", () => {
     expect(await db.get(`adminsession:${createHash("sha256").update(id).digest("hex")}`), "the record expired").toBeNull();
   });
 
-  it("312: no key session outlives 12 hours from the key entry, however busy", async () => {
+  it("422: no key session outlives 12 hours from the key entry, however busy", async () => {
     expect(ADMIN_SESSION_MAX).toBe(12 * 3600);
     vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
     const t0 = Date.now();
@@ -104,7 +104,7 @@ describe("the founder console's key session (rules 310-314, 319, 325)", () => {
     expect(readFileSync("src/lib/auth.ts", "utf8")).toMatch(/jar\.set\(ADMIN_COOKIE, id, await sessionCookie\(ADMIN_SESSION_MAX\)\)/);
   });
 
-  it("325: renewing is one Redis write at most once a minute, never brings back a logged-out session, and holds old records to both limits", async () => {
+  it("435: renewing is one Redis write at most once a minute, never brings back a logged-out session, and holds old records to both limits", async () => {
     expect(ADMIN_SESSION_RENEW).toBe(60);
     vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
     const id = await adminSignIn();
@@ -150,7 +150,7 @@ describe("the founder console's key session (rules 310-314, 319, 325)", () => {
     expect(await isAdminCookie(), "past 12 hours").toBe(false);
   });
 
-  it("325: work in the customer view keeps the key session alive (one write a minute at most); 16 idle minutes end both", async () => {
+  it("435: work in the customer view keeps the key session alive (one write a minute at most); 16 idle minutes end both", async () => {
     const users = await import("@/app/api/admin/users/[email]/route");
     const { currentUser } = await import("@/lib/auth");
     const customer = await createUser({ email: `idle-${Date.now().toString(36)}@test.example`, name: "Customer", phone: "", password: "abc12345", lang: "en" });
@@ -180,7 +180,7 @@ describe("the founder console's key session (rules 310-314, 319, 325)", () => {
     expect(await isAdminCookie(), "the key session went with it").toBe(false);
   });
 
-  it("325: a customer request through a key impersonation never outruns the key session's 12-hour cap", async () => {
+  it("435: a customer request through a key impersonation never outruns the key session's 12-hour cap", async () => {
     const users = await import("@/app/api/admin/users/[email]/route");
     const { currentUser } = await import("@/lib/auth");
     const customer = await createUser({ email: `cap-${Date.now().toString(36)}@test.example`, name: "Customer", phone: "", password: "abc12345", lang: "en" });
@@ -209,7 +209,7 @@ describe("the founder console's key session (rules 310-314, 319, 325)", () => {
     expect(await db.get(rec)).toBeNull();
   });
 
-  it("325: the audit log states how long a key impersonation really lasts", async () => {
+  it("435: the audit log states how long a key impersonation really lasts", async () => {
     const users = await import("@/app/api/admin/users/[email]/route");
     const customer = await createUser({ email: `audit-${Date.now().toString(36)}@test.example`, name: "Customer", phone: "", password: "abc12345", lang: "en" });
     const entry = async () => (await db.lrange("admin:log", 0, 49)).map((r) => JSON.parse(r)).find((e) => e.email === customer.email && e.what === "impersonate");
@@ -225,7 +225,7 @@ describe("the founder console's key session (rules 310-314, 319, 325)", () => {
     expect(e.idleMin).toBeUndefined();
   });
 
-  it("313: rotating WAITLIST_ADMIN_KEY ends every key session; removing it disables the path", async () => {
+  it("423: rotating WAITLIST_ADMIN_KEY ends every key session; removing it disables the path", async () => {
     await adminSignIn();
     expect(await isAdminCookie()).toBe(true);
     vi.stubEnv("WAITLIST_ADMIN_KEY", "a-brand-new-admin-key-987654");
@@ -237,7 +237,7 @@ describe("the founder console's key session (rules 310-314, 319, 325)", () => {
     expect(await isAdminCookie()).toBe(false);
   });
 
-  it("314: the raw key in the cookie (what a browser kept from before) opens nothing; the header still works", async () => {
+  it("424: the raw key in the cookie (what a browser kept from before) opens nothing; the header still works", async () => {
     jar().set("nashr_admin", KEY);
     expect(await isAdminCookie()).toBe(false);
     expect((await overview.GET(json("/api/admin/overview", "GET"))).status).toBe(401);
@@ -245,7 +245,7 @@ describe("the founder console's key session (rules 310-314, 319, 325)", () => {
     expect((await overview.GET(json("/api/admin/overview", "GET", undefined, { "x-admin-key": KEY, ...ip() }))).status).toBe(200);
   });
 
-  it("319: an impersonation opened with the key ends with the key session's logout and with a key rotation", async () => {
+  it("429: an impersonation opened with the key ends with the key session's logout and with a key rotation", async () => {
     const users = await import("@/app/api/admin/users/[email]/route");
     const { currentUser } = await import("@/lib/auth");
     const customer = await createUser({ email: `imp-${Date.now().toString(36)}@test.example`, name: "Customer", phone: "", password: "abc12345", lang: "en" });
@@ -289,7 +289,7 @@ describe("the founder console's key session (rules 310-314, 319, 325)", () => {
     expect(await currentUser()).toBeNull();
   });
 
-  it("314: the login route compares with sameSecret and stores no key", () => {
+  it("424: the login route compares with sameSecret and stores no key", () => {
     const src = readFileSync("src/app/api/admin/login/route.ts", "utf8");
     expect(src).toContain("sameSecret(");
     expect(src).not.toMatch(/timingSafeEqual/);
@@ -297,7 +297,7 @@ describe("the founder console's key session (rules 310-314, 319, 325)", () => {
   });
 });
 
-describe("the console says when its session ended and links back in (rule 326)", () => {
+describe("the console says when its session ended and links back in (rule 436)", () => {
   it("adminFetch announces a 401 on window and passes every response through unchanged", async () => {
     const { adminFetch, ADMIN_ENDED_EVENT } = await import("@/lib/admin-fetch");
     const target = new EventTarget();
@@ -345,7 +345,7 @@ describe("the console says when its session ended and links back in (rule 326)",
   });
 });
 
-describe("founder emails fail closed (rule 315)", () => {
+describe("founder emails fail closed (rule 425)", () => {
   it("with ADMIN_EMAILS unset or empty no email is a founder, and the old default address gets 401 everywhere", async () => {
     vi.stubEnv("WAITLIST_ADMIN_KEY", KEY);
     vi.stubEnv("ADMIN_EMAILS", "");
@@ -380,7 +380,7 @@ describe("founder emails fail closed (rule 315)", () => {
   });
 });
 
-describe("production never runs on the memory store (rule 320)", () => {
+describe("production never runs on the memory store (rule 430)", () => {
   const noRedis = () => { for (const k of ["KV_REST_API_URL", "KV_REST_API_TOKEN", "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"]) vi.stubEnv(k, ""); };
 
   it("a production deployment without Redis credentials rejects every call with store_not_configured", async () => {
@@ -410,7 +410,7 @@ describe("production never runs on the memory store (rule 320)", () => {
   });
 });
 
-describe("production never answers with the model mock (rule 321)", () => {
+describe("production never answers with the model mock (rule 431)", () => {
   it("no key in a production deployment is 'paused', never 'mock'; elsewhere the dev mock stays", async () => {
     const { modelState } = await import("@/lib/model");
     vi.stubEnv("ANTHROPIC_API_KEY", "");
@@ -454,7 +454,7 @@ describe("production never answers with the model mock (rule 321)", () => {
   });
 });
 
-describe("the waitlist keeps email addresses out of the logs (rule 322)", () => {
+describe("the waitlist keeps email addresses out of the logs (rule 432)", () => {
   it("stores through the shared store and never logs the record", async () => {
     const waitlist = await import("@/app/api/waitlist/route");
     const logs = [vi.spyOn(console, "log").mockImplementation(() => {}), vi.spyOn(console, "info").mockImplementation(() => {}), vi.spyOn(console, "error").mockImplementation(() => {})];
@@ -472,7 +472,7 @@ describe("the waitlist keeps email addresses out of the logs (rule 322)", () => 
   });
 });
 
-describe("the auth forms never get stuck and say what went wrong (rule 323)", () => {
+describe("the auth forms never get stuck and say what went wrong (rule 433)", () => {
   it("postJson never throws: a dropped connection is status 0, an HTML error page is an empty body", async () => {
     const { postJson } = await import("@/lib/auth-client");
     const dropped = (async () => { throw new TypeError("Failed to fetch"); }) as unknown as typeof fetch;
@@ -513,7 +513,7 @@ describe("the auth forms never get stuck and say what went wrong (rule 323)", ()
   });
 });
 
-describe("password rules are not colour-only (rule 324)", () => {
+describe("password rules are not colour-only (rule 434)", () => {
   it("the client checks agree with the server's strongPassword", async () => {
     const { passwordChecks } = await import("@/lib/auth-client");
     const { strongPassword } = await import("@/lib/auth");
@@ -559,14 +559,14 @@ describe("password rules are not colour-only (rule 324)", () => {
   });
 });
 
-describe("Cloudflare Turnstile on signup and forgot-password (rules 316-318)", () => {
+describe("Cloudflare Turnstile on signup and forgot-password (rules 426-428)", () => {
   const SITE = "0x4AAAAAAAtestsitekey", SECRET = "0x4AAAAAAAtestsecret";
   const on = () => { vi.stubEnv("TURNSTILE_SITE_KEY", SITE); vi.stubEnv("TURNSTILE_SECRET_KEY", SECRET); };
   const answer = (body: unknown, status = 200) => vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
   const fresh = () => `ts-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}@test.example`;
   afterEach(() => vi.restoreAllMocks());
 
-  it("316: with either key unset nothing is checked (fail open) and the form gets no site key", async () => {
+  it("426: with either key unset nothing is checked (fail open) and the form gets no site key", async () => {
     const { turnstileSiteKey, verifyTurnstile } = await import("@/lib/turnstile");
     const signup = await import("@/app/api/auth/signup/route");
     const f = vi.spyOn(globalThis, "fetch");
@@ -580,7 +580,7 @@ describe("Cloudflare Turnstile on signup and forgot-password (rules 316-318)", (
     expect(f).not.toHaveBeenCalled();
   });
 
-  it("316: signup without a token, or with a rejected one, is 400 captcha_failed and creates no account", async () => {
+  it("426: signup without a token, or with a rejected one, is 400 captcha_failed and creates no account", async () => {
     on();
     signOut();
     const signup = await import("@/app/api/auth/signup/route");
@@ -597,7 +597,7 @@ describe("Cloudflare Turnstile on signup and forgot-password (rules 316-318)", (
     expect(jar().has("nashr_session")).toBe(false);
   });
 
-  it("316: a passed check creates the account; the verify call goes to Cloudflare's fixed URL as a form with secret, token and IP", async () => {
+  it("426: a passed check creates the account; the verify call goes to Cloudflare's fixed URL as a form with secret, token and IP", async () => {
     on();
     signOut();
     const signup = await import("@/app/api/auth/signup/route");
@@ -616,7 +616,7 @@ describe("Cloudflare Turnstile on signup and forgot-password (rules 316-318)", (
     expect(Object.fromEntries(form)).toEqual({ secret: SECRET, response: "good-token", remoteip: "203.0.113.9" });
   });
 
-  it("316: Cloudflare not answering, an error status or a non-JSON body is 503 captcha_unavailable; an overlong token is refused unasked", async () => {
+  it("426: Cloudflare not answering, an error status or a non-JSON body is 503 captcha_unavailable; an overlong token is refused unasked", async () => {
     on();
     const { verifyTurnstile } = await import("@/lib/turnstile");
     const signup = await import("@/app/api/auth/signup/route");
@@ -639,7 +639,7 @@ describe("Cloudflare Turnstile on signup and forgot-password (rules 316-318)", (
     expect(await verifyTurnstile("tok", "unknown")).toBe("failed");
   });
 
-  it("317: forgot-password checks the token before the per-address limit and the lookup; a refusal reveals nothing", async () => {
+  it("427: forgot-password checks the token before the per-address limit and the lookup; a refusal reveals nothing", async () => {
     on();
     const forgot = await import("@/app/api/auth/forgot/route");
     const f = answer({ success: false });
@@ -658,7 +658,7 @@ describe("Cloudflare Turnstile on signup and forgot-password (rules 316-318)", (
     expect(((await ok.json()) as { ok: boolean }).ok).toBe(true);
   });
 
-  it("317: the per-IP limit runs before the token check, so a flood of junk tokens from one IP stops calling Cloudflare", async () => {
+  it("427: the per-IP limit runs before the token check, so a flood of junk tokens from one IP stops calling Cloudflare", async () => {
     on();
     const forgot = await import("@/app/api/auth/forgot/route");
     // A fresh Response per call: a body can be read only once.
@@ -675,7 +675,7 @@ describe("Cloudflare Turnstile on signup and forgot-password (rules 316-318)", (
     expect(f).toHaveBeenCalledTimes(8);
   });
 
-  it("317: the pages hand the form the site key only when both keys are set", () => {
+  it("427: the pages hand the form the site key only when both keys are set", () => {
     for (const page of ["signup", "forgot"]) {
       const src = readFileSync(`src/app/[lang]/app/${page}/page.tsx`, "utf8");
       expect(src).toContain("turnstileKey={turnstileSiteKey()}");
@@ -686,7 +686,7 @@ describe("Cloudflare Turnstile on signup and forgot-password (rules 316-318)", (
     for (const f of ["src/components/app/AuthForm.tsx", "src/components/app/Turnstile.tsx"]) expect(readFileSync(f, "utf8")).not.toContain("TURNSTILE_SECRET_KEY");
   });
 
-  it("318: the security headers do not block the Turnstile script or iframe", async () => {
+  it("428: the security headers do not block the Turnstile script or iframe", async () => {
     const config = (await import("../next.config")).default;
     const rules = await config.headers!();
     const csp = rules.flatMap((r) => r.headers).find((h) => h.key.toLowerCase() === "content-security-policy")?.value ?? "";

@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 // The CSP sets no default-src, script-src, frame-src or connect-src, so the Cloudflare Turnstile widget on signup and
 // forgot-password (script and iframe from https://challenges.cloudflare.com, src/components/app/Turnstile.tsx) loads.
-// Adding any of those directives means allowing that origin too: rule 318, tests/launch-security.test.ts.
+// Adding any of those directives means allowing that origin too: rule 428, tests/launch-security.test.ts.
 const SECURITY_HEADERS = [
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
   { key: "X-Content-Type-Options", value: "nosniff" },

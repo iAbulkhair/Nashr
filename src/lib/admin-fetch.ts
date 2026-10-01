@@ -1,5 +1,5 @@
 /**
- * The founder console's fetch (rule 326). A key session ends after 15 minutes of inactivity (rule 312), so a console
+ * The founder console's fetch (rule 436). A key session ends after 15 minutes of inactivity (rule 422), so a console
  * left open starts getting 401 from every admin API. Every admin call in the console and its panels goes through
  * `adminFetch`, which announces a 401 on `window` (`ADMIN_ENDED_EVENT`); the console then shows `ADMIN_ENDED` with a
  * link back to the key form (`adminEndedHref`) instead of an empty user table or a raw "unauthorized". Client-safe: no

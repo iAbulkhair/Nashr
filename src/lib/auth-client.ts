@@ -1,6 +1,6 @@
 /**
  * What the sign-up, log-in, forgot and reset forms (src/components/app/AuthForm.tsx) share. Import-free, so the client
- * bundle can use it, and pure, so tests/launch-security.test.ts pins it (rules 323-324).
+ * bundle can use it, and pure, so tests/launch-security.test.ts pins it (rules 433-434).
  *
  * The forms used to await `fetch` and `res.json()` with nothing around them: a dropped connection or an HTML 502 page
  * threw, the button stayed disabled and no message appeared. The log-in form also showed "wrong email or password"

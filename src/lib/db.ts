@@ -372,7 +372,7 @@ function unconfigured(): Store {
 /**
  * Upstash when its credentials are set. Without them: the memory store everywhere except a Vercel PRODUCTION deployment
  * (`VERCEL_ENV === "production"`), which gets `unconfigured()`. Local dev, vitest, CI and the e2e suite run with no
- * `VERCEL_ENV` and keep the memory store. Rule 320, tests/launch-security.test.ts.
+ * `VERCEL_ENV` and keep the memory store. Rule 430, tests/launch-security.test.ts.
  */
 function pickStore(): Store {
   const u = upstash();

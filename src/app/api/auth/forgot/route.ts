@@ -28,11 +28,11 @@ export async function POST(req: Request) {
   const mail = mailReady();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ ok: false, error: "bad_email" }, { status: 400 });
   // The per-IP limit comes first: every token sent costs an outbound siteverify call to Cloudflare (up to 5 s, carrying
-  // the site's secret), so a script must not be able to make those calls without limit. Rule 317.
+  // the site's secret), so a script must not be able to make those calls without limit. Rule 427.
   if (!(await allow(`forgot:ip:${clientIp(req)}`, 8, 900))) return NextResponse.json({ ok: true, mail });
   // Cloudflare Turnstile when both keys are set (src/lib/turnstile.ts), before the per-address limit: a script without a
   // token cannot use up an address's three links per 15 minutes. The answer says nothing about whether the address
-  // exists. Rule 317.
+  // exists. Rule 427.
   const refused = await captchaRefusal(req, b.turnstile);
   if (refused) return refused;
   if (!(await allow(`forgot:em:${email}`, 3, 900))) return NextResponse.json({ ok: true, mail });

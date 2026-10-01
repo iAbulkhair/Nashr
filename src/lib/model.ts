@@ -17,7 +17,7 @@ export type ModelState = "on" | "paused" | "mock";
 /**
  * "mock" only where no customer can be: no key and not a Vercel production deployment (a laptop, vitest, CI, the e2e
  * suite). A production deployment without ANTHROPIC_API_KEY answers "paused", so every surface refuses before a credit
- * moves (rule 76) and no [DEV MOCK] item, chat reply or brand file is ever saved for a customer. Rule 321,
+ * moves (rule 76) and no [DEV MOCK] item, chat reply or brand file is ever saved for a customer. Rule 431,
  * tests/launch-security.test.ts.
  */
 export function modelState(): ModelState {

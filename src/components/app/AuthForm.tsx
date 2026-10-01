@@ -103,7 +103,7 @@ export function LoginForm({ t, lang }: { t: AppDict; lang: Lang }) {
     try {
       const p = await postJson("/api/auth/login", Object.fromEntries(new FormData(e.currentTarget)));
       // "Wrong email or password" only for a 401: a rate limit, a dropped connection and a server error each say so,
-      // so a customer with the right password is not sent to a reset (rule 323).
+      // so a customer with the right password is not sent to a reset (rule 433).
       if (!succeeded(p)) return setErr(authMessage(failureCode(p), lang, { invalid: t.login.invalid, suspended: t.login.suspended }));
       if (next) { window.location.href = next; return; }
       r.push(`/${lang}/app`);

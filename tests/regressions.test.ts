@@ -136,7 +136,7 @@ describe("the Shopify callback only ever talks to a Shopify host", () => {
   });
 });
 
-describe("the admin cookie is a server-side key session, never the key itself (rule 314)", () => {
+describe("the admin cookie is a server-side key session, never the key itself (rule 424)", () => {
   it("refuses the raw key and a prefix of a session id, and accepts only a live session", async () => {
     const prev = process.env.WAITLIST_ADMIN_KEY;
     process.env.WAITLIST_ADMIN_KEY = "s3cret-admin-key";

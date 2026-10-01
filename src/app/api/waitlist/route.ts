@@ -9,7 +9,7 @@ const EMAIL_SET = "waitlist:emails";
 
 // The shared store (src/lib/db.ts), not a client of its own: the same keys as before, the memory store in development,
 // and a loud failure in a production deployment without Redis. The record is never written to the logs: it holds an
-// email address. Rule 322, tests/launch-security.test.ts.
+// email address. Rule 432, tests/launch-security.test.ts.
 
 export async function POST(req: Request) {
   // Public, unauthenticated write: throttled per IP like every other open endpoint.
