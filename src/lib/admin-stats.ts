@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { getUser, type AgencyDeal, type Plan } from "./auth";
-import { SAR_PER_USD, allowanceOf, priceOf, seatLimit } from "./pricing";
+import { SAR_PER_USD, allowanceOf, chatAllowanceOf, priceOf, seatLimit } from "./pricing";
 import { getBrand, listLite, TASK_COST, TASK_COUNT, IMAGE_COST } from "./brand";
 import { getUsage } from "./usage";
 import { pmap } from "./parallel";
@@ -133,15 +133,30 @@ export async function overview(): Promise<Overview> {
 export const csvSafe = (v: string) => (/^[=+\-@\t\r]/.test(v) && !/^[+-]?\d[\d\s.-]*$/.test(v) ? `'${v}` : v); // plain phone numbers and negative numbers stay as they are
 
 /** One users-export row: the stored account fields the CSV reads (a `User` from `getUser` fits). */
-export type CsvUserRow = { email: string; name: string; phone: string; plan: Plan; credits: number; trialEnds: string; createdAt: string; renewedAt?: string; deal?: AgencyDeal | null; seats?: number };
+export type CsvUserRow = { email: string; name: string; phone: string; plan: Plan; credits: number; trialEnds: string; createdAt: string; renewedAt?: string; deal?: AgencyDeal | null; seats?: number; chatAllowance?: number };
 
 /**
- * The founder's users export. monthly_price_sar = `priceOf`, monthly_credits = `allowanceOf`, seats = `seatLimit`, and
- * deal = "credits@priceSar" for an Agency deal (empty otherwise). Every cell goes through `csvSafe`.
+ * The founder's users export. monthly_price_sar = `priceOf`, monthly_credits = `allowanceOf`, chat_allowance =
+ * `chatAllowanceOf` (the founder override, else the plan's messages: per month, or for the whole trial), seats =
+ * `seatLimit`, and deal = "credits@priceSar" for an Agency deal (empty otherwise). Every cell goes through `csvSafe`.
  */
 export function usersCsv(rows: CsvUserRow[]) {
   const esc = (v: unknown) => `"${csvSafe(String(v ?? "")).replace(/"/g, '""')}"`;
-  const head = ["email", "name", "phone", "plan", "credits", "trial_ends", "created_at", "renewed_at", "monthly_price_sar", "monthly_credits", "seats", "deal"].join(",");
+  const head = ["email", "name", "phone", "plan", "credits", "trial_ends", "created_at", "renewed_at", "monthly_price_sar", "monthly_credits", "chat_allowance", "seats", "deal"].join(",");
   const deal = (r: CsvUserRow) => (r.deal ? `${r.deal.credits}@${r.deal.priceSar}` : "");
-  return [head, ...rows.map((r) => [r.email, r.name, r.phone, r.plan, r.credits, r.trialEnds.slice(0, 10), r.createdAt.slice(0, 10), r.renewedAt ?? "", priceOf(r), allowanceOf(r), seatLimit(r), deal(r)].map(esc).join(","))].join("\n");
+  return [head, ...rows.map((r) => [r.email, r.name, r.phone, r.plan, r.credits, r.trialEnds.slice(0, 10), r.createdAt.slice(0, 10), r.renewedAt ?? "", priceOf(r), allowanceOf(r), chatAllowanceOf(r), seatLimit(r), deal(r)].map(esc).join(","))].join("\n");
+}
+
+/**
+ * What one chat message cost this month, for the founder console (rule 316): the month's chat model cost over every
+ * message the account sent, inside the allowance and past it on credits. Inside, the RAW count (`ChatStatus.counted`),
+ * never `used`: `used` is clamped to the allowance, so after the founder lowered it mid-month (400 sent, now 100
+ * allowed) dividing by `used` would show four times the real cost. Null when nothing was sent, never a division by 0;
+ * rounded to 1/100 of a cent. On a trial `counted` is the whole trial's while the cost is this month's, so across a
+ * month boundary it reads low.
+ */
+export function chatUsdPerMessage(chatUsd: number, s: { counted: number; overflow: { used: number } }): number | null {
+  const n = Math.max(0, s.counted) + Math.max(0, s.overflow.used);
+  const usd = Number.isFinite(chatUsd) ? Math.max(0, chatUsd) : 0;
+  return n > 0 ? Math.round((usd / n) * 1e4) / 1e4 : null;
 }

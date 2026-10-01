@@ -5,6 +5,8 @@ import { ADMIN_SESSION_IDLE, adminActor, createSession, getUser, isAdmin, keyImp
 import { revokeAllMcp } from "@/lib/mcp";
 import { getBrand, listTasks } from "@/lib/brand";
 import { getUsage } from "@/lib/usage";
+import { chatStatus } from "@/lib/chat-allowance";
+import { chatUsdPerMessage } from "@/lib/admin-stats";
 import { listConnections } from "@/lib/connectors/store";
 import { listBrands, scopeFor } from "@/lib/brands";
 import { listConversations } from "@/lib/conversations";
@@ -35,9 +37,12 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
   const brands = await listBrands(u.email);
   const scopes = brands.map((b) => scopeFor(u.email, b.id));
   const tasks = (await Promise.all(scopes.map((s) => listTasks(s)))).flat().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  const [brand, usage, connections, convs, referrals, activity] = await Promise.all([
+  const [brand, usage, chat, connections, convs, referrals, activity] = await Promise.all([
     getBrand(u.email),
     getUsage(u.email),
+    // The chat allowance (a trial's for the whole trial, which the month's usage does not keep): the raw count
+    // (`counted`), the messages continued on credits this month and the credits they were billed. Rule 316.
+    chatStatus(u),
     listConnections(u.email),
     Promise.all(scopes.map((s) => listConversations(s))).then((x) => x.flat().length),
     db.lrange(`referrals:${u.email}`, 0, 99).then((x) => x.length),
@@ -48,7 +53,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
   const { passHash: _omit, ...safe } = u;
   void _omit;
   return NextResponse.json({
-    ok: true, user: safe, brand, tasks, usage, connections, brands, conversations: convs, referrals, activity,
+    ok: true, user: safe, brand, tasks, usage, chat, connections, brands, conversations: convs, referrals, activity,
+    // What one chat message cost this month, over every message sent (the raw count and those on credits), as the list shows.
+    chatUsdPerMsg: chatUsdPerMessage(usage.byKind.chat?.usd ?? 0, chat),
     avgScore: scores.length ? Math.round(scores.reduce((s, x) => s + x, 0) / scores.length) : null,
   });
 }

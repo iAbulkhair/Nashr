@@ -8,7 +8,7 @@ import * as auth from "@/lib/auth";
 import { getUser, saveUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { monthKey, renewIfDue } from "@/lib/credits";
-import { overview, usersCsv } from "@/lib/admin-stats";
+import { chatUsdPerMessage, overview, usersCsv } from "@/lib/admin-stats";
 import { newUser } from "./helpers/session";
 
 /**
@@ -207,17 +207,29 @@ describe("founder reporting reads priceOf (rules 242-243)", () => {
     expect(after.revenue.planMix.enterprise).toBeUndefined();
   });
 
-  it("the users CSV carries price, credits, seats and deal columns, every cell through csvSafe", () => {
+  it("the users CSV carries price, credits, chat allowance, seats and deal columns, every cell through csvSafe", () => {
     const base = { name: "Test", phone: "", credits: 10, trialEnds: "2026-10-01T00:00:00.000Z", createdAt: "2026-09-01T00:00:00.000Z" };
     const csv = usersCsv([
-      { ...base, email: "a@test.example", plan: "agency", deal: deal(3003, 2000), seats: 12 },
+      { ...base, email: "a@test.example", plan: "agency", deal: deal(3003, 2000), seats: 12, chatAllowance: 5000 },
       { ...base, email: "b@test.example", plan: "business", name: "=HYPERLINK(\"http://x\")" },
       { ...base, email: "c@test.example", plan: "agency" },
+      { ...base, email: "d@test.example", plan: "trial", chatAllowance: 0 },
     ]);
-    const [head, a, b, c] = csv.split("\n");
-    expect(head).toBe("email,name,phone,plan,credits,trial_ends,created_at,renewed_at,monthly_price_sar,monthly_credits,seats,deal");
-    expect(a).toBe('"a@test.example","Test","","agency","10","2026-10-01","2026-09-01","","2000","3003","12","3003@2000"');
-    expect(b).toBe('"b@test.example","\'=HYPERLINK(""http://x"")","","business","10","2026-10-01","2026-09-01","","999","1500","7",""');
-    expect(c).toBe('"c@test.example","Test","","agency","10","2026-10-01","2026-09-01","","999","1500","7",""');
+    const [head, a, b, c, d] = csv.split("\n");
+    expect(head).toBe("email,name,phone,plan,credits,trial_ends,created_at,renewed_at,monthly_price_sar,monthly_credits,chat_allowance,seats,deal");
+    expect(a).toBe('"a@test.example","Test","","agency","10","2026-10-01","2026-09-01","","2000","3003","5000","12","3003@2000"');
+    expect(b).toBe('"b@test.example","\'=HYPERLINK(""http://x"")","","business","10","2026-10-01","2026-09-01","","999","1500","1300","7",""');
+    expect(c).toBe('"c@test.example","Test","","agency","10","2026-10-01","2026-09-01","","999","1500","1300","7",""');
+    expect(d, "an override of 0 (chat stopped) is written as 0, not as the plan's").toBe('"d@test.example","Test","","trial","10","2026-10-01","2026-09-01","","0","50","0","3",""');
+  });
+
+  it("the console's cost per chat message divides by the raw count and the messages on credits, never the clamped count (rule 316)", () => {
+    // 25 counted after the allowance was lowered to 10, and 5 more on credits: $0.06 over 30 messages, not over 10 + 5.
+    expect(chatUsdPerMessage(0.06, { counted: 25, overflow: { used: 5 } })).toBe(0.002);
+    expect(chatUsdPerMessage(0.06, { counted: 0, overflow: { used: 6 } }), "only messages on credits").toBe(0.01);
+    expect(chatUsdPerMessage(0.06, { counted: 0, overflow: { used: 0 } }), "nothing sent: no cost per message, no division by 0").toBeNull();
+    expect(chatUsdPerMessage(0, { counted: 3, overflow: { used: 0 } })).toBe(0);
+    for (const usd of [NaN, Infinity, -1]) expect(chatUsdPerMessage(usd, { counted: 3, overflow: { used: 0 } }), String(usd)).toBe(0);
+    expect(chatUsdPerMessage(0.06, { counted: -4, overflow: { used: 3 } }), "a negative count reads as 0").toBe(0.02);
   });
 });
