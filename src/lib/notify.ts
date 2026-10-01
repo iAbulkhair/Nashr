@@ -66,18 +66,48 @@ async function mailFailed(from: string, reason: string) {
   ).catch(() => {});
 }
 
-/** Once-only guard for a named notification per user. */
-export async function once(email: string, key: string): Promise<boolean> {
-  // One atomic step, not read-then-write: two cron runs overlapping on the same user would otherwise both see nothing
-  // and both send. `lock` is SET NX EX, so exactly one caller gets true, and the TTL bounds a marker that used to live
-  // for ever.
-  const first = await db.lock(onceKey(email, key), ONCE_TTL_SECONDS);
-  // The suffix is caller-chosen (`weekly:2026-09-20`, `nudge1`, …) and the store has no key scan, so the names are
-  // recorded here; without this an account deletion cannot find them and the address outlives the account.
-  if (first) await db.sadd(ONCE_INDEX(email), key);
-  return first;
+/**
+ * A named one-time email per user (the signup nudge, each lifecycle note), marked as sent only after Resend accepted it.
+ *
+ * The old guard (`once()`) claimed a 400-day marker and THEN sent. Resend refuses every recipient but the account owner
+ * while MAIL_FROM is unset, and `sendEmail` answers false for that, but the marker was already taken: every nudge and
+ * trial note refused since 2026-09-18 was recorded as done and would never have been retried. Now it is claim, send,
+ * confirm:
+ * - a short claim (`ONCE_CLAIM_TTL_SECONDS`, SET NX with an owner token) so two overlapping cron runs cannot both send;
+ * - the long marker only once `sendEmail` answered true (Resend accepted it);
+ * - the claim released either way, so a refused or timed-out send is tried again on the next run.
+ * The marker is re-read under the claim: a run that sent and released between this run's first read and its claim has
+ * marked it by then. A process that dies between the send and the marker can send once more after the claim expires,
+ * which is the lesser failure: a duplicate note against a note that never arrives.
+ */
+export async function sendOnce(email: string, key: string, subject: string, text: string): Promise<OnceResult> {
+  const marker = onceKey(email, key);
+  if (await db.get(marker)) return "already";
+  const claim = onceClaimKey(email, key);
+  const token = await db.lockOwned(claim, ONCE_CLAIM_TTL_SECONDS);
+  if (!token) return "busy";
+  try {
+    // The suffix is caller-chosen (`nudge1`, `lifecycle:day1`, …) and the store has no key scan, so the name is recorded
+    // before anything else is written: an account deletion finds the marker and the claim through this index.
+    await db.sadd(ONCE_INDEX(email), key);
+    if (await db.get(marker)) return "already";
+    if (!(await sendEmail(email, subject, text))) return "failed";
+    await markSent(email, key);
+    return "sent";
+  } finally {
+    await db.unlockOwned(claim, token).catch(() => {});
+  }
+}
+export type OnceResult = "sent" | "already" | "busy" | "failed";
+
+/** Record a named one-time email as sent. Only `sendOnce` calls this in the product, after Resend accepted the message. */
+export async function markSent(email: string, key: string): Promise<void> {
+  await Promise.all([db.lock(onceKey(email, key), ONCE_TTL_SECONDS), db.sadd(ONCE_INDEX(email), key)]);
 }
 export const onceKey = (email: string, key: string) => `notified:${email}:${key}`;
+/** The in-flight claim for one named email. Short: it only has to outlast one send (`EMAIL_TIMEOUT_MS`) and the marker write. */
+export const onceClaimKey = (email: string, key: string) => `notifying:${email}:${key}`;
 export const ONCE_INDEX = (email: string) => `notifiedkeys:${email}`;
 /** Long enough that a "once ever" nudge is never repeated in practice, short enough that the key does not outlive the account. */
 const ONCE_TTL_SECONDS = 400 * 86400;
+export const ONCE_CLAIM_TTL_SECONDS = 120;

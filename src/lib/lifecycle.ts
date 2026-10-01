@@ -1,6 +1,6 @@
 import type { User } from "./auth";
 import { getBrand, listLiteDays } from "./brand";
-import { once, sendEmail } from "./notify";
+import { mailReady, sendOnce } from "./notify";
 import { PLAN_CREDITS, PLAN_PRICE_SAR, formatCount } from "./pricing";
 
 /**
@@ -64,7 +64,9 @@ export function lifecyclePlan(u: Pick<User, "createdAt" | "trialEnds" | "plan">,
 }
 
 export async function runLifecycle(u: User): Promise<string[]> {
-  if (!process.env.RESEND_API_KEY) return [];
+  // Mail that can reach the customer, not merely a key: without MAIL_FROM Resend refuses every address but its owner's,
+  // so each due note would be refused (and logged as refused) on every run until the sender is set.
+  if (!mailReady()) return [];
   // Decide first, read second. On most days nothing is due for a given account, and this runs for every brand on
   // every daily cron: reading each workspace's task history to then send nothing is what exhausted the chain's 30
   // hops at roughly 2,232 brands, leaving everyone past that point with no lifecycle mail at all.
@@ -76,12 +78,12 @@ export async function runLifecycle(u: User): Promise<string[]> {
   // change what any of them say; it only stops the read growing with the age of the workspace.
   const tasks = await listLiteDays(u.scope ?? u.email, 90);
   const ctx = { firstTitle: tasks.at(-1)?.title, pending: tasks.filter((x) => x.status === "pending").length, approved: tasks.filter((x) => x.status === "approved").length, trialEnds: u.trialEnds.slice(0, 10) };
-  const sent: string[] = [];
-  for (const [key, due] of plan) {
-    if (!due) continue;
-    if (!(await once(u.email, `lifecycle:${key}`))) continue;
+  // Marked as sent only when Resend accepted it (src/lib/notify.ts `sendOnce`): a refused note is tried again tomorrow,
+  // while its window lasts. The due notes go out side by side; rarely more than one is due.
+  const due = plan.filter(([, d]) => d).map(([key]) => key);
+  const results = await Promise.all(due.map(async (key) => {
     const tpl = t(u, key, ctx);
-    if (tpl && (await sendEmail(u.email, tpl.subject, tpl.body))) sent.push(key);
-  }
-  return sent;
+    return tpl && (await sendOnce(u.email, `lifecycle:${key}`, tpl.subject, tpl.body)) === "sent" ? key : null;
+  }));
+  return results.filter((k): k is string => k !== null);
 }

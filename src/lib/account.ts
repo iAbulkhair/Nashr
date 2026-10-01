@@ -16,6 +16,7 @@ import { forgetWishlistUser } from "./wishlist";
 import { forgetDueScope, secretaryKeys } from "./secretary";
 import { handoffKeys } from "./handoffs";
 import { proposalKeys } from "./brand-proposals";
+import { ONCE_INDEX, onceClaimKey, onceKey } from "./notify";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -85,9 +86,10 @@ export async function wipeAccount(email: string) {
       `onboardplan:${s}`, `pending:${s}`, `pendingidx:${s}`, `tidxm:${s}`, `tidxv:${s}`, `tasks:${s}`, `files:${s}`, `brand:${s}`, `prefs:${s}`, `chat:${s}`, `convs:${s}`, `gov:${s}`, `schedule:${s}`, `brief:${s}`, `conns:${s}`,
     );
   });
-  // Named notification markers: the names are only knowable from the index `once()` keeps.
-  const onceNames = await db.smembers(`notifiedkeys:${e}`);
-  keys.push(...onceNames.map((k) => `notified:${e}:${k}`), `notifiedkeys:${e}`);
+  // Named one-time email markers and their in-flight claims: the names are only knowable from the index `sendOnce()` keeps
+  // (src/lib/notify.ts).
+  const onceNames = await db.smembers(ONCE_INDEX(e));
+  keys.push(...onceNames.flatMap((k) => [onceKey(e, k), onceClaimKey(e, k)]), ONCE_INDEX(e));
 
   const token = await db.get<string>(`mcptoken-of:${e}`);
   if (token) keys.push(`mcptoken:${token}`);

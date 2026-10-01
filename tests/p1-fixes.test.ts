@@ -126,7 +126,7 @@ describe("deleting an account leaves nothing behind (P1: re-registering inherits
     const email = u.email;
 
     // Exercise the account across the features that write account-level keys, not just brand-scoped ones.
-    const [{ saveBrand }, { writeFile }, { pushNotif }, { registerCode, applyReferral }, { track }, { meter }, { once }, { createConversation }, { db }, { wipeAccount }] = await Promise.all([
+    const [{ saveBrand }, { writeFile }, { pushNotif }, { registerCode, applyReferral }, { track }, { meter }, { markSent }, { createConversation }, { db }, { wipeAccount }] = await Promise.all([
       import("@/lib/brand"), import("@/lib/files"), import("@/lib/notifications"), import("@/lib/referral"),
       import("@/lib/track"), import("@/lib/usage"), import("@/lib/notify"), import("@/lib/conversations"),
       import("@/lib/db"), import("@/lib/account"),
@@ -138,7 +138,7 @@ describe("deleting an account leaves nothing behind (P1: re-registering inherits
     await registerCode(email);
     await track(email, "generate");
     await meter(email, "claude-opus-5", "generate", { input_tokens: 10, output_tokens: 10 });
-    await once(email, "nudge1");
+    await markSent(email, "nudge1");
     await db.sadd(`shared:${email}`, "x");
 
     const referrer = await newUser("wipe-ref");

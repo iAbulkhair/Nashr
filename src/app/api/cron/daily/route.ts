@@ -5,7 +5,7 @@ import { runCronBatch } from "@/lib/cron-batch";
 import { sameSecret } from "@/lib/rate";
 import type { User } from "@/lib/auth";
 import { getBrand } from "@/lib/brand";
-import { once, sendEmail } from "@/lib/notify";
+import { mailReady, sendEmail, sendOnce } from "@/lib/notify";
 import { runLifecycle } from "@/lib/lifecycle";
 import { db } from "@/lib/db";
 import { renewIfDue } from "@/lib/credits";
@@ -50,13 +50,17 @@ async function dailyFor(u: User): Promise<string> {
   const brand = await getBrand(u.scope ?? u.email);
   // Signup nudge: registered but never built a brand (Enrich-style founder follow-up)
   if (!brand) {
-    if (Date.now() - new Date(u.createdAt).getTime() > 10 * 60e3 && process.env.RESEND_API_KEY && (await once(u.email, "nudge1"))) {
+    // Only when mail can reach the customer (MAIL_FROM set too), and marked as sent only once Resend accepted it
+    // (src/lib/notify.ts `sendOnce`): a refused nudge is tried again on the next run instead of being recorded as done.
+    if (Date.now() - new Date(u.createdAt).getTime() > 10 * 60e3 && mailReady()) {
       const ar = u.lang === "ar";
       const link = `${ORIGIN()}/${u.lang}/app/start`;
-      const ok = await sendEmail(u.email, ar ? "نور جاهزة — أعطيها رابط موقعك" : "Noor is ready — give her your website", ar
+      const res = await sendOnce(u.email, "nudge1", ar ? "نور جاهزة — أعطيها رابط موقعك" : "Noor is ready — give her your website", ar
         ? `أهلاً ${u.name}\n\nسجّلت في ذكين وما بدأت بعد. نور جاهزة: أعطيها رابط موقعك وتكتب ملف علامتك وخطتك أمامك، ثم اطلب منها أول دفعة منشورات.\n\n${link}`
         : `Hi ${u.name}\n\nYou signed up for Thakeen but have not started. Noor is ready: give her your website and she writes your brand file and plan in front of you, then ask her for your first batch of posts.\n\n${link}`);
-      if (ok) out.push("nudge");
+      if (res === "sent") out.push("nudge");
+      // Not "nudge_…": the report counts every outcome that starts with "nudge" as a nudge sent.
+      else if (res === "failed") out.push("mail_refused:nudge");
     }
     return out.join("+") || "no_brand";
   }
@@ -141,5 +145,5 @@ export async function GET(req: Request) {
     after(() => fetch(weekly, { headers, signal: AbortSignal.timeout(8000) }).then(() => undefined, () => undefined));
   }
   const count = (word: string) => Object.values(report.results).filter((r) => r.split("+").some((x) => x.startsWith(word))).length;
-  return NextResponse.json({ ok: true, ...report, briefs: count("brief"), emails: count("email"), nudges: count("nudge"), renewed: count("renewed"), emailConfigured: !!process.env.RESEND_API_KEY, reminders });
+  return NextResponse.json({ ok: true, ...report, briefs: count("brief"), emails: count("email"), nudges: count("nudge"), renewed: count("renewed"), emailConfigured: mailReady(), reminders });
 }
