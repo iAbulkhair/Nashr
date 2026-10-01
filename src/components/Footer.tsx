@@ -22,7 +22,7 @@ export default function Footer({ t, lang: given }: { t: Dict; lang?: Lang }) {
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_1fr_1fr]">
           <div>
-            <p className="font-display text-xl font-bold text-mist">{t.brand}</p>
+            <p className="wordmark font-display text-xl font-bold text-mist">{t.brand}</p>
             <p className="mt-1 text-sm">{t.footer.tagline}</p>
           </div>
           {cols.map((c) => (
