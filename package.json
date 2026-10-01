@@ -8,8 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "check": "tsc --noEmit -p . && eslint && vitest run",
-    "jev:compare": "jiti scripts/jev-compare.ts"
+    "check": "tsc --noEmit -p . && eslint && vitest run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.126.0",
