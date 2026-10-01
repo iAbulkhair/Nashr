@@ -40,12 +40,21 @@ type Data = {
 function Card({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
   return <section className="card"><h2 className="font-display text-lg font-bold">{title}</h2>{sub && <p className="mt-1 text-sm text-ink/60">{sub}</p>}<div className="mt-3">{children}</div></section>;
 }
-/** A field's visible label, linked to its control by `id` (#14): a screen reader reads it on focus, a click focuses the field. */
-const L = (k: string, id: string) => <label htmlFor={id} className="block text-xs font-semibold uppercase tracking-wide text-ink/50">{k}</label>;
+/**
+ * A field's visible label, linked to its control by `id` (#14): a screen reader reads it on focus, a click focuses the
+ * field. `req`: the word shown beside a required field's label (the control itself carries `required`, which a screen
+ * reader announces).
+ */
+const L = (k: string, id: string, req?: string) => (
+  <div className="flex items-baseline gap-2">
+    <label htmlFor={id} className="block text-xs font-semibold uppercase tracking-wide text-ink/50">{k}</label>
+    {req && <span aria-hidden="true" className="text-xs text-ink/50">{req}</span>}
+  </div>
+);
 /** GET /api/profile: read on load and again after every save, so the form shows what the server stored. */
 const fetchProfile = () => fetch("/api/profile", { cache: "no-store" }).then((x) => x.json() as Promise<Data & { ok?: boolean }>);
 /** What PUT /api/profile answers: the stored values on 200, the refused field on 400, `busy` on 409 (nothing written). */
-type Saved = { ok?: boolean; error?: "required" | "bad_phone" | "busy"; field?: string; saved?: { me: { name: string; lang: Lang }; phone?: string; emails?: string; brand?: Data["brand"] } };
+type Saved = { ok?: boolean; error?: "required" | "bad_phone" | "read_only" | "busy"; field?: string; saved?: { me: { name: string; lang: Lang }; phone?: string; emails?: string; brand?: Data["brand"] } };
 
 /** `initial`: the profile as GET /api/profile answers it, to render without a fetch (tests). */
 export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: Lang; initial?: Data }) {
@@ -70,6 +79,10 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
   const canDelete = owner && (d.may?.accountDelete ?? true);
   const blockedNote = ar ? "تغيير كلمة المرور وحذف الحساب موقوفان أثناء تصفّح هذا الحساب كمؤسس." : "Changing the password and deleting the account are off while you view this account as the founder.";
   const me = d.me ?? { name: d.user.name, email: d.user.email, lang: d.user.lang, role };
+  // Full name, business name, mobile phone and email are required; the other fields can be cleared.
+  const req = ar ? "مطلوب" : "Required";
+  // An account created without a phone (signup leaves it optional) still uses the app; saving this form asks for it.
+  const phoneMissing = owner && (d.user.phone ?? "").replace(/\D/g, "").length < 9;
   const mediaUsed = d.mediaCredits ?? d.images;
   const usedCredits = Object.values(d.usage).reduce((s, x) => s + x.credits, 0) + mediaUsed;
   const pct = Math.min(100, Math.round((usedCredits / Math.max(1, d.allowance)) * 100));
@@ -83,7 +96,9 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
       // A refusal the server names (403, 400 with the field, 409 busy) is answered before any write: say so, and leave
       // what the owner typed in place to correct it.
       const refused = res?.status === 403 ? t.team.errors.forbidden
-        : j.error === "bad_phone" ? (ar ? "رقم الجوال غير صحيح: اكتب 9 أرقام على الأقل، أو اتركه فارغاً. لم يُحفظ شيء." : "That phone number is not valid: use at least 9 digits, or leave it empty. Nothing was saved.")
+        : j.error === "bad_phone" ? (ar ? "رقم الجوال غير صحيح: اكتب 9 أرقام على الأقل. لم يُحفظ شيء." : "That mobile number is not valid: use at least 9 digits. Nothing was saved.")
+        : j.error === "required" && j.field === "phone" ? (ar ? "رقم الجوال مطلوب. لم يُحفظ شيء." : "A mobile number is required. Nothing was saved.")
+        : j.error === "read_only" && j.field === "email" ? (ar ? "البريد هو اسم الدخول ولا يتغيّر من هذه الصفحة. لم يُحفظ شيء." : "The email is your login and cannot be changed here. Nothing was saved.")
         : j.error === "required" && j.field === "business" ? (ar ? "اسم النشاط مطلوب. لم يُحفظ شيء." : "Business name is required. Nothing was saved.")
         : j.error === "required" && j.field === "name" ? (ar ? "الاسم الكامل مطلوب. لم يُحفظ شيء." : "Full name is required. Nothing was saved.")
         : j.error === "busy" ? (ar ? "تغيير آخر على هذا الحساب كان قيد الحفظ. لم يُحفظ شيء، حاول بعد لحظات." : "Another change to this account was being saved. Nothing was saved; try again in a moment.")
@@ -187,10 +202,12 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
 
         <Card title={ar ? "الحساب" : "Account"}>
           <div className="grid gap-3 sm:grid-cols-2">
-            <div>{L(ar ? "الاسم الكامل" : "Full name", fid("name"))}<input id={fid("name")} name="name" required defaultValue={me.name} className={input} /></div>
-            <div>{L(ar ? "اسم النشاط" : "Business name", fid("business"))}<input id={fid("business")} name="business" required defaultValue={d.brand?.name ?? ""} disabled={!brandEdit || !d.brand} className={input} /></div>
-            {owner && <div>{L(ar ? "رقم الجوال" : "Phone number", fid("phone"))}<input id={fid("phone")} name="phone" type="tel" autoComplete="tel" defaultValue={d.user.phone ?? ""} dir="ltr" className={input} /></div>}
-            <div>{L(ar ? "البريد" : "Email", fid("email"))}<input id={fid("email")} value={me.email} disabled dir="ltr" className={input + " opacity-60"} /></div>
+            <div>{L(ar ? "الاسم الكامل" : "Full name", fid("name"), req)}<input id={fid("name")} name="name" required defaultValue={me.name} className={input} /></div>
+            <div>{L(ar ? "اسم النشاط" : "Business name", fid("business"), req)}<input id={fid("business")} name="business" required defaultValue={d.brand?.name ?? ""} disabled={!brandEdit || !d.brand} className={input} /></div>
+            {owner && <div>{L(ar ? "رقم الجوال" : "Phone number", fid("phone"), req)}<input id={fid("phone")} name="phone" type="tel" autoComplete="tel" required minLength={9} defaultValue={d.user.phone ?? ""} dir="ltr" aria-describedby={phoneMissing ? fid("phone-note") : undefined} className={input} />
+              {phoneMissing && <p id={fid("phone-note")} className="mt-1 text-xs text-ink/70">{ar ? "أضف رقم جوالك: حفظ أي تغيير في هذه الصفحة يحتاجه." : "Add your mobile number: saving any change on this page needs it."}</p>}</div>}
+            {/* The login: shown, never sent (no `name`), and the route refuses an `email` field. */}
+            <div>{L(ar ? "البريد" : "Email", fid("email"), req)}<input id={fid("email")} value={me.email} disabled readOnly dir="ltr" className={input + " opacity-60"} /></div>
             <div>{L(owner ? (ar ? "لغة التطبيق والإيميلات" : "App and email language") : (ar ? "لغة التطبيق" : "App language"), fid("lang"))}<select id={fid("lang")} name="lang" defaultValue={me.lang} className={input}><option value="ar">العربية</option><option value="en">English</option></select></div>
           </div>
         </Card>

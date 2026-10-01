@@ -22,6 +22,8 @@ const brandView = (brand: Brand | null) =>
 
 /** A short name or a person's name: no control characters, trimmed, capped. */
 const line = (v: string, n: number) => v.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, n);
+/** The phone check the profile has always made: at least 9 digits (signup applies the same one, where the phone is optional). */
+const phoneOk = (v: string | undefined) => (v ?? "").replace(/\D/g, "").length >= 9;
 
 /**
  * GET: the acting person ({name, email, lang, role}) and the account summary everyone in it shares (plan, credits,
@@ -85,10 +87,14 @@ export async function GET() {
  * member record); phone, the account language that drives lifecycle and billing email, and email preferences are the
  * account's (owner only); the brand fields are the brand file's (admin and owner). Every field sent is checked before
  * anything is written: a request carrying a field the actor may not write is refused whole, and so is one with a value
- * that cannot be saved as sent (400 `required` for an empty name or business name, 400 `bad_phone` for a phone with
- * fewer than 9 digits), naming the field. Nothing sent is skipped in silence: an empty description, audience, voice,
- * value proposition, website, sitemap, social handle or phone clears it. The answer carries what was saved, so the page
- * shows the stored values, never what was typed (#16). A save that cannot take its lock (another save of the brand or
+ * that cannot be saved as sent (400 `required` for an empty name, business name or phone, 400 `bad_phone` for a phone
+ * with fewer than 9 digits, 400 `read_only` for `email`), naming the field. Full name, business name, mobile phone and
+ * email are required (founder decision, 2026-10-01): the email is the login and this form never writes it; the phone
+ * is the account's, so every save by the owner (or the founder acting as the owner) needs a valid one, sent with the
+ * request or already stored. An account created without one (signup leaves it optional) still uses the app; its first
+ * profile save asks for it. A member's save is not held to it: the phone is not theirs to set. Nothing sent is skipped
+ * in silence: an empty description, audience, voice, value proposition, website, sitemap or social handle clears it.
+ * The answer carries what was saved, so the page shows the stored values, never what was typed (#16). A save that cannot take its lock (another save of the brand or
  * of the person held it for the whole wait) answers 409 `busy`, and the lock is taken before the first write, so that
  * answer also means nothing was written.
  */
@@ -105,13 +111,20 @@ export async function PUT(req: Request) {
   const a = u.actor!; // `forbid` refuses a user with no actor (fail closed), so one is set from here on
 
   // Every value is checked before the first write, so a refused request leaves everything as it was.
-  const refuse = (error: "required" | "bad_phone", field: string) => NextResponse.json({ ok: false, error, field }, { status: 400 });
+  const refuse = (error: "required" | "bad_phone" | "read_only", field: string) => NextResponse.json({ ok: false, error, field }, { status: 400 });
+  // The email is the login: changing or blanking it is not this form's to do, so a request carrying it is refused.
+  if (b.email !== undefined) return refuse("read_only", "email");
   const name = has("name") ? line(b.name!, 80) : undefined;
   if (name === "") return refuse("required", "name");
   const business = has("business") ? line(b.business!, 80) : undefined;
   if (business === "") return refuse("required", "business");
   const phone = has("phone") ? b.phone!.trim().slice(0, 30) : undefined;
-  if (phone && phone.replace(/\D/g, "").length < 9) return refuse("bad_phone", "phone");
+  if (phone === "") return refuse("required", "phone");
+  if (phone !== undefined && !phoneOk(phone)) return refuse("bad_phone", "phone");
+  // The account's phone is required: a save by the owner (or the founder acting as the owner) that does not send one
+  // needs a valid one on the record. `u` is the account record; the phone can no longer be cleared, so a check at
+  // request start cannot be undone by a save in between.
+  if (a.kind !== "member" && phone === undefined && !phoneOk(u.phone)) return refuse("required", "phone");
   const lang = b.lang === "ar" || b.lang === "en" ? b.lang : undefined;
   const brandWrite = BRAND_FIELDS.some(has);
 
