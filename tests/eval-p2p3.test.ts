@@ -104,6 +104,21 @@ describe("chat thumbs belong to the brand the chat ran in", () => {
     expect(await db.lrange(`fblog:${u.email}`, 0, -1)).toHaveLength(0);
   });
 
+  it("the feedback route is rate limited per account, before anything is written (rule 378)", async () => {
+    const { FEEDBACK_PER_HOUR } = await import("@/lib/rate");
+    const u = await newUser("fbrate");
+    await signIn(u.email);
+    const route = await import("@/app/api/chat/feedback/route");
+    const thumb = () => route.POST(json("/api/chat/feedback", "POST", { agent: "noor", value: 1 }));
+    // Up to the allowance: the counter is set to just below it rather than sending a hundred requests.
+    await db.set(`rate:chatfeedback:${u.email}`, FEEDBACK_PER_HOUR - 1, 3600);
+    expect((await thumb()).status).toBe(200);
+    const refused = await thumb();
+    expect(refused.status).toBe(429);
+    expect(await refused.json()).toMatchObject({ error: "slow_down" });
+    expect(await db.lrange(`fblog:${u.email}`, 0, -1), "the refused thumb wrote nothing").toHaveLength(1);
+  });
+
   it("deleting an account removes its feedback, including the text the owner typed", async () => {
     const u = await newUser("fbwipe");
     await saveBrands(u.email, [{ id: "default", name: "", createdAt: daysAgo(1), status: "active" }, { id: "b2", name: "Two", createdAt: daysAgo(1), status: "active" }]);
