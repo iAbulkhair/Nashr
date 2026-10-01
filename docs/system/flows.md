@@ -139,6 +139,19 @@ Files: `src/lib/credits.ts`, `src/lib/generate-batch.ts` (the one text pipeline,
     5. Every item becomes a task through `taskFromItem` (`source`, `brief` = the given brief or `briefOf(notes)`, status by `initialStatus` on the item's type, channel, title and body (since main's security gates were merged in, the channel decides whether a `{{1}}` or `[name]` slot may pass: only on a WhatsApp, email, SMS or call draft, and an unfilled `[رقم]` holds every channel; section 10) or always `pending` with `forcePending` or a cross-agent "flag", the brand's first language, one `createdAt` for the batch, `pb`, the prompt versions, section 31, and `crossReview`, section 33), the tasks are saved together (`Promise.all`, no `await` in a loop) and then `commit` runs, both still inside the refunding try since 2026-10-01 (a failed save or commit refunds, through `refundOnce` for a claim, exactly once; rule 334); after the try, the batch's one `generated` activity row (the owning agent, `by`, `via`, up to 10 task ids, the count and the credits) and one `cross_reviewed` row per reviewing agent are written, and `judgeLater` gets the grounding (notes, memory, data block), the requested count and the `via` for the judge's rows (section 32).
     `settle` runs on every refusal and on the refund: a routine uses it to give back the attempt it counted before the charge (`routinetry`). Every refusal is typed and charges nothing; no caller calls `charge`, `generate`, `saveTask` or `judgeLater` for a batch on its own (`tests/generate-batch.test.ts`).
 
+14. Model call budgets (since 2026-10-01, issue #28, rules 335-336). Every model client is `anthropic({timeoutMs, maxRetries})` (`src/lib/model.ts`), never the SDK defaults (a 10-minute timeout and two retries, longer than any route's maxDuration). The SDK's timeout stops at the response headers, which a stream sends at once, so every charged call also passes `until(deadline)`, an abort signal from the caller's one deadline (`deadlineFor(maxDuration)`, 15 s under the platform's limit): a slow model makes the call throw, and the caller's refund runs, before the platform kills the function (a killed function runs no catch). The budgets (`MODEL_BUDGET`):
+
+    | Call | Client (per attempt, retries) | Ends by |
+    |---|---|---|
+    | `generate` (`/api/generate`, MCP, chat tools, handoffs, routines, the Sunday plan) | 240 s, 1 retry | the caller's deadline, else 240 s from its start; the reviewer only with 30 s left and at most 90 s; the cross-agent review only with 60 s left and at most 45 s, no retry |
+    | chat turn (`/api/chat`, MCP `ask_noor`) | 120 s, 1 retry | a turn starts only with 20 s of the request left and its stream ends 5 s before the deadline; a turn cut short saves `OUT_OF_TIME_REPLY` (what tools made stays in the inbox) |
+    | onboarding (three parts) | 240 s, 1 retry | the request's deadline, taken before the crawl; a failed part is retried only with 60 s left |
+    | judge | 90 s, none | its own attempt (after the response; it charges nothing) |
+    | image and video prompts | 20 s or the time left, none | per call (`write` in `media/prompts.ts`) |
+    | free tools | 45 s, none | its own attempt (route maxDuration 60) |
+
+    The weekly cron and "Run now" pass their deadline to `runWeekly`, so a plan started at 160 s of the invocation still ends, or is refunded, before 300 s; the routines cron's deadline is `deadlineFor(maxDuration)` too (it was the kill time itself).
+
 ## 9. Approval and rejection of a task
 
 Files: `src/app/api/tasks/[id]/route.ts`, `src/components/app/Inbox.tsx:181`, `ChatPanel.tsx:38`.

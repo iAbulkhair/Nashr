@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
 import { getTool, toolLang } from "@/lib/tools";
 import { meter } from "@/lib/usage";
 import { db } from "@/lib/db";
 import { allow, clientIp } from "@/lib/rate";
 import { currentUser } from "@/lib/auth";
-import { modelState } from "@/lib/model";
+import { MODEL_BUDGET, anthropic, modelState } from "@/lib/model";
 
 export const maxDuration = 60;
 const FREE_PER_DAY = 5;
@@ -29,7 +28,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ tool: string }
   const lang = toolLang(b.lang);
   if (state === "mock") return NextResponse.json({ ok: true, output: `[DEV MOCK] ${t.slug}\n${inputs}` });
   try {
-    const client = new Anthropic();
+    // One attempt inside the route's 60 s (rule 335).
+    const client = anthropic({ timeoutMs: MODEL_BUDGET.TOOL_MS, maxRetries: 0 });
     const res = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 2000,

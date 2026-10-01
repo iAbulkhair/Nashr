@@ -2,8 +2,8 @@ import { AGENTS, agentById, agentForTask, type AgentId } from "./agents";
 import { skillsBlock } from "./skills";
 import { fenceMemory } from "./json";
 import { meter } from "./usage";
-import { ModelPaused, PAUSED_REPLY, modelState } from "./model";
-import Anthropic from "@anthropic-ai/sdk";
+import { MODEL_BUDGET, ModelPaused, PAUSED_REPLY, anthropic, modelState, until } from "./model";
+import type Anthropic from "@anthropic-ai/sdk";
 import { CAPS, db, pushCapped } from "./db";
 import { trialOver, type User } from "./auth";
 import { getBrand, listPreferencesFor, saveBrand, listLite, type Brand, type Task } from "./brand";
@@ -322,6 +322,12 @@ export function chatRefusedText(kind: ChatRefused, lang: "ar" | "en", o: { origi
     : `You've reached the daily message limit${n}, so chat is paused until tomorrow. No credits were used.`;
 }
 
+/** The reply of a turn that ran out of its request's time (rule 336): what was made is saved, and the owner can go on. */
+export const OUT_OF_TIME_REPLY = {
+  ar: "انتهى الوقت المتاح لهذا الرد قبل أن أكمله. ما أنشأته محفوظ في صندوق الموافقة، واطلب مني المتابعة لأكمل.",
+  en: "This reply ran out of time before I could finish it. Anything I created is saved in your inbox; ask me to continue and I'll pick it up.",
+} as const;
+
 export async function chat(user: User, text: string, conv?: string, agentId: AgentId = "noor", opts: ChatOpts = {}): Promise<ChatMsg & { limit?: ChatLimit }> {
   // Taken first: up to five model turns can use most of the ceiling before a tool starts a render.
   const deadline = opts.deadline ?? deadlineFor(CHAT_MAX_DURATION_S);
@@ -347,7 +353,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
     return m;
   }
 
-  const client = new Anthropic();
+  const client = anthropic({ timeoutMs: MODEL_BUDGET.CHAT_MS, maxRetries: 1 });
   // Independent reads, fetched together: one after another they cost 1-2 s of silence before every model call.
   const [brand, prefs, memory, files, conns, thread, feedback, notes, by] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), handoffNotesFor(email, agentId), opts.by ?? byOf(user)]);
   const connected = connectedTargets(conns);
@@ -357,10 +363,22 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
 
   const sys = system(brand, user, prefs, memory, files, connected, agentId, feedback, handoffBlock(notes));
 
+  // The turn's overall deadline (rule 336): a model turn starts only with CHAT_TURN_MIN_MS left, and its stream ends
+  // CHAT_REPLY_MS before the deadline, so the reply is saved and answered before the platform's kill, and a tool that
+  // charged inside the turn (generate_content, draft_items) has its own refund within the same deadline.
+  let outOfTime = false;
   for (let turn = 0; turn < 5; turn++) {
-    const res = await client.messages
-      .stream({ model: "claude-opus-5", max_tokens: 8000, system: sys, messages, tools: toolsFor(agentId), thinking: { type: "adaptive" }, output_config: { effort: "medium" } })
-      .finalMessage();
+    if (deadline - Date.now() < MODEL_BUDGET.CHAT_TURN_MIN_MS) { outOfTime = true; break; }
+    const call = until(deadline - MODEL_BUDGET.CHAT_REPLY_MS);
+    let res: Anthropic.Message;
+    try {
+      res = await client.messages
+        .stream({ model: "claude-opus-5", max_tokens: 8000, system: sys, messages, tools: toolsFor(agentId), thinking: { type: "adaptive" }, output_config: { effort: "medium" } }, call)
+        .finalMessage();
+    } catch (e) {
+      if (call.signal.aborted) { outOfTime = true; break; }
+      throw e;
+    }
     await meter(user.email, res.model, "chat", res.usage, agentId);
     if (res.stop_reason === "refusal") break;
     messages.push({ role: "assistant", content: res.content });
@@ -388,7 +406,8 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
     }
     messages.push({ role: "user", content: results });
   }
-  const m: ChatMsg = { role: "assistant", content: "تم. تحقق من صندوق الموافقة.", at: new Date().toISOString(), actions, ...handoffOf(actions), ...(proposed.length ? { proposals: proposed.slice(0, 5) } : {}) };
+  const content = outOfTime ? OUT_OF_TIME_REPLY[lang] : "تم. تحقق من صندوق الموافقة.";
+  const m: ChatMsg = { role: "assistant", content, at: new Date().toISOString(), actions, ...(outOfTime ? { agent: agentId } : {}), ...(made.length ? { items: made.slice(0, 10).map(chatItemOf) } : {}), ...handoffOf(actions), ...(proposed.length ? { proposals: proposed.slice(0, 5) } : {}) };
   await deliver(email, m, conv);
   return m;
 }

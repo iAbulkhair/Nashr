@@ -1,3 +1,5 @@
+import Anthropic from "@anthropic-ai/sdk";
+
 /**
  * One switch for every Claude call in the product: chat, generation and its reviewer, the judge, onboarding, image
  * prompts, the free tools and the golden set.
@@ -30,4 +32,57 @@ export class ModelPaused extends Error {
 export const PAUSED_REPLY = {
   ar: "الوكلاء متوقفون مؤقتاً، فلا أستطيع الرد أو إنشاء محتوى الآن. لم يُخصم أي كريدت.",
   en: "The agents are paused for now, so I can't reply or create content yet. No credits were used.",
+} as const;
+
+/**
+ * The only way to make a model client (rule 335; tests/model-timeouts.test.ts fails on any other `new Anthropic(` in src).
+ * The SDK's defaults are a 10-minute timeout and two retries, longer than any route's maxDuration (300 s at most): a slow
+ * call was killed by the platform first, and a killed function runs no catch or finally, so a charge taken before the
+ * call was never refunded (issue #28). Every caller states both numbers.
+ *
+ * `timeoutMs` bounds each attempt until the response headers arrive; a streamed reply sends them at once, so a stream's
+ * body is bounded only by `until(deadline)` passed with the call. `maxRetries` counts the attempts after the first.
+ */
+export function anthropic(o: { timeoutMs: number; maxRetries: number }): Anthropic {
+  if (!(Number.isFinite(o.timeoutMs) && o.timeoutMs > 0)) throw new Error(`invalid_model_timeout:${String(o.timeoutMs)}`);
+  if (!(Number.isInteger(o.maxRetries) && o.maxRetries >= 0 && o.maxRetries <= 2)) throw new Error(`invalid_model_retries:${String(o.maxRetries)}`);
+  return new Anthropic({ timeout: Math.floor(o.timeoutMs), maxRetries: o.maxRetries });
+}
+
+/**
+ * Per-call options that end a model call by `deadline` (epoch ms), a stream's body included: the signal aborts it wherever
+ * it is (the SDK throws, and the caller's catch refunds), and `timeout` caps each attempt at the time left. A deadline
+ * already past, or not a number, aborts at once. A plain timer, so a test's fake clock drives it; unref'd, so it never
+ * keeps a process alive.
+ */
+export function until(deadline: number, now = Date.now()): { signal: AbortSignal; timeout: number } {
+  const ms = Number.isFinite(deadline) ? Math.max(1, Math.floor(deadline - now)) : 1;
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(new Error("model_deadline")), ms);
+  (t as { unref?: () => void }).unref?.();
+  return { signal: c.signal, timeout: ms };
+}
+
+/**
+ * The model budgets, each inside its route's maxDuration so the refund path always runs (docs/system/flows.md section
+ * 8). A caller with a request deadline (`deadlineFor(maxDuration)`, 15 s under the platform's limit) passes it on; these
+ * are the per-attempt timeouts and the defaults when there is none.
+ * - GEN: one batch (`generate`): the default deadline without a caller's, and each attempt's timeout. One retry.
+ * - REVIEW: the second-pass reviewer, at most this long, and only with REVIEW_MIN_MS of the deadline left.
+ * - CHAT: each chat turn's attempt; the turn's stream is bounded by the request's deadline. A turn starts only with
+ *   CHAT_TURN_MIN_MS left, and leaves CHAT_REPLY_MS to save the reply.
+ * - ONBOARD: each of the three onboarding parts; a failed part is tried again only with ONBOARD_RETRY_MIN_MS left.
+ * - JUDGE: the judge (runs after the response, charges nothing). TOOL: the free tools (route maxDuration 60).
+ */
+export const MODEL_BUDGET = {
+  GEN_MS: 240_000,
+  REVIEW_MS: 90_000,
+  REVIEW_MIN_MS: 30_000,
+  CHAT_MS: 120_000,
+  CHAT_TURN_MIN_MS: 20_000,
+  CHAT_REPLY_MS: 5_000,
+  ONBOARD_MS: 240_000,
+  ONBOARD_RETRY_MIN_MS: 60_000,
+  JUDGE_MS: 90_000,
+  TOOL_MS: 45_000,
 } as const;

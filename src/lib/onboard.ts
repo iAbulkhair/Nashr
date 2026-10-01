@@ -1,6 +1,5 @@
 import { meter } from "./usage";
-import Anthropic from "@anthropic-ai/sdk";
-import { ModelPaused, modelState } from "./model";
+import { MODEL_BUDGET, ModelPaused, anthropic, modelState, until } from "./model";
 import type { Brand } from "./brand";
 import { activeSeasons } from "./seasons";
 import type { SiteSnapshot } from "./crawl";
@@ -66,13 +65,18 @@ function mock(site: SiteSnapshot, lang: "ar" | "en"): OnboardResult {
   };
 }
 
-/** `onPart` fires as each of the three parts lands, so the chat can show real progress instead of a timer. */
-export async function buildFromSite(site: SiteSnapshot, lang: "ar" | "en", hints?: string, email?: string, onPart?: (part: PartName) => void): Promise<OnboardResult> {
+/**
+ * `onPart` fires as each of the three parts lands, so the chat can show real progress instead of a timer. `deadline`
+ * (epoch ms): the onboarding request's (rule 336); every call ends by it, so a slow model throws and the route refunds an
+ * added brand's held charge before the platform's kill. Without one, ONBOARD_MS from now.
+ */
+export async function buildFromSite(site: SiteSnapshot, lang: "ar" | "en", hints?: string, email?: string, onPart?: (part: PartName) => void, deadline?: number): Promise<OnboardResult> {
   const state = modelState();
   // Never the mock while paused: the route saves what comes back, and a saved brand ends onboarding for good.
   if (state === "paused") throw new ModelPaused();
   if (state === "mock") return mock(site, lang);
-  const client = new Anthropic();
+  const end = deadline ?? Date.now() + MODEL_BUDGET.ONBOARD_MS;
+  const client = anthropic({ timeoutMs: MODEL_BUDGET.ONBOARD_MS, maxRetries: 1 });
   const seasons = activeSeasons().map((s) => `${s.name} in ${s.daysLeft} days`).join("; ") || "none in 35 days";
   const shared = `You are Noor (نور), Thakeen's marketing agent for Gulf businesses. From a website snapshot, build part of the founding workspace for this brand. Two other parts are being written at the same time from the same snapshot, so stay strictly inside the fields asked for here. Be specific to what the site actually says; when the site is thin or unreachable, infer carefully from the domain, title, and any hints, and mark inferred facts with "(مُستنتج)" / "(inferred)". Never invent prices, certifications, or numbers. The brand's dialect is saudi unless the site is clearly UAE (emirati), Kuwait (kuwaiti), or English-only (english).
 
@@ -115,7 +119,7 @@ ${site.text.slice(0, 9000)}`;
           messages: [{ role: "user", content: user }],
           thinking: { type: "adaptive" },
           output_config: { effort: "medium", format: { type: "json_schema", schema: PARTS[name].schema } },
-        })
+        }, until(end))
         .finalMessage();
       // Onboarding is Noor's first-run work (it writes the brand file she opens with).
       await meter(email, msg.model, "onboard", msg.usage, "noor");
@@ -123,8 +127,9 @@ ${site.text.slice(0, 9000)}`;
       onPart?.(name);
       return out;
     } catch (e) {
-      // Three calls fail more often than one; a part gets one more try before the whole run gives up.
-      if (attempt < 1) return run(name, attempt + 1);
+      // Three calls fail more often than one; a part gets one more try before the whole run gives up, when there is time
+      // for one.
+      if (attempt < 1 && end - Date.now() >= MODEL_BUDGET.ONBOARD_RETRY_MIN_MS) return run(name, attempt + 1);
       throw e;
     }
   };
