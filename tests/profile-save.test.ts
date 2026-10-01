@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { json, newUser, signIn } from "./helpers/session";
 import { getUser, saveUser } from "@/lib/auth";
 import { getBrand, saveBrand, type Brand } from "@/lib/brand";
@@ -7,7 +8,7 @@ import * as profile from "@/app/api/profile/route";
 
 /**
  * Saving the Profile page (#16). Clearing a field showed "Saved" while the server skipped the empty value and kept the old
- * text, and a short phone was dropped in silence. Rules 370-372 in docs/system/tests.md.
+ * text, and a short phone was dropped in silence. Rules 370-372 and 380 in docs/system/tests.md.
  */
 const brand: Brand = { name: "Roastery", website: "roastery.example", sitemap: "https://roastery.example/sitemap.xml", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "warm", products: "Specialty beans", audience: "Riyadh locals", valueProp: "Roasted daily", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "Riyadh", social: { instagram: "@roastery" }, updatedAt: "2026-09-29T00:00:00.000Z" };
 
@@ -87,5 +88,36 @@ describe("the profile's brand write holds the brand lock (rule 372)", () => {
     await db.unlock(lock);
     expect((await saving).status).toBe(200);
     expect((await getBrand(u.email))!).toMatchObject({ tone: "calm", banned: "cheap" });
+  });
+});
+
+describe("a save that cannot take its lock answers busy and writes nothing (rule 380)", () => {
+  it("with the brand lock held past its wait, name, phone, language, email preference and brand fields all stay as they were", async () => {
+    const u = await owner();
+    const before = await db.get(`profile:${u.email}`);
+    const lock = `brandlock:${u.email}`;
+    expect(await db.lock(lock, 30)).toBe(true);
+    try {
+      const res = await put({ name: "Changed", phone: "0509999999", lang: "en", emails: "none", tone: "loud" });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ ok: false, error: "busy" });
+    } finally {
+      await db.unlock(lock);
+    }
+    // The brand lock is taken before the first write, so the owner's fields were never reached.
+    expect((await getUser(u.email))!).toMatchObject({ name: "Test", phone: "+966500000123", lang: "ar" });
+    expect(await db.get(`profile:${u.email}`)).toEqual(before);
+    expect((await getBrand(u.email))!).toMatchObject({ tone: "warm" });
+  }, 15_000);
+
+  it("the Profile page says nothing was saved only for answers the server gives before writing; any other failure re-reads the profile", () => {
+    const src = readFileSync("src/components/app/ProfilePanel.tsx", "utf8");
+    const fn = src.slice(src.indexOf("async function save("), src.indexOf("async function password("));
+    expect(fn).toContain('j.error === "busy"');
+    // The fallback for a dropped connection or a server error: never "Nothing was saved", and the form is re-read.
+    const fallback = fn.slice(fn.indexOf("if (refused)"), fn.indexOf("// Show what the server stored"));
+    expect(fallback).toContain("fetchProfile()");
+    expect(fallback).not.toMatch(/Nothing was saved|لم يُحفظ شيء/);
+    expect(fallback).toContain("Could not confirm the save");
   });
 });

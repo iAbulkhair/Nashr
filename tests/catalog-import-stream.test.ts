@@ -37,6 +37,11 @@ describe("a catalog import always ends with a result (rule 377)", () => {
     await expect(readImportStream(body([ev({ progress: "1/10" })], "drop"), () => {})).resolves.toEqual({ ok: false });
   });
 
+  it("a connection dropped after a successful done event is still a success", async () => {
+    await expect(readImportStream(body([ev({ progress: "10/10" }) + ev({ done: true, count: 4 })], "drop"), () => {})).resolves.toEqual({ ok: true, count: 4 });
+    await expect(readImportStream(body([ev({ done: true, count: 0 })], "drop"), () => {})).resolves.toEqual({ ok: false });
+  });
+
   it("an error event, a done with no products, or a stream that ends with no result is a failure", async () => {
     expect(await readImportStream(body([ev({ error: "no_pages" })]), () => {})).toEqual({ ok: false });
     expect(await readImportStream(body([ev({ done: true, count: 0 })]), () => {})).toEqual({ ok: false });

@@ -88,7 +88,9 @@ export async function GET() {
  * that cannot be saved as sent (400 `required` for an empty name or business name, 400 `bad_phone` for a phone with
  * fewer than 9 digits), naming the field. Nothing sent is skipped in silence: an empty description, audience, voice,
  * value proposition, website, sitemap, social handle or phone clears it. The answer carries what was saved, so the page
- * shows the stored values, never what was typed (#16).
+ * shows the stored values, never what was typed (#16). A save that cannot take its lock (another save of the brand or
+ * of the person held it for the whole wait) answers 409 `busy`, and the lock is taken before the first write, so that
+ * answer also means nothing was written.
  */
 export async function PUT(req: Request) {
   const u = await currentUser();
@@ -111,64 +113,79 @@ export async function PUT(req: Request) {
   const phone = has("phone") ? b.phone!.trim().slice(0, 30) : undefined;
   if (phone && phone.replace(/\D/g, "").length < 9) return refuse("bad_phone", "phone");
   const lang = b.lang === "ar" || b.lang === "en" ? b.lang : undefined;
+  const brandWrite = BRAND_FIELDS.some(has);
 
-  let me = { name: a.name, email: a.email, lang: a.lang };
-  let account: { phone: string } | undefined;
-  if (a.kind === "member") {
-    // The member's own record, under its own lock. The owner's name and language are the account's, not theirs.
-    if (name || lang) {
-      const done = await withMemberLock(a.email, async (m) => {
-        if (m.memberOf !== u.email) return false;
-        if (name) m.name = name;
-        if (lang) m.lang = lang;
-        await saveMember(m);
-        me = { name: m.name, email: a.email, lang: m.lang };
-        return true;
+  // The writes, in order: the person's record (under its own lock), the email preference, the brand file. With brand
+  // fields the whole save runs inside the brand lock, taken BEFORE the first write: a lock that cannot be taken is the
+  // only throw this route expects, and it can now only happen before anything is written (the brand lock outside, the
+  // user or member lock as the first write inside), so `busy` below is true when it says nothing was saved.
+  const run = async () => {
+    let me = { name: a.name, email: a.email, lang: a.lang };
+    let account: { phone: string } | undefined;
+    if (a.kind === "member") {
+      // The member's own record, under its own lock. The owner's name and language are the account's, not theirs.
+      if (name || lang) {
+        const done = await withMemberLock(a.email, async (m) => {
+          if (m.memberOf !== u.email) return false;
+          if (name) m.name = name;
+          if (lang) m.lang = lang;
+          await saveMember(m);
+          me = { name: m.name, email: a.email, lang: m.lang };
+          return true;
+        });
+        if (!done) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      }
+    } else if (name !== undefined || phone !== undefined || lang) {
+      // Inside the lock, on the record as it is NOW. `saveUser` writes the whole user, so mutating the copy this request
+      // read at its start would put that request's stale `credits` back over any charge committed in between — the work
+      // would be delivered and the charge silently reversed. Same shape as /api/account.
+      await withUserLock(u.email, async (x) => {
+        if (name !== undefined) x.name = name;
+        if (phone !== undefined) x.phone = phone;
+        if (lang) x.lang = lang;
+        await saveUser(x);
+        // The owner (or the founder acting as the owner) sees the account's name and language as their own.
+        me = { name: x.name, email: a.email, lang: x.lang };
+        account = { phone: x.phone ?? "" };
       });
-      if (!done) return NextResponse.json({ error: "forbidden" }, { status: 403 });
     }
-  } else if (name !== undefined || phone !== undefined || lang) {
-    // Inside the lock, on the record as it is NOW. `saveUser` writes the whole user, so mutating the copy this request
-    // read at its start would put that request's stale `credits` back over any charge committed in between — the work
-    // would be delivered and the charge silently reversed. Same shape as /api/account.
-    await withUserLock(u.email, async (x) => {
-      if (name !== undefined) x.name = name;
-      if (phone !== undefined) x.phone = phone;
-      if (lang) x.lang = lang;
-      await saveUser(x);
-      // The owner (or the founder acting as the owner) sees the account's name and language as their own.
-      me = { name: x.name, email: a.email, lang: x.lang };
-      account = { phone: x.phone ?? "" };
+    let emails: EmailPrefs | undefined;
+    if (b.emails && ["all", "important", "none"].includes(b.emails)) { await db.set(`profile:${sc(u)}`, { emails: b.emails }); emails = b.emails; }
+    const brand = brandWrite ? await writeBrand() : undefined;
+    return NextResponse.json({
+      ok: true,
+      saved: { me, ...(account ? { phone: account.phone } : {}), ...(emails ? { emails } : {}), ...(brand !== undefined ? { brand } : {}) },
     });
-  }
-  let emails: EmailPrefs | undefined;
-  if (b.emails && ["all", "important", "none"].includes(b.emails)) { await db.set(`profile:${sc(u)}`, { emails: b.emails }); emails = b.emails; }
+  };
   // Brand-level fields shown on the profile (Enrich-style): business name, description, customers, voice, value prop,
-  // website, sitemap, social handles. Read and written under the brand lock, so a banned word an agent adds while the
-  // form is saved, or a proposal the owner applies, is not overwritten by this request's older copy of the file.
-  let brand: ReturnType<typeof brandView> | undefined;
-  if (BRAND_FIELDS.some(has)) {
-    brand = await withBrandLock(sc(u), async () => {
-      const file = await getBrand(sc(u));
-      if (!file) return null;
-      const s = (v: string, n = 1000) => v.trim().slice(0, n);
-      if (business !== undefined) file.name = business;
-      if (has("products")) file.products = s(b.products!);
-      if (has("audience")) file.audience = s(b.audience!);
-      if (has("tone")) file.tone = s(b.tone!, 300);
-      if (has("valueProp")) file.valueProp = s(b.valueProp!, 500);
-      if (has("website")) file.website = s(b.website!, 200);
-      if (has("sitemap")) file.sitemap = s(b.sitemap!, 300);
-      const social: Record<string, string> = { ...(file.social ?? {}) };
-      for (const k of SOCIAL) { const v = b[`social_${k}`]; if (typeof v === "string") { if (v.trim()) social[k] = s(v, 80); else delete social[k]; } }
-      file.social = social;
-      file.updatedAt = new Date().toISOString();
-      await saveBrand(sc(u), file);
-      return brandView(file);
-    });
+  // website, sitemap, social handles. Read and written under the brand lock `run` holds, so a banned word an agent adds
+  // while the form is saved, or a proposal the owner applies, is not overwritten by this request's older copy of the file.
+  const writeBrand = async (): Promise<ReturnType<typeof brandView>> => {
+    const file = await getBrand(sc(u));
+    if (!file) return null;
+    const s = (v: string, n = 1000) => v.trim().slice(0, n);
+    if (business !== undefined) file.name = business;
+    if (has("products")) file.products = s(b.products!);
+    if (has("audience")) file.audience = s(b.audience!);
+    if (has("tone")) file.tone = s(b.tone!, 300);
+    if (has("valueProp")) file.valueProp = s(b.valueProp!, 500);
+    if (has("website")) file.website = s(b.website!, 200);
+    if (has("sitemap")) file.sitemap = s(b.sitemap!, 300);
+    const social: Record<string, string> = { ...(file.social ?? {}) };
+    for (const k of SOCIAL) { const v = b[`social_${k}`]; if (typeof v === "string") { if (v.trim()) social[k] = s(v, 80); else delete social[k]; } }
+    file.social = social;
+    file.updatedAt = new Date().toISOString();
+    await saveBrand(sc(u), file);
+    return brandView(file);
+  };
+  try {
+    return await (brandWrite ? withBrandLock(sc(u), run) : run());
+  } catch (e) {
+    // Another save of this brand or this person held the lock for its whole wait (about 3 s). Nothing was written.
+    if (e instanceof Error && LOCK_TIMEOUTS.has(e.message)) return NextResponse.json({ ok: false, error: "busy" }, { status: 409 });
+    throw e;
   }
-  return NextResponse.json({
-    ok: true,
-    saved: { me, ...(account ? { phone: account.phone } : {}), ...(emails ? { emails } : {}), ...(brand !== undefined ? { brand } : {}) },
-  });
 }
+
+/** What `withBrandLock`, `withUserLock` and `withMemberLock` throw when their lock stays taken. */
+const LOCK_TIMEOUTS = new Set(["brand_lock_timeout", "user_lock_timeout", "team_lock_timeout"]);

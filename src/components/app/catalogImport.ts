@@ -34,7 +34,10 @@ export async function readImportStream(body: ReadableStream<Uint8Array>, onProgr
     if (buf.trim()) take(buf);
   } catch {
     await reader.cancel().catch(() => {});
-    return { ok: false };
+    // A connection that drops after the server sent a successful `done` (products.md is written) is still a success:
+    // only the close of the stream was lost.
+    const got = end as ImportEnd | null;
+    return !failed && got?.ok ? got : { ok: false };
   }
   return failed ? { ok: false } : (end ?? { ok: false });
 }

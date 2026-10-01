@@ -44,8 +44,8 @@ function Card({ title, sub, children }: { title: string; sub?: string; children:
 const L = (k: string, id: string) => <label htmlFor={id} className="block text-xs font-semibold uppercase tracking-wide text-ink/50">{k}</label>;
 /** GET /api/profile: read on load and again after every save, so the form shows what the server stored. */
 const fetchProfile = () => fetch("/api/profile", { cache: "no-store" }).then((x) => x.json() as Promise<Data & { ok?: boolean }>);
-/** What PUT /api/profile answers: the stored values on 200, the refused field on 400. */
-type Saved = { ok?: boolean; error?: "required" | "bad_phone"; field?: string; saved?: { me: { name: string; lang: Lang }; phone?: string; emails?: string; brand?: Data["brand"] } };
+/** What PUT /api/profile answers: the stored values on 200, the refused field on 400, `busy` on 409 (nothing written). */
+type Saved = { ok?: boolean; error?: "required" | "bad_phone" | "busy"; field?: string; saved?: { me: { name: string; lang: Lang }; phone?: string; emails?: string; brand?: Data["brand"] } };
 
 /** `initial`: the profile as GET /api/profile answers it, to render without a fetch (tests). */
 export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: Lang; initial?: Data }) {
@@ -80,13 +80,26 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
     const res = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fd) }).catch(() => null);
     const j = ((await res?.json().catch(() => ({}))) ?? {}) as Saved;
     if (!res?.ok || !j.ok) {
-      // Nothing was written: say which field was refused and leave what the owner typed in place to correct it.
-      setMsg(res?.status === 403 ? t.team.errors.forbidden
+      // A refusal the server names (403, 400 with the field, 409 busy) is answered before any write: say so, and leave
+      // what the owner typed in place to correct it.
+      const refused = res?.status === 403 ? t.team.errors.forbidden
         : j.error === "bad_phone" ? (ar ? "رقم الجوال غير صحيح: اكتب 9 أرقام على الأقل، أو اتركه فارغاً. لم يُحفظ شيء." : "That phone number is not valid: use at least 9 digits, or leave it empty. Nothing was saved.")
         : j.error === "required" && j.field === "business" ? (ar ? "اسم النشاط مطلوب. لم يُحفظ شيء." : "Business name is required. Nothing was saved.")
         : j.error === "required" && j.field === "name" ? (ar ? "الاسم الكامل مطلوب. لم يُحفظ شيء." : "Full name is required. Nothing was saved.")
-        : (ar ? "تعذّر الحفظ. لم يُحفظ شيء، حاول مرة أخرى." : "Could not save. Nothing was saved; try again."));
-      if (j.field) document.getElementById(fid(j.field))?.focus();
+        : j.error === "busy" ? (ar ? "تغيير آخر على هذا الحساب كان قيد الحفظ. لم يُحفظ شيء، حاول بعد لحظات." : "Another change to this account was being saved. Nothing was saved; try again in a moment.")
+        : null;
+      if (refused) {
+        setMsg(refused);
+        if (j.field) document.getElementById(fid(j.field))?.focus();
+        return;
+      }
+      // Any other failure (a dropped connection, a server error) may come after some of the save was written, so it
+      // never claims that nothing was: read the profile again and show what is stored.
+      const fresh = await fetchProfile().catch(() => null);
+      if (fresh?.ok) { setD(fresh); setFormKey((k) => k + 1); }
+      setMsg(fresh?.ok
+        ? (ar ? "تعذّر التأكد من الحفظ. يعرض النموذج الآن ما هو محفوظ؛ راجعه وحاول مرة أخرى إن نقص شيء." : "Could not confirm the save. The form now shows what is stored; check it and try again if something is missing.")
+        : (ar ? "تعذّر التأكد من الحفظ. أعد تحميل الصفحة لترى ما هو محفوظ." : "Could not confirm the save. Reload the page to see what is stored."));
       return;
     }
     // Show what the server stored: read the profile again, or at least apply the values the save answered with.
