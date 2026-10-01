@@ -23,6 +23,7 @@ import { HELP } from "./help";
 import { getTask } from "./brand";
 import { DEFAULT_IMAGE_MODEL, MEDIA_MODELS, mediaModel } from "./media-catalog";
 import { ONBOARD_EXTRA_BRAND_COST, PLAN_CREDITS } from "./pricing";
+import { NO_CREDITS_HINT } from "./topups";
 import { bannedTerms, explain, gateTask, normalize, type Violation } from "./brand-rules";
 import { proposalStates, proposeBrandChange, withBrandLock, type BrandProposal, type ProposalField } from "./brand-proposals";
 import { byOf, type By } from "./actor";
@@ -512,7 +513,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       const lead = leadRefusal(ctx.agent, type);
       if (lead) return lead;
       const r = await generateBatch(user, email, { type, notes: String(input.notes ?? ""), source: "chat", via: "chat", by: ctx.by, deadline });
-      if (!r.ok) return batchRefused(r, actions, (need, have) => `Insufficient credits: need ${need}, have ${have}. Tell the owner plainly and point to the Subscription page.`);
+      if (!r.ok) return batchRefused(r, actions, (need, have) => `Insufficient credits: need ${need}, have ${have}. Tell the owner plainly. ${NO_CREDITS_HINT}`);
       const created = r.tasks;
       made.push(...created);
       actions.push(`generated:${type}:${created.length}`);
@@ -530,7 +531,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       if (lead) return lead;
       const count = Math.max(1, Math.min(3, Number(input.count) || 1));
       const r = await generateBatch(user, email, { type, notes: String(input.brief ?? ""), count, source: "chat", via: "chat", by: ctx.by, deadline });
-      if (!r.ok) return batchRefused(r, actions, (need, have) => `Insufficient credits: need ${need}, have ${have}.`);
+      if (!r.ok) return batchRefused(r, actions, (need, have) => `Insufficient credits: need ${need}, have ${have}. ${NO_CREDITS_HINT}`);
       const created = r.tasks;
       const cost = r.cost;
       made.push(...created);
@@ -724,7 +725,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
         if (r.credits != null) user.credits = r.credits;
         switch (r.error) {
           case "trial_over": actions.push("limit:trial"); return "Trial ended. Owner must subscribe from the Subscription page.";
-          case "no_credits": actions.push("limit:credits"); return "Insufficient credits for an image.";
+          case "no_credits": actions.push("limit:credits"); return `Insufficient credits for an image. ${NO_CREDITS_HINT}`;
           case "agent_cap": actions.push("limit:agent_cap"); return capReached({ agent: r.agent ?? agentForTask(t.type).id, spent: r.spent ?? 0, cap: r.cap ?? 0 });
           case "wrong_type": return `Images are only for these item types: ${IMAGE_TYPES.join(", ")}.`;
           case "in_progress": return "An image for this item is already being drawn.";

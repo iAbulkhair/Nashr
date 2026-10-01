@@ -9,6 +9,7 @@ import { EVENTS, activeCount, day, dayCount, firstEvent, isoWeek, lastActive, us
 import { monthKey } from "./credits";
 import { MEDIA_MODELS, type MediaModelId, type MediaProviderId } from "./media-catalog";
 import { mk } from "./media/keys";
+import { topupRevenueSar } from "./topups";
 
 /**
  * Founder overview: growth, activation, engagement, revenue estimate, health. All from Redis; no external tool. Prices,
@@ -20,7 +21,8 @@ export type Overview = {
   users: { total: number; new1d: number; new7d: number; new30d: number; activated: number; activationRate: number | null; paying: number; trialActive: number; trialExpired: number; suspended: number };
   engagement: { dau: number; wau: number; mau: number; stickiness: number | null; retention7: number | null };
   funnel: { signups30: number; activated30: number; generated30: number; approved30: number; paid30: number };
-  revenue: { mrrSar: number; planMix: Record<string, number>; arpuSar: number | null; creditsUsedMonth: number; modelCostUsd: number; grossMarginPct: number | null; renderCostUsd: number; renderByProvider: RenderSpend["byProvider"]; renderByModel: RenderSpend["byModel"] };
+  /** `topupSarMonth`: what packs paid for this month brought in, SAR excluding VAT (src/lib/topups.ts); never part of MRR. */
+  revenue: { mrrSar: number; topupSarMonth: number; planMix: Record<string, number>; arpuSar: number | null; creditsUsedMonth: number; modelCostUsd: number; grossMarginPct: number | null; renderCostUsd: number; renderByProvider: RenderSpend["byProvider"]; renderByModel: RenderSpend["byModel"] };
   events: { date: string; counts: Record<string, number> }[];
   features: Record<string, number>;
   health: { errors7d: number; errorsToday: number; modelCalls: number; avgCostPerCallUsd: number | null };
@@ -72,6 +74,9 @@ export async function overview(): Promise<Overview> {
   const planMix: Record<string, number> = {};
   for (const u of users) planMix[u.plan] = (planMix[u.plan] ?? 0) + 1;
   const mrr = live.reduce((s, u) => s + priceOf(u), 0);
+  // Top-ups are one-off payments, not recurring: shown next to MRR, never added to it (rule 448). Every account counts,
+  // suspended or not: the money was received.
+  const topupSarMonth = topupRevenueSar(users, monthKey());
 
   const d = day();
   const [dau, wau, mau] = await Promise.all([activeCount(`active:d:${d}`), activeCount(`active:w:${isoWeek()}`), activeCount(`active:m:${d.slice(0, 7)}`)]);
@@ -121,7 +126,7 @@ export async function overview(): Promise<Overview> {
     users: { total: users.length, new1d: users.filter((u) => ageDays(u.createdAt) <= 1).length, new7d: users.filter((u) => ageDays(u.createdAt) <= 7).length, new30d: recentUsers.length, activated, activationRate: users.length ? Math.round((activated / users.length) * 100) : null, paying, trialActive, trialExpired, suspended: users.filter((u) => u.suspended).length },
     engagement: { dau, wau, mau, stickiness: mau ? Math.round((dau / mau) * 100) : null, retention7: cohort.length ? Math.round((retained / cohort.length) * 100) : null },
     funnel: { signups30: recentUsers.length, activated30: recentUsers.filter((u) => brands.get(u.email)).length, generated30, approved30, paid30: recentUsers.filter((u) => u.plan !== "trial").length },
-    revenue: { mrrSar: mrr, planMix, arpuSar: paying ? Math.round(mrr / paying) : null, creditsUsedMonth: Math.round(creditsUsed), modelCostUsd: total.usd, grossMarginPct: grossMargin, renderCostUsd: render.usd, renderByProvider: render.byProvider, renderByModel: render.byModel },
+    revenue: { mrrSar: mrr, topupSarMonth, planMix, arpuSar: paying ? Math.round(mrr / paying) : null, creditsUsedMonth: Math.round(creditsUsed), modelCostUsd: total.usd, grossMarginPct: grossMargin, renderCostUsd: render.usd, renderByProvider: render.byProvider, renderByModel: render.byModel },
     events,
     features,
     health: { errors7d, errorsToday, modelCalls: total.calls, avgCostPerCallUsd: total.calls ? Math.round((total.usd / total.calls) * 1000) / 1000 : null },

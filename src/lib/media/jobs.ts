@@ -179,8 +179,9 @@ export async function startMedia(input: StartInput, deps: MediaDeps): Promise<St
       ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}),
       state: "queued", createdAt: at, updatedAt: at,
       ...(trialVideo ? { trialVideo: true } : {}),
-      // What a refund needs to lower the agent's counter this charge raised, in the month it was raised.
-      spend: { scope: paid.scope, agent: paid.agent, month: paid.month },
+      // What a refund needs to lower the agent's counter this charge raised, in the month it was raised, and to put the
+      // credits back in the top-up packs they came from (`from`, src/lib/topups.ts).
+      spend: { scope: paid.scope, agent: paid.agent, month: paid.month, ...(paid.from ? { from: paid.from } : {}) },
     };
     const kind = m.kind, prior: { last?: MediaLast } = {};
     // All three settle before anything is decided, so a cleanup never races a task write still in flight.

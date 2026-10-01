@@ -207,6 +207,25 @@ export const chatOverflowHold = (maxCostUsd: number = maxCostPerCreditUsd()): nu
 export const ONBOARD_EXTRA_BRAND_COST = 9;
 export const onboardCost = (brandId: string | undefined): number => ((brandId ?? "default") === "default" ? 0 : ONBOARD_EXTRA_BRAND_COST);
 
+// ---- Top-ups (spec section 6 rule 5, rules 440-452) ----
+
+/**
+ * The credit packs an owner can buy on top of the plan (founder decision 2026-10-01): 1 SAR a credit excluding VAT, packs
+ * of 100 / 300 / 1,000, valid 90 days from activation, spent only after the month's plan credits (src/lib/topups.ts). No
+ * payment gateway yet: the billing page opens WhatsApp support and the founder console activates the pack by hand
+ * (POST /api/admin/topups). Every page, the console and tests/topups.test.ts read the packs from here.
+ */
+export const TOPUP_SAR_PER_CREDIT = 1;
+export const TOPUP_PACKS: readonly number[] = [100, 300, 1000];
+/** Days a pack's credits stay valid, counted from the moment the founder activates it. */
+export const TOPUP_VALID_DAYS = 90;
+/** A pack size from a request body: one of TOPUP_PACKS exactly. */
+export const isTopupPack = (v: unknown): v is number => typeof v === "number" && TOPUP_PACKS.includes(v);
+/** A pack's list price in SAR, excluding VAT. */
+export const topupPriceSar = (credits: number): number => credits * TOPUP_SAR_PER_CREDIT;
+/** Who may buy a pack: every paid plan, Agency included. A trial sees the packs as available after subscribing. */
+export const topupsSold = (plan: Plan): boolean => plan !== "trial";
+
 /**
  * "1,500": Latin digits with a comma, the site's style in both languages. Not a locale formatter: those are reserved
  * for dates (tests/date-locale.test.ts), and the output must be the same on the server and in every browser.

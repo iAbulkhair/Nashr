@@ -8,7 +8,7 @@ import { getBrand } from "@/lib/brand";
 import { once, sendEmail } from "@/lib/notify";
 import { runLifecycle } from "@/lib/lifecycle";
 import { db } from "@/lib/db";
-import { renewIfDue } from "@/lib/credits";
+import { renewIfDue, saveSettledTopups } from "@/lib/credits";
 import { followUps, notifEmailText } from "@/lib/notifications";
 import { getUser } from "@/lib/auth";
 import { syncAdsIfDue } from "@/lib/perf-store";
@@ -28,6 +28,18 @@ async function dailyFor(u: User): Promise<string> {
     out.push("renewed");
     const fresh = await getUser(u.email);
     if (fresh) u.credits = fresh.credits;
+  }
+  // Once per account, on its default brand's entry: a top-up pack that expired leaves storage too. `getUser` already
+  // took it out of the balance the moment it expired (src/lib/topups.ts `settleTopups`); this writes the settled record
+  // under the ledger lock, so an account nobody opens does not keep an expired pack (rule 444).
+  if ((u.brandId ?? "default") === "default" && u.topupsDirty) {
+    try {
+      const settled = await saveSettledTopups(u.email);
+      u.credits = settled.credits;
+      if (settled.saved) out.push("topups_expired");
+    } catch (e) {
+      out.push(`topups_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`);
+    }
   }
   // Once per account, on its default brand's entry: an added brand's setup charge that no run charged or reused for a day
   // is refunded, or only dropped when its brand exists (src/lib/onboard-confirm.ts `sweepOnboardHolds`, rule 246). Covers

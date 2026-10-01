@@ -5,6 +5,7 @@ import { db } from "./db";
 import type { AgentId } from "./agents";
 import type { Member } from "./team";
 import { PLAN_CREDITS, planFromStore, type AgencyDeal, type Plan } from "./pricing";
+import { settleTopups, type Receipt, type TopupLot } from "./topups";
 
 // The plan table lives in src/lib/pricing.ts (import-free, so client components can read it). Re-exported here so the
 // existing `@/lib/auth` imports keep working.
@@ -34,7 +35,7 @@ export type Actor = {
  * agent's counter), the credits it took, and when a run last charged or reused it (the daily sweep refunds a hold nobody
  * used for a day, src/lib/credits.ts `resolveOnboardHolds`).
  */
-export type OnboardHold = { scope: string; agent: AgentId; month: string; credits: number; at: string };
+export type OnboardHold = { scope: string; agent: AgentId; month: string; credits: number; at: string; from?: Receipt };
 
 export type User = {
   email: string;
@@ -90,6 +91,14 @@ export type User = {
    * (`settleChatOverflow` in src/lib/credits.ts), carried to the next one so the owner pays the real cost, not a rounded one.
    */
   chatCarryMicro?: number;
+  /**
+   * Top-up packs (src/lib/topups.ts, rules 440-452): each pack's credits, what is left of it and when it expires. Added
+   * and voided only by the founder console (POST /api/admin/topups), spent and refunded only by the ledger
+   * (src/lib/credits.ts), all under `withUserLock`. `credits` above is the whole balance, packs included.
+   */
+  topups?: TopupLot[];
+  /** Runtime only: `getUser` settled the stored packs (one expired); the next locked save writes them. Never persisted. */
+  topupsDirty?: boolean;
   /** ISO time: every MEMBER session issued before it is dead (founder reset, owner reset). The owner's own sessions follow `sessionsAfter`. */
   teamSessionsAfter?: string;
   /** Runtime only: storage scope of the active brand (email for the default brand). Never persisted. */
@@ -135,19 +144,24 @@ export function normalizePhone(p: string) {
 /**
  * The only reader of `user:{email}`. The stored plan is mapped on read (src/lib/pricing.ts `planFromStore`): the retired
  * "enterprise" reads as "agency", and any other unknown value as "trial", so no caller ever sees a plan outside `PLANS`.
- * The next locked save writes the mapped value back.
+ * Top-up packs are settled the same way (`settleTopups`: expired packs leave the balance). The next locked save writes
+ * the mapped value back.
  */
 export async function getUser(email: string): Promise<User | null> {
   const u = await db.get<User>(`user:${normalizeEmail(email)}`);
-  if (u) u.plan = planFromStore(u.plan);
+  if (u) {
+    u.plan = planFromStore(u.plan);
+    // An expired top-up pack leaves the balance as it expires, not at the next cron (src/lib/topups.ts, rule 444).
+    if (settleTopups(u)) u.topupsDirty = true;
+  }
   return u;
 }
 
 /** Owner accounts only. Members live at `member:{email}` (src/lib/team.ts) and never pass through here or `users:all`. */
 export async function saveUser(u: User) {
   // The runtime-only fields: the active scope and who is acting are per request, never part of the account.
-  const { scope: _s, brandId: _b, actor: _a, ...persist } = u;
-  void _s; void _b; void _a;
+  const { scope: _s, brandId: _b, actor: _a, topupsDirty: _t, ...persist } = u;
+  void _s; void _b; void _a; void _t;
   await db.set(`user:${u.email}`, persist);
   await db.sadd("users:all", u.email);
 }

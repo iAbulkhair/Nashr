@@ -11,6 +11,7 @@ import LimitModal from "@/components/app/LimitModal";
 import { getBrand } from "@/lib/brand";
 import { sc } from "@/lib/auth";
 import { can } from "@/lib/roles";
+import { topupsSold } from "@/lib/pricing";
 
 /** Paths reachable without a session. `/join` accepts a team invite (the token is in the URL fragment). */
 const PUBLIC = ["/login", "/signup", "/forgot", "/reset", "/admin", "/join"];
@@ -59,7 +60,7 @@ export default async function AppLayout({ children, params }: { children: React.
         {!path.endsWith("/billing") && !path.endsWith("/start") && !path.endsWith("/join") && <TrialBanner lang={lang} days={trialDaysLeft(user.trialEnds)} plan={user.plan} industry={brand?.industry} owner={owner} />}
         {children}
       </main>
-      <LimitModal t={t} lang={lang} owner={owner} governs={can(user, "governance.write")} />
+      <LimitModal t={t} lang={lang} owner={owner} governs={can(user, "governance.write")} topups={topupsSold(user.plan)} />
     </div>
   );
 }

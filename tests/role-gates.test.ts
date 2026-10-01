@@ -93,6 +93,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/admin/impersonate": "admin-console",
   "POST /api/admin/plan": "admin-console",
   "POST /api/admin/users/[email]": "admin-console",
+  // Credit top-ups, activated by hand while there is no payment gateway (rules 446-447): the founder only.
+  "POST /api/admin/topups": "admin-console",
 
   // Owner only.
   "PUT /api/governance": g("owner", "governance.write"),
