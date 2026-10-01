@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { jar, json, newUser, signIn } from "./helpers/session";
+import { adminSignIn, jar, json, newUser, signIn } from "./helpers/session";
 import { getUser, saveUser, seatLimit, type Plan, type User } from "@/lib/auth";
 import { monthKey, renewIfDue } from "@/lib/credits";
 import { db } from "@/lib/db";
@@ -17,9 +17,9 @@ import * as profileRoute from "@/app/api/profile/route";
  */
 const KEY = "deal-admin-key-0123456789";
 beforeAll(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); });
-// The console's cookie, as the console page sends it. Not the x-admin-key header: that one is throttled per IP
-// (30 guesses in 15 minutes), and every call in this file comes from the same test address.
-beforeEach(() => { jar().clear(); jar().set("nashr_admin", KEY); });
+// The console's key session cookie, as the console page sends it. Not the x-admin-key header: that one is throttled per
+// IP (30 guesses in 15 minutes), and every call in this file comes from the same test address.
+beforeEach(async () => { jar().clear(); await adminSignIn(); });
 
 const headers = {};
 const call = (email: string, body: Record<string, unknown>) => plan.POST(json("/api/admin/plan", "POST", { email, ...body }, headers));
@@ -164,7 +164,7 @@ describe("the owner's profile states the allowance the balance renews to (rule 2
     await signIn(u.email);
     const read = async () => (await (await profileRoute.GET()).json()) as { allowance: number; user: Record<string, unknown> };
     expect((await read()).allowance).toBe(PLAN_CREDITS.business);
-    jar().set("nashr_admin", KEY);
+    await adminSignIn();
     await call(u.email, { deal: { credits: 4500, priceSar: 2997 } });
     const p = await read();
     expect(p.allowance).toBe(4500);

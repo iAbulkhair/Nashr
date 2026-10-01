@@ -1,5 +1,6 @@
 "use client";
 import { Fragment, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import GoldenPanel from "./GoldenPanel";
 import WishlistPanel from "./WishlistPanel";
 import type { Activity } from "@/lib/activity";
@@ -103,9 +104,10 @@ function Events({ data }: { data: Overview["events"] }) {
   );
 }
 
-export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
+export default function AdminConsole({ lang = "en", keySession = false }: { lang?: "ar" | "en"; keySession?: boolean }) {
   const S = STR[lang];
   const O = OV[lang];
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>("overview");
   const [ov, setOv] = useState<Overview | null>(null);
   const [log, setLog] = useState<{ actor?: string; email: string; what: string; reason?: string; before?: unknown; after?: unknown; at: string }[] | null>(null);
@@ -261,6 +263,12 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
 
   return (
     <div className="grid gap-6">
+      {keySession && (
+        // Ends the key session on the server (DELETE /api/admin/login), so the same cookie never opens the console again.
+        <div className="flex justify-end">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={async () => { await fetch("/api/admin/login", { method: "DELETE" }).catch(() => null); router.push(`/${lang}`); router.refresh(); }}>{lang === "ar" ? "إنهاء جلسة المفتاح" : "End key session"}</button>
+        </div>
+      )}
       <div className="grid gap-3 sm:grid-cols-4">
         {[[S.users, loadingUsers ? "…" : list.length], [S.paying, loadingUsers ? "…" : paying], [S.today, loadingUsers ? "…" : today], [S.trial, loadingUsers ? "…" : trialing], [S.cost, total ? total.usd.toFixed(2) : "…"], [S.tokens, total ? `${Math.round((total.in + total.out) / 1000)}k` : "…"], [S.calls, total ? total.calls : "…"], [S.suspended, list.filter((u) => u.suspended).length]].map(([l, v]) => (
           <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="font-display text-2xl font-bold text-oasis">{v}</p></div>

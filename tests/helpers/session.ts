@@ -37,6 +37,15 @@ export async function supportAccess(email: string, founder = "support-founder@te
   g.__testJar.set("nashr_impersonate", email);
   return token;
 }
+/**
+ * Open a founder-console key session (what POST /api/admin/login does after a right key) and add its `nashr_admin`
+ * cookie to the jar, keeping any other cookie. WAITLIST_ADMIN_KEY must be set. The cookie value is a random id.
+ */
+export async function adminSignIn() {
+  const { createAdminSession } = await import("@/lib/auth");
+  await createAdminSession();
+  return g.__testJar.get("nashr_admin")!;
+}
 /** Wait for work a handler scheduled with `after()`. */
 export const settle = async () => { await Promise.all(g.__testAfter.splice(0)); };
 

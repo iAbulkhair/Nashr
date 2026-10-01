@@ -1,6 +1,6 @@
 import { cookies, headers } from "next/headers";
 import bcrypt from "bcryptjs";
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
 import type { AgentId } from "./agents";
 import type { Member } from "./team";
@@ -300,9 +300,14 @@ export async function getLogin(email: string): Promise<Login | null> {
   return listed ? { kind: "member", member: m, owner } : null;
 }
 
-/** Founder accounts: ADMIN_EMAILS env (comma-separated) with the founder's own email as the default. */
+/**
+ * Founder accounts: ADMIN_EMAILS (comma-separated). Fails closed: with the variable unset or empty no email is a
+ * founder, and only the console key (WAITLIST_ADMIN_KEY) opens the console. There is no default address in the code,
+ * so a fresh or restored database, a preview or a fork never hands the console to whoever registers a listed email.
+ * Rule 315, tests/launch-security.test.ts.
+ */
 export function adminEmails(): string[] {
-  return (process.env.ADMIN_EMAILS ?? "hejazy@gmail.com").split(",").map((e) => normalizeEmail(e)).filter(Boolean);
+  return (process.env.ADMIN_EMAILS ?? "").split(",").map((e) => normalizeEmail(e)).filter(Boolean);
 }
 export const isFounder = (email: string | undefined | null) => !!email && adminEmails().includes(normalizeEmail(email));
 /**
@@ -312,8 +317,55 @@ export const isFounder = (email: string | undefined | null) => !!email && adminE
 export const isFounderActor = (u: User | null | undefined) => !!u?.actor && u.actor.kind === "owner" && u.actor.email === u.email && isFounder(u.actor.email);
 
 /**
- * Who is acting in the founder console: "key" for the admin key (header or cookie, never the URL: query strings end up
- * in logs and history), the founder's email for a founder's own session, null for anyone else. `admin:log` records it.
+ * The founder console's key session (rules 310-314, tests/launch-security.test.ts).
+ *
+ * The key form (POST /api/admin/login) used to put WAITLIST_ADMIN_KEY itself in this cookie for 30 days, so anyone who
+ * copied the cookie held the master key, and "log out" only deleted it in one browser. Now the cookie holds a random
+ * 32-byte id; the server keeps `adminsession:{sha256(id)}` for 12 hours with a fingerprint of the key it was opened
+ * with. Logging out deletes the record, so a copied cookie dies with it; rotating the key changes the fingerprint and
+ * ends every key session at once; removing the key disables the path. The raw key in the cookie is no longer accepted.
+ * The record is stored under a hash of the id, so a read of the database does not hand out live cookies.
+ */
+export const ADMIN_COOKIE = "nashr_admin";
+export const ADMIN_SESSION_TTL = 60 * 60 * 12;
+type AdminSession = { kp: string; at: number };
+const adminKeyPrint = (key: string) => createHash("sha256").update(`nashr-admin-key:${key}`).digest("hex");
+const adminSessionKey = (id: string) => `adminsession:${createHash("sha256").update(id).digest("hex")}`;
+
+/** Open a key session for the current key and set its cookie. The caller has already checked the key. */
+export async function createAdminSession(): Promise<void> {
+  const key = process.env.WAITLIST_ADMIN_KEY;
+  if (!key) throw new Error("WAITLIST_ADMIN_KEY is not set");
+  const id = randomBytes(32).toString("hex");
+  await db.set(adminSessionKey(id), { kp: adminKeyPrint(key), at: Date.now() } satisfies AdminSession, ADMIN_SESSION_TTL);
+  const jar = await cookies();
+  jar.set(ADMIN_COOKIE, id, await sessionCookie(ADMIN_SESSION_TTL));
+}
+
+/** True when the caller's `nashr_admin` cookie names a live key session opened with the CURRENT key. */
+export async function adminKeySession(): Promise<boolean> {
+  const key = process.env.WAITLIST_ADMIN_KEY;
+  if (!key) return false;
+  const id = (await cookies()).get(ADMIN_COOKIE)?.value;
+  if (!id || !/^[0-9a-f]{64}$/.test(id)) return false;
+  const rec = await db.get<AdminSession>(adminSessionKey(id));
+  if (!rec || typeof rec.kp !== "string") return false;
+  const { sameSecret } = await import("./rate");
+  return sameSecret(rec.kp, adminKeyPrint(key));
+}
+
+/** Log the key session out: the server record goes, so the same cookie value never works again. */
+export async function destroyAdminSession(): Promise<void> {
+  const jar = await cookies();
+  const id = jar.get(ADMIN_COOKIE)?.value;
+  if (id && /^[0-9a-f]{64}$/.test(id)) await db.del(adminSessionKey(id));
+  jar.delete(ADMIN_COOKIE);
+}
+
+/**
+ * Who is acting in the founder console: "key" for the admin key (the x-admin-key header or a key session cookie, never
+ * the URL: query strings end up in logs and history), the founder's email for a founder's own session, null for anyone
+ * else. `admin:log` records it.
  */
 export async function adminActor(req: Request): Promise<string | null> {
   const key = process.env.WAITLIST_ADMIN_KEY;
@@ -325,25 +377,19 @@ export async function adminActor(req: Request): Promise<string | null> {
       if (!(await allow(`adminhdr:${clientIp(req)}`, 30, 900))) return null;
       if (sameSecret(given, key)) return "key";
     }
-    const jar = await cookies();
-    if (sameSecret(jar.get("nashr_admin")?.value, key)) return "key";
+    if (await adminKeySession()) return "key";
   }
   const u = await currentUser();
   return isFounderActor(u) ? u!.actor!.email : null;
 }
 
-/** API access: admin key (header or cookie) or a founder signed in as themselves (`adminActor`). */
+/** API access: admin key (header or key session) or a founder signed in as themselves (`adminActor`). */
 export async function isAdmin(req: Request) {
   return (await adminActor(req)) !== null;
 }
 
-/** Page access: admin cookie or a founder signed in as themselves (`isFounderActor`). */
+/** Page access: a key session or a founder signed in as themselves (`isFounderActor`). */
 export async function isAdminCookie() {
-  const key = process.env.WAITLIST_ADMIN_KEY;
-  if (key) {
-    const { sameSecret } = await import("./rate");
-    const jar = await cookies();
-    if (sameSecret(jar.get("nashr_admin")?.value, key)) return true;
-  }
+  if (await adminKeySession()) return true;
   return isFounderActor(await currentUser());
 }

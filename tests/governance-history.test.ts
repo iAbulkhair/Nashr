@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToReadableStream } from "react-dom/server.edge";
-import { jar, json, newMember, newUser, params, settle, signIn, signOut, supportAccess } from "./helpers/session";
+import { adminSignIn, jar, json, newMember, newUser, params, settle, signIn, signOut, supportAccess } from "./helpers/session";
 import { currentUser, getUser, saveUser, type User } from "@/lib/auth";
 import { addBrand, scopeFor } from "@/lib/brands";
 import { saveTask, type Task } from "@/lib/brand";
@@ -64,7 +64,7 @@ describe("who acted is worked out in code (rule 225)", () => {
       // values any browser can set, so an owner's own actions stay the owner's.
       await supportAccess(u.email);
       vi.stubEnv("WAITLIST_ADMIN_KEY", "test-admin-key-0123456789");
-      jar().set("nashr_admin", "test-admin-key-0123456789");
+      await adminSignIn();
       expect(byOf((await currentUser())!)).toEqual(OWNER(u));
       expect(byOf(own)).toEqual(OWNER(u));
     } finally {
