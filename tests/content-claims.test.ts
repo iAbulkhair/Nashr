@@ -144,6 +144,18 @@ describe("no site or product copy asserts an invented result or an unbuilt featu
     { re: /(limits by plan|بحدود حسب الخطة)/i, why: "brands have no plan limit" },
     { re: /plans differ only in monthly credits and number of brands/, why: "plans differ in credits and seats; brands are unlimited (the chat prompt repeats this to owners)" },
     { re: /(\bplan\b[^.()]{0,60}\(1 credit\)|خطة[^.()]{0,60}\(1 كريدت\))/i, why: "the weekly plan costs TASK_COST.weekly_plan, not 1" },
+    // Pricing phase 2 (rules 308-310): chat is included up to the plan's monthly messages, then pauses or, if the owner
+    // turned it on, costs credits. Copy that calls it free or unlimited is what the allowance retired.
+    { re: /(Chatting with the team[^.]*\bfree\b|الدردشة مع الفريق[^.]*مجان|unlimited chat|chat is (free|unlimited)|(دردشة|محادثة|محادثات) (مجانية|بلا حد|غير محدودة))/i, why: "chat is included up to the plan's monthly messages, not free or unlimited" },
+    // Rule 310 as built: past the allowance with "continue on credits" on, nothing is held before a message. It needs at
+    // least chatOverflowHold() credits in the balance and is billed its metered cost after the reply, at most that. Copy
+    // that says credits are held (reserved) per message, or that the unused part comes back, describes a hold that does
+    // not exist. Narrow on purpose: refunds of renders and onboarding ("the credits come back") are real and stay.
+    { re: /(credits (are|is) held (before|for) (each|every)|(each|every) (extra )?message (then )?holds\b|holds \S+ credits before the reply|(what it (did|does) not use|the rest) (comes back|is given back|given back|is returned)|cannot cover the hold)/i, why: "chat past the allowance holds nothing before the reply; it needs the hold in the balance and is billed what it cost" },
+    { re: /((تحجز|تُحجز|يُحجز|يحجز)[^.؛\n]{0,30}كريدت|كريدت[^.؛\n]{0,10}(تحجز|تُحجز|يُحجز)|ويعود (الباقي|ما لم يُستخدم)|ويُعاد ما لا تستهلكه|لم يكفِ رصيدك للحجز)/, why: "chat past the allowance holds nothing before the reply (Arabic)" },
+    // What a chat message usually costs is not measured: chat runs on Opus, estimated near or above one credit a turn at
+    // the floor rate. Until it is measured, no copy guesses below the cap.
+    { re: /(usually (under|less than) (one|1|a) credit|credits a message, usually less|(عادةً|غالباً) أقل من كريدت|كريدت على الأكثر للرسالة، وغالباً أقل)/i, why: "an unmeasured typical cost per chat message" },
   ];
 
   const files = ROOTS.flatMap(copyFiles);
@@ -154,7 +166,7 @@ describe("no site or product copy asserts an invented result or an unbuilt featu
     expect(files.length).toBeGreaterThan(100);
   });
 
-  it("the pricing bans catch the copy they retired, so a pattern cannot pass by matching nothing (rule 248)", () => {
+  it("the pricing bans catch the copy they retired, so a pattern cannot pass by matching nothing (rules 248, 308)", () => {
     const RETIRED = [
       `{ name: "Starter", price: "149", period: "SAR / month", credits: "200 credits / month"`,
       `"فريق كامل من 149 ريالاً شهرياً"`,
@@ -173,11 +185,43 @@ describe("no site or product copy asserts an invented result or an unbuilt featu
       `weeklyDesc: "Every Sunday 06:00 KSA — a 7-day plan lands in your inbox (1 credit)."`,
       `a: { ar: "خطة أسبوعية كل أحد 06:00 (1 كريدت) وملخص صباحي" }`,
       `| Items per month | — | what your plan's credits buy (Starter 200, Pro 700) |`,
+      `: { action: "Chatting with the team and setting up your first brand from your URL", cost: "Free" },`,
+      `? { action: "الدردشة مع الفريق وإعداد علامتك الأولى من رابط موقعك", cost: "مجاناً" }`,
+      `Chatting with the team and setting up your first brand are free; setting up each added brand from its URL`,
+      `الدردشة مع الفريق وإعداد علامتك الأولى مجاناً، وإعداد كل علامة إضافية من رابطها`,
+      // Pricing phase 2's first wording of "continue on credits" (rule 310), which described a hold that is not built.
+      "`On credits, each extra message is billed by what it actually used: usually under one credit, never more than ${hold}.`",
+      "`${hold} credits are held before each extra message and what it did not use comes back right after the reply; with fewer than ${hold} credits left, chat pauses.`",
+      "`على الكريدت: تُحسب كل رسالة إضافية بقدر ما استهلكته فعلاً، عادةً أقل من كريدت واحد، ولا تتجاوز ${hold} كريدت أبداً.`",
+      "`قبل كل رسالة إضافية يُحجز ${hold} كريدت ويعود ما لم يُستخدم فور الرد، وإذا كان الرصيد أقل من ${hold} تتوقف الدردشة.`",
+      `chatOnCredits: "This month's messages ({allowance}) are used; chat now continues on credits: at most {hold} credits a message, usually less.",`,
+      `chatOnCredits: "استُخدمت رسائل هذا الشهر ({allowance} رسالة)، والدردشة الآن على الكريدت: {hold} كريدت على الأكثر للرسالة، وغالباً أقل.",`,
+      `but each message holds {hold} credits before the reply (what it does not use comes back) and your balance is lower.`,
+      `the balance is too low to continue on credits ({hold} credits are held for each message).`,
+      `لكن كل رسالة تحجز {hold} كريدت قبل الرد ويُعاد ما لا تستهلكه، ورصيدك أقل من ذلك.`,
+      `والرصيد لا يكفي لإكمال الدردشة على الكريدت ({hold} كريدت تُحجز لكل رسالة).`,
+      "each extra message then holds ${HOLD} credits before the reply and is charged its real cost, never more than ${HOLD}, with the rest given back; if your balance cannot cover the hold, chat pauses too.",
+      "عندها تحجز كل رسالة إضافية ${HOLD} كريدت قبل الرد، ثم تُحسب بكلفتها الفعلية ولا تتجاوز ${HOLD} كريدت، ويعود الباقي، وإن لم يكفِ رصيدك للحجز تتوقف الدردشة أيضاً.",
     ];
     const missed = RETIRED.filter((line) => !CLAIMS.some(({ re }) => re.test(line)));
     expect(missed).toEqual([]);
     // And the copy that replaced them is not caught.
-    const CURRENT = [`us: "from SAR 299" }`, `"(2 credits)"`, `"1,500 credits / month, reset monthly"`, `"Unlimited brands, 1 seat"`, `"7 seats including the owner"`];
+    const CURRENT = [
+      `us: "from SAR 299" }`, `"(2 credits)"`, `"1,500 credits / month, reset monthly"`, `"Unlimited brands, 1 seat"`, `"7 seats including the owner"`,
+      `: { action: "Setting up your first brand from your URL", cost: "Free" },`, `? { action: "إعداد علامتك الأولى من رابط موقعك", cost: "مجاناً" }`,
+      `"250 chat messages a month with the team"`, `"250 رسالة محادثة مع الفريق شهرياً"`, `"Custom monthly chat messages"`,
+      `Chat with the team is included up to your plan's monthly messages: Starter 250, Pro 650, Business 1,300, and 30 for the whole trial.`,
+      `الدردشة مع الفريق ضمن رسائل خطتك الشهرية: البداية 250، الاحتراف 650، الأعمال 1,300، و30 للتجربة كلها.`,
+      `Her list is free, no credits; talking to her in chat counts toward your chat messages like any chat.`,
+      "On credits, each extra message needs at least ${hold} credits in your balance and is billed what it actually cost, at most ${hold} credits.",
+      "على الكريدت: تحتاج كل رسالة إضافية ${hold} كريدت على الأقل في رصيدك، وتُحسب بما كلّفته فعلاً، ${hold} كريدت على الأكثر.",
+      `chatPausedCredits: "This month's messages ({allowance}) are used, and chat is paused: your balance is below the {hold} credits a message on credits needs.",`,
+      `chatPausedCredits: "استُخدمت رسائل هذا الشهر ({allowance} رسالة)، والدردشة متوقفة: رصيدك أقل من {hold} كريدت، وهو أقل ما تحتاجه الرسالة على الكريدت.",`,
+      // Real refunds keep their wording: a render or an added brand's setup that fails gives its credits back.
+      `charged: "خُصمت {n} كريدت، وتعود تلقائياً إن لم يكتمل التوليد."`,
+      `If a render does not finish, the credits come back automatically.`,
+      `seatsNote: "المالك يحتسب مقعداً، وكل دعوة معلّقة تحجز مقعداً حتى تُقبل أو تُلغى."`,
+    ];
     expect(CURRENT.filter((line) => CLAIMS.some(({ re }) => re.test(line)))).toEqual([]);
   });
 

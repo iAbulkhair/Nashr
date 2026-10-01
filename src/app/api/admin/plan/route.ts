@@ -3,20 +3,25 @@ import { adminActor, getUser, isAdmin, isPlan, normalizeEmail, saveUser, seatLim
 import { CAPS, db, pushCapped } from "@/lib/db";
 import { monthKey, withUserLock } from "@/lib/credits";
 import { getUsage } from "@/lib/usage";
+import { chatStatus } from "@/lib/chat-allowance";
+import { chatUsdPerMessage } from "@/lib/admin-stats";
 import { pmap } from "@/lib/parallel";
 import { enforceSeats } from "@/lib/team";
-import { MAX_SEAT_OVERRIDE, SAR_PER_USD, allowanceOf, parseDeal, priceOf, type AgencyDeal, type DealInput } from "@/lib/pricing";
+import { MAX_SEAT_OVERRIDE, SAR_PER_USD, allowanceOf, chatAllowanceOf, isChatOverride, parseDeal, priceOf, type AgencyDeal, type DealInput } from "@/lib/pricing";
 
 /** Largest founder credit adjustment, either way. Only a guard against a typo, and against JSON's 1e999 (Infinity). */
 const MAX_ADD_CREDITS = 100_000;
 /** A deal as the log and the console show it: "credits@priceSar", or "none". */
 const dealLabel = (d: AgencyDeal | null | undefined) => (d ? `${d.credits}@${d.priceSar}` : "none");
 
-// GET  /api/admin/plan → list users with this month's model usage, their plan, deal, allowance and list price.
-// POST /api/admin/plan {email, plan?, deal?, addCredits?, seats?, reason?}
+// GET  /api/admin/plan → list users with this month's model usage, their plan, deal, allowance and list price, and their
+//      chat: messages counted against the allowance (`chatStatus.counted`, the raw count, the trial's for a trial), the
+//      override, the owner's "continue on credits" switch, the messages continued on credits this month and the credits
+//      they were billed, what chat cost this month and per message (`chatUsdPerMessage`, over every message sent).
+// POST /api/admin/plan {email, plan?, deal?, addCredits?, seats?, chatAllowance?, reason?}
 //      plan: set the plan; the balance resets to the account's allowance (src/lib/pricing.ts `allowanceOf`) and the
-//            renewal cycle starts. Leaving Agency clears the deal, and with it the seat override (a deal's seats live
-//            there), unless the same request sets `seats`.
+//            renewal cycle starts. Leaving Agency clears the deal, and with it the seat and chat overrides (a deal's
+//            seats and chat messages live there), unless the same request sets `seats` / `chatAllowance`.
 //      deal: {credits, priceSar} sets the Agency contract, null clears it. Only on Agency (400 deal_needs_agency),
 //            validated by `parseDeal` (400 bad_deal, or below_floor under the Business rate). A deal change alone keeps
 //            the balance: the new allowance applies at the next renewal, or at once when sent with plan:"agency". A
@@ -24,19 +29,24 @@ const dealLabel = (d: AgencyDeal | null | undefined) => (d ? `${d.credits}@${d.p
 //            the plan's seats unless the same request sets `seats`.
 //      addCredits: a whole number of credits to add or take (400 bad_credits when not finite or over the bound).
 //      seats: set or clear (null or 0) the seat override.
+//      chatAllowance: set the chat override, a whole number 0..MAX_CHAT_OVERRIDE (`isChatOverride`; 0 is an override that
+//            stops chat for the account), or clear it with null or "" back to the plan's messages (`chatAllowanceOf`).
+//            Anything else is 400 bad_chat. Like a deal's seats, it is cleared when the deal ends (rule 316).
 //      A plan or seat change fits the team to the new limit at once (src/lib/team.ts `enforceSeats`): the newest
 //      members over it are paused, never deleted. Every change is logged in admin:log with the deal before and after.
-//      Rules 243-244, tests/admin-deal.test.ts.
+//      Rules 243-244 and 316, tests/admin-deal.test.ts.
 export async function GET(req: Request) {
   if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
   const emails = await db.smembers("users:all");
   const rows = await pmap(emails, async (e) => {
     const u = await getUser(e);
     if (!u) return null;
-    const usage = await getUsage(u.email);
+    const [usage, chat] = await Promise.all([getUsage(u.email), chatStatus(u)]);
     // The list price, or an Agency account's deal price (Business's without a deal).
     const priceSar = priceOf(u);
     const costSar = usage.usd * SAR_PER_USD;
+    // `chatStatus`, not the month counter alone: a trial's messages are counted once for the whole trial.
+    const chatUsd = usage.byKind.chat?.usd ?? 0;
     return ({
       email: u.email, name: u.name, phone: u.phone, plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt,
       renewedAt: u.renewedAt ?? null, suspended: !!u.suspended, lang: u.lang,
@@ -46,6 +56,13 @@ export async function GET(req: Request) {
       priceSar,
       // A trial has no list price, so a margin would be meaningless rather than negative.
       marginPct: priceSar > 0 ? Math.round(((priceSar - costSar) / priceSar) * 100) : null,
+      // `chatUsed` is the RAW count (`counted`), not the owner's clamped `used`: after the allowance was lowered
+      // mid-period it can pass `chatAllowance`, and the console shows that as it is.
+      chatUsed: chat.counted, chatAllowance: chat.allowance, chatLeft: chat.left, chatPeriod: chat.period,
+      chatOverride: u.chatAllowance ?? null, chatOverflowOn: chat.overflow.on, chatOverflowUsed: chat.overflow.used,
+      // What the messages continued on credits were billed this month (each its metered cost, at most `chatOverflowHold`).
+      chatCredits: chat.overflow.credits,
+      chatUsd, usdPerMsg: chatUsdPerMessage(chatUsd, chat),
     });
   });
   const users = rows.filter((x): x is NonNullable<typeof x> => !!x);
@@ -57,13 +74,19 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const who = await adminActor(req);
   if (!who) return NextResponse.json({ ok: false }, { status: 401 });
-  const b = (await req.json().catch(() => ({}))) as { email?: string; plan?: Plan; deal?: unknown; addCredits?: unknown; seats?: number | null; reason?: string };
+  const b = (await req.json().catch(() => ({}))) as { email?: string; plan?: Plan; deal?: unknown; addCredits?: unknown; seats?: number | null; chatAllowance?: unknown; reason?: string };
   const email = typeof b.email === "string" ? normalizeEmail(b.email) : "";
   // A seat override is a whole number of seats, the owner included; null or 0 goes back to the plan's.
   const seatsGiven = b.seats !== undefined;
   const clearSeats = b.seats === null || b.seats === 0;
   if (seatsGiven && !clearSeats && !(typeof b.seats === "number" && Number.isInteger(b.seats) && b.seats >= 1 && b.seats <= MAX_SEAT_OVERRIDE)) {
     return NextResponse.json({ ok: false, error: "bad_seats" }, { status: 400 });
+  }
+  // A chat override is a whole number of messages; 0 is an override (chat stopped), so only null or "" goes back to the plan's.
+  const chatGiven = b.chatAllowance !== undefined;
+  const clearChat = b.chatAllowance === null || b.chatAllowance === "";
+  if (chatGiven && !clearChat && !isChatOverride(b.chatAllowance)) {
+    return NextResponse.json({ ok: false, error: "bad_chat" }, { status: 400 });
   }
   // Credits to add: a finite number within the bound. JSON 1e999 parses to Infinity, which the store would keep as null.
   const addGiven = b.addCredits !== undefined && b.addCredits !== null;
@@ -83,8 +106,9 @@ export async function POST(req: Request) {
   const planGiven = isPlan(b.plan);
   const prev = email ? await getUser(email) : null;
   if (!prev) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
-  const before = { plan: String(prev.plan), credits: Number(prev.credits), seats: seatLimit(prev), deal: dealLabel(prev.deal) };
+  const before = { plan: String(prev.plan), credits: Number(prev.credits), seats: seatLimit(prev), chat: chatAllowanceOf(prev), deal: dealLabel(prev.deal) };
   let seatsReset = false;
+  let chatReset = false;
   const done = await withUserLock(email, async (u) => {
     const plan = planGiven ? (b.plan as Plan) : u.plan;
     // Decided on the record as it is under the lock, before anything changes: a refused request writes nothing.
@@ -97,6 +121,8 @@ export async function POST(req: Request) {
     // A deal lives only on Agency: leaving Agency clears it, so a later return to Agency starts from Business.
     if (u.plan !== "agency" || clearDeal) delete u.deal;
     if (contractEnds && !seatsGiven && u.seats !== undefined) { delete u.seats; seatsReset = true; }
+    // A deal's chat messages live in the chat override, the same way: they end with the contract unless this request sets them.
+    if (contractEnds && !chatGiven && u.chatAllowance !== undefined) { delete u.chatAllowance; chatReset = true; }
     if (deal) u.deal = { credits: deal.credits, priceSar: deal.priceSar, setAt: new Date().toISOString(), setBy: who };
     if (planGiven) {
       u.credits = allowanceOf(u);
@@ -105,6 +131,8 @@ export async function POST(req: Request) {
     if (addGiven) u.credits = Math.max(0, (Number.isFinite(u.credits) ? u.credits : 0) + add);
     if (clearSeats) delete u.seats;
     else if (seatsGiven) u.seats = b.seats as number;
+    if (clearChat) delete u.chatAllowance;
+    else if (chatGiven) u.chatAllowance = b.chatAllowance as number;
     await saveUser(u);
     return u;
   });
@@ -119,8 +147,9 @@ export async function POST(req: Request) {
     dealGiven || dealAfter !== before.deal ? `deal:${dealAfter}` : "",
     addGiven ? `credits:${add}` : "",
     seatsGiven ? `seats:${clearSeats ? "plan" : b.seats}` : seatsReset ? "seats:plan" : "",
+    chatGiven ? `chat:${clearChat ? "plan" : b.chatAllowance}` : chatReset ? "chat:plan" : "",
   ].filter(Boolean).join(" ") || "none";
   const teamChange = team && (team.disabled.length || team.enabled.length || team.cancelled.length) ? { disabled: team.disabled, enabled: team.enabled, cancelledInvites: team.cancelled.length } : undefined;
-  await pushCapped("admin:log", JSON.stringify({ actor: who, email: user.email, what, before, after: { plan: user.plan, credits: user.credits, seats: seatLimit(user), deal: dealAfter }, team: teamChange, reason: (typeof b.reason === "string" ? b.reason.slice(0, 200) : "") || undefined, at: new Date().toISOString() }), CAPS.adminLog);
-  return NextResponse.json({ ok: true, user: { email: user.email, plan: user.plan, credits: user.credits, renewedAt: user.renewedAt, seats: seatLimit(user), seatsOverride: user.seats ?? null, deal: user.deal ?? null, allowance: allowanceOf(user) }, ...(team ? { team } : {}) });
+  await pushCapped("admin:log", JSON.stringify({ actor: who, email: user.email, what, before, after: { plan: user.plan, credits: user.credits, seats: seatLimit(user), chat: chatAllowanceOf(user), deal: dealAfter }, team: teamChange, reason: (typeof b.reason === "string" ? b.reason.slice(0, 200) : "") || undefined, at: new Date().toISOString() }), CAPS.adminLog);
+  return NextResponse.json({ ok: true, user: { email: user.email, plan: user.plan, credits: user.credits, renewedAt: user.renewedAt, seats: seatLimit(user), seatsOverride: user.seats ?? null, deal: user.deal ?? null, allowance: allowanceOf(user), chatAllowance: chatAllowanceOf(user), chatOverride: user.chatAllowance ?? null }, ...(team ? { team } : {}) });
 }

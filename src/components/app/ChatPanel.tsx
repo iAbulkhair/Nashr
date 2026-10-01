@@ -6,6 +6,9 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { ChatMsg, ChatItem } from "@/lib/chat";
 import type { HandoffItemStatus, HandoffView } from "@/lib/handoffs";
 import type { BrandProposal } from "@/lib/brand-proposals";
+// Type only: chat-allowance.ts reads the store. The numbers arrive from the server in each answer's `chat`.
+import type { ChatStatus } from "@/lib/chat-allowance";
+import { formatCount } from "@/lib/pricing";
 import { AGENTS, isAgentId, type AgentId } from "@/lib/agents";
 import { limitFromError, raiseLimit } from "./LimitModal";
 import { render } from "@/lib/md";
@@ -83,6 +86,38 @@ export function ItemCard({ item, t, lang, onApproved, canApprove = true }: { ite
 
 /** A string from the dictionary with its {placeholders} filled. */
 const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
+
+/**
+ * The line under the message box (rule 315): messages left of the account's allowance this month (or in the trial), from
+ * the server's ChatStatus. `low` (10% or less left, used up, or continuing on credits) shows it in the warning colour.
+ * Used up with "continue on credits" on, `credits` (the balance now) below `overflow.hold` means chat is paused: a message
+ * on credits needs at least that much in the balance. An allowance of 0 (the founder turned chat off for the account)
+ * promises no renewal date.
+ */
+export function chatLine(t: AppDict, s: ChatStatus, credits?: number): { text: string; low: boolean } {
+  const C = t.chat;
+  const v = { left: formatCount(s.left), allowance: formatCount(s.allowance), hold: formatCount(s.overflow.hold) };
+  if (s.left > 0) return { text: fill(s.period === "trial" ? C.chatLeftTrial : C.chatLeft, v), low: s.left <= s.allowance * 0.1 };
+  // Off for the account (the founder's 0): no message goes through, not even on credits (src/lib/chat-allowance.ts).
+  if (s.allowance <= 0) return { text: C.chatOff, low: true };
+  if (s.overflow.on && s.overflow.available) {
+    const short = typeof credits === "number" && Number.isFinite(credits) && credits < s.overflow.hold;
+    return { text: fill(short ? C.chatPausedCredits : C.chatOnCredits, v), low: true };
+  }
+  return { text: fill(s.period === "trial" ? C.chatOutTrial : C.chatOut, v), low: true };
+}
+
+/**
+ * A message POST /api/chat refused before saving anything: 402 `chat_allowance` (paused) or `chat_credits` (continuing on
+ * credits, the balance below `overflow.hold`, the least a message on credits needs), 429 `slow_down` (the hourly or daily
+ * burst limit). Null for anything else, which keeps the old path (an error bubble, or the recovery when no answer came).
+ */
+export function refusalOf(status: number, error: unknown): "chat" | "chat_credits" | "slow_down" | null {
+  if (status === 402 && error === "chat_allowance") return "chat";
+  if (status === 402 && error === "chat_credits") return "chat_credits";
+  if (status === 429 && error === "slow_down") return "slow_down";
+  return null;
+}
 const RUNNABLE: ReadonlySet<HandoffItemStatus> = new Set(["proposed", "failed"]);
 /** While an item runs, the card reads the stored state again this often, at most HANDOFF_POLLS times in a row. */
 export const HANDOFF_POLL_MS = 10_000;
@@ -335,11 +370,14 @@ function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[
   return [...out];
 }
 
-export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey, canApprove = true, canBrand = true, canRun = true, canDecline = true, handoffs }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey; /** `can(u, "publish")`: approve buttons on item cards */ canApprove?: boolean; /** `can(u, "brand.write")`: Save and Dismiss on brand-change cards */ canBrand?: boolean; /** `can(u, "generate")` and `can(u, "drafts")`: Run and Decline on Majed's handoff cards */ canRun?: boolean; canDecline?: boolean; /** the handoffs this thread names, read on the server (`handoffViews`): null for one whose record is gone */ handoffs?: Record<string, HandoffView | null> }) {
+export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey, canApprove = true, canBrand = true, canRun = true, canDecline = true, handoffs, chat: chat0 }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey; /** `can(u, "publish")`: approve buttons on item cards */ canApprove?: boolean; /** `can(u, "brand.write")`: Save and Dismiss on brand-change cards */ canBrand?: boolean; /** `can(u, "generate")` and `can(u, "drafts")`: Run and Decline on Majed's handoff cards */ canRun?: boolean; canDecline?: boolean; /** the handoffs this thread names, read on the server (`handoffViews`): null for one whose record is gone */ handoffs?: Record<string, HandoffView | null>; /** the account's chat messages now (`chatStatus`, read on the server); each answer brings the next */ chat?: ChatStatus }) {
   const [msgs, setMsgs] = useState<ChatMsg[]>(initial);
   const [text, setText] = useState(initialPrompt);
   const [busy, setBusy] = useState(false);
   const [credits, setCredits] = useState(c0);
+  const [chatNow, setChatNow] = useState<ChatStatus | null>(chat0 ?? null);
+  // A message the server refused before saving it: why, under the box (the limit dialog says the rest).
+  const [notice, setNotice] = useState("");
   const [convs, setConvs] = useState<Conv[]>([]);
   const [conv, setConv] = useState(initialConv ?? "default");
   const [agent, setAgent] = useState<AgentId>((initialAgent as AgentId) ?? "noor");
@@ -427,16 +465,35 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
   async function send(msg: string) {
     const m = msg.trim();
     if (!m || busy) return;
-    setText("");
-    setMsgs((p) => [...p, { role: "user", content: m, at: new Date().toISOString() }]);
+    setText(""); setNotice("");
+    // Kept by identity: a message the server refuses before saving it leaves the thread and goes back into the box.
+    const mine: ChatMsg = { role: "user", content: m, at: new Date().toISOString() };
+    setMsgs((p) => [...p, mine]);
     setBusy(true); setSteps([]);
-    const done = (j: { ok?: boolean; message?: ChatMsg; credits?: number; limit?: string | null; error?: string }) => {
+    type Answer = { ok?: boolean; message?: ChatMsg; credits?: number; limit?: string | null; error?: string; chat?: ChatStatus };
+    const done = (j: Answer) => {
+      if (j.chat) setChatNow(j.chat);
       if (j.message) { setMsgs((p) => [...p, j.message!]); if (typeof j.credits === "number") setCredits(j.credits); if (conv !== "default") setConvs((p) => p.map((c) => (c.id === conv && c.title === "…" ? { ...c, title: m.slice(0, 60) } : c))); if (j.limit === "credits" || j.limit === "trial" || j.limit === "agent_cap") raiseLimit(j.limit); }
       else setMsgs((p) => [...p, { role: "assistant", content: `⚠︎ ${j.error === "network" ? (lang === "ar" ? "انقطع الاتصال. حاول مرة أخرى." : "Connection lost. Try again.") : (lang === "ar" ? "تعذّر الرد. حاول مرة أخرى." : "Could not reply. Try again.")}`, at: new Date().toISOString(), agent: "noor" }]);
     };
+    /** Refused before anything was saved or counted: out of the thread, back in the box, and the reason shown. */
+    const unsend = (why: "chat" | "chat_credits" | "slow_down", j: Answer) => {
+      setMsgs((p) => p.filter((x) => x !== mine));
+      setText((cur) => cur || m);
+      if (j.chat) setChatNow(j.chat);
+      if (typeof j.credits === "number") setCredits(j.credits);
+      if (why === "slow_down") { setNotice(t.chat.slowDown); return; }
+      setNotice(t.chat.notSent);
+      raiseLimit(why, { period: j.chat?.period, hold: j.chat?.overflow.hold, allowance: j.chat?.allowance });
+    };
     try {
       const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json", "x-lang": lang }, body: JSON.stringify({ text: m, conv, agent, stream: true }) });
-      if (!res.body || !res.headers.get("content-type")?.includes("text/event-stream")) { done(await res.json()); return; }
+      if (!res.body || !res.headers.get("content-type")?.includes("text/event-stream")) {
+        const j = (await res.json()) as Answer;
+        const why = refusalOf(res.status, j.error);
+        if (why) unsend(why, j); else done(j);
+        return;
+      }
       const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
       for (;;) {
         const { value, done: end } = await reader.read();
@@ -461,6 +518,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         await new Promise((r) => setTimeout(r, 5000));
         try {
           const j = await (await fetch(`/api/chat?conv=${encodeURIComponent(conv)}`)).json();
+          if (j.chat) setChatNow(j.chat as ChatStatus);
           const last = (j.messages as ChatMsg[] | undefined)?.at(-1);
           if (last && last.role === "assistant" && new Date(last.at).getTime() >= sentAt) found = last;
         } catch { /* still offline, keep trying */ }
@@ -481,6 +539,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
   const title = conv === "default" ? t.nav.gettingStarted : convs.find((c) => c.id === conv)?.title ?? "…";
   const step = firstStep ? (t.limit.firstSteps as Record<string, string>)[firstStep] : undefined;
   const briefLines = (brief ?? "").split("\n").filter(Boolean).slice(1, 4);
+  const line = chatNow ? chatLine(t, chatNow, credits) : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -576,6 +635,8 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder={t.chat.placeholder} aria-label={t.chat.placeholder} className="input rounded-full" />
         <button disabled={busy || !text.trim()} className="btn btn-accent btn-lg shrink-0" aria-label={t.chat.send}><Icon name="send" className="h-4 w-4" /><span className="hidden sm:inline">{t.chat.send}</span></button>
       </form>
+      {notice && <p role="alert" className="mt-2 text-xs font-semibold text-sadu-deep" dir="auto">{notice}</p>}
+      {line && <p className={`tnum mt-2 text-xs ${line.low ? "font-semibold text-sadu-deep" : "text-ink/70"}`} dir="auto">{line.text}</p>}
       {step && plan === "trial" && !goal?.goal && <p className="mt-2 flex items-center gap-2 text-xs text-ink/70"><Icon name="spark" className="h-3.5 w-3.5 text-saffron" />{t.limit.firstUp}: {step}</p>}
     </div>
   );
