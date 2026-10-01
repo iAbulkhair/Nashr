@@ -2,12 +2,12 @@
 title_ar: أفضل 8 وكلاء تسويق بالذكاء الاصطناعي للخليج 2026 — معيار مُعلن
 title_en: The 8 Best AI Marketing Agents for the Gulf in 2026 — a published rubric
 date: 2026-09-17
-desc_ar: قيّمنا 8 أدوات على 6 معايير موزونة: التنفيذ المستقل، العربية واللهجات، القنوات الخليجية، الالتزام، التحكم البشري، السعر. نشر تبني إحداها — والمعيار كامل أمامك.
-desc_en: We scored 8 tools on 6 weighted criteria: autonomous execution, Arabic and dialects, Gulf channels, compliance, human control, price. Nashr builds one of them — the full rubric is here.
+desc_ar: قيّمنا 8 أدوات على 6 معايير موزونة: التنفيذ المستقل، العربية واللهجات، القنوات الخليجية، الالتزام، التحكم البشري، السعر. ذكين يبني إحداها — والمعيار كامل أمامك.
+desc_en: We scored 8 tools on 6 weighted criteria: autonomous execution, Arabic and dialects, Gulf channels, compliance, human control, price. Thakeen builds one of them — the full rubric is here.
 ---
 ## الإفصاح
 
-نشر تبني نور، إحدى الأدوات المقيّمة. لذلك ننشر المعيار كاملاً، ونعرض درجة كل معيار حتى يمكن إعادة حساب أي مجموع، ونسمّي الفائزين في فئات لا نتفوق فيها. راسلنا لتصحيح أي رقم.
+ذكين يبني نور، إحدى الأدوات المقيّمة. لذلك ننشر المعيار كاملاً، ونعرض درجة كل معيار حتى يمكن إعادة حساب أي مجموع، ونسمّي الفائزين في فئات لا نتفوق فيها. راسلنا لتصحيح أي رقم.
 
 ## المعيار
 
@@ -24,7 +24,7 @@ desc_en: We scored 8 tools on 6 weighted criteria: autonomous execution, Arabic 
 
 | # | الأداة | التنفيذ | العربية | القنوات | الالتزام | التحكم | السعر | المجموع |
 |---|---|---|---|---|---|---|---|---|
-| 1 | نور (نشر) | 3 | 5 | 1 | 4 | 5 | 3 | **3.40** |
+| 1 | نور (ذكين) | 3 | 5 | 1 | 4 | 5 | 3 | **3.40** |
 | 2 | Enrich Labs (Helena) | 5 | 1 | 1 | 2 | 5 | 4 | 3.00 |
 | 3 | Hootsuite/Buffer | 2 | 2 | 2 | 1 | 4 | 3 | 2.30 |
 | 4 | Sintra | 3 | 1 | 1 | 1 | 3 | 4 | 2.10 |
@@ -37,7 +37,7 @@ desc_en: We scored 8 tools on 6 weighted criteria: autonomous execution, Arabic 
 
 ## ملاحظات لكل أداة
 
-**نور (نشر):** لهجات، تقويم هجري، مراجِع ثانٍ للالتزام، وخطة أسبوعية تلقائية. الضعف: النشر بضغطة منك دائماً، اليوم إلى Telegram أو كمسودة في WordPress؛ لا نشر بعد على سناب أو واتساب أو سلة، والانتشار جديد.
+**نور (ذكين):** لهجات، تقويم هجري، مراجِع ثانٍ للالتزام، وخطة أسبوعية تلقائية. الضعف: النشر بضغطة منك دائماً، اليوم إلى Telegram أو كمسودة في WordPress؛ لا نشر بعد على سناب أو واتساب أو سلة، والانتشار جديد.
 **Enrich Labs:** تنفيذ قوي للسوق الأمريكي. بلا قنوات خليجية.
 **Jasper:** أداة كتابة، لا وكيل خليجي.
 **ChatGPT:** مساعد عام، لا وكيل تسويق.
@@ -54,7 +54,7 @@ desc_en: We scored 8 tools on 6 weighted criteria: autonomous execution, Arabic 
 ---EN---
 ## Disclosure
 
-Nashr builds Noor, one of the tools scored here. So we publish the full rubric, show every per-criterion score so any total can be recomputed, and name category winners where we don't lead. Email us to correct any number.
+Thakeen builds Noor, one of the tools scored here. So we publish the full rubric, show every per-criterion score so any total can be recomputed, and name category winners where we don't lead. Email us to correct any number.
 
 ## Rubric
 
@@ -71,7 +71,7 @@ Nashr builds Noor, one of the tools scored here. So we publish the full rubric, 
 
 | # | Tool | Exec | Arabic | Channels | Compliance | Control | Price | Score |
 |---|---|---|---|---|---|---|---|---|
-| 1 | Noor (Nashr) | 3 | 5 | 1 | 4 | 5 | 3 | **3.40** |
+| 1 | Noor (Thakeen) | 3 | 5 | 1 | 4 | 5 | 3 | **3.40** |
 | 2 | Enrich Labs (Helena) | 5 | 1 | 1 | 2 | 5 | 4 | 3.00 |
 | 3 | Hootsuite/Buffer | 2 | 2 | 2 | 1 | 4 | 3 | 2.30 |
 | 4 | Sintra | 3 | 1 | 1 | 1 | 3 | 4 | 2.10 |
@@ -84,7 +84,7 @@ Nashr builds Noor, one of the tools scored here. So we publish the full rubric, 
 
 ## Notes per tool
 
-**Noor (Nashr):** dialects, Hijri calendar, second reviewer for compliance, an automatic weekly plan. Weak spots: publishing is always your click, today to Telegram or as a WordPress draft; no publishing to Snap, WhatsApp or Salla yet, and adoption is new.
+**Noor (Thakeen):** dialects, Hijri calendar, second reviewer for compliance, an automatic weekly plan. Weak spots: publishing is always your click, today to Telegram or as a WordPress draft; no publishing to Snap, WhatsApp or Salla yet, and adoption is new.
 **Enrich Labs:** strong execution for the US market. No Gulf channels.
 **Jasper:** a writing tool, not a Gulf agent.
 **ChatGPT:** a general assistant, not a marketing agent.

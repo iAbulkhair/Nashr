@@ -267,8 +267,8 @@ describe("media processors are disclosed honestly", () => {
       for (const id of TRIAL_VIDEO_MODELS) expect(a[lang], `${lang}: ${id}`).toContain(mediaModel(id).label[lang].split(" · ")[0]);
       for (const n of new Set(MEDIA_MODELS.filter((m) => m.kind === "video").map((m) => m.credits))) expect(a[lang]).toContain(String(n));
     }
-    expect(a.en).toContain("Publishing video from Nashr is not available yet");
-    expect(a.ar).toContain("نشر الفيديو من نشر غير متاح بعد");
+    expect(a.en).toContain("Publishing video from Thakeen is not available yet");
+    expect(a.ar).toContain("نشر الفيديو من ذكين غير متاح بعد");
   });
 
   it("the help answers on training and deletion stay true for media", () => {

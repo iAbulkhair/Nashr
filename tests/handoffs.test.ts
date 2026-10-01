@@ -280,10 +280,10 @@ const JUDGE = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 
 const reply = (text: string, extra: Record<string, unknown> = {}) => ({ model: "claude-sonnet-5", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 50 }, content: [{ type: "text", text }], ...extra });
 type Sent = { system: unknown; messages: { role: string; content: string }[]; model: string; max_tokens: number; thinking?: unknown; output_config?: unknown };
 const sha = (p: Sent) => createHash("sha256").update(JSON.stringify({ model: p.model, max_tokens: p.max_tokens, thinking: p.thinking, output_config: p.output_config, system: p.system, messages: p.messages })).digest("hex");
-/** What the same fixed batch sent at adb555e (step 3a with #227 and #228), before cross-review or handoffs existed (the hashes of rule 270). */
+/** What the same fixed batch sent at adb555e (step 3a with #227 and #228), before cross-review or handoffs existed, with the brand name renamed to Thakeen (the hashes of rule 270). */
 const BEFORE: Record<string, { gen: string; review: string; judge: string }> = {
-  pricing_review: { gen: "bce253f03fa20363e587e48445f25b1119fe6b04f12a964444bf1a2322f2a583", review: "5399a079a879239ff59a3ac3ac9a0ef92933930187ea02fa01dce95d78b61f1d", judge: "140a91f5ba77b03645150d36d8374fd5e2c3c95dc270ac85f26577c167aee99f" },
-  gtm_plan: { gen: "5f6e5c6c0af05aa09132e88e52d4899d1def9bfadc6cca1385d56c95a884b4fe", review: "e0e093ee4a6f6e554e9b91901189ef0f91665e1fad7e68c30f08dfb5268da011", judge: "f06db0b00b497920c82542d3b29453a89003eeaeedd81c6c61835539232aaa2c" },
+  pricing_review: { gen: "7b3aed2d5227a3c241cd9ae89c83eec75d68261708b2a02c54aa0e6d44d48491", review: "96d87e33997634d1f76f13672245badf391bcc24480b2c782c35ee3b23492ab8", judge: "8625bb81f9467fb37c958eba17df25844aadc71a228a9da796b3e93f610ac646" },
+  gtm_plan: { gen: "6bbe0f8c9c557d274ce67ddea402c7b8a5e71703ae4d2b4bffda3438dddd5cfa", review: "7a6653a4b92904d0eec76f077727363bcd064f260339a8cbcba149b58dce4217", judge: "71578f1853a03cda2894405bb82a891af81b91d01fd09ddabd0457c7c442776f" },
 };
 
 /**

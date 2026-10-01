@@ -22,7 +22,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   // can never show one tier's price with another tier's link. Agency has no pay link (PAY_LINK_AGENCY is not read): it is
   // sold by contract, through the contact card below.
   const links: Partial<Record<SelfServePlan, string>> = owner ? { starter: process.env.PAY_LINK_STARTER, pro: process.env.PAY_LINK_PRO, business: process.env.PAY_LINK_BUSINESS } : {};
-  const wa = owner && process.env.SUPPORT_WHATSAPP ? `https://wa.me/${process.env.SUPPORT_WHATSAPP.replace(/\D/g, "")}?text=${encodeURIComponent(`Nashr ${u.email}`)}` : null;
+  const wa = owner && process.env.SUPPORT_WHATSAPP ? `https://wa.me/${process.env.SUPPORT_WHATSAPP.replace(/\D/g, "")}?text=${encodeURIComponent(`Thakeen ${u.email}`)}` : null;
   const card = (id: SelfServePlan | "agency") => m.plans.find((p) => p.id === id);
   const agency = card("agency");
   const used = await seatsUsed(u.email);

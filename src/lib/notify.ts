@@ -19,7 +19,7 @@ export const EMAIL_TIMEOUT_MS = 10_000;
 export async function sendEmail(to: string, subject: string, text: string): Promise<boolean> {
   const key = process.env.RESEND_API_KEY;
   if (!key) return false;
-  const from = process.env.MAIL_FROM ?? "Noor at Nashr <onboarding@resend.dev>";
+  const from = process.env.MAIL_FROM ?? "Noor at Thakeen <onboarding@resend.dev>";
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const { Resend } = await import("resend");

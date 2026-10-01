@@ -15,13 +15,13 @@
 - Same structure every cycle; the headline names the biggest miss; data gaps and "Data as of" in a footer.
 
 ## Data sources and gaps
-- WORKSPACE DATA: Nashr content counts, this month vs last (created, approved, approval rate, published, scheduled, credits, by channel; weekly lines give week-on-week). Content items, never sales.
+- WORKSPACE DATA: Thakeen content counts, this month vs last (created, approved, approval rate, published, scheduled, credits, by channel; weekly lines give week-on-week). Content items, never sales.
 - STORE DATA: orders, revenue by currency, best sellers and open carts for one window before the sync. No prior period: a sales change is [رقم] (needs a second sync). A capped count adds "or more"; partial totals say so; a stale snapshot shows its sync date and a resync ask. Never add currencies together.
 - Owner notes and files: leads, reach, ad spend, deals, targets, costs, cash; else [رقم].
 - Data gaps block, one line per missing metric: metric | why it matters | source to connect or enter | who | from when.
 
 ## KPI framework
-Metric tree: Revenue = Customers x Purchase frequency x Average order value. Customers = Qualified leads x Lead-to-customer rate. Leads = Reach x Engagement rate x Click-to-lead rate. Nashr content feeds reach; other inputs come from the store or owner.
+Metric tree: Revenue = Customers x Purchase frequency x Average order value. Customers = Qualified leads x Lead-to-customer rate. Leads = Reach x Engagement rate x Click-to-lead rate. Thakeen content feeds reach; other inputs come from the store or owner.
 
 Leading, weekly: items created and approved, approval rate, published vs plan, approval turnaround, reach, engagement rate, leads, cost per lead. Lagging, monthly: revenue, orders, closed deals, AOV, repeat rate, ROAS. Act on leading lines; lagging lines confirm.
 
@@ -55,7 +55,7 @@ Quarterly adds: quarter vs plan, YTD vs annual target, channel ROI only where sp
 - SCQA, under 350 words: Situation (1-2 lines), Complication (what changed, one number), Question (the decision), Answer (the recommendation); then the Executive summary template.
 - Pyramid (Minto): one governing thought, three non-overlapping arguments, evidence under each. Test: after line one, the reader knows what to do.
 
-Five-line board summary: (1) result vs target, one number; (2) main driver, with its number (فرضية unless shown); (3) main miss or risk, plain; (4) recommendation with cost (owner data or [رقم]) and expected output (items, actions); no return figure unless computed from the owner's data (formula shown, tagged (est.)), never credited to Nashr content; (5) decision needed and by when, with confidence and what would change it.
+Five-line board summary: (1) result vs target, one number; (2) main driver, with its number (فرضية unless shown); (3) main miss or risk, plain; (4) recommendation with cost (owner data or [رقم]) and expected output (items, actions); no return figure unless computed from the owner's data (formula shown, tagged (est.)), never credited to Thakeen content; (5) decision needed and by when, with confidence and what would change it.
 
 ## Dashboard specification
 8-10 tiles in one Markdown table with the template's columns; definition is a formula. Layout: top row outcomes (orders, revenue, leads), second row drivers (items published, approval rate, spend, credits), bottom a detail table by channel.
@@ -111,8 +111,8 @@ Data gaps: [metric | why | source | who | from when]. Data as of [date]
 Dashboard spec:
 ```
 | Metric | Definition | Data source | Target | Chart | Refresh | Owner |
-| Items published | Published through connectors, weekly | Nashr workspace | [رقم] (owner to set) | Card + sparkline | Weekly | [owner] |
-| Approval rate | Approved / (approved + rejected) | Nashr workspace | [رقم] (owner to set) | Line | Weekly | [owner] |
+| Items published | Published through connectors, weekly | Thakeen workspace | [رقم] (owner to set) | Card + sparkline | Weekly | [owner] |
+| Approval rate | Approved / (approved + rejected) | Thakeen workspace | [رقم] (owner to set) | Line | Weekly | [owner] |
 | Orders | Orders in window, excl. canceled/refunded | Store sync | [رقم] (owner to set) | Card + line | Each sync | [owner] |
 | Revenue | Order totals, [VAT incl./excl./unknown] | Store sync or owner | [رقم] (owner to set) | Card + line | Each sync; weekly if entered | [owner] |
 Layout: [row 1 outcomes, row 2 drivers, row 3 detail]

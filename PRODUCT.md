@@ -15,11 +15,11 @@ Launch priority, in order (confirmed 2026-09-17):
 All segments are supported; the product optimizes for segment 1 first. The buyer and the daily user are the same person: the owner, on phone and laptop, in Arabic first.
 
 ## Product Purpose
-Nashr (نشر) is an autonomous marketing and sales team for Gulf SMBs. The owner gives a website URL; Noor reads it, writes the brand file and a 90-day plan, then produces publish-ready content every week. Specialists cover sales enablement (Sami), finance and pricing (Razan), go-to-market and growth (Faris), reporting and decks (Dana), executive advice (Majed), product and retention (Layan). Everything lands in an approval inbox; nothing publishes without the owner unless delegated.
+Thakeen (ذكين) is an autonomous marketing and sales team for Gulf SMBs. Nashr (نشر) is the internal code name: the repository, code identifiers and URLs keep it. The owner gives a website URL; Noor reads it, writes the brand file and a 90-day plan, then produces publish-ready content every week. Specialists cover sales enablement (Sami), finance and pricing (Razan), go-to-market and growth (Faris), reporting and decks (Dana), executive advice (Majed), product and retention (Layan). Everything lands in an approval inbox; nothing publishes without the owner unless delegated.
 Success order for the first 90 days (confirmed): investor readiness first (traction story: users, approvals, testimonials, deck), then weekly active workspaces, then approved and published content per workspace, then paying customers.
 
 ## Positioning
-A team of named Gulf agents that works from one brand file, in the owner's dialect, on the Gulf calendar (Ramadan, Eids, National Day, Founding Day, White Friday), with Saudi advertising guardrails and a second-pass reviewer. Enrich Labs (Helena) is the US reference; Nashr's claim is the Gulf-native one: dialect, seasons, WhatsApp-first sales, SAR and VAT, Salla/Zid, approval-first trust.
+A team of named Gulf agents that works from one brand file, in the owner's dialect, on the Gulf calendar (Ramadan, Eids, National Day, Founding Day, White Friday), with Saudi advertising guardrails and a second-pass reviewer. Enrich Labs (Helena) is the US reference; Thakeen's claim is the Gulf-native one: dialect, seasons, WhatsApp-first sales, SAR and VAT, Salla/Zid, approval-first trust.
 
 ## Operating Context
 - Owner logs in a few times a week; the morning brief and follow-up notifications bring them back. Approval happens in chat cards or the approvals feed; scheduling in the calendar; performance on the performance page.
@@ -39,7 +39,7 @@ Confirmed binding:
 - Approval-first trust: nothing publishes without the owner unless delegated; credits and costs are always shown honestly; no invented numbers anywhere in product or agent output.
 - Bilingual parity: every screen and message equal in Arabic and English.
 - Team of named agents: Noor and the six specialists are the product's face; never "an AI tool".
-Names: Nashr / نشر; Noor / نور; Sami / سامي; Razan / رزان; Faris / فارس; Dana / دانة; Majed / ماجد; Layan / ليان. Fonts in use: Readex Pro (display), IBM Plex Sans Arabic (body), IBM Plex Mono (numbers).
+Names: Thakeen / ذكين; Noor / نور; Sami / سامي; Razan / رزان; Faris / فارس; Dana / دانة; Majed / ماجد; Layan / ليان. Fonts in use: Readex Pro (display), IBM Plex Sans Arabic (body), IBM Plex Mono (numbers).
 
 ## Evidence on Hand
 - Real product runs on production (onboarding from live Saudi sites, weekly plans, WhatsApp batches, Sami and Dana outputs, judge scores). Screenshots can be taken from https://nashr-tau.vercel.app.

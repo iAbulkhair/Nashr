@@ -31,6 +31,6 @@ export async function GET() {
   const { rows } = await listActivity(sc(u), { limit: CAPS.activity });
   const csv = "\uFEFF" + [COLUMNS.join(","), ...rows.map(line)].join("\n");
   return new NextResponse(csv, {
-    headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="nashr-activity-${new Date().toISOString().slice(0, 10)}.csv"`, "Cache-Control": "no-store" },
+    headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="thakeen-activity-${new Date().toISOString().slice(0, 10)}.csv"`, "Cache-Control": "no-store" },
   });
 }

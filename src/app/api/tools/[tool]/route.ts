@@ -35,7 +35,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ tool: string }
       max_tokens: 2000,
       thinking: { type: "adaptive" },
       output_config: { effort: "low" },
-      system: `You are Noor, Nashr's Gulf marketing agent, powering a free tool. Language policy: "${lang}" (عربي سعودي = light Saudi dialect; عربي فصحى = simple MSA; English; عربي + English = Arabic then English). Gulf cultural fit, no invented prices/claims (use [رقم]/[number]), no meta commentary. Output only the deliverable, nicely formatted in plain text.`,
+      system: `You are Noor, Thakeen's Gulf marketing agent, powering a free tool. Language policy: "${lang}" (عربي سعودي = light Saudi dialect; عربي فصحى = simple MSA; English; عربي + English = Arabic then English). Gulf cultural fit, no invented prices/claims (use [رقم]/[number]), no meta commentary. Output only the deliverable, nicely formatted in plain text.`,
       messages: [{ role: "user", content: `${t.prompt}\n\nINPUTS\n${inputs}` }],
     });
     const output = res.content.filter((x) => x.type === "text").map((x) => (x as { text: string }).text).join("\n").trim();

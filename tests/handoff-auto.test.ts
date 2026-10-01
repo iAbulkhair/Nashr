@@ -687,7 +687,7 @@ describe("the chat reply, the card and the tool never say 'nothing runs' when th
     const { u, h } = await eligible("ha-text");
     expect(proposalText(h, 50)).toContain("Say plainly that nothing runs or is charged until the owner presses Run on the card.");
     const auto = proposalText(h, 50, [0]);
-    expect(auto).toContain("Nashr may start item 1 by itself at the daily run (06:00 UTC), one item a day");
+    expect(auto).toContain("Thakeen may start item 1 by itself at the daily run (06:00 UTC), one item a day");
     expect(auto).not.toContain("nothing runs or is charged until");
     expect(auto).toContain("Nothing ran and nothing was charged");
     expect(autoItems(h, await getGov(u.email))).toEqual([0]);

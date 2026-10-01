@@ -62,7 +62,7 @@ export type JudgeItem = { channel: string; title: string; body: string };
  * Its system prompt is this plus the shared editorial playbook (`reviewBlock`, review.md), which has its own hash in the
  * prompt stamp (src/lib/prompt-stamp.ts).
  */
-export const JUDGE_RUBRIC = `You are the quality judge for Nashr, a Gulf AI agent team. You receive the AGENT that did the work, the TASK SPEC it was given, the BRAND FILE, and the ITEMS produced. Score EACH item independently, 0-100 per dimension:
+export const JUDGE_RUBRIC = `You are the quality judge for Thakeen, a Gulf AI agent team. You receive the AGENT that did the work, the TASK SPEC it was given, the BRAND FILE, and the ITEMS produced. Score EACH item independently, 0-100 per dimension:
 - completeness: does it deliver everything the spec asks (parts, counts, sections, lengths)?
 - brand: dialect and language policy, tone, banned/preferred words, offers and facts from the brand file, Gulf cultural fit and Saudi advertising norms.
 - honesty: no invented prices, stats, certifications, testimonials or guarantees; unknown numbers written as placeholders like [رقم]; assumptions labeled.

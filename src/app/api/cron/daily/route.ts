@@ -54,8 +54,8 @@ async function dailyFor(u: User): Promise<string> {
       const ar = u.lang === "ar";
       const link = `${ORIGIN()}/${u.lang}/app/start`;
       const ok = await sendEmail(u.email, ar ? "نور جاهزة — أعطيها رابط موقعك" : "Noor is ready — give her your website", ar
-        ? `أهلاً ${u.name}\n\nسجّلت في نشر وما بدأت بعد. نور جاهزة: أعطيها رابط موقعك وتكتب ملف علامتك وخطتك أمامك، ثم اطلب منها أول دفعة منشورات.\n\n${link}`
-        : `Hi ${u.name}\n\nYou signed up for Nashr but have not started. Noor is ready: give her your website and she writes your brand file and plan in front of you, then ask her for your first batch of posts.\n\n${link}`);
+        ? `أهلاً ${u.name}\n\nسجّلت في ذكين وما بدأت بعد. نور جاهزة: أعطيها رابط موقعك وتكتب ملف علامتك وخطتك أمامك، ثم اطلب منها أول دفعة منشورات.\n\n${link}`
+        : `Hi ${u.name}\n\nYou signed up for Thakeen but have not started. Noor is ready: give her your website and she writes your brand file and plan in front of you, then ask her for your first batch of posts.\n\n${link}`);
       if (ok) out.push("nudge");
     }
     return out.join("+") || "no_brand";
@@ -76,7 +76,7 @@ async function dailyFor(u: User): Promise<string> {
     const extra = fu.length ? `\n\n${notifEmailText(u, fu)}` : "";
     if (worth && (await sendEmail(u.email, u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, brief.text + extra + `\n\n${ORIGIN()}/${u.lang}/app`))) out.push("email");
   } else if (fu.length && pref !== "none") {
-    if (await sendEmail(u.email, u.lang === "ar" ? "متابعة من فريق نشر" : "Follow-up from your Nashr team", notifEmailText(u, fu))) out.push("email");
+    if (await sendEmail(u.email, u.lang === "ar" ? "متابعة من فريق ذكين" : "Follow-up from your Thakeen team", notifEmailText(u, fu))) out.push("email");
   }
   return out.join("+") || "nothing_due";
 }

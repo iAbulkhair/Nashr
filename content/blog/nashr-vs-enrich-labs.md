@@ -1,6 +1,6 @@
 ---
-title_ar: نشر مقابل Enrich Labs — لماذا بنينا وكيلة تسويق للخليج بدل استخدام الأمريكية
-title_en: Nashr vs Enrich Labs — why we built a Gulf marketing agent instead of using the American one
+title_ar: ذكين مقابل Enrich Labs — لماذا بنينا وكيلة تسويق للخليج بدل استخدام الأمريكية
+title_en: Thakeen vs Enrich Labs — why we built a Gulf marketing agent instead of using the American one
 date: 2026-09-17
 desc_ar: جرّبنا Helena. ممتازة لأمريكا. هذه القصة الكاملة لما لم تفهمه عن سوقنا، وما بنيناه بدلاً منه.
 desc_en: We tried Helena. Excellent for America. Here is everything it didn't understand about our market, and what we built instead.

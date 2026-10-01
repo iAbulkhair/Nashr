@@ -124,7 +124,7 @@ export type Dict = {
 export const dict: Record<Lang, Dict> = {
   ar: {
     dir: "rtl",
-    brand: "نشر",
+    brand: "ذكين",
     agent: "نور",
     nav: { how: "كيف تعمل", agents: "الوكلاء", industries: "القطاعات", pricing: "الأسعار", faq: "الأسئلة", cta: "ابدأ مجاناً", switchLang: "English", switchHref: "/en", tools: "أدوات مجانية", blog: "المدونة" },
     hero: {
@@ -242,7 +242,7 @@ export const dict: Record<Lang, Dict> = {
         { q: "وش يعني ملخص الصباح؟", a: "كل يوم 08:00 بتوقيت السعودية: ما ينتظر موافقتك، ما اعتُمد، رصيدك، المواسم القريبة، ومتابعات الفريق (عناصر موعدها اليوم، أشياء تنتظرك من يومين). في التطبيق." },
         { q: "متى أشوف نتائج؟", a: "تكتب نور ملف العلامة وخطة 90 يوماً من رابط موقعك أثناء الإعداد، ثم تصلك أول دفعة محتوى عندما تطلبها." },
         { q: "كم تكلّف؟", a: `كريدت شهري حسب الخطة: البداية ${P.starter}، الاحتراف ${P.pro}، الأعمال ${P.business} ريال، والوكالات بعقد. منشور = ${perPost} كريدت، مقال = ${TASK_COST.article}، عرض مجلس إدارة = ${TASK_COST.board_deck}. الدردشة مع الفريق وإعداد علامتك الأولى مجاناً، وإعداد كل علامة إضافية من رابطها ${ONBOARD_EXTRA_BRAND_COST} كريدت. ولتغيير الخطة تواصل معنا.` },
-        { q: "الخصوصية؟", a: "بياناتك لمساحة عملك فقط: لا تستخدمها منصة نشر لتدريب النماذج، ولا تشاركها بين الحسابات. مفاتيح التكاملات مشفّرة. تحذف حسابك وبيانات مساحة عملك بنفسك من صفحة «حسابك»." },
+        { q: "الخصوصية؟", a: "بياناتك لمساحة عملك فقط: لا تستخدمها منصة ذكين لتدريب النماذج، ولا تشاركها بين الحسابات. مفاتيح التكاملات مشفّرة. تحذف حسابك وبيانات مساحة عملك بنفسك من صفحة «حسابك»." },
         { q: "هل تتعلم صوت علامتي؟", a: "نعم. من موقعك أولاً، ثم من كل تعديل ورفض تكتبه، يُحفظ في preferences.md وتلتزم به." },
         { q: "أقدر ألغي؟", a: "نعم. تجربة 3 أيام بدون بطاقة، وبعدها تختار خطتك من صفحة الاشتراك. ولتغيير خطتك أو إلغائها، تواصل معنا." },
         { q: "من هم بقية الفريق؟", a: "سامي للمبيعات، رزان للمالية والتسعير، فارس للنمو، دانة للتقارير والعروض، ماجد المستشار التنفيذي، ليان للمنتج والاحتفاظ، وريم السكرتيرة لمهامك ومتابعاتك. كلهم في الدردشة نفسها ومن ملف العلامة نفسه." },
@@ -261,7 +261,7 @@ export const dict: Record<Lang, Dict> = {
     },
     footer: {
       tagline: "وكيلة تسويق مبنية للخليج.",
-      rights: "© 2026 نشر. جميع الحقوق محفوظة.",
+      rights: "© 2026 ذكين. جميع الحقوق محفوظة.",
       links: [
         { label: "الأسعار", href: "/ar/pricing" },
         { label: "أدوات مجانية", href: "/ar/tools" },
@@ -276,7 +276,7 @@ export const dict: Record<Lang, Dict> = {
   },
   en: {
     dir: "ltr",
-    brand: "Nashr",
+    brand: "Thakeen",
     agent: "Noor",
     nav: { how: "How it works", agents: "Agents", industries: "Industries", pricing: "Pricing", faq: "FAQ", cta: "Start free", switchLang: "العربية", switchHref: "/ar", tools: "Free tools", blog: "Blog" },
     hero: {
@@ -394,7 +394,7 @@ export const dict: Record<Lang, Dict> = {
         { q: "What is the morning brief?", a: "Every day at 08:00 KSA: what waits for approval, what was approved, your balance, upcoming seasons, and team follow-ups (items due today, things waiting for two days). In the app." },
         { q: "How long until I see results?", a: "Your brand file and 90-day plan are written from your URL during onboarding, and your first content batch arrives when you ask Noor for it." },
         { q: "How much does it cost?", a: `Monthly credits by plan: Starter ${P.starter}, Pro ${P.pro}, Business ${P.business} SAR, and Agency by contract. A post is ${enCredits(perPost)}, an article ${TASK_COST.article}, a board deck ${TASK_COST.board_deck}. Chatting with the team and setting up your first brand are free; setting up each added brand from its URL is ${enCredits(ONBOARD_EXTRA_BRAND_COST)}. To change plans, contact us.` },
-        { q: "What about privacy?", a: "Your data stays in your workspace, is never used by Nashr to train models and never shared across accounts. Integration keys are encrypted. Delete your account and its workspace data yourself from Profile." },
+        { q: "What about privacy?", a: "Your data stays in your workspace, is never used by Thakeen to train models and never shared across accounts. Integration keys are encrypted. Delete your account and its workspace data yourself from Profile." },
         { q: "Does Noor learn my brand voice?", a: "Yes. From your website first, then from every edit and rejection you write, saved to preferences.md and followed." },
         { q: "Can I cancel anytime?", a: "Yes. 3-day trial with no card. Upgrade from Subscription; to change or cancel your plan, contact us." },
         { q: "Who else is on the team?", a: "Sami for sales, Razan for finance and pricing, Faris for growth, Dana for reports and decks, Majed the executive advisor, Layan for product and retention, and Reem the secretary for your to-dos and follow-ups. All in the same chat, from the same brand file." },
@@ -413,7 +413,7 @@ export const dict: Record<Lang, Dict> = {
     },
     footer: {
       tagline: "A marketing agent built for the Gulf.",
-      rights: "© 2026 Nashr. All rights reserved.",
+      rights: "© 2026 Thakeen. All rights reserved.",
       links: [
         { label: "Pricing", href: "/en/pricing" },
         { label: "Free tools", href: "/en/tools" },

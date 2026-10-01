@@ -29,13 +29,13 @@ const ROLE = { ar: { admin: "مدير", member: "عضو" }, en: { admin: "admin"
 function inviteMail(inv: Invite, inviterEmail: string, link: string) {
   if (inv.lang === "ar") {
     return {
-      subject: "دعوة للانضمام إلى فريق في نشر",
-      text: `مرحباً،\n\nدعاك مستخدم نشر ${inviterEmail} للانضمام إلى حسابه في نشر بصفة ${ROLE.ar[inv.role]}.\n\nافتح الرابط التالي خلال 7 أيام لتختار اسمك وكلمة مرورك:\n\n${link}\n\nالدعوة لهذا البريد وحده. إذا لم تتوقعها فتجاهل هذه الرسالة، ولن يتغير شيء.`,
+      subject: "دعوة للانضمام إلى فريق في ذكين",
+      text: `مرحباً،\n\nدعاك مستخدم ذكين ${inviterEmail} للانضمام إلى حسابه في ذكين بصفة ${ROLE.ar[inv.role]}.\n\nافتح الرابط التالي خلال 7 أيام لتختار اسمك وكلمة مرورك:\n\n${link}\n\nالدعوة لهذا البريد وحده. إذا لم تتوقعها فتجاهل هذه الرسالة، ولن يتغير شيء.`,
     };
   }
   return {
-    subject: "You are invited to join a team on Nashr",
-    text: `Hello,\n\nThe Nashr user ${inviterEmail} invited you to join their account on Nashr as ${inv.role === "admin" ? "an admin" : "a member"}.\n\nOpen this link within 7 days to choose your name and password:\n\n${link}\n\nThe invitation is for this email address only. If you did not expect it, ignore this email and nothing changes.`,
+    subject: "You are invited to join a team on Thakeen",
+    text: `Hello,\n\nThe Thakeen user ${inviterEmail} invited you to join their account on Thakeen as ${inv.role === "admin" ? "an admin" : "a member"}.\n\nOpen this link within 7 days to choose your name and password:\n\n${link}\n\nThe invitation is for this email address only. If you did not expect it, ignore this email and nothing changes.`,
   };
 }
 

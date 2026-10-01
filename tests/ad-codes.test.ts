@@ -32,7 +32,7 @@ describe("ad codes (rule 90)", () => {
   });
 });
 
-/** Nine ads: three carry Nashr codes and did clearly better on CTR; one carries a code this workspace never issued. */
+/** Nine ads: three carry Thakeen codes and did clearly better on CTR; one carries a code this workspace never issued. */
 const csv = (codes: string[]) => [
   "Ad name,Impressions,Link clicks,Amount spent,Purchases",
   `"Friday offer ${codes[0]}",9000,360,300,9`,
@@ -46,7 +46,7 @@ const csv = (codes: string[]) => [
   "Tiny test NSR-33333,100,9,5,0",
 ].join("\n");
 
-describe("measuring Nashr's ads (rule 91)", () => {
+describe("measuring Thakeen's ads (rule 91)", () => {
   it("compares only this workspace's coded ads with the others, on the same metric, with both samples", () => {
     const codes = { "NSR-7K2QM": "t1", "NSR-8P3RT": "t2", "NSR-9W4XY": "t3" };
     const { rows, platform, range } = readRows(csv(Object.keys(codes)));
@@ -54,7 +54,7 @@ describe("measuring Nashr's ads (rule 91)", () => {
     expect(snap.nashr!.ads.map((a) => a.taskId)).toEqual(["t1", "t2", "t3"]);
     expect(snap.nashr!.ranked).toBe(3);
     expect(snap.nashr!.othersRanked).toBe(5); // the unknown code is an ordinary ad; the 100-impression one is too small
-    expect(snap.nashr!.text!.en).toMatch(/^Nashr.s ads \(3\): CTR 3\.83% vs 0\.95% for your other ads \(5\), \d+% better\.$/);
+    expect(snap.nashr!.text!.en).toMatch(/^Thakeen.s ads \(3\): CTR 3\.83% vs 0\.95% for your other ads \(5\), \d+% better\.$/);
     expect(["low", "medium"]).toContain(snap.nashr!.confidence);
     // The codes' own digits are not wording: without this the "number or price" pattern tracks the codes.
     expect(snap.findings.some((f) => f.kind === "pattern" && /number or price/.test(f.text.en))).toBe(false);
@@ -87,6 +87,6 @@ describe("measuring Nashr's ads (rule 91)", () => {
     const snap = (await getPerf(u.email))!;
     expect(snap.nashr!.ads.map((a) => a.taskId)).toEqual(["a1", "a2"]);
     expect(snap.nashr!.ads.some((a) => a.code === theirs)).toBe(false);
-    expect((await readFile(u.email, "performance-learnings.md"))!.content).toContain("## Nashr's own ads");
+    expect((await readFile(u.email, "performance-learnings.md"))!.content).toContain("## Thakeen's own ads");
   });
 });

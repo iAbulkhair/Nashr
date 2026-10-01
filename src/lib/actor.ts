@@ -64,7 +64,7 @@ export const tokenBy = (u: Pick<User, "email">): By => ({ kind: "token", email: 
  * A `by` as the account's own logins receive it: the kind, email, role and job, never `imp`. Who impersonated is the
  * founder console's own login (or "key") and stays in storage for the founder console (GET /api/admin/users/{email}):
  * GET /api/activity, the Activity page, the Governance page and the governance save and restore responses (`historyView`)
- * send this instead, so a support-access row names only "Nashr support", as `/api/profile` gives support access only as
+ * send this instead, so a support-access row names only "Thakeen support", as `/api/profile` gives support access only as
  * a boolean.
  */
 export const publicBy = ({ kind, email, role, job }: By): By => ({ kind, ...(email ? { email } : {}), ...(role ? { role } : {}), ...(job ? { job } : {}) });

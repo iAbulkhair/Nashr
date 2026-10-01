@@ -34,9 +34,9 @@ export async function POST(req: Request) {
     const token = randomBytes(32).toString("hex");
     await db.set(`pwreset:${createHash("sha256").update(token).digest("hex")}`, target, 3600);
     const link = `${ORIGIN()}/${lang}/app/reset?token=${token}`;
-    await sendEmail(target.email, lang === "ar" ? "إعادة تعيين كلمة المرور في نشر" : "Reset your Nashr password", lang === "ar"
-      ? `مرحباً،\n\nوصلنا طلب لإعادة تعيين كلمة مرور حسابك في نشر. افتح الرابط التالي خلال ساعة واحدة:\n\n${link}\n\nإذا لم تطلب ذلك فتجاهل هذه الرسالة، ولن يتغير شيء.`
-      : `Hello,\n\nWe received a request to reset your Nashr password. Open this link within one hour:\n\n${link}\n\nIf you did not ask for this, ignore this email and nothing changes.`);
+    await sendEmail(target.email, lang === "ar" ? "إعادة تعيين كلمة المرور في ذكين" : "Reset your Thakeen password", lang === "ar"
+      ? `مرحباً،\n\nوصلنا طلب لإعادة تعيين كلمة مرور حسابك في ذكين. افتح الرابط التالي خلال ساعة واحدة:\n\n${link}\n\nإذا لم تطلب ذلك فتجاهل هذه الرسالة، ولن يتغير شيء.`
+      : `Hello,\n\nWe received a request to reset your Thakeen password. Open this link within one hour:\n\n${link}\n\nIf you did not ask for this, ignore this email and nothing changes.`);
   }
   return NextResponse.json({ ok: true, mail });
 }

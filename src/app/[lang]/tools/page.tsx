@@ -8,7 +8,7 @@ import Footer from "@/components/Footer";
 
 export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
   const { lang } = await params;
-  return { title: lang === "ar" ? `${TOOLS.length} أداة تسويق مجانية بالعربي (2026) — نشر` : `${TOOLS.length} Free Arabic Marketing Tools (2026) — Nashr`, description: lang === "ar" ? "هوكات، كابشنات، إعلانات سناب، سكربتات تيك توك، رسائل واتساب، منشورات Google — مجاناً بلهجتك." : "Hooks, captions, Snap ads, TikTok scripts, WhatsApp messages, Google posts — free, in your dialect." };
+  return { title: lang === "ar" ? `${TOOLS.length} أداة تسويق مجانية بالعربي (2026) — ذكين` : `${TOOLS.length} Free Arabic Marketing Tools (2026) — Thakeen`, description: lang === "ar" ? "هوكات، كابشنات، إعلانات سناب، سكربتات تيك توك، رسائل واتساب، منشورات Google — مجاناً بلهجتك." : "Hooks, captions, Snap ads, TikTok scripts, WhatsApp messages, Google posts — free, in your dialect." };
 }
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
