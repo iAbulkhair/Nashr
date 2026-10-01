@@ -244,6 +244,34 @@ export async function resolveOnboardHolds(email: string, built: Readonly<Record<
   });
 }
 
+/**
+ * Bill a chat message past the month's allowance (src/lib/chat-allowance.ts), in one save under the user lock. Nothing
+ * is taken before the turn: a hold would come out of the balance the turn's own tools spend (a batch asked for in that
+ * message), so the gate only checks the balance covers `maxCredits`. After it, the turn's metered cost (`usdMicro`, its
+ * model calls in micro-USD) is added to the account's unbilled carry, and every whole credit of it at the floor rate
+ * (`creditMicro`, `maxCostPerCreditUsd`) is billed, at most `maxCredits` and at most what the balance still holds. The
+ * carry keeps the remainder (always less than one credit), so a run of cheap messages is billed what they cost, not a
+ * credit each; cost beyond `maxCredits`, or beyond a balance the turn's tools emptied, is never billed. Returns the
+ * balance and what was billed.
+ */
+export async function settleChatOverflow(email: string, maxCredits: number, usdMicro: number, creditMicro: number): Promise<{ credits: number; charged: number }> {
+  if (!Number.isSafeInteger(maxCredits) || maxCredits < 0) throw new Error(`invalid_hold:${String(maxCredits)}`);
+  if (!Number.isFinite(creditMicro) || creditMicro < 1) throw new Error(`invalid_rate:${String(creditMicro)}`);
+  if (!Number.isFinite(usdMicro) || usdMicro < 0) throw new Error(`invalid_cost:${String(usdMicro)}`);
+  return withUserLock(email, async (u) => {
+    const price = Math.round(creditMicro);
+    const current = Number.isFinite(u.credits) ? Math.max(0, u.credits) : 0;
+    const before = typeof u.chatCarryMicro === "number" && Number.isFinite(u.chatCarryMicro) && u.chatCarryMicro > 0 ? u.chatCarryMicro : 0;
+    const carry = before + Math.round(usdMicro);
+    const owed = Math.min(maxCredits, Math.floor(carry / price));
+    const charged = Math.min(owed, current);
+    u.chatCarryMicro = Math.min(carry - owed * price, price - 1);
+    u.credits = current - charged;
+    await saveUser(u);
+    return { credits: u.credits, charged };
+  });
+}
+
 /** The UTC calendar month, YYYY-MM. Agent counters roll at 00:00 UTC on the 1st; `renewIfDue` runs later, at the 05:00 UTC daily cron. */
 export const monthKey = (d = new Date()) => d.toISOString().slice(0, 7);
 

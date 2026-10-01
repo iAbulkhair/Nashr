@@ -6,10 +6,13 @@ import { currentUser, seatLimit } from "@/lib/auth";
 import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, firstMonthPriceSar, type SelfServePlan } from "@/lib/pricing";
 import { can } from "@/lib/roles";
 import { seatsUsed } from "@/lib/team";
+import { chatStatus } from "@/lib/chat-allowance";
+import { paceStart, runway } from "@/lib/usage-view";
 import ReadOnlyNote from "@/components/app/ReadOnlyNote";
 import { OFFER_COPY, OfferBanner } from "@/components/app/BillingOffer";
 import PartnerCodeForm from "@/components/app/PartnerCodeForm";
 import { grantEarlyOffer, lastDayOfferOwed, openOffer } from "@/lib/partners";
+import ChatAllowanceCard from "@/components/app/ChatAllowanceCard";
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
@@ -28,7 +31,15 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const wa = owner && process.env.SUPPORT_WHATSAPP ? `https://wa.me/${process.env.SUPPORT_WHATSAPP.replace(/\D/g, "")}?text=${encodeURIComponent(`Thakeen ${u.email}`)}` : null;
   const card = (id: SelfServePlan | "agency") => m.plans.find((p) => p.id === id);
   const agency = card("agency");
-  const used = await seatsUsed(u.email);
+  // The chat card (rule 315): the account's messages, read here and handed to the client card with the runway already
+  // worked out, so the server and the browser render the same dates. Everyone sees it; only the owner gets the switch.
+  // The balance goes with it: below `overflow.hold` credits, chat past the allowance is paused even with the switch on.
+  const [used, chat] = await Promise.all([seatsUsed(u.email), chatStatus(u)]);
+  const now = new Date();
+  const nextReset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
+  const trial = chat.period === "trial";
+  // A trial's messages count from signup for the whole trial; a plan's from the 1st (or from signup, when later).
+  const chatRunway = runway({ used: chat.used, left: chat.left, periodStart: trial ? u.createdAt : paceStart(u.createdAt, now), resetAt: trial ? null : nextReset, trialEnds: u.trialEnds, now });
   // The 15% first-month offer (src/lib/partners.ts, rules 393-395), owner only. A trial in its last day, or ended less
   // than 3 days ago, that has none yet gets the early-partner offer here (the cron grants it on the last day; this covers
   // a missed run). Never while the founder impersonates the account: looking is not the customer's visit. Fixed-price
@@ -50,6 +61,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
         {u.plan === "trial" && <div><p className="text-ink/60">{t.billing.trialEnds}</p><p className="font-mono text-lg" dir="ltr">{u.trialEnds.slice(0, 10)}</p></div>}
       </div>
       {!owner && <ReadOnlyNote className="mt-4" text={t.billing.ownerOnly} />}
+      <ChatAllowanceCard lang={lang} status={chat} owner={owner} nextReset={nextReset} trialEnds={u.trialEnds.slice(0, 10)} runway={chatRunway} credits={u.credits} />
       {owner && u.plan === "trial" && (
         <div className="mt-6 rounded-2xl bg-oasis-deep p-6 text-mist">
           <p className="eyebrow eyebrow-accent">{lang === "ar" ? "ماذا يحدث عند التفعيل" : "What happens when you activate"}</p>

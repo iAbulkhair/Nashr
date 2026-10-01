@@ -810,7 +810,7 @@ describe("depth 1, and no MCP surface (rule 280)", () => {
       expect(((await r.json()) as { error?: { message: string } }).error?.message, name).toBe("Unknown tool");
     }
     // ask_noor talks to Noor, who is never offered the tool and is refused it in code.
-    expect(code(join("src", "app", "api", "mcp", "route.ts"))).toMatch(/chat\(user, String\(args\.message \?\? ""\), undefined, "noor"/);
+    expect(code(join("src", "app", "api", "mcp", "route.ts"))).toMatch(/chat\(user, message, undefined, "noor"/);
     expect(await index(u.email)).toEqual([]);
   });
 });

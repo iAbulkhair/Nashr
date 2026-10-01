@@ -156,6 +156,47 @@ export function maxCostPerCreditUsd(prices: Prices = PLAN_PRICE_SAR, credits: Pr
   return (1 - MARGIN_FLOOR) * cheapestCreditUsd(prices, credits, includesVat);
 }
 
+// ---- Chat (pricing phase 2, rules 308-316) ----
+
+/**
+ * Chat messages per plan (spec section 2, founder decision 2026-09-29). A message is one turn the owner sends, however
+ * many model calls and tools it takes; a turn that failed or never reached the model is not counted. Paid plans get this
+ * many every UTC calendar month; the trial's are granted once for the whole trial. Shared by every seat and brand of the
+ * account (teams spec section 5). Generation from chat keeps charging credits as before: this is the conversation only.
+ */
+export const CHAT_ALLOWANCE: Readonly<Record<FixedPlan, number>> = { trial: 30, starter: 250, pro: 650, business: 1300 };
+/** Upper bound of a founder chat override (`User.chatAllowance`): it only guards against a typo. */
+export const MAX_CHAT_OVERRIDE = 100_000;
+
+/** A founder override is a whole number from 0 (chat stopped for this account) to MAX_CHAT_OVERRIDE. */
+export const isChatOverride = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0 && (v as number) <= MAX_CHAT_OVERRIDE;
+
+/**
+ * The account's chat messages for the period: the founder override when it is valid (an Agency deal's chat allowance
+ * goes there, as a deal's seats go through `User.seats`); then Agency → Business's 1,300; a fixed plan → CHAT_ALLOWANCE;
+ * anything else → 0, never NaN.
+ */
+export function chatAllowanceOf(u: { plan: Plan; chatAllowance?: number }): number {
+  if (isChatOverride(u.chatAllowance)) return u.chatAllowance;
+  if (isAgency(u.plan)) return CHAT_ALLOWANCE.business;
+  return isFixedPlan(u.plan) ? CHAT_ALLOWANCE[u.plan] : 0;
+}
+
+/**
+ * The most one chat message may cost us in model calls, in USD (founder decision 2026-10-01). Checked in code before
+ * every model call of a turn (src/lib/chat-budget.ts): a call's output is capped to what is left, and the tool loop ends
+ * when too little is left for a useful answer. Without it a turn could make five calls of 8,000 output tokens (≈ $1+).
+ */
+export const CHAT_TURN_MAX_USD = 0.35;
+
+/**
+ * The most a message past the allowance can cost the owner, when they turned "continue on credits" on: the ceiling above
+ * at the floor rate, rounded up (5 today). The balance must cover it before the turn (nothing is taken then); after the
+ * reply the message is billed its metered cost at the floor rate, never more than this (src/lib/credits.ts
+ * `settleChatOverflow`).
+ */
+export const chatOverflowHold = (maxCostUsd: number = maxCostPerCreditUsd()): number => Math.ceil(CHAT_TURN_MAX_USD / maxCostUsd);
+
 // ---- Brands (rules 245-247) ----
 
 /**
