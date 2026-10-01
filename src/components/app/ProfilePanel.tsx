@@ -41,13 +41,20 @@ function Card({ title, sub, children }: { title: string; sub?: string; children:
   return <section className="card"><h2 className="font-display text-lg font-bold">{title}</h2>{sub && <p className="mt-1 text-sm text-ink/60">{sub}</p>}<div className="mt-3">{children}</div></section>;
 }
 const L = (k: string) => <label className="block text-xs font-semibold uppercase tracking-wide text-ink/50">{k}</label>;
+/** GET /api/profile: read on load and again after every save, so the form shows what the server stored. */
+const fetchProfile = () => fetch("/api/profile", { cache: "no-store" }).then((x) => x.json() as Promise<Data & { ok?: boolean }>);
+/** What PUT /api/profile answers: the stored values on 200, the refused field on 400. */
+type Saved = { ok?: boolean; error?: "required" | "bad_phone"; field?: string; saved?: { me: { name: string; lang: Lang }; phone?: string; emails?: string; brand?: Data["brand"] } };
 
 export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
   const ar = lang === "ar";
   const r = useRouter();
   const [d, setD] = useState<Data | null>(null);
   const [msg, setMsg] = useState("");
-  useEffect(() => { fetch("/api/profile").then((x) => x.json()).then((j) => j.ok && setD(j)); }, []);
+  // Bumped after a save: the form's fields are uncontrolled (defaultValue), so a new key re-mounts them with the
+  // values the server stored instead of what was typed.
+  const [formKey, setFormKey] = useState(0);
+  useEffect(() => { fetchProfile().then((j) => { if (j.ok) setD(j); }).catch(() => {}); }, []);
   if (!d) return <p className="text-ink/60">…</p>;
   const input = "input";
   // Owner-only: phone, account language, email preferences, subscription and deleting the account. Admin+: brand fields.
@@ -65,8 +72,32 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
   async function save(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(e.currentTarget));
-    const res = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fd) });
-    setMsg(res.ok ? (ar ? "تم الحفظ" : "Saved") : (ar ? "خطأ" : "Error"));
+    const res = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fd) }).catch(() => null);
+    const j = ((await res?.json().catch(() => ({}))) ?? {}) as Saved;
+    if (!res?.ok || !j.ok) {
+      // Nothing was written: say which field was refused and leave what the owner typed in place to correct it.
+      setMsg(res?.status === 403 ? t.team.errors.forbidden
+        : j.error === "bad_phone" ? (ar ? "رقم الجوال غير صحيح: اكتب 9 أرقام على الأقل، أو اتركه فارغاً. لم يُحفظ شيء." : "That phone number is not valid: use at least 9 digits, or leave it empty. Nothing was saved.")
+        : j.error === "required" && j.field === "business" ? (ar ? "اسم النشاط مطلوب. لم يُحفظ شيء." : "Business name is required. Nothing was saved.")
+        : j.error === "required" && j.field === "name" ? (ar ? "الاسم الكامل مطلوب. لم يُحفظ شيء." : "Full name is required. Nothing was saved.")
+        : (ar ? "تعذّر الحفظ. لم يُحفظ شيء، حاول مرة أخرى." : "Could not save. Nothing was saved; try again."));
+      return;
+    }
+    // Show what the server stored: read the profile again, or at least apply the values the save answered with.
+    const fresh = await fetchProfile().catch(() => null);
+    if (fresh?.ok) setD(fresh);
+    else if (j.saved) {
+      const sv = j.saved;
+      setD((p) => p && {
+        ...p,
+        me: p.me ? { ...p.me, ...sv.me } : p.me,
+        user: { ...p.user, ...(sv.phone !== undefined ? { phone: sv.phone } : {}) },
+        ...(sv.emails ? { emails: sv.emails } : {}),
+        ...(sv.brand !== undefined ? { brand: sv.brand } : {}),
+      });
+    }
+    setFormKey((k) => k + 1);
+    setMsg(ar ? "تم الحفظ" : "Saved");
     if (fd.lang && fd.lang !== lang) r.push(`/${fd.lang}/app/profile`);
     r.refresh();
   }
@@ -126,7 +157,7 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
         <Link href={`/${lang}/app/billing`} className="mt-3 inline-block btn btn-secondary btn-sm">{owner ? (ar ? "إدارة الاشتراك" : "Manage subscription") : t.billing.title}</Link>
       </Card>
 
-      <form onSubmit={save} className="grid gap-5">
+      <form key={formKey} onSubmit={save} className="grid gap-5">
         {owner && <Card title={ar ? "تفضيلات الإيميل" : "Email preferences"} sub={ar ? "تتحكم في إيميلات الوكلاء والمهام المجدولة. إيميلات الحساب والفوترة تصل دائماً." : "Controls emails from your agents and their scheduled tasks. Account and billing emails always come through."}>
           <div className="grid gap-2 text-sm">
             {[["all", ar ? "كل الإيميلات" : "All emails", ar ? "كل ملخص ومتابعة ومهمة مجدولة." : "Every agent and scheduled task email."], ["important", ar ? "المهم فقط" : "Important only", ar ? "الوكيل يقرر ما يستحق الإرسال: الأخطاء وما ينتظر موافقتك؛ التقارير الروتينية تُتجاوز." : "Your agent decides what is worth emailing: errors and items needing approval come through; routine reports are skipped."], ["none", ar ? "لا شيء" : "None", ar ? "إيقاف كل إيميلات الوكلاء والمهام المجدولة." : "Stop all agent and scheduled task emails."]].map(([v, l, s]) => (
