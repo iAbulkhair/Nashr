@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { adminSignIn, jar, json, signIn, signOut } from "./helpers/session";
-import { adminEmails, ADMIN_SESSION_TTL, createUser, isAdmin, isAdminCookie, isFounder } from "@/lib/auth";
+import { createHash } from "node:crypto";
+import { adminEmails, ADMIN_SESSION_IDLE, ADMIN_SESSION_MAX, ADMIN_SESSION_RENEW, createUser, isAdmin, isAdminCookie, isFounder } from "@/lib/auth";
 import { db } from "@/lib/db";
 
 import * as adminLogin from "@/app/api/admin/login/route";
@@ -21,7 +22,7 @@ const ip = () => ({ "x-real-ip": `198.51.100.${++ipN}` });
 
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
 
-describe("the founder console's key session (rules 310-314, 319)", () => {
+describe("the founder console's key session (rules 310-314, 319, 325)", () => {
   beforeEach(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); signOut(); });
 
   it("310: a right key sets an opaque session id, never the key, and opens the console", async () => {
@@ -56,14 +57,114 @@ describe("the founder console's key session (rules 310-314, 319)", () => {
     expect((await log.GET(json("/api/admin/log", "GET"))).status).toBe(401);
   });
 
-  it("312: a key session ends after 12 hours", async () => {
-    expect(ADMIN_SESSION_TTL).toBe(12 * 3600);
-    await adminSignIn();
+  it("312: a key session ends after 15 minutes without an admin request; each admin request renews it", async () => {
+    expect(ADMIN_SESSION_IDLE).toBe(15 * 60);
     vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
-    vi.setSystemTime(Date.now() + (ADMIN_SESSION_TTL - 60) * 1000);
-    expect(await isAdminCookie(), "still open a minute before the end").toBe(true);
-    vi.setSystemTime(Date.now() + 120 * 1000);
-    expect(await isAdminCookie()).toBe(false);
+    const min = (n: number) => vi.setSystemTime(Date.now() + n * 60 * 1000);
+    await adminSignIn();
+    min(10);
+    expect((await overview.GET(json("/api/admin/overview", "GET"))).status, "an admin request 10 minutes in").toBe(200);
+    min(14);
+    expect(await isAdmin(json("/api/admin/log", "GET")), "14 minutes idle after a renewing request").toBe(true);
+    min(14);
+    expect(await isAdminCookie(), "the page load renewed it too").toBe(true);
+    min(16);
+    expect(await isAdminCookie(), "16 minutes idle").toBe(false);
+    expect((await overview.GET(json("/api/admin/overview", "GET"))).status).toBe(401);
+    expect((await log.GET(json("/api/admin/log", "GET"))).status).toBe(401);
+
+    // A fresh session nobody uses is gone 16 minutes after the key entry, and its record with it.
+    signOut();
+    const id = await adminSignIn();
+    min(16);
+    expect(await isAdminCookie(), "16 minutes after the key entry with no request").toBe(false);
+    expect(await db.get(`adminsession:${createHash("sha256").update(id).digest("hex")}`), "the record expired").toBeNull();
+  });
+
+  it("312: no key session outlives 12 hours from the key entry, however busy", async () => {
+    expect(ADMIN_SESSION_MAX).toBe(12 * 3600);
+    vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
+    const t0 = Date.now();
+    const id = await adminSignIn();
+    const rec = `adminsession:${createHash("sha256").update(id).digest("hex")}`;
+    // An admin request every 10 minutes for 11 hours 50 minutes keeps it open.
+    for (let m = 10; m <= 710; m += 10) {
+      vi.setSystemTime(t0 + m * 60 * 1000);
+      expect(await isAdminCookie(), `minute ${m}`).toBe(true);
+    }
+    // A request 5 minutes before the cap renews it, but only up to the cap: the record's TTL never runs past 12 hours.
+    vi.setSystemTime(t0 + (ADMIN_SESSION_MAX - 300) * 1000);
+    expect(await isAdminCookie()).toBe(true);
+    vi.setSystemTime(t0 + (ADMIN_SESSION_MAX - 1) * 1000);
+    expect(await isAdminCookie(), "one second before the cap").toBe(true);
+    vi.setSystemTime(t0 + (ADMIN_SESSION_MAX + 1) * 1000);
+    expect(await isAdminCookie(), "one second after the cap, 5 minutes after a request").toBe(false);
+    expect(await db.get(rec), "the record's TTL ended at the cap").toBeNull();
+    // The cookie itself carries the 12-hour cap (the test jar keeps no cookie options, so this reads the source).
+    expect(readFileSync("src/lib/auth.ts", "utf8")).toMatch(/jar\.set\(ADMIN_COOKIE, id, await sessionCookie\(ADMIN_SESSION_MAX\)\)/);
+  });
+
+  it("325: renewing is one Redis write at most once a minute, never brings back a logged-out session, and holds old records to both limits", async () => {
+    expect(ADMIN_SESSION_RENEW).toBe(60);
+    vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
+    const id = await adminSignIn();
+    const rec = `adminsession:${createHash("sha256").update(id).digest("hex")}`;
+    const setXx = vi.spyOn(db, "setXx");
+    const set = vi.spyOn(db, "set");
+    try {
+      // Inside the first minute: reads only.
+      vi.setSystemTime(Date.now() + 30 * 1000);
+      for (let i = 0; i < 5; i++) expect(await isAdminCookie()).toBe(true);
+      expect(setXx).not.toHaveBeenCalled();
+      // Past it: a burst of admin calls costs exactly one SET XX, with the TTL of the idle window.
+      vi.setSystemTime(Date.now() + 31 * 1000);
+      for (let i = 0; i < 3; i++) expect(await isAdminCookie()).toBe(true);
+      expect((await overview.GET(json("/api/admin/overview", "GET"))).status).toBe(200);
+      expect(setXx).toHaveBeenCalledTimes(1);
+      expect(setXx.mock.calls[0][0]).toBe(rec);
+      expect(setXx.mock.calls[0][2]).toBe(ADMIN_SESSION_IDLE);
+      expect(set.mock.calls.filter((c) => String(c[0]).startsWith("adminsession:"))).toHaveLength(0);
+
+      // A renewal that read the record just before a logout deleted it cannot bring it back (SET XX).
+      const stale = await db.get(rec);
+      vi.setSystemTime(Date.now() + 2 * 60 * 1000);
+      expect((await adminLogin.DELETE()).status).toBe(200);
+      jar().set("nashr_admin", id);
+      vi.spyOn(db, "get").mockResolvedValueOnce(stale);
+      await isAdminCookie();
+      expect(await db.get(rec), "the logged-out record stays gone").toBeNull();
+      expect(await isAdminCookie()).toBe(false);
+    } finally {
+      vi.restoreAllMocks();
+    }
+
+    // A record written before this change (12-hour TTL, no `seen`) is held to the idle limit in code.
+    const old = "d".repeat(64);
+    const kp = createHash("sha256").update(`nashr-admin-key:${KEY}`).digest("hex");
+    await db.set(`adminsession:${createHash("sha256").update(old).digest("hex")}`, { kp, at: Date.now() - 16 * 60 * 1000 }, 12 * 3600);
+    signOut();
+    jar().set("nashr_admin", old);
+    expect(await isAdminCookie(), "16 minutes since the key entry, never renewed").toBe(false);
+    // ... and to the absolute limit, even with a recent `seen`.
+    await db.set(`adminsession:${createHash("sha256").update(old).digest("hex")}`, { kp, at: Date.now() - (ADMIN_SESSION_MAX * 1000 + 1000), seen: Date.now() - 60 * 1000 }, 3600);
+    expect(await isAdminCookie(), "past 12 hours").toBe(false);
+  });
+
+  it("325: an impersonation opened from a key session ends when that key session goes idle; customer requests do not renew it", async () => {
+    const users = await import("@/app/api/admin/users/[email]/route");
+    const { currentUser } = await import("@/lib/auth");
+    const customer = await createUser({ email: `idle-${Date.now().toString(36)}@test.example`, name: "Customer", phone: "", password: "abc12345", lang: "en" });
+    vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
+    const t0 = Date.now();
+    await adminSignIn();
+    const res = await users.POST(json("/api/admin/users/x", "POST", { action: "impersonate", reason: "support" }), { params: Promise.resolve({ email: encodeURIComponent(customer.email) }) });
+    expect(res.status).toBe(200);
+    for (const m of [5, 10, 14]) {
+      vi.setSystemTime(t0 + m * 60 * 1000);
+      expect((await currentUser())?.email, `customer view at ${m} minutes`).toBe(customer.email);
+    }
+    vi.setSystemTime(t0 + 16 * 60 * 1000);
+    expect(await currentUser(), "16 minutes without an admin request").toBeNull();
   });
 
   it("313: rotating WAITLIST_ADMIN_KEY ends every key session; removing it disables the path", async () => {

@@ -319,41 +319,79 @@ export const isFounder = (email: string | undefined | null) => !!email && adminE
 export const isFounderActor = (u: User | null | undefined) => !!u?.actor && u.actor.kind === "owner" && u.actor.email === u.email && isFounder(u.actor.email);
 
 /**
- * The founder console's key session (rules 310-314, tests/launch-security.test.ts).
+ * The founder console's key session (rules 310-314, 325, tests/launch-security.test.ts).
  *
  * The key form (POST /api/admin/login) used to put WAITLIST_ADMIN_KEY itself in this cookie for 30 days, so anyone who
  * copied the cookie held the master key, and "log out" only deleted it in one browser. Now the cookie holds a random
- * 32-byte id; the server keeps `adminsession:{sha256(id)}` for 12 hours with a fingerprint of the key it was opened
- * with. Logging out deletes the record, so a copied cookie dies with it; rotating the key changes the fingerprint and
- * ends every key session at once; removing the key disables the path. The raw key in the cookie is no longer accepted.
- * The record is stored under a hash of the id, so a read of the database does not hand out live cookies.
+ * 32-byte id; the server keeps `adminsession:{sha256(id)}` with a fingerprint of the key it was opened with. Logging out
+ * deletes the record, so a copied cookie dies with it; rotating the key changes the fingerprint and ends every key
+ * session at once; removing the key disables the path. The raw key in the cookie is no longer accepted. The record is
+ * stored under a hash of the id, so a read of the database does not hand out live cookies.
+ *
+ * Lifetime (founder decision 2026-10-01): the session ends after 15 minutes without an admin request
+ * (`ADMIN_SESSION_IDLE`) and never lives past 12 hours from the key entry (`ADMIN_SESSION_MAX`). Every admin request
+ * that finds the session live renews it, at most once a minute per session (`ADMIN_SESSION_RENEW`), with one
+ * `SET XX EX` that rewrites `seen` and the record's TTL; a request inside that minute writes nothing. The idle window
+ * therefore counts from the last renewal: between 14 and 15 minutes after the last request, never longer. The record's
+ * TTL never runs past the 12-hour cap, and both limits are also checked in code against `at` and `seen`, so a record
+ * written before this change (12-hour TTL, no `seen`) is held to them too. The cookie carries the absolute cap only
+ * (12 hours, not renewed: a server component cannot set cookies); the record is what enforces the idle limit.
  */
 export const ADMIN_COOKIE = "nashr_admin";
-export const ADMIN_SESSION_TTL = 60 * 60 * 12;
-type AdminSession = { kp: string; at: number };
+/** Idle limit: the key session ends after this many seconds without an admin request. */
+export const ADMIN_SESSION_IDLE = 60 * 15;
+/** Absolute limit: no key session outlives this many seconds from the key entry, however busy. */
+export const ADMIN_SESSION_MAX = 60 * 60 * 12;
+/** A live session is renewed at most once per this many seconds, so a burst of console calls costs one write. */
+export const ADMIN_SESSION_RENEW = 60;
+type AdminSession = { kp: string; at: number; seen?: number };
 const adminKeyPrint = (key: string) => createHash("sha256").update(`nashr-admin-key:${key}`).digest("hex");
 const adminSessionKey = (id: string) => `adminsession:${createHash("sha256").update(id).digest("hex")}`;
+/** Seconds the record may live from `now`: the idle window, cut short by the absolute cap. 0 when it is over. */
+const adminSessionTtl = (rec: AdminSession, now: number) =>
+  Math.max(0, Math.min(ADMIN_SESSION_IDLE, Math.floor((rec.at + ADMIN_SESSION_MAX * 1000 - now) / 1000)));
+/** Both limits checked in code, whatever TTL the record was stored with. */
+const adminSessionInTime = (rec: AdminSession, now: number) =>
+  typeof rec.at === "number" &&
+  now - rec.at < ADMIN_SESSION_MAX * 1000 &&
+  now - (typeof rec.seen === "number" ? rec.seen : rec.at) < ADMIN_SESSION_IDLE * 1000;
 
 /** Open a key session for the current key and set its cookie. The caller has already checked the key. */
 export async function createAdminSession(): Promise<void> {
   const key = process.env.WAITLIST_ADMIN_KEY;
   if (!key) throw new Error("WAITLIST_ADMIN_KEY is not set");
   const id = randomBytes(32).toString("hex");
-  await db.set(adminSessionKey(id), { kp: adminKeyPrint(key), at: Date.now() } satisfies AdminSession, ADMIN_SESSION_TTL);
+  const now = Date.now();
+  await db.set(adminSessionKey(id), { kp: adminKeyPrint(key), at: now, seen: now } satisfies AdminSession, ADMIN_SESSION_IDLE);
   const jar = await cookies();
-  jar.set(ADMIN_COOKIE, id, await sessionCookie(ADMIN_SESSION_TTL));
+  jar.set(ADMIN_COOKIE, id, await sessionCookie(ADMIN_SESSION_MAX));
 }
 
-/** True when the caller's `nashr_admin` cookie names a live key session opened with the CURRENT key. */
+/**
+ * True when the caller's `nashr_admin` cookie names a live key session opened with the CURRENT key, inside both the
+ * idle and the absolute limit. A live session is renewed here (every admin request passes through this check), at
+ * most once per `ADMIN_SESSION_RENEW` seconds, with one `setXx`: it rewrites only a record that still exists, so a
+ * renewal racing a logout never brings the session back.
+ */
 export async function adminKeySession(): Promise<boolean> {
   const key = process.env.WAITLIST_ADMIN_KEY;
   if (!key) return false;
   const id = (await cookies()).get(ADMIN_COOKIE)?.value;
   if (!id || !/^[0-9a-f]{64}$/.test(id)) return false;
-  const rec = await db.get<AdminSession>(adminSessionKey(id));
+  const k = adminSessionKey(id);
+  const rec = await db.get<AdminSession>(k);
   if (!rec || typeof rec.kp !== "string") return false;
   const { sameSecret } = await import("./rate");
-  return sameSecret(rec.kp, adminKeyPrint(key));
+  if (!sameSecret(rec.kp, adminKeyPrint(key))) return false;
+  const now = Date.now();
+  if (!adminSessionInTime(rec, now)) return false;
+  const last = typeof rec.seen === "number" ? rec.seen : rec.at;
+  const ttl = adminSessionTtl(rec, now);
+  if (now - last >= ADMIN_SESSION_RENEW * 1000 && ttl > 0) {
+    // A failed renewal only shortens the session; it never fails the request it rode on.
+    await db.setXx(k, { kp: rec.kp, at: rec.at, seen: now } satisfies AdminSession, ttl).catch(() => false);
+  }
+  return true;
 }
 
 /**
@@ -380,7 +418,8 @@ async function keyImpLive(s: Session): Promise<boolean> {
   if (!sameSecret(s.kp, adminKeyPrint(key))) return false;
   if (typeof s.as !== "string") return true;
   const rec = await db.get<AdminSession>(`adminsession:${s.as}`);
-  return !!rec && typeof rec.kp === "string" && sameSecret(rec.kp, s.kp);
+  // Read only: customer-side requests made while impersonating are not admin requests and do not renew the key session.
+  return !!rec && typeof rec.kp === "string" && sameSecret(rec.kp, s.kp) && adminSessionInTime(rec, Date.now());
 }
 
 /** Log the key session out: the server record goes, so the same cookie value never works again. */

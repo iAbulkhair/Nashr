@@ -3,8 +3,9 @@ import { allow, clientIp, sameSecret } from "@/lib/rate";
 import { createAdminSession, destroyAdminSession } from "@/lib/auth";
 
 /**
- * The founder console's key form. A right key opens a 12-hour server-side key session (src/lib/auth.ts
- * `createAdminSession`): the cookie carries a random id, never the key. DELETE ends it on the server.
+ * The founder console's key form. A right key opens a server-side key session (src/lib/auth.ts `createAdminSession`)
+ * that ends after 15 minutes without an admin request and 12 hours after the key entry at most: the cookie carries a
+ * random id, never the key. DELETE ends it on the server.
  */
 export async function POST(req: Request) {
   // Five attempts per 15 minutes per IP: the key must not be guessable by brute force.
