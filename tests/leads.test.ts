@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { json, newUser, signIn, signOut } from "./helpers/session";
 import { createUser } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -77,6 +78,33 @@ describe("rule 354: the Leads tab lists sales leads newest first, with an unread
     await support.POST(json("/api/support", "POST", { email: "later-q@co.example", message: "a question", type: "question" }, from()));
     await signIn(FOUNDER);
     expect((await list()).body.unread, "a plain support question is not a sales lead").toBe(1);
+  });
+
+  it("a lead that arrives between the console's load and its 'seen' stays unread", async () => {
+    await signIn(FOUNDER);
+    await support.POST(json("/api/support", "POST", { email: "shown@co.example", message: contact("S", "T", "U"), type: "enterprise" }, from()));
+    const shown = (await list()).body;
+    const until = shown.leads[0].at;
+    await new Promise((r) => setTimeout(r, 5));
+    // Between the GET and the POST: never on the founder's screen.
+    await support.POST(json("/api/support", "POST", { email: "race@co.example", message: contact("R", "S", "T"), type: "early-adopter" }, from()));
+    expect((await leads.POST(json("/api/admin/leads", "POST", { action: "seen", until }))).status).toBe(200);
+    const after = (await list()).body;
+    expect(after.unread, "the lead that arrived after the load is still unread").toBe(1);
+    expect(after.seenAt).toBe(until);
+
+    // The mark never moves backwards, and a future `until` is clamped to now.
+    expect((await leads.POST(json("/api/admin/leads", "POST", { action: "seen", until: "2020-01-01T00:00:00.000Z" }))).status).toBe(200);
+    expect((await list()).body.seenAt).toBe(until);
+    const r = await leads.POST(json("/api/admin/leads", "POST", { action: "seen", until: "2999-01-01T00:00:00.000Z" }));
+    expect(Date.parse(((await r.json()) as { seenAt: string }).seenAt)).toBeLessThanOrEqual(Date.now());
+    expect((await list()).body.unread).toBe(0);
+    for (const bad of [42, "yesterday", "x".repeat(41)]) expect((await leads.POST(json("/api/admin/leads", "POST", { action: "seen", until: bad }))).status).toBe(400);
+  });
+
+  it("the console sends the newest lead it showed, not the server's clock", () => {
+    const panel = readFileSync("src/components/app/LeadsPanel.tsx", "utf8");
+    expect(panel).toMatch(/action: "seen", until/);
   });
 
   it("pages are capped at 100 rows and follow offset", async () => {

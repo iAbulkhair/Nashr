@@ -90,11 +90,19 @@ export async function listLeads(opts: { all?: boolean; offset?: number; limit?: 
   return { leads: shown.slice(offset, offset + limit), total: shown.length, unread, seenAt: seen, scanned: { tickets: tickets.length, affiliates: affiliates.length } };
 }
 
-/** The founder opened the tab: everything up to now is read. */
-export async function markLeadsSeen(now = new Date()): Promise<string> {
-  const at = now.toISOString();
-  await db.set(LEADS_SEEN_KEY, at);
-  return at;
+/**
+ * The founder opened the tab and was shown every lead up to `until` (the newest lead on the page the console loaded).
+ * The read mark moves to that lead's time, not to the server's clock: a lead that arrived between the console's GET and
+ * this POST was never on screen and must stay unread. `until` is clamped to now, and the mark never moves backwards (an
+ * older tab left open does not make leads unread again). Without `until` it is now, for callers that mean "all read".
+ */
+export async function markLeadsSeen(until?: string, now = new Date()): Promise<string> {
+  const asked = until ? Date.parse(until) : now.getTime();
+  const candidate = new Date(Math.min(Number.isFinite(asked) ? asked : now.getTime(), now.getTime())).toISOString();
+  const prev = await db.get<string>(LEADS_SEEN_KEY);
+  if (typeof prev === "string" && prev >= candidate) return prev;
+  await db.set(LEADS_SEEN_KEY, candidate);
+  return candidate;
 }
 
 /** UTF-8 CSV (the route adds the BOM). Every cell through `csvSafe`: a visitor's "=HYPERLINK(…)" must stay text in Excel. */

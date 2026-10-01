@@ -5,11 +5,16 @@ import { join } from "node:path";
 /**
  * Rules 356-358 (#8, #169). One canonical app origin: `appOrigin()` in src/lib/origin.ts reads APP_ORIGIN and holds the
  * only copy of the production fallback. Moving to the owned domain must be one environment change, so the old Vercel
- * host may not appear anywhere else in src/.
+ * host may not appear anywhere else in src/, no other file reads APP_ORIGIN or builds a link from the Host header, and a
+ * malformed APP_ORIGIN falls back instead of making every page's metadata throw.
  */
 
 const safeFetch = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async () => new Response("<html><title>x</title><body>" + "word ".repeat(40) + "</body></html>", { status: 200 }));
 vi.mock("@/lib/safe-fetch", () => ({ safeFetch }));
+vi.mock("next/font/google", () => {
+  const font = () => ({ variable: "", className: "", style: {} });
+  return { IBM_Plex_Mono: font, IBM_Plex_Sans_Arabic: font, Readex_Pro: font };
+});
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -37,6 +42,19 @@ describe("rule 356: the Vercel host lives in one place", () => {
     expect(src).not.toMatch(/get\("host"\)/);
     expect(src).toMatch(/appOrigin\(\)/);
   });
+
+  it("only origin.ts reads APP_ORIGIN (media/config.ts reads it for webhooks, with no fallback by design)", () => {
+    const allowed = [join("src", "lib", "origin.ts"), join("src", "lib", "media", "config.ts")];
+    const hits = files("src").filter((p) => !allowed.includes(p) && /process\.env\.APP_ORIGIN|process\.env\[["']APP_ORIGIN["']\]/.test(readFileSync(p, "utf8")));
+    expect(hits, `direct APP_ORIGIN readers: ${hits.join(", ")}`).toEqual([]);
+  });
+
+  it("no link is built from the request's Host header", () => {
+    // auth.ts reads Host only to decide the session cookie's Secure flag on loopback, never to build a URL.
+    const hits = files("src").filter((p) => p !== join("src", "lib", "auth.ts") && /get\(["']host["']\)|x-forwarded-host|\$\{[^}]*\.host\}/.test(readFileSync(p, "utf8")));
+    expect(hits, `Host-derived origin in: ${hits.join(", ")}`).toEqual([]);
+    for (const p of ["src/app/[lang]/app/mcp/page.tsx", "src/app/api/connect/[provider]/callback/route.ts"]) expect(readFileSync(p, "utf8")).toMatch(/appOrigin\(\)/);
+  });
 });
 
 describe("rule 357: appOrigin() reads APP_ORIGIN, with the old behaviour while it is unset", () => {
@@ -50,6 +68,32 @@ describe("rule 357: appOrigin() reads APP_ORIGIN, with the old behaviour while i
     vi.stubEnv("APP_ORIGIN", "https://thakeen.example/");
     expect(appOrigin()).toBe("https://thakeen.example");
     expect(appHost()).toBe("thakeen.example");
+  });
+
+  it("a value that is not an absolute http(s) origin falls back instead of breaking every page", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { appOrigin, appHost, FALLBACK_ORIGIN } = await import("@/lib/origin");
+    for (const bad of ["thakeen.com", "localhost:3000", "htps//thakeen.com", "ftp://thakeen.com", "https://thakeen.com/ar", "https://thakeen.com?x=1", "https://user:pw@thakeen.com", "not a url"]) {
+      vi.stubEnv("APP_ORIGIN", bad);
+      expect(appOrigin(), bad).toBe(FALLBACK_ORIGIN);
+      expect(() => appHost(), bad).not.toThrow();
+    }
+    vi.stubEnv("APP_ORIGIN", " HTTPS://Thakeen.Example ");
+    expect(appOrigin()).toBe("https://thakeen.example");
+    const printed = warn.mock.calls.map((c) => c.join(" ")).join(" ");
+    warn.mockRestore();
+    expect(printed, "the warning names the variable").toContain("APP_ORIGIN");
+    expect(printed, "and never its value").not.toMatch(/thakeen/);
+  });
+
+  it("the [lang] layout's metadata does not throw on a bad APP_ORIGIN", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubEnv("APP_ORIGIN", "thakeen.com");
+    const { generateMetadata } = await import("@/app/[lang]/layout");
+    const meta = await generateMetadata({ params: Promise.resolve({ lang: "ar" }) });
+    const { FALLBACK_ORIGIN } = await import("@/lib/origin");
+    expect(String(meta.metadataBase)).toBe(`${FALLBACK_ORIGIN}/`);
+    vi.restoreAllMocks();
   });
 });
 

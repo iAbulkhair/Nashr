@@ -123,6 +123,42 @@ describe("rule 352: the signup nudge uses the same claim-then-confirm guard", ()
     expect(notify, "the old claim-before-send guard is gone").not.toMatch(/export async function once\(/);
   });
 
+  it("the daily cron reports a refused nudge, leaves no marker, retries it on the next run and never sends a third", async () => {
+    mailOn();
+    vi.stubEnv("CRON_SECRET", "cron-secret-mail-once");
+    const { saveUser } = await import("@/lib/auth");
+    const { onceKey } = await import("@/lib/notify");
+    const daily = await import("@/app/api/cron/daily/route");
+    const u = await newUser("nudge-cron");
+    await saveUser({ ...u, createdAt: new Date(Date.now() - 3600e3).toISOString() });
+    type Report = { results: Record<string, string>; nudges: number };
+    const run = async (): Promise<{ mine: string; nudges: number }> => {
+      // A run marks each workspace done for the day; a later day's run is what retries, so the day markers are cleared.
+      const day = new Date().toISOString().slice(0, 10);
+      await Promise.all([db.del(`crondone:daily:${day}:${u.email}`), db.del(`crontry:daily:${day}:${u.email}`)]);
+      const r = await daily.GET(new Request("https://nashr.test/api/cron/daily?chain=1", { headers: { authorization: "Bearer cron-secret-mail-once" } }));
+      expect(r.status).toBe(200);
+      const body = (await r.json()) as Report;
+      return { mine: body.results[u.email] ?? "", nudges: body.nudges };
+    };
+
+    send = refuse;
+    const first = await run();
+    expect(first.mine).toBe("mail_refused:nudge");
+    expect(first.nudges, "a refused nudge is not counted as sent").toBe(0);
+    expect(await db.get(onceKey(u.email, "nudge1")), "and leaves no 400-day marker").toBeFalsy();
+
+    send = accept;
+    const second = await run();
+    expect(second.mine).toBe("nudge");
+    expect(second.nudges).toBeGreaterThanOrEqual(1);
+    expect(await db.get(onceKey(u.email, "nudge1"))).toBeTruthy();
+
+    const third = await run();
+    expect(third.mine).toBe("no_brand");
+    expect(sends.filter((to) => to === u.email), "one refused attempt, one accepted, no third").toHaveLength(2);
+  });
+
   it("an account deletion removes the marker, the claim and the index", async () => {
     mailOn();
     const { sendOnce, onceKey, onceClaimKey, ONCE_INDEX } = await import("@/lib/notify");
