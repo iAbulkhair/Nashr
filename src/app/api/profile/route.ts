@@ -10,7 +10,7 @@ import { withUserLock } from "@/lib/credits";
 import { can, forbid, type Action } from "@/lib/roles";
 import { saveMember, withMemberLock } from "@/lib/team";
 import { chatStatus } from "@/lib/chat-allowance";
-import { lotsOf, topupView } from "@/lib/topups";
+import { lotsOf, topupBalance } from "@/lib/topups";
 
 export type EmailPrefs = "all" | "important" | "none";
 
@@ -72,12 +72,15 @@ export async function GET() {
   const summary = { plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt, ...(u.renewedAt ? { renewedAt: u.renewedAt } : {}) };
   // The owner (or a founder acting as the owner) gets the account record as before, minus the hash and runtime fields.
   // An Agency deal is shown as its terms only: who set it in the founder console is not the customer's to see.
-  // Top-up packs likewise (rule 453): credits, what is left and the dates only; what was paid, the payment reference and
-  // who activated the pack stay with the founder (`topupView`), and `topupsDirty` is a runtime flag, never sent.
-  const { passHash: _p, actor: _a, deal: _d, topups: _t, topupsDirty: _td, ...safe } = u; void _p; void _a; void _d; void _t; void _td;
+  // Top-up packs likewise (rule 453): each pack's size, what is left and when it expires, nothing else (`topupBalance`);
+  // what was paid, the payment reference, the payment id and who activated the pack stay with the founder, and
+  // `topupsDirty` is a runtime flag, never sent. `referredBy` names the partner's email: never the customer's to see.
+  const { passHash: _p, actor: _a, deal: _d, referredBy: _r, topups: _t, topupsDirty: _td, ...safe } = u; void _p; void _a; void _d; void _r; void _t; void _td;
   const deal = u.deal ? { deal: { credits: u.deal.credits, priceSar: u.deal.priceSar } } : {};
-  const packs = u.topups?.length ? { topups: lotsOf(u).map(topupView) } : {};
-  const user = a.kind === "member" ? { ...me, ...summary } : { ...safe, ...deal, ...packs, role: a.role };
+  const packs = u.topups?.length ? { topups: lotsOf(u).map(topupBalance) } : {};
+  // A member sees the same packs (the billing page shows them to every seat): the profile's credit card splits the
+  // balance into plan credits and top-up credits for everyone.
+  const user = a.kind === "member" ? { ...me, ...summary, ...packs } : { ...safe, ...deal, ...packs, role: a.role };
   // What this person may do with the password and account forms: a founder viewing the account has the owner role but
   // is refused both (IMPERSONATION_BLOCKED), so the role alone cannot tell the page which forms to offer.
   const may = { passwordChange: can(u, "password.change"), accountDelete: can(u, "account.delete") };

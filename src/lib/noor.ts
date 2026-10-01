@@ -4,7 +4,7 @@ import { playbookSection, reviewBlock, skillsBlock } from "./skills";
 import { asData, fenceMemory, groundingBlocks, leadBriefBlock, parseObjectArray, type Grounding } from "./json";
 import { TASK_COUNT } from "./brand";
 import Anthropic from "@anthropic-ai/sdk";
-import { ModelPaused, modelState } from "./model";
+import { MODEL_BUDGET, ModelPaused, anthropic, modelState, until } from "./model";
 import type { Brand, CrossVerdict, TaskType } from "./brand";
 import { pickPlaybook } from "./playbooks";
 import { activeSeasons } from "./seasons";
@@ -175,7 +175,11 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   // Thrown, not mocked: every caller charged before this call and refunds on a throw.
   if (state === "paused") throw new ModelPaused();
   if (state === "mock") return mock(type, brand).slice(0, opts.count && opts.count > 0 ? opts.count : undefined);
-  const client = new Anthropic();
+  // One deadline for the whole batch (rule 336): the caller's request or invocation deadline, else GEN_MS from now. Every
+  // call below ends by it, so a slow model makes generate() throw, and the caller's refund runs, before the platform's
+  // kill at maxDuration, which runs no catch.
+  const deadline = opts.deadline ?? Date.now() + MODEL_BUDGET.GEN_MS;
+  const client = anthropic({ timeoutMs: MODEL_BUDGET.GEN_MS, maxRetries: 1 });
   const agent = agentForTask(type);
   const n = opts.count && opts.count > 0 ? Math.min(opts.count, TASK_COUNT[type]) : TASK_COUNT[type];
   // A lead brief (a handoff item) is its own labelled data block after the owner's notes, and only when there is one:
@@ -195,7 +199,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   let text = "";
   try {
     const msg = await client.beta.messages
-      .stream({ ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" })
+      .stream({ ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" }, until(deadline, { cap: MODEL_BUDGET.GEN_MS }))
       .finalMessage();
     // Meter first. A refused call is still billed by the API — input, thinking and output — but this threw before
     // metering, so the account showed a free event (the route refunds the credits) and the founder console never saw
@@ -206,7 +210,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   } catch (e) {
     // Fallback parameter not accepted (older org/plan) → plain request.
     if (e instanceof Anthropic.BadRequestError) {
-      const msg = await client.messages.stream(params).finalMessage();
+      const msg = await client.messages.stream(params, until(deadline, { cap: MODEL_BUDGET.GEN_MS })).finalMessage();
       await meter(opts.meter, msg.model, "generate", msg.usage, agent.id);
       // The same refusal check as the main path; without it a refused fallback fell through with empty text.
       if (msg.stop_reason === "refusal") throw new Error("refused");
@@ -218,7 +222,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   let items = parseItems(text);
   // The grounding the reviewer, the cross-reviewers and (through generateBatch) the judge read; `leadBrief` only when set.
   const ground: Grounding = { notes: extra, memory: opts.memory, stats: opts.stats, ...(opts.leadBrief ? { leadBrief: opts.leadBrief } : {}) };
-  if (opts.reviewer !== false) items = await critique(client, brand, prefs, type, items, { meter: opts.meter, ...ground });
+  if (opts.reviewer !== false) items = await critique(client, brand, prefs, type, items, { meter: opts.meter, deadline, ...ground });
   if (opts.noEmDash) items = stripDashes(items);
   // Enforced after the reviewer, so neither pass can reintroduce a discount the owner never offered.
   if (type === "cart_recovery") items = capDiscounts(items, brand.offers);
@@ -226,7 +230,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   // yields to the request's deadline: with too little of it left the batch is saved without notes, never killed with its
   // charge kept.
   if (opts.crossReview !== false) {
-    if (opts.deadline !== undefined && opts.deadline - Date.now() < CROSS_REVIEW_MIN_MS) console.warn("cross review skipped", "too little time left");
+    if (deadline - Date.now() < CROSS_REVIEW_MIN_MS) console.warn("cross review skipped", "too little time left");
     else items = await crossReview(client, brand, type, items, { meter: opts.meter, ...ground });
   }
   return items;
@@ -279,8 +283,14 @@ Return ONLY a JSON array, same length and order as the items in <items>: {"ok": 
  * notes, the memory files and the WORKSPACE / STORE / CART DATA block — because it rewrites what it cannot trace to a
  * source, and a real figure from the owner's own sales or notes must not be turned into [رقم].
  */
-async function critique(client: Anthropic, brand: Brand, prefs: string[], type: TaskType, items: Generated[], ctx: Grounding & { meter?: string } = {}): Promise<Generated[]> {
+async function critique(client: Anthropic, brand: Brand, prefs: string[], type: TaskType, items: Generated[], ctx: Grounding & { meter?: string; deadline?: number } = {}): Promise<Generated[]> {
   if (!items.length) return items;
+  // Optional, like its failure below: with less than REVIEW_MIN_MS of the batch's deadline left the first pass ships.
+  const end = Math.min(ctx.deadline ?? Infinity, Date.now() + MODEL_BUDGET.REVIEW_MS);
+  if (ctx.deadline !== undefined && ctx.deadline - Date.now() < MODEL_BUDGET.REVIEW_MIN_MS) {
+    console.warn("critique skipped", "too little time left");
+    return items;
+  }
   try {
     const review = await client.messages.create({
       model: REVIEW_MODEL,
@@ -295,7 +305,7 @@ async function critique(client: Anthropic, brand: Brand, prefs: string[], type: 
           content: `<brand_file>\n${asData({ name: brand.name, industry: brand.industry, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, banned: brand.banned, preferred: brand.preferred, offers: brand.offers })}\n</brand_file>\n\n<owner_preferences>\n${asData(prefs.length ? prefs : ["none"])}\n</owner_preferences>${groundingBlocks(ctx)}\n\nTASK TYPE: ${type}\n\n<items>\n${asData(items.map((i) => ({ channel: i.channel, body: i.body })))}\n</items>`,
         },
       ],
-    });
+    }, until(end, { cap: MODEL_BUDGET.REVIEW_MS }));
     await meter(ctx.meter, review.model, "review", review.usage, agentForTask(type).id);
     const raw = review.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
     const verdicts = parseObjectArray(raw) as Array<{ ok?: boolean; body?: string }>;

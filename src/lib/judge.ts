@@ -1,5 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { modelState } from "./model";
+import { MODEL_BUDGET, anthropic, modelState } from "./model";
 import { after } from "next/server";
 import { TASK_COUNT, updateTask, type Brand, type Task, type TaskType } from "./brand";
 import { taskSpec } from "./noor";
@@ -90,7 +89,9 @@ Return ONLY a JSON array, same length and order as the items in <items>: {"compl
 export async function scoreItems(email: string | undefined, brand: Brand, type: TaskType, items: JudgeItem[], requested: number = TASK_COUNT[type], ctx: JudgeContext = {}): Promise<(Quality | null)[]> {
   if (!items.length || modelState() !== "on") return [];
   const agent = agentForTask(type);
-  const client = new Anthropic();
+  // After the response and free of charge: each attempt bounded (rule 335), and one retry so a passing 529 or 429 does
+  // not leave the batch unscored.
+  const client = anthropic({ timeoutMs: MODEL_BUDGET.JUDGE_MS, maxRetries: 1 });
   const res = await client.messages.create({
     model: "claude-sonnet-5",
     max_tokens: 8000,

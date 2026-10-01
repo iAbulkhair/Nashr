@@ -5,6 +5,7 @@ import { getPost, render, slugs } from "@/lib/blog";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import FinalCta from "@/components/FinalCta";
+import { pageMeta } from "@/lib/page-meta";
 
 export function generateStaticParams() {
   return LANGS.flatMap((lang) => slugs().map((slug) => ({ lang, slug })));
@@ -13,7 +14,7 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   const { lang, slug } = await params;
   if (!isLang(lang)) return {};
   const p = getPost(lang, slug);
-  return p ? { title: `${p.title} — ${lang === "ar" ? "ذكين" : "Thakeen"}`, description: p.desc } : {};
+  return p ? pageMeta(lang, `/blog/${slug}`, { title: `${p.title} — ${lang === "ar" ? "ذكين" : "Thakeen"}`, description: p.desc, bilingual: !!getPost(lang === "ar" ? "en" : "ar", slug) }) : {};
 }
 
 export default async function Page({ params }: { params: Promise<{ lang: string; slug: string }> }) {

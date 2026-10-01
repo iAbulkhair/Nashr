@@ -16,7 +16,9 @@ export const signOut = () => g.__testJar.clear();
  */
 export async function signIn(email: string, opts: { imp?: string } = {}) {
   const token = randomBytes(32).toString("hex");
-  await db.set(`session:${token}`, opts.imp ? { email, at: Date.now(), imp: opts.imp } : { email, at: Date.now() }, 3600);
+  // A key impersonation is tied to the current key as the console writes it (rule 429); WAITLIST_ADMIN_KEY must be set.
+  const bind = opts.imp === "key" ? await (await import("@/lib/auth")).keyImpBinding() : null;
+  await db.set(`session:${token}`, opts.imp ? { email, at: Date.now(), imp: opts.imp, ...(bind ?? {}) } : { email, at: Date.now() }, 3600);
   g.__testJar.clear();
   g.__testJar.set("nashr_session", token);
   return token;
@@ -36,6 +38,15 @@ export async function supportAccess(email: string, founder = "support-founder@te
   g.__testJar.set("nashr_return", token);
   g.__testJar.set("nashr_impersonate", email);
   return token;
+}
+/**
+ * Open a founder-console key session (what POST /api/admin/login does after a right key) and add its `nashr_admin`
+ * cookie to the jar, keeping any other cookie. WAITLIST_ADMIN_KEY must be set. The cookie value is a random id.
+ */
+export async function adminSignIn() {
+  const { createAdminSession } = await import("@/lib/auth");
+  await createAdminSession();
+  return g.__testJar.get("nashr_admin")!;
 }
 /** Wait for work a handler scheduled with `after()`. */
 export const settle = async () => { await Promise.all(g.__testAfter.splice(0)); };

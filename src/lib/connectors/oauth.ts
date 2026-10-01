@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from "crypto";
 import type { Provider } from "./registry";
+import { appOrigin } from "../origin";
 
-export const REDIRECT = (id: string) => `${process.env.APP_ORIGIN ?? "https://nashr-tau.vercel.app"}/api/connect/${id}/callback`;
+export const REDIRECT = (id: string) => `${appOrigin()}/api/connect/${id}/callback`;
 
 export function pkcePair() {
   const verifier = randomBytes(48).toString("base64url");

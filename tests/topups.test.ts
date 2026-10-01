@@ -6,12 +6,13 @@ import { getUser, saveUser, type Plan, type User } from "@/lib/auth";
 import { addTopup, adjust, charge, chargeOnboard, monthKey, refund, refundOnboard, renewIfDue, saveSettledTopups, settleChatOverflow, voidTopup, type AgentCharge, type TopupInput } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { PLAN_CREDITS, SAR_PER_USD, TOPUP_PACKS, TOPUP_SAR_PER_CREDIT, TOPUP_VALID_DAYS, cheapestCreditUsd, isTopupPack, priceOf, topupPriceSar, topupsSold, type Plan as PricingPlan } from "@/lib/pricing";
+import { ksaDay } from "@/lib/partner-rules";
 import { MAX_LIVE_TOPUPS, NO_CREDITS_HINT, TOPUP_VALID_MS, lotsOf, monthlyCredits, parseTopup, returnCredits, settleTopups, spendCredits, topupCredits, topupRevenueSar, type TopupLot } from "@/lib/topups";
 import { overview } from "@/lib/admin-stats";
 import { appDict } from "@/lib/app-i18n";
 import { limitText } from "@/components/app/LimitModal";
 import { refusalText } from "@/lib/chat-allowance";
-import { jar, json, newMember, newUser, signIn, signOut } from "./helpers/session";
+import { adminSignIn, jar, json, newMember, newUser, signIn, signOut } from "./helpers/session";
 import * as topupsRoute from "@/app/api/admin/topups/route";
 import * as planRoute from "@/app/api/admin/plan/route";
 import BillingPage from "@/app/[lang]/app/billing/page";
@@ -24,8 +25,21 @@ import * as profileRoute from "@/app/api/profile/route";
  * `User.credits` stays the whole balance; the packs are lots on the record (src/lib/topups.ts).
  */
 
+// The billing page renders the partner-code field on a trial (main's #236), which reads the router.
+vi.mock("next/navigation", async (orig) => ({
+  ...(await orig<typeof import("next/navigation")>()),
+  useRouter: () => ({ push: () => {}, refresh: () => {}, replace: () => {}, back: () => {}, prefetch: () => {} }),
+  usePathname: () => "/en/app/billing",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 const KEY = "topups-admin-key-0123456789";
 beforeAll(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); });
+/**
+ * The console's key session (main's #233: a key session cookie holds a random id, never the key), as the console sends
+ * it. Not the x-admin-key header: that one is throttled per IP, and every call in this file comes from one address.
+ */
+const asConsole = async () => { jar().clear(); await adminSignIn(); };
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 const DAY = 864e5;
@@ -165,7 +179,11 @@ describe("refunds go back where the credits came from (rule 442)", () => {
   });
 
   it("every metered spender hands the receipt to its refund: batches pass the charge result, media jobs store it", () => {
-    expect(readFileSync("src/lib/generate-batch.ts", "utf8")).toContain("refund(user.email, cost, paid)");
+    const batch = readFileSync("src/lib/generate-batch.ts", "utf8");
+    expect(batch).toContain("refund(user.email, cost, receipt)");
+    expect(batch).toContain("receipt = paid;");
+    // A reused Sunday-plan hold names the same packs as the run that paid (rule 458).
+    expect(batch).toContain("...(paid.hold.from ? { from: paid.hold.from } : {})");
     expect(readFileSync("src/lib/media/jobs.ts", "utf8")).toContain("spend: { scope: paid.scope, agent: paid.agent, month: paid.month, ...(paid.from ? { from: paid.from } : {}) },");
     expect(readFileSync("src/lib/auth.ts", "utf8")).toMatch(/export type OnboardHold = \{[^}]*from\?: Receipt \}/);
   });
@@ -182,7 +200,7 @@ describe("renewal and the founder's plan changes reset the monthly part only (ru
   });
 
   it("a plan change in the console sets the monthly part and keeps the packs; '+ credits' never takes a pack's credits", async () => {
-    jar().clear(); jar().set("nashr_admin", KEY);
+    await asConsole();
     const email = await paid(300);
     const p = await lot(email, 100);
     expect((await planRoute.POST(json("/api/admin/plan", "POST", { email, plan: "business" }))).status).toBe(200);
@@ -274,7 +292,7 @@ describe("concurrent charges never overspend the monthly part or a pack (rule 44
 });
 
 describe("POST /api/admin/topups: the founder activates a pack by hand (rule 446)", () => {
-  beforeEach(() => { jar().clear(); jar().set("nashr_admin", KEY); });
+  beforeEach(asConsole);
   const post = (body: Record<string, unknown>) => topupsRoute.POST(json("/api/admin/topups", "POST", body));
   const lastLog = async () => JSON.parse((await db.lrange("admin:log", 0, 0))[0]) as Record<string, unknown>;
 
@@ -304,6 +322,10 @@ describe("POST /api/admin/topups: the founder activates a pack by hand (rule 446
       [{ ...good, paidOn: "30/09/2026" }, 400, "bad_date"],
       [{ ...good, paidOn: new Date(Date.now() + 3 * DAY).toISOString().slice(0, 10) }, 400, "bad_date"],
       [{ ...good, paidOn: new Date(Date.now() - 400 * DAY).toISOString().slice(0, 10) }, 400, "bad_date"],
+      // Tomorrow in Riyadh: a recorded payment is never dated after today there (rule 459).
+      [{ ...good, paidOn: ksaDay(Date.now() + DAY) }, 400, "bad_date"],
+      [{ ...good, paymentId: "pay_XYZ" }, 400, "bad_id"],
+      [{ ...good, paymentId: 42 }, 400, "bad_id"],
       [{ ...good, ref: "x".repeat(81) }, 400, "bad_ref"],
       [{ ...good, ref: 42 }, 400, "bad_ref"],
       [{ ...good, email: "nobody@test.example" }, 404, "not_found"],
@@ -340,7 +362,9 @@ describe("POST /api/admin/topups: the founder activates a pack by hand (rule 446
     expect(new Date(body.lot.expiresAt).getTime() - at).toBe(90 * DAY);
     expect(await state(email)).toEqual({ credits: 1120, monthly: 120, lots: { [body.lot.id]: 1000 } });
     const log = await lastLog();
-    expect(log).toMatchObject({ actor: "key", email, what: "topup:+1000", before: { credits: 120 }, after: { credits: 1120 }, reason: "WhatsApp request", topup: { id: body.lot.id, credits: 1000, paidSar: 950.5, paidOn: today() } });
+    // The pack's payment is recorded with it (rule 454); this customer has no partner, so no commission is named.
+    expect(log).toMatchObject({ actor: "key", email, what: `topup:+1000 payment:${body.lot.paymentId}`, before: { credits: 120 }, after: { credits: 1120 }, reason: "WhatsApp request", topup: { id: body.lot.id, credits: 1000, paidSar: 950.5, paidOn: today() } });
+    expect(body.lot.paymentId).toMatch(/^pay_[0-9a-f]+$/);
     expect(JSON.stringify(log), "the payment reference stays on the pack").not.toContain("BANK-778899");
   });
 
@@ -357,7 +381,7 @@ describe("POST /api/admin/topups: the founder activates a pack by hand (rule 446
 });
 
 describe("POST /api/admin/topups void: a pack's unspent credits leave, spent ones stay spent (rule 447)", () => {
-  beforeEach(() => { jar().clear(); jar().set("nashr_admin", KEY); });
+  beforeEach(asConsole);
   const post = (body: Record<string, unknown>) => topupsRoute.POST(json("/api/admin/topups", "POST", body));
 
   it("voids the pack, logs what left the balance, and refuses an id that is malformed or not there", async () => {
@@ -484,16 +508,9 @@ describe("out of credits, every message names the top-up (rule 450)", () => {
       expect(L.chatCreditsBody, lang).toMatch(lang === "ar" ? /اشحن رصيدك/ : /Top up your credits/);
       expect(L.askOwnerChatCredits, lang).toMatch(lang === "ar" ? /شحن الرصيد/ : /top up the credits/);
     }
-    for (const lang of ["ar", "en"] as const) {
-      // The generate and reports panels show one line to every plan and role next to the dialog: it points to the
-      // Subscription page without telling a trial or a member to buy a pack the dialog says they cannot.
-      const line = appDict[lang].generate.noCredits;
-      expect(line, lang).toMatch(lang === "ar" ? /الشحن[\s\S]*صفحة الاشتراك/ : /Top-up[\s\S]*Subscription page/);
-      expect(line, lang).not.toMatch(lang === "ar" ? /اشحن رصيدك|رقّ خطتك/ : /Top up your|upgrade your plan/i);
-      expect(appDict[lang].inbox.topupLink, lang).toMatch(lang === "ar" ? /شحن الرصيد/ : /Top-ups/);
-    }
+    for (const lang of ["ar", "en"] as const) expect(appDict[lang].inbox.topupLink, lang).toMatch(lang === "ar" ? /شحن الرصيد/ : /Top-ups/);
     const media = readFileSync("src/components/app/MediaControls.tsx", "utf8");
-    expect(media).toContain("billing: true, topup: true });");
+    expect(media).toContain("billing: true, topup: sold });");
     expect(media).toContain('href={`/${lang}/app/billing${n.topup ? "#topup" : ""}`}');
     const src = readFileSync("src/components/app/LimitModal.tsx", "utf8");
     expect(src).toContain('const topup = kind === "credits" && topups;');
@@ -523,7 +540,9 @@ describe("the module boundaries (rules 451-452)", () => {
   it("topups.ts imports only src/lib/pricing.ts and a type, so the console and the billing page can read it", () => {
     const src = readFileSync("src/lib/topups.ts", "utf8");
     const imports = src.split("\n").filter((l) => /^\s*import\s/.test(l));
-    expect(imports).toEqual(['import type { User } from "./auth";', 'import { TOPUP_VALID_DAYS, isTopupPack } from "./pricing";']);
+    expect(imports).toEqual(['import type { User } from "./auth";', 'import { TOPUP_VALID_DAYS, isTopupPack } from "./pricing";', 'import { ksaDay } from "./partner-rules";']);
+    // Both are import-free, so nothing server-side reaches the console, the billing page or the profile through it.
+    for (const f of ["src/lib/pricing.ts", "src/lib/partner-rules.ts"]) expect(readFileSync(f, "utf8").split("\n").filter((l) => /^\s*import\s/.test(l)), f).toEqual([]);
     const console = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
     expect(console).toContain('import type { TopupLot } from "@/lib/topups";');
   });
@@ -555,16 +574,18 @@ describe("the owner's /api/profile shows packs without what was paid or who acti
     for (const secret of ["BANK-SECRET", "founder-x@test.example", "paidSar", "paidOn", "\"ref\"", "topupsDirty"]) expect(raw).not.toContain(secret);
     const body = JSON.parse(raw) as { user: { credits: number; topups: unknown } };
     expect(body.user.credits).toBe(380);
-    expect(body.user.topups).toEqual([{ id: live.id, credits: 300, left: 300, at: live.at, expiresAt: live.expiresAt }]);
+    // Only what the owner needs (rule 453): each pack's size, the credits left and the expiry. No id, no activation time.
+    expect(body.user.topups).toEqual([{ credits: 300, left: 300, expiresAt: live.expiresAt }]);
+    for (const field of [live.id, "\"at\"", "paymentId", "\"by\""]) expect(raw, field).not.toContain(field);
   });
 
-  it("a member's summary carries no packs at all", async () => {
+  it("a member sees the same packs as the owner, and nothing of their payment", async () => {
     const email = await paid(80);
-    await lot(email, 100, Date.now(), { ref: "BANK-SECRET-9" });
+    const p = await lot(email, 100, Date.now(), { ref: "BANK-SECRET-9", paymentId: "pay_00112233445566778899" });
     const m = await newMember((await getUser(email))!);
     await signIn(m.email);
     const raw = await (await profileRoute.GET()).text();
-    expect(raw).not.toContain("BANK-SECRET");
-    expect(raw).not.toContain("\"topups\"");
+    for (const secret of ["BANK-SECRET", "paidSar", "paymentId", "pay_00112233"]) expect(raw).not.toContain(secret);
+    expect((JSON.parse(raw) as { user: { topups: unknown } }).user.topups).toEqual([{ credits: 100, left: 100, expiresAt: p.expiresAt }]);
   });
 });

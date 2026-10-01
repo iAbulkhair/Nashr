@@ -7,11 +7,12 @@ import { SITE } from "@/lib/site";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import ContactForm from "@/components/ContactForm";
+import { pageMeta } from "@/lib/page-meta";
 
 export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
   const { lang } = await params;
   if (!isLang(lang)) return {};
-  return { title: `${SITE[lang].customers.title} — ${dict[lang].brand}`, description: SITE[lang].customers.sub };
+  return pageMeta(lang, "/customers", { title: `${SITE[lang].customers.title} — ${dict[lang].brand}`, description: SITE[lang].customers.sub });
 }
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {

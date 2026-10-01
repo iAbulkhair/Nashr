@@ -3,9 +3,8 @@
  * failure, a fixed template built from the brand alone (spec 4.5, A12). The pause stops Claude, never the renderer, and
  * the credit buys the render, not the prompt.
  */
-import Anthropic from "@anthropic-ai/sdk";
 import { meter } from "../usage";
-import { modelState } from "../model";
+import { anthropic, modelState } from "../model";
 import { agentForTask } from "../agents";
 import { mediaModel, type Aspect, type ImageModelId, type VideoModelId } from "../media-catalog";
 import type { Brand, Task } from "../brand";
@@ -74,7 +73,7 @@ async function write(system: string, brand: Brand, task: Task, fallback: string,
   // `!(>=)` also sends a NaN budget to the template.
   if (modelState() !== "on" || !(timeoutMs >= PROMPT_MIN_MS)) return fallback;
   try {
-    const res = await new Anthropic().messages.create(
+    const res = await anthropic({ timeoutMs: PROMPT_MAX_MS, maxRetries: 0 }).messages.create(
       { model: "claude-sonnet-5", max_tokens: 400, thinking: { type: "adaptive" }, output_config: { effort: "low" }, system, messages: [{ role: "user", content: postOf(brand, task) }] },
       { timeout: Math.min(PROMPT_MAX_MS, timeoutMs), maxRetries: 0 },
     );

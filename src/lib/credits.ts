@@ -2,7 +2,7 @@ import { randomBytes } from "crypto";
 import { db } from "./db";
 import { getUser, saveUser, trialOver, type OnboardHold, type User } from "./auth";
 import type { AgentId } from "./agents";
-import { allowanceOf, topupsSold } from "./pricing";
+import { allowanceOf, topupsSold, type Plan } from "./pricing";
 import { addMonthly, newLot, returnCredits, setMonthly, spendCredits, MAX_LIVE_TOPUPS, type Receipt, type TopupLot, type TopupRequest } from "./topups";
 
 /**
@@ -127,21 +127,29 @@ export async function adjust(email: string, delta: number): Promise<number> {
   });
 }
 
-// ---- Top-up packs: the founder's side (src/lib/topups.ts, rules 446-447) ----
+// ---- Top-up packs: the founder's side (src/lib/topups.ts, rules 446-447; with the payment, rule 454) ----
 
-/** What the founder records when a pack is paid for (`parseTopup`), and who activated it. */
-export type TopupInput = TopupRequest & { by: string };
+/**
+ * What the founder records when a pack is paid for (`parseTopup`), who activated it, and the request's payment id
+ * (src/lib/partners.ts `addPaidTopup` always sends one, so a retried request finds its pack instead of adding another).
+ */
+export type TopupInput = TopupRequest & { by: string; paymentId?: string };
+/** `plan`: the account's plan under the lock, which the pack's payment is recorded with. `already`: a retried request. */
 export type TopupChange =
-  | { ok: true; lot: TopupLot; before: number; credits: number; removed?: number }
+  | { ok: true; lot: TopupLot; before: number; credits: number; removed?: number; plan?: Plan; already?: boolean }
   | { ok: false; error: "topup_needs_paid_plan" | "too_many_topups" | "topup_not_found" };
 
 /**
- * Activate a pack on the account (POST /api/admin/topups), under the ledger lock: the pack's credits join the
- * balance at once and stay valid TOPUP_VALID_DAYS from now. Refused on a trial (top-ups are sold to paid plans only)
+ * Activate a pack on the account (POST /api/admin/topups, through `addPaidTopup`), under the ledger lock: the pack's
+ * credits join the balance at once and stay valid TOPUP_VALID_DAYS from now. A request whose payment id is already on a
+ * live pack returns that pack (`already`) and changes nothing. Refused on a trial (top-ups are sold to paid plans only)
  * and past MAX_LIVE_TOPUPS live packs. The caller validates the input (`parseTopup`).
  */
 export async function addTopup(email: string, input: TopupInput, now = Date.now()): Promise<TopupChange> {
   return withUserLock(email, async (u): Promise<TopupChange> => {
+    const credits = Number.isFinite(u.credits) ? Math.max(0, Math.trunc(u.credits)) : 0;
+    const same = input.paymentId ? (u.topups ?? []).find((l) => l.paymentId === input.paymentId) : undefined;
+    if (same) return { ok: true, lot: same, before: credits, credits, plan: u.plan, already: true };
     if (!topupsSold(u.plan)) return { ok: false, error: "topup_needs_paid_plan" };
     if ((u.topups?.length ?? 0) >= MAX_LIVE_TOPUPS) return { ok: false, error: "too_many_topups" };
     const before = Number.isFinite(u.credits) ? Math.max(0, Math.trunc(u.credits)) : 0;
@@ -149,7 +157,7 @@ export async function addTopup(email: string, input: TopupInput, now = Date.now(
     u.topups = [...(u.topups ?? []), lot];
     u.credits = before + lot.credits;
     await saveUser(u);
-    return { ok: true, lot, before, credits: u.credits };
+    return { ok: true, lot, before, credits: u.credits, plan: u.plan };
   });
 }
 
@@ -285,6 +293,90 @@ export async function settleOnboard(email: string, scope: string): Promise<void>
   });
 }
 
+/**
+ * A charge taken at most once per claim (rule 333): the Sunday plan's `weekly:{scope}:{week}`. The debit and the hold
+ * (`User.paidOnce[claim]`) are one save under the ledger's lock, like `chargeOnboard`. A run that finds the hold reuses
+ * it instead of charging: the platform kills a function at maxDuration without running any catch, so the weekly job
+ * charged again on its retry and an owner paid twice for one plan. Only the run's own failure gives it back
+ * (`refundOnce`), and only once. A hold stays after a success, so a retry that gets past the week's marker reuses it
+ * rather than paying again; it is dropped once older than PAID_ONCE_MS, by the next `chargeOnce` of the account.
+ */
+export const PAID_ONCE_MS = 8 * 864e5;
+export type OnceCharge =
+  | (Extract<AgentCharge, { ok: true }> & { reused: false })
+  | { ok: true; reused: true; credits: number; hold: OnboardHold }
+  | Exclude<AgentCharge, { ok: true }>;
+export async function chargeOnce(email: string, cost: number, meta: SpendMeta, claim: string): Promise<OnceCharge> {
+  if (!Number.isFinite(cost) || cost < 0) throw new Error(`invalid_cost:${String(cost)}`);
+  return withUserLock(email, async (u): Promise<OnceCharge> => {
+    const held = u.paidOnce?.[claim];
+    if (held) return { ok: true, reused: true, credits: Number.isFinite(u.credits) ? u.credits : 0, hold: held };
+    const { out, dirty } = debit(u, cost, meta);
+    if (!out.ok || !("month" in out)) {
+      if (dirty) await saveUser(u);
+      return out as Exclude<AgentCharge, { ok: true }>;
+    }
+    const now = Date.now();
+    // An old hold's charge is spent for good: dropped here, so the record keeps only the live ones. A malformed time
+    // (NaN) is not "recent" either.
+    const live = Object.entries(u.paidOnce ?? {}).filter(([, h]) => now - new Date(h.at).getTime() < PAID_ONCE_MS);
+    // `from`: the top-up packs the charge took from, so a refund puts the credits back there (rule 442).
+    u.paidOnce = { ...Object.fromEntries(live), [claim]: { scope: meta.scope, agent: meta.agent, month: out.month, credits: cost, at: new Date(now).toISOString(), ...(out.from ? { from: out.from } : {}) } };
+    await saveUser(u);
+    return { ...out, reused: false };
+  });
+}
+
+/**
+ * Give back the charge held for `claim` and drop the hold, in one save. A second call finds no hold and gives back
+ * nothing (`refunded: 0`), so a failure is refunded once however many paths report it.
+ */
+export async function refundOnce(email: string, claim: string): Promise<{ credits: number; refunded: number }> {
+  return withUserLock(email, async (u) => {
+    const hold = u.paidOnce?.[claim];
+    if (!hold) return { credits: Number.isFinite(u.credits) ? u.credits : 0, refunded: 0 };
+    const n = Number.isFinite(hold.credits) ? Math.max(0, Math.trunc(hold.credits)) : 0;
+    giveBack(u, n, hold);
+    const { [claim]: _gone, ...rest } = u.paidOnce!;
+    void _gone;
+    if (Object.keys(rest).length) u.paidOnce = rest;
+    else delete u.paidOnce;
+    await saveUser(u);
+    return { credits: u.credits, refunded: n };
+  });
+}
+
+/**
+ * The daily sweep of the account's paid-once holds (rule 337, src/lib/schedule.ts `sweepWeeklyHolds`): `kept[claim]` says
+ * whether the claim's work exists. A kept claim's hold is dropped (its charge stands); any other is refunded, a run killed
+ * after its charge that no later run retried (the last catch-up, a "Run now" nobody pressed again). One save under the
+ * ledger's lock; a hold already gone (refunded by its own run's failure, or reused and refunded since) is skipped, so
+ * nothing is given back twice.
+ */
+export async function resolveOnceHolds(email: string, kept: Readonly<Record<string, boolean>>): Promise<{ refunded: HoldRefund[]; dropped: string[]; credits: number }> {
+  return withUserLock(email, async (u) => {
+    const done = { refunded: [] as HoldRefund[], dropped: [] as string[] };
+    const left = { ...(u.paidOnce ?? {}) };
+    for (const [claim, keep] of Object.entries(kept)) {
+      const hold = left[claim];
+      if (!hold) continue;
+      if (keep) done.dropped.push(claim);
+      else {
+        const n = Number.isFinite(hold.credits) ? Math.max(0, Math.trunc(hold.credits)) : 0;
+        giveBack(u, n, hold);
+        done.refunded.push({ scope: hold.scope, agent: hold.agent, credits: n });
+      }
+      delete left[claim];
+    }
+    if (done.refunded.length || done.dropped.length) {
+      if (Object.keys(left).length) u.paidOnce = left;
+      else delete u.paidOnce;
+      await saveUser(u);
+    }
+    return { ...done, credits: Number.isFinite(u.credits) ? u.credits : 0 };
+  });
+}
+
 /** A hold nobody charged or reused for this long is resolved by the daily sweep: the confirmation's day. */
 export const ONBOARD_HOLD_MS = 864e5;
 
@@ -345,11 +437,15 @@ export async function settleChatOverflow(email: string, maxCredits: number, usdM
   });
 }
 
-/** The UTC calendar month, YYYY-MM. Agent counters roll at 00:00 UTC on the 1st; `renewIfDue` runs later, at the 05:00 UTC daily cron. */
+/**
+ * The UTC calendar month, YYYY-MM. Agent counters roll at 00:00 UTC on the 1st; `renewIfDue` runs at the 05:00 UTC daily
+ * cron and, since 2026-10-01, before the charge of every paid text batch (src/lib/generate-batch.ts, rule 332).
+ */
 export const monthKey = (d = new Date()) => d.toISOString().slice(0, 7);
 
 /**
- * Monthly renewal for paid plans: on the first cron run of a new month the balance is reset to the account's allowance
+ * Monthly renewal for paid plans: on the first cron run or paid text batch of a new month, whichever comes first (rule
+ * 332), the balance is reset to the account's allowance
  * (src/lib/pricing.ts `allowanceOf`: the plan's credits; for Agency, the deal's credits, or Business's when there is no
  * deal at or above the floor). Unused credits do not roll over, same as Enrich. Trial users are never renewed, and
  * neither is a stored plan `getUser` could not recognise (it reads as trial). Rule 243, tests/pricing.test.ts. Only the
@@ -357,12 +453,18 @@ export const monthKey = (d = new Date()) => d.toISOString().slice(0, 7);
  */
 export async function renewIfDue(email: string): Promise<boolean> {
   return withUserLock(email, async (u) => {
-    if (u.plan === "trial") return false;
-    const m = monthKey();
-    if ((u.renewedAt ?? u.createdAt.slice(0, 7)) === m) return false;
+    if (!renewalDue(u)) return false;
+    // Only the month's plan credits: live top-up packs keep what is left in them (rule 443).
     setMonthly(u, allowanceOf(u));
-    u.renewedAt = m;
+    u.renewedAt = monthKey();
     await saveUser(u);
     return true;
   });
 }
+
+/**
+ * Whether `renewIfDue` would renew this record now: a paid plan whose last renewal (or, before the first, its creation)
+ * is not in the current UTC month. A copy read before the lock may only skip the lock: `renewedAt` only moves forward,
+ * so a copy that says "not due" is never wrong, and one that says "due" is checked again under the lock.
+ */
+export const renewalDue = (u: Pick<User, "plan" | "renewedAt" | "createdAt">, month = monthKey()) => u.plan !== "trial" && (u.renewedAt ?? u.createdAt.slice(0, 7)) !== month;

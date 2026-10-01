@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import { TASK_COST, type TaskType } from "@/lib/tasks";
 import { agentById } from "@/lib/agents";
-import { limitFromError } from "./LimitModal";
+import { limitFromError, noCreditsText } from "./LimitModal";
 import type { Kpis } from "@/lib/stats";
 import type { AgentMetrics } from "@/lib/evals";
 import type { Lang } from "@/lib/i18n";
@@ -21,7 +21,7 @@ type Item = { id: string; type: TaskType; title: string; status: string; created
 
 const METRICS = ["created", "approved", "approvalRate", "pending", "published", "images", "videos", "creditsUsed", "scheduled"] as const;
 type MetricKey = (typeof METRICS)[number];
-export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null, perf = null, perfImport = true, perfDelete = true }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null; perf?: PerfSnapshot | null; /** `can(u, "performance.import")` */ perfImport?: boolean; /** `can(u, "performance.delete")` */ perfDelete?: boolean }) {
+export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null, perf = null, perfImport = true, perfDelete = true, owner = true, topups = true }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null; perf?: PerfSnapshot | null; /** `can(u, "performance.import")` */ perfImport?: boolean; /** `can(u, "performance.delete")` */ perfDelete?: boolean; /** `can(u, "billing")`: picks the out-of-credits line (rule 457). */ owner?: boolean; /** `topupsSold(u.plan)` */ topups?: boolean }) {
   const r = useRouter();
   const R = t.reports;
   const [busy, setBusy] = useState<TaskType | null>(null);
@@ -41,7 +41,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
     setBusy(null);
     if (j.ok) { setMsg(t.generate.done); r.refresh(); return; }
     limitFromError(j.error);
-    const map: Record<string, string> = { no_credits: t.generate.noCredits, trial_over: t.generate.trialOver, no_brand: t.generate.noBrand, model_paused: t.generate.paused, agent_cap: t.limit.agentCapTitle };
+    const map: Record<string, string> = { no_credits: noCreditsText(t.generate, owner, topups), trial_over: t.generate.trialOver, no_brand: t.generate.noBrand, model_paused: t.generate.paused, agent_cap: t.limit.agentCapTitle };
     setMsg(map[j.error] ?? t.generate.failed);
   }
 

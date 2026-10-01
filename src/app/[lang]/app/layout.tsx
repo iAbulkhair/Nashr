@@ -48,7 +48,7 @@ export default async function AppLayout({ children, params }: { children: React.
   const owner = can(user, "billing");
   return (
     <div className="flex min-h-dvh flex-col bg-salt lg:h-dvh lg:flex-row lg:overflow-hidden">
-      <Sidebar t={t} lang={lang} user={{ name: actor?.name ?? user.name, email: actor?.email ?? user.email, role: actor?.role ?? "member", credits: user.credits, plan: user.plan }} show={{ owner, refer: can(user, "referral"), mcp: can(user, "mcp.token") }} brandName={brand?.name} admin={isFounderActor(user)} supportWa={(process.env.SUPPORT_WHATSAPP ?? "").replace(/\D/g, "") || undefined} />
+      <Sidebar t={t} lang={lang} user={{ name: actor?.name ?? user.name, email: actor?.email ?? user.email, role: actor?.role ?? "member", credits: user.credits, plan: user.plan }} show={{ owner, refer: can(user, "referral"), mcp: can(user, "mcp.token"), partner: !!user.partnerCode && can(user, "partner") }} brandName={brand?.name} admin={isFounderActor(user)} supportWa={(process.env.SUPPORT_WHATSAPP ?? "").replace(/\D/g, "") || undefined} />
       <main className="flex min-w-0 flex-1 flex-col px-4 py-5 sm:px-8 lg:overflow-y-auto">
         {impersonating && (
           <form action="/api/admin/impersonate" method="post" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sadu/40 bg-sadu/10 px-3 py-2 text-xs">

@@ -1,0 +1,66 @@
+import { ATTRIBUTION_DAYS, COMMISSION_MONTHS, COMMISSION_PCT, PAYOUT_MIN_SAR } from "./partner-rules";
+import { FIRST_MONTH_DISCOUNT_PCT } from "./pricing";
+
+/**
+ * The partner page's words (/app/partner, rule 399), Arabic and English. Kept out of app-i18n.ts so the programme's copy
+ * lives in one place with its numbers, which all come from src/lib/partner-rules.ts and src/lib/pricing.ts. Safe for
+ * client components: both imports are import-free modules.
+ */
+export const PARTNER_COPY = {
+  ar: {
+    nav: "الشراكة",
+    title: "الشراكة",
+    sub: `تكسب ${COMMISSION_PCT}% من كل دفعة يدفعها عميل أحلته، خلال أول ${COMMISSION_MONTHS} أشهر من اشتراكه المدفوع. وعميلك يحصل على خصم ${FIRST_MONTH_DISCOUNT_PCT}% على شهره الأول بكودك.`,
+    ownerOnly: "صفحة الشراكة لمالك الحساب فقط.",
+    notPartner: "حسابك ليس شريكاً بعد. قدّم طلب الشراكة، وبعد موافقتنا تظهر هنا صفحتك وكودك ورابطك.",
+    apply: "قدّم طلب الشراكة",
+    code: "كودك", link: "رابطك", copy: "نسخ", copied: "تم النسخ", shareWa: "شارك على واتساب",
+    shareTitle: "نص جاهز للمشاركة",
+    share: (code: string, link: string) => `أستخدم ذكين، مسوّق بالذكاء الاصطناعي يكتب محتوى علامتك بلهجتها، ولا ينشر إلا بموافقتك أو وفق القواعد التي تحددها. سجّل من رابطي واحصل على خصم ${FIRST_MONTH_DISCOUNT_PCT}% على شهرك الأول، أو استخدم الكود ${code} عند التسجيل: ${link}`,
+    rules: `تُحسب الإحالة إذا دفع العميل أول دفعة خلال ${ATTRIBUTION_DAYS} يوماً من نقره على رابطك، أو من تسجيله بكودك. تُصرف عمولاتك شهرياً بتحويل بنكي متى بلغ رصيدك ${PAYOUT_MIN_SAR} ريال. لا تُحسب إحالة نفسك أو فريقك، وتُلغى العمولة إذا أُلغيت الدفعة أو استُردّت.`,
+    stats: { referrals: "الإحالات", pending: "رصيد قيد التجميع", payable: "جاهز للصرف", paid: "مدفوع لك" },
+    pendingNote: `يصبح الرصيد جاهزاً للصرف من ${PAYOUT_MIN_SAR} ريال.`,
+    referrals: "إحالاتك", refsEmpty: "لا إحالات بعد. شارك رابطك أو كودك.",
+    refCols: { label: "العميل", signedUp: "تاريخ التسجيل", status: "الحالة", months: "أشهر محسوبة" },
+    status: { trial: "تجربة", paid: "مدفوع", lapsed: "انتهت المهلة" },
+    ledger: "العمولات", ledgerEmpty: "لا عمولات بعد.",
+    ledgerCols: { label: "العميل", date: "تاريخ الدفعة", base: "الدفعة (ريال، دون الضريبة)", sar: "عمولتك (ريال)" },
+    voided: "ملغاة",
+    payouts: "الدفعات المصروفة", payoutsEmpty: "لا دفعات بعد.",
+    payoutCols: { date: "التاريخ", sar: "العمولة (ريال)", vat: "ضريبة القيمة المضافة عليها (ريال)", reference: "المرجع" },
+    terms: "شروط برنامج الشركاء",
+    bank: "بيانات التحويل البنكي", bankNote: "نحوّل لك شهرياً على هذا الحساب، في أي دولة. يظهر رقم الآيبان مخفياً بعد الحفظ.",
+    taxNote: `يتحمّل ذكين ضريبة القيمة المضافة على عمولتك (إن كنت مسجلاً فيها فعّل الخيار واكتب رقم تسجيلك، فتُضاف على عمولتك ويدفعها ذكين) وضريبة الاستقطاع حيث تنطبق، فتصلك عمولتك ${COMMISSION_PCT}% كاملة. وتبقى مسؤولاً عن ضريبة الدخل الخاصة بك في بلدك.`,
+    bankPending: "بانتظار تأكيدنا: نتواصل معك هاتفياً للتحقق من البيانات قبل أول تحويل، وبعد كل تعديل.",
+    holder: "اسم صاحب الحساب", iban: "رقم الآيبان", country: "دولة إقامتك", taxNumber: "رقم التسجيل في ضريبة القيمة المضافة أو الرقم الضريبي (اختياري)", vatRegistered: "أنا مسجّل في ضريبة القيمة المضافة (الرقم أعلاه رقم تسجيلي فيها)", save: "احفظ", saved: "تم الحفظ",
+    errors: { bad_holder: "اكتب اسم صاحب الحساب.", bad_iban: "رقم آيبان غير صحيح: تحقق من رمز الدولة في أوله وعدد خاناته.", bad_country: "اختر دولة إقامتك.", bad_tax_number: "رقم ضريبي غير صحيح: من 3 إلى 30 حرفاً أو رقماً.", vat_number_required: "اكتب رقم تسجيلك في ضريبة القيمة المضافة.", slow_down: "محاولات كثيرة. حاول بعد ساعة.", forbidden: "تعديل بيانات البنك لمالك الحساب فقط.", server: "تعذّر الحفظ. حاول مرة أخرى." } as Record<string, string>,
+  },
+  en: {
+    nav: "Partner",
+    title: "Partner",
+    sub: `You earn ${COMMISSION_PCT}% of every payment a customer you referred makes during their first ${COMMISSION_MONTHS} months of paid subscription. Your customer gets ${FIRST_MONTH_DISCOUNT_PCT}% off their first month with your code.`,
+    ownerOnly: "The partner page is for the account owner only.",
+    notPartner: "Your account is not a partner yet. Apply, and once we approve you, your page, code and link appear here.",
+    apply: "Apply to the partner programme",
+    code: "Your code", link: "Your link", copy: "Copy", copied: "Copied", shareWa: "Share on WhatsApp",
+    shareTitle: "Ready-to-share text",
+    share: (code: string, link: string) => `I use Thakeen, an AI marketer that writes your brand's content in its dialect and publishes only with your approval or under rules you set. Sign up with my link for ${FIRST_MONTH_DISCOUNT_PCT}% off your first month, or use the code ${code} at signup: ${link}`,
+    rules: `A referral counts when the customer makes their first payment within ${ATTRIBUTION_DAYS} days of clicking your link, or of signing up with your code. Payouts are monthly by bank transfer once your balance reaches SAR ${PAYOUT_MIN_SAR}. Referring yourself or your own team does not count, and a commission is voided if its payment is voided or refunded.`,
+    stats: { referrals: "Referrals", pending: "Pending balance", payable: "Payable", paid: "Paid to you" },
+    pendingNote: `A balance becomes payable from SAR ${PAYOUT_MIN_SAR}.`,
+    referrals: "Your referrals", refsEmpty: "No referrals yet. Share your link or code.",
+    refCols: { label: "Customer", signedUp: "Signed up", status: "Status", months: "Months counted" },
+    status: { trial: "Trial", paid: "Paid", lapsed: "Lapsed" },
+    ledger: "Commissions", ledgerEmpty: "No commissions yet.",
+    ledgerCols: { label: "Customer", date: "Payment date", base: "Payment (SAR, excl. VAT)", sar: "Your commission (SAR)" },
+    voided: "voided",
+    payouts: "Payouts", payoutsEmpty: "No payouts yet.",
+    payoutCols: { date: "Date", sar: "Commission (SAR)", vat: "VAT added (SAR)", reference: "Reference" },
+    terms: "Partner programme terms",
+    bank: "Bank transfer details", bankNote: "We transfer to this account monthly, in any country. The IBAN is shown masked after you save it.",
+    taxNote: `Thakeen bears VAT on your commission (if you are VAT-registered, tick the box and enter your VAT number: VAT is added on top and Thakeen pays it) and withholding tax where it applies, so you receive the full ${COMMISSION_PCT}%. You remain responsible for your own income tax in your country.`,
+    bankPending: "Awaiting our confirmation: we call you to check these details before the first transfer, and after every change.",
+    holder: "Account holder name", iban: "IBAN", country: "Country you live in", taxNumber: "VAT or tax registration number (optional)", vatRegistered: "I am VAT-registered (the number above is my VAT number)", save: "Save", saved: "Saved",
+    errors: { bad_holder: "Enter the account holder's name.", bad_iban: "Not a valid IBAN: check the country code at its start and its number of characters.", bad_country: "Choose the country you live in.", bad_tax_number: "Not a valid tax number: 3 to 30 letters or digits.", vat_number_required: "Enter your VAT registration number.", slow_down: "Too many tries. Try again in an hour.", forbidden: "Only the account owner can change bank details.", server: "Could not save. Try again." } as Record<string, string>,
+  },
+} as const;

@@ -15,8 +15,9 @@ export type PublicRoute = {
 
 /** The title the root layout applies when a page exports no metadata of its own. */
 export const DEFAULT_TITLE: Record<Lang, string> = {
-  en: "Thakeen — Noor, the AI marketing agent for the Gulf",
-  ar: "ذكين — نور، وكيلة تسويق للخليج",
+  // The founder's slogan (2026-10-01), as the homepage h1 shows it: src/lib/page-meta.ts `SITE_DEFAULT`.
+  en: "Thakeen. Smart. Steadfast.",
+  ar: "ذكين. الذكي المكين.",
 };
 
 export const PUBLIC_ROUTES: PublicRoute[] = [
@@ -32,7 +33,8 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/enterprise", unique: { en: "Many brands, one team", ar: "عدة علامات، فريق واحد" }, ownTitle: true },
   { path: "/resources", unique: { en: "Learn, try and compare", ar: "تعلّم، جرّب، وقارن" }, ownTitle: true },
   { path: "/updates", unique: { en: "What we shipped, and what we build next", ar: "ما أطلقناه، وما نبنيه بعده" }, ownTitle: true },
-  { path: "/affiliates", unique: { en: "25%", ar: "اكسب 25%" }, ownTitle: true },
+  { path: "/affiliates", unique: { en: "Earn 15% of every payment", ar: "اكسب 15% من كل دفعة" }, ownTitle: true },
+  { path: "/affiliates/terms", unique: { en: "Partner programme terms", ar: "شروط برنامج الشركاء" }, ownTitle: true },
   { path: "/ai-marketing-agent", unique: { en: "What is an AI Marketing Agent?", ar: "ما هو وكيل التسويق" }, ownTitle: true },
   { path: "/agents/noor", unique: { en: "Noor", ar: "نور" }, ownTitle: true },
   { path: "/tools/hook-generator", unique: { en: "Hook Generator", ar: "مولّد هوكات" }, ownTitle: true },
@@ -68,6 +70,7 @@ export const APP_ROUTES: AppRoute[] = [
   { path: "/app/onboarding", heading: { en: "Introduce Noor to your brand" } },
   { path: "/app/profile", heading: { en: "Your profile" } },
   { path: "/app/refer", heading: { en: "Earn credits" } },
+  { path: "/app/partner", heading: { en: "Partner" } },
   { path: "/app/mcp", heading: { en: "Noor inside Claude and ChatGPT (MCP)" } },
   { path: "/app/help", heading: { en: "Help center" } },
   { path: "/app/billing", heading: { en: "Subscription" } },

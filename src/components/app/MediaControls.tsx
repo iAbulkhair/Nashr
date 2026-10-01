@@ -8,6 +8,7 @@ import { CONFIRM_FROM_CREDITS, DEFAULT_IMAGE_MODEL, MEDIA_MAX_AGE_MS, MEDIA_MODE
 import type { PublicJob } from "@/lib/media/types";
 import { IMAGE_TYPES, VIDEO_TYPES } from "@/lib/tasks";
 import { limitFromError } from "./LimitModal";
+import { topupsSold, type Plan } from "@/lib/pricing";
 
 /**
  * The image and video buttons of one inbox card: a model picker per kind with the price on every choice, a
@@ -208,9 +209,12 @@ export default function MediaControls({ task, lang, t, available, credits, plan,
     if (e === "trial_over" || e === "agent_cap" || (e === "no_credits" && !(typeof j.have === "number" && j.have > 0))) { limitFromError(e); return; }
     if (e === "no_credits") {
       const need = j.need ?? m?.credits;
-      // Short of credits, the link names the top-up and lands on its section (rule 450); the billing page tells a trial
-      // that packs come after subscribing and a member that the owner buys them.
-      return say(kind, { text: plural(i.needCredits, need ?? 0, { need: need ?? "", have: String(j.have) }), billing: true, topup: true });
+      // Short of credits on a paid plan, the note names the top-up and its link lands on the packs (rules 450, 457); a
+      // trial cannot buy a pack (`topupsSold`), so it gets the plans link only. The billing page tells a member that the
+      // owner buys packs.
+      const sold = topupsSold(plan as Plan);
+      const text = plural(i.needCredits, need ?? 0, { need: need ?? "", have: String(j.have) });
+      return say(kind, { text: sold ? `${text} ${i.needTopup}` : text, billing: true, topup: sold });
     }
     say(kind, { text: errText(e) ?? fail(kind), billing: e === "plan_required" || e === "trial_video_used" });
   }

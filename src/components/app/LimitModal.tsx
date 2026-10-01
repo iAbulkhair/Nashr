@@ -53,6 +53,16 @@ export function limitText(L: AppDict["limit"], open: Open, may: boolean, topups 
 }
 
 /**
+ * The one line the generate and reports panels show next to the dialog when a request is short of credits (rule 457):
+ * the owner of a paid plan is offered a top-up pack or an upgrade, a trial's owner a plan (packs are sold to paid plans
+ * only, `topupsSold`), and anyone else is told to ask the owner, with the same split.
+ */
+export function noCreditsText(g: AppDict["generate"], may: boolean, topups: boolean): string {
+  if (may) return topups ? g.noCredits : g.noCreditsTrial;
+  return topups ? g.noCreditsAsk : g.noCreditsAskTrial;
+}
+
+/**
  * `owner`: the acting person may subscribe (`can(u, "billing")`); `governs`: may raise agent caps
  * (`can(u, "governance.write")`); `topups`: the account's plan may buy top-up packs (`topupsSold`). Anyone else is told
  * to ask the account owner rather than sent to a page they cannot change.

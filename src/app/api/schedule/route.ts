@@ -3,6 +3,7 @@ import { currentUser, sc } from "@/lib/auth";
 import { getSchedule, runDaily, runWeekly, saveSchedule, type Schedule } from "@/lib/schedule";
 import { isRoutineId, type RoutineId } from "@/lib/routines";
 import { byOf } from "@/lib/actor";
+import { deadlineFor } from "@/lib/media/keys";
 import { forbid } from "@/lib/roles";
 
 export const maxDuration = 300;
@@ -35,11 +36,13 @@ export async function PUT(req: Request) {
 }
 /** POST {run: "weekly"|"daily"} → run now */
 export async function POST(req: Request) {
+  // A weekly "Run now" ends its model calls by this request's deadline (rule 336).
+  const deadline = deadlineFor(maxDuration);
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const b = (await req.json().catch(() => ({}))) as { run?: string };
   // A login's own "Run now" (any role): its activity rows name that login (or the founder), not the cron.
-  if (b.run === "weekly") return NextResponse.json({ ok: true, result: await runWeekly(u, await byOf(u)) });
+  if (b.run === "weekly") return NextResponse.json({ ok: true, result: await runWeekly(u, await byOf(u), { deadline }) });
   if (b.run === "daily") return NextResponse.json({ ok: true, brief: await runDaily(u) });
   return NextResponse.json({ ok: false, error: "bad_run" }, { status: 400 });
 }

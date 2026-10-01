@@ -3,10 +3,10 @@ import { skillsBlock } from "./skills";
 import { fenceMemory } from "./json";
 import { costUsd, meter } from "./usage";
 import { CHAT_MAX_CALLS, estTokens, fitFirstCall, inputEstimateUsd, nextMaxTokens, trimHistory, type InputEst } from "./chat-budget";
-import { ModelPaused, PAUSED_REPLY, modelState } from "./model";
-import Anthropic from "@anthropic-ai/sdk";
+import { MODEL_BUDGET, ModelPaused, PAUSED_REPLY, anthropic, modelState, until } from "./model";
+import type Anthropic from "@anthropic-ai/sdk";
 import { CAPS, db, pushCapped } from "./db";
-import type { User } from "./auth";
+import { trialOver, type User } from "./auth";
 import { getBrand, listPreferencesFor, saveBrand, listLite, type Brand, type Task } from "./brand";
 import { feedbackBlock, feedbackFor } from "./feedback";
 import { DRAFT_TYPES, IMAGE_TYPES, TASK_COST, TASK_TYPES, isDraftType, isTaskType, type TaskType } from "./tasks";
@@ -19,7 +19,8 @@ import { deadlineFor } from "./media/keys";
 import { listConnections } from "./connectors/store";
 import { connectedTargets, targetsFor } from "./connectors/publish";
 import { isDuplicate, publishOnce } from "./publish-once";
-import { HELP } from "./help";
+import { helpTopics } from "./help";
+import { appOrigin } from "./origin";
 import { getTask } from "./brand";
 import { DEFAULT_IMAGE_MODEL, MEDIA_MODELS, mediaModel } from "./media-catalog";
 import { ONBOARD_EXTRA_BRAND_COST, PLAN_CREDITS } from "./pricing";
@@ -226,7 +227,7 @@ WHAT YOU CAN DO
 - Costs in credits: ${Object.entries(TASK_COST).map(([k, v]) => `${k}=${v}`).join(", ")}. If credits are insufficient, say so and point to the Subscription page.
 
 HOW THAKEEN WORKS (answer "how do I…" questions from this; point to the page)
-${HELP.map((t) => t.items.map((i) => `- ${i.q.en} → ${i.a.en}`).join("\n")).join("\n")}
+${helpTopics(appOrigin()).map((t) => t.items.map((i) => `- ${i.q.en} → ${i.a.en}`).join("\n")).join("\n")}
 Pages: /app/chat (you), /app (inbox), /app/todo (my to-dos), /app/files, /app/tasks (scheduled routines), /app/governance, /app/activity (what each agent did, with a CSV download), /app/integrations, /app/mcp, /app/billing, /app/refer, /app/help.
 
 REPLY SHAPES
@@ -303,10 +304,40 @@ export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en"; 
 /** Why a tool could not spend: the app raises the matching limit dialog. `agent_cap` is the owner's monthly cap for one agent. */
 export type ChatLimit = "credits" | "trial" | "agent_cap";
 
+/**
+ * Why a chat turn was refused before any model call (rules 330-331): an ended trial, or the hourly or daily ceiling of
+ * `chatRefusal` (src/lib/rate.ts). The text the owner reads, in their language, with the way forward. `origin` makes the
+ * billing link absolute (MCP: the words are read outside the app); `cap` is the ceiling that refused.
+ */
+export type ChatRefused = "trial" | "hour" | "day";
+export function chatRefusedText(kind: ChatRefused, lang: "ar" | "en", o: { origin?: string; cap?: number } = {}): string {
+  const billing = `${o.origin ?? ""}/${lang}/app/billing`;
+  const n = o.cap !== undefined ? ` (${o.cap})` : "";
+  if (lang === "ar") {
+    if (kind === "trial") return `انتهت تجربتك المجانية، فلن يرد الوكلاء على رسائل جديدة حتى يُفعَّل اشتراك. كل ما في صندوقك وملفاتك محفوظ. [اختر خطة من صفحة الاشتراك](${billing}) (أو اطلب ذلك من مالك الحساب) ليكمل الفريق من حيث توقف. لم يُخصم أي كريدت.`;
+    return kind === "hour"
+      ? `وصلت إلى حد الرسائل في الساعة${n}، فتوقفت المحادثة مؤقتاً. حاول بعد ساعة. لم يُخصم أي كريدت.`
+      : `وصلت إلى حد الرسائل اليومي${n}، فتوقفت المحادثة حتى الغد. لم يُخصم أي كريدت.`;
+  }
+  if (kind === "trial") return `Your free trial has ended, so the agents won't answer new messages until a plan is active. Everything in your inbox and files is kept. [Choose a plan on the Subscription page](${billing}) (or ask the account owner to) and the team picks up where it stopped. No credits were used.`;
+  return kind === "hour"
+    ? `You've reached the hourly message limit${n}, so chat is paused for now. Try again in an hour. No credits were used.`
+    : `You've reached the daily message limit${n}, so chat is paused until tomorrow. No credits were used.`;
+}
+
+/** The reply of a turn that ran out of its request's time (rule 336): what was made is saved, and the owner can go on. */
+export const OUT_OF_TIME_REPLY = {
+  ar: "انتهى الوقت المتاح لهذا الرد قبل أن أكمله. ما أنشأته محفوظ في صندوق الموافقة، واطلب مني المتابعة لأكمل.",
+  en: "This reply ran out of time before I could finish it. Anything I created is saved in your inbox; ask me to continue and I'll pick it up.",
+} as const;
+
 export async function chat(user: User, text: string, conv?: string, agentId: AgentId = "noor", opts: ChatOpts = {}): Promise<ChatTurn> {
   // Taken first: up to five model turns can use most of the ceiling before a tool starts a render.
   const deadline = opts.deadline ?? deadlineFor(CHAT_MAX_DURATION_S);
   const lang = opts.lang ?? user.lang;
+  // The backstop of the routes' own check (rule 330): an ended trial gets no model turn from any caller, and nothing is
+  // written, not even the owner's message.
+  if (trialOver(user)) return { role: "assistant", content: chatRefusedText("trial", lang), at: new Date().toISOString(), agent: agentId, limit: "trial" };
   const agentName = agentById(agentId).name[lang];
   opts.onStatus?.(lang === "ar" ? "أقرأ ملف علامتك ومذكراتي…" : "Reading your brand file and my notes…");
   const email = user.scope ?? user.email;
@@ -325,7 +356,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
     return m;
   }
 
-  const client = new Anthropic();
+  const client = anthropic({ timeoutMs: MODEL_BUDGET.CHAT_MS, maxRetries: 1 });
   // Independent reads, fetched together: one after another they cost 1-2 s of silence before every model call.
   const [brand, prefs, memory, files, conns, thread, feedback, notes, by] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), handoffNotesFor(email, agentId), opts.by ?? byOf(user)]);
   const connected = connectedTargets(conns);
@@ -343,15 +374,28 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   let ended: "capped" | "cut" | "large" | null = null;
   let cutText = "";
 
+  // Two ceilings end the loop before a call. The per-message cost (CHAT_TURN_MAX_USD, above): no room left for a useful
+  // answer. The turn's overall deadline (rule 336): a call starts only with CHAT_TURN_MIN_MS left, and its stream ends
+  // CHAT_REPLY_MS before the deadline, so the reply is saved and answered before the platform's kill, and a tool that
+  // charged inside the turn (generate_content, draft_items) has its own refund within the same deadline.
+  let outOfTime = false;
   for (let turn = 0; turn < CHAT_MAX_CALLS; turn++) {
     const maxTokens = turn === 0 ? fit.maxTokens : nextMaxTokens(CHAT_MODEL, spent, inputEstimateUsd(CHAT_MODEL, next, false));
     if (!maxTokens) {
       ended = turn === 0 ? "large" : "capped";
       break;
     }
-    const res = await client.messages
-      .stream({ model: CHAT_MODEL, max_tokens: maxTokens, system: sys, messages, tools, thinking: { type: "adaptive" }, output_config: { effort: "medium" } })
-      .finalMessage();
+    if (deadline - Date.now() < MODEL_BUDGET.CHAT_TURN_MIN_MS) { outOfTime = true; break; }
+    const call = until(deadline - MODEL_BUDGET.CHAT_REPLY_MS, { cap: MODEL_BUDGET.CHAT_MS });
+    let res: Anthropic.Message;
+    try {
+      res = await client.messages
+        .stream({ model: CHAT_MODEL, max_tokens: maxTokens, system: sys, messages, tools, thinking: { type: "adaptive" }, output_config: { effort: "medium" } }, call)
+        .finalMessage();
+    } catch (e) {
+      if (call.signal.aborted) { outOfTime = true; break; }
+      throw e;
+    }
     spent += costUsd(res.model, res.usage);
     await meter(user.email, res.model, "chat", res.usage, agentId);
     if (res.stop_reason === "refusal") break;
@@ -384,11 +428,11 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
     messages.push({ role: "user", content: results });
     next = { cached: (res.usage.cache_read_input_tokens ?? 0) + (res.usage.cache_creation_input_tokens ?? 0), fresh: (res.usage.input_tokens ?? 0) + (res.usage.output_tokens ?? 0) + estTokens(JSON.stringify(results).length) };
   }
-  // The loop ended without a closing answer: the calls ran out, the model refused, a call was cut off at its cap, or the
-  // ceiling left no room for another call. What the tools made is on the reply's cards and in the inbox either way, and a
-  // limit a tool hit still raises its dialog.
-  const content = ended === "large" ? LARGE_REPLY[lang] : ended === "cut" ? (cutText ? `${cutText}\n\n${CUT_NOTE[lang]}` : CAPPED_REPLY[lang]) : ended === "capped" ? CAPPED_REPLY[lang] : DONE_REPLY[lang];
-  const m: ChatTurn = { role: "assistant", content, at: new Date().toISOString(), ...turnParts(actions, made, proposed), ...(spent > 0 ? { agent: agentId } : {}) };
+  // The loop ended without a closing answer: the request ran out of time, the calls ran out, the model refused, a call was
+  // cut off at its cap, or the ceiling left no room for another call. What the tools made is on the reply's cards and in
+  // the inbox either way, and a limit a tool hit still raises its dialog.
+  const content = outOfTime ? OUT_OF_TIME_REPLY[lang] : ended === "large" ? LARGE_REPLY[lang] : ended === "cut" ? (cutText ? `${cutText}\n\n${CUT_NOTE[lang]}` : CAPPED_REPLY[lang]) : ended === "capped" ? CAPPED_REPLY[lang] : DONE_REPLY[lang];
+  const m: ChatTurn = { role: "assistant", content, at: new Date().toISOString(), ...turnParts(actions, made, proposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}) };
   await deliver(email, m, conv);
   return withLimit(m, actions, spent);
 }

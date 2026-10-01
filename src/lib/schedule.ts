@@ -2,6 +2,7 @@ import { db } from "./db";
 import { getUser, trialOver, type User } from "./auth";
 import { getBrand, indexedAt, isAutonomous, listLite, rebuildIndex, rebuildPending, type Brand } from "./brand";
 import { generateBatch } from "./generate-batch";
+import { resolveOnceHolds } from "./credits";
 import { modelState } from "./model";
 import { getGov } from "./governance";
 import { activeSeasons } from "./seasons";
@@ -88,9 +89,10 @@ const WEEKLY_NOTE = "This is the automatic Sunday plan. Reference strategy.md ph
 
 /**
  * Weekly plan for one user. Returns what happened. `by` is who asked: "Run now" passes the login that pressed it (any
- * role may, POST /api/schedule), and the cron's run is the system's.
+ * role may, POST /api/schedule), and the cron's run is the system's. `deadline`: when the caller's request or cron
+ * invocation ends (epoch ms), which bounds the generation so its refund runs before the platform's kill.
  */
-export async function runWeekly(user: User, by: By = systemBy("cron")): Promise<string> {
+export async function runWeekly(user: User, by: By = systemBy("cron"), opts: { deadline?: number } = {}): Promise<string> {
   const email = user.scope ?? user.email;
   const brand = await getBrand(email);
   if (!brand) return "no_brand";
@@ -105,7 +107,7 @@ export async function runWeekly(user: User, by: By = systemBy("cron")): Promise<
   // What happened, for the activity log, like a routine's; a throw is "error" (the charge was refunded first).
   let outcome = "error";
   try {
-    outcome = await weeklyFor(user, email, brand, by);
+    outcome = await weeklyFor(user, email, brand, by, opts.deadline);
     return outcome;
   } finally {
     await Promise.all([
@@ -115,7 +117,37 @@ export async function runWeekly(user: User, by: By = systemBy("cron")): Promise<
   }
 }
 
-async function weeklyFor(user: User, email: string, brand: Brand, by: By): Promise<string> {
+/** The claim the Sunday plan of `scope` is charged under in the week starting `week` (rule 333). */
+export const weeklyClaim = (scope: string, week = weekStartUtc()) => `weekly:${scope}:${week}`;
+
+/** No run is still in flight on a hold this old: every route that charges a weekly plan ends within 300 s. */
+export const ONCE_HOLD_SETTLE_MS = 10 * 60e3;
+
+/**
+ * The daily sweep of the account's Sunday-plan holds (rule 337), once per account from the daily cron. A run killed
+ * after its charge leaves its hold, and only a later run of the same week reused it: one killed on the last catch-up
+ * (Tuesday) or on a "Run now" nobody pressed again kept the charge with no plan. A hold of a week that has ended, taken
+ * over ONCE_HOLD_SETTLE_MS ago, is resolved: dropped when that week's plan exists in its brand (a `weekly_plan` task the
+ * team made on its own, `isAutonomous`, created in that week: the run saved its work, so the charge stands), refunded otherwise. A failed run
+ * already refunded its own hold and removed its tasks (rule 334). Returns null when there is nothing to resolve.
+ */
+export async function sweepWeeklyHolds(u: Pick<User, "email" | "paidOnce">, now = Date.now()) {
+  const thisWeek = weekStartUtc(new Date(now));
+  const stale = Object.entries(u.paidOnce ?? {}).flatMap(([claim, hold]) => {
+    const week = /^weekly:.+:(\d{4}-\d{2}-\d{2})$/.exec(claim)?.[1];
+    // NaN (a malformed time) is not "recent": it is resolved.
+    return week && week < thisWeek && !(now - new Date(hold.at).getTime() < ONCE_HOLD_SETTLE_MS) ? [{ claim, scope: hold.scope, week }] : [];
+  });
+  if (!stale.length) return null;
+  const rows = await Promise.all(stale.map((h) => listLite(h.scope, new Date(`${h.week}T00:00:00Z`))));
+  const kept = Object.fromEntries(stale.map((h, i) => {
+    const end = weekStartUtc(new Date(Date.parse(`${h.week}T00:00:00Z`) + 7 * 864e5));
+    return [h.claim, rows[i].some((t) => t.type === "weekly_plan" && isAutonomous(t) && t.createdAt.slice(0, 10) >= h.week && t.createdAt.slice(0, 10) < end)];
+  }));
+  return resolveOnceHolds(u.email, kept);
+}
+
+async function weeklyFor(user: User, email: string, brand: Brand, by: By, deadline?: number): Promise<string> {
   const gov = await getGov(email);
   if (trialOver(user)) return "trial_over";
   // weekly cap: count items the team created on its own in the last 7 days (`isAutonomous`: the Sunday plan, the
@@ -126,13 +158,21 @@ async function weeklyFor(user: User, email: string, brand: Brand, by: By): Promi
   // Loaded before the charge (notifications imports this module, hence the dynamic import), so nothing after a kept
   // charge can fail before the week is recorded.
   const { brandFingerprint, brandTag, notifyItem, withBrand } = await import("./notifications");
-  // weekly_plan is Noor's, so it counts against her monthly cap in this brand, like a batch she was asked for.
-  const r = await generateBatch(user, email, { type: "weekly_plan", notes: WEEKLY_NOTE, brief: WEEKLY_NOTE, source: "scheduled", via: "weekly", gov, brand, by });
+  // weekly_plan is Noor's, so it counts against her monthly cap in this brand, like a batch she was asked for. A paid
+  // account due its monthly credits is renewed first, inside generateBatch (rule 332). Charged once per brand and week
+  // (`once`, rule 333): a run killed after its charge leaves the hold, and the retry reuses it. The week's marker is
+  // written inside the batch's refund guard (`commit`, rule 334): a failure before it refunds once, and a retry after it
+  // stops at `ranThisWeek`.
+  const week = weekStartUtc();
+  const r = await generateBatch(user, email, {
+    type: "weekly_plan", notes: WEEKLY_NOTE, brief: WEEKLY_NOTE, source: "scheduled", via: "weekly", gov, brand, by,
+    once: weeklyClaim(email, week), commit: () => saveSchedule(email, { lastWeekly: new Date().toISOString() }),
+    ...(deadline !== undefined ? { deadline } : {}),
+  });
   if (!r.ok) {
     if (r.reason === "failed") throw r.error;
     return r.reason === "paused" ? "retry:paused" : r.reason;
   }
-  await saveSchedule(email, { lastWeekly: new Date().toISOString() });
   // One notice per brand (#15): the fingerprint carries an added brand's id, and a multi-brand account sees which brand.
   const tag = await brandTag(user.email, email).catch(() => "");
   await notifyItem(user.email, user.lang, { kind: "weekly", agent: "noor", title: withBrand(user.lang === "ar" ? "خطة الأسبوع جاهزة في صندوق الموافقة" : "This week's plan is ready in your inbox", tag), body: user.lang === "ar" ? `${r.tasks.length} عنصر من نور. اعتمد ما يعجبك وعيّن تواريخ النشر.` : `${r.tasks.length} item(s) from Noor. Approve what you like and set publish dates.`, href: "" }, brandFingerprint(email, `weekly:${new Date().toISOString().slice(0, 10)}`), 2);

@@ -22,6 +22,10 @@ export const MIN_ROLE = {
   "oauth.grants": "owner",
   /** Referral data (emails of referred people) and the refer page. */
   referral: "owner",
+  /** The partner page (/app/partner): the account's partner code, referrals and commission ledger (src/lib/partners.ts). */
+  partner: "owner",
+  /** The partner's bank details (PUT /api/partner): where commission is paid. Refused while impersonating. */
+  "partner.bank": "owner",
   /** Account-level profile fields: phone, WhatsApp, account language, email preferences. */
   "profile.account": "owner",
   /** Invite an admin, or promote a member to admin. */
@@ -114,6 +118,7 @@ export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
   "team.remove.admin",
   "mcp.token",
   "oauth.approve",
+  "partner.bank",
 ]);
 
 const RANK: Record<Role, number> = { member: 1, admin: 2, owner: 3 };
