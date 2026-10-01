@@ -92,6 +92,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/admin/golden": "admin-console",
   "POST /api/admin/impersonate": "admin-console",
   "POST /api/admin/plan": "admin-console",
+  // Partner programme (rules 390-402): approvals, payouts, recorded payments and voids.
+  "POST /api/admin/partners": "admin-console",
+  "POST /api/admin/payments/[email]": "admin-console",
   "POST /api/admin/users/[email]": "admin-console",
 
   // Owner only.
@@ -102,6 +105,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "DELETE /api/mcp/grants": g("owner", "oauth.grants"),
   "POST /api/oauth/approve": g("owner", "oauth.approve"),
   "POST /api/referral/share": g("owner", "referral"),
+  // A partner's bank details (refused while impersonating), and the billing page's partner-code field.
+  "PUT /api/partner": g("owner", "partner.bank"),
+  "POST /api/partner/code": g("owner", "billing"),
   "DELETE /api/account": g("owner", "account.delete"),
   "PUT /api/profile": g("owner", "profile.account", "brand.write", "profile.self"),
   "PATCH /api/team/member": g("owner", "team.role"),
@@ -170,6 +176,8 @@ const READS: Record<string, Gate> = {
   "GET /api/mcp/grants": g("owner", "oauth.grants"),
   "GET /api/referral": g("owner", "referral"),
   "GET /api/referral/share": g("owner", "referral"),
+  // A partner link: sets the 30-day partner cookie for a valid code, so it is a public write with a rate limit (rule 391).
+  "GET /p/[code]": "public",
   "GET /api/team": g("member", "team.view"),
   "GET /api/profile": g("member", "read"),
   "GET /api/activity": g("member", "read"),
@@ -192,6 +200,8 @@ const READS: Record<string, Gate> = {
   "GET /api/admin/log": "admin-console",
   "GET /api/admin/overview": "admin-console",
   "GET /api/admin/plan": "admin-console",
+  "GET /api/admin/partners": "admin-console",
+  "GET /api/admin/payments/[email]": "admin-console",
   "GET /api/admin/users/[email]": "admin-console",
   "GET /api/affiliates": "admin-console",
   "GET /api/waitlist": "admin-console",

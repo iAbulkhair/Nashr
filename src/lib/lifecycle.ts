@@ -1,4 +1,5 @@
 import type { User } from "./auth";
+import { FIRST_MONTH_DISCOUNT_PCT } from "./pricing"; // the day-3 offer (src/lib/partners.ts, rule 394)
 import { getBrand, listLiteDays } from "./brand";
 import { once, sendEmail } from "./notify";
 import { PLAN_CREDITS, PLAN_PRICE_SAR, formatCount } from "./pricing";
@@ -27,8 +28,8 @@ function t(u: User, key: string, ctx: { firstTitle?: string; pending: number; ap
         : { subject: "Your trial ends tomorrow", body: `${u.name}, your trial ends ${ctx.trialEnds}.\n\nSo far: ${ctx.approved} approved, ${ctx.pending} waiting.\n\nIf Noor saved you an hour this week, Pro at SAR ${PLAN_PRICE_SAR.pro}/mo gives you ${formatCount(PLAN_CREDITS.pro)} credits a month and auto ad optimization (coming soon). Subscribe: ${app}/billing\n\nIf something didn't work, reply and tell me.${sig}` };
     case "day3":
       return ar
-        ? { subject: "آخر يوم في التجربة", body: `${u.name}، اليوم آخر يوم.\n\nنور كتبت لك ${ctx.approved + ctx.pending} عنصراً. لو تبي تكمل: ${app}/billing — أو راسلني على واتساب وأفعّل لك شهراً بخصم الشركاء الأوائل.${sig}` }
-        : { subject: "Last day of your trial", body: `${u.name}, today is the last day.\n\nNoor wrote ${ctx.approved + ctx.pending} items for you. To continue: ${app}/billing — or WhatsApp me and I'll activate a month at the early-partner discount.${sig}` };
+        ? { subject: "آخر يوم في التجربة", body: `${u.name}، اليوم آخر يوم.\n\nنور كتبت لك ${ctx.approved + ctx.pending} عنصراً. لو تبي تكمل، شهرك الأول عليه خصم ${FIRST_MONTH_DISCOUNT_PCT}% (عرض الشركاء الأوائل، للشهر الأول فقط): تجده في صفحة الاشتراك ${app}/billing — أو راسلني على واتساب وأفعّله لك بالخصم.${sig}` }
+        : { subject: "Last day of your trial", body: `${u.name}, today is the last day.\n\nNoor wrote ${ctx.approved + ctx.pending} items for you. To continue, your first month is ${FIRST_MONTH_DISCOUNT_PCT}% off (the early-partner offer, first month only): it is on your billing page ${app}/billing — or WhatsApp me and I'll activate it at the discount.${sig}` };
     case "day10":
       return ar
         ? { subject: "ما الذي وقّفك؟", body: `${u.name}، سؤال واحد صريح: ما الذي منعك من الاستمرار مع نور؟\n\nالجودة؟ اللهجة؟ السعر؟ ميزة ناقصة؟ رد بكلمة وأنا أقرأ كل رد بنفسي.\n\nوإذا تبي تجرب من جديد بعد التحديثات: ${app}${sig}` }

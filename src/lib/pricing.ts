@@ -174,3 +174,17 @@ export const formatCount = (n: number): string => {
   const [whole, frac] = String(n).split(".");
   return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (frac ? `.${frac}` : "");
 };
+
+// ---- The first-month discount (rules 393-395, src/lib/partners.ts) ----
+
+/**
+ * One 15% discount on the first paid month per account: from a partner's code, or the offer on the trial's last day.
+ * Never both, never a second month (docs/superpowers/specs/2026-10-01-affiliates-design.md).
+ */
+export const FIRST_MONTH_DISCOUNT_PCT = 15;
+/**
+ * The first month's price after the discount, in whole riyals and excluding VAT like every price here: the list price
+ * less 15%, rounded to the nearest riyal (Starter 254.15 → 254). Payments are activated by hand, so this is the amount the
+ * billing page quotes on WhatsApp and the founder console expects.
+ */
+export const firstMonthPriceSar = (plan: SelfServePlan): number => Math.round((PLAN_PRICE_SAR[plan] * (100 - FIRST_MONTH_DISCOUNT_PCT)) / 100);

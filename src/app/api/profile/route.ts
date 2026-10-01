@@ -58,7 +58,7 @@ export async function GET() {
   const summary = { plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt, ...(u.renewedAt ? { renewedAt: u.renewedAt } : {}) };
   // The owner (or a founder acting as the owner) gets the account record as before, minus the hash and runtime fields.
   // An Agency deal is shown as its terms only: who set it in the founder console is not the customer's to see.
-  const { passHash: _p, actor: _a, deal: _d, ...safe } = u; void _p; void _a; void _d;
+  const { passHash: _p, actor: _a, deal: _d, referredBy: _r, ...safe } = u; void _p; void _a; void _d; void _r; // _r names the partner's email
   const deal = u.deal ? { deal: { credits: u.deal.credits, priceSar: u.deal.priceSar } } : {};
   const user = a.kind === "member" ? { ...me, ...summary } : { ...safe, ...deal, role: a.role };
   // What this person may do with the password and account forms: a founder viewing the account has the owner role but

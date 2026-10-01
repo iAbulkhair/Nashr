@@ -5,6 +5,7 @@ import { pmap } from "./parallel";
 import { revokeAllGrants } from "./oauth";
 import { EVENTS } from "./track";
 import { codeFor } from "./referral";
+import { forgetPartnerData } from "./partners";
 import { monthKey } from "./credits";
 import { AGENTS, AGENT_IDS } from "./agents";
 import { usageMonthKeys } from "./usage";
@@ -94,6 +95,9 @@ export async function wipeAccount(email: string) {
   await revokeAllGrants(e); // OAuth tokens issued to connected apps
   // Wishlist: votes are taken back (the counts drop) and suggestions, which carry the email and free text, are removed.
   keys.push(...(await forgetWishlistUser(e)));
+  // Partner programme (src/lib/partners.ts): recorded payments and, for a partner, the record with its bank details, the
+  // code, the referral set and the ledger. The account also leaves its own partner's referral set.
+  keys.push(...(await forgetPartnerData(e)));
   keys.push(`mcpgrants:${e}`);
   keys.push(`profile:${e}`, `mcptoken-of:${e}`, `brands:${e}`, `activebrand:${e}`, `user:${e}`);
   // Account-level records that are not brand-scoped. Missing these meant a deleted account left its notifications,

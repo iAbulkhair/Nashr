@@ -69,6 +69,17 @@ export type User = {
    */
   deal?: AgencyDeal;
   /**
+   * Partner programme (src/lib/partners.ts, rules 390-402), all written under `withUserLock`. `referredBy`: the partner
+   * this account was attributed to, first touch (a link's cookie or a typed code), never rewritten. `firstMonthOffer`: the
+   * account's one 15% first-month discount, from that partner or the trial's last day; `usedAt` once a recorded payment
+   * took it. `firstPaidOn`: the day of the first recorded payment that still stands. `partnerCode`: this account is a
+   * partner (display only: the record is `partner:{email}`).
+   */
+  referredBy?: { partner: string; code: string; at: string; via: "link" | "code" };
+  firstMonthOffer?: { kind: "partner" | "early"; pct: number; at: string; usedAt?: string; paymentId?: string };
+  firstPaidOn?: string;
+  partnerCode?: string;
+  /**
    * An added brand's onboarding charge, held per brand scope until that brand is built (src/lib/credits.ts
    * `chargeOnboard`). Written in the same locked save as the debit, dropped in the same save as its refund (or once the
    * brand is saved), so a run can reuse a charge, refund it, or be swept, but never both reuse and refund one. Rule 246.

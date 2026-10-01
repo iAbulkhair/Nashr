@@ -9,6 +9,7 @@ import { once, sendEmail } from "@/lib/notify";
 import { runLifecycle } from "@/lib/lifecycle";
 import { db } from "@/lib/db";
 import { renewIfDue } from "@/lib/credits";
+import { earlyOfferDue, grantEarlyOffer } from "@/lib/partners";
 import { followUps, notifEmailText } from "@/lib/notifications";
 import { getUser } from "@/lib/auth";
 import { syncAdsIfDue } from "@/lib/perf-store";
@@ -43,6 +44,11 @@ async function dailyFor(u: User): Promise<string> {
     } catch (e) {
       out.push(`onboard_sweep_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`);
     }
+  }
+  // Once per account, on its default brand's entry: the trial's last day grants the 15% first-month offer the day-3 note
+  // names, whether or not mail is set up (the billing page shows it). src/lib/partners.ts, rule 394.
+  if ((u.brandId ?? "default") === "default" && earlyOfferDue(u)) {
+    try { if (await grantEarlyOffer(u.email, (x) => earlyOfferDue(x))) out.push("offer"); } catch (e) { out.push(`offer_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   }
   // Reem's list, for every scope with or without a brand: purge items deleted over 30 days ago and close the ones whose
   // linked inbox item was approved. A failure is reported and never stops the rest of this workspace's day.

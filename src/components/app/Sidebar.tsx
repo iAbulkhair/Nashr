@@ -9,6 +9,7 @@ import { AGENTS, type AgentId } from "@/lib/agents";
 import LogoutButton from "./LogoutButton";
 import LangToggle from "../LangToggle";
 import { Icon, type IconName } from "./Icons";
+import { PARTNER_COPY } from "@/lib/partner-copy";
 
 type Conv = { id: string; title: string; agent?: AgentId; updatedAt: string };
 
@@ -17,9 +18,10 @@ type Conv = { id: string; title: string; agent?: AgentId; updatedAt: string };
  * one disclosure. Text floor 12px. No decorative badges except the localized "new" and the acting person's role.
  *
  * `user` is who is ACTING (a member sees their own name, email and role); plan and credits are the account's.
- * `show` hides owner-only entries (referrals, MCP) from other roles: display only, the routes enforce the same rules.
+ * `show` hides owner-only entries (referrals, MCP, the partner page of an approved partner) from other roles: display
+ * only, the routes enforce the same rules.
  */
-export default function Sidebar({ t, lang, user, show, brandName, admin, supportWa }: { t: AppDict; lang: Lang; user: { name: string; email: string; role: Role; credits: number; plan: string }; show: { owner: boolean; refer: boolean; mcp: boolean }; brandName?: string; admin?: boolean; supportWa?: string }) {
+export default function Sidebar({ t, lang, user, show, brandName, admin, supportWa }: { t: AppDict; lang: Lang; user: { name: string; email: string; role: Role; credits: number; plan: string }; show: { owner: boolean; refer: boolean; mcp: boolean; partner?: boolean }; brandName?: string; admin?: boolean; supportWa?: string }) {
   const path = usePathname();
   const r = useRouter();
   const base = `/${lang}/app`;
@@ -132,6 +134,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
           <li>{row(`${base}/files`, N.files, "folder")}</li>
           <li>{row(`${base}/team`, N.members, "users")}</li>
           {show.refer && <li>{row(`${base}/refer`, N.refer, "gift")}</li>}
+          {show.partner && <li>{row(`${base}/partner`, PARTNER_COPY[lang].nav, "growth")}</li>}
           <li>{row(`${base}/governance`, N.governance, "shield")}</li>
           <li>{row(`${base}/activity`, N.activity, "clock")}</li>
           <li>{row(`${base}/integrations`, N.integrations, "grid")}</li>

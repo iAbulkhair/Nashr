@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
+import PartnerCodeField from "./PartnerCodeField";
 import { PLAN_CREDITS } from "@/lib/pricing";
 
 const input = "input";
@@ -59,6 +60,7 @@ export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
             <ul className="grid gap-1 text-xs" aria-live="polite">{S.rules.map((rule, i) => <li key={rule} className={`flex items-center gap-2 ${checks[i] ? "text-oasis" : "text-ink/60"}`}><span aria-hidden className={`h-1.5 w-1.5 rounded-full ${checks[i] ? "bg-oasis" : "bg-ink/30"}`} />{rule}</li>)}</ul>
           </>
         )}
+        {step === 2 && <PartnerCodeField lang={lang} />}
         {err && <p role="alert" className="text-sm text-sadu-deep">{err}</p>}
         <button disabled={busy || (step === 2 && !checks.every(Boolean))} className="btn btn-primary">{step === 1 ? S.cont : t.signup.submit}</button>
       </form>
