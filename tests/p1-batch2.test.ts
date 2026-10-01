@@ -27,7 +27,8 @@ describe("saving the profile cannot undo a charge (P1: credits reappear)", () =>
       return value;
     });
 
-    const res = await profile.PUT(json("/api/profile", "PUT", { name: "Renamed" }));
+    // The phone goes with the save: an owner's profile save needs a valid one (rule 381), and this account has none.
+    const res = await profile.PUT(json("/api/profile", "PUT", { name: "Renamed", phone: "0501234567" }));
     spy.mockRestore();
     expect(charged, "the interleaving must actually have happened or this test proves nothing").toBe(true);
     expect(res.status).toBe(200);
