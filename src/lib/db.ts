@@ -3,7 +3,8 @@ import { Redis } from "@upstash/redis";
 
 /**
  * Storage adapter. Upstash Redis in production; in-memory Map when no
- * credentials are present (local dev only — data is lost on restart).
+ * credentials are present (local dev, tests, CI only — data is lost on restart).
+ * A production deployment without credentials refuses every call instead (`pickStore`).
  */
 type Store = {
   get<T = unknown>(key: string): Promise<T | null>;
@@ -364,7 +365,42 @@ function memory(): Store {
   };
 }
 
-export const db: Store = upstash() ?? memory();
+/** Thrown by every store call in a production deployment that has no Redis credentials. */
+export class StoreNotConfigured extends Error {
+  constructor() {
+    super("store_not_configured: KV_REST_API_URL/KV_REST_API_TOKEN (or UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN) are not set in this production deployment");
+    this.name = "StoreNotConfigured";
+  }
+}
+
+/**
+ * A store that refuses every call. Used instead of the memory store in a production deployment without Redis
+ * credentials: signups, credits and tasks would otherwise appear to save and vanish at the next cold start, differently
+ * on every instance, with nobody told. It throws on first use rather than at import, so `next build` and any module that
+ * merely imports `db` keep working; the first request that touches data fails loudly (a 500 and an error in the logs).
+ */
+function unconfigured(): Store {
+  return new Proxy({} as Store, {
+    get: (_t, prop) => (prop === "then" ? undefined : () => Promise.reject(new StoreNotConfigured())),
+  });
+}
+
+/**
+ * Upstash when its credentials are set. Without them: the memory store everywhere except a Vercel PRODUCTION deployment
+ * (`VERCEL_ENV === "production"`), which gets `unconfigured()`. Local dev, vitest, CI and the e2e suite run with no
+ * `VERCEL_ENV` and keep the memory store. Rule 430, tests/launch-security.test.ts.
+ */
+function pickStore(): Store {
+  const u = upstash();
+  if (u) return u;
+  if (process.env.VERCEL_ENV === "production") {
+    console.error("store_not_configured: Redis credentials are missing in production; every data call will fail");
+    return unconfigured();
+  }
+  return memory();
+}
+
+export const db: Store = pickStore();
 export const usingPersistentStore = upstash() !== null;
 
 /**

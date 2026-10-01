@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { adminFetch } from "@/lib/admin-fetch";
 import type { Lead, LeadKind } from "@/lib/leads";
 
 /** GET /api/admin/leads. */
@@ -40,7 +41,7 @@ export default function LeadsPanel({ lang, onSeen }: { lang: "ar" | "en"; onSeen
 
   const load = useCallback(async (nextAll: boolean, nextOffset: number): Promise<Page | null> => {
     setErr("");
-    const r = await fetch(`/api/admin/leads?limit=${PAGE}&offset=${nextOffset}${nextAll ? "&all=1" : ""}`).catch(() => null);
+    const r = await adminFetch(`/api/admin/leads?limit=${PAGE}&offset=${nextOffset}${nextAll ? "&all=1" : ""}`).catch(() => null);
     const j = r ? await r.json().catch(() => null) : null;
     if (!j?.ok) { setErr(`${L.failed}${r ? ` (HTTP ${r.status})` : ""}`); return null; }
     setPage(j as Page);
@@ -54,7 +55,7 @@ export default function LeadsPanel({ lang, onSeen }: { lang: "ar" | "en"; onSeen
       // clock: a lead that arrives between this load and the POST was never shown and stays unread.
       const until = first.leads[0]?.at;
       if (!until) { onSeen?.(); return; }
-      const r = await fetch("/api/admin/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "seen", until }) }).catch(() => null);
+      const r = await adminFetch("/api/admin/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "seen", until }) }).catch(() => null);
       if (r?.ok) onSeen?.();
     });
   }, [load, onSeen]);
