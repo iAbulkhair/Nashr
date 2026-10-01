@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
-import { adminActor, createSession, getUser, isAdmin, revokeSessions, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie } from "@/lib/auth";
+import { ADMIN_SESSION_IDLE, adminActor, createSession, getUser, isAdmin, keyImpBinding, revokeSessions, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie } from "@/lib/auth";
 import { revokeAllMcp } from "@/lib/mcp";
 import { getBrand, listTasks } from "@/lib/brand";
 import { getUsage } from "@/lib/usage";
@@ -121,8 +121,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       jar.set("nashr_impersonate", email, await sessionCookie(60 * 60 * 2));
       // The session record carries the founder (`imp`): it resolves to actor kind "founder", which never passes the
       // founder console and is refused account delete, password change, invites, role changes, MCP tokens and OAuth.
-      await createSession(email, 60 * 60 * 2, { imp: who });
-      await log("impersonate", { expiresInMin: 120 });
+      // Opened with the console key: the session is tied to that key and key session, so "End key session" and a key
+      // rotation end it too (rule 429).
+      const bind = who === "key" ? await keyImpBinding() : null;
+      await createSession(email, 60 * 60 * 2, { imp: who, ...(bind ?? {}) });
+      // 2 hours at most; one opened from a key session also ends with it: after 15 minutes without a request on either
+      // side (customer-side requests renew it, `keyImpLive`), at "End key session" or at a key rotation.
+      await log("impersonate", { expiresInMin: 120, ...(bind?.as ? { idleMin: ADMIN_SESSION_IDLE / 60, endsWithKeySession: true } : {}) });
       return NextResponse.json({ ok: true, redirect: `/${u.lang}/app` });
     }
     case "delete": {

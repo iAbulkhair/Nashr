@@ -1,18 +1,15 @@
 import { NextResponse } from "next/server";
-import { Redis } from "@upstash/redis";
 import { isAdmin } from "@/lib/auth";
 import { csvSafe } from "@/lib/admin-stats";
+import { db } from "@/lib/db";
 import { allow, clientIp } from "@/lib/rate";
 
 const LIST_KEY = "waitlist:entries";
 const EMAIL_SET = "waitlist:emails";
 
-function redis(): Redis | null {
-  const url = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  return new Redis({ url, token });
-}
+// The shared store (src/lib/db.ts), not a client of its own: the same keys as before, the memory store in development,
+// and a loud failure in a production deployment without Redis. The record is never written to the logs: it holds an
+// email address. Rule 432, tests/launch-security.test.ts.
 
 export async function POST(req: Request) {
   // Public, unauthenticated write: throttled per IP like every other open endpoint.
@@ -37,19 +34,12 @@ export async function POST(req: Request) {
     at: new Date().toISOString(),
   };
 
-  const kv = redis();
-  if (!kv) {
-    // Storage not configured yet: at least keep it visible in logs.
-    console.log("WAITLIST", JSON.stringify(record));
-    return NextResponse.json({ ok: true, stored: false });
-  }
-
   try {
-    const isNew = await kv.sadd(EMAIL_SET, email);
-    if (isNew) await kv.lpush(LIST_KEY, JSON.stringify(record));
+    const isNew = await db.sadd(EMAIL_SET, email);
+    if (isNew) await db.lpush(LIST_KEY, JSON.stringify(record));
     return NextResponse.json({ ok: true, stored: true, duplicate: !isNew });
   } catch (e) {
-    console.error("waitlist store failed", e);
+    console.error("waitlist store failed", e instanceof Error ? e.name : "error");
     return NextResponse.json({ ok: false, error: "store_failed" }, { status: 502 });
   }
 }
@@ -58,11 +48,8 @@ export async function POST(req: Request) {
 export async function GET(req: Request) {
   const url = new URL(req.url);
   if (!(await isAdmin(req))) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-  const kv = redis();
-  if (!kv) return NextResponse.json({ ok: false, error: "no_storage" }, { status: 503 });
-
-  const raw = await kv.lrange<string>(LIST_KEY, 0, -1);
-  const rows = raw.map((r) => (typeof r === "string" ? JSON.parse(r) : r)) as Array<Record<string, string>>;
+  const raw = await db.lrange(LIST_KEY, 0, -1);
+  const rows = raw.flatMap((r) => { try { return [JSON.parse(r) as Record<string, string>]; } catch { return []; } });
 
   if (url.searchParams.get("format") === "csv") {
     const esc = (v: string) => `"${csvSafe(v ?? "").replace(/"/g, '""')}"`;

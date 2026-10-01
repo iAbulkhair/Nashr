@@ -1,5 +1,7 @@
 "use client";
 import { Fragment, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ADMIN_ENDED, ADMIN_ENDED_EVENT, adminEndedHref, adminFetch } from "@/lib/admin-fetch";
 import GoldenPanel from "./GoldenPanel";
 import WishlistPanel from "./WishlistPanel";
 import type { Activity } from "@/lib/activity";
@@ -121,9 +123,10 @@ function Events({ data }: { data: Overview["events"] }) {
   );
 }
 
-export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
+export default function AdminConsole({ lang = "en", keySession = false }: { lang?: "ar" | "en"; keySession?: boolean }) {
   const S = STR[lang];
   const O = OV[lang];
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>("overview");
   const [ov, setOv] = useState<Overview | null>(null);
   const [log, setLog] = useState<{ actor?: string; email: string; what: string; reason?: string; before?: unknown; after?: unknown; at: string }[] | null>(null);
@@ -139,16 +142,25 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
   const [mediaErr, setMediaErr] = useState("");
   const [evals, setEvals] = useState<{ agents: AM[]; users: { email: string; label: string; suspended: boolean; archived: boolean; n: number; decided: number; approvalRate: number | null; judged: number; avgScore: number | null }[] } | null>(null);
 
+  // Set when any admin call answers 401 (`adminFetch`, rule 436): the key session went idle or the founder's sign-in
+  // ended. The console then says so and links back in, never an empty user table or a bare "unauthorized".
+  const [ended, setEnded] = useState(false);
+  useEffect(() => {
+    const onEnded = () => setEnded(true);
+    window.addEventListener(ADMIN_ENDED_EVENT, onEnded);
+    return () => window.removeEventListener(ADMIN_ENDED_EVENT, onEnded);
+  }, []);
+
   async function load() {
-    const r = await fetch("/api/admin/plan");
-    if (r.status === 401) return setUsers([]);
+    const r = await adminFetch("/api/admin/plan");
+    if (r.status === 401) return;
     const j = await r.json();
     setUsers(j.users);
     if (j.total) setTotal(j.total);
   }
   async function act(email: string, action: string, extra: Record<string, unknown> = {}) {
     setBusy(true);
-    const r = await fetch(`/api/admin/users/${encodeURIComponent(email)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...extra }) });
+    const r = await adminFetch(`/api/admin/users/${encodeURIComponent(email)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...extra }) });
     const j = await r.json();
     setBusy(false);
     if (!j.ok) { setMsg(`${action} failed: ${j.error ?? r.status}`); return j; }
@@ -163,9 +175,9 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
   }
   useEffect(() => {
     void Promise.resolve().then(load);
-    fetch("/api/admin/evals").then((r) => r.json()).then((j) => j.ok && setEvals(j)).catch(() => {});
-    fetch("/api/admin/overview").then((r) => r.json()).then((j) => j.ok && setOv(j)).catch(() => {});
-    fetch("/api/admin/log").then((r) => r.json()).then((j) => j.ok && setLog(j.log)).catch(() => {});
+    adminFetch("/api/admin/evals").then((r) => r.json()).then((j) => j.ok && setEvals(j)).catch(() => {});
+    adminFetch("/api/admin/overview").then((r) => r.json()).then((j) => j.ok && setOv(j)).catch(() => {});
+    adminFetch("/api/admin/log").then((r) => r.json()).then((j) => j.ok && setLog(j.log)).catch(() => {});
   }, []);
 
   /** A deal as "credits @ price SAR", or that the account has no deal and counts as Business. */
@@ -176,7 +188,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
   async function checkMedia() {
     setChecking(true); setMediaErr("");
     try {
-      const r = await fetch("/api/admin/media");
+      const r = await adminFetch("/api/admin/media");
       const j = await r.json().catch(() => ({}));
       if (j.ok) setMedia(j); else setMediaErr(`${O.checkFailed}: HTTP ${r.status}`);
     } catch {
@@ -188,7 +200,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
   async function setPlan(email: string, plan: string) {
     const reason = prompt(O.reason, "") ?? "";
     setBusy(true);
-    const r = await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, plan, reason }) });
+    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, plan, reason }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; team?: TeamChange; error?: string };
     setMsg(j.ok ? [`${email} → ${plan}`, teamLine(j.team)].filter(Boolean).join(" · ") : `${email}: ${j.error ?? r.status}`);
     await load();
@@ -202,7 +214,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
     if (!Number.isInteger(n) || n < 0 || n > MAX_SEAT_OVERRIDE) { setMsg(`${u.email}: bad_seats`); return; }
     const reason = prompt(O.reason, "") ?? "";
     setBusy(true);
-    const r = await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, seats: n === 0 ? null : n, reason }) });
+    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, seats: n === 0 ? null : n, reason }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; user?: { seats: number }; team?: TeamChange; error?: string };
     setMsg(j.ok ? [`${u.email}: ${S.seats} ${j.user?.seats ?? ""}`, teamLine(j.team)].filter(Boolean).join(" · ") : `${u.email}: ${j.error ?? r.status}`);
     await load();
@@ -222,7 +234,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
     if (!clear && !isChatOverride(n)) { setMsg(`${u.email}: bad_chat`); return; }
     const reason = prompt(O.reason, "") ?? "";
     setBusy(true);
-    const r = await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, chatAllowance: clear ? null : n, reason }) });
+    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, chatAllowance: clear ? null : n, reason }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; user?: { chatAllowance: number; chatOverride: number | null }; error?: string };
     setMsg(j.ok ? `${u.email}: ${S.chat} ${j.user?.chatAllowance ?? ""}${j.user?.chatOverride == null ? "" : ` (${S.seatsOverride})`}` : `${u.email}: ${j.error ?? r.status}`);
     await load();
@@ -264,7 +276,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
     }
     const reason = prompt(O.reason, "") ?? "";
     setBusy(true);
-    const r = await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, ...body, reason }) });
+    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, ...body, reason }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; user?: { deal?: AgencyDeal | null }; team?: TeamChange; error?: string };
     setMsg(j.ok ? [`${u.email}: ${S.deal} ${dealText(j.user?.deal)}`, teamLine(j.team)].filter(Boolean).join(" · ") : `${u.email}: ${j.error ?? r.status}`);
     await load();
@@ -275,14 +287,14 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
     if (!n) return;
     const reason = prompt(O.reason, "") ?? "";
     setBusy(true);
-    const r = await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, addCredits: n, reason }) });
+    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, addCredits: n, reason }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
     setMsg(j.ok ? `${email} +${n} credits` : `${email}: ${j.error ?? r.status}`);
     await load();
     setBusy(false);
   }
   async function open(email: string) {
-    const r = await fetch(`/api/admin/users/${encodeURIComponent(email)}`);
+    const r = await adminFetch(`/api/admin/users/${encodeURIComponent(email)}`);
     const j = await r.json().catch(() => ({}));
     if (j.ok && j.kind === "member") { setSel(null); setMemberSel(j.member); return; }
     if (j.ok) { setMemberSel(null); setSel(j); return; }
@@ -300,8 +312,24 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
   const shown = list.filter((u) => !q || [u.email, u.name, u.phone, u.plan].some((x) => (x ?? "").toLowerCase().includes(q.toLowerCase())));
   const today = list.filter((u) => u.createdAt.slice(0, 10) === new Date().toISOString().slice(0, 10)).length;
 
+  if (ended) {
+    const E = ADMIN_ENDED[lang];
+    return (
+      <div role="alert" className="card grid gap-3">
+        <p className="text-sm">{keySession ? E.key : E.founder}</p>
+        <p><a className="btn btn-primary btn-sm" href={adminEndedHref(lang, keySession)}>{keySession ? E.keyLink : E.founderLink}</a></p>
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-6">
+      {keySession && (
+        // Ends the key session on the server (DELETE /api/admin/login), so the same cookie never opens the console again.
+        <div className="flex justify-end">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={async () => { await adminFetch("/api/admin/login", { method: "DELETE" }).catch(() => null); router.push(`/${lang}`); router.refresh(); }}>{lang === "ar" ? "إنهاء جلسة المفتاح" : "End key session"}</button>
+        </div>
+      )}
       <div className="grid gap-3 sm:grid-cols-4">
         {[[S.users, loadingUsers ? "…" : list.length], [S.paying, loadingUsers ? "…" : paying], [S.today, loadingUsers ? "…" : today], [S.trial, loadingUsers ? "…" : trialing], [S.cost, total ? total.usd.toFixed(2) : "…"], [S.tokens, total ? `${Math.round((total.in + total.out) / 1000)}k` : "…"], [S.calls, total ? total.calls : "…"], [S.suspended, list.filter((u) => u.suspended).length]].map(([l, v]) => (
           <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="font-display text-2xl font-bold text-oasis">{v}</p></div>

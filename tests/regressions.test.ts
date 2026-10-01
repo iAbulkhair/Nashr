@@ -136,16 +136,20 @@ describe("the Shopify callback only ever talks to a Shopify host", () => {
   });
 });
 
-describe("the admin cookie is compared like a secret", () => {
-  it("accepts only the exact key, and a prefix of it is not enough", async () => {
+describe("the admin cookie is a server-side key session, never the key itself (rule 424)", () => {
+  it("refuses the raw key and a prefix of a session id, and accepts only a live session", async () => {
     const prev = process.env.WAITLIST_ADMIN_KEY;
     process.env.WAITLIST_ADMIN_KEY = "s3cret-admin-key";
     try {
-      const { jar } = await import("./helpers/session");
+      const { adminSignIn, jar } = await import("./helpers/session");
       jar().clear();
-      jar().set("nashr_admin", "s3cret-admin-ke");
-      expect(await isAdminCookie()).toBe(false);
+      // The cookie a browser kept from before the key session existed: the raw key no longer opens anything.
       jar().set("nashr_admin", "s3cret-admin-key");
+      expect(await isAdminCookie()).toBe(false);
+      const id = await adminSignIn();
+      jar().set("nashr_admin", id.slice(0, -1));
+      expect(await isAdminCookie()).toBe(false);
+      jar().set("nashr_admin", id);
       expect(await isAdminCookie()).toBe(true);
     } finally {
       if (prev === undefined) delete process.env.WAITLIST_ADMIN_KEY; else process.env.WAITLIST_ADMIN_KEY = prev;
