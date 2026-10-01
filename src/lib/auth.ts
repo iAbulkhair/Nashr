@@ -81,6 +81,22 @@ export type User = {
    * is older than PAID_ONCE_MS is dropped by the next `chargeOnce`. Rule 333.
    */
   paidOnce?: Record<string, OnboardHold>;
+  /**
+   * Founder-console override of the plan's chat messages (`CHAT_ALLOWANCE` in src/lib/pricing.ts, `chatAllowanceOf`). An
+   * Agency deal's chat allowance lives here, as its seats live in `seats`. 0 stops chat for the account.
+   */
+  chatAllowance?: number;
+  /**
+   * The owner's choice for when the month's chat messages run out: `true` continues on credits (each message charged at
+   * its metered cost at the floor rate, src/lib/chat-allowance.ts); absent or false pauses chat until the next month.
+   * Written only by POST /api/billing/chat-overflow, owner only. Never on a trial.
+   */
+  chatOverflow?: boolean;
+  /**
+   * Metered cost of over-allowance messages not yet billed, in micro-USD: always less than one credit at the floor rate
+   * (`settleChatOverflow` in src/lib/credits.ts), carried to the next one so the owner pays the real cost, not a rounded one.
+   */
+  chatCarryMicro?: number;
   /** ISO time: every MEMBER session issued before it is dead (founder reset, owner reset). The owner's own sessions follow `sessionsAfter`. */
   teamSessionsAfter?: string;
   /** Runtime only: storage scope of the active brand (email for the default brand). Never persisted. */

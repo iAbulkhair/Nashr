@@ -6,7 +6,8 @@ import { join } from "node:path";
  * Rules 330-331 (issue #24). Chat ran up to five Opus calls a turn, charged nothing and never asked whether the trial had
  * ended: an account that never paid could keep chatting at 200 turns a day, about $52 of model spend a day. Now an ended
  * trial is refused before any model call on the web route and on MCP `ask_noor` (and by chat() itself), with the way to
- * the Subscription page in the owner's language, and a trial account has its own, lower ceiling.
+ * the Subscription page in the owner's language. The ended trial is refused before the ceilings and before the plan's
+ * chat allowance (src/lib/chat-allowance.ts), so it uses up neither.
  */
 const sdk = vi.hoisted(() => ({ made: 0 }));
 vi.mock("@anthropic-ai/sdk", () => ({
@@ -24,7 +25,9 @@ import { getUser, saveUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { chat, history } from "@/lib/chat";
 import { createMcpToken } from "@/lib/mcp";
-import { CHAT_PER_DAY, CHAT_PER_HOUR, CHAT_TRIAL_PER_DAY, CHAT_TRIAL_PER_HOUR, chatCaps, chatRefusal } from "@/lib/rate";
+import { CHAT_CAPS, CHAT_PER_DAY, CHAT_PER_HOUR, chatRefusal } from "@/lib/rate";
+import { CHAT_ALLOWANCE } from "@/lib/pricing";
+import { chatTrialKey } from "@/lib/usage";
 import { json, newUser, signIn } from "./helpers/session";
 import * as chatRoute from "@/app/api/chat/route";
 import * as mcpRoute from "@/app/api/mcp/route";
@@ -69,6 +72,7 @@ describe("an ended trial gets no chat turn and no model call (rule 330)", () => 
     // Nothing was written: not the owner's message, not a reply, and no ceiling was used up.
     expect(await history(u.email)).toEqual([]);
     expect(await db.get(`rate:chat:h:${u.email}`)).toBeNull();
+    expect(await db.get(chatTrialKey(u.email)), "no message of the trial's allowance was reserved").toBeNull();
   });
 
   it("MCP ask_noor answers a tool error with an absolute link, before any model call", async () => {
@@ -80,6 +84,7 @@ describe("an ended trial gets no chat turn and no model call (rule 330)", () => 
     expect(await history(u.email)).toEqual([]);
     expect(await db.get(`rate:chat:h:${u.email}`), "no ceiling was used up").toBeNull();
     expect(await db.get(`rate:chat:d:${u.email}`)).toBeNull();
+    expect(await db.get(chatTrialKey(u.email))).toBeNull();
   });
 
   it("chat() itself refuses an ended trial, for any caller", async () => {
@@ -102,70 +107,68 @@ describe("an ended trial gets no chat turn and no model call (rule 330)", () => 
   });
 });
 
-describe("chat ceilings are constants per plan, the trial's the lower one (rule 331)", () => {
+describe("chat ceilings are constants, the same on every plan (rule 331)", () => {
+  // The trial's own lower ceiling (10 an hour, 30 a day) stood in for the monthly allowance before pricing phase 2 (#237)
+  // built it: a trial is now bounded by its 30 messages for the whole trial (CHAT_ALLOWANCE.trial, counted once), so a
+  // per-day 30 could never bind and a per-hour 10 would refuse messages the trial was given.
   it("the numbers", () => {
-    expect([CHAT_TRIAL_PER_HOUR, CHAT_TRIAL_PER_DAY, CHAT_PER_HOUR, CHAT_PER_DAY]).toEqual([10, 30, 40, 200]);
-    expect(chatCaps("trial")).toEqual({ hour: 10, day: 30 });
-    for (const plan of ["starter", "pro", "business", "agency"] as const) expect(chatCaps(plan)).toEqual({ hour: 40, day: 200 });
+    expect([CHAT_PER_HOUR, CHAT_PER_DAY]).toEqual([40, 200]);
+    expect(CHAT_CAPS).toEqual({ hour: 40, day: 200 });
+    expect(CHAT_ALLOWANCE.trial, "the trial's allowance, not a ceiling, bounds a trial").toBe(30);
   });
 
-  it("a trial account stops at its hourly ceiling, a paid one goes on to its own", async () => {
-    const t = await newUser("ct-cap-trial");
-    for (let i = 0; i < CHAT_TRIAL_PER_HOUR; i++) expect(await chatRefusal(t)).toBeNull();
-    expect(await chatRefusal(t)).toBe("hour");
-    const p = await paid("ct-cap-paid");
-    for (let i = 0; i < CHAT_PER_HOUR; i++) expect(await chatRefusal(p)).toBeNull();
-    expect(await chatRefusal(p)).toBe("hour");
+  it("a trial account and a paid one stop at the same hourly ceiling", async () => {
+    for (const u of [await newUser("ct-cap-trial"), await paid("ct-cap-paid")]) {
+      for (let i = 0; i < CHAT_PER_HOUR; i++) expect(await chatRefusal(u), `${u.plan} ${i}`).toBeNull();
+      expect(await chatRefusal(u)).toBe("hour");
+    }
   });
 
-  it("refused attempts inside the hour do not use up the day: 10 turns and 20 refusals leave 20 turns for later", async () => {
+  it("refused attempts inside the hour do not use up the day", async () => {
     const t = await newUser("ct-retry");
-    for (let i = 0; i < CHAT_TRIAL_PER_HOUR; i++) expect(await chatRefusal(t)).toBeNull();
+    for (let i = 0; i < CHAT_PER_HOUR; i++) expect(await chatRefusal(t)).toBeNull();
     for (let i = 0; i < 20; i++) expect(await chatRefusal(t), `refusal ${i}`).toBe("hour");
-    expect(Number(await db.get(`rate:chat:d:${t.email}`))).toBe(CHAT_TRIAL_PER_HOUR);
+    expect(Number(await db.get(`rate:chat:d:${t.email}`))).toBe(CHAT_PER_HOUR);
     // The next hour: the hour's bucket has expired, and the day still has room.
     await db.del(`rate:chat:h:${t.email}`);
-    for (let i = 0; i < CHAT_TRIAL_PER_HOUR; i++) expect(await chatRefusal(t), `next hour ${i}`).toBeNull();
-    expect(Number(await db.get(`rate:chat:d:${t.email}`))).toBe(2 * CHAT_TRIAL_PER_HOUR);
+    for (let i = 0; i < CHAT_PER_HOUR; i++) expect(await chatRefusal(t), `next hour ${i}`).toBeNull();
+    expect(Number(await db.get(`rate:chat:d:${t.email}`))).toBe(2 * CHAT_PER_HOUR);
     // A refusal by the hour names the day when the day is spent too, being the longer wait, and adds nothing to it.
-    await db.set(`rate:chat:d:${t.email}`, CHAT_TRIAL_PER_DAY, 86400);
+    await db.set(`rate:chat:d:${t.email}`, CHAT_PER_DAY, 86400);
     expect(await chatRefusal(t)).toBe("day");
-    expect(Number(await db.get(`rate:chat:d:${t.email}`))).toBe(CHAT_TRIAL_PER_DAY);
+    expect(Number(await db.get(`rate:chat:d:${t.email}`))).toBe(CHAT_PER_DAY);
     // The hour allows, the day refuses.
     await db.del(`rate:chat:h:${t.email}`);
     expect(await chatRefusal(t)).toBe("day");
   });
 
-  it("the route's 429 says which window refused, with the ceiling, and never reaches the model", async () => {
+  it("the route's 429 says which window refused, with the ceiling, never reaches the model and counts no message", async () => {
     const u = await newUser("ct-429");
     await signIn(u.email);
-    await db.set(`rate:chat:d:${u.email}`, CHAT_TRIAL_PER_DAY, 86400);
+    await db.set(`rate:chat:d:${u.email}`, CHAT_PER_DAY, 86400);
     const res = await chatRoute.POST(json("/api/chat", "POST", { text: "مرحبا", stream: true }));
     expect(res.status).toBe(429);
     const body = (await res.json()) as { error: string; retry: string; message: { content: string } };
     expect([body.error, body.retry]).toEqual(["slow_down", "day"]);
-    expect(body.message.content).toContain(`(${CHAT_TRIAL_PER_DAY})`);
+    expect(body.message.content).toContain(`(${CHAT_PER_DAY})`);
     expect(sdk.made).toBe(0);
+    expect(await db.get(chatTrialKey(u.email)), "the trial's allowance is untouched").toBeNull();
   });
 
-  it("MCP ask_noor uses the same buckets: a trial token cannot chat past the trial's ceiling", async () => {
+  it("MCP ask_noor uses the same buckets and says which ceiling refused", async () => {
     const u = await newUser("ct-mcp-cap");
-    await db.set(`rate:chat:h:${u.email}`, CHAT_TRIAL_PER_HOUR, 3600);
+    await db.set(`rate:chat:h:${u.email}`, CHAT_PER_HOUR, 3600);
     const r = await askNoor(u.email);
     expect(r.isError).toBe(true);
-    expect(r.content[0].text).toContain(`(${CHAT_TRIAL_PER_HOUR})`);
-    expect(sdk.made).toBe(0);
-  });
-
-  it("MCP ask_noor: a paid token stops at the paid ceiling, and goes on below it", async () => {
-    const p = await paid("ct-mcp-paid");
-    await db.set(`rate:chat:h:${p.email}`, CHAT_TRIAL_PER_HOUR, 3600);
-    expect((await askNoor(p.email)).isError, "the trial's ceiling is not a paid account's").toBeFalsy();
-    expect(sdk.made).toBe(1);
-    await db.set(`rate:chat:h:${p.email}`, CHAT_PER_HOUR, 3600);
-    const r = await askNoor(p.email);
-    expect(r.isError).toBe(true);
     expect(r.content[0].text).toContain(`(${CHAT_PER_HOUR})`);
+    expect(sdk.made).toBe(0);
+    const p = await paid("ct-mcp-paid");
+    await db.set(`rate:chat:h:${p.email}`, CHAT_PER_HOUR - 1, 3600);
+    expect((await askNoor(p.email)).isError, "below the ceiling").toBeFalsy();
+    expect(sdk.made).toBe(1);
+    const again = await askNoor(p.email);
+    expect(again.isError).toBe(true);
+    expect(again.content[0].text).toContain(`(${CHAT_PER_HOUR})`);
     expect(sdk.made).toBe(1);
   });
 });
@@ -182,6 +185,8 @@ describe("every page that sends a chat turn shows a refusal instead of an empty 
     expect(inspo).toMatch(/res\.status === 402 \|\| res\.status === 429/);
     expect(inspo).toMatch(/limitFromError\(j\.error\)/);
     expect(inspo).toMatch(/setRefusal\(j\.message\.content\)/);
+    // The month's chat messages used up (pricing phase 2, #237): the chat dialog, with the status the server sent.
+    expect(inspo).toMatch(/j\.error === "chat_allowance" \|\| j\.error === "chat_credits"\) raiseLimit\(j\.error === "chat_allowance" \? "chat" : "chat_credits", \{ period: j\.chat\?\.period/);
     expect(inspo.indexOf("return;"), "no navigation after a refusal").toBeLessThan(inspo.indexOf("r.push("));
   });
 });

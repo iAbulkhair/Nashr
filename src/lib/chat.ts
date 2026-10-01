@@ -1,7 +1,8 @@
 import { AGENTS, agentById, agentForTask, type AgentId } from "./agents";
 import { skillsBlock } from "./skills";
 import { fenceMemory } from "./json";
-import { meter } from "./usage";
+import { costUsd, meter } from "./usage";
+import { CHAT_MAX_CALLS, estTokens, fitFirstCall, inputEstimateUsd, nextMaxTokens, trimHistory, type InputEst } from "./chat-budget";
 import { MODEL_BUDGET, ModelPaused, PAUSED_REPLY, anthropic, modelState, until } from "./model";
 import type Anthropic from "@anthropic-ai/sdk";
 import { CAPS, db, pushCapped } from "./db";
@@ -328,7 +329,7 @@ export const OUT_OF_TIME_REPLY = {
   en: "This reply ran out of time before I could finish it. Anything I created is saved in your inbox; ask me to continue and I'll pick it up.",
 } as const;
 
-export async function chat(user: User, text: string, conv?: string, agentId: AgentId = "noor", opts: ChatOpts = {}): Promise<ChatMsg & { limit?: ChatLimit }> {
+export async function chat(user: User, text: string, conv?: string, agentId: AgentId = "noor", opts: ChatOpts = {}): Promise<ChatTurn> {
   // Taken first: up to five model turns can use most of the ceiling before a tool starts a render.
   const deadline = opts.deadline ?? deadlineFor(CHAT_MAX_DURATION_S);
   const lang = opts.lang ?? user.lang;
@@ -357,39 +358,57 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   // Independent reads, fetched together: one after another they cost 1-2 s of silence before every model call.
   const [brand, prefs, memory, files, conns, thread, feedback, notes, by] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), handoffNotesFor(email, agentId), opts.by ?? byOf(user)]);
   const connected = connectedTargets(conns);
-  const past = thread.slice(-16);
-  const messages: Anthropic.MessageParam[] = past.map((m) => ({ role: m.role, content: m.content }));
-  if (!messages.length || messages[messages.length - 1].role !== "user") messages.push({ role: "user", content: text });
-
   const sys = system(brand, user, prefs, memory, files, connected, agentId, feedback, handoffBlock(notes));
+  const tools = toolsFor(agentId);
+  // The per-message ceiling (CHAT_TURN_MAX_USD), checked in code before every call (src/lib/chat-budget.ts). The first
+  // call: the thread, already cut by the history guard, is shortened from its oldest end until the call has room for a
+  // full answer. Every later call: estimated from the previous call's metered input (its cached prefix as a cache read)
+  // and output, plus the tool results added since.
+  const fit = fitFirstCall(CHAT_MODEL, trimHistory(thread), JSON.stringify(tools).length + sys[0].text.length + sys[1].text.length, sys[2].text.length);
+  const messages: Anthropic.MessageParam[] = fit.messages;
+  if (!messages.length || messages[messages.length - 1].role !== "user") messages.push({ role: "user", content: text });
+  let spent = 0;
+  let next: InputEst = { cached: 0, fresh: 0 };
+  let ended: "capped" | "cut" | "large" | null = null;
+  let cutText = "";
 
-  // The turn's overall deadline (rule 336): a model turn starts only with CHAT_TURN_MIN_MS left, and its stream ends
+  // Two ceilings end the loop before a call. The per-message cost (CHAT_TURN_MAX_USD, above): no room left for a useful
+  // answer. The turn's overall deadline (rule 336): a call starts only with CHAT_TURN_MIN_MS left, and its stream ends
   // CHAT_REPLY_MS before the deadline, so the reply is saved and answered before the platform's kill, and a tool that
   // charged inside the turn (generate_content, draft_items) has its own refund within the same deadline.
   let outOfTime = false;
-  for (let turn = 0; turn < 5; turn++) {
+  for (let turn = 0; turn < CHAT_MAX_CALLS; turn++) {
+    const maxTokens = turn === 0 ? fit.maxTokens : nextMaxTokens(CHAT_MODEL, spent, inputEstimateUsd(CHAT_MODEL, next, false));
+    if (!maxTokens) {
+      ended = turn === 0 ? "large" : "capped";
+      break;
+    }
     if (deadline - Date.now() < MODEL_BUDGET.CHAT_TURN_MIN_MS) { outOfTime = true; break; }
     const call = until(deadline - MODEL_BUDGET.CHAT_REPLY_MS, { cap: MODEL_BUDGET.CHAT_MS });
     let res: Anthropic.Message;
     try {
       res = await client.messages
-        .stream({ model: "claude-opus-5", max_tokens: 8000, system: sys, messages, tools: toolsFor(agentId), thinking: { type: "adaptive" }, output_config: { effort: "medium" } }, call)
+        .stream({ model: CHAT_MODEL, max_tokens: maxTokens, system: sys, messages, tools, thinking: { type: "adaptive" }, output_config: { effort: "medium" } }, call)
         .finalMessage();
     } catch (e) {
       if (call.signal.aborted) { outOfTime = true; break; }
       throw e;
     }
+    spent += costUsd(res.model, res.usage);
     await meter(user.email, res.model, "chat", res.usage, agentId);
     if (res.stop_reason === "refusal") break;
+    if (res.stop_reason === "max_tokens") {
+      // Cut off at its cap: a tool call in it may be incomplete, so none of them runs. The text so far is kept, marked.
+      ended = "cut";
+      cutText = textOf(res.content);
+      break;
+    }
     messages.push({ role: "assistant", content: res.content });
     const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
     if (!uses.length) {
-      const reply = res.content.filter((b) => b.type === "text").map((b) => (b as Anthropic.TextBlock).text).join("\n").trim();
-      const m: ChatMsg & { limit?: ChatLimit } = { role: "assistant", content: reply || "…", at: new Date().toISOString(), actions: actions.filter((a) => !a.startsWith("limit:")), agent: agentId, ...(made.length ? { items: made.slice(0, 10).map(chatItemOf) } : {}), ...handoffOf(actions), ...(proposed.length ? { proposals: proposed.slice(0, 5) } : {}) };
+      const m: ChatTurn = { role: "assistant", content: textOf(res.content) || "…", at: new Date().toISOString(), ...turnParts(actions, made, proposed), agent: agentId };
       await deliver(email, m, conv);
-      const lim = actions.find((a) => a.startsWith("limit:"));
-      if (lim) m.limit = lim.slice(6) as ChatLimit;
-      return m;
+      return withLimit(m, actions, spent);
     }
     const results: Anthropic.ToolResultBlockParam[] = [];
     for (const u of uses) {
@@ -405,12 +424,46 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
       results.push({ type: "tool_result", tool_use_id: u.id, content: out, is_error: isError });
     }
     messages.push({ role: "user", content: results });
+    next = { cached: (res.usage.cache_read_input_tokens ?? 0) + (res.usage.cache_creation_input_tokens ?? 0), fresh: (res.usage.input_tokens ?? 0) + (res.usage.output_tokens ?? 0) + estTokens(JSON.stringify(results).length) };
   }
-  const content = outOfTime ? OUT_OF_TIME_REPLY[lang] : "تم. تحقق من صندوق الموافقة.";
-  const m: ChatMsg = { role: "assistant", content, at: new Date().toISOString(), actions, ...(outOfTime ? { agent: agentId } : {}), ...(made.length ? { items: made.slice(0, 10).map(chatItemOf) } : {}), ...handoffOf(actions), ...(proposed.length ? { proposals: proposed.slice(0, 5) } : {}) };
+  // The loop ended without a closing answer: the request ran out of time, the calls ran out, the model refused, a call was
+  // cut off at its cap, or the ceiling left no room for another call. What the tools made is on the reply's cards and in
+  // the inbox either way, and a limit a tool hit still raises its dialog.
+  const content = outOfTime ? OUT_OF_TIME_REPLY[lang] : ended === "large" ? LARGE_REPLY[lang] : ended === "cut" ? (cutText ? `${cutText}\n\n${CUT_NOTE[lang]}` : CAPPED_REPLY[lang]) : ended === "capped" ? CAPPED_REPLY[lang] : DONE_REPLY[lang];
+  const m: ChatTurn = { role: "assistant", content, at: new Date().toISOString(), ...turnParts(actions, made, proposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}) };
   await deliver(email, m, conv);
+  return withLimit(m, actions, spent);
+}
+
+/** The text blocks of a model response, joined. */
+const textOf = (content: Anthropic.ContentBlock[]) => content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
+/** What every reply of a turn carries: its actions (without the `limit:*` tags), the items made, the handoff card and brand proposals. */
+function turnParts(actions: string[], made: Task[], proposed: BrandProposal[]): Pick<ChatMsg, "actions" | "items" | "handoff" | "proposals"> {
+  return { actions: actions.filter((a) => !a.startsWith("limit:")), ...(made.length ? { items: made.slice(0, 10).map(chatItemOf) } : {}), ...handoffOf(actions), ...(proposed.length ? { proposals: proposed.slice(0, 5) } : {}) };
+}
+/** After the reply is saved: the first limit a tool hit (the app raises its dialog) and the turn's model cost, neither saved. */
+function withLimit(m: ChatTurn, actions: string[], spent: number): ChatTurn {
+  const lim = actions.find((a) => a.startsWith("limit:"));
+  if (lim) m.limit = lim.slice(6) as ChatLimit;
+  m.usd = spent;
   return m;
 }
+
+/** The chat model. Conversation turns move to Sonnet only after the golden eval and the Gulf-dialect check (pricing plan phase 2). */
+export const CHAT_MODEL = "claude-opus-5";
+/** A turn's reply plus what only the route reads (never saved, never sent to the browser): the limit dialog to raise and what the turn's model calls cost in USD. */
+export type ChatTurn = ChatMsg & { limit?: ChatLimit; usd?: number };
+const DONE_REPLY = { ar: "تم. تحقق من صندوق الموافقة.", en: "Done. Check your approvals inbox." } as const;
+const CAPPED_REPLY = {
+  ar: "وصل هذا الرد إلى حدّه فتوقفت هنا. ما أنجزته ظاهر في البطاقات وفي صندوق الموافقة، واكتب «كمّل» إن أردت أن أتابع.",
+  en: "This reply reached its limit, so I stopped here. What I did is on the cards and in your approvals inbox; say \"continue\" if you want me to carry on.",
+} as const;
+const CUT_NOTE = { ar: "(انقطع الرد عند حدّه. اكتب «كمّل» لأتابع.)", en: "(The reply was cut off at its limit. Say \"continue\" and I will carry on.)" } as const;
+/** No model call was made: even the owner's message alone, with this workspace, leaves no room inside the ceiling. Not counted. */
+const LARGE_REPLY = {
+  ar: "لم أستطع الرد على هذه الرسالة: ملفات مساحة العمل كبيرة جداً على رسالة واحدة. اختصر ملفاتك الطويلة في صفحة الملفات أو ابدأ محادثة جديدة، ثم أعد المحاولة. لم تُحسب هذه الرسالة.",
+  en: "I could not answer this message: your workspace files are too large for one message. Shorten your long files on the Files page or start a new conversation, then try again. This message was not counted.",
+} as const;
 
 /** The handoff a turn proposed (its `handoff:{id}` action), as the reply's card reference. One per turn at most. */
 function handoffOf(actions: string[]): Pick<ChatMsg, "handoff"> {

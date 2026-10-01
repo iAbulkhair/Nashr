@@ -27,38 +27,31 @@ export const clientIp = (req: Request) =>
   (req.headers.get("x-forwarded-for") ?? "").split(",").pop()!.trim() || "unknown";
 
 /**
- * Chat turns per account (the owner's email: members share the account's buckets). A turn is free in credits but is the
- * most expensive call in the product (up to five model calls with the full workspace in the prompt, $0.05-$0.26 a turn
- * by docs/system/costs.md), so the spend of a single account is bounded here.
- *
- * A paid account: generous enough that no real conversation hits it, roughly a day of continuous use. A trial account
- * (rule 331): signing up is free (five accounts per IP per hour), so its ceiling is the conservative one, about what
- * the pricing design gives a whole trial (docs/superpowers/specs/2026-09-29-pricing-design.md: "about 30 chat
- * messages"), here per day: at most 30 × $0.26 = $7.80 a day per trial account instead of $52. An ended trial gets no
- * turn at all (`trialOver`, checked by both chat routes before this). The monthly per-plan allowance of that design
- * (250 / 650 / 1,300) is not built: its open questions are the founder's.
+ * Chat turns per account, in a short window (the owner's email: members, brands and connected apps share the account's
+ * buckets). A turn is the most expensive call in the product (up to five model calls with the full workspace in the
+ * prompt), so a burst from one account is bounded here, before the month's message allowance is touched
+ * (src/lib/chat-allowance.ts). Generous enough that no real conversation hits it: the ceiling is roughly a day of
+ * continuous use. The same numbers on every plan: a trial is bounded by its 30 messages for the whole trial
+ * (CHAT_ALLOWANCE.trial, counted once), and an ended trial gets no turn at all (`trialOver`, checked by both chat routes
+ * before this). Rule 331.
  */
 export const CHAT_PER_HOUR = 40;
 export const CHAT_PER_DAY = 200;
-export const CHAT_TRIAL_PER_HOUR = 10;
-export const CHAT_TRIAL_PER_DAY = 30;
-/** The hourly and daily chat ceilings of a plan. */
-export const chatCaps = (plan: User["plan"]): { hour: number; day: number } =>
-  plan === "trial" ? { hour: CHAT_TRIAL_PER_HOUR, day: CHAT_TRIAL_PER_DAY } : { hour: CHAT_PER_HOUR, day: CHAT_PER_DAY };
+/** The hourly and daily chat ceilings, by the window `chatRefusal` names. */
+export const CHAT_CAPS: Readonly<{ hour: number; day: number }> = { hour: CHAT_PER_HOUR, day: CHAT_PER_DAY };
 /**
  * Null when the turn may go ahead, else which window refused it, so the owner is told "in an hour" or "tomorrow". The
  * hour is counted first and the day only for a turn the hour let through: counting both on every attempt let refused
- * retries inside the hour use up the day, so a trial owner told "in an hour" after 10 turns met "tomorrow" next, with
- * 10 of the 30 used (rule 331). A refusal by the hour reads the day's count without adding to it, and names the day
- * when that is spent too, being the longer wait. Two round trips one after the other only for a turn the hour allows.
+ * retries inside the hour use up the day, so an owner told "in an hour" met "tomorrow" next (rule 331). A refusal by the
+ * hour reads the day's count without adding to it, and names the day when that is spent too, being the longer wait. Two
+ * round trips one after the other only for a turn the hour allows.
  */
-export async function chatRefusal(u: Pick<User, "email" | "plan">): Promise<"hour" | "day" | null> {
-  const cap = chatCaps(u.plan);
-  if (!(await allow(`chat:h:${u.email}`, cap.hour, 3600))) {
+export async function chatRefusal(u: Pick<User, "email">): Promise<"hour" | "day" | null> {
+  if (!(await allow(`chat:h:${u.email}`, CHAT_PER_HOUR, 3600))) {
     const used = Number((await db.get<number | string>(`rate:chat:d:${u.email}`)) ?? 0);
-    return used >= cap.day ? "day" : "hour";
+    return used >= CHAT_PER_DAY ? "day" : "hour";
   }
-  return (await allow(`chat:d:${u.email}`, cap.day, 86400)) ? null : "day";
+  return (await allow(`chat:d:${u.email}`, CHAT_PER_DAY, 86400)) ? null : "day";
 }
 
 /**

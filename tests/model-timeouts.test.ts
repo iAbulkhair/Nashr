@@ -223,8 +223,10 @@ describe("every charged model call ends by its caller's deadline, so the refund 
     for (const f of ["src/app/api/chat/route.ts", "src/app/api/onboard/route.ts", "src/app/api/cron/weekly/route.ts", "src/app/api/schedule/route.ts", "src/app/api/cron/routines/route.ts", "src/app/api/generate/route.ts", "src/app/api/mcp/route.ts"]) {
       expect(src(f), f).toMatch(/const deadline = deadlineFor\(maxDuration\);/);
     }
-    const chatCalls = (f: string) => src(f).split("\n").filter((l) => /await chat\(/.test(l));
+    // Since pricing phase 2 (#237) a turn runs inside `runChatTurn(…, () => chat(…))`, so the calls read `=> chat(`.
+    const chatCalls = (f: string) => src(f).split("\n").filter((l) => /(await|=>) chat\(/.test(l));
     expect(chatCalls("src/app/api/chat/route.ts")).toHaveLength(2);
+    expect(chatCalls("src/app/api/mcp/route.ts")).toHaveLength(1);
     for (const f of ["src/app/api/chat/route.ts", "src/app/api/mcp/route.ts"]) for (const l of chatCalls(f)) expect(l, f).toMatch(/\bdeadline\b/);
     expect(src("src/app/api/onboard/route.ts")).toMatch(/buildFromSite\([\s\S]*?, deadline\);/);
     expect(src("src/app/api/cron/weekly/route.ts")).toMatch(/runWeekly\(u, systemBy\("cron"\), \{ deadline \}\)/);

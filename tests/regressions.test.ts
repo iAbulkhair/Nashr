@@ -7,7 +7,7 @@ import { deleteFile, listFiles, writeFile } from "@/lib/files";
 import { deleteConnection, listConnections, OAUTH_COOKIE, saveConnection, saveState } from "@/lib/connectors/store";
 import { getBrand, saveBrand, type Brand } from "@/lib/brand";
 import { EDITABLE_BRAND_FIELDS, runTool } from "@/lib/chat";
-import { CHAT_TRIAL_PER_HOUR, chatRefusal } from "@/lib/rate";
+import { CHAT_PER_HOUR, chatRefusal } from "@/lib/rate";
 import { currentUser, isAdminCookie } from "@/lib/auth";
 
 /** Each test here is a bug that was live in the code and is now fixed; the test is what keeps it fixed. */
@@ -108,10 +108,10 @@ describe("chat is bounded per account", () => {
   it("stops a single account after the hourly ceiling and answers 429", async () => {
     const u = await newUser("chatcap");
     await signIn(u.email);
-    // A new account is a trial, whose ceiling is the trial's (rule 331, tests/chat-trial.test.ts has the paid one).
-    for (let i = 0; i < CHAT_TRIAL_PER_HOUR; i++) expect(await chatRefusal(u)).toBeNull();
+    // The same ceiling on every plan (rule 331, tests/chat-trial.test.ts).
+    for (let i = 0; i < CHAT_PER_HOUR; i++) expect(await chatRefusal(u)).toBeNull();
     expect(await chatRefusal(u)).toBe("hour");
-    // A turn is free in credits and can run five model calls, so this is the only ceiling on one account's model spend.
+    // A burst is refused before the month's chat allowance is touched (src/lib/chat-allowance.ts).
     expect((await chatRoute.POST(json("/api/chat", "POST", { text: "مرحبا" }))).status).toBe(429);
   });
 });

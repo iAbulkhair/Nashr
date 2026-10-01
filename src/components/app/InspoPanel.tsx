@@ -5,7 +5,8 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { Inspo } from "@/lib/inspo";
 import type { Lang } from "@/lib/i18n";
 import { Icon, channelIcon } from "./Icons";
-import { limitFromError } from "./LimitModal";
+import type { ChatStatus } from "@/lib/chat-allowance";
+import { limitFromError, raiseLimit } from "./LimitModal";
 
 export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang; items: Inspo[] }) {
   const r = useRouter();
@@ -27,12 +28,14 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
       : `Use this as a reference for the next content: "${i.title}" — ${i.why} Sample: "${i.sample}". Adapt it to our brand and tell me what you suggest.`;
     setRefusal("");
     const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json", "x-lang": lang }, body: JSON.stringify({ text }) }).catch(() => null);
-    // A refused turn writes nothing to the chat (rules 330-331): an ended trial raises the subscription dialog, a ceiling
-    // shows the server's message here, and the owner stays on this page with the reference still in front of them.
+    // A refused turn writes nothing to the chat (rules 330-331): an ended trial raises the subscription dialog, so do the
+    // month's used-up chat messages (402 chat_allowance / chat_credits, rules 308-310), a ceiling shows the server's
+    // message here, and the owner stays on this page with the reference still in front of them.
     if (res && (res.status === 402 || res.status === 429)) {
-      const j = (await res.json().catch(() => ({}))) as { error?: string; message?: { content?: string } };
+      const j = (await res.json().catch(() => ({}))) as { error?: string; message?: { content?: string }; chat?: ChatStatus };
       setBusy("");
-      if (!limitFromError(j.error) && typeof j.message?.content === "string") setRefusal(j.message.content);
+      if (j.error === "chat_allowance" || j.error === "chat_credits") raiseLimit(j.error === "chat_allowance" ? "chat" : "chat_credits", { period: j.chat?.period, hold: j.chat?.overflow.hold, allowance: j.chat?.allowance });
+      else if (!limitFromError(j.error) && typeof j.message?.content === "string") setRefusal(j.message.content);
       return;
     }
     r.push(`/${lang}/app/chat`);

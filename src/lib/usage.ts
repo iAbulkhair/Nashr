@@ -47,7 +47,7 @@ export function costUsd(model: string, u: TokenUsage): number {
 export function usageMonthKeys(email: string, month: string): string[] {
   const k = `usage:${email}:${month}`;
   return [
-    ...["in", "out", "calls", "usd_micro", "cache_read", "cache_write"].map((p) => `${k}:${p}`),
+    ...["in", "out", "calls", "usd_micro", "cache_read", "cache_write", "chat_msgs", "chat_over", "chat_cred"].map((p) => `${k}:${p}`),
     ...KINDS.flatMap((kind) => [`${k}:kind:${kind}`, `${k}:kind:${kind}:in`, `${k}:kind:${kind}:out`, `${k}:kind:${kind}:usd_micro`]),
     ...AGENT_IDS.flatMap((id) => [`${k}:agent:${id}:calls`, `${k}:agent:${id}:usd_micro`]),
   ];
@@ -88,16 +88,28 @@ export async function meter(email: string | undefined, model: string, kind: Kind
   }
 }
 
+/**
+ * Chat messages (owner turns, not model calls: `kind:chat` counts calls) per account per month, under the same
+ * `usage:{email}:{YYYY-MM}` prefix so `usageMonthKeys` and `wipeAccount` cover them (src/lib/chat-allowance.ts).
+ * `chat_msgs` counts the messages inside the plan's allowance, `chat_over` the ones continued on credits and
+ * `chat_cred` the credits those were billed (so a pace of credit use counts them).
+ */
+export const chatMsgKey = (email: string, month = monthKey()) => `usage:${email}:${month}:chat_msgs`;
+export const chatOverKey = (email: string, month = monthKey()) => `usage:${email}:${month}:chat_over`;
+export const chatCredKey = (email: string, month = monthKey()) => `usage:${email}:${month}:chat_cred`;
+/** The trial's messages are granted once for the whole trial, not per month. Deleted with the account (`wipeAccount`). */
+export const chatTrialKey = (email: string) => `chatm:${email}:trial`;
+
 /** Tokens and money for one kind of model call. */
 export type KindUsage = { calls: number; in: number; out: number; usd: number };
 /** Calls and money for one agent. */
 export type AgentUsage = { calls: number; usd: number };
-export type UsageSummary = { month: string; in: number; out: number; calls: number; usd: number; kinds: Record<string, number>; /** tokens and cost per kind; the average of one request of that kind is usd / calls */ byKind: Record<string, KindUsage>; /** calls and cost per agent (only agents with calls) */ byAgent: Partial<Record<AgentId, AgentUsage>>; /** input tokens served from the prompt cache / written to it */ cacheRead: number; cacheWrite: number };
+export type UsageSummary = { month: string; in: number; out: number; calls: number; usd: number; kinds: Record<string, number>; /** tokens and cost per kind; the average of one request of that kind is usd / calls */ byKind: Record<string, KindUsage>; /** calls and cost per agent (only agents with calls) */ byAgent: Partial<Record<AgentId, AgentUsage>>; /** input tokens served from the prompt cache / written to it */ cacheRead: number; cacheWrite: number; /** chat messages this month inside the plan's allowance / continued on credits (a trial's are under `chatTrialKey`), and the credits the latter were billed */ chatMessages: number; chatOverflow: number; chatCredits: number };
 
 export async function getUsage(email: string | "_all", month = monthKey()): Promise<UsageSummary> {
   const k = `usage:${email}:${month}`;
   const n = async (s: string) => Number((await db.get<number>(`${k}:${s}`)) ?? 0);
-  const [inp, out, calls, micro, cacheRead, cacheWrite] = await Promise.all([n("in"), n("out"), n("calls"), n("usd_micro"), n("cache_read"), n("cache_write")]);
+  const [inp, out, calls, micro, cacheRead, cacheWrite, chatMessages, chatOverflow, chatCredits] = await Promise.all([n("in"), n("out"), n("calls"), n("usd_micro"), n("cache_read"), n("cache_write"), n("chat_msgs"), n("chat_over"), n("chat_cred")]);
   const kinds: Record<string, number> = {};
   const byKind: Record<string, KindUsage> = {};
   const [per, perAgent] = await Promise.all([
@@ -115,5 +127,5 @@ export async function getUsage(email: string | "_all", month = monthKey()): Prom
     const [c, m] = perAgent[i];
     if (c) byAgent[id] = { calls: c, usd: Math.round(m / 100) / 1e4 };
   });
-  return { month, in: inp, out, calls, usd: Math.round(micro / 1e4) / 100, kinds, byKind, byAgent, cacheRead, cacheWrite };
+  return { month, in: inp, out, calls, usd: Math.round(micro / 1e4) / 100, kinds, byKind, byAgent, cacheRead, cacheWrite, chatMessages, chatOverflow, chatCredits };
 }
