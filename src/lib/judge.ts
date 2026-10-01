@@ -49,9 +49,9 @@ const isAutofail = (v: unknown): v is Autofail => typeof v === "string" && Objec
  */
 export type JudgeContext = Grounding & { via?: ActivityVia };
 
-const WEIGHTS = { completeness: 0.3, brand: 0.2, honesty: 0.25, language: 0.15, format: 0.1 } as const;
+export const WEIGHTS = { completeness: 0.3, brand: 0.2, honesty: 0.25, language: 0.15, format: 0.1 } as const;
 /** The judge reads whole items. A 3500-char cut made every long-form item (articles, memos, PRDs) score as "cut off". */
-const JUDGE_BODY_CHARS = 24000;
+export const JUDGE_BODY_CHARS = 24000;
 const clamp = (n: unknown) => Math.max(0, Math.min(100, Math.round(Number(n) || 0)));
 
 export type JudgeItem = { channel: string; title: string; body: string };
