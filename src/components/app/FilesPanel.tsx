@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import type { AppDict } from "@/lib/app-i18n";
 import type { WFile } from "@/lib/files";
 import ReadOnlyNote from "./ReadOnlyNote";
+import { readImportStream } from "./catalogImport";
 
 /**
  * `canImport` = `can(u, "catalog.import")`; `locked` = the core memory files this person may not write or delete
@@ -28,35 +29,24 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
   async function importCatalog() {
     setImporting(true);
     setImportMsg(f.importing);
-    const res = await fetch("/api/catalog", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => null);
-    // Only a 200 event stream is read as one. A refusal (403 JSON) or a plain-text error (400 no_site) has a body too,
-    // but no event in it, so reading it as a stream left "Importing…" on screen for good.
-    if (!res || !res.ok || !res.body || !(res.headers.get("content-type") ?? "").includes("text/event-stream")) {
-      setImportMsg(res ? refusal(res.status, f.importFail) : f.importFail);
-      setImporting(false);
-      return;
-    }
-    const reader = res.body.getReader();
-    const dec = new TextDecoder();
-    let buf = "";
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const parts = buf.split("\n\n");
-      buf = parts.pop() ?? "";
-      for (const p of parts) {
-        try {
-          const j = JSON.parse(p.replace(/^data: /, ""));
-          if (j.progress) setImportMsg(`${f.importing} ${j.progress}`);
-          if (j.done) setImportMsg(j.count ? `${f.imported} ${j.count}` : f.importFail);
-          if (j.error) setImportMsg(f.importFail);
-        } catch {}
+    try {
+      const res = await fetch("/api/catalog", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => null);
+      // Only a 200 event stream is read as one. A refusal (403 JSON) or a plain-text error (400 no_site) has a body too,
+      // but no event in it, so reading it as a stream left "Importing…" on screen for good.
+      if (!res || !res.ok || !res.body || !(res.headers.get("content-type") ?? "").includes("text/event-stream")) {
+        setImportMsg(res ? refusal(res.status, f.importFail) : f.importFail);
+        return;
       }
+      // A dropped connection mid-stream, or a stream that ends without a result, is reported as a failed import.
+      const end = await readImportStream(res.body, (p) => setImportMsg(`${f.importing} ${p}`));
+      setImportMsg(end.ok ? `${f.imported} ${end.count}` : f.importFail);
+      if (end.ok) {
+        setOpen("products.md");
+        r.refresh();
+      }
+    } finally {
+      setImporting(false);
     }
-    setImporting(false);
-    setOpen("products.md");
-    r.refresh();
   }
 
   async function save(name: string, content: string) {
