@@ -1,0 +1,106 @@
+"use client";
+import { useCallback, useEffect, useState } from "react";
+import type { Lead, LeadKind } from "@/lib/leads";
+
+/** GET /api/admin/leads. */
+type Page = { leads: Lead[]; total: number; unread: number; seenAt: string | null; scanCap: number; mail: { ready: boolean; forwardTo: boolean } };
+
+const PAGE = 50;
+const S = {
+  en: {
+    title: "Leads", note: "Enterprise and early-customer requests and affiliate applications, newest first. Visitors were told the team will reply soon.",
+    sales: "Sales leads", all: "All tickets", when: "Date", type: "Type", who: "Name / company", message: "Message", contact: "Contact",
+    none: "No leads yet.", loading: "Loading…", failed: "Could not load the leads", prev: "Newer", next: "Older", export: "Export CSV", isNew: "new",
+    mailOff: "Email is not set up (MAIL_FROM on a verified domain), so new leads are not reaching your inbox. Check this tab daily until it is.",
+    noForward: "WAITLIST_TO is not set, so no lead is emailed to you. This tab is the only place they appear.",
+    kinds: { enterprise: "Enterprise", "early-adopter": "Early customer", affiliate: "Affiliate", support: "Support" } as Record<LeadKind, string>,
+    of: "of",
+  },
+  ar: {
+    title: "العملاء المحتملون", note: "طلبات الشركات والعملاء الأوائل وطلبات برنامج الشركاء، الأحدث أولاً. قيل للزائر إن الفريق سيرد قريباً.",
+    sales: "العملاء المحتملون", all: "كل التذاكر", when: "التاريخ", type: "النوع", who: "الاسم / الشركة", message: "الرسالة", contact: "التواصل",
+    none: "لا طلبات بعد.", loading: "جارٍ التحميل…", failed: "تعذّر تحميل الطلبات", prev: "الأحدث", next: "الأقدم", export: "تصدير CSV", isNew: "جديد",
+    mailOff: "البريد غير مفعّل (يلزم MAIL_FROM على دومين موثَّق)، فالطلبات الجديدة لا تصل إلى بريدك. راجع هذا التبويب يومياً حتى يُفعَّل.",
+    noForward: "WAITLIST_TO غير مضبوط، فلا يُرسل أي طلب إلى بريدك. هذا التبويب هو المكان الوحيد الذي تظهر فيه.",
+    kinds: { enterprise: "شركات", "early-adopter": "عميل أول", affiliate: "شريك", support: "دعم" } as Record<LeadKind, string>,
+    of: "من",
+  },
+} as const;
+
+/**
+ * Founder console, Leads tab (#134). Opening it marks every lead up to now as read (`onSeen` clears the tab's count).
+ * Every value is visitor-typed and rendered as text only.
+ */
+export default function LeadsPanel({ lang, onSeen }: { lang: "ar" | "en"; onSeen?: () => void }) {
+  const L = S[lang];
+  const [all, setAll] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<Page | null>(null);
+  const [err, setErr] = useState("");
+
+  const load = useCallback(async (nextAll: boolean, nextOffset: number) => {
+    setErr("");
+    const r = await fetch(`/api/admin/leads?limit=${PAGE}&offset=${nextOffset}${nextAll ? "&all=1" : ""}`).catch(() => null);
+    const j = r ? await r.json().catch(() => null) : null;
+    if (!j?.ok) { setErr(`${L.failed}${r ? ` (HTTP ${r.status})` : ""}`); return; }
+    setPage(j as Page);
+  }, [L.failed]);
+
+  useEffect(() => {
+    void Promise.resolve().then(() => load(false, 0)).then(async () => {
+      const r = await fetch("/api/admin/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "seen" }) }).catch(() => null);
+      if (r?.ok) onSeen?.();
+    });
+  }, [load, onSeen]);
+
+  const go = (nextAll: boolean, nextOffset: number) => { setAll(nextAll); setOffset(nextOffset); void load(nextAll, nextOffset); };
+  const at = (v: string) => (v ? v.slice(0, 16).replace("T", " ") : "—");
+
+  return (
+    <section className="card card-sm" data-testid="leads-panel">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-display text-lg font-semibold text-oasis">{L.title}</h2>
+        <div className="flex flex-wrap gap-2 text-sm">
+          <button type="button" onClick={() => go(false, 0)} aria-pressed={!all} className={`rounded-full px-3 py-1 ${!all ? "bg-oasis text-mist" : "bg-salt-dim"}`}>{L.sales}</button>
+          <button type="button" onClick={() => go(true, 0)} aria-pressed={all} className={`rounded-full px-3 py-1 ${all ? "bg-oasis text-mist" : "bg-salt-dim"}`}>{L.all}</button>
+          <button type="button" onClick={() => window.open(`/api/admin/leads?format=csv${all ? "&all=1" : ""}`, "_blank")} className="btn btn-secondary btn-xs">{L.export}</button>
+        </div>
+      </div>
+      <p className="mt-1 text-xs text-ink/60">{L.note}</p>
+      {page && !page.mail.ready && <p role="alert" className="mt-3 rounded-lg bg-sadu/10 px-3 py-2 text-sm text-sadu-deep">{L.mailOff}</p>}
+      {page && page.mail.ready && !page.mail.forwardTo && <p role="alert" className="mt-3 rounded-lg bg-sadu/10 px-3 py-2 text-sm text-sadu-deep">{L.noForward}</p>}
+      {err && <p className="mt-3 text-sm text-sadu">{err}</p>}
+      {!page && !err ? <p className="mt-3 text-sm text-ink/50">{L.loading}</p> : page && page.leads.length === 0 ? <p className="mt-3 text-sm text-ink/50">{L.none}</p> : page && (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-salt-dim text-start text-xs uppercase tracking-wide text-ink/60">
+              <tr><th className="p-2 text-start">{L.when}</th><th className="text-start">{L.type}</th><th className="text-start">{L.who}</th><th className="text-start">{L.message}</th><th className="text-start">{L.contact}</th></tr>
+            </thead>
+            <tbody>
+              {page.leads.map((l, i) => {
+                const fresh = l.kind !== "support" && (!page.seenAt || l.at > page.seenAt);
+                return (
+                  <tr key={`${l.at}-${i}`} className="border-t border-ink/5 align-top">
+                    <td className="whitespace-nowrap p-2 font-mono text-xs" dir="ltr">{at(l.at)}{fresh && <span className="ms-2 rounded bg-saffron px-1.5 font-sans text-[10px] font-semibold text-ink">{L.isNew}</span>}</td>
+                    <td className="whitespace-nowrap text-xs">{L.kinds[l.kind]}{l.kind === "support" && <span className="text-ink/50"> · {l.type}</span>}</td>
+                    <td className="text-xs" dir="auto">{l.name || "—"}{l.company && <div className="text-ink/60">{l.company}</div>}</td>
+                    <td className="max-w-md text-xs" dir="auto"><p className="line-clamp-4 whitespace-pre-wrap break-words">{l.message}</p>{l.page && <p className="mt-1 font-mono text-[10px] text-ink/40" dir="ltr">{l.page} · {l.lang}</p>}</td>
+                    <td className="text-xs" dir="ltr">
+                      {l.email && <a href={`mailto:${l.email}`} className="text-oasis underline">{l.email}</a>}
+                      {l.phone && <div><a href={`https://wa.me/${l.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="underline">{l.phone}</a></div>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="mt-3 flex items-center gap-2 text-xs text-ink/60">
+            <button type="button" disabled={offset === 0} onClick={() => go(all, Math.max(0, offset - PAGE))} className="btn btn-secondary btn-xs">{L.prev}</button>
+            <span className="tnum">{offset + 1}–{Math.min(offset + PAGE, page.total)} {L.of} {page.total}</span>
+            <button type="button" disabled={offset + PAGE >= page.total} onClick={() => go(all, offset + PAGE)} className="btn btn-secondary btn-xs">{L.next}</button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
