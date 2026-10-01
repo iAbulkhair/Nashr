@@ -111,7 +111,10 @@ test.describe("signup", () => {
     await expect(page.locator("form p[aria-live='polite']")).toHaveText("1 of 3 password rules met");
     const submit = page.getByRole("button", { name: "Create account" });
     await expect(submit).toHaveAttribute("aria-describedby", "signup-rules");
-    await submit.click();
+    // Playwright counts aria-disabled="true" as disabled and would wait for "enabled" forever; force skips that wait.
+    // The button is still a real, focusable submit, which is the point of the rule.
+    await expect(submit).toHaveAttribute("aria-disabled", "true");
+    await submit.click({ force: true });
     await expect(formAlert(page)).toHaveText("Your password still needs: At least 8 characters, At least one number.");
     await expect(password, "focus goes back to the password").toBeFocused();
 
@@ -310,7 +313,10 @@ test.describe("password reset", () => {
     const password = page.getByRole("textbox", { name: "New password" });
     await fillWhenReady(password, "abc");
     await expect(page.locator("#reset-rules li").nth(0)).toContainText("(not met)");
-    await page.getByRole("button", { name: "Save and log in" }).click();
+    const save = page.getByRole("button", { name: "Save and log in" });
+    await expect(save).toHaveAttribute("aria-disabled", "true");
+    // force: Playwright treats aria-disabled as disabled and would otherwise wait for "enabled" until the timeout.
+    await save.click({ force: true });
     await expect(formAlert(page)).toHaveText("Your password still needs: At least 8 characters, At least one number.");
     await password.fill("abcdefg1");
     await expect(page.locator("form p[aria-live='polite']")).toHaveText("3 of 3 password rules met");

@@ -5,35 +5,11 @@ import { useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
 import { PLAN_CREDITS } from "@/lib/pricing";
-import { authMessage, failureCode, passwordChecks, postJson, RULE_TEXT, rulesStatus, succeeded, unmetRules } from "@/lib/auth-client";
+import { authMessage, failureCode, passwordChecks, postJson, succeeded, unmetRules } from "@/lib/auth-client";
+import { PasswordRules } from "./PasswordRules";
 import { Turnstile } from "./Turnstile";
 
 const input = "input";
-
-/**
- * The password rules with a state that does not depend on colour (rule 324): a visible check or cross, the words
- * "met" / "not met" for screen readers inside each item, and ONE live status line whose text changes ("2 of 3 password
- * rules met"). The list itself is not live: its text used to stay the same while only the colour changed, so a screen
- * reader announced nothing. The password inputs carry no native `minLength`: the browser would block the submit with
- * its own tooltip before the form could say which rule is unmet.
- */
-function PasswordRules({ id, rules, checks, lang }: { id: string; rules: readonly string[]; checks: readonly boolean[]; lang: Lang }) {
-  const T = RULE_TEXT[lang];
-  return (
-    <>
-      <ul id={id} className="grid gap-1 text-xs">
-        {rules.map((rule, i) => (
-          <li key={rule} className={`flex items-center gap-2 ${checks[i] ? "text-oasis" : "text-ink/60"}`}>
-            <span aria-hidden className="inline-block w-3 text-center font-bold">{checks[i] ? "✓" : "✗"}</span>
-            {rule}
-            <span className="sr-only"> ({checks[i] ? T.met : T.unmet})</span>
-          </li>
-        ))}
-      </ul>
-      <p className="sr-only" aria-live="polite">{rulesStatus(checks, lang)}</p>
-    </>
-  );
-}
 
 const SU = {
   ar: { emailStep: "ابدأ مجاناً", cont: "متابعة", edit: "تعديل", rules: ["8 أحرف على الأقل", "حرف واحد على الأقل", "رقم واحد على الأقل"], trial: `تجربة 3 أيام · ${PLAN_CREDITS.trial} كريدت · بدون بطاقة دفع`, legal1: "بالمتابعة أنت توافق على", terms: "الشروط", and: "و", privacy: "سياسة الخصوصية", nameOpt: "اسمك" },

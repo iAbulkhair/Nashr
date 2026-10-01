@@ -27,12 +27,15 @@ export async function POST(req: Request) {
   // manual reset) was never shown to anyone. It is shown until a real sender exists.
   const mail = mailReady();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ ok: false, error: "bad_email" }, { status: 400 });
-  // Cloudflare Turnstile when both keys are set (src/lib/turnstile.ts), before the throttles: a script without a token
-  // cannot use up an address's three links per 15 minutes. The answer says nothing about whether the address exists.
-  // Rule 317.
+  // The per-IP limit comes first: every token sent costs an outbound siteverify call to Cloudflare (up to 5 s, carrying
+  // the site's secret), so a script must not be able to make those calls without limit. Rule 317.
+  if (!(await allow(`forgot:ip:${clientIp(req)}`, 8, 900))) return NextResponse.json({ ok: true, mail });
+  // Cloudflare Turnstile when both keys are set (src/lib/turnstile.ts), before the per-address limit: a script without a
+  // token cannot use up an address's three links per 15 minutes. The answer says nothing about whether the address
+  // exists. Rule 317.
   const refused = await captchaRefusal(req, b.turnstile);
   if (refused) return refused;
-  if (!(await allow(`forgot:ip:${clientIp(req)}`, 8, 900)) || !(await allow(`forgot:em:${email}`, 3, 900))) return NextResponse.json({ ok: true, mail });
+  if (!(await allow(`forgot:em:${email}`, 3, 900))) return NextResponse.json({ ok: true, mail });
   const login = await getLogin(email);
   // A member whose account is gone has nothing to sign in to: no link, and the same answer as an unknown address.
   const target: ResetRecord | null = !login ? null : login.kind === "owner" ? { email: login.user.email, kind: "owner" } : login.owner ? { email: login.member.email, kind: "member" } : null;

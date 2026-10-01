@@ -21,7 +21,7 @@ const ip = () => ({ "x-real-ip": `198.51.100.${++ipN}` });
 
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
 
-describe("the founder console's key session (rules 310-314)", () => {
+describe("the founder console's key session (rules 310-314, 319)", () => {
   beforeEach(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); signOut(); });
 
   it("310: a right key sets an opaque session id, never the key, and opens the console", async () => {
@@ -84,6 +84,50 @@ describe("the founder console's key session (rules 310-314)", () => {
     expect((await overview.GET(json("/api/admin/overview", "GET"))).status).toBe(401);
     signOut();
     expect((await overview.GET(json("/api/admin/overview", "GET", undefined, { "x-admin-key": KEY, ...ip() }))).status).toBe(200);
+  });
+
+  it("319: an impersonation opened with the key ends with the key session's logout and with a key rotation", async () => {
+    const users = await import("@/app/api/admin/users/[email]/route");
+    const { currentUser } = await import("@/lib/auth");
+    const customer = await createUser({ email: `imp-${Date.now().toString(36)}@test.example`, name: "Customer", phone: "", password: "abc12345", lang: "en" });
+    const impersonate = async () => {
+      const res = await users.POST(json("/api/admin/users/x", "POST", { action: "impersonate", reason: "support" }), { params: Promise.resolve({ email: encodeURIComponent(customer.email) }) });
+      expect(res.status).toBe(200);
+      const u = await currentUser();
+      expect(u?.email).toBe(customer.email);
+      expect(u?.actor).toMatchObject({ kind: "founder", impersonating: "key" });
+      return jar().get("nashr_session")!;
+    };
+
+    // Opened from a key session, then "End key session": the customer session stops working too.
+    await adminSignIn();
+    const first = await impersonate();
+    expect((await adminLogin.DELETE()).status).toBe(200);
+    expect(await currentUser(), "logout of the key session").toBeNull();
+    expect(await db.get(`session:${first}`), "the record may linger until its TTL, but it opens nothing").not.toBeNull();
+
+    // Opened from a key session, then the key is rotated: the customer session stops working.
+    signOut();
+    await adminSignIn();
+    await impersonate();
+    vi.stubEnv("WAITLIST_ADMIN_KEY", "a-rotated-admin-key-555555");
+    expect(await currentUser(), "key rotated").toBeNull();
+    vi.stubEnv("WAITLIST_ADMIN_KEY", KEY);
+
+    // Opened with the x-admin-key header (no key session): tied to the key alone.
+    signOut();
+    const res = await users.POST(json("/api/admin/users/x", "POST", { action: "impersonate" }, { "x-admin-key": KEY, ...ip() }), { params: Promise.resolve({ email: encodeURIComponent(customer.email) }) });
+    expect(res.status).toBe(200);
+    expect((await currentUser())?.email).toBe(customer.email);
+    vi.stubEnv("WAITLIST_ADMIN_KEY", "");
+    expect(await currentUser(), "key removed").toBeNull();
+
+    // A key impersonation record without the binding (written before this check) opens nothing.
+    vi.stubEnv("WAITLIST_ADMIN_KEY", KEY);
+    await db.set("session:" + "c".repeat(64), { email: customer.email, at: Date.now(), imp: "key" }, 600);
+    signOut();
+    jar().set("nashr_session", "c".repeat(64));
+    expect(await currentUser()).toBeNull();
   });
 
   it("314: the login route compares with sameSecret and stores no key", () => {
@@ -283,15 +327,28 @@ describe("password rules are not colour-only (rule 324)", () => {
   });
 
   it("the forms render a text state per rule, one live line, and a focusable aria-disabled submit", () => {
+    const rules = readFileSync("src/components/app/PasswordRules.tsx", "utf8");
+    expect(rules).not.toMatch(/<ul[^>]*aria-live/);
+    expect(rules).toMatch(/className="sr-only"> \(\{checks\[i\] \? T\.met : T\.unmet\}\)/);
+    expect(rules).toMatch(/<p className="sr-only" aria-live="polite">\{rulesStatus\(checks, lang\)\}<\/p>/);
     const src = readFileSync("src/components/app/AuthForm.tsx", "utf8");
-    expect(src).not.toMatch(/<ul[^>]*aria-live/);
-    expect(src).toMatch(/className="sr-only"> \(\{checks\[i\] \? T\.met : T\.unmet\}\)/);
-    expect(src).toMatch(/<p className="sr-only" aria-live="polite">\{rulesStatus\(checks, lang\)\}<\/p>/);
     // The submit is no longer disabled by the rules: it stays focusable and is described by the rules list.
     expect(src).not.toMatch(/disabled=\{busy \|\|/);
     expect(src.match(/aria-disabled=\{/g)?.length).toBe(2);
     expect(src).toContain('aria-describedby={step === 2 ? "signup-rules" : undefined}');
     expect(src).toContain('aria-describedby="reset-rules"');
+    expect(src.match(/<PasswordRules id="(signup|reset)-rules"/g)?.length).toBe(2);
+  });
+
+  it("the invite form (JoinForm) uses the same rules, no native minLength and an aria-disabled submit", () => {
+    const src = readFileSync("src/components/app/JoinForm.tsx", "utf8");
+    expect(src).toContain('<PasswordRules id="join-rules" rules={J.rules} checks={checks} lang={lang} />');
+    expect(src).toContain("passwordChecks(pw)");
+    expect(src).toContain("setErr(unmetRules(checks, J.rules, lang))");
+    expect(src).not.toMatch(/minLength=\{8\}/);
+    expect(src).not.toMatch(/<ul[^>]*aria-live/);
+    expect(src).not.toMatch(/disabled=\{busy \|\| !ok\}/);
+    expect(src).toContain('aria-disabled={!ok ? true : undefined} aria-describedby="join-rules"');
   });
 });
 
@@ -375,7 +432,7 @@ describe("Cloudflare Turnstile on signup and forgot-password (rules 316-318)", (
     expect(await verifyTurnstile("tok", "unknown")).toBe("failed");
   });
 
-  it("317: forgot-password checks the token before the throttles and the lookup; a refusal reveals nothing", async () => {
+  it("317: forgot-password checks the token before the per-address limit and the lookup; a refusal reveals nothing", async () => {
     on();
     const forgot = await import("@/app/api/auth/forgot/route");
     const f = answer({ success: false });
@@ -392,6 +449,23 @@ describe("Cloudflare Turnstile on signup and forgot-password (rules 316-318)", (
     const ok = await forgot.POST(json("/api/auth/forgot", "POST", { email: target, lang: "en", turnstile: "good" }, ip()));
     expect(ok.status).toBe(200);
     expect(((await ok.json()) as { ok: boolean }).ok).toBe(true);
+  });
+
+  it("317: the per-IP limit runs before the token check, so a flood of junk tokens from one IP stops calling Cloudflare", async () => {
+    on();
+    const forgot = await import("@/app/api/auth/forgot/route");
+    // A fresh Response per call: a body can be read only once.
+    const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ success: false }), { status: 200, headers: { "content-type": "application/json" } }));
+    const one = ip();
+    for (let i = 0; i < 8; i++) {
+      const res = await forgot.POST(json("/api/auth/forgot", "POST", { email: fresh(), lang: "en", turnstile: `junk-${i}` }, one));
+      expect([res.status, ((await res.json()) as { error: string }).error]).toEqual([400, "captcha_failed"]);
+    }
+    expect(f).toHaveBeenCalledTimes(8);
+    const ninth = await forgot.POST(json("/api/auth/forgot", "POST", { email: fresh(), lang: "en", turnstile: "junk-9" }, one));
+    // Over the limit: the same silent answer as before, and no ninth siteverify call.
+    expect(ninth.status).toBe(200);
+    expect(f).toHaveBeenCalledTimes(8);
   });
 
   it("317: the pages hand the form the site key only when both keys are set", () => {

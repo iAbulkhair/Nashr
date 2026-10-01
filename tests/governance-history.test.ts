@@ -53,7 +53,9 @@ describe("who acted is worked out in code (rule 225)", () => {
     const imp = await session(u.email, { imp: "founder@test.example" });
     expect(imp.actor).toMatchObject({ kind: "founder", email: u.email, impersonating: "founder@test.example" });
     expect(byOf(imp)).toEqual({ kind: "founder", email: u.email, imp: "founder@test.example" });
+    vi.stubEnv("WAITLIST_ADMIN_KEY", "test-admin-key-0123456789");
     expect(byOf(await session(u.email, { imp: "key" }))).toEqual({ kind: "founder", email: u.email, imp: "key" });
+    vi.unstubAllEnvs();
   });
 
   it("the impersonation cookies are not a way to be recorded as support: only the session record is read", async () => {

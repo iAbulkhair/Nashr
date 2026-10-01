@@ -36,8 +36,8 @@ Files: `login/page.tsx`, `AuthForm.tsx` (`LoginForm`), `src/lib/auth-client.ts`,
 ### Forgot
 Files: `forgot/page.tsx`, `AuthForm.tsx` (`ForgotForm`), `src/app/api/auth/forgot/route.ts`, `src/lib/notify.ts`, `src/lib/rate.ts`.
 
-1. `POST /api/auth/forgot {email, lang, turnstile?}`. Bad email format: 400. With both Turnstile keys set, the token is verified next, before the throttles and the lookup (rule 317): a missing or rejected token is 400 `captcha_failed` whether or not the address has an account, and does not use up the address's three links.
-2. Rate limits: 8 per 15 min per IP and 3 per 15 min per email. When exceeded the route still answers `{ok:true, mail}` (`forgot/route.ts:29`).
+1. `POST /api/auth/forgot {email, lang, turnstile?}`. Bad email format: 400. Then the per-IP limit (8 per 15 min), so junk tokens cannot buy unlimited siteverify calls. With both Turnstile keys set, the token is verified next, before the per-address limit and the lookup (rule 317): a missing or rejected token is 400 `captcha_failed` whether or not the address has an account, and does not use up the address's three links.
+2. Rate limits: 8 per 15 min per IP (before the token check) and 3 per 15 min per email (after it). When exceeded the route still answers `{ok:true, mail}`.
 3. `getLogin(email)`. When the login exists and mail can reach a customer (`mailReady()`: `RESEND_API_KEY` and `MAIL_FROM` both set): a 32-byte hex token is generated, its SHA-256 is stored as `pwreset:{hash}` with `{email, kind}` (`kind` is `owner` or `member`) for 3600 s, and a link `${ORIGIN()}/{lang}/app/reset?token=...` is emailed to the login's own address. A member whose owner record is gone gets no link and the same answer.
 4. Response is always `{ok:true, mail:boolean}`; `mail` says whether email delivery is configured, not whether the account exists. The forgot page shows a WhatsApp link when `SUPPORT_WHATSAPP` is set.
 

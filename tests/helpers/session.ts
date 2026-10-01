@@ -16,7 +16,9 @@ export const signOut = () => g.__testJar.clear();
  */
 export async function signIn(email: string, opts: { imp?: string } = {}) {
   const token = randomBytes(32).toString("hex");
-  await db.set(`session:${token}`, opts.imp ? { email, at: Date.now(), imp: opts.imp } : { email, at: Date.now() }, 3600);
+  // A key impersonation is tied to the current key as the console writes it (rule 319); WAITLIST_ADMIN_KEY must be set.
+  const bind = opts.imp === "key" ? await (await import("@/lib/auth")).keyImpBinding() : null;
+  await db.set(`session:${token}`, opts.imp ? { email, at: Date.now(), imp: opts.imp, ...(bind ?? {}) } : { email, at: Date.now() }, 3600);
   g.__testJar.clear();
   g.__testJar.set("nashr_session", token);
   return token;

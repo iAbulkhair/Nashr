@@ -167,7 +167,7 @@ export async function verifyPassword(u: User, password: string) {
  * `member:{email}` on every request. Sessions written before 2026-09-18 are a bare email with no issue time, which counts
  * as "issued at 0".
  */
-export type Session = { email: string; at: number; imp?: string };
+export type Session = { email: string; at: number; imp?: string; kp?: string; as?: string };
 type SessionRec = string | Session;
 const sessionOf = (rec: SessionRec | null): Session | null => (!rec ? null : typeof rec === "string" ? { email: rec, at: 0 } : rec);
 /** True when a session issued at `at` predates the revocation stamp `iso`. */
@@ -212,11 +212,12 @@ export async function sessionCookie(maxAge: number) {
 
 /**
  * Sign this login in. `email` is the login's own address (owner or member), never an account email chosen for a member.
- * `imp` marks a founder impersonation session (admin console only): it resolves to actor kind "founder".
+ * `imp` marks a founder impersonation session (admin console only): it resolves to actor kind "founder". One opened
+ * with the console key also carries `kp` and `as` from `keyImpBinding` (rule 319).
  */
-export async function createSession(email: string, ttlSeconds: number = SESSION_TTL, opts: { imp?: string } = {}) {
+export async function createSession(email: string, ttlSeconds: number = SESSION_TTL, opts: { imp?: string; kp?: string; as?: string } = {}) {
   const token = randomBytes(32).toString("hex");
-  const rec: Session = opts.imp ? { email, at: Date.now(), imp: opts.imp } : { email, at: Date.now() };
+  const rec: Session = opts.imp ? { email, at: Date.now(), imp: opts.imp, ...(opts.kp ? { kp: opts.kp } : {}), ...(opts.as ? { as: opts.as } : {}) } : { email, at: Date.now() };
   await db.set(`session:${token}`, rec satisfies SessionRec, ttlSeconds);
   const jar = await cookies();
   jar.set(COOKIE, token, await sessionCookie(ttlSeconds));
@@ -235,6 +236,7 @@ export async function currentUser(): Promise<User | null> {
   if (!token) return null;
   const s = sessionOf(await db.get<SessionRec>(`session:${token}`));
   if (!s) return null;
+  if (s.imp === "key" && !(await keyImpLive(s))) return null;
   return resolveSession(s);
 }
 
@@ -352,6 +354,33 @@ export async function adminKeySession(): Promise<boolean> {
   if (!rec || typeof rec.kp !== "string") return false;
   const { sameSecret } = await import("./rate");
   return sameSecret(rec.kp, adminKeyPrint(key));
+}
+
+/**
+ * What ties an impersonation session opened with the console key to that key (rule 319): `kp`, the key's fingerprint,
+ * and, when the console's key session opened it, `as`, the hash its server record is stored under. Without this the
+ * 2-hour customer session outlived both "End key session" and a key rotation. Null when no key is set.
+ */
+export async function keyImpBinding(): Promise<{ kp: string; as?: string } | null> {
+  const key = process.env.WAITLIST_ADMIN_KEY;
+  if (!key) return null;
+  const id = (await cookies()).get(ADMIN_COOKIE)?.value;
+  const as = id && /^[0-9a-f]{64}$/.test(id) && (await adminKeySession()) ? createHash("sha256").update(id).digest("hex") : null;
+  return as ? { kp: adminKeyPrint(key), as } : { kp: adminKeyPrint(key) };
+}
+
+/**
+ * An `imp: "key"` session works only while the key that opened it is still the current key and, when a key session
+ * opened it, while that key session is still live. A record without `kp` (written before this check) is refused.
+ */
+async function keyImpLive(s: Session): Promise<boolean> {
+  const key = process.env.WAITLIST_ADMIN_KEY;
+  if (!key || typeof s.kp !== "string") return false;
+  const { sameSecret } = await import("./rate");
+  if (!sameSecret(s.kp, adminKeyPrint(key))) return false;
+  if (typeof s.as !== "string") return true;
+  const rec = await db.get<AdminSession>(`adminsession:${s.as}`);
+  return !!rec && typeof rec.kp === "string" && sameSecret(rec.kp, s.kp);
 }
 
 /** Log the key session out: the server record goes, so the same cookie value never works again. */
