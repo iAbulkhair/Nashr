@@ -47,8 +47,9 @@ body {
   font-family: var(--font-display), var(--font-body), sans-serif;
 }
 
-/* The wordmark «ذكين»: the heading face's own Stylistic Alternates give the long, sent-out kaf (no kashida). */
-.wordmark:lang(ar) {
+/* The wordmark «ذكين» (components/Wordmark.tsx): the heading face's own Stylistic Alternates give the long, sent-out kaf,
+   on the kaf alone so the noon stays round; no kashida. */
+.wordmark-kaf {
   font-feature-settings: "salt" 1;
 }
 

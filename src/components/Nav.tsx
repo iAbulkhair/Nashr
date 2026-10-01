@@ -4,6 +4,7 @@ import { AGENTS } from "@/lib/agents";
 import { INDUSTRY_PAGES } from "@/lib/pages-industry";
 import { SITE } from "@/lib/site";
 import LangToggle from "./LangToggle";
+import Wordmark from "./Wordmark";
 
 type Item = { href: string; label: string; note?: string };
 
@@ -36,8 +37,8 @@ export default function Nav({ t, lang }: { t: Dict; lang: Lang }) {
   return (
     <header className="sticky top-0 z-40 border-b border-mist/10 bg-oasis-deep/95 text-mist backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-        <Link href={`/${lang}`} className="wordmark font-display text-2xl font-bold tracking-tight">
-          {t.brand}
+        <Link href={`/${lang}`} className="font-display text-2xl font-bold tracking-tight">
+          <Wordmark lang={lang} name={t.brand} />
           <span className="ms-2 inline-block h-2 w-2 rounded-full bg-saffron align-middle" aria-hidden />
         </Link>
         <nav className="hidden items-center gap-5 text-sm lg:flex" aria-label="Main">

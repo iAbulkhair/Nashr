@@ -59,11 +59,19 @@ describe("the heading face is Thmanyah, loaded within its license (rule 317)", (
     expect(home).toMatch(/\.value \{\s*font-family: var\(--home-body\);/);
   });
 
-  it("the wordmark «ذكين» gets its long kaf from the font's Stylistic Alternates, never from kashida", () => {
-    expect(globals).toMatch(/\.wordmark:lang\(ar\) \{\s*font-feature-settings: "salt" 1;/);
-    expect(read("src/components/Nav.tsx")).toMatch(/className="wordmark font-display[^"]*">\s*\{t\.brand\}/);
-    expect(read("src/components/Footer.tsx")).toMatch(/className="wordmark font-display[^"]*">\{t\.brand\}/);
-    expect(dict.ar.brand).toBe("ذكين");
-    expect(dict.ar.brand).not.toContain("ـ");
+  it("the wordmark «ذكين» has the long kaf from the font's Stylistic Alternates on the kaf alone, never kashida", () => {
+    // the founder's sample: long kaf, round noon. salt on the whole word would change the noon too, so only the kaf
+    // gets it, and the letters are presentation forms so the split never breaks the joining (Safari did with plain text)
+    expect(globals).toMatch(/\.wordmark-kaf \{\s*font-feature-settings: "salt" 1;/);
+    const wm = read("src/components/Wordmark.tsx");
+    expect(wm).toContain('ذ<span className="wordmark-kaf">{"\\uFEDB"}</span>{"\\uFEF4\\uFEE6"}');
+    expect(wm).toMatch(/role="img" aria-label=\{name\}/);
+    expect(wm).toMatch(/<span aria-hidden="true">/);
+    expect(wm).not.toMatch(/\\u0640|ـ/);
+    expect(read("src/components/Nav.tsx")).toMatch(/<Wordmark lang=\{lang\} name=\{t\.brand\} \/>/);
+    expect(read("src/components/Footer.tsx")).toMatch(/<Wordmark lang=\{lang\} name=\{t\.brand\} \/>/);
+    // the presentation forms spell the same word the dictionary names
+    expect("ذ\uFEDB\uFEF4\uFEE6".normalize("NFKC")).toBe(dict.ar.brand);
+    expect(dict.ar.brand).not.toContain("\u0640");
   });
 });
