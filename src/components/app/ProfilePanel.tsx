@@ -43,7 +43,7 @@ function Card({ title, sub, children }: { title: string; sub?: string; children:
 /**
  * A field's visible label, linked to its control by `id` (#14): a screen reader reads it on focus, a click focuses the
  * field. `req`: the word shown beside a required field's label (the control itself carries `required`, which a screen
- * reader announces).
+ * reader announces; the profile form is `noValidate`, so the server's refusal is what the person reads).
  */
 const L = (k: string, id: string, req?: string) => (
   <div className="flex items-baseline gap-2">
@@ -191,7 +191,10 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
         <Link href={`/${lang}/app/billing`} className="mt-3 inline-block btn btn-secondary btn-sm">{owner ? (ar ? "إدارة الاشتراك" : "Manage subscription") : t.billing.title}</Link>
       </Card>
 
-      <form key={formKey} onSubmit={save} className="grid gap-5">
+      {/* noValidate: an empty or short required field reaches PUT /api/profile, so the person reads this page's own
+          AR/EN refusal ("رقم الجوال مطلوب" and the rest) with the field focused, not the browser's bubble in its language.
+          `required` stays on the controls for screen readers. */}
+      <form key={formKey} onSubmit={save} noValidate className="grid gap-5">
         {owner && <Card title={ar ? "تفضيلات الإيميل" : "Email preferences"} sub={ar ? "تتحكم في إيميلات الوكلاء والمهام المجدولة. إيميلات الحساب والفوترة تصل دائماً." : "Controls emails from your agents and their scheduled tasks. Account and billing emails always come through."}>
           <div className="grid gap-2 text-sm">
             {[["all", ar ? "كل الإيميلات" : "All emails", ar ? "كل ملخص ومتابعة ومهمة مجدولة." : "Every agent and scheduled task email."], ["important", ar ? "المهم فقط" : "Important only", ar ? "الوكيل يقرر ما يستحق الإرسال: الأخطاء وما ينتظر موافقتك؛ التقارير الروتينية تُتجاوز." : "Your agent decides what is worth emailing: errors and items needing approval come through; routine reports are skipped."], ["none", ar ? "لا شيء" : "None", ar ? "إيقاف كل إيميلات الوكلاء والمهام المجدولة." : "Stop all agent and scheduled task emails."]].map(([v, l, s]) => (
@@ -204,7 +207,7 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
           <div className="grid gap-3 sm:grid-cols-2">
             <div>{L(ar ? "الاسم الكامل" : "Full name", fid("name"), req)}<input id={fid("name")} name="name" required defaultValue={me.name} className={input} /></div>
             <div>{L(ar ? "اسم النشاط" : "Business name", fid("business"), req)}<input id={fid("business")} name="business" required defaultValue={d.brand?.name ?? ""} disabled={!brandEdit || !d.brand} className={input} /></div>
-            {owner && <div>{L(ar ? "رقم الجوال" : "Phone number", fid("phone"), req)}<input id={fid("phone")} name="phone" type="tel" autoComplete="tel" required minLength={9} defaultValue={d.user.phone ?? ""} dir="ltr" aria-describedby={phoneMissing ? fid("phone-note") : undefined} className={input} />
+            {owner && <div>{L(ar ? "رقم الجوال" : "Phone number", fid("phone"), req)}<input id={fid("phone")} name="phone" type="tel" autoComplete="tel" required defaultValue={d.user.phone ?? ""} dir="ltr" aria-describedby={phoneMissing ? fid("phone-note") : undefined} className={input} />
               {phoneMissing && <p id={fid("phone-note")} className="mt-1 text-xs text-ink/70">{ar ? "أضف رقم جوالك: حفظ أي تغيير في هذه الصفحة يحتاجه." : "Add your mobile number: saving any change on this page needs it."}</p>}</div>}
             {/* The login: shown, never sent (no `name`), and the route refuses an `email` field. */}
             <div>{L(ar ? "البريد" : "Email", fid("email"), req)}<input id={fid("email")} value={me.email} disabled readOnly dir="ltr" className={input + " opacity-60"} /></div>

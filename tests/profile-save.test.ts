@@ -197,5 +197,9 @@ describe("full name, business name, mobile phone and email are required on the P
     expect(src).not.toMatch(/name="email"/);
     expect(src).toContain("رقم الجوال مطلوب");
     expect(src).not.toMatch(/leave it empty|اتركه فارغاً/);
+    // The browser never blocks the save first: the form is noValidate and the phone carries no minLength, so an empty or
+    // short phone reaches PUT /api/profile and the page shows its own "رقم الجوال مطلوب" / bad_phone message.
+    expect(src).toMatch(/<form key=\{formKey\} onSubmit=\{save\} noValidate/);
+    expect(src).not.toMatch(/name="phone"[^>]*minLength/);
   });
 });
