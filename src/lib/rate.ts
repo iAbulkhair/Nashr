@@ -127,7 +127,7 @@ export const HANDOFF_DECLINES_PER_HOUR = 120;
 /**
  * Thumbs on agent replies, per account (`POST /api/chat/feedback`). Each one is a write to the brand's capped feedback
  * log, which the agents' prompts read back, so a script must not churn it; an owner rating replies stays far below this
- * (chat itself is CHAT_PER_HOUR turns).
+ * (chat itself is at most `chatCaps(u).hour` turns, 30 on a paid plan).
  */
 export const FEEDBACK_PER_HOUR = 120;
 

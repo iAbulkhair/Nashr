@@ -9,6 +9,7 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import FinalCta from "@/components/FinalCta";
 import UrlStart from "@/components/UrlStart";
+import { pageMeta } from "@/lib/page-meta";
 
 export function generateStaticParams() {
   return LANGS.flatMap((lang) => AGENT_SLUGS.map((agent) => ({ lang, agent })));
@@ -17,7 +18,7 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   const { lang, agent } = await params;
   if (!isLang(lang) || !isAgentSlug(agent)) return {};
   const a = agentById(agent), p = AGENT_PAGES[lang][agent];
-  return { title: `${a.name[lang]} · ${a.role[lang]} — ${dict[lang].brand}`, description: p.intro };
+  return pageMeta(lang, `/agents/${agent}`, { title: `${a.name[lang]} · ${a.role[lang]} — ${dict[lang].brand}`, description: p.intro });
 }
 
 export default async function Page({ params }: { params: Promise<{ lang: string; agent: string }> }) {

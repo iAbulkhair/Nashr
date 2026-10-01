@@ -30,6 +30,7 @@ import { formatWhen, type SecItem } from "./secretary-agenda";
 import { pushNotifs, type Push } from "./notifications";
 import { sendEmail } from "./notify";
 import { DEFAULT_ZONE, type Zone } from "./zones";
+import { appOrigin } from "./origin";
 
 /** Scopes read per sweep, due ids read per scope, scopes handled at once. */
 export const SWEEP_SCOPES = 200;
@@ -48,7 +49,6 @@ export const SWEEP_BUDGET_DAILY_MS = 60_000;
 /** One reminder, once: this scope, this item, this reminder instant. */
 export const remindFingerprint = (scope: string, id: string, remindAtMs: number) => `todo-remind:${scope}:${id}:${remindAtMs}`;
 
-const ORIGIN = () => process.env.APP_ORIGIN ?? "https://nashr-tau.vercel.app";
 /** The account a scope belongs to: the default brand's scope is the email, another brand's is `email#brandId`. */
 const accountOf = (scope: string) => scope.split("#")[0];
 
@@ -109,7 +109,7 @@ async function deliver(ctx: AccountCtx, scope: string, zone: Zone, cur: SecItem)
   ctx.tally.notified++;
   if (!process.env.RESEND_API_KEY || (await ctx.prefs()).get(scope) === "none") return;
   const ar = ctx.user.lang === "ar";
-  const sent = await sendEmail(ctx.email, ar ? `تذكير من ريم: ${cur.title.slice(0, 80)}` : `Reminder from Reem: ${cur.title.slice(0, 80)}`, `${push.n.title}\n${push.n.body}\n\n${ORIGIN()}${push.n.href}`);
+  const sent = await sendEmail(ctx.email, ar ? `تذكير من ريم: ${cur.title.slice(0, 80)}` : `Reminder from Reem: ${cur.title.slice(0, 80)}`, `${push.n.title}\n${push.n.body}\n\n${appOrigin()}${push.n.href}`);
   if (sent) ctx.tally.emailed++;
 }
 

@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
@@ -7,6 +6,7 @@ import { can } from "@/lib/roles";
 import { referralStats, registerCode } from "@/lib/referral";
 import ReferPanel from "@/components/app/ReferPanel";
 import ReadOnlyNote from "@/components/app/ReadOnlyNote";
+import { appOrigin } from "@/lib/origin";
 export const dynamic = "force-dynamic";
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
@@ -26,7 +26,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   }
   await registerCode(u.email);
   const s = await referralStats(u.email);
-  const h = await headers();
-  const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? "nashr-tau.vercel.app"}`;
+  // The canonical origin, not the request's Host header: a link shared from a preview deployment or an alias must still
+  // point at the production domain, and a Host header is whatever the client sent.
+  const origin = appOrigin();
   return <ReferPanel t={appDict[lang]} lang={lang} code={s.code} count={s.count} earned={s.earned} origin={origin} />;
 }

@@ -1,6 +1,6 @@
 import { cookies, headers } from "next/headers";
 import bcrypt from "bcryptjs";
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
 import type { AgentId } from "./agents";
 import type { Member } from "./team";
@@ -190,7 +190,7 @@ export async function verifyPassword(u: User, password: string) {
  * `member:{email}` on every request. Sessions written before 2026-09-18 are a bare email with no issue time, which counts
  * as "issued at 0".
  */
-export type Session = { email: string; at: number; imp?: string };
+export type Session = { email: string; at: number; imp?: string; kp?: string; as?: string };
 type SessionRec = string | Session;
 const sessionOf = (rec: SessionRec | null): Session | null => (!rec ? null : typeof rec === "string" ? { email: rec, at: 0 } : rec);
 /** True when a session issued at `at` predates the revocation stamp `iso`. */
@@ -235,11 +235,12 @@ export async function sessionCookie(maxAge: number) {
 
 /**
  * Sign this login in. `email` is the login's own address (owner or member), never an account email chosen for a member.
- * `imp` marks a founder impersonation session (admin console only): it resolves to actor kind "founder".
+ * `imp` marks a founder impersonation session (admin console only): it resolves to actor kind "founder". One opened
+ * with the console key also carries `kp` and `as` from `keyImpBinding` (rule 429).
  */
-export async function createSession(email: string, ttlSeconds: number = SESSION_TTL, opts: { imp?: string } = {}) {
+export async function createSession(email: string, ttlSeconds: number = SESSION_TTL, opts: { imp?: string; kp?: string; as?: string } = {}) {
   const token = randomBytes(32).toString("hex");
-  const rec: Session = opts.imp ? { email, at: Date.now(), imp: opts.imp } : { email, at: Date.now() };
+  const rec: Session = opts.imp ? { email, at: Date.now(), imp: opts.imp, ...(opts.kp ? { kp: opts.kp } : {}), ...(opts.as ? { as: opts.as } : {}) } : { email, at: Date.now() };
   await db.set(`session:${token}`, rec satisfies SessionRec, ttlSeconds);
   const jar = await cookies();
   jar.set(COOKIE, token, await sessionCookie(ttlSeconds));
@@ -258,6 +259,7 @@ export async function currentUser(): Promise<User | null> {
   if (!token) return null;
   const s = sessionOf(await db.get<SessionRec>(`session:${token}`));
   if (!s) return null;
+  if (s.imp === "key" && !(await keyImpLive(s))) return null;
   return resolveSession(s);
 }
 
@@ -323,9 +325,14 @@ export async function getLogin(email: string): Promise<Login | null> {
   return listed ? { kind: "member", member: m, owner } : null;
 }
 
-/** Founder accounts: ADMIN_EMAILS env (comma-separated) with the founder's own email as the default. */
+/**
+ * Founder accounts: ADMIN_EMAILS (comma-separated). Fails closed: with the variable unset or empty no email is a
+ * founder, and only the console key (WAITLIST_ADMIN_KEY) opens the console. There is no default address in the code,
+ * so a fresh or restored database, a preview or a fork never hands the console to whoever registers a listed email.
+ * Rule 425, tests/launch-security.test.ts.
+ */
 export function adminEmails(): string[] {
-  return (process.env.ADMIN_EMAILS ?? "hejazy@gmail.com").split(",").map((e) => normalizeEmail(e)).filter(Boolean);
+  return (process.env.ADMIN_EMAILS ?? "").split(",").map((e) => normalizeEmail(e)).filter(Boolean);
 }
 export const isFounder = (email: string | undefined | null) => !!email && adminEmails().includes(normalizeEmail(email));
 /**
@@ -335,8 +342,142 @@ export const isFounder = (email: string | undefined | null) => !!email && adminE
 export const isFounderActor = (u: User | null | undefined) => !!u?.actor && u.actor.kind === "owner" && u.actor.email === u.email && isFounder(u.actor.email);
 
 /**
- * Who is acting in the founder console: "key" for the admin key (header or cookie, never the URL: query strings end up
- * in logs and history), the founder's email for a founder's own session, null for anyone else. `admin:log` records it.
+ * The founder console's key session (rules 420-424, 435, tests/launch-security.test.ts).
+ *
+ * The key form (POST /api/admin/login) used to put WAITLIST_ADMIN_KEY itself in this cookie for 30 days, so anyone who
+ * copied the cookie held the master key, and "log out" only deleted it in one browser. Now the cookie holds a random
+ * 32-byte id; the server keeps `adminsession:{sha256(id)}` with a fingerprint of the key it was opened with. Logging out
+ * deletes the record, so a copied cookie dies with it; rotating the key changes the fingerprint and ends every key
+ * session at once; removing the key disables the path. The raw key in the cookie is no longer accepted. The record is
+ * stored under a hash of the id, so a read of the database does not hand out live cookies.
+ *
+ * Lifetime (founder decision 2026-10-01): the session ends after 15 minutes of inactivity (`ADMIN_SESSION_IDLE`) and
+ * never lives past 12 hours from the key entry (`ADMIN_SESSION_MAX`). Every admin request that finds the session live,
+ * and every request through a customer impersonation it opened (`keyImpLive`), renews it, at most once a minute per
+ * session (`ADMIN_SESSION_RENEW`), with one
+ * `SET XX EX` that rewrites `seen` and the record's TTL; a request inside that minute writes nothing. The idle window
+ * therefore counts from the last renewal: between 14 and 15 minutes after the last request, never longer. The record's
+ * TTL never runs past the 12-hour cap, and both limits are also checked in code against `at` and `seen`, so a record
+ * written before this change (12-hour TTL, no `seen`) is held to them too. The cookie carries the absolute cap only
+ * (12 hours, not renewed: a server component cannot set cookies); the record is what enforces the idle limit.
+ */
+export const ADMIN_COOKIE = "nashr_admin";
+/** Idle limit: the key session ends after this many seconds without an admin request. */
+export const ADMIN_SESSION_IDLE = 60 * 15;
+/** Absolute limit: no key session outlives this many seconds from the key entry, however busy. */
+export const ADMIN_SESSION_MAX = 60 * 60 * 12;
+/** A live session is renewed at most once per this many seconds, so a burst of console calls costs one write. */
+export const ADMIN_SESSION_RENEW = 60;
+type AdminSession = { kp: string; at: number; seen?: number };
+const adminKeyPrint = (key: string) => createHash("sha256").update(`nashr-admin-key:${key}`).digest("hex");
+const adminSessionKey = (id: string) => `adminsession:${createHash("sha256").update(id).digest("hex")}`;
+/** Seconds the record may live from `now`: the idle window, cut short by the absolute cap. 0 when it is over. */
+const adminSessionTtl = (rec: AdminSession, now: number) =>
+  Math.max(0, Math.min(ADMIN_SESSION_IDLE, Math.floor((rec.at + ADMIN_SESSION_MAX * 1000 - now) / 1000)));
+/** Both limits checked in code, whatever TTL the record was stored with. */
+const adminSessionInTime = (rec: AdminSession, now: number) =>
+  typeof rec.at === "number" &&
+  now - rec.at < ADMIN_SESSION_MAX * 1000 &&
+  now - (typeof rec.seen === "number" ? rec.seen : rec.at) < ADMIN_SESSION_IDLE * 1000;
+
+/** Open a key session for the current key and set its cookie. The caller has already checked the key. */
+export async function createAdminSession(): Promise<void> {
+  const key = process.env.WAITLIST_ADMIN_KEY;
+  if (!key) throw new Error("WAITLIST_ADMIN_KEY is not set");
+  const id = randomBytes(32).toString("hex");
+  const now = Date.now();
+  await db.set(adminSessionKey(id), { kp: adminKeyPrint(key), at: now, seen: now } satisfies AdminSession, ADMIN_SESSION_IDLE);
+  const jar = await cookies();
+  jar.set(ADMIN_COOKIE, id, await sessionCookie(ADMIN_SESSION_MAX));
+}
+
+/**
+ * True when the caller's `nashr_admin` cookie names a live key session opened with the CURRENT key, inside both the
+ * idle and the absolute limit. A live session is renewed here (every admin request passes through this check), at
+ * most once per `ADMIN_SESSION_RENEW` seconds, with one `setXx`: it rewrites only a record that still exists, so a
+ * renewal racing a logout never brings the session back.
+ */
+export async function adminKeySession(): Promise<boolean> {
+  const key = process.env.WAITLIST_ADMIN_KEY;
+  if (!key) return false;
+  const id = (await cookies()).get(ADMIN_COOKIE)?.value;
+  if (!id || !/^[0-9a-f]{64}$/.test(id)) return false;
+  const k = adminSessionKey(id);
+  const rec = await db.get<AdminSession>(k);
+  if (!rec || typeof rec.kp !== "string") return false;
+  const { sameSecret } = await import("./rate");
+  if (!sameSecret(rec.kp, adminKeyPrint(key))) return false;
+  const now = Date.now();
+  if (!adminSessionInTime(rec, now)) return false;
+  await renewAdminSession(k, rec, now);
+  return true;
+}
+
+/**
+ * Renew a live key session record: at most once per `ADMIN_SESSION_RENEW` seconds (a request inside that minute writes
+ * nothing), one `setXx` that rewrites `seen` and the TTL (the idle window cut at the 12-hour cap) only while the record
+ * still exists, so a renewal racing a logout never brings it back. A failed renewal only shortens the session; it never
+ * fails the request it rode on.
+ */
+async function renewAdminSession(k: string, rec: AdminSession, now: number): Promise<void> {
+  const last = typeof rec.seen === "number" ? rec.seen : rec.at;
+  const ttl = adminSessionTtl(rec, now);
+  if (now - last >= ADMIN_SESSION_RENEW * 1000 && ttl > 0) {
+    await db.setXx(k, { kp: rec.kp, at: rec.at, seen: now } satisfies AdminSession, ttl).catch(() => false);
+  }
+}
+
+/**
+ * What ties an impersonation session opened with the console key to that key (rule 429): `kp`, the key's fingerprint,
+ * and, when the console's key session opened it, `as`, the hash its server record is stored under. Without this the
+ * 2-hour customer session outlived both "End key session" and a key rotation. Null when no key is set.
+ */
+export async function keyImpBinding(): Promise<{ kp: string; as?: string } | null> {
+  const key = process.env.WAITLIST_ADMIN_KEY;
+  if (!key) return null;
+  const id = (await cookies()).get(ADMIN_COOKIE)?.value;
+  const as = id && /^[0-9a-f]{64}$/.test(id) && (await adminKeySession()) ? createHash("sha256").update(id).digest("hex") : null;
+  return as ? { kp: adminKeyPrint(key), as } : { kp: adminKeyPrint(key) };
+}
+
+/**
+ * An `imp: "key"` session works only while the key that opened it is still the current key and, when a key session
+ * opened it, while that key session is still live. A record without `kp` (written before this check) is refused.
+ *
+ * The founder working in the customer view is not idle (founder decision 2026-10-01: the key session ends after 15
+ * minutes of INACTIVITY), so a request through an impersonation opened from a key session renews that key session the
+ * same way an admin request does (`renewAdminSession`: at most once a minute, `SET XX`, never past the 12-hour cap).
+ * The impersonation itself still ends 2 hours after it began, at "End key session", at a key rotation, and 15 minutes
+ * after the founder's last request on either side (rules 429, 435).
+ */
+async function keyImpLive(s: Session): Promise<boolean> {
+  const key = process.env.WAITLIST_ADMIN_KEY;
+  if (!key || typeof s.kp !== "string") return false;
+  const { sameSecret } = await import("./rate");
+  if (!sameSecret(s.kp, adminKeyPrint(key))) return false;
+  if (typeof s.as !== "string") return true;
+  if (!/^[0-9a-f]{64}$/.test(s.as)) return false;
+  const k = `adminsession:${s.as}`;
+  const rec = await db.get<AdminSession>(k);
+  if (!rec || typeof rec.kp !== "string" || !sameSecret(rec.kp, s.kp)) return false;
+  const now = Date.now();
+  if (!adminSessionInTime(rec, now)) return false;
+  await renewAdminSession(k, rec, now);
+  return true;
+}
+
+/** Log the key session out: the server record goes, so the same cookie value never works again. */
+export async function destroyAdminSession(): Promise<void> {
+  const jar = await cookies();
+  const id = jar.get(ADMIN_COOKIE)?.value;
+  if (id && /^[0-9a-f]{64}$/.test(id)) await db.del(adminSessionKey(id));
+  jar.delete(ADMIN_COOKIE);
+}
+
+/**
+ * Who is acting in the founder console: "key" for the admin key (the x-admin-key header or a key session cookie, never
+ * the URL: query strings end up in logs and history), the founder's email for a founder's own session, null for anyone
+ * else. `admin:log` records it.
  */
 export async function adminActor(req: Request): Promise<string | null> {
   const key = process.env.WAITLIST_ADMIN_KEY;
@@ -348,25 +489,19 @@ export async function adminActor(req: Request): Promise<string | null> {
       if (!(await allow(`adminhdr:${clientIp(req)}`, 30, 900))) return null;
       if (sameSecret(given, key)) return "key";
     }
-    const jar = await cookies();
-    if (sameSecret(jar.get("nashr_admin")?.value, key)) return "key";
+    if (await adminKeySession()) return "key";
   }
   const u = await currentUser();
   return isFounderActor(u) ? u!.actor!.email : null;
 }
 
-/** API access: admin key (header or cookie) or a founder signed in as themselves (`adminActor`). */
+/** API access: admin key (header or key session) or a founder signed in as themselves (`adminActor`). */
 export async function isAdmin(req: Request) {
   return (await adminActor(req)) !== null;
 }
 
-/** Page access: admin cookie or a founder signed in as themselves (`isFounderActor`). */
+/** Page access: a key session or a founder signed in as themselves (`isFounderActor`). */
 export async function isAdminCookie() {
-  const key = process.env.WAITLIST_ADMIN_KEY;
-  if (key) {
-    const { sameSecret } = await import("./rate");
-    const jar = await cookies();
-    if (sameSecret(jar.get("nashr_admin")?.value, key)) return true;
-  }
+  if (await adminKeySession()) return true;
   return isFounderActor(await currentUser());
 }

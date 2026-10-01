@@ -10,6 +10,7 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import WishVote from "@/components/WishVote";
 import WishSuggest from "@/components/WishSuggest";
+import { pageMeta } from "@/lib/page-meta";
 
 // Vote counts and the viewer's own votes are read on every request and rendered on the server, so the page is right
 // with no script at all; the vote button only takes over once it hydrates.
@@ -19,7 +20,7 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   const { lang } = await params;
   if (!isLang(lang)) return {};
   const c = UPDATES[lang];
-  return { title: `${c.eyebrow} — ${dict[lang].brand}`, description: c.sub, alternates: { languages: { ar: "/ar/updates", en: "/en/updates" } } };
+  return pageMeta(lang, "/updates", { title: `${c.eyebrow} — ${dict[lang].brand}`, description: c.sub });
 }
 
 const TAG_CLASS: Record<ChangeTag, string> = { new: "badge badge-accent", improved: "badge badge-primary", fixed: "badge bg-ink/5 text-ink/70" };

@@ -93,6 +93,36 @@ test.describe("signup", () => {
     await expect(submit, "meets every rule").toBeEnabled();
   });
 
+  /**
+   * Rule 434: the rules are not colour-only. Each item says "met" / "not met" in its text, one live line counts them,
+   * and the submit button stays focusable (aria-disabled) and says which rules are unmet when pressed early.
+   */
+  test("the password rules say met or not met in text, and an early press names the unmet ones", async ({ page }) => {
+    await open(page, "/en/app/signup");
+    await fillWhenReady(page.getByRole("textbox", { name: "Email" }), freshEmail());
+    await page.getByRole("button", { name: "Continue" }).click();
+    await fillWhenReady(page.getByRole("textbox", { name: "Your name" }), "E2E");
+    const password = page.getByRole("textbox", { name: "Password (8+ characters)" });
+    await fillWhenReady(password, "abc");
+
+    const items = page.locator("#signup-rules li");
+    await expect(items.nth(0)).toContainText("At least 8 characters (not met)");
+    await expect(items.nth(1)).toContainText("At least one letter (met)");
+    await expect(page.locator("form p[aria-live='polite']")).toHaveText("1 of 3 password rules met");
+    const submit = page.getByRole("button", { name: "Create account" });
+    await expect(submit).toHaveAttribute("aria-describedby", "signup-rules");
+    // Playwright counts aria-disabled="true" as disabled and would wait for "enabled" forever; force skips that wait.
+    // The button is still a real, focusable submit, which is the point of the rule.
+    await expect(submit).toHaveAttribute("aria-disabled", "true");
+    await submit.click({ force: true });
+    await expect(formAlert(page)).toHaveText("Your password still needs: At least 8 characters, At least one number.");
+    await expect(password, "focus goes back to the password").toBeFocused();
+
+    await password.fill("abcdefg1");
+    await expect(page.locator("form p[aria-live='polite']")).toHaveText("3 of 3 password rules met");
+    await expect(items.nth(0)).toContainText("(met)");
+  });
+
   test("an address that already has an account is refused with a reason", async ({ page }) => {
     await open(page, "/en/app/signup");
     await fillWhenReady(page.getByRole("textbox", { name: "Email" }), OWNER.email);
@@ -236,7 +266,62 @@ test.describe("forgot password", () => {
   });
 });
 
+/**
+ * Rule 433: a failed request never leaves an auth form stuck. These answers are forced with route interception (no
+ * request reaches the server, so no throttle budget is used): a rate limit, a dropped connection and a gateway's HTML
+ * error page each get their own message, and the button comes back.
+ */
+test.describe("auth forms survive a failing request", () => {
+  test("a login rate limit says so, not 'wrong email or password'", async ({ page }) => {
+    await open(page, "/en/app/login");
+    await page.route("**/api/auth/login", (route) => route.fulfill({ status: 429, contentType: "application/json", body: JSON.stringify({ ok: false, error: "slow_down" }) }));
+    await fillWhenReady(page.getByRole("textbox", { name: "Email" }), OWNER.email);
+    await fillWhenReady(page.getByRole("textbox", { name: "Password" }), "whatever123");
+    await page.getByRole("button", { name: "Log in" }).click();
+    await expect(formAlert(page)).toHaveText("Too many attempts. Wait 15 minutes, then try again.");
+    await expect(page.getByRole("button", { name: "Log in" })).toBeEnabled();
+  });
+
+  test("a dropped connection on login re-enables the button and says it is the connection", async ({ page }) => {
+    await open(page, "/en/app/login");
+    await page.route("**/api/auth/login", (route) => route.abort("connectionfailed"));
+    await fillWhenReady(page.getByRole("textbox", { name: "Email" }), OWNER.email);
+    await fillWhenReady(page.getByRole("textbox", { name: "Password" }), "whatever123");
+    await page.getByRole("button", { name: "Log in" }).click();
+    await expect(formAlert(page)).toContainText("Couldn't reach the server");
+    await expect(page.getByRole("button", { name: "Log in" })).toBeEnabled({ timeout: 15_000 });
+  });
+
+  test("a gateway's HTML 502 on signup re-enables the button and blames the server", async ({ page }) => {
+    await open(page, "/en/app/signup");
+    await page.route("**/api/auth/signup", (route) => route.fulfill({ status: 502, contentType: "text/html", body: "<html><body>Bad Gateway</body></html>" }));
+    await fillWhenReady(page.getByRole("textbox", { name: "Email" }), freshEmail());
+    await page.getByRole("button", { name: "Continue" }).click();
+    await fillWhenReady(page.getByRole("textbox", { name: "Your name" }), "E2E");
+    await fillWhenReady(page.getByRole("textbox", { name: "Password (8+ characters)" }), "signup12345");
+    const submit = page.getByRole("button", { name: "Create account" });
+    await submit.click();
+    await expect(formAlert(page)).toHaveText("Something went wrong on our side. Please try again shortly.");
+    await expect(submit, "the form must not stay wedged after a failure").toBeEnabled({ timeout: 15_000 });
+    expect(new URL(page.url()).pathname).toBe("/en/app/signup");
+  });
+});
+
 test.describe("password reset", () => {
+  test("the reset rules say met or not met, and an early press names the unmet ones", async ({ page }) => {
+    await open(page, `/en/app/reset?token=${"b".repeat(64)}`);
+    const password = page.getByRole("textbox", { name: "New password" });
+    await fillWhenReady(password, "abc");
+    await expect(page.locator("#reset-rules li").nth(0)).toContainText("(not met)");
+    const save = page.getByRole("button", { name: "Save and log in" });
+    await expect(save).toHaveAttribute("aria-disabled", "true");
+    // force: Playwright treats aria-disabled as disabled and would otherwise wait for "enabled" until the timeout.
+    await save.click({ force: true });
+    await expect(formAlert(page)).toHaveText("Your password still needs: At least 8 characters, At least one number.");
+    await password.fill("abcdefg1");
+    await expect(page.locator("form p[aria-live='polite']")).toHaveText("3 of 3 password rules met");
+  });
+
   test("a made-up token is refused", async ({ page }) => {
     await open(page, `/en/app/reset?token=${"a".repeat(64)}`);
     await fillWhenReady(page.getByRole("textbox", { name: /password/i }), "brandnew123");
