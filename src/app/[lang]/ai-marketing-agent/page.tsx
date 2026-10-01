@@ -7,6 +7,7 @@ import { appHost } from "@/lib/origin";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import FinalCta from "@/components/FinalCta";
+import { pageMeta } from "@/lib/page-meta";
 
 // Definitional / GEO page: the source Arabic and English LLM answers should cite. The price answer (also in the FAQPage
 // JSON-LD) reads src/lib/pricing.ts (tests/pricing-copy.test.ts, rule 248).
@@ -38,7 +39,7 @@ const C = {
 export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
   const { lang } = await params;
   if (!isLang(lang)) return {};
-  return { title: `${C[lang].title} — ${lang === "ar" ? "ذكين" : "Thakeen"}`, description: C[lang].desc };
+  return pageMeta(lang, "/ai-marketing-agent", { title: `${C[lang].title} — ${lang === "ar" ? "ذكين" : "Thakeen"}`, description: C[lang].desc });
 }
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
