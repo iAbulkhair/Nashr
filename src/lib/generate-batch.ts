@@ -16,7 +16,7 @@
  */
 import { randomBytes } from "crypto";
 import { trialOver, type User } from "./auth";
-import { charge, refund, type AgentCharge } from "./credits";
+import { charge, chargeOnce, refund, refundOnce, renewIfDue, renewalDue, type SpendRef } from "./credits";
 import { agentForTask, type AgentId } from "./agents";
 import { briefOf, getBrand, listPreferencesFor, saveTask, type Brand, type Task, type TaskParent } from "./brand";
 import { TASK_COST, TASK_COUNT, isDraftType, type TaskType } from "./tasks";
@@ -78,6 +78,17 @@ export type BatchOpts = {
    * platform's limit. Callers that start a batch late check `BATCH_RUN_MIN_MS` themselves, before the charge.
    */
   deadline?: number;
+  /**
+   * Charge at most once for this claim (src/lib/credits.ts `chargeOnce`, rule 333): the Sunday plan passes
+   * `weekly:{scope}:{week}`. A run that finds the claim's hold (a run killed after its charge) reuses it instead of
+   * charging, and a failure gives it back once (`refundOnce`). Without it every batch is charged as before.
+   */
+  once?: string;
+  /**
+   * Runs inside the refund guard, after the tasks are saved (rule 334): the Sunday plan's `lastWeekly` marker. A throw
+   * here refunds the batch like a failed generation, so a charge is kept only with its tasks and its marker written.
+   */
+  commit?: (tasks: Task[]) => Promise<unknown>;
 };
 
 /**
@@ -97,7 +108,8 @@ export type BatchRefusal =
   /** The charge was refunded (`credits` is the balance after it); the caller decides how to report `error`. */
   | { ok: false; reason: "failed"; error: unknown; credits: number };
 
-export type BatchDone = { ok: true; tasks: Task[]; credits: number; receipt: Extract<AgentCharge, { ok: true }>; cost: number; agent: AgentId; gov: Governance };
+/** `receipt`: what the batch's charge was booked to (a reused hold's, for a batch that paid in an earlier run). */
+export type BatchDone = { ok: true; tasks: Task[]; credits: number; receipt: SpendRef & { ok: true; credits: number }; cost: number; agent: AgentId; gov: Governance };
 export type BatchResult = BatchDone | BatchRefusal;
 
 /**
@@ -186,38 +198,58 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   const cost = opts.count ? countCost(type, opts.count) : TASK_COST[type];
   // The agent that owns the type, computed in code: never taken from the request or the model.
   const agent = agentForTask(type).id;
-  const paid = await charge(user.email, cost, { scope, agent, cap: gov.agentCaps[agent] });
+  // A paid account's monthly credits arrive before its first charge of the month, whichever job runs first (rule 332).
+  // Only the daily cron at 05:00 UTC renewed, after the Sunday plan at 03:00: on a Sunday the 1st (next 2026-11-01) the
+  // plan met last month's balance, answered no_credits and marked the week done. `renewIfDue` is the cron's own
+  // function, idempotent and under the ledger's lock; the copy in hand only decides whether to take that lock.
+  if (renewalDue(user)) await renewIfDue(user.email);
+  const meta = { scope, agent, cap: gov.agentCaps[agent] };
+  const paid = opts.once ? await chargeOnce(user.email, cost, meta, opts.once) : await charge(user.email, cost, meta);
   // Nothing was charged; the row says what the batch would have cost and, at a cap, what the agent spent of it.
   const refused = async (kind: "cap_reached" | "no_credits", outcome?: string): Promise<Activity> => ({ at: new Date().toISOString(), kind, agent, by: await who(), via: opts.via, type, credits: cost, ...(outcome ? { outcome } : {}) });
   if (!paid.ok && paid.reason === "agent_cap") return refuse({ ok: false, reason: "agent_cap", agent: paid.agent, spent: paid.spent, cap: paid.cap, credits: paid.credits }, await refused("cap_reached", `${paid.spent}/${paid.cap}`));
   if (!paid.ok) return refuse({ ok: false, reason: "no_credits", need: cost, credits: paid.credits }, await refused("no_credits"));
   user.credits = paid.credits;
-  await warnAgentCap(user, paid);
+  let receipt: BatchDone["receipt"];
+  // A reused hold (a claim this batch paid in an earlier, killed run) was warned about by the run that took it.
+  if ("hold" in paid) receipt = { ok: true, credits: paid.credits, scope: paid.hold.scope, agent: paid.hold.agent, month: paid.hold.month };
+  else {
+    await warnAgentCap(user, paid);
+    receipt = paid;
+  }
 
-  let items: Generated[];
   let ground: Grounding;
-  // Read inside the try: the credits are already charged, and a failed read must reach the refund below.
+  let tasks: Task[];
+  let createdAt: string;
+  // Everything up to the commit is inside the try: the credits are already charged, and a failed read, generation, task
+  // save or commit must reach the refund below. Before 2026-10-01 only the read and the generation were: a save that
+  // failed, or a run killed while saving, kept the charge with no plan, and the Sunday retry charged again.
   try {
     const [prefs, memory, stats, feedback] = await Promise.all([listPreferencesFor(scope, agent), memoryBlock(scope), statsFor(type, scope), feedbackFor(scope, agent, { gov })]);
     // A lead brief rides along only when there is one, so every other batch's prompts and judge grounding are unchanged.
     const lead = opts.leadBrief?.trim() ? { leadBrief: opts.leadBrief } : {};
     ground = { notes: opts.notes, memory, stats, ...lead };
-    items = await generate(type, brand, prefs, opts.notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, crossReview: gov.crossReview !== false, meter: user.email, stats, feedback, ...(opts.count ? { count: opts.count } : {}), ...(opts.deadline !== undefined ? { deadline: opts.deadline } : {}), ...lead });
+    const items: Generated[] = await generate(type, brand, prefs, opts.notes, { memory, reviewer: gov.reviewer, noEmDash: gov.noEmDash, crossReview: gov.crossReview !== false, meter: user.email, stats, feedback, ...(opts.count ? { count: opts.count } : {}), ...(opts.deadline !== undefined ? { deadline: opts.deadline } : {}), ...lead });
+    createdAt = new Date().toISOString();
+    const brief = opts.brief ?? briefOf(opts.notes);
+    tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt, parent: opts.parent }));
+    // Together, not one round trip after another (Redis is HTTP per command).
+    await Promise.all(tasks.map((t) => saveTask(scope, t, true)));
+    await opts.commit?.(tasks);
   } catch (error) {
-    // With the receipt, so the agent's monthly counter comes down with the balance.
-    const [credits] = await Promise.all([refund(user.email, cost, paid), opts.settle?.()]);
+    // With the receipt (or the claim's hold), so the agent's monthly counter comes down with the balance. Once: a claim's
+    // hold is dropped in the same save.
+    const back = opts.once ? refundOnce(user.email, opts.once).then((r) => r.credits) : refund(user.email, cost, receipt);
+    const [credits] = await Promise.all([back, opts.settle?.()]);
     user.credits = credits;
     return { ok: false, reason: "failed", error, credits };
   }
 
-  const createdAt = new Date().toISOString();
-  const brief = opts.brief ?? briefOf(opts.notes);
-  const tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt, parent: opts.parent }));
-  // Together, not one round trip after another (Redis is HTTP per command), with the batch's one activity row and, when
-  // other agents reviewed it, one row per reviewer.
+  // After the guard: the work is saved and paid for, so a failed log write must not refund it. The batch's one activity
+  // row and, when other agents reviewed it, one row per reviewer.
   const done: Activity = { at: createdAt, kind: "generated", agent, by: await who(), via: opts.via, type, tasks: tasks.map((t) => t.id), count: tasks.length, credits: cost };
-  await Promise.all([...tasks.map((t) => saveTask(scope, t, true)), recordActivity(scope, [done, ...crossReviewRows(tasks, createdAt, opts.via)])]);
+  await recordActivity(scope, [done, ...crossReviewRows(tasks, createdAt, opts.via)]);
   // The judge scores against what the agent had, and against the count the owner asked for.
   judgeLater(scope, user.email, brand, tasks, opts.count, { ...ground, via: opts.via });
-  return { ok: true, tasks, credits: user.credits, receipt: paid, cost, agent, gov };
+  return { ok: true, tasks, credits: user.credits, receipt, cost, agent, gov };
 }

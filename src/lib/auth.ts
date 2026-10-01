@@ -74,6 +74,13 @@ export type User = {
    * brand is saved), so a run can reuse a charge, refund it, or be swept, but never both reuse and refund one. Rule 246.
    */
   onboardPaid?: Record<string, OnboardHold>;
+  /**
+   * Charges that may be taken at most once per claim (src/lib/credits.ts `chargeOnce`): the Sunday plan's
+   * `weekly:{scope}:{week}`. Written in the same locked save as the debit and dropped in the same save as its refund, so a
+   * run killed after its charge leaves the hold for the retry to reuse, and a retry never pays twice. A hold whose `at`
+   * is older than PAID_ONCE_MS is dropped by the next `chargeOnce`. Rule 333.
+   */
+  paidOnce?: Record<string, OnboardHold>;
   /** ISO time: every MEMBER session issued before it is dead (founder reset, owner reset). The owner's own sessions follow `sessionsAfter`. */
   teamSessionsAfter?: string;
   /** Runtime only: storage scope of the active brand (email for the default brand). Never persisted. */

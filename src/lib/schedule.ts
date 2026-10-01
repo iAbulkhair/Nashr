@@ -88,9 +88,10 @@ const WEEKLY_NOTE = "This is the automatic Sunday plan. Reference strategy.md ph
 
 /**
  * Weekly plan for one user. Returns what happened. `by` is who asked: "Run now" passes the login that pressed it (any
- * role may, POST /api/schedule), and the cron's run is the system's.
+ * role may, POST /api/schedule), and the cron's run is the system's. `deadline`: when the caller's request or cron
+ * invocation ends (epoch ms), which bounds the generation so its refund runs before the platform's kill.
  */
-export async function runWeekly(user: User, by: By = systemBy("cron")): Promise<string> {
+export async function runWeekly(user: User, by: By = systemBy("cron"), opts: { deadline?: number } = {}): Promise<string> {
   const email = user.scope ?? user.email;
   const brand = await getBrand(email);
   if (!brand) return "no_brand";
@@ -105,7 +106,7 @@ export async function runWeekly(user: User, by: By = systemBy("cron")): Promise<
   // What happened, for the activity log, like a routine's; a throw is "error" (the charge was refunded first).
   let outcome = "error";
   try {
-    outcome = await weeklyFor(user, email, brand, by);
+    outcome = await weeklyFor(user, email, brand, by, opts.deadline);
     return outcome;
   } finally {
     await Promise.all([
@@ -115,7 +116,10 @@ export async function runWeekly(user: User, by: By = systemBy("cron")): Promise<
   }
 }
 
-async function weeklyFor(user: User, email: string, brand: Brand, by: By): Promise<string> {
+/** The claim the Sunday plan of `scope` is charged under in the week starting `week` (rule 333). */
+export const weeklyClaim = (scope: string, week = weekStartUtc()) => `weekly:${scope}:${week}`;
+
+async function weeklyFor(user: User, email: string, brand: Brand, by: By, deadline?: number): Promise<string> {
   const gov = await getGov(email);
   if (trialOver(user)) return "trial_over";
   // weekly cap: count items the team created on its own in the last 7 days (`isAutonomous`: the Sunday plan, the
@@ -126,13 +130,21 @@ async function weeklyFor(user: User, email: string, brand: Brand, by: By): Promi
   // Loaded before the charge (notifications imports this module, hence the dynamic import), so nothing after a kept
   // charge can fail before the week is recorded.
   const { notifyItem } = await import("./notifications");
-  // weekly_plan is Noor's, so it counts against her monthly cap in this brand, like a batch she was asked for.
-  const r = await generateBatch(user, email, { type: "weekly_plan", notes: WEEKLY_NOTE, brief: WEEKLY_NOTE, source: "scheduled", via: "weekly", gov, brand, by });
+  // weekly_plan is Noor's, so it counts against her monthly cap in this brand, like a batch she was asked for. A paid
+  // account due its monthly credits is renewed first, inside generateBatch (rule 332). Charged once per brand and week
+  // (`once`, rule 333): a run killed after its charge leaves the hold, and the retry reuses it. The week's marker is
+  // written inside the batch's refund guard (`commit`, rule 334): a failure before it refunds once, and a retry after it
+  // stops at `ranThisWeek`.
+  const week = weekStartUtc();
+  const r = await generateBatch(user, email, {
+    type: "weekly_plan", notes: WEEKLY_NOTE, brief: WEEKLY_NOTE, source: "scheduled", via: "weekly", gov, brand, by,
+    once: weeklyClaim(email, week), commit: () => saveSchedule(email, { lastWeekly: new Date().toISOString() }),
+    ...(deadline !== undefined ? { deadline } : {}),
+  });
   if (!r.ok) {
     if (r.reason === "failed") throw r.error;
     return r.reason === "paused" ? "retry:paused" : r.reason;
   }
-  await saveSchedule(email, { lastWeekly: new Date().toISOString() });
   await notifyItem(user.email, user.lang, { kind: "weekly", agent: "noor", title: user.lang === "ar" ? "خطة الأسبوع جاهزة في صندوق الموافقة" : "This week's plan is ready in your inbox", body: user.lang === "ar" ? `${r.tasks.length} عنصر من نور. اعتمد ما يعجبك وعيّن تواريخ النشر.` : `${r.tasks.length} item(s) from Noor. Approve what you like and set publish dates.`, href: "" }, `weekly:${new Date().toISOString().slice(0, 10)}`, 2);
   return `ok:${r.tasks.length}`;
 }
