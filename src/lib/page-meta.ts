@@ -1,19 +1,24 @@
 import type { Metadata } from "next";
-import { dict, type Lang } from "./i18n";
+import { SLOGAN } from "./home";
+import type { Lang } from "./i18n";
 
-/** The founder's slogan (decision of 2026-10-01). Arabic only: there is no approved English slogan in src/lib/i18n.ts. */
-export const SLOGAN_AR = "ذكين. الذكي المكين.";
+/**
+ * The founder's slogan (decision of 2026-10-01), as the homepage's h1 already shows it: `SLOGAN.line1` in src/lib/home.ts,
+ * «ذكين. الذكي المكين.» and its approved English, "Thakeen. Smart. Steadfast.". Read from there so the two never drift.
+ */
+export const SLOGAN_AR = SLOGAN.line1.ar;
 
 /**
  * The site's default title and description, shown by any page without metadata of its own (the homepage) and copied by
- * Next into og:title and og:description for its share card (founder decision 2026-10-01). Arabic is the public name with
- * the slogan; English is the name with the site's existing English tagline (the footer's), since no English slogan has
- * been approved. Neither names an agent or a model: the share card speaks for the product, and the image says the same
+ * Next into og:title and og:description for its share card (founder decision 2026-10-01). The title is the slogan in the
+ * page's language; the description is the slogan followed by what the product is. In Arabic that phrase is masculine
+ * («وكيل تسويق مبني للخليج») to agree with ذكين; the footer's feminine tagline describes Noor and stays in the footer.
+ * Neither names an agent or a model: the share card speaks for the product, and the image says the same
  * (src/app/[lang]/opengraph-image.png and its alt text; tests/share-meta.test.ts).
  */
 export const SITE_DEFAULT: Record<Lang, { title: string; description: string }> = {
-  ar: { title: SLOGAN_AR, description: `${SLOGAN_AR} ${dict.ar.footer.tagline}` },
-  en: { title: `Thakeen — ${dict.en.footer.tagline.replace(/\.$/, "")}`, description: `Thakeen. ${dict.en.footer.tagline}` },
+  ar: { title: SLOGAN.line1.ar, description: `${SLOGAN.line1.ar} وكيل تسويق مبني للخليج.` },
+  en: { title: SLOGAN.line1.en, description: `${SLOGAN.line1.en} A marketing agent built for the Gulf.` },
 };
 
 /**

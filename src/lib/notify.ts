@@ -89,10 +89,18 @@ async function mailFailed(from: string, reason: string) {
  * the message goes out through the normal path. The once-only part is a 400-day repair flag per (account, message)
  * (`onceRepairKey`, SET NX): a second run, a second instance, or a send that is refused after the repair can never clear
  * an old marker again. A marker written by `markSent` is never cleared.
+ *
+ * Only markers written before `REPAIR_BEFORE` are cleared, whatever the deploy order. The old guard is still what runs on
+ * main, so if MAIL_FROM went live before this code did, the markers it wrote in that gap would stand for sends that
+ * succeeded, and clearing them would mail those customers twice. The old guard always wrote its marker with a 400-day
+ * expiry, so its remaining TTL gives the moment it was written (`writtenBeforeRepairCutoff`); a marker with no expiry
+ * predates that guard. A marker burned after the cutoff and before this code is live is left alone: missing that one
+ * repair is the lesser failure.
  */
 export async function sendOnce(email: string, key: string, subject: string, text: string): Promise<OnceResult> {
   const marker = onceKey(email, key);
-  if (!repairable(await db.get(marker))) return "already";
+  const first = await db.get(marker);
+  if (!repairable(first) || (isOldMarker(first) && !(await writtenBeforeRepairCutoff(marker)))) return "already";
   const claim = onceClaimKey(email, key);
   const token = await db.lockOwned(claim, ONCE_CLAIM_TTL_SECONDS);
   if (!token) return "busy";
@@ -102,8 +110,9 @@ export async function sendOnce(email: string, key: string, subject: string, text
     await db.sadd(ONCE_INDEX(email), key);
     const held = await db.get(marker);
     if (!repairable(held)) return "already";
-    if (held !== null && held !== undefined) {
-      // An old-guard marker on a message that is due again: clear it once, never twice.
+    if (isOldMarker(held)) {
+      // An old-guard marker on a message that is due again: clear it once, never twice, and only one written before the cutoff.
+      if (!(await writtenBeforeRepairCutoff(marker))) return "already";
       if (!(await db.lock(onceRepairKey(email, key), ONCE_TTL_SECONDS))) return "already";
       await db.del(marker);
     }
@@ -125,6 +134,31 @@ export const confirmedMarker = (v: unknown): v is SentRecord => typeof v === "ob
  * can reach customers. The repair flag is checked under the claim, not here.
  */
 const repairable = (v: unknown) => v === null || v === undefined || (!confirmedMarker(v) && mailReady());
+/** A marker the old claim-before-send guard wrote: present, but with no `sent` record. */
+const isOldMarker = (v: unknown) => v !== null && v !== undefined && !confirmedMarker(v);
+
+/**
+ * Old-guard markers written at or after this moment are never cleared (founder decision 2026-10-01). MAIL_FROM was not set
+ * in production when it was fixed, so every old marker written before it stands for a refused send. Do not move it later:
+ * a marker the old guard wrote after MAIL_FROM went live stands for a message the customer received.
+ */
+export const REPAIR_BEFORE = "2026-10-01T17:00:00.000Z";
+/**
+ * Whether the old-guard marker at `marker` was written before `REPAIR_BEFORE`. The old guard wrote every marker with a
+ * 400-day expiry (SET NX EX), so the write time is now minus (400 days minus the remaining TTL). No expiry (-1) means a
+ * guard older than that one, so before the cutoff; a missing key (-2) has nothing to repair.
+ */
+export async function writtenBeforeRepairCutoff(marker: string): Promise<boolean> {
+  const ttl = await db.ttl(marker);
+  if (ttl === -1) return true;
+  if (ttl < 0) return false;
+  return repairClock.now() - (ONCE_TTL_SECONDS - ttl) * 1000 < Date.parse(REPAIR_BEFORE);
+}
+/**
+ * The clock `writtenBeforeRepairCutoff` reads. Always `Date.now()` in the product; tests pin it so a marker "written
+ * before the cutoff" stays one whatever day CI runs (no old marker can outlive the cutoff by more than 400 days).
+ */
+export const repairClock = { now: () => Date.now() };
 
 /** Record a named one-time email as sent. Only `sendOnce` calls this in the product, after Resend accepted the message. */
 export async function markSent(email: string, key: string): Promise<void> {

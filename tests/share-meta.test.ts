@@ -112,16 +112,18 @@ describe("rule 366: the default share card carries the public name and the found
   it("the layout's default title and description (the homepage's og:title and og:description)", async () => {
     const { generateMetadata } = await import("@/app/[lang]/layout");
     const { SLOGAN_AR } = await import("@/lib/page-meta");
-    expect(SLOGAN_AR).toBe("ذكين. الذكي المكين.");
+    const { SLOGAN } = await import("@/lib/home");
+    // One source: the homepage h1's slogan (src/lib/home.ts), never a second literal that can drift.
+    expect(SLOGAN_AR).toBe(SLOGAN.line1.ar);
+    expect(SLOGAN.line1).toEqual({ ar: "ذكين. الذكي المكين.", en: "Thakeen. Smart. Steadfast." });
     const ar = await generateMetadata(P("ar"));
-    expect(ar.title).toBe(SLOGAN_AR);
-    expect(String(ar.description).startsWith(SLOGAN_AR)).toBe(true);
+    expect(ar.title).toBe("ذكين. الذكي المكين.");
+    // Masculine, to agree with ذكين (الذكي المكين); the feminine «وكيلة … مبنية» is Noor's and stays in the footer.
+    expect(ar.description).toBe("ذكين. الذكي المكين. وكيل تسويق مبني للخليج.");
+    expect(String(ar.description)).not.toMatch(/وكيلة|مبنية/);
     const en = await generateMetadata(P("en"));
-    // No English slogan is approved in src/lib/i18n.ts, so English is the name with the existing English tagline.
-    const { dict } = await import("@/lib/i18n");
-    expect(dict.en.footer.tagline).not.toMatch(NO_AGENT_OR_MODEL);
-    expect(en.title).toBe(`Thakeen — ${dict.en.footer.tagline.replace(/\.$/, "")}`);
-    expect(en.description).toBe(`Thakeen. ${dict.en.footer.tagline}`);
+    expect(en.title).toBe("Thakeen. Smart. Steadfast.");
+    expect(en.description).toBe("Thakeen. Smart. Steadfast. A marketing agent built for the Gulf.");
     for (const m of [ar, en]) {
       expect(String(m.title)).not.toMatch(NO_AGENT_OR_MODEL);
       expect(String(m.description)).not.toMatch(NO_AGENT_OR_MODEL);
@@ -131,7 +133,7 @@ describe("rule 366: the default share card carries the public name and the found
   it("the share image's alt text says the same, and the e2e default title matches the layout", async () => {
     const alt = readFileSync(join(LANG_DIR, "opengraph-image.alt.txt"), "utf8");
     expect(alt).toContain("ذكين. الذكي المكين.");
-    expect(alt).toContain("Thakeen. A marketing agent built for the Gulf.");
+    expect(alt).toContain("Thakeen. Smart. Steadfast.");
     expect(alt).not.toMatch(NO_AGENT_OR_MODEL);
     const { DEFAULT_TITLE } = await import("../e2e/fixtures/routes");
     const { SITE_DEFAULT } = await import("@/lib/page-meta");
@@ -142,6 +144,10 @@ describe("rule 366: the default share card carries the public name and the found
     const png = readFileSync(join(LANG_DIR, "opengraph-image.png"));
     // SHA-256 of the #45 card that read "نور، وكيلة تسويق للخليج / Noor, the AI marketing agent for the Gulf".
     const OLD_CARD_SHA256 = "66093f6d401a0228cc8a57cf2c971cc8c31bb62a391a9bac89dd9e82a0cf40f6";
-    expect(createHash("sha256").update(png).digest("hex")).not.toBe(OLD_CARD_SHA256);
+    // And the first slogan card, whose English line was the footer tagline instead of the English slogan.
+    const FOOTER_TAGLINE_CARD_SHA256 = "670f9a7546401b3b5c9eb27e9ed2ac1a25d8ce1a1338951ba42c88a5b1470ce0";
+    const sha = createHash("sha256").update(png).digest("hex");
+    expect(sha).not.toBe(OLD_CARD_SHA256);
+    expect(sha).not.toBe(FOOTER_TAGLINE_CARD_SHA256);
   });
 });

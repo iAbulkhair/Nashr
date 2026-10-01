@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { newUser } from "./helpers/session";
 import { db } from "@/lib/db";
 
 /**
- * Rules 350-352 and 363-365 (#11). One-time emails (the signup nudge, each lifecycle note) are marked as sent only after Resend
+ * Rules 350-352, 363-365 and 367 (#11). One-time emails (the signup nudge, each lifecycle note) are marked as sent only after Resend
  * accepted them. The old guard claimed a 400-day marker before sending, so every nudge and trial note Resend refused
  * while MAIL_FROM was unset was recorded as done and never retried.
  */
@@ -22,6 +22,7 @@ const refuse: Send = async () => ({ data: null, error: { name: "validation_error
 const accept: Send = async () => ({ data: { id: "re_ok" }, error: null });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   sends.length = 0;
   send = accept;
@@ -162,6 +163,7 @@ describe("rule 352: the signup nudge uses the same claim-then-confirm guard", ()
   });
 
   it("an account deletion removes the marker, the claim and the index", async () => {
+    await atTestNow();
     mailOn();
     const { sendOnce, onceKey, onceClaimKey, onceRepairKey, ONCE_INDEX } = await import("@/lib/notify");
     const { wipeAccount } = await import("@/lib/account");
@@ -170,7 +172,7 @@ describe("rule 352: the signup nudge uses the same claim-then-confirm guard", ()
     await db.lock(onceClaimKey(email, "lifecycle:day2"), 120);
     await db.sadd(ONCE_INDEX(email), "lifecycle:day2");
     // A repaired old-guard marker leaves a repair flag (rule 363); it goes with the account too.
-    await db.lock(onceKey(email, "lifecycle:day1"), 400 * 86400);
+    await burn(email, "lifecycle:day1");
     expect(await sendOnce(email, "lifecycle:day1", "s", "t")).toBe("sent");
     await wipeAccount(email);
     expect(await db.get(onceKey(email, "nudge1"))).toBeFalsy();
@@ -186,9 +188,24 @@ describe("rule 352: the signup nudge uses the same claim-then-confirm guard", ()
  * RESEND_API_KEY arrived (2026-09-18) was refused for want of MAIL_FROM. Once MAIL_FROM is live, an account that still
  * qualifies for a message whose marker was burned gets it, once; one that received it under `markSent` never does.
  */
-const burn = (email: string, key: string) => db.lock(`notified:${email}:${key}`, 400 * 86400);
+/**
+ * Old-guard markers are repaired only when written before `REPAIR_BEFORE` (rule 367), which the code works out from the
+ * marker's remaining TTL and `repairClock`. These tests pin that clock a few days after the cutoff, so they never depend
+ * on the day CI runs, and `burn` writes the marker as the old guard did (SET NX EX 400 days) as if at `writtenAt`: it
+ * leaves the TTL such a marker would still have at TEST_NOW. (Faking `Date` itself breaks the `resend` mock under the
+ * daily cron, so only the repair clock is pinned.)
+ */
+const TEST_NOW = Date.parse("2026-10-05T09:00:00.000Z");
+async function atTestNow() {
+  const { repairClock } = await import("@/lib/notify");
+  vi.spyOn(repairClock, "now").mockReturnValue(TEST_NOW);
+}
+async function burn(email: string, key: string, writtenAt = "2026-09-25T09:00:00.000Z") {
+  await db.lock(`notified:${email}:${key}`, 400 * 86400 - (TEST_NOW - Date.parse(writtenAt)) / 1000);
+}
 
 describe("rule 363: a burned marker is cleared once, when mail can reach customers and the message is due", () => {
+  beforeEach(atTestNow);
   it("sends the message once, marks it confirmed and sets the repair flag", async () => {
     mailOn();
     const { sendOnce, onceKey, onceRepairKey, confirmedMarker } = await import("@/lib/notify");
@@ -240,6 +257,7 @@ describe("rule 363: a burned marker is cleared once, when mail can reach custome
 });
 
 describe("rule 364: a message Resend accepted is never sent again, and nothing is repaired without MAIL_FROM", () => {
+  beforeEach(atTestNow);
   it("a marker written by markSent is never cleared", async () => {
     mailOn();
     const { sendOnce, markSent, onceKey, onceRepairKey } = await import("@/lib/notify");
@@ -265,6 +283,7 @@ describe("rule 364: a message Resend accepted is never sent again, and nothing i
 });
 
 describe("rule 365: the senders repair only accounts that still qualify", () => {
+  beforeEach(atTestNow);
   const withBrand = async (prefix: string, ageDays: number) => {
     const u = await newUser(prefix);
     const { saveUser, getUser } = await import("@/lib/auth");
@@ -320,5 +339,66 @@ describe("rule 365: the senders repair only accounts that still qualify", () => 
     expect(marker, "an account that built a brand no longer qualifies: its old marker stands").toBeTruthy();
     expect(confirmedMarker(marker)).toBe(false);
     expect(await db.get(onceRepairKey(built.email, "nudge1"))).toBeFalsy();
+  });
+});
+
+describe("rule 367: only markers the old guard wrote before REPAIR_BEFORE are repaired, whatever the deploy order", () => {
+  beforeEach(atTestNow);
+
+  it("a marker written after the cutoff (MAIL_FROM live before this code: the send succeeded) is never cleared", async () => {
+    mailOn();
+    const { sendOnce, onceKey, onceRepairKey, REPAIR_BEFORE } = await import("@/lib/notify");
+    expect(Date.parse(REPAIR_BEFORE)).toBeLessThan(TEST_NOW);
+    const email = (await newUser("repair-after-cutoff")).email;
+    await burn(email, "nudge1", "2026-10-03T09:00:00.000Z");
+    expect(await sendOnce(email, "nudge1", "s", "t")).toBe("already");
+    expect(await sendOnce(email, "nudge1", "s", "t")).toBe("already");
+    expect(await db.get(onceKey(email, "nudge1")), "the old marker stands").toBeTruthy();
+    expect(await db.get(onceRepairKey(email, "nudge1")), "no repair flag is spent").toBeFalsy();
+    expect(sends).toHaveLength(0);
+  });
+
+  it("the boundary is exact: one second before the cutoff is repaired, the cutoff itself is not", async () => {
+    mailOn();
+    const { sendOnce, REPAIR_BEFORE, writtenBeforeRepairCutoff, onceKey } = await import("@/lib/notify");
+    const before = (await newUser("repair-edge-before")).email;
+    const at = (await newUser("repair-edge-at")).email;
+    await burn(before, "nudge1", new Date(Date.parse(REPAIR_BEFORE) - 1000).toISOString());
+    await burn(at, "nudge1", REPAIR_BEFORE);
+    expect(await writtenBeforeRepairCutoff(onceKey(before, "nudge1"))).toBe(true);
+    expect(await writtenBeforeRepairCutoff(onceKey(at, "nudge1"))).toBe(false);
+    expect(await sendOnce(before, "nudge1", "s", "t")).toBe("sent");
+    expect(await sendOnce(at, "nudge1", "s", "t")).toBe("already");
+    expect(sends).toEqual([before]);
+  });
+
+  it("a marker with no expiry predates the 400-day guard and is repaired once; a missing key has nothing to repair", async () => {
+    mailOn();
+    const { sendOnce, writtenBeforeRepairCutoff, onceKey } = await import("@/lib/notify");
+    const email = (await newUser("repair-no-ttl")).email;
+    await db.set(onceKey(email, "lifecycle:day1"), 1);
+    expect(await db.ttl(onceKey(email, "lifecycle:day1"))).toBe(-1);
+    expect(await sendOnce(email, "lifecycle:day1", "s", "t")).toBe("sent");
+    expect(await sendOnce(email, "lifecycle:day1", "s", "t")).toBe("already");
+    expect(await db.ttl(onceKey(email, "absent"))).toBe(-2);
+    expect(await writtenBeforeRepairCutoff(onceKey(email, "absent"))).toBe(false);
+    expect(sends.filter((to) => to === email)).toHaveLength(1);
+  });
+
+  it("through the daily cron, a nudge marker the old guard wrote after the cutoff is not sent again", async () => {
+    mailOn();
+    vi.stubEnv("CRON_SECRET", "cron-secret-mail-cutoff");
+    const { saveUser } = await import("@/lib/auth");
+    const { onceKey } = await import("@/lib/notify");
+    const daily = await import("@/app/api/cron/daily/route");
+    const u = await newUser("repair-cutoff-cron");
+    await saveUser({ ...u, createdAt: new Date(Date.now() - 5 * 864e5).toISOString() });
+    await burn(u.email, "nudge1", "2026-10-02T09:00:00.000Z");
+    const r = await daily.GET(new Request("https://nashr.test/api/cron/daily?chain=1", { headers: { authorization: "Bearer cron-secret-mail-cutoff" } }));
+    expect(r.status).toBe(200);
+    const results = ((await r.json()) as { results: Record<string, string> }).results;
+    expect(results[u.email]).toBe("no_brand");
+    expect(await db.get(onceKey(u.email, "nudge1"))).toBeTruthy();
+    expect(sends.filter((to) => to === u.email)).toHaveLength(0);
   });
 });
