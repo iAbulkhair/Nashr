@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { sarText } from "@/lib/partner-rules";
+import { ksaDay, sarText } from "@/lib/partner-rules";
 import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, type SelfServePlan } from "@/lib/pricing";
 
 type Payment = {
@@ -19,6 +19,10 @@ const S = {
     title: "Payments", note: "Record each payment received (SAR excluding VAT). It is the source of truth for partner commissions; it does not change the plan (set that above).",
     offerOpen: (kind: string) => `Unused ${FIRST_MONTH_DISCOUNT_PCT}% first-month offer (${kind}). The first payment recorded uses it. Expected first month:`,
     offerUsed: (kind: string) => `${FIRST_MONTH_DISCOUNT_PCT}% first-month offer (${kind}) used.`,
+    kinds: { partner: "partner code", early: "early-partner offer" } as Record<string, string>,
+    via: { link: "by link", code: "by code" } as Record<string, string>,
+    statuses: { trial: "in its 30 days", paid: "paid in time", lapsed: "lapsed" } as Record<string, string>,
+    reasons: { no_partner: "no partner", self: "self-referral", team: "same team", before_attribution: "paid before the referral", lapsed: "first payment after 30 days", window: "after the first 4 months" } as Record<string, string>,
     partner: "Partner", none: "No payments recorded.", amount: "Amount SAR excl. VAT", plan: "Plan", date: "Date", reference: "Reference",
     record: "Record payment", void: "Void", voidReason: "Why is this payment voided (refund, mistake)?", voided: "voided", commission: "commission", notCounted: "not counted",
     failed: "Failed", loading: "Loading…",
@@ -27,6 +31,10 @@ const S = {
     title: "الدفعات", note: "سجّل كل دفعة مستلمة (بالريال دون الضريبة). هي مصدر حساب عمولات الشركاء، ولا تغيّر الخطة (غيّرها من الأعلى).",
     offerOpen: (kind: string) => `عرض خصم ${FIRST_MONTH_DISCOUNT_PCT}% على الشهر الأول غير مستخدم (${kind}). تستخدمه أول دفعة تُسجَّل. المتوقع للشهر الأول:`,
     offerUsed: (kind: string) => `استُخدم عرض خصم ${FIRST_MONTH_DISCOUNT_PCT}% على الشهر الأول (${kind}).`,
+    kinds: { partner: "كود شريك", early: "عرض الشركاء الأوائل" } as Record<string, string>,
+    via: { link: "عبر الرابط", code: "عبر الكود" } as Record<string, string>,
+    statuses: { trial: "ضمن مهلة 30 يوماً", paid: "دفع في المهلة", lapsed: "انتهت المهلة" } as Record<string, string>,
+    reasons: { no_partner: "لا شريك", self: "إحالة ذاتية", team: "الفريق نفسه", before_attribution: "دفع قبل الإحالة", lapsed: "أول دفعة بعد 30 يوماً", window: "بعد أول 4 أشهر" } as Record<string, string>,
     partner: "الشريك", none: "لا دفعات مسجلة.", amount: "المبلغ (ريال، دون الضريبة)", plan: "الخطة", date: "التاريخ", reference: "المرجع",
     record: "سجّل الدفعة", void: "إلغاء", voidReason: "لماذا تُلغى هذه الدفعة (استرداد، خطأ)؟", voided: "ملغاة", commission: "عمولة", notCounted: "لا تُحسب",
     failed: "فشل", loading: "جارٍ التحميل…",
@@ -46,7 +54,7 @@ export default function PaymentsPanel({ email, lang }: { email: string; lang: "a
   const [msg, setMsg] = useState("");
   const [plan, setPlan] = useState<string>("starter");
   const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => ksaDay());
   const [reference, setReference] = useState("");
   const [id, setId] = useState(newPaymentId);
   const [busy, setBusy] = useState(false);
@@ -77,10 +85,10 @@ export default function PaymentsPanel({ email, lang }: { email: string; lang: "a
     <section className="mt-4 rounded border border-ink/10 p-3 text-xs" data-payments>
       <p className="font-semibold">{L.title}</p>
       <p className="text-ink/60">{L.note}</p>
-      {view.referredBy && <p className="mt-1">{L.partner}: <span className="font-mono">{view.referredBy.code}</span> · <span dir="ltr">{view.referredBy.partner}</span> · {view.referredBy.via} · <span dir="ltr">{view.referredBy.at.slice(0, 10)}</span> · {view.referredBy.status}</p>}
+      {view.referredBy && <p className="mt-1">{L.partner}: <span className="font-mono">{view.referredBy.code}</span> · <span dir="ltr">{view.referredBy.partner}</span> · {L.via[view.referredBy.via] ?? view.referredBy.via} · <span dir="ltr">{view.referredBy.at.slice(0, 10)}</span> · {L.statuses[view.referredBy.status] ?? view.referredBy.status}</p>}
       {view.offer && (view.open
-        ? <p className="mt-1 text-oasis">{L.offerOpen(view.offer.kind)} {view.expected ? SELF_SERVE_PLANS.map((k) => `${k} ${view.expected![k]}`).join(" · ") : ""}</p>
-        : <p className="mt-1 text-ink/60">{L.offerUsed(view.offer.kind)}</p>)}
+        ? <p className="mt-1 text-oasis">{L.offerOpen(L.kinds[view.offer.kind] ?? view.offer.kind)} {view.expected ? SELF_SERVE_PLANS.map((k) => `${k} ${view.expected![k]}`).join(" · ") : ""}</p>
+        : <p className="mt-1 text-ink/60">{L.offerUsed(L.kinds[view.offer.kind] ?? view.offer.kind)}</p>)}
       <form onSubmit={async (e) => { e.preventDefault(); if (busy) return; if (await post({ action: "record", id, amountSar: Number(amount), plan, date, reference })) { setId(newPaymentId()); setAmount(""); setReference(""); } }} className="mt-2 flex flex-wrap items-end gap-2">
         <label className="grid gap-0.5"><span className="text-ink/60">{L.plan}</span>
           <select value={plan} onChange={(e) => setPlan(e.target.value)} className="input">{[...SELF_SERVE_PLANS, "agency"].map((p) => <option key={p} value={p}>{p}</option>)}</select>
@@ -96,8 +104,8 @@ export default function PaymentsPanel({ email, lang }: { email: string; lang: "a
           <tbody>{view.payments.map((p) => (
             <tr key={p.id} className={`border-t border-ink/5 ${p.voidedAt ? "text-ink/40" : ""}`}>
               <td className="p-1" dir="ltr">{p.date}</td><td className="p-1">{p.plan}</td><td className="p-1" dir="ltr">{sarText(p.amountSar)}</td>
-              <td className="p-1">{p.offer ? `-${FIRST_MONTH_DISCOUNT_PCT}% ${p.offer}${p.expectedSar ? ` (${p.expectedSar})` : ""}` : ""}</td>
-              <td className="p-1">{p.commission ? `${L.commission} ${sarText(p.commission.sar)}` : p.notCounted ? `${L.notCounted}: ${p.notCounted}` : ""}</td>
+              <td className="p-1">{p.offer ? `-${FIRST_MONTH_DISCOUNT_PCT}% ${L.kinds[p.offer] ?? p.offer}${p.expectedSar ? ` (${p.expectedSar})` : ""}` : ""}</td>
+              <td className="p-1">{p.commission ? `${L.commission} ${sarText(p.commission.sar)}` : p.notCounted ? `${L.notCounted}: ${L.reasons[p.notCounted] ?? p.notCounted}` : ""}</td>
               <td className="p-1" dir="auto">{p.reference}</td>
               <td className="p-1">{p.voidedAt ? `${L.voided}${p.voidReason ? `: ${p.voidReason}` : ""}` : <button disabled={busy} onClick={() => { const reason = prompt(L.voidReason); if (reason !== null) void post({ action: "void", id: p.id, reason }); }} className="text-sadu underline">{L.void}</button>}</td>
             </tr>

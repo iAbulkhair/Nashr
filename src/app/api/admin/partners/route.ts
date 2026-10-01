@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminActor, isAdmin } from "@/lib/auth";
 import { CAPS, pushCapped } from "@/lib/db";
-import { approvePartner, listApplications, listPartners, recordPayout, rejectApplication } from "@/lib/partners";
+import { approvePartner, confirmBank, listApplications, listPartners, recordPayout, rejectApplication, voidPayout } from "@/lib/partners";
 
 export const dynamic = "force-dynamic";
 
@@ -20,8 +20,11 @@ export async function GET(req: Request) {
  * POST /api/admin/partners
  *   {action:"approve", email, name?, code, appId?}  claim a unique code and link it to the applicant's email
  *   {action:"reject", appId}
- *   {action:"payout", email, amountSar, date, reference?}  mark a bank transfer paid; only a payable balance (SAR 200 or
- *   more) is paid down, never past it, under the partner's lock
+ *   {action:"payout", email, id?, amountSar, date, reference?}  mark a bank transfer paid; only a payable balance (SAR 200
+ *   or more) is paid down, never past it, to confirmed bank details, under the partner's lock; a retried id records once
+ *   {action:"void_payout", email, id, reason?}  a payout entered by mistake: kept on record, its amount back in the balance
+ *   {action:"confirm_bank", email, savedAt}  the founder checked the bank details with the partner out of band (by phone,
+ *   from the application); `savedAt` names the version seen, so details changed since then stay unconfirmed
  * Every change is written to admin:log with the acting founder; bank details never are.
  */
 export async function POST(req: Request) {
@@ -42,9 +45,23 @@ export async function POST(req: Request) {
   }
   if (b.action === "payout") {
     const email = typeof b.email === "string" ? b.email : "";
-    const res = await recordPayout(email, { amountSar: b.amountSar, date: b.date, reference: b.reference }, who);
-    if (!res.ok) return NextResponse.json(res, { status: res.error === "not_found" ? 404 : 400 });
-    await log(email, `partner:payout sar:${res.payout.sar} date:${res.payout.date}`);
+    const res = await recordPayout(email, { id: b.id, amountSar: b.amountSar, date: b.date, reference: b.reference }, who);
+    if (!res.ok) return NextResponse.json(res, { status: res.error === "not_found" ? 404 : res.error === "bank_unconfirmed" ? 409 : 400 });
+    if (!res.already) await log(email, `partner:payout ${res.payout.id} sar:${res.payout.sar} date:${res.payout.date}`);
+    return NextResponse.json(res);
+  }
+  if (b.action === "void_payout") {
+    const email = typeof b.email === "string" ? b.email : "";
+    const res = await voidPayout(email, b.id, who, b.reason);
+    if (!res.ok) return NextResponse.json(res, { status: 404 });
+    await pushCapped("admin:log", JSON.stringify({ actor: who, email, what: `partner:payout ${res.payout.id} void sar:${res.payout.sar}`, reason: res.payout.voidReason, at: new Date().toISOString() }), CAPS.adminLog);
+    return NextResponse.json(res);
+  }
+  if (b.action === "confirm_bank") {
+    const email = typeof b.email === "string" ? b.email : "";
+    const res = await confirmBank(email, b.savedAt, who);
+    if (!res.ok) return NextResponse.json(res, { status: res.error === "not_found" ? 404 : 409 });
+    await log(email, "partner:bank confirm");
     return NextResponse.json(res);
   }
   return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });

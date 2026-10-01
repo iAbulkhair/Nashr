@@ -37,7 +37,7 @@ export default function PartnerPanel({ lang, link, data, bankEditable }: { lang:
       const res = await fetch("/api/partner", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ holder, iban }) });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; bank?: { holder: string; iban: string } };
       if (!j.ok || !j.bank) return setErr(S.errors[j.error ?? "server"] ?? S.errors.server);
-      setBank({ ...j.bank, savedAt: new Date().toISOString() });
+      setBank({ ...j.bank, savedAt: new Date().toISOString(), confirmed: false });
       setIban("");
       setMsg(S.saved);
     } catch {
@@ -121,7 +121,7 @@ export default function PartnerPanel({ lang, link, data, bankEditable }: { lang:
             <table className="w-full text-sm">
               <thead><tr><th className={th}>{S.payoutCols.date}</th><th className={th}>{S.payoutCols.sar}</th><th className={th}>{S.payoutCols.reference}</th></tr></thead>
               <tbody>{data.payouts.map((p, i) => (
-                <tr key={`${p.date}-${i}`} className="border-t border-ink/5"><td className={`${td} tnum`} dir="ltr">{p.date}</td><td className={`${td} tnum`} dir="ltr">{sarText(p.sar)}</td><td className={td} dir="auto">{p.reference || "—"}</td></tr>
+                <tr key={`${p.date}-${i}`} className={`border-t border-ink/5 ${p.voided ? "text-ink/40 line-through" : ""}`}><td className={`${td} tnum`} dir="ltr">{p.date}</td><td className={`${td} tnum`} dir="ltr">{sarText(p.sar)}</td><td className={td} dir="auto">{p.reference || "—"}{p.voided ? ` (${S.voided})` : ""}</td></tr>
               ))}</tbody>
             </table>
           </div>
@@ -132,6 +132,7 @@ export default function PartnerPanel({ lang, link, data, bankEditable }: { lang:
         <h2 className="font-display text-lg font-bold">{S.bank}</h2>
         <p className="mt-1 text-sm text-ink/60">{S.bankNote}</p>
         {bank && <p data-bank-masked className="mt-2 text-sm"><span dir="auto">{bank.holder}</span> · <span className="font-mono" dir="ltr">{bank.iban}</span></p>}
+        {bank && !bank.confirmed && <p data-bank-pending className="mt-1 text-xs text-sadu">{S.bankPending}</p>}
         {bankEditable ? (
           <form onSubmit={saveBank} className="mt-3 grid gap-2 sm:max-w-md">
             <input value={holder} onChange={(e) => setHolder(e.target.value)} required maxLength={80} autoComplete="name" placeholder={S.holder} aria-label={S.holder} className="input" />

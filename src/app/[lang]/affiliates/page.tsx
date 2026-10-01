@@ -29,8 +29,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const t = dict[lang];
   const ar = lang === "ar";
   const items = ar
-    ? [[`${C}%`, `من كل دفعة يدفعها عميلك، لأول ${M} أشهر من اشتراكه المدفوع`], [`${D}%`, "خصم لعميلك على شهره الأول بكودك"], [`${W} يوماً`, "ليدفع عميلك أول دفعة بعد تسجيله عبر رابطك أو كودك"], [`${MIN} ريال`, "الحد الأدنى للصرف، شهرياً بتحويل بنكي"]]
-    : [[`${C}%`, `of every payment your customer makes, for their first ${M} months of paid subscription`], [`${D}%`, "off your customer's first month with your code"], [`${W} days`, "for your customer to make a first payment after signing up with your link or code"], [`SAR ${MIN}`, "minimum payout, monthly by bank transfer"]];
+    ? [[`${C}%`, `من كل دفعة يدفعها عميلك، لأول ${M} أشهر من اشتراكه المدفوع`], [`${D}%`, "خصم لعميلك على شهره الأول بكودك"], [`${W} يوماً`, "ليدفع عميلك أول دفعة من نقره على رابطك أو تسجيله بكودك"], [`${MIN} ريال`, "الحد الأدنى للصرف، شهرياً بتحويل بنكي"]]
+    : [[`${C}%`, `of every payment your customer makes, for their first ${M} months of paid subscription`], [`${D}%`, "off your customer's first month with your code"], [`${W} days`, "for your customer to make a first payment after clicking your link or signing up with your code"], [`SAR ${MIN}`, "minimum payout, monthly by bank transfer"]];
   return (
     <>
       <Nav t={t} lang={lang} />
@@ -44,8 +44,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
             <h2 className="font-display text-2xl font-bold">{ar ? "كيف يعمل" : "How it works"}</h2>
             <ol className="mt-4 space-y-3 text-ink/80">
               {(ar
-                ? ["قدّم الطلب أدناه. نراجع طلبك ونرد خلال يوم عمل.", "عند الموافقة تحصل على كودك الخاص (مثل AHMED) ورابطك، وتظهر لك صفحة «الشراكة» داخل حسابك في ذكين. سجّل حساباً بنفس البريد إن لم يكن لديك.", `من يسجّل عبر رابطك أو يكتب كودك يحصل على خصم ${D}% على شهره الأول، ويُحسب لك إذا دفع أول دفعة خلال ${W} يوماً.`, `تحصل على ${C}% من كل دفعة يدفعها خلال أول ${M} أشهر من اشتراكه المدفوع، تُصرف شهرياً بتحويل بنكي متى بلغ رصيدك ${MIN} ريال.`]
-                : ["Apply below. We review your application and reply within one business day.", "Once approved you get your own code (like AHMED) and link, and a Partner page appears inside your Thakeen account. Sign up with the same email if you have no account yet.", `Anyone who signs up with your link or types your code gets ${D}% off their first month, and counts for you if they make a first payment within ${W} days.`, `You receive ${C}% of every payment they make during their first ${M} months of paid subscription, paid monthly by bank transfer once your balance reaches SAR ${MIN}.`]
+                ? ["قدّم الطلب أدناه. نراجع طلبك ونرد خلال يوم عمل.", "عند الموافقة تحصل على كودك الخاص (مثل AHMED) ورابطك، وتظهر لك صفحة «الشراكة» داخل حسابك في ذكين. سجّل حساباً بنفس البريد إن لم يكن لديك.", `من يسجّل عبر رابطك أو يكتب كودك يحصل على خصم ${D}% على شهره الأول، ويُحسب لك إذا دفع أول دفعة خلال ${W} يوماً من نقره على رابطك أو من تسجيله بكودك.`, `تحصل على ${C}% من كل دفعة يدفعها خلال أول ${M} أشهر من اشتراكه المدفوع، تُصرف شهرياً بتحويل بنكي متى بلغ رصيدك ${MIN} ريال.`]
+                : ["Apply below. We review your application and reply within one business day.", "Once approved you get your own code (like AHMED) and link, and a Partner page appears inside your Thakeen account. Sign up with the same email if you have no account yet.", `Anyone who signs up with your link or types your code gets ${D}% off their first month, and counts for you if they make a first payment within ${W} days of clicking your link or of signing up with your code.`, `You receive ${C}% of every payment they make during their first ${M} months of paid subscription, paid monthly by bank transfer once your balance reaches SAR ${MIN}.`]
               ).map((s, i) => <li key={i} className="flex gap-3"><span className="font-mono text-oasis">{i + 1}.</span>{s}</li>)}
             </ol>
             <h2 className="mt-8 font-display text-2xl font-bold">{ar ? "الشروط" : "Terms"}</h2>

@@ -29,12 +29,13 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const card = (id: SelfServePlan | "agency") => m.plans.find((p) => p.id === id);
   const agency = card("agency");
   const used = await seatsUsed(u.email);
-  // The 15% first-month offer (src/lib/partners.ts, rules 393-395), owner only. A trial on or past its last day that has
-  // none yet gets the early-partner offer here (the cron grants it on the last day; this covers a missed run). Fixed-price
+  // The 15% first-month offer (src/lib/partners.ts, rules 393-395), owner only. A trial in its last day, or ended less
+  // than 3 days ago, that has none yet gets the early-partner offer here (the cron grants it on the last day; this covers
+  // a missed run). Never while the founder impersonates the account: looking is not the customer's visit. Fixed-price
   // pay links cannot carry a discount, so a discounted month is activated on WhatsApp for the discounted amount.
   // Shown while the account is still on its trial: a paid plan needs no "activate" offer (the console still applies an
   // open offer to the first payment it records). A busy lock only delays the grant to the next visit.
-  if (owner && lastDayOfferOwed(u) && (await grantEarlyOffer(u.email, (x) => lastDayOfferOwed(x)).catch(() => false))) u.firstMonthOffer = { kind: "early", pct: FIRST_MONTH_DISCOUNT_PCT, at: new Date().toISOString() };
+  if (owner && u.actor?.kind !== "founder" && lastDayOfferOwed(u) && (await grantEarlyOffer(u.email, (x) => lastDayOfferOwed(x)).catch(() => false))) u.firstMonthOffer = { kind: "early", pct: FIRST_MONTH_DISCOUNT_PCT, at: new Date().toISOString() };
   const offer = owner && u.plan === "trial" ? openOffer(u) : null;
   const O = OFFER_COPY[lang];
   const waNumber = (process.env.SUPPORT_WHATSAPP ?? "").replace(/\D/g, "");

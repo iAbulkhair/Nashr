@@ -9,11 +9,12 @@ import { db } from "@/lib/db";
 import { codeFor } from "@/lib/referral";
 import { wipeAccount } from "@/lib/account";
 import {
-  ATTRIBUTION_DAYS, COMMISSION_MONTHS, COMMISSION_PCT, PARTNER_COOKIE, PAYOUT_MIN_SAR, attributionDeadline, balances, codeProblem,
-  commissionDecision, commissionSar, maskIban, normalizeCode, payoutProblem, referralStatus, saIban, suggestCode, validAmount, windowEnd,
-  type LedgerRow,
+  ATTRIBUTION_DAYS, COMMISSION_MONTHS, COMMISSION_PCT, NEW_TERMS_FROM, PARTNER_COOKIE, PAYOUT_MIN_SAR, attributionDeadline, balances,
+  bankConfirmed, codeProblem, commissionDecision, commissionSar, ksaDay, maskIban, normalizeCode, parsePartnerCookie, partnerCookieValue,
+  payoutProblem, referralStatus, saIban, suggestCode, validAmount, windowEnd, type LedgerRow,
 } from "@/lib/partner-rules";
-import { customerLabel, earlyOfferDue, getPartner, grantEarlyOffer, lastDayOfferOwed, partnerByCode, partnerDashboard } from "@/lib/partners";
+import { customerLabel, earlyOfferDue, getPartner, grantEarlyOffer, lastDayOfferOwed, listPartners, partnerByCode, partnerDashboard } from "@/lib/partners";
+import { LEGAL } from "@/lib/legal";
 import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, firstMonthPriceSar } from "@/lib/pricing";
 import { can } from "@/lib/roles";
 import { INDUSTRY_PAGES } from "@/lib/pages-industry";
@@ -45,9 +46,11 @@ vi.mock("next/navigation", async (orig) => ({
 
 const FOUNDER = "founder-partners@test.example";
 const VALID_IBAN = "SA0380000000608010167519";
-const day = (offsetDays = 0) => new Date(Date.now() + offsetDays * 864e5).toISOString().slice(0, 10);
+/** A day in Riyadh, as the founder dates payments (the programme's days are Riyadh days, rule 406). */
+const day = (offsetDays = 0) => ksaDay(Date.now() + offsetDays * 864e5);
 const code = (p = "P") => `${p}${randomBytes(4).toString("hex").toUpperCase()}`.slice(0, 12);
 const ip = () => `10.${randomBytes(1)[0]}.${randomBytes(1)[0]}.${randomBytes(1)[0]}`;
+const toH = (sar: number) => Math.round(sar * 100);
 const status = async (r: Response | Promise<Response>) => (await r).status;
 const body = async <T = Record<string, unknown>>(r: Response | Promise<Response>) => (await (await r).json()) as T;
 type AsyncPage = (p: { params: Promise<{ lang: string }> }) => Promise<ReactElement>;
@@ -81,6 +84,14 @@ async function voidPay(email: string, id: string, reason = "refund") {
   return adminPayments.POST(json(`/api/admin/payments/${encodeURIComponent(email)}`, "POST", { action: "void", id, reason }), params({ email: encodeURIComponent(email) }));
 }
 const ledger = async (email: string) => Object.values(await db.hgetall<LedgerRow>(`partner:ledger:${email}`));
+/** The partner saves bank details and the founder confirms them, as before the first transfer (rule 405). */
+async function bankReady(email: string) {
+  await signIn(email);
+  expect(await status(partnerRoute.PUT(json("/api/partner", "PUT", { holder: "Partner Name", iban: VALID_IBAN })))).toBe(200);
+  await asFounder();
+  const savedAt = (await getPartner(email))!.bank!.savedAt;
+  expect(await status(adminPartners.POST(json("/api/admin/partners", "POST", { action: "confirm_bank", email, savedAt })))).toBe(200);
+}
 const visit = (c: string, headers: Record<string, string> = {}, query = "") => plink.GET(new Request(`https://nashr.test/p/${c}${query}`, { headers: { "x-real-ip": ip(), ...headers } }), params({ code: c }));
 
 beforeAll(async () => {
@@ -165,7 +176,7 @@ describe("rule 391: a partner link sets a 30-day first-party cookie and sends th
     expect(to.pathname).toBe("/en/app/signup");
     expect(to.searchParams.get("partner")).toBe(c);
     expect(to.searchParams.get("ref"), "never the credits referral's parameter").toBeNull();
-    expect(jar().get(PARTNER_COOKIE)).toBe(c);
+    expect(jar().get(PARTNER_COOKIE), "the code and the click time").toMatch(new RegExp(`^${c}\\.\\d{13}$`));
   });
 
   it("an unknown or malformed code sets nothing; Arabic is the default language", async () => {
@@ -324,10 +335,12 @@ describe("rule 394: the trial's last day grants the early-partner offer, mail or
     vi.stubEnv("CRON_SECRET", "");
   });
 
-  it("the billing page owes it to a trial on or past its last day", async () => {
+  it("the billing page owes it to a trial in its last day or ended less than 3 days ago, never to one ended long before", async () => {
     expect(lastDayOfferOwed(await trial(-48))).toBe(true);
     expect(lastDayOfferOwed(await trial(5))).toBe(true);
     expect(lastDayOfferOwed(await trial(40))).toBe(false);
+    expect(lastDayOfferOwed(await trial(-73)), "ended more than 3 days ago").toBe(false);
+    expect(lastDayOfferOwed(await trial(-24 * 90)), "ended months ago").toBe(false);
   });
 
   it("the day-3 note names the 15% on the first month in both languages", () => {
@@ -367,9 +380,12 @@ describe("rule 395: the billing page quotes the discounted first month and route
     }
   });
 
-  it("an ended trial with no offer is granted the early-partner one when the owner opens billing; a member sees no offer", async () => {
+  it("a just-ended trial with no offer is granted the early-partner one when the owner opens billing; a member and a founder impersonating grant nothing", async () => {
     const u = await newUser("bend");
-    await saveUser({ ...(await getUser(u.email))!, trialEnds: new Date(Date.now() - 3 * 864e5).toISOString() });
+    await saveUser({ ...(await getUser(u.email))!, trialEnds: new Date(Date.now() - 2 * 864e5).toISOString() });
+    await signIn(u.email, { imp: FOUNDER });
+    await html(BillingPage);
+    expect((await getUser(u.email))!.firstMonthOffer, "looking as the founder is not the customer's visit").toBeUndefined();
     const m = await newMember((await getUser(u.email))!);
     await signIn(m.email);
     expect(await html(BillingPage)).not.toContain("data-offer");
@@ -500,6 +516,7 @@ describe("rule 398: payouts pay down a payable balance only, atomically", () => 
 
   it("below SAR 200 nothing is payable; at 200 or more only up to the balance", async () => {
     const a = await partner("po");
+    await bankReady(a.user.email);
     await earn(a.code, 1000); // 150 SAR commission
     expect(await body(payout(a.user.email, 100))).toMatchObject({ ok: false, error: "below_minimum" });
     await earn(a.code, 1000); // 300 SAR
@@ -513,6 +530,7 @@ describe("rule 398: payouts pay down a payable balance only, atomically", () => 
 
   it("two payouts at once cannot both pay the same balance", async () => {
     const a = await partner("pc");
+    await bankReady(a.user.email);
     await earn(a.code, 2000); // 300 SAR
     await asFounder();
     const send = () => adminPartners.POST(json("/api/admin/partners", "POST", { action: "payout", email: a.user.email, amountSar: 300, date: day() }));
@@ -522,7 +540,7 @@ describe("rule 398: payouts pay down a payable balance only, atomically", () => 
   });
 
   it("the pure checks agree", () => {
-    const c = (sar: number, voided = false): LedgerRow => ({ kind: "commission", id: randomBytes(4).toString("hex"), customer: "c", label: "C-1", paymentDate: day(), baseSar: sar, sar, at: new Date().toISOString(), ...(voided ? { voidedAt: "x" } : {}) });
+    const c = (sar: number, voided = false): LedgerRow => ({ kind: "commission", id: randomBytes(4).toString("hex"), label: "C-1", paymentDate: day(), baseSar: sar, sar, at: new Date().toISOString(), ...(voided ? { voidedAt: "x" } : {}) });
     expect(payoutProblem([c(150)], 100)).toBe("below_minimum");
     expect(payoutProblem([c(150), c(100, true)], 100)).toBe("below_minimum");
     expect(payoutProblem([c(250)], 250)).toBeNull();
@@ -580,7 +598,8 @@ describe("rule 399: the partner page shows no customer PII; bank details are the
     await record(paid, { amountSar: 254, plan: "starter", date: day() });
     const d = (await partnerDashboard(a.user.email))!;
     expect(d.referrals.map((r) => r.status).sort()).toEqual(["paid", "trial"]);
-    expect(d.referrals.find((r) => r.label === customerLabel(paid))).toMatchObject({ status: "paid", months: 1 });
+    const paidLabel = customerLabel((await getUser(paid))!);
+    expect(d.referrals.find((r) => r.label === paidLabel)).toMatchObject({ status: "paid", months: 1 });
     const text = JSON.stringify(d);
     for (const e of [paid, waiting]) expect(text).not.toContain(e);
     expect(text).not.toContain("Customer");
@@ -663,5 +682,222 @@ describe("rule 402: the public partner page states the founder's terms", () => {
       expect(agencies, lang).not.toMatch(/25%|recurring|متكررة/);
     }
     expect(readFileSync("src/lib/site.ts", "utf8")).not.toContain("A commission on every customer you refer");
+  });
+});
+
+describe("rule 403: the 30 days run from the click on the partner's link, else from signup with a typed code", () => {
+  it("the cookie carries the click time; a future time is clamped, an old or missing one is ignored", () => {
+    const now = Date.parse("2026-10-20T12:00:00Z");
+    expect(partnerCookieValue("AHMED", now)).toBe(`AHMED.${now}`);
+    expect(parsePartnerCookie(`ahmed.${now - 5 * 864e5}`, now)).toEqual({ code: "AHMED", clickMs: now - 5 * 864e5 });
+    expect(parsePartnerCookie(`AHMED.${now + 864e5}`, now)).toEqual({ code: "AHMED", clickMs: now });
+    expect(parsePartnerCookie(`AHMED.${now - 31 * 864e5}`, now)).toEqual({ code: "AHMED" });
+    expect(parsePartnerCookie("AHMED", now)).toEqual({ code: "AHMED" });
+    for (const bad of ["ADMIN.1700000000000", "a-b.1", "", undefined, 5]) expect(parsePartnerCookie(bad, now), String(bad)).toBeNull();
+  });
+
+  it("click on day 0, signup on day 29, first payment on day 31: lapsed", () => {
+    const click = "2026-10-01T09:00:00.000Z";
+    const attribution = { partner: "p@test.example", code: "PCODE", at: click, via: "link" as const };
+    const base = { customer: "c@test.example", attribution, partnerExists: true, sameTeam: false };
+    expect(commissionDecision({ ...base, firstPaidOn: "2026-11-01", paymentDate: "2026-11-01" })).toEqual({ ok: false, reason: "lapsed" });
+    expect(commissionDecision({ ...base, firstPaidOn: "2026-10-31", paymentDate: "2026-10-31" })).toEqual({ ok: true });
+  });
+
+  it("a link visitor's code filled into the form is the link's: attributed at the click, by link", async () => {
+    const a = await partner("clk");
+    const clickMs = Date.now() - 29 * 864e5;
+    const { res, email } = await signupVia({ partnerCode: a.code }, partnerCookieValue(a.code, clickMs));
+    expect(await body(res)).toMatchObject({ ok: true, partner: true });
+    const u = (await getUser(email))!;
+    expect(u.referredBy).toMatchObject({ partner: a.user.email, via: "link", at: new Date(clickMs).toISOString() });
+    expect(attributionDeadline(u.referredBy!.at), "30 days from the click, not from signup").toBe(ksaDay(clickMs + 30 * 864e5));
+  });
+
+  it("a code typed without that partner's cookie starts the 30 days at signup; a second click never restarts them", async () => {
+    const a = await partner("clk2");
+    const b = await partner("clk3");
+    const { email } = await signupVia({ partnerCode: a.code }, partnerCookieValue(b.code, Date.now() - 20 * 864e5));
+    const u = (await getUser(email))!;
+    expect(u.referredBy).toMatchObject({ partner: a.user.email, via: "code" });
+    expect(Date.now() - Date.parse(u.referredBy!.at)).toBeLessThan(60_000);
+    jar().clear();
+    const first = partnerCookieValue(a.code, Date.now() - 10 * 864e5);
+    jar().set(PARTNER_COOKIE, first);
+    await visit(a.code);
+    expect(jar().get(PARTNER_COOKIE)).toBe(first);
+  });
+});
+
+describe("rule 404: every payment's commission follows the first payment day; a payment before the referral never counts", () => {
+  const attributedDaysAgo = async (prefix: string, days: number) => {
+    const a = await partner(prefix);
+    const { email } = await signupVia({ partnerCode: a.code });
+    const u = (await getUser(email))!;
+    await saveUser({ ...u, referredBy: { ...u.referredBy!, at: new Date(Date.now() - days * 864e5).toISOString() } });
+    return { a, email };
+  };
+  type Rec = { payment: { id: string; commission?: { sar: number }; notCounted?: string }; reclassified?: string[] };
+
+  it("a backdated first payment recorded later turns an earlier-recorded lapsed payment into a counted one", async () => {
+    const { a, email } = await attributedDaysAgo("bd", 40); // deadline: 10 days ago
+    const late = await body<Rec>(record(email, { amountSar: 299, plan: "starter", date: day(-5) }));
+    expect(late.payment.notCounted).toBe("lapsed");
+    const early = await body<Rec>(record(email, { amountSar: 254, plan: "starter", date: day(-20) }));
+    expect(early.payment.commission?.sar).toBe(commissionSar(254));
+    expect(early.reclassified).toEqual([late.payment.id]);
+    const rows = (await ledger(a.user.email)).filter((r) => r.kind === "commission" && !r.voidedAt);
+    expect(rows.length).toBe(2);
+    expect(balances(await ledger(a.user.email)).earned).toBe((toH(commissionSar(254)) + toH(commissionSar(299))) / 100);
+    expect((await getUser(email))!.firstPaidOn).toBe(day(-20));
+  });
+
+  it("voiding the first payment moves the first payment day: a later one past the 30 days loses its commission", async () => {
+    const { a, email } = await attributedDaysAgo("vf", 40);
+    const first = await body<Rec>(record(email, { amountSar: 254, plan: "starter", date: day(-20) }));
+    const second = await body<Rec>(record(email, { amountSar: 299, plan: "starter", date: day(-5) }));
+    expect(second.payment.commission).toBeTruthy();
+    const v = await body<Rec>(voidPay(email, first.payment.id));
+    expect(v.reclassified).toEqual([second.payment.id]);
+    expect(balances(await ledger(a.user.email)).earned).toBe(0);
+    const later = await body<Rec>(record(email, { amountSar: 299, plan: "starter", date: day() }));
+    expect(later.payment.notCounted, "the same answer as the payment before it").toBe("lapsed");
+  });
+
+  it("a payment dated before the referral earns nothing and does not use the first-month offer", async () => {
+    const a = await partner("pre");
+    const u = await newUser("pre-cust");
+    await signIn(u.email);
+    expect(await status(codeRoute.POST(json("/api/partner/code", "POST", { code: a.code })))).toBe(200);
+    const r = await body<{ payment: { notCounted?: string; offer?: string } }>(record(u.email, { amountSar: 299, plan: "starter", date: day(-3) }));
+    expect(r.payment).toMatchObject({ notCounted: "before_attribution" });
+    expect(r.payment.offer).toBeUndefined();
+    expect(await ledger(a.user.email)).toEqual([]);
+  });
+
+  it("a ledger row lost halfway is restored by the next payment, and every ledger row has its payment", async () => {
+    const a = await partner("heal");
+    const { email } = await signupVia({ partnerCode: a.code });
+    const { payment } = await body<Rec>(record(email, { amountSar: 254, plan: "starter", date: day() }));
+    await db.hdel(`partner:ledger:${a.user.email}`, `c:${payment.id}`);
+    await record(email, { amountSar: 299, plan: "starter", date: day() });
+    const rows = await ledger(a.user.email);
+    expect(rows.map((r) => r.id).sort()).toEqual(Object.keys(await db.hgetall(`payments:${email}`)).sort());
+    expect(balances(rows).earned).toBe((toH(commissionSar(254)) + toH(commissionSar(299))) / 100);
+  });
+});
+
+describe("rule 405: payouts record once, can be voided, and go only to bank details the founder confirmed", () => {
+  const payout = async (email: string, extra: Record<string, unknown> = {}) => { await asFounder(); return adminPartners.POST(json("/api/admin/partners", "POST", { action: "payout", email, date: day(), ...extra })); };
+  const earn = async (partnerCode: string, amount: number) => {
+    const { email } = await signupVia({ partnerCode });
+    await record(email, { amountSar: amount, plan: "business", date: day() });
+  };
+
+  it("a repeated payout id records one transfer; a mistaken payout is voided and its amount is back", async () => {
+    const a = await partner("pid");
+    await bankReady(a.user.email);
+    await earn(a.code, 4000); // 600 SAR
+    const id = `po_${randomBytes(9).toString("hex")}`;
+    expect(await body(payout(a.user.email, { id, amountSar: 200 }))).toMatchObject({ ok: true });
+    expect(await body(payout(a.user.email, { id, amountSar: 200 }))).toMatchObject({ ok: true, already: true });
+    expect(balances(await ledger(a.user.email))).toMatchObject({ paid: 200, balance: 400 });
+    expect(await status(payout(a.user.email, { id: "po_x", amountSar: 10 }))).toBe(400);
+    await asFounder();
+    expect(await status(adminPartners.POST(json("/api/admin/partners", "POST", { action: "void_payout", email: a.user.email, id, reason: "typed twice" })))).toBe(200);
+    expect(balances(await ledger(a.user.email))).toMatchObject({ paid: 0, balance: 600 });
+    const log = JSON.parse((await db.lrange("admin:log", 0, 0))[0]) as { actor: string; what: string; reason?: string };
+    expect(log).toMatchObject({ actor: FOUNDER, what: `partner:payout ${id} void sar:200`, reason: "typed twice" });
+    expect(await status(adminPartners.POST(json("/api/admin/partners", "POST", { action: "void_payout", email: a.user.email, id: "po_00000000" })))).toBe(404);
+    const d = (await partnerDashboard(a.user.email))!;
+    expect(d.payouts).toEqual([expect.objectContaining({ sar: 200, voided: true })]);
+  });
+
+  it("no payout before the founder confirms the bank details, nor after the partner changes them", async () => {
+    const a = await partner("pbk");
+    await earn(a.code, 2000); // 300 SAR
+    expect(await body(payout(a.user.email, { amountSar: 100 }))).toMatchObject({ ok: false, error: "bank_unconfirmed" });
+    await signIn(a.user.email);
+    await partnerRoute.PUT(json("/api/partner", "PUT", { holder: "Partner Name", iban: VALID_IBAN }));
+    expect((await partnerDashboard(a.user.email))!.bank).toMatchObject({ confirmed: false });
+    await asFounder();
+    expect(await body(adminPartners.POST(json("/api/admin/partners", "POST", { action: "confirm_bank", email: a.user.email, savedAt: "2020-01-01T00:00:00.000Z" })))).toMatchObject({ ok: false, error: "changed" });
+    expect(await body(payout(a.user.email, { amountSar: 200 }))).toMatchObject({ ok: false, error: "bank_unconfirmed" });
+    await bankReady(a.user.email);
+    expect(bankConfirmed((await getPartner(a.user.email))!.bank)).toBe(true);
+    expect((await db.lrange("admin:log", 0, 0))[0]).toContain("partner:bank confirm");
+    await signIn(a.user.email);
+    await partnerRoute.PUT(json("/api/partner", "PUT", { holder: "Someone Else", iban: VALID_IBAN }));
+    expect(await body(payout(a.user.email, { amountSar: 200 })), "a change clears the confirmation").toMatchObject({ ok: false, error: "bank_unconfirmed" });
+  });
+
+  it("the console flags a partner whose account was created after the approval (the email's first claimant)", async () => {
+    const email = `late2-${randomBytes(4).toString("hex")}@test.example`;
+    expect(await status(approve(email, code()))).toBe(200);
+    const before = (await listPartners()).find((p) => p.email === email)!;
+    expect(before).toMatchObject({ hasAccount: false, accountAfterApproval: false });
+    jar().clear();
+    await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Late", lang: "en" }, { "x-real-ip": ip() }));
+    expect((await listPartners()).find((p) => p.email === email)).toMatchObject({ hasAccount: true, accountAfterApproval: true, bankConfirmed: false });
+    const early = await partner("early-acct");
+    expect((await listPartners()).find((p) => p.email === early.user.email)).toMatchObject({ accountAfterApproval: false });
+  });
+
+  it("applications sent before the new terms are marked for the founder", () => {
+    expect(NEW_TERMS_FROM).toBe("2026-10-01");
+    const src = readFileSync("src/components/app/PartnersPanel.tsx", "utf8");
+    expect(src).toContain("a.at.slice(0, 10) < NEW_TERMS_FROM");
+    expect(src).toContain("15% of each payment for the first 4 months, 30 days, SAR 200 minimum");
+  });
+});
+
+describe("rule 406: programme days are Riyadh days", () => {
+  it("a signup at 01:30 in Riyadh (22:30 UTC the day before) is attributed on the Riyadh day", () => {
+    expect(ksaDay(Date.parse("2026-10-01T22:30:00Z"))).toBe("2026-10-02");
+    expect(ksaDay(Date.parse("2026-10-01T20:59:00Z"))).toBe("2026-10-01");
+    expect(attributionDeadline("2026-10-01T22:30:00Z")).toBe("2026-11-01");
+    expect(referralStatus("2026-10-01T22:30:00Z", undefined, Date.parse("2026-10-31T22:00:00Z"))).toBe("trial");
+    expect(referralStatus("2026-10-01T22:30:00Z", undefined, Date.parse("2026-11-01T21:00:00Z"))).toBe("lapsed");
+  });
+
+  it("the console's default dates are Riyadh's today", () => {
+    for (const f of ["src/components/app/PaymentsPanel.tsx", "src/components/app/PartnersPanel.tsx"]) {
+      const src = readFileSync(f, "utf8");
+      expect(src, f).toContain("ksaDay()");
+      expect(src, f).not.toContain("new Date().toISOString().slice(0, 10)");
+    }
+  });
+});
+
+describe("rule 407: a partner sees a random label, and the ledger never holds a customer's email", () => {
+  it("the label comes from the attribution's random ref, not from the address", async () => {
+    const a = await partner("lbl");
+    const { email } = await signupVia({ partnerCode: a.code });
+    const u = (await getUser(email))!;
+    expect(u.referredBy!.ref).toMatch(/^[a-f0-9]{12}$/);
+    expect(customerLabel(u)).toBe(`C-${u.referredBy!.ref!.slice(0, 6).toUpperCase()}`);
+    expect(customerLabel({ ...u, referredBy: { ...u.referredBy!, ref: "abcdef000000" } })).not.toBe(customerLabel(u));
+  });
+
+  it("commission rows carry the label only; after the customer's account is deleted the console shows no address", async () => {
+    const a = await partner("lbw");
+    const { email } = await signupVia({ partnerCode: a.code });
+    await record(email, { amountSar: 254, plan: "starter", date: day() });
+    expect(JSON.stringify(await ledger(a.user.email))).not.toContain(email);
+    expect((await listPartners()).find((p) => p.email === a.user.email)!.commissions[0].customer, "a current referral is shown to the founder").toBe(email);
+    await wipeAccount(email);
+    const after = (await listPartners()).find((p) => p.email === a.user.email)!;
+    expect(after.commissions[0].customer).toBeNull();
+    expect(JSON.stringify(after)).not.toContain(email);
+    expect(after.earned, "the money stays on the ledger").toBe(commissionSar(254));
+  });
+});
+
+describe("rule 408: the privacy policy covers the partner cookie, the partner's view and bank details", () => {
+  it("in Arabic and English", () => {
+    const en = JSON.stringify(LEGAL.en.privacy);
+    const ar = JSON.stringify(LEGAL.ar.privacy);
+    for (const t of ["nashr_partner", "30 days", "pseudonymous label", "IBAN", "Only the founder sees them in full", "deleted with your account"]) expect(en, t).toContain(t);
+    for (const t of ["nashr_partner", "30 يوماً", "رمزاً مستعاراً", "الآيبان", "يراهما المؤسس وحده كاملين", "يُحذفان مع حسابك"]) expect(ar, t).toContain(t);
   });
 });

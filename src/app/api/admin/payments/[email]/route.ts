@@ -18,6 +18,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
  *   {action:"record", id?, amountSar, plan, date, reference?}  a payment received, SAR excluding VAT: the source of truth
  *   for commissions (rule 396). The first one uses the account's first-month offer; a retried id records nothing twice.
  *   {action:"void", id, reason?}  refunded or entered by mistake: voids its commission too (rule 397).
+ * Either action re-takes every commission decision of the account (a backdated payment or a voided first payment moves
+ * the first payment day); payments whose answer changed are logged as `reclassified`.
  * Recording a payment does not change the plan: activation stays POST /api/admin/plan. Every change goes to admin:log.
  */
 export async function POST(req: Request, ctx: { params: Promise<{ email: string }> }) {
@@ -30,13 +32,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     const res = await recordPayment(email, { id: b.id, amountSar: b.amountSar, plan: b.plan, date: b.date, reference: b.reference }, who);
     if (!res.ok) return NextResponse.json(res, { status: res.error === "not_found" ? 404 : 400 });
     const p = res.payment;
-    if (!res.already) await log(`payment:${p.id} sar:${p.amountSar} plan:${p.plan} date:${p.date}${p.offer ? ` offer:${p.offer}` : ""}${p.commission ? ` commission:${p.commission.sar}` : p.notCounted ? ` not_counted:${p.notCounted}` : ""}`);
+    if (!res.already) await log(`payment:${p.id} sar:${p.amountSar} plan:${p.plan} date:${p.date}${p.offer ? ` offer:${p.offer}` : ""}${p.commission ? ` commission:${p.commission.sar}` : p.notCounted ? ` not_counted:${p.notCounted}` : ""}${res.reclassified ? ` reclassified:${res.reclassified.join(",")}` : ""}`);
     return NextResponse.json(res);
   }
   if (b.action === "void") {
     const res = await voidPayment(email, b.id, who, b.reason);
     if (!res.ok) return NextResponse.json(res, { status: 404 });
-    await log(`payment:${res.payment.id} void`, res.payment.voidReason);
+    await log(`payment:${res.payment.id} void${res.reclassified ? ` reclassified:${res.reclassified.join(",")}` : ""}`, res.payment.voidReason);
     return NextResponse.json(res);
   }
   return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
