@@ -284,7 +284,7 @@ See `architecture.md` 2.6 and 4(d). Details:
 
 ## 18. Waitlist
 
-`src/app/api/waitlist/route.ts`. `POST {email, company?, industry?, lang?}`: anonymous; dedupes on `waitlist:emails`; without Redis it only logs to the console and returns `stored:false`. `GET ?key=...[&format=csv]`: accepts only the query-string key compared with `!==` to `WAITLIST_ADMIN_KEY`; founder sessions and the admin cookie are not accepted here. No UI in `src/` posts to this route at present.
+`src/app/api/waitlist/route.ts`. `POST {email, company?, industry?, lang?}`: anonymous; dedupes on `waitlist:emails` through the shared store (`db`, 2026-10-01: memory in development; in a production deployment without Redis the request fails instead of pretending to store); the record is never logged (it holds an email address, rule 322). `GET [?format=csv]`: `isAdmin(req)`, like every admin route (the `x-admin-key` header, a key session or a founder session; never `?key=`). No UI in `src/` posts to this route at present.
 
 ## 19. Launch journey (milestones, levels, streak)
 

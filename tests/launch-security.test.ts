@@ -128,3 +128,95 @@ describe("founder emails fail closed (rule 315)", () => {
     expect(src.match(/["'`][^"'`\s]+@[^"'`\s]+\.[a-z]{2,}["'`]/gi) ?? []).toEqual([]);
   });
 });
+
+describe("production never runs on the memory store (rule 320)", () => {
+  const noRedis = () => { for (const k of ["KV_REST_API_URL", "KV_REST_API_TOKEN", "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"]) vi.stubEnv(k, ""); };
+
+  it("a production deployment without Redis credentials rejects every call with store_not_configured", async () => {
+    noRedis();
+    vi.stubEnv("VERCEL_ENV", "production");
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.resetModules();
+    const fresh = await import("@/lib/db");
+    expect(fresh.usingPersistentStore).toBe(false);
+    await expect(fresh.db.get("x")).rejects.toBeInstanceOf(fresh.StoreNotConfigured);
+    await expect(fresh.db.set("x", 1)).rejects.toThrow(/store_not_configured/);
+    await expect(fresh.db.incrby("rate:x", 1)).rejects.toThrow(/store_not_configured/);
+    // Importing it (what `next build` does) is fine; only a call fails, and the log names the variables, never a value.
+    expect(err.mock.calls.flat().join(" ")).toMatch(/store_not_configured/);
+    err.mockRestore();
+  });
+
+  it("local dev, tests, CI and preview keep the memory store", async () => {
+    noRedis();
+    for (const env of ["", "preview", "development"]) {
+      vi.stubEnv("VERCEL_ENV", env);
+      vi.resetModules();
+      const fresh = await import("@/lib/db");
+      await fresh.db.set("launch:mem", env || "none");
+      expect(await fresh.db.get("launch:mem")).toBe(env || "none");
+    }
+  });
+});
+
+describe("production never answers with the model mock (rule 321)", () => {
+  it("no key in a production deployment is 'paused', never 'mock'; elsewhere the dev mock stays", async () => {
+    const { modelState } = await import("@/lib/model");
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    vi.stubEnv("VERCEL_ENV", "");
+    expect(modelState()).toBe("mock");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    expect(modelState()).toBe("mock");
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubEnv("VERCEL_ENV", "production");
+    expect(modelState()).toBe("paused");
+    err.mockRestore();
+  });
+
+  it("generate, the free tools and the chat refuse in production without a key: nothing charged, no [DEV MOCK] saved", async () => {
+    const { newUser } = await import("./helpers/session");
+    const { getUser } = await import("@/lib/auth");
+    const { listTasks } = await import("@/lib/brand");
+    const { chat } = await import("@/lib/chat");
+    const { PAUSED_REPLY } = await import("@/lib/model");
+    const generateRoute = await import("@/app/api/generate/route");
+    const toolRoute = await import("@/app/api/tools/[tool]/route");
+    const { TOOLS } = await import("@/lib/tools");
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    vi.stubEnv("VERCEL_ENV", "production");
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const u = await newUser("prodnokey");
+    await db.set(`brand:${u.email}`, { name: "محمصة", website: "", industry: "قهوة", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-10-01T00:00:00.000Z" });
+    await signIn(u.email);
+    const res = await generateRoute.POST(json("/api/generate", "POST", { type: "social" }));
+    expect(res.status).toBe(503);
+    expect(((await res.json()) as { error: string }).error).toBe("model_paused");
+    expect(await getUser(u.email).then((x) => x!.credits)).toBe(50);
+    expect(JSON.stringify(await listTasks(u.email))).not.toMatch(/DEV MOCK/);
+    const slug = TOOLS[0].slug;
+    const tool = await toolRoute.POST(json(`/api/tools/${slug}`, "POST", {}, ip()), { params: Promise.resolve({ tool: slug }) });
+    expect(tool.status).toBe(503);
+    expect(await tool.text()).not.toMatch(/DEV MOCK/);
+    const reply = await chat((await getUser(u.email))!, "hello", undefined, "noor", { lang: "en" });
+    expect(reply.content).toBe(PAUSED_REPLY.en);
+    err.mockRestore();
+  });
+});
+
+describe("the waitlist keeps email addresses out of the logs (rule 322)", () => {
+  it("stores through the shared store and never logs the record", async () => {
+    const waitlist = await import("@/app/api/waitlist/route");
+    const logs = [vi.spyOn(console, "log").mockImplementation(() => {}), vi.spyOn(console, "info").mockImplementation(() => {}), vi.spyOn(console, "error").mockImplementation(() => {})];
+    const email = `lead-${Date.now()}@test.example`;
+    const res = await waitlist.POST(json("/api/waitlist", "POST", { email, company: "Roastery" }, ip()));
+    expect(await res.json()).toMatchObject({ ok: true, stored: true, duplicate: false });
+    expect((await (await waitlist.POST(json("/api/waitlist", "POST", { email }, ip()))).json())).toMatchObject({ ok: true, duplicate: true });
+    expect(await db.sismember("waitlist:emails", email)).toBe(true);
+    expect(logs.flatMap((s) => s.mock.calls.flat()).join(" ")).not.toContain(email);
+    logs.forEach((s) => s.mockRestore());
+    vi.stubEnv("WAITLIST_ADMIN_KEY", KEY);
+    const rows = (await (await waitlist.GET(json("/api/waitlist", "GET", undefined, { "x-admin-key": KEY, ...ip() }))).json()) as { rows: { email: string }[] };
+    expect(rows.rows.some((r) => r.email === email)).toBe(true);
+    expect(readFileSync("src/app/api/waitlist/route.ts", "utf8")).not.toMatch(/console\.log/);
+  });
+});
