@@ -147,7 +147,7 @@ export async function kpis(scope: string, days?: number, win?: { from: Date; to:
 export function statsText(k: Kpis, opts: { store?: boolean } = {}): string {
   const fmt = (o: Record<string, number>) => Object.entries(o).sort((a, b) => b[1] - a[1]).map(([a, b]) => `${a}=${b}`).join(", ") || "none";
   return [
-    `WORKSPACE DATA (month ${k.month}; counts are content items in Nashr, not sales figures)`,
+    `WORKSPACE DATA (month ${k.month}; counts are content items in Thakeen, not sales figures)`,
     `- Items created this month: ${k.created} (previous month: ${k.createdPrev})`,
     `- Approved: ${k.approved}, rejected: ${k.rejected}, approval rate: ${k.approvalRate === null ? "n/a" : k.approvalRate + "%"}, pending now: ${k.pending}`,
     `- Published through connectors: ${k.published}; images generated: ${k.images}; videos generated: ${k.videos}; scheduled ahead: ${k.scheduled}`,

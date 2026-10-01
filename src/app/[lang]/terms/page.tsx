@@ -9,8 +9,8 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   const { lang } = await params;
   const ar = lang === "ar";
   return {
-    title: ar ? "شروط الاستخدام — نشر" : "Terms of Service — Nashr",
-    description: ar ? "شروط استخدام نشر: الاشتراكات، الكريدت، المحتوى المولّد، والمسؤولية." : "The terms for using Nashr: subscriptions, credits, generated content and liability.",
+    title: ar ? "شروط الاستخدام — ذكين" : "Terms of Service — Thakeen",
+    description: ar ? "شروط استخدام ذكين: الاشتراكات، الكريدت، المحتوى المولّد، والمسؤولية." : "The terms for using Thakeen: subscriptions, credits, generated content and liability.",
     alternates: { canonical: `/${lang}/terms`, languages: { ar: "/ar/terms", en: "/en/terms" } },
   };
 }

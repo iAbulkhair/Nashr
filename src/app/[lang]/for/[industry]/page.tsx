@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   const { lang, industry } = await params;
   if (!isLang(lang)) return {};
   const p = INDUSTRY_PAGES[lang].find((x) => x.slug === industry);
-  return p ? { title: `${p.headline} — ${lang === "ar" ? "نشر" : "Nashr"} ${p.name}`, description: p.sub } : {};
+  return p ? { title: `${p.headline} — ${lang === "ar" ? "ذكين" : "Thakeen"} ${p.name}`, description: p.sub } : {};
 }
 
 export default async function Page({ params }: { params: Promise<{ lang: string; industry: string }> }) {

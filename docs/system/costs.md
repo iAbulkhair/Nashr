@@ -90,9 +90,9 @@ table, which bolds the hit a login's Run is checked on); `article` ($0.0918 cold
 
 The cross-agent review (`xreview`, since 2026-09-30) adds one Sonnet call per reviewing agent to seven types, on top of
 the table above. Worked out with the same assumptions plus these, all estimates: its system prompt is measured
-(`crossReviewPrompt`: 6,102 characters for Razan, 4,950 for Majed, about 1,850 and 1,500 tokens, read from the cache after the
+(`crossReviewPrompt`: 6,104 characters for Razan, 4,952 for Majed, about 1,850 and 1,500 tokens, read from the cache after the
 first call of the five minutes; 14 characters more than before step 3a was merged into step 3b, which added `<lead_brief>`
-to its data tags; `tests/cross-review.test.ts` checks these two numbers against the prompt it builds); its user message is the spec and brand file (about 550 tokens) plus the items as the
+to its data tags, and 2 more since the Thakeen rename; `tests/cross-review.test.ts` checks these two numbers against the prompt it builds); its user message is the spec and brand file (about 550 tokens) plus the items as the
 generation wrote them (2,500 tokens per long item, 900 per plan item), with an empty workspace; and it writes about 600
 tokens of thinking and 80 to 150 per verdict. A cold cache adds about $0.004 per call; the owner's notes and workspace
 files add their size as input, up to about 10,000 tokens (about $0.02) at the cap.

@@ -25,7 +25,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
     <html lang="en" dir="ltr">
       <body style={{ fontFamily: "system-ui, sans-serif", background: "#f6f4ee", color: "#101418", margin: 0 }}>
         <main style={{ maxWidth: 440, margin: "10vh auto", background: "#fff", border: "1px solid #e5e2d9", borderRadius: 16, padding: 28 }}>
-          <p style={{ fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: "#d9503f", margin: 0 }}>Nashr · Noor</p>
+          <p style={{ fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: "#d9503f", margin: 0 }}>Thakeen · Noor</p>
           {bad || ownerOnly ? (
             <><h1 style={{ fontSize: 20 }}>Cannot authorize</h1><p style={{ color: "#666" }}>{bad ?? ownerOnly}</p>{!bad && <p style={{ color: "#888", fontSize: 12 }}>Signed in as <b>{who}</b>.</p>}</>
           ) : (
@@ -44,7 +44,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
                   <button name="decision" value="deny" style={{ flex: 1, background: "#fff", color: "#101418", border: "1px solid #ccc", borderRadius: 999, padding: "12px 16px", cursor: "pointer" }}>Deny</button>
                 </div>
               </form>
-              <p style={{ fontSize: 12, color: "#888", marginTop: 16 }}>You can revoke access any time from Nashr → MCP → Revoke, or by generating a new personal token.</p>
+              <p style={{ fontSize: 12, color: "#888", marginTop: 16 }}>You can revoke access any time from Thakeen → MCP → Revoke, or by generating a new personal token.</p>
             </>
           )}
         </main>

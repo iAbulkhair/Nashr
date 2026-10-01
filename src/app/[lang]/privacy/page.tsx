@@ -9,8 +9,8 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   const { lang } = await params;
   const ar = lang === "ar";
   return {
-    title: ar ? "سياسة الخصوصية — نشر" : "Privacy Policy — Nashr",
-    description: ar ? "ما البيانات التي تجمعها نشر، وأين تُخزَّن، ومن يصل إليها، وكيف تحذف حسابك." : "What Nashr collects, where it is stored, who can reach it, and how to delete your account.",
+    title: ar ? "سياسة الخصوصية — ذكين" : "Privacy Policy — Thakeen",
+    description: ar ? "ما البيانات التي يجمعها ذكين، وأين تُخزَّن، ومن يصل إليها، وكيف تحذف حسابك." : "What Thakeen collects, where it is stored, who can reach it, and how to delete your account.",
     alternates: { canonical: `/${lang}/privacy`, languages: { ar: "/ar/privacy", en: "/en/privacy" } },
   };
 }

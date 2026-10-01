@@ -10,7 +10,7 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   const { lang } = await params;
   const ar = lang === "ar";
   return {
-    title: ar ? "المدونة — أدلة تسويق للخليج | نشر" : "Blog — Gulf marketing guides | Nashr",
+    title: ar ? "المدونة — أدلة تسويق للخليج | ذكين" : "Blog — Gulf marketing guides | Thakeen",
     description: ar ? "أدلة عملية للتسويق في السعودية والخليج: المواسم، القنوات، والقطاعات." : "Practical guides to marketing in Saudi Arabia and the Gulf: seasons, channels and sectors.",
     alternates: { canonical: `/${lang}/blog`, languages: { ar: "/ar/blog", en: "/en/blog" } },
   };

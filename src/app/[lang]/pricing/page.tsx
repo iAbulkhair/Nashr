@@ -11,8 +11,8 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   const { lang } = await params;
   const ar = lang === "ar";
   return {
-    title: ar ? "الأسعار والخطط — نشر" : "Pricing and plans — Nashr",
-    description: ar ? "خطط نشر الشهرية وما يشمله كل مستوى من كريدت ووكلاء وقنوات." : "Nashr's monthly plans, and what credits, agents and channels each tier includes.",
+    title: ar ? "الأسعار والخطط — ذكين" : "Pricing and plans — Thakeen",
+    description: ar ? "خطط ذكين الشهرية وما يشمله كل مستوى من كريدت ووكلاء وقنوات." : "Thakeen's monthly plans, and what credits, agents and channels each tier includes.",
     alternates: { canonical: `/${lang}/pricing`, languages: { ar: "/ar/pricing", en: "/en/pricing" } },
   };
 }

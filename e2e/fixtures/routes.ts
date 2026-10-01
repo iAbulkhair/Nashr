@@ -15,12 +15,12 @@ export type PublicRoute = {
 
 /** The title the root layout applies when a page exports no metadata of its own. */
 export const DEFAULT_TITLE: Record<Lang, string> = {
-  en: "Nashr — Noor, the AI marketing agent for the Gulf",
-  ar: "نشر — نور، وكيلة تسويق للخليج",
+  en: "Thakeen — Noor, the AI marketing agent for the Gulf",
+  ar: "ذكين — نور، وكيلة تسويق للخليج",
 };
 
 export const PUBLIC_ROUTES: PublicRoute[] = [
-  { path: "", unique: { en: "Drafts ready for your approval", ar: "مسودات جاهزة لموافقتك" }, ownTitle: false },
+  { path: "", unique: { en: "Thakeen solves them", ar: "وذكين يحلها" }, ownTitle: false },
   { path: "/pricing", unique: { en: "SAR", ar: "ريال" }, ownTitle: true },
   { path: "/tools", unique: { en: "free Arabic marketing tools", ar: "أداة تسويق مجانية" }, ownTitle: true },
   { path: "/agents", unique: { en: "Eight agents", ar: "ثمانية وكلاء" }, ownTitle: true },
@@ -28,7 +28,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/help", unique: { en: "Help center", ar: "مركز المساعدة" }, ownTitle: true },
   { path: "/privacy", unique: { en: "Privacy Policy", ar: "سياسة الخصوصية" }, ownTitle: true },
   { path: "/terms", unique: { en: "Terms of Service", ar: "شروط الاستخدام" }, ownTitle: true },
-  { path: "/customers", unique: { en: "Who Nashr is built for", ar: "لمن بُنيت نشر" }, ownTitle: true },
+  { path: "/customers", unique: { en: "Who Thakeen is built for", ar: "لمن بُني ذكين" }, ownTitle: true },
   { path: "/enterprise", unique: { en: "Many brands, one team", ar: "عدة علامات، فريق واحد" }, ownTitle: true },
   { path: "/resources", unique: { en: "Learn, try and compare", ar: "تعلّم، جرّب، وقارن" }, ownTitle: true },
   { path: "/updates", unique: { en: "What we shipped, and what we build next", ar: "ما أطلقناه، وما نبنيه بعده" }, ownTitle: true },

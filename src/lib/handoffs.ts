@@ -325,7 +325,7 @@ export function proposalText(h: Handoff, credits: number, auto: readonly number[
   const lines = h.items.map((it, i) => `${i + 1}. ${agentLabel(it.type)}: ${it.type}, ${it.cost} credit${it.cost === 1 ? "" : "s"}`);
   const total = h.items.reduce((s, i) => s + i.cost, 0);
   const when = auto.length
-    ? `The owner turned on Majed's auto-run in Governance: unless the owner runs or declines them first, Nashr may start item${auto.length === 1 ? "" : "s"} ${auto.map((n) => n + 1).join(", ")} by itself at the daily run (06:00 UTC), one item a day, charged to the item's agent under the monthly cap the owner set; what it writes waits in the inbox for the owner's approval. Say this plainly, and say that any other item runs only when the owner presses Run on the card.`
+    ? `The owner turned on Majed's auto-run in Governance: unless the owner runs or declines them first, Thakeen may start item${auto.length === 1 ? "" : "s"} ${auto.map((n) => n + 1).join(", ")} by itself at the daily run (06:00 UTC), one item a day, charged to the item's agent under the monthly cap the owner set; what it writes waits in the inbox for the owner's approval. Say this plainly, and say that any other item runs only when the owner presses Run on the card.`
     : "Say plainly that nothing runs or is charged until the owner presses Run on the card.";
   return `Proposed handoff ${h.id}. Nothing ran and nothing was charged. The owner sees a card under your reply with each item, its agent, its cost and a Run button:\n${lines.join("\n")}\nTotal if every item runs: ${total} credits (the owner has ${credits}). In your reply, list each item with its agent and cost and the total. ${when} Do not repeat the briefs word for word.`;
 }

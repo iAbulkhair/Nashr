@@ -1,0 +1,1110 @@
+/*
+ * Thakeen homepage. Light pearl ground, plum ink, one colour world per cast member (spec §3).
+ * Type stays on the system stack until the licensed faces arrive (spec §7.2).
+ */
+.home {
+  --ground: #f7f3f9;
+  --ink: #2b193d;
+  --paper: #ffffff;
+  --gold: #c9a227;
+  --c-noor: #f9f871;
+  --c-sami: #ff5da2;
+  --c-razan: #00d9ff;
+  --c-faris: #b517ff;
+  --c-dana: #efe7f7;
+  --c-majed: #2b193d;
+  --c-layan: #7fe9ff;
+  /* DRAFT, pending the founder's approval (spec §3): a placeholder soft coral, kept clear of the site's amber accent. */
+  --c-reem: #ffa38a;
+  --c-you: #ffffff;
+  --home-display: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
+  --home-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
+  background: var(--ground);
+  color: var(--ink);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- Doodle: one ink line, flat fill on the body only ---------- */
+
+.doodle {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.doodle[data-cast="noor"] { --fill: var(--c-noor); }
+.doodle[data-cast="sami"] { --fill: var(--c-sami); }
+.doodle[data-cast="razan"] { --fill: var(--c-razan); }
+.doodle[data-cast="faris"] { --fill: var(--c-faris); }
+.doodle[data-cast="dana"] { --fill: var(--c-dana); }
+.doodle[data-cast="majed"] { --fill: var(--c-majed); }
+.doodle[data-cast="layan"] { --fill: var(--c-layan); }
+.doodle[data-cast="reem"] { --fill: var(--c-reem); }
+.doodle[data-cast="you"] { --fill: var(--c-you); }
+
+.doodle :is(path, circle, ellipse, rect, line) {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 3px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.doodle .fill { fill: var(--fill); }
+.doodle .paper { fill: var(--paper); }
+.doodle .inkFill { fill: var(--ink); }
+.doodle .dot { fill: var(--ink); stroke: none; }
+.doodle .fine { stroke-width: 2px; }
+.doodle .gold { stroke: var(--gold); stroke-width: 3.5px; }
+
+/* ---------- Story: one sticky stage, one chapter per screen (Story.tsx) ---------- */
+
+/*
+ * The section is one screen of scroll per chapter (`--chapters`, set by Story from the cast: the hero, one per agent,
+ * the finale); the stage stays pinned under the site nav while they pass. svh, not vh or dvh: a phone's toolbar showing
+ * or hiding must not resize the stage.
+ */
+.story {
+  /* The site nav (Nav.tsx: 36 px controls, 12 px padding above and below, 1 px border) is sticky above the stage. */
+  --nav-h: 61px;
+  --dir: 1;
+  /* How flat the storm ring lies: its vertical radius is this share of the horizontal one. */
+  --tilt: 0.55;
+  position: relative;
+  height: calc(var(--chapters, 10) * 100svh);
+  font-family: var(--home-body);
+}
+:global([dir="rtl"]) .story { --dir: -1; }
+
+/* Phones: the words on top, the owner and the agent side by side below, the pause button under them. */
+.stage {
+  --wash: var(--ground);
+  position: sticky;
+  top: var(--nav-h);
+  height: calc(100svh - var(--nav-h));
+  display: grid;
+  grid-template:
+    "copy copy" auto
+    "owner agent" minmax(0, 1fr)
+    "tools tools" auto
+    / minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(0.75rem, 2.5svh, 1.5rem) 12px;
+  padding: clamp(1rem, 3svh, 2.5rem) max(16px, (100% - 1200px) / 2) clamp(0.5rem, 2svh, 1.5rem);
+  overflow: hidden;
+  overflow: clip;
+  background-color: var(--wash);
+  transition: background-color 0.6s ease;
+}
+/* Each agent's colour world washes over the ground in its chapter. */
+.stage[data-world="noor"] { --wash: var(--c-noor); }
+.stage[data-world="sami"] { --wash: var(--c-sami); }
+.stage[data-world="razan"] { --wash: var(--c-razan); }
+.stage[data-world="faris"] { --wash: var(--c-faris); }
+.stage[data-world="dana"] { --wash: var(--c-dana); }
+.stage[data-world="majed"] { --wash: var(--c-majed); }
+.stage[data-world="layan"] { --wash: var(--c-layan); }
+.stage[data-world="reem"] { --wash: var(--c-reem); }
+/* Majed's world is the ink colour itself: a pearl halo keeps the drawings' outlines on it. */
+.stage[data-world="majed"] .stageArt {
+  filter: drop-shadow(0 0 1px var(--ground)) drop-shadow(0 0 1px var(--ground));
+}
+
+/* Words: one layer at a time in the copy area. Text always sits on the ground colour, whatever the world. */
+.heroCopy,
+.finaleCopy,
+.agentCopy {
+  grid-area: copy;
+  align-self: start;
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+.card {
+  padding: clamp(0.9rem, 2.5svh, 1.75rem) clamp(1rem, 2.5vw, 1.75rem);
+  border-radius: 22px;
+  background: var(--ground);
+}
+
+.line1 {
+  font-family: var(--home-display);
+  font-size: clamp(2.2rem, min(7vw, 8.5svh), 5.5rem);
+  font-weight: 800;
+  line-height: 1.12;
+}
+.line2 {
+  margin-top: clamp(0.5rem, 2svh, 1.25rem);
+  max-width: 30ch;
+  font-size: clamp(1.05rem, min(2.2vw, 3svh), 1.6rem);
+  line-height: 1.6;
+}
+.scrollCue {
+  margin-top: clamp(0.75rem, 3svh, 2rem);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.scrollCue::after {
+  content: "↓";
+  display: inline-block;
+  margin-inline-start: 0.4em;
+  animation: nudge 1.6s ease-in-out infinite;
+}
+@keyframes nudge {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 0.25em; }
+}
+/* The nudge rests with the story, and whenever the hero is away: it only fades, so it would run on unseen. */
+.story:not([data-live]) .scrollCue::after,
+.heroCopy:not([data-on]) .scrollCue::after {
+  animation-play-state: paused;
+}
+
+.storyValue {
+  font-family: var(--home-display);
+  font-size: clamp(1.35rem, min(3vw, 4.5svh), 2.75rem);
+  font-weight: 800;
+  line-height: 1.3;
+}
+.storyName {
+  margin-top: 0.4rem;
+  font-size: clamp(0.95rem, 1.4vw, 1.15rem);
+  font-weight: 700;
+  opacity: 0.8;
+}
+.finaleLine {
+  font-size: clamp(1.15rem, min(2.4vw, 3.5svh), 1.75rem);
+  font-weight: 700;
+  line-height: 1.5;
+}
+.finaleCopy .start { margin-top: clamp(0.75rem, 2.5svh, 1.5rem); }
+
+/* The two figures stand on the same line: what is above the head, then the drawing. */
+.owner,
+.agent {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  min-width: 0;
+  min-height: 0;
+}
+.owner {
+  grid-area: owner;
+  transition: translate 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+/* On phones the owner stands alone, centred, until the first agent arrives and after the last one leaves. */
+.story[data-alone] .owner {
+  translate: calc(var(--dir) * (50% + 6px)) 0;
+}
+.agent { grid-area: agent; }
+.above {
+  position: relative;
+  flex: 0 0 auto;
+  width: 100%;
+  height: min(30%, 240px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 0.5rem;
+}
+.stageArt {
+  flex: 0 1 auto;
+  height: min(66%, 460px);
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.stageArt .doodle {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+}
+.agent .qflip { position: relative; z-index: 2; font-size: clamp(0.78rem, 1.1vw, 0.95rem); text-align: center; }
+/*
+ * The page's pause button on the stage (MotionToggle.tsx): on phones in its own row under the figures, always in the
+ * same place in every chapter. Like the words, it sits on the ground colour whatever the world (Majed's is the ink).
+ */
+.stage > .storyToggle {
+  grid-area: tools;
+  align-self: end;
+  justify-self: end;
+  position: relative;
+  z-index: 2;
+  background: var(--ground);
+}
+
+/*
+ * Desktops and landscape screens: owner, agent, words, in the reading direction. The middle column is left to the
+ * storm in the hero and the finale, so the ring never runs under the words.
+ */
+@media (min-width: 900px), (orientation: landscape) and (min-width: 600px) {
+  .stage {
+    grid-template: "owner agent copy" minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 0.85fr) minmax(0, 1.3fr);
+    column-gap: clamp(16px, 3vw, 48px);
+  }
+  .story { --tilt: 0.4; }
+  .story[data-alone] .owner { translate: none; }
+  .heroCopy,
+  .finaleCopy,
+  .agentCopy { align-self: center; }
+  /* No row of its own here: it sits at the foot of the words' column, under the centred card. */
+  .stage > .storyToggle { grid-area: copy; }
+}
+
+/*
+ * Layers enter and leave; hidden ones are out of the accessibility tree and the tab order. The hero only fades: it holds
+ * the page's one h1, which stays readable to assistive technology wherever the story is.
+ */
+.heroCopy,
+.finaleCopy,
+.finaleWord,
+.agentCopy,
+.agent {
+  transition:
+    opacity 0.45s ease,
+    translate 0.6s cubic-bezier(0.2, 0.7, 0.2, 1),
+    scale 0.6s cubic-bezier(0.2, 0.7, 0.2, 1),
+    visibility 0s;
+}
+.finaleCopy:not([data-on]),
+.finaleWord:not([data-on]),
+.agentCopy:not([data-phase="on"]),
+.agent:not([data-phase="on"]) {
+  opacity: 0;
+  visibility: hidden;
+  transition-delay: 0s, 0s, 0s, 0.6s;
+}
+.heroCopy:not([data-on]) {
+  opacity: 0;
+  translate: 0 -1.5rem;
+  pointer-events: none;
+}
+.finaleCopy:not([data-on]) { translate: 0 1.5rem; }
+.finaleWord:not([data-on]) { scale: 0.6; }
+/* The next agent waits off to the far side and steps in; the one before steps back. */
+.agentCopy[data-phase="next"] { translate: 0 1.25rem; }
+.agent[data-phase="next"] { translate: calc(var(--dir) * 3rem) 0; }
+.agentCopy[data-phase="past"],
+.agent[data-phase="past"] { scale: 0.92; }
+
+/* ---------- The storm above the owner's head ---------- */
+
+.storm {
+  position: absolute;
+  inset: 0;
+  container-type: inline-size;
+  pointer-events: none;
+  /* The orbit plane, tilted: circles become ellipses. Each question's text is scaled back up, so it stays upright. */
+  transform: scaleY(var(--tilt));
+}
+
+/*
+ * Each question circles the owner's head at a steady speed. `--i` sets its ring (radius), its speed and where on the
+ * ring it starts (golden-ratio spacing, so the ring stays evenly filled); every other one turns the other way. The rings
+ * run from 10 to 46.75 of the column's width whatever the number of questions (`--count`, set by Story). Once its
+ * agent's chapter comes, it travels across to the agent (`--fly`, one column over) and fades; scrolling back brings it
+ * home.
+ */
+.stormQ {
+  --d: calc(8s + var(--i) * 0.3s);
+  --r: calc(10cqi + var(--i) * 36.75cqi / max(1, var(--count, 36) - 1));
+  --phase: calc(var(--d) * var(--i) * -0.382);
+  --fly: 0px;
+  position: absolute;
+  left: 50%;
+  top: 60%;
+  translate: calc(-50% + var(--fly)) -50%;
+  animation: orbit var(--d) linear var(--phase) infinite;
+  transition:
+    translate 0.8s cubic-bezier(0.3, 0.6, 0.2, 1),
+    opacity 0.3s ease,
+    visibility 0s;
+}
+.stormQ[data-taken] {
+  --fly: calc(var(--dir) * 105cqi);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    translate 0.9s cubic-bezier(0.5, 0, 0.3, 1),
+    opacity 0.35s ease 0.55s,
+    visibility 0s 0.9s;
+}
+.stormText {
+  display: block;
+  padding: 0.1em 0.55em;
+  border-radius: 999px;
+  background: var(--ground);
+  font-size: clamp(0.72rem, 1.1vw, 0.9rem);
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+  transform: scaleY(calc(1 / var(--tilt)));
+  animation: depth var(--d) linear var(--phase) infinite;
+}
+.stormQ:nth-child(odd),
+.stormQ:nth-child(odd) .stormText {
+  animation-direction: reverse;
+}
+/*
+ * The storm holds still while the story rests (paused by the visitor, off screen, or in a hidden tab). A question its
+ * agent has taken stops circling as it leaves: it flies straight across and is hidden 0.9 s later, so its orbit would
+ * only run on unseen.
+ */
+.story:not([data-live]) :is(.stormQ, .stormText),
+.stormQ[data-taken],
+.stormQ[data-taken] .stormText {
+  animation-play-state: paused;
+}
+@keyframes orbit {
+  from { transform: rotate(0turn) translateX(var(--r)) rotate(0turn); }
+  to { transform: rotate(1turn) translateX(var(--r)) rotate(-1turn); }
+}
+/* Front of the ring (bottom) is nearest: full ink; the back (top) recedes. */
+@keyframes depth {
+  0%, 50%, 100% { opacity: 0.7; scale: 0.92; }
+  25% { opacity: 1; scale: 1; }
+  75% { opacity: 0.35; scale: 0.82; }
+}
+
+/* The finale: one word stays above the owner's head, where the storm was. */
+.finaleWord {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0.75rem;
+  display: flex;
+  justify-content: center;
+  font-family: var(--home-display);
+  font-size: clamp(2.25rem, min(8vw, 9svh), 5.5rem);
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+/*
+ * Reduced motion: no orbit, nothing travels or steps in, no nudge. The storm is one still question, the first one
+ * still on the owner's head (`data-lead`); the chapters still change as you scroll.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .stormQ, .stormText, .scrollCue::after { animation: none; }
+  .stormQ:not([data-lead]) { display: none; }
+  .stormQ, .owner { transition: none; }
+  .heroCopy:not([data-on]),
+  .finaleCopy:not([data-on]),
+  .finaleWord:not([data-on]),
+  .agentCopy[data-phase],
+  .agent[data-phase] { translate: none; scale: none; }
+}
+
+/* Without JavaScript nothing can turn the chapters: the story is just the hero. */
+@media (scripting: none) {
+  .story { height: auto; }
+  .stage { position: relative; top: 0; }
+}
+
+/* ---------- Start form (plain GET, works without JavaScript) ---------- */
+
+.start {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  max-width: 36rem;
+  margin-top: 1.75rem;
+}
+.startInput {
+  flex: 1 1 14rem;
+  min-width: 0;
+  padding: 0.85rem 1.15rem;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+.startInput::placeholder { color: color-mix(in oklab, var(--ink) 62%, var(--paper)); }
+.startInput:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+.startButton {
+  flex: 0 0 auto;
+  padding: 0.85rem 1.5rem;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--ground);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.startButton:hover { background: color-mix(in oklab, var(--ink) 86%, var(--paper)); }
+.startButton:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+
+/* ---------- Lineup: the whole cast in a row ---------- */
+
+.lineup {
+  font-family: var(--home-body);
+  padding: clamp(3rem, 7vw, 6rem) 0;
+}
+.aiLabel {
+  max-width: 1320px;
+  margin: 0 auto 1.25rem;
+  padding-inline: 16px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.aiLabel::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--ink);
+}
+.strip {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-block: 0.5rem 1rem;
+}
+/*
+ * One column per cast member (`--n`, set by Lineup). A column never gets narrower than `--cell-min`: when the row
+ * does not fit, the strip scrolls sideways inside its own box instead of squeezing the figures. The four rows (question,
+ * drawing, value, name) are shared through subgrid, so every drawing stands on the same line.
+ */
+.row {
+  /* The cast (nine today) fits at 1280 px without the strip scrolling: 9 × 120 + 8 × 1.4vw + 32 ≈ 1256 px. */
+  --cell-min: 120px;
+  --gap: clamp(8px, 1.4vw, 20px);
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-rows: repeat(4, auto);
+  column-gap: var(--gap);
+  row-gap: 0.75rem;
+  width: max(min(100%, 1320px), calc(var(--n, 9) * var(--cell-min) + (var(--n, 9) - 1) * var(--gap) + 32px));
+  margin: 0 auto;
+  padding: 0 16px;
+  list-style: none;
+}
+.cell {
+  display: grid;
+  grid-row: 1 / span 4;
+  grid-template-rows: subgrid;
+  min-width: 0;
+}
+@media (max-width: 759px) {
+  .strip { scroll-snap-type: x mandatory; }
+  .row { --cell-min: min(42vw, 200px); }
+  .cell { scroll-snap-align: start; }
+}
+
+.figure {
+  position: relative;
+  width: 100%;
+  display: grid;
+  grid-row: 1 / span 4;
+  grid-template-rows: subgrid;
+  justify-items: center;
+  margin: 0;
+  padding: 0.75rem 0.25rem 1rem;
+  border: 0;
+  border-radius: 18px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+.figure:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
+
+/*
+ * The question slot is as tall as this figure's longest question: invisible copies of all of them sit in the same cell
+ * as the one showing. Nothing is clipped at any width, and nothing moves when a question flips.
+ */
+.qslot {
+  width: 100%;
+  display: grid;
+  align-items: end;
+  justify-items: center;
+  font-size: 0.75rem;
+}
+.qslot > * { grid-area: 1 / 1; }
+.qsizer {
+  display: grid;
+  visibility: hidden;
+  line-height: 1.4;
+}
+.qsizer > * { grid-area: 1 / 1; animation: none; }
+.figureArt { width: min(100%, 150px); }
+.value {
+  font-family: var(--home-display);
+  font-size: clamp(0.98rem, 1.2vw, 1.2rem);
+  font-weight: 700;
+  line-height: 1.4;
+}
+.name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.3;
+  opacity: 0.8;
+}
+
+/* ---------- QuestionFlip: one question at a time ---------- */
+
+.qflip {
+  display: block;
+  max-width: 100%;
+  perspective: 480px;
+  line-height: 1.4;
+}
+.qflipItem {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.35em 0.8em;
+  border: 1.5px solid var(--ink);
+  border-radius: 14px;
+  background: var(--paper);
+  transform-origin: 50% 100%;
+  animation: flipIn 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes flipIn {
+  from { opacity: 0; transform: rotateX(80deg); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .qflipItem { animation: none; }
+}
+
+/* ---------- Life in the lineup: banter, eyes, blinking, breathing (Lineup.tsx, Figure.tsx) ---------- */
+
+/* The AI label and, across from it, the page's pause button (WCAG 2.2.2), the same switch as the story's. */
+.lineupHead {
+  max-width: 1320px;
+  margin: 0 auto 1.25rem;
+  padding-inline: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.lineupHead > .aiLabel { max-width: none; margin: 0; padding-inline: 0; }
+/*
+ * The page's pause button, in the lineup's head and on the story's stage (MotionToggle.tsx). Both labels sit in one
+ * cell, so the button is as wide as the longer one and never changes size.
+ */
+.motionToggle {
+  display: inline-grid;
+  flex: none;
+  padding: 0.3rem 0.85rem;
+  border: 1.5px solid color-mix(in oklab, var(--ink) 55%, var(--ground));
+  border-radius: 999px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.motionToggle > * { grid-area: 1 / 1; text-align: center; }
+.motionToggle > :not([data-on]) { visibility: hidden; }
+.motionToggle:hover { border-color: var(--ink); }
+.motionToggle:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+/* Without JavaScript nothing could pause anything, so there is no button. */
+@media (scripting: none) {
+  .motionToggle { display: none; }
+}
+
+/*
+ * A speech bubble takes the question's place above the head while its figure talks. Invisible copies of every line
+ * the figure can say sit in `.qsizer` with the questions, so the slot is already tall enough: a bubble never moves
+ * the layout and never reaches the strip's top edge, which clips.
+ */
+.talkBubble {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.35em 0.8em;
+  border: 1.5px solid var(--ink);
+  border-radius: 14px;
+  background: var(--ink);
+  color: var(--paper);
+  font-weight: 600;
+  line-height: 1.4;
+  text-wrap: balance;
+}
+.qslot > .talkBubble {
+  position: relative;
+  transform-origin: 50% 100%;
+  animation: talkIn 0.25s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+/* The tail, pointing down at the head. */
+.qslot > .talkBubble::after {
+  content: "";
+  position: absolute;
+  top: calc(100% - 1px);
+  left: calc(50% - 6px);
+  width: 12px;
+  height: 7px;
+  background: var(--ink);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.figure[data-talking] .qflip { visibility: hidden; }
+@keyframes talkIn {
+  from { opacity: 0; transform: translateY(4px) scale(0.9); }
+  to { opacity: 1; transform: none; }
+}
+
+/*
+ * The eyes look towards the pointer (`--gx` / `--gy`, set on the lineup by Lineup.tsx, at most 3 units each way) and
+ * blink every 4–6 s, each figure on its own beat (`--i` is its place in the row). A figure turned to face you looks
+ * at you. The body breathes: about one unit at the shoulders, feet planted. Blinking and breathing run only while the
+ * lineup is on screen (`data-live`), so they cost nothing anywhere else on the page.
+ */
+.lineup [data-part="eyes"] {
+  transform-box: fill-box;
+  transform-origin: center;
+  translate: var(--gx, 0px) var(--gy, 0px);
+  transition: translate 0.2s ease-out;
+}
+.lineup [data-pose="turn"] [data-part="eyes"] { translate: none; }
+.lineup [data-part="body"] {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+.lineup[data-live] [data-part="eyes"] {
+  animation: lineupBlink calc(4s + var(--i, 0) * 0.28s) linear calc(var(--i, 0) * -0.7s) infinite;
+}
+.lineup[data-live] [data-part="body"] {
+  animation: lineupBreathe 4.4s ease-in-out calc(var(--i, 0) * -0.55s) infinite alternate;
+}
+@keyframes lineupBlink {
+  0%, 94%, 100% { scale: 1; }
+  97% { scale: 1 0.1; }
+}
+@keyframes lineupBreathe {
+  to { scale: 1 1.003; }
+}
+
+/* Reduced motion: bubbles still come and go, but nothing moves, blinks, breathes or follows the pointer. */
+@media (prefers-reduced-motion: reduce) {
+  .qslot > .talkBubble { animation: none; }
+  .lineup [data-part="eyes"],
+  .lineup [data-part="body"],
+  .lineup[data-live] [data-part="eyes"],
+  .lineup[data-live] [data-part="body"] { animation: none; translate: none; transition: none; }
+}
+
+/* ---------- What's true today ---------- */
+
+.truths {
+  font-family: var(--home-body);
+  max-width: 1200px;
+  margin-inline: auto;
+  padding: clamp(3rem, 7vw, 6rem) 16px;
+}
+.truthsTitle {
+  font-family: var(--home-display);
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  font-weight: 800;
+  line-height: 1.25;
+}
+.truthList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 0 2rem;
+  margin: 2rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.truth {
+  padding: 1.25rem 0;
+  border-top: 3px solid var(--ink);
+}
+.truthTitle {
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.truthBody {
+  margin-top: 0.5rem;
+  line-height: 1.7;
+}
+
+/* ---------- قاموس ذكين: the game (Dictionary.tsx) ---------- */
+
+.dict {
+  font-family: var(--home-body);
+  max-width: 1200px;
+  margin-inline: auto;
+  padding: clamp(3rem, 7vw, 6rem) 16px;
+  /* Under the sticky site nav when reached by #dictionary. */
+  scroll-margin-top: 61px;
+  /* A brand is up to 40 characters with no spaces; it must wrap, never push the page sideways. */
+  overflow-wrap: anywhere;
+}
+.dictTitle {
+  font-family: var(--home-display);
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  font-weight: 800;
+  line-height: 1.25;
+}
+.dictSub {
+  margin-top: 0.5rem;
+  font-size: clamp(1rem, 1.6vw, 1.2rem);
+  line-height: 1.6;
+}
+
+/*
+ * The step rail. The current step is marked three ways: a filled number, its name set bold and underlined, and on
+ * phones it is the only step whose name shows. The panel heading also states it ("3/7 Plan").
+ */
+.rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.1rem;
+  margin: 1.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.railStep {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+.railNum {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 1.9rem;
+  height: 1.9rem;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--paper);
+  font-weight: 700;
+}
+.railStep[data-state="done"] .railNum { background: color-mix(in oklab, var(--ink) 14%, var(--paper)); }
+.railStep[data-state="current"] .railNum { background: var(--ink); color: var(--ground); }
+.railStep[data-state="current"] .railName {
+  font-weight: 800;
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.35em;
+}
+@media (max-width: 759px) {
+  .rail { gap: 0.5rem; }
+  .railStep:not([data-state="current"]) .railName {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+.dictPanel {
+  margin-top: 1.5rem;
+  padding: clamp(1.1rem, 3vw, 2.25rem);
+  border: 2px solid var(--ink);
+  border-radius: 24px;
+  background: var(--paper);
+}
+.dictStep {
+  font-family: var(--home-display);
+  font-size: clamp(1.35rem, 2.6vw, 1.9rem);
+  font-weight: 800;
+  line-height: 1.3;
+  scroll-margin-top: 80px;
+}
+.dictStep:focus { outline: none; }
+.dictStep:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; border-radius: 6px; }
+.dictCount {
+  font-size: 0.75em;
+  font-weight: 700;
+  opacity: 0.75;
+}
+.dictBody {
+  display: grid;
+  align-content: start;
+  gap: 1.25rem;
+  min-height: 13rem;
+  margin-top: 1.25rem;
+}
+
+/* Step 1: the brand and the sector. */
+.dictLabel {
+  display: block;
+  margin-bottom: 0.5rem;
+  padding: 0;
+  font-weight: 700;
+}
+.dictInput {
+  width: 100%;
+  max-width: 28rem;
+  padding: 0.8rem 1.1rem;
+  border: 2px solid var(--ink);
+  border-radius: 14px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+.dictInput:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+.sectors {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.sectorList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.sector {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--paper);
+  font-weight: 600;
+  cursor: pointer;
+}
+.sector input {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  accent-color: var(--ink);
+}
+.sector:has(:checked) { background: color-mix(in oklab, var(--ink) 10%, var(--paper)); }
+/* The whole pill carries the focus ring, in place of the site's ring on the small radio itself. */
+.sector:has(:focus-visible) { outline: 3px solid var(--ink); outline-offset: 2px; }
+.sector input:focus-visible { outline: none; }
+
+/* Step 2: twelve words, five picks. Picked words carry a tick as well as the fill. */
+/* Column counts that divide twelve, so every row is full. */
+.words {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+@media (min-width: 480px) { .words { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 640px) { .words { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 900px) { .words { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.word {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.7rem 0.75rem;
+  border: 2px solid var(--ink);
+  border-radius: 14px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.word[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
+.word:disabled { opacity: 0.45; cursor: not-allowed; }
+.word:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+.tick { font-weight: 800; }
+.dictLive {
+  display: grid;
+  gap: 0.75rem;
+}
+.counter { font-weight: 700; }
+
+/* An agent speaking: a face in a circle, then the bubble. */
+.say {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+.face {
+  position: relative;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--ground);
+  overflow: hidden;
+}
+/* The full figure at twice the circle's width, lifted so the head sits in the middle. */
+.face .doodle {
+  position: absolute;
+  top: -6px;
+  left: -50%;
+  width: 200%;
+  max-width: none;
+}
+.face .doodle :is(path, circle, ellipse, rect, line) { stroke-width: 1.75px; }
+.bubble {
+  max-width: 34rem;
+  padding: 0.7rem 1rem;
+  border: 2px solid var(--ink);
+  border-radius: 18px;
+  border-end-start-radius: 4px;
+  background: var(--paper);
+  line-height: 1.6;
+  animation: dictPop 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.sayName {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  opacity: 0.8;
+}
+@keyframes dictPop {
+  from { opacity: 0; translate: 0 0.4rem; }
+  to { opacity: 1; translate: none; }
+}
+
+/* Steps 3–4: samples, each tagged «مثال». */
+.samples {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 1rem;
+}
+.sample {
+  min-width: 0;
+  padding: 1rem 1.15rem 1.15rem;
+  border: 2px solid var(--ink);
+  border-radius: 18px;
+  background: var(--ground);
+}
+.sampleHead {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.85rem;
+}
+.sampleFaces { display: flex; flex: none; }
+.sampleFaces .face + .face { margin-inline-start: -12px; }
+.sampleWho {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+.exampleTag {
+  flex: none;
+  margin-inline-start: auto;
+  padding: 0.15rem 0.65rem;
+  border: 1.5px solid var(--ink);
+  border-radius: 999px;
+  background: var(--c-noor);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.planList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  line-height: 1.7;
+}
+.planList li + li {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1.5px solid color-mix(in oklab, var(--ink) 25%, var(--ground));
+}
+.post {
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.7;
+}
+.chat {
+  padding: 0.7rem 0.95rem;
+  border: 1.5px solid var(--ink);
+  border-radius: 14px;
+  border-start-start-radius: 4px;
+  background: var(--paper);
+  line-height: 1.7;
+}
+
+/* Step 5: the one button. */
+.approveBox {
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+  padding-block: 1rem;
+  text-align: center;
+}
+.approve {
+  min-width: min(100%, 16rem);
+  padding: 1.1rem 2.5rem;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--ground);
+  font: inherit;
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  font-weight: 800;
+  cursor: pointer;
+}
+.approve:hover { background: color-mix(in oklab, var(--ink) 86%, var(--paper)); }
+.approve:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
+.approveNote { font-weight: 600; }
+
+/* Steps 6–7: previews, drawn dashed; they need real time and real data. */
+.preview {
+  padding: 1.1rem 1.25rem;
+  border: 2px dashed var(--ink);
+  border-radius: 18px;
+  background: var(--ground);
+  line-height: 1.7;
+}
+.dictCtaLine {
+  font-family: var(--home-display);
+  font-size: clamp(1.2rem, 2.4vw, 1.6rem);
+  font-weight: 800;
+}
+.dictCta .start { margin-top: 0.75rem; }
+
+.dictNav {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+.dictBack,
+.dictNext {
+  padding: 0.75rem 1.5rem;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.dictBack { background: var(--paper); color: var(--ink); }
+.dictNext {
+  margin-inline-start: auto;
+  background: var(--ink);
+  color: var(--ground);
+}
+.dictNext:disabled { opacity: 0.45; cursor: not-allowed; }
+.dictBack:focus-visible,
+.dictNext:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+
+/* Reduced motion: the game changes state instantly, nothing pops in. */
+@media (prefers-reduced-motion: reduce) {
+  .bubble { animation: none; }
+}
+
+/* Without JavaScript the game cannot be played: the title, the subtitle and the seven steps stay as a summary. */
+@media (scripting: none) {
+  .dictPanel { display: none; }
+}

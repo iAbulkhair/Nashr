@@ -15,7 +15,7 @@ type Tpl = { subject: string; body: string };
 function t(u: User, key: string, ctx: { firstTitle?: string; pending: number; approved: number; trialEnds: string }): Tpl | null {
   const ar = u.lang === "ar";
   const app = `${ORIGIN()}/${u.lang}/app`;
-  const sig = ar ? `\n\n— مؤسس نشر${WA() ? "\nواتساب: " + WA() : ""}` : `\n\n— Founder of Nashr${WA() ? "\nWhatsApp: " + WA() : ""}`;
+  const sig = ar ? `\n\n— مؤسس ذكين${WA() ? "\nواتساب: " + WA() : ""}` : `\n\n— Founder of Thakeen${WA() ? "\nWhatsApp: " + WA() : ""}`;
   switch (key) {
     case "day1":
       return ar

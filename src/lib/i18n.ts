@@ -20,10 +20,6 @@ export function seatsText(lang: Lang, n: number): string {
 }
 /** "1 credit", "2 credits". */
 const enCredits = (n: number) => `${n} ${n === 1 ? "credit" : "credits"}`;
-/** "one credit", "two credits", "5 credits": the landing page's proof lines spell out one and two. */
-const enCreditsWord = (n: number) => (n === 1 ? "one credit" : n === 2 ? "two credits" : enCredits(n));
-/** "بكريدت واحد", "بكريدتين", "بـ 5 كريدت". */
-const arByCredits = (n: number) => (n === 1 ? "بكريدت واحد" : n === 2 ? "بكريدتين" : `بـ ${n} كريدت`);
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** A task's cost as the credits table shows it: the batch, or one item of it (a post is one of ten). */
 export const creditCost = (type: TaskType, perItem = false): number => (perItem ? TASK_COST[type] / (TASK_COUNT[type] || 1) : TASK_COST[type]);
@@ -80,7 +76,7 @@ function creditRows(lang: Lang): { action: string; cost: string }[] {
   ];
 }
 
-/** List prices for the FAQ and the landing copy, read from the plan table. */
+/** List prices for the pricing cards, the FAQ and the help copy, read from the plan table. */
 const P = PLAN_PRICE_SAR;
 const perPost = creditCost("social", true);
 
@@ -113,16 +109,6 @@ export type Dict = {
     logNote: string;
     log: { t: string; text: string; tag: string }[];
   };
-  land: {
-    hero: { eyebrow: string; title: string; sub: string; urlPlaceholder: string; urlCta: string; assess: string; trial: string };
-    highlights: { title: string; sub: string; items: { t: string; d: string }[] };
-    teammate: { title: string; body: string; cards: { label: string; title: string; body: string }[] };
-    oldway: { title: string; sub: string; old: { label: string; items: string[] }; new: { label: string; items: string[] } };
-    runs: { title: string; sub: string; items: { tag: string; quote: string; does: string; proof: string }[]; callout: string };
-    deliverables: { eyebrow: string; title: string; sub: string; items: { n: string; l: string }[]; note: string };
-    pillars: { title: string; sub: string; items: { t: string; d: string; chips: string[] }[] };
-    cta: { title: string; sub: string; button: string };
-  };
   proof: { label: string; items: { n: string; l: string }[] };
   how: { eyebrow: string; title: string; steps: { title: string; body: string }[] };
   agents: { eyebrow: string; title: string; sub: string; items: { name: string; role: string; body: string; does: string[] }[] };
@@ -138,7 +124,7 @@ export type Dict = {
 export const dict: Record<Lang, Dict> = {
   ar: {
     dir: "rtl",
-    brand: "نشر",
+    brand: "ذكين",
     agent: "نور",
     nav: { how: "كيف تعمل", agents: "الوكلاء", industries: "القطاعات", pricing: "الأسعار", faq: "الأسئلة", cta: "ابدأ مجاناً", switchLang: "English", switchHref: "/en", tools: "أدوات مجانية", blog: "المدونة" },
     hero: {
@@ -158,78 +144,6 @@ export const dict: Record<Lang, Dict> = {
         { t: "10:30", text: "بناءً على طلبك، أرسلت المقال المعتمد كمسودة إلى WordPress.", tag: "مقالات" },
         { t: "10:45", text: "بناءً على طلبك، نشرت المنشور المعتمد على قناتك في Telegram.", tag: "نشر" },
       ],
-    },
-    land: {
-      hero: {
-        eyebrow: "نقدّم لك نور وفريقها",
-        title: "فريق تسويقك. مسودات جاهزة لموافقتك.",
-        sub: "تقرأ. تخطط. تكتب. تتعلم من كل تعديل. بلهجتك.",
-        urlPlaceholder: "ضع رابط موقعك أو متجرك",
-        urlCta: "ابدأ",
-        assess: "أول تقييم لعلامتك من رابط موقعك.",
-        trial: "تجربة 3 أيام. بدون بطاقة. ألغِ متى شئت.",
-      },
-      highlights: {
-        title: "الخلاصة.",
-        sub: "خطط ومحتوى وتقارير لتسويقك. نور واحدة.",
-        items: [
-          { t: "ملخص الصباح كل يوم", d: "08:00 بتوقيت السعودية: ما ينتظر موافقتك، ما اعتمدته، رصيدك، والمواسم القريبة. في التطبيق." },
-          { t: "تتعلم صوت علامتك", d: "من موقعك أولاً، ثم من كل تعديل ورفض. النبرة واللهجة والكلمات الممنوعة تُكتب في ملف تقرؤه في كل مرة." },
-          { t: "محتوى السوشال جاهز للنشر", d: "إنستقرام، سناب، تيك توك، X. 10 منشورات في الدفعة، مع الهاشتاقات وسكربتات الفيديو." },
-          { t: "الإعلانات والواتساب", d: "5 نسخ إعلانية بجمهور وميزانية مقترحة بالريال، و3 رسائل واتساب لاسترجاع السلات والعروض والشكر." },
-          { t: "خطة الأسبوع كل أحد", d: "ماذا تنشر، متى، وأين تعلن، مبنية على تقويم الخليج: رمضان، الأعياد، اليوم الوطني، الجمعة البيضاء." },
-          { t: "تقارير وأرقام صادقة", d: "لوحة مؤشرات لمساحة عملك، تقرير أسبوعي، وعرض مجلس إدارة يُحمَّل PowerPoint. بلا أرقام مخترعة." },
-        ],
-      },
-      teammate: {
-        title: "تخطط أسبوعك كل أحد.",
-        body: "زميلة لا موظفة مؤقتة: تقرأ ملف علامتك ومنتجاتك وملاحظات سوقك قبل كل مهمة، وتترك لك ملخصاً صباحياً بما ينتظر موافقتك. لا اجتماعات، لا متابعة.",
-        cards: [
-          { label: "مراقبة المواسم", title: "تعرف المواسم القادمة.", body: "الأيام المتبقية على رمضان واليوم الوطني والمواسم القريبة، وما يجب أن يتغيّر في محتواك قبلها." },
-          { label: "تنفيذ أسبوعي", title: "أسبوع كامل، بخطة جاهزة.", body: "خطة، منشورات، رسائل، إعلانات ومقالات، كلها في صندوق واحد تعتمده بضغطة." },
-        ],
-      },
-      oldway: {
-        title: "الطريقة القديمة، وطريقة نور.",
-        sub: "نور تعرف موسمك قبل أن تسألها.",
-        old: { label: "الطريقة القديمة", items: ["وكالة برسوم شهرية أو موظف براتب كامل", "لوحات لا تفتحها وساعات متابعة كل أسبوع", "محتوى متأخر عن الموسم، ولهجة غير لهجتك", "لا أحد يقرأ تعديلاتك ويتعلم منها"] },
-        new: { label: "طريقة نور", items: [`فريق كامل من ${P.starter} ريالاً شهرياً`, "كل شيء في صندوق موافقة واحد، وملخص صباحي", "محتوى بلهجتك، مبني على تقويم الخليج", "تتعلم من كل تعديل، وكل رفض مع سببه"] },
-      },
-      runs: {
-        title: "تغطي التسويق وما بعده.",
-        sub: "التسويق، ثم المبيعات والمالية والنمو والتقارير. من ملف علامة واحد.",
-        items: [
-          { tag: "استراتيجية", quote: "ما عندي وقت أفكر، أنا أطفّي حرائق.", does: "نور تقرأ موقعك وتكتب ملف علامتك وملاحظات عن سوقك ومنافسيك وخطة 90 يوماً، ثم خطة كل أسبوع.", proof: "ملف العلامة والخطة من رابط موقعك، مجاناً." },
-          { tag: "بحث", quote: "ما نظهر في قوقل، والـ SEO دايماً مؤجّل.", does: "مقالات عربية 1,200-1,600 كلمة مهيكلة مع أسئلة شائعة، ومنشورات Google Business.", proof: `مقال جاهز للنشر ${arByCredits(TASK_COST.article)}.` },
-          { tag: "واتساب", quote: "قائمة عملائي باردة لأني ما أراسلها.", does: "رسائل استرجاع السلة والعروض الموسمية والشكر بعد الشراء، بقوالب جاهزة لواتساب للأعمال وبنبرة محترمة.", proof: "3 رسائل جاهزة في كل دفعة." },
-          { tag: "إعلانات", quote: "أصرف، وما أدري وش اللي يشتغل.", does: "نسخ إعلانية لسناب وميتا وتيك توك مع جمهور مقترح وميزانية يومية بالريال، وتجارب نمو بتقييم ICE.", proof: "5 إعلانات في كل دفعة." },
-          { tag: "سوشال", quote: "الفيد وحش جوعان وأنا دايماً متأخر.", does: "10 منشورات في الدفعة: كابشنات، سكربتات سناب وتيك توك، ومنشور X.", proof: `كل منشور ${arByCredits(perPost)}.` },
-          { tag: "مبيعات ومالية", quote: "التسويق يجيب اهتمام، لكن من يقفل الصفقة ويحسب الأرقام؟", does: "سامي يكتب سكربتات وتأهيل العملاء والمتابعة، رزان تراجع التسعير والتدفق النقدي، دانة تكتب التقرير والعرض.", proof: "8 وكلاء من ملف علامة واحد." },
-        ],
-        callout: "مسودات تسويقك، بلا توظيف ولا إدارة ولا مطاردة مصمم حر.",
-      },
-      deliverables: {
-        eyebrow: "في كل دفعة",
-        title: "جاهز عندما تطلب.",
-        sub: "ما يصل إلى صندوق موافقتك في كل مرة تطلب، على أي خطة.",
-        items: [
-          { n: "10", l: "منشورات سوشال في الدفعة، بلهجتك" },
-          { n: "1", l: "مقال SEO في الدفعة" },
-          { n: "3", l: "رسائل واتساب في الدفعة" },
-          { n: "5", l: "نسخ إعلانية في الدفعة، بميزانياتها" },
-        ],
-        note: "كل عنصر ينتظر موافقتك إلا الأنواع التي تفوّضها من صفحة الحوكمة، ولا يُنشر شيء إلا بطلبك.",
-      },
-      pillars: {
-        title: "كتيّبات خليجية. وتضبطها أنت.",
-        sub: "كتيّبات لكل قطاع، وصوت علامتك، وحلقة تعلّم من تعديلاتك وأسباب رفضك.",
-        items: [
-          { t: "من مسوّقين", d: "كتيّبات لكل قطاع: تجارة إلكترونية، عيادات، مطاعم، عقار، قانون، شركات ناشئة، وكالات. لا تخمينات ذكاء اصطناعي عامة.", chips: ["كتيّبات القطاعات", "حواجز الالتزام السعودية", "مراجع ثانٍ لكل عنصر", "تقويم الخليج"] },
-          { t: "علامتك، متعلَّمة", d: "النبرة واللهجة والمنتجات والعملاء والكلمات الممنوعة تشكّل كل قطعة. تعدّلها في ملف، أو تقولها لنور في الدردشة.", chips: ["سعودي خفيف", "فصحى مبسطة", "إماراتي", "عربي + إنجليزي"] },
-          { t: "تتحسن وحدها", d: "كل تعديل، وكل رفض مع سببه، يُكتب في ذاكرتها ويُقرأ في كل توليد. وحَكَم آلي يقيّم كل عنصر من 100.", chips: ["preferences.md", "درجة جودة لكل عنصر", "نسبة الاعتماد", "تنبيهات المتابعة"] },
-        ],
-      },
-      cta: { title: "جاهز تشتغل مع نور؟", sub: "تجربة 3 أيام · بدون بطاقة · ألغِ متى شئت", button: "ابدأ مجاناً" },
     },
     proof: {
       label: "لماذا الآن",
@@ -328,7 +242,7 @@ export const dict: Record<Lang, Dict> = {
         { q: "وش يعني ملخص الصباح؟", a: "كل يوم 08:00 بتوقيت السعودية: ما ينتظر موافقتك، ما اعتُمد، رصيدك، المواسم القريبة، ومتابعات الفريق (عناصر موعدها اليوم، أشياء تنتظرك من يومين). في التطبيق." },
         { q: "متى أشوف نتائج؟", a: "تكتب نور ملف العلامة وخطة 90 يوماً من رابط موقعك أثناء الإعداد، ثم تصلك أول دفعة محتوى عندما تطلبها." },
         { q: "كم تكلّف؟", a: `كريدت شهري حسب الخطة: البداية ${P.starter}، الاحتراف ${P.pro}، الأعمال ${P.business} ريال، والوكالات بعقد. منشور = ${perPost} كريدت، مقال = ${TASK_COST.article}، عرض مجلس إدارة = ${TASK_COST.board_deck}. الدردشة مع الفريق وإعداد علامتك الأولى مجاناً، وإعداد كل علامة إضافية من رابطها ${ONBOARD_EXTRA_BRAND_COST} كريدت. ولتغيير الخطة تواصل معنا.` },
-        { q: "الخصوصية؟", a: "بياناتك لمساحة عملك فقط: لا تستخدمها منصة نشر لتدريب النماذج، ولا تشاركها بين الحسابات. مفاتيح التكاملات مشفّرة. تحذف حسابك وبيانات مساحة عملك بنفسك من صفحة «حسابك»." },
+        { q: "الخصوصية؟", a: "بياناتك لمساحة عملك فقط: لا تستخدمها منصة ذكين لتدريب النماذج، ولا تشاركها بين الحسابات. مفاتيح التكاملات مشفّرة. تحذف حسابك وبيانات مساحة عملك بنفسك من صفحة «حسابك»." },
         { q: "هل تتعلم صوت علامتي؟", a: "نعم. من موقعك أولاً، ثم من كل تعديل ورفض تكتبه، يُحفظ في preferences.md وتلتزم به." },
         { q: "أقدر ألغي؟", a: "نعم. تجربة 3 أيام بدون بطاقة، وبعدها تختار خطتك من صفحة الاشتراك. ولتغيير خطتك أو إلغائها، تواصل معنا." },
         { q: "من هم بقية الفريق؟", a: "سامي للمبيعات، رزان للمالية والتسعير، فارس للنمو، دانة للتقارير والعروض، ماجد المستشار التنفيذي، ليان للمنتج والاحتفاظ، وريم السكرتيرة لمهامك ومتابعاتك. كلهم في الدردشة نفسها ومن ملف العلامة نفسه." },
@@ -347,7 +261,7 @@ export const dict: Record<Lang, Dict> = {
     },
     footer: {
       tagline: "وكيلة تسويق مبنية للخليج.",
-      rights: "© 2026 نشر. جميع الحقوق محفوظة.",
+      rights: "© 2026 ذكين. جميع الحقوق محفوظة.",
       links: [
         { label: "الأسعار", href: "/ar/pricing" },
         { label: "أدوات مجانية", href: "/ar/tools" },
@@ -362,7 +276,7 @@ export const dict: Record<Lang, Dict> = {
   },
   en: {
     dir: "ltr",
-    brand: "Nashr",
+    brand: "Thakeen",
     agent: "Noor",
     nav: { how: "How it works", agents: "Agents", industries: "Industries", pricing: "Pricing", faq: "FAQ", cta: "Start free", switchLang: "العربية", switchHref: "/ar", tools: "Free tools", blog: "Blog" },
     hero: {
@@ -382,78 +296,6 @@ export const dict: Record<Lang, Dict> = {
         { t: "10:30", text: "At your request, sent the approved article to WordPress as a draft.", tag: "Articles" },
         { t: "10:45", text: "At your request, posted the approved update to your Telegram channel.", tag: "Publishing" },
       ],
-    },
-    land: {
-      hero: {
-        eyebrow: "Introducing Noor and her team",
-        title: "Your marketing team. Drafts ready for your approval.",
-        sub: "Reads. Plans. Writes. Learns from every edit. In your dialect.",
-        urlPlaceholder: "Enter your website or store URL",
-        urlCta: "Start",
-        assess: "Get your first brand assessment from your website URL.",
-        trial: "3-day free trial. No card. Cancel anytime.",
-      },
-      highlights: {
-        title: "Get the highlights.",
-        sub: "Plans, content and reports for your marketing. One Noor.",
-        items: [
-          { t: "Daily morning brief", d: "08:00 KSA: what waits for your approval, what you approved, your balance, upcoming seasons. In the app." },
-          { t: "Brand voice, learned", d: "From your website first, then from every edit and rejection. Tone, dialect and banned words live in a file she reads every time." },
-          { t: "Social content, ready to post", d: "Instagram, Snapchat, TikTok, X. Ten posts per batch with hashtags and video scripts." },
-          { t: "Ads and WhatsApp", d: "Five ad variants with a suggested audience and daily budget in SAR, and three WhatsApp messages for cart recovery, offers and thanks." },
-          { t: "Weekly plan every Sunday", d: "What to post, when, and where to advertise, built on the Gulf calendar: Ramadan, Eids, National Day, White Friday." },
-          { t: "Honest reports and numbers", d: "A live dashboard of your workspace, a weekly report, and a board deck that downloads as PowerPoint. No invented figures." },
-        ],
-      },
-      teammate: {
-        title: "She plans your week every Sunday.",
-        body: "A teammate, not a contractor: she reads your brand file, products and market notes before every task, and leaves a morning brief of what waits for your approval. No meetings, no chasing.",
-        cards: [
-          { label: "Season watch", title: "Know which season is coming.", body: "Days left to Ramadan, National Day and other upcoming seasons, and what should change in your content before them." },
-          { label: "Weekly execution", title: "A full week, planned.", body: "Plan, posts, messages, ads and articles, all in one inbox you approve with a click." },
-        ],
-      },
-      oldway: {
-        title: "The old way, and the Noor way.",
-        sub: "Noor knows your season before you ask.",
-        old: { label: "The old way", items: ["An agency retainer or a full-time hire", "Dashboards you never open and hours of follow-up every week", "Content late for the season, in someone else's dialect", "Nobody reads your edits and learns from them"] },
-        new: { label: "The Noor way", items: [`A full team from SAR ${P.starter}/month`, "Everything in one approval inbox, plus a morning brief", "Content in your dialect, on the Gulf calendar", "Learns from every edit and every rejection with a reason"] },
-      },
-      runs: {
-        title: "She covers marketing and beyond.",
-        sub: "Marketing first, then sales, finance, growth and reporting. From one brand file.",
-        items: [
-          { tag: "Strategy", quote: "I have no time to think, I'm putting out fires.", does: "Noor reads your site, writes your brand file, market notes and a 90-day plan, then a plan every week.", proof: "Brand file and plan from your URL, free." },
-          { tag: "Search", quote: "We're invisible on Google and SEO never gets done.", does: "Arabic articles of 1,200-1,600 words with FAQs, plus Google Business posts.", proof: `A publish-ready article for ${enCreditsWord(TASK_COST.article)}.` },
-          { tag: "WhatsApp", quote: "My customer list goes cold because I never message it.", does: "Cart recovery, seasonal offers and post-purchase thanks, as WhatsApp Business templates in a respectful tone.", proof: "Three ready messages per batch." },
-          { tag: "Ads", quote: "I'm spending, but can't tell what's working.", does: "Ad copy for Snapchat, Meta and TikTok with a suggested audience and daily budget in SAR, and ICE-scored growth experiments.", proof: "Five ads per batch." },
-          { tag: "Social", quote: "The feed is a hungry beast and I'm always behind.", does: "Ten posts per batch: captions, Snapchat and TikTok scripts, and an X post.", proof: `${cap(enCreditsWord(perPost))} per post.` },
-          { tag: "Sales and finance", quote: "Marketing brings attention, but who closes and who counts?", does: "Sami writes scripts, qualification and follow-ups, Razan reviews pricing and cash flow, Dana writes the report and the deck.", proof: "Eight agents from one brand file." },
-        ],
-        callout: "Your marketing drafts, without hiring, managing, or chasing a single freelancer.",
-      },
-      deliverables: {
-        eyebrow: "Per batch",
-        title: "Ready when you ask.",
-        sub: "What lands in your approval inbox each time you ask, on any plan.",
-        items: [
-          { n: "10", l: "social posts per batch, in your dialect" },
-          { n: "1", l: "SEO article per batch" },
-          { n: "3", l: "WhatsApp messages per batch" },
-          { n: "5", l: "ad variants per batch, with budgets" },
-        ],
-        note: "Every item waits for your approval. Types you delegate in Governance are the exception, and nothing is published unless you ask.",
-      },
-      pillars: {
-        title: "Gulf playbooks. Tuned by you.",
-        sub: "Playbooks per industry, your brand voice, and a learning loop from your edits and the reasons you give for rejections.",
-        items: [
-          { t: "By marketers", d: "Playbooks per industry: e-commerce, clinics, restaurants, real estate, legal, startups, agencies. Not generic AI guesses.", chips: ["Industry playbooks", "Saudi compliance guardrails", "Second-pass reviewer", "Gulf calendar"] },
-          { t: "Your brand, learned", d: "Tone, dialect, products, customers and banned words shape every piece. Edit them in a file, or just tell Noor in chat.", chips: ["Light Saudi", "Simple MSA", "Emirati", "Arabic + English"] },
-          { t: "Self-improving", d: "Every edit, and every rejection with a reason, is written to her memory and read on every generation. An automated judge scores each item out of 100.", chips: ["preferences.md", "Quality score per item", "Approval rate", "Follow-up alerts"] },
-        ],
-      },
-      cta: { title: "Ready to work with Noor?", sub: "3-day free trial · No card · Cancel anytime", button: "Start free" },
     },
     proof: {
       label: "Why now",
@@ -552,7 +394,7 @@ export const dict: Record<Lang, Dict> = {
         { q: "What is the morning brief?", a: "Every day at 08:00 KSA: what waits for approval, what was approved, your balance, upcoming seasons, and team follow-ups (items due today, things waiting for two days). In the app." },
         { q: "How long until I see results?", a: "Your brand file and 90-day plan are written from your URL during onboarding, and your first content batch arrives when you ask Noor for it." },
         { q: "How much does it cost?", a: `Monthly credits by plan: Starter ${P.starter}, Pro ${P.pro}, Business ${P.business} SAR, and Agency by contract. A post is ${enCredits(perPost)}, an article ${TASK_COST.article}, a board deck ${TASK_COST.board_deck}. Chatting with the team and setting up your first brand are free; setting up each added brand from its URL is ${enCredits(ONBOARD_EXTRA_BRAND_COST)}. To change plans, contact us.` },
-        { q: "What about privacy?", a: "Your data stays in your workspace, is never used by Nashr to train models and never shared across accounts. Integration keys are encrypted. Delete your account and its workspace data yourself from Profile." },
+        { q: "What about privacy?", a: "Your data stays in your workspace, is never used by Thakeen to train models and never shared across accounts. Integration keys are encrypted. Delete your account and its workspace data yourself from Profile." },
         { q: "Does Noor learn my brand voice?", a: "Yes. From your website first, then from every edit and rejection you write, saved to preferences.md and followed." },
         { q: "Can I cancel anytime?", a: "Yes. 3-day trial with no card. Upgrade from Subscription; to change or cancel your plan, contact us." },
         { q: "Who else is on the team?", a: "Sami for sales, Razan for finance and pricing, Faris for growth, Dana for reports and decks, Majed the executive advisor, Layan for product and retention, and Reem the secretary for your to-dos and follow-ups. All in the same chat, from the same brand file." },
@@ -571,7 +413,7 @@ export const dict: Record<Lang, Dict> = {
     },
     footer: {
       tagline: "A marketing agent built for the Gulf.",
-      rights: "© 2026 Nashr. All rights reserved.",
+      rights: "© 2026 Thakeen. All rights reserved.",
       links: [
         { label: "Pricing", href: "/en/pricing" },
         { label: "Free tools", href: "/en/tools" },

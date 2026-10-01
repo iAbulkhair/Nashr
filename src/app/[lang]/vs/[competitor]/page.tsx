@@ -23,7 +23,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
   const p = VS_PAGES[lang].find((x) => x.slug === competitor);
   if (!p) notFound();
   const t = dict[lang];
-  const us = lang === "ar" ? "نور (نشر)" : "Noor (Nashr)";
+  const us = lang === "ar" ? "نور (ذكين)" : "Noor (Thakeen)";
   return (
     <>
       <Nav t={t} lang={lang} />

@@ -29,7 +29,7 @@ export function metadata() {
 }
 export function resourceMetadata() {
   const o = ORIGIN();
-  return { resource: `${o}/api/mcp`, authorization_servers: [o], bearer_methods_supported: ["header"], scopes_supported: SCOPES, resource_name: "Nashr — Noor" };
+  return { resource: `${o}/api/mcp`, authorization_servers: [o], bearer_methods_supported: ["header"], scopes_supported: SCOPES, resource_name: "Thakeen — Noor" };
 }
 
 /**

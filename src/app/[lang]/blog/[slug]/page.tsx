@@ -13,7 +13,7 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   const { lang, slug } = await params;
   if (!isLang(lang)) return {};
   const p = getPost(lang, slug);
-  return p ? { title: `${p.title} — ${lang === "ar" ? "نشر" : "Nashr"}`, description: p.desc } : {};
+  return p ? { title: `${p.title} — ${lang === "ar" ? "ذكين" : "Thakeen"}`, description: p.desc } : {};
 }
 
 export default async function Page({ params }: { params: Promise<{ lang: string; slug: string }> }) {

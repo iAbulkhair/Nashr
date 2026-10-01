@@ -578,12 +578,14 @@ describe("each reviewer's work is one activity row per batch (rule 269)", () => 
  * same batch gave before the cross-agent review existed: at adb555e (step 3a with main's security gates #227 and pricing
  * phase 1 #228), where #227's fenced memory files changed the generation prompt (the reviewer and judge hashes are still
  * those of 052dc6e). A deliberate prompt change updates BEFORE and says so in its commit; the review itself must never
- * be the reason.
+ * be the reason. The Thakeen rename changed only the brand name in these prompts ("Nashr" to "Thakeen"): the renamed
+ * calls, with the old name put back, hashed exactly as the adb555e and 052dc6e values did, so BEFORE and CROSS_SYSTEM
+ * now hold the renamed calls' hashes.
  */
 const BEFORE: Record<string, { gen: string; review: string; judge: string }> = {
-  pricing_review: { gen: "bce253f03fa20363e587e48445f25b1119fe6b04f12a964444bf1a2322f2a583", review: "5399a079a879239ff59a3ac3ac9a0ef92933930187ea02fa01dce95d78b61f1d", judge: "140a91f5ba77b03645150d36d8374fd5e2c3c95dc270ac85f26577c167aee99f" },
-  gtm_plan: { gen: "5f6e5c6c0af05aa09132e88e52d4899d1def9bfadc6cca1385d56c95a884b4fe", review: "e0e093ee4a6f6e554e9b91901189ef0f91665e1fad7e68c30f08dfb5268da011", judge: "f06db0b00b497920c82542d3b29453a89003eeaeedd81c6c61835539232aaa2c" },
-  social: { gen: "0cc7f00cb7c5e8b1abad12c830ecc4e64c362f7113bb83b185082396fa76a057", review: "a1d5c307fea6b088b907a83d0e767307a8afd666c4ba95c5a31b8a0dce037b21", judge: "4517cc7a66298bf0369ad427c4e69c9cf763ae16ec095ce766eafda147315894" },
+  pricing_review: { gen: "7b3aed2d5227a3c241cd9ae89c83eec75d68261708b2a02c54aa0e6d44d48491", review: "96d87e33997634d1f76f13672245badf391bcc24480b2c782c35ee3b23492ab8", judge: "8625bb81f9467fb37c958eba17df25844aadc71a228a9da796b3e93f610ac646" },
+  gtm_plan: { gen: "6bbe0f8c9c557d274ce67ddea402c7b8a5e71703ae4d2b4bffda3438dddd5cfa", review: "7a6653a4b92904d0eec76f077727363bcd064f260339a8cbcba149b58dce4217", judge: "71578f1853a03cda2894405bb82a891af81b91d01fd09ddabd0457c7c442776f" },
+  social: { gen: "be4b34bead5f29b4e18a85848875303773c7b5b4ce1aed292674e9a614b847d4", review: "6fcd0eb12ea654206127831de821bf0f9d413f59b06e20414705c3332e3664f2", judge: "787f94e4f8595e995fcb10bdecc899bfa990ed74e7b058504549e8495b08e80f" },
 };
 /**
  * Each cross-reviewer's system block for the same fixed batch (the fixed playbooks above), pinned since step 3a was
@@ -593,8 +595,8 @@ const BEFORE: Record<string, { gen: string; review: string; judge: string }> = {
  * the same commit, with docs/system/flows.md §34 item 9 and the sizes in docs/system/costs.md §3.
  */
 const CROSS_SYSTEM: Record<"razan" | "majed", string> = {
-  razan: "62aa2faf050c52aafec1c89dda69adc045607825f28afed647a9d96ea53fa9d8",
-  majed: "eadd5c364189acac1487fa0864c97faa3e0e55e642dbab1fba713865f8252460",
+  razan: "846ec284494e4d06f95fe00725b39868599f7eea8cc8a583ede4325aa5d2e66c",
+  majed: "5f39895be96441a5295422e579e90ab2597d86dc6fb07caac2a5876f61042078",
 };
 type Sent = { system: unknown; messages: unknown; model: string; max_tokens: number; thinking?: unknown; output_config?: unknown };
 const sha = (p: Sent) => createHash("sha256").update(JSON.stringify({ model: p.model, max_tokens: p.max_tokens, thinking: p.thinking, output_config: p.output_config, system: p.system, messages: p.messages })).digest("hex");

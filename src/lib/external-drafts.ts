@@ -29,7 +29,7 @@ const clean = (v: unknown) => (typeof v === "string" ? v.replace(/\r\n?/g, "\n")
 
 /** Validate the tool's arguments. Too long is refused, not cut: a silently truncated draft is a different draft. */
 export function parseDraft(args: Record<string, unknown>): { ok: true; draft: DraftInput } | { ok: false; error: string } {
-  if (!isTaskType(args.type)) return { ok: false, error: "Unknown or missing `type`: use one of the Nashr item types (for example social, article, whatsapp, ads, gbp)." };
+  if (!isTaskType(args.type)) return { ok: false, error: "Unknown or missing `type`: use one of the Thakeen item types (for example social, article, whatsapp, ads, gbp)." };
   const type = args.type;
   const body = clean(args.body);
   if (!body) return { ok: false, error: "Nothing to save: pass the draft text in `body`." };

@@ -14,7 +14,7 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   const { lang, tool } = await params;
   const x = getTool(tool);
   if (!x || !isLang(lang)) return {};
-  return { title: `${x.h1[lang]} — ${lang === "ar" ? "نشر" : "Nashr"}`, description: x.desc[lang] };
+  return { title: `${x.h1[lang]} — ${lang === "ar" ? "ذكين" : "Thakeen"}`, description: x.desc[lang] };
 }
 
 export default async function Page({ params }: { params: Promise<{ lang: string; tool: string }> }) {

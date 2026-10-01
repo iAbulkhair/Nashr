@@ -39,7 +39,7 @@ export default function LimitModal({ t, lang, owner = true, governs = true }: { 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="limit-title" className="fixed inset-0 z-[60] grid place-items-center bg-black/40 p-4" onClick={() => setKind(null)}>
       <div className="card w-full max-w-md p-8 text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-oasis font-display text-2xl font-bold text-saffron shadow-[0_0_0_8px_rgba(242,179,61,0.15)]" aria-hidden>ن</span>
+        <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-oasis font-display text-2xl font-bold text-saffron shadow-[0_0_0_8px_rgba(242,179,61,0.15)]" aria-hidden>ذ</span>
         <h2 id="limit-title" className="mt-5 font-display text-2xl font-bold">{title}</h2>
         <p className="page-sub">{body}</p>
         <div className="mt-6 flex justify-center gap-3">

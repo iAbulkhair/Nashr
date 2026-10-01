@@ -29,7 +29,7 @@ export type SeedWish = { id: string; area: WishArea; title: Bi };
 /** Newest first. Dates are merge dates on main. */
 export const CHANGELOG: readonly ChangeEntry[] = [
   // agent-team step 3b, part O item 5
-  { date: "2026-09-30", tag: "new", title: { ar: "تشغيل تلقائي اختياري للتسليمات", en: "Opt-in auto-run for handoffs" }, desc: { ar: "مفتاح جديد في الحوكمة، متوقف افتراضياً. إن فعّلته، وهو يحتاج حداً شهرياً لوكيل واحد على الأقل ممن يسلّمهم ماجد العمل وتأكيدك، قد يبدأ نشر بنفسه بنداً واحداً في اليوم من تسليم اقترحه ماجد عليك خلال آخر 7 أيام، ويُخصم ضمن الحد الشهري لوكيل البند وضمن الحد الأسبوعي. ما يُكتب ينتظر موافقتك دائماً ويصلك تنبيه في كل مرة، ولا يبدأ تلقائياً ما طلبه عضو أو تطبيق متصل.", en: "A new Governance switch, off by default. If you turn it on, which needs a monthly cap on at least one agent Majed hands work to and your confirmation, Nashr may start one item a day of a handoff Majed proposed to you in the last 7 days, charged under that item's agent cap and within the weekly cap. What it writes always waits for your approval and you are told each time; handoffs a member or a connected app asked for never start on their own." } },
+  { date: "2026-09-30", tag: "new", title: { ar: "تشغيل تلقائي اختياري للتسليمات", en: "Opt-in auto-run for handoffs" }, desc: { ar: "مفتاح جديد في الحوكمة، متوقف افتراضياً. إن فعّلته، وهو يحتاج حداً شهرياً لوكيل واحد على الأقل ممن يسلّمهم ماجد العمل وتأكيدك، قد يبدأ ذكين بنفسه بنداً واحداً في اليوم من تسليم اقترحه ماجد عليك خلال آخر 7 أيام، ويُخصم ضمن الحد الشهري لوكيل البند وضمن الحد الأسبوعي. ما يُكتب ينتظر موافقتك دائماً ويصلك تنبيه في كل مرة، ولا يبدأ تلقائياً ما طلبه عضو أو تطبيق متصل.", en: "A new Governance switch, off by default. If you turn it on, which needs a monthly cap on at least one agent Majed hands work to and your confirmation, Thakeen may start one item a day of a handoff Majed proposed to you in the last 7 days, charged under that item's agent cap and within the weekly cap. What it writes always waits for your approval and you are told each time; handoffs a member or a connected app asked for never start on their own." } },
   // agent-team step 3b, part O
   { date: "2026-09-30", tag: "new", title: { ar: "ماجد يقود الفريق بتسليمات", en: "Majed leads the team with handoffs" }, desc: { ar: "حين يحتاج هدفك عمل وكيل آخر، يقترح ماجد في الدردشة تسليماً من بند إلى ثلاثة: لكل بند الوكيل الذي سيكتبه وطلب ماجد وتكلفته. لا يُنفَّذ شيء ولا يُخصم كريدت حتى تضغط «نفّذ» (إلا إن فعّلت تشغيل ماجد التلقائي في الحوكمة)، ولك أن ترفض أي بند. ما يُكتب يصل إلى صندوق الموافقة وعليه علامة «من تسليم ماجد».", en: "When your goal needs another agent's work, Majed proposes a handoff of one to three items in chat: each with the agent who will write it, his brief and its cost. Nothing runs and no credits are charged until you press Run (unless you turn on Majed's auto-run in Governance), and you can decline any item. The work lands in the approval inbox marked \"from Majed's handoff\"." } },
   // agent-team step 3b, part R
@@ -103,8 +103,8 @@ export const SEED_WISHES: readonly SeedWish[] = [
   { id: "publish-tiktok", area: "channels", title: { ar: "النشر على تيك توك", en: "Publish to TikTok" } },
   { id: "publish-snapchat", area: "channels", title: { ar: "النشر على سناب شات", en: "Publish to Snapchat" } },
   { id: "whatsapp-send", area: "channels", title: { ar: "إرسال رسائل واتساب", en: "Send WhatsApp messages" } },
-  { id: "salla-app", area: "commerce", title: { ar: "تطبيق نشر في متجر تطبيقات سلة", en: "Nashr in the Salla App Store" } },
-  { id: "zid-app", area: "commerce", title: { ar: "تطبيق نشر في سوق تطبيقات زد", en: "Nashr in the Zid App Market" } },
+  { id: "salla-app", area: "commerce", title: { ar: "تطبيق ذكين في متجر تطبيقات سلة", en: "Thakeen in the Salla App Store" } },
+  { id: "zid-app", area: "commerce", title: { ar: "تطبيق ذكين في سوق تطبيقات زد", en: "Thakeen in the Zid App Market" } },
   { id: "meta-campaigns", area: "ads", title: { ar: "إطلاق حملات Meta", en: "Launch Meta ad campaigns" } },
   { id: "more-campaigns", area: "ads", title: { ar: "إطلاق حملات تيك توك وسناب شات وجوجل", en: "Launch TikTok, Snapchat and Google campaigns" } },
   { id: "budget-limits", area: "ads", title: { ar: "ضبط ميزانية الإعلانات ضمن حدود تضعها", en: "Ad budgets kept within limits you set" } },
@@ -116,8 +116,8 @@ export const SEED_WISHES: readonly SeedWish[] = [
   { id: "client-branded-reports", area: "team", title: { ar: "تقارير بعلامة عميلك", en: "Reports under your client's brand" } },
   { id: "shared-workspace", area: "team", title: { ar: "مساحة عمل مشتركة للفريق", en: "A shared workspace for your team" } },
   { id: "credit-top-up", area: "billing", title: { ar: "شحن رصيد كريدت إضافي", en: "Top up extra credits" } },
-  { id: "claude-directory", area: "integrations", title: { ar: "نشر في دليل موصّلات Claude", en: "Nashr in the Claude connector directory" } },
-  { id: "chatgpt-app", area: "integrations", title: { ar: "تطبيق نشر في دليل تطبيقات ChatGPT", en: "A Nashr app in the ChatGPT app directory" } },
+  { id: "claude-directory", area: "integrations", title: { ar: "ذكين في دليل موصّلات Claude", en: "Thakeen in the Claude connector directory" } },
+  { id: "chatgpt-app", area: "integrations", title: { ar: "تطبيق ذكين في دليل تطبيقات ChatGPT", en: "A Thakeen app in the ChatGPT app directory" } },
   { id: "chat-control", area: "integrations", title: { ar: "كلّم وكلاءك من واتساب أو تيليجرام", en: "Talk to your agents from WhatsApp or Telegram" } },
   { id: "mobile-app", area: "app", title: { ar: "تطبيق جوال", en: "A mobile app" } },
 ];

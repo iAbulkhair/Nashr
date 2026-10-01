@@ -321,7 +321,7 @@ describe("the Governance page shows the history from the server (rule 228)", () 
     }
   });
 
-  it("a change made through support access reads as Nashr support: no page prop or response carries who impersonated", async () => {
+  it("a change made through support access reads as Thakeen support: no page prop or response carries who impersonated", async () => {
     const founder = "founder@test.example";
     const u = await owner("page-hist-imp");
     await signIn(u.email, { imp: founder });
@@ -340,7 +340,7 @@ describe("the Governance page shows the history from the server (rule 228)", () 
     expect(el.props.history.map((r) => r.by)).toEqual([shown, shown]);
     expect(JSON.stringify(el.props)).not.toContain(founder);
     const hist = (await render("en")).split('id="gov-history"')[1] ?? "";
-    expect((hist.match(/>Nashr support</g) ?? []).length).toBe(2);
+    expect((hist.match(/>Thakeen support</g) ?? []).length).toBe(2);
     expect(hist).not.toContain(founder);
   });
 

@@ -333,7 +333,7 @@ describe("invite, preview and accept", () => {
 
   it("the invitation email is a fixed template: the inviter's address, never a display name or brand name typed by the sender", async () => {
     const owner = await withPlan(await newUser("own"), "agency");
-    await saveUser({ ...(await getUser(owner.email))!, name: "Nashr Security Team" });
+    await saveUser({ ...(await getUser(owner.email))!, name: "Thakeen Security Team" });
     await saveBrand(owner.email, { name: "Account locked - verify at evil.example", website: "", industry: "", dialect: "saudi", languages: ["ar"], tone: "", products: "", audience: "", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "", updatedAt: "2026-09-29" } as Brand);
     await signIn(owner.email);
     for (const lang of ["ar", "en"] as const) {
@@ -342,7 +342,7 @@ describe("invite, preview and accept", () => {
       expect(sent).toHaveLength(1);
       expect(sent[0].text).toContain(owner.email);
       expect(sent[0].text).not.toContain("evil.example");
-      expect(sent[0].text).not.toContain("Nashr Security Team");
+      expect(sent[0].text).not.toContain("Thakeen Security Team");
     }
   });
 

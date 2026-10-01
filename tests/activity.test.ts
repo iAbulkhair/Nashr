@@ -303,7 +303,7 @@ describe("GET /api/activity and the CSV export read only the caller's own log (r
     const res = await exportRoute.GET();
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("text/csv; charset=utf-8");
-    expect(res.headers.get("content-disposition")).toMatch(/^attachment; filename="nashr-activity-\d{4}-\d{2}-\d{2}\.csv"$/);
+    expect(res.headers.get("content-disposition")).toMatch(/^attachment; filename="thakeen-activity-\d{4}-\d{2}-\d{2}\.csv"$/);
     const bytes = new Uint8Array(await res.arrayBuffer());
     expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const lines = new TextDecoder().decode(bytes).split("\n");
@@ -338,7 +338,7 @@ describe("support access reaches the account's logins as support, never as which
     const props = (el as unknown as { props: { initial: Activity[] } }).props;
     expect(props.initial.map((r) => r.by)).toEqual([{ kind: "founder", email: u.email }]);
     expect(JSON.stringify(props)).not.toContain(founder);
-    expect(await new Response(await renderToReadableStream(el)).text()).toContain("Nashr support");
+    expect(await new Response(await renderToReadableStream(el)).text()).toContain("Thakeen support");
 
     // The founder console reads the rows whole.
     const admin = (await (await adminUser.GET(json(`/api/admin/users/x`, "GET", undefined, { "x-admin-key": "test-admin-key-0123456789" }), params({ email: encodeURIComponent(u.email) }))).json()) as { activity: { rows: Activity[] }[] };

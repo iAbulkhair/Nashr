@@ -142,15 +142,15 @@ describe("the credits table prices every task from TASK_COST (rule 248)", () => 
 });
 
 describe("the other pages read the same tables (rule 248)", () => {
-  it("the pricing FAQ and the landing page quote the table's prices, Agency by contract and the setup cost", () => {
+  it("the pricing FAQ quotes the table's prices, Agency by contract and the setup cost", () => {
     const faq = (lang: Lang) => dict[lang].faq.items.find((i) => i.q === (lang === "ar" ? "كم تكلّف؟" : "How much does it cost?"))!.a;
     expect(faq("en")).toContain(`Starter ${P.starter}, Pro ${P.pro}, Business ${P.business} SAR, and Agency by contract`);
     expect(faq("ar")).toContain(`البداية ${P.starter}، الاحتراف ${P.pro}، الأعمال ${P.business} ريال، والوكالات بعقد`);
     expect(faq("en")).toContain(`A post is ${TASK_COST.social / TASK_COUNT.social} credit, an article ${TASK_COST.article}, a board deck ${TASK_COST.board_deck}`);
     expect(faq("en")).toContain(`setting up each added brand from its URL is ${ONBOARD_EXTRA_BRAND_COST} credits`);
     expect(faq("ar")).toContain(`وإعداد كل علامة إضافية من رابطها ${ONBOARD_EXTRA_BRAND_COST} كريدت`);
-    expect(dict.en.land.oldway.new.items[0]).toBe(`A full team from SAR ${P.starter}/month`);
-    expect(dict.ar.land.oldway.new.items[0]).toBe(`فريق كامل من ${P.starter} ريالاً شهرياً`);
+    // The old landing page and its `land` copy are gone with the new homepage (PR #213); the homepage shows the
+    // same pricing cards (`src/components/Pricing.tsx`) and FAQ, which the tests above and this one pin.
     for (const lang of LANGS) expect(dict[lang].industries.items.find((i) => i.name === (lang === "ar" ? "وكالات التسويق" : "Marketing agencies"))!.body, lang).toMatch(lang === "ar" ? /على أي خطة/ : /on any plan/);
   });
 

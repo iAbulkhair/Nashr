@@ -10,7 +10,7 @@ const STR = {
   ar: {
     live: "مباشر", syncFrom: (p: string) => `اقرأ النتائج من ${p}`, liveNote: "آخر ٣٠ يوماً من حسابك الإعلاني، قراءة فقط. تتحدّث تلقائياً كل يوم.", orUpload: "أو ارفع ملف CSV",
     adErrors: { reconnect_required: "انتهت صلاحية الربط. أعد ربط الحساب من صفحة التكاملات.", no_ad_results: "لا نتائج إعلانات في آخر ٣٠ يوماً في هذا الحساب.", no_ad_account: "لم نجد حساباً إعلانياً نشطاً في هذا الربط." } as Record<string, string>,
-    nashrTitle: "إعلانات نشر", nashrNone: "لم نجد بعد إعلاناً يحمل كوداً من نشر. انسخ الكود (NSR-…) من بطاقة الإعلان في صندوق الموافقة وضعه في اسم الإعلان في مدير الإعلانات.", nashrFew: "وجدنا إعلانات نشر، لكن العيّنة لا تكفي بعد للمقارنة مع بقية إعلاناتك.", tooSmall: "عيّنة صغيرة",
+    nashrTitle: "إعلانات ذكين", nashrNone: "لم نجد بعد إعلاناً يحمل كوداً من ذكين. انسخ الكود (NSR-…) من بطاقة الإعلان في صندوق الموافقة وضعه في اسم الإعلان في مدير الإعلانات.", nashrFew: "وجدنا إعلانات ذكين، لكن العيّنة لا تكفي بعد للمقارنة مع بقية إعلاناتك.", tooSmall: "عيّنة صغيرة",
     title: "نتائج حملاتك (CSV)", sub: "صدّر تقرير الإعلانات من Meta أو سناب شات أو تيك توك أو Google Ads وارفعه هنا. نور تستخرج ما نجح وتبني عليه خطتك القادمة. بدون رصيد.",
     how: "كيف أصدّر التقرير؟", howBody: "من مدير الإعلانات افتح التقارير على مستوى الإعلان، وأضف أعمدة الظهور والنقرات والمبلغ المنفق والنتائج (أو قيمة الشراء)، ثم صدّر بصيغة CSV.",
     drop: "اسحب ملف CSV هنا أو اضغط للاختيار", reading: "نور تقرأ النتائج…", replace: "ارفع ملفاً أحدث", remove: "احذف الاستيراد", removeFail: "لم يُحذف الاستيراد. حاول مرة أخرى.", readOnly: "استيراد نتائج الحملات من ملف أو حذفها لمالك الحساب أو المدير. النتائج هنا للقراءة.",
@@ -26,7 +26,7 @@ const STR = {
   en: {
     live: "Live", syncFrom: (p: string) => `Read results from ${p}`, liveNote: "The last 30 days from your ad account, read only. Refreshed automatically every day.", orUpload: "or upload a CSV",
     adErrors: { reconnect_required: "The connection expired. Reconnect the account on the Integrations page.", no_ad_results: "No ad results in the last 30 days in this account.", no_ad_account: "No active ad account was found on this connection." } as Record<string, string>,
-    nashrTitle: "Nashr's ads", nashrNone: "No ad with a Nashr code yet. Copy the code (NSR-…) from an ad card in the approval inbox into the ad's name in your ads manager.", nashrFew: "Nashr's ads are in, but there is not enough data yet to compare them with your other ads.", tooSmall: "small sample",
+    nashrTitle: "Thakeen's ads", nashrNone: "No ad with a Thakeen code yet. Copy the code (NSR-…) from an ad card in the approval inbox into the ad's name in your ads manager.", nashrFew: "Thakeen's ads are in, but there is not enough data yet to compare them with your other ads.", tooSmall: "small sample",
     title: "Campaign results (CSV)", sub: "Export an ads report from Meta, Snapchat, TikTok or Google Ads and drop it here. Noor pulls out what worked and builds your next plan on it. No credits.",
     how: "How do I export it?", howBody: "In your ads manager, open reporting at the ad level, add impressions, clicks, amount spent and results (or purchase value) columns, then export as CSV.",
     drop: "Drop a CSV here or click to choose", reading: "Noor is reading the results…", replace: "Upload a newer file", remove: "Remove import", removeFail: "The import was not removed. Try again.", readOnly: "Importing campaign results from a file, or removing them, is for the account owner or an admin. The findings are here to read.",

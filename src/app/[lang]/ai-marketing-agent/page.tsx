@@ -37,7 +37,7 @@ const C = {
 export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
   const { lang } = await params;
   if (!isLang(lang)) return {};
-  return { title: `${C[lang].title} — ${lang === "ar" ? "نشر" : "Nashr"}`, description: C[lang].desc };
+  return { title: `${C[lang].title} — ${lang === "ar" ? "ذكين" : "Thakeen"}`, description: C[lang].desc };
 }
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
@@ -46,7 +46,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const t = dict[lang];
   const c = C[lang];
   const faqLd = { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: c.faq.map(([q, a]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })) };
-  const artLd = { "@context": "https://schema.org", "@type": "Article", headline: c.title, description: c.desc, datePublished: "2026-09-17", author: { "@type": "Organization", name: "Nashr" }, publisher: { "@type": "Organization", name: "Nashr" } };
+  const artLd = { "@context": "https://schema.org", "@type": "Article", headline: c.title, description: c.desc, datePublished: "2026-09-17", author: { "@type": "Organization", name: "Thakeen" }, publisher: { "@type": "Organization", name: "Thakeen" } };
   const q = encodeURIComponent(c.q);
   const ask = [["ChatGPT", `https://chatgpt.com/?q=${q}`], ["Claude", `https://claude.ai/new?q=${q}`], ["Perplexity", `https://www.perplexity.ai/search?q=${q}`]];
   return (

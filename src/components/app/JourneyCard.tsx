@@ -12,12 +12,12 @@ const STR = {
     levels: { seed: "بذرة", sapling: "فسيلة", palm: "نخلة", oasis: "واحة" } as Record<LevelId, string>,
     m: {
       brand: ["نور قرأت علامتك", "ملف العلامة جاهز من موقعك."],
-      guard: ["فعّل حارس العلامة", "أضف الكلمات الممنوعة. نشر يمنع اعتماد أي نص يحتويها، في الكود وليس بالوعد."],
+      guard: ["فعّل حارس العلامة", "أضف الكلمات الممنوعة. ذكين يمنع اعتماد أي نص يحتويها، في الكود وليس بالوعد."],
       approve: ["اعتمد أول منشور", "راجع مسودة واحدة من صندوق الموافقة واعتمدها."],
       schedule: ["ضع منشوراً في التقويم", "اختر تاريخ نشر لعنصر معتمد."],
       connect: ["اربط قناة", "واتساب أو إنستقرام أو متجرك، لتنشر بضغطة."],
       publish: ["انشر أول منشور", "من صندوق الموافقة إلى القناة مباشرة."],
-      ai: ["علامتك داخل ChatGPT وClaude", "اربط نشر بمساعدك، فيكتب بقواعد علامتك ويتحقق منها."],
+      ai: ["علامتك داخل ChatGPT وClaude", "اربط ذكين بمساعدك، فيكتب بقواعد علامتك ويتحقق منها."],
     } as Record<MilestoneId, [string, string]>,
   },
   en: {
@@ -27,12 +27,12 @@ const STR = {
     levels: { seed: "Seed", sapling: "Sapling", palm: "Palm", oasis: "Oasis" } as Record<LevelId, string>,
     m: {
       brand: ["Noor read your brand", "Your brand file is built from your site."],
-      guard: ["Switch on the brand guard", "Add banned words. Nashr refuses to approve text that contains one, in code, not by promise."],
+      guard: ["Switch on the brand guard", "Add banned words. Thakeen refuses to approve text that contains one, in code, not by promise."],
       approve: ["Approve your first post", "Review one draft in the inbox and approve it."],
       schedule: ["Put a post on the calendar", "Pick a publish date for an approved item."],
       connect: ["Connect a channel", "WhatsApp, Instagram or your store, to publish in one click."],
       publish: ["Publish your first post", "Straight from the inbox to the channel."],
-      ai: ["Your brand inside ChatGPT and Claude", "Connect Nashr to your assistant so it writes to your rules and checks against them."],
+      ai: ["Your brand inside ChatGPT and Claude", "Connect Thakeen to your assistant so it writes to your rules and checks against them."],
     } as Record<MilestoneId, [string, string]>,
   },
 } as const;

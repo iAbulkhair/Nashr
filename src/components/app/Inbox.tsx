@@ -42,7 +42,7 @@ const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w
 const noteCount = (notes: string) => notes.split("\n").filter((l) => l.trim()).length;
 /**
  * Another agent's verdicts on the item, for the card (`Task.crossReview`). Never for an MCP `save_draft` draft, which
- * carries the "written outside Nashr" chip instead; a verdict naming no known agent is left out.
+ * carries the "written outside Thakeen" chip instead; a verdict naming no known agent is left out.
  */
 const verdictsOf = (x: Pick<Task, "source" | "crossReview">) => (x.source === "external" ? [] : (x.crossReview ?? []).filter((v) => isAgentId(v.by)));
 
