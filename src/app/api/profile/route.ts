@@ -9,6 +9,7 @@ import { pmap } from "@/lib/parallel";
 import { withUserLock } from "@/lib/credits";
 import { can, forbid, type Action } from "@/lib/roles";
 import { saveMember, withMemberLock } from "@/lib/team";
+import { chatStatus } from "@/lib/chat-allowance";
 
 export type EmailPrefs = "all" | "important" | "none";
 
@@ -27,7 +28,7 @@ const phoneOk = (v: string | undefined) => (v ?? "").replace(/\D/g, "").length >
 
 /**
  * GET: the acting person ({name, email, lang, role}) and the account summary everyone in it shares (plan, credits,
- * usage, brand). The account-level fields (the owner's phone, revocation stamps, per-agent spend, email preferences)
+ * usage, chat messages, brand). The account-level fields (the owner's phone, revocation stamps, per-agent spend, email preferences)
  * go to the owner only: a member sees their own name and address, never the owner's contact details.
  */
 export async function GET() {
@@ -43,10 +44,12 @@ export async function GET() {
   // remaining", and the used figure changed when it switched brand while the balance did not. The admin route and
   // wipeAccount already take this union; the profile was the outlier.
   const scopes = (await listBrands(u.email)).map((b) => scopeFor(u.email, b.id));
-  const [lists, prefs, brand] = await Promise.all([
+  // `chat`: the account's chat messages (src/lib/chat-allowance.ts), the same for every seat: `u.email` is the owner's.
+  const [lists, prefs, brand, chat] = await Promise.all([
     pmap(scopes, (s) => listLite(s, monthStart)),
     a.kind === "member" ? Promise.resolve(null) : db.get<{ emails?: EmailPrefs }>(`profile:${sc(u)}`),
     getBrand(sc(u)),
+    chatStatus(u),
   ]);
   const tasks = lists.flat();
   const usage: Record<string, { count: number; credits: number }> = {};
@@ -76,7 +79,7 @@ export async function GET() {
   const may = { passwordChange: can(u, "password.change"), accountDelete: can(u, "account.delete") };
   // `allowance`: the monthly credits the balance renews to (src/lib/pricing.ts), the plan's or an Agency account's deal.
   return NextResponse.json({
-    ok: true, me, role: a.role, may, impersonating: a.kind === "founder", user, usage, images, mediaCredits, allowance: allowanceOf(u), nextReset,
+    ok: true, me, role: a.role, may, impersonating: a.kind === "founder", user, usage, images, mediaCredits, allowance: allowanceOf(u), nextReset, chat,
     ...(a.kind === "member" ? { account: { email: u.email, name: u.name } } : { emails: prefs?.emails ?? "all" }),
     brand: brandView(brand),
   });

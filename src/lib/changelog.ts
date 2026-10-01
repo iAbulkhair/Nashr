@@ -1,5 +1,5 @@
 import type { Lang } from "./i18n";
-import { ONBOARD_EXTRA_BRAND_COST, PLAN_PRICE_SAR as P } from "./pricing";
+import { CHAT_ALLOWANCE as M, ONBOARD_EXTRA_BRAND_COST, PLAN_PRICE_SAR as P, chatOverflowHold, formatCount as fc } from "./pricing";
 import { TASK_COST } from "./tasks";
 
 /**
@@ -7,7 +7,7 @@ import { TASK_COST } from "./tasks";
  *
  * Import-free apart from types, src/lib/pricing.ts and src/lib/tasks.ts (both import-free, so they drag nothing else
  * along) on purpose: client components read the labels and statuses from here, and anything this file imported would be
- * dragged into their bundles. The prices and task costs in the pricing entry come from those tables (rule 248). The Redis side (votes, suggestions, promoted items, status
+ * dragged into their bundles. The prices and task costs in the pricing entries come from those tables (rule 248). The Redis side (votes, suggestions, promoted items, status
  * overrides) lives in src/lib/wishlist.ts.
  *
  * Every changelog entry is a change merged into main (the PR or commit is named next to it) and is dated with the
@@ -28,6 +28,8 @@ export type SeedWish = { id: string; area: WishArea; title: Bi };
 
 /** Newest first. Dates are merge dates on main. */
 export const CHANGELOG: readonly ChangeEntry[] = [
+  // pricing phase 2
+  { date: "2026-10-01", tag: "new", title: { ar: "رصيد رسائل المحادثة الشهري", en: "Monthly chat messages" }, desc: { ar: `كل خطة تشمل الآن رسائل محادثة مع الفريق: البداية ${fc(M.starter)} والاحتراف ${fc(M.pro)} والأعمال ${fc(M.business)} شهرياً، تتجدد أول كل شهر (بتوقيت UTC)، و${fc(M.trial)} للتجربة كلها، والرسالة التي تعذّر ردها لا تُحسب. عند نفادها تتوقف الدردشة حتى أول الشهر (وفي التجربة حتى اختيار خطة)، إلا إن اختار المالك المتابعة بالكريدت من صفحة الاشتراك: كل رسالة إضافية تُحسب بكلفتها الفعلية، ${chatOverflowHold()} كريدت كحد أقصى، وتحتاج ${chatOverflowHold()} كريدت على الأقل في الرصيد. والمحتوى والصور التي تطلبها في الدردشة تُخصم كريدتها كما كانت.`, en: `Every plan now includes chat messages with the team: Starter ${fc(M.starter)}, Pro ${fc(M.pro)} and Business ${fc(M.business)} a month, renewed on the 1st (UTC), and ${fc(M.trial)} for the whole trial; a message that fails is not counted. When they run out, chat pauses until the 1st (on the trial, until a plan is chosen), unless the owner chooses to continue on credits on the Subscription page: each extra message is charged its real cost, at most ${chatOverflowHold()} credits, and needs at least ${chatOverflowHold()} credits in the balance. Content and images you ask for in chat are charged as before.` } },
   // agent-team step 3b, part O item 5
   { date: "2026-09-30", tag: "new", title: { ar: "تشغيل تلقائي اختياري للتسليمات", en: "Opt-in auto-run for handoffs" }, desc: { ar: "مفتاح جديد في الحوكمة، متوقف افتراضياً. إن فعّلته، وهو يحتاج حداً شهرياً لوكيل واحد على الأقل ممن يسلّمهم ماجد العمل وتأكيدك، قد يبدأ ذكين بنفسه بنداً واحداً في اليوم من تسليم اقترحه ماجد عليك خلال آخر 7 أيام، ويُخصم ضمن الحد الشهري لوكيل البند وضمن الحد الأسبوعي. ما يُكتب ينتظر موافقتك دائماً ويصلك تنبيه في كل مرة، ولا يبدأ تلقائياً ما طلبه عضو أو تطبيق متصل.", en: "A new Governance switch, off by default. If you turn it on, which needs a monthly cap on at least one agent Majed hands work to and your confirmation, Thakeen may start one item a day of a handoff Majed proposed to you in the last 7 days, charged under that item's agent cap and within the weekly cap. What it writes always waits for your approval and you are told each time; handoffs a member or a connected app asked for never start on their own." } },
   // agent-team step 3b, part O
