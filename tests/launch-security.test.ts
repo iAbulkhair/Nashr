@@ -294,3 +294,127 @@ describe("password rules are not colour-only (rule 324)", () => {
     expect(src).toContain('aria-describedby="reset-rules"');
   });
 });
+
+describe("Cloudflare Turnstile on signup and forgot-password (rules 316-318)", () => {
+  const SITE = "0x4AAAAAAAtestsitekey", SECRET = "0x4AAAAAAAtestsecret";
+  const on = () => { vi.stubEnv("TURNSTILE_SITE_KEY", SITE); vi.stubEnv("TURNSTILE_SECRET_KEY", SECRET); };
+  const answer = (body: unknown, status = 200) => vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
+  const fresh = () => `ts-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}@test.example`;
+  afterEach(() => vi.restoreAllMocks());
+
+  it("316: with either key unset nothing is checked (fail open) and the form gets no site key", async () => {
+    const { turnstileSiteKey, verifyTurnstile } = await import("@/lib/turnstile");
+    const signup = await import("@/app/api/auth/signup/route");
+    const f = vi.spyOn(globalThis, "fetch");
+    for (const [site, secret] of [["", ""], [SITE, ""], ["", SECRET]]) {
+      vi.stubEnv("TURNSTILE_SITE_KEY", site);
+      vi.stubEnv("TURNSTILE_SECRET_KEY", secret);
+      expect(turnstileSiteKey()).toBeNull();
+      expect(await verifyTurnstile(undefined, "1.2.3.4")).toBe("ok");
+    }
+    expect((await signup.POST(json("/api/auth/signup", "POST", { email: fresh(), password: "abc12345", name: "Open" }, ip()))).status).toBe(200);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it("316: signup without a token, or with a rejected one, is 400 captcha_failed and creates no account", async () => {
+    on();
+    signOut();
+    const signup = await import("@/app/api/auth/signup/route");
+    const { getUser } = await import("@/lib/auth");
+    const f = answer({ success: false, "error-codes": ["invalid-input-response"] });
+    const a = fresh(), b = fresh();
+    const none = await signup.POST(json("/api/auth/signup", "POST", { email: a, password: "abc12345", name: "Bot" }, ip()));
+    expect([none.status, ((await none.json()) as { error: string }).error]).toEqual([400, "captcha_failed"]);
+    expect(f, "no token: nothing to ask Cloudflare").not.toHaveBeenCalled();
+    const bad = await signup.POST(json("/api/auth/signup", "POST", { email: b, password: "abc12345", name: "Bot", turnstile: "forged-token" }, ip()));
+    expect([bad.status, ((await bad.json()) as { error: string }).error]).toEqual([400, "captcha_failed"]);
+    expect(await getUser(a)).toBeNull();
+    expect(await getUser(b)).toBeNull();
+    expect(jar().has("nashr_session")).toBe(false);
+  });
+
+  it("316: a passed check creates the account; the verify call goes to Cloudflare's fixed URL as a form with secret, token and IP", async () => {
+    on();
+    signOut();
+    const signup = await import("@/app/api/auth/signup/route");
+    const { getUser } = await import("@/lib/auth");
+    const f = answer({ success: true });
+    const email = fresh();
+    const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Human", turnstile: "good-token" }, { "x-real-ip": "203.0.113.9" }));
+    expect(res.status).toBe(200);
+    expect(await getUser(email)).not.toBeNull();
+    expect(f).toHaveBeenCalledTimes(1);
+    const [url, init] = f.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://challenges.cloudflare.com/turnstile/v0/siteverify");
+    expect(init.method).toBe("POST");
+    expect(init.signal, "a timeout bounds the call").toBeInstanceOf(AbortSignal);
+    const form = new URLSearchParams(init.body as URLSearchParams);
+    expect(Object.fromEntries(form)).toEqual({ secret: SECRET, response: "good-token", remoteip: "203.0.113.9" });
+  });
+
+  it("316: Cloudflare not answering, an error status or a non-JSON body is 503 captcha_unavailable; an overlong token is refused unasked", async () => {
+    on();
+    const { verifyTurnstile } = await import("@/lib/turnstile");
+    const signup = await import("@/app/api/auth/signup/route");
+    const down = vi.spyOn(globalThis, "fetch").mockRejectedValue(new DOMException("timed out", "TimeoutError"));
+    const res = await signup.POST(json("/api/auth/signup", "POST", { email: fresh(), password: "abc12345", name: "X", turnstile: "tok" }, ip()));
+    expect([res.status, ((await res.json()) as { error: string }).error]).toEqual([503, "captcha_unavailable"]);
+    down.mockRestore();
+    answer({ oops: true }, 500);
+    expect(await verifyTurnstile("tok", "1.2.3.4")).toBe("unavailable");
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("<html>", { status: 200 }));
+    expect(await verifyTurnstile("tok", "1.2.3.4")).toBe("unavailable");
+    vi.restoreAllMocks();
+    const f = answer({ success: true });
+    expect(await verifyTurnstile("x".repeat(2049), "1.2.3.4")).toBe("failed");
+    expect(await verifyTurnstile(["tok"], "1.2.3.4")).toBe("failed");
+    expect(f).not.toHaveBeenCalled();
+    // `success` must be literally true.
+    answer({ success: "true" });
+    expect(await verifyTurnstile("tok", "unknown")).toBe("failed");
+  });
+
+  it("317: forgot-password checks the token before the throttles and the lookup; a refusal reveals nothing", async () => {
+    on();
+    const forgot = await import("@/app/api/auth/forgot/route");
+    const f = answer({ success: false });
+    const target = fresh();
+    for (let i = 0; i < 5; i++) {
+      const res = await forgot.POST(json("/api/auth/forgot", "POST", { email: target, lang: "en" }, ip()));
+      expect([res.status, ((await res.json()) as { error: string }).error]).toEqual([400, "captcha_failed"]);
+    }
+    expect(f).not.toHaveBeenCalled();
+    // Five refused tries did not use up the address's three links per 15 minutes.
+    expect(await db.get(`rate:forgot:em:${target}`)).toBeNull();
+    vi.restoreAllMocks();
+    answer({ success: true });
+    const ok = await forgot.POST(json("/api/auth/forgot", "POST", { email: target, lang: "en", turnstile: "good" }, ip()));
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as { ok: boolean }).ok).toBe(true);
+  });
+
+  it("317: the pages hand the form the site key only when both keys are set", () => {
+    for (const page of ["signup", "forgot"]) {
+      const src = readFileSync(`src/app/[lang]/app/${page}/page.tsx`, "utf8");
+      expect(src).toContain("turnstileKey={turnstileSiteKey()}");
+    }
+    const form = readFileSync("src/components/app/AuthForm.tsx", "utf8");
+    expect(form.match(/<Turnstile siteKey=\{turnstileKey\}/g)?.length).toBe(2);
+    // The secret never reaches a client file.
+    for (const f of ["src/components/app/AuthForm.tsx", "src/components/app/Turnstile.tsx"]) expect(readFileSync(f, "utf8")).not.toContain("TURNSTILE_SECRET_KEY");
+  });
+
+  it("318: the security headers do not block the Turnstile script or iframe", async () => {
+    const config = (await import("../next.config")).default;
+    const rules = await config.headers!();
+    const csp = rules.flatMap((r) => r.headers).find((h) => h.key.toLowerCase() === "content-security-policy")?.value ?? "";
+    for (const d of ["default-src", "script-src", "script-src-elem", "frame-src", "child-src", "connect-src"]) {
+      const directive = csp.split(";").map((x) => x.trim()).find((x) => x.startsWith(`${d} `));
+      if (directive) expect(directive, `${d} must allow Turnstile`).toContain("https://challenges.cloudflare.com");
+    }
+    const { TURNSTILE_SCRIPT_URL, TURNSTILE_VERIFY_URL } = await import("@/lib/turnstile");
+    expect(readFileSync("src/components/app/Turnstile.tsx", "utf8")).toContain(`"${TURNSTILE_SCRIPT_URL}"`);
+    expect(TURNSTILE_VERIFY_URL).toBe("https://challenges.cloudflare.com/turnstile/v0/siteverify");
+  });
+});

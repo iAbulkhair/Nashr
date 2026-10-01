@@ -14,7 +14,7 @@ Files: `src/app/[lang]/app/signup/page.tsx`, `src/components/app/AuthForm.tsx` (
 6. `registerCode` writes `ref:{CODE}`. If `ref` matches `^[A-Za-z0-9]{6,10}$`, `applyReferral` runs (section 15).
 7. `createSession(email)` sets cookie `nashr_session`. `track(email,"signup")`.
 8. Errors (rule 323, 2026-10-01): the form posts through `postJson`, which never throws, and clears its busy state in `finally`. A 429 says "too many sign-ups from this connection, try in an hour", a dropped connection says to check the connection, a 5xx or an HTML error page says the problem is on our side; known codes (`exists`, `bad_email`, `weak_password`, `bad_phone`) keep their messages, and an unknown code never reaches the screen raw. Client navigates to `next`, or `/{lang}/app/start?url={url}` when a site URL was carried (the owner reviews and confirms it there before anything is read, section 6), else `/{lang}/app/start`. A carried URL never starts onboarding by itself: until 2026-09-28 it went straight to `/{lang}/app/chat?onboard={url}`, so a link like `/en/app/signup?url=attacker.example` chose the new workspace's brand.
-9. Rate limit 5 per IP per hour; no email verification, no CAPTCHA on this route.
+9. Rate limit 5 per IP per hour; no email verification. Cloudflare Turnstile (2026-10-01, rule 316) when `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` are both set: the form shows the widget on step 2 and sends its token as `turnstile`; the route verifies it (`captchaRefusal`, `src/lib/turnstile.ts`) after the input checks and before `getLogin`, so without a passing token no account is created and no address is confirmed to exist (400 `captcha_failed`, 503 `captcha_unavailable` when Cloudflare does not answer). A refused submit resets the widget (tokens are single use). With either key unset nothing is checked.
 
 ## 2. Login
 
@@ -36,7 +36,7 @@ Files: `login/page.tsx`, `AuthForm.tsx` (`LoginForm`), `src/lib/auth-client.ts`,
 ### Forgot
 Files: `forgot/page.tsx`, `AuthForm.tsx` (`ForgotForm`), `src/app/api/auth/forgot/route.ts`, `src/lib/notify.ts`, `src/lib/rate.ts`.
 
-1. `POST /api/auth/forgot {email, lang}`. Bad email format: 400.
+1. `POST /api/auth/forgot {email, lang, turnstile?}`. Bad email format: 400. With both Turnstile keys set, the token is verified next, before the throttles and the lookup (rule 317): a missing or rejected token is 400 `captcha_failed` whether or not the address has an account, and does not use up the address's three links.
 2. Rate limits: 8 per 15 min per IP and 3 per 15 min per email. When exceeded the route still answers `{ok:true, mail}` (`forgot/route.ts:29`).
 3. `getLogin(email)`. When the login exists and mail can reach a customer (`mailReady()`: `RESEND_API_KEY` and `MAIL_FROM` both set): a 32-byte hex token is generated, its SHA-256 is stored as `pwreset:{hash}` with `{email, kind}` (`kind` is `owner` or `member`) for 3600 s, and a link `${ORIGIN()}/{lang}/app/reset?token=...` is emailed to the login's own address. A member whose owner record is gone gets no link and the same answer.
 4. Response is always `{ok:true, mail:boolean}`; `mail` says whether email delivery is configured, not whether the account exists. The forgot page shows a WhatsApp link when `SUPPORT_WHATSAPP` is set.

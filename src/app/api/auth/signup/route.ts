@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createSession, createUser, getLogin, normalizeEmail, strongPassword, validEmail } from "@/lib/auth";
 import { allow, clientIp } from "@/lib/rate";
 import { applyReferral, registerCode } from "@/lib/referral";
+import { captchaRefusal } from "@/lib/turnstile";
 import { withLoginLock } from "@/lib/team";
 
 export async function POST(req: Request) {
@@ -14,6 +15,10 @@ export async function POST(req: Request) {
   if (!strongPassword(typeof b.password === "string" ? b.password : "")) return NextResponse.json({ ok: false, error: "weak_password" }, { status: 400 });
   // Phone is optional at signup (asked later inside onboarding); validate only when given.
   if (b.phone && String(b.phone).replace(/\D/g, "").length < 9) return NextResponse.json({ ok: false, error: "bad_phone" }, { status: 400 });
+  // Cloudflare Turnstile when both keys are set (src/lib/turnstile.ts): checked before the address is looked up, so a
+  // script can neither create accounts nor learn which addresses exist without passing it. Rule 316.
+  const refused = await captchaRefusal(req, b.turnstile);
+  if (refused) return refused;
   // An email is ONE login across owner accounts and member logins (docs/superpowers/specs/2026-09-29-teams-design.md §3).
   // Checked and created under the same lock invite acceptance takes, so a signup and an accept racing on one address
   // cannot both succeed. A member's address gets the same answer as an existing account.

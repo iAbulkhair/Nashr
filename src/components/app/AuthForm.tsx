@@ -6,6 +6,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
 import { PLAN_CREDITS } from "@/lib/pricing";
 import { authMessage, failureCode, passwordChecks, postJson, RULE_TEXT, rulesStatus, succeeded, unmetRules } from "@/lib/auth-client";
+import { Turnstile } from "./Turnstile";
 
 const input = "input";
 
@@ -40,7 +41,7 @@ const SU = {
 } as const;
 
 /** Email first, then name and password with live requirements. Phone is asked later, inside onboarding. */
-export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
+export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang: Lang; turnstileKey?: string | null }) {
   const r = useRouter();
   const sp = useSearchParams();
   const S = SU[lang];
@@ -54,6 +55,8 @@ export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
   const [step, setStep] = useState<1 | 2>(1);
   const [pw, setPw] = useState("");
   const pwRef = useRef<HTMLInputElement>(null);
+  const [token, setToken] = useState("");
+  const [resetKey, setResetKey] = useState(0);
   const checks = passwordChecks(pw);
   const ready = checks.every(Boolean);
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -62,12 +65,15 @@ export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
     if (step === 1) { if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) setStep(2); else setErr(t.signup.bad_email); return; }
     // The button stays focusable (aria-disabled), so pressing it early says which rules are still unmet.
     if (!ready) { setErr(unmetRules(checks, S.rules, lang)); pwRef.current?.focus(); return; }
+    if (turnstileKey && !token) return setErr(authMessage("captcha_failed", lang));
     if (busy) return;
     setBusy(true);
     try {
       const fd = Object.fromEntries(new FormData(e.currentTarget));
-      const p = await postJson("/api/auth/signup", { ...fd, email: email.trim(), lang, ref });
+      const p = await postJson("/api/auth/signup", { ...fd, email: email.trim(), lang, ref, ...(turnstileKey ? { turnstile: token } : {}) });
       if (!succeeded(p)) {
+        // A Turnstile token is single use: the widget issues a new one before the next try.
+        if (turnstileKey) setResetKey((k) => k + 1);
         const code = failureCode(p);
         return setErr(authMessage(code === "slow_down" ? "slow_down_signup" : code, lang, t.signup as Record<string, string>));
       }
@@ -92,6 +98,7 @@ export function SignupForm({ t, lang }: { t: AppDict; lang: Lang }) {
             <input name="name" required autoFocus autoComplete="name" placeholder={S.nameOpt} aria-label={S.nameOpt} className={input} />
             <input ref={pwRef} name="password" required type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={t.signup.password} aria-label={t.signup.password} aria-describedby="signup-rules" className={input} />
             <PasswordRules id="signup-rules" rules={S.rules} checks={checks} lang={lang} />
+            {turnstileKey && <Turnstile siteKey={turnstileKey} onToken={setToken} resetKey={resetKey} lang={lang} />}
           </>
         )}
         {err && <p role="alert" className="text-sm text-sadu-deep">{err}</p>}
@@ -151,19 +158,26 @@ const PW = {
   en: { forgotTitle: "Reset your password", forgotSub: "Enter your account email and we send a link valid for one hour.", send: "Send the link", sentMail: "If this email has an account, a link arrives within minutes. Check spam too.", noMail: "Email delivery is not enabled on Thakeen yet, so no link can reach you. Contact support and we reset your password manually.", support: "Contact support on WhatsApp", back: "Back to log in", resetTitle: "New password", save: "Save and log in", bad_token: "This link is invalid or expired. Request a new one.", weak_password: "The password does not meet the rules.", slow_down: "Too many attempts. Try again in 15 minutes.", suspended: "This account is suspended. Contact support.", bad_email: "Invalid email" },
 } as const;
 
-export function ForgotForm({ lang, whatsapp }: { lang: Lang; whatsapp: string | null }) {
+export function ForgotForm({ lang, whatsapp, turnstileKey = null }: { lang: Lang; whatsapp: string | null; turnstileKey?: string | null }) {
   const S = PW[lang];
   const [state, setState] = useState<"idle" | "busy" | "sent" | "nomail">("idle");
   const [err, setErr] = useState("");
+  const [token, setToken] = useState("");
+  const [resetKey, setResetKey] = useState(0);
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (state === "busy") return;
-    setState("busy"); setErr("");
+    setErr("");
+    if (turnstileKey && !token) return setErr(authMessage("captcha_failed", lang));
+    setState("busy");
     let done: "sent" | "nomail" | null = null;
     try {
       const email = String(new FormData(e.currentTarget).get("email") ?? "");
-      const p = await postJson("/api/auth/forgot", { email, lang });
-      if (!succeeded(p)) return setErr(authMessage(failureCode(p), lang, { bad_email: S.bad_email }));
+      const p = await postJson("/api/auth/forgot", { email, lang, ...(turnstileKey ? { turnstile: token } : {}) });
+      if (!succeeded(p)) {
+        if (turnstileKey) setResetKey((k) => k + 1);
+        return setErr(authMessage(failureCode(p), lang, { bad_email: S.bad_email }));
+      }
       done = p.body.mail ? "sent" : "nomail";
     } finally {
       setState(done ?? "idle");
@@ -181,6 +195,7 @@ export function ForgotForm({ lang, whatsapp }: { lang: Lang; whatsapp: string | 
       ) : (
         <form onSubmit={onSubmit} className="mt-6 grid gap-3">
           <input name="email" required autoFocus type="email" autoComplete="email" dir="ltr" placeholder="name@company.com" aria-label={S.forgotTitle} className={input} />
+          {turnstileKey && <Turnstile siteKey={turnstileKey} onToken={setToken} resetKey={resetKey} lang={lang} />}
           {err && <p role="alert" className="text-sm text-sadu-deep">{err}</p>}
           <button disabled={state === "busy"} className="btn btn-primary">{S.send}</button>
         </form>
