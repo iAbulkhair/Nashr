@@ -5,7 +5,7 @@ import { meter } from "./usage";
 import { ModelPaused, PAUSED_REPLY, modelState } from "./model";
 import Anthropic from "@anthropic-ai/sdk";
 import { CAPS, db, pushCapped } from "./db";
-import type { User } from "./auth";
+import { trialOver, type User } from "./auth";
 import { getBrand, listPreferencesFor, saveBrand, listLite, type Brand, type Task } from "./brand";
 import { feedbackBlock, feedbackFor } from "./feedback";
 import { DRAFT_TYPES, IMAGE_TYPES, TASK_COST, TASK_TYPES, isDraftType, isTaskType, type TaskType } from "./tasks";
@@ -301,10 +301,34 @@ export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en"; 
 /** Why a tool could not spend: the app raises the matching limit dialog. `agent_cap` is the owner's monthly cap for one agent. */
 export type ChatLimit = "credits" | "trial" | "agent_cap";
 
+/**
+ * Why a chat turn was refused before any model call (rules 330-331): an ended trial, or the hourly or daily ceiling of
+ * `chatRefusal` (src/lib/rate.ts). The text the owner reads, in their language, with the way forward. `origin` makes the
+ * billing link absolute (MCP: the words are read outside the app); `cap` is the ceiling that refused.
+ */
+export type ChatRefused = "trial" | "hour" | "day";
+export function chatRefusedText(kind: ChatRefused, lang: "ar" | "en", o: { origin?: string; cap?: number } = {}): string {
+  const billing = `${o.origin ?? ""}/${lang}/app/billing`;
+  const n = o.cap !== undefined ? ` (${o.cap})` : "";
+  if (lang === "ar") {
+    if (kind === "trial") return `انتهت تجربتك المجانية، فلن يرد الوكلاء على رسائل جديدة حتى يُفعَّل اشتراك. كل ما في صندوقك وملفاتك محفوظ. [اختر خطة من صفحة الاشتراك](${billing}) (أو اطلب ذلك من مالك الحساب) ليكمل الفريق من حيث توقف. لم يُخصم أي كريدت.`;
+    return kind === "hour"
+      ? `وصلت إلى حد الرسائل في الساعة${n}، فتوقفت المحادثة مؤقتاً. حاول بعد ساعة. لم يُخصم أي كريدت.`
+      : `وصلت إلى حد الرسائل اليومي${n}، فتوقفت المحادثة حتى الغد. لم يُخصم أي كريدت.`;
+  }
+  if (kind === "trial") return `Your free trial has ended, so the agents won't answer new messages until a plan is active. Everything in your inbox and files is kept. [Choose a plan on the Subscription page](${billing}) (or ask the account owner to) and the team picks up where it stopped. No credits were used.`;
+  return kind === "hour"
+    ? `You've reached the hourly message limit${n}, so chat is paused for now. Try again in an hour. No credits were used.`
+    : `You've reached the daily message limit${n}, so chat is paused until tomorrow. No credits were used.`;
+}
+
 export async function chat(user: User, text: string, conv?: string, agentId: AgentId = "noor", opts: ChatOpts = {}): Promise<ChatMsg & { limit?: ChatLimit }> {
   // Taken first: up to five model turns can use most of the ceiling before a tool starts a render.
   const deadline = opts.deadline ?? deadlineFor(CHAT_MAX_DURATION_S);
   const lang = opts.lang ?? user.lang;
+  // The backstop of the routes' own check (rule 330): an ended trial gets no model turn from any caller, and nothing is
+  // written, not even the owner's message.
+  if (trialOver(user)) return { role: "assistant", content: chatRefusedText("trial", lang), at: new Date().toISOString(), agent: agentId, limit: "trial" };
   const agentName = agentById(agentId).name[lang];
   opts.onStatus?.(lang === "ar" ? "أقرأ ملف علامتك ومذكراتي…" : "Reading your brand file and my notes…");
   const email = user.scope ?? user.email;

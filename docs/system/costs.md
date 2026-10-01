@@ -201,8 +201,19 @@ The next moves, cheapest first: cap `max_tokens` per type instead of a flat 16,0
   over the cap before the balance moves or a model is called. They bound batches, drafts, images and videos (media renders
   are charged in `startMedia` with the item's owning agent and its cap); chat is never charged credits, so it stays
   bounded by the rate limits below.
-- **Chat** costs no credits, so `CHAT_PER_HOUR` (40) and `CHAT_PER_DAY` (200) in `src/lib/rate.ts` bound it per account,
-  on the web route and on MCP `ask_noor`. Before 2026-09-20 nothing did.
+- **Chat** costs no credits, so the per-plan ceilings in `src/lib/rate.ts` bound it per account, on the web route and on
+  MCP `ask_noor`. Before 2026-09-20 nothing did. Since 2026-10-01 (rules 330-331) an ended trial gets no turn at all, and
+  a trial account has its own ceiling. Worst case per account at $0.26 a turn (section 3):
+
+  | Plan | Per hour | Per day | Worst $ / hour | Worst $ / day |
+  |---|---|---|---|---|
+  | trial (`CHAT_TRIAL_PER_*`) | 10 | 30 | $2.60 | $7.80 (at most $23.40 over a 3-day trial) |
+  | paid (`CHAT_PER_*`) | 40 | 200 | $10.40 | $52.00 |
+  | ended trial | 0 | 0 | 0 | 0 |
+
+  Per IP: signup allows 5 new accounts an hour from one address, each worth at most $7.80 of chat a day, so every hour
+  of signups from one address adds at most $39 a day. The trial numbers were set by an agent, not chosen by the founder; the monthly chat allowance of the
+  pricing design (250 / 650 / 1,300 messages) is not built yet, and its open questions are the founder's.
 - **Onboarding** is free for the first brand and 9 credits for each added brand built from its URL (since 2026-09-30,
   rule 246; the manual brand form makes no model call and is free): the charge goes to Noor in that brand's scope under
   her monthly cap there, after every other refusal and under the run's lock (330 s, owner-token release, so two runs

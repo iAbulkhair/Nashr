@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { MCP_TOOL_ACTION, userFromBearer } from "@/lib/mcp";
-import { DRAFTS_PER_HOUR, chatAllowed } from "@/lib/rate";
+import { DRAFTS_PER_HOUR, chatCaps, chatRefusal } from "@/lib/rate";
 import { DRAFT_LIMITS, draftReport, parseDraft, saveExternalDraft } from "@/lib/external-drafts";
-import { chat } from "@/lib/chat";
+import { chat, chatRefusedText } from "@/lib/chat";
+import { trialOver } from "@/lib/auth";
+import { ORIGIN } from "@/lib/oauth";
 import { getBrand, listTasks } from "@/lib/brand";
 import { agentById } from "@/lib/agents";
 import { TASK_COST, isTaskType } from "@/lib/tasks";
@@ -75,12 +77,16 @@ export async function POST(req: Request) {
   try {
     switch (name) {
       case "ask_noor": {
-        // Same ceiling as the web chat: a bearer token must not be a cheaper way to spend the same models.
-        if (!(await chatAllowed(user.email))) return ok(id, { ...text("Too many messages in a short time. Wait a few minutes and try again."), isError: true });
+        // The web chat's gates, in its order (rules 330-331): a bearer token must not be a way around an ended trial or a
+        // cheaper way to spend the same models. Answered as a tool error, like MCP generate_content's trial_over: a
+        // JSON-RPC client reads the result, not an HTTP status. The link is absolute: it is read outside the app.
+        if (trialOver(user)) return ok(id, { ...text(chatRefusedText("trial", user.lang, { origin: ORIGIN() })), isError: true });
+        const slow = await chatRefusal(user);
+        if (slow) return ok(id, { ...text(chatRefusedText(slow, user.lang, { cap: chatCaps(user.plan)[slow] })), isError: true });
         // A connected app is talking: its activity rows say so (`tokenBy`), not "owner". As "mcp": the words come from
         // another assistant, so publishing and core-memory writes are refused in runTool, and a change to the offers or a
         // banned-word removal waits for the owner's Save in the app.
-        const m = await chat(user, String(args.message ?? ""), undefined, "noor", { by: tokenBy(user), via: "mcp" });
+        const m = await chat(user, String(args.message ?? ""), undefined, "noor", { by: tokenBy(user), via: "mcp", deadline });
         return ok(id, text(m.content + (m.actions?.length ? `\n\n[actions: ${m.actions.join(", ")}]` : "")));
       }
       case "generate_content": {

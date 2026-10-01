@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "crypto";
 import { db } from "./db";
+import type { User } from "./auth";
 
 /** Fixed-window rate limit. True when the caller is still inside the allowance. */
 export async function allow(bucket: string, max: number, windowSeconds: number): Promise<boolean> {
@@ -26,15 +27,32 @@ export const clientIp = (req: Request) =>
   (req.headers.get("x-forwarded-for") ?? "").split(",").pop()!.trim() || "unknown";
 
 /**
- * Chat turns per account. A turn is free in credits but is the most expensive call in the product (up to five model
- * calls with the full workspace in the prompt), so the spend of a single account is bounded here. Generous enough that
- * no real conversation hits it: the ceiling is roughly a day of continuous use.
+ * Chat turns per account (the owner's email: members share the account's buckets). A turn is free in credits but is the
+ * most expensive call in the product (up to five model calls with the full workspace in the prompt, $0.05-$0.26 a turn
+ * by docs/system/costs.md), so the spend of a single account is bounded here.
+ *
+ * A paid account: generous enough that no real conversation hits it, roughly a day of continuous use. A trial account
+ * (rule 331): signing up is free (five accounts per IP per hour), so its ceiling is the conservative one, about what
+ * the pricing design gives a whole trial (docs/superpowers/specs/2026-09-29-pricing-design.md: "about 30 chat
+ * messages"), here per day: at most 30 × $0.26 = $7.80 a day per trial account instead of $52. An ended trial gets no
+ * turn at all (`trialOver`, checked by both chat routes before this). The monthly per-plan allowance of that design
+ * (250 / 650 / 1,300) is not built: its open questions are the founder's.
  */
 export const CHAT_PER_HOUR = 40;
 export const CHAT_PER_DAY = 200;
-export async function chatAllowed(email: string): Promise<boolean> {
-  const [hour, day] = await Promise.all([allow(`chat:h:${email}`, CHAT_PER_HOUR, 3600), allow(`chat:d:${email}`, CHAT_PER_DAY, 86400)]);
-  return hour && day;
+export const CHAT_TRIAL_PER_HOUR = 10;
+export const CHAT_TRIAL_PER_DAY = 30;
+/** The hourly and daily chat ceilings of a plan. */
+export const chatCaps = (plan: User["plan"]): { hour: number; day: number } =>
+  plan === "trial" ? { hour: CHAT_TRIAL_PER_HOUR, day: CHAT_TRIAL_PER_DAY } : { hour: CHAT_PER_HOUR, day: CHAT_PER_DAY };
+/**
+ * Null when the turn may go ahead, else which window refused it, so the owner is told "in an hour" or "tomorrow". Both
+ * buckets count every attempt; the day is named when both refused, being the longer wait.
+ */
+export async function chatRefusal(u: Pick<User, "email" | "plan">): Promise<"hour" | "day" | null> {
+  const cap = chatCaps(u.plan);
+  const [hour, day] = await Promise.all([allow(`chat:h:${u.email}`, cap.hour, 3600), allow(`chat:d:${u.email}`, cap.day, 86400)]);
+  return !day ? "day" : !hour ? "hour" : null;
 }
 
 /**
