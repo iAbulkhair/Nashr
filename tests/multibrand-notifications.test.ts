@@ -15,7 +15,7 @@ import { runWeekly, saveSchedule } from "@/lib/schedule";
  */
 const file = (name: string): Brand => ({ name, website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "warm", products: "beans", audience: "locals", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "Riyadh", updatedAt: "2026-09-29T00:00:00.000Z" });
 const today = () => new Date().toISOString().slice(0, 10);
-const dueTask = (id: string): Task => ({ id, type: "instagram", channel: "instagram", title: `Post ${id}`, body: "Body", status: "approved", createdAt: new Date().toISOString(), lang: "en", scheduledFor: today() });
+const dueTask = (id: string): Task => ({ id, type: "social", channel: "instagram", title: `Post ${id}`, body: "Body", status: "approved", createdAt: new Date().toISOString(), lang: "en", scheduledFor: today() });
 
 /** One account with its default brand and one added brand, each with a brand file and an approved item due today. */
 async function twoBrands(): Promise<{ u: User; a: User; b: User; scopeB: string }> {
