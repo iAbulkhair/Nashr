@@ -6,9 +6,11 @@ import type { Lang } from "@/lib/i18n";
 import type { AppDict } from "@/lib/app-i18n";
 import { TASK_COST, TASK_COUNT, type TaskType } from "@/lib/tasks";
 import { MEDIA_MODELS, type MediaKind } from "@/lib/media-catalog";
-import { ONBOARD_EXTRA_BRAND_COST } from "@/lib/pricing";
+import { ONBOARD_EXTRA_BRAND_COST, formatCount } from "@/lib/pricing";
 import { AGENTS } from "@/lib/agents";
 import type { Role } from "@/lib/auth";
+import type { ChatStatus } from "@/lib/chat-allowance";
+import { paceStart, runway, runwayLine } from "@/lib/usage-view";
 import ReadOnlyNote from "./ReadOnlyNote";
 
 /**
@@ -34,6 +36,8 @@ type Data = {
   user: { name: string; email: string; phone?: string; plan: string; credits: number; trialEnds: string; createdAt: string; lang: Lang; renewedAt?: string };
   usage: Record<string, { count: number; credits: number }>; images: number; /** What this month's renders charged (image 1-2, video 12-24 by model). */ mediaCredits?: number; emails?: string;
   allowance: number; nextReset: string;
+  /** The account's chat messages (src/lib/chat-allowance.ts), the same for every seat. */
+  chat?: ChatStatus;
   brand: { name: string; website: string; sitemap?: string; products: string; audience: string; tone: string; valueProp?: string; social?: Record<string, string> } | null;
 };
 
@@ -59,8 +63,27 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
   const blockedNote = ar ? "تغيير كلمة المرور وحذف الحساب موقوفان أثناء تصفّح هذا الحساب كمؤسس." : "Changing the password and deleting the account are off while you view this account as the founder.";
   const me = d.me ?? { name: d.user.name, email: d.user.email, lang: d.user.lang, role };
   const mediaUsed = d.mediaCredits ?? d.images;
-  const usedCredits = Object.values(d.usage).reduce((s, x) => s + x.credits, 0) + mediaUsed;
+  const chat = d.chat;
+  // Credits billed this month for chat messages continued on credits (`overflow.credits`): part of the month's use, so
+  // they count in the bar, the runway's pace and the table's chat row.
+  const chatCredits = chat && Number.isFinite(chat.overflow.credits) ? Math.max(0, chat.overflow.credits) : 0;
+  const usedCredits = Object.values(d.usage).reduce((s, x) => s + x.credits, 0) + mediaUsed + chatCredits;
   const pct = Math.min(100, Math.round((usedCredits / Math.max(1, d.allowance)) * 100));
+  // Runway lines (rule 315, src/lib/usage-view.ts). The credit pace is the table's: this month's work, counted from the
+  // 1st or from signup when later. A trial's chat messages count from signup for the whole trial.
+  const trial = d.user.plan === "trial";
+  const trialEnd = d.user.trialEnds.slice(0, 10);
+  const lineOpts = { lang, trial, nextReset: d.nextReset, trialEnds: trialEnd };
+  const creditLine = runwayLine(runway({ used: usedCredits, left: d.user.credits, periodStart: paceStart(d.user.createdAt), resetAt: trial ? null : d.nextReset, trialEnds: d.user.trialEnds }), { ...lineOpts, what: "credits" });
+  const chatTrial = chat?.period === "trial";
+  const chatPct = chat ? Math.min(100, Math.round((chat.used / Math.max(1, chat.allowance)) * 100)) : 0;
+  // Past the allowance with "continue on credits" on, a balance below `overflow.hold` pauses chat; an allowance of 0 with
+  // it off means the founder turned chat off for the account, so no renewal date is promised.
+  const overflowOn = !!chat && chat.overflow.on && chat.overflow.available;
+  const chatOff = !!chat && chat.allowance <= 0;
+  const short = overflowOn && d.user.credits < chat.overflow.hold;
+  const chatLine = chat ? runwayLine(runway({ used: chat.used, left: chat.left, periodStart: chatTrial ? d.user.createdAt : paceStart(d.user.createdAt), resetAt: chatTrial ? null : d.nextReset, trialEnds: d.user.trialEnds }), { ...lineOpts, trial: chatTrial, what: "messages", overflowOn, chatOff, shortOf: short ? chat.overflow.hold : undefined }) : null;
+  const chatOverflowShown = !!chat && (chat.overflow.used > 0 || chatCredits > 0);
 
   async function save(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -103,7 +126,17 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
       <Card title={ar ? "استخدام الكريدت" : "Credit usage"} sub={rules}>
         <div className="flex items-center justify-between text-sm"><span>{ar ? "المستخدم" : "Credits used"}</span><span className="font-mono" dir="ltr">{usedCredits} / {d.allowance} ({pct}%)</span></div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-salt-dim"><div className="h-full bg-oasis" style={{ width: `${pct}%` }} /></div>
+        {creditLine && <p className="mt-1 text-xs text-ink/60" data-runway="credits">{creditLine}</p>}
         <div className="mt-3 rounded-lg bg-oasis/5 p-3"><span className="font-display text-2xl font-bold text-oasis" dir="ltr">{d.user.credits}</span> <span className="text-sm text-ink/60">{ar ? "كريدت متبقٍ" : "credits remaining"}</span></div>
+        {/* The account's chat messages (rule 315): counted apart from credits, shared by every seat. */}
+        {chat && (
+          <div className="mt-4" data-chat-usage="">
+            <div className="flex items-center justify-between text-sm"><span>{chatTrial ? (ar ? "رسائل الدردشة في التجربة" : "Chat messages in your trial") : (ar ? "رسائل الدردشة هذا الشهر" : "Chat messages this month")}</span><span className="font-mono" dir="ltr">{formatCount(chat.used)} / {formatCount(chat.allowance)}</span></div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-salt-dim"><div className={`h-full ${chat.left > 0 ? "bg-oasis" : "bg-saffron"}`} style={{ width: `${chatPct}%` }} /></div>
+            {chatLine && <p className="mt-1 text-xs text-ink/60" data-runway="messages">{chatLine}</p>}
+            {chatOverflowShown && <p className="mt-1 text-xs text-ink/60" data-chat-overflow-used="">{ar ? `${formatCount(chat.overflow.used)} رسالة إضافية هذا الشهر على الكريدت، خُصم عليها ${formatCount(chatCredits)} كريدت.` : `${formatCount(chat.overflow.used)} more this month, continued on credits: ${formatCount(chatCredits)} ${chatCredits === 1 ? "credit" : "credits"} billed.`}</p>}
+          </div>
+        )}
         <h3 className="mt-4 text-sm font-semibold">{ar ? "تفصيل الاستخدام" : "Usage breakdown"}</h3>
         <div className="overflow-x-auto"><table className="mt-2 w-full text-sm"><thead className="text-start text-xs text-ink/50"><tr><th className="py-1 text-start">{ar ? "الإجراء" : "Action"}</th><th>{ar ? "كريدت لكل دفعة" : "Credits each"}</th><th>{ar ? "دفعات" : "Used"}</th><th>{ar ? "الإجمالي" : "Total credits"}</th></tr></thead>
           <tbody>
@@ -112,7 +145,13 @@ export default function ProfilePanel({ t, lang }: { t: AppDict; lang: Lang }) {
             )))}
             {/* The catalogue's prices (src/lib/media-catalog.ts), as the pricing page states them, and what the renders really charged. */}
             <tr className="border-t border-ink/5"><td className="py-1">{ar ? "الصور ومقاطع الفيديو" : "Images and videos"}</td><td className="text-center font-mono" dir="ltr">{mediaRange("image")} · {mediaRange("video")}</td><td className="text-center font-mono">{d.images}</td><td className="text-center font-mono">{mediaUsed}</td></tr>
-            <tr className="border-t border-ink/5"><td className="py-1">{ar ? "الدردشة مع الفريق" : "Chat with the team"}</td><td className="text-center font-mono">0</td><td className="text-center font-mono">—</td><td className="text-center font-mono">0</td></tr>
+            {/* Chat messages inside the plan's allowance cost no credits; past it, when the owner turned "continue on
+                credits" on, each is billed what it actually cost, at most `overflow.hold`: the month's total is
+                `overflow.credits`, counted in the credits used above. */}
+            <tr className="border-t border-ink/5" data-chat-row=""><td className="py-1">{ar ? "الدردشة مع الفريق (رسائل خطتك)" : "Chat with the team (your plan's messages)"}</td><td className="text-center font-mono">0</td><td className="text-center font-mono" dir="ltr">{chat ? `${formatCount(chat.used)} / ${formatCount(chat.allowance)}` : "—"}</td><td className="text-center font-mono">0</td></tr>
+            {chat && chatOverflowShown && (
+              <tr className="border-t border-ink/5" data-chat-overflow-row=""><td className="py-1">{ar ? "رسائل إضافية على الكريدت" : "Extra messages on credits"}</td><td className="text-center font-mono" dir="ltr">≤ {formatCount(chat.overflow.hold)}</td><td className="text-center font-mono">{formatCount(chat.overflow.used)}</td><td className="text-center font-mono" data-chat-overflow-credits="">{formatCount(chatCredits)}</td></tr>
+            )}
             <tr className="border-t border-ink/5"><td className="py-1">{ar ? "إعداد علامتك الأولى من الرابط" : "Setting up your first brand from its URL"}</td><td className="text-center font-mono">0</td><td className="text-center font-mono">—</td><td className="text-center font-mono">0</td></tr>
             {/* Not a task, so it is not in the usage counts above: the setup charge shows in the balance only. */}
             <tr className="border-t border-ink/5"><td className="py-1">{ar ? "إعداد كل علامة إضافية من رابطها" : "Setting up each added brand from its URL"}</td><td className="text-center font-mono">{ONBOARD_EXTRA_BRAND_COST}</td><td className="text-center font-mono">—</td><td className="text-center font-mono">—</td></tr>

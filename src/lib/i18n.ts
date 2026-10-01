@@ -1,4 +1,4 @@
-import { AGENCY_MIN, ONBOARD_EXTRA_BRAND_COST, PLAN_CREDITS, PLAN_PRICE_SAR, PLAN_SEATS, formatCount, type PublicTier } from "./pricing";
+import { AGENCY_MIN, CHAT_ALLOWANCE, ONBOARD_EXTRA_BRAND_COST, PLAN_CREDITS, PLAN_PRICE_SAR, PLAN_SEATS, chatOverflowHold, formatCount, type PublicTier } from "./pricing";
 import { TASK_COST, TASK_COUNT, type TaskType } from "./tasks";
 import { MEDIA_MODELS } from "./media-catalog";
 
@@ -17,6 +17,17 @@ export function isLang(v: string): v is Lang {
 export function seatsText(lang: Lang, n: number): string {
   if (lang === "en") return `${n} ${n === 1 ? "seat" : "seats"}`;
   return n === 1 ? "مقعد واحد" : n === 2 ? "مقعدان" : n <= 10 ? `${n} مقاعد` : `${n} مقعداً`;
+}
+/**
+ * "40 chat messages"; in Arabic "40 رسالة محادثة", "3 رسائل محادثة", "رسالتا محادثة": the noun follows the last part of
+ * the count (3-10 plural, otherwise singular). The counts come from CHAT_ALLOWANCE (rules 248, 308), never typed here.
+ */
+export function chatMessagesText(lang: Lang, n: number): string {
+  const c = formatCount(n);
+  if (lang === "en") return `${c} chat ${n === 1 ? "message" : "messages"}`;
+  if (n === 1) return "رسالة محادثة واحدة";
+  if (n === 2) return "رسالتا محادثة";
+  return n % 100 >= 3 && n % 100 <= 10 ? `${c} رسائل محادثة` : `${c} رسالة محادثة`;
 }
 /** "1 credit", "2 credits". */
 const enCredits = (n: number) => `${n} ${n === 1 ? "credit" : "credits"}`;
@@ -53,7 +64,17 @@ export const CREDIT_TABLE_TYPES: readonly { type: TaskType; perItem?: boolean; l
   { type: "strategy_review", label: { ar: "مراجعة استراتيجية", en: "strategy review" } },
 ];
 
-/** The credits table: task rows by cost, the image range, then the free row and the added-brand setup row. */
+/**
+ * The most one chat message past the plan's messages can cost, in credits, when the owner turned "continue on credits"
+ * on, and the least the balance must hold for one to go ahead: nothing is taken before the reply, then the message is
+ * billed what it actually cost, at most this (src/lib/chat-allowance.ts, rule 310).
+ */
+const HOLD = chatOverflowHold();
+
+/**
+ * The credits table: task rows by cost, the image range, then chat (included up to the plan's monthly messages, never
+ * "free" without a limit: rules 308-310), the first brand's free setup and the added-brand setup row.
+ */
 function creditRows(lang: Lang): { action: string; cost: string }[] {
   const byCost = new Map<number, string[]>();
   for (const t of CREDIT_TABLE_TYPES) {
@@ -68,8 +89,11 @@ function creditRows(lang: Lang): { action: string; cost: string }[] {
   return [
     ...priced.map(({ action, cost }) => ({ action, cost })),
     lang === "ar"
-      ? { action: "الدردشة مع الفريق وإعداد علامتك الأولى من رابط موقعك", cost: "مجاناً" }
-      : { action: "Chatting with the team and setting up your first brand from your URL", cost: "Free" },
+      ? { action: `الدردشة مع الفريق، حتى رسائل خطتك الشهرية (بعدها، فقط إن فعّل المالك المتابعة بالكريدت: كل رسالة بكلفتها الفعلية، ${HOLD} كريدت كحد أقصى)`, cost: "ضمن خطتك" }
+      : { action: `Chatting with the team, up to your plan's monthly messages (past them, only if the owner turns on continuing on credits: each message at its real cost, at most ${enCredits(HOLD)})`, cost: "Included" },
+    lang === "ar"
+      ? { action: "إعداد علامتك الأولى من رابط موقعك", cost: "مجاناً" }
+      : { action: "Setting up your first brand from your URL", cost: "Free" },
     lang === "ar"
       ? { action: "إعداد كل علامة إضافية من رابطها (يُعاد إن تعذّر بناء ملف العلامة، والنموذج اليدوي مجاني)", cost: String(ONBOARD_EXTRA_BRAND_COST) }
       : { action: "Setting up each added brand from its URL (refunded if the brand file cannot be built; the manual form is free)", cost: String(ONBOARD_EXTRA_BRAND_COST) },
@@ -222,13 +246,13 @@ export const dict: Record<Lang, Dict> = {
       eyebrow: "الأسعار",
       title: "أرخص من موظف واحد.",
       sub: "الأسعار بالريال السعودي غير شاملة الضريبة. ألغِ في أي وقت.",
-      trial: "تجربة 3 أيام مجاناً — بدون بطاقة",
+      trial: `تجربة 3 أيام مجاناً: ${PLAN_CREDITS.trial} كريدت و${chatMessagesText("ar", CHAT_ALLOWANCE.trial)} — بدون بطاقة`,
       annual: "ادفع سنوياً ووفّر شهرين (قريباً)",
       plans: [
-        { id: "starter", name: "البداية", price: String(P.starter), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.starter)} كريدت شهرياً`, tagline: "للتاجر الفرد والمبدع", features: [`علامات بلا حد، ${seatsText("ar", PLAN_SEATS.starter)}`, "منشورات سوشال (الصور قريباً)", "مقالات SEO بالعربي", "نسخ إعلانية لسناب وميتا", "ملخص يومي 8 صباحاً", "كتيّبات جاهزة لقطاعات الخليج", "وصول MCP"], cta: "ابدأ مجاناً" },
-        { id: "pro", name: "الاحتراف", price: String(P.pro), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.pro)} كريدت شهرياً`, tagline: "للمؤسس والمتجر والعيادة", highlight: true, features: ["كل ما في البداية", `${seatsText("ar", PLAN_SEATS.pro)} تشمل المالك، بدورَي مدير وعضو`, "ضبط الإعلانات تلقائياً ضمن حدودك (قريباً)", "حملات واتساب + استرجاع السلات (قريباً)", "تدقيق إعلانات أسبوعي وكشف الهدر (قريباً)"], cta: "ابدأ مجاناً" },
-        { id: "business", name: "الأعمال", price: String(P.business), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.business)} كريدت شهرياً — يتجدد كل شهر ولا يترحّل`, tagline: "للفرق والشركات الأكبر", features: ["كل ما في الاحتراف", `${seatsText("ar", PLAN_SEATS.business)} تشمل المالك`, "تقارير بعلامتك للعملاء (قريباً)", "ضبط الإعلانات كل ساعتين (قريباً)"], cta: "ابدأ مجاناً" },
-        { id: "agency", name: "الوكالات", price: "تواصل معنا", period: "فوترة سنوية", credits: `رصيد مخصص، من ${formatCount(AGENCY_MIN.credits)} كريدت شهرياً`, tagline: "للوكالات والمجموعات الكبيرة", features: ["الوكلاء المتخصصون كلهم", "استضافة البيانات داخل السعودية (قريباً)", "ربط CRM ومستودع البيانات (قريباً)", "تدريب نموذج على صوت علامتك (قريباً)", "مدير نجاح مخصص", "SLA ساعة واحدة (قريباً)", "عدد مقاعد حسب فريقك"], cta: "تواصل معنا" },
+        { id: "starter", name: "البداية", price: String(P.starter), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.starter)} كريدت شهرياً`, tagline: "للتاجر الفرد والمبدع", features: [`علامات بلا حد، ${seatsText("ar", PLAN_SEATS.starter)}`, `${chatMessagesText("ar", CHAT_ALLOWANCE.starter)} مع الفريق شهرياً`, "منشورات سوشال (الصور قريباً)", "مقالات SEO بالعربي", "نسخ إعلانية لسناب وميتا", "ملخص يومي 8 صباحاً", "كتيّبات جاهزة لقطاعات الخليج", "وصول MCP"], cta: "ابدأ مجاناً" },
+        { id: "pro", name: "الاحتراف", price: String(P.pro), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.pro)} كريدت شهرياً`, tagline: "للمؤسس والمتجر والعيادة", highlight: true, features: ["كل ما في البداية", `${chatMessagesText("ar", CHAT_ALLOWANCE.pro)} مع الفريق شهرياً`, `${seatsText("ar", PLAN_SEATS.pro)} تشمل المالك، بدورَي مدير وعضو`, "ضبط الإعلانات تلقائياً ضمن حدودك (قريباً)", "حملات واتساب + استرجاع السلات (قريباً)", "تدقيق إعلانات أسبوعي وكشف الهدر (قريباً)"], cta: "ابدأ مجاناً" },
+        { id: "business", name: "الأعمال", price: String(P.business), period: "ريال / شهر", credits: `${formatCount(PLAN_CREDITS.business)} كريدت شهرياً — يتجدد كل شهر ولا يترحّل`, tagline: "للفرق والشركات الأكبر", features: ["كل ما في الاحتراف", `${chatMessagesText("ar", CHAT_ALLOWANCE.business)} مع الفريق شهرياً`, `${seatsText("ar", PLAN_SEATS.business)} تشمل المالك`, "تقارير بعلامتك للعملاء (قريباً)", "ضبط الإعلانات كل ساعتين (قريباً)"], cta: "ابدأ مجاناً" },
+        { id: "agency", name: "الوكالات", price: "تواصل معنا", period: "فوترة سنوية", credits: `رصيد مخصص، من ${formatCount(AGENCY_MIN.credits)} كريدت شهرياً`, tagline: "للوكالات والمجموعات الكبيرة", features: ["الوكلاء المتخصصون كلهم", "رسائل محادثة شهرية حسب الاتفاق", "استضافة البيانات داخل السعودية (قريباً)", "ربط CRM ومستودع البيانات (قريباً)", "تدريب نموذج على صوت علامتك (قريباً)", "مدير نجاح مخصص", "SLA ساعة واحدة (قريباً)", "عدد مقاعد حسب فريقك"], cta: "تواصل معنا" },
       ],
       creditsTitle: "كم تكلّف كل مهمة؟",
       credits: creditRows("ar"),
@@ -241,7 +265,7 @@ export const dict: Record<Lang, Dict> = {
         { q: "هل تنشر نور بدون إذني؟", a: "لا. كل عنصر ينتظر موافقتك في الصندوق، والنشر دائماً بقرار منك. بعد أن تثق بها، تقدر تعتمد أنواعاً محددة تلقائياً من صفحة الحوكمة." },
         { q: "وش يعني ملخص الصباح؟", a: "كل يوم 08:00 بتوقيت السعودية: ما ينتظر موافقتك، ما اعتُمد، رصيدك، المواسم القريبة، ومتابعات الفريق (عناصر موعدها اليوم، أشياء تنتظرك من يومين). في التطبيق." },
         { q: "متى أشوف نتائج؟", a: "تكتب نور ملف العلامة وخطة 90 يوماً من رابط موقعك أثناء الإعداد، ثم تصلك أول دفعة محتوى عندما تطلبها." },
-        { q: "كم تكلّف؟", a: `كريدت شهري حسب الخطة: البداية ${P.starter}، الاحتراف ${P.pro}، الأعمال ${P.business} ريال، والوكالات بعقد. منشور = ${perPost} كريدت، مقال = ${TASK_COST.article}، عرض مجلس إدارة = ${TASK_COST.board_deck}. الدردشة مع الفريق وإعداد علامتك الأولى مجاناً، وإعداد كل علامة إضافية من رابطها ${ONBOARD_EXTRA_BRAND_COST} كريدت. ولتغيير الخطة تواصل معنا.` },
+        { q: "كم تكلّف؟", a: `كريدت شهري حسب الخطة: البداية ${P.starter}، الاحتراف ${P.pro}، الأعمال ${P.business} ريال، والوكالات بعقد. منشور = ${perPost} كريدت، مقال = ${TASK_COST.article}، عرض مجلس إدارة = ${TASK_COST.board_deck}. الدردشة مع الفريق ضمن رسائل خطتك الشهرية: البداية ${formatCount(CHAT_ALLOWANCE.starter)}، الاحتراف ${formatCount(CHAT_ALLOWANCE.pro)}، الأعمال ${formatCount(CHAT_ALLOWANCE.business)}، و${formatCount(CHAT_ALLOWANCE.trial)} للتجربة كلها. إذا نفدت تتوقف الدردشة حتى أول الشهر (بتوقيت UTC)، وفي التجربة حتى تختار خطة، إلا إن فعّل مالك خطة مدفوعة المتابعة بالكريدت: كل رسالة إضافية تُحسب بكلفتها الفعلية، ${HOLD} كريدت كحد أقصى، وتحتاج ${HOLD} كريدت على الأقل في الرصيد. إعداد علامتك الأولى مجاني، وإعداد كل علامة إضافية من رابطها ${ONBOARD_EXTRA_BRAND_COST} كريدت. ولتغيير الخطة تواصل معنا.` },
         { q: "الخصوصية؟", a: "بياناتك لمساحة عملك فقط: لا تستخدمها منصة ذكين لتدريب النماذج، ولا تشاركها بين الحسابات. مفاتيح التكاملات مشفّرة. تحذف حسابك وبيانات مساحة عملك بنفسك من صفحة «حسابك»." },
         { q: "هل تتعلم صوت علامتي؟", a: "نعم. من موقعك أولاً، ثم من كل تعديل ورفض تكتبه، يُحفظ في preferences.md وتلتزم به." },
         { q: "أقدر ألغي؟", a: "نعم. تجربة 3 أيام بدون بطاقة، وبعدها تختار خطتك من صفحة الاشتراك. ولتغيير خطتك أو إلغائها، تواصل معنا." },
@@ -374,13 +398,13 @@ export const dict: Record<Lang, Dict> = {
       eyebrow: "Pricing",
       title: "Cheaper than one hire.",
       sub: "Prices in Saudi riyals, excluding VAT. Cancel anytime.",
-      trial: "3-day free trial — no card",
+      trial: `3-day free trial: ${PLAN_CREDITS.trial} credits and ${chatMessagesText("en", CHAT_ALLOWANCE.trial)} — no card`,
       annual: "Pay yearly, get two months free (coming soon)",
       plans: [
-        { id: "starter", name: "Starter", price: String(P.starter), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.starter)} credits / month`, tagline: "For solo sellers and creators", features: [`Unlimited brands, ${seatsText("en", PLAN_SEATS.starter)}`, "Social posts (images coming soon)", "Arabic SEO articles", "Snap & Meta ad copy suggestions", "Daily 8 AM brief", "Gulf industry playbooks", "MCP server access"], cta: "Start free" },
-        { id: "pro", name: "Pro", price: String(P.pro), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.pro)} credits / month`, tagline: "For founders, stores, and clinics", highlight: true, features: ["Everything in Starter", `${seatsText("en", PLAN_SEATS.pro)} including the owner, with admin and member roles`, "Auto ad optimization within your guardrails (coming soon)", "WhatsApp campaigns + cart recovery (coming soon)", "Weekly ad audit and waste detection (coming soon)"], cta: "Start free" },
-        { id: "business", name: "Business", price: String(P.business), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.business)} credits / month, reset monthly`, tagline: "For bigger teams and businesses", features: ["Everything in Pro", `${seatsText("en", PLAN_SEATS.business)} including the owner`, "White-label client reports (coming soon)", "Ad optimization every 2 hours (coming soon)"], cta: "Start free" },
-        { id: "agency", name: "Agency", price: "Contact us", period: "annual billing", credits: `Custom credits, from ${formatCount(AGENCY_MIN.credits)} a month`, tagline: "For agencies and large groups", features: ["All specialist agents", "Data hosted inside Saudi Arabia (coming soon)", "CRM and data warehouse connections (coming soon)", "Model trained on your brand voice (coming soon)", "Dedicated success manager", "1-hour SLA (coming soon)", "Seats sized to your team"], cta: "Contact us" },
+        { id: "starter", name: "Starter", price: String(P.starter), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.starter)} credits / month`, tagline: "For solo sellers and creators", features: [`Unlimited brands, ${seatsText("en", PLAN_SEATS.starter)}`, `${chatMessagesText("en", CHAT_ALLOWANCE.starter)} a month with the team`, "Social posts (images coming soon)", "Arabic SEO articles", "Snap & Meta ad copy suggestions", "Daily 8 AM brief", "Gulf industry playbooks", "MCP server access"], cta: "Start free" },
+        { id: "pro", name: "Pro", price: String(P.pro), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.pro)} credits / month`, tagline: "For founders, stores, and clinics", highlight: true, features: ["Everything in Starter", `${chatMessagesText("en", CHAT_ALLOWANCE.pro)} a month with the team`, `${seatsText("en", PLAN_SEATS.pro)} including the owner, with admin and member roles`, "Auto ad optimization within your guardrails (coming soon)", "WhatsApp campaigns + cart recovery (coming soon)", "Weekly ad audit and waste detection (coming soon)"], cta: "Start free" },
+        { id: "business", name: "Business", price: String(P.business), period: "SAR / month", credits: `${formatCount(PLAN_CREDITS.business)} credits / month, reset monthly`, tagline: "For bigger teams and businesses", features: ["Everything in Pro", `${chatMessagesText("en", CHAT_ALLOWANCE.business)} a month with the team`, `${seatsText("en", PLAN_SEATS.business)} including the owner`, "White-label client reports (coming soon)", "Ad optimization every 2 hours (coming soon)"], cta: "Start free" },
+        { id: "agency", name: "Agency", price: "Contact us", period: "annual billing", credits: `Custom credits, from ${formatCount(AGENCY_MIN.credits)} a month`, tagline: "For agencies and large groups", features: ["All specialist agents", "Custom monthly chat messages", "Data hosted inside Saudi Arabia (coming soon)", "CRM and data warehouse connections (coming soon)", "Model trained on your brand voice (coming soon)", "Dedicated success manager", "1-hour SLA (coming soon)", "Seats sized to your team"], cta: "Contact us" },
       ],
       creditsTitle: "What does each task cost?",
       credits: creditRows("en"),
@@ -393,7 +417,7 @@ export const dict: Record<Lang, Dict> = {
         { q: "Does Noor publish without permission?", a: "No. Every item waits in your inbox, and publishing is always your call. Once you trust her, you can auto-approve specific types from Governance." },
         { q: "What is the morning brief?", a: "Every day at 08:00 KSA: what waits for approval, what was approved, your balance, upcoming seasons, and team follow-ups (items due today, things waiting for two days). In the app." },
         { q: "How long until I see results?", a: "Your brand file and 90-day plan are written from your URL during onboarding, and your first content batch arrives when you ask Noor for it." },
-        { q: "How much does it cost?", a: `Monthly credits by plan: Starter ${P.starter}, Pro ${P.pro}, Business ${P.business} SAR, and Agency by contract. A post is ${enCredits(perPost)}, an article ${TASK_COST.article}, a board deck ${TASK_COST.board_deck}. Chatting with the team and setting up your first brand are free; setting up each added brand from its URL is ${enCredits(ONBOARD_EXTRA_BRAND_COST)}. To change plans, contact us.` },
+        { q: "How much does it cost?", a: `Monthly credits by plan: Starter ${P.starter}, Pro ${P.pro}, Business ${P.business} SAR, and Agency by contract. A post is ${enCredits(perPost)}, an article ${TASK_COST.article}, a board deck ${TASK_COST.board_deck}. Chat with the team is included up to your plan's monthly messages: Starter ${formatCount(CHAT_ALLOWANCE.starter)}, Pro ${formatCount(CHAT_ALLOWANCE.pro)}, Business ${formatCount(CHAT_ALLOWANCE.business)}, and ${formatCount(CHAT_ALLOWANCE.trial)} for the whole trial. When they run out, chat pauses until the 1st (UTC), or on the trial until you pick a plan, unless the owner of a paid plan turns on continuing on credits: each extra message is charged its real cost, at most ${enCredits(HOLD)}, and needs at least ${enCredits(HOLD)} in the balance. Setting up your first brand is free; setting up each added brand from its URL is ${enCredits(ONBOARD_EXTRA_BRAND_COST)}. To change plans, contact us.` },
         { q: "What about privacy?", a: "Your data stays in your workspace, is never used by Thakeen to train models and never shared across accounts. Integration keys are encrypted. Delete your account and its workspace data yourself from Profile." },
         { q: "Does Noor learn my brand voice?", a: "Yes. From your website first, then from every edit and rejection you write, saved to preferences.md and followed." },
         { q: "Can I cancel anytime?", a: "Yes. 3-day trial with no card. Upgrade from Subscription; to change or cancel your plan, contact us." },

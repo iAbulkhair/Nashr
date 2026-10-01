@@ -20,6 +20,7 @@ import { isAgentId } from "@/lib/agents";
 import { can } from "@/lib/roles";
 import { chatItemOf, getHandoffs, handoffViews, type Handoff, type HandoffView } from "@/lib/handoffs";
 import { getGov } from "@/lib/governance";
+import { chatStatus } from "@/lib/chat-allowance";
 
 export const dynamic = "force-dynamic";
 
@@ -36,14 +37,14 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
     if (!can(u, "onboard")) redirect(`/${lang}/app/start`);
     // First run: the workspace is built inside the "Getting started" thread, not on a form, and only from the site the
     // owner confirmed on the start page. A `?onboard=` from a link goes back there as the pre-filled value to review.
-    const [onboard, initial] = await Promise.all([confirmedOnboard(sc(u)), history(sc(u))]);
+    const [onboard, initial, chat] = await Promise.all([confirmedOnboard(sc(u)), history(sc(u)), chatStatus(u)]);
     if (!onboard) {
       const asked = onboardUrl(sp.onboard);
       redirect(`/${lang}/app/start${asked.length >= 4 ? `?url=${encodeURIComponent(asked)}` : ""}`);
     }
     return (
       <div className="grid min-h-0 flex-1">
-        <ChatPanel t={appDict[lang]} initial={initial} credits={u.credits} lang={lang} plan={u.plan} onboardUrl={onboard} needPhone={needPhone} />
+        <ChatPanel t={appDict[lang]} initial={initial} credits={u.credits} lang={lang} plan={u.plan} onboardUrl={onboard} needPhone={needPhone} chat={chat} />
       </div>
     );
   }
@@ -51,7 +52,8 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   // Any specialist in the registry (Noor is the default thread, so she needs no parameter).
   const agentParam = isAgentId(sp.agent) && sp.agent !== "noor" ? sp.agent : undefined;
   // One light read feeds both the side panel numbers and the "waiting for you" card; only that one card needs a body.
-  const [initial, connections, schedule, files, brief, notifs, brand, rows, op, journey] = await Promise.all([history(sc(u), conv), listConnections(sc(u)), getSchedule(sc(u)), listFiles(sc(u)), latestBrief(sc(u)), listNotifs(u.email), getBrand(sc(u)), listLite(sc(u), kpiSince()), db.get<{ goal: string; plan: PlanItem[] }>(`onboardplan:${sc(u)}`), loadJourney(sc(u), u.email)]);
+  // The chat allowance is the ACCOUNT's (`u` is the owner's record for every seat), shown under the box (rule 315).
+  const [initial, connections, schedule, files, brief, notifs, brand, rows, op, journey, chat] = await Promise.all([history(sc(u), conv), listConnections(sc(u)), getSchedule(sc(u)), listFiles(sc(u)), latestBrief(sc(u)), listNotifs(u.email), getBrand(sc(u)), listLite(sc(u), kpiSince()), db.get<{ goal: string; plan: PlanItem[] }>(`onboardplan:${sc(u)}`), loadJourney(sc(u), u.email), chatStatus(u)]);
   const firstPending = rows.find((x) => x.status === "pending");
   // Majed's handoff cards in this thread (every one it names: the thread holds at most 40 messages, one card each), read
   // here with their stored state: the records in one MGET, the tasks they made in another, the settings once. A card
@@ -71,7 +73,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   const firstStep = !hasProducts ? "catalog" : !brand?.offers ? "offer" : connections.length === 0 ? "connect" : "batch";
   return (
     <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[1fr_320px]">
-      <ChatPanel t={appDict[lang]} journey={journey} initial={initial} credits={u.credits} lang={lang} initialConv={conv} starter={starter} needPhone={needPhone} canApprove={can(u, "publish")} canBrand={can(u, "brand.write")} canRun={can(u, "generate")} canDecline={can(u, "drafts")} handoffs={handoffs} initialPrompt={typeof sp.prompt === "string" ? sp.prompt.slice(0, 2000) : ""} plan={u.plan} firstStep={firstStep} initialAgent={agentParam} pending={(pendingTask ? [pendingTask] : []).map(chatItemOf)} pendingCount={k.pending} brief={brief?.text ?? null} />
+      <ChatPanel t={appDict[lang]} journey={journey} initial={initial} credits={u.credits} lang={lang} initialConv={conv} starter={starter} needPhone={needPhone} canApprove={can(u, "publish")} canBrand={can(u, "brand.write")} canRun={can(u, "generate")} canDecline={can(u, "drafts")} handoffs={handoffs} initialPrompt={typeof sp.prompt === "string" ? sp.prompt.slice(0, 2000) : ""} plan={u.plan} firstStep={firstStep} initialAgent={agentParam} pending={(pendingTask ? [pendingTask] : []).map(chatItemOf)} pendingCount={k.pending} brief={brief?.text ?? null} chat={chat} />
       <div className="hidden overflow-y-auto xl:block"><HomeSide t={appDict[lang]} lang={lang} k={k} connections={connections} schedule={schedule} files={files.map((f) => ({ name: f.name, updatedAt: f.updatedAt }))} brief={brief?.text ?? null} action={notifs.find((n) => !n.read) ?? null} /></div>
     </div>
   );

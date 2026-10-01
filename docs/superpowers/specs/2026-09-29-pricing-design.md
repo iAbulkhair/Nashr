@@ -8,8 +8,14 @@ section 3. The one assumption is the "typical" usage mix in section 5, and it is
 seats in one table (`src/lib/pricing.ts`), the Agency deal floor, the 60% floor as a test, unlimited brands with a
 9-credit setup for each added brand, and the public numbers rendered from the table. It deploys after the owner's
 blocking items (`docs/Owner_Tasks_AR.md` section ح3). The 7-day trial, the chat allowance, outputs instead of credits,
-the human anchors and payments are later phases; until then the code keeps a 3-day, 50-credit trial and chat bounded by
-the hourly and daily rate limits.
+the human anchors and payments are later phases; until then the code keeps a 3-day, 50-credit trial.
+
+**Status (2026-10-01):** phase 2's chat allowance is built (rules 308-316 in `docs/system/tests.md`): 250 / 650 / 1,300
+messages a month and 30 for the whole trial, counted per account in code before each message, with two founder
+decisions of 2026-10-01 that amend rule 1 below: when the messages run out the owner of a paid plan may turn "continue
+on credits" on, and one message may cost at most $0.35 in model calls. Chat stays on Opus until the Sonnet eval (rule
+2, section 7 item 3). The review of the build the same day removed the first build's hold: nothing is taken before a
+message on credits, the balance only has to hold 5 credits, and the metered cost is billed after the reply.
 
 ## 1. Decision in one paragraph
 
@@ -105,13 +111,25 @@ $0.08, divided by the 2.5× rate gap), full allowance used. Every row assumes 10
 
 Not included: payment provider fees (provider not chosen) and fixed hosting (Vercel, Upstash, Blob). The worst total
 needs every credit spent on articles and every chat message used at once; the founder console's margin column (red
-under 50%) flags it.
+under 50%) flags it. As built on 2026-10-01 chat still runs on Opus, so the chat row above holds only after the
+Sonnet switch: `docs/system/costs.md` section 4.1 gives the same allowances on Opus ($20.00 / $52.00 / $104.00 at about
+$0.08 a message) and at the $0.35 ceiling, where a full Starter allowance costs more than Starter earns.
 
 ## 6. Rules
 
 1. **Chat allowance.** 250 / 650 / 1,300 messages a month by tier, about 30 in the trial. When it runs out, chat pauses
    until the next month or a top-up. Generation from chat (`generate_content`, `draft_items`, `generate_image`) keeps
    charging credits as today.
+   **Amended 2026-10-01 (founder decisions, as built):** the trial's 30 are granted once for the whole trial; a message
+   is one turn the owner sends, counted per account (every seat, brand and connected app share it) before the turn, and
+   a turn that fails is not counted. When the messages run out chat pauses until the 1st (UTC), or on a trial until the
+   owner subscribes; top-ups wait for phase 6. Instead, the owner of a paid plan may turn "continue on credits" on: each
+   extra message then needs at least 5 credits in the balance (nothing is taken before it) and, after the reply, is
+   billed its metered model cost at the floor rate ($0.0710 a credit, so the 60% margin of section 4 holds), never more
+   than 5 credits; a failed message is not billed. What a message usually costs is not measured yet (on Opus a turn is
+   estimated near $0.08, above one credit), so no copy states it. Every message, inside the allowance or not, is capped
+   in code at **$0.35 in model calls** (each call's output is limited to what is left, and the thread the model reads
+   is trimmed), which is what sets the 5-credit bound (ceil($0.35 ÷ $0.0710)).
 2. **Chat model.** Conversation turns move from Opus to Sonnet only after the golden eval plus a Gulf-dialect chat check
    pass on Sonnet. Generation stays on Opus.
 3. **Media.** `credits = ceil(total cost ÷ $0.0710)`, where total cost = provider price + Blob storage + 10% buffer for
@@ -153,8 +171,10 @@ under 50%) flags it.
 
 ## 8. What this replaces
 
-`PLAN_PRICE_SAR` (149 / 399 / 799), `PLAN_CREDITS` (200 / 700 / 2,000), `BRAND_LIMIT` (1 / 1 / 5), the 3-day trial, free
-unlimited chat within 40 an hour and 200 a day, the "SAR 99 / seat" line and the "two months free" launch offer. The
+`PLAN_PRICE_SAR` (149 / 399 / 799), `PLAN_CREDITS` (200 / 700 / 2,000), `BRAND_LIMIT` (1 / 1 / 5), the 3-day trial, chat
+free in credits and bounded only by 40 messages an hour and 200 a day (replaced on 2026-10-01 by the monthly chat
+allowance of rule 1, with those limits kept as a burst limit in front of it), the "SAR 99 / seat" line and the "two
+months free" launch offer. The
 current prices were an SAR copy of Enrich Labs' $39 / $99 / $199.
 
 Implementation plan: `docs/superpowers/plans/2026-09-29-pricing.md`. Teams (seats) design:
