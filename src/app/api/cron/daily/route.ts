@@ -15,10 +15,9 @@ import { syncAdsIfDue } from "@/lib/perf-store";
 import { sweepOnboardHolds } from "@/lib/onboard-confirm";
 import { purgeExpired, secretaryDaily } from "@/lib/secretary";
 import { SWEEP_BUDGET_DAILY_MS, SWEEP_SCOPES, mergeReports, sweepReminders, type SweepReport } from "@/lib/secretary-remind";
+import { appOrigin } from "@/lib/origin";
 
 export const maxDuration = 300;
-
-const ORIGIN = () => process.env.APP_ORIGIN ?? "https://nashr-tau.vercel.app";
 
 /** Everything the daily job does for one workspace. Returns a short outcome used for the report and the done marker. */
 async function dailyFor(u: User): Promise<string> {
@@ -54,7 +53,7 @@ async function dailyFor(u: User): Promise<string> {
     // (src/lib/notify.ts `sendOnce`): a refused nudge is tried again on the next run instead of being recorded as done.
     if (Date.now() - new Date(u.createdAt).getTime() > 10 * 60e3 && mailReady()) {
       const ar = u.lang === "ar";
-      const link = `${ORIGIN()}/${u.lang}/app/start`;
+      const link = `${appOrigin()}/${u.lang}/app/start`;
       const res = await sendOnce(u.email, "nudge1", ar ? "نور جاهزة — أعطيها رابط موقعك" : "Noor is ready — give her your website", ar
         ? `أهلاً ${u.name}\n\nسجّلت في ذكين وما بدأت بعد. نور جاهزة: أعطيها رابط موقعك وتكتب ملف علامتك وخطتك أمامك، ثم اطلب منها أول دفعة منشورات.\n\n${link}`
         : `Hi ${u.name}\n\nYou signed up for Thakeen but have not started. Noor is ready: give her your website and she writes your brand file and plan in front of you, then ask her for your first batch of posts.\n\n${link}`);
@@ -78,7 +77,7 @@ async function dailyFor(u: User): Promise<string> {
     // "important": something waits for a decision, a follow-up fired, or a to-do is overdue or due today.
     const worth = pref === "all" || (pref === "important" && (brief.pending > 0 || fu.length > 0 || (brief.agenda?.overdue ?? 0) + (brief.agenda?.today ?? 0) > 0));
     const extra = fu.length ? `\n\n${notifEmailText(u, fu)}` : "";
-    if (worth && (await sendEmail(u.email, u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, brief.text + extra + `\n\n${ORIGIN()}/${u.lang}/app`))) out.push("email");
+    if (worth && (await sendEmail(u.email, u.lang === "ar" ? `ملخص نور — ${brief.date}` : `Noor's brief — ${brief.date}`, brief.text + extra + `\n\n${appOrigin()}/${u.lang}/app`))) out.push("email");
   } else if (fu.length && pref !== "none") {
     if (await sendEmail(u.email, u.lang === "ar" ? "متابعة من فريق ذكين" : "Follow-up from your Thakeen team", notifEmailText(u, fu))) out.push("email");
   }

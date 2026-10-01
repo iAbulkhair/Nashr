@@ -31,6 +31,7 @@ import { activeSeasons } from "./seasons";
 import { SEC_KEYS, agendaFor, listDone, listOpenItems } from "./secretary";
 import { AUTO_CLOSE_RESULT, addDays, computeAgenda, zoneDay, zoneTime } from "./secretary-agenda";
 import { ZONE_IDS, type Zone } from "./zones";
+import { appOrigin } from "./origin";
 
 /** The wrap's local time, and in Ramadan (after Taraweeh). */
 export const EVENING_AT = { hh: 18, mm: 0 } as const;
@@ -44,7 +45,6 @@ const WRAP_TTL_S = 2 * 86400;
 /** Decisions read to count today's: the newest 100. */
 const DECISIONS_READ = 100;
 
-const ORIGIN = () => process.env.APP_ORIGIN ?? "https://nashr-tau.vercel.app";
 
 /** Is it Ramadan at `now` (Umm al-Qura calendar, `activeSeasons`)? */
 export const isRamadan = (now: number) => activeSeasons(new Date(now)).some((s) => s.id === "ramadan");
@@ -170,7 +170,7 @@ export async function eveningWrap(user: User, now = Date.now()): Promise<"sent" 
   if (process.env.RESEND_API_KEY) {
     const pref = ((await db.get<{ emails?: string }>(`profile:${scope}`)) ?? (await db.get<{ emails?: string }>(`profile:${user.email}`)) ?? {}).emails ?? "all";
     const subject = user.lang === "ar" ? `ملخص المساء — ${w.day}${brand ? ` — «${brand}»` : ""}` : `Evening wrap — ${w.day}${brand ? ` — “${brand}”` : ""}`;
-    if (pref === "all") await sendEmail(user.email, subject, `${title}\n\n${body}\n\n${ORIGIN()}/${user.lang}/app/todo`);
+    if (pref === "all") await sendEmail(user.email, subject, `${title}\n\n${body}\n\n${appOrigin()}/${user.lang}/app/todo`);
   }
   return "sent";
 }

@@ -1,12 +1,12 @@
 import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
+import { appOrigin } from "./origin";
 
 /**
  * Minimal OAuth 2.1 authorization server for the Nashr MCP (PKCE S256, dynamic client
  * registration, refresh tokens). Access tokens reuse the `mcptoken:` lookup so /api/mcp
  * accepts both personal tokens and OAuth tokens.
  */
-export const ORIGIN = () => process.env.APP_ORIGIN ?? "https://nashr-tau.vercel.app";
 export const SCOPES = ["noor"];
 const ACCESS_TTL = 60 * 60 * 24 * 30; // 30d
 const REFRESH_TTL = 60 * 60 * 24 * 90;
@@ -14,7 +14,7 @@ const REFRESH_TTL = 60 * 60 * 24 * 90;
 export type Client = { client_id: string; client_secret?: string; client_name?: string; redirect_uris: string[]; created_at: number };
 
 export function metadata() {
-  const o = ORIGIN();
+  const o = appOrigin();
   return {
     issuer: o,
     authorization_endpoint: `${o}/oauth/authorize`,
@@ -28,7 +28,7 @@ export function metadata() {
   };
 }
 export function resourceMetadata() {
-  const o = ORIGIN();
+  const o = appOrigin();
   return { resource: `${o}/api/mcp`, authorization_servers: [o], bearer_methods_supported: ["header"], scopes_supported: SCOPES, resource_name: "Thakeen — Noor" };
 }
 

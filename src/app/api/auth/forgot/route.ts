@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getLogin, normalizeEmail } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { mailReady, sendEmail } from "@/lib/notify";
-import { ORIGIN } from "@/lib/oauth";
+import { appOrigin } from "@/lib/origin";
 import { allow, clientIp } from "@/lib/rate";
 
 /** What a reset token resets: the login it was issued for (read back in ../reset/route.ts). */
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   if (target && mail) {
     const token = randomBytes(32).toString("hex");
     await db.set(`pwreset:${createHash("sha256").update(token).digest("hex")}`, target, 3600);
-    const link = `${ORIGIN()}/${lang}/app/reset?token=${token}`;
+    const link = `${appOrigin()}/${lang}/app/reset?token=${token}`;
     await sendEmail(target.email, lang === "ar" ? "إعادة تعيين كلمة المرور في ذكين" : "Reset your Thakeen password", lang === "ar"
       ? `مرحباً،\n\nوصلنا طلب لإعادة تعيين كلمة مرور حسابك في ذكين. افتح الرابط التالي خلال ساعة واحدة:\n\n${link}\n\nإذا لم تطلب ذلك فتجاهل هذه الرسالة، ولن يتغير شيء.`
       : `Hello,\n\nWe received a request to reset your Thakeen password. Open this link within one hour:\n\n${link}\n\nIf you did not ask for this, ignore this email and nothing changes.`);

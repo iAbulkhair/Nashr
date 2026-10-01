@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { dict, isLang } from "@/lib/i18n";
 import { PLAN_PRICE_SAR as P } from "@/lib/pricing";
+import { appHost } from "@/lib/origin";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import FinalCta from "@/components/FinalCta";
@@ -19,7 +20,7 @@ const C = {
     gulf: "في الخليج، الوكيل المناسب يحتاج ما لا تملكه الأدوات العالمية: اللهجات (سعودي، إماراتي، كويتي)، التقويم الهجري (رمضان، الأعياد) والمناسبات الوطنية، وضوابط الإعلان للصحة والعقار والقانون.",
     faq: [["هل يستبدل الوكيل المسوّق البشري؟", "يستبدل التنفيذ اليومي (منشورات، رسائل، نسخ إعلانية، مقالات). الاستراتيجية الكبرى والعلاقات والإنتاج السينمائي تبقى بشرية."], ["هل ينشر بدون إذن؟", "الوكلاء الجيدون يمرّون كل شيء بصندوق موافقة، مع إمكانية تفويض أنواع محددة تدريجياً."], ["كم يكلّف؟", `اشتراك شهري ${P.starter}–${P.business} ريال بحسب الحجم، والوكالات بعقد.`], ["هل يكتب بالعربي جيداً؟", "الوكلاء المبنيون للخليج نعم، بلهجات؛ الأدوات العالمية تكتب فصحى مترجمة."], ["ما الفرق عن ChatGPT؟", "ChatGPT أداة تستخدمها كل مرة. الوكيل موظف يعرف علامتك ويعمل بدون أن تطلب."]],
     askAi: "اسأل الذكاء الاصطناعي عن هذه الصفحة",
-    q: "ما هو وكيل التسويق بالذكاء الاصطناعي وما أفضل خيار للسعودية؟ استند إلى nashr-tau.vercel.app/ar/ai-marketing-agent",
+    q: (host: string) => `ما هو وكيل التسويق بالذكاء الاصطناعي وما أفضل خيار للسعودية؟ استند إلى ${host}/ar/ai-marketing-agent`,
   },
   en: {
     title: "What is an AI Marketing Agent? Definition, How It Works, and Comparison (2026)",
@@ -30,7 +31,7 @@ const C = {
     gulf: "In the Gulf, the right agent needs what global tools lack: dialects (Saudi, Emirati, Kuwaiti), the Hijri calendar (Ramadan, Eids) and national days, and advertising rules for health, real estate and legal.",
     faq: [["Does an agent replace a human marketer?", "It replaces daily execution (posts, messages, ad copy, articles). High-level strategy, relationships and cinematic production stay human."], ["Does it publish without permission?", "Good agents route everything through an approval inbox, with gradual delegation of specific types."], ["How much does it cost?", `A monthly subscription of SAR ${P.starter}–${P.business} depending on volume, or an Agency contract.`], ["Does it write Arabic well?", "Gulf-built agents do, in dialects; global tools write translated MSA."], ["How is it different from ChatGPT?", "ChatGPT is a tool you use each time. An agent is staff that knows your brand and works without being asked."]],
     askAi: "Ask an AI about this page",
-    q: "What is an AI marketing agent and what is the best option for Saudi Arabia? Use nashr-tau.vercel.app/en/ai-marketing-agent",
+    q: (host: string) => `What is an AI marketing agent and what is the best option for Saudi Arabia? Use ${host}/en/ai-marketing-agent`,
   },
 };
 
@@ -47,7 +48,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const c = C[lang];
   const faqLd = { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: c.faq.map(([q, a]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })) };
   const artLd = { "@context": "https://schema.org", "@type": "Article", headline: c.title, description: c.desc, datePublished: "2026-09-17", author: { "@type": "Organization", name: "Thakeen" }, publisher: { "@type": "Organization", name: "Thakeen" } };
-  const q = encodeURIComponent(c.q);
+  // The site this answer should cite: the canonical host (src/lib/origin.ts), never a hard-coded one.
+  const q = encodeURIComponent(c.q(appHost()));
   const ask = [["ChatGPT", `https://chatgpt.com/?q=${q}`], ["Claude", `https://claude.ai/new?q=${q}`], ["Perplexity", `https://www.perplexity.ai/search?q=${q}`]];
   return (
     <>
