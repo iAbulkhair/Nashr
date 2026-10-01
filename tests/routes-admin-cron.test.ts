@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { jar, json, newUser, params, signIn, signOut } from "./helpers/session";
+import { jar, json, newUser, params, settle, signIn, signOut } from "./helpers/session";
 import { createUser, currentUser, getUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 
@@ -124,5 +124,22 @@ describe("cron routes (rule 7)", () => {
   it("run with the right secret (daily, which calls no model)", async () => {
     vi.stubEnv("CRON_SECRET", "cron-secret-abcdef");
     expect((await call(cronDaily, "Bearer cron-secret-abcdef")).status).toBe(200);
+  });
+  it("the daily run's weekly catch-up kick (Sunday to Tuesday) forwards the cron bearer (rule 379)", async () => {
+    vi.stubEnv("CRON_SECRET", "cron-secret-abcdef");
+    const sent: { url: string; auth: string | null }[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (u: string | URL, init?: RequestInit) => { sent.push({ url: String(u), auth: new Headers(init?.headers).get("authorization") }); return new Response("{}"); }));
+    // A Monday (2026-10-05), only the clock faked: timers still run.
+    vi.useFakeTimers({ now: new Date("2026-10-05T03:00:00.000Z"), toFake: ["Date"] });
+    try {
+      expect((await call(cronDaily, "Bearer cron-secret-abcdef")).status).toBe(200);
+      await settle();
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+    const kick = sent.filter((x) => new URL(x.url).pathname === "/api/cron/weekly");
+    expect(kick, "Monday kicks the weekly route once").toHaveLength(1);
+    expect(kick[0].auth, "without the bearer the weekly route answers 401 and the catch-up serves nobody").toBe("Bearer cron-secret-abcdef");
   });
 });

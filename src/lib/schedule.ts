@@ -125,7 +125,7 @@ async function weeklyFor(user: User, email: string, brand: Brand, by: By): Promi
   if (auto >= gov.weeklyCap) return "cap_reached";
   // Loaded before the charge (notifications imports this module, hence the dynamic import), so nothing after a kept
   // charge can fail before the week is recorded.
-  const { notifyItem } = await import("./notifications");
+  const { brandFingerprint, brandTag, notifyItem, withBrand } = await import("./notifications");
   // weekly_plan is Noor's, so it counts against her monthly cap in this brand, like a batch she was asked for.
   const r = await generateBatch(user, email, { type: "weekly_plan", notes: WEEKLY_NOTE, brief: WEEKLY_NOTE, source: "scheduled", via: "weekly", gov, brand, by });
   if (!r.ok) {
@@ -133,7 +133,9 @@ async function weeklyFor(user: User, email: string, brand: Brand, by: By): Promi
     return r.reason === "paused" ? "retry:paused" : r.reason;
   }
   await saveSchedule(email, { lastWeekly: new Date().toISOString() });
-  await notifyItem(user.email, user.lang, { kind: "weekly", agent: "noor", title: user.lang === "ar" ? "خطة الأسبوع جاهزة في صندوق الموافقة" : "This week's plan is ready in your inbox", body: user.lang === "ar" ? `${r.tasks.length} عنصر من نور. اعتمد ما يعجبك وعيّن تواريخ النشر.` : `${r.tasks.length} item(s) from Noor. Approve what you like and set publish dates.`, href: "" }, `weekly:${new Date().toISOString().slice(0, 10)}`, 2);
+  // One notice per brand (#15): the fingerprint carries an added brand's id, and a multi-brand account sees which brand.
+  const tag = await brandTag(user.email, email).catch(() => "");
+  await notifyItem(user.email, user.lang, { kind: "weekly", agent: "noor", title: withBrand(user.lang === "ar" ? "خطة الأسبوع جاهزة في صندوق الموافقة" : "This week's plan is ready in your inbox", tag), body: user.lang === "ar" ? `${r.tasks.length} عنصر من نور. اعتمد ما يعجبك وعيّن تواريخ النشر.` : `${r.tasks.length} item(s) from Noor. Approve what you like and set publish dates.`, href: "" }, brandFingerprint(email, `weekly:${new Date().toISOString().slice(0, 10)}`), 2);
   return `ok:${r.tasks.length}`;
 }
 
