@@ -3,6 +3,7 @@ import { MCP_TOOL_ACTION, userFromBearer } from "@/lib/mcp";
 import { DRAFTS_PER_HOUR, chatAllowed } from "@/lib/rate";
 import { DRAFT_LIMITS, draftReport, parseDraft, saveExternalDraft } from "@/lib/external-drafts";
 import { chat } from "@/lib/chat";
+import { refusalText, reserveChatTurn, runChatTurn } from "@/lib/chat-allowance";
 import { getBrand, listTasks } from "@/lib/brand";
 import { agentById } from "@/lib/agents";
 import { TASK_COST, isTaskType } from "@/lib/tasks";
@@ -75,13 +76,22 @@ export async function POST(req: Request) {
   try {
     switch (name) {
       case "ask_noor": {
+        // The web chat's limits on the message itself: trimmed, at most 4,000 characters, never empty.
+        const message = String(args.message ?? "").trim().slice(0, 4000);
+        if (!message) return ok(id, { ...text("Empty message. Nothing was sent."), isError: true });
         // Same ceiling as the web chat: a bearer token must not be a cheaper way to spend the same models.
         if (!(await chatAllowed(user.email))) return ok(id, { ...text("Too many messages in a short time. Wait a few minutes and try again."), isError: true });
+        // The same monthly allowance too, shared with the app (src/lib/chat-allowance.ts), before chat() saves the message.
+        const gate = await reserveChatTurn(user);
+        if (!gate.ok) return ok(id, { ...text(refusalText(gate)), isError: true });
         // A connected app is talking: its activity rows say so (`tokenBy`), not "owner". As "mcp": the words come from
         // another assistant, so publishing and core-memory writes are refused in runTool, and a change to the offers or a
         // banned-word removal waits for the owner's Save in the app.
-        const m = await chat(user, String(args.message ?? ""), undefined, "noor", { by: tokenBy(user), via: "mcp" });
-        return ok(id, text(m.content + (m.actions?.length ? `\n\n[actions: ${m.actions.join(", ")}]` : "")));
+        const { message: m, chat: status, charged } = await runChatTurn(user, gate, () => chat(user, message, undefined, "noor", { by: tokenBy(user), via: "mcp", deadline }));
+        const low = gate.mode === "overflow"
+          ? `\n\n[chat: this month's ${status.allowance} messages are used; this message continued on credits and was billed ${charged} credit${charged === 1 ? "" : "s"}]`
+          : status.left <= Math.ceil(status.allowance / 10) ? `\n\n[chat: ${status.left} of ${status.allowance} messages left ${status.period === "trial" ? "in the trial" : "this month"}]` : "";
+        return ok(id, text(m.content + (m.actions?.length ? `\n\n[actions: ${m.actions.join(", ")}]` : "") + low));
       }
       case "generate_content": {
         if (!isTaskType(args.type)) return ok(id, { ...text("Unknown type."), isError: true });
