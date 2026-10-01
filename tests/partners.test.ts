@@ -289,13 +289,14 @@ describe("rule 393: one first-month discount per account, never stacked; the bil
     expect(await body(claim(paid.email, "NOSUCH12"))).toMatchObject({ ok: false, error: "bad_partner_code" });
   });
 
-  it("an account with the early-partner offer keeps that one offer when it takes a code", async () => {
+  it("an account with an unused early-partner offer still holds one offer when it takes a code: the code's", async () => {
     const a = await partner("cc");
     const u = await newUser("early");
     await saveUser({ ...(await getUser(u.email))!, firstMonthOffer: { kind: "early", pct: FIRST_MONTH_DISCOUNT_PCT, at: new Date().toISOString() } });
     expect(await status(claim(u.email, a.code))).toBe(200);
     const x = (await getUser(u.email))!;
-    expect(x.firstMonthOffer?.kind).toBe("early");
+    expect(x.firstMonthOffer, "replaced, never stacked").toMatchObject({ kind: "partner", pct: FIRST_MONTH_DISCOUNT_PCT });
+    expect(x.firstMonthOffer?.usedAt).toBeUndefined();
     expect(x.referredBy?.partner).toBe(a.user.email);
   });
 
@@ -1019,7 +1020,7 @@ describe("rule 410: the early-partner offer ends 7 days after the trial's last d
     expect((await getUser(b.email))!.firstMonthOffer?.usedAt).toBeUndefined();
   });
 
-  it("an early offer that ended unused gives way to a partner code's offer; one still running is kept", async () => {
+  it("a partner code replaces an unused early offer, running or ended: one offer, the code's, with no end date", async () => {
     const a = await partner("eoc");
     vi.useFakeTimers({ toFake: ["Date"] });
     at(T0);
@@ -1028,17 +1029,53 @@ describe("rule 410: the early-partner offer ends 7 days after the trial's last d
     at("2096-10-04T05:00:00.000Z");
     for (const x of [ended, running]) expect(await grantEarlyOffer(x.email, (y) => earlyOfferDue(y))).toBe(true);
     const claim = async (email: string) => { await signIn(email); return body(codeRoute.POST(json("/api/partner/code", "POST", { code: a.code }))); };
-    at("2096-10-08T09:00:00.000Z"); // still inside the 7 days
+    at("2096-10-08T09:00:00.000Z"); // still inside the early offer's 7 days
     expect(await claim(running.email)).toMatchObject({ ok: true });
-    expect((await getUser(running.email))!.firstMonthOffer?.kind, "never stacked: the running offer stays").toBe("early");
+    expect((await getUser(running.email))!.firstMonthOffer?.kind, "the code's offer, not the early one").toBe("partner");
+    let page = await html(BillingPage);
+    expect(page).toContain(`data-offer="partner"`);
+    expect(page, "a partner code's offer has no end date").not.toContain("The offer ends on");
+    // Paid after the early offer would have ended, inside the code's 30 days: the customer still gets the discount the
+    // partner earns on.
+    at("2096-10-13T09:00:00.000Z");
+    const paid = await body<{ payment: { offer?: string; commission?: { sar: number } } }>(record(running.email, { amountSar: firstMonthPriceSar("starter"), plan: "starter", date: "2096-10-13" }));
+    expect(paid.payment.offer).toBe("partner");
+    expect(paid.payment.commission?.sar).toBe(commissionSar(firstMonthPriceSar("starter")));
     at("2096-10-12T09:00:00.000Z"); // the early offer ended on 2096-10-11
     expect(await claim(ended.email)).toMatchObject({ ok: true });
     expect((await getUser(ended.email))!.firstMonthOffer?.kind).toBe("partner");
-    expect(await html(BillingPage)).toContain(`data-offer="partner"`);
+    page = await html(BillingPage);
+    expect(page).toContain(`data-offer="partner"`);
+    expect(page).not.toContain("The offer ends on");
   });
 
-  it("the day-3 email names the offer's end date", () => {
-    expect(readFileSync("src/lib/lifecycle.ts", "utf8")).toContain("earlyOfferLastDay(u.trialEnds)");
+  it("the day-3 email names the early offer's end date only when the account holds or is about to get it", async () => {
+    const { day3Offer, lifecycleTemplate } = await import("@/lib/lifecycle");
+    const ctx = { pending: 1, approved: 2, trialEnds: "2096-10-04" };
+    const base = { name: "N", email: "d3@test.example", lang: "en", trialEnds: "2096-10-04T09:00:00.000Z" } as User;
+    const early = { ...base, firstMonthOffer: { kind: "early" as const, pct: FIRST_MONTH_DISCOUNT_PCT, at: "2096-10-03T09:00:00.000Z" } };
+    const referred = {
+      ...base, referredBy: { partner: "p@test.example", code: "RIYADH1", at: "2096-10-01T09:00:00.000Z", via: "code" as const, ref: "abcdef012345" },
+      firstMonthOffer: { kind: "partner" as const, pct: FIRST_MONTH_DISCOUNT_PCT, at: "2096-10-01T09:00:00.000Z" },
+    };
+    const used = { ...early, firstMonthOffer: { ...early.firstMonthOffer, usedAt: "2096-10-04T08:00:00.000Z", paymentId: "pay_00000000" } };
+    expect([day3Offer(base), day3Offer(early), day3Offer(referred), day3Offer(used), day3Offer({ ...base, firstPaidOn: "2096-10-02" })])
+      .toEqual(["early", "early", "partner", null, null]);
+    const last = earlyOfferLastDay(base.trialEnds);
+    for (const u of [base, early]) {
+      expect(lifecycleTemplate(u, "day3", ctx)!.body, "about to be granted, or held").toContain(`the early-partner offer, first month only, ending on ${last}`);
+      expect(lifecycleTemplate({ ...u, lang: "ar" }, "day3", ctx)!.body).toContain(`ينتهي العرض في ${last}`);
+    }
+    for (const lang of ["en", "ar"] as const) {
+      const b = lifecycleTemplate({ ...referred, lang }, "day3", ctx)!.body;
+      expect(b, "a partner-referred trial: the code's discount").toContain("RIYADH1");
+      expect(b).toContain(`${FIRST_MONTH_DISCOUNT_PCT}%`);
+      expect(b, "no early-offer wording").not.toMatch(/early-partner|الشركاء الأوائل/);
+      expect(b, "no end date that does not apply").not.toContain(last);
+      const u = lifecycleTemplate({ ...used, lang }, "day3", ctx)!.body;
+      expect(u, "a used offer is not promised again").not.toContain(`${FIRST_MONTH_DISCOUNT_PCT}%`);
+      expect(u).not.toContain(last);
+    }
   });
 });
 

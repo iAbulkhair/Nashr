@@ -172,8 +172,10 @@ export async function afterSignup(email: string, found: SignupPartner): Promise<
 export type ClaimError = "bad_partner_code" | "self_referral" | "already_attributed" | "already_paid";
 /**
  * The billing page's partner-code field: an account still on its trial, never attributed and never paid, takes a
- * partner's code. The account keeps the one first-month offer it may already have and can still use (discounts never
- * stack); an early-partner offer that has ended unused (rule 410) gives way to the code's offer.
+ * partner's code, and the code's 15% first-month offer replaces an unused early-partner offer, running or ended (rule
+ * 410). Still one offer per account, so discounts never stack, and the customer gets the discount the public terms
+ * promise with the code: no end date, rather than an early offer that could end inside the code's 30-day window while
+ * the partner still earns on the payment.
  */
 export async function claimPartnerCode(u: User, raw: unknown): Promise<{ ok: true; code: string } | { ok: false; error: ClaimError }> {
   const partner = await partnerByCode(raw);
@@ -186,7 +188,7 @@ export async function claimPartnerCode(u: User, raw: unknown): Promise<{ ok: tru
     if (x.plan !== "trial" || x.firstPaidOn) return "already_paid";
     const at = new Date().toISOString();
     x.referredBy = { partner: partner.email, code: partner.code, at, via: "code", ref: newRef() };
-    if (!openOffer(x)) x.firstMonthOffer = { kind: "partner", pct: FIRST_MONTH_DISCOUNT_PCT, at };
+    if (x.firstMonthOffer?.kind !== "partner") x.firstMonthOffer = { kind: "partner", pct: FIRST_MONTH_DISCOUNT_PCT, at };
     await saveUser(x);
     return null;
   });

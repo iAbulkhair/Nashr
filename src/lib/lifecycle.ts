@@ -14,7 +14,20 @@ const WA = () => (process.env.SUPPORT_WHATSAPP ? `https://wa.me/${process.env.SU
 
 type Tpl = { subject: string; body: string };
 
-function t(u: User, key: string, ctx: { firstTitle?: string; pending: number; approved: number; trialEnds: string }): Tpl | null {
+/**
+ * Which first-month offer the day-3 note names (rule 410): "early" when the account holds an unused early-partner offer
+ * or is about to be granted one (no offer and no payment: the daily cron grants it alongside this note), "partner" when
+ * it holds an unused partner code's offer (no end date, so none is named), null when its offer was used or it has paid.
+ * Here rather than in src/lib/partners.ts, which imports this file.
+ */
+export function day3Offer(u: Pick<User, "firstMonthOffer" | "firstPaidOn">): "early" | "partner" | null {
+  if (u.firstPaidOn) return null;
+  if (!u.firstMonthOffer) return "early";
+  return u.firstMonthOffer.usedAt ? null : u.firstMonthOffer.kind;
+}
+
+/** The lifecycle note for `key`, or null (exported for tests). */
+export function lifecycleTemplate(u: User, key: string, ctx: { firstTitle?: string; pending: number; approved: number; trialEnds: string }): Tpl | null {
   const ar = u.lang === "ar";
   const app = `${appOrigin()}/${u.lang}/app`;
   const sig = ar ? `\n\n— مؤسس ذكين${WA() ? "\nواتساب: " + WA() : ""}` : `\n\n— Founder of Thakeen${WA() ? "\nWhatsApp: " + WA() : ""}`;
@@ -27,10 +40,22 @@ function t(u: User, key: string, ctx: { firstTitle?: string; pending: number; ap
       return ar
         ? { subject: "تجربتك تنتهي غداً", body: `${u.name}، تجربتك تنتهي ${ctx.trialEnds}.\n\nحتى الآن: ${ctx.approved} عنصر معتمد، ${ctx.pending} بانتظارك.\n\nإذا نور وفّرت عليك ساعة هذا الأسبوع، خطة الاحتراف ${PLAN_PRICE_SAR.pro} ريال/شهر تعطيك ${formatCount(PLAN_CREDITS.pro)} كريدت شهرياً وضبطاً تلقائياً للإعلانات (قريباً). الاشتراك من هنا: ${app}/billing\n\nوإذا فيه شيء ما عجبك، رد على هذا الإيميل وقل لي.${sig}` }
         : { subject: "Your trial ends tomorrow", body: `${u.name}, your trial ends ${ctx.trialEnds}.\n\nSo far: ${ctx.approved} approved, ${ctx.pending} waiting.\n\nIf Noor saved you an hour this week, Pro at SAR ${PLAN_PRICE_SAR.pro}/mo gives you ${formatCount(PLAN_CREDITS.pro)} credits a month and auto ad optimization (coming soon). Subscribe: ${app}/billing\n\nIf something didn't work, reply and tell me.${sig}` };
-    case "day3":
+    case "day3": {
+      const offer = day3Offer(u);
+      const code = u.referredBy?.code;
+      const pitch = offer === "early"
+        ? (ar
+          ? `شهرك الأول عليه خصم ${FIRST_MONTH_DISCOUNT_PCT}% (عرض الشركاء الأوائل، للشهر الأول فقط، وينتهي العرض في ${earlyOfferLastDay(u.trialEnds)})`
+          : `your first month is ${FIRST_MONTH_DISCOUNT_PCT}% off (the early-partner offer, first month only, ending on ${earlyOfferLastDay(u.trialEnds)})`)
+        : offer === "partner"
+          ? (ar
+            ? `شهرك الأول عليه خصم ${FIRST_MONTH_DISCOUNT_PCT}% ${code ? `من كود الشريك ${code}` : "من كود الشريك"} (للشهر الأول فقط)`
+            : `your first month is ${FIRST_MONTH_DISCOUNT_PCT}% off ${code ? `with partner code ${code}` : "with your partner code"} (first month only)`)
+          : null;
       return ar
-        ? { subject: "آخر يوم في التجربة", body: `${u.name}، اليوم آخر يوم.\n\nنور كتبت لك ${ctx.approved + ctx.pending} عنصراً. لو تبي تكمل، شهرك الأول عليه خصم ${FIRST_MONTH_DISCOUNT_PCT}% (عرض الشركاء الأوائل، للشهر الأول فقط، وينتهي العرض في ${earlyOfferLastDay(u.trialEnds)}): تجده في صفحة الاشتراك ${app}/billing — أو راسلني على واتساب وأفعّله لك بالخصم.${sig}` }
-        : { subject: "Last day of your trial", body: `${u.name}, today is the last day.\n\nNoor wrote ${ctx.approved + ctx.pending} items for you. To continue, your first month is ${FIRST_MONTH_DISCOUNT_PCT}% off (the early-partner offer, first month only, ending on ${earlyOfferLastDay(u.trialEnds)}): it is on your billing page ${app}/billing — or WhatsApp me and I'll activate it at the discount.${sig}` };
+        ? { subject: "آخر يوم في التجربة", body: `${u.name}، اليوم آخر يوم.\n\nنور كتبت لك ${ctx.approved + ctx.pending} عنصراً. ${pitch ? `لو تبي تكمل، ${pitch}: تجده في صفحة الاشتراك ${app}/billing — أو راسلني على واتساب وأفعّله لك بالخصم.` : `لو تبي تكمل: ${app}/billing — أو راسلني على واتساب وأفعّله لك.`}${sig}` }
+        : { subject: "Last day of your trial", body: `${u.name}, today is the last day.\n\nNoor wrote ${ctx.approved + ctx.pending} items for you. ${pitch ? `To continue, ${pitch}: it is on your billing page ${app}/billing — or WhatsApp me and I'll activate it at the discount.` : `To continue: ${app}/billing — or WhatsApp me and I'll activate it for you.`}${sig}` };
+    }
     case "day10":
       return ar
         ? { subject: "ما الذي وقّفك؟", body: `${u.name}، سؤال واحد صريح: ما الذي منعك من الاستمرار مع نور؟\n\nالجودة؟ اللهجة؟ السعر؟ ميزة ناقصة؟ رد بكلمة وأنا أقرأ كل رد بنفسي.\n\nوإذا تبي تجرب من جديد بعد التحديثات: ${app}${sig}` }
@@ -84,7 +109,7 @@ export async function runLifecycle(u: User): Promise<string[]> {
   // while its window lasts. The due notes go out side by side; rarely more than one is due.
   const due = plan.filter(([, d]) => d).map(([key]) => key);
   const results = await Promise.all(due.map(async (key) => {
-    const tpl = t(u, key, ctx);
+    const tpl = lifecycleTemplate(u, key, ctx);
     return tpl && (await sendOnce(u.email, `lifecycle:${key}`, tpl.subject, tpl.body)) === "sent" ? key : null;
   }));
   return results.filter((k): k is string => k !== null);
