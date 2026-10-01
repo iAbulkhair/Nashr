@@ -1,11 +1,12 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { NEW_TERMS_FROM, PAYOUT_MIN_SAR, codeProblem, ksaDay, normalizeCode, sarText, type Bank, type Commission, type Payout } from "@/lib/partner-rules";
+import { NEW_TERMS_FROM, PAYOUT_MIN_SAR, codeProblem, countryName, ksaDay, normalizeCode, sarText, type Bank, type Commission, type Payout } from "@/lib/partner-rules";
 
-type App = { id: string; name: string; email: string; phone: string; channel: string; audience: string; lang: string; at: string; suggested: string; decision: { status: "approved" | "rejected"; code?: string; at: string; by: string } | null };
+type App = { id: string; name: string; email: string; phone: string; channel: string; audience: string; lang: string; at: string; consentAt: string | null; termsVersion: string | null; suggested: string; decision: { status: "approved" | "rejected"; code?: string; at: string; by: string } | null };
 type PartnerRow = {
   email: string; name: string; code: string; approvedAt: string; bank: Bank | null; bankConfirmed: boolean; accountAfterApproval: boolean; hasAccount: boolean;
   referrals: number; earned: number; paid: number; balance: number; pending: number; payable: number;
+  tax: { vatRegistered: boolean; outsideSaudi: boolean; noCountry: boolean; vatPaid: number; whtBorne: number };
   commissions: (Commission & { customer: string | null })[]; payouts: Payout[];
 };
 
@@ -15,8 +16,12 @@ const S = {
     none: "No applications waiting.", decided: "Decided", code: "Code", approve: "Approve", reject: "Reject", approved: "approved", rejected: "rejected",
     oldTerms: "Sent under the old terms (25% recurring, 60 days). Tell the applicant the new terms before approving: 15% of each payment for the first 4 months, 30 days, SAR 200 minimum.",
     partners: "Partners", noPartners: "No partners yet.", referrals: "Referrals", earned: "Earned", paidOut: "Paid", balance: "Balance", payable: "Payable",
-    bank: "Bank", noBank: "no bank details yet", payout: "Mark payout paid", amount: "Amount SAR", date: "Date", reference: "Transfer reference",
-    payoutNote: `Only a payable balance (SAR ${PAYOUT_MIN_SAR} or more) can be paid down, never past it, and only to confirmed bank details.`, commissions: "Commissions", payouts: "Payouts",
+    bank: "Bank", noBank: "no bank details yet", payout: "Mark payout paid", amount: "Commission SAR", date: "Date", reference: "Transfer reference",
+    vat: "VAT paid on top SAR (optional)", wht: "Withholding tax borne SAR (optional)", vatCol: "VAT", whtCol: "Withholding",
+    payoutNote: `Only a payable balance (SAR ${PAYOUT_MIN_SAR} or more) can be paid down, never past it, and only to confirmed bank details. The partner receives the full commission: VAT paid on top and withholding tax borne are Thakeen's costs, recorded for the books, and do not change the balance. Enter the amounts actually paid.`, commissions: "Commissions", payouts: "Payouts",
+    flagVat: "VAT-registered: add VAT on payout", flagWht: "Outside Saudi Arabia: withholding tax may apply — ask your accountant", flagNoCountry: "Country not given: ask the partner to save their details again",
+    country: "Country", taxNumber: "Tax no.", taxTotals: (vat: string, wht: string) => `VAT paid on top: SAR ${vat} · withholding borne: SAR ${wht}`,
+    consent: (v: string, d: string) => `Agreed to the terms (version ${v}) on ${d}`, noConsent: "No terms consent recorded: sent before the form asked for it. Send the applicant the terms page before approving.",
     customer: "Customer", paymentDate: "Payment date", base: "Base SAR", commission: "Commission SAR", voided: "voided",
     manual: "Approve by email (no application)", name: "Name", email: "Email", loading: "Loading…", failed: "Failed", show: "Details", hide: "Hide", done: "Done",
     unconfirmed: (d: string) => `Unconfirmed: saved or changed on ${d}. Check the holder and IBAN with the partner by phone (the number on the application) before transferring.`,
@@ -29,7 +34,7 @@ const S = {
     errors: {
       code_taken: "That code is taken.", already_partner: "This email is already a partner.", member_login: "A team member login cannot be a partner.", bad_email: "Not a valid email.",
       bad_code: "3 to 16 letters A-Z or digits.", reserved_code: "A reserved word: choose another code.", below_minimum: `The balance is below SAR ${PAYOUT_MIN_SAR}.`,
-      over_balance: "More than the payable balance.", bad_amount: "Enter an amount.", bad_date: "A past or today's date.", bank_unconfirmed: "Confirm the bank details first.",
+      over_balance: "More than the payable balance.", bad_amount: "Enter an amount.", bad_vat: "VAT: a positive amount with at most two decimals, or empty.", bad_wht: "Withholding: a positive amount with at most two decimals, or empty.", bad_date: "A past or today's date.", bank_unconfirmed: "Confirm the bank details first.",
       changed: "The bank details changed since you loaded them. Reload and check again.", no_bank: "No bank details yet.", not_found: "Not found.",
     } as Record<string, string>,
   },
@@ -38,8 +43,12 @@ const S = {
     none: "لا طلبات بانتظار المراجعة.", decided: "طلبات تمت مراجعتها", code: "الكود", approve: "وافق", reject: "ارفض", approved: "مقبول", rejected: "مرفوض",
     oldTerms: "قُدّم بالشروط القديمة (25% متكررة، 60 يوماً). أبلغ المتقدم بالشروط الجديدة قبل الموافقة: 15% من كل دفعة لأول 4 أشهر، 30 يوماً، حد أدنى 200 ريال.",
     partners: "الشركاء", noPartners: "لا شركاء بعد.", referrals: "الإحالات", earned: "المكتسب", paidOut: "المدفوع", balance: "الرصيد", payable: "جاهز للصرف",
-    bank: "البنك", noBank: "لا بيانات بنكية بعد", payout: "سجّل تحويلاً مدفوعاً", amount: "المبلغ (ريال)", date: "التاريخ", reference: "مرجع التحويل",
-    payoutNote: `يُصرف الرصيد الجاهز فقط (${PAYOUT_MIN_SAR} ريال فأكثر) ولا يتجاوزه، وإلى بيانات بنكية مؤكدة فقط.`, commissions: "العمولات", payouts: "التحويلات",
+    bank: "البنك", noBank: "لا بيانات بنكية بعد", payout: "سجّل تحويلاً مدفوعاً", amount: "العمولة (ريال)", date: "التاريخ", reference: "مرجع التحويل",
+    vat: "ضريبة القيمة المضافة المدفوعة فوقها (ريال، اختياري)", wht: "ضريبة الاستقطاع التي تحمّلناها (ريال، اختياري)", vatCol: "ض. القيمة المضافة", whtCol: "الاستقطاع",
+    payoutNote: `يُصرف الرصيد الجاهز فقط (${PAYOUT_MIN_SAR} ريال فأكثر) ولا يتجاوزه، وإلى بيانات بنكية مؤكدة فقط. تصل الشريكَ عمولتُه كاملة: ضريبة القيمة المضافة المدفوعة فوقها وضريبة الاستقطاع تكاليف على ذكين تُسجَّل للدفاتر ولا تغيّر الرصيد. أدخل المبالغ المدفوعة فعلاً.`, commissions: "العمولات", payouts: "التحويلات",
+    flagVat: "مسجّل في ضريبة القيمة المضافة: أضف الضريبة على التحويل", flagWht: "خارج السعودية: قد تنطبق ضريبة الاستقطاع — اسأل محاسبك", flagNoCountry: "الدولة غير مذكورة: اطلب من الشريك حفظ بياناته مجدداً",
+    country: "الدولة", taxNumber: "الرقم الضريبي", taxTotals: (vat: string, wht: string) => `ضريبة القيمة المضافة المدفوعة: ${vat} ريال · الاستقطاع المتحمَّل: ${wht} ريال`,
+    consent: (v: string, d: string) => `وافق على الشروط (الإصدار ${v}) في ${d}`, noConsent: "لا موافقة مسجلة على الشروط: أُرسل قبل أن يطلبها النموذج. أرسل للمتقدم صفحة الشروط قبل الموافقة.",
     customer: "العميل", paymentDate: "تاريخ الدفعة", base: "الدفعة (ريال)", commission: "العمولة (ريال)", voided: "ملغاة",
     manual: "موافقة ببريد مباشرة (بلا طلب)", name: "الاسم", email: "البريد", loading: "جارٍ التحميل…", failed: "فشل", show: "التفاصيل", hide: "إخفاء", done: "تم",
     unconfirmed: (d: string) => `غير مؤكدة: حُفظت أو تغيّرت في ${d}. تحقّق من الاسم والآيبان مع الشريك هاتفياً (الرقم في طلبه) قبل التحويل.`,
@@ -52,7 +61,7 @@ const S = {
     errors: {
       code_taken: "الكود مستخدم.", already_partner: "هذا البريد شريك بالفعل.", member_login: "دخول عضو فريق لا يكون شريكاً.", bad_email: "بريد غير صحيح.",
       bad_code: "من 3 إلى 16 حرفاً لاتينياً أو رقماً.", reserved_code: "كلمة محجوزة: اختر كوداً آخر.", below_minimum: `الرصيد أقل من ${PAYOUT_MIN_SAR} ريال.`,
-      over_balance: "أكثر من الرصيد الجاهز.", bad_amount: "اكتب المبلغ.", bad_date: "تاريخ اليوم أو قبله.", bank_unconfirmed: "أكّد البيانات البنكية أولاً.",
+      over_balance: "أكثر من الرصيد الجاهز.", bad_amount: "اكتب المبلغ.", bad_vat: "ضريبة القيمة المضافة: مبلغ موجب بخانتين عشريتين على الأكثر، أو اتركها فارغة.", bad_wht: "الاستقطاع: مبلغ موجب بخانتين عشريتين على الأكثر، أو اتركه فارغاً.", bad_date: "تاريخ اليوم أو قبله.", bank_unconfirmed: "أكّد البيانات البنكية أولاً.",
       changed: "تغيّرت البيانات البنكية منذ فتحت الصفحة. أعد التحميل وتحقق مجدداً.", no_bank: "لا بيانات بنكية بعد.", not_found: "غير موجود.",
     } as Record<string, string>,
   },
@@ -70,7 +79,13 @@ function AppRow({ a, L, onAct }: { a: App; L: L; onAct: Act }) {
     <tr className="border-t border-ink/5 align-top">
       <td className="p-1"><p>{a.name}</p><p className="text-ink/60" dir="ltr">{a.email}</p><p className="text-ink/60" dir="ltr">{a.phone}</p></td>
       <td className="p-1"><p>{a.channel}</p><p className="text-ink/60">{a.audience}</p></td>
-      <td className="tnum p-1" dir="ltr">{a.at.slice(0, 10)}{a.at && a.at.slice(0, 10) < NEW_TERMS_FROM && <p data-old-terms className="max-w-56 text-sadu" dir="auto">{L.oldTerms}</p>}</td>
+      <td className="tnum p-1" dir="ltr">
+        {a.at.slice(0, 10)}
+        {a.at && a.at.slice(0, 10) < NEW_TERMS_FROM && <p data-old-terms className="max-w-56 text-sadu" dir="auto">{L.oldTerms}</p>}
+        {a.consentAt && a.termsVersion
+          ? <p data-consent className="max-w-56 text-oasis" dir="auto">{L.consent(a.termsVersion, a.consentAt.slice(0, 10))}</p>
+          : <p data-no-consent className="max-w-56 text-sadu" dir="auto">{L.noConsent}</p>}
+      </td>
       <td className="p-1">
         <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16))} aria-label={L.code} dir="ltr" className="input w-32 font-mono" />
         {bad && <p className="text-sadu">{L.codeErrors[bad]}</p>}
@@ -93,6 +108,8 @@ function PayoutForm({ p, L, onAct }: { p: PartnerRow; L: L; onAct: Act }) {
   const [amount, setAmount] = useState(p.payable ? String(p.payable) : "");
   const [date, setDate] = useState(() => ksaDay());
   const [reference, setReference] = useState("");
+  const [vat, setVat] = useState("");
+  const [wht, setWht] = useState("");
   const [id, setId] = useState(newPayoutId);
   const [busy, setBusy] = useState(false);
   return (
@@ -101,10 +118,14 @@ function PayoutForm({ p, L, onAct }: { p: PartnerRow; L: L; onAct: Act }) {
       if (busy) return;
       setBusy(true);
       try {
-        if (await onAct({ action: "payout", email: p.email, id, amountSar: Number(amount), date, reference })) { setId(newPayoutId()); setReference(""); }
+        // Empty tax fields are sent as absent; anything typed is sent as a number for the server to check.
+        const tax = (v: string) => (v.trim() ? Number(v) : undefined);
+        if (await onAct({ action: "payout", email: p.email, id, amountSar: Number(amount), vatSar: tax(vat), whtSar: tax(wht), date, reference })) { setId(newPayoutId()); setReference(""); setVat(""); setWht(""); }
       } finally { setBusy(false); }
     }} className="mt-2 flex flex-wrap items-end gap-2">
       <label className="grid gap-0.5"><span className="text-ink/60">{L.amount}</span><input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" dir="ltr" className="input w-28" /></label>
+      <label className="grid gap-0.5"><span className="text-ink/60">{L.vat}</span><input value={vat} onChange={(e) => setVat(e.target.value)} inputMode="decimal" dir="ltr" data-payout-vat className="input w-28" /></label>
+      <label className="grid gap-0.5"><span className="text-ink/60">{L.wht}</span><input value={wht} onChange={(e) => setWht(e.target.value)} inputMode="decimal" dir="ltr" data-payout-wht className="input w-28" /></label>
       <label className="grid gap-0.5"><span className="text-ink/60">{L.date}</span><input type="date" value={date} max={ksaDay()} onChange={(e) => setDate(e.target.value)} className="input" /></label>
       <label className="grid gap-0.5"><span className="text-ink/60">{L.reference}</span><input value={reference} onChange={(e) => setReference(e.target.value)} maxLength={80} dir="auto" className="input w-44" /></label>
       <button disabled={busy || p.payable <= 0 || !p.bankConfirmed} className="btn btn-primary btn-xs">{L.payout}</button>
@@ -114,9 +135,10 @@ function PayoutForm({ p, L, onAct }: { p: PartnerRow; L: L; onAct: Act }) {
 }
 
 /**
- * Founder console, Partners tab (rules 390, 398, 400): applications (approve with a code, or reject), partners with
- * referrals, balances and the IBAN in full (the founder's eyes only), bank confirmation, "mark payout paid" and voiding a
- * payout entered by mistake.
+ * Founder console, Partners tab (rules 390, 398, 400, 412, 414): applications (approve with a code, or reject) with the
+ * applicant's terms consent, partners with referrals, balances, the IBAN in full (the founder's eyes only), country, tax
+ * number and the tax flags, bank confirmation, "mark payout paid" with the optional VAT paid on top and withholding tax
+ * borne, and voiding a payout entered by mistake.
  */
 export default function PartnersPanel({ lang }: { lang: "ar" | "en" }) {
   const L = S[lang];
@@ -171,7 +193,7 @@ export default function PartnersPanel({ lang }: { lang: "ar" | "en" }) {
             <table className="w-full">
               <thead className="text-ink/60"><tr><th className="p-1 text-start">{L.email}</th><th className="p-1 text-start">{L.code}</th><th className="p-1">{L.referrals}</th><th className="p-1">{L.earned}</th><th className="p-1">{L.paidOut}</th><th className="p-1">{L.balance}</th><th className="p-1">{L.payable}</th><th className="p-1 text-start">{L.bank}</th><th /></tr></thead>
               <tbody>{data.partners.map((p) => (
-                <PartnerRows key={p.email} p={p} L={L} open={open === p.email} toggle={() => setOpen(open === p.email ? null : p.email)} onAct={act} />
+                <PartnerRows key={p.email} p={p} L={L} lang={lang} open={open === p.email} toggle={() => setOpen(open === p.email ? null : p.email)} onAct={act} />
               ))}</tbody>
             </table>
           </div>
@@ -181,7 +203,7 @@ export default function PartnersPanel({ lang }: { lang: "ar" | "en" }) {
   );
 }
 
-function PartnerRows({ p, L, open, toggle, onAct }: { p: PartnerRow; L: L; open: boolean; toggle: () => void; onAct: Act }) {
+function PartnerRows({ p, L, lang, open, toggle, onAct }: { p: PartnerRow; L: L; lang: "ar" | "en"; open: boolean; toggle: () => void; onAct: Act }) {
   return (
     <>
       <tr className="border-t border-ink/5 align-top">
@@ -200,6 +222,11 @@ function PartnerRows({ p, L, open, toggle, onAct }: { p: PartnerRow; L: L; open:
           {p.bank ? (
             <>
               <p dir="auto">{p.bank.holder}</p><p className="font-mono" dir="ltr">{p.bank.iban}</p>
+              {p.bank.country && <p>{L.country}: {countryName(p.bank.country, lang)} <span className="font-mono" dir="ltr">({p.bank.country})</span></p>}
+              {p.bank.taxNumber && <p>{L.taxNumber}: <span className="font-mono" dir="ltr">{p.bank.taxNumber}</span></p>}
+              {p.tax.vatRegistered && <p data-flag-vat className="max-w-64 font-semibold text-sadu">{L.flagVat}</p>}
+              {p.tax.outsideSaudi && <p data-flag-wht className="max-w-64 font-semibold text-sadu">{L.flagWht}</p>}
+              {p.tax.noCountry && <p data-flag-no-country className="max-w-64 text-sadu">{L.flagNoCountry}</p>}
               {p.bankConfirmed
                 ? <p className="text-oasis">{L.confirmedOn(p.bank.confirmedAt!.slice(0, 10))}</p>
                 : <>
@@ -214,16 +241,17 @@ function PartnerRows({ p, L, open, toggle, onAct }: { p: PartnerRow; L: L; open:
       {open && (
         <tr><td colSpan={9} className="bg-salt-dim/50 p-2">
           <PayoutForm p={p} L={L} onAct={onAct} />
+          <p data-tax-totals className="mt-1 text-ink/60" dir="auto">{L.taxTotals(sarText(p.tax.vatPaid), sarText(p.tax.whtBorne))}</p>
           <div className="mt-3 grid gap-3 lg:grid-cols-2">
             <div><p className="font-semibold">{L.commissions}</p>
               <table className="mt-1 w-full"><thead className="text-ink/60"><tr><th className="text-start">{L.customer}</th><th>{L.paymentDate}</th><th>{L.base}</th><th>{L.commission}</th></tr></thead>
                 <tbody>{p.commissions.map((c) => <tr key={c.id} className={c.voidedAt ? "text-ink/40 line-through" : ""}><td dir="ltr"><span className="font-mono">{c.label}</span> {c.customer ?? <span className="text-ink/50">({L.deleted})</span>}</td><td className="tnum text-center" dir="ltr">{c.paymentDate}</td><td className="tnum text-center" dir="ltr">{sarText(c.baseSar)}</td><td className="tnum text-center" dir="ltr">{sarText(c.sar)}{c.voidedAt ? ` (${L.voided})` : ""}</td></tr>)}</tbody></table>
             </div>
             <div><p className="font-semibold">{L.payouts}</p>
-              <table className="mt-1 w-full"><thead className="text-ink/60"><tr><th>{L.date}</th><th>{L.amount}</th><th className="text-start">{L.reference}</th><th /></tr></thead>
+              <table className="mt-1 w-full"><thead className="text-ink/60"><tr><th>{L.date}</th><th>{L.amount}</th><th>{L.vatCol}</th><th>{L.whtCol}</th><th className="text-start">{L.reference}</th><th /></tr></thead>
                 <tbody>{p.payouts.map((x) => (
                   <tr key={x.id} className={x.voidedAt ? "text-ink/40 line-through" : ""}>
-                    <td className="tnum text-center" dir="ltr">{x.date}</td><td className="tnum text-center" dir="ltr">{sarText(x.sar)}</td><td dir="auto">{x.reference || "—"}{x.voidedAt && x.voidReason ? ` · ${x.voidReason}` : ""}</td>
+                    <td className="tnum text-center" dir="ltr">{x.date}</td><td className="tnum text-center" dir="ltr">{sarText(x.sar)}</td><td className="tnum text-center" dir="ltr">{x.vatSar ? sarText(x.vatSar) : "—"}</td><td className="tnum text-center" dir="ltr">{x.whtSar ? sarText(x.whtSar) : "—"}</td><td dir="auto">{x.reference || "—"}{x.voidedAt && x.voidReason ? ` · ${x.voidReason}` : ""}</td>
                     <td>{x.voidedAt ? L.voided : <button onClick={() => { const reason = prompt(L.voidPayoutReason); if (reason !== null) void onAct({ action: "void_payout", email: p.email, id: x.id, reason }); }} className="text-sadu underline">{L.voidPayout}</button>}</td>
                   </tr>
                 ))}</tbody></table>

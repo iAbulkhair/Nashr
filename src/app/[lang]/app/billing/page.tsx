@@ -11,7 +11,7 @@ import { paceStart, runway } from "@/lib/usage-view";
 import ReadOnlyNote from "@/components/app/ReadOnlyNote";
 import { OFFER_COPY, OfferBanner } from "@/components/app/BillingOffer";
 import PartnerCodeForm from "@/components/app/PartnerCodeForm";
-import { grantEarlyOffer, lastDayOfferOwed, openOffer } from "@/lib/partners";
+import { grantEarlyOffer, lastDayOfferOwed, offerLastDay, openOffer } from "@/lib/partners";
 import ChatAllowanceCard from "@/components/app/ChatAllowanceCard";
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
@@ -40,14 +40,17 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const trial = chat.period === "trial";
   // A trial's messages count from signup for the whole trial; a plan's from the 1st (or from signup, when later).
   const chatRunway = runway({ used: chat.used, left: chat.left, periodStart: trial ? u.createdAt : paceStart(u.createdAt, now), resetAt: trial ? null : nextReset, trialEnds: u.trialEnds, now });
-  // The 15% first-month offer (src/lib/partners.ts, rules 393-395), owner only. A trial in its last day, or ended less
-  // than 3 days ago, that has none yet gets the early-partner offer here (the cron grants it on the last day; this covers
-  // a missed run). Never while the founder impersonates the account: looking is not the customer's visit. Fixed-price
-  // pay links cannot carry a discount, so a discounted month is activated on WhatsApp for the discounted amount.
-  // Shown while the account is still on its trial: a paid plan needs no "activate" offer (the console still applies an
-  // open offer to the first payment it records). A busy lock only delays the grant to the next visit.
+  // The 15% first-month offer (src/lib/partners.ts, rules 393-395, 409-410), owner only. A trial from its last day
+  // through the early-partner offer's last day (7 days after the trial's last day) that has none yet gets it here (the
+  // cron grants it on the last day; this covers a missed run while the offer can still be used). Never while the founder
+  // impersonates the account: looking is not the customer's visit. An early-partner offer past its last day is not shown
+  // (`openOffer`). The discount comes off the price before VAT and VAT is computed on the discounted price (rule 409).
+  // Fixed-price pay links cannot carry a discount, so a discounted month is activated on WhatsApp for the discounted
+  // amount. Shown while the account is still on its trial: a paid plan needs no "activate" offer (the console still
+  // applies an open offer to the first payment it records). A busy lock only delays the grant to the next visit.
   if (owner && u.actor?.kind !== "founder" && lastDayOfferOwed(u) && (await grantEarlyOffer(u.email, (x) => lastDayOfferOwed(x)).catch(() => false))) u.firstMonthOffer = { kind: "early", pct: FIRST_MONTH_DISCOUNT_PCT, at: new Date().toISOString() };
   const offer = owner && u.plan === "trial" ? openOffer(u) : null;
+  const offerUntil = offer ? offerLastDay(u, offer) : null;
   const O = OFFER_COPY[lang];
   const waNumber = (process.env.SUPPORT_WHATSAPP ?? "").replace(/\D/g, "");
   const offerHref = (k: SelfServePlan) => (waNumber ? `https://wa.me/${waNumber}?text=${encodeURIComponent(O.wa(u.email, card(k)?.name ?? k, firstMonthPriceSar(k)))}` : null);
@@ -69,7 +72,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
           <p className="mt-2 text-sm text-mist-dim">{lang === "ar" ? "خطة أسبوعية كل أحد، ملخص كل صباح، وتتعلم من كل تعديل. ألغِ في أي وقت." : "A weekly plan every Sunday, a brief every morning, and she learns from every edit. Cancel anytime."}</p>
         </div>
       )}
-      {offer && <OfferBanner lang={lang} kind={offer.kind} code={u.referredBy?.code} />}
+      {offer && <OfferBanner lang={lang} kind={offer.kind} code={u.referredBy?.code} until={offerUntil} />}
       {owner && u.plan === "trial" && !u.referredBy && !u.firstPaidOn && <PartnerCodeForm lang={lang} />}
       {owner && <p className="mt-6 text-ink/70">{t.billing.sub}</p>}
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

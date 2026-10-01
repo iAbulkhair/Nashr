@@ -225,7 +225,8 @@ export const formatCount = (n: number): string => {
 export const FIRST_MONTH_DISCOUNT_PCT = 15;
 /**
  * The first month's price after the discount, in whole riyals and excluding VAT like every price here: the list price
- * less 15%, rounded to the nearest riyal (Starter 254.15 → 254). Payments are activated by hand, so this is the amount the
- * billing page quotes on WhatsApp and the founder console expects.
+ * less 15%, rounded to the nearest riyal (Starter 254.15 → 254). The discount is taken before VAT, and VAT is then
+ * computed on this discounted price (the founder's decision of 2026-10-01, rule 409). Payments are activated by hand,
+ * so this is the amount the billing page quotes on WhatsApp (plus VAT) and the founder console expects.
  */
 export const firstMonthPriceSar = (plan: SelfServePlan): number => Math.round((PLAN_PRICE_SAR[plan] * (100 - FIRST_MONTH_DISCOUNT_PCT)) / 100);

@@ -9,7 +9,8 @@ import { lifecyclePlan } from "./lifecycle";
 import { FIRST_MONTH_DISCOUNT_PCT, SELF_SERVE_PLANS, firstMonthPriceSar, type SelfServePlan } from "./pricing";
 import {
   CUSTOMER_LABEL_PREFIX, PARTNER_COOKIE, PARTNER_COOKIE_DAYS, balances, bankConfirmed, codeProblem, commissionDecision, commissionSar,
-  ksaDay, maskIban, normalizeCode, parsePartnerCookie, payoutProblem, referralStatus, saIban, suggestCode, validAmount, validDay,
+  earlyOfferLastDay, ksaDay, maskIban, normalizeCode, optionalTax, parsePartnerCookie, payoutProblem, referralStatus, suggestCode,
+  taxFlags, taxNumberOf, taxTotals, validAmount, validCountry, validDay, validIban,
   type Attribution, type Bank, type Commission, type LedgerRow, type NotCounted, type Payout, type ReferralStatus,
 } from "./partner-rules";
 
@@ -41,7 +42,11 @@ export type Payment = {
   commission?: { partner: string; sar: number }; notCounted?: NotCounted;
   voidedAt?: string; voidedBy?: string; voidReason?: string;
 };
-export type Application = { id: string; name: string; email: string; phone: string; channel: string; audience: string; lang: "ar" | "en"; at: string };
+/**
+ * A public application. `consentAt` and `termsVersion`: when the applicant agreed to the programme terms and which
+ * version (`PARTNER_TERMS_VERSION`, rule 414); missing on applications sent before consent was asked.
+ */
+export type Application = { id: string; name: string; email: string; phone: string; channel: string; audience: string; lang: "ar" | "en"; at: string; consentAt?: string; termsVersion?: string };
 export type Decision = { status: "approved" | "rejected"; code?: string; at: string; by: string };
 
 const partnerKey = (email: string) => `partner:${email}`;
@@ -161,7 +166,8 @@ export async function afterSignup(email: string, found: SignupPartner): Promise<
 export type ClaimError = "bad_partner_code" | "self_referral" | "already_attributed" | "already_paid";
 /**
  * The billing page's partner-code field: an account still on its trial, never attributed and never paid, takes a
- * partner's code. The account keeps the one first-month offer it may already have (discounts never stack).
+ * partner's code. The account keeps the one first-month offer it may already have and can still use (discounts never
+ * stack); an early-partner offer that has ended unused (rule 410) gives way to the code's offer.
  */
 export async function claimPartnerCode(u: User, raw: unknown): Promise<{ ok: true; code: string } | { ok: false; error: ClaimError }> {
   const partner = await partnerByCode(raw);
@@ -174,7 +180,7 @@ export async function claimPartnerCode(u: User, raw: unknown): Promise<{ ok: tru
     if (x.plan !== "trial" || x.firstPaidOn) return "already_paid";
     const at = new Date().toISOString();
     x.referredBy = { partner: partner.email, code: partner.code, at, via: "code", ref: newRef() };
-    if (!x.firstMonthOffer) x.firstMonthOffer = { kind: "partner", pct: FIRST_MONTH_DISCOUNT_PCT, at };
+    if (!openOffer(x)) x.firstMonthOffer = { kind: "partner", pct: FIRST_MONTH_DISCOUNT_PCT, at };
     await saveUser(x);
     return null;
   });
@@ -185,22 +191,36 @@ export async function claimPartnerCode(u: User, raw: unknown): Promise<{ ok: tru
 
 // ---- The first-month offer ----
 
-/** The unused first-month offer of an account, or null. One per account, whichever came first. */
-export const openOffer = (u: Pick<User, "firstMonthOffer" | "firstPaidOn">): FirstMonthOffer | null =>
+type OfferHolder = Pick<User, "firstMonthOffer" | "firstPaidOn" | "trialEnds">;
+/**
+ * The last Riyadh day an offer can be used, or null when it never ends: the early-partner offer ends 7 days after the
+ * trial's last day (rule 410); a partner code's offer has no end date.
+ */
+export const offerLastDay = (u: Pick<User, "trialEnds">, offer: Pick<FirstMonthOffer, "kind">): string | null =>
+  offer.kind === "early" ? earlyOfferLastDay(u.trialEnds) : null;
+/** The account's first-month offer while no recorded payment took it and it has no first payment, whatever the date. */
+const unusedOffer = (u: OfferHolder): FirstMonthOffer | null =>
   u.firstMonthOffer && !u.firstMonthOffer.usedAt && !u.firstPaidOn ? u.firstMonthOffer : null;
+/**
+ * The account's first-month offer that can still be used today, or null: one per account, whichever came first, unused,
+ * and for the early-partner offer not past its last day (rule 410). An expired offer is neither shown nor applied.
+ */
+export const openOffer = (u: OfferHolder, now: number = Date.now()): FirstMonthOffer | null => {
+  const offer = unusedOffer(u);
+  const last = offer ? offerLastDay(u, offer) : null;
+  return offer && (!last || ksaDay(now) <= last) ? offer : null;
+};
 /** The cron's moment: the day-3 trial note is due (src/lib/lifecycle.ts `lifecyclePlan`), whether or not mail is set up. */
 export const earlyOfferDue = (u: User, now: number = Date.now()) =>
   !u.firstMonthOffer && !u.firstPaidOn && lifecyclePlan(u, now).some(([k, due]) => k === "day3" && due);
-/** How long after the trial's end the billing page still grants a missed early-partner offer (a missed cron run). */
-export const OFFER_GRACE_MS = 72 * 36e5;
 /**
- * The billing page: a trial in its last day, or ended less than 3 days ago, with no offer yet: the cron's moment plus a
- * grace for a missed run. A trial that ended long before is not owed it (the founder granted the offer for the last day
- * of the trial; whether older trials get it is an open founder question).
+ * The billing page grants the early-partner offer to a trial with none yet from the start of its last 24 hours through
+ * the offer's last day (7 days after the trial's last day, rule 410): the cron's moment, and a missed run made up while
+ * the offer could still be used. Never once that day has passed: an offer that would already be expired is not granted.
  */
 export const lastDayOfferOwed = (u: User, now: number = Date.now()) => {
   const left = new Date(u.trialEnds).getTime() - now;
-  return u.plan === "trial" && !u.firstMonthOffer && !u.firstPaidOn && left <= 24 * 36e5 && left > -OFFER_GRACE_MS;
+  return u.plan === "trial" && !u.firstMonthOffer && !u.firstPaidOn && left <= 24 * 36e5 && ksaDay(now) <= earlyOfferLastDay(u.trialEnds);
 };
 /** Grant the early-partner offer when `due` still holds under the lock. True when it was granted now. */
 export async function grantEarlyOffer(email: string, due: (u: User) => boolean): Promise<boolean> {
@@ -273,8 +293,10 @@ async function settle(e: string, u: User, all: Record<string, Payment>, now: str
 const cleanText = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, max) : "");
 
 /**
- * Record a payment the founder received (SAR, excluding VAT). Under the customer's lock: the first payment uses the
- * account's first-month offer (never a payment dated before the offer was granted); then every payment's commission is
+ * Record a payment the founder received (SAR, excluding VAT: the commission base is the amount before VAT, rule 409).
+ * Under the customer's lock: the first payment uses the account's first-month offer when it is dated on or after the
+ * day the offer was granted and, for the early-partner offer, on or before its last day (rule 410: the day the money
+ * arrived counts, so a payment made in time and recorded later still uses it); then every payment's commission is
  * re-taken (`settle`): 15% to the partner's ledger when the account is attributed, paid on or after attribution and within
  * its 30 days, inside the 4-month window and not a self or team referral. The id may come from the console, so a retried
  * request records nothing twice.
@@ -294,8 +316,9 @@ export async function recordPayment(email: string, input: PaymentInput, by: stri
     if (all[id]) return { ok: true as const, payment: all[id], already: true };
     const live = Object.values(all).filter((p) => !p.voidedAt);
     const pay: Payment = { id, amountSar, plan, date, reference: cleanText(input.reference, 80), recordedAt: new Date().toISOString(), recordedBy: by };
-    const offer = openOffer(u);
-    if (offer && live.length === 0 && date >= ksaDay(new Date(offer.at).getTime())) {
+    const offer = unusedOffer(u);
+    const last = offer ? offerLastDay(u, offer) : null;
+    if (offer && live.length === 0 && date >= ksaDay(new Date(offer.at).getTime()) && (!last || date <= last)) {
       pay.offer = offer.kind;
       if ((SELF_SERVE_PLANS as readonly string[]).includes(plan)) pay.expectedSar = firstMonthPriceSar(plan as SelfServePlan);
       u.firstMonthOffer = { ...offer, usedAt: pay.recordedAt, paymentId: id };
@@ -338,8 +361,12 @@ export async function paymentsView(email: string) {
   if (!u) return null;
   const payments = Object.values(all).sort((a, b) => (a.date === b.date ? (a.recordedAt < b.recordedAt ? 1 : -1) : a.date < b.date ? 1 : -1));
   const offer = openOffer(u);
+  const unused = unusedOffer(u);
+  // `until`: the offer's last day (the early-partner offer's, rule 410). `expired`: unused and past it, so a payment
+  // recorded now uses it only when dated on or before `until`.
+  const until = u.firstMonthOffer ? offerLastDay(u, u.firstMonthOffer) : null;
   return {
-    payments, firstPaidOn: u.firstPaidOn ?? null, offer: u.firstMonthOffer ?? null, open: !!offer,
+    payments, firstPaidOn: u.firstPaidOn ?? null, offer: u.firstMonthOffer ?? null, open: !!offer, until, expired: !!unused && !offer,
     expected: offer ? offerPrices() : null,
     referredBy: u.referredBy ? { ...u.referredBy, status: referralStatus(u.referredBy.at, u.firstPaidOn) } : null,
   };
@@ -347,13 +374,17 @@ export async function paymentsView(email: string) {
 
 // ---- Applications and partners (founder console) ----
 
-export async function listApplications(): Promise<(Application & { decision: Decision | null; suggested: string })[]> {
+export async function listApplications(): Promise<(Omit<Application, "consentAt" | "termsVersion"> & { consentAt: string | null; termsVersion: string | null; decision: Decision | null; suggested: string })[]> {
   const [rows, decisions] = await Promise.all([db.lrange(APPLICATIONS, 0, 499), db.hgetall<Decision>(DECISIONS)]);
   return rows.flatMap((r) => {
     try {
       const a = JSON.parse(r) as Partial<Application>;
       const id = applicationId(a);
-      return [{ id, name: a.name ?? "", email: a.email ?? "", phone: a.phone ?? "", channel: a.channel ?? "", audience: a.audience ?? "", lang: a.lang === "en" ? "en" as const : "ar" as const, at: a.at ?? "", decision: decisions[id] ?? null, suggested: suggestCode(a.name ?? "", a.email ?? "") }];
+      return [{
+        id, name: a.name ?? "", email: a.email ?? "", phone: a.phone ?? "", channel: a.channel ?? "", audience: a.audience ?? "", lang: a.lang === "en" ? "en" as const : "ar" as const, at: a.at ?? "",
+        consentAt: a.consentAt ?? null, termsVersion: a.termsVersion ?? null,
+        decision: decisions[id] ?? null, suggested: suggestCode(a.name ?? "", a.email ?? ""),
+      }];
     } catch {
       return [];
     }
@@ -400,16 +431,21 @@ export async function rejectApplication(appId: unknown, by: string): Promise<boo
   return true;
 }
 
-export type PayoutError = "not_found" | "bad_id" | "bad_date" | "bad_amount" | "below_minimum" | "over_balance" | "bank_unconfirmed";
+export type PayoutError = "not_found" | "bad_id" | "bad_date" | "bad_amount" | "bad_vat" | "bad_wht" | "below_minimum" | "over_balance" | "bank_unconfirmed";
 /**
  * Mark a bank transfer paid (rule 398). Only a payable balance (SAR 200 or more) is paid down, never past it, and only to
  * bank details the founder confirmed after their last change, under the partner's lock. The id may come from the console,
- * so a double press or a retry records the transfer once.
+ * so a double press or a retry records the transfer once. `vatSar` (VAT paid on top to a VAT-registered partner) and
+ * `whtSar` (withholding tax Thakeen bore) are optional and recorded for the books only (rule 412): the partner receives
+ * the full commission, so neither changes the balance or the payable check.
  */
-export async function recordPayout(email: string, input: { id?: unknown; amountSar: unknown; date: unknown; reference?: unknown }, by: string): Promise<{ ok: true; payout: Payout; already?: boolean } | { ok: false; error: PayoutError }> {
+export async function recordPayout(email: string, input: { id?: unknown; amountSar: unknown; vatSar?: unknown; whtSar?: unknown; date: unknown; reference?: unknown }, by: string): Promise<{ ok: true; payout: Payout; already?: boolean } | { ok: false; error: PayoutError }> {
   const e = normalizeEmail(email);
   if (input.id !== undefined && !(typeof input.id === "string" && /^po_[a-f0-9]{8,32}$/.test(input.id))) return { ok: false, error: "bad_id" };
   if (!validDay(input.date) || input.date > today()) return { ok: false, error: "bad_date" };
+  const vat = optionalTax(input.vatSar), wht = optionalTax(input.whtSar);
+  if (!vat.ok) return { ok: false, error: "bad_vat" };
+  if (!wht.ok) return { ok: false, error: "bad_wht" };
   if (!(await getPartner(e))) return { ok: false, error: "not_found" };
   const date = input.date;
   const id = (input.id as string | undefined) ?? newId("po");
@@ -421,7 +457,10 @@ export async function recordPayout(email: string, input: { id?: unknown; amountS
     if (!bankConfirmed(p.bank)) return { ok: false as const, error: "bank_unconfirmed" as const };
     const problem = payoutProblem(Object.values(ledger), input.amountSar);
     if (problem) return { ok: false as const, error: problem };
-    const payout: Payout = { kind: "payout", id, sar: input.amountSar as number, date, reference: cleanText(input.reference, 80), at: new Date().toISOString(), by };
+    const payout: Payout = {
+      kind: "payout", id, sar: input.amountSar as number, ...(vat.sar ? { vatSar: vat.sar } : {}), ...(wht.sar ? { whtSar: wht.sar } : {}),
+      date, reference: cleanText(input.reference, 80), at: new Date().toISOString(), by,
+    };
     await db.hset(ledgerKey(e), `p:${id}`, payout);
     return { ok: true as const, payout };
   });
@@ -463,7 +502,8 @@ const byNewest = <T extends { at: string }>(a: T, b: T) => (a.at < b.at ? 1 : -1
  * Every partner for the founder: code, referrals, balances, commissions, payouts and bank details in full, whether the
  * bank details are confirmed, and whether the partner's account was created after the approval (the address was then
  * claimed by whoever signed up with it first: confirm the person before paying). A commission shows its customer's email
- * while that customer is still a referral; a deleted customer shows only the label.
+ * while that customer is still a referral; a deleted customer shows only the label. `tax`: the flags the founder checks
+ * before a transfer (VAT-registered, outside Saudi Arabia, rule 412), and the VAT paid and withholding borne so far.
  */
 export async function listPartners() {
   const emails = await db.smembers(PARTNERS);
@@ -485,6 +525,7 @@ export async function listPartners() {
       email: p.email, name: p.name, code: p.code, approvedAt: p.approvedAt, bank: p.bank ?? null, bankConfirmed: bankConfirmed(p.bank),
       accountAfterApproval: !!owner && (p.hadAccount === undefined ? owner.createdAt > p.approvedAt : !p.hadAccount), hasAccount: !!owner, referrals: refSets[i].length,
       ...balances(rows),
+      tax: { ...taxFlags(p.bank), ...taxTotals(rows) },
       commissions: rows.filter((r): r is Commission => r.kind === "commission").sort(byNewest).slice(0, 100)
         .map((c) => ({ ...c, customer: byLabel.get(`${e}|${c.label}`) ?? null })),
       payouts: rows.filter((r): r is Payout => r.kind === "payout").sort(byNewest),
@@ -515,32 +556,43 @@ export async function partnerDashboard(email: string, now: number = Date.now()) 
   }).sort((a, b) => (a.signedUpOn < b.signedUpOn ? 1 : -1));
   return {
     code: partner.code, name: partner.name,
-    bank: partner.bank ? { holder: partner.bank.holder, iban: maskIban(partner.bank.iban), savedAt: partner.bank.savedAt, confirmed: bankConfirmed(partner.bank) } : null,
+    bank: partner.bank ? {
+      holder: partner.bank.holder, iban: maskIban(partner.bank.iban), country: partner.bank.country ?? null, taxNumber: partner.bank.taxNumber ?? null,
+      savedAt: partner.bank.savedAt, confirmed: bankConfirmed(partner.bank),
+    } : null,
     referrals,
     ...balances(rows),
     commissions: commissions.sort(byNewest).slice(0, 200).map((c) => ({ label: c.label, paymentDate: c.paymentDate, baseSar: c.baseSar, sar: c.sar, voided: !!c.voidedAt })),
-    payouts: rows.filter((r): r is Payout => r.kind === "payout").sort(byNewest).map((p) => ({ date: p.date, sar: p.sar, reference: p.reference, voided: !!p.voidedAt })),
+    // The VAT Thakeen paid on top is the partner's own money and shows; the withholding Thakeen bore is its own cost.
+    payouts: rows.filter((r): r is Payout => r.kind === "payout").sort(byNewest).map((p) => ({ date: p.date, sar: p.sar, vatSar: p.vatSar ?? 0, reference: p.reference, voided: !!p.voidedAt })),
   };
 }
 
-export type BankError = "not_partner" | "bad_holder" | "bad_iban";
+export type BankError = "not_partner" | "bad_holder" | "bad_iban" | "bad_country" | "bad_tax_number";
+export type BankInput = { holder?: unknown; iban?: unknown; country?: unknown; taxNumber?: unknown };
 /**
- * The partner's own bank details: account holder and a valid Saudi IBAN. Never logged; the partner gets it back masked.
- * Every save clears the founder's confirmation, so no payout is marked paid to details nobody checked with the partner.
+ * The partner's own payout details (rule 411): account holder, any country's valid IBAN, the country the partner lives
+ * in, and an optional VAT or tax registration number. Never logged; the partner gets the IBAN back masked. Every save
+ * clears the founder's confirmation, so no payout is marked paid to details nobody checked with the partner.
  */
-export async function saveBank(email: string, holderRaw: unknown, ibanRaw: unknown): Promise<{ ok: true; bank: { holder: string; iban: string } } | { ok: false; error: BankError }> {
-  const holder = cleanText(holderRaw, 80);
+export async function saveBank(email: string, input: BankInput): Promise<{ ok: true; bank: { holder: string; iban: string; country: string; taxNumber: string | null } } | { ok: false; error: BankError }> {
+  const holder = cleanText(input.holder, 80);
   if (holder.length < 2) return { ok: false, error: "bad_holder" };
-  const iban = saIban(ibanRaw);
+  const iban = validIban(input.iban);
   if (!iban) return { ok: false, error: "bad_iban" };
+  const country = validCountry(input.country);
+  if (!country) return { ok: false, error: "bad_country" };
+  const taxNumber = taxNumberOf(input.taxNumber);
+  if (taxNumber === "bad") return { ok: false, error: "bad_tax_number" };
   const e = normalizeEmail(email);
   const res = await withPartnerLock(e, async () => {
     const p = await getPartner(e);
     if (!p) return false;
-    await db.set(partnerKey(e), { ...p, bank: { holder, iban, savedAt: new Date().toISOString() } } satisfies Partner);
+    const bank: Bank = { holder, iban, country, ...(taxNumber ? { taxNumber } : {}), savedAt: new Date().toISOString() };
+    await db.set(partnerKey(e), { ...p, bank } satisfies Partner);
     return true;
   });
-  return res ? { ok: true, bank: { holder, iban: maskIban(iban) } } : { ok: false, error: "not_partner" };
+  return res ? { ok: true, bank: { holder, iban: maskIban(iban), country, taxNumber: taxNumber ?? null } } : { ok: false, error: "not_partner" };
 }
 
 // ---- Account deletion (src/lib/account.ts `wipeAccount`) ----

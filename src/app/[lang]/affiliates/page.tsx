@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { dict, isLang } from "@/lib/i18n";
@@ -37,7 +38,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
       <main className="mx-auto max-w-4xl px-4 py-16 sm:px-6">
         <p className="eyebrow">{ar ? "برنامج الشركاء" : "Partner program"}</p>
         <h1 className="mt-3 font-display text-4xl font-bold text-oasis sm:text-5xl">{ar ? `اكسب ${C}% من كل دفعة لأول ${M} أشهر، وعميلك يوفّر ${D}% على شهره الأول.` : `Earn ${C}% of every payment for ${M} months, and your customer saves ${D}% on their first month.`}</h1>
-        <p className="mt-4 max-w-2xl text-lg text-ink/70">{ar ? "للوكالات والمستشارين وصنّاع المحتوى والنشرات البريدية في الخليج. لك كود خاص بك ورابط، وصفحة شراكة داخل حسابك في ذكين تتابع منها إحالاتك وعمولاتك ودفعاتك." : "For Gulf agencies, consultants, creators and newsletters. You get your own code and link, and a partner page inside your Thakeen account to follow your referrals, commissions and payouts."}</p>
+        <p className="mt-4 max-w-2xl text-lg text-ink/70">{ar ? "للوكالات والمستشارين وصنّاع المحتوى والنشرات البريدية، من أي دولة. لك كود خاص بك ورابط، وصفحة شراكة داخل حسابك في ذكين تتابع منها إحالاتك وعمولاتك ودفعاتك." : "For agencies, consultants, creators and newsletters, in any country. You get your own code and link, and a partner page inside your Thakeen account to follow your referrals, commissions and payouts."}</p>
         <div className="mt-10 grid gap-4 sm:grid-cols-4">{items.map(([n, l]) => <div key={l} className="card card-sm"><p className="page-title" dir="ltr">{n}</p><p className="mt-1 text-sm text-ink/70">{l}</p></div>)}</div>
         <div className="mt-12 grid gap-10 lg:grid-cols-2">
           <div>
@@ -50,9 +51,10 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
             </ol>
             <h2 className="mt-8 font-display text-2xl font-bold">{ar ? "الشروط" : "Terms"}</h2>
             <ul className="mt-4 space-y-2 text-sm text-ink/70">{(ar
-              ? ["لا إحالة ذاتية: حسابك أنت أو أعضاء فريقك لا يُحسبون.", "إذا أُلغيت دفعة أو استُردّت تُلغى عمولتها.", `خصم عميلك ${D}% على الشهر الأول فقط، ولا يجتمع مع خصم آخر.`, "لا إعلانات مدفوعة على اسم «ذكين» أو «نور»."]
-              : ["No self-referral: your own account or your team members do not count.", "If a payment is voided or refunded, its commission is voided.", `Your customer's ${D}% is on the first month only and does not combine with another discount.`, "No paid search on the 'Thakeen' or 'Noor' brand."]
+              ? ["لا إحالة ذاتية: حسابك أنت أو أعضاء فريقك لا يُحسبون.", "إذا أُلغيت دفعة أو استُردّت تُلغى عمولتها.", `العمولة على الدفعة قبل ضريبة القيمة المضافة، وخصم عميلك ${D}% على الشهر الأول فقط قبل الضريبة، ولا يجتمع مع خصم آخر.`, "يتحمّل ذكين ضريبة القيمة المضافة على العمولة وضريبة الاستقطاع حيث تنطبق.", "لا إعلانات مدفوعة على اسم «ذكين» أو «Thakeen»، ولا رسائل مزعجة، واذكر أنها شراكة مدفوعة."]
+              : ["No self-referral: your own account or your team members do not count.", "If a payment is voided or refunded, its commission is voided.", `Commission is on the payment before VAT, and your customer's ${D}% is off the first month only, before VAT, and does not combine with another discount.`, "Thakeen bears VAT on the commission and withholding tax where it applies.", "No paid ads on the names ذكين / Thakeen, no spam, and say it is a paid partnership."]
             ).map((x) => <li key={x}>• {x}</li>)}</ul>
+            <p className="mt-4 text-sm"><Link href={`/${lang}/affiliates/terms`} data-terms-link className="text-oasis underline">{ar ? "اقرأ شروط برنامج الشركاء كاملة" : "Read the full partner programme terms"}</Link></p>
           </div>
           <AffiliateForm lang={lang} />
         </div>

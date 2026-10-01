@@ -33,6 +33,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/resources", unique: { en: "Learn, try and compare", ar: "تعلّم، جرّب، وقارن" }, ownTitle: true },
   { path: "/updates", unique: { en: "What we shipped, and what we build next", ar: "ما أطلقناه، وما نبنيه بعده" }, ownTitle: true },
   { path: "/affiliates", unique: { en: "Earn 15% of every payment", ar: "اكسب 15% من كل دفعة" }, ownTitle: true },
+  { path: "/affiliates/terms", unique: { en: "Partner programme terms", ar: "شروط برنامج الشركاء" }, ownTitle: true },
   { path: "/ai-marketing-agent", unique: { en: "What is an AI Marketing Agent?", ar: "ما هو وكيل التسويق" }, ownTitle: true },
   { path: "/agents/noor", unique: { en: "Noor", ar: "نور" }, ownTitle: true },
   { path: "/tools/hook-generator", unique: { en: "Hook Generator", ar: "مولّد هوكات" }, ownTitle: true },

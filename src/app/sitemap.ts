@@ -15,7 +15,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const posts = new Map(postIndex().map((p) => [p.slug, p.date]));
   const paths: string[] = [];
   for (const l of LANGS) {
-    paths.push(`/${l}`, `/${l}/pricing`, `/${l}/ai-marketing-agent`, `/${l}/tools`, `/${l}/blog`, `/${l}/affiliates`, `/${l}/help`, `/${l}/privacy`, `/${l}/terms`);
+    paths.push(`/${l}`, `/${l}/pricing`, `/${l}/ai-marketing-agent`, `/${l}/tools`, `/${l}/blog`, `/${l}/affiliates`, `/${l}/affiliates/terms`, `/${l}/help`, `/${l}/privacy`, `/${l}/terms`);
     paths.push(`/${l}/agents`, `/${l}/customers`, `/${l}/enterprise`, `/${l}/resources`, `/${l}/updates`);
     for (const a of AGENT_SLUGS) paths.push(`/${l}/agents/${a}`);
     for (const t of TOOLS) paths.push(`/${l}/tools/${t.slug}`);

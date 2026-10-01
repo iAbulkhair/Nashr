@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import type { Lang } from "@/lib/i18n";
 import type { partnerDashboard } from "@/lib/partners";
 import { PARTNER_COPY } from "@/lib/partner-copy";
@@ -17,15 +18,19 @@ function CopyButton({ text, label, done }: { text: string; label: string; done: 
 }
 
 /**
- * The partner page body (rule 399). Everything shown comes from `partnerDashboard`: no customer name or email (each
- * referral is a stable label), the IBAN masked. The bank form posts to PUT /api/partner, owner only.
+ * The partner page body (rules 399, 411-413). Everything shown comes from `partnerDashboard`: no customer name or email
+ * (each referral is a stable label), the IBAN masked. The bank form posts to PUT /api/partner, owner only: any country's
+ * IBAN, the country the partner lives in (the options come from the server, `countryOptions`) and an optional VAT or
+ * tax registration number. The page links the programme terms.
  */
-export default function PartnerPanel({ lang, link, data, bankEditable }: { lang: Lang; link: string; data: Data; bankEditable: boolean }) {
+export default function PartnerPanel({ lang, link, data, bankEditable, countries }: { lang: Lang; link: string; data: Data; bankEditable: boolean; countries: [string, string][] }) {
   const S = PARTNER_COPY[lang];
   const share = S.share(data.code, link);
   const [bank, setBank] = useState(data.bank);
   const [holder, setHolder] = useState(data.bank?.holder ?? "");
   const [iban, setIban] = useState("");
+  const [country, setCountry] = useState(data.bank?.country ?? "SA");
+  const [taxNumber, setTaxNumber] = useState(data.bank?.taxNumber ?? "");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -34,8 +39,8 @@ export default function PartnerPanel({ lang, link, data, bankEditable }: { lang:
     if (busy) return;
     setBusy(true); setErr(""); setMsg("");
     try {
-      const res = await fetch("/api/partner", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ holder, iban }) });
-      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; bank?: { holder: string; iban: string } };
+      const res = await fetch("/api/partner", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ holder, iban, country, taxNumber }) });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; bank?: { holder: string; iban: string; country: string; taxNumber: string | null } };
       if (!j.ok || !j.bank) return setErr(S.errors[j.error ?? "server"] ?? S.errors.server);
       setBank({ ...j.bank, savedAt: new Date().toISOString(), confirmed: false });
       setIban("");
@@ -76,7 +81,7 @@ export default function PartnerPanel({ lang, link, data, bankEditable }: { lang:
             <a href={`https://wa.me/?text=${encodeURIComponent(share)}`} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">{S.shareWa}</a>
           </div>
         </div>
-        <p className="text-xs text-ink/60">{S.rules}</p>
+        <p className="text-xs text-ink/60">{S.rules} <Link href={`/${lang}/affiliates/terms`} data-terms-link className="text-oasis underline">{S.terms}</Link></p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -119,9 +124,9 @@ export default function PartnerPanel({ lang, link, data, bankEditable }: { lang:
         {data.payouts.length === 0 ? <p className="mt-2 text-sm text-ink/60">{S.payoutsEmpty}</p> : (
           <div className="mt-2 overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr><th className={th}>{S.payoutCols.date}</th><th className={th}>{S.payoutCols.sar}</th><th className={th}>{S.payoutCols.reference}</th></tr></thead>
+              <thead><tr><th className={th}>{S.payoutCols.date}</th><th className={th}>{S.payoutCols.sar}</th><th className={th}>{S.payoutCols.vat}</th><th className={th}>{S.payoutCols.reference}</th></tr></thead>
               <tbody>{data.payouts.map((p, i) => (
-                <tr key={`${p.date}-${i}`} className={`border-t border-ink/5 ${p.voided ? "text-ink/40 line-through" : ""}`}><td className={`${td} tnum`} dir="ltr">{p.date}</td><td className={`${td} tnum`} dir="ltr">{sarText(p.sar)}</td><td className={td} dir="auto">{p.reference || "—"}{p.voided ? ` (${S.voided})` : ""}</td></tr>
+                <tr key={`${p.date}-${i}`} className={`border-t border-ink/5 ${p.voided ? "text-ink/40 line-through" : ""}`}><td className={`${td} tnum`} dir="ltr">{p.date}</td><td className={`${td} tnum`} dir="ltr">{sarText(p.sar)}</td><td className={`${td} tnum`} dir="ltr">{p.vatSar ? sarText(p.vatSar) : "—"}</td><td className={td} dir="auto">{p.reference || "—"}{p.voided ? ` (${S.voided})` : ""}</td></tr>
               ))}</tbody>
             </table>
           </div>
@@ -131,12 +136,19 @@ export default function PartnerPanel({ lang, link, data, bankEditable }: { lang:
       <section className="card">
         <h2 className="font-display text-lg font-bold">{S.bank}</h2>
         <p className="mt-1 text-sm text-ink/60">{S.bankNote}</p>
-        {bank && <p data-bank-masked className="mt-2 text-sm"><span dir="auto">{bank.holder}</span> · <span className="font-mono" dir="ltr">{bank.iban}</span></p>}
+        <p data-tax-note className="mt-1 text-sm text-ink/60">{S.taxNote}</p>
+        {bank && <p data-bank-masked className="mt-2 text-sm"><span dir="auto">{bank.holder}</span> · <span className="font-mono" dir="ltr">{bank.iban}</span>{bank.country ? <> · <span>{countries.find(([c]) => c === bank.country)?.[1] ?? bank.country}</span></> : null}{bank.taxNumber ? <> · <span className="font-mono" dir="ltr">{bank.taxNumber}</span></> : null}</p>}
         {bank && !bank.confirmed && <p data-bank-pending className="mt-1 text-xs text-sadu">{S.bankPending}</p>}
         {bankEditable ? (
           <form onSubmit={saveBank} className="mt-3 grid gap-2 sm:max-w-md">
             <input value={holder} onChange={(e) => setHolder(e.target.value)} required maxLength={80} autoComplete="name" placeholder={S.holder} aria-label={S.holder} className="input" />
-            <input value={iban} onChange={(e) => setIban(e.target.value)} required maxLength={34} autoComplete="off" dir="ltr" placeholder={S.iban} aria-label={S.iban} className="input font-mono" />
+            <input value={iban} onChange={(e) => setIban(e.target.value)} required maxLength={42} autoComplete="off" dir="ltr" placeholder={S.iban} aria-label={S.iban} className="input font-mono" />
+            <label className="grid gap-1 text-sm"><span className="text-ink/60">{S.country}</span>
+              <select value={country} onChange={(e) => setCountry(e.target.value)} required aria-label={S.country} className="input">
+                {countries.map(([c, n]) => <option key={c} value={c}>{n}</option>)}
+              </select>
+            </label>
+            <input value={taxNumber} onChange={(e) => setTaxNumber(e.target.value)} maxLength={30} autoComplete="off" dir="ltr" placeholder={S.taxNumber} aria-label={S.taxNumber} className="input font-mono" />
             <button disabled={busy} className="btn btn-primary">{S.save}</button>
             {msg && <p className="text-sm text-oasis">{msg}</p>}
             {err && <p role="alert" className="text-sm text-sadu-deep">{err}</p>}

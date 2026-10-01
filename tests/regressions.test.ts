@@ -99,7 +99,7 @@ describe("public write endpoints are throttled", () => {
     expect(support.filter((c) => c === 429)).toHaveLength(1);
 
     const aff: number[] = [];
-    for (let i = 0; i < 11; i++) aff.push((await post(affiliatesRoute, "/api/affiliates", { email: "a@test.example", name: "A" }, "9.9.9.3")).status);
+    for (let i = 0; i < 11; i++) aff.push((await post(affiliatesRoute, "/api/affiliates", { email: "a@test.example", name: "A", consent: "on" }, "9.9.9.3")).status);
     expect(aff.filter((c) => c === 429)).toHaveLength(1);
   });
 });

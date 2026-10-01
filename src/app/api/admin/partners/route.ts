@@ -6,9 +6,10 @@ import { approvePartner, confirmBank, listApplications, listPartners, recordPayo
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/admin/partners: the founder console's Partners tab (rules 390, 398, 400). Applications from the public form
- * with their decision and a suggested code, and every partner with referrals, balances, commissions, payouts and bank
- * details in full: the IBAN is shown here and nowhere else.
+ * GET /api/admin/partners: the founder console's Partners tab (rules 390, 398, 400, 412, 414). Applications from the
+ * public form with their decision, a suggested code and the terms consent (date and version), and every partner with
+ * referrals, balances, commissions, payouts, tax flags and totals, and bank details in full: the IBAN is shown here and
+ * nowhere else.
  */
 export async function GET(req: Request) {
   if (!(await isAdmin(req))) return NextResponse.json({ ok: false }, { status: 401 });
@@ -20,8 +21,10 @@ export async function GET(req: Request) {
  * POST /api/admin/partners
  *   {action:"approve", email, name?, code, appId?}  claim a unique code and link it to the applicant's email
  *   {action:"reject", appId}
- *   {action:"payout", email, id?, amountSar, date, reference?}  mark a bank transfer paid; only a payable balance (SAR 200
- *   or more) is paid down, never past it, to confirmed bank details, under the partner's lock; a retried id records once
+ *   {action:"payout", email, id?, amountSar, vatSar?, whtSar?, date, reference?}  mark a bank transfer paid; only a payable
+ *   balance (SAR 200 or more) is paid down, never past it, to confirmed bank details, under the partner's lock; a retried
+ *   id records once. `amountSar` is the commission; `vatSar` the VAT paid on top to a VAT-registered partner and `whtSar`
+ *   the withholding tax Thakeen bore, both optional and for the books only: they never change the balance (rule 412)
  *   {action:"void_payout", email, id, reason?}  a payout entered by mistake: kept on record, its amount back in the balance
  *   {action:"confirm_bank", email, savedAt}  the founder checked the bank details with the partner out of band (by phone,
  *   from the application); `savedAt` names the version seen, so details changed since then stay unconfirmed
@@ -45,9 +48,10 @@ export async function POST(req: Request) {
   }
   if (b.action === "payout") {
     const email = typeof b.email === "string" ? b.email : "";
-    const res = await recordPayout(email, { id: b.id, amountSar: b.amountSar, date: b.date, reference: b.reference }, who);
+    const res = await recordPayout(email, { id: b.id, amountSar: b.amountSar, vatSar: b.vatSar, whtSar: b.whtSar, date: b.date, reference: b.reference }, who);
     if (!res.ok) return NextResponse.json(res, { status: res.error === "not_found" ? 404 : res.error === "bank_unconfirmed" ? 409 : 400 });
-    if (!res.already) await log(email, `partner:payout ${res.payout.id} sar:${res.payout.sar} date:${res.payout.date}`);
+    const taxes = `${res.payout.vatSar ? ` vat:${res.payout.vatSar}` : ""}${res.payout.whtSar ? ` wht:${res.payout.whtSar}` : ""}`;
+    if (!res.already) await log(email, `partner:payout ${res.payout.id} sar:${res.payout.sar}${taxes} date:${res.payout.date}`);
     return NextResponse.json(res);
   }
   if (b.action === "void_payout") {

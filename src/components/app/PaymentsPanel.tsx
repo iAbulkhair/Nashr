@@ -9,7 +9,7 @@ type Payment = {
   voidedAt?: string; voidReason?: string;
 };
 type View = {
-  payments: Payment[]; firstPaidOn: string | null; open: boolean; expected: Record<SelfServePlan, number> | null;
+  payments: Payment[]; firstPaidOn: string | null; open: boolean; until: string | null; expired: boolean; expected: Record<SelfServePlan, number> | null;
   offer: { kind: "partner" | "early"; usedAt?: string } | null;
   referredBy: { partner: string; code: string; at: string; via: string; status: string } | null;
 };
@@ -19,6 +19,8 @@ const S = {
     title: "Payments", note: "Record each payment received (SAR excluding VAT). It is the source of truth for partner commissions; it does not change the plan (set that above).",
     offerOpen: (kind: string) => `Unused ${FIRST_MONTH_DISCOUNT_PCT}% first-month offer (${kind}). The first payment recorded uses it. Expected first month:`,
     offerUsed: (kind: string) => `${FIRST_MONTH_DISCOUNT_PCT}% first-month offer (${kind}) used.`,
+    until: (d: string) => `It can be used until ${d}.`,
+    expired: (kind: string, d: string) => `${FIRST_MONTH_DISCOUNT_PCT}% first-month offer (${kind}) ended on ${d}: no longer shown to the customer. A payment dated on or before ${d} still uses it.`,
     kinds: { partner: "partner code", early: "early-partner offer" } as Record<string, string>,
     via: { link: "by link", code: "by code" } as Record<string, string>,
     statuses: { trial: "in its 30 days", paid: "paid in time", lapsed: "lapsed" } as Record<string, string>,
@@ -31,6 +33,8 @@ const S = {
     title: "الدفعات", note: "سجّل كل دفعة مستلمة (بالريال دون الضريبة). هي مصدر حساب عمولات الشركاء، ولا تغيّر الخطة (غيّرها من الأعلى).",
     offerOpen: (kind: string) => `عرض خصم ${FIRST_MONTH_DISCOUNT_PCT}% على الشهر الأول غير مستخدم (${kind}). تستخدمه أول دفعة تُسجَّل. المتوقع للشهر الأول:`,
     offerUsed: (kind: string) => `استُخدم عرض خصم ${FIRST_MONTH_DISCOUNT_PCT}% على الشهر الأول (${kind}).`,
+    until: (d: string) => `صالح حتى ${d}.`,
+    expired: (kind: string, d: string) => `انتهى عرض خصم ${FIRST_MONTH_DISCOUNT_PCT}% على الشهر الأول (${kind}) في ${d}: لم يعد يظهر للعميل. الدفعة المؤرخة في ${d} أو قبله تستخدمه.`,
     kinds: { partner: "كود شريك", early: "عرض الشركاء الأوائل" } as Record<string, string>,
     via: { link: "عبر الرابط", code: "عبر الكود" } as Record<string, string>,
     statuses: { trial: "ضمن مهلة 30 يوماً", paid: "دفع في المهلة", lapsed: "انتهت المهلة" } as Record<string, string>,
@@ -87,8 +91,10 @@ export default function PaymentsPanel({ email, lang }: { email: string; lang: "a
       <p className="text-ink/60">{L.note}</p>
       {view.referredBy && <p className="mt-1">{L.partner}: <span className="font-mono">{view.referredBy.code}</span> · <span dir="ltr">{view.referredBy.partner}</span> · {L.via[view.referredBy.via] ?? view.referredBy.via} · <span dir="ltr">{view.referredBy.at.slice(0, 10)}</span> · {L.statuses[view.referredBy.status] ?? view.referredBy.status}</p>}
       {view.offer && (view.open
-        ? <p className="mt-1 text-oasis">{L.offerOpen(L.kinds[view.offer.kind] ?? view.offer.kind)} {view.expected ? SELF_SERVE_PLANS.map((k) => `${k} ${view.expected![k]}`).join(" · ") : ""}</p>
-        : <p className="mt-1 text-ink/60">{L.offerUsed(L.kinds[view.offer.kind] ?? view.offer.kind)}</p>)}
+        ? <p className="mt-1 text-oasis">{L.offerOpen(L.kinds[view.offer.kind] ?? view.offer.kind)} {view.expected ? SELF_SERVE_PLANS.map((k) => `${k} ${view.expected![k]}`).join(" · ") : ""}{view.until ? ` ${L.until(view.until)}` : ""}</p>
+        : view.expired && view.until
+          ? <p data-offer-expired className="mt-1 text-sadu">{L.expired(L.kinds[view.offer.kind] ?? view.offer.kind, view.until)}</p>
+          : <p className="mt-1 text-ink/60">{L.offerUsed(L.kinds[view.offer.kind] ?? view.offer.kind)}</p>)}
       <form onSubmit={async (e) => { e.preventDefault(); if (busy) return; if (await post({ action: "record", id, amountSar: Number(amount), plan, date, reference })) { setId(newPaymentId()); setAmount(""); setReference(""); } }} className="mt-2 flex flex-wrap items-end gap-2">
         <label className="grid gap-0.5"><span className="text-ink/60">{L.plan}</span>
           <select value={plan} onChange={(e) => setPlan(e.target.value)} className="input">{[...SELF_SERVE_PLANS, "agency"].map((p) => <option key={p} value={p}>{p}</option>)}</select>

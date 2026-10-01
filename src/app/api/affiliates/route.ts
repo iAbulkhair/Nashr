@@ -2,15 +2,30 @@ import { NextResponse } from "next/server";
 import { CAPS, db, pushCapped } from "@/lib/db";
 import { isAdmin } from "@/lib/auth";
 import { allow, clientIp } from "@/lib/rate";
-import { APPLICATIONS, newId } from "@/lib/partners";
+import { APPLICATIONS, newId, type Application } from "@/lib/partners";
+import { PARTNER_TERMS_VERSION } from "@/lib/partner-rules";
 
+const text = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
+
+/**
+ * POST /api/affiliates: the public partner application. Throttled per IP first. Refused (400 `consent_required`) unless
+ * the applicant ticked the required box agreeing to the programme terms (/{lang}/affiliates/terms, rule 414); the
+ * application then stores when they agreed and to which version (`PARTNER_TERMS_VERSION`), which the founder console shows.
+ */
 export async function POST(req: Request) {
   // Public, unauthenticated write: throttled per IP.
   if (!(await allow(`affiliates:ip:${clientIp(req)}`, 10, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
-  const b = (await req.json().catch(() => ({}))) as Record<string, string>;
-  if (!b.email || !b.name) return NextResponse.json({ ok: false }, { status: 400 });
+  const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const name = text(b.name, 80), email = text(b.email, 120);
+  if (!email || !name) return NextResponse.json({ ok: false }, { status: 400 });
+  // Only an explicit yes counts: the checkbox's "on" from a plain form post, or `true` from the page's own script.
+  if (b.consent !== true && b.consent !== "on") return NextResponse.json({ ok: false, error: "consent_required" }, { status: 400 });
+  const at = new Date().toISOString();
   // An id, so the founder console can approve or reject this application (src/lib/partners.ts).
-  const rec = { id: newId("app"), name: b.name.slice(0, 80), email: b.email.slice(0, 120), phone: (b.phone ?? "").slice(0, 30), channel: (b.channel ?? "").slice(0, 200), audience: (b.audience ?? "").slice(0, 100), lang: b.lang === "en" ? "en" : "ar", at: new Date().toISOString() };
+  const rec: Application = {
+    id: newId("app"), name, email, phone: text(b.phone, 30), channel: text(b.channel, 200), audience: text(b.audience, 100), lang: b.lang === "en" ? "en" : "ar", at,
+    consentAt: at, termsVersion: PARTNER_TERMS_VERSION,
+  };
   await pushCapped(APPLICATIONS, JSON.stringify(rec), CAPS.tickets);
   return NextResponse.json({ ok: true });
 }
