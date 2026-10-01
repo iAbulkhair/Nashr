@@ -14,6 +14,19 @@ const HOLD = chatOverflowHold();
 
 export type HelpTopic = { id: string; title: Record<Lang, string>; items: { q: Record<Lang, string>; a: Record<Lang, string> }[] };
 
+/**
+ * Where an answer names the app's own address (the MCP URL). Filled by `helpTopics` with the canonical origin, which the
+ * server reads from `APP_ORIGIN` (src/lib/origin.ts): this file is also imported by a client component, which cannot read
+ * that variable, so the help pages pass the origin in.
+ */
+export const ORIGIN_SLOT = "{origin}";
+
+/** HELP with every `ORIGIN_SLOT` replaced by `origin`. Read through this, never HELP directly, wherever an answer is shown. */
+export function helpTopics(origin: string): HelpTopic[] {
+  const fill = (s: string) => s.replaceAll(ORIGIN_SLOT, origin);
+  return HELP.map((t) => ({ ...t, items: t.items.map((i) => ({ q: i.q, a: { ar: fill(i.a.ar), en: fill(i.a.en) } })) }));
+}
+
 export const HELP: HelpTopic[] = [
   { id: "start", title: { ar: "البداية", en: "Getting started" }, items: [
     { q: { ar: "كيف أبدأ؟", en: "How do I start?" }, a: { ar: "سجّل وأعطِ نور رابط موقعك أو متجرك، فتكتب لك ملف علامتك وخطة 90 يوماً. بعدها اطلب منها أول دفعة من الدردشة.", en: "Sign up, give Noor your website or store URL, and she writes your brand file and a 90-day plan. Then ask her for a first batch in chat." } },
@@ -63,7 +76,7 @@ export const HELP: HelpTopic[] = [
     { q: { ar: "تشغيل ماجد التلقائي؟", en: "Majed's auto-run?" }, a: { ar: "مفتاح في الحوكمة، متوقف افتراضياً. لا يمكن تفعيله إلا إذا وضعت حداً شهرياً لوكيل واحد على الأقل ممن يسلّمهم ماجد العمل، ويطلب تأكيدك. عند تفعيله قد يبدأ ذكين بنفسه، في التشغيل اليومي 06:00 بتوقيت UTC، بنداً واحداً في اليوم لكل علامة من تسليم اقترحه ماجد عليك أنت المالك في الدردشة خلال آخر 7 أيام، دون انتظار «نفّذ»؛ فقط لبنود وكيل له حد شهري، وفقط لتسليمات من 3 بنود على الأكثر بمجموع 12 كريدت على الأكثر، وضمن الحد الأسبوعي. مقالات SEO وسلاسل المتابعة لا تبدأ تلقائياً أبداً، بل تنتظر «نفّذ». يُخصم كريدت البند من الوكيل صاحبه ضمن حده، وما يُكتب ينتظر موافقتك دائماً حتى للأنواع المعتمدة تلقائياً، ويصلك تنبيه في كل مرة ويظهر في «النشاط» باسم «تشغيل ماجد التلقائي». تسليمات يطلبها عضو أو دعم ذكين أو تطبيق متصل لا تبدأ تلقائياً أبداً، والبند الذي لم يكتمل ينتظرك. ولا يبدأ إلا تسليم وصلت بطاقته إلى دردشتك: إن تعذّر رد ماجد أو حذفت المحادثة فلن يبدأ تلقائياً أبداً. وتحت المفتاح تعرض الحوكمة ما قد يبدؤه التشغيل التلقائي بعد ذلك، مع زر «ارفض». إيقاف المفتاح يمنع أي تشغيل بعده.", en: "A Governance switch, off by default. It can be turned on only when at least one agent Majed hands work to has a monthly cap, and it asks for your confirmation. When on, Thakeen may start by itself, at the daily run at 06:00 UTC, one item a day per brand of a handoff Majed proposed to you, the owner, in chat in the last 7 days, without waiting for Run; only items for an agent with a monthly cap, only handoffs of at most 3 items and 12 credits in all, and within the weekly cap. SEO articles and follow-up cadences never start on their own; they wait for Run. The item's credits are charged to its agent under that cap, what it writes always waits for your approval, even for auto-approved types, and you are told each time; the Activity page shows it as \"Majed's auto-run\". Handoffs asked for by a member, Thakeen support or a connected app never start on their own, and an item that did not complete waits for you. Only a handoff whose card reached your chat can start: if Majed's reply failed, or you deleted the conversation, it never starts on its own. Under the switch, Governance lists what the auto-run may start next, with Decline. Switching it off stops every run after that." } },
   ] },
   { id: "mcp", title: { ar: "MCP و Claude", en: "MCP and Claude" }, items: [
-    { q: { ar: "كيف أستخدم نور داخل Claude؟", en: "How do I use Noor inside Claude?" }, a: { ar: "من صفحة MCP أنشئ رمزاً، ثم في Claude Code: claude mcp add --transport http thakeen https://nashr-tau.vercel.app/api/mcp --header \"Authorization: Bearer <الرمز>\". الأدوات: ask_noor، generate_content، list_inbox، read_file.", en: "On the MCP page generate a token, then in Claude Code: claude mcp add --transport http thakeen https://nashr-tau.vercel.app/api/mcp --header \"Authorization: Bearer <token>\". Tools: ask_noor, generate_content, list_inbox, read_file." } },
+    { q: { ar: "كيف أستخدم نور داخل Claude؟", en: "How do I use Noor inside Claude?" }, a: { ar: "من صفحة MCP أنشئ رمزاً، ثم في Claude Code: claude mcp add --transport http thakeen {origin}/api/mcp --header \"Authorization: Bearer <الرمز>\". الأدوات: ask_noor، generate_content، list_inbox، read_file.", en: "On the MCP page generate a token, then in Claude Code: claude mcp add --transport http thakeen {origin}/api/mcp --header \"Authorization: Bearer <token>\". Tools: ask_noor, generate_content, list_inbox, read_file." } },
     { q: { ar: "فقدت الرمز؟", en: "Lost the token?" }, a: { ar: "أنشئ رمزاً جديداً؛ القديم يُلغى تلقائياً.", en: "Generate a new one; the old one is revoked automatically." } },
   ] },
   { id: "privacy", title: { ar: "الخصوصية والحساب", en: "Privacy and account" }, items: [

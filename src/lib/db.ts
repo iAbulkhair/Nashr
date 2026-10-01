@@ -39,6 +39,8 @@ type Store = {
   /** Members with a score <= `max`, lowest score first (then member), at most `limit` (ZRANGE BYSCORE LIMIT). */
   zrangeByScore(key: string, max: number, limit: number): Promise<{ member: string; score: number }[]>;
   incrby(key: string, n: number): Promise<number>;
+  /** TTL in whole seconds, as Redis answers it: -1 when the key has no expiry, -2 when it does not exist. */
+  ttl(key: string): Promise<number>;
   /** EXPIRE NX: give a key a TTL only when it has none. Never touches the value or an expiry already set. */
   expireNx(key: string, ttlSeconds: number): Promise<void>;
   /** SET NX with TTL. True when this caller won the lock. */
@@ -154,6 +156,9 @@ function upstash(): Store | null {
     },
     async incrby(key, n) {
       return await r.incrby(key, n);
+    },
+    async ttl(key) {
+      return await r.ttl(key);
     },
     async expireNx(key, ttl) {
       await r.expire(key, ttl, "NX");
@@ -302,6 +307,12 @@ function memory(): Store {
       m.kv.set(key, v);
       return v;
     },
+    async ttl(key) {
+      live(key);
+      if (!(m.kv.has(key) || m.lists.has(key) || m.sets.has(key) || hashes.has(key) || zsets.has(key))) return -2;
+      const at = exp.get(key);
+      return at === undefined ? -1 : Math.max(0, Math.ceil((at - Date.now()) / 1000));
+    },
     async expireNx(key, ttl) {
       live(key);
       if (m.kv.has(key) && !exp.has(key)) exp.set(key, Date.now() + ttl * 1000);
@@ -310,6 +321,8 @@ function memory(): Store {
       const until = m.kv.get(key) as number | undefined;
       if (until && until > Date.now()) return false;
       m.kv.set(key, Date.now() + ttl * 1000);
+      // The expiry too, so `ttl` answers for a lock as Redis does (SET NX EX).
+      exp.set(key, Date.now() + ttl * 1000);
       owners.delete(key);
       return true;
     },
@@ -331,6 +344,7 @@ function memory(): Store {
     },
     async unlock(key) {
       m.kv.delete(key);
+      exp.delete(key);
       owners.delete(key);
     },
     async lockOwned(key, ttl) {
@@ -338,12 +352,14 @@ function memory(): Store {
       if (until && until > Date.now()) return null;
       const token = lockToken();
       m.kv.set(key, Date.now() + ttl * 1000);
+      exp.set(key, Date.now() + ttl * 1000);
       owners.set(key, token);
       return token;
     },
     async unlockOwned(key, token) {
       if (owners.get(key) !== token) return;
       m.kv.delete(key);
+      exp.delete(key);
       owners.delete(key);
     },
   };

@@ -19,7 +19,8 @@ import { deadlineFor } from "./media/keys";
 import { listConnections } from "./connectors/store";
 import { connectedTargets, targetsFor } from "./connectors/publish";
 import { isDuplicate, publishOnce } from "./publish-once";
-import { HELP } from "./help";
+import { helpTopics } from "./help";
+import { appOrigin } from "./origin";
 import { getTask } from "./brand";
 import { DEFAULT_IMAGE_MODEL, MEDIA_MODELS, mediaModel } from "./media-catalog";
 import { ONBOARD_EXTRA_BRAND_COST, PLAN_CREDITS } from "./pricing";
@@ -225,7 +226,7 @@ WHAT YOU CAN DO
 - Costs in credits: ${Object.entries(TASK_COST).map(([k, v]) => `${k}=${v}`).join(", ")}. If credits are insufficient, say so and point to the Subscription page.
 
 HOW THAKEEN WORKS (answer "how do I…" questions from this; point to the page)
-${HELP.map((t) => t.items.map((i) => `- ${i.q.en} → ${i.a.en}`).join("\n")).join("\n")}
+${helpTopics(appOrigin()).map((t) => t.items.map((i) => `- ${i.q.en} → ${i.a.en}`).join("\n")).join("\n")}
 Pages: /app/chat (you), /app (inbox), /app/todo (my to-dos), /app/files, /app/tasks (scheduled routines), /app/governance, /app/activity (what each agent did, with a CSV download), /app/integrations, /app/mcp, /app/billing, /app/refer, /app/help.
 
 REPLY SHAPES

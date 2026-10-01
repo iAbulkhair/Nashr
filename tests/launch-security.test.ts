@@ -333,7 +333,7 @@ describe("the console says when its session ended and links back in (rule 436)",
   });
 
   it("every admin call in the console and its panels goes through adminFetch; a 401 shows the message, never an empty table", () => {
-    for (const f of ["AdminConsole", "GoldenPanel", "WishlistPanel"]) {
+    for (const f of ["AdminConsole", "GoldenPanel", "WishlistPanel", "LeadsPanel"]) {
       const src = readFileSync(`src/components/app/${f}.tsx`, "utf8");
       expect(src, f).not.toMatch(/(?<![A-Za-z])fetch\(["`]\/api\/admin/);
       expect(src, f).toMatch(/adminFetch\(["`]\/api\/admin/);
