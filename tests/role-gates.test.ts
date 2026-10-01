@@ -243,6 +243,11 @@ const READS: Record<string, Gate> = {
 const PUBLIC_WITHOUT_LIMIT: Record<string, string> = {
   "POST /api/auth/logout": "ends only the caller's own session",
 };
+/**
+ * Signed-in writes that must carry a rate limit of their own (allow() from src/lib/rate.ts), on top of their gate: each
+ * writes a log or record a script could churn. The list may only grow.
+ */
+const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline"];
 /** Founder-console handlers that act only on the caller's own cookies, so they check no founder identity. */
 const CONSOLE_SELF: Record<string, string> = {
   "POST /api/admin/login": "the console key in the body is the credential (compared in constant time, rate limited)",
@@ -342,6 +347,13 @@ describe("every API handler has a declared gate (fail closed)", () => {
   it("each handler checks what its declared gate needs", () => {
     const bad = all.flatMap((h) => { const gate = declared(h); return gate ? violations(h, gate).map((v) => `${h.key}: ${v}`) : []; });
     expect(bad).toEqual([]);
+  });
+  it("every signed-in write listed as rate limited calls allow() (rule 378)", () => {
+    for (const k of SESSION_RATE_LIMITED) {
+      const h = all.find((x) => x.key === k);
+      expect(h, `${k} exists`).toBeTruthy();
+      expect(h!.body, k).toMatch(/\ballow\(/);
+    }
   });
   it("the lists of tolerated exceptions only name public or console handlers", () => {
     for (const k of Object.keys(PUBLIC_WITHOUT_LIMIT)) expect(ROUTE_ROLES[k], k).toBe("public");
