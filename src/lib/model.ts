@@ -51,16 +51,20 @@ export function anthropic(o: { timeoutMs: number; maxRetries: number }): Anthrop
 
 /**
  * Per-call options that end a model call by `deadline` (epoch ms), a stream's body included: the signal aborts it wherever
- * it is (the SDK throws, and the caller's catch refunds), and `timeout` caps each attempt at the time left. A deadline
- * already past, or not a number, aborts at once. A plain timer, so a test's fake clock drives it; unref'd, so it never
- * keeps a process alive.
+ * it is (the SDK throws, and the caller's catch refunds), and `timeout` caps each attempt at the smaller of the time left
+ * and `cap`, the caller's per-attempt budget from MODEL_BUDGET. The SDK's per-request `timeout` replaces the client's, so
+ * without `cap` an attempt could wait the whole time left and a retry would have nothing left. A deadline already past,
+ * or not a number, aborts at once. A plain timer, so a test's fake clock drives it; unref'd, so it never keeps a process
+ * alive.
  */
-export function until(deadline: number, now = Date.now()): { signal: AbortSignal; timeout: number } {
+export function until(deadline: number, o: { cap?: number; now?: number } = {}): { signal: AbortSignal; timeout: number } {
+  const now = o.now ?? Date.now();
   const ms = Number.isFinite(deadline) ? Math.max(1, Math.floor(deadline - now)) : 1;
+  const cap = o.cap !== undefined && Number.isFinite(o.cap) && o.cap > 0 ? Math.floor(o.cap) : Infinity;
   const c = new AbortController();
   const t = setTimeout(() => c.abort(new Error("model_deadline")), ms);
   (t as { unref?: () => void }).unref?.();
-  return { signal: c.signal, timeout: ms };
+  return { signal: c.signal, timeout: Math.min(ms, cap) };
 }
 
 /**
@@ -72,7 +76,8 @@ export function until(deadline: number, now = Date.now()): { signal: AbortSignal
  * - CHAT: each chat turn's attempt; the turn's stream is bounded by the request's deadline. A turn starts only with
  *   CHAT_TURN_MIN_MS left, and leaves CHAT_REPLY_MS to save the reply.
  * - ONBOARD: each of the three onboarding parts; a failed part is tried again only with ONBOARD_RETRY_MIN_MS left.
- * - JUDGE: the judge (runs after the response, charges nothing). TOOL: the free tools (route maxDuration 60).
+ * - JUDGE: each attempt of the judge (runs after the response, charges nothing; one retry).
+ * - TOOL: each attempt of a free tool; both attempts end by the route's deadline (maxDuration 60, `deadlineFor`).
  */
 export const MODEL_BUDGET = {
   GEN_MS: 240_000,

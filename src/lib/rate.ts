@@ -46,13 +46,19 @@ export const CHAT_TRIAL_PER_DAY = 30;
 export const chatCaps = (plan: User["plan"]): { hour: number; day: number } =>
   plan === "trial" ? { hour: CHAT_TRIAL_PER_HOUR, day: CHAT_TRIAL_PER_DAY } : { hour: CHAT_PER_HOUR, day: CHAT_PER_DAY };
 /**
- * Null when the turn may go ahead, else which window refused it, so the owner is told "in an hour" or "tomorrow". Both
- * buckets count every attempt; the day is named when both refused, being the longer wait.
+ * Null when the turn may go ahead, else which window refused it, so the owner is told "in an hour" or "tomorrow". The
+ * hour is counted first and the day only for a turn the hour let through: counting both on every attempt let refused
+ * retries inside the hour use up the day, so a trial owner told "in an hour" after 10 turns met "tomorrow" next, with
+ * 10 of the 30 used (rule 331). A refusal by the hour reads the day's count without adding to it, and names the day
+ * when that is spent too, being the longer wait. Two round trips one after the other only for a turn the hour allows.
  */
 export async function chatRefusal(u: Pick<User, "email" | "plan">): Promise<"hour" | "day" | null> {
   const cap = chatCaps(u.plan);
-  const [hour, day] = await Promise.all([allow(`chat:h:${u.email}`, cap.hour, 3600), allow(`chat:d:${u.email}`, cap.day, 86400)]);
-  return !day ? "day" : !hour ? "hour" : null;
+  if (!(await allow(`chat:h:${u.email}`, cap.hour, 3600))) {
+    const used = Number((await db.get<number | string>(`rate:chat:d:${u.email}`)) ?? 0);
+    return used >= cap.day ? "day" : "hour";
+  }
+  return (await allow(`chat:d:${u.email}`, cap.day, 86400)) ? null : "day";
 }
 
 /**

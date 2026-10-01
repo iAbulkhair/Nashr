@@ -46,6 +46,10 @@ import { TASK_COST } from "@/lib/tasks";
 import type { Brand } from "@/lib/brand";
 import { json, newUser, settle, signIn } from "./helpers/session";
 import * as generateRoute from "@/app/api/generate/route";
+import * as toolRoute from "@/app/api/tools/[tool]/route";
+import { TOOLS } from "@/lib/tools";
+
+const TOOL = TOOLS[0].slug;
 
 const brand: Brand = { name: "مقهى", website: "", industry: "مقاهي", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-09-29T00:00:00.000Z" };
 const walk = (dir: string): string[] => readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? walk(p) : /\.(ts|tsx)$/.test(f) ? [p] : []; });
@@ -79,18 +83,32 @@ describe("one factory makes every model client, with a timeout and a retry count
   it("until(): aborts at the deadline on the clock the caller runs on; a past or broken deadline aborts at once", () => {
     vi.useFakeTimers();
     const now = Date.now();
-    const a = until(now + 10_000, now);
+    const a = until(now + 10_000, { now });
     expect(a.timeout).toBe(10_000);
     vi.advanceTimersByTime(9_999);
     expect(a.signal.aborted).toBe(false);
     vi.advanceTimersByTime(1);
     expect(a.signal.aborted).toBe(true);
     for (const d of [now - 5_000, NaN]) {
-      const b = until(d, now);
+      const b = until(d, { now });
       expect(b.timeout).toBe(1);
       vi.advanceTimersByTime(1);
       expect(b.signal.aborted).toBe(true);
     }
+  });
+
+  it("until(): each attempt's timeout is the smaller of the time left and the caller's per-attempt cap", () => {
+    vi.useFakeTimers();
+    const now = Date.now();
+    // The SDK's per-request timeout replaces the client's: without the cap one attempt could wait the whole time left.
+    const far = until(now + 280_000, { cap: MODEL_BUDGET.CHAT_MS, now });
+    expect(far.timeout).toBe(MODEL_BUDGET.CHAT_MS);
+    vi.advanceTimersByTime(MODEL_BUDGET.CHAT_MS);
+    expect(far.signal.aborted, "the signal still fires at the deadline, not at the cap").toBe(false);
+    vi.advanceTimersByTime(280_000 - MODEL_BUDGET.CHAT_MS);
+    expect(far.signal.aborted).toBe(true);
+    expect(until(now + 5_000, { cap: MODEL_BUDGET.CHAT_MS, now }).timeout).toBe(5_000);
+    for (const cap of [0, -1, NaN, Infinity]) expect(until(now + 5_000, { cap, now }).timeout, String(cap)).toBe(5_000);
   });
 });
 
@@ -157,6 +175,33 @@ describe("every charged model call ends by its caller's deadline, so the refund 
     const m = await pending;
     expect(m.content).toBe(OUT_OF_TIME_REPLY.en);
     expect((await history(u.email)).at(-1)!.content).toBe(OUT_OF_TIME_REPLY.en);
+  });
+
+  it("a far deadline: every charged call's attempt is still capped by its own budget", async () => {
+    sdk.mode = "ok";
+    await generate("social", brand, [], "", { crossReview: false, deadline: Date.now() + 285_000 });
+    const [gen, review] = sdk.calls;
+    expect(gen.opts!.timeout).toBe(MODEL_BUDGET.GEN_MS);
+    expect(review.opts!.timeout).toBeLessThanOrEqual(MODEL_BUDGET.REVIEW_MS);
+    sdk.calls = [];
+    const u = await newUser("mt-chat-far");
+    await chat((await getUser(u.email))!, "hello", undefined, "noor", { lang: "en", deadline: Date.now() + 285_000 });
+    expect(sdk.calls[0].opts!.timeout).toBe(MODEL_BUDGET.CHAT_MS);
+    sdk.calls = [];
+    const site = { url: "https://example.test", ok: true, platform: "unknown", title: "t", description: "d", links: [], text: "x" } as unknown as Parameters<typeof buildFromSite>[0];
+    await buildFromSite(site, "ar", undefined, undefined, undefined, Date.now() + 285_000).catch(() => null);
+    // The mock's reply is not a part's JSON, so each part is tried twice: every attempt is capped all the same.
+    expect(sdk.calls.length).toBeGreaterThanOrEqual(3);
+    for (const c of sdk.calls) expect(c.opts!.timeout).toBe(MODEL_BUDGET.ONBOARD_MS);
+  });
+
+  it("free tools: one retry, and both attempts end by the route's deadline", async () => {
+    sdk.mode = "ok";
+    const res = await toolRoute.POST(json("/api/tools/x", "POST", { lang: "ar" }), { params: Promise.resolve({ tool: TOOL }) });
+    expect(res.status).toBe(200);
+    expect(sdk.ctor).toEqual([{ timeout: MODEL_BUDGET.TOOL_MS, maxRetries: 1 }]);
+    expect(sdk.calls[0].opts!.signal).toBeInstanceOf(AbortSignal);
+    expect(sdk.calls[0].opts!.timeout).toBeLessThanOrEqual(Math.min(MODEL_BUDGET.TOOL_MS, (60 - 15) * 1000));
   });
 
   it("chat(): no model turn starts with less than CHAT_TURN_MIN_MS left", async () => {

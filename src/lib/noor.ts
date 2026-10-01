@@ -199,7 +199,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   let text = "";
   try {
     const msg = await client.beta.messages
-      .stream({ ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" }, until(deadline))
+      .stream({ ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" }, until(deadline, { cap: MODEL_BUDGET.GEN_MS }))
       .finalMessage();
     // Meter first. A refused call is still billed by the API — input, thinking and output — but this threw before
     // metering, so the account showed a free event (the route refunds the credits) and the founder console never saw
@@ -210,7 +210,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   } catch (e) {
     // Fallback parameter not accepted (older org/plan) → plain request.
     if (e instanceof Anthropic.BadRequestError) {
-      const msg = await client.messages.stream(params, until(deadline)).finalMessage();
+      const msg = await client.messages.stream(params, until(deadline, { cap: MODEL_BUDGET.GEN_MS })).finalMessage();
       await meter(opts.meter, msg.model, "generate", msg.usage, agent.id);
       // The same refusal check as the main path; without it a refused fallback fell through with empty text.
       if (msg.stop_reason === "refusal") throw new Error("refused");
@@ -305,7 +305,7 @@ async function critique(client: Anthropic, brand: Brand, prefs: string[], type: 
           content: `<brand_file>\n${asData({ name: brand.name, industry: brand.industry, dialect: brand.dialect, languages: brand.languages, tone: brand.tone, banned: brand.banned, preferred: brand.preferred, offers: brand.offers })}\n</brand_file>\n\n<owner_preferences>\n${asData(prefs.length ? prefs : ["none"])}\n</owner_preferences>${groundingBlocks(ctx)}\n\nTASK TYPE: ${type}\n\n<items>\n${asData(items.map((i) => ({ channel: i.channel, body: i.body })))}\n</items>`,
         },
       ],
-    }, until(end));
+    }, until(end, { cap: MODEL_BUDGET.REVIEW_MS }));
     await meter(ctx.meter, review.model, "review", review.usage, agentForTask(type).id);
     const raw = review.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
     const verdicts = parseObjectArray(raw) as Array<{ ok?: boolean; body?: string }>;

@@ -266,6 +266,37 @@ export async function refundOnce(email: string, claim: string): Promise<{ credit
   });
 }
 
+/**
+ * The daily sweep of the account's paid-once holds (rule 337, src/lib/schedule.ts `sweepWeeklyHolds`): `kept[claim]` says
+ * whether the claim's work exists. A kept claim's hold is dropped (its charge stands); any other is refunded, a run killed
+ * after its charge that no later run retried (the last catch-up, a "Run now" nobody pressed again). One save under the
+ * ledger's lock; a hold already gone (refunded by its own run's failure, or reused and refunded since) is skipped, so
+ * nothing is given back twice.
+ */
+export async function resolveOnceHolds(email: string, kept: Readonly<Record<string, boolean>>): Promise<{ refunded: HoldRefund[]; dropped: string[]; credits: number }> {
+  return withUserLock(email, async (u) => {
+    const done = { refunded: [] as HoldRefund[], dropped: [] as string[] };
+    const left = { ...(u.paidOnce ?? {}) };
+    for (const [claim, keep] of Object.entries(kept)) {
+      const hold = left[claim];
+      if (!hold) continue;
+      if (keep) done.dropped.push(claim);
+      else {
+        const n = Number.isFinite(hold.credits) ? Math.max(0, Math.trunc(hold.credits)) : 0;
+        giveBack(u, n, hold);
+        done.refunded.push({ scope: hold.scope, agent: hold.agent, credits: n });
+      }
+      delete left[claim];
+    }
+    if (done.refunded.length || done.dropped.length) {
+      if (Object.keys(left).length) u.paidOnce = left;
+      else delete u.paidOnce;
+      await saveUser(u);
+    }
+    return { ...done, credits: Number.isFinite(u.credits) ? u.credits : 0 };
+  });
+}
+
 /** A hold nobody charged or reused for this long is resolved by the daily sweep: the confirmation's day. */
 export const ONBOARD_HOLD_MS = 864e5;
 

@@ -369,7 +369,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   let outOfTime = false;
   for (let turn = 0; turn < 5; turn++) {
     if (deadline - Date.now() < MODEL_BUDGET.CHAT_TURN_MIN_MS) { outOfTime = true; break; }
-    const call = until(deadline - MODEL_BUDGET.CHAT_REPLY_MS);
+    const call = until(deadline - MODEL_BUDGET.CHAT_REPLY_MS, { cap: MODEL_BUDGET.CHAT_MS });
     let res: Anthropic.Message;
     try {
       res = await client.messages

@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 
 /**
  * Rules 330-331 (issue #24). Chat ran up to five Opus calls a turn, charged nothing and never asked whether the trial had
@@ -76,6 +78,8 @@ describe("an ended trial gets no chat turn and no model call (rule 330)", () => 
     expect(r.content[0].text).toContain("https://nashr-tau.vercel.app/ar/app/billing");
     expect(sdk.made).toBe(0);
     expect(await history(u.email)).toEqual([]);
+    expect(await db.get(`rate:chat:h:${u.email}`), "no ceiling was used up").toBeNull();
+    expect(await db.get(`rate:chat:d:${u.email}`)).toBeNull();
   });
 
   it("chat() itself refuses an ended trial, for any caller", async () => {
@@ -114,6 +118,24 @@ describe("chat ceilings are constants per plan, the trial's the lower one (rule 
     expect(await chatRefusal(p)).toBe("hour");
   });
 
+  it("refused attempts inside the hour do not use up the day: 10 turns and 20 refusals leave 20 turns for later", async () => {
+    const t = await newUser("ct-retry");
+    for (let i = 0; i < CHAT_TRIAL_PER_HOUR; i++) expect(await chatRefusal(t)).toBeNull();
+    for (let i = 0; i < 20; i++) expect(await chatRefusal(t), `refusal ${i}`).toBe("hour");
+    expect(Number(await db.get(`rate:chat:d:${t.email}`))).toBe(CHAT_TRIAL_PER_HOUR);
+    // The next hour: the hour's bucket has expired, and the day still has room.
+    await db.del(`rate:chat:h:${t.email}`);
+    for (let i = 0; i < CHAT_TRIAL_PER_HOUR; i++) expect(await chatRefusal(t), `next hour ${i}`).toBeNull();
+    expect(Number(await db.get(`rate:chat:d:${t.email}`))).toBe(2 * CHAT_TRIAL_PER_HOUR);
+    // A refusal by the hour names the day when the day is spent too, being the longer wait, and adds nothing to it.
+    await db.set(`rate:chat:d:${t.email}`, CHAT_TRIAL_PER_DAY, 86400);
+    expect(await chatRefusal(t)).toBe("day");
+    expect(Number(await db.get(`rate:chat:d:${t.email}`))).toBe(CHAT_TRIAL_PER_DAY);
+    // The hour allows, the day refuses.
+    await db.del(`rate:chat:h:${t.email}`);
+    expect(await chatRefusal(t)).toBe("day");
+  });
+
   it("the route's 429 says which window refused, with the ceiling, and never reaches the model", async () => {
     const u = await newUser("ct-429");
     await signIn(u.email);
@@ -133,5 +155,33 @@ describe("chat ceilings are constants per plan, the trial's the lower one (rule 
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toContain(`(${CHAT_TRIAL_PER_HOUR})`);
     expect(sdk.made).toBe(0);
+  });
+
+  it("MCP ask_noor: a paid token stops at the paid ceiling, and goes on below it", async () => {
+    const p = await paid("ct-mcp-paid");
+    await db.set(`rate:chat:h:${p.email}`, CHAT_TRIAL_PER_HOUR, 3600);
+    expect((await askNoor(p.email)).isError, "the trial's ceiling is not a paid account's").toBeFalsy();
+    expect(sdk.made).toBe(1);
+    await db.set(`rate:chat:h:${p.email}`, CHAT_PER_HOUR, 3600);
+    const r = await askNoor(p.email);
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain(`(${CHAT_PER_HOUR})`);
+    expect(sdk.made).toBe(1);
+  });
+});
+
+describe("every page that sends a chat turn shows a refusal instead of an empty chat (rules 330-331)", () => {
+  const walk = (dir: string): string[] => readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? walk(p) : /\.tsx$/.test(f) ? [p] : []; });
+  it("a client component that POSTs /api/chat raises the subscription dialog on trial_over and shows the 429's message", () => {
+    const callers = walk("src/components").filter((f) => readFileSync(f, "utf8").includes('fetch("/api/chat"'));
+    expect(callers.map((f) => f.split("/").pop()).sort()).toEqual(["ChatPanel.tsx", "InspoPanel.tsx"]);
+    // The chat itself reads the body: `message` into the thread, `limit` into the dialog.
+    expect(readFileSync("src/components/app/ChatPanel.tsx", "utf8")).toMatch(/j\.limit === "trial"[\s\S]*raiseLimit\(j\.limit\)/);
+    // The inspiration page used to ignore the answer and open an empty chat: the message was gone, with no reason given.
+    const inspo = readFileSync("src/components/app/InspoPanel.tsx", "utf8");
+    expect(inspo).toMatch(/res\.status === 402 \|\| res\.status === 429/);
+    expect(inspo).toMatch(/limitFromError\(j\.error\)/);
+    expect(inspo).toMatch(/setRefusal\(j\.message\.content\)/);
+    expect(inspo.indexOf("return;"), "no navigation after a refusal").toBeLessThan(inspo.indexOf("r.push("));
   });
 });

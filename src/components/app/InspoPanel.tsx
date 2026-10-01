@@ -5,6 +5,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { Inspo } from "@/lib/inspo";
 import type { Lang } from "@/lib/i18n";
 import { Icon, channelIcon } from "./Icons";
+import { limitFromError } from "./LimitModal";
 
 export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang; items: Inspo[] }) {
   const r = useRouter();
@@ -13,6 +14,8 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
   const [kind, setKind] = useState("all");
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState("");
+  /** A chat refusal (the hourly or daily ceiling, rule 331): the server's own text, shown here instead of an empty chat. */
+  const [refusal, setRefusal] = useState("");
   const channels = ["all", ...new Set(items.map((i) => i.channel))];
   const kinds = ["all", ...new Set(items.map((i) => i.kind))];
   const needle = q.trim().toLowerCase();
@@ -22,7 +25,16 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
     const text = lang === "ar"
       ? `استخدمي هذا المرجع في المحتوى القادم: «${i.title}» — ${i.why} مثال: "${i.sample}". كيّفيه لعلامتنا وأخبريني ماذا تقترحين.`
       : `Use this as a reference for the next content: "${i.title}" — ${i.why} Sample: "${i.sample}". Adapt it to our brand and tell me what you suggest.`;
-    await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    setRefusal("");
+    const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json", "x-lang": lang }, body: JSON.stringify({ text }) }).catch(() => null);
+    // A refused turn writes nothing to the chat (rules 330-331): an ended trial raises the subscription dialog, a ceiling
+    // shows the server's message here, and the owner stays on this page with the reference still in front of them.
+    if (res && (res.status === 402 || res.status === 429)) {
+      const j = (await res.json().catch(() => ({}))) as { error?: string; message?: { content?: string } };
+      setBusy("");
+      if (!limitFromError(j.error) && typeof j.message?.content === "string") setRefusal(j.message.content);
+      return;
+    }
     r.push(`/${lang}/app/chat`);
   }
   const Pill = ({ v, cur, set, label }: { v: string; cur: string; set: (s: string) => void; label: string }) => (
@@ -32,6 +44,7 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
     <div>
       <h1 className="page-title">{p.title}</h1>
       <p className="mt-2 text-ink/70">{p.sub}</p>
+      {refusal && <p role="alert" className="mt-4 rounded bg-salt-dim p-3 text-sm" dir="auto">{refusal}</p>}
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={p.search} className="input mt-4 max-w-md" />
       <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
         <span className="text-ink/50">{p.channel}:</span>

@@ -119,7 +119,7 @@ ${site.text.slice(0, 9000)}`;
           messages: [{ role: "user", content: user }],
           thinking: { type: "adaptive" },
           output_config: { effort: "medium", format: { type: "json_schema", schema: PARTS[name].schema } },
-        }, until(end))
+        }, until(end, { cap: MODEL_BUDGET.ONBOARD_MS }))
         .finalMessage();
       // Onboarding is Noor's first-run work (it writes the brand file she opens with).
       await meter(email, msg.model, "onboard", msg.usage, "noor");

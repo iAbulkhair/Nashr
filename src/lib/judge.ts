@@ -89,8 +89,9 @@ Return ONLY a JSON array, same length and order as the items in <items>: {"compl
 export async function scoreItems(email: string | undefined, brand: Brand, type: TaskType, items: JudgeItem[], requested: number = TASK_COUNT[type], ctx: JudgeContext = {}): Promise<(Quality | null)[]> {
   if (!items.length || modelState() !== "on") return [];
   const agent = agentForTask(type);
-  // After the response and free of charge, so one attempt bounded well inside the route's maxDuration (rule 335).
-  const client = anthropic({ timeoutMs: MODEL_BUDGET.JUDGE_MS, maxRetries: 0 });
+  // After the response and free of charge: each attempt bounded (rule 335), and one retry so a passing 529 or 429 does
+  // not leave the batch unscored.
+  const client = anthropic({ timeoutMs: MODEL_BUDGET.JUDGE_MS, maxRetries: 1 });
   const res = await client.messages.create({
     model: "claude-sonnet-5",
     max_tokens: 8000,

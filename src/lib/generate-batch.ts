@@ -18,7 +18,7 @@ import { randomBytes } from "crypto";
 import { trialOver, type User } from "./auth";
 import { charge, chargeOnce, refund, refundOnce, renewIfDue, renewalDue, type SpendRef } from "./credits";
 import { agentForTask, type AgentId } from "./agents";
-import { briefOf, getBrand, listPreferencesFor, saveTask, type Brand, type Task, type TaskParent } from "./brand";
+import { briefOf, dropTasks, getBrand, listPreferencesFor, saveTask, type Brand, type Task, type TaskParent } from "./brand";
 import { TASK_COST, TASK_COUNT, isDraftType, type TaskType } from "./tasks";
 import { getGov, type Governance } from "./governance";
 import { missingData } from "./cart-recovery";
@@ -219,7 +219,7 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   }
 
   let ground: Grounding;
-  let tasks: Task[];
+  let tasks: Task[] = [];
   let createdAt: string;
   // Everything up to the commit is inside the try: the credits are already charged, and a failed read, generation, task
   // save or commit must reach the refund below. Before 2026-10-01 only the read and the generation were: a save that
@@ -233,14 +233,20 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
     createdAt = new Date().toISOString();
     const brief = opts.brief ?? briefOf(opts.notes);
     tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt, parent: opts.parent }));
-    // Together, not one round trip after another (Redis is HTTP per command).
-    await Promise.all(tasks.map((t) => saveTask(scope, t, true)));
+    // Together, not one round trip after another (Redis is HTTP per command). Every save settles before the guard
+    // decides, so a refund below never races a save still landing.
+    const saved = await Promise.allSettled(tasks.map((t) => saveTask(scope, t, true)));
+    const lost = saved.find((r): r is PromiseRejectedResult => r.status === "rejected");
+    if (lost) throw lost.reason;
     await opts.commit?.(tasks);
   } catch (error) {
     // With the receipt (or the claim's hold), so the agent's monthly counter comes down with the balance. Once: a claim's
-    // hold is dropped in the same save.
+    // hold is dropped in the same save. A refunded batch keeps no task (rule 334): the ones saved before a save or the
+    // commit failed are removed, or they stayed approvable for free and the Sunday retry planned the week a second time.
+    // Their removal failing is logged and never stops the refund.
     const back = opts.once ? refundOnce(user.email, opts.once).then((r) => r.credits) : refund(user.email, cost, receipt);
-    const [credits] = await Promise.all([back, opts.settle?.()]);
+    const drop = tasks.length ? dropTasks(scope, tasks).catch((e) => console.error("refunded batch tasks not removed", e instanceof Error ? e.name : "error")) : null;
+    const [credits] = await Promise.all([back, opts.settle?.(), drop]);
     user.credits = credits;
     return { ok: false, reason: "failed", error, credits };
   }
