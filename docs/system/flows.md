@@ -4,27 +4,28 @@ Step-by-step behaviour with the files involved. Paths relative to the repository
 
 ## 1. Signup (email first, then name and password)
 
-Files: `src/app/[lang]/app/signup/page.tsx`, `src/components/app/AuthForm.tsx:17-72`, `src/app/api/auth/signup/route.ts`, `src/lib/auth.ts`, `src/lib/referral.ts`, `src/lib/track.ts`.
+Files: `src/app/[lang]/app/signup/page.tsx`, `src/components/app/AuthForm.tsx` (`SignupForm`), `src/lib/auth-client.ts`, `src/app/api/auth/signup/route.ts`, `src/lib/auth.ts`, `src/lib/referral.ts`, `src/lib/track.ts`.
 
 1. Page redirects an already signed-in user to `/{lang}/app` (`signup/page.tsx:11`).
-2. Client step 1: email is validated with `^[^\s@]+@[^\s@]+\.[^\s@]+$` (`AuthForm.tsx:34`). Step 2 asks for name and password; the client requires length >= 8, one letter, one digit (`AuthForm.tsx:30`). Query params read: `ref` (referral code), `url` (site for onboarding), `next` (must start with `/` and not `//`, `AuthForm.tsx:24`).
+2. Client step 1: email is validated with `^[^\s@]+@[^\s@]+\.[^\s@]+$` (`AuthForm.tsx:34`). Step 2 asks for name and password; the client requires length >= 8, one letter, one digit (`passwordChecks`, `src/lib/auth-client.ts`). Each rule shows a check or cross and the words "met"/"not met" for screen readers, one `aria-live` line counts them ("2 of 3 password rules met"), and the submit button is `aria-disabled` (still focusable, described by the rules list): pressed early it names the unmet rules in a `role="alert"` message and moves focus to the password (rule 324, 2026-10-01). Query params read: `ref` (referral code), `url` (site for onboarding), `next` (must start with `/` and not `//`, `AuthForm.tsx:24`).
 3. `POST /api/auth/signup` with `{email, name, password, lang, ref, phone?}`.
 4. Server: rate limit 5 per IP per hour (429 `slow_down`); normalizes email (trim, lowercase); `validEmail` (the address regex, and no `:` or `#`); `strongPassword` (8+, a letter, a digit); optional phone needs >= 9 digits. Then, inside `withLoginLock(email)` (`lock:login:{email}`, the lock invite acceptance takes too), `getLogin(email)`: an owner account or a member login at the address gets 409 `exists`, the same answer for both (2026-09-29); otherwise `createUser`.
 5. `createUser` (`auth.ts:139`): bcrypt cost 10, plan `trial`, 50 credits, `trialEnds` = now + 3 days, name clipped to 80 chars. Writes `user:{email}`, adds to `users:all`. It also stamps `sessionsAfter` = `createdAt`, so a session issued for an earlier account at the same address never works again. Member logins are never created here (section 26).
 6. `registerCode` writes `ref:{CODE}`. If `ref` matches `^[A-Za-z0-9]{6,10}$`, `applyReferral` runs (section 15).
 7. `createSession(email)` sets cookie `nashr_session`. `track(email,"signup")`.
-8. Client navigates to `next`, or `/{lang}/app/start?url={url}` when a site URL was carried (the owner reviews and confirms it there before anything is read, section 6), else `/{lang}/app/start`. A carried URL never starts onboarding by itself: until 2026-09-28 it went straight to `/{lang}/app/chat?onboard={url}`, so a link like `/en/app/signup?url=attacker.example` chose the new workspace's brand.
+8. Errors (rule 323, 2026-10-01): the form posts through `postJson`, which never throws, and clears its busy state in `finally`. A 429 says "too many sign-ups from this connection, try in an hour", a dropped connection says to check the connection, a 5xx or an HTML error page says the problem is on our side; known codes (`exists`, `bad_email`, `weak_password`, `bad_phone`) keep their messages, and an unknown code never reaches the screen raw. Client navigates to `next`, or `/{lang}/app/start?url={url}` when a site URL was carried (the owner reviews and confirms it there before anything is read, section 6), else `/{lang}/app/start`. A carried URL never starts onboarding by itself: until 2026-09-28 it went straight to `/{lang}/app/chat?onboard={url}`, so a link like `/en/app/signup?url=attacker.example` chose the new workspace's brand.
 9. Rate limit 5 per IP per hour; no email verification, no CAPTCHA on this route.
 
 ## 2. Login
 
-Files: `login/page.tsx`, `AuthForm.tsx:74-107`, `src/app/api/auth/login/route.ts`.
+Files: `login/page.tsx`, `AuthForm.tsx` (`LoginForm`), `src/lib/auth-client.ts`, `src/app/api/auth/login/route.ts`.
 
 1. `POST /api/auth/login {email, password}`.
 2. Rate limits 20 per IP and 8 per login per 15 min (429 `slow_down`). `getLogin(email)` finds the login: the owner record `user:{email}` or a member record `member:{email}` (the owner record wins should both exist). bcrypt compares against THAT login's own hash, so the owner's password never opens a member login and a member's never opens the owner's. Unknown login or bad password: 401 `invalid` (same response for both).
 3. Owner: 403 `suspended` (only after a correct password). Member (2026-09-29): 401 `invalid` when the owner record is missing, `memberOf` does not name it, or the member was accepted before the owner record was created; 403 `suspended` when the owner is suspended; 403 `disabled` when the member is paused by the seat limit (section 26 step 13).
 4. `createSession(login email)`, `track(owner email, "login")` (analytics count accounts), `{ok:true}`. Client goes to `next` (same `/` and not `//` rule) or `/{lang}/app`. Every later request resolves a member session to the owner's account again (section 5).
 5. No lockout beyond the rate limits.
+6. The form (rule 323, 2026-10-01) says "wrong email or password" only for a 401; 429 says to wait 15 minutes, 403 `suspended` and `disabled` have their own messages, a dropped connection and a 5xx each say what happened, and the button always comes back.
 
 ## 3. Logout
 
@@ -41,7 +42,7 @@ Files: `forgot/page.tsx`, `AuthForm.tsx` (`ForgotForm`), `src/app/api/auth/forgo
 4. Response is always `{ok:true, mail:boolean}`; `mail` says whether email delivery is configured, not whether the account exists. The forgot page shows a WhatsApp link when `SUPPORT_WHATSAPP` is set.
 
 ### Reset
-Files: `reset/page.tsx`, `AuthForm.tsx:148-178`, `src/app/api/auth/reset/route.ts`.
+Files: `reset/page.tsx`, `AuthForm.tsx` (`ResetForm`, the same rules display and error handling as signup, rules 323-324), `src/app/api/auth/reset/route.ts`.
 
 1. `POST /api/auth/reset {token, password}`. Rate limit 10 per 15 min per IP (429).
 2. Password rule server-side: length >= 8, one Unicode letter, one digit. Token must match `^[a-f0-9]{64}$`.

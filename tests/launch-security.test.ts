@@ -220,3 +220,77 @@ describe("the waitlist keeps email addresses out of the logs (rule 322)", () => 
     expect(readFileSync("src/app/api/waitlist/route.ts", "utf8")).not.toMatch(/console\.log/);
   });
 });
+
+describe("the auth forms never get stuck and say what went wrong (rule 323)", () => {
+  it("postJson never throws: a dropped connection is status 0, an HTML error page is an empty body", async () => {
+    const { postJson } = await import("@/lib/auth-client");
+    const dropped = (async () => { throw new TypeError("Failed to fetch"); }) as unknown as typeof fetch;
+    expect(await postJson("/api/auth/login", {}, dropped)).toEqual({ status: 0, body: {} });
+    const html = (async () => new Response("<html>Bad Gateway</html>", { status: 502, headers: { "content-type": "text/html" } })) as unknown as typeof fetch;
+    expect(await postJson("/api/auth/signup", {}, html)).toEqual({ status: 502, body: {} });
+    const ok = (async () => Response.json({ ok: true, mail: false })) as unknown as typeof fetch;
+    expect(await postJson("/api/auth/forgot", {}, ok)).toEqual({ status: 200, body: { ok: true, mail: false } });
+  });
+
+  it("maps a status and code to one message: a rate limit, the connection and the server are never 'wrong password'", async () => {
+    const { authMessage, AUTH_ERR, failureCode, succeeded } = await import("@/lib/auth-client");
+    const code = (status: number, error?: string) => failureCode({ status, body: error ? { ok: false, error } : {} });
+    expect([code(0), code(429, "slow_down"), code(500), code(502), code(504, "invalid"), code(200), code(401, "invalid"), code(403, "suspended"), code(409, "exists"), code(400, "captcha_failed"), code(503, "captcha_unavailable")])
+      .toEqual(["network", "slow_down", "server", "server", "server", "server", "invalid", "suspended", "exists", "captcha_failed", "captcha_unavailable"]);
+    expect(succeeded({ status: 200, body: { ok: false } })).toBe(false);
+    expect(succeeded({ status: 200, body: { ok: true } })).toBe(true);
+    for (const lang of ["ar", "en"] as const) {
+      const own = { invalid: `wrong-${lang}` };
+      expect(authMessage("invalid", lang, own)).toBe(own.invalid);
+      for (const c of ["network", "slow_down", "server", "captcha_failed", "captcha_unavailable", "disabled"] as const) {
+        expect(authMessage(c, lang, own)).toBe(AUTH_ERR[lang][c]);
+        expect(AUTH_ERR[lang][c].length).toBeGreaterThan(10);
+      }
+      // An unknown code never reaches the screen as a raw identifier.
+      expect(authMessage("some_new_code", lang, own)).toBe(AUTH_ERR[lang].server);
+    }
+    expect(new Set(Object.values(AUTH_ERR.en)).size, "every message is distinct").toBe(Object.keys(AUTH_ERR.en).length);
+    expect(Object.keys(AUTH_ERR.ar)).toEqual(Object.keys(AUTH_ERR.en));
+  });
+
+  it("every auth form posts through postJson and clears its busy state in finally", () => {
+    const src = readFileSync("src/components/app/AuthForm.tsx", "utf8");
+    expect(src).not.toMatch(/await fetch\(/);
+    expect(src).not.toMatch(/\.json\(\)(?!\.catch)/);
+    expect(src.match(/await postJson\(/g)?.length).toBe(4);
+    expect(src.match(/\} finally \{/g)?.length).toBe(4);
+  });
+});
+
+describe("password rules are not colour-only (rule 324)", () => {
+  it("the client checks agree with the server's strongPassword", async () => {
+    const { passwordChecks } = await import("@/lib/auth-client");
+    const { strongPassword } = await import("@/lib/auth");
+    for (const pw of ["", "abc", "abcdefgh", "12345678", "abcdefg1", "كلمةسر12", "short1", "nodigitshere", "goodpass1", "        1a"]) {
+      expect(passwordChecks(pw).every(Boolean), pw).toBe(strongPassword(pw));
+    }
+  });
+
+  it("a live status line counts the rules met, and an early press names the unmet ones", async () => {
+    const { passwordChecks, rulesStatus, unmetRules } = await import("@/lib/auth-client");
+    const rules = { en: ["At least 8 characters", "At least one letter", "At least one number"], ar: ["8 أحرف على الأقل", "حرف واحد على الأقل", "رقم واحد على الأقل"] };
+    expect(rulesStatus(passwordChecks("abc"), "en")).toBe("1 of 3 password rules met");
+    expect(rulesStatus(passwordChecks("abcdefg1"), "en")).toBe("3 of 3 password rules met");
+    expect(rulesStatus(passwordChecks("abc"), "ar")).toBe("1 من 3 شروط لكلمة المرور متحققة");
+    expect(unmetRules(passwordChecks("abc"), rules.en, "en")).toBe("Your password still needs: At least 8 characters, At least one number.");
+    expect(unmetRules(passwordChecks("abc"), rules.ar, "ar")).toBe("كلمة المرور ما زالت تحتاج: 8 أحرف على الأقل، رقم واحد على الأقل.");
+    expect(unmetRules(passwordChecks("abcdefg1"), rules.en, "en")).toBe("");
+  });
+
+  it("the forms render a text state per rule, one live line, and a focusable aria-disabled submit", () => {
+    const src = readFileSync("src/components/app/AuthForm.tsx", "utf8");
+    expect(src).not.toMatch(/<ul[^>]*aria-live/);
+    expect(src).toMatch(/className="sr-only"> \(\{checks\[i\] \? T\.met : T\.unmet\}\)/);
+    expect(src).toMatch(/<p className="sr-only" aria-live="polite">\{rulesStatus\(checks, lang\)\}<\/p>/);
+    // The submit is no longer disabled by the rules: it stays focusable and is described by the rules list.
+    expect(src).not.toMatch(/disabled=\{busy \|\|/);
+    expect(src.match(/aria-disabled=\{/g)?.length).toBe(2);
+    expect(src).toContain('aria-describedby={step === 2 ? "signup-rules" : undefined}');
+    expect(src).toContain('aria-describedby="reset-rules"');
+  });
+});
