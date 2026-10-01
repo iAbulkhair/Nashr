@@ -150,8 +150,8 @@ export function windowEnd(firstPaidOn: string): string {
 export type Attribution = { partner: string; code: string; at: string; via: "link" | "code"; ref?: string };
 export type NotCounted = "no_partner" | "self" | "team" | "before_attribution" | "lapsed" | "window";
 /**
- * Does this payment earn the partner a commission? `firstPaidOn` is the account's first payment day among every payment
- * that stands. The decision is re-taken for every payment of the customer whenever a payment is recorded or voided
+ * Does this payment earn the partner a commission? `firstPaidOn` is the day the windows start: the account's first plan
+ * payment that stands, or its first top-up payment when no plan payment stands (src/lib/partners.ts `windowStartDay`). The decision is re-taken for every payment of the customer whenever a payment is recorded or voided
  * (src/lib/partners.ts `settle`), so a backdated entry or a voided first payment moves every payment's answer with it.
  * Self: the partner's own account. Team: either account has the other on its roster. Before attribution: the customer
  * paid before the partner referred them, so they were never the partner's customer. Lapsed: the first payment came more

@@ -259,7 +259,20 @@ export type PaymentError = "bad_amount" | "bad_plan" | "bad_date" | "bad_id" | "
 const PAID_PLANS: readonly Plan[] = ["starter", "pro", "business", "agency"];
 /** Today in Riyadh: payments and payouts are dated by the founder's calendar. */
 const today = () => ksaDay();
-const firstLiveDay = (all: Record<string, Payment>) => Object.values(all).filter((p) => !p.voidedAt).map((p) => p.date).sort()[0] as string | undefined;
+/**
+ * The first day among the payments that stand. `plan`: plan payments only, leaving out top-up packs' payments (`topup`).
+ * The account's first payment day (`User.firstPaidOn`) and the first-month offer are the plan's (rule 454): a pack
+ * recorded before the plan's first payment neither sets that day nor closes the offer, so the plan payment recorded after
+ * it, backdated or not, still takes the offer.
+ */
+const firstLiveDay = (all: Record<string, Payment>, opts: { plan?: boolean } = {}) =>
+  Object.values(all).filter((p) => !p.voidedAt && !(opts.plan && p.topup)).map((p) => p.date).sort()[0] as string | undefined;
+/**
+ * The day the partner's 30-day attribution check and 4-month window are measured from: the plan's first payment that
+ * stands; only when none stands (the plan was activated with no payment recorded) the first top-up payment, so a paying
+ * customer's pack is never left without a decision. Recording the plan payment later moves the start to it (`settle`).
+ */
+const windowStartDay = (all: Record<string, Payment>) => firstLiveDay(all, { plan: true }) ?? firstLiveDay(all);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
@@ -272,7 +285,7 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
  */
 async function settle(e: string, u: User, all: Record<string, Payment>, now: string, changedId: string): Promise<{ payments: Record<string, Payment>; reclassified: string[] }> {
   const at = u.referredBy;
-  const firstPaidOn = firstLiveDay(all);
+  const firstPaidOn = windowStartDay(all);
   let decide: (p: Payment) => { ok: true } | { ok: false; reason: NotCounted } = () => ({ ok: false, reason: "no_partner" });
   if (at && firstPaidOn) {
     const [partner, sameTeam] = await Promise.all([getPartner(at.partner), Promise.all([onRoster(e, at.partner), onRoster(at.partner, e)]).then((x) => x.some(Boolean))]);
@@ -311,7 +324,8 @@ const cleanText = (v: unknown, max: number) => (typeof v === "string" ? v.replac
 
 /**
  * Record a payment the founder received (SAR, excluding VAT: the commission base is the amount before VAT, rule 409).
- * Under the customer's lock: the first payment uses the account's first-month offer when it is dated on or after the
+ * Under the customer's lock: the plan's first payment (a top-up pack's payment never counts as one) uses the account's
+ * first-month offer when it is dated on or after the
  * day the offer was granted and, for the early-partner offer, on or before its last day (rule 410: the day the money
  * arrived counts, so a payment made in time and recorded later still uses it); then every payment's commission is
  * re-taken (`settle`): 15% to the partner's ledger when the account is attributed, paid on or after attribution and within
@@ -336,14 +350,18 @@ export async function recordPayment(email: string, input: PaymentInput, by: stri
     const pay: Payment = { id, amountSar, plan, date, reference: cleanText(input.reference, 80), recordedAt: new Date().toISOString(), recordedBy: by, ...(topup ? { topup } : {}) };
     const offer = unusedOffer(u);
     const last = offer ? offerLastDay(u, offer) : null;
-    // The first-month discount is a plan's first month: a top-up pack's payment never takes it (rule 454).
-    if (offer && !topup && live.length === 0 && date >= ksaDay(new Date(offer.at).getTime()) && (!last || date <= last)) {
+    // The first-month discount is a plan's first month: a top-up pack's payment never takes it, and a pack's payment
+    // recorded earlier does not count as the plan's first payment (rule 454).
+    const livePlan = live.filter((p) => !p.topup);
+    if (offer && !topup && livePlan.length === 0 && date >= ksaDay(new Date(offer.at).getTime()) && (!last || date <= last)) {
       pay.offer = offer.kind;
       if ((SELF_SERVE_PLANS as readonly string[]).includes(plan)) pay.expectedSar = firstMonthPriceSar(plan as SelfServePlan);
       u.firstMonthOffer = { ...offer, usedAt: pay.recordedAt, paymentId: id };
     }
     const { payments, reclassified } = await settle(e, u, { ...all, [id]: pay }, pay.recordedAt, id);
-    u.firstPaidOn = firstLiveDay(payments);
+    const first = firstLiveDay(payments, { plan: true });
+    if (first) u.firstPaidOn = first;
+    else delete u.firstPaidOn;
     await saveUser(u);
     return { ok: true as const, payment: payments[id], ...(reclassified.length ? { reclassified } : {}) };
   });
@@ -351,8 +369,9 @@ export async function recordPayment(email: string, input: PaymentInput, by: stri
 
 /**
  * Void a payment (refunded, or entered by mistake). Every commission of the customer is re-taken (`settle`): this one's is
- * voided in the partner's ledger, and the others follow the new first payment day. When no other payment stands, the
- * account is back to unpaid: its first payment day goes, and the first-month offer this payment used is open again.
+ * voided in the partner's ledger, and the others follow the new first payment day. When no other plan payment stands,
+ * the account is back to unpaid: its first payment day goes, and the first-month offer this payment used is open again
+ * (packs' payments that still stand keep neither, rule 454).
  * A top-up pack's payment whose pack is still live is refused here (`topup_live`, rule 455): it is voided with its pack
  * ("Void" in the console's Top-ups block, `voidPaidTopup`, which passes `withPack`), so a pack never keeps its credits
  * after its payment went, nor the other way round. Once the pack has expired, its payment is voided like any other.
@@ -368,7 +387,7 @@ export async function voidPayment(email: string, id: unknown, by: string, reason
     if (p.topup && !opts.withPack && lotsOf(u).some((l) => l.id === p.topup!.lot)) return { ok: false as const, error: "topup_live" as const };
     const voided: Payment = { ...p, voidedAt: new Date().toISOString(), voidedBy: by, voidReason: cleanText(reason, 200) || undefined };
     const { payments, reclassified } = await settle(e, u, { ...all, [id]: voided }, voided.voidedAt!, id);
-    const first = firstLiveDay(payments);
+    const first = firstLiveDay(payments, { plan: true });
     if (first) u.firstPaidOn = first;
     else delete u.firstPaidOn;
     if (u.firstMonthOffer?.paymentId === id && !first) u.firstMonthOffer = { kind: u.firstMonthOffer.kind, pct: u.firstMonthOffer.pct, at: u.firstMonthOffer.at };

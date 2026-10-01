@@ -26,5 +26,5 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const [tasks, brief, connections, journey, off] = await Promise.all([listTasks(sc(u)), latestBrief(sc(u)), listConnections(sc(u)), loadJourney(sc(u), u.email, { brand }), offModels()]);
   // The media models on offer (keys, Blob store, MEDIA_MODELS_ON, not switched off by the breaker) and the pause, read
   // per request: the page is dynamic, and the start routes check the same things again.
-  return <Inbox t={appDict[lang]} lang={lang} tasks={tasks} brief={brief?.text ?? null} connected={connectedTargets(connections)} banned={brand.banned} journey={journey} media={availableModels(undefined, off)} credits={u.credits} plan={u.plan} paused={modelState() !== "on"} canPublish={can(u, "publish")} />;
+  return <Inbox t={appDict[lang]} lang={lang} tasks={tasks} brief={brief?.text ?? null} connected={connectedTargets(connections)} banned={brand.banned} journey={journey} media={availableModels(undefined, off)} credits={u.credits} plan={u.plan} paused={modelState() !== "on"} canPublish={can(u, "publish")} owner={can(u, "billing")} />;
 }

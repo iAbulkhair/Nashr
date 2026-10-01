@@ -33,7 +33,20 @@ export const RECHECK_GAPS = [4_000, 12_000, 30_000];
 type StartBody = { ok?: boolean; error?: string; need?: number; have?: number; job?: PublicJob };
 export type PollEvent = { job?: PublicJob; end?: "done" | "failed" | "gone"; late?: true };
 /** `waiting`: the note says the card will pick up a render another start is saving, so it goes once the card does. */
-type Note = { text: string; billing?: boolean; topup?: boolean; waiting?: boolean };
+export type Note = { text: string; billing?: boolean; topup?: boolean; waiting?: boolean };
+
+/**
+ * The note when a render is short of credits with a balance above 0 (rules 450, 457): the owner of a paid plan is offered
+ * a top-up pack or an upgrade and linked to the packs on the billing page; a trial's owner, who cannot buy a pack
+ * (`topupsSold`), gets the plans link only. Anyone else (`owner` is `can(u, "billing")`) is told to ask the account owner,
+ * with the same split by plan and no link: on the billing page only the owner can buy.
+ */
+export function shortOfCredits(i: AppDict["inbox"], a: { need: number | undefined; have: number | undefined; plan: string; owner: boolean }): Note {
+  const sold = topupsSold(a.plan as Plan);
+  const text = plural(i.needCredits, a.need ?? 0, { need: a.need ?? "", have: String(a.have) });
+  if (!a.owner) return { text: `${text} ${sold ? i.needTopupAsk : i.needPlanAsk}` };
+  return { text: sold ? `${text} ${i.needTopup}` : text, billing: true, topup: sold };
+}
 
 /**
  * One setTimeout chain for one job; returns the function that stops it. The job's age comes from its createdAt, clamped
@@ -85,9 +98,11 @@ export function recheckTask(refresh: () => void): () => void {
   return () => clearTimeout(timer);
 }
 
-export default function MediaControls({ task, lang, t, available, credits, plan, paused, onChanged }: {
+export default function MediaControls({ task, lang, t, available, credits, plan, paused, owner = true, onChanged }: {
   task: Task; lang: Lang; t: AppDict; available: MediaModelId[];
   credits: number; plan: string; paused: boolean;
+  /** `can(u, "billing")`: the acting person may buy packs and plans; anyone else is told to ask the owner (rule 457). */
+  owner?: boolean;
   /**
    * Called after any 200 or 202, after a 5xx, while waiting for the job another start is saving, and when a poll ends
    * done or failed: the parent drops its local copy and refreshes.
@@ -207,15 +222,7 @@ export default function MediaControls({ task, lang, t, available, credits, plan,
     // The modal's text ("you've used this month's credits") is true only at a zero balance. An agent at the monthly cap
     // the owner set in Governance gets the same dialog /api/generate raises, which points to Governance, not billing.
     if (e === "trial_over" || e === "agent_cap" || (e === "no_credits" && !(typeof j.have === "number" && j.have > 0))) { limitFromError(e); return; }
-    if (e === "no_credits") {
-      const need = j.need ?? m?.credits;
-      // Short of credits on a paid plan, the note names the top-up and its link lands on the packs (rules 450, 457); a
-      // trial cannot buy a pack (`topupsSold`), so it gets the plans link only. The billing page tells a member that the
-      // owner buys packs.
-      const sold = topupsSold(plan as Plan);
-      const text = plural(i.needCredits, need ?? 0, { need: need ?? "", have: String(j.have) });
-      return say(kind, { text: sold ? `${text} ${i.needTopup}` : text, billing: true, topup: sold });
-    }
+    if (e === "no_credits") return say(kind, shortOfCredits(i, { need: j.need ?? m?.credits, have: j.have, plan, owner }));
     say(kind, { text: errText(e) ?? fail(kind), billing: e === "plan_required" || e === "trial_video_used" });
   }
 

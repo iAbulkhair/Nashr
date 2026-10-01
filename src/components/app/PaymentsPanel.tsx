@@ -21,9 +21,9 @@ type View = {
 const S = {
   en: {
     title: "Payments", note: "Record each plan payment received (SAR excluding VAT). It is the source of truth for partner commissions; it does not change the plan (set that above).",
-    topupNote: "Top-ups: never record them here. \"Add top-up\" in the Top-ups block records the pack's payment and the partner's commission with the pack, and \"Void\" there voids both. Record the plan's first payment here before the first top-up: a top-up never uses the first-month offer.",
+    topupNote: "Top-ups: never record them here. \"Add top-up\" in the Top-ups block records the pack's payment and the partner's commission with the pack, and \"Void\" there voids both. A top-up never uses the first-month offer, and the plan's first payment recorded here takes it even after a top-up. The partner's 4 months start at the plan's first payment (at the first top-up only while no plan payment is recorded).",
     topup: (n: string) => `top-up ${n}`, withPack: "void it with its pack (Top-ups)",
-    offerOpen: (kind: string) => `Unused ${FIRST_MONTH_DISCOUNT_PCT}% first-month offer (${kind}). The first payment recorded uses it. Expected first month:`,
+    offerOpen: (kind: string) => `Unused ${FIRST_MONTH_DISCOUNT_PCT}% first-month offer (${kind}). The plan's first payment recorded uses it. Expected first month:`,
     offerUsed: (kind: string) => `${FIRST_MONTH_DISCOUNT_PCT}% first-month offer (${kind}) used.`,
     until: (d: string) => `It can be used until ${d}.`,
     expired: (kind: string, d: string) => `${FIRST_MONTH_DISCOUNT_PCT}% first-month offer (${kind}) ended on ${d}: no longer shown to the customer. A payment dated on or before ${d} still uses it.`,
@@ -37,9 +37,9 @@ const S = {
   },
   ar: {
     title: "الدفعات", note: "سجّل كل دفعة اشتراك مستلمة (بالريال دون الضريبة). هي مصدر حساب عمولات الشركاء، ولا تغيّر الخطة (غيّرها من الأعلى).",
-    topupNote: "باقات الشحن: لا تسجّلها هنا أبداً. «أضف باقة شحن» في قسم باقات الشحن يسجّل دفعة الباقة وعمولة الشريك مع الباقة، و«إلغاء» هناك يلغيهما معاً. سجّل أول دفعة للخطة هنا قبل أول باقة شحن: باقة الشحن لا تستخدم عرض الشهر الأول.",
+    topupNote: "باقات الشحن: لا تسجّلها هنا أبداً. «أضف باقة شحن» في قسم باقات الشحن يسجّل دفعة الباقة وعمولة الشريك مع الباقة، و«إلغاء» هناك يلغيهما معاً. باقة الشحن لا تستخدم عرض الشهر الأول، وأول دفعة للخطة تُسجَّل هنا تستخدمه ولو جاءت بعد باقة شحن. وتبدأ أشهر الشريك الأربعة من أول دفعة للخطة (ومن أول باقة شحن ما دامت لا دفعة خطة مسجّلة).",
     topup: (n: string) => `باقة شحن ${n}`, withPack: "تُلغى مع باقتها (باقات الشحن)",
-    offerOpen: (kind: string) => `عرض خصم ${FIRST_MONTH_DISCOUNT_PCT}% على الشهر الأول غير مستخدم (${kind}). تستخدمه أول دفعة تُسجَّل. المتوقع للشهر الأول:`,
+    offerOpen: (kind: string) => `عرض خصم ${FIRST_MONTH_DISCOUNT_PCT}% على الشهر الأول غير مستخدم (${kind}). تستخدمه أول دفعة للخطة تُسجَّل. المتوقع للشهر الأول:`,
     offerUsed: (kind: string) => `استُخدم عرض خصم ${FIRST_MONTH_DISCOUNT_PCT}% على الشهر الأول (${kind}).`,
     until: (d: string) => `صالح حتى ${d}.`,
     expired: (kind: string, d: string) => `انتهى عرض خصم ${FIRST_MONTH_DISCOUNT_PCT}% على الشهر الأول (${kind}) في ${d}: لم يعد يظهر للعميل. الدفعة المؤرخة في ${d} أو قبله تستخدمه.`,

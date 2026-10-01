@@ -13,6 +13,8 @@ import { lotsOf, monthlyCredits, parseTopup, creditSplit } from "@/lib/topups";
 import { appDict } from "@/lib/app-i18n";
 import { noCreditsText } from "@/components/app/LimitModal";
 import ProfilePanel from "@/components/app/ProfilePanel";
+import { shortOfCredits } from "@/components/app/MediaControls";
+import { firstMonthPriceSar } from "@/lib/pricing";
 import * as topupsRoute from "@/app/api/admin/topups/route";
 import * as adminPayments from "@/app/api/admin/payments/[email]/route";
 
@@ -142,6 +144,51 @@ describe("a pack is a customer payment: 'Add top-up' records it with the partner
     expect(clash.status).toBe(400);
     expect(await clash.json()).toEqual({ ok: false, error: "bad_id" });
     expect((await getUser(email))!.credits).toBe(before);
+  });
+
+  it("a pack recorded before the plan's first payment leaves the offer open: the plan payment after it, backdated or not, takes it", async () => {
+    for (const planDay of [-2, 0]) {
+      const email = await paid(0);
+      const u = (await getUser(email))!;
+      await saveUser({ ...u, firstMonthOffer: { kind: "partner", pct: 15, at: new Date(Date.now() - 5 * DAY).toISOString() } });
+      const t = (await (await add(email, { paymentId: payId() })).json()) as AddBody;
+      expect(t.payment!.offer).toBeUndefined();
+      let now = (await getUser(email))!;
+      expect(now.firstPaidOn, "a pack's payment is not the plan's first payment").toBeUndefined();
+      expect(now.firstMonthOffer!.usedAt).toBeUndefined();
+      expect((await paymentsView(email))!.open, "the console still shows the offer open").toBe(true);
+
+      const plan = await recordPayment(email, { amountSar: firstMonthPriceSar("starter"), plan: "starter", date: day(planDay) }, "key");
+      if (!plan.ok) throw new Error(plan.error);
+      expect(plan.payment, `plan payment dated ${planDay}`).toMatchObject({ offer: "partner", expectedSar: firstMonthPriceSar("starter") });
+      now = (await getUser(email))!;
+      expect(now.firstMonthOffer).toMatchObject({ paymentId: plan.payment.id });
+      expect(now.firstMonthOffer!.usedAt).toBeTruthy();
+      expect(now.firstPaidOn, "the first payment day is the plan payment's").toBe(day(planDay));
+
+      // Voiding the plan payment reopens the offer although the pack's payment still stands.
+      expect((await voidPayment(email, plan.payment.id, "key", "entered by mistake")).ok).toBe(true);
+      now = (await getUser(email))!;
+      expect(now.firstPaidOn).toBeUndefined();
+      expect(now.firstMonthOffer!.usedAt).toBeUndefined();
+    }
+  });
+
+  it("the partner's window starts at the plan's first payment; a pack starts it only while no plan payment stands", async () => {
+    const { customer, partner } = await referred(10);
+    const id = payId();
+    const t = (await (await add(customer, { paymentId: id })).json()) as AddBody;
+    expect(t.payment, "a paying customer's pack is never left without a decision").toMatchObject({ commission: { partner, sar: commissionSar(300) } });
+    expect((await getUser(customer))!.firstPaidOn).toBeUndefined();
+    const plan = await recordPayment(customer, { amountSar: 299, plan: "starter", date: day(-4) }, "key");
+    if (!plan.ok) throw new Error(plan.error);
+    expect(plan.payment.commission?.sar).toBe(commissionSar(299));
+    expect((await getUser(customer))!.firstPaidOn).toBe(day(-4));
+    expect((await payments(customer))[id].commission?.sar, "the pack keeps its commission").toBe(commissionSar(300));
+    expect((await ledger(partner)).filter((r) => r.kind === "commission" && !r.voidedAt).map((r) => r.id).sort()).toEqual([id, plan.payment.id].sort());
+    const src = readFileSync("src/lib/partners.ts", "utf8");
+    expect(src).toContain("const firstPaidOn = windowStartDay(all);");
+    expect(src).toContain("const windowStartDay = (all: Record<string, Payment>) => firstLiveDay(all, { plan: true }) ?? firstLiveDay(all);");
   });
 
   it("the Payments route never records a top-up: its body's fields are passed one by one", async () => {
@@ -287,8 +334,34 @@ describe("out of credits, the line fits the plan and the role (rule 457)", () =>
       expect(readFileSync(f, "utf8"), f).toContain('owner={can(u, "billing")} topups={topupsSold(u.plan)}');
     }
     const media = readFileSync("src/components/app/MediaControls.tsx", "utf8");
-    expect(media).toContain("const sold = topupsSold(plan as Plan);");
-    expect(media).toContain("text: sold ? `${text} ${i.needTopup}` : text, billing: true, topup: sold");
+    expect(media).toContain('if (e === "no_credits") return say(kind, shortOfCredits(i, { need: j.need ?? m?.credits, have: j.have, plan, owner }));');
+  });
+
+  it("a media render short of credits: packs and a link for a paid owner, plans for a trial owner, ask the owner for anyone else", () => {
+    for (const lang of ["ar", "en"] as const) {
+      const i = appDict[lang].inbox;
+      const at = (plan: string, owner: boolean) => shortOfCredits(i, { need: 40, have: 12, plan, owner });
+      const paidOwner = at("pro", true);
+      expect(paidOwner, lang).toMatchObject({ billing: true, topup: true });
+      expect(paidOwner.text, lang).toContain(i.needTopup);
+      expect(paidOwner.text, lang).toMatch(/40[\s\S]*12/);
+      const trialOwner = at("trial", true);
+      expect(trialOwner, lang).toMatchObject({ billing: true, topup: false });
+      expect(trialOwner.text, lang).not.toMatch(/top.?up|شحن|باقة/i);
+      // A member of a paid account cannot buy a pack (the billing page tells them to ask the owner): no link, no "top up".
+      const paidMember = at("business", false);
+      expect(paidMember.billing, lang).toBeUndefined();
+      expect(paidMember.topup, lang).toBeUndefined();
+      expect(paidMember.text, lang).toContain(i.needTopupAsk);
+      expect(paidMember.text, lang).not.toContain(i.needTopup);
+      expect(paidMember.text, lang).toMatch(lang === "ar" ? /مالك الحساب/ : /account owner/);
+      const trialMember = at("trial", false);
+      expect(trialMember.billing, lang).toBeUndefined();
+      expect(trialMember.text, lang).toContain(i.needPlanAsk);
+      expect(trialMember.text, lang).not.toMatch(/top.?up|شحن|باقة/i);
+    }
+    expect(readFileSync("src/app/[lang]/app/page.tsx", "utf8")).toContain('canPublish={can(u, "publish")} owner={can(u, "billing")}');
+    expect(readFileSync("src/components/app/Inbox.tsx", "utf8")).toContain('paused={!!paused} owner={owner} onChanged=');
   });
 
   it("the console's deal copy says a deal sets the month's plan credits and live packs are kept", async () => {

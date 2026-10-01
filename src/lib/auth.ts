@@ -74,7 +74,7 @@ export type User = {
    * this account was attributed to, first touch (a link's cookie or a typed code), never rewritten; `at` is the link's click
    * time or the signup, `ref` a random id that is the only source of the label the partner sees. `firstMonthOffer`: the
    * account's one 15% first-month discount, from that partner or the trial's last day; `usedAt` once a recorded payment
-   * took it. `firstPaidOn`: the day of the first recorded payment that still stands. `partnerCode`: this account is a
+   * took it. `firstPaidOn`: the day of the first recorded plan payment that still stands (a top-up pack's payment never sets it). `partnerCode`: this account is a
    * partner (display only: the record is `partner:{email}`).
    */
   referredBy?: { partner: string; code: string; at: string; via: "link" | "code"; ref?: string };

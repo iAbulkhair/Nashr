@@ -510,7 +510,7 @@ describe("out of credits, every message names the top-up (rule 450)", () => {
     }
     for (const lang of ["ar", "en"] as const) expect(appDict[lang].inbox.topupLink, lang).toMatch(lang === "ar" ? /شحن الرصيد/ : /Top-ups/);
     const media = readFileSync("src/components/app/MediaControls.tsx", "utf8");
-    expect(media).toContain("billing: true, topup: sold });");
+    expect(media).toContain("billing: true, topup: sold };");
     expect(media).toContain('href={`/${lang}/app/billing${n.topup ? "#topup" : ""}`}');
     const src = readFileSync("src/components/app/LimitModal.tsx", "utf8");
     expect(src).toContain('const topup = kind === "credits" && topups;');
