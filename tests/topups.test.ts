@@ -15,6 +15,7 @@ import { jar, json, newMember, newUser, signIn, signOut } from "./helpers/sessio
 import * as topupsRoute from "@/app/api/admin/topups/route";
 import * as planRoute from "@/app/api/admin/plan/route";
 import BillingPage from "@/app/[lang]/app/billing/page";
+import * as profileRoute from "@/app/api/profile/route";
 
 /**
  * Credit top-ups (pricing spec section 6 rule 5; founder decisions of 2026-10-01), rules 440-452 in docs/system/tests.md:
@@ -483,6 +484,17 @@ describe("out of credits, every message names the top-up (rule 450)", () => {
       expect(L.chatCreditsBody, lang).toMatch(lang === "ar" ? /اشحن رصيدك/ : /Top up your credits/);
       expect(L.askOwnerChatCredits, lang).toMatch(lang === "ar" ? /شحن الرصيد/ : /top up the credits/);
     }
+    for (const lang of ["ar", "en"] as const) {
+      // The generate and reports panels show one line to every plan and role next to the dialog: it points to the
+      // Subscription page without telling a trial or a member to buy a pack the dialog says they cannot.
+      const line = appDict[lang].generate.noCredits;
+      expect(line, lang).toMatch(lang === "ar" ? /الشحن[\s\S]*صفحة الاشتراك/ : /Top-up[\s\S]*Subscription page/);
+      expect(line, lang).not.toMatch(lang === "ar" ? /اشحن رصيدك|رقّ خطتك/ : /Top up your|upgrade your plan/i);
+      expect(appDict[lang].inbox.topupLink, lang).toMatch(lang === "ar" ? /شحن الرصيد/ : /Top-ups/);
+    }
+    const media = readFileSync("src/components/app/MediaControls.tsx", "utf8");
+    expect(media).toContain("billing: true, topup: true });");
+    expect(media).toContain('href={`/${lang}/app/billing${n.topup ? "#topup" : ""}`}');
     const src = readFileSync("src/components/app/LimitModal.tsx", "utf8");
     expect(src).toContain('const topup = kind === "credits" && topups;');
     expect(readFileSync("src/app/[lang]/app/layout.tsx", "utf8")).toContain("topups={topupsSold(user.plan)}");
@@ -525,5 +537,34 @@ describe("the module boundaries (rules 451-452)", () => {
     expect(credits).toContain("setMonthly(u, allowanceOf(u));");
     expect(credits).not.toMatch(/u\.credits -= /);
     expect(readFileSync("src/lib/auth.ts", "utf8")).toContain("if (settleTopups(u)) u.topupsDirty = true;");
+  });
+});
+
+describe("the owner's /api/profile shows packs without what was paid or who activated them (rule 453)", () => {
+  it("each pack is its credits, what is left and its dates; no payment reference, amount, founder or runtime flag", async () => {
+    const email = await paid(80);
+    const live = await lot(email, 300, Date.now(), { ref: "BANK-SECRET-4411", by: "founder-x@test.example", paidSar: 287.5 });
+    const gone = await lot(email, 100, Date.now(), { ref: "BANK-SECRET-4412", by: "founder-x@test.example" });
+    // The second pack expires under the owner's feet: the read settles it out and marks the record dirty (rule 444).
+    const u = (await getUser(email))!;
+    await saveUser({ ...u, topups: u.topups!.map((l) => (l.id === gone.id ? { ...l, expiresAt: new Date(Date.now() - DAY).toISOString() } : l)) });
+    await signIn(email);
+    const res = await profileRoute.GET();
+    expect(res.status).toBe(200);
+    const raw = await res.text();
+    for (const secret of ["BANK-SECRET", "founder-x@test.example", "paidSar", "paidOn", "\"ref\"", "topupsDirty"]) expect(raw).not.toContain(secret);
+    const body = JSON.parse(raw) as { user: { credits: number; topups: unknown } };
+    expect(body.user.credits).toBe(380);
+    expect(body.user.topups).toEqual([{ id: live.id, credits: 300, left: 300, at: live.at, expiresAt: live.expiresAt }]);
+  });
+
+  it("a member's summary carries no packs at all", async () => {
+    const email = await paid(80);
+    await lot(email, 100, Date.now(), { ref: "BANK-SECRET-9" });
+    const m = await newMember((await getUser(email))!);
+    await signIn(m.email);
+    const raw = await (await profileRoute.GET()).text();
+    expect(raw).not.toContain("BANK-SECRET");
+    expect(raw).not.toContain("\"topups\"");
   });
 });

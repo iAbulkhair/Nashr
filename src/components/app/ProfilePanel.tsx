@@ -33,7 +33,7 @@ type Data = {
   may?: { passwordChange: boolean; accountDelete: boolean };
   impersonating?: boolean;
   account?: { email: string; name: string };
-  user: { name: string; email: string; phone?: string; plan: string; credits: number; trialEnds: string; createdAt: string; lang: Lang; renewedAt?: string };
+  user: { name: string; email: string; phone?: string; plan: string; credits: number; trialEnds: string; createdAt: string; lang: Lang; renewedAt?: string; /** Live top-up packs (`topupView`, rule 453). */ topups?: { left: number }[] };
   usage: Record<string, { count: number; credits: number }>; images: number; /** What this month's renders charged (image 1-2, video 12-24 by model). */ mediaCredits?: number; emails?: string;
   allowance: number; nextReset: string;
   /** The account's chat messages (src/lib/chat-allowance.ts), the same for every seat. */
@@ -181,7 +181,9 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
   const planLabel = (t.nav.plans as Record<string, string>)[d.user.plan] ?? d.user.plan;
   const rules = d.user.plan === "trial"
     ? (ar ? `تجربتك تشمل ${d.allowance} كريدت لمدة 3 أيام. تنتهي ${d.user.trialEnds.slice(0, 10)}.` : `Your trial includes ${d.allowance} credits for 3 days. Ends ${d.user.trialEnds.slice(0, 10)}.`)
-    : (ar ? `خطتك تشمل ${d.allowance} كريدت شهرياً. يتجدد الرصيد في اليوم الأول من كل شهر (UTC). التجديد القادم: ${d.nextReset}.` : `Your plan includes ${d.allowance} credits per month. The balance resets on the 1st of each month (UTC). Next reset: ${d.nextReset}.`);
+    : (ar ? `خطتك تشمل ${d.allowance} كريدت شهرياً. يتجدد كريدت الخطة في اليوم الأول من كل شهر (UTC)، وتبقى باقات الشحن السارية حتى تنتهي صلاحيتها. التجديد القادم: ${d.nextReset}.` : `Your plan includes ${d.allowance} credits per month. The plan's credits reset on the 1st of each month (UTC); top-up packs keep what is left in them until they expire. Next reset: ${d.nextReset}.`);
+  // What of the balance sits in top-up packs (rule 453): the renewal never touches it.
+  const packLeft = (d.user.topups ?? []).reduce((sum, l) => sum + (Number.isFinite(l.left) ? Math.max(0, l.left) : 0), 0);
 
   return (
     <div className="mx-auto grid max-w-3xl gap-5">
@@ -192,7 +194,7 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
         <div className="flex items-center justify-between text-sm"><span>{ar ? "المستخدم" : "Credits used"}</span><span className="font-mono" dir="ltr">{usedCredits} / {d.allowance} ({pct}%)</span></div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-salt-dim"><div className="h-full bg-oasis" style={{ width: `${pct}%` }} /></div>
         {creditLine && <p className="mt-1 text-xs text-ink/60" data-runway="credits">{creditLine}</p>}
-        <div className="mt-3 rounded-lg bg-oasis/5 p-3"><span className="font-display text-2xl font-bold text-oasis" dir="ltr">{d.user.credits}</span> <span className="text-sm text-ink/60">{ar ? "كريدت متبقٍ" : "credits remaining"}</span></div>
+        <div className="mt-3 rounded-lg bg-oasis/5 p-3"><span className="font-display text-2xl font-bold text-oasis" dir="ltr">{d.user.credits}</span> <span className="text-sm text-ink/60">{ar ? "كريدت متبقٍ" : "credits remaining"}</span>{packLeft > 0 && <span className="block text-xs text-ink/60">{ar ? <>منها <span dir="ltr">{packLeft}</span> من باقات الشحن</> : <>{packLeft} of them from top-up packs</>}</span>}</div>
         {/* The account's chat messages (rule 315): counted apart from credits, shared by every seat. */}
         {chat && (
           <div className="mt-4" data-chat-usage="">

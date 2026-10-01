@@ -32,7 +32,7 @@ export const RECHECK_GAPS = [4_000, 12_000, 30_000];
 type StartBody = { ok?: boolean; error?: string; need?: number; have?: number; job?: PublicJob };
 export type PollEvent = { job?: PublicJob; end?: "done" | "failed" | "gone"; late?: true };
 /** `waiting`: the note says the card will pick up a render another start is saving, so it goes once the card does. */
-type Note = { text: string; billing?: boolean; waiting?: boolean };
+type Note = { text: string; billing?: boolean; topup?: boolean; waiting?: boolean };
 
 /**
  * One setTimeout chain for one job; returns the function that stops it. The job's age comes from its createdAt, clamped
@@ -208,7 +208,9 @@ export default function MediaControls({ task, lang, t, available, credits, plan,
     if (e === "trial_over" || e === "agent_cap" || (e === "no_credits" && !(typeof j.have === "number" && j.have > 0))) { limitFromError(e); return; }
     if (e === "no_credits") {
       const need = j.need ?? m?.credits;
-      return say(kind, { text: plural(i.needCredits, need ?? 0, { need: need ?? "", have: String(j.have) }), billing: true });
+      // Short of credits, the link names the top-up and lands on its section (rule 450); the billing page tells a trial
+      // that packs come after subscribing and a member that the owner buys them.
+      return say(kind, { text: plural(i.needCredits, need ?? 0, { need: need ?? "", have: String(j.have) }), billing: true, topup: true });
     }
     say(kind, { text: errText(e) ?? fail(kind), billing: e === "plan_required" || e === "trial_video_used" });
   }
@@ -273,7 +275,7 @@ export default function MediaControls({ task, lang, t, available, credits, plan,
         {n && (
           <p role="alert" className="text-xs text-sadu-deep">
             {n.text}
-            {n.billing && <> <Link href={`/${lang}/app/billing`} className="font-semibold underline">{i.billingLink}</Link></>}
+            {n.billing && <> <Link href={`/${lang}/app/billing${n.topup ? "#topup" : ""}`} className="font-semibold underline">{n.topup ? i.topupLink : i.billingLink}</Link></>}
           </p>
         )}
         {!rendering && !n && last && <p className="text-xs text-sadu-deep">{plural(i.mediaLastFailed, last.credits)} {errText(last.error)}</p>}
