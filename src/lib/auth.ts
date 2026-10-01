@@ -75,6 +75,13 @@ export type User = {
    */
   onboardPaid?: Record<string, OnboardHold>;
   /**
+   * Charges that may be taken at most once per claim (src/lib/credits.ts `chargeOnce`): the Sunday plan's
+   * `weekly:{scope}:{week}`. Written in the same locked save as the debit and dropped in the same save as its refund, so a
+   * run killed after its charge leaves the hold for the retry to reuse, and a retry never pays twice. A hold whose `at`
+   * is older than PAID_ONCE_MS is dropped by the next `chargeOnce`. Rule 333.
+   */
+  paidOnce?: Record<string, OnboardHold>;
+  /**
    * Founder-console override of the plan's chat messages (`CHAT_ALLOWANCE` in src/lib/pricing.ts, `chatAllowanceOf`). An
    * Agency deal's chat allowance lives here, as its seats live in `seats`. 0 stops chat for the account.
    */

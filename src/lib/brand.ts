@@ -273,6 +273,21 @@ export async function saveTask(email: string, t: Task, isNew = false) {
   ]);
 }
 
+/**
+ * Remove tasks a batch saved and then refunded (src/lib/generate-batch.ts, rule 334): the record, its place in the list,
+ * the pending set, the light index and its ad code, every write of `saveTask` undone, in one round of parallel commands.
+ * Each is idempotent, so a task whose save never landed, or landed in part, is removed all the same.
+ */
+export async function dropTasks(email: string, tasks: readonly Task[]): Promise<void> {
+  await Promise.all(tasks.flatMap((t) => [
+    db.del(`task:${email}:${t.id}`),
+    db.lrem(`tasks:${email}`, t.id),
+    db.srem(`pending:${email}`, t.id),
+    db.hdel(`tidx:${email}:${monthOf(t.createdAt)}`, t.id),
+    t.adCode ? db.hdel(`adcodes:${email}`, t.adCode) : null,
+  ]));
+}
+
 /** This workspace's ad codes, code → task id: one read, used when results come in. */
 export async function adCodeIndex(email: string): Promise<Record<string, string>> {
   return db.hgetall<string>(`adcodes:${email}`);
