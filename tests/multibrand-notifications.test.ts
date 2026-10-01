@@ -79,7 +79,12 @@ describe("each brand's Sunday plan notifies (rule 375)", () => {
 describe("brand-level fingerprints carry the brand scope (rule 376)", () => {
   it("every due, pending and weekly fingerprint in the code goes through brandFingerprint", () => {
     const src = readFileSync("src/lib/notifications.ts", "utf8") + readFileSync("src/lib/schedule.ts", "utf8");
-    const fps = [...src.matchAll(/`(due|pending|weekly):\$\{/g)].map((m) => src.slice(Math.max(0, m.index! - 40), m.index!));
+    // `weeklyClaim` (schedule.ts, rule 333) is the Sunday plan's credit hold key `weekly:{scope}:{week}` in
+    // `User.paidOnce`, not a notification fingerprint; it already carries the brand scope.
+    const claim = /export const weeklyClaim = \(scope: string[^\n]*`weekly:\$\{scope\}:/;
+    expect(src).toMatch(claim);
+    const scan = src.replace(claim, "");
+    const fps = [...scan.matchAll(/`(due|pending|weekly):\$\{/g)].map((m) => scan.slice(Math.max(0, m.index! - 40), m.index!));
     expect(fps.length).toBeGreaterThanOrEqual(3);
     for (const at of fps) expect(at, at).toMatch(/brandFingerprint\((scope|email), $/);
   });

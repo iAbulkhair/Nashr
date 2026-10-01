@@ -13,7 +13,6 @@ const ALLOWED = new Set([
 
 // Exports that predate this rule. Moving them is its own change; this list may only shrink.
 const LEGACY: Record<string, string[]> = {
-  "src/app/api/admin/login/route.ts": ["ADMIN_COOKIE"],
   "src/app/api/referral/share/route.ts": ["SHARE_CREDITS"],
   "src/app/api/tasks/[id]/pptx/route.ts": ["parseSlides"],
   "src/app/api/tools/[tool]/route.ts": ["SIGNED_IN_PER_DAY"],

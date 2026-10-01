@@ -17,7 +17,7 @@
  *   No tax rate is coded here: the founder enters the amounts paid with each payout.
  *
  * Imports nothing on purpose: the partner page, the founder console and the signup form (client components) read it.
- * The store side is src/lib/partners.ts. Rules 390-414, tests/partners.test.ts.
+ * The store side is src/lib/partners.ts. Rules 390-417, tests/partners.test.ts.
  */
 
 export const COMMISSION_PCT = 15;

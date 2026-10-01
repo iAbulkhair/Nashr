@@ -1,5 +1,6 @@
 "use client";
 import { Fragment, useEffect, useState } from "react";
+import { adminFetch } from "@/lib/admin-fetch";
 
 type Check = { name: string; pass: boolean; detail?: string };
 type Result = { id: string; agent: string; type: string; brand: string; ok: boolean; error?: string; score: number | null; dims: Record<string, number> | null; notes: string[]; checks: Check[]; items: { channel: string; title: string; body: string }[]; ms: number; delta: number | null; carried?: string; pb?: { skills: string; review: string; industry?: string; code: string } };
@@ -24,13 +25,13 @@ export default function GoldenPanel({ lang = "en" }: { lang?: "ar" | "en" }) {
   const [msg, setMsg] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const load = () => fetch("/api/admin/golden").then((r) => r.json()).then((j) => j.ok && setData(j)).catch(() => {});
+  const load = () => adminFetch("/api/admin/golden").then((r) => r.json()).then((j) => j.ok && setData(j)).catch(() => {});
   useEffect(() => { void load(); }, []);
 
   async function run(resume = false) {
     setBusy(true); setMsg("");
     try {
-      const r = await fetch("/api/admin/golden", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resume }) });
+      const r = await adminFetch("/api/admin/golden", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resume }) });
       const j = await r.json().catch(() => ({}));
       if (!j.ok) setMsg(j.error === "already_running" ? S.busy : `${S.failed}: ${j.error ?? r.status}`);
     } catch {

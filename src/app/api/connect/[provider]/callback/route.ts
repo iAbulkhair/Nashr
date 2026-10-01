@@ -13,11 +13,14 @@ import { connectMeta } from "@/lib/connectors/meta";
 import { connectAds, isAdProvider } from "@/lib/connectors/ads";
 import { SHOP_HOST, validShopifyHmac } from "@/lib/connectors/shopify";
 import { can } from "@/lib/roles";
+import { appOrigin } from "@/lib/origin";
 
 export async function GET(req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const { provider } = await ctx.params;
   const url = new URL(req.url);
-  const origin = process.env.APP_ORIGIN ?? `${url.protocol}//${url.host}`;
+  // The provider sends the browser to REDIRECT() (src/lib/connectors/oauth.ts), which is on appOrigin() too, so the way
+  // back to the integrations page stays on the same origin and never follows the request's Host header.
+  const origin = appOrigin();
   const state = url.searchParams.get("state") ?? "";
   const code = url.searchParams.get("code");
   const jar = await cookies();

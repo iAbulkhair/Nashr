@@ -1,6 +1,6 @@
 # Partner programme and 15% first-month discounts (2026-10-01)
 
-Status: built on branch `claude/launch-affiliates`. Rules 390-417 in `docs/system/tests.md`, pinned by `tests/partners.test.ts`. Flow: `docs/system/flows.md` section 46. The founder's four open questions were answered on 2026-10-01 (section 6) and built as rules 409-414; the review that followed added rules 415-417 (consent carried onto the partner at approval, VAT registration as the partner's own answer, payout tax fields refused rather than dropped).
+Status: built on branch `claude/launch-affiliates` (PR #236). Rules 390-419 in `docs/system/tests.md`, pinned by `tests/partners.test.ts`. Flow: `docs/system/flows.md` section 46. The founder's four open questions were answered on 2026-10-01 (section 6) and built as rules 409-414; the review that followed added rules 415-417 (consent carried onto the partner at approval, VAT registration as the partner's own answer, payout tax fields refused rather than dropped). Merging main's launch security (#233), mail and origin with the Leads tab (#234) and money (#235) added rules 418 (the Partners tab and the Payments panel call the admin APIs through `adminFetch`, rule 436) and 419 (signup reads a partner code only after Turnstile).
 
 ## 1. Decisions (the founder's, 2026-10-01, final)
 
@@ -57,7 +57,7 @@ Keys (`src/lib/partners.ts`): `partner:{email}` (name, code, approval, `hadAccou
 | Approve, reject, confirm bank details, mark payout paid (idempotent `po_` id), void a payout | `GET/POST /api/admin/partners` | founder |
 | Record or void a payment | `GET/POST /api/admin/payments/{email}` | founder |
 | Partner link | `GET /p/{CODE}` → cookie `nashr_partner` = `CODE.<click ms>` (httpOnly, 30 days, first touch) → `/{lang}/app/signup?partner=CODE` | public, 60 per IP per hour |
-| Signup | `POST /api/auth/signup` with optional `partnerCode` (typed wins over the cookie) | public |
+| Signup | `POST /api/auth/signup` with optional `partnerCode` (typed wins over the cookie; looked up only after Turnstile, rule 419) | public |
 | Code on the billing page | `POST /api/partner/code` | owner (`billing`), 10 per hour |
 | Partner page | `/{lang}/app/partner` | owner (`partner`) |
 | Bank details | `PUT /api/partner` | owner (`partner.bank`), refused while impersonating, 10 per hour |
@@ -83,4 +83,4 @@ New actions in `src/lib/roles.ts`: `partner` (owner) and `partner.bank` (owner, 
 - Click counts for partner links (a click writes only the visitor's cookie).
 - Partner notifications (email or in-app) about new referrals or commissions.
 - Tax computation and partner invoices: the founder enters the VAT paid and withholding borne as amounts; no rate is coded and no invoice is generated.
-- Top-ups as commissionable payments: the credit top-ups (PR "Credit top-ups", branch `claude/launch-topups`, being built) should count as customer payments for commission once both are merged. Follow-up.
+- Top-ups as commissionable payments: the credit top-ups (PR #239, "Credit top-ups", branch `claude/launch-topups`) should count as customer payments for commission once both are merged: a recorded top-up payment should go through the same `recordPayment` / `settle` path (15% of the amount before VAT, inside the referral's 4-month window). Follow-up.

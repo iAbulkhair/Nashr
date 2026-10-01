@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { adminFetch } from "@/lib/admin-fetch";
 import { ksaDay, sarText } from "@/lib/partner-rules";
 import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, type SelfServePlan } from "@/lib/pricing";
 
@@ -53,7 +54,7 @@ const newPaymentId = () => `pay_${Array.from(crypto.getRandomValues(new Uint8Arr
  */
 export default function PaymentsPanel({ email, lang }: { email: string; lang: "ar" | "en" }) {
   const L = S[lang];
-  const url = `/api/admin/payments/${encodeURIComponent(email)}`;
+  const who = encodeURIComponent(email);
   const [view, setView] = useState<View | null>(null);
   const [msg, setMsg] = useState("");
   const [plan, setPlan] = useState<string>("starter");
@@ -63,9 +64,10 @@ export default function PaymentsPanel({ email, lang }: { email: string; lang: "a
   const [id, setId] = useState(newPaymentId);
   const [busy, setBusy] = useState(false);
   const load = useCallback(async () => {
-    const j = await fetch(url).then((r) => r.json()).catch(() => ({}));
+    // Through adminFetch (rule 436): once the key session ends, a 401 shows the console's message, not an empty panel.
+    const j = await adminFetch(`/api/admin/payments/${who}`).then((r) => r.json()).catch(() => ({}));
     if (j.ok) setView(j);
-  }, [url]);
+  }, [who]);
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
   const expected = useMemo(() => {
     if (!view) return null;
@@ -75,7 +77,7 @@ export default function PaymentsPanel({ email, lang }: { email: string; lang: "a
   async function post(body: Record<string, unknown>) {
     setBusy(true);
     try {
-      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const r = await adminFetch(`/api/admin/payments/${who}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => ({}));
       setMsg(j.ok ? `${String(body.action)} ✓` : `${L.failed}: ${j.error ?? r.status}`);
       if (j.ok) await load();

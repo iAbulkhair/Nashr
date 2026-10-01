@@ -7,6 +7,7 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import Pricing from "@/components/Pricing";
 import FinalCta from "@/components/FinalCta";
+import { pageMeta } from "@/lib/page-meta";
 
 export function generateStaticParams() {
   return LANGS.flatMap((lang) => INDUSTRY_SLUGS.map((industry) => ({ lang, industry })));
@@ -15,7 +16,8 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   const { lang, industry } = await params;
   if (!isLang(lang)) return {};
   const p = INDUSTRY_PAGES[lang].find((x) => x.slug === industry);
-  return p ? { title: `${p.headline} — ${lang === "ar" ? "ذكين" : "Thakeen"} ${p.name}`, description: p.sub } : {};
+  const other = lang === "ar" ? "en" : "ar";
+  return p ? pageMeta(lang, `/for/${industry}`, { title: `${p.headline} — ${lang === "ar" ? "ذكين" : "Thakeen"} ${p.name}`, description: p.sub, bilingual: INDUSTRY_PAGES[other].some((x) => x.slug === industry) }) : {};
 }
 
 export default async function Page({ params }: { params: Promise<{ lang: string; industry: string }> }) {

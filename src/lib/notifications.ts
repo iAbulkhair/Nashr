@@ -8,6 +8,7 @@ import { agentById, type AgentId } from "./agents";
 import type { AgentCharge } from "./credits";
 import { SEC_ALERTS_PER_DAY, SEC_KEYS, agendaFor, overdueAlertFingerprint } from "./secretary";
 import { overdueAlerts, partyName, zoneDay } from "./secretary-agenda";
+import { appOrigin } from "./origin";
 
 /**
  * In-app follow-ups from the team. Stored per account (not per brand) as one
@@ -120,7 +121,6 @@ export async function pushNotif(email: string, n: Omit<Notif, "id" | "at">, fing
   return (await pushMany(email, [{ n, fingerprint, ttlDays }]))[0] ?? null;
 }
 
-const ORIGIN = () => process.env.APP_ORIGIN ?? "https://nashr-tau.vercel.app";
 
 /** Daily follow-ups computed from the workspace. Returns what was created today. */
 export async function followUps(user: User, scope: string): Promise<Notif[]> {
@@ -215,7 +215,7 @@ async function overdueTodoAlerts(user: User, scope: string): Promise<Notif[]> {
 
 export function notifEmailText(user: User, items: Notif[]) {
   const ar = user.lang === "ar";
-  return [ar ? "متابعات الفريق اليوم:" : "Today's follow-ups from the team:", ...items.map((n) => `• ${n.title}\n  ${n.body}\n  ${ORIGIN()}${n.href}`)].join("\n\n");
+  return [ar ? "متابعات الفريق اليوم:" : "Today's follow-ups from the team:", ...items.map((n) => `• ${n.title}\n  ${n.body}\n  ${appOrigin()}${n.href}`)].join("\n\n");
 }
 
 /** Helper for other modules (weekly cron, judge). */

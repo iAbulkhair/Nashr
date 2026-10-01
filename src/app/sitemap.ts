@@ -5,8 +5,9 @@ import { INDUSTRY_SLUGS } from "@/lib/pages-industry";
 import { VS_SLUGS } from "@/lib/pages-vs";
 import { postIndex } from "@/lib/blog";
 import { AGENT_SLUGS } from "@/lib/site";
+import { appOrigin } from "@/lib/origin";
 
-const BASE = process.env.APP_ORIGIN ?? "https://nashr-tau.vercel.app";
+const BASE = appOrigin();
 
 export default function sitemap(): MetadataRoute.Sitemap {
   // `lastModified` is omitted rather than stamped with the build time. Every deploy used to re-date all 114 URLs,

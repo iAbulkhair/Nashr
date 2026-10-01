@@ -38,9 +38,11 @@ import AffiliatesPage from "@/app/[lang]/affiliates/page";
 import PartnerTermsPage from "@/app/[lang]/affiliates/terms/page";
 
 /**
- * The partner programme and the 15% first-month discounts (rules 390-402, docs/superpowers/specs/2026-10-01-affiliates-design.md):
+ * The partner programme and the 15% first-month discounts (rules 390-419, docs/superpowers/specs/2026-10-01-affiliates-design.md):
  * own codes approved by the founder, 30-day attribution by link or code, 15% of each payment for the first 4 months,
- * monthly payouts from SAR 200, one first-month discount per account, and a partner page without customer PII.
+ * monthly payouts from SAR 200, one first-month discount per account, and a partner page without customer PII; the
+ * founder's follow-up decisions (409-417); and, after main's launch security (#233) came in, the console panels through
+ * adminFetch (418) and the partner code checked only after Turnstile at signup (419).
  */
 
 vi.mock("next/navigation", async (orig) => ({
@@ -1375,5 +1377,68 @@ describe("rule 417: a tax amount typed wrong on the payout form is refused, neve
     expect((await ledger(a.user.email)).filter((r) => r.kind === "payout")).toHaveLength(0);
     const src = readFileSync("src/components/app/PartnersPanel.tsx", "utf8");
     expect(src).toContain("vatSar: taxField(vat), whtSar: taxField(wht)");
+  });
+});
+
+describe("rule 418: the Partners tab and the Payments panel make their admin calls through adminFetch, next to the Leads tab", () => {
+  it("no direct fetch in either panel, both admin APIs through adminFetch, and the console keeps both new tabs", () => {
+    for (const f of ["PartnersPanel", "PaymentsPanel"]) {
+      const src = readFileSync(`src/components/app/${f}.tsx`, "utf8");
+      expect(src, `${f}: a direct fetch would leave an empty panel when the key session ends (rule 436)`).not.toMatch(/(?<![A-Za-z])fetch\(/);
+      expect(src, f).toContain('import { adminFetch } from "@/lib/admin-fetch";');
+    }
+    const partners = readFileSync("src/components/app/PartnersPanel.tsx", "utf8");
+    expect(partners).toContain('adminFetch("/api/admin/partners").then(');
+    expect(partners).toContain('adminFetch("/api/admin/partners", { method: "POST"');
+    const payments = readFileSync("src/components/app/PaymentsPanel.tsx", "utf8");
+    expect(payments).toContain("adminFetch(`/api/admin/payments/${who}`).then(");
+    expect(payments).toContain("adminFetch(`/api/admin/payments/${who}`, { method: \"POST\"");
+    const consoleSrc = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
+    expect(consoleSrc).toMatch(/const TABS = \[[^\]]*"leads"[^\]]*"partners"[^\]]*\] as const/);
+    expect(consoleSrc).toContain('{tab === "partners" && <PartnersPanel lang={lang} />}');
+    expect(consoleSrc).toContain('{tab === "leads" && <LeadsPanel lang={lang} onSeen={leadsSeen} />}');
+    expect(consoleSrc).toMatch(/partners: "Partners"/);
+    expect(consoleSrc).toMatch(/partners: "الشركاء"/);
+  });
+});
+
+describe("rule 419: signup looks up a partner code only after Turnstile", () => {
+  const on = () => { vi.stubEnv("TURNSTILE_SITE_KEY", "0x4AAAAAAApartnersite"); vi.stubEnv("TURNSTILE_SECRET_KEY", "0x4AAAAAAApartnersecret"); };
+  afterEach(() => {
+    vi.stubEnv("TURNSTILE_SITE_KEY", "");
+    vi.stubEnv("TURNSTILE_SECRET_KEY", "");
+    vi.restoreAllMocks();
+  });
+  const codeLookups = (spy: { mock: { calls: unknown[][] } }) => spy.mock.calls.filter(([k]) => String(k).startsWith("partnercode:")).length;
+
+  it("without a passed check a wrong code and a partner's code get the same captcha_failed, and no code is looked up", async () => {
+    const a = await partner("tsa");
+    on();
+    const get = vi.spyOn(db, "get");
+    const wrong = await signupVia({ partnerCode: "NOSUCHCODE9" });
+    const right = await signupVia({ partnerCode: a.code });
+    expect([wrong.res.status, (await body(wrong.res)).error]).toEqual([400, "captcha_failed"]);
+    expect([right.res.status, (await body(right.res)).error]).toEqual([400, "captcha_failed"]);
+    expect(codeLookups(get), "a script cannot learn which codes exist without passing Turnstile").toBe(0);
+    expect(await getUser(wrong.email)).toBeNull();
+    expect(await getUser(right.email)).toBeNull();
+  });
+
+  it("after a passed check a wrong code is still refused before the account exists, and a partner's code attributes", async () => {
+    const a = await partner("tsb");
+    on();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ success: true }), { status: 200, headers: { "content-type": "application/json" } }));
+    const wrong = await signupVia({ partnerCode: "NOSUCHCODE9", turnstile: "good-token" });
+    expect([wrong.res.status, (await body(wrong.res)).error]).toEqual([400, "bad_partner_code"]);
+    expect(await getUser(wrong.email)).toBeNull();
+    const right = await signupVia({ partnerCode: a.code, turnstile: "good-token" });
+    expect(await body(right.res)).toMatchObject({ ok: true, partner: true });
+    expect((await getUser(right.email))!.referredBy).toMatchObject({ partner: a.user.email, code: a.code, via: "code" });
+  });
+
+  it("the route checks Turnstile before the partner code", () => {
+    const src = readFileSync("src/app/api/auth/signup/route.ts", "utf8");
+    expect(src.indexOf("captchaRefusal(req, b.turnstile)")).toBeGreaterThan(0);
+    expect(src.indexOf("captchaRefusal(req, b.turnstile)")).toBeLessThan(src.indexOf("signupPartner(b.partnerCode)"));
   });
 });

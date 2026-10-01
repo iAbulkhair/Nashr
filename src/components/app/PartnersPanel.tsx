@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { adminFetch } from "@/lib/admin-fetch";
 import { NEW_TERMS_FROM, PAYOUT_MIN_SAR, codeProblem, countryName, ksaDay, normalizeCode, sarText, taxField, type Bank, type Commission, type Payout } from "@/lib/partner-rules";
 
 type App = { id: string; name: string; email: string; phone: string; channel: string; audience: string; lang: string; at: string; consentAt: string | null; termsVersion: string | null; suggested: string; decision: { status: "approved" | "rejected"; code?: string; at: string; by: string } | null };
@@ -160,12 +161,13 @@ export default function PartnersPanel({ lang }: { lang: "ar" | "en" }) {
   const [open, setOpen] = useState<string | null>(null);
   const [manual, setManual] = useState({ name: "", email: "", code: "", consentOutOfBand: false });
   const load = useCallback(async () => {
-    const j = await fetch("/api/admin/partners").then((r) => r.json()).catch(() => ({}));
+    // Through adminFetch (rule 436): once the key session ends, a 401 shows the console's message, not an empty tab.
+    const j = await adminFetch("/api/admin/partners").then((r) => r.json()).catch(() => ({}));
     if (j.ok) setData({ applications: j.applications, partners: j.partners });
   }, []);
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
   const act = useCallback<Act>(async (body) => {
-    const r = await fetch("/api/admin/partners", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
+    const r = await adminFetch("/api/admin/partners", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
     const j = r ? await r.json().catch(() => ({})) : {};
     setMsg(j.ok ? L.done : `${L.failed}: ${L.errors[j.error] ?? j.error ?? r?.status ?? ""}`);
     if (j.ok) await load();

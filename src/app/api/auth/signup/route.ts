@@ -4,6 +4,7 @@ import { afterSignup, signupPartner } from "@/lib/partners";
 import { createSession, createUser, getLogin, normalizeEmail, strongPassword, validEmail } from "@/lib/auth";
 import { allow, clientIp } from "@/lib/rate";
 import { applyReferral, registerCode } from "@/lib/referral";
+import { captchaRefusal } from "@/lib/turnstile";
 import { withLoginLock } from "@/lib/team";
 
 export async function POST(req: Request) {
@@ -13,12 +14,17 @@ export async function POST(req: Request) {
   if (!(await allow(`signup:ip:${clientIp(req)}`, 5, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
   if (!validEmail(email)) return NextResponse.json({ ok: false, error: "bad_email" }, { status: 400 });
   if (!strongPassword(typeof b.password === "string" ? b.password : "")) return NextResponse.json({ ok: false, error: "weak_password" }, { status: 400 });
-  // Partner programme (src/lib/partners.ts, rule 392): a typed partner code must be a partner's, checked before anything
-  // is created; without one, the code in the 30-day link cookie, if it is still a partner's.
-  const partner = await signupPartner(b.partnerCode);
-  if (partner === "bad") return NextResponse.json({ ok: false, error: "bad_partner_code" }, { status: 400 });
   // Phone is optional at signup (asked later inside onboarding); validate only when given.
   if (b.phone && String(b.phone).replace(/\D/g, "").length < 9) return NextResponse.json({ ok: false, error: "bad_phone" }, { status: 400 });
+  // Cloudflare Turnstile when both keys are set (src/lib/turnstile.ts): checked before the address is looked up, so a
+  // script can neither create accounts nor learn which addresses exist without passing it. Rule 426.
+  const refused = await captchaRefusal(req, b.turnstile);
+  if (refused) return refused;
+  // Partner programme (src/lib/partners.ts, rule 392): a typed partner code must be a partner's, checked before anything
+  // is created and after Turnstile, so a script cannot probe which codes exist without passing it; without a typed code,
+  // the code in the 30-day link cookie, if it is still a partner's.
+  const partner = await signupPartner(b.partnerCode);
+  if (partner === "bad") return NextResponse.json({ ok: false, error: "bad_partner_code" }, { status: 400 });
   // An email is ONE login across owner accounts and member logins (docs/superpowers/specs/2026-09-29-teams-design.md §3).
   // Checked and created under the same lock invite acceptance takes, so a signup and an accept racing on one address
   // cannot both succeed. A member's address gets the same answer as an existing account.

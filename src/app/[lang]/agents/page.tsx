@@ -8,11 +8,12 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import FinalCta from "@/components/FinalCta";
 import UrlStart from "@/components/UrlStart";
+import { pageMeta } from "@/lib/page-meta";
 
 export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
   const { lang } = await params;
   if (!isLang(lang)) return {};
-  return { title: `${SITE[lang].agents.title} — ${dict[lang].brand}`, description: SITE[lang].agents.sub };
+  return pageMeta(lang, "/agents", { title: `${SITE[lang].agents.title} — ${dict[lang].brand}`, description: SITE[lang].agents.sub });
 }
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
