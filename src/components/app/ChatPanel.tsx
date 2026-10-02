@@ -6,6 +6,8 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { ChatMsg, ChatItem } from "@/lib/chat";
 import type { HandoffItemStatus, HandoffView } from "@/lib/handoffs";
 import type { BrandProposal } from "@/lib/brand-proposals";
+import type { AwayProposal } from "@/lib/secretary-away";
+import { endOfZoneDay, formatWhen } from "@/lib/secretary-agenda";
 // Type only: chat-allowance.ts reads the store. The numbers arrive from the server in each answer's `chat`.
 import type { ChatStatus } from "@/lib/chat-allowance";
 import { formatCount } from "@/lib/pricing";
@@ -357,6 +359,76 @@ export function ProposalCard({ p, t, lang, canBrand = true }: { p: BrandProposal
   );
 }
 
+/**
+ * An absence Reem proposed in chat (`contact_away`, src/lib/secretary-away.ts): nothing is on the away list yet. The
+ * card shows the name as typed, the contact it matches on the open items, the last away day (or that the absence ends
+ * now) and how many open items that contact owes; Save puts it on the list through the list's own checks, Dismiss drops
+ * it (POST /api/secretary/away/proposals/{id}, `todo.write`: every member of the account).
+ */
+export function AwayProposalCard({ p, t, lang }: { p: AwayProposal; t: AppDict; lang: "ar" | "en" }) {
+  const ar = lang === "ar";
+  // A reloaded thread carries where the proposal stands now (history() reads it), so a decided card stays decided.
+  const [state, setState] = useState<"open" | "saving" | "saved" | "dismissed" | "gone" | "decided" | "forbidden" | "refused" | "error">(p.state === "saved" || p.state === "dismissed" ? p.state : p.state === "expired" ? "gone" : "open");
+  const [why, setWhy] = useState("");
+  async function decide(action: "save" | "dismiss") {
+    setState("saving");
+    const r = await fetch(`/api/secretary/away/proposals/${p.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) }).catch(() => null);
+    if (!r) return setState("error");
+    if (r.ok) return setState(action === "save" ? "saved" : "dismissed");
+    const j = (await r.json().catch(() => ({}))) as { error?: string };
+    if (r.status === 403) return setState("forbidden");
+    if (r.status === 404) return setState("gone");
+    if (j.error === "already_decided") return setState("decided");
+    // A Save the away list refuses now (a last day that has passed, a full list, too many changes this hour): the card
+    // stays open, to save later or dismiss.
+    const words = r.status === 429 ? t.handoff.errors.slow_down : j.error === "nothing_to_change"
+      ? (ar ? "لم يعد هذا الاسم في قائمة الغائبين، فلا غياب لإنهائه." : "This name is no longer on the away list, so there is no absence to end.")
+      : j.error ? t.todo.errors[j.error] : undefined;
+    if (words) { setWhy(words); return setState("refused"); }
+    setState("error");
+  }
+  // A local day "YYYY-MM-DD" as the to-do page writes dates (Latin digits), the same day in any Gulf zone; the year is
+  // shown when it is not the year the card was proposed in.
+  const day = (d: string) => formatWhen(new Date(endOfZoneDay(d)).toISOString(), true, lang, Date.parse(p.at));
+  const ending = p.until === null;
+  const done: Partial<Record<typeof state, string>> = {
+    saved: ending ? (ar ? "حُفظ: انتهى الغياب، وتعود المتابعة كالمعتاد." : "Saved: the absence has ended and chasing resumes as usual.") : (ar ? "حُفظ في قائمة الغائبين بصفحة مهامي." : "Saved to the away list on My to-dos."),
+    dismissed: ar ? "تُجوهل. لم يتغير شيء." : "Dismissed. Nothing changed.",
+    gone: ar ? "حُسمت هذه البطاقة من قبل أو انتهت مدتها (7 أيام)." : "This card was already decided or has expired (7 days).",
+    decided: ar ? "حُفظت هذه البطاقة أو تُجوهلت من قبل." : "This card was already saved or dismissed.",
+    forbidden: t.team.errors.forbidden,
+    refused: why,
+    error: ar ? "لم يُحفظ. حاول مرة أخرى." : "Not saved. Try again.",
+  };
+  const closed = state === "saved" || state === "dismissed" || state === "gone" || state === "decided";
+  const items = ar ? `المهام المفتوحة على هذا الاسم: ${p.openItems}` : `${p.openItems} open item${p.openItems === 1 ? "" : "s"} they owe`;
+  return (
+    <article className="mt-3 overflow-hidden rounded-xl border border-saffron/40 bg-white text-ink">
+      <header className="flex items-center gap-2 border-b border-ink/5 px-3 py-2 text-xs font-semibold">
+        <Icon name="calendar" className="h-4 w-4 text-sadu-deep" />
+        {ending ? (ar ? "إنهاء غياب ينتظر حفظك" : "Ending an absence, waiting for your Save") : (ar ? "غياب جهة اتصال ينتظر حفظك" : "A contact away, waiting for your Save")}
+      </header>
+      <dl className="grid gap-1.5 px-4 py-3 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-3">
+        <dt className="text-xs text-ink/60">{ar ? "الاسم كما كُتب" : "Name as written"}</dt>
+        <dd className="min-w-0 break-words" dir="auto">{p.label}</dd>
+        <dt className="text-xs text-ink/60">{ar ? "يطابق" : "Matches"}</dt>
+        <dd className="min-w-0 break-words" dir="auto">{p.contact ? <><span>{p.contact}</span><span className="text-ink/60"> · {items}</span></> : <span className="text-sadu-deep">{ar ? "لا مهمة مفتوحة على هذا الاسم: تأكد من كتابته." : "No open item is owed by this name: check the spelling."}</span>}</dd>
+        <dt className="text-xs text-ink/60">{ending ? (ar ? "الغياب" : "Absence") : (ar ? "غياب حتى" : "Away until")}</dt>
+        <dd className="min-w-0" dir="auto">{ending ? (ar ? "ينتهي الآن، وتعود المتابعة كالمعتاد" : "Ends now; chasing resumes as usual") : <>{day(p.until as string)} <span className="text-ink/60">{ar ? "(آخر يوم غياب)" : "(last day away)"}</span></>}</dd>
+      </dl>
+      <footer className="flex flex-wrap items-center gap-2 border-t border-ink/5 px-3 py-2 text-xs">
+        {done[state] && <span role="status" className={state === "saved" || state === "dismissed" ? "text-oasis" : "text-sadu-deep"}>{done[state]}</span>}
+        {!closed && (
+          <span className="ms-auto flex gap-1.5">
+            <button disabled={state === "saving"} onClick={() => decide("dismiss")} className="btn btn-secondary btn-xs">{ar ? "تجاهل" : "Dismiss"}</button>
+            <button disabled={state === "saving"} onClick={() => decide("save")} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{ar ? "احفظ" : "Save"}</button>
+          </span>
+        )}
+      </footer>
+    </article>
+  );
+}
+
 /** Owner-readable labels for tool actions; internal tags that mean nothing to the owner are dropped. */
 function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[] {
   const out = new Set<string>();
@@ -364,6 +436,7 @@ function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[
     const [kind, , n] = a.split(":");
     if (kind === "brand") out.add(lang === "ar" ? "حُدّث ملف العلامة" : "Brand file updated");
     else if (kind === "brandprop") out.add(lang === "ar" ? "تغيير في ملف العلامة ينتظر حفظك" : "A brand change waits for your Save");
+    else if (kind === "awayprop") out.add(lang === "ar" ? "غياب ينتظر حفظك" : "An absence waits for your Save");
     else if (kind === "generated" || kind === "drafted") out.add(lang === "ar" ? `أُضيف ${n ?? ""} إلى صندوق الموافقات`.replace("  ", " ") : `${n ?? ""} added to approvals`.trim());
     else if (kind === "todo") out.add(lang === "ar" ? "حُدّثت قائمة مهامك" : "Your to-do list was updated");
   }
@@ -594,7 +667,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         )}
         {msgs.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`${m.items?.length || m.files?.length || m.plan?.length || m.handoff || m.proposals?.length ? "w-full max-w-[95%]" : "max-w-[85%]"} rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-oasis text-mist" : "bg-salt-dim text-ink"}`} dir="auto">
+            <div className={`${m.items?.length || m.files?.length || m.plan?.length || m.handoff || m.proposals?.length || m.awayProposals?.length ? "w-full max-w-[95%]" : "max-w-[85%]"} rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-oasis text-mist" : "bg-salt-dim text-ink"}`} dir="auto">
               {m.role === "assistant" && <span className="mb-1 block text-xs font-semibold text-sadu-deep">{A[m.agent ?? agent].name}</span>}
               {m.role === "assistant" ? <div className="prose-nashr prose-compact" dangerouslySetInnerHTML={{ __html: render(m.content) }} /> : <p className="whitespace-pre-wrap">{m.content}</p>}
               {m.items && m.items.length > 0 && <div className="mt-1">{m.items.map((it) => <ItemCard key={it.id} item={it} t={t} lang={lang} canApprove={canApprove} />)}</div>}
@@ -602,6 +675,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
               {m.plan && m.plan.length > 0 && <PlanCard plan={m.plan} lang={lang} onStart={(prompt) => send(prompt)} />}
               {m.handoff && <HandoffCard id={m.handoff.id} t={t} lang={lang} initial={handoffs?.[m.handoff.id]} canRun={canRun} canDecline={canDecline} canApprove={canApprove} onCredits={setCredits} />}
               {m.proposals && m.proposals.length > 0 && <div className="mt-1">{m.proposals.map((p) => <ProposalCard key={p.id} p={p} t={t} lang={lang} canBrand={canBrand} />)}</div>}
+              {m.awayProposals && m.awayProposals.length > 0 && <div className="mt-1">{m.awayProposals.map((p) => <AwayProposalCard key={p.id} p={p} t={t} lang={lang} />)}</div>}
               {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-ink/60" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}
               {m.role === "assistant" && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">

@@ -85,6 +85,18 @@ export const SEC_KEYS = {
    * the last away day, local, inclusive). Read by `calFor` as an `AwayMap`.
    */
   away: (scope: string) => `sec:away:${scope}`,
+  /**
+   * An absence Reem proposed in chat (`contact_away`, src/lib/secretary-away.ts): one JSON `AwayProposal`, 7 days.
+   * Nothing is on the away list until a person presses Save on its card.
+   */
+  awayProp: (scope: string, id: string) => `secawayprop:${scope}:${id}`,
+  /** Every away proposal id of a scope, so `secretaryKeys` (the account wipe) finds each random id. No TTL. */
+  awayProps: (scope: string) => `secawayprops:${scope}`,
+  /**
+   * A proposal's outcome, "saved" or "dismissed" (7 days), claimed with SET NX before it is applied: "saving" for at most
+   * a minute while a Save runs, so one answer wins.
+   */
+  awayPropDone: (scope: string, id: string) => `secawayprop-done:${scope}:${id}`,
 };
 const UNDATED_SCORE = 32503680000000; // year 3000: after every dated item
 
@@ -178,7 +190,9 @@ export type SecError =
   | "remind_past" | "bad_phone" | "not_done"
   // The away list (src/lib/secretary-away.ts): the owner or an agent named as a contact, a return day out of range, the
   // 200-field cap, and a body or label that is not one.
-  | "not_contact" | "away_range" | "away_limit" | "bad_request";
+  | "not_contact" | "away_range" | "away_limit" | "bad_request"
+  // An away proposal (Reem's contact_away card) that a person already saved or dismissed.
+  | "already_decided";
 export type SecFail = { ok: false; error: SecError; field?: string; status: number; item?: SecItem };
 export const fail = (error: SecError, status = 400, field?: string): SecFail => ({ ok: false, error, status, ...(field ? { field } : {}) });
 
@@ -820,7 +834,7 @@ export async function secretaryDaily(scope: string, now = Date.now()) {
  * member of the global `sec:duescopes` is not a key: `wipeAccount` removes it with `forgetDueScope`.
  */
 export async function secretaryKeys(scope: string): Promise<string[]> {
-  const ids = await db.smembers(SEC_KEYS.all(scope));
+  const [ids, props] = await Promise.all([db.smembers(SEC_KEYS.all(scope)), db.smembers(SEC_KEYS.awayProps(scope))]);
   // The alert counters and wrap markers live two days; every local day they can name, in any zone, from two days back
   // to tomorrow.
   const days = [...new Set([-2, -1, 0, 1].map((d) => new Date(Date.now() + d * 864e5).toISOString().slice(0, 10)))];
@@ -828,6 +842,8 @@ export async function secretaryKeys(scope: string): Promise<string[]> {
     ...ids.map((id) => SEC_KEYS.item(scope, id)), SEC_KEYS.open(scope), SEC_KEYS.done(scope), SEC_KEYS.deleted(scope), SEC_KEYS.all(scope), SEC_KEYS.audit(scope),
     SEC_KEYS.due(scope), SEC_KEYS.walk(scope), SEC_KEYS.notes(scope), SEC_KEYS.cal(scope), SEC_KEYS.away(scope),
     ...days.flatMap((d) => [SEC_KEYS.alerts(scope, d), SEC_KEYS.wrap(scope, d)]),
+    // Reem's away proposals (rule 485): each record and its outcome, by the ids in the index, and the index.
+    ...props.flatMap((id) => [SEC_KEYS.awayProp(scope, id), SEC_KEYS.awayPropDone(scope, id)]), SEC_KEYS.awayProps(scope),
   ];
 }
 /** Account deletion: the scope leaves the sweep's global index. */
@@ -1022,6 +1038,7 @@ const TOOL_ERRORS: Record<SecError, string> = {
   away_range: "The last away day must be today or later, and at most 366 days ahead. Nothing was saved.",
   away_limit: "This brand already has 200 away contacts, the maximum, ended ones included. Ask the owner to remove ended ones on the My to-dos page first.",
   bad_request: "The request was not understood. Nothing was saved.",
+  already_decided: "This away card was already saved or dismissed. Nothing more was changed.",
 };
 /** A friendly sentence for a tool answer. */
 export const toolError = (e: SecFail) => `Not done: ${TOOL_ERRORS[e.error] ?? e.error}${e.field ? ` (field: ${e.field})` : ""}`;

@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { claudeOn } from "./helpers/model";
 import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { db } from "@/lib/db";
@@ -8,18 +10,23 @@ import { appDict } from "@/lib/app-i18n";
 import { saveBrand, type Brand } from "@/lib/brand";
 import { saveBrands, scopeFor, setActiveBrand } from "@/lib/brands";
 import { wipeAccount } from "@/lib/account";
-import { runTool, system } from "@/lib/chat";
+import { CHAT_TOOL_NAMES, CONTACT_AWAY_TOOL, history, push, runTool, statusFor, system, toolsFor, type ToolCtx } from "@/lib/chat";
 import {
   OWNER_ALIASES, SEC_KEYS, SEC_READS_PER_HOUR, SEC_WRITES_PER_HOUR, agendaFor, calFor, changeItem, createItem, getItem, secretaryDaily, toolError, type Who,
 } from "@/lib/secretary";
 import { buildWrap } from "@/lib/secretary-evening";
 import { addDays, partyKey, zoneDay, type SecItem } from "@/lib/secretary-agenda";
 import { parseCalendar, upcomingQuiet, workCalendar, type SecCalendar } from "@/lib/secretary-calendar";
-import { AWAY_AHEAD_DAYS, AWAY_KEEP_DAYS, AWAY_MAX, cleanAway, endAway, listAway, setAway } from "@/lib/secretary-away";
+import {
+  AWAY_AHEAD_DAYS, AWAY_KEEP_DAYS, AWAY_MAX, AWAY_PROPOSAL_TTL_S, cleanAway, decideAwayProposal, endAway, listAway, proposeAway, setAway, type AwayProposal,
+} from "@/lib/secretary-away";
 import * as itemRoute from "@/app/api/secretary/[id]/route";
 import * as listRoute from "@/app/api/secretary/route";
 import * as awayRoute from "@/app/api/secretary/away/route";
 import * as calRoute from "@/app/api/secretary/calendar/route";
+import * as propRoute from "@/app/api/secretary/away/proposals/[id]/route";
+import * as mcpRoute from "@/app/api/mcp/route";
+import { AwayProposalCard } from "@/components/app/ChatPanel";
 
 /**
  * Rules 478-487 in docs/system/tests.md: Reem phase 3 A1, the store side of the brand's work calendar and of contacts
@@ -385,6 +392,20 @@ describe("rule 481: an away contact is matched by partyKey, and only a contact c
     expect((await put("a".repeat(80))).ok).toBe(true);
   });
 
+  it("a label whose key is __proto__, constructor or prototype is bad_request on set, end and proposal (ruling R22): the store's HGETALL would hide such a field", async () => {
+    const u = await owner("aw481e");
+    for (const label of ["__proto__", "constructor", "prototype", "Constructor", " PROTOTYPE ", "__PROTO__"]) {
+      expect(await setAway(u.email, { label, until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh"), label).toMatchObject({ ok: false, error: "bad_request", field: "label", status: 400 });
+      expect(await endAway(u.email, label, PERSON, NOW, "Asia/Riyadh"), label).toMatchObject({ ok: false, error: "bad_request", field: "label", status: 400 });
+      expect(await proposeAway(u.email, { name: label, until: "2026-10-08" }, NOW, "Asia/Riyadh"), label).toMatchObject({ ok: false, error: "bad_request", field: "name", status: 400 });
+    }
+    expect(await awayKeys(u.email)).toEqual([]);
+    expect(await db.smembers(SEC_KEYS.awayProps(u.email))).toEqual([]);
+    expect(await auditLines(u.email)).toEqual([]);
+    // A name that only holds one of them is a contact.
+    expect((await setAway(u.email, { label: "Constructor Co", until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh")).ok).toBe(true);
+  });
+
   it("an item owed by «احمد» shows as away when the entry is «أحمد»", async () => {
     const u = await owner("aw481d");
     await at(local("2026-10-01T09:00"), () => make(u, { title: "Quote", direction: "they_owe", owedBy: "احمد", dueAt: "2026-10-05T10:00" }));
@@ -448,19 +469,28 @@ describe("rule 482: the away list's limits: dates, the 200-field cap, the note, 
     expect((await db.hgetall<object>(SEC_KEYS.away(u.email))).sara).not.toHaveProperty("note");
   });
 
-  it("ending keeps the field with until set to yesterday (the back alert reads it); ending one that has already ended removes it (ruling R19); an unknown name is not_found", async () => {
+  it("ending keeps the field with until set to yesterday (the back alert reads it); ending it again changes nothing, and only remove: true deletes a field (rulings R19, R21); an unknown name is not_found", async () => {
     const u = await owner("aw482e");
     await setAway(u.email, { label: "Sara", until: "2026-10-20", note: "Leave" }, PERSON, NOW, "Asia/Riyadh");
     const ended = await endAway(u.email, " SARA ", PERSON, NOW, "Asia/Riyadh");
-    expect(ended).toMatchObject({ ok: true, removed: false, entry: { label: "Sara", until: "2026-10-05", note: "Leave" } });
-    expect(await db.hgetall(SEC_KEYS.away(u.email))).toEqual({ sara: { label: "Sara", until: "2026-10-05", note: "Leave", by: PERSON.login, via: "web", at: iso(NOW) } });
+    expect(ended).toMatchObject({ ok: true, removed: false, changed: true, entry: { label: "Sara", until: "2026-10-05", note: "Leave" } });
+    const stored = { sara: { label: "Sara", until: "2026-10-05", note: "Leave", by: PERSON.login, via: "web", at: iso(NOW) } };
+    expect(await db.hgetall(SEC_KEYS.away(u.email))).toEqual(stored);
     expect((await calFor(u.email, NOW)).away.sara).toEqual({ label: "Sara", until: "2026-10-05", endedAt: "2026-10-05" });
+    // Two ends in a row (a double click on "End now", or the next day): the entry stays as the first end left it, with
+    // its back alert.
+    expect(await endAway(u.email, "Sara", PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: true, removed: false, changed: false, entry: { until: "2026-10-05" } });
+    expect(await endAway(u.email, "sara", PERSON, NOW + 864e5, "Asia/Riyadh")).toMatchObject({ ok: true, removed: false, changed: false });
+    expect(await db.hgetall(SEC_KEYS.away(u.email))).toEqual(stored);
     // Today was the last away day: ending it now still makes yesterday the last one.
     await setAway(u.email, { label: "Huda", until: "2026-10-06" }, PERSON, NOW, "Asia/Riyadh");
-    expect(await endAway(u.email, "Huda", PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: true, removed: false, entry: { until: "2026-10-05" } });
-    // Ending an entry that has already ended frees its field for the cap.
-    expect(await endAway(u.email, "Sara", PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: true, removed: true });
+    expect(await endAway(u.email, "Huda", PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: true, removed: false, changed: true, entry: { until: "2026-10-05" } });
+    // Only an explicit remove deletes the field: an ended one (freeing it for the cap), or a running one.
+    expect(await endAway(u.email, "Sara", PERSON, NOW, "Asia/Riyadh", { remove: true })).toMatchObject({ ok: true, removed: true, changed: true, entry: { label: "Sara" } });
+    await setAway(u.email, { label: "Nour", until: "2026-10-20" }, PERSON, NOW, "Asia/Riyadh");
+    expect(await endAway(u.email, "Nour", PERSON, NOW, "Asia/Riyadh", { remove: true })).toMatchObject({ ok: true, removed: true });
     expect(await awayKeys(u.email)).toEqual(["huda"]);
+    expect(await endAway(u.email, "Sara", PERSON, NOW, "Asia/Riyadh", { remove: true })).toMatchObject({ ok: false, error: "not_found", status: 404 });
     expect(await endAway(u.email, "Nobody", PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "not_found", status: 404 });
     expect(await endAway(u.email, 42, PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "bad_request", field: "label" });
     expect(await endAway(u.email, "a".repeat(81), PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "too_long", field: "label" });
@@ -521,7 +551,9 @@ describe("rule 482: the away list's limits: dates, the 200-field cap, the note, 
     await setAway(u.email, { label: "أحمد", until: "2026-10-08", note: "Private note" }, PERSON, NOW, "Asia/Riyadh");
     await setAway(u.email, { label: "احمد", until: "2026-10-09" }, PERSON, NOW, "Asia/Riyadh");
     await endAway(u.email, "أحمد", PERSON, NOW, "Asia/Riyadh");
+    // Ending it again changes nothing, so it writes no line (ruling R21); removing it does.
     await endAway(u.email, "أحمد", PERSON, NOW, "Asia/Riyadh");
+    await endAway(u.email, "أحمد", PERSON, NOW, "Asia/Riyadh", { remove: true });
     // Refusals write nothing.
     await setAway(u.email, { label: "reem", until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh");
     await endAway(u.email, "Nobody", PERSON, NOW, "Asia/Riyadh");
@@ -573,9 +605,23 @@ describe("rule 483: the away route (GET, PUT, DELETE /api/secretary/away): a ses
       expect(await (await awayGet()).json()).toEqual({ ok: true, entries: [{ ...entry, ended: false }] });
       const d = await awayDel({ label: "sara", until: "2027-01-01" });
       expect(d.status).toBe(200);
-      expect(await d.json()).toMatchObject({ ok: true, removed: false, entry: { label: "Sara", until: "2026-10-05" } });
+      expect(await d.json()).toMatchObject({ ok: true, removed: false, changed: true, entry: { label: "Sara", until: "2026-10-05" } });
       expect((await (await awayGet()).json()).entries).toEqual([{ ...entry, until: "2026-10-05", ended: true }]);
       expect((await auditLines(o.email)).map((l) => [l.action, l.login])).toEqual([["away", m.email], ["away_end", m.email]]);
+      // DELETE is idempotent (ruling R21): a second "End now" is 200 and keeps the ended entry; removing it takes
+      // `remove: true`, which must be a boolean.
+      const again = await awayDel({ label: "Sara" });
+      expect(again.status).toBe(200);
+      expect(await again.json()).toMatchObject({ ok: true, removed: false, changed: false, entry: { until: "2026-10-05" } });
+      expect((await (await awayGet()).json()).entries).toEqual([{ ...entry, until: "2026-10-05", ended: true }]);
+      expect(await auditLines(o.email)).toHaveLength(2);
+      for (const remove of ["yes", 1, null]) expect((await awayDel({ label: "Sara", remove })).status, JSON.stringify(remove)).toBe(400);
+      expect(await awayKeys(o.email)).toEqual(["sara"]);
+      const gone = await awayDel({ label: "Sara", remove: true });
+      expect(gone.status).toBe(200);
+      expect(await gone.json()).toMatchObject({ ok: true, removed: true, changed: true });
+      expect((await (await awayGet()).json()).entries).toEqual([]);
+      expect((await auditLines(o.email)).map((l) => [l.action, l.login, l.diff])).toEqual([["away", m.email, 'label="Sara"; until=2026-10-09'], ["away_end", m.email, 'label="Sara"; until=2026-10-05'], ["away_end", m.email, 'label="Sara"; removed']]);
       // Refusals keep their code and field; a body that is not an object is bad_request.
       expect(await (await awayPut({ label: "reem", until: "2026-10-09" })).json()).toEqual({ ok: false, error: "not_contact", field: "label" });
       expect((await awayPut({ label: "Huda", until: "2026-10-05" })).status).toBe(400);
@@ -898,5 +944,307 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       expect(after.buckets.chase.map((e) => [e.item.title, e.next, e.moment?.why, e.moment?.at])).toEqual([["Quote", "chase", "normal", local("2026-10-03T10:00")]]);
       expect(after.cal.weekend).toEqual([5]);
     });
+  });
+});
+
+// Rules 485-486: `contact_away`, an absence Reem proposes in chat and a person saves (spec §3.2, the founder's decision
+// of 2026-10-02: from chat Reem only proposes; nothing is written to `sec:away` until a login with `todo.write` presses
+// Save). "Now" is `NOW` above unless a case says otherwise.
+const propPost = (id: string, body: unknown) => propRoute.POST(json(`/api/secretary/away/proposals/${id}`, "POST", body), params({ id }));
+const propIds = (scope: string) => db.smembers(SEC_KEYS.awayProps(scope));
+const awayAudit = async (scope: string) => (await auditLines(scope)).filter((l) => String(l.action).startsWith("away"));
+/** One `contact_away` call in a turn of `ctx` (Reem in the app's chat unless the case says otherwise), and what it collected. */
+async function contactAway(u: User, input: Record<string, unknown>, ctx: Partial<ToolCtx> = { agent: "reem", via: "app" }) {
+  const awayProposed: AwayProposal[] = [];
+  const actions: string[] = [];
+  const text = await runTool(u, "contact_away", input, actions, [], undefined, { lang: "en", ...ctx, awayProposed });
+  return { text, awayProposed, actions, p: awayProposed[0] };
+}
+
+describe("rule 485: contact_away proposes an absence on a card in Reem's chat, and only a person's Save writes it", () => {
+  it("Reem's call in the app writes nothing to sec:away and returns one proposal: the name as typed, the contact it matches, the date and the open items that contact owes", async () => {
+    const u = await owner("aw485a");
+    const quote = await at(local("2026-10-01T09:00"), async () => {
+      const q = await make(u, { title: "Quote", direction: "they_owe", owedBy: "احمد", dueAt: "2026-10-05T10:00" });
+      await make(u, { title: "Invoice", direction: "they_owe", owedBy: "أحمد" });
+      const closed = await make(u, { title: "Old", direction: "they_owe", owedBy: "احمد" });
+      expect((await changeItem(u.email, closed.id, { action: "complete", result: "ok" }, PERSON)).ok).toBe(true);
+      await make(u, { title: "Other", direction: "they_owe", owedBy: "Sara" });
+      await make(u, { title: "Mine" });
+      return q;
+    });
+    await at(NOW, async () => {
+      const before = await auditLines(u.email);
+      const { text, awayProposed, actions, p } = await contactAway(u, { name: "إحمد", until: "2026-10-08" });
+      // Nothing saved: no field, no audit line.
+      expect(await db.hgetall(SEC_KEYS.away(u.email))).toEqual({});
+      expect(await auditLines(u.email)).toEqual(before);
+      expect(awayProposed).toHaveLength(1);
+      // Two open items are owed by that contact however it is written; the closed one and Sara's are not counted.
+      expect(p).toEqual({ id: expect.stringMatching(/^[a-f0-9]{16}$/), label: "إحمد", key: "احمد", until: "2026-10-08", openItems: 2, contact: quote.owedBy, at: iso(NOW) });
+      expect(quote.owedBy).toBe("احمد");
+      expect(actions).toEqual([`awayprop:${p.id}`]);
+      expect(text).toMatch(/^Proposed, not saved: /);
+      expect(text).toMatch(/the owner presses Save on the card\.$/);
+      expect(text).toContain("Thursday, October 8");
+      expect(text).toContain("2 open items");
+      // Stored for 7 days under the caller's scope, its id in the scope's index (for the account wipe).
+      expect(AWAY_PROPOSAL_TTL_S).toBe(7 * 86400);
+      expect(await db.get(SEC_KEYS.awayProp(u.email, p.id))).toEqual(p);
+      const ttl = await db.ttl(SEC_KEYS.awayProp(u.email, p.id));
+      expect(ttl).toBeGreaterThan(AWAY_PROPOSAL_TTL_S - 60);
+      expect(ttl).toBeLessThanOrEqual(AWAY_PROPOSAL_TTL_S);
+      expect(await propIds(u.email)).toEqual([p.id]);
+      expect(await db.get(SEC_KEYS.awayPropDone(u.email, p.id))).toBeNull();
+      // A name no open item is owed by: no contact, 0 items, and the answer asks Reem to check the spelling.
+      const none = await contactAway(u, { name: "Ahmad", until: "2026-10-08" });
+      expect(none.p).toMatchObject({ label: "Ahmad", key: "ahmad", openItems: 0 });
+      expect(none.p).not.toHaveProperty("contact");
+      expect(none.text).toContain("spelling");
+      expect(none.text).toMatch(/the owner presses Save on the card\.$/);
+    });
+  });
+
+  it("a member's Save through the route writes the entry and one away audit line under the member's login, via web, naming Reem's chat; a second Save is already_decided and changes nothing", async () => {
+    await at(NOW, async () => {
+      const o = await owner("aw485b");
+      const m = await newMember(o, "member", "aw485bm");
+      const { p } = await contactAway(o, { name: " Sara ", until: "2026-10-09" });
+      await signIn(m.email);
+      const r = await propPost(p.id, { action: "save" });
+      expect(r.status).toBe(200);
+      const entry = { label: "Sara", until: "2026-10-09", by: m.email, via: "web", at: iso(NOW) };
+      expect(await r.json()).toEqual({ ok: true, state: "saved", entry });
+      expect(await db.hgetall(SEC_KEYS.away(o.email))).toEqual({ sara: entry });
+      expect((await awayAudit(o.email)).map((l) => [l.action, l.actor, l.via, l.login, l.diff])).toEqual([["away", "owner", "web", m.email, `label="Sara"; until=2026-10-09; proposed in Reem's chat (${p.id})`]]);
+      // Decided once: the record goes, the outcome stays at most 7 days, and a second Save or a Dismiss is refused.
+      expect(await db.get(SEC_KEYS.awayProp(o.email, p.id))).toBeNull();
+      expect(await db.get(SEC_KEYS.awayPropDone(o.email, p.id))).toBe("saved");
+      expect(await db.ttl(SEC_KEYS.awayPropDone(o.email, p.id))).toBeLessThanOrEqual(AWAY_PROPOSAL_TTL_S);
+      for (const action of ["save", "dismiss"]) {
+        const again = await propPost(p.id, { action });
+        expect(again.status, action).toBe(409);
+        expect(await again.json()).toEqual({ ok: false, error: "already_decided" });
+      }
+      expect(await db.hgetall(SEC_KEYS.away(o.email))).toEqual({ sara: entry });
+      expect(await awayAudit(o.email)).toHaveLength(1);
+      // Two Saves at once: one writes, the claim refuses the other.
+      const q = (await contactAway(o, { name: "Huda", until: "2026-10-10" })).p;
+      const both = await Promise.all([propPost(q.id, { action: "save" }), propPost(q.id, { action: "save" })]);
+      expect(both.map((x) => x.status).sort()).toEqual([200, 409]);
+      expect(await awayAudit(o.email)).toHaveLength(2);
+      // The owner of the account saves too.
+      await signIn(o.email);
+      const s = (await contactAway(o, { name: "Nour", until: "2026-10-11" })).p;
+      expect((await propPost(s.id, { action: "save" })).status).toBe(200);
+      expect((await db.hgetall<{ by: string }>(SEC_KEYS.away(o.email))).nour.by).toBe(o.email);
+    });
+  });
+
+  it("Dismiss writes nothing; a clear proposal's Save ends the absence (until = yesterday); a reloaded thread shows each card's state", async () => {
+    await at(NOW, async () => {
+      const u = await owner("aw485c");
+      await setAway(u.email, { label: "Huda", until: "2026-10-20" }, PERSON, NOW, "Asia/Riyadh");
+      const a = (await contactAway(u, { name: "Sara", until: "2026-10-09" })).p;
+      const cleared = await contactAway(u, { name: " HUDA ", clear: true });
+      const b = cleared.p;
+      const c = (await contactAway(u, { name: "Nour", until: "2026-10-10" })).p;
+      expect(b).toMatchObject({ label: "HUDA", key: "huda", until: null, openItems: 0, contact: "Huda" });
+      expect(cleared.text).toMatch(/^Proposed, not saved: /);
+      expect(cleared.text).toContain("end");
+      expect(cleared.text).toMatch(/the owner presses Save on the card\.$/);
+      const lost: AwayProposal = { ...c, id: "0123456789abcdef" };
+      await push(u.email, { role: "assistant", content: "…", at: iso(NOW), agent: "reem", awayProposals: [a, b, c, lost] });
+      await signIn(u.email);
+      const d = await propPost(a.id, { action: "dismiss" });
+      expect(d.status).toBe(200);
+      expect(await d.json()).toEqual({ ok: true, state: "dismissed" });
+      expect(await awayKeys(u.email)).toEqual(["huda"]);
+      const e = await propPost(b.id, { action: "save" });
+      expect(e.status).toBe(200);
+      expect(await e.json()).toMatchObject({ ok: true, state: "saved", entry: { label: "Huda", until: "2026-10-05" } });
+      expect((await db.hgetall<{ until: string }>(SEC_KEYS.away(u.email))).huda.until).toBe("2026-10-05");
+      expect((await awayAudit(u.email)).map((l) => [l.action, l.login, l.diff])).toEqual([
+        ["away", PERSON.login, 'label="Huda"; until=2026-10-20'],
+        ["away_end", u.email, `label="Huda"; until=2026-10-05; proposed in Reem's chat (${b.id})`],
+      ]);
+      const thread = await history(u.email);
+      expect(thread.at(-1)?.awayProposals?.map((x) => [x.id, x.state])).toEqual([[a.id, "dismissed"], [b.id, "saved"], [c.id, "open"], [lost.id, "expired"]]);
+    });
+  });
+
+  it("the proposal is read only from the caller's scope: another brand's or account's id is 404 and stays open; a malformed id is 404 and a bad action 400 before any proposal is read; anonymous is 401; the rate limit is 429", async () => {
+    await at(NOW, async () => {
+      const u = await owner("aw485d");
+      const b2 = scopeFor(u.email, "b2");
+      await saveBrands(u.email, [{ id: "default", name: "", createdAt: iso(NOW), status: "active" }, { id: "b2", name: "Two", createdAt: iso(NOW), status: "active" }]);
+      await saveBrand(b2, { ...BRAND, name: "Two" });
+      const inB2 = (await contactAway({ ...u, scope: b2 }, { name: "Sara", until: "2026-10-09" })).p;
+      expect(await propIds(b2)).toEqual([inB2.id]);
+      expect(await propIds(u.email)).toEqual([]);
+      const other = await owner("aw485do");
+      const theirs = (await contactAway(other, { name: "Sara", until: "2026-10-09" })).p;
+      signOut();
+      expect((await propPost(inB2.id, { action: "save" })).status).toBe(401);
+      await signIn(u.email);
+      for (const id of [inB2.id, theirs.id]) {
+        const r = await propPost(id, { action: "save" });
+        expect(r.status).toBe(404);
+        expect(await r.json()).toEqual({ ok: false, error: "not_found" });
+      }
+      expect(await db.get(SEC_KEYS.awayProp(b2, inB2.id))).toEqual(inB2);
+      expect(await db.get(SEC_KEYS.awayProp(other.email, theirs.id))).toEqual(theirs);
+      expect(await db.get(SEC_KEYS.awayPropDone(u.email, inB2.id))).toBeNull();
+      for (const s of [u.email, b2, other.email]) expect(await awayKeys(s)).toEqual([]);
+      // Malformed ids and actions are refused before any proposal key is read.
+      const reads = vi.spyOn(db, "mget");
+      for (const id of ["ABCDEF0123456789", "0123456789abcde", "0123456789abcdef0", "..", "0123456789abcdeg"]) expect((await propPost(id, { action: "save" })).status, id).toBe(404);
+      for (const body of [{ action: "apply" }, {}, "save", null]) {
+        const r = await propPost(inB2.id, body);
+        expect(r.status, JSON.stringify(body)).toBe(400);
+        expect(await r.json()).toEqual({ ok: false, error: "bad_action" });
+      }
+      expect(reads.mock.calls.flat(2).filter((k) => String(k).startsWith("secawayprop"))).toEqual([]);
+      reads.mockRestore();
+      // In brand B the same id saves, into B's list alone.
+      await setActiveBrand(u.email, "b2");
+      expect((await propPost(inB2.id, { action: "save" })).status).toBe(200);
+      expect(await awayKeys(b2)).toEqual(["sara"]);
+      expect(await awayKeys(u.email)).toEqual([]);
+      // The sec:write rate applies, with nothing decided.
+      const next = (await contactAway({ ...u, scope: b2 }, { name: "Huda", until: "2026-10-09" })).p;
+      await db.set(`rate:sec:write:${u.email}`, SEC_WRITES_PER_HOUR, 3600);
+      expect((await propPost(next.id, { action: "save" })).status).toBe(429);
+      expect(await db.get(SEC_KEYS.awayProp(b2, next.id))).toEqual(next);
+      expect(await awayKeys(b2)).toEqual(["sara"]);
+    });
+  });
+
+  it("a proposal is checked like setAway: the owner or an agent, a day out of range, a bad day, until with clear, a clear for someone not away and a full list are refused with nothing stored", async () => {
+    await at(NOW, async () => {
+      const u = await owner("aw485e");
+      const cases: [Record<string, unknown>, Record<string, unknown>][] = [
+        [{ name: "reem", until: "2026-10-08" }, { error: "not_contact", field: "name" }],
+        [{ name: "ＤＡＮＡ", until: "2026-10-08" }, { error: "not_contact", field: "name" }],
+        [{ name: "أنا", clear: true }, { error: "not_contact", field: "name" }],
+        [{ name: "Sara", until: "2026-10-05" }, { error: "away_range", field: "until" }],
+        [{ name: "Sara", until: addDays("2026-10-06", 367) }, { error: "away_range", field: "until" }],
+        [{ name: "Sara", until: "8 Oct" }, { error: "bad_date", field: "until" }],
+        [{ name: "Sara" }, { error: "bad_date", field: "until" }],
+        [{ name: "Sara", until: "2026-10-08", clear: true }, { error: "bad_request", field: "until" }],
+        [{ name: "Sara", clear: "yes" }, { error: "bad_request", field: "clear" }],
+        [{ name: "", until: "2026-10-08" }, { error: "bad_request", field: "name" }],
+        [{ name: "a".repeat(81), until: "2026-10-08" }, { error: "too_long", field: "name" }],
+        [{ name: "Nobody", clear: true }, { error: "not_found", field: "name" }],
+      ];
+      for (const [input, want] of cases) {
+        expect(await proposeAway(u.email, input as { name: unknown }, NOW, "Asia/Riyadh"), JSON.stringify(input)).toMatchObject({ ok: false, ...want });
+        const r = await contactAway(u, input);
+        expect(r.text, JSON.stringify(input)).toMatch(/^Not done: /);
+        expect(r.awayProposed).toEqual([]);
+        expect(r.actions).toEqual([]);
+      }
+      // Ending an absence that has already ended changes nothing: no card.
+      await db.hset(SEC_KEYS.away(u.email), "huda", awayEntry("Huda", "2026-10-01"));
+      expect(await proposeAway(u.email, { name: "Huda", clear: true }, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "nothing_to_change" });
+      // A full list: a new contact is away_limit; one already on it can still be proposed.
+      await Promise.all(Array.from({ length: AWAY_MAX - 1 }, (_, i) => db.hset(SEC_KEYS.away(u.email), `c${i}`, awayEntry(`C${i}`, "2026-10-20"))));
+      expect(await proposeAway(u.email, { name: "New contact", until: "2026-10-09" }, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "away_limit", status: 409 });
+      expect((await proposeAway(u.email, { name: "C3", until: "2026-10-09" }, NOW, "Asia/Riyadh")).ok).toBe(true);
+      expect(await propIds(u.email)).toHaveLength(1);
+      expect(await awayKeys(u.email)).toHaveLength(AWAY_MAX);
+    });
+  });
+
+  it("a Save is checked again when it is pressed: a last day that has passed since is away_range with nothing written, and the card can still be dismissed", async () => {
+    const { u, p } = await at(NOW, async () => {
+      const u = await owner("aw485f");
+      return { u, p: (await contactAway(u, { name: "Sara", until: "2026-10-06" })).p };
+    });
+    await at(NOW + 864e5, async () => {
+      await signIn(u.email);
+      const r = await propPost(p.id, { action: "save" });
+      expect(r.status).toBe(400);
+      expect(await r.json()).toEqual({ ok: false, error: "away_range", field: "until" });
+      expect(await awayKeys(u.email)).toEqual([]);
+      expect(await db.get(SEC_KEYS.awayPropDone(u.email, p.id))).toBeNull();
+      expect((await propPost(p.id, { action: "dismiss" })).status).toBe(200);
+      expect(await db.get(SEC_KEYS.awayPropDone(u.email, p.id))).toBe("dismissed");
+    });
+  });
+
+  it("the card shows the name as typed, the contact it matches, the last day in Latin digits and the open items, with Save and Dismiss; a decided card shows its outcome", () => {
+    const p: AwayProposal = { id: "0123456789abcdef", label: "إحمد", key: "احمد", until: "2026-10-08", openItems: 2, contact: "احمد", at: iso(NOW) };
+    const card = (q: AwayProposal, lang: "ar" | "en") => renderToStaticMarkup(createElement(AwayProposalCard, { p: q, t: appDict[lang], lang }));
+    const ar = card(p, "ar");
+    for (const s of ["إحمد", "احمد", "الخميس 8 أكتوبر", "آخر يوم غياب", "المهام المفتوحة على هذا الاسم: 2", "احفظ", "تجاهل"]) expect(ar, s).toContain(s);
+    expect(ar).not.toMatch(/[٠-٩]/);
+    const en = card(p, "en");
+    for (const s of ["Name as written", "Matches", "2 open items they owe", "Away until", "Thursday, October 8", ">Save<", ">Dismiss<"]) expect(en, s).toContain(s);
+    expect(card({ ...p, until: null }, "en")).toContain("Ends now");
+    expect(card({ ...p, contact: undefined, openItems: 0 }, "en")).toContain("check the spelling");
+    // A decided or expired card offers no button.
+    const saved = card({ ...p, state: "saved" }, "en");
+    expect(saved).toContain("Saved to the away list");
+    expect(saved).not.toContain(">Save<");
+    expect(card({ ...p, state: "expired" }, "en")).toContain("expired (7 days)");
+  });
+
+  it("decideAwayProposal applies the proposal through setAway or endAway with the person's Who", async () => {
+    await at(NOW, async () => {
+      const u = await owner("aw485g");
+      const made = await proposeAway(u.email, { name: "Sara", until: "2026-10-09" }, NOW, "Asia/Riyadh");
+      if (!made.ok) throw new Error(made.error);
+      expect(await decideAwayProposal(u.email, made.p.id, "save", PERSON, NOW)).toEqual({ ok: true, state: "saved", entry: { label: "Sara", until: "2026-10-09", by: PERSON.login, via: "web", at: iso(NOW) } });
+      expect(await decideAwayProposal(u.email, made.p.id, "save", PERSON, NOW)).toMatchObject({ ok: false, error: "already_decided", status: 409 });
+      expect(await decideAwayProposal(u.email, "not-an-id", "save", PERSON, NOW)).toMatchObject({ ok: false, error: "not_found", status: 404 });
+      expect(toolError({ ok: false, error: "already_decided", status: 409 })).toMatch(/already/);
+    });
+  });
+});
+
+describe("rule 486: contact_away is Reem's alone, in the app's chat: refused for other agents, over MCP and for a token, and never offered to them", () => {
+  it("runTool refuses it for Noor, for another agent, for a turn with no agent, over MCP and for a token (in ctx.by or on the user), and writes nothing", async () => {
+    await at(NOW, async () => {
+      const u = await owner("aw486a");
+      const token = { kind: "token" as const, email: u.email, name: "Token", lang: "en" as const, role: "owner" as const };
+      const cases: [string, User, Partial<ToolCtx>][] = [
+        ["noor", u, { agent: "noor", via: "app" }],
+        ["majed", u, { agent: "majed", via: "app" }],
+        ["no agent", u, { via: "app" }],
+        ["mcp", u, { agent: "reem", via: "mcp" }],
+        ["token by", u, { agent: "reem", via: "app", by: { kind: "token", email: u.email } }],
+        ["token actor", { ...u, actor: token }, { agent: "reem", via: "app" }],
+      ];
+      for (const [name, user, ctx] of cases) {
+        const r = await contactAway(user, { name: "Sara", until: "2026-10-09" }, ctx);
+        expect(r.text, name).toMatch(/^Not done: /);
+        expect(r.text, name).toContain("Nothing was saved");
+        expect(r.awayProposed, name).toEqual([]);
+        expect(r.actions, name).toEqual([]);
+      }
+      expect(await propIds(u.email)).toEqual([]);
+      expect(await awayKeys(u.email)).toEqual([]);
+      expect(await db.get(`rate:sec:write:${u.email}`)).toBeNull();
+      // The same call in Reem's own turn in the app is proposed.
+      expect((await contactAway(u, { name: "Sara", until: "2026-10-09" })).awayProposed).toHaveLength(1);
+    });
+  });
+
+  it("only Reem's turn offers the tool: not the shared tools, not another agent's turn, not MCP's tool list", async () => {
+    expect(toolsFor("reem").map((t) => t.name)).toContain("contact_away");
+    for (const a of AGENT_IDS.filter((x) => x !== "reem")) expect(toolsFor(a).map((t) => t.name), a).not.toContain("contact_away");
+    expect(toolsFor("majed").map((t) => t.name)).toContain("propose_handoff");
+    expect(toolsFor("reem").map((t) => t.name)).not.toContain("propose_handoff");
+    expect(CHAT_TOOL_NAMES).not.toContain("contact_away");
+    const rpc = (method: string) => new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: {} }) });
+    const listed = (await (await mcpRoute.POST(rpc("tools/list"))).json()).result.tools.map((t: { name: string }) => t.name);
+    expect(listed.length).toBeGreaterThan(3);
+    expect(listed).not.toContain("contact_away");
+    expect((await (await mcpRoute.GET()).json()).tools).not.toContain("contact_away");
+    // A name, then a last day or clear; the description says it saves nothing.
+    expect(CONTACT_AWAY_TOOL.input_schema).toMatchObject({ type: "object", additionalProperties: false, required: ["name"], properties: { name: { type: "string" }, until: { type: "string" }, clear: { type: "boolean" } } });
+    expect(CONTACT_AWAY_TOOL.description).toMatch(/saves nothing/i);
+    expect(statusFor("contact_away", "en", "Reem")).not.toBe("Reem is working…");
   });
 });

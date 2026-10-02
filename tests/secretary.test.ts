@@ -18,9 +18,10 @@ import {
   SEC_CREATE_PER_DAY, SEC_KEYS, SEC_OPEN_MAX, SEC_PURGE_BATCH, SEC_READS_PER_HOUR, SEC_WRITES_PER_HOUR, agendaFor, changeItem, getItem, mutateItem, purgeExpired,
 } from "@/lib/secretary";
 import {
-  AUTO_CLOSE_RESULT, addWorkingDays, approvalsLine, arCount, chaseAt, computeAgenda, formatWhen, nowLine, noteText, parseWhen, riyadhDay, zoneDay, type SecItem,
+  AUTO_CLOSE_RESULT, addDays, addWorkingDays, approvalsLine, arCount, chaseAt, computeAgenda, formatWhen, nowLine, noteText, parseWhen, riyadhDay, zoneDay, type SecItem,
 } from "@/lib/secretary-agenda";
 import { zoneOf } from "@/lib/zones";
+import { decideAwayProposal, proposeAway } from "@/lib/secretary-away";
 import * as brandRoute from "@/app/api/brand/route";
 import { HELP } from "@/lib/help";
 import * as listRoute from "@/app/api/secretary/route";
@@ -551,9 +552,20 @@ describe("account deletion removes the whole list (rule 201)", () => {
     await patch(gone.id, { action: "delete" });
     await setActiveBrand(u.email, "b2");
     await add({ title: "Second brand" });
+    // Absences Reem proposed in chat (rule 485), in both brands: an open one (its record and the index) and a decided one
+    // (its outcome and the index). Their keys start "secawayprop", outside "sec:", and are found through the index.
+    const until = addDays(zoneDay(Date.now()), 2);
+    const open1 = await proposeAway(u.email, { name: "Sara", until }, Date.now(), "Asia/Riyadh");
+    const decided = await proposeAway(scopeFor(u.email, "b2"), { name: "Huda", until }, Date.now(), "Asia/Riyadh");
+    if (!open1.ok || !decided.ok) throw new Error("proposeAway");
+    expect((await decideAwayProposal(scopeFor(u.email, "b2"), decided.p.id, "dismiss", { actor: "owner", via: "web" })).ok).toBe(true);
+    expect(memKeys().filter((k) => k.startsWith("secawayprop") && k.includes(u.email)).sort()).toEqual([
+      SEC_KEYS.awayProp(u.email, open1.p.id), SEC_KEYS.awayPropDone(scopeFor(u.email, "b2"), decided.p.id), SEC_KEYS.awayProps(u.email), SEC_KEYS.awayProps(scopeFor(u.email, "b2")),
+    ].sort());
     expect(memKeys().filter((k) => k.startsWith("sec:") && k.includes(u.email)).length).toBeGreaterThan(8);
     await wipeAccount(u.email);
     expect(memKeys().filter((k) => k.startsWith("sec:") && k.includes(u.email))).toEqual([]);
+    expect(memKeys().filter((k) => k.startsWith("secaway") && k.includes(u.email))).toEqual([]);
     expect(await getItem(u.email, open.id)).toBeNull();
   });
 });

@@ -9,10 +9,12 @@ import { endAway, listAway, setAway } from "@/lib/secretary-away";
  * Contacts who are away, for the signed-in account's active brand (`sc(u)`): `sec:away:{scope}` (src/lib/secretary-away.ts).
  * GET: the list, ended entries marked `ended` (`read`, any member, rate `sec:read`).
  * PUT `{ label, until, note? }`: mark a contact away until `until` (inclusive, the brand's local day), or replace their
- * entry (`todo.write`, any member, rate `sec:write`). DELETE `{ label }`: end the absence now (`todo.write`, rate
- * `sec:write`). Each authenticates, then checks the role, then the rate limit, then reads the body, of which only
- * `label`, `until` and `note` are read: a `scope`, `email`, `by` or `via` there changes nothing. The owner, an alias of
- * the owner or an agent is refused (`not_contact`); 200 entries per brand, ended ones included (`away_limit`).
+ * entry (`todo.write`, any member, rate `sec:write`). DELETE `{ label, remove? }`: end the absence now, idempotently (an
+ * entry that has already ended stays as it is, ruling R21); `remove: true` deletes the entry instead, ended or not
+ * (`todo.write`, rate `sec:write`). Each authenticates, then checks the role, then the rate limit, then reads the body,
+ * of which only `label`, `until`, `note` and `remove` are read: a `scope`, `email`, `by` or `via` there changes nothing.
+ * The owner, an alias of the owner or an agent is refused (`not_contact`); 200 entries per brand, ended ones included
+ * (`away_limit`).
  */
 const refused = (r: SecFail) => NextResponse.json({ ok: false, error: r.error, ...(r.field ? { field: r.field } : {}) }, { status: r.status });
 const badRequest = () => NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
@@ -57,10 +59,10 @@ export async function DELETE(req: Request) {
   if (no) return no;
   if (!(await allow(`sec:write:${u.email}`, SEC_WRITES_PER_HOUR, 3600))) return NextResponse.json({ ok: false, error: "too_many" }, { status: 429 });
   const b = await bodyOf(req);
-  if (!b) return badRequest();
+  if (!b || (b.remove !== undefined && typeof b.remove !== "boolean")) return badRequest();
   const scope = sc(u);
   const now = Date.now();
-  const r = await endAway(scope, b.label, personOf(u), now, await zoneFor(scope));
+  const r = await endAway(scope, b.label, personOf(u), now, await zoneFor(scope), { remove: b.remove === true });
   if (!r.ok) return refused(r);
-  return NextResponse.json({ ok: true, entry: r.entry, removed: r.removed });
+  return NextResponse.json({ ok: true, entry: r.entry, removed: r.removed, changed: r.changed });
 }

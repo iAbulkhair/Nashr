@@ -13,15 +13,22 @@
  * - Writes run under `withLock(scope, "away")` and leave one audit line each, `away` or `away_end`, with the login, the
  *   label and the date; never the note.
  * - Ending a running absence sets `until` to yesterday and keeps the entry for the "back" alert (rule 479, 7 days);
- *   ending one that has already ended removes the field, so ended entries cannot hold the cap for a month (ruling R19).
- *   The daily clean-up (`cleanAway`, from `secretaryDaily`) removes entries ended over `AWAY_KEEP_DAYS` days ago.
+ *   ending it again changes nothing (ruling R21: a double click on "End now" must not lose the back alert). Only an
+ *   explicit remove deletes a field, so the owner can free ended entries from the cap (ruling R19). The daily clean-up
+ *   (`cleanAway`, from `secretaryDaily`) removes entries ended over `AWAY_KEEP_DAYS` days ago.
+ * - A key the store's HGETALL cannot give back as a field (`__proto__`, `constructor`, `prototype`) is `bad_request`
+ *   (ruling R22): such a field would be invisible, unendable and never cleaned.
+ * - From Reem's chat an absence is only proposed (`proposeAway`, the `contact_away` tool, spec §3.2): a record of 7 days
+ *   shown as a card, which a person with `todo.write` saves or dismisses (`decideAwayProposal`, once); Save runs
+ *   `setAway` / `endAway` above, so every check holds again when it is pressed.
  * - Free: no credits, no model call. Every key is built from the caller's scope; the label is the only thing a request
  *   names, and it only ever becomes a field of that scope's hash.
  */
+import { randomBytes } from "crypto";
 import { db } from "./db";
 import { AGENT_IDS } from "./agents";
 import type { Zone } from "./zones";
-import { OWNER_ALIASES, SEC_KEYS, audit, cleanLine, fail, isLocalDay, withLock, type SecFail, type Who } from "./secretary";
+import { OWNER_ALIASES, SEC_KEYS, audit, cleanLine, fail, isLocalDay, listOpenItems, withLock, zoneFor, type SecFail, type Who } from "./secretary";
 import { SEC_LIMITS, addDays, daysBetween, partyKey, zoneDay } from "./secretary-agenda";
 
 /** Fields in one brand's hash, ended entries included. */
@@ -41,6 +48,11 @@ export type AwayInput = { label: unknown; until: unknown; note?: unknown };
 const LOCK = "away";
 /** Keys that name the owner or an agent, never a contact. */
 const NOT_CONTACTS = new Set([...AGENT_IDS, ...OWNER_ALIASES].map((k) => partyKey(k)));
+/**
+ * Keys the store cannot hold as a field (ruling R22): the Upstash HGETALL deserialiser assigns `obj[key]`, so a field
+ * named `__proto__` (or one that shadows `constructor`, `prototype`) is lost or misread on every read.
+ */
+const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 const hasOwn = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
 
 /**
@@ -68,8 +80,8 @@ function labelOf(v: unknown): { ok: true; label: string; key: string } | SecFail
   if (label.length > SEC_LIMITS.party) return fail("too_long", 400, "label");
   const key = partyKey(label);
   if (key === null) return fail("too_long", 400, "label");
-  // Nothing visible left (blank, or only soft hyphens and the like).
-  if (!key) return fail("bad_request", 400, "label");
+  // Nothing visible left (blank, or only soft hyphens and the like), or a key no hash field can be (ruling R22).
+  if (!key || RESERVED_KEYS.has(key)) return fail("bad_request", 400, "label");
   return { ok: true, label, key };
 }
 
@@ -98,42 +110,49 @@ export function parseAway(raw: AwayInput, now: number, zone: Zone): { ok: true; 
 /**
  * Mark a contact away until `until` (inclusive), or replace their entry: checked by `parseAway`, then under the away
  * lock the hash is read once, the cap checked (a new field when 200 are stored is `away_limit`, 409), and the entry and
- * an `away` audit line written in one round. `by` is the acting login (`who.login`, else the actor).
+ * an `away` audit line written in one round. `by` is the acting login (`who.login`, else the actor). `tag` ends the audit
+ * line, saying where the write came from (a proposal from Reem's chat).
  */
-export async function setAway(scope: string, raw: AwayInput, who: Who, now: number, zone: Zone): Promise<{ ok: true; entry: AwayEntry } | SecFail> {
+export async function setAway(scope: string, raw: AwayInput, who: Who, now: number, zone: Zone, tag?: string): Promise<{ ok: true; entry: AwayEntry } | SecFail> {
   const p = parseAway(raw, now, zone);
   if (!p.ok) return p;
   const entry: AwayEntry = { label: p.label, until: p.until, ...(p.note ? { note: p.note } : {}), by: who.login ?? who.actor, via: "web", at: new Date(now).toISOString() };
   return withLock(scope, LOCK, async (): Promise<{ ok: true; entry: AwayEntry } | SecFail> => {
     const rows = await db.hgetall<unknown>(SEC_KEYS.away(scope));
     if (!hasOwn(rows, p.key) && Object.keys(rows).length >= AWAY_MAX) return fail("away_limit", 409);
-    await Promise.all([db.hset(SEC_KEYS.away(scope), p.key, entry), audit(scope, who, "away", "-", `label=${JSON.stringify(p.label)}; until=${p.until}`)]);
+    await Promise.all([db.hset(SEC_KEYS.away(scope), p.key, entry), audit(scope, who, "away", "-", `label=${JSON.stringify(p.label)}; until=${p.until}${tag ? `; ${tag}` : ""}`)]);
     return { ok: true, entry };
   });
 }
 
+export type AwayEnded = { ok: true; entry: AwayEntry; removed: boolean; changed: boolean };
+
 /**
- * End a contact's absence now, `now` in the brand's `zone`. A running entry (until today or later) keeps its field with
- * `until` set to yesterday, so the "back" alert follows (`removed: false`); an entry that has already ended is removed
- * (`removed: true`, ruling R19). Either way one `away_end` audit line, in the same round as the write. A label with no
- * entry (or whose value is not one, which the daily clean-up removes) is `not_found`.
+ * End a contact's absence now, `now` in the brand's `zone`, idempotently (ruling R21). A running entry (until today or
+ * later) keeps its field with `until` set to yesterday, so the "back" alert follows; an entry that has already ended is
+ * left as it is (`changed: false`, no audit line). `remove: true` deletes the field whatever its state (`removed: true`,
+ * HDEL): the owner's way to free ended entries from the cap (ruling R19). A change writes one `away_end` audit line in
+ * the same round, ended by `tag` when given. A label with no entry (or whose value is not one, which the daily clean-up
+ * removes) is `not_found`.
  */
-export async function endAway(scope: string, label: unknown, who: Who, now: number, zone: Zone): Promise<{ ok: true; entry: AwayEntry; removed: boolean } | SecFail> {
+export async function endAway(scope: string, label: unknown, who: Who, now: number, zone: Zone, opts: { remove?: boolean; tag?: string } = {}): Promise<AwayEnded | SecFail> {
   const l = labelOf(label);
   if (!l.ok) return l;
   const today = zoneDay(now, zone);
-  return withLock(scope, LOCK, async (): Promise<{ ok: true; entry: AwayEntry; removed: boolean } | SecFail> => {
+  const tag = opts.tag ? `; ${opts.tag}` : "";
+  return withLock(scope, LOCK, async (): Promise<AwayEnded | SecFail> => {
     const rows = await db.hgetall<unknown>(SEC_KEYS.away(scope));
     const cur = hasOwn(rows, l.key) ? entryOf(rows[l.key]) : null;
     if (!cur) return fail("not_found", 404);
     const name = `label=${JSON.stringify(cur.label)}`;
-    if (cur.until < today) {
-      await Promise.all([db.hdel(SEC_KEYS.away(scope), l.key), audit(scope, who, "away_end", "-", `${name}; removed`)]);
-      return { ok: true, entry: cur, removed: true };
+    if (opts.remove) {
+      await Promise.all([db.hdel(SEC_KEYS.away(scope), l.key), audit(scope, who, "away_end", "-", `${name}; removed${tag}`)]);
+      return { ok: true, entry: cur, removed: true, changed: true };
     }
+    if (cur.until < today) return { ok: true, entry: cur, removed: false, changed: false };
     const entry: AwayEntry = { ...cur, until: addDays(today, -1), by: who.login ?? who.actor, at: new Date(now).toISOString() };
-    await Promise.all([db.hset(SEC_KEYS.away(scope), l.key, entry), audit(scope, who, "away_end", "-", `${name}; until=${entry.until}`)]);
-    return { ok: true, entry, removed: false };
+    await Promise.all([db.hset(SEC_KEYS.away(scope), l.key, entry), audit(scope, who, "away_end", "-", `${name}; until=${entry.until}${tag}`)]);
+    return { ok: true, entry, removed: false, changed: true };
   });
 }
 
@@ -182,4 +201,137 @@ export async function cleanAway(scope: string, now: number, zone: Zone): Promise
     return gone.length;
   });
   return typeof r === "number" ? r : 0;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Absences Reem proposes in chat (spec §3.2, rules 485-486): a card a person saves.
+
+/** How long a proposal waits for its Save, and how long its outcome is kept after the decision. */
+export const AWAY_PROPOSAL_TTL_S = 7 * 86400;
+/** The claim a Save holds while it runs: longer than the away lock (10 s), short enough that a killed request frees it. */
+const SAVE_CLAIM_S = 60;
+const PROPOSAL_ID = /^[a-f0-9]{16}$/;
+
+export type AwayProposalState = "open" | "saved" | "dismissed" | "expired";
+/**
+ * An absence Reem proposed (`contact_away`). `label` is the name as typed (cleaned like an item's party) and `key` its
+ * `partyKey`; `until` is the last away day, or null to end the absence now; `openItems` is how many open items that
+ * contact owes, and `contact` the name those items (else the away list) give the contact, when any. `state` is filled in
+ * when a chat thread is read (`awayProposalStates`), never stored.
+ */
+export type AwayProposal = { id: string; label: string; key: string; until: string | null; openItems: number; contact?: string; at: string; state?: AwayProposalState };
+/** What the tool call may set: nothing else is read. */
+export type AwayProposalInput = { name: unknown; until?: unknown; clear?: unknown };
+
+/** The tool names the contact `name`: a refusal about the label names that field. */
+const asName = (f: SecFail): SecFail => (f.field === "label" ? { ...f, field: "name" } : f);
+
+/**
+ * Propose an absence, `now` in the brand's `zone`, checked like `setAway` (a contact, a last day from today to today +
+ * 366, `bad_request` for `until` together with `clear`) or, with `clear: true`, like `endAway` (the contact is away now:
+ * `not_found` when not on the list, `nothing_to_change` when the absence already ended). The away list and the open items
+ * are read in one round: a new contact when the list is full is `away_limit`, and the items owed by that contact are
+ * counted. The id goes into the scope's index first, then the record with its 7-day TTL, so the account wipe finds every
+ * proposal saved. Nothing is written to the away list.
+ */
+export async function proposeAway(scope: string, input: AwayProposalInput, now: number, zone: Zone): Promise<{ ok: true; p: AwayProposal } | SecFail> {
+  const { clear } = input;
+  if (clear !== undefined && clear !== null && typeof clear !== "boolean") return fail("bad_request", 400, "clear");
+  const ending = clear === true;
+  let label: string, key: string, until: string | null;
+  if (ending) {
+    if (input.until !== undefined && input.until !== null && input.until !== "") return fail("bad_request", 400, "until");
+    const l = labelOf(input.name);
+    if (!l.ok) return asName(l);
+    if (NOT_CONTACTS.has(l.key)) return fail("not_contact", 400, "name");
+    ({ label, key } = l);
+    until = null;
+  } else {
+    const a = parseAway({ label: input.name, until: input.until }, now, zone);
+    if (!a.ok) return asName(a);
+    ({ label, key, until } = a);
+  }
+  const [rows, items] = await Promise.all([db.hgetall<unknown>(SEC_KEYS.away(scope)), listOpenItems(scope)]);
+  const cur = hasOwn(rows, key) ? entryOf(rows[key]) : null;
+  if (ending) {
+    if (!cur) return fail("not_found", 404, "name");
+    if (cur.until < zoneDay(now, zone)) return fail("nothing_to_change", 409, "name");
+  } else if (!hasOwn(rows, key) && Object.keys(rows).length >= AWAY_MAX) {
+    return fail("away_limit", 409);
+  }
+  // The owner's and the agents' keys are never a contact's (NOT_CONTACTS), so only items a contact owes match.
+  const owed = items.filter((it) => it.owedBy !== "owner" && partyKey(it.owedBy) === key);
+  const contact = owed[0]?.owedBy ?? cur?.label;
+  const p: AwayProposal = { id: randomBytes(8).toString("hex"), label, key, until, openItems: owed.length, ...(contact ? { contact } : {}), at: new Date(now).toISOString() };
+  await db.sadd(SEC_KEYS.awayProps(scope), p.id);
+  await db.set(SEC_KEYS.awayProp(scope, p.id), p, AWAY_PROPOSAL_TTL_S);
+  return { ok: true, p };
+}
+
+/** A stored proposal, or null when the value is not one. */
+function proposalOf(raw: unknown, id: string): AwayProposal | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  if (o.id !== id || typeof o.label !== "string" || !(o.until === null || isLocalDay(o.until))) return null;
+  return o as unknown as AwayProposal;
+}
+
+/** Where each proposal stands, read in one MGET, so a reloaded chat shows a decided card as decided. */
+export async function awayProposalStates(scope: string, ids: string[]): Promise<Record<string, AwayProposalState>> {
+  const ok = [...new Set(ids.filter((id) => PROPOSAL_ID.test(id)))];
+  if (!ok.length) return {};
+  const rows = await db.mget<unknown>([...ok.map((id) => SEC_KEYS.awayProp(scope, id)), ...ok.map((id) => SEC_KEYS.awayPropDone(scope, id))]);
+  return Object.fromEntries(ok.map((id, i): [string, AwayProposalState] => {
+    const done = rows[ok.length + i];
+    if (done === "saved" || done === "dismissed") return [id, done];
+    return [id, rows[i] ? "open" : "expired"];
+  }));
+}
+
+export type AwayDecided = { ok: true; state: "saved" | "dismissed"; entry?: AwayEntry };
+
+/**
+ * A person's answer to an absence Reem proposed, once. The id must be one (`not_found` otherwise, before any read), and
+ * the proposal is read only from `scope`. A decided proposal is `already_decided` (409): the outcome is checked first,
+ * then claimed with SET NX on `secawayprop-done:{scope}:{id}`, so of two answers at once one wins. Dismiss writes nothing
+ * else. Save applies it through `setAway` (or `endAway` for an end) as `who`, in the brand's zone, with every check run
+ * again: its `away` / `away_end` audit line names the login and ends with "proposed in Reem's chat ({id})". A Save the
+ * checks refuse (a last day now past, a full list, a busy lock) frees the claim and changes nothing, so the card can be
+ * saved later or dismissed. A decided proposal's record is deleted; its outcome stays 7 days.
+ */
+export async function decideAwayProposal(scope: string, id: string, action: "save" | "dismiss", who: Who, now = Date.now()): Promise<AwayDecided | SecFail> {
+  if (!PROPOSAL_ID.test(id)) return fail("not_found", 404);
+  const recordKey = SEC_KEYS.awayProp(scope, id);
+  const doneKey = SEC_KEYS.awayPropDone(scope, id);
+  const [raw, done] = await db.mget<unknown>([recordKey, doneKey]);
+  if (done) return fail("already_decided", 409);
+  const p = proposalOf(raw, id);
+  if (!p) return fail("not_found", 404);
+  if (action === "dismiss") {
+    if (!(await db.setNx(doneKey, "dismissed", AWAY_PROPOSAL_TTL_S))) return fail("already_decided", 409);
+    await db.del(recordKey);
+    return { ok: true, state: "dismissed" };
+  }
+  if (!(await db.setNx(doneKey, "saving", SAVE_CLAIM_S))) return fail("already_decided", 409);
+  let r: { ok: true; entry: AwayEntry } | SecFail;
+  try {
+    const zone = await zoneFor(scope);
+    const tag = `proposed in Reem's chat (${id})`;
+    if (p.until === null) {
+      const e = await endAway(scope, p.label, who, now, zone, { tag });
+      // The contact left the away list since the proposal: there is no absence to end.
+      r = !e.ok && e.error === "not_found" ? fail("nothing_to_change", 409, "name") : e;
+    } else {
+      r = await setAway(scope, { label: p.label, until: p.until }, who, now, zone, tag);
+    }
+  } catch (e) {
+    await db.del(doneKey).catch(() => {});
+    throw e;
+  }
+  if (!r.ok) {
+    await db.del(doneKey);
+    return r;
+  }
+  await Promise.all([db.set(doneKey, "saved", AWAY_PROPOSAL_TTL_S), db.del(recordKey)]);
+  return { ok: true, state: "saved", entry: r.entry };
 }

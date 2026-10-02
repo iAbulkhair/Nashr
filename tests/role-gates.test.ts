@@ -165,6 +165,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // Reem's away list: any member marks a contact away and ends it (the owner and the agents are refused in code).
   "PUT /api/secretary/away": g("member", "todo.write"),
   "DELETE /api/secretary/away": g("member", "todo.write"),
+  // Saving or dismissing an absence Reem proposed in chat: the same role as marking a contact away on the page.
+  "POST /api/secretary/away/proposals/[id]": g("member", "todo.write"),
   // Majed's handoffs: a run spends credits like a generation; a decline is a draft decision, like rejecting an item.
   "POST /api/handoffs/[id]/run": g("member", "generate"),
   "POST /api/handoffs/[id]/decline": g("member", "drafts"),
