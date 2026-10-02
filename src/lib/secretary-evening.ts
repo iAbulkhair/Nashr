@@ -6,8 +6,9 @@
  *   was approved (`agendaFor`, so an approved item shows as done, not as overdue): items completed today (the brand's
  *   local day) with their result; the approvals (approve, and publish, which approves) and rejections the owner decided
  *   today (`decisions:{scope}`, human decisions only); items that fell overdue since the previous evening's wrap time
- *   (an all-day item due yesterday included; a debt someone else owes when its chase moment came); the first three
- *   items the 09:00 agenda tomorrow would put in front of the owner (overdue, due, to confirm, to chase). Both read the
+ *   (an all-day item due yesterday included; a debt someone else owes when it became chaseable); the first three items
+ *   the agenda would put in front of the owner at the next working morning (09:00 tomorrow, or the first working moment
+ *   after it: Sunday 08:00 after a Riyadh Thursday, 10:00 in Ramadan): overdue, due, to confirm, to chase. Both read the
  *   brand's work calendar and away map, so a quiet day or an away contact holds a chase back. No motivational line.
  * - Silent when all four are empty. Sent at most once per scope and local day: `sec:wrap:{scope}:{day}` is claimed
  *   with SET NX before anything is sent, and released when the in-app notification could not be written, so a retry
@@ -30,7 +31,7 @@ import { notifyItem } from "./notifications";
 import { sendEmail } from "./notify";
 import { activeSeasons } from "./seasons";
 import { SEC_KEYS, agendaFor, listDone, listOpenItems } from "./secretary";
-import { AUTO_CLOSE_RESULT, addDays, computeAgenda, zoneDay, zoneTime } from "./secretary-agenda";
+import { AUTO_CLOSE_RESULT, addDays, computeAgenda, firstWorkingMoment, zoneDay, zoneTime } from "./secretary-agenda";
 import { DEFAULT_ZONE, ZONE_IDS, type Zone } from "./zones";
 import { appOrigin } from "./origin";
 
@@ -91,10 +92,13 @@ const APPROVALS = new Set(["approve", "publish"]);
  * The four parts of one scope's wrap at `now`, in its zone. First the agenda (`agendaFor`, as the cron): it closes the
  * items whose linked inbox item was approved, so they count as done today and never as overdue, and it reads the
  * brand's work calendar and away map, which both computations below use. Then one round of reads: the open set and its
- * items, the newest 50 done items, the newest 100 decisions: the same number whatever the size of the list. "Fell
- * overdue" is every overdue item that became so since the previous evening's wrap time: the owner's own when its due
- * time passed, one someone else owes when its chase moment came (a debt due on a weekend, Eid or an absence falls overdue
- * when the pause ends, not on its due date).
+ * items, the newest 50 done items, the newest 100 decisions: the same number whatever the size of the list.
+ * - "Fell overdue": the owner's own overdue items whose due time passed since the previous evening's wrap time; and
+ *   the items someone else owes (overdue, to chase, or waiting) whose chase moment's anchor passed in that window, the
+ *   moment they became chaseable (a debt due on a weekend, Eid or during an absence falls overdue when the pause ends),
+ *   even when chasing still waits now (the 21:30 wrap in Ramadan is outside its hours).
+ * - "Tomorrow": the agenda at the next working morning, 09:00 tomorrow or the first working moment after it
+ *   (`firstWorkingMoment`: Sunday 08:00 after a Riyadh Thursday, 10:00 on a Ramadan day with the default hours).
  */
 export async function buildWrap(scope: string, now: number): Promise<Wrap> {
   const { zone, cal, away } = await agendaFor(scope, now, { actor: "cron", via: "cron" });
@@ -105,11 +109,13 @@ export async function buildWrap(scope: string, now: number): Promise<Wrap> {
   const decided = decisions.filter((d) => (APPROVALS.has(d.action) || d.action === "reject") && today(d.at));
   const since = previousEveningAt(now, zone);
   const rule = { zone, cal, away };
-  const fellOverdue = computeAgenda(open, now, rule).buckets.overdue.filter((e) => {
-    const when = e.item.owedBy !== "owner" && e.moment ? e.moment.at : Date.parse(e.item.dueAt ?? "");
-    return when > since && when <= now;
-  }).map((e) => e.item.title);
-  const next = computeAgenda(open, zoneTime(addDays(day, 1), 9, 0, zone), rule);
+  const a = computeAgenda(open, now, rule);
+  const inWindow = (t: number) => t > since && t <= now;
+  // `anchor`, not `at`: `at` is when chasing may happen now, and at a Ramadan 21:30 wrap that is tomorrow's window.
+  const fellOverdue = [...a.buckets.overdue, ...a.buckets.chase, ...a.buckets.waiting]
+    .filter((e) => (e.item.owedBy === "owner" ? e.bucket === "overdue" && inWindow(Date.parse(e.item.dueAt ?? "")) : !!e.moment && inWindow(e.moment.anchor)))
+    .map((e) => e.item.title);
+  const next = computeAgenda(open, firstWorkingMoment(zoneTime(addDays(day, 1), 9, 0, zone), cal), rule);
   const tomorrow = [...next.buckets.overdue, ...next.buckets.today, ...next.buckets.confirm, ...next.buckets.chase].slice(0, 3).map((e) => e.item.title);
   return { day, zone, completed, approved: decided.filter((d) => APPROVALS.has(d.action)).length, rejected: decided.filter((d) => d.action === "reject").length, fellOverdue, tomorrow };
 }

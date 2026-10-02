@@ -105,11 +105,19 @@ export async function zoneFor(scope: string): Promise<Zone> {
 
 /**
  * Stored Working days settings as the calendar the agenda reads (`workCalendar`, memoised per zone, local day and
- * settings). Anything that is not a settings object (absent, or a value that is not one) is every default of the zone's
- * country.
+ * settings). Anything that is not a settings object (absent, or a value that is not one), and a settings object the
+ * calendar cannot be built from (a malformed field, e.g. `holidays.add: "x"`), is every default of the zone's country:
+ * a bad record never stops the agenda or a chat turn. Only the error's name is logged, never the stored value.
  */
-export const calendarOf = (stored: unknown, zone: Zone, now: number): CalData =>
-  workCalendar(stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as SecCalendar) : null, zone, now);
+export function calendarOf(stored: unknown, zone: Zone, now: number): CalData {
+  const own = stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as SecCalendar) : null;
+  try {
+    return workCalendar(own, zone, now);
+  } catch (e) {
+    console.error("sec calendar unreadable, defaults used", e instanceof Error ? e.name : "error");
+    return workCalendar(null, zone, now);
+  }
+}
 
 const LOCAL_DAY = /^\d{4}-\d{2}-\d{2}$/;
 /** A real calendar day written "YYYY-MM-DD" (2026-13-01 and 2026-02-30 are not). */

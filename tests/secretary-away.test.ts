@@ -12,6 +12,7 @@ import { buildWrap } from "@/lib/secretary-evening";
 import { partyKey, zoneDay, type SecItem } from "@/lib/secretary-agenda";
 import { workCalendar, type SecCalendar } from "@/lib/secretary-calendar";
 import * as itemRoute from "@/app/api/secretary/[id]/route";
+import * as listRoute from "@/app/api/secretary/route";
 
 /**
  * Rules 478-487 in docs/system/tests.md: Reem phase 3 A1, the store side of the brand's work calendar and of contacts
@@ -205,6 +206,42 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
     expect((await buildWrap(u.email, local("2026-10-04T18:00"))).fellOverdue).toEqual(["Samples from the supplier"]);
   });
 
+  it("in Ramadan the 21:30 wrap lists a debt that became chaseable today, by its anchor, and puts it first for tomorrow at the 10:00 window (ruling R12)", async () => {
+    const u = await owner("awramadan");
+    // Ramadan 1448 in Riyadh, default hours 10:00-15:00. Tuesday 23 and Wednesday 24 February 2027 are ordinary Ramadan
+    // days (Monday 22 is Founding Day, a quiet day, so the case sits on the Tuesday).
+    const cal = workCalendar(null, "Asia/Riyadh", local("2027-02-23T21:30"));
+    expect(["2027-02-23", "2027-02-24"].map((d) => [cal.ramadan.includes(d), cal.quiet[d] ?? null])).toEqual([[true, null], [true, null]]);
+    expect(cal.ramadanHours).toEqual([{ from: "10:00", to: "15:00" }]);
+    await at(local("2027-02-21T12:00"), () => make(u, { title: "Quote", direction: "they_owe", owedBy: "أحمد", dueAt: "2027-02-23T11:00" }));
+    const now = local("2027-02-23T21:30");
+    // At 21:30 the debt has been chaseable since 11:00 (its anchor), but chasing waits for tomorrow's window (its `at`):
+    // the agenda shows it waiting, so neither `at` nor the overdue bucket alone would list it.
+    const e = (await agendaFor(u.email, now)).buckets.waiting.find((x) => x.item.title === "Quote");
+    expect(e?.moment).toMatchObject({ anchor: local("2027-02-23T11:00"), at: local("2027-02-24T10:00"), why: "ramadan" });
+    const w = await buildWrap(u.email, now);
+    expect(w.fellOverdue).toEqual(["Quote"]);
+    // "Tomorrow" is read at Wednesday's first working moment, 10:00, not at 09:00 when chasing still waits.
+    expect(w.tomorrow).toEqual(["Quote"]);
+    // The next evening it is not listed again: its anchor is before that window.
+    expect((await buildWrap(u.email, local("2027-02-24T21:30"))).fellOverdue).toEqual([]);
+  });
+
+  it("a Riyadh Thursday wrap reads 'tomorrow' at Sunday 08:00, the next working morning, so a chaseable debt is listed (ruling R12)", async () => {
+    const u = await owner("awthursday");
+    await at(local("2026-10-07T09:00"), async () => {
+      await make(u, { title: "Quote from Ahmad", direction: "they_owe", owedBy: "Ahmad", dueAt: "2026-10-07T10:00" });
+      await make(u, { title: "My report", dueAt: "2026-10-10T12:00" });
+      // Chaseable at 08:30 Sunday: after the 08:00 brief, so not yet in "tomorrow".
+      await make(u, { title: "Samples from Sara", direction: "they_owe", owedBy: "Sara", dueAt: "2026-10-11T08:30" });
+    });
+    // Friday 09:00 (the old "tomorrow") is the weekend: the quote has been chaseable since Wednesday 10:00 (anchor) but
+    // waits for Sunday 08:00 (at).
+    const fri = (await agendaFor(u.email, local("2026-10-09T09:00"))).buckets.waiting.find((x) => x.item.title === "Quote from Ahmad");
+    expect(fri?.moment).toMatchObject({ anchor: local("2026-10-07T10:00"), at: local("2026-10-11T08:00"), why: "quiet" });
+    expect((await buildWrap(u.email, local("2026-10-08T18:00"))).tomorrow).toEqual(["Quote from Ahmad", "My report"]);
+  });
+
   it("agenda_get JSON-quotes a contact's name after 'owed by' and 'for', never an agent's", async () => {
     const u = await owner("awquote");
     const text = await at(local("2026-10-01T12:00"), async () => {
@@ -230,6 +267,31 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
     expect(await Promise.all(scopes.map((s) => db.hgetall(SEC_KEYS.away(s))))).toEqual([{}, {}]);
   });
 
+  it("GET /api/secretary keeps the calendar and the away map on the server (ruling R11)", async () => {
+    const u = await owner("awget");
+    await db.set(SEC_KEYS.cal(u.email), settings({ weekend: [5] }));
+    await db.hset(SEC_KEYS.away(u.email), partyKey("Sara Q")!, awayEntry("Sara Q", "2099-01-01"));
+    await signIn(u.email);
+    const j = await (await listRoute.GET(json("/api/secretary", "GET"))).json();
+    expect(j.ok).toBe(true);
+    expect(Object.keys(j.agenda.buckets).length).toBeGreaterThan(0);
+    expect(j.agenda).not.toHaveProperty("cal");
+    expect(j.agenda).not.toHaveProperty("away");
+    expect(JSON.stringify(j)).not.toContain("Sara Q");
+  });
+
+  it("a Working days record the calendar cannot be built from falls back to the defaults, logging the error's name only (ruling R13)", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const bad of [{ v: 1, holidays: { add: "x" } }, { v: 1, ramadanHours: [null] }]) {
+      const u = await owner("awbad");
+      await db.set(SEC_KEYS.cal(u.email), bad);
+      const a = await agendaFor(u.email, local("2026-10-01T12:00"));
+      expect(a.cal.weekend).toEqual([5, 6]);
+      expect(a.open).toBe(0);
+    }
+    expect(errors.mock.calls).toEqual([["sec calendar unreadable, defaults used", "TypeError"], ["sec calendar unreadable, defaults used", "TypeError"]]);
+  });
+
   it("system() names the brand's week start: a Friday-only weekend starts the week on Saturday", () => {
     const u = { email: "x@test.example", credits: 5, plan: "starter", trialEnds: "2026-10-01" } as User;
     expect(system(BRAND, u, [], "", [], [], "reem")[2].text).toContain("The work week starts on Sunday.");
@@ -237,7 +299,7 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
     expect(system(DUBAI_BRAND, u, [], "", [], [], "noor")[2].text).toContain("The work week starts on Monday.");
   });
 
-  it("chat() reads sec:cal with its other reads and gives the prompt the brand's week start", async () => {
+  it("chat() reads sec:cal with its other reads and gives the prompt the brand's week start (a malformed record: the defaults)", async () => {
     const sent: { system: { text: string }[] }[] = [];
     vi.resetModules();
     vi.stubEnv("ANTHROPIC_API_KEY", "test");
@@ -255,6 +317,13 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
       await chat(u, "وش عندي هالأسبوع؟", undefined, "reem");
       expect(sent).toHaveLength(1);
       expect(sent[0].system[2].text).toContain("The work week starts on Saturday.");
+      // Ruling R13: a record the calendar cannot be built from never stops a chat turn; the zone's own week start is used.
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const v = await owner("awchatbad");
+      await db.set(SEC_KEYS.cal(v.email), { v: 1, holidays: { add: "x" } });
+      await chat(v, "مرحبا", undefined, "noor");
+      expect(sent).toHaveLength(2);
+      expect(sent[1].system[2].text).toContain("The work week starts on Sunday.");
     } finally {
       vi.doUnmock("@anthropic-ai/sdk");
       vi.doUnmock("@/lib/model");
