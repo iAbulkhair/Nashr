@@ -5,7 +5,7 @@ import { forbid } from "@/lib/roles";
 import { allow } from "@/lib/rate";
 import { SEC_KEYS, SEC_READS_PER_HOUR, audit, usableCalendar, withLock, zoneFor, type Who } from "@/lib/secretary";
 import { countryOf, parseCalendar, upcomingQuiet, workCalendar, type SecCalendar } from "@/lib/secretary-calendar";
-import type { Zone } from "@/lib/zones";
+import { ZONES, type Zone } from "@/lib/zones";
 
 /**
  * The brand's Working days, for the signed-in account's active brand (`sc(u)`): `sec:cal:{scope}`, one `SecCalendar`
@@ -13,8 +13,9 @@ import type { Zone } from "@/lib/zones";
  * or removes decide when Reem suggests chasing someone. Nothing here is reachable from chat or MCP.
  * GET: `{ ok, calendar, effective, upcoming }`: the saved settings (null when there are none, or the stored value is not
  * settings the calendar can be built from: the defaults then apply, ruling R13), what is in force (`effective`: the
- * country, the weekend, the week's first day, the Ramadan hours) and the next 365 days of quiet days with their reason
- * and name and the next Ramadan (`upcoming`) (`read`, any member, rate `sec:read`).
+ * country, the brand's zone, the weekend, the zone's own default weekend that the page marks, the week's first day, the
+ * Ramadan hours) and the next 365 days of quiet days with their reason and name and the next Ramadan (`upcoming`)
+ * (`read`, any member, rate `sec:read`).
  * PUT: the whole settings object, which is what GET returns under `calendar` (its `v`, `updatedAt` and `updatedBy` are
  * replaced) (`brand.write`, admin and owner, rate `sec:cal` 30 an hour). It authenticates, then checks the role, then the
  * rate limit, then reads the body, which `parseCalendar` checks field by field: a field it does not know (a `scope`, an
@@ -38,7 +39,7 @@ function viewOf(stored: unknown, zone: Zone, now: number) {
   return {
     ok: true,
     calendar,
-    effective: { country: countryOf(zone), weekend: data.weekend, weekStart: data.weekStart, ramadanHours: data.ramadanHours },
+    effective: { country: countryOf(zone), zone, weekend: data.weekend, defaultWeekend: [...ZONES[zone].weekend], weekStart: data.weekStart, ramadanHours: data.ramadanHours },
     upcoming: upcomingQuiet(calendar, zone, now),
   };
 }

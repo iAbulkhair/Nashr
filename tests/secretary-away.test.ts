@@ -694,7 +694,7 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       expect((await auditLines(o.email))[0].diff).toBe("weekend=[5]; ramadanHours=10:00-14:00; hijriFix=none; holidays +2 -1");
       // The answer is what GET gives, so the page can show the new effective week and the next quiet days without a second request.
       const j = await r.json();
-      expect(j).toMatchObject({ ok: true, calendar: saved, effective: { country: "SA", weekend: [5], weekStart: 6, ramadanHours: [{ from: "10:00", to: "14:00" }] } });
+      expect(j).toMatchObject({ ok: true, calendar: saved, effective: { country: "SA", zone: "Asia/Riyadh", weekend: [5], defaultWeekend: [5, 6], weekStart: 6, ramadanHours: [{ from: "10:00", to: "14:00" }] } });
       expect(j.upcoming.days.map((d: { day: string }) => d.day)).toContain("2026-12-24");
       expect(await (await calGet()).json()).toEqual(j);
       // The owner of the account saves too.
@@ -729,7 +729,7 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       const j = await r.json();
       expect(j.ok).toBe(true);
       expect(j.calendar).toBeNull();
-      expect(j.effective).toEqual({ country: "SA", weekend: [5, 6], weekStart: 0, ramadanHours: [{ from: "10:00", to: "15:00" }] });
+      expect(j.effective).toEqual({ country: "SA", zone: "Asia/Riyadh", weekend: [5, 6], defaultWeekend: [5, 6], weekStart: 0, ramadanHours: [{ from: "10:00", to: "15:00" }] });
       expect(j.upcoming.days.find((d: { day: string }) => d.day === "2026-09-23")).toEqual({ day: "2026-09-23", why: { kind: "holiday", name: { ar: "اليوم الوطني", en: "National Day" } } });
       expect(j.upcoming.days.map((d: { day: string }) => d.day)).toEqual([...j.upcoming.days.map((d: { day: string }) => d.day)].sort());
       expect(j.upcoming.ramadan.start).toMatch(/^2027-02-/);
@@ -738,12 +738,12 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
     });
   });
 
-  it("GET reads the brand's own zone: a Dubai brand is the UAE, its weekend Saturday and Sunday and its week starting on Monday", async () => {
+  it("GET reads the brand's own zone: a Dubai brand is the UAE, its weekend (and the default the page marks) Saturday and Sunday and its week starting on Monday", async () => {
     await at(local("2026-10-06T12:00", "Asia/Dubai"), async () => {
       const o = await owner("c484d", DUBAI_BRAND);
       await signIn(o.email);
       const j = await (await calGet()).json();
-      expect(j.effective).toMatchObject({ country: "AE", weekend: [6, 0], weekStart: 1 });
+      expect(j.effective).toMatchObject({ country: "AE", zone: "Asia/Dubai", weekend: [6, 0], defaultWeekend: [6, 0], weekStart: 1 });
       expect(j.upcoming.days.find((d: { day: string }) => d.day === "2026-12-02")?.why).toMatchObject({ kind: "holiday", name: { en: "National Day" } });
     });
   });
@@ -888,7 +888,10 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       const before = await agendaFor(o.email, sat);
       expect(before.buckets.chase).toEqual([]);
       expect(before.buckets.waiting.map((e) => [e.item.title, e.next, e.moment?.why, e.moment?.at])).toEqual([["Quote", "wait", "quiet", local("2026-10-04T08:00")]]);
-      expect((await calPut({ weekend: [5] })).status).toBe(200);
+      const put = await calPut({ weekend: [5] });
+      expect(put.status).toBe(200);
+      // The week in force is Friday alone; the zone's own weekend, which the page marks as the default, is still Friday and Saturday.
+      expect((await put.json()).effective).toMatchObject({ weekend: [5], defaultWeekend: [5, 6], weekStart: 6 });
       // The same list at the same instant, read again: Friday alone is the weekend, so Saturday is a working day.
       const after = await agendaFor(o.email, sat);
       expect(after.buckets.waiting).toEqual([]);
