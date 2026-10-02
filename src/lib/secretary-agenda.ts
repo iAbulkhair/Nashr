@@ -14,7 +14,7 @@
  */
 import { dateFormat } from "./dates";
 import { agentById, isAgentId, type AgentId } from "./agents";
-import { DEFAULT_ZONE, ZONES, isWeekend, weekStart, zoneOffsetMs, zoneUtcLabel, type Zone } from "./zones";
+import { DEFAULT_ZONE, WEEKDAY_NAMES, ZONES, isWeekend, weekStartDay, zoneOffsetMs, zoneUtcLabel, type Zone } from "./zones";
 
 export const SEC_KINDS = ["task", "follow_up", "waiting_on", "reminder"] as const;
 export type SecKind = (typeof SEC_KINDS)[number];
@@ -112,18 +112,93 @@ export const endOfZoneDay = (day: string, z: Zone = DEFAULT_ZONE) => zoneTime(ad
 /** Riyadh's day, the default zone's: kept for the callers that mean Riyadh. */
 export const riyadhDay = (ms: number) => zoneDay(ms, DEFAULT_ZONE);
 
+/** Why a local day is quiet. `name` is the holiday's own name when it has one, shown to the owner in both languages. */
+export type QuietWhy = { kind: "weekend" | "eid_fitr" | "eid_adha" | "holiday" | "added"; name?: { ar: string; en: string } };
 /**
- * `n` working days after an instant, at the same local time, skipping the zone's weekend (Friday and Saturday; Saturday
- * and Sunday in the UAE). Started on a weekend day, the count begins at the next working day.
+ * The brand's work calendar as plain, serialisable data: what the chase rule and the working-day count read, so those
+ * stay pure and browser-safe. Built on the server (`workCalendar`) from the brand's settings and the country's holidays;
+ * `defaultCal` is the zone's own weekend with nothing else, which is what every caller without a calendar gets.
  */
-export function addWorkingDays(ms: number, n: number, z: Zone = DEFAULT_ZONE): number {
+export type CalData = {
+  zone: Zone;
+  /** Weekend weekdays, 0 Sunday … 6 Saturday (the brand's effective ones). */
+  weekend: number[];
+  /** The weekday the work week starts on: the day after the last weekend day, Sunday when there is none. */
+  weekStart: number;
+  /** Quiet local days that are not on the weekend (Eid, holidays, days the owner added), keyed YYYY-MM-DD. */
+  quiet: Record<string, QuietWhy>;
+  /** The local days of Ramadan (with the owner's moon-sighting corrections). */
+  ramadan: string[];
+  /** The hours chasing is suggested on a Ramadan day, local "HH:mm", each `[from, to)`. Empty: no restriction. */
+  ramadanHours: { from: string; to: string }[];
+  /** The morning brief's local time: the moment a quiet day's chase is moved to. */
+  briefAt: { hh: number; mm: number };
+};
+/** Contacts who are away, keyed by `partyKey` of their label: `until` is the last away day (YYYY-MM-DD), `endedAt` when they came back early. */
+export type AwayMap = Record<string, { label: string; until: string; endedAt?: string }>;
+/** Chasing hours on a Ramadan day when the brand set none: late morning to mid-afternoon. */
+export const DEFAULT_RAMADAN_HOURS: readonly { from: string; to: string }[] = [{ from: "10:00", to: "15:00" }];
+/** The calendar a brand has before it changes anything: the zone's weekend, no holidays, no Ramadan days, the default hours. */
+export function defaultCal(zone: Zone): CalData {
+  const weekend = [...ZONES[zone].weekend];
+  return { zone, weekend, weekStart: weekStartDay(weekend), quiet: {}, ramadan: [], ramadanHours: DEFAULT_RAMADAN_HOURS.map((w) => ({ ...w })), briefAt: briefTime(zone) };
+}
+/** A local day (YYYY-MM-DD) nobody is expected to work: a weekend weekday, or a day the calendar lists as quiet. */
+export const isQuietDay = (day: string, cal: CalData) => cal.weekend.includes(new Date(`${day}T00:00:00Z`).getUTCDay()) || Object.prototype.hasOwnProperty.call(cal.quiet, day);
+
+/** Days either walk below looks ahead: a year and a bit, past the calendar's own window, and the stop for malformed data. */
+const MAX_SCAN_DAYS = 400;
+/**
+ * `n` working days after an instant, at the same local time, skipping the weekend (Friday and Saturday; Saturday and
+ * Sunday in the UAE). Started on a weekend day, the count begins at the next working day. With the brand's calendar it
+ * skips every quiet day as well, so Eid and holidays never count toward a wait; without one, only the zone's weekend.
+ */
+export function addWorkingDays(ms: number, n: number, z: Zone = DEFAULT_ZONE, cal?: CalData): number {
   const start = zoneDay(ms, z);
   let day = start;
-  for (let left = n; left > 0; ) {
+  // `seen` bounds the calendar path: a weekend of all seven days (never saved, but `CalData` is data) would never end.
+  for (let left = n, seen = 0; left > 0; seen++) {
     day = addDays(day, 1);
-    if (!isWeekend(z, new Date(`${day}T00:00:00Z`).getUTCDay())) left--;
+    const off = cal ? seen < MAX_SCAN_DAYS && isQuietDay(day, cal) : isWeekend(z, new Date(`${day}T00:00:00Z`).getUTCDay());
+    if (!off) left--;
   }
   return ms + daysBetween(start, day) * DAY_MS;
+}
+
+/** A local "HH:mm" on a local day as an instant (NaN for text that is not a time, so a malformed window never matches). */
+const clockMs = (day: string, hm: string, z: Zone) => zoneTime(day, +hm.slice(0, 2), +hm.slice(3, 5), z);
+/**
+ * Whether an instant is in the Ramadan chasing hours: on a Ramadan day, inside a window (`from` included, `to` not, so
+ * 15:00 is out of a 10:00-15:00 window), or with no windows set, which means no restriction. On any other day there are
+ * no Ramadan hours and this is false, so a caller asks it of a Ramadan day only (`cal.ramadan`).
+ */
+export function inRamadanWindow(ms: number, cal: CalData): boolean {
+  const day = zoneDay(ms, cal.zone);
+  if (!cal.ramadan.includes(day)) return false;
+  return cal.ramadanHours.length === 0 || cal.ramadanHours.some((w) => ms >= clockMs(day, w.from, cal.zone) && ms < clockMs(day, w.to, cal.zone));
+}
+/**
+ * The earliest moment at or after `t` that is a working moment: not on a quiet day, and on a Ramadan day inside a window.
+ * A moment on a quiet day goes to `briefAt` on the next day. On a Ramadan day outside the windows it goes to the next
+ * window start that day, else to `briefAt` on the next day, and is checked again there. A moment already on a working
+ * day is returned as it is, even when it is before `briefAt`: only quiet days and Ramadan's off-hours move a moment.
+ * Gives up after a year of days (an all-quiet calendar) with the last moment tried.
+ */
+export function firstWorkingMoment(t: number, cal: CalData): number {
+  const { zone, briefAt } = cal;
+  const nextBrief = (day: string) => zoneTime(addDays(day, 1), briefAt.hh, briefAt.mm, zone);
+  let at = t;
+  for (let i = 0; i < MAX_SCAN_DAYS; i++) {
+    const day = zoneDay(at, zone);
+    if (isQuietDay(day, cal)) { at = nextBrief(day); continue; }
+    if (cal.ramadan.includes(day) && !inRamadanWindow(at, cal)) {
+      const starts = cal.ramadanHours.map((w) => clockMs(day, w.from, zone)).filter((s) => s > at);
+      at = starts.length ? Math.min(...starts) : nextBrief(day);
+      continue;
+    }
+    return at;
+  }
+  return at;
 }
 
 /** Dates an item may carry: a year back (a late entry) to five years ahead. */
@@ -204,16 +279,22 @@ export const DAILY_CRON_UTC_HOUR = 5;
  * Muscat: what the owner is told when a reminder can only come with the next brief. Never a fixed "08:00".
  */
 export const briefClock = (z: Zone) => {
+  const { hh, mm } = briefTime(z);
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+};
+/** The same local time as numbers: `CalData.briefAt`. */
+const briefTime = (z: Zone) => {
   const min = (DAILY_CRON_UTC_HOUR * 60 + ZONES[z].offsetMin) % 1440;
-  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+  return { hh: Math.floor(min / 60), mm: min % 60 };
 };
 
 /**
  * The line every agent's prompt starts its volatile block with: the brand's local date and time, so relative dates
- * ("Thursday", "tomorrow 10am") are worked out from the real calendar, not the model's training data.
+ * ("Thursday", "tomorrow 10am") are worked out from the real calendar, not the model's training data. The week start
+ * comes from the brand's weekend when the caller has it (`CalData.weekend`), else from the zone's own.
  */
-export function nowLine(clock: number, z: Zone = DEFAULT_ZONE): string {
-  return `NOW (${ZONES[z].city.en}, ${zoneUtcLabel(z)}): ${formatWhen(new Date(clock).toISOString(), false, "en", clock, z)}, ${zoneDay(clock, z).slice(0, 4)}; today is ${zoneDay(clock, z)}. The work week starts on ${weekStart(z)}.`;
+export function nowLine(clock: number, z: Zone = DEFAULT_ZONE, weekend: readonly number[] = ZONES[z].weekend): string {
+  return `NOW (${ZONES[z].city.en}, ${zoneUtcLabel(z)}): ${formatWhen(new Date(clock).toISOString(), false, "en", clock, z)}, ${zoneDay(clock, z).slice(0, 4)}; today is ${zoneDay(clock, z)}. The work week starts on ${WEEKDAY_NAMES[weekStartDay(weekend)]}.`;
 }
 
 export const AGENDA_BUCKETS = ["overdue", "today", "confirm", "chase", "upcoming", "waiting", "later", "undated", "cold"] as const;

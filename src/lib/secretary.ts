@@ -26,11 +26,11 @@ import { allow } from "./rate";
 import { sc, type User } from "./auth";
 import { getBrand, getTask, pendingCount, type Task } from "./brand";
 import { isAgentId, type AgentId } from "./agents";
-import { DEFAULT_ZONE, ZONES, weekStart, zoneOf, zoneUtcLabel, type Zone } from "./zones";
+import { DEFAULT_ZONE, ZONES, weekStartDay, zoneOf, zoneUtcLabel, type Zone } from "./zones";
 import {
   AGENDA_BUCKETS, AUTO_CLOSE_RESULT, CHASE_WORKING_DAYS, SEC_DIRECTIONS, SEC_KINDS, SEC_LIMITS, SEC_RESTORE_DAYS,
   addDays, addWorkingDays, approvalsLine, briefClock, computeAgenda, formatWhen, linkFactText, nextStepText, noteText, parseWhen, partyName, zoneDay, zoneTime,
-  type Agenda, type AgendaBucket, type LinkedFact, type SecActor, type SecDirection, type SecItem, type SecKind, type SecNote, type SecSource, type SecVia,
+  type Agenda, type AgendaBucket, type CalData, type LinkedFact, type SecActor, type SecDirection, type SecItem, type SecKind, type SecNote, type SecSource, type SecVia,
 } from "./secretary-agenda";
 
 export const SEC_ID = /^s[a-f0-9]{16}$/;
@@ -735,22 +735,22 @@ export const overdueAlertFingerprint = (scope: string, id: string, dueAt: string
 export const SNOOZE_PRESETS = ["2h", "tonight", "tomorrow", "nextweek"] as const;
 export type SnoozePreset = (typeof SNOOZE_PRESETS)[number];
 /**
- * The first working day of next week, as a local day: the next Sunday (Monday in the UAE, `weekStart`) after today,
- * a full week ahead when today is that day.
+ * The first working day of next week, as a local day: the next week-start day after today (Sunday, Monday in the UAE,
+ * or the brand's own from its calendar: `cal.weekStart`), a full week ahead when today is that day.
  */
-export function nextWeekStart(now: number, z: Zone = DEFAULT_ZONE): string {
+export function nextWeekStart(now: number, z: Zone = DEFAULT_ZONE, cal?: CalData): string {
   const today = zoneDay(now, z);
   const wd = new Date(`${today}T00:00:00Z`).getUTCDay();
-  const start = weekStart(z) === "Monday" ? 1 : 0;
+  const start = cal ? cal.weekStart : weekStartDay(ZONES[z].weekend);
   return addDays(today, (start - wd + 7) % 7 || 7);
 }
 /**
  * 2h: two hours from now · tonight: 20:00 today (null once it has passed) · tomorrow: 09:00 tomorrow · nextweek: 09:00
- * on the first working day of next week.
+ * on the first working day of next week (the brand's, when `cal` is given).
  */
-export function snoozePreset(p: SnoozePreset, now: number, z: Zone = DEFAULT_ZONE): string | null {
+export function snoozePreset(p: SnoozePreset, now: number, z: Zone = DEFAULT_ZONE, cal?: CalData): string | null {
   const today = zoneDay(now, z);
-  const ms = p === "2h" ? now + 2 * 3600_000 : p === "tonight" ? zoneTime(today, 20, 0, z) : p === "nextweek" ? zoneTime(nextWeekStart(now, z), 9, 0, z) : zoneTime(addDays(today, 1), 9, 0, z);
+  const ms = p === "2h" ? now + 2 * 3600_000 : p === "tonight" ? zoneTime(today, 20, 0, z) : p === "nextweek" ? zoneTime(nextWeekStart(now, z, cal), 9, 0, z) : zoneTime(addDays(today, 1), 9, 0, z);
   return ms > now ? new Date(ms).toISOString() : null;
 }
 
