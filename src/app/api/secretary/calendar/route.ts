@@ -4,17 +4,18 @@ import { db } from "@/lib/db";
 import { forbid } from "@/lib/roles";
 import { allow } from "@/lib/rate";
 import { SEC_KEYS, SEC_READS_PER_HOUR, audit, usableCalendar, withLock, zoneFor, type Who } from "@/lib/secretary";
-import { countryOf, parseCalendar, upcomingQuiet, workCalendar, type SecCalendar } from "@/lib/secretary-calendar";
-import { ZONES, type Zone } from "@/lib/zones";
+import { calendarView, parseCalendar, type SecCalendar } from "@/lib/secretary-calendar";
+import type { Zone } from "@/lib/zones";
 
 /**
  * The brand's Working days, for the signed-in account's active brand (`sc(u)`): `sec:cal:{scope}`, one `SecCalendar`
  * (src/lib/secretary-calendar.ts). The weekend, Ramadan chasing hours, the owner's Eid sightings and the holidays he adds
  * or removes decide when Reem suggests chasing someone. Nothing here is reachable from chat or MCP.
- * GET: `{ ok, calendar, effective, upcoming }`: the saved settings (null when there are none, or the stored value is not
+ * GET: `{ ok, calendar, effective, upcoming, eids }`: the saved settings (null when there are none, or the stored value is not
  * settings the calendar can be built from: the defaults then apply, ruling R13), what is in force (`effective`: the
  * country, the brand's zone, the weekend, the zone's own default weekend that the page marks, the week's first day, the
- * Ramadan hours) and the next 365 days of quiet days with their reason and name and the next Ramadan (`upcoming`)
+ * Ramadan hours), the next 365 days of quiet days with their reason and name and the next Ramadan (`upcoming`), and
+ * this and next Hijri year's Eid with the `hijriFix` value each "a day earlier / later" button saves (`eids`)
  * (`read`, any member, rate `sec:read`).
  * PUT: the whole settings object, which is what GET returns under `calendar` (its `v`, `updatedAt` and `updatedBy` are
  * replaced) (`brand.write`, admin and owner, rate `sec:cal` 30 an hour). It authenticates, then checks the role, then the
@@ -32,17 +33,8 @@ async function bodyOf(req: Request): Promise<Record<string, unknown> | null> {
   return b && typeof b === "object" && !Array.isArray(b) ? (b as Record<string, unknown>) : null;
 }
 
-/** What GET gives for a stored value, read at `now` in the brand's `zone`. */
-function viewOf(stored: unknown, zone: Zone, now: number) {
-  const calendar = usableCalendar(stored, zone, now);
-  const data = workCalendar(calendar, zone, now);
-  return {
-    ok: true,
-    calendar,
-    effective: { country: countryOf(zone), zone, weekend: data.weekend, defaultWeekend: [...ZONES[zone].weekend], weekStart: data.weekStart, ramadanHours: data.ramadanHours },
-    upcoming: upcomingQuiet(calendar, zone, now),
-  };
-}
+/** What GET gives for a stored value, read at `now` in the brand's `zone`: the page's own view (`calendarView`). */
+const viewOf = (stored: unknown, zone: Zone, now: number) => ({ ok: true, ...calendarView(usableCalendar(stored, zone, now), zone, now) });
 
 /** One short line for the audit: the settings as saved (weekdays, clock times, years and counts only). */
 const summary = (c: SecCalendar) =>

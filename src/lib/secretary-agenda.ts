@@ -590,28 +590,31 @@ export function partyName(p: SecParty | null, lang: "ar" | "en"): string {
 }
 
 /**
- * The next step in one short phrase, and, while the chase rule holds the item back (`wait` with a moment that is not
- * "normal"), the reason after « · »: the contact's absence, the quiet day, or Ramadan's hours (spec §2.2), with dates in
- * the brand's zone and Latin digits. `quote` writes contact names as JSON strings (data, for an agent's tool answer);
- * `now` names the year of a date in another year, and the day of a Ramadan time that is not today.
+ * The next step in one short phrase (`step`), and, while the chase rule holds the item back (`wait` with a moment that
+ * is not "normal", ruling R9), why (`reason`, else ""): the contact's absence, the quiet day, or Ramadan's hours (spec
+ * §2.2), with dates in the brand's zone and Latin digits. `quote` writes contact names as JSON strings (data, for an
+ * agent's tool answer); `now` names the year of a date in another year, and the day of a Ramadan time that is not today.
+ * The to-do page shows the two on their own lines (the reason under the WhatsApp link); everything else reads them as
+ * one (`nextStepText`).
  */
-export function nextStepText(e: Pick<AgendaEntry, "next" | "item" | "moment">, lang: "ar" | "en", z: Zone = DEFAULT_ZONE, opts: { quote?: boolean; now?: number } = {}): string {
+export function nextStepParts(e: Pick<AgendaEntry, "next" | "item" | "moment">, lang: "ar" | "en", z: Zone = DEFAULT_ZONE, opts: { quote?: boolean; now?: number } = {}): { step: string; reason: string } {
   const p = e.item.owedBy;
   const name = partyName(p, lang);
   const who = opts.quote && p !== "owner" && !isAgentId(p) ? JSON.stringify(name) : name;
   const ar = lang === "ar";
+  const only = (step: string) => ({ step, reason: "" });
   let step: string;
   switch (e.next) {
     case "chase": step = ar ? `تابِع مع ${who}` : `Chase ${who}`; break;
     case "wait": step = ar ? `بانتظار ${who}` : `Waiting on ${who}`; break;
-    case "confirm": return ar ? "أكّد أنها أُنجزت أو ردّها" : "Confirm it is done, or send it back";
-    case "decide": return ar ? "أنجزها أو حدّد لها موعداً أو احذفها" : "Do it, give it a date, or delete it";
-    default: return ar ? "عليك أنت" : "Yours to do";
+    case "confirm": return only(ar ? "أكّد أنها أُنجزت أو ردّها" : "Confirm it is done, or send it back");
+    case "decide": return only(ar ? "أنجزها أو حدّد لها موعداً أو احذفها" : "Do it, give it a date, or delete it");
+    default: return only(ar ? "عليك أنت" : "Yours to do");
   }
   const m = e.moment;
   // A chaseable entry needs no reason: its moment has passed.
-  if (e.next !== "wait" || !m || m.why === "normal") return step;
-  if (!Number.isFinite(m.at)) return step;
+  if (e.next !== "wait" || !m || m.why === "normal") return only(step);
+  if (!Number.isFinite(m.at)) return only(step);
   const day = (ms: number) => formatWhen(new Date(ms).toISOString(), true, lang, opts.now, z);
   let why = "";
   if (m.why === "away" && isDay(m.until)) {
@@ -627,7 +630,13 @@ export function nextStepText(e: Pick<AgendaEntry, "next" | "item" | "moment">, l
     const when = other ? (ar ? `${time} يوم ${day(m.at)}` : `${time} on ${day(m.at)}`) : time;
     why = ar ? `تابعه بعد ${when} (ساعات رمضان)` : `Follow up after ${when} (Ramadan hours)`;
   }
-  return why ? `${step} · ${why}` : step;
+  return { step, reason: why };
+}
+
+/** The next step and, while the chase rule holds the item back, its reason after « · » (`nextStepParts` as one line). */
+export function nextStepText(e: Pick<AgendaEntry, "next" | "item" | "moment">, lang: "ar" | "en", z: Zone = DEFAULT_ZONE, opts: { quote?: boolean; now?: number } = {}): string {
+  const { step, reason } = nextStepParts(e, lang, z, opts);
+  return reason ? `${step} · ${reason}` : step;
 }
 
 /**

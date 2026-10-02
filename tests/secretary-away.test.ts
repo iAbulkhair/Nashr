@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { renderToReadableStream } from "react-dom/server.edge";
 import { claudeOn } from "./helpers/model";
 import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { db } from "@/lib/db";
@@ -16,7 +17,7 @@ import {
 } from "@/lib/secretary";
 import { buildWrap } from "@/lib/secretary-evening";
 import { addDays, partyKey, zoneDay, type SecItem } from "@/lib/secretary-agenda";
-import { parseCalendar, upcomingQuiet, workCalendar, type SecCalendar } from "@/lib/secretary-calendar";
+import { eidDays, parseCalendar, upcomingQuiet, workCalendar, type SecCalendar } from "@/lib/secretary-calendar";
 import {
   AWAY_AHEAD_DAYS, AWAY_KEEP_DAYS, AWAY_MAX, AWAY_PROPOSAL_TTL_S, cleanAway, decideAwayProposal, endAway, listAway, proposeAway, setAway, type AwayProposal,
 } from "@/lib/secretary-away";
@@ -27,6 +28,12 @@ import * as calRoute from "@/app/api/secretary/calendar/route";
 import * as propRoute from "@/app/api/secretary/away/proposals/[id]/route";
 import * as mcpRoute from "@/app/api/mcp/route";
 import { AwayProposalCard } from "@/components/app/ChatPanel";
+import { awayCall } from "@/components/app/AwayPanel";
+import { calBody, withAdded, withEid, withHolidayOff, withHours, withWeekend, yearlyValue } from "@/components/app/WorkingDaysPanel";
+import Page from "@/app/[lang]/app/todo/page";
+
+// The app router only exists inside Next: the to-do page's client components get a router whose refresh does nothing.
+vi.mock("next/navigation", async (orig) => ({ ...(await orig<typeof import("next/navigation")>()), useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
 
 /**
  * Rules 478-487 in docs/system/tests.md: Reem phase 3 A1, the store side of the brand's work calendar and of contacts
@@ -1248,3 +1255,168 @@ describe("rule 486: contact_away is Reem's alone, in the app's chat: refused for
     expect(statusFor("contact_away", "en", "Reem")).not.toBe("Reem is working…");
   });
 });
+
+describe("rule 487: the to-do page shows Working days and Away panels, and the reason a debt waits under its WhatsApp link", () => {
+  const render = async (lang: "ar" | "en") => new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang }) }))).text();
+  /** The seven weekend checkboxes, in weekday order (0 Sunday … 6 Saturday). */
+  const weekendBoxes = (html: string) => [...html.matchAll(/<input[^>]*name="weekend"[^>]*>/g)].map((m) => m[0]);
+  const ARABIC_INDIC = /[٠-٩۰-۹]/;
+
+  it("in Arabic for an admin: «أيام العمل», «الغائبون» and «متوقعة — تأكد من الإعلان الرسمي»; the weekend is editable with the country's default marked; the country's holidays and this and next year's Eid come from the calendar", async () => {
+    await at(NOW, async () => {
+      const o = await owner("pg487a");
+      const a = await newMember(o, "admin", "pg487aa");
+      await signIn(a.email);
+      const html = await render("ar");
+      expect(html).toContain("أيام العمل");
+      expect(html).toContain("الغائبون");
+      expect(html).toContain("متوقعة — تأكد من الإعلان الرسمي");
+      const boxes = weekendBoxes(html);
+      expect(boxes).toHaveLength(7);
+      expect(boxes.filter((b) => / disabled=""/.test(b))).toEqual([]);
+      // Friday and Saturday are Saudi Arabia's weekend, checked and marked as the default.
+      expect(boxes.map((b) => / checked=""/.test(b))).toEqual([false, false, false, false, false, true, true]);
+      expect(html).toContain(fillIn(appDict.ar.todo.cal.defaultLine, { country: appDict.ar.todo.cal.countries.SA, days: "الجمعة، السبت" }));
+      // The holidays are the calendar's own names (no copy of them in the page): Founding Day on Monday 22 February 2027.
+      expect(html).toContain("يوم التأسيس");
+      expect(html).toContain("إجازة عيد الفطر");
+      // This Hijri year's and the next one's Eid, with the buttons that move them a day.
+      expect(html).toContain(fillIn(appDict.ar.todo.cal.eidYear, { year: "1448" }));
+      expect(html).toContain(fillIn(appDict.ar.todo.cal.eidYear, { year: "1449" }));
+      expect(html).toContain(appDict.ar.todo.cal.eidLater);
+      expect(html).toContain(appDict.ar.todo.cal.eidEarlier);
+      expect(html).toContain(appDict.ar.todo.cal.addOnce);
+      expect(html).toContain(appDict.ar.todo.cal.addYearly);
+      // The Ramadan default, 10:00-15:00, from the data, and Latin digits in every date the panels write.
+      expect(html).toMatch(/value="10:00"/);
+      expect(html).toMatch(/value="15:00"/);
+      expect(ARABIC_INDIC.test(html)).toBe(false);
+      // English names the same panels.
+      const en = await render("en");
+      for (const s of ["Working days", "Away", "Expected; check the official announcement", "Founding Day"]) expect(en, s).toContain(s);
+    });
+  });
+
+  it("for a member the Working days panel is read-only: the weekend inputs are disabled and no Eid or holiday button shows; the Away panel's form is there (todo.write)", async () => {
+    await at(NOW, async () => {
+      const o = await owner("pg487m");
+      const m = await newMember(o, "member", "pg487mm");
+      await signIn(m.email);
+      const html = await render("ar");
+      const boxes = weekendBoxes(html);
+      expect(boxes).toHaveLength(7);
+      expect(boxes.every((b) => / disabled=""/.test(b))).toBe(true);
+      expect(html).not.toContain(appDict.ar.todo.cal.eidLater);
+      expect(html).not.toContain(appDict.ar.todo.cal.addOnce);
+      expect(html).not.toContain(appDict.ar.todo.cal.saveWeekend);
+      expect(html).toContain(appDict.ar.readOnly.admin);
+      expect(html).toContain("متوقعة — تأكد من الإعلان الرسمي");
+      expect(html).toContain(appDict.ar.todo.away.add);
+    });
+  });
+
+  it("a debt owed by an away contact shows «غياب لين» with Latin digits under its WhatsApp link; contact rows offer «Away until…», the name list suggests the open items' contacts, and the away list offers End now or Remove", async () => {
+    await at(NOW, async () => {
+      const o = await owner("pg487w");
+      await signIn(o.email);
+      await make(o, { title: "عرض السعر", direction: "they_owe", owedBy: "أحمد", phone: "966500000001", dueAt: "2026-10-06T10:00" });
+      await make(o, { title: "Report", direction: "they_owe", owedBy: "sami", dueAt: "2026-10-06T10:00" });
+      // «احمد» without the hamza is the same contact (partyKey); Sara's absence ended yesterday.
+      await setAway(o.email, { label: "احمد", until: "2026-10-08" }, { actor: "owner", via: "web", login: o.email }, NOW, "Asia/Riyadh");
+      await db.hset(SEC_KEYS.away(o.email), partyKey("Sara")!, awayEntry("Sara", "2026-10-05"));
+      const html = await render("ar");
+      expect(html).toContain("أحمد: غياب لين الخميس 8 أكتوبر");
+      const line = html.slice(html.indexOf("غياب لين") - 20, html.indexOf("غياب لين") + 40);
+      expect(ARABIC_INDIC.test(line)).toBe(false);
+      // Under the WhatsApp link, and the step itself stays short.
+      expect(html.indexOf("غياب لين")).toBeGreaterThan(html.indexOf("https://wa.me/966500000001"));
+      expect(html).toContain(">بانتظار أحمد<");
+      // «غائب حتى…» on the contact's row only: never on the agent's.
+      expect(html.split(appDict.ar.todo.awayUntil).length - 1).toBe(1);
+      expect(html).toMatch(/<datalist id="todo-away-labels"><option value="أحمد"><\/option><\/datalist>/);
+      // The away list: the running absence can be ended, the ended one removed.
+      expect(html).toContain(appDict.ar.todo.away.endNow);
+      expect(html).toContain(appDict.ar.todo.away.removeEntry);
+      expect(html).toContain("Sara");
+      // In English the same line.
+      expect(await render("en")).toContain("أحمد: away until Thursday, October 8");
+    });
+  });
+
+  it("a brand in Sharjah is told Friday is in the government's weekend; a brand in Dubai or Riyadh is not", async () => {
+    await at(NOW, async () => {
+      const s = await owner("pg487s", { ...BRAND, city: "الشارقة" });
+      await signIn(s.email);
+      const html = await render("ar");
+      expect(html).toContain(appDict.ar.todo.cal.sharjahHint);
+      // Sharjah is in the UAE: Saturday and Sunday are its default.
+      expect(weekendBoxes(html).map((b) => / checked=""/.test(b))).toEqual([true, false, false, false, false, false, true]);
+      expect(await render("en")).toContain(appDict.en.todo.cal.sharjahHint);
+      for (const brand of [DUBAI_BRAND, { ...BRAND, city: "Riyadh" }]) {
+        const u = await owner("pg487n", brand);
+        await signIn(u.email);
+        expect(await render("ar")).not.toContain(appDict.ar.todo.cal.sharjahHint);
+      }
+    });
+  });
+
+  it("eidDays gives this Hijri year's and the next one's Eid with the hijriFix value each button writes, and GET /api/secretary/calendar carries them", async () => {
+    await at(NOW, async () => {
+      const days = eidDays(null, "Asia/Riyadh", NOW);
+      expect(days.map((e) => [e.year, e.kind, e.field])).toEqual([[1448, "eid_fitr", "shawwal1"], [1448, "eid_adha", "dhulhijja1"], [1449, "eid_fitr", "shawwal1"], [1449, "eid_adha", "dhulhijja1"]]);
+      const fitr = days[0];
+      // 1 Shawwal 1448 is 9 March 2027 (Umm al-Qura); the buttons write the day before or after, within a day of it.
+      expect(fitr).toMatchObject({ uq: "2027-03-09", start: "2027-03-09", day: "2027-03-09", earlier: "2027-03-08", later: "2027-03-10" });
+      // Eid al-Adha is 10 Dhu al-Hijjah: 2027-05-16 (13 Dhu al-Hijjah is 2027-05-19).
+      expect(days[1].day).toBe("2027-05-16");
+      expect(days[1].day).toBe(addDays(days[1].start, 9));
+      const moved = parseCalendar(calBody(withEid(null, fitr, fitr.later!)), NOW, "Asia/Riyadh", "a@x");
+      expect(moved.ok && moved.cal.hijriFix).toEqual({ 1448: { shawwal1: "2027-03-10" } });
+      const after = eidDays(moved.ok ? moved.cal : null, "Asia/Riyadh", NOW)[0];
+      // A day later than Umm al-Qura: one more "later" is not allowed; "earlier" goes back to Umm al-Qura, which removes the fix.
+      expect(after).toMatchObject({ start: "2027-03-10", day: "2027-03-10", later: null, earlier: "2027-03-09" });
+      expect(withEid(moved.ok ? moved.cal : null, after, after.earlier!).hijriFix).toEqual({});
+      const o = await owner("pg487e");
+      await signIn(o.email);
+      expect((await (await calGet()).json()).eids).toEqual(days);
+    });
+  });
+
+  it("every change the panel sends is the whole settings object in a shape parseCalendar accepts; the away list's End now ends and Remove deletes (ruling R21)", async () => {
+    await at(NOW, async () => {
+      const ok = (body: ReturnType<typeof calBody>) => {
+        const r = parseCalendar(body, NOW, "Asia/Riyadh", "a@x");
+        expect(r.ok, JSON.stringify(r)).toBe(true);
+        return r.ok ? r.cal : null;
+      };
+      expect(calBody(null)).toEqual({ weekend: null, ramadanHours: null, hijriFix: {}, holidays: { add: [], remove: [] } });
+      // The weekend: the default set saves as null (it follows the zone), another set as itself.
+      expect(withWeekend(null, [6, 5], [5, 6]).weekend).toBeNull();
+      expect(ok(withWeekend(null, [5], [5, 6]))?.weekend).toEqual([5]);
+      // Ramadan hours: two windows, none (no restriction), or back to the default.
+      const two = ok(withHours(null, [{ from: "09:00", to: "12:00" }, { from: "20:00", to: "23:00" }]));
+      expect(two?.ramadanHours).toHaveLength(2);
+      expect(ok(withHours(two, []))?.ramadanHours).toEqual([]);
+      expect(ok(withHours(two, null))?.ramadanHours).toBeNull();
+      // Holidays: a default day turned off for this year, then on again; a day added for this year, a yearly Hijri and Gregorian one.
+      const off = ok(withHolidayOff(null, "2027-02-22", true));
+      expect(off?.holidays.remove).toEqual(["2027-02-22"]);
+      expect(ok(withHolidayOff(off, "2027-02-22", false))?.holidays.remove).toEqual([]);
+      expect(yearlyValue("hijri", 7, 27)).toBe("H-07-27");
+      expect(yearlyValue("greg", 5, 1)).toBe("05-01");
+      const added = ok(withAdded(withAdded(withAdded(null, "2026-12-24", true), "H-07-27", true), "05-01", true));
+      expect(added?.holidays.add).toEqual(["2026-12-24", "H-07-27", "05-01"]);
+      expect(ok(withAdded(added, "H-07-27", false))?.holidays.add).toEqual(["2026-12-24", "05-01"]);
+      // A change keeps every other field as it was.
+      expect(withWeekend(added, [5], [5, 6]).holidays).toEqual(added?.holidays);
+      // End now ends the absence (DELETE { label }); Remove deletes an ended entry (DELETE { label, remove: true }).
+      expect(awayCall("end", "احمد")).toEqual({ method: "DELETE", body: { label: "احمد" } });
+      expect(awayCall("remove", "Sara")).toEqual({ method: "DELETE", body: { label: "Sara", remove: true } });
+    });
+  });
+});
+
+/** A copy template filled the way the page fills it. */
+function fillIn(s: string, v: Record<string, string>): string {
+  return s.replace(/\{(\w+)\}/g, (m, k: string) => v[k] ?? m);
+}

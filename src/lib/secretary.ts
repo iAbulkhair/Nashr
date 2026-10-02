@@ -33,7 +33,7 @@ import {
   addDays, addWorkingDays, approvalsLine, briefClock, computeAgenda, formatWhen, linkFactText, nextStepText, noteText, parseWhen, partyName, zoneDay, zoneTime,
   type Agenda, type AgendaBucket, type AwayMap, type CalData, type LinkedFact, type SecActor, type SecDirection, type SecItem, type SecKind, type SecNote, type SecParty, type SecSource, type SecVia,
 } from "./secretary-agenda";
-import { workCalendar, type SecCalendar } from "./secretary-calendar";
+import { calendarView, workCalendar, type CalendarView, type SecCalendar } from "./secretary-calendar";
 
 export const SEC_ID = /^s[a-f0-9]{16}$/;
 /** Starts with a letter: the Redis client parses a member that looks like a number, and 16 digits lose precision. */
@@ -175,6 +175,15 @@ export async function calFor(scope: string, now = Date.now()): Promise<{ zone: Z
   const [brand, stored, rows] = await Promise.all([getBrand(scope), db.get<unknown>(SEC_KEYS.cal(scope)), db.hgetall<unknown>(SEC_KEYS.away(scope))]);
   const zone = zoneOf(brand);
   return { zone, cal: calendarOf(stored, zone, now), away: awayMapOf(rows, now, zone) };
+}
+
+/**
+ * The brand's Working days as the to-do page shows them (`calendarView`, the same view GET /api/secretary/calendar
+ * answers): `sec:cal:{scope}` read once, its settings used only when the calendar can be built from them
+ * (`usableCalendar`), at `now` in the brand's `zone`.
+ */
+export async function workingDays(scope: string, zone: Zone, now: number): Promise<CalendarView> {
+  return calendarView(usableCalendar(await db.get<unknown>(SEC_KEYS.cal(scope)), zone, now), zone, now);
 }
 
 /**

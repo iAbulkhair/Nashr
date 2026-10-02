@@ -462,6 +462,64 @@ export function upcomingQuiet(cal: SecCalendar | null, zone: Zone, now: number):
   return { days, ramadan: r ? { start: r.start, end: r.end } : null };
 }
 
+/**
+ * One Eid of the current or the next Hijri year, as the Working days panel shows it (spec §1.5): the month it falls in
+ * starts on `uq` by Umm al-Qura and on `start` with the owner's sighting correction (`hijriFix[year][field]`, ignored
+ * when it is not within a day of `uq`, as the calendar ignores it); `day` is the Eid's own day, 1 Shawwal or 10 Dhu
+ * al-Hijjah. `earlier` and `later` are the `field` value each button saves (the month a day earlier or later), null when
+ * that would be more than a day from Umm al-Qura or the Eid has passed. Saving `uq` itself means "as Umm al-Qura".
+ */
+export type EidDay = {
+  year: number; kind: "eid_fitr" | "eid_adha"; field: "shawwal1" | "dhulhijja1";
+  uq: string; start: string; day: string; earlier: string | null; later: string | null;
+};
+
+/** This Hijri year's and the next one's Eid al-Fitr and Eid al-Adha in `zone` at `now`: the years `hijriFix` accepts. */
+export function eidDays(cal: SecCalendar | null, zone: Zone, now: number): EidDay[] {
+  const year = hijriDate(new Date(now), zone).y;
+  const today = zoneDay(now, zone);
+  const out: EidDay[] = [];
+  for (const y of [year, year + 1]) {
+    for (const [kind, field] of [["eid_fitr", "shawwal1"], ["eid_adha", "dhulhijja1"]] as const) {
+      const uq = uqMonthStart(y, FIX_FIELDS[field], zone);
+      if (!uq) continue;
+      const fix = cal?.hijriFix?.[String(y)]?.[field];
+      const start = isDay(fix) && Math.abs(daysBetween(uq, fix)) <= 1 ? fix : uq;
+      const day = kind === "eid_fitr" ? start : addDays(start, 9);
+      const move = (n: number) => {
+        const to = addDays(start, n);
+        return day >= today && Math.abs(daysBetween(uq, to)) <= 1 ? to : null;
+      };
+      out.push({ year: y, kind, field, uq, start, day, earlier: move(-1), later: move(1) });
+    }
+  }
+  return out;
+}
+
+/**
+ * What the Working days panel and GET/PUT /api/secretary/calendar show for usable settings (`usableCalendar`, null for
+ * every default) at `now` in `zone`: the settings, what is in force (`effective`, ruling R23: the country, the zone, the
+ * weekend and the zone's own default weekend the page marks, the week's first day, the Ramadan hours), the next 365 days
+ * of quiet days and the next Ramadan (`upcoming`), and this year's and next year's Eid (`eids`).
+ */
+export function calendarView(calendar: SecCalendar | null, zone: Zone, now: number) {
+  const data = workCalendar(calendar, zone, now);
+  const defaultWeekend: number[] = [...ZONES[zone].weekend];
+  return {
+    calendar,
+    effective: { country: countryOf(zone), zone, weekend: data.weekend, defaultWeekend, weekStart: data.weekStart, ramadanHours: data.ramadanHours },
+    upcoming: upcomingQuiet(calendar, zone, now),
+    eids: eidDays(calendar, zone, now),
+  };
+}
+export type CalendarView = ReturnType<typeof calendarView>;
+
+/**
+ * Whether a brand's city names Sharjah, in either language: the UAE's default weekend is Saturday and Sunday, and the
+ * Working days panel then says Sharjah's government weekend includes Friday (spec §1.5). A hint only: nothing changes.
+ */
+export const namesSharjah = (city: unknown): boolean => typeof city === "string" && /\bsharjah\b|الشارقة|شارقة/i.test(city);
+
 export type CalError = "weekend_invalid" | "ramadan_hours_invalid" | "bad_year" | "hijri_fix_range" | "holidays_invalid" | "bad_request";
 /** A refusal in the shape of `SecFail` (secretary.ts), with the calendar's own error codes. */
 export type CalFail = Omit<SecFail, "error" | "item"> & { error: CalError };

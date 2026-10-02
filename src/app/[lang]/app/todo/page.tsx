@@ -2,15 +2,19 @@ import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, sc } from "@/lib/auth";
-import { isWaNumber, todoPage } from "@/lib/secretary";
+import { getBrand } from "@/lib/brand";
+import { isWaNumber, todoPage, workingDays } from "@/lib/secretary";
+import { AWAY_AHEAD_DAYS, listAway } from "@/lib/secretary-away";
+import { namesSharjah } from "@/lib/secretary-calendar";
 import { isAgentId } from "@/lib/agents";
 import { can } from "@/lib/roles";
 import {
-  AGENDA_BUCKETS, AUTO_CLOSE_RESULT, approvalsLine, briefClock, formatWhen, linkFactText, nextStepText, noteText, partyName, zoneLocalInput, zoneTimeLabel,
+  AGENDA_BUCKETS, AUTO_CLOSE_RESULT, addDays, approvalsLine, briefClock, formatWhen, linkFactText, nextStepParts, noteText, partyKey, partyName, zoneDay, zoneLocalInput, zoneTimeLabel,
   type AgendaEntry, type SecItem,
 } from "@/lib/secretary-agenda";
 import { fill } from "@/lib/fill";
 import TodoPanel, { type TodoRow, type TodoSection } from "@/components/app/TodoPanel";
+import WorkingDaysPanel from "@/components/app/WorkingDaysPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +25,12 @@ export const dynamic = "force-dynamic";
  * morning brief, at the brief's local time in the brand's zone (`briefClock`). A they-owe item with a contact number
  * gets a wa.me link with a fixed message: nothing is sent. Templates that take a title or a name are filled in one pass
  * (`fill`), so what someone typed is inserted as typed.
+ *
+ * Under the list: the away list (`listAway`), whose name field suggests the open items' contacts and which a contact's
+ * row opens with "Away until…", and the brand's Working days (`workingDays`: the settings, what is in force, the next
+ * 12 months of days off, this and next year's Eid), which an admin edits and a member reads (`brand.write`); a brand in
+ * Sharjah is told Friday is in its government's weekend. A debt the chase rule holds back says why under its WhatsApp
+ * link (`nextStepParts`). All read after the agenda, at the same instant, in one round.
  */
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
@@ -31,6 +41,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const t = appDict[lang];
   const T = t.todo;
   const { now, zone, agenda, done, deleted, facts, tonight, timed } = await todoPage(scope);
+  const [brand, cal, awayList] = await Promise.all([getBrand(scope), workingDays(scope, zone, now), listAway(scope, now, zone)]);
+  const today = zoneDay(now, zone);
   const when = (iso: string, allDay = false) => formatWhen(iso, allDay, lang, now, zone);
   // When the next morning brief comes in this brand's zone: 08:00 in Riyadh, 09:00 in Dubai.
   const brief = briefClock(zone);
@@ -50,11 +62,19 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const whatsapp = (it: SecItem) => (isWaNumber(it.phone) && it.owedBy !== "owner" && !it.completedAt && !it.deletedAt
     ? `https://wa.me/${it.phone}?text=${encodeURIComponent(fill(T.waMsg, { name: partyName(it.owedBy, lang), title: it.title }))}`
     : null);
+  // A contact, as the away list knows one: someone other than the owner and the agents.
+  const contactOf = (it: SecItem) => (it.owedBy !== "owner" && !isAgentId(it.owedBy) ? it.owedBy : null);
+  // The next step, and on its own line why the chase rule holds the item back (ruling R9: only while it waits).
+  const stepOf = (e?: AgendaEntry): Pick<TodoRow, "next" | "reason"> => {
+    if (!e) return { next: "" };
+    const { step, reason } = nextStepParts(e, lang, zone, { now });
+    return reason ? { next: step, reason } : { next: step };
+  };
   const row = (it: SecItem, e?: AgendaEntry): TodoRow => ({
     id: it.id, rev: it.rev, title: it.title, description: it.description,
     due: it.dueAt ? when(it.dueAt, it.allDay) : null,
     dueLocal: it.dueAt ? zoneLocalInput(Date.parse(it.dueAt), zone) : null,
-    who: whoOf(it), next: e ? nextStepText(e, lang, zone, { now }) : "", badges: badgesOf(it),
+    who: whoOf(it), ...stepOf(e), badges: badgesOf(it),
     theirs: it.owedBy !== "owner",
     chase: [
       !it.dueAt && it.expectBy && it.owedBy !== "owner" ? `${T.expectBy} ${when(it.expectBy)}` : "",
@@ -69,8 +89,17 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
     remindLocal: it.remindAt ? zoneLocalInput(Date.parse(it.remindAt), zone) : null,
     phone: it.owedBy !== "owner" ? (it.phone ?? null) : null,
     whatsapp: whatsapp(it),
+    contact: e ? contactOf(it) : null,
   });
   const sections: TodoSection[] = AGENDA_BUCKETS.filter((b) => agenda.buckets[b].length).map((b) => ({ bucket: b, title: T.buckets[b], rows: agenda.buckets[b].map((e) => row(e.item, e)) }));
+  // The names the away form suggests: each contact on the open items once, however its name was typed (`partyKey`).
+  const seen = new Set<string>();
+  const labels = AGENDA_BUCKETS.flatMap((b) => agenda.buckets[b]).map((e) => contactOf(e.item)).filter((c): c is string => {
+    const key = c === null ? null : (partyKey(c) ?? c);
+    if (key === null || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
   return (
     <TodoPanel
       t={t}
@@ -88,6 +117,19 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
       briefAt={brief}
       lang={lang}
       inboxHref={`/${lang}/app`}
-    />
+      away={{ entries: awayList, labels, canEdit: can(u, "todo.write"), today, last: addDays(today, AWAY_AHEAD_DAYS) }}
+    >
+      <WorkingDaysPanel
+        t={t}
+        lang={lang}
+        calendar={cal.calendar}
+        effective={cal.effective}
+        upcoming={cal.upcoming}
+        eids={cal.eids}
+        canEdit={can(u, "brand.write")}
+        cityHint={namesSharjah(brand?.city)}
+        today={today}
+      />
+    </TodoPanel>
   );
 }
