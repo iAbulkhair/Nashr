@@ -142,7 +142,8 @@ describe("refunds go back where the credits came from (rule 442)", () => {
     expect((await state(email)).lots[p.id]).toBe(100);
   });
 
-  it("a refund owed to a pack that was voided or has expired is dropped, never moved into the monthly part", async () => {
+  // Founder decision of 2026-10-02 (rule 461): what a failed charge owed to a pack that is gone goes to the plan credits.
+  it("a refund owed to a pack that was voided or has expired goes to the month's plan credits", async () => {
     const email = await paid(0);
     const p = await lot(email, 100, Date.now() - 1000);
     const q = await lot(email, 300);
@@ -150,11 +151,22 @@ describe("refunds go back where the credits came from (rule 442)", () => {
     expect(r.from).toEqual({ monthly: 0, lots: [{ id: p.id, n: 100 }, { id: q.id, n: 50 }] });
     expect((await voidTopup(email, p.id)).ok).toBe(true);
     await refund(email, 150, r);
-    expect(await state(email), "the voided pack's 100 are dropped; the live pack gets its 50 back").toEqual({ credits: 300, monthly: 0, lots: { [q.id]: 300 } });
+    expect(await state(email), "the voided pack's 100 come back as plan credits; the live pack gets its 50 back").toEqual({ credits: 400, monthly: 100, lots: { [q.id]: 300 } });
+
+    // Expired: the charge took 30 from a pack that expires before the refund lands.
+    const e2 = await paid(0);
+    const old = await lot(e2, 100, Date.now() - 89 * DAY);
+    const s = ok(await charge(e2, 30, meta(e2)));
+    expect(s.from).toEqual({ monthly: 0, lots: [{ id: old.id, n: 30 }] });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(old.expiresAt));
+    await refund(e2, 30, s);
+    expect(await state(e2), "the pack's 70 left with it; the 30 refunded are plan credits").toEqual({ credits: 30, monthly: 30, lots: {} });
+    vi.useRealTimers();
 
     const m = { credits: 0, topups: [] as TopupLot[] };
-    expect(returnCredits(m, 40, { monthly: 0, lots: [{ id: "gone", n: 40 }] })).toEqual({ dropped: 40 });
-    expect(m.credits).toBe(0);
+    expect(returnCredits(m, 40, { monthly: 0, lots: [{ id: "gone", n: 40 }] })).toEqual({ dropped: 0, toPlan: 40 });
+    expect(m.credits).toBe(40);
   });
 
   it("a refund with no receipt, or past what the receipt took, goes to the monthly part as before top-ups", async () => {
@@ -540,7 +552,7 @@ describe("the module boundaries (rules 451-452)", () => {
   it("topups.ts imports only src/lib/pricing.ts and a type, so the console and the billing page can read it", () => {
     const src = readFileSync("src/lib/topups.ts", "utf8");
     const imports = src.split("\n").filter((l) => /^\s*import\s/.test(l));
-    expect(imports).toEqual(['import type { User } from "./auth";', 'import { TOPUP_VALID_DAYS, isTopupPack } from "./pricing";', 'import { ksaDay } from "./partner-rules";']);
+    expect(imports).toEqual(['import type { User } from "./auth";', 'import { TOPUP_PACKS, TOPUP_VALID_DAYS, isTopupPack } from "./pricing";', 'import { ksaDay } from "./partner-rules";']);
     // Both are import-free, so nothing server-side reaches the console, the billing page or the profile through it.
     for (const f of ["src/lib/pricing.ts", "src/lib/partner-rules.ts"]) expect(readFileSync(f, "utf8").split("\n").filter((l) => /^\s*import\s/.test(l)), f).toEqual([]);
     const console = readFileSync("src/components/app/AdminConsole.tsx", "utf8");

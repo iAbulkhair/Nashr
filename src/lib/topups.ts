@@ -1,10 +1,10 @@
 import type { User } from "./auth";
-import { TOPUP_VALID_DAYS, isTopupPack } from "./pricing";
+import { TOPUP_PACKS, TOPUP_VALID_DAYS, isTopupPack } from "./pricing";
 // Import-free like pricing.ts: the day a payment is dated on is the Riyadh day, as for every recorded payment.
 import { ksaDay } from "./partner-rules";
 
 /**
- * Credit top-ups (spec section 6 rule 5, founder decisions of 2026-10-01; rules 440-459): the arithmetic of the packs on
+ * Credit top-ups (spec section 6 rule 5, founder decisions of 2026-10-01 and 2026-10-02; rules 440-464): the arithmetic of the packs on
  * one account record, in memory. The ledger (src/lib/credits.ts) calls it under the per-user lock and saves the record;
  * `getUser` calls `settleTopups` on every read, so an expired pack is gone from the balance the moment it expires.
  *
@@ -22,9 +22,15 @@ import { ksaDay } from "./partner-rules";
  *
  * Order of spending: the monthly part first, then packs by earliest expiry (the oldest pack first). A charge returns a
  * receipt naming the packs it took from, and a refund puts credits back exactly where they came from, undoing the
- * charge from its last credit backwards. A refund owed to a pack that has since expired or been voided is dropped,
- * never moved into the monthly part: those credits would have gone with the pack had they not been spent, and a voided
- * pack can never come back as plan credits.
+ * charge from its last credit backwards. A refund owed to a pack that has since expired, been voided or been refunded
+ * goes to the monthly part instead (founder decision of 2026-10-02, rule 461): the charge failed, so the customer gets
+ * the credits back, as plan credits.
+ *
+ * Refund of unused credits (founder decision of 2026-10-02, rule 460): on the customer's request, before the pack
+ * expires, the founder refunds the credits still left in a paid pack (`refundUnused`): they leave the balance at once,
+ * the pack keeps a `refund` record and spends nothing more, and the amount is the credits left at the price per credit
+ * actually paid, excluding VAT (`unusedRefundSar`). The pack stays on the record until it would have expired, so top-up
+ * revenue counts what was kept of it (`topupRevenueSar`).
  *
  * Renewal resets only the monthly part (`setMonthly`): live packs survive it. Monthly credits never roll over.
  *
@@ -62,7 +68,21 @@ export type TopupLot = {
    * paid. Absent on a pack added before payments were recorded with it.
    */
   paymentId?: string;
+  /**
+   * The refund of the credits that were still unused (rule 460), written once by `refundUnused` under the ledger lock.
+   * A refunded pack holds no credits (`left` stays 0), takes no charge's refund (that goes to the monthly part) and
+   * cannot be refunded again.
+   */
+  refund?: TopupRefund;
 };
+
+/**
+ * A refund of a pack's unused credits (rule 460): `credits` the credits that were left and left the balance, `sar` what
+ * the founder sends back for them, excluding VAT (`unusedRefundSar`), `on` the day of the transfer (YYYY-MM-DD, Riyadh),
+ * `ref` its reference (never logged), `at` and `by` when and by whom it was recorded, `id` the console's request id
+ * (`rf_` and hex) so a retry is recognised.
+ */
+export type TopupRefund = { credits: number; sar: number; on: string; ref: string; at: string; by: string; id?: string };
 
 /**
  * Where a charge's credits came from, when any came from a pack: `monthly` from the month's plan credits, `lots` from
@@ -80,6 +100,8 @@ export const MAX_TOPUP_PAID_SAR = 100_000;
 export const TOPUP_REF_MAX = 80;
 /** How far back a payment date may be: a year. */
 const PAID_ON_MAX_AGE_MS = 366 * 864e5;
+/** The largest pack: no pack holds more credits than this, so no refund is for more. */
+const MAX_PACK = Math.max(...TOPUP_PACKS);
 
 const whole = (n: unknown): number => (typeof n === "number" && Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0);
 const time = (iso: string): number => new Date(iso).getTime();
@@ -111,7 +133,8 @@ export function settleTopups(u: Pick<User, "credits" | "topups">, now = Date.now
   const all = lotsOf(u);
   const gone = all.filter((l) => !isLive(l, now));
   const live = all.filter((l) => isLive(l, now));
-  for (const l of live) l.left = Math.min(whole(l.left), whole(l.credits));
+  // A refunded pack holds nothing: its unused credits left the balance with the refund (rule 460).
+  for (const l of live) l.left = l.refund ? 0 : Math.min(whole(l.left), whole(l.credits));
   const held = live.reduce((s, l) => s + l.left, 0);
   if (!Number.isFinite(u.credits)) u.credits = held;
   else u.credits = Math.max(0, Math.trunc(u.credits) - gone.reduce((s, l) => s + Math.min(whole(l.left), whole(l.credits)), 0));
@@ -150,17 +173,21 @@ export function spendCredits(u: Pick<User, "credits" | "topups">, n: number): Re
 
 /**
  * Give back `n` credits of a charge with this receipt, undoing it from its last credit backwards (the last pack taken
- * first, the monthly part last), so a partial refund leaves the record as if only the rest had been charged. A pack that
- * is gone (expired or voided) or already full drops what was owed to it. Anything beyond the receipt (a caller giving
- * back more than it charged) goes to the monthly part, as every refund did before top-ups. Returns what was dropped.
+ * first, the monthly part last), so a partial refund leaves the record as if only the rest had been charged. What was
+ * owed to a pack that is gone (expired or voided) or refunded goes to the monthly part instead (`toPlan`, founder
+ * decision of 2026-10-02, rule 461): the charge failed, so its credits come back to the customer as plan credits, and
+ * the pack itself never takes credits again. Anything beyond the receipt (a caller giving back more than it charged)
+ * goes to the monthly part too, as every refund did before top-ups. A live pack that is already full drops what was owed
+ * to it (`dropped`): that only happens to a second refund of the same charge.
  *
  * A charge is refunded in one call or not at all (`generateBatch`, `refundOnce` for media, `refundOnboard`): the receipt
  * is not consumed, so a second refund against it finds its packs already full and drops their share rather than give
  * a pack more than it was sold with.
  */
-export function returnCredits(u: Pick<User, "credits" | "topups">, n: number, from: Receipt | undefined): { dropped: number } {
+export function returnCredits(u: Pick<User, "credits" | "topups">, n: number, from: Receipt | undefined, now = Date.now()): { dropped: number; toPlan: number } {
   let rest = whole(n);
   let dropped = 0;
+  let toPlan = 0;
   const base = whole(u.credits);
   let added = 0;
   if (from && Array.isArray(from.lots)) {
@@ -170,17 +197,18 @@ export function returnCredits(u: Pick<User, "credits" | "topups">, n: number, fr
       const k = Math.min(whole(e?.n), rest);
       rest -= k;
       const l = typeof e?.id === "string" ? live.get(e.id) : undefined;
-      const room = l ? Math.max(0, whole(l.credits) - whole(l.left)) : 0;
-      const put = Math.min(k, room);
-      if (l && put) { l.left = whole(l.left) + put; added += put; }
+      // Gone (expired, voided) or refunded: the credits come back as plan credits (rule 461).
+      if (!l || l.refund || !isLive(l, now)) { toPlan += k; continue; }
+      const put = Math.min(k, Math.max(0, whole(l.credits) - whole(l.left)));
+      if (put) { l.left = whole(l.left) + put; added += put; }
       dropped += k - put;
     }
     const m = Math.min(whole(from.monthly), rest);
     rest -= m;
     added += m;
   }
-  u.credits = base + added + rest;
-  return { dropped };
+  u.credits = base + added + toPlan + rest;
+  return { dropped, toPlan };
 }
 
 /** Set the monthly part to `n` (renewal, a plan change): live packs keep every credit left in them. */
@@ -233,12 +261,99 @@ export function parseTopup(raw: unknown, now = Date.now()): { ok: true; topup: T
 
 /**
  * Top-up revenue in `month` (YYYY-MM): what was paid for packs whose payment date is in that month, excluding VAT,
- * summed in halalas so the total is exact. Kept apart from MRR, which stays the plans' list prices. A voided pack is
- * gone and does not count; neither does a pack of an account deleted since (admin:log keeps the record of the payment).
+ * summed in halalas so the total is exact (counted by the payment date the founder enters: founder decision of
+ * 2026-10-02). A refunded pack counts what was kept of it, its amount paid less the refund (rule 460). Kept apart from
+ * MRR, which stays the plans' list prices. A voided pack is gone and does not count; neither does a pack of an account
+ * deleted since (admin:log keeps the record of the payment).
  */
 export function topupRevenueSar(users: readonly Pick<User, "topups">[], month: string): number {
-  const halalas = users.reduce((s, u) => s + lotsOf(u).filter((l) => typeof l.paidOn === "string" && l.paidOn.slice(0, 7) === month).reduce((t, l) => t + Math.round((Number.isFinite(l.paidSar) ? l.paidSar : 0) * 100), 0), 0);
-  return halalas / 100;
+  const halalas = (sar: unknown) => (typeof sar === "number" && Number.isFinite(sar) ? Math.round(sar * 100) : 0);
+  const kept = (l: TopupLot) => Math.max(0, halalas(l.paidSar) - halalas(l.refund?.sar));
+  const total = users.reduce((s, u) => s + lotsOf(u).filter((l) => typeof l.paidOn === "string" && l.paidOn.slice(0, 7) === month).reduce((t, l) => t + kept(l), 0), 0);
+  return total / 100;
+}
+
+// ---- Refund of unused credits (founder decision of 2026-10-02, rule 460) ----
+
+/**
+ * What the customer gets back for a pack's unused credits, SAR excluding VAT: the credits left × the price per credit
+ * actually paid (`paidSar / credits`, so a pack sold below list price refunds at what was paid), to the halala. VAT is
+ * not collected on packs today; once it is, the VAT on this share is added on top.
+ */
+export function unusedRefundSar(l: Pick<TopupLot, "credits" | "left" | "paidSar">): number {
+  const size = whole(l.credits);
+  const left = Math.min(whole(l.left), size);
+  const paid = typeof l.paidSar === "number" && Number.isFinite(l.paidSar) && l.paidSar > 0 ? Math.round(l.paidSar * 100) : 0;
+  return size > 0 ? Math.round((left * paid) / size) / 100 : 0;
+}
+
+/** Packs still open on the account, not refunded: what the billing page and the profile list (rule 460). */
+export const openLots = (u: Pick<User, "topups">): TopupLot[] => lotsOf(u).filter((l) => !l.refund);
+
+/** A real calendar day YYYY-MM-DD, at most a year back and not after today in Riyadh: the rule of every recorded day. */
+function recentDay(s: unknown, now: number): s is string {
+  if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const day = Date.parse(`${s}T00:00:00Z`);
+  if (!Number.isFinite(day) || new Date(day).toISOString().slice(0, 10) !== s) return false;
+  return s <= ksaDay(now) && day >= now - PAID_ON_MAX_AGE_MS;
+}
+
+/** What the founder sends to refund a pack's unused credits, checked. */
+export type RefundRequest = { credits: number; on: string; ref: string };
+export type RefundParseError = "bad_credits" | "bad_date" | "bad_ref";
+
+/**
+ * Check the founder's "Refund unused" request (POST /api/admin/topups, action "refund"): `credits` the credits left that
+ * the console showed and computed the amount from (a whole number from 1 to the largest pack), so the refund recorded is
+ * the one the founder saw; `on` the day of the transfer, a real YYYY-MM-DD at most a year back and not after today in
+ * Riyadh; `ref` its reference, required, at most TOPUP_REF_MAX characters once trimmed and stripped of control characters.
+ * Nothing else in the body is read.
+ */
+export function parseTopupRefund(raw: unknown, now = Date.now()): { ok: true; refund: RefundRequest } | { ok: false; error: RefundParseError } {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return { ok: false, error: "bad_credits" };
+  const { credits, on, ref } = raw as Record<string, unknown>;
+  if (typeof credits !== "number" || !Number.isSafeInteger(credits) || credits < 1 || credits > MAX_PACK) return { ok: false, error: "bad_credits" };
+  if (!recentDay(on, now)) return { ok: false, error: "bad_date" };
+  const cleanRef = typeof ref === "string" ? ref.replace(/[\u0000-\u001f\u007f]/g, " ").trim() : "";
+  if (!cleanRef || cleanRef.length > TOPUP_REF_MAX) return { ok: false, error: "bad_ref" };
+  return { ok: true, refund: { credits, on, ref: cleanRef } };
+}
+
+export type RefundUnusedError = "topup_not_found" | "topup_refunded" | "topup_expired" | "topup_not_paid" | "nothing_left" | "left_changed" | "bad_date";
+
+/**
+ * Refund the unused credits of pack `id` on a settled record, in memory (rule 460). The caller holds the ledger lock and
+ * saves the record before it records anything else (src/lib/partners.ts `refundPaidTopup`). Exactly the credits left in
+ * the pack leave the balance, the pack's `left` becomes 0 and it keeps the refund. Credits a charge took from the pack
+ * before the lock (an in-flight render) are not in `left`, so they are not refunded; if that charge fails, its refund
+ * goes to the monthly part (`returnCredits`, rule 461).
+ *
+ * Refused: a pack not on the record (`topup_not_found`; expired and voided packs are gone from it, and the caller names
+ * which from the payment record), one already refunded, one past its expiry, one given for nothing (`topup_not_paid`:
+ * nothing to pay back; void it instead), one with nothing left, one whose credits left are not the `expected` the founder
+ * was shown (`left_changed`, with the credits left and the amount now: a charge landed in between, so the amount is not
+ * the one shown), and a transfer dated before the pack's payment (`bad_date`).
+ */
+export function refundUnused(
+  u: Pick<User, "credits" | "topups">, id: string,
+  input: { expected: number; on: string; ref: string; by: string; id?: string },
+  now = Date.now(),
+): { ok: true; lot: TopupLot; credits: number; sar: number } | { ok: false; error: RefundUnusedError; left?: number; sar?: number } {
+  const lot = lotsOf(u).find((l) => l.id === id);
+  if (!lot) return { ok: false, error: "topup_not_found" };
+  if (lot.refund) return { ok: false, error: "topup_refunded" };
+  if (!isLive(lot, now)) return { ok: false, error: "topup_expired" };
+  if (!(typeof lot.paidSar === "number" && Number.isFinite(lot.paidSar) && lot.paidSar > 0)) return { ok: false, error: "topup_not_paid" };
+  const balance = whole(u.credits);
+  const left = Math.min(whole(lot.left), whole(lot.credits), balance);
+  if (left <= 0) return { ok: false, error: "nothing_left" };
+  const sar = unusedRefundSar({ credits: lot.credits, left, paidSar: lot.paidSar });
+  if (left !== input.expected) return { ok: false, error: "left_changed", left, sar };
+  if (typeof lot.paidOn === "string" && input.on < lot.paidOn) return { ok: false, error: "bad_date" };
+  u.credits = balance - left;
+  lot.left = 0;
+  lot.refund = { credits: left, sar, on: input.on, ref: input.ref, at: new Date(now).toISOString(), by: input.by, ...(input.id ? { id: input.id } : {}) };
+  return { ok: true, lot, credits: left, sar };
 }
 
 /**

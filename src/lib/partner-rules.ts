@@ -100,6 +100,18 @@ export const fromHalalas = (h: number): number => h / 100;
  * excluding VAT (rule 409), so the VAT a customer paid never earns commission.
  */
 export const commissionSar = (amountSar: number): number => fromHalalas(Math.round((toHalalas(amountSar) * COMMISSION_PCT) / 100));
+/**
+ * The commission on a payment part of which was refunded (a top-up pack's unused credits, founder decision of
+ * 2026-10-02, rule 460): the commission less commission × refunded / paid, each to the halala. The refund never counts
+ * for more than the payment, so the result is between 0 and `commissionSar(amountSar)`.
+ */
+export function commissionAfterRefund(amountSar: number, refundSar: number): number {
+  const paid = toHalalas(amountSar);
+  if (!(paid > 0)) return 0;
+  const full = toHalalas(commissionSar(amountSar));
+  const back = Math.min(paid, Math.max(0, Number.isFinite(refundSar) ? toHalalas(refundSar) : 0));
+  return fromHalalas(full - Math.round((full * back) / paid));
+}
 /** An amount in SAR (a payment excluding VAT, a payout, a tax paid): finite, above 0, at most 1,000,000, at most two decimals. */
 export const validAmount = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v) && v > 0 && v <= 1_000_000 && Math.abs(toHalalas(v) - v * 100) < 1e-6;
@@ -148,7 +160,8 @@ export function windowEnd(firstPaidOn: string): string {
 
 /** `ref`: a random id drawn at attribution, the only source of the label a partner sees (`customerLabel`). */
 export type Attribution = { partner: string; code: string; at: string; via: "link" | "code"; ref?: string };
-export type NotCounted = "no_partner" | "self" | "team" | "before_attribution" | "lapsed" | "window";
+/** `refunded`: the payment counted, but all of it was refunded since, so no commission is left (rule 460). */
+export type NotCounted = "no_partner" | "self" | "team" | "before_attribution" | "lapsed" | "window" | "refunded";
 /**
  * Does this payment earn the partner a commission? `firstPaidOn` is the day the windows start: the account's first plan
  * payment that stands, or its first top-up payment when no plan payment stands (src/lib/partners.ts `windowStartDay`). The decision is re-taken for every payment of the customer whenever a payment is recorded or voided
@@ -182,8 +195,10 @@ export function referralStatus(at: string, firstPaidOn: string | undefined, now:
 /**
  * A commission row, keyed `c:{paymentId}`. It carries the customer's label, never the email, so deleting the customer's
  * account leaves no address in the partner's ledger; the founder console maps labels of current referrals back to emails.
+ * After part of the payment was refunded (rule 460), `baseSar` is what the customer kept paying, `refundSar` what went
+ * back, and `sar` the commission less its refunded share (`commissionAfterRefund`).
  */
-export type Commission = { kind: "commission"; id: string; label: string; paymentDate: string; baseSar: number; sar: number; at: string; voidedAt?: string };
+export type Commission = { kind: "commission"; id: string; label: string; paymentDate: string; baseSar: number; sar: number; at: string; voidedAt?: string; refundSar?: number };
 /**
  * A payout row, keyed `p:{payoutId}`. `sar` is the commission paid down; `vatSar` the VAT Thakeen paid on top to a
  * VAT-registered partner and `whtSar` the withholding tax Thakeen bore (rule 412): both are Thakeen's costs, recorded for

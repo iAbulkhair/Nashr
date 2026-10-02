@@ -10,6 +10,8 @@ type Payment = {
   voidedAt?: string; voidReason?: string;
   /** A top-up pack's payment, recorded by "Add top-up" (rule 454). */
   topup?: { lot: string; credits: number };
+  /** The refund of the pack's unused credits, recorded by "Refund unused" in the Top-ups block (rule 460). */
+  refund?: { credits: number; sar: number; date: string };
 };
 type View = {
   /** The account's live top-up packs: a top-up payment is voided with its pack while the pack is live (rule 455). */
@@ -21,7 +23,7 @@ type View = {
 const S = {
   en: {
     title: "Payments", note: "Record each plan payment received (SAR excluding VAT). It is the source of truth for partner commissions; it does not change the plan (set that above).",
-    topupNote: "Top-ups: never record them here. \"Add top-up\" in the Top-ups block records the pack's payment and the partner's commission with the pack, and \"Void\" there voids both. A top-up never uses the first-month offer, and the plan's first payment recorded here takes it even after a top-up. The partner's 4 months start at the plan's first payment (at the first top-up only while no plan payment is recorded).",
+    topupNote: "Top-ups: never record them here. \"Add top-up\" in the Top-ups block records the pack's payment and the partner's commission with the pack, and \"Void\" there voids both. \"Refund unused\" there records a refund of the pack's unused credits on its payment and lowers the commission in proportion. A top-up never uses the first-month offer, and the plan's first payment recorded here takes it even after a top-up. The partner's 4 months start at the plan's first payment (at the first top-up only while no plan payment is recorded).",
     topup: (n: string) => `top-up ${n}`, withPack: "void it with its pack (Top-ups)",
     offerOpen: (kind: string) => `Unused ${FIRST_MONTH_DISCOUNT_PCT}% first-month offer (${kind}). The plan's first payment recorded uses it. Expected first month:`,
     offerUsed: (kind: string) => `${FIRST_MONTH_DISCOUNT_PCT}% first-month offer (${kind}) used.`,
@@ -30,14 +32,15 @@ const S = {
     kinds: { partner: "partner code", early: "early-partner offer" } as Record<string, string>,
     via: { link: "by link", code: "by code" } as Record<string, string>,
     statuses: { trial: "in its 30 days", paid: "paid in time", lapsed: "lapsed" } as Record<string, string>,
-    reasons: { no_partner: "no partner", self: "self-referral", team: "same team", before_attribution: "paid before the referral", lapsed: "first payment after 30 days", window: "after the first 4 months" } as Record<string, string>,
+    reasons: { no_partner: "no partner", self: "self-referral", team: "same team", before_attribution: "paid before the referral", lapsed: "first payment after 30 days", window: "after the first 4 months", refunded: "refunded in full" } as Record<string, string>,
+    refunded: (sar: string, credits: string, date: string) => `refunded ${sar} (${credits} unused credits) on ${date}`,
     partner: "Partner", none: "No payments recorded.", amount: "Amount SAR excl. VAT", plan: "Plan", date: "Date", reference: "Reference",
     record: "Record payment", void: "Void", voidReason: "Why is this payment voided (refund, mistake)?", voided: "voided", commission: "commission", notCounted: "not counted",
     failed: "Failed", loading: "Loading…",
   },
   ar: {
     title: "الدفعات", note: "سجّل كل دفعة اشتراك مستلمة (بالريال دون الضريبة). هي مصدر حساب عمولات الشركاء، ولا تغيّر الخطة (غيّرها من الأعلى).",
-    topupNote: "باقات الشحن: لا تسجّلها هنا أبداً. «أضف باقة شحن» في قسم باقات الشحن يسجّل دفعة الباقة وعمولة الشريك مع الباقة، و«إلغاء» هناك يلغيهما معاً. باقة الشحن لا تستخدم عرض الشهر الأول، وأول دفعة للخطة تُسجَّل هنا تستخدمه ولو جاءت بعد باقة شحن. وتبدأ أشهر الشريك الأربعة من أول دفعة للخطة (ومن أول باقة شحن ما دامت لا دفعة خطة مسجّلة).",
+    topupNote: "باقات الشحن: لا تسجّلها هنا أبداً. «أضف باقة شحن» في قسم باقات الشحن يسجّل دفعة الباقة وعمولة الشريك مع الباقة، و«إلغاء» هناك يلغيهما معاً. و«استرداد غير المستخدم» هناك يسجّل على دفعة الباقة استرداد كريدتها غير المستخدم وينقص العمولة بالنسبة نفسها. باقة الشحن لا تستخدم عرض الشهر الأول، وأول دفعة للخطة تُسجَّل هنا تستخدمه ولو جاءت بعد باقة شحن. وتبدأ أشهر الشريك الأربعة من أول دفعة للخطة (ومن أول باقة شحن ما دامت لا دفعة خطة مسجّلة).",
     topup: (n: string) => `باقة شحن ${n}`, withPack: "تُلغى مع باقتها (باقات الشحن)",
     offerOpen: (kind: string) => `عرض خصم ${FIRST_MONTH_DISCOUNT_PCT}% على الشهر الأول غير مستخدم (${kind}). تستخدمه أول دفعة للخطة تُسجَّل. المتوقع للشهر الأول:`,
     offerUsed: (kind: string) => `استُخدم عرض خصم ${FIRST_MONTH_DISCOUNT_PCT}% على الشهر الأول (${kind}).`,
@@ -46,7 +49,8 @@ const S = {
     kinds: { partner: "كود شريك", early: "عرض الشركاء الأوائل" } as Record<string, string>,
     via: { link: "عبر الرابط", code: "عبر الكود" } as Record<string, string>,
     statuses: { trial: "ضمن مهلة 30 يوماً", paid: "دفع في المهلة", lapsed: "انتهت المهلة" } as Record<string, string>,
-    reasons: { no_partner: "لا شريك", self: "إحالة ذاتية", team: "الفريق نفسه", before_attribution: "دفع قبل الإحالة", lapsed: "أول دفعة بعد 30 يوماً", window: "بعد أول 4 أشهر" } as Record<string, string>,
+    reasons: { no_partner: "لا شريك", self: "إحالة ذاتية", team: "الفريق نفسه", before_attribution: "دفع قبل الإحالة", lapsed: "أول دفعة بعد 30 يوماً", window: "بعد أول 4 أشهر", refunded: "استُردت كاملة" } as Record<string, string>,
+    refunded: (sar: string, credits: string, date: string) => `استُرد ${sar} (${credits} كريدت غير مستخدم) في ${date}`,
     partner: "الشريك", none: "لا دفعات مسجلة.", amount: "المبلغ (ريال، دون الضريبة)", plan: "الخطة", date: "التاريخ", reference: "المرجع",
     record: "سجّل الدفعة", void: "إلغاء", voidReason: "لماذا تُلغى هذه الدفعة (استرداد، خطأ)؟", voided: "ملغاة", commission: "عمولة", notCounted: "لا تُحسب",
     failed: "فشل", loading: "جارٍ التحميل…",
@@ -123,7 +127,7 @@ export default function PaymentsPanel({ email, lang }: { email: string; lang: "a
         <table className="mt-2 w-full font-mono">
           <tbody>{view.payments.map((p) => (
             <tr key={p.id} className={`border-t border-ink/5 ${p.voidedAt ? "text-ink/40" : ""}`}>
-              <td className="p-1" dir="ltr">{p.date}</td><td className="p-1">{p.topup ? L.topup(formatCount(p.topup.credits)) : p.plan}</td><td className="p-1" dir="ltr">{sarText(p.amountSar)}</td>
+              <td className="p-1" dir="ltr">{p.date}</td><td className="p-1">{p.topup ? L.topup(formatCount(p.topup.credits)) : p.plan}</td><td className="p-1" dir="ltr">{sarText(p.amountSar)}{p.refund && <span className="block text-sadu" dir="auto" data-payment-refund>{L.refunded(sarText(p.refund.sar), formatCount(p.refund.credits), p.refund.date)}</span>}</td>
               <td className="p-1">{p.offer ? `-${FIRST_MONTH_DISCOUNT_PCT}% ${L.kinds[p.offer] ?? p.offer}${p.expectedSar ? ` (${p.expectedSar})` : ""}` : ""}</td>
               <td className="p-1">{p.commission ? `${L.commission} ${sarText(p.commission.sar)}` : p.notCounted ? `${L.notCounted}: ${L.reasons[p.notCounted] ?? p.notCounted}` : ""}</td>
               <td className="p-1" dir="auto">{p.reference}</td>

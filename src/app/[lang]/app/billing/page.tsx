@@ -4,7 +4,7 @@ import { dict, isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, seatLimit } from "@/lib/auth";
 import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, firstMonthPriceSar, formatCount, type SelfServePlan } from "@/lib/pricing";
-import { lotsOf, topupCredits, topupView } from "@/lib/topups";
+import { openLots, topupCredits, topupView } from "@/lib/topups";
 import { can } from "@/lib/roles";
 import { seatsUsed } from "@/lib/team";
 import { chatStatus } from "@/lib/chat-allowance";
@@ -33,8 +33,9 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const wa = owner && process.env.SUPPORT_WHATSAPP ? `https://wa.me/${process.env.SUPPORT_WHATSAPP.replace(/\D/g, "")}?text=${encodeURIComponent(`Thakeen ${u.email}`)}` : null;
   const card = (id: SelfServePlan | "agency") => m.plans.find((p) => p.id === id);
   // Top-up packs (rule 449): the account's live packs, without payment details, and the credits left in them. A pack is
-  // requested from support (the owner's WhatsApp link carries the account email) and activated by the founder.
-  const lots = lotsOf(u).map(topupView);
+  // requested from support (the owner's WhatsApp link carries the account email) and activated by the founder. A pack
+  // whose unused credits were refunded holds nothing and is not listed (`openLots`, rule 460).
+  const lots = openLots(u).map(topupView);
   const fromTopups = topupCredits(u);
   const agency = card("agency");
   // The chat card (rule 315): the account's messages, read here and handed to the client card with the runway already
