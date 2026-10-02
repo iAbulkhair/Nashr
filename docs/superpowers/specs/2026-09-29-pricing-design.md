@@ -132,6 +132,9 @@ $0.08 a message) and at the $0.35 ceiling, where a full Starter allowance costs 
    is trimmed), which is what sets the 5-credit bound (ceil($0.35 ÷ $0.0710)).
 2. **Chat model.** Conversation turns move from Opus to Sonnet only after the golden eval plus a Gulf-dialect chat check
    pass on Sonnet. Generation stays on Opus.
+   **Amended 2026-10-02 (founder decision, as built):** chat moved to Sonnet 5.5 (`claude-sonnet-5-5`) without waiting for
+   the eval, and the per-message ceiling fell from $0.35 to $0.14 with it (the same tokens per message; the over-allowance
+   bound falls from 5 credits to 2). Generation stays on Opus. `docs/system/costs.md` section 4.1 has the new figures.
 3. **Media.** `credits = ceil(total cost ÷ $0.0710)`, where total cost = provider price + Blob storage + 10% buffer for
    failed renders. Recomputed per model when a provider changes price.
 4. **Unlimited brands, with two guardrails.** The first brand's onboarding stays free; each additional brand's onboarding

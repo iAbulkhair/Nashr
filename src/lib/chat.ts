@@ -371,7 +371,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   if (!messages.length || messages[messages.length - 1].role !== "user") messages.push({ role: "user", content: text });
   let spent = 0;
   let next: InputEst = { cached: 0, fresh: 0 };
-  let ended: "capped" | "cut" | "large" | null = null;
+  let ended: "capped" | "cut" | "large" | "refused" | null = null;
   let cutText = "";
 
   // Two ceilings end the loop before a call. The per-message cost (CHAT_TURN_MAX_USD, above): no room left for a useful
@@ -398,7 +398,12 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
     }
     spent += costUsd(res.model, res.usage);
     await meter(user.email, res.model, "chat", res.usage, agentId);
-    if (res.stop_reason === "refusal") break;
+    if (res.stop_reason === "refusal") {
+      // The model's safety check declined the turn (Sonnet 5.5 has broader classifiers than Opus 5, false positives
+      // included). Billed and metered like any call; the owner is told plainly instead of "Done".
+      ended = "refused";
+      break;
+    }
     if (res.stop_reason === "max_tokens") {
       // Cut off at its cap: a tool call in it may be incomplete, so none of them runs. The text so far is kept, marked.
       ended = "cut";
@@ -431,7 +436,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   // The loop ended without a closing answer: the request ran out of time, the calls ran out, the model refused, a call was
   // cut off at its cap, or the ceiling left no room for another call. What the tools made is on the reply's cards and in
   // the inbox either way, and a limit a tool hit still raises its dialog.
-  const content = outOfTime ? OUT_OF_TIME_REPLY[lang] : ended === "large" ? LARGE_REPLY[lang] : ended === "cut" ? (cutText ? `${cutText}\n\n${CUT_NOTE[lang]}` : CAPPED_REPLY[lang]) : ended === "capped" ? CAPPED_REPLY[lang] : DONE_REPLY[lang];
+  const content = outOfTime ? OUT_OF_TIME_REPLY[lang] : ended === "refused" ? REFUSED_REPLY[lang] : ended === "large" ? LARGE_REPLY[lang] : ended === "cut" ? (cutText ? `${cutText}\n\n${CUT_NOTE[lang]}` : CAPPED_REPLY[lang]) : ended === "capped" ? CAPPED_REPLY[lang] : DONE_REPLY[lang];
   const m: ChatTurn = { role: "assistant", content, at: new Date().toISOString(), ...turnParts(actions, made, proposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}) };
   await deliver(email, m, conv);
   return withLimit(m, actions, spent);
@@ -451,8 +456,12 @@ function withLimit(m: ChatTurn, actions: string[], spent: number): ChatTurn {
   return m;
 }
 
-/** The chat model. Conversation turns move to Sonnet only after the golden eval and the Gulf-dialect check (pricing plan phase 2). */
-export const CHAT_MODEL = "claude-opus-5";
+/**
+ * The chat model: Sonnet 5.5 since 2026-10-02 (founder decision; it was Opus 5), at the same effort and adaptive
+ * thinking. Its rates are Opus 5's divided by 2.5, and so is the per-message ceiling (`CHAT_TURN_MAX_USD`). Generation,
+ * onboarding and the reviewer keep their own models (src/lib/task-costs.ts `ESTIMATE_MODELS`).
+ */
+export const CHAT_MODEL = "claude-sonnet-5-5";
 /** A turn's reply plus what only the route reads (never saved, never sent to the browser): the limit dialog to raise and what the turn's model calls cost in USD. */
 export type ChatTurn = ChatMsg & { limit?: ChatLimit; usd?: number };
 const DONE_REPLY = { ar: "تم. تحقق من صندوق الموافقة.", en: "Done. Check your approvals inbox." } as const;
@@ -461,6 +470,11 @@ const CAPPED_REPLY = {
   en: "This reply reached its limit, so I stopped here. What I did is on the cards and in your approvals inbox; say \"continue\" if you want me to carry on.",
 } as const;
 const CUT_NOTE = { ar: "(انقطع الرد عند حدّه. اكتب «كمّل» لأتابع.)", en: "(The reply was cut off at its limit. Say \"continue\" and I will carry on.)" } as const;
+/** The model declined the turn (`stop_reason: "refusal"`). Nothing the model wrote is shown; what tools made before is on the cards. */
+const REFUSED_REPLY = {
+  ar: "لم أستطع إكمال هذا الطلب. جرّب صياغته بطريقة أخرى، وما أنجزته قبل ذلك ظاهر في البطاقات وفي صندوق الموافقة.",
+  en: "I couldn't complete this request. Try wording it another way; anything I did before that is on the cards and in your approvals inbox.",
+} as const;
 /** No model call was made: even the owner's message alone, with this workspace, leaves no room inside the ceiling. Not counted. */
 const LARGE_REPLY = {
   ar: "لم أستطع الرد على هذه الرسالة: ملفات مساحة العمل كبيرة جداً على رسالة واحدة. اختصر ملفاتك الطويلة في صفحة الملفات أو ابدأ محادثة جديدة، ثم أعد المحاولة. لم تُحسب هذه الرسالة.",
