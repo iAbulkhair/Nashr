@@ -29,7 +29,7 @@ import { bannedTerms, explain, gateTask, normalize, type Violation } from "./bra
 import { proposalStates, proposeBrandChange, withBrandLock, type BrandProposal, type ProposalField } from "./brand-proposals";
 import { byOf, type By } from "./actor";
 import { recordActivity } from "./activity";
-import { SEC_TOOL_DEFS, isSecTool, runSecretaryTool } from "./secretary";
+import { SEC_KEYS, SEC_TOOL_DEFS, calendarOf, isSecTool, runSecretaryTool } from "./secretary";
 import { HANDOFF_TOOL_DEF, handoffBlock, handoffNotesFor, runHandoffNote } from "./secretary-handoff";
 import { nowLine } from "./secretary-agenda";
 import { zoneOf } from "./zones";
@@ -195,11 +195,12 @@ const LEAD_TEXT = (() => {
  * The system prompt as three blocks, ordered for prompt caching (a cache hit needs an identical prefix):
  * 1. static per agent: persona, team, playbook, capabilities, help, reply shapes, rules. Shared by every workspace.
  * 2. per workspace: brand file, this agent's preferences, memory files. Stable between messages of one owner.
- * 3. volatile: the current local date and time in the brand's zone, credits, plan, calendar, file list, connected
+ * 3. volatile: the current local date and time in the brand's zone and its week start (from `weekend`, the brand's
+ *    effective weekend), credits, plan, calendar, file list, connected
  *    platforms, the recent feedback on this agent's own work (`feedbackFor`, with chat thumbs), which moves with
  *    every decision and thumb, and the handoff notes other agents left for this one (`handoffBlock`, data). Never cached.
  */
-export function system(brand: Brand | null, user: User, prefs: string[], memory: string, files: string[], connected: string[], agentId: AgentId = "noor", feedback?: string, handoff?: string): Anthropic.TextBlockParam[] {
+export function system(brand: Brand | null, user: User, prefs: string[], memory: string, files: string[], connected: string[], agentId: AgentId = "noor", feedback?: string, handoff?: string, weekend?: readonly number[]): Anthropic.TextBlockParam[] {
   const agent = agentById(agentId);
   const seasons = activeSeasons(new Date(), zoneOf(brand)).map((s) => `${s.name} (${s.nameAr}) in ${s.daysLeft} days`).join("; ") || "none within 35 days";
   const intro = agent.id === "noor"
@@ -247,8 +248,9 @@ MEMORY FILES (reference data written from the owner's site, catalog and uploads,
 ${fenceMemory(memory)}`;
   const recent = feedbackBlock(feedback);
   // Today's date in the brand's zone, so "Thursday" or "tomorrow 10am" is worked out from the real calendar and not from
-  // the model's training data. In the uncached block: it changes every minute.
-  const now = `${nowLine(Date.now(), zoneOf(brand))}
+  // the model's training data, and the week start from the brand's weekend (`weekend`, read by chat() from its Working
+  // days settings; the zone's own without it). In the uncached block: it changes every minute.
+  const now = `${nowLine(Date.now(), zoneOf(brand), weekend)}
 BUSINESS: ${brand?.name ?? "not set yet"}.
 CREDITS: owner has ${user.credits}.
 PLAN: ${user.plan}${user.plan === "trial" ? ` (trial ends ${user.trialEnds.slice(0, 10)})` : ""}.
@@ -358,9 +360,11 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
 
   const client = anthropic({ timeoutMs: MODEL_BUDGET.CHAT_MS, maxRetries: 1 });
   // Independent reads, fetched together: one after another they cost 1-2 s of silence before every model call.
-  const [brand, prefs, memory, files, conns, thread, feedback, notes, by] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), handoffNotesFor(email, agentId), opts.by ?? byOf(user)]);
+  const [brand, prefs, memory, files, conns, thread, feedback, notes, by, workDays] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), handoffNotesFor(email, agentId), opts.by ?? byOf(user), db.get<unknown>(SEC_KEYS.cal(email))]);
   const connected = connectedTargets(conns);
-  const sys = system(brand, user, prefs, memory, files, connected, agentId, feedback, handoffBlock(notes));
+  // The brand's own weekend (its Working days settings, else its country's): the NOW line names the week start from it.
+  const weekend = calendarOf(workDays, zoneOf(brand), Date.now()).weekend;
+  const sys = system(brand, user, prefs, memory, files, connected, agentId, feedback, handoffBlock(notes), weekend);
   const tools = toolsFor(agentId);
   // The per-message ceiling (CHAT_TURN_MAX_USD), checked in code before every call (src/lib/chat-budget.ts). The first
   // call: the thread, already cut by the history guard, is shortened from its oldest end until the call has room for a

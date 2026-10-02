@@ -511,6 +511,11 @@ describe("the agenda read is batched (rule 198)", () => {
     const big = await owner("secbig");
     await Promise.all(["ffffffffffff0001", "ffffffffffff0002"].map((id) => saveTask(big.email, pending(id), true)));
     for (let i = 0; i < 40; i++) await add({ title: `B${i}`, dueAt: inDays((i % 9) + 1), ...(i % 2 ? {} : { taskId: `ffffffffffff000${(i % 4) / 2 + 1}` }) });
+    // Rule 478: the brand's work calendar and its away map are read too, once each, whatever their size.
+    await db.set(SEC_KEYS.cal(small.email), { v: 1, weekend: [5], ramadanHours: null, hijriFix: {}, holidays: { add: [], remove: [] }, updatedAt: "2026-10-01T00:00:00.000Z", updatedBy: small.email });
+    await db.set(SEC_KEYS.cal(big.email), { v: 1, weekend: [5], ramadanHours: null, hijriFix: {}, holidays: { add: ["10-15"], remove: [] }, updatedAt: "2026-10-01T00:00:00.000Z", updatedBy: big.email });
+    await db.hset(SEC_KEYS.away(small.email), "sara", { label: "Sara", until: "2099-01-01", by: small.email, via: "web", at: "2026-10-01T00:00:00.000Z" });
+    for (let i = 0; i < 40; i++) await db.hset(SEC_KEYS.away(big.email), `c${i}`, { label: `C${i}`, until: "2099-01-01", by: big.email, via: "web", at: "2026-10-01T00:00:00.000Z" });
     await agendaFor(small.email);
     await agendaFor(big.email);
     const names = ["get", "mget", "zrangeWithScores", "smembers", "lrange", "hgetall", "scardMany", "zcard", "set", "lock"] as const;
@@ -519,14 +524,17 @@ describe("the agenda read is batched (rule 198)", () => {
       await agendaFor(scope);
       const calls = spies.reduce((s, x) => s + x.mock.calls.length, 0);
       const mget = spies[1].mock.calls.length;
+      const cal = spies[0].mock.calls.filter(([k]) => k === SEC_KEYS.cal(scope)).length;
+      const away = spies[5].mock.calls.filter(([k]) => k === SEC_KEYS.away(scope)).length;
       vi.restoreAllMocks();
-      return { calls, mget };
+      return { calls, mget, cal, away };
     };
     const a = await count(small.email), b = await count(big.email);
     expect(b.calls).toBe(a.calls);
     // One MGET of the items and one of the linked inbox items, whatever the number of either.
     expect(a.mget).toBe(2);
     expect(b.mget).toBe(2);
+    expect([a.cal, a.away, b.cal, b.away]).toEqual([1, 1, 1, 1]);
     expect((await agendaFor(big.email)).open).toBe(40);
   });
 });

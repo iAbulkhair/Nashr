@@ -17,7 +17,8 @@
  *   connector); it is cleaned and bounded here and shown to agents as data. An agent's "it is done" is a claim, shown
  *   as one next to what code checked (`linkFactText`), never as a fact.
  * - Dates are read, bucketed and written back in the brand's time zone (`zoneFor`: an allow-listed zone on the brand,
- *   Riyadh by default).
+ *   Riyadh by default), and wherever the agenda or a date is computed, on the brand's work calendar and away map
+ *   (`calFor`: `sec:cal` and `sec:away`, read in the same round as the zone).
  */
 import { randomBytes } from "crypto";
 import { CAPS, db, pushCapped } from "./db";
@@ -30,8 +31,9 @@ import { DEFAULT_ZONE, ZONES, weekStartDay, zoneOf, zoneUtcLabel, type Zone } fr
 import {
   AGENDA_BUCKETS, AUTO_CLOSE_RESULT, CHASE_WORKING_DAYS, SEC_DIRECTIONS, SEC_KINDS, SEC_LIMITS, SEC_RESTORE_DAYS,
   addDays, addWorkingDays, approvalsLine, briefClock, computeAgenda, formatWhen, linkFactText, nextStepText, noteText, parseWhen, partyName, zoneDay, zoneTime,
-  type Agenda, type AgendaBucket, type CalData, type LinkedFact, type SecActor, type SecDirection, type SecItem, type SecKind, type SecNote, type SecSource, type SecVia,
+  type Agenda, type AgendaBucket, type AwayMap, type CalData, type LinkedFact, type SecActor, type SecDirection, type SecItem, type SecKind, type SecNote, type SecParty, type SecSource, type SecVia,
 } from "./secretary-agenda";
+import { workCalendar, type SecCalendar } from "./secretary-calendar";
 
 export const SEC_ID = /^s[a-f0-9]{16}$/;
 /** Starts with a letter: the Redis client parses a member that looks like a number, and 16 digits lose precision. */
@@ -73,6 +75,16 @@ export const SEC_KEYS = {
   wrap: (scope: string, day: string) => `sec:wrap:${scope}:${day}`,
   /** Agents' handoff notes: a capped list (the last 30), newest first, no TTL, removed with the account. */
   notes: (scope: string) => `notes:${scope}`,
+  /**
+   * The brand's Working days settings: one JSON `SecCalendar` (src/lib/secretary-calendar.ts), absent for the country's
+   * defaults. Read with the zone by `calFor`, wherever the agenda or a date is computed.
+   */
+  cal: (scope: string) => `sec:cal:${scope}`,
+  /**
+   * Contacts who are away: a hash, field `partyKey(label)`, value `{ label, until, note?, by, via, at }` (`until` is
+   * the last away day, local, inclusive). Read by `calFor` as an `AwayMap`.
+   */
+  away: (scope: string) => `sec:away:${scope}`,
 };
 const UNDATED_SCORE = 32503680000000; // year 3000: after every dated item
 
@@ -89,6 +101,52 @@ export const SEC_ALERTS_PER_DAY = 5;
 /** The zone a brand scope keeps its list in: one read of the brand file. */
 export async function zoneFor(scope: string): Promise<Zone> {
   return zoneOf(await getBrand(scope));
+}
+
+/**
+ * Stored Working days settings as the calendar the agenda reads (`workCalendar`, memoised per zone, local day and
+ * settings). Anything that is not a settings object (absent, or a value that is not one) is every default of the zone's
+ * country.
+ */
+export const calendarOf = (stored: unknown, zone: Zone, now: number): CalData =>
+  workCalendar(stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as SecCalendar) : null, zone, now);
+
+const LOCAL_DAY = /^\d{4}-\d{2}-\d{2}$/;
+/** A real calendar day written "YYYY-MM-DD" (2026-13-01 and 2026-02-30 are not). */
+const isLocalDay = (v: unknown): v is string => {
+  if (typeof v !== "string" || !LOCAL_DAY.test(v)) return false;
+  const t = Date.parse(`${v}T00:00:00Z`);
+  return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === v;
+};
+/**
+ * The away hash (`sec:away:{scope}`) as the agenda reads it (ruling R3): per field, the entry's `label` and `until`, and
+ * `endedAt` = `until` once `until` is before today (local, in the brand's zone): the absence is over, and the entry is
+ * kept a few days for the "back" alert. A value stored as a JSON string is read the same as an object; a value that is
+ * not `{ label: string, until: "YYYY-MM-DD" }` is left out, silently (stored data is data).
+ */
+export function awayMapOf(rows: Record<string, unknown> | null | undefined, now: number, zone: Zone): AwayMap {
+  const today = zoneDay(now, zone);
+  return Object.fromEntries(Object.entries(rows ?? {}).flatMap(([key, raw]): [string, AwayMap[string]][] => {
+    let v = raw;
+    if (typeof v === "string") {
+      try { v = JSON.parse(v); } catch { return []; }
+    }
+    if (!v || typeof v !== "object" || Array.isArray(v)) return [];
+    const { label, until } = v as { label?: unknown; until?: unknown };
+    if (typeof label !== "string" || !isLocalDay(until)) return [];
+    return [[key, { label, until, ...(until < today ? { endedAt: until } : {}) }]];
+  }));
+}
+
+/**
+ * The brand's zone, work calendar and away map at `now`: the brand file, `sec:cal` and `sec:away`, read in one round.
+ * What every date the list computes is read against: the agenda, the evening wrap, a new chase clock (`expectBy`), the
+ * owner's snooze presets.
+ */
+export async function calFor(scope: string, now = Date.now()): Promise<{ zone: Zone; cal: CalData; away: AwayMap }> {
+  const [brand, stored, rows] = await Promise.all([getBrand(scope), db.get<unknown>(SEC_KEYS.cal(scope)), db.hgetall<unknown>(SEC_KEYS.away(scope))]);
+  const zone = zoneOf(brand);
+  return { zone, cal: calendarOf(stored, zone, now), away: awayMapOf(rows, now, zone) };
 }
 
 /**
@@ -303,13 +361,19 @@ const addNote = (it: SecItem, by: SecActor, textValue: string, priv: boolean, at
 /** The owner in the app: the only actor that closes, confirms, deletes, restores, changes a link or writes a private note. */
 const isOwner = (who: Who) => who.actor === "owner" && who.via === "web";
 
-/** Two working days from `now`: when someone who now owes the owner something is expected to deliver it. */
-const defaultExpectBy = (now: number, z: Zone) => new Date(addWorkingDays(now, CHASE_WORKING_DAYS, z)).toISOString();
+/**
+ * Two working days from `now`: when someone who now owes the owner something is expected to deliver it. With the
+ * brand's calendar, Eid, holidays and its own weekend never count toward them; without one, the zone's weekend only.
+ */
+const defaultExpectBy = (now: number, z: Zone, cal?: CalData) => new Date(addWorkingDays(now, CHASE_WORKING_DAYS, z, cal)).toISOString();
 /** A reminder that is still ahead, or none. */
 const futureOnly = (remindAt: string | null | undefined, now: number) => (remindAt && Date.parse(remindAt) > now ? remindAt : null);
 
-/** Apply one change to a copy of the stored item, in zone `z`. Pure; the caller holds the item's lock. */
-export function mutateItem(it: SecItem, c: Change, who: Who, now: number, z: Zone = DEFAULT_ZONE): { ok: true; item: SecItem } | SecFail {
+/**
+ * Apply one change to a copy of the stored item, in zone `z`, counting a new chase clock's working days on the brand's
+ * calendar `cal` (the zone's weekend alone without one). Pure; the caller holds the item's lock.
+ */
+export function mutateItem(it: SecItem, c: Change, who: Who, now: number, z: Zone = DEFAULT_ZONE, cal?: CalData): { ok: true; item: SecItem } | SecFail {
   const at = new Date(now).toISOString();
   if (OWNER_ONLY.has(c.action) && !isOwner(who)) return fail("owner_only", 403);
   // A link closes the item once its inbox item is approved, so moving a link onto an approved item would close it:
@@ -335,7 +399,7 @@ export function mutateItem(it: SecItem, c: Change, who: Who, now: number, z: Zon
       // made the change), unless the owner gave the new party's number in the same change.
       if (n.owedBy !== was.owedBy && n.phone && c.fields.phone === undefined) n.phone = null;
       // Newly owed by someone else, or no longer dated: the chase clock starts now unless a date was given.
-      if (n.owedBy !== "owner" && !n.dueAt && !n.expectBy && (was.owedBy === "owner" || was.dueAt)) n.expectBy = defaultExpectBy(now, z);
+      if (n.owedBy !== "owner" && !n.dueAt && !n.expectBy && (was.owedBy === "owner" || was.dueAt)) n.expectBy = defaultExpectBy(now, z, cal);
       if (c.chased) {
         // A follow-up restarts the clock and leaves a note; it never closes the item.
         if (n.owedBy === "owner") return fail("not_theirs", 409);
@@ -355,7 +419,7 @@ export function mutateItem(it: SecItem, c: Change, who: Who, now: number, z: Zon
     case "reschedule": {
       const next: SecItem = { ...it, dueAt: c.dueAt, allDay: c.dueAt ? c.allDay : false, snoozeUntil: null };
       // A debt that loses its date gets the chase clock back.
-      if (!next.dueAt && next.owedBy !== "owner" && !next.expectBy) next.expectBy = defaultExpectBy(now, z);
+      if (!next.dueAt && next.owedBy !== "owner" && !next.expectBy) next.expectBy = defaultExpectBy(now, z, cal);
       return { ok: true, item: next };
     }
     case "propose_done": {
@@ -454,14 +518,15 @@ export async function getItem(scope: string, id: string): Promise<SecItem | null
 }
 
 /**
- * Create one open item in the caller's own active brand, dates in the brand's zone (`opts.zone` when the caller already
- * read it). Validation first, then the account's daily allowance.
+ * Create one open item in the caller's own active brand, dates in the brand's zone and a chase clock on its work
+ * calendar (`opts.zone` and `opts.cal` when the caller already read them with `calFor`; otherwise read here, in one
+ * round). Validation first, then the account's daily allowance.
  */
-export async function createItem(user: Pick<User, "email" | "scope">, raw: Record<string, unknown>, who: Who & { source: SecSource }, opts: { zone?: Zone; handoffFrom?: AgentId } = {}): Promise<{ ok: true; item: SecItem } | SecFail> {
+export async function createItem(user: Pick<User, "email" | "scope">, raw: Record<string, unknown>, who: Who & { source: SecSource }, opts: { zone?: Zone; cal?: CalData; handoffFrom?: AgentId } = {}): Promise<{ ok: true; item: SecItem } | SecFail> {
   const scope = sc(user as User);
   const now = Date.now();
   if (raw.title === undefined || raw.title === null || raw.title === "") return fail("title_required", 400, "title");
-  const zone = opts.zone ?? (await zoneFor(scope));
+  const { zone, cal } = opts.cal ? { zone: opts.zone ?? opts.cal.zone, cal: opts.cal } : await calFor(scope, now);
   const p = parseFields(raw, now, zone);
   if (!p.ok) return p;
   // A contact's phone number is written by the owner in the app only.
@@ -487,7 +552,7 @@ export async function createItem(user: Pick<User, "email" | "scope">, raw: Recor
   const item = normalise(applyFields(base, p.fields));
   if ("ok" in item) return item;
   // Someone owes the owner and no date was given: the owner expects it within two working days, then Reem says chase.
-  if (item.owedBy !== "owner" && !item.dueAt && !item.expectBy) item.expectBy = defaultExpectBy(now, zone);
+  if (item.owedBy !== "owner" && !item.dueAt && !item.expectBy) item.expectBy = defaultExpectBy(now, zone, cal);
   await Promise.all([db.set(SEC_KEYS.item(scope, item.id), item), ...indexWrites(scope, null, item), audit(scope, who, "create", item.id, `title=${JSON.stringify(item.title).slice(0, 60)}; source=${who.source}`)]);
   return { ok: true, item };
 }
@@ -514,17 +579,20 @@ export async function withLock<T>(scope: string, id: string, fn: () => Promise<T
 
 /**
  * Change one item of the caller's scope under its lock: re-read, check `expectRev` when the caller sent one, apply the
- * change to the stored copy, bump `rev`, save the item with its index moves and one audit line in one round.
+ * change to the stored copy, bump `rev`, save the item with its index moves and one audit line in one round. Dates are
+ * in `zone`, and a chase clock an update or a reschedule starts counts working days on the brand's calendar `cal`;
+ * when the caller did not pass the calendar, those two changes read it with the zone first (`calFor`, one round).
  */
-export async function changeItem(scope: string, id: string, c: Change, who: Who, expectRev?: number, zone: Zone = DEFAULT_ZONE): Promise<{ ok: true; item: SecItem; prev: SecItem } | SecFail> {
+export async function changeItem(scope: string, id: string, c: Change, who: Who, expectRev?: number, zone?: Zone, cal?: CalData): Promise<{ ok: true; item: SecItem; prev: SecItem } | SecFail> {
   if (!SEC_ID.test(id)) return fail("not_found", 404);
   if (OWNER_ONLY.has(c.action) && !isOwner(who)) return fail("owner_only", 403);
+  const at = cal ? { zone: zone ?? cal.zone, cal } : c.action === "update" || c.action === "reschedule" ? await calFor(scope) : { zone: zone ?? DEFAULT_ZONE, cal: undefined };
   const r = await withLock(scope, id, async (): Promise<{ ok: true; item: SecItem; prev: SecItem } | SecFail> => {
     const cur = await db.get<SecItem>(SEC_KEYS.item(scope, id));
     if (!cur) return fail("not_found", 404);
     if (expectRev !== undefined && expectRev !== cur.rev) return { ...fail("conflict", 409), item: cur };
     const now = Date.now();
-    const m = mutateItem(structuredClone(cur), c, who, now, zone);
+    const m = mutateItem(structuredClone(cur), c, who, now, at.zone, at.cal);
     if (!m.ok) return m;
     // A restore or a reopen that makes an item open counts against the open cap like a new one; otherwise delete,
     // create, restore (or complete, create, reopen) would grow the list past it.
@@ -632,13 +700,15 @@ async function linkedTasks(scope: string, items: SecItem[]): Promise<Map<string,
 }
 
 /**
- * The agenda of one scope at `now`, in the brand's zone, with the approvals inbox count. Items whose linked inbox item
- * was approved are closed first (`closeLinked`) and left out; `facts` holds what code read about the links of the rest.
- * Reads: the open set, one MGET of items, the pending count, the brand file (its zone), and one MGET of linked tasks
- * when any item has a link: the same number whatever the number of items.
+ * The agenda of one scope at `now`, in the brand's zone and on its work calendar and away map, with the approvals inbox
+ * count. Items whose linked inbox item was approved are closed first (`closeLinked`) and left out; `facts` holds what
+ * code read about the links of the rest; `cal` and `away` are what the agenda was computed with, for callers that compute
+ * more from the same list (the evening wrap). Reads: the open set, one MGET of items, the pending count, the brand file
+ * (its zone), `sec:cal` and `sec:away` (`calFor`), and one MGET of linked tasks when any item has a link: the same
+ * number whatever the number of items or away contacts.
  */
-export async function agendaFor(scope: string, now = Date.now(), who: Who = { actor: "rule", via: "web" }): Promise<Agenda & { closed: number; facts: Record<string, LinkedFact | null> }> {
-  const [items, approvals, zone] = await Promise.all([listOpenItems(scope), pendingCount(scope), zoneFor(scope)]);
+export async function agendaFor(scope: string, now = Date.now(), who: Who = { actor: "rule", via: "web" }): Promise<Agenda & { closed: number; facts: Record<string, LinkedFact | null>; cal: CalData; away: AwayMap }> {
+  const [items, approvals, { zone, cal, away }] = await Promise.all([listOpenItems(scope), pendingCount(scope), calFor(scope, now)]);
   const tasks = await linkedTasks(scope, items);
   let closed = new Set<string>();
   const approved = items.filter((it) => it.links?.taskId && tasks.get(it.links.taskId)?.status === "approved");
@@ -647,7 +717,7 @@ export async function agendaFor(scope: string, now = Date.now(), who: Who = { ac
     closed = new Set(approved.filter((_, i) => done[i]).map((it) => it.id));
   }
   const facts = Object.fromEntries([...tasks].map(([id, t]) => [id, factOf(t)]));
-  return { ...computeAgenda(items.filter((it) => !closed.has(it.id)), now, { approvals, zone }), closed: closed.size, facts };
+  return { ...computeAgenda(items.filter((it) => !closed.has(it.id)), now, { approvals, zone, cal, away }), closed: closed.size, facts, cal, away };
 }
 
 /**
@@ -716,7 +786,7 @@ export async function secretaryKeys(scope: string): Promise<string[]> {
   const days = [...new Set([-2, -1, 0, 1].map((d) => new Date(Date.now() + d * 864e5).toISOString().slice(0, 10)))];
   return [
     ...ids.map((id) => SEC_KEYS.item(scope, id)), SEC_KEYS.open(scope), SEC_KEYS.done(scope), SEC_KEYS.deleted(scope), SEC_KEYS.all(scope), SEC_KEYS.audit(scope),
-    SEC_KEYS.due(scope), SEC_KEYS.walk(scope), SEC_KEYS.notes(scope),
+    SEC_KEYS.due(scope), SEC_KEYS.walk(scope), SEC_KEYS.notes(scope), SEC_KEYS.cal(scope), SEC_KEYS.away(scope),
     ...days.flatMap((d) => [SEC_KEYS.alerts(scope, d), SEC_KEYS.wrap(scope, d)]),
   ];
 }
@@ -757,10 +827,10 @@ export function snoozePreset(p: SnoozePreset, now: number, z: Zone = DEFAULT_ZON
 /**
  * The owner's PATCH body as one change: `{action, ...}` with action update (default), complete {result}, snooze
  * {preset | until}, reschedule {dueAt}, confirm_done {result?}, reject_done, delete, restore, add_note {text, private?},
- * chased (the owner followed up: the chase clock restarts). Dates in zone `z`. Every argument is validated here; nothing
- * else in the body is read.
+ * chased (the owner followed up: the chase clock restarts). Dates in zone `z`; "next week" starts on the brand's own
+ * week start when its calendar `cal` is given. Every argument is validated here; nothing else in the body is read.
  */
-export function parseOwnerChange(b: Record<string, unknown>, now: number, z: Zone = DEFAULT_ZONE): Change | SecFail {
+export function parseOwnerChange(b: Record<string, unknown>, now: number, z: Zone = DEFAULT_ZONE, cal?: CalData): Change | SecFail {
   const action = b.action ?? "update";
   switch (action) {
     case "update": {
@@ -777,7 +847,7 @@ export function parseOwnerChange(b: Record<string, unknown>, now: number, z: Zon
     case "snooze": {
       if (b.preset !== undefined) {
         if (!(SNOOZE_PRESETS as readonly unknown[]).includes(b.preset)) return fail("bad_date", 400, "preset");
-        const until = snoozePreset(b.preset as SnoozePreset, now, z);
+        const until = snoozePreset(b.preset as SnoozePreset, now, z, cal);
         return until ? { action: "snooze", until } : fail("snooze_past", 400, "preset");
       }
       const w = parseWhen(b.until, now, z);
@@ -958,13 +1028,16 @@ export function whereShown(it: Pick<SecItem, "dueAt" | "owedBy">, zone: Zone): s
 }
 
 type ToolCtx = { lang: "ar" | "en"; now: number; zone: Zone; facts: Record<string, LinkedFact | null> };
+/** A party as a tool line names it: a contact's label JSON-quoted (the owner's data, like a title), an agent by name. */
+const partyData = (p: SecParty) => (p !== "owner" && !isAgentId(p) ? JSON.stringify(partyName(p, "en")) : partyName(p, "en"));
 /**
- * One item as a tool line: id, JSON-quoted title (data), due in the owner's language and the brand's zone, who, flags,
- * next step. An agent's "done" is quoted as a claim, next to what code read about the linked inbox item, if any.
+ * One item as a tool line: id, JSON-quoted title (data), due in the owner's language and the brand's zone, who (a
+ * contact's name JSON-quoted, as in the next step), flags, next step. An agent's "done" is quoted as a claim, next to
+ * what code read about the linked inbox item, if any.
  */
 function itemLine(it: SecItem, c: ToolCtx, next?: string): string {
   const due = it.dueAt ? formatWhen(it.dueAt, it.allDay, c.lang, c.now, c.zone) : "no due date";
-  const who = it.direction === "they_owe" ? `owed by ${partyName(it.owedBy, "en")}` : `the owner's${it.owedTo ? ` (for ${partyName(it.owedTo, "en")})` : ""}`;
+  const who = it.direction === "they_owe" ? `owed by ${partyData(it.owedBy)}` : `the owner's${it.owedTo ? ` (for ${partyData(it.owedTo)})` : ""}`;
   const fact = it.links?.taskId ? linkFactText(c.facts[it.links.taskId], "en", c.now, c.zone) : "";
   const claim = it.proposedDone ? `claimed done by ${partyName(it.proposedDone.by === "mcp" ? null : it.proposedDone.by, "en") || "the owner's assistant"} (a claim, not checked): ${JSON.stringify(it.proposedDone.evidence.slice(0, 120))}; checked by the app: ${fact || "nothing to check it against"}` : "";
   const chased = it.lastChasedAt ? `followed up ${formatWhen(it.lastChasedAt, false, c.lang, c.now, c.zone)}` : "";
@@ -1012,11 +1085,12 @@ export async function runSecretaryTool(user: User, name: SecToolName, input: Rec
       const doneBlock = done.length ? [`RECENTLY DONE\n${done.map((it) => `- [id=${it.id}] ${JSON.stringify(it.title)} · result: ${JSON.stringify((it.result ?? "").slice(0, 120))}`).join("\n")}`] : [];
       return { text: [head, ...(blocks.length ? blocks : ["Nothing open in that view."]), ...doneBlock].join("\n\n"), isError: false };
     }
-    const zone = await zoneFor(scope);
+    // The brand's zone and work calendar, read together: dates are its local time, a new chase clock counts its working days.
+    const { zone, cal } = await calFor(scope, now);
     const where = `${ZONES[zone].city.en} time`;
     switch (name) {
       case "todo_create": {
-        const r = await createItem(user, toolFields(input, name), { ...who, source: who.via === "mcp" ? "mcp" : "chat" }, { zone });
+        const r = await createItem(user, toolFields(input, name), { ...who, source: who.via === "mcp" ? "mcp" : "chat" }, { zone, cal });
         if (!r.ok) return { text: toolError(r), isError: true };
         const it = r.item;
         const due = it.dueAt ? formatWhen(it.dueAt, it.allDay, lang, now, zone) : null;
@@ -1044,7 +1118,7 @@ export async function runSecretaryTool(user: User, name: SecToolName, input: Rec
           if (t.value) note = { text: t.value, private: false };
         }
         const chased = input.chased === true;
-        const r = await changeItem(scope, id, { action: "update", fields: p.fields, ...(snoozeUntil ? { snoozeUntil } : {}), ...(note ? { note } : {}), ...(chased ? { chased } : {}) }, who, undefined, zone);
+        const r = await changeItem(scope, id, { action: "update", fields: p.fields, ...(snoozeUntil ? { snoozeUntil } : {}), ...(note ? { note } : {}), ...(chased ? { chased } : {}) }, who, undefined, zone, cal);
         if (!r.ok) return { text: toolError(r), isError: true };
         const it = r.item;
         const bits = [
@@ -1061,7 +1135,7 @@ export async function runSecretaryTool(user: User, name: SecToolName, input: Rec
         if (!SEC_ID.test(id)) return { text: toolError(fail("not_found", 404)), isError: true };
         const t = text(input.evidence, "evidence", true);
         if (!t.ok) return { text: toolError(t), isError: true };
-        const r = await changeItem(scope, id, { action: "propose_done", evidence: t.value }, who, undefined, zone);
+        const r = await changeItem(scope, id, { action: "propose_done", evidence: t.value }, who, undefined, zone, cal);
         if (!r.ok) return { text: toolError(r), isError: true };
         return { text: `Proposed as done [id=${id}] ${JSON.stringify(r.item.title)}. It is NOT done yet: it waits under "needs your confirmation" until the owner confirms it on the My to-dos page (/app/todo), where your words show as your claim next to what the app checked. Tell the owner that.`, isError: false, id };
       }

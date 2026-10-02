@@ -1104,8 +1104,8 @@ describe("handoff notes: a blocked agent opens one item, similar notes join it, 
     expect(now.match(/<\/handoff_notes>/g)).toHaveLength(1);
     expect(now).toContain("\\u003c/handoff_notes>");
     expect(fixed).not.toContain("handoff_notes>");
-    // chat() hands the notes of this agent to its prompt.
-    expect(readFileSync("src/lib/chat.ts", "utf8")).toMatch(/handoffNotesFor\(email, agentId\)[\s\S]*system\(brand, user, prefs, memory, files, connected, agentId, feedback, handoffBlock\(notes\)\)/);
+    // chat() hands the notes of this agent to its prompt (and, since rule 478, the brand's weekend after them).
+    expect(readFileSync("src/lib/chat.ts", "utf8")).toMatch(/handoffNotesFor\(email, agentId\)[\s\S]*system\(brand, user, prefs, memory, files, connected, agentId, feedback, handoffBlock\(notes\), weekend\)/);
     // The list keeps the last 30.
     await Promise.all(Array.from({ length: 25 }, (_, i) => runTool(u, "handoff_note", { to: "noor", kind: "note", body: `more ${i}` }, [], [], undefined, { agent: "sami", lang: "en" })));
     expect(await db.lrange(SEC_KEYS.notes(u.email), 0, -1)).toHaveLength(30);

@@ -6,8 +6,9 @@
  *   was approved (`agendaFor`, so an approved item shows as done, not as overdue): items completed today (the brand's
  *   local day) with their result; the approvals (approve, and publish, which approves) and rejections the owner decided
  *   today (`decisions:{scope}`, human decisions only); items that fell overdue since the previous evening's wrap time
- *   (an all-day item due yesterday included); the first three items the 09:00 agenda tomorrow would put in front of the
- *   owner (overdue, due, to confirm, to chase). No motivational line.
+ *   (an all-day item due yesterday included; a debt someone else owes when its chase moment came); the first three
+ *   items the 09:00 agenda tomorrow would put in front of the owner (overdue, due, to confirm, to chase). Both read the
+ *   brand's work calendar and away map, so a quiet day or an away contact holds a chase back. No motivational line.
  * - Silent when all four are empty. Sent at most once per scope and local day: `sec:wrap:{scope}:{day}` is claimed
  *   with SET NX before anything is sent, and released when the in-app notification could not be written, so a retry
  *   can still send it (never after that notification was written: an email failure keeps it).
@@ -88,20 +89,27 @@ const APPROVALS = new Set(["approve", "publish"]);
 
 /**
  * The four parts of one scope's wrap at `now`, in its zone. First the agenda (`agendaFor`, as the cron): it closes the
- * items whose linked inbox item was approved, so they count as done today and never as overdue. Then one round of
- * reads: the open set and its items, the newest 50 done items, the newest 100 decisions: the same number whatever the
- * size of the list. "Fell overdue" is every open item whose due time passed since the previous evening's wrap time.
+ * items whose linked inbox item was approved, so they count as done today and never as overdue, and it reads the
+ * brand's work calendar and away map, which both computations below use. Then one round of reads: the open set and its
+ * items, the newest 50 done items, the newest 100 decisions: the same number whatever the size of the list. "Fell
+ * overdue" is every overdue item that became so since the previous evening's wrap time: the owner's own when its due
+ * time passed, one someone else owes when its chase moment came (a debt due on a weekend, Eid or an absence falls overdue
+ * when the pause ends, not on its due date).
  */
 export async function buildWrap(scope: string, now: number): Promise<Wrap> {
-  const { zone } = await agendaFor(scope, now, { actor: "cron", via: "cron" });
+  const { zone, cal, away } = await agendaFor(scope, now, { actor: "cron", via: "cron" });
   const [open, done, decisions] = await Promise.all([listOpenItems(scope), listDone(scope, 50), listDecisions(scope, DECISIONS_READ)]);
   const day = zoneDay(now, zone);
   const today = (iso: string | null | undefined) => !!iso && Number.isFinite(Date.parse(iso)) && zoneDay(Date.parse(iso), zone) === day;
   const completed = done.filter((it) => today(it.completedAt)).map((it) => ({ title: it.title, result: it.result, auto: it.result === AUTO_CLOSE_RESULT }));
   const decided = decisions.filter((d) => (APPROVALS.has(d.action) || d.action === "reject") && today(d.at));
   const since = previousEveningAt(now, zone);
-  const fellOverdue = computeAgenda(open, now, { zone }).buckets.overdue.filter((e) => { const due = Date.parse(e.item.dueAt ?? ""); return due > since && due <= now; }).map((e) => e.item.title);
-  const next = computeAgenda(open, zoneTime(addDays(day, 1), 9, 0, zone), { zone });
+  const rule = { zone, cal, away };
+  const fellOverdue = computeAgenda(open, now, rule).buckets.overdue.filter((e) => {
+    const when = e.item.owedBy !== "owner" && e.moment ? e.moment.at : Date.parse(e.item.dueAt ?? "");
+    return when > since && when <= now;
+  }).map((e) => e.item.title);
+  const next = computeAgenda(open, zoneTime(addDays(day, 1), 9, 0, zone), rule);
   const tomorrow = [...next.buckets.overdue, ...next.buckets.today, ...next.buckets.confirm, ...next.buckets.chase].slice(0, 3).map((e) => e.item.title);
   return { day, zone, completed, approved: decided.filter((d) => APPROVALS.has(d.action)).length, rejected: decided.filter((d) => d.action === "reject").length, fellOverdue, tomorrow };
 }
