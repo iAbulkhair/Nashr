@@ -3,7 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { dict, isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, seatLimit } from "@/lib/auth";
-import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, firstMonthPriceSar, type SelfServePlan } from "@/lib/pricing";
+import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, firstMonthPriceSar, formatCount, type SelfServePlan } from "@/lib/pricing";
+import { lotsOf, topupCredits, topupView } from "@/lib/topups";
 import { can } from "@/lib/roles";
 import { seatsUsed } from "@/lib/team";
 import { chatStatus } from "@/lib/chat-allowance";
@@ -13,6 +14,7 @@ import { OFFER_COPY, OfferBanner } from "@/components/app/BillingOffer";
 import PartnerCodeForm from "@/components/app/PartnerCodeForm";
 import { grantEarlyOffer, lastDayOfferOwed, offerLastDay, openOffer } from "@/lib/partners";
 import ChatAllowanceCard from "@/components/app/ChatAllowanceCard";
+import TopupCard from "@/components/app/TopupCard";
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
@@ -30,6 +32,10 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const links: Partial<Record<SelfServePlan, string>> = owner ? { starter: process.env.PAY_LINK_STARTER, pro: process.env.PAY_LINK_PRO, business: process.env.PAY_LINK_BUSINESS } : {};
   const wa = owner && process.env.SUPPORT_WHATSAPP ? `https://wa.me/${process.env.SUPPORT_WHATSAPP.replace(/\D/g, "")}?text=${encodeURIComponent(`Thakeen ${u.email}`)}` : null;
   const card = (id: SelfServePlan | "agency") => m.plans.find((p) => p.id === id);
+  // Top-up packs (rule 449): the account's live packs, without payment details, and the credits left in them. A pack is
+  // requested from support (the owner's WhatsApp link carries the account email) and activated by the founder.
+  const lots = lotsOf(u).map(topupView);
+  const fromTopups = topupCredits(u);
   const agency = card("agency");
   // The chat card (rule 315): the account's messages, read here and handed to the client card with the runway already
   // worked out, so the server and the browser render the same dates. Everyone sees it; only the owner gets the switch.
@@ -59,12 +65,13 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
       <h1 className="page-title">{t.billing.title}</h1>
       <div className="mt-4 grid gap-3 card text-sm sm:grid-cols-2 lg:grid-cols-4">
         <div><p className="text-ink/60">{t.billing.current}</p><p className="font-display text-lg font-medium">{t.billing.plans[u.plan]}</p></div>
-        <div><p className="text-ink/60">{t.billing.credits}</p><p className="font-mono text-lg" dir="ltr">{u.credits}</p></div>
+        <div><p className="text-ink/60">{t.billing.credits}</p><p className="font-mono text-lg" dir="ltr">{u.credits}</p>{fromTopups > 0 && <p className="text-xs text-ink/60" data-topup-share="">{lang === "ar" ? `منها ${formatCount(fromTopups)} من باقات الشحن` : `incl. ${formatCount(fromTopups)} from top-ups`}</p>}</div>
         <div><p className="text-ink/60">{t.billing.seats}</p><p className="font-mono text-lg" dir="ltr"><Link href={`/${lang}/app/team`} className="hover:underline">{used} / {seatLimit(u)}</Link></p></div>
         {u.plan === "trial" && <div><p className="text-ink/60">{t.billing.trialEnds}</p><p className="font-mono text-lg" dir="ltr">{u.trialEnds.slice(0, 10)}</p></div>}
       </div>
       {!owner && <ReadOnlyNote className="mt-4" text={t.billing.ownerOnly} />}
       <ChatAllowanceCard lang={lang} status={chat} owner={owner} nextReset={nextReset} trialEnds={u.trialEnds.slice(0, 10)} runway={chatRunway} credits={u.credits} />
+      <TopupCard lang={lang} plan={u.plan} owner={owner} email={owner ? u.email : undefined} whatsapp={owner && waNumber ? waNumber : null} lots={lots} topupCredits={fromTopups} />
       {owner && u.plan === "trial" && (
         <div className="mt-6 rounded-2xl bg-oasis-deep p-6 text-mist">
           <p className="eyebrow eyebrow-accent">{lang === "ar" ? "ماذا يحدث عند التفعيل" : "What happens when you activate"}</p>

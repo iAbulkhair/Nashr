@@ -4,10 +4,14 @@ import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import { TASK_COST, type TaskType } from "@/lib/tasks";
 import { AGENTS } from "@/lib/agents";
-import { limitFromError } from "./LimitModal";
+import { limitFromError, noCreditsText } from "./LimitModal";
 import type { Lang } from "@/lib/i18n";
 
-export default function GeneratePanel({ t, lang, credits }: { t: AppDict; lang: Lang; credits: number }) {
+/**
+ * `owner`: the acting person may subscribe (`can(u, "billing")`); `topups`: the account's plan may buy top-up packs
+ * (`topupsSold`). Both only choose the out-of-credits line (`noCreditsText`, rule 457).
+ */
+export default function GeneratePanel({ t, lang, credits, owner = true, topups = true }: { t: AppDict; lang: Lang; credits: number; owner?: boolean; topups?: boolean }) {
   const r = useRouter();
   const g = t.generate;
   const [busy, setBusy] = useState<TaskType | null>(null);
@@ -30,7 +34,7 @@ export default function GeneratePanel({ t, lang, credits }: { t: AppDict; lang: 
         return;
       }
       limitFromError(j.error);
-      const map: Record<string, string> = { no_credits: g.noCredits, trial_over: g.trialOver, no_brand: g.noBrand, no_cart_data: g.noCartData, model_paused: g.paused, agent_cap: t.limit.agentCapTitle };
+      const map: Record<string, string> = { no_credits: noCreditsText(g, owner, topups), trial_over: g.trialOver, no_brand: g.noBrand, no_cart_data: g.noCartData, model_paused: g.paused, agent_cap: t.limit.agentCapTitle };
       setMsg((j.error && map[j.error]) || g.failed);
     } catch {
       setMsg(g.failed);

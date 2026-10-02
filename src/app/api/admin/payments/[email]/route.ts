@@ -17,7 +17,11 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
  * POST /api/admin/payments/{email}
  *   {action:"record", id?, amountSar, plan, date, reference?}  a payment received, SAR excluding VAT: the source of truth
  *   for commissions (rule 396). The first one uses the account's first-month offer; a retried id records nothing twice.
- *   {action:"void", id, reason?}  refunded or entered by mistake: voids its commission too (rule 397).
+ *   {action:"void", id, reason?}  refunded or entered by mistake: voids its commission too (rule 397). A top-up pack's
+ *   payment whose pack is still live is refused (409 topup_live, rule 455): it is voided with the pack, from the
+ *   console's Top-ups block (POST /api/admin/topups "void").
+ * A top-up's payment is never recorded here: "Add top-up" (POST /api/admin/topups) records it with the pack (rule 454).
+ * The body's fields are passed one by one, so no request can mark a payment as a top-up's.
  * Either action re-takes every commission decision of the account (a backdated payment or a voided first payment moves
  * the first payment day); payments whose answer changed are logged as `reclassified`.
  * Recording a payment does not change the plan: activation stays POST /api/admin/plan. Every change goes to admin:log.
@@ -37,7 +41,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
   }
   if (b.action === "void") {
     const res = await voidPayment(email, b.id, who, b.reason);
-    if (!res.ok) return NextResponse.json(res, { status: 404 });
+    if (!res.ok) return NextResponse.json(res, { status: res.error === "topup_live" ? 409 : 404 });
     await log(`payment:${res.payment.id} void${res.reclassified ? ` reclassified:${res.reclassified.join(",")}` : ""}`, res.payment.voidReason);
     return NextResponse.json(res);
   }

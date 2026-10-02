@@ -9,6 +9,7 @@ import { getBrand, listTasks } from "@/lib/brand";
 import { agentById } from "@/lib/agents";
 import { TASK_COST, isTaskType } from "@/lib/tasks";
 import { generateBatch } from "@/lib/generate-batch";
+import { NO_CREDITS_HINT } from "@/lib/topups";
 import { listFiles, readFile } from "@/lib/files";
 import { CUSTOMER_FACING, brandRules, explain, gateTask, isCustomerFacing } from "@/lib/brand-rules";
 import { tokenBy } from "@/lib/actor";
@@ -112,7 +113,7 @@ export async function POST(req: Request) {
             case "trial_over": return ok(id, { ...text("The trial has ended. Subscribe in the app to keep generating."), isError: true });
             case "missing_data": return ok(id, { ...text("No abandoned-cart data yet: connect Salla or Shopify and sync sales from Reports in the app first. No credits were used."), isError: true });
             case "agent_cap": return ok(id, { ...text(`${agentById(r.agent).name.en} reached the monthly credit cap the owner set in Governance (${r.spent} of ${r.cap} credits this month). No credits were used. The owner can raise the cap on the Governance page or wait for next month.`), isError: true });
-            case "no_credits": return ok(id, { ...text(`Insufficient credits: need ${r.need}, have ${r.credits}.`), isError: true });
+            case "no_credits": return ok(id, { ...text(`Insufficient credits: need ${r.need}, have ${r.credits}. ${NO_CREDITS_HINT}`), isError: true });
             // Refunded already; answered as a tool error by the catch below.
             case "failed": throw r.error;
           }

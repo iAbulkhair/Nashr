@@ -136,6 +136,6 @@ export async function runChatTurn(u: User, gate: ChatReserved, run: () => Promis
 export function refusalText(r: Refusal): string {
   const s = r.status;
   const when = s.period === "trial" ? "for the trial" : "this month (it renews on the 1st, UTC)";
-  if (r.error === "chat_credits") return `Chat paused: this account used its ${s.allowance} chat messages ${when}, and continuing on credits needs at least ${r.need ?? s.overflow.hold} credits in the balance (the most one message can cost); the account has ${r.credits}. Nothing was sent. The owner can add credits or upgrade the plan from the Subscription page in the app.`;
+  if (r.error === "chat_credits") return `Chat paused: this account used its ${s.allowance} chat messages ${when}, and continuing on credits needs at least ${r.need ?? s.overflow.hold} credits in the balance (the most one message can cost); the account has ${r.credits}. Nothing was sent. The owner can top up credits (packs used after the month's plan credits) or upgrade the plan from the Subscription page in the app.`;
   return `Chat paused: this account used its ${s.allowance} chat messages ${when}. Nothing was sent. ${s.overflow.available ? "The owner can upgrade the plan, or turn on \"continue on credits\" on the Subscription page in the app." : "The owner can subscribe from the Subscription page in the app."}`;
 }

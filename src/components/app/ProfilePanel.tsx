@@ -7,6 +7,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import { TASK_COST, TASK_COUNT, type TaskType } from "@/lib/tasks";
 import { MEDIA_MODELS, type MediaKind } from "@/lib/media-catalog";
 import { ONBOARD_EXTRA_BRAND_COST, formatCount } from "@/lib/pricing";
+import { creditSplit, type TopupBalance } from "@/lib/topups";
 import { AGENTS } from "@/lib/agents";
 import type { Role } from "@/lib/auth";
 import type { ChatStatus } from "@/lib/chat-allowance";
@@ -33,7 +34,7 @@ type Data = {
   may?: { passwordChange: boolean; accountDelete: boolean };
   impersonating?: boolean;
   account?: { email: string; name: string };
-  user: { name: string; email: string; phone?: string; plan: string; credits: number; trialEnds: string; createdAt: string; lang: Lang; renewedAt?: string };
+  user: { name: string; email: string; phone?: string; plan: string; credits: number; trialEnds: string; createdAt: string; lang: Lang; renewedAt?: string; /** Live top-up packs: size, credits left and expiry only (`topupBalance`, rule 453). */ topups?: TopupBalance[] };
   usage: Record<string, { count: number; credits: number }>; images: number; /** What this month's renders charged (image 1-2, video 12-24 by model). */ mediaCredits?: number; emails?: string;
   allowance: number; nextReset: string;
   /** The account's chat messages (src/lib/chat-allowance.ts), the same for every seat. */
@@ -181,7 +182,10 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
   const planLabel = (t.nav.plans as Record<string, string>)[d.user.plan] ?? d.user.plan;
   const rules = d.user.plan === "trial"
     ? (ar ? `تجربتك تشمل ${d.allowance} كريدت لمدة 3 أيام. تنتهي ${d.user.trialEnds.slice(0, 10)}.` : `Your trial includes ${d.allowance} credits for 3 days. Ends ${d.user.trialEnds.slice(0, 10)}.`)
-    : (ar ? `خطتك تشمل ${d.allowance} كريدت شهرياً. يتجدد الرصيد في اليوم الأول من كل شهر (UTC). التجديد القادم: ${d.nextReset}.` : `Your plan includes ${d.allowance} credits per month. The balance resets on the 1st of each month (UTC). Next reset: ${d.nextReset}.`);
+    : (ar ? `خطتك تشمل ${d.allowance} كريدت شهرياً. يتجدد كريدت الخطة في اليوم الأول من كل شهر (UTC)، وتبقى باقات الشحن السارية حتى تنتهي صلاحيتها. التجديد القادم: ${d.nextReset}.` : `Your plan includes ${d.allowance} credits per month. The plan's credits reset on the 1st of each month (UTC); top-up packs keep what is left in them until they expire. Next reset: ${d.nextReset}.`);
+  // The balance as plan credits and top-up credits, each pack with its expiry (rule 456): the renewal on the 1st resets
+  // only the plan credits, so the card never presents the whole balance as one that resets.
+  const split = creditSplit(d.user.credits, d.user.topups);
 
   return (
     <div className="mx-auto grid max-w-3xl gap-5">
@@ -192,7 +196,21 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
         <div className="flex items-center justify-between text-sm"><span>{ar ? "المستخدم" : "Credits used"}</span><span className="font-mono" dir="ltr">{usedCredits} / {d.allowance} ({pct}%)</span></div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-salt-dim"><div className="h-full bg-oasis" style={{ width: `${pct}%` }} /></div>
         {creditLine && <p className="mt-1 text-xs text-ink/60" data-runway="credits">{creditLine}</p>}
-        <div className="mt-3 rounded-lg bg-oasis/5 p-3"><span className="font-display text-2xl font-bold text-oasis" dir="ltr">{d.user.credits}</span> <span className="text-sm text-ink/60">{ar ? "كريدت متبقٍ" : "credits remaining"}</span></div>
+        <div className="mt-3 rounded-lg bg-oasis/5 p-3" data-credit-split="">
+          <span className="font-display text-2xl font-bold text-oasis" dir="ltr">{d.user.credits}</span> <span className="text-sm text-ink/60">{ar ? "كريدت متبقٍ" : "credits remaining"}</span>
+          {split.topup > 0 && (
+            <dl className="mt-2 grid gap-1 text-xs text-ink/70">
+              <div className="flex justify-between gap-2" data-plan-credits=""><dt>{trial ? (ar ? "كريدت التجربة" : "Trial credits") : (ar ? `كريدت الخطة (يتجدد في ${d.nextReset})` : `Plan credits (reset on ${d.nextReset})`)}</dt><dd className="font-mono" dir="ltr">{formatCount(split.plan)}</dd></div>
+              <div className="flex justify-between gap-2" data-topup-credits=""><dt>{ar ? "كريدت باقات الشحن (يُصرف بعد كريدت الخطة، ولا يتجدد)" : "Top-up credits (used after the plan credits; no reset)"}</dt><dd className="font-mono" dir="ltr">{formatCount(split.topup)}</dd></div>
+              {split.packs.map((p, i) => (
+                <div key={i} className="flex justify-between gap-2 ps-3 text-ink/60" data-pack-expiry="">
+                  <dt>{ar ? <>باقة <span dir="ltr">{formatCount(p.credits)}</span>: متبقٍ <span dir="ltr">{formatCount(p.left)}</span></> : `${formatCount(p.credits)}-credit pack: ${formatCount(p.left)} left`}</dt>
+                  <dd>{ar ? "تنتهي" : "expires"} <span className="font-mono" dir="ltr">{p.expiresAt.slice(0, 10)}</span></dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
         {/* The account's chat messages (rule 315): counted apart from credits, shared by every seat. */}
         {chat && (
           <div className="mt-4" data-chat-usage="">

@@ -212,7 +212,8 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   user.credits = paid.credits;
   let receipt: BatchDone["receipt"];
   // A reused hold (a claim this batch paid in an earlier, killed run) was warned about by the run that took it.
-  if ("hold" in paid) receipt = { ok: true, credits: paid.credits, scope: paid.hold.scope, agent: paid.hold.agent, month: paid.hold.month };
+  // The hold keeps the top-up receipt of the run that paid (`from`, rule 442), so the receipt names the same packs.
+  if ("hold" in paid) receipt = { ok: true, credits: paid.credits, scope: paid.hold.scope, agent: paid.hold.agent, month: paid.hold.month, ...(paid.hold.from ? { from: paid.hold.from } : {}) };
   else {
     await warnAgentCap(user, paid);
     receipt = paid;

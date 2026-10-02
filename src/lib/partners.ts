@@ -2,7 +2,8 @@ import { cookies } from "next/headers";
 import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
 import { getLogin, getUser, normalizeEmail, saveUser, sessionCookie, validEmail, type Plan, type User } from "./auth";
-import { withUserLock } from "./credits";
+import { addTopup, voidTopup, withUserLock } from "./credits";
+import { lotsOf, type TopupLot, type TopupRequest } from "./topups";
 import { pmap } from "./parallel";
 import { onRoster } from "./team";
 import { lifecyclePlan } from "./lifecycle";
@@ -25,6 +26,7 @@ import {
  * - `partner:ledger:{email}` hash: `c:{paymentId}` a commission (the customer's label, never the email), `p:{payoutId}`
  *   a payout. Changed only under `lock:partner:{email}`, so two payouts can never both pass the balance check.
  * - `payments:{email}` hash of the customer's recorded payments (the founder's record, the source of truth for commissions).
+ *   A top-up pack's payment is one of them (`topup`, rule 454), recorded by the console's "Add top-up" only.
  * - `affiliate-applications` (list, the public form) and `affiliate:decisions` (hash, application id → approve/reject).
  *
  * The customer side lives on the account record (`User.referredBy`, `firstMonthOffer`, `firstPaidOn`, `partnerCode`),
@@ -47,6 +49,12 @@ export type Payment = {
   offer?: FirstMonthOffer["kind"]; expectedSar?: number;
   commission?: { partner: string; sar: number }; notCounted?: NotCounted;
   voidedAt?: string; voidedBy?: string; voidReason?: string;
+  /**
+   * A top-up pack's payment (rule 454): the pack's id on the account and its credits. Written only by `addPaidTopup`
+   * (the console's "Add top-up"), never from a request body; such a payment never uses the first-month offer, and it is
+   * voided with its pack (`voidPaidTopup`) while the pack is live.
+   */
+  topup?: { lot: string; credits: number };
 };
 /**
  * A public application. `consentAt` and `termsVersion`: when the applicant agreed to the programme terms and which
@@ -245,12 +253,26 @@ export const offerPrices = (): Record<SelfServePlan, number> =>
 
 // ---- Payments (founder console) and commissions ----
 
-export type PaymentInput = { id?: unknown; amountSar: unknown; plan: unknown; date: unknown; reference?: unknown };
+/** `topup`: set only by `addPaidTopup` (the payments route builds its input field by field and never passes it). */
+export type PaymentInput = { id?: unknown; amountSar: unknown; plan: unknown; date: unknown; reference?: unknown; topup?: { lot: string; credits: number } };
 export type PaymentError = "bad_amount" | "bad_plan" | "bad_date" | "bad_id" | "not_found";
 const PAID_PLANS: readonly Plan[] = ["starter", "pro", "business", "agency"];
 /** Today in Riyadh: payments and payouts are dated by the founder's calendar. */
 const today = () => ksaDay();
-const firstLiveDay = (all: Record<string, Payment>) => Object.values(all).filter((p) => !p.voidedAt).map((p) => p.date).sort()[0] as string | undefined;
+/**
+ * The first day among the payments that stand. `plan`: plan payments only, leaving out top-up packs' payments (`topup`).
+ * The account's first payment day (`User.firstPaidOn`) and the first-month offer are the plan's (rule 454): a pack
+ * recorded before the plan's first payment neither sets that day nor closes the offer, so the plan payment recorded after
+ * it, backdated or not, still takes the offer.
+ */
+const firstLiveDay = (all: Record<string, Payment>, opts: { plan?: boolean } = {}) =>
+  Object.values(all).filter((p) => !p.voidedAt && !(opts.plan && p.topup)).map((p) => p.date).sort()[0] as string | undefined;
+/**
+ * The day the partner's 30-day attribution check and 4-month window are measured from: the plan's first payment that
+ * stands; only when none stands (the plan was activated with no payment recorded) the first top-up payment, so a paying
+ * customer's pack is never left without a decision. Recording the plan payment later moves the start to it (`settle`).
+ */
+const windowStartDay = (all: Record<string, Payment>) => firstLiveDay(all, { plan: true }) ?? firstLiveDay(all);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
@@ -263,7 +285,7 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
  */
 async function settle(e: string, u: User, all: Record<string, Payment>, now: string, changedId: string): Promise<{ payments: Record<string, Payment>; reclassified: string[] }> {
   const at = u.referredBy;
-  const firstPaidOn = firstLiveDay(all);
+  const firstPaidOn = windowStartDay(all);
   let decide: (p: Payment) => { ok: true } | { ok: false; reason: NotCounted } = () => ({ ok: false, reason: "no_partner" });
   if (at && firstPaidOn) {
     const [partner, sameTeam] = await Promise.all([getPartner(at.partner), Promise.all([onRoster(e, at.partner), onRoster(at.partner, e)]).then((x) => x.some(Boolean))]);
@@ -302,7 +324,8 @@ const cleanText = (v: unknown, max: number) => (typeof v === "string" ? v.replac
 
 /**
  * Record a payment the founder received (SAR, excluding VAT: the commission base is the amount before VAT, rule 409).
- * Under the customer's lock: the first payment uses the account's first-month offer when it is dated on or after the
+ * Under the customer's lock: the plan's first payment (a top-up pack's payment never counts as one) uses the account's
+ * first-month offer when it is dated on or after the
  * day the offer was granted and, for the early-partner offer, on or before its last day (rule 410: the day the money
  * arrived counts, so a payment made in time and recorded later still uses it); then every payment's commission is
  * re-taken (`settle`): 15% to the partner's ledger when the account is attributed, paid on or after attribution and within
@@ -323,16 +346,22 @@ export async function recordPayment(email: string, input: PaymentInput, by: stri
     const all = await db.hgetall<Payment>(paymentsKey(e));
     if (all[id]) return { ok: true as const, payment: all[id], already: true };
     const live = Object.values(all).filter((p) => !p.voidedAt);
-    const pay: Payment = { id, amountSar, plan, date, reference: cleanText(input.reference, 80), recordedAt: new Date().toISOString(), recordedBy: by };
+    const topup = input.topup ? { lot: String(input.topup.lot), credits: Math.max(0, Math.trunc(Number(input.topup.credits)) || 0) } : undefined;
+    const pay: Payment = { id, amountSar, plan, date, reference: cleanText(input.reference, 80), recordedAt: new Date().toISOString(), recordedBy: by, ...(topup ? { topup } : {}) };
     const offer = unusedOffer(u);
     const last = offer ? offerLastDay(u, offer) : null;
-    if (offer && live.length === 0 && date >= ksaDay(new Date(offer.at).getTime()) && (!last || date <= last)) {
+    // The first-month discount is a plan's first month: a top-up pack's payment never takes it, and a pack's payment
+    // recorded earlier does not count as the plan's first payment (rule 454).
+    const livePlan = live.filter((p) => !p.topup);
+    if (offer && !topup && livePlan.length === 0 && date >= ksaDay(new Date(offer.at).getTime()) && (!last || date <= last)) {
       pay.offer = offer.kind;
       if ((SELF_SERVE_PLANS as readonly string[]).includes(plan)) pay.expectedSar = firstMonthPriceSar(plan as SelfServePlan);
       u.firstMonthOffer = { ...offer, usedAt: pay.recordedAt, paymentId: id };
     }
     const { payments, reclassified } = await settle(e, u, { ...all, [id]: pay }, pay.recordedAt, id);
-    u.firstPaidOn = firstLiveDay(payments);
+    const first = firstLiveDay(payments, { plan: true });
+    if (first) u.firstPaidOn = first;
+    else delete u.firstPaidOn;
     await saveUser(u);
     return { ok: true as const, payment: payments[id], ...(reclassified.length ? { reclassified } : {}) };
   });
@@ -340,10 +369,14 @@ export async function recordPayment(email: string, input: PaymentInput, by: stri
 
 /**
  * Void a payment (refunded, or entered by mistake). Every commission of the customer is re-taken (`settle`): this one's is
- * voided in the partner's ledger, and the others follow the new first payment day. When no other payment stands, the
- * account is back to unpaid: its first payment day goes, and the first-month offer this payment used is open again.
+ * voided in the partner's ledger, and the others follow the new first payment day. When no other plan payment stands,
+ * the account is back to unpaid: its first payment day goes, and the first-month offer this payment used is open again
+ * (packs' payments that still stand keep neither, rule 454).
+ * A top-up pack's payment whose pack is still live is refused here (`topup_live`, rule 455): it is voided with its pack
+ * ("Void" in the console's Top-ups block, `voidPaidTopup`, which passes `withPack`), so a pack never keeps its credits
+ * after its payment went, nor the other way round. Once the pack has expired, its payment is voided like any other.
  */
-export async function voidPayment(email: string, id: unknown, by: string, reason: unknown): Promise<{ ok: true; payment: Payment; reclassified?: string[] } | { ok: false; error: "not_found" }> {
+export async function voidPayment(email: string, id: unknown, by: string, reason: unknown, opts: { withPack?: boolean } = {}): Promise<{ ok: true; payment: Payment; reclassified?: string[] } | { ok: false; error: "not_found" | "topup_live" }> {
   const e = normalizeEmail(email);
   if (typeof id !== "string" || !/^pay_[a-f0-9]{8,32}$/.test(id) || !(await getUser(e))) return { ok: false, error: "not_found" };
   return withUserLock(e, async (u) => {
@@ -351,15 +384,83 @@ export async function voidPayment(email: string, id: unknown, by: string, reason
     const p = all[id];
     if (!p) return { ok: false as const, error: "not_found" as const };
     if (p.voidedAt) return { ok: true as const, payment: p };
+    if (p.topup && !opts.withPack && lotsOf(u).some((l) => l.id === p.topup!.lot)) return { ok: false as const, error: "topup_live" as const };
     const voided: Payment = { ...p, voidedAt: new Date().toISOString(), voidedBy: by, voidReason: cleanText(reason, 200) || undefined };
     const { payments, reclassified } = await settle(e, u, { ...all, [id]: voided }, voided.voidedAt!, id);
-    const first = firstLiveDay(payments);
+    const first = firstLiveDay(payments, { plan: true });
     if (first) u.firstPaidOn = first;
     else delete u.firstPaidOn;
     if (u.firstMonthOffer?.paymentId === id && !first) u.firstMonthOffer = { kind: u.firstMonthOffer.kind, pct: u.firstMonthOffer.pct, at: u.firstMonthOffer.at };
     await saveUser(u);
     return { ok: true as const, payment: payments[id], ...(reclassified.length ? { reclassified } : {}) };
   });
+}
+
+// ---- Top-up packs and their payments (rules 454-455) ----
+
+export type PaidTopupError = "bad_id" | "payment_voided" | "topup_needs_paid_plan" | "too_many_topups" | "not_found" | Exclude<PaymentError, "not_found">;
+export type PaidTopup = { ok: true; lot: TopupLot; before: number; credits: number; already: boolean; payment: Payment | null; reclassified?: string[] };
+
+/**
+ * The console's "Add top-up" (POST /api/admin/topups, rule 454): the pack goes on the account and, when something was
+ * paid, its payment is recorded in `payments:{email}` through `recordPayment`, the same path and the same commission
+ * decision as any payment (`settle`): a referred customer's top-up dated inside the partner's window earns 15% of the
+ * amount before VAT. "Add top-up" is the one entry point for a pack's payment: the founder never records a top-up in the
+ * Payments panel, which records plan payments only.
+ *
+ * Exactly once: the console sends one payment id per request (`pay_` and hex) and keeps it until the request succeeds.
+ * The pack carries it (`addTopup` finds the pack again on a retry instead of adding one) and the payment is recorded
+ * under it (`recordPayment` records nothing twice, and the partner's ledger has one row per payment id). A request that
+ * failed between the two steps is completed by its retry. An id already used by a plan payment, or by a top-up payment
+ * that was voided since, is refused before anything is written. A payment `recordPayment` refuses takes the pack it just
+ * added off again (`parseTopup` checks the same rules first, so this is only a guard). A pack recorded with nothing paid
+ * records no payment.
+ */
+export async function addPaidTopup(email: string, input: TopupRequest & { paymentId?: unknown }, by: string): Promise<PaidTopup | { ok: false; error: PaidTopupError }> {
+  if (input.paymentId !== undefined && !(typeof input.paymentId === "string" && /^pay_[a-f0-9]{8,32}$/.test(input.paymentId))) return { ok: false, error: "bad_id" };
+  const e = normalizeEmail(email);
+  const id = (input.paymentId as string | undefined) ?? newId("pay");
+  const prior = (await db.hgetall<Payment>(paymentsKey(e)))[id];
+  if (prior && !prior.topup) return { ok: false, error: "bad_id" };
+  if (prior?.voidedAt) return { ok: false, error: "payment_voided" };
+  const added = await addTopup(e, { credits: input.credits, paidSar: input.paidSar, paidOn: input.paidOn, ref: input.ref, by, paymentId: id });
+  if (!added.ok) return { ok: false, error: added.error === "topup_not_found" ? "not_found" : added.error };
+  const { lot } = added;
+  let payment: Payment | null = null;
+  let reclassified: string[] | undefined;
+  if (lot.paidSar > 0 && added.plan) {
+    const rec = await recordPayment(e, { id, amountSar: lot.paidSar, plan: added.plan, date: lot.paidOn, reference: lot.ref, topup: { lot: lot.id, credits: lot.credits } }, by);
+    if (!rec.ok) {
+      if (rec.error !== "not_found" && !added.already) await voidTopup(e, lot.id);
+      return { ok: false, error: rec.error };
+    }
+    payment = rec.payment;
+    reclassified = rec.reclassified;
+  }
+  return { ok: true, lot, before: added.before, credits: added.credits, already: !!added.already, payment, ...(reclassified?.length ? { reclassified } : {}) };
+}
+
+/**
+ * The console's "Void" on a pack (rule 455): its payment is voided first (`voidPayment` with `withPack`: the partner's
+ * commission on it goes too), then the pack and its unspent credits leave the balance (`voidTopup`). In that order, a
+ * request that failed halfway is completed by its retry: a voided payment voids again as a no-op, and the pack is still
+ * there to remove. A pack with no recorded payment (nothing paid) only leaves.
+ */
+export async function voidPaidTopup(email: string, lotId: string, by: string, reason: unknown): Promise<{ ok: true; lot: TopupLot; before: number; credits: number; removed: number; payment: Payment | null; reclassified?: string[] } | { ok: false; error: "topup_not_found" | "not_found" }> {
+  const e = normalizeEmail(email);
+  const u = await getUser(e);
+  if (!u) return { ok: false, error: "not_found" };
+  const lot = lotsOf(u).find((l) => l.id === lotId);
+  if (!lot) return { ok: false, error: "topup_not_found" };
+  let payment: Payment | null = null;
+  let reclassified: string[] | undefined;
+  if (lot.paymentId) {
+    const v = await voidPayment(e, lot.paymentId, by, reason, { withPack: true });
+    if (v.ok) { payment = v.payment; reclassified = v.reclassified; }
+  }
+  const done = await voidTopup(e, lotId);
+  if (!done.ok) return { ok: false, error: "topup_not_found" };
+  return { ok: true, lot: done.lot, before: done.before, credits: done.credits, removed: done.removed ?? 0, payment, ...(reclassified?.length ? { reclassified } : {}) };
 }
 
 /** The founder console's payment card for one account. */
@@ -374,7 +475,9 @@ export async function paymentsView(email: string) {
   // recorded now uses it only when dated on or before `until`.
   const until = u.firstMonthOffer ? offerLastDay(u, u.firstMonthOffer) : null;
   return {
-    payments, firstPaidOn: u.firstPaidOn ?? null, offer: u.firstMonthOffer ?? null, open: !!offer, until, expired: !!unused && !offer,
+    // `livePacks`: the ids of the account's live top-up packs, so the panel offers "Void" on a top-up payment only once
+    // its pack is gone (rule 455).
+    payments, livePacks: lotsOf(u).map((l) => l.id), firstPaidOn: u.firstPaidOn ?? null, offer: u.firstMonthOffer ?? null, open: !!offer, until, expired: !!unused && !offer,
     expected: offer ? offerPrices() : null,
     referredBy: u.referredBy ? { ...u.referredBy, status: referralStatus(u.referredBy.at, u.firstPaidOn) } : null,
   };
