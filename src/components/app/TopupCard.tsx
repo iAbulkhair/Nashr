@@ -46,6 +46,10 @@ export default function TopupCard({ lang, plan, owner, email, whatsapp, lots, to
       <p className="mt-1 text-sm text-ink/60">{ar
         ? `باقات كريدت إضافية فوق خطتك: تُستخدم بعد كريدت خطتك الشهري، وتبقى صالحة ${n(TOPUP_VALID_DAYS)} يوماً من تفعيلها. كريدت الخطة الشهري لا يُرحَّل إلى الشهر التالي.`
         : `Extra credits on top of your plan: used after your plan's monthly credits, and valid for ${n(TOPUP_VALID_DAYS)} days from activation. Monthly plan credits never roll over.`}</p>
+      {/* The refund policy (founder decision of 2026-10-02, rule 460): the founder refunds the unused share by hand. */}
+      <p className="mt-1 text-sm text-ink/60" data-topup-refund="">{ar
+        ? "يمكن استرداد كريدت باقات الشحن غير المستخدم عند الطلب قبل انتهاء صلاحيته."
+        : "Unused top-up credits can be refunded on request before they expire."}</p>
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         {TOPUP_PACKS.map((credits) => {
           const link = href(credits);

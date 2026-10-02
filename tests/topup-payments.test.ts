@@ -392,10 +392,12 @@ describe("a Sunday plan's paid-once hold keeps its top-up receipt (rule 458)", (
     expect(swept.refunded).toEqual([{ scope: email, agent: "noor", credits: 3 }]);
     u = (await getUser(email))!;
     expect([monthlyCredits(u), lotsOf(u)[0].left]).toEqual([1, 100]);
-    // A pack voided since drops its share: never moved into the plan credits.
+    // A pack voided since: its share comes back as plan credits (founder decision of 2026-10-02, rule 461).
     await chargeOnce(email, 3, meta, `weekly:${email}:W3`);
     await voidTopup(email, r.lot.id);
-    expect(await refundOnce(email, `weekly:${email}:W3`)).toEqual({ credits: 1, refunded: 3 });
+    expect(await refundOnce(email, `weekly:${email}:W3`)).toEqual({ credits: 3, refunded: 3 });
+    u = (await getUser(email))!;
+    expect([monthlyCredits(u), lotsOf(u)]).toEqual([3, []]);
   });
 });
 

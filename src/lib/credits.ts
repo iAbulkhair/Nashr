@@ -164,7 +164,7 @@ export async function addTopup(email: string, input: TopupInput, now = Date.now(
 /**
  * Void a pack (a payment reversed, a pack recorded by mistake): its unspent credits leave the balance and the pack is
  * removed, so it no longer counts in top-up revenue either. Credits already spent from it stay spent; a later refund of
- * one of those charges finds no pack and is dropped (src/lib/topups.ts).
+ * one of those charges finds no pack and goes to the month's plan credits (src/lib/topups.ts `returnCredits`, rule 461).
  */
 export async function voidTopup(email: string, id: string): Promise<TopupChange> {
   return withUserLock(email, async (u): Promise<TopupChange> => {
@@ -211,7 +211,8 @@ export async function refund(email: string, n: number, spend?: SpendRef): Promis
 
 /**
  * The body of a metered `refund`, on the record read under the lock. Credits go back where the charge took them from
- * (`spend.from`, src/lib/topups.ts `returnCredits`): a pack that expired or was voided since drops its share.
+ * (`spend.from`, src/lib/topups.ts `returnCredits`): the share of a pack that expired, was voided or was refunded since
+ * goes to the month's plan credits (founder decision of 2026-10-02, rule 461).
  */
 function giveBack(u: User, n: number, spend: SpendRef) {
   const delta = Math.trunc(n);

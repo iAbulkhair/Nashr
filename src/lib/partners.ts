@@ -3,13 +3,13 @@ import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
 import { getLogin, getUser, normalizeEmail, saveUser, sessionCookie, validEmail, type Plan, type User } from "./auth";
 import { addTopup, voidTopup, withUserLock } from "./credits";
-import { lotsOf, type TopupLot, type TopupRequest } from "./topups";
+import { lotsOf, refundUnused, type RefundRequest, type RefundUnusedError, type TopupLot, type TopupRequest } from "./topups";
 import { pmap } from "./parallel";
 import { onRoster } from "./team";
 import { lifecyclePlan } from "./lifecycle";
 import { FIRST_MONTH_DISCOUNT_PCT, SELF_SERVE_PLANS, firstMonthPriceSar, type SelfServePlan } from "./pricing";
 import {
-  CUSTOMER_LABEL_PREFIX, PARTNER_COOKIE, PARTNER_COOKIE_DAYS, balances, bankConfirmed, codeProblem, commissionDecision, commissionSar,
+  CUSTOMER_LABEL_PREFIX, PARTNER_COOKIE, PARTNER_COOKIE_DAYS, balances, bankConfirmed, codeProblem, commissionAfterRefund, commissionDecision, commissionSar, fromHalalas, toHalalas,
   PARTNER_TERMS_VERSION, earlyOfferLastDay, ksaDay, maskIban, normalizeCode, optionalTax, parsePartnerCookie, payoutProblem, referralStatus, suggestCode,
   taxFlags, taxNumberOf, taxTotals, validAmount, validCountry, validDay, validIban,
   type Attribution, type Bank, type Commission, type LedgerRow, type NotCounted, type Payout, type ReferralStatus,
@@ -55,6 +55,12 @@ export type Payment = {
    * voided with its pack (`voidPaidTopup`) while the pack is live.
    */
   topup?: { lot: string; credits: number };
+  /**
+   * The refund of a top-up pack's unused credits recorded against this payment (rule 460), written once by
+   * `refundPaidTopup`: the credits refunded, the amount sent back (SAR excluding VAT), the transfer's day and reference,
+   * when and by whom. The partner's commission on the payment is reduced in proportion (`settle`, `commissionAfterRefund`).
+   */
+  refund?: { credits: number; sar: number; date: string; reference: string; at: string; by: string };
 };
 /**
  * A public application. `consentAt` and `termsVersion`: when the applicant agreed to the programme terms and which
@@ -298,7 +304,10 @@ async function settle(e: string, u: User, all: Record<string, Payment>, now: str
     delete rest.commission;
     delete rest.notCounted;
     const d = decide(p);
-    next[p.id] = d.ok ? { ...rest, commission: { partner: at.partner, sar: commissionSar(p.amountSar) } } : { ...rest, notCounted: d.reason };
+    // A refund of a pack's unused credits takes its share off the commission, once: the refund is one record on the
+    // payment and this is re-derived from it every time (rule 460). A payment refunded in full keeps no commission.
+    const sar = p.refund ? commissionAfterRefund(p.amountSar, p.refund.sar) : commissionSar(p.amountSar);
+    next[p.id] = !d.ok ? { ...rest, notCounted: d.reason } : p.refund && sar <= 0 ? { ...rest, notCounted: "refunded" } : { ...rest, commission: { partner: at.partner, sar } };
   }
   const changed = Object.values(next).filter((p) => !same(p, all[p.id]) || p.id === changedId);
   await Promise.all(changed.map((p) => db.hset(paymentsKey(e), p.id, p)));
@@ -312,7 +321,10 @@ async function settle(e: string, u: User, all: Record<string, Payment>, now: str
         const row = ledger[`c:${p.id}`];
         const live = row?.kind === "commission" && !row.voidedAt ? row : null;
         if (!p.voidedAt && p.commission) {
-          if (!live || live.sar !== p.commission.sar) writes.push([`c:${p.id}`, { kind: "commission", id: p.id, label, paymentDate: p.date, baseSar: p.amountSar, sar: p.commission.sar, at: now }]);
+          // The base is what the customer kept paying: the amount less a refund of unused top-up credits (rule 460).
+          const refundSar = p.refund ? Math.min(p.amountSar, p.refund.sar) : 0;
+          const baseSar = fromHalalas(toHalalas(p.amountSar) - toHalalas(refundSar));
+          if (!live || live.sar !== p.commission.sar || live.baseSar !== baseSar) writes.push([`c:${p.id}`, { kind: "commission", id: p.id, label, paymentDate: p.date, baseSar, sar: p.commission.sar, at: now, ...(refundSar ? { refundSar } : {}) }]);
         } else if (live) writes.push([`c:${p.id}`, { ...live, voidedAt: now }]);
       }
       await Promise.all(writes.map(([f, v]) => db.hset(ledgerKey(at.partner), f, v)));
@@ -428,7 +440,8 @@ export async function addPaidTopup(email: string, input: TopupRequest & { paymen
   const { lot } = added;
   let payment: Payment | null = null;
   let reclassified: string[] | undefined;
-  if (lot.paidSar > 0 && added.plan) {
+  // A retry that finds its pack already refunded records no payment: the refund was recorded without one (rule 460).
+  if (lot.paidSar > 0 && added.plan && !(added.already && lot.refund)) {
     const rec = await recordPayment(e, { id, amountSar: lot.paidSar, plan: added.plan, date: lot.paidOn, reference: lot.ref, topup: { lot: lot.id, credits: lot.credits } }, by);
     if (!rec.ok) {
       if (rec.error !== "not_found" && !added.already) await voidTopup(e, lot.id);
@@ -461,6 +474,72 @@ export async function voidPaidTopup(email: string, lotId: string, by: string, re
   const done = await voidTopup(e, lotId);
   if (!done.ok) return { ok: false, error: "topup_not_found" };
   return { ok: true, lot: done.lot, before: done.before, credits: done.credits, removed: done.removed ?? 0, payment, ...(reclassified?.length ? { reclassified } : {}) };
+}
+
+export type RefundTopupError = RefundUnusedError | "topup_voided" | "not_found";
+export type RefundedTopup = {
+  ok: true; lot: TopupLot; before: number; credits: number; refunded: { credits: number; sar: number };
+  payment: Payment | null; commissionBefore?: number; reclassified?: string[];
+  /** A retry of a refund that is already recorded in full (same request id): nothing changed. */
+  already?: boolean;
+  /** A refund that stopped after the credits left and before its payment was marked: this request finished it. */
+  completed?: boolean;
+};
+
+/**
+ * The console's "Refund unused" on a live pack (founder decision of 2026-10-02, rule 460): the customer asked for the
+ * money of the credits still unused, before the pack expires, and the founder transfers it by hand. One critical section
+ * under the account's ledger lock, so a charge racing the refund either lands before it (and its credits are not
+ * refunded) or after it (and finds them gone): `refundUnused` takes exactly the credits left out of the pack and the
+ * balance and the record is saved first; then the refund is recorded on the pack's payment and `settle` re-takes the
+ * partner's commission on it, reduced by commission × refunded / paid (`commissionAfterRefund`), once.
+ *
+ * Refused (nothing changed): 404 `topup_not_found` for a pack that never was on the account, 409 `topup_expired` once it
+ * expired, `topup_voided` once its payment was voided, `topup_refunded` once refunded (a retry with the same request
+ * id instead answers `already`), `topup_not_paid` for a pack given for nothing, `nothing_left`, and `left_changed` when
+ * the credits left are not the ones the founder was shown. A refund that stopped between its two writes (the credits
+ * gone, the payment not marked) is finished by the next request for that pack (`completed`). A pack whose payment was
+ * never recorded is refunded on the pack alone (`payment: null`), and a retried "Add top-up" then records no payment.
+ */
+export async function refundPaidTopup(email: string, lotId: string, input: RefundRequest & { id?: string }, by: string, now = Date.now()): Promise<RefundedTopup | { ok: false; error: RefundTopupError; left?: number; sar?: number }> {
+  const e = normalizeEmail(email);
+  if (!(await getUser(e))) return { ok: false, error: "not_found" };
+  return withUserLock(e, async (u): Promise<RefundedTopup | { ok: false; error: RefundTopupError; left?: number; sar?: number }> => {
+    const all = await db.hgetall<Payment>(paymentsKey(e));
+    const lot = lotsOf(u).find((l) => l.id === lotId);
+    const pay = (lot?.paymentId ? all[lot.paymentId] : undefined) ?? Object.values(all).find((p) => p.topup?.lot === lotId);
+    if (!lot) {
+      // Gone from the account: say why, from the pack's payment.
+      if (!pay) return { ok: false, error: "topup_not_found" };
+      return { ok: false, error: pay.refund ? "topup_refunded" : pay.voidedAt ? "topup_voided" : "topup_expired" };
+    }
+    if (pay?.voidedAt) return { ok: false, error: "topup_voided" };
+    const credits = Number.isFinite(u.credits) ? Math.max(0, Math.trunc(u.credits)) : 0;
+    const iso = new Date(now).toISOString();
+    /** Mark the payment refunded as the pack says, and re-take the commission on it. */
+    const markPayment = async (r: NonNullable<TopupLot["refund"]>) => {
+      if (!pay) return { payment: null as Payment | null };
+      const marked: Payment = { ...pay, refund: { credits: r.credits, sar: r.sar, date: r.on, reference: r.ref, at: r.at, by: r.by } };
+      const { payments, reclassified } = await settle(e, u, { ...all, [pay.id]: marked }, iso, pay.id);
+      return { payment: payments[pay.id], ...(reclassified.length ? { reclassified } : {}) };
+    };
+    if (lot.refund) {
+      const r = lot.refund;
+      const refunded = { credits: r.credits, sar: r.sar };
+      if (pay && !pay.refund) {
+        const m = await markPayment(r);
+        return { ok: true, lot, before: credits, credits, refunded, commissionBefore: pay.commission?.sar, ...m, completed: true };
+      }
+      if (input.id && r.id === input.id) return { ok: true, lot, before: credits, credits, refunded, payment: pay ?? null, already: true };
+      return { ok: false, error: "topup_refunded" };
+    }
+    const done = refundUnused(u, lotId, { expected: input.credits, on: input.on, ref: input.ref, by, ...(input.id ? { id: input.id } : {}) }, now);
+    if (!done.ok) return { ok: false, error: done.error, ...(done.left !== undefined ? { left: done.left, sar: done.sar } : {}) };
+    // The credits leave first: once this is saved, no charge can spend them, whatever happens to the next write.
+    await saveUser(u);
+    const m = await markPayment(done.lot.refund!);
+    return { ok: true, lot: done.lot, before: credits, credits: u.credits, refunded: { credits: done.credits, sar: done.sar }, commissionBefore: pay?.commission?.sar, ...m };
+  });
 }
 
 /** The founder console's payment card for one account. */

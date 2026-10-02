@@ -10,7 +10,7 @@ import { withUserLock } from "@/lib/credits";
 import { can, forbid, type Action } from "@/lib/roles";
 import { saveMember, withMemberLock } from "@/lib/team";
 import { chatStatus } from "@/lib/chat-allowance";
-import { lotsOf, topupBalance } from "@/lib/topups";
+import { openLots, topupBalance } from "@/lib/topups";
 
 export type EmailPrefs = "all" | "important" | "none";
 
@@ -77,7 +77,8 @@ export async function GET() {
   // `topupsDirty` is a runtime flag, never sent. `referredBy` names the partner's email: never the customer's to see.
   const { passHash: _p, actor: _a, deal: _d, referredBy: _r, topups: _t, topupsDirty: _td, ...safe } = u; void _p; void _a; void _d; void _r; void _t; void _td;
   const deal = u.deal ? { deal: { credits: u.deal.credits, priceSar: u.deal.priceSar } } : {};
-  const packs = u.topups?.length ? { topups: lotsOf(u).map(topupBalance) } : {};
+  // A refunded pack holds nothing and is not sent (`openLots`, rule 460).
+  const packs = u.topups?.length ? { topups: openLots(u).map(topupBalance) } : {};
   // A member sees the same packs (the billing page shows them to every seat): the profile's credit card splits the
   // balance into plan credits and top-up credits for everyone.
   const user = a.kind === "member" ? { ...me, ...summary, ...packs } : { ...safe, ...deal, ...packs, role: a.role };
