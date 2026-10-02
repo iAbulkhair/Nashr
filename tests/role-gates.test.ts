@@ -160,6 +160,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/secretary": g("member", "todo.write"),
   // Reem's "Walk me through": skipping a card is a change to the list's state; the card's own buttons call gated routes.
   "POST /api/secretary/walk": g("member", "todo.write"),
+  // Reem's away list: any member marks a contact away and ends it (the owner and the agents are refused in code).
+  "PUT /api/secretary/away": g("member", "todo.write"),
+  "DELETE /api/secretary/away": g("member", "todo.write"),
   // Majed's handoffs: a run spends credits like a generation; a decline is a draft decision, like rejecting an item.
   "POST /api/handoffs/[id]/run": g("member", "generate"),
   "POST /api/handoffs/[id]/decline": g("member", "drafts"),
@@ -229,6 +232,7 @@ const READS: Record<string, Gate> = {
   "GET /api/tasks/[id]/pptx": "member",
   "GET /api/secretary": "member",
   "GET /api/secretary/walk": g("member", "read"),
+  "GET /api/secretary/away": g("member", "read"),
 
   "GET /api/mcp": "public-read",
   "GET /api/oauth/meta": "public-read",

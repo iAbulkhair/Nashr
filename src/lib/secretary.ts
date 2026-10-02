@@ -121,7 +121,7 @@ export function calendarOf(stored: unknown, zone: Zone, now: number): CalData {
 
 const LOCAL_DAY = /^\d{4}-\d{2}-\d{2}$/;
 /** A real calendar day written "YYYY-MM-DD" (2026-13-01 and 2026-02-30 are not). */
-const isLocalDay = (v: unknown): v is string => {
+export const isLocalDay = (v: unknown): v is string => {
   if (typeof v !== "string" || !LOCAL_DAY.test(v)) return false;
   const t = Date.parse(`${v}T00:00:00Z`);
   return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === v;
@@ -167,9 +167,12 @@ export type SecError =
   | "bad_party" | "owed_by_required" | "bad_date" | "date_out_of_range" | "bad_priority" | "bad_flag" | "unknown_task"
   | "link_not_pending" | "result_required" | "evidence_required" | "not_proposed" | "not_deleted" | "restore_expired" | "snooze_past"
   | "not_theirs" | "owner_only" | "bad_action" | "nothing_to_change" | "too_many" | "open_limit" | "lock_timeout"
-  | "remind_past" | "bad_phone" | "not_done";
+  | "remind_past" | "bad_phone" | "not_done"
+  // The away list (src/lib/secretary-away.ts): the owner or an agent named as a contact, a return day out of range, the
+  // 200-field cap, and a body or label that is not one.
+  | "not_contact" | "away_range" | "away_limit" | "bad_request";
 export type SecFail = { ok: false; error: SecError; field?: string; status: number; item?: SecItem };
-const fail = (error: SecError, status = 400, field?: string): SecFail => ({ ok: false, error, status, ...(field ? { field } : {}) });
+export const fail = (error: SecError, status = 400, field?: string): SecFail => ({ ok: false, error, status, ...(field ? { field } : {}) });
 
 // C0 controls other than tab and new line, DEL, C1 controls, zero-width space, the direction marks, embeddings,
 // overrides and isolates, the line and paragraph separators and the byte-order mark: none carries anything an owner
@@ -190,6 +193,11 @@ function text(v: unknown, field: keyof typeof SEC_LIMITS, block: boolean): Text 
   return { ok: true, value: s };
 }
 
+/**
+ * The words a party is read as the owner by (any case): what `party()` stores as `"owner"`, and what the away list refuses
+ * as a contact (`partyKey` of each, src/lib/secretary-away.ts).
+ */
+export const OWNER_ALIASES = ["owner", "me", "you", "أنا"] as const;
 /** `"owner"` (also "me"), an agent id, or a contact label. Arabic names are labels: only an exact agent id names an agent. */
 function party(v: unknown, field: string): { ok: true; value: string | null } | SecFail {
   if (v === undefined || v === null || v === "") return { ok: true, value: null };
@@ -198,7 +206,7 @@ function party(v: unknown, field: string): { ok: true; value: string | null } | 
   if (!s) return { ok: true, value: null };
   if (s.length > SEC_LIMITS.party) return fail("too_long", 400, field);
   const low = s.toLowerCase();
-  if (low === "owner" || low === "me" || low === "you" || s === "أنا") return { ok: true, value: "owner" };
+  if ((OWNER_ALIASES as readonly string[]).includes(low)) return { ok: true, value: "owner" };
   if (isAgentId(low)) return { ok: true, value: low };
   return { ok: true, value: s };
 }
@@ -510,8 +518,11 @@ function indexWrites(scope: string, prev: SecItem | null, next: SecItem): Promis
   return w;
 }
 
-/** One audit line per change: who, through what, which action on which item, and a short description of the change. */
-function audit(scope: string, who: Who, action: string, id: string, diff: string) {
+/**
+ * One audit line per change: who, through what, which action on which item (`"-"` for a change that is not one item's,
+ * such as the away list's), and a short description of the change.
+ */
+export function audit(scope: string, who: Who, action: string, id: string, diff: string) {
   return pushCapped(SEC_KEYS.audit(scope), JSON.stringify({ at: new Date().toISOString(), actor: who.actor, via: who.via, ...(who.login ? { login: who.login } : {}), action, id, diff: diff.slice(0, 200) }), CAPS.secAudit);
 }
 function diffOf(prev: SecItem, next: SecItem): string {
@@ -775,11 +786,24 @@ export async function purgeExpired(scope: string, now = Date.now()): Promise<num
   return gone.length;
 }
 
-/** The daily job's part: purge, then close linked items whose inbox item was approved. Returns the agenda it computed. */
+/**
+ * The daily job's part: purge, and next to it the away list's clean-up (`cleanAway`: entries ended over 30 days ago);
+ * then close linked items whose inbox item was approved. Returns the agenda it computed. A failed clean-up is logged by
+ * its error's name and retried the next day: it never stops the agenda or the auto-close.
+ */
 export async function secretaryDaily(scope: string, now = Date.now()) {
-  const purged = await purgeExpired(scope, now);
+  const [purged, awayCleaned] = await Promise.all([
+    purgeExpired(scope, now),
+    // Loaded here, not at the top: secretary-away.ts builds on this module.
+    Promise.all([import("./secretary-away"), zoneFor(scope)])
+      .then(([away, zone]) => away.cleanAway(scope, now, zone))
+      .catch((e) => {
+        console.error("sec away clean-up failed", e instanceof Error ? e.name : "error");
+        return 0;
+      }),
+  ]);
   const agenda = await agendaFor(scope, now, { actor: "cron", via: "cron" });
-  return { purged, closed: agenda.closed, agenda };
+  return { purged, closed: agenda.closed, agenda, awayCleaned };
 }
 
 /**
@@ -985,6 +1009,11 @@ const TOOL_ERRORS: Record<SecError, string> = {
   remind_past: "That reminder time has already passed. Ask the owner for a later time. Nothing was saved.",
   bad_phone: "Not a WhatsApp number in the international form: the country code first, e.g. 9665….",
   not_done: "That item is not done, so there is nothing to reopen.",
+  // The away list's limits are AWAY_AHEAD_DAYS and AWAY_MAX in src/lib/secretary-away.ts (rule 482 checks these words).
+  not_contact: "That name is the owner or an agent, not a contact: only a contact can be marked away. Nothing was saved.",
+  away_range: "The last away day must be today or later, and at most 366 days ahead. Nothing was saved.",
+  away_limit: "This brand already has 200 away contacts, the maximum, ended ones included. Ask the owner to remove ended ones on the My to-dos page first.",
+  bad_request: "The request was not understood. Nothing was saved.",
 };
 /** A friendly sentence for a tool answer. */
 export const toolError = (e: SecFail) => `Not done: ${TOOL_ERRORS[e.error] ?? e.error}${e.field ? ` (field: ${e.field})` : ""}`;

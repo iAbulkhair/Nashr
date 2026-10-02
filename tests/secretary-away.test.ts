@@ -1,18 +1,24 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { claudeOn } from "./helpers/model";
-import { json, newUser, params, signIn } from "./helpers/session";
+import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { db } from "@/lib/db";
 import { type User } from "@/lib/auth";
+import { AGENT_IDS } from "@/lib/agents";
+import { appDict } from "@/lib/app-i18n";
 import { saveBrand, type Brand } from "@/lib/brand";
-import { saveBrands, scopeFor } from "@/lib/brands";
+import { saveBrands, scopeFor, setActiveBrand } from "@/lib/brands";
 import { wipeAccount } from "@/lib/account";
 import { runTool, system } from "@/lib/chat";
-import { SEC_KEYS, agendaFor, calFor, changeItem, createItem, getItem, type Who } from "@/lib/secretary";
+import {
+  OWNER_ALIASES, SEC_KEYS, SEC_READS_PER_HOUR, SEC_WRITES_PER_HOUR, agendaFor, calFor, changeItem, createItem, getItem, secretaryDaily, toolError, type Who,
+} from "@/lib/secretary";
 import { buildWrap } from "@/lib/secretary-evening";
-import { partyKey, zoneDay, type SecItem } from "@/lib/secretary-agenda";
+import { addDays, partyKey, zoneDay, type SecItem } from "@/lib/secretary-agenda";
 import { workCalendar, type SecCalendar } from "@/lib/secretary-calendar";
+import { AWAY_AHEAD_DAYS, AWAY_KEEP_DAYS, AWAY_MAX, cleanAway, endAway, listAway, setAway } from "@/lib/secretary-away";
 import * as itemRoute from "@/app/api/secretary/[id]/route";
 import * as listRoute from "@/app/api/secretary/route";
+import * as awayRoute from "@/app/api/secretary/away/route";
 
 /**
  * Rules 478-487 in docs/system/tests.md: Reem phase 3 A1, the store side of the brand's work calendar and of contacts
@@ -329,5 +335,304 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
       vi.doUnmock("@/lib/model");
       vi.unstubAllEnvs();
     }
+  });
+});
+
+// Rules 481-483: the away list (`sec:away:{scope}`, src/lib/secretary-away.ts) and its route. "Now" is Tuesday 6 October
+// 2026, 12:00 in Riyadh, unless a case says otherwise: today 2026-10-06, yesterday 2026-10-05.
+const NOW = local("2026-10-06T12:00");
+const PERSON: Who = { actor: "owner", via: "web", login: "owner-login@test.example" };
+const awayKeys = async (scope: string) => Object.keys(await db.hgetall(SEC_KEYS.away(scope))).sort();
+const auditLines = async (scope: string) => (await db.lrange(SEC_KEYS.audit(scope), 0, -1)).map((x) => JSON.parse(x)).reverse();
+const awayGet = () => awayRoute.GET();
+const awayPut = (body: unknown) => awayRoute.PUT(json("/api/secretary/away", "PUT", body));
+const awayDel = (body: unknown) => awayRoute.DELETE(json("/api/secretary/away", "DELETE", body));
+
+describe("rule 481: an away contact is matched by partyKey, and only a contact can be away", () => {
+  it("partyKey maps «أحمد», «احمد», «إحمد», «أحمد» with a trailing space and «أح­مد» with a soft hyphen to one key, and setAway keeps one field for them", async () => {
+    const forms = ["احمد", "إحمد", "أح­مد", "أحمد", "أحمد "];
+    expect(new Set(forms.map((f) => partyKey(f)))).toEqual(new Set(["احمد"]));
+    const u = await owner("aw481a");
+    for (const label of forms) expect((await setAway(u.email, { label, until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh")).ok, label).toBe(true);
+    expect(await awayKeys(u.email)).toEqual(["احمد"]);
+    // The last write wins, its label cleaned the way an item's party is.
+    expect(await db.hgetall(SEC_KEYS.away(u.email))).toEqual({ احمد: { label: "أحمد", until: "2026-10-08", by: PERSON.login, via: "web", at: iso(NOW) } });
+  });
+
+  it("refuses the owner and every agent as not_contact, however they are written: «ＤＡＮＡ», 'owner', «أنا», 'reem', 'Me', «انا»; nothing is written", async () => {
+    const u = await owner("aw481b");
+    for (const label of ["ＤＡＮＡ", "owner", "أنا", "reem", "Me", " YOU ", "انا", ...AGENT_IDS, ...OWNER_ALIASES]) {
+      expect(await setAway(u.email, { label, until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh"), label).toMatchObject({ ok: false, error: "not_contact", field: "label", status: 400 });
+    }
+    expect(await awayKeys(u.email)).toEqual([]);
+    expect(await auditLines(u.email)).toEqual([]);
+    // A contact whose name holds an agent's is a contact.
+    expect((await setAway(u.email, { label: "Dana Khalid", until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh")).ok).toBe(true);
+  });
+
+  it("a key of 81 characters is too_long (also when NFKC makes a short label long); an empty, invisible or non-string label is bad_request", async () => {
+    const u = await owner("aw481c");
+    const put = (label: unknown) => setAway(u.email, { label, until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh");
+    expect(await put("a".repeat(81))).toMatchObject({ ok: false, error: "too_long", field: "label", status: 400 });
+    // Five characters, each «صلى الله عليه وسلم» once folded: a 90-character key.
+    expect(partyKey("ﷺ".repeat(5))).toBeNull();
+    expect(await put("ﷺ".repeat(5))).toMatchObject({ ok: false, error: "too_long", field: "label" });
+    for (const label of ["", "   ", "­​", 42, null, undefined, ["Sara"]]) {
+      expect(await put(label), JSON.stringify(label)).toMatchObject({ ok: false, error: "bad_request", field: "label", status: 400 });
+    }
+    expect(await awayKeys(u.email)).toEqual([]);
+    expect((await put("a".repeat(80))).ok).toBe(true);
+  });
+
+  it("an item owed by «احمد» shows as away when the entry is «أحمد»", async () => {
+    const u = await owner("aw481d");
+    await at(local("2026-10-01T09:00"), () => make(u, { title: "Quote", direction: "they_owe", owedBy: "احمد", dueAt: "2026-10-05T10:00" }));
+    expect((await agendaFor(u.email, NOW)).buckets.overdue.map((e) => e.item.title)).toEqual(["Quote"]);
+    expect((await setAway(u.email, { label: "أحمد", until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh")).ok).toBe(true);
+    const e = (await agendaFor(u.email, NOW)).buckets.waiting.find((x) => x.item.title === "Quote");
+    // Back after Thursday 8 October; Friday and Saturday are the Riyadh weekend: chased Sunday 11 October at 08:00.
+    expect(e?.moment).toMatchObject({ why: "away", until: "2026-10-08", at: local("2026-10-11T08:00") });
+  });
+});
+
+describe("rule 482: the away list's limits: dates, the 200-field cap, the note, ending, the clean-up and the audit", () => {
+  it(`until is today to today + ${AWAY_AHEAD_DAYS} days in the brand's zone: yesterday and today + 367 are away_range, a day that is not one is bad_date`, async () => {
+    expect([AWAY_MAX, AWAY_AHEAD_DAYS, AWAY_KEEP_DAYS]).toEqual([200, 366, 30]);
+    const u = await owner("aw482a");
+    const put = (until: unknown, now = NOW, zone: "Asia/Riyadh" | "Asia/Dubai" = "Asia/Riyadh") => setAway(u.email, { label: "Sara", until }, PERSON, now, zone);
+    expect(await put("2026-10-05")).toMatchObject({ ok: false, error: "away_range", field: "until", status: 400 });
+    expect(await put(addDays("2026-10-06", 367))).toMatchObject({ ok: false, error: "away_range", field: "until" });
+    for (const bad of ["2026-02-30", "8 Oct", "2026-10-08T10:00", 20261008, undefined]) expect(await put(bad), String(bad)).toMatchObject({ ok: false, error: "bad_date", field: "until" });
+    expect(await awayKeys(u.email)).toEqual([]);
+    expect(await put("2026-10-06")).toMatchObject({ ok: true, entry: { until: "2026-10-06" } });
+    expect(await put(addDays("2026-10-06", 366))).toMatchObject({ ok: true, entry: { until: "2027-10-07" } });
+    // 20:30 UTC is 23:30 in Riyadh and already 00:30 on Wednesday 7 October in Dubai: "today" is the brand's.
+    const late = Date.parse("2026-10-06T20:30:00Z");
+    expect((await put("2026-10-06", late, "Asia/Riyadh")).ok).toBe(true);
+    expect(await put("2026-10-06", late, "Asia/Dubai")).toMatchObject({ ok: false, error: "away_range" });
+  });
+
+  it("the 201st field is away_limit even when earlier entries have ended; replacing a stored contact adds no field", async () => {
+    const u = await owner("aw482b");
+    // 200 fields, three quarters of them ended.
+    await Promise.all(Array.from({ length: AWAY_MAX }, (_, i) => db.hset(SEC_KEYS.away(u.email), `c${i}`, awayEntry(`C${i}`, i < 150 ? "2026-09-20" : "2026-10-20"))));
+    expect(await setAway(u.email, { label: "New contact", until: "2026-10-09" }, PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "away_limit", status: 409 });
+    expect(await awayKeys(u.email)).toHaveLength(AWAY_MAX);
+    expect(await setAway(u.email, { label: "c3", until: "2026-10-09" }, PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: true, entry: { label: "c3", until: "2026-10-09" } });
+    expect(await awayKeys(u.email)).toHaveLength(AWAY_MAX);
+  });
+
+  it("two concurrent PUTs at 199 fields leave 200: one is saved, the other is away_limit", async () => {
+    await at(NOW, async () => {
+      const u = await owner("aw482c");
+      await signIn(u.email);
+      await Promise.all(Array.from({ length: AWAY_MAX - 1 }, (_, i) => db.hset(SEC_KEYS.away(u.email), `c${i}`, awayEntry(`C${i}`, "2026-10-20"))));
+      const rs = await Promise.all([awayPut({ label: "Sara", until: "2026-10-09" }), awayPut({ label: "Huda", until: "2026-10-09" })]);
+      expect(rs.map((r) => r.status).sort()).toEqual([200, 409]);
+      expect(await awayKeys(u.email)).toHaveLength(AWAY_MAX);
+    });
+  });
+
+  it("the note goes through cleanLine and is at most 200 characters after cleaning", async () => {
+    const u = await owner("aw482d");
+    const put = (note: unknown) => setAway(u.email, { label: "Sara", until: "2026-10-09", note }, PERSON, NOW, "Asia/Riyadh");
+    expect(await put("  Hajj‮ trip \n back\tSunday  ")).toMatchObject({ ok: true, entry: { note: "Hajj trip back Sunday" } });
+    expect((await db.hgetall<{ note?: string }>(SEC_KEYS.away(u.email))).sara.note).toBe("Hajj trip back Sunday");
+    expect(await put("x".repeat(201))).toMatchObject({ ok: false, error: "too_long", field: "note", status: 400 });
+    expect(await put("x".repeat(200) + "​​")).toMatchObject({ ok: true, entry: { note: "x".repeat(200) } });
+    expect(await put(42)).toMatchObject({ ok: false, error: "bad_text", field: "note" });
+    // A blank note, or none, is no note.
+    const blank = await put("  \n ");
+    expect(blank.ok && blank.entry).not.toHaveProperty("note");
+    expect((await db.hgetall<object>(SEC_KEYS.away(u.email))).sara).not.toHaveProperty("note");
+  });
+
+  it("ending keeps the field with until set to yesterday (the back alert reads it); ending one that has already ended removes it (ruling R19); an unknown name is not_found", async () => {
+    const u = await owner("aw482e");
+    await setAway(u.email, { label: "Sara", until: "2026-10-20", note: "Leave" }, PERSON, NOW, "Asia/Riyadh");
+    const ended = await endAway(u.email, " SARA ", PERSON, NOW, "Asia/Riyadh");
+    expect(ended).toMatchObject({ ok: true, removed: false, entry: { label: "Sara", until: "2026-10-05", note: "Leave" } });
+    expect(await db.hgetall(SEC_KEYS.away(u.email))).toEqual({ sara: { label: "Sara", until: "2026-10-05", note: "Leave", by: PERSON.login, via: "web", at: iso(NOW) } });
+    expect((await calFor(u.email, NOW)).away.sara).toEqual({ label: "Sara", until: "2026-10-05", endedAt: "2026-10-05" });
+    // Today was the last away day: ending it now still makes yesterday the last one.
+    await setAway(u.email, { label: "Huda", until: "2026-10-06" }, PERSON, NOW, "Asia/Riyadh");
+    expect(await endAway(u.email, "Huda", PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: true, removed: false, entry: { until: "2026-10-05" } });
+    // Ending an entry that has already ended frees its field for the cap.
+    expect(await endAway(u.email, "Sara", PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: true, removed: true });
+    expect(await awayKeys(u.email)).toEqual(["huda"]);
+    expect(await endAway(u.email, "Nobody", PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "not_found", status: 404 });
+    expect(await endAway(u.email, 42, PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "bad_request", field: "label" });
+    expect(await endAway(u.email, "a".repeat(81), PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "too_long", field: "label" });
+  });
+
+  it(`cleanAway removes only fields whose until is more than ${AWAY_KEEP_DAYS} days past (and values that are not entries), all in one round of HDEL`, async () => {
+    const u = await owner("aw482f");
+    const key = SEC_KEYS.away(u.email);
+    await Promise.all([
+      db.hset(key, "old31", awayEntry("Old 31", "2026-09-05")),
+      db.hset(key, "old30", awayEntry("Old 30", "2026-09-06")),
+      db.hset(key, "ended8", awayEntry("Ended 8", "2026-09-28")),
+      db.hset(key, "today", awayEntry("Today", "2026-10-06")),
+      db.hset(key, "later", awayEntry("Later", "2026-11-01")),
+      db.hset(key, "junk", "{not json"),
+    ]);
+    // Every HDEL is sent before the first one answers: one round, not one after the other.
+    let open!: () => void;
+    const gate = new Promise<void>((r) => { open = r; });
+    const real = db.hdel.bind(db);
+    const hdel = vi.spyOn(db, "hdel").mockImplementation(async (k, f) => { await gate; return real(k, f); });
+    const run = cleanAway(u.email, NOW, "Asia/Riyadh");
+    await vi.waitFor(() => expect(hdel).toHaveBeenCalledTimes(2));
+    open();
+    expect(await run).toBe(2);
+    expect(hdel.mock.calls.map((c) => c[1]).sort()).toEqual(["junk", "old31"]);
+    expect(await awayKeys(u.email)).toEqual(["ended8", "later", "old30", "today"]);
+    expect((await auditLines(u.email)).map((l) => [l.action, l.actor, l.diff])).toEqual([["away_clean", "cron", "2 away contact(s) ended over 30 days ago"]]);
+    hdel.mockRestore();
+    // Nothing left to remove: one read, no lock, no audit line.
+    const lock = vi.spyOn(db, "lock");
+    expect(await cleanAway(u.email, NOW, "Asia/Riyadh")).toBe(0);
+    expect(lock).not.toHaveBeenCalled();
+    expect(await auditLines(u.email)).toHaveLength(1);
+  });
+
+  it("secretaryDaily runs the clean-up next to the purge", async () => {
+    const u = await owner("aw482g");
+    await Promise.all([db.hset(SEC_KEYS.away(u.email), "old", awayEntry("Old", "2026-08-01")), db.hset(SEC_KEYS.away(u.email), "sara", awayEntry("Sara", "2026-10-09"))]);
+    const r = await secretaryDaily(u.email, NOW);
+    expect(r).toMatchObject({ purged: 0, closed: 0, awayCleaned: 1 });
+    expect(await awayKeys(u.email)).toEqual(["sara"]);
+    // A store failure in the clean-up does not stop the daily job (the agenda and the auto-close still run). Fresh
+    // modules: an earlier test resets the registry, and the daily job loads secretary-away.ts (and its `db`) by a dynamic
+    // import, so the spy must sit on the instance that graph uses. The clean-up's read is the job's first HGETALL.
+    vi.resetModules();
+    const fresh = { db: (await import("@/lib/db")).db, daily: (await import("@/lib/secretary")).secretaryDaily };
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(fresh.db, "hgetall").mockRejectedValueOnce(new TypeError("store down"));
+    await db.hset(SEC_KEYS.away(u.email), "old", awayEntry("Old", "2026-08-01"));
+    expect(await fresh.daily(u.email, NOW)).toMatchObject({ awayCleaned: 0, closed: 0 });
+    expect(errors.mock.calls).toContainEqual(["sec away clean-up failed", "TypeError"]);
+    expect(await awayKeys(u.email)).toEqual(["old", "sara"]);
+  });
+
+  it("every write leaves an away or away_end audit line with the login, the label and the date", async () => {
+    const u = await owner("aw482h");
+    await setAway(u.email, { label: "أحمد", until: "2026-10-08", note: "Private note" }, PERSON, NOW, "Asia/Riyadh");
+    await setAway(u.email, { label: "احمد", until: "2026-10-09" }, PERSON, NOW, "Asia/Riyadh");
+    await endAway(u.email, "أحمد", PERSON, NOW, "Asia/Riyadh");
+    await endAway(u.email, "أحمد", PERSON, NOW, "Asia/Riyadh");
+    // Refusals write nothing.
+    await setAway(u.email, { label: "reem", until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh");
+    await endAway(u.email, "Nobody", PERSON, NOW, "Asia/Riyadh");
+    const lines = await auditLines(u.email);
+    expect(lines.map((l) => [l.action, l.actor, l.via, l.login, l.diff])).toEqual([
+      ["away", "owner", "web", PERSON.login, 'label="أحمد"; until=2026-10-08'],
+      ["away", "owner", "web", PERSON.login, 'label="احمد"; until=2026-10-09'],
+      ["away_end", "owner", "web", PERSON.login, 'label="احمد"; until=2026-10-05'],
+      ["away_end", "owner", "web", PERSON.login, 'label="احمد"; removed'],
+    ]);
+    // The note stays out of the audit.
+    expect(JSON.stringify(lines)).not.toContain("Private note");
+  });
+
+  it("the refusals are worded for Reem's tools and the page, with the real limits", () => {
+    const words = (error: "not_contact" | "away_range" | "away_limit") => toolError({ ok: false, error, status: 400 });
+    expect(words("not_contact")).toMatch(/owner or an agent/);
+    expect(words("away_range")).toContain(`${AWAY_AHEAD_DAYS} days`);
+    expect(words("away_limit")).toContain(String(AWAY_MAX));
+    for (const lang of ["ar", "en"] as const) {
+      for (const k of ["not_contact", "away_range", "away_limit", "too_long", "bad_date"]) expect(appDict[lang].todo.errors[k], `${lang}.${k}`).toBeTruthy();
+    }
+    expect(appDict.ar.todo.errors.away_limit).toContain(String(AWAY_MAX));
+    expect(appDict.en.todo.errors.away_limit).toContain(String(AWAY_MAX));
+  });
+});
+
+describe("rule 483: the away route (GET, PUT, DELETE /api/secretary/away): a session, the role, the rate limit, the caller's scope", () => {
+  it("refuses an anonymous caller with 401 on every method, before anything is read", async () => {
+    signOut();
+    const hashes = vi.spyOn(db, "hgetall");
+    expect((await awayGet()).status).toBe(401);
+    expect((await awayPut({ label: "Sara", until: "2026-10-09" })).status).toBe(401);
+    expect((await awayDel({ label: "Sara" })).status).toBe(401);
+    expect(hashes).not.toHaveBeenCalled();
+  });
+
+  it("a member reads, marks away and ends; the entry and the audit name the member; only label, until and note are read from the body", async () => {
+    await at(NOW, async () => {
+      const o = await owner("aw483a");
+      const m = await newMember(o, "member", "aw483m");
+      await signIn(m.email);
+      const r = await awayPut({ label: " Sara ", until: "2026-10-09", note: "Leave", by: "x@evil.example", via: "chat", at: "1999-01-01", scope: "other@test.example", email: "other@test.example", ended: true });
+      expect(r.status).toBe(200);
+      const entry = { label: "Sara", until: "2026-10-09", note: "Leave", by: m.email, via: "web", at: iso(NOW) };
+      expect((await r.json()).entry).toEqual(entry);
+      expect(await db.hgetall(SEC_KEYS.away(o.email))).toEqual({ sara: entry });
+      expect(await db.hgetall(SEC_KEYS.away("other@test.example"))).toEqual({});
+      expect(await (await awayGet()).json()).toEqual({ ok: true, entries: [{ ...entry, ended: false }] });
+      const d = await awayDel({ label: "sara", until: "2027-01-01" });
+      expect(d.status).toBe(200);
+      expect(await d.json()).toMatchObject({ ok: true, removed: false, entry: { label: "Sara", until: "2026-10-05" } });
+      expect((await (await awayGet()).json()).entries).toEqual([{ ...entry, until: "2026-10-05", ended: true }]);
+      expect((await auditLines(o.email)).map((l) => [l.action, l.login])).toEqual([["away", m.email], ["away_end", m.email]]);
+      // Refusals keep their code and field; a body that is not an object is bad_request.
+      expect(await (await awayPut({ label: "reem", until: "2026-10-09" })).json()).toEqual({ ok: false, error: "not_contact", field: "label" });
+      expect((await awayPut({ label: "Huda", until: "2026-10-05" })).status).toBe(400);
+      expect((await awayDel({ label: "Nobody" })).status).toBe(404);
+      for (const body of ["Sara", ["Sara"], null]) {
+        expect((await awayPut(body)).status, JSON.stringify(body)).toBe(400);
+        expect((await awayDel(body)).status, JSON.stringify(body)).toBe(400);
+      }
+    });
+  });
+
+  it("the rate limits apply: sec:read for GET, sec:write for PUT and DELETE, with nothing changed", async () => {
+    await at(NOW, async () => {
+      const u = await owner("aw483b");
+      await signIn(u.email);
+      await db.hset(SEC_KEYS.away(u.email), "sara", awayEntry("Sara", "2026-10-09"));
+      await db.set(`rate:sec:read:${u.email}`, SEC_READS_PER_HOUR, 3600);
+      expect((await awayGet()).status).toBe(429);
+      await db.set(`rate:sec:write:${u.email}`, SEC_WRITES_PER_HOUR, 3600);
+      expect((await awayPut({ label: "Huda", until: "2026-10-09" })).status).toBe(429);
+      expect((await awayDel({ label: "Sara" })).status).toBe(429);
+      expect(await db.hgetall(SEC_KEYS.away(u.email))).toEqual({ sara: awayEntry("Sara", "2026-10-09") });
+    });
+  });
+
+  it("a PUT in brand A never touches brand B's hash, whatever the body names, and a DELETE in A cannot end B's entry", async () => {
+    await at(NOW, async () => {
+      const u = await owner("aw483c");
+      const b2 = scopeFor(u.email, "b2");
+      await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
+      await saveBrand(b2, { ...BRAND, name: "Two" });
+      await signIn(u.email);
+      await setActiveBrand(u.email, "b2");
+      expect((await awayPut({ label: "Sara", until: "2026-10-09", scope: u.email })).status).toBe(200);
+      expect(await awayKeys(b2)).toEqual(["sara"]);
+      expect(await awayKeys(u.email)).toEqual([]);
+      await setActiveBrand(u.email, "default");
+      expect((await awayDel({ label: "Sara", scope: b2 })).status).toBe(404);
+      expect((await (await awayGet()).json()).entries).toEqual([]);
+      expect((await db.hgetall<{ until: string }>(SEC_KEYS.away(b2))).sara.until).toBe("2026-10-09");
+    });
+  });
+
+  it("GET lists running entries first (soonest back first), then ended ones (latest first) with ended: true; values that are not entries are left out", async () => {
+    await at(NOW, async () => {
+      const u = await owner("aw483d");
+      await signIn(u.email);
+      const key = SEC_KEYS.away(u.email);
+      await Promise.all([
+        db.hset(key, "a", awayEntry("A", "2026-10-20")),
+        db.hset(key, "b", awayEntry("B", "2026-10-06")),
+        db.hset(key, "c", awayEntry("C", "2026-10-01")),
+        db.hset(key, "d", JSON.stringify(awayEntry("D", "2026-09-10"))),
+        db.hset(key, "junk", { label: "X", until: "soon" }),
+      ]);
+      const j = await (await awayGet()).json();
+      expect(j.entries.map((e: { label: string; ended: boolean }) => [e.label, e.ended])).toEqual([["B", false], ["A", false], ["C", true], ["D", true]]);
+      expect(await listAway(u.email, NOW, "Asia/Riyadh")).toEqual(j.entries);
+    });
   });
 });
