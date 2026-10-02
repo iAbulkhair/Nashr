@@ -19,8 +19,10 @@ import WorkingDaysPanel from "@/components/app/WorkingDaysPanel";
 export const dynamic = "force-dynamic";
 
 /**
- * My to-dos (Reem's list) for the active brand, rendered on the server: every date is formatted here in the brand's
- * zone and handed to the client as text, so the browser never formats a date and nothing differs at hydration. A
+ * My to-dos (Reem's list) for the active brand, rendered on the server: every date of the list is formatted here in the
+ * brand's zone and handed to the client as text, so nothing in the list differs at hydration. The Away and Working days
+ * panels get local days ("YYYY-MM-DD") instead and write them in the browser through `dates.ts` (a save brings new
+ * ones back), each in an element marked `suppressHydrationWarning` for the wording ICU builds differ on. A
  * reminder reads "at {time}" only while timed reminders run (`timed`); otherwise it says it comes with the next
  * morning brief, at the brief's local time in the brand's zone (`briefClock`). A they-owe item with a contact number
  * gets a wa.me link with a fixed message: nothing is sent. Templates that take a title or a name are filled in one pass

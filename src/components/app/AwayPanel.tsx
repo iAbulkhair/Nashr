@@ -1,10 +1,9 @@
 "use client";
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { AwayEntry } from "@/lib/secretary-away";
-import { formatWhen } from "@/lib/secretary-agenda";
 import { fill } from "@/lib/fill";
+import { localDay, useOneWrite } from "./useOneWrite";
 
 /** One contact on the away list as GET /api/secretary/away gives it: `ended` once the last away day is before today. */
 export type AwayRow = AwayEntry & { ended: boolean };
@@ -23,19 +22,15 @@ export function awayCall(action: "end" | "remove", label: string): { method: "DE
  * suggests the contacts of the open items already on the page (`labels`); a row's "Away until…" remounts this panel with
  * the name filled in (`prefill`) and moves to the form. `today` and `last` are the brand's local days the last away day
  * may fall between. Every write needs `todo.write` (`canEdit`, every member: the route refuses the same), runs one at a
- * time (a second click while one is in flight sends nothing), then refreshes the server render, so the list and the
- * to-dos it holds back show what is stored.
+ * time (`useOneWrite`: a second click while one is in flight sends nothing), then refreshes the server render, so the
+ * list and the to-dos it holds back show what is stored.
  */
 export default function AwayPanel({ t, lang, entries, labels, canEdit, today, last, prefill }: {
   t: AppDict; lang: "ar" | "en"; entries: AwayRow[]; labels: string[]; canEdit: boolean; today: string; last: string; prefill?: string;
 }) {
   const T = t.todo.away;
-  const router = useRouter();
   const [form, setForm] = useState({ label: prefill ?? "", until: "", note: "" });
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  // Set before the request and cleared after it: a double click cannot send a second one, even before React re-renders.
-  const inflight = useRef(false);
+  const { busy, error, send } = useOneWrite(t, { not_found: T.notFound });
   const formRef = useRef<HTMLFormElement>(null);
   const dateRef = useRef<HTMLInputElement>(null);
 
@@ -46,38 +41,13 @@ export default function AwayPanel({ t, lang, entries, labels, canEdit, today, la
     dateRef.current?.focus({ preventScroll: true });
   }, [prefill]);
 
-  // A local day "YYYY-MM-DD" as the to-do page writes dates (Latin digits), with the year when it is not this one.
-  const day = (d: string) => formatWhen(`${d}T09:00:00.000Z`, true, lang, Date.parse(`${today}T09:00:00.000Z`));
-  const errText = (status: number, code: unknown) =>
-    status === 429 ? t.handoff.errors.slow_down : (typeof code === "string" && t.todo.errors[code]) || t.todo.errors.generic;
-
-  async function send(key: string, call: { method: "PUT" | "DELETE"; body: Record<string, unknown> }): Promise<boolean> {
-    if (inflight.current) return false;
-    inflight.current = true;
-    setBusy(key);
-    setError(null);
-    try {
-      const r = await fetch("/api/secretary/away", { method: call.method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(call.body) });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.ok) {
-        setError(errText(r.status, j.error));
-        return false;
-      }
-      router.refresh();
-      return true;
-    } catch {
-      setError(t.todo.errors.generic);
-      return false;
-    } finally {
-      inflight.current = false;
-      setBusy(null);
-    }
-  }
+  const day = localDay(lang, today);
+  const write = (key: string, call: { method: "PUT" | "DELETE"; body: Record<string, unknown> }) => send(key, "/api/secretary/away", call.method, call.body);
   async function save(e: React.FormEvent) {
     e.preventDefault();
     const body: Record<string, unknown> = { label: form.label, until: form.until };
     if (form.note.trim()) body.note = form.note;
-    if (await send("save", { method: "PUT", body })) setForm({ label: "", until: "", note: "" });
+    if (await write("save", { method: "PUT", body })) setForm({ label: "", until: "", note: "" });
   }
 
   return (
@@ -96,9 +66,9 @@ export default function AwayPanel({ t, lang, entries, labels, canEdit, today, la
                 {e.note && <p className="mt-0.5 break-words text-xs text-ink/60" dir="auto">{e.note}</p>}
               </div>
               {canEdit && (e.ended ? (
-                <button disabled={!!busy} onClick={() => send(`remove:${e.label}`, awayCall("remove", e.label))} className="btn btn-secondary btn-xs">{T.removeEntry}</button>
+                <button disabled={!!busy} onClick={() => write(`remove:${e.label}`, awayCall("remove", e.label))} className="btn btn-secondary btn-xs">{T.removeEntry}</button>
               ) : (
-                <button disabled={!!busy} onClick={() => send(`end:${e.label}`, awayCall("end", e.label))} className="btn btn-secondary btn-xs">{T.endNow}</button>
+                <button disabled={!!busy} onClick={() => write(`end:${e.label}`, awayCall("end", e.label))} className="btn btn-secondary btn-xs">{T.endNow}</button>
               ))}
             </li>
           ))}
@@ -122,7 +92,7 @@ export default function AwayPanel({ t, lang, entries, labels, canEdit, today, la
           </div>
         </form>
       )}
-      {error && <p role="alert" className="mt-2 text-sm text-sadu">{error}</p>}
+      {error && <p role="alert" className="mt-2 text-sm text-sadu">{error.text}</p>}
     </section>
   );
 }

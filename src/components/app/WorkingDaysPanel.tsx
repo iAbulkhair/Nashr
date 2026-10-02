@@ -1,11 +1,11 @@
 "use client";
-import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { CalendarView, EidDay, SecCalendar } from "@/lib/secretary-calendar";
-import { DEFAULT_RAMADAN_HOURS, addDays, formatWhen, zoneTimeLabel, type QuietWhy } from "@/lib/secretary-agenda";
+import { DEFAULT_RAMADAN_HOURS, addDays, zoneTimeLabel, type QuietWhy } from "@/lib/secretary-agenda";
 import { fill } from "@/lib/fill";
 import ReadOnlyNote from "./ReadOnlyNote";
+import { localDay, useOneWrite } from "./useOneWrite";
 
 /** The settings a save sends: the whole object (PUT /api/secretary/calendar replaces it); `v` and the stamps are the server's. */
 export type CalBody = Pick<SecCalendar, "weekend" | "ramadanHours" | "hijriFix" | "holidays">;
@@ -73,14 +73,16 @@ const DAY = /^(\d{4})-(\d{2})-(\d{2})$/, MD = /^(\d{2})-(\d{2})$/, H_MD = /^H-(\
 /**
  * «أيام العمل» / "Working days" on My to-dos (spec §1.5): what decides when Reem suggests chasing someone. The weekend
  * (the country's default marked, and a hint to add Friday for a brand in Sharjah), Ramadan's chasing hours (at most two
- * windows), this and next Hijri year's Eid with "a day earlier / later" (`hijriFix`), and the days off of the next 12
+ * windows), this and next Hijri year's Eid with its days off and "a day earlier / later" (`hijriFix`; a Saudi brand is
+ * told why Eid al-Fitr's days off may not move, ruling R26), and the days off of the next 12
  * months with a switch each, the days the owner added or turned off, and forms to add a day for this year only or every
  * year. Default days are labelled expected: the official announcement decides. Every date comes from the server's
  * calendar (`calendarView`); nothing here computes a holiday.
  *
  * Admins and the owner edit (`canEdit` = `brand.write`); a member sees it read-only, inputs disabled and no buttons (the
  * route refuses the same). A save sends the whole settings object with one change (PUT /api/secretary/calendar), one at
- * a time, then shows what the server answered and refreshes the list, whose chase times follow the calendar.
+ * a time (`useOneWrite`), then shows what the server answered and refreshes the list, whose chase times follow the
+ * calendar.
  */
 export default function WorkingDaysPanel({ t, lang, calendar, effective, upcoming, eids, canEdit, cityHint, today }: {
   t: AppDict; lang: "ar" | "en"; calendar: CalendarView["calendar"]; effective: CalendarView["effective"]; upcoming: CalendarView["upcoming"]; eids: EidDay[];
@@ -91,19 +93,17 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
   today: string;
 }) {
   const C = t.todo.cal;
-  const router = useRouter();
   const [v, setV] = useState<CalendarView>({ calendar, effective, upcoming, eids });
   const [days, setDays] = useState<number[]>(effective.weekend);
   const [hours, setHours] = useState<Window[]>(effective.ramadanHours);
   const [once, setOnce] = useState("");
   const [yearly, setYearly] = useState<{ kind: "greg" | "hijri"; month: number; day: number }>({ kind: "greg", month: 1, day: 1 });
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<{ key: string; text: string } | null>(null);
-  const inflight = useRef(false);
+  const { busy, error, send } = useOneWrite(t);
 
-  const day = (d: string) => formatWhen(`${d}T09:00:00.000Z`, true, lang, Date.parse(`${today}T09:00:00.000Z`));
+  const day = localDay(lang, today);
   const dayNames = (ds: readonly number[]) => (ds.length ? ds.map((d) => C.weekdays[d]).join(C.sep) : C.noWeekend);
-  const nameOf = (why: QuietWhy) => why.name?.[lang] ?? C.kinds[why.kind];
+  // Every Eid and holiday carries its own name from the server; only an added day or a day in lieu of no name falls back.
+  const nameOf = (why: QuietWhy) => why.name?.[lang] ?? (why.kind === "added" ? C.kinds.added : why.kind === "weekend" ? C.kinds.weekend : C.kinds.holiday);
   /** A holiday value as the owner reads it: a date, or a day and month with "every year". */
   const valueText = (value: string) => {
     let m: RegExpExecArray | null;
@@ -113,34 +113,14 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
     if ((m = H_YMD.exec(value))) return fill(C.hijriOnce, { day: `${+m[3]} ${C.hijriMonths[+m[2] - 1] ?? m[2]}`, year: m[1] });
     return value;
   };
-  const errText = (status: number, code: unknown) =>
-    status === 429 ? t.handoff.errors.slow_down : (typeof code === "string" && t.todo.errors[code]) || t.todo.errors.generic;
-
+  /** Save the whole settings object, then show what the server answered (the PUT answers GET's view). */
   async function save(key: string, body: CalBody): Promise<boolean> {
-    if (inflight.current) return false;
-    inflight.current = true;
-    setBusy(key);
-    setError(null);
-    try {
-      const r = await fetch("/api/secretary/calendar", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.ok) {
-        setError({ key, text: errText(r.status, j.error) });
-        return false;
-      }
-      const next: CalendarView = { calendar: j.calendar, effective: j.effective, upcoming: j.upcoming, eids: j.eids };
-      setV(next);
-      setDays(next.effective.weekend);
-      setHours(next.effective.ramadanHours);
-      router.refresh();
-      return true;
-    } catch {
-      setError({ key, text: t.todo.errors.generic });
-      return false;
-    } finally {
-      inflight.current = false;
-      setBusy(null);
-    }
+    const j = (await send(key, "/api/secretary/calendar", "PUT", body)) as (CalendarView & { ok: true }) | null;
+    if (!j) return false;
+    setV({ calendar: j.calendar, effective: j.effective, upcoming: j.upcoming, eids: j.eids });
+    setDays(j.effective.weekend);
+    setHours(j.effective.ramadanHours);
+    return true;
   }
   const errorOf = (key: string) => error?.key === key && <p role="alert" className="mt-2 text-sm text-sadu">{error.text}</p>;
 
@@ -210,6 +190,7 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
       <div className="mt-6">
         <h3 className="flex flex-wrap items-center gap-2 text-sm font-semibold">{C.eid} <span className="badge badge-accent">{C.expected}</span></h3>
         <p className="mt-1 text-xs text-ink/60">{C.eidSub}</p>
+        {eff.country === "SA" && <p className="mt-1 text-xs text-sadu-deep">{C.eidNoteSA}</p>}
         {years.map((y) => (
           <div key={y} className="mt-3">
             <p className="tnum text-xs font-semibold text-ink/70">{fill(C.eidYear, { year: String(y) })}</p>
@@ -217,10 +198,13 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
               {v.eids.filter((e) => e.year === y).map((e) => (
                 <li key={e.field} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                   <span className="min-w-0">
-                    <span className="font-medium">{e.kind === "eid_fitr" ? C.fitr : C.adha}</span>
+                    <span className="font-medium">{e.name[lang]}</span>
                     {" · "}
                     <span suppressHydrationWarning>{fill(C.eidDay, { date: day(e.day) })}</span>
                     {e.start !== e.uq && <span className="text-xs text-ink/50" suppressHydrationWarning> ({fill(C.eidMoved, { date: day(e.kind === "eid_fitr" ? e.uq : addDays(e.uq, 9)) })})</span>}
+                    <span className="block text-xs text-ink/60" suppressHydrationWarning>
+                      {!e.off ? C.eidOffNone : e.off.first === e.off.last ? fill(C.eidOffOne, { day: day(e.off.first) }) : fill(C.eidOff, { from: day(e.off.first), to: day(e.off.last) })}
+                    </span>
                   </span>
                   {canEdit && (e.earlier || e.later) && (
                     <span className="flex flex-wrap gap-2">

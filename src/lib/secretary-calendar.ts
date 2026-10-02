@@ -39,8 +39,8 @@ const ZONE_COUNTRY: Record<Zone, Country> = { "Asia/Riyadh": "SA", "Asia/Kuwait"
 export const countryOf = (z: Zone): Country => ZONE_COUNTRY[z];
 
 type Name = { ar: string; en: string };
-/** A day of the effective Hijri calendar: month (1 Muharram … 12 Dhu al-Hijjah) and day, then `after` days later. */
-type HijriPoint = { m: number; d: number; after?: number };
+/** A day of the effective Hijri calendar: month (1 Muharram … 12 Dhu al-Hijjah) and day. */
+type HijriPoint = { m: number; d: number };
 /**
  * Which days of a holiday earn a day in lieu, in the words of each country's law. Only days on the brand's own weekend
  * count: a holiday on a day the brand works was not lost.
@@ -52,7 +52,7 @@ type HijriPoint = { m: number; d: number; after?: number };
  */
 type Trigger = "weekend" | "friday" | "eid_day_friday" | "weekend_once" | "none";
 /** An Eid: from `from` to `to` (both included, same Hijri year), or `days` calendar days from `from`. */
-type EidRule = { from: HijriPoint; to?: HijriPoint; days?: number; comp: Trigger };
+type EidRule = { from: HijriPoint | typeof AFTER_29_RAMADAN; to?: HijriPoint; days?: number; comp: Trigger };
 /** Any other official holiday: Gregorian "MM-DD" days, Hijri "MM-DD" days, or the n-th weekday of a month. Several days are one occasion. */
 type HolidayRule = { id: string; name: Name; greg?: string[]; hijri?: string[]; nth?: { month: number; weekday: number; n: number }; comp: Trigger };
 type CountryCal = {
@@ -89,8 +89,13 @@ const NAMES = {
   accessionDay: { ar: "يوم تولي السلطان مقاليد الحكم", en: "Accession Day" },
 } as const satisfies Record<string, Name>;
 
-/** The day after 29 Ramadan: 30 Ramadan in a 30-day month, else 1 Shawwal. */
-const AFTER_29_RAMADAN: HijriPoint = { m: 9, d: 29, after: 1 };
+/**
+ * "The day after 29 Ramadan" (Saudi Arabia's Eid al-Fitr; the UAE's, which adds 30 Ramadan when the month has 30 days),
+ * ruling R26: the day before the effective 1 Shawwal when Ramadan, from its Umm al-Qura start to that 1 Shawwal, ran 30
+ * days or more, else that 1 Shawwal. Without a correction it is what it always was (30 Ramadan in a 30-day month, else
+ * 1 Shawwal); with Eid announced a day after a 30-day Umm al-Qura Ramadan, the holiday starts a day later too.
+ */
+const AFTER_29_RAMADAN = "after_29_ramadan" as const;
 
 /** Each country's official private-sector holidays (spec §1.2), as checked against the source in `source`. */
 export const COUNTRY_CAL: Record<Country, CountryCal> = {
@@ -279,6 +284,7 @@ function build(cal: SecCalendar | null, zone: Zone, now: number): Built {
     if (!starts.has(key)) starts.set(key, addDays(day, 1 - h.day));
   }
   // 2. The owner's sighting corrections move a whole month: Ramadan, Shawwal, Dhu al-Hijjah (±1 day, checked on save).
+  const uqStarts = new Map(starts);
   const thisYear = hijriDate(new Date(now), zone).y;
   for (const [y, fix] of Object.entries(cal?.hijriFix ?? {})) {
     if (+y < thisYear) continue; // a past year's correction (ruling R8)
@@ -287,11 +293,23 @@ function build(cal: SecCalendar | null, zone: Zone, now: number): Built {
       if (uq && isDay(v) && Math.abs(daysBetween(uq, v)) <= 1) starts.set(key, v);
     }
   }
+  // No month has 31 days (ruling R26): a Ramadan the corrections stretch past 30 days (Eid a day after a 30-day Umm
+  // al-Qura Ramadan) starts that much later instead, so its days and Ramadan hours stay 30.
+  for (const [key, s] of starts) {
+    const [y, m] = key.split("-").map(Number);
+    const eid = m === 9 ? starts.get(`${y}-10`) : undefined;
+    if (eid && daysBetween(s, eid) > 30) starts.set(key, addDays(eid, -30));
+  }
   const start = (y: number, m: number) => starts.get(`${y}-${m}`);
   const next = (y: number, m: number) => (m === 12 ? start(y + 1, 1) : start(y, m + 1));
   const monthLen = (y: number, m: number) => { const s = start(y, m), n = next(y, m); return s && n ? daysBetween(s, n) : 30; };
   /** A Hijri day of the effective calendar as a local day; a day past the month's end is its last day. */
-  const hDay = (y: number, p: HijriPoint) => { const s = start(y, p.m); return s ? addDays(s, Math.min(p.d, monthLen(y, p.m)) - 1 + (p.after ?? 0)) : undefined; };
+  const hDay = (y: number, p: HijriPoint) => { const s = start(y, p.m); return s ? addDays(s, Math.min(p.d, monthLen(y, p.m)) - 1) : undefined; };
+  /** `AFTER_29_RAMADAN` (ruling R26): counted from Umm al-Qura's Ramadan start, not a corrected one. */
+  const after29 = (y: number) => {
+    const eid = start(y, 10), r = uqStarts.get(`${y}-9`);
+    return eid && r ? (daysBetween(r, eid) >= 30 ? addDays(eid, -1) : eid) : undefined;
+  };
 
   // 3. The effective Hijri date of every day: the latest month start on or before it.
   const months = [...starts.entries()].map(([k, s]) => ({ y: +k.split("-")[0], m: +k.split("-")[1], s })).sort((a, b) => (a.s < b.s ? -1 : a.s > b.s ? 1 : 0));
@@ -309,7 +327,7 @@ function build(cal: SecCalendar | null, zone: Zone, now: number): Built {
   const span = (from: string, to: string) => { const out: string[] = []; for (let d = from; d <= to; d = addDays(d, 1)) out.push(d); return out; };
   for (const y of hijriYears) {
     for (const [rule, kind, eidDay] of [[rules.fitr, "eid_fitr", hDay(y, { m: 10, d: 1 })], [rules.adha, "eid_adha", hDay(y, { m: 12, d: 10 })]] as const) {
-      const from = hDay(y, rule.from);
+      const from = rule.from === AFTER_29_RAMADAN ? after29(y) : hDay(y, rule.from);
       const to = rule.to ? hDay(y, rule.to) : from && addDays(from, (rule.days ?? 1) - 1);
       if (!from || !to || from > to) continue;
       occasions.push({ days: span(from, to), why: { kind, name: kind === "eid_fitr" ? NAMES.fitr : NAMES.adha }, comp: rule.comp, eidDay });
@@ -468,16 +486,28 @@ export function upcomingQuiet(cal: SecCalendar | null, zone: Zone, now: number):
  * when it is not within a day of `uq`, as the calendar ignores it); `day` is the Eid's own day, 1 Shawwal or 10 Dhu
  * al-Hijjah. `earlier` and `later` are the `field` value each button saves (the month a day earlier or later), null when
  * that would be more than a day from Umm al-Qura or the Eid has passed. Saving `uq` itself means "as Umm al-Qura".
+ * `name` is the holiday's own name, and `off` its days off as the days-off list shows them (the brand's weekend left out,
+ * the owner's removals applied, days in lieu apart): first and last, null when none is left. So a button's effect, or
+ * its absence (a Saudi Eid al-Fitr after a 29-day Ramadan, ruling R26), shows on the row.
  */
 export type EidDay = {
-  year: number; kind: "eid_fitr" | "eid_adha"; field: "shawwal1" | "dhulhijja1";
+  year: number; kind: "eid_fitr" | "eid_adha"; field: "shawwal1" | "dhulhijja1"; name: Name;
   uq: string; start: string; day: string; earlier: string | null; later: string | null;
+  off: { first: string; last: string } | null;
 };
 
 /** This Hijri year's and the next one's Eid al-Fitr and Eid al-Adha in `zone` at `now`: the years `hijriFix` accepts. */
 export function eidDays(cal: SecCalendar | null, zone: Zone, now: number): EidDay[] {
   const year = hijriDate(new Date(now), zone).y;
   const today = zoneDay(now, zone);
+  // The calendar covers today-30 … today+400: an Eid outside it (next year's, or this year's long past) is read from the
+  // calendar a year later or earlier, built (and memoised) the same way.
+  const offOf = (kind: EidDay["kind"], day: string): EidDay["off"] => {
+    const shift = daysBetween(today, day) > AHEAD - 10 ? 365 : daysBetween(day, today) > BACK - 10 ? -365 : 0;
+    const { quiet } = workCalendar(cal, zone, now + shift * 864e5);
+    const ds = Object.keys(quiet).filter((d) => quiet[d].kind === kind && Math.abs(daysBetween(d, day)) <= 10).sort();
+    return ds.length ? { first: ds[0], last: ds[ds.length - 1] } : null;
+  };
   const out: EidDay[] = [];
   for (const y of [year, year + 1]) {
     for (const [kind, field] of [["eid_fitr", "shawwal1"], ["eid_adha", "dhulhijja1"]] as const) {
@@ -490,7 +520,7 @@ export function eidDays(cal: SecCalendar | null, zone: Zone, now: number): EidDa
         const to = addDays(start, n);
         return day >= today && Math.abs(daysBetween(uq, to)) <= 1 ? to : null;
       };
-      out.push({ year: y, kind, field, uq, start, day, earlier: move(-1), later: move(1) });
+      out.push({ year: y, kind, field, name: kind === "eid_fitr" ? NAMES.fitr : NAMES.adha, uq, start, day, earlier: move(-1), later: move(1), off: offOf(kind, day) });
     }
   }
   return out;

@@ -17,7 +17,7 @@ import {
 } from "@/lib/secretary";
 import { buildWrap } from "@/lib/secretary-evening";
 import { addDays, partyKey, zoneDay, type SecItem } from "@/lib/secretary-agenda";
-import { eidDays, parseCalendar, upcomingQuiet, workCalendar, type SecCalendar } from "@/lib/secretary-calendar";
+import { COUNTRY_CAL, eidDays, parseCalendar, upcomingQuiet, workCalendar, type SecCalendar } from "@/lib/secretary-calendar";
 import {
   AWAY_AHEAD_DAYS, AWAY_KEEP_DAYS, AWAY_MAX, AWAY_PROPOSAL_TTL_S, cleanAway, decideAwayProposal, endAway, listAway, proposeAway, setAway, type AwayProposal,
 } from "@/lib/secretary-away";
@@ -1277,9 +1277,17 @@ describe("rule 487: the to-do page shows Working days and Away panels, and the r
       // Friday and Saturday are Saudi Arabia's weekend, checked and marked as the default.
       expect(boxes.map((b) => / checked=""/.test(b))).toEqual([false, false, false, false, false, true, true]);
       expect(html).toContain(fillIn(appDict.ar.todo.cal.defaultLine, { country: appDict.ar.todo.cal.countries.SA, days: "الجمعة، السبت" }));
-      // The holidays are the calendar's own names (no copy of them in the page): Founding Day on Monday 22 February 2027.
-      expect(html).toContain("يوم التأسيس");
-      expect(html).toContain("إجازة عيد الفطر");
+      // The holidays are the calendar's own names (COUNTRY_CAL, NAMES), never a copy in the page's dictionary: Founding Day
+      // on Monday 22 February 2027 and the Eid al-Fitr holiday come from the server's data.
+      const founding = COUNTRY_CAL.SA.holidays.find((h) => h.id === "founding_day")!.name.ar;
+      const [fitr, adha] = eidDays(null, "Asia/Riyadh", NOW);
+      for (const name of [founding, adha.name.ar]) {
+        expect(html).toContain(name);
+        expect(JSON.stringify(appDict), name).not.toContain(name);
+      }
+      expect(html).toContain(fitr.name.ar);
+      // The dictionary keeps no Eid name of its own to fall back on: only the weekend, a holiday and an added day.
+      expect(Object.keys(appDict.ar.todo.cal.kinds)).toEqual(["weekend", "holiday", "added"]);
       // This Hijri year's and the next one's Eid, with the buttons that move them a day.
       expect(html).toContain(fillIn(appDict.ar.todo.cal.eidYear, { year: "1448" }));
       expect(html).toContain(fillIn(appDict.ar.todo.cal.eidYear, { year: "1449" }));
@@ -1306,6 +1314,12 @@ describe("rule 487: the to-do page shows Working days and Away panels, and the r
       const boxes = weekendBoxes(html);
       expect(boxes).toHaveLength(7);
       expect(boxes.every((b) => / disabled=""/.test(b))).toBe(true);
+      // Ramadan's hours and every day off's switch are read-only too.
+      const times = [...html.matchAll(/<input[^>]*type="time"[^>]*>/g)].map((m) => m[0]);
+      const switches = [...html.matchAll(/<button[^>]*role="switch"[^>]*>/g)].map((m) => m[0]);
+      expect(times).toHaveLength(2);
+      expect(switches.length).toBeGreaterThan(3);
+      expect([...times, ...switches].filter((x) => !/ disabled=""/.test(x))).toEqual([]);
       expect(html).not.toContain(appDict.ar.todo.cal.eidLater);
       expect(html).not.toContain(appDict.ar.todo.cal.addOnce);
       expect(html).not.toContain(appDict.ar.todo.cal.saveWeekend);
@@ -1376,9 +1390,27 @@ describe("rule 487: the to-do page shows Working days and Away panels, and the r
       // A day later than Umm al-Qura: one more "later" is not allowed; "earlier" goes back to Umm al-Qura, which removes the fix.
       expect(after).toMatchObject({ start: "2027-03-10", day: "2027-03-10", later: null, earlier: "2027-03-09" });
       expect(withEid(moved.ok ? moved.cal : null, after, after.earlier!).hijriFix).toEqual({});
+      // Each Eid carries its days off, as the list below shows them (weekend days left out), and its name from the server.
+      expect(fitr).toMatchObject({ name: { ar: "إجازة عيد الفطر", en: "Eid al-Fitr holiday" }, off: { first: "2027-03-09", last: "2027-03-11" } });
+      expect(days[1].off).toEqual({ first: "2027-05-16", last: "2027-05-18" });
+      // Next year's Eids are past the calendar's 400 days and still have their days off: Eid al-Fitr 1449 is Saturday
+      // 26 February 2028, a Saudi weekend day, so its days off run Sunday to Tuesday; Eid al-Adha's from Arafah, Thursday.
+      expect(days[2]).toMatchObject({ day: "2028-02-26", off: { first: "2028-02-27", last: "2028-02-29" } });
+      expect(days[3]).toMatchObject({ day: "2028-05-05", off: { first: "2028-05-04", last: "2028-05-07" } });
+      // In Saudi Arabia, 1448's 29-day Ramadan: Eid a day later leaves the days off as they were (ruling R26), and the row shows it.
+      expect(after.off).toEqual(fitr.off);
+      // In the UAE the same move adds 3 Shawwal, a Friday the UAE works: the days off end a day later.
+      const ae = eidDays(settings({ hijriFix: { 1448: { shawwal1: "2027-03-10" } } }), "Asia/Dubai", NOW)[0];
+      expect(eidDays(null, "Asia/Dubai", NOW)[0].off).toEqual({ first: "2027-03-09", last: "2027-03-11" });
+      expect(ae.off).toEqual({ first: "2027-03-09", last: "2027-03-12" });
       const o = await owner("pg487e");
       await signIn(o.email);
       expect((await (await calGet()).json()).eids).toEqual(days);
+      // A save answers with the Eids for the new settings: the panel shows them without a second request.
+      const put = await (await calPut({ hijriFix: { 1448: { shawwal1: "2027-03-10" } } })).json();
+      expect(put.ok).toBe(true);
+      expect(put.eids).toEqual(eidDays(put.calendar, "Asia/Riyadh", NOW));
+      expect(put.eids[0]).toMatchObject({ start: "2027-03-10", later: null, earlier: "2027-03-09" });
     });
   });
 
@@ -1412,6 +1444,52 @@ describe("rule 487: the to-do page shows Working days and Away panels, and the r
       // End now ends the absence (DELETE { label }); Remove deletes an ended entry (DELETE { label, remove: true }).
       expect(awayCall("end", "احمد")).toEqual({ method: "DELETE", body: { label: "احمد" } });
       expect(awayCall("remove", "Sara")).toEqual({ method: "DELETE", body: { label: "Sara", remove: true } });
+    });
+  });
+
+  it("ruling R26: Saudi Eid al-Fitr starts the day before the announced Eid when Ramadan ran 30 days, else on it; a 31-day Ramadan starts a day later", async () => {
+    // 15 January 2026, in 1447, whose Umm al-Qura Ramadan has 30 days: 18 February to 19 March, Eid on Friday 20 March.
+    const JAN = local("2026-01-15T12:00");
+    const kind = (c: ReturnType<typeof workCalendar>, d: string) => c.quiet[d]?.kind ?? null;
+    const uq = workCalendar(null, "Asia/Riyadh", JAN);
+    // As before: four days from 30 Ramadan (Thursday 19 March; Friday and Saturday are the weekend), two days in lieu.
+    expect(["2026-03-19", "2026-03-22", "2026-03-23", "2026-03-24"].map((d) => kind(uq, d))).toEqual(["eid_fitr", "eid_fitr", "holiday", "holiday"]);
+    expect(uq.ramadan[0]).toBe("2026-02-18");
+    expect(uq.ramadan.filter((d) => d.startsWith("2026-0"))).toHaveLength(30);
+    // Eid announced a day later (Saturday 21 March): the holiday starts a day later too, Friday 20 March to Monday 23 March.
+    const later = workCalendar(settings({ hijriFix: { 1447: { shawwal1: "2026-03-21" } } }), "Asia/Riyadh", JAN);
+    expect(["2026-03-19", "2026-03-22", "2026-03-23", "2026-03-24", "2026-03-25"].map((d) => kind(later, d))).toEqual([null, "eid_fitr", "eid_fitr", "holiday", "holiday"]);
+    // No month has 31 days: Ramadan starts a day later, 19 February to 20 March.
+    expect(later.ramadan.filter((d) => d.startsWith("2026-0"))).toHaveLength(30);
+    expect(later.ramadan[0]).toBe("2026-02-19");
+    expect(later.ramadan).toContain("2026-03-20");
+    expect(upcomingQuiet(settings({ hijriFix: { 1447: { shawwal1: "2026-03-21" } } }), "Asia/Riyadh", JAN).ramadan).toEqual({ start: "2026-02-19", end: "2026-03-20" });
+    // Eid a day earlier (19 March, a 29-day Ramadan): the holiday starts on Eid, as before.
+    const earlier = workCalendar(settings({ hijriFix: { 1447: { shawwal1: "2026-03-19" } } }), "Asia/Riyadh", JAN);
+    expect(kind(earlier, "2026-03-19")).toBe("eid_fitr");
+    expect(kind(earlier, "2026-03-18")).toBeNull();
+    // The UAE, whose law adds 30 Ramadan when the month has 30 days, follows the same start: 20 March (a Friday it works) when Eid is the 21st.
+    const ae = workCalendar(settings({ hijriFix: { 1447: { shawwal1: "2026-03-21" } } }), "Asia/Dubai", JAN);
+    expect(["2026-03-19", "2026-03-20", "2026-03-23"].map((d) => kind(ae, d))).toEqual([null, "eid_fitr", "eid_fitr"]);
+  });
+
+  it("each Eid row shows its days off, and only a Saudi brand is told why Eid al-Fitr's days off may not move", async () => {
+    await at(NOW, async () => {
+      const C = appDict.ar.todo.cal;
+      const sa = await owner("pg487sa");
+      await signIn(sa.email);
+      const html = await render("ar");
+      expect(html).toContain(C.eidNoteSA);
+      expect(html).toContain(fillIn(C.eidOff, { from: "الثلاثاء 9 مارس 2027", to: "الخميس 11 مارس 2027" }));
+      expect(await render("en")).toContain(appDict.en.todo.cal.eidNoteSA);
+      const ae = await owner("pg487ae", DUBAI_BRAND);
+      await signIn(ae.email);
+      const aeHtml = await render("ar");
+      expect(aeHtml).not.toContain(C.eidNoteSA);
+      expect(aeHtml).toContain(fillIn(C.eidOff, { from: "الثلاثاء 9 مارس 2027", to: "الخميس 11 مارس 2027" }));
+      // The Umm al-Qura date of a moved Eid is written once in parentheses.
+      expect(C.eidMoved).not.toMatch(/[()]/);
+      expect(appDict.en.todo.cal.eidMoved).not.toMatch(/[()]/);
     });
   });
 });
