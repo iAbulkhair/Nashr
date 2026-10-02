@@ -7,7 +7,7 @@ import { getSchedule } from "./schedule";
 import { agentById, isAgentId, type AgentId } from "./agents";
 import type { AgentCharge } from "./credits";
 import { SEC_ALERTS_PER_DAY, SEC_KEYS, agendaFor, backFingerprint, overdueAlertFingerprint } from "./secretary";
-import { compareItems, daysBetween, overdueAlerts, partyKey, partyName, zoneDay, type AwayMap, type SecItem } from "./secretary-agenda";
+import { compareItems, daysBetween, overdueAlerts, partyKey, partyName, zoneDay, type AwayMap, type OverdueAlert, type SecItem } from "./secretary-agenda";
 import type { Zone } from "./zones";
 import { appOrigin } from "./origin";
 
@@ -168,10 +168,11 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
 }
 
 /**
- * How long an alert step's marker lives at least: past the longest window between two of the owner's steps (days 3 to
- * 6). A step counted in working days lives until the day its next step starts (`windowDays`), past any weekend or Eid.
+ * How long an alert step's marker lives: a week at most (spec §7; `wipeAccount` leaves these markers to expire). Every
+ * daily run sets it again while its step still holds, on quiet days too (ruling R15), so a step whose window runs over
+ * a weekend or Eid al-Adha is never sent twice.
  */
-const ALERT_TTL_DAYS = 5;
+const ALERT_TTL_DAYS = 7;
 /** An absence that ended this many days ago or less is named on the item's next alert; its marker lives as long. */
 const BACK_DAYS = 7;
 
@@ -190,38 +191,45 @@ function endedAbsence(it: SecItem, away: AwayMap, today: string, zone: Zone): st
 
 /**
  * One alert per item that fell behind, spaced, then silence (`overdueAlerts`, spec §2.3): the owner's own overdue items
- * on the local day they fell behind and the 1st, 3rd and 7th day after; what someone else owes from its chase moment
- * (overdue or to chase, dated or not, and on a Ramadan morning a debt whose window opens later today, which says
- * "today after 10:00"), a contact's counted in working days and never on a quiet day. Each step once, keyed by (scope,
- * item, anchor, step), so a new due date or chase moment starts afresh; after the 7th, only the morning brief. The
- * first alert after a contact's absence ended says they are back, once per absence (`backFingerprint`, 7 days). At
- * most `SEC_ALERTS_PER_DAY` a brand a local day, critical and earliest first. The markers are claimed with SET NX before
- * anything is pushed; a claim beyond the day's allowance is handed back, so that item can still go on another day of
- * its window. Reads and writes are batched: no store call per item in turn.
+ * on the local day they fell behind and the 1st, 3rd and 7th day after, any day; an agent's from its chase moment the
+ * same way; a contact's from its chase moment in working days, never on a quiet day, and on a Ramadan morning while it
+ * is held for a window later today, saying "today after 10:00". Each step once, keyed by (scope, item, anchor, step), so
+ * a new due date or chase moment starts afresh; after the 7th, only the morning brief. A step's marker lives seven days
+ * and is set again (SET XX: never a claim) on every run its step still holds, including a quiet day's run that sends
+ * nothing. The first alert after a contact's absence ended says they are back, once per absence (`backFingerprint`, 7
+ * days). At most `SEC_ALERTS_PER_DAY` a brand a local day, critical and earliest first. The markers are claimed with SET
+ * NX before anything is pushed; a claim beyond the day's allowance is handed back, so that item can still go on another
+ * day of its window. Reads and writes are batched: no store call per item in turn.
  */
 async function overdueTodoAlerts(user: User, scope: string): Promise<Notif[]> {
   const now = Date.now();
   const { zone, cal, away, buckets } = await agendaFor(scope, now, { actor: "cron", via: "cron" });
-  const entries = [...buckets.overdue, ...buckets.chase, ...buckets.waiting.filter((e) => e.moment?.why === "ramadan")].sort((a, b) => compareItems(a.item, b.item));
-  const due = overdueAlerts(entries, now, zone, cal);
-  if (!due.length) return [];
+  const entries = [...buckets.overdue, ...buckets.chase, ...buckets.waiting].sort((a, b) => compareItems(a.item, b.item));
+  const steps = overdueAlerts(entries, now, zone, cal);
+  if (!steps.length) return [];
   const ar = user.lang === "ar";
   const lang = user.lang;
-  const fps = due.map((a) => overdueAlertFingerprint(scope, a.entry.item.id, a.anchorMs, a.step));
-  const won = await Promise.all(due.map((a, i) => db.setNx(seenKey(user.email, fps[i]), 1, Math.max(ALERT_TTL_DAYS, a.windowDays + 1) * 86400)));
-  const claimed = due.filter((_, i) => won[i]);
-  if (!claimed.length) return [];
+  const ttl = ALERT_TTL_DAYS * 86400;
+  const marker = (a: OverdueAlert) => seenKey(user.email, overdueAlertFingerprint(scope, a.entry.item.id, a.anchorMs, a.step));
+  const due = steps.filter((a) => a.send), held = steps.filter((a) => !a.send);
+  // One round: claim the steps that can be sent; keep alive the markers of steps that only hold today.
+  const claims = Promise.all(due.map((a) => db.setNx(marker(a), 1, ttl)));
+  await Promise.all([claims, ...held.map((a) => db.setXx(marker(a), 1, ttl))]);
+  const won = await claims;
+  const claimed = due.filter((_, i) => won[i]), kept = due.filter((_, i) => !won[i]);
   const today = zoneDay(now, zone);
   const counter = SEC_KEYS.alerts(scope, today);
-  const total = await db.incrby(counter, claimed.length);
+  const total = claimed.length ? await db.incrby(counter, claimed.length) : 0;
   const allowed = Math.max(0, SEC_ALERTS_PER_DAY - (total - claimed.length));
   const send = claimed.slice(0, allowed), back = claimed.slice(allowed);
   const ended = send.map((a) => endedAbsence(a.entry.item, away, today, zone));
   const backWon = Promise.all(send.map((a, i) => (ended[i] ? db.setNx(seenKey(user.email, backFingerprint(scope, a.entry.item.id, ended[i]!)), 1, BACK_DAYS * 86400) : false)));
   await Promise.all([
-    db.expireNx(counter, 2 * 86400),
+    ...(claimed.length ? [db.expireNx(counter, 2 * 86400)] : []),
     backWon,
-    ...(back.length ? [db.incrby(counter, -back.length), ...back.map((a) => db.del(seenKey(user.email, fps[due.indexOf(a)])))] : []),
+    // Sent on an earlier run and still this step: its marker lives on.
+    ...kept.map((a) => db.setXx(marker(a), 1, ttl)),
+    ...(back.length ? [db.incrby(counter, -back.length), ...back.map((a) => db.del(marker(a)))] : []),
   ]);
   if (!send.length) return [];
   const isBack = await backWon;

@@ -122,9 +122,11 @@ describe("one alert per overdue item, spaced, then only the brief (rule 200)", (
     vi.setSystemTime(T0 + 9 * 864e5);
     // Silent from the eighth day, still in the morning brief.
     expect((await runDaily(u))!.agenda).toMatchObject({ overdue: 1, top: ["Send the contract"] });
-    // Each marker lives five days: on day 9 only the seventh day's is left.
-    const marker = async (step: number) => db.get(`notifseen:${u.email}:${overdueAlertFingerprint(u.email, late.id, Date.parse(late.dueAt!), step)}`);
-    expect(await Promise.all([0, 1, 3, 7].map(marker))).toEqual([null, null, null, 1]);
+    // Each marker lives seven days from the last run its step held (ruling R15: never more than a week): on day 9 step 0
+    // (day 0) and step 1 (days 1-2) are gone; step 3 (held to day 6) and step 7 (day 7) are left.
+    const key = (step: number) => `notifseen:${u.email}:${overdueAlertFingerprint(u.email, late.id, Date.parse(late.dueAt!), step)}`;
+    expect(await Promise.all([0, 1, 3, 7].map((step) => db.get(key(step))))).toEqual([null, null, 1, 1]);
+    for (const t of await Promise.all([3, 7].map((step) => db.ttl(key(step))))) expect(t).toBeLessThanOrEqual(7 * 86400);
   });
 
   it("a new due date is a new signature: a rescheduled item that falls behind again alerts afresh", async () => {

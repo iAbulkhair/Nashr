@@ -227,7 +227,7 @@ function matchesValue(v: string, day: string, h: Hijri | undefined): boolean {
   return false;
 }
 
-/** The first day the calendar covers (today-14) and its Umm al-Qura date: a dated value before it is stale. */
+/** The first day the calendar covers (today-30) and its Umm al-Qura date: a dated value before it is stale. */
 function windowStart(now: number, zone: Zone): { day: string; h: Hijri } {
   const day = addDays(zoneDay(now, zone), -BACK);
   const h = hijriDate(new Date(zoneTime(day, 12, 0, zone)), zone);
@@ -245,8 +245,12 @@ function isStale(v: string, from: { day: string; h: Hijri }): boolean {
   return y !== from.h.y ? y < from.h.y : mo !== from.h.m ? mo < from.h.m : d < from.h.d;
 }
 
-/** The calendar covers today-14 … today+400 (spec §1.3); it is computed over a month more on each side, so an Eid or a day in lieu at an edge comes out whole. */
-const BACK = 14, AHEAD = 400, MARGIN = 35;
+/**
+ * The calendar covers today-30 … today+400 (spec §1.3; 30 back since ruling R17, so a chase moment an Eid moved keeps its
+ * anchor through its seventh alert step); it is computed over a month more on each side, so an Eid or a day in lieu at
+ * an edge comes out whole.
+ */
+const BACK = 30, AHEAD = 400, MARGIN = 35;
 
 type Built = { data: CalData; ramadanSpans: { start: string; end: string }[]; produced: { day: string; h: Hijri | undefined }[] };
 
@@ -441,7 +445,7 @@ function memoised(cal: SecCalendar | null, zone: Zone, now: number) {
 
 /**
  * The brand's calendar at `now`: its effective weekend and week start, the quiet days (Eid, official holidays, days in
- * lieu and days the owner added; weekend days are left out) and the Ramadan days from today-14 to today+400, the Ramadan
+ * lieu and days the owner added; weekend days are left out) and the Ramadan days from today-30 to today+400, the Ramadan
  * hours and the morning brief's time. Memoised per zone, local day and settings (not `updatedAt`/`updatedBy`), so a
  * saved change applies at once. The object is frozen and shared: copy it to change it.
  */
@@ -527,7 +531,7 @@ const FIX_FIELDS = { ramadan1: 9, shawwal1: 10, dhulhijja1: 12 } as const;
  * or a date more than a day from Umm al-Qura's (`hijri_fix_range`); more than 30 values in `add` or `remove`, a
  * malformed value, or a removal that no default day of the coming year matches (`holidays_invalid`).
  * Stale values are dropped, not refused (ruling R8), so settings read from a GET and saved back unchanged still save:
- * a `hijriFix` year before the current Hijri year, and a dated value ("YYYY-MM-DD", "H-YYYY-MM-DD") before today-14.
+ * a `hijriFix` year before the current Hijri year, and a dated value ("YYYY-MM-DD", "H-YYYY-MM-DD") before today-30.
  * `v`, `updatedAt` and `updatedBy` may come back from a GET and are replaced.
  */
 export function parseCalendar(body: Record<string, unknown>, now: number, zone: Zone, login: string): { ok: true; cal: SecCalendar } | CalFail {
