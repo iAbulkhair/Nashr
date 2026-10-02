@@ -16,6 +16,7 @@ import { CAPS, db, pushCapped } from "@/lib/db";
 import { listActivity } from "@/lib/activity";
 import { cookies } from "next/headers";
 import { forceRemoveMember, getMember, onRoster } from "@/lib/team";
+import { unfinishedRefunds } from "@/lib/partners";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
   const brands = await listBrands(u.email);
   const scopes = brands.map((b) => scopeFor(u.email, b.id));
   const tasks = (await Promise.all(scopes.map((s) => listTasks(s)))).flat().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  const [brand, usage, chat, connections, convs, referrals, activity] = await Promise.all([
+  const [brand, usage, chat, connections, convs, referrals, activity, unfinished] = await Promise.all([
     getBrand(u.email),
     getUsage(u.email),
     // The chat allowance (a trial's for the whole trial, which the month's usage does not keep): the raw count
@@ -48,12 +49,14 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
     db.lrange(`referrals:${u.email}`, 0, 99).then((x) => x.length),
     // The latest 100 activity rows of each brand, every brand in parallel (the scopes come from the account's own list).
     Promise.all(brands.map((b, i) => listActivity(scopes[i], { limit: 100 }).then((p) => ({ brand: b.id, name: b.name, rows: p.rows })))),
+    // Packs whose refund is not on their payment yet: the Top-ups block offers "Finish refund" on them (rule 465).
+    unfinishedRefunds(u),
   ]);
   const scores = tasks.filter((t) => t.quality).map((t) => t.quality!.score);
   const { passHash: _omit, ...safe } = u;
   void _omit;
   return NextResponse.json({
-    ok: true, user: safe, brand, tasks, usage, chat, connections, brands, conversations: convs, referrals, activity,
+    ok: true, user: safe, brand, tasks, usage, chat, connections, brands, conversations: convs, referrals, activity, unfinishedRefunds: unfinished,
     // What one chat message cost this month, over every message sent (the raw count and those on credits), as the list shows.
     chatUsdPerMsg: chatUsdPerMessage(usage.byKind.chat?.usd ?? 0, chat),
     avgScore: scores.length ? Math.round(scores.reduce((s, x) => s + x, 0) / scores.length) : null,
