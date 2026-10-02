@@ -408,7 +408,7 @@ export function chaseAt(it: SecItem, z: Zone = DEFAULT_ZONE, cal?: CalData): num
 /**
  * The one rule for when the owner may chase someone (spec §2.1), pure, with the brand's calendar and away map passed in.
  * From `chaseAt` (with the calendar): an agent's item is never moved (agents keep no weekend, Eid or holiday). A contact
- * away on that day is chased from the first working moment after the absence; then the moment leaves quiet days (to
+ * away on that day is chased from `briefAt` on the day after the absence; then the moment leaves quiet days (to
  * `briefAt` on the next working day) and Ramadan's off-hours (to the next window start) — that is the anchor. Once the
  * anchor has passed, chasing still waits while today is quiet or outside Ramadan hours. Null for the owner's own items.
  */
@@ -423,7 +423,8 @@ export function chaseMoment(it: SecItem, now: number, cal: CalData, away: AwayMa
   // `until` is the last away day, inclusive; an entry that ended before the base's day does not apply.
   const until = entry && isDay(entry.until) ? entry.until : null;
   const gone = until !== null && until >= zoneDay(base, z) ? until : null;
-  const s = settle(gone ? zoneTime(addDays(gone, 1), 0, 0, z) : base, cal);
+  // Back from an absence: from the brief time of the first working day after it (ruling R10), never from midnight.
+  const s = settle(gone ? zoneTime(addDays(gone, 1), cal.briefAt.hh, cal.briefAt.mm, z) : base, cal);
   const anchor = s.at;
   if (anchor <= now) {
     // Chaseable, but not while today is quiet or outside Ramadan hours.

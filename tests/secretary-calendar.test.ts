@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { activeSeasons, hijriDate } from "@/lib/seasons";
 import { eveningAt, isRamadan, previousEveningAt, zonesDue } from "@/lib/secretary-evening";
 import {
-  addWorkingDays, chaseAt, chaseMoment, classify, computeAgenda, defaultCal, firstWorkingMoment, formatWhen, inRamadanWindow, isQuietDay, nextStepText, nowLine,
-  outsideRamadanHours, partyKey, riyadhDay, type AwayMap, type CalData, type SecItem,
+  addWorkingDays, chaseAt, chaseMoment, classify, computeAgenda, defaultCal, firstWorkingMoment, inRamadanWindow, isQuietDay, nextStepText, nowLine,
+  outsideRamadanHours, partyKey, type AwayMap, type CalData, type SecItem,
 } from "@/lib/secretary-agenda";
 import { cleanLine, nextWeekStart, snoozePreset } from "@/lib/secretary";
 import { runTool } from "@/lib/chat";
@@ -569,9 +569,17 @@ describe("rule 475: chaseMoment moves chasing off quiet days, out of Ramadan's o
     // Another contact is not away.
     const sara = local("2026-10-05T10:00");
     expect(chaseMoment(debt({ owedBy: "سارة", dueAt: iso(sara) }), EARLY, RIYADH, away)).toEqual({ anchor: sara, at: sara, why: "normal" });
-    // Away until Sunday, the day after a working day: chasing may start at its first moment.
+    // Away until Sunday: Monday is a working day, and chasing starts at its brief time, 08:00, not at midnight (ruling R10).
     const sunAway: AwayMap = { "احمد": { label: "احمد", until: "2026-10-04" } };
-    expect(chaseMoment(debt({ dueAt: iso(local("2026-10-04T10:00")) }), EARLY, RIYADH, sunAway)).toMatchObject({ at: local("2026-10-05T00:00"), why: "away" });
+    const mon = local("2026-10-05T08:00");
+    expect(chaseMoment(debt({ dueAt: iso(local("2026-10-04T10:00")) }), EARLY, RIYADH, sunAway)).toEqual({ anchor: mon, at: mon, why: "away", until: "2026-10-04" });
+    // Dubai's brief is at 09:00: away until Sunday 2026-10-04 (its weekend), chased Monday 09:00.
+    const dubaiMon = local("2026-10-05T09:00", "Asia/Dubai");
+    expect(chaseMoment(debt({ dueAt: iso(local("2026-10-01T10:00", "Asia/Dubai")) }), EARLY, DUBAI, sunAway)).toEqual({ anchor: dubaiMon, at: dubaiMon, why: "away", until: "2026-10-04" });
+    // The day after the absence is a Ramadan day: its brief time is outside the hours, so the first window start, 10:00.
+    const ramadanAway: AwayMap = { "احمد": { label: "احمد", until: "2027-02-21" } };
+    const monday = local("2027-02-22T10:00");
+    expect(chaseMoment(debt({ dueAt: iso(local("2027-02-21T11:00")) }), EARLY, RAMADAN, ramadanAway)).toEqual({ anchor: monday, at: monday, why: "away", until: "2027-02-21" });
   });
 
   it("a label that names an Object property is just a label: no away entry, no crash", () => {
@@ -789,18 +797,22 @@ describe("rule 477: next stays a string, and the reason line is shown", () => {
   });
 
   it("agenda_get gives the agent the reason line with the contact JSON-quoted", async () => {
-    const brand: Brand = { name: "Rif", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "", products: "", audience: "", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "", updatedAt: "2026-09-29" };
-    const u = await newUser("chasequiet");
-    await saveBrand(u.email, brand);
-    await signIn(u.email);
-    // The next Friday in Riyadh: its chase moves to the Sunday after.
-    let k = 1;
-    while (new Date(`${riyadhDay(Date.now() + k * 864e5)}T00:00:00Z`).getUTCDay() !== 5) k++;
-    const friday = riyadhDay(Date.now() + k * 864e5);
-    const r = await listRoute.POST(json("/api/secretary", "POST", { title: "Samples", direction: "they_owe", owedBy: "المورّد", dueAt: `${friday}T10:00` }));
-    expect(r.status).toBe(200);
-    const sunday = new Date(Date.parse(`${friday}T00:00:00Z`) + 2 * 864e5).toISOString().slice(0, 10);
-    const text = await runTool(u, "agenda_get", {}, []);
-    expect(text).toContain(`next: Waiting on "المورّد" · Follow up ${formatWhen(`${sunday}T05:00:00.000Z`, true, "en", Date.now())}, the weekend`);
+    // A fixed clock, Thursday 1 October 2026 12:00 in Riyadh, so no Ramadan day or holiday a brand calendar may hold
+    // can move the Sunday below. Only Date is faked; timers run.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.parse("2026-10-01T09:00:00Z"));
+    try {
+      const brand: Brand = { name: "Rif", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "", products: "", audience: "", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "", updatedAt: "2026-09-29" };
+      const u = await newUser("chasequiet");
+      await saveBrand(u.email, brand);
+      await signIn(u.email);
+      // Due Friday 2 October: its chase moves to Sunday 4 October, 08:00.
+      const r = await listRoute.POST(json("/api/secretary", "POST", { title: "Samples", direction: "they_owe", owedBy: "المورّد", dueAt: "2026-10-02T10:00" }));
+      expect(r.status).toBe(200);
+      const text = await runTool(u, "agenda_get", {}, []);
+      expect(text).toContain('next: Waiting on "المورّد" · Follow up Sunday, October 4, the weekend');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
