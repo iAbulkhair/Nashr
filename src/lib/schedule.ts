@@ -6,6 +6,7 @@ import { resolveOnceHolds } from "./credits";
 import { modelState } from "./model";
 import { getGov } from "./governance";
 import { activeSeasons } from "./seasons";
+import { zoneOf } from "./zones";
 import { dateFormat } from "./dates";
 import type { RoutineId } from "./routines";
 import { systemBy, type By } from "./actor";
@@ -192,7 +193,7 @@ export async function runDaily(user: User): Promise<Brief | null> {
   const dayAgo = Date.now() - 7 * 864e5;
   const pending = tasks.filter((t) => t.status === "pending").length;
   const approved7d = tasks.filter((t) => t.status === "approved" && new Date(t.createdAt).getTime() > dayAgo).length;
-  const seasons = activeSeasons().slice(0, 2).map((s) => `${s.nameAr} (${s.daysLeft} يوم)`);
+  const seasons = activeSeasons(new Date(), zoneOf(brand)).slice(0, 2).map((s) => `${s.nameAr} (${s.daysLeft} يوم)`);
   const ar = (brand?.languages[0] ?? user.lang) === "ar";
   // Reem's block: counts from the computed agenda (no model), and the titles of the first three overdue or due-today items.
   const agenda = briefAgenda(await agendaFor(email, Date.now(), { actor: "cron", via: "cron" }));

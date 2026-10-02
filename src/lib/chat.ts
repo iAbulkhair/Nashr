@@ -201,7 +201,7 @@ const LEAD_TEXT = (() => {
  */
 export function system(brand: Brand | null, user: User, prefs: string[], memory: string, files: string[], connected: string[], agentId: AgentId = "noor", feedback?: string, handoff?: string): Anthropic.TextBlockParam[] {
   const agent = agentById(agentId);
-  const seasons = activeSeasons().map((s) => `${s.name} (${s.nameAr}) in ${s.daysLeft} days`).join("; ") || "none within 35 days";
+  const seasons = activeSeasons(new Date(), zoneOf(brand)).map((s) => `${s.name} (${s.nameAr}) in ${s.daysLeft} days`).join("; ") || "none within 35 days";
   const intro = agent.id === "noor"
     ? "You are Noor (نور), the marketing agent inside Thakeen, talking with the owner of the business described under BRAND. You are warm, direct, and practical, like a senior marketer who is also a friend."
     : agent.id === "reem"

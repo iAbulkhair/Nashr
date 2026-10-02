@@ -8,6 +8,7 @@ import { MODEL_BUDGET, ModelPaused, anthropic, modelState, until } from "./model
 import type { Brand, CrossVerdict, TaskType } from "./brand";
 import { pickPlaybook } from "./playbooks";
 import { activeSeasons } from "./seasons";
+import { zoneOf } from "./zones";
 import { capDiscounts } from "./cart-recovery";
 import { feedbackBlock } from "./feedback";
 
@@ -105,7 +106,7 @@ ${playbookBlock(brand)}${memory ? "\n\nWORKSPACE FILES (Noor's memory: the owner
   const today = `TODAY: ${new Date().toISOString().slice(0, 10)}.
 
 GULF CALENDAR — LIVE OR WITHIN 35 DAYS (plan for these)
-${seasonBlock()}
+${seasonBlock(brand)}
 
 OWNER PREFERENCES LEARNED FROM PAST EDITS (highest priority)
 ${prefs.length ? prefs.map((p) => "- " + p).join("\n") : "- none yet"}${recent ? `\n\n${recent}` : ""}`;
@@ -125,8 +126,8 @@ export function playbookBlock(brand: Pick<Brand, "industry">) {
   return pb ? pb.text : "INDUSTRY PLAYBOOK\n- General SMB: one clear offer, one CTA, local proof, WhatsApp as the conversion channel.";
 }
 
-function seasonBlock() {
-  const s = activeSeasons();
+function seasonBlock(brand: Pick<Brand, "timeZone" | "city" | "dialect">) {
+  const s = activeSeasons(new Date(), zoneOf(brand));
   if (!s.length) return "- No major season in the next 35 days. Focus on evergreen content and audience building.";
   return s.map((x) => `- ${x.name} (${x.nameAr}) in ${x.daysLeft} days: ${x.play}`).join("\n");
 }

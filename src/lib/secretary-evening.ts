@@ -30,7 +30,7 @@ import { sendEmail } from "./notify";
 import { activeSeasons } from "./seasons";
 import { SEC_KEYS, agendaFor, listDone, listOpenItems } from "./secretary";
 import { AUTO_CLOSE_RESULT, addDays, computeAgenda, zoneDay, zoneTime } from "./secretary-agenda";
-import { ZONE_IDS, type Zone } from "./zones";
+import { DEFAULT_ZONE, ZONE_IDS, type Zone } from "./zones";
 import { appOrigin } from "./origin";
 
 /** The wrap's local time, and in Ramadan (after Taraweeh). */
@@ -46,20 +46,22 @@ const WRAP_TTL_S = 2 * 86400;
 const DECISIONS_READ = 100;
 
 
-/** Is it Ramadan at `now` (Umm al-Qura calendar, `activeSeasons`)? */
-export const isRamadan = (now: number) => activeSeasons(new Date(now)).some((s) => s.id === "ramadan");
+/**
+ * Is it Ramadan at `now` on `zone`'s calendar day (Umm al-Qura, `activeSeasons`)? Per zone: in the hour between Dubai's
+ * midnight and Riyadh's the two are on different days, so Ramadan starts (and ends) an hour apart.
+ */
+export const isRamadan = (now: number, zone: Zone = DEFAULT_ZONE) => activeSeasons(new Date(now), zone).some((s) => s.id === "ramadan");
 
-/** Today's wrap instant in a zone: 18:00 local, 21:30 in Ramadan. */
-export function eveningAt(now: number, zone: Zone, ramadan = isRamadan(now)): number {
+/** Today's wrap instant in a zone: 18:00 local, 21:30 in Ramadan (that zone's, unless the caller already knows). */
+export function eveningAt(now: number, zone: Zone, ramadan = isRamadan(now, zone)): number {
   const t = ramadan ? RAMADAN_EVENING_AT : EVENING_AT;
   return zoneTime(zoneDay(now, zone), t.hh, t.mm, zone);
 }
 
 /** The zones whose wrap time fell within the last `EVENING_WINDOW_MS`: what a QStash tick at `now` starts. */
 export function zonesDue(now: number, windowMs = EVENING_WINDOW_MS): Zone[] {
-  const ramadan = isRamadan(now);
   return ZONE_IDS.filter((z) => {
-    const at = eveningAt(now, z, ramadan);
+    const at = eveningAt(now, z);
     return at <= now && now - at < windowMs;
   });
 }
@@ -77,7 +79,7 @@ export type Wrap = {
 /** The previous evening's wrap instant in a zone: 18:00, or 21:30 when that day was in Ramadan. */
 export function previousEveningAt(now: number, zone: Zone): number {
   const prev = addDays(zoneDay(now, zone), -1);
-  const t = isRamadan(zoneTime(prev, 12, 0, zone)) ? RAMADAN_EVENING_AT : EVENING_AT;
+  const t = isRamadan(zoneTime(prev, 12, 0, zone), zone) ? RAMADAN_EVENING_AT : EVENING_AT;
   return zoneTime(prev, t.hh, t.mm, zone);
 }
 
