@@ -8,8 +8,9 @@
  *   today (`decisions:{scope}`, human decisions only); items that fell overdue since the previous evening's wrap time
  *   (an all-day item due yesterday included; a debt someone else owes when it became chaseable); the first three items
  *   the agenda would put in front of the owner at the next working morning (09:00 tomorrow, or the first working moment
- *   after it: Sunday 08:00 after a Riyadh Thursday, 10:00 in Ramadan): overdue, due, to confirm, to chase. Both read the
- *   brand's work calendar and away map, so a quiet day or an away contact holds a chase back. No motivational line.
+ *   after it: Sunday 08:00 after a Riyadh Thursday, 10:00 in Ramadan, and the line names that day and time): overdue,
+ *   due, to confirm, to chase. Both read the brand's work calendar and away map, so a quiet day or an away contact
+ *   holds a chase back. No motivational line.
  * - Silent when all four are empty. Sent at most once per scope and local day: `sec:wrap:{scope}:{day}` is claimed
  *   with SET NX before anything is sent, and released when the in-app notification could not be written, so a retry
  *   can still send it (never after that notification was written: an email failure keeps it).
@@ -31,7 +32,8 @@ import { notifyItem } from "./notifications";
 import { sendEmail } from "./notify";
 import { activeSeasons } from "./seasons";
 import { SEC_KEYS, agendaFor, listDone, listOpenItems } from "./secretary";
-import { AUTO_CLOSE_RESULT, addDays, computeAgenda, firstWorkingMoment, zoneDay, zoneTime } from "./secretary-agenda";
+import { AUTO_CLOSE_RESULT, addDays, computeAgenda, daysBetween, endOfZoneDay, firstWorkingMoment, formatWhen, zoneDay, zoneLocalInput, zoneTime } from "./secretary-agenda";
+import { dateFormat } from "./dates";
 import { DEFAULT_ZONE, ZONE_IDS, type Zone } from "./zones";
 import { appOrigin } from "./origin";
 
@@ -76,6 +78,8 @@ export type Wrap = {
   rejected: number;
   fellOverdue: string[];
   tomorrow: string[];
+  /** The moment "tomorrow" is read at: 09:00 tomorrow, or the first working moment after it. The line names it. */
+  tomorrowAt: number;
 };
 
 /** The previous evening's wrap instant in a zone: 18:00, or 21:30 when that day was in Ramadan. */
@@ -115,9 +119,10 @@ export async function buildWrap(scope: string, now: number): Promise<Wrap> {
   const fellOverdue = [...a.buckets.overdue, ...a.buckets.chase, ...a.buckets.waiting]
     .filter((e) => (e.item.owedBy === "owner" ? e.bucket === "overdue" && inWindow(Date.parse(e.item.dueAt ?? "")) : !!e.moment && inWindow(e.moment.anchor)))
     .map((e) => e.item.title);
-  const next = computeAgenda(open, firstWorkingMoment(zoneTime(addDays(day, 1), 9, 0, zone), cal), rule);
+  const tomorrowAt = firstWorkingMoment(zoneTime(addDays(day, 1), 9, 0, zone), cal);
+  const next = computeAgenda(open, tomorrowAt, rule);
   const tomorrow = [...next.buckets.overdue, ...next.buckets.today, ...next.buckets.confirm, ...next.buckets.chase].slice(0, 3).map((e) => e.item.title);
-  return { day, zone, completed, approved: decided.filter((d) => APPROVALS.has(d.action)).length, rejected: decided.filter((d) => d.action === "reject").length, fellOverdue, tomorrow };
+  return { day, zone, completed, approved: decided.filter((d) => APPROVALS.has(d.action)).length, rejected: decided.filter((d) => d.action === "reject").length, fellOverdue, tomorrow, tomorrowAt };
 }
 
 export const wrapEmpty = (w: Wrap) => !w.completed.length && !w.approved && !w.rejected && !w.fellOverdue.length && !w.tomorrow.length;
@@ -128,6 +133,26 @@ export function wrapTitle(lang: "ar" | "en", brand = ""): string {
   return brand ? `Reem's evening wrap — “${brand}”` : "Reem's evening wrap";
 }
 
+/**
+ * When "tomorrow" is read, as the owner reads it (ruling R14): «غداً 9 ص» / "tomorrow at 9 AM" on an ordinary evening;
+ * the next morning's day by name after a weekend or holiday eve («الأحد 8 ص» / "Sunday at 8 AM" after a Riyadh
+ * Thursday), with its date when it is a week or more away (after Eid); the time of a Ramadan window («غداً 10 ص»), with
+ * its minutes when it does not start on the hour. Latin digits.
+ */
+function readAt(w: Wrap, lang: "ar" | "en"): string {
+  const ar = lang === "ar";
+  if (!Number.isFinite(w.tomorrowAt)) return ar ? "غداً 9 ص" : "tomorrow at 9 AM";
+  const wall = zoneLocalInput(w.tomorrowAt, w.zone);
+  const day = wall.slice(0, 10), hh = +wall.slice(11, 13), mm = +wall.slice(14, 16);
+  const time = `${hh % 12 || 12}${mm ? `:${String(mm).padStart(2, "0")}` : ""} ${ar ? (hh < 12 ? "ص" : "م") : hh < 12 ? "AM" : "PM"}`;
+  const ahead = daysBetween(w.day, day);
+  if (ahead === 1) return ar ? `غداً ${time}` : `tomorrow at ${time}`;
+  const name = ahead < 7
+    ? dateFormat(lang, { weekday: "long" }).format(new Date(`${day}T12:00:00Z`))
+    : formatWhen(new Date(endOfZoneDay(day, w.zone)).toISOString(), true, lang, zoneTime(w.day, 12, 0, w.zone), w.zone);
+  return ar ? `${name} ${time}` : `${name} at ${time}`;
+}
+
 /** The wrap in the owner's language: a title and one line per part that has something. */
 export function wrapText(w: Wrap, lang: "ar" | "en", brand = ""): { title: string; body: string } {
   const q = (t: string) => `«${t.slice(0, 80)}»`;
@@ -136,7 +161,7 @@ export function wrapText(w: Wrap, lang: "ar" | "en", brand = ""): { title: strin
       ...(w.completed.length ? [`• أُنجز اليوم (${w.completed.length}):`, ...w.completed.slice(0, 5).map((c) => `  – ${q(c.title)}: ${c.auto ? "أُغلقت تلقائياً لأن العنصر المرتبط اعتُمد" : (c.result ?? "").slice(0, 120)}`)] : []),
       ...(w.approved || w.rejected ? [`• قراراتك اليوم في صندوق الموافقة: اعتماد ${w.approved}، رفض ${w.rejected}`] : []),
       ...(w.fellOverdue.length ? [`• تأخّر منذ ملخص الأمس: ${w.fellOverdue.slice(0, 5).map(q).join("، ")}`] : []),
-      ...(w.tomorrow.length ? [`• أول ما ينتظرك غداً 9 ص: ${w.tomorrow.map(q).join("، ")}`] : []),
+      ...(w.tomorrow.length ? [`• أول ما ينتظرك ${readAt(w, "ar")}: ${w.tomorrow.map(q).join("، ")}`] : []),
     ];
     return { title: wrapTitle("ar", brand), body: lines.join("\n") };
   }
@@ -144,7 +169,7 @@ export function wrapText(w: Wrap, lang: "ar" | "en", brand = ""): { title: strin
     ...(w.completed.length ? [`• Done today (${w.completed.length}):`, ...w.completed.slice(0, 5).map((c) => `  – ${q(c.title)}: ${c.auto ? "closed automatically, the linked item was approved" : (c.result ?? "").slice(0, 120)}`)] : []),
     ...(w.approved || w.rejected ? [`• Your decisions today in the approval inbox: ${w.approved} approved, ${w.rejected} rejected`] : []),
     ...(w.fellOverdue.length ? [`• Fell overdue since yesterday's wrap: ${w.fellOverdue.slice(0, 5).map(q).join(", ")}`] : []),
-    ...(w.tomorrow.length ? [`• First for tomorrow at 9 AM: ${w.tomorrow.map(q).join(", ")}`] : []),
+    ...(w.tomorrow.length ? [`• First for ${readAt(w, "en")}: ${w.tomorrow.map(q).join(", ")}`] : []),
   ];
   return { title: wrapTitle("en", brand), body: lines.join("\n") };
 }

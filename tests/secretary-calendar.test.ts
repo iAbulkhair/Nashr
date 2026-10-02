@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { activeSeasons, hijriDate } from "@/lib/seasons";
-import { eveningAt, isRamadan, previousEveningAt, zonesDue } from "@/lib/secretary-evening";
+import { buildWrap, eveningAt, isRamadan, previousEveningAt, wrapText, zonesDue, type Wrap } from "@/lib/secretary-evening";
 import {
-  addWorkingDays, chaseAt, chaseMoment, classify, computeAgenda, defaultCal, firstWorkingMoment, inRamadanWindow, isQuietDay, nextStepText, nowLine,
-  outsideRamadanHours, partyKey, type AwayMap, type CalData, type SecItem,
+  addDays, addWorkingDays, briefAgenda, chaseAt, chaseMoment, classify, computeAgenda, defaultCal, firstWorkingMoment, inRamadanWindow, isQuietDay, nextStepText, nowLine,
+  outsideRamadanHours, overdueAlerts, partyKey, workingDaysBetween, type AwayMap, type CalData, type SecItem,
 } from "@/lib/secretary-agenda";
-import { cleanLine, nextWeekStart, snoozePreset } from "@/lib/secretary";
+import { SEC_KEYS, agendaFor, backFingerprint, cleanLine, createItem, nextWeekStart, overdueAlertFingerprint, snoozePreset } from "@/lib/secretary";
 import { runTool } from "@/lib/chat";
+import { db } from "@/lib/db";
+import { type User } from "@/lib/auth";
+import { followUps, type Notif } from "@/lib/notifications";
+import { runDaily } from "@/lib/schedule";
 import { saveBrand, type Brand } from "@/lib/brand";
 import { json, newUser, signIn } from "./helpers/session";
 import * as listRoute from "@/app/api/secretary/route";
@@ -20,8 +24,9 @@ import { ZONE_IDS, isWeekend, weekStart, weekStartDay, zoneOf, type Zone } from 
  * calendar primitives (working days, week start, Ramadan windows) that read the brand's `CalData`. Rules 472-474: the
  * server's `workCalendar`, which builds that `CalData` from the country's private-sector holidays and the brand's
  * settings, and `parseCalendar`, which checks those settings. Rules 475-477: `chaseMoment`, the one rule for when the
- * owner may chase someone, and the agenda that reads it. Every Hijri date and weekday below was checked against ICU
- * Umm al-Qura in Riyadh before it was written down.
+ * owner may chase someone, and the agenda that reads it. Rules 479-480: the alerts, the morning brief and the evening
+ * wrap that read it. Every Hijri date and weekday below was checked against ICU Umm al-Qura in Riyadh before it was
+ * written down.
  */
 const TZ = process.env.TZ;
 afterEach(() => {
@@ -814,5 +819,253 @@ describe("rule 477: next stays a string, and the reason line is shown", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// Rules 479-480: the alerts, the morning brief and the evening wrap read the chase rule (spec §2.2-2.3). The pure cases
+// use the hand-built calendars above. The cases through the daily follow-ups, the brief and the wrap use a Riyadh
+// brand's real calendar on dates checked to hold no holiday (October 2026) or to be ordinary Ramadan days (Tuesday 23
+// and Wednesday 24 February 2027; Monday 22 is Founding Day); each fakes Date only (timers run) and gives the real
+// clock back.
+const ALERT_BRAND: Brand = { name: "Rif", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "", products: "", audience: "", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "", updatedAt: "2026-09-29" };
+async function fakeAt<T>(ms: number, fn: () => Promise<T>): Promise<T> {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(ms);
+  try {
+    return await fn();
+  } finally {
+    vi.useRealTimers();
+  }
+}
+async function workspace(prefix: string, brand: Brand = ALERT_BRAND): Promise<User> {
+  const u = await newUser(prefix);
+  await saveBrand(u.email, brand);
+  return u;
+}
+async function make(u: User, ms: number, raw: Record<string, unknown>): Promise<SecItem> {
+  const r = await fakeAt(ms, () => createItem(u, raw, { actor: "owner", via: "web", source: "owner" }));
+  if (!r.ok) throw new Error(`createItem: ${r.error}`);
+  return r.item;
+}
+/** The to-do alerts the daily follow-ups send at `ms`; a second run at the same moment must send none. */
+async function alertsAt(u: User, ms: number): Promise<Notif[]> {
+  return fakeAt(ms, async () => {
+    const sent = (await followUps(u, u.email)).filter((n) => n.kind === "todo");
+    expect((await followUps(u, u.email)).filter((n) => n.kind === "todo"), `second run at ${iso(ms)}`).toEqual([]);
+    return sent;
+  });
+}
+const seen = (u: User, fp: string) => db.get(`notifseen:${u.email}:${fp}`);
+/** An away entry as the page's PUT stores it (Task 7). DELETE ends one by setting `until` to yesterday and keeping it. */
+const goAway = (u: User, label: string, until: string) => db.hset(SEC_KEYS.away(u.email), partyKey(label)!, { label, until, by: u.email, via: "web", at: "2026-10-01T00:00:00.000Z" });
+
+describe("rule 479: alerts for what others owe count working days from the chase moment, none on a quiet day, and say once that a contact is back", () => {
+  it("workingDaysBetween counts the days in (a, b] that are not quiet", () => {
+    // Thursday → Sunday in Riyadh: Friday and Saturday are the weekend.
+    expect(workingDaysBetween("2026-10-08", "2026-10-11", RIYADH)).toBe(1);
+    expect(workingDaysBetween("2026-10-08", "2026-10-19", RIYADH)).toBe(7);
+    expect(workingDaysBetween("2026-10-08", "2026-10-08", RIYADH)).toBe(0);
+    expect(workingDaysBetween("2026-10-11", "2026-10-08", RIYADH)).toBe(0);
+    // Eid 9-12 March and the weekend: Monday 8 → Sunday 14 is one working day.
+    expect(workingDaysBetween("2027-03-08", "2027-03-14", EID)).toBe(1);
+    // Dubai's weekend is Saturday and Sunday.
+    expect(workingDaysBetween("2026-10-09", "2026-10-11", DUBAI)).toBe(0);
+  });
+
+  it("a debt chaseable Thursday 8 October 2026 07:00: step 0 Thursday, none Friday or Saturday, 1 Sunday, 3 Tuesday, 7 Monday 19, an agent's too; the owner's own item keeps calendar days", () => {
+    const days = Array.from({ length: 13 }, (_, i) => addDays("2026-10-08", i));
+    const stepsOf = (item: SecItem) => days.map((d) => {
+      const now = local(`${d}T08:00`);
+      const a = computeAgenda([item], now, { cal: RIYADH });
+      return overdueAlerts([...a.buckets.overdue, ...a.buckets.chase], now, "Asia/Riyadh", RIYADH)[0]?.step ?? null;
+    });
+    const due = iso(local("2026-10-08T07:00"));
+    expect(stepsOf(debt({ dueAt: due }))).toEqual([0, null, null, 1, 1, 3, 3, 3, null, null, 3, 7, null]);
+    expect(stepsOf(debt({ direction: "i_owe", owedBy: "owner", owedTo: null, dueAt: due }))).toEqual([0, 1, 1, 3, 3, 3, 3, 7, null, null, null, null, null]);
+    // An agent's chase is never moved (spec §2.1 step 2), so Dana's item is overdue on Friday; its alert still waits for
+    // a working day, like every item someone else owes (spec §2.3).
+    const dana = debt({ owedBy: "dana", dueAt: due });
+    expect(computeAgenda([dana], local("2026-10-09T08:00"), { cal: RIYADH }).counts.overdue).toBe(1);
+    expect(stepsOf(dana)).toEqual([0, null, null, 1, 1, 3, 3, 3, null, null, 3, 7, null]);
+    // Keyed by the anchor; `days` are working days.
+    const sun = computeAgenda([debt({ dueAt: due })], local("2026-10-11T08:00"), { cal: RIYADH });
+    expect(overdueAlerts(sun.buckets.overdue, local("2026-10-11T08:00"), "Asia/Riyadh", RIYADH)[0]).toMatchObject({ days: 1, step: 1, anchorMs: local("2026-10-08T07:00") });
+    // Entries handed in on a quiet day give nothing for a contact.
+    const thu = computeAgenda([debt({ dueAt: due })], local("2026-10-08T08:00"), { cal: RIYADH });
+    expect(overdueAlerts(thu.buckets.overdue, local("2026-10-09T08:00"), "Asia/Riyadh", RIYADH)).toEqual([]);
+    // An owner's item that is not overdue gives nothing, whatever bucket it is handed in from.
+    const today = computeAgenda([debt({ direction: "i_owe", owedBy: "owner", owedTo: null, dueAt: iso(local("2026-10-08T12:00")) })], local("2026-10-08T08:00"), { cal: RIYADH });
+    expect(overdueAlerts(today.buckets.today, local("2026-10-08T08:00"), "Asia/Riyadh", RIYADH)).toEqual([]);
+  });
+
+  it("through the daily follow-ups (Riyadh, real calendar): each step once, on working days only, and the step-3 marker outlives the weekend", async () => {
+    const cal = workCalendar(null, "Asia/Riyadh", local("2026-10-08T08:00"));
+    expect(Object.keys(cal.quiet).filter((d) => d.startsWith("2026-10"))).toEqual([]);
+    const u = await workspace("al479steps");
+    const it0 = await make(u, local("2026-10-07T12:00"), { title: "Quote from Ahmad", direction: "they_owe", owedBy: "أحمد", dueAt: "2026-10-08T07:00" });
+    const got: number[] = [];
+    let first: Notif[] = [], last: Notif[] = [];
+    for (let i = 0; i <= 12; i++) {
+      // The daily run, a minute later each day: a marker that lived five days would let Sunday 18's run repeat the
+      // step Tuesday 13's run sent.
+      const sent = await alertsAt(u, local(`${addDays("2026-10-08", i)}T08:00`) + i * 60_000);
+      got.push(sent.length);
+      if (i === 0) first = sent;
+      if (i === 11) last = sent;
+    }
+    expect(got).toEqual([1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0]);
+    expect(first[0]).toMatchObject({ agent: "reem", href: "/ar/app/todo", title: "متأخرة: «Quote from Ahmad»", body: "تابِع مع أحمد، أو غيّر الموعد." });
+    expect(last[0].body).toContain("آخر تنبيه");
+    expect(await seen(u, `todo-due:${u.email}:${it0.id}:${local("2026-10-08T07:00")}:0`)).toBe(1);
+  });
+
+  it("an undated debt alerts on its anchor's day, at step 0, keyed by the anchor and titled as a follow-up, not as overdue", async () => {
+    const u = await workspace("al479undated");
+    // Created Thursday 1 October 10:00: its chase clock is two working days on, Monday 5 October 10:00.
+    const it0 = await make(u, local("2026-10-01T10:00"), { title: "Samples", direction: "they_owe", owedBy: "المورّد" });
+    expect(it0.expectBy).toBe(iso(local("2026-10-05T10:00")));
+    expect(await alertsAt(u, local("2026-10-04T12:00"))).toEqual([]);
+    const mon = await alertsAt(u, local("2026-10-05T12:00"));
+    expect(mon).toHaveLength(1);
+    expect(mon[0]).toMatchObject({ title: "حان وقت المتابعة: «Samples»", body: "تابِع مع المورّد، أو غيّر الموعد." });
+    expect(await seen(u, `todo-due:${u.email}:${it0.id}:${local("2026-10-05T10:00")}:0`)).toBe(1);
+    const a = computeAgenda([it0], local("2026-10-05T12:00"), { cal: RIYADH });
+    expect(overdueAlerts(a.buckets.chase, local("2026-10-05T12:00"), "Asia/Riyadh", RIYADH)).toMatchObject([{ days: 0, step: 0, anchorMs: local("2026-10-05T10:00") }]);
+    // In English.
+    const v = await workspace("al479undateden");
+    await make(v, local("2026-10-01T10:00"), { title: "Samples", direction: "they_owe", owedBy: "Sara" });
+    const en = await fakeAt(local("2026-10-05T12:00"), async () => (await followUps({ ...v, lang: "en" }, v.email)).filter((n) => n.kind === "todo"));
+    expect(en[0]).toMatchObject({ title: "Time to follow up: «Samples»", body: "Follow up with Sara, or change the date.", href: "/en/app/todo" });
+  });
+
+  it("the owner's own items keep today's steps (Friday included) and the fingerprint string todo-due:{scope}:{id}:{dueMs}:{step}", async () => {
+    const u = await workspace("al479owner");
+    const mine = await make(u, local("2026-10-07T12:00"), { title: "Pay the printer", dueAt: "2026-10-08T07:00" });
+    const dueMs = Date.parse(mine.dueAt!);
+    expect(await alertsAt(u, local("2026-10-08T08:00"))).toMatchObject([{ title: "متأخرة: «Pay the printer»", body: "أنجزها أو أجّلها أو غيّر موعدها." }]);
+    expect(await alertsAt(u, local("2026-10-09T08:00"))).toHaveLength(1);
+    expect(await seen(u, `todo-due:${u.email}:${mine.id}:${dueMs}:0`)).toBe(1);
+    expect(await seen(u, `todo-due:${u.email}:${mine.id}:${dueMs}:1`)).toBe(1);
+    expect(overdueAlertFingerprint(u.email, mine.id, dueMs, 3)).toBe(`todo-due:${u.email}:${mine.id}:${dueMs}:3`);
+    expect(backFingerprint(u.email, mine.id, "2026-10-08")).toBe(`todo-back:${u.email}:${mine.id}:2026-10-08`);
+  });
+
+  it("over steps 0-3 after an absence, «انتهى غياب» comes once, on the first alert; an item made after the return never says it", async () => {
+    const u = await workspace("al479back");
+    const quote = await make(u, local("2026-10-01T12:00"), { title: "Quote from Ahmad", direction: "they_owe", owedBy: "أحمد", dueAt: "2026-10-05T10:00" });
+    // «احمد» is the same contact: away until Thursday 8 October, so the chase waits for Sunday 11 October 08:00.
+    await goAway(u, "احمد", "2026-10-08");
+    const bodies: Record<string, string[]> = {};
+    for (let i = 0; i <= 9; i++) {
+      const day = addDays("2026-10-05", i);
+      bodies[day] = (await alertsAt(u, local(`${day}T08:00`) + i * 60_000)).map((n) => n.body);
+      if (day === "2026-10-11") {
+        expect(await fakeAt(local("2026-10-11T08:06"), () => db.ttl(`notifseen:${u.email}:${backFingerprint(u.email, quote.id, "2026-10-08")}`))).toBe(7 * 86400);
+        // Made after the return, for the same contact: its chase clock is Tuesday 13 October 12:00.
+        await make(u, local("2026-10-11T12:00"), { title: "New request", direction: "they_owe", owedBy: "أحمد" });
+      }
+    }
+    expect(Object.fromEntries(Object.entries(bodies).filter(([, b]) => b.length))).toEqual({
+      "2026-10-11": ["انتهى غياب أحمد — وقت المتابعة."],
+      "2026-10-12": ["تابِع مع أحمد، أو غيّر الموعد."],
+      "2026-10-14": ["تابِع مع أحمد، أو غيّر الموعد.", "تابِع مع أحمد، أو غيّر الموعد."],
+    });
+    expect(Object.values(bodies).flat().filter((b) => b.includes("انتهى غياب"))).toHaveLength(1);
+  });
+
+  it("ending an absence early (DELETE sets until to yesterday) brings the back alert with the next run", async () => {
+    const u = await workspace("al479end");
+    const inv = await make(u, local("2026-10-01T12:00"), { title: "Invoice", direction: "they_owe", owedBy: "أحمد", dueAt: "2026-10-05T10:00" });
+    await goAway(u, "أحمد", "2026-10-15");
+    expect(await alertsAt(u, local("2026-10-05T08:00"))).toEqual([]);
+    expect(await alertsAt(u, local("2026-10-06T08:01"))).toEqual([]);
+    // Tuesday noon: the owner ends it; the entry stays, its last day now Monday 5 October.
+    await goAway(u, "أحمد", "2026-10-05");
+    const wed = await alertsAt(u, local("2026-10-07T08:02"));
+    expect(wed).toMatchObject([{ title: "متأخرة: «Invoice»", body: "انتهى غياب أحمد — وقت المتابعة." }]);
+    expect(await seen(u, backFingerprint(u.email, inv.id, "2026-10-05"))).toBe(1);
+    expect(await alertsAt(u, local("2026-10-08T08:03"))).toEqual([]);
+    // Sunday is the third working day after Tuesday's return: step 3, the normal text.
+    expect(await alertsAt(u, local("2026-10-11T08:04"))).toMatchObject([{ body: "تابِع مع أحمد، أو غيّر الموعد." }]);
+  });
+});
+
+describe("rule 480: in Ramadan the 08:00 alert and brief say when chasing opens, and the evening wrap names the morning it reads", () => {
+  it("at the 08:00 run an item chase-due at 10:00 is alerted «تابعه اليوم بعد 10:00», step 0; the next morning step 1; nothing for tomorrow's window", async () => {
+    const cal = workCalendar(null, "Asia/Riyadh", local("2027-02-23T08:00"));
+    expect(["2027-02-23", "2027-02-24"].map((d) => [cal.ramadan.includes(d), cal.quiet[d] ?? null])).toEqual([[true, null], [true, null]]);
+    expect(cal.ramadanHours).toEqual([{ from: "10:00", to: "15:00" }]);
+    const u = await workspace("al480ramadan");
+    const quote = await make(u, local("2027-02-21T12:00"), { title: "Quote", direction: "they_owe", owedBy: "أحمد", dueAt: "2027-02-23T07:00" });
+    const a = await fakeAt(local("2027-02-23T08:00"), () => agendaFor(u.email, local("2027-02-23T08:00")));
+    expect(a.buckets.waiting[0].moment).toEqual({ anchor: local("2027-02-23T10:00"), at: local("2027-02-23T10:00"), why: "ramadan" });
+    expect(overdueAlerts(a.buckets.waiting, local("2027-02-23T08:00"), "Asia/Riyadh", a.cal)).toMatchObject([{ step: 0, days: 0, anchorMs: local("2027-02-23T10:00"), ramadanToday: "10:00" }]);
+    const tue = await alertsAt(u, local("2027-02-23T08:00"));
+    expect(tue).toMatchObject([{ title: "متأخرة: «Quote»", body: "تابعه اليوم بعد 10:00 مع أحمد، أو غيّر الموعد." }]);
+    expect(await seen(u, `todo-due:${u.email}:${quote.id}:${local("2027-02-23T10:00")}:0`)).toBe(1);
+    // Wednesday 08:00: chaseable since Tuesday 10:00, waiting for today's window.
+    expect(await alertsAt(u, local("2027-02-24T08:01"))).toMatchObject([{ body: "تابعه اليوم بعد 10:00 مع أحمد، أو غيّر الموعد." }]);
+    // In English.
+    const v = await workspace("al480ramadanen");
+    await make(v, local("2027-02-21T12:00"), { title: "Quote", direction: "they_owe", owedBy: "Sara", dueAt: "2027-02-23T07:00" });
+    const en = await fakeAt(local("2027-02-23T08:00"), async () => (await followUps({ ...v, lang: "en" }, v.email)).filter((n) => n.kind === "todo"));
+    expect(en).toMatchObject([{ title: "Overdue: «Quote»", body: "Follow up today after 10:00 with Sara, or change the date." }]);
+    // At 21:00 the window is tomorrow's: no alert names it.
+    const night = computeAgenda([debt({ expectBy: iso(local("2027-02-22T11:00")) })], local("2027-02-22T21:00"), { cal: RAMADAN });
+    expect(night.buckets.waiting[0].moment?.why).toBe("ramadan");
+    expect(overdueAlerts(night.buckets.waiting, local("2027-02-22T21:00"), "Asia/Riyadh", RAMADAN)).toEqual([]);
+  });
+
+  it("the brief counts the item as a chase at 08:00, with its time, and no longer as waiting", async () => {
+    const at8 = briefAgenda(computeAgenda([debt({ dueAt: iso(local("2027-02-23T07:00")) })], local("2027-02-23T08:00"), { cal: RAMADAN }));
+    expect(at8).toMatchObject({ chase: 1, waiting: 0, chaseAfter: { count: 1, time: "10:00" } });
+    // At 21:00 the window is tomorrow's: waiting.
+    const night = briefAgenda(computeAgenda([debt({ expectBy: iso(local("2027-02-22T11:00")) })], local("2027-02-22T21:00"), { cal: RAMADAN }));
+    expect(night).toMatchObject({ chase: 0, waiting: 1 });
+    expect(night.chaseAfter).toBeUndefined();
+    // Two windows, 07:00-09:00 and 13:00-15:00: one chaseable now, one at 13:00.
+    const two: CalData = { ...RAMADAN, ramadanHours: [{ from: "07:00", to: "09:00" }, { from: "13:00", to: "15:00" }] };
+    const mixed = briefAgenda(computeAgenda([debt({ expectBy: iso(local("2027-02-23T07:30")) }), debt({ id: "s00000000000004a2", expectBy: iso(local("2027-02-23T10:00")) })], local("2027-02-23T08:00"), { cal: two }));
+    expect(mixed).toMatchObject({ chase: 2, waiting: 0, chaseAfter: { count: 1, time: "13:00" } });
+
+    const u = await workspace("al480brief");
+    await make(u, local("2027-02-21T12:00"), { title: "Quote", direction: "they_owe", owedBy: "أحمد", dueAt: "2027-02-23T07:00" });
+    const brief = (await fakeAt(local("2027-02-23T08:00"), () => runDaily(u)))!;
+    expect(brief.agenda).toMatchObject({ chase: 1, waiting: 0 });
+    expect(brief.text).toContain("0 بانتظار غيرك، 1 حان وقت متابعتها (اليوم بعد 10:00)");
+    const v = await workspace("al480briefen", { ...ALERT_BRAND, languages: ["en"] });
+    await make(v, local("2027-02-21T12:00"), { title: "Quote", direction: "they_owe", owedBy: "Sara", dueAt: "2027-02-23T07:00" });
+    expect((await fakeAt(local("2027-02-23T08:00"), () => runDaily(v)))!.text).toContain("0 waiting on others, 1 to follow up (today after 10:00)");
+  });
+
+  it("the wrap's 'first for' line names the day and time its list is read at (ruling R14), in Latin digits", async () => {
+    const w = (day: string, tomorrowAt: number): Wrap => ({ day, zone: "Asia/Riyadh", completed: [], approved: 0, rejected: 0, fellOverdue: [], tomorrow: ["Quote"], tomorrowAt });
+    const line = (x: Wrap, lang: "ar" | "en") => wrapText(x, lang).body;
+    expect(line(w("2026-10-05", local("2026-10-06T09:00")), "ar")).toBe("• أول ما ينتظرك غداً 9 ص: «Quote»");
+    expect(line(w("2026-10-05", local("2026-10-06T09:00")), "en")).toBe("• First for tomorrow at 9 AM: «Quote»");
+    // A Riyadh Thursday: Sunday 08:00.
+    expect(line(w("2026-10-08", local("2026-10-11T08:00")), "ar")).toBe("• أول ما ينتظرك الأحد 8 ص: «Quote»");
+    expect(line(w("2026-10-08", local("2026-10-11T08:00")), "en")).toBe("• First for Sunday at 8 AM: «Quote»");
+    // Ramadan: the 10:00 window, a half-hour window, an afternoon one.
+    expect(line(w("2027-02-23", local("2027-02-24T10:00")), "ar")).toBe("• أول ما ينتظرك غداً 10 ص: «Quote»");
+    expect(line(w("2027-02-23", local("2027-02-24T10:00")), "en")).toBe("• First for tomorrow at 10 AM: «Quote»");
+    expect(line(w("2027-02-23", local("2027-02-24T10:30")), "en")).toBe("• First for tomorrow at 10:30 AM: «Quote»");
+    expect(line(w("2027-02-23", local("2027-02-24T13:00")), "ar")).toBe("• أول ما ينتظرك غداً 1 م: «Quote»");
+    // A week or more away (Eid, then the Saudi day in lieu): the date as well.
+    expect(line(w("2027-03-08", local("2027-03-15T08:00")), "ar")).toBe("• أول ما ينتظرك الاثنين 15 مارس 8 ص: «Quote»");
+    expect(line(w("2027-03-08", local("2027-03-15T08:00")), "en")).toBe("• First for Monday, March 15 at 8 AM: «Quote»");
+    expect(line(w("2027-03-08", local("2027-03-15T08:00")), "ar")).not.toMatch(/[٠-٩]/);
+
+    // Built from the store: a Thursday wrap reads Sunday 08:00, a Ramadan wrap the 10:00 window.
+    const u = await workspace("al480wrap");
+    await make(u, local("2026-10-07T09:00"), { title: "Quote from Ahmad", direction: "they_owe", owedBy: "Ahmad", dueAt: "2026-10-07T10:00" });
+    const thu = await fakeAt(local("2026-10-08T18:00"), () => buildWrap(u.email, local("2026-10-08T18:00")));
+    expect(thu.tomorrowAt).toBe(local("2026-10-11T08:00"));
+    expect(wrapText(thu, "en").body).toContain("• First for Sunday at 8 AM: «Quote from Ahmad»");
+    const v = await workspace("al480wrapram");
+    await make(v, local("2027-02-21T12:00"), { title: "Quote", direction: "they_owe", owedBy: "أحمد", dueAt: "2027-02-23T11:00" });
+    const ram = await fakeAt(local("2027-02-23T21:30"), () => buildWrap(v.email, local("2027-02-23T21:30")));
+    expect(ram.tomorrowAt).toBe(local("2027-02-24T10:00"));
+    expect(wrapText(ram, "ar").body).toContain("• أول ما ينتظرك غداً 10 ص: «Quote»");
   });
 });

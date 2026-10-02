@@ -123,7 +123,7 @@ describe("one alert per overdue item, spaced, then only the brief (rule 200)", (
     // Silent from the eighth day, still in the morning brief.
     expect((await runDaily(u))!.agenda).toMatchObject({ overdue: 1, top: ["Send the contract"] });
     // Each marker lives five days: on day 9 only the seventh day's is left.
-    const marker = async (step: number) => db.get(`notifseen:${u.email}:${overdueAlertFingerprint(u.email, late.id, late.dueAt!, step)}`);
+    const marker = async (step: number) => db.get(`notifseen:${u.email}:${overdueAlertFingerprint(u.email, late.id, Date.parse(late.dueAt!), step)}`);
     expect(await Promise.all([0, 1, 3, 7].map(marker))).toEqual([null, null, null, 1]);
   });
 
@@ -148,7 +148,7 @@ describe("one alert per overdue item, spaced, then only the brief (rule 200)", (
     expect(todos(await followUps(u, u.email))).toEqual([]);
     expect(await db.get(SEC_KEYS.alerts(u.email, "2026-10-05"))).toBe(SEC_ALERTS_PER_DAY);
     // The two held back were handed back, not burnt: their markers are free for another day of their window.
-    const marker = (it: SecItem) => db.get(`notifseen:${u.email}:${overdueAlertFingerprint(u.email, it.id, it.dueAt!, 0)}`);
+    const marker = (it: SecItem) => db.get(`notifseen:${u.email}:${overdueAlertFingerprint(u.email, it.id, Date.parse(it.dueAt!), 0)}`);
     expect(await Promise.all(items.map(marker))).toEqual([null, null, 1, 1, 1, 1, 1]);
     // A second brand of the same account has its own allowance the same day.
     const second = scopeFor(u.email, "b2");

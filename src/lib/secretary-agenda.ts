@@ -503,23 +503,77 @@ export function computeAgenda(items: SecItem[], now: number, opts: { approvals?:
 }
 
 /**
- * The days after an item became overdue on which it gets its own alert: that day, the next, the third and the seventh
- * (local days). After the seventh it is only in the morning brief.
+ * The days after an item fell behind on which it gets its own alert: that day, the next, the third and the seventh.
+ * The owner's own items count local calendar days from the due time; items someone else owes (a contact or an agent)
+ * count working days (`workingDaysBetween`) from the local day of their chase moment's anchor, so a weekend or Eid
+ * loses no step (spec §2.3). After the seventh it is only in the morning brief.
  */
 export const ALERT_DAYS = [0, 1, 3, 7] as const;
-/** The alert step for an item overdue for `d` local days: 0 → 0, 1-2 → 1, 3-6 → 3, 7 → 7, else none. */
-export function alertStep(d: number): (typeof ALERT_DAYS)[number] | null {
+export type AlertStep = (typeof ALERT_DAYS)[number];
+/** The alert step for an item `d` days behind: 0 → 0, 1-2 → 1, 3-6 → 3, 7 → 7, else none. */
+export function alertStep(d: number): AlertStep | null {
   if (!Number.isInteger(d) || d < 0 || d > ALERT_DAYS[ALERT_DAYS.length - 1]) return null;
   return [...ALERT_DAYS].reverse().find((s) => s <= d) ?? null;
 }
-/** The overdue entries that are at an alert step now, in agenda order (critical first, then the earliest due). */
-export function overdueAlerts(overdue: AgendaEntry[], now: number, z: Zone = DEFAULT_ZONE): { entry: AgendaEntry; days: number; step: (typeof ALERT_DAYS)[number] }[] {
+/** The working days in (a, b]: the local days after `a`, up to and including `b`, that are not quiet. 0 when `b` is not after `a`. */
+export function workingDaysBetween(a: string, b: string, cal: CalData): number {
+  const span = daysBetween(a, b);
+  let n = 0;
+  for (let i = 1; i <= span; i++) if (!isQuietDay(addDays(a, i), cal)) n++;
+  return n;
+}
+/**
+ * One alert due now. `anchorMs` keys its marker: the due time for the owner's own item, the chase moment's anchor for
+ * an item someone else owes. `days` is how far behind it is (calendar days for the owner's item, working days else);
+ * `windowDays` the calendar days from today to the day the next step starts (1 after the last step), which the marker
+ * must outlive so the same step is not sent twice. `ramadanToday` is the local "HH:mm" chasing opens today, for a debt
+ * held back by Ramadan's hours.
+ */
+export type OverdueAlert = { entry: AgendaEntry; days: number; step: AlertStep; anchorMs: number; windowDays: number; ramadanToday?: string };
+/**
+ * The entries at an alert step now, in the order given (spec §2.3). The owner's own items: only when overdue, counted in
+ * calendar days from the due time, as before, any day. Items someone else owes, a contact's or an agent's: when the
+ * agenda says chase (overdue or chase), or, on a Ramadan day, while they wait for a window that opens later today;
+ * counted in working days from the local day of the chase moment's anchor, and none at all on a weekend or quiet day.
+ */
+export function overdueAlerts(entries: AgendaEntry[], now: number, z: Zone = DEFAULT_ZONE, cal: CalData = defaultCal(z)): OverdueAlert[] {
   const today = zoneDay(now, z);
-  return overdue.flatMap((entry) => {
-    if (!entry.item.dueAt) return [];
-    const days = daysBetween(zoneDay(Date.parse(entry.item.dueAt), z), today);
+  const quietToday = isQuietDay(today, cal);
+  return entries.flatMap((entry): OverdueAlert[] => {
+    const it = entry.item;
+    const theirs = it.owedBy !== "owner";
+    let anchorMs: number;
+    let ramadanToday: string | undefined;
+    if (!theirs) {
+      if (entry.bucket !== "overdue" || !it.dueAt) return [];
+      anchorMs = Date.parse(it.dueAt);
+    } else {
+      const m = entry.moment;
+      if (!m) return [];
+      const later = entry.next === "wait" && m.why === "ramadan" && Number.isFinite(m.at) && m.at > now && zoneDay(m.at, z) === today;
+      if (entry.next !== "chase" && !later) return [];
+      if (later) ramadanToday = zoneLocalInput(m.at, z).slice(11, 16);
+      anchorMs = m.anchor;
+    }
+    if (!Number.isFinite(anchorMs) || (theirs && quietToday)) return [];
+    const from = zoneDay(anchorMs, z);
+    // Seven working days never span more than the calendar's window: an older anchor is past its last step, uncounted.
+    if (daysBetween(from, today) > MAX_SCAN_DAYS) return [];
+    const days = theirs ? workingDaysBetween(from, today, cal) : daysBetween(from, today);
     const step = alertStep(days);
-    return step === null ? [] : [{ entry, days, step }];
+    if (step === null) return [];
+    const next = ALERT_DAYS.find((s) => s > step);
+    let windowDays = 1;
+    if (next !== undefined && !theirs) windowDays = next - days;
+    else if (next !== undefined) {
+      let d = today;
+      for (let n = days, i = 0; n < next && i < MAX_SCAN_DAYS; i++) {
+        d = addDays(d, 1);
+        if (!isQuietDay(d, cal)) n++;
+      }
+      windowDays = daysBetween(today, d);
+    }
+    return [{ entry, days, step, anchorMs, windowDays, ...(ramadanToday ? { ramadanToday } : {}) }];
   });
 }
 
@@ -629,11 +683,20 @@ export function linkFactText(fact: LinkedFact | null | undefined, lang: "ar" | "
   return ar ? `العنصر المرتبط ${title} اعتمدته أنت (${when})${where}.` : `You approved the linked inbox item ${title} (${when})${where}.`;
 }
 
-/** The morning brief's agenda block: counts, and the titles of the first three overdue or due-today items. */
-export type BriefAgenda = { overdue: number; today: number; waiting: number; confirm: number; chase?: number; top: string[] };
+/**
+ * The morning brief's agenda block: counts, and the titles of the first three overdue or due-today items. On a Ramadan
+ * day a debt held back only until a window that opens later today counts as a chase, not as waiting (spec §2.2), and
+ * `chaseAfter` says how many of the chases those are and the local "HH:mm" the first window opens.
+ */
+export type BriefAgenda = { overdue: number; today: number; waiting: number; confirm: number; chase?: number; chaseAfter?: { count: number; time: string }; top: string[] };
 export function briefAgenda(a: Agenda): BriefAgenda {
+  const later = a.buckets.waiting
+    .map((e) => e.moment)
+    .filter((m): m is ChaseMoment => !!m && m.why === "ramadan" && Number.isFinite(m.at) && zoneDay(m.at, a.zone) === a.today)
+    .map((m) => m.at);
   return {
-    overdue: a.counts.overdue, today: a.counts.today, waiting: a.counts.waiting, confirm: a.counts.confirm, chase: a.counts.chase,
+    overdue: a.counts.overdue, today: a.counts.today, waiting: a.counts.waiting - later.length, confirm: a.counts.confirm, chase: a.counts.chase + later.length,
+    ...(later.length ? { chaseAfter: { count: later.length, time: zoneLocalInput(Math.min(...later), a.zone).slice(11, 16) } } : {}),
     top: [...a.buckets.overdue, ...a.buckets.today].slice(0, 3).map((e) => e.item.title),
   };
 }

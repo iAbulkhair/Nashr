@@ -802,10 +802,13 @@ export async function secretaryKeys(scope: string): Promise<string[]> {
 export const forgetDueScope = (scope: string) => db.zrem(SEC_KEYS.dueScopes, scope);
 
 /**
- * The marker of one overdue alert: this item, at this due time, at this step (0, 1, 3 or 7 days late). A new due date
- * is a new signature, so a rescheduled item that falls behind again starts its alerts afresh.
+ * The marker of one alert step (0, 1, 3 or 7) of one item, keyed by its anchor in ms: the due time for the owner's own
+ * item (`Date.parse(dueAt)`, so its marker reads as it always did) and the chase moment's anchor for an item someone
+ * else owes. A new due date or chase moment is a new signature, so an item that falls behind again starts afresh.
  */
-export const overdueAlertFingerprint = (scope: string, id: string, dueAt: string, step: number) => `todo-due:${scope}:${id}:${Date.parse(dueAt)}:${step}`;
+export const overdueAlertFingerprint = (scope: string, id: string, anchorMs: number, step: number) => `todo-due:${scope}:${id}:${anchorMs}:${step}`;
+/** The marker of the one "back from an absence" alert of an item: once per absence, named by its last day `until`. */
+export const backFingerprint = (scope: string, id: string, until: string) => `todo-back:${scope}:${id}:${until}`;
 
 // ---------------------------------------------------------------------------------------------------------------
 // Snooze presets, computed on the server's clock in the brand's local time.
