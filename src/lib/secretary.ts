@@ -104,19 +104,27 @@ export async function zoneFor(scope: string): Promise<Zone> {
 }
 
 /**
- * Stored Working days settings as the calendar the agenda reads (`workCalendar`, memoised per zone, local day and
- * settings). Anything that is not a settings object (absent, or a value that is not one), and a settings object the
- * calendar cannot be built from (a malformed field, e.g. `holidays.add: "x"`), is every default of the zone's country:
- * a bad record never stops the agenda or a chat turn. Only the error's name is logged, never the stored value.
+ * Stored Working days settings as they are used: the object itself when it is settings the calendar can be built from,
+ * else null (every default of the zone's country). Anything that is not a settings object (absent, or a value that is
+ * not one), and a settings object the calendar cannot be built from (a malformed field, e.g. `holidays.add: "x"`), is
+ * null: a bad record never stops the agenda, a chat turn or the Working days page. Only the error's name is logged,
+ * never the stored value.
  */
-export function calendarOf(stored: unknown, zone: Zone, now: number): CalData {
+export function usableCalendar(stored: unknown, zone: Zone, now: number): SecCalendar | null {
   const own = stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as SecCalendar) : null;
+  if (!own) return null;
   try {
-    return workCalendar(own, zone, now);
+    workCalendar(own, zone, now);
+    return own;
   } catch (e) {
     console.error("sec calendar unreadable, defaults used", e instanceof Error ? e.name : "error");
-    return workCalendar(null, zone, now);
+    return null;
   }
+}
+
+/** Stored Working days settings as the calendar the agenda reads (`workCalendar`, memoised per zone, local day and settings). */
+export function calendarOf(stored: unknown, zone: Zone, now: number): CalData {
+  return workCalendar(usableCalendar(stored, zone, now), zone, now);
 }
 
 const LOCAL_DAY = /^\d{4}-\d{2}-\d{2}$/;

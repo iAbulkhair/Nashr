@@ -140,6 +140,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // Reem's list: any member adds and changes items; closing, confirming or sending back a claim, deleting and restoring
   // need an admin (the same handler serves both, like PATCH /api/tasks/[id]).
   "PATCH /api/secretary/[id]": g("admin", "todo.write", "todo.close"),
+  // Reem's Working days (weekend, Ramadan hours, Eid sightings, holidays): a brand setting, so an admin saves it; every member reads it.
+  "PUT /api/secretary/calendar": g("admin", "brand.write"),
 
   // Every member of the account.
   "PATCH /api/account": g("member", "password.change"),
@@ -233,6 +235,7 @@ const READS: Record<string, Gate> = {
   "GET /api/secretary": "member",
   "GET /api/secretary/walk": g("member", "read"),
   "GET /api/secretary/away": g("member", "read"),
+  "GET /api/secretary/calendar": g("member", "read"),
 
   "GET /api/mcp": "public-read",
   "GET /api/oauth/meta": "public-read",

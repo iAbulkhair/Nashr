@@ -14,11 +14,12 @@ import {
 } from "@/lib/secretary";
 import { buildWrap } from "@/lib/secretary-evening";
 import { addDays, partyKey, zoneDay, type SecItem } from "@/lib/secretary-agenda";
-import { workCalendar, type SecCalendar } from "@/lib/secretary-calendar";
+import { parseCalendar, upcomingQuiet, workCalendar, type SecCalendar } from "@/lib/secretary-calendar";
 import { AWAY_AHEAD_DAYS, AWAY_KEEP_DAYS, AWAY_MAX, cleanAway, endAway, listAway, setAway } from "@/lib/secretary-away";
 import * as itemRoute from "@/app/api/secretary/[id]/route";
 import * as listRoute from "@/app/api/secretary/route";
 import * as awayRoute from "@/app/api/secretary/away/route";
+import * as calRoute from "@/app/api/secretary/calendar/route";
 
 /**
  * Rules 478-487 in docs/system/tests.md: Reem phase 3 A1, the store side of the brand's work calendar and of contacts
@@ -633,6 +634,266 @@ describe("rule 483: the away route (GET, PUT, DELETE /api/secretary/away): a ses
       const j = await (await awayGet()).json();
       expect(j.entries.map((e: { label: string; ended: boolean }) => [e.label, e.ended])).toEqual([["B", false], ["A", false], ["C", true], ["D", true]]);
       expect(await listAway(u.email, NOW, "Asia/Riyadh")).toEqual(j.entries);
+    });
+  });
+});
+
+// Rule 484: the Working days route (`sec:cal:{scope}`, src/app/api/secretary/calendar/route.ts). "Now" is `NOW` above.
+const calGet = () => calRoute.GET();
+const calPut = (body: unknown) => calRoute.PUT(json("/api/secretary/calendar", "PUT", body));
+const storedCal = (scope: string) => db.get<SecCalendar>(SEC_KEYS.cal(scope));
+/** A Riyadh brand's `parseCalendar` result at `now`, which a PUT must store as it is. */
+function parsed(body: Record<string, unknown>, now: number, login: string): SecCalendar {
+  const p = parseCalendar(body, now, "Asia/Riyadh", login);
+  if (!p.ok) throw new Error(`parseCalendar: ${p.error}`);
+  return p.cal;
+}
+
+describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a session, the role, the rate limit, the caller's scope, the saved settings", () => {
+  it("refuses an anonymous caller with 401 on both methods, before anything is read or written", async () => {
+    signOut();
+    const reads = vi.spyOn(db, "get"), counters = vi.spyOn(db, "incrby"), writes = vi.spyOn(db, "set"), locks = vi.spyOn(db, "lock");
+    expect((await calGet()).status).toBe(401);
+    expect((await calPut({ weekend: [5] })).status).toBe(401);
+    expect(await (await calPut({ weekend: [5] })).json()).toEqual({ ok: false, error: "unauthorized" });
+    for (const spy of [reads, counters, writes, locks]) expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("a member reads but cannot save: PUT is 403 with nothing stored, audited or counted", async () => {
+    await at(NOW, async () => {
+      const o = await owner("c484m");
+      const m = await newMember(o, "member", "c484mm");
+      await signIn(m.email);
+      expect((await calGet()).status).toBe(200);
+      const r = await calPut({ weekend: [5] });
+      expect(r.status).toBe(403);
+      expect(await r.json()).toEqual({ error: "forbidden" });
+      expect(await storedCal(o.email)).toBeNull();
+      expect(await auditLines(o.email)).toEqual([]);
+      expect(await db.get(`rate:sec:cal:${o.email}`)).toBeNull();
+    });
+  });
+
+  it("an admin's PUT is 200 and stores the parsed body plus updatedAt and updatedBy; one calendar audit line names the login; the write runs under the calendar's lock", async () => {
+    await at(NOW, async () => {
+      const o = await owner("c484a");
+      const a = await newMember(o, "admin", "c484aa");
+      await signIn(a.email);
+      const locks = vi.spyOn(db, "lock");
+      const body = { weekend: [5], ramadanHours: [{ from: "10:00", to: "14:00" }], holidays: { add: ["2026-12-24", "05-01"], remove: ["02-22"] } };
+      const r = await calPut(body);
+      expect(r.status).toBe(200);
+      const saved = await storedCal(o.email);
+      expect(saved).toEqual(parsed(body, NOW, a.email));
+      expect(saved).toEqual({
+        v: 1, weekend: [5], ramadanHours: [{ from: "10:00", to: "14:00" }], hijriFix: {}, holidays: { add: ["2026-12-24", "05-01"], remove: ["02-22"] },
+        updatedAt: iso(NOW), updatedBy: a.email,
+      });
+      expect(locks).toHaveBeenCalledWith(SEC_KEYS.lock(o.email, "cal"), expect.any(Number));
+      expect((await auditLines(o.email)).map((l) => [l.action, l.actor, l.via, l.login, l.id])).toEqual([["calendar", "owner", "web", a.email, "-"]]);
+      expect((await auditLines(o.email))[0].diff).toBe("weekend=[5]; ramadanHours=10:00-14:00; hijriFix=none; holidays +2 -1");
+      // The answer is what GET gives, so the page can show the new effective week and the next quiet days without a second request.
+      const j = await r.json();
+      expect(j).toMatchObject({ ok: true, calendar: saved, effective: { country: "SA", weekend: [5], weekStart: 6, ramadanHours: [{ from: "10:00", to: "14:00" }] } });
+      expect(j.upcoming.days.map((d: { day: string }) => d.day)).toContain("2026-12-24");
+      expect(await (await calGet()).json()).toEqual(j);
+      // The owner of the account saves too.
+      await signIn(o.email);
+      expect((await calPut({ weekend: [6] })).status).toBe(200);
+      expect((await storedCal(o.email))?.updatedBy).toBe(o.email);
+    });
+  });
+
+  it("the 31st PUT in an hour is 429 too_many and changes nothing; GET has its own sec:read counter", async () => {
+    await at(NOW, async () => {
+      const o = await owner("c484r");
+      await signIn(o.email);
+      for (let i = 1; i <= 30; i++) expect((await calPut({ weekend: [5] })).status, `PUT ${i}`).toBe(200);
+      const r = await calPut({ weekend: [3] });
+      expect(r.status).toBe(429);
+      expect(await r.json()).toEqual({ ok: false, error: "too_many" });
+      expect((await storedCal(o.email))?.weekend).toEqual([5]);
+      expect(await auditLines(o.email)).toHaveLength(30);
+      expect((await calGet()).status).toBe(200);
+      await db.set(`rate:sec:read:${o.email}`, SEC_READS_PER_HOUR, 3600);
+      expect((await calGet()).status).toBe(429);
+    });
+  });
+
+  it("GET in a Saudi brand has no saved settings, the country's week, and lists National Day 2026-09-23 as «اليوم الوطني»", async () => {
+    await at(local("2026-09-10T12:00"), async () => {
+      const o = await owner("c484g");
+      await signIn(o.email);
+      const r = await calGet();
+      expect(r.status).toBe(200);
+      const j = await r.json();
+      expect(j.ok).toBe(true);
+      expect(j.calendar).toBeNull();
+      expect(j.effective).toEqual({ country: "SA", weekend: [5, 6], weekStart: 0, ramadanHours: [{ from: "10:00", to: "15:00" }] });
+      expect(j.upcoming.days.find((d: { day: string }) => d.day === "2026-09-23")).toEqual({ day: "2026-09-23", why: { kind: "holiday", name: { ar: "اليوم الوطني", en: "National Day" } } });
+      expect(j.upcoming.days.map((d: { day: string }) => d.day)).toEqual([...j.upcoming.days.map((d: { day: string }) => d.day)].sort());
+      expect(j.upcoming.ramadan.start).toMatch(/^2027-02-/);
+      // The same list the library gives for the same instant.
+      expect(j.upcoming).toEqual(JSON.parse(JSON.stringify(upcomingQuiet(null, "Asia/Riyadh", local("2026-09-10T12:00")))));
+    });
+  });
+
+  it("GET reads the brand's own zone: a Dubai brand is the UAE, its weekend Saturday and Sunday and its week starting on Monday", async () => {
+    await at(local("2026-10-06T12:00", "Asia/Dubai"), async () => {
+      const o = await owner("c484d", DUBAI_BRAND);
+      await signIn(o.email);
+      const j = await (await calGet()).json();
+      expect(j.effective).toMatchObject({ country: "AE", weekend: [6, 0], weekStart: 1 });
+      expect(j.upcoming.days.find((d: { day: string }) => d.day === "2026-12-02")?.why).toMatchObject({ kind: "holiday", name: { en: "National Day" } });
+    });
+  });
+
+  it("PUT refuses what parseCalendar refuses, with its code and the field, and stores and audits nothing: an unknown field (scope, email), two separate weekend days, backwards Ramadan hours, a Hijri year too far on, a body that is not an object", async () => {
+    await at(NOW, async () => {
+      const o = await owner("c484x");
+      await signIn(o.email);
+      const refusals: [unknown, { error: string; field?: string }][] = [
+        [{ weekend: [5], scope: "other@test.example" }, { error: "bad_request", field: "scope" }],
+        [{ weekend: [5], email: "other@test.example" }, { error: "bad_request", field: "email" }],
+        [{ weekend: [1, 3] }, { error: "weekend_invalid", field: "weekend" }],
+        [{ ramadanHours: [{ from: "15:00", to: "10:00" }] }, { error: "ramadan_hours_invalid", field: "ramadanHours" }],
+        [{ hijriFix: { "1500": { ramadan1: "2027-02-09" } } }, { error: "bad_year", field: "hijriFix.1500" }],
+        [{ holidays: { remove: ["12-25"] } }, { error: "holidays_invalid", field: "holidays.remove" }],
+        [["weekend"], { error: "bad_request" }],
+        ["weekend", { error: "bad_request" }],
+        [null, { error: "bad_request" }],
+      ];
+      for (const [body, want] of refusals) {
+        const r = await calPut(body);
+        expect(r.status, JSON.stringify(body)).toBe(400);
+        expect(await r.json(), JSON.stringify(body)).toEqual({ ok: false, ...want });
+      }
+      expect(await storedCal(o.email)).toBeNull();
+      expect(await auditLines(o.email)).toEqual([]);
+      // A request with no body at all, or one that is not JSON, is bad_request too.
+      expect((await calRoute.PUT(new Request("https://nashr.test/api/secretary/calendar", { method: "PUT" }))).status).toBe(400);
+      expect((await calRoute.PUT(new Request("https://nashr.test/api/secretary/calendar", { method: "PUT", body: "{not json" }))).status).toBe(400);
+    });
+  });
+
+  it("what GET returns under calendar is what PUT accepts: the page's GET to PUT round trip saves the same settings, restamped by whoever saves", async () => {
+    const t1 = local("2026-10-06T12:00"), t2 = local("2026-10-07T09:00");
+    const { o, first, second, body } = await at(t1, async () => {
+      const o = await owner("c484t");
+      const first = await newMember(o, "admin", "c484t1"), second = await newMember(o, "admin", "c484t2");
+      await signIn(first.email);
+      // Ramadan 1448's Umm al-Qura start, moved a day on by the owner's sighting; a holiday the defaults give, removed; two added.
+      const ramadan = upcomingQuiet(null, "Asia/Riyadh", t1).ramadan!;
+      const body = { weekend: [4, 5], ramadanHours: [{ from: "09:00", to: "12:00" }, { from: "20:00", to: "23:30" }], hijriFix: { "1448": { ramadan1: addDays(ramadan.start, 1) } }, holidays: { add: ["2026-12-27", "H-01-10"], remove: ["02-22"] } };
+      expect((await calPut(body)).status).toBe(200);
+      return { o, first, second, body };
+    });
+    await at(t2, async () => {
+      await signIn(second.email);
+      const got = (await (await calGet()).json()).calendar;
+      expect(got).toEqual({ ...body, v: 1, updatedAt: iso(t1), updatedBy: first.email });
+      // GET → PUT, the whole object as it came, `v`, `updatedAt` and `updatedBy` included.
+      const r = await calPut(got);
+      expect(r.status).toBe(200);
+      expect(await storedCal(o.email)).toEqual({ ...got, updatedAt: iso(t2), updatedBy: second.email });
+      expect((await r.json()).calendar).toEqual({ ...got, updatedAt: iso(t2), updatedBy: second.email });
+      // Nothing saved yet: GET says null, and the defaults the page then shows save as they are.
+      const v = await owner("c484t0");
+      await signIn(v.email);
+      expect((await (await calGet()).json()).calendar).toBeNull();
+      expect((await calPut({})).status).toBe(200);
+      expect(await storedCal(v.email)).toEqual({ v: 1, weekend: null, ramadanHours: null, hijriFix: {}, holidays: { add: [], remove: [] }, updatedAt: iso(t2), updatedBy: v.email });
+      expect((await (await calGet()).json()).effective.weekend).toEqual([5, 6]);
+    });
+  });
+
+  it("a stored value that is not settings is shown as no settings with the defaults, and an admin can save over it (ruling R13)", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    await at(NOW, async () => {
+      const o = await owner("c484bad");
+      await signIn(o.email);
+      for (const bad of ["weekend=5", ["x"], { v: 1, holidays: { add: "x" } }]) {
+        await db.set(SEC_KEYS.cal(o.email), bad);
+        const r = await calGet();
+        expect(r.status, JSON.stringify(bad)).toBe(200);
+        const j = await r.json();
+        expect(j.calendar).toBeNull();
+        expect(j.effective).toMatchObject({ country: "SA", weekend: [5, 6], weekStart: 0 });
+      }
+      // Only the error's name is logged, never the stored value.
+      expect(errors.mock.calls).toEqual([["sec calendar unreadable, defaults used", "TypeError"]]);
+      expect((await calPut({ weekend: [5] })).status).toBe(200);
+      expect((await storedCal(o.email))?.weekend).toEqual([5]);
+    });
+  });
+
+  it("a PUT in brand B stores under B's scope alone, whatever the body names, and each brand's GET reads its own", async () => {
+    await at(NOW, async () => {
+      const u = await owner("c484b");
+      const b2 = scopeFor(u.email, "b2");
+      await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
+      await saveBrand(b2, { ...BRAND, name: "Two" });
+      await signIn(u.email);
+      await setActiveBrand(u.email, "b2");
+      expect((await calPut({ weekend: [5], scope: u.email })).status).toBe(400);
+      expect(await Promise.all([storedCal(u.email), storedCal(b2)])).toEqual([null, null]);
+      expect((await calPut({ weekend: [5] })).status).toBe(200);
+      expect((await storedCal(b2))?.weekend).toEqual([5]);
+      expect(await storedCal(u.email)).toBeNull();
+      expect((await (await calGet()).json()).calendar.weekend).toEqual([5]);
+      expect((await auditLines(b2)).map((l) => l.action)).toEqual(["calendar"]);
+      expect(await auditLines(u.email)).toEqual([]);
+      await setActiveBrand(u.email, "default");
+      const j = await (await calGet()).json();
+      expect(j.calendar).toBeNull();
+      expect(j.effective.weekend).toEqual([5, 6]);
+    });
+  });
+
+  it("two PUTs at once both save, one after the other under the lock, each with its own audit line; a lock that is held gives 503 lock_timeout and stores nothing", async () => {
+    await at(NOW, async () => {
+      const o = await owner("c484c");
+      await signIn(o.email);
+      const rs = await Promise.all([calPut({ weekend: [5] }), calPut({ weekend: [4] })]);
+      expect(rs.map((r) => r.status)).toEqual([200, 200]);
+      expect([[5], [4]]).toContainEqual((await storedCal(o.email))?.weekend);
+      expect(await auditLines(o.email)).toHaveLength(2);
+    });
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    try {
+      const o = await owner("c484l");
+      await signIn(o.email);
+      expect(await db.lock(SEC_KEYS.lock(o.email, "cal"), 30)).toBe(true);
+      const p = calPut({ weekend: [5] });
+      await vi.advanceTimersByTimeAsync(4000);
+      const r = await p;
+      expect(r.status).toBe(503);
+      expect(await r.json()).toEqual({ ok: false, error: "lock_timeout" });
+      expect(await storedCal(o.email)).toBeNull();
+      expect(await auditLines(o.email)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a saved weekend applies on the next read: before the PUT a Saturday chase waits, after PUT weekend [5] it is in chase (Review Focus 2)", async () => {
+    const sat = local("2026-10-03T12:00");
+    await at(local("2026-10-01T09:00"), async () => {
+      const o = await owner("c484f");
+      const a = await newMember(o, "admin", "c484fa");
+      await signIn(a.email);
+      // Expected on Saturday 3 October 10:00: the zone's own weekend (Friday and Saturday) holds it until Sunday 08:00.
+      await make(o, { title: "Quote", direction: "they_owe", owedBy: "أحمد", expectBy: "2026-10-03T10:00" });
+      const before = await agendaFor(o.email, sat);
+      expect(before.buckets.chase).toEqual([]);
+      expect(before.buckets.waiting.map((e) => [e.item.title, e.next, e.moment?.why, e.moment?.at])).toEqual([["Quote", "wait", "quiet", local("2026-10-04T08:00")]]);
+      expect((await calPut({ weekend: [5] })).status).toBe(200);
+      // The same list at the same instant, read again: Friday alone is the weekend, so Saturday is a working day.
+      const after = await agendaFor(o.email, sat);
+      expect(after.buckets.waiting).toEqual([]);
+      expect(after.buckets.chase.map((e) => [e.item.title, e.next, e.moment?.why, e.moment?.at])).toEqual([["Quote", "chase", "normal", local("2026-10-03T10:00")]]);
+      expect(after.cal.weekend).toEqual([5]);
     });
   });
 });
