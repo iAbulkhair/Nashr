@@ -346,10 +346,16 @@ function build(cal: SecCalendar | null, zone: Zone, now: number): Built {
   occasions.sort((a, b) => rank(a) - rank(b) || (a.days[0] < b.days[0] ? -1 : a.days[0] > b.days[0] ? 1 : 0));
   const holidayAt = new Map<string, QuietWhy>();
   const produced = new Set<string>();
+  /** Holiday days the owner removed: a day in lieu never lands on one (removing an Eid day must not also cost its day in lieu). */
+  const removedHoliday = new Set<string>();
   const owed: { occ: Occasion; n: number }[] = [];
   for (const occ of occasions) {
     occ.days.forEach((d) => produced.add(d));
-    occ.days = occ.days.filter((d) => !removed(d));
+    occ.days = occ.days.filter((d) => {
+      if (!removed(d)) return true;
+      removedHoliday.add(d);
+      return false;
+    });
     let n = 0;
     for (const d of occ.days) {
       if (holidayAt.has(d)) { if (rules.overlap) n++; continue; }
@@ -363,8 +369,9 @@ function build(cal: SecCalendar | null, zone: Zone, now: number): Built {
 
   // 6. The days in lieu, once every holiday is known, so none lands on another holiday.
   const lieu = new Map<string, QuietWhy>();
-  // Never a day the owner removed: removing one Eid day must not also cost the day in lieu.
-  const free = (d: string) => !isWk(d) && !holidayAt.has(d) && !lieu.has(d) && !removed(d);
+  // Not a holiday day the owner removed. A removed day in lieu itself is still placed here, and step 7 drops it: the
+  // owner's "remove" means that day is not quiet, never that the day in lieu moves to another one.
+  const free = (d: string) => !isWk(d) && !holidayAt.has(d) && !lieu.has(d) && !removedHoliday.has(d);
   for (const { occ, n } of owed) {
     const why = inLieu(occ.why.name);
     const last = occ.days[occ.days.length - 1];
@@ -389,7 +396,7 @@ function build(cal: SecCalendar | null, zone: Zone, now: number): Built {
     const h = hijriOf.get(day);
     if (h?.m === 9) ramadan.push(day);
     if (isWk(day)) continue;
-    const why = holidayAt.get(day) ?? lieu.get(day) ?? (add.some((v) => matchesValue(v, day, h)) ? { kind: "added" as const } : undefined);
+    const why = holidayAt.get(day) ?? (lieu.has(day) && !removed(day) ? lieu.get(day) : undefined) ?? (add.some((v) => matchesValue(v, day, h)) ? { kind: "added" as const } : undefined);
     if (why) quiet[day] = why;
   }
   const data: CalData = {

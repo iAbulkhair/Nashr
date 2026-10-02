@@ -368,15 +368,22 @@ describe("rule 473: other official holidays and the days given in lieu", () => {
     expect(workCalendar(off, "Asia/Riyadh", at("2028-08-25")).quiet["2028-09-24"]).toBeUndefined();
   });
 
-  it("removing one Eid day does not also cost the day in lieu: a removed day is never where a day in lieu lands", () => {
+  it("removing one Eid day does not also cost the day in lieu: a removed holiday day is never where a day in lieu lands", () => {
     // Eid al-Adha 1448 in Riyadh: Sat 15 (Arafah, weekend) to Tue 18 May 2027; the Saturday earns Wednesday 19.
     const cal = workCalendar(settings({ holidays: { add: [], remove: ["2027-05-18"] } }), "Asia/Riyadh", at("2027-04-19"));
     expect(quietBetween(cal, "2027-05-13", "2027-05-23")).toEqual(["2027-05-16", "2027-05-17", "2027-05-19"]);
     expect(cal.quiet["2027-05-19"]?.name?.en).toBe("Day in lieu of Eid al-Adha holiday");
-    // The Friday rule's Thursday: National Day on Friday 2022-09-23 with Thursday 22 removed goes after the weekend, Sunday 25.
+  });
+
+  it("removing the day in lieu itself drops it: it does not move to another day", () => {
+    const quiet = (remove: string[]) => quietBetween(workCalendar(settings({ holidays: { add: [], remove } }), "Asia/Riyadh", at("2027-04-19")), "2027-05-13", "2027-05-27");
+    expect(quiet([])).toEqual(["2027-05-16", "2027-05-17", "2027-05-18", "2027-05-19"]);
+    expect(quiet(["2027-05-19"])).toEqual(["2027-05-16", "2027-05-17", "2027-05-18"]);
+    expect(quiet(["2027-05-19", "2027-05-20"])).toEqual(["2027-05-16", "2027-05-17", "2027-05-18"]);
+    // The Friday rule's Thursday: National Day on Friday 2022-09-23 with its day in lieu, Thursday 22, removed.
     const fri = workCalendar(settings({ holidays: { add: [], remove: ["2022-09-22"] } }), "Asia/Riyadh", at("2022-08-24"));
     expect(fri.quiet["2022-09-22"]).toBeUndefined();
-    expect(fri.quiet["2022-09-25"]?.name?.en).toBe("Day in lieu of National Day");
+    expect(fri.quiet["2022-09-25"]).toBeUndefined();
   });
 
   it("upcomingQuiet lists the next 365 days' quiet days in order with their names, and the next Ramadan", () => {
