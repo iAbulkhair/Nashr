@@ -1,8 +1,15 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { activeSeasons, hijriDate } from "@/lib/seasons";
 import { eveningAt, isRamadan, previousEveningAt, zonesDue } from "@/lib/secretary-evening";
-import { addWorkingDays, defaultCal, firstWorkingMoment, inRamadanWindow, isQuietDay, nowLine } from "@/lib/secretary-agenda";
-import { nextWeekStart, snoozePreset } from "@/lib/secretary";
+import {
+  addWorkingDays, chaseAt, chaseMoment, classify, computeAgenda, defaultCal, firstWorkingMoment, formatWhen, inRamadanWindow, isQuietDay, nextStepText, nowLine,
+  outsideRamadanHours, partyKey, riyadhDay, type AwayMap, type CalData, type SecItem,
+} from "@/lib/secretary-agenda";
+import { cleanLine, nextWeekStart, snoozePreset } from "@/lib/secretary";
+import { runTool } from "@/lib/chat";
+import { saveBrand, type Brand } from "@/lib/brand";
+import { json, newUser, signIn } from "./helpers/session";
+import * as listRoute from "@/app/api/secretary/route";
 import { COUNTRY_CAL, countryOf, parseCalendar, upcomingQuiet, workCalendar, type SecCalendar } from "@/lib/secretary-calendar";
 import { ZONE_IDS, isWeekend, weekStart, weekStartDay, zoneOf, type Zone } from "@/lib/zones";
 
@@ -12,8 +19,9 @@ import { ZONE_IDS, isWeekend, weekStart, weekStartDay, zoneOf, type Zone } from 
  * brand's zone, because the calendar day flips at the brand's midnight and not at the server's. Rule 471: the pure
  * calendar primitives (working days, week start, Ramadan windows) that read the brand's `CalData`. Rules 472-474: the
  * server's `workCalendar`, which builds that `CalData` from the country's private-sector holidays and the brand's
- * settings, and `parseCalendar`, which checks those settings. Every Hijri date and weekday below was checked against
- * ICU Umm al-Qura in Riyadh before it was written down.
+ * settings, and `parseCalendar`, which checks those settings. Rules 475-477: `chaseMoment`, the one rule for when the
+ * owner may chase someone, and the agenda that reads it. Every Hijri date and weekday below was checked against ICU
+ * Umm al-Qura in Riyadh before it was written down.
  */
 const TZ = process.env.TZ;
 afterEach(() => {
@@ -509,5 +517,290 @@ describe("rule 474: parseCalendar refuses what the calendar cannot hold", () => 
     expect(parse({})).toEqual({ ok: true, cal: { v: 1, weekend: null, ramadanHours: null, hijriFix: {}, holidays: { add: [], remove: [] }, updatedAt: "2026-10-02T09:00:00.000Z", updatedBy: "admin@example.com" } });
     const fail = parse({ weekend: [5, 1] });
     expect(fail).toEqual({ ok: false, error: "weekend_invalid", status: 400, field: "weekend" });
+  });
+});
+
+// Rules 475-477: the chase rule. Every calendar below is built by hand from `defaultCal`, so each case names the quiet
+// and Ramadan days it touches (ruling R1: the Ramadan cases sit on Monday 22 and Tuesday 23 February 2027, weekdays in
+// Riyadh, so they test Ramadan and not the weekend).
+const RIYADH = defaultCal("Asia/Riyadh");
+const DUBAI = defaultCal("Asia/Dubai");
+/** A local wall-clock time "YYYY-MM-DDTHH:mm" in Riyadh (UTC+3) or Dubai (UTC+4). */
+const local = (s: string, z: Zone = "Asia/Riyadh") => Date.parse(`${s}:00${z === "Asia/Dubai" ? "+04:00" : "+03:00"}`);
+const iso = (ms: number) => new Date(ms).toISOString();
+/** Something «أحمد» owes the owner: undated unless the case dates it. */
+const debt = (p: Partial<SecItem> = {}): SecItem => ({
+  id: "s00000000000004a1", kind: "waiting_on", title: "Quote from the supplier", description: "", result: null, direction: "they_owe", owedBy: "أحمد", owedTo: "owner",
+  dueAt: null, allDay: false, snoozeUntil: null, priority: 1, critical: false, links: {}, source: "owner", notes: [],
+  createdAt: "2026-09-01T09:00:00.000Z", updatedAt: "2026-09-01T09:00:00.000Z", completedAt: null, proposedDone: null, deletedAt: null, expiresAt: null, rev: 1, ...p,
+});
+const FITR = { kind: "eid_fitr" as const, name: { ar: "إجازة عيد الفطر", en: "Eid al-Fitr holiday" } };
+/** Saudi Eid al-Fitr 1448 by hand: Tuesday 9 to Friday 12 March 2027 (Friday and Saturday are the weekend anyway). */
+const EID: CalData = { ...RIYADH, quiet: Object.fromEntries(["2027-03-09", "2027-03-10", "2027-03-11", "2027-03-12"].map((d) => [d, FITR])) };
+const RAMADAN: CalData = { ...RIYADH, ramadan: ["2027-02-22", "2027-02-23"] };
+/** A moment long before every case below, so `at` is the anchor. */
+const EARLY = local("2026-09-01T12:00");
+
+describe("rule 475: chaseMoment moves chasing off quiet days, out of Ramadan's off-hours and past an absence", () => {
+  it("Riyadh: a chase due Friday moves to Sunday 08:00 (quiet); one due Thursday is not moved", () => {
+    const sun = local("2026-10-04T08:00");
+    expect(chaseMoment(debt({ dueAt: iso(local("2026-10-02T10:00")) }), EARLY, RIYADH, {})).toEqual({ anchor: sun, at: sun, why: "quiet", quiet: { kind: "weekend" } });
+    const thu = local("2026-10-01T10:00");
+    expect(chaseMoment(debt({ dueAt: iso(thu) }), EARLY, RIYADH, {})).toEqual({ anchor: thu, at: thu, why: "normal" });
+  });
+
+  it("Dubai: a chase due Saturday moves to Monday 09:00; one due Friday is not moved", () => {
+    const mon = local("2026-10-05T09:00", "Asia/Dubai");
+    expect(chaseMoment(debt({ dueAt: iso(local("2026-10-03T10:00", "Asia/Dubai")) }), EARLY, DUBAI, {})).toMatchObject({ at: mon, why: "quiet" });
+    expect(chaseMoment(debt({ dueAt: iso(local("2026-10-04T10:00", "Asia/Dubai")) }), EARLY, DUBAI, {})).toMatchObject({ at: mon, why: "quiet" });
+    const fri = local("2026-10-02T10:00", "Asia/Dubai");
+    expect(chaseMoment(debt({ dueAt: iso(fri) }), EARLY, DUBAI, {})).toEqual({ anchor: fri, at: fri, why: "normal" });
+  });
+
+  it("away until Thursday 2026-10-08: an item owed by «أحمد » due Monday 10-05 is chased Sunday 10-11 08:00, why away", () => {
+    const away: AwayMap = { "احمد": { label: "احمد", until: "2026-10-08" } };
+    const it0 = debt({ owedBy: "أحمد ", dueAt: iso(local("2026-10-05T10:00")) });
+    const sun = local("2026-10-11T08:00");
+    expect(chaseMoment(it0, local("2026-10-05T12:00"), RIYADH, away)).toEqual({ anchor: sun, at: sun, why: "away", until: "2026-10-08" });
+    // `until` is inclusive: a chase due on the last away day moves too; one due the day after does not.
+    expect(chaseMoment(debt({ dueAt: iso(local("2026-10-08T10:00")) }), EARLY, RIYADH, away)).toMatchObject({ at: sun, why: "away" });
+    const after = local("2026-10-11T10:00");
+    expect(chaseMoment(debt({ dueAt: iso(after) }), EARLY, RIYADH, away)).toEqual({ anchor: after, at: after, why: "normal" });
+    // Another contact is not away.
+    const sara = local("2026-10-05T10:00");
+    expect(chaseMoment(debt({ owedBy: "سارة", dueAt: iso(sara) }), EARLY, RIYADH, away)).toEqual({ anchor: sara, at: sara, why: "normal" });
+    // Away until Sunday, the day after a working day: chasing may start at its first moment.
+    const sunAway: AwayMap = { "احمد": { label: "احمد", until: "2026-10-04" } };
+    expect(chaseMoment(debt({ dueAt: iso(local("2026-10-04T10:00")) }), EARLY, RIYADH, sunAway)).toMatchObject({ at: local("2026-10-05T00:00"), why: "away" });
+  });
+
+  it("a label that names an Object property is just a label: no away entry, no crash", () => {
+    const due = local("2026-10-05T10:00");
+    for (const owedBy of ["constructor", "__proto__", "toString"]) {
+      expect(chaseMoment(debt({ owedBy, dueAt: iso(due) }), EARLY, RIYADH, {})).toEqual({ anchor: due, at: due, why: "normal" });
+    }
+  });
+
+  it("malformed data moves nothing and throws nothing: an away day that is not a date, a due date that is not one", () => {
+    const due = local("2026-10-05T10:00");
+    for (const until of ["soon", "2026-13-45", ""]) {
+      expect(chaseMoment(debt({ dueAt: iso(due) }), EARLY, RIYADH, { "احمد": { label: "أحمد", until } }), until).toEqual({ anchor: due, at: due, why: "normal" });
+    }
+    const bad = chaseMoment(debt({ dueAt: "not a date" }), EARLY, RIYADH, {});
+    expect(Number.isNaN(bad?.at)).toBe(true);
+    expect(classify(debt({ dueAt: "not a date" }), EARLY, "Asia/Riyadh")?.bucket).toBe("waiting");
+  });
+
+  it("Eid: with SA quiet days 2027-03-09 to 12, an item due 03-10 moves past the last Eid day to Sunday 03-14 08:00", () => {
+    const sun = local("2027-03-14T08:00");
+    expect(chaseMoment(debt({ dueAt: iso(local("2027-03-10T10:00")) }), EARLY, EID, {})).toEqual({ anchor: sun, at: sun, why: "quiet", quiet: FITR });
+  });
+
+  it("a follow-up recorded Monday 2027-03-08, the day before Eid: the re-chase is the 2nd working day after Eid, 03-15, at the follow-up's time", () => {
+    const it0 = debt({ dueAt: iso(local("2027-03-07T10:00")), lastChasedAt: iso(local("2027-03-08T11:00")) });
+    expect(chaseAt(it0, "Asia/Riyadh", EID)).toBe(local("2027-03-15T11:00"));
+    expect(chaseMoment(it0, local("2027-03-08T12:00"), EID, {})).toEqual({ anchor: local("2027-03-15T11:00"), at: local("2027-03-15T11:00"), why: "normal" });
+    // Without the calendar only the weekend is skipped: Wednesday, an Eid day.
+    expect(chaseAt(it0, "Asia/Riyadh")).toBe(local("2027-03-10T11:00"));
+  });
+
+  it("Ramadan: due Monday 2027-02-22 20:00 is chased Tuesday 10:00; with a second window 21:30-23:30, the same evening at 21:30", () => {
+    const it0 = debt({ dueAt: iso(local("2027-02-22T20:00")) });
+    expect(chaseMoment(it0, EARLY, RAMADAN, {})).toEqual({ anchor: local("2027-02-23T10:00"), at: local("2027-02-23T10:00"), why: "ramadan" });
+    const two = { ...RAMADAN, ramadanHours: [{ from: "10:00", to: "15:00" }, { from: "21:30", to: "23:30" }] };
+    expect(chaseMoment(it0, EARLY, two, {})).toEqual({ anchor: local("2027-02-22T21:30"), at: local("2027-02-22T21:30"), why: "ramadan" });
+    // Ramadan hours of [] are no restriction.
+    expect(chaseMoment(it0, EARLY, { ...RAMADAN, ramadanHours: [] }, {})).toMatchObject({ at: local("2027-02-22T20:00"), why: "normal" });
+  });
+
+  it("review focus 4: in Ramadan a moment exactly at 15:00 moves and one exactly at 10:00 does not; one at briefAt on a working day stays", () => {
+    expect(chaseMoment(debt({ dueAt: iso(local("2027-02-22T15:00")) }), EARLY, RAMADAN, {})).toMatchObject({ at: local("2027-02-23T10:00"), why: "ramadan" });
+    expect(chaseMoment(debt({ dueAt: iso(local("2027-02-22T14:59")) }), EARLY, RAMADAN, {})).toMatchObject({ at: local("2027-02-22T14:59"), why: "normal" });
+    expect(chaseMoment(debt({ dueAt: iso(local("2027-02-22T10:00")) }), EARLY, RAMADAN, {})).toMatchObject({ at: local("2027-02-22T10:00"), why: "normal" });
+    expect(chaseMoment(debt({ dueAt: iso(local("2026-10-04T08:00")) }), EARLY, RIYADH, {})).toMatchObject({ at: local("2026-10-04T08:00"), why: "normal" });
+  });
+
+  it("several moves: why is the last one's reason (ruling R5), except that away wins once applied", () => {
+    // Friday 19 Feb (weekend) → Sunday 08:00 → Sunday is a Ramadan day: 10:00. The last move is Ramadan's.
+    const cal = { ...RIYADH, ramadan: ["2027-02-19", "2027-02-21"] };
+    expect(chaseMoment(debt({ dueAt: iso(local("2027-02-19T11:00")) }), EARLY, cal, {})).toEqual({ anchor: local("2027-02-21T10:00"), at: local("2027-02-21T10:00"), why: "ramadan" });
+    // Thursday 18 Feb 16:00, after the window → Friday 08:00 (Ramadan's move) → the weekend → Sunday 08:00, not a Ramadan day here.
+    const thu = { ...RIYADH, ramadan: ["2027-02-18"] };
+    expect(chaseMoment(debt({ dueAt: iso(local("2027-02-18T16:00")) }), EARLY, thu, {})).toEqual({ anchor: local("2027-02-21T08:00"), at: local("2027-02-21T08:00"), why: "quiet", quiet: { kind: "weekend" } });
+    // Away until Thursday, then the weekend, then Sunday's Ramadan hours: still "away".
+    const away: AwayMap = { "احمد": { label: "أحمد", until: "2027-02-18" } };
+    expect(chaseMoment(debt({ dueAt: iso(local("2027-02-17T11:00")) }), EARLY, cal, away)).toEqual({ anchor: local("2027-02-21T10:00"), at: local("2027-02-21T10:00"), why: "away", until: "2027-02-18" });
+  });
+
+  it("a weekend run that holds a named holiday is explained by the holiday", () => {
+    // Friday and Saturday, then a holiday on Sunday: the line names the holiday, not the weekend.
+    const cal = { ...RIYADH, quiet: { "2026-10-04": { kind: "holiday" as const, name: { ar: "يوم التأسيس", en: "Founding Day" } } } };
+    expect(chaseMoment(debt({ dueAt: iso(local("2026-10-02T10:00")) }), EARLY, cal, {})).toEqual({
+      anchor: local("2026-10-05T08:00"), at: local("2026-10-05T08:00"), why: "quiet", quiet: { kind: "holiday", name: { ar: "يوم التأسيس", en: "Founding Day" } },
+    });
+  });
+
+  it("an item owed by an agent is never moved, and the owner's own item has no chase moment", () => {
+    const fri = local("2026-10-02T10:00");
+    const dana = debt({ owedBy: "dana", dueAt: iso(fri) });
+    expect(chaseMoment(dana, EARLY, RIYADH, {})).toEqual({ anchor: fri, at: fri, why: "normal" });
+    // Not even when it is read on the Friday itself.
+    expect(chaseMoment(dana, local("2026-10-02T12:00"), RIYADH, { dana: { label: "dana", until: "2026-10-30" } })).toEqual({ anchor: fri, at: fri, why: "normal" });
+    expect(chaseMoment(debt({ owedBy: "owner", direction: "i_owe", dueAt: iso(fri) }), EARLY, RIYADH, {})).toBeNull();
+  });
+
+  it("outsideRamadanHours is false on every day that is not a Ramadan day, and on a Ramadan day outside the windows only", () => {
+    expect(outsideRamadanHours(local("2027-02-22T20:00"), RIYADH)).toBe(false);
+    expect(outsideRamadanHours(local("2027-02-22T20:00"), RAMADAN)).toBe(true);
+    expect(outsideRamadanHours(local("2027-02-22T12:00"), RAMADAN)).toBe(false);
+    expect(outsideRamadanHours(local("2027-02-22T20:00"), { ...RAMADAN, ramadanHours: [] })).toBe(false);
+  });
+
+  it("partyKey folds the ways one Arabic name is written, and drops what cannot be seen", () => {
+    for (const s of ["أحمد", "احمد", "إحمد", "آحمد", "ٱحمد", "أحمد ", "  أحمد\t", "أح\u00ADمد", "أَحْمَد", "أحـــمد", "\u200Bأحمد\u200F", "أحم\u200Dد", "أ\uFE00حمد"]) {
+      expect(partyKey(s), JSON.stringify(s)).toBe("احمد");
+    }
+    expect(partyKey("فاطمة")).toBe("فاطمه");
+    expect(partyKey("مصطفى")).toBe("مصطفي");
+    expect(partyKey("ＤＡＮＡ")).toBe("dana");
+    expect(partyKey("Dana   Smith")).toBe("dana smith");
+    expect(partyKey("Ahmad")).not.toBe(partyKey("أحمد"));
+    expect(partyKey("\u3164")).toBe("");
+  });
+
+  it("partyKey is null past 80 characters of key, and cleans at least what party() cleans (ruling R2)", () => {
+    expect(partyKey("a".repeat(80))).toBe("a".repeat(80));
+    expect(partyKey("a".repeat(81))).toBeNull();
+    // Characters that leave the key do not count toward its length.
+    expect(partyKey(`${"a".repeat(80)}\u00AD\u00AD `)).toBe("a".repeat(80));
+    for (const s of ["  أحمد\t\n", "a\u0000b", "x\u202Ey", "p\u2028q", "\uFEFFsara  ali\r\n"]) expect(partyKey(s), JSON.stringify(s)).toBe(partyKey(cleanLine(s)));
+  });
+});
+
+describe("rule 476: a debt that is already chaseable waits on quiet days and outside Ramadan hours", () => {
+  it("a chase due Wednesday 2027-03-03, read Friday 03-05 12:00 in Riyadh: waiting until Sunday 08:00, why quiet", () => {
+    const it0 = debt({ dueAt: iso(local("2027-03-03T10:00")) });
+    const c = classify(it0, local("2027-03-05T12:00"), "Asia/Riyadh");
+    expect(c).toMatchObject({ bucket: "waiting", next: "wait", actionOwner: "أحمد" });
+    expect(c?.moment).toEqual({ anchor: local("2027-03-03T10:00"), at: local("2027-03-07T08:00"), why: "quiet", quiet: { kind: "weekend" } });
+    // Sunday, after the brief: a chase again (overdue, its due date long past).
+    expect(classify(it0, local("2027-03-07T08:00"), "Asia/Riyadh")).toMatchObject({ bucket: "overdue", next: "chase", moment: { at: local("2027-03-03T10:00"), why: "normal" } });
+    expect(classify(it0, local("2027-03-07T07:59"), "Asia/Riyadh")).toMatchObject({ bucket: "overdue", next: "chase" });
+  });
+
+  it("Ramadan: waiting at 21:00 until 10:00 the next day, a chase at 11:00", () => {
+    const it0 = debt({ expectBy: iso(local("2027-02-22T11:00")) });
+    const anchor = local("2027-02-22T11:00");
+    const night = computeAgenda([it0], local("2027-02-22T21:00"), { zone: "Asia/Riyadh", cal: RAMADAN });
+    expect(night.counts).toMatchObject({ waiting: 1, chase: 0 });
+    expect(night.buckets.waiting[0].moment).toEqual({ anchor, at: local("2027-02-23T10:00"), why: "ramadan" });
+    expect(computeAgenda([it0], local("2027-02-23T09:59"), { cal: RAMADAN }).counts.waiting).toBe(1);
+    const day = computeAgenda([it0], local("2027-02-23T11:00"), { cal: RAMADAN });
+    expect(day.counts).toMatchObject({ waiting: 0, chase: 1 });
+    expect(day.buckets.chase[0]).toMatchObject({ next: "chase", moment: { anchor, at: anchor, why: "normal" } });
+  });
+
+  it("an item already in chase the day before Eid is waiting on every Eid day, then a chase again on Sunday 03-14", () => {
+    const eve = debt({ expectBy: iso(local("2027-03-07T10:00")) });
+    const bucketAt = (t: string) => computeAgenda([eve], local(t), { cal: EID }).buckets;
+    expect(bucketAt("2027-03-08T12:00").chase).toHaveLength(1);
+    for (const d of ["2027-03-09", "2027-03-10", "2027-03-11", "2027-03-12", "2027-03-13"]) {
+      const b = bucketAt(`${d}T12:00`);
+      expect(b.waiting, d).toHaveLength(1);
+      expect(b.waiting[0].moment, d).toMatchObject({ at: local("2027-03-14T08:00"), why: "quiet" });
+    }
+    expect(bucketAt("2027-03-14T08:00").chase).toHaveLength(1);
+  });
+
+  it("an owner item due on an Eid day is still overdue at Eid noon, with no chase moment", () => {
+    const mine = debt({ direction: "i_owe", owedBy: "owner", owedTo: null, dueAt: iso(local("2027-03-10T09:00")) });
+    const c = classify(mine, local("2027-03-10T12:00"), "Asia/Riyadh", { cal: EID });
+    expect(c).toEqual({ bucket: "overdue", reason: "overdue", actionOwner: "owner", next: "do" });
+    expect(computeAgenda([mine], local("2027-03-10T12:00"), { cal: EID }).buckets.overdue[0].moment).toBeUndefined();
+  });
+
+  it("without a calendar the agenda keeps the zone's own weekend: a Dubai Sunday pauses, a Riyadh Sunday does not", () => {
+    const it0 = debt({ dueAt: iso(local("2026-10-01T10:00")) });
+    const sunNoon = Date.parse("2026-10-04T09:00:00Z"); // 12:00 in Riyadh, 13:00 in Dubai
+    expect(computeAgenda([it0], sunNoon, { zone: "Asia/Riyadh" }).counts.overdue).toBe(1);
+    expect(computeAgenda([it0], sunNoon, { zone: "Asia/Dubai" }).buckets.waiting[0].moment).toMatchObject({ at: local("2026-10-05T09:00", "Asia/Dubai"), why: "quiet" });
+    // A calendar passed without a zone brings its own.
+    expect(computeAgenda([it0], sunNoon, { cal: DUBAI }).zone).toBe("Asia/Dubai");
+  });
+});
+
+describe("rule 477: next stays a string, and the reason line is shown", () => {
+  const away: AwayMap = { [partyKey("أحمد")!]: { label: "أحمد", until: "2026-10-08" } };
+  const it0 = debt({ dueAt: iso(local("2026-10-05T10:00")) });
+  const now = local("2026-10-05T12:00");
+
+  it("an away item is waiting, its next step the string \"wait\", and its line says until when, in Latin digits", () => {
+    const c = classify(it0, now, "Asia/Riyadh", { cal: RIYADH, away });
+    expect(c?.next).toBe("wait");
+    expect(typeof c?.next).toBe("string");
+    const e = { item: it0, next: c!.next, moment: c!.moment };
+    expect(nextStepText(e, "ar")).toBe("بانتظار أحمد · أحمد: غياب لين الخميس 8 أكتوبر");
+    expect(nextStepText(e, "ar")).toContain("غياب لين");
+    expect(nextStepText(e, "ar")).not.toMatch(/[٠-٩]/);
+    expect(nextStepText(e, "en")).toBe("Waiting on أحمد · أحمد: away until Thursday, October 8");
+    // Agents read contact names as JSON-quoted data.
+    expect(nextStepText(e, "en", "Asia/Riyadh", { quote: true })).toBe('Waiting on "أحمد" · "أحمد": away until Thursday, October 8');
+    // The year is named when it is not the current one.
+    expect(nextStepText({ ...e, moment: { ...e.moment!, until: "2027-01-07" } }, "en", "Asia/Riyadh", { now })).toBe("Waiting on أحمد · أحمد: away until Thursday, January 7, 2027");
+  });
+
+  it("on an Eid day a quiet item's line names «إجازة عيد الفطر»; a weekend one names the weekend; a day the owner added is a public holiday", () => {
+    const eid = debt({ dueAt: iso(local("2027-03-10T10:00")) });
+    const e = computeAgenda([eid], local("2027-03-10T12:00"), { cal: EID }).buckets.waiting[0];
+    expect(nextStepText(e, "ar")).toBe("بانتظار أحمد · المتابعة الأحد 14 مارس — إجازة عيد الفطر");
+    expect(nextStepText(e, "en")).toBe("Waiting on أحمد · Follow up Sunday, March 14, Eid al-Fitr holiday");
+    // Already chaseable before Eid and paused today: the line names today's reason.
+    const eve = computeAgenda([debt({ expectBy: iso(local("2027-03-07T10:00")) })], local("2027-03-10T12:00"), { cal: EID }).buckets.waiting[0];
+    expect(nextStepText(eve, "ar")).toContain("إجازة عيد الفطر");
+    const fri = computeAgenda([debt({ dueAt: iso(local("2026-10-02T10:00")) })], local("2026-10-01T12:00")).buckets.waiting[0];
+    expect(nextStepText(fri, "ar")).toBe("بانتظار أحمد · المتابعة الأحد 4 أكتوبر — عطلة نهاية الأسبوع");
+    expect(nextStepText(fri, "en")).toBe("Waiting on أحمد · Follow up Sunday, October 4, the weekend");
+    const added = { ...RIYADH, quiet: { "2026-10-05": { kind: "added" as const } } };
+    const mon = computeAgenda([debt({ dueAt: iso(local("2026-10-05T10:00")) })], local("2026-10-01T12:00"), { cal: added }).buckets.waiting[0];
+    expect(nextStepText(mon, "ar")).toBe("بانتظار أحمد · المتابعة الثلاثاء 6 أكتوبر — إجازة رسمية");
+    expect(nextStepText(mon, "en")).toBe("Waiting on أحمد · Follow up Tuesday, October 6, a public holiday");
+  });
+
+  it("Ramadan's line gives the time, and the day when it is not today", () => {
+    const it1 = debt({ expectBy: iso(local("2027-02-22T11:00")) });
+    const e = computeAgenda([it1], local("2027-02-22T21:00"), { cal: RAMADAN }).buckets.waiting[0];
+    expect(nextStepText(e, "ar")).toBe("بانتظار أحمد · تابعه بعد 10:00 (ساعات رمضان)");
+    expect(nextStepText(e, "en")).toBe("Waiting on أحمد · Follow up after 10:00 (Ramadan hours)");
+    expect(nextStepText(e, "en", "Asia/Riyadh", { now: local("2027-02-22T21:00") })).toBe("Waiting on أحمد · Follow up after 10:00 on Tuesday, February 23 (Ramadan hours)");
+    expect(nextStepText(e, "ar", "Asia/Riyadh", { now: local("2027-02-22T21:00") })).toBe("بانتظار أحمد · تابعه بعد 10:00 يوم الثلاثاء 23 فبراير (ساعات رمضان)");
+    const early = computeAgenda([it1], local("2027-02-23T07:00"), { cal: RAMADAN }).buckets.waiting[0];
+    expect(nextStepText(early, "en", "Asia/Riyadh", { now: local("2027-02-23T07:00") })).toBe("Waiting on أحمد · Follow up after 10:00 (Ramadan hours)");
+  });
+
+  it("an entry that is chaseable now, or whose moment is normal, has no reason line", () => {
+    const due = computeAgenda([debt({ dueAt: iso(local("2026-10-02T10:00")) })], local("2026-10-05T12:00")).buckets.overdue[0];
+    expect(due.moment?.why).toBe("quiet");
+    expect(nextStepText(due, "en")).toBe("Chase أحمد");
+    const plain = computeAgenda([debt({ dueAt: iso(local("2026-10-06T10:00")) })], local("2026-10-05T12:00")).buckets.waiting[0];
+    expect(nextStepText(plain, "en")).toBe("Waiting on أحمد");
+    // Agents and the owner are named, not quoted.
+    const agent = computeAgenda([debt({ owedBy: "reem", dueAt: iso(local("2026-10-06T10:00")) })], local("2026-10-05T12:00")).buckets.waiting[0];
+    expect(nextStepText(agent, "en", "Asia/Riyadh", { quote: true })).toBe("Waiting on Reem");
+  });
+
+  it("agenda_get gives the agent the reason line with the contact JSON-quoted", async () => {
+    const brand: Brand = { name: "Rif", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "", products: "", audience: "", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "", updatedAt: "2026-09-29" };
+    const u = await newUser("chasequiet");
+    await saveBrand(u.email, brand);
+    await signIn(u.email);
+    // The next Friday in Riyadh: its chase moves to the Sunday after.
+    let k = 1;
+    while (new Date(`${riyadhDay(Date.now() + k * 864e5)}T00:00:00Z`).getUTCDay() !== 5) k++;
+    const friday = riyadhDay(Date.now() + k * 864e5);
+    const r = await listRoute.POST(json("/api/secretary", "POST", { title: "Samples", direction: "they_owe", owedBy: "المورّد", dueAt: `${friday}T10:00` }));
+    expect(r.status).toBe(200);
+    const sunday = new Date(Date.parse(`${friday}T00:00:00Z`) + 2 * 864e5).toISOString().slice(0, 10);
+    const text = await runTool(u, "agenda_get", {}, []);
+    expect(text).toContain(`next: Waiting on "المورّد" · Follow up ${formatWhen(`${sunday}T05:00:00.000Z`, true, "en", Date.now())}, the weekend`);
   });
 });

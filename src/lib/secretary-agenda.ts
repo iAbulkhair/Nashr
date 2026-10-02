@@ -136,6 +136,37 @@ export type CalData = {
 };
 /** Contacts who are away, keyed by `partyKey` of their label: `until` is the last away day (YYYY-MM-DD), `endedAt` when they came back early. */
 export type AwayMap = Record<string, { label: string; until: string; endedAt?: string }>;
+
+// The same characters `cleanLine` in secretary.ts removes (that module is server only, this one is shared with the
+// browser): C0 and C1 controls but tab and new line, DEL, zero-width space, direction marks, embeddings, overrides and
+// isolates, the line and paragraph separators and the byte-order mark. tests/secretary-calendar.test.ts (rule 475)
+// checks that `partyKey` cleans at least what `cleanLine` does.
+const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/g;
+const IGNORABLE = /\p{Default_Ignorable_Code_Point}/gu;
+// Harakat, the Quranic marks, superscript alef, and the tatweel that only stretches a word.
+const TASHKEEL = /[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06dc\u06df-\u06e4\u06e7\u06e8\u06ea-\u06ed\u0640]/g;
+/**
+ * The key one contact is known by, however its name was typed: «أحمد», «احمد», «إحمد» and «أحمد » are one contact,
+ * "Ahmad" another. Cleaned the way an item's party is (`party()` in secretary.ts: controls out, white space collapsed),
+ * then: invisible characters out (soft hyphen, zero-width marks, variation selectors, U+3164 …), NFKC (fullwidth
+ * ＤＡＮＡ is dana) and lower case, tashkeel and tatweel out, أ إ آ ٱ → ا, ة → ه, ى → ي, spaces collapsed. Null when the
+ * key is longer than a party may be (80 characters). Pure; it does not decide who may be marked away.
+ */
+export function partyKey(label: string): string | null {
+  const clean = label.replace(/[\r\n\t]+/g, " ").replace(CONTROL, "").replace(/\s+/g, " ").trim();
+  const key = clean
+    .replace(IGNORABLE, "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(IGNORABLE, "")
+    .replace(TASHKEEL, "")
+    .replace(/[أإآٱ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/\s+/g, " ")
+    .trim();
+  return key.length > SEC_LIMITS.party ? null : key;
+}
 /** Chasing hours on a Ramadan day when the brand set none: late morning to mid-afternoon. */
 export const DEFAULT_RAMADAN_HOURS: readonly { from: string; to: string }[] = [{ from: "10:00", to: "15:00" }];
 /** The calendar a brand has before it changes anything: the zone's weekend, no holidays, no Ramadan days, the default hours. */
@@ -178,33 +209,60 @@ export function inRamadanWindow(ms: number, cal: CalData): boolean {
   return cal.ramadanHours.length === 0 || cal.ramadanHours.some((w) => ms >= clockMs(day, w.from, cal.zone) && ms < clockMs(day, w.to, cal.zone));
 }
 /**
+ * Whether an instant is in Ramadan's off-hours: on a Ramadan day, and outside every window. False on every other day,
+ * so it is the question to ask of any instant; `!inRamadanWindow` alone would call every ordinary day off-hours.
+ */
+export const outsideRamadanHours = (ms: number, cal: CalData) => cal.ramadan.includes(zoneDay(ms, cal.zone)) && !inRamadanWindow(ms, cal);
+
+const hasOwn = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+/** Why a quiet local day is quiet: the calendar's own entry, else the weekend. */
+const quietWhy = (day: string, cal: CalData): QuietWhy => (hasOwn(cal.quiet, day) ? cal.quiet[day] : { kind: "weekend" });
+/**
+ * `firstWorkingMoment`, and what moved the moment there: `moved` is the reason of the last move (null when it did not
+ * move), and `quiet` the reason of the quiet days the last run of quiet moves skipped, the named holiday when the run
+ * held one (an Eid that runs into the weekend is the Eid).
+ */
+function settle(t: number, cal: CalData): { at: number; moved: "quiet" | "ramadan" | null; quiet?: QuietWhy } {
+  const { zone, briefAt } = cal;
+  const nextBrief = (day: string) => zoneTime(addDays(day, 1), briefAt.hh, briefAt.mm, zone);
+  let at = t;
+  let moved: "quiet" | "ramadan" | null = null;
+  let quiet: QuietWhy | undefined;
+  for (let i = 0; i < MAX_SCAN_DAYS; i++) {
+    const day = zoneDay(at, zone);
+    if (isQuietDay(day, cal)) {
+      const why = quietWhy(day, cal);
+      if (moved !== "quiet" || !quiet || (quiet.kind === "weekend" && why.kind !== "weekend")) quiet = why;
+      moved = "quiet";
+      at = nextBrief(day);
+      continue;
+    }
+    if (outsideRamadanHours(at, cal)) {
+      const starts = cal.ramadanHours.map((w) => clockMs(day, w.from, zone)).filter((s) => s > at);
+      at = starts.length ? Math.min(...starts) : nextBrief(day);
+      moved = "ramadan";
+      quiet = undefined;
+      continue;
+    }
+    break;
+  }
+  return quiet ? { at, moved, quiet } : { at, moved };
+}
+/**
  * The earliest moment at or after `t` that is a working moment: not on a quiet day, and on a Ramadan day inside a window.
  * A moment on a quiet day goes to `briefAt` on the next day. On a Ramadan day outside the windows it goes to the next
  * window start that day, else to `briefAt` on the next day, and is checked again there. A moment already on a working
  * day is returned as it is, even when it is before `briefAt`: only quiet days and Ramadan's off-hours move a moment.
  * Gives up after a year of days (an all-quiet calendar) with the last moment tried.
  */
-export function firstWorkingMoment(t: number, cal: CalData): number {
-  const { zone, briefAt } = cal;
-  const nextBrief = (day: string) => zoneTime(addDays(day, 1), briefAt.hh, briefAt.mm, zone);
-  let at = t;
-  for (let i = 0; i < MAX_SCAN_DAYS; i++) {
-    const day = zoneDay(at, zone);
-    if (isQuietDay(day, cal)) { at = nextBrief(day); continue; }
-    if (cal.ramadan.includes(day) && !inRamadanWindow(at, cal)) {
-      const starts = cal.ramadanHours.map((w) => clockMs(day, w.from, zone)).filter((s) => s > at);
-      at = starts.length ? Math.min(...starts) : nextBrief(day);
-      continue;
-    }
-    return at;
-  }
-  return at;
-}
+export const firstWorkingMoment = (t: number, cal: CalData): number => settle(t, cal).at;
 
 /** Dates an item may carry: a year back (a late entry) to five years ahead. */
 export const WHEN_RANGE = { backMs: 366 * DAY_MS, aheadMs: 5 * 366 * DAY_MS } as const;
 
 const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+/** A "YYYY-MM-DD" the day arithmetic can use (stored data is data: a malformed day must not throw). */
+const isDay = (v: unknown): v is string => typeof v === "string" && DAY_RE.test(v) && Number.isFinite(Date.parse(`${v}T00:00:00Z`));
 const LOCAL_RE = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?$/;
 const ZONED_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:?\d{2})$/;
 const validDay = (y: number, m: number, d: number) => {
@@ -305,7 +363,16 @@ export type AgendaReason = "overdue" | "due_today" | "due_soon" | "later" | "wai
  * confirm: say whether it is done · decide: an undated to-do nobody touched for two weeks: do it, date it or delete it.
  */
 export type NextStep = "do" | "chase" | "wait" | "confirm" | "decide";
-export type AgendaEntry = { item: SecItem; bucket: AgendaBucket; reason: AgendaReason; actionOwner: SecParty; next: NextStep };
+/**
+ * When the owner may chase someone (`chaseMoment`). `anchor` is when the debt became chaseable, after the brand's quiet
+ * days, Ramadan's off-hours and the contact's absence moved it; `at` is when chasing may happen, the anchor itself or,
+ * when the anchor has passed and now is not a working moment, the next one. `why` explains `at`: the reason of the last
+ * move, "away" once an absence moved it. `quiet` names the quiet days a "quiet" move skipped; `until` is the last day of
+ * the absence an "away" move waited out.
+ */
+export type ChaseMoment = { anchor: number; at: number; why: "normal" | "away" | "quiet" | "ramadan"; quiet?: QuietWhy; until?: string };
+/** `moment` is set for every item someone else owes (a contact or an agent), never for the owner's own. */
+export type AgendaEntry = { item: SecItem; bucket: AgendaBucket; reason: AgendaReason; actionOwner: SecParty; next: NextStep; moment?: ChaseMoment };
 export type Agenda = {
   now: string;
   /** The brand's zone, and the local day "today" means in it. */
@@ -330,28 +397,67 @@ export const COLD_DAYS = 14;
 /**
  * When the owner should next follow up on something someone else owes (null for the owner's own items): the due time;
  * without one, `expectBy` (two working days after creation when it was never set); after a follow-up, two working days
- * after it, and never before the due time.
+ * after it, and never before the due time. With the brand's calendar the working days skip its quiet days too.
  */
-export function chaseAt(it: SecItem, z: Zone = DEFAULT_ZONE): number | null {
+export function chaseAt(it: SecItem, z: Zone = DEFAULT_ZONE, cal?: CalData): number | null {
   if (it.owedBy === "owner") return null;
-  const first = it.dueAt ? Date.parse(it.dueAt) : it.expectBy ? Date.parse(it.expectBy) : addWorkingDays(Date.parse(it.createdAt), CHASE_WORKING_DAYS, z);
-  return it.lastChasedAt ? Math.max(first, addWorkingDays(Date.parse(it.lastChasedAt), CHASE_WORKING_DAYS, z)) : first;
+  const first = it.dueAt ? Date.parse(it.dueAt) : it.expectBy ? Date.parse(it.expectBy) : addWorkingDays(Date.parse(it.createdAt), CHASE_WORKING_DAYS, z, cal);
+  return it.lastChasedAt ? Math.max(first, addWorkingDays(Date.parse(it.lastChasedAt), CHASE_WORKING_DAYS, z, cal)) : first;
 }
 
-/** Where one open item stands at `now` in zone `z`. Null for an item that is not open (done or deleted). */
-export function classify(it: SecItem, now: number, z: Zone = DEFAULT_ZONE): { bucket: AgendaBucket | "snoozed"; reason: AgendaReason; actionOwner: SecParty; next: NextStep } | null {
+/**
+ * The one rule for when the owner may chase someone (spec §2.1), pure, with the brand's calendar and away map passed in.
+ * From `chaseAt` (with the calendar): an agent's item is never moved (agents keep no weekend, Eid or holiday). A contact
+ * away on that day is chased from the first working moment after the absence; then the moment leaves quiet days (to
+ * `briefAt` on the next working day) and Ramadan's off-hours (to the next window start) — that is the anchor. Once the
+ * anchor has passed, chasing still waits while today is quiet or outside Ramadan hours. Null for the owner's own items.
+ */
+export function chaseMoment(it: SecItem, now: number, cal: CalData, away: AwayMap): ChaseMoment | null {
+  const z = cal.zone;
+  const base = chaseAt(it, z, cal);
+  if (base === null) return null;
+  // An agent is never moved; neither is a date that is not one (the item's bucket stays what it was: waiting).
+  if (isAgentId(it.owedBy) || !Number.isFinite(base)) return { anchor: base, at: base, why: "normal" };
+  const key = partyKey(it.owedBy);
+  const entry = key !== null && hasOwn(away, key) ? away[key] : undefined;
+  // `until` is the last away day, inclusive; an entry that ended before the base's day does not apply.
+  const until = entry && isDay(entry.until) ? entry.until : null;
+  const gone = until !== null && until >= zoneDay(base, z) ? until : null;
+  const s = settle(gone ? zoneTime(addDays(gone, 1), 0, 0, z) : base, cal);
+  const anchor = s.at;
+  if (anchor <= now) {
+    // Chaseable, but not while today is quiet or outside Ramadan hours.
+    const p = settle(now, cal);
+    if (p.moved) return { anchor, at: p.at, why: p.moved, ...(p.quiet ? { quiet: p.quiet } : {}) };
+  }
+  if (gone) return { anchor, at: anchor, why: "away", until: gone };
+  if (s.moved === "quiet") return { anchor, at: anchor, why: "quiet", ...(s.quiet ? { quiet: s.quiet } : {}) };
+  return { anchor, at: anchor, why: s.moved ?? "normal" };
+}
+
+/**
+ * Where one open item stands at `now` in zone `z`. Null for an item that is not open (done or deleted). Items someone
+ * else owes follow `chaseMoment` with the brand's calendar (the zone's own weekend when none is given) and away map,
+ * and carry the moment.
+ */
+export function classify(
+  it: SecItem, now: number, z: Zone = DEFAULT_ZONE, opts: { cal?: CalData; away?: AwayMap } = {},
+): { bucket: AgendaBucket | "snoozed"; reason: AgendaReason; actionOwner: SecParty; next: NextStep; moment?: ChaseMoment } | null {
   if (it.deletedAt || it.completedAt) return null;
   const others = it.owedBy !== "owner";
+  const moment = others ? chaseMoment(it, now, opts.cal ?? defaultCal(z), opts.away ?? {}) ?? undefined : undefined;
+  const m = moment ? { moment } : {};
   // A proposal waits for the owner even when the item was snoozed before it: the owner must be able to confirm it now.
-  if (it.proposedDone) return { bucket: "confirm", reason: "proposed_done", actionOwner: "owner", next: "confirm" };
-  if (it.snoozeUntil && Date.parse(it.snoozeUntil) > now) return { bucket: "snoozed", reason: "snoozed", actionOwner: it.owedBy, next: others ? "wait" : "do" };
+  if (it.proposedDone) return { bucket: "confirm", reason: "proposed_done", actionOwner: "owner", next: "confirm", ...m };
+  if (it.snoozeUntil && Date.parse(it.snoozeUntil) > now) return { bucket: "snoozed", reason: "snoozed", actionOwner: it.owedBy, next: others ? "wait" : "do", ...m };
   const due = it.dueAt ? Date.parse(it.dueAt) : null;
-  if (others) {
-    // The chase clock: past it, it is the owner's move (follow up); a follow-up starts it again.
-    if (chaseAt(it, z)! <= now) {
-      return due !== null && due < now ? { bucket: "overdue", reason: "overdue", actionOwner: "owner", next: "chase" } : { bucket: "chase", reason: "chase_due", actionOwner: "owner", next: "chase" };
+  if (moment) {
+    // The chase clock: past it, it is the owner's move (follow up); a follow-up starts it again. Before it (a quiet day,
+    // Ramadan's off-hours, an absence) the item waits, even past its due date.
+    if (moment.at <= now) {
+      return due !== null && due < now ? { bucket: "overdue", reason: "overdue", actionOwner: "owner", next: "chase", moment } : { bucket: "chase", reason: "chase_due", actionOwner: "owner", next: "chase", moment };
     }
-    return { bucket: "waiting", reason: due !== null && due < now ? "chased" : "waiting_on_them", actionOwner: it.owedBy, next: "wait" };
+    return { bucket: "waiting", reason: due !== null && due < now ? "chased" : "waiting_on_them", actionOwner: it.owedBy, next: "wait", moment };
   }
   if (due !== null && due < now) return { bucket: "overdue", reason: "overdue", actionOwner: "owner", next: "do" };
   if (due === null) {
@@ -374,17 +480,22 @@ export function compareItems(a: SecItem, b: SecItem): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-/** The agenda at `now`: every open item in exactly one bucket (or counted as snoozed), each bucket in a fixed order. */
-export function computeAgenda(items: SecItem[], now: number, opts: { approvals?: number; zone?: Zone } = {}): Agenda {
-  const zone = opts.zone ?? DEFAULT_ZONE;
+/**
+ * The agenda at `now`: every open item in exactly one bucket (or counted as snoozed), each bucket in a fixed order.
+ * `cal` is the brand's work calendar (its zone is the agenda's when `zone` is not given); without one, the zone's own
+ * weekend and nothing else. `away` is the brand's away map.
+ */
+export function computeAgenda(items: SecItem[], now: number, opts: { approvals?: number; zone?: Zone; cal?: CalData; away?: AwayMap } = {}): Agenda {
+  const zone = opts.zone ?? opts.cal?.zone ?? DEFAULT_ZONE;
+  const rule = { cal: opts.cal ?? defaultCal(zone), away: opts.away ?? {} };
   const buckets = Object.fromEntries(AGENDA_BUCKETS.map((b) => [b, [] as AgendaEntry[]])) as Record<AgendaBucket, AgendaEntry[]>;
   let snoozed = 0, open = 0;
   for (const item of [...items].sort(compareItems)) {
-    const c = classify(item, now, zone);
+    const c = classify(item, now, zone, rule);
     if (!c) continue;
     open++;
     if (c.bucket === "snoozed") { snoozed++; continue; }
-    buckets[c.bucket].push({ item, bucket: c.bucket, reason: c.reason, actionOwner: c.actionOwner, next: c.next });
+    buckets[c.bucket].push({ item, bucket: c.bucket, reason: c.reason, actionOwner: c.actionOwner, next: c.next, ...(c.moment ? { moment: c.moment } : {}) });
   }
   const counts = Object.fromEntries(AGENDA_BUCKETS.map((b) => [b, buckets[b].length])) as Record<AgendaBucket, number>;
   return { now: new Date(now).toISOString(), zone, today: zoneDay(now, zone), buckets, counts, snoozed, open, approvals: Math.max(0, opts.approvals ?? 0) };
@@ -419,17 +530,45 @@ export function partyName(p: SecParty | null, lang: "ar" | "en"): string {
   return p;
 }
 
-/** The next step in one short phrase. */
-export function nextStepText(e: Pick<AgendaEntry, "next" | "item">, lang: "ar" | "en"): string {
-  const who = partyName(e.item.owedBy, lang);
+/**
+ * The next step in one short phrase, and, while the chase rule holds the item back (`wait` with a moment that is not
+ * "normal"), the reason after « · »: the contact's absence, the quiet day, or Ramadan's hours (spec §2.2), with dates in
+ * the brand's zone and Latin digits. `quote` writes contact names as JSON strings (data, for an agent's tool answer);
+ * `now` names the year of a date in another year, and the day of a Ramadan time that is not today.
+ */
+export function nextStepText(e: Pick<AgendaEntry, "next" | "item" | "moment">, lang: "ar" | "en", z: Zone = DEFAULT_ZONE, opts: { quote?: boolean; now?: number } = {}): string {
+  const p = e.item.owedBy;
+  const name = partyName(p, lang);
+  const who = opts.quote && p !== "owner" && !isAgentId(p) ? JSON.stringify(name) : name;
   const ar = lang === "ar";
+  let step: string;
   switch (e.next) {
-    case "chase": return ar ? `تابِع مع ${who}` : `Chase ${who}`;
-    case "wait": return ar ? `بانتظار ${who}` : `Waiting on ${who}`;
+    case "chase": step = ar ? `تابِع مع ${who}` : `Chase ${who}`; break;
+    case "wait": step = ar ? `بانتظار ${who}` : `Waiting on ${who}`; break;
     case "confirm": return ar ? "أكّد أنها أُنجزت أو ردّها" : "Confirm it is done, or send it back";
     case "decide": return ar ? "أنجزها أو حدّد لها موعداً أو احذفها" : "Do it, give it a date, or delete it";
     default: return ar ? "عليك أنت" : "Yours to do";
   }
+  const m = e.moment;
+  // A chaseable entry needs no reason: its moment has passed.
+  if (e.next !== "wait" || !m || m.why === "normal") return step;
+  if (!Number.isFinite(m.at)) return step;
+  const day = (ms: number) => formatWhen(new Date(ms).toISOString(), true, lang, opts.now, z);
+  let why = "";
+  if (m.why === "away" && isDay(m.until)) {
+    const date = day(endOfZoneDay(m.until, z));
+    why = ar ? `${who}: غياب لين ${date}` : `${who}: away until ${date}`;
+  } else if (m.why === "quiet") {
+    const q = m.quiet;
+    const reason = q?.name?.[lang] ?? (q?.kind === "weekend" || !q ? (ar ? "عطلة نهاية الأسبوع" : "the weekend") : ar ? "إجازة رسمية" : "a public holiday");
+    why = ar ? `المتابعة ${day(m.at)} — ${reason}` : `Follow up ${day(m.at)}, ${reason}`;
+  } else if (m.why === "ramadan") {
+    const time = zoneLocalInput(m.at, z).slice(11, 16);
+    const other = opts.now !== undefined && zoneDay(opts.now, z) !== zoneDay(m.at, z);
+    const when = other ? (ar ? `${time} يوم ${day(m.at)}` : `${time} on ${day(m.at)}`) : time;
+    why = ar ? `تابعه بعد ${when} (ساعات رمضان)` : `Follow up after ${when} (Ramadan hours)`;
+  }
+  return why ? `${step} · ${why}` : step;
 }
 
 /**

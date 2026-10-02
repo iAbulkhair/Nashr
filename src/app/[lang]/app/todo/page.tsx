@@ -54,7 +54,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
     id: it.id, rev: it.rev, title: it.title, description: it.description,
     due: it.dueAt ? when(it.dueAt, it.allDay) : null,
     dueLocal: it.dueAt ? zoneLocalInput(Date.parse(it.dueAt), zone) : null,
-    who: whoOf(it), next: e ? nextStepText(e, lang) : "", badges: badgesOf(it),
+    who: whoOf(it), next: e ? nextStepText(e, lang, zone, { now }) : "", badges: badgesOf(it),
     theirs: it.owedBy !== "owner",
     chase: [
       !it.dueAt && it.expectBy && it.owedBy !== "owner" ? `${T.expectBy} ${when(it.expectBy)}` : "",
