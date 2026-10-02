@@ -282,6 +282,14 @@ describe("rule 472: Eid holidays per country (official private-sector spans)", (
     expect(again).toEqual(first);
   });
 
+  it("a stored weekend of more than three days is ignored for the zone's own, and the calendar still returns", () => {
+    // build() trusts stored settings; a 7-day weekend once made the Saturday → Sunday walk for a day in lieu endless.
+    const all = workCalendar(settings({ weekend: [0, 1, 2, 3, 4, 5, 6] }), "Asia/Riyadh", at("2028-08-25"));
+    expect(all.weekend).toEqual([5, 6]);
+    expect(all.quiet["2028-09-24"]?.name?.en).toBe("Day in lieu of National Day"); // Saturday 23 Sep → Sunday
+    expect(workCalendar(settings({ weekend: [4, 5, 6, 0] }), "Asia/Dubai", at("2028-08-25")).weekend).toEqual([6, 0]);
+  });
+
   it("countryOf names each zone's country, and every country cites its source", () => {
     expect(ZONE_IDS.map(countryOf)).toEqual(["SA", "KW", "QA", "BH", "AE", "OM"]);
     for (const c of Object.values(COUNTRY_CAL)) expect(c.source.length).toBeGreaterThan(40);
@@ -360,6 +368,17 @@ describe("rule 473: other official holidays and the days given in lieu", () => {
     expect(workCalendar(off, "Asia/Riyadh", at("2028-08-25")).quiet["2028-09-24"]).toBeUndefined();
   });
 
+  it("removing one Eid day does not also cost the day in lieu: a removed day is never where a day in lieu lands", () => {
+    // Eid al-Adha 1448 in Riyadh: Sat 15 (Arafah, weekend) to Tue 18 May 2027; the Saturday earns Wednesday 19.
+    const cal = workCalendar(settings({ holidays: { add: [], remove: ["2027-05-18"] } }), "Asia/Riyadh", at("2027-04-19"));
+    expect(quietBetween(cal, "2027-05-13", "2027-05-23")).toEqual(["2027-05-16", "2027-05-17", "2027-05-19"]);
+    expect(cal.quiet["2027-05-19"]?.name?.en).toBe("Day in lieu of Eid al-Adha holiday");
+    // The Friday rule's Thursday: National Day on Friday 2022-09-23 with Thursday 22 removed goes after the weekend, Sunday 25.
+    const fri = workCalendar(settings({ holidays: { add: [], remove: ["2022-09-22"] } }), "Asia/Riyadh", at("2022-08-24"));
+    expect(fri.quiet["2022-09-22"]).toBeUndefined();
+    expect(fri.quiet["2022-09-25"]?.name?.en).toBe("Day in lieu of National Day");
+  });
+
   it("upcomingQuiet lists the next 365 days' quiet days in order with their names, and the next Ramadan", () => {
     const now = at("2026-10-02");
     const up = upcomingQuiet(null, "Asia/Riyadh", now);
@@ -410,10 +429,12 @@ describe("rule 474: parseCalendar refuses what the calendar cannot hold", () => 
     expect(error({ ramadanHours: [{ from: "10:00", to: "15:00" }, { from: "15:00", to: "16:00" }] })).toBe("ok");
   });
 
-  it("a hijriFix year other than the current or next Hijri year is bad_year", () => {
+  it("a hijriFix year after the next Hijri year is bad_year; a past year is dropped, not refused (ruling R8)", () => {
     expect(error({ hijriFix: { "1460": { shawwal1: "2038-12-01" } } })).toBe("bad_year");
-    expect(error({ hijriFix: { "1447": { shawwal1: "2026-03-20" } } })).toBe("bad_year");
+    expect(error({ hijriFix: { "1450": { shawwal1: "2029-02-14" } } })).toBe("bad_year");
     expect(error({ hijriFix: { abc: {} } })).toBe("bad_year");
+    const past = parse({ hijriFix: { "1447": { shawwal1: "2026-03-20" } } });
+    expect(past.ok && past.cal.hijriFix).toEqual({});
   });
 
   it("a hijriFix date 2 days from the computed one is hijri_fix_range; one day either way is accepted", () => {
@@ -438,6 +459,32 @@ describe("rule 474: parseCalendar refuses what the calendar cannot hold", () => 
     expect(error({ holidays: { add: [], remove: ["2027-03-15"] } })).toBe("holidays_invalid");
     expect(error({ holidays: { add: [], remove: ["09-23", "2027-03-11", "H-10-02"] } })).toBe("ok");
     expect(error({ holidays: { add: [], other: [] } })).toBe("holidays_invalid");
+  });
+
+  it("settings saved back unchanged after their values went stale still save, the stale values dropped (ruling R8)", () => {
+    const saved = parse({ hijriFix: { "1448": { shawwal1: "2027-03-10" } }, holidays: { add: ["2026-10-20", "H-1448-04-20", "12-31", "2027-12-30"], remove: ["2026-09-23", "09-23"] } });
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) return;
+    expect(saved.cal.holidays.add).toEqual(["2026-10-20", "H-1448-04-20", "12-31", "2027-12-30"]);
+    // 2027-07-01 is 26 Muharram 1449 in Riyadh: 1448 is past, and the window starts 2027-06-17 (12 Muharram 1449).
+    const later = at("2027-07-01");
+    const again = parseCalendar({ ...saved.cal, weekend: [5] }, later, "Asia/Riyadh", "admin@example.com");
+    expect(again).toEqual({
+      ok: true,
+      cal: { v: 1, weekend: [5], ramadanHours: null, hijriFix: {}, holidays: { add: ["12-31", "2027-12-30"], remove: ["09-23"] }, updatedAt: "2027-07-01T09:00:00.000Z", updatedBy: "admin@example.com" },
+    });
+    // A year after next is still refused then: 1449 is current, 1450 next.
+    const far = parseCalendar({ hijriFix: { "1451": { shawwal1: "2030-02-05" } } }, later, "Asia/Riyadh", "admin@example.com");
+    expect(!far.ok && far.error).toBe("bad_year");
+  });
+
+  it("the calendar ignores a past year's hijriFix too: 25 Dhu al-Hijjah 1448 stays on Umm al-Qura's 2027-05-31", () => {
+    // Umm al-Qura: 1 Dhu al-Hijjah 1448 is 2027-05-07. A stored fix moving it to 05-08 would put 25 Dhu al-Hijjah on 06-01;
+    // on 2027-06-10 (5 Muharram 1449) that fix belongs to a past year and no longer applies.
+    const stored = settings({ hijriFix: { "1448": { dhulhijja1: "2027-05-08" } }, holidays: { add: ["H-12-25"], remove: [] } });
+    const cal = workCalendar(stored, "Asia/Riyadh", at("2027-06-10"));
+    expect(cal.quiet["2027-05-31"]).toEqual({ kind: "added" });
+    expect(cal.quiet["2027-06-01"]).toBeUndefined();
   });
 
   it("an unknown top-level field is bad_request", () => {
