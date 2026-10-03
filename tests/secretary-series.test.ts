@@ -54,7 +54,8 @@ describe("rule 496: series indexes follow every transition", () => {
     await db.zadd(SEC_KEYS.series(o.email, sid), 1, a.id);
     await db.zadd(SEC_KEYS.sdone(o.email), 1, a.id);
     await db.zadd(SEC_KEYS.spurge(o.email), 1, a.id);
-    expect(await purgeExpired(o.email, Date.now() + 31 * 864e5)).toBe(1);
+    // 2: A, and the untouched next copy the reopen deleted (rule 499), whose restore window ends the same day.
+    expect(await purgeExpired(o.email, Date.now() + 31 * 864e5)).toBe(2);
     for (const k of [SEC_KEYS.series(o.email, sid), SEC_KEYS.sdone(o.email), SEC_KEYS.spurge(o.email)]) expect(await members(k)).toEqual([]);
   });
 
@@ -101,7 +102,8 @@ describe("rule 508: account deletion removes every new key", () => {
     await db.zadd(SEC_KEYS.spurge(u.email), Date.now() + 864e5, a.id);
     await db.sadd(SEC_KEYS.seriesKeep(u.email), open.series!.id);
     expect(await db.setNx(SEC_KEYS.swarn(u.email, sid), "1", 30 * 864e5)).toBe(true);
-    expect(await db.setNx(SEC_KEYS.spawn(u.email, a.id), "s0123456789abcdef", 2 * 864e5)).toBe(true);
+    // The close wrote A's claim itself (rule 497).
+    expect(await db.get(SEC_KEYS.spawn(u.email, a.id))).toBe(a.nextId);
     expect(await db.setNx(SEC_KEYS.spawn(u.email, open.id), "s0123456789abcdee", 2 * 864e5)).toBe(true);
     const keys = await secretaryKeys(u.email);
     for (const k of [SEC_KEYS.series(u.email, sid), SEC_KEYS.seriesList(u.email), SEC_KEYS.sdone(u.email), SEC_KEYS.spurge(u.email), SEC_KEYS.seriesKeep(u.email), SEC_KEYS.swarn(u.email, sid), SEC_KEYS.spawn(u.email, a.id), SEC_KEYS.spawn(u.email, open.id)]) expect(keys).toContain(k);
