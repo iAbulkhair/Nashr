@@ -523,10 +523,13 @@ export function workingDaysBetween(a: string, b: string, cal: CalData): number {
   for (let i = 1; i <= span; i++) if (!isQuietDay(addDays(a, i), cal)) n++;
   return n;
 }
+/** A contact: someone the owner chases who keeps the calendar (not the owner, not one of the agents). */
+const isContact = (p: SecParty) => p !== "owner" && !isAgentId(p);
 /**
  * A debt held for Ramadan hours later today (ruling R18): its chase moment `at` is later than `now`, on today's local
  * day, and today is a Ramadan day, whatever moved it there (Ramadan's off-hours, or the brief time after an absence that
- * ended in Ramadan). The 08:00 alert run and the morning brief name it: chasing opens today, at that time.
+ * ended in Ramadan). The 08:00 alert run and the morning brief name it: chasing opens today, at that time. It reads the
+ * moment only: callers ask it about contacts' debts alone, since agents keep no Ramadan hours (ruling R16).
  */
 export function heldForRamadanToday(m: ChaseMoment | undefined, now: number, cal: CalData): m is ChaseMoment {
   if (!m || !Number.isFinite(m.at) || m.at <= now) return false;
@@ -553,7 +556,7 @@ export function overdueAlerts(entries: AgendaEntry[], now: number, z: Zone = DEF
   const quietToday = isQuietDay(today, cal);
   return entries.flatMap((entry): OverdueAlert[] => {
     const it = entry.item;
-    const contact = it.owedBy !== "owner" && !isAgentId(it.owedBy);
+    const contact = isContact(it.owedBy);
     let anchorMs: number;
     let send = true;
     let ramadanToday: string | undefined;
@@ -563,7 +566,8 @@ export function overdueAlerts(entries: AgendaEntry[], now: number, z: Zone = DEF
     } else {
       const m = entry.moment;
       if (!m) return [];
-      const later = entry.next === "wait" && heldForRamadanToday(m, now, cal);
+      // Only a contact is held for Ramadan hours: an agent's item waits for its own time, as on any day (ruling R16).
+      const later = contact && entry.next === "wait" && heldForRamadanToday(m, now, cal);
       if (!(m.anchor <= now) && !later) return [];
       if (later) ramadanToday = zoneLocalInput(m.at, z).slice(11, 16);
       anchorMs = m.anchor;
@@ -698,14 +702,16 @@ export function linkFactText(fact: LinkedFact | null | undefined, lang: "ar" | "
 
 /**
  * The morning brief's agenda block: counts, and the titles of the first three overdue or due-today items. On a Ramadan
- * day a debt held for Ramadan hours later today (`heldForRamadanToday`, with the calendar the agenda was computed with:
- * `agendaFor` returns it) counts as a chase, not as waiting (spec §2.2), and `chaseAfter` says how many of the chases
- * those are and the local "HH:mm" the first of them opens.
+ * day a contact's debt held for Ramadan hours later today (`heldForRamadanToday`, with the calendar the agenda was
+ * computed with: `agendaFor` returns it) counts as a chase, not as waiting (spec §2.2), and `chaseAfter` says how many of
+ * the chases those are and the local "HH:mm" the first of them opens. An agent's item keeps no Ramadan hours (ruling R16):
+ * it waits, as on any day.
  */
 export type BriefAgenda = { overdue: number; today: number; waiting: number; confirm: number; chase?: number; chaseAfter?: { count: number; time: string }; top: string[] };
 export function briefAgenda(a: Agenda & { cal?: CalData }): BriefAgenda {
   const cal = a.cal ?? defaultCal(a.zone), now = Date.parse(a.now);
   const later = a.buckets.waiting
+    .filter((e) => isContact(e.item.owedBy))
     .map((e) => e.moment)
     .filter((m): m is ChaseMoment => heldForRamadanToday(m, now, cal))
     .map((m) => m.at);

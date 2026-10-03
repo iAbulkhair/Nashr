@@ -17,7 +17,7 @@ import {
 } from "@/lib/secretary";
 import { buildWrap } from "@/lib/secretary-evening";
 import { addDays, partyKey, zoneDay, type SecItem } from "@/lib/secretary-agenda";
-import { COUNTRY_CAL, eidDays, parseCalendar, upcomingQuiet, workCalendar, type SecCalendar } from "@/lib/secretary-calendar";
+import { COUNTRY_CAL, eidDays, parseCalendar, upcomingQuiet, workCalendar, type EidDay, type SecCalendar } from "@/lib/secretary-calendar";
 import {
   AWAY_AHEAD_DAYS, AWAY_KEEP_DAYS, AWAY_MAX, AWAY_PROPOSAL_TTL_S, cleanAway, decideAwayProposal, endAway, listAway, proposeAway, setAway, type AwayProposal,
 } from "@/lib/secretary-away";
@@ -27,9 +27,10 @@ import * as awayRoute from "@/app/api/secretary/away/route";
 import * as calRoute from "@/app/api/secretary/calendar/route";
 import * as propRoute from "@/app/api/secretary/away/proposals/[id]/route";
 import * as mcpRoute from "@/app/api/mcp/route";
-import { AwayProposalCard } from "@/components/app/ChatPanel";
+import { AwayProposalCard, awayCardRefusal } from "@/components/app/ChatPanel";
 import { awayCall } from "@/components/app/AwayPanel";
 import { calBody, withAdded, withEid, withHolidayOff, withHours, withWeekend, yearlyValue } from "@/components/app/WorkingDaysPanel";
+import { localDay } from "@/components/app/useOneWrite";
 import Page from "@/app/[lang]/app/todo/page";
 
 // The app router only exists inside Next: the to-do page's client components get a router whose refresh does nothing.
@@ -303,14 +304,32 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
 
   it("a Working days record the calendar cannot be built from falls back to the defaults, logging the error's name only (ruling R13)", async () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
-    for (const bad of [{ v: 1, holidays: { add: "x" } }, { v: 1, ramadanHours: [null] }]) {
+    for (const bad of [{ v: 1, holidays: { add: "x" } }, { v: 1, weekend: [5], ramadanHours: [null] }]) {
       const u = await owner("awbad");
       await db.set(SEC_KEYS.cal(u.email), bad);
       const a = await agendaFor(u.email, local("2026-10-01T12:00"));
-      expect(a.cal.weekend).toEqual([5, 6]);
+      expect(a.cal.weekend, JSON.stringify(bad)).toEqual(bad.weekend ?? [5, 6]);
+      expect(a.cal.ramadanHours).toEqual([{ from: "10:00", to: "15:00" }]);
       expect(a.open).toBe(0);
     }
-    expect(errors.mock.calls).toEqual([["sec calendar unreadable, defaults used", "TypeError"], ["sec calendar unreadable, defaults used", "TypeError"]]);
+    // Ramadan hours are checked again when the calendar is built: `[null]` reads as the default hours, and the rest of
+    // the record (its Friday-only weekend) still applies; only a record the build cannot read at all logs.
+    expect(errors.mock.calls).toEqual([["sec calendar unreadable, defaults used", "TypeError"]]);
+  });
+
+  it("stored Ramadan hours are checked again when the calendar is built: hours parseCalendar would refuse (a hand-edited {from: 5}) read as the default 10:00-15:00, so a Ramadan day's agenda still builds", async () => {
+    const bad: unknown[] = [[{ from: 5 }], [{ from: "10:00" }], [{ from: "15:00", to: "10:00" }], [{ from: "10:10", to: "15:00" }], [{ from: "09:00", to: "12:00" }, { from: "11:00", to: "13:00" }]];
+    for (const hours of bad) {
+      const u = await owner("awhours");
+      await db.set(SEC_KEYS.cal(u.email), settings({ ramadanHours: hours as SecCalendar["ramadanHours"] }));
+      await make(u, { title: "Quote", direction: "they_owe", owedBy: "أحمد", dueAt: "2027-02-23T07:00" });
+      const a = await at(local("2027-02-23T08:00"), () => agendaFor(u.email, local("2027-02-23T08:00")));
+      expect(a.cal.ramadanHours, JSON.stringify(hours)).toEqual([{ from: "10:00", to: "15:00" }]);
+      expect(a.buckets.waiting[0].moment, JSON.stringify(hours)).toMatchObject({ at: local("2027-02-23T10:00"), why: "ramadan" });
+    }
+    // Hours that check out are the brand's own, and [] (no limit) stays.
+    expect(workCalendar(settings({ ramadanHours: [{ from: "09:00", to: "12:00" }] }), "Asia/Riyadh", local("2026-10-01T12:00")).ramadanHours).toEqual([{ from: "09:00", to: "12:00" }]);
+    expect(workCalendar(settings({ ramadanHours: [] }), "Asia/Riyadh", local("2026-10-01T12:00")).ramadanHours).toEqual([]);
   });
 
   it("system() names the brand's week start: a Friday-only weekend starts the week on Saturday", () => {
@@ -810,7 +829,8 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
         [{ weekend: [5], email: "other@test.example" }, { error: "bad_request", field: "email" }],
         [{ weekend: [1, 3] }, { error: "weekend_invalid", field: "weekend" }],
         [{ ramadanHours: [{ from: "15:00", to: "10:00" }] }, { error: "ramadan_hours_invalid", field: "ramadanHours" }],
-        [{ hijriFix: { "1500": { ramadan1: "2027-02-09" } } }, { error: "bad_year", field: "hijriFix.1500" }],
+        [{ hijriFix: { "1500": { shawwal1: "2077-01-01" } } }, { error: "bad_year", field: "hijriFix.1500" }],
+        [{ hijriFix: { "1448": { ramadan1: "2027-02-09" } } }, { error: "bad_request", field: "hijriFix.1448.ramadan1" }],
         [{ holidays: { remove: ["12-25"] } }, { error: "holidays_invalid", field: "holidays.remove" }],
         [["weekend"], { error: "bad_request" }],
         ["weekend", { error: "bad_request" }],
@@ -835,9 +855,9 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       const o = await owner("c484t");
       const first = await newMember(o, "admin", "c484t1"), second = await newMember(o, "admin", "c484t2");
       await signIn(first.email);
-      // Ramadan 1448's Umm al-Qura start, moved a day on by the owner's sighting; a holiday the defaults give, removed; two added.
-      const ramadan = upcomingQuiet(null, "Asia/Riyadh", t1).ramadan!;
-      const body = { weekend: [4, 5], ramadanHours: [{ from: "09:00", to: "12:00" }, { from: "20:00", to: "23:30" }], hijriFix: { "1448": { ramadan1: addDays(ramadan.start, 1) } }, holidays: { add: ["2026-12-27", "H-01-10"], remove: ["02-22"] } };
+      // Eid al-Fitr 1448 a day after Umm al-Qura's, by the owner's sighting; a holiday the defaults give, removed; two added.
+      const fitr = eidDays(null, "Asia/Riyadh", t1).find((e) => e.year === 1448 && e.kind === "eid_fitr")!;
+      const body = { weekend: [4, 5], ramadanHours: [{ from: "09:00", to: "12:00" }, { from: "20:00", to: "23:30" }], hijriFix: { "1448": { shawwal1: fitr.later! } }, holidays: { add: ["2026-12-27", "H-01-10"], remove: ["02-22"] } };
       expect((await calPut(body)).status).toBe(200);
       return { o, first, second, body };
     });
@@ -877,6 +897,50 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       expect(errors.mock.calls).toEqual([["sec calendar unreadable, defaults used", "TypeError"]]);
       expect((await calPut({ weekend: [5] })).status).toBe(200);
       expect((await storedCal(o.email))?.weekend).toEqual([5]);
+    });
+  });
+
+  it("a day turned off stays savable once no default produces it (ruling R28): Kuwait's Eid al-Adha a day earlier, a Saudi brand moved to Dubai; turning it on saves, a new unknown one is refused, and the panel lists it", async () => {
+    await at(NOW, async () => {
+      // Kuwait: Eid al-Adha 1448 is 15-18 May 2027 by Umm al-Qura; Tuesday 18 turned off, then "a day earlier" (14-17 May).
+      const k = await owner("c484kw", { ...BRAND, timeZone: "Asia/Kuwait" });
+      await signIn(k.email);
+      expect((await calPut({ holidays: { add: [], remove: ["2027-05-18"] } })).status).toBe(200);
+      const adha: EidDay = (await (await calGet()).json()).eids.find((e: EidDay) => e.year === 1448 && e.kind === "eid_adha");
+      expect(adha).toMatchObject({ uq: "2027-05-07", earlier: "2027-05-06" });
+      const earlier = await calPut(withEid(await storedCal(k.email), adha, adha.earlier!));
+      expect(earlier.status).toBe(200);
+      expect(await storedCal(k.email)).toMatchObject({ hijriFix: { "1448": { dhulhijja1: "2027-05-06" } }, holidays: { remove: ["2027-05-18"] } });
+      // "Turn on" takes it out; turning it off again is a new removal no default produces now, so it is refused.
+      expect((await calPut(withHolidayOff(await storedCal(k.email), "2027-05-18", false))).status).toBe(200);
+      expect((await storedCal(k.email))?.holidays.remove).toEqual([]);
+      const again = await calPut(withHolidayOff(await storedCal(k.email), "2027-05-18", true));
+      expect(again.status).toBe(400);
+      expect(await again.json()).toEqual({ ok: false, error: "holidays_invalid", field: "holidays.remove" });
+
+      // Saudi Arabia: Founding Day 2027-02-22 and National Day 2027-09-23 turned off, then the brand's zone becomes Dubai,
+      // where neither is a holiday. Every save went on being refused before ruling R28; now each one saves.
+      const s = await owner("c484sa");
+      await signIn(s.email);
+      expect((await calPut({ holidays: { add: [], remove: ["2027-02-22", "2027-09-23"] } })).status).toBe(200);
+      await saveBrand(s.email, DUBAI_BRAND);
+      const got = (await (await calGet()).json()).calendar as SecCalendar;
+      expect(got.holidays.remove).toEqual(["2027-02-22", "2027-09-23"]);
+      expect((await calPut(got)).status).toBe(200);
+      expect((await calPut(withWeekend(got, [5, 6], [6, 0]))).status).toBe(200);
+      expect((await calPut(withHolidayOff(await storedCal(s.email), "2027-02-22", false))).status).toBe(200);
+      expect(await storedCal(s.email)).toMatchObject({ weekend: [5, 6], holidays: { remove: ["2027-09-23"] } });
+      const unknown = await calPut(withHolidayOff(await storedCal(s.email), "2027-09-24", true));
+      expect(unknown.status).toBe(400);
+      expect(await unknown.json()).toEqual({ ok: false, error: "holidays_invalid", field: "holidays.remove" });
+      // The panel lists the stored removal no default produces, with its "make it a day off again" button.
+      const html = await new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang: "en" }) }))).text();
+      const list = html.slice(html.indexOf(appDict.en.todo.cal.offList));
+      expect(html).toContain(appDict.en.todo.cal.offList);
+      expect(list).toContain(localDay("en", "2026-10-06")("2027-09-23"));
+      expect(list).toContain(appDict.en.todo.cal.turnOn);
+      const j = await (await calGet()).json();
+      expect(j.upcoming.days.map((d: { day: string }) => d.day)).not.toContain("2027-09-23");
     });
   });
 
@@ -1208,6 +1272,77 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
       expect(toolError({ ok: false, error: "already_decided", status: 409 })).toMatch(/already/);
     });
   });
+
+  it("a Save or a Dismiss while another Save holds the card is 409 busy, not already_decided, and the card says to try again (AR and EN)", async () => {
+    await at(NOW, async () => {
+      const u = await owner("aw485busy");
+      const made = await proposeAway(u.email, { name: "Sara", until: "2026-10-09" }, NOW, "Asia/Riyadh");
+      if (!made.ok) throw new Error(made.error);
+      const done = SEC_KEYS.awayPropDone(u.email, made.p.id);
+      // Another Save's claim, as decideAwayProposal sets it while setAway runs.
+      await db.set(done, "saving", 60);
+      expect(await decideAwayProposal(u.email, made.p.id, "save", PERSON, NOW)).toEqual({ ok: false, error: "busy", status: 409 });
+      expect(await decideAwayProposal(u.email, made.p.id, "dismiss", PERSON, NOW)).toEqual({ ok: false, error: "busy", status: 409 });
+      // The claim taken between the read and the claim: busy too.
+      const raw = await db.get(SEC_KEYS.awayProp(u.email, made.p.id));
+      vi.spyOn(db, "mget").mockResolvedValueOnce([raw, null]);
+      expect(await decideAwayProposal(u.email, made.p.id, "save", PERSON, NOW)).toEqual({ ok: false, error: "busy", status: 409 });
+      await signIn(u.email);
+      const r = await propPost(made.p.id, { action: "save" });
+      expect(r.status).toBe(409);
+      expect(await r.json()).toEqual({ ok: false, error: "busy" });
+      expect(await awayKeys(u.email)).toEqual([]);
+      // The card keeps its buttons and asks for another try, in the reader's language.
+      expect(awayCardRefusal(appDict.ar, "ar", 409, "busy")).toBe("يحفظ أحدٌ هذه البطاقة الآن. حاول مرة أخرى بعد لحظة.");
+      expect(awayCardRefusal(appDict.en, "en", 409, "busy")).toBe("Someone is saving this card right now. Try again in a moment.");
+      // Once the claim is gone the Save goes through; after that the card is already decided.
+      await db.del(done);
+      expect(await decideAwayProposal(u.email, made.p.id, "save", PERSON, NOW)).toMatchObject({ ok: true, state: "saved" });
+      expect(await decideAwayProposal(u.email, made.p.id, "dismiss", PERSON, NOW)).toEqual({ ok: false, error: "already_decided", status: 409 });
+    });
+  });
+
+  it("a real turn: Reem's reply carries her contact_away cards, at most 5 (AWAY_CARDS_PER_REPLY); the sixth call in the turn is refused, and the thread and the proposals index hold the same 5", async () => {
+    vi.resetModules();
+    vi.stubEnv("ANTHROPIC_API_KEY", "test");
+    claudeOn();
+    const sent: { tools: { name: string }[]; messages: { role: string; content: unknown }[] }[] = [];
+    const names = ["Sara", "Ahmad", "Khalid", "Mona", "Fahad", "Huda"];
+    const turns = [
+      { stop_reason: "tool_use", content: names.map((name, i) => ({ type: "tool_use", id: `tu${i}`, name: "contact_away", input: { name, until: "2026-10-15" } })) },
+      { stop_reason: "end_turn", content: [{ type: "text", text: "Proposed on the cards below; nothing changes until you press Save." }] },
+    ];
+    vi.doMock("@anthropic-ai/sdk", () => ({
+      default: class {
+        static BadRequestError = class extends Error {};
+        messages = { stream: (p: (typeof sent)[number]) => { sent.push(JSON.parse(JSON.stringify(p))); return { finalMessage: async () => ({ model: "m", usage: { input_tokens: 1, output_tokens: 1 }, ...(turns.shift() ?? { stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }) }) }; } };
+      },
+    }));
+    try {
+      const { chat, history } = await import("@/lib/chat");
+      // The account is made at the turn's own time, so its trial is running then.
+      const { u, m } = await at(NOW, async () => {
+        const u = await owner("aw485cap");
+        return { u, m: await chat(u, "They are all away until 15 October", undefined, "reem", { lang: "en" }) };
+      });
+      expect(sent[0].tools.map((t) => t.name)).toContain("contact_away");
+      expect(m.awayProposals?.map((p) => [p.label, p.until])).toEqual(names.slice(0, 5).map((n) => [n, "2026-10-15"]));
+      expect(m.actions?.filter((a) => a.startsWith("awayprop:"))).toEqual(m.awayProposals!.map((p) => `awayprop:${p.id}`));
+      // What the model read back: five proposals, then the refusal of the sixth.
+      const results = sent[1].messages.at(-1)!.content as { tool_use_id: string; content: string }[];
+      expect(results.map((r) => r.tool_use_id)).toEqual(names.map((_, i) => `tu${i}`));
+      expect(results.slice(0, 5).every((r) => r.content.startsWith("Proposed, not saved"))).toBe(true);
+      expect(results[5].content).toBe("Not done: one reply carries at most 5 away cards. Nothing more was saved.");
+      // Stored with the reply, so a reload shows the same five cards; five proposals in the index; nothing on the away list.
+      expect((await history(u.email)).at(-1)?.awayProposals?.map((p) => [p.id, p.state])).toEqual(m.awayProposals!.map((p) => [p.id, "open"]));
+      expect((await propIds(u.email)).sort()).toEqual(m.awayProposals!.map((p) => p.id).sort());
+      expect(await awayKeys(u.email)).toEqual([]);
+    } finally {
+      vi.doUnmock("@anthropic-ai/sdk");
+      vi.doUnmock("@/lib/model");
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe("rule 486: contact_away is Reem's alone, in the app's chat: refused for other agents, over MCP and for a token, and never offered to them", () => {
@@ -1354,6 +1489,28 @@ describe("rule 487: the to-do page shows Working days and Away panels, and the r
       expect(html).toContain("Sara");
       // In English the same line.
       expect(await render("en")).toContain("أحمد: away until Thursday, October 8");
+    });
+  });
+
+  it("the page reads the brand file, sec:cal and sec:away once each: the panels show the records the agenda was read with (todoPage)", async () => {
+    await at(NOW, async () => {
+      const o = await owner("pg487once", { ...BRAND, city: "الشارقة", timeZone: "Asia/Dubai" });
+      await signIn(o.email);
+      await db.set(SEC_KEYS.cal(o.email), settings({ weekend: [5, 6, 0], holidays: { add: ["2026-12-31"], remove: [] } }));
+      await db.hset(SEC_KEYS.away(o.email), partyKey("Sara")!, awayEntry("Sara", "2026-10-09"));
+      const gets = vi.spyOn(db, "get"), hashes = vi.spyOn(db, "hgetall");
+      const html = await render("en");
+      expect(gets.mock.calls.filter(([k]) => k === `brand:${o.email}`)).toHaveLength(1);
+      expect(gets.mock.calls.filter(([k]) => k === SEC_KEYS.cal(o.email))).toHaveLength(1);
+      expect(hashes.mock.calls.filter(([k]) => k === SEC_KEYS.away(o.email))).toHaveLength(1);
+      // What each panel shows still comes from those records: the brand's city (Sharjah), its weekend, its added day, its away contact.
+      expect(html).not.toContain(appDict.en.todo.cal.sharjahHint);
+      expect(weekendBoxes(html).map((b) => / checked=""/.test(b))).toEqual([true, false, false, false, false, true, true]);
+      expect(html).toContain(appDict.en.todo.cal.addedList);
+      expect(html).toContain("Sara");
+      expect(html).toContain(appDict.en.todo.away.endNow);
+      await db.set(SEC_KEYS.cal(o.email), settings({}));
+      expect(await render("en")).toContain(appDict.en.todo.cal.sharjahHint);
     });
   });
 

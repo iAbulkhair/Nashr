@@ -222,12 +222,17 @@ describe("the daily cron purges and closes (rule 193)", () => {
     await db.zadd(SEC_KEYS.deleted(branded.email), Date.now() + 29 * 864e5, kept.id);
     await saveTask(bare.email, { id: "abababababab0001", type: "social", channel: "instagram", title: "Post", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" }, true);
     const linked = await seed(bare.email, { title: "Waits for the post", links: { taskId: "abababababab0001" } });
+    // A contact back over 30 days ago: the away list's clean-up runs with the purge, and the outcome line counts it.
+    await db.hset(SEC_KEYS.away(branded.email), "old", { label: "Old", until: "2020-01-01", by: branded.email, via: "web", at: "2020-01-01T00:00:00.000Z" });
     const res = await cron("cron-secret-purge");
     expect(res.status).toBe(200);
     const report = await res.json();
     for (const { scope, it } of expired) expect(await gone(scope, it.id), scope).toEqual({ item: null, all: false, deleted: false });
     expect(report.results[`idle:${archivedScope}`]).toBe("todo:1p");
     expect(report.results[`idle:${suspended.email}`]).toBe("todo:1p");
+    expect(report.results[branded.email]).toContain("todo:1p0c1a");
+    expect(report.results[bare.email]).toContain("todo:1p1c0a");
+    expect(await db.hgetall(SEC_KEYS.away(branded.email))).toEqual({});
     expect(await gone(branded.email, kept.id)).toMatchObject({ all: true, deleted: true });
     const closed = (await db.get<SecItem>(SEC_KEYS.item(bare.email, linked.id)))!;
     expect(closed).toMatchObject({ result: AUTO_CLOSE_RESULT });

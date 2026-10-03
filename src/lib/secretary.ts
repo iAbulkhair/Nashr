@@ -166,24 +166,24 @@ export function awayMapOf(rows: Record<string, unknown> | null | undefined, now:
   }));
 }
 
+/** The three records every date of the list is computed against, read in one round: the brand file (its zone), `sec:cal` and `sec:away`. */
+async function calReads(scope: string) {
+  const [brand, stored, rows] = await Promise.all([getBrand(scope), db.get<unknown>(SEC_KEYS.cal(scope)), db.hgetall<unknown>(SEC_KEYS.away(scope))]);
+  return { brand, stored, rows };
+}
+type CalReads = Awaited<ReturnType<typeof calReads>>;
+const calOf = (r: CalReads, now: number): { zone: Zone; cal: CalData; away: AwayMap } => {
+  const zone = zoneOf(r.brand);
+  return { zone, cal: calendarOf(r.stored, zone, now), away: awayMapOf(r.rows, now, zone) };
+};
+
 /**
  * The brand's zone, work calendar and away map at `now`: the brand file, `sec:cal` and `sec:away`, read in one round.
  * What every date the list computes is read against: the agenda, the evening wrap, a new chase clock (`expectBy`), the
  * owner's snooze presets.
  */
 export async function calFor(scope: string, now = Date.now()): Promise<{ zone: Zone; cal: CalData; away: AwayMap }> {
-  const [brand, stored, rows] = await Promise.all([getBrand(scope), db.get<unknown>(SEC_KEYS.cal(scope)), db.hgetall<unknown>(SEC_KEYS.away(scope))]);
-  const zone = zoneOf(brand);
-  return { zone, cal: calendarOf(stored, zone, now), away: awayMapOf(rows, now, zone) };
-}
-
-/**
- * The brand's Working days as the to-do page shows them (`calendarView`, the same view GET /api/secretary/calendar
- * answers): `sec:cal:{scope}` read once, its settings used only when the calendar can be built from them
- * (`usableCalendar`), at `now` in the brand's `zone`.
- */
-export async function workingDays(scope: string, zone: Zone, now: number): Promise<CalendarView> {
-  return calendarView(usableCalendar(await db.get<unknown>(SEC_KEYS.cal(scope)), zone, now), zone, now);
+  return calOf(await calReads(scope), now);
 }
 
 /**
@@ -200,8 +200,8 @@ export type SecError =
   // The away list (src/lib/secretary-away.ts): the owner or an agent named as a contact, a return day out of range, the
   // 200-field cap, and a body or label that is not one.
   | "not_contact" | "away_range" | "away_limit" | "bad_request"
-  // An away proposal (Reem's contact_away card) that a person already saved or dismissed.
-  | "already_decided";
+  // An away proposal (Reem's contact_away card) that a person already saved or dismissed, or that another Save holds now.
+  | "already_decided" | "busy";
 export type SecFail = { ok: false; error: SecError; field?: string; status: number; item?: SecItem };
 export const fail = (error: SecError, status = 400, field?: string): SecFail => ({ ok: false, error, status, ...(field ? { field } : {}) });
 
@@ -758,7 +758,12 @@ async function linkedTasks(scope: string, items: SecItem[]): Promise<Map<string,
  * number whatever the number of items or away contacts.
  */
 export async function agendaFor(scope: string, now = Date.now(), who: Who = { actor: "rule", via: "web" }): Promise<Agenda & { closed: number; facts: Record<string, LinkedFact | null>; cal: CalData; away: AwayMap }> {
-  const [items, approvals, { zone, cal, away }] = await Promise.all([listOpenItems(scope), pendingCount(scope), calFor(scope, now)]);
+  return (await agendaWith(scope, now, who)).agenda;
+}
+/** `agendaFor`, and the records it read the calendar from (`calReads`), for a caller that shows them too (the to-do page). */
+async function agendaWith(scope: string, now: number, who: Who) {
+  const [items, approvals, reads] = await Promise.all([listOpenItems(scope), pendingCount(scope), calReads(scope)]);
+  const { zone, cal, away } = calOf(reads, now);
   const tasks = await linkedTasks(scope, items);
   let closed = new Set<string>();
   const approved = items.filter((it) => it.links?.taskId && tasks.get(it.links.taskId)?.status === "approved");
@@ -767,23 +772,27 @@ export async function agendaFor(scope: string, now = Date.now(), who: Who = { ac
     closed = new Set(approved.filter((_, i) => done[i]).map((it) => it.id));
   }
   const facts = Object.fromEntries([...tasks].map(([id, t]) => [id, factOf(t)]));
-  return { ...computeAgenda(items.filter((it) => !closed.has(it.id)), now, { approvals, zone, cal, away }), closed: closed.size, facts, cal, away };
+  return { agenda: { ...computeAgenda(items.filter((it) => !closed.has(it.id)), now, { approvals, zone, cal, away }), closed: closed.size, facts, cal, away }, reads };
 }
 
 /**
  * What the My to-dos page shows, read at one instant (server components may not read the clock themselves): the agenda
  * first, since it closes items whose linked inbox item was approved and those then show under "done". `facts` covers
  * the links of open and done items alike (one more MGET for the done ones), so every row can show what code checked.
+ * The brand file, `sec:cal` and `sec:away` the agenda read are handed on, never read again: `brand`, the Working days
+ * view (`working`: `calendarView`, the same view GET /api/secretary/calendar answers, of the stored settings when the
+ * calendar can be built from them, `usableCalendar`) and the away hash as stored (`awayRows`, for `awayListOf`).
  */
 export async function todoPage(scope: string) {
   const now = Date.now();
-  const agenda = await agendaFor(scope, now, { actor: "rule", via: "web" });
+  const { agenda, reads } = await agendaWith(scope, now, { actor: "rule", via: "web" });
   const [done, deleted] = await Promise.all([listDone(scope, 10), listDeleted(scope, now, 50)]);
   const doneTasks = await linkedTasks(scope, done.filter((it) => it.links?.taskId && !(it.links.taskId in agenda.facts)));
   const facts = { ...agenda.facts, ...Object.fromEntries([...doneTasks].map(([id, t]) => [id, factOf(t)])) };
   // Whether a reminder can be promised "at" its time, or only with the next morning brief.
   const timed = await timedReminders(now);
-  return { now, zone: agenda.zone, agenda, done, deleted, facts, tonight: snoozePreset("tonight", now, agenda.zone) !== null, timed };
+  const working: CalendarView = calendarView(usableCalendar(reads.stored, agenda.zone, now), agenda.zone, now);
+  return { now, zone: agenda.zone, agenda, done, deleted, facts, tonight: snoozePreset("tonight", now, agenda.zone) !== null, timed, brand: reads.brand, working, awayRows: reads.rows };
 }
 
 /** The latest completed items (newest first), deleted ones left out. One list read and one MGET. */
@@ -1048,6 +1057,7 @@ const TOOL_ERRORS: Record<SecError, string> = {
   away_limit: "This brand already has 200 away contacts, the maximum, ended ones included. Ask the owner to remove ended ones on the My to-dos page first.",
   bad_request: "The request was not understood. Nothing was saved.",
   already_decided: "This away card was already saved or dismissed. Nothing more was changed.",
+  busy: "Someone is saving this away card right now; try again in a moment. Nothing more was changed.",
 };
 /** A friendly sentence for a tool answer. */
 export const toolError = (e: SecFail) => `Not done: ${TOOL_ERRORS[e.error] ?? e.error}${e.field ? ` (field: ${e.field})` : ""}`;

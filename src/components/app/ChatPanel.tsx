@@ -365,6 +365,19 @@ export function ProposalCard({ p, t, lang, canBrand = true }: { p: BrandProposal
  * now) and how many open items that contact owes; Save puts it on the list through the list's own checks, Dismiss drops
  * it (POST /api/secretary/away/proposals/{id}, `todo.write`: every member of the account).
  */
+/**
+ * Why a Save or Dismiss on an away card was refused, in the reader's words, when the card stays open to try again or
+ * dismiss: another Save of the card is running (`busy`), too many changes this hour, the name has left the away list,
+ * or a check the away list runs now (a last day that has passed, a full list). Undefined: no words for it.
+ */
+export function awayCardRefusal(t: AppDict, lang: "ar" | "en", status: number, error: string | undefined): string | undefined {
+  const ar = lang === "ar";
+  if (status === 429) return t.handoff.errors.slow_down;
+  if (error === "busy") return ar ? "يحفظ أحدٌ هذه البطاقة الآن. حاول مرة أخرى بعد لحظة." : "Someone is saving this card right now. Try again in a moment.";
+  if (error === "nothing_to_change") return ar ? "لم يعد هذا الاسم في قائمة الغائبين، فلا غياب لإنهائه." : "This name is no longer on the away list, so there is no absence to end.";
+  return error ? t.todo.errors[error] : undefined;
+}
+
 export function AwayProposalCard({ p, t, lang }: { p: AwayProposal; t: AppDict; lang: "ar" | "en" }) {
   const ar = lang === "ar";
   // A reloaded thread carries where the proposal stands now (history() reads it), so a decided card stays decided.
@@ -379,16 +392,13 @@ export function AwayProposalCard({ p, t, lang }: { p: AwayProposal; t: AppDict; 
     if (r.status === 403) return setState("forbidden");
     if (r.status === 404) return setState("gone");
     if (j.error === "already_decided") return setState("decided");
-    // A Save the away list refuses now (a last day that has passed, a full list, too many changes this hour): the card
-    // stays open, to save later or dismiss.
-    const words = r.status === 429 ? t.handoff.errors.slow_down : j.error === "nothing_to_change"
-      ? (ar ? "لم يعد هذا الاسم في قائمة الغائبين، فلا غياب لإنهائه." : "This name is no longer on the away list, so there is no absence to end.")
-      : j.error ? t.todo.errors[j.error] : undefined;
+    const words = awayCardRefusal(t, lang, r.status, j.error);
     if (words) { setWhy(words); return setState("refused"); }
     setState("error");
   }
   // A local day "YYYY-MM-DD" as the to-do page writes dates (Latin digits), the same day in any Gulf zone; the year is
-  // shown when it is not the year the card was proposed in.
+  // shown when it is not the year the card was proposed in. Formatted in the browser too, where ICU may word it
+  // differently from the server's (src/lib/dates.ts): the element holding it carries `suppressHydrationWarning`.
   const day = (d: string) => formatWhen(new Date(endOfZoneDay(d)).toISOString(), true, lang, Date.parse(p.at));
   const ending = p.until === null;
   const done: Partial<Record<typeof state, string>> = {
@@ -414,7 +424,7 @@ export function AwayProposalCard({ p, t, lang }: { p: AwayProposal; t: AppDict; 
         <dt className="text-xs text-ink/60">{ar ? "يطابق" : "Matches"}</dt>
         <dd className="min-w-0 break-words" dir="auto">{p.contact ? <><span>{p.contact}</span><span className="text-ink/60"> · {items}</span></> : <span className="text-sadu-deep">{ar ? "لا مهمة مفتوحة على هذا الاسم: تأكد من كتابته." : "No open item is owed by this name: check the spelling."}</span>}</dd>
         <dt className="text-xs text-ink/60">{ending ? (ar ? "الغياب" : "Absence") : (ar ? "غياب حتى" : "Away until")}</dt>
-        <dd className="min-w-0" dir="auto">{ending ? (ar ? "ينتهي الآن، وتعود المتابعة كالمعتاد" : "Ends now; chasing resumes as usual") : <>{day(p.until as string)} <span className="text-ink/60">{ar ? "(آخر يوم غياب)" : "(last day away)"}</span></>}</dd>
+        <dd className="min-w-0" dir="auto" suppressHydrationWarning>{ending ? (ar ? "ينتهي الآن، وتعود المتابعة كالمعتاد" : "Ends now; chasing resumes as usual") : <>{day(p.until as string)} <span className="text-ink/60">{ar ? "(آخر يوم غياب)" : "(last day away)"}</span></>}</dd>
       </dl>
       <footer className="flex flex-wrap items-center gap-2 border-t border-ink/5 px-3 py-2 text-xs">
         {done[state] && <span role="status" className={state === "saved" || state === "dismissed" ? "text-oasis" : "text-sadu-deep"}>{done[state]}</span>}

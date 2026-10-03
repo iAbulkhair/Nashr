@@ -75,9 +75,10 @@ async function dailyFor(u: User): Promise<string> {
       out.push(`weekly_sweep_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`);
     }
   }
-  // Reem's list, for every scope with or without a brand: purge items deleted over 30 days ago and close the ones whose
-  // linked inbox item was approved. A failure is reported and never stops the rest of this workspace's day.
-  try { const sec = await secretaryDaily(u.scope ?? u.email); if (sec.purged || sec.closed) out.push(`todo:${sec.purged}p${sec.closed}c`); } catch (e) { out.push(`todo_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
+  // Reem's list, for every scope with or without a brand: purge items deleted over 30 days ago, close the ones whose
+  // linked inbox item was approved, and clean the away list of contacts back over 30 days ago: `todo:{purged}p{closed}c
+  // {awayCleaned}a`. A failure is reported and never stops the rest of this workspace's day.
+  try { const sec = await secretaryDaily(u.scope ?? u.email); if (sec.purged || sec.closed || sec.awayCleaned) out.push(`todo:${sec.purged}p${sec.closed}c${sec.awayCleaned}a`); } catch (e) { out.push(`todo_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   const brand = await getBrand(u.scope ?? u.email);
   // Signup nudge: registered but never built a brand (Enrich-style founder follow-up)
   if (!brand) {

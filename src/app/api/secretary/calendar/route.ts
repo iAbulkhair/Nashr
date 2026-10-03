@@ -19,9 +19,11 @@ import type { Zone } from "@/lib/zones";
  * (`read`, any member, rate `sec:read`).
  * PUT: the whole settings object, which is what GET returns under `calendar` (its `v`, `updatedAt` and `updatedBy` are
  * replaced) (`brand.write`, admin and owner, rate `sec:cal` 30 an hour). It authenticates, then checks the role, then the
- * rate limit, then reads the body, which `parseCalendar` checks field by field: a field it does not know (a `scope`, an
- * `email`) is refused, not ignored (400 with the error and the field). The write runs under `withLock(scope, "cal")` and
- * leaves one `calendar` audit line with the login, and the answer is GET's, for the new settings.
+ * rate limit, then reads the body. Under `withLock(scope, "cal")` it reads the stored settings and `parseCalendar` checks
+ * the body field by field against them: a field it does not know (a `scope`, an `email`) is refused, not ignored (400
+ * with the error and the field); a day turned off that is already stored is kept even when no default produces it any
+ * more (ruling R28: an Eid moved, the zone changed), so the page never locks. The write leaves one `calendar` audit line
+ * with the login, and the answer is GET's, for the new settings.
  */
 const refused = (r: { error: string; field?: string; status: number }) => NextResponse.json({ ok: false, error: r.error, ...(r.field ? { field: r.field } : {}) }, { status: r.status });
 const badRequest = () => NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
@@ -65,13 +67,16 @@ export async function PUT(req: Request) {
   const zone = await zoneFor(scope);
   // `u` is the account: who saved is the acting login, from the session (fail closed above: no actor, no role).
   const login = u.actor?.email ?? u.email;
-  const p = parseCalendar(b, now, zone, login);
-  if (!p.ok) return refused(p);
   const who: Who = { actor: "owner", via: "web", login };
   const r = await withLock(scope, LOCK, async () => {
+    // The stored record, as GET reads it (ruling R13: one the calendar cannot be built from is none), so a removal it
+    // already holds is kept (ruling R28).
+    const stored = usableCalendar(await db.get<unknown>(SEC_KEYS.cal(scope)), zone, now);
+    const p = parseCalendar(b, now, zone, login, stored);
+    if (!p.ok) return p;
     await Promise.all([db.set(SEC_KEYS.cal(scope), p.cal), audit(scope, who, "calendar", "-", summary(p.cal))]);
-    return { ok: true as const };
+    return p;
   });
   if (!r.ok) return refused(r);
-  return NextResponse.json(viewOf(p.cal, zone, now));
+  return NextResponse.json(viewOf(r.cal, zone, now));
 }

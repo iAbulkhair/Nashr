@@ -3,11 +3,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { activeSeasons, hijriDate } from "@/lib/seasons";
 import { buildWrap, eveningAt, isRamadan, previousEveningAt, wrapText, zonesDue, type Wrap } from "@/lib/secretary-evening";
 import {
-  addDays, addWorkingDays, briefAgenda, chaseAt, chaseMoment, classify, computeAgenda, defaultCal, firstWorkingMoment, inRamadanWindow, isQuietDay, nextStepText, nowLine,
+  DEFAULT_RAMADAN_HOURS, addDays, addWorkingDays, briefAgenda, briefClock, chaseAt, chaseMoment, classify, computeAgenda, defaultCal, firstWorkingMoment, inRamadanWindow, isQuietDay, nextStepText, nowLine,
   heldForRamadanToday, outsideRamadanHours, overdueAlerts, partyKey, workingDaysBetween, type AwayMap, type CalData, type SecItem,
 } from "@/lib/secretary-agenda";
 import { SEC_KEYS, agendaFor, backFingerprint, cleanLine, createItem, nextWeekStart, overdueAlertFingerprint, secretaryKeys, snoozePreset } from "@/lib/secretary";
-import { runTool } from "@/lib/chat";
+import { runTool, system } from "@/lib/chat";
+import { appDict } from "@/lib/app-i18n";
+import { HELP } from "@/lib/help";
+import { CHANGELOG } from "@/lib/changelog";
 import { db } from "@/lib/db";
 import { type User } from "@/lib/auth";
 import { followUps, type Notif } from "@/lib/notifications";
@@ -466,8 +469,26 @@ describe("rule 474: parseCalendar refuses what the calendar cannot hold", () => 
     expect(error({ hijriFix: { "1448": { shawwal1: "not a date" } } })).toBe("hijri_fix_range");
     expect(error({ hijriFix: { "1448": { shawwal1: "2027-03-08" } } })).toBe("ok");
     expect(error({ hijriFix: { "1448": { shawwal1: "2027-03-10", dhulhijja1: "2027-05-08" } } })).toBe("ok");
-    expect(error({ hijriFix: { "1449": { ramadan1: "2028-01-27" } } })).toBe("ok");
     expect(error({ hijriFix: { "1448": { muharram1: "2026-06-16" } } })).toBe("bad_request");
+  });
+
+  it("hijriFix takes only shawwal1 and dhulhijja1 (ruling R30): a new ramadan1 is bad_request, a stored one is dropped, and the calendar ignores one", () => {
+    // Umm al-Qura: 1 Ramadan 1448 is 2027-02-08 and 1 Ramadan 1449 2028-01-28, in Riyadh.
+    expect(parse({ hijriFix: { "1449": { ramadan1: "2028-01-27" } } })).toEqual({ ok: false, error: "bad_request", status: 400, field: "hijriFix.1449.ramadan1" });
+    expect(parse({ hijriFix: { "1448": { ramadan1: "2027-02-09", shawwal1: "2027-03-10" } } })).toEqual({ ok: false, error: "bad_request", status: 400, field: "hijriFix.1448.ramadan1" });
+    // A record saved before the ruling comes back from GET with its ramadan1: saved back, the ramadan1 is dropped.
+    const old = settings({ hijriFix: { "1448": { ramadan1: "2027-02-09", shawwal1: "2027-03-10" } } as SecCalendar["hijriFix"] });
+    const back = parseCalendar({ ...old }, now, "Asia/Riyadh", "admin@example.com", old);
+    expect(back.ok && back.cal.hijriFix).toEqual({ "1448": { shawwal1: "2027-03-10" } });
+    const only = settings({ hijriFix: { "1448": { ramadan1: "2027-02-09" } } as SecCalendar["hijriFix"] });
+    const none = parseCalendar({ ...only }, now, "Asia/Riyadh", "admin@example.com", only);
+    expect(none.ok && none.cal.hijriFix).toEqual({});
+    // A different ramadan1 than the stored one is new: refused.
+    expect(parseCalendar({ hijriFix: { "1448": { ramadan1: "2027-02-07" } } }, now, "Asia/Riyadh", "admin@example.com", only)).toMatchObject({ ok: false, error: "bad_request", field: "hijriFix.1448.ramadan1" });
+    // The calendar reads no ramadan1: Ramadan 1448 starts on Umm al-Qura's 8 February, so no correction can be undone by the 30-day clamp.
+    const cal = workCalendar(only, "Asia/Riyadh", now);
+    expect(cal.ramadan).toEqual(workCalendar(null, "Asia/Riyadh", now).ramadan);
+    expect(cal.ramadan[0]).toBe("2027-02-08");
   });
 
   it("31 entries in add, a malformed value, or a removal the defaults do not produce is holidays_invalid", () => {
@@ -498,6 +519,30 @@ describe("rule 474: parseCalendar refuses what the calendar cannot hold", () => 
     // A year after next is still refused then: 1449 is current, 1450 next.
     const far = parseCalendar({ hijriFix: { "1451": { shawwal1: "2030-02-05" } } }, later, "Asia/Riyadh", "admin@example.com");
     expect(!far.ok && far.error).toBe("bad_year");
+  });
+
+  it("a removal already stored is accepted though no default produces it any more, and stays; a new one that matches nothing is still refused (ruling R28)", () => {
+    // Kuwait's Eid al-Adha 1448 is 9-12 Dhu al-Hijjah: Saturday 15 to Tuesday 18 May 2027 by Umm al-Qura (1 Dhu al-Hijjah
+    // on 7 May). The owner turns Tuesday 18 off, then moves the Eid a day earlier: 14-17 May, so no default is 18 May.
+    const kw = (body: Record<string, unknown>, stored: SecCalendar | null) => parseCalendar(body, now, "Asia/Kuwait", "admin@example.com", stored);
+    const off = kw({ holidays: { add: [], remove: ["2027-05-18"] } }, null);
+    expect(off.ok).toBe(true);
+    if (!off.ok) return;
+    const earlier = { hijriFix: { "1448": { dhulhijja1: "2027-05-06" } }, holidays: { add: [], remove: ["2027-05-18"] } };
+    expect(kw(earlier, null)).toEqual({ ok: false, error: "holidays_invalid", status: 400, field: "holidays.remove" });
+    const moved = kw(earlier, off.cal);
+    expect(moved.ok && moved.cal.holidays.remove).toEqual(["2027-05-18"]);
+    expect(moved.ok && moved.cal.hijriFix).toEqual({ "1448": { dhulhijja1: "2027-05-06" } });
+    // The calendar ignores it: the Eid is 14-17 May (Friday 14 and Saturday 15 are the weekend), and 18 May is a working day.
+    if (!moved.ok) return;
+    expect(quietBetween(workCalendar(moved.cal, "Asia/Kuwait", now), "2027-05-10", "2027-05-25")).toEqual(["2027-05-16", "2027-05-17"]);
+    // Turned on again it is gone; a stored one does not let a brand-new one in beside it.
+    const on = kw({ ...earlier, holidays: { add: [], remove: [] } }, moved.cal);
+    expect(on.ok && on.cal.holidays.remove).toEqual([]);
+    expect(kw({ ...earlier, holidays: { add: [], remove: ["2027-05-18", "2027-05-19"] } }, moved.cal)).toEqual({ ok: false, error: "holidays_invalid", status: 400, field: "holidays.remove" });
+    // A stored removal that went stale (before today-30) is still dropped (ruling R8).
+    const stale = kw({ holidays: { add: [], remove: ["2026-08-01", "2027-05-18"] } }, { ...moved.cal, holidays: { add: [], remove: ["2026-08-01", "2027-05-18"] } });
+    expect(stale.ok && stale.cal.holidays.remove).toEqual(["2027-05-18"]);
   });
 
   it("the calendar ignores a past year's hijriFix too: 25 Dhu al-Hijjah 1448 stays on Umm al-Qura's 2027-05-31", () => {
@@ -1087,6 +1132,34 @@ describe("rule 480: in Ramadan the 08:00 alert and brief say when chasing opens,
     expect(heldForRamadanToday(moment(RIYADH), local("2027-02-23T08:00"), RIYADH)).toBe(false);
   });
 
+  it("an agent keeps no Ramadan hours (ruling R16): Dana's item due 14:00 on a Ramadan day is neither alerted at 08:00 nor counted as a Ramadan chase, and alerts as on any day once due", async () => {
+    const dana = debt({ owedBy: "dana", dueAt: iso(local("2027-02-23T14:00")) });
+    const alerts = (now: number, cal: CalData) => {
+      const a = computeAgenda([dana], now, { cal });
+      return overdueAlerts([...a.buckets.overdue, ...a.buckets.chase, ...a.buckets.waiting], now, "Asia/Riyadh", cal);
+    };
+    const briefOf = (now: number, cal: CalData) => briefAgenda({ ...computeAgenda([dana], now, { cal }), cal });
+    // 08:00 on a Ramadan day: not due yet, so nothing, exactly as off Ramadan; the brief counts it as waiting.
+    expect(alerts(local("2027-02-23T08:00"), RAMADAN)).toEqual([]);
+    expect(alerts(local("2027-02-23T08:00"), RIYADH)).toEqual([]);
+    expect(briefOf(local("2027-02-23T08:00"), RAMADAN)).toMatchObject({ chase: 0, waiting: 1 });
+    expect(briefOf(local("2027-02-23T08:00"), RAMADAN).chaseAfter).toBeUndefined();
+    expect(briefOf(local("2027-02-23T08:00"), RAMADAN)).toEqual(briefOf(local("2027-02-23T08:00"), RIYADH));
+    // Past 14:00 it is overdue and alerted at step 0, Ramadan or not, with no Ramadan time.
+    for (const cal of [RAMADAN, RIYADH]) {
+      const got = alerts(local("2027-02-23T15:00"), cal);
+      expect(got).toMatchObject([{ step: 0, days: 0, send: true, anchorMs: local("2027-02-23T14:00") }]);
+      expect(got[0].ramadanToday).toBeUndefined();
+    }
+    // Through the daily run on the real Saudi calendar (Tuesday 23 February 2027 is in Ramadan): no alert, no chase.
+    const u = await workspace("al480agent");
+    await make(u, local("2027-02-21T12:00"), { title: "Brief from Dana", direction: "they_owe", owedBy: "dana", dueAt: "2027-02-23T14:00" });
+    expect(await alertsAt(u, local("2027-02-23T08:00"))).toEqual([]);
+    const b = (await fakeAt(local("2027-02-23T08:00"), () => runDaily(u)))!;
+    expect(b.agenda).toMatchObject({ chase: 0, waiting: 1 });
+    expect(b.agenda?.chaseAfter).toBeUndefined();
+  });
+
   it("the brief counts the item as a chase at 08:00, with its time, and no longer as waiting", async () => {
     const briefOf = (items: SecItem[], now: number, cal: CalData) => briefAgenda({ ...computeAgenda(items, now, { cal }), cal });
     const at8 = briefOf([debt({ dueAt: iso(local("2027-02-23T07:00")) })], local("2027-02-23T08:00"), RAMADAN);
@@ -1161,6 +1234,37 @@ describe("rule 488: Reem's playbook proposes an absence only from the owner's ow
     const both = sentences.filter((s) => /alert|تنبيه/i.test(s) && /weekend|Friday|Saturday|Sunday|عطلة نهاية الأسبوع|الجمعة|السبت/i.test(s));
     expect(both.length).toBeGreaterThan(0);
     for (const s of both) expect(s).toMatch(/\b(no|never|not)\b/i);
+  });
+
+  it("Reem's prompt and the to-do page's note say what the playbook says: a contact's alert steps are working days, none on a weekend, at Eid or on an official holiday; the owner's own and agents' items alert any day (ruling R16)", () => {
+    const u = { email: "x@test.example", credits: 5, plan: "starter", trialEnds: "2026-10-01" } as User;
+    const reem = system(null, u, [], "", [], [], "reem")[0].text;
+    expect(reem).toContain("There is no alert at the due time itself: the item shows on the My to-dos page and in the morning brief, and once it falls behind, in an in-app alert that day and 1, 3 and 7 days later. For what a contact owes, those are working days: no such alert comes on a weekend, at Eid, on an official holiday or while the contact is away; the owner's own items and what an agent owes alert on any day.");
+    expect(appDict.en.todo.note).toContain("an in-app alert for each overdue item on the day it falls behind and 1, 3 and 7 days later; for what someone outside the team owes you those are working days, so no such alert comes on a weekend, at Eid or on an official holiday, while your own items and what the team's agents owe you alert on any day.");
+    expect(appDict.ar.todo.note).toContain("مع تنبيه داخل التطبيق لكل مهمة متأخرة يوم تأخرها ثم بعد يوم و3 و7 أيام؛ وما يدين لك به شخص من خارج الفريق تُحسب أيامه أيام عمل، فلا يصلك تنبيهه في عطلة نهاية الأسبوع أو العيد أو إجازة رسمية، أما مهامك وما يدين لك به وكلاء الفريق فتنبيهها في أي يوم.");
+    // No text names the alert days without the working-days rule after them.
+    for (const [where, text] of [["prompt", reem], ["en", appDict.en.todo.note], ["ar", appDict.ar.todo.note]]) {
+      const i = text.search(/1, 3 and 7|و3 و7/);
+      expect(i, where).toBeGreaterThan(-1);
+      expect(text.slice(i, i + 160), where).toMatch(/working days|أيام عمل/);
+    }
+  });
+
+  it("help and the changelog name the brief's time per zone (briefClock) and the default Ramadan hours (DEFAULT_RAMADAN_HOURS) when none are set", () => {
+    const faq = (en: string) => HELP.flatMap((t) => t.items).find((i) => i.q.en === en)!.a;
+    const reem = faq("What is “My to-dos”, and who is Reem?"), days = faq("What are “Working days” and “Away” on My to-dos?");
+    const entry = CHANGELOG.find((c) => c.title.en === "Reem knows your working days and who is away")!.desc;
+    // The brief runs once for every brand (DAILY_CRON_UTC_HOUR): 08:00 at UTC+3, 09:00 at UTC+4.
+    expect([briefClock("Asia/Riyadh"), briefClock("Asia/Kuwait"), briefClock("Asia/Qatar"), briefClock("Asia/Bahrain"), briefClock("Asia/Dubai"), briefClock("Asia/Muscat")]).toEqual(["08:00", "08:00", "08:00", "08:00", "09:00", "09:00"]);
+    expect(reem.en).toContain("the morning brief (at 08:00 for a brand on Riyadh, Kuwait, Doha or Manama time, 09:00 on Dubai or Muscat time)");
+    expect(reem.ar).toContain("ملخص الصباح (08:00 بتوقيت الرياض والكويت والدوحة والمنامة، و09:00 بتوقيت دبي ومسقط، حسب منطقة علامتك)");
+    expect(`${reem.en} ${reem.ar}`).not.toMatch(/08:00 morning brief|ملخص الصباح 08:00/);
+    // Ramadan's chasing hours: the default applies until the owner changes it.
+    const [w] = DEFAULT_RAMADAN_HOURS;
+    expect(DEFAULT_RAMADAN_HOURS).toHaveLength(1);
+    for (const text of [days.en, entry.en]) expect(text).toContain(`in Ramadan only within the chasing hours, ${w.from} to ${w.to} unless you change them`);
+    for (const text of [days.ar, entry.ar]) expect(text).toContain(`ساعات المتابعة: من ${w.from} إلى ${w.to} ما لم تغيّرها`);
+    for (const text of [days.en, days.ar, entry.en, entry.ar]) expect(text).not.toMatch(/only within the hours you set|في الساعات التي تحددها/);
   });
 });
 

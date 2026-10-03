@@ -2,9 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, sc } from "@/lib/auth";
-import { getBrand } from "@/lib/brand";
-import { isWaNumber, todoPage, workingDays } from "@/lib/secretary";
-import { AWAY_AHEAD_DAYS, listAway } from "@/lib/secretary-away";
+import { isWaNumber, todoPage } from "@/lib/secretary";
+import { AWAY_AHEAD_DAYS, awayListOf } from "@/lib/secretary-away";
 import { namesSharjah } from "@/lib/secretary-calendar";
 import { isAgentId } from "@/lib/agents";
 import { can } from "@/lib/roles";
@@ -28,11 +27,12 @@ export const dynamic = "force-dynamic";
  * gets a wa.me link with a fixed message: nothing is sent. Templates that take a title or a name are filled in one pass
  * (`fill`), so what someone typed is inserted as typed.
  *
- * Under the list: the away list (`listAway`), whose name field suggests the open items' contacts and which a contact's
- * row opens with "Away until…", and the brand's Working days (`workingDays`: the settings, what is in force, the next
+ * Under the list: the away list (`awayListOf`), whose name field suggests the open items' contacts and which a contact's
+ * row opens with "Away until…", and the brand's Working days (`working`: the settings, what is in force, the next
  * 12 months of days off, this and next year's Eid), which an admin edits and a member reads (`brand.write`); a brand in
  * Sharjah is told Friday is in its government's weekend. A debt the chase rule holds back says why under its WhatsApp
- * link (`nextStepParts`). All read after the agenda, at the same instant, in one round.
+ * link (`nextStepParts`). The brand file, `sec:cal` and `sec:away` are the records the agenda was read with
+ * (`todoPage`), at the same instant: nothing is read twice.
  */
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
@@ -42,8 +42,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const scope = sc(u);
   const t = appDict[lang];
   const T = t.todo;
-  const { now, zone, agenda, done, deleted, facts, tonight, timed } = await todoPage(scope);
-  const [brand, cal, awayList] = await Promise.all([getBrand(scope), workingDays(scope, zone, now), listAway(scope, now, zone)]);
+  const { now, zone, agenda, done, deleted, facts, tonight, timed, brand, working: cal, awayRows } = await todoPage(scope);
+  const awayList = awayListOf(awayRows, now, zone);
   const today = zoneDay(now, zone);
   const when = (iso: string, allDay = false) => formatWhen(iso, allDay, lang, now, zone);
   // When the next morning brief comes in this brand's zone: 08:00 in Riyadh, 09:00 in Dubai.

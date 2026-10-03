@@ -168,9 +168,12 @@ function byReturn(a: AwayEntry & { ended: boolean }, b: AwayEntry & { ended: boo
  * left out.
  */
 export async function listAway(scope: string, now: number, zone: Zone): Promise<(AwayEntry & { ended: boolean })[]> {
+  return awayListOf(await db.hgetall<unknown>(SEC_KEYS.away(scope)), now, zone);
+}
+/** `listAway` of the away hash already read (the to-do page has it from `todoPage`). */
+export function awayListOf(rows: Record<string, unknown> | null | undefined, now: number, zone: Zone): (AwayEntry & { ended: boolean })[] {
   const today = zoneDay(now, zone);
-  const rows = await db.hgetall<unknown>(SEC_KEYS.away(scope));
-  return Object.values(rows)
+  return Object.values(rows ?? {})
     .flatMap((raw) => {
       const e = entryOf(raw);
       return e ? [{ ...e, ended: e.until < today }] : [];
@@ -210,7 +213,8 @@ export async function cleanAway(scope: string, now: number, zone: Zone): Promise
 export const AWAY_PROPOSAL_TTL_S = 7 * 86400;
 /** The claim a Save holds while it runs: longer than the away lock (10 s), short enough that a killed request frees it. */
 const SAVE_CLAIM_S = 60;
-const PROPOSAL_ID = /^[a-f0-9]{16}$/;
+/** An away proposal's id: 16 hex characters. The proposals route checks it with this before anything is read. */
+export const AWAY_PROPOSAL_ID = /^[a-f0-9]{16}$/;
 
 export type AwayProposalState = "open" | "saved" | "dismissed" | "expired";
 /**
@@ -278,7 +282,7 @@ function proposalOf(raw: unknown, id: string): AwayProposal | null {
 
 /** Where each proposal stands, read in one MGET, so a reloaded chat shows a decided card as decided. */
 export async function awayProposalStates(scope: string, ids: string[]): Promise<Record<string, AwayProposalState>> {
-  const ok = [...new Set(ids.filter((id) => PROPOSAL_ID.test(id)))];
+  const ok = [...new Set(ids.filter((id) => AWAY_PROPOSAL_ID.test(id)))];
   if (!ok.length) return {};
   const rows = await db.mget<unknown>([...ok.map((id) => SEC_KEYS.awayProp(scope, id)), ...ok.map((id) => SEC_KEYS.awayPropDone(scope, id))]);
   return Object.fromEntries(ok.map((id, i): [string, AwayProposalState] => {
@@ -293,26 +297,30 @@ export type AwayDecided = { ok: true; state: "saved" | "dismissed"; entry?: Away
 /**
  * A person's answer to an absence Reem proposed, once. The id must be one (`not_found` otherwise, before any read), and
  * the proposal is read only from `scope`. A decided proposal is `already_decided` (409): the outcome is checked first,
- * then claimed with SET NX on `secawayprop-done:{scope}:{id}`, so of two answers at once one wins. Dismiss writes nothing
+ * then claimed with SET NX on `secawayprop-done:{scope}:{id}`, so of two answers at once one wins; while a Save holds the
+ * claim ("saving"), another Save or a Dismiss is `busy` (409, as brand proposals answer), not decided. Dismiss writes nothing
  * else. Save applies it through `setAway` (or `endAway` for an end) as `who`, in the brand's zone, with every check run
  * again: its `away` / `away_end` audit line names the login and ends with "proposed in Reem's chat ({id})". A Save the
  * checks refuse (a last day now past, a full list, a busy lock) frees the claim and changes nothing, so the card can be
  * saved later or dismissed. A decided proposal's record is deleted; its outcome stays 7 days.
  */
 export async function decideAwayProposal(scope: string, id: string, action: "save" | "dismiss", who: Who, now = Date.now()): Promise<AwayDecided | SecFail> {
-  if (!PROPOSAL_ID.test(id)) return fail("not_found", 404);
+  if (!AWAY_PROPOSAL_ID.test(id)) return fail("not_found", 404);
   const recordKey = SEC_KEYS.awayProp(scope, id);
   const doneKey = SEC_KEYS.awayPropDone(scope, id);
+  // Another answer holds the card: a Save still running ("saving") is busy, so the person may try again; any other
+  // outcome is final.
+  const taken = (state: unknown) => (state === "saving" ? fail("busy", 409) : fail("already_decided", 409));
   const [raw, done] = await db.mget<unknown>([recordKey, doneKey]);
-  if (done) return fail("already_decided", 409);
+  if (done) return taken(done);
   const p = proposalOf(raw, id);
   if (!p) return fail("not_found", 404);
   if (action === "dismiss") {
-    if (!(await db.setNx(doneKey, "dismissed", AWAY_PROPOSAL_TTL_S))) return fail("already_decided", 409);
+    if (!(await db.setNx(doneKey, "dismissed", AWAY_PROPOSAL_TTL_S))) return taken(await db.get<unknown>(doneKey));
     await db.del(recordKey);
     return { ok: true, state: "dismissed" };
   }
-  if (!(await db.setNx(doneKey, "saving", SAVE_CLAIM_S))) return fail("already_decided", 409);
+  if (!(await db.setNx(doneKey, "saving", SAVE_CLAIM_S))) return taken(await db.get<unknown>(doneKey));
   let r: { ok: true; entry: AwayEntry } | SecFail;
   try {
     const zone = await zoneFor(scope);

@@ -1,3 +1,4 @@
+"use client";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";

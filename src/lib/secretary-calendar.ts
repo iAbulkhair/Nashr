@@ -24,8 +24,11 @@ export type SecCalendar = {
   weekend: number[] | null;
   /** Ramadan chasing hours, local "HH:mm" on a 15-minute step, at most 2 windows. null: 10:00-15:00. []: no restriction. */
   ramadanHours: { from: string; to: string }[] | null;
-  /** Per Hijri year ("1448"), the owner's moon-sighting corrections: the local day each month starts, ±1 day of Umm al-Qura. */
-  hijriFix: Record<string, { ramadan1?: string; shawwal1?: string; dhulhijja1?: string }>;
+  /**
+   * Per Hijri year ("1448"), the owner's moon-sighting corrections: the local day Shawwal (Eid al-Fitr) and Dhu al-Hijjah
+   * start, ±1 day of Umm al-Qura. The two the Working days panel writes; `ramadan1` is no longer taken (ruling R30).
+   */
+  hijriFix: Record<string, { shawwal1?: string; dhulhijja1?: string }>;
   /** "MM-DD" (every year), "YYYY-MM-DD" (that day), "H-MM-DD" (Hijri, every year), "H-YYYY-MM-DD" (that Hijri day). */
   holidays: { add: string[]; remove: string[] };
   updatedAt: string;
@@ -263,9 +266,10 @@ const inLieu = (n: Name | undefined): QuietWhy => ({ kind: "holiday", ...(n ? { 
 
 function build(cal: SecCalendar | null, zone: Zone, now: number): Built {
   const rules = COUNTRY_CAL[countryOf(zone)];
-  // Stored settings were checked on save; a weekend that is not 0-3 contiguous days (an old or hand-edited record) is
-  // ignored for the zone's own, so no walk below can run over an all-weekend week.
-  const own = parseWeekend(cal?.weekend), ownHours = cal?.ramadanHours;
+  // Stored settings were checked on save, and are checked again here with the same parsers: a weekend that is not 0-3
+  // contiguous days (an old or hand-edited record) is ignored for the zone's own, so no walk below can run over an
+  // all-weekend week; Ramadan hours that are not valid windows read as the default, so no clock below throws on them.
+  const own = parseWeekend(cal?.weekend), ownHours = parseHours(cal?.ramadanHours);
   const weekend = Array.isArray(own) ? own : [...ZONES[zone].weekend];
   const wk = new Set(weekend);
   const isWk = (day: string) => wk.has(weekday(day));
@@ -283,12 +287,13 @@ function build(cal: SecCalendar | null, zone: Zone, now: number): Built {
     const key = `${h.y}-${h.m}`;
     if (!starts.has(key)) starts.set(key, addDays(day, 1 - h.day));
   }
-  // 2. The owner's sighting corrections move a whole month: Ramadan, Shawwal, Dhu al-Hijjah (±1 day, checked on save).
+  // 2. The owner's sighting corrections move a whole month: Shawwal, Dhu al-Hijjah (±1 day, checked on save). Ramadan's
+  // start is always Umm al-Qura's: a stored `ramadan1` (taken before ruling R30) is not read.
   const uqStarts = new Map(starts);
   const thisYear = hijriDate(new Date(now), zone).y;
   for (const [y, fix] of Object.entries(cal?.hijriFix ?? {})) {
     if (+y < thisYear) continue; // a past year's correction (ruling R8)
-    for (const [field, m] of [["ramadan1", 9], ["shawwal1", 10], ["dhulhijja1", 12]] as const) {
+    for (const [field, m] of [["shawwal1", 10], ["dhulhijja1", 12]] as const) {
       const v = fix?.[field], key = `${y}-${m}`, uq = starts.get(key);
       if (uq && isDay(v) && Math.abs(daysBetween(uq, v)) <= 1) starts.set(key, v);
     }
@@ -609,20 +614,26 @@ const HOLIDAY_MAX = 30;
 const holidayValue = (v: unknown) => typeof v === "string" && HOLIDAY_FORMATS.some(([re, ok]) => { const m = re.exec(v); return !!m && ok(m); });
 
 const TOP_FIELDS = new Set(["v", "weekend", "ramadanHours", "hijriFix", "holidays", "updatedAt", "updatedBy"]);
-const FIX_FIELDS = { ramadan1: 9, shawwal1: 10, dhulhijja1: 12 } as const;
+/** The `hijriFix` fields and the Hijri month each one starts (ruling R30: the two the Working days panel writes). */
+const FIX_FIELDS = { shawwal1: 10, dhulhijja1: 12 } as const;
 
 /**
  * Check the Working days settings an admin saves, field by field (spec §1.1), and return them normalised and stamped
  * with `now` and the admin's `login`. Refused: an unknown field (`bad_request`); a weekend that is not 0-3 contiguous
  * days (`weekend_invalid`); Ramadan hours that are not at most two "HH:mm" windows on the quarter hour, each from
  * before to, not overlapping (`ramadan_hours_invalid`); a `hijriFix` year after the zone's next Hijri year (`bad_year`)
- * or a date more than a day from Umm al-Qura's (`hijri_fix_range`); more than 30 values in `add` or `remove`, a
- * malformed value, or a removal that no default day of the coming year matches (`holidays_invalid`).
+ * or a date more than a day from Umm al-Qura's (`hijri_fix_range`); a `hijriFix` field other than `shawwal1` and
+ * `dhulhijja1` (`bad_request`: a new `ramadan1` too, ruling R30); more than 30 values in `add` or `remove`, a malformed
+ * value, or a new removal that no default day of the coming year matches (`holidays_invalid`).
+ * `stored` is the record saved now, read under the calendar's lock (ruling R28): a removal already in its `remove` list
+ * is kept though no default produces it any more (the Eid moved, the zone changed), so the panel can still save and the
+ * owner can still turn it on; the calendar ignores it. Only a removal not stored before must match a default day.
  * Stale values are dropped, not refused (ruling R8), so settings read from a GET and saved back unchanged still save:
- * a `hijriFix` year before the current Hijri year, and a dated value ("YYYY-MM-DD", "H-YYYY-MM-DD") before today-30.
+ * a `hijriFix` year before the current Hijri year, a dated value ("YYYY-MM-DD", "H-YYYY-MM-DD") before today-30, and
+ * a `ramadan1` equal to the stored one (ruling R30).
  * `v`, `updatedAt` and `updatedBy` may come back from a GET and are replaced.
  */
-export function parseCalendar(body: Record<string, unknown>, now: number, zone: Zone, login: string): { ok: true; cal: SecCalendar } | CalFail {
+export function parseCalendar(body: Record<string, unknown>, now: number, zone: Zone, login: string, stored: SecCalendar | null = null): { ok: true; cal: SecCalendar } | CalFail {
   if (!isObject(body)) return calFail("bad_request");
   for (const k of Object.keys(body)) if (!TOP_FIELDS.has(k)) return calFail("bad_request", k);
   if (body.v !== undefined && body.v !== 1) return calFail("bad_request", "v");
@@ -641,7 +652,10 @@ export function parseCalendar(body: Record<string, unknown>, now: number, zone: 
       if (+year < current) continue; // ruling R8: a past year is dropped, so settings saved back unchanged still save
       if (!isObject(fix)) return calFail("bad_request", `hijriFix.${year}`);
       const out: SecCalendar["hijriFix"][string] = {};
+      const was: unknown = isObject(stored?.hijriFix) ? (stored.hijriFix as Record<string, unknown>)[year] : undefined;
       for (const [field, value] of Object.entries(fix)) {
+        // A `ramadan1` saved before ruling R30, sent back as GET gave it: dropped, as a stale value is (ruling R8).
+        if (field === "ramadan1" && isObject(was) && typeof value === "string" && was.ramadan1 === value) continue;
         if (!Object.prototype.hasOwnProperty.call(FIX_FIELDS, field)) return calFail("bad_request", `hijriFix.${year}.${field}`);
         const computed = uqMonthStart(+year, FIX_FIELDS[field as keyof typeof FIX_FIELDS], zone);
         if (!isDay(value) || !computed || Math.abs(daysBetween(computed, value)) > 1) return calFail("hijri_fix_range", `hijriFix.${year}.${field}`);
@@ -663,10 +677,13 @@ export function parseCalendar(body: Record<string, unknown>, now: number, zone: 
   }
   const cal: SecCalendar = { v: 1, weekend, ramadanHours, hijriFix, holidays, updatedAt: new Date(now).toISOString(), updatedBy: login };
 
-  // `remove` takes only days the defaults produce: a default holiday or day in lieu of the coming calendar window.
-  if (holidays.remove.length) {
+  // A new removal takes only days the defaults produce: a default holiday or day in lieu of the coming calendar window.
+  // One already stored is kept as it is (ruling R28).
+  const kept = new Set(Array.isArray(stored?.holidays?.remove) ? stored.holidays.remove.filter((v) => typeof v === "string") : []);
+  const fresh = holidays.remove.filter((v) => !kept.has(v));
+  if (fresh.length) {
     const { produced } = build({ ...cal, holidays: { add: [], remove: [] } }, zone, now);
-    if (!holidays.remove.every((v) => produced.some((p) => matchesValue(v, p.day, p.h)))) return calFail("holidays_invalid", "holidays.remove");
+    if (!fresh.every((v) => produced.some((p) => matchesValue(v, p.day, p.h)))) return calFail("holidays_invalid", "holidays.remove");
   }
   return { ok: true, cal };
 }
