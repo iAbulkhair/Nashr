@@ -30,9 +30,10 @@ import { isAgentId, type AgentId } from "./agents";
 import { DEFAULT_ZONE, ZONES, weekStartDay, zoneOf, zoneUtcLabel, type Zone } from "./zones";
 import {
   AGENDA_BUCKETS, AUTO_CLOSE_RESULT, CHASE_WORKING_DAYS, SEC_DIRECTIONS, SEC_KINDS, SEC_LIMITS, SEC_RESTORE_DAYS, SKIP_RESULT,
-  addDays, addWorkingDays, approvalsLine, briefClock, computeAgenda, defaultCal, formatWhen, linkFactText, nextStepText, noteText, parseWhen, partyName, resultText, zoneDay, zoneLocalInput, zoneTime,
+  addDays, addWorkingDays, approvalsLine, briefClock, computeAgenda, defaultCal, formatWhen, linkFactText, nextStepText, noteText, parseWhen, partyName, repeatText, resultText, zoneDay, zoneLocalInput, zoneTime,
   type Agenda, type AgendaBucket, type AwayMap, type CalData, type LinkedFact, type SecActor, type SecDirection, type SecItem, type SecKind, type SecNote, type SecParty, type SecRepeat, type SecSource, type SecVia,
 } from "./secretary-agenda";
+import { hijriDate } from "./seasons";
 import { calendarView, nextOccurrence, workCalendar, type CalendarView, type SecCalendar } from "./secretary-calendar";
 
 export const SEC_ID = /^s[a-f0-9]{16}$/;
@@ -1314,6 +1315,24 @@ export const isSecTool = (n: string): n is SecToolName => (SEC_TOOL_NAMES as rea
 
 const DUE_HELP = "The brand's local time (the NOW line of your context and the top of agenda_get name its city; Riyadh by default) as 'YYYY-MM-DDTHH:mm' (e.g. 2026-10-02T10:00), or 'YYYY-MM-DD' for 'by the end of that day'. Work out relative dates ('Thursday', 'tomorrow 10am') from today's local date there; if you do not know today's date, call agenda_get first. Never guess it.";
 const REMIND_HELP = "Only when the owner asks to be reminded: one reminder instant in the brand's local time, 'YYYY-MM-DDTHH:mm' (a date alone means 08:00 that day); it must be in the future. It arrives as an in-app notification (and an email only when the owner's email preference allows it), never on WhatsApp or Telegram. The answer says when it will arrive: repeat exactly that and never promise another time.";
+const REPEAT_HELP = "Only when the owner asks for it: make this item repeat. Allowed for Reem and the owner's own assistant over MCP; any other agent is refused, in code. Give `every` (day, workday, week, month, year, hmonth for a Hijri month, hyear for a Hijri year) and only what the owner said: interval (every 2 weeks = 2), weekdays (0 Sunday to 6 Saturday, with week), month_day (1-31, or -1 for the last day, with month or hmonth), until (the last day, 'YYYY-MM-DD'), count (how many times in all), remind_before (minutes before the due time). The item needs a due date; the next copy opens when this one is closed. The answer says the rule in words: repeat it exactly. Never invent a rule the owner did not ask for.";
+const STOP_REPEAT_HELP = "Stopping a repeat is the owner's, on the My to-dos page: this answers that it is not allowed. Do not use it to try.";
+/**
+ * The `repeat` argument (R45): strict-safe, so no minimum, maximum, minLength or maxLength: every range is checked in
+ * `parseRepeat`. Every object has `additionalProperties: false`.
+ */
+const REPEAT_SCHEMA = {
+  type: "object", additionalProperties: false, required: ["every"], description: REPEAT_HELP,
+  properties: {
+    every: { type: "string", enum: ["day", "workday", "week", "month", "year", "hmonth", "hyear"] },
+    interval: { type: "integer", description: "Every n units (default 1)." },
+    weekdays: { type: "array", items: { type: "integer" }, description: "With week: 0 Sunday to 6 Saturday." },
+    month_day: { type: "integer", description: "With month or hmonth: the day of the month, or -1 for the last day." },
+    until: { type: "string", description: "The last day, 'YYYY-MM-DD'." },
+    count: { type: "integer", description: "How many times in all." },
+    remind_before: { type: "integer", description: "Minutes before the due time." },
+  },
+} as const;
 /** JSON schemas shared by the chat tools (strict) and the MCP tool list. */
 export const SEC_TOOL_DEFS: { name: SecToolName; description: string; schema: { type: "object"; additionalProperties: false; required: string[]; properties: Record<string, unknown> } }[] = [
   {
@@ -1342,6 +1361,8 @@ export const SEC_TOOL_DEFS: { name: SecToolName; description: string; schema: { 
       critical: { type: "boolean", description: "True only when the owner says it is critical." },
       task_id: { type: "string", description: "Optional id of an inbox item still waiting for approval (status pending in list_inbox) that this to-do waits on: it closes itself when the owner approves that item. Set only here, at creation." },
       remind_at: { type: "string", description: REMIND_HELP },
+      repeat: REPEAT_SCHEMA,
+      stop_repeat: { type: "boolean", description: STOP_REPEAT_HELP },
     } },
   },
   {
@@ -1358,6 +1379,8 @@ export const SEC_TOOL_DEFS: { name: SecToolName; description: string; schema: { 
       chased: { type: "boolean", description: "True only when the owner says they just followed up with whoever owes it: the two-working-day chase clock restarts and a 'followed up' note is added. It never closes the item and never means a message was sent by you." },
       priority: { type: "integer", description: "0-3" }, critical: { type: "boolean" },
       note: { type: "string", description: `A note on the item (up to ${SEC_LIMITS.note} characters).` },
+      repeat: REPEAT_SCHEMA,
+      stop_repeat: { type: "boolean", description: STOP_REPEAT_HELP },
     } },
   },
   {
@@ -1416,6 +1439,16 @@ const TOOL_ERRORS: Record<SecError, string> = {
 /** A friendly sentence for a tool answer. */
 export const toolError = (e: SecFail) => `Not done: ${TOOL_ERRORS[e.error] ?? e.error}${e.field ? ` (field: ${e.field})` : ""}`;
 
+/** A tool's snake_case `repeat` argument as `parseRepeat` reads it; anything that is not an object goes through unchanged to be refused. */
+function repeatInputOf(v: unknown): unknown {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return v;
+  const r = v as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const k of ["every", "interval", "weekdays", "until", "count"]) if (r[k] !== undefined) out[k] = r[k];
+  if (r.month_day !== undefined) out.monthDay = r.month_day;
+  if (r.remind_before !== undefined) out.remindBefore = r.remind_before;
+  return out;
+}
 const str = (v: unknown) => (typeof v === "string" ? v : v === undefined || v === null ? undefined : String(v));
 /**
  * Tool arguments (snake_case) to the fields `parseFields` reads. Arguments are not checked against the tool's schema on
@@ -1438,6 +1471,7 @@ function toolFields(input: Record<string, unknown>, name: SecToolName): Record<s
   if (name === "todo_create" && input.task_id !== undefined && input.task_id !== "") out.taskId = input.task_id;
   if (input.remind_at !== undefined && input.remind_at !== "") out.remindAt = input.remind_at;
   if (input.clear_remind === true) out.remindAt = null;
+  if (input.repeat !== undefined) out.repeat = repeatInputOf(input.repeat);
   return out;
 }
 
@@ -1465,6 +1499,11 @@ export function whereShown(it: Pick<SecItem, "dueAt" | "owedBy">, zone: Zone): s
     : "It shows on My to-dos only: with no due date it is not in the morning brief or the evening wrap.";
 }
 
+/** A rule in words for a tool line, with the Hijri month and day of its anchor for the Hijri rules (R: repeatText needs them). */
+function ruleText(rule: SecRepeat, zone: Zone): string {
+  const h = rule.every === "hyear" || rule.every === "hmonth" ? hijriDate(new Date(zoneTime(rule.anchor, 12, 0, zone)), zone) : null;
+  return repeatText(rule, "en", h ? { month: h.m, day: h.day } : undefined);
+}
 type ToolCtx = { lang: "ar" | "en"; now: number; zone: Zone; facts: Record<string, LinkedFact | null> };
 /** A party as a tool line names it: a contact's label JSON-quoted (the owner's data, like a title), an agent by name. */
 const partyData = (p: SecParty) => (p !== "owner" && !isAgentId(p) ? JSON.stringify(partyName(p, "en")) : partyName(p, "en"));
@@ -1481,7 +1520,8 @@ function itemLine(it: SecItem, c: ToolCtx, next?: string): string {
   const chased = it.lastChasedAt ? `followed up ${formatWhen(it.lastChasedAt, false, c.lang, c.now, c.zone)}` : "";
   const remind = it.remindAt ? `reminder set for ${formatWhen(it.remindAt, false, c.lang, c.now, c.zone)}` : "";
   // Never the contact's phone number: it is the owner's, in the app only.
-  const flags = [it.critical ? "critical" : "", it.priority >= 2 ? `priority ${it.priority}` : "", chased, remind, claim].filter(Boolean).join(", ");
+  const repeats = it.repeat ? `repeats: ${ruleText(it.repeat, c.zone)}` : "";
+  const flags = [it.critical ? "critical" : "", repeats, it.priority >= 2 ? `priority ${it.priority}` : "", chased, remind, claim].filter(Boolean).join(", ");
   // Private notes are the owner's alone: they never reach a model, in chat or over MCP.
   const note = it.notes.filter((n) => !n.private).slice(-1)[0];
   return `- [id=${it.id}] ${JSON.stringify(it.title)} · ${it.kind} · due: ${due} · ${who}${flags ? ` · ${flags}` : ""}${next ? ` · next: ${next}` : ""}${note ? ` · last note: ${JSON.stringify(noteText(note, "en").slice(0, 120))}` : ""}`;
@@ -1493,11 +1533,16 @@ const BUCKET_TITLE: Record<AgendaBucket, string> = { overdue: "OVERDUE", today: 
  * Run one secretary tool for the caller's active brand. `who.via` is chat or mcp; the scope is always the caller's.
  * Never throws: a failure is a sentence with `isError`.
  */
-export async function runSecretaryTool(user: User, name: SecToolName, input: Record<string, unknown>, ctx: { who: Who; lang: "ar" | "en" }): Promise<{ text: string; isError: boolean; id?: string }> {
+export async function runSecretaryTool(user: User, name: SecToolName, input: Record<string, unknown>, ctx: { who: Who; lang: "ar" | "en"; agent?: AgentId }): Promise<{ text: string; isError: boolean; id?: string }> {
   const scope = sc(user as User);
   const { who, lang } = ctx;
   const now = Date.now();
   try {
+    // R46: who may set a repeat is decided here, in code, before the change allowance is spent: Reem in chat, or the
+    // owner's own assistant over MCP. Noor, Majed and the others (and ask_noor over MCP, which runs as Noor) are refused.
+    if ((input.repeat !== undefined || input.stop_repeat !== undefined) && who.via !== "mcp" && ctx.agent !== "reem") {
+      return { text: lang === "ar" ? "لم يتم: التكرار يضبطه المالك أو ريم. لم يُحفظ شيء." : "Not done: only the owner or Reem sets a repeat. Nothing was saved.", isError: true };
+    }
     // Reads are free of the change allowance; agenda_next counts only when it records a skip.
     const writes = name !== "agenda_get" && (name !== "agenda_next" || (input.skip_id !== undefined && input.skip_id !== ""));
     if (writes && !(await allow(`sec:write:${user.email}`, SEC_WRITES_PER_HOUR, 3600))) return { text: toolError(fail("too_many", 429)), isError: true };
@@ -1528,6 +1573,7 @@ export async function runSecretaryTool(user: User, name: SecToolName, input: Rec
     const where = `${ZONES[zone].city.en} time`;
     switch (name) {
       case "todo_create": {
+        if (input.stop_repeat !== undefined) return { text: toolError(fail("owner_only", 403, "repeat")), isError: true };
         const r = await createItem(user, toolFields(input, name), { ...who, source: who.via === "mcp" ? "mcp" : "chat" }, { zone, cal });
         if (!r.ok) return { text: toolError(r), isError: true };
         const it = r.item;
@@ -1536,11 +1582,17 @@ export async function runSecretaryTool(user: User, name: SecToolName, input: Rec
         const past = it.dueAt && Date.parse(it.dueAt) < now ? ` That date has already passed (now: ${formatWhen(new Date(now).toISOString(), false, lang, now, zone)} ${where}): check it with the owner and fix it with todo_update if it is wrong.` : "";
         const expect = !it.dueAt && it.expectBy ? ` Someone else owes it: if it has not come by ${formatWhen(it.expectBy, false, lang, now, zone)} (${where}), the agenda says chase.` : "";
         const remind = it.remindAt ? remindLine(it.remindAt, await timedReminders(now), lang, now, zone) : "";
-        return { text: `Saved on the owner's list [id=${it.id}]: ${JSON.stringify(it.title)}. ${due ? `Due: ${due} (${where}). Read this date back to the owner exactly as written.` : "No due date: ask the owner whether it has one."}${past}${expect}${remind} ${whereShown(it, zone)} Free, no credits.`, isError: false, id: it.id };
+        const rep = it.repeat ? ` Repeats: ${ruleText(it.repeat, zone)}; the next copy opens when this one is closed. Say the rule exactly as written.` : "";
+        return { text: `Saved on the owner's list [id=${it.id}]: ${JSON.stringify(it.title)}. ${due ? `Due: ${due} (${where}). Read this date back to the owner exactly as written.` : "No due date: ask the owner whether it has one."}${past}${expect}${remind}${rep} ${whereShown(it, zone)} Free, no credits.`, isError: false, id: it.id };
       }
       case "todo_update": {
         const id = str(input.id) ?? "";
         if (!SEC_ID.test(id)) return { text: toolError(fail("not_found", 404)), isError: true };
+        if (input.stop_repeat !== undefined) {
+          // Only the owner, on the page, stops a repeat: `changeItem` answers owner_only for chat and MCP, and nothing else in this call is applied.
+          const sr = await changeItem(scope, id, { action: "stop_repeat" }, who, undefined, zone, cal);
+          return { text: sr.ok ? "Not done: a repeat is stopped on the My to-dos page only." : toolError(sr), isError: true };
+        }
         const p = parseFields(toolFields(input, name), now, zone);
         if (!p.ok) return { text: toolError(p), isError: true };
         let snoozeUntil: string | undefined;
@@ -1564,6 +1616,7 @@ export async function runSecretaryTool(user: User, name: SecToolName, input: Rec
           snoozeUntil ? `hidden until ${formatWhen(snoozeUntil, false, lang, now, zone)}` : "",
           chased ? "the follow-up is recorded and the chase clock restarts; the item stays open" : "",
           p.fields.remindAt === null ? "the reminder is removed" : "",
+          p.fields.repeat && it.repeat ? `repeats: ${ruleText(it.repeat, zone)}; the next copy opens when this one is closed (say the rule exactly as written)` : "",
         ].filter(Boolean).join("; ");
         const remind = p.fields.remindAt && it.remindAt ? remindLine(it.remindAt, await timedReminders(now), lang, now, zone) : "";
         return { text: `Updated [id=${it.id}] ${JSON.stringify(it.title)}${bits ? `: ${bits}` : ""}.${remind}`, isError: false, id: it.id };

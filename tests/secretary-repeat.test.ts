@@ -8,6 +8,9 @@ import {
   OWNER_ONLY, SEC_KEYS, SEC_OPEN_MAX, SERIES_ID, agendaFor, changeItem, createItem, fireReminder, getItem, listOpenItems, mutateItem, newSeriesId, parseOwnerChange, parseRepeat, runSecretaryTool,
 } from "@/lib/secretary";
 import { saveTask, updateTask, type Task } from "@/lib/brand";
+import { runTool } from "@/lib/chat";
+import { runHandoffNote } from "@/lib/secretary-handoff";
+import { SEC_TOOL_DEFS } from "@/lib/secretary";
 import { wrapText, type Wrap } from "@/lib/secretary-evening";
 import {
   AUTO_CLOSE_RESULT, SKIP_RESULT, resultText, addDays, addMonthsClamped, defaultCal, gregorianNext, noteText, repeatText, weekStartOf, weekdayOf, zoneDay, type CalData, type SecItem, type SecRepeat,
@@ -1119,5 +1122,122 @@ describe("rule 499: reopen and the next copy", () => {
     await reopen(a.id);
     expect((await getItem(o.email, b))!.deletedAt).toBeTruthy();
     expect(await db.zcard(SEC_KEYS.open(o.email))).toBe(SEC_OPEN_MAX);
+  });
+});
+
+describe("rule 500: who may set a repeat through chat and MCP", () => {
+  const noor = { actor: "noor", via: "chat" } as const;
+  const mcp = { actor: "mcp", via: "mcp" } as const;
+  const bucket = (email: string) => `rate:sec:write:${email}`;
+
+  it("Noor's todo_create with repeat is refused, saves nothing and leaves rate:sec:write null", async () => {
+    const u = await login();
+    const r = await runSecretaryTool(u, "todo_create", { title: "Weekly", due: inDays(1, 9), repeat: { every: "week" } }, { who: noor, lang: "en", agent: "noor" });
+    expect(r.isError).toBe(true);
+    expect(r.text).toBe("Not done: only the owner or Reem sets a repeat. Nothing was saved.");
+    expect(await listOpenItems(u.email)).toHaveLength(0);
+    expect(await db.get(bucket(u.email))).toBeNull();
+    const ar = await runSecretaryTool(u, "todo_update", { id: "s0123456789abcdef", repeat: null }, { who: noor, lang: "ar", agent: "noor" });
+    expect(ar.text).toContain("لم يتم: التكرار يضبطه المالك أو ريم");
+    expect(await db.get(bucket(u.email))).toBeNull();
+  });
+
+  it("an agent that is not named is refused too, and a plain call without repeat still works for Noor", async () => {
+    const u = await login();
+    const none = await runSecretaryTool(u, "todo_create", { title: "x", due: inDays(1), repeat: { every: "day" } }, { who: { actor: "reem", via: "chat" }, lang: "en" });
+    expect(none.isError).toBe(true);
+    expect(await db.get(bucket(u.email))).toBeNull();
+    const ok = await runSecretaryTool(u, "todo_create", { title: "Plain", due: inDays(1) }, { who: noor, lang: "en", agent: "noor" });
+    expect(ok.isError).toBe(false);
+  });
+
+  it("ask_noor (via MCP, agent noor, runTool) is refused the same way", async () => {
+    const u = await login();
+    const out = await runTool(u, "todo_create", { title: "Weekly", due: inDays(1, 9), repeat: { every: "week" } }, [], [], undefined, { agent: "noor", via: "mcp", lang: "en" });
+    expect(out).toContain("only the owner or Reem sets a repeat");
+    expect(await listOpenItems(u.email)).toHaveLength(0);
+    expect(await db.get(bucket(u.email))).toBeNull();
+  });
+
+  it("Reem in chat sets a repeat and the answer says the rule", async () => {
+    const u = await login();
+    const actions: string[] = [];
+    const out = await runTool(u, "todo_create", { title: "Report", due: inDays(1, 9), repeat: { every: "week", interval: 2, weekdays: [0, 2], month_day: 5, remind_before: 60 } }, actions, [], undefined, { agent: "reem", lang: "en" });
+    expect(out).toContain("Repeats: Repeats every 2 weeks on Sunday and Tuesday at 09:00");
+    const [it1] = await listOpenItems(u.email);
+    expect(it1.repeat).toMatchObject({ every: "week", interval: 2, weekdays: [0, 2], time: "09:00", remindBefore: 60 });
+    expect(it1.repeat).not.toHaveProperty("monthDay");
+    expect(it1.repeat).not.toHaveProperty("month_day");
+    const line = await runSecretaryTool(u, "agenda_get", {}, { who: chat, lang: "en", agent: "reem" });
+    expect(line.text).toContain("repeats: Repeats every 2 weeks on Sunday and Tuesday at 09:00");
+  });
+
+  it("the owner's MCP assistant sets and changes a repeat, and a bad rule saves nothing", async () => {
+    const u = await login();
+    const c = await runSecretaryTool(u, "todo_create", { title: "Monthly", due: inDays(1, 9), repeat: { every: "month", month_day: -1 } }, { who: mcp, lang: "en" });
+    expect(c.isError, c.text).toBe(false);
+    expect(c.text).toContain("Repeats every month on the last day");
+    const id = c.id!;
+    const up = await runSecretaryTool(u, "todo_update", { id, repeat: { every: "day", interval: 3 } }, { who: mcp, lang: "en" });
+    expect(up.isError, up.text).toBe(false);
+    expect(up.text).toContain("repeats: Repeats every 3 days");
+    const bad = await runSecretaryTool(u, "todo_update", { id, repeat: { every: "day", interval: 500 } }, { who: mcp, lang: "en" });
+    expect(bad.isError).toBe(true);
+    expect(bad.text).toContain("repeat rule is not valid");
+    expect((await getItem(u.email, id))!.repeat).toMatchObject({ every: "day", interval: 3 });
+  });
+
+  it("a Hijri yearly rule is worded with its Hijri date in the item line", async () => {
+    const u = await login();
+    const c = await runSecretaryTool(u, "todo_create", { title: "Anniversary", due: inDays(2, 9), repeat: { every: "hyear" } }, { who: mcp, lang: "en" });
+    expect(c.isError, c.text).toBe(false);
+    expect(c.text).toMatch(/Repeats every Hijri year on \d{1,2} [A-Z]/);
+    const g = await runSecretaryTool(u, "agenda_get", {}, { who: mcp, lang: "en" });
+    expect(g.text).toMatch(/repeats: Repeats every Hijri year on \d{1,2} [A-Z]/);
+  });
+
+  it("stop_repeat over MCP and over chat is owner_only and changes nothing", async () => {
+    const u = await login();
+    const it1 = await add({ title: "Daily", dueAt: inDays(1, 9), repeat: { every: "day" } });
+    for (const [who, agent] of [[mcp, undefined], [chat, "reem"]] as const) {
+      const r = await runSecretaryTool(u, "todo_update", { id: it1.id, stop_repeat: true, title: "Renamed" }, { who, lang: "en", ...(agent ? { agent } : {}) });
+      expect(r.isError).toBe(true);
+      expect(r.text).toContain("Only the owner can");
+      expect(r.text).toContain("(field: repeat)");
+    }
+    const r2 = await runSecretaryTool(u, "todo_update", { id: it1.id, repeat: null }, { who: mcp, lang: "en" });
+    expect(r2.isError).toBe(true);
+    expect(await getItem(u.email, it1.id)).toMatchObject({ rev: 1, title: "Daily", repeat: { every: "day" } });
+    const r3 = await runSecretaryTool(u, "todo_create", { title: "x", stop_repeat: true }, { who: mcp, lang: "en" });
+    expect(r3.isError).toBe(true);
+    expect(await listOpenItems(u.email)).toHaveLength(1);
+  });
+
+  it("a handoff note never carries repeat", async () => {
+    const u = await login();
+    const r = await runHandoffNote(u, { to: "owner", kind: "blocked", body: "I cannot publish the weekly post without the owner's approval of the offer", repeat: { every: "day" }, stop_repeat: true }, { agent: "noor", lang: "en" });
+    expect(r.isError, r.text).toBe(false);
+    const open = await listOpenItems(u.email);
+    expect(open).toHaveLength(1);
+    expect(open[0].repeat).toBeFalsy();
+    expect(open[0].series).toBeUndefined();
+  });
+
+  it("the tool schema has no minimum, maximum, minLength or maxLength and every object has additionalProperties:false", () => {
+    const walk = (n: unknown, path: string, seen: string[]) => {
+      if (Array.isArray(n)) return n.forEach((x, i) => walk(x, `${path}[${i}]`, seen));
+      if (!n || typeof n !== "object") return;
+      const o = n as Record<string, unknown>;
+      for (const k of ["minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems", "exclusiveMinimum", "exclusiveMaximum"]) expect(o, `${path}.${k}`).not.toHaveProperty(k);
+      if (o.type === "object") { expect(o.additionalProperties, path).toBe(false); seen.push(path); }
+      for (const [k, v] of Object.entries(o)) walk(v, `${path}.${k}`, seen);
+    };
+    const objects: string[] = [];
+    for (const d of SEC_TOOL_DEFS) walk(d.schema, d.name, objects);
+    expect(objects).toContain("todo_create.properties.repeat");
+    expect(objects).toContain("todo_update.properties.repeat");
+    const rep = (SEC_TOOL_DEFS.find((d) => d.name === "todo_create")!.schema.properties.repeat) as { required: string[]; properties: { every: { enum: string[] } } };
+    expect(rep.required).toEqual(["every"]);
+    expect(rep.properties.every.enum).toHaveLength(7);
   });
 });
