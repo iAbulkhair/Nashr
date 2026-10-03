@@ -36,7 +36,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ seriesId: strin
   const rows = [line(["title", "due", "closed at", "result", "closed by"])];
   for (const it of items) rows.push(line([it.title, it.dueAt ?? "", it.completedAt ?? "", resultText(it.result, lang), it.closedBy ? it.closedBy.login ?? it.closedBy.actor : ""]));
   if (total > MAX_ROWS) rows.push(line([`truncated: the first ${MAX_ROWS} of ${total} closed copies`, "", "", "", ""]));
-  return new NextResponse("﻿" + rows.join("\r\n") + "\r\n", {
+  return new NextResponse("\uFEFF" + rows.join("\r\n") + "\r\n", {
     status: 200,
     headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="series-${seriesId}.csv"`, "cache-control": "no-store" },
   });
