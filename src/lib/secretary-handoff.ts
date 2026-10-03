@@ -22,7 +22,7 @@ import { sc, type User } from "./auth";
 import { AGENT_IDS, agentById, isAgentId, type AgentId } from "./agents";
 import { asData } from "./json";
 import { similarity } from "./similarity";
-import { SEC_KEYS, SEC_WRITES_PER_HOUR, changeItem, cleanBlock, cleanLine, createItem, listOpenItems, toolError, whereShown, withLock, zoneFor, type SecFail } from "./secretary";
+import { SEC_KEYS, SEC_WRITES_PER_HOUR, calFor, changeItem, cleanBlock, cleanLine, createItem, listOpenItems, toolError, whereShown, withLock, type SecFail } from "./secretary";
 import { SEC_LIMITS, zoneDay, type SecItem } from "./secretary-agenda";
 import type { Zone } from "./zones";
 
@@ -120,17 +120,18 @@ export async function runHandoffNote(user: User, input: Record<string, unknown>,
     const toName = to === "owner" ? "the owner" : agentById(to).name.en;
     if (kind !== "blocked") return { text: `Note left for ${toName}${to === "owner" ? " (Reem sees it for the owner)" : ""}: they see it as data in their next chat turns for ${HANDOFF_DAYS} days. Nothing else was changed.`, isError: false };
     const who = { actor: from, via: "chat" as const, ...(user.actor?.email ? { login: user.actor.email } : {}) };
-    const zone = await zoneFor(scope);
+    // The brand's zone and work calendar, read once: an item another agent owes gets its chase clock on that calendar.
+    const { zone, cal } = await calFor(scope);
     // One decision per scope at a time: two blocked notes landing together cannot both open an item.
     type Outcome = { t: "joined" | "created"; item: SecItem } | { t: "fail"; fail: SecFail };
     const r = await withLock(scope, "handoff", async (): Promise<Outcome> => {
       const open = await listOpenItems(scope);
       const twin = open.find((it) => sameParty(it, from, to) && sameBlock(it.description || it.title, body));
       if (twin) {
-        const c = await changeItem(scope, twin.id, { action: "add_note", text: body, private: false }, who, undefined, zone);
+        const c = await changeItem(scope, twin.id, { action: "add_note", text: body, private: false }, who, undefined, zone, cal);
         return c.ok ? { t: "joined", item: c.item } : { t: "fail", fail: c };
       }
-      const c = await createItem(user, blockedItem(from, to, body, ctx.lang, zone), { ...who, source: "agent" }, { zone, handoffFrom: from });
+      const c = await createItem(user, blockedItem(from, to, body, ctx.lang, zone), { ...who, source: "agent" }, { zone, cal, handoffFrom: from });
       return c.ok ? { t: "created", item: c.item } : { t: "fail", fail: c };
     });
     if (!("t" in r)) return { text: `Note left for ${toName}, but the owner's list could not be changed: ${toolError(r)}`, isError: true };

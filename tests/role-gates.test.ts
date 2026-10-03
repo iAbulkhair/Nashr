@@ -140,6 +140,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // Reem's list: any member adds and changes items; closing, confirming or sending back a claim, deleting and restoring
   // need an admin (the same handler serves both, like PATCH /api/tasks/[id]).
   "PATCH /api/secretary/[id]": g("admin", "todo.write", "todo.close"),
+  // Reem's Working days (weekend, Ramadan hours, Eid sightings, holidays): a brand setting, so an admin saves it; every member reads it.
+  "PUT /api/secretary/calendar": g("admin", "brand.write"),
 
   // Every member of the account.
   "PATCH /api/account": g("member", "password.change"),
@@ -160,6 +162,11 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/secretary": g("member", "todo.write"),
   // Reem's "Walk me through": skipping a card is a change to the list's state; the card's own buttons call gated routes.
   "POST /api/secretary/walk": g("member", "todo.write"),
+  // Reem's away list: any member marks a contact away and ends it (the owner and the agents are refused in code).
+  "PUT /api/secretary/away": g("member", "todo.write"),
+  "DELETE /api/secretary/away": g("member", "todo.write"),
+  // Saving or dismissing an absence Reem proposed in chat: the same role as marking a contact away on the page.
+  "POST /api/secretary/away/proposals/[id]": g("member", "todo.write"),
   // Majed's handoffs: a run spends credits like a generation; a decline is a draft decision, like rejecting an item.
   "POST /api/handoffs/[id]/run": g("member", "generate"),
   "POST /api/handoffs/[id]/decline": g("member", "drafts"),
@@ -229,6 +236,8 @@ const READS: Record<string, Gate> = {
   "GET /api/tasks/[id]/pptx": "member",
   "GET /api/secretary": "member",
   "GET /api/secretary/walk": g("member", "read"),
+  "GET /api/secretary/away": g("member", "read"),
+  "GET /api/secretary/calendar": g("member", "read"),
 
   "GET /api/mcp": "public-read",
   "GET /api/oauth/meta": "public-read",

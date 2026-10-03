@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { AgendaBucket } from "@/lib/secretary-agenda";
+import AwayPanel, { type AwayRow } from "./AwayPanel";
 
 /**
  * One item as the page shows it: every date already formatted on the server, in the brand's zone. `proposed.claim` is
@@ -19,6 +20,13 @@ export type TodoRow = {
   remind: string | null; remindLocal: string | null;
   /** A they-owe item's contact number (the owner's own page only), and its wa.me link with a fixed message. */
   phone: string | null; whatsapp: string | null;
+  /**
+   * Why the chase rule holds the item back while it waits (the contact's absence, a quiet day, Ramadan's hours; spec
+   * §2.2, ruling R9), shown under the WhatsApp link. Absent when nothing holds it back.
+   */
+  reason?: string;
+  /** The contact who owes an open item (not the owner, not an agent): the row offers "Away until…" with this name. */
+  contact?: string | null;
 };
 export type TodoSection = { bucket: AgendaBucket; title: string; rows: TodoRow[] };
 type Panel = { id: string; kind: "done" | "snooze" | "reschedule" | "remind" | "phone" } | null;
@@ -41,11 +49,18 @@ type WalkCard = {
  * `canClose`: the owner or an admin (`todo.close`); a member adds, updates, snoozes and records follow-ups, and does not
  * see Done, Delete, Restore or Confirm / Not yet. Display only: the route refuses the same actions (403).
  */
-export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, allClear, empty, done, deleted, tonight, canClose, timed, briefAt, lang, inboxHref }: {
+export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, allClear, empty, done, deleted, tonight, canClose, timed, briefAt, lang, inboxHref, away, children }: {
   t: AppDict; zoneLabel: string; sections: TodoSection[]; approvals: { line: string; href: string } | null; snoozed: number; allClear: boolean; empty: boolean;
   done: TodoRow[]; deleted: TodoRow[]; tonight: boolean; canClose: boolean; timed: boolean; lang: "ar" | "en"; inboxHref: string;
   /** The morning brief's local time in the brand's zone ("08:00", "09:00"): when a reminder comes without timed reminders. */
   briefAt: string;
+  /**
+   * The away list (`AwayPanel`): its entries, the open items' contact names it suggests, whether this login may change
+   * it (`todo.write`), and the brand's local days a last away day may fall between.
+   */
+  away: { entries: AwayRow[]; labels: string[]; canEdit: boolean; today: string; last: string };
+  /** The Working days panel, rendered by the page after the done and deleted lists. */
+  children?: React.ReactNode;
 }) {
   const T = t.todo;
   const timedText = timed ? T.timedOn : T.timedOff.replace("{brief}", () => briefAt);
@@ -60,6 +75,8 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
   const [phone, setPhone] = useState("");
   const [walk, setWalk] = useState<{ card: WalkCard | null; left: number } | null>(null);
   const [walkResult, setWalkResult] = useState<string | null>(null);
+  // A row's "Away until…": the away panel opens again (a new key) with that contact's name in its form.
+  const [awayFor, setAwayFor] = useState<{ label: string; n: number } | null>(null);
 
   // The Undo prompt is a toast pinned to the bottom of the screen, so a delete far down the page still shows it; it goes
   // away on its own after a few seconds.
@@ -193,10 +210,12 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
             {row.theirs && <button disabled={!!busy} onClick={() => act(row, { action: "chased" })} title={T.chasedHint} className="btn btn-secondary btn-xs">{T.chased}</button>}
             {row.whatsapp && <a href={row.whatsapp} target="_blank" rel="noopener noreferrer" onClick={() => chasedByWhatsApp(row)} title={T.whatsappHint} className="btn btn-secondary btn-xs">{T.whatsapp}</a>}
             {row.theirs && <button disabled={!!busy} onClick={() => open(row.id, "phone", row.phone ?? "")} aria-expanded={panel?.id === row.id && panel.kind === "phone"} className="btn btn-secondary btn-xs">{T.phone}</button>}
+            {row.contact && away.canEdit && <button onClick={() => setAwayFor({ label: row.contact!, n: (awayFor?.n ?? 0) + 1 })} className="btn btn-secondary btn-xs">{T.awayUntil}</button>}
             {canClose && <button disabled={!!busy} onClick={() => remove(row)} className="btn btn-danger btn-xs">{T.remove}</button>}
           </div>
         )}
       </div>
+      {row.reason && bucket !== "done" && bucket !== "deleted" && <p className="mt-2 text-xs text-sadu-deep" dir="auto">{row.reason}</p>}
       {panel?.id === row.id && panel.kind === "done" && (
         <form onSubmit={(e) => { e.preventDefault(); if (result.trim()) void act(row, { action: "complete", result }); else setError({ id: row.id, text: T.errors.result_required }); }} className="mt-3 flex flex-wrap items-end gap-2">
           <label className="min-w-0 flex-1 text-xs text-ink/70">{T.doneLabel}
@@ -351,6 +370,8 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
         <button disabled={!!busy || !form.title.trim()} className="btn btn-primary btn-sm mt-4">{busy === "new" ? T.add.saving : T.add.save}</button>
       </form>
 
+      <AwayPanel key={awayFor?.n ?? 0} t={t} lang={lang} entries={away.entries} labels={away.labels} canEdit={away.canEdit} today={away.today} last={away.last} prefill={awayFor?.label} />
+
       {done.length > 0 && (
         <section className="mt-8" aria-labelledby="todo-done">
           <h2 id="todo-done" className="font-display text-lg font-semibold text-oasis">{T.recentDone}</h2>
@@ -363,6 +384,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
           <ul className="mt-2 divide-y divide-ink/10 rounded-xl border border-ink/10 bg-white">{deleted.map((r) => item(r, "deleted"))}</ul>
         </section>
       )}
+      {children}
       <p className="mt-6 text-xs text-ink/50">{T.note.replace("{brief}", () => briefAt)}</p>
     </div>
   );

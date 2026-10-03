@@ -23,6 +23,7 @@ import { verifyQstash } from "@/lib/qstash";
 import { WALK_APPROVALS_MAX, WALK_NEEDS, WALK_TABLE, walkNext, walkSkip, walkToolLine } from "@/lib/secretary-walk";
 import { buildWrap, eveningAt, eveningWrap, isRamadan, previousEveningAt, wrapText, zonesDue } from "@/lib/secretary-evening";
 import { HANDOFF_BLOCKED_PER_DAY, handoffBlock, handoffNotesFor, sameBlock, symmetricWordDiff } from "@/lib/secretary-handoff";
+import { decideAwayProposal } from "@/lib/secretary-away";
 import { appDict } from "@/lib/app-i18n";
 
 // Rules 297-306 in docs/system/tests.md: Reem, the secretary (phase 2): timed reminders and their sweep, the QStash
@@ -1104,8 +1105,8 @@ describe("handoff notes: a blocked agent opens one item, similar notes join it, 
     expect(now.match(/<\/handoff_notes>/g)).toHaveLength(1);
     expect(now).toContain("\\u003c/handoff_notes>");
     expect(fixed).not.toContain("handoff_notes>");
-    // chat() hands the notes of this agent to its prompt.
-    expect(readFileSync("src/lib/chat.ts", "utf8")).toMatch(/handoffNotesFor\(email, agentId\)[\s\S]*system\(brand, user, prefs, memory, files, connected, agentId, feedback, handoffBlock\(notes\)\)/);
+    // chat() hands the notes of this agent to its prompt (and, since rule 478, the brand's weekend after them).
+    expect(readFileSync("src/lib/chat.ts", "utf8")).toMatch(/handoffNotesFor\(email, agentId\)[\s\S]*system\(brand, user, prefs, memory, files, connected, agentId, feedback, handoffBlock\(notes\), weekend\)/);
     // The list keeps the last 30.
     await Promise.all(Array.from({ length: 25 }, (_, i) => runTool(u, "handoff_note", { to: "noor", kind: "note", body: `more ${i}` }, [], [], undefined, { agent: "sami", lang: "en" })));
     expect(await db.lrange(SEC_KEYS.notes(u.email), 0, -1)).toHaveLength(30);
@@ -1124,6 +1125,14 @@ describe("account deletion removes phase 2's keys and the scope's reminder index
     await patch(it.id, { action: "complete", result: "ok" });
     await eveningWrap(u, Date.now());
     await runTool(u, "handoff_note", { to: "noor", kind: "note", body: "hello" }, [], [], undefined, { agent: "sami", lang: "en" });
+    // An absence Reem proposed in the second brand's chat and a person saved (rule 485): the away entry, the outcome of
+    // the proposal and the proposal index go too.
+    const until = new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10);
+    expect(await runTool({ ...u, scope: second }, "contact_away", { name: "Sara", until }, [], [], undefined, { agent: "reem", via: "app", lang: "en" })).toMatch(/^Proposed, not saved: /);
+    const [propId] = await db.smembers(SEC_KEYS.awayProps(second));
+    expect((await decideAwayProposal(second, propId, "save", { actor: "owner", via: "web", login: u.email })).ok).toBe(true);
+    expect(await db.get(SEC_KEYS.awayPropDone(second, propId))).toBe("saved");
+    expect(Object.keys(await db.hgetall(SEC_KEYS.away(second)))).toEqual(["sara"]);
     expect(await db.zcard(SEC_KEYS.due(u.email))).toBe(1);
     expect(await db.zcard(SEC_KEYS.due(second))).toBe(1);
     expect(await db.get(SEC_KEYS.walk(u.email))).not.toBeNull();
@@ -1133,6 +1142,9 @@ describe("account deletion removes phase 2's keys and the scope's reminder index
     expect(await db.zcard(SEC_KEYS.due(second))).toBe(0);
     expect(await db.get(SEC_KEYS.walk(u.email))).toBeNull();
     expect(await db.lrange(SEC_KEYS.notes(u.email), 0, -1)).toEqual([]);
+    expect(await db.get(SEC_KEYS.awayPropDone(second, propId))).toBeNull();
+    expect(await db.smembers(SEC_KEYS.awayProps(second))).toEqual([]);
+    expect(await db.hgetall(SEC_KEYS.away(second))).toEqual({});
     const wrapDays = [-1, 0, 1].map((d) => new Date(Date.now() + d * 864e5).toISOString().slice(0, 10));
     expect(await Promise.all(wrapDays.map((d) => db.get(SEC_KEYS.wrap(u.email, d))))).toEqual([null, null, null]);
     const members = (await db.zrangeWithScores(SEC_KEYS.dueScopes)).map((m) => m.member);

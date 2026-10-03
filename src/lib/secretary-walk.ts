@@ -100,7 +100,7 @@ function todoCard(e: AgendaEntry, c: Ctx): Draft {
   const it = e.item;
   const due = it.dueAt ? formatWhen(it.dueAt, it.allDay, c.lang, c.now, c.zone) : T.noDue;
   const table = e.next === "confirm" ? "confirm" : e.next === "chase" ? "chase" : "do";
-  const card: Draft = { key: `todo:${it.id}`, kind: "todo", id: it.id, title: it.title, line: `${T.buckets[e.bucket]} · ${due} · ${nextStepText(e, c.lang)}`, table };
+  const card: Draft = { key: `todo:${it.id}`, kind: "todo", id: it.id, title: it.title, line: `${T.buckets[e.bucket]} · ${due} · ${nextStepText(e, c.lang, c.zone, { now: c.now })}`, table };
   // As the list shows it: the claim attributed and marked unchecked, next to what code read about the link.
   if (table === "confirm" && it.proposedDone) {
     const by = it.proposedDone.by;

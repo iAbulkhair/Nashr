@@ -122,9 +122,11 @@ describe("one alert per overdue item, spaced, then only the brief (rule 200)", (
     vi.setSystemTime(T0 + 9 * 864e5);
     // Silent from the eighth day, still in the morning brief.
     expect((await runDaily(u))!.agenda).toMatchObject({ overdue: 1, top: ["Send the contract"] });
-    // Each marker lives five days: on day 9 only the seventh day's is left.
-    const marker = async (step: number) => db.get(`notifseen:${u.email}:${overdueAlertFingerprint(u.email, late.id, late.dueAt!, step)}`);
-    expect(await Promise.all([0, 1, 3, 7].map(marker))).toEqual([null, null, null, 1]);
+    // Each marker lives seven days from the last run its step held (ruling R15: never more than a week): on day 9 step 0
+    // (day 0) and step 1 (days 1-2) are gone; step 3 (held to day 6) and step 7 (day 7) are left.
+    const key = (step: number) => `notifseen:${u.email}:${overdueAlertFingerprint(u.email, late.id, Date.parse(late.dueAt!), step)}`;
+    expect(await Promise.all([0, 1, 3, 7].map((step) => db.get(key(step))))).toEqual([null, null, 1, 1]);
+    for (const t of await Promise.all([3, 7].map((step) => db.ttl(key(step))))) expect(t).toBeLessThanOrEqual(7 * 86400);
   });
 
   it("a new due date is a new signature: a rescheduled item that falls behind again alerts afresh", async () => {
@@ -148,7 +150,7 @@ describe("one alert per overdue item, spaced, then only the brief (rule 200)", (
     expect(todos(await followUps(u, u.email))).toEqual([]);
     expect(await db.get(SEC_KEYS.alerts(u.email, "2026-10-05"))).toBe(SEC_ALERTS_PER_DAY);
     // The two held back were handed back, not burnt: their markers are free for another day of their window.
-    const marker = (it: SecItem) => db.get(`notifseen:${u.email}:${overdueAlertFingerprint(u.email, it.id, it.dueAt!, 0)}`);
+    const marker = (it: SecItem) => db.get(`notifseen:${u.email}:${overdueAlertFingerprint(u.email, it.id, Date.parse(it.dueAt!), 0)}`);
     expect(await Promise.all(items.map(marker))).toEqual([null, null, 1, 1, 1, 1, 1]);
     // A second brand of the same account has its own allowance the same day.
     const second = scopeFor(u.email, "b2");
@@ -220,12 +222,17 @@ describe("the daily cron purges and closes (rule 193)", () => {
     await db.zadd(SEC_KEYS.deleted(branded.email), Date.now() + 29 * 864e5, kept.id);
     await saveTask(bare.email, { id: "abababababab0001", type: "social", channel: "instagram", title: "Post", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" }, true);
     const linked = await seed(bare.email, { title: "Waits for the post", links: { taskId: "abababababab0001" } });
+    // A contact back over 30 days ago: the away list's clean-up runs with the purge, and the outcome line counts it.
+    await db.hset(SEC_KEYS.away(branded.email), "old", { label: "Old", until: "2020-01-01", by: branded.email, via: "web", at: "2020-01-01T00:00:00.000Z" });
     const res = await cron("cron-secret-purge");
     expect(res.status).toBe(200);
     const report = await res.json();
     for (const { scope, it } of expired) expect(await gone(scope, it.id), scope).toEqual({ item: null, all: false, deleted: false });
     expect(report.results[`idle:${archivedScope}`]).toBe("todo:1p");
     expect(report.results[`idle:${suspended.email}`]).toBe("todo:1p");
+    expect(report.results[branded.email]).toContain("todo:1p0c1a");
+    expect(report.results[bare.email]).toContain("todo:1p1c0a");
+    expect(await db.hgetall(SEC_KEYS.away(branded.email))).toEqual({});
     expect(await gone(branded.email, kept.id)).toMatchObject({ all: true, deleted: true });
     const closed = (await db.get<SecItem>(SEC_KEYS.item(bare.email, linked.id)))!;
     expect(closed).toMatchObject({ result: AUTO_CLOSE_RESULT });

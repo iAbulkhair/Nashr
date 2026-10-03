@@ -1,11 +1,27 @@
 /** Gulf marketing calendar. Hijri via Intl (Umm al-Qura), Gregorian for national days. */
+import { DEFAULT_ZONE, type Zone } from "./zones";
+
 export type Season = { id: string; name: string; nameAr: string; daysLeft: number; play: string };
 
-function hijri(d: Date): { m: number; day: number } {
-  const parts = new Intl.DateTimeFormat("en-u-ca-islamic-umalqura", { month: "numeric", day: "numeric" }).formatToParts(d);
-  const m = Number(parts.find((p) => p.type === "month")?.value ?? 0);
-  const day = Number(parts.find((p) => p.type === "day")?.value ?? 0);
-  return { m, day };
+/** One formatter per zone: building an `Intl.DateTimeFormat` is the slow part, and the cron asks six zones every tick. */
+const HIJRI_FORMATTERS = new Map<Zone, Intl.DateTimeFormat>();
+
+/**
+ * The Umm al-Qura date of an instant on the wall clock of `zone`: year, month (1 Muharram … 12 Dhu al-Hijjah) and day.
+ * The zone is named on the formatter, never left to the process: without `timeZone` the date is the server's (UTC on
+ * Vercel), so for the first three hours of a Riyadh day (four in Dubai) the brand would be told it is still yesterday,
+ * and the first day of Ramadan would start that much late. The Hijri day turns at the brand's local midnight, like
+ * `zoneDay`. Server only (tests/date-locale.test.ts allows this file as the one formatter outside `dates.ts`).
+ */
+export function hijriDate(d: Date, zone: Zone = DEFAULT_ZONE): { y: number; m: number; day: number } {
+  let f = HIJRI_FORMATTERS.get(zone);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-u-ca-islamic-umalqura", { timeZone: zone, year: "numeric", month: "numeric", day: "numeric" });
+    HIJRI_FORMATTERS.set(zone, f);
+  }
+  const parts = f.formatToParts(d);
+  const num = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  return { y: num("year"), m: num("month"), day: num("day") };
 }
 
 function daysUntil(from: Date, month: number, day: number): number {
@@ -15,10 +31,13 @@ function daysUntil(from: Date, month: number, day: number): number {
   return Math.round((t - from.getTime()) / 864e5);
 }
 
-/** Seasons that are live or within a 35-day prep window. Sorted by urgency. */
-export function activeSeasons(now = new Date()): Season[] {
+/**
+ * Seasons that are live or within a 35-day prep window. Sorted by urgency. The Hijri seasons are read on `zone`'s
+ * calendar day (the brand's), the Gregorian ones count from the instant.
+ */
+export function activeSeasons(now = new Date(), zone: Zone = DEFAULT_ZONE): Season[] {
   const out: Season[] = [];
-  const h = hijri(now);
+  const h = hijriDate(now, zone);
 
   // Hijri-driven
   if (h.m === 8) out.push({ id: "pre_ramadan", name: "Pre-Ramadan (Sha'ban)", nameAr: "ما قبل رمضان", daysLeft: 30 - h.day, play: "Build audience and email/WhatsApp lists, tease Ramadan collections, publish 'prepare for Ramadan' content, lock influencer slots, pre-approve WhatsApp templates." });
