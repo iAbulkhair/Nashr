@@ -1573,7 +1573,7 @@ export async function runSecretaryTool(user: User, name: SecToolName, input: Rec
     const where = `${ZONES[zone].city.en} time`;
     switch (name) {
       case "todo_create": {
-        if (input.stop_repeat !== undefined) return { text: toolError(fail("owner_only", 403, "repeat")), isError: true };
+        if (input.stop_repeat === true) return { text: toolError(fail("owner_only", 403, "repeat")), isError: true };
         const r = await createItem(user, toolFields(input, name), { ...who, source: who.via === "mcp" ? "mcp" : "chat" }, { zone, cal });
         if (!r.ok) return { text: toolError(r), isError: true };
         const it = r.item;
@@ -1588,7 +1588,7 @@ export async function runSecretaryTool(user: User, name: SecToolName, input: Rec
       case "todo_update": {
         const id = str(input.id) ?? "";
         if (!SEC_ID.test(id)) return { text: toolError(fail("not_found", 404)), isError: true };
-        if (input.stop_repeat !== undefined) {
+        if (input.stop_repeat === true) {
           // Only the owner, on the page, stops a repeat: `changeItem` answers owner_only for chat and MCP, and nothing else in this call is applied.
           const sr = await changeItem(scope, id, { action: "stop_repeat" }, who, undefined, zone, cal);
           return { text: sr.ok ? "Not done: a repeat is stopped on the My to-dos page only." : toolError(sr), isError: true };

@@ -1213,6 +1213,59 @@ describe("rule 500: who may set a repeat through chat and MCP", () => {
     expect(await listOpenItems(u.email)).toHaveLength(1);
   });
 
+  it("a filler stop_repeat:false (or null) is no stop attempt: the other fields apply and a plain create works", async () => {
+    const u = await login();
+    const it1 = await add({ title: "Daily", dueAt: inDays(1, 9), repeat: { every: "day" } });
+    for (const filler of [false, null]) {
+      const r = await runSecretaryTool(u, "todo_update", { id: it1.id, stop_repeat: filler, title: `Renamed ${String(filler)}` }, { who: chat, lang: "en", agent: "reem" });
+      expect(r.isError, r.text).toBe(false);
+      expect((await getItem(u.email, it1.id))!.title).toBe(`Renamed ${String(filler)}`);
+    }
+    expect((await getItem(u.email, it1.id))!.repeat).toMatchObject({ every: "day" });
+    const c = await runSecretaryTool(u, "todo_create", { title: "Plain", stop_repeat: false }, { who: mcp, lang: "en" });
+    expect(c.isError, c.text).toBe(false);
+  });
+
+  it("Reem setting until or count through the tool: owner_only when it would end the series at once, allowed otherwise", async () => {
+    const u = await login();
+    const mk = async (title: string) => {
+      const r = await runSecretaryTool(u, "todo_create", { title, due: inDays(3, 9), repeat: { every: "day" } }, { who: chat, lang: "en", agent: "reem" });
+      expect(r.isError, r.text).toBe(false);
+      return r.id!;
+    };
+    const id = await mk("Series");
+    const call = (repeat: Record<string, unknown>) => runSecretaryTool(u, "todo_update", { id, repeat }, { who: chat, lang: "en", agent: "reem" });
+    // The item is copy 1 of its series: a count of 1 ends it with this copy.
+    const c1 = await call({ every: "day", count: 1 });
+    expect(c1.isError).toBe(true);
+    expect(c1.text).toContain("(field: repeat)");
+    // The next date is 4 days out: an until before it ends the series with this copy.
+    const u1 = await call({ every: "day", until: zoneDay(Date.now() + 3 * 864e5, z) });
+    expect(u1.isError).toBe(true);
+    expect(u1.text).toContain("(field: repeat)");
+    expect((await getItem(u.email, id))!.repeat).toEqual(expect.not.objectContaining({ count: 1 }));
+    expect((await getItem(u.email, id))!.repeat?.until).toBeUndefined();
+    const c2 = await call({ every: "day", count: 5 });
+    expect(c2.isError, c2.text).toBe(false);
+    expect((await getItem(u.email, id))!.repeat).toMatchObject({ every: "day", count: 5 });
+    const u2 = await call({ every: "day", until: zoneDay(Date.now() + 20 * 864e5, z) });
+    expect(u2.isError, u2.text).toBe(false);
+    expect((await getItem(u.email, id))!.repeat?.until).toBe(zoneDay(Date.now() + 20 * 864e5, z));
+  });
+
+  it("an out-of-range remind_before through the tool is repeat_invalid and writes nothing", async () => {
+    const u = await login();
+    const r = await runSecretaryTool(u, "todo_create", { title: "x", due: inDays(1, 9), repeat: { every: "day", remind_before: 20000 } }, { who: chat, lang: "en", agent: "reem" });
+    expect(r.isError).toBe(true);
+    expect(r.text).toContain("repeat rule is not valid");
+    expect(await listOpenItems(u.email)).toHaveLength(0);
+    const it1 = await add({ title: "Daily", dueAt: inDays(1, 9), repeat: { every: "day" } });
+    const up = await runSecretaryTool(u, "todo_update", { id: it1.id, repeat: { every: "day", remind_before: 20000 } }, { who: chat, lang: "en", agent: "reem" });
+    expect(up.isError).toBe(true);
+    expect(up.text).toContain("repeat rule is not valid");
+    expect(await getItem(u.email, it1.id)).toMatchObject({ rev: 1, repeat: { every: "day" } });
+  });
+
   it("a handoff note never carries repeat", async () => {
     const u = await login();
     const r = await runHandoffNote(u, { to: "owner", kind: "blocked", body: "I cannot publish the weekly post without the owner's approval of the offer", repeat: { every: "day" }, stop_repeat: true }, { agent: "noor", lang: "en" });
