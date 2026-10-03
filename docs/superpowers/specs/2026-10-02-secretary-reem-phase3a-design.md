@@ -349,6 +349,8 @@ The same function looks up an item's `owedBy`. «أحمد», «احمد» and «
 
 ## 4. Recurring items (A2)
 
+> Amended 2026-10-03 (A2): sections 4 to 6 below are written as built, with the plan's rulings R32-R54 (`docs/superpowers/plans/2026-10-03-reem-phase3a2-recurring-purge.md`). Where the plan overrides this spec, the text says which ruling. `docs/system/flows.md` section 40 describes the code.
+
 ### 4.1 Data
 
 These are optional `SecItem` fields, absent on items saved before A2:
@@ -359,7 +361,8 @@ type SecRepeat = {
   interval: number;      // 1-99; "workday" always 1; "hyear" at most 10
   anchor: string;        // local "YYYY-MM-DD" of the first occurrence; set when the rule is set or changed, never by a reschedule
   weekStart: number;     // the brand's effective week start when the rule was set ("week" periods count from it)
-  weekdays?: number[];   // "week": 1-7 unique values, 0 = Sunday; default the anchor's weekday
+  time?: string;         // local "HH:mm" of every copy; absent = all-day (R36). Set when the rule is set or changed, from the item's dueAt; a reschedule never changes it
+  weekdays?: number[];   // "week": 0-6, unique values, 0 = Sunday; default the anchor's weekday
   monthDay?: number;     // "month": 1-31 or -1 (last day); "hmonth": 1-30 or -1; default the anchor's day
   remindBefore?: number; // minutes before dueAt, 0-10080; set from the reminder on a recurring item
   until?: string;        // "YYYY-MM-DD", inclusive
@@ -372,21 +375,25 @@ closedBy?: { actor: SecActor; login?: string }; // set by every close path; clea
 ```
 
 **Dates**
-- A recurring item always has a `dueAt`. Setting `repeat` on an undated item sets `dueAt` to the rule's first occurrence from today: all-day, unless a time is given.
-- Clearing `dueAt` on an item with `repeat` is refused with `repeat_needs_due` (400, field `dueAt`) from every caller. This covers update, reschedule to null, and `clear_due`.
+- A recurring item always has a `dueAt`. Setting `repeat` on an undated item sets `dueAt` to the rule's first occurrence from today, all-day.
+- `repeat_needs_due` (400, field `dueAt`) is one check in `mutateItem` after the update and reschedule branches build the next state: `next.repeat && !next.dueAt`. It covers update, reschedule to null and `clear_due` from every caller (R38).
 - `year` and `hyear` use the anchor's month and day.
+- The rule carries the time of day (`time`, R36): a copy is built from the rule's time, so the page's reschedule form, which turns an all-day item into a timed 23:59 one, does not make the next copy inherit that. An edit of the time of day through the `update` path (not `reschedule`) also sets `rule.time`, so the next copy keeps it (R53); `reschedule` stays a one-off.
+- The first time a rule is set on an item with no `series`, `series = { id: newSeriesId(), n: 1 }` is minted (R42). It is kept after `stop_repeat`, so the history stays exportable.
+- `SKIP_RESULT` is the constant `"skipped"`, stored in `result` by a skip. Every display site translates it (`resultText(result, lang)`: «تخطيت هالمرة» / "Skipped this time"): the page, notes, tool answers, the evening wrap and the CSV. The new `SecNote` kind `two_open` is worded by `noteText`.
 
 **Reminders**
-- Setting a reminder on a recurring open item sets `remindBefore = dueAt − remindAt`. This applies from the page, from `remind_at` and from the rule form.
+- Setting a reminder on a recurring open item sets `remindBefore = dueAt − remindAt` only when that is 0 to 10080 minutes (R37); otherwise the reminder applies to this copy only and `remindBefore` is deleted. This applies from the page, from `remind_at` and from the rule form.
 - Clearing it on purpose deletes `remindBefore`.
 - `fireReminder` never touches `repeat`.
 
 ### 4.2 The next date
 
-`nextOccurrence(rule, prevDue, now, z, cal)`:
+`nextOccurrence(rule, prevDue, now, z, cal, n)` (`n`: the copies made so far, the closed one included):
 
 1. **Candidates** come from the anchor's grid. Candidate k is anchor + k·interval units (k ≥ 0), always computed from the anchor:
    - the day is clamped per candidate (the 31st → the month's last day; 29 Feb → 28 Feb; Hijri 30 → 29) and never fed back;
+   - a copy is built from the rule's `time` (R36): a timed rule gives a timed copy, an absent `time` an all-day one;
    - for `week`, the periods are 7-day blocks counted from the start of the anchor's week (`rule.weekStart`), and blocks k·interval carry the chosen weekdays;
    - `workday` takes every non-quiet day from `CalData`.
 2. **The result** is the first candidate O with O > prevDue, and:
@@ -396,8 +403,9 @@ closedBy?: { actor: SecActor; login?: string }; // set by every close path; clea
    So missed dates never pile up, and a timed copy never opens already overdue.
 3. **Rescheduling one copy** moves only that copy. The grid stays on the anchor.
 4. **Gregorian helpers** are pure, in `secretary-agenda.ts`, including the new `addMonthsClamped`.
-5. **Hijri** (`hmonth`, `hyear`) lives in `secretary-calendar.ts` and uses `hijriDate` with the brand's `hijriFix`. The search is bounded at 366 × interval days.
+5. **Hijri** (`hmonth`, `hyear`) lives in `secretary-calendar.ts`. The anchor's Hijri month and day are read by pure Umm al-Qura (no `hijriFix` applied to the anchor), and the candidates are placed on the effective calendar, with the brand's `hijriFix`. The search is bounded at 366 × interval days (at most 16 Hijri candidates).
 6. **The series ends** when `series.n >= count` or the next date is after `until`. The last copy closes normally and opens nothing.
+7. **Spawned copies skip the date-range check** (R40): a copy of a yearly series with an interval above 5 can be further than `WHEN_RANGE` (now + 5 years). Rescheduling such a copy from the page keeps the range check. `parseRepeat` keeps this spec's bounds.
 
 ### 4.3 Opening the next copy
 
@@ -406,7 +414,7 @@ A copy closes through:
 - the new `skip` action;
 - `closeLinked`.
 
-In every case the spawn runs under the closed copy's item lock (`withLock`; `lockOwned`/`unlockOwned` where the call path allows it):
+In every case the spawn runs under the closed copy's item lock (`withLock`, unchanged: R47 does not take the `lockOwned` path; its 10 s TTL covers the two writes and one nested delete). `changeItem` reads the calendar for every close action, and `closeLinked(scope, id, who, at: { zone, cal })` takes it from the agenda's own read (R39). A copy spawned while an agenda is being read shows on the next read; the claim and the open-state check make repeated reads idempotent. Copies carry no links, so only a series' first copy can auto-close.
 
 1. **Skip the spawn** when any of these hold:
    - the copy has no `repeat`;
@@ -416,46 +424,54 @@ In every case the spawn runs under the closed copy's item lock (`withLock`; `loc
    When `nextId` names a missing record, spawn again.
 2. **Claim** `sec:spawn:{scope}:{closedId}` with `setNx` for 2 days, value = `newSecId()`:
    - if the claim exists and names a live record, that record is kept unchanged;
+   - if it names a missing record, the claimed id is used and the record is written;
    - if it names a soft-deleted record, the claim is stale: mint a new id and overwrite the claim;
-   - an existing live record is never overwritten.
+   - an existing live record is never overwritten. The new copy is written with `get`, then `set` only if absent, under the closed copy's lock: only a spawn of the same closed id knows the claimed id, and it holds that lock (R33).
 3. **Build** the next copy with rev 1, the closed copy's source, and `series.n + 1`:
 
    | Fields | Treatment |
    |---|---|
    | title, description, kind, direction, owedBy, owedTo, phone, priority, critical, repeat | Copied |
    | dueAt, allDay | From `nextOccurrence` |
-   | remindAt | `dueAt − remindBefore` when that is in the future, else none |
+   | remindAt | `dueAt − remindBefore` when that is in the future, else none (R41: without `remindBefore`, null) |
    | notes, result, links, proposedDone, snoozeUntil, lastChasedAt, handoffFrom, closedBy | Not copied. Copying links would make `closeLinked` close the copy again on every read and spawn again |
-4. **Write in two rounds.**
-   - **Round 1:** the new copy, if no record exists at its id, and `indexWrites(scope, null, next)`.
-   - **Round 2:** the closed copy with `nextId` and `closedBy`, `indexWrites(scope, prev, closed)`, and the audit lines (the close and `spawn` by actor `rule`).
+   | expectBy | null (R41) |
+   | createdAt, updatedAt | now (R41) |
+   | completedAt, deletedAt, expiresAt, nextId | null / absent (R41) |
+   | source | the closed copy's (R41) |
+4. **Write in two rounds, the closed copy first** (R51, replacing the earlier order).
+   - **Round 1:** the closed copy with `nextId` (the claimed id) and `closedBy`, `indexWrites(scope, prev, closed, { kept })` and the close's audit line.
+   - **Round 2:** the new copy, if no record exists at its id, `indexWrites(scope, null, next)` and the `spawn` audit line by actor `rule`.
 
-   If round 1 fails, the closed copy is still open, and a retried close reuses the claim. A reused claimed id whose record exists is passed as `prev` to `indexWrites`, so its index moves are cleaned.
+   A `nextId` that names a missing record already means "spawn again", so a crash between the rounds leaves a done copy and nothing visible; the owner's retried close (`complete`, `confirm_done` or `skip` on a done copy that has a repeat, whose `nextId` names a missing or soft-deleted record) completes the spawn at the claimed id and answers 200 with the closed copy, whatever `rev` it was sent with. There is no daily repair sweep: a failed round 2 that nobody retries stops that series until the owner closes the old copy again (accepted risk). A reused claimed id whose record exists is passed as `prev` to `indexWrites`, so its index moves are cleaned. Every `indexWrites` caller passes `kept` (R50).
 
 **Limits**
 - A close plus a spawn leaves the open count unchanged. The spawn checks neither `SEC_OPEN_MAX` nor the per-email create allowance.
 - `reopen` and `restore` still check the cap.
 
 **Reopen** of a copy that has a `nextId`:
-- The reopen's write clears `nextId` and DELs `sec:spawn:{scope}:{id}`.
-- The next copy is deleted only through `changeItem(scope, nextId, { action: "delete" }, { actor: "rule", via: "web" }, expectRev 1)`, under its own lock, with audit `series_reopen`.
-- If that answers 409 conflict (the copy was edited), both copies stay open (founder decision). The reopened copy gets a note: «النسخة التالية مفتوحة ومعدّلة — صار عندك نسختين» / "The next copy is open and was edited; there are now two".
+- The next copy is deleted by a private `deleteNextCopy(scope, nextId, now)`, not through `changeItem`, which refuses `delete` to anyone but the web owner and audits the caller's action (R32; `OWNER_ONLY` and `isOwner` are not widened). It takes the next copy's own lock, re-reads it and soft-deletes it (the usual 30-day restore) with audit `series_reopen` by actor `rule`, only when it is untouched: open, with `rev === 1 + (the number of `reminded` notes)` and no other note (R35: a reminder that already fired does not make a copy "edited"). It answers `"deleted" | "kept" | "gone" | "failed"`.
+- The reopen clears `nextId` and DELs `sec:spawn:{scope}:{id}` only when the answer is `"deleted"` or `"gone"` (the next copy is deleted, missing or soft-deleted). When the next copy is kept (edited and open, or already done), `nextId` and the claim stay, so closing the reopened copy again opens nothing; clearing them always, as this spec first said, would spawn a third copy (R34).
+- A lock timeout or a failed read is `"failed"`: the reopen answers 503 `lock_timeout` before anything is written (R48).
+- If the next copy was edited, both copies stay open (founder decision). The reopened copy gets the `two_open` note whenever any other copy of the series is open after the reopen, found by the `nextId` chain or the series set (R49). For example A → B (done) → C (open): reopening A leaves A and C open and says so. The wording: «النسخة التالية مفتوحة ومعدّلة — صار عندك نسختان» (nominative, «نسختان»; an earlier draft had «نسختين») / "The next copy is open and was edited; there are now two".
+- The open-cap check is skipped on a reopen that deletes an open next copy: the net change is zero (R52).
 
 ### 4.4 Who does what
 
 | Action | Body | Who | Effect |
 |---|---|---|---|
-| set or edit `repeat` | page form | `todo.write` | sets or edits the rule on an open item |
-| `stop_repeat` | `{ action: "stop_repeat" }` | `todo.write` on the page | `repeat = null`; the item stays a normal open item |
-| `skip` | `{ action: "skip" }` | `todo.close` (admin) | closes with result «تخطيت هالمرة» / "Skipped this time" and opens the next |
+| set or edit `repeat` | page form, `PATCH {repeat, rev}` with the whole rule | `todo.write` | sets or edits the rule on an open item (R53: an update that changes the time of day also moves the rule's time) |
+| `stop_repeat` | `{ action: "stop_repeat" }` | `todo.write` on the page (`mutateItem` refuses any actor but the owner in the app: `owner_only`) | `repeat = null`; the item stays a normal open item and keeps its `series` |
+| `skip` | `{ action: "skip" }` | `todo.close` (admin) | closes with the constant result `skipped` (shown as «تخطيت هالمرة» / "Skipped this time" through `resultText`), needs a repeat (`bad_action` otherwise), and opens the next |
 | `delete` | as today | `todo.close` | deletes this copy and opens nothing; the series ends |
 | keep history | `PUT /api/secretary/series/{seriesId}/keep` `{ keep }` | `keep: true` → `todo.write`; `keep: false` → `todo.close` | see section 5 |
 
 **Reem and MCP.** `todo_create` and `todo_update` gain `repeat` (same schema and validation, `repeat_invalid`) and `stop_repeat`.
 
-- **Who may set it.** `runSecretaryTool` reads `repeat` and `stop_repeat` only when the call comes over MCP (`who.via === "mcp"`) or from chat with the turn's agent explicitly `reem`. `runTool` passes `ctx.agent` through with no `?? "reem"` default for this check.
+- **Who may set it.** `runSecretaryTool`'s ctx gains `agent?: AgentId`; `runTool` passes `agent: ctx.agent` and keeps its `?? "reem"` default only for the actor (R46). The gate reads `repeat` and `stop_repeat` only when the call comes over MCP (`who.via === "mcp"`) or from chat with the turn's agent explicitly `reem`, and runs before `allow()`, so a refused call spends no `sec:write`.
+- **Strict-safe schema** (R45). `repeat` is a nested object with `additionalProperties: false`, `required: ["every"]`, `every` an enum, plain integers and strings, no `minimum`, `maximum` or `minLength`. Every range check is in `parseRepeat`.
 - **Other agents.** For any other agent the call answers «لم يتم: التكرار يضبطه المالك أو ريم» / "Not done: only the owner or Reem sets a repeat", and nothing in that call is saved. Every agent still sees `todo_create` and `todo_update`.
-- **Ending a series from chat or MCP** is refused with `owner_only`. This covers `stop_repeat`, an `until` before the next date, and a `count` ≤ `series.n`.
+- **Ending a series from chat or MCP** is refused with `owner_only` (403, field `repeat`). This covers `stop_repeat`, `repeat: null`, an `until` before the next date, and a `count` ≤ `series.n`.
 - **`skip`** is owner-only, like `complete`.
 - **Handoff notes** (`secretary-handoff.ts`) never carry `repeat`.
 
@@ -474,8 +490,9 @@ In every case the spawn runs under the closed copy's item lock (`withLock`; `loc
 | `sec:sdone:{scope}` | sorted set, score = completedAt | closed copies not yet warned, of series not kept |
 | `sec:spurge:{scope}` | sorted set, score = purge time | warned copies |
 | `sec:serieskeep:{scope}` | set | kept series ids, at most 500 (`keep_limit`) |
+| `sec:swarn:{scope}:{seriesId}` | string, TTL 30 days | the marker that a series was named in a warning (R44); value = when, written with SET after the notification went out |
 
-**`indexWrites`** ZADDs the id to `sec:series:…` on every transition into done, from open or from deleted (`to === "done" && from !== "done" && next.series`). It ZADDs to `sec:sdone` unless the series is kept. Reopen, delete and purge remove the id from `sec:series:…`, `sec:sdone` and `sec:spurge`.
+**`indexWrites(scope, prev, next, opts?: { kept?: boolean })`** ZADDs the id to `sec:series:…` (and the series to `sec:serieslist`) on every transition into done, from open or from deleted (`to === "done" && from !== "done" && next.series`). It ZADDs to `sec:sdone` unless `kept`. It does not read the keep flag (R43): `changeItem` and `closeLinked` read `SISMEMBER sec:serieskeep` under the item's lock, only when a copy of a series enters done, and pass the answer; `spawnNext`, the plain close path of the last copy of an ended or stopped series, `restore` and `reopen` all pass it (R50). Reopen, delete and purge remove the id from `sec:series:…`, `sec:sdone` and `sec:spurge`.
 
 ### 5.2 Warn, then delete
 
@@ -487,12 +504,14 @@ Both steps run every day inside `secretaryDaily`. They do not depend on the foll
    - Text: «فيه {count} من «{title}» بتنحذف ابتداءً من {date}. تقدر تحتفظ بالسجل أو تنزّله CSV» / "{count} closed copies of "{title}" will be deleted from {date}. Keep the history or download it as CSV".
    - `{count}` uses `arCount` (نسخة واحدة / نسختين / N نسخ / N نسخة).
    - At most 5 series per notification, then "and {k} more".
-3. Delivery: kind `todo`, href `/{lang}/app/todo?series={id}`, fingerprint `brandFingerprint(scope, "todo-purge:{localDay}")`, 7-day TTL. Email follows the scope's email preference.
-4. The listed ids then move from `sec:sdone` to `sec:spurge` with score `max(completedAt + 90 d, now + 7 d)`.
+3. Delivery: kind `todo`, href `/{lang}/app/todo?series={id}`, fingerprint `brandFingerprint(scope, "todo-purge:{localDay}")`, 7-day TTL. The email follows unless the owner's email preference is none.
+4. **Ids move only after a push that returned a notification (R44, founder 2026-10-03).** A same-day rerun (the fingerprint was claimed) moves nothing, and a throw moves nothing. Only the ids of the at most 5 series the text names move, from `sec:sdone` to `sec:spurge` with score `max(completedAt + 90 d, now + 7 d)`; the rest wait for the next day.
+5. **A series is named once.** Then a marker `sec:swarn:{scope}:{seriesId}` (SET, 30 days) silences it, so a daily series does not produce a bell entry and an email every day. Copies of a warned series that reach the window later move silently to `max(completedAt + 90 d, warnedAt + 7 d, now + 7 d)`, always later than the copy that was named, so the invariant holds per series: a copy is deleted at least 7 days after a warning that named its series. When the marker lapses the series is named again (about monthly for a daily series).
+6. **Warn cleans what it skips (R50).** Kept ids and ghost ids (no record, not closed, no series) leave `sec:sdone` as they are met, so they never fill the 200-row window. The daily step also re-adds, for unkept series, closed copies missing from both `sec:sdone` and `sec:spurge` (`requeueSeries`), which makes an un-keep that died half-way resumable.
 
 **Delete**
 1. `zrangeByScore(sec:spurge, now, 200)` takes the warned copies that are due.
-2. Each copy is deleted under its own item lock (`pmap`, concurrency 8). The item is read again with `SISMEMBER sec:serieskeep`, and deleted only when it is still done and its series is not kept.
+2. Each copy is deleted under its own item lock (`pmap`, concurrency 8). The item is read again with its `sec:spurge` score and `SISMEMBER sec:serieskeep`, and deleted only when it is still in `sec:spurge` with a score due now, still done, its series is not kept, and it was closed at least 90 days ago. A copy that is no longer eligible only leaves `sec:spurge` (closed again, it goes back to `sec:sdone` to be warned again). One copy's failure is logged and skipped; the others are still deleted, counted and audited.
 3. Each delete removes the id from `sec:item`, `sec:all`, `sec:done`, `sec:open`, `sec:due`, `sec:spurge` and the series set.
 4. One audit line records the count.
 
@@ -500,7 +519,8 @@ So a copy is always deleted at least 7 days after a warning that named it. A fai
 
 **Keep and un-keep**
 - Keeping a series writes `sec:serieskeep` first, then ZREMs that series' ids from `sec:sdone` and `sec:spurge`.
-- Un-keeping ZADDs the closed copies back into `sec:sdone` only, so they are warned again before any deletion. The switch says so.
+- Un-keeping ZREMs the copies from `sec:spurge` (a stale entry from a warn run that raced the keep) and ZADDs them back into `sec:sdone` only, and deletes the series' marker, so they are named in a new warning at least 7 days before any deletion. The switch says so.
+- A keep that races a close is guarded twice: the warn step reads `SMEMBERS sec:serieskeep` once and skips kept ids, and the purge re-checks under the lock.
 
 **Idle brands** (archived, or the account suspended) run no warning and no deletion until the brand is active again.
 
@@ -528,7 +548,7 @@ So a copy is always deleted at least 7 days after a warning that named it. A fai
 | Read calendar, away list, series CSV | any member (`read`), rate `sec:read` | routes |
 | Change working days (weekend, Ramadan hours, Eid and holiday corrections) | admin (`brand.write`) | `PUT /api/secretary/calendar` |
 | Mark a contact away / end it | `todo.write` on the page; from Reem's chat a card saved by a person | route; `contact_away` offered to Reem and refused in `runTool` otherwise |
-| Create or edit a recurrence | `todo.write` on the page; Reem's chat and MCP | `runSecretaryTool` agent/via check, `parseFields` |
+| Create or edit a recurrence | `todo.write` on the page; Reem's chat and MCP (any other agent, and a chat call with no agent, is refused before `sec:write` is spent) | `runSecretaryTool` agent/via check, `parseRepeat` |
 | Stop or end a series | `todo.write` on the page; refused from chat and MCP (`owner_only`) | `runSecretaryTool`, route |
 | Skip a copy, delete it | `todo.close` (admin) | `OWNER_ONLY` and the route role |
 | Keep a series' history / stop keeping | `todo.write` / `todo.close` | route |

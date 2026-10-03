@@ -1126,9 +1126,9 @@ export async function todoPage(scope: string, opts?: { series: string }) {
 
 /**
  * The `?series=` view: one recurring series' closed copies (at most 200, newest close first) and how many it holds, read
- * from that series' own set (`seriesRows`) and nothing else. An id with no closed copies (unknown, another brand's, or a
- * series whose copies are all open) stops there with `total` 0. Otherwise one more round reads the brand's zone and
- * whether the series is kept, and no agenda, calendar or away list is read.
+ * from that series' own set (`seriesRows`) first. An id with no closed copies (unknown, another brand's, or a series
+ * whose copies are all open) stops there with `total` 0: nothing else is read. On a hit one more round reads the brand's
+ * zone (the brand file) and whether the series is kept; no agenda, calendar or away list is read either way.
  */
 async function seriesPage(scope: string, id: string) {
   const now = Date.now();
