@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { json, newUser, params, signIn } from "./helpers/session";
+import { json, newMember, newUser, params, signIn } from "./helpers/session";
 import { db } from "@/lib/db";
 import { wipeAccount } from "@/lib/account";
 import { getUser, saveUser } from "@/lib/auth";
@@ -7,6 +7,8 @@ import { saveBrands, scopeFor } from "@/lib/brands";
 import { listNotifs, seenKey } from "@/lib/notifications";
 import * as listRoute from "@/app/api/secretary/route";
 import * as itemRoute from "@/app/api/secretary/[id]/route";
+import * as keepRoute from "@/app/api/secretary/series/[seriesId]/keep/route";
+import * as exportRoute from "@/app/api/secretary/series/[seriesId]/export/route";
 import { SEC_KEYS, newSecId, newSeriesId, purgeExpired, secretaryDaily, secretaryKeys, type Who } from "@/lib/secretary";
 import { SERIES_KEEP_MAX, purgeSeries, requeueSeries, seriesRows, setSeriesKeep, warnSeries } from "@/lib/secretary-series";
 import { formatWhen, zoneDay, type SecItem } from "@/lib/secretary-agenda";
@@ -696,5 +698,120 @@ describe("rule 505: the warning", () => {
     expect(we.href).toBe(`/en/app/todo?series=${esid}`);
     expect(we.body).toBe([`2 closed copies of "Rent" will be deleted from ${en}.`, `1 closed copy of "Fees" will be deleted from ${en}.`, "Keep the history or download it as CSV"].join("\n"));
     expect(sent.filter((m) => m.to === e.email)).toEqual([]);
+  });
+});
+
+const keepCall = (seriesId: string, body: unknown) => keepRoute.PUT(json(`/api/secretary/series/${seriesId}/keep`, "PUT", body), params({ seriesId }));
+const exportCall = (seriesId: string, q = "") => exportRoute.GET(json(`/api/secretary/series/${seriesId}/export${q}`, "GET"), params({ seriesId }));
+const auditLines = async (scope: string) => (await db.lrange(SEC_KEYS.audit(scope), 0, -1)).map((x) => JSON.parse(x)).filter((l) => String(l.action).startsWith("series_"));
+
+describe("rule 506: the keep route", () => {
+  it("a member's keep:false gets 403 and writes nothing; keep:true is allowed and audited once", async () => {
+    const o = await login();
+    const a = await complete((await recurring("Kept")).id);
+    const sid = a.series!.id;
+    const m = await newMember(o, "member");
+    await signIn(m.email);
+    const r = await keepCall(sid, { keep: false });
+    expect(r.status).toBe(403);
+    expect(await auditLines(o.email)).toEqual([]);
+    const k = await keepCall(sid, { keep: true });
+    expect(k.status).toBe(200);
+    expect(await k.json()).toMatchObject({ ok: true, kept: true });
+    expect((await auditLines(o.email)).filter((l) => l.action === "series_keep")).toHaveLength(1);
+    expect(await db.sismember(SEC_KEYS.seriesKeep(o.email), sid)).toBe(true);
+    await signIn(o.email);
+    const u = await keepCall(sid, { keep: false });
+    expect(u.status).toBe(200);
+    expect(await u.json()).toMatchObject({ ok: true, kept: false });
+    expect((await auditLines(o.email)).filter((l) => l.action === "series_unkeep")).toHaveLength(1);
+  });
+  it("a malformed or unknown id gets 404 and writes nothing; another brand's well-formed id gets 404; a bad body is 400", async () => {
+    const o = await login();
+    const a = await complete((await recurring("Mine")).id);
+    for (const bad of ["x", "R0123456789abcdef", newSeriesId()]) {
+      expect((await keepCall(bad, { keep: true })).status).toBe(404);
+      expect(await db.sismember(SEC_KEYS.seriesKeep(o.email), bad)).toBe(false);
+    }
+    expect((await keepCall(a.series!.id, { keep: "yes" })).status).toBe(400);
+    expect((await keepCall(a.series!.id, {})).status).toBe(400);
+    expect(await auditLines(o.email)).toEqual([]);
+    const other = await login();
+    expect((await keepCall(a.series!.id, { keep: true })).status).toBe(404);
+    expect(await db.sismember(SEC_KEYS.seriesKeep(other.email), a.series!.id)).toBe(false);
+    expect(await db.sismember(SEC_KEYS.seriesKeep(o.email), a.series!.id)).toBe(false);
+    expect(await auditLines(other.email)).toEqual([]);
+  });
+  it("is rate limited per login before the existence check", async () => {
+    await login();
+    const z = vi.spyOn(db, "zcard");
+    const rate = await import("@/lib/rate");
+    vi.spyOn(rate, "allow").mockResolvedValue(false);
+    const r = await keepCall(newSeriesId(), { keep: true });
+    expect(r.status).toBe(429);
+    expect(z).not.toHaveBeenCalled();
+  });
+  it("a 501st kept series answers keep_limit 409", async () => {
+    const o = await login();
+    const a = await complete((await recurring("Extra")).id);
+    await Promise.all(Array.from({ length: SERIES_KEEP_MAX }, () => db.sadd(SEC_KEYS.seriesKeep(o.email), newSeriesId())));
+    const r = await keepCall(a.series!.id, { keep: true });
+    expect(r.status).toBe(409);
+    expect((await r.json()).error).toBe("keep_limit");
+    expect(await db.sismember(SEC_KEYS.seriesKeep(o.email), a.series!.id)).toBe(false);
+  });
+});
+
+describe("rule 507: the CSV export", () => {
+  it("a result with a comma, a quote, a new line and a leading = is exported safely, with a BOM, the id as file name and the skip as text", async () => {
+    const o = await login();
+    const first = await add({ title: "=HYPERLINK(1)", dueAt: inDays(1, 9), repeat: { every: "day" } });
+    const sid = (await complete(first.id)).series!.id;
+    const second = await add({ title: "Plain", dueAt: inDays(1, 9), repeat: { every: "day" } });
+    const sid2 = (await (await patch(second.id, { action: "skip" })).json()).item.series.id as string;
+    const withText = await add({ title: "Weekly", dueAt: inDays(1, 9), repeat: { every: "day" } });
+    const sid3 = (await (await patch(withText.id, { action: "complete", result: '=cmd, "quoted"\nline two' })).json()).item.series.id as string;
+    const r3 = await exportCall(sid3);
+    expect(r3.status).toBe(200);
+    expect(r3.headers.get("content-disposition")).toBe(`attachment; filename="series-${sid3}.csv"`);
+    expect(r3.headers.get("content-type")).toContain("text/csv");
+    const bytes = new Uint8Array(await r3.arrayBuffer());
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]); // Response.text() would strip the BOM
+    const t3 = new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
+    expect(t3).toContain(`"'=cmd, ""quoted""\nline two"`);
+    expect(t3.split("\r\n")[0]).toBe('\uFEFF"title","due","closed at","result","closed by"');
+    const t2 = await (await exportCall(sid2)).text();
+    expect(t2).toContain("تخطيت هالمرة");
+    expect(t2).not.toContain(`"skipped"`);
+    expect(await (await exportCall(sid2, "?lang=en")).text()).toContain("Skipped this time");
+    expect(t3).toContain(`"${o.email}"`);
+    expect(await (await exportCall(sid)).text()).toContain(`"'=HYPERLINK(1)"`);
+  });
+  it("only that series' set is read, and another brand's or an unknown id gives 404", async () => {
+    const o = await login();
+    const a = await complete((await recurring("A")).id);
+    const b = await complete((await recurring("B")).id);
+    const ranges = vi.spyOn(db, "zrangeWithScores");
+    const r = await exportCall(a.series!.id);
+    expect(r.status).toBe(200);
+    expect(ranges.mock.calls.map((c) => c[0])).toEqual([SEC_KEYS.series(o.email, a.series!.id)]);
+    const csv = await r.text();
+    expect(csv).toContain("A");
+    expect(csv).not.toContain(`"${b.title}"`);
+    const reads = vi.spyOn(db, "mget");
+    reads.mockClear();
+    expect((await exportCall("nope")).status).toBe(404);
+    expect((await exportCall(newSeriesId())).status).toBe(404);
+    expect(reads).not.toHaveBeenCalled();
+    await login();
+    expect((await exportCall(a.series!.id)).status).toBe(404);
+  });
+  it("is rate limited per login before the existence check", async () => {
+    await login();
+    const z = vi.spyOn(db, "zcard");
+    const rate = await import("@/lib/rate");
+    vi.spyOn(rate, "allow").mockResolvedValue(false);
+    expect((await exportCall(newSeriesId())).status).toBe(429);
+    expect(z).not.toHaveBeenCalled();
   });
 });
