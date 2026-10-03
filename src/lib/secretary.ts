@@ -507,10 +507,11 @@ const needsDue = (it: SecItem) => !!it.repeat && !it.dueAt;
  * but the owner in the app, a rule that stops the repeat, ends it with `count <= n` or with an `until` before the next
  * occurrence is `owner_only` (field `repeat`).
  */
-function settleRepeat(it: SecItem, f: SecFields, who: Who, now: number, z: Zone, cal: CalData | undefined): SecFail | null {
+function settleRepeat(it: SecItem, f: SecFields, who: Who, now: number, z: Zone, cal: CalData | undefined, prev?: { dueAt: string | null; allDay: boolean }): SecFail | null {
   const c = cal ?? defaultCal(z);
   if (f.repeat === null) {
-    if (!isOwner(who)) return fail("owner_only", 403, "repeat");
+    // Stopping a repeat is the owner's; on an item without one it changes nothing, so nobody is refused.
+    if (it.repeat && !isOwner(who)) return fail("owner_only", 403, "repeat");
     it.repeat = null;
     return null;
   }
@@ -534,13 +535,20 @@ function settleRepeat(it: SecItem, f: SecFields, who: Who, now: number, z: Zone,
           if (nxt && rule.until < zoneDay(Date.parse(nxt.dueAt), z)) return fail("owner_only", 403, "repeat");
         }
       }
+      // A new rule keeps the reminder the old one had unless the input says one (a reminder change below wins).
+      if (rule.remindBefore === undefined && it.repeat?.remindBefore !== undefined) rule.remindBefore = it.repeat.remindBefore;
       it.repeat = rule;
     } else it.repeat = base; // dated no more (`dueAt` null in the same change): `needsDue` refuses it
   } else if (it.repeat && f.dueAt && it.dueAt) {
-    const rule = { ...it.repeat };
-    delete rule.time;
-    if (!it.allDay) rule.time = zoneLocalInput(Date.parse(it.dueAt), z).slice(11);
-    it.repeat = rule;
+    // The rule's time follows a real change of the time of day; resending the same dueAt, or moving the date only, keeps it.
+    const clock = (d: string | null, allDay: boolean) => (d && !allDay ? zoneLocalInput(Date.parse(d), z).slice(11) : "");
+    const after = clock(it.dueAt, it.allDay);
+    if (!prev || clock(prev.dueAt, prev.allDay) !== after) {
+      const rule = { ...it.repeat };
+      delete rule.time;
+      if (after) rule.time = after;
+      it.repeat = rule;
+    }
   }
   if (it.repeat && f.remindAt !== undefined) {
     const rule = { ...it.repeat };
@@ -575,9 +583,9 @@ function mutate(it: SecItem, c: Change, who: Who, now: number, z: Zone, cal: Cal
   switch (c.action) {
     case "update": {
       if (!Object.keys(c.fields).length && c.snoozeUntil === undefined && !c.note && !c.chased) return fail("nothing_to_change");
-      const was = { owedBy: it.owedBy, dueAt: it.dueAt };
+      const was = { owedBy: it.owedBy, dueAt: it.dueAt, allDay: it.allDay };
       const next = applyFields(it, c.fields);
-      const bad = settleRepeat(next, c.fields, who, now, z, cal);
+      const bad = settleRepeat(next, c.fields, who, now, z, cal, was);
       if (bad) return bad;
       if (c.snoozeUntil !== undefined) {
         if (c.snoozeUntil && Date.parse(c.snoozeUntil) <= now) return fail("snooze_past", 400, "snoozeUntil");

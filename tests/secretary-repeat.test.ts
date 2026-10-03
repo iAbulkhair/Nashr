@@ -522,6 +522,26 @@ describe("rule 494: a repeat needs a due date, from every caller", () => {
     expect((await getItem(u.email, it1.id))!.repeat).toMatchObject({ every: "day" });
   });
 
+  it("resending the same dueAt after a one-off reschedule keeps the rule's time; a real time change updates it (R53)", async () => {
+    await login();
+    const it1 = await add({ title: "Daily sync", dueAt: inDays(1, 9), repeat: { every: "day" } });
+    let r = await patch(it1.id, { action: "reschedule", dueAt: inDays(2, 16) });
+    let cur = (await r.json()).item as SecItem;
+    expect(cur.repeat!.time).toBe("09:00");
+    // the same dueAt sent again changes nothing about the rule
+    r = await patch(it1.id, { dueAt: inDays(2, 16) });
+    cur = (await r.json()).item as SecItem;
+    expect(cur.repeat!.time).toBe("09:00");
+    // a date-only move to the same clock time keeps it too
+    r = await patch(it1.id, { dueAt: inDays(3, 16) });
+    cur = (await r.json()).item as SecItem;
+    expect(cur.repeat!.time).toBe("09:00");
+    // a real change of the time of day moves it
+    r = await patch(it1.id, { dueAt: inDays(3, 17) });
+    cur = (await r.json()).item as SecItem;
+    expect(cur.repeat!.time).toBe("17:00");
+  });
+
   it("createItem refuses a repeat from source agent; chat and MCP may set one", async () => {
     const u = await newUser("secagent");
     const r = await createItem(u, { title: "From an agent", repeat: { every: "day" } }, { actor: "dana", via: "chat", source: "agent" });
@@ -622,6 +642,28 @@ describe("rule 495: skip, stop and ending a series are owner-only", () => {
     // the owner in the app may do all of it
     const mine = mutateItem(structuredClone(it1), { action: "update", fields: { repeat: { every: "day", interval: 1, count: 1 } } }, web, Date.now(), z, cal);
     expect(mine).toMatchObject({ ok: true });
+  });
+
+  it("repeat null from chat on an item with no repeat is a harmless no-op (R39)", async () => {
+    const o = await login();
+    const plain = await add({ title: "One-off", dueAt: inDays(2, 9) });
+    const r = await changeItem(o.email, plain.id, { action: "update", fields: { repeat: null, priority: 1 } }, chat, undefined, z, defaultCal(z));
+    expect(r).toMatchObject({ ok: true });
+    expect(r.ok && r.item.repeat).toBeNull();
+  });
+
+  it("a new repeat rule keeps the old reminder unless the input sets one", async () => {
+    const o = await login();
+    const it1 = await add({ title: "Standup", dueAt: inDays(2, 10), repeat: { every: "day" } });
+    let r = await patch(it1.id, { remindAt: inDays(2, 9) });
+    expect(((await r.json()).item as SecItem).repeat!.remindBefore).toBe(60);
+    r = await patch(it1.id, { repeat: { every: "week" } });
+    const cur = (await r.json()).item as SecItem;
+    expect(cur.repeat).toMatchObject({ every: "week", remindBefore: 60 });
+    // an explicit value in the input wins
+    r = await patch(it1.id, { repeat: { every: "week", remindBefore: 15 } });
+    expect(((await r.json()).item as SecItem).repeat!.remindBefore).toBe(15);
+    expect(await getItem(o.email, it1.id)).toMatchObject({ repeat: { remindBefore: 15 } });
   });
 
   it("the word for a skipped result is translated wherever a result is shown", async () => {
