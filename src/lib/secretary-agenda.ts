@@ -779,7 +779,7 @@ export function addMonthsClamped(day: string, months: number, monthDay?: number)
 }
 
 /** The local "HH:mm" of a rule as hours and minutes, or null for all-day (absent, or not a time). */
-const ruleClock = (time: string | undefined): { hh: number; mm: number } | null => {
+export const ruleClock = (time: string | undefined): { hh: number; mm: number } | null => {
   const t = time === undefined ? null : /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time);
   return t ? { hh: +t[1], mm: +t[2] } : null;
 };
