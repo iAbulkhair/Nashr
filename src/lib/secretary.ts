@@ -690,8 +690,8 @@ function mutate(it: SecItem, c: Change, who: Who, now: number, z: Zone, cal: Cal
   }
 }
 
-type State = "open" | "done" | "deleted";
-const stateOf = (it: SecItem): State => (it.deletedAt ? "deleted" : it.completedAt ? "done" : "open");
+export type State = "open" | "done" | "deleted";
+export const stateOf = (it: SecItem): State => (it.deletedAt ? "deleted" : it.completedAt ? "done" : "open");
 const openScore = (it: SecItem) => (it.dueAt ? Date.parse(it.dueAt) : UNDATED_SCORE);
 
 /**
@@ -1175,7 +1175,7 @@ export async function purgeExpired(scope: string, now = Date.now()): Promise<num
 
 /**
  * The daily job's part: purge, and next to it the away list's clean-up (`cleanAway`: entries ended over 30 days ago);
- * then close linked items whose inbox item was approved. Returns the agenda it computed. A failed clean-up is logged by
+ * then the recurring series' warning and deletion of closed copies (`seriesDaily`); then close linked items whose inbox item was approved. Returns the agenda it computed. A failed clean-up is logged by
  * its error's name and retried the next day: it never stops the agenda or the auto-close.
  */
 export async function secretaryDaily(scope: string, now = Date.now()) {
@@ -1189,8 +1189,16 @@ export async function secretaryDaily(scope: string, now = Date.now()) {
         return 0;
       }),
   ]);
+  // The closed copies of recurring series: delete what was warned about and is due, then warn (secretary-series.ts,
+  // rules 502-505). Never for an idle brand; a failure is logged and retried the next day.
+  const series = await import("./secretary-series")
+    .then((m) => m.seriesDaily(scope, now))
+    .catch((e) => {
+      console.error("sec series step failed", e instanceof Error ? e.name : "error");
+      return { warned: 0, deleted: 0, idle: false };
+    });
   const agenda = await agendaFor(scope, now, { actor: "cron", via: "cron" });
-  return { purged, closed: agenda.closed, agenda, awayCleaned };
+  return { purged, closed: agenda.closed, agenda, awayCleaned, warned: series.warned, deleted: series.deleted };
 }
 
 /**

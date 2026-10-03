@@ -77,8 +77,12 @@ async function dailyFor(u: User): Promise<string> {
   }
   // Reem's list, for every scope with or without a brand: purge items deleted over 30 days ago, close the ones whose
   // linked inbox item was approved, and clean the away list of contacts back over 30 days ago: `todo:{purged}p{closed}c
-  // {awayCleaned}a`. A failure is reported and never stops the rest of this workspace's day.
-  try { const sec = await secretaryDaily(u.scope ?? u.email); if (sec.purged || sec.closed || sec.awayCleaned) out.push(`todo:${sec.purged}p${sec.closed}c${sec.awayCleaned}a`); } catch (e) { out.push(`todo_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
+  // {awayCleaned}a{warned}w{deleted}d`: warned and deleted count the closed copies of recurring series moved to the
+  // deletion window and deleted (rules 502-505). A failure is reported and never stops the rest of this workspace's day.
+  try {
+    const sec = await secretaryDaily(u.scope ?? u.email);
+    if (sec.purged || sec.closed || sec.awayCleaned || sec.warned || sec.deleted) out.push(`todo:${sec.purged}p${sec.closed}c${sec.awayCleaned}a${sec.warned}w${sec.deleted}d`);
+  } catch (e) { out.push(`todo_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   const brand = await getBrand(u.scope ?? u.email);
   // Signup nudge: registered but never built a brand (Enrich-style founder follow-up)
   if (!brand) {

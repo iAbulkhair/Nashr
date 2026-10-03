@@ -1,11 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { json, newUser, params, signIn } from "./helpers/session";
 import { db } from "@/lib/db";
 import { wipeAccount } from "@/lib/account";
+import { getUser, saveUser } from "@/lib/auth";
+import { saveBrands, scopeFor } from "@/lib/brands";
+import { listNotifs, seenKey } from "@/lib/notifications";
 import * as listRoute from "@/app/api/secretary/route";
 import * as itemRoute from "@/app/api/secretary/[id]/route";
-import { SEC_KEYS, purgeExpired, secretaryKeys } from "@/lib/secretary";
-import { zoneDay, type SecItem } from "@/lib/secretary-agenda";
+import { SEC_KEYS, newSecId, newSeriesId, purgeExpired, secretaryDaily, secretaryKeys, type Who } from "@/lib/secretary";
+import { SERIES_KEEP_MAX, purgeSeries, requeueSeries, seriesRows, setSeriesKeep, warnSeries } from "@/lib/secretary-series";
+import { formatWhen, zoneDay, type SecItem } from "@/lib/secretary-agenda";
+
+const sent: { to: string; subject: string; text: string }[] = [];
+vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (to: string, subject: string, text: string) => { sent.push({ to, subject, text }); return true; } }));
+import * as cronDaily from "@/app/api/cron/daily/route";
+
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 const z = "Asia/Riyadh";
 const create = (body: unknown) => listRoute.POST(json("/api/secretary", "POST", body));
@@ -131,5 +141,468 @@ describe("rule 508: account deletion removes every new key", () => {
     expect(await db.smembers(SEC_KEYS.seriesList(o.email))).toEqual([]);
     expect(await db.get(SEC_KEYS.swarn(o.email, sid))).toBeNull();
     expect(await members(SEC_KEYS.series(o.email, sid))).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Rules 502-505: the daily warning and deletion of closed copies (spec §5.2, R43, R44, R50, R54).
+
+const DAY = 864e5;
+/** 09:00 in Riyadh on a fixed day: same-day reruns stay on one local day. */
+const T = Date.parse("2026-10-05T06:00:00Z");
+const OWNER: Who = { actor: "owner", via: "web", login: "owner@test.example" };
+
+/** One closed copy of a series, stored and indexed the way a close leaves it (indexWrites): sdone unless `sdone: false`. */
+async function seedCopy(scope: string, sid: string, closedAt: number, p: Partial<SecItem> & { sdone?: boolean } = {}): Promise<SecItem> {
+  const { sdone = true, ...rest } = p;
+  const iso = new Date(closedAt).toISOString();
+  const it: SecItem = {
+    id: newSecId(), kind: "task", title: "Water the plants", description: "", result: "ok", direction: "i_owe", owedBy: "owner", owedTo: null,
+    dueAt: iso, allDay: false, snoozeUntil: null, priority: 1, critical: false, links: {}, source: "owner", notes: [], createdAt: iso, updatedAt: iso,
+    completedAt: iso, proposedDone: null, deletedAt: null, expiresAt: null, expectBy: null, lastChasedAt: null, remindAt: null, rev: 2, series: { id: sid, n: 1 }, ...rest,
+  };
+  await Promise.all([
+    db.set(SEC_KEYS.item(scope, it.id), it), db.sadd(SEC_KEYS.all(scope), it.id), db.zadd(SEC_KEYS.series(scope, sid), closedAt, it.id), db.sadd(SEC_KEYS.seriesList(scope), sid),
+    ...(sdone ? [db.zadd(SEC_KEYS.sdone(scope), closedAt, it.id)] : []),
+  ]);
+  return it;
+}
+const exists = async (scope: string, ids: string[]) => (await db.mget<SecItem>(ids.map((id) => SEC_KEYS.item(scope, id)))).map((x) => !!x);
+const scoreOf = async (key: string, id: string) => (await db.zrangeWithScores(key)).find((m) => m.member === id)?.score;
+const warnings = async (email: string) => (await listNotifs(email)).filter((n) => n.kind === "todo" && n.href.includes("?series="));
+
+describe("rule 502: the unkept copy is warned and then deleted", () => {
+  it("250 kept copies older than 90 days plus 1 unkept: the unkept one is warned, then deleted 7 or more days later", async () => {
+    const o = await login();
+    const kept = newSeriesId(), plain = newSeriesId();
+    await db.sadd(SEC_KEYS.seriesKeep(o.email), kept);
+    const old = await Promise.all(Array.from({ length: 250 }, (_, i) => seedCopy(o.email, kept, T - (200 + i) * DAY, { sdone: false })));
+    const one = await seedCopy(o.email, plain, T - 100 * DAY);
+    expect(await secretaryDaily(o.email, T)).toMatchObject({ warned: 1, deleted: 0 });
+    expect(await scoreOf(SEC_KEYS.spurge(o.email), one.id)).toBe(T + 7 * DAY);
+    expect(await warnings(o.email)).toHaveLength(1);
+    expect(await secretaryDaily(o.email, T + 7 * DAY - 1)).toMatchObject({ warned: 0, deleted: 0 });
+    expect(await exists(o.email, [one.id])).toEqual([true]);
+    expect(await secretaryDaily(o.email, T + 7 * DAY)).toMatchObject({ deleted: 1 });
+    expect(await exists(o.email, [one.id])).toEqual([false]);
+    expect((await exists(o.email, old.map((x) => x.id))).every(Boolean)).toBe(true);
+    expect(await members(SEC_KEYS.series(o.email, kept))).toHaveLength(250);
+    // The deleted copy left every index; its series has no closed copy left, so it leaves the list too.
+    for (const k of [SEC_KEYS.sdone(o.email), SEC_KEYS.spurge(o.email), SEC_KEYS.series(o.email, plain)]) expect(await members(k)).not.toContain(one.id);
+    expect((await db.smembers(SEC_KEYS.all(o.email))).includes(one.id)).toBe(false);
+    expect(await db.smembers(SEC_KEYS.seriesList(o.email))).toEqual([kept]);
+    const log = (await db.lrange(SEC_KEYS.audit(o.email), 0, -1)).map((x) => JSON.parse(x));
+    expect(log.filter((l) => l.action === "series_purge")).toEqual([expect.objectContaining({ actor: "cron", via: "cron", id: "-", diff: expect.stringMatching(/^1 /) })]);
+  });
+
+  it("sdone seeded DIRECTLY with 250 kept and ghost ids ahead of one real candidate: the candidate is still warned, and the skipped ids are removed (fails if the skip guard is deleted)", async () => {
+    const o = await login();
+    const kept = newSeriesId(), sid = newSeriesId();
+    await db.sadd(SEC_KEYS.seriesKeep(o.email), kept);
+    // 150 copies of a kept series, 60 ids with no record, 40 open records: all closed earlier than the candidate.
+    const keptIds = (await Promise.all(Array.from({ length: 150 }, (_, i) => seedCopy(o.email, kept, T - (300 - i) * DAY)))).map((x) => x.id);
+    const missing = Array.from({ length: 60 }, () => newSecId());
+    await Promise.all(missing.map((id, i) => db.zadd(SEC_KEYS.sdone(o.email), T - (150 - i) * DAY, id)));
+    const open = await Promise.all(Array.from({ length: 40 }, (_, i) => seedCopy(o.email, sid, T - (130 - i) * DAY, { completedAt: null })));
+    const candidate = await seedCopy(o.email, sid, T - 85 * DAY);
+    // Day 1: the 200-row window is all skipped ids; each one is removed as it is skipped.
+    expect(await warnSeries(o.email, T)).toBe(0);
+    expect(await members(SEC_KEYS.sdone(o.email))).toHaveLength(51);
+    // Day 2: the candidate is reached and warned.
+    expect(await warnSeries(o.email, T + DAY)).toBe(1);
+    expect(await members(SEC_KEYS.sdone(o.email))).toEqual([]);
+    expect(await members(SEC_KEYS.spurge(o.email))).toEqual([candidate.id]);
+    // Skipped never means deleted: the kept copies and the open records are all there.
+    expect((await exists(o.email, [...keptIds, ...open.map((x) => x.id)])).every(Boolean)).toBe(true);
+    expect(await members(SEC_KEYS.series(o.email, kept))).toHaveLength(150);
+  });
+
+  it("the last copy of an ended series and a restored copy of a kept series do not enter sdone", async () => {
+    const o = await login();
+    const first = await add({ title: "Twice", dueAt: inDays(1, 9), repeat: { every: "day", count: 2 } });
+    const sid = first.series!.id;
+    expect(await setSeriesKeep(o.email, sid, true, OWNER)).toMatchObject({ ok: true });
+    const a = await complete(first.id);
+    const b = await complete(a.nextId!);
+    expect(b.series).toEqual({ id: sid, n: 2 });
+    expect(b.nextId).toBeUndefined();
+    expect((await members(SEC_KEYS.series(o.email, sid))).sort()).toEqual([a.id, b.id].sort());
+    expect(await members(SEC_KEYS.sdone(o.email))).toEqual([]);
+    expect((await patch(b.id, { action: "delete" })).status).toBe(200);
+    expect((await patch(b.id, { action: "restore" })).status).toBe(200);
+    expect(await members(SEC_KEYS.sdone(o.email))).toEqual([]);
+    expect(await members(SEC_KEYS.series(o.email, sid))).toContain(b.id);
+  });
+});
+
+describe("rule 503: no copy is deleted without a warning at least 7 days earlier", () => {
+  it("after un-keep, after a missed run, and when the warning push threw", async () => {
+    // Un-keep: copies warned, then kept, then un-kept are warned again (a new notification) before any deletion.
+    const o = await login();
+    const sid = newSeriesId();
+    const copies = await Promise.all([0, 1, 2].map((i) => seedCopy(o.email, sid, T - (200 + i) * DAY)));
+    const ids = copies.map((x) => x.id);
+    expect(await warnSeries(o.email, T)).toBe(3);
+    expect(await setSeriesKeep(o.email, sid, true, OWNER)).toMatchObject({ ok: true, kept: true });
+    expect(await members(SEC_KEYS.spurge(o.email))).toEqual([]);
+    expect(await purgeSeries(o.email, T + 10 * DAY)).toBe(0);
+    expect(await setSeriesKeep(o.email, sid, false, OWNER)).toMatchObject({ ok: true, kept: false });
+    expect((await members(SEC_KEYS.sdone(o.email))).sort()).toEqual([...ids].sort());
+    expect(await members(SEC_KEYS.spurge(o.email))).toEqual([]);
+    expect(await purgeSeries(o.email, T + 30 * DAY)).toBe(0);
+    expect(await warnSeries(o.email, T + 30 * DAY)).toBe(3);
+    expect(await warnings(o.email)).toHaveLength(2);
+    for (const id of ids) expect(await scoreOf(SEC_KEYS.spurge(o.email), id)).toBe(T + 37 * DAY);
+    expect(await purgeSeries(o.email, T + 37 * DAY - 1)).toBe(0);
+    expect(await purgeSeries(o.email, T + 37 * DAY)).toBe(3);
+
+    // A missed run: copies 300 days old that were never warned are not deleted; the first warning gives them 7 days,
+    // and a purge that then misses runs deletes them late, never early.
+    const m = await login();
+    const msid = newSeriesId();
+    const late = await seedCopy(m.email, msid, T - 300 * DAY);
+    expect(await purgeSeries(m.email, T)).toBe(0);
+    expect(await purgeSeries(m.email, T + 400 * DAY)).toBe(0);
+    expect(await exists(m.email, [late.id])).toEqual([true]);
+    expect(await warnSeries(m.email, T)).toBe(1);
+    expect(await scoreOf(SEC_KEYS.spurge(m.email), late.id)).toBe(T + 7 * DAY);
+    expect(await purgeSeries(m.email, T + 6 * DAY)).toBe(0);
+    expect(await purgeSeries(m.email, T + 40 * DAY)).toBe(1);
+
+    // The push threw: nothing moves and no marker is set; the fingerprint is handed back, so a retry the same day warns.
+    const p = await login();
+    const psid = newSeriesId();
+    const c = await seedCopy(p.email, psid, T - 100 * DAY);
+    const set = db.set.bind(db);
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const spy = vi.spyOn(db, "set").mockImplementation((k, v, ttl) => (k.startsWith("notifs:") ? Promise.reject(new TypeError("bell down")) : set(k, v, ttl)));
+    expect(await warnSeries(p.email, T)).toBe(0);
+    spy.mockRestore();
+    expect(errors.mock.calls).toContainEqual(["sec series warning failed", "TypeError"]);
+    expect(await members(SEC_KEYS.sdone(p.email))).toEqual([c.id]);
+    expect(await members(SEC_KEYS.spurge(p.email))).toEqual([]);
+    expect(await db.get(SEC_KEYS.swarn(p.email, psid))).toBeNull();
+    expect(await purgeSeries(p.email, T + 100 * DAY)).toBe(0);
+    expect(await warnSeries(p.email, T + 3600e3)).toBe(1);
+    expect(await scoreOf(SEC_KEYS.spurge(p.email), c.id)).toBe(T + 3600e3 + 7 * DAY);
+  });
+
+  it("the daily step re-adds closed copies of unkept series missing from both sdone and spurge, and only those", async () => {
+    const o = await login();
+    const sid = newSeriesId(), kept = newSeriesId();
+    const lost = await seedCopy(o.email, sid, T - 50 * DAY, { sdone: false });
+    const warned = await seedCopy(o.email, sid, T - 95 * DAY, { sdone: false });
+    await db.zadd(SEC_KEYS.spurge(o.email), T + DAY, warned.id);
+    const waiting = await seedCopy(o.email, sid, T - 10 * DAY);
+    await db.sadd(SEC_KEYS.seriesKeep(o.email), kept);
+    const keptCopy = await seedCopy(o.email, kept, T - 50 * DAY, { sdone: false });
+    // A ghost in the series set (its record was purged) is dropped from the set, not queued.
+    const ghost = newSecId();
+    await db.zadd(SEC_KEYS.series(o.email, sid), T - 60 * DAY, ghost);
+    expect(await requeueSeries(o.email)).toBe(1);
+    expect(await scoreOf(SEC_KEYS.sdone(o.email), lost.id)).toBe(T - 50 * DAY);
+    expect((await members(SEC_KEYS.sdone(o.email))).sort()).toEqual([lost.id, waiting.id].sort());
+    expect(await members(SEC_KEYS.spurge(o.email))).toEqual([warned.id]);
+    expect(await members(SEC_KEYS.series(o.email, sid))).not.toContain(ghost);
+    expect(await members(SEC_KEYS.sdone(o.email))).not.toContain(keptCopy.id);
+    expect(await requeueSeries(o.email)).toBe(0);
+  });
+
+  it("setSeriesKeep: keep takes the copies out of sdone and spurge, un-keep puts them back in sdone only, the 501st kept series is keep_limit 409; seriesRows reads one series newest first", async () => {
+    const o = await login();
+    const sid = newSeriesId();
+    const a = await seedCopy(o.email, sid, T - 100 * DAY);
+    const b = await seedCopy(o.email, sid, T - 99 * DAY, { sdone: false });
+    await db.zadd(SEC_KEYS.spurge(o.email), T + DAY, b.id);
+    expect(await setSeriesKeep(o.email, sid, true, OWNER)).toEqual({ ok: true, kept: true, moved: 2 });
+    expect(await members(SEC_KEYS.sdone(o.email))).toEqual([]);
+    expect(await members(SEC_KEYS.spurge(o.email))).toEqual([]);
+    expect(await setSeriesKeep(o.email, sid, false, OWNER)).toEqual({ ok: true, kept: false, moved: 2 });
+    expect(await members(SEC_KEYS.sdone(o.email))).toEqual([a.id, b.id]);
+    expect(await members(SEC_KEYS.spurge(o.email))).toEqual([]);
+    // Un-keeping a series that is not kept changes nothing.
+    expect(await setSeriesKeep(o.email, sid, false, OWNER)).toEqual({ ok: true, kept: false, moved: 0 });
+    const log = (await db.lrange(SEC_KEYS.audit(o.email), 0, -1)).map((x) => JSON.parse(x)).reverse();
+    expect(log.map((l) => [l.action, l.id, l.login])).toEqual([["series_keep", sid, OWNER.login], ["series_unkeep", sid, OWNER.login], ["series_unkeep", sid, OWNER.login]]);
+    expect(await setSeriesKeep(o.email, "not-a-series", true, OWNER)).toMatchObject({ ok: false, error: "not_found", status: 404 });
+    // The limit: 500 kept series; one more is refused, one already kept is not.
+    const many = Array.from({ length: SERIES_KEEP_MAX }, () => newSeriesId());
+    await Promise.all(many.map((x) => db.sadd(SEC_KEYS.seriesKeep(o.email), x)));
+    expect(await setSeriesKeep(o.email, sid, true, OWNER)).toMatchObject({ ok: false, error: "keep_limit", status: 409 });
+    expect(await db.sismember(SEC_KEYS.seriesKeep(o.email), sid)).toBe(false);
+    expect(await setSeriesKeep(o.email, many[0], true, OWNER)).toMatchObject({ ok: true });
+
+    const other = await seedCopy(o.email, newSeriesId(), T - 5 * DAY);
+    const r = await seriesRows(o.email, sid, 1);
+    expect(r.total).toBe(2);
+    expect(r.items.map((x) => x.id)).toEqual([b.id]);
+    expect((await seriesRows(o.email, sid, 200)).items.map((x) => x.id)).toEqual([b.id, a.id]);
+    expect((await seriesRows(o.email, sid, 200)).items.map((x) => x.id)).not.toContain(other.id);
+    expect(await seriesRows(o.email, "../x", 200)).toEqual({ items: [], total: 0 });
+  });
+});
+
+describe("rule 504: the purge is safe", () => {
+  it("a reopen between the purge's read and its delete survives", async () => {
+    const o = await login();
+    const sid = newSeriesId();
+    const a = await seedCopy(o.email, sid, T - 100 * DAY, { sdone: false });
+    const b = await seedCopy(o.email, sid, T - 100 * DAY, { sdone: false });
+    await Promise.all([a, b].map((x) => db.zadd(SEC_KEYS.spurge(o.email), T - DAY, x.id)));
+    const read = db.zrangeByScore.bind(db);
+    vi.spyOn(db, "zrangeByScore").mockImplementationOnce(async (k, max, limit) => {
+      const r = await read(k, max, limit);
+      // After the purge read its list and before it takes the item locks: A is reopened; B is reopened and closed again.
+      expect((await patch(a.id, { action: "reopen" })).status).toBe(200);
+      expect((await patch(b.id, { action: "reopen" })).status).toBe(200);
+      expect((await patch(b.id, { action: "complete", result: "again" })).status).toBe(200);
+      return r;
+    });
+    expect(await purgeSeries(o.email, T)).toBe(0);
+    const [ra, rb] = await db.mget<SecItem>([SEC_KEYS.item(o.email, a.id), SEC_KEYS.item(o.email, b.id)]);
+    expect(ra).toMatchObject({ completedAt: null, deletedAt: null });
+    expect(rb).toMatchObject({ result: "again", deletedAt: null });
+    // B closed again: back in the warn window, not in the purge one.
+    expect(await members(SEC_KEYS.sdone(o.email))).toEqual([b.id]);
+    expect(await members(SEC_KEYS.spurge(o.email))).toEqual([]);
+  });
+
+  it("under the lock the purge reads the copy again: a later spurge score or a record no longer closed is not deleted, even with a stale index", async () => {
+    const o = await login();
+    const sid = newSeriesId();
+    const later = await seedCopy(o.email, sid, T - 100 * DAY, { sdone: false });
+    const open = await seedCopy(o.email, sid, T - 100 * DAY, { sdone: false });
+    await Promise.all([later, open].map((x) => db.zadd(SEC_KEYS.spurge(o.email), T - DAY, x.id)));
+    // The record says open (a write whose index update was lost): the windows still list it.
+    await db.set(SEC_KEYS.item(o.email, open.id), { ...open, completedAt: null });
+    const read = db.zrangeByScore.bind(db);
+    vi.spyOn(db, "zrangeByScore").mockImplementationOnce(async (k, max, limit) => {
+      const r = await read(k, max, limit);
+      // Between the read and the lock: a new warning moved this copy later.
+      await db.zadd(SEC_KEYS.spurge(o.email), T + 5 * DAY, later.id);
+      return r;
+    });
+    expect(await purgeSeries(o.email, T)).toBe(0);
+    expect(await exists(o.email, [later.id, open.id])).toEqual([true, true]);
+    expect(await scoreOf(SEC_KEYS.spurge(o.email), later.id)).toBe(T + 5 * DAY);
+    expect(await members(SEC_KEYS.spurge(o.email))).toEqual([later.id]);
+  });
+
+  it("secretaryDaily itself runs no series step for an archived brand or a suspended account", async () => {
+    const a = await newUser("seridle");
+    const at = new Date(T).toISOString();
+    await saveBrands(a.email, [{ id: "default", name: "", createdAt: at, status: "active" }, { id: "old", name: "Old", createdAt: at, status: "archived" }]);
+    const s = await newUser("seridles");
+    await saveUser({ ...(await getUser(s.email))!, suspended: true });
+    for (const scope of [scopeFor(a.email, "old"), scopeFor(a.email, "gone"), s.email]) {
+      const sid = newSeriesId();
+      const w = await seedCopy(scope, sid, T - 100 * DAY);
+      const d = await seedCopy(scope, sid, T - 100 * DAY, { sdone: false });
+      await db.zadd(SEC_KEYS.spurge(scope), T - DAY, d.id);
+      expect(await secretaryDaily(scope, T), scope).toMatchObject({ warned: 0, deleted: 0 });
+      expect(await exists(scope, [w.id, d.id]), scope).toEqual([true, true]);
+      expect(await members(SEC_KEYS.sdone(scope)), scope).toEqual([w.id]);
+    }
+    expect(await warnings(a.email)).toEqual([]);
+    expect(await warnings(s.email)).toEqual([]);
+  });
+
+  it("a copy whose series was kept after its warning, or that was restored after a delete, is not deleted", async () => {
+    const o = await login();
+    const sid = newSeriesId(), kept = newSeriesId();
+    const a = await seedCopy(o.email, kept, T - 100 * DAY, { sdone: false });
+    await db.zadd(SEC_KEYS.spurge(o.email), T - DAY, a.id);
+    await db.sadd(SEC_KEYS.seriesKeep(o.email), kept);
+    // B was warned, then deleted and restored: the restore put it back in sdone (not warned since).
+    const b = await seedCopy(o.email, sid, T - 100 * DAY, { sdone: false });
+    await db.zadd(SEC_KEYS.spurge(o.email), T - DAY, b.id);
+    expect((await patch(b.id, { action: "delete" })).status).toBe(200);
+    expect((await patch(b.id, { action: "restore" })).status).toBe(200);
+    expect(await members(SEC_KEYS.spurge(o.email))).toEqual([a.id]);
+    expect(await purgeSeries(o.email, T)).toBe(0);
+    expect(await exists(o.email, [a.id, b.id])).toEqual([true, true]);
+    expect(await members(SEC_KEYS.spurge(o.email))).toEqual([]);
+    expect(await members(SEC_KEYS.sdone(o.email))).toEqual([b.id]);
+  });
+
+  it("normal items are never purged", async () => {
+    const o = await login();
+    const plain = await complete((await add({ title: "Plain", dueAt: inDays(1) })).id);
+    expect(await members(SEC_KEYS.sdone(o.email))).toEqual([]);
+    // Even put in both windows by hand (as a bad write could), a copy with no series is never warned about or deleted.
+    await db.zadd(SEC_KEYS.sdone(o.email), T - 200 * DAY, plain.id);
+    await db.zadd(SEC_KEYS.spurge(o.email), T - DAY, plain.id);
+    expect(await warnSeries(o.email, T)).toBe(0);
+    expect(await purgeSeries(o.email, T)).toBe(0);
+    expect(await db.get(SEC_KEYS.item(o.email, plain.id))).toMatchObject({ id: plain.id, result: "ok" });
+    expect(await members(SEC_KEYS.sdone(o.email))).toEqual([]);
+    expect(await members(SEC_KEYS.spurge(o.email))).toEqual([]);
+    expect(await warnings(o.email)).toEqual([]);
+  });
+
+  it("idle brands are not warned or purged (through the cron route)", async () => {
+    vi.stubEnv("CRON_SECRET", "cron-secret-series");
+    const now = Date.now();
+    const active = await newUser("seract");
+    const archived = await newUser("serarch");
+    const archScope = scopeFor(archived.email, "old");
+    const at = new Date(now).toISOString();
+    await saveBrands(archived.email, [{ id: "default", name: "", createdAt: at, status: "active" }, { id: "old", name: "Old", createdAt: at, status: "archived" }]);
+    const susp = await newUser("sersusp");
+    await saveUser({ ...(await getUser(susp.email))!, suspended: true });
+    const seeded = await Promise.all([active.email, archScope, susp.email].map(async (scope) => {
+      const sid = newSeriesId();
+      const toWarn = await seedCopy(scope, sid, now - 100 * DAY);
+      const toDelete = await seedCopy(scope, sid, now - 100 * DAY, { sdone: false });
+      await db.zadd(SEC_KEYS.spurge(scope), now - DAY, toDelete.id);
+      return { scope, toWarn, toDelete };
+    }));
+    const res = await cronDaily.GET(new Request("https://nashr.test/api/cron/daily", { headers: { authorization: "Bearer cron-secret-series" } }));
+    expect(res.status).toBe(200);
+    const report = await res.json();
+    expect(report.results[active.email]).toContain("todo:0p0c0a1w1d");
+    expect(report.results[`idle:${archScope}`]).toBe("idle");
+    expect(report.results[`idle:${susp.email}`]).toBe("idle");
+    const [act, ...idle] = seeded;
+    expect(await exists(act.scope, [act.toWarn.id, act.toDelete.id])).toEqual([true, false]);
+    expect(await members(SEC_KEYS.spurge(act.scope))).toEqual([act.toWarn.id]);
+    for (const x of idle) {
+      expect(await exists(x.scope, [x.toWarn.id, x.toDelete.id])).toEqual([true, true]);
+      expect(await members(SEC_KEYS.sdone(x.scope))).toEqual([x.toWarn.id]);
+      expect(await members(SEC_KEYS.spurge(x.scope))).toEqual([x.toDelete.id]);
+    }
+    expect(await warnings(archived.email)).toEqual([]);
+    expect(await warnings(susp.email)).toEqual([]);
+    expect(await warnings(active.email)).toHaveLength(1);
+  });
+});
+
+describe("rule 505: the warning", () => {
+  it("names at most 5 series then 'and k more', and moves only the named ids", async () => {
+    const o = await login();
+    const sids = Array.from({ length: 7 }, () => newSeriesId());
+    const copies = await Promise.all(sids.map((sid, i) => seedCopy(o.email, sid, T - (100 - i) * DAY, { title: `Series ${i}` })));
+    expect(await warnSeries(o.email, T)).toBe(5);
+    const [w] = await warnings(o.email);
+    expect(w).toMatchObject({ kind: "todo", agent: "reem", href: `/ar/app/todo?series=${sids[0]}` });
+    for (let i = 0; i < 5; i++) expect(w.body).toContain(`«Series ${i}»`);
+    expect(w.body).not.toContain("Series 5");
+    expect(w.body).not.toContain("Series 6");
+    expect(w.body).toContain("ومهمتان متكررتان أخريان");
+    expect((await members(SEC_KEYS.spurge(o.email))).sort()).toEqual(copies.slice(0, 5).map((x) => x.id).sort());
+    expect((await members(SEC_KEYS.sdone(o.email))).sort()).toEqual(copies.slice(5).map((x) => x.id).sort());
+    const markers = await db.mget(sids.map((sid) => SEC_KEYS.swarn(o.email, sid)));
+    expect(markers.map((x) => x !== null)).toEqual([true, true, true, true, true, false, false]);
+    // The next day names the other two.
+    expect(await warnSeries(o.email, T + DAY)).toBe(2);
+    expect(await warnings(o.email)).toHaveLength(2);
+    expect(await members(SEC_KEYS.sdone(o.email))).toEqual([]);
+  });
+
+  it("a same-day rerun moves nothing; the fingerprint is the per-brand one", async () => {
+    const o = await login();
+    await seedCopy(o.email, newSeriesId(), T - 100 * DAY);
+    expect(await warnSeries(o.email, T)).toBe(1);
+    const later = await seedCopy(o.email, newSeriesId(), T - 100 * DAY);
+    expect(await warnSeries(o.email, T + 2 * 3600e3)).toBe(0);
+    expect(await members(SEC_KEYS.sdone(o.email))).toEqual([later.id]);
+    expect(await warnings(o.email)).toHaveLength(1);
+    const fp = seenKey(o.email, `todo-purge:${zoneDay(T, z)}`);
+    expect(await db.get(fp)).not.toBeNull();
+    const ttl = await db.ttl(fp);
+    expect(ttl).toBeGreaterThan(7 * 86400 - 60);
+    expect(ttl).toBeLessThanOrEqual(7 * 86400);
+    // Another brand of the same account has its own fingerprint, so its warning goes out the same day.
+    const b2 = scopeFor(o.email, "b2");
+    await seedCopy(b2, newSeriesId(), T - 100 * DAY);
+    expect(await warnSeries(b2, T + 2 * 3600e3)).toBe(1);
+    expect(await db.get(seenKey(o.email, `todo-purge:${zoneDay(T, z)}#b2`))).not.toBeNull();
+    expect(await warnings(o.email)).toHaveLength(2);
+    // The next local day names the series that waited.
+    expect(await warnSeries(o.email, T + DAY)).toBe(1);
+    expect(await members(SEC_KEYS.sdone(o.email))).toEqual([]);
+  });
+
+  it("a daily series run for 120 simulated days produces one warning notification, not one per day, and every copy is deleted at least 7 days after the warning that named its series (R44)", async () => {
+    const o = await login();
+    const sid = newSeriesId();
+    const closedAt = new Map<string, number>(), deletedAt = new Map<string, number>();
+    const warned: number[] = [];
+    for (let d = 0; d < 240; d++) {
+      const now = T + d * DAY;
+      if (d < 120) closedAt.set((await seedCopy(o.email, sid, now)).id, now);
+      const before = (await warnings(o.email)).length;
+      await warnSeries(o.email, now);
+      if ((await warnings(o.email)).length > before) warned.push(now);
+      await purgeSeries(o.email, now);
+      const ids = [...closedAt.keys()].filter((id) => !deletedAt.has(id));
+      const live = await exists(o.email, ids);
+      ids.forEach((id, i) => { if (!live[i]) deletedAt.set(id, now); });
+    }
+    expect(deletedAt.size).toBe(120);
+    for (const [id, del] of deletedAt) {
+      expect(del).toBeGreaterThanOrEqual(closedAt.get(id)! + 90 * DAY);
+      expect(warned.some((w) => w <= del - 7 * DAY)).toBe(true);
+    }
+    // One warning per 30-day marker: the first in its first 30 days, about monthly after, never one per day.
+    expect(warned[0]).toBe(T + 83 * DAY);
+    expect(warned.filter((w) => w < warned[0] + 30 * DAY)).toHaveLength(1);
+    expect(warned).toEqual([83, 113, 143, 173].map((d) => T + d * DAY));
+  });
+
+  it("when the 30-day marker lapses the series is named again", async () => {
+    const o = await login();
+    const sid = newSeriesId();
+    await seedCopy(o.email, sid, T - 84 * DAY);
+    expect(await warnSeries(o.email, T)).toBe(1);
+    expect(await db.get(SEC_KEYS.swarn(o.email, sid))).toBe(T);
+    // 29 days later the marker holds: a copy reaching the window moves silently, at least 7 days after the warning.
+    const quiet = await seedCopy(o.email, sid, T + 29 * DAY - 84 * DAY);
+    expect(await warnSeries(o.email, T + 29 * DAY)).toBe(1);
+    expect(await warnings(o.email)).toHaveLength(1);
+    expect(await scoreOf(SEC_KEYS.spurge(o.email), quiet.id)).toBe(Math.max(T + 29 * DAY - 84 * DAY + 90 * DAY, T + 7 * DAY));
+    // 30 days after the warning it has lapsed: named again.
+    const named = await seedCopy(o.email, sid, T + 30 * DAY - 84 * DAY);
+    expect(await warnSeries(o.email, T + 30 * DAY)).toBe(1);
+    expect(await warnings(o.email)).toHaveLength(2);
+    expect(await scoreOf(SEC_KEYS.spurge(o.email), named.id)).toBe(T + 37 * DAY);
+    expect(await db.get(SEC_KEYS.swarn(o.email, sid))).toBe(T + 30 * DAY);
+  });
+
+  it("text uses arCount and Latin digits", async () => {
+    sent.length = 0;
+    const o = await login();
+    const counts = [1, 2, 3, 11];
+    const sids = counts.map(() => newSeriesId());
+    await Promise.all(sids.flatMap((sid, i) => Array.from({ length: counts[i] }, (_, k) => seedCopy(o.email, sid, T - (100 - i) * DAY - k * 3600e3, { title: `T${i}` }))));
+    expect(await warnSeries(o.email, T)).toBe(17);
+    const [w] = await warnings(o.email);
+    const date = formatWhen(new Date(T + 7 * DAY).toISOString(), true, "ar", T, z);
+    expect(w.body).toBe([
+      `فيه نسخة واحدة من «T0» بتنحذف ابتداءً من ${date}.`,
+      `فيه نسختين من «T1» بتنحذف ابتداءً من ${date}.`,
+      `فيه 3 نسخ من «T2» بتنحذف ابتداءً من ${date}.`,
+      `فيه 11 نسخة من «T3» بتنحذف ابتداءً من ${date}.`,
+      "تقدر تحتفظ بالسجل أو تنزّله CSV",
+    ].join("\n"));
+    expect(w.body + w.title).not.toMatch(/[\u0660-\u0669\u06f0-\u06f9]/);
+    expect(date).toMatch(/\d/);
+    // The preference is "all" by default: one email, with the link.
+    expect(sent.filter((m) => m.to === o.email)).toEqual([expect.objectContaining({ subject: w.title, text: expect.stringContaining(`/ar/app/todo?series=${sids[0]}`) })]);
+
+    // English, and the preference "none": the notification, and no email.
+    const e = await login();
+    await saveUser({ ...(await getUser(e.email))!, lang: "en" });
+    await db.set(`profile:${e.email}`, { emails: "none" });
+    const esid = newSeriesId();
+    await Promise.all([0, 1].map((k) => seedCopy(e.email, esid, T - 100 * DAY - k * 3600e3, { title: "Rent" })));
+    const one = newSeriesId();
+    await seedCopy(e.email, one, T - 99 * DAY, { title: "Fees" });
+    expect(await warnSeries(e.email, T)).toBe(3);
+    const [we] = await warnings(e.email);
+    const en = formatWhen(new Date(T + 7 * DAY).toISOString(), true, "en", T, z);
+    expect(we.href).toBe(`/en/app/todo?series=${esid}`);
+    expect(we.body).toBe([`2 closed copies of "Rent" will be deleted from ${en}.`, `1 closed copy of "Fees" will be deleted from ${en}.`, "Keep the history or download it as CSV"].join("\n"));
+    expect(sent.filter((m) => m.to === e.email)).toEqual([]);
   });
 });
