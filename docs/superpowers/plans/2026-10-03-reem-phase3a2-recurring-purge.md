@@ -54,7 +54,7 @@
 
 ## Rulings (amend the spec; added to the PR description as R32-R54)
 
-R32-R54 come from comparing the spec with the code at `ad6f1b6`. R48-R54 come from the adversarial review of this plan (2026-10-03) and the founder's answers to it. Visible to the customer: R34, R36, R37, R40, R44, R49, R50, R53. The rest are internal.
+R32-R47 come from comparing the spec with the code at `ad6f1b6`. R48-R54 come from the adversarial review of this plan (2026-10-03) and the founder's answers to it. Visible to the customer: R34, R36, R37, R40, R44, R49, R50, R53. The rest are internal.
 
 - **R32 Reopen deletes the next copy without `changeItem`.** `changeItem` refuses `delete` to anyone but the web owner and always audits the action name. A private `deleteNextCopy` takes the next copy's lock and deletes it with audit `series_reopen`, actor `rule`. `OWNER_ONLY` and `isOwner` are not widened.
 - **R33 One writer per spawn.** The new copy is written with `get`, then `set` only if absent, under the closed copy's lock. Only a spawn of the same closed id knows the claimed id, and it holds that lock. The claim itself is `setNx` with the 2-day TTL.
