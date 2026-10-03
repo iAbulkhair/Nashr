@@ -9,6 +9,7 @@ import {
 import { SEC_KEYS, agendaFor, backFingerprint, cleanLine, createItem, nextWeekStart, overdueAlertFingerprint, secretaryKeys, snoozePreset } from "@/lib/secretary";
 import { runTool, system } from "@/lib/chat";
 import { appDict } from "@/lib/app-i18n";
+import { AGENT_PAGES } from "@/lib/site";
 import { HELP } from "@/lib/help";
 import { CHANGELOG } from "@/lib/changelog";
 import { db } from "@/lib/db";
@@ -1242,8 +1243,11 @@ describe("rule 488: Reem's playbook proposes an absence only from the owner's ow
     expect(reem).toContain("There is no alert at the due time itself: the item shows on the My to-dos page and in the morning brief, and once it falls behind, in an in-app alert that day and 1, 3 and 7 days later. For what a contact owes, those are working days: no such alert comes on a weekend, at Eid, on an official holiday or while the contact is away; the owner's own items and what an agent owes alert on any day.");
     expect(appDict.en.todo.note).toContain("an in-app alert for each overdue item on the day it falls behind and 1, 3 and 7 days later; for what someone outside the team owes you those are working days, so no such alert comes on a weekend, at Eid or on an official holiday, while your own items and what the team's agents owe you alert on any day.");
     expect(appDict.ar.todo.note).toContain("مع تنبيه داخل التطبيق لكل مهمة متأخرة يوم تأخرها ثم بعد يوم و3 و7 أيام؛ وما يدين لك به شخص من خارج الفريق تُحسب أيامه أيام عمل، فلا يصلك تنبيهه في عطلة نهاية الأسبوع أو العيد أو إجازة رسمية، أما مهامك وما يدين لك به وكلاء الفريق فتنبيهها في أي يوم.");
+    // The public Reem page says the same, and names no brief time that holds only for some zones (09:00 in Dubai and Muscat).
+    const site = (l: "ar" | "en") => AGENT_PAGES[l].reem.outcomes.map((o) => o.d).join(" ");
+    for (const l of ["ar", "en"] as const) expect(site(l), `site ${l}`).not.toMatch(/0[89]:00/);
     // No text names the alert days without the working-days rule after them.
-    for (const [where, text] of [["prompt", reem], ["en", appDict.en.todo.note], ["ar", appDict.ar.todo.note]]) {
+    for (const [where, text] of [["prompt", reem], ["en", appDict.en.todo.note], ["ar", appDict.ar.todo.note], ["site en", site("en")], ["site ar", site("ar")]]) {
       const i = text.search(/1, 3 and 7|و3 و7/);
       expect(i, where).toBeGreaterThan(-1);
       expect(text.slice(i, i + 160), where).toMatch(/working days|أيام عمل/);
