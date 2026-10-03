@@ -3,17 +3,19 @@ import { randomBytes } from "crypto";
 import { readFileSync } from "node:fs";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { adminSignIn, jar, json, newMember, newUser, signIn } from "./helpers/session";
+import { adminSignIn, jar, json, newMember, newUser, params, signIn } from "./helpers/session";
 import { getUser, saveUser, type Plan } from "@/lib/auth";
-import { charge, monthKey, refund, type AgentCharge } from "@/lib/credits";
+import { addTopup, charge, monthKey, refund, type AgentCharge } from "@/lib/credits";
 import { db } from "@/lib/db";
-import { commissionAfterRefund, commissionSar, ksaDay, type LedgerRow } from "@/lib/partner-rules";
+import { PARTNER_TERMS_VERSION, commissionAfterRefund, commissionSar, ksaDay, type LedgerRow } from "@/lib/partner-rules";
+import { PARTNER_TERMS } from "@/lib/partner-terms";
 import { addPaidTopup, approvePartner, recordPayment, refundPaidTopup, voidPaidTopup, type Payment } from "@/lib/partners";
 import { lotsOf, monthlyCredits, openLots, parseTopupRefund, refundUnused, returnCredits, topupRevenueSar, unusedRefundSar, type TopupLot } from "@/lib/topups";
 import { overview } from "@/lib/admin-stats";
 import { LEGAL } from "@/lib/legal";
 import * as topupsRoute from "@/app/api/admin/topups/route";
 import * as profileRoute from "@/app/api/profile/route";
+import * as adminUser from "@/app/api/admin/users/[email]/route";
 import BillingPage from "@/app/[lang]/app/billing/page";
 
 /**
@@ -270,17 +272,6 @@ describe("the refund is recorded on the pack's payment and the commission drops 
     expect(Math.round((after - before) * 100) / 100, "a full refund leaves nothing").toBe(0);
   });
 
-  it("a pack whose payment was never recorded is refunded on the pack alone, and a retried Add top-up records no payment", async () => {
-    const email = await paid(0);
-    const id = payId();
-    const l = await pack(email, 100, 100, { paymentId: id });
-    await db.hdel(`payments:${email}`, id);
-    const r = await refundPaidTopup(email, l.id, ask(100), "key");
-    expect(r.ok && r.payment).toBeNull();
-    const again = await addPaidTopup(email, { credits: 100, paidSar: 100, paidOn: day(), ref: "TRX-PACK", paymentId: id }, "key");
-    expect(again).toMatchObject({ ok: true, already: true, payment: null });
-    expect(await payments(email)).toEqual({});
-  });
 });
 
 describe("POST /api/admin/topups refund: founder only, checked, logged without references (rule 463)", () => {
@@ -427,5 +418,105 @@ describe("the owner is told unused top-up credits can be refunded; a refunded pa
     expect(body.user.credits).toBe(110);
     expect(body.user.topups).toEqual([{ credits: 100, left: 100, expiresAt: kept.expiresAt }]);
     expect(lotsOf((await getUser(email))!).map((l) => l.id).sort(), "the founder's record keeps both").toEqual([kept.id, gone.id].sort());
+  });
+});
+
+describe("a refund that stopped halfway can be finished, and a pack's missing payment is recorded with its refund (rule 465)", () => {
+  beforeEach(async () => { jar().clear(); await adminSignIn(); });
+  const detail = async (email: string) =>
+    (await (await adminUser.GET(json("/api/admin/users/x", "GET"), params({ email: encodeURIComponent(email) }))).json()) as { unfinishedRefunds: string[]; user: { topups: TopupLot[] } };
+  /** A referred customer's 300-credit pack, 200 credits spent, whose refund of the 100 left stopped after the credits left. */
+  async function stopped(): Promise<{ customer: string; partner: string; lot: TopupLot }> {
+    const { customer, partner } = await referred(1);
+    const lot = await pack(customer, 300);
+    ok(await charge(customer, 200, meta(customer)));
+    const u = (await getUser(customer))!;
+    expect(refundUnused(u, lot.id, { expected: 100, on: day(), ref: "RF-STOP", by: "key", id: rfId() }).ok).toBe(true);
+    await saveUser(u);
+    return { customer, partner, lot };
+  }
+
+  it("the console's actual request (no credits, day or reference) finishes it: the payment carries the refund, the commission drops once", async () => {
+    const { customer, partner, lot } = await stopped();
+    expect((await payments(customer))[lot.paymentId!].commission, "the full commission before it is finished").toEqual({ partner, sar: 45 });
+    expect((await detail(customer)).unfinishedRefunds, "the console is told which pack to finish").toEqual([lot.id]);
+    // Exactly what AdminConsole's `finishRefund` posts.
+    const body = { email: customer, action: "refund", id: lot.id, finish: true };
+    const res = await post(body);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, completed: true, credits: 0, refunded: { credits: 100, sar: 100 }, payment: { commission: { sar: 30 }, refund: { credits: 100, sar: 100, reference: "RF-STOP" } } });
+    expect(JSON.parse((await db.lrange("admin:log", 0, 0))[0]).what).toBe(`topup_refund:300 removed:100 sar:100 payment:${lot.paymentId} commission:45->30 completed`);
+    expect((await ledger(partner)).filter((r) => r.kind === "commission" && !r.voidedAt)).toMatchObject([{ sar: 30, baseSar: 200, refundSar: 100 }]);
+    expect((await detail(customer)).unfinishedRefunds).toEqual([]);
+    const logged = (await db.lrange("admin:log", 0, -1)).length;
+    const again = await post(body);
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({ ok: true, already: true, completed: false });
+    expect((await db.lrange("admin:log", 0, -1)).length, "nothing to do is not logged").toBe(logged);
+    expect((await getUser(customer))!.credits, "nothing refunded twice").toBe(0);
+  });
+
+  it("finish on a pack never refunded is 409 not_refunded and changes nothing; the console offers it only on an unfinished refund", async () => {
+    const email = await paid(0);
+    const l = await pack(email, 100);
+    const res = await post({ email, action: "refund", id: l.id, finish: true });
+    expect([res.status, ((await res.json()) as { error: string }).error]).toEqual([409, "not_refunded"]);
+    expect((await lotOf(email, l.id))!).toMatchObject({ left: 100 });
+    expect((await lotOf(email, l.id))!.refund).toBeUndefined();
+    const src = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
+    expect(src).toContain('body: JSON.stringify({ email: u.email, action: "refund", id: l.id, finish: true })');
+    expect(src).toContain("sel.unfinishedRefunds?.includes(l.id) && ");
+    expect(src).toContain('finishRefund: "Finish refund"');
+    expect(src).toContain('finishRefund: "إكمال الاسترداد"');
+  });
+
+  it("any later payment on the account copies the pack's refund onto its payment, so the full commission never stands", async () => {
+    const { customer, partner, lot } = await stopped();
+    const plan = await recordPayment(customer, { id: payId(), amountSar: 299, plan: "starter", date: day() }, "key");
+    expect(plan.ok).toBe(true);
+    expect((await payments(customer))[lot.paymentId!]).toMatchObject({ commission: { partner, sar: 30 }, refund: { credits: 100, sar: 100, date: day(), reference: "RF-STOP" } });
+    expect((await detail(customer)).unfinishedRefunds).toEqual([]);
+  });
+
+  it("an Add top-up that stopped before its payment: the refund records that payment with the refund, and the retried add finds it", async () => {
+    const { customer, partner } = await referred(1);
+    const id = payId();
+    // "Add top-up" stopped after the pack and before its payment.
+    const added = await addTopup(customer, { credits: 300, paidSar: 300, paidOn: day(), ref: "TRX-STOP", by: "key", paymentId: id });
+    expect(added.ok).toBe(true);
+    const lot = (added as { lot: TopupLot }).lot;
+    expect(await payments(customer)).toEqual({});
+    ok(await charge(customer, 200, meta(customer)));
+    const r = await refundPaidTopup(customer, lot.id, ask(100), "key");
+    expect(r).toMatchObject({ ok: true, refunded: { credits: 100, sar: 100 }, payment: { id, amountSar: 300, date: day(), topup: { lot: lot.id, credits: 300 }, commission: { partner, sar: 30 }, refund: { credits: 100, sar: 100 } } });
+    expect((await ledger(partner)).filter((x) => x.kind === "commission" && !x.voidedAt)).toMatchObject([{ id, sar: 30, baseSar: 200 }]);
+    const again = await addPaidTopup(customer, { credits: 300, paidSar: 300, paidOn: day(), ref: "TRX-STOP", paymentId: id }, "key");
+    expect(again).toMatchObject({ ok: true, already: true, payment: { id, commission: { sar: 30 }, refund: { sar: 100 } } });
+    expect(Object.keys(await payments(customer))).toEqual([id]);
+    expect((await getUser(customer))!.credits).toBe(0);
+  });
+
+  it("on an account no longer on a paid plan, a pack with a missing payment is refused (409 payment_missing) with nothing changed", async () => {
+    const email = await paid(0);
+    const added = await addTopup(email, { credits: 100, paidSar: 100, paidOn: day(), ref: "TRX", by: "key", paymentId: payId() });
+    expect(added.ok).toBe(true);
+    const lot = (added as { lot: TopupLot }).lot;
+    await saveUser({ ...(await getUser(email))!, plan: "trial" });
+    const res = await post({ email, action: "refund", id: lot.id, credits: 100, on: day(), ref: "RF" });
+    expect([res.status, ((await res.json()) as { error: string }).error]).toEqual([409, "payment_missing"]);
+    expect((await lotOf(email, lot.id))!).toMatchObject({ left: 100 });
+    expect(await payments(email)).toEqual({});
+  });
+});
+
+describe("the partner terms say a partly refunded payment's commission is reduced in proportion (rule 466)", () => {
+  it("both languages, at the new version", () => {
+    expect(PARTNER_TERMS_VERSION).toBe("2026-10-02");
+    const en = PARTNER_TERMS.en.sections.find((s) => s.id === "payouts")!.p.join(" ");
+    const ar = PARTNER_TERMS.ar.sections.find((s) => s.id === "payouts")!.p.join(" ");
+    expect(en).toContain("Commission on a refunded or voided payment is cancelled; when only part of a payment is refunded, its commission is reduced in proportion to the amount refunded.");
+    expect(ar).toContain("إذا استُردّت دفعة كاملةً أو أُلغيت، تُلغى عمولتها؛ وإذا استُرد جزء منها، تُخفَّض عمولتها بنسبة المبلغ المسترد.");
+    // What the terms say is what `settle` pays: commission × (paid − refunded) / paid.
+    expect(commissionAfterRefund(300, 100)).toBe(commissionSar(300) - commissionSar(100));
   });
 });

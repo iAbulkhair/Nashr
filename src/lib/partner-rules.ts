@@ -32,7 +32,7 @@ export const NEW_TERMS_FROM = "2026-10-01";
  * The version of the public programme terms (/{lang}/affiliates/terms, "last updated"). An application stores the
  * version its applicant agreed to (rule 414); change it whenever the terms page changes.
  */
-export const PARTNER_TERMS_VERSION = "2026-10-01";
+export const PARTNER_TERMS_VERSION = "2026-10-02";
 /** The early-partner offer can be used until the end of this many Riyadh days after the trial's last day (rule 410). */
 export const EARLY_OFFER_DAYS = 7;
 /** The first-party cookie a partner link sets (httpOnly, 30 days), `CODE.<click ms>`. Never the credits referral's `?ref=`. */

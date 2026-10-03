@@ -1211,10 +1211,10 @@ describe("rule 412: Thakeen bears the taxes: payouts record VAT on top and withh
 
 describe("rule 413: the public programme terms, in Arabic and English, linked from /affiliates and the partner page", () => {
   it("states each of the founder's points with the last-updated date", async () => {
-    expect(PARTNER_TERMS_VERSION).toBe("2026-10-01");
+    expect(PARTNER_TERMS_VERSION).toBe("2026-10-02");
     const en = await html(PartnerTermsPage, "en");
     for (const t of [
-      "Partner programme terms", "Last updated 2026-10-01", "18 or older", "One partner account per person", "A bank account (IBAN) in your name",
+      "Partner programme terms", "Last updated 2026-10-02", "18 or older", "One partner account per person", "A bank account (IBAN) in your name",
       `first ${COMMISSION_MONTHS} months of each customer you refer`, `within ${ATTRIBUTION_DAYS} days of using your link or code`,
       `${FIRST_MONTH_DISCOUNT_PCT}% off their first month`, "does not combine with other discounts", `payable balance reaches SAR ${PAYOUT_MIN_SAR}`,
       "Commission on a refunded or voided payment is cancelled", "Thakeen bears VAT on the commission", "withholding tax where it applies",
@@ -1224,7 +1224,7 @@ describe("rule 413: the public programme terms, in Arabic and English, linked fr
     ]) expect(en, t).toContain(t);
     const ar = await html(PartnerTermsPage, "ar");
     for (const t of [
-      "شروط برنامج الشركاء", "آخر تحديث: 2026-10-01", "18 سنة أو أكثر", "حساب شريك واحد لكل شخص", "حساب بنكي (آيبان) باسمك", `خلال أول ${COMMISSION_MONTHS} أشهر`,
+      "شروط برنامج الشركاء", "آخر تحديث: 2026-10-02", "18 سنة أو أكثر", "حساب شريك واحد لكل شخص", "حساب بنكي (آيبان) باسمك", `خلال أول ${COMMISSION_MONTHS} أشهر`,
       `خلال ${ATTRIBUTION_DAYS} يوماً`, `خصم ${FIRST_MONTH_DISCOUNT_PCT}% على شهره الأول`, "لا يجتمع مع خصومات أخرى", `رصيدك المستحق ${PAYOUT_MIN_SAR} ريال`,
       "تُلغى عمولتها", "يتحمّل ذكين ضريبة القيمة المضافة", "ضريبة الاستقطاع حيث تنطبق", "ضريبة الدخل الخاصة بك", "إحالة نفسك أو فريقك",
       "«ذكين» أو «Thakeen»", "الرسائل المزعجة", "الوعد بنتائج أو خصومات غير موجودة", "تقديم نفسك على أنك ذكين", "شراكة مدفوعة", "«موثوق»",
