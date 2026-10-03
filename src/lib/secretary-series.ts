@@ -125,7 +125,8 @@ export async function warnSeries(scope: string, now = Date.now()): Promise<numbe
     await Promise.all(rowsN.map((r) => db.zrem(SEC_KEYS.sdone(scope), r.id)));
     moved += rowsN.length;
     try {
-      const pref = ((await db.get<{ emails?: string }>(`profile:${scope}`)) ?? (await db.get<{ emails?: string }>(`profile:${email}`)) ?? {}).emails ?? "all";
+      const [brandProfile, accountProfile] = await Promise.all([db.get<{ emails?: string }>(`profile:${scope}`), db.get<{ emails?: string }>(`profile:${email}`)]);
+      const pref = brandProfile?.emails ?? accountProfile?.emails ?? "all";
       if (pref !== "none") await sendEmail(email, title, `${text.body}\n\n${appOrigin()}${href}`);
     } catch (e) {
       console.error("sec series warning email failed", e instanceof Error ? e.name : "error");

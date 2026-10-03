@@ -794,6 +794,15 @@ describe("rule 507: the CSV export", () => {
     expect(t3).toContain(`"${o.email}"`);
     expect(await (await exportCall(sid)).text()).toContain(`"'=HYPERLINK(1)"`);
   });
+  it("due and closed at are written in the brand's zone, an all-day copy as its local day, and an auto-closed copy as text", async () => {
+    await login();
+    const first = await add({ title: "Daily", dueAt: inDays(1, 0), repeat: { every: "day" } });
+    const sid = (await complete(first.id)).series!.id;
+    const csv = await (await exportCall(sid)).text();
+    const row = csv.split("\r\n")[1];
+    expect(row).not.toMatch(/T\d\d:\d\d:\d\d\.\d{3}Z/);
+    expect(row).toMatch(/"\d{4}-\d\d-\d\d( \d\d:\d\d)?","\d{4}-\d\d-\d\d \d\d:\d\d"/);
+  });
   it("only that series' set is read, and another brand's or an unknown id gives 404", async () => {
     const o = await login();
     const a = await complete((await recurring("A")).id);
