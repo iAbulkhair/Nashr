@@ -92,6 +92,8 @@ type SecCalendar = {
 - **Eid moves and per-year corrections.** These go through `hijriFix` and `holidays`:
   - Moving Eid by a day is a `hijriFix.shawwal1` or `dhulhijja1` change. All Hijri dates of that month move with it.
   - Adding or removing a single day is an `add` or `remove` entry for that day.
+- **Amended 2026-10-03 (ruling R8, as built):** stale values are dropped on save, not refused, so settings read from a GET and saved back unchanged still save: a `hijriFix` year before the current Hijri year, and a dated `add` or `remove` value ("YYYY-MM-DD", "H-YYYY-MM-DD") before today-30, the calendar's first day (today-14 until ruling R17). Only a year after the next Hijri year is `bad_year`. The calendar ignores such values too.
+- **Amended 2026-10-03 (ruling R26, as built): the Saudi Eid al-Fitr start.** "The day after 29 Ramadan" is the day before the effective 1 Shawwal when Ramadan, counted from its Umm al-Qura start to that 1 Shawwal, ran 30 days or more, else the effective 1 Shawwal; the UAE's Eid al-Fitr, which adds 30 Ramadan in a 30-day month, starts the same way. Without a correction this is what it always was. With Eid announced a day after a 30-day Umm al-Qura Ramadan, the holiday starts a day later too; after a 29-day one it does not move, because the law anchors it to 29 Ramadan. No corrected Ramadan runs past 30 days: when the corrections would make it 31, its start moves a day later instead. The Working days panel shows each Eid's days off, and tells a Saudi brand why Eid al-Fitr's may not move.
 - **What the Working days panel offers** (section 1.4): "Eid starts a day later this year" and "add a day for this year only".
 - **The calendar is computed** (section 1.3) from the zone default, plus the brand's settings, plus the country table (section 1.2).
 
@@ -121,7 +123,7 @@ Here "1 Shawwal" and "1 Dhu al-Hijjah" mean the effective dates, after any `hijr
 
 | Country | Eid al-Fitr | Eid al-Adha | Source |
 |---|---|---|---|
-| SA | 4 days starting the day after 29 Ramadan | 9-12 Dhu al-Hijjah (Arafah + 3) | Labour Law executive regulations art. 24 (HRSD) |
+| SA | 4 days starting the day after 29 Ramadan (read as ruling R26 in §1.1) | 9-12 Dhu al-Hijjah (Arafah + 3) | Labour Law executive regulations art. 24 (HRSD) |
 | AE | 1-3 Shawwal, plus 30 Ramadan when the month has 30 days | 9 (Arafah), 10-12 | Cabinet Resolution 27/2024 (u.ae) |
 | OM | 29 Ramadan to 3 Shawwal | 9-12 | Royal Decree 88/2022 |
 | KW | 1-3 Shawwal | 9 (Arafah), 10-12 | Law 6/2010 art. 68 |
@@ -149,6 +151,8 @@ Here "1 Shawwal" and "1 Dhu al-Hijjah" mean the effective dates, after any `hijr
 | BH, QA, OM | The next working day is quiet |
 | AE, KW | None |
 
+**Amended 2026-10-03 (rulings R4 and R4a, as built):** `COUNTRY_CAL` in `src/lib/secretary-calendar.ts` holds the values as checked against each cited source on 2026-10-02, and the source won where it differed from the tables above: Saudi Arabia also compensates Eid days that fall on the weekly rest (an Eid's days in lieu go after it; a one-day holiday's to the nearer side of the weekend), so every Saudi Eid has days in lieu; Bahrain's private sector has no Arafah day (Eid al-Adha 10-12) and compensates a Friday, and a holiday on another holiday, but not a Saturday; Oman compensates an Eid only when its first day (1 Shawwal or 10 Dhu al-Hijjah) is a Friday, and another holiday once when it has weekend days; Qatar's "working days" put a weekend day, and a holiday on another holiday, on the next working day. Each row's `source` says what was read and when.
+
 **Calendar for every country:** Umm al-Qura, corrected per year by `hijriFix`.
 
 ### 1.3 Computing quiet days (server only)
@@ -169,7 +173,7 @@ type CalData = {
   zone: Zone;
   weekend: number[];                       // effective
   weekStart: number;                       // the day after the last weekend day; Sunday when there is none
-  quiet: Record<string, QuietWhy>;         // non-weekend quiet local days, today-14 … today+400
+  quiet: Record<string, QuietWhy>;         // non-weekend quiet local days, today-30 … today+400 (amended 2026-10-03, ruling R17: 14 before)
   ramadan: string[];                       // local days of Ramadan (effective, with hijriFix), same window
   ramadanHours: { from: string; to: string }[]; // effective
   briefAt: { hh: number; mm: number };     // 08:00 at UTC+3, 09:00 at UTC+4 (DAILY_CRON_UTC_HOUR)
@@ -189,7 +193,7 @@ type CalData = {
 | PATCH route | Reads it with `zoneFor` and passes it to `parseOwnerChange(b, now, z, cal)`, then to `snoozePreset` and `nextWeekStart`. |
 | `chat()` | Adds `db.get(sec:cal)` to its existing `Promise.all`. `system()` passes the effective weekend to `nowLine`, which names the week start. |
 
-`weekStart(z)` is replaced by `weekStart(weekend: number[]): number`. `nextWeekStart` and the `nextweek` snooze use it. Snooze presets do not skip Eid: they are the owner's own times.
+`weekStart(z)` is replaced by `weekStart(weekend: number[]): number`. `nextWeekStart` and the `nextweek` snooze use it. **Amended 2026-10-03 (as built):** the new function is `weekStartDay(weekend: readonly number[]): number` in `zones.ts`, and `weekStart(z)` stays for the zone's own default weekend; `CalData.weekStart` carries the brand's. Snooze presets do not skip Eid: they are the owner's own times.
 
 ### 1.5 Route and page
 
@@ -198,6 +202,7 @@ type CalData = {
   - Returns `{ calendar, effective, upcoming }`:
     - `effective` is the summary of `CalData`;
     - `upcoming` is the next 12 months of quiet days, each with its reason and name, plus the next Ramadan.
+  - **Amended 2026-10-03 (rulings R13 and R23, as built):** the answer is `{ ok, calendar, effective, upcoming, eids }`. `calendar` is null when nothing is saved or the stored value is not settings the calendar can be built from (the defaults apply). `effective` is `{ country, zone, weekend, defaultWeekend, weekStart, ramadanHours }`, `defaultWeekend` being the zone's own so the page can mark the country default. `eids` is this and next Hijri year's Eid al-Fitr and Eid al-Adha, each with Umm al-Qura's month start, the one in force, the `hijriFix` value each "a day earlier / later" button saves, the holiday's name and its days off. PUT answers the same for the new settings.
 - **`PUT /api/secretary/calendar`**
   - Access: `brand.write` (admin).
   - Validation: field by field; any other field is refused.
@@ -269,6 +274,8 @@ One pure rule lives in `secretary-agenda.ts`, with its data passed in:
 - they-owe entries in `chase`, dated or not;
 - on a Ramadan day, they-owe entries in `waiting` with `moment.why === "ramadan"` whose `at` falls today.
 
+**Amended 2026-10-03 (rulings R15, R16 and R18, as built):** every `waiting` entry is passed, so the marker of a step that only holds today can be set again (7 days, never a claim) and no step is sent twice across a long Eid; of them only a debt held for Ramadan hours later today is sent, whatever moved its moment there (Ramadan's off-hours, or the brief time after an absence that ended in Ramadan). Items owed by an agent count their steps in calendar days from the anchor and alert any day, like the owner's own.
+
 **Steps.**
 - Owner items count steps from `dueAt`, as today.
 - Items owed by others count the alert steps (0, 1, 3, 7) in **working days** from the local day of `moment.anchor`. Quiet days do not count, so no step is lost.
@@ -306,19 +313,20 @@ The same function looks up an item's `owedBy`. «أحمد», «احمد» and «
 - **Writes.** PUT and DELETE run under `withLock(scope, "away")`, both with rate `sec:write:{email}`.
 - **DELETE** ends the entry: it sets `until` to yesterday and keeps it for the "back" alert.
 - **Daily clean-up.** `secretaryDaily` removes fields whose `until` is more than 7 days past, in one round (`Promise.all` of `db.hdel`, or a new `Store.hdelMany`). It writes one `away_clean` audit line.
+- **Amended 2026-10-03 (rulings R19 and R21, as built):** ended entries are kept 30 days (`AWAY_KEEP_DAYS`), not 7, before the clean-up removes them; the "back" alert window stays 7 days. Otherwise the clean-up on day 8 would put chase moments back where the absence had moved them and send their steps again. Because ended entries count toward the 200 cap for those 30 days, `DELETE` takes `{ label, remove? }`: `{ label }` ends a running absence and is idempotent (an entry that has already ended stays as it is, so a double click on "End now" never loses the back alert), and `{ label, remove: true }` deletes the field (HDEL), ended or not.
 - **Audit.** Every write and end appends an `away` or `away_end` line to `sec:audit`, with the login, the label and the date.
 
 ### 3.2 Who sets it
 
 - **`GET /api/secretary/away`**
   - Access: `read`, rate `sec:read`.
-  - Returns the list, with ended entries (last 7 days) marked.
+  - Returns the list, with ended entries (last 7 days) marked. **Amended 2026-10-03 (ruling R20, as built):** it returns every stored entry, ended ones marked `ended: true`, since under ruling R19 they count toward the cap for 30 days and the owner must see them to remove them.
 - **`PUT /api/secretary/away`** `{ label, until, note? }`
   - Access: `todo.write`.
   - Creates the entry or replaces it.
 - **`DELETE /api/secretary/away`** `{ label }`
   - Access: `todo.write`.
-  - Ends the entry now.
+  - Ends the entry now. **Amended 2026-10-03 (ruling R21):** `{ label, remove: true }` deletes it instead (§3.1).
 - **Chat: `contact_away { name, until | clear: true }` saves nothing.**
   - It returns a card under Reem's reply, collected the way `update_brand`'s offers card is (`src/lib/brand-proposals.ts` pattern).
   - The card shows the name as typed, the contact it matches, the date, and the number of open items affected.
@@ -525,6 +533,7 @@ So a copy is always deleted at least 7 days after a warning that named it. A fai
 
 `secretaryKeys` adds:
 - `sec:cal:{scope}`, `sec:away:{scope}`;
+- (amended 2026-10-03, as built in A1) every `secawayprop:{scope}:{id}` and `secawayprop-done:{scope}:{id}` named in `secawayprops:{scope}`, and that index: Reem's away proposals and their outcomes;
 - `sec:sdone:{scope}`, `sec:spurge:{scope}`, `sec:serieskeep:{scope}`, `sec:serieslist:{scope}`;
 - every `sec:series:{scope}:{id}` named in `sec:serieslist`;
 - `sec:spawn:{scope}:{id}` for every id in `sec:all`.
@@ -583,7 +592,7 @@ All dates below are rechecked against ICU Umm al-Qura when the tests are written
 - More than 366 days is refused.
 - The 201st field is refused, even when earlier entries ended.
 - Two concurrent PUTs at 199 store at most one more.
-- DELETE is rate-limited and keeps the entry for 7 days.
+- DELETE is rate-limited and keeps the entry for 7 days. (Amended 2026-10-03: ended entries are kept 30 days, a second DELETE changes nothing and `remove: true` deletes; rulings R19 and R21.)
 - The daily clean-up removes old fields in one round.
 
 **`contact_away`**

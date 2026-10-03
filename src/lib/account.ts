@@ -104,8 +104,9 @@ export async function wipeAccount(email: string) {
   keys.push(`profile:${e}`, `mcptoken-of:${e}`, `brands:${e}`, `activebrand:${e}`, `user:${e}`);
   // Account-level records that are not brand-scoped. Missing these meant a deleted account left its notifications,
   // referral graph, share-bonus markers and activity history behind, so re-registering the same address inherited
-  // them. The other `notifseen:` markers are not listed: they live a week at most and their suffix cannot be
-  // enumerated (the ones that can, per brand, are deleted above).
+  // them. The other `notifseen:` markers are not listed: they live a week at most after their last write (Reem's to-do
+  // alert markers are set again by each daily run while their step holds, and no run reaches a deleted account) and
+  // their suffix cannot be enumerated (the ones that can, per brand, are deleted above).
   keys.push(
     `notifs:${e}`,
     `referrals:${e}`,

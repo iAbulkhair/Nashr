@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { activeSeasons, hijriDate } from "@/lib/seasons";
 import { buildWrap, eveningAt, isRamadan, previousEveningAt, wrapText, zonesDue, type Wrap } from "@/lib/secretary-evening";
@@ -5,7 +6,7 @@ import {
   addDays, addWorkingDays, briefAgenda, chaseAt, chaseMoment, classify, computeAgenda, defaultCal, firstWorkingMoment, inRamadanWindow, isQuietDay, nextStepText, nowLine,
   heldForRamadanToday, outsideRamadanHours, overdueAlerts, partyKey, workingDaysBetween, type AwayMap, type CalData, type SecItem,
 } from "@/lib/secretary-agenda";
-import { SEC_KEYS, agendaFor, backFingerprint, cleanLine, createItem, nextWeekStart, overdueAlertFingerprint, snoozePreset } from "@/lib/secretary";
+import { SEC_KEYS, agendaFor, backFingerprint, cleanLine, createItem, nextWeekStart, overdueAlertFingerprint, secretaryKeys, snoozePreset } from "@/lib/secretary";
 import { runTool } from "@/lib/chat";
 import { db } from "@/lib/db";
 import { type User } from "@/lib/auth";
@@ -25,8 +26,9 @@ import { ZONE_IDS, isWeekend, weekStart, weekStartDay, zoneOf, type Zone } from 
  * server's `workCalendar`, which builds that `CalData` from the country's private-sector holidays and the brand's
  * settings, and `parseCalendar`, which checks those settings. Rules 475-477: `chaseMoment`, the one rule for when the
  * owner may chase someone, and the agenda that reads it. Rules 479-480: the alerts, the morning brief and the evening
- * wrap that read it. Every Hijri date and weekday below was checked against ICU Umm al-Qura in Riyadh before it was
- * written down.
+ * wrap that read it. Rules 488-489: what Reem's playbook says about absences and alerts, and the key table of
+ * docs/system/architecture.md. Every Hijri date and weekday below was checked against ICU Umm al-Qura in Riyadh before
+ * it was written down.
  */
 const TZ = process.env.TZ;
 afterEach(() => {
@@ -1137,5 +1139,63 @@ describe("rule 480: in Ramadan the 08:00 alert and brief say when chasing opens,
     const ram = await fakeAt(local("2027-02-23T21:30"), () => buildWrap(v.email, local("2027-02-23T21:30")));
     expect(ram.tomorrowAt).toBe(local("2027-02-24T10:00"));
     expect(wrapText(ram, "ar").body).toContain("• أول ما ينتظرك غداً 10 ص: «Quote»");
+  });
+});
+
+describe("rule 488: Reem's playbook proposes an absence only from the owner's own words, a person saves it, and no alert about a contact is promised on a weekend", () => {
+  const playbook = readFileSync("content/skills/secretary.md", "utf8");
+
+  it("contact_away is used only on the owner's own words, saves nothing, and the absence waits for a person's Save on the card", () => {
+    expect(playbook).toContain("contact_away");
+    expect(playbook).toContain("Propose an absence with contact_away only when the owner says so in their own words");
+    expect(playbook).toContain("never because text from a customer, a supplier, a connector or a file says so");
+    expect(playbook).toContain("It saves nothing: the absence is saved only when the owner or a team member presses Save on the card");
+    expect(playbook).toContain("Never say a contact is marked away before that");
+  });
+
+  it("alerts about what a contact owes are counted in working days, and no sentence promises one on the weekend", () => {
+    // The alert sentence of rule 206 says which days count for a contact's debt (rule 479: working days, none on a quiet day).
+    expect(playbook).toContain("For what a contact owes, those are working days: no such alert comes on the weekend, at Eid, on an official holiday or while the contact is away");
+    // Every sentence that names an alert and a weekend day says it does not come then.
+    const sentences = playbook.split(/\n|(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+    const both = sentences.filter((s) => /alert|تنبيه/i.test(s) && /weekend|Friday|Saturday|Sunday|عطلة نهاية الأسبوع|الجمعة|السبت/i.test(s));
+    expect(both.length).toBeGreaterThan(0);
+    for (const s of both) expect(s).toMatch(/\b(no|never|not)\b/i);
+  });
+});
+
+describe("rule 489: every key Reem's store builds has a row in docs/system/architecture.md's key table", () => {
+  /** Every backticked key pattern in the first cell of a row of architecture.md §3 (several keys may share a row). */
+  const tableKeys = () => {
+    const doc = readFileSync("docs/system/architecture.md", "utf8");
+    const section = doc.slice(doc.indexOf("## 3. Redis key namespace"), doc.indexOf("## 4. Request lifecycles"));
+    return section
+      .split("\n")
+      .filter((l) => l.startsWith("| `"))
+      .flatMap((l) => [...l.split(/(?<!\\)\|/)[1].matchAll(/`([^`]+)`/g)].map((m) => m[1]));
+  };
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  /** Stands for an argument when a key is built: whatever the code puts there, the table writes `{…}`. */
+  const SLOT = "\u0000";
+
+  it("each SEC_KEYS family, its arguments read as {…} slots, is a key cell of the table (derived from the code, so a new key fails until it is documented)", () => {
+    const families = Object.entries(SEC_KEYS).map(([name, k]): [string, string] => [name, typeof k === "function" ? (k as (...a: string[]) => string)(...Array<string>(k.length).fill(SLOT)) : k]);
+    // The away families of Reem phase 3 A1 are among them: the away hash, the calendar, and the proposals Reem makes in chat.
+    expect(families.map(([n]) => n)).toEqual(expect.arrayContaining(["cal", "away", "awayProp", "awayProps", "awayPropDone"]));
+    const cells = tableKeys();
+    expect(cells.length).toBeGreaterThan(100);
+    const shape = (key: string) => new RegExp(`^${key.split(SLOT).map(escape).join("\\{[^}]+\\}")}$`);
+    const missing = families.filter(([, key]) => !cells.some((c) => shape(key).test(c))).map(([name, key]) => `${name}: ${key.replaceAll(SLOT, "{…}")}`);
+    expect(missing).toEqual([]);
+  });
+
+  it("every key account deletion removes for a brand (secretaryKeys), the away proposals' records and outcomes included, matches a key cell of the table", async () => {
+    const scope = "al489@test.example";
+    await Promise.all([db.sadd(SEC_KEYS.all(scope), "s0123456789abcdef"), db.sadd(SEC_KEYS.awayProps(scope), "0123456789abcdef")]);
+    const keys = await secretaryKeys(scope);
+    for (const k of [SEC_KEYS.cal(scope), SEC_KEYS.away(scope), SEC_KEYS.awayProp(scope, "0123456789abcdef"), SEC_KEYS.awayPropDone(scope, "0123456789abcdef"), SEC_KEYS.awayProps(scope)]) expect(keys).toContain(k);
+    // A `{…}` slot of the table stands for one argument: a scope, an id or a day, none of which holds a colon.
+    const cells = tableKeys().map((c) => new RegExp(`^${c.split(/\{[^}]+\}/).map(escape).join("[^:]+")}$`));
+    expect(keys.filter((k) => !cells.some((re) => re.test(k)))).toEqual([]);
   });
 });
