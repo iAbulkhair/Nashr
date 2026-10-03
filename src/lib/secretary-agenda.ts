@@ -60,6 +60,11 @@ export type SecRepeat = {
 };
 /** The result stored when the owner skips one occurrence of a recurring item. */
 export const SKIP_RESULT = "skipped";
+/**
+ * A closed item's result as a person reads it: the stored `SKIP_RESULT` word becomes the phrase, any other result is the
+ * owner's own text. Every place that shows a result (the page, a tool answer, the CSV) goes through here.
+ */
+export const resultText = (result: string | null | undefined, lang: "ar" | "en"): string => (result === SKIP_RESULT ? (lang === "ar" ? "تخطيت هالمرة" : "Skipped this time") : result ?? "");
 
 export type SecItem = {
   /** Server-generated: `s` and 16 hex characters (`SEC_ID` in secretary.ts). */

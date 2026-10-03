@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { json, newMember, newUser, params, signIn } from "./helpers/session";
+import { db } from "@/lib/db";
+import { appDict } from "@/lib/app-i18n";
+import * as listRoute from "@/app/api/secretary/route";
+import * as itemRoute from "@/app/api/secretary/[id]/route";
 import {
-  SKIP_RESULT, addMonthsClamped, defaultCal, gregorianNext, noteText, repeatText, weekStartOf, weekdayOf, type CalData, type SecRepeat,
+  OWNER_ONLY, SEC_KEYS, SERIES_ID, changeItem, createItem, getItem, mutateItem, newSeriesId, parseOwnerChange, parseRepeat, runSecretaryTool,
+} from "@/lib/secretary";
+import {
+  SKIP_RESULT, resultText, addMonthsClamped, defaultCal, gregorianNext, noteText, repeatText, weekStartOf, weekdayOf, zoneDay, type CalData, type SecItem, type SecRepeat,
 } from "@/lib/secretary-agenda";
 import { hijriMonthStart, nextOccurrence, workCalendar, type SecCalendar } from "@/lib/secretary-calendar";
 import { hijriDate } from "@/lib/seasons";
@@ -354,5 +362,299 @@ describe("rule 493: the series ends on count or until, and the search is bounded
     // A malformed previous date or anchor gives null, never a throw.
     expect(nextOccurrence(hRule({}), "not a date", NOW, z, cal, 1)).toBeNull();
     expect(next(hRule({ anchor: "nonsense" }), "2026-08-13", 1)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Rules 494 and 495: validation, first date, reminder, time of day (R36-R38, R42, R53); skip, stop and ending a series.
+
+const create = (body: unknown) => listRoute.POST(json("/api/secretary", "POST", body));
+const patch = (id: string, body: unknown) => itemRoute.PATCH(json(`/api/secretary/${id}`, "PATCH", body), params({ id }));
+async function login() {
+  const u = await newUser("secrep");
+  await signIn(u.email);
+  return u;
+}
+async function add(body: Record<string, unknown>): Promise<SecItem> {
+  const r = await create(body);
+  const j = await r.json();
+  expect(r.status, JSON.stringify(j)).toBe(200);
+  return j.item as SecItem;
+}
+const inDays = (d: number, hh = 10) => `${zoneDay(Date.now() + d * 864e5, z)}T${String(hh).padStart(2, "0")}:00`;
+const web = { actor: "owner", via: "web" } as const;
+const chat = { actor: "reem", via: "chat" } as const;
+const HOUR = 3600_000;
+
+describe("rule 494: a repeat needs a due date, from every caller", () => {
+  it("update with dueAt null, reschedule to null and todo_update clear_due all answer repeat_needs_due (400, field dueAt)", async () => {
+    const u = await login();
+    const it1 = await add({ title: "Weekly report", dueAt: inDays(1, 9), repeat: { every: "week" } });
+    expect(it1.repeat).toMatchObject({ every: "week", interval: 1, time: "09:00" });
+    for (const body of [{ dueAt: null }, { action: "reschedule", dueAt: null }]) {
+      const r = await patch(it1.id, body);
+      expect(r.status, JSON.stringify(body)).toBe(400);
+      expect(await r.json()).toMatchObject({ ok: false, error: "repeat_needs_due", field: "dueAt" });
+    }
+    const t = await runSecretaryTool(u, "todo_update", { id: it1.id, clear_due: true }, { who: chat, lang: "en" });
+    expect(t.isError).toBe(true);
+    expect(t.text).toContain("needs a due date");
+    expect(t.text).toContain("(field: dueAt)");
+    expect(await getItem(u.email, it1.id)).toMatchObject({ rev: 1, dueAt: it1.dueAt });
+  });
+
+  it("setting repeat on an undated item gives it the first occurrence, all-day, and mints the series (R42)", async () => {
+    const u = await login();
+    const plain = await add({ title: "No date yet" });
+    expect(plain.dueAt).toBeNull();
+    expect(plain.series).toBeUndefined();
+    const r = await patch(plain.id, { repeat: { every: "day" } });
+    const j = await r.json();
+    expect(r.status, JSON.stringify(j)).toBe(200);
+    const it2 = j.item as SecItem;
+    const today = zoneDay(Date.now(), z);
+    expect(it2.allDay).toBe(true);
+    expect(localDay(it2.dueAt!)).toBe(today);
+    expect(it2.repeat).toMatchObject({ every: "day", interval: 1, anchor: today });
+    expect(it2.repeat!.time).toBeUndefined();
+    expect(it2.series!.id).toMatch(SERIES_ID);
+    expect(it2.series!.n).toBe(1);
+    // created with a repeat and no date: the same
+    const born = await add({ title: "Born recurring", repeat: { every: "day", interval: 2 } });
+    expect(born).toMatchObject({ allDay: true });
+    expect(localDay(born.dueAt!)).toBe(today);
+    expect(born.series!.id).toMatch(SERIES_ID);
+    // the rule is stored in the owner's scope only
+    expect(await getItem(u.email, born.id)).toMatchObject({ repeat: { every: "day", interval: 2 } });
+  });
+
+  it("a weekly rule on an undated item opens on the first matching day, not on today", async () => {
+    await login();
+    const today = zoneDay(Date.now(), z);
+    const other = (weekdayOf(today) + 3) % 7;
+    const it1 = await add({ title: "Midweek thing", repeat: { every: "week", weekdays: [other] } });
+    expect(weekdayOf(localDay(it1.dueAt!))).toBe(other);
+    expect(it1.repeat!.anchor).toBe(localDay(it1.dueAt!));
+  });
+
+  it("a reminder on a recurring open item sets remindBefore; clear_remind deletes it; a reminder later than the due date applies to this copy only (R37)", async () => {
+    const u = await login();
+    const it1 = await add({ title: "Standup", dueAt: inDays(2, 10), repeat: { every: "day" } });
+    let r = await patch(it1.id, { remindAt: inDays(2, 9) });
+    let cur = (await r.json()).item as SecItem;
+    expect(cur.repeat!.remindBefore).toBe(60);
+    expect(cur.remindAt).toBeTruthy();
+    r = await patch(it1.id, { remindAt: null });
+    cur = (await r.json()).item as SecItem;
+    expect("remindBefore" in cur.repeat!).toBe(false);
+    expect(cur.remindAt).toBeNull();
+    r = await patch(it1.id, { remindAt: inDays(2, 9) });
+    expect(((await r.json()).item as SecItem).repeat!.remindBefore).toBe(60);
+    // after the due time: this copy only, and the rule's remindBefore goes
+    r = await patch(it1.id, { remindAt: inDays(2, 12) });
+    cur = (await r.json()).item as SecItem;
+    expect(cur.remindAt).toBeTruthy();
+    expect("remindBefore" in cur.repeat!).toBe(false);
+    // more than a week before: this copy only
+    const far = await add({ title: "Monthly", dueAt: inDays(20, 10), repeat: { every: "month" } });
+    r = await patch(far.id, { remindAt: inDays(5, 9) });
+    cur = (await r.json()).item as SecItem;
+    expect(cur.remindAt).toBeTruthy();
+    expect("remindBefore" in cur.repeat!).toBe(false);
+    // an item without a repeat is not touched by any of this
+    const one = await add({ title: "One-off", dueAt: inDays(2, 10) });
+    r = await patch(one.id, { remindAt: inDays(2, 9) });
+    expect(((await r.json()).item as SecItem).repeat).toBeUndefined();
+    expect(await getItem(u.email, far.id)).toMatchObject({ rev: 2 });
+  });
+
+  it("parseRepeat refuses interval 0 or 100, hyear above 10, a past until, count 0 or 1000, weekdays of 8 (repeat_invalid)", () => {
+    const now = at("2026-10-03");
+    const bad = (v: unknown) => expect(parseRepeat(v, now, z), JSON.stringify(v)).toMatchObject({ ok: false, error: "repeat_invalid", status: 400, field: "repeat" });
+    bad({ every: "day", interval: 0 });
+    bad({ every: "day", interval: 100 });
+    bad({ every: "day", interval: 1.5 });
+    bad({ every: "hyear", interval: 11 });
+    bad({ every: "day", until: "2026-10-02" });
+    bad({ every: "day", until: "2026-02-30" });
+    bad({ every: "day", until: "tomorrow" });
+    bad({ every: "day", count: 0 });
+    bad({ every: "day", count: 1000 });
+    bad({ every: "week", weekdays: [8] });
+    bad({ every: "week", weekdays: [] });
+    bad({ every: "month", monthDay: 32 });
+    bad({ every: "hmonth", monthDay: 31 });
+    bad({ every: "month", remindBefore: 10081 });
+    bad({ every: "month", remindBefore: -1 });
+    bad({ every: "fortnight" });
+    bad("daily");
+    bad([]);
+    bad({});
+    expect(parseRepeat({ every: "hyear", interval: 10 }, now, z)).toMatchObject({ ok: true, repeat: { every: "hyear", interval: 10 } });
+    expect(parseRepeat({ every: "day", interval: 99, until: "2026-10-03", count: 999, remindBefore: 10080 }, now, z)).toMatchObject({ ok: true });
+    expect(parseRepeat({ every: "workday", interval: 3 }, now, z)).toMatchObject({ ok: true, repeat: { every: "workday", interval: 1 } });
+    expect(parseRepeat({ every: "week", weekdays: [2, 0, 2] }, now, z)).toMatchObject({ ok: true, repeat: { weekdays: [0, 2] } });
+    expect(parseRepeat({ every: "month", monthDay: -1 }, now, z)).toMatchObject({ ok: true, repeat: { monthDay: -1 } });
+    expect(parseRepeat(null, now, z)).toEqual({ ok: true, repeat: null });
+    // the rule's own anchor, week start and time are never read from the input
+    expect(parseRepeat({ every: "day", anchor: "2020-01-01", weekStart: 3, time: "03:00" }, now, z)).toEqual({ ok: true, repeat: { every: "day", interval: 1 } });
+  });
+
+  it("editing a daily 09:00 item to 14:00 through update makes the next copy 14:00; a reschedule of one copy does not (R53)", async () => {
+    const u = await login();
+    const it1 = await add({ title: "Daily check", dueAt: inDays(1, 9), repeat: { every: "day" } });
+    expect(it1.repeat!.time).toBe("09:00");
+    const anchor = it1.repeat!.anchor;
+    let r = await patch(it1.id, { action: "reschedule", dueAt: inDays(2, 16) });
+    let cur = (await r.json()).item as SecItem;
+    expect(cur.repeat).toMatchObject({ time: "09:00", anchor });
+    r = await patch(it1.id, { dueAt: inDays(1, 14) });
+    cur = (await r.json()).item as SecItem;
+    expect(cur.repeat).toMatchObject({ time: "14:00", anchor });
+    const cal = defaultCal(z);
+    const next = nextOccurrence(cur.repeat!, cur.dueAt!, Date.now(), z, cal, 1)!;
+    expect(new Date(Date.parse(next.dueAt) + 3 * HOUR).toISOString().slice(11, 16)).toBe("14:00");
+    // an all-day edit drops the time
+    r = await patch(it1.id, { dueAt: inDays(1, 0).slice(0, 10) });
+    cur = (await r.json()).item as SecItem;
+    expect(cur.allDay).toBe(true);
+    expect(cur.repeat!.time).toBeUndefined();
+    expect((await getItem(u.email, it1.id))!.repeat).toMatchObject({ every: "day" });
+  });
+
+  it("createItem refuses a repeat from source agent; chat and MCP may set one", async () => {
+    const u = await newUser("secagent");
+    const r = await createItem(u, { title: "From an agent", repeat: { every: "day" } }, { actor: "dana", via: "chat", source: "agent" });
+    expect(r).toMatchObject({ ok: false, error: "owner_only", status: 403, field: "repeat" });
+    const ok = await createItem(u, { title: "From chat", dueAt: inDays(1), repeat: { every: "day" } }, { ...chat, source: "chat" });
+    expect(ok).toMatchObject({ ok: true });
+    const mcp = await createItem(u, { title: "From mcp", dueAt: inDays(1), repeat: { every: "week" } }, { actor: "mcp", via: "mcp", source: "mcp" });
+    expect(mcp).toMatchObject({ ok: true });
+  });
+});
+
+describe("rule 495: skip, stop and ending a series are owner-only", () => {
+  it("skip needs todo.close through the PATCH route; a member gets 403", async () => {
+    const o = await login();
+    const it1 = await add({ title: "Water the plants", dueAt: inDays(1, 9), repeat: { every: "day" } });
+    expect(OWNER_ONLY.has("skip")).toBe(true);
+    expect(parseOwnerChange({ action: "skip" }, Date.now(), z)).toEqual({ action: "skip" });
+    const member = await newMember(o, "member", "secrepm");
+    await signIn(member.email);
+    const r = await patch(it1.id, { action: "skip" });
+    expect(r.status).toBe(403);
+    expect(await getItem(o.email, it1.id)).toMatchObject({ completedAt: null, rev: 1 });
+    await signIn(o.email);
+    expect((await patch(it1.id, { action: "skip" })).status).toBe(200);
+  });
+
+  it("skip closes with SKIP_RESULT and sets closedBy; it needs a repeat; delete ends the series and opens nothing", async () => {
+    const o = await login();
+    const it1 = await add({ title: "Water the plants", dueAt: inDays(1, 9), repeat: { every: "day" } });
+    const plain = await add({ title: "No repeat", dueAt: inDays(1, 9) });
+    const bad = await patch(plain.id, { action: "skip" });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toMatchObject({ error: "bad_action" });
+    const r = await patch(it1.id, { action: "skip" });
+    const cur = (await r.json()).item as SecItem;
+    expect(cur).toMatchObject({ result: SKIP_RESULT, closedBy: { actor: "owner", login: o.email }, proposedDone: null, snoozeUntil: null });
+    expect(cur.completedAt).toBeTruthy();
+    expect(SKIP_RESULT).toBe("skipped");
+    // delete: the copy goes, nothing else opens
+    const d = await add({ title: "Delete me", dueAt: inDays(1, 9), repeat: { every: "day" } });
+    expect((await patch(d.id, { action: "delete" })).status).toBe(200);
+    const open = (await db.zrangeWithScores(SEC_KEYS.open(o.email))).map((m) => m.member);
+    expect(open).toEqual([plain.id]);
+  });
+
+  it("closedBy is set by complete and confirm_done and cleared by reopen, and the audit line carries repeat and closedBy", async () => {
+    const o = await login();
+    const a = await add({ title: "A", dueAt: inDays(1), repeat: { every: "day" } });
+    const r1 = await patch(a.id, { action: "complete", result: "done" });
+    expect(((await r1.json()).item as SecItem).closedBy).toEqual({ actor: "owner", login: o.email });
+    const r2 = await patch(a.id, { action: "reopen" });
+    expect("closedBy" in ((await r2.json()).item as SecItem)).toBe(false);
+    const b = await add({ title: "B", dueAt: inDays(1) });
+    await changeItem(o.email, b.id, { action: "propose_done", evidence: "it is done" }, chat);
+    const r3 = await patch(b.id, { action: "confirm_done" });
+    expect(((await r3.json()).item as SecItem).closedBy).toMatchObject({ actor: "owner" });
+    const log = (await db.lrange(SEC_KEYS.audit(o.email), 0, -1)).map((x) => JSON.parse(x));
+    expect(log.find((l) => l.id === a.id && l.action === "complete").diff).toContain("closedBy=");
+    expect(log.find((l) => l.id === a.id && l.action === "create").diff).toContain("title=");
+  });
+
+  it("stop_repeat on the page needs todo.write and keeps series for the CSV", async () => {
+    const o = await login();
+    const it1 = await add({ title: "Weekly", dueAt: inDays(1, 9), repeat: { every: "week" } });
+    const plain = await add({ title: "Plain", dueAt: inDays(1, 9) });
+    const member = await newMember(o, "member", "secrepm2");
+    await signIn(member.email);
+    expect((await patch(plain.id, { action: "stop_repeat" })).status).toBe(400);
+    const r = await patch(it1.id, { action: "stop_repeat" });
+    const cur = (await r.json()).item as SecItem;
+    expect(r.status).toBe(200);
+    expect(cur.repeat).toBeNull();
+    expect(cur.series).toMatchObject({ n: 1 });
+    expect(cur.series!.id).toMatch(SERIES_ID);
+    expect(OWNER_ONLY.has("stop_repeat")).toBe(false);
+    expect(parseOwnerChange({ action: "stop_repeat" }, Date.now(), z)).toEqual({ action: "stop_repeat" });
+  });
+
+  it("from chat or MCP, stop_repeat, an early until and count <= n answer owner_only", async () => {
+    const o = await login();
+    const it1 = await add({ title: "Weekly", dueAt: inDays(2, 9), repeat: { every: "day" } });
+    const cal = defaultCal(z);
+    const expectOwner = async (c: Parameters<typeof changeItem>[2]) => {
+      const r = await changeItem(o.email, it1.id, c, chat, undefined, z, cal);
+      expect(r, JSON.stringify(c)).toMatchObject({ ok: false, error: "owner_only", status: 403, field: "repeat" });
+    };
+    await expectOwner({ action: "stop_repeat" });
+    await expectOwner({ action: "update", fields: { repeat: null } });
+    await expectOwner({ action: "update", fields: { repeat: { every: "day", interval: 1, count: 1 } } });
+    await expectOwner({ action: "update", fields: { repeat: { every: "day", interval: 1, until: zoneDay(Date.now(), z) } } });
+    expect(await getItem(o.email, it1.id)).toMatchObject({ rev: 1, repeat: { every: "day" } });
+    // a count or until that still leaves the next copy is fine, and so is another cadence
+    const ok = await changeItem(o.email, it1.id, { action: "update", fields: { repeat: { every: "day", interval: 1, count: 5, until: zoneDay(Date.now() + 30 * 864e5, z) } } }, chat, undefined, z, cal);
+    expect(ok).toMatchObject({ ok: true });
+    expect(ok.ok && ok.item.series!.id).toBe(it1.series!.id);
+    const wk = await changeItem(o.email, it1.id, { action: "update", fields: { repeat: { every: "week", interval: 2 } } }, { actor: "mcp", via: "mcp" }, undefined, z, cal);
+    expect(wk).toMatchObject({ ok: true });
+    // the owner in the app may do all of it
+    const mine = mutateItem(structuredClone(it1), { action: "update", fields: { repeat: { every: "day", interval: 1, count: 1 } } }, web, Date.now(), z, cal);
+    expect(mine).toMatchObject({ ok: true });
+  });
+
+  it("the word for a skipped result is translated wherever a result is shown", async () => {
+    expect(resultText(SKIP_RESULT, "ar")).toBe("تخطيت هالمرة");
+    expect(resultText(SKIP_RESULT, "en")).toBe("Skipped this time");
+    expect(resultText("sent the invoice", "ar")).toBe("sent the invoice");
+    expect(resultText(null, "en")).toBe("");
+    expect(appDict.ar.todo.skipped).toBe(resultText(SKIP_RESULT, "ar"));
+    expect(appDict.en.todo.skipped).toBe(resultText(SKIP_RESULT, "en"));
+    const o = await login();
+    const it1 = await add({ title: "Skipped one", dueAt: inDays(1), repeat: { every: "day" } });
+    await patch(it1.id, { action: "skip" });
+    const t = await runSecretaryTool(o, "agenda_get", { include_done: true }, { who: chat, lang: "en" });
+    expect(t.text).toContain("Skipped this time");
+    expect(t.text).not.toContain("result: \"skipped\"");
+  });
+
+  it("every new error has a tool sentence and both page sentences; the owner_only sentence names stopping a repeat", async () => {
+    const o = await login();
+    const it1 = await add({ title: "x", dueAt: inDays(1), repeat: { every: "day" } });
+    const r = await runSecretaryTool(o, "todo_update", { id: it1.id, clear_due: true }, { who: chat, lang: "en" });
+    expect(r.text).toMatch(/needs a due date/);
+    for (const lang of ["ar", "en"] as const) {
+      const e = appDict[lang].todo.errors;
+      for (const k of ["repeat_invalid", "repeat_needs_due", "keep_limit", "owner_only"]) expect(e[k], `${lang} ${k}`).toBeTruthy();
+    }
+    const stop = await changeItem(o.email, it1.id, { action: "stop_repeat" }, chat);
+    expect(stop.ok).toBe(false);
+    if (!stop.ok) {
+      const { toolError } = await import("@/lib/secretary");
+      expect(toolError(stop)).toContain("stop or end a repeat");
+    }
+    expect(newSeriesId()).toMatch(SERIES_ID);
+    expect(newSeriesId()).not.toBe(newSeriesId());
   });
 });

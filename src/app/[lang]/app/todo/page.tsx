@@ -8,7 +8,7 @@ import { namesSharjah } from "@/lib/secretary-calendar";
 import { isAgentId } from "@/lib/agents";
 import { can } from "@/lib/roles";
 import {
-  AGENDA_BUCKETS, AUTO_CLOSE_RESULT, addDays, approvalsLine, briefClock, formatWhen, linkFactText, nextStepParts, noteText, partyKey, partyName, zoneDay, zoneLocalInput, zoneTimeLabel,
+  AGENDA_BUCKETS, AUTO_CLOSE_RESULT, SKIP_RESULT, addDays, approvalsLine, briefClock, formatWhen, linkFactText, nextStepParts, noteText, partyKey, partyName, zoneDay, zoneLocalInput, zoneTimeLabel,
   type AgendaEntry, type SecItem,
 } from "@/lib/secretary-agenda";
 import { fill } from "@/lib/fill";
@@ -84,7 +84,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
     ].filter(Boolean).join(" · "),
     proposed: it.proposedDone ? { claim: `${claimBy(it.proposedDone)}: «${it.proposedDone.evidence}»` } : null,
     fact: factOf(it),
-    result: it.result === AUTO_CLOSE_RESULT ? T.autoClosed : it.result,
+    result: it.result === AUTO_CLOSE_RESULT ? T.autoClosed : it.result === SKIP_RESULT ? T.skipped : it.result,
     // The owner's own page: private notes included, the notes code writes worded in the page's language.
     notes: it.notes.slice(-3).map((n) => noteText(n, lang)),
     remind: it.remindAt ? fill(timed ? T.remindAt : T.remindBrief, { when: when(it.remindAt), brief }) : null,
