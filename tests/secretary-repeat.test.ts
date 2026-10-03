@@ -861,6 +861,60 @@ describe("rule 497: exactly one next copy", () => {
     expect(open[0].series).toEqual({ id: a.series!.id, n: 2 });
     expect((await auditOf(o.email)).filter((l) => l.action === "spawn")).toHaveLength(1);
   });
+
+  it("a soft-deleted next copy: the owner's re-close of the done copy opens a new one; while the next copy is alive it is 409", async () => {
+    const o = await login();
+    const a = await daily();
+    const b = (await done(a.id)).nextId!;
+    // The next copy is alive: a re-close is the usual 409 and opens nothing.
+    const alive = await patch(a.id, { action: "complete", result: "again" });
+    expect(alive.status).toBe(409);
+    expect(await alive.json()).toMatchObject({ error: "completed" });
+    expect(await openOf(o.email)).toEqual([b]);
+    // The owner deletes the next copy; the re-close finishes the spawn at a new id and answers 200.
+    expect((await patch(b, { action: "delete" })).status).toBe(200);
+    expect(await openOf(o.email)).toEqual([]);
+    const again = await done(a.id);
+    const c = again.nextId!;
+    expect(c).toMatch(/^s[a-f0-9]{16}$/);
+    expect(c).not.toBe(b);
+    expect(again.result).toBe("ok");
+    expect(await db.get(SEC_KEYS.spawn(o.email, a.id))).toBe(c);
+    expect(await getItem(o.email, c)).toMatchObject({ completedAt: null, deletedAt: null, series: { id: a.series!.id, n: 2 } });
+    expect((await getItem(o.email, b))!.deletedAt).toBeTruthy();
+    expect(await getItem(o.email, a.id)).toMatchObject({ nextId: c });
+    expect(await openOf(o.email)).toEqual([c]);
+    // With the new copy alive, a further re-close is 409 again and opens nothing.
+    expect((await patch(a.id, { action: "complete", result: "third" })).status).toBe(409);
+    expect(await openOf(o.email)).toEqual([c]);
+  });
+
+  it("closing the last copy of a count series opens nothing", async () => {
+    const o = await login();
+    const a = await add({ title: "Twice", dueAt: inDays(1, 9), repeat: { every: "day", count: 2 } });
+    const b = (await done(a.id)).nextId!;
+    expect(await getItem(o.email, b)).toMatchObject({ completedAt: null, series: { id: a.series!.id, n: 2 } });
+    const last = await done(b);
+    expect(last.nextId).toBeUndefined();
+    expect(await db.get(SEC_KEYS.spawn(o.email, b))).toBeNull();
+    expect(await openOf(o.email)).toEqual([]);
+    expect(await db.smembers(SEC_KEYS.all(o.email))).toHaveLength(2);
+    expect((await auditOf(o.email)).filter((l) => l.action === "spawn")).toHaveLength(1);
+  });
+
+  it("a spawn checks neither the open-items cap nor the create allowance (R40)", async () => {
+    const o = await login();
+    const a = await daily();
+    const fill = Array.from({ length: SEC_OPEN_MAX - 1 }, (_, i) => `x${i}`);
+    await Promise.all(fill.map((m, i) => db.zadd(SEC_KEYS.open(o.email), Date.now() + i, m)));
+    expect(await db.zcard(SEC_KEYS.open(o.email))).toBe(SEC_OPEN_MAX);
+    const rate = `rate:sec:create:${o.email}`;
+    const before = await db.get(rate);
+    const b = (await done(a.id)).nextId!;
+    expect(await getItem(o.email, b)).toMatchObject({ completedAt: null, deletedAt: null, series: { id: a.series!.id, n: 2 } });
+    expect(await db.zcard(SEC_KEYS.open(o.email))).toBe(SEC_OPEN_MAX);
+    expect(await db.get(rate)).toEqual(before);
+  });
 });
 
 describe("rule 498: what the next copy carries", () => {

@@ -827,6 +827,8 @@ export const SPAWN_CLAIM_S = 172800;
  * A copy is untouched (R35) while it is open and nothing but its own reminder ever wrote to it: `rev` is 1 plus one per
  * `reminded` note, and it has no other note.
  */
+/** A record that exists and is not soft-deleted: the only kind of next copy that stops a spawn. */
+const liveRecord = (it: SecItem | null) => !!it && !it.deletedAt;
 const untouched = (it: SecItem) => stateOf(it) === "open" && it.notes.every((n) => n.kind === "reminded") && it.rev === 1 + it.notes.length;
 
 /**
@@ -846,7 +848,8 @@ const untouched = (it: SecItem) => stateOf(it) === "open" && it.notes.every((n) 
  *    source, `series.n + 1`. Links, notes, result, proposal, snooze, chase, handoff and `closedBy` are not copied.
  * 4. Round 1 writes the closed copy with `nextId`, its index moves and the close's audit line; round 2 the new copy, its
  *    index moves and the `spawn` line by the rule (R51). A failure between them leaves a done copy whose `nextId` names
- *    a missing record: the retried close (`changeItem`) completes the spawn at the claimed id; nothing shows twice.
+ *    a missing record: the retried close (`changeItem`) completes the spawn at the claimed id; nothing shows twice. The
+ *    owner's close of a done copy whose next copy was soft-deleted takes the same path and opens a new copy.
  *
  * A close plus a spawn leaves the open count unchanged: neither `SEC_OPEN_MAX` nor the create allowance is checked.
  */
@@ -937,9 +940,10 @@ export async function changeItem(scope: string, id: string, c: Change, who: Who,
     const cur = await db.get<SecItem>(SEC_KEYS.item(scope, id));
     if (!cur) return fail("not_found", 404);
     const spawnAt = { zone: at.zone, cal: at.cal ?? defaultCal(at.zone) };
-    // A close retried after its first round (R51): the copy is done and the next copy it names was never written. The
-    // retry completes the spawn at the claimed id and answers with the closed copy, whatever rev it was sent with.
-    if (CLOSE_ACTIONS.has(c.action) && isOwner(who) && stateOf(cur) === "done" && cur.repeat && cur.nextId && SEC_ID.test(cur.nextId) && !(await db.get<SecItem>(SEC_KEYS.item(scope, cur.nextId)))) {
+    // A close retried after its first round (R51): the copy is done and the next copy it names was never written, or was
+    // soft-deleted since. The retry completes the spawn (at the claimed id, or a new one when that record is deleted) and
+    // answers with the closed copy, whatever rev it was sent with. A next copy that is alive keeps the usual 409.
+    if (CLOSE_ACTIONS.has(c.action) && isOwner(who) && stateOf(cur) === "done" && cur.repeat && cur.nextId && SEC_ID.test(cur.nextId) && !liveRecord(await db.get<SecItem>(SEC_KEYS.item(scope, cur.nextId)))) {
       return { ok: true, item: await spawnNext(scope, cur, cur, who, spawnAt, false, null), prev: cur };
     }
     if (expectRev !== undefined && expectRev !== cur.rev) return { ...fail("conflict", 409), item: cur };
