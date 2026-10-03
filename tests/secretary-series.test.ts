@@ -9,6 +9,11 @@ import * as listRoute from "@/app/api/secretary/route";
 import * as itemRoute from "@/app/api/secretary/[id]/route";
 import * as keepRoute from "@/app/api/secretary/series/[seriesId]/keep/route";
 import * as exportRoute from "@/app/api/secretary/series/[seriesId]/export/route";
+import { createElement } from "react";
+import { renderToReadableStream } from "react-dom/server.edge";
+import { appDict } from "@/lib/app-i18n";
+import Page from "@/app/[lang]/app/todo/page";
+import TodoPanel, { type TodoRow } from "@/components/app/TodoPanel";
 import { SEC_KEYS, newSecId, newSeriesId, purgeExpired, secretaryDaily, secretaryKeys, type Who } from "@/lib/secretary";
 import { SERIES_KEEP_MAX, purgeSeries, requeueSeries, seriesRows, setSeriesKeep, warnSeries } from "@/lib/secretary-series";
 import { formatWhen, zoneDay, type SecItem } from "@/lib/secretary-agenda";
@@ -16,6 +21,8 @@ import { formatWhen, zoneDay, type SecItem } from "@/lib/secretary-agenda";
 const sent: { to: string; subject: string; text: string }[] = [];
 vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/notify")>()), sendEmail: async (to: string, subject: string, text: string) => { sent.push({ to, subject, text }); return true; } }));
 import * as cronDaily from "@/app/api/cron/daily/route";
+// The app router only exists inside Next: the page's client components get a router whose refresh does nothing.
+vi.mock("next/navigation", async (orig) => ({ ...(await orig<typeof import("next/navigation")>()), useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
@@ -813,5 +820,152 @@ describe("rule 507: the CSV export", () => {
     vi.spyOn(rate, "allow").mockResolvedValue(false);
     expect((await exportCall(newSeriesId())).status).toBe(429);
     expect(z).not.toHaveBeenCalled();
+  });
+});
+
+describe("rule 509: the repeat controls and the series view on the to-do page", () => {
+  const render = async (lang: "ar" | "en", series?: string | string[]) => new Response(await renderToReadableStream(await Page({ params: Promise.resolve({ lang }), ...(series === undefined ? {} : { searchParams: Promise.resolve({ series }) }) }))).text();
+  const ARABIC_INDIC = /[٠-٩۰-۹]/;
+  const switchesOf = (html: string) => [...html.matchAll(/<button[^>]*role="switch"[^>]*>/g)].map((m) => m[0]);
+  const timesOf = (html: string) => [...html.matchAll(/<input[^>]*type="time"[^>]*>/g)].map((m) => m[0]);
+  const rowOf = (over: Partial<TodoRow> = {}): TodoRow => ({
+    id: "s0123456789abcdef", rev: 1, title: "Water the plants", description: "", due: "Tomorrow", dueLocal: null, who: "", next: "", badges: [], theirs: false, chase: "", proposed: null, fact: "", result: null, notes: [],
+    remind: null, remindLocal: null, phone: null, whatsapp: null, repeat: "Repeats every day", repeatRule: { every: "day", interval: 1, weekdays: [], monthDay: null, until: "", count: null, remindBefore: null }, seriesId: "r0123456789abcdef", closedBy: null, ...over,
+  });
+  const panelHtml = async (canClose: boolean, canWrite: boolean, row: TodoRow = rowOf()) => new Response(await renderToReadableStream(createElement(TodoPanel, {
+    t: appDict.en, zoneLabel: "Riyadh", sections: [{ bucket: "today", title: "Today", rows: [row] }], approvals: null, snoozed: 0, allClear: false, empty: false, done: [], deleted: [], tonight: false,
+    canClose, canWrite, todoHref: "/en/app/todo", timed: true, briefAt: "08:00", lang: "en", inboxHref: "/en/app", away: { entries: [], labels: [], canEdit: false, today: "2026-10-03", last: "2027-01-01" },
+  }))).text();
+
+  it("Skip is for todo.close and Stop repeat for todo.write: a member sees no >Skip<, an admin does; read-only sees neither", async () => {
+    const o = await login();
+    await recurring("Water");
+    const admin = await newMember(o, "admin", "s509a");
+    const member = await newMember(o, "member", "s509m");
+    await signIn(admin.email);
+    const forAdmin = await render("en");
+    expect(forAdmin).toContain(">Skip<");
+    expect(forAdmin).toContain(">Stop repeat<");
+    await signIn(member.email);
+    const forMember = await render("en");
+    expect(forMember).not.toContain(">Skip<");
+    expect(forMember).toContain(">Stop repeat<");
+    expect((await render("ar"))).not.toContain(`>${appDict.ar.todo.repeat.skip}<`);
+    // No login can lack todo.write today, so the gate is pinned on the component.
+    const readOnly = await panelHtml(false, false);
+    expect(readOnly).not.toContain(">Skip<");
+    expect(readOnly).not.toContain(">Stop repeat<");
+    expect(readOnly).not.toContain(">Repeat<");
+    const full = await panelHtml(true, true);
+    expect(full).toContain(">Skip<");
+    expect(full).toContain(">Stop repeat<");
+    expect(full).toContain(">Repeat<");
+    // A copy that does not repeat has neither Skip nor Stop repeat.
+    expect(await panelHtml(true, true, rowOf({ repeat: null, repeatRule: null, seriesId: null }))).not.toContain(">Skip<");
+  });
+
+  it("a recurring row shows its rule as a badge, Latin digits in ar and en, the Hijri rules with their anchor", async () => {
+    await login();
+    await add({ title: "Staff meeting", dueAt: inDays(2, 9), repeat: { every: "week", interval: 2, weekdays: [0, 2] } });
+    await add({ title: "Rent", dueAt: inDays(3, 9), repeat: { every: "hmonth", monthDay: 15 } });
+    await add({ title: "Zakat", dueAt: inDays(4, 9), repeat: { every: "hyear" } });
+    for (const lang of ["ar", "en"] as const) {
+      const html = await render(lang);
+      expect(html).not.toMatch(ARABIC_INDIC);
+      const text = html.replace(/<[^>]*>/g, "\n");
+      expect(text).toMatch(lang === "en" ? /Repeats every 2 weeks on Sunday and Tuesday/ : /يتكرر كل أسبوعين/);
+      expect(text).toMatch(lang === "en" ? /Repeats every Hijri month on day 15/ : /يتكرر كل شهر هجري، يوم 15/);
+      // The Hijri-year rule names the month and day of its anchor, never a bare "every Hijri year".
+      expect(text).toMatch(lang === "en" ? /Repeats every Hijri year on \d+ [A-Z]/ : /يتكرر كل سنة هجرية، في \d+ /);
+    }
+  });
+
+  it("the series view shows only that series' rows, reads only that series' set, and says a skip in words", async () => {
+    const o = await login();
+    const a = await complete((await recurring("Series A")).id);
+    const skipped = (await (await patch((await add({ title: "Series B", dueAt: inDays(1, 9), repeat: { every: "day" } })).id, { action: "skip" })).json()).item as SecItem;
+    const sidA = a.series!.id, sidB = skipped.series!.id;
+    const ranges = vi.spyOn(db, "zrangeWithScores");
+    const hash = vi.spyOn(db, "hgetall");
+    const lists = vi.spyOn(db, "lrange");
+    const html = await render("en", sidA);
+    expect(html).toContain("Series A");
+    expect(html).not.toContain("Series B");
+    expect(ranges.mock.calls.map((c) => c[0])).toEqual([SEC_KEYS.series(o.email, sidA)]);
+    expect(hash).not.toHaveBeenCalled();
+    expect(lists).not.toHaveBeenCalled();
+    expect(html).toContain("Download CSV");
+    expect(html).toContain(`/api/secretary/series/${sidA}/export?lang=en`);
+    expect(html).toContain("Back to My to-dos");
+    // A skipped copy reads as words through resultText, never the stored marker.
+    const b = await render("en", sidB);
+    expect(b).toContain("Skipped this time");
+    expect(b).not.toContain("__skipped");
+    expect(await render("ar", sidB)).toContain(appDict.ar.todo.skipped);
+    expect(await render("ar", sidA)).not.toMatch(ARABIC_INDIC);
+  });
+
+  it("an unknown id, another brand's id and a malformed id: not found without reading anything else; malformed counts as absent", async () => {
+    await login();
+    const a = await complete((await recurring("Mine")).id);
+    const other = await login();
+    expect(other.email).toBeTruthy();
+    const gets = vi.spyOn(db, "get");
+    const mgets = vi.spyOn(db, "mget");
+    const smembers = vi.spyOn(db, "sismember");
+    for (const id of [newSeriesId(), a.series!.id]) {
+      const html = await render("en", id);
+      expect(html).toContain(appDict.en.todo.series.notFound);
+      expect(html).not.toContain("Mine");
+      expect(html).not.toContain("Download CSV");
+    }
+    // Only the login's own session reads (user, member, active brand, session): no brand file, no calendar, no item.
+    expect(gets.mock.calls.map((c) => String(c[0])).filter((k) => !/^(user|member|activebrand|session):/.test(k))).toEqual([]);
+    expect(mgets).not.toHaveBeenCalled();
+    expect(smembers).not.toHaveBeenCalled();
+    gets.mockRestore();
+    for (const bad of ["nope", ["a", "b"], ""]) {
+      const html = await render("en", bad as string);
+      expect(html).toContain(appDict.en.todo.title);
+      expect(html).not.toContain(appDict.en.todo.series.notFound);
+    }
+  });
+
+  it("the Keep history switch is only in the series view; off needs todo.close", async () => {
+    const o = await login();
+    const a = await complete((await recurring("Kept")).id);
+    const sid = a.series!.id;
+    expect(switchesOf(await render("en")).length).toBeGreaterThan(3); // Working days' own
+    const base = switchesOf(await render("en")).length;
+    const admin = await newMember(o, "admin", "s509ka");
+    const member = await newMember(o, "member", "s509km");
+    await signIn(member.email);
+    const first = switchesOf(await render("en", sid));
+    expect(first).toHaveLength(1);
+    expect(first[0]).toContain('aria-checked="false"');
+    expect(first[0]).not.toContain('disabled=""');
+    expect(base).toBeGreaterThan(1);
+    expect((await setSeriesKeep(o.email, sid, true, { actor: "owner", via: "web" })).ok).toBe(true);
+    const kept = switchesOf(await render("en", sid));
+    expect(kept[0]).toContain('aria-checked="true"');
+    expect(kept[0]).toContain('disabled=""');
+    expect(await render("en", sid)).toContain(appDict.en.todo.series.keepOffOwner);
+    await signIn(admin.email);
+    const forAdmin = switchesOf(await render("en", sid));
+    expect(forAdmin[0]).toContain('aria-checked="true"');
+    expect(forAdmin[0]).not.toContain('disabled=""');
+  });
+
+  it("the add form has repeat selects and checkboxes but no extra type=time and no new switch; rule 487's counts hold", async () => {
+    await login();
+    const before = await render("en");
+    await recurring("Weekly");
+    const after = await render("en");
+    expect(timesOf(after)).toHaveLength(2);
+    expect(timesOf(before)).toHaveLength(2);
+    expect(switchesOf(after)).toHaveLength(switchesOf(before).length);
+    expect(after).toContain(appDict.en.todo.repeat.none);
+    expect(after).toContain(appDict.en.todo.repeat.units.hyear);
+    expect(after).toContain(">Does not repeat<");
   });
 });

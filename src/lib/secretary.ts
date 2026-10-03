@@ -1118,7 +1118,28 @@ async function agendaWith(scope: string, now: number, who: Who) {
  * view (`working`: `calendarView`, the same view GET /api/secretary/calendar answers, of the stored settings when the
  * calendar can be built from them, `usableCalendar`) and the away hash as stored (`awayRows`, for `awayListOf`).
  */
-export async function todoPage(scope: string) {
+export async function todoPage(scope: string, opts: { series: string }): Promise<{ now: number; zone: Zone; series: { id: string; items: SecItem[]; total: number; kept: boolean } }>;
+export async function todoPage(scope: string): Promise<Awaited<ReturnType<typeof todoMain>>>;
+export async function todoPage(scope: string, opts?: { series: string }) {
+  return opts ? seriesPage(scope, opts.series) : todoMain(scope);
+}
+
+/**
+ * The `?series=` view: one recurring series' closed copies (at most 200, newest close first) and how many it holds, read
+ * from that series' own set (`seriesRows`) and nothing else. An id with no closed copies (unknown, another brand's, or a
+ * series whose copies are all open) stops there with `total` 0. Otherwise one more round reads the brand's zone and
+ * whether the series is kept, and no agenda, calendar or away list is read.
+ */
+async function seriesPage(scope: string, id: string) {
+  const now = Date.now();
+  const { seriesRows } = await import("./secretary-series");
+  const { items, total } = await seriesRows(scope, id, 200);
+  if (total === 0) return { now, zone: DEFAULT_ZONE, series: { id, items: [], total: 0, kept: false } };
+  const [brand, kept] = await Promise.all([getBrand(scope), db.sismember(SEC_KEYS.seriesKeep(scope), id)]);
+  return { now, zone: zoneOf(brand), series: { id, items, total, kept: !!kept } };
+}
+
+async function todoMain(scope: string) {
   const now = Date.now();
   const { agenda, reads } = await agendaWith(scope, now, { actor: "rule", via: "web" });
   const [done, deleted] = await Promise.all([listDone(scope, 10), listDeleted(scope, now, 50)]);
@@ -1508,9 +1529,9 @@ export function whereShown(it: Pick<SecItem, "dueAt" | "owedBy">, zone: Zone): s
 }
 
 /** A rule in words for a tool line, with the Hijri month and day of its anchor for the Hijri rules (R: repeatText needs them). */
-function ruleText(rule: SecRepeat, zone: Zone): string {
+export function ruleText(rule: SecRepeat, zone: Zone, lang: "ar" | "en" = "en"): string {
   const h = rule.every === "hyear" || rule.every === "hmonth" ? hijriDate(new Date(zoneTime(rule.anchor, 12, 0, zone)), zone) : null;
-  return repeatText(rule, "en", h ? { month: h.m, day: h.day } : undefined);
+  return repeatText(rule, lang, h ? { month: h.m, day: h.day } : undefined);
 }
 type ToolCtx = { lang: "ar" | "en"; now: number; zone: Zone; facts: Record<string, LinkedFact | null> };
 /** A party as a tool line names it: a contact's label JSON-quoted (the owner's data, like a title), an agent by name. */
