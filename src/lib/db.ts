@@ -35,6 +35,8 @@ type Store = {
   zadd(key: string, score: number, member: string, opts?: { lt?: boolean }): Promise<void>;
   zrem(key: string, member: string): Promise<void>;
   zcard(key: string): Promise<number>;
+  /** ZSCORE: the member's score, or null when it is not in the set. */
+  zscore(key: string, member: string): Promise<number | null>;
   zrangeWithScores(key: string): Promise<{ member: string; score: number }[]>;
   /** Members with a score <= `max`, lowest score first (then member), at most `limit` (ZRANGE BYSCORE LIMIT). */
   zrangeByScore(key: string, max: number, limit: number): Promise<{ member: string; score: number }[]>;
@@ -139,6 +141,10 @@ function upstash(): Store | null {
     },
     async zcard(key) {
       return await r.zcard(key);
+    },
+    async zscore(key, member) {
+      const v = await r.zscore(key, member);
+      return v === null || v === undefined ? null : Number(v);
     },
     async zrangeWithScores(key) {
       // [member, score, member, score, ...]. Members are stringified: the client parses anything that looks like JSON.
@@ -288,6 +294,9 @@ function memory(): Store {
     },
     async zcard(key) {
       return zsets.get(key)?.size ?? 0;
+    },
+    async zscore(key, member) {
+      return zsets.get(key)?.get(member) ?? null;
     },
     async zrangeWithScores(key) {
       // Redis order: by score, then by member (binary), for equal scores.

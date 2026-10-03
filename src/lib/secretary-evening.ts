@@ -32,7 +32,7 @@ import { notifyItem } from "./notifications";
 import { sendEmail } from "./notify";
 import { activeSeasons } from "./seasons";
 import { SEC_KEYS, agendaFor, listDone, listOpenItems } from "./secretary";
-import { AUTO_CLOSE_RESULT, addDays, computeAgenda, daysBetween, endOfZoneDay, firstWorkingMoment, formatWhen, zoneDay, zoneLocalInput, zoneTime } from "./secretary-agenda";
+import { AUTO_CLOSE_RESULT, addDays, computeAgenda, daysBetween, endOfZoneDay, firstWorkingMoment, formatWhen, resultText, zoneDay, zoneLocalInput, zoneTime } from "./secretary-agenda";
 import { dateFormat } from "./dates";
 import { DEFAULT_ZONE, ZONE_IDS, type Zone } from "./zones";
 import { appOrigin } from "./origin";
@@ -158,7 +158,7 @@ export function wrapText(w: Wrap, lang: "ar" | "en", brand = ""): { title: strin
   const q = (t: string) => `«${t.slice(0, 80)}»`;
   if (lang === "ar") {
     const lines = [
-      ...(w.completed.length ? [`• أُنجز اليوم (${w.completed.length}):`, ...w.completed.slice(0, 5).map((c) => `  – ${q(c.title)}: ${c.auto ? "أُغلقت تلقائياً لأن العنصر المرتبط اعتُمد" : (c.result ?? "").slice(0, 120)}`)] : []),
+      ...(w.completed.length ? [`• أُنجز اليوم (${w.completed.length}):`, ...w.completed.slice(0, 5).map((c) => `  – ${q(c.title)}: ${c.auto ? "أُغلقت تلقائياً لأن العنصر المرتبط اعتُمد" : resultText(c.result, "ar").slice(0, 120)}`)] : []),
       ...(w.approved || w.rejected ? [`• قراراتك اليوم في صندوق الموافقة: اعتماد ${w.approved}، رفض ${w.rejected}`] : []),
       ...(w.fellOverdue.length ? [`• تأخّر منذ ملخص الأمس: ${w.fellOverdue.slice(0, 5).map(q).join("، ")}`] : []),
       ...(w.tomorrow.length ? [`• أول ما ينتظرك ${readAt(w, "ar")}: ${w.tomorrow.map(q).join("، ")}`] : []),
@@ -166,7 +166,7 @@ export function wrapText(w: Wrap, lang: "ar" | "en", brand = ""): { title: strin
     return { title: wrapTitle("ar", brand), body: lines.join("\n") };
   }
   const lines = [
-    ...(w.completed.length ? [`• Done today (${w.completed.length}):`, ...w.completed.slice(0, 5).map((c) => `  – ${q(c.title)}: ${c.auto ? "closed automatically, the linked item was approved" : (c.result ?? "").slice(0, 120)}`)] : []),
+    ...(w.completed.length ? [`• Done today (${w.completed.length}):`, ...w.completed.slice(0, 5).map((c) => `  – ${q(c.title)}: ${c.auto ? "closed automatically, the linked item was approved" : resultText(c.result, "en").slice(0, 120)}`)] : []),
     ...(w.approved || w.rejected ? [`• Your decisions today in the approval inbox: ${w.approved} approved, ${w.rejected} rejected`] : []),
     ...(w.fellOverdue.length ? [`• Fell overdue since yesterday's wrap: ${w.fellOverdue.slice(0, 5).map(q).join(", ")}`] : []),
     ...(w.tomorrow.length ? [`• First for ${readAt(w, "en")}: ${w.tomorrow.map(q).join(", ")}`] : []),

@@ -2,18 +2,19 @@ import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, sc } from "@/lib/auth";
-import { isWaNumber, todoPage } from "@/lib/secretary";
+import { SERIES_ID, isWaNumber, ruleText, todoPage } from "@/lib/secretary";
 import { AWAY_AHEAD_DAYS, awayListOf } from "@/lib/secretary-away";
 import { namesSharjah } from "@/lib/secretary-calendar";
 import { isAgentId } from "@/lib/agents";
 import { can } from "@/lib/roles";
 import {
-  AGENDA_BUCKETS, AUTO_CLOSE_RESULT, addDays, approvalsLine, briefClock, formatWhen, linkFactText, nextStepParts, noteText, partyKey, partyName, zoneDay, zoneLocalInput, zoneTimeLabel,
+  AGENDA_BUCKETS, AUTO_CLOSE_RESULT, addDays, approvalsLine, briefClock, formatWhen, linkFactText, nextStepParts, noteText, partyKey, partyName, resultText, zoneDay, zoneLocalInput, zoneTimeLabel,
   type AgendaEntry, type SecItem,
 } from "@/lib/secretary-agenda";
 import { fill } from "@/lib/fill";
 import TodoPanel, { type TodoRow, type TodoSection } from "@/components/app/TodoPanel";
 import WorkingDaysPanel from "@/components/app/WorkingDaysPanel";
+import SeriesPanel, { type SeriesRow } from "@/components/app/SeriesPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -31,10 +32,13 @@ export const dynamic = "force-dynamic";
  * row opens with "Away until…", and the brand's Working days (`working`: the settings, what is in force, the next
  * 12 months of days off, this and next year's Eid), which an admin edits and a member reads (`brand.write`); a brand in
  * Sharjah is told Friday is in its government's weekend. A debt the chase rule holds back says why under its WhatsApp
- * link (`nextStepParts`). The brand file, `sec:cal` and `sec:away` are the records the agenda was read with
+ * link (`nextStepParts`). `?series={id}` (an id of the right form; anything else counts as absent) shows one recurring
+ * series' closed copies instead of the list, read from that series' set only (`todoPage(scope, { series })`). A
+ * recurring row carries its rule in words (`ruleText`, with the Hijri anchor the Hijri rules need) and the rule's fields
+ * for the form. The brand file, `sec:cal` and `sec:away` are the records the agenda was read with
  * (`todoPage`), at the same instant: nothing is read twice.
  */
-export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ lang: string }>; searchParams?: Promise<{ series?: string | string[] }> }) {
   const { lang } = await params;
   if (!isLang(lang)) notFound();
   const u = await currentUser();
@@ -42,6 +46,20 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const scope = sc(u);
   const t = appDict[lang];
   const T = t.todo;
+  const rawSeries = (await searchParams)?.series;
+  const seriesId = typeof rawSeries === "string" && SERIES_ID.test(rawSeries) ? rawSeries : null;
+  // Who closed a copy: the login when there is one, else who acted, in words.
+  const whoClosed = (cb: NonNullable<SecItem["closedBy"]>) => cb.login ?? (isAgentId(cb.actor) ? t.agents[cb.actor].name : cb.actor === "owner" ? T.repeat.who.owner : cb.actor === "mcp" ? T.repeat.who.mcp : T.repeat.who.auto);
+  const closedByOf = (it: SecItem) => (it.closedBy ? fill(T.repeat.closedBy, { who: whoClosed(it.closedBy) }) : null);
+  if (seriesId) {
+    const { now, zone, series } = await todoPage(scope, { series: seriesId });
+    const fmt = (iso: string, allDay = false) => formatWhen(iso, allDay, lang, now, zone);
+    const rows: SeriesRow[] = series.items.map((it) => ({
+      id: it.id, title: it.title, due: it.dueAt ? fmt(it.dueAt, it.allDay) : null, closedAt: it.completedAt ? fmt(it.completedAt) : null,
+      result: it.result === AUTO_CLOSE_RESULT ? T.autoClosed : resultText(it.result, lang), closedBy: closedByOf(it),
+    }));
+    return <SeriesPanel t={t} id={series.id} rows={rows} total={series.total} kept={series.kept} canWrite={can(u, "todo.write")} canClose={can(u, "todo.close")} backHref={`/${lang}/app/todo`} exportHref={`/api/secretary/series/${series.id}/export?lang=${lang}`} />;
+  }
   const { now, zone, agenda, done, deleted, facts, tonight, timed, brand, working: cal, awayRows } = await todoPage(scope);
   const awayList = awayListOf(awayRows, now, zone);
   const today = zoneDay(now, zone);
@@ -84,7 +102,13 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
     ].filter(Boolean).join(" · "),
     proposed: it.proposedDone ? { claim: `${claimBy(it.proposedDone)}: «${it.proposedDone.evidence}»` } : null,
     fact: factOf(it),
-    result: it.result === AUTO_CLOSE_RESULT ? T.autoClosed : it.result,
+    result: it.result === AUTO_CLOSE_RESULT ? T.autoClosed : resultText(it.result, lang),
+    // A recurring copy: its rule in words (the Hijri month and day of the anchor for the Hijri rules), the rule's fields
+    // for the form, the series' history link, and on a closed copy who closed it.
+    repeat: it.repeat ? ruleText(it.repeat, zone, lang) : null,
+    repeatRule: it.repeat ? { every: it.repeat.every, interval: it.repeat.interval, weekdays: it.repeat.weekdays ?? [], monthDay: it.repeat.monthDay ?? null, until: it.repeat.until ?? "", count: it.repeat.count ?? null, remindBefore: it.repeat.remindBefore ?? null } : null,
+    seriesId: it.series?.id ?? null,
+    closedBy: it.completedAt ? closedByOf(it) : null,
     // The owner's own page: private notes included, the notes code writes worded in the page's language.
     notes: it.notes.slice(-3).map((n) => noteText(n, lang)),
     remind: it.remindAt ? fill(timed ? T.remindAt : T.remindBrief, { when: when(it.remindAt), brief }) : null,
@@ -115,6 +139,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
       deleted={deleted.map((it) => row(it))}
       tonight={tonight}
       canClose={can(u, "todo.close")}
+      canWrite={can(u, "todo.write")}
+      todoHref={`/${lang}/app/todo`}
       timed={timed}
       briefAt={brief}
       lang={lang}

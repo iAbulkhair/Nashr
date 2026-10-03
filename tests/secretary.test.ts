@@ -550,6 +550,13 @@ describe("account deletion removes the whole list (rule 201)", () => {
     const gone = await add({ title: "Deleted" });
     await patch(done.id, { action: "complete", result: "ok" });
     await patch(gone.id, { action: "delete" });
+    // A closed recurring copy (rule 496): its series set, the series list and the warn window are `sec:*` keys too, and
+    // the keep list, a warning marker and the next-copy claim are seeded beside them (rule 508).
+    const rec = await add({ title: "Recurring", dueAt: new Date(Date.now() + 864e5).toISOString().slice(0, 16), repeat: { every: "day" } });
+    const recDone = ((await (await patch(rec.id, { action: "complete", result: "ok" })).json()).item) as { series: { id: string } };
+    await Promise.all([db.sadd(SEC_KEYS.seriesKeep(u.email), recDone.series.id), db.setNx(SEC_KEYS.swarn(u.email, recDone.series.id), "1", 3600), db.setNx(SEC_KEYS.spawn(u.email, rec.id), "s0123456789abcdef", 3600), db.zadd(SEC_KEYS.spurge(u.email), Date.now(), rec.id)]);
+    const seriesKeys = [SEC_KEYS.series(u.email, recDone.series.id), SEC_KEYS.seriesList(u.email), SEC_KEYS.sdone(u.email), SEC_KEYS.spurge(u.email), SEC_KEYS.seriesKeep(u.email), SEC_KEYS.swarn(u.email, recDone.series.id), SEC_KEYS.spawn(u.email, rec.id)];
+    expect(seriesKeys.every((k) => memKeys().includes(k))).toBe(true);
     await setActiveBrand(u.email, "b2");
     await add({ title: "Second brand" });
     // Absences Reem proposed in chat (rule 485), in both brands: an open one (its record and the index) and a decided one

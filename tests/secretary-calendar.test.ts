@@ -1289,7 +1289,7 @@ describe("rule 489: every key Reem's store builds has a row in docs/system/archi
   it("each SEC_KEYS family, its arguments read as {…} slots, is a key cell of the table (derived from the code, so a new key fails until it is documented)", () => {
     const families = Object.entries(SEC_KEYS).map(([name, k]): [string, string] => [name, typeof k === "function" ? (k as (...a: string[]) => string)(...Array<string>(k.length).fill(SLOT)) : k]);
     // The away families of Reem phase 3 A1 are among them: the away hash, the calendar, and the proposals Reem makes in chat.
-    expect(families.map(([n]) => n)).toEqual(expect.arrayContaining(["cal", "away", "awayProp", "awayProps", "awayPropDone"]));
+    expect(families.map(([n]) => n)).toEqual(expect.arrayContaining(["cal", "away", "awayProp", "awayProps", "awayPropDone", "series", "seriesList", "sdone", "spurge", "seriesKeep", "spawn", "swarn"]));
     const cells = tableKeys();
     expect(cells.length).toBeGreaterThan(100);
     const shape = (key: string) => new RegExp(`^${key.split(SLOT).map(escape).join("\\{[^}]+\\}")}$`);
@@ -1299,9 +1299,11 @@ describe("rule 489: every key Reem's store builds has a row in docs/system/archi
 
   it("every key account deletion removes for a brand (secretaryKeys), the away proposals' records and outcomes included, matches a key cell of the table", async () => {
     const scope = "al489@test.example";
-    await Promise.all([db.sadd(SEC_KEYS.all(scope), "s0123456789abcdef"), db.sadd(SEC_KEYS.awayProps(scope), "0123456789abcdef")]);
+    await Promise.all([db.sadd(SEC_KEYS.all(scope), "s0123456789abcdef"), db.sadd(SEC_KEYS.awayProps(scope), "0123456789abcdef"), db.sadd(SEC_KEYS.seriesList(scope), "r0123456789abcdef")]);
     const keys = await secretaryKeys(scope);
-    for (const k of [SEC_KEYS.cal(scope), SEC_KEYS.away(scope), SEC_KEYS.awayProp(scope, "0123456789abcdef"), SEC_KEYS.awayPropDone(scope, "0123456789abcdef"), SEC_KEYS.awayProps(scope)]) expect(keys).toContain(k);
+    for (const k of [SEC_KEYS.cal(scope), SEC_KEYS.away(scope), SEC_KEYS.awayProp(scope, "0123456789abcdef"), SEC_KEYS.awayPropDone(scope, "0123456789abcdef"), SEC_KEYS.awayProps(scope),
+      // Reem phase 3 A2: the series indexes, each listed series' set and warning marker, and the next-copy claim of each item.
+      SEC_KEYS.seriesList(scope), SEC_KEYS.sdone(scope), SEC_KEYS.spurge(scope), SEC_KEYS.seriesKeep(scope), SEC_KEYS.series(scope, "r0123456789abcdef"), SEC_KEYS.swarn(scope, "r0123456789abcdef"), SEC_KEYS.spawn(scope, "s0123456789abcdef")]) expect(keys).toContain(k);
     // A `{…}` slot of the table stands for one argument: a scope, an id or a day, none of which holds a colon.
     const cells = tableKeys().map((c) => new RegExp(`^${c.split(/\{[^}]+\}/).map(escape).join("[^:]+")}$`));
     expect(keys.filter((k) => !cells.some((re) => re.test(k)))).toEqual([]);

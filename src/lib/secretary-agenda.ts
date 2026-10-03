@@ -31,9 +31,40 @@ export type SecSource = "owner" | "chat" | "mcp" | "agent";
  * language (the page in Arabic or English, a tool answer in English): `not_yet`, left by the owner's "Not yet", whose
  * `text` holds the claim that was sent back; `chased`, left when the owner followed up («تمت المتابعة», never "sent");
  * `reminded`, left when a reminder the owner asked for fired; `reopened`, left when the owner reopened a done item
- * (its `text` is the id of the inbox item the reopen unlinked it from, or empty).
+ * (its `text` is the id of the inbox item the reopen unlinked it from, or empty); `two_open`, left on a reopened copy of
+ * a recurring series when another copy of the series is still open.
  */
-export type SecNote = { at: string; by: SecActor; text: string; private: boolean; kind?: "not_yet" | "chased" | "reminded" | "reopened" };
+export type SecNote = { at: string; by: SecActor; text: string; private: boolean; kind?: "not_yet" | "chased" | "reminded" | "reopened" | "two_open" };
+
+/** How a recurring item repeats. Pure data; `gregorianNext` here and `nextOccurrence` in `./secretary-calendar` read it. */
+export type SecRepeat = {
+  every: "day" | "workday" | "week" | "month" | "year" | "hmonth" | "hyear";
+  /** 1-99; `workday` always 1; `hyear` at most 10 (checked where the rule is parsed). */
+  interval: number;
+  /** Local "YYYY-MM-DD" of the first occurrence; set when the rule is set or changed, never by a reschedule. */
+  anchor: string;
+  /** The brand's effective week start when the rule was set; `week` periods count from it. */
+  weekStart: number;
+  /** Local "HH:mm" of every copy; absent means all-day (due at the end of the local day). */
+  time?: string;
+  /** `week`: 0 Sunday … 6 Saturday, unique; default the anchor's weekday. */
+  weekdays?: number[];
+  /** `month`: 1-31 or -1 (the last day); `hmonth`: 1-30 or -1; default the anchor's day. */
+  monthDay?: number;
+  /** Minutes before `dueAt` the reminder of each copy is set, 0-10080. */
+  remindBefore?: number;
+  /** Local "YYYY-MM-DD", inclusive. */
+  until?: string;
+  /** 1-999 occurrences in all. */
+  count?: number;
+};
+/** The result stored when the owner skips one occurrence of a recurring item. */
+export const SKIP_RESULT = "skipped";
+/**
+ * A closed item's result as a person reads it: the stored `SKIP_RESULT` word becomes the phrase, any other result is the
+ * owner's own text. Every place that shows a result (the page, a tool answer, the CSV) goes through here.
+ */
+export const resultText = (result: string | null | undefined, lang: "ar" | "en"): string => (result === SKIP_RESULT ? (lang === "ar" ? "تخطيت هالمرة" : "Skipped this time") : result ?? "");
 
 export type SecItem = {
   /** Server-generated: `s` and 16 hex characters (`SEC_ID` in secretary.ts). */
@@ -88,6 +119,14 @@ export type SecItem = {
   phone?: string | null;
   /** The agent whose `handoff_note` (kind "blocked") opened this item, so a second similar note joins it as a note. */
   handoffFrom?: AgentId | null;
+  /** Present on a recurring item: how it repeats. `null` after the owner stopped the repeat; absent on items before A2. */
+  repeat?: SecRepeat | null;
+  /** The series a recurring item belongs to (`r` and 16 hex characters) and its place in it, 1 for the first copy. */
+  series?: { id: string; n: number };
+  /** On a closed copy: the id of the copy opened after it. */
+  nextId?: string;
+  /** Who closed it; set by every close path, cleared on reopen, never copied to the next copy. */
+  closedBy?: { actor: SecActor; login?: string };
   /** Bumped on every write; a writer that read an older rev gets 409 `conflict`. */
   rev: number;
 };
@@ -133,6 +172,8 @@ export type CalData = {
   ramadanHours: { from: string; to: string }[];
   /** The morning brief's local time: the moment a quiet day's chase is moved to. */
   briefAt: { hh: number; mm: number };
+  /** The owner's moon-sighting corrections per Hijri year (`shawwal1`, `dhulhijja1`), read by the Hijri repeat rules. */
+  hijriFix?: Record<string, { shawwal1?: string; dhulhijja1?: string }>;
 };
 /** Contacts who are away, keyed by `partyKey` of their label: `until` is the last away day (YYYY-MM-DD), `endedAt` when they came back early. */
 export type AwayMap = Record<string, { label: string; until: string; endedAt?: string }>;
@@ -672,6 +713,7 @@ export function noteText(n: Pick<SecNote, "text" | "kind">, lang: "ar" | "en"): 
   if (n.kind === "reminded") return lang === "ar" ? "طلبت تذكيرك اليوم" : "You asked to be reminded";
   // A reopened item that was linked to an inbox item keeps that item's id in the note: the link itself goes on reopen.
   if (n.kind === "reopened") return n.text ? (lang === "ar" ? `أُعيد فتحها، وفُكّ ربطها بعنصر الصندوق ${n.text}` : `Reopened, and unlinked from inbox item ${n.text}`) : lang === "ar" ? "أُعيد فتحها" : "Reopened";
+  if (n.kind === "two_open") return lang === "ar" ? "النسخة التالية مفتوحة ومعدّلة — صار عندك نسختان" : "The next copy is open and was edited; there are now two";
   return n.text;
 }
 
@@ -720,4 +762,160 @@ export function briefAgenda(a: Agenda & { cal?: CalData }): BriefAgenda {
     ...(later.length ? { chaseAfter: { count: later.length, time: zoneLocalInput(Math.min(...later), a.zone).slice(11, 16) } } : {}),
     top: [...a.buckets.overdue, ...a.buckets.today].slice(0, 3).map((e) => e.item.title),
   };
+}
+
+// Recurring items: the Gregorian rule maths. Pure and browser-safe; the Hijri rules are in `./secretary-calendar`.
+
+/** 0 Sunday … 6 Saturday, the weekday of a local day (YYYY-MM-DD). */
+export const weekdayOf = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay();
+/** The first day of the week (`weekStart`: 0 Sunday … 6 Saturday) that holds `day`. */
+export const weekStartOf = (day: string, weekStart: number) => addDays(day, -((weekdayOf(day) - weekStart + 7) % 7));
+/**
+ * `months` months after a day, on the same day of the month, or on `monthDay` when one is given (`-1` is the last day),
+ * clamped to the target month's length. A clamped result is never fed back: callers count from the anchor, so 31 Jan
+ * gives 28 Feb and then 31 Mar.
+ */
+export function addMonthsClamped(day: string, months: number, monthDay?: number): string {
+  const y = +day.slice(0, 4), m = +day.slice(5, 7) - 1, d = +day.slice(8, 10);
+  const last = new Date(Date.UTC(y, m + months + 1, 0));
+  const len = last.getUTCDate();
+  const want = monthDay === -1 ? len : Math.min(monthDay ?? d, len);
+  return new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), want)).toISOString().slice(0, 10);
+}
+
+/** The local "HH:mm" of a rule as hours and minutes, or null for all-day (absent, or not a time). */
+export const ruleClock = (time: string | undefined): { hh: number; mm: number } | null => {
+  const t = time === undefined ? null : /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time);
+  return t ? { hh: +t[1], mm: +t[2] } : null;
+};
+
+/** Candidate days of a Gregorian rule in order, none before the anchor or `low`, until `stop` (exclusive of later days). */
+function* gregorianDays(rule: SecRepeat, low: string, stop: string, cal: CalData): Generator<string> {
+  const n = Math.max(1, Math.floor(rule.interval) || 1);
+  const from = low > rule.anchor ? low : rule.anchor;
+  switch (rule.every) {
+    case "day": {
+      for (let k = Math.max(0, Math.ceil(daysBetween(rule.anchor, from) / n)); ; k++) {
+        const d = addDays(rule.anchor, k * n);
+        if (d > stop) return;
+        yield d;
+      }
+    }
+    case "workday": {
+      for (let d = from; d <= stop; d = addDays(d, 1)) if (!isQuietDay(d, cal)) yield d;
+      return;
+    }
+    case "week": {
+      const ws = Number.isInteger(rule.weekStart) && rule.weekStart >= 0 && rule.weekStart <= 6 ? rule.weekStart : 0;
+      const picked = [...new Set((rule.weekdays ?? []).filter((w) => Number.isInteger(w) && w >= 0 && w <= 6))];
+      const offsets = (picked.length ? picked : [weekdayOf(rule.anchor)]).map((w) => (w - ws + 7) % 7).sort((a, b) => a - b);
+      const first = weekStartOf(rule.anchor, ws);
+      for (let k = Math.max(0, Math.floor(Math.floor(daysBetween(first, from) / 7) / n) - 1); ; k++) {
+        const block = addDays(first, 7 * n * k);
+        if (block > stop) return;
+        for (const o of offsets) {
+          const d = addDays(block, o);
+          if (d >= rule.anchor && d <= stop) yield d;
+        }
+      }
+    }
+    case "month":
+    case "year": {
+      const step = rule.every === "year" ? 12 * n : n;
+      const gap = (+from.slice(0, 4) - +rule.anchor.slice(0, 4)) * 12 + (+from.slice(5, 7) - +rule.anchor.slice(5, 7));
+      for (let k = Math.max(0, Math.floor(gap / step) - 1); ; k++) {
+        const d = addMonthsClamped(rule.anchor, k * step, rule.every === "month" ? rule.monthDay : undefined);
+        if (d > stop) return;
+        if (d >= rule.anchor) yield d;
+      }
+    }
+    default:
+      return;
+  }
+}
+
+/**
+ * The next copy's due date for a `day`, `workday`, `week`, `month` or `year` rule: the first candidate on the rule's
+ * grid (counted from the anchor, clamped per candidate) that is after the copy being closed (`prevDueMs`) and, so missed
+ * dates never pile up, not in the past: a timed copy must be after `now`, an all-day copy on today or later. `null` when
+ * `until` has passed, when the search (366 × interval days from the later of the two) finds nothing, or for a Hijri rule.
+ * `allDay` is true when the rule has no `time`.
+ */
+export function gregorianNext(rule: SecRepeat, prevDueMs: number, now: number, z: Zone, cal: CalData): { dueAt: string; allDay: boolean } | null {
+  if (rule.every === "hmonth" || rule.every === "hyear") return null;
+  const n = Math.max(1, Math.floor(rule.interval) || 1);
+  const clock = ruleClock(rule.time);
+  const today = zoneDay(now, z);
+  const low = [zoneDay(prevDueMs, z), today].reduce((a, b) => (a > b ? a : b));
+  const bound = addDays(low, 366 * n + 7);
+  const stop = rule.until && rule.until < bound ? rule.until : bound;
+  const startOfToday = zoneTime(today, 0, 0, z);
+  for (const day of gregorianDays(rule, low, stop, cal)) {
+    const at = clock ? zoneTime(day, clock.hh, clock.mm, z) : endOfZoneDay(day, z);
+    if (at > prevDueMs && (clock ? at > now : at >= startOfToday)) return { dueAt: new Date(at).toISOString(), allDay: !clock };
+  }
+  return null;
+}
+
+const GREG_MONTHS = {
+  ar: ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"],
+  en: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+} as const;
+const HIJRI_MONTHS = {
+  ar: ["محرم", "صفر", "ربيع الأول", "ربيع الآخر", "جمادى الأولى", "جمادى الآخرة", "رجب", "شعبان", "رمضان", "شوال", "ذو القعدة", "ذو الحجة"],
+  en: ["Muharram", "Safar", "Rabi al-awwal", "Rabi al-thani", "Jumada al-awwal", "Jumada al-thani", "Rajab", "Shaban", "Ramadan", "Shawwal", "Dhu al-Qadah", "Dhu al-Hijjah"],
+} as const;
+/** After «يوم»: «يوم أحد». */
+const AR_WEEKDAYS = ["أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"] as const;
+const AR_UNITS = {
+  day: { one: "يوم", two: "يومين", few: "أيام", many: "يومًا" },
+  week: { one: "أسبوع", two: "أسبوعين", few: "أسابيع", many: "أسبوعًا" },
+  month: { one: "شهر", two: "شهرين", few: "أشهر", many: "شهرًا" },
+  year: { one: "سنة", two: "سنتين", few: "سنوات", many: "سنة" },
+  hmonth: { one: "شهر هجري", two: "شهرين هجريين", few: "أشهر هجرية", many: "شهرًا هجريًا" },
+  hyear: { one: "سنة هجرية", two: "سنتين هجريتين", few: "سنوات هجرية", many: "سنة هجرية" },
+} as const;
+const EN_UNITS = { day: "day", week: "week", month: "month", year: "year", hmonth: "Hijri month", hyear: "Hijri year" } as const;
+
+/**
+ * A rule in one phrase in the reader's language: «يتكرر كل يوم أحد» / "Repeats every Sunday". Dual forms («كل أسبوعين»),
+ * Latin digits. `hijri` is the Hijri month (1-12) and day of the anchor, which a yearly Hijri rule needs to name its
+ * date (this module has no Hijri calendar); without it the phrase stops at "every Hijri year".
+ */
+export function repeatText(rule: SecRepeat, lang: "ar" | "en", hijri?: { month: number; day: number }): string {
+  const ar = lang === "ar";
+  const n = Math.max(1, Math.floor(rule.interval) || 1);
+  const list = (xs: string[]) => (xs.length < 2 ? xs.join("") : ar ? `${xs.slice(0, -1).join("، ")} و${xs[xs.length - 1]}` : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+  const anchorDay = +rule.anchor.slice(8, 10), anchorMonth = +rule.anchor.slice(5, 7) - 1;
+  const every = rule.every;
+  let text: string;
+  if (every === "workday") text = ar ? "يتكرر كل يوم عمل" : "Repeats every working day";
+  else {
+    const unit = ar ? `كل ${arCount(n, AR_UNITS[every])}` : n === 1 ? `every ${EN_UNITS[every]}` : `every ${n} ${EN_UNITS[every]}s`;
+    let tail = "";
+    if (every === "week") {
+      const picked = [...new Set((rule.weekdays ?? []).filter((w) => Number.isInteger(w) && w >= 0 && w <= 6))].sort((a, b) => a - b);
+      const days = list((picked.length ? picked : [weekdayOf(rule.anchor)]).map((w) => (ar ? `يوم ${AR_WEEKDAYS[w]}` : WEEKDAY_NAMES[w])));
+      if (n === 1) text = ar ? `يتكرر كل ${days}` : `Repeats every ${days}`;
+      else text = ar ? `يتكرر ${unit}، ${days}` : `Repeats ${unit} on ${days}`;
+      return finishRepeat(text, rule, ar);
+    }
+    if (every === "month" || every === "hmonth") {
+      const d = rule.monthDay ?? (every === "month" ? anchorDay : undefined);
+      if (d !== undefined) tail = d === -1 ? (ar ? "، آخر يوم" : " on the last day") : ar ? `، يوم ${d}` : ` on day ${d}`;
+    } else if (every === "year") tail = ar ? `، في ${anchorDay} ${GREG_MONTHS.ar[anchorMonth]}` : ` on ${anchorDay} ${GREG_MONTHS.en[anchorMonth]}`;
+    else if (every === "hyear" && hijri && hijri.month >= 1 && hijri.month <= 12) tail = ar ? `، في ${hijri.day} ${HIJRI_MONTHS.ar[hijri.month - 1]}` : ` on ${hijri.day} ${HIJRI_MONTHS.en[hijri.month - 1]}`;
+    text = `${ar ? "يتكرر" : "Repeats"} ${unit}${tail}`;
+  }
+  return finishRepeat(text, rule, ar);
+}
+
+/** The time of day, the last day and the number of times a rule runs, added to its phrase. */
+function finishRepeat(text: string, rule: SecRepeat, ar: boolean): string {
+  let out = text;
+  const clock = ruleClock(rule.time);
+  if (clock) out += `${ar ? " الساعة " : " at "}${rule.time}`;
+  if (rule.until) out += ar ? `، حتى ${rule.until}` : `, until ${rule.until}`;
+  if (rule.count !== undefined) out += ar ? `، ${arCount(rule.count, { one: "مرة واحدة", two: "مرتين", few: "مرات", many: "مرة" })}` : rule.count === 1 ? ", once" : `, ${rule.count} times`;
+  return out;
 }

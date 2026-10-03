@@ -142,6 +142,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "PATCH /api/secretary/[id]": g("admin", "todo.write", "todo.close"),
   // Reem's Working days (weekend, Ramadan hours, Eid sightings, holidays): a brand setting, so an admin saves it; every member reads it.
   "PUT /api/secretary/calendar": g("admin", "brand.write"),
+  // Keeping a series' history is a to-do write; stopping to keep it lets the daily job delete it, so it also needs todo.close (checked in code, a member gets 403).
+  "PUT /api/secretary/series/[seriesId]/keep": g("admin", "todo.write", "todo.close"),
 
   // Every member of the account.
   "PATCH /api/account": g("member", "password.change"),
@@ -238,6 +240,7 @@ const READS: Record<string, Gate> = {
   "GET /api/secretary/walk": g("member", "read"),
   "GET /api/secretary/away": g("member", "read"),
   "GET /api/secretary/calendar": g("member", "read"),
+  "GET /api/secretary/series/[seriesId]/export": g("member", "read"),
 
   "GET /api/mcp": "public-read",
   "GET /api/oauth/meta": "public-read",

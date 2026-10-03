@@ -13,7 +13,7 @@
  */
 import { createHash } from "node:crypto";
 import { hijriDate } from "./seasons";
-import { DEFAULT_RAMADAN_HOURS, addDays, daysBetween, defaultCal, zoneDay, zoneTime, type CalData, type QuietWhy } from "./secretary-agenda";
+import { DEFAULT_RAMADAN_HOURS, addDays, daysBetween, defaultCal, endOfZoneDay, gregorianNext, ruleClock, zoneDay, zoneTime, type CalData, type QuietWhy, type SecRepeat } from "./secretary-agenda";
 import { ZONES, weekStartDay, type Zone } from "./zones";
 import type { SecFail } from "./secretary";
 
@@ -291,11 +291,15 @@ function build(cal: SecCalendar | null, zone: Zone, now: number): Built {
   // start is always Umm al-Qura's: a stored `ramadan1` (taken before ruling R30) is not read.
   const uqStarts = new Map(starts);
   const thisYear = hijriDate(new Date(now), zone).y;
+  const accepted: Record<string, { shawwal1?: string; dhulhijja1?: string }> = {};
   for (const [y, fix] of Object.entries(cal?.hijriFix ?? {})) {
     if (+y < thisYear) continue; // a past year's correction (ruling R8)
     for (const [field, m] of [["shawwal1", 10], ["dhulhijja1", 12]] as const) {
       const v = fix?.[field], key = `${y}-${m}`, uq = starts.get(key);
-      if (uq && isDay(v) && Math.abs(daysBetween(uq, v)) <= 1) starts.set(key, v);
+      if (uq && isDay(v) && Math.abs(daysBetween(uq, v)) <= 1) {
+        starts.set(key, v);
+        (accepted[y] ??= {})[field] = v;
+      }
     }
   }
   // No month has 31 days (ruling R26): a Ramadan the corrections stretch past 30 days (Eid a day after a 30-day Umm
@@ -434,6 +438,8 @@ function build(cal: SecCalendar | null, zone: Zone, now: number): Built {
     ramadan,
     ramadanHours: (Array.isArray(ownHours) ? ownHours : DEFAULT_RAMADAN_HOURS).map((w) => ({ from: w.from, to: w.to })),
     briefAt: defaultCal(zone).briefAt,
+    // The corrections the calendar read, for the Hijri rules of recurring items (`nextOccurrence`); absent when none.
+    ...(Object.keys(accepted).length ? { hijriFix: accepted } : {}),
   };
   return { data, ramadanSpans, produced: [...produced].filter(inWindow).sort().map((day) => ({ day, h: hijriOf.get(day) })) };
 }
@@ -593,15 +599,104 @@ function parseHours(v: unknown): { from: string; to: string }[] | null | false {
   return out.map(({ from, to }) => ({ from, to }));
 }
 
+/** `uqMonthStart` answers, per zone, Hijri year and month: ICU is the slow part and the answer never changes. */
+const UQ_MEMO_MAX = 2000;
+const uqMemo = new Map<string, string | null>();
+
 /** The Umm al-Qura local day a Hijri month starts on, found near its mean-month estimate (ICU is never more than 2 days off it). */
 function uqMonthStart(y: number, m: number, zone: Zone): string | null {
-  const est = new Date(Date.UTC(622, 6, 19) + Math.round(((y - 1) * 12 + (m - 1)) * 29.530588853) * 864e5).toISOString().slice(0, 10);
-  for (let k = -6; k <= 6; k++) {
-    const day = addDays(est, k);
-    const h = hijriDate(new Date(zoneTime(day, 12, 0, zone)), zone);
-    if (h.y === y && h.m === m && h.day === 1) return day;
+  const key = `${zone}|${y}|${m}`;
+  if (uqMemo.has(key)) return uqMemo.get(key)!;
+  let found: string | null = null;
+  const t = Date.UTC(622, 6, 19) + Math.round(((y - 1) * 12 + (m - 1)) * 29.530588853) * 864e5;
+  if (Number.isFinite(t) && Math.abs(t) < 8.6e15 - 7 * 864e5) {
+    const est = new Date(t).toISOString().slice(0, 10);
+    for (let k = -6; k <= 6 && !found; k++) {
+      const day = addDays(est, k);
+      const h = hijriDate(new Date(zoneTime(day, 12, 0, zone)), zone);
+      if (h.y === y && h.m === m && h.day === 1) found = day;
+    }
   }
-  return null;
+  if (uqMemo.size >= UQ_MEMO_MAX) uqMemo.delete(uqMemo.keys().next().value!);
+  uqMemo.set(key, found);
+  return found;
+}
+
+/**
+ * The local day Hijri month `m` (1-12) of year `y` starts on in `zone`: Umm al-Qura's day, moved by the owner's sighting
+ * correction for Shawwal (10, `shawwal1`) and Dhu al-Hijjah (12, `dhulhijja1`) when `fix` (`CalData.hijriFix`) holds one
+ * within a day of it, as `build` reads it. Ramadan (9) follows ruling R26: when the Shawwal correction would stretch it
+ * past 30 days it starts later instead, so its length stays 30. `null` when Umm al-Qura has no such month.
+ */
+export function hijriMonthStart(y: number, m: number, zone: Zone, fix?: CalData["hijriFix"]): string | null {
+  const uq = uqMonthStart(y, m, zone);
+  if (!uq) return null;
+  const moved = (field: "shawwal1" | "dhulhijja1") => {
+    const v = fix?.[String(y)]?.[field];
+    return isDay(v) && Math.abs(daysBetween(uq, v)) <= 1 ? v : uq;
+  };
+  if (m === 10) return moved("shawwal1");
+  if (m === 12) return moved("dhulhijja1");
+  if (m === 9) {
+    const eid = hijriMonthStart(y, 10, zone, fix);
+    return eid && daysBetween(uq, eid) > 30 ? addDays(eid, -30) : uq;
+  }
+  return uq;
+}
+
+/** The Hijri candidates of an `hmonth` or `hyear` rule, in order, none before the anchor, until `stop`.
+ * The rule's anchor month and day are read by pure Umm al-Qura (no `hijriFix` applied to the anchor); the candidates
+ * are placed on the effective calendar (with `hijriFix`). */
+function* hijriDays(rule: SecRepeat, low: string, stop: string, z: Zone, cal: CalData): Generator<string> {
+  const n = Math.max(1, Math.floor(rule.interval) || 1);
+  const noon = (day: string) => new Date(zoneTime(day, 12, 0, z));
+  const a = hijriDate(noon(rule.anchor), z), l = hijriDate(noon(low), z);
+  const monthly = rule.every === "hmonth";
+  const k0 = Math.max(0, Math.floor((monthly ? (l.y * 12 + l.m) - (a.y * 12 + a.m) : l.y - a.y) / n) - 1);
+  // A bounded search: a year and a bit of candidates at most (a month rule has at most 13, a year rule 3), so a rule
+  // with no month start to build on (past Umm al-Qura's range) ends instead of looping.
+  for (let k = k0; k < k0 + 16; k++) {
+    const idx = a.y * 12 + (a.m - 1) + k * n;
+    const y = monthly ? Math.floor(idx / 12) : a.y + k * n, m = monthly ? (idx % 12) + 1 : a.m;
+    const s = hijriMonthStart(y, m, z, cal.hijriFix), e = m === 12 ? hijriMonthStart(y + 1, 1, z, cal.hijriFix) : hijriMonthStart(y, m + 1, z, cal.hijriFix);
+    if (!s || !e) continue;
+    const len = daysBetween(s, e);
+    const want = monthly && rule.monthDay === -1 ? len : Math.max(1, Math.min(monthly ? rule.monthDay ?? a.day : a.day, len));
+    const d = addDays(s, want - 1);
+    if (d > stop) return;
+    if (d >= rule.anchor && d >= low) yield d;
+  }
+}
+
+/**
+ * The next copy of a recurring item: its due date and whether it is all-day, or `null` when the series is over or nothing
+ * is found. `prevDue` is the closed copy's `dueAt` (ISO), `n` the number of copies made so far (the closed one included).
+ * Gregorian rules go to `gregorianNext`; `hmonth` and `hyear` count Hijri months from the anchor's Hijri date on the
+ * calendar `cal` holds (Umm al-Qura plus the owner's `hijriFix`), clamping a day 30 to 29 in a short month per candidate,
+ * with the same grid, no-pile-up and bound as the Gregorian ones. `null` when `n` has reached `count`, when the date is
+ * after `until`, or when the bounded search (366 × interval days) finds nothing.
+ */
+export function nextOccurrence(rule: SecRepeat, prevDue: string, now: number, z: Zone, cal: CalData, n: number): { dueAt: string; allDay: boolean } | null {
+  if (rule.count !== undefined && n >= rule.count) return null;
+  const prevMs = Date.parse(prevDue);
+  if (!Number.isFinite(prevMs)) return null;
+  let found: { dueAt: string; allDay: boolean } | null = null;
+  if (rule.every === "hmonth" || rule.every === "hyear") {
+    if (!isDay(rule.anchor)) return null;
+    const iv = Math.max(1, Math.floor(rule.interval) || 1);
+    const today = zoneDay(now, z);
+    const low = [zoneDay(prevMs, z), today].reduce((x, y) => (x > y ? x : y));
+    const bound = addDays(low, 366 * iv + 7);
+    const stop = isDay(rule.until) && rule.until < bound ? rule.until : bound;
+    const clock = ruleClock(rule.time);
+    const startOfToday = zoneTime(today, 0, 0, z);
+    for (const day of hijriDays(rule, low, stop, z, cal)) {
+      const at = clock ? zoneTime(day, clock.hh, clock.mm, z) : endOfZoneDay(day, z);
+      if (at > prevMs && (clock ? at > now : at >= startOfToday)) { found = { dueAt: new Date(at).toISOString(), allDay: !clock }; break; }
+    }
+  } else found = gregorianNext(rule, prevMs, now, z, cal);
+  if (found && rule.until && zoneDay(Date.parse(found.dueAt), z) > rule.until) return null;
+  return found;
 }
 
 const HOLIDAY_FORMATS: [RegExp, (m: RegExpExecArray) => boolean][] = [
