@@ -644,7 +644,9 @@ export function hijriMonthStart(y: number, m: number, zone: Zone, fix?: CalData[
   return uq;
 }
 
-/** The Hijri candidates of an `hmonth` or `hyear` rule, in order, none before the anchor, until `stop`. */
+/** The Hijri candidates of an `hmonth` or `hyear` rule, in order, none before the anchor, until `stop`.
+ * The rule's anchor month and day are read by pure Umm al-Qura (no `hijriFix` applied to the anchor); the candidates
+ * are placed on the effective calendar (with `hijriFix`). */
 function* hijriDays(rule: SecRepeat, low: string, stop: string, z: Zone, cal: CalData): Generator<string> {
   const n = Math.max(1, Math.floor(rule.interval) || 1);
   const noon = (day: string) => new Date(zoneTime(day, 12, 0, z));

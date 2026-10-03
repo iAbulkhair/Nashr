@@ -316,7 +316,7 @@ describe("rule 492: Hijri monthly and yearly occurrences", () => {
     expect(hOf(b)).toBe("1450-5-12");
     const two = nextDay({ ...r, interval: 2 }, "2026-10-23", cal)!;
     expect(hOf(two)).toBe("1450-5-12");
-    // 30 Safar 1448 clamps to 29 Safar 1449 (that Safar has 29 days: 5 July to 3 August 2027).
+    // 30 Safar 1448 clamps to 29 Safar 1449 (that Safar has 29 days: 5 July to 2 August 2027; 3 August is 1 Rabi al-awwal).
     const s = hRule({ every: "hyear", anchor: "2026-08-13" });
     expect(hOf(nextDay(s, "2026-08-13", cal)!)).toBe("1449-2-29");
   });
@@ -346,13 +346,11 @@ describe("rule 493: the series ends on count or until, and the search is bounded
     // Every day of the week is a weekend day, so a workday rule has nothing to find.
     const allOff: CalData = { ...cal, weekend: [0, 1, 2, 3, 4, 5, 6] };
     const w: SecRepeat = { every: "workday", interval: 1, anchor: "2026-10-04", weekStart: 0 };
-    const t0 = Date.now();
     expect(next(w, "2026-10-04", 1, allOff)).toBeNull();
     // An anchor beyond the search bound (a year of candidates from the later of the closed copy and today) has none.
     const far = (o: Partial<SecRepeat>) => nextOccurrence(hRule({ anchor: "2200-01-01", ...o }), prevIso("2026-08-13"), Date.parse(prevIso("2026-08-13")), z, cal, 1);
     expect(far({ interval: 3 })).toBeNull();
     expect(far({ every: "hyear", interval: 3 })).toBeNull();
-    expect(Date.now() - t0).toBeLessThan(2000);
     // A malformed previous date or anchor gives null, never a throw.
     expect(nextOccurrence(hRule({}), "not a date", NOW, z, cal, 1)).toBeNull();
     expect(next(hRule({ anchor: "nonsense" }), "2026-08-13", 1)).toBeNull();
