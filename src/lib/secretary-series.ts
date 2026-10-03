@@ -58,7 +58,7 @@ function warningText(named: { title: string; n: number; date: string }[], more: 
  *   never deleted for it: leaving the window is all that happens, and the daily `requeueSeries` adds back a closed copy of
  *   an unkept series that ended up in neither window.
  * - A series with a live marker (`sec:swarn`, warned under 30 days ago) moves silently, to
- *   `max(closed + 90 d, warned + 7 d)`.
+ *   `max(closed + 90 d, warned + 7 d, now + 7 d)`: a copy restored long after the warning still gets 7 days from now.
  * - The others: at most 5 named in one notification per brand and local day (its fingerprint), "and k more" for the
  *   rest, which stay for the next day. Only when the notification was pushed are their markers set and their copies moved,
  *   to `max(closed + 90 d, now + 7 d)`. A push that threw or found the day's fingerprint claimed moves none of them.
@@ -98,7 +98,7 @@ export async function warnSeries(scope: string, now = Date.now()): Promise<numbe
   });
   let moved = 0;
   if (silent.length) {
-    const rowsS = silent.flatMap(({ g, w }) => g.copies.map((x) => ({ id: x.id, at: Math.max(x.c + SERIES_PURGE_MS, w + SERIES_NOTICE_MS) })));
+    const rowsS = silent.flatMap(({ g, w }) => g.copies.map((x) => ({ id: x.id, at: Math.max(x.c + SERIES_PURGE_MS, w + SERIES_NOTICE_MS, now + SERIES_NOTICE_MS) })));
     // Into the purge window first, then out of the warn one: a crash between leaves the copy in both, never in neither.
     await Promise.all(rowsS.map((r) => db.zadd(SEC_KEYS.spurge(scope), r.at, r.id)));
     await Promise.all(rowsS.map((r) => db.zrem(SEC_KEYS.sdone(scope), r.id)));
@@ -152,11 +152,13 @@ export async function requeueSeries(scope: string): Promise<number> {
   const sets = await pmap(unkept, (sid) => db.zrangeWithScores(SEC_KEYS.series(scope, sid)), 8);
   const missing = unkept.flatMap((sid, i) => sets[i].filter((m) => !queued.has(m.member)).map((m) => ({ sid, id: m.member, score: m.score })));
   if (!missing.length) return 0;
+  // Only well-formed ids reach a key; any other member is a ghost, dropped from its series set.
+  const valid = missing.filter((m) => SEC_ID.test(m.id));
   const chunks: (typeof missing)[] = [];
-  for (let i = 0; i < missing.length; i += 500) chunks.push(missing.slice(i, i + 500));
+  for (let i = 0; i < valid.length; i += 500) chunks.push(valid.slice(i, i + 500));
   const rows = (await pmap(chunks, (ch) => db.mget<SecItem>(ch.map((m) => SEC_KEYS.item(scope, m.id))), 4)).flat();
-  const back = missing.filter((m, i) => rows[i] && stateOf(rows[i]!) === "done" && rows[i]!.series?.id === m.sid);
-  const ghosts = missing.filter((m, i) => !SEC_ID.test(m.id) || !rows[i]);
+  const back = valid.filter((m, i) => rows[i] && stateOf(rows[i]!) === "done" && rows[i]!.series?.id === m.sid);
+  const ghosts = [...missing.filter((m) => !SEC_ID.test(m.id)), ...valid.filter((_, i) => !rows[i])];
   await Promise.all([
     ...back.map((m) => db.zadd(SEC_KEYS.sdone(scope), m.score, m.id)),
     ...ghosts.map((m) => db.zrem(SEC_KEYS.series(scope, m.sid), m.id)),
@@ -169,7 +171,8 @@ export async function requeueSeries(scope: string): Promise<number> {
  * (`pmap`, 8 at a time). Under the lock the copy is read again with its `sec:spurge` score: it is deleted only while it
  * is still in `sec:spurge` with a score due now, still closed, of a series that is not kept, and 90 days past its close.
  * Otherwise it leaves `sec:spurge` (and, closed again since its warning, goes back to `sec:sdone` to be warned again).
- * A copy whose lock is busy waits for the next day. Answers how many copies were deleted.
+ * A copy whose lock is busy, or whose step threw, waits for the next day. Answers how many copies were deleted, and the
+ * one `series_purge` audit line carries that same count.
  */
 export async function purgeSeries(scope: string, now = Date.now()): Promise<number> {
   const due = await db.zrangeByScore(SEC_KEYS.spurge(scope), now, SEC_PURGE_BATCH);
@@ -177,56 +180,86 @@ export async function purgeSeries(scope: string, now = Date.now()): Promise<numb
   const bad = due.filter((m) => !SEC_ID.test(m.member)).map((m) => m.member);
   if (bad.length) await Promise.all(bad.map((id) => db.zrem(SEC_KEYS.spurge(scope), id)));
   const ids = due.filter((m) => SEC_ID.test(m.member)).map((m) => m.member);
-  const out = await pmap(ids, (id) => withLock(scope, id, async (): Promise<string | null> => {
-    const [it, score] = await Promise.all([db.get<SecItem>(SEC_KEYS.item(scope, id)), db.zscore(SEC_KEYS.spurge(scope), id)]);
-    // Taken out of the window (reopened, deleted, kept) or moved later since the read: nothing to do.
-    if (score === null || score > now) return null;
-    if (!it) {
-      await Promise.all([db.zrem(SEC_KEYS.spurge(scope), id), db.zrem(SEC_KEYS.sdone(scope), id)]);
+  // One copy's failure (a Redis call that threw, its lock) is logged and skipped: it stays in `sec:spurge` and the next day
+  // retries it, while the others are still deleted, counted and audited.
+  const out = await pmap(ids, async (id) => {
+    try {
+      const r = await withLock(scope, id, () => purgeOne(scope, id, now));
+      return typeof r === "string" ? r : null;
+    } catch (e) {
+      console.error("sec series purge item failed", e instanceof Error ? e.name : "error");
       return null;
     }
-    const sid = it.series?.id;
-    if (stateOf(it) !== "done" || !sid || !SERIES_ID.test(sid)) {
-      await db.zrem(SEC_KEYS.spurge(scope), id);
-      return null;
-    }
-    if (await db.sismember(SEC_KEYS.seriesKeep(scope), sid)) {
-      await db.zrem(SEC_KEYS.spurge(scope), id);
-      return null;
-    }
-    const c = closedAt(it, 0);
-    if (!c || c + SERIES_PURGE_MS > now) {
-      // Closed again after its warning (the index should have moved it): warned again before any deletion.
-      await db.zadd(SEC_KEYS.sdone(scope), c || now, id);
-      await db.zrem(SEC_KEYS.spurge(scope), id);
-      return null;
-    }
-    await Promise.all([
-      db.del(SEC_KEYS.item(scope, id)), db.del(SEC_KEYS.spawn(scope, id)), db.srem(SEC_KEYS.all(scope), id), db.lrem(SEC_KEYS.done(scope), id),
-      db.zrem(SEC_KEYS.open(scope), id), db.zrem(SEC_KEYS.due(scope), id), db.zrem(SEC_KEYS.deleted(scope), id),
-      db.zrem(SEC_KEYS.spurge(scope), id), db.zrem(SEC_KEYS.sdone(scope), id), db.zrem(SEC_KEYS.series(scope, sid), id),
-    ]);
-    return sid;
-  }), 8);
+  }, 8);
   const gone = out.filter((x): x is string => typeof x === "string");
   if (!gone.length) return 0;
   // A series with no closed copy left leaves the list and its marker goes. Read again after: a copy closed in between
   // puts it back, so `secretaryKeys` still finds its set.
   await pmap([...new Set(gone)], async (sid) => {
-    if ((await db.zcard(SEC_KEYS.series(scope, sid))) > 0) return;
-    await Promise.all([db.srem(SEC_KEYS.seriesList(scope), sid), db.del(SEC_KEYS.swarn(scope, sid))]);
-    if ((await db.zcard(SEC_KEYS.series(scope, sid))) > 0) await db.sadd(SEC_KEYS.seriesList(scope), sid);
+    try {
+      if ((await db.zcard(SEC_KEYS.series(scope, sid))) > 0) return;
+      await Promise.all([db.srem(SEC_KEYS.seriesList(scope), sid), db.del(SEC_KEYS.swarn(scope, sid))]);
+      if ((await db.zcard(SEC_KEYS.series(scope, sid))) > 0) await db.sadd(SEC_KEYS.seriesList(scope), sid);
+    } catch (e) {
+      console.error("sec series list cleanup failed", e instanceof Error ? e.name : "error");
+    }
   }, 8);
-  await audit(scope, { actor: "cron", via: "cron" }, "series_purge", "-", `${gone.length} closed copy(ies) of recurring to-dos deleted 90 days after their close`);
+  try {
+    await audit(scope, { actor: "cron", via: "cron" }, "series_purge", "-", `${gone.length} closed copy(ies) of recurring to-dos deleted 90 days after their close`);
+  } catch (e) {
+    console.error("sec series purge audit failed", e instanceof Error ? e.name : "error");
+  }
   return gone.length;
+}
+
+/**
+ * One copy of `purgeSeries`, under its item lock: answers its series id when the record was deleted, null otherwise. The
+ * record is deleted first, alone: once that write returns the copy is gone and counted, and an index write that throws
+ * after it is only logged (a leftover id is dropped by the next purge, requeue or `purgeExpired`).
+ */
+async function purgeOne(scope: string, id: string, now: number): Promise<string | null> {
+  const [it, score] = await Promise.all([db.get<SecItem>(SEC_KEYS.item(scope, id)), db.zscore(SEC_KEYS.spurge(scope), id)]);
+  // Taken out of the window (reopened, deleted, kept) or moved later since the read: nothing to do.
+  if (score === null || score > now) return null;
+  if (!it) {
+    await Promise.all([db.zrem(SEC_KEYS.spurge(scope), id), db.zrem(SEC_KEYS.sdone(scope), id)]);
+    return null;
+  }
+  const sid = it.series?.id;
+  if (stateOf(it) !== "done" || !sid || !SERIES_ID.test(sid)) {
+    await db.zrem(SEC_KEYS.spurge(scope), id);
+    return null;
+  }
+  if (await db.sismember(SEC_KEYS.seriesKeep(scope), sid)) {
+    await db.zrem(SEC_KEYS.spurge(scope), id);
+    return null;
+  }
+  const c = closedAt(it, 0);
+  if (!c || c + SERIES_PURGE_MS > now) {
+    // Closed again after its warning (the index should have moved it): warned again before any deletion.
+    await db.zadd(SEC_KEYS.sdone(scope), c || now, id);
+    await db.zrem(SEC_KEYS.spurge(scope), id);
+    return null;
+  }
+  await db.del(SEC_KEYS.item(scope, id));
+  try {
+    await Promise.all([
+      db.del(SEC_KEYS.spawn(scope, id)), db.srem(SEC_KEYS.all(scope), id), db.lrem(SEC_KEYS.done(scope), id),
+      db.zrem(SEC_KEYS.open(scope), id), db.zrem(SEC_KEYS.due(scope), id), db.zrem(SEC_KEYS.deleted(scope), id),
+      db.zrem(SEC_KEYS.spurge(scope), id), db.zrem(SEC_KEYS.sdone(scope), id), db.zrem(SEC_KEYS.series(scope, sid), id),
+    ]);
+  } catch (e) {
+    console.error("sec series purge index cleanup failed", e instanceof Error ? e.name : "error");
+  }
+  return sid;
 }
 
 /**
  * Keep a series' history, or stop keeping it (spec §5.2). Serialised per brand (`withLock` on "serieskeep").
  * - Keep: `keep_limit` (409) when 500 series are kept already and this one is not; `sec:serieskeep` is written first, then
  *   the series' copies leave `sec:sdone` and `sec:spurge`, and its marker goes.
- * - Un-keep (of a kept series): the copies go back into `sec:sdone` only, and the marker goes, so they are named in a new
- *   warning at least 7 days before any deletion.
+ * - Un-keep (of a kept series): the copies leave `sec:spurge` (a stale entry from a warn run that raced the keep) and go
+ *   back into `sec:sdone` only, and the marker goes, so they are named in a new warning at least 7 days before any deletion.
  * The id is checked for its form only (`not_found`, 404): the route checks that the series exists (one ZCARD). One audit
  * line, `series_keep` or `series_unkeep`, with `who`: the route does not write another. `moved`: copies taken out of or put
  * back into the windows.
@@ -246,7 +279,8 @@ export async function setSeriesKeep(scope: string, id: string, keep: boolean, wh
     } else if (was) {
       await db.srem(SEC_KEYS.seriesKeep(scope), id);
       const copies = await db.zrangeWithScores(SEC_KEYS.series(scope, id));
-      await pmap(copies, (m) => db.zadd(SEC_KEYS.sdone(scope), m.score, m.member), 8);
+      // Out of `sec:spurge` too: an entry a racing warn run wrote after the keep must not delete without a new warning.
+      await pmap(copies, async (m) => { await db.zrem(SEC_KEYS.spurge(scope), m.member); await db.zadd(SEC_KEYS.sdone(scope), m.score, m.member); }, 8);
       await db.del(SEC_KEYS.swarn(scope, id));
       moved = copies.length;
     }

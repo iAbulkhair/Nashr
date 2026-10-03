@@ -299,7 +299,12 @@ describe("rule 503: no copy is deleted without a warning at least 7 days earlier
     // A ghost in the series set (its record was purged) is dropped from the set, not queued.
     const ghost = newSecId();
     await db.zadd(SEC_KEYS.series(o.email, sid), T - 60 * DAY, ghost);
+    // A malformed member never reaches a key (no MGET of it) and is dropped from the set too.
+    await db.zadd(SEC_KEYS.series(o.email, sid), T - 61 * DAY, "../x");
+    const mget = vi.spyOn(db, "mget");
     expect(await requeueSeries(o.email)).toBe(1);
+    expect(mget.mock.calls.flatMap((c) => c[0] as string[]).some((k) => k.includes("../x"))).toBe(false);
+    expect(await members(SEC_KEYS.series(o.email, sid))).not.toContain("../x");
     expect(await scoreOf(SEC_KEYS.sdone(o.email), lost.id)).toBe(T - 50 * DAY);
     expect((await members(SEC_KEYS.sdone(o.email))).sort()).toEqual([lost.id, waiting.id].sort());
     expect(await members(SEC_KEYS.spurge(o.email))).toEqual([warned.id]);
@@ -339,6 +344,56 @@ describe("rule 503: no copy is deleted without a warning at least 7 days earlier
     expect((await seriesRows(o.email, sid, 200)).items.map((x) => x.id)).toEqual([b.id, a.id]);
     expect((await seriesRows(o.email, sid, 200)).items.map((x) => x.id)).not.toContain(other.id);
     expect(await seriesRows(o.email, "../x", 200)).toEqual({ items: [], total: 0 });
+  });
+
+  it("a copy restored after its series was warned moves silently no earlier than 7 days after the restore-time run", async () => {
+    const o = await login();
+    const sid = newSeriesId();
+    const a = await seedCopy(o.email, sid, T - 200 * DAY);
+    const b = await seedCopy(o.email, sid, T - 200 * DAY);
+    expect(await warnSeries(o.email, T)).toBe(2);
+    // B is deleted and restored (it leaves spurge and goes back into sdone at its old close), 10 days after the warning.
+    expect((await patch(b.id, { action: "delete" })).status).toBe(200);
+    expect((await patch(b.id, { action: "restore" })).status).toBe(200);
+    expect(await members(SEC_KEYS.sdone(o.email))).toEqual([b.id]);
+    // The marker is live (10 days): silent, but max(close + 90 d, warned + 7 d) is long past, so now + 7 d wins.
+    expect(await warnSeries(o.email, T + 10 * DAY)).toBe(1);
+    expect(await warnings(o.email)).toHaveLength(1);
+    expect(await scoreOf(SEC_KEYS.spurge(o.email), b.id)).toBe(T + 17 * DAY);
+    expect(await purgeSeries(o.email, T + 11 * DAY)).toBe(1);
+    expect(await exists(o.email, [a.id, b.id])).toEqual([false, true]);
+    expect(await purgeSeries(o.email, T + 17 * DAY - 1)).toBe(0);
+    expect(await purgeSeries(o.email, T + 17 * DAY)).toBe(1);
+  });
+
+  it("a warn run racing a keep leaves a stale spurge entry; un-keep within 7 days clears it, so a new warning comes before any deletion", async () => {
+    const o = await login();
+    const sid = newSeriesId();
+    const c = await seedCopy(o.email, sid, T - 200 * DAY);
+    const zadd = db.zadd.bind(db);
+    let raced = false;
+    // The owner keeps the series after the warn run read the keep set and pushed, before it writes the copy to spurge.
+    vi.spyOn(db, "zadd").mockImplementation(async (k, score, m) => {
+      if (k === SEC_KEYS.spurge(o.email) && !raced) {
+        raced = true;
+        expect(await setSeriesKeep(o.email, sid, true, OWNER)).toMatchObject({ ok: true, kept: true });
+      }
+      return zadd(k, score, m);
+    });
+    expect(await warnSeries(o.email, T)).toBe(1);
+    vi.mocked(db.zadd).mockRestore();
+    expect(raced).toBe(true);
+    expect(await members(SEC_KEYS.spurge(o.email))).toEqual([c.id]);
+    // Un-keep 3 days later: out of spurge, back in sdone, marker gone.
+    expect(await setSeriesKeep(o.email, sid, false, OWNER)).toMatchObject({ ok: true, kept: false, moved: 1 });
+    expect(await members(SEC_KEYS.spurge(o.email))).toEqual([]);
+    expect(await members(SEC_KEYS.sdone(o.email))).toEqual([c.id]);
+    expect(await purgeSeries(o.email, T + 7 * DAY)).toBe(0);
+    expect(await warnSeries(o.email, T + 3 * DAY)).toBe(1);
+    expect(await warnings(o.email)).toHaveLength(2);
+    expect(await scoreOf(SEC_KEYS.spurge(o.email), c.id)).toBe(T + 10 * DAY);
+    expect(await purgeSeries(o.email, T + 10 * DAY - 1)).toBe(0);
+    expect(await purgeSeries(o.email, T + 10 * DAY)).toBe(1);
   });
 });
 
@@ -423,6 +478,41 @@ describe("rule 504: the purge is safe", () => {
     expect(await exists(o.email, [a.id, b.id])).toEqual([true, true]);
     expect(await members(SEC_KEYS.spurge(o.email))).toEqual([]);
     expect(await members(SEC_KEYS.sdone(o.email))).toEqual([b.id]);
+  });
+
+  it("one copy's read throwing mid-run skips only that copy: the others are deleted, counted and audited, and it is retried the next day", async () => {
+    const o = await login();
+    const sid = newSeriesId();
+    const copies = await Promise.all([0, 1, 2, 3].map(() => seedCopy(o.email, sid, T - 100 * DAY, { sdone: false })));
+    await Promise.all(copies.map((x) => db.zadd(SEC_KEYS.spurge(o.email), T - DAY, x.id)));
+    const bad = copies[2];
+    const get = db.get.bind(db);
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const spy = vi.spyOn(db, "get").mockImplementation(((k: string) => (k === SEC_KEYS.item(o.email, bad.id) ? Promise.reject(new TypeError("redis down")) : get(k))) as typeof db.get);
+    expect(await purgeSeries(o.email, T)).toBe(3);
+    spy.mockRestore();
+    expect(errors.mock.calls).toContainEqual(["sec series purge item failed", "TypeError"]);
+    expect(await exists(o.email, copies.map((x) => x.id))).toEqual([false, false, true, false]);
+    expect(await members(SEC_KEYS.spurge(o.email))).toEqual([bad.id]);
+    // The series still has a closed copy: it stays listed.
+    expect(await db.smembers(SEC_KEYS.seriesList(o.email))).toEqual([sid]);
+    const audits = async () => (await db.lrange(SEC_KEYS.audit(o.email), 0, -1)).map((x) => JSON.parse(x)).filter((l) => l.action === "series_purge");
+    expect(await audits()).toEqual([expect.objectContaining({ diff: expect.stringMatching(/^3 /) })]);
+    // The next day it is deleted, with its own line.
+    expect(await purgeSeries(o.email, T + DAY)).toBe(1);
+    expect(await exists(o.email, [bad.id])).toEqual([false]);
+    expect((await audits()).map((l) => l.diff.split(" ")[0]).sort()).toEqual(["1", "3"]);
+    expect(await db.smembers(SEC_KEYS.seriesList(o.email))).toEqual([]);
+  });
+
+  it("a soft-deleted copy (deletedAt set, closed long ago) with a stale spurge entry is not purged", async () => {
+    const o = await login();
+    const sid = newSeriesId();
+    const d = await seedCopy(o.email, sid, T - 200 * DAY, { sdone: false, deletedAt: new Date(T - 2 * DAY).toISOString() });
+    await db.zadd(SEC_KEYS.spurge(o.email), T - DAY, d.id);
+    expect(await purgeSeries(o.email, T)).toBe(0);
+    expect(await db.get(SEC_KEYS.item(o.email, d.id))).toMatchObject({ id: d.id, deletedAt: expect.any(String) });
+    expect(await members(SEC_KEYS.spurge(o.email))).toEqual([]);
   });
 
   it("normal items are never purged", async () => {
@@ -523,7 +613,7 @@ describe("rule 505: the warning", () => {
     expect(await members(SEC_KEYS.sdone(o.email))).toEqual([]);
   });
 
-  it("a daily series run for 120 simulated days produces one warning notification, not one per day, and every copy is deleted at least 7 days after the warning that named its series (R44)", async () => {
+  it("a daily series run for 120 simulated days produces four warning notifications (one per 30-day marker, never one per day), and every copy is deleted at least 7 days after a warning that named its series (R44)", async () => {
     const o = await login();
     const sid = newSeriesId();
     const closedAt = new Map<string, number>(), deletedAt = new Map<string, number>();
@@ -556,11 +646,13 @@ describe("rule 505: the warning", () => {
     await seedCopy(o.email, sid, T - 84 * DAY);
     expect(await warnSeries(o.email, T)).toBe(1);
     expect(await db.get(SEC_KEYS.swarn(o.email, sid))).toBe(T);
-    // 29 days later the marker holds: a copy reaching the window moves silently, at least 7 days after the warning.
+    // 29 days later the marker holds: a copy reaching the window moves silently, at least 7 days after the warning and
+    // 7 days after this run (max(closed + 90 d, warned + 7 d, now + 7 d)).
     const quiet = await seedCopy(o.email, sid, T + 29 * DAY - 84 * DAY);
     expect(await warnSeries(o.email, T + 29 * DAY)).toBe(1);
     expect(await warnings(o.email)).toHaveLength(1);
-    expect(await scoreOf(SEC_KEYS.spurge(o.email), quiet.id)).toBe(Math.max(T + 29 * DAY - 84 * DAY + 90 * DAY, T + 7 * DAY));
+    expect(await scoreOf(SEC_KEYS.spurge(o.email), quiet.id)).toBe(Math.max(T + 29 * DAY - 84 * DAY + 90 * DAY, T + 7 * DAY, T + 36 * DAY));
+    expect(await scoreOf(SEC_KEYS.spurge(o.email), quiet.id)).toBe(T + 36 * DAY);
     // 30 days after the warning it has lapsed: named again.
     const named = await seedCopy(o.email, sid, T + 30 * DAY - 84 * DAY);
     expect(await warnSeries(o.email, T + 30 * DAY)).toBe(1);
