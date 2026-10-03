@@ -144,6 +144,15 @@ describe("rule 491: week grid, workdays, no pile-up, reschedule, timed vs all-da
     expect(Date.parse(n.dueAt)).toBe(at("2026-01-18", "09:00"));
   });
 
+  it("a rescheduled copy of an all-day rule still opens the next copy all-day on the grid (R36)", () => {
+    const rule: SecRepeat = { every: "week", interval: 1, anchor: "2026-01-04", weekStart: 0 };
+    // The copy was moved to a timed 23:59 on Wednesday 14 Jan; the rule has no time, so the next copy is all-day on Sunday 18 Jan.
+    const n = gregorianNext(rule, at("2026-01-14", "23:59"), at("2026-01-14", "20:00"), z, cal)!;
+    expect(n.allDay).toBe(true);
+    expect(localDay(n.dueAt)).toBe("2026-01-18");
+    expect(Date.parse(n.dueAt)).toBe(at("2026-01-18", "23:59"));
+  });
+
   it("until ends the series (null), inclusive of the last day", () => {
     const rule: SecRepeat = { every: "day", interval: 1, anchor: "2026-01-01", weekStart: 0, until: "2026-01-03" };
     const last = gregorianNext(rule, at("2026-01-02", "23:59"), at("2026-01-02"), z, cal)!;
@@ -153,7 +162,7 @@ describe("rule 491: week grid, workdays, no pile-up, reschedule, timed vs all-da
 
   it("malformed data cannot loop: interval 0, empty weekdays and an all-quiet calendar all end", () => {
     const zero: SecRepeat = { every: "day", interval: 0, anchor: "2026-01-01", weekStart: 0 };
-    expect(gregorianNext(zero, at("2026-01-01", "23:59"), at("2026-01-01"), z, cal)).not.toBeUndefined();
+    expect(gregorianNext(zero, at("2026-01-01", "23:59"), at("2026-01-01"), z, cal)).not.toBeNull();
     const none: SecRepeat = { every: "week", interval: 1, anchor: "2026-01-04", weekStart: 0, weekdays: [] };
     expect(day(gregorianNext(none, at("2026-01-04", "23:59"), at("2026-01-04"), z, cal)!.dueAt)).toBe("2026-01-11");
     const allQuiet: CalData = { ...cal, weekend: [0, 1, 2, 3, 4, 5, 6] };
