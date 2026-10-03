@@ -94,6 +94,8 @@ type SecCalendar = {
   - Adding or removing a single day is an `add` or `remove` entry for that day.
 - **Amended 2026-10-03 (ruling R8, as built):** stale values are dropped on save, not refused, so settings read from a GET and saved back unchanged still save: a `hijriFix` year before the current Hijri year, and a dated `add` or `remove` value ("YYYY-MM-DD", "H-YYYY-MM-DD") before today-30, the calendar's first day (today-14 until ruling R17). Only a year after the next Hijri year is `bad_year`. The calendar ignores such values too.
 - **Amended 2026-10-03 (ruling R26, as built): the Saudi Eid al-Fitr start.** "The day after 29 Ramadan" is the day before the effective 1 Shawwal when Ramadan, counted from its Umm al-Qura start to that 1 Shawwal, ran 30 days or more, else the effective 1 Shawwal; the UAE's Eid al-Fitr, which adds 30 Ramadan in a 30-day month, starts the same way. Without a correction this is what it always was. With Eid announced a day after a 30-day Umm al-Qura Ramadan, the holiday starts a day later too; after a 29-day one it does not move, because the law anchors it to 29 Ramadan. No corrected Ramadan runs past 30 days: when the corrections would make it 31, its start moves a day later instead. The Working days panel shows each Eid's days off, and tells a Saudi brand why Eid al-Fitr's may not move.
+- **Amended 2026-10-03 (ruling R28, as built): removals stay stored.** `remove` takes a new value only when a default day of the coming calendar window matches it; a value already in the stored record's `remove` list is kept even when no default produces it any more (the Eid was moved a day, the brand's zone changed country), so a save never deadlocks the panel (PUT reads the stored record under `withLock(scope, "cal")` and `parseCalendar(body, now, zone, login, stored)` accepts what it holds). The calendar ignores such a stale removal; the panel lists it under "Days you turned off", where it can be turned on, which drops it. Only a new removal that matches nothing is `holidays_invalid`. Ruling R8 still drops a dated value before today-30.
+- **Amended 2026-10-03 (ruling R30, as built): `ramadan1` is not taken.** `hijriFix` takes `shawwal1` and `dhulhijja1` only, the two the Working days panel writes. A new `ramadan1` is refused (`bad_request`, field `hijriFix.{year}.ramadan1`); one stored before this is dropped when the settings are saved back as GET gave them (like ruling R8), and the calendar no longer reads it, so Ramadan always starts on Umm al-Qura's day and the 31-day clamp of ruling R26 can never undo a correction. Until a panel control exists, Ramadan hours may start a day off where the local sighting differs from Umm al-Qura. Stored Ramadan hours are checked again when the calendar is built (the same parser as on save); hours that are not valid windows read as the default, so a hand-edited record cannot stop the agenda.
 - **What the Working days panel offers** (section 1.4): "Eid starts a day later this year" and "add a day for this year only".
 - **The calendar is computed** (section 1.3) from the zone default, plus the brand's settings, plus the country table (section 1.2).
 
@@ -180,7 +182,7 @@ type CalData = {
 };
 ```
 
-- **Cost:** about 415 `hijriDate` calls, CPU only, with no store call.
+- **Cost:** about 501 `hijriDate` calls, one per local day from today-65 to today+435 (the window today-30 … today+400 and 35 days more on each side), CPU only, with no store call. (Amended 2026-10-03, as built: the 415 written here first counted only today-14 … today+400, before ruling R17 and without the margins.)
 - **Memo:** a module-level LRU of at most 200 entries, keyed by (zone, local day, a hash of the calendar without `updatedAt`/`updatedBy`).
 
 ### 1.4 Where `CalData` is read
@@ -275,6 +277,10 @@ One pure rule lives in `secretary-agenda.ts`, with its data passed in:
 - on a Ramadan day, they-owe entries in `waiting` with `moment.why === "ramadan"` whose `at` falls today.
 
 **Amended 2026-10-03 (rulings R15, R16 and R18, as built):** every `waiting` entry is passed, so the marker of a step that only holds today can be set again (7 days, never a claim) and no step is sent twice across a long Eid; of them only a debt held for Ramadan hours later today is sent, whatever moved its moment there (Ramadan's off-hours, or the brief time after an absence that ended in Ramadan). Items owed by an agent count their steps in calendar days from the anchor and alert any day, like the owner's own.
+
+**Amended 2026-10-03 (ruling R29, as built): Ramadan and the once-a-day run.** In Ramadan a contact's debt that becomes chaseable later the same local day, whatever its `why` (one due at 14:00 inside the window, or one moved to the 10:00 window), is alerted at the morning run (08:00 at UTC+3, 09:00 at UTC+4) with «تابعه اليوم بعد HH:mm» / "Follow up today after HH:mm", and the brief counts it as a chase with that time: the daily run happens once, so holding it until its time would lose step 0. Only contacts: an agent's item keeps no Ramadan hours (ruling R16) and is alerted once it is due, as on any day.
+
+**Known edge case (ruling R31, documented, not fixed).** When every Ramadan window of a brand ends before the morning run (windows set only before 08:00), no contact debt is inside a window at the run and none opens later that day, so contacts' steps hold (`send: false`, their markers kept) for the whole of Ramadan; the brief and the page still list the debts.
 
 **Steps.**
 - Owner items count steps from `dueAt`, as today.
