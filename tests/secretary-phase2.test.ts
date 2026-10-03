@@ -1123,6 +1123,11 @@ describe("account deletion removes phase 2's keys and the scope's reminder index
     await walkSkip(u.email, "task:dddd0000dddd0001", Date.now());
     const it = await add({ title: "Done today" });
     await patch(it.id, { action: "complete", result: "ok" });
+    // A closed recurring copy, its series indexes and the next-copy claim and warning marker (rules 496, 508).
+    const rec = await add({ title: "Recurring", dueAt: local(Date.now() + 24 * H), repeat: { every: "day" } });
+    const sid = ((await (await patch(rec.id, { action: "complete", result: "ok" })).json()).item as { series: { id: string } }).series.id;
+    await Promise.all([db.setNx(SEC_KEYS.swarn(u.email, sid), "1", 3600), db.setNx(SEC_KEYS.spawn(u.email, rec.id), "s0123456789abcdef", 3600)]);
+    expect(await db.zcard(SEC_KEYS.series(u.email, sid))).toBe(1);
     await eveningWrap(u, Date.now());
     await runTool(u, "handoff_note", { to: "noor", kind: "note", body: "hello" }, [], [], undefined, { agent: "sami", lang: "en" });
     // An absence Reem proposed in the second brand's chat and a person saved (rule 485): the away entry, the outcome of
@@ -1140,6 +1145,10 @@ describe("account deletion removes phase 2's keys and the scope's reminder index
     await wipeAccount(u.email);
     expect(await db.zcard(SEC_KEYS.due(u.email))).toBe(0);
     expect(await db.zcard(SEC_KEYS.due(second))).toBe(0);
+    expect(await db.zcard(SEC_KEYS.series(u.email, sid))).toBe(0);
+    expect(await db.smembers(SEC_KEYS.seriesList(u.email))).toEqual([]);
+    expect(await db.zcard(SEC_KEYS.sdone(u.email))).toBe(0);
+    expect([await db.get(SEC_KEYS.swarn(u.email, sid)), await db.get(SEC_KEYS.spawn(u.email, rec.id))]).toEqual([null, null]);
     expect(await db.get(SEC_KEYS.walk(u.email))).toBeNull();
     expect(await db.lrange(SEC_KEYS.notes(u.email), 0, -1)).toEqual([]);
     expect(await db.get(SEC_KEYS.awayPropDone(second, propId))).toBeNull();

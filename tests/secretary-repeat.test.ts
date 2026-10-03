@@ -580,9 +580,13 @@ describe("rule 495: skip, stop and ending a series are owner-only", () => {
     expect(cur).toMatchObject({ result: SKIP_RESULT, closedBy: { actor: "owner", login: o.email }, proposedDone: null, snoozeUntil: null });
     expect(cur.completedAt).toBeTruthy();
     expect(SKIP_RESULT).toBe("skipped");
-    // delete: the copy goes, nothing else opens
+    // The skipped copy is the series' closed copy (rule 496).
+    expect(await db.zrangeWithScores(SEC_KEYS.series(o.email, cur.series!.id))).toEqual([{ member: it1.id, score: Date.parse(cur.completedAt!) }]);
+    // delete: the copy goes, nothing else opens, and it never joins the series' closed copies
     const d = await add({ title: "Delete me", dueAt: inDays(1, 9), repeat: { every: "day" } });
     expect((await patch(d.id, { action: "delete" })).status).toBe(200);
+    expect(await db.zrangeWithScores(SEC_KEYS.series(o.email, d.series!.id))).toEqual([]);
+    expect(await db.smembers(SEC_KEYS.seriesList(o.email))).toEqual([cur.series!.id]);
     const open = (await db.zrangeWithScores(SEC_KEYS.open(o.email))).map((m) => m.member);
     expect(open).toEqual([plain.id]);
   });

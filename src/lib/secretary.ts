@@ -100,6 +100,20 @@ export const SEC_KEYS = {
    * a minute while a Save runs, so one answer wins.
    */
   awayPropDone: (scope: string, id: string) => `secawayprop-done:${scope}:${id}`,
+  /** Every closed copy of one recurring series, kept or not, score = `completedAt` in ms (the series view and the export). */
+  series: (scope: string, id: string) => `sec:series:${scope}:${id}`,
+  /** The ids of the brand's series that have a closed copy, so `secretaryKeys` finds each `sec:series` and `sec:swarn` key. */
+  seriesList: (scope: string) => `sec:serieslist:${scope}`,
+  /** Closed copies of series not kept and not yet warned about, score = `completedAt` in ms: what the daily warn step reads. */
+  sdone: (scope: string) => `sec:sdone:${scope}`,
+  /** Closed copies the owner was warned about, score = the time they are deleted: what the daily purge step reads. */
+  spurge: (scope: string) => `sec:spurge:${scope}`,
+  /** The series the owner chose to keep (at most 500, `keep_limit`): their copies are never warned about or deleted. */
+  seriesKeep: (scope: string) => `sec:serieskeep:${scope}`,
+  /** The claim on the next copy of one closed copy (SET NX, 2 days; the value is the id the next copy gets). */
+  spawn: (scope: string, id: string) => `sec:spawn:${scope}:${id}`,
+  /** The marker that a series was named in a warning (SET NX, 30 days): a series is named once, not every day. */
+  swarn: (scope: string, id: string) => `sec:swarn:${scope}:${id}`,
 };
 const UNDATED_SCORE = 32503680000000; // year 3000: after every dated item
 
@@ -696,7 +710,7 @@ function dueWrites(scope: string, prev: SecItem | null, next: SecItem): Promise<
  * the reminder index. The one place every write path goes through (create, change, the linked close, the reminder's
  * fire), so a close, a delete or a reminder change always cleans `sec:due`. Idempotent; sent in one round.
  */
-function indexWrites(scope: string, prev: SecItem | null, next: SecItem): Promise<unknown>[] {
+function indexWrites(scope: string, prev: SecItem | null, next: SecItem, opts?: { kept?: boolean }): Promise<unknown>[] {
   const from = prev ? stateOf(prev) : null, to = stateOf(next), id = next.id;
   const w: Promise<unknown>[] = [];
   if (to === "open") w.push(db.zadd(SEC_KEYS.open(scope), openScore(next), id));
@@ -706,6 +720,14 @@ function indexWrites(scope: string, prev: SecItem | null, next: SecItem): Promis
   if (to === "done" && !prev?.completedAt) w.push(pushCapped(SEC_KEYS.done(scope), id, CAPS.secDone));
   // Reopened: out of the "recently done" list, so a second completion does not list it twice.
   if (from === "done" && to === "open") w.push(db.lrem(SEC_KEYS.done(scope), id));
+  // The recurring series' indexes (R43). Into done from open or from deleted (a restored closed copy): the series set, the
+  // list of series and, unless the series is kept, the warn window. Out of done: all three the copy could be in.
+  if (to === "done" && from !== "done" && next.series) {
+    w.push(db.zadd(SEC_KEYS.series(scope, next.series.id), Date.parse(next.completedAt ?? "") || Date.now(), id), db.sadd(SEC_KEYS.seriesList(scope), next.series.id));
+    if (!opts?.kept) w.push(db.zadd(SEC_KEYS.sdone(scope), Date.parse(next.completedAt ?? "") || Date.now(), id));
+  } else if (from === "done" && to !== "done" && prev?.series) {
+    w.push(db.zrem(SEC_KEYS.series(scope, prev.series.id), id), db.zrem(SEC_KEYS.sdone(scope), id), db.zrem(SEC_KEYS.spurge(scope), id));
+  }
   if (!prev) w.push(db.sadd(SEC_KEYS.all(scope), id));
   w.push(...dueWrites(scope, prev, next));
   return w;
@@ -820,7 +842,9 @@ export async function changeItem(scope: string, id: string, c: Change, who: Who,
     const next: SecItem = { ...m.item, rev: cur.rev + 1, updatedAt: new Date(now).toISOString() };
     const correction = who.actor === "owner" && cur.source !== "owner" && c.action === "update" ? " (owner correction)" : "";
     const action = c.action === "update" && c.chased && !Object.keys(c.fields).length ? "chased" : c.action;
-    await Promise.all([db.set(SEC_KEYS.item(scope, id), next), ...indexWrites(scope, cur, next), audit(scope, who, action, id, diffOf(cur, next) + correction)]);
+    // R43: a series the owner keeps stays out of the warn window; read under the lock, only for a copy of a series.
+    const kept = cur.series ? await db.sismember(SEC_KEYS.seriesKeep(scope), cur.series.id) : false;
+    await Promise.all([db.set(SEC_KEYS.item(scope, id), next), ...indexWrites(scope, cur, next, { kept }), audit(scope, who, action, id, diffOf(cur, next) + correction)]);
     return { ok: true, item: next, prev: cur };
   });
   return r;
@@ -838,7 +862,8 @@ async function closeLinked(scope: string, id: string, who: Who): Promise<boolean
     if (task?.status !== "approved") return false;
     const now = new Date().toISOString();
     const next: SecItem = { ...cur, result: AUTO_CLOSE_RESULT, completedAt: now, proposedDone: null, snoozeUntil: null, closedBy: closer(who), rev: cur.rev + 1, updatedAt: now };
-    await Promise.all([db.set(SEC_KEYS.item(scope, id), next), ...indexWrites(scope, cur, next), audit(scope, who, "auto_close", id, `task ${cur.links.taskId} approved`)]);
+    const kept = cur.series ? await db.sismember(SEC_KEYS.seriesKeep(scope), cur.series.id) : false;
+    await Promise.all([db.set(SEC_KEYS.item(scope, id), next), ...indexWrites(scope, cur, next, { kept }), audit(scope, who, "auto_close", id, `task ${cur.links.taskId} approved`)]);
     return true;
   });
   return r === true;
@@ -991,7 +1016,19 @@ export async function purgeExpired(scope: string, now = Date.now()): Promise<num
   const rows = await db.mget<SecItem>(valid.map((id) => SEC_KEYS.item(scope, id)));
   const gone = valid.filter((_, i) => !rows[i] || (rows[i]!.deletedAt && Date.parse(rows[i]!.expiresAt ?? "") <= now));
   const junk = due.filter((id) => !SEC_ID.test(id));
-  await pmap([...gone, ...junk], (id) => Promise.all([db.del(SEC_KEYS.item(scope, id)), db.zrem(SEC_KEYS.deleted(scope), id), db.srem(SEC_KEYS.all(scope), id), db.lrem(SEC_KEYS.done(scope), id), db.zrem(SEC_KEYS.open(scope), id), db.zrem(SEC_KEYS.due(scope), id)]), 8);
+  const seriesOf = new Map(valid.map((id, i) => [id, rows[i]?.series?.id] as const));
+  await pmap([...gone, ...junk], (id) => {
+    const sid = seriesOf.get(id);
+    return Promise.all([
+      db.del(SEC_KEYS.item(scope, id)), db.zrem(SEC_KEYS.deleted(scope), id), db.srem(SEC_KEYS.all(scope), id), db.lrem(SEC_KEYS.done(scope), id), db.zrem(SEC_KEYS.open(scope), id), db.zrem(SEC_KEYS.due(scope), id),
+      db.zrem(SEC_KEYS.sdone(scope), id), db.zrem(SEC_KEYS.spurge(scope), id), ...(sid && SERIES_ID.test(sid) ? [db.zrem(SEC_KEYS.series(scope, sid), id)] : []),
+    ]);
+  }, 8);
+  // A series with no closed copy left leaves the list (and its warning marker goes); the next close adds it again.
+  const touched = [...new Set(gone.map((id) => seriesOf.get(id)).filter((sid): sid is string => !!sid && SERIES_ID.test(sid)))];
+  await pmap(touched, async (sid) => {
+    if ((await db.zcard(SEC_KEYS.series(scope, sid))) === 0) await Promise.all([db.srem(SEC_KEYS.seriesList(scope), sid), db.del(SEC_KEYS.swarn(scope, sid))]);
+  }, 8);
   if (gone.length) await audit(scope, { actor: "cron", via: "cron" }, "purge", "-", `${gone.length} item(s) deleted over ${SEC_RESTORE_DAYS} days ago`);
   return gone.length;
 }
@@ -1022,7 +1059,7 @@ export async function secretaryDaily(scope: string, now = Date.now()) {
  * member of the global `sec:duescopes` is not a key: `wipeAccount` removes it with `forgetDueScope`.
  */
 export async function secretaryKeys(scope: string): Promise<string[]> {
-  const [ids, props] = await Promise.all([db.smembers(SEC_KEYS.all(scope)), db.smembers(SEC_KEYS.awayProps(scope))]);
+  const [ids, props, series] = await Promise.all([db.smembers(SEC_KEYS.all(scope)), db.smembers(SEC_KEYS.awayProps(scope)), db.smembers(SEC_KEYS.seriesList(scope))]);
   // The alert counters and wrap markers live two days; every local day they can name, in any zone, from two days back
   // to tomorrow.
   const days = [...new Set([-2, -1, 0, 1].map((d) => new Date(Date.now() + d * 864e5).toISOString().slice(0, 10)))];
@@ -1032,6 +1069,11 @@ export async function secretaryKeys(scope: string): Promise<string[]> {
     ...days.flatMap((d) => [SEC_KEYS.alerts(scope, d), SEC_KEYS.wrap(scope, d)]),
     // Reem's away proposals (rule 485): each record and its outcome, by the ids in the index, and the index.
     ...props.flatMap((id) => [SEC_KEYS.awayProp(scope, id), SEC_KEYS.awayPropDone(scope, id)]), SEC_KEYS.awayProps(scope),
+    // Recurring series (rule 508): the indexes, each listed series' set and warning marker, and the next-copy claim of every
+    // id still in `sec:all`. A claim of an already purged copy is not found and lapses by its 2-day TTL.
+    SEC_KEYS.seriesList(scope), SEC_KEYS.sdone(scope), SEC_KEYS.spurge(scope), SEC_KEYS.seriesKeep(scope),
+    ...series.flatMap((sid) => [SEC_KEYS.series(scope, sid), SEC_KEYS.swarn(scope, sid)]),
+    ...ids.map((id) => SEC_KEYS.spawn(scope, id)),
   ];
 }
 /** Account deletion: the scope leaves the sweep's global index. */
