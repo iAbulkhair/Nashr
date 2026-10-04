@@ -23,33 +23,36 @@ Defined in `globals.css` under `@layer components`. Use these instead of repeati
 | Variant | Class | Default | Hover | Active | Disabled |
 |---|---|---|---|---|---|
 | Primary · أساسي | `btn btn-primary` | bg primary, text primary-fg | bg primary-hover | bg primary-active | opacity 0.5, no pointer |
-| Accent · مميز (CTA) | `btn btn-accent` | bg accent (saffron), text ink | bg accent-hover | bg accent-active | opacity 0.5 |
-| Secondary · ثانوي | `btn btn-secondary` | transparent, 20% ink border | border+text primary | bg background-muted | opacity 0.5 |
+| Accent · مميز (CTA) | `btn btn-accent` | bg accent (lemon), text ink, 1.5px ink border | bg paper | bg accent-active | opacity 0.5 |
+| Secondary · ثانوي | `btn btn-secondary` | transparent, 1.5px ink border at 25% | ink border | bg background-muted | opacity 0.5 |
 | Danger · خطر | `btn btn-danger` | transparent, danger text, 40% danger border | bg danger, text white | | opacity 0.5 |
 | Danger solid | `btn btn-danger-solid` | bg danger, text white | bg danger-hover | | opacity 0.5 |
 | Ghost on dark | `btn btn-ghost-inverse` | transparent, 25% mist border, mist text | 60% mist border | | opacity 0.5 |
 
 Sizes: `btn-xs` (pill, 12px), `btn-pill` (pill, 14px), `btn-sm` (rounded, 14px), default (rounded, 14px, 12px/20px padding), `btn-lg` (pill, 16px).
-Focus: global `:focus-visible` ring in `--color-ring` (saffron), 3px, offset 2px.
+Focus: global `:focus-visible` outline in `--color-ring` (ink), 2px (`--stroke-focus`), offset 2px.
 
 ### Cards `.card`
-Surface bg, 10% ink border, radius lg, padding 20px. `card-sm` 16px padding. `card-inverse` for the dark oasis surface. `card-title` for the heading.
+Paper bg, 1.5px ink border at 15%, radius sm, no shadow, padding 20px. `card-sm` 16px padding. `card-inverse` for the ink surface. `card-title` for the heading.
 
 ### Inputs `.input`
-Full width, surface bg, 15% ink border, radius md, 12px/16px padding, 14px text. Hover 30% border; focus primary border + 45% saffron ring; disabled 60% opacity; `aria-invalid="true"` danger border. Add `rounded-full` for the chat composer.
+Full width, paper bg, 1.5px ink border at 55% (3:1 against white), radius md, 12px/16px padding, 14px text, muted placeholder. Hover 80% border; focus ink border + 2px ink outline; disabled 60% opacity; `aria-invalid="true"` danger border. Add `rounded-full` for the chat composer.
 
 ### Badges `.badge`
-`badge-primary` (10% primary tint), `badge-accent` (20% saffron tint), `badge-danger` (10% danger tint). 12px, pill.
+Flat D fills with ink text: `badge-primary` (lilac), `badge-accent` (lemon), `badge-danger` (sami's rose). 12px, pill.
 
 ### Typography
-`page-title` (app page H1, display 30px bold, primary), `page-sub` (70% ink), `section-title` (marketing H2, 30→36px), `eyebrow` (12px uppercase, 0.2em tracking, sadu red), `eyebrow-accent` (saffron on dark).
+`page-title` (app page H1, display 30px bold, primary), `page-sub` (70% ink), `section-title` (marketing H2, 30→36px), `eyebrow` (12px uppercase, 0.2em tracking, muted), `eyebrow-accent` (lemon on ink).
+
+### Motion
+150 / 200 / 300 ms (`--duration-*`) with `--ease-out` `cubic-bezier(.22,1,.36,1)`; no overshoot curves, never a width or height transition (rule 511). Progress fills grow by `transform: scaleX(var(--p))`.
 
 ### Layout
 `section-wrap` (max 72rem, 80px vertical, 16/24px gutters), `page-wrap` (max 48rem, 64px vertical).
 
 ## 3. Rules · القواعد
 1. No raw hex in components (validated with the skill's `validate-tokens.cjs`; only the PowerPoint exporter and the OAuth consent page carry literal colors on purpose).
-2. Marketing pages: dark oasis sections alternate with salt sections; one accent CTA per section.
+2. Marketing pages: hand-drawn like prototype D (scribbles, figures); app pages are the quiet version: same colours, type and strokes, plain ink lines. One accent CTA per section.
 3. App pages: `page-title` + `page-sub`, then `card` blocks; primary action per card is `btn-primary btn-sm`, destructive is `btn-danger`.
 4. RTL first: use logical properties (`ms-`, `me-`, `text-start`, `padding-inline`), numbers and URLs get `dir="ltr"`, free text gets `dir="auto"`.
 5. Every user-facing string comes from `src/lib/i18n.ts` (marketing) or `src/lib/app-i18n.ts` (app) in both Arabic and English. Inline `ar ? … : …` pairs are acceptable inside a single component, never English-only.

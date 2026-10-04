@@ -66,7 +66,7 @@ export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: 
           </table>
         </div>
       </div>
-      <div className="sadu" aria-hidden />
+      <div className="border-t-[1.5px] border-ink" aria-hidden />
     </section>
   );
 }

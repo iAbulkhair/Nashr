@@ -29,7 +29,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
             <h1 className="mt-3 font-display text-4xl font-bold leading-tight sm:text-6xl">{s.title}</h1>
             <p className="mt-5 max-w-2xl text-lg text-mist-dim">{s.sub}</p>
           </div>
-          <div className="sadu" aria-hidden />
+          <div className="border-t-[1.5px] border-ink" aria-hidden />
         </section>
         <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
           <h2 className="font-display text-2xl font-bold">{s.whoTitle}</h2>

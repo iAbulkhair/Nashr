@@ -249,7 +249,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
           const isCollapsed = !!collapsed[x.id];
           return (
             <li key={x.id} className="grid gap-4">
-              {newDay && <p className="flex items-center gap-3 text-xs text-ink/70"><span className="sadu-thin h-1 flex-1 rounded-full opacity-60" /><span className="rounded-full border border-ink/10 bg-white px-3 py-1" suppressHydrationWarning>{dayLabel(x.createdAt)}</span><span className="sadu-thin h-1 flex-1 rounded-full opacity-60" /></p>}
+              {newDay && <p className="flex items-center gap-3 text-xs text-ink/70"><span className="flex-1 border-t-[1.5px] border-ink/30" /><span className="rounded-full border border-ink/10 bg-white px-3 py-1" suppressHydrationWarning>{dayLabel(x.createdAt)}</span><span className="flex-1 border-t-[1.5px] border-ink/30" /></p>}
               <article className="card overflow-hidden p-0">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink/5 px-4 py-2.5">
                 <div className="flex min-w-0 items-center gap-2">

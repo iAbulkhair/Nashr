@@ -19,7 +19,7 @@ export default function Footer({ t, lang: given }: { t: Dict; lang?: Lang }) {
   ];
   return (
     <footer className="bg-ink text-mist-dim">
-      <div className="sadu-thin" aria-hidden />
+      <div className="border-t-[1.5px] border-ink" aria-hidden />
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_1fr_1fr]">
           <div>

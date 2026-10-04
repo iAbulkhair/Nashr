@@ -70,7 +70,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-saffron font-display text-lg font-bold text-ink" aria-hidden>{initial}</span>
           <span className="min-w-0"><span className="clip block text-sm font-semibold text-mist" dir="auto">{brandName || (lang === "ar" ? "علامتك" : "Your brand")}</span><span className="block text-xs text-mist-dim">{N.workspace}</span></span>
         </Link>
-        <div className="sadu-thin mt-3 rounded-full opacity-90" aria-hidden />
+        <div className="mt-3 border-t-[1.5px] border-ink" aria-hidden />
       </div>
 
       <div>

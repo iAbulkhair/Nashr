@@ -39,7 +39,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
             <div className="mt-8"><UrlStart t={t} lang={lang} /></div>
             {agent !== "noor" && <p className="mt-3 text-sm text-mist-dim">{s.startWith} <Link href={`/${lang}/agents/noor`} className="underline">{agentById("noor").name[lang]}</Link></p>}
           </div>
-          <div className="sadu" aria-hidden />
+          <div className="border-t-[1.5px] border-ink" aria-hidden />
         </section>
         <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
           <h2 className="font-display text-2xl font-bold">{s.does}</h2>

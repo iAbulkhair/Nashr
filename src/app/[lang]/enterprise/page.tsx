@@ -28,7 +28,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
             <p className="mt-5 max-w-2xl text-lg text-mist-dim">{s.sub}</p>
             <a href="#contact" className="btn btn-accent btn-lg mt-8">{s.formTitle}</a>
           </div>
-          <div className="sadu" aria-hidden />
+          <div className="border-t-[1.5px] border-ink" aria-hidden />
         </section>
         <section className="mx-auto grid max-w-6xl gap-4 px-4 py-16 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
           {s.features.map((f) => <div key={f.t} className="card card-sm"><h2 className="font-display font-medium text-oasis">{f.t}</h2><p className="mt-1 text-sm text-ink/70">{f.d}</p></div>)}

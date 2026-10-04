@@ -57,7 +57,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
             <h1 className="mt-3 font-display text-4xl font-bold leading-tight sm:text-6xl">{c.title}</h1>
             <p className="mt-5 max-w-2xl text-lg text-mist-dim">{c.sub}</p>
           </div>
-          <div className="sadu" aria-hidden />
+          <div className="border-t-[1.5px] border-ink" aria-hidden />
         </section>
 
         {/* Section tabs: plain anchors, so both sections work without JavaScript. */}

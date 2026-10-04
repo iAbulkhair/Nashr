@@ -150,7 +150,7 @@ export default function JourneyCard({ journey, lang, compact = false }: { journe
       </header>
 
       <div className="px-4 pt-3">
-        <div className="journey-track" role="progressbar" aria-valuemin={0} aria-valuemax={milestones.length} aria-valuenow={doneCount}><div className="journey-fill" style={{ width: `${Math.max(4, pct)}%` }} /></div>
+        <div className="journey-track" role="progressbar" aria-valuemin={0} aria-valuemax={milestones.length} aria-valuenow={doneCount}><div className="journey-fill" style={{ "--p": Math.max(4, pct) / 100 } as React.CSSProperties} /></div>
         <p className="mt-1.5 flex justify-between text-xs text-ink/60"><span className="tnum" dir="auto">{doneCount} {S.of} {milestones.length}</span>{nextAt && nextLevel && <span dir="auto">{S.toLevel(nextAt - doneCount)} · {S.levels[nextLevel]}</span>}</p>
       </div>
 

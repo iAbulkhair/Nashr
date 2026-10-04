@@ -37,7 +37,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
             <p className="mt-5 max-w-2xl text-lg text-mist-dim">{p.sub}</p>
             <Link href={`/${lang}/app/signup`} className="mt-8 inline-block rounded-full bg-saffron px-6 py-3 font-semibold text-ink">{t.hero.cta}</Link>
           </div>
-          <div className="sadu" aria-hidden />
+          <div className="border-t-[1.5px] border-ink" aria-hidden />
         </section>
         <section className="mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_1.4fr]">
           <div>

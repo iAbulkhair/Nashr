@@ -52,7 +52,7 @@ export default function Hero({ t, lang }: { t: Dict; lang: Lang }) {
           <p className="mt-4 text-xs leading-relaxed text-mist-dim">{t.hero.logNote}</p>
         </div>
       </div>
-      <div className="sadu" aria-hidden />
+      <div className="border-t-[1.5px] border-ink" aria-hidden />
     </section>
   );
 }

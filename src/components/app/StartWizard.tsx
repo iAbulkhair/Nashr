@@ -71,7 +71,7 @@ export default function StartWizard({ t, lang, initialUrl = "", setupCost = 0, s
   return (
     <div className="mx-auto grid max-w-2xl gap-6">
       <section className="card overflow-hidden p-0">
-        <div className="sadu-thin" aria-hidden />
+        <div className="border-t-[1.5px] border-ink" aria-hidden />
         <div className="p-5 sm:p-6">
           <div className="flex items-start gap-3">
             <span className="journey-next pop-in grid h-12 w-12 shrink-0 place-items-center rounded-full bg-oasis font-display text-xl font-bold text-saffron" aria-hidden>{t.agents.noor.name.charAt(0)}</span>

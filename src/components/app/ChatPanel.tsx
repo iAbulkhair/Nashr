@@ -744,7 +744,7 @@ function OnboardProgress({ lang, steps, name }: { lang: "ar" | "en"; steps: stri
           <p className="text-xs text-ink/60">{ar ? "تقرأ موقعك وتكتب ملف علامتك وخطة البداية. ابقَ هنا." : "Reading your site, writing your brand file and a starter plan. Stay on this page."}</p>
         </div>
       </div>
-      <div className="journey-track mt-3"><div className="journey-fill" style={{ width: `${pct}%` }} /></div>
+      <div className="journey-track mt-3"><div className="journey-fill" style={{ "--p": pct / 100 } as React.CSSProperties} /></div>
       <ol className="mt-3 grid gap-1.5 text-sm">
         {steps.map((st, i) => {
           const current = i === steps.length - 1;
