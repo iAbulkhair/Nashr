@@ -1,6 +1,6 @@
 # Thakeen re-skin to prototype D — design
 
-Status: approved by the founder, 2026-10-04 (decisions in section 8). Branch `claude/thakeen-reskin`, cut from `claude/thakeen-heading-font` (PR #248, not merged), so it contains #248. Reference: prototype D (`thakeen-prototypes.vercel.app/d`, files `d.html`, `kit.css`, `figures.css`, `figures.js`, `scribble.js`). D's font files under `/f/` are never copied; the heading face comes from #248.
+Status: approved by the founder, 2026-10-04 (decisions in section 8). Branch `claude/thakeen-reskin`, on main after PR #248 (the heading font and wordmark) was merged on 2026-10-04. Reference: prototype D (`thakeen-prototypes.vercel.app/d`, files `d.html`, `kit.css`, `figures.css`, `figures.js`, `scribble.js`). D's font files under `/f/` are never copied; the heading face comes from #248.
 
 ## 1. One token source
 
