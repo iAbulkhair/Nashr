@@ -20,6 +20,19 @@ import ContactForm from "@/components/ContactForm";
 import { INDUSTRY_PAGES } from "@/lib/pages-industry";
 import { VS_PAGES } from "@/lib/pages-vs";
 import { SITE } from "@/lib/site";
+import { readFileSync } from "node:fs";
+import { TOOLS } from "@/lib/tools";
+import { listPosts } from "@/lib/blog";
+import ToolsPage from "@/app/[lang]/tools/page";
+import ToolPage from "@/app/[lang]/tools/[tool]/page";
+import ToolForm from "@/components/ToolForm";
+import BlogPage from "@/app/[lang]/blog/page";
+import PostPage from "@/app/[lang]/blog/[slug]/page";
+import HelpCenter from "@/components/HelpCenter";
+import ResourcesPage from "@/app/[lang]/resources/page";
+import WishSuggest from "@/components/WishSuggest";
+import WishVote from "@/components/WishVote";
+import UpdatesPage from "@/app/[lang]/updates/page";
 
 vi.mock("next/navigation", async (orig) => ({
   ...(await orig<typeof import("next/navigation")>()),
@@ -120,6 +133,74 @@ describe("the marketing pages are hand-drawn D (rule 518)", () => {
       expect(h).not.toContain('class="input');
     });
   }
+
+  for (const lang of LANGS) {
+    it(`tools · ${lang}: a scribbled card per tool; a tool's form in scribbled boxes`, async () => {
+      const h = renderToStaticMarkup(await ToolsPage({ params: Promise.resolve({ lang }) }));
+      expect(h).toMatch(TITLE_SCRIBBLE("h1"));
+      expect(count(h, 'class="s-card')).toBe(TOOLS.length);
+      const x = TOOLS[0];
+      const page = renderToStaticMarkup(await ToolPage({ params: Promise.resolve({ lang, tool: x.slug }) }));
+      expect(page).toMatch(TITLE_SCRIBBLE("h1"));
+      expect(count(page, 'class="s-chip')).toBe(TOOLS.length - 1);
+      for (const t of TOOLS) {
+        const f = html(ToolForm, { tool: t, lang });
+        expect(count(f, 'class="s-input'), t.slug).toBe(t.fields.length);
+        expect(f).toMatch(/<button[^>]*class="s-btn/);
+        expect(f).not.toMatch(/class="input/);
+      }
+    });
+
+    it(`blog · ${lang}: a scribbled card per post, an underlined post title`, async () => {
+      const posts = listPosts(lang);
+      const h = renderToStaticMarkup(await BlogPage({ params: Promise.resolve({ lang }) }));
+      expect(h).toMatch(TITLE_SCRIBBLE("h1"));
+      expect(count(h, 'class="s-card')).toBe(posts.length);
+      const post = renderToStaticMarkup(await PostPage({ params: Promise.resolve({ lang, slug: posts[0].slug }) }));
+      expect(post).toMatch(TITLE_SCRIBBLE("h1"));
+      expect(post).toContain('class="prose-nashr');
+    });
+
+    it(`help · ${lang}: scribbled search, topic pills that say which is on, a scribbled support form`, () => {
+      const h = html(HelpCenter, { lang, wa: "https://wa.me/1", origin: "https://example.test" });
+      expect(h).toMatch(TITLE_SCRIBBLE("h1"));
+      expect(count(h, 'class="s-input')).toBe(4);
+      expect(h).toMatch(/<button[^>]*aria-pressed="true"[^>]*class="s-chip|<button[^>]*class="s-chip[^"]*"[^>]*aria-pressed="true"/);
+      expect(h).toMatch(/<button[^>]*class="s-btn/);
+      expect(h).not.toMatch(/class="input/);
+    });
+
+    it(`resources · ${lang}: a scribbled card per resource and post, comparisons as pills`, async () => {
+      const h = renderToStaticMarkup(await ResourcesPage({ params: Promise.resolve({ lang }) }));
+      expect(h).toMatch(TITLE_SCRIBBLE("h1"));
+      expect(count(h, 'class="s-card')).toBe(SITE[lang].resources.cards.length + Math.min(3, listPosts(lang).length));
+      expect(count(h, 'class="s-chip')).toBe(VS_PAGES[lang].length);
+    });
+  }
+
+  it("updates: an underlined title, the two section tabs as pills, the sign-in call as an ink pill", async () => {
+    const h = renderToStaticMarkup(await UpdatesPage({ params: Promise.resolve({ lang: "en" }) }));
+    expect(h).toMatch(TITLE_SCRIBBLE("h1"));
+    expect(count(h, 'class="s-chip')).toBe(2);
+    expect(h).toMatch(/<a[^>]*class="s-btn[^"]*"[^>]*href="\/en\/app\/login/);
+  });
+
+  it("the wishlist: a scribbled suggestion box and a vote pill that says when it is on", () => {
+    const labels = { title: "T", sub: "S", placeholder: "P", send: "Send", sent: "ok", note: "N", tooShort: "s", tooLong: "l", failed: "f", slowDown: "w", vote: "Vote", voted: "Voted", votesLabel: "votes" };
+    const s = html(WishSuggest, { lang: "en", labels });
+    expect(s).toMatch(/class="s-card/);
+    expect(s).toMatch(/class="s-input[^"]*"[\s\S]*?<textarea[^>]*id="wish-suggest"/);
+    expect(s).toMatch(/<button[^>]*class="s-btn/);
+    const v = html(WishVote, { id: "w", votes: 3, voted: true, title: "X", labels, loginHref: "/en/app/login" });
+    expect(v).toMatch(/<button[^>]*class="s-chip[^"]*"[^>]*aria-pressed="true"|<button[^>]*aria-pressed="true"[^>]*class="s-chip/);
+  });
+
+  it("long-form prose speaks D: ink headings and links, a drawn rule under table heads", () => {
+    const css = readFileSync("src/app/globals.css", "utf8");
+    const prose = css.split("\n").filter((l) => l.startsWith(".prose-nashr")).join("\n");
+    expect(prose).not.toMatch(/--color-(primary|foreground|accent)/);
+    expect(prose).toMatch(/\.prose-nashr th \{[^}]*border-bottom: 1\.5px solid var\(--color-ink\)/);
+  });
 
   it("the old dark homepage hero is gone (no page imports it)", () => {
     expect(existsSync("src/components/Hero.tsx")).toBe(false);

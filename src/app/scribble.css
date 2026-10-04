@@ -61,7 +61,7 @@
 }
 /* Where the drawn ring shows focus, the native outline steps aside (it returns in forced colours). */
 :where(.s-btn, .s-chip, .s-link, .s-focus):has(> .scribble .ring):focus-visible,
-.s-input:has(> .scribble .ring) :is(input, textarea):focus-visible {
+.s-input:has(> .scribble .ring) :is(input, textarea, select):focus-visible {
   outline-color: transparent;
 }
 
@@ -108,8 +108,9 @@
 .s-btn--ghost:is(:hover, :focus-visible) > .scribble .fill { clip-path: inset(0); }
 
 .s-input { display: flex; align-items: center; min-height: 52px; padding: 0 14px; }
-.s-input :is(input, textarea) { flex: 1; min-width: 0; border: 0; background: none; font: inherit; color: var(--color-ink); padding: 12px 0; }
+.s-input :is(input, textarea, select) { flex: 1; min-width: 0; border: 0; background: none; font: inherit; color: var(--color-ink); padding: 12px 0; }
 .s-input textarea { align-self: stretch; resize: vertical; }
+.s-input select { cursor: pointer; }
 .s-input :is(input, textarea)::placeholder { color: var(--color-muted); opacity: 1; }
 [dir="rtl"] .s-input input:placeholder-shown { direction: rtl; }
 

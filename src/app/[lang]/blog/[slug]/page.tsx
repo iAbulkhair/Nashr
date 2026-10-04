@@ -4,6 +4,7 @@ import { dict, isLang, LANGS } from "@/lib/i18n";
 import { getPost, render, slugs } from "@/lib/blog";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
+import Scribble from "@/components/Scribble";
 import FinalCta from "@/components/FinalCta";
 import { pageMeta } from "@/lib/page-meta";
 
@@ -27,9 +28,9 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
     <>
       <Nav t={t} lang={lang} />
       <main className="page-wrap">
-        <p className="font-mono text-xs text-ink/50" dir="ltr">{p.date}</p>
-        <h1 className="mt-2 font-display text-3xl font-bold leading-tight text-oasis sm:text-5xl">{p.title}</h1>
-        <p className="mt-4 text-lg text-ink/70">{p.desc}</p>
+        <p className="font-mono text-xs text-muted" dir="ltr">{p.date}</p>
+        <h1 className="mt-2 font-display text-3xl font-bold leading-tight sm:text-5xl"><span className="s-ul"><Scribble kind="underline" seed="post-h" />{p.title}</span></h1>
+        <p className="mt-4 text-lg text-muted">{p.desc}</p>
         <article className="prose-nashr mt-10" dangerouslySetInnerHTML={{ __html: render(p.body) }} />
       </main>
       <FinalCta t={t} lang={lang} />

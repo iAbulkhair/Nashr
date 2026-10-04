@@ -45,6 +45,17 @@ const CLEAN: string[] = [
   "src/app/[lang]/enterprise/page.tsx",
   "src/components/ContactForm.tsx",
   "src/components/TickList.tsx",
+  "src/app/[lang]/tools/page.tsx",
+  "src/app/[lang]/tools/[tool]/page.tsx",
+  "src/components/ToolForm.tsx",
+  "src/app/[lang]/blog/page.tsx",
+  "src/app/[lang]/blog/[slug]/page.tsx",
+  "src/app/[lang]/help/page.tsx",
+  "src/components/HelpCenter.tsx",
+  "src/app/[lang]/resources/page.tsx",
+  "src/app/[lang]/updates/page.tsx",
+  "src/components/WishSuggest.tsx",
+  "src/components/WishVote.tsx",
 ];
 
 const OLD = /\b(oasis|saffron|sadu|salt|mist)(-deep|-dim)?\b/;

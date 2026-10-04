@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { helpTopics } from "@/lib/help";
 import type { Lang } from "@/lib/i18n";
+import Scribble from "@/components/Scribble";
 
 /** `origin` is the canonical app origin (src/lib/origin.ts `appOrigin()`), read on the server: answers that name the MCP URL use it. */
 export default function HelpCenter({ lang, wa, origin, inApp = false }: { lang: Lang; wa: string | null; origin: string; inApp?: boolean }) {
@@ -19,45 +20,52 @@ export default function HelpCenter({ lang, wa, origin, inApp = false }: { lang: 
     const res = await fetch("/api/support", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fd, lang, page: location.pathname }) });
     setSent(res.ok ? "ok" : "err");
   }
-  const input = "input";
+  const chip = (on: boolean, id: string, label: string, pick: () => void) => (
+    <button key={id} type="button" onClick={pick} aria-pressed={on} className="s-chip inline-flex items-center !min-h-10 !py-1.5 !text-sm" style={{ ["--chip-on" as string]: "var(--color-lilac)" }}>
+      <Scribble kind="pill" seed={`help-topic-${id}`} fill="paper" ring />
+      {label}
+    </button>
+  );
   return (
     <div className={inApp ? "" : "mx-auto max-w-4xl px-4 py-16 sm:px-6"}>
-      <h1 className="page-title sm:text-4xl">{ar ? "مركز المساعدة" : "Help center"}</h1>
-      <p className="mt-2 text-ink/70">{ar ? "ابحث، أو اسأل نور في الدردشة «كيف أسوي…»، أو راسلنا." : "Search, ask Noor in chat “how do I…”, or message us."}</p>
-      <div className="mt-6 flex flex-wrap gap-2">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={ar ? "ابحث في المساعدة…" : "Search help…"} className="min-w-[240px] flex-1 rounded-full border border-ink/15 bg-white px-4 py-2 text-sm" />
-        <button onClick={() => setTopic("all")} className={`rounded-full px-3 py-1.5 text-xs ${topic === "all" ? "bg-oasis text-mist" : "bg-salt-dim"}`}>{ar ? "الكل" : "All"}</button>
-        {HELP.map((t) => <button key={t.id} onClick={() => setTopic(t.id)} className={`rounded-full px-3 py-1.5 text-xs ${topic === t.id ? "bg-oasis text-mist" : "bg-salt-dim"}`}>{t.title[lang]}</button>)}
+      <h1 className="font-display text-3xl font-bold leading-tight sm:text-4xl"><span className="s-ul"><Scribble kind="underline" seed="help-h" />{ar ? "مركز المساعدة" : "Help center"}</span></h1>
+      <p className="mt-2 text-muted">{ar ? "ابحث، أو اسأل نور في الدردشة «كيف أسوي…»، أو راسلنا." : "Search, ask Noor in chat “how do I…”, or message us."}</p>
+      <span className="s-input mt-6 max-w-xl"><Scribble kind="box" seed="help-search" fill="paper" ring /><input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={ar ? "ابحث في المساعدة…" : "Search help…"} aria-label={ar ? "ابحث في المساعدة" : "Search help"} /></span>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {chip(topic === "all", "all", ar ? "الكل" : "All", () => setTopic("all"))}
+        {HELP.map((t) => chip(topic === t.id, t.id, t.title[lang], () => setTopic(t.id)))}
       </div>
       <div className="mt-8 grid gap-8">
-        {shown.length === 0 && <p className="text-sm text-ink/60">{ar ? "لا نتائج. اسأل نور أو راسلنا أدناه." : "No results. Ask Noor or message us below."}</p>}
+        {shown.length === 0 && <p className="text-sm text-muted">{ar ? "لا نتائج. اسأل نور أو راسلنا أدناه." : "No results. Ask Noor or message us below."}</p>}
         {shown.map((t) => (
           <section key={t.id}>
             <h2 className="font-display text-xl font-bold">{t.title[lang]}</h2>
-            <div className="mt-2 divide-y divide-ink/10 rounded-xl border border-ink/10 bg-white px-5">
-              {t.items.map((i) => <details key={i.q.en} className="py-3"><summary className="font-medium">{i.q[lang]}</summary><p className="mt-2 text-sm leading-relaxed text-ink/70" dir="auto">{i.a[lang]}</p></details>)}
+            <div className="mt-3 divide-y divide-ink/15 border-y-[1.5px] border-ink">
+              {t.items.map((i) => <details key={i.q.en} className="py-3"><summary className="cursor-pointer font-bold">{i.q[lang]}</summary><p className="mt-2 text-sm leading-relaxed text-muted" dir="auto">{i.a[lang]}</p></details>)}
             </div>
           </section>
         ))}
       </div>
-      <section className="mt-12 grid gap-6 lg:grid-cols-2">
-        <div className="rounded-2xl bg-oasis-deep p-6 text-mist">
+      <section className="mt-12 grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-2">
+        <div className="s-card">
+          <Scribble kind="box" seed="help-talk" fill="lilac" />
           <h2 className="font-display text-xl font-bold">{ar ? "تواصل مباشر" : "Talk to us"}</h2>
-          <p className="mt-2 text-sm text-mist-dim">{ar ? "نرد عليك على واتساب أو الإيميل." : "We reply on WhatsApp or email."}</p>
+          <p className="mt-2 text-sm">{ar ? "نرد عليك على واتساب أو الإيميل." : "We reply on WhatsApp or email."}</p>
           <div className="mt-4 flex flex-wrap gap-2">
-            {wa && <a href={wa} target="_blank" rel="noreferrer" className="rounded-full bg-saffron px-4 py-2 text-sm font-semibold text-ink">WhatsApp</a>}
+            {wa && <a href={wa} target="_blank" rel="noreferrer" className="s-btn"><Scribble kind="pill" seed="help-wa" fill="ink" shadow ring />WhatsApp</a>}
           </div>
         </div>
         {sent === "ok" ? (
-          <div className="rounded-2xl border border-oasis bg-white p-6 text-oasis">{ar ? "وصلتنا رسالتك. نرد على واتساب أو الإيميل." : "Got it. We'll reply on WhatsApp or email."}</div>
+          <p role="status" className="s-card font-bold"><Scribble kind="box" seed="help-sent" fill="lemon" />{ar ? "وصلتنا رسالتك. نرد على واتساب أو الإيميل." : "Got it. We'll reply on WhatsApp or email."}</p>
         ) : (
-          <form onSubmit={submit} className="grid gap-3 rounded-2xl border border-ink/10 bg-salt-dim p-6">
+          <form onSubmit={submit} className="s-card grid grid-cols-[minmax(0,1fr)] gap-4">
+            <Scribble kind="box" seed="help-form" fill="paper" />
             <h2 className="font-display text-xl font-bold">{ar ? "أرسل طلب دعم" : "Send a support request"}</h2>
-            <input name="email" required type="email" dir="ltr" placeholder="Email" className={input} />
-            <select name="type" className={input}><option value="question">{ar ? "سؤال" : "Question"}</option><option value="bug">{ar ? "مشكلة" : "Bug"}</option><option value="billing">{ar ? "فوترة" : "Billing"}</option><option value="feature">{ar ? "اقتراح ميزة" : "Feature request"}</option></select>
-            <textarea name="message" required rows={4} placeholder={ar ? "اكتب ما حدث بالتفصيل…" : "Describe what happened…"} className={input} />
-            <button disabled={sent === "busy"} className="btn btn-primary">{ar ? "أرسل" : "Send"}</button>
-            {sent === "err" && <p className="text-sm text-sadu">{ar ? "لم يُرسل. حاول مرة أخرى." : "Didn't send. Try again."}</p>}
+            <span className="s-input"><Scribble kind="box" seed="help-email" fill="paper" ring /><input name="email" required type="email" dir="ltr" placeholder="Email" aria-label="Email" /></span>
+            <span className="s-input"><Scribble kind="box" seed="help-type" fill="paper" ring /><select name="type" aria-label={ar ? "النوع" : "Type"}><option value="question">{ar ? "سؤال" : "Question"}</option><option value="bug">{ar ? "مشكلة" : "Bug"}</option><option value="billing">{ar ? "فوترة" : "Billing"}</option><option value="feature">{ar ? "اقتراح ميزة" : "Feature request"}</option></select></span>
+            <span className="s-input"><Scribble kind="box" seed="help-message" fill="paper" ring /><textarea name="message" required rows={4} placeholder={ar ? "اكتب ما حدث بالتفصيل…" : "Describe what happened…"} aria-label={ar ? "الرسالة" : "Message"} /></span>
+            <button disabled={sent === "busy"} className="s-btn justify-self-start"><Scribble kind="pill" seed="help-send" fill="ink" shadow ring />{ar ? "أرسل" : "Send"}</button>
+            {sent === "err" && <p role="alert" className="text-sm font-bold text-danger">{ar ? "لم يُرسل. حاول مرة أخرى." : "Didn't send. Try again."}</p>}
           </form>
         )}
       </section>
