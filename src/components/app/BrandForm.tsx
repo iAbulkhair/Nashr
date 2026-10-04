@@ -71,7 +71,7 @@ export default function BrandForm({ t, lang, initial, readOnly = false }: { t: A
             </label>
             <fieldset className="flex items-center gap-4 text-sm">
               <legend className="sr-only">{o.languages}</legend>
-              <span className="text-ink/60">{o.languages}:</span>
+              <span className="text-muted">{o.languages}:</span>
               {(["ar", "en"] as const).map((l) => (
                 <label key={l} className="flex items-center gap-1.5">
                   <input type="checkbox" checked={langs.includes(l)} onChange={() => toggle(langs, setLangs, l)} /> {o[l]}
@@ -92,11 +92,11 @@ export default function BrandForm({ t, lang, initial, readOnly = false }: { t: A
             <p className="mt-1 text-xs text-ink/70">{G.body}</p>
             <input name="banned" value={banned} onChange={(e) => setBanned(e.target.value)} placeholder={o.banned} aria-label={G.title} className={`${input} mt-3`} />
             {terms.length > 0 && <ul className="mt-2 flex flex-wrap gap-1.5">{terms.map((w) => <li key={w} className="pop-in flex items-center gap-1 rounded-full bg-ink px-2.5 py-0.5 text-xs text-lilac" dir="auto"><Icon name="lock" className="h-3 w-3 text-lemon" />{w}</li>)}</ul>}
-            <p className="mt-3 text-xs text-ink/60">{G.examples}</p>
+            <p className="mt-3 text-xs text-muted">{G.examples}</p>
             <div className="mt-1 flex flex-wrap gap-1.5">{G.ex.filter((w) => !terms.some((x) => x.toLowerCase() === w.toLowerCase())).map((w) => <button type="button" key={w} onClick={() => addTerm(w)} className="rounded-full border border-dashed border-ink/40 px-2.5 py-0.5 text-xs text-ink hover:bg-ink hover:text-lilac" dir="auto">+ {w}</button>)}</div>
           </section>
           <fieldset className="flex flex-wrap items-center gap-2 text-sm">
-            <legend className="mb-1 w-full text-ink/60">{o.channels}</legend>
+            <legend className="mb-1 w-full text-muted">{o.channels}</legend>
             {CHANNELS.map((c) => (
               <button type="button" key={c} onClick={() => toggle(channels, setChannels, c)} className={`rounded-full border px-3 py-1 disabled:cursor-not-allowed disabled:opacity-60 ${channels.includes(c) ? "border-ink bg-ink text-lilac" : "border-ink/20 bg-white"}`}>
                 {c}

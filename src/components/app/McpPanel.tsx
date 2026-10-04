@@ -39,8 +39,8 @@ export default function McpPanel({ lang, origin, draftsPerHour, canToken = true,
         ? (ar ? "أثناء تصفّح هذا الحساب كمؤسس لا يُنشأ الرمز الشخصي ولا يُعرض. تستطيع مراجعة التطبيقات المتصلة وفصلها أدناه." : "While you view this account as the founder, the personal token cannot be created or shown. You can review and disconnect the connected apps below.")
         : (ar ? "ربط نور بـ Claude و ChatGPT يديره مالك الحساب: الرمز الشخصي والتطبيقات المتصلة له وحده." : "The account owner manages connecting Noor to Claude and ChatGPT: the personal token and connected apps are theirs alone.")} />}
       {canToken && <div className="mt-6 card">
-        <p className="text-xs uppercase tracking-wide text-ink/50">{ar ? "رمز الوصول" : "Access token"}</p>
-        {token ? <code className="mt-1 block break-all rounded bg-lilac p-3 text-sm" dir="ltr">{token}</code> : <p className="mt-1 text-sm text-ink/60">{exists ? (ar ? "يوجد رمز نشط. أنشئ رمزاً جديداً لعرضه (القديم يُلغى)." : "A token exists. Generate a new one to see it (old one is revoked).") : ar ? "لا يوجد رمز بعد." : "No token yet."}</p>}
+        <p className="text-xs uppercase tracking-wide text-muted">{ar ? "رمز الوصول" : "Access token"}</p>
+        {token ? <code className="mt-1 block break-all rounded bg-lilac p-3 text-sm" dir="ltr">{token}</code> : <p className="mt-1 text-sm text-muted">{exists ? (ar ? "يوجد رمز نشط. أنشئ رمزاً جديداً لعرضه (القديم يُلغى)." : "A token exists. Generate a new one to see it (old one is revoked).") : ar ? "لا يوجد رمز بعد." : "No token yet."}</p>}
         {token && <p className="mt-2 text-xs text-danger">{ar ? "يظهر مرة واحدة. انسخه الآن." : "Shown once. Copy it now."}</p>}
         <div className="mt-3 flex gap-2">
           <button onClick={gen} className="btn btn-primary btn-pill">{ar ? "أنشئ رمزاً" : "Generate token"}</button>
@@ -51,18 +51,18 @@ export default function McpPanel({ lang, origin, draftsPerHour, canToken = true,
         <h2 className="font-display text-xl font-bold">{ar ? "الطريقة الأسهل: OAuth (بدون رمز)" : "Easiest: OAuth (no token)"}</h2>
         <p className="mt-1 text-sm text-ink/70">{ar ? "في Claude (الويب/سطح المكتب) → Settings → Connectors → Add custom connector → الصق الرابط. سيفتح صفحة تسجيل دخول ذكين ثم «Allow»." : "In Claude (web/desktop) → Settings → Connectors → Add custom connector → paste the URL. It opens Thakeen login, then “Allow”."}</p>
         <code className="mt-2 block break-all rounded bg-lilac p-3 text-sm" dir="ltr">{url}</code>
-        <p className="mt-4 text-xs uppercase tracking-wide text-ink/50">{ar ? "التطبيقات المتصلة" : "Connected apps"}</p>
-        {grants.length === 0 ? <p className="mt-1 text-sm text-ink/60">{ar ? "لا يوجد تطبيق متصل عبر OAuth." : "No app is connected through OAuth."}</p> : (
+        <p className="mt-4 text-xs uppercase tracking-wide text-muted">{ar ? "التطبيقات المتصلة" : "Connected apps"}</p>
+        {grants.length === 0 ? <p className="mt-1 text-sm text-muted">{ar ? "لا يوجد تطبيق متصل عبر OAuth." : "No app is connected through OAuth."}</p> : (
           <ul className="mt-1 divide-y divide-ink/10">
             {grants.map((g) => (
               <li key={g.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                <span className="min-w-0"><span className="block truncate font-medium" dir="auto">{g.client_name}</span><span className="text-xs text-ink/50">{ar ? "متصل منذ" : "Connected"} <span className="font-mono" dir="ltr">{g.createdAt.slice(0, 10)}</span> · {ar ? "آخر تجديد" : "last renewed"} <span className="font-mono" dir="ltr">{g.lastIssuedAt.slice(0, 10)}</span></span></span>
+                <span className="min-w-0"><span className="block truncate font-medium" dir="auto">{g.client_name}</span><span className="text-xs text-muted">{ar ? "متصل منذ" : "Connected"} <span className="font-mono" dir="ltr">{g.createdAt.slice(0, 10)}</span> · {ar ? "آخر تجديد" : "last renewed"} <span className="font-mono" dir="ltr">{g.lastIssuedAt.slice(0, 10)}</span></span></span>
                 <button onClick={() => disconnect(g.id)} className="shrink-0 rounded-full border border-danger px-4 py-2 text-sm text-danger">{ar ? "افصل" : "Disconnect"}</button>
               </li>
             ))}
           </ul>
         )}
-        <p className="mt-2 text-xs text-ink/50">{ar ? "الفصل يوقف وصول التطبيق فوراً. إعادة تعيين كلمة المرور تفصل كل التطبيقات." : "Disconnecting stops the app's access at once. Resetting your password disconnects every app."}</p>
+        <p className="mt-2 text-xs text-muted">{ar ? "الفصل يوقف وصول التطبيق فوراً. إعادة تعيين كلمة المرور تفصل كل التطبيقات." : "Disconnecting stops the app's access at once. Resetting your password disconnects every app."}</p>
       </div>}
       {canToken && <>
         <h2 className="mt-8 font-display text-xl font-bold">Claude Code {ar ? "(برمز شخصي)" : "(personal token)"}</h2>
@@ -86,12 +86,12 @@ export default function McpPanel({ lang, origin, draftsPerHour, canToken = true,
           <div className="rounded-lg bg-ink/5 p-3">
             <p className="font-semibold text-ink">{ar ? "مجانية، بدون رصيد" : "Free, no credits"}</p>
             <p className="mt-1 font-mono text-xs text-ink/70" dir="ltr">save_draft · check_brand · get_brand_rules · list_inbox · read_file · list_files · agenda_get · todo_create · todo_update · todo_propose_done</p>
-            <p className="mt-1 text-xs text-ink/60">{ar ? `save_draft: حتى ${draftsPerHour} مسودة في الساعة لكل حساب.` : `save_draft: up to ${draftsPerHour} drafts an hour per account.`}</p>
+            <p className="mt-1 text-xs text-muted">{ar ? `save_draft: حتى ${draftsPerHour} مسودة في الساعة لكل حساب.` : `save_draft: up to ${draftsPerHour} drafts an hour per account.`}</p>
           </div>
           <div className="rounded-lg bg-agent-sami/20 p-3">
             <p className="font-semibold text-danger">{ar ? "تستهلك رصيداً" : "Spend credits"}</p>
             <p className="mt-1 font-mono text-xs text-ink/70" dir="ltr">generate_content · ask_noor</p>
-            <p className="mt-1 text-xs text-ink/60">{ar ? "تعمل على نماذج ذكين: generate_content يخصم رصيداً دائماً، وask_noor يخصم عندما تنشئ نور محتوى." : "They run on Thakeen's models: generate_content always spends credits, ask_noor spends them when Noor creates content."}</p>
+            <p className="mt-1 text-xs text-muted">{ar ? "تعمل على نماذج ذكين: generate_content يخصم رصيداً دائماً، وask_noor يخصم عندما تنشئ نور محتوى." : "They run on Thakeen's models: generate_content always spends credits, ask_noor spends them when Noor creates content."}</p>
           </div>
         </div>
         <p className="mt-3 rounded-lg bg-lilac px-3 py-2 font-mono text-xs text-ink/70" dir="ltr">&quot;Use Thakeen: get my brand rules, write 3 Instagram captions, check_brand each one, then save_draft the ones that pass.&quot;</p>

@@ -120,7 +120,7 @@ function RepeatFields({ T, value, onChange, none, id }: { T: AppDict["todo"]; va
           <label className="text-xs text-ink/70 sm:col-span-2">{R.remindBefore}
             <input type="number" inputMode="numeric" min={0} step={1} value={value.remindBefore} onChange={(e) => set({ remindBefore: e.target.value })} dir="ltr" className="input mt-1" />
           </label>
-          <p className="text-xs text-ink/50 sm:col-span-2">{R.note}</p>
+          <p className="text-xs text-muted sm:col-span-2">{R.note}</p>
         </>
       )}
     </>
@@ -260,30 +260,30 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="font-medium" dir="auto">{row.title}</p>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink/60">
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
             <span className={bucket === "overdue" ? "font-semibold text-danger" : ""}>{row.due ?? T.noDue}</span>
             {row.who && <span dir="auto">{row.who}</span>}
             {row.repeat && <span className="badge badge-primary" dir="auto">{row.repeat}</span>}
             {row.badges.map((b) => <span key={b} className={`badge ${b === T.badges.critical ? "badge-danger" : "badge-primary"}`}>{b}</span>)}
           </p>
           {row.description && <p className="mt-1 whitespace-pre-line text-sm text-ink/70" dir="auto">{row.description}</p>}
-          {row.chase && <p className="mt-1 text-xs text-ink/60" dir="auto">{row.chase}</p>}
+          {row.chase && <p className="mt-1 text-xs text-muted" dir="auto">{row.chase}</p>}
           {row.remind && bucket !== "done" && bucket !== "deleted" && <p className="mt-1 text-xs text-ink" dir="auto">{row.remind}</p>}
           {row.proposed && (
             <div className="mt-1 space-y-1 text-sm">
-              <p className="text-ink/80" dir="auto">{row.proposed.claim} <span className="text-xs text-ink/50">({T.claimNote})</span></p>
-              <p className={row.fact ? "text-ink" : "text-ink/60"} dir="auto"><span className="font-semibold">{T.checked}</span> {row.fact || T.nothingChecked}</p>
+              <p className="text-ink/80" dir="auto">{row.proposed.claim} <span className="text-xs text-muted">({T.claimNote})</span></p>
+              <p className={row.fact ? "text-ink" : "text-muted"} dir="auto"><span className="font-semibold">{T.checked}</span> {row.fact || T.nothingChecked}</p>
             </div>
           )}
           {!row.proposed && row.fact && bucket === "done" && <p className="mt-1 text-xs text-ink" dir="auto"><span className="font-semibold">{T.checked}</span> {row.fact}</p>}
           {row.notes.length > 0 && (
-            <ul className="mt-1 space-y-0.5 text-xs text-ink/60" aria-label={T.notes}>
+            <ul className="mt-1 space-y-0.5 text-xs text-muted" aria-label={T.notes}>
               {row.notes.map((n, i) => <li key={i} dir="auto">{n}</li>)}
             </ul>
           )}
-          {row.result && bucket === "done" && <p className="mt-1 text-sm text-ink/70" dir="auto"><span className="text-ink/50">{T.result}: </span>{row.result}</p>}
-          {row.closedBy && bucket === "done" && <p className="mt-1 text-xs text-ink/60" dir="auto">{row.closedBy}</p>}
-          {row.next && bucket !== "confirm" && <p className="mt-1 text-xs text-ink"><span className="text-ink/50">{T.next}: </span>{row.next}</p>}
+          {row.result && bucket === "done" && <p className="mt-1 text-sm text-ink/70" dir="auto"><span className="text-muted">{T.result}: </span>{row.result}</p>}
+          {row.closedBy && bucket === "done" && <p className="mt-1 text-xs text-muted" dir="auto">{row.closedBy}</p>}
+          {row.next && bucket !== "confirm" && <p className="mt-1 text-xs text-ink"><span className="text-muted">{T.next}: </span>{row.next}</p>}
         </div>
         {bucket === "confirm" ? (canClose && (
           <div className="flex flex-wrap gap-2">
@@ -340,7 +340,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
           <button disabled={!!busy} className="btn btn-primary btn-sm">{T.save}</button>
           {row.remind && <button type="button" disabled={!!busy} onClick={() => act(row, { remindAt: null })} className="btn btn-secondary btn-sm">{T.remindClear}</button>}
           <button type="button" onClick={() => setPanel(null)} className="btn btn-secondary btn-sm">{T.cancel}</button>
-          <p className="w-full text-xs text-ink/50">{timedText}</p>
+          <p className="w-full text-xs text-muted">{timedText}</p>
         </form>
       )}
       {panel?.id === row.id && panel.kind === "phone" && (
@@ -359,7 +359,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
           </label>
           <button disabled={!!busy} className="btn btn-primary btn-sm">{T.save}</button>
           <button type="button" onClick={() => setPanel(null)} className="btn btn-secondary btn-sm">{T.cancel}</button>
-          {row.repeat && <p className="w-full text-xs text-ink/50">{R.rescheduleNote}</p>}
+          {row.repeat && <p className="w-full text-xs text-muted">{R.rescheduleNote}</p>}
         </form>
       )}
       {panel?.id === row.id && panel.kind === "repeat" && (
@@ -393,16 +393,16 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
           <section aria-labelledby="todo-walk" className="card">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 id="todo-walk" className="card-title">{T.walk.start}</h2>
-              {walk.card && <span className="tnum text-xs text-ink/50">{T.walk.left.replace("{n}", String(walk.left))}</span>}
+              {walk.card && <span className="tnum text-xs text-muted">{T.walk.left.replace("{n}", String(walk.left))}</span>}
             </div>
             {walk.card ? (
               <div className="mt-3">
                 <p className="font-medium" dir="auto">{walk.card.title}</p>
-                <p className="mt-1 text-xs text-ink/60" dir="auto">{walk.card.line}</p>
+                <p className="mt-1 text-xs text-muted" dir="auto">{walk.card.line}</p>
                 {walk.card.claim && (
                   <div className="mt-2 space-y-1 text-sm">
-                    <p className="text-ink/80" dir="auto">{walk.card.claim.by}: «{walk.card.claim.text}» <span className="text-xs text-ink/50">({T.claimNote})</span></p>
-                    <p className={walk.card.fact ? "text-ink" : "text-ink/60"} dir="auto"><span className="font-semibold">{T.checked}</span> {walk.card.fact || T.nothingChecked}</p>
+                    <p className="text-ink/80" dir="auto">{walk.card.claim.by}: «{walk.card.claim.text}» <span className="text-xs text-muted">({T.claimNote})</span></p>
+                    <p className={walk.card.fact ? "text-ink" : "text-muted"} dir="auto"><span className="font-semibold">{T.checked}</span> {walk.card.fact || T.nothingChecked}</p>
                   </div>
                 )}
                 {walk.card.excerpt && <p className="mt-2 max-h-40 overflow-y-auto whitespace-pre-line rounded-lg bg-ink/5 px-3 py-2 text-sm text-ink/80" dir="auto">{walk.card.excerpt}</p>}
@@ -421,7 +421,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
                 </div>
               </div>
             ) : (
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-ink/60">
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-muted">
                 <span>{T.walk.empty}</span>
                 <button onClick={() => setWalk(null)} className="btn btn-secondary btn-xs">{T.walk.close}</button>
               </div>
@@ -437,14 +437,14 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
         </div>
       )}
 
-      {empty ? <p className="mt-6 card text-sm text-ink/60">{T.empty}</p> : allClear && <p className="mt-6 text-sm text-ink/60">{T.allClear}</p>}
+      {empty ? <p className="mt-6 card text-sm text-muted">{T.empty}</p> : allClear && <p className="mt-6 text-sm text-muted">{T.allClear}</p>}
       {sections.map((s) => (
         <section key={s.bucket} className="mt-6" aria-labelledby={`todo-${s.bucket}`}>
-          <h2 id={`todo-${s.bucket}`} className={`font-display text-lg font-semibold ${s.bucket === "overdue" ? "text-danger" : "text-ink"}`}>{s.title} <span className="tnum text-sm font-normal text-ink/50" dir="ltr">({s.rows.length})</span></h2>
+          <h2 id={`todo-${s.bucket}`} className={`font-display text-lg font-semibold ${s.bucket === "overdue" ? "text-danger" : "text-ink"}`}>{s.title} <span className="tnum text-sm font-normal text-muted" dir="ltr">({s.rows.length})</span></h2>
           <ul className="mt-2 divide-y divide-ink/10 rounded-xl border border-ink/10 bg-white">{s.rows.map((r) => item(r, s.bucket))}</ul>
         </section>
       ))}
-      {snoozed > 0 && <p className="mt-4 text-xs text-ink/50">{T.snoozed} <span className="tnum" dir="ltr">{snoozed}</span></p>}
+      {snoozed > 0 && <p className="mt-4 text-xs text-muted">{T.snoozed} <span className="tnum" dir="ltr">{snoozed}</span></p>}
 
       <form onSubmit={add} className="card mt-8">
         <h2 className="card-title">{T.add.title}</h2>
@@ -477,7 +477,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <RepeatFields T={T} value={form.repeat} onChange={(repeat) => setForm({ ...form, repeat })} none id="rule-new" />
         </div>
-        <p className="mt-2 text-xs text-ink/50">{timedText}</p>
+        <p className="mt-2 text-xs text-muted">{timedText}</p>
         {error?.id === "new" && <p role="alert" className="mt-2 text-sm text-danger">{error.text}</p>}
         <button disabled={!!busy || !form.title.trim()} className="btn btn-primary btn-sm mt-4">{busy === "new" ? T.add.saving : T.add.save}</button>
       </form>
@@ -497,7 +497,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
         </section>
       )}
       {children}
-      <p className="mt-6 text-xs text-ink/50">{T.note.replace("{brief}", () => briefAt)}</p>
+      <p className="mt-6 text-xs text-muted">{T.note.replace("{brief}", () => briefAt)}</p>
     </div>
   );
 }

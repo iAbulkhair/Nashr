@@ -117,6 +117,35 @@ test.describe("the lineup", () => {
     await page.waitForTimeout(600);
     expect(await rects()).toEqual(before);
   });
+
+  test("Enter then Tab: only the focused figure is pressed", async ({ page, isMobile }) => {
+    test.skip(isMobile, "keyboard focus");
+    await open(page, "/en");
+    const lineup = page.getByTestId("lineup");
+    const noor = lineup.locator('[data-id="noor"]');
+    await expect.poll(() => noor.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactFiber$")))).toBe(true);
+    await lineup.locator("button:not([data-id])").first().focus();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Enter");
+    await expect(noor).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("Tab");
+    await expect(noor).toHaveAttribute("aria-pressed", "false");
+    await expect(lineup.locator('[aria-pressed="true"]')).toHaveCount(0);
+  });
+
+  test("the live region speaks for keyboard and taps, not for a passing mouse", async ({ page, isMobile }) => {
+    test.skip(isMobile, "hover");
+    await open(page, "/en");
+    const lineup = page.getByTestId("lineup");
+    const live = lineup.locator('[aria-live="polite"]');
+    const faris = lineup.locator('[data-id="faris"]');
+    await expect.poll(() => faris.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactFiber$")))).toBe(true);
+    await faris.hover();
+    await expect(lineup.locator(".s-cloud")).toHaveAttribute("data-on", "");
+    await expect(live).toHaveText("");
+    await faris.click();
+    await expect(live).not.toHaveText("");
+  });
 });
 
 test.describe("home with reduced motion", () => {

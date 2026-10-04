@@ -62,7 +62,7 @@ export function ItemCard({ item, t, lang, onApproved, canApprove = true }: { ite
   return (
     <article className="mt-3 overflow-hidden rounded-xl border border-ink/10 bg-white text-ink">
       <header className="flex items-center justify-between gap-2 border-b border-ink/5 px-3 py-2 text-xs">
-        <span className="flex min-w-0 items-center gap-2 font-semibold"><Icon name={channelIcon(item.channel)} className="h-4 w-4 text-ink" />{chName}<span className="clip font-normal text-ink/60" dir="auto">· {item.title}</span></span>
+        <span className="flex min-w-0 items-center gap-2 font-semibold"><Icon name={channelIcon(item.channel)} className="h-4 w-4 text-ink" />{chName}<span className="clip font-normal text-muted" dir="auto">· {item.title}</span></span>
         <span className="flex flex-wrap items-center justify-end gap-1.5">
           {flags.map((f) => <span key={f.by} className="whitespace-nowrap rounded-full bg-lemon/20 px-2 py-0.5 font-semibold text-danger">{f.n === 1 ? fill(t.inbox.xNote, { name: t.agents[f.by].name }) : fill(t.inbox.xNotes, { name: t.agents[f.by].name, n: f.n })}</span>)}
           <span className={`badge whitespace-nowrap ${status === "approved" ? "badge-primary" : "badge-accent"}`}>{status === "approved" ? t.inbox.approved : t.inbox.pending}</span>
@@ -70,7 +70,7 @@ export function ItemCard({ item, t, lang, onApproved, canApprove = true }: { ite
       </header>
       {open && <div className="prose-nashr prose-compact px-4 py-3 text-sm" dir="auto" dangerouslySetInnerHTML={{ __html: render(item.body) }} />}
       <footer className="flex flex-wrap items-center gap-2 border-t border-ink/5 px-3 py-2 text-xs">
-        <span className={`tnum ${over ? "font-semibold text-danger" : "text-ink/60"}`} dir="ltr">{item.body.length}{limit ? ` / ${limit}` : ""}</span>
+        <span className={`tnum ${over ? "font-semibold text-danger" : "text-muted"}`} dir="ltr">{item.body.length}{limit ? ` / ${limit}` : ""}</span>
         {err && <span className="text-danger">{err}</span>}
         {held.length > 0 && <span role="alert" className="flex items-center gap-1 font-semibold text-danger"><Icon name="shield" className="h-3.5 w-3.5" /><span dir="auto">{ar ? `محجوز بحارس العلامة: ${held.join("، ")}` : `Held by brand guard: ${held.join(", ")}`}</span> · <Link href={`/${lang}/app`} className="underline">{ar ? "عدّله في صندوق الموافقة" : "Fix it in the inbox"}</Link></span>}
         {undoAt > 0 && status === "approved" && <span className="flex items-center gap-2 text-ink"><Icon name="check" className="h-4 w-4" />{t.chat.approved} · <button onClick={() => setState("pending")} className="underline">{t.chat.undo}</button></span>}
@@ -78,7 +78,7 @@ export function ItemCard({ item, t, lang, onApproved, canApprove = true }: { ite
         <span className="ms-auto flex gap-1.5">
           <button onClick={() => setOpen(!open)} className="btn btn-secondary btn-xs">{open ? (ar ? "طيّ" : "Collapse") : (ar ? "عرض" : "Expand")}</button>
           <button onClick={async () => { await navigator.clipboard.writeText(item.body); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="btn btn-secondary btn-xs"><Icon name="copy" className="h-3.5 w-3.5" />{copied ? t.inbox.copied : status === "approved" ? `${t.chat.copyTo} ${chName}` : t.inbox.copy}</button>
-          {status !== "approved" && !canApprove && <span className="text-ink/60">{t.inbox.waitAdmin}</span>}
+          {status !== "approved" && !canApprove && <span className="text-muted">{t.inbox.waitAdmin}</span>}
           {flagged && canApprove && <Link href={`/${lang}/app`} className="btn btn-primary btn-xs">{t.chat.readNotes}</Link>}
           {status !== "approved" && canApprove && !flagged && <button onClick={() => setState("approved")} disabled={over || held.length > 0} title={over ? (ar ? "النص أطول من حد القناة" : "Text exceeds the channel limit") : undefined} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{t.inbox.approve}</button>}
         </span>
@@ -251,12 +251,12 @@ export function HandoffCard({ id, t, lang, initial, canRun = true, canDecline = 
       <header className="border-b border-ink/5 px-3 py-2">
         <p className="flex items-center gap-2 text-sm font-semibold text-ink"><Icon name="users" className="h-4 w-4" />{fill(H.title, { name: t.agents.majed.name })}</p>
         {/* "Nothing runs until you press Run" is untrue while Majed's auto-run may start an item: the server says which. */}
-        <p className="mt-0.5 text-xs text-ink/60">{view?.auto?.length ? H.subAuto : H.sub}</p>
+        <p className="mt-0.5 text-xs text-muted">{view?.auto?.length ? H.subAuto : H.sub}</p>
         {/* The label follows the page's language; Majed's line is isolated, so it takes its own direction from its own text. */}
         {view?.why && <p className="mt-1 text-xs text-ink/80"><span className="font-semibold">{H.why}:</span> <bdi dir="auto">{view.why}</bdi></p>}
       </header>
-      {!view && !gone && !err && <p className="px-3 py-2 text-xs text-ink/60">{H.loading}</p>}
-      {gone && <p className="px-3 py-2 text-xs text-ink/60">{H.gone}</p>}
+      {!view && !gone && !err && <p className="px-3 py-2 text-xs text-muted">{H.loading}</p>}
+      {gone && <p className="px-3 py-2 text-xs text-muted">{H.gone}</p>}
       {view && (
         <ol className="divide-y divide-ink/5">
           {view.items.map((it, n) => {
@@ -267,7 +267,7 @@ export function HandoffCard({ id, t, lang, initial, canRun = true, canDecline = 
                   <span className="font-semibold">{fill(H.to, { agent: t.agents[it.agent].name, type: t.generate.types[it.type].t })}</span>
                   <span className="flex items-center gap-2">
                     {it.status === "proposed" && view.auto?.includes(n) && <span className="badge">{H.autoItem}</span>}
-                    {it.ranAuto && <span className="text-ink/60">{H.ranAuto}</span>}
+                    {it.ranAuto && <span className="text-muted">{H.ranAuto}</span>}
                     <span className="tnum text-ink/70">{fill(H.cost, { n: it.cost })}</span>
                     <span className={`badge ${badge(it.status)}`}>{busy === n ? H.status.running : H.status[it.status]}</span>
                   </span>
@@ -295,7 +295,7 @@ export function HandoffCard({ id, t, lang, initial, canRun = true, canDecline = 
             {canRun && open.length > 1 && <button type="button" onClick={runAll} disabled={busy !== null || all || lost} className="btn btn-primary btn-xs">{all ? H.running : H.runAll}</button>}
             {canDecline && open.length > 1 && <button type="button" onClick={() => decline()} disabled={busy !== null || all} className="btn btn-secondary btn-xs">{H.declineAll}</button>}
           </span>
-          {!canRun && !canDecline && <p className="w-full text-ink/60">{H.memberNote}</p>}
+          {!canRun && !canDecline && <p className="w-full text-muted">{H.memberNote}</p>}
         </footer>
       )}
       {err && <p role="alert" className="border-t border-ink/5 px-3 py-2 text-xs font-semibold text-danger" dir="auto">{err}</p>}
@@ -336,19 +336,19 @@ export function ProposalCard({ p, t, lang, canBrand = true }: { p: BrandProposal
   return (
     <article className="mt-3 overflow-hidden rounded-xl border border-lemon/40 bg-white text-ink">
       <header className="flex items-center gap-2 border-b border-ink/5 px-3 py-2 text-xs font-semibold">
-        <Icon name="shield" className="h-4 w-4 text-danger" />{canBrand ? (ar ? "تغيير في ملف العلامة ينتظر حفظك" : "A brand change waiting for your Save") : (ar ? "تغيير في ملف العلامة ينتظر قرار المالك أو المشرف" : "A brand change waiting for the owner or an admin")}<span className="font-normal text-ink/60">· {label}</span>
+        <Icon name="shield" className="h-4 w-4 text-danger" />{canBrand ? (ar ? "تغيير في ملف العلامة ينتظر حفظك" : "A brand change waiting for your Save") : (ar ? "تغيير في ملف العلامة ينتظر قرار المالك أو المشرف" : "A brand change waiting for the owner or an admin")}<span className="font-normal text-muted">· {label}</span>
       </header>
       <div className="grid gap-2 px-4 py-3 text-sm">
         {p.via === "mcp" && <p className="text-xs font-semibold text-danger">{ar ? "طلب هذا التغيير مساعد آخر متصل عبر MCP، لا هذه المحادثة. احفظه فقط إن كنت طلبته بنفسك." : "Another assistant connected over MCP asked for this change, not this chat. Save it only if you asked for it yourself."}</p>}
         <p className="text-ink/70">{why}</p>
         <div className="grid gap-2 sm:grid-cols-2">
-          <div className="min-w-0 rounded-lg bg-lilac p-2"><p className="text-xs text-ink/60">{ar ? "الآن" : "Now"}</p><p className="whitespace-pre-wrap break-words" dir="auto">{p.from || "—"}</p></div>
-          <div className="min-w-0 rounded-lg bg-ink/5 p-2"><p className="text-xs text-ink/60">{ar ? "بعد الحفظ" : "After Save"}</p><p className="whitespace-pre-wrap break-words" dir="auto">{p.to || "—"}</p></div>
+          <div className="min-w-0 rounded-lg bg-lilac p-2"><p className="text-xs text-muted">{ar ? "الآن" : "Now"}</p><p className="whitespace-pre-wrap break-words" dir="auto">{p.from || "—"}</p></div>
+          <div className="min-w-0 rounded-lg bg-ink/5 p-2"><p className="text-xs text-muted">{ar ? "بعد الحفظ" : "After Save"}</p><p className="whitespace-pre-wrap break-words" dir="auto">{p.to || "—"}</p></div>
         </div>
       </div>
       <footer className="flex flex-wrap items-center gap-2 border-t border-ink/5 px-3 py-2 text-xs">
         {done[state] && <span role="status" className={state === "applied" || state === "dismissed" ? "text-ink" : "text-danger"}>{done[state]}</span>}
-        {!closed && !canBrand && <span className="ms-auto text-ink/60">{t.inbox.waitAdmin}</span>}
+        {!closed && !canBrand && <span className="ms-auto text-muted">{t.inbox.waitAdmin}</span>}
         {!closed && canBrand && (
           <span className="ms-auto flex gap-1.5">
             <button disabled={state === "saving"} onClick={() => decide("dismiss")} className="btn btn-secondary btn-xs">{ar ? "تجاهل" : "Dismiss"}</button>
@@ -420,12 +420,12 @@ export function AwayProposalCard({ p, t, lang }: { p: AwayProposal; t: AppDict; 
         {ending ? (ar ? "إنهاء غياب ينتظر حفظك" : "Ending an absence, waiting for your Save") : (ar ? "غياب جهة اتصال ينتظر حفظك" : "A contact away, waiting for your Save")}
       </header>
       <dl className="grid gap-1.5 px-4 py-3 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-3">
-        <dt className="text-xs text-ink/60">{ar ? "الاسم كما كُتب" : "Name as written"}</dt>
+        <dt className="text-xs text-muted">{ar ? "الاسم كما كُتب" : "Name as written"}</dt>
         <dd className="min-w-0 break-words" dir="auto">{p.label}</dd>
-        <dt className="text-xs text-ink/60">{ar ? "يطابق" : "Matches"}</dt>
-        <dd className="min-w-0 break-words" dir="auto">{p.contact ? <><span>{p.contact}</span><span className="text-ink/60"> · {items}</span></> : <span className="text-danger">{ar ? "لا مهمة مفتوحة على هذا الاسم: تأكد من كتابته." : "No open item is owed by this name: check the spelling."}</span>}</dd>
-        <dt className="text-xs text-ink/60">{ending ? (ar ? "الغياب" : "Absence") : (ar ? "غياب حتى" : "Away until")}</dt>
-        <dd className="min-w-0" dir="auto" suppressHydrationWarning>{ending ? (ar ? "ينتهي الآن، وتعود المتابعة كالمعتاد" : "Ends now; chasing resumes as usual") : <>{day(p.until as string)} <span className="text-ink/60">{ar ? "(آخر يوم غياب)" : "(last day away)"}</span></>}</dd>
+        <dt className="text-xs text-muted">{ar ? "يطابق" : "Matches"}</dt>
+        <dd className="min-w-0 break-words" dir="auto">{p.contact ? <><span>{p.contact}</span><span className="text-muted"> · {items}</span></> : <span className="text-danger">{ar ? "لا مهمة مفتوحة على هذا الاسم: تأكد من كتابته." : "No open item is owed by this name: check the spelling."}</span>}</dd>
+        <dt className="text-xs text-muted">{ending ? (ar ? "الغياب" : "Absence") : (ar ? "غياب حتى" : "Away until")}</dt>
+        <dd className="min-w-0" dir="auto" suppressHydrationWarning>{ending ? (ar ? "ينتهي الآن، وتعود المتابعة كالمعتاد" : "Ends now; chasing resumes as usual") : <>{day(p.until as string)} <span className="text-muted">{ar ? "(آخر يوم غياب)" : "(last day away)"}</span></>}</dd>
       </dl>
       <footer className="flex flex-wrap items-center gap-2 border-t border-ink/5 px-3 py-2 text-xs">
         {done[state] && <span role="status" className={state === "saved" || state === "dismissed" ? "text-ink" : "text-danger"}>{done[state]}</span>}
@@ -630,7 +630,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <AgentAvatar id={agent} name={A[agent].name} />
-          <h1 className="clip font-display text-xl font-bold text-ink">{A[agent].name} <span className="text-sm font-normal text-ink/60">· {title}</span></h1>
+          <h1 className="clip font-display text-xl font-bold text-ink">{A[agent].name} <span className="text-sm font-normal text-muted">· {title}</span></h1>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => newConv()} className="btn btn-secondary btn-xs"><Icon name="plus" className="h-3.5 w-3.5" />{t.chat.newConv}</button>
@@ -649,7 +649,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
                 <li key={a.id} role="option" aria-selected={agent === a.id}>
                   <button onClick={() => pick(a.id)} className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-start text-sm hover:bg-lilac">
                     <AgentAvatar id={a.id} name={A[a.id].name} className="h-7 w-7 text-xs" />
-                    <span className="min-w-0"><span className="block font-semibold">{A[a.id].name} <span className="font-normal text-ink/60">· {A[a.id].role}</span></span><span className="clip block text-xs text-ink/60">{A[a.id].blurb}</span></span>
+                    <span className="min-w-0"><span className="block font-semibold">{A[a.id].name} <span className="font-normal text-muted">· {A[a.id].role}</span></span><span className="clip block text-xs text-muted">{A[a.id].blurb}</span></span>
                   </button>
                 </li>
               ))}
@@ -687,11 +687,11 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
               {m.handoff && <HandoffCard id={m.handoff.id} t={t} lang={lang} initial={handoffs?.[m.handoff.id]} canRun={canRun} canDecline={canDecline} canApprove={canApprove} onCredits={setCredits} />}
               {m.proposals && m.proposals.length > 0 && <div className="mt-1">{m.proposals.map((p) => <ProposalCard key={p.id} p={p} t={t} lang={lang} canBrand={canBrand} />)}</div>}
               {m.awayProposals && m.awayProposals.length > 0 && <div className="mt-1">{m.awayProposals.map((p) => <AwayProposalCard key={p.id} p={p} t={t} lang={lang} />)}</div>}
-              {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-ink/60" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}
+              {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-muted" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}
               {m.role === "assistant" && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
-                  <button onClick={() => vote(m, 1)} aria-label={t.chat.helpful} title={t.chat.helpful} className={`rounded p-1 ${voted[m.at] === 1 ? "bg-ink text-lilac" : "text-ink/50 hover:text-ink"}`}><Icon name="thumbUp" className="h-4 w-4" /></button>
-                  <button onClick={() => vote(m, -1)} aria-label={t.chat.notHelpful} title={t.chat.notHelpful} className={`rounded p-1 ${voted[m.at] === -1 ? "bg-danger text-white" : "text-ink/50 hover:text-danger"}`}><Icon name="thumbDown" className="h-4 w-4" /></button>
+                  <button onClick={() => vote(m, 1)} aria-label={t.chat.helpful} title={t.chat.helpful} className={`rounded p-1 ${voted[m.at] === 1 ? "bg-ink text-lilac" : "text-muted hover:text-ink"}`}><Icon name="thumbUp" className="h-4 w-4" /></button>
+                  <button onClick={() => vote(m, -1)} aria-label={t.chat.notHelpful} title={t.chat.notHelpful} className={`rounded p-1 ${voted[m.at] === -1 ? "bg-danger text-white" : "text-muted hover:text-danger"}`}><Icon name="thumbDown" className="h-4 w-4" /></button>
                   {reasonFor === m.at && !voted[m.at] && (
                     <form onSubmit={(e) => { e.preventDefault(); vote(m, -1); }} className="flex flex-1 items-center gap-1">
                       <input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t.chat.whyBad} className="input py-1 text-xs" />
@@ -742,7 +742,7 @@ function OnboardProgress({ lang, steps, name }: { lang: "ar" | "en"; steps: stri
         <AgentAvatar id="noor" name={name} className="journey-next h-11 w-11 text-lg" />
         <div className="min-w-0 flex-1">
           <p className="font-display font-bold text-ink">{ar ? `${name} تبني مساحة عملك` : `${name} is building your workspace`}</p>
-          <p className="text-xs text-ink/60">{ar ? "تقرأ موقعك وتكتب ملف علامتك وخطة البداية. ابقَ هنا." : "Reading your site, writing your brand file and a starter plan. Stay on this page."}</p>
+          <p className="text-xs text-muted">{ar ? "تقرأ موقعك وتكتب ملف علامتك وخطة البداية. ابقَ هنا." : "Reading your site, writing your brand file and a starter plan. Stay on this page."}</p>
         </div>
       </div>
       <div className="journey-track mt-3"><div className="journey-fill" style={{ "--p": pct / 100 } as React.CSSProperties} /></div>
@@ -752,7 +752,7 @@ function OnboardProgress({ lang, steps, name }: { lang: "ar" | "en"; steps: stri
           return (
             <li key={i} className="log-row flex items-center gap-2">
               <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${current ? "border-2 border-ink bg-lemon" : "pop-in bg-ink text-lemon"}`}>{current ? <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-lemon" /> : <Icon name="check" className="h-3 w-3" />}</span>
-              <span className={current ? "font-semibold text-ink" : "text-ink/60"} dir="auto">{st}</span>
+              <span className={current ? "font-semibold text-ink" : "text-muted"} dir="auto">{st}</span>
             </li>
           );
         })}

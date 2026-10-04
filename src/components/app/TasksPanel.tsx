@@ -18,11 +18,11 @@ function Card({ k, busy, title, desc, on, last, which, onToggle, onRun, readOnly
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="font-display text-lg font-medium">{title}</h2>
-            <p className="mt-1 text-sm text-ink/60">{desc}</p>
-            <p className="mt-2 font-mono text-xs text-ink/50" dir="ltr">{k.lastRun}: {last ? last.slice(0, 16).replace("T", " ") : k.never}</p>
+            <p className="mt-1 text-sm text-muted">{desc}</p>
+            <p className="mt-2 font-mono text-xs text-muted" dir="ltr">{k.lastRun}: {last ? last.slice(0, 16).replace("T", " ") : k.never}</p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">
-            <button onClick={() => onToggle(which === "weekly" ? "weeklyPlan" : which === "daily" ? "dailyBrief" : "followUps")} disabled={readOnly} aria-pressed={on} className={`rounded-full px-3 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-ink text-lilac" : "bg-ink/10 text-ink/60"}`}>{on ? k.on : k.off}</button>
+            <button onClick={() => onToggle(which === "weekly" ? "weeklyPlan" : which === "daily" ? "dailyBrief" : "followUps")} disabled={readOnly} aria-pressed={on} className={`rounded-full px-3 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-ink text-lilac" : "bg-ink/10 text-muted"}`}>{on ? k.on : k.off}</button>
             {which !== "followups" && <button disabled={!!busy} onClick={() => onRun(which)} className="btn btn-secondary btn-xs disabled:opacity-50">{busy === which ? "…" : k.runNow}</button>}
           </div>
         </div>
@@ -37,11 +37,11 @@ function RoutineRow({ t, r, on, saving, onToggle, readOnly }: { t: AppDict; r: R
   return (
     <li className="flex items-start justify-between gap-4 py-3">
       <div className="min-w-0">
-        <p className="font-medium">{t.agents[r.agent].name} <span className="text-sm font-normal text-ink/60">· {what.t}</span></p>
-        <p className="mt-1 text-sm text-ink/60">{what.d}</p>
-        <p className="mt-1 text-xs text-ink/60">{r.cadence === "weekly" ? k.routineWeekly : k.routineMonthly} · {k.routineCost.replace("{n}", String(TASK_COST[r.type]))}</p>
-        <p className="mt-1 text-xs text-ink/60">{k.routineWhen[r.id]}</p>
-        <p className="mt-1 font-mono text-xs text-ink/50" dir="ltr">{k.lastRun}: {r.last ? r.last.slice(0, 16).replace("T", " ") : k.never}</p>
+        <p className="font-medium">{t.agents[r.agent].name} <span className="text-sm font-normal text-muted">· {what.t}</span></p>
+        <p className="mt-1 text-sm text-muted">{what.d}</p>
+        <p className="mt-1 text-xs text-muted">{r.cadence === "weekly" ? k.routineWeekly : k.routineMonthly} · {k.routineCost.replace("{n}", String(TASK_COST[r.type]))}</p>
+        <p className="mt-1 text-xs text-muted">{k.routineWhen[r.id]}</p>
+        <p className="mt-1 font-mono text-xs text-muted" dir="ltr">{k.lastRun}: {r.last ? r.last.slice(0, 16).replace("T", " ") : k.never}</p>
       </div>
       <button type="button" role="switch" aria-checked={on} aria-label={`${t.agents[r.agent].name}: ${what.t}`} disabled={saving || readOnly} onClick={() => onToggle(r.id, !on)} className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${on ? "bg-ink" : "bg-ink/20"}`}>
         <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${on ? "start-[22px]" : "start-0.5"}`} />
@@ -110,13 +110,13 @@ export default function TasksPanel({ t, initial, routines, readOnly = false }: {
         {/* After the three cards: the e2e suite clicks the first "Run now", and routines have none. */}
         <div className="card">
           <h2 className="font-display text-lg font-medium">{k.routines}</h2>
-          <p className="mt-1 text-sm text-ink/60">{k.routinesSub}</p>
+          <p className="mt-1 text-sm text-muted">{k.routinesSub}</p>
           <ul className="mt-3 divide-y divide-ink/10">
             {routines.map((x) => <RoutineRow key={x.id} t={t} r={x} on={s.routines?.[x.id] === true} saving={!!saving} onToggle={toggleRoutine} readOnly={readOnly} />)}
           </ul>
         </div>
       </div>
-      <p className="mt-3 text-xs text-ink/50">{k.capNote}</p>
+      <p className="mt-3 text-xs text-muted">{k.capNote}</p>
       {err && <p role="alert" className="mt-4 text-sm text-danger">{err}</p>}
       {msg && <p role="status" className="mt-4 rounded-lg bg-lilac p-3 text-sm text-ink">{msg}</p>}
     </div>

@@ -83,11 +83,11 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
         {err && <p role="alert" className="text-sm text-danger">{err}</p>}
         <button disabled={busy} aria-disabled={step === 2 && !ready ? true : undefined} aria-describedby={step === 2 ? "signup-rules" : undefined} className="s-btn"><Scribble kind="pill" seed="authform-b1" fill="ink" shadow ring />{step === 1 ? S.cont : t.signup.submit}</button>
       </form>
-      <p className="mt-3 text-center text-xs text-ink/60">{S.trial}</p>
+      <p className="mt-3 text-center text-xs text-muted">{S.trial}</p>
       <p className="mt-4 text-sm text-ink/70">
         {t.signup.have} <Link href={`/${lang}/app/login`} className="font-medium text-ink underline">{t.signup.login}</Link>
       </p>
-      <p className="mt-2 text-xs text-ink/60">{S.legal1} <Link href={`/${lang}/terms`} className="underline">{S.terms}</Link> {S.and} <Link href={`/${lang}/privacy`} className="underline">{S.privacy}</Link>.</p>
+      <p className="mt-2 text-xs text-muted">{S.legal1} <Link href={`/${lang}/terms`} className="underline">{S.terms}</Link> {S.and} <Link href={`/${lang}/privacy`} className="underline">{S.privacy}</Link>.</p>
     </div>
   );
 }
@@ -123,7 +123,7 @@ export function LoginForm({ t, lang }: { t: AppDict; lang: Lang }) {
         <input name="password" required type="password" placeholder={t.login.password} className={input} />
         {err && <p role="alert" className="text-sm text-danger">{err}</p>}
         <button disabled={busy} className="s-btn"><Scribble kind="pill" seed="authform-b2" fill="ink" shadow ring />{t.login.submit}</button>
-        <Link href={`/${lang}/app/forgot`} className="text-center text-sm text-ink/60 underline">{lang === "ar" ? "نسيت كلمة المرور؟" : "Forgot your password?"}</Link>
+        <Link href={`/${lang}/app/forgot`} className="text-center text-sm text-muted underline">{lang === "ar" ? "نسيت كلمة المرور؟" : "Forgot your password?"}</Link>
       </form>
       <p className="mt-4 text-sm text-ink/70">
         {t.login.noAccount} <Link href={`/${lang}/app/signup`} className="font-medium text-ink underline">{t.login.signup}</Link>

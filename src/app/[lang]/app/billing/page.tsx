@@ -66,10 +66,10 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
     <div className="mx-auto w-full max-w-4xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="billing-t1" />{t.billing.title}</span></h1>
       <div className="mt-4 grid gap-3 card text-sm sm:grid-cols-2 lg:grid-cols-4">
-        <div><p className="text-ink/60">{t.billing.current}</p><p className="font-display text-lg font-medium">{t.billing.plans[u.plan]}</p></div>
-        <div><p className="text-ink/60">{t.billing.credits}</p><p className="font-mono text-lg" dir="ltr">{u.credits}</p>{fromTopups > 0 && <p className="text-xs text-ink/60" data-topup-share="">{lang === "ar" ? `منها ${formatCount(fromTopups)} من باقات الشحن` : `incl. ${formatCount(fromTopups)} from top-ups`}</p>}</div>
-        <div><p className="text-ink/60">{t.billing.seats}</p><p className="font-mono text-lg" dir="ltr"><Link href={`/${lang}/app/team`} className="hover:underline">{used} / {seatLimit(u)}</Link></p></div>
-        {u.plan === "trial" && <div><p className="text-ink/60">{t.billing.trialEnds}</p><p className="font-mono text-lg" dir="ltr">{u.trialEnds.slice(0, 10)}</p></div>}
+        <div><p className="text-muted">{t.billing.current}</p><p className="font-display text-lg font-medium">{t.billing.plans[u.plan]}</p></div>
+        <div><p className="text-muted">{t.billing.credits}</p><p className="font-mono text-lg" dir="ltr">{u.credits}</p>{fromTopups > 0 && <p className="text-xs text-muted" data-topup-share="">{lang === "ar" ? `منها ${formatCount(fromTopups)} من باقات الشحن` : `incl. ${formatCount(fromTopups)} from top-ups`}</p>}</div>
+        <div><p className="text-muted">{t.billing.seats}</p><p className="font-mono text-lg" dir="ltr"><Link href={`/${lang}/app/team`} className="hover:underline">{used} / {seatLimit(u)}</Link></p></div>
+        {u.plan === "trial" && <div><p className="text-muted">{t.billing.trialEnds}</p><p className="font-mono text-lg" dir="ltr">{u.trialEnds.slice(0, 10)}</p></div>}
       </div>
       {!owner && <ReadOnlyNote className="mt-4" text={t.billing.ownerOnly} />}
       <ChatAllowanceCard lang={lang} status={chat} owner={owner} nextReset={nextReset} trialEnds={u.trialEnds.slice(0, 10)} runway={chatRunway} credits={u.credits} />
@@ -92,7 +92,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
           return (
             <div key={k} data-tier={k} className="flex flex-col card">
               <h2 className="font-display text-lg font-medium">{plan.name}</h2>
-              <p className="mt-2 font-display text-3xl font-bold" dir="ltr">{plan.price} <span className="text-xs font-normal text-ink/60">{plan.period}</span></p>
+              <p className="mt-2 font-display text-3xl font-bold" dir="ltr">{plan.price} <span className="text-xs font-normal text-muted">{plan.period}</span></p>
               {offer && <p data-offer-price className="text-sm font-semibold text-ink">{O.card(firstMonthPriceSar(k), PLAN_PRICE_SAR[k])}</p>}
               <p className="text-sm text-danger">{plan.credits}</p>
               <ul className="mt-3 flex-1 space-y-1 text-xs text-ink/70">{plan.features.slice(0, 4).map((f) => <li key={f}>• {f}</li>)}</ul>
@@ -101,14 +101,14 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
               ) : (
                 <a href="mailto:hello@nashr.ai" className="mt-4 rounded-full border border-ink/20 px-4 py-2 text-center text-sm">{offer ? `${O.noWa} ` : ""}hello@nashr.ai</a>
               )}
-              {offer && links[k] && <a href={links[k]} target="_blank" rel="noreferrer" className="mt-2 text-center text-xs text-ink/60 underline">{O.fullPrice}</a>}
+              {offer && links[k] && <a href={links[k]} target="_blank" rel="noreferrer" className="mt-2 text-center text-xs text-muted underline">{O.fullPrice}</a>}
             </div>
           );
         })}
         {agency && (
           <div data-tier="agency" className="flex flex-col card">
             <h2 className="font-display text-lg font-medium">{agency.name}</h2>
-            <p className="mt-2 font-display text-2xl font-bold">{agency.price} <span className="text-xs font-normal text-ink/60">{agency.period}</span></p>
+            <p className="mt-2 font-display text-2xl font-bold">{agency.price} <span className="text-xs font-normal text-muted">{agency.period}</span></p>
             <p className="text-sm text-danger">{agency.credits}</p>
             <ul className="mt-3 flex-1 space-y-1 text-xs text-ink/70">{agency.features.filter((f) => !/coming soon|قريباً/.test(f)).slice(0, 4).map((f) => <li key={f}>• {f}</li>)}</ul>
             {/* Contact only, and only for the owner: the WhatsApp thread carries the account email. */}

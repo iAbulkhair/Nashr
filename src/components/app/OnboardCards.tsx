@@ -20,14 +20,14 @@ export function FileCard({ file, lang, defaultOpen = false }: { file: { name: st
       <header className="flex items-center gap-2 border-b border-ink/5 px-3 py-2 text-xs">
         <Icon name="folder" className="h-4 w-4 text-ink" />
         <span className="font-mono font-semibold" dir="ltr">{file.name}</span>
-        <span className="text-ink/50">{S.file}</span>
+        <span className="text-muted">{S.file}</span>
         <span className="badge badge-primary ms-auto">{S.saved}</span>
       </header>
       <div className={`prose-nashr prose-compact px-3 py-2 text-sm ${open ? "" : "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_55%,transparent)]"}`} dir="auto" dangerouslySetInnerHTML={{ __html: render(file.content) }} />
       <footer className="flex flex-wrap items-center gap-1.5 border-t border-ink/5 px-3 py-2 text-xs">
         <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="btn btn-secondary btn-xs">{open ? S.collapse : S.expand}</button>
         <button type="button" onClick={async () => { await navigator.clipboard.writeText(file.content); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="btn btn-secondary btn-xs"><Icon name="copy" className="h-3.5 w-3.5" />{copied ? S.copied : S.copy}</button>
-        <Link href={`/${lang}/app/files`} className="ms-auto text-ink/60 underline">{S.open}</Link>
+        <Link href={`/${lang}/app/files`} className="ms-auto text-muted underline">{S.open}</Link>
       </footer>
     </article>
   );
@@ -46,7 +46,7 @@ export function PlanCard({ plan, lang, onStart }: { plan: PlanItem[]; lang: "ar"
   if (hidden) return null;
   return (
     <section className="mt-2 rounded-xl border border-ink/20 bg-white p-3">
-      <p className="text-xs text-ink/60">{S.planHint}</p>
+      <p className="text-xs text-muted">{S.planHint}</p>
       <ol className="mt-2 grid gap-2">
         {items.map((it, i) => (
           <li key={i} className="flex flex-wrap items-center gap-2 rounded-lg border border-ink/10 px-3 py-2">
@@ -59,7 +59,7 @@ export function PlanCard({ plan, lang, onStart }: { plan: PlanItem[]; lang: "ar"
           </li>
         ))}
       </ol>
-      <button type="button" onClick={() => setHidden(true)} className="mt-2 text-xs text-ink/60 underline">{S.skip}</button>
+      <button type="button" onClick={() => setHidden(true)} className="mt-2 text-xs text-muted underline">{S.skip}</button>
     </section>
   );
 }
@@ -78,7 +78,7 @@ export function WhatsAppCard({ lang }: { lang: "ar" | "en" }) {
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <input value={v} onChange={(e) => { setV(e.target.value); setState("ask"); }} type="tel" inputMode="tel" dir="ltr" placeholder="+9665xxxxxxxx" aria-label={S.waTitle} className="input max-w-56 py-1.5 text-sm" />
         <button className="btn btn-primary btn-xs">{S.waSave}</button>
-        <button type="button" onClick={() => setState("hidden")} className="text-xs text-ink/60 underline">{S.waLater}</button>
+        <button type="button" onClick={() => setState("hidden")} className="text-xs text-muted underline">{S.waLater}</button>
         {state === "bad" && <span role="alert" className="text-xs text-danger">{S.waBad}</span>}
       </div>
     </form>

@@ -40,17 +40,17 @@ export default function ReferPanel({ t, lang, code, count, earned, origin }: { t
         </div>
       )}
       <div className={`mt-4 card ${tab !== "refer" ? "hidden" : ""}`}>
-        <p className="text-xs uppercase tracking-wide text-ink/50">{r.link}</p>
+        <p className="text-xs uppercase tracking-wide text-muted">{r.link}</p>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <code className="flex-1 break-all rounded bg-lilac px-3 py-2 text-sm" dir="ltr">{link}</code>
           <button onClick={async () => { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="btn btn-primary btn-pill">{copied ? r.copied : r.copy}</button>
           <a href={`https://wa.me/?text=${encodeURIComponent(r.shareText + " " + link)}`} target="_blank" rel="noreferrer" className="rounded-full border border-ink px-4 py-2 text-sm text-ink">{r.share}</a>
         </div>
-        <p className="mt-3 text-xs text-ink/50">{r.code}: <span className="font-mono">{code}</span></p>
+        <p className="mt-3 text-xs text-muted">{r.code}: <span className="font-mono">{code}</span></p>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-4">
-        <div className="card"><p className="text-xs text-ink/50">{r.count}</p><p className="page-title">{count}</p></div>
-        <div className="card"><p className="text-xs text-ink/50">{r.earned}</p><p className="page-title">{earned}</p></div>
+        <div className="card"><p className="text-xs text-muted">{r.count}</p><p className="page-title">{count}</p></div>
+        <div className="card"><p className="text-xs text-muted">{r.earned}</p><p className="page-title">{earned}</p></div>
       </div>
     </div>
   );

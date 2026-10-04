@@ -1,6 +1,6 @@
 /*
- * Thakeen homepage. Light pearl ground, plum ink, one colour world per cast member (spec §3).
- * Type stays on the system stack until the licensed faces arrive (spec §7.2).
+ * Thakeen homepage in prototype D: D's ground and ink, one colour per cast member (re-skin spec).
+ * Headings use the display face (`--font-display`), body text the body face; the system stack is only the fallback.
  */
 .home {
   --home-display: var(--font-display), ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;

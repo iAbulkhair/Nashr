@@ -27,7 +27,7 @@ export default function SeriesPanel({ t, id, rows, total, kept, canWrite, canClo
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="seriespanel-t1" />{S.title}</span></h1>
       <p className="mt-2"><Link href={backHref} className="btn btn-secondary btn-xs">{S.back}</Link></p>
       {total === 0 ? (
-        <p className="mt-6 card text-sm text-ink/60">{S.notFound}</p>
+        <p className="mt-6 card text-sm text-muted">{S.notFound}</p>
       ) : (
         <>
           <section aria-labelledby="series-keep" className="card mt-5">
@@ -41,27 +41,27 @@ export default function SeriesPanel({ t, id, rows, total, kept, canWrite, canClo
                 <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${kept ? "start-[22px]" : "start-0.5"}`} />
               </button>
             </div>
-            <p className="mt-2 text-xs text-ink/60">{S.keepHint}</p>
-            {kept && !canClose && <p className="mt-1 text-xs text-ink/50">{S.keepOffOwner}</p>}
+            <p className="mt-2 text-xs text-muted">{S.keepHint}</p>
+            {kept && !canClose && <p className="mt-1 text-xs text-muted">{S.keepOffOwner}</p>}
             {error?.key === "keep" && <p role="alert" className="mt-2 text-sm text-danger">{error.text}</p>}
           </section>
 
           <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-display text-lg font-semibold text-ink">{S.closed} <span className="tnum text-sm font-normal text-ink/50" dir="ltr">({total})</span></h2>
+            <h2 className="font-display text-lg font-semibold text-ink">{S.closed} <span className="tnum text-sm font-normal text-muted" dir="ltr">({total})</span></h2>
             <a href={exportHref} download className="btn btn-secondary btn-xs">{S.download}</a>
           </div>
-          {rows.length < total && <p className="mt-1 text-xs text-ink/50">{fill(S.shown, { shown: String(rows.length), total: String(total) })}</p>}
-          {rows.length === 0 ? <p className="mt-2 text-sm text-ink/60">{S.empty}</p> : (
+          {rows.length < total && <p className="mt-1 text-xs text-muted">{fill(S.shown, { shown: String(rows.length), total: String(total) })}</p>}
+          {rows.length === 0 ? <p className="mt-2 text-sm text-muted">{S.empty}</p> : (
             <ul className="mt-2 divide-y divide-ink/10 rounded-xl border border-ink/10 bg-white">
               {rows.map((r) => (
                 <li key={r.id} className="px-4 py-3">
                   <p className="font-medium" dir="auto">{r.title}</p>
-                  <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink/60">
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
                     <span>{r.due ?? T.noDue}</span>
                     {r.closedAt && <span>{S.closedAt}: {r.closedAt}</span>}
                     {r.closedBy && <span dir="auto">{r.closedBy}</span>}
                   </p>
-                  {r.result && <p className="mt-1 text-sm text-ink/70" dir="auto"><span className="text-ink/50">{T.result}: </span>{r.result}</p>}
+                  {r.result && <p className="mt-1 text-sm text-ink/70" dir="auto"><span className="text-muted">{T.result}: </span>{r.result}</p>}
                 </li>
               ))}
             </ul>

@@ -139,7 +139,7 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
             })}
           </div>
           <div className="grid gap-3" aria-live="polite">
-            <p className="tnum text-sm text-ink/60">{DICT_COPY.counter[lang].replace("{n}", num(s.words.length, lang))}</p>
+            <p className="tnum text-sm text-muted">{DICT_COPY.counter[lang].replace("{n}", num(s.words.length, lang))}</p>
             {lastWord && <Say key={lastWord.id} who={lastWord.react.who} lang={lang} text={lastWord.react.text[lang]} />}
           </div>
         </>
@@ -176,7 +176,7 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
           <button type="button" className="btn btn-primary btn-lg min-w-40" aria-describedby={`${uid}-note`} onClick={() => dispatch({ type: "approve" })}>
             {DICT_COPY.approve[lang]}
           </button>
-          <p id={`${uid}-note`} className="text-sm text-ink/60">
+          <p id={`${uid}-note`} className="text-sm text-muted">
             {DICT_COPY.approveNote[lang]}
           </p>
         </div>
@@ -205,7 +205,7 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
             {DICT_COPY.title[lang]}
           </h1>
           <p className="mt-1 text-ink/70">{DICT_COPY.subtitle[lang]}</p>
-          <Link href={`/${lang}/app/onboarding`} className="mt-2 inline-block text-sm text-ink/60 underline">
+          <Link href={`/${lang}/app/onboarding`} className="mt-2 inline-block text-sm text-muted underline">
             {t.start.manual}
           </Link>
 
@@ -214,15 +214,15 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
               const state = n === s.step ? "current" : n < s.step ? "done" : "todo";
               return (
                 <li key={n} className="flex min-w-0 flex-1 flex-col items-center gap-1 text-center" aria-current={state === "current" ? "step" : undefined}>
-                  <span className={`grid h-8 w-8 place-items-center rounded-full text-sm font-semibold ${state === "current" ? "bg-ink text-white" : state === "done" ? "bg-ink/15 text-ink" : "bg-lilac text-ink/50"}`}>{num(n, lang)}</span>
-                  <span className={`text-xs leading-tight ${state === "current" ? "font-semibold text-ink" : "sr-only text-ink/50 sm:not-sr-only"}`}>{stepName(n, lang)}</span>
+                  <span className={`grid h-8 w-8 place-items-center rounded-full text-sm font-semibold ${state === "current" ? "bg-ink text-white" : state === "done" ? "bg-ink/15 text-ink" : "bg-lilac text-muted"}`}>{num(n, lang)}</span>
+                  <span className={`text-xs leading-tight ${state === "current" ? "font-semibold text-ink" : "sr-only text-muted sm:not-sr-only"}`}>{stepName(n, lang)}</span>
                 </li>
               );
             })}
           </ol>
 
           <h2 id={headingId} ref={heading} tabIndex={-1} className="mt-6 font-display text-lg font-bold text-ink focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ink">
-            <span className="tnum text-sm font-semibold text-ink/50">
+            <span className="tnum text-sm font-semibold text-muted">
               {num(s.step, lang)}/{num(STEPS.length, lang)}
             </span>{" "}
             {stepName(s.step, lang)}

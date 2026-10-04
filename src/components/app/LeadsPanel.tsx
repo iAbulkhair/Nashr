@@ -73,14 +73,14 @@ export default function LeadsPanel({ lang, onSeen }: { lang: "ar" | "en"; onSeen
           <button type="button" onClick={() => window.open(`/api/admin/leads?format=csv${all ? "&all=1" : ""}`, "_blank")} className="btn btn-secondary btn-xs">{L.export}</button>
         </div>
       </div>
-      <p className="mt-1 text-xs text-ink/60">{L.note}</p>
+      <p className="mt-1 text-xs text-muted">{L.note}</p>
       {page && !page.mail.ready && <p role="alert" className="mt-3 rounded-lg bg-agent-sami/20 px-3 py-2 text-sm text-danger">{L.mailOff}</p>}
       {page && page.mail.ready && !page.mail.forwardTo && <p role="alert" className="mt-3 rounded-lg bg-agent-sami/20 px-3 py-2 text-sm text-danger">{L.noForward}</p>}
       {err && <p className="mt-3 text-sm text-danger">{err}</p>}
-      {!page && !err ? <p className="mt-3 text-sm text-ink/50">{L.loading}</p> : page && page.leads.length === 0 ? <p className="mt-3 text-sm text-ink/50">{L.none}</p> : page && (
+      {!page && !err ? <p className="mt-3 text-sm text-muted">{L.loading}</p> : page && page.leads.length === 0 ? <p className="mt-3 text-sm text-muted">{L.none}</p> : page && (
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-lilac text-start text-xs uppercase tracking-wide text-ink/60">
+            <thead className="bg-lilac text-start text-xs uppercase tracking-wide text-muted">
               <tr><th className="p-2 text-start">{L.when}</th><th className="text-start">{L.type}</th><th className="text-start">{L.who}</th><th className="text-start">{L.message}</th><th className="text-start">{L.contact}</th></tr>
             </thead>
             <tbody>
@@ -89,9 +89,9 @@ export default function LeadsPanel({ lang, onSeen }: { lang: "ar" | "en"; onSeen
                 return (
                   <tr key={`${l.at}-${i}`} className="border-t border-ink/5 align-top">
                     <td className="whitespace-nowrap p-2 font-mono text-xs" dir="ltr">{at(l.at)}{fresh && <span className="ms-2 rounded bg-lemon px-1.5 font-sans text-[10px] font-semibold text-ink">{L.isNew}</span>}</td>
-                    <td className="whitespace-nowrap text-xs">{L.kinds[l.kind]}{l.kind === "support" && <span className="text-ink/50"> · {l.type}</span>}</td>
-                    <td className="text-xs" dir="auto">{l.name || "—"}{l.company && <div className="text-ink/60">{l.company}</div>}</td>
-                    <td className="max-w-md text-xs" dir="auto"><p className="line-clamp-4 whitespace-pre-wrap break-words">{l.message}</p>{l.page && <p className="mt-1 font-mono text-[10px] text-ink/40" dir="ltr">{l.page} · {l.lang}</p>}</td>
+                    <td className="whitespace-nowrap text-xs">{L.kinds[l.kind]}{l.kind === "support" && <span className="text-muted"> · {l.type}</span>}</td>
+                    <td className="text-xs" dir="auto">{l.name || "—"}{l.company && <div className="text-muted">{l.company}</div>}</td>
+                    <td className="max-w-md text-xs" dir="auto"><p className="line-clamp-4 whitespace-pre-wrap break-words">{l.message}</p>{l.page && <p className="mt-1 font-mono text-[10px] text-muted" dir="ltr">{l.page} · {l.lang}</p>}</td>
                     <td className="text-xs" dir="ltr">
                       {l.email && <a href={`mailto:${l.email}`} className="text-ink underline">{l.email}</a>}
                       {l.phone && <div><a href={`https://wa.me/${l.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="underline">{l.phone}</a></div>}
@@ -101,7 +101,7 @@ export default function LeadsPanel({ lang, onSeen }: { lang: "ar" | "en"; onSeen
               })}
             </tbody>
           </table>
-          <div className="mt-3 flex items-center gap-2 text-xs text-ink/60">
+          <div className="mt-3 flex items-center gap-2 text-xs text-muted">
             <button type="button" disabled={offset === 0} onClick={() => go(all, Math.max(0, offset - PAGE))} className="btn btn-secondary btn-xs">{L.prev}</button>
             <span className="tnum">{offset + 1}–{Math.min(offset + PAGE, page.total)} {L.of} {page.total}</span>
             <button type="button" disabled={offset + PAGE >= page.total} onClick={() => go(all, offset + PAGE)} className="btn btn-secondary btn-xs">{L.next}</button>

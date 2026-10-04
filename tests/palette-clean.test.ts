@@ -47,3 +47,22 @@ describe("files moved to D use only D's names (rule 513)", () => {
     expect(code("src/app/[lang]/app/layout.tsx")).not.toMatch(/appName\}[\s\S]{0,200}rounded-full bg-/);
   });
 });
+
+/**
+ * Rule 529. Secondary text is `text-muted` (about 7:1 on ground), never ink faded to 60% or less (about 4:1 at 60%,
+ * under the 4.5:1 that WCAG AA asks of body text). A disabled control is exempt, as WCAG exempts it.
+ */
+const FADED = /(?<!disabled:)(?<![\w-])text-ink\/(?:[1-6]0|[1-5])\b/;
+
+describe("secondary text is muted, not faded ink (rule 529)", () => {
+  for (const file of CLEAN) {
+    it(file, () => {
+      expect(code(file).match(FADED)?.[0], file).toBeUndefined();
+    });
+  }
+
+  it("tells faded ink from readable ink and from a disabled control", () => {
+    for (const bad of ["text-ink/60", "text-ink/50", "hover:text-ink/40", "placeholder:text-ink/30"]) expect(`a ${bad}`).toMatch(FADED);
+    for (const ok of ["text-ink/70", "text-ink/80", "text-muted", "disabled:text-ink/40", "border-ink/40"]) expect(`a ${ok}`).not.toMatch(FADED);
+  });
+});

@@ -66,7 +66,7 @@ export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: 
         )}
       </div>
       {manage && (
-        <p className="mt-2 text-xs text-ink/60">
+        <p className="mt-2 text-xs text-muted">
           {ar
             ? `العلامات بلا حد في كل الخطط. إعداد علامتك الأولى مجاني، وإعداد كل علامة إضافية من رابطها يستخدم ${ONBOARD_EXTRA_BRAND_COST} كريدت من رصيد الحساب عند بدء الإعداد، ويُعاد إن تعذّر بناء ملف العلامة، وتعبئة النموذج يدوياً مجانية. خطة الأحد تبدأ متوقفة للعلامات المضافة، وتفعّلها من «المهام».`
             : `Brands are unlimited on every plan. Your first brand's setup is free; setting up each added brand from its URL uses ${ONBOARD_EXTRA_BRAND_COST} credits from the account's balance when setup starts, refunded if the brand file cannot be built, and filling the form by hand is free. The Sunday plan starts off for added brands; switch it on in Tasks.`}
@@ -79,7 +79,7 @@ export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: 
           <li key={b.id} className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 ${b.id === active ? "border-ink bg-white" : "border-ink/10 bg-white"} ${b.status === "archived" ? "opacity-60" : ""}`}>
             <div>
               <p className="font-display font-medium" dir="auto">{b.name} {b.id === active && <span className="ms-2 rounded bg-ink px-2 py-0.5 text-xs text-lilac">{ar ? "نشطة" : "ACTIVE"}</span>} {b.status === "archived" && <span className="ms-2 rounded bg-ink/10 px-2 py-0.5 text-xs">{ar ? "مؤرشفة" : "archived"}</span>}</p>
-              <p className="mt-1 text-xs text-ink/50" dir="ltr">{b.createdAt.slice(0, 10)}{!b.hasBrandFile && (ar ? " · لم يكتمل الإعداد" : " · setup incomplete")}</p>
+              <p className="mt-1 text-xs text-muted" dir="ltr">{b.createdAt.slice(0, 10)}{!b.hasBrandFile && (ar ? " · لم يكتمل الإعداد" : " · setup incomplete")}</p>
             </div>
             <div className="flex gap-2 text-xs">
               {b.id !== active && b.status === "active" && <button disabled={busy} onClick={() => act({ action: "switch", id: b.id })} className="rounded-full bg-ink px-3 py-1 font-semibold text-lilac disabled:opacity-50">{ar ? "انتقل" : "Switch"}</button>}

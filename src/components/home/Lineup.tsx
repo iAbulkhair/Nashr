@@ -22,7 +22,8 @@ const EDGE = 8;
  * one (pointer, keyboard focus, or a tap) grows from its feet by a transform only, so nothing around it moves.
  *
  * Choosing a figure shows one of its questions in a thought cloud above its head, the next one each time; the owner
- * thinks the finale's word. The cloud is decoration; its text is mirrored into a polite live region. A tap keeps the
+ * thinks the finale's word. The cloud is decoration; its text is mirrored into a polite live region for keyboard focus and taps (a passing
+ * mouse stays silent), and at most one figure is pressed: tabbing on releases it. A tap keeps the
  * figure chosen (one at a time) until it is tapped again, another is chosen, Escape is pressed or the page is tapped
  * elsewhere. The AI label is permanent (disclosure). Under the owner, a caption: «…and this is you». It sits inside
  * the cover section (`Cover.tsx`), so its root is a labelled group, not a section.
@@ -47,12 +48,13 @@ export default function Lineup({ lang }: { lang: Lang }) {
     return qs.length ? qs[k % qs.length][lang] : "";
   };
 
-  const show = (id: CastId) => {
+  // `speak`: keyboard focus and taps are announced; a mouse passing over the row is not, or every hover would talk.
+  const show = (id: CastId, speak: boolean) => {
     clearTimeout(linger.current);
     const t = next(id);
     setShown(id);
     setText(t);
-    setSaid(`${CAST.find((m) => m.id === id)?.name[lang]}: ${t}`);
+    setSaid(speak ? `${CAST.find((m) => m.id === id)?.name[lang]}: ${t}` : "");
   };
 
   const hide = (ms = 0) => {
@@ -145,14 +147,16 @@ export default function Lineup({ lang }: { lang: Lang }) {
                 onPointerEnter={(e) => {
                   if (e.pointerType === "touch") return;
                   if (pressed && pressed !== member.id) setPressed(null);
-                  if (shown !== member.id) show(member.id);
+                  if (shown !== member.id) show(member.id, false);
                   else clearTimeout(linger.current);
                 }}
                 onPointerLeave={(e) => {
                   if (e.pointerType !== "touch" && pressed !== member.id) hide(LINGER_MS);
                 }}
                 onFocus={(e) => {
-                  if (e.currentTarget.matches(":focus-visible") && shown !== member.id) show(member.id);
+                  // Tabbing on from a pressed figure releases it: one pressed figure at most, and only the focused one.
+                  if (pressed && pressed !== member.id) setPressed(null);
+                  if (e.currentTarget.matches(":focus-visible") && shown !== member.id) show(member.id, true);
                 }}
                 onBlur={() => {
                   if (pressed !== member.id) hide(LINGER_MS);
@@ -160,7 +164,7 @@ export default function Lineup({ lang }: { lang: Lang }) {
                 onClick={() => {
                   if (pressed === member.id) return hide();
                   setPressed(member.id);
-                  show(member.id);
+                  show(member.id, true);
                 }}
               >
                 <span className={styles.fig}>

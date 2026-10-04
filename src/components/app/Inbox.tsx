@@ -213,7 +213,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
   return (
     <div>
       <div className="mb-4 flex gap-1 border-b border-ink/10 text-sm">
-        <Link href={`/${lang}/app/chat`} className="px-4 py-2 text-ink/60 hover:text-ink">{i.tabChat}</Link>
+        <Link href={`/${lang}/app/chat`} className="px-4 py-2 text-muted hover:text-ink">{i.tabChat}</Link>
         <span className="border-b-2 border-ink px-4 py-2 font-semibold text-ink">{i.tabFeed} <span className="badge badge-accent ms-1">{t.nav.newBadge}</span></span>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -235,7 +235,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
         </div>
       )}
       {shown.length === 0 && (
-        <div className="mt-10 rounded-xl border border-dashed border-ink/20 p-10 text-center text-ink/60">
+        <div className="mt-10 rounded-xl border border-dashed border-ink/20 p-10 text-center text-muted">
           <p>{i.empty}</p>
           <Link href={`/${lang}/app/generate`} className="mt-4 inline-block rounded-full bg-lemon px-5 py-2 font-semibold text-ink">{i.regenerate}</Link>
         </div>
@@ -311,7 +311,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                 <div key={v.by} className="mt-3 rounded-lg border border-lemon/40 bg-lemon/10 p-3 text-sm">
                   <p className="font-semibold text-danger">{fill(i.xNotesTitle, { name: t.agents[v.by].name })}</p>
                   <p className="mt-1 whitespace-pre-line break-words leading-relaxed text-ink/90" dir="auto">{v.notes}</p>
-                  <p className="mt-1.5 text-xs text-ink/60">{i.xNotesHint}</p>
+                  <p className="mt-1.5 text-xs text-muted">{i.xNotesHint}</p>
                 </div>
               ))}
               {x.imageUrl && (
@@ -321,20 +321,20 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                       remotePatterns and paying to proxy images we already pay to generate and store. */}
                   {/* eslint-disable-next-line @next/next/no-img-element -- remote image host, not a local asset */}
                   <img loading="lazy" decoding="async" src={x.imageUrl} alt="" className="h-40 w-40 rounded-lg object-cover" />
-                  <div className="text-xs text-ink/50">{x.imageProvider === "placeholder" && <p className="mb-1 rounded-full bg-lemon/20 px-2 py-0.5 font-semibold text-danger" dir="auto">{i.placeholder}</p>}<a href={x.imageUrl} target="_blank" rel="noreferrer" className="underline">{i.download}</a>{x.imagePrompt && <p className="mt-1 line-clamp-4" dir="ltr">{x.imagePrompt}</p>}</div>
+                  <div className="text-xs text-muted">{x.imageProvider === "placeholder" && <p className="mb-1 rounded-full bg-lemon/20 px-2 py-0.5 font-semibold text-danger" dir="auto">{i.placeholder}</p>}<a href={x.imageUrl} target="_blank" rel="noreferrer" className="underline">{i.download}</a>{x.imagePrompt && <p className="mt-1 line-clamp-4" dir="ltr">{x.imagePrompt}</p>}</div>
                 </div>
               )}
               {x.videoUrl && (
                 <div className="mt-3 flex items-start gap-3">
                   {/* iOS Safari shows an empty box for preload="metadata" without a poster or a start offset. */}
                   <video controls playsInline preload="metadata" poster={hasArtwork(x) ? x.imageUrl : undefined} src={`${x.videoUrl}#t=0.1`} className="h-48 rounded-lg bg-ink/5" />
-                  <div className="grid gap-1 text-xs text-ink/50">
+                  <div className="grid gap-1 text-xs text-muted">
                     <span className="flex flex-wrap items-center gap-2">
                       <a href={saveLink(x.videoUrl)} target="_blank" rel="noreferrer" className="underline">{i.videoDownload}</a>
                       {canShare && !noShare[x.id] && <button disabled={saving === x.id} onClick={() => saveVideo(x)} className="btn btn-secondary btn-xs">{saving === x.id ? `${i.videoSave}…` : i.videoSave}</button>}
                     </span>
                     {ready === x.id && <p role="status" className="text-ink">{i.videoReady}</p>}
-                    <p className="text-ink/60">{i.videoNoPublish}</p>
+                    <p className="text-muted">{i.videoNoPublish}</p>
                     {x.videoPrompt && <p className="mt-1 line-clamp-4" dir="ltr">{x.videoPrompt}</p>}
                   </div>
                 </div>
@@ -374,7 +374,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
               ) : (
                 <>{!isCollapsed && <div className="prose-nashr prose-compact mt-3 text-sm text-ink/90" dir="auto" dangerouslySetInnerHTML={{ __html: render(body) }} />}
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className={`tnum text-xs ${CHAR_LIMITS[x.channel] && body.length > CHAR_LIMITS[x.channel] ? "font-semibold text-danger" : "text-ink/60"}`} dir="ltr">{body.length}{CHAR_LIMITS[x.channel] ? ` / ${CHAR_LIMITS[x.channel]}` : ""}</span>
+                  <span className={`tnum text-xs ${CHAR_LIMITS[x.channel] && body.length > CHAR_LIMITS[x.channel] ? "font-semibold text-danger" : "text-muted"}`} dir="ltr">{body.length}{CHAR_LIMITS[x.channel] ? ` / ${CHAR_LIMITS[x.channel]}` : ""}</span>
                   <span className="ms-auto flex gap-1.5">
                     <button onClick={() => setCollapsed((p) => ({ ...p, [x.id]: !isCollapsed }))} className="btn btn-secondary btn-xs">{isCollapsed ? "▾ " + i.expand : "▴ " + i.collapse}</button>
                     <button onClick={async () => { await navigator.clipboard.writeText(body); setCopied(x.id); setTimeout(() => setCopied(null), 1500); }} className="btn btn-secondary btn-xs">{copied === x.id ? i.copied : "⧉ " + i.copy}</button>
@@ -396,7 +396,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                 <div className="flex flex-wrap items-center gap-2 border-t border-ink/5 bg-ground px-4 py-3 text-sm">
                   {failed?.id === x.id && <p role="alert" className="w-full text-sm text-danger">{failed.why === "forbidden" ? t.team.errors.forbidden : lang === "ar" ? "لم يُحفظ التغيير. تحقق من الاتصال وحاول مرة أخرى." : "The change was not saved. Check your connection and try again."}</p>}
                   {x.status !== "approved" && canPublish && <button disabled={hits.length > 0} title={hits.length ? G.held : undefined} onClick={() => patch(x.id, { status: "approved" })} className="btn btn-primary btn-pill">{i.approve}</button>}
-                  {x.status === "pending" && !canPublish && <p className="w-full text-xs text-ink/60">{i.waitAdmin}</p>}
+                  {x.status === "pending" && !canPublish && <p className="w-full text-xs text-muted">{i.waitAdmin}</p>}
                   <button onClick={() => { setEditing(x.id); setDraft(body); }} className="btn btn-secondary btn-pill">{i.edit}</button>
                   {x.status !== "rejected" && <button onClick={() => setRejecting(x.id)} className="btn btn-danger btn-pill">{i.reject}</button>}
                   {x.type === "board_deck" && (
@@ -405,10 +405,10 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                   {/* Model pickers, image and video buttons, and the polling of a running render. It drops the local copy
                       for the reason given in publish() above; the refresh also re-renders the sidebar balance. */}
                   <MediaControls task={x} lang={lang} t={t} available={media} credits={credits} plan={plan ?? "trial"} paused={!!paused} owner={owner} onChanged={() => { forgetLocal(x.id); r.refresh(); }} />
-                  {x.channel === "instagram" && connected.includes("instagram") && !hasArtwork(x) && <p className="w-full text-xs text-ink/60">{i.igNeedsImage}</p>}
+                  {x.channel === "instagram" && connected.includes("instagram") && !hasArtwork(x) && <p className="w-full text-xs text-muted">{i.igNeedsImage}</p>}
                   {x.adCode && (
                     <span title={G.codeHint} className="flex items-center gap-1 rounded-full border border-dashed border-ink/40 bg-white px-2 py-1 text-xs">
-                      <span className="text-ink/60">{G.code}</span>
+                      <span className="text-muted">{G.code}</span>
                       <span className="font-mono font-semibold text-ink" dir="ltr">{x.adCode}</span>
                       <button onClick={async () => { await navigator.clipboard.writeText(x.adCode!); setCopied(x.adCode!); setTimeout(() => setCopied(null), 1500); }} aria-label={G.copyCode} className="rounded-full px-1 text-ink hover:bg-ink/10">{copied === x.adCode ? "✓" : <Icon name="copy" className="h-3.5 w-3.5" />}</button>
                     </span>
@@ -425,11 +425,11 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                           <button key={p} disabled={publishing === x.id + p || pub.length > 0} title={slotsOnly ? A.slots : pub.length ? G.held : undefined} onClick={() => publish(x.id, p)} className="btn btn-primary btn-pill">{publishing === x.id + p ? i.publishing : `${i.publishTo} ${p}`}</button>
                         ))}
                         {/* The reason in words, not only on hover: most owners use the inbox on a phone. */}
-                        {slotsOnly && list.length > 0 && <p className="w-full text-xs text-ink/60" dir="auto">{A.slots}</p>}
+                        {slotsOnly && list.length > 0 && <p className="w-full text-xs text-muted" dir="auto">{A.slots}</p>}
                       </>
                     );
                   })()}
-                  <label className="ms-auto flex items-center gap-1 text-xs text-ink/60">
+                  <label className="ms-auto flex items-center gap-1 text-xs text-muted">
                     {i.date}
                     <input type="date" dir="ltr" defaultValue={x.scheduledFor ?? ""} onChange={(e) => patch(x.id, { scheduledFor: e.target.value || null })} className="rounded border border-ink/15 px-2 py-1 text-xs" />
                   </label>

@@ -151,7 +151,7 @@ export default function JourneyCard({ journey, lang, compact = false }: { journe
 
       <div className="px-4 pt-3">
         <div className="journey-track" role="progressbar" aria-valuemin={0} aria-valuemax={milestones.length} aria-valuenow={doneCount}><div className="journey-fill" style={{ "--p": Math.max(4, pct) / 100 } as React.CSSProperties} /></div>
-        <p className="mt-1.5 flex justify-between text-xs text-ink/60"><span className="tnum" dir="auto">{doneCount} {S.of} {milestones.length}</span>{nextAt && nextLevel && <span dir="auto">{S.toLevel(nextAt - doneCount)} · {S.levels[nextLevel]}</span>}</p>
+        <p className="mt-1.5 flex justify-between text-xs text-muted"><span className="tnum" dir="auto">{doneCount} {S.of} {milestones.length}</span>{nextAt && nextLevel && <span dir="auto">{S.toLevel(nextAt - doneCount)} · {S.levels[nextLevel]}</span>}</p>
       </div>
 
       {!compact && (
@@ -163,12 +163,12 @@ export default function JourneyCard({ journey, lang, compact = false }: { journe
                 {/* The link from the previous milestone's centre to this one's. */}
                 {i > 0 && <span aria-hidden className={`absolute top-7 hidden h-0.5 w-full sm:block ${m.done ? "bg-ink" : "bg-ink/10"}`} style={{ insetInlineEnd: "50%" }} />}
                 <Link ref={isNext ? nextRef : undefined} href={`${base}${m.href}`} className={`relative flex flex-col items-center gap-1.5 rounded-lg p-2 text-center ${isNext ? "bg-lemon/10" : "hover:bg-ground"}`}>
-                  <span className={`relative z-10 grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 ${m.done ? "pop-in border-ink bg-ink text-lemon" : isNext ? "journey-next border-ink bg-lemon text-ink" : "border-ink/15 bg-white text-ink/40"}`}>
+                  <span className={`relative z-10 grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 ${m.done ? "pop-in border-ink bg-ink text-lemon" : isNext ? "journey-next border-ink bg-lemon text-ink" : "border-ink/15 bg-white text-muted"}`}>
                     <Icon name={m.done ? "check" : isNext ? ICON[m.id] : "lock"} className="h-4.5 w-4.5" />
                   </span>
                   <span className="min-w-0">
-                    <span className={`block text-xs font-semibold leading-snug ${m.done ? "text-ink" : isNext ? "text-ink" : "text-ink/60"}`} dir="auto">{S.m[m.id][0]}</span>
-                    <span className="tnum block text-[11px] text-ink/50" dir="ltr">+{m.points}</span>
+                    <span className={`block text-xs font-semibold leading-snug ${m.done ? "text-ink" : isNext ? "text-ink" : "text-muted"}`} dir="auto">{S.m[m.id][0]}</span>
+                    <span className="tnum block text-[11px] text-muted" dir="ltr">+{m.points}</span>
                   </span>
                 </Link>
               </li>
@@ -181,7 +181,7 @@ export default function JourneyCard({ journey, lang, compact = false }: { journe
         {next ? (
           <>
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-lemon text-ink"><Icon name={ICON[next.id]} className="h-4 w-4" /></span>
-            <span className="min-w-0 flex-1 text-sm" dir="auto"><span className="block text-xs text-ink/60">{S.next} · <span className="tnum" dir="ltr">+{next.points}</span></span><span className="font-semibold">{S.m[next.id][0]}</span> <span className="text-ink/70">{S.m[next.id][1]}</span></span>
+            <span className="min-w-0 flex-1 text-sm" dir="auto"><span className="block text-xs text-muted">{S.next} · <span className="tnum" dir="ltr">+{next.points}</span></span><span className="font-semibold">{S.m[next.id][0]}</span> <span className="text-ink/70">{S.m[next.id][1]}</span></span>
             <Link href={`${base}${next.href}`} className="btn btn-accent btn-xs">{S.go}</Link>
           </>
         ) : (

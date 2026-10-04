@@ -51,14 +51,14 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
       {refusal && <p role="alert" className="mt-4 rounded bg-lilac p-3 text-sm" dir="auto">{refusal}</p>}
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={p.search} className="input mt-4 max-w-md" />
       <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-ink/50">{p.channel}:</span>
+        <span className="text-muted">{p.channel}:</span>
         {channels.map((c) => <Pill key={c} v={c} cur={channel} set={setChannel} label={c === "all" ? p.all : c} />)}
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-ink/50">{p.kind}:</span>
+        <span className="text-muted">{p.kind}:</span>
         {kinds.map((k) => <Pill key={k} v={k} cur={kind} set={setKind} label={k === "all" ? p.all : (p.kinds as Record<string, string>)[k] ?? k} />)}
       </div>
-      {shown.length === 0 && <p className="mt-6 text-sm text-ink/60">{p.none}</p>}
+      {shown.length === 0 && <p className="mt-6 text-sm text-muted">{p.none}</p>}
       <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {shown.map((i) => (
           <article key={i.id} className="flex flex-col overflow-hidden card card-sm">
@@ -66,12 +66,12 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
             <div className="flex items-center gap-2 text-xs">
               <span className="rounded bg-ink/10 px-2 py-0.5 text-ink">{i.channel}</span>
               <span className="rounded bg-lilac px-2 py-0.5">{(p.kinds as Record<string, string>)[i.kind]}</span>
-              <span className="text-ink/50">{i.industry}</span>
+              <span className="text-muted">{i.industry}</span>
             </div>
             <h2 className="mt-2 font-display font-medium">{i.title}</h2>
-            <p className="mt-1 text-xs text-ink/50">{i.brand}</p>
+            <p className="mt-1 text-xs text-muted">{i.brand}</p>
             <p className="mt-3 text-sm text-ink/80"><span className="font-semibold">{p.why}:</span> {i.why}</p>
-            <p className="mt-2 rounded bg-lilac p-2 text-sm" dir="auto"><span className="text-xs text-ink/50">{p.sample}: </span>{i.sample}</p>
+            <p className="mt-2 rounded bg-lilac p-2 text-sm" dir="auto"><span className="text-xs text-muted">{p.sample}: </span>{i.sample}</p>
             <button disabled={busy === i.id} onClick={() => use(i)} className="mt-auto pt-4 text-start text-sm font-semibold text-ink disabled:opacity-50">{busy === i.id ? "…" : p.use + " →"}</button>
           </article>
         ))}

@@ -65,12 +65,12 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="calendarpanel-t1" />{c.title}</span></h1><p className="mt-1 text-ink/70">{c.sub}</p>
-          <p className="mt-1 flex flex-wrap gap-4 text-xs text-ink/50"><span><kbd className="rounded border border-ink/20 px-1">←/→</kbd> {c.navigate}</span><span><kbd className="rounded border border-ink/20 px-1">T</kbd> {c.today}</span><span><kbd className="rounded border border-ink/20 px-1">V</kbd> {c.toggleView}</span></p>
+          <p className="mt-1 flex flex-wrap gap-4 text-xs text-muted"><span><kbd className="rounded border border-ink/20 px-1">←/→</kbd> {c.navigate}</span><span><kbd className="rounded border border-ink/20 px-1">T</kbd> {c.today}</span><span><kbd className="rounded border border-ink/20 px-1">V</kbd> {c.toggleView}</span></p>
         </div>
         <div className="flex items-center gap-2 text-sm">
           <button onClick={goToday} className="btn btn-secondary btn-xs">{c.today}</button>
           <span className="inline-flex rounded-full border border-ink/15 p-0.5">
-            {(["month", "week"] as const).map((v) => <button key={v} onClick={() => setView(v)} className={`rounded-full px-3 py-1 text-xs ${view === v ? "bg-ink text-lilac" : "text-ink/60"}`}>{v === "week" ? c.week : c.month}</button>)}
+            {(["month", "week"] as const).map((v) => <button key={v} onClick={() => setView(v)} className={`rounded-full px-3 py-1 text-xs ${view === v ? "bg-ink text-lilac" : "text-muted"}`}>{v === "week" ? c.week : c.month}</button>)}
           </span>
         </div>
       </div>
@@ -85,11 +85,11 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
           <table className="w-full min-w-[860px] table-fixed text-xs">
             <thead>
               <tr>
-                <th className="w-28 border-b border-ink/10 p-2 text-start text-xs font-semibold uppercase tracking-wide text-ink/50">{c.channel}</th>
+                <th className="w-28 border-b border-ink/10 p-2 text-start text-xs font-semibold uppercase tracking-wide text-muted">{c.channel}</th>
                 {days.map((d) => { const k = iso(d); const isT = k === today; return (
                   <th key={k} className={`border-b border-ink/10 p-2 text-center ${isT ? "bg-ink/5" : ""}`}>
                     <span className={`font-display text-xl font-bold ${isT ? "text-ink" : "text-ink/70"}`} dir="ltr">{d.getUTCDate()}</span>
-                    <span className="block text-xs uppercase tracking-wide text-ink/50">{c.days[d.getUTCDay()]}</span>
+                    <span className="block text-xs uppercase tracking-wide text-muted">{c.days[d.getUTCDay()]}</span>
                   </th>
                 ); })}
               </tr>
@@ -101,7 +101,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
                   {days.map((d) => { const k = iso(d); const items = (byDay.get(k) ?? []).filter((x) => x.channel === ch); return (
                     <td key={k} className={`h-16 p-1 align-top ${k === today ? "bg-ink/5" : ""}`}>
                       {items.length === 0 ? (
-                        <Link href={`/${lang}/app`} className="flex h-full min-h-14 items-center justify-center rounded-lg border border-dashed border-ink/10 text-ink/20 hover:border-ink hover:text-ink" aria-label={c.addContent}><Icon name={channelIcon(ch)} className="h-4 w-4" /></Link>
+                        <Link href={`/${lang}/app`} className="flex h-full min-h-14 items-center justify-center rounded-lg border border-dashed border-ink/10 text-muted hover:border-ink hover:text-ink" aria-label={c.addContent}><Icon name={channelIcon(ch)} className="h-4 w-4" /></Link>
                       ) : items.map((x) => (
                         <button key={x.id} onClick={() => setSel(k)} className={`clip mb-1 block w-full rounded-md px-2 py-1 text-start ${x.status === "approved" ? "bg-ink text-lilac" : "bg-lemon/30 text-ink"}`} dir="auto" title={x.title}>{x.title}</button>
                       ))}
@@ -114,7 +114,7 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
         </div>
       ) : (
         <div className="mt-4 rounded-xl border border-ink/10 bg-white p-3" dir="ltr">
-          <div className="grid grid-cols-7 text-center text-xs text-ink/50">{c.days.map((d) => <div key={d} className="py-1">{d}</div>)}</div>
+          <div className="grid grid-cols-7 text-center text-xs text-muted">{c.days.map((d) => <div key={d} className="py-1">{d}</div>)}</div>
           <div className="grid grid-cols-7 gap-1">
             {Array.from({ length: startDow }).map((_, i) => <div key={"e" + i} />)}
             {Array.from({ length: daysIn }, (_, i) => i + 1).map((d) => { const k = key(d); const n = byDay.get(k)?.length ?? 0; const isSel = k === sel; const isToday = k === today; return (
@@ -134,13 +134,13 @@ export default function CalendarPanel({ t, tasks, lang, channels = [] }: { t: Ap
         </div>
         {selected.length === 0 ? (
           <div className="py-10 text-center">
-            <p className="text-sm text-ink/60">{c.none}</p>
+            <p className="text-sm text-muted">{c.none}</p>
             <Link href={`/${lang}/app/chat?prompt=${encodeURIComponent((lang === "ar" ? "جهّزي محتوى ليوم " : "Prepare content for ") + sel)}`} className="btn btn-primary mt-4">{c.addContent}</Link>
           </div>
         ) : (
           <ul className="mt-2 grid gap-2 md:grid-cols-2">{selected.map((x) => <li key={x.id} className="rounded border border-ink/10 p-2 text-xs"><span className="inline-flex items-center gap-1 text-ink"><Icon name={channelIcon(x.channel)} className="h-3.5 w-3.5" />{(t.channelNames as Record<string, string>)[x.channel] ?? x.channel}</span> · {x.title} <span className={`badge ${x.status === "approved" ? "badge-primary" : "badge-accent"}`}>{x.status === "approved" ? t.inbox.approved : t.inbox.pending}</span><p className="mt-1 line-clamp-3 whitespace-pre-wrap text-ink/70" dir="auto">{x.preview}</p></li>)}</ul>
         )}
-        {unscheduled.length > 0 && <p className="mt-3 text-xs text-ink/50">{c.unscheduled}: {unscheduled.length} · <Link href={`/${lang}/app`} className="text-ink underline">{c.setDates}</Link></p>}
+        {unscheduled.length > 0 && <p className="mt-3 text-xs text-muted">{c.unscheduled}: {unscheduled.length} · <Link href={`/${lang}/app`} className="text-ink underline">{c.setDates}</Link></p>}
       </aside>
     </div>
   );

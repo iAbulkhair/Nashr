@@ -108,7 +108,7 @@ export default function PerformanceImport({ lang, initial, ads = [], canImport =
         <div className="min-w-0 flex-1">
           <h2 className="font-display text-xl font-bold">{S.title}</h2>
           <p className="mt-0.5 text-sm text-ink/70">{S.sub}</p>
-          <details className="mt-1 text-xs text-ink/60"><summary className="underline">{S.how}</summary><p className="mt-1">{S.howBody}</p></details>
+          <details className="mt-1 text-xs text-muted"><summary className="underline">{S.how}</summary><p className="mt-1">{S.howBody}</p></details>
         </div>
         {snap && canDelete && <button onClick={remove} className="btn btn-secondary btn-xs">{S.remove}</button>}
       </header>
@@ -117,7 +117,7 @@ export default function PerformanceImport({ lang, initial, ads = [], canImport =
         {ads.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center gap-2">
             {ads.map((p) => <button key={p} disabled={busy} onClick={() => sync(p)} className="btn btn-primary btn-xs"><Icon name="chart" className="h-3.5 w-3.5" />{S.syncFrom(AD_NAMES[p] ?? p)}</button>)}
-            <span className="text-xs text-ink/50">{S.orUpload}</span>
+            <span className="text-xs text-muted">{S.orUpload}</span>
           </div>
         )}
         {!canImport && <ReadOnlyNote className="" text={S.readOnly} />}
@@ -133,7 +133,7 @@ export default function PerformanceImport({ lang, initial, ads = [], canImport =
 
         {snap && m && (
           <div className={fresh ? "log-row" : ""}>
-            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-ink/60">
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted">
               {snap.source && snap.source !== "csv" && <span className="flex items-center gap-1 rounded-full bg-ink px-2 py-0.5 font-semibold text-lilac"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-lemon" />{S.live}</span>}
               <span className="badge badge-primary">{snap.platform}</span>
               <span dir="ltr">{snap.file}</span>
@@ -148,11 +148,11 @@ export default function PerformanceImport({ lang, initial, ads = [], canImport =
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {[[S.rows, String(snap.rows)], [S.ranked, String(snap.ranked)], [`${S.overall} · ${m.label[lang]}`, snap.overall != null ? fmt(snap.metric, snap.overall, lang) : "—"], [S.spend, snap.totals.spend != null ? int(snap.totals.spend) : "—"]].map(([l, v]) => (
-                <div key={l} className="rounded-lg bg-lilac p-3"><p className="text-xs text-ink/60">{l}</p><p className="tnum font-display text-xl font-bold text-ink" dir="ltr">{v}</p></div>
+                <div key={l} className="rounded-lg bg-lilac p-3"><p className="text-xs text-muted">{l}</p><p className="tnum font-display text-xl font-bold text-ink" dir="ltr">{v}</p></div>
               ))}
             </div>
-            {snap.excluded > 0 && <p className="mt-1 text-xs text-ink/50">{S.excluded(snap.excluded)}</p>}
-            {snap.source && snap.source !== "csv" && <p className="mt-1 text-xs text-ink/50">{S.liveNote}</p>}
+            {snap.excluded > 0 && <p className="mt-1 text-xs text-muted">{S.excluded(snap.excluded)}</p>}
+            {snap.source && snap.source !== "csv" && <p className="mt-1 text-xs text-muted">{S.liveNote}</p>}
 
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <div>
@@ -198,11 +198,11 @@ export default function PerformanceImport({ lang, initial, ads = [], canImport =
 
             <div className="mt-4 rounded-xl border border-ink/20 bg-ink/5 p-3">
               <h3 className="flex items-center gap-1.5 text-sm font-semibold text-ink"><Icon name="seed" className="h-4 w-4" />{S.nashrTitle}</h3>
-              {!snap.nashr ? <p className="mt-1 text-xs text-ink/60">{S.nashrNone}</p> : (
+              {!snap.nashr ? <p className="mt-1 text-xs text-muted">{S.nashrNone}</p> : (
                 <>
                   {snap.nashr.text ? (
                     <p className="mt-1 flex flex-wrap items-start gap-2 text-sm"><span className="min-w-0 flex-1" dir="auto">{snap.nashr.text[lang]}</span><span className={`badge shrink-0 ${snap.nashr.confidence === "medium" ? "badge-primary" : "badge-accent"}`}>{snap.nashr.confidence === "medium" ? S.medium : S.low}</span></p>
-                  ) : <p className="mt-1 text-xs text-ink/60">{S.nashrFew}</p>}
+                  ) : <p className="mt-1 text-xs text-muted">{S.nashrFew}</p>}
                   <ul className="mt-2 grid gap-1">
                     {snap.nashr.ads.map((a) => (
                       <li key={a.code + a.name} className="flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 text-xs">
@@ -215,7 +215,7 @@ export default function PerformanceImport({ lang, initial, ads = [], canImport =
                 </>
               )}
             </div>
-            <p className="mt-3 text-xs text-ink/60">{S.honest}</p>
+            <p className="mt-3 text-xs text-muted">{S.honest}</p>
             <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink/5 pt-3">
               <Link href={chat(S.variantsPrompt)} className="btn btn-accent btn-xs"><Icon name="spark" className="h-3.5 w-3.5" />{S.variants}</Link>
               <Link href={chat(S.planPrompt)} className="btn btn-secondary btn-xs"><Icon name="calendar" className="h-3.5 w-3.5" />{S.plan}</Link>

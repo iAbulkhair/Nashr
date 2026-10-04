@@ -112,14 +112,14 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
       <div className="mt-6 grid gap-4">
         <div className="card flex flex-wrap items-end gap-3">
           <label className="grid gap-1 text-sm">
-            <span className="text-ink/60">{a.agent}</span>
+            <span className="text-muted">{a.agent}</span>
             <select value={agent} disabled={busy} onChange={(e) => void load({ agent: isAgentId(e.target.value) ? e.target.value : "", kind }, null)} className="rounded border border-ink/15 bg-white px-2 py-1">
               <option value="">{a.allAgents}</option>
               {AGENT_IDS.map((id) => <option key={id} value={id}>{t.agents[id].name}</option>)}
             </select>
           </label>
           <label className="grid gap-1 text-sm">
-            <span className="text-ink/60">{a.kind}</span>
+            <span className="text-muted">{a.kind}</span>
             <select value={kind} disabled={busy} onChange={(e) => void load({ agent, kind: kinds.find((k) => k === e.target.value) ?? "" }, null)} className="rounded border border-ink/15 bg-white px-2 py-1">
               <option value="">{a.allKinds}</option>
               {kinds.map((k) => <option key={k} value={k}>{a.kinds[k]}</option>)}
@@ -130,18 +130,18 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
         {err && <p role="alert" className="text-sm text-danger">{err}</p>}
         <section className="card" aria-busy={busy}>
           {rows.length === 0 ? (
-            <p className="text-sm text-ink/60">{agent || kind ? a.emptyFiltered : a.empty}</p>
+            <p className="text-sm text-muted">{agent || kind ? a.emptyFiltered : a.empty}</p>
           ) : (
             <ul className="divide-y divide-ink/10">
               {rows.map((r, i) => (
                 <li key={`${r.at}-${i}`} className="py-3">
                   <p className="flex flex-wrap items-center gap-x-2 text-sm">
-                    <time dateTime={r.at} suppressHydrationWarning className="text-ink/60">{when.format(new Date(r.at))} UTC</time>
+                    <time dateTime={r.at} suppressHydrationWarning className="text-muted">{when.format(new Date(r.at))} UTC</time>
                     <span className="font-medium">{r.agent ? t.agents[r.agent].name : a.account}</span>
                     <span className="badge">{a.kinds[r.kind]}</span>
                   </p>
                   {detail(r) && <p className="mt-1 text-sm text-ink/80" dir="auto">{detail(r)}</p>}
-                  <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-ink/60">
+                  <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted">
                     <span>{a.via[r.via]}</span>
                     <span aria-hidden="true">·</span>
                     <span dir="auto">{who(r.by)}</span>

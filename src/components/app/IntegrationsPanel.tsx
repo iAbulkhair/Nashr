@@ -95,7 +95,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
   const connectedIds = new Set(conns.map((c) => c.provider));
   const providerById = new Map(providers.map((p) => [p.id, p]));
   const groups = ["commerce", "ads", "messaging", "publishing", "data", "payments"] as const;
-  const badge = (s: string) => (s === "live" ? "bg-ink text-lilac" : s === "soon" ? "bg-lemon/20 text-ink" : "bg-ink/10 text-ink/60");
+  const badge = (s: string) => (s === "live" ? "bg-ink text-lilac" : s === "soon" ? "bg-lemon/20 text-ink" : "bg-ink/10 text-muted");
 
   // Map catalog ids → connector ids where they differ
   // Meta Ads and WhatsApp are not built: they keep their catalog status instead of borrowing the Meta connection's.
@@ -117,20 +117,20 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
               <div key={c.provider} className="flex items-start justify-between gap-3 rounded-xl border border-ink/40 bg-white p-4">
                 <div>
                   <p className="font-display font-medium">{providerById.get(c.provider)?.name ?? c.provider}</p>
-                  <p className="mt-1 text-xs text-ink/60" dir="ltr">{c.meta?.account ?? c.meta?.shop ?? c.meta?.site ?? ""}</p>
-                  <p className="mt-1 text-xs text-ink/40" dir="ltr">{c.connectedAt.slice(0, 10)}</p>
+                  <p className="mt-1 text-xs text-muted" dir="ltr">{c.meta?.account ?? c.meta?.shop ?? c.meta?.site ?? ""}</p>
+                  <p className="mt-1 text-xs text-muted" dir="ltr">{c.connectedAt.slice(0, 10)}</p>
                   {c.needsReconnect && <p className="mt-1 text-xs font-semibold text-danger">{g.reconnect}</p>}
                   {c.provider === "meta" && c.meta?.pages && (
-                    <label className="mt-2 grid gap-1 text-xs text-ink/60">
+                    <label className="mt-2 grid gap-1 text-xs text-muted">
                       <span>{g.metaPage}</span>
                       <select value={c.meta.pageId} disabled={busy || !manage} onChange={(e) => selectPage(e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1 text-xs" dir="auto">
                         {(JSON.parse(c.meta.pages) as { id: string; name: string; ig: string }[]).map((pg) => <option key={pg.id} value={pg.id}>{pg.ig ? `${pg.name} · @${pg.ig}` : pg.name}</option>)}
                       </select>
                     </label>
                   )}
-                  {c.provider === "meta" && c.meta?.pageId && !c.meta.igId && <p className="mt-1 text-xs text-ink/60">{g.metaNoIg}</p>}
+                  {c.provider === "meta" && c.meta?.pageId && !c.meta.igId && <p className="mt-1 text-xs text-muted">{g.metaNoIg}</p>}
                   {READS_ADS.includes(c.provider) && c.meta?.adAccounts && (
-                    <label className="mt-2 grid gap-1 text-xs text-ink/60">
+                    <label className="mt-2 grid gap-1 text-xs text-muted">
                       <span>{g.adAccount}</span>
                       <select value={c.meta.adAccount} disabled={busy || !manage} onChange={(e) => selectAdAccount(c.provider, e.target.value)} className="rounded border border-ink/15 bg-white px-2 py-1 text-xs" dir="auto">
                         {(JSON.parse(c.meta.adAccounts) as { id: string; name: string }[]).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -168,7 +168,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
                 <div key={i.id} className="flex items-start justify-between gap-3 card card-sm">
                   <div>
                     <p className="font-display font-medium">{i.name}</p>
-                    {i.note && <p className="mt-1 text-xs text-ink/60">{i.note}</p>}
+                    {i.note && <p className="mt-1 text-xs text-muted">{i.note}</p>}
                     <span className={`mt-2 inline-block rounded px-2 py-0.5 text-xs ${badge(status === "ready" ? "soon" : status)}`}>{status === "ready" ? g.ready : status === "live" ? g.connected : status === "soon" && p?.kind === "oauth" ? g.waiting : g.status[i.status]}</span>
                   </div>
                   {canConnect ? (
@@ -192,7 +192,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setKeyFor(null)}>
           <form onSubmit={submitKey} onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-white p-6">
             <h2 className="font-display text-lg font-bold text-ink">{keyFor.name}</h2>
-            <p className="mt-1 text-sm text-ink/60">{g.keyTitle}</p>
+            <p className="mt-1 text-sm text-muted">{g.keyTitle}</p>
             {keyFor.docs && <p className="mt-2 rounded bg-lilac p-2 text-xs text-ink/70" dir="ltr">{g.keyHelp} {keyFor.docs}</p>}
             <div className="mt-4 grid gap-3">
               {keyFor.keyFields?.map((f) => (

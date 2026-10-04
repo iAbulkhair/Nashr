@@ -148,7 +148,7 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-ink/10" role="progressbar" aria-label={T.seats} aria-valuemin={0} aria-valuemax={limit} aria-valuenow={Math.min(used, limit)}>
           <div className={`h-full rounded-full ${full ? "bg-lemon" : "bg-ink"}`} style={{ width: `${pct}%` }} />
         </div>
-        <p className="mt-2 text-xs text-ink/60">{T.seatsNote}</p>
+        <p className="mt-2 text-xs text-muted">{T.seatsNote}</p>
       </div>
 
       {err && <p role="alert" className="mt-4 text-sm text-danger">{err}</p>}
@@ -169,12 +169,12 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
                       <p className="flex flex-wrap items-center gap-2">
                         <span className="clip font-medium" dir="auto">{label}</span>
                         <span className={ROLE_BADGE[m.role]}>{T.roles[m.role]}</span>
-                        {you && <span className="text-xs text-ink/60">({T.you})</span>}
+                        {you && <span className="text-xs text-muted">({T.you})</span>}
                         {m.disabled && <span className="badge badge-danger" title={T.disabledHelp}>{T.disabled}</span>}
                       </p>
-                      <p className="clip text-xs text-ink/60" dir="ltr">{m.email}</p>
-                      {m.acceptedAt && <p className="text-xs text-ink/50">{T.joined} <span className="font-mono" dir="ltr">{day(m.acceptedAt)}</span></p>}
-                      {m.disabled && <p className="text-xs text-ink/60">{T.disabledHelp}</p>}
+                      <p className="clip text-xs text-muted" dir="ltr">{m.email}</p>
+                      {m.acceptedAt && <p className="text-xs text-muted">{T.joined} <span className="font-mono" dir="ltr">{day(m.acceptedAt)}</span></p>}
+                      {m.disabled && <p className="text-xs text-muted">{T.disabledHelp}</p>}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
@@ -195,7 +195,7 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
         {canInvite ? (
           <section className="card">
             <h2 className="card-title">{T.invite}</h2>
-            <p className="mt-1 text-sm text-ink/60">{mailOn ? T.inviteSub : T.inviteSubHand}</p>
+            <p className="mt-1 text-sm text-muted">{mailOn ? T.inviteSub : T.inviteSubHand}</p>
             <form onSubmit={invite} className="mt-3 flex flex-wrap items-end gap-2">
               <label className="grid min-w-[14rem] flex-1 gap-1 text-sm">
                 <span className="text-ink/70">{T.email}</span>
@@ -210,7 +210,7 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
               </label>
               <button disabled={locked || full} className="btn btn-primary btn-sm">{busy === "invite" ? T.sending : mailOn ? T.send : T.createLink}</button>
             </form>
-            <p className="mt-2 text-xs text-ink/60">{T.roleHelp[role]}</p>
+            <p className="mt-2 text-xs text-muted">{T.roleHelp[role]}</p>
             {full && <p className="mt-2 text-sm text-danger">{perms.inviteAdmin ? T.seatsFull : T.seatsFullAsk}</p>}
             {link && (
               <div className="mt-4 rounded-lg border border-ink/30 bg-ink/5 p-3">
@@ -219,7 +219,7 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
                   <code className="min-w-0 flex-1 break-all rounded bg-lilac px-3 py-2 text-xs" dir="ltr">{link.url}</code>
                   <button type="button" onClick={copy} className="btn btn-primary btn-xs"><Icon name="copy" className="h-3.5 w-3.5" />{copied ? T.copied : T.copy}</button>
                 </div>
-                <p className="mt-2 text-xs text-ink/60">{fill(T.linkNote, { email: link.email })}</p>
+                <p className="mt-2 text-xs text-muted">{fill(T.linkNote, { email: link.email })}</p>
               </div>
             )}
           </section>
@@ -231,14 +231,14 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
           <section className="card">
             <h2 className="card-title">{T.pending}</h2>
             {view.invites.length === 0 ? (
-              <p className="mt-1 text-sm text-ink/60">{T.noPending}</p>
+              <p className="mt-1 text-sm text-muted">{T.noPending}</p>
             ) : (
               <ul className="mt-2 divide-y divide-ink/10">
                 {view.invites.map((inv) => (
                   <li key={inv.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                     <div className="min-w-0">
                       <p className="flex flex-wrap items-center gap-2"><span className="clip font-medium" dir="ltr">{inv.email}</span><span className={ROLE_BADGE[inv.role]}>{T.roles[inv.role]}</span></p>
-                      <p className="mt-0.5 text-xs text-ink/60">{T.expires} <span className="font-mono" dir="ltr">{day(inv.expiresAt)}</span> · {T.invitedBy} <span dir="ltr">{inv.invitedBy}</span></p>
+                      <p className="mt-0.5 text-xs text-muted">{T.expires} <span className="font-mono" dir="ltr">{day(inv.expiresAt)}</span> · {T.invitedBy} <span dir="ltr">{inv.invitedBy}</span></p>
                     </div>
                     {canCancel(inv) && <button type="button" onClick={() => cancel(inv)} disabled={locked} className="btn btn-danger btn-xs">{busy === `cancel:${inv.id}` ? "…" : T.cancel}</button>}
                   </li>
@@ -251,7 +251,7 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
         {perms.leave && (
           <section className="card">
             <h2 className="card-title">{T.leave}</h2>
-            <p className="mt-1 text-sm text-ink/60">{T.leaveSub}</p>
+            <p className="mt-1 text-sm text-muted">{T.leaveSub}</p>
             <button type="button" onClick={leave} disabled={locked} className="btn btn-danger btn-sm mt-3">{busy === "leave" ? "…" : T.leave}</button>
           </section>
         )}

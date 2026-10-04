@@ -254,14 +254,14 @@ export default function MediaControls({ task, lang, t, available, credits, plan,
                     <input type="radio" name={`${uid}-${kind}`} value={m.id} checked={sel.id === m.id} disabled={!!off} onChange={() => setPick((p) => ({ ...p, [kind]: m.id }))} className="mt-0.5 accent-ink" />
                     <span className="grid gap-0.5">
                       <span className="font-semibold">{m.label[lang]}</span>
-                      <span className="tnum text-ink/60">{m.credits} {plural(i.credits, m.credits)}</span>
+                      <span className="tnum text-muted">{m.credits} {plural(i.credits, m.credits)}</span>
                       {off && <span className="text-danger">{off}</span>}
                     </span>
                   </label>
                 );
               })}
             </div>
-            <p id={hintId} className="text-xs text-ink/60">
+            <p id={hintId} className="text-xs text-muted">
               {sel.hint[lang]}
               {mediaImageFor(sel, task) && <span className="ms-1.5 inline-block rounded-full bg-ink/10 px-2 text-ink">{i.buildsOnImage}</span>}
               {sel.id === "vid-motion" && aspectFor("image", task.channel) === "square" && ` ${i.squareClip}`}
@@ -280,9 +280,9 @@ export default function MediaControls({ task, lang, t, available, credits, plan,
             {rendering ? (kind === "image" ? i.imaging : i.videoing) : (has ? "↻ " : "") + (kind === "image" ? i.image : i.video)}
           </button>
         )}
-        {keeps && !rendering && !n && <p className="text-xs text-ink/60">{i.keepsImage}</p>}
-        {rendering && job && <p className="text-xs text-ink/60">{plural(i.charged, job.credits)}</p>}
-        {kind === "video" && jobId && <p className="text-xs text-ink/60">{i.videoSlow}</p>}
+        {keeps && !rendering && !n && <p className="text-xs text-muted">{i.keepsImage}</p>}
+        {rendering && job && <p className="text-xs text-muted">{plural(i.charged, job.credits)}</p>}
+        {kind === "video" && jobId && <p className="text-xs text-muted">{i.videoSlow}</p>}
         {n && (
           <p role="alert" className="text-xs text-danger">
             {n.text}
@@ -303,7 +303,7 @@ export default function MediaControls({ task, lang, t, available, credits, plan,
   const pausedText = made.length === 2 ? i.pausedNote : made[0] === "image" ? i.pausedNoteImage : made[0] === "video" ? i.pausedNoteVideo : null;
   return (
     <div className="grid w-full gap-4">
-      {paused && pausedText && <p className="text-xs text-ink/60">{pausedText}</p>}
+      {paused && pausedText && <p className="text-xs text-muted">{pausedText}</p>}
       {kinds.map(section)}
     </div>
   );

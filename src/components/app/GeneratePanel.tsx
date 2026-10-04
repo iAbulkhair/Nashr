@@ -58,8 +58,8 @@ export default function GeneratePanel({ t, lang, credits, owner = true, topups =
             <div className="flex items-center gap-3">
               <AgentAvatar id={a.id} name={info.name} className="h-9 w-9 text-base" />
               <div>
-                <h2 className="font-display text-lg font-semibold text-ink">{info.name} <span className="text-sm font-normal text-ink/60">· {info.role}</span></h2>
-                <p className="text-xs text-ink/60">{info.blurb}</p>
+                <h2 className="font-display text-lg font-semibold text-ink">{info.name} <span className="text-sm font-normal text-muted">· {info.role}</span></h2>
+                <p className="text-xs text-muted">{info.blurb}</p>
               </div>
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">

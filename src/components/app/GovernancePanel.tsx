@@ -24,7 +24,7 @@ function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
 function Row({ title, sub, children }: { title: string; sub: string; children: React.ReactNode }) {
   return (
       <div className="flex items-start justify-between gap-6 card">
-        <div><h2 className="font-display font-medium">{title}</h2><p className="mt-1 text-sm text-ink/60">{sub}</p></div>
+        <div><h2 className="font-display font-medium">{title}</h2><p className="mt-1 text-sm text-muted">{sub}</p></div>
         <div className="shrink-0">{children}</div>
       </div>
   );
@@ -188,7 +188,7 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
       <fieldset disabled={readOnly} className="mt-6 grid min-w-0 gap-4">
         <div className="card">
           <h2 className="font-display font-medium">{g.autoApprove}</h2>
-          <p className="mt-1 text-sm text-ink/60">{g.autoApproveSub}</p>
+          <p className="mt-1 text-sm text-muted">{g.autoApproveSub}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {(Object.keys(TASK_COST) as TaskType[]).map((k) => {
               const on = !!gov.autoApprove[k];
@@ -205,7 +205,7 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
         <Row title={g.notify} sub={g.notifySub}><input type="number" min={0} max={1440} value={gov.notifyMinutes} onChange={(e) => setGov({ ...gov, notifyMinutes: Number(e.target.value) })} className="w-24 rounded border border-ink/15 px-2 py-1 text-sm" dir="ltr" /></Row>
         <div className="card">
           <h2 className="font-display font-medium">{g.agentCaps}</h2>
-          <p className="mt-1 text-sm text-ink/60">{g.agentCapsSub}</p>
+          <p className="mt-1 text-sm text-muted">{g.agentCapsSub}</p>
           <ul className="mt-3 divide-y divide-ink/10">
             {CAPPED.map((id) => {
               const used = spend[id] ?? 0;
@@ -215,8 +215,8 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
               return (
                 <li key={id} className="flex flex-wrap items-center justify-between gap-3 py-2">
                   <div>
-                    <p className="font-medium">{t.agents[id].name} <span className="text-sm font-normal text-ink/60">· {t.agents[id].role}</span></p>
-                    <p className="mt-0.5 flex items-center gap-2 text-xs text-ink/60">
+                    <p className="font-medium">{t.agents[id].name} <span className="text-sm font-normal text-muted">· {t.agents[id].role}</span></p>
+                    <p className="mt-0.5 flex items-center gap-2 text-xs text-muted">
                       <span>{g.usedThisMonth.replace("{n}", String(used))}</span>
                       {ratio >= 1 ? <span className="badge badge-danger">{g.capReached}</span> : ratio >= 0.8 ? <span className="badge badge-accent">{g.capNear}</span> : null}
                     </p>
@@ -241,7 +241,7 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
       {gov.majedAutoHandoff === true && queue.length > 0 && (
         <section className="card mt-4" aria-labelledby="gov-auto-queue">
           <h2 id="gov-auto-queue" className="font-display font-medium">{g.autoQueue}</h2>
-          <p className="mt-1 text-sm text-ink/60">{g.autoQueueSub}</p>
+          <p className="mt-1 text-sm text-muted">{g.autoQueueSub}</p>
           {queueMsg && <p role="status" className="mt-2 text-sm text-ink">{queueMsg}</p>}
           {queueErr && <p role="alert" className="mt-2 text-sm text-danger">{queueErr}</p>}
           <ul className="mt-3 divide-y divide-ink/10">
@@ -251,7 +251,7 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
                 <li key={k} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{fill(t.handoff.to, { agent: t.agents[q.agent].name, type: t.generate.types[q.type].t })}</p>
-                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-ink/60">
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted">
                       <span className="tnum">{fill(t.handoff.cost, { n: q.cost })}</span>
                       <time id={`gov-q-${k}`} dateTime={q.createdAt} suppressHydrationWarning>{when.format(new Date(q.createdAt))} UTC</time>
                       <Link href={`/${lang}/app/chat${q.conv ? `?conv=${q.conv}` : ""}`} className="underline">{g.autoQueueOpen}</Link>
@@ -267,11 +267,11 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
       {/* Outside the fieldset: every role reads the history; only the owner gets Restore (the server checks it too). */}
       <section className="card mt-4" aria-labelledby="gov-history">
         <h2 id="gov-history" className="font-display font-medium">{g.history}</h2>
-        <p className="mt-1 text-sm text-ink/60">{g.historySub}</p>
+        <p className="mt-1 text-sm text-muted">{g.historySub}</p>
         {histMsg && <p role="status" className="mt-2 text-sm text-ink">{histMsg}</p>}
         {histErr && <p role="alert" className="mt-2 text-sm text-danger">{histErr}</p>}
         {history.length === 0 ? (
-          <p className="mt-3 text-sm text-ink/60">{g.historyEmpty}</p>
+          <p className="mt-3 text-sm text-muted">{g.historyEmpty}</p>
         ) : (
           <ul className="mt-3 divide-y divide-ink/10">
             {history.map((r) => (
@@ -279,7 +279,7 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm">
                     <time id={`gov-rev-${r.id}`} dateTime={r.at} suppressHydrationWarning>{when.format(new Date(r.at))} UTC</time>
-                    <span className="text-ink/60"> · </span>
+                    <span className="text-muted"> · </span>
                     <span dir="auto">{who(r.by)}</span>
                     {r.rollbackOf && <span className="ms-2 badge">{g.restoreOf}</span>}
                   </p>

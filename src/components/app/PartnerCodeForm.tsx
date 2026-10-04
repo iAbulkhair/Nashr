@@ -41,7 +41,7 @@ export default function PartnerCodeForm({ lang }: { lang: Lang }) {
   return (
     <form onSubmit={submit} className="mt-6 grid gap-2 card text-sm sm:max-w-md" data-partner-code-form>
       <label htmlFor="billing-partner-code" className="font-medium">{S.label}</label>
-      <p className="text-xs text-ink/60">{S.hint}</p>
+      <p className="text-xs text-muted">{S.hint}</p>
       <div className="flex gap-2">
         <input id="billing-partner-code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16))} dir="ltr" autoComplete="off" className="input flex-1 font-mono" />
         <button disabled={busy || code.length < 3} className="btn btn-primary">{busy ? S.busy : S.apply}</button>

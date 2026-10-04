@@ -137,7 +137,7 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
   return (
     <section id="todo-working-days" aria-labelledby="todo-cal-title" className="card mt-8">
       <h2 id="todo-cal-title" className="card-title">{C.title}</h2>
-      <p className="mt-1 text-sm text-ink/60">{C.sub}</p>
+      <p className="mt-1 text-sm text-muted">{C.sub}</p>
       {!canEdit && <ReadOnlyNote text={t.readOnly.admin} />}
 
       <fieldset className="mt-5">
@@ -151,7 +151,7 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
             </label>
           ))}
         </div>
-        <p className="mt-2 text-xs text-ink/60">{fill(C.defaultLine, { country: C.countries[eff.country], days: dayNames(eff.defaultWeekend) })}</p>
+        <p className="mt-2 text-xs text-muted">{fill(C.defaultLine, { country: C.countries[eff.country], days: dayNames(eff.defaultWeekend) })}</p>
         {cityHint && !eff.weekend.includes(5) && <p className="mt-2 text-xs text-danger">{C.sharjahHint}</p>}
         {canEdit && (
           <div className="mt-3 flex flex-wrap gap-2">
@@ -163,8 +163,8 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
       </fieldset>
 
       <fieldset className="mt-6">
-        <legend className="text-sm font-semibold">{C.ramadan} {v.calendar?.ramadanHours == null && <span className="text-xs font-normal text-ink/50">{C.isDefault}</span>}</legend>
-        <p className="mt-1 text-xs text-ink/60">{fill(C.ramadanSub, { zone: zoneTimeLabel(eff.zone, lang) })}</p>
+        <legend className="text-sm font-semibold">{C.ramadan} {v.calendar?.ramadanHours == null && <span className="text-xs font-normal text-muted">{C.isDefault}</span>}</legend>
+        <p className="mt-1 text-xs text-muted">{fill(C.ramadanSub, { zone: zoneTimeLabel(eff.zone, lang) })}</p>
         {hours.length === 0 && <p className="mt-2 text-sm text-ink/70">{C.noHours}</p>}
         {hours.map((w, i) => (
           <div key={i} className="mt-2 flex flex-wrap items-end gap-2">
@@ -189,7 +189,7 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
 
       <div className="mt-6">
         <h3 className="flex flex-wrap items-center gap-2 text-sm font-semibold">{C.eid} <span className="badge badge-accent">{C.expected}</span></h3>
-        <p className="mt-1 text-xs text-ink/60">{C.eidSub}</p>
+        <p className="mt-1 text-xs text-muted">{C.eidSub}</p>
         {eff.country === "SA" && <p className="mt-1 text-xs text-danger">{C.eidNoteSA}</p>}
         {years.map((y) => (
           <div key={y} className="mt-3">
@@ -201,8 +201,8 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
                     <span className="font-medium">{e.name[lang]}</span>
                     {" · "}
                     <span suppressHydrationWarning>{fill(C.eidDay, { date: day(e.day) })}</span>
-                    {e.start !== e.uq && <span className="text-xs text-ink/50" suppressHydrationWarning> ({fill(C.eidMoved, { date: day(e.kind === "eid_fitr" ? e.uq : addDays(e.uq, 9)) })})</span>}
-                    <span className="block text-xs text-ink/60" suppressHydrationWarning>
+                    {e.start !== e.uq && <span className="text-xs text-muted" suppressHydrationWarning> ({fill(C.eidMoved, { date: day(e.kind === "eid_fitr" ? e.uq : addDays(e.uq, 9)) })})</span>}
+                    <span className="block text-xs text-muted" suppressHydrationWarning>
                       {!e.off ? C.eidOffNone : e.off.first === e.off.last ? fill(C.eidOffOne, { day: day(e.off.first) }) : fill(C.eidOff, { from: day(e.off.first), to: day(e.off.last) })}
                     </span>
                   </span>
@@ -222,9 +222,9 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
 
       <div className="mt-6">
         <h3 className="flex flex-wrap items-center gap-2 text-sm font-semibold">{C.holidays} <span className="badge badge-accent">{C.expected}</span></h3>
-        {v.upcoming.ramadan && <p className="mt-1 text-xs text-ink/60" suppressHydrationWarning>{fill(C.ramadanLine, { start: day(v.upcoming.ramadan.start), end: day(v.upcoming.ramadan.end) })}</p>}
+        {v.upcoming.ramadan && <p className="mt-1 text-xs text-muted" suppressHydrationWarning>{fill(C.ramadanLine, { start: day(v.upcoming.ramadan.start), end: day(v.upcoming.ramadan.end) })}</p>}
         {v.upcoming.days.length === 0 ? (
-          <p className="mt-2 text-sm text-ink/60">{C.holidaysNone}</p>
+          <p className="mt-2 text-sm text-muted">{C.holidaysNone}</p>
         ) : (
           <ul className="mt-2 divide-y divide-ink/10 rounded-xl border border-ink/10">
             {v.upcoming.days.map(({ day: d, why }) => (
