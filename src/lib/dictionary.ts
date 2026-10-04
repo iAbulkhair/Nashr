@@ -348,9 +348,12 @@ export function answersHint(a: GameAnswers): string {
   return `Owner's own answers: brand name "${b.name}"; sector ${b.industry}; voice: ${b.tone}. Use them as given.`;
 }
 
-/** The `PUT /api/brand` body when the owner has no site: the game's fields plus the two the brand file requires. */
+/**
+ * The `PUT /api/brand` body when the owner has no site: the game's fields plus the two the brand file requires.
+ * `create` makes the save create-only (rule 527): a brand built meanwhile in another tab answers 409 and is kept whole.
+ */
 export function noSiteBrand(a: GameAnswers, products: string, audience: string) {
-  return { ...answersToBrand(a), products: products.trim(), audience: audience.trim(), dialect: a.lang === "en" ? ("english" as const) : ("saudi" as const), languages: [a.lang] };
+  return { ...answersToBrand(a), products: products.trim(), audience: audience.trim(), dialect: a.lang === "en" ? ("english" as const) : ("saudi" as const), languages: [a.lang], create: true as const };
 }
 
 /** Copy the onboarding game adds to `DICT_COPY`: steps 6 and 7 differ from the homepage's, and step 7 saves. */

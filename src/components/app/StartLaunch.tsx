@@ -77,7 +77,8 @@ export default function StartLaunch({ t, lang, answers, initialUrl = "", setupCo
     if (!readyNoSite || busy) return;
     setBusy(true); setErr("");
     const res = await fetch("/api/brand", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(noSiteBrand(answers, products, audience)) }).catch(() => null);
-    if (res?.ok) { r.push(`/${lang}/app`); r.refresh(); return; }
+    // 409: a brand was built meanwhile (another tab); the save is create-only, so the workspace opens with that brand.
+    if (res && (res.ok || res.status === 409)) { r.push(`/${lang}/app`); r.refresh(); return; }
     setBusy(false);
     setErr(s.steps.error);
   }

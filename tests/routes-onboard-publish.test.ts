@@ -186,6 +186,22 @@ describe("the game's answers (rules 522-523)", () => {
     expect((await brandRoute.PUT(json("/api/brand", "PUT", body))).status).toBe(200);
     expect(await getBrand(u.email)).toMatchObject({ name: "قهوة الصباح", industry: "قهوة", tone: "جريئة، دافية، راقية، شعبية، هادية", products: "بن مختص", audience: "موظفين" });
   });
+
+  it("rule 527: the no-site save only creates; a brand built meanwhile (another tab) answers 409 and stays whole", async () => {
+    const u = await newUser("onb");
+    await signIn(u.email);
+    const body = noSiteBrand(okAr, "بن مختص", "موظفين");
+    expect(body).toMatchObject({ create: true });
+    const built = { name: "Roastery", website: "https://roastery.example", industry: "Coffee", products: "Beans", audience: "Riyadh", banned: "cheap", offers: "10% off" };
+    expect((await brandRoute.PUT(json("/api/brand", "PUT", built))).status).toBe(200);
+    const res = await brandRoute.PUT(json("/api/brand", "PUT", body));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ ok: false, error: "exists" });
+    expect(await getBrand(u.email)).toMatchObject({ name: "Roastery", website: "https://roastery.example", banned: "cheap", offers: "10% off" });
+    // The brand form's own save (no `create`) still edits as before.
+    expect((await brandRoute.PUT(json("/api/brand", "PUT", { ...built, name: "Roastery 2" }))).status).toBe(200);
+    expect(await getBrand(u.email)).toMatchObject({ name: "Roastery 2" });
+  });
 });
 
 describe("publishing needs an approval made in code (rule 3)", () => {

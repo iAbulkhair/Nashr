@@ -22,7 +22,7 @@ describe("rule 520: the game's answers become the brand file", () => {
     expect(parseAnswers({ ...okAr, brand: ` ${"x".repeat(41)} ` })).toBeNull();
   });
   it("the no-site body carries products, audience, dialect and language", () => {
-    expect(noSiteBrand(okEn, " beans ", " offices ")).toEqual({ name: "قهوة الصباح", industry: "Coffee", tone: "bold, warm, refined, down-to-earth, calm", products: "beans", audience: "offices", dialect: "english", languages: ["en"] });
+    expect(noSiteBrand(okEn, " beans ", " offices ")).toEqual({ name: "قهوة الصباح", industry: "Coffee", tone: "bold, warm, refined, down-to-earth, calm", products: "beans", audience: "offices", dialect: "english", languages: ["en"], create: true });
     const ar = noSiteBrand(okAr, "بن مختص", "موظفين");
     expect(ar.dialect).toBe("saudi");
     expect(ar.languages).toEqual(["ar"]);

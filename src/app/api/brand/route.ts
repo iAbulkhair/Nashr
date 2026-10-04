@@ -17,8 +17,11 @@ export async function PUT(req: Request) {
   // The brand file holds the banned words the approve and publish gates enforce: admin and owner only.
   const no = forbid(u, "brand.write");
   if (no) return no;
-  const b = (await req.json().catch(() => ({}))) as Partial<Brand>;
+  const b = (await req.json().catch(() => ({}))) as Partial<Brand> & { create?: boolean };
   if (!b.name || !b.industry || !b.products || !b.audience) return NextResponse.json({ ok: false, error: "missing" }, { status: 400 });
+  // Create-only (the first-login game's no-site save, rule 527): a brand that exists, built meanwhile in another tab,
+  // is never replaced by the game's five fields.
+  if (b.create === true && (await getBrand(sc(u)))) return NextResponse.json({ ok: false, error: "exists" }, { status: 409 });
   const s = (v: unknown, n = 1000) => String(v ?? "").slice(0, n);
   const brand: Brand = {
     name: s(b.name, 80),
