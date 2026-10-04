@@ -177,3 +177,14 @@ describe("the D homepage copy is true (rule 514)", () => {
     expect(PLANS.rule.ar).toContain("موافقتك");
   });
 });
+
+describe("the public FAQ, enterprise page and help centre name no AI assistant by brand (rule 514, founder 2026-10-04)", () => {
+  // ChatGPT stays: it is the competitor the comparison pages answer. Claude is the assistant the product runs on, and
+  // the founder asked that public copy not name it.
+  it("the site FAQ, the enterprise copy and the help topics never say Claude", async () => {
+    const { SITE } = await import("@/lib/site");
+    const { HELP } = await import("@/lib/help");
+    const text = JSON.stringify([dict.ar.faq, dict.en.faq, SITE.ar.enterprise, SITE.en.enterprise, HELP]);
+    expect(text).not.toMatch(/Claude|Anthropic/i);
+  });
+});
