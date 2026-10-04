@@ -9,6 +9,9 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import FinalCta from "@/components/FinalCta";
 import UrlStart from "@/components/UrlStart";
+import Scribble from "@/components/Scribble";
+import Doodle from "@/components/home/Doodle";
+import Face from "@/components/home/Face";
 import { pageMeta } from "@/lib/page-meta";
 
 export function generateStaticParams() {
@@ -30,36 +33,80 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
     <>
       <Nav t={t} lang={lang} />
       <main>
-        <section className="bg-oasis-deep text-mist">
-          <div className="section-wrap">
-            <p className="eyebrow eyebrow-accent">{a.role[lang]}</p>
+        <section className="section-wrap grid grid-cols-[minmax(0,1fr)] items-end gap-10 md:grid-cols-[minmax(0,1fr)_auto]">
+          <div>
+            <p className="eyebrow">{a.role[lang]}</p>
             <h1 className="mt-3 font-display text-4xl font-bold leading-tight sm:text-6xl">{a.name[lang]}</h1>
-            <p className="mt-3 font-display text-2xl text-saffron">{p.tagline}</p>
-            <p className="mt-5 max-w-2xl text-lg text-mist-dim">{p.intro}</p>
+            <p className="mt-4 font-display text-2xl">
+              <span className="s-ul">
+                <Scribble kind="underline" seed={`agent-tag-${agent}`} />
+                {p.tagline}
+              </span>
+            </p>
+            <p className="mt-5 max-w-2xl text-lg text-muted">{p.intro}</p>
             <div className="mt-8"><UrlStart t={t} lang={lang} /></div>
-            {agent !== "noor" && <p className="mt-3 text-sm text-mist-dim">{s.startWith} <Link href={`/${lang}/agents/noor`} className="underline">{agentById("noor").name[lang]}</Link></p>}
+            {agent !== "noor" && <p className="mt-4 text-sm text-muted">{s.startWith} <Link href={`/${lang}/agents/noor`} className="font-bold text-ink underline">{agentById("noor").name[lang]}</Link></p>}
           </div>
-          <div className="border-t-[1.5px] border-ink" aria-hidden />
+          {/* The agent standing on its own colour, as in the homepage lineup. */}
+          <div className="relative isolate mx-auto w-24 sm:w-32" aria-hidden="true">
+            <span className="absolute -inset-x-[8%] -bottom-2 isolate h-6 opacity-50"><Scribble kind="puddle" seed={`agent-pud-${agent}`} fill={`agent-${agent}`} /></span>
+            <span className="relative z-[1] block"><Doodle who={agent} /></span>
+          </div>
         </section>
-        <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+        <section className="mx-auto max-w-6xl px-4 pb-16 sm:px-6">
           <h2 className="font-display text-2xl font-bold">{s.does}</h2>
-          <div className="mt-5 grid gap-4 sm:grid-cols-3">{p.outcomes.map((o) => <div key={o.t} className="card card-sm"><h3 className="font-display font-medium text-oasis">{o.t}</h3><p className="mt-1 text-sm text-ink/70">{o.d}</p></div>)}</div>
+          <div className="mt-6 grid gap-x-6 gap-y-8 sm:grid-cols-3">
+            {p.outcomes.map((o) => (
+              <div key={o.t} className="s-card">
+                <Scribble kind="box" seed={`agent-out-${o.t.length}-${o.d.length}`} fill="paper" />
+                <h3 className="font-display text-lg font-bold">{o.t}</h3>
+                <p className="mt-1 text-sm text-muted">{o.d}</p>
+              </div>
+            ))}
+          </div>
         </section>
-        <section className="bg-salt-dim">
+        <section className="border-y-[1.5px] border-ink bg-lilac">
           <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 lg:grid-cols-2">
             <div>
               <h2 className="font-display text-2xl font-bold">{s.works}</h2>
-              <ol className="mt-4 space-y-3">{p.works.map((w, i) => <li key={w} className="flex gap-3 text-ink/80"><span className="tnum grid h-6 w-6 shrink-0 place-items-center rounded-full bg-oasis text-xs font-semibold text-mist">{i + 1}</span>{w}</li>)}</ol>
+              <ol className="mt-5 space-y-4" role="list">
+                {p.works.map((w, i) => (
+                  <li key={w} className="flex items-start gap-3">
+                    <span className="s-num !h-8 !w-8 !text-base">
+                      <Scribble kind="circleLoop" seed={`agent-num-${i}`} fill="paper" />
+                      <span className="tnum">{i + 1}</span>
+                    </span>
+                    <span className="pt-1">{w}</span>
+                  </li>
+                ))}
+              </ol>
             </div>
             <div>
               <h2 className="font-display text-2xl font-bold">{s.asks}</h2>
-              <ul className="mt-4 flex flex-wrap gap-2">{asks.map((q) => <li key={q}><Link href={`/${lang}/app/chat?${agent === "noor" ? "" : `agent=${agent}&`}prompt=${encodeURIComponent(q)}`} className="inline-block rounded-full border border-oasis/30 bg-white px-3 py-1.5 text-sm text-oasis hover:bg-oasis hover:text-mist">{q}</Link></li>)}</ul>
+              <ul className="mt-5 flex flex-wrap gap-3" role="list">
+                {asks.map((q, i) => (
+                  <li key={q} className="max-w-full">
+                    <Link href={`/${lang}/app/chat?${agent === "noor" ? "" : `agent=${agent}&`}prompt=${encodeURIComponent(q)}`} className="s-chip inline-flex max-w-full items-center text-start">
+                      <Scribble kind="pill" seed={`agent-ask-${i}`} fill="paper" />
+                      {q}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         </section>
         <section className="mx-auto max-w-6xl px-4 py-14 sm:px-6">
           <h2 className="font-display text-2xl font-bold">{s.others}</h2>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{AGENTS.filter((x) => x.id !== agent).map((x) => <Link key={x.id} href={`/${lang}/agents/${x.id}`} className="card card-sm transition hover:border-oasis"><span className="font-display font-medium text-oasis">{x.name[lang]}</span><span className="block text-sm text-ink/60">{x.role[lang]}</span></Link>)}</div>
+          <div className="mt-6 grid gap-x-5 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
+            {AGENTS.filter((x) => x.id !== agent).map((x) => (
+              <Link key={x.id} href={`/${lang}/agents/${x.id}`} className="s-card flex items-center gap-3 !py-3" data-boil>
+                <Scribble kind="box" seed={`agent-other-${x.id}`} fill="paper" boil />
+                <Face who={x.id} seed={`agent-other-face-${x.id}`} small />
+                <span><span className="block font-display font-bold">{x.name[lang]}</span><span className="block text-sm text-muted">{x.role[lang]}</span></span>
+              </Link>
+            ))}
+          </div>
         </section>
         <FinalCta t={t} lang={lang} />
       </main>

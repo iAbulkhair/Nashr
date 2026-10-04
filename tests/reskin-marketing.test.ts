@@ -1,11 +1,22 @@
 import { createElement, type FunctionComponent } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { dict, type Lang } from "@/lib/i18n";
 import { PUBLIC_TIERS } from "@/lib/pricing";
 import Pricing from "@/components/Pricing";
 import Faq from "@/components/Faq";
 import FinalCta from "@/components/FinalCta";
+import UrlStart from "@/components/UrlStart";
+import AgentsPage from "@/app/[lang]/agents/page";
+import AgentPage from "@/app/[lang]/agents/[agent]/page";
+import { AGENTS } from "@/lib/agents";
+
+vi.mock("next/navigation", async (orig) => ({
+  ...(await orig<typeof import("next/navigation")>()),
+  useRouter: () => ({ push: () => {}, refresh: () => {}, replace: () => {}, back: () => {}, prefetch: () => {} }),
+  usePathname: () => "/en",
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 /**
  * Rule 518. The marketing pages are fully hand-drawn prototype D (re-skin spec §5): section titles carry an underline
@@ -34,6 +45,26 @@ describe("the marketing pages are hand-drawn D (rule 518)", () => {
       const cta = html(FinalCta, { t: dict[lang], lang });
       expect(cta).toMatch(TITLE_SCRIBBLE("h2"));
       expect(cta).toMatch(new RegExp(`<a[^>]*href="/${lang}/app/signup"[^>]*class="s-btn|<a[^>]*class="s-btn[^"]*"[^>]*href="/${lang}/app/signup"`));
+    });
+
+    it(`agents · ${lang}: every agent in a scribbled card with its own figure`, async () => {
+      const h = renderToStaticMarkup(await AgentsPage({ params: Promise.resolve({ lang }) }));
+      expect(h).toMatch(TITLE_SCRIBBLE("h1"));
+      for (const a of AGENTS) expect(h, a.id).toMatch(new RegExp(`class="s-card[^"]*"[^>]*href="/${lang}/agents/${a.id}"[\\s\\S]*?data-cast="${a.id}"|href="/${lang}/agents/${a.id}"[^>]*class="s-card[\\s\\S]*?data-cast="${a.id}"`));
+    });
+
+    it(`an agent's page · ${lang}: the agent standing on its colour, a scribbled start box`, async () => {
+      const h = renderToStaticMarkup(await AgentPage({ params: Promise.resolve({ lang, agent: "faris" }) }));
+      expect(h).toMatch(/<h1[^>]*>/);
+      expect(h).toMatch(/data-cast="faris"/);
+      expect(h).toContain("var(--color-agent-faris)");
+      expect(count(h, 'class="s-card')).toBeGreaterThanOrEqual(3);
+    });
+
+    it(`the URL start box · ${lang}`, () => {
+      const h = html(UrlStart, { t: dict[lang], lang });
+      expect(h).toMatch(/class="s-input[^"]*"[\s\S]*?<input[^>]*name="url"/);
+      expect(h).toMatch(/<button[^>]*class="s-btn/);
     });
   }
 });
