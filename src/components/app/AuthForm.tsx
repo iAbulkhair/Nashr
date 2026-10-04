@@ -9,6 +9,7 @@ import { PLAN_CREDITS } from "@/lib/pricing";
 import { authMessage, failureCode, passwordChecks, postJson, succeeded, unmetRules } from "@/lib/auth-client";
 import { PasswordRules } from "./PasswordRules";
 import { Turnstile } from "./Turnstile";
+import Scribble from "@/components/Scribble";
 
 const input = "input";
 
@@ -63,15 +64,15 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
     }
   }
   return (
-    <div className="mx-auto max-w-md">
-      <h1 className="page-title">{t.signup.title}</h1>
+    <div className="mx-auto w-full max-w-md">
+      <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t1" />{t.signup.title}</span></h1>
       <p className="mt-2 text-ink/70">{t.signup.sub}</p>
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
         {step === 1 ? (
           <input name="email" required autoFocus type="email" autoComplete="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.signup.email} aria-label={t.signup.email} className={input} />
         ) : (
           <>
-            <p className="flex items-center justify-between gap-2 rounded-lg bg-salt-dim px-3 py-2 text-sm"><span dir="ltr" className="clip">{email}</span><button type="button" onClick={() => setStep(1)} className="text-xs text-oasis underline">{S.edit}</button></p>
+            <p className="flex items-center justify-between gap-2 rounded-lg bg-lilac px-3 py-2 text-sm"><span dir="ltr" className="clip">{email}</span><button type="button" onClick={() => setStep(1)} className="text-xs text-ink underline">{S.edit}</button></p>
             <input name="name" required autoFocus autoComplete="name" placeholder={S.nameOpt} aria-label={S.nameOpt} className={input} />
             <input ref={pwRef} name="password" required type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={t.signup.password} aria-label={t.signup.password} aria-describedby="signup-rules" className={input} />
             <PasswordRules id="signup-rules" rules={S.rules} checks={checks} lang={lang} />
@@ -79,14 +80,14 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
           </>
         )}
         {step === 2 && <PartnerCodeField lang={lang} />}
-        {err && <p role="alert" className="text-sm text-sadu-deep">{err}</p>}
-        <button disabled={busy} aria-disabled={step === 2 && !ready ? true : undefined} aria-describedby={step === 2 ? "signup-rules" : undefined} className="btn btn-primary">{step === 1 ? S.cont : t.signup.submit}</button>
+        {err && <p role="alert" className="text-sm text-danger">{err}</p>}
+        <button disabled={busy} aria-disabled={step === 2 && !ready ? true : undefined} aria-describedby={step === 2 ? "signup-rules" : undefined} className="s-btn"><Scribble kind="pill" seed="authform-b1" fill="ink" shadow ring />{step === 1 ? S.cont : t.signup.submit}</button>
       </form>
-      <p className="mt-3 text-center text-xs text-ink/60">{S.trial}</p>
+      <p className="mt-3 text-center text-xs text-muted">{S.trial}</p>
       <p className="mt-4 text-sm text-ink/70">
-        {t.signup.have} <Link href={`/${lang}/app/login`} className="font-medium text-oasis underline">{t.signup.login}</Link>
+        {t.signup.have} <Link href={`/${lang}/app/login`} className="font-medium text-ink underline">{t.signup.login}</Link>
       </p>
-      <p className="mt-2 text-xs text-ink/60">{S.legal1} <Link href={`/${lang}/terms`} className="underline">{S.terms}</Link> {S.and} <Link href={`/${lang}/privacy`} className="underline">{S.privacy}</Link>.</p>
+      <p className="mt-2 text-xs text-muted">{S.legal1} <Link href={`/${lang}/terms`} className="underline">{S.terms}</Link> {S.and} <Link href={`/${lang}/privacy`} className="underline">{S.privacy}</Link>.</p>
     </div>
   );
 }
@@ -115,17 +116,17 @@ export function LoginForm({ t, lang }: { t: AppDict; lang: Lang }) {
     }
   }
   return (
-    <div className="mx-auto max-w-md">
-      <h1 className="page-title">{t.login.title}</h1>
+    <div className="mx-auto w-full max-w-md">
+      <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t2" />{t.login.title}</span></h1>
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
         <input name="email" required type="email" dir="ltr" placeholder={t.login.email} className={input} />
         <input name="password" required type="password" placeholder={t.login.password} className={input} />
-        {err && <p role="alert" className="text-sm text-sadu">{err}</p>}
-        <button disabled={busy} className="btn btn-primary">{t.login.submit}</button>
-        <Link href={`/${lang}/app/forgot`} className="text-center text-sm text-ink/60 underline">{lang === "ar" ? "نسيت كلمة المرور؟" : "Forgot your password?"}</Link>
+        {err && <p role="alert" className="text-sm text-danger">{err}</p>}
+        <button disabled={busy} className="s-btn"><Scribble kind="pill" seed="authform-b2" fill="ink" shadow ring />{t.login.submit}</button>
+        <Link href={`/${lang}/app/forgot`} className="text-center text-sm text-muted underline">{lang === "ar" ? "نسيت كلمة المرور؟" : "Forgot your password?"}</Link>
       </form>
       <p className="mt-4 text-sm text-ink/70">
-        {t.login.noAccount} <Link href={`/${lang}/app/signup`} className="font-medium text-oasis underline">{t.login.signup}</Link>
+        {t.login.noAccount} <Link href={`/${lang}/app/signup`} className="font-medium text-ink underline">{t.login.signup}</Link>
       </p>
     </div>
   );
@@ -162,11 +163,11 @@ export function ForgotForm({ lang, whatsapp, turnstileKey = null }: { lang: Lang
     }
   }
   return (
-    <div className="mx-auto max-w-md">
-      <h1 className="page-title">{S.forgotTitle}</h1>
+    <div className="mx-auto w-full max-w-md">
+      <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t3" />{S.forgotTitle}</span></h1>
       <p className="mt-2 text-ink/70">{S.forgotSub}</p>
       {state === "sent" || state === "nomail" ? (
-        <div role="status" className="mt-6 rounded-xl border border-ink/10 bg-salt p-4 text-sm">
+        <div role="status" className="mt-6 rounded-xl border border-ink/10 bg-ground p-4 text-sm">
           <p>{state === "sent" ? S.sentMail : S.noMail}</p>
           {state === "nomail" && whatsapp && <a href={whatsapp} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm mt-3">{S.support}</a>}
         </div>
@@ -174,11 +175,11 @@ export function ForgotForm({ lang, whatsapp, turnstileKey = null }: { lang: Lang
         <form onSubmit={onSubmit} className="mt-6 grid gap-3">
           <input name="email" required autoFocus type="email" autoComplete="email" dir="ltr" placeholder="name@company.com" aria-label={S.forgotTitle} className={input} />
           {turnstileKey && <Turnstile siteKey={turnstileKey} onToken={setToken} resetKey={resetKey} lang={lang} />}
-          {err && <p role="alert" className="text-sm text-sadu-deep">{err}</p>}
-          <button disabled={state === "busy"} className="btn btn-primary">{S.send}</button>
+          {err && <p role="alert" className="text-sm text-danger">{err}</p>}
+          <button disabled={state === "busy"} className="s-btn"><Scribble kind="pill" seed="authform-b3" fill="ink" shadow ring />{S.send}</button>
         </form>
       )}
-      <p className="mt-4 text-sm"><Link href={`/${lang}/app/login`} className="text-oasis underline">{S.back}</Link></p>
+      <p className="mt-4 text-sm"><Link href={`/${lang}/app/login`} className="text-ink underline">{S.back}</Link></p>
     </div>
   );
 }
@@ -211,13 +212,13 @@ export function ResetForm({ lang }: { lang: Lang }) {
     }
   }
   return (
-    <div className="mx-auto max-w-md">
-      <h1 className="page-title">{S.resetTitle}</h1>
+    <div className="mx-auto w-full max-w-md">
+      <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t4" />{S.resetTitle}</span></h1>
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
         <input ref={pwRef} name="password" required autoFocus type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} aria-label={S.resetTitle} aria-describedby="reset-rules" className={input} />
         <PasswordRules id="reset-rules" rules={rules} checks={checks} lang={lang} />
-        {err && <p role="alert" className="text-sm text-sadu-deep">{err} {err === S.bad_token && <Link href={`/${lang}/app/forgot`} className="underline">{S.forgotTitle}</Link>}</p>}
-        <button disabled={busy} aria-disabled={!ready ? true : undefined} aria-describedby="reset-rules" className="btn btn-primary">{S.save}</button>
+        {err && <p role="alert" className="text-sm text-danger">{err} {err === S.bad_token && <Link href={`/${lang}/app/forgot`} className="underline">{S.forgotTitle}</Link>}</p>}
+        <button disabled={busy} aria-disabled={!ready ? true : undefined} aria-describedby="reset-rules" className="s-btn"><Scribble kind="pill" seed="authform-b4" fill="ink" shadow ring />{S.save}</button>
       </form>
     </div>
   );

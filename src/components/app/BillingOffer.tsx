@@ -43,10 +43,10 @@ export const OFFER_COPY = {
 export function OfferBanner({ lang, kind, code, until }: { lang: Lang; kind: "partner" | "early"; code?: string; until?: string | null }) {
   const O = OFFER_COPY[lang];
   return (
-    <div data-offer={kind} className="mt-6 rounded-2xl border border-oasis/40 bg-oasis/5 p-5">
-      <h2 className="font-display text-xl font-bold text-oasis">{O.title}</h2>
+    <div data-offer={kind} className="mt-6 rounded-2xl border border-ink/40 bg-ink/5 p-5">
+      <h2 className="font-display text-xl font-bold text-ink">{O.title}</h2>
       <p className="mt-1 text-sm text-ink/80">{kind === "partner" && code ? O.from.partner(code) : O.from.early}</p>
-      {until && <p data-offer-until className="mt-1 text-sm font-semibold text-sadu">{O.until(until)}</p>}
+      {until && <p data-offer-until className="mt-1 text-sm font-semibold text-danger">{O.until(until)}</p>}
       <p className="mt-2 text-sm text-ink/70">{O.how}</p>
       <p data-offer-vat className="mt-1 text-sm text-ink/70">{O.vat}</p>
     </div>

@@ -53,17 +53,17 @@ export default function AwayPanel({ t, lang, entries, labels, canEdit, today, la
   return (
     <section id="todo-away" aria-labelledby="todo-away-title" className="card mt-8">
       <h2 id="todo-away-title" className="card-title">{T.title}</h2>
-      <p className="mt-1 text-sm text-ink/60">{T.sub}</p>
+      <p className="mt-1 text-sm text-muted">{T.sub}</p>
       {entries.length === 0 ? (
-        <p className="mt-3 text-sm text-ink/60">{T.empty}</p>
+        <p className="mt-3 text-sm text-muted">{T.empty}</p>
       ) : (
         <ul className="mt-3 divide-y divide-ink/10 rounded-xl border border-ink/10">
           {entries.map((e) => (
             <li key={e.label} className="flex flex-wrap items-start justify-between gap-2 px-4 py-3">
               <div className="min-w-0 flex-1">
                 <p className="break-words font-medium" dir="auto">{e.label}</p>
-                <p className={`mt-0.5 text-xs ${e.ended ? "text-ink/50" : "text-oasis"}`} suppressHydrationWarning>{fill(e.ended ? T.ended : T.until, { date: day(e.until) })}</p>
-                {e.note && <p className="mt-0.5 break-words text-xs text-ink/60" dir="auto">{e.note}</p>}
+                <p className={`mt-0.5 text-xs ${e.ended ? "text-muted" : "text-ink"}`} suppressHydrationWarning>{fill(e.ended ? T.ended : T.until, { date: day(e.until) })}</p>
+                {e.note && <p className="mt-0.5 break-words text-xs text-muted" dir="auto">{e.note}</p>}
               </div>
               {canEdit && (e.ended ? (
                 <button disabled={!!busy} onClick={() => write(`remove:${e.label}`, awayCall("remove", e.label))} className="btn btn-secondary btn-xs">{T.removeEntry}</button>
@@ -92,7 +92,7 @@ export default function AwayPanel({ t, lang, entries, labels, canEdit, today, la
           </div>
         </form>
       )}
-      {error && <p role="alert" className="mt-2 text-sm text-sadu">{error.text}</p>}
+      {error && <p role="alert" className="mt-2 text-sm text-danger">{error.text}</p>}
     </section>
   );
 }

@@ -261,7 +261,7 @@ export const dict: Record<Lang, Dict> = {
       eyebrow: "الأسئلة الشائعة",
       title: "أسئلة؟ خذ الخلاصة.",
       items: [
-        { q: "ليش ما أستخدم ChatGPT أو Claude مباشرة؟", a: "تقدر، وستقضي وقتك تكتب الأوامر وتنسخ وتلصق. نور مبنية للتسويق الخليجي: ملف علامة تقرؤه في كل مرة، كتيّبات لكل قطاع، تقويم رمضان والأعياد، مراجع ثانٍ للالتزام، صندوق موافقة، تقويم نشر، ونشر عبر التكاملات. وتتعلم من تعديلاتك." },
+        { q: "ليش ما أستخدم ChatGPT مباشرة؟", a: "تقدر، وستقضي وقتك تكتب الأوامر وتنسخ وتلصق. نور مبنية للتسويق الخليجي: ملف علامة تقرؤه في كل مرة، كتيّبات لكل قطاع، تقويم رمضان والأعياد، مراجع ثانٍ للالتزام، صندوق موافقة، تقويم نشر، ونشر عبر التكاملات. وتتعلم من تعديلاتك." },
         { q: "هل تنشر نور بدون إذني؟", a: "لا. كل عنصر ينتظر موافقتك في الصندوق، والنشر دائماً بقرار منك. بعد أن تثق بها، تقدر تعتمد أنواعاً محددة تلقائياً من صفحة الحوكمة." },
         { q: "وش يعني ملخص الصباح؟", a: "كل يوم 08:00 بتوقيت السعودية: ما ينتظر موافقتك، ما اعتُمد، رصيدك، المواسم القريبة، ومتابعات الفريق (عناصر موعدها اليوم، أشياء تنتظرك من يومين). في التطبيق." },
         { q: "متى أشوف نتائج؟", a: "تكتب نور ملف العلامة وخطة 90 يوماً من رابط موقعك أثناء الإعداد، ثم تصلك أول دفعة محتوى عندما تطلبها." },
@@ -413,7 +413,7 @@ export const dict: Record<Lang, Dict> = {
       eyebrow: "FAQ",
       title: "Questions? Good to know.",
       items: [
-        { q: "Can't I just use ChatGPT or Claude?", a: "You can, and you'll spend your time writing prompts and copy-pasting. Noor is built for Gulf marketing: a brand file she reads every time, playbooks per industry, the Ramadan and Eid calendar, a second-pass compliance reviewer, an approval inbox, a content calendar, and publishing through integrations. And she learns from your edits." },
+        { q: "Can't I just use ChatGPT?", a: "You can, and you'll spend your time writing prompts and copy-pasting. Noor is built for Gulf marketing: a brand file she reads every time, playbooks per industry, the Ramadan and Eid calendar, a second-pass compliance reviewer, an approval inbox, a content calendar, and publishing through integrations. And she learns from your edits." },
         { q: "Does Noor publish without permission?", a: "No. Every item waits in your inbox, and publishing is always your call. Once you trust her, you can auto-approve specific types from Governance." },
         { q: "What is the morning brief?", a: "Every day at 08:00 KSA: what waits for approval, what was approved, your balance, upcoming seasons, and team follow-ups (items due today, things waiting for two days). In the app." },
         { q: "How long until I see results?", a: "Your brand file and 90-day plan are written from your URL during onboarding, and your first content batch arrives when you ask Noor for it." },

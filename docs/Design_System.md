@@ -1,21 +1,20 @@
-# Nashr Design System · نظام تصميم نشر
+# Thakeen Design System · نظام تصميم ذكين
 
-Source of truth: `assets/design-tokens.json` → generated `src/app/tokens.css` (never edit by hand) → Tailwind theme and component classes in `src/app/globals.css`.
-Regenerate after editing the JSON:
-
-```bash
-node "<design-system skill dir>/scripts/generate-tokens.cjs" --config assets/design-tokens.json -o src/app/tokens.css
-```
+Source of truth: `assets/design-tokens.json`, mirrored by hand in `src/app/tokens.css` (`tests/design-tokens.test.ts`, rule 510, fails if the two drift apart), then the Tailwind theme and component classes in `src/app/globals.css`. The palette is prototype D's (spec `docs/superpowers/specs/2026-10-04-thakeen-reskin-design.md` §1).
 
 ## 1. Token layers · طبقات الرموز
 
 | Layer | Where | Examples | When to change |
 |---|---|---|---|
-| Primitive · أساسي | `tokens.css` `--primitive-*` | `--primitive-color-oasis-500` #0F3D3A, `--primitive-color-saffron-500` #F2B33D, `--primitive-color-sadu-500` #D9503F, `--primitive-color-salt-100` #F6F4EE, spacing 1–20, radius sm–full, shadows, durations | Rarely; brand refresh |
-| Semantic · دلالي | `tokens.css` `--color-*`, `--spacing-*` | `--color-background`, `--color-surface`, `--color-foreground`, `--color-primary(-hover/-active/-foreground)`, `--color-accent(...)`, `--color-danger(...)`, `--color-inverse-*`, `--color-ring`, `--spacing-section` | Theme switches (dark mode later) |
+| Primitive · أساسي | `tokens.css` `--primitive-*` | `--primitive-color-ink` #2b193d, `-muted` #5d4a70, `-paper` #fff, `-ground` #f7f3f9, `-lilac` #efe7f7, `-lemon` #f9f871, `-gold` #c9a227 (figure strokes only), `-danger` #cc0000; `--primitive-color-agent-<id>`; strokes, spacing 1–20, radius sm–full, durations 150/200/300 ms, easing | Rarely; brand refresh |
+| Semantic · دلالي | `tokens.css` `--color-*`, `--stroke-*`, `--ease-out`, `--duration-*`, `--spacing-*` | `--color-ink`, `--color-agent-noor`, `--color-background` (ground), `--color-foreground`/`--color-primary`/`--color-ring` (ink), `--color-accent` (lemon), `--color-danger`, `--stroke-pen` 1.25px, `--stroke-figure` 1.5px, `--ease-out` `cubic-bezier(.22,1,.36,1)` | Theme switches (dark mode later) |
 | Component · مكوّن | `tokens.css` `--button-*`, `--input-*`, `--card-*` | `--button-bg`, `--button-radius`, `--input-focus-ring`, `--card-padding` | Per-component tuning |
 
-Tailwind utilities (`bg-oasis`, `text-saffron`, `bg-salt-dim`, `text-mist`…) are mapped to the primitives via `@theme inline` in `globals.css`, so existing utility classes keep working and inherit any token change.
+Agents: noor #f9f871 · sami #ff5da2 · razan #00d9ff · faris #b517ff · dana #14b8a6 · majed #2b193d · layan #3fcf7e · reem #ff8a1f · you #fff. Agent colours are fills and strokes, never text colour; faris and majed fills carry paper text (ink on faris is 3.5:1). Error boxes: sami's rose fill with ink text; error text and borders `danger` #cc0000.
+
+Tailwind utilities `bg-ink`, `text-muted`, `bg-ground`, `bg-lilac`, `bg-lemon`, `border-danger`, `bg-agent-<id>` map onto the primitives via `@theme inline` in `globals.css`. The old names (`oasis`, `saffron`, `sadu`, `salt`, `mist`) are gone: no alias exists, and `tests/palette-clean.test.ts` (rule 513) checks every file under `src/`. Tailwind's `white` maps to `paper`.
+
+Strokes: pen 1.25px (`--stroke-pen`, scribbles), figure 1.5px (borders, figures), fine 1px (ghost lines), gold 1.75px (figure accents only), focus 2px ink outline at 2px offset. No drop shadows anywhere.
 
 ## 2. Component classes · فئات المكوّنات
 
@@ -26,37 +25,48 @@ Defined in `globals.css` under `@layer components`. Use these instead of repeati
 | Variant | Class | Default | Hover | Active | Disabled |
 |---|---|---|---|---|---|
 | Primary · أساسي | `btn btn-primary` | bg primary, text primary-fg | bg primary-hover | bg primary-active | opacity 0.5, no pointer |
-| Accent · مميز (CTA) | `btn btn-accent` | bg accent (saffron), text ink | bg accent-hover | bg accent-active | opacity 0.5 |
-| Secondary · ثانوي | `btn btn-secondary` | transparent, 20% ink border | border+text primary | bg background-muted | opacity 0.5 |
+| Accent · مميز (CTA) | `btn btn-accent` | bg accent (lemon), text ink, 1.5px ink border | bg paper | bg accent-active | opacity 0.5 |
+| Secondary · ثانوي | `btn btn-secondary` | transparent, 1.5px ink border at 25% | ink border | bg background-muted | opacity 0.5 |
 | Danger · خطر | `btn btn-danger` | transparent, danger text, 40% danger border | bg danger, text white | | opacity 0.5 |
 | Danger solid | `btn btn-danger-solid` | bg danger, text white | bg danger-hover | | opacity 0.5 |
-| Ghost on dark | `btn btn-ghost-inverse` | transparent, 25% mist border, mist text | 60% mist border | | opacity 0.5 |
+| Ghost on dark | `btn btn-ghost-inverse` | transparent, 25% inverse-foreground border, inverse-foreground text | 60% border | | opacity 0.5 |
 
 Sizes: `btn-xs` (pill, 12px), `btn-pill` (pill, 14px), `btn-sm` (rounded, 14px), default (rounded, 14px, 12px/20px padding), `btn-lg` (pill, 16px).
-Focus: global `:focus-visible` ring in `--color-ring` (saffron), 3px, offset 2px.
+Focus: global `:focus-visible` outline in `--color-ring` (ink), 2px (`--stroke-focus`), offset 2px.
 
 ### Cards `.card`
-Surface bg, 10% ink border, radius lg, padding 20px. `card-sm` 16px padding. `card-inverse` for the dark oasis surface. `card-title` for the heading.
+Paper bg, 1.5px ink border at 15%, radius sm, no shadow, padding 20px. `card-sm` 16px padding. `card-inverse` for the ink surface. `card-title` for the heading.
 
 ### Inputs `.input`
-Full width, surface bg, 15% ink border, radius md, 12px/16px padding, 14px text. Hover 30% border; focus primary border + 45% saffron ring; disabled 60% opacity; `aria-invalid="true"` danger border. Add `rounded-full` for the chat composer.
+Full width, paper bg, 1.5px ink border at 55% (3:1 against white), radius md, 12px/16px padding, 14px text, muted placeholder. Hover 80% border; focus ink border + 2px ink outline; disabled 60% opacity; `aria-invalid="true"` danger border. Add `rounded-full` for the chat composer.
 
 ### Badges `.badge`
-`badge-primary` (10% primary tint), `badge-accent` (20% saffron tint), `badge-danger` (10% danger tint). 12px, pill.
+Flat D fills with ink text: `badge-primary` (lilac), `badge-accent` (lemon), `badge-danger` (sami's rose). 12px, pill.
 
 ### Typography
-`page-title` (app page H1, display 30px bold, primary), `page-sub` (70% ink), `section-title` (marketing H2, 30→36px), `eyebrow` (12px uppercase, 0.2em tracking, sadu red), `eyebrow-accent` (saffron on dark).
+`page-title` (app page H1, display 30px bold, primary), `page-sub` (70% ink), `section-title` (marketing H2, 30→36px), `eyebrow` (12px uppercase, 0.2em tracking, muted), `eyebrow-accent` (lemon on ink).
+
+### Motion
+150 / 200 / 300 ms (`--duration-*`) with `--ease-out` `cubic-bezier(.22,1,.36,1)`; no overshoot curves, never a width or height transition (rule 511). Progress fills grow by `transform: scaleX(var(--p))`.
+
+### Scribbles `<Scribble>`
+Hand-drawn strokes from `src/lib/scribble.ts`, drawn by `src/components/Scribble.tsx` (server-rendered first, redrawn at real size; frozen under reduced motion; hidden in forced colours, where real borders show). Kinds: `box`, `bubble`, `circleLoop`, `cloud`, `divider`, `pill`, `puddle`, `stamp`, `strike`, `swash`, `tape`, `tick`, `underline`. Props: `seed` (stable shape), `fill` (a D colour name), `shadow`, `ring`, `boil`, `heavy`. The host element carries the matching class from `scribble.css` (`s-ul`, `s-btn`, `s-card`, `s-chip`, `s-input`, `s-num`, `s-bubble`, `s-cloud`, `s-stamp`, `s-tape`, `s-tag`, `s-link`) or `data-scribble` for a generic host.
+
+### Loud and quiet · صاخب وهادئ
+- **Marketing pages (loud):** headings with an `underline` scribble, cards as `s-card` + `box`, buttons as `s-btn` + `pill` (ink fill primary, lemon ghost), agents shown with their doodle on their fill.
+- **App screens (quiet, rule 519):** plain 1.5px ink lines on tables and forms. Scribbles only on the page title (`<h1 class="page-title"><span class="s-ul"><Scribble kind="underline" …/>`), the main action of the sign-in screens (ink pill), agent avatars (`AgentAvatar`: `circleLoop` on the agent's fill) and empty states. Error boxes `border-danger bg-agent-sami/20`; lemon appears only on ink, never as text or an icon on a light ground. Centred page wrappers are `mx-auto w-full max-w-*`.
 
 ### Layout
 `section-wrap` (max 72rem, 80px vertical, 16/24px gutters), `page-wrap` (max 48rem, 64px vertical).
 
 ## 3. Rules · القواعد
-1. No raw hex in components (validated with the skill's `validate-tokens.cjs`; only the PowerPoint exporter and the OAuth consent page carry literal colors on purpose).
-2. Marketing pages: dark oasis sections alternate with salt sections; one accent CTA per section.
-3. App pages: `page-title` + `page-sub`, then `card` blocks; primary action per card is `btn-primary btn-sm`, destructive is `btn-danger`.
+1. No raw hex outside `tokens.css` (rule 513 checks all of `src/`). Exceptions, each named in the test: `global-error.tsx` (replaces the document, cannot load styles), and the crawler and media store, which handle customers' colours as data. The OAuth consent page renders its own document and imports `tokens.css`.
+2. Marketing pages: hand-drawn like prototype D (scribbles, figures); app pages are the quiet version: same colours, type and strokes, plain ink lines. One accent CTA per section.
+3. App pages: `page-title` (with its underline) + `page-sub`, then `card` blocks; primary action per card is `btn-primary btn-sm`, destructive is `btn-danger`.
+7. Agent colours are fills and strokes, never text: no `text-agent-*`, `decoration-agent-*`, `placeholder-agent-*` and no CSS `color` from an agent variable (rule 517).
 4. RTL first: use logical properties (`ms-`, `me-`, `text-start`, `padding-inline`), numbers and URLs get `dir="ltr"`, free text gets `dir="auto"`.
 5. Every user-facing string comes from `src/lib/i18n.ts` (marketing) or `src/lib/app-i18n.ts` (app) in both Arabic and English. Inline `ar ? … : …` pairs are acceptable inside a single component, never English-only.
-6. Fonts: Readex Pro for display, IBM Plex Sans Arabic for body, IBM Plex Mono for numbers and code.
+6. Fonts: Thmanyah Serif Display for headings (`--font-display`, rule 317), IBM Plex Sans Arabic for body, IBM Plex Mono for numbers and code.
 
 ## 4. Status · الحالة (2026-09-17)
 - Tokens generated and wired; 160 repeated class strings replaced across 40+ components with the classes above; visual parity verified on landing, inbox, profile and founder console in Arabic.

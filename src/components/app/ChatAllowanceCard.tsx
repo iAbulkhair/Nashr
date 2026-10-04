@@ -78,22 +78,22 @@ export default function ChatAllowanceCard({ lang, status, owner, nextReset, tria
   return (
     <section className="mt-6 card" aria-labelledby="chat-allowance-title" data-chat-allowance="">
       <h2 id="chat-allowance-title" className="font-display text-lg font-bold">{ar ? "رسائل الدردشة" : "Chat messages"}</h2>
-      <p className="mt-1 text-sm text-ink/60">{ar
+      <p className="mt-1 text-sm text-muted">{ar
         ? "الرسالة هي ما ترسله للفريق مرة واحدة، من التطبيق أو من تطبيق متصل، مهما طال الرد. الرسالة التي تتعثر لا تُحسب. توليد المنشورات والصور والفيديو من الدردشة يُخصم من الكريدت كالمعتاد."
         : "A message is one turn you send the team, in the app or from a connected app, however long the answer. A message that fails is not counted. Generating posts, images or videos from chat uses credits as usual."}</p>
       <div className="mt-3 flex items-center justify-between text-sm">
         <span>{trial ? (ar ? "المستخدم في التجربة" : "Used in your trial") : (ar ? "المستخدم هذا الشهر" : "Used this month")}</span>
         <span className="font-mono" dir="ltr" data-chat-used="">{n(s.used)} / {n(s.allowance)}</span>
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-salt-dim" role="progressbar" aria-valuemin={0} aria-valuemax={s.allowance} aria-valuenow={s.used} aria-label={ar ? "رسائل الدردشة المستخدمة" : "Chat messages used"}>
-        <div className={`h-full ${s.left > 0 ? "bg-oasis" : "bg-saffron"}`} style={{ width: `${pct}%` }} />
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-lilac" role="progressbar" aria-valuemin={0} aria-valuemax={s.allowance} aria-valuenow={s.used} aria-label={ar ? "رسائل الدردشة المستخدمة" : "Chat messages used"}>
+        <div className={`h-full ${s.left > 0 ? "bg-ink" : "bg-lemon"}`} style={{ width: `${pct}%` }} />
       </div>
       <p className="mt-2 text-sm text-ink/70">{period}</p>
       {pace && <p className="mt-1 text-sm text-ink/70">{pace}</p>}
       {(s.overflow.used > 0 || s.overflow.credits > 0) && <p className="mt-1 text-sm text-ink/70" data-chat-overflow-used="">{ar ? `${n(s.overflow.used)} رسالة إضافية هذا الشهر على الكريدت، خُصم عليها ${n(s.overflow.credits)} كريدت.` : `${n(s.overflow.used)} more this month, continued on credits: ${n(s.overflow.credits)} ${s.overflow.credits === 1 ? "credit" : "credits"} billed.`}</p>}
 
       {trial ? (
-        <p className="mt-3 text-sm text-ink/60">{ar ? "بعد الاشتراك تتجدد رسائل خطتك كل شهر، ويمكن لمالك الحساب اختيار الإكمال على الكريدت عند نفادها." : "After you subscribe, your plan's messages renew every month, and the account owner can choose to continue on credits when they run out."}</p>
+        <p className="mt-3 text-sm text-muted">{ar ? "بعد الاشتراك تتجدد رسائل خطتك كل شهر، ويمكن لمالك الحساب اختيار الإكمال على الكريدت عند نفادها." : "After you subscribe, your plan's messages renew every month, and the account owner can choose to continue on credits when they run out."}</p>
       ) : s.overflow.available && (
         <div className="mt-4 border-t border-ink/10 pt-4">
           <div className="flex items-start justify-between gap-6">
@@ -102,16 +102,16 @@ export default function ChatAllowanceCard({ lang, status, owner, nextReset, tria
               <p className="mt-1 text-sm" data-chat-overflow={s.overflow.on ? "on" : "off"}>{state}</p>
             </div>
             {owner && (
-              <button type="button" role="switch" aria-checked={s.overflow.on} aria-label={label} disabled={saving} onClick={() => toggle(!s.overflow.on)} className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${s.overflow.on ? "bg-oasis" : "bg-ink/20"}`}>
+              <button type="button" role="switch" aria-checked={s.overflow.on} aria-label={label} disabled={saving} onClick={() => toggle(!s.overflow.on)} className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${s.overflow.on ? "bg-ink" : "bg-ink/20"}`}>
                 <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${s.overflow.on ? "start-[22px]" : "start-0.5"}`} />
               </button>
             )}
           </div>
-          <p className="mt-2 text-xs text-ink/60" data-chat-overflow-terms="">{ar
+          <p className="mt-2 text-xs text-muted" data-chat-overflow-terms="">{ar
             ? `على الكريدت: تحتاج كل رسالة إضافية ${hold} كريدت على الأقل في رصيدك، وتُحسب بما كلّفته فعلاً، ${hold} كريدت على الأكثر. أجزاء الكريدت تُرحَّل إلى الرسالة التالية فلا يُقرَّب شيء للأعلى، والرسالة التي تتعثر لا يُخصم عليها شيء. إذا كان رصيدك أقل من ${hold} كريدت تتوقف الدردشة.`
             : `On credits, each extra message needs at least ${hold} credits in your balance and is billed what it actually cost, at most ${hold} credits. Parts of a credit carry over to the next message, so nothing is rounded up, and a message that fails is not billed. With fewer than ${hold} credits in your balance, chat pauses.`}</p>
           {!owner && <ReadOnlyNote text={ar ? "مالك الحساب يقرر ذلك." : "The account owner decides this."} />}
-          {msg && <p role="status" className="mt-2 text-sm text-oasis">{msg}</p>}
+          {msg && <p role="status" className="mt-2 text-sm text-ink">{msg}</p>}
         </div>
       )}
     </section>

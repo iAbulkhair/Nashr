@@ -10,7 +10,7 @@ export default function LogoutButton({ label, lang }: { label: string; lang: str
         r.push(`/${lang}/app/login`);
         r.refresh();
       }}
-      className="text-xs text-mist-dim hover:text-mist"
+      className="text-xs text-lilac/75 hover:text-lilac"
     >
       {label}
     </button>

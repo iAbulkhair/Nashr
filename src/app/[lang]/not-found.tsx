@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Scribble from "@/components/Scribble";
 
 /**
  * The 404 inside the language tree. It renders within `[lang]/layout.tsx`, so the document already carries the right
@@ -12,18 +13,18 @@ import Link from "next/link";
 export default function NotFound() {
   return (
     <main className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center gap-6 px-6 py-20 text-center">
-      <p className="font-mono text-sm tracking-widest text-sadu">404</p>
+      <p className="s-stamp font-mono text-2xl tracking-widest" dir="ltr"><Scribble kind="stamp" seed="not-found" fill="lemon" />404</p>
       <div className="grid gap-2">
-        <h1 className="font-display text-3xl font-semibold text-ink">الصفحة غير موجودة</h1>
-        <p className="text-ink/70">الرابط الذي فتحته لم يعد موجوداً أو كُتب بشكل خاطئ.</p>
+        <h1 className="font-display text-3xl font-bold">الصفحة غير موجودة</h1>
+        <p className="text-muted">الرابط الذي فتحته لم يعد موجوداً أو كُتب بشكل خاطئ.</p>
       </div>
       <div className="grid gap-2" dir="ltr">
-        <h2 className="font-display text-xl font-medium text-ink">Page not found</h2>
-        <p className="text-ink/70">The link you opened does not exist or was mistyped.</p>
+        <h2 className="font-display text-xl font-bold">Page not found</h2>
+        <p className="text-muted">The link you opened does not exist or was mistyped.</p>
       </div>
       <div className="flex flex-wrap items-center justify-center gap-3">
-        <Link href="/ar" className="btn btn-primary">الصفحة الرئيسية</Link>
-        <Link href="/en" className="btn btn-secondary">Home</Link>
+        <Link href="/ar" className="s-btn"><Scribble kind="pill" seed="not-found-ar" fill="ink" shadow ring />الصفحة الرئيسية</Link>
+        <Link href="/en" className="s-btn s-btn--ghost"><Scribble kind="pill" seed="not-found-en" fill="lemon" ring />Home</Link>
       </div>
     </main>
   );

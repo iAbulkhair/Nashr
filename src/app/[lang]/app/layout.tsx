@@ -28,10 +28,10 @@ export default async function AppLayout({ children, params }: { children: React.
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-salt">
-        <header className="border-b border-mist/10 bg-oasis-deep text-mist">
+      <div className="min-h-screen bg-ground">
+        <header className="border-b-[1.5px] border-ink bg-ground text-ink">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-            <Link href={`/${lang}`} className="font-display text-xl font-bold">{t.appName}<span className="ms-2 inline-block h-2 w-2 rounded-full bg-saffron align-middle" aria-hidden /></Link>
+            <Link href={`/${lang}`} className="font-display text-xl font-bold">{t.appName}</Link>
             <LangToggle lang={lang} />
           </div>
         </header>
@@ -47,11 +47,11 @@ export default async function AppLayout({ children, params }: { children: React.
   const actor = user.actor;
   const owner = can(user, "billing");
   return (
-    <div className="flex min-h-dvh flex-col bg-salt lg:h-dvh lg:flex-row lg:overflow-hidden">
+    <div className="flex min-h-dvh flex-col bg-ground lg:h-dvh lg:flex-row lg:overflow-hidden">
       <Sidebar t={t} lang={lang} user={{ name: actor?.name ?? user.name, email: actor?.email ?? user.email, role: actor?.role ?? "member", credits: user.credits, plan: user.plan }} show={{ owner, refer: can(user, "referral"), mcp: can(user, "mcp.token"), partner: !!user.partnerCode && can(user, "partner") }} brandName={brand?.name} admin={isFounderActor(user)} supportWa={(process.env.SUPPORT_WHATSAPP ?? "").replace(/\D/g, "") || undefined} />
       <main className="flex min-w-0 flex-1 flex-col px-4 py-5 sm:px-8 lg:overflow-y-auto">
         {impersonating && (
-          <form action="/api/admin/impersonate" method="post" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sadu/40 bg-sadu/10 px-3 py-2 text-xs">
+          <form action="/api/admin/impersonate" method="post" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border-[1.5px] border-danger bg-paper px-3 py-2 text-xs text-ink">
             <input type="hidden" name="lang" value={lang} />
             <span>{lang === "ar" ? `تتصفح كالمستخدم ${impersonating} (لمدة ساعتين كحد أقصى)` : `Viewing as ${impersonating} (2 hours max)`}</span>
             <button type="submit" className="btn btn-danger btn-xs">{lang === "ar" ? "إنهاء والعودة للوحة" : "Stop and return to console"}</button>

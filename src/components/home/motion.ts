@@ -1,9 +1,8 @@
 import { useEffect, useState, useSyncExternalStore, type RefObject } from "react";
 
 /*
- * The homepage's one motion switch (WCAG 2.2.2). The story's storm, its scroll cue and its question flips, and the
- * lineup's banter, flips, blinking, breathing and gaze all read it; the pause button on the story's stage and the one
- * in the lineup both write it, so pausing either one stops everything that moves on its own. It lives in this module
+ * The homepage's one motion switch (WCAG 2.2.2). The pause button in the lineup's head writes it; the floating doodles
+ * and the seams between sections stop on the attribute it sets, so pausing stops everything that moves on its own. It lives in this module
  * rather than in React context so the page itself stays a server component. Playing by default, and on the server.
  */
 let paused = false;
@@ -19,6 +18,9 @@ function subscribe(onChange: () => void) {
 /** Pauses the page's motion if it is playing, or plays it if it is paused. */
 export function toggleMotion(): void {
   paused = !paused;
+  // The CSS-only decoration (floats, seams) stops on `html[data-motion="off"]` without needing React.
+  if (paused) document.documentElement.dataset.motion = "off";
+  else delete document.documentElement.dataset.motion;
   listeners.forEach((l) => l());
 }
 

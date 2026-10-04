@@ -1,458 +1,172 @@
-import type { Locator } from "@playwright/test";
-import { test, expect, open, LANGS, type Lang } from "./fixtures/app";
-import { AGENT_CAST, BANTER, CAST, HOME, STORM, type CastMember } from "../src/lib/home";
+import { test, expect, open, LANGS } from "./fixtures/app";
+import { CAST, HERO, HOME_FAQ, HOME_NAV, STEPS } from "../src/lib/home";
+import { dict } from "../src/lib/i18n";
+import { CLAUDE_PAUSED } from "../src/lib/model";
 
-/** The story's chapters, as Story.tsx counts them: the hero (0), one per agent, then the finale. */
-const FINALE = AGENT_CAST.length + 1;
-const CHAPTERS = FINALE + 1;
-/** The share of the story's scroll that lands in the middle of `chapter`. */
-const middleOf = (chapter: number) => (chapter + 0.5) / CHAPTERS;
+/**
+ * The homepage is prototype D (rule 516): the cover with the team, the house rules, your day, the seven steps, the
+ * plans and the questions, in that order, each reachable from the nav. The lineup is the one interactive part; the
+ * doodles and seams move only without reduced motion and stop with the page's pause button.
+ */
+
+const SECTIONS = HOME_NAV.map((n) => n.href.slice(1));
 
 for (const lang of LANGS) {
   test.describe(`home · ${lang}`, () => {
-    test("renders the slogan and a figure for every cast member", async ({ page, failures }) => {
+    test("shows D's sections in order, the masthead and the whole team", async ({ page, failures }) => {
       void failures;
       await open(page, `/${lang}`);
-      await expect(page.locator("h1")).toContainText(lang === "ar" ? "ذكين. الذكي المكين." : "Thakeen. Smart. Steadfast.");
-      await expect(page.getByTestId("figure")).toHaveCount(CAST.length);
-      await expect(page.getByTestId("storm").locator("[data-storm-q]")).toHaveCount(STORM.length);
+      await expect(page.locator("h1")).toContainText(HERO.tbox[lang]);
+      await expect(page.getByTestId("lineup").locator("[data-id]")).toHaveCount(CAST.length);
+      const ids = await page.locator("main > section[id]").evaluateAll((els) => els.map((e) => e.id));
+      expect(ids).toEqual(SECTIONS);
       // Drawn without markers, these lists keep their semantics in Safari only with an explicit role.
-      for (const list of [page.getByTestId("lineup").locator("ul"), page.getByTestId("dictionary").locator("ol"), page.locator('[aria-labelledby="truths-title"] ul')]) {
-        await expect(list).toHaveAttribute("role", "list");
+      for (const list of await page.locator("main ul, main ol").all()) await expect(list).toHaveAttribute("role", "list");
+    });
+
+    test("the nav leads to every section", async ({ page }) => {
+      await open(page, `/${lang}`);
+      for (const { href } of HOME_NAV) {
+        await expect(page.locator(`header a[href="${href}"]`).first()).toBeAttached();
+        await expect(page.locator(href)).toHaveCount(1);
       }
     });
+
     test("reads Noor first in the reading direction", async ({ page }) => {
       await open(page, `/${lang}`);
-      const first = await page.locator('[data-testid="lineup"] [data-cast="noor"]').first().boundingBox();
-      const last = await page.locator('[data-testid="lineup"] [data-cast="you"]').first().boundingBox();
+      const first = await page.locator('[data-testid="lineup"] [data-id="noor"]').boundingBox();
+      const last = await page.locator('[data-testid="lineup"] [data-id="you"]').boundingBox();
       expect(lang === "ar" ? first!.x > last!.x : first!.x < last!.x).toBe(true);
     });
+
+    test("lists every public plan from the pricing block, the agency plan leading to the contact form", async ({ page }) => {
+      await open(page, `/${lang}`);
+      const plans = page.locator("#price li h3");
+      const names = dict[lang].pricing.plans.map((p) => p.name);
+      await expect(plans).toHaveCount(4);
+      for (const name of await plans.allTextContents()) expect(names).toContain(name);
+      await expect(page.locator(`#price a[href="/${lang}/enterprise#contact"]`)).toHaveCount(1);
+      await expect(page.locator(`#price a[href="/${lang}/app/signup"]`)).toHaveCount(3);
+    });
+
+    test("says what is paused today on the steps it affects", async ({ page }) => {
+      await open(page, `/${lang}`);
+      for (const s of STEPS.filter((st) => st.paused)) {
+        await expect(page.locator("#steps").getByText(s.paused![lang], { exact: true })).toHaveCount(CLAUDE_PAUSED ? 1 : 0);
+      }
+    });
+
     test("never scrolls sideways", async ({ page }) => {
       await open(page, `/${lang}`);
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    });
-    test("the Industries tab leads to a page that exists", async ({ page }) => {
-      await open(page, `/${lang}`);
-      const industries = page.locator('nav[aria-label="Main"] a[aria-haspopup]', { hasText: lang === "ar" ? "القطاعات" : "Industries" });
-      await expect(industries).toHaveAttribute("href", `/${lang}/customers`);
-      await expect(page.locator('a[href$="#industries"]')).toHaveCount(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     });
   });
 }
 
-test.describe("home on a tablet", () => {
-  test.use({ viewport: { width: 768, height: 1024 }, reducedMotion: "reduce" });
-  for (const lang of LANGS) {
-    test(`every question fits above its figure · ${lang}`, async ({ page }) => {
-      await open(page, `/${lang}`);
-      const lineup = page.getByTestId("lineup");
-      await expect(lineup.getByTestId("qflip")).toHaveCount(CAST.filter((m) => m.questions.length > 0).length);
-      // Put each question in turn into the bubble on screen; it must stay inside its slot and below the strip's top
-      // edge, which clips anything above it.
-      const clipped = await lineup.evaluate(
-        (section, { cast, lang }) => {
-          const strip = section.querySelector("ul")!.parentElement!.getBoundingClientRect();
-          const out: string[] = [];
-          for (const m of cast) {
-            const flip = section.querySelector(`[data-testid="figure"][data-cast="${m.id}"] [data-testid="qflip"]`);
-            if (!flip) continue;
-            const bubble = flip.firstElementChild as HTMLElement;
-            const shown = bubble.textContent;
-            for (const q of m.questions) {
-              bubble.textContent = q[lang];
-              const b = bubble.getBoundingClientRect();
-              const slot = flip.parentElement!.getBoundingClientRect();
-              if (b.top < slot.top - 0.5 || b.bottom > slot.bottom + 0.5 || b.top < strip.top - 0.5) out.push(`${m.id}: ${q[lang]}`);
-            }
-            bubble.textContent = shown;
-          }
-          return out;
-        },
-        { cast: CAST, lang },
-      );
-      expect(clipped).toEqual([]);
-    });
-  }
-});
-
 test.describe("home without JavaScript", () => {
   test.use({ javaScriptEnabled: false });
-  test("still shows the slogan, the lineup and a working start form", async ({ page }) => {
+  test("still shows the masthead, the team and the plans, and the questions open", async ({ page }) => {
     await open(page, "/ar");
-    await expect(page.locator("h1")).toContainText("ذكين");
-    await expect(page.getByTestId("figure")).toHaveCount(CAST.length);
-    // With scripts off, DOMContentLoaded does not wait for the stylesheet, and before it applies every form counts as
-    // visible (the story's hidden finale form first). `load` does wait for it.
     await page.waitForLoadState("load");
-    const url = page.locator('form input[name="url"]:visible').first();
-    await url.fill("example.sa");
-    await url.press("Enter");
-    await expect(page).toHaveURL(/\/ar\/app\/signup\?url=example\.sa/);
+    await expect(page.locator("h1")).toContainText(HERO.tbox.ar);
+    await expect(page.getByTestId("lineup").locator("[data-id]")).toHaveCount(CAST.length);
+    await expect(page.locator("#price li h3")).toHaveCount(4);
+    const q = page.locator("#faq details").first();
+    await q.locator("summary").click();
+    await expect(q).toHaveAttribute("open", "");
+    await expect(q.getByText(HOME_FAQ[0].a.ar)).toBeVisible();
   });
 });
 
-test("the story walks the chapters and gives the questions back on the way up", async ({ page }) => {
-  await open(page, "/ar");
-  const story = page.getByTestId("story");
-  const scrollTo = (f: number) => page.evaluate((f) => {
-    const s = document.querySelector('[data-testid="story"]') as HTMLElement;
-    window.scrollTo(0, s.offsetTop + (s.offsetHeight - window.innerHeight) * f);
-  }, f);
-  await scrollTo(middleOf(4));
-  await expect(story).toHaveAttribute("data-chapter", "4");
-  await scrollTo(1);
-  await expect(story).toHaveAttribute("data-chapter", String(FINALE));
-  await expect(story.locator("[data-storm-q][data-taken]")).toHaveCount(STORM.length);
-  await expect(story.getByText("موافق.")).toBeVisible();
-  await scrollTo(0);
-  await expect(story).toHaveAttribute("data-chapter", "0");
-  await expect(story.locator("[data-storm-q]:not([data-taken])")).toHaveCount(STORM.length);
+test.describe("the lineup", () => {
+  test("by keyboard: the first figure takes its colour and thinks a question, Escape puts it back", async ({ page, isMobile }) => {
+    test.skip(isMobile, "keyboard focus");
+    await open(page, "/ar");
+    const lineup = page.getByTestId("lineup");
+    const noor = lineup.locator('[data-id="noor"]');
+    // Only once React owns the button does focusing it do anything.
+    await expect.poll(() => noor.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactFiber$")))).toBe(true);
+    // Tab in from the button before it, so the focus is keyboard focus (:focus-visible).
+    await lineup.locator("button:not([data-id])").first().focus();
+    await page.keyboard.press("Tab");
+    await expect(noor).toBeFocused();
+    const cloud = lineup.locator(".s-cloud");
+    await expect(cloud).toHaveAttribute("data-on", "");
+    expect((await cloud.textContent())?.trim().length).toBeGreaterThan(0);
+    const fill = await noor.locator(".s-tag .fill").evaluate((p) => getComputedStyle(p).fill);
+    const agent = await noor.evaluate((el) => {
+      const probe = document.createElement("i");
+      probe.style.color = "var(--color-agent-noor)";
+      el.append(probe);
+      const c = getComputedStyle(probe).color;
+      probe.remove();
+      return c;
+    });
+    expect(fill).toBe(agent);
+    await page.keyboard.press("Escape");
+    await expect(cloud).not.toHaveAttribute("data-on", "");
+  });
+
+  test("the chosen figure grows by a transform only: no other figure moves", async ({ page, isMobile }) => {
+    test.skip(isMobile, "hover");
+    await open(page, "/en");
+    const places = page.getByTestId("lineup").locator("li");
+    const rects = () => places.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON()));
+    const before = await rects();
+    await page.getByTestId("lineup").locator('[data-id="faris"]').hover();
+    await page.waitForTimeout(600);
+    expect(await rects()).toEqual(before);
+  });
+
+  test("Enter then Tab: only the focused figure is pressed", async ({ page, isMobile }) => {
+    test.skip(isMobile, "keyboard focus");
+    await open(page, "/en");
+    const lineup = page.getByTestId("lineup");
+    const noor = lineup.locator('[data-id="noor"]');
+    await expect.poll(() => noor.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactFiber$")))).toBe(true);
+    await lineup.locator("button:not([data-id])").first().focus();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Enter");
+    await expect(noor).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("Tab");
+    await expect(noor).toHaveAttribute("aria-pressed", "false");
+    await expect(lineup.locator('[aria-pressed="true"]')).toHaveCount(0);
+  });
+
+  test("the live region speaks for keyboard and taps, not for a passing mouse", async ({ page, isMobile }) => {
+    test.skip(isMobile, "hover");
+    await open(page, "/en");
+    const lineup = page.getByTestId("lineup");
+    const live = lineup.locator('[aria-live="polite"]');
+    const faris = lineup.locator('[data-id="faris"]');
+    await expect.poll(() => faris.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactFiber$")))).toBe(true);
+    await faris.hover();
+    await expect(lineup.locator(".s-cloud")).toHaveAttribute("data-on", "");
+    await expect(live).toHaveText("");
+    await faris.click();
+    await expect(live).not.toHaveText("");
+  });
 });
 
 test.describe("home with reduced motion", () => {
   test.use({ reducedMotion: "reduce" });
-  test("shows no storm and keeps every question still", async ({ page }) => {
+  test("nothing moves", async ({ page }) => {
     await open(page, "/en");
-    await expect(page.getByTestId("storm").locator("[data-storm-q]:visible")).toHaveCount(1);
-    // A lineup figure's flip: it is live on load. The story's flips sit paused until their chapter, so they would stay
-    // still whatever reduced motion did. Sample only once React owns it, so the 3 s wait spans a whole 2.4 s flip.
-    const q = page.getByTestId("figure").first().getByTestId("qflip");
-    await expect.poll(() => q.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactFiber$")))).toBe(true);
-    const before = await q.textContent();
-    await page.waitForTimeout(3000);
-    expect(await q.textContent()).toBe(before);
+    await page.waitForLoadState("load");
+    expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
   });
 });
 
-test("plays steps 1 to 5 by keyboard with no request to the server", async ({ page }) => {
+test("the pause button stops every doodle and seam, and starts them again", async ({ page }) => {
   await open(page, "/ar");
-  const api: string[] = [];
-  page.on("request", (r) => { if (new URL(r.url()).pathname.startsWith("/api/")) api.push(r.url()); });
-  const game = page.getByTestId("dictionary");
-  await game.getByLabel("وش اسم علامتك؟").fill("<b>قهوة</b>" + " ".repeat(10) + "x".repeat(100));
-  await game.getByRole("radio", { name: "قهوة" }).check();
-  await game.getByRole("button", { name: "التالي" }).press("Enter");
-  await expect(game).toHaveAttribute("data-step", "2");
-  for (const w of ["جريء", "دافي", "راقي", "شعبي", "هادي"]) await game.getByRole("button", { name: w }).press("Enter");
-  await expect(game.getByText("اخترت ٥ من ٥")).toBeVisible();
-  await game.getByRole("button", { name: "التالي" }).press("Enter");
-  await game.getByRole("button", { name: "التالي" }).press("Enter");
-  await expect(game).toHaveAttribute("data-step", "4");
-  await expect(game.getByText("<b>قهوة</b>", { exact: false }).first()).toBeVisible();
-  await game.getByRole("button", { name: "التالي" }).press("Enter");
-  await game.getByRole("button", { name: "موافق" }).press("Enter");
-  await expect(game).toHaveAttribute("data-step", "6");
-  expect(api).toEqual([]);
-});
-
-test("the game moves focus to each new step and ends on a start form that carries the URL", async ({ page }) => {
-  await open(page, "/en");
-  const game = page.getByTestId("dictionary");
-  const heading = game.getByRole("heading", { level: 3 });
-  const next = game.getByRole("button", { name: "Next" });
-  await game.getByLabel("What's your brand called?").fill("Bloom");
-  await game.getByRole("radio", { name: "Clinic" }).check();
-  await next.click();
-  await expect(heading).toBeFocused();
-  await expect(heading).toContainText("2/7");
-  for (const w of ["Bold", "Warm", "Calm", "Local", "Honest"]) await game.getByRole("button", { name: w }).click();
-  await expect(game.getByRole("button", { name: "Bold" })).toHaveAttribute("aria-pressed", "true");
-  await expect(game.getByRole("button", { name: "Playful" })).toHaveAttribute("aria-pressed", "false");
-  await expect(game.getByRole("button", { name: "Playful" })).toBeDisabled();
-  await next.click();
-  await expect(game.getByText("Example", { exact: true })).toHaveCount(1);
-  await next.click();
-  await expect(game.getByText("Example", { exact: true })).toHaveCount(2);
-  await expect(game.getByText("Bloom: your health deserves an appointment today, not tomorrow.")).toBeVisible();
-  await next.click();
-  await game.getByRole("button", { name: "Approve" }).click();
-  await expect(heading).toBeFocused();
-  await next.click();
-  await expect(game).toHaveAttribute("data-step", "7");
-  await expect(heading).toBeFocused();
-  await expect(heading).toContainText("7/7");
-  const url = game.locator('form input[name="url"]');
-  await url.fill("example.sa");
-  await url.press("Enter");
-  await expect(page).toHaveURL(/\/en\/app\/signup\?url=example\.sa/);
-});
-
-test.describe("the game with reduced motion", () => {
-  test.use({ reducedMotion: "reduce" });
-  test("its bubbles appear without moving", async ({ page }) => {
-    await open(page, "/en");
-    const game = page.getByTestId("dictionary");
-    await game.getByLabel("What's your brand called?").fill("Bloom");
-    const bubble = game.getByText("Nice name. Let me get to know you.", { exact: false });
-    await expect(bubble).toBeVisible();
-    expect(await bubble.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
-  });
-});
-
-test("the team talks and turns to you", async ({ page }) => {
-  await open(page, "/en");
-  const lineup = page.getByTestId("lineup");
-  await lineup.scrollIntoViewIfNeeded();
-  await expect(lineup.getByTestId("bubble").first()).toBeVisible({ timeout: 12000 });
-  const noor = lineup.locator('[data-cast="noor"]').first();
-  await noor.hover();
-  await expect(noor.locator("svg")).toHaveAttribute("data-pose", "turn");
-});
-
-/** True once React has attached to the node, so a click reaches its handler instead of the bare server HTML. */
-const live = (l: Locator) => l.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactFiber$")));
-
-test("a figure answers when you press it, once for screen readers", async ({ page }) => {
-  await open(page, "/en");
-  const lineup = page.getByTestId("lineup");
-  const said = lineup.locator('[aria-live="polite"]');
-  const noor = lineup.locator('[data-testid="figure"][data-cast="noor"]');
-  // The automatic banter is decoration: its bubbles play, and screen readers hear nothing.
-  await lineup.scrollIntoViewIfNeeded();
-  await expect(lineup.getByTestId("bubble").first()).toBeVisible({ timeout: 4000 });
-  await expect(said).toHaveText("");
-  await expect.poll(() => live(noor)).toBe(true);
-  const name = await noor.getAttribute("aria-label");
-  await noor.click();
-  // Its first line in the banter, in the speaker's bubble. The bubble is hidden from screen readers; the lineup's one
-  // polite live region says it instead, and the button keeps its name.
-  const bubble = noor.getByTestId("bubble");
-  await expect(bubble).toHaveText("“Found a trend!”");
-  await expect(bubble).toHaveAttribute("aria-hidden", "true");
-  await expect(said).toHaveText("Noor: “Found a trend!”");
-  await expect(noor).toHaveAccessibleName(name!);
-  await expect(bubble).toHaveCount(0, { timeout: 4000 });
-  // The owner has no banter line: it gives the finale's word. Keyboard activation works the same way.
-  const you = lineup.locator('[data-testid="figure"][data-cast="you"]');
-  await you.focus();
-  await page.keyboard.press("Enter");
-  await expect(you.getByTestId("bubble")).toHaveText("“Approved.”");
-});
-
-for (const lang of LANGS) {
-  test(`an agent with no banter line answers with its value line: Reem · ${lang}`, async ({ page }) => {
-    const reem = CAST.find((m) => m.id === "reem")!;
-    // The fallback only applies while she has no line of her own in the banter.
-    expect(BANTER.flatMap((b) => b.lines).some((l) => l.who === "reem")).toBe(false);
-    await open(page, `/${lang}`);
-    const lineup = page.getByTestId("lineup");
-    const figure = lineup.locator('[data-testid="figure"][data-cast="reem"]');
-    await figure.scrollIntoViewIfNeeded();
-    await expect.poll(() => live(figure)).toBe(true);
-    await figure.click();
-    const quoted = lang === "ar" ? `«${reem.value.ar}»` : `“${reem.value.en}”`;
-    await expect(figure.getByTestId("bubble")).toHaveText(quoted);
-    await expect(lineup.locator('[aria-live="polite"]')).toHaveText(`${reem.name[lang]}: ${quoted}`);
-  });
-}
-
-test.describe("the lineup at 1280px", () => {
-  test.use({ viewport: { width: 1280, height: 800 } });
-  test("fits the whole cast without scrolling its strip or the page", async ({ page }) => {
-    await open(page, "/en");
-    const lineup = page.getByTestId("lineup");
-    await expect(lineup.getByTestId("figure")).toHaveCount(CAST.length);
-    const strip = lineup.locator("ul").locator("..");
-    expect(await strip.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  });
-});
-
-test("the motion button stops the banter and the flips, and starts them again", async ({ page }) => {
-  await open(page, "/en");
-  const lineup = page.getByTestId("lineup");
-  await lineup.scrollIntoViewIfNeeded();
-  const bubbles = lineup.getByTestId("bubble");
-  await expect(bubbles.first()).toBeVisible({ timeout: 4000 });
-  await lineup.getByRole("button", { name: "Pause motion", exact: true }).click();
-  await expect(lineup).toHaveAttribute("data-motion", "paused");
-  const toggle = lineup.getByRole("button", { name: "Play motion", exact: true });
-  await expect(toggle).toBeVisible();
-  // One switch for the whole page: the story's button has flipped with it.
-  await expect(page.getByTestId("story").getByRole("button", { name: "Play motion", exact: true })).toBeVisible();
-  // Playing, the next line would come within 2.2 s and a question would flip within 2.4 s. Paused, neither happens.
-  const question = lineup.locator('[data-testid="figure"][data-cast="noor"]').getByTestId("qflip");
-  const before = await question.textContent();
-  await expect(bubbles).toHaveCount(0);
-  await page.waitForTimeout(3000);
-  await expect(bubbles).toHaveCount(0);
-  expect(await question.textContent()).toBe(before);
-  expect(await lineup.locator('[data-part="eyes"]').first().evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
+  await page.waitForLoadState("load");
+  const running = () => page.evaluate(() => document.getAnimations().filter((a) => a.playState === "running").length);
+  expect(await running()).toBeGreaterThan(0);
+  const toggle = page.getByTestId("lineup").locator("button:not([data-id])").first();
   await toggle.click();
-  await expect(lineup).toHaveAttribute("data-motion", "playing");
-  await expect(bubbles.first()).toBeVisible({ timeout: 4000 });
+  await expect(page.locator("html")).toHaveAttribute("data-motion", "off");
+  await expect.poll(running).toBe(0);
+  await toggle.click();
+  await expect(page.locator("html")).not.toHaveAttribute("data-motion", "off");
+  await expect.poll(running).toBeGreaterThan(0);
 });
-
-test("the story's pause button stops the storm and the flip, and pauses the lineup too", async ({ page }) => {
-  await open(page, "/en");
-  const story = page.getByTestId("story");
-  await expect.poll(() => live(story)).toBe(true);
-  await page.evaluate((f) => {
-    const s = document.querySelector('[data-testid="story"]') as HTMLElement;
-    window.scrollTo(0, s.offsetTop + (s.offsetHeight - window.innerHeight) * f);
-  }, middleOf(1));
-  // Chapter 1: Noor's questions flip on the stage, and the rest of the storm still circles the owner.
-  await expect(story).toHaveAttribute("data-chapter", "1");
-  const storm = story.locator("[data-storm-q]:not([data-taken])");
-  const states = () => storm.evaluateAll((els) => [...new Set(els.map((el) => getComputedStyle(el).animationPlayState))]);
-  await expect.poll(states).toEqual(["running"]);
-  // Whatever the button says, a question already taken and the hidden hero's nudge hold still.
-  expect(await story.locator("[data-storm-q][data-taken]").first().evaluate((el) => getComputedStyle(el).animationPlayState)).toBe("paused");
-  expect(await story.locator("h1 ~ [aria-hidden]").evaluate((el) => getComputedStyle(el, "::after").animationPlayState)).toBe("paused");
-  const toggle = story.getByRole("button", { name: /^(Pause|Play) motion$/ });
-  const box = await toggle.boundingBox();
-  await story.getByRole("button", { name: "Pause motion", exact: true }).click();
-  await expect.poll(states).toEqual(["paused"]);
-  await expect(page.getByTestId("lineup").getByRole("button", { name: "Play motion", exact: true })).toBeVisible();
-  expect(await toggle.boundingBox()).toEqual(box);
-  // Playing, the question on the stage would flip within 2.4 s. Paused, it holds.
-  const flip = story.locator('[data-phase="on"] [data-testid="qflip"]');
-  const before = await flip.textContent();
-  await page.waitForTimeout(3000);
-  expect(await flip.textContent()).toBe(before);
-  await story.getByRole("button", { name: "Play motion", exact: true }).click();
-  await expect.poll(states).toEqual(["running"]);
-  await expect.poll(() => flip.textContent(), { timeout: 4000 }).not.toBe(before);
-  // Scrolled out of sight (past the lineup, whose centring still leaves the stage's foot on screen), the story rests.
-  await page.getByTestId("dictionary").scrollIntoViewIfNeeded();
-  await expect(story).not.toHaveAttribute("data-live");
-});
-
-test.describe("home at 375px with the storm running", () => {
-  test.use({ viewport: { width: 375, height: 812 } });
-  for (const lang of LANGS) {
-    test(`never scrolls sideways, even while questions fly · ${lang}`, async ({ page }) => {
-      await open(page, `/${lang}`);
-      const story = page.getByTestId("story");
-      expect(await story.locator("[data-storm-q]").first().evaluate((el) => getComputedStyle(el).animationName)).not.toBe("none");
-      // Checked as soon as each chapter turns, while its questions are still travelling to the agent.
-      for (const [f, chapter] of [[middleOf(1), "1"], [middleOf(4), "4"], [1, String(FINALE)]] as const) {
-        await page.evaluate((f) => {
-          const s = document.querySelector('[data-testid="story"]') as HTMLElement;
-          window.scrollTo(0, s.offsetTop + (s.offsetHeight - window.innerHeight) * f);
-        }, f);
-        await expect(story).toHaveAttribute("data-chapter", chapter);
-        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), chapter).toBe(true);
-      }
-    });
-  }
-});
-
-test("a hidden tab rests the lineup and the story: no new line, no flip, no storm", async ({ page }) => {
-  await open(page, "/en");
-  const lineup = page.getByTestId("lineup");
-  await lineup.scrollIntoViewIfNeeded();
-  const bubbles = lineup.getByTestId("bubble");
-  await expect(bubbles.first()).toBeVisible({ timeout: 4000 });
-  const story = page.getByTestId("story");
-  await page.evaluate(() => {
-    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
-  await expect(lineup).not.toHaveAttribute("data-live");
-  // Showing, the next line would come within 2.2 s and a question would flip within 2.4 s.
-  const question = lineup.locator('[data-testid="figure"][data-cast="noor"]').getByTestId("qflip");
-  const before = await question.textContent();
-  await expect(bubbles).toHaveCount(0);
-  await page.waitForTimeout(2600);
-  await expect(bubbles).toHaveCount(0);
-  expect(await question.textContent()).toBe(before);
-  // Back at the top with the tab still hidden, the story's storm holds still.
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await expect(story).toHaveAttribute("data-chapter", "0");
-  expect(await story.locator("[data-storm-q]").first().evaluate((el) => getComputedStyle(el).animationPlayState)).toBe("paused");
-});
-
-test("the eyes follow the pointer the right way round in Arabic, and the figures blink and breathe", async ({ page, isMobile }) => {
-  test.skip(isMobile, "a phone has no pointer to follow");
-  await open(page, "/ar");
-  const lineup = page.getByTestId("lineup");
-  await lineup.scrollIntoViewIfNeeded();
-  const faris = lineup.locator('[data-testid="figure"][data-cast="faris"]');
-  await expect.poll(() => live(faris)).toBe(true);
-  const eyes = faris.locator('[data-part="eyes"]');
-  const gaze = () => eyes.evaluate((el) => parseFloat(getComputedStyle(el).translate) || 0);
-  const box = (await lineup.boundingBox())!;
-  // The strip's side padding, so the pointer is on the lineup but on no figure (a hovered figure faces you instead).
-  await page.mouse.move(box.x + box.width - 4, box.y + box.height / 2);
-  await expect.poll(gaze).toBeGreaterThan(1);
-  expect(await gaze()).toBeLessThanOrEqual(3);
-  await page.mouse.move(box.x + 4, box.y + box.height / 2);
-  await expect.poll(gaze).toBeLessThan(-1);
-  expect(await gaze()).toBeGreaterThanOrEqual(-3);
-  expect(await eyes.evaluate((el) => getComputedStyle(el).animationName)).not.toBe("none");
-  expect(await faris.locator('[data-part="body"]').evaluate((el) => getComputedStyle(el).animationName)).not.toBe("none");
-});
-
-test.describe("the lineup with reduced motion", () => {
-  test.use({ reducedMotion: "reduce" });
-  test("still answers, without moving, blinking, breathing or following the pointer", async ({ page }) => {
-    await open(page, "/en");
-    const lineup = page.getByTestId("lineup");
-    const sami = lineup.locator('[data-testid="figure"][data-cast="sami"]');
-    await expect.poll(() => live(sami)).toBe(true);
-    await sami.click();
-    const bubble = sami.getByTestId("bubble");
-    await expect(bubble).toHaveText("“The customer wants a discount.”");
-    expect(await bubble.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
-    const box = (await lineup.boundingBox())!;
-    await page.mouse.move(box.x + 4, box.y + box.height / 2);
-    await page.waitForTimeout(300);
-    for (const part of ["eyes", "body"]) {
-      const style = await sami.locator(`[data-part="${part}"]`).evaluate((el) => {
-        const s = getComputedStyle(el);
-        return { animation: s.animationName, translate: s.translate };
-      });
-      expect(style, part).toEqual({ animation: "none", translate: "none" });
-    }
-  });
-});
-
-/** Every line a figure can say, as its bubble shows it: its banter lines, and what it answers when pressed. */
-function linesOf(member: CastMember, lang: Lang): string[] {
-  const own = BANTER.flatMap((b) => b.lines).filter((l) => l.who === member.id).map((l) => l.text[lang]);
-  const answer = member.id === "you" ? HOME.finaleWord[lang] : (own[0] ?? member.value[lang]);
-  return [...new Set([...own, answer])].map((t) => (lang === "ar" ? `«${t}»` : `“${t}”`));
-}
-
-for (const width of [375, 768]) {
-  test.describe(`speech bubbles at ${width}px`, () => {
-    test.use({ viewport: { width, height: 900 }, reducedMotion: "reduce" });
-    for (const lang of LANGS) {
-      test(`every line fits above its figure and moves nothing · ${lang}`, async ({ page }) => {
-        await open(page, `/${lang}`);
-        const lineup = page.getByTestId("lineup");
-        const row = lineup.locator("ul");
-        await expect.poll(() => live(row)).toBe(true);
-        const height = await row.evaluate((el) => el.getBoundingClientRect().height);
-        for (const member of CAST) {
-          const figure = lineup.locator(`[data-testid="figure"][data-cast="${member.id}"]`);
-          await figure.click();
-          await expect(figure.getByTestId("bubble")).toBeVisible();
-          // Put each line in turn into the bubble on screen: it must stay inside its figure's question slot, below the
-          // strip's top edge (which clips), inside the figure's column and inside the viewport.
-          const outside = await figure.evaluate((el, lines) => {
-            const bubble = el.querySelector('[data-testid="bubble"]') as HTMLElement;
-            const shown = bubble.textContent;
-            const slot = bubble.parentElement!.getBoundingClientRect();
-            const column = el.getBoundingClientRect();
-            const strip = el.closest("ul")!.parentElement!.getBoundingClientRect();
-            const out: string[] = [];
-            for (const line of lines) {
-              bubble.textContent = line;
-              const b = bubble.getBoundingClientRect();
-              const inside =
-                b.top >= slot.top - 0.5 && b.bottom <= slot.bottom + 0.5 && b.top >= strip.top - 0.5 &&
-                b.left >= column.left - 0.5 && b.right <= column.right + 0.5 && b.left >= -0.5 && b.right <= innerWidth + 0.5;
-              if (!inside) out.push(line);
-            }
-            bubble.textContent = shown;
-            return out;
-          }, linesOf(member, lang));
-          expect(outside, member.id).toEqual([]);
-          expect(await row.evaluate((el) => el.getBoundingClientRect().height), member.id).toBe(height);
-        }
-      });
-    }
-  });
-}

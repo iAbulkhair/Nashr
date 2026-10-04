@@ -5,6 +5,7 @@ import { dict, isLang } from "@/lib/i18n";
 import { listPosts } from "@/lib/blog";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
+import Scribble from "@/components/Scribble";
 
 export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
   const { lang } = await params;
@@ -25,13 +26,16 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
     <>
       <Nav t={t} lang={lang} />
       <main className="page-wrap">
-        <h1 className="font-display text-4xl font-bold text-oasis">{lang === "ar" ? "المدونة" : "Blog"}</h1>
+        <h1 className="font-display text-4xl font-bold"><span className="s-ul"><Scribble kind="underline" seed="blog-h" />{lang === "ar" ? "المدونة" : "Blog"}</span></h1>
         <ul className="mt-10 grid gap-8">
           {posts.map((p) => (
             <li key={p.slug}>
-              <Link href={`/${lang}/blog/${p.slug}`} className="font-display text-2xl font-medium hover:text-oasis">{p.title}</Link>
-              <p className="mt-2 text-ink/70">{p.desc}</p>
-              <p className="mt-1 font-mono text-xs text-ink/50" dir="ltr">{p.date}</p>
+              <Link href={`/${lang}/blog/${p.slug}`} className="s-card block" data-boil>
+                <Scribble kind="box" seed={`blog-${p.slug}`} fill="paper" boil />
+                <h2 className="font-display text-2xl font-bold">{p.title}</h2>
+                <p className="mt-2 text-muted">{p.desc}</p>
+                <p className="mt-1 font-mono text-xs text-muted" dir="ltr">{p.date}</p>
+              </Link>
             </li>
           ))}
         </ul>

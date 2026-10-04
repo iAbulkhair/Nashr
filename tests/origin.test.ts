@@ -103,7 +103,7 @@ describe("rule 358: every link the app builds follows APP_ORIGIN", () => {
     vi.stubEnv("APP_ORIGIN", "https://example.test");
     const { helpTopics } = await import("@/lib/help");
     const { appOrigin } = await import("@/lib/origin");
-    const mcp = helpTopics(appOrigin()).flatMap((t) => t.items).find((i) => i.q.en === "How do I use Noor inside Claude?")!;
+    const mcp = helpTopics(appOrigin()).flatMap((t) => t.items).find((i) => i.q.en === "How do I use Noor inside my AI assistant?")!;
     expect(mcp.a.en).toContain("https://example.test/api/mcp");
     expect(mcp.a.ar).toContain("https://example.test/api/mcp");
     expect(mcp.a.en).not.toContain("{origin}");

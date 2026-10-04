@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Scribble from "@/components/Scribble";
 
 type Labels = { vote: string; voted: string; votesLabel: string; failed: string; slowDown: string };
 
@@ -41,13 +42,15 @@ export default function WishVote({ id, votes, voted, title, labels, loginHref }:
         onClick={click}
         aria-pressed={state.voted}
         aria-label={`${state.voted ? labels.voted : labels.vote}: ${title}`}
-        className={`flex min-w-16 flex-col items-center rounded-xl border px-3 py-1.5 text-sm font-semibold transition ${state.voted ? "border-oasis bg-oasis text-mist hover:bg-oasis-deep" : "border-oasis/25 bg-white text-oasis hover:border-oasis"} ${busy ? "opacity-70" : ""}`}
+        className={`s-chip flex min-w-16 flex-col items-center !px-3 !py-1.5 !text-sm !font-bold ${busy ? "opacity-70" : ""}`}
+        style={{ ["--chip-on" as string]: "var(--color-lemon)" }}
       >
+        <Scribble kind="box" seed={`wish-vote-${id}`} fill="paper" ring />
         <svg viewBox="0 0 12 12" className="h-3 w-3" aria-hidden><path d="M2 8l4-4 4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
         <span className="tnum" dir="ltr">{state.votes}</span>
-        <span className="text-xs font-medium">{state.voted ? labels.voted : labels.vote}</span>
+        <span className="text-xs font-semibold">{state.voted ? labels.voted : labels.vote}</span>
       </button>
-      {err && <p role="alert" className="max-w-28 text-center text-xs text-sadu-deep">{err}</p>}
+      {err && <p role="alert" className="max-w-28 text-center text-xs font-bold text-danger">{err}</p>}
     </div>
   );
 }
