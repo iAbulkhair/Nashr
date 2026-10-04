@@ -43,4 +43,10 @@ describe("the homepage is D, without the game (rule 516)", () => {
     expect(css).toMatch(/html\[data-motion="off"\]/);
     expect(read("src/components/home/motion.ts")).toMatch(/dataset\.motion/);
   });
+  it("keeps the page's padding out of the app's 48px face, which borrows .home for its colours", () => {
+    expect(read("src/components/app/DictionaryStart.tsx")).toMatch(/\$\{cast\.home\} \$\{cast\.face\}/);
+    const css = read("src/components/home/home.module.css");
+    expect(css).toMatch(/\.home \{[^}]*\bpadding:/);
+    expect(css.match(/\n\.face \{[^}]*\}/)?.[0]).toMatch(/\bpadding: 0;/);
+  });
 });

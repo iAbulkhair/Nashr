@@ -479,11 +479,13 @@
   align-items: flex-end;
   gap: 0.75rem;
 }
+/* The app's start page puts .home on this circle for its colours (DictionaryStart.tsx); the page's padding stays out. */
 .face {
   position: relative;
   flex: none;
   width: 48px;
   height: 48px;
+  padding: 0;
   border: 2px solid var(--color-ink);
   border-radius: 50%;
   background: var(--color-ground);
