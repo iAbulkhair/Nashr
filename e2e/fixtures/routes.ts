@@ -21,7 +21,8 @@ export const DEFAULT_TITLE: Record<Lang, string> = {
 };
 
 export const PUBLIC_ROUTES: PublicRoute[] = [
-  { path: "", unique: { en: "Thakeen solves them", ar: "وذكين يحلها" }, ownTitle: false },
+  // The cover's offer line (src/lib/home.ts `HERO.offer`, rule 516).
+  { path: "", unique: { en: "Eight agents who know your brand.", ar: "ثمانية وكلاء يعرفون علامتك." }, ownTitle: false },
   { path: "/pricing", unique: { en: "SAR", ar: "ريال" }, ownTitle: true },
   { path: "/tools", unique: { en: "free Arabic marketing tools", ar: "أداة تسويق مجانية" }, ownTitle: true },
   { path: "/agents", unique: { en: "Eight agents", ar: "ثمانية وكلاء" }, ownTitle: true },
