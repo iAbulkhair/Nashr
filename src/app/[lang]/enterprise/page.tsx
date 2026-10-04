@@ -5,6 +5,7 @@ import { SITE } from "@/lib/site";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import ContactForm from "@/components/ContactForm";
+import Scribble from "@/components/Scribble";
 import { pageMeta } from "@/lib/page-meta";
 
 export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
@@ -21,25 +22,37 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
     <>
       <Nav t={t} lang={lang} />
       <main>
-        <section className="bg-oasis-deep text-mist">
-          <div className="section-wrap">
-            <p className="eyebrow eyebrow-accent">{s.eyebrow}</p>
-            <h1 className="mt-3 max-w-3xl font-display text-4xl font-bold leading-tight sm:text-6xl">{s.title}</h1>
-            <p className="mt-5 max-w-2xl text-lg text-mist-dim">{s.sub}</p>
-            <a href="#contact" className="btn btn-accent btn-lg mt-8">{s.formTitle}</a>
-          </div>
-          <div className="border-t-[1.5px] border-ink" aria-hidden />
+        <section className="section-wrap">
+          <p className="eyebrow">{s.eyebrow}</p>
+          <h1 className="mt-3 max-w-3xl font-display text-4xl font-bold leading-tight sm:text-6xl">
+            <span className="s-ul">
+              <Scribble kind="underline" seed="enterprise-h" />
+              {s.title}
+            </span>
+          </h1>
+          <p className="mt-5 max-w-2xl text-lg text-muted">{s.sub}</p>
+          <a href="#contact" className="s-btn mt-8"><Scribble kind="pill" seed="enterprise-go" fill="ink" shadow ring />{s.formTitle}</a>
         </section>
-        <section className="mx-auto grid max-w-6xl gap-4 px-4 py-16 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
-          {s.features.map((f) => <div key={f.t} className="card card-sm"><h2 className="font-display font-medium text-oasis">{f.t}</h2><p className="mt-1 text-sm text-ink/70">{f.d}</p></div>)}
+        <section className="mx-auto grid max-w-6xl gap-x-6 gap-y-8 px-4 pb-16 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
+          {s.features.map((f, i) => (
+            <div key={f.t} className="s-card">
+              <Scribble kind="box" seed={`enterprise-${i}`} fill="paper" />
+              <h2 className="font-display text-lg font-bold">{f.t}</h2>
+              <p className="mt-1 text-sm text-muted">{f.d}</p>
+            </div>
+          ))}
         </section>
-        <section className="bg-salt-dim">
-          <div id="contact" className="mx-auto grid max-w-6xl scroll-mt-24 gap-10 px-4 py-14 sm:px-6 lg:grid-cols-2">
+        <section className="border-y-[1.5px] border-ink bg-lilac">
+          <div id="contact" className="mx-auto grid max-w-6xl scroll-mt-24 grid-cols-[minmax(0,1fr)] gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2">
             <div>
               <h2 className="font-display text-2xl font-bold">{s.notYetTitle}</h2>
-              <ul className="mt-4 space-y-3">{s.notYet.map((x) => <li key={x} className="flex gap-3 text-ink/80"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-sadu" />{x}</li>)}</ul>
+              <ul className="mt-4 space-y-3" role="list">{s.notYet.map((x) => <li key={x} className="flex gap-3"><span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-ink" aria-hidden />{x}</li>)}</ul>
             </div>
-            <div className="card"><h2 className="font-display text-xl font-bold text-oasis">{s.formTitle}</h2><div className="mt-4"><ContactForm lang={lang} kind="enterprise" page="/enterprise" /></div></div>
+            <div className="s-card">
+              <Scribble kind="box" seed="enterprise-form" fill="paper" heavy shadow />
+              <h2 className="font-display text-xl font-bold">{s.formTitle}</h2>
+              <div className="mt-4"><ContactForm lang={lang} kind="enterprise" page="/enterprise" /></div>
+            </div>
           </div>
         </section>
       </main>

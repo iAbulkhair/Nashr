@@ -38,6 +38,13 @@ const CLEAN: string[] = [
   "src/app/[lang]/agents/page.tsx",
   "src/app/[lang]/agents/[agent]/page.tsx",
   "src/components/UrlStart.tsx",
+  "src/app/[lang]/for/[industry]/page.tsx",
+  "src/app/[lang]/vs/[competitor]/page.tsx",
+  "src/app/[lang]/ai-marketing-agent/page.tsx",
+  "src/app/[lang]/customers/page.tsx",
+  "src/app/[lang]/enterprise/page.tsx",
+  "src/components/ContactForm.tsx",
+  "src/components/TickList.tsx",
 ];
 
 const OLD = /\b(oasis|saffron|sadu|salt|mist)(-deep|-dim)?\b/;

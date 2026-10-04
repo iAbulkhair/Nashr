@@ -10,6 +10,16 @@ import UrlStart from "@/components/UrlStart";
 import AgentsPage from "@/app/[lang]/agents/page";
 import AgentPage from "@/app/[lang]/agents/[agent]/page";
 import { AGENTS } from "@/lib/agents";
+import { existsSync } from "node:fs";
+import IndustryPage from "@/app/[lang]/for/[industry]/page";
+import VsPage from "@/app/[lang]/vs/[competitor]/page";
+import AgentDefinitionPage from "@/app/[lang]/ai-marketing-agent/page";
+import CustomersPage from "@/app/[lang]/customers/page";
+import EnterprisePage from "@/app/[lang]/enterprise/page";
+import ContactForm from "@/components/ContactForm";
+import { INDUSTRY_PAGES } from "@/lib/pages-industry";
+import { VS_PAGES } from "@/lib/pages-vs";
+import { SITE } from "@/lib/site";
 
 vi.mock("next/navigation", async (orig) => ({
   ...(await orig<typeof import("next/navigation")>()),
@@ -66,5 +76,52 @@ describe("the marketing pages are hand-drawn D (rule 518)", () => {
       expect(h).toMatch(/class="s-input[^"]*"[\s\S]*?<input[^>]*name="url"/);
       expect(h).toMatch(/<button[^>]*class="s-btn/);
     });
+
+    it(`a sector page · ${lang}: an underlined title, a scribbled card per workflow, a pill to sign up`, async () => {
+      const p = INDUSTRY_PAGES[lang][0];
+      const h = renderToStaticMarkup(await IndustryPage({ params: Promise.resolve({ lang, industry: p.slug }) }));
+      expect(h).toMatch(TITLE_SCRIBBLE("h1"));
+      expect(count(h, 'class="s-card')).toBe(p.workflows.length + PUBLIC_TIERS.length);
+      expect(h).toMatch(new RegExp(`<a[^>]*class="s-btn[^"]*"[^>]*href="/${lang}/app/signup"|<a[^>]*href="/${lang}/app/signup"[^>]*class="s-btn`));
+    });
+
+    it(`a comparison page · ${lang}: the short answer and both choices in scribbled cards`, async () => {
+      const p = VS_PAGES[lang][0];
+      const h = renderToStaticMarkup(await VsPage({ params: Promise.resolve({ lang, competitor: p.slug }) }));
+      expect(h).toMatch(TITLE_SCRIBBLE("h1"));
+      expect(count(h, 'class="s-card')).toBe(3);
+    });
+
+    it(`the definition page · ${lang}: the definition in a scribbled card, the ask-an-AI links as pills`, async () => {
+      const h = renderToStaticMarkup(await AgentDefinitionPage({ params: Promise.resolve({ lang }) }));
+      expect(h).toMatch(TITLE_SCRIBBLE("h1"));
+      expect(count(h, 'class="s-card')).toBe(1);
+      expect(count(h, 'class="s-chip')).toBe(3);
+    });
+
+    it(`customers · ${lang}: a scribbled card per sector and the scribbled form`, async () => {
+      const h = renderToStaticMarkup(await CustomersPage({ params: Promise.resolve({ lang }) }));
+      expect(h).toMatch(TITLE_SCRIBBLE("h1"));
+      for (const p of INDUSTRY_PAGES[lang]) expect(h, p.slug).toMatch(new RegExp(`href="/${lang}/for/${p.slug}"[^>]*class="s-card|class="s-card[^"]*"[^>]*href="/${lang}/for/${p.slug}"`));
+      expect(h).toContain('class="s-input');
+    });
+
+    it(`enterprise · ${lang}: a scribbled card per feature and a pill to the form`, async () => {
+      const h = renderToStaticMarkup(await EnterprisePage({ params: Promise.resolve({ lang }) }));
+      expect(h).toMatch(TITLE_SCRIBBLE("h1"));
+      expect(count(h, 'class="s-card')).toBe(SITE[lang].enterprise.features.length + 1);
+      expect(h).toMatch(/<a[^>]*href="#contact"[^>]*class="s-btn|<a[^>]*class="s-btn[^"]*"[^>]*href="#contact"/);
+    });
+
+    it(`the contact form · ${lang}: every field in a scribbled box, a pill to send`, () => {
+      const h = html(ContactForm, { lang, kind: "enterprise", page: "/enterprise" });
+      expect(count(h, 'class="s-input')).toBe(4);
+      expect(h).toMatch(/<button[^>]*class="s-btn/);
+      expect(h).not.toContain('class="input');
+    });
   }
+
+  it("the old dark homepage hero is gone (no page imports it)", () => {
+    expect(existsSync("src/components/Hero.tsx")).toBe(false);
+  });
 });
