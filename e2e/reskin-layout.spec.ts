@@ -7,7 +7,12 @@ import { expect, test, type Page } from "@playwright/test";
  */
 
 /** Paths after the language prefix. Each re-skin task adds the pages it moves. */
-export const PAGES: string[] = ["", "/pricing", "/app/login", "/agents", "/agents/faris", "/for/ecommerce", "/vs/chatgpt", "/ai-marketing-agent", "/customers", "/enterprise", "/tools", "/tools/hook-generator", "/blog", "/blog/ramadan-marketing-guide-2026", "/help", "/resources", "/updates", "/affiliates", "/affiliates/terms", "/privacy", "/terms", "/not-a-page"];
+export const PAGES: string[] = ["", "/pricing", "/app/login", "/agents", "/agents/faris", "/for/ecommerce", "/vs/chatgpt", "/ai-marketing-agent", "/customers", "/enterprise", "/tools", "/tools/hook-generator", "/blog", "/blog/ramadan-marketing-guide-2026", "/help", "/resources", "/updates", "/affiliates", "/affiliates/terms", "/privacy", "/terms", "/not-a-page", "/app/signup", "/app/forgot", "/app/reset", "/app/join"];
+/**
+ * Signed-in app paths, opened as the seeded owner (`e2e/auth.setup.ts`). Local runs only: against a deployed preview
+ * there is no throwaway account to sign in with, and the preview's store is not ours to fill.
+ */
+export const APP_PAGES: string[] = ["/app/start", "/app/onboarding"];
 const LANGS = ["ar", "en"] as const;
 const WIDTHS = [1440, 1024, 768, 390, 360];
 
@@ -34,17 +39,27 @@ export async function noSideways(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "the page scrolls sideways").toBe(true);
 }
 
-for (const lang of LANGS) {
-  for (const width of WIDTHS) {
-    for (const path of PAGES) {
-      test(`${lang} ${width} ${path || "/"}`, async ({ page }, info) => {
-        await page.setViewportSize({ width, height: 900 });
-        await page.goto(`/${lang}${path}`);
-        await page.waitForLoadState("load");
-        await noSideways(page);
-        const slug = path ? path.slice(1).replace(/\//g, "-") : "home";
-        await page.screenshot({ path: `e2e/.output/reskin/${info.project.name}/${lang}-${width}-${slug}.png`, fullPage: true });
-      });
+function matrix(paths: string[]) {
+  for (const lang of LANGS) {
+    for (const width of WIDTHS) {
+      for (const path of paths) {
+        test(`${lang} ${width} ${path || "/"}`, async ({ page }, info) => {
+          await page.setViewportSize({ width, height: 900 });
+          await page.goto(`/${lang}${path}`);
+          await page.waitForLoadState("load");
+          await noSideways(page);
+          const slug = path ? path.slice(1).replace(/\//g, "-") : "home";
+          await page.screenshot({ path: `e2e/.output/reskin/${info.project.name}/${lang}-${width}-${slug}.png`, fullPage: true });
+        });
+      }
     }
   }
 }
+
+matrix(PAGES);
+
+test.describe("signed in", () => {
+  test.skip(!!process.env.E2E_BASE_URL, "signed-in pages run against the local build only");
+  test.use({ storageState: "e2e/.auth/owner.json" });
+  matrix(APP_PAGES);
+});

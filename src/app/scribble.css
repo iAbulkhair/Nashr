@@ -103,6 +103,9 @@
 .s-btn:active > .scribble .shadow { transform: none; }
 .s-btn--ghost, .s-btn:disabled { color: var(--color-ink); }
 .s-btn:disabled { cursor: not-allowed; transform: none; }
+/* Disabled: ink label on lilac, so the label never sits ink on ink (rule 519). */
+.s-btn[aria-disabled="true"] { color: var(--color-ink); }
+.s-btn:is(:disabled, [aria-disabled="true"]) > .scribble .fill { fill: var(--color-lilac); }
 .s-btn--ghost > .scribble .fill { clip-path: inset(0 100% 0 0); transition: clip-path var(--duration-slow) var(--ease-out); }
 [dir="rtl"] .s-btn--ghost > .scribble .fill { clip-path: inset(0 0 0 100%); }
 .s-btn--ghost:is(:hover, :focus-visible) > .scribble .fill { clip-path: inset(0); }

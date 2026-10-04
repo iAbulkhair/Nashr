@@ -55,7 +55,7 @@ export default defineConfig({
       testIgnore: [/auth-flows\.spec\.ts/, /error-states\.spec\.ts/, /api-guards\.spec\.ts/, /reskin-.*\.spec\.ts/],
     },
     // WebKit for the re-skin layout matrix, on demand only (`E2E_WEBKIT=1`), so CI runs what it ran before.
-    ...(process.env.E2E_WEBKIT ? [{ name: "webkit", use: { ...devices["Desktop Safari"] }, testMatch: /reskin-.*\.spec\.ts/ }] : []),
+    ...(process.env.E2E_WEBKIT ? [{ name: "webkit", use: { ...devices["Desktop Safari"] }, testMatch: /reskin-.*\.spec\.ts/, dependencies: ["setup"] }] : []),
   ],
 
   // Against a deployed preview (`E2E_BASE_URL`) there is nothing to start.

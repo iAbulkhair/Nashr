@@ -64,6 +64,16 @@ const CLEAN: string[] = [
   "src/app/[lang]/not-found.tsx",
   "src/app/[lang]/error.tsx",
   "src/app/[lang]/[...rest]/page.tsx",
+  // Slice 4, the app screens (rule 519).
+  "src/components/app/AuthForm.tsx",
+  "src/components/app/JoinForm.tsx",
+  "src/components/app/PasswordRules.tsx",
+  "src/components/app/DictionaryStart.tsx",
+  "src/components/app/ReadOnlyNote.tsx",
+  "src/components/app/BrandForm.tsx",
+  "src/components/app/StartLaunch.tsx",
+  "src/components/app/OnboardCards.tsx",
+  "src/app/[lang]/app/start/page.tsx",
   // src/app/global-error.tsx cannot load the stylesheet, so it writes D's hex values out; reskin-marketing pins them.
 ];
 

@@ -199,7 +199,7 @@ describe("the Members page by role", () => {
 describe("the join page", () => {
   it("signed out: asks nothing of the server until the fragment is read", async () => {
     const h = await html(JoinPage);
-    expect(h).toContain(`<h1 class="page-title">${en.join.title}</h1>`);
+    expect(h).toMatch(new RegExp(`<h1 class="page-title"><span class="s-ul"><svg[^]*?</svg>${en.join.title}</span></h1>`));
     expect(h).toContain(en.join.checking);
   });
 

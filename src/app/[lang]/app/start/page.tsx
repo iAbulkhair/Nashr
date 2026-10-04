@@ -8,6 +8,7 @@ import { heldOnboard } from "@/lib/onboard-confirm";
 import { can } from "@/lib/roles";
 import DictionaryStart from "@/components/app/DictionaryStart";
 import ReadOnlyNote from "@/components/app/ReadOnlyNote";
+import Scribble from "@/components/Scribble";
 
 export default async function Page({ params, searchParams }: { params: Promise<{ lang: string }>; searchParams: Promise<{ url?: string }> }) {
   const { lang } = await params;
@@ -24,7 +25,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     const t = appDict[lang].start;
     return (
       <div className="mx-auto max-w-2xl">
-        <h1 className="page-title">{t.memberTitle}</h1>
+        <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="start-t1" />{t.memberTitle}</span></h1>
         <ReadOnlyNote className="mt-4" text={t.memberWait} />
       </div>
     );

@@ -8,6 +8,7 @@ import { bannedTerms } from "@/lib/brand-rules";
 import { ZONES, ZONE_IDS, zoneOf, zoneUtcLabel } from "@/lib/zones";
 import { Icon } from "./Icons";
 import ReadOnlyNote from "./ReadOnlyNote";
+import Scribble from "@/components/Scribble";
 
 const GUARD = {
   ar: { title: "حارس العلامة", body: "كلمات لا تريدها في أي منشور. أي مسودة تحتوي واحدة منها لا تُعتمد ولا تُنشر حتى تعدّلها. التحقق في الكود، وليس وعداً من النموذج.", examples: "أمثلة شائعة، اضغط للإضافة:", count: (n: number) => `${n} كلمة محمية`, none: "لا كلمات بعد: الحارس متوقف.", ex: ["مضمون", "الأفضل", "رقم 1", "رخيص", "بدون ألم"] },
@@ -47,7 +48,7 @@ export default function BrandForm({ t, lang, initial, readOnly = false }: { t: A
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="page-title">{o.title}</h1>
+      <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="brandform-t1" />{o.title}</span></h1>
       <p className="mt-2 text-ink/70">{o.sub}</p>
       {readOnly && <ReadOnlyNote text={t.readOnly.admin} />}
       <form onSubmit={onSubmit} className="mt-6">
@@ -86,24 +87,24 @@ export default function BrandForm({ t, lang, initial, readOnly = false }: { t: A
             <input name="competitors" defaultValue={initial?.competitors} placeholder={o.competitors} className={input} />
             <input name="preferred" defaultValue={initial?.preferred} placeholder={o.preferred} className={input} />
           </div>
-          <section id="guard" className={`rounded-xl border p-4 ${terms.length ? "border-oasis/30 bg-oasis/5" : "border-saffron/50 bg-saffron/10"}`}>
-            <p className="flex items-center gap-2 font-display font-bold text-oasis"><Icon name="shield" className="h-5 w-5" />{G.title}<span className={`badge ms-auto ${terms.length ? "badge-primary" : "badge-accent"}`}>{terms.length ? G.count(terms.length) : G.none}</span></p>
+          <section id="guard" className={`rounded-xl border p-4 ${terms.length ? "border-ink/30 bg-ink/5" : "border-lemon/50 bg-lemon/10"}`}>
+            <p className="flex items-center gap-2 font-display font-bold text-ink"><Icon name="shield" className="h-5 w-5" />{G.title}<span className={`badge ms-auto ${terms.length ? "badge-primary" : "badge-accent"}`}>{terms.length ? G.count(terms.length) : G.none}</span></p>
             <p className="mt-1 text-xs text-ink/70">{G.body}</p>
             <input name="banned" value={banned} onChange={(e) => setBanned(e.target.value)} placeholder={o.banned} aria-label={G.title} className={`${input} mt-3`} />
-            {terms.length > 0 && <ul className="mt-2 flex flex-wrap gap-1.5">{terms.map((w) => <li key={w} className="pop-in flex items-center gap-1 rounded-full bg-oasis px-2.5 py-0.5 text-xs text-mist" dir="auto"><Icon name="lock" className="h-3 w-3 text-saffron" />{w}</li>)}</ul>}
+            {terms.length > 0 && <ul className="mt-2 flex flex-wrap gap-1.5">{terms.map((w) => <li key={w} className="pop-in flex items-center gap-1 rounded-full bg-ink px-2.5 py-0.5 text-xs text-lilac" dir="auto"><Icon name="lock" className="h-3 w-3 text-lemon" />{w}</li>)}</ul>}
             <p className="mt-3 text-xs text-ink/60">{G.examples}</p>
-            <div className="mt-1 flex flex-wrap gap-1.5">{G.ex.filter((w) => !terms.some((x) => x.toLowerCase() === w.toLowerCase())).map((w) => <button type="button" key={w} onClick={() => addTerm(w)} className="rounded-full border border-dashed border-oasis/40 px-2.5 py-0.5 text-xs text-oasis hover:bg-oasis hover:text-mist" dir="auto">+ {w}</button>)}</div>
+            <div className="mt-1 flex flex-wrap gap-1.5">{G.ex.filter((w) => !terms.some((x) => x.toLowerCase() === w.toLowerCase())).map((w) => <button type="button" key={w} onClick={() => addTerm(w)} className="rounded-full border border-dashed border-ink/40 px-2.5 py-0.5 text-xs text-ink hover:bg-ink hover:text-lilac" dir="auto">+ {w}</button>)}</div>
           </section>
           <fieldset className="flex flex-wrap items-center gap-2 text-sm">
             <legend className="mb-1 w-full text-ink/60">{o.channels}</legend>
             {CHANNELS.map((c) => (
-              <button type="button" key={c} onClick={() => toggle(channels, setChannels, c)} className={`rounded-full border px-3 py-1 disabled:cursor-not-allowed disabled:opacity-60 ${channels.includes(c) ? "border-oasis bg-oasis text-mist" : "border-ink/20 bg-white"}`}>
+              <button type="button" key={c} onClick={() => toggle(channels, setChannels, c)} className={`rounded-full border px-3 py-1 disabled:cursor-not-allowed disabled:opacity-60 ${channels.includes(c) ? "border-ink bg-ink text-lilac" : "border-ink/20 bg-white"}`}>
                 {c}
               </button>
             ))}
           </fieldset>
           {!readOnly && <button disabled={busy} className="btn btn-primary">{o.save}</button>}
-          {msg && <p role="status" className="text-sm text-oasis">{msg}</p>}
+          {msg && <p role="status" className="text-sm text-ink">{msg}</p>}
         </fieldset>
       </form>
     </div>

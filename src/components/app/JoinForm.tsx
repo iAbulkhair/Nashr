@@ -7,6 +7,7 @@ import type { Lang } from "@/lib/i18n";
 import { passwordChecks, unmetRules } from "@/lib/auth-client";
 import { PasswordRules } from "./PasswordRules";
 import { forgetInviteToken, readInviteToken, recallInviteToken, rememberInviteToken, withoutFragment } from "./inviteToken";
+import Scribble from "@/components/Scribble";
 
 type Preview = { team: string; inviter: string; email: string; role: "admin" | "member"; expiresAt: string };
 type Phase = "checking" | "signedIn" | "none" | "invalid" | "ready";
@@ -95,7 +96,7 @@ export default function JoinForm({ t, lang, signedInAs }: { t: AppDict; lang: La
   const ok = !!name.trim() && checks.every(Boolean);
   return (
     <div className="mx-auto max-w-md">
-      <h1 className="page-title">{J.title}</h1>
+      <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="joinform-t1" />{J.title}</span></h1>
 
       {phase === "checking" && <p role="status" className="page-sub">{J.checking}</p>}
 
@@ -111,8 +112,8 @@ export default function JoinForm({ t, lang, signedInAs }: { t: AppDict; lang: La
 
       {(phase === "none" || phase === "invalid") && (
         <>
-          <p role="alert" className="mt-6 rounded-lg border border-sadu/30 bg-sadu/5 p-3 text-sm">{phase === "none" ? J.noToken : err || J.errors.invalid}</p>
-          <p className="mt-4 text-sm text-ink/70">{J.have} <Link href={`/${lang}/app/login`} className="font-medium text-oasis underline">{J.login}</Link></p>
+          <p role="alert" className="mt-6 rounded-lg border border-danger bg-agent-sami/20 p-3 text-sm">{phase === "none" ? J.noToken : err || J.errors.invalid}</p>
+          <p className="mt-4 text-sm text-ink/70">{J.have} <Link href={`/${lang}/app/login`} className="font-medium text-ink underline">{J.login}</Link></p>
         </>
       )}
 
@@ -132,8 +133,8 @@ export default function JoinForm({ t, lang, signedInAs }: { t: AppDict; lang: La
             <input name="name" required autoFocus autoComplete="name" maxLength={80} dir="auto" value={name} onChange={(e) => setName(e.target.value)} placeholder={J.name} aria-label={J.name} className="input" />
             <input ref={pwRef} name="password" required type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={J.password} aria-label={J.password} aria-describedby="join-rules" className="input" />
             <PasswordRules id="join-rules" rules={J.rules} checks={checks} lang={lang} />
-            {err && <p role="alert" className="text-sm text-sadu-deep">{err}</p>}
-            <button disabled={busy} aria-disabled={!ok ? true : undefined} aria-describedby="join-rules" className="btn btn-primary">{busy ? J.joining : J.submit}</button>
+            {err && <p role="alert" className="text-sm text-danger">{err}</p>}
+            <button disabled={busy} aria-disabled={!ok ? true : undefined} aria-describedby="join-rules" className="s-btn"><Scribble kind="pill" seed="joinform-b1" fill="ink" shadow ring />{busy ? J.joining : J.submit}</button>
           </form>
           <p className="mt-3 text-xs text-ink/60">{parts(J.note, { team: <span dir="auto">{preview.team}</span> })}</p>
           <p className="mt-2 text-xs text-ink/60">{J.legal1} <Link href={`/${lang}/terms`} className="underline">{J.terms}</Link> {J.and} <Link href={`/${lang}/privacy`} className="underline">{J.privacy}</Link>.</p>

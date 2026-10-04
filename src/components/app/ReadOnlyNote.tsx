@@ -7,8 +7,8 @@ import { Icon } from "./Icons";
  */
 export default function ReadOnlyNote({ text, className = "mt-3" }: { text: string; className?: string }) {
   return (
-    <p role="note" className={`${className} flex items-start gap-2 rounded-lg border border-saffron/40 bg-saffron/10 px-3 py-2 text-sm`}>
-      <Icon name="lock" className="mt-0.5 h-4 w-4 shrink-0 text-oasis" />
+    <p role="note" className={`${className} flex items-start gap-2 rounded-lg border border-lemon/40 bg-lemon/10 px-3 py-2 text-sm`}>
+      <Icon name="lock" className="mt-0.5 h-4 w-4 shrink-0 text-ink" />
       <span>{text}</span>
     </p>
   );
