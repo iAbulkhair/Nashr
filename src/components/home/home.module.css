@@ -3,24 +3,10 @@
  * Type stays on the system stack until the licensed faces arrive (spec §7.2).
  */
 .home {
-  --ground: #f7f3f9;
-  --ink: #2b193d;
-  --paper: #ffffff;
-  --gold: #c9a227;
-  --c-noor: #f9f871;
-  --c-sami: #ff5da2;
-  --c-razan: #00d9ff;
-  --c-faris: #b517ff;
-  --c-dana: #efe7f7;
-  --c-majed: #2b193d;
-  --c-layan: #7fe9ff;
-  /* DRAFT, pending the founder's approval (spec §3): a placeholder soft coral, kept clear of the site's amber accent. */
-  --c-reem: #ffa38a;
-  --c-you: #ffffff;
   --home-display: var(--font-display), ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
   --home-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
-  background: var(--ground);
-  color: var(--ink);
+  background: var(--color-ground);
+  color: var(--color-ink);
 }
 
 .srOnly {
@@ -43,30 +29,30 @@
   height: auto;
   overflow: visible;
 }
-.doodle[data-cast="noor"] { --fill: var(--c-noor); }
-.doodle[data-cast="sami"] { --fill: var(--c-sami); }
-.doodle[data-cast="razan"] { --fill: var(--c-razan); }
-.doodle[data-cast="faris"] { --fill: var(--c-faris); }
-.doodle[data-cast="dana"] { --fill: var(--c-dana); }
-.doodle[data-cast="majed"] { --fill: var(--c-majed); }
-.doodle[data-cast="layan"] { --fill: var(--c-layan); }
-.doodle[data-cast="reem"] { --fill: var(--c-reem); }
-.doodle[data-cast="you"] { --fill: var(--c-you); }
+.doodle[data-cast="noor"] { --fill: var(--color-agent-noor); }
+.doodle[data-cast="sami"] { --fill: var(--color-agent-sami); }
+.doodle[data-cast="razan"] { --fill: var(--color-agent-razan); }
+.doodle[data-cast="faris"] { --fill: var(--color-agent-faris); }
+.doodle[data-cast="dana"] { --fill: var(--color-agent-dana); }
+.doodle[data-cast="majed"] { --fill: var(--color-agent-majed); }
+.doodle[data-cast="layan"] { --fill: var(--color-agent-layan); }
+.doodle[data-cast="reem"] { --fill: var(--color-agent-reem); }
+.doodle[data-cast="you"] { --fill: var(--color-agent-you); }
 
 .doodle :is(path, circle, ellipse, rect, line) {
   fill: none;
-  stroke: var(--ink);
+  stroke: var(--color-ink);
   stroke-width: 3px;
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 .doodle .fill { fill: var(--fill); }
-.doodle .paper { fill: var(--paper); }
-.doodle .inkFill { fill: var(--ink); }
-.doodle .dot { fill: var(--ink); stroke: none; }
+.doodle .paper { fill: var(--color-paper); }
+.doodle .inkFill { fill: var(--color-ink); }
+.doodle .dot { fill: var(--color-ink); stroke: none; }
 .doodle .fine { stroke-width: 2px; }
-.doodle .gold { stroke: var(--gold); stroke-width: 3.5px; }
+.doodle .gold { stroke: var(--color-gold); stroke-width: 3.5px; }
 
 /* ---------- Story: one sticky stage, one chapter per screen (Story.tsx) ---------- */
 
@@ -89,7 +75,7 @@
 
 /* Phones: the words on top, the owner and the agent side by side below, the pause button under them. */
 .stage {
-  --wash: var(--ground);
+  --wash: var(--color-ground);
   position: sticky;
   top: var(--nav-h);
   height: calc(100svh - var(--nav-h));
@@ -107,17 +93,17 @@
   transition: background-color 0.6s ease;
 }
 /* Each agent's colour world washes over the ground in its chapter. */
-.stage[data-world="noor"] { --wash: var(--c-noor); }
-.stage[data-world="sami"] { --wash: var(--c-sami); }
-.stage[data-world="razan"] { --wash: var(--c-razan); }
-.stage[data-world="faris"] { --wash: var(--c-faris); }
-.stage[data-world="dana"] { --wash: var(--c-dana); }
-.stage[data-world="majed"] { --wash: var(--c-majed); }
-.stage[data-world="layan"] { --wash: var(--c-layan); }
-.stage[data-world="reem"] { --wash: var(--c-reem); }
+.stage[data-world="noor"] { --wash: var(--color-agent-noor); }
+.stage[data-world="sami"] { --wash: var(--color-agent-sami); }
+.stage[data-world="razan"] { --wash: var(--color-agent-razan); }
+.stage[data-world="faris"] { --wash: var(--color-agent-faris); }
+.stage[data-world="dana"] { --wash: var(--color-agent-dana); }
+.stage[data-world="majed"] { --wash: var(--color-agent-majed); }
+.stage[data-world="layan"] { --wash: var(--color-agent-layan); }
+.stage[data-world="reem"] { --wash: var(--color-agent-reem); }
 /* Majed's world is the ink colour itself: a pearl halo keeps the drawings' outlines on it. */
 .stage[data-world="majed"] .stageArt {
-  filter: drop-shadow(0 0 1px var(--ground)) drop-shadow(0 0 1px var(--ground));
+  filter: drop-shadow(0 0 1px var(--color-ground)) drop-shadow(0 0 1px var(--color-ground));
 }
 
 /* Words: one layer at a time in the copy area. Text always sits on the ground colour, whatever the world. */
@@ -133,7 +119,7 @@
 .card {
   padding: clamp(0.9rem, 2.5svh, 1.75rem) clamp(1rem, 2.5vw, 1.75rem);
   border-radius: 22px;
-  background: var(--ground);
+  background: var(--color-ground);
 }
 
 .line1 {
@@ -242,7 +228,7 @@
   justify-self: end;
   position: relative;
   z-index: 2;
-  background: var(--ground);
+  background: var(--color-ground);
 }
 
 /*
@@ -345,7 +331,7 @@
   display: block;
   padding: 0.1em 0.55em;
   border-radius: 999px;
-  background: var(--ground);
+  background: var(--color-ground);
   font-size: clamp(0.72rem, 1.1vw, 0.9rem);
   font-weight: 500;
   line-height: 1.5;
@@ -426,27 +412,27 @@
   flex: 1 1 14rem;
   min-width: 0;
   padding: 0.85rem 1.15rem;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--color-ink);
   border-radius: 999px;
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--color-paper);
+  color: var(--color-ink);
   font: inherit;
 }
-.startInput::placeholder { color: color-mix(in oklab, var(--ink) 62%, var(--paper)); }
-.startInput:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+.startInput::placeholder { color: color-mix(in oklab, var(--color-ink) 62%, var(--color-paper)); }
+.startInput:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 2px; }
 .startButton {
   flex: 0 0 auto;
   padding: 0.85rem 1.5rem;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--color-ink);
   border-radius: 999px;
-  background: var(--ink);
-  color: var(--ground);
+  background: var(--color-ink);
+  color: var(--color-ground);
   font: inherit;
   font-weight: 700;
   cursor: pointer;
 }
-.startButton:hover { background: color-mix(in oklab, var(--ink) 86%, var(--paper)); }
-.startButton:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+.startButton:hover { background: color-mix(in oklab, var(--color-ink) 86%, var(--color-paper)); }
+.startButton:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 3px; }
 
 /* ---------- Lineup: the whole cast in a row ---------- */
 
@@ -469,7 +455,7 @@
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 50%;
-  background: var(--ink);
+  background: var(--color-ink);
 }
 .strip {
   overflow-x: auto;
@@ -525,7 +511,7 @@
   text-align: center;
   cursor: pointer;
 }
-.figure:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
+.figure:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 4px; }
 
 /*
  * The question slot is as tall as this figure's longest question: invisible copies of all of them sit in the same cell
@@ -571,9 +557,9 @@
   display: inline-block;
   max-width: 100%;
   padding: 0.35em 0.8em;
-  border: 1.5px solid var(--ink);
+  border: 1.5px solid var(--color-ink);
   border-radius: 14px;
-  background: var(--paper);
+  background: var(--color-paper);
   transform-origin: 50% 100%;
   animation: flipIn 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
@@ -606,10 +592,10 @@
   display: inline-grid;
   flex: none;
   padding: 0.3rem 0.85rem;
-  border: 1.5px solid color-mix(in oklab, var(--ink) 55%, var(--ground));
+  border: 1.5px solid color-mix(in oklab, var(--color-ink) 55%, var(--color-ground));
   border-radius: 999px;
   background: none;
-  color: var(--ink);
+  color: var(--color-ink);
   font: inherit;
   font-size: 0.8rem;
   font-weight: 600;
@@ -619,8 +605,8 @@
 }
 .motionToggle > * { grid-area: 1 / 1; text-align: center; }
 .motionToggle > :not([data-on]) { visibility: hidden; }
-.motionToggle:hover { border-color: var(--ink); }
-.motionToggle:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+.motionToggle:hover { border-color: var(--color-ink); }
+.motionToggle:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 2px; }
 /* Without JavaScript nothing could pause anything, so there is no button. */
 @media (scripting: none) {
   .motionToggle { display: none; }
@@ -635,10 +621,10 @@
   display: inline-block;
   max-width: 100%;
   padding: 0.35em 0.8em;
-  border: 1.5px solid var(--ink);
+  border: 1.5px solid var(--color-ink);
   border-radius: 14px;
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--color-ink);
+  color: var(--color-paper);
   font-weight: 600;
   line-height: 1.4;
   text-wrap: balance;
@@ -656,7 +642,7 @@
   left: calc(50% - 6px);
   width: 12px;
   height: 7px;
-  background: var(--ink);
+  background: var(--color-ink);
   clip-path: polygon(0 0, 100% 0, 50% 100%);
 }
 .figure[data-talking] .qflip { visibility: hidden; }
@@ -729,7 +715,7 @@
 }
 .truth {
   padding: 1.25rem 0;
-  border-top: 3px solid var(--ink);
+  border-top: 3px solid var(--color-ink);
 }
 .truthTitle {
   font-size: 1.15rem;
@@ -790,13 +776,13 @@
   flex: none;
   width: 1.9rem;
   height: 1.9rem;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--color-ink);
   border-radius: 50%;
-  background: var(--paper);
+  background: var(--color-paper);
   font-weight: 700;
 }
-.railStep[data-state="done"] .railNum { background: color-mix(in oklab, var(--ink) 14%, var(--paper)); }
-.railStep[data-state="current"] .railNum { background: var(--ink); color: var(--ground); }
+.railStep[data-state="done"] .railNum { background: color-mix(in oklab, var(--color-ink) 14%, var(--color-paper)); }
+.railStep[data-state="current"] .railNum { background: var(--color-ink); color: var(--color-ground); }
 .railStep[data-state="current"] .railName {
   font-weight: 800;
   text-decoration-line: underline;
@@ -819,9 +805,9 @@
 .dictPanel {
   margin-top: 1.5rem;
   padding: clamp(1.1rem, 3vw, 2.25rem);
-  border: 2px solid var(--ink);
+  border: 2px solid var(--color-ink);
   border-radius: 24px;
-  background: var(--paper);
+  background: var(--color-paper);
 }
 .dictStep {
   font-family: var(--home-display);
@@ -831,7 +817,7 @@
   scroll-margin-top: 80px;
 }
 .dictStep:focus { outline: none; }
-.dictStep:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; border-radius: 6px; }
+.dictStep:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 4px; border-radius: 6px; }
 .dictCount {
   font-size: 0.75em;
   font-weight: 700;
@@ -856,13 +842,13 @@
   width: 100%;
   max-width: 28rem;
   padding: 0.8rem 1.1rem;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--color-ink);
   border-radius: 14px;
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--color-paper);
+  color: var(--color-ink);
   font: inherit;
 }
-.dictInput:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+.dictInput:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 2px; }
 .sectors {
   min-width: 0;
   margin: 0;
@@ -879,9 +865,9 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.55rem 1rem;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--color-ink);
   border-radius: 999px;
-  background: var(--paper);
+  background: var(--color-paper);
   font-weight: 600;
   cursor: pointer;
 }
@@ -889,11 +875,11 @@
   width: 1.05rem;
   height: 1.05rem;
   margin: 0;
-  accent-color: var(--ink);
+  accent-color: var(--color-ink);
 }
-.sector:has(:checked) { background: color-mix(in oklab, var(--ink) 10%, var(--paper)); }
+.sector:has(:checked) { background: color-mix(in oklab, var(--color-ink) 10%, var(--color-paper)); }
 /* The whole pill carries the focus ring, in place of the site's ring on the small radio itself. */
-.sector:has(:focus-visible) { outline: 3px solid var(--ink); outline-offset: 2px; }
+.sector:has(:focus-visible) { outline: 3px solid var(--color-ink); outline-offset: 2px; }
 .sector input:focus-visible { outline: none; }
 
 /* Step 2: twelve words, five picks. Picked words carry a tick as well as the fill. */
@@ -912,17 +898,17 @@
   justify-content: center;
   gap: 0.35rem;
   padding: 0.7rem 0.75rem;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--color-ink);
   border-radius: 14px;
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--color-paper);
+  color: var(--color-ink);
   font: inherit;
   font-weight: 700;
   cursor: pointer;
 }
-.word[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
+.word[aria-pressed="true"] { background: var(--color-ink); color: var(--color-ground); }
 .word:disabled { opacity: 0.45; cursor: not-allowed; }
-.word:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+.word:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 3px; }
 .tick { font-weight: 800; }
 .dictLive {
   display: grid;
@@ -941,9 +927,9 @@
   flex: none;
   width: 48px;
   height: 48px;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--color-ink);
   border-radius: 50%;
-  background: var(--ground);
+  background: var(--color-ground);
   overflow: hidden;
 }
 /* The full figure at twice the circle's width, lifted so the head sits in the middle. */
@@ -958,10 +944,10 @@
 .bubble {
   max-width: 34rem;
   padding: 0.7rem 1rem;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--color-ink);
   border-radius: 18px;
   border-end-start-radius: 4px;
-  background: var(--paper);
+  background: var(--color-paper);
   line-height: 1.6;
   animation: dictPop 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
@@ -985,9 +971,9 @@
 .sample {
   min-width: 0;
   padding: 1rem 1.15rem 1.15rem;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--color-ink);
   border-radius: 18px;
-  background: var(--ground);
+  background: var(--color-ground);
 }
 .sampleHead {
   display: flex;
@@ -1005,9 +991,9 @@
   flex: none;
   margin-inline-start: auto;
   padding: 0.15rem 0.65rem;
-  border: 1.5px solid var(--ink);
+  border: 1.5px solid var(--color-ink);
   border-radius: 999px;
-  background: var(--c-noor);
+  background: var(--color-agent-noor);
   font-size: 0.75rem;
   font-weight: 700;
 }
@@ -1020,7 +1006,7 @@
 .planList li + li {
   margin-top: 0.5rem;
   padding-top: 0.5rem;
-  border-top: 1.5px solid color-mix(in oklab, var(--ink) 25%, var(--ground));
+  border-top: 1.5px solid color-mix(in oklab, var(--color-ink) 25%, var(--color-ground));
 }
 .post {
   font-size: 1.1rem;
@@ -1029,10 +1015,10 @@
 }
 .chat {
   padding: 0.7rem 0.95rem;
-  border: 1.5px solid var(--ink);
+  border: 1.5px solid var(--color-ink);
   border-radius: 14px;
   border-start-start-radius: 4px;
-  background: var(--paper);
+  background: var(--color-paper);
   line-height: 1.7;
 }
 
@@ -1047,25 +1033,25 @@
 .approve {
   min-width: min(100%, 16rem);
   padding: 1.1rem 2.5rem;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--color-ink);
   border-radius: 999px;
-  background: var(--ink);
-  color: var(--ground);
+  background: var(--color-ink);
+  color: var(--color-ground);
   font: inherit;
   font-size: clamp(1.4rem, 3vw, 2rem);
   font-weight: 800;
   cursor: pointer;
 }
-.approve:hover { background: color-mix(in oklab, var(--ink) 86%, var(--paper)); }
-.approve:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
+.approve:hover { background: color-mix(in oklab, var(--color-ink) 86%, var(--color-paper)); }
+.approve:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 4px; }
 .approveNote { font-weight: 600; }
 
 /* Steps 6–7: previews, drawn dashed; they need real time and real data. */
 .preview {
   padding: 1.1rem 1.25rem;
-  border: 2px dashed var(--ink);
+  border: 2px dashed var(--color-ink);
   border-radius: 18px;
-  background: var(--ground);
+  background: var(--color-ground);
   line-height: 1.7;
 }
 .dictCtaLine {
@@ -1083,21 +1069,21 @@
 .dictBack,
 .dictNext {
   padding: 0.75rem 1.5rem;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--color-ink);
   border-radius: 999px;
   font: inherit;
   font-weight: 700;
   cursor: pointer;
 }
-.dictBack { background: var(--paper); color: var(--ink); }
+.dictBack { background: var(--color-paper); color: var(--color-ink); }
 .dictNext {
   margin-inline-start: auto;
-  background: var(--ink);
-  color: var(--ground);
+  background: var(--color-ink);
+  color: var(--color-ground);
 }
 .dictNext:disabled { opacity: 0.45; cursor: not-allowed; }
 .dictBack:focus-visible,
-.dictNext:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+.dictNext:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 3px; }
 
 /* Reduced motion: the game changes state instantly, nothing pops in. */
 @media (prefers-reduced-motion: reduce) {

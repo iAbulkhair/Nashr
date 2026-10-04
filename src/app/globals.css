@@ -2,23 +2,41 @@
 @import "./tokens.css";
 
 /*
- * Nashr design system
- * Layer 1 primitives and layer 2 semantics live in tokens.css (generated from
- * assets/design-tokens.json). Tailwind utilities map onto the primitives here;
- * layer 3 component classes below use the semantic tokens only.
+ * Thakeen design system: prototype D (rule 510)
+ * Layer 1 primitives and layer 2 semantics live in tokens.css (kept by hand
+ * from assets/design-tokens.json). Tailwind utilities map onto the primitives
+ * here; layer 3 component classes below use the semantic tokens only.
  */
 @theme inline {
-  --color-oasis: var(--primitive-color-oasis-500);
-  --color-oasis-deep: var(--primitive-color-oasis-700);
-  --color-salt: var(--primitive-color-salt-100);
-  --color-salt-dim: var(--primitive-color-salt-200);
-  --color-saffron: var(--primitive-color-saffron-500);
-  --color-sadu: var(--primitive-color-sadu-500);
-  --color-sadu-deep: var(--primitive-color-sadu-600);
-  --color-ink: var(--primitive-color-ink-500);
-  --color-mist: var(--primitive-color-mist-100);
-  --color-mist-dim: var(--primitive-color-mist-300);
-  --color-white: var(--primitive-color-salt-50);
+  --color-ink: var(--primitive-color-ink);
+  --color-muted: var(--primitive-color-muted);
+  --color-paper: var(--primitive-color-paper);
+  --color-ground: var(--primitive-color-ground);
+  --color-lilac: var(--primitive-color-lilac);
+  --color-lemon: var(--primitive-color-lemon);
+  --color-gold: var(--primitive-color-gold);
+  --color-danger: var(--primitive-color-danger);
+  --color-agent-noor: var(--primitive-color-agent-noor);
+  --color-agent-sami: var(--primitive-color-agent-sami);
+  --color-agent-razan: var(--primitive-color-agent-razan);
+  --color-agent-faris: var(--primitive-color-agent-faris);
+  --color-agent-dana: var(--primitive-color-agent-dana);
+  --color-agent-majed: var(--primitive-color-agent-majed);
+  --color-agent-layan: var(--primitive-color-agent-layan);
+  --color-agent-reem: var(--primitive-color-agent-reem);
+  --color-agent-you: var(--primitive-color-agent-you);
+
+  /* Old names, kept as aliases of D while the slices rename them; removed in the last slice (spec §2). */
+  --color-oasis: var(--primitive-color-ink);
+  --color-oasis-deep: color-mix(in oklab, var(--primitive-color-ink) 85%, black);
+  --color-saffron: var(--primitive-color-lemon);
+  --color-sadu: var(--primitive-color-danger);
+  --color-sadu-deep: var(--primitive-color-danger);
+  --color-salt: var(--primitive-color-ground);
+  --color-salt-dim: var(--primitive-color-lilac);
+  --color-mist: var(--primitive-color-lilac);
+  --color-mist-dim: color-mix(in oklab, var(--primitive-color-lilac) 75%, var(--primitive-color-ink));
+  --color-white: var(--primitive-color-paper);
 
   --font-display: var(--font-thmanyah);
   --font-body: var(--font-plex-arabic);

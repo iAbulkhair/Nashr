@@ -1,21 +1,18 @@
-# Nashr Design System · نظام تصميم نشر
+# Thakeen Design System · نظام تصميم ذكين
 
-Source of truth: `assets/design-tokens.json` → generated `src/app/tokens.css` (never edit by hand) → Tailwind theme and component classes in `src/app/globals.css`.
-Regenerate after editing the JSON:
-
-```bash
-node "<design-system skill dir>/scripts/generate-tokens.cjs" --config assets/design-tokens.json -o src/app/tokens.css
-```
+Source of truth: `assets/design-tokens.json`, mirrored by hand in `src/app/tokens.css` (`tests/design-tokens.test.ts`, rule 510, fails if the two drift apart), then the Tailwind theme and component classes in `src/app/globals.css`. The palette is prototype D's (spec `docs/superpowers/specs/2026-10-04-thakeen-reskin-design.md` §1).
 
 ## 1. Token layers · طبقات الرموز
 
 | Layer | Where | Examples | When to change |
 |---|---|---|---|
-| Primitive · أساسي | `tokens.css` `--primitive-*` | `--primitive-color-oasis-500` #0F3D3A, `--primitive-color-saffron-500` #F2B33D, `--primitive-color-sadu-500` #D9503F, `--primitive-color-salt-100` #F6F4EE, spacing 1–20, radius sm–full, shadows, durations | Rarely; brand refresh |
-| Semantic · دلالي | `tokens.css` `--color-*`, `--spacing-*` | `--color-background`, `--color-surface`, `--color-foreground`, `--color-primary(-hover/-active/-foreground)`, `--color-accent(...)`, `--color-danger(...)`, `--color-inverse-*`, `--color-ring`, `--spacing-section` | Theme switches (dark mode later) |
+| Primitive · أساسي | `tokens.css` `--primitive-*` | `--primitive-color-ink` #2b193d, `-muted` #5d4a70, `-paper` #fff, `-ground` #f7f3f9, `-lilac` #efe7f7, `-lemon` #f9f871, `-gold` #c9a227 (figure strokes only), `-danger` #cc0000; `--primitive-color-agent-<id>`; strokes, spacing 1–20, radius sm–full, durations 150/200/300 ms, easing | Rarely; brand refresh |
+| Semantic · دلالي | `tokens.css` `--color-*`, `--stroke-*`, `--ease-out`, `--duration-*`, `--spacing-*` | `--color-ink`, `--color-agent-noor`, `--color-background` (ground), `--color-foreground`/`--color-primary`/`--color-ring` (ink), `--color-accent` (lemon), `--color-danger`, `--stroke-pen` 1.25px, `--stroke-figure` 1.5px, `--ease-out` `cubic-bezier(.22,1,.36,1)` | Theme switches (dark mode later) |
 | Component · مكوّن | `tokens.css` `--button-*`, `--input-*`, `--card-*` | `--button-bg`, `--button-radius`, `--input-focus-ring`, `--card-padding` | Per-component tuning |
 
-Tailwind utilities (`bg-oasis`, `text-saffron`, `bg-salt-dim`, `text-mist`…) are mapped to the primitives via `@theme inline` in `globals.css`, so existing utility classes keep working and inherit any token change.
+Agents: noor #f9f871 · sami #ff5da2 · razan #00d9ff · faris #b517ff · dana #14b8a6 · majed #2b193d · layan #3fcf7e · reem #ff8a1f · you #fff. Agent colours are fills and strokes, never text colour; faris and majed fills carry paper text (ink on faris is 3.5:1). Error boxes: sami's rose fill with ink text; error text and borders `danger` #cc0000.
+
+Tailwind utilities `bg-ink`, `text-muted`, `bg-ground`, `bg-lilac`, `bg-lemon`, `border-danger`, `bg-agent-<id>` map onto the primitives via `@theme inline` in `globals.css`. The old names (`oasis`, `oasis-deep`, `saffron`, `sadu`, `sadu-deep`, `salt`, `salt-dim`, `mist`, `mist-dim`) are temporary aliases of D values while the re-skin renames them page by page; the last slice deletes them.
 
 ## 2. Component classes · فئات المكوّنات
 
@@ -56,7 +53,7 @@ Full width, surface bg, 15% ink border, radius md, 12px/16px padding, 14px text.
 3. App pages: `page-title` + `page-sub`, then `card` blocks; primary action per card is `btn-primary btn-sm`, destructive is `btn-danger`.
 4. RTL first: use logical properties (`ms-`, `me-`, `text-start`, `padding-inline`), numbers and URLs get `dir="ltr"`, free text gets `dir="auto"`.
 5. Every user-facing string comes from `src/lib/i18n.ts` (marketing) or `src/lib/app-i18n.ts` (app) in both Arabic and English. Inline `ar ? … : …` pairs are acceptable inside a single component, never English-only.
-6. Fonts: Readex Pro for display, IBM Plex Sans Arabic for body, IBM Plex Mono for numbers and code.
+6. Fonts: Thmanyah Serif Display for headings (`--font-display`, rule 317), IBM Plex Sans Arabic for body, IBM Plex Mono for numbers and code.
 
 ## 4. Status · الحالة (2026-09-17)
 - Tokens generated and wired; 160 repeated class strings replaced across 40+ components with the classes above; visual parity verified on landing, inbox, profile and founder console in Arabic.

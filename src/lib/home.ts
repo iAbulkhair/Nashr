@@ -72,7 +72,7 @@ export const AGENT_CAST: AgentMember[] = [
     id: "noor",
     name: { ar: "نور", en: "Noor" },
     value: { ar: "محتوى أسبوعك جاهز، بصوت علامتك.", en: "Your week of content, ready, in your voice." },
-    color: "#f9f871",
+    color: "var(--color-agent-noor)",
     questions: [
       { ar: "وش أنزّل اليوم؟", en: "What do I post today?", task: "social" },
       { ar: "وش أرسل للعملاء بالواتساب؟", en: "What do I send customers on WhatsApp?", task: "whatsapp" },
@@ -86,7 +86,7 @@ export const AGENT_CAST: AgentMember[] = [
     id: "sami",
     name: { ar: "سامي", en: "Sami" },
     value: { ar: "رد جاهز لكل عميل، ومتابعة ما تنسى أحد.", en: "A reply for every lead, a follow-up that forgets no one." },
-    color: "#ff5da2",
+    color: "var(--color-agent-sami)",
     questions: [
       { ar: "كيف أرد على هالعميل؟", en: "How do I answer this customer?", task: "sales_script" },
       { ar: "هذا جاد ولا يسأل وبس؟", en: "Serious buyer or just asking?", task: "lead_qualifier" },
@@ -99,7 +99,7 @@ export const AGENT_CAST: AgentMember[] = [
     id: "razan",
     name: { ar: "رزان", en: "Razan" },
     value: { ar: "أرقامك واضحة قبل ما تصرف.", en: "Your numbers, clear before you spend." },
-    color: "#00d9ff",
+    color: "var(--color-agent-razan)",
     questions: [
       { ar: "يستاهل الصرف؟", en: "Is it worth the spend?", task: "unit_economics" },
       { ar: "سعري صح؟", en: "Is my price right?", task: "pricing_review" },
@@ -112,7 +112,7 @@ export const AGENT_CAST: AgentMember[] = [
     id: "faris",
     name: { ar: "فارس", en: "Faris" },
     value: { ar: "خطة نمو ٩٠ يوم، وتجارب صغيرة قبل الصرف الكبير.", en: "A 90-day growth plan, small tests before big spending." },
-    color: "#b517ff",
+    color: "var(--color-agent-faris)",
     questions: [
       { ar: "وين نكبر بعدها؟", en: "Where do we grow next?", task: "gtm_plan" },
       { ar: "نفتح سوق جديد؟", en: "Do we open a new market?", task: "gtm_plan" },
@@ -126,7 +126,7 @@ export const AGENT_CAST: AgentMember[] = [
     id: "dana",
     name: { ar: "دانة", en: "Dana" },
     value: { ar: "تقرير أسبوعك من أرقامك، بدون تجميل.", en: "Your weekly report, from your numbers, no makeup." },
-    color: "#efe7f7",
+    color: "var(--color-agent-dana)",
     questions: [
       { ar: "طيب… نفع ولا لا؟", en: "So… did it work?", task: "weekly_report" },
       { ar: "وش صار هالأسبوع؟", en: "What happened this week?", task: "weekly_report" },
@@ -138,7 +138,7 @@ export const AGENT_CAST: AgentMember[] = [
     id: "majed",
     name: { ar: "ماجد", en: "Majed" },
     value: { ar: "قرار واضح، في صفحة وحدة.", en: "A clear decision, on one page." },
-    color: "#2b193d",
+    color: "var(--color-agent-majed)",
     questions: [
       { ar: "وش القرار؟", en: "What's the call?", task: "decision_memo" },
       { ar: "وش أولوياتي هالربع؟", en: "What are my priorities this quarter?", task: "okrs" },
@@ -151,7 +151,7 @@ export const AGENT_CAST: AgentMember[] = [
     id: "layan",
     name: { ar: "ليان", en: "Layan" },
     value: { ar: "تعرف وش يبي عميلك، وليش يرجع.", en: "Know what your customer wants, and why they come back." },
-    color: "#7fe9ff",
+    color: "var(--color-agent-layan)",
     questions: [
       { ar: "ليش ما رجع العميل؟", en: "Why didn't the customer come back?", task: "feedback_synthesis" },
       { ar: "وش يقولون عنا؟", en: "What are people saying about us?", task: "feedback_synthesis" },
@@ -162,12 +162,11 @@ export const AGENT_CAST: AgentMember[] = [
   },
   // DRAFT, pending the founder's approval (spec §5.2): Reem's colour, value line and questions. She owns no task type;
   // every question is one her free to-do list answers (today's and overdue items on My to-dos and in the morning brief).
-  // Her colour is a placeholder for the founder: soft coral, kept clear of the site's amber accent (#F2B33D).
   {
     id: "reem",
     name: { ar: "ريم", en: "Reem" },
     value: { ar: "مهامك ومواعيدك ومتابعاتك، في قائمة وحدة.", en: "Your to-dos, dates and follow-ups, in one list." },
-    color: "#ffa38a",
+    color: "var(--color-agent-reem)",
     questions: [
       { ar: "وش عليّ اليوم؟", en: "What's on me today?", feature: "todo" },
       { ar: "مين ما رد علي للحين؟", en: "Who still hasn't got back to me?", feature: "todo" },
@@ -184,7 +183,7 @@ export const CAST: CastMember[] = [
     id: "you",
     name: { ar: "أنت", en: "You" },
     value: { ar: "أنت توافق.", en: "You approve." },
-    color: "#ffffff",
+    color: "var(--color-agent-you)",
     questions: [],
   },
 ];

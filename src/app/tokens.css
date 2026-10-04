@@ -1,23 +1,28 @@
-/* Design Tokens - Auto-generated */
-/* Do not edit directly - modify tokens.json instead */
+/*
+ * Design tokens, kept by hand from assets/design-tokens.json (the one source; tests/design-tokens.test.ts holds the two
+ * together value for value). Palette: prototype D, rule 510. Components never write a colour value; they use these
+ * variables or the Tailwind names globals.css maps onto them.
+ */
 
 /* === PRIMITIVES === */
 :root {
-  --primitive-color-oasis-500: #0F3D3A;
-  --primitive-color-oasis-700: #0A2B29;
-  --primitive-color-oasis-900: #061C1B;
-  --primitive-color-salt-50: #FFFFFF;
-  --primitive-color-salt-100: #F6F4EE;
-  --primitive-color-salt-200: #EBE7DC;
-  --primitive-color-salt-300: #DDD8C9;
-  --primitive-color-saffron-400: #F5C25E;
-  --primitive-color-saffron-500: #F2B33D;
-  --primitive-color-saffron-600: #D99A1F;
-  --primitive-color-sadu-500: #D9503F;
-  --primitive-color-sadu-600: #B93F30;
-  --primitive-color-ink-500: #101418;
-  --primitive-color-mist-100: #E9F0EC;
-  --primitive-color-mist-300: #A9BFB8;
+  --primitive-color-ink: #2b193d;
+  --primitive-color-muted: #5d4a70;
+  --primitive-color-paper: #ffffff;
+  --primitive-color-ground: #f7f3f9;
+  --primitive-color-lilac: #efe7f7;
+  --primitive-color-lemon: #f9f871;
+  --primitive-color-gold: #c9a227;
+  --primitive-color-danger: #cc0000;
+  --primitive-color-agent-noor: #f9f871;
+  --primitive-color-agent-sami: #ff5da2;
+  --primitive-color-agent-razan: #00d9ff;
+  --primitive-color-agent-faris: #b517ff;
+  --primitive-color-agent-dana: #14b8a6;
+  --primitive-color-agent-majed: #2b193d;
+  --primitive-color-agent-layan: #3fcf7e;
+  --primitive-color-agent-reem: #ff8a1f;
+  --primitive-color-agent-you: #ffffff;
   --primitive-spacing-1: 0.25rem;
   --primitive-spacing-2: 0.5rem;
   --primitive-spacing-3: 0.75rem;
@@ -39,57 +44,86 @@
   --primitive-radius-lg: 0.75rem;
   --primitive-radius-xl: 1rem;
   --primitive-radius-full: 9999px;
-  --primitive-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --primitive-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --primitive-shadow-xl: 0 25px 50px -12px rgb(0 0 0 / 0.3);
   --primitive-duration-fast: 150ms;
   --primitive-duration-normal: 200ms;
+  --primitive-duration-slow: 300ms;
+  --primitive-stroke-pen: 1.25px;
+  --primitive-stroke-figure: 1.5px;
+  --primitive-stroke-fine: 1px;
+  --primitive-stroke-gold: 1.75px;
+  --primitive-stroke-focus: 2px;
+  --primitive-easing-out: cubic-bezier(.22,1,.36,1);
 }
 
 /* === SEMANTIC === */
 :root {
-  --color-background: #F6F4EE;
-  --color-background-muted: #EBE7DC;
-  --color-surface: #FFFFFF;
-  --color-foreground: #101418;
-  --color-primary: #0F3D3A;
-  --color-primary-hover: #0A2B29;
-  --color-primary-active: #061C1B;
-  --color-primary-foreground: #E9F0EC;
-  --color-accent: #F2B33D;
-  --color-accent-hover: #F5C25E;
-  --color-accent-active: #D99A1F;
-  --color-accent-foreground: #101418;
-  --color-danger: #D9503F;
-  --color-danger-hover: #B93F30;
-  --color-danger-foreground: #FFFFFF;
-  --color-inverse-background: #0A2B29;
-  --color-inverse-surface: #0F3D3A;
-  --color-inverse-foreground: #E9F0EC;
-  --color-inverse-muted: #A9BFB8;
-  --color-ring: #F2B33D;
+  --color-ink: #2b193d;
+  --color-muted: #5d4a70;
+  --color-paper: #ffffff;
+  --color-ground: #f7f3f9;
+  --color-lilac: #efe7f7;
+  --color-lemon: #f9f871;
+  --color-gold: #c9a227;
+  --color-danger: #cc0000;
+  --color-agent-noor: #f9f871;
+  --color-agent-sami: #ff5da2;
+  --color-agent-razan: #00d9ff;
+  --color-agent-faris: #b517ff;
+  --color-agent-dana: #14b8a6;
+  --color-agent-majed: #2b193d;
+  --color-agent-layan: #3fcf7e;
+  --color-agent-reem: #ff8a1f;
+  --color-agent-you: #ffffff;
+  --color-background: #f7f3f9;
+  --color-background-muted: #efe7f7;
+  --color-surface: #ffffff;
+  --color-foreground: #2b193d;
+  --color-primary: #2b193d;
+  --color-primary-hover: #5d4a70;
+  --color-primary-active: #2b193d;
+  --color-primary-foreground: #ffffff;
+  --color-accent: #f9f871;
+  --color-accent-hover: #f9f871;
+  --color-accent-active: #f9f871;
+  --color-accent-foreground: #2b193d;
+  --color-danger-hover: color-mix(in oklab, #cc0000 85%, black);
+  --color-danger-foreground: #ffffff;
+  --color-inverse-background: #2b193d;
+  --color-inverse-surface: #2b193d;
+  --color-inverse-foreground: #ffffff;
+  --color-inverse-muted: #efe7f7;
+  --color-ring: #2b193d;
   --spacing-component: 1rem;
   --spacing-section: 5rem;
+  --stroke-pen: 1.25px;
+  --stroke-figure: 1.5px;
+  --stroke-fine: 1px;
+  --stroke-gold: 1.75px;
+  --stroke-focus: 2px;
+  --ease-out: cubic-bezier(.22,1,.36,1);
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
 }
 
 /* === COMPONENTS === */
 :root {
-  --button-bg: #0F3D3A;
-  --button-fg: #E9F0EC;
-  --button-hover-bg: #0A2B29;
-  --button-active-bg: #061C1B;
+  --button-bg: #2b193d;
+  --button-fg: #ffffff;
+  --button-hover-bg: #5d4a70;
+  --button-active-bg: #2b193d;
   --button-padding-x: 1.25rem;
   --button-padding-y: 0.75rem;
   --button-radius: 0.5rem;
   --button-font-size: 0.875rem;
-  --input-bg: #FFFFFF;
-  --input-border: rgb(16 20 24 / 0.15);
-  --input-focus-ring: #F2B33D;
+  --input-bg: #ffffff;
+  --input-border: rgb(43 25 61 / 0.35);
+  --input-focus-ring: #2b193d;
   --input-padding-x: 1rem;
   --input-padding-y: 0.75rem;
   --input-radius: 0.5rem;
-  --card-bg: #FFFFFF;
-  --card-border: rgb(16 20 24 / 0.10);
+  --card-bg: #ffffff;
+  --card-border: rgb(43 25 61 / 0.15);
   --card-shadow: none;
   --card-padding: 1.25rem;
   --card-radius: 0.75rem;
