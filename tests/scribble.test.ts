@@ -41,7 +41,10 @@ describe("the pen draws the same line for the same seed (rule 512)", () => {
   it("keeps a box near its frame", () => {
     const xs = numbers(scribble("box", 200, 60, "s").d).filter((_, i) => i % 2 === 0);
     expect(xs.length).toBeGreaterThan(10);
-    for (const x of xs) expect(x).toBeGreaterThanOrEqual(-8), expect(x).toBeLessThanOrEqual(208);
+    for (const x of xs) {
+      expect(x).toBeGreaterThanOrEqual(-8);
+      expect(x).toBeLessThanOrEqual(208);
+    }
   });
 
   it("points a bubble's tail to the reading side", () => {

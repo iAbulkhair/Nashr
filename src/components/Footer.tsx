@@ -5,6 +5,7 @@ import { INDUSTRY_PAGES } from "@/lib/pages-industry";
 import { SITE } from "@/lib/site";
 import { VS_PAGES } from "@/lib/pages-vs";
 import LangToggle from "./LangToggle";
+import Scribble from "./Scribble";
 import Wordmark from "./Wordmark";
 
 /** `lang` is optional so older pages that pass only `t` keep working; it is derived from the text direction. */
@@ -18,22 +19,22 @@ export default function Footer({ t, lang: given }: { t: Dict; lang?: Lang }) {
     { title: f.company, links: [{ href: `/${lang}/customers`, label: s.menu.customers }, { href: `/${lang}/enterprise`, label: s.menu.enterprise }, { href: `/${lang}/pricing`, label: s.menu.pricing }, ...(VS_PAGES[lang][0] ? [{ href: `/${lang}/resources#compare`, label: s.resources.compare }] : []), { href: `/${lang}/privacy`, label: lang === "ar" ? "الخصوصية" : "Privacy" }, { href: `/${lang}/terms`, label: lang === "ar" ? "الشروط" : "Terms" }] },
   ];
   return (
-    <footer className="bg-ink text-mist-dim">
-      <div className="border-t-[1.5px] border-ink" aria-hidden />
+    <footer className="bg-ground text-muted">
+      <div className="relative isolate h-3" aria-hidden><Scribble kind="divider" seed="footer" /></div>
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_1fr_1fr]">
           <div>
-            <p className="font-display text-xl font-bold text-mist"><Wordmark lang={lang} name={t.brand} /></p>
+            <p className="font-display text-xl font-bold text-ink"><Wordmark lang={lang} name={t.brand} /></p>
             <p className="mt-1 text-sm">{t.footer.tagline}</p>
           </div>
           {cols.map((c) => (
             <nav key={c.title} aria-label={c.title}>
-              <p className="text-sm font-semibold text-mist">{c.title}</p>
-              <ul className="mt-3 space-y-2 text-sm">{c.links.map((l) => <li key={l.href}><Link href={l.href} className="hover:text-mist">{l.label}</Link></li>)}</ul>
+              <p className="text-sm font-semibold text-ink">{c.title}</p>
+              <ul className="mt-3 space-y-2 text-sm">{c.links.map((l) => <li key={l.href}><Link href={l.href} className="text-ink hover:underline">{l.label}</Link></li>)}</ul>
             </nav>
           ))}
         </div>
-        <div className="mt-10 flex items-center justify-between gap-4 border-t border-mist/10 pt-6 text-xs">
+        <div className="mt-10 flex items-center justify-between gap-4 border-t border-ink/15 pt-6 text-xs">
           <p>{t.footer.rights}</p>
           <LangToggle lang={lang} />
         </div>

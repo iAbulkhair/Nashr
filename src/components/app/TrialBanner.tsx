@@ -12,15 +12,15 @@ export default function TrialBanner({ lang, days, plan, industry, owner = true }
     ? `مع نور: خطة أسبوعية كل أحد، ومحتوى بلهجتك كلما طلبته، ولا يُنشر شيء إلا بطلبك.`
     : `With Noor: a weekly plan every Sunday, content in your dialect whenever you ask, and nothing is published unless you ask.`;
   return (
-    <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-saffron/50 bg-saffron/10 px-4 py-3 text-sm">
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border-[1.5px] border-ink bg-lemon/40 px-4 py-3 text-sm text-ink">
       <div>
         <p className="font-semibold">{days > 0 ? (ar ? `تجربتك تنتهي بعد ${days} ${days === 1 ? "يوم" : "أيام"}` : `Your trial ends in ${days} day${days === 1 ? "" : "s"}`) : ar ? "انتهت تجربتك" : "Your trial has ended"}</p>
-        <p className="mt-0.5 text-ink/70">{promise}{industry ? "" : ""}</p>
+        <p className="mt-0.5 text-muted">{promise}{industry ? "" : ""}</p>
       </div>
       {owner ? (
-        <Link href={`/${lang}/app/billing`} className="shrink-0 rounded-full bg-oasis px-5 py-2 font-semibold text-mist">{ar ? "فعّل نور" : "Activate Noor"}</Link>
+        <Link href={`/${lang}/app/billing`} className="btn btn-primary shrink-0 rounded-full px-5 py-2">{ar ? "فعّل نور" : "Activate Noor"}</Link>
       ) : (
-        <p className="shrink-0 text-ink/70">{ar ? "لتفعيل الاشتراك اطلب من مالك الحساب." : "Ask the account owner to activate."}</p>
+        <p className="shrink-0 text-muted">{ar ? "لتفعيل الاشتراك اطلب من مالك الحساب." : "Ask the account owner to activate."}</p>
       )}
     </div>
   );
