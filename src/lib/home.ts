@@ -225,6 +225,181 @@ export const BANTER: Banter[] = [
   },
 ];
 
+/*
+ * Prototype D's homepage (re-skin spec §4), copy verbatim from D in both languages except where it is untrue today:
+ * step 7, its aside and the data answer name the store and ad connections only as not yet live
+ * (`src/lib/integrations.ts` marks them "soon"). D's prototype notes and its start panel are left out (spec §8 C).
+ */
+
+/** The cover: issue stamp, the masthead's second line beside the wordmark, the offer and the lineup's hints. */
+export const HERO: { issue: L; tbox: L; offer: L; offerSwash: L; hintMouse: L; hintTouch: L; mecap: L } = {
+  issue: { ar: "العدد الأول", en: "Issue No. 1" },
+  tbox: { ar: "الذكي المكين.", en: "Smart. Steadfast." },
+  offer: { ar: "ثمانية وكلاء يعرفون علامتك.", en: "Eight agents who know your brand." },
+  offerSwash: { ar: "هم يشتغلون، وأنت توافق.", en: "They do the work, you approve." },
+  hintMouse: { ar: "مرّر الماوس على أي واحد منهم، وشوف وش يدور في باله.", en: "Hover over any of them and see what’s on their mind." },
+  hintTouch: { ar: "المس أي واحد منهم، وشوف وش يدور في باله.", en: "Tap any of them and see what’s on their mind." },
+  mecap: { ar: "…وهذا أنت. عليك كلمة وحدة.", en: "…and this is you. You have one word to say." },
+};
+
+/** Section headings and their one-line subtitles, in page order. */
+export const SECTIONS: Record<"rules" | "day" | "steps" | "faq", { h: L; sub?: L }> = {
+  rules: {
+    h: { ar: "قوانين الفريق.", en: "Team rules." },
+    sub: { ar: "أربع سوالف قصيرة. كل وحدة تثبت قانون يمشون عليه.", en: "Four quick chats. Each one shows a rule the team works by." },
+  },
+  day: {
+    h: { ar: "يومك.", en: "Your day." },
+    sub: { ar: "أربع لوحات: من أول سؤال، لين كلمة وحدة.", en: "Four panels: from the first question to one word." },
+  },
+  steps: {
+    h: { ar: "وش يصير بعد ما تلصق الرابط؟", en: "What happens after you paste the link?" },
+    sub: { ar: "سبع خطوات. ثنتين منها بيدك: كلماتك، وموافقتك.", en: "Seven steps. Two of them are in your hands: your words and your approval." },
+  },
+  faq: { h: { ar: "أسئلة قبل ما تبدأ", en: "Questions before you start" } },
+};
+
+/** The team rules: each banter exchange above, with the rule it proves. */
+const LAWS: L[] = [
+  { ar: "تجارب صغيرة قبل الصرف الكبير.", en: "Small tests before big spending." },
+  { ar: "الرقم اللي ما نعرفه، ما نألّفه.", en: "If we don’t know a number, we don’t make one up." },
+  { ar: "الكل يشتغل من نفس ملف علامتك.", en: "Everyone works from the same brand file." },
+  { ar: "القرار لك. كل شي ينتظر موافقتك.", en: "The call is yours. Everything waits for your approval." },
+];
+export const RULES: { law: L; lines: Banter["lines"] }[] = BANTER.map((b, i) => ({ law: LAWS[i], lines: b.lines }));
+
+const firstQuestion = (id: HomeAgentId): Question => AGENT_CAST.find((a) => a.id === id)!.questions[0];
+
+/**
+ * The day, four panels. The morning's clouds are the first question of each agent named (no new copy); panel three
+ * shows every agent's first question with its owner, so it carries only its caption.
+ */
+export const DAY: {
+  morning: { cap: L; clouds: Question[]; note: L; msg: L; hands: L };
+  peek: { cap: L; hi: L; ask: L; team: L; look: L };
+  owners: { cap: L };
+  word: { cap: L; stamp: L; end: L };
+} = {
+  morning: {
+    cap: { ar: "٧:٥٨ الصبح.", en: "7:58 a.m." },
+    clouds: [firstQuestion("noor"), firstQuestion("razan"), firstQuestion("layan")],
+    note: { ar: "رسالة جديدة", en: "New message" },
+    msg: { ar: "«كم السعر؟»", en: "“How much?”" },
+    hands: { ar: "صاحب الشغل ماسك راسه", en: "The business owner, head in hands" },
+  },
+  peek: {
+    cap: { ar: "بعدها بشوي… ثمانية يطلّون.", en: "A little later… eight faces pop up." },
+    hi: { ar: "صباح الخير.", en: "Good morning." },
+    ask: { ar: "…مين أنتم؟", en: "…who are you?" },
+    team: { ar: "فريقك.", en: "Your team." },
+    look: { ar: "صاحب الشغل يرفع راسه", en: "The business owner looks up" },
+  },
+  owners: { cap: { ar: "كل سؤال له صاحب.", en: "Every question has an owner." } },
+  word: { cap: { ar: "وأنت؟ عليك كلمة وحدة.", en: "And you? Just one word." }, stamp: HOME.finaleWord, end: HOME.finaleLine },
+};
+
+/**
+ * The seven steps after the link, explained only (spec §4: no live demo). `aside` is the line its speaker says;
+ * `paused` is D's "today" note for a step the model runs, shown only while the model is paused (`CLAUDE_PAUSED` in
+ * `src/lib/model.ts`), so the page stays true when it is turned back on.
+ */
+export const STEPS: { title: L; body: L; aside: L; who?: CastId; paused?: L }[] = [
+  {
+    title: { ar: "براندك", en: "Your brand" },
+    body: {
+      ar: "الصق رابط موقعك أو متجرك أو إنستقرامك. نور تقراه وتجهّز لك ملف علامتك، وأنت تراجعه وتعدّله.",
+      en: "Paste your website, store or Instagram link. Noor reads it and prepares your brand file, and you review and edit it.",
+    },
+    aside: { ar: "واللي أخمّنه، أكتب جنبه: تخمين.", en: "If I’m guessing, I write “guess” next to it." },
+    who: "noor",
+    paused: { ar: "اليوم: القراءة التلقائية متوقفة. تقدر تعبّي ملفك بنفسك.", en: "Today: automatic reading is paused. You can fill in your file yourself." },
+  },
+  {
+    title: { ar: "كلماتك", en: "Your words" },
+    body: {
+      ar: "الكلمات اللي تمنعها نطبّقها في الكود. المسودة اللي فيها وحدة منها ما تنقبل ولا تنتشر لين تعدّلها.",
+      en: "The words you ban are enforced in code. A draft that contains one can’t be approved or published until you edit it.",
+    },
+    aside: { ar: "الكلمة اللي ما أبيها، ما تمرّ.", en: "A word I don’t want doesn’t get through." },
+    who: "you",
+  },
+  {
+    title: { ar: "خطة", en: "Plan" },
+    body: {
+      ar: "كل أحد الصبح تكتب نور خطة أسبوعك على مواسم الخليج، وتنتظرك في صندوقك. وفارس وماجد يكتبون خطة ٩٠ يوم لما تطلب.",
+      en: "Every Sunday morning Noor writes your week’s plan around Gulf seasons, and it waits in your inbox. Faris and Majed write a 90-day plan when you ask.",
+    },
+    aside: { ar: "كل أحد الصبح، خطة أسبوعك تنتظرك.", en: "Every Sunday morning, your week’s plan is waiting." },
+    who: "noor",
+    paused: { ar: "اليوم: الخطة الأسبوعية متوقفة مؤقتاً.", en: "Today: the weekly plan is paused." },
+  },
+  {
+    title: { ar: "مسودة", en: "Draft" },
+    body: {
+      ar: "مسودات بلهجتك من ملف علامتك. مراجع ثاني يشيك على كل وحدة، وكلها تنتظرك.",
+      en: "Drafts in your dialect, from your brand file. A second reviewer checks each one, and they all wait for you.",
+    },
+    aside: { ar: "الرقم اللي ما نعرفه، ما نألّفه.", en: "If we don’t know a number, we don’t make one up." },
+    who: "noor",
+    paused: { ar: "اليوم: كتابة المسودات متوقفة مؤقتاً.", en: "Today: draft writing is paused." },
+  },
+  {
+    title: { ar: "موافقتك", en: "Your approval" },
+    body: {
+      ar: "وافق، أو عدّل، أو ارفض وقل السبب. النشر زر ثاني تضغطه أنت، وما فيه شي ينتشر على جدول.",
+      en: "Approve, edit, or reject and say why. Publishing is a separate button you press, and nothing goes out on a schedule.",
+    },
+    aside: { ar: "هذي ما نحسمها. أنت توافق.", en: "That’s not ours to decide. You approve." },
+    who: "majed",
+    paused: {
+      ar: "والموافقة التلقائية مطفّاة، وما يشغّلها إلا أنت. اليوم: شغّالة، بس ما فيه مسودات جديدة لين ترجع الكتابة.",
+      en: "Auto-approval is off, and only you can turn it on. Today: working, but there are no new drafts until writing is back.",
+    },
+  },
+  {
+    title: { ar: "تحليل", en: "Analysis" },
+    body: {
+      ar: "نقارن إعلاناتك ببعض من نتايجك أنت، ونوريك العينة ورا كل نتيجة. واللي نفع يدخل في المسودات الجاية.",
+      en: "We compare your ads with each other using your own results, and show you the sample size behind each result. What worked goes into the next drafts.",
+    },
+    aside: { ar: "واللي دليله ضعيف، نقول لك إنه ضعيف.", en: "And when the evidence is weak, we tell you it’s weak." },
+    who: "dana",
+    paused: { ar: "اليوم: المقارنة شغّالة. تقرير دانة المكتوب متوقف مؤقتاً.", en: "Today: the comparison works. Dana’s written report is paused." },
+  },
+  {
+    title: { ar: "قياس", en: "Measurement" },
+    body: {
+      ar: "نقيس من اللي تربطه: ملف CSV اليوم، ونتايج إعلانات ميتا وسناب ومبيعات سلة وشوبيفاي وزد لما ينطلق ربطها قريب.",
+      en: "We measure from what you connect: a CSV file today, and Meta and Snapchat ad results and Salla, Shopify and Zid sales once those connections launch (coming soon).",
+    },
+    aside: { ar: "حساب إعلاناتك، لما تربطه، نقراه بس وما نعدّل فيه.", en: "Once you connect your ad account, we only read it. We never change anything in it." },
+  },
+];
+
+export const HOME_FAQ: { q: L; a: L }[] = [
+  {
+    q: { ar: "ينشر شي بدون موافقتي؟", en: "Does anything get published without my approval?" },
+    a: {
+      ar: "لا. كل مسودة تنتظر موافقتك. والموافقة التلقائية مطفّاة من البداية، وما يشغّلها لأنواع محددة إلا أنت.",
+      en: "No. Every draft waits for your approval. Auto-approval is off from the start, and only you can turn it on, for the types you choose.",
+    },
+  },
+  {
+    q: { ar: "وافقت… ينتشر على طول؟", en: "I approved… does it go out right away?" },
+    a: {
+      ar: "لا. النشر زر ثاني تضغطه أنت، عن طريق التكاملات اللي ربطتها. وما فيه نشر على جدول.",
+      en: "No. Publishing is a separate button you press, through the integrations you connected. And there is no scheduled publishing.",
+    },
+  },
+  {
+    q: { ar: "وش تسوون ببياناتي؟", en: "What do you do with my data?" },
+    a: {
+      ar: "بياناتك لمساحة عملك بس، وما تنشارك بين الحسابات. لما تربط حساب إعلاناتك نقراه وما نعدّل فيه، ولما تربط متجرك ناخذ المجاميع بدون بيانات المتسوقين. وتحذف حسابك وبياناتك بنفسك من صفحة «حسابك».",
+      en: "Your data stays in your workspace and is never shared between accounts. Once you connect your ad account we read it and don’t change it, and once you connect your store we take totals without shopper data. You can delete your account and data yourself from the “Your account” page.",
+    },
+  },
+];
+
 export const TRUTHS: { title: L; body: L }[] = [
   {
     title: { ar: "يبدأ من موقعك", en: "It starts from your website" },

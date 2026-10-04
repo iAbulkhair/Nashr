@@ -1,7 +1,7 @@
 import { existsSync } from "fs";
 import { join } from "path";
 import { describe, expect, it } from "vitest";
-import { CAST, AGENT_CAST, STORM, BANTER, SLOGAN, TRUTHS, HOME, type Feature } from "@/lib/home";
+import { CAST, AGENT_CAST, STORM, BANTER, SLOGAN, TRUTHS, HOME, HERO, RULES, DAY, STEPS, HOME_FAQ, SECTIONS, type Feature, type L } from "@/lib/home";
 import { agentById, isAgentId } from "@/lib/agents";
 import { isTaskType } from "@/lib/tasks";
 
@@ -96,5 +96,69 @@ describe("home copy is true to the product", () => {
     expect(BANTER).toHaveLength(4);
     for (const b of BANTER) for (const l of b.lines) expect(isAgentId(l.who)).toBe(true);
     expect(TRUTHS).toHaveLength(4);
+  });
+});
+
+/** Every visible string of prototype D's homepage copy, both languages. */
+const dCopy = (): string[] => {
+  const ls: L[] = [
+    ...Object.values(HERO),
+    ...Object.values(SECTIONS).flatMap((s) => Object.values(s)),
+    ...RULES.flatMap((r) => [r.law, ...r.lines.map((l) => l.text)]),
+    ...Object.values(DAY).flatMap((p) => Object.values(p).filter((v): v is L => typeof v === "object" && !Array.isArray(v))),
+    ...STEPS.flatMap((s) => [s.title, s.body, s.aside, ...(s.paused ? [s.paused] : [])]),
+    ...HOME_FAQ.flatMap((f) => [f.q, f.a]),
+  ];
+  return ls.flatMap((l) => [l.ar, l.en]);
+};
+
+/**
+ * Connections the catalog marks "soon" (`src/lib/integrations.ts`). A line may name one only while saying it is not
+ * live yet, so the homepage never claims a measurement source the product cannot read today.
+ */
+const NOT_LIVE = [/meta|ميتا/i, /snap|سناب/i, /salla|سلة/i, /shopify|شوبيفاي/i, /\bzid\b|زد/i];
+const SAYS_SOON = /قريب|لما ينطلق|لما تربط|once .*(launch|connect)|coming soon/i;
+
+describe("the D homepage copy is true (rule 514)", () => {
+  const cast = new Set(CAST.map((c) => c.id));
+  it("has four rules, four day panels, seven steps and three questions, each spoken by a real cast member", () => {
+    expect(RULES).toHaveLength(4);
+    expect(Object.keys(DAY)).toEqual(["morning", "peek", "owners", "word"]);
+    expect(STEPS).toHaveLength(7);
+    expect(HOME_FAQ).toHaveLength(3);
+    for (const r of RULES) for (const l of r.lines) expect(isAgentId(l.who)).toBe(true);
+    for (const s of STEPS) if (s.who) expect(cast.has(s.who), s.title.en).toBe(true);
+    for (const q of DAY.morning.clouds) expect(STORM).toContain(q);
+  });
+  it("every string is written in both languages", () => {
+    for (const s of dCopy()) expect(s.trim().length, s).toBeGreaterThan(0);
+  });
+  it("names no AI model", () => {
+    for (const s of dCopy()) expect(s, s).not.toMatch(/Claude|Anthropic|GPT|OpenAI|Gemini|Opus|Sonnet|Haiku/i);
+  });
+  it("has no number but a clock time, the masthead's issue and the 90-day plan", () => {
+    const clock = [DAY.morning.cap.ar, DAY.morning.cap.en, HERO.issue.en];
+    for (const s of dCopy().filter((s) => !clock.includes(s))) expect(s.replace(/٩٠|90/g, ""), s).not.toMatch(/[0-9٠-٩]/);
+    expect(DAY.morning.cap.ar).toBe("٧:٥٨ الصبح.");
+  });
+  it("promises nothing NOT_YET lists", () => {
+    for (const s of dCopy()) expect(promises(s), s).toEqual([]);
+  });
+  it("names a connection the catalog marks soon only while saying so", () => {
+    for (const bad of ["We measure Meta and Snapchat ad results.", "مبيعات سلة وزد"]) {
+      expect(NOT_LIVE.some((p) => p.test(bad)) && !SAYS_SOON.test(bad), bad).toBe(true);
+    }
+    for (const s of dCopy()) if (NOT_LIVE.some((p) => p.test(s))) expect(s, s).toMatch(SAYS_SOON);
+  });
+  it("draws the morning's clouds from the agents' own questions, and ends on the approved word", () => {
+    const first = (id: string) => AGENT_CAST.find((a) => a.id === id)!.questions[0];
+    expect(DAY.morning.clouds).toEqual([first("noor"), first("razan"), first("layan")]);
+    expect(DAY.word.stamp).toEqual(HOME.finaleWord);
+    expect(DAY.word.end).toEqual(HOME.finaleLine);
+  });
+  it("keeps the hero's offer and the masthead's line verbatim from D", () => {
+    expect(HERO.offer.ar).toBe("ثمانية وكلاء يعرفون علامتك.");
+    expect(HERO.offerSwash.ar).toBe("هم يشتغلون، وأنت توافق.");
+    expect(HERO.tbox.ar).toBe("الذكي المكين.");
   });
 });
