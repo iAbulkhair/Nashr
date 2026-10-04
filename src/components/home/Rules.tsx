@@ -39,7 +39,7 @@ export default function Rules({ lang }: { lang: Lang }) {
                     <p key={j} className={a ? styles.l : `${styles.l} ${styles.lb}`}>
                       <Face who={l.who} seed={`rf${i}${j}`} small />
                       <span className="s-bubble" data-tail={a ? "start" : "end"}>
-                        <Scribble kind="bubble" seed={`rb${i}${j}`} tail={a ? "start" : "end"} />
+                        <Scribble kind="bubble" seed={`rb${i}${j}`} tail={a ? "start" : "end"} rtl={lang === "ar"} />
                         <span className={styles.srOnly}>{name(l.who, lang)}: </span>
                         {l.text[lang]}
                       </span>

@@ -187,4 +187,10 @@ describe("the public FAQ, enterprise page and help centre name no AI assistant b
     const text = JSON.stringify([dict.ar.faq, dict.en.faq, SITE.ar.enterprise, SITE.en.enterprise, HELP]);
     expect(text).not.toMatch(/Claude|Anthropic/i);
   });
+
+  it("the comparison and sector pages never say Claude either", async () => {
+    const { VS_PAGES } = await import("@/lib/pages-vs");
+    const { INDUSTRY_PAGES } = await import("@/lib/pages-industry");
+    expect(JSON.stringify([VS_PAGES, INDUSTRY_PAGES])).not.toMatch(/Claude|Anthropic/i);
+  });
 });

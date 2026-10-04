@@ -57,4 +57,13 @@ describe("motion stays calm (rule 511)", () => {
       expect(src, f).not.toMatch(/journey-fill"[^>]*width:/);
     }
   });
+
+  it("looping decoration runs only inside the homepage, the one page with a motion switch (WCAG 2.2.2)", () => {
+    // Face and the floats are reused on /agents and in onboarding, which have no pause control, so a loop there would
+    // never stop. Every infinite animation in the homepage sheet is scoped under `.home`.
+    const css = read("src/components/home/home.module.css").replace(/\/\*[\s\S]*?\*\//g, "");
+    const loops = [...css.matchAll(/([^{};]+)\{[^{}]*animation:[^;}]*infinite/g)].map((m) => m[1].trim());
+    expect(loops.length).toBeGreaterThan(0);
+    for (const sel of loops) expect(sel, sel).toMatch(/^html:not\(\[data-motion="off"\]\) \.home /);
+  });
 });

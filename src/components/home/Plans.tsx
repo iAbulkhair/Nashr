@@ -32,7 +32,7 @@ export default function Plans({ t, lang }: { t: Dict; lang: Lang }) {
         </p>
         <div className={styles.act}>
           <p className="s-bubble" data-tail="bottom">
-            <Scribble kind="bubble" seed="razan-b" tail="bottom" tailAt={0.12} />
+            <Scribble kind="bubble" seed="razan-b" tail="bottom" tailAt={0.12} rtl={lang === "ar"} />
             <span className={styles.srOnly}>{razan.name[lang]}: </span>
             {PLANS.aside.text[lang]}
           </p>

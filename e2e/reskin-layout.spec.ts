@@ -22,8 +22,11 @@ const WIDTHS = [1440, 1024, 768, 390, 360];
  */
 export async function noSideways(page: Page) {
   const out = await page.evaluate(() => {
+    // A scroller (auto/scroll) is meant to hold wide content; `clip` and `hidden` would cut real text off, so they exempt
+    // only decoration (aria-hidden). The homepage root clips sideways, and that must not hide a caption cut at 360px.
     const clipped = (el: Element) => {
-      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) if (getComputedStyle(p).overflowX !== "visible") return true;
+      if (el.closest('[aria-hidden="true"]')) return true;
+      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) if (/auto|scroll/.test(getComputedStyle(p).overflowX)) return true;
       return false;
     };
     return [...document.querySelectorAll("body *")]

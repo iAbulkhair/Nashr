@@ -44,7 +44,7 @@ export default function Day({ lang }: { lang: Lang }) {
           <div className={styles.clouds}>
             {morning.clouds.map((q, i) => (
               <p key={i} className="s-cloud">
-                <Scribble kind="cloud" seed={`d1c${i}`} />
+                <Scribble kind="cloud" seed={`d1c${i}`} rtl={lang === "ar"} />
                 {q[lang]}
               </p>
             ))}
@@ -79,17 +79,17 @@ export default function Day({ lang }: { lang: Lang }) {
             {peek.cap[lang]}
           </Cap>
           <p className={`s-bubble ${styles.up} ${styles.hi}`} data-tail="bottom">
-            <Scribble kind="bubble" seed="d2hi" tail="bottom" tailAt={0.5} />
+            <Scribble kind="bubble" seed="d2hi" tail="bottom" tailAt={0.5} rtl={lang === "ar"} />
             <span className={styles.srOnly}>{peek.who[lang]}: </span>
             {peek.hi[lang]}
           </p>
           <p className={`s-bubble ${styles.ask}`} data-tail="bottom">
-            <Scribble kind="bubble" seed="d2ask" tail="bottom" tailAt={0.2} />
+            <Scribble kind="bubble" seed="d2ask" tail="bottom" tailAt={0.2} rtl={lang === "ar"} />
             <span className={styles.srOnly}>{you.name[lang]}: </span>
             {peek.ask[lang]}
           </p>
           <p className={`s-bubble ${styles.up} ${styles.teamB}`} data-tail="bottom">
-            <Scribble kind="bubble" seed="d2team" tail="bottom" tailAt={0.75} />
+            <Scribble kind="bubble" seed="d2team" tail="bottom" tailAt={0.75} rtl={lang === "ar"} />
             <span className={styles.srOnly}>{peek.who[lang]}: </span>
             {peek.team[lang]}
           </p>
@@ -104,7 +104,7 @@ export default function Day({ lang }: { lang: Lang }) {
             {AGENT_CAST.map((a, i) => (
               <li key={a.id}>
                 <span className="s-bubble" data-tail="end">
-                  <Scribble kind="bubble" seed={`q-${a.id}`} tail="end" />
+                  <Scribble kind="bubble" seed={`q-${a.id}`} tail="end" rtl={lang === "ar"} />
                   {a.questions[0][lang]}
                 </span>
                 <span className={styles.arm}>

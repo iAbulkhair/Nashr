@@ -952,15 +952,15 @@
 .l:nth-child(2n) .dface > i, li:nth-child(2n) .dface > i { --nw: 6.1s; --nd: -2.6s; }
 .l:nth-child(3n) .dface > i, li:nth-child(3n) .dface > i { --nw: 4.6s; --nd: -1.2s; }
 @media (prefers-reduced-motion: no-preference) {
-  html:not([data-motion="off"]) .fl { animation: bob var(--t, 10s) ease-in-out var(--dl, 0s) infinite; }
-  html:not([data-motion="off"]) .dface > i { transform-origin: 50% 85%; animation: nod var(--nw, 5.4s) ease-in-out var(--nd, 0s) infinite; }
-  html:not([data-motion="off"]) .rays { animation: pulse 2.8s ease-in-out infinite; }
+  html:not([data-motion="off"]) .home .fl { animation: bob var(--t, 10s) ease-in-out var(--dl, 0s) infinite; }
+  html:not([data-motion="off"]) .home .dface > i { transform-origin: 50% 85%; animation: nod var(--nw, 5.4s) ease-in-out var(--nd, 0s) infinite; }
+  html:not([data-motion="off"]) .home .rays { animation: pulse 2.8s ease-in-out infinite; }
   html:not([data-motion="off"]) .pmV { transition: transform var(--duration-fast) var(--ease-out); }
-  html:not([data-motion="off"]) .seamFly .seamLine .fi { animation: trail 3.5s linear infinite; }
-  html:not([data-motion="off"]) .plane { animation: fly var(--ft, 11s) linear var(--fd, 0s) infinite; }
-  html:not([data-motion="off"]) .plane > span { animation: glide 2.4s ease-in-out infinite; }
-  html:not([data-motion="off"]) .dots > i { animation: hop 2.2s ease-in-out calc(var(--k) * 0.13s) infinite; }
-  html:not([data-motion="off"]) .seamInk .seamLine .fi { stroke-dasharray: 1 1; animation: ink 6.5s cubic-bezier(0.55, 0, 0.25, 1) infinite; }
+  html:not([data-motion="off"]) .home .seamFly .seamLine .fi { animation: trail 3.5s linear infinite; }
+  html:not([data-motion="off"]) .home .plane { animation: fly var(--ft, 11s) linear var(--fd, 0s) infinite; }
+  html:not([data-motion="off"]) .home .plane > span { animation: glide 2.4s ease-in-out infinite; }
+  html:not([data-motion="off"]) .home .dots > i { animation: hop 2.2s ease-in-out calc(var(--k) * 0.13s) infinite; }
+  html:not([data-motion="off"]) .home .seamInk .seamLine .fi { stroke-dasharray: 1 1; animation: ink 6.5s cubic-bezier(0.55, 0, 0.25, 1) infinite; }
 }
 html[data-motion="off"] .plane { inset-inline-start: 14%; }
 html[data-motion="off"] .home * { animation: none !important; transition: none !important; }

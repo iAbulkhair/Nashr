@@ -76,4 +76,35 @@ describe("the pen draws the same line for the same seed (rule 512)", () => {
     expect(forced).toContain("CanvasText");
     expect(readFileSync("src/app/globals.css", "utf8")).toContain('@import "./scribble.css"');
   });
+
+  it("steps the native focus outline aside only outside forced colours, so Windows contrast themes keep a focus mark", () => {
+    const css = readFileSync("src/app/scribble.css", "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const hide = css.indexOf("outline-color: transparent");
+    expect(hide).toBeGreaterThan(-1);
+    const block = /@media \(forced-colors: none\)\s*\{[\s\S]*?outline-color: transparent;[\s\S]*?\}\s*\}/.exec(css);
+    expect(block?.[0], "the outline-hiding rule sits inside @media (forced-colors: none)").toBeTruthy();
+    expect(css.split("outline-color: transparent").length - 1).toBe(1);
+  });
+});
+
+describe("Arabic speech tails point the right way before any script runs (rule 512)", () => {
+  // The server cannot read the computed direction, so homepage sections that draw tailed bubbles pass it from `lang`.
+  // Without it an Arabic "start" tail would point left, away from the speaker, until hydration.
+  it("the Arabic Rules panel is drawn right to left on the server", async () => {
+    const { default: Rules } = await import("@/components/home/Rules");
+    const html = renderToString(createElement(Rules, { lang: "ar" }));
+    const rtl = scribble("bubble", 240, 80, "rb00", { tail: "start", rtl: true }).cap;
+    const ltr = scribble("bubble", 240, 80, "rb00", { tail: "start", rtl: false }).cap;
+    expect(rtl).not.toBe(ltr);
+    expect(html).toContain(`d="${rtl}"`);
+    expect(renderToString(createElement(Rules, { lang: "en" }))).toContain(`d="${ltr}"`);
+  });
+
+  it("every tailed scribble, bubble and cloud in a homepage section is told its direction", () => {
+    for (const f of ["Rules", "Day", "Steps", "Plans"]) {
+      const src = readFileSync(`src/components/home/${f}.tsx`, "utf8");
+      // A bubble or cloud draws a tail even when none is named (it defaults to the bottom, placed from the start side).
+      for (const tag of src.match(/<Scribble [^>]*(?:tail=|kind="(?:bubble|cloud)")[^>]*\/>/g) ?? []) expect(tag, `${f}: ${tag}`).toMatch(/\brtl=\{/);
+    }
+  });
 });

@@ -38,7 +38,7 @@ export default function Steps({ lang }: { lang: Lang }) {
               <p className={styles.what}>{st.body[lang]}</p>
               <div className={styles.act}>
                 <p className="s-bubble" data-tail="bottom">
-                  <Scribble kind="bubble" seed={`s${i}b`} tail="bottom" tailAt={0.12} />
+                  <Scribble kind="bubble" seed={`s${i}b`} tail="bottom" tailAt={0.12} rtl={lang === "ar"} />
                   {who && <span className={styles.srOnly}>{who.name[lang]}: </span>}
                   {st.aside[lang]}
                 </p>

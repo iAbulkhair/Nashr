@@ -59,10 +59,13 @@
   opacity: 1;
   stroke-dashoffset: 0;
 }
-/* Where the drawn ring shows focus, the native outline steps aside (it returns in forced colours). */
-:where(.s-btn, .s-chip, .s-link, .s-focus):has(> .scribble .ring):focus-visible,
-.s-input:has(> .scribble .ring) :is(input, textarea, select):focus-visible {
-  outline-color: transparent;
+/* Where the drawn ring shows focus, the native outline steps aside. Only outside forced colours: there the ring is
+ * hidden, and this selector would otherwise outrank the Highlight outline below. */
+@media (forced-colors: none) {
+  :where(.s-btn, .s-chip, .s-link, .s-focus):has(> .scribble .ring):focus-visible,
+  .s-input:has(> .scribble .ring) :is(input, textarea, select):focus-visible {
+    outline-color: transparent;
+  }
 }
 
 @keyframes s-boil {
