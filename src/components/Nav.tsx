@@ -41,8 +41,13 @@ function Drop({ label, href, items }: { label: string; href: string; items: Item
   );
 }
 
-export default function Nav({ t, lang }: { t: Dict; lang: Lang }) {
+/**
+ * The site header. On the homepage, `sections` (prototype D's anchors to its own sections) take the place of the
+ * desktop menus and come first in the mobile menu; every other page keeps the menus.
+ */
+export default function Nav({ t, lang, sections }: { t: Dict; lang: Lang; sections?: { href: string; label: Record<Lang, string> }[] }) {
   const m = SITE[lang].menu;
+  const anchors: Item[] = (sections ?? []).map((a) => ({ href: a.href, label: a.label[lang] }));
   const agents: Item[] = [...AGENTS.map((a) => ({ href: `/${lang}/agents/${a.id}`, label: a.name[lang], note: a.role[lang] })), { href: `/${lang}/agents`, label: m.allAgents }];
   const industries: Item[] = INDUSTRY_PAGES[lang].map((p) => ({ href: `/${lang}/for/${p.slug}`, label: p.name }));
   const resources: Item[] = SITE[lang].resources.cards.map((c) => ({ href: `/${lang}${c.href}`, label: c.t }));
@@ -54,6 +59,7 @@ export default function Nav({ t, lang }: { t: Dict; lang: Lang }) {
           <Wordmark lang={lang} name={t.brand} />
         </Link>
         <nav className="hidden items-center gap-5 text-sm lg:flex" aria-label="Main">
+          {anchors.length > 0 ? anchors.map((a) => <NavLink key={a.href} href={a.href}>{a.label}</NavLink>) : <>
           {/* The Agents tab leads to Noor: she is the front door to the team. */}
           <Drop label={m.agents} href={`/${lang}/agents/noor`} items={agents} />
           {/* The homepage has no industries section; the tab leads to who Nashr is built for, the items to each sector. */}
@@ -61,6 +67,7 @@ export default function Nav({ t, lang }: { t: Dict; lang: Lang }) {
           {flat.slice(0, 2).map((l) => <NavLink key={l.href} href={l.href}>{l.label}</NavLink>)}
           <Drop label={m.resources} href={`/${lang}/resources`} items={resources} />
           <NavLink href={flat[2].href}>{flat[2].label}</NavLink>
+          </>}
         </nav>
         <div className="flex items-center gap-3">
           <LangToggle lang={lang} />
@@ -74,6 +81,7 @@ export default function Nav({ t, lang }: { t: Dict; lang: Lang }) {
               <svg viewBox="0 0 20 20" className="h-5 w-5" aria-hidden><path d="M3 6h14M3 10h14M3 14h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
             </summary>
             <div className="absolute end-0 top-full z-50 mt-2 max-h-[75vh] w-72 overflow-y-auto rounded-xl border-[1.5px] border-ink bg-paper p-3 text-sm">
+              {anchors.map((a) => <a key={a.href} href={a.href} className="block rounded-lg px-2 py-2 font-medium hover:bg-lilac">{a.label}</a>)}
               {[{ title: m.agents, items: agents }, { title: m.industries, items: industries }, { title: m.resources, items: resources }].map((g) => (
                 <details key={g.title} className="border-b border-ink/15 py-1">
                   <summary className="cursor-pointer list-none px-2 py-2 font-medium">{g.title}</summary>

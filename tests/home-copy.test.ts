@@ -1,7 +1,8 @@
 import { existsSync } from "fs";
 import { join } from "path";
 import { describe, expect, it } from "vitest";
-import { CAST, AGENT_CAST, STORM, BANTER, SLOGAN, TRUTHS, HOME, HERO, RULES, DAY, STEPS, HOME_FAQ, SECTIONS, type Feature, type L } from "@/lib/home";
+import { CAST, AGENT_CAST, STORM, BANTER, SLOGAN, TRUTHS, HOME, HERO, RULES, DAY, STEPS, HOME_FAQ, SECTIONS, HOME_NAV, RULE_LABEL, PLANS, STEP7_LINK, type Feature, type L } from "@/lib/home";
+import { dict } from "@/lib/i18n";
 import { agentById, isAgentId } from "@/lib/agents";
 import { isTaskType } from "@/lib/tasks";
 
@@ -108,6 +109,13 @@ const dCopy = (): string[] => {
     ...Object.values(DAY).flatMap((p) => Object.values(p).filter((v): v is L => typeof v === "object" && !Array.isArray(v))),
     ...STEPS.flatMap((s) => [s.title, s.body, s.aside, ...(s.paused ? [s.paused] : [])]),
     ...HOME_FAQ.flatMap((f) => [f.q, f.a]),
+    ...HOME_NAV.map((n) => n.label),
+    RULE_LABEL,
+    PLANS.h,
+    PLANS.tape,
+    PLANS.rule,
+    PLANS.aside.text,
+    STEP7_LINK,
   ];
   return ls.flatMap((l) => [l.ar, l.en]);
 };
@@ -160,5 +168,12 @@ describe("the D homepage copy is true (rule 514)", () => {
     expect(HERO.offer.ar).toBe("ثمانية وكلاء يعرفون علامتك.");
     expect(HERO.offerSwash.ar).toBe("هم يشتغلون، وأنت توافق.");
     expect(HERO.tbox.ar).toBe("الذكي المكين.");
+  });
+  it("draws the approved slogan as the h1: the wordmark, a full stop, then the masthead's line (rule 516)", () => {
+    for (const lang of ["ar", "en"] as const) expect(`${dict[lang].brand}. ${HERO.tbox[lang]}`).toBe(SLOGAN.line1[lang]);
+  });
+  it("lets Razan speak beside the plans, and keeps the approval rule on every plan (rule 516)", () => {
+    expect(isAgentId(PLANS.aside.who)).toBe(true);
+    expect(PLANS.rule.ar).toContain("موافقتك");
   });
 });

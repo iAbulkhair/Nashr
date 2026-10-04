@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import Scribble from "@/components/Scribble";
-import { CAST, HOME, type CastId } from "@/lib/home";
+import { CAST, HERO, HOME, type CastId } from "@/lib/home";
 import type { Lang } from "@/lib/i18n";
 import Doodle from "./Doodle";
 import MotionToggle from "./MotionToggle";
@@ -24,7 +24,8 @@ const EDGE = 8;
  * Choosing a figure shows one of its questions in a thought cloud above its head, the next one each time; the owner
  * thinks the finale's word. The cloud is decoration; its text is mirrored into a polite live region. A tap keeps the
  * figure chosen (one at a time) until it is tapped again, another is chosen, Escape is pressed or the page is tapped
- * elsewhere. The AI label is permanent (disclosure).
+ * elsewhere. The AI label is permanent (disclosure). Under the owner, a caption: «…and this is you». It sits inside
+ * the cover section (`Cover.tsx`), so its root is a labelled group, not a section.
  */
 export default function Lineup({ lang }: { lang: Lang }) {
   const wrap = useRef<HTMLDivElement>(null);
@@ -115,7 +116,7 @@ export default function Lineup({ lang }: { lang: Lang }) {
   }, [shown, text, right]);
 
   return (
-    <section className={styles.lineup} data-testid="lineup" aria-labelledby="lineup-label">
+    <div className={styles.lineup} data-testid="lineup" role="group" aria-labelledby="lineup-label">
       <div className={styles.lineupHead}>
         <p id="lineup-label" className={styles.aiLabel}>
           {HOME.aiLabel[lang]}
@@ -173,10 +174,16 @@ export default function Lineup({ lang }: { lang: Lang }) {
                   {member.name[lang]}
                 </span>
               </button>
+              {member.id === "you" && (
+                <p className={`s-tag ${styles.mecap}`}>
+                  <Scribble kind="box" seed="mecap" fill="lilac" />
+                  {HERO.mecap[lang]}
+                </p>
+              )}
             </li>
           ))}
         </ul>
       </div>
-    </section>
+    </div>
   );
 }

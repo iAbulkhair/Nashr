@@ -242,6 +242,33 @@ export const HERO: { issue: L; tbox: L; offer: L; offerSwash: L; hintMouse: L; h
   mecap: { ar: "…وهذا أنت. عليك كلمة وحدة.", en: "…and this is you. You have one word to say." },
 };
 
+/** The homepage's own nav: an anchor to each section, in page order, with D's labels. */
+export const HOME_NAV: { href: string; label: L }[] = [
+  { href: "#team", label: { ar: "الفريق", en: "Team" } },
+  { href: "#rules", label: { ar: "القوانين", en: "Rules" } },
+  { href: "#day", label: { ar: "يومك", en: "Your day" } },
+  { href: "#steps", label: { ar: "كيف يعمل ذكين", en: "How Thakeen works" } },
+  { href: "#price", label: { ar: "الخطط", en: "Plans" } },
+  { href: "#faq", label: { ar: "أسئلة", en: "Questions" } },
+];
+
+/** The prefix a rule's caption reads with. */
+export const RULE_LABEL: L = { ar: "القانون: ", en: "Rule: " };
+
+/**
+ * The plans section's own words. Prices, credits, seats and features come from the dictionary's pricing block, which is
+ * built from `src/lib/pricing.ts` (rule 248).
+ */
+export const PLANS: { h: L; tape: L; rule: L; aside: { who: HomeAgentId; text: L } } = {
+  h: { ar: "الخطط.", en: "Plans." },
+  tape: { ar: "نقترح تبدأ هنا", en: "Start here" },
+  rule: { ar: "وفي كل خطة نفس القاعدة: ما ينتشر شي بدون موافقتك.", en: "Every plan has the same rule: nothing goes out without your approval." },
+  aside: { who: "razan", text: { ar: "قبل ما تصرف… خلّني أحسبها.", en: "Before you spend… let me run the numbers." } },
+};
+
+/** Step seven has no speaker; its connector drawing carries this label instead. */
+export const STEP7_LINK: L = { ar: "الربط", en: "Connections" };
+
 /** Section headings and their one-line subtitles, in page order. */
 export const SECTIONS: Record<"rules" | "day" | "steps" | "faq", { h: L; sub?: L }> = {
   rules: {
@@ -276,7 +303,7 @@ const firstQuestion = (id: HomeAgentId): Question => AGENT_CAST.find((a) => a.id
  */
 export const DAY: {
   morning: { cap: L; clouds: Question[]; note: L; msg: L; hands: L };
-  peek: { cap: L; hi: L; ask: L; team: L; look: L };
+  peek: { cap: L; hi: L; ask: L; team: L; look: L; who: L };
   owners: { cap: L };
   word: { cap: L; stamp: L; end: L };
 } = {
@@ -293,6 +320,8 @@ export const DAY: {
     ask: { ar: "…مين أنتم؟", en: "…who are you?" },
     team: { ar: "فريقك.", en: "Your team." },
     look: { ar: "صاحب الشغل يرفع راسه", en: "The business owner looks up" },
+    /** Who says «صباح الخير» and «فريقك», for screen readers (D's hidden speaker label). */
+    who: { ar: "الفريق", en: "The team" },
   },
   owners: { cap: { ar: "كل سؤال له صاحب.", en: "Every question has an owner." } },
   word: { cap: { ar: "وأنت؟ عليك كلمة وحدة.", en: "And you? Just one word." }, stamp: HOME.finaleWord, end: HOME.finaleLine },

@@ -17,6 +17,19 @@ const CLEAN: string[] = [
   "src/components/app/Sidebar.tsx",
   "src/components/app/TrialBanner.tsx",
   "src/components/app/LimitModal.tsx",
+  // Slice 2, the homepage (rule 516).
+  "src/app/[lang]/page.tsx",
+  "src/components/home/Cover.tsx",
+  "src/components/home/Lineup.tsx",
+  "src/components/home/Rules.tsx",
+  "src/components/home/Day.tsx",
+  "src/components/home/Steps.tsx",
+  "src/components/home/Plans.tsx",
+  "src/components/home/HomeFaq.tsx",
+  "src/components/home/Decor.tsx",
+  "src/components/home/Face.tsx",
+  "src/components/home/Doodle.tsx",
+  "src/components/home/home.module.css",
 ];
 
 const OLD = /\b(oasis|saffron|sadu|salt|mist)(-deep|-dim)?\b/;

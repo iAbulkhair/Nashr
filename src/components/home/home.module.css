@@ -5,9 +5,28 @@
 .home {
   --home-display: var(--font-display), ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
   --home-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
+  /* Prototype D's type steps, gutter and caption overhang (rule 516). */
+  --t-xs: 16px;
+  --t-s: 16px;
+  --t-m: 17px;
+  --t-l: 21px;
+  --t-xl: clamp(26px, 4vw, 40px);
+  --gut: 22px;
+  --brk: -20px;
+  display: grid;
+  gap: 72px;
+  /* The page is 1200px wide at most; the margins stay inside the page, so a doodle in them never scrolls it sideways. */
+  padding: 54px max(16px, calc((100% - 1200px) / 2)) 36px;
+  overflow-x: clip;
   background: var(--color-ground);
   color: var(--color-ink);
+  font-family: var(--home-body);
 }
+@media (min-width: 700px) {
+  .home { --brk: -28px; gap: 104px; padding-inline: max(28px, calc((100% - 1200px) / 2)); }
+}
+.home :where(p, h1, h2, h3) { margin: 0; }
+.home :where(ul, ol) { margin: 0; padding: 0; list-style: none; }
 
 .srOnly {
   position: absolute;
@@ -29,6 +48,8 @@
   height: auto;
   overflow: visible;
 }
+/* A cropped figure (a face, a head peeking, a bust) shows only its crop. */
+.doodle.crop { overflow: hidden; }
 .doodle[data-cast="noor"] { --fill: var(--color-agent-noor); }
 .doodle[data-cast="sami"] { --fill: var(--color-agent-sami); }
 .doodle[data-cast="razan"] { --fill: var(--color-agent-razan); }
@@ -42,7 +63,7 @@
 .doodle :is(path, circle, ellipse, rect, line) {
   fill: none;
   stroke: var(--color-ink);
-  stroke-width: 3px;
+  stroke-width: 1.5px;
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
@@ -51,353 +72,8 @@
 .doodle .paper { fill: var(--color-paper); }
 .doodle .inkFill { fill: var(--color-ink); }
 .doodle .dot { fill: var(--color-ink); stroke: none; }
-.doodle .fine { stroke-width: 2px; }
-.doodle .gold { stroke: var(--color-gold); stroke-width: 3.5px; }
-
-/* ---------- Story: one sticky stage, one chapter per screen (Story.tsx) ---------- */
-
-/*
- * The section is one screen of scroll per chapter (`--chapters`, set by Story from the cast: the hero, one per agent,
- * the finale); the stage stays pinned under the site nav while they pass. svh, not vh or dvh: a phone's toolbar showing
- * or hiding must not resize the stage.
- */
-.story {
-  /* The site nav (Nav.tsx: 36 px controls, 12 px padding above and below, 1 px border) is sticky above the stage. */
-  --nav-h: 61px;
-  --dir: 1;
-  /* How flat the storm ring lies: its vertical radius is this share of the horizontal one. */
-  --tilt: 0.55;
-  position: relative;
-  height: calc(var(--chapters, 10) * 100svh);
-  font-family: var(--home-body);
-}
-:global([dir="rtl"]) .story { --dir: -1; }
-
-/* Phones: the words on top, the owner and the agent side by side below, the pause button under them. */
-.stage {
-  --wash: var(--color-ground);
-  position: sticky;
-  top: var(--nav-h);
-  height: calc(100svh - var(--nav-h));
-  display: grid;
-  grid-template:
-    "copy copy" auto
-    "owner agent" minmax(0, 1fr)
-    "tools tools" auto
-    / minmax(0, 1fr) minmax(0, 1fr);
-  gap: clamp(0.75rem, 2.5svh, 1.5rem) 12px;
-  padding: clamp(1rem, 3svh, 2.5rem) max(16px, (100% - 1200px) / 2) clamp(0.5rem, 2svh, 1.5rem);
-  overflow: hidden;
-  overflow: clip;
-  background-color: var(--wash);
-  transition: background-color 0.6s ease;
-}
-/* Each agent's colour world washes over the ground in its chapter. */
-.stage[data-world="noor"] { --wash: var(--color-agent-noor); }
-.stage[data-world="sami"] { --wash: var(--color-agent-sami); }
-.stage[data-world="razan"] { --wash: var(--color-agent-razan); }
-.stage[data-world="faris"] { --wash: var(--color-agent-faris); }
-.stage[data-world="dana"] { --wash: var(--color-agent-dana); }
-.stage[data-world="majed"] { --wash: var(--color-agent-majed); }
-.stage[data-world="layan"] { --wash: var(--color-agent-layan); }
-.stage[data-world="reem"] { --wash: var(--color-agent-reem); }
-/* Majed's world is the ink colour itself: a pearl halo keeps the drawings' outlines on it. */
-.stage[data-world="majed"] .stageArt {
-  filter: drop-shadow(0 0 1px var(--color-ground)) drop-shadow(0 0 1px var(--color-ground));
-}
-
-/* Words: one layer at a time in the copy area. Text always sits on the ground colour, whatever the world. */
-.heroCopy,
-.finaleCopy,
-.agentCopy {
-  grid-area: copy;
-  align-self: start;
-  position: relative;
-  z-index: 1;
-  min-width: 0;
-}
-.card {
-  padding: clamp(0.9rem, 2.5svh, 1.75rem) clamp(1rem, 2.5vw, 1.75rem);
-  border-radius: 22px;
-  background: var(--color-ground);
-}
-
-.line1 {
-  font-family: var(--home-display);
-  font-size: clamp(2.2rem, min(7vw, 8.5svh), 5.5rem);
-  font-weight: 800;
-  line-height: 1.12;
-}
-.line2 {
-  margin-top: clamp(0.5rem, 2svh, 1.25rem);
-  max-width: 30ch;
-  font-size: clamp(1.05rem, min(2.2vw, 3svh), 1.6rem);
-  line-height: 1.6;
-}
-.scrollCue {
-  margin-top: clamp(0.75rem, 3svh, 2rem);
-  font-size: 0.85rem;
-  font-weight: 700;
-}
-.scrollCue::after {
-  content: "↓";
-  display: inline-block;
-  margin-inline-start: 0.4em;
-  animation: nudge 1.6s ease-in-out infinite;
-}
-@keyframes nudge {
-  0%, 100% { translate: 0 0; }
-  50% { translate: 0 0.25em; }
-}
-/* The nudge rests with the story, and whenever the hero is away: it only fades, so it would run on unseen. */
-.story:not([data-live]) .scrollCue::after,
-.heroCopy:not([data-on]) .scrollCue::after {
-  animation-play-state: paused;
-}
-
-.storyValue {
-  font-family: var(--home-display);
-  font-size: clamp(1.35rem, min(3vw, 4.5svh), 2.75rem);
-  font-weight: 800;
-  line-height: 1.3;
-}
-.storyName {
-  margin-top: 0.4rem;
-  font-size: clamp(0.95rem, 1.4vw, 1.15rem);
-  font-weight: 700;
-  opacity: 0.8;
-}
-.finaleLine {
-  font-size: clamp(1.15rem, min(2.4vw, 3.5svh), 1.75rem);
-  font-weight: 700;
-  line-height: 1.5;
-}
-.finaleCopy .start { margin-top: clamp(0.75rem, 2.5svh, 1.5rem); }
-
-/* The two figures stand on the same line: what is above the head, then the drawing. */
-.owner,
-.agent {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  align-items: center;
-  min-width: 0;
-  min-height: 0;
-}
-.owner {
-  grid-area: owner;
-  transition: translate 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-/* On phones the owner stands alone, centred, until the first agent arrives and after the last one leaves. */
-.story[data-alone] .owner {
-  translate: calc(var(--dir) * (50% + 6px)) 0;
-}
-.agent { grid-area: agent; }
-.above {
-  position: relative;
-  flex: 0 0 auto;
-  width: 100%;
-  height: min(30%, 240px);
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding-bottom: 0.5rem;
-}
-.stageArt {
-  flex: 0 1 auto;
-  height: min(66%, 460px);
-  min-height: 0;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-.stageArt .doodle {
-  width: auto;
-  height: 100%;
-  max-width: 100%;
-}
-.agent .qflip { position: relative; z-index: 2; font-size: clamp(0.78rem, 1.1vw, 0.95rem); text-align: center; }
-/*
- * The page's pause button on the stage (MotionToggle.tsx): on phones in its own row under the figures, always in the
- * same place in every chapter. Like the words, it sits on the ground colour whatever the world (Majed's is the ink).
- */
-.stage > .storyToggle {
-  grid-area: tools;
-  align-self: end;
-  justify-self: end;
-  position: relative;
-  z-index: 2;
-  background: var(--color-ground);
-}
-
-/*
- * Desktops and landscape screens: owner, agent, words, in the reading direction. The middle column is left to the
- * storm in the hero and the finale, so the ring never runs under the words.
- */
-@media (min-width: 900px), (orientation: landscape) and (min-width: 600px) {
-  .stage {
-    grid-template: "owner agent copy" minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 0.85fr) minmax(0, 1.3fr);
-    column-gap: clamp(16px, 3vw, 48px);
-  }
-  .story { --tilt: 0.4; }
-  .story[data-alone] .owner { translate: none; }
-  .heroCopy,
-  .finaleCopy,
-  .agentCopy { align-self: center; }
-  /* No row of its own here: it sits at the foot of the words' column, under the centred card. */
-  .stage > .storyToggle { grid-area: copy; }
-}
-
-/*
- * Layers enter and leave; hidden ones are out of the accessibility tree and the tab order. The hero only fades: it holds
- * the page's one h1, which stays readable to assistive technology wherever the story is.
- */
-.heroCopy,
-.finaleCopy,
-.finaleWord,
-.agentCopy,
-.agent {
-  transition:
-    opacity 0.45s ease,
-    translate 0.6s cubic-bezier(0.2, 0.7, 0.2, 1),
-    scale 0.6s cubic-bezier(0.2, 0.7, 0.2, 1),
-    visibility 0s;
-}
-.finaleCopy:not([data-on]),
-.finaleWord:not([data-on]),
-.agentCopy:not([data-phase="on"]),
-.agent:not([data-phase="on"]) {
-  opacity: 0;
-  visibility: hidden;
-  transition-delay: 0s, 0s, 0s, 0.6s;
-}
-.heroCopy:not([data-on]) {
-  opacity: 0;
-  translate: 0 -1.5rem;
-  pointer-events: none;
-}
-.finaleCopy:not([data-on]) { translate: 0 1.5rem; }
-.finaleWord:not([data-on]) { scale: 0.6; }
-/* The next agent waits off to the far side and steps in; the one before steps back. */
-.agentCopy[data-phase="next"] { translate: 0 1.25rem; }
-.agent[data-phase="next"] { translate: calc(var(--dir) * 3rem) 0; }
-.agentCopy[data-phase="past"],
-.agent[data-phase="past"] { scale: 0.92; }
-
-/* ---------- The storm above the owner's head ---------- */
-
-.storm {
-  position: absolute;
-  inset: 0;
-  container-type: inline-size;
-  pointer-events: none;
-  /* The orbit plane, tilted: circles become ellipses. Each question's text is scaled back up, so it stays upright. */
-  transform: scaleY(var(--tilt));
-}
-
-/*
- * Each question circles the owner's head at a steady speed. `--i` sets its ring (radius), its speed and where on the
- * ring it starts (golden-ratio spacing, so the ring stays evenly filled); every other one turns the other way. The rings
- * run from 10 to 46.75 of the column's width whatever the number of questions (`--count`, set by Story). Once its
- * agent's chapter comes, it travels across to the agent (`--fly`, one column over) and fades; scrolling back brings it
- * home.
- */
-.stormQ {
-  --d: calc(8s + var(--i) * 0.3s);
-  --r: calc(10cqi + var(--i) * 36.75cqi / max(1, var(--count, 36) - 1));
-  --phase: calc(var(--d) * var(--i) * -0.382);
-  --fly: 0px;
-  position: absolute;
-  left: 50%;
-  top: 60%;
-  translate: calc(-50% + var(--fly)) -50%;
-  animation: orbit var(--d) linear var(--phase) infinite;
-  transition:
-    translate 0.8s cubic-bezier(0.3, 0.6, 0.2, 1),
-    opacity 0.3s ease,
-    visibility 0s;
-}
-.stormQ[data-taken] {
-  --fly: calc(var(--dir) * 105cqi);
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    translate 0.9s cubic-bezier(0.5, 0, 0.3, 1),
-    opacity 0.35s ease 0.55s,
-    visibility 0s 0.9s;
-}
-.stormText {
-  display: block;
-  padding: 0.1em 0.55em;
-  border-radius: 999px;
-  background: var(--color-ground);
-  font-size: clamp(0.72rem, 1.1vw, 0.9rem);
-  font-weight: 500;
-  line-height: 1.5;
-  white-space: nowrap;
-  transform: scaleY(calc(1 / var(--tilt)));
-  animation: depth var(--d) linear var(--phase) infinite;
-}
-.stormQ:nth-child(odd),
-.stormQ:nth-child(odd) .stormText {
-  animation-direction: reverse;
-}
-/*
- * The storm holds still while the story rests (paused by the visitor, off screen, or in a hidden tab). A question its
- * agent has taken stops circling as it leaves: it flies straight across and is hidden 0.9 s later, so its orbit would
- * only run on unseen.
- */
-.story:not([data-live]) :is(.stormQ, .stormText),
-.stormQ[data-taken],
-.stormQ[data-taken] .stormText {
-  animation-play-state: paused;
-}
-@keyframes orbit {
-  from { transform: rotate(0turn) translateX(var(--r)) rotate(0turn); }
-  to { transform: rotate(1turn) translateX(var(--r)) rotate(-1turn); }
-}
-/* Front of the ring (bottom) is nearest: full ink; the back (top) recedes. */
-@keyframes depth {
-  0%, 50%, 100% { opacity: 0.7; scale: 0.92; }
-  25% { opacity: 1; scale: 1; }
-  75% { opacity: 0.35; scale: 0.82; }
-}
-
-/* The finale: one word stays above the owner's head, where the storm was. */
-.finaleWord {
-  position: absolute;
-  inset-inline: 0;
-  bottom: 0.75rem;
-  display: flex;
-  justify-content: center;
-  font-family: var(--home-display);
-  font-size: clamp(2.25rem, min(8vw, 9svh), 5.5rem);
-  font-weight: 800;
-  line-height: 1.1;
-  white-space: nowrap;
-}
-
-/*
- * Reduced motion: no orbit, nothing travels or steps in, no nudge. The storm is one still question, the first one
- * still on the owner's head (`data-lead`); the chapters still change as you scroll.
- */
-@media (prefers-reduced-motion: reduce) {
-  .stormQ, .stormText, .scrollCue::after { animation: none; }
-  .stormQ:not([data-lead]) { display: none; }
-  .stormQ, .owner { transition: none; }
-  .heroCopy:not([data-on]),
-  .finaleCopy:not([data-on]),
-  .finaleWord:not([data-on]),
-  .agentCopy[data-phase],
-  .agent[data-phase] { translate: none; scale: none; }
-}
-
-/* Without JavaScript nothing can turn the chapters: the story is just the hero. */
-@media (scripting: none) {
-  .story { height: auto; }
-  .stage { position: relative; top: 0; }
-}
+.doodle .fine { stroke-width: 1px; }
+.doodle .gold { stroke: var(--color-gold); stroke-width: 1.75px; }
 
 /* ---------- Start form (plain GET, works without JavaScript) ---------- */
 
@@ -437,8 +113,8 @@
 /* ---------- Lineup: the whole cast in a row ---------- */
 
 .lineup {
-  font-family: var(--home-body);
-  padding: clamp(3rem, 7vw, 6rem) 0;
+  position: relative;
+  padding-block: 24px 64px;
 }
 .aiLabel {
   max-width: 1320px;
@@ -463,32 +139,6 @@
   font-weight: 700;
   line-height: 1.4;
 }
-/* ---------- QuestionFlip: one question at a time ---------- */
-
-.qflip {
-  display: block;
-  max-width: 100%;
-  perspective: 480px;
-  line-height: 1.4;
-}
-.qflipItem {
-  display: inline-block;
-  max-width: 100%;
-  padding: 0.35em 0.8em;
-  border: 1.5px solid var(--color-ink);
-  border-radius: 14px;
-  background: var(--color-paper);
-  transform-origin: 50% 100%;
-  animation: flipIn 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-}
-@keyframes flipIn {
-  from { opacity: 0; transform: rotateX(80deg); }
-  to { opacity: 1; transform: none; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .qflipItem { animation: none; }
-}
-
 /* ---------- Life in the lineup: banter, eyes, blinking, breathing (Lineup.tsx, Figure.tsx) ---------- */
 
 /* The AI label and, across from it, the page's pause button (WCAG 2.2.2), the same switch as the story's. */
@@ -632,42 +282,6 @@
   .fig,
   .think,
   .think[data-on] { transition: none; }
-}
-
-/* ---------- What's true today ---------- */
-
-.truths {
-  font-family: var(--home-body);
-  max-width: 1200px;
-  margin-inline: auto;
-  padding: clamp(3rem, 7vw, 6rem) 16px;
-}
-.truthsTitle {
-  font-family: var(--home-display);
-  font-size: clamp(1.75rem, 4vw, 2.75rem);
-  font-weight: 800;
-  line-height: 1.25;
-}
-.truthList {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
-  gap: 0 2rem;
-  margin: 2rem 0 0;
-  padding: 0;
-  list-style: none;
-}
-.truth {
-  padding: 1.25rem 0;
-  border-top: 3px solid var(--color-ink);
-}
-.truthTitle {
-  font-size: 1.15rem;
-  font-weight: 700;
-  line-height: 1.4;
-}
-.truthBody {
-  margin-top: 0.5rem;
-  line-height: 1.7;
 }
 
 /* ---------- قاموس ذكين: the game (Dictionary.tsx) ---------- */
@@ -1036,4 +650,318 @@
 /* Without JavaScript the game cannot be played: the title, the subtitle and the seven steps stay as a summary. */
 @media (scripting: none) {
   .dictPanel { display: none; }
+}
+
+/* ---------- Prototype D's sections (rule 516): Cover, Rules, Day, Steps, Plans, HomeFaq ---------- */
+
+/*
+ * Every hand-drawn frame is a <Scribble> drawn behind its host, so a host is relative and isolated. Headings sit under
+ * the sticky site nav when reached by an anchor.
+ */
+.sec { position: relative; min-width: 0; scroll-margin-top: 96px; }
+.panel {
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  padding: 24px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  scroll-margin-top: 96px;
+}
+.cap {
+  position: relative;
+  isolation: isolate;
+  display: block;
+  width: fit-content;
+  max-width: calc(100% + 10px);
+  margin-block-start: -38px;
+  margin-inline-start: var(--brk);
+  padding: 4px 12px;
+  font: 800 var(--t-s)/1.45 var(--home-body);
+}
+.num { display: inline-block; margin-inline-end: 6px; font-weight: 900; }
+.grid4 { display: grid; gap: 44px var(--gut); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 640px) { .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1040px) { .grid4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.sh { display: grid; gap: 8px; margin-block-end: 44px; max-width: 44rem; }
+.sh h2 { font: 900 var(--t-xl)/1.25 var(--home-display); }
+.ul { position: relative; isolation: isolate; display: inline-block; padding-block-end: 8px; }
+.sub { font-size: var(--t-m); color: var(--color-muted); }
+.home :global(.s-bubble) { font-size: var(--t-s); line-height: 1.5; }
+.home :global(.s-stamp) { font-size: var(--t-xs); }
+.home :global(.s-tag), .home :global(.s-tape) { font-size: var(--t-xs); }
+
+/* A face in its loop of colour (Face.tsx). */
+.dface { position: relative; isolation: isolate; display: block; flex: none; width: 52px; height: 52px; padding: 2px; }
+.dfaceSm { width: 40px; height: 40px; }
+.dface > i { display: block; }
+.dface .doodle :is(path, circle, ellipse, rect, line),
+.peek .doodle :is(path, circle, ellipse, rect, line) { stroke-width: 1px; }
+.whoRow { display: flex; align-items: center; gap: 8px; font-size: var(--t-xs); font-weight: 700; }
+
+/* Cover */
+.cover { padding: 30px 20px 24px; gap: 18px; }
+@media (min-width: 700px) { .cover { padding: 40px 40px 32px; } }
+.issue { position: absolute; top: -15px; inset-inline-end: 18px; transform: rotate(4deg); }
+.ctop { display: grid; gap: 12px 30px; }
+@media (min-width: 900px) {
+  .ctop { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+  .mast { grid-column: 1 / -1; }
+}
+.mast { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; font-weight: 900; }
+.logo { font: 900 clamp(58px, 9vw, 112px)/0.95 var(--home-display); letter-spacing: -0.01em; }
+.tbox {
+  position: relative;
+  isolation: isolate;
+  display: inline-block;
+  padding: 6px 16px 8px;
+  color: var(--color-paper);
+  font-size: clamp(22px, 3.4vw, 38px);
+  transform: rotate(-2deg);
+}
+.offer { font-size: clamp(18px, 2.2vw, 23px); font-weight: 600; max-width: 46rem; text-wrap: balance; }
+.sw { position: relative; isolation: isolate; display: inline-block; }
+.hint { display: flex; align-items: center; gap: 6px; max-width: 26rem; font-size: var(--t-s); font-weight: 700; color: var(--color-muted); }
+.hint svg { width: 40px; height: 28px; flex: none; overflow: visible; }
+.hint path { fill: none; stroke: var(--color-ink); stroke-width: 1px; stroke-linecap: round; }
+.hint svg:dir(ltr) { transform: scaleX(-1); }
+@media (min-width: 900px) { .hint { max-width: 17rem; } }
+/* The hint says "point at" with a mouse and "tap" on a touch screen. */
+.hintTouch { display: none; }
+@media (hover: none) {
+  .hintMouse { display: none; }
+  .hintTouch { display: inline; }
+}
+/* "That's you" under the owner's figure, outside the row so it never moves the team. */
+.castWrap { padding-block-end: 48px; }
+.mecap {
+  position: absolute;
+  top: calc(100% + 12px);
+  inset-inline-end: 0;
+  width: max-content;
+  max-width: 240px;
+  margin: 0;
+  font-size: var(--t-s);
+  transform: rotate(-1.5deg);
+}
+.cast > li { position: relative; }
+
+/* Rules */
+.mini { min-height: 250px; }
+.talk { display: grid; gap: 12px; }
+.l { display: flex; align-items: flex-end; gap: 10px; }
+.lb { flex-direction: row-reverse; }
+.l > :global(.s-bubble[data-tail]) { margin: 0; margin-inline-start: 14px; }
+.lb > :global(.s-bubble[data-tail]) { margin: 0; margin-inline-end: 14px; }
+.law { margin-block: auto -34px; margin-inline: var(--brk) 0; }
+
+/* Day: four panels of a comic strip */
+.strip > .panel { min-height: 430px; }
+.clouds { display: flex; flex-direction: column; align-items: flex-start; }
+.clouds > :global(.s-cloud) { font-size: var(--t-s); padding: 16px 30px; margin-block-end: 26px; text-wrap: balance; }
+.clouds > :global(.s-cloud):nth-child(2) { align-self: flex-end; }
+.clouds > :global(.s-cloud):nth-child(3) { align-self: center; margin-block-end: 8px; }
+.scene { margin-block-start: auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+.bust { display: block; width: min(150px, 52%); flex: none; }
+.phone {
+  position: relative;
+  isolation: isolate;
+  flex: none;
+  min-width: 104px;
+  max-width: 132px;
+  padding: 18px 8px 22px;
+  display: grid;
+  gap: 4px;
+  text-align: center;
+  font-size: var(--t-xs);
+  margin-block-end: 34px;
+}
+.phone b { font-size: var(--t-s); white-space: nowrap; }
+.phone small { font-size: 14px; font-weight: 700; }
+@media (max-width: 699px) { .phone { margin-inline-end: 10px; } }
+.glow { position: absolute; inset: -20px -14px; z-index: -2; isolation: isolate; }
+.rays { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.rays path { fill: none; stroke: var(--color-ink); stroke-width: 1px; stroke-linecap: round; }
+.p2 { margin-block-start: 14px; }
+.peek { position: absolute; top: -34px; inset-inline: 10px; display: flex; justify-content: center; z-index: -2; }
+.peek > i { display: block; flex: 0 1 58px; min-width: 0; margin-inline: -9px; }
+.peek > i:nth-child(even) { transform: translateY(5px) rotate(4deg); }
+.peek > i:nth-child(odd) { transform: rotate(-3deg); }
+@media (max-width: 380px) { .peek { inset-inline: 18px; } .peek > i { flex-basis: 50px; } }
+.capIn { margin: 0; }
+.up { margin-block: 18px 0 !important; }
+.up > :global(.scribble) { transform: scaleY(-1); }
+.hi { align-self: center; }
+.ask { align-self: flex-start; }
+.p2 > .teamB { align-self: flex-end; font-size: var(--t-l) !important; font-weight: 900; padding: 8px 22px; }
+.p2 > .bust { margin-block-start: auto; align-self: flex-start; }
+.takes { display: grid; gap: 4px; margin-block: auto; }
+.takes > li { display: grid; grid-template-columns: minmax(0, 1fr) 64px; align-items: center; }
+.takes :global(.s-bubble[data-tail]) { justify-self: end; padding: 4px 12px; margin-inline-end: 12px; font-size: var(--t-s); }
+.arm { position: relative; display: grid; justify-items: end; margin-inline-end: var(--brk); }
+@media (min-width: 700px) { .arm { margin-inline-end: -34px; } }
+.arm svg { width: 70px; height: 26px; }
+.arm svg:dir(ltr) { transform: scaleX(-1); }
+.arm .doodle :is(path, ellipse) { stroke-width: 1.25px; }
+.arm small { font-size: 14px; font-weight: 700; line-height: 1; margin-inline-end: 30px; }
+.sign { position: relative; margin-block-start: auto; display: flex; align-items: flex-end; gap: 6px; }
+.signFig { display: block; width: min(128px, 46%); flex: none; }
+.bigstamp {
+  position: absolute;
+  bottom: 130px;
+  inset-inline-end: 0;
+  z-index: 2;
+  margin: 0;
+  font-size: clamp(30px, 3vw, 38px) !important;
+  padding: 6px 18px;
+  transform: rotate(-9deg);
+}
+.bigstamp:lang(en) { font-size: clamp(24px, 2.4vw, 34px) !important; }
+.capEnd { margin: 0; margin-inline-start: auto; margin-block-end: -34px; }
+
+/* Steps */
+.st { padding-block-end: 18px; }
+.st > h3.cap { font: 800 var(--t-s)/1.45 var(--home-body); }
+.what { font-size: var(--t-s); }
+.act { margin-block-start: auto; display: grid; gap: 4px; justify-items: start; }
+.act > :global(.s-bubble) { max-width: 100%; }
+.now { font-size: var(--t-s); color: var(--color-muted); padding-block-start: 4px; }
+.plug { width: 52px; height: 52px; flex: none; }
+.s5in { display: grid; gap: 14px; grid-template-columns: 72px minmax(0, 1fr); align-items: end; }
+.s5fig { display: block; width: 72px; justify-self: center; }
+@media (min-width: 640px) {
+  .s5 { grid-column: span 2; }
+  .s5in { grid-template-columns: 150px minmax(0, 1fr); }
+  .s5fig { width: 118px; }
+}
+.s5body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+/* Plans */
+.book { display: grid; gap: 34px; container-type: inline-size; }
+.intro { display: grid; gap: 12px; padding: 26px 22px; }
+.intro h2 { font: 900 var(--t-xl)/1.25 var(--home-display); }
+@container (min-width: 560px) {
+  .intro { grid-template-columns: minmax(0, 1fr) auto; align-items: end; column-gap: 24px; }
+  .intro > .act { grid-column: 2; grid-row: 1 / span 3; }
+}
+.trial { justify-self: start; max-width: 100%; white-space: normal; transform: rotate(-2deg); }
+.plans { display: grid; gap: 34px 22px; grid-template-columns: minmax(0, 1fr); }
+@container (min-width: 440px) { .plans { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (min-width: 960px) { .plans { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.plan { display: grid; gap: 10px; align-content: start; padding: 26px 22px; }
+.plan h3 { font: 900 24px/1.25 var(--home-display); }
+.planTag { font-size: var(--t-s); color: var(--color-muted); }
+.planTape { justify-self: start; margin-block-end: 4px; }
+.price { padding-block: 4px; font-size: var(--t-s); font-weight: 700; }
+.price b { font: 900 30px/1.1 var(--home-display); margin-inline-end: 4px; }
+@container (max-width: 560px) { .price b { font-size: 26px; } }
+.loopw { position: relative; isolation: isolate; display: inline-block; padding: 8px 12px; white-space: nowrap; }
+.feat { display: grid; gap: 8px; font-size: var(--t-s); }
+.feat > li { display: flex; align-items: flex-start; gap: 10px; }
+.mk { position: relative; isolation: isolate; flex: none; width: 20px; height: 18px; margin-block-start: 4px; display: inline-block; }
+.planCta { justify-self: start; margin-block-start: 6px; font-weight: 800; color: var(--color-ink); text-decoration: none; padding-block-end: 4px; }
+.planCta:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 4px; }
+.rulel { font-size: var(--t-m); font-weight: 700; }
+
+/* Questions */
+.faq { display: grid; gap: 4px; max-width: 46rem; }
+.faqRule { position: relative; isolation: isolate; height: 12px; }
+.faqRule > :global(.scribble) { transform: scaleY(0.4); }
+.qa > summary {
+  cursor: pointer;
+  min-height: 56px;
+  padding: 8px 6px;
+  font-size: 19px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  list-style: none;
+}
+.qa > summary::-webkit-details-marker { display: none; }
+.qa > summary:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
+.ans { display: grid; gap: 8px; position: relative; padding-inline-start: 20px; font-size: var(--t-s); margin-block: 4px 20px; margin-inline-start: 34px; }
+.brk { position: absolute; top: 2px; inset-inline-start: 0; width: 10px; height: calc(100% - 4px); }
+.brk:dir(ltr) { transform: scaleX(-1); }
+.pm { flex: none; width: 20px; height: 20px; display: inline-block; }
+.pm svg { width: 100%; height: 100%; }
+.pmV { transform-box: fill-box; transform-origin: 50%; }
+.qa[open] .pmV { transform: scaleY(0); }
+
+/* ---------- Decor.tsx: doodles in the margins and the seams between sections ---------- */
+
+.fl { position: absolute; z-index: 0; display: block; width: var(--s, 44px); pointer-events: none; transform: rotate(var(--r0, -4deg)); }
+.fl svg { display: block; width: 100%; height: auto; overflow: visible; }
+.fi { fill: none; stroke: var(--color-ink); stroke-width: 1.25px; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.ff { fill: var(--f); stroke: none; transform: translate(var(--reg-x), var(--reg-y)); }
+.fd { fill: var(--color-ink); stroke: none; }
+.fdash { stroke-dasharray: 2 4; }
+.fl-q svg:dir(rtl) { transform: scaleX(-1); }
+.fl-q { --s: 44px; --t: 9s; --dl: -2s; --dy: -9px; --r0: -6deg; --r1: 3deg; top: -84px; inset-inline-end: 12%; }
+.fl-cup { --s: 46px; --t: 10.5s; --dl: -3s; --dy: -11px; --r0: 4deg; --r1: -3deg; top: 4px; inset-inline-end: 16%; }
+.fl-plane { --s: 52px; --t: 13s; --dl: -6s; --dy: -14px; --r0: -8deg; --r1: -2deg; top: -78px; inset-inline-start: 40%; }
+.fl-bubble { --s: 42px; --t: 8s; --dl: -4s; --dy: -10px; --r0: 3deg; --r1: -5deg; top: -84px; inset-inline-end: 16%; }
+.fl-star { --s: 40px; --t: 11s; --dl: -5s; --dy: -12px; --r0: -10deg; --r1: 8deg; top: 96px; inset-inline-start: -98px; }
+.fl-spark { --s: 34px; --t: 7s; --dl: -1s; --dy: -7px; --r0: 0deg; --r1: 12deg; top: -74px; inset-inline-end: 30%; }
+.fl-cloud { --s: 54px; --t: 14s; --dl: -8s; --dy: -13px; --r0: -2deg; --r1: 3deg; top: 40%; inset-inline-start: -104px; }
+.fl-star, .fl-cloud { display: none; }
+@media (min-width: 1400px) { .fl-star, .fl-cloud { display: block; } }
+@media (max-width: 699px) {
+  .fl-plane, .fl-spark { display: none; }
+  .fl { --s: 30px !important; --dy: -7px !important; top: -50px; }
+  .fl-q { inset-inline-end: 6px; }
+  .fl-cup { top: 2px; inset-inline-end: 10px; }
+  .fl-bubble { inset-inline-end: 8px; }
+}
+
+.seam {
+  position: relative;
+  height: clamp(30px, 5vw, 58px);
+  margin-block: calc(-1 * clamp(22px, 3vw, 38px));
+  container-type: inline-size;
+  pointer-events: none;
+  overflow: hidden;
+}
+.seam svg { display: block; overflow: visible; }
+.seamLine { position: absolute; inset-inline: 0; top: 50%; width: 100%; height: 24px; transform: translateY(-50%); }
+.seamFly .seamLine .fi { stroke-dasharray: 0.006 0.012; stroke: var(--color-muted); }
+.plane { position: absolute; top: 50%; inset-inline-start: -56px; width: clamp(30px, 4vw, 42px); margin-top: calc(-0.5 * clamp(30px, 4vw, 42px)); }
+.plane > span { display: block; }
+.plane svg:dir(rtl) { transform: scaleX(-1); }
+.dots { position: absolute; inset: 0; display: flex; justify-content: center; align-items: center; gap: clamp(8px, 1.6vw, 18px); }
+.dots > i { display: block; width: clamp(10px, 1.4vw, 15px); aspect-ratio: 1; border: 1.25px solid var(--color-ink); border-radius: 52% 46% 50% 48%; background: var(--c); }
+.seamTeam .seamLine { top: auto; bottom: 4px; transform: none; height: 8px; }
+.seamInk .seamLine { height: auto; aspect-ratio: 1000 / 48; }
+.seamInk .seamLine:dir(rtl) { transform: translateY(-50%) scaleX(-1); }
+
+/*
+ * The drawings move only for visitors who have not asked for reduced motion, and stop when the page's pause button sets
+ * html[data-motion="off"] (motion.ts). At rest everything is drawn and readable, and the plane sits on its trail.
+ */
+@keyframes bob { 0%, 100% { transform: translateY(0) rotate(var(--r0, -4deg)); } 50% { transform: translateY(var(--dy, -10px)) rotate(var(--r1, 4deg)); } }
+@keyframes nod { 0%, 100% { transform: translateY(0) rotate(0); } 35% { transform: translateY(-1.5px) rotate(-4deg); } 70% { transform: translateY(0.5px) rotate(3deg); } }
+@keyframes pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@keyframes trail { to { stroke-dashoffset: -0.18; } }
+@keyframes fly { from { transform: translateX(0); } to { transform: translateX(calc(var(--fwd) * (100cqw + 112px))); } }
+@keyframes glide { 0%, 100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-9px) rotate(5deg); } }
+@keyframes hop { 0%, 55%, 100% { transform: translateY(0); } 25% { transform: translateY(-11px) rotate(-8deg); } }
+@keyframes ink { 0% { stroke-dashoffset: 1; } 42%, 62% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -1; } }
+.l:nth-child(2n) .dface > i, li:nth-child(2n) .dface > i { --nw: 6.1s; --nd: -2.6s; }
+.l:nth-child(3n) .dface > i, li:nth-child(3n) .dface > i { --nw: 4.6s; --nd: -1.2s; }
+@media (prefers-reduced-motion: no-preference) {
+  html:not([data-motion="off"]) .fl { animation: bob var(--t, 10s) ease-in-out var(--dl, 0s) infinite; }
+  html:not([data-motion="off"]) .dface > i { transform-origin: 50% 85%; animation: nod var(--nw, 5.4s) ease-in-out var(--nd, 0s) infinite; }
+  html:not([data-motion="off"]) .rays { animation: pulse 2.8s ease-in-out infinite; }
+  html:not([data-motion="off"]) .pmV { transition: transform var(--duration-fast) var(--ease-out); }
+  html:not([data-motion="off"]) .seamFly .seamLine .fi { animation: trail 3.5s linear infinite; }
+  html:not([data-motion="off"]) .plane { animation: fly var(--ft, 11s) linear var(--fd, 0s) infinite; }
+  html:not([data-motion="off"]) .plane > span { animation: glide 2.4s ease-in-out infinite; }
+  html:not([data-motion="off"]) .dots > i { animation: hop 2.2s ease-in-out calc(var(--k) * 0.13s) infinite; }
+  html:not([data-motion="off"]) .seamInk .seamLine .fi { stroke-dasharray: 1 1; animation: ink 6.5s cubic-bezier(0.55, 0, 0.25, 1) infinite; }
+}
+html[data-motion="off"] .plane { inset-inline-start: 14%; }
+html[data-motion="off"] .home * { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .plane { inset-inline-start: 14%; }
 }
