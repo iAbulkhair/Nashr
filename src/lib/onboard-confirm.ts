@@ -4,6 +4,7 @@ import { getBrand } from "./brand";
 import { ONBOARD_HOLD_MS, resolveOnboardHolds } from "./credits";
 import { recordActivity } from "./activity";
 import { systemBy } from "./actor";
+import { parseAnswers, type GameAnswers } from "./dictionary";
 
 /**
  * Which site a workspace is built from is the owner's choice, made on the start page and checked here in code.
@@ -20,7 +21,17 @@ const TTL = 86400;
 export const onboardUrl = (raw: unknown) => (typeof raw === "string" ? raw.trim().slice(0, 300) : "");
 export const confirmOnboard = (scope: string, url: string) => db.set(key(scope), url, TTL);
 export const confirmedOnboard = async (scope: string) => (await db.get<string>(key(scope))) ?? "";
-export const clearOnboard = (scope: string) => db.del(key(scope));
+export const clearOnboard = (scope: string) => Promise.all([db.del(key(scope)), db.del(gameKey(scope))]);
+
+/**
+ * The owner's answers from the first-login game (src/lib/dictionary.ts `GameAnswers`), stored with the confirmation,
+ * under the same scope and for the same day, and cleared with it. A confirm without answers deletes any left by an
+ * earlier one, so a stale game never names a later build. The build reads them here, never from its request, and
+ * validates them again: a stored value is data too. Rules 522-523.
+ */
+const gameKey = (scope: string) => `onboardgame:${scope}`;
+export const confirmAnswers = (scope: string, a: GameAnswers | null) => (a ? db.set(gameKey(scope), a, TTL) : db.del(gameKey(scope)));
+export const confirmedAnswers = async (scope: string) => parseAnswers(await db.get<unknown>(gameKey(scope)));
 
 /**
  * An added brand's onboarding charge (src/lib/pricing.ts ONBOARD_EXTRA_BRAND_COST) is held on the account record, not
