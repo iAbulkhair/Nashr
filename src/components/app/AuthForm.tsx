@@ -64,7 +64,7 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
     }
   }
   return (
-    <div className="mx-auto max-w-md">
+    <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t1" />{t.signup.title}</span></h1>
       <p className="mt-2 text-ink/70">{t.signup.sub}</p>
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
@@ -116,7 +116,7 @@ export function LoginForm({ t, lang }: { t: AppDict; lang: Lang }) {
     }
   }
   return (
-    <div className="mx-auto max-w-md">
+    <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t2" />{t.login.title}</span></h1>
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
         <input name="email" required type="email" dir="ltr" placeholder={t.login.email} className={input} />
@@ -163,7 +163,7 @@ export function ForgotForm({ lang, whatsapp, turnstileKey = null }: { lang: Lang
     }
   }
   return (
-    <div className="mx-auto max-w-md">
+    <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t3" />{S.forgotTitle}</span></h1>
       <p className="mt-2 text-ink/70">{S.forgotSub}</p>
       {state === "sent" || state === "nomail" ? (
@@ -212,7 +212,7 @@ export function ResetForm({ lang }: { lang: Lang }) {
     }
   }
   return (
-    <div className="mx-auto max-w-md">
+    <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t4" />{S.resetTitle}</span></h1>
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
         <input ref={pwRef} name="password" required autoFocus type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} aria-label={S.resetTitle} aria-describedby="reset-rules" className={input} />

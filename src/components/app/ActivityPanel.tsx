@@ -6,6 +6,7 @@ import type { By } from "@/lib/actor";
 import { AGENT_IDS, agentForTask, isAgentId, type AgentId } from "@/lib/agents";
 import { isTaskType } from "@/lib/tasks";
 import { dateFormat } from "@/lib/dates";
+import Scribble from "@/components/Scribble";
 
 type Page = { rows: Activity[]; next: string | null };
 
@@ -105,8 +106,8 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
   const spent = (r: Activity) => ((r.kind === "generated" || r.kind === "image_started" || r.kind === "onboard_charged") && r.credits !== undefined ? fill(a.credits, { n: r.credits }) : "");
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="page-title">{a.title}</h1>
+    <div className="mx-auto w-full max-w-3xl">
+      <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="activitypanel-t1" />{a.title}</span></h1>
       <p className="mt-2 text-ink/70">{a.sub}</p>
       <div className="mt-6 grid gap-4">
         <div className="card flex flex-wrap items-end gap-3">
@@ -126,7 +127,7 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
           </label>
           <a href="/api/activity/export" download className="btn btn-secondary btn-sm ms-auto">{a.export}</a>
         </div>
-        {err && <p role="alert" className="text-sm text-sadu-deep">{err}</p>}
+        {err && <p role="alert" className="text-sm text-danger">{err}</p>}
         <section className="card" aria-busy={busy}>
           {rows.length === 0 ? (
             <p className="text-sm text-ink/60">{agent || kind ? a.emptyFiltered : a.empty}</p>

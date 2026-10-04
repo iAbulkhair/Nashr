@@ -43,6 +43,43 @@ export const APP: string[] = [
   "src/components/app/AwayPanel.tsx",
   "src/components/app/WorkingDaysPanel.tsx",
   "src/components/app/AgentAvatar.tsx",
+  // Task 18: account screens (rule 519).
+  "src/app/[lang]/app/billing/page.tsx",
+  "src/app/[lang]/app/partner/page.tsx",
+  "src/app/[lang]/app/refer/page.tsx",
+  "src/app/[lang]/app/profile/page.tsx",
+  "src/app/[lang]/app/team/page.tsx",
+  "src/app/[lang]/app/notifications/page.tsx",
+  "src/app/[lang]/app/integrations/page.tsx",
+  "src/app/[lang]/app/mcp/page.tsx",
+  "src/app/[lang]/app/governance/page.tsx",
+  "src/app/[lang]/app/reports/page.tsx",
+  "src/app/[lang]/app/activity/page.tsx",
+  "src/app/[lang]/app/help/page.tsx",
+  "src/app/[lang]/app/admin/page.tsx",
+  "src/components/app/ActivityPanel.tsx",
+  "src/components/app/AdminConsole.tsx",
+  "src/components/app/AdminLogin.tsx",
+  "src/components/app/BillingOffer.tsx",
+  "src/components/app/GoldenPanel.tsx",
+  "src/components/app/GovernancePanel.tsx",
+  "src/components/app/IntegrationsPanel.tsx",
+  "src/components/app/LeadsPanel.tsx",
+  "src/components/app/LogoutButton.tsx",
+  "src/components/app/McpPanel.tsx",
+  "src/components/app/NotificationsPanel.tsx",
+  "src/components/app/PartnerCodeForm.tsx",
+  "src/components/app/PartnerPanel.tsx",
+  "src/components/app/PartnersPanel.tsx",
+  "src/components/app/PaymentsPanel.tsx",
+  "src/components/app/PerformanceImport.tsx",
+  "src/components/app/ProfilePanel.tsx",
+  "src/components/app/ReferPanel.tsx",
+  "src/components/app/ReportsPanel.tsx",
+  "src/components/app/TeamPanel.tsx",
+  "src/components/app/TopupCard.tsx",
+  "src/components/app/WishlistPanel.tsx",
+  "src/app/oauth/authorize/page.tsx",
 ];
 const read = (p: string) => readFileSync(p, "utf8");
 
@@ -55,15 +92,29 @@ describe("app screens are quiet D (rule 519)", () => {
       }
       expect(src, `${file}: error boxes are rose, not a tint of danger`).not.toMatch(/bg-danger\/\d/);
       expect(src, `${file}: the old sadu band is gone`).not.toMatch(/sadu-thin/);
+      // Lemon reads only on ink: an icon in lemon must sit on a line that sets the ink ground.
+      const lemonOnLight = src.split("\n").filter((l) => /<Icon [^>]*text-lemon/.test(l) && !/\bbg-ink\b/.test(l));
+      expect(lemonOnLight, `${file}: lemon is never an icon colour on a light ground`).toEqual([]);
+      // The app's main column is a flex column and these wrappers centre with auto margins, which turns off stretch: without
+      // w-full a long command or URL inside sizes the wrapper past a 360px screen.
+      expect(src, `${file}: a centred page wrapper takes the full column width`).not.toMatch(/<div className="mx-auto max-w-\w+">/);
+      expect(src, `${file}: no drop shadows`).not.toMatch(/\bshadow-(?:sm|md|lg|xl|2xl)\b/);
     });
   }
 
   it("the sign-in, sign-up, reset and join screens lead with the ink pill", () => {
-    for (const file of ["src/components/app/AuthForm.tsx", "src/components/app/JoinForm.tsx"]) {
+    for (const file of ["src/components/app/AuthForm.tsx", "src/components/app/JoinForm.tsx", "src/components/app/AdminLogin.tsx"]) {
       const src = read(file);
       expect(src, file).not.toMatch(/<button\b[^>]*className="btn btn-primary"/);
       expect(src.match(/className="s-btn"><Scribble kind="pill" seed="[^"]+" fill="ink" shadow ring \/>/g)?.length ?? 0, file).toBeGreaterThan(0);
     }
+  });
+
+  it("the OAuth consent screen, outside the [lang] layout, loads the D tokens and writes no colour value", () => {
+    const src = read("src/app/oauth/authorize/page.tsx");
+    expect(src).toMatch(/^import "\.\.\/\.\.\/tokens\.css";$/m);
+    expect(src).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(src).toMatch(/background: "var\(--color-ink\)", color: "var\(--color-paper\)"/);
   });
 
   it("a disabled pill keeps its label readable: lilac fill under ink text", () => {

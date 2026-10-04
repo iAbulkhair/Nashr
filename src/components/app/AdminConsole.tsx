@@ -87,7 +87,7 @@ const OV: Record<"en" | "ar", Record<string, string>> = {
 
 /** The provider check as plain text: green when working, red when not (a false flag, webhooks off, a Blob probe that is not ok). */
 function MediaReport({ m, O }: { m: MediaCheck; O: Record<string, string> }) {
-  const mark = (good: boolean, text: string) => <span className={good ? "text-oasis" : "font-semibold text-sadu"}>{text}</span>;
+  const mark = (good: boolean, text: string) => <span className={good ? "text-ink" : "font-semibold text-danger"}>{text}</span>;
   const at = (v: number | string | undefined) => { const d = new Date(v ?? NaN); return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 16).replace("T", " ") : "—"; };
   const check = (r: Record<string, number | string> | null, num: (n: number) => string) =>
     r === null ? <span className="text-ink/50">not configured</span> : Object.entries(r).map(([k, v], i) => <Fragment key={k}>{i > 0 && " · "}{k} {typeof v === "number" ? num(v) : mark(false, v)}</Fragment>);
@@ -465,19 +465,19 @@ export default function AdminConsole({ lang = "en", keySession = false }: { lang
       )}
       <div className="grid gap-3 sm:grid-cols-4">
         {[[S.users, loadingUsers ? "…" : list.length], [S.paying, loadingUsers ? "…" : paying], [S.today, loadingUsers ? "…" : today], [S.trial, loadingUsers ? "…" : trialing], [S.cost, total ? total.usd.toFixed(2) : "…"], [S.tokens, total ? `${Math.round((total.in + total.out) / 1000)}k` : "…"], [S.calls, total ? total.calls : "…"], [S.suspended, list.filter((u) => u.suspended).length]].map(([l, v]) => (
-          <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="font-display text-2xl font-bold text-oasis">{v}</p></div>
+          <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="font-display text-2xl font-bold text-ink">{v}</p></div>
         ))}
       </div>
-      {msg && <p className="text-sm text-oasis">{msg}</p>}
+      {msg && <p className="text-sm text-ink">{msg}</p>}
       <div className="flex flex-wrap gap-1 border-b border-ink/10 text-sm" role="tablist">
-        {TABS.map((k) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`px-4 py-2 ${tab === k ? "border-b-2 border-oasis font-semibold text-oasis" : "text-ink/60 hover:text-oasis"}`}>{TAB_LABEL[lang][k]}{k === "leads" && leadsUnread > 0 && <span className="ms-1.5 rounded-full bg-saffron px-1.5 text-xs font-semibold text-ink" data-testid="leads-unread">{leadsUnread}</span>}</button>)}
+        {TABS.map((k) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`px-4 py-2 ${tab === k ? "border-b-2 border-ink font-semibold text-ink" : "text-ink/60 hover:text-ink"}`}>{TAB_LABEL[lang][k]}{k === "leads" && leadsUnread > 0 && <span className="ms-1.5 rounded-full bg-lemon px-1.5 text-xs font-semibold text-ink" data-testid="leads-unread">{leadsUnread}</span>}</button>)}
       </div>
 
       {tab === "overview" && (!ov ? <p className="text-sm text-ink/50">{S.loading}</p> : (
         <div className="grid gap-6">
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {[[O.total, ov.users.total], [O.new7, ov.users.new7d], [O.activated, `${ov.users.activated} (${ov.users.activationRate ?? "—"}%)`], [O.dau, ov.engagement.dau], [O.wau, ov.engagement.wau], [O.mau, ov.engagement.mau], [O.stickiness, ov.engagement.stickiness === null ? "—" : `${ov.engagement.stickiness}%`], [O.retention, ov.engagement.retention7 === null ? "—" : `${ov.engagement.retention7}%`], [O.mrr, ov.revenue.mrrSar], [O.topupRev, ov.revenue.topupSarMonth], [O.credits, ov.revenue.creditsUsedMonth], [O.cost, ov.revenue.modelCostUsd.toFixed(2)], [O.errors, ov.health.errors7d]].map(([l, v]) => (
-              <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="tnum font-display text-2xl font-bold text-oasis">{v}</p></div>
+              <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="tnum font-display text-2xl font-bold text-ink">{v}</p></div>
             ))}
           </div>
           <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
@@ -489,7 +489,7 @@ export default function AdminConsole({ lang = "en", keySession = false }: { lang
               <h2 className="text-xs font-semibold uppercase tracking-wide text-ink/60">{O.funnel}</h2>
               <ul className="mt-3 space-y-2 text-sm">
                 {[[O.signup, ov.funnel.signups30], [O.activated30, ov.funnel.activated30], [O.generated, ov.funnel.generated30], [O.approved, ov.funnel.approved30], [O.paid, ov.funnel.paid30]].map(([l, v], i, arr) => { const base = Number(arr[0][1]) || 1; const pct = Math.round((Number(v) / base) * 100); return (
-                  <li key={String(l)}><div className="flex justify-between text-xs"><span>{l}</span><span className="tnum">{v} · {pct}%</span></div><div className="mt-1 h-2 rounded-full bg-salt-dim"><div className="h-full rounded-full bg-oasis" style={{ width: `${pct}%` }} /></div></li>
+                  <li key={String(l)}><div className="flex justify-between text-xs"><span>{l}</span><span className="tnum">{v} · {pct}%</span></div><div className="mt-1 h-2 rounded-full bg-lilac"><div className="h-full rounded-full bg-ink" style={{ width: `${pct}%` }} /></div></li>
                 ); })}
               </ul>
             </section>
@@ -497,7 +497,7 @@ export default function AdminConsole({ lang = "en", keySession = false }: { lang
           <section className="card card-sm">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-ink/60">{O.recent}</h2>
             <table className="mt-2 w-full text-xs"><thead className="text-start text-ink/60"><tr><th className="p-1 text-start">{S.email}</th><th>{S.plan}</th><th>{S.credits}</th><th>{O.activated}</th><th>{O.lastActive}</th><th>chat/generate/approve</th></tr></thead>
-              <tbody>{ov.recent.map((u) => <tr key={u.email} className="border-t border-ink/5"><td className="p-1"><button onClick={() => { setTab("users"); open(u.email); }} className="text-oasis underline" dir="ltr">{u.email}</button></td><td>{u.plan}</td><td className="tnum">{u.credits}</td><td>{u.activated ? "✓" : "—"}</td><td className="tnum" dir="ltr">{u.lastActive ? u.lastActive.slice(0, 16).replace("T", " ") : "—"}</td><td className="tnum">{u.events.chat ?? 0}/{u.events.generate ?? 0}/{u.events.approve ?? 0}</td></tr>)}</tbody></table>
+              <tbody>{ov.recent.map((u) => <tr key={u.email} className="border-t border-ink/5"><td className="p-1"><button onClick={() => { setTab("users"); open(u.email); }} className="text-ink underline" dir="ltr">{u.email}</button></td><td>{u.plan}</td><td className="tnum">{u.credits}</td><td>{u.activated ? "✓" : "—"}</td><td className="tnum" dir="ltr">{u.lastActive ? u.lastActive.slice(0, 16).replace("T", " ") : "—"}</td><td className="tnum">{u.events.chat ?? 0}/{u.events.generate ?? 0}/{u.events.approve ?? 0}</td></tr>)}</tbody></table>
           </section>
         </div>
       ))}
@@ -505,17 +505,17 @@ export default function AdminConsole({ lang = "en", keySession = false }: { lang
       {tab === "usage" && (!ov ? <p className="text-sm text-ink/50">{S.loading}</p> : (
         <div className="grid gap-6">
           <div className="grid gap-3 sm:grid-cols-4">
-            {[[O.dau, ov.engagement.dau], [O.wau, ov.engagement.wau], [O.mau, ov.engagement.mau], [O.retention, ov.engagement.retention7 === null ? "—" : `${ov.engagement.retention7}%`]].map(([l, v]) => <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="tnum font-display text-2xl font-bold text-oasis">{v}</p></div>)}
+            {[[O.dau, ov.engagement.dau], [O.wau, ov.engagement.wau], [O.mau, ov.engagement.mau], [O.retention, ov.engagement.retention7 === null ? "—" : `${ov.engagement.retention7}%`]].map(([l, v]) => <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="tnum font-display text-2xl font-bold text-ink">{v}</p></div>)}
           </div>
           <section className="card card-sm"><h2 className="text-xs font-semibold uppercase tracking-wide text-ink/60">{O.features}</h2>
-            <ul className="mt-2 grid gap-2 sm:grid-cols-3 lg:grid-cols-5 text-sm">{Object.entries(ov.features).sort((a, b) => b[1] - a[1]).map(([k, v]) => <li key={k} className="flex justify-between rounded-lg bg-salt-dim px-3 py-2"><span>{k}</span><span className="tnum font-semibold">{v}</span></li>)}</ul>
+            <ul className="mt-2 grid gap-2 sm:grid-cols-3 lg:grid-cols-5 text-sm">{Object.entries(ov.features).sort((a, b) => b[1] - a[1]).map(([k, v]) => <li key={k} className="flex justify-between rounded-lg bg-lilac px-3 py-2"><span>{k}</span><span className="tnum font-semibold">{v}</span></li>)}</ul>
           </section>
           <section className="card card-sm"><h2 className="text-xs font-semibold uppercase tracking-wide text-ink/60">{O.events}</h2>
             <table className="mt-2 w-full text-xs"><thead className="text-ink/60"><tr><th className="p-1 text-start">date</th>{["signup", "login", "onboard", "chat", "generate", "approve", "publish", "connect", "image", "error"].map((e) => <th key={e}>{e}</th>)}</tr></thead>
-              <tbody>{ov.events.map((d) => <tr key={d.date} className="border-t border-ink/5"><td className="tnum p-1" dir="ltr">{d.date.slice(5)}</td>{["signup", "login", "onboard", "chat", "generate", "approve", "publish", "connect", "image", "error"].map((e) => <td key={e} className={`tnum text-center ${e === "error" && d.counts[e] ? "text-sadu-deep" : ""}`}>{d.counts[e] ?? ""}</td>)}</tr>)}</tbody></table>
+              <tbody>{ov.events.map((d) => <tr key={d.date} className="border-t border-ink/5"><td className="tnum p-1" dir="ltr">{d.date.slice(5)}</td>{["signup", "login", "onboard", "chat", "generate", "approve", "publish", "connect", "image", "error"].map((e) => <td key={e} className={`tnum text-center ${e === "error" && d.counts[e] ? "text-danger" : ""}`}>{d.counts[e] ?? ""}</td>)}</tr>)}</tbody></table>
           </section>
           <section className="card card-sm"><h2 className="text-xs font-semibold uppercase tracking-wide text-ink/60">{O.health}</h2>
-            <div className="mt-2 grid gap-3 sm:grid-cols-4 text-sm">{[[O.errors, ov.health.errors7d], ["errors today", ov.health.errorsToday], [O.calls, ov.health.modelCalls], ["avg $/call", ov.health.avgCostPerCallUsd ?? "—"]].map(([l, v]) => <div key={String(l)} className="rounded-lg bg-salt-dim px-3 py-2"><p className="text-xs text-ink/60">{l}</p><p className="tnum font-semibold">{v}</p></div>)}</div>
+            <div className="mt-2 grid gap-3 sm:grid-cols-4 text-sm">{[[O.errors, ov.health.errors7d], ["errors today", ov.health.errorsToday], [O.calls, ov.health.modelCalls], ["avg $/call", ov.health.avgCostPerCallUsd ?? "—"]].map(([l, v]) => <div key={String(l)} className="rounded-lg bg-lilac px-3 py-2"><p className="text-xs text-ink/60">{l}</p><p className="tnum font-semibold">{v}</p></div>)}</div>
             <p className="mt-2 text-xs text-ink/50">Uptime, p95 latency and cron heartbeats: add Vercel Speed Insights + Better Stack (free tiers), see docs/Admin_Console_Benchmark.md.</p>
           </section>
         </div>
@@ -524,20 +524,20 @@ export default function AdminConsole({ lang = "en", keySession = false }: { lang
       {tab === "billing" && (!ov ? <p className="text-sm text-ink/50">{S.loading}</p> : (
         <div className="grid gap-6">
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {[[O.mrr, ov.revenue.mrrSar], [O.topupRev, ov.revenue.topupSarMonth], [O.arpu, ov.revenue.arpuSar ?? "—"], [O.cost, ov.revenue.modelCostUsd.toFixed(2)], [O.render, ov.revenue.renderCostUsd.toFixed(2)], [O.margin, ov.revenue.grossMarginPct === null ? "—" : `${ov.revenue.grossMarginPct}%`]].map(([l, v]) => <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="tnum font-display text-2xl font-bold text-oasis">{v}</p></div>)}
+            {[[O.mrr, ov.revenue.mrrSar], [O.topupRev, ov.revenue.topupSarMonth], [O.arpu, ov.revenue.arpuSar ?? "—"], [O.cost, ov.revenue.modelCostUsd.toFixed(2)], [O.render, ov.revenue.renderCostUsd.toFixed(2)], [O.margin, ov.revenue.grossMarginPct === null ? "—" : `${ov.revenue.grossMarginPct}%`]].map(([l, v]) => <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="tnum font-display text-2xl font-bold text-ink">{v}</p></div>)}
           </div>
           <section className="card card-sm"><h2 className="text-xs font-semibold uppercase tracking-wide text-ink/60">{O.models}</h2>
             <div className="overflow-x-auto">
               <table className="mt-2 w-full text-xs"><thead className="text-ink/60"><tr><th className="p-1 text-start">{O.model}</th><th>{O.done}</th><th>{O.failed}</th><th>{O.creditsKept}</th><th>{O.usd}</th><th>{O.perCredit}</th></tr></thead>
-                <tbody>{Object.entries(ov.revenue.renderByModel).map(([id, m]) => <tr key={id} className={`border-t border-ink/5 ${m.jobs + m.failed === 0 ? "text-ink/40" : ""}`}><td className="p-1 font-mono" dir="ltr">{id}</td><td className="tnum text-center">{m.jobs}</td><td className={`tnum text-center ${m.failed ? "text-sadu-deep" : ""}`}>{m.failed}</td><td className="tnum text-center">{m.credits}</td><td className="tnum text-center">{m.usd.toFixed(3)}</td><td className="tnum text-center">{m.credits ? (m.usd / m.credits).toFixed(3) : "—"}</td></tr>)}</tbody></table>
+                <tbody>{Object.entries(ov.revenue.renderByModel).map(([id, m]) => <tr key={id} className={`border-t border-ink/5 ${m.jobs + m.failed === 0 ? "text-ink/40" : ""}`}><td className="p-1 font-mono" dir="ltr">{id}</td><td className="tnum text-center">{m.jobs}</td><td className={`tnum text-center ${m.failed ? "text-danger" : ""}`}>{m.failed}</td><td className="tnum text-center">{m.credits}</td><td className="tnum text-center">{m.usd.toFixed(3)}</td><td className="tnum text-center">{m.credits ? (m.usd / m.credits).toFixed(3) : "—"}</td></tr>)}</tbody></table>
             </div>
             <p className="mt-2 font-mono text-xs text-ink/60" dir="ltr">{Object.entries(ov.revenue.renderByProvider).map(([p, v]) => `${p} $${v.usd.toFixed(2)} (${v.jobs}/${v.failed})`).join(" · ")}</p>
             <button type="button" onClick={checkMedia} disabled={checking} className="btn btn-secondary btn-sm mt-3">{checking ? S.loading : O.check}</button>
-            {mediaErr && <p className="mt-2 text-xs text-sadu">{mediaErr}</p>}
+            {mediaErr && <p className="mt-2 text-xs text-danger">{mediaErr}</p>}
             {media && <MediaReport m={media} O={O} />}
           </section>
           <section className="card card-sm"><h2 className="text-xs font-semibold uppercase tracking-wide text-ink/60">{O.planMix}</h2>
-            <ul className="mt-2 flex flex-wrap gap-2 text-sm">{Object.entries(ov.revenue.planMix).map(([k, v]) => <li key={k} className="rounded-full bg-salt-dim px-3 py-1">{k}: <b className="tnum">{v}</b></li>)}</ul>
+            <ul className="mt-2 flex flex-wrap gap-2 text-sm">{Object.entries(ov.revenue.planMix).map(([k, v]) => <li key={k} className="rounded-full bg-lilac px-3 py-1">{k}: <b className="tnum">{v}</b></li>)}</ul>
             <button type="button" onClick={() => window.open("/api/admin/export", "_blank")} className="btn btn-secondary btn-sm mt-3">{O.export}</button>
           </section>
           <section className="card card-sm"><h2 className="text-xs font-semibold uppercase tracking-wide text-ink/60">{O.invoices}</h2><p className="mt-2 text-sm text-ink/70">{O.invoicesNote}</p></section>
@@ -561,25 +561,25 @@ export default function AdminConsole({ lang = "en", keySession = false }: { lang
         {q.includes("@") && <button type="button" disabled={busy} onClick={() => open(q.trim().toLowerCase())} className="btn btn-secondary btn-xs">{S.lookup}</button>}
       </div>
       {memberSel && (
-        <div className="rounded-xl border border-oasis/30 bg-white p-5 text-sm">
+        <div className="rounded-xl border border-ink/30 bg-white p-5 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-display text-lg font-bold text-oasis" dir="ltr">{memberSel.email} <span className="text-sm font-normal text-ink/60">· {S.memberLogin} · {memberSel.role}{memberSel.disabled ? ` · ${memberSel.disabled}` : ""}</span></h2>
+            <h2 className="font-display text-lg font-bold text-ink" dir="ltr">{memberSel.email} <span className="text-sm font-normal text-ink/60">· {S.memberLogin} · {memberSel.role}{memberSel.disabled ? ` · ${memberSel.disabled}` : ""}</span></h2>
             <button onClick={() => setMemberSel(null)} className="text-sm text-ink/60">{S.close}</button>
           </div>
-          <p className="mt-2" dir="auto">{memberSel.name} · {S.memberOf} <button onClick={() => open(memberSel.memberOf)} className="text-oasis underline" dir="ltr">{memberSel.memberOf}</button> · {S.invitedBy} <span dir="ltr">{memberSel.invitedBy}</span> · {memberSel.acceptedAt.slice(0, 10)}</p>
-          {(!memberSel.ownerExists || !memberSel.onRoster) && <p className="mt-1 text-sadu-deep">{[!memberSel.ownerExists ? S.ownerMissing : "", !memberSel.onRoster ? S.offRoster : ""].filter(Boolean).join(" · ")}</p>}
+          <p className="mt-2" dir="auto">{memberSel.name} · {S.memberOf} <button onClick={() => open(memberSel.memberOf)} className="text-ink underline" dir="ltr">{memberSel.memberOf}</button> · {S.invitedBy} <span dir="ltr">{memberSel.invitedBy}</span> · {memberSel.acceptedAt.slice(0, 10)}</p>
+          {(!memberSel.ownerExists || !memberSel.onRoster) && <p className="mt-1 text-danger">{[!memberSel.ownerExists ? S.ownerMissing : "", !memberSel.onRoster ? S.offRoster : ""].filter(Boolean).join(" · ")}</p>}
           <button disabled={busy} onClick={() => { if (prompt(S.promptRemoveMember) === memberSel.email) void act(memberSel.email, "removeMember", { reason: prompt(O.reason, "") ?? "" }); }} className="btn btn-danger-solid btn-xs mt-3">{S.removeMember}</button>
         </div>
       )}
       <div className="overflow-x-auto rounded-xl border border-ink/10 bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-salt-dim text-left text-xs uppercase tracking-wide text-ink/60">
+          <thead className="bg-lilac text-left text-xs uppercase tracking-wide text-ink/60">
             <tr><th className="p-3">{S.email}</th><th>{S.name}</th><th>{S.phone}</th><th>{S.plan}</th><th>{S.seats}</th><th>{S.credits}</th><th>{S.chat}</th><th>{S.tokensMo}</th><th>{S.costMo}</th><th>{S.marginMo}</th><th>{S.trialEnds}</th><th>{S.joined}</th><th></th></tr>
           </thead>
           <tbody>
             {shown.map((u) => (
-              <tr key={u.email} className={`border-t border-ink/5 ${u.suspended ? "bg-sadu/5" : ""}`}>
-                <td className="p-3"><button onClick={() => open(u.email)} className="text-oasis underline">{u.email}</button>{u.suspended && <span className="ms-2 rounded bg-sadu px-1.5 text-xs font-semibold text-white">SUSPENDED</span>}</td>
+              <tr key={u.email} className={`border-t border-ink/5 ${u.suspended ? "bg-agent-sami/20" : ""}`}>
+                <td className="p-3"><button onClick={() => open(u.email)} className="text-ink underline">{u.email}</button>{u.suspended && <span className="ms-2 rounded bg-danger px-1.5 text-xs font-semibold text-white">SUSPENDED</span>}</td>
                 <td>{u.name}</td>
                 <td className="font-mono text-xs"><a href={`https://wa.me/${u.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="underline">{u.phone}</a></td>
                 <td>
@@ -595,7 +595,7 @@ export default function AdminConsole({ lang = "en", keySession = false }: { lang
                 <td className="font-mono">{u.credits}{(u.topupCredits ?? 0) > 0 && <span className="ms-1 text-xs text-ink/50" title={S.topups}>({u.topupCredits} {S.ofTopup})</span>}</td>
                 {/* The raw count against the allowance (it can pass one lowered mid-period); "+N msgs on credits (M credits)" this
                     month. Red when the count reached the allowance or little is left. */}
-                <td className={`whitespace-nowrap text-xs ${chatLow(u.chatUsed ?? 0, u.chatAllowance, u.chatLeft) ? "font-semibold text-sadu" : ""}`} data-testid="chat-cell">
+                <td className={`whitespace-nowrap text-xs ${chatLow(u.chatUsed ?? 0, u.chatAllowance, u.chatLeft) ? "font-semibold text-danger" : ""}`} data-testid="chat-cell">
                   <button disabled={busy} onClick={() => setChat(u)} title={chatTitle(u)} className="font-mono underline decoration-dotted">{u.chatUsed ?? 0} / {u.chatAllowance ?? "—"}</button>
                   {u.chatOverride != null && <span className="ms-1 text-ink/50">({S.seatsOverride})</span>}
                   {((u.chatOverflowUsed ?? 0) > 0 || (u.chatCredits ?? 0) > 0) && <span className="ms-1 font-mono">{S.onCredits(u.chatOverflowUsed ?? 0, u.chatCredits ?? 0)}</span>}
@@ -603,7 +603,7 @@ export default function AdminConsole({ lang = "en", keySession = false }: { lang
                 <td className="font-mono text-xs" title={`${u.calls ?? 0} model calls`}>{((u.tokens ?? 0) / 1000).toFixed(1)}k</td>
                 <td className="font-mono text-xs">{(u.usd ?? 0).toFixed(2)}</td>
                 {/* Plan price against this month's model cost. Red once the account keeps less than half of what it pays. */}
-                <td className={`font-mono text-xs ${u.marginPct == null ? "text-ink/40" : u.marginPct < 50 ? "font-semibold text-sadu" : ""}`} title={u.priceSar ? `${u.priceSar} SAR/mo` : ""}>{u.marginPct == null ? "—" : `${u.marginPct}%`}</td>
+                <td className={`font-mono text-xs ${u.marginPct == null ? "text-ink/40" : u.marginPct < 50 ? "font-semibold text-danger" : ""}`} title={u.priceSar ? `${u.priceSar} SAR/mo` : ""}>{u.marginPct == null ? "—" : `${u.marginPct}%`}</td>
                 <td className="font-mono text-xs">{u.plan === "trial" ? u.trialEnds.slice(0, 10) : "—"}</td>
                 <td className="font-mono text-xs">{u.createdAt.slice(0, 10)}</td>
                 <td className="p-3"><button disabled={busy} onClick={() => addCredits(u.email)} className="btn btn-secondary btn-xs">{S.addCredits}</button></td>
@@ -617,22 +617,22 @@ export default function AdminConsole({ lang = "en", keySession = false }: { lang
       </div>
 
       <section className={tab === "quality" ? "card card-sm" : "hidden"}>
-        <h2 className="font-display text-lg font-semibold text-oasis">{S.quality}</h2>
+        <h2 className="font-display text-lg font-semibold text-ink">{S.quality}</h2>
         <p className="text-xs text-ink/50">{S.qualityNote}</p>
         {!evals ? <p className="mt-2 text-sm text-ink/50">{S.loading}</p> : (
           <table className="mt-3 w-full text-sm">
-            <thead className="bg-salt-dim text-left text-xs uppercase tracking-wide text-ink/60"><tr><th className="p-2">{S.agentType}</th><th>{S.items}</th><th>{S.approval}</th><th>{S.edited}</th><th>{S.magnitude}</th><th>{S.published}</th><th>{S.judge}</th><th>{S.low}</th><th>{S.hours}</th><th>👍/👎</th></tr></thead>
+            <thead className="bg-lilac text-left text-xs uppercase tracking-wide text-ink/60"><tr><th className="p-2">{S.agentType}</th><th>{S.items}</th><th>{S.approval}</th><th>{S.edited}</th><th>{S.magnitude}</th><th>{S.published}</th><th>{S.judge}</th><th>{S.low}</th><th>{S.hours}</th><th>👍/👎</th></tr></thead>
             <tbody>
               {evals.agents.map((a) => (
                 <Fragment key={a.agent}>
-                  <tr className="border-t border-ink/10 bg-salt/60 font-medium">
+                  <tr className="border-t border-ink/10 bg-ground/60 font-medium">
                     <td className="p-2">{a.agent}</td><td className="font-mono">{a.n}{a.autoApproved > 0 && <span className="text-ink/40"> ({a.autoApproved} auto)</span>}</td><td className="font-mono">{a.approvalRate ?? "—"}{a.approvalRate !== null && "%"}<span className="text-ink/40"> · {a.decided}</span></td><td className="font-mono">{a.editRate ?? "—"}{a.editRate !== null && "%"}<span className="text-ink/40"> · {a.reviewedApproved}</span></td><td></td><td></td>
-                    <td className={`font-mono ${a.avgScore !== null && a.avgScore < 70 ? "text-sadu" : ""}`}>{a.avgScore ?? "—"}<span className="text-ink/40"> · {a.judged}</span></td><td className="font-mono">{a.low}/{a.judged}</td><td></td><td className="font-mono">{a.thumbsUp}/{a.thumbsDown}</td>
+                    <td className={`font-mono ${a.avgScore !== null && a.avgScore < 70 ? "text-danger" : ""}`}>{a.avgScore ?? "—"}<span className="text-ink/40"> · {a.judged}</span></td><td className="font-mono">{a.low}/{a.judged}</td><td></td><td className="font-mono">{a.thumbsUp}/{a.thumbsDown}</td>
                   </tr>
                   {a.types.map((x) => (
                     <tr key={a.agent + x.type} className="border-t border-ink/5 text-ink/70">
                       <td className="p-2 ps-6 font-mono text-xs">{x.type}</td><td className="font-mono">{x.n}{x.autoApproved > 0 && <span className="text-ink/40"> ({x.autoApproved} auto)</span>}</td><td className="font-mono">{x.approvalRate ?? "—"}{x.approvalRate !== null && "%"}<span className="text-ink/40"> · {x.approved + x.rejected}</span></td><td className="font-mono">{x.editRate ?? "—"}{x.editRate !== null && "%"}<span className="text-ink/40"> · {x.approved}</span></td><td className="font-mono">{x.editMagnitude ?? "—"}{x.editMagnitude !== null && "%"}</td><td className="font-mono">{x.published}</td>
-                      <td className={`font-mono ${x.avgScore !== null && x.avgScore < 70 ? "text-sadu" : ""}`}>{x.avgScore ?? "—"}<span className="text-ink/40"> · {x.judged}</span></td><td className="font-mono">{x.low}/{x.judged}</td><td className="font-mono">{x.avgHoursToDecide ?? "—"}</td><td></td>
+                      <td className={`font-mono ${x.avgScore !== null && x.avgScore < 70 ? "text-danger" : ""}`}>{x.avgScore ?? "—"}<span className="text-ink/40"> · {x.judged}</span></td><td className="font-mono">{x.low}/{x.judged}</td><td className="font-mono">{x.avgHoursToDecide ?? "—"}</td><td></td>
                     </tr>
                   ))}
                 </Fragment>
@@ -650,17 +650,17 @@ export default function AdminConsole({ lang = "en", keySession = false }: { lang
       {tab === "leads" && <LeadsPanel lang={lang} onSeen={leadsSeen} />}
 
       {sel && tab === "users" && (
-        <div className="rounded-xl border border-oasis/30 bg-white p-5">
+        <div className="rounded-xl border border-ink/30 bg-white p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-display text-lg font-bold text-oasis">{sel.user.email} <span className="text-sm font-normal text-ink/60">· {sel.user.name} · {sel.user.phone} · {sel.user.plan}{sel.user.plan === "agency" ? ` (${dealText(sel.user.deal)})` : ""} · {sel.user.credits} credits{sel.user.suspended ? " · SUSPENDED" : ""}</span></h2>
+            <h2 className="font-display text-lg font-bold text-ink">{sel.user.email} <span className="text-sm font-normal text-ink/60">· {sel.user.name} · {sel.user.phone} · {sel.user.plan}{sel.user.plan === "agency" ? ` (${dealText(sel.user.deal)})` : ""} · {sel.user.credits} credits{sel.user.suspended ? " · SUSPENDED" : ""}</span></h2>
             <button onClick={() => setSel(null)} className="text-sm text-ink/60">{S.close}</button>
           </div>
           <div className="mt-3 flex flex-wrap gap-2 text-xs">
-            <button disabled={busy} onClick={() => act(sel.user.email, "impersonate")} className="rounded-full bg-oasis px-3 py-1 font-semibold text-mist">{S.impersonate}</button>
+            <button disabled={busy} onClick={() => act(sel.user.email, "impersonate")} className="rounded-full bg-ink px-3 py-1 font-semibold text-lilac">{S.impersonate}</button>
             <button disabled={busy} onClick={() => act(sel.user.email, "extendTrial", { days: Number(prompt(S.promptDays, "7")) || 7 })} className="btn btn-secondary btn-xs">{S.extend}</button>
             <button disabled={busy} onClick={() => act(sel.user.email, "resetPassword")} className="btn btn-secondary btn-xs">{S.reset}</button>
             <button disabled={busy} onClick={() => act(sel.user.email, "setLang", { lang: sel.user.lang === "ar" ? "en" : "ar" })} className="btn btn-secondary btn-xs">{S.emailsIn} {sel.user.lang === "ar" ? S.english : S.arabic}</button>
-            <button disabled={busy} onClick={() => act(sel.user.email, sel.user.suspended ? "unsuspend" : "suspend")} className={`rounded-full px-3 py-1 font-semibold ${sel.user.suspended ? "bg-oasis text-mist" : "border border-sadu text-sadu"}`}>{sel.user.suspended ? S.unsuspend : S.suspend}</button>
+            <button disabled={busy} onClick={() => act(sel.user.email, sel.user.suspended ? "unsuspend" : "suspend")} className={`rounded-full px-3 py-1 font-semibold ${sel.user.suspended ? "bg-ink text-lilac" : "border border-danger text-danger"}`}>{sel.user.suspended ? S.unsuspend : S.suspend}</button>
             <button disabled={busy} onClick={() => { if (prompt(S.promptDelete) === sel.user.email) act(sel.user.email, "delete"); }} className="btn btn-danger-solid btn-xs">{S.del}</button>
           </div>
           {/* Partner programme: record payments (the source of truth for commissions) and void them (src/lib/partners.ts). */}
@@ -671,7 +671,7 @@ export default function AdminConsole({ lang = "en", keySession = false }: { lang
               <div className="rounded border border-ink/10 p-2" data-testid="chat-detail">
                 <p className="text-ink/50">{S.chatMessages} ({sel.chat.period === "trial" ? S.chatTrial : S.chatMonth})</p>
                 {/* The raw count, as the list shows it, and this month's messages on credits with what they were billed. */}
-                <p className={`font-mono ${chatLow(sel.chat.counted, sel.chat.allowance, sel.chat.left) ? "font-semibold text-sadu" : ""}`}>{sel.chat.counted} / {sel.chat.allowance}{sel.chat.overflow.used > 0 || sel.chat.overflow.credits > 0 ? ` · ${S.onCredits(sel.chat.overflow.used, sel.chat.overflow.credits)}` : ""}</p>
+                <p className={`font-mono ${chatLow(sel.chat.counted, sel.chat.allowance, sel.chat.left) ? "font-semibold text-danger" : ""}`}>{sel.chat.counted} / {sel.chat.allowance}{sel.chat.overflow.used > 0 || sel.chat.overflow.credits > 0 ? ` · ${S.onCredits(sel.chat.overflow.used, sel.chat.overflow.credits)}` : ""}</p>
                 <p className="font-mono text-xs text-ink/50">{S.overflow}: {!sel.chat.overflow.available ? S.overflowTrial : sel.chat.overflow.on ? S.overflowOn : S.overflowOff}{sel.usage.byKind?.chat ? ` · ${S.chatCost} ${sel.usage.byKind.chat.usd.toFixed(2)}` : ""}{sel.chatUsdPerMsg != null ? ` · ${S.perMsg} ${sel.chatUsdPerMsg.toFixed(4)}` : ""}</p>
               </div>
             )}
@@ -740,9 +740,9 @@ export default function AdminConsole({ lang = "en", keySession = false }: { lang
                       <td className="pe-2" dir="auto" data-refund={l.refund ? "done" : undefined}>{l.refund
                         ? <>{S.topupRefunded(l.refund.credits, sarText(l.refund.sar), l.refund.on)}{l.refund.ref ? ` · ${S.topupRef} ${l.refund.ref}` : ""}
                           {/* Rule 465: the refund is on the pack but not on its payment yet (a request that stopped). */}
-                          {sel.unfinishedRefunds?.includes(l.id) && <> · <button type="button" disabled={busy} title={S.finishRefundTitle} onClick={() => finishRefund(sel.user, l)} className="text-sadu underline" data-finish-refund>{S.finishRefund}</button></>}</>
-                        : l.paidSar > 0 && l.left > 0 && <button type="button" disabled={busy} onClick={() => refundTopup(sel.user, l)} className="text-oasis underline">{S.refundTopup}</button>}</td>
-                      <td className="text-end"><button type="button" disabled={busy} onClick={() => voidTopup(sel.user, l)} className="text-sadu underline">{S.voidTopup}</button></td>
+                          {sel.unfinishedRefunds?.includes(l.id) && <> · <button type="button" disabled={busy} title={S.finishRefundTitle} onClick={() => finishRefund(sel.user, l)} className="text-danger underline" data-finish-refund>{S.finishRefund}</button></>}</>
+                        : l.paidSar > 0 && l.left > 0 && <button type="button" disabled={busy} onClick={() => refundTopup(sel.user, l)} className="text-ink underline">{S.refundTopup}</button>}</td>
+                      <td className="text-end"><button type="button" disabled={busy} onClick={() => voidTopup(sel.user, l)} className="text-danger underline">{S.voidTopup}</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -750,7 +750,7 @@ export default function AdminConsole({ lang = "en", keySession = false }: { lang
             )}
           </div>
           <h3 className="mt-4 text-xs uppercase tracking-wide text-ink/60">{S.brandFile}</h3>
-          <pre className="mt-1 max-h-48 overflow-auto rounded bg-salt-dim p-3 text-xs" dir="auto">{sel.brand ? JSON.stringify(sel.brand, null, 2) : "— not completed —"}</pre>
+          <pre className="mt-1 max-h-48 overflow-auto rounded bg-lilac p-3 text-xs" dir="auto">{sel.brand ? JSON.stringify(sel.brand, null, 2) : "— not completed —"}</pre>
           <h3 className="mt-4 text-xs uppercase tracking-wide text-ink/60">{S.generated} ({sel.tasks.length}) · {S.approved} {sel.tasks.filter((t) => t.status === "approved").length} · {S.rejected} {sel.tasks.filter((t) => t.status === "rejected").length}</h3>
           <ul className="mt-2 grid max-h-96 gap-2 overflow-auto">
             {sel.tasks.map((t) => (

@@ -23,7 +23,7 @@ export default function SeriesPanel({ t, id, rows, total, kept, canWrite, canClo
   const { busy, error, send } = useOneWrite(t, { not_found: S.notFound });
   const locked = !canWrite || (kept && !canClose);
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto w-full max-w-3xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="seriespanel-t1" />{S.title}</span></h1>
       <p className="mt-2"><Link href={backHref} className="btn btn-secondary btn-xs">{S.back}</Link></p>
       {total === 0 ? (

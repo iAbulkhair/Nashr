@@ -12,7 +12,7 @@ export const PAGES: string[] = ["", "/pricing", "/app/login", "/agents", "/agent
  * Signed-in app paths, opened as the seeded owner (`e2e/auth.setup.ts`). Local runs only: against a deployed preview
  * there is no throwaway account to sign in with, and the preview's store is not ours to fill.
  */
-export const APP_PAGES: string[] = ["/app/start", "/app/onboarding", "/app", "/app/chat", "/app/conversations", "/app/todo", "/app/tasks", "/app/calendar", "/app/files", "/app/brands", "/app/generate", "/app/inspo"];
+export const APP_PAGES: string[] = ["/app/start", "/app/onboarding", "/app", "/app/chat", "/app/conversations", "/app/todo", "/app/tasks", "/app/calendar", "/app/files", "/app/brands", "/app/generate", "/app/inspo", "/app/billing", "/app/refer", "/app/partner", "/app/profile", "/app/team", "/app/notifications", "/app/integrations", "/app/mcp", "/app/governance", "/app/reports", "/app/activity", "/app/help"];
 const LANGS = ["ar", "en"] as const;
 const WIDTHS = [1440, 1024, 768, 390, 360];
 

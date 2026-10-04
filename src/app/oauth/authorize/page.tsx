@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { getClient, validRedirectUri } from "@/lib/oauth";
 import { can } from "@/lib/roles";
+// Renders its own document outside the [lang] layout, so it loads the D tokens itself and never writes a colour value.
+import "../../tokens.css";
 
 export const dynamic = "force-dynamic";
 
@@ -23,28 +25,28 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const destination = (() => { try { return new URL(q.redirect_uri ?? "").host; } catch { return ""; } })();
   return (
     <html lang="en" dir="ltr">
-      <body style={{ fontFamily: "system-ui, sans-serif", background: "#f6f4ee", color: "#101418", margin: 0 }}>
-        <main style={{ maxWidth: 440, margin: "10vh auto", background: "#fff", border: "1px solid #e5e2d9", borderRadius: 16, padding: 28 }}>
-          <p style={{ fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: "#d9503f", margin: 0 }}>Thakeen · Noor</p>
+      <body style={{ fontFamily: "system-ui, sans-serif", background: "var(--color-ground)", color: "var(--color-ink)", margin: 0 }}>
+        <main style={{ maxWidth: 440, margin: "10vh auto", background: "var(--color-paper)", border: "1.5px solid var(--color-ink)", borderRadius: 16, padding: 28 }}>
+          <p style={{ fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: "var(--color-muted)", margin: 0 }}>Thakeen · Noor</p>
           {bad || ownerOnly ? (
-            <><h1 style={{ fontSize: 20 }}>Cannot authorize</h1><p style={{ color: "#666" }}>{bad ?? ownerOnly}</p>{!bad && <p style={{ color: "#888", fontSize: 12 }}>Signed in as <b>{who}</b>.</p>}</>
+            <><h1 style={{ fontSize: 20 }}>Cannot authorize</h1><p style={{ color: "var(--color-muted)" }}>{bad ?? ownerOnly}</p>{!bad && <p style={{ color: "var(--color-muted)", fontSize: 12 }}>Signed in as <b>{who}</b>.</p>}</>
           ) : (
             <>
               <h1 style={{ fontSize: 22, margin: "8px 0 4px" }}>Allow <b>{client!.client_name || client!.client_id}</b> to use Noor?</h1>
-              <p style={{ color: "#555", fontSize: 14 }}>Signed in as <b>{who}</b>. The app will be able to: chat with Noor, create content in your inbox (uses credits), read your workspace files.</p>
-              <p style={{ background: "#fdf3f1", border: "1px solid #f0d5cf", borderRadius: 10, padding: "10px 12px", fontSize: 14, color: "#101418" }}>
+              <p style={{ color: "var(--color-muted)", fontSize: 14 }}>Signed in as <b>{who}</b>. The app will be able to: chat with Noor, create content in your inbox (uses credits), read your workspace files.</p>
+              <p style={{ background: "color-mix(in srgb, var(--color-agent-sami) 20%, var(--color-paper))", border: "1.5px solid var(--color-danger)", borderRadius: 10, padding: "10px 12px", fontSize: 14, color: "var(--color-ink)" }}>
                 Approving sends your authorization code to <b style={{ wordBreak: "break-all" }}>{destination || "an unknown address"}</b>.
                 <br />
-                <span style={{ color: "#777", fontSize: 12 }}>Any developer can register an app under any name. Only continue if you recognise that address.</span>
+                <span style={{ color: "var(--color-muted)", fontSize: 12 }}>Any developer can register an app under any name. Only continue if you recognise that address.</span>
               </p>
               <form method="post" action="/api/oauth/approve">
                 {(["client_id", "redirect_uri", "state", "scope", "code_challenge", "code_challenge_method"] as const).map((k) => <input key={k} type="hidden" name={k} value={q[k] ?? ""} />)}
                 <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-                  <button name="decision" value="allow" style={{ flex: 1, background: "#0f3d3a", color: "#e9f0ec", border: 0, borderRadius: 999, padding: "12px 16px", fontWeight: 600, cursor: "pointer" }}>Allow</button>
-                  <button name="decision" value="deny" style={{ flex: 1, background: "#fff", color: "#101418", border: "1px solid #ccc", borderRadius: 999, padding: "12px 16px", cursor: "pointer" }}>Deny</button>
+                  <button name="decision" value="allow" style={{ flex: 1, background: "var(--color-ink)", color: "var(--color-paper)", border: 0, borderRadius: 999, padding: "12px 16px", fontWeight: 600, cursor: "pointer" }}>Allow</button>
+                  <button name="decision" value="deny" style={{ flex: 1, background: "var(--color-paper)", color: "var(--color-ink)", border: "1.5px solid var(--color-ink)", borderRadius: 999, padding: "12px 16px", cursor: "pointer" }}>Deny</button>
                 </div>
               </form>
-              <p style={{ fontSize: 12, color: "#888", marginTop: 16 }}>You can revoke access any time from Thakeen → MCP → Revoke, or by generating a new personal token.</p>
+              <p style={{ fontSize: 12, color: "var(--color-muted)", marginTop: 16 }}>You can revoke access any time from Thakeen → MCP → Revoke, or by generating a new personal token.</p>
             </>
           )}
         </main>

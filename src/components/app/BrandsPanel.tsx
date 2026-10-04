@@ -53,7 +53,7 @@ export default function BrandsPanel({ lang, manage = true, readOnlyNote = "" }: 
   }
   const activeCount = brands.filter((b) => b.status === "active").length;
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto w-full max-w-3xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="brandspanel-t1" />{ar ? "العلامات" : "Brands"}</span></h1>
       <p className="mt-2 text-ink/70">{ar ? "لكل علامة ملفها ومحتواها وقنواتها وإعداداتها. الكريدت مشترك بين علاماتك." : "Each brand has its own file, content, channels and settings. Credits are shared across brands."}</p>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 card card-sm text-sm">

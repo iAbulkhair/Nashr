@@ -99,7 +99,7 @@ export default function TasksPanel({ t, initial, routines, readOnly = false }: {
     }
   }
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto w-full max-w-3xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="taskspanel-t1" />{k.title}</span></h1>
       <p className="mt-2 text-ink/70">{k.sub}</p>
       {readOnly && <ReadOnlyNote text={t.readOnly.admin} />}

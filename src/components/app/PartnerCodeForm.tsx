@@ -46,7 +46,7 @@ export default function PartnerCodeForm({ lang }: { lang: Lang }) {
         <input id="billing-partner-code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16))} dir="ltr" autoComplete="off" className="input flex-1 font-mono" />
         <button disabled={busy || code.length < 3} className="btn btn-primary">{busy ? S.busy : S.apply}</button>
       </div>
-      {err && <p role="alert" className="text-sm text-sadu-deep">{err}</p>}
+      {err && <p role="alert" className="text-sm text-danger">{err}</p>}
     </form>
   );
 }

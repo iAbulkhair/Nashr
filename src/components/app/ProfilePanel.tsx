@@ -13,6 +13,7 @@ import type { Role } from "@/lib/auth";
 import type { ChatStatus } from "@/lib/chat-allowance";
 import { paceStart, runway, runwayLine } from "@/lib/usage-view";
 import ReadOnlyNote from "./ReadOnlyNote";
+import Scribble from "@/components/Scribble";
 
 /**
  * GET /api/profile. `me` and `role` are the person acting; `user` is the account summary (the owner also gets the
@@ -189,15 +190,15 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
 
   return (
     <div className="mx-auto grid max-w-3xl gap-5">
-      <div><h1 className="page-title">{ar ? "حسابك" : "Your profile"}</h1><p className="mt-1 text-ink/60">{ar ? "إدارة الحساب والتفضيلات وما يعرفه الفريق عن علامتك." : "Manage your account, preferences and what the team knows about your brand."}</p></div>
-      {msg && <p role="status" className="rounded-lg bg-salt-dim p-3 text-sm text-oasis">{msg}</p>}
+      <div><h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="profilepanel-t1" />{ar ? "حسابك" : "Your profile"}</span></h1><p className="mt-1 text-ink/60">{ar ? "إدارة الحساب والتفضيلات وما يعرفه الفريق عن علامتك." : "Manage your account, preferences and what the team knows about your brand."}</p></div>
+      {msg && <p role="status" className="rounded-lg bg-lilac p-3 text-sm text-ink">{msg}</p>}
 
       <Card title={ar ? "استخدام الكريدت" : "Credit usage"} sub={rules}>
         <div className="flex items-center justify-between text-sm"><span>{ar ? "المستخدم" : "Credits used"}</span><span className="font-mono" dir="ltr">{usedCredits} / {d.allowance} ({pct}%)</span></div>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-salt-dim"><div className="h-full bg-oasis" style={{ width: `${pct}%` }} /></div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-lilac"><div className="h-full bg-ink" style={{ width: `${pct}%` }} /></div>
         {creditLine && <p className="mt-1 text-xs text-ink/60" data-runway="credits">{creditLine}</p>}
-        <div className="mt-3 rounded-lg bg-oasis/5 p-3" data-credit-split="">
-          <span className="font-display text-2xl font-bold text-oasis" dir="ltr">{d.user.credits}</span> <span className="text-sm text-ink/60">{ar ? "كريدت متبقٍ" : "credits remaining"}</span>
+        <div className="mt-3 rounded-lg bg-ink/5 p-3" data-credit-split="">
+          <span className="font-display text-2xl font-bold text-ink" dir="ltr">{d.user.credits}</span> <span className="text-sm text-ink/60">{ar ? "كريدت متبقٍ" : "credits remaining"}</span>
           {split.topup > 0 && (
             <dl className="mt-2 grid gap-1 text-xs text-ink/70">
               <div className="flex justify-between gap-2" data-plan-credits=""><dt>{trial ? (ar ? "كريدت التجربة" : "Trial credits") : (ar ? `كريدت الخطة (يتجدد في ${d.nextReset})` : `Plan credits (reset on ${d.nextReset})`)}</dt><dd className="font-mono" dir="ltr">{formatCount(split.plan)}</dd></div>
@@ -215,7 +216,7 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
         {chat && (
           <div className="mt-4" data-chat-usage="">
             <div className="flex items-center justify-between text-sm"><span>{chatTrial ? (ar ? "رسائل الدردشة في التجربة" : "Chat messages in your trial") : (ar ? "رسائل الدردشة هذا الشهر" : "Chat messages this month")}</span><span className="font-mono" dir="ltr">{formatCount(chat.used)} / {formatCount(chat.allowance)}</span></div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-salt-dim"><div className={`h-full ${chat.left > 0 ? "bg-oasis" : "bg-saffron"}`} style={{ width: `${chatPct}%` }} /></div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-lilac"><div className={`h-full ${chat.left > 0 ? "bg-ink" : "bg-lemon"}`} style={{ width: `${chatPct}%` }} /></div>
             {chatLine && <p className="mt-1 text-xs text-ink/60" data-runway="messages">{chatLine}</p>}
             {chatOverflowShown && <p className="mt-1 text-xs text-ink/60" data-chat-overflow-used="">{ar ? `${formatCount(chat.overflow.used)} رسالة إضافية هذا الشهر على الكريدت، خُصم عليها ${formatCount(chatCredits)} كريدت.` : `${formatCount(chat.overflow.used)} more this month, continued on credits: ${formatCount(chatCredits)} ${chatCredits === 1 ? "credit" : "credits"} billed.`}</p>}
           </div>

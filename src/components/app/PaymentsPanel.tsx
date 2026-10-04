@@ -109,9 +109,9 @@ export default function PaymentsPanel({ email, lang }: { email: string; lang: "a
       <p className="text-ink/60" data-topup-note>{L.topupNote}</p>
       {view.referredBy && <p className="mt-1">{L.partner}: <span className="font-mono">{view.referredBy.code}</span> · <span dir="ltr">{view.referredBy.partner}</span> · {L.via[view.referredBy.via] ?? view.referredBy.via} · <span dir="ltr">{view.referredBy.at.slice(0, 10)}</span> · {L.statuses[view.referredBy.status] ?? view.referredBy.status}</p>}
       {view.offer && (view.open
-        ? <p className="mt-1 text-oasis">{L.offerOpen(L.kinds[view.offer.kind] ?? view.offer.kind)} {view.expected ? SELF_SERVE_PLANS.map((k) => `${k} ${view.expected![k]}`).join(" · ") : ""}{view.until ? ` ${L.until(view.until)}` : ""}</p>
+        ? <p className="mt-1 text-ink">{L.offerOpen(L.kinds[view.offer.kind] ?? view.offer.kind)} {view.expected ? SELF_SERVE_PLANS.map((k) => `${k} ${view.expected![k]}`).join(" · ") : ""}{view.until ? ` ${L.until(view.until)}` : ""}</p>
         : view.expired && view.until
-          ? <p data-offer-expired className="mt-1 text-sadu">{L.expired(L.kinds[view.offer.kind] ?? view.offer.kind, view.until)}</p>
+          ? <p data-offer-expired className="mt-1 text-danger">{L.expired(L.kinds[view.offer.kind] ?? view.offer.kind, view.until)}</p>
           : <p className="mt-1 text-ink/60">{L.offerUsed(L.kinds[view.offer.kind] ?? view.offer.kind)}</p>)}
       <form onSubmit={async (e) => { e.preventDefault(); if (busy) return; if (await post({ action: "record", id, amountSar: Number(amount), plan, date, reference })) { setId(newPaymentId()); setAmount(""); setReference(""); } }} className="mt-2 flex flex-wrap items-end gap-2">
         <label className="grid gap-0.5"><span className="text-ink/60">{L.plan}</span>
@@ -122,16 +122,16 @@ export default function PaymentsPanel({ email, lang }: { email: string; lang: "a
         <label className="grid gap-0.5"><span className="text-ink/60">{L.reference}</span><input value={reference} onChange={(e) => setReference(e.target.value)} maxLength={80} dir="auto" className="input w-40" /></label>
         <button disabled={busy || !amount} className="btn btn-primary btn-xs">{L.record}</button>
       </form>
-      {msg && <p className="mt-1 text-oasis">{msg}</p>}
+      {msg && <p className="mt-1 text-ink">{msg}</p>}
       {view.payments.length === 0 ? <p className="mt-2 text-ink/60">{L.none}</p> : (
         <table className="mt-2 w-full font-mono">
           <tbody>{view.payments.map((p) => (
             <tr key={p.id} className={`border-t border-ink/5 ${p.voidedAt ? "text-ink/40" : ""}`}>
-              <td className="p-1" dir="ltr">{p.date}</td><td className="p-1">{p.topup ? L.topup(formatCount(p.topup.credits)) : p.plan}</td><td className="p-1" dir="ltr">{sarText(p.amountSar)}{p.refund && <span className="block text-sadu" dir="auto" data-payment-refund>{L.refunded(sarText(p.refund.sar), formatCount(p.refund.credits), p.refund.date)}</span>}</td>
+              <td className="p-1" dir="ltr">{p.date}</td><td className="p-1">{p.topup ? L.topup(formatCount(p.topup.credits)) : p.plan}</td><td className="p-1" dir="ltr">{sarText(p.amountSar)}{p.refund && <span className="block text-danger" dir="auto" data-payment-refund>{L.refunded(sarText(p.refund.sar), formatCount(p.refund.credits), p.refund.date)}</span>}</td>
               <td className="p-1">{p.offer ? `-${FIRST_MONTH_DISCOUNT_PCT}% ${L.kinds[p.offer] ?? p.offer}${p.expectedSar ? ` (${p.expectedSar})` : ""}` : ""}</td>
               <td className="p-1">{p.commission ? `${L.commission} ${sarText(p.commission.sar)}` : p.notCounted ? `${L.notCounted}: ${L.reasons[p.notCounted] ?? p.notCounted}` : ""}</td>
               <td className="p-1" dir="auto">{p.reference}</td>
-              <td className="p-1">{p.voidedAt ? `${L.voided}${p.voidReason ? `: ${p.voidReason}` : ""}` : p.topup && view.livePacks?.includes(p.topup.lot) ? <span className="text-ink/50" data-void-with-pack>{L.withPack}</span> : <button disabled={busy} onClick={() => { const reason = prompt(L.voidReason); if (reason !== null) void post({ action: "void", id: p.id, reason }); }} className="text-sadu underline">{L.void}</button>}</td>
+              <td className="p-1">{p.voidedAt ? `${L.voided}${p.voidReason ? `: ${p.voidReason}` : ""}` : p.topup && view.livePacks?.includes(p.topup.lot) ? <span className="text-ink/50" data-void-with-pack>{L.withPack}</span> : <button disabled={busy} onClick={() => { const reason = prompt(L.voidReason); if (reason !== null) void post({ action: "void", id: p.id, reason }); }} className="text-danger underline">{L.void}</button>}</td>
             </tr>
           ))}</tbody>
         </table>

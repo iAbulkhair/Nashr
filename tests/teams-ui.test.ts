@@ -142,7 +142,7 @@ describe("the Members page by role", () => {
   it("owner: invite form with both roles, role changes, pending invites, no leave", async () => {
     await signIn(owner.email);
     const h = await html(TeamPage);
-    expect(h).toContain(`<h1 class="page-title">${en.team.title}</h1>`);
+    expect(h).toMatch(new RegExp(`<h1 class="page-title"><span class="s-ul"><svg[^]*?</svg>${en.team.title}</span></h1>`));
     // No mail in this environment: the form says a link is made to pass on, never that an email is sent.
     expect(h).toContain(en.team.createLink);
     expect(h).toContain(esc(en.team.inviteSubHand));

@@ -5,6 +5,7 @@ import type { Lang } from "@/lib/i18n";
 import type { partnerDashboard } from "@/lib/partners";
 import { PARTNER_COPY } from "@/lib/partner-copy";
 import { sarText } from "@/lib/partner-rules";
+import Scribble from "@/components/Scribble";
 
 type Data = NonNullable<Awaited<ReturnType<typeof partnerDashboard>>>;
 
@@ -58,37 +59,37 @@ export default function PartnerPanel({ lang, link, data, bankEditable, countries
   return (
     <div className="mx-auto grid max-w-3xl gap-5">
       <div>
-        <h1 className="page-title">{S.title}</h1>
+        <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="partnerpanel-t1" />{S.title}</span></h1>
         <p className="mt-2 text-ink/70">{S.sub}</p>
       </div>
 
       <div className="card grid gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <p className="text-xs uppercase tracking-wide text-ink/50">{S.code}</p>
-          <code data-partner-code className="rounded bg-salt-dim px-3 py-1 font-mono text-lg font-bold" dir="ltr">{data.code}</code>
+          <code data-partner-code className="rounded bg-lilac px-3 py-1 font-mono text-lg font-bold" dir="ltr">{data.code}</code>
           <CopyButton text={data.code} label={S.copy} done={S.copied} />
         </div>
         <div>
           <p className="text-xs uppercase tracking-wide text-ink/50">{S.link}</p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <code className="flex-1 break-all rounded bg-salt-dim px-3 py-2 text-sm" dir="ltr">{link}</code>
+            <code className="flex-1 break-all rounded bg-lilac px-3 py-2 text-sm" dir="ltr">{link}</code>
             <CopyButton text={link} label={S.copy} done={S.copied} />
           </div>
         </div>
         <div>
           <p className="text-xs uppercase tracking-wide text-ink/50">{S.shareTitle}</p>
-          <p className="mt-1 whitespace-pre-wrap rounded bg-salt-dim px-3 py-2 text-sm" dir="auto">{share}</p>
+          <p className="mt-1 whitespace-pre-wrap rounded bg-lilac px-3 py-2 text-sm" dir="auto">{share}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             <CopyButton text={share} label={S.copy} done={S.copied} />
             <a href={`https://wa.me/?text=${encodeURIComponent(share)}`} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">{S.shareWa}</a>
           </div>
         </div>
-        <p className="text-xs text-ink/60">{S.rules} <Link href={`/${lang}/affiliates/terms`} data-terms-link className="text-oasis underline">{S.terms}</Link></p>
+        <p className="text-xs text-ink/60">{S.rules} <Link href={`/${lang}/affiliates/terms`} data-terms-link className="text-ink underline">{S.terms}</Link></p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {([[S.stats.referrals, String(data.referrals.length)], [S.stats.pending, sarText(data.pending)], [S.stats.payable, sarText(data.payable)], [S.stats.paid, sarText(data.paid)]] as const).map(([l, v]) => (
-          <div key={l} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="tnum font-display text-2xl font-bold text-oasis" dir="ltr">{v}</p></div>
+          <div key={l} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="tnum font-display text-2xl font-bold text-ink" dir="ltr">{v}</p></div>
         ))}
       </div>
       {data.pending > 0 && <p className="-mt-3 text-xs text-ink/60">{S.pendingNote}</p>}
@@ -140,7 +141,7 @@ export default function PartnerPanel({ lang, link, data, bankEditable, countries
         <p className="mt-1 text-sm text-ink/60">{S.bankNote}</p>
         <p data-tax-note className="mt-1 text-sm text-ink/60">{S.taxNote}</p>
         {bank && <p data-bank-masked className="mt-2 text-sm"><span dir="auto">{bank.holder}</span> · <span className="font-mono" dir="ltr">{bank.iban}</span>{bank.country ? <> · <span>{countries.find(([c]) => c === bank.country)?.[1] ?? bank.country}</span></> : null}{bank.taxNumber ? <> · <span className="font-mono" dir="ltr">{bank.taxNumber}</span></> : null}</p>}
-        {bank && !bank.confirmed && <p data-bank-pending className="mt-1 text-xs text-sadu">{S.bankPending}</p>}
+        {bank && !bank.confirmed && <p data-bank-pending className="mt-1 text-xs text-danger">{S.bankPending}</p>}
         {bankEditable ? (
           <form onSubmit={saveBank} className="mt-3 grid gap-2 sm:max-w-md">
             <input value={holder} onChange={(e) => setHolder(e.target.value)} required maxLength={80} autoComplete="name" placeholder={S.holder} aria-label={S.holder} className="input" />
@@ -153,8 +154,8 @@ export default function PartnerPanel({ lang, link, data, bankEditable, countries
             <input value={taxNumber} onChange={(e) => setTaxNumber(e.target.value)} maxLength={30} autoComplete="off" dir="ltr" placeholder={S.taxNumber} aria-label={S.taxNumber} className="input font-mono" />
             <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="vatRegistered" checked={vatRegistered} onChange={(e) => setVatRegistered(e.target.checked)} className="mt-1" /><span>{S.vatRegistered}</span></label>
             <button disabled={busy} className="btn btn-primary">{S.save}</button>
-            {msg && <p className="text-sm text-oasis">{msg}</p>}
-            {err && <p role="alert" className="text-sm text-sadu-deep">{err}</p>}
+            {msg && <p className="text-sm text-ink">{msg}</p>}
+            {err && <p role="alert" className="text-sm text-danger">{err}</p>}
           </form>
         ) : <p className="mt-2 text-xs text-ink/60">{S.errors.forbidden}</p>}
       </section>

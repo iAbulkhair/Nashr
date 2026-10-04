@@ -8,6 +8,7 @@ import type { Role } from "@/lib/auth";
 import type { TeamPerms } from "./teamPerms";
 import ReadOnlyNote from "./ReadOnlyNote";
 import { Icon } from "./Icons";
+import Scribble from "@/components/Scribble";
 
 type TeamRole = "admin" | "member";
 type Row = { email: string; name: string; role: Role; acceptedAt?: string; disabled?: "seats" };
@@ -135,23 +136,23 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
   const canCancel = (inv: PendingRow) => perms.cancelInvite && (inv.role === "member" || perms.inviteAdmin);
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="page-title">{T.title}</h1>
+    <div className="mx-auto w-full max-w-3xl">
+      <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="teampanel-t1" />{T.title}</span></h1>
       <p className="page-sub">{T.sub}</p>
 
       <div className="mt-4 card card-sm text-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <span className="flex items-center gap-2"><Icon name="users" className="h-4 w-4 text-oasis" />{T.seats}: <b className="tnum" dir="ltr">{used} / {limit}</b></span>
-          {full && perms.inviteAdmin && <Link href={`/${lang}/app/billing`} className="text-xs font-medium text-oasis underline">{T.plans}</Link>}
+          <span className="flex items-center gap-2"><Icon name="users" className="h-4 w-4 text-ink" />{T.seats}: <b className="tnum" dir="ltr">{used} / {limit}</b></span>
+          {full && perms.inviteAdmin && <Link href={`/${lang}/app/billing`} className="text-xs font-medium text-ink underline">{T.plans}</Link>}
         </div>
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-ink/10" role="progressbar" aria-label={T.seats} aria-valuemin={0} aria-valuemax={limit} aria-valuenow={Math.min(used, limit)}>
-          <div className={`h-full rounded-full ${full ? "bg-saffron" : "bg-oasis"}`} style={{ width: `${pct}%` }} />
+          <div className={`h-full rounded-full ${full ? "bg-lemon" : "bg-ink"}`} style={{ width: `${pct}%` }} />
         </div>
         <p className="mt-2 text-xs text-ink/60">{T.seatsNote}</p>
       </div>
 
-      {err && <p role="alert" className="mt-4 text-sm text-sadu-deep">{err}</p>}
-      {msg && <p role="status" className="mt-4 rounded-lg bg-salt-dim p-3 text-sm text-oasis">{msg}</p>}
+      {err && <p role="alert" className="mt-4 text-sm text-danger">{err}</p>}
+      {msg && <p role="status" className="mt-4 rounded-lg bg-lilac p-3 text-sm text-ink">{msg}</p>}
 
       <div className="mt-4 grid gap-4">
         <section className="card">
@@ -163,7 +164,7 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
               return (
                 <li key={m.email} className={`flex flex-wrap items-center justify-between gap-3 py-3 ${m.disabled ? "opacity-70" : ""}`}>
                   <div className="flex min-w-0 items-center gap-3">
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-oasis/10 font-semibold text-oasis" aria-hidden>{label.charAt(0).toUpperCase()}</span>
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink/10 font-semibold text-ink" aria-hidden>{label.charAt(0).toUpperCase()}</span>
                     <div className="min-w-0">
                       <p className="flex flex-wrap items-center gap-2">
                         <span className="clip font-medium" dir="auto">{label}</span>
@@ -210,12 +211,12 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
               <button disabled={locked || full} className="btn btn-primary btn-sm">{busy === "invite" ? T.sending : mailOn ? T.send : T.createLink}</button>
             </form>
             <p className="mt-2 text-xs text-ink/60">{T.roleHelp[role]}</p>
-            {full && <p className="mt-2 text-sm text-sadu-deep">{perms.inviteAdmin ? T.seatsFull : T.seatsFullAsk}</p>}
+            {full && <p className="mt-2 text-sm text-danger">{perms.inviteAdmin ? T.seatsFull : T.seatsFullAsk}</p>}
             {link && (
-              <div className="mt-4 rounded-lg border border-oasis/30 bg-oasis/5 p-3">
+              <div className="mt-4 rounded-lg border border-ink/30 bg-ink/5 p-3">
                 <p className="text-sm font-medium">{T.linkTitle}</p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <code className="min-w-0 flex-1 break-all rounded bg-salt-dim px-3 py-2 text-xs" dir="ltr">{link.url}</code>
+                  <code className="min-w-0 flex-1 break-all rounded bg-lilac px-3 py-2 text-xs" dir="ltr">{link.url}</code>
                   <button type="button" onClick={copy} className="btn btn-primary btn-xs"><Icon name="copy" className="h-3.5 w-3.5" />{copied ? T.copied : T.copy}</button>
                 </div>
                 <p className="mt-2 text-xs text-ink/60">{fill(T.linkNote, { email: link.email })}</p>

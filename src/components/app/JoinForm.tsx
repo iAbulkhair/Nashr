@@ -95,7 +95,7 @@ export default function JoinForm({ t, lang, signedInAs }: { t: AppDict; lang: La
 
   const ok = !!name.trim() && checks.every(Boolean);
   return (
-    <div className="mx-auto max-w-md">
+    <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="joinform-t1" />{J.title}</span></h1>
 
       {phase === "checking" && <p role="status" className="page-sub">{J.checking}</p>}

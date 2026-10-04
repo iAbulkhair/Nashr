@@ -24,7 +24,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     if (await getBrand(sc(u))) redirect(`/${lang}/app`);
     const t = appDict[lang].start;
     return (
-      <div className="mx-auto max-w-2xl">
+      <div className="mx-auto w-full max-w-2xl">
         <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="start-t1" />{t.memberTitle}</span></h1>
         <ReadOnlyNote className="mt-4" text={t.memberWait} />
       </div>

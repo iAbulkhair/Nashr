@@ -198,7 +198,7 @@ export default function DictionaryStart({ t, lang, initialUrl, setupCost, setupP
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto w-full max-w-2xl">
       <section className="card overflow-hidden p-0" data-testid="dictionary-start" data-step={s.step} aria-labelledby={`${uid}-title`}>
         <div className="p-5 sm:p-6">
           <h1 id={`${uid}-title`} className="page-title">

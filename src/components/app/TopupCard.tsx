@@ -56,10 +56,10 @@ export default function TopupCard({ lang, plan, owner, email, whatsapp, lots, to
           return (
             <div key={credits} data-pack={credits} className="flex flex-col rounded-xl border border-ink/10 p-4">
               <p className="font-display text-2xl font-bold" dir="ltr">{n(credits)} <span className="text-sm font-normal text-ink/60">{ar ? "كريدت" : "credits"}</span></p>
-              <p className="mt-1 text-sm text-sadu" data-pack-price="">{price(credits)}</p>
+              <p className="mt-1 text-sm text-danger" data-pack-price="">{price(credits)}</p>
               <p className="mt-1 flex-1 text-xs text-ink/60">{ar ? `صالحة ${n(TOPUP_VALID_DAYS)} يوماً` : `Valid ${n(TOPUP_VALID_DAYS)} days`}</p>
               {link && (
-                <a href={link} target="_blank" rel="noreferrer" data-pack-request="" className="mt-3 rounded-full bg-oasis px-4 py-2 text-center text-sm font-semibold text-mist">
+                <a href={link} target="_blank" rel="noreferrer" data-pack-request="" className="mt-3 rounded-full bg-ink px-4 py-2 text-center text-sm font-semibold text-lilac">
                   {whatsapp ? (ar ? "اطلبها عبر واتساب" : "Request on WhatsApp") : (ar ? "اطلبها بالبريد" : "Request by email")}
                 </a>
               )}

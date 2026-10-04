@@ -28,7 +28,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   const fromChat = tasks.filter((x) => x.source === "chat").length;
   const hits = q ? await searchConversations(sc(u), q) : null;
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto w-full max-w-3xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="conversations-t1" />{t.history.title}</span></h1>
       <p className="mt-2 text-ink/70">{t.history.sub}</p>
       <div className="mt-6 grid grid-cols-2 gap-4">

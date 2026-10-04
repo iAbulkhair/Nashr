@@ -46,7 +46,7 @@ export default function GeneratePanel({ t, lang, credits, owner = true, topups =
   }
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto w-full max-w-3xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="generatepanel-t1" />{g.title}</span></h1>
       <p className="mt-2 text-ink/70">{g.sub}</p>
       <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder={g.notes} className="mt-5 input" />

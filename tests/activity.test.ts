@@ -357,7 +357,7 @@ describe("the Activity page renders the first page on the server (rule 238)", ()
     ]);
     const en = await html("en");
     expect(en.match(/<h1\b/g)).toHaveLength(1);
-    expect(en).toContain(">Activity</h1>");
+    expect(en).toMatch(/<\/svg>Activity<\/span><\/h1>/);
     expect(en).toContain("Wrote a batch");
     expect(en).toContain("Razan");
     expect(en).toContain("6 credits");
@@ -367,7 +367,7 @@ describe("the Activity page renders the first page on the server (rule 238)", ()
     expect(en).toContain('href="/api/activity/export"');
     expect(en).toContain("All agents");
     const ar = await html("ar");
-    expect(ar).toContain(">النشاط</h1>");
+    expect(ar).toMatch(/<\/svg>النشاط<\/span><\/h1>/);
     expect(ar).toContain("كتب دفعة");
 
     await owner("act-page-other");

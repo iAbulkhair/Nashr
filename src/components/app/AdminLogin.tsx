@@ -1,6 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import Scribble from "@/components/Scribble";
 
 const MSG = {
   ar: { wrong: "المفتاح غير صحيح.", slow: "محاولات كثيرة. حاول بعد ربع ساعة.", other: "تعذّر الدخول الآن. حاول مرة أخرى." },
@@ -29,10 +30,10 @@ export default function AdminLogin({ lang = "en" }: { lang?: "ar" | "en" }) {
   }
   return (
     <form onSubmit={onSubmit} className="mx-auto grid max-w-sm gap-3">
-      <h1 className="font-display text-2xl font-bold text-oasis">{ar ? "لوحة المؤسس" : "Founder console"}</h1>
+      <h1 className="font-display text-2xl font-bold text-ink"><span className="s-ul"><Scribble kind="underline" seed="adminlogin-t1" />{ar ? "لوحة المؤسس" : "Founder console"}</span></h1>
       <input name="key" type="password" placeholder={ar ? "مفتاح الأدمن" : "Admin key"} aria-label={ar ? "مفتاح الأدمن" : "Admin key"} dir="ltr" className="input" />
-      {err && <p role="alert" className="text-sm text-sadu">{err}</p>}
-      <button disabled={busy} className="btn btn-primary">{ar ? "دخول" : "Enter"}</button>
+      {err && <p role="alert" className="text-sm text-danger">{err}</p>}
+      <button disabled={busy} className="s-btn"><Scribble kind="pill" seed="adminlogin-go" fill="ink" shadow ring />{ar ? "دخول" : "Enter"}</button>
     </form>
   );
 }

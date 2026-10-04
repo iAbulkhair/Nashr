@@ -93,14 +93,14 @@ function AppRow({ a, L, onAct }: { a: App; L: L; onAct: Act }) {
       <td className="p-1"><p>{a.channel}</p><p className="text-ink/60">{a.audience}</p></td>
       <td className="tnum p-1" dir="ltr">
         {a.at.slice(0, 10)}
-        {a.at && a.at.slice(0, 10) < NEW_TERMS_FROM && <p data-old-terms className="max-w-56 text-sadu" dir="auto">{L.oldTerms}</p>}
+        {a.at && a.at.slice(0, 10) < NEW_TERMS_FROM && <p data-old-terms className="max-w-56 text-danger" dir="auto">{L.oldTerms}</p>}
         {a.consentAt && a.termsVersion
-          ? <p data-consent className="max-w-56 text-oasis" dir="auto">{L.consent(a.termsVersion, a.consentAt.slice(0, 10))}</p>
-          : <p data-no-consent className="max-w-56 text-sadu" dir="auto">{L.noConsent}</p>}
+          ? <p data-consent className="max-w-56 text-ink" dir="auto">{L.consent(a.termsVersion, a.consentAt.slice(0, 10))}</p>
+          : <p data-no-consent className="max-w-56 text-danger" dir="auto">{L.noConsent}</p>}
       </td>
       <td className="p-1">
         <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16))} aria-label={L.code} dir="ltr" className="input w-32 font-mono" />
-        {bad && <p className="text-sadu">{L.codeErrors[bad]}</p>}
+        {bad && <p className="text-danger">{L.codeErrors[bad]}</p>}
       </td>
       <td className="p-1">
         {!consented && <label className="mb-1 flex max-w-56 items-start gap-1"><input type="checkbox" data-out-of-band checked={outOfBand} onChange={(e) => setOutOfBand(e.target.checked)} /><span>{L.outOfBand}</span></label>}
@@ -179,7 +179,7 @@ export default function PartnersPanel({ lang }: { lang: "ar" | "en" }) {
   const manualBad = codeProblem(normalizeCode(manual.code));
   return (
     <div className="grid gap-6 text-xs">
-      {msg && <p className="text-sm text-oasis" role="status">{msg}</p>}
+      {msg && <p className="text-sm text-ink" role="status">{msg}</p>}
       <section className="card card-sm">
         <h2 className="font-display text-lg font-bold">{L.apps}</h2>
         <p className="mt-1 text-ink/60">{L.appsNote}</p>
@@ -193,7 +193,7 @@ export default function PartnersPanel({ lang }: { lang: "ar" | "en" }) {
           <input value={manual.code} onChange={(e) => setManual({ ...manual, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16) })} placeholder={L.code} aria-label={L.code} dir="ltr" className="input w-32 font-mono" />
           <label className="flex items-center gap-1"><input type="checkbox" data-out-of-band checked={manual.consentOutOfBand} onChange={(e) => setManual({ ...manual, consentOutOfBand: e.target.checked })} /><span>{L.outOfBand}</span></label>
           <button disabled={!!manualBad || !manual.email || !manual.consentOutOfBand} className="btn btn-primary btn-xs">{L.approve}</button>
-          {manual.code && manualBad && <span className="text-sadu">{L.codeErrors[manualBad]}</span>}
+          {manual.code && manualBad && <span className="text-danger">{L.codeErrors[manualBad]}</span>}
         </form>
         {decided.length > 0 && (
           <details className="mt-3"><summary className="cursor-pointer text-ink/60">{L.decided} ({decided.length})</summary>
@@ -226,39 +226,39 @@ function PartnerRows({ p, L, lang, open, toggle, onAct }: { p: PartnerRow; L: L;
         <td className="p-1">
           <p>{p.name}</p><p className="text-ink/60" dir="ltr">{p.email}</p>
           {!p.hasAccount && <p className="text-ink/50">{L.noAccount}</p>}
-          {p.accountAfterApproval && <p data-late-account className="max-w-64 text-sadu">{L.lateAccount}</p>}
+          {p.accountAfterApproval && <p data-late-account className="max-w-64 text-danger">{L.lateAccount}</p>}
           {p.terms
             ? <p data-partner-consent className="max-w-64 text-ink/60">{p.terms.via === "founder" ? L.consentByFounder(p.terms.version, p.terms.at.slice(0, 10), p.terms.by ?? "") : L.consent(p.terms.version, p.terms.at.slice(0, 10))}</p>
-            : <p data-partner-no-consent className="max-w-64 font-semibold text-sadu">{L.partnerNoConsent}</p>}
+            : <p data-partner-no-consent className="max-w-64 font-semibold text-danger">{L.partnerNoConsent}</p>}
         </td>
         <td className="p-1 font-mono" dir="ltr">{p.code}</td>
         <td className="tnum p-1 text-center">{p.referrals}</td>
         <td className="tnum p-1 text-center" dir="ltr">{sarText(p.earned)}</td>
         <td className="tnum p-1 text-center" dir="ltr">{sarText(p.paid)}</td>
         <td className="tnum p-1 text-center" dir="ltr">{sarText(p.balance)}</td>
-        <td className={`tnum p-1 text-center ${p.payable > 0 ? "font-semibold text-oasis" : ""}`} dir="ltr">{sarText(p.payable)}</td>
+        <td className={`tnum p-1 text-center ${p.payable > 0 ? "font-semibold text-ink" : ""}`} dir="ltr">{sarText(p.payable)}</td>
         <td className="p-1">
           {p.bank ? (
             <>
               <p dir="auto">{p.bank.holder}</p><p className="font-mono" dir="ltr">{p.bank.iban}</p>
               {p.bank.country && <p>{L.country}: {countryName(p.bank.country, lang)} <span className="font-mono" dir="ltr">({p.bank.country})</span></p>}
               {p.bank.taxNumber && <p>{L.taxNumber}: <span className="font-mono" dir="ltr">{p.bank.taxNumber}</span></p>}
-              {p.tax.vatRegistered && <p data-flag-vat className="max-w-64 font-semibold text-sadu">{L.flagVat}</p>}
-              {p.tax.outsideSaudi && <p data-flag-wht className="max-w-64 font-semibold text-sadu">{L.flagWht}</p>}
-              {p.tax.noCountry && <p data-flag-no-country className="max-w-64 text-sadu">{L.flagNoCountry}</p>}
+              {p.tax.vatRegistered && <p data-flag-vat className="max-w-64 font-semibold text-danger">{L.flagVat}</p>}
+              {p.tax.outsideSaudi && <p data-flag-wht className="max-w-64 font-semibold text-danger">{L.flagWht}</p>}
+              {p.tax.noCountry && <p data-flag-no-country className="max-w-64 text-danger">{L.flagNoCountry}</p>}
               {p.bankConfirmed
-                ? <p className="text-oasis">{L.confirmedOn(p.bank.confirmedAt!.slice(0, 10))}</p>
+                ? <p className="text-ink">{L.confirmedOn(p.bank.confirmedAt!.slice(0, 10))}</p>
                 : <>
-                    <p data-bank-unconfirmed className="max-w-64 text-sadu">{L.unconfirmed(p.bank.savedAt.slice(0, 10))}</p>
+                    <p data-bank-unconfirmed className="max-w-64 text-danger">{L.unconfirmed(p.bank.savedAt.slice(0, 10))}</p>
                     <button onClick={() => void onAct({ action: "confirm_bank", email: p.email, savedAt: p.bank!.savedAt })} className="btn btn-secondary btn-xs mt-1">{L.confirm}</button>
                   </>}
             </>
           ) : <span className="text-ink/50">{L.noBank}</span>}
         </td>
-        <td className="p-1"><button onClick={toggle} className="text-oasis underline">{open ? L.hide : L.show}</button></td>
+        <td className="p-1"><button onClick={toggle} className="text-ink underline">{open ? L.hide : L.show}</button></td>
       </tr>
       {open && (
-        <tr><td colSpan={9} className="bg-salt-dim/50 p-2">
+        <tr><td colSpan={9} className="bg-lilac/50 p-2">
           <PayoutForm p={p} L={L} onAct={onAct} />
           <p data-tax-totals className="mt-1 text-ink/60" dir="auto">{L.taxTotals(sarText(p.tax.vatPaid), sarText(p.tax.whtBorne))}</p>
           <div className="mt-3 grid gap-3 lg:grid-cols-2">
@@ -271,7 +271,7 @@ function PartnerRows({ p, L, lang, open, toggle, onAct }: { p: PartnerRow; L: L;
                 <tbody>{p.payouts.map((x) => (
                   <tr key={x.id} className={x.voidedAt ? "text-ink/40 line-through" : ""}>
                     <td className="tnum text-center" dir="ltr">{x.date}</td><td className="tnum text-center" dir="ltr">{sarText(x.sar)}</td><td className="tnum text-center" dir="ltr">{x.vatSar ? sarText(x.vatSar) : "—"}</td><td className="tnum text-center" dir="ltr">{x.whtSar ? sarText(x.whtSar) : "—"}</td><td dir="auto">{x.reference || "—"}{x.voidedAt && x.voidReason ? ` · ${x.voidReason}` : ""}</td>
-                    <td>{x.voidedAt ? L.voided : <button onClick={() => { const reason = prompt(L.voidPayoutReason); if (reason !== null) void onAct({ action: "void_payout", email: p.email, id: x.id, reason }); }} className="text-sadu underline">{L.voidPayout}</button>}</td>
+                    <td>{x.voidedAt ? L.voided : <button onClick={() => { const reason = prompt(L.voidPayoutReason); if (reason !== null) void onAct({ action: "void_payout", email: p.email, id: x.id, reason }); }} className="text-danger underline">{L.voidPayout}</button>}</td>
                   </tr>
                 ))}</tbody></table>
             </div>

@@ -9,11 +9,12 @@ import { AGENTS, AGENT_IDS, isAgentId, type AgentId } from "@/lib/agents";
 import { TASK_COST, isTaskType, type TaskType } from "@/lib/tasks";
 import { dateFormat } from "@/lib/dates";
 import ReadOnlyNote from "./ReadOnlyNote";
+import Scribble from "@/components/Scribble";
 
 /** `label` is the switch's accessible name (its row's title): a screen reader announces what it turns on, not "switch, off". */
 function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-oasis" : "bg-ink/20"}`}>
+    <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-ink" : "bg-ink/20"}`}>
       <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${on ? "start-[22px]" : "start-0.5"}`} />
     </button>
   );
@@ -180,8 +181,8 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
   };
   const value = (path: string, v: GovValue) => (v === null ? (path.startsWith("agentCaps.") ? g.noCap : "—") : typeof v === "boolean" ? (v ? g.on : g.off) : String(v));
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="page-title">{g.title}</h1>
+    <div className="mx-auto w-full max-w-3xl">
+      <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="governancepanel-t1" />{g.title}</span></h1>
       <p className="mt-2 text-ink/70">{g.sub}</p>
       {readOnly && <ReadOnlyNote text={t.readOnly.owner} />}
       <fieldset disabled={readOnly} className="mt-6 grid min-w-0 gap-4">
@@ -191,7 +192,7 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
           <div className="mt-3 flex flex-wrap gap-2">
             {(Object.keys(TASK_COST) as TaskType[]).map((k) => {
               const on = !!gov.autoApprove[k];
-              return <button key={k} onClick={() => setGov({ ...gov, autoApprove: { ...gov.autoApprove, [k]: !on } })} className={`rounded-full border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${on ? "border-oasis bg-oasis text-mist" : "border-ink/20"}`}>{t.generate.types[k].t}</button>;
+              return <button key={k} onClick={() => setGov({ ...gov, autoApprove: { ...gov.autoApprove, [k]: !on } })} className={`rounded-full border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${on ? "border-ink bg-ink text-lilac" : "border-ink/20"}`}>{t.generate.types[k].t}</button>;
             })}
           </div>
         </div>
@@ -231,8 +232,8 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
         {!readOnly && (
           <div className="flex items-center gap-3">
             <button onClick={save} disabled={busy || !!restoring} className="btn btn-primary btn-sm">{busy ? g.saving : g.save}</button>
-            {msg && <span role="status" className="text-sm text-oasis">{msg}</span>}
-            {err && <span role="alert" className="text-sm text-sadu-deep">{err}</span>}
+            {msg && <span role="status" className="text-sm text-ink">{msg}</span>}
+            {err && <span role="alert" className="text-sm text-danger">{err}</span>}
           </div>
         )}
       </fieldset>
@@ -241,8 +242,8 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
         <section className="card mt-4" aria-labelledby="gov-auto-queue">
           <h2 id="gov-auto-queue" className="font-display font-medium">{g.autoQueue}</h2>
           <p className="mt-1 text-sm text-ink/60">{g.autoQueueSub}</p>
-          {queueMsg && <p role="status" className="mt-2 text-sm text-oasis">{queueMsg}</p>}
-          {queueErr && <p role="alert" className="mt-2 text-sm text-sadu-deep">{queueErr}</p>}
+          {queueMsg && <p role="status" className="mt-2 text-sm text-ink">{queueMsg}</p>}
+          {queueErr && <p role="alert" className="mt-2 text-sm text-danger">{queueErr}</p>}
           <ul className="mt-3 divide-y divide-ink/10">
             {queue.map((q) => {
               const k = `${q.id}:${q.item}`;
@@ -267,8 +268,8 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
       <section className="card mt-4" aria-labelledby="gov-history">
         <h2 id="gov-history" className="font-display font-medium">{g.history}</h2>
         <p className="mt-1 text-sm text-ink/60">{g.historySub}</p>
-        {histMsg && <p role="status" className="mt-2 text-sm text-oasis">{histMsg}</p>}
-        {histErr && <p role="alert" className="mt-2 text-sm text-sadu-deep">{histErr}</p>}
+        {histMsg && <p role="status" className="mt-2 text-sm text-ink">{histMsg}</p>}
+        {histErr && <p role="alert" className="mt-2 text-sm text-danger">{histErr}</p>}
         {history.length === 0 ? (
           <p className="mt-3 text-sm text-ink/60">{g.historyEmpty}</p>
         ) : (

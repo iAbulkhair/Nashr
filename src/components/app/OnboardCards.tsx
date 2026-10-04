@@ -89,8 +89,8 @@ export function WhatsAppCard({ lang }: { lang: "ar" | "en" }) {
 export function ActivationBar({ lang, goal, first }: { lang: "ar" | "en"; goal: string; first?: string }) {
   const S = STR[lang];
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-lemon/50 bg-lemon/10 px-3 py-2 text-sm">
-      <Icon name="spark" className="h-4 w-4 shrink-0 text-lemon" />
+    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-ink/15 bg-lemon/40 px-3 py-2 text-sm">
+      <Icon name="spark" className="h-4 w-4 shrink-0 text-ink" />
       <span className="font-semibold" dir="auto">{goal}</span>
       {first && <span className="min-w-0 flex-1 text-xs text-ink/70" dir="auto">{S.firstUp}: {first}</span>}
       <Link href={`/${lang}/app/billing`} className="btn btn-accent btn-xs ms-auto">{S.activate}</Link>

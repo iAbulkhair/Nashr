@@ -376,7 +376,7 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
   );
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto w-full max-w-3xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="todopanel-t1" />{T.title}</span></h1>
       <p className="page-sub">{T.sub.replace("{zone}", zoneLabel)}</p>
 

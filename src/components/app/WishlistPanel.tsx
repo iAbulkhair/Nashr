@@ -66,9 +66,9 @@ export default function WishlistPanel({ lang }: { lang: "ar" | "en" }) {
   if (!data) return <p className="text-sm text-ink/50">{L.loading}</p>;
   return (
     <div className="grid gap-6">
-      {msg && <p className="text-sm text-oasis">{msg}</p>}
+      {msg && <p className="text-sm text-ink">{msg}</p>}
       <section className="card card-sm">
-        <h2 className="font-display text-lg font-semibold text-oasis">{L.queue} <span className="tnum text-sm text-ink/50" dir="ltr">({data.suggestions.length})</span></h2>
+        <h2 className="font-display text-lg font-semibold text-ink">{L.queue} <span className="tnum text-sm text-ink/50" dir="ltr">({data.suggestions.length})</span></h2>
         <p className="text-xs text-ink/50">{L.queueNote}</p>
         {data.suggestions.length === 0 ? <p className="mt-3 text-sm text-ink/60">{L.none}</p> : (
           <ul className="mt-3 grid gap-2">
@@ -88,12 +88,12 @@ export default function WishlistPanel({ lang }: { lang: "ar" | "en" }) {
       </section>
 
       <section className="card card-sm">
-        <h2 className="font-display text-lg font-semibold text-oasis">{L.newItem}</h2>
+        <h2 className="font-display text-lg font-semibold text-ink">{L.newItem}</h2>
         <PromoteForm lang={lang} onDone={done} />
       </section>
 
       <section className="card card-sm overflow-x-auto">
-        <h2 className="font-display text-lg font-semibold text-oasis">{L.items} <span className="tnum text-sm text-ink/50" dir="ltr">({data.items.length})</span></h2>
+        <h2 className="font-display text-lg font-semibold text-ink">{L.items} <span className="tnum text-sm text-ink/50" dir="ltr">({data.items.length})</span></h2>
         <table className="mt-3 w-full text-sm">
           <thead className="text-xs text-ink/60"><tr><th className="p-1 text-start">{lang === "ar" ? "الأمنية" : "Wish"}</th><th className="p-1">{L.votes}</th><th className="p-1">{L.status}</th><th className="p-1" /></tr></thead>
           <tbody>

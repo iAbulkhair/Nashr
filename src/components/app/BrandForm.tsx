@@ -47,7 +47,7 @@ export default function BrandForm({ t, lang, initial, readOnly = false }: { t: A
   const toggle = (arr: string[], set: (v: string[]) => void, v: string) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto w-full max-w-2xl">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="brandform-t1" />{o.title}</span></h1>
       <p className="mt-2 text-ink/70">{o.sub}</p>
       {readOnly && <ReadOnlyNote text={t.readOnly.admin} />}
