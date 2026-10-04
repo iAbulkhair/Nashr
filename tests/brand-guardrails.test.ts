@@ -373,9 +373,10 @@ describe("an added brand's onboarding costs ONBOARD_EXTRA_BRAND_COST credits (ru
     const { u, scope } = await withAddedBrand();
     await confirmOnboard(scope, "gone.example");
     await killedRun(u.email, scope);
-    await Promise.all([db.lock(`onboardlock:${scope}`, 240), db.set(`onboardok:${u.email}`, "first.example", 86400)]);
+    // Rule 528: the game's answers (`onboardgame:`, src/lib/onboard-confirm.ts) carry the brand name the owner typed.
+    await Promise.all([db.lock(`onboardlock:${scope}`, 240), db.set(`onboardok:${u.email}`, "first.example", 86400), db.set(`onboardgame:${scope}`, { brand: "Gone" }, 86400), db.set(`onboardgame:${u.email}`, { brand: "Gone" }, 86400)]);
     await wipeAccount(u.email);
-    for (const k of [`onboardok:${scope}`, `onboardlock:${scope}`, `onboardok:${u.email}`, `user:${u.email}`]) expect(await db.get(k), k).toBeNull();
+    for (const k of [`onboardok:${scope}`, `onboardlock:${scope}`, `onboardok:${u.email}`, `onboardgame:${scope}`, `onboardgame:${u.email}`, `user:${u.email}`]) expect(await db.get(k), k).toBeNull();
   });
 
   it("a run in progress answers busy and charges nothing", async () => {

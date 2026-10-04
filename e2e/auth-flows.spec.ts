@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { test, expect, open, formAlert, fillWhenReady } from "./fixtures/app";
 import { OWNER, SECOND, signUpOrLogIn, simulatedIp } from "./fixtures/accounts";
 
@@ -20,6 +21,25 @@ test.use({ storageState: { cookies: [], origins: [] } });
 test.describe.configure({ mode: "serial" });
 
 const freshEmail = () => `e2e-signup-${Date.now().toString(36)}@test.example`;
+
+/**
+ * Plays the first-login game (src/components/app/DictionaryStart.tsx) from step 1 to step 7, where the site link and
+ * the review note live. Steps 1-6 send and save nothing.
+ */
+async function playToLaunch(page: Page) {
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("The Thakeen Dictionary");
+  await fillWhenReady(page.getByRole("textbox", { name: "What's your brand called?" }), "E2E Roastery");
+  await page.getByRole("radio", { name: "Coffee" }).check();
+  const next = page.getByRole("button", { name: "Next", exact: true });
+  await next.click();
+  for (const w of ["Bold", "Warm", "Refined", "Down-to-earth", "Calm"]) await page.getByRole("button", { name: w, exact: true }).click();
+  await next.click(); // to the plan
+  await next.click(); // to the draft
+  await next.click(); // to the approval
+  await page.getByRole("button", { name: "Approve", exact: true }).click();
+  await next.click(); // to the launch step
+  await expect(page.getByRole("heading", { level: 2 })).toContainText("7/7");
+}
 
 test.describe("signup", () => {
   test.use({ extraHTTPHeaders: { "x-real-ip": simulatedIp("browser-signup") } });
@@ -48,7 +68,7 @@ test.describe("signup", () => {
     await page.getByRole("button", { name: "Create account" }).click();
 
     await page.waitForURL("**/en/app/start?url=roastery.example");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Give Noor your website");
+    await playToLaunch(page);
     await expect(page.getByRole("note")).toContainText("Check this link before Noor starts");
     await expect(page.getByRole("textbox", { name: /Website or store URL/ })).toHaveValue("roastery.example");
     expect(onboardCalls, "signing up with a carried site reads nothing yet").toEqual([]);
@@ -150,10 +170,10 @@ test.describe("login", () => {
     await fillWhenReady(page.getByRole("textbox", { name: "Password" }), SECOND.password);
     await page.getByRole("button", { name: "Log in" }).click();
 
-    // No brand file on this account, so the inbox hands off to the start wizard. That redirect is the proof the
+    // No brand file on this account, so the inbox hands off to the first-login game. That redirect is the proof the
     // session was established.
     await page.waitForURL("**/en/app/start");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Give Noor your website");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("The Thakeen Dictionary");
   });
 
   test("a wrong password says so and stays put", async ({ page }) => {
@@ -209,6 +229,7 @@ test.describe("a shared onboarding link", () => {
 
     await open(page, "/en/app/chat?onboard=attacker.example");
     await page.waitForURL("**/en/app/start?url=attacker.example");
+    await playToLaunch(page);
     await expect(page.getByRole("note")).toContainText("Check this link before Noor starts");
     await expect(page.getByRole("textbox", { name: /Website or store URL/ })).toHaveValue("attacker.example");
     expect(onboardCalls, "a link reads nothing on its own").toEqual([]);
