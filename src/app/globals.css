@@ -27,16 +27,7 @@
   --color-agent-reem: var(--primitive-color-agent-reem);
   --color-agent-you: var(--primitive-color-agent-you);
 
-  /* Old names, kept as aliases of D while the slices rename them; removed in the last slice (spec §2). */
-  --color-oasis: var(--primitive-color-ink);
-  --color-oasis-deep: color-mix(in oklab, var(--primitive-color-ink) 85%, black);
-  --color-saffron: var(--primitive-color-lemon);
-  --color-sadu: var(--primitive-color-danger);
-  --color-sadu-deep: var(--primitive-color-danger);
-  --color-salt: var(--primitive-color-ground);
-  --color-salt-dim: var(--primitive-color-lilac);
-  --color-mist: var(--primitive-color-lilac);
-  --color-mist-dim: color-mix(in oklab, var(--primitive-color-lilac) 75%, var(--primitive-color-ink));
+  /* Tailwind's white is D's paper, so `bg-white` and `text-white` stay on the palette. */
   --color-white: var(--primitive-color-paper);
 
   --font-display: var(--font-thmanyah);

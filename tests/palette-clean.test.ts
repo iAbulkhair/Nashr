@@ -1,145 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 /**
  * Rule 513. Files moved to prototype D speak only D's colour names (ink, muted, paper, ground, lilac, lemon, gold,
- * danger, agent-<id>): no old oasis, saffron, sadu, salt or mist class and no hard-coded hex. Each re-skin task adds the
- * files it moves; the last slice replaces the list with all of `src/` and removes the old aliases.
+ * danger, agent-<id>): no old oasis, saffron, sadu, salt or mist class and no hard-coded hex. The whole of `src/` is
+ * checked; the old names no longer exist as aliases, so a stray one would also fail the build's styles.
  */
-const CLEAN: string[] = [
-  "src/lib/scribble.ts",
-  "src/components/Scribble.tsx",
-  "src/app/scribble.css",
-  "src/components/Nav.tsx",
-  "src/components/Footer.tsx",
-  "src/components/LangToggle.tsx",
-  "src/app/[lang]/app/layout.tsx",
-  "src/components/app/Sidebar.tsx",
-  "src/components/app/TrialBanner.tsx",
-  "src/components/app/LimitModal.tsx",
-  // Slice 2, the homepage (rule 516).
-  "src/app/[lang]/page.tsx",
-  "src/components/home/Cover.tsx",
-  "src/components/home/Lineup.tsx",
-  "src/components/home/Rules.tsx",
-  "src/components/home/Day.tsx",
-  "src/components/home/Steps.tsx",
-  "src/components/home/Plans.tsx",
-  "src/components/home/HomeFaq.tsx",
-  "src/components/home/Decor.tsx",
-  "src/components/home/Face.tsx",
-  "src/components/home/Doodle.tsx",
-  "src/components/home/home.module.css",
-  // Slice 3, the marketing pages (rule 518).
-  "src/app/[lang]/pricing/page.tsx",
-  "src/components/Pricing.tsx",
-  "src/components/Faq.tsx",
-  "src/components/FinalCta.tsx",
-  "src/app/[lang]/agents/page.tsx",
-  "src/app/[lang]/agents/[agent]/page.tsx",
-  "src/components/UrlStart.tsx",
-  "src/app/[lang]/for/[industry]/page.tsx",
-  "src/app/[lang]/vs/[competitor]/page.tsx",
-  "src/app/[lang]/ai-marketing-agent/page.tsx",
-  "src/app/[lang]/customers/page.tsx",
-  "src/app/[lang]/enterprise/page.tsx",
-  "src/components/ContactForm.tsx",
-  "src/components/TickList.tsx",
-  "src/app/[lang]/tools/page.tsx",
-  "src/app/[lang]/tools/[tool]/page.tsx",
-  "src/components/ToolForm.tsx",
-  "src/app/[lang]/blog/page.tsx",
-  "src/app/[lang]/blog/[slug]/page.tsx",
-  "src/app/[lang]/help/page.tsx",
-  "src/components/HelpCenter.tsx",
-  "src/app/[lang]/resources/page.tsx",
-  "src/app/[lang]/updates/page.tsx",
-  "src/components/WishSuggest.tsx",
-  "src/components/WishVote.tsx",
-  "src/app/[lang]/affiliates/page.tsx",
-  "src/app/[lang]/affiliates/terms/page.tsx",
-  "src/components/AffiliateForm.tsx",
-  "src/app/[lang]/privacy/page.tsx",
-  "src/app/[lang]/terms/page.tsx",
-  "src/app/[lang]/not-found.tsx",
-  "src/app/[lang]/error.tsx",
-  "src/app/[lang]/[...rest]/page.tsx",
-  // Slice 4, the app screens (rule 519).
-  "src/components/app/AuthForm.tsx",
-  "src/components/app/JoinForm.tsx",
-  "src/components/app/PasswordRules.tsx",
-  "src/components/app/DictionaryStart.tsx",
-  "src/components/app/ReadOnlyNote.tsx",
-  "src/components/app/BrandForm.tsx",
-  "src/components/app/StartLaunch.tsx",
-  "src/components/app/OnboardCards.tsx",
-  "src/app/[lang]/app/start/page.tsx",
-  "src/app/[lang]/app/page.tsx",
-  "src/app/[lang]/app/chat/page.tsx",
-  "src/app/[lang]/app/conversations/page.tsx",
-  "src/app/[lang]/app/todo/page.tsx",
-  "src/app/[lang]/app/tasks/page.tsx",
-  "src/app/[lang]/app/calendar/page.tsx",
-  "src/app/[lang]/app/files/page.tsx",
-  "src/app/[lang]/app/brands/page.tsx",
-  "src/app/[lang]/app/generate/page.tsx",
-  "src/app/[lang]/app/inspo/page.tsx",
-  "src/components/app/HomeSide.tsx",
-  "src/components/app/Inbox.tsx",
-  "src/components/app/ChatPanel.tsx",
-  "src/components/app/ChatAllowanceCard.tsx",
-  "src/components/app/JourneyCard.tsx",
-  "src/components/app/TodoPanel.tsx",
-  "src/components/app/TasksPanel.tsx",
-  "src/components/app/SeriesPanel.tsx",
-  "src/components/app/CalendarPanel.tsx",
-  "src/components/app/FilesPanel.tsx",
-  "src/components/app/BrandsPanel.tsx",
-  "src/components/app/GeneratePanel.tsx",
-  "src/components/app/InspoPanel.tsx",
-  "src/components/app/MediaControls.tsx",
-  "src/components/app/AwayPanel.tsx",
-  "src/components/app/WorkingDaysPanel.tsx",
-  "src/components/app/AgentAvatar.tsx",
-  // src/app/global-error.tsx cannot load the stylesheet, so it writes D's hex values out; reskin-marketing pins them.
-  // Task 18: account screens (rule 519).
-  "src/app/[lang]/app/billing/page.tsx",
-  "src/app/[lang]/app/partner/page.tsx",
-  "src/app/[lang]/app/refer/page.tsx",
-  "src/app/[lang]/app/profile/page.tsx",
-  "src/app/[lang]/app/team/page.tsx",
-  "src/app/[lang]/app/notifications/page.tsx",
-  "src/app/[lang]/app/integrations/page.tsx",
-  "src/app/[lang]/app/mcp/page.tsx",
-  "src/app/[lang]/app/governance/page.tsx",
-  "src/app/[lang]/app/reports/page.tsx",
-  "src/app/[lang]/app/activity/page.tsx",
-  "src/app/[lang]/app/help/page.tsx",
-  "src/app/[lang]/app/admin/page.tsx",
-  "src/components/app/ActivityPanel.tsx",
-  "src/components/app/AdminConsole.tsx",
-  "src/components/app/AdminLogin.tsx",
-  "src/components/app/BillingOffer.tsx",
-  "src/components/app/GoldenPanel.tsx",
-  "src/components/app/GovernancePanel.tsx",
-  "src/components/app/IntegrationsPanel.tsx",
-  "src/components/app/LeadsPanel.tsx",
-  "src/components/app/LogoutButton.tsx",
-  "src/components/app/McpPanel.tsx",
-  "src/components/app/NotificationsPanel.tsx",
-  "src/components/app/PartnerCodeForm.tsx",
-  "src/components/app/PartnerPanel.tsx",
-  "src/components/app/PartnersPanel.tsx",
-  "src/components/app/PaymentsPanel.tsx",
-  "src/components/app/PerformanceImport.tsx",
-  "src/components/app/ProfilePanel.tsx",
-  "src/components/app/ReferPanel.tsx",
-  "src/components/app/ReportsPanel.tsx",
-  "src/components/app/TeamPanel.tsx",
-  "src/components/app/TopupCard.tsx",
-  "src/components/app/WishlistPanel.tsx",
-  "src/app/oauth/authorize/page.tsx",
-];
+/** Every source file under src/. */
+const CLEAN: string[] = (readdirSync("src", { recursive: true }) as string[])
+  .map((f) => join("src", f))
+  .filter((f) => /\.(?:ts|tsx|css)$/.test(f))
+  .sort();
+
+/**
+ * Files that may write a hex value, each for a reason: the token sheet is where the values live; global-error replaces
+ * the document and cannot load the stylesheet, so it writes D's values out (reskin-marketing pins them); the crawler and
+ * the media store handle colours found in customers' sites and files, which are data, not the product's palette.
+ */
+const HEX_OK = new Set(["src/app/tokens.css", "src/app/global-error.tsx", "src/lib/crawl.ts", "src/lib/media/blob.ts"]);
 
 /**
  * An old palette name used as a colour: a utility (`text-oasis`, `hover:bg-salt-dim/40`), a CSS variable
@@ -154,7 +33,7 @@ describe("files moved to D use only D's names (rule 513)", () => {
     it(file, () => {
       const src = code(file);
       expect(src.match(OLD)?.[0], file).toBeUndefined();
-      expect(src.match(/#[0-9a-f]{6}\b/i)?.[0], file).toBeUndefined();
+      if (!HEX_OK.has(file)) expect(src.match(/#[0-9a-f]{6}\b/i)?.[0], file).toBeUndefined();
     });
   }
 

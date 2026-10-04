@@ -12,7 +12,9 @@ Source of truth: `assets/design-tokens.json`, mirrored by hand in `src/app/token
 
 Agents: noor #f9f871 · sami #ff5da2 · razan #00d9ff · faris #b517ff · dana #14b8a6 · majed #2b193d · layan #3fcf7e · reem #ff8a1f · you #fff. Agent colours are fills and strokes, never text colour; faris and majed fills carry paper text (ink on faris is 3.5:1). Error boxes: sami's rose fill with ink text; error text and borders `danger` #cc0000.
 
-Tailwind utilities `bg-ink`, `text-muted`, `bg-ground`, `bg-lilac`, `bg-lemon`, `border-danger`, `bg-agent-<id>` map onto the primitives via `@theme inline` in `globals.css`. The old names (`oasis`, `oasis-deep`, `saffron`, `sadu`, `sadu-deep`, `salt`, `salt-dim`, `mist`, `mist-dim`) are temporary aliases of D values while the re-skin renames them page by page; the last slice deletes them.
+Tailwind utilities `bg-ink`, `text-muted`, `bg-ground`, `bg-lilac`, `bg-lemon`, `border-danger`, `bg-agent-<id>` map onto the primitives via `@theme inline` in `globals.css`. The old names (`oasis`, `saffron`, `sadu`, `salt`, `mist`) are gone: no alias exists, and `tests/palette-clean.test.ts` (rule 513) checks every file under `src/`. Tailwind's `white` maps to `paper`.
+
+Strokes: pen 1.25px (`--stroke-pen`, scribbles), figure 1.5px (borders, figures), fine 1px (ghost lines), gold 1.75px (figure accents only), focus 2px ink outline at 2px offset. No drop shadows anywhere.
 
 ## 2. Component classes · فئات المكوّنات
 
@@ -27,7 +29,7 @@ Defined in `globals.css` under `@layer components`. Use these instead of repeati
 | Secondary · ثانوي | `btn btn-secondary` | transparent, 1.5px ink border at 25% | ink border | bg background-muted | opacity 0.5 |
 | Danger · خطر | `btn btn-danger` | transparent, danger text, 40% danger border | bg danger, text white | | opacity 0.5 |
 | Danger solid | `btn btn-danger-solid` | bg danger, text white | bg danger-hover | | opacity 0.5 |
-| Ghost on dark | `btn btn-ghost-inverse` | transparent, 25% mist border, mist text | 60% mist border | | opacity 0.5 |
+| Ghost on dark | `btn btn-ghost-inverse` | transparent, 25% inverse-foreground border, inverse-foreground text | 60% border | | opacity 0.5 |
 
 Sizes: `btn-xs` (pill, 12px), `btn-pill` (pill, 14px), `btn-sm` (rounded, 14px), default (rounded, 14px, 12px/20px padding), `btn-lg` (pill, 16px).
 Focus: global `:focus-visible` outline in `--color-ring` (ink), 2px (`--stroke-focus`), offset 2px.
@@ -47,13 +49,21 @@ Flat D fills with ink text: `badge-primary` (lilac), `badge-accent` (lemon), `ba
 ### Motion
 150 / 200 / 300 ms (`--duration-*`) with `--ease-out` `cubic-bezier(.22,1,.36,1)`; no overshoot curves, never a width or height transition (rule 511). Progress fills grow by `transform: scaleX(var(--p))`.
 
+### Scribbles `<Scribble>`
+Hand-drawn strokes from `src/lib/scribble.ts`, drawn by `src/components/Scribble.tsx` (server-rendered first, redrawn at real size; frozen under reduced motion; hidden in forced colours, where real borders show). Kinds: `box`, `bubble`, `circleLoop`, `cloud`, `divider`, `pill`, `puddle`, `stamp`, `strike`, `swash`, `tape`, `tick`, `underline`. Props: `seed` (stable shape), `fill` (a D colour name), `shadow`, `ring`, `boil`, `heavy`. The host element carries the matching class from `scribble.css` (`s-ul`, `s-btn`, `s-card`, `s-chip`, `s-input`, `s-num`, `s-bubble`, `s-cloud`, `s-stamp`, `s-tape`, `s-tag`, `s-link`) or `data-scribble` for a generic host.
+
+### Loud and quiet · صاخب وهادئ
+- **Marketing pages (loud):** headings with an `underline` scribble, cards as `s-card` + `box`, buttons as `s-btn` + `pill` (ink fill primary, lemon ghost), agents shown with their doodle on their fill.
+- **App screens (quiet, rule 519):** plain 1.5px ink lines on tables and forms. Scribbles only on the page title (`<h1 class="page-title"><span class="s-ul"><Scribble kind="underline" …/>`), the main action of the sign-in screens (ink pill), agent avatars (`AgentAvatar`: `circleLoop` on the agent's fill) and empty states. Error boxes `border-danger bg-agent-sami/20`; lemon appears only on ink, never as text or an icon on a light ground. Centred page wrappers are `mx-auto w-full max-w-*`.
+
 ### Layout
 `section-wrap` (max 72rem, 80px vertical, 16/24px gutters), `page-wrap` (max 48rem, 64px vertical).
 
 ## 3. Rules · القواعد
-1. No raw hex in components (validated with the skill's `validate-tokens.cjs`; only the PowerPoint exporter and the OAuth consent page carry literal colors on purpose).
+1. No raw hex outside `tokens.css` (rule 513 checks all of `src/`). Exceptions, each named in the test: `global-error.tsx` (replaces the document, cannot load styles), and the crawler and media store, which handle customers' colours as data. The OAuth consent page renders its own document and imports `tokens.css`.
 2. Marketing pages: hand-drawn like prototype D (scribbles, figures); app pages are the quiet version: same colours, type and strokes, plain ink lines. One accent CTA per section.
-3. App pages: `page-title` + `page-sub`, then `card` blocks; primary action per card is `btn-primary btn-sm`, destructive is `btn-danger`.
+3. App pages: `page-title` (with its underline) + `page-sub`, then `card` blocks; primary action per card is `btn-primary btn-sm`, destructive is `btn-danger`.
+7. Agent colours are fills and strokes, never text: no `text-agent-*`, `decoration-agent-*`, `placeholder-agent-*` and no CSS `color` from an agent variable (rule 517).
 4. RTL first: use logical properties (`ms-`, `me-`, `text-start`, `padding-inline`), numbers and URLs get `dir="ltr"`, free text gets `dir="auto"`.
 5. Every user-facing string comes from `src/lib/i18n.ts` (marketing) or `src/lib/app-i18n.ts` (app) in both Arabic and English. Inline `ar ? … : …` pairs are acceptable inside a single component, never English-only.
 6. Fonts: Thmanyah Serif Display for headings (`--font-display`, rule 317), IBM Plex Sans Arabic for body, IBM Plex Mono for numbers and code.
