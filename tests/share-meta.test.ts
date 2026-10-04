@@ -13,8 +13,9 @@ import type { Metadata } from "next";
 
 vi.mock("next/font/google", () => {
   const font = () => ({ variable: "", className: "", style: {} });
-  return { IBM_Plex_Mono: font, IBM_Plex_Sans_Arabic: font, Readex_Pro: font };
+  return { IBM_Plex_Mono: font, IBM_Plex_Sans_Arabic: font };
 });
+vi.mock("next/font/local", () => ({ default: () => ({ variable: "", className: "", style: {} }) }));
 
 afterEach(() => vi.unstubAllEnvs());
 
