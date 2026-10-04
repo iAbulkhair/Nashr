@@ -1,0 +1,146 @@
+/*
+ * The scribble pen's styles (rule 512): prototype D's kit.css on the product's tokens, with D's page weights (a 1.25px
+ * pen, 1.5px on buttons). The <Scribble> component draws the art; the .s-* classes are the hand-drawn controls that
+ * host it. Ends with the forced-colours block: the drawing hides and real borders take its place.
+ */
+:root {
+  --reg-x: 3px;
+  --reg-y: 2px;
+  --sh-x: 5px;
+  --fwd: 1;
+}
+[dir="rtl"] {
+  --reg-x: -3px;
+  --sh-x: -5px;
+  --fwd: -1;
+}
+
+:where([data-scribble], .s-focus, .s-card, .s-bubble, .s-cloud, .s-stamp, .s-tape, .s-tag, .s-num, .s-btn, .s-chip, .s-input, .s-link, .s-track) {
+  position: relative;
+  isolation: isolate;
+}
+.scribble {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+  overflow: visible;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.s-art path {
+  fill: none;
+  stroke: var(--color-ink);
+  stroke-width: var(--pen, var(--stroke-pen));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.s-art .ghost { stroke-width: 0.75px; opacity: 0.55; }
+.s-art .fill { fill: var(--s-fill, none); stroke: none; transform: translate(var(--reg-x), var(--reg-y)); }
+.s-art .at { transform: none; }
+.s-art .cap { fill: var(--s-fill, var(--color-ground)); stroke: none; }
+.s-art .ink { fill: var(--color-ink); stroke: none; }
+.s-art .shadow { stroke-width: 1px; transform: translate(var(--sh-x), 5px); }
+.s-art .boil { opacity: 0; }
+.s-art .ring {
+  stroke-width: 2px;
+  opacity: 0;
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+  transition: opacity var(--duration-normal) var(--ease-out), stroke-dashoffset var(--duration-normal) var(--ease-out);
+}
+.s-art .ring-2 { stroke-width: 1px; }
+.s-art .ring-paper { stroke: var(--color-paper); stroke-width: 5px; }
+:focus-visible > .scribble .ring,
+.s-input:focus-within > .scribble .ring {
+  opacity: 1;
+  stroke-dashoffset: 0;
+}
+/* Where the drawn ring shows focus, the native outline steps aside (it returns in forced colours). */
+:where(.s-btn, .s-chip, .s-link, .s-focus):has(> .scribble .ring):focus-visible,
+.s-input:has(> .scribble .ring) input:focus-visible {
+  outline-color: transparent;
+}
+
+@keyframes s-boil {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  [data-boil]:is(:hover, :focus-visible) > .scribble :is(.main, .boil) { animation: s-boil 0.25s linear infinite; }
+  [data-boil]:is(:hover, :focus-visible) > .scribble .boil { animation-delay: -0.125s; }
+}
+
+.s-card, .s-bubble, .s-stamp, .s-tag, .s-btn, .s-chip, .s-input { border: 2px solid transparent; }
+.s-card { padding: 20px 22px; }
+.s-bubble { display: inline-block; max-width: 100%; padding: 10px 18px; font-weight: 600; }
+.s-bubble:not([data-tail]), .s-bubble[data-tail="bottom"] { margin-block-end: 18px; }
+.s-bubble[data-tail="start"] { margin-inline-start: 18px; }
+.s-bubble[data-tail="end"] { margin-inline-end: 18px; }
+.s-cloud { display: inline-block; max-width: 100%; padding: 22px 32px; margin-block-end: 40px; text-align: center; font-weight: 600; }
+.s-stamp { display: inline-block; padding: 3px 12px; font-size: 15px; font-weight: 800; white-space: nowrap; transform: rotate(-4deg); }
+.s-tape { display: inline-block; padding: 0 14px; font-size: 15px; font-weight: 700; transform: rotate(-2deg); --pen: 0.75px; }
+.s-num { display: inline-grid; place-items: center; width: 46px; height: 46px; flex: none; font-weight: 800; font-size: 20px; }
+.s-tag { display: inline-block; padding: 1px 12px; font-weight: 700; }
+
+.s-btn, .s-chip { appearance: none; background: none; font: inherit; color: var(--color-ink); cursor: pointer; }
+.s-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 10px 26px;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--color-paper);
+  text-decoration: none;
+  --pen: var(--stroke-figure);
+}
+.s-btn:active { transform: translate(var(--sh-x), 5px); }
+.s-btn:active > .scribble .shadow { transform: none; }
+.s-btn--ghost, .s-btn:disabled { color: var(--color-ink); }
+.s-btn:disabled { cursor: not-allowed; transform: none; }
+.s-btn--ghost > .scribble .fill { clip-path: inset(0 100% 0 0); transition: clip-path var(--duration-slow) var(--ease-out); }
+[dir="rtl"] .s-btn--ghost > .scribble .fill { clip-path: inset(0 0 0 100%); }
+.s-btn--ghost:is(:hover, :focus-visible) > .scribble .fill { clip-path: inset(0); }
+
+.s-input { display: flex; align-items: center; min-height: 52px; padding: 0 14px; }
+.s-input input { flex: 1; min-width: 0; border: 0; background: none; font: inherit; color: var(--color-ink); padding: 12px 0; }
+.s-input input::placeholder { color: var(--color-muted); opacity: 1; }
+[dir="rtl"] .s-input input:placeholder-shown { direction: rtl; }
+
+.s-chip { min-height: 44px; padding: 8px 18px; font-size: 16px; font-weight: 600; }
+.s-chip:hover > .scribble .main { stroke-width: var(--stroke-figure); }
+.s-chip[aria-pressed="true"] > .scribble .fill { fill: var(--chip-on, var(--color-agent-noor)); }
+
+.s-link { display: inline-block; padding-block: 2px 7px; color: var(--color-ink); font-weight: 700; text-decoration: none; }
+.s-link > .scribble :is(.main, .ghost) {
+  opacity: 0;
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+  transition: opacity var(--duration-normal) var(--ease-out), stroke-dashoffset var(--duration-normal) var(--ease-out);
+}
+.s-link:is(:hover, :focus-visible, [aria-current]) > .scribble :is(.main, .ghost) { opacity: 1; stroke-dashoffset: 0; }
+
+.s-toggle { position: relative; display: inline-flex; align-items: center; gap: 12px; min-height: 44px; font-size: 16px; font-weight: 600; cursor: pointer; }
+.s-toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.s-track { display: inline-block; width: 56px; height: 30px; flex: none; }
+.s-knob { position: absolute; top: 5px; inset-inline-start: 5px; width: 20px; height: 20px; transition: transform var(--duration-normal) var(--ease-out); }
+.s-toggle:has(:checked) .s-knob { transform: translateX(calc(26px * var(--fwd))); }
+.s-toggle:has(:checked) .s-track > .scribble .fill { fill: var(--color-agent-noor); }
+.s-toggle:has(:focus-visible) .s-track > .scribble .ring { opacity: 1; stroke-dashoffset: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .s-art *, .s-knob { transition: none !important; animation: none !important; }
+}
+
+@media (forced-colors: active) {
+  .scribble { display: none; }
+  .s-card, .s-bubble, .s-cloud, .s-stamp, .s-tape, .s-tag, .s-btn, .s-chip, .s-input, .s-track { border: 2px solid CanvasText; }
+  .s-link { text-decoration: underline; }
+  .s-knob { forced-color-adjust: none; background: CanvasText; border-radius: 50%; }
+  :focus-visible, .s-toggle:has(:focus-visible) .s-track { outline: 3px solid Highlight; }
+}
