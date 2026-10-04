@@ -277,7 +277,7 @@ Since 2026-09-29 pages also render by role: they compute flags with `can()` and 
 | `brands/page.tsx` | U; add, rename and archive only with `brands.manage` (admin+); switching stays open | `:11-12` | account |
 | `inspo/page.tsx` | U | `:10` | static |
 | `help/page.tsx` | U | `:8` | static |
-| `start/page.tsx` | U; not role-aware (onboarding needs `onboard`, admin+, item 26) | `:16-17` | none |
+| `start/page.tsx` | U; since 2026-10-04 role-aware: the first-login game only for `can(u, "onboard") && can(u, "brand.write")` (admin+) without a brand file, the member wait note for anyone else, a redirect to `/app` once the brand exists (rule 524). The game's last step writes only through `POST /api/onboard/confirm` and `PUT /api/brand`, which check the same roles on the server | `:16-17` | none |
 | `onboarding/page.tsx` | U; the brand form is read-only unless `brand.write` (admin+) | `:12-13` | `getBrand(sc(u))` (active brand, fixed 2026-09-18); the form saves through `PUT /api/brand` to `sc(u)` |
 | `team/page.tsx` (Members) | U with `team.view` (every login), else 404 | `currentUser`, `can(u, "team.view")` | `teamView(u)`: roster of the account; invite, role and remove controls from `teamPerms(u)` (the `can()` table) |
 | `join/page.tsx` | A (in the layout's public list); a signed-in visitor is asked to log out first and is never joined into that session | none; the page never sees the token, which stays in the URL fragment | none; `JoinForm` posts the token in a JSON body to `POST /api/team/accept` |

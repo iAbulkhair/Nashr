@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, signIn, signOut } from "./helpers/session";
-import type { GameAnswers } from "@/lib/dictionary";
+import { noSiteBrand, type GameAnswers } from "@/lib/dictionary";
 import { currentUser, getUser } from "@/lib/auth";
 import { getBrand, getTask, saveTask, type Task } from "@/lib/brand";
 import { listFiles } from "@/lib/files";
@@ -17,6 +17,7 @@ vi.mock("@/lib/connectors/publish", async (orig) => ({ ...(await orig<typeof imp
 
 import * as onboard from "@/app/api/onboard/route";
 import * as confirmRoute from "@/app/api/onboard/confirm/route";
+import * as brandRoute from "@/app/api/brand/route";
 import * as publishRoute from "@/app/api/publish/[id]/route";
 
 const drain = async (res: Response) => { const text = await res.text(); return text.split("\n\n").filter((l) => l.startsWith("data: ")).map((l) => JSON.parse(l.slice(6)) as { type: string }); };
@@ -172,6 +173,18 @@ describe("the game's answers (rules 522-523)", () => {
     expect((await drain(await onboard.POST(json("/api/onboard", "POST", { url: "roastery.example" })))).at(-1)!.type).toBe("done");
     expect((await getBrand(b.email))!.name).not.toBe("Morning Cup");
     expect(await db.get(`onboardgame:${a.email}`)).toEqual(okEn);
+  });
+
+  it("rule 526: without a site the game's brand is saved through PUT /api/brand, by an owner only, under their own scope", async () => {
+    const u = await newUser("onb");
+    const m = await newMember(u, "member");
+    const body = noSiteBrand(okAr, "بن مختص", "موظفين");
+    await signIn(m.email);
+    expect((await brandRoute.PUT(json("/api/brand", "PUT", body))).status).toBe(403);
+    expect(await getBrand(u.email)).toBeNull();
+    await signIn(u.email);
+    expect((await brandRoute.PUT(json("/api/brand", "PUT", body))).status).toBe(200);
+    expect(await getBrand(u.email)).toMatchObject({ name: "قهوة الصباح", industry: "قهوة", tone: "جريئة، دافية، راقية، شعبية، هادية", products: "بن مختص", audience: "موظفين" });
   });
 });
 
