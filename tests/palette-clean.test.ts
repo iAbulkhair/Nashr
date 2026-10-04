@@ -30,6 +30,11 @@ const CLEAN: string[] = [
   "src/components/home/Face.tsx",
   "src/components/home/Doodle.tsx",
   "src/components/home/home.module.css",
+  // Slice 3, the marketing pages (rule 518).
+  "src/app/[lang]/pricing/page.tsx",
+  "src/components/Pricing.tsx",
+  "src/components/Faq.tsx",
+  "src/components/FinalCta.tsx",
 ];
 
 const OLD = /\b(oasis|saffron|sadu|salt|mist)(-deep|-dim)?\b/;
