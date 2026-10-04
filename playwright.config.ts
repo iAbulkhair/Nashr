@@ -51,11 +51,15 @@ export default defineConfig({
       // all hit one server from one address. Running them on a second browser in parallel makes the suite compete
       // with itself and fail on the product's own rate limiter rather than on a defect. They exercise logic, not
       // layout, so chromium covers them; everything that could break at 390px still runs here.
-      testIgnore: [/auth-flows\.spec\.ts/, /error-states\.spec\.ts/, /api-guards\.spec\.ts/],
+      // The re-skin layout matrix sets its own widths, so a phone profile only repeats it; WebKit runs it below.
+      testIgnore: [/auth-flows\.spec\.ts/, /error-states\.spec\.ts/, /api-guards\.spec\.ts/, /reskin-.*\.spec\.ts/],
     },
+    // WebKit for the re-skin layout matrix, on demand only (`E2E_WEBKIT=1`), so CI runs what it ran before.
+    ...(process.env.E2E_WEBKIT ? [{ name: "webkit", use: { ...devices["Desktop Safari"] }, testMatch: /reskin-.*\.spec\.ts/ }] : []),
   ],
 
-  webServer: {
+  // Against a deployed preview (`E2E_BASE_URL`) there is nothing to start.
+  webServer: process.env.E2E_BASE_URL ? undefined : {
     command: `npm run build && npx next start -p ${PORT}`,
     url: baseURL,
     // Never reuse. The rate limiters (signup five per IP per hour, forgot three per address per fifteen minutes, login

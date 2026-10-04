@@ -20,7 +20,7 @@ export default function Footer({ t, lang: given }: { t: Dict; lang?: Lang }) {
   ];
   return (
     <footer className="bg-ground text-muted">
-      <div className="relative isolate h-3" aria-hidden><Scribble kind="divider" seed="footer" /></div>
+      <div className="mx-auto max-w-6xl px-4 sm:px-6"><div className="relative isolate h-3" aria-hidden><Scribble kind="divider" seed="footer" /></div></div>
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_1fr_1fr]">
           <div>
