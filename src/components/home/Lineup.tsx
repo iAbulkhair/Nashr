@@ -1,164 +1,182 @@
 "use client";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { BANTER_FIRST_MS, BANTER_LINE_MS, exchangeTimes } from "@/lib/banter-clock";
-import { BANTER, CAST, HOME, type CastId, type CastMember } from "@/lib/home";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import Scribble from "@/components/Scribble";
+import { CAST, HOME, type CastId } from "@/lib/home";
 import type { Lang } from "@/lib/i18n";
-import Figure from "./Figure";
+import Doodle from "./Doodle";
 import MotionToggle from "./MotionToggle";
-import { useMotionPaused, useShowing } from "./motion";
-import { useReducedMotion } from "./useReducedMotion";
 import styles from "./home.module.css";
 
-/** How far the eyes move towards the pointer, in the drawing's units. */
-const GAZE = 3;
-
-type Line = { who: CastId; text: string };
-
-const quote = (text: string, lang: Lang) => (lang === "ar" ? `«${text}»` : `“${text}”`);
-
-/** What a figure says when pressed: its first banter line, else its value line; the owner gives the finale's word. */
-function answer(member: CastMember, lang: Lang): string {
-  if (member.id === "you") return HOME.finaleWord[lang];
-  const line = BANTER.flatMap((b) => b.lines).find((l) => l.who === member.id);
-  return (line ? line.text : member.value)[lang];
-}
-
-/** Every line a figure can say, quoted as shown, so its question slot can be sized for the longest one. */
-function linesOf(member: CastMember, lang: Lang): string[] {
-  const texts = BANTER.flatMap((b) => b.lines.filter((l) => l.who === member.id).map((l) => l.text[lang]));
-  return [...new Set([...texts, answer(member, lang)])].map((t) => quote(t, lang));
-}
-
-const clamp = (v: number) => Math.max(-1, Math.min(1, v));
+/** How much the chosen figure grows; the same number as `.who:is(…) .fig` in home.module.css. */
+const GROW = 1.25;
+/** The two agents whose colour is dark enough to need paper text on their name tag. */
+const DARK: CastId[] = ["faris", "majed"];
+/** How long a thought stays after the pointer or focus leaves its figure. */
+const LINGER_MS = 450;
+/** The cloud keeps this far inside the row, so its drawing (which overhangs its box by 4px) never widens the page. */
+const EDGE = 8;
 
 /**
- * The team standing in a row, Noor first in the reading direction (from the right in Arabic). When the figures do not
- * fit at a readable width, the row scrolls inside its own box (snapping on phones), so the page itself never scrolls
- * sideways. The AI label is permanent (spec §7.1, disclosure).
+ * The team standing together, Noor first in the reading direction (prototype D's cover, rule 515). The row wraps: nine
+ * in one row from 1200px, five and four from 600px, three rows of three below. Every figure keeps one size; the chosen
+ * one (pointer, keyboard focus, or a tap) grows from its feet by a transform only, so nothing around it moves.
  *
- * The team is alive (spec §7.3) while the lineup is on screen, the tab is showing and the visitor has not paused the
- * page's motion (`data-live`): the banter of §5.3 plays in speech bubbles, the questions flip, the figures blink and
- * breathe (CSS) and the eyes follow the pointer. The pause button here and the one on the story's stage are one switch
- * (`./motion`, WCAG 2.2.2): either stops all of that and the story's motion too. A pressed figure always answers, and
- * only that answer is announced to screen readers: the automatic banter is decoration and stays silent. Under reduced
- * motion the bubbles still come and go, without moving; nothing else moves.
+ * Choosing a figure shows one of its questions in a thought cloud above its head, the next one each time; the owner
+ * thinks the finale's word. The cloud is decoration; its text is mirrored into a polite live region. A tap keeps the
+ * figure chosen (one at a time) until it is tapped again, another is chosen, Escape is pressed or the page is tapped
+ * elsewhere. The AI label is permanent (disclosure).
  */
 export default function Lineup({ lang }: { lang: Lang }) {
-  const section = useRef<HTMLElement>(null);
-  const reduced = useReducedMotion();
-  const paused = useMotionPaused();
-  // On screen (a quarter of it) and in a visible tab.
-  const active = useShowing(section, { threshold: 0.25 });
-  const [banter, setBanter] = useState<Line | null>(null);
-  const [pressed, setPressed] = useState<Line | null>(null);
-  const next = useRef(0);
-  const live = active && !paused;
+  const wrap = useRef<HTMLDivElement>(null);
+  const cloud = useRef<HTMLParagraphElement>(null);
+  const turn = useRef<Partial<Record<CastId, number>>>({});
+  const linger = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [shown, setShown] = useState<CastId | null>(null);
+  const [pressed, setPressed] = useState<CastId | null>(null);
+  const [text, setText] = useState("");
+  const [said, setSaid] = useState("");
+  // The cloud's tail points down to the right when its figure stands in the right half of the row.
+  const [right, setRight] = useState(false);
 
-  // The banter, one line at a time, on the schedule in `@/lib/banter-clock`. An exchange cut off (off screen, hidden
-  // tab, paused) takes its bubble with it, so no stale line comes back with the lineup, and starts again from its first
-  // line.
+  const next = (id: CastId) => {
+    if (id === "you") return HOME.finaleWord[lang];
+    const qs = CAST.find((m) => m.id === id)?.questions ?? [];
+    const k = turn.current[id] ?? 0;
+    turn.current[id] = k + 1;
+    return qs.length ? qs[k % qs.length][lang] : "";
+  };
+
+  const show = (id: CastId) => {
+    clearTimeout(linger.current);
+    const t = next(id);
+    setShown(id);
+    setText(t);
+    setSaid(`${CAST.find((m) => m.id === id)?.name[lang]}: ${t}`);
+  };
+
+  const hide = (ms = 0) => {
+    clearTimeout(linger.current);
+    linger.current = setTimeout(() => {
+      setShown(null);
+      setPressed(null);
+      setSaid("");
+    }, ms);
+  };
+
+  useEffect(() => () => clearTimeout(linger.current), []);
+
+  // Escape, or a tap anywhere outside the row, puts the chosen figure back.
   useEffect(() => {
-    if (!live) return;
-    const timers = new Set<ReturnType<typeof setTimeout>>();
-    const later = (fn: () => void, ms: number) => {
-      const t = setTimeout(() => {
-        timers.delete(t);
-        fn();
-      }, ms);
-      timers.add(t);
+    if (!shown) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") hide();
     };
-    const play = () => {
-      const exchange = BANTER[next.current % BANTER.length];
-      // Moments from this exchange's start: each line, the end of the last one, the next exchange.
-      const at = exchangeTimes(0, exchange.lines.length);
-      exchange.lines.forEach((l, i) => later(() => setBanter({ who: l.who, text: l.text[lang] }), at.lines[i]));
-      later(() => {
-        setBanter(null);
-        next.current += 1;
-      }, at.end);
-      later(play, at.next);
+    const onDown = (e: PointerEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) hide();
     };
-    later(play, BANTER_FIRST_MS);
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown);
     return () => {
-      timers.forEach(clearTimeout);
-      setBanter(null);
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
     };
-  }, [live, lang]);
+  }, [shown]);
 
-  // A pressed figure's answer holds for one line's time; pressing again restarts it.
-  useEffect(() => {
-    if (!pressed) return;
-    const t = setTimeout(() => setPressed(null), BANTER_LINE_MS);
-    return () => clearTimeout(t);
-  }, [pressed]);
-
-  // The eyes: one listener for the whole lineup, at most one update a frame. The gaze is measured on screen, so it
-  // points at the pointer whatever the reading direction. Paused, the eyes come back to rest.
-  useEffect(() => {
-    const el = section.current;
-    if (!el || reduced || paused) return;
-    let frame = 0;
-    let x = 0;
-    let y = 0;
-    const look = () => {
-      frame = 0;
-      const box = el.getBoundingClientRect();
-      el.style.setProperty("--gx", `${(clamp((x - box.left - box.width / 2) / (box.width / 2)) * GAZE).toFixed(2)}px`);
-      el.style.setProperty("--gy", `${(clamp((y - box.top - box.height / 2) / (box.height / 2)) * GAZE).toFixed(2)}px`);
+  // The cloud sits above the chosen head at its grown size, inside the row's width, its tail's tip over the head.
+  useLayoutEffect(() => {
+    const box = wrap.current;
+    const el = cloud.current;
+    if (!box || !el || !shown) return;
+    const place = () => {
+      const fig = box.querySelector<HTMLElement>(`[data-id="${shown}"] .${styles.fig}`);
+      if (!fig) return;
+      const b = box.getBoundingClientRect();
+      const f = fig.getBoundingClientRect();
+      const cx = f.left - b.left + f.width / 2;
+      const onRight = cx > b.width / 2;
+      if (onRight !== right) setRight(onRight);
+      el.style.width = "";
+      el.style.left = `${EDGE}px`;
+      const w = Math.ceil(el.getBoundingClientRect().width);
+      el.style.width = `${w}px`;
+      // The tail's tip, from the cloud's own drawing (`cloud` in `@/lib/scribble`).
+      const cw = el.clientWidth;
+      const ch = el.clientHeight;
+      const puff = Math.max(6, Math.min(12, 0.16 * Math.min(cw, ch)));
+      const tipX = cw / 2 + (onRight ? 1 : -1) * (0.55 * (cw / 2 - puff) + 14);
+      const tipY = ch - 0.2 * puff + 34;
+      const tall = fig.offsetHeight * GROW;
+      el.style.left = `${Math.max(EDGE, Math.min(b.width - w - EDGE, cx - tipX))}px`;
+      el.style.top = `${f.bottom - b.top - tall + tall * 0.04 - tipY}px`;
     };
-    const onMove = (e: PointerEvent) => {
-      x = e.clientX;
-      y = e.clientY;
-      if (!frame) frame = requestAnimationFrame(look);
-    };
-    el.addEventListener("pointermove", onMove, { passive: true });
-    return () => {
-      el.removeEventListener("pointermove", onMove);
-      cancelAnimationFrame(frame);
-      el.style.removeProperty("--gx");
-      el.style.removeProperty("--gy");
-    };
-  }, [reduced, paused]);
-
-  const talk = pressed ?? (live ? banter : null);
-  const said = pressed ? `${CAST.find((m) => m.id === pressed.who)?.name[lang]}: ${quote(pressed.text, lang)}` : "";
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [shown, text, right]);
 
   return (
-    <section
-      ref={section}
-      className={styles.lineup}
-      data-testid="lineup"
-      data-live={live || undefined}
-      data-motion={paused ? "paused" : "playing"}
-      aria-labelledby="lineup-label"
-    >
+    <section className={styles.lineup} data-testid="lineup" aria-labelledby="lineup-label">
       <div className={styles.lineupHead}>
         <p id="lineup-label" className={styles.aiLabel}>
           {HOME.aiLabel[lang]}
         </p>
         <MotionToggle lang={lang} />
       </div>
-      <div className={styles.strip}>
+      <div ref={wrap} className={styles.castWrap}>
+        <p ref={cloud} className={`s-cloud ${styles.think}`} data-on={shown ? "" : undefined} aria-hidden="true">
+          <Scribble kind="cloud" seed="think" fill="paper" tail="bottom" rtl={right} />
+          <span className={styles.thinkText}>{text}</span>
+        </p>
+        <p className={styles.srOnly} aria-live="polite" aria-atomic="true">
+          {said}
+        </p>
         {/* `role="list"`: Safari drops the list semantics of a list drawn without markers. */}
-        <ul className={styles.row} role="list" style={{ "--n": CAST.length } as CSSProperties}>
-          {CAST.map((member, index) => (
-            <li key={member.id} className={styles.cell}>
-              <Figure
-                member={member}
-                lang={lang}
-                index={index}
-                lines={linesOf(member, lang)}
-                say={talk?.who === member.id ? quote(talk.text, lang) : undefined}
-                hold={!live}
-                onPress={() => setPressed({ who: member.id, text: answer(member, lang) })}
-              />
+        <ul className={styles.cast} role="list">
+          {CAST.map((member) => (
+            <li key={member.id}>
+              <button
+                type="button"
+                className={styles.who}
+                data-id={member.id}
+                data-dark={DARK.includes(member.id) ? "" : undefined}
+                aria-pressed={pressed === member.id}
+                style={{ "--tag": `var(--color-agent-${member.id})` } as CSSProperties}
+                onPointerEnter={(e) => {
+                  if (e.pointerType === "touch") return;
+                  if (pressed && pressed !== member.id) setPressed(null);
+                  if (shown !== member.id) show(member.id);
+                  else clearTimeout(linger.current);
+                }}
+                onPointerLeave={(e) => {
+                  if (e.pointerType !== "touch" && pressed !== member.id) hide(LINGER_MS);
+                }}
+                onFocus={(e) => {
+                  if (e.currentTarget.matches(":focus-visible") && shown !== member.id) show(member.id);
+                }}
+                onBlur={() => {
+                  if (pressed !== member.id) hide(LINGER_MS);
+                }}
+                onClick={() => {
+                  if (pressed === member.id) return hide();
+                  setPressed(member.id);
+                  show(member.id);
+                }}
+              >
+                <span className={styles.fig}>
+                  <span className={styles.pud}>
+                    <Scribble kind="puddle" seed={`pud-${member.id}`} fill={`agent-${member.id}`} />
+                  </span>
+                  <Doodle who={member.id} />
+                </span>
+                <span className={`s-tag ${styles.tag}`}>
+                  <Scribble kind="box" seed={`tag-${member.id}`} fill="var(--tagfill)" />
+                  {member.name[lang]}
+                </span>
+              </button>
             </li>
           ))}
         </ul>
       </div>
-      <p className={styles.srOnly} aria-live="polite" aria-atomic="true">
-        {said}
-      </p>
     </section>
   );
 }

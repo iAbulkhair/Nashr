@@ -457,94 +457,12 @@
   border-radius: 50%;
   background: var(--color-ink);
 }
-.strip {
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  padding-block: 0.5rem 1rem;
-}
-/*
- * One column per cast member (`--n`, set by Lineup). A column never gets narrower than `--cell-min`: when the row
- * does not fit, the strip scrolls sideways inside its own box instead of squeezing the figures. The four rows (question,
- * drawing, value, name) are shared through subgrid, so every drawing stands on the same line.
- */
-.row {
-  /* The cast (nine today) fits at 1280 px without the strip scrolling: 9 × 120 + 8 × 1.4vw + 32 ≈ 1256 px. */
-  --cell-min: 120px;
-  --gap: clamp(8px, 1.4vw, 20px);
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  grid-template-rows: repeat(4, auto);
-  column-gap: var(--gap);
-  row-gap: 0.75rem;
-  width: max(min(100%, 1320px), calc(var(--n, 9) * var(--cell-min) + (var(--n, 9) - 1) * var(--gap) + 32px));
-  margin: 0 auto;
-  padding: 0 16px;
-  list-style: none;
-}
-.cell {
-  display: grid;
-  grid-row: 1 / span 4;
-  grid-template-rows: subgrid;
-  min-width: 0;
-}
-@media (max-width: 759px) {
-  .strip { scroll-snap-type: x mandatory; }
-  .row { --cell-min: min(42vw, 200px); }
-  .cell { scroll-snap-align: start; }
-}
-
-.figure {
-  position: relative;
-  width: 100%;
-  display: grid;
-  grid-row: 1 / span 4;
-  grid-template-rows: subgrid;
-  justify-items: center;
-  margin: 0;
-  padding: 0.75rem 0.25rem 1rem;
-  border: 0;
-  border-radius: 18px;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: center;
-  cursor: pointer;
-}
-.figure:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 4px; }
-
-/*
- * The question slot is as tall as this figure's longest question: invisible copies of all of them sit in the same cell
- * as the one showing. Nothing is clipped at any width, and nothing moves when a question flips.
- */
-.qslot {
-  width: 100%;
-  display: grid;
-  align-items: end;
-  justify-items: center;
-  font-size: 0.75rem;
-}
-.qslot > * { grid-area: 1 / 1; }
-.qsizer {
-  display: grid;
-  visibility: hidden;
-  line-height: 1.4;
-}
-.qsizer > * { grid-area: 1 / 1; animation: none; }
-.figureArt { width: min(100%, 150px); }
 .value {
   font-family: var(--home-body);
   font-size: clamp(0.98rem, 1.2vw, 1.2rem);
   font-weight: 700;
   line-height: 1.4;
 }
-.name {
-  font-size: 0.8rem;
-  font-weight: 600;
-  line-height: 1.3;
-  opacity: 0.8;
-}
-
 /* ---------- QuestionFlip: one question at a time ---------- */
 
 .qflip {
@@ -613,82 +531,107 @@
 }
 
 /*
- * A speech bubble takes the question's place above the head while its figure talks. Invisible copies of every line
- * the figure can say sit in `.qsizer` with the questions, so the slot is already tall enough: a bubble never moves
- * the layout and never reaches the strip's top edge, which clips.
+ * The cast (rule 515, prototype D's cover). Three to a row on phones, five and four from 600px, all nine in one row
+ * from 1200px. Each place is a fixed share of the row, so a name tag never widens it and every figure draws at one size
+ * (70-92px). The chosen figure grows from its feet by a transform only: nothing else changes size, so the rows never
+ * get taller and the page below never moves. The row gap leaves room for the grown head under the row above.
  */
-.talkBubble {
-  display: inline-block;
-  max-width: 100%;
-  padding: 0.35em 0.8em;
-  border: 1.5px solid var(--color-ink);
-  border-radius: 14px;
-  background: var(--color-ink);
-  color: var(--color-paper);
-  font-weight: 600;
-  line-height: 1.4;
-  text-wrap: balance;
-}
-.qslot > .talkBubble {
+.castWrap {
   position: relative;
-  transform-origin: 50% 100%;
-  animation: talkIn 0.25s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  max-width: 1320px;
+  margin-inline: auto;
+  padding: 120px 16px 0;
 }
-/* The tail, pointing down at the head. */
-.qslot > .talkBubble::after {
-  content: "";
+.cast {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-end;
+  row-gap: 72px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cast > li {
+  flex: 0 0 calc(100% / 3);
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+@media (min-width: 600px) {
+  .cast > li { flex-basis: calc(100% / 5); }
+}
+@media (min-width: 1200px) {
+  .cast > li { flex-basis: calc(100% / 9); }
+}
+.who {
+  --tagfill: var(--color-paper);
+  appearance: none;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  max-width: 100%;
+  padding: 4px 2px 2px;
+  border: 0;
+  background: none;
+  color: var(--color-ink);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.who:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 4px; }
+.fig {
+  position: relative;
+  display: block;
+  width: clamp(70px, 12vw, 92px);
+  transform-origin: 50% 100%;
+  transition: transform var(--duration-normal) var(--ease-out);
+}
+.fig > svg { position: relative; z-index: 1; display: block; width: 100%; height: auto; }
+.pud {
   position: absolute;
-  top: calc(100% - 1px);
-  left: calc(50% - 6px);
-  width: 12px;
-  height: 7px;
-  background: var(--color-ink);
-  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  inset-inline: -8%;
+  bottom: -8px;
+  height: 22px;
+  isolation: isolate;
+  opacity: 0.5;
 }
-.figure[data-talking] .qflip { visibility: hidden; }
-@keyframes talkIn {
-  from { opacity: 0; transform: translateY(4px) scale(0.9); }
-  to { opacity: 1; transform: none; }
+.tag {
+  max-width: 100%;
+  font-size: 0.95rem;
+  white-space: nowrap;
 }
+.who:is(:hover, :focus-visible, [aria-pressed="true"]) { --tagfill: var(--tag); }
+.who:is(:hover, :focus-visible, [aria-pressed="true"]) .fig { transform: scale(1.25); }
+.who[data-dark]:is(:hover, :focus-visible, [aria-pressed="true"]) .tag { color: var(--color-paper); }
 
-/*
- * The eyes look towards the pointer (`--gx` / `--gy`, set on the lineup by Lineup.tsx, at most 3 units each way) and
- * blink every 4–6 s, each figure on its own beat (`--i` is its place in the row). A figure turned to face you looks
- * at you. The body breathes: about one unit at the shoulders, feet planted. Blinking and breathing run only while the
- * lineup is on screen (`data-live`), so they cost nothing anywhere else on the page.
- */
-.lineup [data-part="eyes"] {
-  transform-box: fill-box;
-  transform-origin: center;
-  translate: var(--gx, 0px) var(--gy, 0px);
-  transition: translate 0.2s ease-out;
+/* One thought at a time, above the chosen head (placed by Lineup.tsx); it never takes room in the row. */
+.think {
+  position: absolute;
+  top: 0;
+  left: 8px;
+  z-index: 6;
+  width: max-content;
+  max-width: min(290px, 88%);
+  margin: 0;
+  padding: 16px 36px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.45;
+  pointer-events: none;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out), visibility 0s linear var(--duration-fast);
 }
-.lineup [data-pose="turn"] [data-part="eyes"] { translate: none; }
-.lineup [data-part="body"] {
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
+.think[data-on] { visibility: visible; opacity: 1; transition: opacity var(--duration-fast) var(--ease-out); }
+.thinkText { display: block; text-wrap: balance; }
+@media (max-width: 759px) {
+  .think { max-width: calc(100% - 16px); padding: 12px 26px; font-size: 0.95rem; }
 }
-.lineup[data-live] [data-part="eyes"] {
-  animation: lineupBlink calc(4s + var(--i, 0) * 0.28s) linear calc(var(--i, 0) * -0.7s) infinite;
-}
-.lineup[data-live] [data-part="body"] {
-  animation: lineupBreathe 4.4s ease-in-out calc(var(--i, 0) * -0.55s) infinite alternate;
-}
-@keyframes lineupBlink {
-  0%, 94%, 100% { scale: 1; }
-  97% { scale: 1 0.1; }
-}
-@keyframes lineupBreathe {
-  to { scale: 1 1.003; }
-}
-
-/* Reduced motion: bubbles still come and go, but nothing moves, blinks, breathes or follows the pointer. */
 @media (prefers-reduced-motion: reduce) {
-  .qslot > .talkBubble { animation: none; }
-  .lineup [data-part="eyes"],
-  .lineup [data-part="body"],
-  .lineup[data-live] [data-part="eyes"],
-  .lineup[data-live] [data-part="body"] { animation: none; translate: none; transition: none; }
+  .fig,
+  .think,
+  .think[data-on] { transition: none; }
 }
 
 /* ---------- What's true today ---------- */
