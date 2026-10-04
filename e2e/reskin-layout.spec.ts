@@ -7,7 +7,7 @@ import { expect, test, type Page } from "@playwright/test";
  */
 
 /** Paths after the language prefix. Each re-skin task adds the pages it moves. */
-export const PAGES: string[] = ["", "/pricing", "/app/login", "/agents", "/agents/faris", "/for/ecommerce", "/vs/chatgpt", "/ai-marketing-agent", "/customers", "/enterprise", "/tools", "/tools/hook-generator", "/blog", "/blog/ramadan-marketing-guide-2026", "/help", "/resources", "/updates"];
+export const PAGES: string[] = ["", "/pricing", "/app/login", "/agents", "/agents/faris", "/for/ecommerce", "/vs/chatgpt", "/ai-marketing-agent", "/customers", "/enterprise", "/tools", "/tools/hook-generator", "/blog", "/blog/ramadan-marketing-guide-2026", "/help", "/resources", "/updates", "/affiliates", "/affiliates/terms", "/privacy", "/terms", "/not-a-page"];
 const LANGS = ["ar", "en"] as const;
 const WIDTHS = [1440, 1024, 768, 390, 360];
 

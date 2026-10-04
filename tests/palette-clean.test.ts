@@ -56,6 +56,15 @@ const CLEAN: string[] = [
   "src/app/[lang]/updates/page.tsx",
   "src/components/WishSuggest.tsx",
   "src/components/WishVote.tsx",
+  "src/app/[lang]/affiliates/page.tsx",
+  "src/app/[lang]/affiliates/terms/page.tsx",
+  "src/components/AffiliateForm.tsx",
+  "src/app/[lang]/privacy/page.tsx",
+  "src/app/[lang]/terms/page.tsx",
+  "src/app/[lang]/not-found.tsx",
+  "src/app/[lang]/error.tsx",
+  "src/app/[lang]/[...rest]/page.tsx",
+  // src/app/global-error.tsx cannot load the stylesheet, so it writes D's hex values out; reskin-marketing pins them.
 ];
 
 const OLD = /\b(oasis|saffron|sadu|salt|mist)(-deep|-dim)?\b/;

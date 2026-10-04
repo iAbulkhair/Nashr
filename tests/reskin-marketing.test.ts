@@ -33,6 +33,13 @@ import ResourcesPage from "@/app/[lang]/resources/page";
 import WishSuggest from "@/components/WishSuggest";
 import WishVote from "@/components/WishVote";
 import UpdatesPage from "@/app/[lang]/updates/page";
+import AffiliatesPage from "@/app/[lang]/affiliates/page";
+import PartnerTermsPage from "@/app/[lang]/affiliates/terms/page";
+import AffiliateForm from "@/components/AffiliateForm";
+import PrivacyPage from "@/app/[lang]/privacy/page";
+import TermsPage from "@/app/[lang]/terms/page";
+import NotFound from "@/app/[lang]/not-found";
+import RouteError from "@/app/[lang]/error";
 
 vi.mock("next/navigation", async (orig) => ({
   ...(await orig<typeof import("next/navigation")>()),
@@ -177,6 +184,41 @@ describe("the marketing pages are hand-drawn D (rule 518)", () => {
       expect(count(h, 'class="s-chip')).toBe(VS_PAGES[lang].length);
     });
   }
+
+  for (const lang of LANGS) {
+    it(`partners · ${lang}: a scribbled card per number, the application in scribbled boxes`, async () => {
+      const h = renderToStaticMarkup(await AffiliatesPage({ params: Promise.resolve({ lang }) }));
+      expect(h).toMatch(TITLE_SCRIBBLE("h1"));
+      expect(count(h, 'class="s-card')).toBe(5);
+      const f = html(AffiliateForm, { lang });
+      expect(count(f, 'class="s-input')).toBe(5);
+      expect(f).toContain("data-terms-consent");
+      expect(f).toMatch(/<button[^>]*class="s-btn/);
+      expect(f).not.toMatch(/class="input/);
+    });
+
+    it(`the legal pages · ${lang}: underlined titles`, async () => {
+      for (const P of [PrivacyPage, TermsPage, PartnerTermsPage]) {
+        expect(renderToStaticMarkup(await P({ params: Promise.resolve({ lang }) }))).toMatch(TITLE_SCRIBBLE("h1"));
+      }
+    });
+  }
+
+  it("the 404 and the error screen: a 404 stamp, ink and ghost pills home", () => {
+    const nf = renderToStaticMarkup(createElement(NotFound));
+    expect(nf).toMatch(/class="s-stamp[^"]*"[\s\S]*?404/);
+    expect(count(nf, 'class="s-btn')).toBe(2);
+    expect(count(nf, "s-btn--ghost")).toBe(1);
+    const er = renderToStaticMarkup(createElement(RouteError, { error: Object.assign(new Error("x"), { digest: "d1" }), reset: () => {} }));
+    expect(er).toMatch(/<button[^>]*class="s-btn/);
+    expect(er).toMatch(/<a[^>]*class="s-btn s-btn--ghost/);
+  });
+
+  it("the last-resort error screen uses D's paper, ink and muted values (it cannot load the app's styles)", () => {
+    const src = readFileSync("src/app/global-error.tsx", "utf8");
+    for (const old of ["#f6f4ee", "#101418", "#0f3d3a", "#e9f0ec", "#555"]) expect(src, old).not.toContain(old);
+    for (const d of ["#f7f3f9", "#2b193d", "#5d4a70"]) expect(src, d).toContain(d);
+  });
 
   it("updates: an underlined title, the two section tabs as pills, the sign-in call as an ink pill", async () => {
     const h = renderToStaticMarkup(await UpdatesPage({ params: Promise.resolve({ lang: "en" }) }));
