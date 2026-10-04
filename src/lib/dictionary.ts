@@ -303,3 +303,66 @@ export const DICT_COPY: {
   back: { ar: "رجوع", en: "Back" },
   counter: { ar: "اخترت {n} من ٥", en: "{n} of 5 picked" },
 };
+
+/**
+ * The game as first-login onboarding (docs/superpowers/specs/2026-10-04-dictionary-onboarding-design.md). A new owner
+ * plays it on `/app/start` instead of filling a form, and what they answered becomes their brand file: through the site
+ * build (`POST /api/onboard/confirm` stores the answers, `POST /api/onboard` writes them over the model's values) or,
+ * without a site, through `PUT /api/brand`. `lang` is the page they played on, so the industry and tone are stored in the
+ * words they saw. Rules 520-526.
+ */
+export type GameAnswers = { brand: string; sector: SectorId; words: WordId[]; lang: Lang };
+
+const SECTOR_IDS = new Set<string>(SECTORS.map((s) => s.id));
+const WORD_IDS = new Set<string>(WORDS.map((w) => w.id));
+
+/**
+ * The only way answers enter the server: anything that is not a finished game (a name of 1-40 characters once trimmed,
+ * a known sector, exactly five distinct known words, a page language) is null. The name is kept as typed text.
+ */
+export function parseAnswers(raw: unknown): GameAnswers | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const brand = typeof r.brand === "string" ? r.brand.trim() : "";
+  if (!brand || brand.length > BRAND_MAX) return null;
+  if (typeof r.sector !== "string" || !SECTOR_IDS.has(r.sector)) return null;
+  if (!Array.isArray(r.words) || r.words.length !== MAX_WORDS || new Set(r.words).size !== MAX_WORDS) return null;
+  if (!r.words.every((w) => typeof w === "string" && WORD_IDS.has(w))) return null;
+  if (r.lang !== "ar" && r.lang !== "en") return null;
+  return { brand, sector: r.sector as SectorId, words: [...r.words] as WordId[], lang: r.lang };
+}
+
+/** The answers of a game played to the end of step 2, or null before that. */
+export const answersOf = (s: DictState, lang: Lang): GameAnswers | null => parseAnswers({ brand: s.brand, sector: s.sector, words: s.words, lang });
+
+/** The brand-file fields the game decides. The site build writes these over the model's; nothing else is overridden. */
+export function answersToBrand(a: GameAnswers): { name: string; industry: string; tone: string } {
+  const sector = SECTORS.find((s) => s.id === a.sector)!;
+  const tone = a.words.map((id) => WORDS.find((w) => w.id === id)!.tone[a.lang]).join(a.lang === "ar" ? "، " : ", ");
+  return { name: a.brand, industry: sector.name[a.lang], tone };
+}
+
+/** One line for the site build's model, so the files it writes use the owner's own name and voice. */
+export function answersHint(a: GameAnswers): string {
+  const b = answersToBrand(a);
+  return `Owner's own answers: brand name "${b.name}"; sector ${b.industry}; voice: ${b.tone}. Use them as given.`;
+}
+
+/**
+ * The `PUT /api/brand` body when the owner has no site: the game's fields plus the two the brand file requires.
+ * `create` makes the save create-only (rule 527): a brand built meanwhile in another tab answers 409 and is kept whole.
+ */
+export function noSiteBrand(a: GameAnswers, products: string, audience: string) {
+  return { ...answersToBrand(a), products: products.trim(), audience: audience.trim(), dialect: a.lang === "en" ? ("english" as const) : ("saudi" as const), languages: [a.lang], create: true as const };
+}
+
+/** Copy the onboarding game adds to `DICT_COPY`: steps 6 and 7 differ from the homepage's, and step 7 saves. */
+export const START_COPY: Record<"steps6" | "steps7" | "haveSite" | "noSite" | "products" | "audience" | "saveNoSite", L> = {
+  steps6: { ar: "تحليل وقياس", en: "Analysis and measurement" },
+  steps7: { ar: "انطلق", en: "Launch" },
+  haveSite: { ar: "عندي رابط", en: "I have a link" },
+  noSite: { ar: "ما عندي موقع", en: "I don't have a website" },
+  products: { ar: "وش تبيع بالضبط؟", en: "What exactly do you sell?" },
+  audience: { ar: "مين عملاؤك؟", en: "Who are your customers?" },
+  saveNoSite: { ar: "احفظ وابدأ", en: "Save and start" },
+};

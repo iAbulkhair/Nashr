@@ -14,7 +14,8 @@ import { AGENCY_MIN, CHAT_ALLOWANCE, ONBOARD_EXTRA_BRAND_COST, PLANS, PLAN_CREDI
 import { TASK_COST, TASK_COUNT } from "@/lib/tasks";
 import Pricing from "@/components/Pricing";
 import BrandsPanel from "@/components/app/BrandsPanel";
-import StartWizard from "@/components/app/StartWizard";
+import StartLaunch from "@/components/app/StartLaunch";
+import type { GameAnswers } from "@/lib/dictionary";
 import TasksPanel from "@/components/app/TasksPanel";
 import AiAgentPage from "@/app/[lang]/ai-marketing-agent/page";
 
@@ -300,7 +301,7 @@ describe("the other pages read the same tables (rule 248)", () => {
     const FILES = [
       "src/lib/i18n.ts", "src/lib/app-i18n.ts", "src/lib/help.ts", "src/lib/site.ts", "src/lib/pages-industry.ts", "src/lib/pages-vs.ts",
       "src/lib/lifecycle.ts", "src/lib/changelog.ts", "src/components/Pricing.tsx", "src/app/[lang]/app/billing/page.tsx",
-      "src/app/[lang]/ai-marketing-agent/page.tsx", "src/components/app/BrandsPanel.tsx", "src/components/app/StartWizard.tsx",
+      "src/app/[lang]/ai-marketing-agent/page.tsx", "src/components/app/BrandsPanel.tsx", "src/components/app/StartLaunch.tsx", "src/components/app/DictionaryStart.tsx",
       "src/components/app/TasksPanel.tsx", "src/components/app/ProfilePanel.tsx", "src/components/app/AdminConsole.tsx",
     ];
     // The paid plans' chat messages too (rule 308). The trial's 30 is left out: "30 days" is common copy.
@@ -407,10 +408,11 @@ describe("the app states what an added brand costs before anyone adds or sets on
     }
   });
 
-  it("the start wizard: the first brand is free; an added brand states its cost and the balance before Go, and Go is off when the balance is short", () => {
+  it("the start game's launch step: the first brand is free; an added brand states its cost and the balance before Go, and Go is off when the balance is short", () => {
     for (const lang of LANGS) {
       const t = appDict[lang];
-      const render = (setupCost: number, credits: number, setupPaid = false) => renderToStaticMarkup(createElement(StartWizard, { t, lang, initialUrl: "example.com", setupCost, credits, setupPaid }));
+      const answers: GameAnswers = { brand: "Roastery", sector: "coffee", words: ["bold", "warm", "refined", "popular", "calm"], lang };
+      const render = (setupCost: number, credits: number, setupPaid = false) => renderToStaticMarkup(createElement(StartLaunch, { t, lang, answers, initialUrl: "example.com", setupCost, credits, setupPaid }));
       const go = /<button([^>]*) class="btn btn-accent btn-lg">/;
       const first = render(0, 50);
       expect(first, lang).toContain(esc(t.start.setupFree));

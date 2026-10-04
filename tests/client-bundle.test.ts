@@ -24,6 +24,10 @@ describe("the browser bundle stays free of server-only code", () => {
     expect(clientFiles().length).toBeGreaterThan(20);
   });
 
+  it("rule 525: the first-login game and its launch step are client components, so the check below covers them", () => {
+    expect(clientFiles()).toEqual(expect.arrayContaining(["src/components/app/DictionaryStart.tsx", "src/components/app/StartLaunch.tsx"]));
+  });
+
   it("no client component imports a VALUE from a server-only module", () => {
     const offenders: string[] = [];
     for (const file of clientFiles()) {

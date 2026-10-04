@@ -26,6 +26,7 @@ import ReportsPage from "@/app/[lang]/app/reports/page";
 import FilesPage from "@/app/[lang]/app/files/page";
 import ChatPage from "@/app/[lang]/app/chat/page";
 import { saveBrand, saveTask, type Brand } from "@/lib/brand";
+import { DICT_COPY } from "@/lib/dictionary";
 import { writeFile } from "@/lib/files";
 import { APP_PUBLIC_ROUTES, APP_ROUTES } from "../e2e/fixtures/routes";
 import { newMember, newUser, signIn, signOut } from "./helpers/session";
@@ -328,6 +329,19 @@ describe("working screens offer a plain member only what the server lets a membe
     // The chat's first-run thread builds the workspace: a member goes back to the waiting page instead.
     await signIn(shopMember.email);
     await expect(page(ChatPage)).rejects.toThrow(/NEXT_REDIRECT/);
+  });
+
+  it("rule 524: start: an owner without a brand plays the Thakeen Dictionary, with the form one link away; a member never gets it; once the brand exists the owner goes to the workspace", async () => {
+    await signIn(shop.email);
+    const o = await page(StartPage);
+    expect(o).toContain(esc(DICT_COPY.title.en));
+    expect(o).toContain(esc(en.start.manual));
+    expect(o).toContain('href="/en/app/onboarding"');
+    await signIn(shopMember.email);
+    expect(await page(StartPage)).not.toContain(esc(DICT_COPY.title.en));
+    await saveBrand(shop.email, BRAND);
+    await signIn(shop.email);
+    await expect(page(StartPage)).rejects.toThrow(/NEXT_REDIRECT/);
   });
 
   it("inbox: a member edits and rejects but is offered no Approve or Publish, and is told who approves", async () => {
