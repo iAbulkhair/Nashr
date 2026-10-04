@@ -1,6 +1,6 @@
 # Thakeen re-skin to prototype D — design
 
-Status: draft for the founder's approval, 2026-10-04. Branch `claude/thakeen-reskin`, cut from `claude/thakeen-heading-font` (PR #248, not merged), so it contains #248. Reference: prototype D (`thakeen-prototypes.vercel.app/d`, files `d.html`, `kit.css`, `figures.css`, `figures.js`, `scribble.js`). D's font files under `/f/` are never copied; the heading face comes from #248.
+Status: approved by the founder, 2026-10-04 (decisions in section 8). Branch `claude/thakeen-reskin`, cut from `claude/thakeen-heading-font` (PR #248, not merged), so it contains #248. Reference: prototype D (`thakeen-prototypes.vercel.app/d`, files `d.html`, `kit.css`, `figures.css`, `figures.js`, `scribble.js`). D's font files under `/f/` are never copied; the heading face comes from #248.
 
 ## 1. One token source
 
@@ -12,7 +12,7 @@ Status: draft for the founder's approval, 2026-10-04. Branch `claude/thakeen-res
 | Highlight | `lemon` #f9f871 (swash, selection, ghost-button fill) |
 | Agents (`agent-<id>`) | noor #f9f871 · sami #ff5da2 · razan #00d9ff · faris #b517ff · dana #14b8a6 · majed #2b193d · layan #3fcf7e · reem #ff8a1f · you #fff |
 | Figure detail | `gold` #c9a227 (figure strokes only, as in D's kit) |
-| Error | fill `agent-sami` rose with ink text; error *text* `danger-ink` #b3125f (rose darkened, 6.6:1 on white). The only colour not in D. |
+| Error | box: `agent-sami` rose fill with ink text; error *text* and error borders `danger` #cc0000 (5.9:1 on white, 5.4 on ground, 4.9 on lilac; founder's choice, 2026-10-04). The only colour not in D. |
 | Stroke | `pen` 1.25px (scribbles) · `figure` 1.5px · `fine` 1px · `gold` 1.75px · `focus` 2px |
 | Type | `--font-display` Thmanyah Serif Display (h1-h3, large type) · `--font-body` IBM Plex Sans Arabic · scale from D: 16 / 17 (body) / 21 / clamp(26-40px) |
 | Motion | 150 / 200 / 300 ms, easing `cubic-bezier(.22,1,.36,1)`; no overshoot curves, no width/height transitions |
@@ -23,7 +23,7 @@ Rules: agent colours are fills and strokes only, never text colour. Focus ring i
 
 ## 2. Migration without a big-bang diff
 
-Slice 1 adds the new names and turns the old ones (`oasis`, `oasis-deep`, `saffron`, `sadu`, `sadu-deep`, `salt`, `salt-dim`, `mist`, `mist-dim`) into aliases of D values (`ink` keeps its name and takes D's value), so all 84 files (about 2,000 colour utilities) change colour at once with no markup edits: `oasis`→ink, `oasis-deep`→ink darkened, `saffron`→lemon (fills) / ink (text and borders, fixed per file as each slice touches it), `sadu`→rose, `sadu-deep`→danger-ink, `salt`→ground, `salt-dim`→lilac, `mist`→lilac, `mist-dim`→muted on light / lilac at 70% on ink. Each later slice renames the utilities in the files it touches. The last slice deletes the aliases, and a test fails if an old name or old hex comes back.
+Slice 1 adds the new names and turns the old ones (`oasis`, `oasis-deep`, `saffron`, `sadu`, `sadu-deep`, `salt`, `salt-dim`, `mist`, `mist-dim`) into aliases of D values (`ink` keeps its name and takes D's value), so all 84 files (about 2,000 colour utilities) change colour at once with no markup edits: `oasis`→ink, `oasis-deep`→ink darkened, `saffron`→lemon (fills) / ink (text and borders, fixed per file as each slice touches it), `sadu`→danger #cc0000, `sadu-deep`→danger #cc0000, `salt`→ground, `salt-dim`→lilac, `mist`→lilac, `mist-dim`→muted on light / lilac at 70% on ink. Each later slice renames the utilities in the files it touches. The last slice deletes the aliases, and a test fails if an old name or old hex comes back.
 
 ## 3. Shared pieces
 
@@ -57,8 +57,10 @@ Routes, behaviour, data, permissions, copy outside the homepage, the fonts and w
 
 One rule block (numbers picked after checking open PRs for reservations, first free above 509), each with a test in `tests/` and a row in `docs/system/tests.md`: the token set equals D's palette; no old palette name or hex in `src/` (enforced from slice 4); agent colours never used as text colour; no overshoot easing and no width/height transition in CSS; the lineup's three breakpoints and transform-only growth; the homepage section order without the game.
 
-## 8. Decisions for the founder
+## 8. Founder's decisions (2026-10-04)
 
-- A. App density: quiet version in the app (recommended) or fully hand-drawn everywhere?
-- B. Error text colour #b3125f, a darker rose not in D, so error messages stay readable. Accept?
-- C. D's «اللوحة الجاية لك» start form is not in the homepage list. Leave it out (the hero and nav buttons go to sign-up), or keep it before plans?
+- A. App density: the quiet version in the app; marketing pages fully hand-drawn.
+- B. Error text and error borders: #cc0000. Error boxes keep D's rose fill with ink text.
+- C. D's «اللوحة الجاية لك» start form stays out of the homepage; the hero and nav buttons go to sign-up.
+
+Spec approved by the founder on 2026-10-04.
