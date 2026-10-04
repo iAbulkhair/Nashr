@@ -116,7 +116,7 @@ describe("the marketing pages are hand-drawn D (rule 518)", () => {
       const h = renderToStaticMarkup(await AgentDefinitionPage({ params: Promise.resolve({ lang }) }));
       expect(h).toMatch(TITLE_SCRIBBLE("h1"));
       expect(count(h, 'class="s-card')).toBe(1);
-      expect(count(h, 'class="s-chip')).toBe(3);
+      expect(count(h, 'class="s-chip')).toBe(2);
     });
 
     it(`customers · ${lang}: a scribbled card per sector and the scribbled form`, async () => {

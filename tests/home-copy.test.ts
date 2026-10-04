@@ -1,4 +1,4 @@
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { describe, expect, it } from "vitest";
 import { CAST, AGENT_CAST, STORM, BANTER, SLOGAN, TRUTHS, HOME, HERO, RULES, DAY, STEPS, HOME_FAQ, SECTIONS, HOME_NAV, RULE_LABEL, PLANS, STEP7_LINK, type Feature, type L } from "@/lib/home";
@@ -192,5 +192,12 @@ describe("the public FAQ, enterprise page and help centre name no AI assistant b
     const { VS_PAGES } = await import("@/lib/pages-vs");
     const { INDUSTRY_PAGES } = await import("@/lib/pages-industry");
     expect(JSON.stringify([VS_PAGES, INDUSTRY_PAGES])).not.toMatch(/Claude|Anthropic/i);
+  });
+
+  it("the public wishlist and the definition page's ask links never say Claude", async () => {
+    const { SEED_WISHES, CHANGELOG } = await import("@/lib/changelog");
+    expect(JSON.stringify([SEED_WISHES, CHANGELOG])).not.toMatch(/Claude|Anthropic/i);
+    const page = readFileSync("src/app/[lang]/ai-marketing-agent/page.tsx", "utf8");
+    expect(page).not.toMatch(/Claude|claude\.ai/);
   });
 });

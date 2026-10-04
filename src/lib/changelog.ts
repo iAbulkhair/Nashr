@@ -124,7 +124,6 @@ export const SEED_WISHES: readonly SeedWish[] = [
   { id: "client-branded-reports", area: "team", title: { ar: "تقارير بعلامة عميلك", en: "Reports under your client's brand" } },
   { id: "shared-workspace", area: "team", title: { ar: "مساحة عمل مشتركة للفريق", en: "A shared workspace for your team" } },
   { id: "credit-top-up", area: "billing", title: { ar: "شحن رصيد كريدت إضافي", en: "Top up extra credits" } },
-  { id: "claude-directory", area: "integrations", title: { ar: "ذكين في دليل موصّلات Claude", en: "Thakeen in the Claude connector directory" } },
   { id: "chatgpt-app", area: "integrations", title: { ar: "تطبيق ذكين في دليل تطبيقات ChatGPT", en: "A Thakeen app in the ChatGPT app directory" } },
   { id: "chat-control", area: "integrations", title: { ar: "كلّم وكلاءك من واتساب أو تيليجرام", en: "Talk to your agents from WhatsApp or Telegram" } },
   { id: "mobile-app", area: "app", title: { ar: "تطبيق جوال", en: "A mobile app" } },

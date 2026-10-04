@@ -53,7 +53,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const artLd = { "@context": "https://schema.org", "@type": "Article", headline: c.title, description: c.desc, datePublished: "2026-09-17", author: { "@type": "Organization", name: "Thakeen" }, publisher: { "@type": "Organization", name: "Thakeen" } };
   // The site this answer should cite: the canonical host (src/lib/origin.ts), never a hard-coded one.
   const q = encodeURIComponent(c.q(appHost()));
-  const ask = [["ChatGPT", `https://chatgpt.com/?q=${q}`], ["Claude", `https://claude.ai/new?q=${q}`], ["Perplexity", `https://www.perplexity.ai/search?q=${q}`]];
+  const ask = [["ChatGPT", `https://chatgpt.com/?q=${q}`], ["Perplexity", `https://www.perplexity.ai/search?q=${q}`]];
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqLd) }} />
