@@ -5,6 +5,7 @@ import { INDUSTRY_PAGES } from "@/lib/pages-industry";
 import { SITE } from "@/lib/site";
 import { VS_PAGES } from "@/lib/pages-vs";
 import LangToggle from "./LangToggle";
+import Wordmark from "./Wordmark";
 
 /** `lang` is optional so older pages that pass only `t` keep working; it is derived from the text direction. */
 export default function Footer({ t, lang: given }: { t: Dict; lang?: Lang }) {
@@ -22,7 +23,7 @@ export default function Footer({ t, lang: given }: { t: Dict; lang?: Lang }) {
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_1fr_1fr]">
           <div>
-            <p className="font-display text-xl font-bold text-mist">{t.brand}</p>
+            <p className="font-display text-xl font-bold text-mist"><Wordmark lang={lang} name={t.brand} /></p>
             <p className="mt-1 text-sm">{t.footer.tagline}</p>
           </div>
           {cols.map((c) => (

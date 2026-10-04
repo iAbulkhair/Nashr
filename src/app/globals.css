@@ -20,7 +20,7 @@
   --color-mist-dim: var(--primitive-color-mist-300);
   --color-white: var(--primitive-color-salt-50);
 
-  --font-display: var(--font-readex);
+  --font-display: var(--font-thmanyah);
   --font-body: var(--font-plex-arabic);
   --font-mono: var(--font-plex-mono);
 }
@@ -45,6 +45,12 @@ body {
 
 .font-display {
   font-family: var(--font-display), var(--font-body), sans-serif;
+}
+
+/* The wordmark «ذكين» (components/Wordmark.tsx): the heading face's own Stylistic Alternates give the long, sent-out kaf,
+   on the kaf alone so the noon stays round; no kashida. */
+.wordmark-kaf {
+  font-feature-settings: "salt" 1;
 }
 
 /* ---------- Layer 3: components (states: default / hover / active / focus / disabled) ---------- */

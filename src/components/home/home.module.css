@@ -17,7 +17,7 @@
   /* DRAFT, pending the founder's approval (spec §3): a placeholder soft coral, kept clear of the site's amber accent. */
   --c-reem: #ffa38a;
   --c-you: #ffffff;
-  --home-display: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
+  --home-display: var(--font-display), ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
   --home-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Geeza Pro", "Noto Naskh Arabic", sans-serif;
   background: var(--ground);
   color: var(--ink);
@@ -547,7 +547,7 @@
 .qsizer > * { grid-area: 1 / 1; animation: none; }
 .figureArt { width: min(100%, 150px); }
 .value {
-  font-family: var(--home-display);
+  font-family: var(--home-body);
   font-size: clamp(0.98rem, 1.2vw, 1.2rem);
   font-weight: 700;
   line-height: 1.4;

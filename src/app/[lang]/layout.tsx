@@ -1,12 +1,24 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans_Arabic, Readex_Pro } from "next/font/google";
+import { IBM_Plex_Mono, IBM_Plex_Sans_Arabic } from "next/font/google";
+import localFont from "next/font/local";
 import { notFound } from "next/navigation";
 import "../globals.css";
 import { LANGS, dict, isLang } from "@/lib/i18n";
 import { appOrigin } from "@/lib/origin";
 import { SITE_DEFAULT } from "@/lib/page-meta";
 
-const readex = Readex_Pro({ subsets: ["latin", "arabic"], weight: ["300", "500", "700"], variable: "--font-readex" });
+// Thmanyah Serif Display («ثمانية للعناوين») for headings and large type; body text stays IBM Plex Sans Arabic.
+// The Thmanyah Font License (font.thmanyah.com/licenses) allows websites only as part of a packaged product: the files
+// stay unmodified under src/app/fonts and reach the browser only through the build, never from public/ (rule 317).
+const thmanyah = localFont({
+  src: [
+    { path: "../fonts/thmanyah-serif-display/thmanyahserifdisplay-Medium.woff2", weight: "500", style: "normal" },
+    { path: "../fonts/thmanyah-serif-display/thmanyahserifdisplay-Bold.woff2", weight: "700", style: "normal" },
+    { path: "../fonts/thmanyah-serif-display/thmanyahserifdisplay-Black.woff2", weight: "900", style: "normal" },
+  ],
+  variable: "--font-thmanyah",
+  display: "swap",
+});
 const plexArabic = IBM_Plex_Sans_Arabic({ subsets: ["latin", "arabic"], weight: ["400", "500", "600"], variable: "--font-plex-arabic" });
 const plexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-plex-mono" });
 
@@ -40,7 +52,7 @@ export default async function RootLayout({ children, params }: { children: React
   if (!isLang(lang)) notFound();
   const t = dict[lang];
   return (
-    <html lang={lang} dir={t.dir} translate="no" className={`${readex.variable} ${plexArabic.variable} ${plexMono.variable}`}>
+    <html lang={lang} dir={t.dir} translate="no" className={`${thmanyah.variable} ${plexArabic.variable} ${plexMono.variable}`}>
       <body>{children}</body>
     </html>
   );
