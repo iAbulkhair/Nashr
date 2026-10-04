@@ -74,10 +74,41 @@ const CLEAN: string[] = [
   "src/components/app/StartLaunch.tsx",
   "src/components/app/OnboardCards.tsx",
   "src/app/[lang]/app/start/page.tsx",
+  "src/app/[lang]/app/page.tsx",
+  "src/app/[lang]/app/chat/page.tsx",
+  "src/app/[lang]/app/conversations/page.tsx",
+  "src/app/[lang]/app/todo/page.tsx",
+  "src/app/[lang]/app/tasks/page.tsx",
+  "src/app/[lang]/app/calendar/page.tsx",
+  "src/app/[lang]/app/files/page.tsx",
+  "src/app/[lang]/app/brands/page.tsx",
+  "src/app/[lang]/app/generate/page.tsx",
+  "src/app/[lang]/app/inspo/page.tsx",
+  "src/components/app/HomeSide.tsx",
+  "src/components/app/Inbox.tsx",
+  "src/components/app/ChatPanel.tsx",
+  "src/components/app/ChatAllowanceCard.tsx",
+  "src/components/app/JourneyCard.tsx",
+  "src/components/app/TodoPanel.tsx",
+  "src/components/app/TasksPanel.tsx",
+  "src/components/app/SeriesPanel.tsx",
+  "src/components/app/CalendarPanel.tsx",
+  "src/components/app/FilesPanel.tsx",
+  "src/components/app/BrandsPanel.tsx",
+  "src/components/app/GeneratePanel.tsx",
+  "src/components/app/InspoPanel.tsx",
+  "src/components/app/MediaControls.tsx",
+  "src/components/app/AwayPanel.tsx",
+  "src/components/app/WorkingDaysPanel.tsx",
+  "src/components/app/AgentAvatar.tsx",
   // src/app/global-error.tsx cannot load the stylesheet, so it writes D's hex values out; reskin-marketing pins them.
 ];
 
-const OLD = /\b(oasis|saffron|sadu|salt|mist)(-deep|-dim)?\b/;
+/**
+ * An old palette name used as a colour: a utility (`text-oasis`, `hover:bg-salt-dim/40`), a CSS variable
+ * (`--color-saffron`) or a class of the old bands (`sadu-thin`). The journey's "oasis" level is a word, not a colour.
+ */
+const OLD = /(?:\b(?:text|bg|border|ring|accent|outline|fill|stroke|decoration|from|to|via|divide|placeholder|caret|shadow)-|--color-|\bsadu-)(?:oasis|saffron|sadu|salt|mist|thin|band)(?:-deep|-dim)?\b/;
 /** The source without block comments and `//` line comments (a `//` after a colon is a URL, not a comment). */
 const code = (p: string) => readFileSync(p, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
@@ -89,6 +120,11 @@ describe("files moved to D use only D's names (rule 513)", () => {
       expect(src.match(/#[0-9a-f]{6}\b/i)?.[0], file).toBeUndefined();
     });
   }
+
+  it("knows an old colour from the journey's oasis level", () => {
+    for (const bad of ["text-oasis", "hover:bg-oasis-deep/40", "border-saffron/60", "text-sadu-deep", "bg-salt-dim", "text-mist", "var(--color-mist-dim)", "sadu-thin"]) expect(bad, bad).toMatch(OLD);
+    for (const ok of ['levels: { oasis: "Oasis" }', '<Icon name="oasis" />', '"seed" | "palm" | "oasis"']) expect(ok, ok).not.toMatch(OLD);
+  });
 
   it("the wordmark carries no dot", () => {
     expect(code("src/components/Nav.tsx")).not.toMatch(/<Wordmark[\s\S]{0,200}rounded-full bg-/);

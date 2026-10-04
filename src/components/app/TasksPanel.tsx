@@ -6,6 +6,7 @@ import type { Schedule } from "@/lib/schedule";
 import type { RoutineId, RoutineView } from "@/lib/routines";
 import { TASK_COST } from "@/lib/tasks";
 import ReadOnlyNote from "./ReadOnlyNote";
+import Scribble from "@/components/Scribble";
 
 type Which = "weekly" | "daily" | "followups";
 type ScheduleKey = "weeklyPlan" | "dailyBrief" | "followUps";
@@ -21,7 +22,7 @@ function Card({ k, busy, title, desc, on, last, which, onToggle, onRun, readOnly
             <p className="mt-2 font-mono text-xs text-ink/50" dir="ltr">{k.lastRun}: {last ? last.slice(0, 16).replace("T", " ") : k.never}</p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">
-            <button onClick={() => onToggle(which === "weekly" ? "weeklyPlan" : which === "daily" ? "dailyBrief" : "followUps")} disabled={readOnly} aria-pressed={on} className={`rounded-full px-3 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-oasis text-mist" : "bg-ink/10 text-ink/60"}`}>{on ? k.on : k.off}</button>
+            <button onClick={() => onToggle(which === "weekly" ? "weeklyPlan" : which === "daily" ? "dailyBrief" : "followUps")} disabled={readOnly} aria-pressed={on} className={`rounded-full px-3 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-ink text-lilac" : "bg-ink/10 text-ink/60"}`}>{on ? k.on : k.off}</button>
             {which !== "followups" && <button disabled={!!busy} onClick={() => onRun(which)} className="btn btn-secondary btn-xs disabled:opacity-50">{busy === which ? "…" : k.runNow}</button>}
           </div>
         </div>
@@ -42,7 +43,7 @@ function RoutineRow({ t, r, on, saving, onToggle, readOnly }: { t: AppDict; r: R
         <p className="mt-1 text-xs text-ink/60">{k.routineWhen[r.id]}</p>
         <p className="mt-1 font-mono text-xs text-ink/50" dir="ltr">{k.lastRun}: {r.last ? r.last.slice(0, 16).replace("T", " ") : k.never}</p>
       </div>
-      <button type="button" role="switch" aria-checked={on} aria-label={`${t.agents[r.agent].name}: ${what.t}`} disabled={saving || readOnly} onClick={() => onToggle(r.id, !on)} className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${on ? "bg-oasis" : "bg-ink/20"}`}>
+      <button type="button" role="switch" aria-checked={on} aria-label={`${t.agents[r.agent].name}: ${what.t}`} disabled={saving || readOnly} onClick={() => onToggle(r.id, !on)} className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${on ? "bg-ink" : "bg-ink/20"}`}>
         <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${on ? "start-[22px]" : "start-0.5"}`} />
       </button>
     </li>
@@ -99,7 +100,7 @@ export default function TasksPanel({ t, initial, routines, readOnly = false }: {
   }
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="page-title">{k.title}</h1>
+      <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="taskspanel-t1" />{k.title}</span></h1>
       <p className="mt-2 text-ink/70">{k.sub}</p>
       {readOnly && <ReadOnlyNote text={t.readOnly.admin} />}
       <div className="mt-6 grid gap-4">
@@ -116,8 +117,8 @@ export default function TasksPanel({ t, initial, routines, readOnly = false }: {
         </div>
       </div>
       <p className="mt-3 text-xs text-ink/50">{k.capNote}</p>
-      {err && <p role="alert" className="mt-4 text-sm text-sadu-deep">{err}</p>}
-      {msg && <p role="status" className="mt-4 rounded-lg bg-salt-dim p-3 text-sm text-oasis">{msg}</p>}
+      {err && <p role="alert" className="mt-4 text-sm text-danger">{err}</p>}
+      {msg && <p role="status" className="mt-4 rounded-lg bg-lilac p-3 text-sm text-ink">{msg}</p>}
     </div>
   );
 }

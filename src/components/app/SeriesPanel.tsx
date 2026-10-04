@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { AppDict } from "@/lib/app-i18n";
 import { fill } from "@/lib/fill";
 import { useOneWrite } from "./useOneWrite";
+import Scribble from "@/components/Scribble";
 
 /** One closed copy of a series as the page shows it: every date already formatted on the server, in the brand's zone. */
 export type SeriesRow = { id: string; title: string; due: string | null; closedAt: string | null; result: string; closedBy: string | null };
@@ -23,7 +24,7 @@ export default function SeriesPanel({ t, id, rows, total, kept, canWrite, canClo
   const locked = !canWrite || (kept && !canClose);
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="page-title">{S.title}</h1>
+      <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="seriespanel-t1" />{S.title}</span></h1>
       <p className="mt-2"><Link href={backHref} className="btn btn-secondary btn-xs">{S.back}</Link></p>
       {total === 0 ? (
         <p className="mt-6 card text-sm text-ink/60">{S.notFound}</p>
@@ -35,18 +36,18 @@ export default function SeriesPanel({ t, id, rows, total, kept, canWrite, canClo
               <button
                 type="button" role="switch" aria-checked={kept} aria-label={S.keep} disabled={!!busy || locked}
                 onClick={() => void send("keep", `/api/secretary/series/${id}/keep`, "PUT", { keep: !kept })}
-                className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${kept ? "bg-oasis" : "bg-ink/20"}`}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${kept ? "bg-ink" : "bg-ink/20"}`}
               >
                 <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${kept ? "start-[22px]" : "start-0.5"}`} />
               </button>
             </div>
             <p className="mt-2 text-xs text-ink/60">{S.keepHint}</p>
             {kept && !canClose && <p className="mt-1 text-xs text-ink/50">{S.keepOffOwner}</p>}
-            {error?.key === "keep" && <p role="alert" className="mt-2 text-sm text-sadu">{error.text}</p>}
+            {error?.key === "keep" && <p role="alert" className="mt-2 text-sm text-danger">{error.text}</p>}
           </section>
 
           <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-display text-lg font-semibold text-oasis">{S.closed} <span className="tnum text-sm font-normal text-ink/50" dir="ltr">({total})</span></h2>
+            <h2 className="font-display text-lg font-semibold text-ink">{S.closed} <span className="tnum text-sm font-normal text-ink/50" dir="ltr">({total})</span></h2>
             <a href={exportHref} download className="btn btn-secondary btn-xs">{S.download}</a>
           </div>
           {rows.length < total && <p className="mt-1 text-xs text-ink/50">{fill(S.shown, { shown: String(rows.length), total: String(total) })}</p>}

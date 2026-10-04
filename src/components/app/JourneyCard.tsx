@@ -123,29 +123,29 @@ export default function JourneyCard({ journey, lang, compact = false }: { journe
     <>
       <Confetti burst={burst} />
       {toast && (
-        <div role="status" className="journey-toast flex items-center gap-3 rounded-2xl border border-saffron/60 bg-white px-4 py-3 text-sm shadow-lg">
-          <span className="pop-in grid h-9 w-9 place-items-center rounded-full bg-oasis text-saffron"><Icon name={toast.kind === "level" ? level : "trophy"} className="h-5 w-5" /></span>
+        <div role="status" className="journey-toast flex items-center gap-3 rounded-2xl border-[1.5px] border-ink bg-white px-4 py-3 text-sm">
+          <span className="pop-in grid h-9 w-9 place-items-center rounded-full bg-ink text-lemon"><Icon name={toast.kind === "level" ? level : "trophy"} className="h-5 w-5" /></span>
           <span className="font-semibold" dir="auto">{toast.text}</span>
         </div>
       )}
     </>
   );
 
-  if (hidden) return <>{overlay}<button type="button" onClick={() => toggle(false)} className="flex items-center gap-2 rounded-full border border-oasis/20 bg-white px-3 py-1.5 text-xs text-oasis"><Icon name={level} className="h-4 w-4" />{S.levels[level]} · <span className="tnum" dir="ltr">{doneCount}/{milestones.length}</span> · {S.show}</button></>;
+  if (hidden) return <>{overlay}<button type="button" onClick={() => toggle(false)} className="flex items-center gap-2 rounded-full border border-ink/20 bg-white px-3 py-1.5 text-xs text-ink"><Icon name={level} className="h-4 w-4" />{S.levels[level]} · <span className="tnum" dir="ltr">{doneCount}/{milestones.length}</span> · {S.show}</button></>;
 
   return (
     <section className="card overflow-hidden p-0" aria-label={S.title}>
       {overlay}
-      <header className="flex flex-wrap items-center gap-3 bg-oasis px-4 py-3 text-mist">
-        <span className="pop-in grid h-11 w-11 shrink-0 place-items-center rounded-full bg-mist/10 text-saffron" key={level}><Icon name={level} className="h-6 w-6" /></span>
+      <header className="flex flex-wrap items-center gap-3 bg-ink px-4 py-3 text-lilac">
+        <span className="pop-in grid h-11 w-11 shrink-0 place-items-center rounded-full bg-lilac/10 text-lemon" key={level}><Icon name={level} className="h-6 w-6" /></span>
         <div className="min-w-0 flex-1">
-          <p className="text-xs text-mist/70">{S.title}</p>
+          <p className="text-xs text-lilac/70">{S.title}</p>
           <p className="font-display text-lg font-bold">{S.level}: {S.levels[level]}</p>
         </div>
         <div className="flex w-full items-center gap-2 text-xs sm:w-auto">
-          {journey.streak > 0 && <span title={S.streakHint} className="flex items-center gap-1 rounded-full bg-saffron px-2.5 py-1 font-semibold text-ink"><Icon name="flame" className="h-3.5 w-3.5" /><span className="tnum">{S.streak(journey.streak)}</span></span>}
-          <span title={S.pointsNote} className="rounded-full bg-mist/10 px-2.5 py-1 font-semibold"><span className="tnum" dir="ltr">{points} / {journey.maxPoints}</span> {S.points}</span>
-          <button type="button" onClick={() => toggle(true)} className="ms-auto rounded-full px-2 py-1 text-mist/70 hover:text-mist" aria-label={S.hide}><Icon name="x" className="h-4 w-4" /></button>
+          {journey.streak > 0 && <span title={S.streakHint} className="flex items-center gap-1 rounded-full bg-lemon px-2.5 py-1 font-semibold text-ink"><Icon name="flame" className="h-3.5 w-3.5" /><span className="tnum">{S.streak(journey.streak)}</span></span>}
+          <span title={S.pointsNote} className="rounded-full bg-lilac/10 px-2.5 py-1 font-semibold"><span className="tnum" dir="ltr">{points} / {journey.maxPoints}</span> {S.points}</span>
+          <button type="button" onClick={() => toggle(true)} className="ms-auto rounded-full px-2 py-1 text-lilac/70 hover:text-lilac" aria-label={S.hide}><Icon name="x" className="h-4 w-4" /></button>
         </div>
       </header>
 
@@ -161,13 +161,13 @@ export default function JourneyCard({ journey, lang, compact = false }: { journe
             return (
               <li key={m.id} className="relative w-24 shrink-0 sm:w-auto">
                 {/* The link from the previous milestone's centre to this one's. */}
-                {i > 0 && <span aria-hidden className={`absolute top-7 hidden h-0.5 w-full sm:block ${m.done ? "bg-oasis" : "bg-ink/10"}`} style={{ insetInlineEnd: "50%" }} />}
-                <Link ref={isNext ? nextRef : undefined} href={`${base}${m.href}`} className={`relative flex flex-col items-center gap-1.5 rounded-lg p-2 text-center ${isNext ? "bg-saffron/10" : "hover:bg-salt"}`}>
-                  <span className={`relative z-10 grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 ${m.done ? "pop-in border-oasis bg-oasis text-saffron" : isNext ? "journey-next border-saffron bg-white text-oasis" : "border-ink/15 bg-white text-ink/40"}`}>
+                {i > 0 && <span aria-hidden className={`absolute top-7 hidden h-0.5 w-full sm:block ${m.done ? "bg-ink" : "bg-ink/10"}`} style={{ insetInlineEnd: "50%" }} />}
+                <Link ref={isNext ? nextRef : undefined} href={`${base}${m.href}`} className={`relative flex flex-col items-center gap-1.5 rounded-lg p-2 text-center ${isNext ? "bg-lemon/10" : "hover:bg-ground"}`}>
+                  <span className={`relative z-10 grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 ${m.done ? "pop-in border-ink bg-ink text-lemon" : isNext ? "journey-next border-ink bg-lemon text-ink" : "border-ink/15 bg-white text-ink/40"}`}>
                     <Icon name={m.done ? "check" : isNext ? ICON[m.id] : "lock"} className="h-4.5 w-4.5" />
                   </span>
                   <span className="min-w-0">
-                    <span className={`block text-xs font-semibold leading-snug ${m.done ? "text-oasis" : isNext ? "text-ink" : "text-ink/60"}`} dir="auto">{S.m[m.id][0]}</span>
+                    <span className={`block text-xs font-semibold leading-snug ${m.done ? "text-ink" : isNext ? "text-ink" : "text-ink/60"}`} dir="auto">{S.m[m.id][0]}</span>
                     <span className="tnum block text-[11px] text-ink/50" dir="ltr">+{m.points}</span>
                   </span>
                 </Link>
@@ -177,15 +177,15 @@ export default function JourneyCard({ journey, lang, compact = false }: { journe
         </ol>
       )}
 
-      <footer className="flex flex-wrap items-center gap-3 border-t border-ink/5 bg-salt px-4 py-3">
+      <footer className="flex flex-wrap items-center gap-3 border-t border-ink/5 bg-ground px-4 py-3">
         {next ? (
           <>
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-saffron text-ink"><Icon name={ICON[next.id]} className="h-4 w-4" /></span>
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-lemon text-ink"><Icon name={ICON[next.id]} className="h-4 w-4" /></span>
             <span className="min-w-0 flex-1 text-sm" dir="auto"><span className="block text-xs text-ink/60">{S.next} · <span className="tnum" dir="ltr">+{next.points}</span></span><span className="font-semibold">{S.m[next.id][0]}</span> <span className="text-ink/70">{S.m[next.id][1]}</span></span>
             <Link href={`${base}${next.href}`} className="btn btn-accent btn-xs">{S.go}</Link>
           </>
         ) : (
-          <p className="flex items-center gap-2 text-sm font-semibold text-oasis" dir="auto"><Icon name="oasis" className="h-5 w-5 text-saffron" />{S.complete}</p>
+          <p className="flex items-center gap-2 text-sm font-semibold text-ink" dir="auto"><Icon name="oasis" className="h-5 w-5 text-ink" />{S.complete}</p>
         )}
       </footer>
     </section>

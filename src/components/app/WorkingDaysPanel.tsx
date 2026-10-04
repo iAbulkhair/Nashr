@@ -61,7 +61,7 @@ export const yearlyValue = (kind: "greg" | "hijri", month: number, day: number) 
  */
 function Toggle({ on, onChange, label, disabled }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled: boolean }) {
   return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled} suppressHydrationWarning onClick={() => onChange(!on)} className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-oasis" : "bg-ink/20"}`}>
+    <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled} suppressHydrationWarning onClick={() => onChange(!on)} className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-ink" : "bg-ink/20"}`}>
       <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${on ? "start-[22px]" : "start-0.5"}`} />
     </button>
   );
@@ -122,7 +122,7 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
     setHours(j.effective.ramadanHours);
     return true;
   }
-  const errorOf = (key: string) => error?.key === key && <p role="alert" className="mt-2 text-sm text-sadu">{error.text}</p>;
+  const errorOf = (key: string) => error?.key === key && <p role="alert" className="mt-2 text-sm text-danger">{error.text}</p>;
 
   const eff = v.effective;
   const weekendChanged = days.length !== eff.weekend.length || days.some((d) => !eff.weekend.includes(d));
@@ -152,7 +152,7 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
           ))}
         </div>
         <p className="mt-2 text-xs text-ink/60">{fill(C.defaultLine, { country: C.countries[eff.country], days: dayNames(eff.defaultWeekend) })}</p>
-        {cityHint && !eff.weekend.includes(5) && <p className="mt-2 text-xs text-sadu-deep">{C.sharjahHint}</p>}
+        {cityHint && !eff.weekend.includes(5) && <p className="mt-2 text-xs text-danger">{C.sharjahHint}</p>}
         {canEdit && (
           <div className="mt-3 flex flex-wrap gap-2">
             <button disabled={!!busy || !weekendChanged} onClick={() => save("weekend", withWeekend(v.calendar, days, eff.defaultWeekend))} className="btn btn-primary btn-xs">{C.saveWeekend}</button>
@@ -190,7 +190,7 @@ export default function WorkingDaysPanel({ t, lang, calendar, effective, upcomin
       <div className="mt-6">
         <h3 className="flex flex-wrap items-center gap-2 text-sm font-semibold">{C.eid} <span className="badge badge-accent">{C.expected}</span></h3>
         <p className="mt-1 text-xs text-ink/60">{C.eidSub}</p>
-        {eff.country === "SA" && <p className="mt-1 text-xs text-sadu-deep">{C.eidNoteSA}</p>}
+        {eff.country === "SA" && <p className="mt-1 text-xs text-danger">{C.eidNoteSA}</p>}
         {years.map((y) => (
           <div key={y} className="mt-3">
             <p className="tnum text-xs font-semibold text-ink/70">{fill(C.eidYear, { year: String(y) })}</p>

@@ -7,6 +7,7 @@ import type { Lang } from "@/lib/i18n";
 import { Icon, channelIcon } from "./Icons";
 import type { ChatStatus } from "@/lib/chat-allowance";
 import { limitFromError, raiseLimit } from "./LimitModal";
+import Scribble from "@/components/Scribble";
 
 export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang; items: Inspo[] }) {
   const r = useRouter();
@@ -41,13 +42,13 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
     r.push(`/${lang}/app/chat`);
   }
   const Pill = ({ v, cur, set, label }: { v: string; cur: string; set: (s: string) => void; label: string }) => (
-    <button onClick={() => set(v)} className={`rounded-full px-3 py-1 text-xs ${cur === v ? "bg-oasis text-mist" : "bg-salt-dim"}`}>{label}</button>
+    <button onClick={() => set(v)} className={`rounded-full px-3 py-1 text-xs ${cur === v ? "bg-ink text-lilac" : "bg-lilac"}`}>{label}</button>
   );
   return (
     <div>
-      <h1 className="page-title">{p.title}</h1>
+      <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="inspopanel-t1" />{p.title}</span></h1>
       <p className="mt-2 text-ink/70">{p.sub}</p>
-      {refusal && <p role="alert" className="mt-4 rounded bg-salt-dim p-3 text-sm" dir="auto">{refusal}</p>}
+      {refusal && <p role="alert" className="mt-4 rounded bg-lilac p-3 text-sm" dir="auto">{refusal}</p>}
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={p.search} className="input mt-4 max-w-md" />
       <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
         <span className="text-ink/50">{p.channel}:</span>
@@ -61,17 +62,17 @@ export default function InspoPanel({ t, lang, items }: { t: AppDict; lang: Lang;
       <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {shown.map((i) => (
           <article key={i.id} className="flex flex-col overflow-hidden card card-sm">
-            <div className="-mx-4 -mt-4 mb-3 flex h-20 items-center justify-center bg-oasis-deep text-saffron" aria-hidden><Icon name={channelIcon(i.channel)} className="h-9 w-9" /></div>
+            <div className="-mx-4 -mt-4 mb-3 flex h-20 items-center justify-center bg-ink text-lemon" aria-hidden><Icon name={channelIcon(i.channel)} className="h-9 w-9" /></div>
             <div className="flex items-center gap-2 text-xs">
-              <span className="rounded bg-oasis/10 px-2 py-0.5 text-oasis">{i.channel}</span>
-              <span className="rounded bg-salt-dim px-2 py-0.5">{(p.kinds as Record<string, string>)[i.kind]}</span>
+              <span className="rounded bg-ink/10 px-2 py-0.5 text-ink">{i.channel}</span>
+              <span className="rounded bg-lilac px-2 py-0.5">{(p.kinds as Record<string, string>)[i.kind]}</span>
               <span className="text-ink/50">{i.industry}</span>
             </div>
             <h2 className="mt-2 font-display font-medium">{i.title}</h2>
             <p className="mt-1 text-xs text-ink/50">{i.brand}</p>
             <p className="mt-3 text-sm text-ink/80"><span className="font-semibold">{p.why}:</span> {i.why}</p>
-            <p className="mt-2 rounded bg-salt-dim p-2 text-sm" dir="auto"><span className="text-xs text-ink/50">{p.sample}: </span>{i.sample}</p>
-            <button disabled={busy === i.id} onClick={() => use(i)} className="mt-auto pt-4 text-start text-sm font-semibold text-oasis disabled:opacity-50">{busy === i.id ? "…" : p.use + " →"}</button>
+            <p className="mt-2 rounded bg-lilac p-2 text-sm" dir="auto"><span className="text-xs text-ink/50">{p.sample}: </span>{i.sample}</p>
+            <button disabled={busy === i.id} onClick={() => use(i)} className="mt-auto pt-4 text-start text-sm font-semibold text-ink disabled:opacity-50">{busy === i.id ? "…" : p.use + " →"}</button>
           </article>
         ))}
       </div>
