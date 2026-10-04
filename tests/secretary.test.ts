@@ -18,9 +18,10 @@ import {
   SEC_CREATE_PER_DAY, SEC_KEYS, SEC_OPEN_MAX, SEC_PURGE_BATCH, SEC_READS_PER_HOUR, SEC_WRITES_PER_HOUR, agendaFor, changeItem, getItem, mutateItem, purgeExpired,
 } from "@/lib/secretary";
 import {
-  AUTO_CLOSE_RESULT, addWorkingDays, approvalsLine, arCount, chaseAt, computeAgenda, formatWhen, nowLine, noteText, parseWhen, riyadhDay, zoneDay, type SecItem,
+  AUTO_CLOSE_RESULT, addDays, addWorkingDays, approvalsLine, arCount, chaseAt, computeAgenda, formatWhen, nowLine, noteText, parseWhen, riyadhDay, zoneDay, type SecItem,
 } from "@/lib/secretary-agenda";
 import { zoneOf } from "@/lib/zones";
+import { decideAwayProposal, proposeAway } from "@/lib/secretary-away";
 import * as brandRoute from "@/app/api/brand/route";
 import { HELP } from "@/lib/help";
 import * as listRoute from "@/app/api/secretary/route";
@@ -511,6 +512,11 @@ describe("the agenda read is batched (rule 198)", () => {
     const big = await owner("secbig");
     await Promise.all(["ffffffffffff0001", "ffffffffffff0002"].map((id) => saveTask(big.email, pending(id), true)));
     for (let i = 0; i < 40; i++) await add({ title: `B${i}`, dueAt: inDays((i % 9) + 1), ...(i % 2 ? {} : { taskId: `ffffffffffff000${(i % 4) / 2 + 1}` }) });
+    // Rule 478: the brand's work calendar and its away map are read too, once each, whatever their size.
+    await db.set(SEC_KEYS.cal(small.email), { v: 1, weekend: [5], ramadanHours: null, hijriFix: {}, holidays: { add: [], remove: [] }, updatedAt: "2026-10-01T00:00:00.000Z", updatedBy: small.email });
+    await db.set(SEC_KEYS.cal(big.email), { v: 1, weekend: [5], ramadanHours: null, hijriFix: {}, holidays: { add: ["10-15"], remove: [] }, updatedAt: "2026-10-01T00:00:00.000Z", updatedBy: big.email });
+    await db.hset(SEC_KEYS.away(small.email), "sara", { label: "Sara", until: "2099-01-01", by: small.email, via: "web", at: "2026-10-01T00:00:00.000Z" });
+    for (let i = 0; i < 40; i++) await db.hset(SEC_KEYS.away(big.email), `c${i}`, { label: `C${i}`, until: "2099-01-01", by: big.email, via: "web", at: "2026-10-01T00:00:00.000Z" });
     await agendaFor(small.email);
     await agendaFor(big.email);
     const names = ["get", "mget", "zrangeWithScores", "smembers", "lrange", "hgetall", "scardMany", "zcard", "set", "lock"] as const;
@@ -519,14 +525,17 @@ describe("the agenda read is batched (rule 198)", () => {
       await agendaFor(scope);
       const calls = spies.reduce((s, x) => s + x.mock.calls.length, 0);
       const mget = spies[1].mock.calls.length;
+      const cal = spies[0].mock.calls.filter(([k]) => k === SEC_KEYS.cal(scope)).length;
+      const away = spies[5].mock.calls.filter(([k]) => k === SEC_KEYS.away(scope)).length;
       vi.restoreAllMocks();
-      return { calls, mget };
+      return { calls, mget, cal, away };
     };
     const a = await count(small.email), b = await count(big.email);
     expect(b.calls).toBe(a.calls);
     // One MGET of the items and one of the linked inbox items, whatever the number of either.
     expect(a.mget).toBe(2);
     expect(b.mget).toBe(2);
+    expect([a.cal, a.away, b.cal, b.away]).toEqual([1, 1, 1, 1]);
     expect((await agendaFor(big.email)).open).toBe(40);
   });
 });
@@ -541,11 +550,29 @@ describe("account deletion removes the whole list (rule 201)", () => {
     const gone = await add({ title: "Deleted" });
     await patch(done.id, { action: "complete", result: "ok" });
     await patch(gone.id, { action: "delete" });
+    // A closed recurring copy (rule 496): its series set, the series list and the warn window are `sec:*` keys too, and
+    // the keep list, a warning marker and the next-copy claim are seeded beside them (rule 508).
+    const rec = await add({ title: "Recurring", dueAt: new Date(Date.now() + 864e5).toISOString().slice(0, 16), repeat: { every: "day" } });
+    const recDone = ((await (await patch(rec.id, { action: "complete", result: "ok" })).json()).item) as { series: { id: string } };
+    await Promise.all([db.sadd(SEC_KEYS.seriesKeep(u.email), recDone.series.id), db.setNx(SEC_KEYS.swarn(u.email, recDone.series.id), "1", 3600), db.setNx(SEC_KEYS.spawn(u.email, rec.id), "s0123456789abcdef", 3600), db.zadd(SEC_KEYS.spurge(u.email), Date.now(), rec.id)]);
+    const seriesKeys = [SEC_KEYS.series(u.email, recDone.series.id), SEC_KEYS.seriesList(u.email), SEC_KEYS.sdone(u.email), SEC_KEYS.spurge(u.email), SEC_KEYS.seriesKeep(u.email), SEC_KEYS.swarn(u.email, recDone.series.id), SEC_KEYS.spawn(u.email, rec.id)];
+    expect(seriesKeys.every((k) => memKeys().includes(k))).toBe(true);
     await setActiveBrand(u.email, "b2");
     await add({ title: "Second brand" });
+    // Absences Reem proposed in chat (rule 485), in both brands: an open one (its record and the index) and a decided one
+    // (its outcome and the index). Their keys start "secawayprop", outside "sec:", and are found through the index.
+    const until = addDays(zoneDay(Date.now()), 2);
+    const open1 = await proposeAway(u.email, { name: "Sara", until }, Date.now(), "Asia/Riyadh");
+    const decided = await proposeAway(scopeFor(u.email, "b2"), { name: "Huda", until }, Date.now(), "Asia/Riyadh");
+    if (!open1.ok || !decided.ok) throw new Error("proposeAway");
+    expect((await decideAwayProposal(scopeFor(u.email, "b2"), decided.p.id, "dismiss", { actor: "owner", via: "web" })).ok).toBe(true);
+    expect(memKeys().filter((k) => k.startsWith("secawayprop") && k.includes(u.email)).sort()).toEqual([
+      SEC_KEYS.awayProp(u.email, open1.p.id), SEC_KEYS.awayPropDone(scopeFor(u.email, "b2"), decided.p.id), SEC_KEYS.awayProps(u.email), SEC_KEYS.awayProps(scopeFor(u.email, "b2")),
+    ].sort());
     expect(memKeys().filter((k) => k.startsWith("sec:") && k.includes(u.email)).length).toBeGreaterThan(8);
     await wipeAccount(u.email);
     expect(memKeys().filter((k) => k.startsWith("sec:") && k.includes(u.email))).toEqual([]);
+    expect(memKeys().filter((k) => k.startsWith("secaway") && k.includes(u.email))).toEqual([]);
     expect(await getItem(u.email, open.id)).toBeNull();
   });
 });

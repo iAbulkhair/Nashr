@@ -5,6 +5,7 @@ import { pmap } from "./parallel";
 import { revokeAllGrants } from "./oauth";
 import { EVENTS } from "./track";
 import { codeFor } from "./referral";
+import { forgetPartnerData } from "./partners";
 import { monthKey } from "./credits";
 import { AGENTS, AGENT_IDS } from "./agents";
 import { chatTrialKey, usageMonthKeys } from "./usage";
@@ -16,6 +17,7 @@ import { forgetWishlistUser } from "./wishlist";
 import { forgetDueScope, secretaryKeys } from "./secretary";
 import { handoffKeys } from "./handoffs";
 import { proposalKeys } from "./brand-proposals";
+import { ONCE_INDEX, onceClaimKey, onceKey, onceRepairKey } from "./notify";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -85,21 +87,26 @@ export async function wipeAccount(email: string) {
       `onboardplan:${s}`, `pending:${s}`, `pendingidx:${s}`, `tidxm:${s}`, `tidxv:${s}`, `tasks:${s}`, `files:${s}`, `brand:${s}`, `prefs:${s}`, `chat:${s}`, `convs:${s}`, `gov:${s}`, `schedule:${s}`, `brief:${s}`, `conns:${s}`,
     );
   });
-  // Named notification markers: the names are only knowable from the index `once()` keeps.
-  const onceNames = await db.smembers(`notifiedkeys:${e}`);
-  keys.push(...onceNames.map((k) => `notified:${e}:${k}`), `notifiedkeys:${e}`);
+  // Named one-time email markers, their in-flight claims and their repair flags: the names are only knowable from the
+  // index `sendOnce()` keeps (src/lib/notify.ts).
+  const onceNames = await db.smembers(ONCE_INDEX(e));
+  keys.push(...onceNames.flatMap((k) => [onceKey(e, k), onceClaimKey(e, k), onceRepairKey(e, k)]), ONCE_INDEX(e));
 
   const token = await db.get<string>(`mcptoken-of:${e}`);
   if (token) keys.push(`mcptoken:${token}`);
   await revokeAllGrants(e); // OAuth tokens issued to connected apps
   // Wishlist: votes are taken back (the counts drop) and suggestions, which carry the email and free text, are removed.
   keys.push(...(await forgetWishlistUser(e)));
+  // Partner programme (src/lib/partners.ts): recorded payments and, for a partner, the record with its bank details, the
+  // code, the referral set and the ledger. The account also leaves its own partner's referral set.
+  keys.push(...(await forgetPartnerData(e)));
   keys.push(`mcpgrants:${e}`);
   keys.push(`profile:${e}`, `mcptoken-of:${e}`, `brands:${e}`, `activebrand:${e}`, `user:${e}`);
   // Account-level records that are not brand-scoped. Missing these meant a deleted account left its notifications,
   // referral graph, share-bonus markers and activity history behind, so re-registering the same address inherited
-  // them. The other `notifseen:` markers are not listed: they live a week at most and their suffix cannot be
-  // enumerated (the ones that can, per brand, are deleted above).
+  // them. The other `notifseen:` markers are not listed: they live a week at most after their last write (Reem's to-do
+  // alert markers are set again by each daily run while their step holds, and no run reaches a deleted account) and
+  // their suffix cannot be enumerated (the ones that can, per brand, are deleted above).
   keys.push(
     `notifs:${e}`,
     `referrals:${e}`,

@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import { currentUser, normalizeEmail, validEmail, type User } from "@/lib/auth";
 import { notifyItem } from "@/lib/notifications";
 import { mailReady, sendEmail } from "@/lib/notify";
-import { ORIGIN } from "@/lib/oauth";
+import { appOrigin } from "@/lib/origin";
 import { allow, clientIp } from "@/lib/rate";
 import { forbid } from "@/lib/roles";
 import { cancelInvite, createInvite, discardInvite, type Invite } from "@/lib/team";
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
   if (!res.ok) return teamFail(res);
 
   const inv = res.invite;
-  const link = `${ORIGIN()}/${inv.lang}/app/join#t=${res.token}`;
+  const link = `${appOrigin()}/${inv.lang}/app/join#t=${res.token}`;
   if (byEmail) {
     const mail = inviteMail(inv, normalizeEmail(a.email), link);
     if (!(await sendEmail(inv.email, mail.subject, mail.text))) {

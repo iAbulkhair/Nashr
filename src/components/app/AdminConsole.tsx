@@ -1,9 +1,19 @@
 "use client";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ADMIN_ENDED, ADMIN_ENDED_EVENT, adminEndedHref, adminFetch } from "@/lib/admin-fetch";
 import GoldenPanel from "./GoldenPanel";
 import WishlistPanel from "./WishlistPanel";
+import LeadsPanel from "./LeadsPanel";
 import type { Activity } from "@/lib/activity";
-import { AGENCY_MIN, MAX_CHAT_OVERRIDE, MAX_DEAL_CREDITS, MAX_SEAT_OVERRIDE, PLANS, PLAN_CREDITS, PLAN_PRICE_SAR, PLAN_SEATS, chatOverflowHold, formatCount, isChatOverride, parseDeal, type AgencyDeal } from "@/lib/pricing";
+import PartnersPanel from "./PartnersPanel";
+import PaymentsPanel, { newPaymentId } from "./PaymentsPanel";
+import { ksaDay, sarText } from "@/lib/partner-rules";
+import { AGENCY_MIN, MAX_CHAT_OVERRIDE, MAX_DEAL_CREDITS, MAX_SEAT_OVERRIDE, PLANS, PLAN_CREDITS, PLAN_PRICE_SAR, PLAN_SEATS, TOPUP_PACKS, TOPUP_VALID_DAYS, chatOverflowHold, formatCount, isChatOverride, isTopupPack, parseDeal, topupPriceSar, topupsSold, type AgencyDeal, type Plan } from "@/lib/pricing";
+// Type only: the console shows the packs as GET /api/admin/users/{email} returns them on the account (rules 446-447).
+import type { TopupLot } from "@/lib/topups";
+// The refund amount the founder is shown, computed as the server computes it (rule 460). topups.ts is client-safe (rule 451).
+import { unusedRefundSar } from "@/lib/topups";
 // Type only: chat-allowance.ts is server code (Redis, credits); the type is erased from the bundle (rule 249).
 import type { ChatStatus } from "@/lib/chat-allowance";
 
@@ -14,7 +24,9 @@ type KindUsage = { calls: number; in: number; out: number; usd: number };
  * founder override itself, the owner's "continue on credits" switch, the messages continued on credits this month and
  * the credits they were billed (`chatCredits`), and what chat cost this month in all and per message (over every message).
  */
-type U = { email: string; name: string; phone: string; plan: string; credits: number; trialEnds: string; createdAt: string; renewedAt?: string | null; suspended?: boolean; lang?: string; tokens?: number; usd?: number; calls?: number; byKind?: Record<string, KindUsage>; priceSar?: number; marginPct?: number | null; seats?: number; seatsOverride?: number | null; deal?: AgencyDeal | null; allowance?: number; chatUsed?: number; chatAllowance?: number; chatLeft?: number; chatPeriod?: ChatStatus["period"]; chatOverride?: number | null; chatOverflowOn?: boolean; chatOverflowUsed?: number; chatCredits?: number; chatUsd?: number; usdPerMsg?: number | null };
+type U = { email: string; name: string; phone: string; plan: string; credits: number; trialEnds: string; createdAt: string; renewedAt?: string | null; suspended?: boolean; lang?: string; tokens?: number; usd?: number; calls?: number; byKind?: Record<string, KindUsage>; priceSar?: number; marginPct?: number | null; seats?: number; seatsOverride?: number | null; deal?: AgencyDeal | null; allowance?: number; chatUsed?: number; chatAllowance?: number; chatLeft?: number; chatPeriod?: ChatStatus["period"]; chatOverride?: number | null; chatOverflowOn?: boolean; chatOverflowUsed?: number; chatCredits?: number; chatUsd?: number; usdPerMsg?: number | null; topupCredits?: number; topups?: TopupLot[] };
+/** A new "Refund unused" request id, `rf_` and 18 hex characters (POST /api/admin/topups, rule 460). */
+const newRefundId = () => `rf_${Array.from(crypto.getRandomValues(new Uint8Array(9)), (b) => b.toString(16).padStart(2, "0")).join("")}`;
 /** The chat cell turns red once this share of the allowance, or less, is left (and at 0, chat stopped). */
 const CHAT_LOW_SHARE = 0.1;
 /** The least a balance needs for a message past the allowance, and the most one is billed (src/lib/pricing.ts). */
@@ -29,21 +41,21 @@ const chatLow = (counted: number, allowance: number | undefined, left: number | 
 type MemberDetail = { email: string; name: string; role: string; memberOf: string; invitedBy: string; acceptedAt: string; disabled: string | null; ownerExists: boolean; onRoster: boolean };
 /** What POST /api/admin/plan changed in the team when the seat limit moved (src/lib/team.ts `enforceSeats`). */
 type TeamChange = { limit: number; disabled: string[]; enabled: string[]; cancelled: string[] };
-type Detail = { user: U; brand: Record<string, unknown> | null; tasks: T[]; usage: { in: number; out: number; calls: number; usd: number; kinds: Record<string, number>; byKind?: Record<string, KindUsage>; byAgent?: Record<string, { calls: number; usd: number }> }; chat?: ChatStatus; chatUsdPerMsg?: number | null; connections: { provider: string; label?: string; connectedAt?: string }[]; brands: { id: string; name: string; status: string }[]; conversations: number; referrals: number; avgScore: number | null; activity?: { brand: string; name: string; rows: Activity[] }[] };
+type Detail = { user: U; brand: Record<string, unknown> | null; tasks: T[]; usage: { in: number; out: number; calls: number; usd: number; kinds: Record<string, number>; byKind?: Record<string, KindUsage>; byAgent?: Record<string, { calls: number; usd: number }> }; chat?: ChatStatus; chatUsdPerMsg?: number | null; connections: { provider: string; label?: string; connectedAt?: string }[]; brands: { id: string; name: string; status: string }[]; conversations: number; referrals: number; avgScore: number | null; activity?: { brand: string; name: string; rows: Activity[] }[]; unfinishedRefunds?: string[] };
 type T = { id: string; type: string; channel: string; title: string; status: string; createdAt: string; body: string; editedBody?: string; quality?: { score: number; notes: string } };
 type TM = { type: string; n: number; approved: number; rejected: number; autoApproved: number; approvalRate: number | null; edited: number; editRate: number | null; editMagnitude: number | null; published: number; judged: number; avgScore: number | null; low: number; avgHoursToDecide: number | null };
 type AM = { agent: string; n: number; decided: number; autoApproved: number; approvalRate: number | null; reviewedApproved: number; editRate: number | null; judged: number; avgScore: number | null; low: number; thumbsUp: number; thumbsDown: number; types: TM[] };
 
 const STR = {
-  en: { users: "Users", paying: "Paying", today: "Signed up today", trial: "Trial", cost: "Model cost this month $", tokens: "Tokens this month", calls: "Model calls", suspended: "Suspended", search: "Search email, name, phone, plan…", email: "Email", name: "Name", phone: "Phone", plan: "Plan", credits: "Credits", tokensMo: "Tokens (mo)", costMo: "Cost $ (mo)", marginMo: "Margin", perKind: "Cost per request type this month (average of one request, and the total)", perAgent: "Cost per agent this month (model calls made for that agent's work: its batches, reviews, judging, images and its chat turns; onboarding counts as Noor)", trialEnds: "Trial ends", joined: "Joined", addCredits: "+ credits", planNote: `Changing the plan resets the balance to that plan's monthly allowance and starts the renewal cycle (balance resets on the 1st of each month, UTC). Agency uses its deal (credits, price and seats, set with "Agency deal…" next to the plan); without a deal it behaves like Business: ${formatCount(PLAN_CREDITS.business)} credits, ${PLAN_SEATS.business} seats and ${PLAN_PRICE_SAR.business} SAR in MRR. An account's first deal applies at once (the balance becomes the deal's credits); changing a deal asks whether to apply it now or at the next renewal. Clearing a deal, or leaving Agency, also clears the deal's seats. Use "+ credits" for top-ups within the month. Tokens and cost are this month's real model usage.`, quality: "Agent quality · last 30 days · all workspaces", qualityNote: "Approval = approved ÷ decided. Edited = approved items the owner changed (magnitude = % of text changed). Judge = automated score /100 (85+ ready, <70 regenerate). Thumbs = chat replies.", agentType: "Agent / type", items: "Items", approval: "Approval", edited: "Edited", magnitude: "Magnitude", published: "Published", judge: "Judge", low: "<70", hours: "Hours to decide", perWorkspace: "Per workspace", loading: "Loading…", close: "close", impersonate: "Log in as user", extend: "Extend trial", reset: "Reset password", emailsIn: "Emails in", suspend: "Suspend", unsuspend: "Unsuspend", del: "Delete account", usage: "Model usage (month)", trialRenewed: "Trial ends / renewed", integrations: "Integrations", brandsEtc: "Brands · conversations · referrals · judge", brandFile: "Brand file", activity: "Activity log (latest 100 per brand)", activityNone: "No activity recorded.", notCompleted: "— not completed —", generated: "Generated items", approved: "approved", rejected: "rejected", promptCredits: "Credits to add (negative to remove):", promptDays: "Extend trial by days:", promptDelete: "Type the email to permanently delete this account and all its data:", promptTemp: "Temporary password (shown once, send it on WhatsApp):", arabic: "Arabic", english: "English", seats: "Seats", setSeats: "Seats…", promptSeats: `Seat limit, the owner included (1-${MAX_SEAT_OVERRIDE}). 0 goes back to the plan's number:`, deal: "Deal", setDeal: "Agency deal…", noDeal: "no deal: Business", dealApplyNow: "Apply the new deal now? OK sets the balance to the deal's credits today and starts the renewal cycle; Cancel keeps the balance until the next renewal.", promptDealCredits: `Agency deal, monthly credits (${formatCount(AGENCY_MIN.credits)} to ${formatCount(MAX_DEAL_CREDITS)}). Leave empty to clear the deal:`, promptDealPrice: `Monthly price in SAR, excluding VAT: at least ${AGENCY_MIN.priceSar}, and never cheaper per credit than Business (${PLAN_PRICE_SAR.business} SAR for ${formatCount(PLAN_CREDITS.business)} credits):`, promptDealSeats: `Seats, the owner included (1-${MAX_SEAT_OVERRIDE}). Leave empty to keep the current number:`, seatsOverride: "override", teamPaused: "paused", teamResumed: "back", teamCancelled: "invites cancelled", lookup: "Look up this address", notFound: "No account and no member login at this address.", memberLogin: "Member login", memberOf: "member of", invitedBy: "invited by", ownerMissing: "the owner account is gone", offRoster: "not on the owner's roster", removeMember: "Remove this member login", promptRemoveMember: "Type the email to delete this member login (it frees the address):", chat: "Chat", setChat: "Chat messages…", promptChat: `Chat messages for this account, per month (for the whole trial on a trial), 0 to ${formatCount(MAX_CHAT_OVERRIDE)}. 0 stops chat. Leave empty or type "plan" to go back to the plan's number:`, onCredits: (n: number, c: number) => `+${n} ${n === 1 ? "msg" : "msgs"} on credits (${c} ${c === 1 ? "credit" : "credits"})`, chatCost: "Chat cost this month $", perMsg: "$ per message", chatMessages: "Chat messages", chatTrial: "for the trial", chatMonth: "this month", overflow: "Continue on credits", overflowOn: "on", overflowOff: "off", overflowTrial: "not offered on a trial", chatNote: `Chat = messages the owner sent, counted against the account's allowance (this month, or for the whole trial) and shown as sent / allowance: after the allowance was lowered mid-period the count can pass it. Red when ${CHAT_LOW_SHARE * 100}% or less is left. "+N msgs on credits (M credits)" = messages past the allowance this month, because the owner turned on "continue on credits", and the credits they were billed: such a message goes ahead only with at least ${CHAT_HOLD} credits in the balance, and is billed what it actually cost, at most ${CHAT_HOLD} credits; a failed message is not billed. Click the number to set an override for the account (0 stops chat); like the deal's seats, it ends with an Agency deal. Hover for what chat cost this month and per message (every message, those on credits included).` },
-  ar: { users: "المستخدمون", paying: "مشتركون", today: "سجّلوا اليوم", trial: "تجربة", cost: "تكلفة النماذج هذا الشهر $", tokens: "توكنز هذا الشهر", calls: "استدعاءات النماذج", suspended: "موقوفون", search: "ابحث بالبريد أو الاسم أو الجوال أو الخطة…", email: "البريد", name: "الاسم", phone: "الجوال", plan: "الخطة", credits: "الكريدت", tokensMo: "توكنز (الشهر)", costMo: "التكلفة $ (الشهر)", marginMo: "الهامش", perKind: "التكلفة حسب نوع الطلب هذا الشهر (متوسط الطلب الواحد، والإجمالي)", perAgent: "التكلفة لكل وكيل هذا الشهر (استدعاءات النماذج لعمل ذلك الوكيل: دفعاته ومراجعتها وتقييمها وصوره ومحادثاته؛ التهيئة تُحسب لنور)", trialEnds: "نهاية التجربة", joined: "انضم", addCredits: "+ كريدت", planNote: `تغيير الخطة يعيد الرصيد إلى مخصص الخطة الشهري ويبدأ دورة التجديد (يتجدد الرصيد في أول كل شهر UTC). خطة الوكالات تعمل بعقدها (الكريدت والسعر والمقاعد من «عقد الوكالات…» بجانب الخطة)، وبلا عقد تُعامل كخطة الأعمال: ${formatCount(PLAN_CREDITS.business)} كريدت و${PLAN_SEATS.business} مقاعد و${PLAN_PRICE_SAR.business} ريال في الإيراد الشهري. أول عقد للحساب يسري فوراً (يصبح الرصيد كريدت العقد)، وتغيير العقد يسألك: الآن أم من التجديد القادم. إلغاء العقد أو الخروج من خطة الوكالات يلغي مقاعد العقد أيضاً. استخدم «+ كريدت» للإضافات خلال الشهر. التوكنز والتكلفة هي الاستهلاك الحقيقي للنماذج هذا الشهر.`, quality: "جودة الوكلاء · آخر 30 يوماً · كل المساحات", qualityNote: "الاعتماد = معتمد ÷ محسوم. التعديل = عناصر معتمدة غيّرها المالك (الحجم = % النص المتغيّر). الحَكَم = درجة آلية من 100 (85+ جاهز، أقل من 70 أعد التوليد). الإبهام = ردود الدردشة.", agentType: "الوكيل / النوع", items: "عناصر", approval: "اعتماد", edited: "تعديل", magnitude: "الحجم", published: "نُشر", judge: "الحَكَم", low: "<70", hours: "ساعات حتى القرار", perWorkspace: "لكل مساحة", loading: "جارٍ التحميل…", close: "إغلاق", impersonate: "دخول كالمستخدم", extend: "تمديد التجربة", reset: "إعادة تعيين كلمة المرور", emailsIn: "الإيميلات بـ", suspend: "إيقاف", unsuspend: "إلغاء الإيقاف", del: "حذف الحساب", usage: "استهلاك النماذج (الشهر)", trialRenewed: "نهاية التجربة / التجديد", integrations: "التكاملات", brandsEtc: "علامات · محادثات · إحالات · الحَكَم", brandFile: "ملف العلامة", activity: "سجل النشاط (آخر 100 لكل علامة)", activityNone: "لا نشاط مسجل.", notCompleted: "— غير مكتمل —", generated: "العناصر المولّدة", approved: "معتمد", rejected: "مرفوض", promptCredits: "كريدت للإضافة (سالب للخصم):", promptDays: "تمديد التجربة بالأيام:", promptDelete: "اكتب البريد لحذف الحساب وكل بياناته نهائياً:", promptTemp: "كلمة مرور مؤقتة (تظهر مرة واحدة، أرسلها على واتساب):", arabic: "العربية", english: "الإنجليزية", seats: "المقاعد", setSeats: "المقاعد…", promptSeats: `حد المقاعد شاملاً المالك (1-${MAX_SEAT_OVERRIDE}). الصفر يعيده إلى عدد الخطة:`, deal: "العقد", setDeal: "عقد الوكالات…", noDeal: "بلا عقد: الأعمال", dealApplyNow: "تطبيق العقد الجديد الآن؟ «موافق» يجعل الرصيد كريدت العقد اليوم ويبدأ دورة التجديد، و«إلغاء» يبقي الرصيد حتى التجديد القادم.", promptDealCredits: `عقد الوكالات، الكريدت الشهري (من ${formatCount(AGENCY_MIN.credits)} إلى ${formatCount(MAX_DEAL_CREDITS)}). اتركه فارغاً لإلغاء العقد:`, promptDealPrice: `السعر الشهري بالريال غير شامل الضريبة: ${AGENCY_MIN.priceSar} على الأقل، ولا يكون الكريدت أرخص من خطة الأعمال (${PLAN_PRICE_SAR.business} ريال لكل ${formatCount(PLAN_CREDITS.business)} كريدت):`, promptDealSeats: `المقاعد شاملاً المالك (1-${MAX_SEAT_OVERRIDE}). اتركه فارغاً لإبقاء العدد الحالي:`, seatsOverride: "مخصص", teamPaused: "أُوقف", teamResumed: "عاد", teamCancelled: "دعوات أُلغيت", lookup: "ابحث عن هذا البريد", notFound: "لا حساب ولا دخول عضو بهذا البريد.", memberLogin: "دخول عضو", memberOf: "عضو في", invitedBy: "دعاه", ownerMissing: "حساب المالك غير موجود", offRoster: "ليس في قائمة أعضاء المالك", removeMember: "احذف دخول هذا العضو", promptRemoveMember: "اكتب البريد لحذف دخول هذا العضو (يحرّر البريد):", chat: "الدردشة", setChat: "رسائل الدردشة…", promptChat: `رسائل الدردشة لهذا الحساب شهرياً (وللتجربة كلها في حساب التجربة)، من 0 إلى ${formatCount(MAX_CHAT_OVERRIDE)}. الصفر يوقف الدردشة. اتركه فارغاً أو اكتب «الخطة» أو plan للعودة إلى عدد الخطة:`, onCredits: (n: number, c: number) => `+${n} ${n % 100 >= 3 && n % 100 <= 10 ? "رسائل" : "رسالة"} بالكريدت (${c} كريدت)`, chatCost: "تكلفة الدردشة هذا الشهر $", perMsg: "$ لكل رسالة", chatMessages: "رسائل الدردشة", chatTrial: "للتجربة", chatMonth: "هذا الشهر", overflow: "المتابعة بالكريدت", overflowOn: "مفعّلة", overflowOff: "متوقفة", overflowTrial: "غير متاحة في التجربة", chatNote: `الدردشة = الرسائل التي أرسلها المالك محسوبةً من مخصص الحساب (هذا الشهر، أو للتجربة كلها) بصيغة المُرسَل / المخصص، وقد يتجاوز المُرسَلُ المخصصَ إذا خُفِّض المخصص خلال الفترة. تظهر بالأحمر حين يبقى ${CHAT_LOW_SHARE * 100}% أو أقل. «+N رسالة بالكريدت (M كريدت)» = رسائل هذا الشهر بعد نفاد المخصص لأن المالك فعّل «أكمل على الكريدت»، والكريدت الذي خُصم عنها: لا تُرسل هذه الرسالة إلا إذا كان في الرصيد ${CHAT_HOLD} كريدت على الأقل، وتُحاسب بتكلفتها الفعلية بحد أقصى ${CHAT_HOLD} كريدت، والرسالة التي تفشل لا تُحاسب. اضغط الرقم لتحديد عدد مخصص للحساب (الصفر يوقف الدردشة)، وينتهي مع عقد الوكالات كما تنتهي مقاعد العقد. مرّر المؤشر لترى تكلفة الدردشة هذا الشهر ولكل رسالة (كل الرسائل، ومنها التي بالكريدت).` },
+  en: { users: "Users", paying: "Paying", today: "Signed up today", trial: "Trial", cost: "Model cost this month $", tokens: "Tokens this month", calls: "Model calls", suspended: "Suspended", search: "Search email, name, phone, plan…", email: "Email", name: "Name", phone: "Phone", plan: "Plan", credits: "Credits", tokensMo: "Tokens (mo)", costMo: "Cost $ (mo)", marginMo: "Margin", perKind: "Cost per request type this month (average of one request, and the total)", perAgent: "Cost per agent this month (model calls made for that agent's work: its batches, reviews, judging, images and its chat turns; onboarding counts as Noor)", trialEnds: "Trial ends", joined: "Joined", addCredits: "+ credits", topups: "Top-ups", addTopup: "Add top-up", voidTopup: "Void", noTopups: "No live top-up pack.", topupTrial: "Top-ups are sold to paid plans only: change the plan first.", topupLeft: "left", topupExpires: "expires", topupPaid: "paid", topupOn: "on", topupRef: "ref", topupBy: "by", ofTopup: "top-up", promptTopupPack: `Pack, in credits (${TOPUP_PACKS.map(formatCount).join(" / ")}):`, promptTopupPaid: "Amount paid in SAR, excluding VAT:", promptTopupDate: "Payment date (YYYY-MM-DD, the day in Riyadh, not after today):", promptTopupRef: "Payment reference (bank transfer or receipt number; optional):", topupPayNote: "\"Add top-up\" also records the pack's payment in Payments above, with the partner's commission when one is due (15% of the amount before VAT, in the customer's first 4 months): never record a top-up there. \"Void\" voids the pack's payment and its commission too.", commission: "commission", confirmVoid: (c: number, left: number) => `Void this ${formatCount(c)}-credit pack? Its ${formatCount(left)} unspent credits leave the balance now; credits already spent from it stay spent. Its payment, and the partner's commission on it, are voided too.`, refundTopup: "Refund unused", finishRefund: "Finish refund", finishRefundTitle: "The refund was recorded on the pack but not yet on its payment: this records it there and reduces the partner's commission. Nothing is refunded twice.", topupRefundNote: "\"Refund unused\": only when the customer asks, before the pack expires. The amount is the credits left × the price per credit paid, excluding VAT (no VAT is collected on packs today). Send the transfer yourself and record it here with its date and reference: the credits leave the balance at once, and the partner's commission on the pack's payment goes down in proportion.", confirmRefund: (left: number, c: number, sar: string) => `Refund the ${formatCount(left)} unused credits of this ${formatCount(c)}-credit pack? Amount to transfer: ${sar} SAR excluding VAT (credits left × the price per credit paid). The credits leave the balance now; the partner's commission on this pack's payment goes down in proportion.`, promptRefundDate: "Transfer date (YYYY-MM-DD, the day in Riyadh, not after today):", promptRefundRef: "Transfer reference (bank transfer number; required):", topupRefunded: (c: number, sar: string, on: string) => `refunded ${formatCount(c)} credits · ${sar} SAR on ${on}`, leftChanged: (left: number, sar: string) => `left_changed: the pack now has ${formatCount(left)} credits left (${sar} SAR); nothing was refunded. Check the amount and try again.`, planNote: `Changing the plan resets the month's plan credits to that plan's monthly allowance and starts the renewal cycle (they reset on the 1st of each month, UTC); live top-up packs keep what is left in them. Agency uses its deal (credits, price and seats, set with "Agency deal…" next to the plan); without a deal it behaves like Business: ${formatCount(PLAN_CREDITS.business)} credits, ${PLAN_SEATS.business} seats and ${PLAN_PRICE_SAR.business} SAR in MRR. An account's first deal applies at once (the month's plan credits become the deal's credits; live top-up packs are kept); changing a deal asks whether to apply it now or at the next renewal. Clearing a deal, or leaving Agency, also clears the deal's seats. "+ credits" adds goodwill credits to the month's plan credits (they do not roll over); a paid pack goes on the account with "Add top-up" in its card (valid ${TOPUP_VALID_DAYS} days, spent after the plan credits). Tokens and cost are this month's real model usage.`, quality: "Agent quality · last 30 days · all workspaces", qualityNote: "Approval = approved ÷ decided. Edited = approved items the owner changed (magnitude = % of text changed). Judge = automated score /100 (85+ ready, <70 regenerate). Thumbs = chat replies.", agentType: "Agent / type", items: "Items", approval: "Approval", edited: "Edited", magnitude: "Magnitude", published: "Published", judge: "Judge", low: "<70", hours: "Hours to decide", perWorkspace: "Per workspace", loading: "Loading…", close: "close", impersonate: "Log in as user", extend: "Extend trial", reset: "Reset password", emailsIn: "Emails in", suspend: "Suspend", unsuspend: "Unsuspend", del: "Delete account", usage: "Model usage (month)", trialRenewed: "Trial ends / renewed", integrations: "Integrations", brandsEtc: "Brands · conversations · referrals · judge", brandFile: "Brand file", activity: "Activity log (latest 100 per brand)", activityNone: "No activity recorded.", notCompleted: "— not completed —", generated: "Generated items", approved: "approved", rejected: "rejected", promptCredits: "Credits to add (negative to remove):", promptDays: "Extend trial by days:", promptDelete: "Type the email to permanently delete this account and all its data:", promptTemp: "Temporary password (shown once, send it on WhatsApp):", arabic: "Arabic", english: "English", seats: "Seats", setSeats: "Seats…", promptSeats: `Seat limit, the owner included (1-${MAX_SEAT_OVERRIDE}). 0 goes back to the plan's number:`, deal: "Deal", setDeal: "Agency deal…", noDeal: "no deal: Business", dealApplyNow: "Apply the new deal now? OK sets the month's plan credits to the deal's credits today (live top-up packs keep what is left in them) and starts the renewal cycle; Cancel keeps the balance until the next renewal.", promptDealCredits: `Agency deal, monthly credits (${formatCount(AGENCY_MIN.credits)} to ${formatCount(MAX_DEAL_CREDITS)}). Leave empty to clear the deal:`, promptDealPrice: `Monthly price in SAR, excluding VAT: at least ${AGENCY_MIN.priceSar}, and never cheaper per credit than Business (${PLAN_PRICE_SAR.business} SAR for ${formatCount(PLAN_CREDITS.business)} credits):`, promptDealSeats: `Seats, the owner included (1-${MAX_SEAT_OVERRIDE}). Leave empty to keep the current number:`, seatsOverride: "override", teamPaused: "paused", teamResumed: "back", teamCancelled: "invites cancelled", lookup: "Look up this address", notFound: "No account and no member login at this address.", memberLogin: "Member login", memberOf: "member of", invitedBy: "invited by", ownerMissing: "the owner account is gone", offRoster: "not on the owner's roster", removeMember: "Remove this member login", promptRemoveMember: "Type the email to delete this member login (it frees the address):", chat: "Chat", setChat: "Chat messages…", promptChat: `Chat messages for this account, per month (for the whole trial on a trial), 0 to ${formatCount(MAX_CHAT_OVERRIDE)}. 0 stops chat. Leave empty or type "plan" to go back to the plan's number:`, onCredits: (n: number, c: number) => `+${n} ${n === 1 ? "msg" : "msgs"} on credits (${c} ${c === 1 ? "credit" : "credits"})`, chatCost: "Chat cost this month $", perMsg: "$ per message", chatMessages: "Chat messages", chatTrial: "for the trial", chatMonth: "this month", overflow: "Continue on credits", overflowOn: "on", overflowOff: "off", overflowTrial: "not offered on a trial", chatNote: `Chat = messages the owner sent, counted against the account's allowance (this month, or for the whole trial) and shown as sent / allowance: after the allowance was lowered mid-period the count can pass it. Red when ${CHAT_LOW_SHARE * 100}% or less is left. "+N msgs on credits (M credits)" = messages past the allowance this month, because the owner turned on "continue on credits", and the credits they were billed: such a message goes ahead only with at least ${CHAT_HOLD} credits in the balance, and is billed what it actually cost, at most ${CHAT_HOLD} credits; a failed message is not billed. Click the number to set an override for the account (0 stops chat); like the deal's seats, it ends with an Agency deal. Hover for what chat cost this month and per message (every message, those on credits included).` },
+  ar: { users: "المستخدمون", paying: "مشتركون", today: "سجّلوا اليوم", trial: "تجربة", cost: "تكلفة النماذج هذا الشهر $", tokens: "توكنز هذا الشهر", calls: "استدعاءات النماذج", suspended: "موقوفون", search: "ابحث بالبريد أو الاسم أو الجوال أو الخطة…", email: "البريد", name: "الاسم", phone: "الجوال", plan: "الخطة", credits: "الكريدت", tokensMo: "توكنز (الشهر)", costMo: "التكلفة $ (الشهر)", marginMo: "الهامش", perKind: "التكلفة حسب نوع الطلب هذا الشهر (متوسط الطلب الواحد، والإجمالي)", perAgent: "التكلفة لكل وكيل هذا الشهر (استدعاءات النماذج لعمل ذلك الوكيل: دفعاته ومراجعتها وتقييمها وصوره ومحادثاته؛ التهيئة تُحسب لنور)", trialEnds: "نهاية التجربة", joined: "انضم", addCredits: "+ كريدت", topups: "باقات الشحن", addTopup: "أضف باقة شحن", voidTopup: "إلغاء", noTopups: "لا باقة شحن سارية.", topupTrial: "باقات الشحن للخطط المدفوعة فقط: غيّر الخطة أولاً.", topupLeft: "متبقٍّ", topupExpires: "تنتهي", topupPaid: "مدفوع", topupOn: "في", topupRef: "المرجع", topupBy: "بواسطة", ofTopup: "شحن", promptTopupPack: `الباقة بالكريدت (${TOPUP_PACKS.map(formatCount).join(" / ")}):`, promptTopupPaid: "المبلغ المدفوع بالريال، غير شامل الضريبة:", promptTopupDate: "تاريخ الدفع (YYYY-MM-DD، اليوم بتوقيت الرياض، لا بعد اليوم):", promptTopupRef: "مرجع الدفع (رقم الحوالة أو الإيصال، اختياري):", topupPayNote: "«أضف باقة شحن» يسجّل دفعة الباقة في «الدفعات» أعلاه أيضاً، مع عمولة الشريك إن استحقت (15% من المبلغ دون الضريبة، في أول 4 أشهر للعميل): لا تسجّل باقة الشحن هناك أبداً. و«إلغاء» يلغي دفعة الباقة وعمولتها أيضاً.", commission: "عمولة", confirmVoid: (c: number, left: number) => `إلغاء باقة ${formatCount(c)} كريدت؟ يخرج من الرصيد الآن ما بقي منها (${formatCount(left)} كريدت)، وما صُرف منها يبقى مصروفاً. وتُلغى دفعتها وعمولة الشريك عليها أيضاً.`, refundTopup: "استرداد غير المستخدم", finishRefund: "إكمال الاسترداد", finishRefundTitle: "سُجّل الاسترداد على الباقة ولم يُسجَّل بعد على دفعتها: هذا يسجّله عليها ويخفض عمولة الشريك. لا يُسترد شيء مرتين.", topupRefundNote: "«استرداد غير المستخدم»: فقط إذا طلبه العميل، وقبل انتهاء الباقة. المبلغ = الكريدت المتبقي × سعر الكريدت المدفوع، دون الضريبة (لا تُحصَّل ضريبة على الباقات حالياً). حوّل المبلغ بنفسك ثم سجّله هنا بتاريخه ومرجعه: يخرج الكريدت من الرصيد فوراً، وتنقص عمولة الشريك على دفعة الباقة بالنسبة نفسها.", confirmRefund: (left: number, c: number, sar: string) => `استرداد ${formatCount(left)} كريدت غير مستخدم من باقة ${formatCount(c)} كريدت؟ المبلغ المطلوب تحويله: ${sar} ريال دون الضريبة (الكريدت المتبقي × سعر الكريدت المدفوع). يخرج الكريدت من الرصيد الآن، وتنقص عمولة الشريك على دفعة هذه الباقة بالنسبة نفسها.`, promptRefundDate: "تاريخ التحويل (YYYY-MM-DD، اليوم بتوقيت الرياض، لا بعد اليوم):", promptRefundRef: "مرجع التحويل (رقم الحوالة، مطلوب):", topupRefunded: (c: number, sar: string, on: string) => `استُرد ${formatCount(c)} كريدت · ${sar} ريال في ${on}`, leftChanged: (left: number, sar: string) => `left_changed: بقي في الباقة الآن ${formatCount(left)} كريدت (${sar} ريال)، ولم يُسترد شيء. راجع المبلغ وأعد المحاولة.`, planNote: `تغيير الخطة يعيد كريدت الخطة الشهري إلى مخصص الخطة ويبدأ دورة التجديد (يتجدد في أول كل شهر UTC)، وباقات الشحن السارية تحتفظ بما بقي فيها. خطة الوكالات تعمل بعقدها (الكريدت والسعر والمقاعد من «عقد الوكالات…» بجانب الخطة)، وبلا عقد تُعامل كخطة الأعمال: ${formatCount(PLAN_CREDITS.business)} كريدت و${PLAN_SEATS.business} مقاعد و${PLAN_PRICE_SAR.business} ريال في الإيراد الشهري. أول عقد للحساب يسري فوراً (يصبح كريدت الخطة الشهري كريدت العقد، وتبقى باقات الشحن السارية)، وتغيير العقد يسألك: الآن أم من التجديد القادم. إلغاء العقد أو الخروج من خطة الوكالات يلغي مقاعد العقد أيضاً. «+ كريدت» يضيف كريدت مجانياً إلى كريدت الخطة لهذا الشهر (لا يُرحَّل)، والباقة المدفوعة تُضاف من «أضف باقة شحن» في بطاقة الحساب (صالحة ${TOPUP_VALID_DAYS} يوماً، وتُصرف بعد كريدت الخطة). التوكنز والتكلفة هي الاستهلاك الحقيقي للنماذج هذا الشهر.`, quality: "جودة الوكلاء · آخر 30 يوماً · كل المساحات", qualityNote: "الاعتماد = معتمد ÷ محسوم. التعديل = عناصر معتمدة غيّرها المالك (الحجم = % النص المتغيّر). الحَكَم = درجة آلية من 100 (85+ جاهز، أقل من 70 أعد التوليد). الإبهام = ردود الدردشة.", agentType: "الوكيل / النوع", items: "عناصر", approval: "اعتماد", edited: "تعديل", magnitude: "الحجم", published: "نُشر", judge: "الحَكَم", low: "<70", hours: "ساعات حتى القرار", perWorkspace: "لكل مساحة", loading: "جارٍ التحميل…", close: "إغلاق", impersonate: "دخول كالمستخدم", extend: "تمديد التجربة", reset: "إعادة تعيين كلمة المرور", emailsIn: "الإيميلات بـ", suspend: "إيقاف", unsuspend: "إلغاء الإيقاف", del: "حذف الحساب", usage: "استهلاك النماذج (الشهر)", trialRenewed: "نهاية التجربة / التجديد", integrations: "التكاملات", brandsEtc: "علامات · محادثات · إحالات · الحَكَم", brandFile: "ملف العلامة", activity: "سجل النشاط (آخر 100 لكل علامة)", activityNone: "لا نشاط مسجل.", notCompleted: "— غير مكتمل —", generated: "العناصر المولّدة", approved: "معتمد", rejected: "مرفوض", promptCredits: "كريدت للإضافة (سالب للخصم):", promptDays: "تمديد التجربة بالأيام:", promptDelete: "اكتب البريد لحذف الحساب وكل بياناته نهائياً:", promptTemp: "كلمة مرور مؤقتة (تظهر مرة واحدة، أرسلها على واتساب):", arabic: "العربية", english: "الإنجليزية", seats: "المقاعد", setSeats: "المقاعد…", promptSeats: `حد المقاعد شاملاً المالك (1-${MAX_SEAT_OVERRIDE}). الصفر يعيده إلى عدد الخطة:`, deal: "العقد", setDeal: "عقد الوكالات…", noDeal: "بلا عقد: الأعمال", dealApplyNow: "تطبيق العقد الجديد الآن؟ «موافق» يجعل كريدت الخطة الشهري كريدت العقد اليوم (وتحتفظ باقات الشحن السارية بما بقي فيها) ويبدأ دورة التجديد، و«إلغاء» يبقي الرصيد حتى التجديد القادم.", promptDealCredits: `عقد الوكالات، الكريدت الشهري (من ${formatCount(AGENCY_MIN.credits)} إلى ${formatCount(MAX_DEAL_CREDITS)}). اتركه فارغاً لإلغاء العقد:`, promptDealPrice: `السعر الشهري بالريال غير شامل الضريبة: ${AGENCY_MIN.priceSar} على الأقل، ولا يكون الكريدت أرخص من خطة الأعمال (${PLAN_PRICE_SAR.business} ريال لكل ${formatCount(PLAN_CREDITS.business)} كريدت):`, promptDealSeats: `المقاعد شاملاً المالك (1-${MAX_SEAT_OVERRIDE}). اتركه فارغاً لإبقاء العدد الحالي:`, seatsOverride: "مخصص", teamPaused: "أُوقف", teamResumed: "عاد", teamCancelled: "دعوات أُلغيت", lookup: "ابحث عن هذا البريد", notFound: "لا حساب ولا دخول عضو بهذا البريد.", memberLogin: "دخول عضو", memberOf: "عضو في", invitedBy: "دعاه", ownerMissing: "حساب المالك غير موجود", offRoster: "ليس في قائمة أعضاء المالك", removeMember: "احذف دخول هذا العضو", promptRemoveMember: "اكتب البريد لحذف دخول هذا العضو (يحرّر البريد):", chat: "الدردشة", setChat: "رسائل الدردشة…", promptChat: `رسائل الدردشة لهذا الحساب شهرياً (وللتجربة كلها في حساب التجربة)، من 0 إلى ${formatCount(MAX_CHAT_OVERRIDE)}. الصفر يوقف الدردشة. اتركه فارغاً أو اكتب «الخطة» أو plan للعودة إلى عدد الخطة:`, onCredits: (n: number, c: number) => `+${n} ${n % 100 >= 3 && n % 100 <= 10 ? "رسائل" : "رسالة"} بالكريدت (${c} كريدت)`, chatCost: "تكلفة الدردشة هذا الشهر $", perMsg: "$ لكل رسالة", chatMessages: "رسائل الدردشة", chatTrial: "للتجربة", chatMonth: "هذا الشهر", overflow: "المتابعة بالكريدت", overflowOn: "مفعّلة", overflowOff: "متوقفة", overflowTrial: "غير متاحة في التجربة", chatNote: `الدردشة = الرسائل التي أرسلها المالك محسوبةً من مخصص الحساب (هذا الشهر، أو للتجربة كلها) بصيغة المُرسَل / المخصص، وقد يتجاوز المُرسَلُ المخصصَ إذا خُفِّض المخصص خلال الفترة. تظهر بالأحمر حين يبقى ${CHAT_LOW_SHARE * 100}% أو أقل. «+N رسالة بالكريدت (M كريدت)» = رسائل هذا الشهر بعد نفاد المخصص لأن المالك فعّل «أكمل على الكريدت»، والكريدت الذي خُصم عنها: لا تُرسل هذه الرسالة إلا إذا كان في الرصيد ${CHAT_HOLD} كريدت على الأقل، وتُحاسب بتكلفتها الفعلية بحد أقصى ${CHAT_HOLD} كريدت، والرسالة التي تفشل لا تُحاسب. اضغط الرقم لتحديد عدد مخصص للحساب (الصفر يوقف الدردشة)، وينتهي مع عقد الوكالات كما تنتهي مقاعد العقد. مرّر المؤشر لترى تكلفة الدردشة هذا الشهر ولكل رسالة (كل الرسائل، ومنها التي بالكريدت).` },
 } as const;
 
 type Overview = {
   users: { total: number; new1d: number; new7d: number; new30d: number; activated: number; activationRate: number | null; paying: number; trialActive: number; trialExpired: number; suspended: number };
   engagement: { dau: number; wau: number; mau: number; stickiness: number | null; retention7: number | null };
   funnel: { signups30: number; activated30: number; generated30: number; approved30: number; paid30: number };
-  revenue: { mrrSar: number; planMix: Record<string, number>; arpuSar: number | null; creditsUsedMonth: number; modelCostUsd: number; grossMarginPct: number | null; renderCostUsd: number; renderByProvider: Record<string, { usd: number; jobs: number; failed: number }>; renderByModel: Record<string, { jobs: number; failed: number; credits: number; usd: number }> };
+  revenue: { mrrSar: number; topupSarMonth: number; planMix: Record<string, number>; arpuSar: number | null; creditsUsedMonth: number; modelCostUsd: number; grossMarginPct: number | null; renderCostUsd: number; renderByProvider: Record<string, { usd: number; jobs: number; failed: number }>; renderByModel: Record<string, { jobs: number; failed: number; credits: number; usd: number }> };
   events: { date: string; counts: Record<string, number> }[];
   features: Record<string, number>;
   health: { errors7d: number; errorsToday: number; modelCalls: number; avgCostPerCallUsd: number | null };
@@ -62,15 +74,15 @@ type MediaCheck = {
   off: Record<string, { until: number; reason: string }>;
   recent: { id: string; model: string; state: string; error?: string; providerCredits?: number; costUsd?: number; at?: string }[];
 };
-const TABS = ["overview", "users", "usage", "billing", "quality", "wishlist", "log"] as const;
+const TABS = ["overview", "users", "leads", "usage", "billing", "partners", "quality", "wishlist", "log"] as const;
 type Tab = (typeof TABS)[number];
 const TAB_LABEL: Record<"en" | "ar", Record<Tab, string>> = {
-  en: { overview: "Overview", users: "Users", usage: "Usage", billing: "Billing", quality: "Quality", wishlist: "Wishlist", log: "Audit log" },
-  ar: { overview: "نظرة عامة", users: "المستخدمون", usage: "الاستخدام", billing: "الفوترة", quality: "الجودة", wishlist: "الأمنيات", log: "سجل الإجراءات" },
+  en: { overview: "Overview", users: "Users", leads: "Leads", usage: "Usage", billing: "Billing", partners: "Partners", quality: "Quality", wishlist: "Wishlist", log: "Audit log" },
+  ar: { overview: "نظرة عامة", users: "المستخدمون", leads: "العملاء المحتملون", usage: "الاستخدام", billing: "الفوترة", partners: "الشركاء", quality: "الجودة", wishlist: "الأمنيات", log: "سجل الإجراءات" },
 };
 const OV: Record<"en" | "ar", Record<string, string>> = {
-  en: { total: "Users", new7: "New (7d)", new30: "New (30d)", activated: "Activated (brand file)", dau: "Active today", wau: "Active this week", mau: "Active this month", stickiness: "Stickiness DAU/MAU", retention: "7-day retention", mrr: "MRR (SAR, est.)", arpu: "ARPU (SAR)", credits: "Credits used (month)", cost: "Model cost (USD, month)", margin: "Gross margin", errors: "Errors (7d)", calls: "Model calls (month)", funnel: "Funnel, last 30 days", events: "Events per day, last 14 days", features: "Feature usage (14d)", recent: "Recent users", lastActive: "Last active", planMix: "Plan mix", invoices: "Invoices", invoicesNote: "No payment provider connected. Once Moyasar or Tap is wired, subscriptions, payments, failed charges and refunds appear here. ZATCA tax invoices must be generated by Thakeen (VAT number, QR, sequential numbering); neither provider issues them.", export: "Export users CSV", reason: "Reason (logged)", health: "Platform health", log: "Every founder action with before/after and reason", signup: "signup", activated30: "activated", generated: "first batch", approved: "first approval", paid: "paid", render: "Render cost this month $", check: "Check media providers", models: "Per model", lastRenders: "Last renders", off: "Switched off", model: "Model", done: "Done", failed: "Failed", creditsKept: "Credits kept", usd: "USD", perCredit: "$ per credit", checkFailed: "Check failed" },
-  ar: { total: "المستخدمون", new7: "جدد (7 أيام)", new30: "جدد (30 يوماً)", activated: "مفعّلون (ملف علامة)", dau: "نشطون اليوم", wau: "نشطون هذا الأسبوع", mau: "نشطون هذا الشهر", stickiness: "الالتصاق DAU/MAU", retention: "احتفاظ 7 أيام", mrr: "الإيراد الشهري المتكرر (ريال، تقدير)", arpu: "متوسط الإيراد لكل مشترك", credits: "كريدت مستهلك (الشهر)", cost: "تكلفة النماذج (دولار، الشهر)", margin: "هامش الربح الإجمالي", errors: "أخطاء (7 أيام)", calls: "استدعاءات النماذج (الشهر)", funnel: "مسار التحويل، آخر 30 يوماً", events: "الأحداث يومياً، آخر 14 يوماً", features: "استخدام المزايا (14 يوماً)", recent: "أحدث المستخدمين", lastActive: "آخر نشاط", planMix: "توزيع الخطط", invoices: "الفواتير", invoicesNote: "لا مزوّد دفع مربوط بعد. عند ربط Moyasar أو Tap تظهر هنا الاشتراكات والمدفوعات والمدفوعات الفاشلة والاسترجاعات. الفواتير الضريبية (ZATCA) يجب أن يولّدها ذكين بنفسه (الرقم الضريبي، QR، ترقيم متسلسل)؛ لا يصدرها المزوّدان.", export: "تصدير المستخدمين CSV", reason: "السبب (يُسجَّل)", health: "صحة المنصة", log: "كل إجراء للمؤسس مع قبل/بعد والسبب", signup: "تسجيل", activated30: "تفعيل", generated: "أول دفعة", approved: "أول اعتماد", paid: "دفع", render: "تكلفة توليد الصور والفيديو هذا الشهر $", check: "فحص مزوّدي الوسائط", models: "حسب النوع", lastRenders: "آخر عمليات التوليد", off: "متوقف مؤقتاً", model: "النوع", done: "مكتملة", failed: "فاشلة", creditsKept: "الكريدت المحتسب", usd: "دولار", perCredit: "دولار لكل كريدت", checkFailed: "تعذّر الفحص" },
+  en: { total: "Users", new7: "New (7d)", new30: "New (30d)", activated: "Activated (brand file)", dau: "Active today", wau: "Active this week", mau: "Active this month", stickiness: "Stickiness DAU/MAU", retention: "7-day retention", mrr: "MRR (SAR, est.)", topupRev: "Top-ups this month (SAR, excl. VAT, not in MRR)", arpu: "ARPU (SAR)", credits: "Credits used (month)", cost: "Model cost (USD, month)", margin: "Gross margin", errors: "Errors (7d)", calls: "Model calls (month)", funnel: "Funnel, last 30 days", events: "Events per day, last 14 days", features: "Feature usage (14d)", recent: "Recent users", lastActive: "Last active", planMix: "Plan mix", invoices: "Invoices", invoicesNote: "No payment provider connected. Once Moyasar or Tap is wired, subscriptions, payments, failed charges and refunds appear here. ZATCA tax invoices must be generated by Thakeen (VAT number, QR, sequential numbering); neither provider issues them.", export: "Export users CSV", reason: "Reason (logged)", health: "Platform health", log: "Every founder action with before/after and reason", signup: "signup", activated30: "activated", generated: "first batch", approved: "first approval", paid: "paid", render: "Render cost this month $", check: "Check media providers", models: "Per model", lastRenders: "Last renders", off: "Switched off", model: "Model", done: "Done", failed: "Failed", creditsKept: "Credits kept", usd: "USD", perCredit: "$ per credit", checkFailed: "Check failed" },
+  ar: { total: "المستخدمون", new7: "جدد (7 أيام)", new30: "جدد (30 يوماً)", activated: "مفعّلون (ملف علامة)", dau: "نشطون اليوم", wau: "نشطون هذا الأسبوع", mau: "نشطون هذا الشهر", stickiness: "الالتصاق DAU/MAU", retention: "احتفاظ 7 أيام", mrr: "الإيراد الشهري المتكرر (ريال، تقدير)", topupRev: "باقات الشحن هذا الشهر (ريال، دون الضريبة، خارج الإيراد المتكرر)", arpu: "متوسط الإيراد لكل مشترك", credits: "كريدت مستهلك (الشهر)", cost: "تكلفة النماذج (دولار، الشهر)", margin: "هامش الربح الإجمالي", errors: "أخطاء (7 أيام)", calls: "استدعاءات النماذج (الشهر)", funnel: "مسار التحويل، آخر 30 يوماً", events: "الأحداث يومياً، آخر 14 يوماً", features: "استخدام المزايا (14 يوماً)", recent: "أحدث المستخدمين", lastActive: "آخر نشاط", planMix: "توزيع الخطط", invoices: "الفواتير", invoicesNote: "لا مزوّد دفع مربوط بعد. عند ربط Moyasar أو Tap تظهر هنا الاشتراكات والمدفوعات والمدفوعات الفاشلة والاسترجاعات. الفواتير الضريبية (ZATCA) يجب أن يولّدها ذكين بنفسه (الرقم الضريبي، QR، ترقيم متسلسل)؛ لا يصدرها المزوّدان.", export: "تصدير المستخدمين CSV", reason: "السبب (يُسجَّل)", health: "صحة المنصة", log: "كل إجراء للمؤسس مع قبل/بعد والسبب", signup: "تسجيل", activated30: "تفعيل", generated: "أول دفعة", approved: "أول اعتماد", paid: "دفع", render: "تكلفة توليد الصور والفيديو هذا الشهر $", check: "فحص مزوّدي الوسائط", models: "حسب النوع", lastRenders: "آخر عمليات التوليد", off: "متوقف مؤقتاً", model: "النوع", done: "مكتملة", failed: "فاشلة", creditsKept: "الكريدت المحتسب", usd: "دولار", perCredit: "دولار لكل كريدت", checkFailed: "تعذّر الفحص" },
 };
 
 /** The provider check as plain text: green when working, red when not (a false flag, webhooks off, a Blob probe that is not ok). */
@@ -121,9 +133,10 @@ function Events({ data }: { data: Overview["events"] }) {
   );
 }
 
-export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
+export default function AdminConsole({ lang = "en", keySession = false }: { lang?: "ar" | "en"; keySession?: boolean }) {
   const S = STR[lang];
   const O = OV[lang];
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>("overview");
   const [ov, setOv] = useState<Overview | null>(null);
   const [log, setLog] = useState<{ actor?: string; email: string; what: string; reason?: string; before?: unknown; after?: unknown; at: string }[] | null>(null);
@@ -134,21 +147,42 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
   const [total, setTotal] = useState<{ usd: number; in: number; out: number; calls: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  /** Bumped after a top-up is added or voided: remounts the Payments panel, which shows the pack's payment (rule 454). */
+  const [payTick, setPayTick] = useState(0);
+  /**
+   * The payment id of an "Add top-up" not yet confirmed, with the values it was sent with (rule 454): the same pack
+   * entered again after a timeout or a server error reuses it, so the retry adds one pack and records one payment.
+   */
+  const pendingTopup = useRef<{ key: string; id: string } | null>(null);
+  /** The request id of a "Refund unused" not yet confirmed, with what it was sent with: a retry is recognised (rule 460). */
+  const pendingRefund = useRef<{ key: string; id: string } | null>(null);
   const [media, setMedia] = useState<MediaCheck | null>(null);
   const [checking, setChecking] = useState(false);
   const [mediaErr, setMediaErr] = useState("");
+  // Sales leads the founder has not seen yet (#134): shown on the Leads tab, cleared when the tab is opened.
+  const [leadsUnread, setLeadsUnread] = useState(0);
+  const leadsSeen = useCallback(() => setLeadsUnread(0), []);
   const [evals, setEvals] = useState<{ agents: AM[]; users: { email: string; label: string; suspended: boolean; archived: boolean; n: number; decided: number; approvalRate: number | null; judged: number; avgScore: number | null }[] } | null>(null);
 
+  // Set when any admin call answers 401 (`adminFetch`, rule 436): the key session went idle or the founder's sign-in
+  // ended. The console then says so and links back in, never an empty user table or a bare "unauthorized".
+  const [ended, setEnded] = useState(false);
+  useEffect(() => {
+    const onEnded = () => setEnded(true);
+    window.addEventListener(ADMIN_ENDED_EVENT, onEnded);
+    return () => window.removeEventListener(ADMIN_ENDED_EVENT, onEnded);
+  }, []);
+
   async function load() {
-    const r = await fetch("/api/admin/plan");
-    if (r.status === 401) return setUsers([]);
+    const r = await adminFetch("/api/admin/plan");
+    if (r.status === 401) return;
     const j = await r.json();
     setUsers(j.users);
     if (j.total) setTotal(j.total);
   }
   async function act(email: string, action: string, extra: Record<string, unknown> = {}) {
     setBusy(true);
-    const r = await fetch(`/api/admin/users/${encodeURIComponent(email)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...extra }) });
+    const r = await adminFetch(`/api/admin/users/${encodeURIComponent(email)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...extra }) });
     const j = await r.json();
     setBusy(false);
     if (!j.ok) { setMsg(`${action} failed: ${j.error ?? r.status}`); return j; }
@@ -163,9 +197,10 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
   }
   useEffect(() => {
     void Promise.resolve().then(load);
-    fetch("/api/admin/evals").then((r) => r.json()).then((j) => j.ok && setEvals(j)).catch(() => {});
-    fetch("/api/admin/overview").then((r) => r.json()).then((j) => j.ok && setOv(j)).catch(() => {});
-    fetch("/api/admin/log").then((r) => r.json()).then((j) => j.ok && setLog(j.log)).catch(() => {});
+    adminFetch("/api/admin/evals").then((r) => r.json()).then((j) => j.ok && setEvals(j)).catch(() => {});
+    adminFetch("/api/admin/overview").then((r) => r.json()).then((j) => j.ok && setOv(j)).catch(() => {});
+    adminFetch("/api/admin/log").then((r) => r.json()).then((j) => j.ok && setLog(j.log)).catch(() => {});
+    adminFetch("/api/admin/leads?limit=0").then((r) => r.json()).then((j) => j.ok && setLeadsUnread(j.unread)).catch(() => {});
   }, []);
 
   /** A deal as "credits @ price SAR", or that the account has no deal and counts as Business. */
@@ -176,7 +211,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
   async function checkMedia() {
     setChecking(true); setMediaErr("");
     try {
-      const r = await fetch("/api/admin/media");
+      const r = await adminFetch("/api/admin/media");
       const j = await r.json().catch(() => ({}));
       if (j.ok) setMedia(j); else setMediaErr(`${O.checkFailed}: HTTP ${r.status}`);
     } catch {
@@ -188,7 +223,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
   async function setPlan(email: string, plan: string) {
     const reason = prompt(O.reason, "") ?? "";
     setBusy(true);
-    const r = await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, plan, reason }) });
+    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, plan, reason }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; team?: TeamChange; error?: string };
     setMsg(j.ok ? [`${email} → ${plan}`, teamLine(j.team)].filter(Boolean).join(" · ") : `${email}: ${j.error ?? r.status}`);
     await load();
@@ -202,7 +237,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
     if (!Number.isInteger(n) || n < 0 || n > MAX_SEAT_OVERRIDE) { setMsg(`${u.email}: bad_seats`); return; }
     const reason = prompt(O.reason, "") ?? "";
     setBusy(true);
-    const r = await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, seats: n === 0 ? null : n, reason }) });
+    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, seats: n === 0 ? null : n, reason }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; user?: { seats: number }; team?: TeamChange; error?: string };
     setMsg(j.ok ? [`${u.email}: ${S.seats} ${j.user?.seats ?? ""}`, teamLine(j.team)].filter(Boolean).join(" · ") : `${u.email}: ${j.error ?? r.status}`);
     await load();
@@ -222,7 +257,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
     if (!clear && !isChatOverride(n)) { setMsg(`${u.email}: bad_chat`); return; }
     const reason = prompt(O.reason, "") ?? "";
     setBusy(true);
-    const r = await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, chatAllowance: clear ? null : n, reason }) });
+    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, chatAllowance: clear ? null : n, reason }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; user?: { chatAllowance: number; chatOverride: number | null }; error?: string };
     setMsg(j.ok ? `${u.email}: ${S.chat} ${j.user?.chatAllowance ?? ""}${j.user?.chatOverride == null ? "" : ` (${S.seatsOverride})`}` : `${u.email}: ${j.error ?? r.status}`);
     await load();
@@ -264,7 +299,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
     }
     const reason = prompt(O.reason, "") ?? "";
     setBusy(true);
-    const r = await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, ...body, reason }) });
+    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, ...body, reason }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; user?: { deal?: AgencyDeal | null }; team?: TeamChange; error?: string };
     setMsg(j.ok ? [`${u.email}: ${S.deal} ${dealText(j.user?.deal)}`, teamLine(j.team)].filter(Boolean).join(" · ") : `${u.email}: ${j.error ?? r.status}`);
     await load();
@@ -275,14 +310,124 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
     if (!n) return;
     const reason = prompt(O.reason, "") ?? "";
     setBusy(true);
-    const r = await fetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, addCredits: n, reason }) });
+    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, addCredits: n, reason }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
     setMsg(j.ok ? `${email} +${n} credits` : `${email}: ${j.error ?? r.status}`);
     await load();
     setBusy(false);
   }
+  /**
+   * A pack paid for outside the app (rules 446-447, 454): the pack, the amount paid excluding VAT (its list price by
+   * default), the payment date (today in Riyadh by default, `ksaDay`, the day every recorded payment uses), the payment
+   * reference and the reason. The pack is checked here with the server's own test (`isTopupPack`); the server checks every
+   * field again (`parseTopup`) and refuses a trial. The server records the pack's payment, and the partner's commission
+   * when one is due, with the pack: the founder does not record it in Payments. Through `adminFetch` (rule 436).
+   */
+  async function addTopup(u: U) {
+    const rawPack = prompt(S.promptTopupPack, String(TOPUP_PACKS[0]));
+    if (rawPack === null) return;
+    const credits = Number(rawPack.replace(/,/g, "").trim());
+    if (!isTopupPack(credits)) { setMsg(`${u.email}: bad_pack`); return; }
+    const rawPaid = prompt(S.promptTopupPaid, String(topupPriceSar(credits)));
+    if (rawPaid === null) return;
+    const paidSar = Number(rawPaid.replace(/,/g, "").trim());
+    if (rawPaid.trim() === "" || !Number.isFinite(paidSar) || paidSar < 0) { setMsg(`${u.email}: bad_paid`); return; }
+    const paidOn = prompt(S.promptTopupDate, ksaDay());
+    if (paidOn === null) return;
+    const ref = prompt(S.promptTopupRef, "");
+    if (ref === null) return;
+    const reason = prompt(O.reason, "") ?? "";
+    const pack = { email: u.email, action: "add", credits, paidSar, paidOn: paidOn.trim(), ref };
+    const key = JSON.stringify(pack);
+    if (pendingTopup.current?.key !== key) pendingTopup.current = { key, id: newPaymentId() };
+    setBusy(true);
+    try {
+      const r = await adminFetch("/api/admin/topups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...pack, paymentId: pendingTopup.current.id, reason }) });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; credits?: number; payment?: { commission?: { sar: number } } | null };
+      // A definite answer ends the attempt: a success, or a refusal that wrote nothing. A server error keeps the id.
+      if (j.ok || (r.status >= 400 && r.status < 500)) pendingTopup.current = null;
+      setMsg(j.ok ? `${u.email}: ${S.topups} +${formatCount(credits)} → ${j.credits ?? ""}${j.payment?.commission ? ` · ${S.commission} ${sarText(j.payment.commission.sar)}` : ""}` : `${u.email}: ${j.error ?? r.status}`);
+    } catch {
+      setMsg(`${u.email}: network`);
+    }
+    await load();
+    if (sel?.user.email === u.email) { await open(u.email); setPayTick((n) => n + 1); }
+    setBusy(false);
+  }
+  /**
+   * Void a pack (a payment reversed, a pack recorded by mistake): its payment and the partner's commission on it are
+   * voided, then its unspent credits leave the balance (rule 455). Logged. Through `adminFetch` (rule 436).
+   */
+  async function voidTopup(u: U, l: TopupLot) {
+    if (!confirm(S.confirmVoid(l.credits, l.left))) return;
+    const reason = prompt(O.reason, "") ?? "";
+    setBusy(true);
+    try {
+      const r = await adminFetch("/api/admin/topups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, action: "void", id: l.id, reason }) });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; credits?: number; removed?: number };
+      setMsg(j.ok ? `${u.email}: ${S.topups} ${S.voidTopup} −${formatCount(j.removed ?? 0)} → ${j.credits ?? ""}` : `${u.email}: ${j.error ?? r.status}`);
+    } catch {
+      setMsg(`${u.email}: network`);
+    }
+    await load();
+    if (sel?.user.email === u.email) { await open(u.email); setPayTick((n) => n + 1); }
+    setBusy(false);
+  }
+  /**
+   * Refund a live pack's unused credits (founder decision of 2026-10-02, rule 460): the customer asked, the pack has not
+   * expired. The console shows the amount (`unusedRefundSar`: credits left × the price per credit paid, excluding VAT) and
+   * sends the credits left it showed, so the server refuses (`left_changed`) rather than record another amount; then the
+   * transfer's date (today in Riyadh by default) and its reference, and the reason. One request id per refund, kept until
+   * a definite answer, so a retry is recognised. Through `adminFetch` (rule 436).
+   */
+  async function refundTopup(u: U, l: TopupLot) {
+    if (!confirm(S.confirmRefund(l.left, l.credits, sarText(unusedRefundSar(l))))) return;
+    const on = prompt(S.promptRefundDate, ksaDay());
+    if (on === null) return;
+    const ref = prompt(S.promptRefundRef, "");
+    if (ref === null) return;
+    if (!ref.trim()) { setMsg(`${u.email}: bad_ref`); return; }
+    const reason = prompt(O.reason, "") ?? "";
+    const ask = { email: u.email, action: "refund", id: l.id, credits: l.left, on: on.trim(), ref };
+    const key = JSON.stringify(ask);
+    if (pendingRefund.current?.key !== key) pendingRefund.current = { key, id: newRefundId() };
+    setBusy(true);
+    try {
+      const r = await adminFetch("/api/admin/topups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...ask, refundId: pendingRefund.current.id, reason }) });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; credits?: number; refunded?: { credits: number; sar: number }; payment?: { commission?: { sar: number } } | null; left?: number; sar?: number };
+      // A definite answer ends the attempt: a success, or a refusal that wrote nothing. A server error keeps the id.
+      if (j.ok || (r.status >= 400 && r.status < 500)) pendingRefund.current = null;
+      setMsg(j.ok
+        ? `${u.email}: ${S.refundTopup} −${formatCount(j.refunded?.credits ?? 0)} · ${sarText(j.refunded?.sar ?? 0)} SAR → ${j.credits ?? ""}${j.payment?.commission ? ` · ${S.commission} ${sarText(j.payment.commission.sar)}` : ""}`
+        : j.error === "left_changed" ? `${u.email}: ${S.leftChanged(j.left ?? 0, sarText(j.sar ?? 0))}` : `${u.email}: ${j.error ?? r.status}`);
+    } catch {
+      setMsg(`${u.email}: network`);
+    }
+    await load();
+    if (sel?.user.email === u.email) { await open(u.email); setPayTick((n) => n + 1); }
+    setBusy(false);
+  }
+  /**
+   * "Finish refund" (rule 465): a refund whose credits left the pack but whose payment was not marked (the request stopped
+   * in between) is finished from the pack's own refund record: no credits, day or reference are sent. Through `adminFetch`.
+   */
+  async function finishRefund(u: U, l: TopupLot) {
+    setBusy(true);
+    try {
+      const r = await adminFetch("/api/admin/topups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, action: "refund", id: l.id, finish: true }) });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; refunded?: { credits: number; sar: number }; payment?: { commission?: { sar: number } } | null };
+      setMsg(j.ok
+        ? `${u.email}: ${S.finishRefund} · ${formatCount(j.refunded?.credits ?? 0)} · ${sarText(j.refunded?.sar ?? 0)} SAR${j.payment?.commission ? ` · ${S.commission} ${sarText(j.payment.commission.sar)}` : ""}`
+        : `${u.email}: ${j.error ?? r.status}`);
+    } catch {
+      setMsg(`${u.email}: network`);
+    }
+    await load();
+    if (sel?.user.email === u.email) { await open(u.email); setPayTick((n) => n + 1); }
+    setBusy(false);
+  }
   async function open(email: string) {
-    const r = await fetch(`/api/admin/users/${encodeURIComponent(email)}`);
+    const r = await adminFetch(`/api/admin/users/${encodeURIComponent(email)}`);
     const j = await r.json().catch(() => ({}));
     if (j.ok && j.kind === "member") { setSel(null); setMemberSel(j.member); return; }
     if (j.ok) { setMemberSel(null); setSel(j); return; }
@@ -300,8 +445,24 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
   const shown = list.filter((u) => !q || [u.email, u.name, u.phone, u.plan].some((x) => (x ?? "").toLowerCase().includes(q.toLowerCase())));
   const today = list.filter((u) => u.createdAt.slice(0, 10) === new Date().toISOString().slice(0, 10)).length;
 
+  if (ended) {
+    const E = ADMIN_ENDED[lang];
+    return (
+      <div role="alert" className="card grid gap-3">
+        <p className="text-sm">{keySession ? E.key : E.founder}</p>
+        <p><a className="btn btn-primary btn-sm" href={adminEndedHref(lang, keySession)}>{keySession ? E.keyLink : E.founderLink}</a></p>
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-6">
+      {keySession && (
+        // Ends the key session on the server (DELETE /api/admin/login), so the same cookie never opens the console again.
+        <div className="flex justify-end">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={async () => { await adminFetch("/api/admin/login", { method: "DELETE" }).catch(() => null); router.push(`/${lang}`); router.refresh(); }}>{lang === "ar" ? "إنهاء جلسة المفتاح" : "End key session"}</button>
+        </div>
+      )}
       <div className="grid gap-3 sm:grid-cols-4">
         {[[S.users, loadingUsers ? "…" : list.length], [S.paying, loadingUsers ? "…" : paying], [S.today, loadingUsers ? "…" : today], [S.trial, loadingUsers ? "…" : trialing], [S.cost, total ? total.usd.toFixed(2) : "…"], [S.tokens, total ? `${Math.round((total.in + total.out) / 1000)}k` : "…"], [S.calls, total ? total.calls : "…"], [S.suspended, list.filter((u) => u.suspended).length]].map(([l, v]) => (
           <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="font-display text-2xl font-bold text-oasis">{v}</p></div>
@@ -309,13 +470,13 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
       </div>
       {msg && <p className="text-sm text-oasis">{msg}</p>}
       <div className="flex flex-wrap gap-1 border-b border-ink/10 text-sm" role="tablist">
-        {TABS.map((k) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`px-4 py-2 ${tab === k ? "border-b-2 border-oasis font-semibold text-oasis" : "text-ink/60 hover:text-oasis"}`}>{TAB_LABEL[lang][k]}</button>)}
+        {TABS.map((k) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`px-4 py-2 ${tab === k ? "border-b-2 border-oasis font-semibold text-oasis" : "text-ink/60 hover:text-oasis"}`}>{TAB_LABEL[lang][k]}{k === "leads" && leadsUnread > 0 && <span className="ms-1.5 rounded-full bg-saffron px-1.5 text-xs font-semibold text-ink" data-testid="leads-unread">{leadsUnread}</span>}</button>)}
       </div>
 
       {tab === "overview" && (!ov ? <p className="text-sm text-ink/50">{S.loading}</p> : (
         <div className="grid gap-6">
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {[[O.total, ov.users.total], [O.new7, ov.users.new7d], [O.activated, `${ov.users.activated} (${ov.users.activationRate ?? "—"}%)`], [O.dau, ov.engagement.dau], [O.wau, ov.engagement.wau], [O.mau, ov.engagement.mau], [O.stickiness, ov.engagement.stickiness === null ? "—" : `${ov.engagement.stickiness}%`], [O.retention, ov.engagement.retention7 === null ? "—" : `${ov.engagement.retention7}%`], [O.mrr, ov.revenue.mrrSar], [O.credits, ov.revenue.creditsUsedMonth], [O.cost, ov.revenue.modelCostUsd.toFixed(2)], [O.errors, ov.health.errors7d]].map(([l, v]) => (
+            {[[O.total, ov.users.total], [O.new7, ov.users.new7d], [O.activated, `${ov.users.activated} (${ov.users.activationRate ?? "—"}%)`], [O.dau, ov.engagement.dau], [O.wau, ov.engagement.wau], [O.mau, ov.engagement.mau], [O.stickiness, ov.engagement.stickiness === null ? "—" : `${ov.engagement.stickiness}%`], [O.retention, ov.engagement.retention7 === null ? "—" : `${ov.engagement.retention7}%`], [O.mrr, ov.revenue.mrrSar], [O.topupRev, ov.revenue.topupSarMonth], [O.credits, ov.revenue.creditsUsedMonth], [O.cost, ov.revenue.modelCostUsd.toFixed(2)], [O.errors, ov.health.errors7d]].map(([l, v]) => (
               <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="tnum font-display text-2xl font-bold text-oasis">{v}</p></div>
             ))}
           </div>
@@ -362,8 +523,8 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
 
       {tab === "billing" && (!ov ? <p className="text-sm text-ink/50">{S.loading}</p> : (
         <div className="grid gap-6">
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {[[O.mrr, ov.revenue.mrrSar], [O.arpu, ov.revenue.arpuSar ?? "—"], [O.cost, ov.revenue.modelCostUsd.toFixed(2)], [O.render, ov.revenue.renderCostUsd.toFixed(2)], [O.margin, ov.revenue.grossMarginPct === null ? "—" : `${ov.revenue.grossMarginPct}%`]].map(([l, v]) => <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="tnum font-display text-2xl font-bold text-oasis">{v}</p></div>)}
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {[[O.mrr, ov.revenue.mrrSar], [O.topupRev, ov.revenue.topupSarMonth], [O.arpu, ov.revenue.arpuSar ?? "—"], [O.cost, ov.revenue.modelCostUsd.toFixed(2)], [O.render, ov.revenue.renderCostUsd.toFixed(2)], [O.margin, ov.revenue.grossMarginPct === null ? "—" : `${ov.revenue.grossMarginPct}%`]].map(([l, v]) => <div key={String(l)} className="card card-sm"><p className="text-xs text-ink/60">{l}</p><p className="tnum font-display text-2xl font-bold text-oasis">{v}</p></div>)}
           </div>
           <section className="card card-sm"><h2 className="text-xs font-semibold uppercase tracking-wide text-ink/60">{O.models}</h2>
             <div className="overflow-x-auto">
@@ -431,7 +592,7 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
                   <button disabled={busy} onClick={() => setSeats(u)} title={S.setSeats} className="font-mono underline decoration-dotted">{u.seats ?? "—"}</button>
                   {u.seatsOverride != null && <span className="ms-1 text-ink/50">({S.seatsOverride})</span>}
                 </td>
-                <td className="font-mono">{u.credits}</td>
+                <td className="font-mono">{u.credits}{(u.topupCredits ?? 0) > 0 && <span className="ms-1 text-xs text-ink/50" title={S.topups}>({u.topupCredits} {S.ofTopup})</span>}</td>
                 {/* The raw count against the allowance (it can pass one lowered mid-period); "+N msgs on credits (M credits)" this
                     month. Red when the count reached the allowance or little is left. */}
                 <td className={`whitespace-nowrap text-xs ${chatLow(u.chatUsed ?? 0, u.chatAllowance, u.chatLeft) ? "font-semibold text-sadu" : ""}`} data-testid="chat-cell">
@@ -483,8 +644,10 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
           <p className="mt-3 text-xs text-ink/60">{S.perWorkspace}: {evals.users.slice(0, 12).map((u) => `${u.label}${u.suspended ? " [suspended]" : ""}${u.archived ? " [archived]" : ""} (${u.n} items, approval ${u.approvalRate ?? "—"}${u.approvalRate !== null ? `% of ${u.decided}` : ""}, judge ${u.avgScore ?? "—"}${u.avgScore !== null ? ` of ${u.judged}` : ""})`).join(" · ")}</p>
         )}
       </section>
+      {tab === "partners" && <PartnersPanel lang={lang} />}
       {tab === "quality" && <GoldenPanel lang={lang} />}
       {tab === "wishlist" && <WishlistPanel lang={lang} />}
+      {tab === "leads" && <LeadsPanel lang={lang} onSeen={leadsSeen} />}
 
       {sel && tab === "users" && (
         <div className="rounded-xl border border-oasis/30 bg-white p-5">
@@ -500,6 +663,8 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
             <button disabled={busy} onClick={() => act(sel.user.email, sel.user.suspended ? "unsuspend" : "suspend")} className={`rounded-full px-3 py-1 font-semibold ${sel.user.suspended ? "bg-oasis text-mist" : "border border-sadu text-sadu"}`}>{sel.user.suspended ? S.unsuspend : S.suspend}</button>
             <button disabled={busy} onClick={() => { if (prompt(S.promptDelete) === sel.user.email) act(sel.user.email, "delete"); }} className="btn btn-danger-solid btn-xs">{S.del}</button>
           </div>
+          {/* Partner programme: record payments (the source of truth for commissions) and void them (src/lib/partners.ts). */}
+          <PaymentsPanel key={`${sel.user.email}:${payTick}`} email={sel.user.email} lang={lang} />
           <div className="mt-4 grid gap-2 text-xs sm:grid-cols-4">
             <div className="rounded border border-ink/10 p-2"><p className="text-ink/50">{S.usage}</p><p className="font-mono">{Math.round((sel.usage.in + sel.usage.out) / 1000)}k tokens · ${sel.usage.usd.toFixed(2)} · {sel.usage.calls} calls</p><p className="font-mono text-xs text-ink/50">{Object.entries(sel.usage.kinds).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}</p></div>
             {sel.chat && (
@@ -548,6 +713,41 @@ export default function AdminConsole({ lang = "en" }: { lang?: "ar" | "en" }) {
             <div className="rounded border border-ink/10 p-2"><p className="text-ink/50">{S.trialRenewed}</p><p className="font-mono">{sel.user.trialEnds.slice(0, 10)} · {sel.user.renewedAt ?? "—"}</p><p className="font-mono text-xs text-ink/50">joined {sel.user.createdAt.slice(0, 10)}</p></div>
             <div className="rounded border border-ink/10 p-2"><p className="text-ink/50">{S.integrations}</p><p className="font-mono">{sel.connections.length ? sel.connections.map((c) => c.provider).join(", ") : "none"}</p></div>
             <div className="rounded border border-ink/10 p-2"><p className="text-ink/50">{S.brandsEtc}</p><p className="font-mono">{sel.brands.length} · {sel.conversations} · {sel.referrals} · {sel.avgScore ?? "—"}</p></div>
+          </div>
+          {/* Top-up packs (rules 446-447): what is left of each, when it expires, what was paid and when, the reference and who
+              activated it. Text only: the reference is what the founder typed. */}
+          <div className="mt-4 rounded border border-ink/10 p-3 text-xs" data-testid="topups-detail">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-ink/50">{S.topups}{sel.user.topups?.length ? ` · ${formatCount(sel.user.topups.reduce((n, l) => n + l.left, 0))}` : ""}</p>
+              <button disabled={busy || !topupsSold(sel.user.plan as Plan)} title={topupsSold(sel.user.plan as Plan) ? S.addTopup : S.topupTrial} onClick={() => addTopup(sel.user)} className="btn btn-secondary btn-xs">{S.addTopup}</button>
+            </div>
+            {!topupsSold(sel.user.plan as Plan) && <p className="mt-1 text-ink/50">{S.topupTrial}</p>}
+            {/* One entry point for a top-up's payment (rule 454): this block records it, the Payments panel never does. */}
+            <p className="mt-1 text-ink/50" data-topup-pay-note>{S.topupPayNote}</p>
+            <p className="mt-1 text-ink/50" data-topup-refund-note>{S.topupRefundNote}</p>
+            {!sel.user.topups?.length ? <p className="mt-1 text-ink/50">{S.noTopups}</p> : (
+              <table className="mt-1 w-full font-mono">
+                <tbody>
+                  {sel.user.topups.map((l) => (
+                    <tr key={l.id} className="border-t border-ink/5" data-lot={l.id}>
+                      <td className="py-0.5 pe-2" dir="ltr">{formatCount(l.left)} / {formatCount(l.credits)} {S.topupLeft}</td>
+                      <td className="pe-2">{S.topupExpires} <span dir="ltr">{l.expiresAt.slice(0, 10)}</span></td>
+                      <td className="pe-2">{S.topupPaid} <span dir="ltr">{l.paidSar} SAR</span> {S.topupOn} <span dir="ltr">{l.paidOn}</span></td>
+                      <td className="pe-2" dir="auto">{l.ref ? `${S.topupRef} ${l.ref}` : ""}</td>
+                      <td className="pe-2" dir="ltr">{S.topupBy} {l.by}</td>
+                      {/* Rule 460: a refunded pack shows its refund (the transfer's reference is the founder's own text);
+                          a paid pack with credits left can be refunded once. */}
+                      <td className="pe-2" dir="auto" data-refund={l.refund ? "done" : undefined}>{l.refund
+                        ? <>{S.topupRefunded(l.refund.credits, sarText(l.refund.sar), l.refund.on)}{l.refund.ref ? ` · ${S.topupRef} ${l.refund.ref}` : ""}
+                          {/* Rule 465: the refund is on the pack but not on its payment yet (a request that stopped). */}
+                          {sel.unfinishedRefunds?.includes(l.id) && <> · <button type="button" disabled={busy} title={S.finishRefundTitle} onClick={() => finishRefund(sel.user, l)} className="text-sadu underline" data-finish-refund>{S.finishRefund}</button></>}</>
+                        : l.paidSar > 0 && l.left > 0 && <button type="button" disabled={busy} onClick={() => refundTopup(sel.user, l)} className="text-oasis underline">{S.refundTopup}</button>}</td>
+                      <td className="text-end"><button type="button" disabled={busy} onClick={() => voidTopup(sel.user, l)} className="text-sadu underline">{S.voidTopup}</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
           <h3 className="mt-4 text-xs uppercase tracking-wide text-ink/60">{S.brandFile}</h3>
           <pre className="mt-1 max-h-48 overflow-auto rounded bg-salt-dim p-3 text-xs" dir="auto">{sel.brand ? JSON.stringify(sel.brand, null, 2) : "— not completed —"}</pre>

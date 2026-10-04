@@ -8,6 +8,7 @@ import { chatUsdPerMessage } from "@/lib/admin-stats";
 import { pmap } from "@/lib/parallel";
 import { enforceSeats } from "@/lib/team";
 import { MAX_SEAT_OVERRIDE, SAR_PER_USD, allowanceOf, chatAllowanceOf, isChatOverride, parseDeal, priceOf, type AgencyDeal, type DealInput } from "@/lib/pricing";
+import { addMonthly, setMonthly, topupCredits } from "@/lib/topups";
 
 /** Largest founder credit adjustment, either way. Only a guard against a typo, and against JSON's 1e999 (Infinity). */
 const MAX_ADD_CREDITS = 100_000;
@@ -19,15 +20,16 @@ const dealLabel = (d: AgencyDeal | null | undefined) => (d ? `${d.credits}@${d.p
 //      override, the owner's "continue on credits" switch, the messages continued on credits this month and the credits
 //      they were billed, what chat cost this month and per message (`chatUsdPerMessage`, over every message sent).
 // POST /api/admin/plan {email, plan?, deal?, addCredits?, seats?, chatAllowance?, reason?}
-//      plan: set the plan; the balance resets to the account's allowance (src/lib/pricing.ts `allowanceOf`) and the
-//            renewal cycle starts. Leaving Agency clears the deal, and with it the seat and chat overrides (a deal's
+//      plan: set the plan; the month's plan credits reset to the account's allowance (src/lib/pricing.ts `allowanceOf`)
+//            and the renewal cycle starts. Top-up packs keep what is left in them (src/lib/topups.ts `setMonthly`). Leaving Agency clears the deal, and with it the seat and chat overrides (a deal's
 //            seats and chat messages live there), unless the same request sets `seats` / `chatAllowance`.
 //      deal: {credits, priceSar} sets the Agency contract, null clears it. Only on Agency (400 deal_needs_agency),
 //            validated by `parseDeal` (400 bad_deal, or below_floor under the Business rate). A deal change alone keeps
 //            the balance: the new allowance applies at the next renewal, or at once when sent with plan:"agency". A
 //            deal's seats go through `seats`, the one seat source, so clearing a deal also clears the override back to
 //            the plan's seats unless the same request sets `seats`.
-//      addCredits: a whole number of credits to add or take (400 bad_credits when not finite or over the bound).
+//      addCredits: a whole number of credits to add to or take from the month's plan credits (400 bad_credits when not
+//            finite or over the bound). Taking never reaches a top-up pack: those leave only by a void (POST /api/admin/topups).
 //      seats: set or clear (null or 0) the seat override.
 //      chatAllowance: set the chat override, a whole number 0..MAX_CHAT_OVERRIDE (`isChatOverride`; 0 is an override that
 //            stops chat for the account), or clear it with null or "" back to the plan's messages (`chatAllowanceOf`).
@@ -49,6 +51,8 @@ export async function GET(req: Request) {
     const chatUsd = usage.byKind.chat?.usd ?? 0;
     return ({
       email: u.email, name: u.name, phone: u.phone, plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt,
+      // Of `credits`, what is left in live top-up packs (src/lib/topups.ts): the rest is the month's plan credits.
+      topupCredits: topupCredits(u),
       renewedAt: u.renewedAt ?? null, suspended: !!u.suspended, lang: u.lang,
       seats: seatLimit(u), seatsOverride: u.seats ?? null,
       deal: u.deal ?? null, allowance: allowanceOf(u),
@@ -125,10 +129,10 @@ export async function POST(req: Request) {
     if (contractEnds && !chatGiven && u.chatAllowance !== undefined) { delete u.chatAllowance; chatReset = true; }
     if (deal) u.deal = { credits: deal.credits, priceSar: deal.priceSar, setAt: new Date().toISOString(), setBy: who };
     if (planGiven) {
-      u.credits = allowanceOf(u);
+      setMonthly(u, allowanceOf(u));
       u.renewedAt = monthKey();
     }
-    if (addGiven) u.credits = Math.max(0, (Number.isFinite(u.credits) ? u.credits : 0) + add);
+    if (addGiven) addMonthly(u, add);
     if (clearSeats) delete u.seats;
     else if (seatsGiven) u.seats = b.seats as number;
     if (clearChat) delete u.chatAllowance;

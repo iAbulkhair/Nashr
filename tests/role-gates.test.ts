@@ -92,7 +92,12 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/admin/golden": "admin-console",
   "POST /api/admin/impersonate": "admin-console",
   "POST /api/admin/plan": "admin-console",
+  // Partner programme (rules 390-402): approvals, payouts, recorded payments and voids.
+  "POST /api/admin/partners": "admin-console",
+  "POST /api/admin/payments/[email]": "admin-console",
   "POST /api/admin/users/[email]": "admin-console",
+  // Credit top-ups, activated by hand while there is no payment gateway (rules 446-447): the founder only.
+  "POST /api/admin/topups": "admin-console",
 
   // Owner only.
   "PUT /api/governance": g("owner", "governance.write"),
@@ -102,6 +107,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "DELETE /api/mcp/grants": g("owner", "oauth.grants"),
   "POST /api/oauth/approve": g("owner", "oauth.approve"),
   "POST /api/referral/share": g("owner", "referral"),
+  // A partner's bank details (refused while impersonating), and the billing page's partner-code field.
+  "PUT /api/partner": g("owner", "partner.bank"),
+  "POST /api/partner/code": g("owner", "billing"),
   "DELETE /api/account": g("owner", "account.delete"),
   "PUT /api/profile": g("owner", "profile.account", "brand.write", "profile.self"),
   "PATCH /api/team/member": g("owner", "team.role"),
@@ -132,6 +140,10 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // Reem's list: any member adds and changes items; closing, confirming or sending back a claim, deleting and restoring
   // need an admin (the same handler serves both, like PATCH /api/tasks/[id]).
   "PATCH /api/secretary/[id]": g("admin", "todo.write", "todo.close"),
+  // Reem's Working days (weekend, Ramadan hours, Eid sightings, holidays): a brand setting, so an admin saves it; every member reads it.
+  "PUT /api/secretary/calendar": g("admin", "brand.write"),
+  // Keeping a series' history is a to-do write; stopping to keep it lets the daily job delete it, so it also needs todo.close (checked in code, a member gets 403).
+  "PUT /api/secretary/series/[seriesId]/keep": g("admin", "todo.write", "todo.close"),
 
   // Every member of the account.
   "PATCH /api/account": g("member", "password.change"),
@@ -152,10 +164,16 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/secretary": g("member", "todo.write"),
   // Reem's "Walk me through": skipping a card is a change to the list's state; the card's own buttons call gated routes.
   "POST /api/secretary/walk": g("member", "todo.write"),
+  // Reem's away list: any member marks a contact away and ends it (the owner and the agents are refused in code).
+  "PUT /api/secretary/away": g("member", "todo.write"),
+  "DELETE /api/secretary/away": g("member", "todo.write"),
+  // Saving or dismissing an absence Reem proposed in chat: the same role as marking a contact away on the page.
+  "POST /api/secretary/away/proposals/[id]": g("member", "todo.write"),
   // Majed's handoffs: a run spends credits like a generation; a decline is a draft decision, like rejecting an item.
   "POST /api/handoffs/[id]/run": g("member", "generate"),
   "POST /api/handoffs/[id]/decline": g("member", "drafts"),
   "POST /api/admin/wishlist": "admin-console",
+  "POST /api/admin/leads": "admin-console",
   "POST /api/media/hook/[provider]": "public",
 };
 
@@ -171,6 +189,8 @@ const READS: Record<string, Gate> = {
   "GET /api/mcp/grants": g("owner", "oauth.grants"),
   "GET /api/referral": g("owner", "referral"),
   "GET /api/referral/share": g("owner", "referral"),
+  // A partner link: sets the 30-day partner cookie for a valid code, so it is a public write with a rate limit (rule 391).
+  "GET /p/[code]": "public",
   "GET /api/team": g("member", "team.view"),
   "GET /api/profile": g("member", "read"),
   "GET /api/activity": g("member", "read"),
@@ -190,9 +210,12 @@ const READS: Record<string, Gate> = {
   "GET /api/admin/golden": "admin-console",
   "GET /api/admin/media": "admin-console",
   "GET /api/admin/wishlist": "admin-console",
+  "GET /api/admin/leads": "admin-console",
   "GET /api/admin/log": "admin-console",
   "GET /api/admin/overview": "admin-console",
   "GET /api/admin/plan": "admin-console",
+  "GET /api/admin/partners": "admin-console",
+  "GET /api/admin/payments/[email]": "admin-console",
   "GET /api/admin/users/[email]": "admin-console",
   "GET /api/affiliates": "admin-console",
   "GET /api/waitlist": "admin-console",
@@ -215,6 +238,9 @@ const READS: Record<string, Gate> = {
   "GET /api/tasks/[id]/pptx": "member",
   "GET /api/secretary": "member",
   "GET /api/secretary/walk": g("member", "read"),
+  "GET /api/secretary/away": g("member", "read"),
+  "GET /api/secretary/calendar": g("member", "read"),
+  "GET /api/secretary/series/[seriesId]/export": g("member", "read"),
 
   "GET /api/mcp": "public-read",
   "GET /api/oauth/meta": "public-read",
@@ -233,10 +259,15 @@ const READS: Record<string, Gate> = {
 const PUBLIC_WITHOUT_LIMIT: Record<string, string> = {
   "POST /api/auth/logout": "ends only the caller's own session",
 };
+/**
+ * Signed-in writes that must carry a rate limit of their own (allow() from src/lib/rate.ts), on top of their gate: each
+ * writes a log or record a script could churn. The list may only grow.
+ */
+const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline"];
 /** Founder-console handlers that act only on the caller's own cookies, so they check no founder identity. */
 const CONSOLE_SELF: Record<string, string> = {
-  "POST /api/admin/login": "the console key in the body is the credential (compared in constant time, rate limited)",
-  "DELETE /api/admin/login": "clears the caller's own console cookie",
+  "POST /api/admin/login": "the console key in the body is the credential (compared with sameSecret, rate limited); it opens a server-side key session (15 minutes idle, 12 hours at most)",
+  "DELETE /api/admin/login": "ends the caller's own key session: deletes the server record and the cookie",
   "POST /api/admin/impersonate": "stop: burns the impersonation session and restores the caller's own saved one",
 };
 
@@ -332,6 +363,13 @@ describe("every API handler has a declared gate (fail closed)", () => {
   it("each handler checks what its declared gate needs", () => {
     const bad = all.flatMap((h) => { const gate = declared(h); return gate ? violations(h, gate).map((v) => `${h.key}: ${v}`) : []; });
     expect(bad).toEqual([]);
+  });
+  it("every signed-in write listed as rate limited calls allow() (rule 378)", () => {
+    for (const k of SESSION_RATE_LIMITED) {
+      const h = all.find((x) => x.key === k);
+      expect(h, `${k} exists`).toBeTruthy();
+      expect(h!.body, k).toMatch(/\ballow\(/);
+    }
   });
   it("the lists of tolerated exceptions only name public or console handlers", () => {
     for (const k of Object.keys(PUBLIC_WITHOUT_LIMIT)) expect(ROUTE_ROLES[k], k).toBe("public");

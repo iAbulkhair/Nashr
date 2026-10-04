@@ -11,6 +11,7 @@ import { getSalesSnapshot } from "@/lib/store-sales";
 import { getPerf } from "@/lib/perf-store";
 import ReportsPanel from "@/components/app/ReportsPanel";
 import { can } from "@/lib/roles";
+import { topupsSold } from "@/lib/pricing";
 
 export const dynamic = "force-dynamic";
 
@@ -29,5 +30,5 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   const [k, quality, connections, store, perf] = await Promise.all([kpis(sc(u), undefined, win, tasks), scopeMetrics(sc(u), win), listConnections(sc(u)), getSalesSnapshot(sc(u)), getPerf(sc(u))]);
   const dana = agentById("dana").tasks;
   const items = tasks.filter((t) => dana.includes(t.type)).slice(0, 20).map((t) => ({ id: t.id, type: t.type, title: t.title, status: t.status, createdAt: t.createdAt }));
-  return <ReportsPanel t={appDict[lang]} lang={lang} k={k} items={items} credits={u.credits} quality={quality} range={range} connected={connections.map((c) => c.provider)} store={store} perf={perf} perfImport={can(u, "performance.import")} perfDelete={can(u, "performance.delete")} />;
+  return <ReportsPanel t={appDict[lang]} lang={lang} k={k} items={items} credits={u.credits} quality={quality} range={range} connected={connections.map((c) => c.provider)} store={store} perf={perf} perfImport={can(u, "performance.import")} perfDelete={can(u, "performance.delete")} owner={can(u, "billing")} topups={topupsSold(u.plan)} />;
 }

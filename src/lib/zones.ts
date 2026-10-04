@@ -26,8 +26,20 @@ export const zoneOffsetMs = (z: Zone) => ZONES[z].offsetMin * 60_000;
 export const zoneUtcLabel = (z: Zone) => `UTC+${ZONES[z].offsetMin / 60}`;
 /** A weekend day in that zone (0 Sunday … 6 Saturday, the local day of the week). */
 export const isWeekend = (z: Zone, weekday: number) => (ZONES[z].weekend as readonly number[]).includes(weekday);
-/** The first working day of the week: Sunday where the weekend is Friday and Saturday, Monday in the UAE. */
-export const weekStart = (z: Zone): "Sunday" | "Monday" => (isWeekend(z, 0) ? "Monday" : "Sunday");
+/** English day names by `getUTCDay()` number, for the prompt line and the week start. */
+export const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+/**
+ * The day the work week starts on, from a weekend (0 Sunday … 6 Saturday): the day after the last day of the contiguous
+ * run, wrapping Saturday to Sunday, so Friday and Saturday give Sunday (0), Saturday and Sunday give Monday (1) and
+ * Friday alone gives Saturday (6). No weekend, or all seven days, gives Sunday. A brand can change its weekend, so this
+ * is computed from the brand's, not read off the zone.
+ */
+export function weekStartDay(weekend: readonly number[]): number {
+  const last = weekend.find((d) => !weekend.includes((d + 1) % 7));
+  return last === undefined ? 0 : (last + 1) % 7;
+}
+/** The first working day of the week in the zone's default weekend: Sunday where it is Friday and Saturday, Monday in the UAE. */
+export const weekStart = (z: Zone): (typeof WEEKDAY_NAMES)[number] => WEEKDAY_NAMES[weekStartDay(ZONES[z].weekend)];
 
 // Cities written the way owners write them, in either language, that name one zone without doubt.
 const CITY_ZONE: [RegExp, Zone][] = [

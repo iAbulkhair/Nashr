@@ -6,6 +6,7 @@ import { VS_PAGES, VS_SLUGS } from "@/lib/pages-vs";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import FinalCta from "@/components/FinalCta";
+import { pageMeta } from "@/lib/page-meta";
 
 export function generateStaticParams() {
   return LANGS.flatMap((lang) => VS_SLUGS.map((competitor) => ({ lang, competitor })));
@@ -14,7 +15,8 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   const { lang, competitor } = await params;
   if (!isLang(lang)) return {};
   const p = VS_PAGES[lang].find((x) => x.slug === competitor);
-  return p ? { title: p.title, description: p.tldr.slice(0, 160) } : {};
+  const other = lang === "ar" ? "en" : "ar";
+  return p ? pageMeta(lang, `/vs/${competitor}`, { title: p.title, description: p.tldr.slice(0, 160), bilingual: VS_PAGES[other].some((x) => x.slug === competitor) }) : {};
 }
 
 export default async function Page({ params }: { params: Promise<{ lang: string; competitor: string }> }) {

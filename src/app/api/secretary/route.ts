@@ -19,7 +19,11 @@ export async function GET(req: Request) {
   const view = new URL(req.url).searchParams.get("view");
   if (view === "done") return NextResponse.json({ ok: true, items: await listDone(scope) });
   if (view === "deleted") return NextResponse.json({ ok: true, items: await listDeleted(scope) });
-  const agenda = await agendaFor(scope, Date.now(), { actor: "rule", via: "web" });
+  // The calendar and the away map the agenda was computed with stay on the server: a year of quiet days and the away
+  // contacts' names are not part of every poll (they get routes of their own).
+  const { cal, away, ...agenda } = await agendaFor(scope, Date.now(), { actor: "rule", via: "web" });
+  void cal;
+  void away;
   return NextResponse.json({ ok: true, agenda });
 }
 

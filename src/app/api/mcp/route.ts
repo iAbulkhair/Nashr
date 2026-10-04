@@ -1,26 +1,29 @@
 import { NextResponse } from "next/server";
 import { MCP_TOOL_ACTION, userFromBearer } from "@/lib/mcp";
-import { DRAFTS_PER_HOUR, chatAllowed } from "@/lib/rate";
+import { DRAFTS_PER_HOUR, chatCaps, chatRefusal } from "@/lib/rate";
 import { DRAFT_LIMITS, draftReport, parseDraft, saveExternalDraft } from "@/lib/external-drafts";
-import { chat } from "@/lib/chat";
+import { chat, chatRefusedText } from "@/lib/chat";
+import { trialOver } from "@/lib/auth";
 import { refusalText, reserveChatTurn, runChatTurn } from "@/lib/chat-allowance";
 import { getBrand, listTasks } from "@/lib/brand";
 import { agentById } from "@/lib/agents";
 import { TASK_COST, isTaskType } from "@/lib/tasks";
 import { generateBatch } from "@/lib/generate-batch";
+import { NO_CREDITS_HINT } from "@/lib/topups";
 import { listFiles, readFile } from "@/lib/files";
 import { CUSTOMER_FACING, brandRules, explain, gateTask, isCustomerFacing } from "@/lib/brand-rules";
 import { tokenBy } from "@/lib/actor";
 import { SEC_TOOL_DEFS, isSecTool, runSecretaryTool } from "@/lib/secretary";
 import { can } from "@/lib/roles";
 import { deadlineFor } from "@/lib/media/keys";
+import { appOrigin } from "@/lib/origin";
 
 export const maxDuration = 300;
 
 /**
  * Nashr MCP — Streamable HTTP (JSON responses), JSON-RPC 2.0.
  * Connect from Claude Desktop / Claude Code / any MCP client:
- *   URL: https://nashr-tau.vercel.app/api/mcp   Header: Authorization: Bearer nashr_...
+ *   URL: {APP_ORIGIN}/api/mcp (src/lib/origin.ts `appOrigin()`)   Header: Authorization: Bearer nashr_...
  */
 const TOOLS = [
   { name: "ask_noor", description: "Talk to Noor, the Gulf marketing agent for this account. She knows the brand, products, seasons and inbox, and can create content, update the brand file, and read/write workspace files. Over MCP she never publishes and never rewrites core memory files, and a change to the offers or removing a banned word waits for the owner's Save in the app.", inputSchema: { type: "object", properties: { message: { type: "string" } }, required: ["message"] } },
@@ -43,7 +46,7 @@ const ok = (id: Rpc["id"], result: unknown) => NextResponse.json({ jsonrpc: "2.0
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Authorization, Content-Type, Mcp-Session-Id, Mcp-Protocol-Version" };
 const err = (id: Rpc["id"], code: number, message: string, status = 200) => {
   const headers: Record<string, string> = { ...CORS };
-  if (status === 401) headers["WWW-Authenticate"] = `Bearer resource_metadata="${process.env.APP_ORIGIN ?? "https://nashr-tau.vercel.app"}/.well-known/oauth-protected-resource"`;
+  if (status === 401) headers["WWW-Authenticate"] = `Bearer resource_metadata="${appOrigin()}/.well-known/oauth-protected-resource"`;
   return NextResponse.json({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }, { status, headers });
 };
 export async function OPTIONS() { return new NextResponse(null, { headers: CORS }); }
@@ -79,8 +82,12 @@ export async function POST(req: Request) {
         // The web chat's limits on the message itself: trimmed, at most 4,000 characters, never empty.
         const message = String(args.message ?? "").trim().slice(0, 4000);
         if (!message) return ok(id, { ...text("Empty message. Nothing was sent."), isError: true });
-        // Same ceiling as the web chat: a bearer token must not be a cheaper way to spend the same models.
-        if (!(await chatAllowed(user.email))) return ok(id, { ...text("Too many messages in a short time. Wait a few minutes and try again."), isError: true });
+        // The web chat's gates, in its order (rules 330-331): a bearer token must not be a way around an ended trial or a
+        // cheaper way to spend the same models. Answered as a tool error, like MCP generate_content's trial_over: a
+        // JSON-RPC client reads the result, not an HTTP status. The link is absolute: it is read outside the app.
+        if (trialOver(user)) return ok(id, { ...text(chatRefusedText("trial", user.lang, { origin: appOrigin() })), isError: true });
+        const slow = await chatRefusal(user);
+        if (slow) return ok(id, { ...text(chatRefusedText(slow, user.lang, { cap: chatCaps(user)[slow] })), isError: true });
         // The same monthly allowance too, shared with the app (src/lib/chat-allowance.ts), before chat() saves the message.
         const gate = await reserveChatTurn(user);
         if (!gate.ok) return ok(id, { ...text(refusalText(gate)), isError: true });
@@ -106,7 +113,7 @@ export async function POST(req: Request) {
             case "trial_over": return ok(id, { ...text("The trial has ended. Subscribe in the app to keep generating."), isError: true });
             case "missing_data": return ok(id, { ...text("No abandoned-cart data yet: connect Salla or Shopify and sync sales from Reports in the app first. No credits were used."), isError: true });
             case "agent_cap": return ok(id, { ...text(`${agentById(r.agent).name.en} reached the monthly credit cap the owner set in Governance (${r.spent} of ${r.cap} credits this month). No credits were used. The owner can raise the cap on the Governance page or wait for next month.`), isError: true });
-            case "no_credits": return ok(id, { ...text(`Insufficient credits: need ${r.need}, have ${r.credits}.`), isError: true });
+            case "no_credits": return ok(id, { ...text(`Insufficient credits: need ${r.need}, have ${r.credits}. ${NO_CREDITS_HINT}`), isError: true });
             // Refunded already; answered as a tool error by the catch below.
             case "failed": throw r.error;
           }

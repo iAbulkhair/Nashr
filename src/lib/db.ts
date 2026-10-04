@@ -3,7 +3,8 @@ import { Redis } from "@upstash/redis";
 
 /**
  * Storage adapter. Upstash Redis in production; in-memory Map when no
- * credentials are present (local dev only — data is lost on restart).
+ * credentials are present (local dev, tests, CI only — data is lost on restart).
+ * A production deployment without credentials refuses every call instead (`pickStore`).
  */
 type Store = {
   get<T = unknown>(key: string): Promise<T | null>;
@@ -34,10 +35,14 @@ type Store = {
   zadd(key: string, score: number, member: string, opts?: { lt?: boolean }): Promise<void>;
   zrem(key: string, member: string): Promise<void>;
   zcard(key: string): Promise<number>;
+  /** ZSCORE: the member's score, or null when it is not in the set. */
+  zscore(key: string, member: string): Promise<number | null>;
   zrangeWithScores(key: string): Promise<{ member: string; score: number }[]>;
   /** Members with a score <= `max`, lowest score first (then member), at most `limit` (ZRANGE BYSCORE LIMIT). */
   zrangeByScore(key: string, max: number, limit: number): Promise<{ member: string; score: number }[]>;
   incrby(key: string, n: number): Promise<number>;
+  /** TTL in whole seconds, as Redis answers it: -1 when the key has no expiry, -2 when it does not exist. */
+  ttl(key: string): Promise<number>;
   /** EXPIRE NX: give a key a TTL only when it has none. Never touches the value or an expiry already set. */
   expireNx(key: string, ttlSeconds: number): Promise<void>;
   /** SET NX with TTL. True when this caller won the lock. */
@@ -137,6 +142,10 @@ function upstash(): Store | null {
     async zcard(key) {
       return await r.zcard(key);
     },
+    async zscore(key, member) {
+      const v = await r.zscore(key, member);
+      return v === null || v === undefined ? null : Number(v);
+    },
     async zrangeWithScores(key) {
       // [member, score, member, score, ...]. Members are stringified: the client parses anything that looks like JSON.
       const flat = await r.zrange<(string | number)[]>(key, 0, -1, { withScores: true });
@@ -153,6 +162,9 @@ function upstash(): Store | null {
     },
     async incrby(key, n) {
       return await r.incrby(key, n);
+    },
+    async ttl(key) {
+      return await r.ttl(key);
     },
     async expireNx(key, ttl) {
       await r.expire(key, ttl, "NX");
@@ -283,6 +295,9 @@ function memory(): Store {
     async zcard(key) {
       return zsets.get(key)?.size ?? 0;
     },
+    async zscore(key, member) {
+      return zsets.get(key)?.get(member) ?? null;
+    },
     async zrangeWithScores(key) {
       // Redis order: by score, then by member (binary), for equal scores.
       return [...(zsets.get(key) ?? new Map<string, number>())].map(([member, score]) => ({ member, score })).sort((a, b) => a.score - b.score || (a.member < b.member ? -1 : a.member > b.member ? 1 : 0));
@@ -301,6 +316,12 @@ function memory(): Store {
       m.kv.set(key, v);
       return v;
     },
+    async ttl(key) {
+      live(key);
+      if (!(m.kv.has(key) || m.lists.has(key) || m.sets.has(key) || hashes.has(key) || zsets.has(key))) return -2;
+      const at = exp.get(key);
+      return at === undefined ? -1 : Math.max(0, Math.ceil((at - Date.now()) / 1000));
+    },
     async expireNx(key, ttl) {
       live(key);
       if (m.kv.has(key) && !exp.has(key)) exp.set(key, Date.now() + ttl * 1000);
@@ -309,6 +330,8 @@ function memory(): Store {
       const until = m.kv.get(key) as number | undefined;
       if (until && until > Date.now()) return false;
       m.kv.set(key, Date.now() + ttl * 1000);
+      // The expiry too, so `ttl` answers for a lock as Redis does (SET NX EX).
+      exp.set(key, Date.now() + ttl * 1000);
       owners.delete(key);
       return true;
     },
@@ -330,6 +353,7 @@ function memory(): Store {
     },
     async unlock(key) {
       m.kv.delete(key);
+      exp.delete(key);
       owners.delete(key);
     },
     async lockOwned(key, ttl) {
@@ -337,18 +361,55 @@ function memory(): Store {
       if (until && until > Date.now()) return null;
       const token = lockToken();
       m.kv.set(key, Date.now() + ttl * 1000);
+      exp.set(key, Date.now() + ttl * 1000);
       owners.set(key, token);
       return token;
     },
     async unlockOwned(key, token) {
       if (owners.get(key) !== token) return;
       m.kv.delete(key);
+      exp.delete(key);
       owners.delete(key);
     },
   };
 }
 
-export const db: Store = upstash() ?? memory();
+/** Thrown by every store call in a production deployment that has no Redis credentials. */
+export class StoreNotConfigured extends Error {
+  constructor() {
+    super("store_not_configured: KV_REST_API_URL/KV_REST_API_TOKEN (or UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN) are not set in this production deployment");
+    this.name = "StoreNotConfigured";
+  }
+}
+
+/**
+ * A store that refuses every call. Used instead of the memory store in a production deployment without Redis
+ * credentials: signups, credits and tasks would otherwise appear to save and vanish at the next cold start, differently
+ * on every instance, with nobody told. It throws on first use rather than at import, so `next build` and any module that
+ * merely imports `db` keep working; the first request that touches data fails loudly (a 500 and an error in the logs).
+ */
+function unconfigured(): Store {
+  return new Proxy({} as Store, {
+    get: (_t, prop) => (prop === "then" ? undefined : () => Promise.reject(new StoreNotConfigured())),
+  });
+}
+
+/**
+ * Upstash when its credentials are set. Without them: the memory store everywhere except a Vercel PRODUCTION deployment
+ * (`VERCEL_ENV === "production"`), which gets `unconfigured()`. Local dev, vitest, CI and the e2e suite run with no
+ * `VERCEL_ENV` and keep the memory store. Rule 430, tests/launch-security.test.ts.
+ */
+function pickStore(): Store {
+  const u = upstash();
+  if (u) return u;
+  if (process.env.VERCEL_ENV === "production") {
+    console.error("store_not_configured: Redis credentials are missing in production; every data call will fail");
+    return unconfigured();
+  }
+  return memory();
+}
+
+export const db: Store = pickStore();
 export const usingPersistentStore = upstash() !== null;
 
 /**

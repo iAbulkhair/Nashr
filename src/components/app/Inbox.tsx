@@ -55,9 +55,10 @@ const saveLink = (url: string) => (isOurBlobUrl(url) ? `${url}?download=1` : url
 /**
  * `canPublish` is `can(u, "publish")` from the page (approve and publish are admin and owner). Without it the inbox offers
  * what a plain member may do, edit and reject, and never a control the server would refuse: an edit is saved without
- * approving (an approved item goes back to pending), and Approve and Publish give way to a note.
+ * approving (an approved item goes back to pending), and Approve and Publish give way to a note. `owner` is
+ * `can(u, "billing")`: a render short of credits offers packs and plans to the owner and tells anyone else to ask them.
  */
-export default function Inbox({ t, lang, tasks, brief, connected = [], banned = "", journey, media = [], credits = 0, plan, paused, canPublish = true }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[]; banned?: string; journey?: Journey; media?: MediaModelId[]; credits?: number; plan?: string; paused?: boolean; canPublish?: boolean }) {
+export default function Inbox({ t, lang, tasks, brief, connected = [], banned = "", journey, media = [], credits = 0, plan, paused, canPublish = true, owner = true }: { t: AppDict; lang: Lang; tasks: Task[]; brief?: string | null; connected?: string[]; banned?: string; journey?: Journey; media?: MediaModelId[]; credits?: number; plan?: string; paused?: boolean; canPublish?: boolean; owner?: boolean }) {
   const i = t.inbox;
   const G = GUARD[lang];
   // The brand file's rules and the empty-placeholder rule, applied here exactly as the approve route applies them.
@@ -401,7 +402,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                   )}
                   {/* Model pickers, image and video buttons, and the polling of a running render. It drops the local copy
                       for the reason given in publish() above; the refresh also re-renders the sidebar balance. */}
-                  <MediaControls task={x} lang={lang} t={t} available={media} credits={credits} plan={plan ?? "trial"} paused={!!paused} onChanged={() => { forgetLocal(x.id); r.refresh(); }} />
+                  <MediaControls task={x} lang={lang} t={t} available={media} credits={credits} plan={plan ?? "trial"} paused={!!paused} owner={owner} onChanged={() => { forgetLocal(x.id); r.refresh(); }} />
                   {x.channel === "instagram" && connected.includes("instagram") && !hasArtwork(x) && <p className="w-full text-xs text-ink/60">{i.igNeedsImage}</p>}
                   {x.adCode && (
                     <span title={G.codeHint} className="flex items-center gap-1 rounded-full border border-dashed border-oasis/40 bg-white px-2 py-1 text-xs">

@@ -6,6 +6,7 @@ import { TOOLS, getTool } from "@/lib/tools";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import ToolForm from "@/components/ToolForm";
+import { pageMeta } from "@/lib/page-meta";
 
 export function generateStaticParams() {
   return LANGS.flatMap((lang) => TOOLS.map((t) => ({ lang, tool: t.slug })));
@@ -14,7 +15,7 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   const { lang, tool } = await params;
   const x = getTool(tool);
   if (!x || !isLang(lang)) return {};
-  return { title: `${x.h1[lang]} — ${lang === "ar" ? "ذكين" : "Thakeen"}`, description: x.desc[lang] };
+  return pageMeta(lang, `/tools/${tool}`, { title: `${x.h1[lang]} — ${lang === "ar" ? "ذكين" : "Thakeen"}`, description: x.desc[lang] });
 }
 
 export default async function Page({ params }: { params: Promise<{ lang: string; tool: string }> }) {

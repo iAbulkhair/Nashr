@@ -5,8 +5,9 @@ import { INDUSTRY_SLUGS } from "@/lib/pages-industry";
 import { VS_SLUGS } from "@/lib/pages-vs";
 import { postIndex } from "@/lib/blog";
 import { AGENT_SLUGS } from "@/lib/site";
+import { appOrigin } from "@/lib/origin";
 
-const BASE = process.env.APP_ORIGIN ?? "https://nashr-tau.vercel.app";
+const BASE = appOrigin();
 
 export default function sitemap(): MetadataRoute.Sitemap {
   // `lastModified` is omitted rather than stamped with the build time. Every deploy used to re-date all 114 URLs,
@@ -15,7 +16,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const posts = new Map(postIndex().map((p) => [p.slug, p.date]));
   const paths: string[] = [];
   for (const l of LANGS) {
-    paths.push(`/${l}`, `/${l}/pricing`, `/${l}/ai-marketing-agent`, `/${l}/tools`, `/${l}/blog`, `/${l}/affiliates`, `/${l}/help`, `/${l}/privacy`, `/${l}/terms`);
+    paths.push(`/${l}`, `/${l}/pricing`, `/${l}/ai-marketing-agent`, `/${l}/tools`, `/${l}/blog`, `/${l}/affiliates`, `/${l}/affiliates/terms`, `/${l}/help`, `/${l}/privacy`, `/${l}/terms`);
     paths.push(`/${l}/agents`, `/${l}/customers`, `/${l}/enterprise`, `/${l}/resources`, `/${l}/updates`);
     for (const a of AGENT_SLUGS) paths.push(`/${l}/agents/${a}`);
     for (const t of TOOLS) paths.push(`/${l}/tools/${t.slug}`);

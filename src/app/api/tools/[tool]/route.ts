@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
 import { getTool, toolLang } from "@/lib/tools";
 import { meter } from "@/lib/usage";
 import { db } from "@/lib/db";
 import { allow, clientIp } from "@/lib/rate";
 import { currentUser } from "@/lib/auth";
-import { modelState } from "@/lib/model";
+import { MODEL_BUDGET, anthropic, modelState, until } from "@/lib/model";
+import { deadlineFor } from "@/lib/media/keys";
 
 export const maxDuration = 60;
 const FREE_PER_DAY = 5;
@@ -13,6 +13,7 @@ const FREE_PER_DAY = 5;
 export const SIGNED_IN_PER_DAY = 50;
 
 export async function POST(req: Request, ctx: { params: Promise<{ tool: string }> }) {
+  const deadline = deadlineFor(maxDuration);
   const { tool } = await ctx.params;
   const t = getTool(tool);
   if (!t) return NextResponse.json({ ok: false, error: "unknown_tool" }, { status: 404 });
@@ -29,7 +30,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ tool: string }
   const lang = toolLang(b.lang);
   if (state === "mock") return NextResponse.json({ ok: true, output: `[DEV MOCK] ${t.slug}\n${inputs}` });
   try {
-    const client = new Anthropic();
+    // One retry, so a passing 529 or 429 does not cost a visitor one of their daily uses, and both attempts (the wait
+    // between them included) end by the route's deadline, 15 s inside its 60 (rule 335).
+    const client = anthropic({ timeoutMs: MODEL_BUDGET.TOOL_MS, maxRetries: 1 });
     const res = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 2000,
@@ -37,7 +40,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ tool: string }
       output_config: { effort: "low" },
       system: `You are Noor, Thakeen's Gulf marketing agent, powering a free tool. Language policy: "${lang}" (عربي سعودي = light Saudi dialect; عربي فصحى = simple MSA; English; عربي + English = Arabic then English). Gulf cultural fit, no invented prices/claims (use [رقم]/[number]), no meta commentary. Output only the deliverable, nicely formatted in plain text.`,
       messages: [{ role: "user", content: `${t.prompt}\n\nINPUTS\n${inputs}` }],
-    });
+    }, until(deadline, { cap: MODEL_BUDGET.TOOL_MS }));
     const output = res.content.filter((x) => x.type === "text").map((x) => (x as { text: string }).text).join("\n").trim();
     // Without this the free tools were invisible to the margin figures in the founder console.
     await meter(u?.email, res.model, "tool", res.usage);

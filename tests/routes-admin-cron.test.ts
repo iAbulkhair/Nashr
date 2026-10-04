@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { jar, json, newUser, params, signIn, signOut } from "./helpers/session";
+import { jar, json, newUser, params, settle, signIn, signOut } from "./helpers/session";
 import { createUser, currentUser, getUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 
@@ -12,6 +12,7 @@ import * as evals from "@/app/api/admin/evals/route";
 import * as golden from "@/app/api/admin/golden/route";
 import * as impersonate from "@/app/api/admin/impersonate/route";
 import * as wishlist from "@/app/api/admin/wishlist/route";
+import * as leads from "@/app/api/admin/leads/route";
 import * as cronDaily from "@/app/api/cron/daily/route";
 import * as cronWeekly from "@/app/api/cron/weekly/route";
 import * as cronGolden from "@/app/api/cron/golden/route";
@@ -36,6 +37,8 @@ const adminCalls = (headers: Record<string, string> = {}, query = ""): (() => Pr
     () => golden.POST(json(`/api/admin/golden${query}`, "POST", {}, headers)),
     () => wishlist.GET(json(`/api/admin/wishlist${query}`, "GET", undefined, headers)),
     () => wishlist.POST(json(`/api/admin/wishlist${query}`, "POST", { action: "promote", title: { ar: "عنوان", en: "Title" } }, headers)),
+    () => leads.GET(json(`/api/admin/leads${query}`, "GET", undefined, headers)),
+    () => leads.POST(json(`/api/admin/leads${query}`, "POST", { action: "seen" }, headers)),
   ];
 };
 const statuses = async (calls: (() => Promise<Response>)[]) => { const out: number[] = []; for (const c of calls) out.push((await c()).status); return out; };
@@ -124,5 +127,22 @@ describe("cron routes (rule 7)", () => {
   it("run with the right secret (daily, which calls no model)", async () => {
     vi.stubEnv("CRON_SECRET", "cron-secret-abcdef");
     expect((await call(cronDaily, "Bearer cron-secret-abcdef")).status).toBe(200);
+  });
+  it("the daily run's weekly catch-up kick (Sunday to Tuesday) forwards the cron bearer (rule 379)", async () => {
+    vi.stubEnv("CRON_SECRET", "cron-secret-abcdef");
+    const sent: { url: string; auth: string | null }[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (u: string | URL, init?: RequestInit) => { sent.push({ url: String(u), auth: new Headers(init?.headers).get("authorization") }); return new Response("{}"); }));
+    // A Monday (2026-10-05), only the clock faked: timers still run.
+    vi.useFakeTimers({ now: new Date("2026-10-05T03:00:00.000Z"), toFake: ["Date"] });
+    try {
+      expect((await call(cronDaily, "Bearer cron-secret-abcdef")).status).toBe(200);
+      await settle();
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+    const kick = sent.filter((x) => new URL(x.url).pathname === "/api/cron/weekly");
+    expect(kick, "Monday kicks the weekly route once").toHaveLength(1);
+    expect(kick[0].auth, "without the bearer the weekly route answers 401 and the catch-up serves nobody").toBe("Bearer cron-secret-abcdef");
   });
 });
