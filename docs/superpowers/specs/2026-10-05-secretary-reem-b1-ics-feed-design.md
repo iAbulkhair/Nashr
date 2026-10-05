@@ -31,18 +31,18 @@ The brand's open items that have a due date, the same set the to-do page shows a
 - `sec:feedof:{login}` → the hash of that login's current link (one link per login; creating again replaces it and deletes the old `sec:feed:{hash}`).
 - No expiry. It ends by Stop, Renew, member removal, account deletion or password reset (section 5).
 
-At every request the record's `scope` and `login` are checked, never trusted alone: the login must still belong to that scope (the owner, whose scope is their email, or a member whose owner's scope equals `scope`), be active (not suspended, not removed). Any failure is the same 404 as an unknown token. The scope used to read items is the record's, never a value from the request (tenant isolation).
+At every request the record's `scope` and `login` are checked, never trusted alone: the login must still belong to that scope (the owner, whose scope is their email, or a member whose owner's scope equals `scope`), be active (not suspended, not removed), and the record must not be older than the login's life or than its last password event (`sessionsAfter`; for a member also the owner's `teamSessionsAfter`; B1-R14, B1-R15). Any failure is the same 404 as an unknown token (the 429 of the rate limits excepted, section 4). The scope used to read items is the record's, never a value from the request (tenant isolation).
 
 ## 4. Routes
 
 | Route | Who | Does |
 |---|---|---|
-| `GET /api/secretary/feed/{token}` (the `.ics` suffix is optional and stripped) | token only (public) | Validates `^[A-Za-z0-9_-]{43}$`, then the record, then returns `text/calendar; charset=utf-8`. Unknown, malformed, revoked or no-longer-valid: 404, an empty body, no hint which. |
-| `GET /api/secretary/feed` | login, `read` | `{ ok, exists, createdAt }`. Never the link. |
+| `GET /api/secretary/feed/{token}` (the `.ics` suffix is optional and stripped) | token only (public) | Validates `^[A-Za-z0-9_-]{43}$`, then the record, then returns `text/calendar; charset=utf-8`. Unknown, malformed, revoked or no-longer-valid: 404, an empty body, no hint which. The two rate limits answer 429 instead (below). |
+| `GET /api/secretary/feed` | login, `read` | `{ ok, exists, createdAt, sameBrand }`. `sameBrand` is false when the stored link was made in another brand than the one shown (B1-R16). Never the link or the scope. |
 | `POST /api/secretary/feed` | login, `feed.manage` | Creates or renews; answers `{ ok, url, webcal }` once. The origin of the link is `appOrigin()`, never the request's URL or `Host`. |
 | `DELETE /api/secretary/feed` | login, `feed.manage` | Stops the link. Idempotent. |
 
-- The management routes authenticate first (`currentUser()`), bind to the caller's own login (no id in the URL), and use `allow("sec:feed:{login}", 20, 3600)`.
+- The management routes authenticate first (`currentUser()`), bind to the caller's own login (no id in the URL), and POST and DELETE use `allow("sec:feed:{login}", 20, 3600)`; the status GET has its own bucket, `sec:read:{login}` (the acting login; B1-R13).
 - A founder impersonating an account cannot create, renew or stop its feed (`IMPERSONATION_BLOCKED`, new action `feed.manage`; minimum role `member`, like `read`).
 - The public GET is rate limited before it reads anything but the token's own hash: `allow("feed:ip:{ip}", 120, 3600)` and, once a record exists, `allow("feed:t:{hash}", 60, 3600)` (429 with `Retry-After`). A calendar app polling hourly, even from a shared network, stays under both.
 - Response headers: `Cache-Control: private, max-age=300`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow`, no cookies set.
@@ -50,7 +50,7 @@ At every request the record's `scope` and `login` are checked, never trusted alo
 ## 5. Revoking
 
 - Stop and Renew delete the old record at once.
-- Wherever an account's MCP token is revoked (password reset, founder reset, account deletion), the feeds of that account's logins are deleted too; removing a member deletes that member's feed; `wipeAccount` deletes every `sec:feedof:*` and `sec:feed:*` it can name from the account's roster (the same way it already names a member's records).
+- An owner's password reset and the founder's reset of an owner delete the owner's feed and every roster member's (they sign everyone out); an owner's password change deletes only the owner's; a member's reset or change only that member's (B1-R12). The same events also stamp `sessionsAfter` (and `teamSessionsAfter`), which `feedHolds` reads on every fetch, so a revoke that fails after the password was saved cannot leave a link working (B1-R15). Removing a member deletes that member's feed; `wipeAccount` deletes every `sec:feedof:*` and `sec:feed:*` it can name from the account's roster (the same way it already names a member's records).
 - A member's role change needs nothing: the feed asks only for `read`, which every role has, and the check in section 3 runs on each request.
 
 ## 6. Why a secret in a URL is acceptable here, and where it stops
@@ -66,7 +66,7 @@ The project rule says secrets are never accepted in URLs. This feed is the one e
 
 - Every text value is escaped per RFC 5545 (backslash, comma, semicolon, new line) after control and direction-override characters are removed (the same cleaning items already get on create). A title can never add a line or a property.
 - Lines are folded at 75 octets without splitting a UTF-8 character; lines end with CRLF.
-- No item field other than title, due date, all-day flag, direction, party name, `rev` and `updatedAt` is read into the file.
+- No item field other than title, due date, all-day flag, who owes it (`owedBy`, for the party's name), `id`, `rev` and `updatedAt` is read into the file.
 - The file has no price, count, promise or number of ours in it (project rule).
 
 ## 8. The page
@@ -106,12 +106,16 @@ New: `src/lib/secretary-feed.ts` (token, records, validity check, `buildIcs`, es
 | B1-R3 | Title and a one-line "who acts", no description, no notes | The URL may leak; titles are the least that is useful | Less detail in the calendar app |
 | B1-R4 | No `RRULE`, one open copy per series | Reem owns the Hijri and "every N" logic; the calendar cannot | A calendar shows only the next copy, not future ones |
 | B1-R5 | Window 14 days back to 365 ahead, 500 events | Bounded file and cost, enough for planning | Items further out are not in the feed |
-| B1-R6 | Feed is public GET with the strictest 404 (no oracle) and two rate limits | New public routes need a rate limit | A shared network polling a lot could hit the IP cap and see 429 |
+| B1-R6 | Feed is public GET with the strictest 404 (no oracle) and two rate limits; the two 429s are the named exceptions (the per-link 429 shows a holder of a live token that the record exists) | New public routes need a rate limit | A shared network polling a lot could hit the IP cap and see 429 |
 | B1-R7 | Founder impersonation cannot manage a feed | A feed handed out by an impersonator would outlive the session | None meaningful |
 | B1-R8 | Vercel path logs are a named residual risk, not fixed | No header-based alternative exists for calendar apps | An attacker with log access reads titles until renewal |
 | B1-R9 | The card goes on My to-dos (`TodoPanel`), not on `/app/calendar`. Spec sections 8 and 9 named the calendar page, which is the publishing calendar of approved posts. | The feed is about Reem's items, and that is where the items and the Away panel live | Moving a card is a one-file change |
 | B1-R10 | A held lock makes create answer 409 `busy`; revoke retries 20 times, then revokes anyway | A link must never outlive a revoke; a failed create is a harmless retry | One retry click, or a revoke that is 1 s slower |
 | B1-R11 | Validity uses `getLogin` plus the checks `resolveSession` makes that need no session (disabled, suspended, roster, `acceptedAt` against owner `createdAt`, brand active), not the session-stamp checks | A feed has no session; the rest decides whether the login still belongs to that brand | A login restored by hand would see its old feed work again until renewed |
 | B1-R12 | An owner's password reset and the founder's reset of an owner revoke the owner's feed and every roster member's; an owner's password change revokes only the owner's; a member's reset or change only that member's | A reset signs everyone out, so no link should survive it; a change keeps the members' sessions, so their links stay | Members recreate their links after an owner reset |
-| B1-R13 | The status read (`GET /api/secretary/feed`) has its own bucket, `sec:read:{login}` (`SEC_READS_PER_HOUR`); POST and DELETE keep `sec:feed:{login}`, 20 an hour | Opening My to-dos would otherwise spend the budget of Create | The status read is no longer capped at 20 an hour |
+| B1-R13 | The status read (`GET /api/secretary/feed`) has its own bucket, `sec:read:{login}` (`SEC_READS_PER_HOUR`), keyed on the acting login (the other Reem reads key on the account email); POST and DELETE keep `sec:feed:{login}`, 20 an hour | Opening My to-dos would otherwise spend the budget of Create | The status read is no longer capped at 20 an hour |
 | B1-R14 | `feedHolds` also refuses a record older than the login's life (a member's `acceptedAt`, an owner's `createdAt`) | A revoke that failed when a member was removed must not bring the link back after the address is invited again | A stricter read-time check; links made before an account was re-created stay dead |
+| B1-R15 | `feedHolds` also refuses a record older than the owner's `sessionsAfter`; for a member, older than the member's `sessionsAfter` or the owner's `teamSessionsAfter`. A missing or unparsable stamp is not older | A password change, reset or founder reset signs a login out; its links must end the same way even when the revoke call fails after the password was saved. An owner's password change stamps only `sessionsAfter`, so members' links stay | A stricter read-time check; a link made before a password event dies with it |
+| B1-R16 | `GET /api/secretary/feed` also answers `sameBrand` (the stored link's scope equals the caller's `sc(u)`), never the scope; the card says "made in another brand; renew to move it here" when it is false | A link is bound to the brand active when it was made; Renew silently moves it, so the card must say so | One extra string and one boolean |
+| B1-R17 | Items snoozed now are left out of the feed (`isSnoozed`, the predicate `classify` uses; a proposed-done item is never snoozed) | Section 2 says the same set the to-do page shows, and the page hides snoozed items until the snooze ends | A snoozed dated item is not in the calendar until its snooze ends |
+| B1-R18 | Accepted residuals, named: a create that stalls past a reset can still write a link after it (narrow race; the stamp check of B1-R15 refuses it only when the record is older than the stamp); shared fetcher addresses against the 120 an hour IP cap (tracked); a link is tied to the host (`appOrigin()`) in force when it was made, so if the product moves, the old host must keep serving the feed, not redirect | Each costs more to fix than the risk it carries at launch | A calendar app may see 429 at scale; a moved product needs the old host kept |

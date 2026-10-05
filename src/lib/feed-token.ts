@@ -59,11 +59,16 @@ export async function resolveFeed(token: string): Promise<{ hash: string; rec: F
   return current === hash ? { hash, rec } : null;
 }
 
-/** Whether `login` has a live link, and when it was made. Never returns the token or its hash. */
-export async function getFeedStatus(login: string): Promise<{ exists: boolean; createdAt: string | null }> {
+/**
+ * Whether `login` has a live link, and when it was made. Never returns the token or its hash. With `scope` (the caller's
+ * own `sc(u)`), the answer also says whether the link was made in that brand (`sameBrand`; true when there is no link):
+ * the record's own scope is compared here and never returned.
+ */
+export async function getFeedStatus(login: string, scope?: string): Promise<{ exists: boolean; createdAt: string | null; sameBrand?: boolean }> {
   const hash = await db.get<string>(FEED_KEYS.of(login));
   const rec = hash ? await db.get<FeedRecord>(FEED_KEYS.rec(hash)) : null;
-  return rec ? { exists: true, createdAt: rec.createdAt } : { exists: false, createdAt: null };
+  const base = rec ? { exists: true, createdAt: rec.createdAt } : { exists: false, createdAt: null };
+  return scope === undefined ? base : { ...base, sameBrand: !rec || rec.scope === scope };
 }
 
 /**

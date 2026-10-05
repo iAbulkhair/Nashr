@@ -15,7 +15,7 @@ export type FeedState =
   | { kind: "failed"; text?: string }
   | { kind: "none" }
   | { kind: "created"; url: string; webcal: string }
-  | { kind: "exists"; since: string };
+  | { kind: "exists"; since: string; sameBrand?: boolean };
 
 type Copied = "url" | "webcal" | null;
 
@@ -69,7 +69,10 @@ export function FeedView({ t, state, busy = null, error = null, confirming = fal
         </div>
       )}
       {state.kind === "exists" && (
-        <p className="mt-3 text-sm">{fill(T.since, { date: state.since })}</p>
+        <div className="mt-3 grid gap-1 text-sm">
+          <p>{fill(T.since, { date: state.since })}</p>
+          {state.sameBrand === false && <p className="text-muted">{T.otherBrand}</p>}
+        </div>
       )}
       {(state.kind === "created" || state.kind === "exists") && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -113,12 +116,12 @@ export default function FeedCard({ t, lang }: { t: AppDict; lang: "ar" | "en" })
   useEffect(() => {
     let live = true;
     fetch("/api/secretary/feed", { cache: "no-store" })
-      .then(async (r) => ({ status: r.status, ok: r.ok, j: (await r.json().catch(() => ({}))) as { ok?: boolean; error?: unknown; exists?: boolean; createdAt?: string | null } }))
+      .then(async (r) => ({ status: r.status, ok: r.ok, j: (await r.json().catch(() => ({}))) as { ok?: boolean; error?: unknown; exists?: boolean; createdAt?: string | null; sameBrand?: boolean } }))
       .then(({ status, ok, j }) => {
         if (!live) return;
         // A refusal (too many requests, no access) says so in the page's words, as a refused write does.
         if (!ok || !j.ok) return setState({ kind: "failed", text: refusalText(t, status, j.error, words) });
-        setState(j.exists && j.createdAt ? { kind: "exists", since: formatWhen(j.createdAt, true, lang, Date.now()) } : { kind: "none" });
+        setState(j.exists && j.createdAt ? { kind: "exists", since: formatWhen(j.createdAt, true, lang, Date.now()), sameBrand: j.sameBrand !== false } : { kind: "none" });
       })
       .catch(() => live && setState({ kind: "failed" }));
     return () => { live = false; };

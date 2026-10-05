@@ -4,13 +4,14 @@ import { listBrands, scopeFor } from "./brands";
 import type { FeedRecord } from "./feed-token";
 import { fill } from "./fill";
 import { listOpenItems } from "./secretary";
-import { addDays, partyName, zoneDay, type SecItem } from "./secretary-agenda";
+import { addDays, isSnoozed, partyName, zoneDay, type SecItem } from "./secretary-agenda";
 import type { Zone } from "./zones";
 
 /**
  * The calendar file of one brand's open dated to-dos (Reem phase 3 B1, spec section 2 and 7), and `feedHolds`, the
- * validity check the route (feed/[token]) runs on a link's record before anything is read. Only title, due date, all-day flag, direction, party name, `rev` and
- * `updatedAt` of an item are read; notes, description, phone and inbox links never reach the file.
+ * validity check the route (feed/[token]) runs on a link's record before anything is read. Only title, due date, all-day
+ * flag, who owes it (`owedBy`, for the party's name), `id`, `rev` and `updatedAt` of an item are read; notes,
+ * description, phone and inbox links never reach the file.
  */
 
 const DAY_MS = 864e5;
@@ -47,13 +48,13 @@ export const icsFold = (line: string): string => {
   return out.join("\r\n");
 };
 
-/** Open items with a due date from 14 days before `now` to 365 days after, nearest first, at most 500. */
+/** Open items with a due date from 14 days before `now` to 365 days after, nearest first, at most 500. Items snoozed now are left out, as the to-do page hides them (`isSnoozed`). */
 export async function feedItems(scope: string, now: number): Promise<SecItem[]> {
   const open = await listOpenItems(scope);
   return open
     .filter((it) => {
       const t = it.dueAt ? Date.parse(it.dueAt) : NaN;
-      return Number.isFinite(t) && t >= now - BEFORE_MS && t <= now + AFTER_MS;
+      return Number.isFinite(t) && t >= now - BEFORE_MS && t <= now + AFTER_MS && !isSnoozed(it, now);
     })
     .sort((a, b) => Date.parse(a.dueAt!) - Date.parse(b.dueAt!) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
     .slice(0, MAX_EVENTS);
@@ -84,6 +85,11 @@ const olderThan = (recAt: unknown, lifeAt: unknown): boolean => {
  * A record made before the login's current life began (a member's `acceptedAt`, an owner's `createdAt`) is stale: the
  * login was removed or deleted and the address taken again, so a link that outlived its revoke does not carry over. A
  * missing or unparsable date on either side is not a reason to refuse (existing links keep working).
+ * The password events that sign a login out also end its links at read time (B1-R15), so a revoke that failed after the
+ * password was saved cannot leave a link working: a record older than the owner's `sessionsAfter` (a password change or
+ * reset), or, for a member, older than the member's own `sessionsAfter` or the owner's `teamSessionsAfter` (an owner or
+ * founder reset signs the whole team out). An owner's password change stamps only `sessionsAfter`, so it ends the
+ * owner's link and leaves the members' alone.
  */
 export async function feedHolds(rec: FeedRecord): Promise<boolean> {
   const login = await getLogin(rec.login);
@@ -92,6 +98,7 @@ export async function feedHolds(rec: FeedRecord): Promise<boolean> {
   if (login.kind === "owner") {
     if (login.user.suspended) return false;
     if (olderThan(rec.createdAt, login.user.createdAt)) return false;
+    if (olderThan(rec.createdAt, login.user.sessionsAfter)) return false;
     owner = login.user.email;
   } else {
     const { member: m, owner: u } = login;
@@ -101,6 +108,7 @@ export async function feedHolds(rec: FeedRecord): Promise<boolean> {
     // NaN on either side (a malformed date) refuses too.
     if (!(new Date(m.acceptedAt).getTime() >= new Date(u.createdAt).getTime())) return false;
     if (olderThan(rec.createdAt, m.acceptedAt)) return false;
+    if (olderThan(rec.createdAt, m.sessionsAfter) || olderThan(rec.createdAt, u.teamSessionsAfter)) return false;
     owner = u.email;
   }
   const id = brandIdOf(rec.scope, owner);

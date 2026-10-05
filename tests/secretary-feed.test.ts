@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
 import { saveBrands } from "@/lib/brands";
-import { createMember, forceRemoveMember, getMember, removeMember, saveMember, type Member } from "@/lib/team";
+import { createMember, forceRemoveMember, getMember, leaveTeam, removeMember, saveMember, type Member } from "@/lib/team";
 import { wipeAccount } from "@/lib/account";
 import * as resetRoute from "@/app/api/auth/reset/route";
 import * as adminUserRoute from "@/app/api/admin/users/[email]/route";
@@ -203,6 +203,19 @@ describe("feed content (rules 534-538)", () => {
     await seed(scope, { dueAt: iso(NOW - 14 * DAY - 1000) });
     await seed(scope, { dueAt: iso(NOW + 365 * DAY + 1000) });
     expect((await feedItems(scope, NOW)).map((i) => i.id)).toEqual([lo.id, hi.id]);
+  });
+
+  it("rule 534: an item snoozed now is left out, as the to-do page hides it; one whose snooze ended is in; a proposed-done item is in", async () => {
+    const scope = "feed-t534-snooze";
+    const asleep = await seed(scope, { dueAt: iso(NOW + DAY), snoozeUntil: iso(NOW + 3600_000) });
+    const woke = await seed(scope, { dueAt: iso(NOW + 2 * DAY), snoozeUntil: iso(NOW - 1000) });
+    const proposed = await seed(scope, { dueAt: iso(NOW + 3 * DAY), snoozeUntil: iso(NOW + 3600_000), proposedDone: { at: iso(NOW), by: "reem", evidence: "done" } });
+    const got = (await feedItems(scope, NOW)).map((i) => i.id);
+    expect(got).toEqual([woke.id, proposed.id]);
+    expect(got).not.toContain(asleep.id);
+    // The page's own predicate: the same answer as `classify` for each item.
+    const { classify } = await import("@/lib/secretary-agenda");
+    for (const it of [asleep, woke, proposed]) expect(classify(it, NOW)?.bucket === "snoozed", it.id).toBe(it.id === asleep.id);
   });
 
   it("rule 535: a recurring series shows its one open copy; a ghost id in sec:open does not appear", async () => {
@@ -593,7 +606,7 @@ describe("feed management (rules 543-544)", () => {
       expect(st.status).toBe(200);
       expect(st.headers.get("cache-control")).toBe("no-store");
       const text = await st.text();
-      expect(JSON.parse(text)).toEqual({ ok: true, exists: true, createdAt: recs[0][1] && (recs[0][1] as { createdAt: string }).createdAt });
+      expect(JSON.parse(text)).toEqual({ ok: true, exists: true, createdAt: recs[0][1] && (recs[0][1] as { createdAt: string }).createdAt, sameBrand: true });
       expect(text).not.toContain(tokenOf(b.url));
       expect(text).not.toContain("webcal");
       expect(text).not.toContain("http");
@@ -653,10 +666,33 @@ describe("feed management (rules 543-544)", () => {
     expect(recordsOf(owner.email)).toHaveLength(1);
   });
 
+  it("rule 544: the status says whether the link was made in the brand shown now (sameBrand), and never the scope", async () => {
+    const owner = await newUser("feed544b");
+    await saveBrands(owner.email, [
+      { id: "default", name: "", createdAt: iso(NOW), status: "active" },
+      { id: "b2", name: "Two", createdAt: iso(NOW), status: "active" },
+    ]);
+    await signIn(owner.email);
+    const none = await (await status()).json();
+    expect(none).toEqual({ ok: true, exists: false, createdAt: null, sameBrand: true });
+    expect((await create({ lang: "en" })).status).toBe(200);
+    const same = await (await status()).json();
+    expect(same).toMatchObject({ ok: true, exists: true, sameBrand: true });
+    // The active brand moves to another one of the account's brands: the link is still the old brand's.
+    await db.set(`activebrand:${owner.email}`, "b2");
+    const text = await (await status()).text();
+    expect(JSON.parse(text)).toMatchObject({ ok: true, exists: true, sameBrand: false });
+    expect(text).not.toContain("b2");
+    expect(text).not.toContain(owner.email);
+    // Renewing moves it to the brand now shown.
+    expect((await create({ lang: "en" })).status).toBe(200);
+    expect(await (await status()).json()).toMatchObject({ exists: true, sameBrand: true });
+  });
+
   it("rule 544: create, status, stop; stop twice is 200; the stopped link gives 404 on the public route; a second create replaces the first", async () => {
     const owner = await newUser("feed544");
     await signIn(owner.email);
-    expect(await (await status()).json()).toEqual({ ok: true, exists: false, createdAt: null });
+    expect(await (await status()).json()).toEqual({ ok: true, exists: false, createdAt: null, sameBrand: true });
     const first = tokenOf((await (await create({})).json()).url);
     expect((await callFeed(first)).status).toBe(200);
     const second = tokenOf((await (await create({ lang: "en" })).json()).url);
@@ -672,7 +708,7 @@ describe("feed management (rules 543-544)", () => {
       expect(await r.json()).toEqual({ ok: true });
     }
     expect((await callFeed(second)).status).toBe(404);
-    expect(await (await status()).json()).toEqual({ ok: true, exists: false, createdAt: null });
+    expect(await (await status()).json()).toEqual({ ok: true, exists: false, createdAt: null, sameBrand: true });
     expect(recordsOf(owner.email)).toEqual([]);
   });
 
@@ -806,6 +842,74 @@ describe("feed revocation (rules 545-546)", () => {
     await expectAlive(other.email, bystander);
   });
 
+  it("rule 545: a password event ends the old links at read time even when the revoke fails, and a link made after it works", async () => {
+    const owner = await newUser("feed545s");
+    const m1 = await newMember(owner, "member");
+    const m2 = await newMember(owner, "member");
+    const wait = () => new Promise((r) => setTimeout(r, 15));
+    // Every revoke fails (the lock throws), after the password and the stamps are saved: the route throws, as it would on a store error.
+    const failing = async (run: () => Promise<unknown>) => {
+      const lock = vi.spyOn(db, "lockOwned").mockRejectedValue(new Error("store down"));
+      try { await expect(run()).rejects.toThrow("store down"); } finally { lock.mockRestore(); }
+    };
+
+    // 1. A member's own reset: that member's old link is dead, the owner's and the other member's are not.
+    let t = { owner: await live(owner.email, owner.email), m1: await live(m1.email, owner.email), m2: await live(m2.email, owner.email) };
+    await wait();
+    await failing(() => resetAs(m1.email, "member", "reset12345"));
+    expect(await getFeedStatus(m1.email)).toMatchObject({ exists: true });
+    expect((await callFeed(t.m1)).status).toBe(404);
+    expect((await callFeed(t.owner)).status).toBe(200);
+    expect((await callFeed(t.m2)).status).toBe(200);
+    // A link made after the stamp works.
+    t.m1 = await live(m1.email, owner.email);
+    await wait();
+
+    // 2. A member's own password change: the same.
+    await signIn(m2.email);
+    await failing(() => accountRoute.PATCH(json("/api/account", "PATCH", { currentPassword: m2.password, newPassword: "fresh12345" })));
+    expect((await callFeed(t.m2)).status).toBe(404);
+    expect((await callFeed(t.owner)).status).toBe(200);
+    expect((await callFeed(t.m1)).status).toBe(200);
+    t.m2 = await live(m2.email, owner.email);
+    await wait();
+
+    // 3. The owner's password change stamps only the owner: the owner's old link is dead, the members' stay.
+    await signIn(owner.email);
+    await failing(() => accountRoute.PATCH(json("/api/account", "PATCH", { currentPassword: "abc12345", newPassword: "changed12345" })));
+    expect((await callFeed(t.owner)).status).toBe(404);
+    expect((await callFeed(t.m1)).status).toBe(200);
+    expect((await callFeed(t.m2)).status).toBe(200);
+    t.owner = await live(owner.email, owner.email);
+    await wait();
+
+    // 4. The owner's reset stamps the whole team: every old link is dead, new ones made after it work.
+    await failing(() => resetAs(owner.email, "owner", "owner12345"));
+    for (const k of ["owner", "m1", "m2"] as const) expect((await callFeed(t[k])).status, k).toBe(404);
+    t = { owner: await live(owner.email, owner.email), m1: await live(m1.email, owner.email), m2: await live(m2.email, owner.email) };
+    await wait();
+
+    // 5. The founder's reset of the owner: the same.
+    if (!(await getUser(FOUNDER))) await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" });
+    await signIn(FOUNDER);
+    await failing(() => adminUserRoute.POST(json("/api/admin/users/x", "POST", { action: "resetPassword" }), params({ email: encodeURIComponent(owner.email) })));
+    for (const k of ["owner", "m1", "m2"] as const) expect((await callFeed(t[k])).status, k).toBe(404);
+    await live(owner.email, owner.email);
+    await live(m1.email, owner.email);
+  });
+
+  it("rule 545: a member who leaves the team loses the link", async () => {
+    const owner = await newUser("feed545l");
+    const m = await newMember(owner, "member");
+    const stay = await newMember(owner, "member");
+    const mine = await live(m.email, owner.email);
+    const theirs = await live(stay.email, owner.email);
+    const u = await resolveAs(m.email);
+    expect(await leaveTeam(u!)).toEqual({ ok: true });
+    await expectEnded(m.email, mine);
+    await expectAlive(stay.email, theirs);
+  });
+
   it("rule 546: deleting the account leaves no sec:feed or sec:feedof key for the owner or any member", async () => {
     const owner = await newUser("feed546");
     const bystander = await newUser("feed546b");
@@ -858,7 +962,7 @@ describe("feed card (rules 547-548)", () => {
     const en = appDict.en.todo.feed as Record<string, string>;
     expect(Object.keys(ar).sort()).toEqual(Object.keys(en).sort());
     // The strings the card and the file need, named in the brief: none may go missing.
-    for (const k of ["title", "create", "renew", "stop", "copy", "copied", "since", "warning", "iphone", "google", "outlook", "busy", "error", "mine", "waiting"]) {
+    for (const k of ["title", "create", "renew", "stop", "copy", "copied", "since", "otherBrand", "warning", "iphone", "google", "outlook", "busy", "error", "mine", "waiting"]) {
       expect(ar[k], `ar.${k}`).toBeTruthy();
       expect(en[k], `en.${k}`).toBeTruthy();
     }
@@ -914,6 +1018,11 @@ describe("feed card (rules 547-548)", () => {
       expect(exists, lang).not.toContain("/api/secretary/feed/");
       expect(exists, lang).not.toContain("webcal:");
       expect(exists, lang).not.toContain(T.warning);
+      // The line about another brand shows only when the link was made in a different brand (rule 548).
+      expect(exists, lang).not.toContain(html(T.otherBrand));
+      expect(view(lang, { kind: "exists", since, sameBrand: true }), lang).not.toContain(html(T.otherBrand));
+      expect(view(lang, { kind: "exists", since, sameBrand: false }), lang).toContain(html(T.otherBrand));
+      expect(view(lang, { kind: "created", url: URL_, webcal: WEBCAL }), lang).not.toContain(html(T.otherBrand));
       // None: one button; no link, no date. Loading and a failed read show neither the link nor a button.
       const none = view(lang, { kind: "none" });
       expect(none, lang).toContain(T.create);
