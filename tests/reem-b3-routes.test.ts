@@ -337,7 +337,7 @@ describe("rule 614 (ruling R8): the calendar lock is owned, and a slow choose ca
     fakeProviders();
     const o = await owner();
     await putLink(o.email, seed(o.email));
-    expect(await db.lock(SEC_KEYS.lock(o.email, "cal"), 60)).toBe(true);
+    expect(await db.lock(SEC_KEYS.lock(o.email, "callink"), 60)).toBe(true);
     const all = await Promise.all([put({ choice: 0, declare: true, rev: 1 }), list(), del()]);
     expect(all.map((r) => r.status)).toEqual([503, 503, 503]);
     for (const r of all) expect((await body(r)).error).toBe("provider_error");

@@ -68,7 +68,7 @@ All authenticate first (`currentUser()`), are owner only through a new role key 
 | `PUT /api/secretary/calendar-link` | `{ choice: <index>, declare?: true, rev }`: picks from the stored `choices` only, re-runs section 4 (domain may have changed since the callback), refuses `declaration_required` without `declare`, saves, sets state `ok` and schedules the first sync now | `cal:write:{login}` 30/h |
 | `DELETE /api/secretary/calendar-link` | deletes the link with its sealed tokens, the events and the sync schedule entry; Nashr never calls Google's revoke endpoint because grants are shared per user and client, so the owner removes access in their Google or Microsoft account (ruling R7) | `cal:write:{login}` |
 
-Writes run under `withLock(scope, "cal")` and leave one audit line each (`cal_link`, `cal_choose`, `cal_unlink`, `cal_lost`) with the login and provider, never the account address or tokens.
+Writes run under `withCalLock(scope)` (owned lock `sec:lock:{scope}:callink`, 45 s, separate from the Working days `cal` lock) and leave one audit line each (`cal_link`, `cal_choose`, `cal_unlink`, `cal_lost`) with the login and provider, never the account address or tokens.
 
 ## 6. Data
 

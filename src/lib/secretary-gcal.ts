@@ -36,13 +36,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export type CalBusy = { ok: false; error: "provider_error"; status: 503 };
 
 /**
- * The brand's calendar lock (`sec:lock:{scope}:cal`, the key the Working days save also takes) for the link's critical
+ * The calendar link's own lock (`sec:lock:{scope}:callink`, apart from the Working days save's `cal` lock) for its critical
  * sections: connect, choose, the calendar list, unlink and, later, the sync. SET NX with an owner token and `CAL_LOCK_TTL_S`,
  * 60 tries 50 ms apart, released with `unlockOwned` so a run whose lock expired can never delete the lock of the run that took
  * it next (plain `withLock` would, and a slow choose could then undo an unlink).
  */
 export async function withCalLock<T>(scope: string, fn: () => Promise<T>): Promise<T | CalBusy> {
-  const key = SEC_KEYS.lock(scope, "cal");
+  const key = SEC_KEYS.lock(scope, "callink");
   let token: string | null = null;
   for (let i = 0; i < 60 && !token; i++) {
     token = await db.lockOwned(key, CAL_LOCK_TTL_S);
