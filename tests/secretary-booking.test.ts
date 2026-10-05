@@ -8,7 +8,12 @@ import { can, MIN_ROLE } from "@/lib/roles";
 import {
   BOOK_KEYS, BOOK_PROVIDERS, BOOK_TOKEN, bookingKey, createBook, getBookStatus, hashBookToken, resolveBook, revokeBook, revokeBooks,
 } from "@/lib/booking-token";
-import { parseCalcom, parseCalendly, verifyCalcomSignature, verifyCalendlySignature, type Parsed } from "@/lib/secretary-booking";
+import { applyBooking, parseCalcom, parseCalendly, verifyCalcomSignature, verifyCalendlySignature, type Parsed } from "@/lib/secretary-booking";
+import { SEC_KEYS, changeItem, createItem, getItem, listOpenItems, removeBySystem, secretaryKeys } from "@/lib/secretary";
+import { SEC_RESTORE_DAYS, type SecItem } from "@/lib/secretary-agenda";
+import { wipeAccount } from "@/lib/account";
+import type { BookRecord } from "@/lib/booking-token";
+import type { User } from "@/lib/auth";
 
 const fx = (name: string): Record<string, unknown> => JSON.parse(readFileSync(`tests/fixtures/${name}.json`, "utf8"));
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -151,6 +156,11 @@ describe("booking signatures and parsers (rules 586-588)", () => {
     expect(bigCy.eventName.length).toBeLessThanOrEqual(120);
     expect(bigCy.name.length).toBeLessThanOrEqual(80);
     expect(bigCy.name).not.toMatch(/[‮\u0000\n\t]/);
+
+    // an instant without Z or an offset would be read in the server's own zone: it is no instant, so the booking is ignore
+    expect(parseCalcom(mutate(fx("booking-calcom-created"), o => { o.payload.startTime = "2026-10-12T09:00:00"; }))).toEqual(IGNORE);
+    expect(parseCalendly(mutate(fx("booking-calendly-created"), o => { o.payload.scheduled_event.end_time = "2026-10-12T09:30"; }))).toEqual(IGNORE);
+    expect(parseCalcom(mutate(fx("booking-calcom-created"), o => { o.payload.startTime = "2026-10-12T12:00:00+0300"; }))).toMatchObject({ kind: "create", start: "2026-10-12T09:00:00.000Z" });
   });
 });
 
@@ -297,5 +307,272 @@ describe("booking token (rule 589)", () => {
     expect(await resolveBook(t2)).not.toBeNull();
     await revokeBook(c);
     expect(await getBookStatus(c)).toEqual([]);
+  });
+});
+
+describe("applying a booking (rules 590-593)", () => {
+  const MIN = 60_000, HOUR = 3600_000, DAY = 864e5;
+  const iso = (ms: number) => new Date(ms).toISOString();
+  /** A whole minute this far from now: the item keeps minutes, so a round instant reads back the same. */
+  const minuteFrom = (ms: number) => Math.ceil((Date.now() + ms) / MIN) * MIN;
+  const newHash = () => randomBytes(32).toString("hex");
+  const recOf = (u: User, o: Partial<BookRecord> = {}): BookRecord => ({ login: u.email, scope: u.email, provider: "calcom", lang: "en", createdAt: new Date().toISOString(), ...o });
+  const booking = (o: Partial<Parsed> = {}, startMs = minuteFrom(2 * DAY)): Parsed => ({ kind: "create", externalId: `bk_${randomBytes(6).toString("hex")}`, name: "Omar Example", eventName: "Intro call", start: iso(startMs), end: iso(startMs + 30 * MIN), ...o });
+  /** An owner whose brand keeps its list in Dubai (UTC+4), not the default Riyadh (UTC+3). */
+  const dubaiOwner = async () => {
+    const u = await newUser("bkapply");
+    await db.set(`brand:${u.email}`, { timeZone: "Asia/Dubai" });
+    return u;
+  };
+  const auditOf = async (scope: string) => (await db.lrange(SEC_KEYS.audit(scope), 0, -1)).map((x) => JSON.parse(x) as { action: string; actor: string; via: string; id: string });
+  const claimOf = (scope: string, provider: string, id: string) => db.get<string>(`sec:book:ext:${scope}:${provider}:${id}`);
+  const shifted = <T,>(name: string, startMs: number, set: (o: any, s: string, e: string) => void): T => { // eslint-disable-line @typescript-eslint/no-explicit-any
+    const o = clone(fx(name));
+    set(o, iso(startMs), iso(startMs + 30 * MIN));
+    return o as T;
+  };
+
+  it("rule 590: create makes one item (kind task, i_owe, source booking, title in the link's language, timed in the brand zone, remindAt only when the end is in the future); a replay and five concurrent replays make one item", async () => {
+    const u = await dubaiOwner();
+    const rec = recOf(u);
+    const hash = newHash();
+    const startMs = minuteFrom(2 * DAY);
+    const p = booking({}, startMs);
+    expect(await applyBooking(rec, p, hash)).toBe("created");
+    const [it] = await listOpenItems(u.email);
+    expect(it).toMatchObject({
+      kind: "task", direction: "i_owe", owedBy: "owner", owedTo: "Omar Example", source: "booking", title: "Meeting with Omar Example",
+      allDay: false, dueAt: iso(startMs), remindAt: iso(startMs + 30 * MIN),
+    });
+    expect(it.description).toContain("Intro call");
+    expect(it.description).toContain("Cal.com");
+    // the claim names the item, lives 400 days, and the account's key list (the wipe) finds it
+    expect(await claimOf(u.email, "calcom", p.externalId)).toBe(it.id);
+    expect(await db.ttl(`sec:book:ext:${u.email}:calcom:${p.externalId}`)).toBeGreaterThan(399 * 86400);
+    expect(await auditOf(u.email)).toContainEqual(expect.objectContaining({ action: "create", actor: "rule", via: "cron", id: it.id }));
+
+    // a replay is a no-op: one item
+    expect(await applyBooking(rec, p, hash)).toBe("noop");
+    expect(await listOpenItems(u.email)).toHaveLength(1);
+    // five deliveries of a new booking at once: one item
+    const q = booking();
+    const five = await Promise.all(Array.from({ length: 5 }, () => applyBooking(rec, q, hash)));
+    expect(five.filter((r) => r === "created")).toHaveLength(1);
+    expect(five.filter((r) => r === "noop")).toHaveLength(4);
+    expect(await listOpenItems(u.email)).toHaveLength(2);
+
+    // Arabic link: Arabic title; a meeting that already ended (less than a day ago) has no reminder
+    const pastStart = minuteFrom(-3 * HOUR);
+    expect(await applyBooking(recOf(u, { lang: "ar" }), booking({ name: "عمر" }, pastStart), hash)).toBe("created");
+    const ar = (await listOpenItems(u.email)).find((x) => x.title.startsWith("اجتماع"))!;
+    expect(ar).toMatchObject({ title: "اجتماع مع عمر", dueAt: iso(pastStart), remindAt: null, source: "booking" });
+
+    // A Calendly link's claims are its own provider's; account deletion removes every claim and the claim index
+    const cy = booking({ externalId: "https://api.calendly.com/scheduled_events/E1/invitees/I1" });
+    expect(await applyBooking(recOf(u, { provider: "calendly" }), cy, hash)).toBe("created");
+    const keys = await secretaryKeys(u.email);
+    for (const id of [p.externalId, q.externalId]) expect(keys).toContain(`sec:book:ext:${u.email}:calcom:${id}`);
+    expect(keys).toContain(`sec:book:ext:${u.email}:calendly:${cy.externalId}`);
+    await wipeAccount(u.email);
+    const left = [...mem().kv.keys(), ...mem().sets.keys()].filter((k) => k.includes(u.email) && (k.startsWith("sec:book:ext:") || k.startsWith("sec:bookext:")));
+    expect(left).toEqual([]);
+  });
+
+  it("rule 591: the item and its notes hold no email, phone, link or cancellation text from the payload; a hostile or empty name gives one clean title line; a booking more than a day in the past or more than 366 days ahead is noop", async () => {
+    const u = await dubaiOwner();
+    const hash = newHash();
+    const startMs = minuteFrom(3 * DAY);
+    const cc = parseCalcom(shifted(`booking-calcom-created`, startMs, (o, s, e) => { o.payload.startTime = s; o.payload.endTime = e; }));
+    const cy = parseCalendly(shifted(`booking-calendly-created`, startMs + DAY, (o, s, e) => { o.payload.scheduled_event.start_time = s; o.payload.scheduled_event.end_time = e; }));
+    expect(await applyBooking(recOf(u), cc, hash)).toBe("created");
+    expect(await applyBooking(recOf(u, { provider: "calendly" }), cy, hash)).toBe("created");
+    const items = await listOpenItems(u.email);
+    expect(items).toHaveLength(2);
+    const PII = /@|\+1000|Private|video|zoom|http|Sara|cancellations|example\.com/i;
+    for (const it of items) {
+      expect(JSON.stringify(it)).not.toMatch(PII);
+      expect(it.notes).toEqual([]);
+      expect(it.phone ?? null).toBeNull();
+    }
+    expect(JSON.stringify(await db.lrange(SEC_KEYS.audit(u.email), 0, -1))).not.toMatch(PII);
+
+    // hostile names: one clean line, at most 200 characters; an empty name is "a guest" and names no one
+    const titleOf = async (name: string, lang: "ar" | "en" = "en") => {
+      const p = booking({ name });
+      expect(await applyBooking(recOf(u, { lang }), p, hash)).toBe("created");
+      return (await getItem(u.email, (await claimOf(u.email, "calcom", p.externalId))!))!;
+    };
+    for (const name of [`\r\nInjected\r\n${"x".repeat(10_000)}`, "‮Omar‬\u0000\tExample", "  \r\n  "]) {
+      const it = await titleOf(name);
+      expect(it.title.length).toBeLessThanOrEqual(200);
+      expect(it.title).not.toMatch(/[\r\n\t\u0000‮‬]/);
+      expect(it.title).toMatch(/^Meeting with \S/);
+    }
+    expect((await titleOf("‮Omar‬\u0000\tExample")).title).toBe("Meeting with Omar Example");
+    expect(await titleOf("")).toMatchObject({ title: "Meeting with a guest", owedTo: null });
+    expect(await titleOf("", "ar")).toMatchObject({ title: "اجتماع مع ضيف", owedTo: null });
+    // a guest named like the owner or an agent is still only a title, never the owner or an agent as the party
+    expect(await titleOf("reem")).toMatchObject({ title: "Meeting with reem", owedTo: null });
+    expect(await titleOf("me")).toMatchObject({ title: "Meeting with me", owedTo: null });
+
+    // the window: a day back to 366 days ahead
+    const before = (await listOpenItems(u.email)).length;
+    expect(await applyBooking(recOf(u), booking({}, Date.now() - DAY - 5 * MIN), hash)).toBe("noop");
+    expect(await applyBooking(recOf(u), booking({}, Date.now() + 367 * DAY), hash)).toBe("noop");
+    expect(await applyBooking(recOf(u), booking({ kind: "move", oldExternalId: "bk_none" }, Date.now() + 400 * DAY), hash)).toBe("noop");
+    expect((await listOpenItems(u.email)).length).toBe(before);
+    expect(await applyBooking(recOf(u), booking({}, minuteFrom(-DAY + 10 * MIN)), hash)).toBe("created");
+    expect(await applyBooking(recOf(u), booking({}, minuteFrom(365 * DAY)), hash)).toBe("created");
+    // an ignore is a no-op
+    expect(await applyBooking(recOf(u), { kind: "ignore", externalId: "", name: "", eventName: "", start: "", end: "" }, hash)).toBe("noop");
+  });
+
+  it("rule 592: move changes the same item's start, end and remindAt; Calendly reschedule in both arrival orders leaves one moved item; an unknown id on move creates, on cancel is noop; cancel removes the item and a second cancel is noop", async () => {
+    const u = await dubaiOwner();
+    const rec = recOf(u);
+    const hash = newHash();
+    const a = booking();
+    expect(await applyBooking(rec, a, hash)).toBe("created");
+    const id = (await claimOf(u.email, "calcom", a.externalId))!;
+    // Cal.com reschedule: a new uid naming the old one
+    const newStart = minuteFrom(5 * DAY);
+    const mv = booking({ kind: "move", externalId: "bk_new_uid", oldExternalId: a.externalId }, newStart);
+    expect(await applyBooking(rec, mv, hash)).toBe("moved");
+    const open = await listOpenItems(u.email);
+    expect(open).toHaveLength(1);
+    expect(open[0]).toMatchObject({ id, dueAt: iso(newStart), remindAt: iso(newStart + 30 * MIN), allDay: false, rev: 2 });
+    expect(await claimOf(u.email, "calcom", "bk_new_uid")).toBe(id);
+    // the same move delivered again still names the one item
+    expect(await applyBooking(rec, mv, hash)).toBe("moved");
+    expect(await listOpenItems(u.email)).toHaveLength(1);
+    // a move into the past leaves no reminder
+    const past = minuteFrom(-2 * HOUR);
+    expect(await applyBooking(rec, booking({ kind: "move", externalId: "bk_new_uid" }, past), hash)).toBe("moved");
+    expect(await getItem(u.email, id)).toMatchObject({ dueAt: iso(past), remindAt: null });
+
+    // a cancel under the new id removes the same item; a second cancel, and one under the old id, are no-ops
+    const cancel = (externalId: string): Parsed => ({ kind: "cancel", externalId, name: "", eventName: "", start: "", end: "" });
+    expect(await applyBooking(rec, cancel("bk_new_uid"), hash)).toBe("removed");
+    const gone = (await getItem(u.email, id))!;
+    expect(gone.deletedAt).toBeTruthy();
+    expect(Date.parse(gone.expiresAt!) - Date.parse(gone.deletedAt!)).toBe(SEC_RESTORE_DAYS * DAY);
+    expect(await auditOf(u.email)).toContainEqual(expect.objectContaining({ action: "booking_cancel", actor: "rule", via: "cron", id }));
+    expect(await applyBooking(rec, cancel("bk_new_uid"), hash)).toBe("noop");
+    expect(await applyBooking(rec, cancel(a.externalId), hash)).toBe("noop");
+    // a cancel of a booking never seen is a no-op; a move of one never seen creates it, and its cancel finds it
+    expect(await applyBooking(rec, cancel("bk_never"), hash)).toBe("noop");
+    const fresh = booking({ kind: "move", externalId: "bk_fresh", oldExternalId: "bk_unknown_old" });
+    expect(await applyBooking(rec, fresh, hash)).toBe("created");
+    expect(await listOpenItems(u.email)).toHaveLength(1);
+    expect(await applyBooking(rec, cancel("bk_fresh"), hash)).toBe("removed");
+    expect(await listOpenItems(u.email)).toHaveLength(0);
+    // a moved or cancelled booking whose item the owner closed is left as the owner left it
+    const done = booking();
+    expect(await applyBooking(rec, done, hash)).toBe("created");
+    const doneId = (await claimOf(u.email, "calcom", done.externalId))!;
+    expect((await changeItem(u.email, doneId, { action: "complete", result: "met" }, { actor: "owner", via: "web" })).ok).toBe(true);
+    expect(await applyBooking(rec, booking({ kind: "move", externalId: "bk_done2", oldExternalId: done.externalId }), hash)).toBe("noop");
+    expect(await applyBooking(rec, cancel(done.externalId), hash)).toBe("noop");
+    expect(await getItem(u.email, doneId)).toMatchObject({ deletedAt: null, result: "met" });
+
+    // Calendly: the create of the new invitee (naming the old) and the cancel of the old (flagged as a reschedule), in both orders
+    const cyStart = minuteFrom(4 * DAY), cyNew = minuteFrom(6 * DAY);
+    const setCy = (o: any, s: string, e: string) => { o.payload.scheduled_event.start_time = s; o.payload.scheduled_event.end_time = e; }; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const created = parseCalendly(shifted("booking-calendly-created", cyStart, setCy));
+    const moved = parseCalendly(shifted("booking-calendly-created-rescheduled", cyNew, setCy));
+    const cancelled = parseCalendly(shifted("booking-calendly-canceled-rescheduled", cyStart, setCy));
+    expect(moved.kind).toBe("move");
+    for (const order of [[cancelled, moved], [moved, cancelled]]) {
+      const v = await dubaiOwner();
+      const r = recOf(v, { provider: "calendly" });
+      expect(await applyBooking(r, created, hash)).toBe("created");
+      const before = (await listOpenItems(v.email))[0];
+      for (const p of order) await applyBooking(r, p, hash);
+      const after = await listOpenItems(v.email);
+      expect(after).toHaveLength(1);
+      expect(after[0]).toMatchObject({ id: before.id, dueAt: iso(cyNew), remindAt: iso(cyNew + 30 * MIN) });
+      expect((await db.smembers(SEC_KEYS.all(v.email)))).toHaveLength(1);
+      // a later cancel of the new invitee removes that same item
+      expect(await applyBooking(r, { kind: "cancel", externalId: moved.externalId, name: "", eventName: "", start: "", end: "" }, hash)).toBe("removed");
+      expect(await listOpenItems(v.email)).toHaveLength(0);
+    }
+
+    // a claim still being written (another delivery is creating it) is "busy", so the provider retries
+    await db.set(`sec:book:ext:${u.email}:calcom:bk_pending`, "pending", 60);
+    expect(await applyBooking(rec, cancel("bk_pending"), hash)).toBe("busy");
+    expect(await applyBooking(rec, booking({ kind: "move", externalId: "bk_pending" }), hash)).toBe("busy");
+  });
+
+  it("rule 593: removeBySystem sets the same restore window and audit as deleteNextCopy, which now uses it and behaves as before; the per-link cap of 60 creations a day stops at 60 and does not spend sec:create for the 61st; the owner's own 200 a day still applies", async () => {
+    const u = await newUser("bkrm");
+    const make = async (raw: Record<string, unknown>): Promise<SecItem> => {
+      const r = await createItem(u, raw, { actor: "owner", via: "web", source: "owner" });
+      if (!r.ok) throw new Error(r.error);
+      return r.item;
+    };
+    const SYS = { actor: "rule", via: "cron" } as const;
+    const it = await make({ title: "Call", dueAt: iso(minuteFrom(DAY)), remindAt: iso(minuteFrom(DAY / 2)) });
+    expect(await db.zscore(SEC_KEYS.due(u.email), it.id)).not.toBeNull();
+    expect(await removeBySystem(u.email, it.id, SYS, "booking_cancel")).toBe("deleted");
+    const del = (await getItem(u.email, it.id))!;
+    expect(del).toMatchObject({ rev: 2, deletedAt: expect.any(String) });
+    expect(Date.parse(del.expiresAt!) - Date.parse(del.deletedAt!)).toBe(SEC_RESTORE_DAYS * DAY);
+    expect(await db.zscore(SEC_KEYS.open(u.email), it.id)).toBeNull();
+    expect(await db.zscore(SEC_KEYS.due(u.email), it.id)).toBeNull();
+    expect(await db.zscore(SEC_KEYS.deleted(u.email), it.id)).toBe(Date.parse(del.expiresAt!));
+    expect((await auditOf(u.email)).filter((l) => l.action === "booking_cancel")).toEqual([expect.objectContaining({ actor: "rule", via: "cron", id: it.id })]);
+    // already deleted, missing, or not an item id: "gone", nothing written
+    expect(await removeBySystem(u.email, it.id, SYS, "booking_cancel")).toBe("gone");
+    expect(await removeBySystem(u.email, "s0000000000000000", SYS, "booking_cancel")).toBe("gone");
+    expect(await removeBySystem(u.email, "../x", SYS, "booking_cancel")).toBe("gone");
+    expect((await getItem(u.email, it.id))!.rev).toBe(2);
+    // a guard that refuses: "kept", nothing written
+    const keep = await make({ title: "Keep" });
+    expect(await removeBySystem(u.email, keep.id, SYS, "booking_cancel", { only: () => false })).toBe("kept");
+    expect((await getItem(u.email, keep.id))!).toMatchObject({ rev: 1, deletedAt: null });
+    // another holder of the item's lock: "failed", nothing written
+    expect(await db.lock(SEC_KEYS.lock(u.email, keep.id), 10)).toBe(true);
+    try {
+      expect(await removeBySystem(u.email, keep.id, SYS, "booking_cancel")).toBe("failed");
+    } finally {
+      await db.unlock(SEC_KEYS.lock(u.email, keep.id));
+    }
+    expect((await getItem(u.email, keep.id))!.deletedAt).toBeNull();
+
+    // deleteNextCopy (a reopen of a closed recurring copy) goes through it: the same window, its own audit line by the rule
+    const OWN = { actor: "owner", via: "web" } as const;
+    const daily = await make({ title: "Daily", dueAt: iso(minuteFrom(DAY)), repeat: { every: "day" } });
+    const closed = await changeItem(u.email, daily.id, { action: "complete", result: "done" }, OWN);
+    if (!closed.ok) throw new Error(closed.error);
+    const next = closed.item.nextId!;
+    expect((await changeItem(u.email, daily.id, { action: "reopen" }, OWN)).ok).toBe(true);
+    const nx = (await getItem(u.email, next))!;
+    expect(Date.parse(nx.expiresAt!) - Date.parse(nx.deletedAt!)).toBe(SEC_RESTORE_DAYS * DAY);
+    expect(nx.rev).toBe(2);
+    expect((await auditOf(u.email)).find((l) => l.action === "series_reopen")).toMatchObject({ actor: "rule", via: "web", id: next });
+
+    // the per-link cap: 60 creations a day for one link; the 61st is a no-op that spends nothing of the owner's 200
+    const v = await newUser("bkcap");
+    const rec = recOf(v);
+    const hash = newHash();
+    const out = await Promise.all(Array.from({ length: 60 }, () => applyBooking(rec, booking(), hash)));
+    expect(out.every((r) => r === "created")).toBe(true);
+    expect(await db.get(`rate:sec:create:${v.email}`)).toBe(60);
+    const extra = booking();
+    expect(await applyBooking(rec, extra, hash)).toBe("noop");
+    expect(await db.get(`rate:sec:create:${v.email}`)).toBe(60);
+    expect(await listOpenItems(v.email)).toHaveLength(60);
+    // its claim is not left behind: tomorrow's retry of it creates
+    expect(await claimOf(v.email, "calcom", extra.externalId)).toBeNull();
+    // another link of the same account has its own 60
+    expect(await applyBooking(rec, booking(), newHash())).toBe("created");
+
+    // the owner's own 200 a day still applies under the link cap
+    const w = await newUser("bkown");
+    await db.set(`rate:sec:create:${w.email}`, 200, 86400);
+    const p = booking();
+    expect(await applyBooking(recOf(w), p, newHash())).toBe("noop");
+    expect(await listOpenItems(w.email)).toHaveLength(0);
+    expect(await claimOf(w.email, "calcom", p.externalId)).toBeNull();
   });
 });

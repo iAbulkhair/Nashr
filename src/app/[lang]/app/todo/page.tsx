@@ -70,7 +70,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const badgesOf = (it: SecItem): string[] => [
     it.critical ? T.badges.critical : "",
     it.priority === 3 ? T.badges.urgent : it.priority === 2 ? T.badges.high : "",
-    it.source === "chat" ? T.badges.chat : it.source === "mcp" ? T.badges.mcp : it.source === "agent" && it.handoffFrom && isAgentId(it.handoffFrom) ? fill(T.badges.agent, { name: t.agents[it.handoffFrom].name }) : "",
+    it.source === "chat" ? T.badges.chat : it.source === "mcp" ? T.badges.mcp : it.source === "booking" ? T.badges.booking : it.source === "agent" && it.handoffFrom && isAgentId(it.handoffFrom) ? fill(T.badges.agent, { name: t.agents[it.handoffFrom].name }) : "",
     it.links?.taskId ? T.badges.linked : "",
   ].filter(Boolean);
   const whoOf = (it: SecItem) => (it.direction === "they_owe" ? `${T.owedBy} ${partyName(it.owedBy, lang)}` : it.owedTo ? `${T.owedTo}${lang === "ar" ? "" : " "}${partyName(it.owedTo, lang)}` : "");

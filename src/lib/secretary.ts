@@ -115,6 +115,13 @@ export const SEC_KEYS = {
   spawn: (scope: string, id: string) => `sec:spawn:${scope}:${id}`,
   /** The marker that a series was named in a warning (SET NX, 30 days): a series is named once, not every day. */
   swarn: (scope: string, id: string) => `sec:swarn:${scope}:${id}`,
+  /**
+   * A booking's claim (Reem B2a, `applyBooking` in src/lib/secretary-booking.ts): the provider's own booking id names the
+   * item it became. SET NX ("pending" for a minute while the item is created), then the item id for 400 days.
+   */
+  bookClaim: (scope: string, provider: string, externalId: string) => `sec:book:ext:${scope}:${provider}:${externalId}`,
+  /** Every `{provider}:{externalId}` the brand ever claimed, added before the claim, so account deletion finds each claim. */
+  bookIds: (scope: string) => `sec:bookext:${scope}`,
 };
 const UNDATED_SCORE = 32503680000000; // year 3000: after every dated item
 
@@ -907,29 +914,43 @@ async function spawnNext(
 }
 
 /**
- * Reopen's side of a series (R32, R35, R48): under the next copy's own lock, re-read it and delete it (soft, restorable
- * like any delete; audit `series_reopen` by the rule) only when it is untouched. "kept": it was edited or is already
- * closed; "gone": missing or already deleted; "failed": its lock timed out or a read or write failed, and the reopen
- * answers 503 before writing anything. `changeItem` is not used: it refuses `delete` to anyone but the owner.
+ * A delete made by code, not by a person (B2-R7): `changeItem` refuses `delete` to anyone but the owner in the app
+ * (`OWNER_ONLY`), so the two system deletes, a reopen's next copy and a cancelled booking, come here. Under the item's
+ * lock: re-read, and when the item exists, is not deleted and passes `only` (when given), soft-delete it like the owner's
+ * delete (`deletedAt`, `expiresAt` + `SEC_RESTORE_DAYS`, restorable), bump `rev`, move its indexes (`indexWrites`, so it
+ * leaves `sec:open` and `sec:due`) and write one audit line `action` by `who`. "gone": missing, already deleted, or not
+ * an item id; "kept": `only` refused it; "failed": the lock timed out or a read or write failed (nothing is written
+ * before the lock). `scope` is the caller's own, never a value from a request.
  */
-async function deleteNextCopy(scope: string, nextId: string, now: number): Promise<"deleted" | "kept" | "gone" | "failed"> {
-  if (!SEC_ID.test(nextId)) return "gone";
+export async function removeBySystem(
+  scope: string, id: string, who: Who, action: string, opts: { now?: number; only?: (it: SecItem) => boolean } = {},
+): Promise<"deleted" | "kept" | "gone" | "failed"> {
+  if (!SEC_ID.test(id)) return "gone";
   try {
-    const r = await withLock(scope, nextId, async (): Promise<"deleted" | "kept" | "gone"> => {
-      const nx = await db.get<SecItem>(SEC_KEYS.item(scope, nextId));
-      if (!nx || nx.deletedAt) return "gone";
-      if (!untouched(nx)) return "kept";
+    const r = await withLock(scope, id, async (): Promise<"deleted" | "kept" | "gone"> => {
+      const cur = await db.get<SecItem>(SEC_KEYS.item(scope, id));
+      if (!cur || cur.deletedAt) return "gone";
+      if (opts.only && !opts.only(cur)) return "kept";
+      const now = opts.now ?? Date.now();
       const iso = new Date(now).toISOString();
-      const next: SecItem = { ...nx, deletedAt: iso, expiresAt: new Date(now + SEC_RESTORE_DAYS * 864e5).toISOString(), rev: nx.rev + 1, updatedAt: iso };
-      await Promise.all([db.set(SEC_KEYS.item(scope, nextId), next), ...indexWrites(scope, nx, next), audit(scope, { actor: "rule", via: "web" }, "series_reopen", nextId, diffOf(nx, next))]);
+      const next: SecItem = { ...cur, deletedAt: iso, expiresAt: new Date(now + SEC_RESTORE_DAYS * 864e5).toISOString(), rev: cur.rev + 1, updatedAt: iso };
+      await Promise.all([db.set(SEC_KEYS.item(scope, id), next), ...indexWrites(scope, cur, next), audit(scope, who, action, id, diffOf(cur, next))]);
       return "deleted";
     });
     return isFail(r) ? "failed" : r;
   } catch (e) {
-    console.error("sec next copy delete failed", e instanceof Error ? e.name : "error");
+    console.error("sec system delete failed", e instanceof Error ? e.name : "error");
     return "failed";
   }
 }
+
+/**
+ * Reopen's side of a series (R32, R35, R48): delete the next copy through `removeBySystem` (soft, restorable like any
+ * delete; audit `series_reopen` by the rule) only when it is untouched. "kept": it was edited or is already closed;
+ * "gone": missing or already deleted; "failed": its lock timed out or a read or write failed, and the reopen answers
+ * 503 before writing anything.
+ */
+const deleteNextCopy = (scope: string, nextId: string, now: number) => removeBySystem(scope, nextId, { actor: "rule", via: "web" }, "series_reopen", { now, only: untouched });
 
 /**
  * Change one item of the caller's scope under its lock: re-read, check `expectRev` when the caller sent one, apply the
@@ -1232,7 +1253,7 @@ export async function secretaryDaily(scope: string, now = Date.now()) {
  * member of the global `sec:duescopes` is not a key: `wipeAccount` removes it with `forgetDueScope`.
  */
 export async function secretaryKeys(scope: string): Promise<string[]> {
-  const [ids, props, series] = await Promise.all([db.smembers(SEC_KEYS.all(scope)), db.smembers(SEC_KEYS.awayProps(scope)), db.smembers(SEC_KEYS.seriesList(scope))]);
+  const [ids, props, series, books] = await Promise.all([db.smembers(SEC_KEYS.all(scope)), db.smembers(SEC_KEYS.awayProps(scope)), db.smembers(SEC_KEYS.seriesList(scope)), db.smembers(SEC_KEYS.bookIds(scope))]);
   // The alert counters and wrap markers live two days; every local day they can name, in any zone, from two days back
   // to tomorrow.
   const days = [...new Set([-2, -1, 0, 1].map((d) => new Date(Date.now() + d * 864e5).toISOString().slice(0, 10)))];
@@ -1247,6 +1268,13 @@ export async function secretaryKeys(scope: string): Promise<string[]> {
     SEC_KEYS.seriesList(scope), SEC_KEYS.sdone(scope), SEC_KEYS.spurge(scope), SEC_KEYS.seriesKeep(scope),
     ...series.flatMap((sid) => [SEC_KEYS.series(scope, sid), SEC_KEYS.swarn(scope, sid)]),
     ...ids.map((id) => SEC_KEYS.spawn(scope, id)),
+    // Bookings (Reem B2a): every claim the brand made, by the `{provider}:{externalId}` its index holds (an external id
+    // may itself hold colons: a Calendly invitee is a URL), and the index.
+    ...books.flatMap((m) => {
+      const i = m.indexOf(":");
+      return i > 0 ? [SEC_KEYS.bookClaim(scope, m.slice(0, i), m.slice(i + 1))] : [];
+    }),
+    SEC_KEYS.bookIds(scope),
   ];
 }
 /** Account deletion: the scope leaves the sweep's global index. */
