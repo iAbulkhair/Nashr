@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import type { Agent } from "./agents";
+import type { Agent, SlicedPlaybook } from "./agents";
 
 const cache = new Map<string, string>();
 /** Server-only: a distilled playbook by file name (content/skills/<name>.md). Empty string when missing. */
@@ -29,8 +29,40 @@ export function playbookHash(name: string): string {
   return hashes.get(name)!;
 }
 
-/** The playbook injected into an agent's system prompt. */
-export const skillsBlock = (agent: Agent): string => (agent.skills ? playbook(agent.skills) : "");
+/**
+ * Playbooks agents receive by section (`Agent.slices`), in the order they follow the agent's own playbook: the heading
+ * each slice goes under and the sections every receiving agent gets besides its own.
+ */
+export const SLICED: Record<SlicedPlaybook, { label: string; shared: readonly string[] }> = {
+  ads: { label: "PAID ADS PLAYBOOK", shared: ["Ads principles", "Ads Gulf adaptations", "Ads output templates", "Ads never do"] },
+  growth: { label: "GROWTH PLAYBOOK", shared: ["Growth principles", "Growth Gulf adaptations", "Growth output templates", "Growth never do"] },
+};
+
+/** The agent's slice of one sliced playbook: the shared sections and its own, in the file's order. "" without one. */
+export const sliceBlock = (agent: Agent, file: SlicedPlaybook): string => {
+  const own = agent.slices?.[file];
+  return own?.length ? playbookSection(file, [...SLICED[file].shared, ...own]) : "";
+};
+
+/** The playbook injected into an agent's system prompt, with each of its slices after it. */
+export const skillsBlock = (agent: Agent): string => {
+  const parts = [agent.skills ? playbook(agent.skills) : ""];
+  for (const file of Object.keys(SLICED) as SlicedPlaybook[]) {
+    const slice = sliceBlock(agent, file);
+    if (slice) parts.push(`${SLICED[file].label} (${agent.name.en}; drafts only, the owner approves anything sent, spent or changed)\n${slice}`);
+  }
+  return parts.filter(Boolean).join("\n\n");
+};
+
+const skillsHashes = new Map<string, string>();
+/**
+ * The version of everything `skillsBlock` gives this agent (its playbook and its slices): what the `skills` part of a
+ * prompt stamp records, so an edit to a sliced playbook reads as a prompt change for the agents that receive it.
+ */
+export function skillsHash(agent: Agent): string {
+  if (!skillsHashes.has(agent.id)) skillsHashes.set(agent.id, contentHash(skillsBlock(agent)));
+  return skillsHashes.get(agent.id)!;
+}
 
 /**
  * Only the named `## ` sections of a playbook, each with its heading, in the playbook's own order: a slice for a prompt
