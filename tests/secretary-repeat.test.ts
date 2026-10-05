@@ -392,6 +392,19 @@ const chat = { actor: "reem", via: "chat" } as const;
 const HOUR = 3600_000;
 
 describe("rule 494: a repeat needs a due date, from every caller", () => {
+  it("an end date before the item's due day is repeat_until_before_due (400, field repeat) on create and reschedule; the due day itself is allowed", async () => {
+    const u = await login();
+    const due = inDays(8, 11);
+    const before = zoneDay(Date.now() + 5 * 864e5, z);
+    const r = await create({ title: "Post", dueAt: due, repeat: { every: "day", interval: 10, until: before } });
+    expect(r.status).toBe(400);
+    expect(await r.json()).toMatchObject({ ok: false, error: "repeat_until_before_due", field: "repeat" });
+    const ok = await add({ title: "Post", dueAt: due, repeat: { every: "day", until: zoneDay(Date.now() + 8 * 864e5, z) } });
+    const moved = await patch(ok.id, { action: "reschedule", dueAt: inDays(12, 11) });
+    expect(moved.status).toBe(400);
+    expect(await moved.json()).toMatchObject({ ok: false, error: "repeat_until_before_due" });
+    expect(await getItem(u.email, ok.id)).toMatchObject({ rev: 1, dueAt: ok.dueAt });
+  });
   it("update with dueAt null, reschedule to null and todo_update clear_due all answer repeat_needs_due (400, field dueAt)", async () => {
     const u = await login();
     const it1 = await add({ title: "Weekly report", dueAt: inDays(1, 9), repeat: { every: "week" } });
@@ -707,7 +720,7 @@ describe("rule 495: skip, stop and ending a series are owner-only", () => {
     expect(r.text).toMatch(/needs a due date/);
     for (const lang of ["ar", "en"] as const) {
       const e = appDict[lang].todo.errors;
-      for (const k of ["repeat_invalid", "repeat_needs_due", "keep_limit", "owner_only"]) expect(e[k], `${lang} ${k}`).toBeTruthy();
+      for (const k of ["repeat_invalid", "repeat_needs_due", "repeat_until_before_due", "keep_limit", "owner_only"]) expect(e[k], `${lang} ${k}`).toBeTruthy();
     }
     const stop = await changeItem(o.email, it1.id, { action: "stop_repeat" }, chat);
     expect(stop.ok).toBe(false);
