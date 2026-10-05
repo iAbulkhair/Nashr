@@ -26,14 +26,15 @@ export function refusalText(t: AppDict, status: number, code: unknown, words: Re
  * server render and returns the answer; otherwise it sets `error` (for `key`) and returns null. A call while another runs
  * sends nothing: the in-flight mark is a ref, set before the request, so a double click cannot pass it even before React
  * re-renders; `busy` names the running write so the panel can disable its buttons. `words` overrides the to-do list's
- * words for an error code (the away list's "not found" is a name, not an item).
+ * words for an error code (the away list's "not found" is a name, not an item). `onRefused(status)` is called after a refused or
+ * failed request (status 0: the request never got an answer), for a caller that must reconcile what it shows.
  */
 export function useOneWrite(t: AppDict, words?: Readonly<Record<string, string>>) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<{ key: string; text: string } | null>(null);
   const inflight = useRef(false);
-  async function send(key: string, url: string, method: "PUT" | "POST" | "DELETE", body?: unknown): Promise<Record<string, unknown> | null> {
+  async function send(key: string, url: string, method: "PUT" | "POST" | "DELETE", body?: unknown, onRefused?: (status: number) => void): Promise<Record<string, unknown> | null> {
     if (inflight.current) return null;
     inflight.current = true;
     setBusy(key);
@@ -43,12 +44,14 @@ export function useOneWrite(t: AppDict, words?: Readonly<Record<string, string>>
       const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
       if (!r.ok || !j.ok) {
         setError({ key, text: refusalText(t, r.status, j.error, words) });
+        onRefused?.(r.status);
         return null;
       }
       router.refresh();
       return j;
     } catch {
       setError({ key, text: t.todo.errors.generic });
+      onRefused?.(0);
       return null;
     } finally {
       inflight.current = false;

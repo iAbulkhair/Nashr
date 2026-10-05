@@ -22,6 +22,30 @@ export type BookingState = { kind: "loading" } | { kind: "failed"; text?: string
 
 type Copied = "url" | "secret" | null;
 
+/** The words for the refusals these routes answer (the shared hook falls back to the to-do list's words for the rest). */
+export const bookingWords = (T: AppDict["todo"]["booking"]): Record<string, string> => ({ busy: T.busy, forbidden: T.forbidden, calendly_plan: T.calendly_plan, calendly_rejected: T.calendly_rejected, bad_token: T.bad_token });
+
+/** The two rows from the status read's `links` (never a link or a key: only provider, createdAt and sameBrand). */
+export function readRows(links: { provider?: unknown; createdAt?: unknown; sameBrand?: unknown }[] | undefined, lang: "ar" | "en"): { calcom: BookRow; calendly: BookRow } {
+  const row = (p: Provider): BookRow => {
+    const l = (links ?? []).find((x) => x.provider === p);
+    return l && typeof l.createdAt === "string" ? { kind: "exists", since: formatWhen(l.createdAt, true, lang, Date.now()), sameBrand: l.sameBrand !== false } : { kind: "none" };
+  };
+  return { calcom: row("calcom"), calendly: row("calendly") };
+}
+
+/**
+ * What the Calendly row shows after a renewal failed. The route refuses 400, 403, 409 and 429 before it touches the old
+ * link, so the row stays connected. A 422 (Calendly refused) comes after the old record was replaced and the new one
+ * revoked: the server holds no Calendly link, so the row is not connected, and the old webhook is left at Calendly. Any other
+ * outcome (a server error, no answer at all) is not known here: the status is read again.
+ */
+export function rowAfterFailedRenew(status: number, row: BookRow): BookRow | "reread" {
+  if (status === 400 || status === 403 || status === 409 || status === 429) return row;
+  if (status === 422) return { kind: "none", left: true };
+  return "reread";
+}
+
 /**
  * The card's markup for one state (no fetching, so a test can render each state). `busy` names the running write
  * (`{provider}:{create|renew|stop}`), `error` the refusal and the row it belongs to, `confirming` the row showing the inline
@@ -48,7 +72,7 @@ export function BookingView({ t, state, busy = null, error = null, confirming = 
   );
   const rowError = (p: Provider) => (error && error.provider === p ? <p role="alert" className="mt-2 text-sm text-danger">{error.text}</p> : null);
   /** Renew and Stop (Stop asks first, inline) for a row that has a link. */
-  const actions = (p: Provider, onRenew: () => void) => (
+  const actions = (p: Provider, onRenew: () => void, renewLabel: string = T.renew) => (
     <div className="mt-3 flex flex-wrap items-center gap-2">
       {confirming === p ? (
         <>
@@ -58,7 +82,7 @@ export function BookingView({ t, state, busy = null, error = null, confirming = 
         </>
       ) : (
         <>
-          <button type="button" disabled={off} onClick={onRenew} className="btn btn-secondary btn-sm">{busy === `${p}:renew` ? T.renewing : T.renew}</button>
+          <button type="button" disabled={off} onClick={onRenew} className="btn btn-secondary btn-sm">{busy === `${p}:renew` ? T.renewing : renewLabel}</button>
           <button type="button" disabled={off} onClick={() => onConfirmStop?.(p)} className="btn btn-secondary btn-sm">{T.stop}</button>
         </>
       )}
@@ -117,12 +141,13 @@ export function BookingView({ t, state, busy = null, error = null, confirming = 
               <input id="booking-calendly-token" ref={tokenRef} type="password" autoComplete="off" spellCheck={false} dir="ltr" disabled={off} className="input min-w-0 flex-1 basis-56" />
               <button type="submit" disabled={off} className="btn btn-primary btn-sm">{busy === "calendly:create" || busy === "calendly:renew" ? T.connecting : exists ? T.renew : T.connect}</button>
             </div>
+            <p className="text-xs text-muted">{T.tokenWhere}</p>
             <p className="text-xs text-muted">{T.tokenNote}</p>
             <p className="text-xs text-muted">{T.planNote}</p>
           </form>
         )}
         {(exists || (row.kind === "none" && row.left)) && <p className="mt-3 text-xs text-muted">{T.calendlyLeft}</p>}
-        {exists && actions("calendly", () => onRenewOpen?.(!renewOpen))}
+        {exists && actions("calendly", () => onRenewOpen?.(!renewOpen), renewOpen ? T.cancel : T.renew)}
         {rowError("calendly")}
       </div>
     );
@@ -164,7 +189,7 @@ export default function BookingCard({ t, lang }: { t: AppDict; lang: "ar" | "en"
   const [confirming, setConfirming] = useState<Provider | null>(null);
   const [copied, setCopied] = useState<Copied>(null);
   const [renewOpen, setRenewOpen] = useState(false);
-  const words = { busy: T.busy, forbidden: T.forbidden, calendly_plan: T.calendly_plan, calendly_rejected: T.calendly_rejected, bad_token: T.bad_token };
+  const words = bookingWords(T);
   const { busy, error, send } = useOneWrite(t, words);
   const tokenRef = useRef<HTMLInputElement | null>(null);
   // Bumped by "Try again": the status read runs again.
@@ -179,11 +204,7 @@ export default function BookingCard({ t, lang }: { t: AppDict; lang: "ar" | "en"
         if (!live) return;
         // A refusal (too many requests, no access) says so in the page's words, as a refused write does.
         if (!ok || !j.ok) return setState({ kind: "failed", text: refusalText(t, status, j.error, words) });
-        const row = (p: Provider): BookRow => {
-          const l = (j.links ?? []).find((x) => x.provider === p);
-          return l && typeof l.createdAt === "string" ? { kind: "exists", since: formatWhen(l.createdAt, true, lang, Date.now()), sameBrand: l.sameBrand !== false } : { kind: "none" };
-        };
-        setState({ kind: "ready", calcom: row("calcom"), calendly: row("calendly") });
+        setState({ kind: "ready", ...readRows(j.links, lang) });
       })
       .catch(() => live && setState({ kind: "failed" }));
     return () => { live = false; };
@@ -198,6 +219,16 @@ export default function BookingCard({ t, lang }: { t: AppDict; lang: "ar" | "en"
     setAttempt((n) => n + 1);
   }
   const setRow = (p: Provider, row: BookRow) => setState((s) => (s.kind === "ready" ? { ...s, [p]: row } : s));
+  /** Reads the Calendly row again (after a renewal whose outcome is not known); the Cal.com row, which may hold a key shown once, is left alone. */
+  async function rereadCalendly() {
+    try {
+      const r = await fetch("/api/secretary/booking", { cache: "no-store" });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; links?: { provider?: unknown; createdAt?: unknown; sameBrand?: unknown }[] };
+      if (r.ok && j.ok) setRow("calendly", readRows(j.links, lang).calendly);
+    } catch {
+      // The row stays as it was; the error under it says the renewal did not work.
+    }
+  }
 
   async function connectCalcom(key: "create" | "renew") {
     const j = await send(`calcom:${key}`, "/api/secretary/booking", "POST", { provider: "calcom", lang });
@@ -213,7 +244,18 @@ export default function BookingCard({ t, lang }: { t: AppDict; lang: "ar" | "en"
     const field = tokenRef.current;
     const token = field?.value ?? "";
     if (field) field.value = "";
-    const j = await send(renewOpen ? "calendly:renew" : "calendly:create", "/api/secretary/booking", "POST", { provider: "calendly", token, lang });
+    const renewing = renewOpen;
+    const was: BookRow = state.kind === "ready" ? state.calendly : { kind: "none" };
+    const j = await send(renewing ? "calendly:renew" : "calendly:create", "/api/secretary/booking", "POST", { provider: "calendly", token, lang }, (status) => {
+      if (!renewing) return;
+      // The error stays visible; the row shows what the server now holds.
+      const next = rowAfterFailedRenew(status, was);
+      if (next === "reread") void rereadCalendly();
+      else {
+        setRow("calendly", next);
+        if (next.kind === "none") setRenewOpen(false);
+      }
+    });
     if (j) {
       setConfirming(null);
       setRenewOpen(false);

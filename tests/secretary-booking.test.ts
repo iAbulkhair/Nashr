@@ -27,7 +27,8 @@ import type { BookRecord } from "@/lib/booking-token";
 import type { User } from "@/lib/auth";
 import { appDict } from "@/lib/app-i18n";
 import { CHAT_ALLOWANCE, PLAN_CREDITS, PLAN_PRICE_SAR, SELF_SERVE_PLANS, formatCount } from "@/lib/pricing";
-import { BookingView, type BookingState } from "@/components/app/BookingCard";
+import { BookingView, bookingWords, rowAfterFailedRenew, type BookingState, type BookRow } from "@/components/app/BookingCard";
+import { refusalText } from "@/components/app/useOneWrite";
 
 // Only the outbound fetch is mocked (Calendly's API); the store and everything else is real. The module's other exports stay real.
 vi.mock("@/lib/safe-fetch", async (orig) => ({ ...(await orig<typeof import("@/lib/safe-fetch")>()), safeFetch: vi.fn() }));
@@ -1354,7 +1355,8 @@ describe("booking revocation (rule 598)", () => {
 
 describe("booking card text (rule 599)", () => {
   const LANGS = ["ar", "en"] as const;
-  const html = (x: string) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  /** The text as `renderToStaticMarkup` writes it. */
+  const html = (x: string) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
   const URL_ = "https://thakeen.example/api/secretary/booking/" + "b".repeat(43);
   const SECRET = "c".repeat(64);
   const view = (lang: "ar" | "en", state: BookingState, extra: Record<string, unknown> = {}) =>
@@ -1367,7 +1369,7 @@ describe("booking card text (rule 599)", () => {
     expect(Object.keys(ar).sort()).toEqual(Object.keys(en).sort());
     for (const k of [
       "title", "sub", "connect", "renew", "stop", "copy", "copied", "since", "otherBrand", "warning", "shownOnce", "renewNote", "calcom", "calendly",
-      "calcomStepOpen", "calcomStepPaste", "calcomStepEvents", "tokenLabel", "tokenNote", "planNote", "calendlyLeft", "busy", "forbidden", "calendly_plan", "calendly_rejected", "bad_token",
+      "calcomStepOpen", "calcomStepPaste", "calcomStepEvents", "tokenLabel", "tokenWhere", "tokenNote", "cancel", "planNote", "calendlyLeft", "busy", "forbidden", "calendly_plan", "calendly_rejected", "bad_token",
     ]) {
       expect(ar[k], `ar.${k}`).toBeTruthy();
       expect(en[k], `en.${k}`).toBeTruthy();
@@ -1413,6 +1415,7 @@ describe("booking card text (rule 599)", () => {
       expect(first, lang).toContain('type="password"');
       expect(first, lang).toContain('autoComplete="off"');
       expect(first, lang).toContain(html(T.tokenNote));
+      expect(first, lang).toContain(html(T.tokenWhere));
       expect(first, lang).toContain(html(T.planNote));
       expect(first, lang).not.toContain("/api/secretary/booking/");
       // Created (Cal.com): the URL and the key, a Copy button each, the steps as an ordered list of three, the warning.
@@ -1429,12 +1432,44 @@ describe("booking card text (rule 599)", () => {
       expect(exists.split(`>${T.renew}</button>`).length - 1, lang).toBe(2);
       expect(exists.split(`>${T.stop}</button>`).length - 1, lang).toBe(2);
       expect(exists, lang).toContain(html(T.calendlyLeft));
-      expect(exists, lang).not.toContain("/api/secretary/booking/");
-      expect(exists, lang).not.toContain(SECRET);
       expect(exists, lang).not.toContain(html(T.otherBrand));
+      // With the Calendly token field open (Renew pressed) the toggle says Cancel, so one button says Renew on that row.
+      const opened = view(lang, { kind: "ready", calcom: { kind: "none" }, calendly: { kind: "exists", since, sameBrand: true } }, { renewOpen: true });
+      expect(opened.split(`>${T.cancel}</button>`).length - 1, lang).toBe(1);
+      expect(opened.split(`>${T.renew}</button>`).length - 1, lang).toBe(1);
+      expect(opened, lang).toContain('type="password"');
       // A link made in another brand says so (one line per such row).
       const other = view(lang, { kind: "ready", calcom: { kind: "exists", since, sameBrand: false }, calendly: { kind: "none" } });
       expect(other, lang).toContain(html(T.otherBrand));
+    }
+
+    // Refusals in words: 422 (both typed errors), 409, 403 and 400 have the card's own words; 429 falls back to the shared one.
+    for (const lang of LANGS) {
+      const t = appDict[lang];
+      const T = t.todo.booking;
+      const words = bookingWords(T);
+      expect(refusalText(t, 422, "calendly_plan", words), lang).toBe(T.calendly_plan);
+      expect(refusalText(t, 422, "calendly_rejected", words), lang).toBe(T.calendly_rejected);
+      expect(refusalText(t, 409, "busy", words), lang).toBe(T.busy);
+      expect(refusalText(t, 403, "forbidden", words), lang).toBe(T.forbidden);
+      expect(refusalText(t, 400, "bad_token", words), lang).toBe(T.bad_token);
+      expect(refusalText(t, 429, "too_many", words), lang).toBe(t.handoff.errors.slow_down);
+    }
+
+    // A failed Calendly renewal shows what the server holds. 400, 403, 409 and 429 are answered before the old link is
+    // touched: the row stays connected. A 422 comes after the old record was replaced and the new one revoked: the row is
+    // not connected and says the old webhook is left at Calendly. Anything else is read again.
+    const connected: BookRow = { kind: "exists", since: "5 October", sameBrand: true };
+    for (const status of [400, 403, 409, 429]) expect(rowAfterFailedRenew(status, connected), String(status)).toBe(connected);
+    expect(rowAfterFailedRenew(422, connected)).toEqual({ kind: "none", left: true });
+    for (const status of [0, 500, 503]) expect(rowAfterFailedRenew(status, connected), String(status)).toBe("reread");
+    for (const lang of LANGS) {
+      const T = appDict[lang].todo.booking;
+      const gone = view(lang, { kind: "ready", calcom: { kind: "none" }, calendly: rowAfterFailedRenew(422, connected) as BookRow }, { error: { provider: "calendly", text: T.calendly_plan } });
+      expect(gone, lang).not.toContain(T.since.replace("{date}", "5 October"));
+      expect(gone, lang).toContain(html(T.calendlyLeft));
+      expect(gone, lang).toContain(html(T.calendly_plan));
+      expect(gone, lang).toContain('type="password"');
     }
 
     // Where the URL, the key and the token live. The card keeps the URL and key in component state set from the create
@@ -1451,6 +1486,12 @@ describe("booking card text (rule 599)", () => {
     expect(card).not.toMatch(/onChange=/);
     expect(card).toContain('.value = ""');
     expect(card.indexOf('.value = ""')).toBeLessThan(card.indexOf('"/api/secretary/booking", "POST", { provider: "calendly"'));
+    // No request address carries a URL, key or token: the only two addresses are the route itself and `?provider=`.
+    const addresses = new Set((card.match(/["`]\/api\/secretary\/booking[^"`]*["`]/g) ?? []).map((a) => a.slice(1, -1)));
+    expect([...addresses].sort()).toEqual(["/api/secretary/booking", "/api/secretary/booking?provider=${p}"]);
+    // The hook reports a refused renewal to the card, which reconciles the row.
+    expect(code("src/components/app/useOneWrite.ts")).toContain("onRefused?.(r.status)");
+    expect(card).toContain("rowAfterFailedRenew(status, was)");
     const panel = readFileSync("src/components/app/TodoPanel.tsx", "utf8");
     expect(panel.indexOf("<FeedCard")).toBeGreaterThan(-1);
     expect(panel.indexOf("<BookingCard")).toBeGreaterThan(panel.indexOf("<FeedCard"));
