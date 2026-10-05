@@ -4,11 +4,17 @@
  * section 3). Slugs and argument names were read from Composio's tool schemas on 2026-10-05; the measured run on the
  * founder's own accounts confirms them (plan Task 8). No imports: the registry and tests read it freely.
  *
+ * Ad accounts and Google's analytics are read only: their toolkits list no write tool at all, so nothing here can
+ * create, edit, pause or fund an ad, or change a property (the founder's rule of 2026-10-05: ads are read and analysed,
+ * never published or edited).
+ *
  * Not here on purpose: ad writes (money moves need their own spec, evaluation spec C-R1), comments and messages (untrusted
  * input with no feature to use it), Google Business Profile (Composio lists no toolkit for it), Calendly and Cal.com
  * (Reem B2 receives their webhooks directly, evaluation spec C-R4).
  */
-export type Toolkit = "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok";
+export type Toolkit =
+  | "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok"
+  | "metaads" | "snapchat" | "googleads" | "tiktok_ads" | "google_analytics" | "google_search_console";
 
 type Tools = Readonly<Record<string, readonly string[]>>;
 export type ToolkitEntry = Readonly<{ provider: string; authEnv: string; read: Tools; write: Tools }>;
@@ -46,6 +52,45 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
     read: {},
     write: { TIKTOK_POST_PHOTO: ["photo_images", "photo_cover_index", "post_mode", "title", "description"] },
   },
+  // ---------- read only: ad results (src/lib/connectors/ads-via-composio.ts) ----------
+  metaads: {
+    provider: "meta_ads",
+    authEnv: "COMPOSIO_AUTH_METAADS",
+    read: { METAADS_GET_AD_ACCOUNTS: ["fields", "limit"], METAADS_GET_INSIGHTS: ["object_id", "level", "fields", "time_range", "limit", "after"] },
+    write: {},
+  },
+  snapchat: {
+    provider: "snapchat",
+    authEnv: "COMPOSIO_AUTH_SNAPCHAT",
+    read: { SNAPCHAT_LIST_ORGANIZATIONS: ["with_ad_accounts"], SNAPCHAT_LIST_ADS_BY_ACCOUNT: ["ad_account_id", "limit", "cursor"], SNAPCHAT_GET_AD_STATS: ["ad_id", "fields", "start_time", "end_time", "granularity"] },
+    write: {},
+  },
+  googleads: {
+    provider: "google_ads",
+    authEnv: "COMPOSIO_AUTH_GOOGLEADS",
+    // GAQL is a read-only query language; the query text itself is a constant in ads-via-composio.ts, never model text.
+    read: { GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS: [], GOOGLEADS_SEARCH_STREAM_GAQL: ["query", "customer_id"] },
+    write: {},
+  },
+  tiktok_ads: {
+    provider: "tiktok_ads",
+    authEnv: "COMPOSIO_AUTH_TIKTOK_ADS",
+    read: { TIKTOK_ADS_GET_ADVERTISER_ACCOUNTS: ["fields"], TIKTOK_ADS_GET_REPORT_INTEGRATED: ["report_type", "advertiser_id", "data_level", "dimensions", "metrics", "start_date", "end_date", "page", "page_size"] },
+    write: {},
+  },
+  // ---------- read only: the site's traffic and search (src/lib/site-stats.ts) ----------
+  google_analytics: {
+    provider: "google",
+    authEnv: "COMPOSIO_AUTH_GOOGLE_ANALYTICS",
+    read: { GOOGLE_ANALYTICS_LIST_ACCOUNT_SUMMARIES: ["pageSize"], GOOGLE_ANALYTICS_RUN_REPORT: ["property", "dateRanges", "dimensions", "metrics", "orderBys", "limit"] },
+    write: {},
+  },
+  google_search_console: {
+    provider: "google",
+    authEnv: "COMPOSIO_AUTH_GOOGLE_SEARCH_CONSOLE",
+    read: { GOOGLE_SEARCH_CONSOLE_LIST_SITES: [], GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY: ["site_url", "start_date", "end_date", "dimensions", "row_limit"] },
+    write: {},
+  },
 };
 
 /** Which toolkits each provider connects through, in the order the Integrations card offers them. */
@@ -54,6 +99,11 @@ export const PROVIDER_TOOLKITS: Readonly<Record<string, readonly Toolkit[]>> = {
   x: ["twitter"],
   linkedin: ["linkedin"],
   tiktok: ["tiktok"],
+  meta_ads: ["metaads"],
+  snapchat: ["snapchat"],
+  google_ads: ["googleads"],
+  tiktok_ads: ["tiktok_ads"],
+  google: ["google_analytics", "google_search_console"],
 };
 
 export const isToolkit = (s: string): s is Toolkit => Object.prototype.hasOwnProperty.call(TOOLKITS, s);

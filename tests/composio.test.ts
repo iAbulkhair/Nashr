@@ -341,9 +341,11 @@ describe("who can reach Composio (rule 636)", () => {
       "src/app/api/connect/[provider]/route.ts",
       "src/app/api/connect/[provider]/start/route.ts",
       "src/lib/account.ts",
+      "src/lib/connectors/ads-via-composio.ts",
       "src/lib/connectors/publish.ts",
       "src/lib/connectors/registry.ts",
       "src/lib/connectors/via-composio.ts",
+      "src/lib/site-stats.ts",
     ]);
     expect(readFileSync("src/lib/connectors/composio-catalog.ts", "utf8")).not.toMatch(/^import /m);
   });

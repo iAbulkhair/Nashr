@@ -3,6 +3,8 @@ import { adCodeIndex } from "./brand";
 import { deleteFile, writeFile } from "./files";
 import { analyze, learningsMarkdown, type PerfSnapshot } from "./perf-import";
 import { AD_PROVIDERS, adRows, type AdProvider } from "./connectors/ads";
+import { adRowsVia } from "./connectors/ads-via-composio";
+import { isComposio } from "./connectors/composio-shape";
 import { getFreshConnection, refusedToken } from "./connectors/fresh";
 import { getConnection, type Connection } from "./connectors/store";
 
@@ -28,7 +30,7 @@ export async function clearPerf(scope: string) {
  * upload. The newest results, from a file or an account, are the ones Noor reads.
  */
 export async function syncAds(scope: string, provider: AdProvider, c: Connection, now = new Date()): Promise<PerfSnapshot> {
-  const [pull, codes] = await Promise.all([adRows(c, now), adCodeIndex(scope)]);
+  const [pull, codes] = await Promise.all([isComposio(c) ? adRowsVia(scope, c, now) : adRows(c, now), adCodeIndex(scope)]);
   if (!pull.rows.length) throw new Error("no_ad_results");
   const snap: PerfSnapshot = { ...analyze(pull.rows, `${pull.account}${pull.currency ? ` (${pull.currency})` : ""}`, pull.platform, pull.range, undefined, now.toISOString(), codes), source: provider };
   await Promise.all([savePerf(scope, snap), db.set(`adsync:${scope}:${provider}`, now.toISOString())]);

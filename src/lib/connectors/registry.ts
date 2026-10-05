@@ -95,13 +95,16 @@ export const PROVIDERS: Provider[] = [
   { id: "linkedin", name: "LinkedIn", kind: "oauth", capabilities: ["publish_post"], oauth: { authorizeUrl: "https://www.linkedin.com/oauth/v2/authorization", tokenUrl: "https://www.linkedin.com/oauth/v2/accessToken", scopes: ["openid", "profile", "w_member_social"], clientIdEnv: "LINKEDIN_CLIENT_ID", clientSecretEnv: "LINKEDIN_CLIENT_SECRET" } },
   { id: "tiktok", name: "TikTok", kind: "oauth", capabilities: ["publish_post"], oauth: { authorizeUrl: "https://www.tiktok.com/v2/auth/authorize/", tokenUrl: "https://open.tiktokapis.com/v2/oauth/token/", scopes: ["user.info.basic", "video.publish", "video.upload"], clientIdEnv: "TIKTOK_CLIENT_KEY", clientSecretEnv: "TIKTOK_CLIENT_SECRET", scopeSeparator: "," } },
   { id: "snapchat", name: "Snapchat Ads", kind: "oauth", capabilities: ["ads"], oauth: { authorizeUrl: "https://accounts.snapchat.com/login/oauth2/authorize", tokenUrl: "https://accounts.snapchat.com/login/oauth2/access_token", scopes: ["snapchat-marketing-api"], clientIdEnv: "SNAP_CLIENT_ID", clientSecretEnv: "SNAP_CLIENT_SECRET" } },
+  // Read only, and only through Composio (ads-via-composio.ts): no direct app, so no `oauth` block.
+  { id: "google_ads", name: "Google Ads (results)", kind: "oauth", capabilities: ["ads"] },
+  { id: "tiktok_ads", name: "TikTok Ads (results)", kind: "oauth", capabilities: ["ads"] },
 ];
 
 export function getProvider(id: string) {
   return PROVIDERS.find((p) => p.id === id) ?? null;
 }
 /** Providers with no direct publishing code: they connect through Composio or not at all. */
-const COMPOSIO_ONLY = ["linkedin", "tiktok"];
+const COMPOSIO_ONLY = ["linkedin", "tiktok", "google_ads", "tiktok_ads", "google"];
 
 /** The provider connects through Composio (COMPOSIO_PROVIDERS names it and the key is set), not its own OAuth app. */
 export const routedViaComposio = (id: string) => composioEnabled(id);

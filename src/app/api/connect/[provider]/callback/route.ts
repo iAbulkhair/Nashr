@@ -9,6 +9,7 @@ import { OAUTH_COOKIE, getConnection, saveConnection, takeState, type Connection
 import { composioVerify } from "@/lib/connectors/composio";
 import { isToolkit, PROVIDER_TOOLKITS } from "@/lib/connectors/composio-catalog";
 import { connectViaComposio } from "@/lib/connectors/via-composio";
+import { syncSite } from "@/lib/site-stats";
 import { xMe } from "@/lib/connectors/x";
 import { sallaStore } from "@/lib/connectors/salla";
 import { zidStore } from "@/lib/connectors/zid";
@@ -56,6 +57,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
       await composioVerify(st.email, toolkit, st.accountId);
       const conn = await connectViaComposio(st.email, p.id, toolkit, st.accountId, await getConnection(st.email, p.id));
       await saveConnection(st.email, conn);
+      // A first read so Dana's next report has the site's figures; the daily run retries whatever fails here.
+      if (p.id === "google") await syncSite(st.email, conn).catch(() => console.error("site first read failed"));
       await track(st.email.split("#")[0], "connect");
       return back(`connected=${p.id}`);
     } catch (e) {

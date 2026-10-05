@@ -108,6 +108,8 @@ export async function wipeAccount(email: string) {
       // the default brand's lock was deleted, and the confirmation never was. An added brand's held setup charge lives on
       // the account record (`User.onboardPaid`) and goes with it. The game's answers hold the brand name the owner typed.
       `onboardok:${s}`, `onboardlock:${s}`, `onboardgame:${s}`,
+      // The site's GA4 and Search Console totals (src/lib/site-stats.ts): the public's search queries and the site's pages.
+      `sitestats:${s}`,
       `onboardplan:${s}`, `pending:${s}`, `pendingidx:${s}`, `tidxm:${s}`, `tidxv:${s}`, `tasks:${s}`, `files:${s}`, `brand:${s}`, `prefs:${s}`, `chat:${s}`, `convs:${s}`, `gov:${s}`, `schedule:${s}`, `brief:${s}`, `conns:${s}`,
     );
   });

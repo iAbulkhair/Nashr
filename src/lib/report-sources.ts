@@ -8,9 +8,10 @@ import { READS_METRICS } from "./connectors/working";
 export type SourceKey = "analytics" | "ads" | "store" | "social";
 export const SOURCES: { key: SourceKey; provs: string[] }[] = [
   { key: "analytics", provs: ["google"] },
-  { key: "ads", provs: ["meta_ads", "snapchat", "tiktok", "google"] },
+  // Ad accounts only: "snapchat" is Snapchat Ads, and "google" is the site connection (analytics), never an ad account.
+  { key: "ads", provs: ["meta_ads", "snapchat", "tiktok_ads", "google_ads"] },
   { key: "store", provs: ["shopify", "salla", "zid", "woocommerce"] },
-  { key: "social", provs: ["instagram", "tiktok", "snapchat", "x", "linkedin"] },
+  { key: "social", provs: ["instagram", "tiktok", "x", "linkedin"] },
 ];
 export const PLATFORM_METRICS: { key: string; source: SourceKey }[] = [
   { key: "visitors", source: "analytics" }, { key: "sessions", source: "analytics" }, { key: "adSpend", source: "ads" }, { key: "roas", source: "ads" },

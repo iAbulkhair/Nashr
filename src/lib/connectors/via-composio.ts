@@ -2,6 +2,11 @@ import type { Connection } from "./store";
 import { composioRead, composioRevoke, composioWrite } from "./composio";
 import { PROVIDER_TOOLKITS, type Toolkit } from "./composio-catalog";
 import { plain } from "./meta";
+import { accountOf as account, isComposio, listOf, pick } from "./composio-shape";
+import { accountMeta } from "./ads";
+import { adAccountsVia } from "./ads-via-composio";
+
+export { isComposio, pick };
 
 /**
  * Publishing and connecting through Composio (docs/superpowers/specs/2026-10-05-meta-via-composio-design.md, generalised
@@ -13,58 +18,12 @@ import { plain } from "./meta";
  * the measured run (plan Task 8) pins the exact shapes.
  */
 
-export const isComposio = (c: Pick<Connection, "meta"> | null | undefined) => c?.meta?.via === "composio";
-
 /** Every Composio account id the record holds, for revoke on disconnect and on account deletion. */
 export function composioAccountIds(c: Connection): string[] {
   if (!isComposio(c)) return [];
   const toolkits = PROVIDER_TOOLKITS[c.provider] ?? [];
   return toolkits.map((t) => c.data[t]).filter((v): v is string => typeof v === "string" && v.length > 0);
 }
-
-/** First string or number found under one of `keys`, breadth-first, at most four levels down. */
-export function pick(o: unknown, keys: string[]): string | undefined {
-  let level: unknown[] = [o];
-  for (let depth = 0; depth < 4 && level.length; depth++) {
-    const next: unknown[] = [];
-    for (const v of level) {
-      if (!v || typeof v !== "object") continue;
-      if (!Array.isArray(v)) {
-        for (const k of keys) {
-          const x = (v as Record<string, unknown>)[k];
-          if (typeof x === "string" && x) return x;
-          if (typeof x === "number") return String(x);
-        }
-      }
-      next.push(...(Array.isArray(v) ? v : Object.values(v as Record<string, unknown>)));
-    }
-    level = next;
-  }
-  return undefined;
-}
-
-/** The first array of objects that carry an `id`, at most four levels down. */
-function listOf(o: unknown): Record<string, unknown>[] {
-  let level: unknown[] = [o];
-  for (let depth = 0; depth < 4 && level.length; depth++) {
-    const next: unknown[] = [];
-    for (const v of level) {
-      if (Array.isArray(v)) {
-        const rows = v.filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && "id" in x);
-        if (rows.length) return rows;
-        next.push(...v);
-      } else if (v && typeof v === "object") next.push(...Object.values(v as Record<string, unknown>));
-    }
-    level = next;
-  }
-  return [];
-}
-
-const account = (c: Connection, t: Toolkit) => {
-  const id = c.data[t];
-  if (!id) throw new Error("not_connected");
-  return id;
-};
 
 // ---------- publish ----------
 
@@ -157,6 +116,21 @@ async function managedPages(scope: string, acc: string): Promise<Page[]> {
   return listOf(r).map((p) => ({ id: String(p.id), name: typeof p.name === "string" ? p.name : String(p.id) })).filter((p) => /^\d+$/.test(p.id));
 }
 
+/** GA4: the properties the login can read, `properties/{digits}` only. */
+async function gaProperties(scope: string, acc: string): Promise<Page[]> {
+  const r = await composioRead(scope, "google_analytics", "GOOGLE_ANALYTICS_LIST_ACCOUNT_SUMMARIES", { pageSize: 50 }, acc);
+  return listOf(r, "propertySummaries").flatMap((a) => (Array.isArray(a.propertySummaries) ? a.propertySummaries : []) as Record<string, unknown>[])
+    .map((p) => ({ id: String(p.property ?? ""), name: typeof p.displayName === "string" ? p.displayName.slice(0, 80) : String(p.property ?? "") }))
+    .filter((p) => /^properties\/\d+$/.test(p.id));
+}
+
+/** Search Console: the sites the login has verified access to; an unverified listing has no data to read. */
+async function gscSites(scope: string, acc: string): Promise<string[]> {
+  const r = await composioRead(scope, "google_search_console", "GOOGLE_SEARCH_CONSOLE_LIST_SITES", {}, acc);
+  return listOf(r, "siteUrl").filter((x) => x.permissionLevel !== "siteUnverifiedUser").map((x) => String(x.siteUrl))
+    .filter((u) => /^(sc-domain:[a-z0-9.-]+|https?:\/\/[^\s]+)$/i.test(u) && u.length <= 200);
+}
+
 const metaLabel = (pageName?: string, ig?: string) => [pageName, ig ? `@${ig}` : ""].filter(Boolean).join(" · ") || "Meta";
 
 /**
@@ -202,6 +176,30 @@ export async function connectViaComposio(scope: string, provider: string, toolki
     meta.account = pick(me, ["name", "localizedFirstName"]) ?? "LinkedIn";
   }
   if (toolkit === "tiktok") meta.account = "TikTok";
+  if (toolkit === "metaads" || toolkit === "snapchat" || toolkit === "googleads" || toolkit === "tiktok_ads") {
+    // Read only: the ad accounts this login can read, the first chosen until the owner picks another (select_ad_account).
+    const accounts = await adAccountsVia(scope, provider, accountId);
+    if (!accounts.length) throw new Error("no_ad_account");
+    delete meta.adAccounts;
+    delete meta.currency;
+    Object.assign(meta, accountMeta(accounts, accounts[0].id));
+  }
+  if (toolkit === "google_analytics") {
+    const props = await gaProperties(scope, accountId);
+    if (!props.length) throw new Error("no_ga_property");
+    meta.gaProperty = props[0].id;
+    meta.gaName = props[0].name;
+    if (props.length > 1) meta.gaProperties = JSON.stringify(props.slice(0, 50));
+    else delete meta.gaProperties;
+  }
+  if (toolkit === "google_search_console") {
+    const sites = await gscSites(scope, accountId);
+    if (!sites.length) throw new Error("no_gsc_site");
+    meta.gscSite = sites[0];
+    if (sites.length > 1) meta.gscSites = JSON.stringify(sites.slice(0, 50));
+    else delete meta.gscSites;
+  }
+  if (provider === "google") meta.account = [meta.gaName, meta.gscSite?.replace(/^sc-domain:|^https?:\/\/|\/$/g, "")].filter(Boolean).join(" · ") || "Google";
   // A reconnected toolkit leaves its old Composio account behind; it is revoked, quietly, after the new one is in hand.
   if (before && before !== accountId) await composioRevoke(scope, before).catch(() => console.error("composio revoke of replaced account failed"));
   return { ...base, meta, expiresAt: undefined };

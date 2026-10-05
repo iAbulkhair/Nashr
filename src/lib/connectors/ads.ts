@@ -14,15 +14,16 @@ import { clean, type Row } from "../perf-import";
  */
 export const META_ADS = "https://graph.facebook.com/v23.0";
 export const SNAP_ADS = "https://adsapi.snapchat.com/v1";
-export const AD_PROVIDERS = ["meta_ads", "snapchat"] as const;
+/** google_ads and tiktok_ads connect only through Composio (src/lib/connectors/ads-via-composio.ts). */
+export const AD_PROVIDERS = ["meta_ads", "snapchat", "google_ads", "tiktok_ads"] as const;
 export type AdProvider = (typeof AD_PROVIDERS)[number];
 export const isAdProvider = (p: string): p is AdProvider => (AD_PROVIDERS as readonly string[]).includes(p);
 export type AdAccount = { id: string; name: string; currency?: string };
 export type AdPull = { rows: Row[]; range: { from: string; to: string }; platform: string; account: string; currency?: string };
 
 const DAYS = 30;
-const MAX_ROWS = 2000;
-const PAGES = 10;
+export const MAX_ROWS = 2000;
+export const PAGES = 10;
 
 /** 401/403 in the message make refusedToken (fresh.ts) mark the connection for reconnecting, as for every platform. */
 async function fail(r: Response, who: string, what: string): Promise<Error> {
@@ -36,9 +37,9 @@ async function get<T>(url: string, token: string, who: string, what: string): Pr
   if (!r.ok) throw await fail(r, who, what);
   return (await r.json()) as T;
 }
-const n = (v: unknown): number | null => { const x = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN; return Number.isFinite(x) ? x : null; };
+export const n = (v: unknown): number | null => { const x = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN; return Number.isFinite(x) ? x : null; };
 const day = (d: Date) => d.toISOString().slice(0, 10);
-function window(now = new Date()) {
+export function adWindow(now = new Date()) {
   // Whole UTC days ending yesterday: today is still filling in and would drag every rate down.
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const start = new Date(end.getTime() - DAYS * 864e5);
@@ -66,10 +67,10 @@ export async function metaAdAccounts(token: string): Promise<AdAccount[]> {
   return (j.data ?? []).filter((a) => /^act_\d+$/.test(a.id) && (a.account_status == null || a.account_status === 1)).map((a) => ({ id: a.id, name: clean(a.name ?? a.id, 80), currency: a.currency }));
 }
 
-type MetaAction = { action_type?: string; value?: string };
+export type MetaAction = { action_type?: string; value?: string };
 /** Purchases, preferring Meta's de-duplicated "omni" count over the pixel-only one so a sale is not counted twice. */
 const PURCHASE = ["omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase"];
-function pick(list: MetaAction[] | undefined): number | null {
+export function purchases(list: MetaAction[] | undefined): number | null {
   for (const t of PURCHASE) { const a = list?.find((x) => x.action_type === t); if (a) return n(a.value); }
   return null;
 }
@@ -78,7 +79,7 @@ export async function metaRows(c: Connection, now = new Date()): Promise<AdPull>
   const account = c.meta?.adAccount;
   if (!account || !/^act_\d+$/.test(account)) throw new Error("no_ad_account");
   const token = c.data.access_token;
-  const w = window(now);
+  const w = adWindow(now);
   const q = new URLSearchParams({ level: "ad", fields: "ad_id,ad_name,impressions,inline_link_clicks,spend,actions,action_values", time_range: JSON.stringify({ since: w.range.from, until: w.range.to }), limit: "500" });
   type Ins = { ad_id?: string; ad_name?: string; impressions?: string; inline_link_clicks?: string; spend?: string; actions?: MetaAction[]; action_values?: MetaAction[] };
   const out: Ins[] = [];
@@ -100,7 +101,7 @@ export async function metaRows(c: Connection, now = new Date()): Promise<AdPull>
   }
   const rows: Row[] = out.slice(0, MAX_ROWS).map((x) => ({
     name: clean(x.ad_name || x.ad_id || "ad"), text: clean(copy.get(x.ad_id ?? "") ?? "", 300), group: "",
-    impressions: n(x.impressions), clicks: n(x.inline_link_clicks), spend: n(x.spend), conversions: pick(x.actions), revenue: pick(x.action_values), sends: null, opens: null,
+    impressions: n(x.impressions), clicks: n(x.inline_link_clicks), spend: n(x.spend), conversions: purchases(x.actions), revenue: purchases(x.action_values), sends: null, opens: null,
   })).filter((r) => r.name);
   return { rows, range: w.range, platform: "Meta Ads", account: c.meta?.account ?? account, currency: c.meta?.currency };
 }
@@ -114,13 +115,13 @@ export async function snapAdAccounts(token: string): Promise<AdAccount[]> {
 
 type SnapStats = { impressions?: number; swipes?: number; spend?: number; conversion_purchases?: number; conversion_purchases_value?: number };
 /** Snap reports money in micro-currency: 1,000,000 is one unit of the account's currency. */
-const micro = (v: unknown) => { const x = n(v); return x == null ? null : x / 1e6; };
+export const micro = (v: unknown) => { const x = n(v); return x == null ? null : x / 1e6; };
 
 export async function snapRows(c: Connection, now = new Date()): Promise<AdPull> {
   const account = c.meta?.adAccount;
   if (!account || !/^[0-9a-f-]{36}$/i.test(account)) throw new Error("no_ad_account");
   const token = c.data.access_token;
-  const w = window(now);
+  const w = adWindow(now);
   // Names first: stats carry only ids.
   const names = new Map<string, string>();
   let url: string | undefined = `${SNAP_ADS}/adaccounts/${account}/ads?limit=1000`;
@@ -174,4 +175,5 @@ export function selectAdAccount(conn: Connection, id: string): Connection | null
   return { ...conn, meta: { ...meta, ...m } };
 }
 
+/** Direct-OAuth records only; a Composio record is read by adRowsVia (perf-store.ts picks). */
 export const adRows = (c: Connection, now?: Date) => (c.provider === "meta_ads" ? metaRows(c, now) : snapRows(c, now));
