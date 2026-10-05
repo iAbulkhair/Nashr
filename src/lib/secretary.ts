@@ -745,6 +745,15 @@ function indexWrites(scope: string, prev: SecItem | null, next: SecItem, opts?: 
 }
 
 /**
+ * Write an open item's indexes again (open, all, due): idempotent for an open item. A booking's redelivery calls it
+ * under the item's lock when the record exists, so a creation whose index writes failed after the record was saved is
+ * listed after all. Done and deleted items are left alone (their indexes include the capped done list).
+ */
+export async function reindexOpen(scope: string, it: SecItem): Promise<void> {
+  if (stateOf(it) === "open") await Promise.all(indexWrites(scope, null, it));
+}
+
+/**
  * One audit line per change: who, through what, which action on which item (`"-"` for a change that is not one item's,
  * such as the away list's), and a short description of the change.
  */
@@ -765,11 +774,14 @@ export async function getItem(scope: string, id: string): Promise<SecItem | null
 /**
  * Create one open item in the caller's own active brand, dates in the brand's zone and a chase clock on its work
  * calendar (`opts.zone` and `opts.cal` when the caller already read them with `calFor`; otherwise read here, in one
- * round). Validation first, then the account's daily allowance.
+ * round). Validation first, then the account's daily allowance. `opts.id`: the id the item gets, chosen by a caller that
+ * claimed it first (a booking's claim, `applyBooking`), which holds the item's lock and has checked no record exists;
+ * otherwise a new one.
  */
-export async function createItem(user: Pick<User, "email" | "scope">, raw: Record<string, unknown>, who: Who & { source: SecSource }, opts: { zone?: Zone; cal?: CalData; handoffFrom?: AgentId } = {}): Promise<{ ok: true; item: SecItem } | SecFail> {
+export async function createItem(user: Pick<User, "email" | "scope">, raw: Record<string, unknown>, who: Who & { source: SecSource }, opts: { zone?: Zone; cal?: CalData; handoffFrom?: AgentId; id?: string } = {}): Promise<{ ok: true; item: SecItem } | SecFail> {
   const scope = sc(user as User);
   const now = Date.now();
+  if (opts.id !== undefined && !SEC_ID.test(opts.id)) return fail("bad_id", 400, "id");
   if (raw.title === undefined || raw.title === null || raw.title === "") return fail("title_required", 400, "title");
   const { zone, cal } = opts.cal ? { zone: opts.zone ?? opts.cal.zone, cal: opts.cal } : await calFor(scope, now);
   const p = parseFields(raw, now, zone);
@@ -789,7 +801,7 @@ export async function createItem(user: Pick<User, "email" | "scope">, raw: Recor
   if (task && who.source !== "owner" && task.status !== "pending") return fail("link_not_pending", 400, "taskId");
   const at = new Date(now).toISOString();
   const base: SecItem = {
-    id: newSecId(), kind: "task", title: "", description: "", result: null, direction: "i_owe", owedBy: "owner", owedTo: null,
+    id: opts.id ?? newSecId(), kind: "task", title: "", description: "", result: null, direction: "i_owe", owedBy: "owner", owedTo: null,
     dueAt: null, allDay: false, snoozeUntil: null, priority: 1, critical: false, links: {}, source: who.source, notes: [],
     createdAt: at, updatedAt: at, completedAt: null, proposedDone: null, deletedAt: null, expiresAt: null, expectBy: null, lastChasedAt: null, remindAt: null, rev: 1,
     ...(opts.handoffFrom ? { handoffFrom: opts.handoffFrom } : {}),
@@ -920,15 +932,19 @@ async function spawnNext(
  * delete (`deletedAt`, `expiresAt` + `SEC_RESTORE_DAYS`, restorable), bump `rev`, move its indexes (`indexWrites`, so it
  * leaves `sec:open` and `sec:due`) and write one audit line `action` by `who`. "gone": missing, already deleted, or not
  * an item id; "kept": `only` refused it; "failed": the lock timed out or a read or write failed (nothing is written
- * before the lock). `scope` is the caller's own, never a value from a request.
+ * before the lock). `missing`, when given, runs under the same lock when no record exists: a booking's cancel marks its
+ * claim there, so a creation still to run under this lock finds the claim gone and creates nothing. `scope` is the
+ * caller's own, never a value from a request.
  */
 export async function removeBySystem(
-  scope: string, id: string, who: Who, action: string, opts: { now?: number; only?: (it: SecItem) => boolean } = {},
+  scope: string, id: string, who: Who, action: string,
+  opts: { now?: number; only?: (it: SecItem) => boolean; missing?: () => Promise<unknown> } = {},
 ): Promise<"deleted" | "kept" | "gone" | "failed"> {
   if (!SEC_ID.test(id)) return "gone";
   try {
     const r = await withLock(scope, id, async (): Promise<"deleted" | "kept" | "gone"> => {
       const cur = await db.get<SecItem>(SEC_KEYS.item(scope, id));
+      if (!cur && opts.missing) await opts.missing();
       if (!cur || cur.deletedAt) return "gone";
       if (opts.only && !opts.only(cur)) return "kept";
       const now = opts.now ?? Date.now();

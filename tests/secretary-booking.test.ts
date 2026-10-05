@@ -361,6 +361,38 @@ describe("applying a booking (rules 590-593)", () => {
     expect(five.filter((r) => r === "noop")).toHaveLength(4);
     expect(await listOpenItems(u.email)).toHaveLength(2);
 
+    // A run that died after taking the claim and before writing its item (here: the store failed at the item's lock).
+    // The claim already names the id the item will get, so a quick retry finishes it there: never dropped, never twice.
+    const r1 = booking();
+    const lockSpy = vi.spyOn(db, "lock").mockRejectedValueOnce(new Error("store down"));
+    try {
+      expect(await applyBooking(rec, r1, hash)).toBe("busy");
+    } finally {
+      lockSpy.mockRestore();
+    }
+    const id1 = (await claimOf(u.email, "calcom", r1.externalId))!;
+    expect(id1).toMatch(/^s[a-f0-9]{16}$/);
+    expect(await getItem(u.email, id1)).toBeNull();
+    expect(await applyBooking(rec, r1, hash)).toBe("created");
+    expect(await getItem(u.email, id1)).toMatchObject({ source: "booking", title: "Meeting with Omar Example" });
+    expect(await applyBooking(rec, r1, hash)).toBe("noop");
+    // A run that died after writing the item and before its indexes: the retry finds the item at the claimed id, lists it
+    // again, and makes no second one.
+    const r2 = booking();
+    const zaddSpy = vi.spyOn(db, "zadd").mockRejectedValueOnce(new Error("store down"));
+    try {
+      expect(await applyBooking(rec, r2, hash)).toBe("busy");
+    } finally {
+      zaddSpy.mockRestore();
+    }
+    const id2 = (await claimOf(u.email, "calcom", r2.externalId))!;
+    expect(await getItem(u.email, id2)).not.toBeNull();
+    expect((await listOpenItems(u.email)).map((x) => x.id)).not.toContain(id2);
+    expect(await applyBooking(rec, r2, hash)).toBe("noop");
+    expect((await listOpenItems(u.email)).filter((x) => x.id === id2)).toHaveLength(1);
+    expect(await listOpenItems(u.email)).toHaveLength(4);
+    expect(await db.smembers(SEC_KEYS.all(u.email))).toHaveLength(4);
+
     // Arabic link: Arabic title; a meeting that already ended (less than a day ago) has no reminder
     const pastStart = minuteFrom(-3 * HOUR);
     expect(await applyBooking(recOf(u, { lang: "ar" }), booking({ name: "عمر" }, pastStart), hash)).toBe("created");
@@ -464,6 +496,8 @@ describe("applying a booking (rules 590-593)", () => {
     const fresh = booking({ kind: "move", externalId: "bk_fresh", oldExternalId: "bk_unknown_old" });
     expect(await applyBooking(rec, fresh, hash)).toBe("created");
     expect(await listOpenItems(u.email)).toHaveLength(1);
+    // both of its ids name the one item, so a cancel under either finds it
+    expect(await claimOf(u.email, "calcom", "bk_unknown_old")).toBe(await claimOf(u.email, "calcom", "bk_fresh"));
     expect(await applyBooking(rec, cancel("bk_fresh"), hash)).toBe("removed");
     expect(await listOpenItems(u.email)).toHaveLength(0);
     // a moved or cancelled booking whose item the owner closed is left as the owner left it
@@ -497,10 +531,44 @@ describe("applying a booking (rules 590-593)", () => {
       expect(await listOpenItems(v.email)).toHaveLength(0);
     }
 
-    // a claim still being written (another delivery is creating it) is "busy", so the provider retries
-    await db.set(`sec:book:ext:${u.email}:calcom:bk_pending`, "pending", 60);
-    expect(await applyBooking(rec, cancel("bk_pending"), hash)).toBe("busy");
-    expect(await applyBooking(rec, booking({ kind: "move", externalId: "bk_pending" }), hash)).toBe("busy");
+    // a claim whose value names no item creates and removes nothing
+    await db.set(`sec:book:ext:${u.email}:calcom:bk_odd`, "pending", 60);
+    expect(await applyBooking(rec, cancel("bk_odd"), hash)).toBe("noop");
+    expect(await applyBooking(rec, booking({ kind: "move", externalId: "bk_odd" }), hash)).toBe("noop");
+    expect(await claimOf(u.email, "calcom", "bk_odd")).toBe("pending");
+
+    // A booking claimed but not yet written (its creation died, or is still running):
+    const claimRaw = (externalId: string) => {
+      const sid = `s${randomBytes(8).toString("hex")}`;
+      return db.set(`sec:book:ext:${u.email}:calcom:${externalId}`, sid, 3600).then(() => sid);
+    };
+    // a cancel marks the claim under the item's lock, so the creation never happens, and a later move creates nothing
+    const late = booking();
+    const lateId = await claimRaw(late.externalId);
+    expect(await applyBooking(rec, cancel(late.externalId), hash)).toBe("noop");
+    expect(await applyBooking(rec, late, hash)).toBe("noop");
+    expect(await applyBooking(rec, booking({ kind: "move", externalId: "bk_late_new", oldExternalId: late.externalId }), hash)).toBe("noop");
+    expect(await getItem(u.email, lateId)).toBeNull();
+    // a move writes it at the claimed id with the new times and claims its new id; the original create, delivered late, is a no-op
+    const early = booking();
+    const earlyId = await claimRaw(early.externalId);
+    const earlyAt = minuteFrom(7 * DAY);
+    expect(await applyBooking(rec, booking({ kind: "move", externalId: "bk_early_new", oldExternalId: early.externalId }, earlyAt), hash)).toBe("created");
+    expect(await getItem(u.email, earlyId)).toMatchObject({ dueAt: iso(earlyAt), source: "booking" });
+    expect(await claimOf(u.email, "calcom", "bk_early_new")).toBe(earlyId);
+    expect(await applyBooking(rec, early, hash)).toBe("noop");
+    expect((await listOpenItems(u.email)).filter((x) => x.id === earlyId)).toHaveLength(1);
+
+    // a move never overwrites a claim that names another item: it moves the item its previous id names
+    const x = booking(), y = booking();
+    expect(await applyBooking(rec, x, hash)).toBe("created");
+    expect(await applyBooking(rec, y, hash)).toBe("created");
+    const [xId, yId] = await Promise.all([claimOf(u.email, "calcom", x.externalId), claimOf(u.email, "calcom", y.externalId)]);
+    const xAt = minuteFrom(9 * DAY);
+    expect(await applyBooking(rec, booking({ kind: "move", externalId: y.externalId, oldExternalId: x.externalId }, xAt), hash)).toBe("moved");
+    expect(await claimOf(u.email, "calcom", y.externalId)).toBe(yId);
+    expect(await getItem(u.email, xId!)).toMatchObject({ dueAt: iso(xAt) });
+    expect((await getItem(u.email, yId!))!.rev).toBe(1);
   });
 
   it("rule 593: removeBySystem sets the same restore window and audit as deleteNextCopy, which now uses it and behaves as before; the per-link cap of 60 creations a day stops at 60 and does not spend sec:create for the 61st; the owner's own 200 a day still applies", async () => {
@@ -562,7 +630,7 @@ describe("applying a booking (rules 590-593)", () => {
     expect(await applyBooking(rec, extra, hash)).toBe("noop");
     expect(await db.get(`rate:sec:create:${v.email}`)).toBe(60);
     expect(await listOpenItems(v.email)).toHaveLength(60);
-    // its claim is not left behind: tomorrow's retry of it creates
+    // its claim is released: a refusal is a no-op the provider does not retry, and nothing is left claimed for it
     expect(await claimOf(v.email, "calcom", extra.externalId)).toBeNull();
     // another link of the same account has its own 60
     expect(await applyBooking(rec, booking(), newHash())).toBe("created");

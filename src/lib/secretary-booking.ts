@@ -24,8 +24,8 @@ import { isAgentId } from "./agents";
 import type { BookRecord } from "./booking-token";
 import { db } from "./db";
 import { allow, sameSecret } from "./rate";
-import { OWNER_ALIASES, SEC_ID, SEC_KEYS, calFor, changeItem, cleanLine, createItem, parseFields, removeBySystem, stateOf, type Who } from "./secretary";
-import { SEC_LIMITS, zoneLocalInput } from "./secretary-agenda";
+import { OWNER_ALIASES, SEC_ID, SEC_KEYS, calFor, changeItem, cleanLine, createItem, newSecId, parseFields, reindexOpen, removeBySystem, stateOf, withLock, type Who } from "./secretary";
+import { SEC_LIMITS, zoneLocalInput, type SecItem } from "./secretary-agenda";
 import type { Zone } from "./zones";
 
 export type Parsed = {
@@ -144,9 +144,11 @@ export const BOOK_CLAIM_S = 400 * 86400;
 export const BOOK_NEW_PER_DAY = 60;
 /** A booking more than a day in the past or more than 366 days ahead is not put on the list. */
 export const BOOK_WINDOW = { backMs: 864e5, aheadMs: 366 * 864e5 } as const;
-/** The claim's value while its item is being created; it lapses in a minute if that run dies. */
-const PENDING = "pending";
-const PENDING_S = 60;
+/**
+ * A claim's value once its booking was cancelled before its item was written (`removeBySystem`'s `missing` hook):
+ * nothing is created for that booking after.
+ */
+const CANCELLED = "cancelled";
 const MIN = 60_000;
 const SYSTEM: Who = { actor: "rule", via: "cron" };
 const PROVIDER_NAME = { calcom: "Cal.com", calendly: "Calendly" } as const;
@@ -180,54 +182,91 @@ function fieldsOf(rec: BookRecord, p: Parsed, zone: Zone): Record<string, unknow
   };
 }
 
-/** Name `externalId` as `itemId`'s booking: the index first, so account deletion finds every claim it could leave. */
-async function claimFor(rec: BookRecord, externalId: string, itemId: string) {
+const claimKeyOf = (rec: BookRecord, externalId: string) => SEC_KEYS.bookClaim(rec.scope, rec.provider, externalId);
+
+/**
+ * Claim `externalId` for `itemId` unless it is claimed already (SET NX, 400 days; never overwritten, so a claim that
+ * names another item stays as it is). The index first, so account deletion finds every claim it could leave. Returns
+ * the value the claim holds now: `itemId` when this call took it, the earlier value otherwise (null when it was released
+ * between the two calls).
+ */
+async function claim(rec: BookRecord, externalId: string, itemId: string): Promise<string | null> {
   await db.sadd(SEC_KEYS.bookIds(rec.scope), `${rec.provider}:${externalId}`);
-  await db.set(SEC_KEYS.bookClaim(rec.scope, rec.provider, externalId), itemId, BOOK_CLAIM_S);
+  const key = claimKeyOf(rec, externalId);
+  if (await db.setNx(key, itemId, BOOK_CLAIM_S)) return itemId;
+  return db.get<string>(key);
 }
 
 /**
- * Create the booking's item, once: the claim is taken with SET NX before anything else, so a replay, or the same
- * delivery five times at once, finds it taken and does nothing. Then the link's own daily cap (before `createItem`, so
- * the 61st spends none of the owner's `sec:create`), then `createItem` as the rule (the owner's 200 a day and 500 open
- * still apply). A creation that does not happen releases the claim, so a later delivery of it can try again.
+ * Write the booking's item at the claimed id `id`, once (the `sec:spawn` pattern). Under the item's lock: the claim
+ * `key` must still name `id` (a cancel that came first marked it cancelled; a refusal released it), and when the record
+ * exists already (an earlier run, or another delivery at the same moment) nothing is created: "exists", after its
+ * indexes are written again in case that run died between the record and its indexes. Otherwise the link's own cap
+ * (before `createItem`, so a refused creation spends none of the owner's `sec:create`), then `createItem` at `id` as the
+ * rule; the owner's 200 a day and 500 open still apply. A refusal (a cap, a validation) releases the claim, so a later
+ * delivery can try again; a 503 or a throw keeps it, so the provider's retry finishes this creation at the same id.
+ * There is no window in which a retry finds the claim taken but cannot finish it, and none in which a second item can
+ * be made.
  */
-async function createBooked(rec: BookRecord, p: Parsed, hash: string): Promise<ApplyResult> {
+async function createAt(rec: BookRecord, p: Parsed, hash: string, id: string, key: string): Promise<ApplyResult | "exists"> {
   const scope = rec.scope;
-  const key = SEC_KEYS.bookClaim(scope, rec.provider, p.externalId);
-  await db.sadd(SEC_KEYS.bookIds(scope), `${rec.provider}:${p.externalId}`);
-  if (!(await db.setNx(key, PENDING, PENDING_S))) return "noop";
-  let itemId: string | null = null;
-  let busy = false;
-  try {
-    const [ok, { zone, cal }] = await Promise.all([allow(`book:new:${hash}`, BOOK_NEW_PER_DAY, 86400), calFor(scope)]);
-    if (ok) {
-      const r = await createItem({ email: accountOf(scope), scope }, fieldsOf(rec, p, zone), { ...SYSTEM, source: "booking" }, { zone, cal });
-      if (r.ok) itemId = r.item.id;
-      else busy = r.status === 503;
+  const { zone, cal } = await calFor(scope);
+  const r = await withLock(scope, id, async (): Promise<ApplyResult | "exists"> => {
+    const [held, cur] = await Promise.all([db.get<string>(key), db.get<SecItem>(SEC_KEYS.item(scope, id))]);
+    if (held !== id) return "noop";
+    if (cur) {
+      await reindexOpen(scope, cur);
+      return "exists";
     }
-  } finally {
-    if (itemId) await db.set(key, itemId, BOOK_CLAIM_S);
-    else await db.del(key);
-  }
-  return itemId ? "created" : busy ? "busy" : "noop";
+    if (!(await allow(`book:new:${hash}`, BOOK_NEW_PER_DAY, 86400))) {
+      await db.del(key);
+      return "noop";
+    }
+    const made = await createItem({ email: accountOf(scope), scope }, fieldsOf(rec, p, zone), { ...SYSTEM, source: "booking" }, { zone, cal, id });
+    if (made.ok) return "created";
+    if (made.status === 503) return "busy";
+    await db.del(key);
+    return "noop";
+  });
+  // A lock that timed out (`SecFail`, 503): the retry finishes this creation.
+  return typeof r === "string" ? r : "busy";
+}
+
+/**
+ * A booking not seen before: claim its id (and, for a move whose ids were unknown, the previous id too, for the same
+ * item) for a new item id, then write the item there (`createAt`). A delivery that finds the claim taken finishes the
+ * same creation at the claimed id, which is a no-op when the item exists; a claim marked cancelled creates nothing.
+ */
+async function createBooked(rec: BookRecord, p: Parsed, hash: string, alsoIds: string[] = []): Promise<ApplyResult> {
+  const id = await claim(rec, p.externalId, newSecId());
+  if (id === null) return "busy";
+  if (!SEC_ID.test(id)) return "noop";
+  await Promise.all(alsoIds.map((x) => claim(rec, x, id)));
+  const r = await createAt(rec, p, hash, id, claimKeyOf(rec, p.externalId));
+  return r === "exists" ? "noop" : r;
 }
 
 /**
  * Move the booking's item to the new start, end and reminder (`changeItem` update as the rule, under the item's lock)
- * and name the new external id as that item too, so a later cancel or move under it finds the same item. An item the
- * owner closed or deleted is left as it is ("noop"), still claimed. "gone": the claimed item no longer exists (purged
- * after its 30 days), so the caller creates it again.
+ * and claim the new external id for that item (SET NX: a claim naming another item is left alone), so a later cancel or
+ * move under it finds the same item. An item the owner closed or deleted is left as it is ("noop"). A claim whose item
+ * does not exist (a creation that died or is still running, or an item purged after its 30 days) is finished at that id
+ * with the new times (`createAt`); when that creation turns out to exist after all, the move is applied to it once more.
  */
-async function moveBooked(rec: BookRecord, p: Parsed, itemId: string, claimed: boolean): Promise<ApplyResult | "gone"> {
+async function moveBooked(rec: BookRecord, p: Parsed, hash: string, itemId: string, fromKey: string, again = false): Promise<ApplyResult> {
   const { zone, cal } = await calFor(rec.scope);
   const f = fieldsOf(rec, p, zone);
   const parsed = parseFields({ dueAt: f.dueAt, remindAt: f.remindAt }, Date.now(), zone);
   if (!parsed.ok) return "noop";
   const r = await changeItem(rec.scope, itemId, { action: "update", fields: parsed.fields }, SYSTEM, undefined, zone, cal);
   if (!r.ok && r.status === 503) return "busy";
-  if (!r.ok && r.error === "not_found") return "gone";
-  if (!claimed) await claimFor(rec, p.externalId, itemId);
+  if (!r.ok && r.error === "not_found") {
+    const made = await createAt(rec, p, hash, itemId, fromKey);
+    if (made === "exists") return again ? "noop" : moveBooked(rec, p, hash, itemId, fromKey, true);
+    if (made === "created") await claim(rec, p.externalId, itemId);
+    return made;
+  }
+  await claim(rec, p.externalId, itemId);
   return r.ok ? "moved" : "noop";
 }
 
@@ -238,37 +277,37 @@ async function moveBooked(rec: BookRecord, p: Parsed, itemId: string, claimed: b
  *
  * - create: one item (`createBooked`). A booking whose start is more than a day back or more than 366 days ahead: noop.
  * - move: the item named by the previous id first (a Cal.com reschedule has a new uid; a Calendly one a new invitee),
- *   then by this id; moved (`moveBooked`). Neither id known, or the item they name purged: created, as a create.
- *   Same window as a create.
+ *   then by this id; moved (`moveBooked`). Neither id known: created, as a create, both ids claimed for it. A booking
+ *   cancelled before its item was written: noop. Same window as a create.
  * - cancel: only the id is read (its start and end may be empty). The open item it names is removed (`removeBySystem`,
- *   restorable for 30 days, audit `booking_cancel` by the rule); unknown, closed or already removed: noop.
+ *   restorable for 30 days, audit `booking_cancel` by the rule); a claimed item not yet written is marked cancelled
+ *   under its lock, so its creation never happens; unknown, closed or already removed: noop.
  * - ignore: noop.
- * A claim another delivery is still creating, a held item lock, or a store failure: "busy".
+ * A held item lock or a store failure: "busy" (the provider retries, and the retry finishes what this one began).
  */
 export async function applyBooking(rec: BookRecord, p: Parsed, hash: string, nowMs: number = Date.now()): Promise<ApplyResult> {
   try {
     if (p.kind === "ignore" || !p.externalId) return "noop";
-    const claimKey = (id: string) => SEC_KEYS.bookClaim(rec.scope, rec.provider, id);
     if (p.kind === "cancel") {
-      const held = await db.get<string>(claimKey(p.externalId));
-      if (held === PENDING) return "busy";
+      const key = claimKeyOf(rec, p.externalId);
+      const held = await db.get<string>(key);
       if (typeof held !== "string" || !SEC_ID.test(held)) return "noop";
-      const r = await removeBySystem(rec.scope, held, SYSTEM, "booking_cancel", { only: (it) => stateOf(it) === "open" });
+      const r = await removeBySystem(rec.scope, held, SYSTEM, "booking_cancel", {
+        only: (it) => stateOf(it) === "open",
+        missing: () => db.set(key, CANCELLED, BOOK_CLAIM_S),
+      });
       return r === "deleted" ? "removed" : r === "failed" ? "busy" : "noop";
     }
     const start = Date.parse(p.start), end = Date.parse(p.end);
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return "noop";
     if (start < nowMs - BOOK_WINDOW.backMs || start > nowMs + BOOK_WINDOW.aheadMs) return "noop";
     if (p.kind === "move") {
-      const ids = [...(p.oldExternalId ? [p.oldExternalId] : []), p.externalId];
-      const held = await Promise.all(ids.map((id) => db.get<string>(claimKey(id))));
-      const itemId = held.find((h): h is string => typeof h === "string" && SEC_ID.test(h));
-      if (itemId) {
-        const r = await moveBooked(rec, p, itemId, held[held.length - 1] === itemId);
-        if (r !== "gone") return r;
-        // The claim outlived its item: release this id's stale claim so the create below can take it.
-        if (held[held.length - 1] === itemId) await db.del(claimKey(p.externalId));
-      } else if (held.includes(PENDING)) return "busy";
+      const keys = [...(p.oldExternalId ? [p.oldExternalId] : []), p.externalId].map((x) => claimKeyOf(rec, x));
+      const held = await Promise.all(keys.map((k) => db.get<string>(k)));
+      const i = held.findIndex((h) => typeof h === "string" && SEC_ID.test(h));
+      if (i >= 0) return await moveBooked(rec, p, hash, held[i]!, keys[i]);
+      if (held.includes(CANCELLED)) return "noop";
+      return await createBooked(rec, p, hash, p.oldExternalId ? [p.oldExternalId] : []);
     }
     return await createBooked(rec, p, hash);
   } catch (e) {
