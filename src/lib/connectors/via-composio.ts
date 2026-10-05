@@ -1,5 +1,5 @@
 import type { Connection } from "./store";
-import { composioRead, composioRevoke, composioWrite } from "./composio";
+import { composioRead, composioRevoke, composioStageFile, composioWrite } from "./composio";
 import { PROVIDER_TOOLKITS, type Toolkit } from "./composio-catalog";
 import { plain } from "./meta";
 import { accountOf as account, isComposio, listOf, pick } from "./composio-shape";
@@ -106,6 +106,62 @@ export async function postToTikTokVia(scope: string, c: Connection, text: string
   return { id, url: "https://www.tiktok.com/" };
 }
 
+/**
+ * A WhatsApp item becomes a message template submitted to Meta's review: nobody is messaged. Its {{n}} variables are
+ * the template's, renumbered 1..k in order of first use as Meta requires, each with a neutral example for the reviewer.
+ * Meta refuses a body that starts or ends with a variable or is over 1,024 characters; those are refused here instead,
+ * before anything is sent, so the owner edits the text. Pure, for tests.
+ */
+export function whatsappTemplate(taskId: string, text: string, lang: string | undefined, stamp: string) {
+  const vars: string[] = [];
+  let body = plain(text).trim().replace(/\{\{\s*(\d{1,2})\s*\}\}/g, (_, n: string) => {
+    let i = vars.indexOf(n);
+    if (i < 0) i = vars.push(n) - 1;
+    return `{{${i + 1}}}`;
+  });
+  body = body.replace(/\n{3,}/g, "\n\n");
+  if (!body) throw new Error("whatsapp_empty");
+  if (body.length > 1024) throw new Error("whatsapp_too_long");
+  if (/^\{\{\d+\}\}|\{\{\d+\}\}[\s.!؟?،,]*$/.test(body)) throw new Error("whatsapp_variable_at_edge");
+  const ar = lang !== "en";
+  const component: Record<string, unknown> = { type: "BODY", text: body };
+  if (vars.length) component.example = { body_text: [vars.map((_, i) => (ar ? `مثال${i + 1}` : `Example${i + 1}`))] };
+  const id = taskId.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 24) || "item";
+  return { name: `thakeen_${id}_${stamp}`, category: "MARKETING", language: ar ? "ar" : "en", components: [component], allow_category_change: true };
+}
+
+export async function submitWhatsAppTemplateVia(scope: string, c: Connection, taskId: string, text: string, lang?: string): Promise<{ url: string; id: string }> {
+  const args = whatsappTemplate(taskId, text, lang, Date.now().toString(36));
+  const r = await composioWrite(scope, "whatsapp", "WHATSAPP_CREATE_MESSAGE_TEMPLATE", args, account(c, "whatsapp"));
+  const id = pick(r, ["id"]);
+  if (!id) throw new Error("whatsapp 502: no id");
+  // Meta can refuse at once; the owner then rewords. PENDING and APPROVED are both a submitted draft.
+  if (/^rejected$/i.test(pick(r, ["status"]) ?? "")) throw new Error("whatsapp 400: template_rejected");
+  return { id, url: "https://business.facebook.com/latest/whatsapp_manager/message_templates" };
+}
+
+/** YouTube's title and description refuse angle brackets. */
+const ytText = (s: string, max: number) => plain(s).replace(/[<>]/g, "").trim().slice(0, max);
+
+/**
+ * A generated clip goes to the owner's channel as a private video (the catalog pins privacyStatus): the owner makes it
+ * public, or a Short, in YouTube Studio. The clip is our own Blob copy, staged with Composio first.
+ */
+export async function uploadToYouTubeVia(scope: string, c: Connection, title: string, text: string, videoUrl: string): Promise<{ url: string; id: string }> {
+  const file = await composioStageFile(scope, "youtube", "YOUTUBE_UPLOAD_VIDEO", videoUrl);
+  const r = await composioWrite(scope, "youtube", "YOUTUBE_UPLOAD_VIDEO", {
+    title: ytText(title, 100) || "Thakeen",
+    description: ytText(text, 5000),
+    tags: [],
+    categoryId: "22",
+    privacyStatus: "private",
+    videoFilePath: file,
+  }, account(c, "youtube"));
+  const id = pick(r, ["id"]);
+  if (!id) throw new Error("youtube 502: no id");
+  return { id, url: `https://studio.youtube.com/video/${encodeURIComponent(id)}/edit` };
+}
+
 // ---------- connect ----------
 
 type Page = { id: string; name: string };
@@ -176,6 +232,20 @@ export async function connectViaComposio(scope: string, provider: string, toolki
     meta.account = pick(me, ["name", "localizedFirstName"]) ?? "LinkedIn";
   }
   if (toolkit === "tiktok") meta.account = "TikTok";
+  if (toolkit === "whatsapp") {
+    // The business account the connection carries; a login without one has nowhere to submit a template.
+    const waba = await composioRead(scope, "whatsapp", "WHATSAPP_GET_BUSINESS_ACCOUNT_DETAILS", { fields: "id,name" }, accountId);
+    if (!pick(waba, ["id"])) throw new Error("no_whatsapp_business");
+    meta.account = (pick(waba, ["name"]) ?? "WhatsApp Business").slice(0, 80);
+  }
+  if (toolkit === "youtube") {
+    const ch = listOf(await composioRead(scope, "youtube", "YOUTUBE_LIST_CHANNELS", { part: "snippet", mine: true, maxResults: 5 }, accountId), "snippet")
+      .find((x) => typeof x.id === "string" && /^UC[\w-]{10,}$/.test(x.id));
+    if (!ch) throw new Error("no_youtube_channel");
+    meta.channelId = String(ch.id);
+    const snip = ch.snippet as Record<string, unknown> | undefined;
+    meta.account = (typeof snip?.title === "string" ? snip.title : "YouTube").slice(0, 80);
+  }
   if (toolkit === "metaads" || toolkit === "snapchat" || toolkit === "googleads" || toolkit === "tiktok_ads") {
     // Read only: the ad accounts this login can read, the first chosen until the owner picks another (select_ad_account).
     const accounts = await adAccountsVia(scope, provider, accountId);

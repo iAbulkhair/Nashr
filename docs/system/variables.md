@@ -88,12 +88,14 @@ Read in `src/lib/connectors/composio.ts` (`composioEnabled`, `composioReady`, `g
 | Name | Purpose | Secret |
 |---|---|---|
 | `COMPOSIO_API_KEY` | Server-side key for Composio's API | Yes |
-| `COMPOSIO_PROVIDERS` | Comma list of providers routed through Composio (`meta`, `x`, `linkedin`, `tiktok`; read only: `meta_ads`, `snapchat`, `google_ads`, `tiktok_ads`, `google`). Unset: none, and Meta and X keep their direct apps | No |
+| `COMPOSIO_PROVIDERS` | Comma list of providers routed through Composio (`meta`, `x`, `linkedin`, `tiktok`; drafts only: `whatsapp`, `youtube`; read only: `meta_ads`, `snapchat`, `google_ads`, `tiktok_ads`, `google`). Unset: none, and Meta and X keep their direct apps | No |
 | `COMPOSIO_AUTH_FACEBOOK` | Composio auth config id for the Facebook toolkit | No, keep internal |
 | `COMPOSIO_AUTH_INSTAGRAM` | Composio auth config id for the Instagram toolkit | No, keep internal |
 | `COMPOSIO_AUTH_TWITTER` | Composio auth config id for the X toolkit | No, keep internal |
 | `COMPOSIO_AUTH_LINKEDIN` | Composio auth config id for the LinkedIn toolkit | No, keep internal |
 | `COMPOSIO_AUTH_TIKTOK` | Composio auth config id for the TikTok toolkit, set up with Thakeen's own TikTok app (plan Task 0) | No, keep internal |
+| `COMPOSIO_AUTH_WHATSAPP` | Composio auth config id for the WhatsApp toolkit (message templates for Meta's review only) | No, keep internal |
+| `COMPOSIO_AUTH_YOUTUBE` | Composio auth config id for the YouTube toolkit (private uploads only) | No, keep internal |
 | `COMPOSIO_AUTH_METAADS` | Composio auth config id for the Meta Ads toolkit (read only) | No, keep internal |
 | `COMPOSIO_AUTH_SNAPCHAT` | Composio auth config id for the Snapchat Ads toolkit (read only) | No, keep internal |
 | `COMPOSIO_AUTH_GOOGLEADS` | Composio auth config id for the Google Ads toolkit (read only) | No, keep internal |

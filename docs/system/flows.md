@@ -229,6 +229,17 @@ Files: `src/lib/connectors/{composio,composio-catalog,via-composio}.ts`, the thr
 3. Publishing: `publishTask` sends the same task to `via-composio.ts` when the record is a Composio one. Every call goes through `composioWrite`/`composioRead`: the tool and its argument names must be in `composio-catalog.ts`, 600 calls per workspace per hour, 20 s timeout, and the result is shaped like the direct connectors' errors so `publish-once` holds an unknown result and reconnects on a refused token. LinkedIn and TikTok publish only this way; TikTok sends an image as a draft to the owner's inbox.
 4. Disconnect and account deletion revoke every account at Composio first (rule 635).
 
+### 11b. Drafts: WhatsApp templates, private YouTube uploads, email drafts (branch `claude/composio-api-install-1d5bfc`, rules 641-644)
+
+Nothing in this section reaches a customer or the public; the owner finishes each draft in the platform's own tool.
+
+1. Targets (`targets.ts`): an item with `channel: "whatsapp"` goes to `whatsapp`; one with `channel: "email"` to `brevo` and `klaviyo`; a social item whose `videoUrl` is our own Blob copy to `youtube`. WhatsApp and YouTube are targets only from a Composio record.
+2. Gate: `gateTask(..., { publish: true, provider })` holds every placeholder as before, except that numeric `{{n}}` variables pass when the provider is `whatsapp` (`TEMPLATE_TARGETS` in `brand-rules.ts`): they are the template's variables. The publish route, the chat publish action and the inbox buttons pass the provider.
+3. WhatsApp: connect reads the business account (`WHATSAPP_GET_BUSINESS_ACCOUNT_DETAILS`; none answers `no_whatsapp_business`). Publish builds a template with `whatsappTemplate` (variables renumbered 1..k with neutral examples, category MARKETING, language from the item) and calls `WHATSAPP_CREATE_MESSAGE_TEMPLATE`. Empty, over 1,024 characters or a variable at the start or end is refused before sending; Meta's immediate REJECTED is a refusal (`whatsapp 400`).
+4. YouTube: connect lists the owner's channel (`YOUTUBE_LIST_CHANNELS`, `mine: true`; none answers `no_youtube_channel`). Publish stages the Blob clip with Composio (`composioStageFile`: our Blob URL only, 30 s) and calls `YOUTUBE_UPLOAD_VIDEO` with `privacyStatus: "private"`, which the catalog's `fixed` values enforce in `composio.ts`. The answer links YouTube Studio.
+5. Email: Brevo reads the account's senders, takes the first active one (none: `brevo_no_sender`) and creates a campaign with name, subject, sender and HTML only (no recipients, no send time). Klaviyo creates a CODE template. The HTML is the item rendered by `render` (md.ts). Both use the stored API key on fixed hosts.
+6. Errors: the refusals above are in `publish-once`'s REFUSED list; `whatsapp`, `youtube`, `brevo` and `klaviyo` errors carry the provider's status, so a 4xx is a refusal and a 5xx may have posted.
+
 ## 12. API-key connectors
 
 Files: `src/app/api/connect/[provider]/key/route.ts`, `src/lib/connectors/{wordpress,woocommerce,keyed}.ts`.

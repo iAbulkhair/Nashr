@@ -48,6 +48,7 @@ function fake(): ComposioClient {
         return a ?? { successful: false, error: "not mocked" };
       },
     },
+    files: { upload: async () => ({}) },
   };
 }
 

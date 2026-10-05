@@ -8,16 +8,23 @@
  * create, edit, pause or fund an ad, or change a property (the founder's rule of 2026-10-05: ads are read and analysed,
  * never published or edited).
  *
+ * WhatsApp and YouTube are drafts only (rule 641): WhatsApp's one write submits a message template to Meta's review and
+ * no tool sends a message; YouTube's one write uploads a video whose privacyStatus is pinned to "private" in `fixed`.
+ *
  * Not here on purpose: ad writes (money moves need their own spec, evaluation spec C-R1), comments and messages (untrusted
  * input with no feature to use it), Google Business Profile (Composio lists no toolkit for it), Calendly and Cal.com
  * (Reem B2 receives their webhooks directly, evaluation spec C-R4).
  */
 export type Toolkit =
-  | "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok"
+  | "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok" | "whatsapp" | "youtube"
   | "metaads" | "snapchat" | "googleads" | "tiktok_ads" | "google_analytics" | "google_search_console";
 
 type Tools = Readonly<Record<string, readonly string[]>>;
-export type ToolkitEntry = Readonly<{ provider: string; authEnv: string; read: Tools; write: Tools }>;
+/**
+ * `fixed`: argument values a write must carry exactly, checked in composio.ts before anything is sent. They keep a
+ * draft a draft in code, not only in the caller: TikTok's photo lands in the owner's inbox, YouTube's upload is private.
+ */
+export type ToolkitEntry = Readonly<{ provider: string; authEnv: string; read: Tools; write: Tools; fixed?: Readonly<Record<string, Readonly<Record<string, unknown>>>> }>;
 
 export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
   facebook: {
@@ -51,6 +58,23 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
     authEnv: "COMPOSIO_AUTH_TIKTOK",
     read: {},
     write: { TIKTOK_POST_PHOTO: ["photo_images", "photo_cover_index", "post_mode", "title", "description"] },
+    fixed: { TIKTOK_POST_PHOTO: { post_mode: "MEDIA_UPLOAD" } },
+  },
+  // ---------- drafts only: nothing here reaches a customer or the public ----------
+  whatsapp: {
+    provider: "whatsapp",
+    authEnv: "COMPOSIO_AUTH_WHATSAPP",
+    // The WhatsApp Business Account comes from the connection; no waba_id argument is ever sent. No send tool is listed:
+    // a template goes to Meta's review and the owner sends it from their own tools.
+    read: { WHATSAPP_GET_BUSINESS_ACCOUNT_DETAILS: ["fields"] },
+    write: { WHATSAPP_CREATE_MESSAGE_TEMPLATE: ["name", "category", "language", "components", "allow_category_change"] },
+  },
+  youtube: {
+    provider: "youtube",
+    authEnv: "COMPOSIO_AUTH_YOUTUBE",
+    read: { YOUTUBE_LIST_CHANNELS: ["part", "mine", "maxResults"] },
+    write: { YOUTUBE_UPLOAD_VIDEO: ["title", "description", "tags", "categoryId", "privacyStatus", "videoFilePath"] },
+    fixed: { YOUTUBE_UPLOAD_VIDEO: { privacyStatus: "private" } },
   },
   // ---------- read only: ad results (src/lib/connectors/ads-via-composio.ts) ----------
   metaads: {
@@ -99,6 +123,8 @@ export const PROVIDER_TOOLKITS: Readonly<Record<string, readonly Toolkit[]>> = {
   x: ["twitter"],
   linkedin: ["linkedin"],
   tiktok: ["tiktok"],
+  whatsapp: ["whatsapp"],
+  youtube: ["youtube"],
   meta_ads: ["metaads"],
   snapchat: ["snapchat"],
   google_ads: ["googleads"],

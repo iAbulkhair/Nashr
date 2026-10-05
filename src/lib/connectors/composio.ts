@@ -4,6 +4,7 @@ import { allow } from "../rate";
 import { appOrigin } from "../origin";
 import { connectSecret } from "./store";
 import { PROVIDER_TOOLKITS, TOOLKITS, type Toolkit } from "./composio-catalog";
+import { isOurBlobUrl } from "../media-catalog";
 
 /**
  * The only file that talks to Composio (docs/superpowers/specs/2026-10-05-meta-via-composio-design.md, section 3).
@@ -29,7 +30,11 @@ export type ComposioClient = {
   tools: {
     execute(slug: string, body: { userId: string; connectedAccountId: string; arguments: Record<string, unknown>; version?: string }, o?: { signal?: AbortSignal }): Promise<ExecResult>;
   };
+  files: {
+    upload(p: { file: string; toolSlug: string; toolkitSlug: string }): Promise<{ name?: string; mimetype?: string; s3key?: string }>;
+  };
 };
+export type StagedFile = { name: string; mimetype: string; s3key: string };
 
 /** Pinned toolkit versions, set from the measured run (plan Task 8). Empty means Composio's default for the key. */
 export const TOOLKIT_VERSION: Partial<Record<Toolkit, string>> = {};
@@ -101,6 +106,9 @@ async function run(kind: "read" | "write", scope: string, toolkit: Toolkit, slug
   if (!tools || !Object.prototype.hasOwnProperty.call(tools, slug)) throw new Error("composio_tool_not_allowed");
   const allowed = tools[slug];
   for (const k of Object.keys(args)) if (!allowed.includes(k)) throw new Error("composio_argument_not_allowed");
+  // A value the catalog pins (a private upload, an inbox draft) is checked here, whatever the caller built.
+  const fixed = kind === "write" ? TOOLKITS[toolkit].fixed?.[slug] : undefined;
+  if (fixed) for (const [k, v] of Object.entries(fixed)) if (args[k] !== v) throw new Error("composio_argument_not_allowed");
   if (!accountId) throw new Error("not_connected");
   const c = await getClient();
   await count(scope);
@@ -122,6 +130,34 @@ async function run(kind: "read" | "write", scope: string, toolkit: Toolkit, slug
 
 export const composioRead = (scope: string, toolkit: Toolkit, slug: string, args: Record<string, unknown>, accountId: string) => run("read", scope, toolkit, slug, args, accountId);
 export const composioWrite = (scope: string, toolkit: Toolkit, slug: string, args: Record<string, unknown>, accountId: string) => run("write", scope, toolkit, slug, args, accountId);
+
+const STAGE_TIMEOUT_MS = 30_000;
+
+/**
+ * Stage a file with Composio for a write tool that takes one (YouTube's upload). Only our own Vercel Blob copy is ever
+ * handed over (isOurBlobUrl), so Composio fetches nothing a request or a model chose. Nothing is posted yet: a failure
+ * here is a refusal (`composio_stage_failed`), never "may have posted".
+ */
+export async function composioStageFile(scope: string, toolkit: Toolkit, slug: string, url: string): Promise<StagedFile> {
+  if (!Object.prototype.hasOwnProperty.call(TOOLKITS[toolkit]?.write ?? {}, slug)) throw new Error("composio_tool_not_allowed");
+  if (!isOurBlobUrl(url)) throw new Error("composio_file_not_allowed");
+  const c = await getClient();
+  await count(scope);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const f = await Promise.race([
+      c.files.upload({ file: url, toolSlug: slug, toolkitSlug: toolkit }),
+      new Promise<never>((_, no) => { timer = setTimeout(() => no(new Error("timeout")), STAGE_TIMEOUT_MS); }),
+    ]);
+    if (!f?.s3key || !f.name || !f.mimetype) throw new Error("no_key");
+    return { name: f.name, mimetype: f.mimetype, s3key: f.s3key };
+  } catch {
+    console.error("composio stage failed", slug);
+    throw new Error("composio_stage_failed");
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 const okRedirect = (u: string) => {
   try {

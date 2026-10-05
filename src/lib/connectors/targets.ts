@@ -1,5 +1,5 @@
 import type { Task } from "../brand";
-import { hasArtwork } from "../media-catalog";
+import { hasArtwork, isOurBlobUrl } from "../media-catalog";
 
 /**
  * Where an inbox item can be published, from the stored connections alone. Its only runtime import is ../media-catalog,
@@ -14,7 +14,7 @@ export type ConnLite = { provider: string; meta?: Record<string, string> };
 export const CONNECTION_OF: Record<string, string> = { facebook: "meta", instagram: "meta" };
 
 /** Providers that publish only through Composio (via-composio.ts): a direct record of them is not a target. */
-const VIA_ONLY = ["linkedin", "tiktok"];
+const VIA_ONLY = ["linkedin", "tiktok", "whatsapp", "youtube"];
 
 /** The stored provider ids, plus the publish targets a Meta connection provides. */
 export function connectedTargets(conns: ConnLite[]): string[] {
@@ -40,6 +40,11 @@ export function targetsFor(task: Task, connected: string[]): string[] {
   if (social && task.channel === "instagram" && connected.includes("instagram") && hasArtwork(task)) out.push("instagram");
   if (social && (task.channel === "instagram" || task.channel === "facebook") && connected.includes("facebook")) out.push("facebook");
   if ((task.type === "social" || task.type === "gbp" || task.type === "whatsapp") && connected.includes("telegram")) out.push("telegram");
+  // Drafts only: a WhatsApp message becomes a template for Meta's review, an email a draft in Brevo or Klaviyo, and a
+  // generated clip a private YouTube video (only our own Blob copy, the one file Composio is ever handed).
+  if (task.channel === "whatsapp" && connected.includes("whatsapp")) out.push("whatsapp");
+  if (task.channel === "email") for (const p of ["brevo", "klaviyo"]) if (connected.includes(p)) out.push(p);
+  if (task.type === "social" && isOurBlobUrl(task.videoUrl) && connected.includes("youtube")) out.push("youtube");
   return out;
 }
 
