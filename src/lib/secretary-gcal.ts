@@ -151,6 +151,9 @@ export async function reproof(link: CalLink, data: Record<string, string>, acces
   return connectProof("mscal", data, access, !!link.accountDomain);
 }
 
+/** The link as it was when this run read it: the same record (rev and connection), still there (ruling R5, R15). */
+const same = (now: CalLink | null, was: CalLink): now is CalLink => !!now && now.rev === was.rev && now.connectedAt === was.connectedAt;
+
 /** An access token with at least this much life left is used as it is. */
 const REFRESH_SKEW_MS = 120_000;
 
@@ -189,6 +192,9 @@ export async function freshAccess(scope: string, link: CalLink, now: number): Pr
   if (!access) return { ok: false, retry: true };
   const expires = Number(data.expires_in);
   const next: CalLink = { ...link, tokens: sealTokens({ access, refresh: data.refresh_token || t.refresh, expiresAt: now + (Number.isFinite(expires) && expires > 0 ? expires : 3600) * 1000 }) };
+  // The refresh was slow: a link unlinked, reset away or replaced meanwhile must not be brought back with these tokens (ruling R15).
+  // The caller sees a retry, and its own re-read finds nothing to write.
+  if (!same(await getLink(scope), link)) return { ok: false, retry: true };
   await putLink(scope, next);
   return { ok: true, access, link: next, data };
 }
@@ -219,13 +225,13 @@ async function noticeLost(scope: string, link: CalLink): Promise<void> {
  * The link cannot be read any more (spec §7.1-§7.3): state `reconnect` with `lostReason` (default `"token"`: the tokens are gone), the
  * synced events deleted, the scope out of the sync queue, one `cal_lost` audit line with the login and the provider. A lost token
  * also sends the owner one in-app notice (fingerprint `cal-lost:{scope}:{connectedAt}`), so a loss found by a route notifies as
- * one found by the sync does; a failed notice is logged by name and never undoes the loss. Only our side changes; nothing is sent
+ * one found by the sync does (`via: "cron"` for the sync's own losses, audited as the cron's); a failed notice is logged by name and never undoes the loss. Only our side changes; nothing is sent
  * to the provider (ruling R7). The caller holds the lock.
  */
-export async function loseLink(scope: string, link: CalLink, login: string, reason: LostReason = "token"): Promise<void> {
+export async function loseLink(scope: string, link: CalLink, login: string, reason: LostReason = "token", via: "web" | "cron" = "web"): Promise<void> {
   const next: CalLink = { ...link, state: "reconnect", lostReason: reason, rev: link.rev + 1 };
   delete next.choices;
-  await Promise.all([putLink(scope, next), db.del(SEC_KEYS.calEvents(scope)), db.zrem(SEC_KEYS.calDue, scope), audit(scope, { actor: "owner", via: "web", login }, "cal_lost", "-", `provider=${link.provider}`)]);
+  await Promise.all([putLink(scope, next), db.del(SEC_KEYS.calEvents(scope)), db.zrem(SEC_KEYS.calDue, scope), audit(scope, { actor: via === "cron" ? "cron" : "owner", via, login }, "cal_lost", "-", `provider=${link.provider}`)]);
   if (reason === "token") await noticeLost(scope, link).catch((e) => console.error("cal lost notice failed", e instanceof Error ? e.name : "error"));
 }
 
@@ -312,13 +318,17 @@ const RETRY_DEFAULT_S = 900;
 const RETRY_FLOOR_S = 60;
 /** More raw events than this in one answer are never read (the request asks for 300). */
 const RAW_EVENTS_MAX = 600;
+/**
+ * A sync starts only this long before the deadline (ruling R16): one can take up to ~32 s of provider time (a refresh, Graph proof
+ * and events, 8 s each), and the tick's `maxDuration` is 60 s against its 40 s start budget.
+ */
+const CAL_START_MARGIN_MS = 35_000;
+/** A scope whose sync threw is looked at again after this (best effort), so one broken scope cannot hold the head of the queue. */
+const CAL_ERROR_RETRY_MS = 900_000;
 
 export type CalSweepReport = { scopes: number; synced: number; lost: number; retried: number; deferred: number };
 /** What one scope's sync came to; `dropped` is a link that was gone, not in state `ok`, or archived with its brand: nothing to count. */
 type Outcome = "synced" | "lost" | "retried" | "deferred" | "dropped";
-
-/** The link as it was when this run read it: the same record (rev and connection), still there. */
-const same = (now: CalLink | null, was: CalLink): now is CalLink => !!now && now.rev === was.rev && now.connectedAt === was.connectedAt;
 
 /**
  * Lose the link for `reason`, unless it was unlinked or replaced since this run read it (ruling R5: a loss written over a deleted
@@ -327,7 +337,7 @@ const same = (now: CalLink | null, was: CalLink): now is CalLink => !!now && now
 async function loseSync(scope: string, was: CalLink, reason: LostReason): Promise<Outcome> {
   const cur = await getLink(scope);
   if (!same(cur, was)) return "dropped";
-  await loseLink(scope, cur, cur.login, reason);
+  await loseLink(scope, cur, cur.login, reason, "cron");
   return "lost";
 }
 
@@ -405,9 +415,9 @@ async function syncOne(scope: string, now: number): Promise<Outcome> {
 
 /**
  * The calendar part of the secretary tick: takes the (at most `CAL_TICK_MAX`) scopes whose next sync time has come out of
- * `sec:cal:due` and syncs them `CAL_CONCURRENCY` at a time. Nothing new starts after `deadline`: those scopes keep their past
- * score, come first next tick and count as `deferred`. One scope's failure (a store error) is logged by name, leaves its score
- * and counts as `retried`; it never stops the others. The members are scopes the sweep took from the queue; no key is built
+ * `sec:cal:due` and syncs them `CAL_CONCURRENCY` at a time. Nothing new starts within 35 s of `deadline` (ruling R16): those scopes
+ * keep their past score, come first next tick and count as `deferred`. One scope's failure (a store error) is logged by name,
+ * counts as `retried` and the scope is rescheduled 15 minutes out, best effort; it never stops the others. The members are scopes the sweep took from the queue; no key is built
  * from anything else.
  */
 export async function sweepCalendars(now: number, deadline: number): Promise<CalSweepReport> {
@@ -416,7 +426,7 @@ export async function sweepCalendars(now: number, deadline: number): Promise<Cal
   await pmap(
     scopes,
     async (scope) => {
-      if (Date.now() >= deadline) {
+      if (Date.now() >= deadline - CAL_START_MARGIN_MS) {
         report.deferred++;
         return;
       }
@@ -426,6 +436,7 @@ export async function sweepCalendars(now: number, deadline: number): Promise<Cal
       } catch (e) {
         console.error("cal sync failed", e instanceof Error ? e.name : "error");
         report.retried++;
+        await scheduleSync(scope, now + CAL_ERROR_RETRY_MS).catch(() => {});
       }
     },
     CAL_CONCURRENCY,
@@ -436,10 +447,16 @@ export async function sweepCalendars(now: number, deadline: number): Promise<Cal
 /**
  * Password reset or account wipe: every brand's calendar link of this account owner ends, archived brands included (one
  * `listBrands`, then the links in parallel). A member login or an unknown address has no brands of its own: nothing happens.
- * Only our side is dropped; no provider is called (ruling R7). A sync in flight stores nothing afterwards (ruling R5).
+ * Only our side is dropped; no provider is called (ruling R7). A sync in flight writes nothing afterwards (rulings R5, R15).
  */
 export async function revokeCalendarLinks(email: string): Promise<void> {
   const [owner, brands] = await Promise.all([getUser(email), listBrands(email)]);
   if (!owner) return;
-  await pmap(brands, (b) => dropLink(scopeFor(email, b.id)));
+  await pmap(brands, async (b) => {
+    const scope = scopeFor(email, b.id);
+    // Under the brand's calendar lock, so a sync that holds it finishes first; a lock that stays busy never keeps a link alive
+    // (ruling R15): it is dropped anyway, and the run in flight finds the link gone before it writes anything.
+    const r = await withCalLock(scope, () => dropLink(scope));
+    if (r) await dropLink(scope);
+  });
 }

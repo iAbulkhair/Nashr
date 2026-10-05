@@ -120,9 +120,9 @@ async function linked(login: string, scope = login, over: Partial<CalLink> = {},
   return scope;
 }
 const brandAt = (website: string) => ({ name: "B", website } as Brand);
-const sweep = (now = Date.now()) => sweepCalendars(now, now + 30_000);
+const sweep = (now = Date.now()) => sweepCalendars(now, now + 60_000);
 const lostNotices = async (email: string) => (await listNotifs(email)).filter((n) => /تقويم التسويق|Marketing calendar/.test(n.title));
-const auditOf = async (scope: string) => (await db.lrange(SEC_KEYS.audit(scope), 0, -1)).map((x) => JSON.parse(x) as { action: string; login?: string; diff: string });
+const auditOf = async (scope: string) => (await db.lrange(SEC_KEYS.audit(scope), 0, -1)).map((x) => JSON.parse(x) as { action: string; actor: string; via: string; login?: string; diff: string });
 
 describe("rule 615: only the chosen calendar is read, for both providers", () => {
   const ctx = (provider: string) => params({ provider });
@@ -142,7 +142,7 @@ describe("rule 615: only the chosen calendar is read, for both providers", () =>
       expect(put.status).toBe(200);
       expect((await getLink(o.email))).toMatchObject({ state: "ok", calendarId: CAL2, proof: "domain" });
       urls = [];
-      const report = await sweepCalendars(Date.now() + 1000, Date.now() + 30_000);
+      const report = await sweepCalendars(Date.now() + 1000, Date.now() + 60_000);
       expect(report).toMatchObject({ scopes: 1, synced: 1, lost: 0 });
       const ev = eventUrls();
       expect(ev.length).toBe(1);
@@ -184,12 +184,12 @@ describe("rule 617: what one tick takes, and the deadline", () => {
     fake();
     const { scopes } = await many(60);
     const now = Date.now();
-    const r = await sweepCalendars(now, now + 30_000);
+    const r = await sweepCalendars(now, now + 60_000);
     expect(r).toMatchObject({ scopes: 50, synced: 50, lost: 0, retried: 0, deferred: 0 });
     const scores = await Promise.all(scopes.map((s) => db.zscore(SEC_KEYS.calDue, s)));
     expect(scores.slice(0, 50).every((x) => x !== null && x >= now + CAL_SYNC_MS)).toBe(true);
     expect(scores.slice(50).every((x) => x !== null && x < now)).toBe(true);
-    const r2 = await sweepCalendars(now, now + 30_000);
+    const r2 = await sweepCalendars(now, now + 60_000);
     expect(r2).toMatchObject({ scopes: 10, synced: 10 });
   });
 
@@ -203,12 +203,13 @@ describe("rule 617: what one tick takes, and the deadline", () => {
     expect(peak).toBeLessThanOrEqual(8);
   });
 
-  it("when the deadline passes mid-run nothing new starts; the rest keep their past score and count as deferred", async () => {
+  it("R16: nothing new starts within 35 s of the deadline; the rest keep their past score and count as deferred", async () => {
     const t0 = Date.now();
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(t0);
-    const deadline = t0 + 30_000;
-    fake({ onEvents: () => { vi.setSystemTime(deadline + 1); } });
+    const deadline = t0 + 60_000;
+    // The first syncs run; their provider call moves the clock to exactly the cutoff (deadline - 35 s).
+    fake({ onEvents: () => { vi.setSystemTime(deadline - 35_000); } });
     const { scopes, base } = await many(30);
     const r = await sweepCalendars(t0, deadline);
     expect(r.scopes).toBe(30);
@@ -219,6 +220,19 @@ describe("rule 617: what one tick takes, and the deadline", () => {
     expect(scores.filter((x) => x !== null && x < t0).length).toBe(r.deferred);
     // The deferred ones kept exactly the score they had.
     scores.forEach((x, i) => { if (x !== null && x < t0) expect(x).toBe(base + i); });
+  });
+
+  it("R16: a scope due when the cutoff has already passed is not started: no provider call, past score kept", async () => {
+    fake();
+    const o = await owner();
+    const due = Date.now() - 5000;
+    await linked(o.email, o.email, {}, due);
+    const now = Date.now();
+    expect(await sweepCalendars(now, now + 35_000)).toMatchObject({ scopes: 1, synced: 0, deferred: 1, retried: 0 });
+    expect(urls).toEqual([]);
+    expect(await db.zscore(SEC_KEYS.calDue, o.email)).toBe(due);
+    // A deadline a hair further out starts it.
+    expect(await sweepCalendars(now, now + 35_001 + 1000)).toMatchObject({ synced: 1, deferred: 0 });
   });
 
   it("the cron route answers with calendars, from the bearer", async () => {
@@ -245,7 +259,7 @@ describe("rule 618: a sync keeps, retries, defers or loses the link", () => {
     const o = await owner();
     await linked(o.email);
     const now = Date.now();
-    expect(await sweepCalendars(now, now + 30_000)).toMatchObject({ synced: 1 });
+    expect(await sweepCalendars(now, now + 60_000)).toMatchObject({ synced: 1 });
     const ev = (await db.get<{ syncedAt: number; events: { title: string; private?: boolean }[] }>(SEC_KEYS.calEvents(o.email)))!;
     expect(ev.syncedAt).toBe(now);
     expect(ev.events.map((e) => e.title)).toEqual(["Launch review", ""]);
@@ -276,7 +290,7 @@ describe("rule 618: a sync keeps, retries, defers or loses the link", () => {
     expect(n[0]).toMatchObject({ kind: "todo", agent: "reem", title: "تقويم التسويق يحتاج إعادة ربط", href: "/ar/app/todo" });
     expect(n[0].body).toBeTruthy();
     expect(JSON.stringify(n)).not.toContain("OLD-");
-    expect((await auditOf(o.email)).filter((a) => a.action === "cal_lost")).toEqual([expect.objectContaining({ login: o.email, diff: "provider=gcal" })]);
+    expect((await auditOf(o.email)).filter((a) => a.action === "cal_lost")).toEqual([expect.objectContaining({ actor: "cron", via: "cron", login: o.email, diff: "provider=gcal" })]);
     // A second tick: put it back in the queue by hand; the link is already in reconnect, so nothing more happens.
     await scheduleSync(o.email, Date.now() - 1000);
     await sweep();
@@ -305,6 +319,8 @@ describe("rule 618: a sync keeps, retries, defers or loses the link", () => {
     expect((await listRoute.GET()).status).toBe(502);
     expect(await getLink(o.email)).toMatchObject({ state: "reconnect", lostReason: "token" });
     expect(await lostNotices(o.email)).toHaveLength(1);
+    // Found by a route, it is the owner's web action in the audit (R16); found by the sweep it is the cron's.
+    expect((await auditOf(o.email)).filter((a) => a.action === "cal_lost")).toEqual([expect.objectContaining({ actor: "owner", via: "web" })]);
   });
 
   it("a 401 from the token endpoint (a wrong client secret) is a retry, not a loss (ruling R9)", async () => {
@@ -312,7 +328,7 @@ describe("rule 618: a sync keeps, retries, defers or loses the link", () => {
     const o = await owner();
     await linked(o.email, o.email, { tokens: sealTokens({ access: "A", refresh: "R", expiresAt: Date.now() - 1000 }) });
     const now = Date.now();
-    expect(await sweepCalendars(now, now + 30_000)).toMatchObject({ lost: 0, retried: 1 });
+    expect(await sweepCalendars(now, now + 60_000)).toMatchObject({ lost: 0, retried: 1 });
     expect(await getLink(o.email)).toMatchObject({ state: "ok" });
     expect(await db.zscore(SEC_KEYS.calDue, o.email)).toBe(now + 900_000);
     expect(await lostNotices(o.email)).toHaveLength(0);
@@ -332,10 +348,10 @@ describe("rule 618: a sync keeps, retries, defers or loses the link", () => {
     await linked(o.email);
     fake();
     const t0 = Date.now();
-    expect(await sweepCalendars(t0, t0 + 30_000)).toMatchObject({ synced: 1 });
+    expect(await sweepCalendars(t0, t0 + 60_000)).toMatchObject({ synced: 1 });
     fake({ eventsStatus: 503 });
     const t1 = t0 + CAL_SYNC_MS;
-    expect(await sweepCalendars(t1, t1 + 30_000)).toMatchObject({ scopes: 1, synced: 0, retried: 1, lost: 0 });
+    expect(await sweepCalendars(t1, t1 + 60_000)).toMatchObject({ scopes: 1, synced: 0, retried: 1, lost: 0 });
     expect(await getLink(o.email)).toMatchObject({ state: "ok" });
     expect(await db.zscore(SEC_KEYS.calDue, o.email)).toBe(t1 + 900_000);
     expect((await db.get<{ syncedAt: number }>(SEC_KEYS.calEvents(o.email)))!.syncedAt).toBe(t0);
@@ -350,7 +366,7 @@ describe("rule 618: a sync keeps, retries, defers or loses the link", () => {
       fake({ eventsStatus: status, retryAfter: ra });
       await linked(o.email);
       const now = Date.now();
-      expect(await sweepCalendars(now, now + 30_000)).toMatchObject({ retried: 1, lost: 0 });
+      expect(await sweepCalendars(now, now + 60_000)).toMatchObject({ retried: 1, lost: 0 });
       expect(await db.zscore(SEC_KEYS.calDue, o.email), `${status} ${ra}`).toBe(now + wantMs);
       expect(await getLink(o.email)).toMatchObject({ state: "ok" });
     }
@@ -470,7 +486,7 @@ describe("rule 618: a sync keeps, retries, defers or loses the link", () => {
     const held = await db.lockOwned(SEC_KEYS.lock(o.email, "callink"), 60);
     expect(held).not.toBeNull();
     const now = Date.now();
-    expect(await sweepCalendars(now, now + 30_000)).toMatchObject({ scopes: 1, deferred: 1, synced: 0, lost: 0 });
+    expect(await sweepCalendars(now, now + 60_000)).toMatchObject({ scopes: 1, deferred: 1, synced: 0, lost: 0 });
     const due = (await db.zscore(SEC_KEYS.calDue, o.email))!;
     expect(due).toBeGreaterThanOrEqual(now + 59_000);
     expect(due).toBeLessThanOrEqual(Date.now() + 61_000);
@@ -515,10 +531,72 @@ describe("rule 618: a sync keeps, retries, defers or loses the link", () => {
     await linked(b.email);
     const real = db.get.bind(db);
     vi.spyOn(db, "get").mockImplementation(((k: string) => (k === SEC_KEYS.calLink(a.email) ? Promise.reject(new Error("store down")) : real(k))) as typeof db.get);
-    const r = await sweep();
+    const now = Date.now();
+    const r = await sweepCalendars(now, now + 60_000);
     expect(r.scopes).toBe(2);
     expect(r.synced).toBe(1);
     expect(r.retried).toBe(1);
+    // R16: the scope that threw is looked at again in 15 minutes instead of heading the queue every tick.
+    expect(await db.zscore(SEC_KEYS.calDue, a.email)).toBe(now + 900_000);
+  });
+
+  it("R16: a failed reschedule of the throwing scope is swallowed; the other scopes finish", async () => {
+    fake();
+    const a = await owner();
+    const b = await owner();
+    await linked(a.email);
+    await linked(b.email);
+    const real = db.get.bind(db);
+    vi.spyOn(db, "get").mockImplementation(((k: string) => (k === SEC_KEYS.calLink(a.email) ? Promise.reject(new Error("store down")) : real(k))) as typeof db.get);
+    const realAdd = db.zadd.bind(db);
+    vi.spyOn(db, "zadd").mockImplementation(((k: string, score: number, member: string, opts?: { lt?: boolean }) => (member === a.email ? Promise.reject(new Error("store down")) : realAdd(k, score, member, opts))) as typeof db.zadd);
+    const r = await sweep();
+    expect(r).toMatchObject({ scopes: 2, synced: 1, retried: 1 });
+  });
+
+  it("R15: a password reset while the token refresh is in flight does not bring the link back: no link, not queued, no events", async () => {
+    const o = await owner();
+    await linked(o.email, o.email, { tokens: sealTokens({ access: "A", refresh: "R", expiresAt: Date.now() - 1000 }) });
+    await putEvents(o.email, { syncedAt: Date.now(), events: [] });
+    const realFetch = (fake(), globalThis.fetch);
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "https://oauth2.googleapis.com/token") await revokeCalendarLinks(o.email);
+      return realFetch(input, init);
+    }));
+    const r = await sweep();
+    expect(r).toMatchObject({ scopes: 1, synced: 0, lost: 0 });
+    expect(await getLink(o.email)).toBeNull();
+    expect(await db.zscore(SEC_KEYS.calDue, o.email)).toBeNull();
+    expect(await db.get(SEC_KEYS.calEvents(o.email))).toBeNull();
+    expect(eventUrls()).toEqual([]);
+  }, 20_000);
+
+  it("R15: the same for an account wipe while the refresh is in flight", async () => {
+    const o = await owner();
+    await linked(o.email, o.email, { tokens: sealTokens({ access: "A", refresh: "R", expiresAt: Date.now() - 1000 }) });
+    const realFetch = (fake(), globalThis.fetch);
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "https://oauth2.googleapis.com/token") await wipeAccount(o.email);
+      return realFetch(input, init);
+    }));
+    await sweep();
+    expect(await getLink(o.email)).toBeNull();
+    expect(await db.zscore(SEC_KEYS.calDue, o.email)).toBeNull();
+    expect(await db.get(SEC_KEYS.calEvents(o.email))).toBeNull();
+  }, 20_000);
+
+  it("R15: freshAccess refuses to store tokens over a link replaced during the refresh", async () => {
+    const o = await owner();
+    await linked(o.email, o.email, { tokens: sealTokens({ access: "A", refresh: "R", expiresAt: Date.now() - 1000 }) });
+    const realFetch = (fake(), globalThis.fetch);
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "https://oauth2.googleapis.com/token") await putLink(o.email, seed(o.email, { rev: 9, connectedAt: 5000 }));
+      return realFetch(input, init);
+    }));
+    await sweep();
+    const now = await getLink(o.email);
+    expect(now).toMatchObject({ rev: 9, connectedAt: 5000 });
+    expect(eventUrls()).toEqual([]);
   });
 });
 
