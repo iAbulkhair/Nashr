@@ -90,8 +90,9 @@ const olderThan = (recAt: unknown, lifeAt: unknown): boolean => {
  * reset), or, for a member, older than the member's own `sessionsAfter` or the owner's `teamSessionsAfter` (an owner or
  * founder reset signs the whole team out). An owner's password change stamps only `sessionsAfter`, so it ends the
  * owner's link and leaves the members' alone.
+ * Any record with a login, a scope and a creation time can ask (the booking links of B2a do); `feedHolds` is the feed's name for it.
  */
-export async function feedHolds(rec: FeedRecord): Promise<boolean> {
+export async function loginHolds(rec: Pick<FeedRecord, "login" | "scope" | "createdAt">): Promise<boolean> {
   const login = await getLogin(rec.login);
   if (!login) return false;
   let owner: string;
@@ -115,6 +116,9 @@ export async function feedHolds(rec: FeedRecord): Promise<boolean> {
   if (!id) return false;
   return (await listBrands(owner)).some((b) => b.id === id && b.status === "active");
 }
+
+/** The calendar feed's validity check; `loginHolds` under its B1 name. */
+export const feedHolds = (rec: FeedRecord): Promise<boolean> => loginHolds(rec);
 
 /** `YYYYMMDDTHHMMSSZ` of an instant. */
 const utc = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
