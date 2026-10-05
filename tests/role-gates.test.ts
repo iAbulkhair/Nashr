@@ -182,6 +182,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // The follow-up after a meeting (Reem B2b, rules 600-603): discarding the proposals and approving some of them (the one path that makes items) are the same role as any Reem write.
   "DELETE /api/secretary/meeting/[id]": g("member", "todo.write"),
   "POST /api/secretary/meeting/[id]/approve": g("member", "todo.write"),
+  // Proposing from notes or a transcript (Task 10, rules 604-606) only writes the pending set; it spends the account's credits, so it is `todo.write` like the other Reem writes.
+  "POST /api/secretary/meeting/[id]/propose": g("member", "todo.write"),
   // Majed's handoffs: a run spends credits like a generation; a decline is a draft decision, like rejecting an item.
   "POST /api/handoffs/[id]/run": g("member", "generate"),
   "POST /api/handoffs/[id]/decline": g("member", "drafts"),
