@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { getUser, sc, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -36,7 +36,7 @@ async function pend(u: User, item: SecItem, raw: unknown[]): Promise<Proposal[]>
 }
 const openCount = async (u: User) => (await listOpenItems(sc(u))).length;
 
-afterEach(() => { (MIN_ROLE as Record<string, string>)["todo.write"] = "member"; });
+afterEach(() => { vi.restoreAllMocks(); (MIN_ROLE as Record<string, string>)["todo.write"] = "member"; });
 
 describe("meeting proposals and approve (rules 600-603)", () => {
   it("rule 600: cleanProposals keeps at most 10, cuts titles at 120 after cleanLine, drops an unknown agent, a bad or far day and duplicates, and ignores any ref in the input", () => {
@@ -392,6 +392,156 @@ describe("meeting proposals and approve (rules 600-603)", () => {
     }
     expect((await read()).status).toBe(200);
     expect(await getPending(scope, item.id)).not.toBeNull();
+    await db.del(`rate:sec:write:${u.email}`);
+  });
+
+  it("rule 604: approve is idempotent: an error mid-way, then a retry, makes every item exactly once and loses none", async () => {
+    const u = await newUser("mt604");
+    const scope = sc(u);
+    const who = { ...OWNER, login: u.email };
+    const orig = db.set.bind(db);
+    const titlesOf = async (prefix: string) => (await listOpenItems(scope)).map((i) => i.title).filter((t) => t.startsWith(prefix)).sort();
+
+    // 1. The store fails while one item is written and also while the leftovers are stored (as when the store is down or the
+    //    process dies): the set stays whole, every kept proposal already holds the id its item will have, and the retry
+    //    creates only what is missing.
+    const m1 = await booking(u);
+    const ps1 = await pend(u, m1, [prop("Idem A", "owner"), prop("Idem B", "faris"), prop("Idem C", "owner")]);
+    let thrownItem = false;
+    let mpropWrites = 0;
+    vi.spyOn(db, "set").mockImplementation(async (key: string, value: unknown, ttl?: number) => {
+      if (key.startsWith(`sec:item:${scope}:`) && (value as { title?: string }).title === "Idem B" && !thrownItem) { thrownItem = true; throw new Error("transient"); }
+      if (key === SEC_KEYS.mprop(scope, m1.id) && ++mpropWrites === 2) throw new Error("store down");
+      return orig(key, value, ttl);
+    });
+    const first = await approveMeeting(u, m1.id, ps1.map((p) => ({ ref: p.ref })), who);
+    expect(first.ok).toBe(false);
+    expect(first).toMatchObject({ error: "busy", status: 503 });
+    const madeFirst = (first as { created?: string[] }).created ?? [];
+    expect(madeFirst).toHaveLength(2);
+    vi.restoreAllMocks();
+    expect(await titlesOf("Idem ")).toEqual(["Idem A", "Idem C"]);
+    // the ids were stored before anything was created, and a re-read keeps them
+    const stored = (await getPending(scope, m1.id)) ?? [];
+    expect(stored.map((p) => p.ref)).toEqual(ps1.map((p) => p.ref));
+    expect(stored.every((p) => typeof p.itemId === "string" && /^s[a-f0-9]{16}$/.test(p.itemId))).toBe(true);
+    expect(new Set(stored.map((p) => p.itemId)).size).toBe(3);
+    expect(madeFirst.sort()).toEqual([stored[0].itemId, stored[2].itemId].sort());
+
+    const retry = await approveMeeting(u, m1.id, ps1.map((p) => ({ ref: p.ref })), who);
+    expect(retry).toMatchObject({ ok: true });
+    expect(retry.ok && retry.created).toEqual(stored.map((p) => p.itemId));
+    expect(await titlesOf("Idem ")).toEqual(["Idem A", "Idem B", "Idem C"]);
+    expect(await getPending(scope, m1.id)).toBeNull();
+    // after a full success another retry is not found, as before, and makes nothing
+    const before = await openCount(u);
+    expect(await approveMeeting(u, m1.id, ps1.map((p) => ({ ref: p.ref })), who)).toMatchObject({ ok: false, error: "not_found", status: 404 });
+    expect(await openCount(u)).toBe(before);
+
+    // 2. The store fails for one item and the leftovers are stored fine: the made ones leave the set, the retry names the
+    //    one that is left, and nothing is made twice.
+    const m2 = await booking(u, "Meeting with Second Example");
+    const ps2 = await pend(u, m2, [prop("Twice A", "owner"), prop("Twice B", "owner"), prop("Twice C", "noor")]);
+    let thrown2 = false;
+    vi.spyOn(db, "set").mockImplementation(async (key: string, value: unknown, ttl?: number) => {
+      if (key.startsWith(`sec:item:${scope}:`) && (value as { title?: string }).title === "Twice B" && !thrown2) { thrown2 = true; throw new Error("transient"); }
+      return orig(key, value, ttl);
+    });
+    const part = await approveMeeting(u, m2.id, ps2.map((p) => ({ ref: p.ref })), who);
+    vi.restoreAllMocks();
+    expect(part).toMatchObject({ ok: false, error: "busy", status: 503 });
+    expect((part as { created?: string[] }).created).toHaveLength(2);
+    const left = (await getPending(scope, m2.id)) ?? [];
+    expect(left.map((p) => p.title)).toEqual(["Twice B"]);
+    expect(await approveMeeting(u, m2.id, [{ ref: ps2[0].ref }], who)).toMatchObject({ ok: false, error: "not_found" });
+    const done = await approveMeeting(u, m2.id, [{ ref: left[0].ref }], who);
+    expect(done).toMatchObject({ ok: true });
+    expect(await titlesOf("Twice ")).toEqual(["Twice A", "Twice B", "Twice C"]);
+
+    // 3. No worker outlives the lock: an item write that fails while others are still running does not release the lock early.
+    const m3 = await booking(u, "Meeting with Third Example");
+    const ps3 = await pend(u, m3, [prop("Late A", "owner"), prop("Late B", "owner"), prop("Late C", "owner"), prop("Late D", "owner"), prop("Late E", "owner")]);
+    let n3 = 0;
+    vi.spyOn(db, "set").mockImplementation(async (key: string, value: unknown, ttl?: number) => {
+      if (key.startsWith(`sec:item:${scope}:`) && (value as { title?: string }).title?.startsWith("Late ")) {
+        const mine = ++n3;
+        await new Promise((r) => setTimeout(r, mine === 1 ? 0 : 40));
+        if (mine === 1) throw new Error("transient");
+      }
+      return orig(key, value, ttl);
+    });
+    const racing = await Promise.all([approveMeeting(u, m3.id, ps3.map((p) => ({ ref: p.ref })), who), approveMeeting(u, m3.id, ps3.map((p) => ({ ref: p.ref })), who)]);
+    vi.restoreAllMocks();
+    // whatever order they ran in, a retry of what is left makes the rest, and the titles exist once each
+    const left3 = (await getPending(scope, m3.id)) ?? [];
+    expect(left3.map((p) => p.title)).toEqual(["Late A"]);
+    expect(await approveMeeting(u, m3.id, left3.map((p) => ({ ref: p.ref })), who)).toMatchObject({ ok: true });
+    expect(await titlesOf("Late ")).toEqual(["Late A", "Late B", "Late C", "Late D", "Late E"]);
+    expect(racing.some((r) => !r.ok && r.error === "lock_timeout")).toBe(false);
+  });
+
+  it("rule 605: a pending write and a discard take the approve lock, so an approve never undoes them", async () => {
+    const u = await newUser("mt605");
+    const scope = sc(u);
+    const who = { ...OWNER, login: u.email };
+    const orig = db.set.bind(db);
+    const gate = () => {
+      let started: () => void = () => {};
+      const startedP = new Promise<void>((r) => { started = r; });
+      let hit = false;
+      vi.spyOn(db, "set").mockImplementation(async (key: string, value: unknown, ttl?: number) => {
+        if (!hit && key.startsWith(`sec:item:${scope}:`)) { hit = true; started(); await new Promise((r) => setTimeout(r, 120)); }
+        return orig(key, value, ttl);
+      });
+      return startedP;
+    };
+
+    // A re-run (a new set) lands while an approve is creating: the approve finishes and the fresh set is still there.
+    const m1 = await booking(u);
+    const ps1 = await pend(u, m1, [prop("Old one", "owner"), prop("Old two", "owner")]);
+    const started1 = gate();
+    const approving = approveMeeting(u, m1.id, ps1.map((p) => ({ ref: p.ref })), who);
+    await started1;
+    const fresh = cleanProposals([prop("Fresh one", "noor"), prop("Fresh two", "owner")], Date.now(), ZONE);
+    const saving = savePending(scope, m1.id, fresh);
+    expect(await approving).toMatchObject({ ok: true });
+    await saving;
+    vi.restoreAllMocks();
+    expect(await getPending(scope, m1.id)).toEqual(fresh);
+
+    // A discard lands while an approve is creating and the allowance runs out part-way: the discard is not undone by the
+    // approve writing the leftovers back.
+    const lim = await newUser("mt605l");
+    const lm = await booking(lim);
+    const lps = await pend(lim, lm, [prop("D one", "owner"), prop("D two", "owner"), prop("D three", "owner")]);
+    await db.set(`rate:sec:create:${lim.email}`, 198, 86400);
+    const lscope = sc(lim);
+    let started: () => void = () => {};
+    const startedP = new Promise<void>((r) => { started = r; });
+    let hit = false;
+    vi.spyOn(db, "set").mockImplementation(async (key: string, value: unknown, ttl?: number) => {
+      if (!hit && key.startsWith(`sec:item:${lscope}:`)) { hit = true; started(); await new Promise((r) => setTimeout(r, 120)); }
+      return orig(key, value, ttl);
+    });
+    const part = approveMeeting(lim, lm.id, lps.map((p) => ({ ref: p.ref })), { ...OWNER, login: lim.email });
+    await startedP;
+    const discarding = dropPending(lscope, lm.id);
+    expect(await part).toMatchObject({ ok: false, error: "too_many" });
+    await discarding;
+    vi.restoreAllMocks();
+    expect(await getPending(lscope, lm.id)).toBeNull();
+
+    // The DELETE route goes through the same lock: while the lock is held it waits, then discards.
+    const m3 = await booking(u, "Meeting with Route Example");
+    await pend(u, m3, [prop("R one", "owner")]);
+    await signIn(u.email);
+    expect(await db.lock(SEC_KEYS.lock(scope, `mprop:${m3.id}`), 10)).toBe(true);
+    const del = meetRoute.DELETE(json(`/api/secretary/meeting/${m3.id}`, "DELETE"), params({ id: m3.id }));
+    await new Promise((r) => setTimeout(r, 120));
+    expect(await getPending(scope, m3.id)).not.toBeNull();
+    await db.unlock(SEC_KEYS.lock(scope, `mprop:${m3.id}`));
+    expect((await del).status).toBe(200);
+    expect(await getPending(scope, m3.id)).toBeNull();
     await db.del(`rate:sec:write:${u.email}`);
   });
 });

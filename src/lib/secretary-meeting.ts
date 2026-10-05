@@ -16,10 +16,16 @@
  *   The `ref` is made here, never taken from the input, and is new on every run, so a stale card can never approve what
  *   a later run proposed.
  * - `approveMeeting` creates only refs that are in the stored set, under one lock per scope and item
- *   (`sec:lock:{scope}:mprop:{itemId}`), reading the set inside the lock and dropping it there: two clicks create each
- *   item once. The owner's edits (title, agent, day) are checked by the same limits and refused, not trimmed; a refusal
- *   creates nothing and leaves the set as it was. If an item cannot be created part-way (the account's daily allowance,
- *   the 500 open items), the ones made are reported with the refusal, and only the others stay pending.
+ *   (`sec:lock:{scope}:mprop:{itemId}`, 60 s), reading the set inside the lock and dropping it there: two clicks create
+ *   each item once. `savePending` and `dropPending` (so a re-run and the discard route) take the same lock, so neither is
+ *   undone by an approve that read the set earlier; inside the approve the unlocked internals are used (`withLock` is
+ *   not reentrant). The owner's edits (title, agent, day) are checked by the same limits and refused, not trimmed; a
+ *   refusal creates nothing and leaves the set as it was.
+ * - Approve is idempotent through errors: before anything is created each kept proposal gets the id its item will have
+ *   and the set is stored with it; items are made with that id and an id that already exists counts as made, so a retry
+ *   after a failed write or a dead process never makes an item twice. Each create catches its own error, so no worker
+ *   outlives the lock. If an item cannot be created part-way (the account's daily allowance, the 500 open items, a
+ *   failed write), the ones made are reported with the refusal, and only the others stay pending.
  * - An agent task is an agent-owed handoff item (`agentTaskItem`, src/lib/secretary-handoff.ts): `waiting_on`,
  *   `they_owe`, `owedBy` the agent, `owedTo` the owner, `source: "agent"`, `handoffFrom: "reem"`. The agent does not run
  *   it and nothing is charged: no credit moves and no model is called here. An owner task is `task`, `i_owe`.
@@ -31,12 +37,16 @@ import { db } from "./db";
 import { pmap } from "./parallel";
 import { sc, type User } from "./auth";
 import { isAgentId, type AgentId } from "./agents";
-import { SEC_ID, SEC_KEYS, calFor, cleanLine, createItem, fail, getItem, isLocalDay, withLock, type SecFail, type Who } from "./secretary";
+import { SEC_ID, SEC_KEYS, calFor, cleanLine, createItem, fail, getItem, isLocalDay, newSecId, withLock, type SecFail, type Who } from "./secretary";
 import { addDays, zoneDay, type SecItem } from "./secretary-agenda";
 import { agentTaskItem } from "./secretary-handoff";
 import type { Zone } from "./zones";
 
-export type Proposal = { ref: string; title: string; agent: AgentId | "owner"; dueAt?: string };
+/**
+ * `itemId` is the id the item will get, chosen by `approveMeeting` and stored before anything is created (a retry then finds
+ * what was made and makes nothing twice). Never set by a proposer: `cleanProposals` does not make it.
+ */
+export type Proposal = { ref: string; title: string; agent: AgentId | "owner"; dueAt?: string; itemId?: string };
 /** Proposals in one set, entries in one approval, characters in a title, days ahead a due day may be. */
 export const MEET_MAX = 10;
 export const MEET_TITLE_MAX = 120;
@@ -109,7 +119,8 @@ function readSet(v: unknown): Proposal[] | null {
     if (!e || typeof e !== "object") return [];
     const { ref, title, agent, dueAt } = e as Record<string, unknown>;
     const a = agentOf(agent);
-    return typeof ref === "string" && typeof title === "string" && title && a ? [{ ref, title, agent: a, ...(typeof dueAt === "string" && isLocalDay(dueAt) ? { dueAt } : {}) }] : [];
+    const itemId = (e as Record<string, unknown>).itemId;
+    return typeof ref === "string" && typeof title === "string" && title && a ? [{ ref, title, agent: a, ...(typeof dueAt === "string" && isLocalDay(dueAt) ? { dueAt } : {}), ...(typeof itemId === "string" && SEC_ID.test(itemId) ? { itemId } : {}) }] : [];
   }).slice(0, MEET_MAX);
   return ok.length ? ok : null;
 }
@@ -120,21 +131,33 @@ export async function getPending(scope: string, itemId: string): Promise<Proposa
   return readSet(await db.get<unknown>(SEC_KEYS.mprop(scope, itemId)));
 }
 
-/**
- * Store a pending set for an item (replacing any), for 14 days. The id goes into the scope's index first, so account
- * deletion finds the key. An empty list clears the set. Nothing here makes an item.
- */
-export async function savePending(scope: string, itemId: string, p: Proposal[]): Promise<void> {
-  if (!SEC_ID.test(itemId)) return;
-  if (!p.length) return dropPending(scope, itemId);
+/** The lock of one item's pending set: the one `approveMeeting` holds while it creates. `withLock` is not reentrant. */
+const setLock = <T>(scope: string, itemId: string, fn: () => Promise<T>) => withLock(scope, `mprop:${itemId}`, fn);
+
+async function putPending(scope: string, itemId: string, p: Proposal[]): Promise<void> {
+  if (!p.length) return delPending(scope, itemId);
   await db.sadd(SEC_KEYS.mprops(scope), itemId);
   await db.set(SEC_KEYS.mprop(scope, itemId), p.slice(0, MEET_MAX), MEET_PENDING_TTL_S);
 }
-
-/** Discard the pending set of an item. Idempotent. */
-export async function dropPending(scope: string, itemId: string): Promise<void> {
-  if (!SEC_ID.test(itemId)) return;
+async function delPending(scope: string, itemId: string): Promise<void> {
   await Promise.all([db.del(SEC_KEYS.mprop(scope, itemId)), db.srem(SEC_KEYS.mprops(scope), itemId)]);
+}
+
+/**
+ * Store a pending set for an item (replacing any), for 14 days. The id goes into the scope's index first, so account
+ * deletion finds the key. An empty list clears the set. Nothing here makes an item. Taken under the approve lock, so a
+ * re-run that lands while an approve is creating is written after it, never lost to it; a `SecFail` (`lock_timeout`) when
+ * the lock could not be had, nothing written.
+ */
+export async function savePending(scope: string, itemId: string, p: Proposal[]): Promise<SecFail | void> {
+  if (!SEC_ID.test(itemId)) return;
+  return setLock(scope, itemId, () => putPending(scope, itemId, p));
+}
+
+/** Discard the pending set of an item. Idempotent. Under the approve lock like `savePending`. */
+export async function dropPending(scope: string, itemId: string): Promise<SecFail | void> {
+  if (!SEC_ID.test(itemId)) return;
+  return setLock(scope, itemId, () => delPending(scope, itemId));
 }
 
 /** The item when it is a live (not deleted) booking item of this scope, else null: what every meeting route and approve require. */
@@ -143,6 +166,8 @@ export async function liveBooking(scope: string, itemId: string): Promise<SecIte
   return it && !it.deletedAt && it.source === "booking" ? it : null;
 }
 
+/** How long the approve lock lives: up to 10 creates in 4 parallel lanes, each a few Redis commands, with room for a slow store. */
+const MEET_LOCK_S = 60;
 export type ApproveFail = SecFail & { created?: string[] };
 export type Approved = { ok: true; created: string[] };
 
@@ -202,27 +227,49 @@ export async function approveMeeting(user: Pick<User, "email" | "scope">, itemId
     }
     const title = cut(cleanLine(item.title), MEET_TITLE_MAX);
     const description = /[؀-ۿ]/.test(title) ? `من اجتماع: ${title}` : `From the meeting: ${title}`;
+    // Before anything is created, every kept proposal gets the id its item will have, and the set is stored with them: a
+    // retry after an error (or a process that died) finds what was made by its id and makes nothing twice.
+    const ids = new Map(chosen.map((p) => [p.ref, byRef.get(p.ref)?.itemId ?? newSecId()]));
+    const withIds = pending.map((p) => (ids.has(p.ref) ? { ...p, itemId: ids.get(p.ref) } : p));
+    if (chosen.some((p) => byRef.get(p.ref)?.itemId === undefined)) {
+      try {
+        await putPending(scope, itemId, withIds);
+      } catch (e) {
+        console.error("meeting set store failed", e instanceof Error ? e.name : "error");
+        return { ...fail("busy", 503), created: [] };
+      }
+    }
+    // No worker outlives the lock: each create catches its own error, and pmap waits for all of them.
     const made = await pmap(chosen, async (p) => {
-      const fields = p.agent === "owner"
-        ? { title: p.title, description, kind: "task", direction: "i_owe", ...(p.dueAt ? { dueAt: p.dueAt } : {}) }
-        : agentTaskItem(p.agent, p.title, description, { owedTo: "owner", ...(p.dueAt ? { dueAt: p.dueAt } : {}) });
-      const c = p.agent === "owner"
-        ? await createItem(user, fields, { ...who, source: "owner" }, { zone, cal })
-        : await createItem(user, fields, { ...who, source: "agent" }, { zone, cal, handoffFrom: "reem" });
-      return { p, c };
+      const id = ids.get(p.ref) as string;
+      try {
+        if (await getItem(scope, id)) return { p, id, c: { ok: true } as const }; // made by an earlier try
+        const fields = p.agent === "owner"
+          ? { title: p.title, description, kind: "task", direction: "i_owe", ...(p.dueAt ? { dueAt: p.dueAt } : {}) }
+          : agentTaskItem(p.agent, p.title, description, { owedTo: "owner", ...(p.dueAt ? { dueAt: p.dueAt } : {}) });
+        const c = p.agent === "owner"
+          ? await createItem(user, fields, { ...who, source: "owner" }, { zone, cal, id })
+          : await createItem(user, fields, { ...who, source: "agent" }, { zone, cal, handoffFrom: "reem", id });
+        return { p, id, c: c.ok ? ({ ok: true } as const) : c };
+      } catch (e) {
+        console.error("meeting item create failed", e instanceof Error ? e.name : "error");
+        return { p, id, c: fail("busy", 503) };
+      }
     }, 4);
-    const created = made.flatMap((m) => (m.c.ok ? [m.c.item.id] : []));
+    const created = made.flatMap((m) => (m.c.ok ? [m.id] : []));
     const bad = made.find((m) => !m.c.ok)?.c as SecFail | undefined;
-    if (!bad) {
-      await dropPending(scope, itemId);
-      return { ok: true, created };
+    try {
+      if (!bad) await delPending(scope, itemId);
+      // Part-way: what was made stays made; only the proposals that were not made stay pending (with their ids).
+      else if (created.length) {
+        const done = new Set(made.filter((m) => m.c.ok).map((m) => m.p.ref));
+        await putPending(scope, itemId, withIds.filter((p) => !done.has(p.ref)));
+      }
+    } catch (e) {
+      // The set stays as stored, ids included: a retry finds the made items by id and makes them no more than once.
+      console.error("meeting set update failed", e instanceof Error ? e.name : "error");
     }
-    // Part-way: what was made stays made; only the proposals that were not made stay pending.
-    if (created.length) {
-      const done = new Set(made.filter((m) => m.c.ok).map((m) => m.p.ref));
-      await savePending(scope, itemId, pending.filter((p) => !done.has(p.ref)));
-    }
-    return { ...bad, created };
-  });
+    return bad ? { ...bad, created } : { ok: true, created };
+  }, MEET_LOCK_S);
   return r;
 }

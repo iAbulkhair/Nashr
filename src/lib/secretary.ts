@@ -1300,7 +1300,7 @@ export async function secretaryKeys(scope: string): Promise<string[]> {
     }),
     SEC_KEYS.bookIds(scope),
     // Meeting proposals (Reem B2b): each pending set by the item ids its index holds, and the index. The approve lock
-    // (`sec:lock:{scope}:mprop:{id}`) lives 10 s.
+    // (`sec:lock:{scope}:mprop:{id}`, also taken by the pending writes) lives 60 s.
     ...meets.map((id) => SEC_KEYS.mprop(scope, id)), SEC_KEYS.mprops(scope),
   ];
 }

@@ -11,7 +11,7 @@ import { dropPending, getPending, liveBooking } from "@/lib/secretary-meeting";
  * `booking` item of the caller's active brand (`sc(u)`), else 404 whatever other brands hold; nothing is read or deleted
  * for an id that is not. GET (`read`; `sec:read:{email}`): `{ ok: true, proposals }`, an empty list when nothing is pending.
  * DELETE (`todo.write`; `sec:write:{email}`, like the other Reem writes): discards the pending set, idempotently (200 whether
- * or not there was one). Neither creates an item: that is `POST .../approve` alone.
+ * or not there was one), under the same lock an approve holds (503 `lock_timeout` when it cannot be had; nothing discarded). Neither creates an item: that is `POST .../approve` alone.
  */
 const unauthorized = () => NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 const notFound = () => NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
@@ -26,7 +26,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   const scope = sc(u);
   if (!(await liveBooking(scope, id))) return notFound();
-  return NextResponse.json({ ok: true, proposals: (await getPending(scope, id)) ?? [] }, { headers: { "cache-control": "no-store" } });
+  return NextResponse.json({ ok: true, proposals: ((await getPending(scope, id)) ?? []).map((p) => ({ ref: p.ref, title: p.title, agent: p.agent, ...(p.dueAt ? { dueAt: p.dueAt } : {}) })) }, { headers: { "cache-control": "no-store" } });
 }
 
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -38,6 +38,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   const { id } = await ctx.params;
   const scope = sc(u);
   if (!(await liveBooking(scope, id))) return notFound();
-  await dropPending(scope, id);
+  const r = await dropPending(scope, id);
+  if (r) return NextResponse.json({ ok: false, error: r.error }, { status: r.status });
   return NextResponse.json({ ok: true });
 }
