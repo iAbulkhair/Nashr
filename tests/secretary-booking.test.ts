@@ -1,5 +1,7 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
@@ -19,10 +21,13 @@ import {
 } from "@/lib/booking-token";
 import { applyBooking, parseCalcom, parseCalendly, verifyCalcomSignature, verifyCalendlySignature, type Parsed } from "@/lib/secretary-booking";
 import { SEC_KEYS, changeItem, createItem, getItem, listOpenItems, removeBySystem, secretaryKeys } from "@/lib/secretary";
-import { SEC_RESTORE_DAYS, type SecItem } from "@/lib/secretary-agenda";
+import { SEC_RESTORE_DAYS, formatWhen, type SecItem } from "@/lib/secretary-agenda";
 import { wipeAccount } from "@/lib/account";
 import type { BookRecord } from "@/lib/booking-token";
 import type { User } from "@/lib/auth";
+import { appDict } from "@/lib/app-i18n";
+import { CHAT_ALLOWANCE, PLAN_CREDITS, PLAN_PRICE_SAR, SELF_SERVE_PLANS, formatCount } from "@/lib/pricing";
+import { BookingView, type BookingState } from "@/components/app/BookingCard";
 
 // Only the outbound fetch is mocked (Calendly's API); the store and everything else is real. The module's other exports stay real.
 vi.mock("@/lib/safe-fetch", async (orig) => ({ ...(await orig<typeof import("@/lib/safe-fetch")>()), safeFetch: vi.fn() }));
@@ -1344,5 +1349,110 @@ describe("booking revocation (rule 598)", () => {
     expect(await getMember(m.email)).toBeNull();
     for (const x of t) for (const p of PROVIDERS) expect(await resolveBook(x[p])).toBeNull();
     expect([...mem().kv.keys()].filter((k) => [owner.email, m.email].some((l) => PROVIDERS.some((p) => k === BOOK_KEYS.of(l, p))))).toEqual([]);
+  });
+});
+
+describe("booking card text (rule 599)", () => {
+  const LANGS = ["ar", "en"] as const;
+  const html = (x: string) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const URL_ = "https://thakeen.example/api/secretary/booking/" + "b".repeat(43);
+  const SECRET = "c".repeat(64);
+  const view = (lang: "ar" | "en", state: BookingState, extra: Record<string, unknown> = {}) =>
+    renderToStaticMarkup(createElement(BookingView, { t: appDict[lang], state, ...extra }));
+  const code = (f: string) => readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+  it("rule 599: both languages carry every todo.booking key; no key holds a number, price or customer of ours; the Cal.com steps name the three events; the Calendly row says the token is used once and never saved and names the Standard plan; the secret and URL are shown only from the create answer", () => {
+    const ar = appDict.ar.todo.booking as Record<string, string>;
+    const en = appDict.en.todo.booking as Record<string, string>;
+    expect(Object.keys(ar).sort()).toEqual(Object.keys(en).sort());
+    for (const k of [
+      "title", "sub", "connect", "renew", "stop", "copy", "copied", "since", "otherBrand", "warning", "shownOnce", "renewNote", "calcom", "calendly",
+      "calcomStepOpen", "calcomStepPaste", "calcomStepEvents", "tokenLabel", "tokenNote", "planNote", "calendlyLeft", "busy", "forbidden", "calendly_plan", "calendly_rejected", "bad_token",
+    ]) {
+      expect(ar[k], `ar.${k}`).toBeTruthy();
+      expect(en[k], `en.${k}`).toBeTruthy();
+    }
+    for (const [lang, d] of [["ar", ar], ["en", en]] as const) {
+      for (const [k, v] of Object.entries(d)) {
+        expect(v.trim(), `${lang}.${k}`).not.toBe("");
+        // Latin digits only, and in fact no digit at all: nothing here is a number, a price or an allowance of ours.
+        expect(v, `${lang}.${k}`).not.toMatch(/[٠-٩۰-۹]/);
+        expect(v, `${lang}.${k}`).not.toMatch(/\d/);
+        for (const n of SELF_SERVE_PLANS.flatMap((p) => [PLAN_PRICE_SAR[p], PLAN_CREDITS[p], CHAT_ALLOWANCE[p]])) {
+          expect(v, `${lang}.${k}`).not.toMatch(new RegExp(`\\b(${n}|${formatCount(n).replace(",", "\\,")})\\b`));
+        }
+      }
+    }
+    // The three steps name the three events Cal.com offers (spec section 4), in both languages.
+    for (const [lang, d] of [["ar", ar], ["en", en]] as const) {
+      for (const ev of ["Booking created", "Booking cancelled", "Booking rescheduled"]) expect(d.calcomStepEvents, `${lang}: ${ev}`).toContain(ev);
+    }
+    // The Calendly row: the token is used once and never saved; the plan is named (webhooks need a paid Calendly plan).
+    expect(en.tokenNote).toMatch(/once/i);
+    expect(en.tokenNote).toMatch(/never saved/i);
+    expect(ar.tokenNote).toContain("مرة واحدة");
+    expect(ar.tokenNote).toMatch(/لا يُحفظ/);
+    expect(en.planNote).toContain("Standard");
+    expect(ar.planNote).toContain("Standard");
+    // Stop and Renew leave Calendly's own webhook behind, and the card says so; Renew on Cal.com ends the old URL and key.
+    expect(en.calendlyLeft).toMatch(/webhook/i);
+    expect(en.calendlyLeft).toMatch(/delete/i);
+    expect(ar.calendlyLeft).toContain("webhook");
+    expect(en.renewNote).toMatch(/stop working/i);
+    // The warning says the link is private, in both languages.
+    expect(en.warning).toMatch(/private/i);
+
+    for (const lang of LANGS) {
+      const T = appDict[lang].todo.booking;
+      const none: BookingState = { kind: "ready", calcom: { kind: "none" }, calendly: { kind: "none" } };
+      // Two rows, each with Connect; the Calendly row has the token field (a password field, never completed by the browser).
+      const first = view(lang, none);
+      expect(first, lang).toContain(html(T.calcom));
+      expect(first, lang).toContain(html(T.calendly));
+      expect(first.split(`>${T.connect}</button>`).length - 1, lang).toBe(2);
+      expect(first, lang).toContain('type="password"');
+      expect(first, lang).toContain('autoComplete="off"');
+      expect(first, lang).toContain(html(T.tokenNote));
+      expect(first, lang).toContain(html(T.planNote));
+      expect(first, lang).not.toContain("/api/secretary/booking/");
+      // Created (Cal.com): the URL and the key, a Copy button each, the steps as an ordered list of three, the warning.
+      const created = view(lang, { kind: "ready", calcom: { kind: "created", url: URL_, secret: SECRET }, calendly: { kind: "none" } });
+      expect(created, lang).toContain(URL_);
+      expect(created, lang).toContain(SECRET);
+      expect(created.split(`>${T.copy}</button>`).length - 1, lang).toBe(2);
+      expect(created, lang).toContain(`<ol`);
+      for (const k of ["calcomStepOpen", "calcomStepPaste", "calcomStepEvents", "warning", "shownOnce", "renewNote"] as const) expect(created, `${lang}.${k}`).toContain(html(T[k]));
+      // After the page is left: the date, Renew and Stop, no URL and no key.
+      const since = formatWhen("2026-10-05T09:30:00.000Z", true, lang, Date.parse("2026-10-06T00:00:00.000Z"));
+      const exists = view(lang, { kind: "ready", calcom: { kind: "exists", since, sameBrand: true }, calendly: { kind: "exists", since, sameBrand: true } });
+      expect(exists, lang).toContain(T.since.replace("{date}", since));
+      expect(exists.split(`>${T.renew}</button>`).length - 1, lang).toBe(2);
+      expect(exists.split(`>${T.stop}</button>`).length - 1, lang).toBe(2);
+      expect(exists, lang).toContain(html(T.calendlyLeft));
+      expect(exists, lang).not.toContain("/api/secretary/booking/");
+      expect(exists, lang).not.toContain(SECRET);
+      expect(exists, lang).not.toContain(html(T.otherBrand));
+      // A link made in another brand says so (one line per such row).
+      const other = view(lang, { kind: "ready", calcom: { kind: "exists", since, sameBrand: false }, calendly: { kind: "none" } });
+      expect(other, lang).toContain(html(T.otherBrand));
+    }
+
+    // Where the URL, the key and the token live. The card keeps the URL and key in component state set from the create
+    // answer only; the status read (GET) never carries them; nothing is stored, logged or put in an address. The token is
+    // read from an uncompleted password field, cleared at once, and kept in no state.
+    const card = code("src/components/app/BookingCard.tsx");
+    const BANNED = ["localStorage", "sessionStorage", "indexedDB", "document.cookie", "console.", "history.", "router.push", "router.replace", "location.", "sendBeacon", "postMessage", "window.open", "window.name"];
+    for (const f of ["src/components/app/BookingCard.tsx", "src/components/app/useOneWrite.ts"]) for (const banned of BANNED) expect(code(f), `${f}: ${banned}`).not.toContain(banned);
+    expect(card).toContain("clearTimeout");
+    expect(card.match(/kind: "created", url:/g)?.length, "the created state is set in one place, from the create answer").toBe(1);
+    const read = card.slice(card.indexOf('fetch("/api/secretary/booking", { cache'), card.indexOf("return () => { live = false; }"));
+    expect(read.length, "the status read is found").toBeGreaterThan(50);
+    expect(read, "the status read never touches the URL or the key").not.toMatch(/\bsecret\b|\burl\b/i);
+    expect(card).not.toMatch(/onChange=/);
+    expect(card).toContain('.value = ""');
+    expect(card.indexOf('.value = ""')).toBeLessThan(card.indexOf('"/api/secretary/booking", "POST", { provider: "calendly"'));
+    const panel = readFileSync("src/components/app/TodoPanel.tsx", "utf8");
+    expect(panel.indexOf("<FeedCard")).toBeGreaterThan(-1);
+    expect(panel.indexOf("<BookingCard")).toBeGreaterThan(panel.indexOf("<FeedCard"));
   });
 });
