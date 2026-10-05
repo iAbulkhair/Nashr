@@ -428,6 +428,8 @@ MCP `save_draft` lets a bearer (the owner's Claude, ChatGPT or any MCP client, t
 
 ## Reem, the secretary (2026-09-29)
 
+Role (founder, 2026-10-05): Reem works for one Thakeen customer, the account owner, within the Thakeen contract and only on the marketing work that serves the brand; she follows the team without assigning it work on her own (work for the team is the owner's decision) or planning its time, and declines what is outside that scope. That scope is held by her persona (`src/lib/agents.ts`) and playbook (`content/skills/secretary.md`, the Role and scope principle), which is a prompt, not code; what code enforces is the data boundary below (rules 609-611).
+
 Phase 1 of the secretary agent keeps the owner's own to-dos, follow-ups and "who owes what" per brand scope (`src/lib/secretary.ts`, spec `docs/superpowers/specs/2026-09-29-secretary-reem-phase1.md`). What code enforces, not prompts:
 
 1. Scope. Every key is built from `sc(u)` (the session's or the bearer's active brand); an item id from a request is format-checked and resolved under that scope only (rows 101-103, section 3.2).
