@@ -443,8 +443,9 @@ describe("request users never stand in for the acting login", () => {
 
 describe("the gates that live outside the route table", () => {
   it("the chat tools that change the brand, publish or import the catalog carry the route's own action", () => {
-    expect(CHAT_TOOL_ACTION).toEqual({ update_brand: "brand.write", publish_item: "publish", import_catalog: "catalog.import" });
-    for (const a of Object.values(CHAT_TOOL_ACTION)) expect(MIN_ROLE[a]).toBe("admin");
+    expect(CHAT_TOOL_ACTION).toEqual({ update_brand: "brand.write", publish_item: "publish", import_catalog: "catalog.import", propose_meeting_tasks: "todo.write" });
+    // The brand, publish and import tools are the owner's and an admin's; Reem's meeting follow-up (rule 607) is the to-do list's, open to every login.
+    for (const [t, a] of Object.entries(CHAT_TOOL_ACTION)) expect(MIN_ROLE[a], t).toBe(t === "propose_meeting_tasks" ? "member" : "admin");
   });
   it("every MCP tool is mapped to an action, and nothing else is", async () => {
     const listed = ((await (await mcpRoute.GET()).json()) as { tools: string[] }).tools;

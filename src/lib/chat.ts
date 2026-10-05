@@ -31,11 +31,12 @@ import { byOf, type By } from "./actor";
 import { recordActivity } from "./activity";
 import { SEC_KEYS, SEC_TOOL_DEFS, SEC_WRITES_PER_HOUR, calendarOf, cleanLine, fail, isSecTool, runSecretaryTool, toolError, zoneFor } from "./secretary";
 import { HANDOFF_TOOL_DEF, handoffBlock, handoffNotesFor, runHandoffNote } from "./secretary-handoff";
+import { MEETING_TOOL_DEF, runProposeMeetingTasks } from "./secretary-meeting";
 import { endOfZoneDay, formatWhen, nowLine } from "./secretary-agenda";
 import { AWAY_AHEAD_DAYS, awayProposalStates, proposeAway, type AwayProposal } from "./secretary-away";
 import { allow } from "./rate";
 import { zoneOf } from "./zones";
-import { can, type Action } from "./roles";
+import { MIN_ROLE, can, type Action } from "./roles";
 import { HANDOFF_BRIEF_MAX, HANDOFF_MAX_ITEMS, HANDOFF_TYPES, autoItems, chatItemOf, createHandoff, markShown, parseProposal, proposalText } from "./handoffs";
 import { getGov } from "./governance";
 
@@ -205,8 +206,15 @@ export const CONTACT_AWAY_TOOL: Anthropic.Tool = {
   },
   strict: true,
 };
-/** The tools of one agent's turn: every agent's, plus the lead's proposal tool when Majed is talking and Reem's away card when she is. */
-export const toolsFor = (agentId: AgentId): Anthropic.Tool[] => (agentId === "majed" ? [...TOOLS, PROPOSE_HANDOFF_TOOL] : agentId === "reem" ? [...TOOLS, CONTACT_AWAY_TOOL] : TOOLS);
+/**
+ * Reem's meeting follow-up tool (Reem phase 3 B2b, rule 607): store proposed tasks on a booking item, for the owner to approve
+ * there. It creates nothing (src/lib/secretary-meeting.ts `runProposeMeetingTasks`; only the approve route makes items). Offered
+ * only in a turn where Reem is talking (`toolsFor`), never in the shared list or over MCP, refused in `runTool` otherwise, and
+ * gated `todo.write` through `TOOL_ACTION`.
+ */
+export const PROPOSE_MEETING_TASKS_TOOL: Anthropic.Tool = { name: MEETING_TOOL_DEF.name, description: MEETING_TOOL_DEF.description, input_schema: MEETING_TOOL_DEF.schema, strict: true };
+/** The tools of one agent's turn: every agent's, plus the lead's proposal tool when Majed is talking and Reem's away card and meeting follow-up when she is. */
+export const toolsFor = (agentId: AgentId): Anthropic.Tool[] => (agentId === "majed" ? [...TOOLS, PROPOSE_HANDOFF_TOOL] : agentId === "reem" ? [...TOOLS, CONTACT_AWAY_TOOL, PROPOSE_MEETING_TASKS_TOOL] : TOOLS);
 
 /**
  * Majed's chat text as the lead (the chat block only; his persona in agents.ts is unchanged): he proposes other agents'
@@ -314,6 +322,7 @@ export function statusFor(tool: string, lang: "ar" | "en", agentName: string): s
     todo_propose_done: ["أرفعها لك لتأكيد إنجازها…", "Asking you to confirm it is done…"],
     propose_handoff: ["أجهّز التسليم للفريق…", "Preparing a handoff for the team…"],
     contact_away: ["أجهّز بطاقة الغياب لتحفظها…", "Preparing an away card for you to save…"],
+    propose_meeting_tasks: ["أجهّز مهام ما بعد الاجتماع لتعتمدها…", "Preparing the meeting's follow-up tasks for your approval…"],
   };
   const [a, e] = map[tool] ?? [`${agentName} تعمل…`, `${agentName} is working…`];
   return ar ? a : e;
@@ -564,7 +573,7 @@ function batchRefused(r: BatchRefusal, actions: string[], lowCredits: (need: num
  * here in code, so asking Noor — in the app or over MCP — is never a way around the route's gate. A user with no actor
  * (nothing resolved who is acting) is refused, like every role check.
  */
-export const TOOL_ACTION: Readonly<Record<string, Action>> = { update_brand: "brand.write", publish_item: "publish", import_catalog: "catalog.import" };
+export const TOOL_ACTION: Readonly<Record<string, Action>> = { update_brand: "brand.write", publish_item: "publish", import_catalog: "catalog.import", propose_meeting_tasks: "todo.write" };
 
 /**
  * The turn a tool runs in: the talking agent, who is talking (for the activity log), whether the turn came over MCP
@@ -587,7 +596,8 @@ export async function runTool(user: User, name: string, input: Record<string, un
   const email = user.scope ?? user.email;
   // The role gate comes first: a refused tool reaches no pipeline, write or activity row.
   const needs = Object.prototype.hasOwnProperty.call(TOOL_ACTION, name) ? TOOL_ACTION[name] : null;
-  if (needs && !can(user, needs)) return `Not done: ${name} needs the owner or an admin of this account, and the person chatting is neither. Nothing was changed. Tell them plainly that the account owner or an admin can do this, and do not try another way around it.`;
+  // `todo.write` is held by every login of the account (members too), so for it the refusal is for a chat with no acting login.
+  if (needs && !can(user, needs)) return MIN_ROLE[needs] === "member" ? `Not done: ${name} needs a signed-in login of this account with access to its to-do list, and this chat has none. Nothing was changed. Tell the owner plainly and do not try another way around it.` : `Not done: ${name} needs the owner or an admin of this account, and the person chatting is neither. Nothing was changed. Tell them plainly that the account owner or an admin can do this, and do not try another way around it.`;
   const who = async () => ctx.by ?? (await byOf(user));
   // Agents' handoff notes (src/lib/secretary-handoff.ts), not Majed's handoffs: the sender is this turn's agent; over MCP
   // the words come from another assistant, so none is left. Tagged `note:`, never `handoff:`: that tag is Majed's
@@ -804,6 +814,15 @@ export async function runTool(user: User, name: string, input: Record<string, un
         ? `${items}, listed as ${JSON.stringify(p.contact)}`
         : `${items}: no open item is owed by that name, so check the spelling with the owner`;
       return `Proposed, not saved: ${what}; ${match}. It waits as a card under your reply for 7 days: say plainly that nothing changes until the owner presses Save on the card.`;
+    }
+    case "propose_meeting_tasks": {
+      // Code gates, not prompt rules (rule 607), as for contact_away: only Reem's own turn in the app proposes a meeting's tasks,
+      // with no default for a turn whose agent is not known; never over MCP or for a token. It is never offered to anyone else.
+      if (ctx.agent !== "reem") return "Not done: only Reem proposes a meeting's follow-up tasks. Nothing was stored.";
+      if (ctx.via === "mcp" || ctx.by?.kind === "token" || user.actor?.kind === "token") return "Not done: a meeting's tasks are proposed only in the app's chat with Reem. Nothing was stored.";
+      const r = await runProposeMeetingTasks(user, input);
+      if (!r.isError) actions.push(`meetprop:${r.id ?? ""}`);
+      return r.text;
     }
     case "list_inbox": {
       const tasks = await listLite(email, new Date(Date.now() - 90 * 864e5));

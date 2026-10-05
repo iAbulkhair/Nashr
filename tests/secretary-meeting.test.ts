@@ -15,6 +15,9 @@ import { AGENT_IDS } from "@/lib/agents";
 import * as meetRoute from "@/app/api/secretary/meeting/[id]/route";
 import * as approveRoute from "@/app/api/secretary/meeting/[id]/approve/route";
 import * as proposeRoute from "@/app/api/secretary/meeting/[id]/propose/route";
+import { CHAT_TOOL_NAMES, TOOL_ACTION, runTool, toolsFor, type ToolCtx } from "@/lib/chat";
+import { MCP_TOOL_ACTION } from "@/lib/mcp";
+import * as mcpRoute from "@/app/api/mcp/route";
 import { MEET_MAX, MEET_TITLE_MAX, approveMeeting, cleanProposals, dropPending, getPending, proposeFromText, savePending, type Proposal } from "@/lib/secretary-meeting";
 
 // Nothing here reaches a network: B2b's approve and the routes are plain code over the in-memory store, and the one model
@@ -982,4 +985,179 @@ describe("proposing from text (rules 604-606)", () => {
     expect(JSON.stringify([...mem().kv])).not.toContain(`${MARK}-notes`);
     expect(await openCount(u)).toBe(openBefore);
   }, 20000);
+});
+
+describe("propose_meeting_tasks (rule 607)", () => {
+  /** The user as the app's chat resolves it: the account with an acting login (a bare `createUser` has none and is refused by every role check). */
+  const acting = (u: User, kind: "owner" | "member" = "owner"): User => ({ ...u, actor: { kind, email: u.email, name: "Test", lang: "en", role: kind === "owner" ? "owner" : "member" } });
+  async function call(u: User, input: Record<string, unknown>, ctx: Partial<ToolCtx> = {}) {
+    const actions: string[] = [];
+    const text = await runTool(u, "propose_meeting_tasks", input, actions, [], undefined, { agent: "reem", via: "app", lang: "en", ...ctx });
+    return { text, actions };
+  }
+  const titles = async (u: User, item: SecItem) => (await getPending(sc(u), item.id))?.map((p) => p.title) ?? null;
+
+  it("rule 607: the tool stores proposals and creates no item; it is refused over MCP and for a role without todo.write; an item id of another scope or a non-booking item is an error; unknown agents are dropped; its answer says approval is still needed", async () => {
+    model.create.mockClear();
+    const u = acting(await newUser("mt607"));
+    const stranger = acting(await newUser("mt607s"));
+    const scope = sc(u);
+    const item = await booking(u);
+    const open = await openCount(u);
+
+    // It is gated like the to-do routes, in code.
+    expect(TOOL_ACTION.propose_meeting_tasks).toBe("todo.write");
+
+    // Stores the schema-valid proposals: an unknown agent is dropped, a title is cut, the day goes through the same range check,
+    // the input's own ref and item id are ignored. No item is made and nothing is charged.
+    const credits0 = (await getUser(u.email))!.credits;
+    const ok = await call(u, { item_id: item.id, tasks: [
+      { title: "Send the deck", agent: "owner", due: day(2) },
+      { title: "Draft the follow-up email", agent: "noor" },
+      { title: "Approve everything", agent: "approver" },
+      { title: "L".repeat(300), agent: "sami", ref: "mfixed000", itemId: `s${"a".repeat(16)}` },
+      { title: "Too late", agent: "owner", due: day(900) },
+    ] });
+    expect(ok.text).not.toMatch(/^Not done/);
+    const stored = (await getPending(scope, item.id))!;
+    expect(stored.map((p) => [p.title.slice(0, 26), p.agent, p.dueAt])).toEqual([["Send the deck", "owner", day(2)], ["Draft the follow-up email", "noor", undefined], ["L".repeat(26), "sami", undefined], ["Too late", "owner", undefined]]);
+    expect(stored[2].title).toHaveLength(MEET_TITLE_MAX);
+    for (const p of stored) { expect(p.ref).toMatch(/^m[a-f0-9]{8}$/); expect(p.itemId).toBeUndefined(); }
+    expect(stored.map((p) => p.ref)).not.toContain("mfixed000");
+    expect(await openCount(u)).toBe(open);
+    expect((await getUser(u.email))!.credits).toBe(credits0);
+    expect(model.create).not.toHaveBeenCalled();
+    // The answer: approval is still needed, on the item; nothing was created; no agent was told to run anything.
+    expect(ok.text).toMatch(/await[^.]*approv/i);
+    expect(ok.text).toMatch(/nothing (was|has been) created/i);
+    expect(ok.text).toMatch(/no agent/i);
+    expect(ok.text).toMatch(/not run|run anything|told to run/i);
+    expect(ok.text).toContain("Send the deck");
+    // It says a due day it dropped, so the model does not promise it.
+    expect(ok.text).toMatch(/due day/i);
+    expect(ok.actions).toEqual([`meetprop:${item.id}`]);
+
+    // A second call replaces the set (as a re-run of the notes or transcript path does), and says so.
+    const again = await call(u, { item_id: item.id, tasks: [{ title: "Only this one", agent: "owner" }] });
+    expect(again.text).toMatch(/replac/i);
+    expect(await titles(u, item)).toEqual(["Only this one"]);
+
+    // More than MEET_MAX are cut at MEET_MAX, in order.
+    const many = await call(u, { item_id: item.id, tasks: Array.from({ length: MEET_MAX + 5 }, (_, i) => ({ title: `Task ${i}`, agent: "owner" })) });
+    expect(many.text).not.toMatch(/^Not done/);
+    expect(await titles(u, item)).toEqual(Array.from({ length: MEET_MAX }, (_, i) => `Task ${i}`));
+
+    // No valid proposal: an error, nothing stored, and the set that was there stays.
+    for (const tasks of [[], [{ title: "Run it", agent: "approver" }], [{ title: "   ", agent: "owner" }], "do everything", null, undefined, [null, 7, "x"]]) {
+      const none = await call(u, { item_id: item.id, tasks });
+      expect(none.text, JSON.stringify(tasks)).toMatch(/^Not done: none of the tasks was valid/);
+      expect(none.text).toMatch(/nothing was stored/i);
+      expect(none.actions).toEqual([]);
+    }
+    expect(await titles(u, item)).toEqual(Array.from({ length: MEET_MAX }, (_, i) => `Task ${i}`));
+
+    // The item must be a live booking item of the caller's scope: every other case gets the same text, so an id says nothing.
+    const note = await booking(u, "A note to self", "owner");
+    const gone = await booking(u, "Cancelled meeting");
+    await removeBySystem(scope, gone.id, { actor: "rule", via: "web" }, "test");
+    const theirs = await booking(stranger);
+    const good = [{ title: "Send the deck", agent: "owner" }];
+    const refused = await Promise.all([note.id, gone.id, theirs.id, `s${"f".repeat(16)}`, "../x", "", "s", 7, null, undefined, { id: item.id }].map((id) => call(u, { item_id: id, tasks: good })));
+    for (const r of refused) { expect(r.text).toBe(refused[0].text); expect(r.actions).toEqual([]); }
+    expect(refused[0].text).toMatch(/^Not done: /);
+    expect(refused[0].text).toMatch(/nothing was stored/i);
+    expect(await titles(u, note)).toBeNull();
+    expect(await titles(u, gone)).toBeNull();
+    // The scope is the caller's own: the other account's item got nothing, and nothing was written under either key.
+    expect(await getPending(sc(stranger), theirs.id)).toBeNull();
+    expect(await getPending(scope, theirs.id)).toBeNull();
+    // A scope or an email in the input is not read.
+    const sneaky = await call(u, { item_id: theirs.id, scope: sc(stranger), email: stranger.email, tasks: good });
+    expect(sneaky.text).toBe(refused[0].text);
+    expect(await getPending(sc(stranger), theirs.id)).toBeNull();
+
+    // Only Reem's own turn in the app: any other agent, a turn with no agent, MCP and a token are refused and store nothing.
+    const fresh = await booking(u, "Second meeting");
+    const token = { kind: "token" as const, email: u.email, name: "Token", lang: "en" as const, role: "owner" as const };
+    const cases: [string, User, Partial<ToolCtx>][] = [
+      ["noor", u, { agent: "noor" }],
+      ["majed", u, { agent: "majed" }],
+      ["no agent", u, { agent: undefined }],
+      ["mcp", u, { via: "mcp" }],
+      ["token by", u, { by: { kind: "token", email: u.email } }],
+      ["token actor", { ...u, actor: token }, {}],
+    ];
+    for (const [name, user, ctx] of cases) {
+      const r = await call(user, { item_id: fresh.id, tasks: good }, ctx);
+      expect(r.text, name).toMatch(/^Not done: /);
+      expect(r.text, name).toMatch(/nothing was stored/i);
+      expect(r.actions, name).toEqual([]);
+    }
+    expect(await titles(u, fresh)).toBeNull();
+
+    // A login without todo.write is refused by the role gate before anything is read or written: no acting login at all, and a member
+    // once the action is raised above member.
+    const bare = await call({ ...u, actor: undefined }, { item_id: fresh.id, tasks: good });
+    expect(bare.text).toMatch(/^Not done: propose_meeting_tasks needs/);
+    expect(bare.text).toMatch(/nothing was changed/i);
+    (MIN_ROLE as Record<string, string>)["todo.write"] = "admin";
+    const member = await call(acting(u, "member"), { item_id: fresh.id, tasks: good });
+    expect(member.text).toMatch(/^Not done: propose_meeting_tasks needs/);
+    expect(member.actions).toEqual([]);
+    (MIN_ROLE as Record<string, string>)["todo.write"] = "member";
+    expect(await titles(u, fresh)).toBeNull();
+    // ... and the member of the account with todo.write may use it.
+    const asMember = await call(acting(u, "member"), { item_id: fresh.id, tasks: good });
+    expect(asMember.text).not.toMatch(/^Not done/);
+    expect(await titles(u, fresh)).toEqual(["Send the deck"]);
+
+    // Offered to Reem's turn only, never in the shared list, and never over MCP.
+    expect(toolsFor("reem").map((t) => t.name)).toContain("propose_meeting_tasks");
+    for (const a of AGENT_IDS.filter((x) => x !== "reem")) expect(toolsFor(a).map((t) => t.name), a).not.toContain("propose_meeting_tasks");
+    expect(CHAT_TOOL_NAMES).not.toContain("propose_meeting_tasks");
+    expect(Object.keys(MCP_TOOL_ACTION)).not.toContain("propose_meeting_tasks");
+    const listed = ((await (await mcpRoute.GET()).json()) as { tools: string[] }).tools;
+    expect(listed).not.toContain("propose_meeting_tasks");
+    const def = toolsFor("reem").find((t) => t.name === "propose_meeting_tasks")!;
+    expect(def.input_schema).toMatchObject({ type: "object", additionalProperties: false, required: ["item_id", "tasks"], properties: { item_id: { type: "string" }, tasks: { type: "array", items: { type: "object", additionalProperties: false, required: ["title", "agent"] } } } });
+    expect(JSON.stringify(def.input_schema)).toContain(MEET_MAX.toString());
+    expect(def.description).toMatch(/approv/i);
+    expect(def.description).toMatch(/creates? nothing|nothing is created/i);
+    // Free: the tool is no model call, and the tool's own rate limit key is the secretary's.
+    expect(model.create).not.toHaveBeenCalled();
+    await db.del(`rate:sec:write:${u.email}`);
+  }, 30000);
+
+  it("rule 607: a store that fails is answered as an error and never as stored; a thrown store error does not reach the chat loop", async () => {
+    const u = acting(await newUser("mt607f"));
+    const scope = sc(u);
+    const item = await booking(u);
+    const one = [{ title: "Send the deck", agent: "owner" }];
+    await call(u, { item_id: item.id, tasks: [{ title: "Kept task", agent: "noor" }] });
+
+    // The set's lock is held longer than the wait: lock_timeout, answered as an error, the old set untouched.
+    const key = SEC_KEYS.lock(scope, `mprop:${item.id}`);
+    expect(await db.lock(key, 10)).toBe(true);
+    const busy = await call(u, { item_id: item.id, tasks: one });
+    await db.unlock(key);
+    expect(busy.text).toMatch(/^Not done: /);
+    expect(busy.text).toMatch(/busy|try again/i);
+    expect(busy.text).not.toMatch(/await|stored for/i);
+    expect(busy.actions).toEqual([]);
+    expect(await titles(u, item)).toEqual(["Kept task"]);
+
+    // The store throws: a plain error sentence, no exception, nothing recorded as done.
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const set = vi.spyOn(db, "set").mockRejectedValueOnce(new Error("store down"));
+    const down = await call(u, { item_id: item.id, tasks: one });
+    set.mockRestore();
+    expect(down.text).toMatch(/^Not done: /);
+    expect(down.text).not.toMatch(/await/i);
+    expect(down.actions).toEqual([]);
+    expect(await titles(u, item)).toEqual(["Kept task"]);
+    // What was logged is the error's name, never the title or the store's message.
+    expect(JSON.stringify(err.mock.calls)).not.toContain("store down");
+    expect(JSON.stringify(err.mock.calls)).not.toContain("Send the deck");
+    await db.del(`rate:sec:write:${u.email}`);
+  }, 30000);
 });
