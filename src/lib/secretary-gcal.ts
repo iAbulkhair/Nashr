@@ -2,20 +2,27 @@
  * Reem B3: the provider side of the calendar link (spec 2026-10-05-secretary-reem-b3-calendar-read-design.md §3, §4, §5).
  * This part: the proof read at connection time and the connect step the OAuth callback calls. Nashr never calls a
  * provider's revoke endpoint (ruling R7): Google grants are shared per user and client with the publishing connection.
- * Task 5 adds the token refresh (`freshAccess`), the list of the account's own calendars and the lost-token step the calendar-link
- * routes share; the event fetch follows.
+ * Also here: the token refresh (`freshAccess`), the list of the account's own calendars, the lost-link step the calendar-link
+ * routes and the sync share (`loseLink`), the event fetch, and the sync itself (`sweepCalendars`, `syncOne`; spec §7).
  *
- * Importers: `src/app/api/connect/[provider]/callback/route.ts` (and the calendar routes and the sync, later). The hosts
+ * Importers: `src/app/api/connect/[provider]/callback/route.ts`, the calendar-link routes, `src/app/api/cron/secretary/route.ts`
+ * (the sweep) and `src/lib/account.ts` and the two password-reset routes (`revokeCalendarLinks`). The hosts
  * below are fixed constants called with plain `fetch`, the way `tokenRequest` does; no URL here comes from a user.
  * Tokens, provider answers and the account address never go into a log, an audit line or a URL.
  */
+import { getUser } from "./auth";
+import { getBrand } from "./brand";
 import { listBrands, scopeFor } from "./brands";
 import { refreshTokens } from "./connectors/oauth";
 import { getProvider, type CalProvider } from "./connectors/registry";
 import { db } from "./db";
+import { notifyItem } from "./notifications";
+import { pmap } from "./parallel";
 import { SEC_KEYS, audit } from "./secretary";
-import { dropLink, getLink, openTokens, putLink, sealTokens, type CalLink } from "./secretary-cal-link";
-import { decodeIdToken, googleAccount, microsoftDomain, MS_CONSUMER_TENANT } from "./secretary-cal-proof";
+import { dropLink, getLink, openTokens, putEvents, putLink, scheduleSync, sealTokens, type CalLink } from "./secretary-cal-link";
+import { decodeIdToken, googleAccount, microsoftDomain, MS_CONSUMER_TENANT, proofOf } from "./secretary-cal-proof";
+import { keepGoogle, keepGraph, limitMeetings, type GEvent, type GraphEvent, type Meeting } from "./secretary-meetings";
+import { zoneOf } from "./zones";
 
 export const GOOGLE_API = "https://www.googleapis.com";
 export const GRAPH = "https://graph.microsoft.com/v1.0";
@@ -186,15 +193,40 @@ export async function freshAccess(scope: string, link: CalLink, now: number): Pr
   return { ok: true, access, link: next, data };
 }
 
+type LostReason = NonNullable<CalLink["lostReason"]>;
+
+/** The in-app notice of a lost grant (spec §7.3): Reem stopped reading the calendar until the owner connects it again. Says nothing of the provider. */
+async function noticeLost(scope: string, link: CalLink): Promise<void> {
+  const owner = await getUser(scope.split("#")[0]);
+  if (!owner) return;
+  const ar = owner.lang === "ar";
+  await notifyItem(
+    owner.email,
+    owner.lang,
+    {
+      kind: "todo",
+      agent: "reem",
+      title: ar ? "تقويم التسويق يحتاج إعادة ربط" : "Marketing calendar needs reconnecting",
+      body: ar ? "توقفت ريم عن قراءة تقويم التسويق إلى أن تعيد ربطه." : "Reem stopped reading the marketing calendar until you reconnect it.",
+      href: `/${owner.lang}/app/todo`,
+    },
+    `cal-lost:${scope}:${link.connectedAt}`,
+    30,
+  );
+}
+
 /**
- * The link's tokens are gone (spec §7.3): state `reconnect` with `lostReason: "token"`, the synced events deleted, one
- * `cal_lost` audit line with the login and the provider. Only our side changes; nothing is sent to the provider (ruling R7).
- * The caller holds the lock. The in-app notice and the sync's own use of this belong to the sync task.
+ * The link cannot be read any more (spec §7.1-§7.3): state `reconnect` with `lostReason` (default `"token"`: the tokens are gone), the
+ * synced events deleted, the scope out of the sync queue, one `cal_lost` audit line with the login and the provider. A lost token
+ * also sends the owner one in-app notice (fingerprint `cal-lost:{scope}:{connectedAt}`), so a loss found by a route notifies as
+ * one found by the sync does; a failed notice is logged by name and never undoes the loss. Only our side changes; nothing is sent
+ * to the provider (ruling R7). The caller holds the lock.
  */
-export async function loseLink(scope: string, link: CalLink, login: string): Promise<void> {
-  const next: CalLink = { ...link, state: "reconnect", lostReason: "token", rev: link.rev + 1 };
+export async function loseLink(scope: string, link: CalLink, login: string, reason: LostReason = "token"): Promise<void> {
+  const next: CalLink = { ...link, state: "reconnect", lostReason: reason, rev: link.rev + 1 };
   delete next.choices;
-  await Promise.all([putLink(scope, next), db.del(SEC_KEYS.calEvents(scope)), audit(scope, { actor: "owner", via: "web", login }, "cal_lost", "-", `provider=${link.provider}`)]);
+  await Promise.all([putLink(scope, next), db.del(SEC_KEYS.calEvents(scope)), db.zrem(SEC_KEYS.calDue, scope), audit(scope, { actor: "owner", via: "web", login }, "cal_lost", "-", `provider=${link.provider}`)]);
+  if (reason === "token") await noticeLost(scope, link).catch((e) => console.error("cal lost notice failed", e instanceof Error ? e.name : "error"));
 }
 
 /** Calendar names are the provider's text: no control characters, at most 100 characters. */
@@ -266,4 +298,148 @@ export async function fetchEvents(link: CalLink, access: string, fromMs: number,
     console.error("cal events fetch failed", e instanceof Error ? e.name : "error");
     return { ok: false, kind: "retry" };
   }
+}
+
+/** The sync (spec §7): every 15 minutes per linked brand, 50 scopes a tick, 8 at a time, the next 7 days of the chosen calendar. */
+export const CAL_SYNC_MS = 15 * 60_000;
+export const CAL_TICK_MAX = 50;
+export const CAL_CONCURRENCY = 8;
+const CAL_WINDOW_MS = 7 * 86_400_000;
+/** A busy brand lock is looked at again after this. */
+const CAL_BUSY_RETRY_MS = 60_000;
+/** A provider error with no `Retry-After` is tried again after 15 minutes; one that has it is floored at 60 s (0 must not retry at once). */
+const RETRY_DEFAULT_S = 900;
+const RETRY_FLOOR_S = 60;
+/** More raw events than this in one answer are never read (the request asks for 300). */
+const RAW_EVENTS_MAX = 600;
+
+export type CalSweepReport = { scopes: number; synced: number; lost: number; retried: number; deferred: number };
+/** What one scope's sync came to; `dropped` is a link that was gone, not in state `ok`, or archived with its brand: nothing to count. */
+type Outcome = "synced" | "lost" | "retried" | "deferred" | "dropped";
+
+/** The link as it was when this run read it: the same record (rev and connection), still there. */
+const same = (now: CalLink | null, was: CalLink): now is CalLink => !!now && now.rev === was.rev && now.connectedAt === was.connectedAt;
+
+/**
+ * Lose the link for `reason`, unless it was unlinked or replaced since this run read it (ruling R5: a loss written over a deleted
+ * link would bring it back). The caller holds the lock; the re-read covers a lock that expired under a slow provider.
+ */
+async function loseSync(scope: string, was: CalLink, reason: LostReason): Promise<Outcome> {
+  const cur = await getLink(scope);
+  if (!same(cur, was)) return "dropped";
+  await loseLink(scope, cur, cur.login, reason);
+  return "lost";
+}
+
+/** Look at this scope again at `atMs`, unless the link is gone or replaced (ruling R5: a reschedule would revive a dropped scope). */
+async function retryAt(scope: string, was: CalLink, atMs: number): Promise<Outcome> {
+  if (!same(await getLink(scope), was)) return "dropped";
+  await scheduleSync(scope, atMs);
+  return "retried";
+}
+
+/** One scope's sync with the brand's calendar lock held, in the order of spec §7: holds, domain, token, fetch, store. */
+async function syncLocked(scope: string, now: number): Promise<Outcome> {
+  const link = await getLink(scope);
+  // A link that is gone, still being chosen or already in reconnect is not synced: it leaves the queue.
+  if (!link || link.state !== "ok" || !link.calendarId) {
+    await db.zrem(SEC_KEYS.calDue, scope);
+    return "dropped";
+  }
+  const owner = scope.split("#")[0];
+  const [user, brands, brand] = await Promise.all([getUser(owner), listBrands(owner), getBrand(scope)]);
+  const meta = brands.find((b) => scopeFor(owner, b.id) === scope);
+  // An archived brand ends its link; Nashr holds no token afterwards and calls no provider (ruling R7).
+  if (meta?.status === "archived") {
+    await dropLink(scope);
+    return "dropped";
+  }
+  if (!user || user.suspended || link.login !== user.email) return loseSync(scope, link, "owner");
+  if (meta?.status !== "active") return loseSync(scope, link, "brand");
+  // The brand's website may have moved to another domain since the proof was made.
+  if (link.proof === "domain" && proofOf(link.accountDomain ?? null, brand?.website) === null) return loseSync(scope, link, "domain");
+
+  const fresh = await freshAccess(scope, link, now);
+  if (!fresh.ok) return "lost" in fresh ? loseSync(scope, link, "token") : retryAt(scope, link, now + RETRY_DEFAULT_S * 1000);
+  const cur = fresh.link;
+  // Ruling R3: a Google refresh without an `id_token` keeps the stored domain; Outlook asks Graph every time. Only a domain link needs it.
+  if (cur.proof === "domain" && (cur.provider === "mscal" || fresh.data.id_token)) {
+    try {
+      const who = await reproof(cur, fresh.data, fresh.access);
+      if (proofOf(who.accountDomain, brand?.website) === null) return loseSync(scope, cur, "domain");
+    } catch (e) {
+      console.error("cal proof failed", e instanceof Error ? e.name : "error");
+      return retryAt(scope, cur, now + RETRY_DEFAULT_S * 1000);
+    }
+  }
+
+  const res = await fetchEvents(cur, fresh.access, now, now + CAL_WINDOW_MS);
+  if (!res.ok) {
+    if (res.kind === "gone") return loseSync(scope, cur, "calendar");
+    if (res.kind === "auth") return loseSync(scope, cur, "token");
+    const s = Math.min(RETRY_AFTER_MAX_S, Math.max(RETRY_FLOOR_S, res.retryAfterS ?? RETRY_DEFAULT_S));
+    return retryAt(scope, cur, now + s * 1000);
+  }
+  const zone = zoneOf(brand);
+  const events = limitMeetings(
+    res.raw
+      .slice(0, RAW_EVENTS_MAX)
+      .map((e) => (cur.provider === "gcal" ? keepGoogle(e as GEvent, zone) : keepGraph(e as GraphEvent, zone)))
+      .filter((m): m is Meeting => m !== null),
+  );
+  // The provider call was slow: store only into the link this run started with (ruling R5).
+  const latest = await getLink(scope);
+  if (!same(latest, cur)) return "dropped";
+  await Promise.all([putEvents(scope, { syncedAt: now, events }), putLink(scope, { ...latest, lastSyncAt: now }), scheduleSync(scope, now + CAL_SYNC_MS)]);
+  return "synced";
+}
+
+/** One scope's sync under the brand's calendar lock (ruling R8); a busy lock means look again in 60 s (P6), with the tokens untouched. */
+async function syncOne(scope: string, now: number): Promise<Outcome> {
+  const r = await withCalLock(scope, () => syncLocked(scope, now));
+  if (typeof r === "string") return r;
+  if (await getLink(scope)) await scheduleSync(scope, now + CAL_BUSY_RETRY_MS);
+  else await db.zrem(SEC_KEYS.calDue, scope);
+  return "deferred";
+}
+
+/**
+ * The calendar part of the secretary tick: takes the (at most `CAL_TICK_MAX`) scopes whose next sync time has come out of
+ * `sec:cal:due` and syncs them `CAL_CONCURRENCY` at a time. Nothing new starts after `deadline`: those scopes keep their past
+ * score, come first next tick and count as `deferred`. One scope's failure (a store error) is logged by name, leaves its score
+ * and counts as `retried`; it never stops the others. The members are scopes the sweep took from the queue; no key is built
+ * from anything else.
+ */
+export async function sweepCalendars(now: number, deadline: number): Promise<CalSweepReport> {
+  const scopes = (await db.zrangeByScore(SEC_KEYS.calDue, now, CAL_TICK_MAX)).map((m) => m.member).filter((s) => s.length > 0 && s.length <= 320);
+  const report: CalSweepReport = { scopes: scopes.length, synced: 0, lost: 0, retried: 0, deferred: 0 };
+  await pmap(
+    scopes,
+    async (scope) => {
+      if (Date.now() >= deadline) {
+        report.deferred++;
+        return;
+      }
+      try {
+        const o = await syncOne(scope, now);
+        if (o !== "dropped") report[o]++;
+      } catch (e) {
+        console.error("cal sync failed", e instanceof Error ? e.name : "error");
+        report.retried++;
+      }
+    },
+    CAL_CONCURRENCY,
+  );
+  return report;
+}
+
+/**
+ * Password reset or account wipe: every brand's calendar link of this account owner ends, archived brands included (one
+ * `listBrands`, then the links in parallel). A member login or an unknown address has no brands of its own: nothing happens.
+ * Only our side is dropped; no provider is called (ruling R7). A sync in flight stores nothing afterwards (ruling R5).
+ */
+export async function revokeCalendarLinks(email: string): Promise<void> {
+  const [owner, brands] = await Promise.all([getUser(email), listBrands(email)]);
+  if (!owner) return;
+  await pmap(brands, (b) => dropLink(scopeFor(email, b.id)));
 }

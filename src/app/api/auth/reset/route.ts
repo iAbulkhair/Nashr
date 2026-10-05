@@ -5,6 +5,7 @@ import { createSession, getLogin, revokeSessions, revokeTeamSessions, saveUser, 
 import { withUserLock } from "@/lib/credits";
 import { revokeAllMcp } from "@/lib/mcp";
 import { revokeFeed, revokeFeeds } from "@/lib/feed-token";
+import { revokeCalendarLinks } from "@/lib/secretary-gcal";
 import { membersKey, saveMember, withMemberLock } from "@/lib/team";
 import { db } from "@/lib/db";
 import { allow, clientIp } from "@/lib/rate";
@@ -69,7 +70,8 @@ export async function POST(req: Request) {
   // The owner's calendar link and every member's go with the MCP tokens, as every member's session does above (the
   // password and the sessions are already saved: a failure here is a 500 and the user asks for a new reset link).
   const roster = await db.smembers(membersKey(owner.email));
-  await Promise.all([revokeAllMcp(owner.email), revokeFeeds([owner.email, ...roster])]);
+  // The owner's linked marketing calendars (Reem B3) end with them too: whoever holds the account next links their own.
+  await Promise.all([revokeAllMcp(owner.email), revokeFeeds([owner.email, ...roster]), revokeCalendarLinks(owner.email)]);
   await createSession(owner.email);
   return NextResponse.json({ ok: true });
 }

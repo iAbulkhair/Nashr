@@ -16,6 +16,7 @@ import { membersKey, wipeTeam } from "./team";
 import { revokeFeed, revokeFeeds } from "./feed-token";
 import { forgetWishlistUser } from "./wishlist";
 import { forgetDueScope, secretaryKeys } from "./secretary";
+import { revokeCalendarLinks } from "./secretary-gcal";
 import { handoffKeys } from "./handoffs";
 import { proposalKeys } from "./brand-proposals";
 import { ONCE_INDEX, onceClaimKey, onceKey, onceRepairKey } from "./notify";
@@ -41,6 +42,8 @@ export async function wipeAccount(email: string) {
   // member's (`members:{owner}`). A member added after this read is revoked by `wipeTeam` under `lock:team`. A failure
   // stops the wipe (a retry runs it again) rather than leaving a working link behind a half-wiped account.
   await revokeFeeds([e, ...(await db.smembers(membersKey(e)))]);
+  // The owner's linked marketing calendars (Reem B3), every brand's: only our side is dropped, the owner removes access at the provider.
+  await revokeCalendarLinks(e);
   const scopes = (await listBrands(e)).map((b) => scopeFor(e, b.id));
   const now = new Date();
   const warnMonths = [monthKey(now), monthKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)))];
