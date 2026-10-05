@@ -31,6 +31,29 @@ const AGAIN = {
 } as const;
 
 /**
+ * WordPress: the draft is the default. Going live is a separate confirmation for this one item (the server also needs
+ * `live: true`, which nothing but this button sends); a second send updates the post it made before.
+ */
+const WP = {
+  ar: {
+    live: "انشر مباشرة على ووردبريس",
+    liveAsk: "سيظهر هذا المقال على موقعك لزوّاره فور التأكيد، ولا يستطيع ذكين سحبه من هنا. تأكد أنك قرأته. هل تنشره الآن؟",
+    liveYes: "نعم، انشره الآن",
+    updates: "سيُحدَّث المنشور نفسه في ووردبريس بدل إنشاء مسودة ثانية، وأي تعديل أجريته عليه هناك سيُستبدل بهذه النسخة.",
+    image: "أُنشئت المسودة بلا صورة بارزة: تعذّر رفع الصورة إلى موقعك (المستخدم المربوط يحتاج صلاحية رفع الملفات). أضفها من ووردبريس.",
+    cannotLive: "حساب ووردبريس المربوط لا يملك صلاحية النشر. انشر من ووردبريس نفسه، أو اربط حساباً بصلاحية محرر أو مدير.",
+  },
+  en: {
+    live: "Publish live on WordPress",
+    liveAsk: "This article will be visible to your site's visitors as soon as you confirm, and Thakeen cannot take it back from here. Make sure you have read it. Publish it now?",
+    liveYes: "Yes, publish it now",
+    updates: "The same post in WordPress is updated instead of a second draft being made, and any change you made to it there is replaced by this version.",
+    image: "The draft was made without a featured image: the image could not be uploaded to your site (the connected user needs the upload files capability). Add it in WordPress.",
+    cannotLive: "The connected WordPress account cannot publish. Publish from WordPress itself, or connect an account with the Editor or Administrator role.",
+  },
+} as const;
+
+/**
  * Approve and Publish carry the version of the card on screen (src/lib/task-version.ts). When someone else edited the
  * item, or a new image arrived, after the card was shown, the server refuses with `changed` and sends the item as it is
  * now: the card shows it, and the person decides again on what will actually go out.
@@ -80,6 +103,9 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
   // What the publish route checks: stricter than approval, since no placeholder of any kind is ever published.
   const pubHeld = (x: Task) => gateTask({ banned }, x, { publish: true });
   const A = AGAIN[lang];
+  const W = WP[lang];
+  const [liveAsk, setLiveAsk] = useState<string | null>(null);
+  const [wpNote, setWpNote] = useState<{ id: string; kind: "image" | "cannotLive" } | null>(null);
   const [again, setAgain] = useState<{ id: string; provider: string; kind: "already" | "unknown" | "busy" | "duplicate" | "earlier"; url?: string } | null>(null);
   const [refused, setRefused] = useState<Record<string, Violation[]>>({});
   const r = useRouter();
@@ -107,19 +133,24 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
   // Publishing is admin and owner only (src/lib/roles.ts "publish"), so a member is offered no target at all.
   const targets = (x: Task) => (canPublish ? targetsFor(x, connected) : []);
 
-  async function publish(id: string, provider: string, repeat = false) {
+  async function publish(id: string, provider: string, repeat = false, live = false) {
     const shownCard = view.find((x) => x.id === id);
     if (!shownCard) return;
     setPublishing(id + provider);
     setAgain(null);
     setFailed(null);
+    setLiveAsk(null);
+    setWpNote(null);
     const version = taskVersion(shownCard);
-    const res = await fetch(`/api/publish/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(repeat ? { provider, again: true, version } : { provider, version }) }).catch(() => null);
+    const res = await fetch(`/api/publish/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, version, ...(repeat ? { again: true } : {}), ...(live ? { live: true } : {}) }) }).catch(() => null);
     setPublishing(null);
     // No answer, or the platform's time limit (a 5xx with no reason): the post may be live, so the owner checks first.
     if (!res || (res.status >= 500 && res.status !== 502)) { setAgain({ id, provider, kind: "unknown" }); forgetLocal(id); r.refresh(); return; }
-    if (res.ok) milestone("publish");
-    else {
+    if (res.ok) {
+      milestone("publish");
+      const done = (await res.json().catch(() => ({}))) as { result?: { notes?: string[] } };
+      if (done.result?.notes?.includes("image_failed")) setWpNote({ id, kind: "image" });
+    } else {
       const j = (await res.json().catch(() => ({}))) as { error?: string; violations?: Violation[]; url?: string };
       if (j.error === "brand_violation" && j.violations) setRefused((p) => ({ ...p, [id]: j.violations! }));
       // Changed since the card was shown: nothing went out. The refresh below brings the current version.
@@ -127,6 +158,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
       // Already on that platform, a result nobody saw, or a publish still running: the server did not post, and the
       // owner is asked, never a silent second post (src/lib/publish-once.ts).
       else if (j.error === "already_published" || j.error === "publish_unknown" || j.error === "publish_busy" || j.error === "duplicate_post" || j.error === "earlier_live") setAgain({ id, provider, kind: j.error === "already_published" ? "already" : j.error === "publish_unknown" ? "unknown" : j.error === "duplicate_post" ? "duplicate" : j.error === "earlier_live" ? "earlier" : "busy", url: j.url });
+      else if (j.error === "wordpress_cannot_publish_live") setWpNote({ id, kind: "cannotLive" });
       else alert(res.status === 403 ? t.team.errors.forbidden : i.publishFail);
     }
     // `view` renders `local[id] ?? task`, so an entry left over from an earlier approve would mask this task's server
@@ -309,9 +341,11 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
               {x.published && x.published.length > 0 && (
                 <p className="mt-2 text-xs text-ink">{x.published.map((p, n) => (p.url ? <a key={`${p.url}${n}`} href={p.url} target="_blank" rel="noreferrer" className="me-3 underline">{p.status === "draft" ? i.draftOn : i.published} {p.provider} ↗</a> : <span key={`${p.provider}${n}`} className="me-3">{i.published} {p.provider}</span>))}</p>
               )}
+              {wpNote?.id === x.id && <p role="status" className="mt-2 text-xs text-ink/80" dir="auto">{wpNote.kind === "image" ? W.image : W.cannotLive}</p>}
               {again?.id === x.id && (
                 <div role="alert" className="mt-3 rounded-lg border border-lemon/40 bg-lemon/10 p-3 text-sm">
                   <p className="text-ink/80" dir="auto">{again.kind === "busy" ? A.busy : A[again.kind](again.provider)}{again.url && <> <a href={again.url} target="_blank" rel="noreferrer" className="underline">↗</a></>}</p>
+                  {again.provider === "wordpress" && (again.kind === "already" || again.kind === "unknown") && x.published?.some((p) => p.provider === "wordpress" && p.id) && <p className="mt-1 text-ink/70" dir="auto">{W.updates}</p>}
                   {(again.kind === "already" || again.kind === "unknown") && (
                     <div className="mt-2 flex flex-wrap gap-2">
                       <button disabled={publishing === x.id + again.provider} onClick={() => publish(x.id, again.provider, true)} className="btn btn-primary btn-xs">{A.again}</button>
@@ -450,6 +484,16 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                         {list.map((p) => (
                           <button key={p} disabled={publishing === x.id + p || pub.length > 0} title={slotsOnly ? A.slots : pub.length ? G.held : undefined} onClick={() => publish(x.id, p)} className="btn btn-primary btn-pill">{publishing === x.id + p ? i.publishing : `${i.publishTo} ${p}`}</button>
                         ))}
+                        {list.includes("wordpress") && <button disabled={publishing === x.id + "wordpress" || pub.length > 0} onClick={() => setLiveAsk(x.id)} className="btn btn-secondary btn-pill">{W.live}</button>}
+                        {liveAsk === x.id && (
+                          <div role="alert" className="w-full rounded-lg border border-lemon/40 bg-lemon/10 p-3 text-sm">
+                            <p className="text-ink/80" dir="auto">{W.liveAsk}</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <button disabled={publishing === x.id + "wordpress"} onClick={() => publish(x.id, "wordpress", !!x.published?.some((p) => p.provider === "wordpress"), true)} className="btn btn-primary btn-xs">{W.liveYes}</button>
+                              <button onClick={() => setLiveAsk(null)} className="btn btn-secondary btn-xs">{i.cancel}</button>
+                            </div>
+                          </div>
+                        )}
                         {/* The reason in words, not only on hover: most owners use the inbox on a phone. */}
                         {slotsOnly && list.length > 0 && <p className="w-full text-xs text-muted" dir="auto">{A.slots}</p>}
                         {copyOnlyNote(x, connected) && <p className="w-full text-xs text-muted" dir="auto">{i.sallaArticle}</p>}

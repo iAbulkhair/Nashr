@@ -42,8 +42,9 @@ describe("which connectors do something", () => {
     expect(reportSources(["salla"])).toEqual({ read: ["store"], missing: ["analytics", "ads", "social"], banner: "some" });
     expect(reportSources(["shopify", "x"]).read).toEqual(["store"]);
     expect(reportSources(["zid"]).read).toEqual(["store"]);
-    // WooCommerce and Meta store a connection, but nothing reads their numbers.
-    expect(reportSources(["woocommerce", "meta", "google"])).toMatchObject({ read: [], banner: "none" });
+    expect(reportSources(["woocommerce"]).read).toEqual(["store"]);
+    // Meta and Google store a connection, but nothing reads their numbers.
+    expect(reportSources(["meta", "google"])).toMatchObject({ read: [], banner: "none" });
   });
 });
 

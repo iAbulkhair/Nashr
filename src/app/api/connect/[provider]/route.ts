@@ -34,7 +34,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ provider: s
  */
 const ACTION_ROLE: Record<string, Action> = { select_page: "connectors", select_ad_account: "connectors", import_products: "catalog.import", sync_ads: "read", sync_sales: "read" };
 
-/** POST {action:"import_products"}, for Salla, Shopify and Zid {action:"sync_sales"}, for Meta {action:"select_page", pageId} */
+/** POST {action:"import_products"}, for Salla, Shopify, WooCommerce and Zid {action:"sync_sales"}, for Meta {action:"select_page", pageId} */
 export async function POST(req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });

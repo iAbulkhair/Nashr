@@ -214,6 +214,7 @@ const READS: Record<string, Gate> = {
   "GET /api/cron/routines": "cron",
   "GET /api/cron/media": "cron",
   "GET /api/cron/evening": "cron",
+  "GET /api/cron/stores": "cron",
 
   "GET /api/admin/evals": "admin-console",
   "GET /api/admin/export": "admin-console",

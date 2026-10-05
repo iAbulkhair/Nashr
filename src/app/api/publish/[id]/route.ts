@@ -24,7 +24,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   const t = await getTask(sc(u), id);
   if (!t) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
-  const raw = (await req.json().catch(() => ({}))) as { provider?: string; again?: unknown; version?: unknown } | null;
+  const raw = (await req.json().catch(() => ({}))) as { provider?: string; again?: unknown; live?: unknown; version?: unknown } | null;
   const b = raw && typeof raw === "object" ? raw : {};
   if (!b.provider) return NextResponse.json({ ok: false, error: "provider_required" }, { status: 400 });
   // The publish is bound to the card the admin saw (src/lib/task-version.ts): a member may edit a pending draft, and
@@ -40,12 +40,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // no placeholder of any kind goes out, not even a WhatsApp {{1}} (src/lib/brand-rules.ts).
   const violations = gateTask(brand, t, { publish: true });
   if (violations.length) return NextResponse.json({ ok: false, error: "brand_violation", violations }, { status: 409 });
+  // Going live is the owner's per-item confirmation for the WordPress site; no other platform has a draft to go live from.
+  if (b.live === true && b.provider !== "wordpress") return NextResponse.json({ ok: false, error: "live_unsupported" }, { status: 400 });
   const connected = connectedTargets(connections);
   if (!targetsFor(t, connected).includes(b.provider)) return NextResponse.json({ ok: false, error: "wrong_target" }, { status: 400 });
   // One publish per item and platform; a second one, or one after a result nobody saw, needs the owner's "again". The
   // two checks that read the item run again on the copy that is sent, under the publish lock.
   const r = await publishOnce(sc(u), id, b.provider, {
     again: b.again === true,
+    live: b.live === true,
     // Just above this route's 60 s: a killed function cannot post any more, and the attempt marker still holds a repeat.
     lockS: 70,
     check: (cur) => {
