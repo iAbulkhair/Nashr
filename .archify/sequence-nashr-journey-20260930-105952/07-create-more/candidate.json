@@ -1,0 +1,885 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Create: brand facts, threads, Generate, inspiration, calendar",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "output": ".archify/sequence-nashr-journey-20260930-105952/07-create-more/07-create-more.html",
+    "repository": {
+      "url": "https://github.com/iAbulkhair/Nashr.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "f0e7fdecf7d70d8c60ba76650f22440433926add"
+    }
+  },
+  "participants": [
+    {
+      "id": "person",
+      "type": "external",
+      "label": "Person",
+      "sublabel": "owner or team",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 310,
+          "end_line": 362
+        },
+        {
+          "path": "src/components/app/GeneratePanel.tsx",
+          "line": 23,
+          "end_line": 46
+        },
+        {
+          "path": "src/components/app/CalendarPanel.tsx",
+          "line": 22,
+          "end_line": 53
+        }
+      ]
+    },
+    {
+      "id": "page",
+      "type": "frontend",
+      "label": "Browser page",
+      "sublabel": "what they see",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 536,
+          "end_line": 539
+        },
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 30,
+          "end_line": 52
+        },
+        {
+          "path": "src/components/app/InspoPanel.tsx",
+          "line": 25,
+          "end_line": 43
+        }
+      ]
+    },
+    {
+      "id": "checks",
+      "type": "security",
+      "label": "Checks in code",
+      "sublabel": "auth · roles · limits",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 83,
+          "end_line": 85
+        },
+        {
+          "path": "src/app/api/brand/proposals/[id]/route.ts",
+          "line": 15,
+          "end_line": 27
+        },
+        {
+          "path": "src/app/api/generate/route.ts",
+          "line": 11,
+          "end_line": 40
+        }
+      ]
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "Nashr server",
+      "sublabel": "API routes",
+      "sources": [
+        {
+          "path": "src/app/api/catalog/route.ts",
+          "line": 9,
+          "end_line": 32
+        },
+        {
+          "path": "src/app/api/chat/route.ts",
+          "line": 43,
+          "end_line": 50
+        },
+        {
+          "path": "src/app/[lang]/app/conversations/page.tsx",
+          "line": 13,
+          "end_line": 55
+        }
+      ]
+    },
+    {
+      "id": "agents",
+      "type": "backend",
+      "label": "AI agents",
+      "sublabel": "model paused now",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 621,
+          "end_line": 682
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 805,
+          "end_line": 814
+        },
+        {
+          "path": "src/lib/generate-batch.ts",
+          "line": 187,
+          "end_line": 262
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "account data",
+      "sources": [
+        {
+          "path": "src/lib/brand-proposals.ts",
+          "line": 96,
+          "end_line": 130
+        },
+        {
+          "path": "src/lib/conversations.ts",
+          "line": 51,
+          "end_line": 65
+        },
+        {
+          "path": "src/lib/files.ts",
+          "line": 63
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 156,
+      "to": 776,
+      "label": "Brand facts"
+    },
+    {
+      "from": 804,
+      "to": 1438,
+      "label": "Memory and catalog"
+    },
+    {
+      "from": 1466,
+      "to": 1950,
+      "label": "Threads"
+    },
+    {
+      "from": 1978,
+      "to": 2466,
+      "label": "Generate"
+    },
+    {
+      "from": 2494,
+      "to": 2848,
+      "label": "Inspiration"
+    },
+    {
+      "from": 2876,
+      "to": 3142,
+      "label": "Calendar"
+    }
+  ],
+  "messages": [
+    {
+      "id": "create-brand-fact--do",
+      "from": "person",
+      "to": "page",
+      "y": 180,
+      "label": "Tell an agent a brand fact",
+      "variant": "emphasis",
+      "note": "e.g. 'never say cheap', 'our offer is 20% off'"
+    },
+    {
+      "id": "create-brand-fact--send",
+      "from": "page",
+      "to": "server",
+      "y": 224,
+      "label": "Chat message to the agent",
+      "variant": "emphasis"
+    },
+    {
+      "id": "create-brand-fact--model",
+      "from": "server",
+      "to": "agents",
+      "y": 254,
+      "label": "Agent calls update_brand",
+      "variant": "emphasis",
+      "note": "Paused since 2026-09-28: paused reply, no tool runs"
+    },
+    {
+      "id": "create-brand-fact--role",
+      "from": "server",
+      "to": "checks",
+      "y": 298,
+      "label": "TOOL_ACTION: brand.write",
+      "variant": "security",
+      "note": "Member: only owner or admin can; nothing changes"
+    },
+    {
+      "id": "create-brand-fact--write",
+      "from": "server",
+      "to": "store",
+      "y": 342,
+      "label": "Write under brandlock:{scope}",
+      "variant": "dashed",
+      "note": "tone, products, dialect…; banned adds only, ≤400 chars; one activity row"
+    },
+    {
+      "id": "create-brand-fact--propose",
+      "from": "server",
+      "to": "store",
+      "y": 386,
+      "label": "offers, banned_remove: brandprop",
+      "variant": "dashed",
+      "note": "proposeBrandChange keeps it 7 days; brand unchanged"
+    },
+    {
+      "id": "create-brand-fact--see",
+      "from": "server",
+      "to": "page",
+      "y": 416,
+      "label": "'Brand file updated'",
+      "variant": "return",
+      "note": "Channels, languages, handles: refused, see Brand page"
+    },
+    {
+      "id": "create-brand-fact--card",
+      "from": "page",
+      "to": "person",
+      "y": 460,
+      "label": "Or card: 'waits for your Save'",
+      "variant": "return"
+    },
+    {
+      "id": "create-proposal-card--do",
+      "from": "person",
+      "to": "page",
+      "y": 500,
+      "label": "Save to brand file / Dismiss",
+      "variant": "emphasis",
+      "note": "Card shows 'Now' and 'After Save'"
+    },
+    {
+      "id": "create-proposal-card--post",
+      "from": "page",
+      "to": "server",
+      "y": 530,
+      "label": "POST /api/brand/proposals/{id}",
+      "variant": "emphasis"
+    },
+    {
+      "id": "create-proposal-card--role",
+      "from": "server",
+      "to": "checks",
+      "y": 560,
+      "label": "forbid('brand.write')",
+      "variant": "security",
+      "note": "Member: no buttons, waits for owner or admin"
+    },
+    {
+      "id": "create-proposal-card--claim",
+      "from": "server",
+      "to": "store",
+      "y": 604,
+      "label": "60 s setNx claim, read via sc(u)",
+      "variant": "default",
+      "note": "Busy: 409; decided or expired: 404"
+    },
+    {
+      "id": "create-proposal-card--apply",
+      "from": "server",
+      "to": "store",
+      "y": 648,
+      "label": "Apply under brandlock, saveBrand",
+      "variant": "dashed",
+      "note": "Dismiss closes it; stale: 409, nothing saved; apply adds an activity row"
+    },
+    {
+      "id": "create-proposal-card--done",
+      "from": "server",
+      "to": "store",
+      "y": 692,
+      "label": "Set brandprop-done for 7 days",
+      "variant": "dashed"
+    },
+    {
+      "id": "create-proposal-card--see",
+      "from": "server",
+      "to": "page",
+      "y": 722,
+      "label": "Saved, dismissed, 404 or 409",
+      "variant": "return"
+    },
+    {
+      "id": "create-proposal-card--shown",
+      "from": "page",
+      "to": "person",
+      "y": 752,
+      "label": "'Saved to the brand file.'",
+      "variant": "return",
+      "note": "Or 'Dismissed. Nothing changed.'; no model call"
+    },
+    {
+      "id": "create-remember-file--do",
+      "from": "person",
+      "to": "page",
+      "y": 828,
+      "label": "Ask to save or read a file",
+      "variant": "default"
+    },
+    {
+      "id": "create-remember-file--send",
+      "from": "page",
+      "to": "server",
+      "y": 858,
+      "label": "Chat message to the agent",
+      "variant": "default"
+    },
+    {
+      "id": "create-remember-file--model",
+      "from": "server",
+      "to": "agents",
+      "y": 888,
+      "label": "Agent calls write_file/read_file",
+      "variant": "default",
+      "note": "Paused since 2026-09-28: the paused reply"
+    },
+    {
+      "id": "create-remember-file--role",
+      "from": "server",
+      "to": "checks",
+      "y": 932,
+      "label": "Core files: files.core.write",
+      "variant": "security",
+      "note": "Member refused; core files never over MCP; agent offers another name"
+    },
+    {
+      "id": "create-remember-file--write",
+      "from": "server",
+      "to": "store",
+      "y": 962,
+      "label": "writeFile, max 200 files",
+      "variant": "dashed",
+      "note": "read_file returns up to 12,000 characters; no credits; one activity row"
+    },
+    {
+      "id": "create-remember-file--see",
+      "from": "page",
+      "to": "person",
+      "y": 992,
+      "label": "Reply: what was saved or read",
+      "variant": "return",
+      "note": "200 files: agent asks owner to delete one"
+    },
+    {
+      "id": "create-catalog-chat--do",
+      "from": "person",
+      "to": "page",
+      "y": 1046,
+      "label": "Ask to learn the store's products",
+      "variant": "default"
+    },
+    {
+      "id": "create-catalog-chat--send",
+      "from": "page",
+      "to": "server",
+      "y": 1076,
+      "label": "Chat message to the agent",
+      "variant": "default"
+    },
+    {
+      "id": "create-catalog-chat--model",
+      "from": "server",
+      "to": "agents",
+      "y": 1106,
+      "label": "Agent calls import_catalog",
+      "variant": "default",
+      "note": "Paused since 2026-09-28: paused reply, no tool runs"
+    },
+    {
+      "id": "create-catalog-chat--role",
+      "from": "server",
+      "to": "checks",
+      "y": 1136,
+      "label": "Needs catalog.import",
+      "variant": "security",
+      "note": "Owner or admin; refused over MCP"
+    },
+    {
+      "id": "create-catalog-chat--write",
+      "from": "server",
+      "to": "store",
+      "y": 1166,
+      "label": "Write products.md",
+      "variant": "dashed",
+      "note": "Site read via safeFetch (40 s): up to 25 product URLs"
+    },
+    {
+      "id": "create-catalog-chat--see",
+      "from": "page",
+      "to": "person",
+      "y": 1196,
+      "label": "'Imported N products' + examples",
+      "variant": "return",
+      "note": "None found: asks for 3-5 product links"
+    },
+    {
+      "id": "create-catalog-files--do",
+      "from": "person",
+      "to": "page",
+      "y": 1250,
+      "label": "Press 'Import store products'",
+      "variant": "default",
+      "note": "Members do not see the button"
+    },
+    {
+      "id": "create-catalog-files--post",
+      "from": "page",
+      "to": "server",
+      "y": 1280,
+      "label": "POST /api/catalog",
+      "variant": "default"
+    },
+    {
+      "id": "create-catalog-files--role",
+      "from": "server",
+      "to": "checks",
+      "y": 1310,
+      "label": "Session + forbid('catalog.import')",
+      "variant": "security",
+      "note": "403: 'Your role does not allow this.'"
+    },
+    {
+      "id": "create-catalog-files--progress",
+      "from": "server",
+      "to": "page",
+      "y": 1354,
+      "label": "SSE progress: sitemap, found:N",
+      "variant": "return",
+      "note": "No brand.website: 400 no_site"
+    },
+    {
+      "id": "create-catalog-files--write",
+      "from": "server",
+      "to": "store",
+      "y": 1384,
+      "label": "importCatalog → products.md",
+      "variant": "dashed",
+      "note": "Pages read via safeFetch; no credits"
+    },
+    {
+      "id": "create-catalog-files--see",
+      "from": "page",
+      "to": "person",
+      "y": 1414,
+      "label": "'Imported N', products.md opens",
+      "variant": "return",
+      "note": "Works while paused: no model; a dropped stream reads 'No product pages found…'"
+    },
+    {
+      "id": "create-new-thread--do",
+      "from": "person",
+      "to": "page",
+      "y": 1490,
+      "label": "Press '+ New conversation'",
+      "variant": "default",
+      "note": "Header; sidebar '+ New' or a specialist's '+'; another specialist on a used thread"
+    },
+    {
+      "id": "create-new-thread--post",
+      "from": "page",
+      "to": "server",
+      "y": 1520,
+      "label": "POST /api/conversations",
+      "variant": "default",
+      "note": "Session check only; lists read the newest 100"
+    },
+    {
+      "id": "create-new-thread--save",
+      "from": "server",
+      "to": "store",
+      "y": 1550,
+      "label": "Conversation record, title '…'",
+      "variant": "dashed",
+      "note": "touchConversation later sets count, updatedAt, title"
+    },
+    {
+      "id": "create-new-thread--see",
+      "from": "page",
+      "to": "person",
+      "y": 1580,
+      "label": "Empty thread, same agent",
+      "variant": "return",
+      "note": "Title becomes the first 60 chars of the first message"
+    },
+    {
+      "id": "create-search-history--do",
+      "from": "person",
+      "to": "page",
+      "y": 1634,
+      "label": "Search conversations… + Enter",
+      "variant": "default",
+      "note": "Or 'See all conversations', or a recent thread"
+    },
+    {
+      "id": "create-search-history--open",
+      "from": "page",
+      "to": "server",
+      "y": 1678,
+      "label": "/app/conversations?q=…",
+      "variant": "default"
+    },
+    {
+      "id": "create-search-history--search",
+      "from": "server",
+      "to": "store",
+      "y": 1708,
+      "label": "searchConversations, ≤100 threads",
+      "variant": "default",
+      "note": "200 newest messages each; stops at 50 hits"
+    },
+    {
+      "id": "create-search-history--index",
+      "from": "server",
+      "to": "store",
+      "y": 1752,
+      "label": "90-day light index: chat tasks",
+      "variant": "default"
+    },
+    {
+      "id": "create-search-history--see",
+      "from": "page",
+      "to": "person",
+      "y": 1782,
+      "label": "Hits '“q” · N' + the full list",
+      "variant": "return",
+      "note": "No model call; empty query submits nothing"
+    },
+    {
+      "id": "create-reopen-thread--do",
+      "from": "person",
+      "to": "page",
+      "y": 1836,
+      "label": "Click a past thread",
+      "variant": "default"
+    },
+    {
+      "id": "create-reopen-thread--open",
+      "from": "page",
+      "to": "server",
+      "y": 1866,
+      "label": "/app/chat?conv={id}",
+      "variant": "default"
+    },
+    {
+      "id": "create-reopen-thread--read",
+      "from": "server",
+      "to": "store",
+      "y": 1896,
+      "label": "history(): chat:{scope}:{conv}",
+      "variant": "default",
+      "note": "Brand and absence card states; handoff cards read by the page"
+    },
+    {
+      "id": "create-reopen-thread--see",
+      "from": "page",
+      "to": "person",
+      "y": 1926,
+      "label": "40 newest messages, its agent",
+      "variant": "return",
+      "note": "Malformed id: Getting-started thread opens"
+    },
+    {
+      "id": "create-open-generate--do",
+      "from": "person",
+      "to": "page",
+      "y": 2002,
+      "label": "Open 'Ask Noor' (Generate)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "create-open-generate--load",
+      "from": "page",
+      "to": "server",
+      "y": 2032,
+      "label": "Load /app/generate",
+      "variant": "emphasis"
+    },
+    {
+      "id": "create-open-generate--check",
+      "from": "server",
+      "to": "checks",
+      "y": 2062,
+      "label": "Session + brand file",
+      "variant": "security",
+      "note": "None: /app/login; no brand file: /app/start"
+    },
+    {
+      "id": "create-open-generate--see",
+      "from": "page",
+      "to": "person",
+      "y": 2092,
+      "label": "Type cards with credit costs",
+      "variant": "return",
+      "note": "Weekly plan 2, Weekly report 3, Follow-up cadence 4; disabled below cost"
+    },
+    {
+      "id": "create-run-generate--do",
+      "from": "person",
+      "to": "page",
+      "y": 2146,
+      "label": "Press a type card (+ notes)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "create-run-generate--post",
+      "from": "page",
+      "to": "server",
+      "y": 2176,
+      "label": "POST /api/generate {type, notes}",
+      "variant": "emphasis"
+    },
+    {
+      "id": "create-run-generate--paused",
+      "from": "server",
+      "to": "checks",
+      "y": 2206,
+      "label": "Model paused? 503 before charge",
+      "variant": "security",
+      "note": "No credits used"
+    },
+    {
+      "id": "create-run-generate--gates",
+      "from": "server",
+      "to": "checks",
+      "y": 2250,
+      "label": "Type, brand, trial, cart data",
+      "variant": "security",
+      "note": "400 bad_type/no_brand, 402 trial_over, 409 no_cart_data"
+    },
+    {
+      "id": "create-run-generate--charge",
+      "from": "server",
+      "to": "checks",
+      "y": 2294,
+      "label": "charge TASK_COST[type], agent cap",
+      "variant": "security",
+      "note": "402 agent_cap or no_credits: limit dialog, one activity row; monthly credits renewed first if due"
+    },
+    {
+      "id": "create-run-generate--model",
+      "from": "server",
+      "to": "agents",
+      "y": 2338,
+      "label": "generate(): Opus + reviewer",
+      "variant": "emphasis",
+      "note": "On a throw: refund, 503 or 502 generation_failed"
+    },
+    {
+      "id": "create-run-generate--save",
+      "from": "server",
+      "to": "store",
+      "y": 2382,
+      "label": "Save tasks, source 'manual'",
+      "variant": "dashed",
+      "note": "Auto-approved or pending; activity rows; then judgeLater"
+    },
+    {
+      "id": "create-run-generate--done",
+      "from": "server",
+      "to": "page",
+      "y": 2412,
+      "label": "'Done. Items are in your inbox.'",
+      "variant": "return"
+    },
+    {
+      "id": "create-run-generate--inbox",
+      "from": "page",
+      "to": "person",
+      "y": 2442,
+      "label": "Approval inbox opens",
+      "variant": "return",
+      "note": "Paused: 'Content generation is paused for now.'"
+    },
+    {
+      "id": "create-browse-inspo--do",
+      "from": "person",
+      "to": "page",
+      "y": 2518,
+      "label": "Open Gulf inspiration",
+      "variant": "default"
+    },
+    {
+      "id": "create-browse-inspo--load",
+      "from": "page",
+      "to": "server",
+      "y": 2548,
+      "label": "Load /app/inspo",
+      "variant": "default",
+      "note": "Session check only (none: /app/login)"
+    },
+    {
+      "id": "create-browse-inspo--filter",
+      "from": "person",
+      "to": "page",
+      "y": 2592,
+      "label": "Search + channel and type pills",
+      "variant": "default"
+    },
+    {
+      "id": "create-browse-inspo--see",
+      "from": "page",
+      "to": "person",
+      "y": 2622,
+      "label": "16 patterns, filtered live",
+      "variant": "return",
+      "note": "Fixed list in code; no model, no credits"
+    },
+    {
+      "id": "create-use-inspo--do",
+      "from": "person",
+      "to": "page",
+      "y": 2676,
+      "label": "Press 'Use as reference →'",
+      "variant": "default"
+    },
+    {
+      "id": "create-use-inspo--post",
+      "from": "page",
+      "to": "server",
+      "y": 2706,
+      "label": "POST /api/chat {text}",
+      "variant": "default",
+      "note": "Noor, default thread, JSON reply"
+    },
+    {
+      "id": "create-use-inspo--limit",
+      "from": "server",
+      "to": "checks",
+      "y": 2750,
+      "label": "Trial, ceilings, chat allowance",
+      "variant": "security",
+      "note": "402 or 429: dialog or message on this page; chat stays closed"
+    },
+    {
+      "id": "create-use-inspo--model",
+      "from": "server",
+      "to": "agents",
+      "y": 2794,
+      "label": "Noor answers the request",
+      "variant": "default",
+      "note": "Paused since 2026-09-28: the paused reply"
+    },
+    {
+      "id": "create-use-inspo--see",
+      "from": "page",
+      "to": "person",
+      "y": 2824,
+      "label": "Chat opens on Getting started",
+      "variant": "return",
+      "note": "502 or network failure: chat still opens; the request may be there without a reply"
+    },
+    {
+      "id": "create-view-calendar--do",
+      "from": "person",
+      "to": "page",
+      "y": 2900,
+      "label": "Open calendar: Week or Month",
+      "variant": "default"
+    },
+    {
+      "id": "create-view-calendar--load",
+      "from": "page",
+      "to": "server",
+      "y": 2930,
+      "label": "Load /app/calendar",
+      "variant": "default",
+      "note": "No session: /app/login"
+    },
+    {
+      "id": "create-view-calendar--read",
+      "from": "server",
+      "to": "store",
+      "y": 2960,
+      "label": "listLiteDays(scope, 365)",
+      "variant": "default",
+      "note": "Plus the brand's channels; no model, no credits"
+    },
+    {
+      "id": "create-view-calendar--see",
+      "from": "page",
+      "to": "person",
+      "y": 2990,
+      "label": "Items by channel and day",
+      "variant": "return",
+      "note": "Rejected hidden; side card: 'Approved' / 'Waiting'"
+    },
+    {
+      "id": "create-calendar-add--do",
+      "from": "person",
+      "to": "page",
+      "y": 3044,
+      "label": "Press 'Add content' on a day",
+      "variant": "default"
+    },
+    {
+      "id": "create-calendar-add--nav",
+      "from": "page",
+      "to": "server",
+      "y": 3074,
+      "label": "/app/chat?prompt=…",
+      "variant": "default",
+      "note": "Navigation only; cut to 2000 characters"
+    },
+    {
+      "id": "create-calendar-add--see",
+      "from": "page",
+      "to": "person",
+      "y": 3118,
+      "label": "Prompt in the input, not sent",
+      "variant": "return",
+      "note": "Empty cell or 'Set dates': approvals inbox"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "violet",
+      "title": "Who can do this",
+      "items": [
+        "Brand writes and Save/Dismiss: owner or admin (brand.write)",
+        "Catalog import: owner or admin; chat import refused over MCP",
+        "Core files: owner or admin; other files any role",
+        "Generate, threads, inspiration, calendar: any signed-in role"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Refusals and limits",
+      "items": [
+        "Offers and banned-word removals wait for Save; 7-day expiry",
+        "Banned list within 400 characters; 200 files per workspace",
+        "Catalog import reads the store site through safeFetch",
+        "Generate costs raised: weekly plan 2, weekly report 3, follow-up cadence 4",
+        "Generate: no_credits, trial_over, agent_cap open the limit dialog",
+        "Failed generation refunds credits: 'Generation failed. Try again.'",
+        "Inspiration reference: trial, ceilings and chat allowance refuse on the page"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "While the model is paused",
+      "items": [
+        "Model calls paused since 2026-09-28",
+        "Chat tools (brand, files, catalog) give the paused reply",
+        "Generate: 503, 'Content generation is paused for now. No credits were used.'",
+        "No model call: brand card Save, Files import, search, inspiration browsing, calendar"
+      ]
+    }
+  ]
+}

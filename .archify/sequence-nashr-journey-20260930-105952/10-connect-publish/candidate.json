@@ -1,0 +1,916 @@
+{
+ "schema_version": 1,
+ "diagram_type": "sequence",
+ "meta": {
+  "title": "Publish: connect platforms and post",
+  "locale": "en",
+  "output": ".archify/sequence-nashr-journey-20260930-105952/10-connect-publish/10-connect-publish.html",
+  "quality_profile": "showcase",
+  "column_fit": "spread",
+  "repository": {
+   "url": "https://github.com/iAbulkhair/Nashr.git",
+   "provider": "github",
+   "link_mode": "web",
+   "revision": "f0e7fdecf7d70d8c60ba76650f22440433926add"
+  }
+ },
+ "participants": [
+  {
+   "id": "person",
+   "type": "external",
+   "label": "Person",
+   "sublabel": "owner",
+   "sources": [
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 213,
+     "end_line": 226
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 417,
+     "end_line": 432
+    }
+   ]
+  },
+  {
+   "id": "page",
+   "type": "frontend",
+   "label": "Browser page",
+   "sublabel": "what they see",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/integrations/page.tsx",
+     "line": 9,
+     "end_line": 17
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 95,
+     "end_line": 184
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 95,
+     "end_line": 122
+    }
+   ]
+  },
+  {
+   "id": "checks",
+   "type": "security",
+   "label": "Checks in code",
+   "sublabel": "auth · roles · limits",
+   "sources": [
+    {
+     "path": "src/app/api/connect/[provider]/start/route.ts",
+     "line": 15,
+     "end_line": 41
+    },
+    {
+     "path": "src/app/api/publish/[id]/route.ts",
+     "line": 17,
+     "end_line": 76
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 48
+    }
+   ]
+  },
+  {
+   "id": "server",
+   "type": "backend",
+   "label": "Nashr server",
+   "sublabel": "API routes",
+   "sources": [
+    {
+     "path": "src/app/api/connect/route.ts",
+     "line": 6,
+     "end_line": 15
+    },
+    {
+     "path": "src/app/api/connect/[provider]/callback/route.ts",
+     "line": 18,
+     "end_line": 70
+    },
+    {
+     "path": "src/lib/publish-once.ts",
+     "line": 62,
+     "end_line": 123
+    }
+   ]
+  },
+  {
+   "id": "store",
+   "type": "database",
+   "label": "Redis",
+   "sublabel": "account data",
+   "sources": [
+    {
+     "path": "src/lib/connectors/store.ts",
+     "line": 30,
+     "end_line": 49
+    },
+    {
+     "path": "src/lib/connectors/store.ts",
+     "line": 60,
+     "end_line": 63
+    },
+    {
+     "path": "src/app/api/integrations/route.ts",
+     "line": 6,
+     "end_line": 24
+    }
+   ]
+  },
+  {
+   "id": "outside",
+   "type": "external",
+   "label": "Outside services",
+   "sublabel": "platforms",
+   "sources": [
+    {
+     "path": "src/lib/connectors/publish.ts",
+     "line": 15,
+     "end_line": 58
+    },
+    {
+     "path": "src/lib/connectors/meta.ts",
+     "line": 69,
+     "end_line": 82
+    },
+    {
+     "path": "src/lib/connectors/keyed.ts",
+     "line": 51,
+     "end_line": 59
+    }
+   ]
+  }
+ ],
+ "segments": [
+  {
+   "from": 160,
+   "to": 422,
+   "label": "Open Integrations"
+  },
+  {
+   "from": 450,
+   "to": 1454,
+   "label": "Connect a platform"
+  },
+  {
+   "from": 1482,
+   "to": 2116,
+   "label": "Pages, ads, products"
+  },
+  {
+   "from": 2144,
+   "to": 2734,
+   "label": "Upkeep and requests"
+  },
+  {
+   "from": 2762,
+   "to": 3126,
+   "label": "Publish a post"
+  },
+  {
+   "from": 3154,
+   "to": 3600,
+   "label": "Again or refused"
+  }
+ ],
+ "messages": [
+  {
+   "id": "publish-open-integrations--do",
+   "from": "person",
+   "to": "page",
+   "y": 188,
+   "label": "Open Integrations",
+   "variant": "emphasis"
+  },
+  {
+   "id": "publish-open-integrations--load",
+   "from": "page",
+   "to": "server",
+   "y": 218,
+   "label": "load /{lang}/app/integrations",
+   "variant": "emphasis"
+  },
+  {
+   "id": "publish-open-integrations--auth",
+   "from": "server",
+   "to": "checks",
+   "y": 248,
+   "label": "session; can(u,'connectors')",
+   "variant": "security",
+   "note": "No session: redirect to login; members: read-only"
+  },
+  {
+   "id": "publish-open-integrations--api",
+   "from": "page",
+   "to": "server",
+   "y": 292,
+   "label": "GET /api/connect",
+   "variant": "emphasis"
+  },
+  {
+   "id": "publish-open-integrations--read",
+   "from": "server",
+   "to": "store",
+   "y": 322,
+   "label": "read the scope's connections",
+   "variant": "default"
+  },
+  {
+   "id": "publish-open-integrations--list",
+   "from": "server",
+   "to": "page",
+   "y": 352,
+   "label": "providers + connections",
+   "variant": "return",
+   "note": "Metadata only, tokens stay encrypted; OAuth needs both env vars"
+  },
+  {
+   "id": "publish-open-integrations--see",
+   "from": "page",
+   "to": "person",
+   "y": 396,
+   "label": "Catalog groups + Connected list",
+   "variant": "return",
+   "note": "Badges: Connected, Ready to connect, Coming soon, Planned"
+  },
+  {
+   "id": "publish-start-oauth--do",
+   "from": "person",
+   "to": "page",
+   "y": 478,
+   "label": "Click Connect (OAuth platform)",
+   "variant": "emphasis",
+   "note": "X, Meta, Shopify (store name first), Salla, Zid, Meta or Snapchat Ads"
+  },
+  {
+   "id": "publish-start-oauth--start",
+   "from": "page",
+   "to": "server",
+   "y": 522,
+   "label": "GET /api/connect/{provider}/start",
+   "variant": "emphasis"
+  },
+  {
+   "id": "publish-start-oauth--role",
+   "from": "server",
+   "to": "checks",
+   "y": 552,
+   "label": "session + 'connectors' role",
+   "variant": "security",
+   "note": "Admin and above; provider configured; Shopify host checked"
+  },
+  {
+   "id": "publish-start-oauth--refused",
+   "from": "server",
+   "to": "page",
+   "y": 596,
+   "label": "Refusal: raw JSON page",
+   "variant": "security",
+   "note": "401, 403 forbidden, 404 unknown_provider, 503, 400 shop_required/bad_shop"
+  },
+  {
+   "id": "publish-start-oauth--state",
+   "from": "server",
+   "to": "store",
+   "y": 640,
+   "label": "save state for 10 minutes",
+   "variant": "dashed",
+   "note": "scope, provider, lang, shop, X PKCE verifier, login"
+  },
+  {
+   "id": "publish-start-oauth--redirect",
+   "from": "server",
+   "to": "page",
+   "y": 684,
+   "label": "307 to authorize URL + cookie",
+   "variant": "return",
+   "note": "nashr_oauth: httpOnly, SameSite lax, 10 min, /api/connect"
+  },
+  {
+   "id": "publish-start-oauth--consent",
+   "from": "page",
+   "to": "outside",
+   "y": 728,
+   "label": "go to the platform consent screen",
+   "variant": "emphasis"
+  },
+  {
+   "id": "publish-oauth-return--do",
+   "from": "person",
+   "to": "outside",
+   "y": 768,
+   "label": "Grant or decline access",
+   "variant": "emphasis"
+  },
+  {
+   "id": "publish-oauth-return--back",
+   "from": "outside",
+   "to": "page",
+   "y": 798,
+   "label": "send the browser back",
+   "variant": "default"
+  },
+  {
+   "id": "publish-oauth-return--callback",
+   "from": "page",
+   "to": "server",
+   "y": 828,
+   "label": "GET /api/connect/{p}/callback",
+   "variant": "emphasis"
+  },
+  {
+   "id": "publish-oauth-return--state",
+   "from": "server",
+   "to": "store",
+   "y": 858,
+   "label": "take the one-use state",
+   "variant": "default"
+  },
+  {
+   "id": "publish-oauth-return--verify",
+   "from": "server",
+   "to": "checks",
+   "y": 888,
+   "label": "provider, state, account, login",
+   "variant": "security",
+   "note": "Cookie = state (sameSecret); role again; Shopify HMAC"
+  },
+  {
+   "id": "publish-oauth-return--exchange",
+   "from": "server",
+   "to": "outside",
+   "y": 932,
+   "label": "exchange code, read account",
+   "variant": "default",
+   "note": "Meta: first Page with Instagram, else first; ads: first account"
+  },
+  {
+   "id": "publish-oauth-return--save",
+   "from": "server",
+   "to": "store",
+   "y": 976,
+   "label": "save encrypted (AES-256-GCM)",
+   "variant": "dashed",
+   "note": "Under the state's scope; track('connect') runs"
+  },
+  {
+   "id": "publish-oauth-return--land",
+   "from": "server",
+   "to": "page",
+   "y": 1020,
+   "label": "?connected=<id> or ?error=<code>",
+   "variant": "return",
+   "note": "Built on the app origin, never the request's Host header"
+  },
+  {
+   "id": "publish-oauth-return--see",
+   "from": "page",
+   "to": "person",
+   "y": 1050,
+   "label": "'Connected: <id>' + new card",
+   "variant": "return",
+   "note": "Meta card shows the Page; no Instagram account: Facebook only"
+  },
+  {
+   "id": "publish-oauth-return--fail",
+   "from": "page",
+   "to": "person",
+   "y": 1094,
+   "label": "'Verification failed… (<code>)'",
+   "variant": "security",
+   "note": "e.g. access_denied, invalid_state, session_mismatch, meta_no_page"
+  },
+  {
+   "id": "publish-connect-key--do",
+   "from": "person",
+   "to": "page",
+   "y": 1148,
+   "label": "Fill key dialog, click Connect",
+   "variant": "emphasis",
+   "note": "WordPress, WooCommerce, Odoo, PrestaShop or Telegram"
+  },
+  {
+   "id": "publish-connect-key--post",
+   "from": "page",
+   "to": "server",
+   "y": 1192,
+   "label": "POST /api/connect/{provider}/key",
+   "variant": "emphasis"
+  },
+  {
+   "id": "publish-connect-key--role",
+   "from": "server",
+   "to": "checks",
+   "y": 1222,
+   "label": "session + 'connectors' role",
+   "variant": "security",
+   "note": "404 if no key provider; 400 missing_<field>"
+  },
+  {
+   "id": "publish-connect-key--verify",
+   "from": "server",
+   "to": "outside",
+   "y": 1266,
+   "label": "verify live (safeFetch, getChat)",
+   "variant": "default",
+   "note": "Fails: 400 verify_failed with a detail"
+  },
+  {
+   "id": "publish-connect-key--save",
+   "from": "server",
+   "to": "store",
+   "y": 1310,
+   "label": "save credentials encrypted",
+   "variant": "dashed",
+   "note": "track('connect') runs"
+  },
+  {
+   "id": "publish-connect-key--reply",
+   "from": "server",
+   "to": "page",
+   "y": 1354,
+   "label": "success, or 400 + detail",
+   "variant": "return"
+  },
+  {
+   "id": "publish-connect-key--see",
+   "from": "page",
+   "to": "person",
+   "y": 1384,
+   "label": "Dialog closes; card in Connected",
+   "variant": "return",
+   "note": "The button reads 'Verifying…' meanwhile"
+  },
+  {
+   "id": "publish-connect-key--fail",
+   "from": "page",
+   "to": "person",
+   "y": 1428,
+   "label": "'Verification failed…' in dialog",
+   "variant": "security",
+   "note": "e.g. 'bot cannot see this chat (add the bot as channel admin)'"
+  },
+  {
+   "id": "publish-choose-page--do",
+   "from": "person",
+   "to": "page",
+   "y": 1510,
+   "label": "Pick 'Page we publish to'",
+   "variant": "default",
+   "note": "Shown only when Meta returned more than one Page"
+  },
+  {
+   "id": "publish-choose-page--post",
+   "from": "page",
+   "to": "server",
+   "y": 1554,
+   "label": "POST /api/connect/meta select_page",
+   "variant": "default"
+  },
+  {
+   "id": "publish-choose-page--role",
+   "from": "server",
+   "to": "checks",
+   "y": 1584,
+   "label": "role + fresh connection",
+   "variant": "security",
+   "note": "'connectors'; only a Page Meta returned (400 unknown_page)"
+  },
+  {
+   "id": "publish-choose-page--save",
+   "from": "server",
+   "to": "store",
+   "y": 1628,
+   "label": "save Page; Instagram follows it",
+   "variant": "dashed"
+  },
+  {
+   "id": "publish-choose-page--see",
+   "from": "page",
+   "to": "person",
+   "y": 1658,
+   "label": "Card reloads; alert on error",
+   "variant": "return",
+   "note": "Inbox offers Facebook, Instagram only with a professional account"
+  },
+  {
+   "id": "publish-choose-ad-account--do",
+   "from": "person",
+   "to": "page",
+   "y": 1712,
+   "label": "Pick the ad account",
+   "variant": "default",
+   "note": "Meta Ads or Snapchat, when more than one account came back"
+  },
+  {
+   "id": "publish-choose-ad-account--post",
+   "from": "page",
+   "to": "server",
+   "y": 1756,
+   "label": "POST select_ad_account",
+   "variant": "default"
+  },
+  {
+   "id": "publish-choose-ad-account--role",
+   "from": "server",
+   "to": "checks",
+   "y": 1786,
+   "label": "'connectors' role, known account",
+   "variant": "security",
+   "note": "Only an account the platform returned (400 unknown_account)"
+  },
+  {
+   "id": "publish-choose-ad-account--see",
+   "from": "page",
+   "to": "person",
+   "y": 1830,
+   "label": "Card reloads (alert on error)",
+   "variant": "return",
+   "note": "Results are only read, into reports"
+  },
+  {
+   "id": "publish-import-products--do",
+   "from": "person",
+   "to": "page",
+   "y": 1884,
+   "label": "Click 'Import products'",
+   "variant": "default",
+   "note": "Shopify, WooCommerce, Odoo, PrestaShop, Salla or Zid"
+  },
+  {
+   "id": "publish-import-products--post",
+   "from": "page",
+   "to": "server",
+   "y": 1928,
+   "label": "POST import_products",
+   "variant": "default"
+  },
+  {
+   "id": "publish-import-products--role",
+   "from": "server",
+   "to": "checks",
+   "y": 1958,
+   "label": "'catalog.import' role",
+   "variant": "security",
+   "note": "Admin and above; needs a fresh connection"
+  },
+  {
+   "id": "publish-import-products--fetch",
+   "from": "server",
+   "to": "outside",
+   "y": 2002,
+   "label": "read the store's products",
+   "variant": "default",
+   "note": "OAuth 401/403: marked, 502 reconnect_required"
+  },
+  {
+   "id": "publish-import-products--write",
+   "from": "server",
+   "to": "store",
+   "y": 2046,
+   "label": "write products.md",
+   "variant": "dashed",
+   "note": "A core file every agent reads"
+  },
+  {
+   "id": "publish-import-products--see",
+   "from": "page",
+   "to": "person",
+   "y": 2090,
+   "label": "Alert 'Import products: N'",
+   "variant": "return",
+   "note": "Or Zid's permission message, or the error code"
+  },
+  {
+   "id": "publish-reconnect--do",
+   "from": "person",
+   "to": "page",
+   "y": 2172,
+   "label": "Click 'Reconnect'",
+   "variant": "default",
+   "note": "Card: 'The platform stopped accepting this connection'"
+  },
+  {
+   "id": "publish-reconnect--start",
+   "from": "page",
+   "to": "server",
+   "y": 2216,
+   "label": "same OAuth hand-off (start)",
+   "variant": "default",
+   "note": "Shopify asks for the store again"
+  },
+  {
+   "id": "publish-reconnect--clear",
+   "from": "server",
+   "to": "store",
+   "y": 2260,
+   "label": "callback save clears the flag",
+   "variant": "dashed",
+   "note": "needsReconnect: failed refresh, no refresh token, 401/403"
+  },
+  {
+   "id": "publish-reconnect--see",
+   "from": "page",
+   "to": "person",
+   "y": 2304,
+   "label": "Warning gone after the return",
+   "variant": "return",
+   "note": "Until then Publish shows but fails: reconnect_required"
+  },
+  {
+   "id": "publish-disconnect--do",
+   "from": "person",
+   "to": "page",
+   "y": 2358,
+   "label": "Click 'Disconnect'",
+   "variant": "default",
+   "note": "No confirmation dialog"
+  },
+  {
+   "id": "publish-disconnect--delete",
+   "from": "page",
+   "to": "server",
+   "y": 2402,
+   "label": "DELETE /api/connect/{provider}",
+   "variant": "default"
+  },
+  {
+   "id": "publish-disconnect--role",
+   "from": "server",
+   "to": "checks",
+   "y": 2432,
+   "label": "session + 'connectors' role",
+   "variant": "security",
+   "note": "403: nothing changes, no message"
+  },
+  {
+   "id": "publish-disconnect--remove",
+   "from": "server",
+   "to": "store",
+   "y": 2476,
+   "label": "delete record, drop from index",
+   "variant": "dashed"
+  },
+  {
+   "id": "publish-disconnect--see",
+   "from": "page",
+   "to": "person",
+   "y": 2506,
+   "label": "Card leaves Connected",
+   "variant": "return",
+   "note": "Inbox stops offering it; posts already made stay"
+  },
+  {
+   "id": "publish-request-integration--do",
+   "from": "person",
+   "to": "page",
+   "y": 2560,
+   "label": "Click 'I want this' or Send",
+   "variant": "default",
+   "note": "Any role; a card not connectable yet, or a typed name"
+  },
+  {
+   "id": "publish-request-integration--post",
+   "from": "page",
+   "to": "server",
+   "y": 2604,
+   "label": "POST /api/integrations {id,name}",
+   "variant": "default"
+  },
+  {
+   "id": "publish-request-integration--auth",
+   "from": "server",
+   "to": "checks",
+   "y": 2634,
+   "label": "session check",
+   "variant": "security"
+  },
+  {
+   "id": "publish-request-integration--save",
+   "from": "server",
+   "to": "store",
+   "y": 2664,
+   "label": "add request, +1 vote",
+   "variant": "dashed",
+   "note": "integration-requests (capped); integration-votes:<name>"
+  },
+  {
+   "id": "publish-request-integration--see",
+   "from": "page",
+   "to": "person",
+   "y": 2708,
+   "label": "'Requested · N', disabled",
+   "variant": "return",
+   "note": "Free-text form only clears its input"
+  },
+  {
+   "id": "publish-to-platform--do",
+   "from": "person",
+   "to": "page",
+   "y": 2790,
+   "label": "Click 'Publish to <platform>'",
+   "variant": "emphasis",
+   "note": "Disabled for {{1}} slots or [VO]; Instagram needs an image"
+  },
+  {
+   "id": "publish-to-platform--post",
+   "from": "page",
+   "to": "server",
+   "y": 2834,
+   "label": "POST /api/publish/{id} {provider}",
+   "variant": "emphasis"
+  },
+  {
+   "id": "publish-to-platform--gates",
+   "from": "server",
+   "to": "checks",
+   "y": 2864,
+   "label": "session, role, scope, brand gate",
+   "variant": "security",
+   "note": "403; 404; 409 rejected_item, brand_violation; 400 wrong_target"
+  },
+  {
+   "id": "publish-to-platform--lock",
+   "from": "server",
+   "to": "store",
+   "y": 2908,
+   "label": "take 70 s publock, write marker",
+   "variant": "dashed",
+   "note": "409 publish_busy; publish_unknown; already_published"
+  },
+  {
+   "id": "publish-to-platform--send",
+   "from": "server",
+   "to": "outside",
+   "y": 2952,
+   "label": "publishTask with a fresh token",
+   "variant": "emphasis",
+   "note": "WordPress, Shopify: drafts; X, Telegram, Meta: live"
+  },
+  {
+   "id": "publish-to-platform--url",
+   "from": "outside",
+   "to": "server",
+   "y": 2996,
+   "label": "post or draft URL",
+   "variant": "return"
+  },
+  {
+   "id": "publish-to-platform--record",
+   "from": "server",
+   "to": "store",
+   "y": 3026,
+   "label": "append to task.published",
+   "variant": "dashed",
+   "note": "Status approved; marker cleared; decision if it approved; activity row"
+  },
+  {
+   "id": "publish-to-platform--reply",
+   "from": "server",
+   "to": "page",
+   "y": 3070,
+   "label": "success + link",
+   "variant": "return"
+  },
+  {
+   "id": "publish-to-platform--see",
+   "from": "page",
+   "to": "person",
+   "y": 3100,
+   "label": "'Published <platform> ↗'",
+   "variant": "return",
+   "note": "Or 'Draft on <platform> ↗'; status becomes Approved"
+  },
+  {
+   "id": "publish-confirm-again--do",
+   "from": "person",
+   "to": "page",
+   "y": 3182,
+   "label": "Choose 'Publish again' or Cancel",
+   "variant": "default",
+   "note": "Only for already published or unknown result; Cancel closes"
+  },
+  {
+   "id": "publish-confirm-again--post",
+   "from": "page",
+   "to": "server",
+   "y": 3226,
+   "label": "POST /api/publish/{id} again:true",
+   "variant": "default"
+  },
+  {
+   "id": "publish-confirm-again--gates",
+   "from": "server",
+   "to": "checks",
+   "y": 3256,
+   "label": "lock, role, rejection, brand kept",
+   "variant": "security",
+   "note": "Skips once-per-platform and unknown-result checks"
+  },
+  {
+   "id": "publish-confirm-again--earlier",
+   "from": "server",
+   "to": "store",
+   "y": 3300,
+   "label": "if duplicate: record earlier post",
+   "variant": "dashed",
+   "note": "earlier_live after an unknown attempt: recorded with decision and activity; else 409 duplicate_post"
+  },
+  {
+   "id": "publish-confirm-again--see",
+   "from": "page",
+   "to": "person",
+   "y": 3344,
+   "label": "Notice: busy, duplicate, went live",
+   "variant": "return",
+   "note": "These three notices have no buttons"
+  },
+  {
+   "id": "publish-refused--flag",
+   "from": "server",
+   "to": "store",
+   "y": 3398,
+   "label": "if OAuth 401/403: flag reconnect",
+   "variant": "dashed",
+   "note": "publishTask turns it into reconnect_required"
+  },
+  {
+   "id": "publish-refused--answer",
+   "from": "server",
+   "to": "page",
+   "y": 3442,
+   "label": "400, 404, 409 or 502",
+   "variant": "security",
+   "note": "Nothing recorded; marker cleared after a clear refusal"
+  },
+  {
+   "id": "publish-refused--held",
+   "from": "page",
+   "to": "person",
+   "y": 3486,
+   "label": "brand_violation: held box",
+   "variant": "security",
+   "note": "Rule and excerpts; only if brand or text changed after load"
+  },
+  {
+   "id": "publish-refused--alert",
+   "from": "page",
+   "to": "person",
+   "y": 3530,
+   "label": "Alert 'Publish failed.'",
+   "variant": "return",
+   "note": "e.g. Rejected card, not_connected, reconnect_required, wrong_target"
+  },
+  {
+   "id": "publish-refused--role",
+   "from": "page",
+   "to": "person",
+   "y": 3574,
+   "label": "Role alert (403)",
+   "variant": "security",
+   "note": "'Your role does not allow this.'"
+  }
+ ],
+ "cards": [
+  {
+   "dot": "violet",
+   "title": "Who can do this",
+   "items": [
+    "Open Integrations and request an integration: any signed-in role",
+    "Connect, choose, reconnect, disconnect: 'connectors' role (admin and above)",
+    "Import products: 'catalog.import' role (admin and above)",
+    "Publish: 'publish' role (owner or admin)",
+    "Members see a read-only note and request buttons only"
+   ]
+  },
+  {
+   "dot": "rose",
+   "title": "Refusals and limits",
+   "items": [
+    "OAuth start refusals show a raw JSON page (401, 403, 404, 503, 400)",
+    "Publish buttons show on Rejected cards too; the server refuses them",
+    "Publish also refuses brand violations and wrong targets",
+    "A 70 s publock: a publish while it is held gets 409 publish_busy",
+    "Timeouts, network errors and 5xx count as 'may have posted'; marker kept 3 days",
+    "Text with {{1}} slots or [VO] directions is not published as written",
+    "A refused OAuth token flags the connection: Reconnect on Integrations"
+   ]
+  },
+  {
+   "dot": "amber",
+   "title": "While the model is paused",
+   "items": [
+    "Model calls are paused since 2026-09-28",
+    "Publishing makes no model call and spends no credits",
+    "So Publish to <platform> still works while model calls are paused"
+   ]
+  }
+ ]
+}

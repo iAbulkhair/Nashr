@@ -1,0 +1,1051 @@
+{
+ "schema_version": 1,
+ "diagram_type": "sequence",
+ "meta": {
+  "title": "Discover: try tools, send forms, start",
+  "locale": "en",
+  "quality_profile": "showcase",
+  "column_fit": "spread",
+  "output": ".archify/sequence-nashr-journey-20260930-105952/02-discover-act/02-discover-act.html",
+  "repository": {
+   "url": "https://github.com/iAbulkhair/Nashr.git",
+   "provider": "github",
+   "link_mode": "web",
+   "revision": "f0e7fdecf7d70d8c60ba76650f22440433926add"
+  }
+ },
+ "participants": [
+  {
+   "id": "person",
+   "type": "external",
+   "label": "Person",
+   "sublabel": "visitor",
+   "sources": [
+    {
+     "path": "src/components/UrlStart.tsx",
+     "line": 11,
+     "end_line": 20
+    },
+    {
+     "path": "src/app/[lang]/tools/page.tsx",
+     "line": 24,
+     "end_line": 36
+    },
+    {
+     "path": "src/app/[lang]/updates/page.tsx",
+     "line": 45,
+     "end_line": 47
+    }
+   ]
+  },
+  {
+   "id": "page",
+   "type": "frontend",
+   "label": "Browser page",
+   "sublabel": "what they see",
+   "sources": [
+    {
+     "path": "src/components/Nav.tsx",
+     "line": 75,
+     "end_line": 78
+    },
+    {
+     "path": "src/components/ToolForm.tsx",
+     "line": 13,
+     "end_line": 22
+    },
+    {
+     "path": "src/components/WishVote.tsx",
+     "line": 17,
+     "end_line": 36
+    }
+   ]
+  },
+  {
+   "id": "checks",
+   "type": "security",
+   "label": "Checks in code",
+   "sublabel": "auth · roles · limits",
+   "sources": [
+    {
+     "path": "src/lib/rate.ts",
+     "line": 6,
+     "end_line": 22
+    },
+    {
+     "path": "src/app/api/wishlist/vote/route.ts",
+     "line": 13,
+     "end_line": 22
+    },
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 16,
+     "end_line": 27
+    }
+   ]
+  },
+  {
+   "id": "server",
+   "type": "backend",
+   "label": "Nashr server",
+   "sublabel": "API routes",
+   "sources": [
+    {
+     "path": "src/app/api/tools/[tool]/route.ts",
+     "line": 15,
+     "end_line": 30
+    },
+    {
+     "path": "src/app/api/support/route.ts",
+     "line": 7,
+     "end_line": 18
+    },
+    {
+     "path": "src/app/api/affiliates/route.ts",
+     "line": 15,
+     "end_line": 31
+    }
+   ]
+  },
+  {
+   "id": "agents",
+   "type": "backend",
+   "label": "AI agents",
+   "sublabel": "model paused now",
+   "sources": [
+    {
+     "path": "src/app/api/tools/[tool]/route.ts",
+     "line": 31,
+     "end_line": 49
+    },
+    {
+     "path": "src/lib/model.ts",
+     "line": 15,
+     "end_line": 34
+    }
+   ]
+  },
+  {
+   "id": "store",
+   "type": "database",
+   "label": "Redis",
+   "sublabel": "account data",
+   "sources": [
+    {
+     "path": "src/lib/db.ts",
+     "line": 419,
+     "end_line": 423
+    },
+    {
+     "path": "src/lib/usage.ts",
+     "line": 60,
+     "end_line": 62
+    },
+    {
+     "path": "src/lib/wishlist.ts",
+     "line": 60,
+     "end_line": 65
+    }
+   ]
+  },
+  {
+   "id": "email",
+   "type": "external",
+   "label": "Email",
+   "sublabel": "Resend",
+   "sources": [
+    {
+     "path": "src/lib/notify.ts",
+     "line": 19,
+     "end_line": 22
+    },
+    {
+     "path": "src/app/api/support/route.ts",
+     "line": 7,
+     "end_line": 18
+    }
+   ]
+  }
+ ],
+ "segments": [
+  {
+   "from": 158,
+   "to": 966,
+   "label": "Start from the site"
+  },
+  {
+   "from": 996,
+   "to": 1800,
+   "label": "Free tools"
+  },
+  {
+   "from": 1830,
+   "to": 2994,
+   "label": "Forms and help"
+  },
+  {
+   "from": 3024,
+   "to": 4052,
+   "label": "Updates and wishlist"
+  }
+ ],
+ "messages": [
+  {
+   "id": "discover-start-free--do",
+   "from": "person",
+   "to": "page",
+   "y": 186,
+   "label": "Click Start free",
+   "variant": "emphasis",
+   "note": "Nav, plan cards, closing call, industry hero"
+  },
+  {
+   "id": "discover-start-free--see",
+   "from": "page",
+   "to": "person",
+   "y": 230,
+   "label": "Signup email step, no parameters",
+   "variant": "return",
+   "note": "Signed in → /{lang}/app"
+  },
+  {
+   "id": "discover-partner-link--do",
+   "from": "person",
+   "to": "page",
+   "y": 274,
+   "label": "Open a partner's link /p/CODE",
+   "variant": "emphasis",
+   "note": "Shared outside the product by a partner"
+  },
+  {
+   "id": "discover-partner-link--get",
+   "from": "page",
+   "to": "server",
+   "y": 318,
+   "label": "GET /p/{CODE}",
+   "variant": "default",
+   "note": "Language: ?lang=, cookie, Accept-Language"
+  },
+  {
+   "id": "discover-partner-link--checks",
+   "from": "server",
+   "to": "checks",
+   "y": 362,
+   "label": "Code well-formed; 60 per IP an hour",
+   "variant": "security",
+   "note": "Over the limit: signup with nothing set"
+  },
+  {
+   "id": "discover-partner-link--lookup",
+   "from": "server",
+   "to": "store",
+   "y": 406,
+   "label": "Look up the partner by code",
+   "variant": "default",
+   "note": "Unknown code: signup with nothing set"
+  },
+  {
+   "id": "discover-partner-link--cookie",
+   "from": "server",
+   "to": "page",
+   "y": 450,
+   "label": "307 to signup?partner=CODE, cookie set",
+   "variant": "return",
+   "note": "httpOnly nashr_partner, 30 days from this click; a held valid cookie is kept"
+  },
+  {
+   "id": "discover-partner-link--see",
+   "from": "page",
+   "to": "person",
+   "y": 494,
+   "label": "Signup email step; code on step 2",
+   "variant": "return",
+   "note": "Box holds CODE; line under it: 'Partner code CODE: 15% off your first month.'"
+  },
+  {
+   "id": "discover-log-in-link--do",
+   "from": "person",
+   "to": "page",
+   "y": 538,
+   "label": "Click Log in",
+   "variant": "default"
+  },
+  {
+   "id": "discover-log-in-link--see",
+   "from": "page",
+   "to": "person",
+   "y": 568,
+   "label": "Login: email + password fields",
+   "variant": "return",
+   "note": "Also 'Forgot your password?' and a signup link"
+  },
+  {
+   "id": "discover-url-box-agents--do",
+   "from": "person",
+   "to": "page",
+   "y": 612,
+   "label": "Enter URL on agent page, submit",
+   "variant": "emphasis",
+   "note": "Plain GET form on /agents pages; field may be empty"
+  },
+  {
+   "id": "discover-url-box-agents--see",
+   "from": "page",
+   "to": "person",
+   "y": 656,
+   "label": "Signup email step, url=<value>",
+   "variant": "return",
+   "note": "Signup reads up to 300 chars; /app/start?url= if 4+ chars"
+  },
+  {
+   "id": "discover-ask-sample--do",
+   "from": "person",
+   "to": "page",
+   "y": 700,
+   "label": "Tap a 'Try asking' chip",
+   "variant": "default"
+  },
+  {
+   "id": "discover-ask-sample--open",
+   "from": "page",
+   "to": "server",
+   "y": 730,
+   "label": "GET /app/chat?agent=&prompt=",
+   "variant": "default",
+   "note": "Noor's chips carry only prompt"
+  },
+  {
+   "id": "discover-ask-sample--session",
+   "from": "server",
+   "to": "checks",
+   "y": 774,
+   "label": "Session? (app layout + chat page)",
+   "variant": "security"
+  },
+  {
+   "id": "discover-ask-sample--signed-out",
+   "from": "server",
+   "to": "page",
+   "y": 804,
+   "label": "Signed out → login, prompt lost",
+   "variant": "return",
+   "note": "After login the person lands on /{lang}/app"
+  },
+  {
+   "id": "discover-ask-sample--no-brand",
+   "from": "server",
+   "to": "page",
+   "y": 848,
+   "label": "No brand → /{lang}/app/start",
+   "variant": "return",
+   "note": "Owner/admin with a confirmed site: 'Getting started' thread, prompt unused"
+  },
+  {
+   "id": "discover-ask-sample--prefill",
+   "from": "server",
+   "to": "page",
+   "y": 892,
+   "label": "Agent + prompt as initial state",
+   "variant": "return",
+   "note": "Registry agent other than noor; prompt cut to 2000 chars"
+  },
+  {
+   "id": "discover-ask-sample--see",
+   "from": "page",
+   "to": "person",
+   "y": 936,
+   "label": "Chat opens, prompt typed, not sent",
+   "variant": "return",
+   "note": "Nothing reaches a model until Send"
+  },
+  {
+   "id": "discover-open-tools--do",
+   "from": "person",
+   "to": "page",
+   "y": 1024,
+   "label": "Open free tools, click a card",
+   "variant": "emphasis",
+   "note": "From Resources or the footer"
+  },
+  {
+   "id": "discover-open-tools--see",
+   "from": "page",
+   "to": "person",
+   "y": 1068,
+   "label": "'12 free Arabic marketing tools'",
+   "variant": "return",
+   "note": "'no signup — 5 uses a day'; a card opens /{lang}/tools/{slug}"
+  },
+  {
+   "id": "discover-run-free-tool--do",
+   "from": "person",
+   "to": "page",
+   "y": 1112,
+   "label": "Fill fields, click Generate free",
+   "variant": "emphasis",
+   "note": "Button shows 'Noor is writing…'"
+  },
+  {
+   "id": "discover-run-free-tool--post",
+   "from": "page",
+   "to": "server",
+   "y": 1156,
+   "label": "POST /api/tools/{slug}",
+   "variant": "emphasis",
+   "note": "Unknown slug → 404 unknown_tool"
+  },
+  {
+   "id": "discover-run-free-tool--model-state",
+   "from": "server",
+   "to": "checks",
+   "y": 1200,
+   "label": "modelState(): paused?",
+   "variant": "security",
+   "note": "paused with a key, or production with no key; before the rate limit"
+  },
+  {
+   "id": "discover-run-free-tool--paused",
+   "from": "server",
+   "to": "page",
+   "y": 1244,
+   "label": "503: 'free tools are paused'",
+   "variant": "return",
+   "note": "What everyone sees now: model paused since 2026-09-28; no daily use spent"
+  },
+  {
+   "id": "discover-run-free-tool--rate",
+   "from": "server",
+   "to": "checks",
+   "y": 1288,
+   "label": "5 a day per IP, 50 per account",
+   "variant": "security",
+   "note": "currentUser() picks the key; 24-hour window from first use"
+  },
+  {
+   "id": "discover-run-free-tool--count",
+   "from": "server",
+   "to": "store",
+   "y": 1332,
+   "label": "count rate:tool:{ip} / u:{email}",
+   "variant": "dashed"
+  },
+  {
+   "id": "discover-run-free-tool--limit",
+   "from": "server",
+   "to": "page",
+   "y": 1362,
+   "label": "429: 'Daily limit of N reached'",
+   "variant": "return",
+   "note": "With a 'Sign up' link, even when signed in"
+  },
+  {
+   "id": "discover-run-free-tool--model",
+   "from": "server",
+   "to": "agents",
+   "y": 1406,
+   "label": "claude-sonnet-5 + Noor prompt",
+   "variant": "default",
+   "note": "Fields cut to 600 chars; one retry; no key, not production → '[DEV MOCK]'"
+  },
+  {
+   "id": "discover-run-free-tool--text",
+   "from": "agents",
+   "to": "server",
+   "y": 1450,
+   "label": "text, or an error",
+   "variant": "return"
+  },
+  {
+   "id": "discover-run-free-tool--failed",
+   "from": "server",
+   "to": "page",
+   "y": 1480,
+   "label": "502: 'Something failed, try again'",
+   "variant": "return",
+   "note": "Network error or non-JSON: stuck on 'Noor is writing…'"
+  },
+  {
+   "id": "discover-run-free-tool--meter",
+   "from": "server",
+   "to": "store",
+   "y": 1524,
+   "label": "meter tokens + toolusage:{slug}",
+   "variant": "dashed",
+   "note": "Kind 'tool'; no credits charged, no trial check"
+  },
+  {
+   "id": "discover-run-free-tool--result",
+   "from": "server",
+   "to": "page",
+   "y": 1568,
+   "label": "generated text",
+   "variant": "return"
+  },
+  {
+   "id": "discover-run-free-tool--see",
+   "from": "page",
+   "to": "person",
+   "y": 1598,
+   "label": "Text in output panel + Copy",
+   "variant": "return"
+  },
+  {
+   "id": "discover-copy-tool-output--do",
+   "from": "person",
+   "to": "page",
+   "y": 1638,
+   "label": "Click Copy under the result",
+   "variant": "default",
+   "note": "Only after a successful run; unreachable while paused"
+  },
+  {
+   "id": "discover-copy-tool-output--see",
+   "from": "page",
+   "to": "person",
+   "y": 1682,
+   "label": "Copied, no toast or confirmation",
+   "variant": "return",
+   "note": "navigator.clipboard.writeText, client only"
+  },
+  {
+   "id": "discover-tool-upsell--do",
+   "from": "person",
+   "to": "page",
+   "y": 1726,
+   "label": "Click 'Try Noor free' or 'Sign up'",
+   "variant": "default",
+   "note": "Or '← All tools' or a 'More tools' chip"
+  },
+  {
+   "id": "discover-tool-upsell--see",
+   "from": "page",
+   "to": "person",
+   "y": 1770,
+   "label": "Signup page, /tools or that tool",
+   "variant": "return",
+   "note": "Unknown tool slug → 404 page"
+  },
+  {
+   "id": "discover-send-contact-form--do",
+   "from": "person",
+   "to": "page",
+   "y": 1858,
+   "label": "Fill contact form, click Send",
+   "variant": "emphasis",
+   "note": "/customers or Agencies (/enterprise); Pricing's Agency card links here"
+  },
+  {
+   "id": "discover-send-contact-form--post",
+   "from": "page",
+   "to": "server",
+   "y": 1902,
+   "label": "POST /api/support",
+   "variant": "emphasis",
+   "note": "Message joins name, company and text"
+  },
+  {
+   "id": "discover-send-contact-form--checks",
+   "from": "server",
+   "to": "checks",
+   "y": 1946,
+   "label": "10 per IP an hour; email + message",
+   "variant": "security"
+  },
+  {
+   "id": "discover-send-contact-form--refused",
+   "from": "server",
+   "to": "page",
+   "y": 1976,
+   "label": "429/400: 'Could not send…'",
+   "variant": "return",
+   "note": "A network failure shows the same error (caught)"
+  },
+  {
+   "id": "discover-send-contact-form--ticket",
+   "from": "server",
+   "to": "store",
+   "y": 2020,
+   "label": "ticket 'open' → support-tickets",
+   "variant": "dashed",
+   "note": "Capped at 2000; login + account kept when signed in"
+  },
+  {
+   "id": "discover-send-contact-form--email",
+   "from": "server",
+   "to": "email",
+   "y": 2064,
+   "label": "email WAITLIST_TO if set",
+   "variant": "default",
+   "note": "sendEmail sends nothing without RESEND_API_KEY"
+  },
+  {
+   "id": "discover-send-contact-form--saved",
+   "from": "server",
+   "to": "page",
+   "y": 2108,
+   "label": "ticket saved",
+   "variant": "return"
+  },
+  {
+   "id": "discover-send-contact-form--see",
+   "from": "page",
+   "to": "person",
+   "y": 2138,
+   "label": "Form → 'We got your message…'",
+   "variant": "return",
+   "note": "Nothing is sent to the person; the founder reads the ticket in the Leads tab and replies by email"
+  },
+  {
+   "id": "discover-help-search--do",
+   "from": "person",
+   "to": "page",
+   "y": 2182,
+   "label": "Search help, pick a topic",
+   "variant": "default",
+   "note": "8 topic chips; answers expand in place"
+  },
+  {
+   "id": "discover-help-search--see",
+   "from": "page",
+   "to": "person",
+   "y": 2226,
+   "label": "List filters as they type",
+   "variant": "return",
+   "note": "No match: 'No results. Ask Noor or message us below.'"
+  },
+  {
+   "id": "discover-help-search--prices",
+   "from": "page",
+   "to": "person",
+   "y": 2270,
+   "label": "Answers quote the pricing tables",
+   "variant": "return",
+   "note": "Trial 50 credits; Starter 299, Pro 499, Business 999; added brand 9; chat 250 / 650 / 1,300 a month"
+  },
+  {
+   "id": "discover-help-search--whatsapp",
+   "from": "page",
+   "to": "person",
+   "y": 2314,
+   "label": "WhatsApp button opens wa.me",
+   "variant": "return",
+   "note": "New tab; shown only when SUPPORT_WHATSAPP is set"
+  },
+  {
+   "id": "discover-help-request--do",
+   "from": "person",
+   "to": "page",
+   "y": 2358,
+   "label": "Fill support request, click Send",
+   "variant": "emphasis",
+   "note": "Type: Question, Bug, Billing or Feature request"
+  },
+  {
+   "id": "discover-help-request--post",
+   "from": "page",
+   "to": "server",
+   "y": 2402,
+   "label": "POST /api/support (same route)",
+   "variant": "emphasis"
+  },
+  {
+   "id": "discover-help-request--checks",
+   "from": "server",
+   "to": "checks",
+   "y": 2432,
+   "label": "10 per IP an hour; required fields",
+   "variant": "security"
+  },
+  {
+   "id": "discover-help-request--refused",
+   "from": "server",
+   "to": "page",
+   "y": 2462,
+   "label": "429/400: 'Didn't send. Try again.'",
+   "variant": "return",
+   "note": "Network failure: no catch, button stays disabled"
+  },
+  {
+   "id": "discover-help-request--ticket",
+   "from": "server",
+   "to": "store",
+   "y": 2506,
+   "label": "ticket → support-tickets",
+   "variant": "dashed",
+   "note": "Login + account recorded when signed in"
+  },
+  {
+   "id": "discover-help-request--email",
+   "from": "server",
+   "to": "email",
+   "y": 2550,
+   "label": "email WAITLIST_TO if set",
+   "variant": "default"
+  },
+  {
+   "id": "discover-help-request--saved",
+   "from": "server",
+   "to": "page",
+   "y": 2580,
+   "label": "ticket saved",
+   "variant": "return"
+  },
+  {
+   "id": "discover-help-request--see",
+   "from": "page",
+   "to": "person",
+   "y": 2610,
+   "label": "Form → 'Got it. We'll reply…'",
+   "variant": "return",
+   "note": "Follow-up happens outside the product"
+  },
+  {
+   "id": "discover-affiliate-terms--do",
+   "from": "person",
+   "to": "page",
+   "y": 2654,
+   "label": "Open the partner programme terms",
+   "variant": "default",
+   "note": "From the partner page or the form (new tab)"
+  },
+  {
+   "id": "discover-affiliate-terms--see",
+   "from": "page",
+   "to": "person",
+   "y": 2698,
+   "label": "Terms: who can join, pay, taxes, limits",
+   "variant": "return",
+   "note": "Static page, 8 sections; a 'Partner programme' link leads back"
+  },
+  {
+   "id": "discover-affiliate-apply--do",
+   "from": "person",
+   "to": "page",
+   "y": 2742,
+   "label": "Read terms, tick consent, submit form",
+   "variant": "emphasis",
+   "note": "15% for 4 months, 30-day window, SAR 200 payout minimum"
+  },
+  {
+   "id": "discover-affiliate-apply--post",
+   "from": "page",
+   "to": "server",
+   "y": 2786,
+   "label": "POST /api/affiliates",
+   "variant": "emphasis"
+  },
+  {
+   "id": "discover-affiliate-apply--checks",
+   "from": "server",
+   "to": "checks",
+   "y": 2816,
+   "label": "10 per IP an hour; name, email, consent",
+   "variant": "security"
+  },
+  {
+   "id": "discover-affiliate-apply--refused",
+   "from": "server",
+   "to": "page",
+   "y": 2846,
+   "label": "429/400: 'Didn't send. Try again.'",
+   "variant": "return",
+   "note": "Unticked box: 'Agree to the … terms…'; a network error shows the same text"
+  },
+  {
+   "id": "discover-affiliate-apply--save",
+   "from": "server",
+   "to": "store",
+   "y": 2890,
+   "label": "push → affiliate-applications",
+   "variant": "dashed",
+   "note": "Fields clipped; id, consent time, terms version; capped at 2000"
+  },
+  {
+   "id": "discover-affiliate-apply--saved",
+   "from": "server",
+   "to": "page",
+   "y": 2934,
+   "label": "application saved",
+   "variant": "return"
+  },
+  {
+   "id": "discover-affiliate-apply--see",
+   "from": "page",
+   "to": "person",
+   "y": 2964,
+   "label": "Form → 'Got it. We reply within…'",
+   "variant": "return",
+   "note": "No email, code or link is issued automatically; the founder approves"
+  },
+  {
+   "id": "discover-read-updates--do",
+   "from": "person",
+   "to": "page",
+   "y": 3052,
+   "label": "Open Updates & wishlist",
+   "variant": "emphasis",
+   "note": "'What's new' and 'Wishlist' tabs are plain anchors"
+  },
+  {
+   "id": "discover-read-updates--get",
+   "from": "page",
+   "to": "server",
+   "y": 3096,
+   "label": "GET /{lang}/updates (dynamic)",
+   "variant": "default"
+  },
+  {
+   "id": "discover-read-updates--user",
+   "from": "server",
+   "to": "checks",
+   "y": 3126,
+   "label": "currentUser(), optional",
+   "variant": "security"
+  },
+  {
+   "id": "discover-read-updates--read",
+   "from": "server",
+   "to": "store",
+   "y": 3156,
+   "label": "listWishes: items + own votes",
+   "variant": "default",
+   "note": "Statuses and own votes in parallel; counts in one pipeline"
+  },
+  {
+   "id": "discover-read-updates--list",
+   "from": "server",
+   "to": "page",
+   "y": 3200,
+   "label": "Changelog + wishes, sorted",
+   "variant": "return",
+   "note": "Changelog newest first; wishes in progress, planned, shipped, most votes first"
+  },
+  {
+   "id": "discover-read-updates--changelog",
+   "from": "page",
+   "to": "person",
+   "y": 3244,
+   "label": "Top entry: repeating to-dos",
+   "variant": "return",
+   "note": "2026-10-03, new: repeat daily to yearly, Gregorian or Hijri; plans entry below"
+  },
+  {
+   "id": "discover-read-updates--signed-out",
+   "from": "page",
+   "to": "person",
+   "y": 3288,
+   "label": "Signed out: 'Sign in to vote'",
+   "variant": "return",
+   "note": "Vote tiles are login links; 'Sign in to suggest' card"
+  },
+  {
+   "id": "discover-read-updates--signed-in",
+   "from": "page",
+   "to": "person",
+   "y": 3332,
+   "label": "Signed in: vote buttons + form",
+   "variant": "return",
+   "note": "Own votes pressed; empty list: 'Nothing here yet.'"
+  },
+  {
+   "id": "discover-updates-sign-in--do",
+   "from": "person",
+   "to": "page",
+   "y": 3376,
+   "label": "Click 'Sign in to vote' or suggest",
+   "variant": "default"
+  },
+  {
+   "id": "discover-updates-sign-in--see",
+   "from": "page",
+   "to": "person",
+   "y": 3406,
+   "label": "Login, next=/{lang}/updates",
+   "variant": "return",
+   "note": "Back on /updates after login; signed in in another tab → /{lang}/app"
+  },
+  {
+   "id": "discover-wish-vote--do",
+   "from": "person",
+   "to": "page",
+   "y": 3450,
+   "label": "Click Vote, or Voted to undo",
+   "variant": "default"
+  },
+  {
+   "id": "discover-wish-vote--flip",
+   "from": "page",
+   "to": "person",
+   "y": 3480,
+   "label": "Count + pressed state flip at once",
+   "variant": "return",
+   "note": "Clicks are ignored while one is in flight"
+  },
+  {
+   "id": "discover-wish-vote--post",
+   "from": "page",
+   "to": "server",
+   "y": 3524,
+   "label": "POST /api/wishlist/vote {id, on}",
+   "variant": "default"
+  },
+  {
+   "id": "discover-wish-vote--checks",
+   "from": "server",
+   "to": "checks",
+   "y": 3554,
+   "label": "401 auth, 60/h, known item",
+   "variant": "security",
+   "note": "rate:wishvote:{email}; any role may vote"
+  },
+  {
+   "id": "discover-wish-vote--expired",
+   "from": "server",
+   "to": "page",
+   "y": 3598,
+   "label": "401 → login?next=/updates",
+   "variant": "return"
+  },
+  {
+   "id": "discover-wish-vote--refused",
+   "from": "server",
+   "to": "page",
+   "y": 3628,
+   "label": "429: undo, 'Too many votes…'",
+   "variant": "return",
+   "note": "400 unknown_item or network error: undo, 'Could not save your vote'"
+  },
+  {
+   "id": "discover-wish-vote--write",
+   "from": "server",
+   "to": "store",
+   "y": 3672,
+   "label": "sadd/srem wish:votes, wish:mine",
+   "variant": "dashed",
+   "note": "Under the account email; repeating changes nothing"
+  },
+  {
+   "id": "discover-wish-vote--count",
+   "from": "server",
+   "to": "page",
+   "y": 3716,
+   "label": "Server count replaces shown one",
+   "variant": "return"
+  },
+  {
+   "id": "discover-wish-suggest--do",
+   "from": "person",
+   "to": "page",
+   "y": 3756,
+   "label": "Type idea, click Send suggestion",
+   "variant": "default",
+   "note": "Counter n/280; under 5 chars: 'Write your idea in a few more words.'"
+  },
+  {
+   "id": "discover-wish-suggest--post",
+   "from": "page",
+   "to": "server",
+   "y": 3800,
+   "label": "POST /api/wishlist/suggest",
+   "variant": "default"
+  },
+  {
+   "id": "discover-wish-suggest--checks",
+   "from": "server",
+   "to": "checks",
+   "y": 3830,
+   "label": "401 auth, clean text, 5-280 chars",
+   "variant": "security",
+   "note": "Control chars → spaces; zero-width, overrides removed"
+  },
+  {
+   "id": "discover-wish-suggest--limit",
+   "from": "server",
+   "to": "checks",
+   "y": 3874,
+   "label": "5 suggestions per account a day",
+   "variant": "security",
+   "note": "rate:wishsuggest:{email}; only well-formed text counts"
+  },
+  {
+   "id": "discover-wish-suggest--refused",
+   "from": "server",
+   "to": "page",
+   "y": 3918,
+   "label": "429: 'You reached today's limit…'",
+   "variant": "return",
+   "note": "Too long: 'The suggestion is longer than allowed.'; 401: 'Could not save your vote'"
+  },
+  {
+   "id": "discover-wish-suggest--queue",
+   "from": "server",
+   "to": "store",
+   "y": 3962,
+   "label": "push → wish:suggestions (max 500)",
+   "variant": "dashed"
+  },
+  {
+   "id": "discover-wish-suggest--saved",
+   "from": "server",
+   "to": "page",
+   "y": 3992,
+   "label": "saved for review",
+   "variant": "return"
+  },
+  {
+   "id": "discover-wish-suggest--see",
+   "from": "page",
+   "to": "person",
+   "y": 4022,
+   "label": "Box clears: 'Thanks, we got it.'",
+   "variant": "return",
+   "note": "Never shown publicly; the founder may promote it in the console"
+  }
+ ],
+ "cards": [
+  {
+   "dot": "amber",
+   "title": "While the model is paused",
+   "items": [
+    "Model calls are paused (CLAUDE_PAUSED = true, since 2026-09-28); turning them on means changing that constant and deploying. There is no owner switch.",
+    "Every free-tool submit answers 503 'paused': 'The free tools are paused for now. Please check back later.'",
+    "The pause is checked before the rate limit, so no daily use is spent. A production deployment with no API key is paused too.",
+    "Copy is unreachable, since no tool returns output while paused.",
+    "Sample chips only pre-fill chat; nothing reaches a model until Send."
+   ]
+  },
+  {
+   "dot": "rose",
+   "title": "Refusals and limits",
+   "items": [
+    "Free tools: 5 runs a day per IP, 50 per signed-in account (429).",
+    "Support and affiliate forms: 10 per IP per hour (429) and required fields (400); an application without the consent box is refused (400).",
+    "Partner links: 60 per IP per hour; an unknown code just opens plain signup.",
+    "Wish votes: 60 per account per hour. Suggestions: 5 per account a day.",
+    "Signup and login accept next only when it starts with '/' but not '//' or '/\\'; signed in, they send the person to /{lang}/app and a carried URL or partner code is dropped."
+   ]
+  },
+  {
+   "dot": "cyan",
+   "title": "Who can do this",
+   "items": [
+    "Votes and suggestions need a session; any role may use them.",
+    "A vote is recorded under the account email, so a member votes as the owner's account.",
+    "A sample chip lands in chat only with a session and a workspace.",
+    "A session raises the free-tool ceiling from 5 to 50 a day.",
+    "The founder reads tickets and applications in the console Leads tab or by GET with isAdmin; nothing is sent back automatically."
+   ]
+  },
+  {
+   "dot": "emerald",
+   "title": "Prices quoted on these pages",
+   "items": [
+    "Help answers and the Updates entries read prices, task costs and chat allowances from the tables; the image and video ranges are typed text.",
+    "Plans: Starter 299, Pro 499, Business 999 SAR a month, or Agency by contract.",
+    "Trial: 3 days, 50 credits, 30 chat messages, no card. Chat a month: Starter 250, Pro 650, Business 1,300.",
+    "First brand's setup is free; each added brand's setup from its URL is 9 credits.",
+    "Partner code: 15% off the first month; the partner earns 15% for 4 months."
+   ]
+  }
+ ]
+}

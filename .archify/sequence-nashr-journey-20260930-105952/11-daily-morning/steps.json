@@ -1,0 +1,1222 @@
+{
+  "key": "11-daily-morning",
+  "title": "Every day: morning jobs, brief, bell and email",
+  "person": "owner or team",
+  "steps": [
+    {
+      "id": "daily-cron-morning",
+      "title": "Morning job runs",
+      "surface": "/api/cron/daily (Vercel cron 0 5 * * *)",
+      "actor": "system",
+      "action": "At 05:00 UTC (08:00 KSA), Vercel cron calls GET /api/cron/daily with the CRON_SECRET bearer.",
+      "ui_response": "Nothing is visible yet. The person meets the results later: the brief card, bell items, emails, refreshed ad results, renewed credits, an expired top-up pack gone from storage and, when one was left unused, an added brand's setup charge back in the balance.",
+      "system_reaction": "sameSecret checks the bearer (401 otherwise). On the first hop only (no chain parameter) the job first sweeps Reem's due reminders, as the late-but-never-lost fallback for the QStash tick. dailyRoster then lists one item per account and active brand; every account has at least the default brand. It also lists idle scopes: archived brands, and every brand of a suspended account. runCronBatch runs 8 at a time. It keeps a per-day done marker and allows at most 2 attempts per workspace. It re-invokes itself when items were not started within its 240 s start budget or failed, up to 30 hops. For each workspace, dailyFor runs in this order. (1) renewIfDue: on a paid plan, the first cron run (or paid text batch, whichever comes first) of a new UTC month resets the month's plan credits to allowanceOf(u), with no rollover: Starter 300, Pro 700, Business 1,500, and Agency its deal's credits, or 1,500 without a deal at or above the floor. Top-up packs keep their own balance. A record still stored as Enterprise reads as Agency. Trial accounts are never renewed, and neither is a stored plan that is not recognised (it reads as trial). (2) On the default brand's entry only: saveSettledTopups writes the settled record when a top-up pack expired; the setup-charge sweep (sweepOnboardHolds); the 15% first-month offer on the trial's last day (grantEarlyOffer); and the Sunday-plan hold sweep (sweepWeeklyHolds). (3) secretaryDaily purges Reem's items deleted over 30 days ago, cleans her away list, warns about (a bell item opening My to-dos) and deletes closed copies of recurring series, and auto-closes items whose linked inbox item was approved. (4) Either the no-brand nudge, or the ad sync, lifecycle emails, brief, follow-ups and email. Idle scopes get only the purge. From Sunday to Tuesday (UTC), on the hop that does not chain further, the job also kicks /api/cron/weekly as a catch-up. The report counts briefs, emails, nudges and renewals, and says whether mail is configured. No model call is made anywhere in this job, so it runs unchanged while CLAUDE_PAUSED = true.",
+      "branches": [
+        "No brand file: signup-nudge path only",
+        "A top-up, setup-sweep, offer, plan-hold, to-do or ad-sync failure is recorded in the outcome and the rest of that workspace's day continues",
+        "Suspended account or archived brand: only the 30-day purge runs",
+        "Sunday to Tuesday UTC: weekly-plan catch-up kicked after the batch"
+      ],
+      "conditions": "Every account in users:all, once per active brand",
+      "sources": [
+        {
+          "path": "vercel.json",
+          "line": 4
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 24,
+          "end_line": 43
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 82,
+          "end_line": 125
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 163,
+          "end_line": 185
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 237,
+          "end_line": 253
+        },
+        {
+          "path": "src/lib/brands.ts",
+          "line": 16,
+          "end_line": 20
+        },
+        {
+          "path": "src/lib/credits.ts",
+          "line": 189,
+          "end_line": 195
+        },
+        {
+          "path": "src/lib/credits.ts",
+          "line": 455,
+          "end_line": 464
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 101,
+          "end_line": 103
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 35
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 40,
+          "end_line": 42
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 1202,
+          "end_line": 1223
+        },
+        {
+          "path": "src/lib/cron-batch.ts",
+          "line": 24,
+          "end_line": 85
+        }
+      ],
+      "next": [
+        "daily-reminders-sweep",
+        "daily-onboard-sweep",
+        "daily-signup-nudge",
+        "daily-ads-sync",
+        "daily-lifecycle-emails",
+        "daily-brief-built"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-reminders-sweep",
+      "title": "Reem's reminders delivered",
+      "surface": "/api/cron/daily first hop (sweepDaily), bell and email",
+      "action": "On the first hop of the daily job, before the workspaces run, Reem's reminders that are due are delivered.",
+      "ui_response": "A bell item 'Reminder: «title»' ('You asked to be reminded of this. Due: …') opening My to-dos, and an email 'Reminder from Reem: …' unless the preference is 'None' or mail is not set up. A reminder normally arrives at its time through the QStash tick; this sweep is the late-but-never-lost fallback, so without the tick it arrives with the morning job.",
+      "system_reaction": "Only on the first hop (no chain parameter). sweepDaily calls sweepReminders with a 60 s budget (SWEEP_BUDGET_DAILY_MS) and repeats up to 4 more times while a pass read the full 200 scopes. Each pass reads up to 200 scopes with a due reminder from sec:duescopes and up to 50 ids per scope, grouped by account, 8 accounts at a time. A suspended account's scopes and a brand that is not active are held for 6 hours. For each id a 330 s lease is taken (SET NX), then fireReminder runs deliver under the item's lock: pushNotifs claims the fingerprint todo-remind:{scope}:{id}:{ms} (kept 7 days) and, only when that push was new, sends the email. The email needs RESEND_API_KEY, and the profile preference for the scope (else the account's) must not be 'none'. A failure leaves the id due for the next sweep; nothing new starts after the deadline. No model call, no credits. The sweep report is returned with the job's report.",
+      "branches": [
+        "Email preference 'none': bell item only, no email",
+        "Suspended account or archived brand: reminders held 6 hours",
+        "Past the 60 s budget: the rest stay due for the next sweep",
+        "Same reminder already pushed: no second bell item or email"
+      ],
+      "conditions": "First hop of the daily job; a reminder is due",
+      "sources": [
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 138,
+          "end_line": 154
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 166,
+          "end_line": 170
+        },
+        {
+          "path": "src/lib/secretary-remind.ts",
+          "line": 36,
+          "end_line": 47
+        },
+        {
+          "path": "src/lib/secretary-remind.ts",
+          "line": 77,
+          "end_line": 114
+        },
+        {
+          "path": "src/lib/secretary-remind.ts",
+          "line": 117,
+          "end_line": 176
+        },
+        {
+          "path": "src/lib/secretary-remind.ts",
+          "line": 180,
+          "end_line": 195
+        },
+        {
+          "path": "src/lib/notifications.ts",
+          "line": 98,
+          "end_line": 115
+        }
+      ],
+      "next": [
+        "daily-open-notifications"
+      ],
+      "stage": "daily",
+      "verified": true,
+      "actor": "system"
+    },
+    {
+      "id": "daily-onboard-sweep",
+      "title": "Unused setup refunded",
+      "surface": "/api/cron/daily (sweepOnboardHolds), on the account record user:{email}",
+      "actor": "system",
+      "action": "On each account's default-brand entry, the daily job looks for added-brand setup charges (holds) that no setup run charged or reused for 24 hours.",
+      "ui_response": "No email, bell item or message; only the balance changes. When the added brand was never built (its setup run was killed mid-run, or its own refund failed) and the owner did not retry, the 9 credits come back. The sidebar and billing show the new balance on the next page load, and that day's brief on the default brand counts it. When the brand was built, the charge stands and nothing changes. While paused (current), an added brand's setup answers 503 'paused' before any charge, so no new hold is made.",
+      "system_reaction": "Runs only when the entry is the default brand's and User.onboardPaid holds something. sweepOnboardHolds keeps each hold whose last charge or reuse (hold.at) is at least ONBOARD_HOLD_MS (24 h) old; a malformed time counts as old. It reads the brand file of each such scope side by side. resolveOnboardHolds then settles them all in one save under the user lock. A hold whose brand exists is dropped with no refund. Any other gives its credits back, lowers Noor's counter for that brand while still in the charge's month, and is dropped, and an onboard_refunded row is written to the brand's activity log for each refund (by the cron). The outcome records onboard_refunded:N and onboard_settled:N; a throw records onboard_sweep_failed and the rest of the day continues. Archived brands are covered, because the sweep runs per account; suspended accounts only get the idle purge, so they are not swept. No model call.",
+      "branches": [
+        "Brand file exists: hold dropped, the charge stands",
+        "Hold charged or reused under 24 h ago: left for a later run",
+        "Sweep fails: onboard_sweep_failed recorded, the day continues",
+        "Suspended account: not swept"
+      ],
+      "conditions": "Default-brand entry of an account holding an added-brand setup charge that no run charged or reused for 24 hours",
+      "sources": [
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 44,
+          "end_line": 58
+        },
+        {
+          "path": "src/lib/onboard-confirm.ts",
+          "line": 47,
+          "end_line": 63
+        },
+        {
+          "path": "src/lib/credits.ts",
+          "line": 225,
+          "end_line": 261
+        },
+        {
+          "path": "src/lib/credits.ts",
+          "line": 381,
+          "end_line": 409
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 207,
+          "end_line": 208
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 80,
+          "end_line": 93
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 116,
+          "end_line": 121
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 136,
+          "end_line": 140
+        }
+      ],
+      "next": [
+        "daily-early-offer"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-early-offer",
+      "title": "Last-day 15% offer granted",
+      "surface": "/api/cron/daily (grantEarlyOffer), on the account record user:{email}",
+      "action": "On the default-brand entry of a trial account in its last 24 hours, with no first-month offer yet and no payment, the daily job grants the early-partner 15% first-month offer.",
+      "ui_response": "No email or bell item of its own. The Billing page then shows the discounted first month of each self-serve plan, and the day-3 'Last day of your trial' email names the 15% offer and the date it ends (7 days after the trial's last day). A partner code's offer, which has no end date, is named without one. When mail is not set up, the offer is still granted.",
+      "system_reaction": "earlyOfferDue asks lifecyclePlan whether the day-3 note is due, and requires no firstMonthOffer and no firstPaidOn. grantEarlyOffer re-checks that under the user lock, sets firstMonthOffer {kind 'early', pct FIRST_MONTH_DISCOUNT_PCT} and saves the account. It runs whether or not mail is configured. The Billing page grants the same offer to a visiting trial from the start of its last 24 hours through the offer's last day (lastDayOfferOwed), which makes up a missed run; it never grants one that would already be expired. A failure records offer_failed and the rest of the day continues. No model call, no credits.",
+      "branches": [
+        "Offer or first payment already on the account: nothing granted",
+        "Not in the last 24 hours of the trial: nothing granted",
+        "Grant fails: offer_failed recorded, the day continues"
+      ],
+      "conditions": "Default-brand entry; trial in its last 24 hours; no first-month offer and no first payment",
+      "sources": [
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 59,
+          "end_line": 63
+        },
+        {
+          "path": "src/lib/partners.ts",
+          "line": 220,
+          "end_line": 255
+        },
+        {
+          "path": "src/lib/lifecycle.ts",
+          "line": 77,
+          "end_line": 91
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 251
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 244
+        },
+        {
+          "path": "src/lib/partner-rules.ts",
+          "line": 153
+        }
+      ],
+      "next": [
+        "daily-weekly-sweep"
+      ],
+      "stage": "daily",
+      "verified": true,
+      "actor": "system"
+    },
+    {
+      "id": "daily-weekly-sweep",
+      "title": "Stale plan charge settled",
+      "surface": "/api/cron/daily (sweepWeeklyHolds), on the account record user:{email}",
+      "action": "On each account's default-brand entry, the daily job looks for Sunday-plan charges (holds) of a past week that no run finished.",
+      "ui_response": "No email, bell item or message; only the balance changes. When a week's plan was never made (its run was killed, and no catch-up or 'Run now' came after), the 2 credits come back. When the plan exists, the charge stands and nothing changes.",
+      "system_reaction": "Runs only when the entry is the default brand's and User.paidOnce holds something. sweepWeeklyHolds picks the claims named weekly:{scope}:{week} for a week before this one whose hold was taken at least ONCE_HOLD_SETTLE_MS (10 min) ago; a malformed time counts as old. It reads each scope's tasks since that week's start, side by side. resolveOnceHolds then settles them all in one save under the user lock: a week with a weekly_plan task the team made on its own is dropped with no refund, any other is refunded. The outcome records weekly_refunded:N and weekly_settled:N; a throw records weekly_sweep_failed and the rest of the day continues. While paused no plan is charged, so there is nothing new to sweep. No model call.",
+      "branches": [
+        "Plan exists for that week: hold dropped, the charge stands",
+        "Hold under 10 minutes old, or of the current week: left for a later run",
+        "Sweep fails: weekly_sweep_failed recorded, the day continues"
+      ],
+      "conditions": "Default-brand entry of an account holding a Sunday-plan charge from a past week",
+      "sources": [
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 64,
+          "end_line": 77
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 122,
+          "end_line": 149
+        },
+        {
+          "path": "src/lib/credits.ts",
+          "line": 310,
+          "end_line": 379
+        }
+      ],
+      "next": [
+        "daily-signup-nudge",
+        "daily-ads-sync"
+      ],
+      "stage": "daily",
+      "verified": true,
+      "actor": "system"
+    },
+    {
+      "id": "daily-signup-nudge",
+      "title": "No-brand nudge email",
+      "surface": "Email (Resend) from /api/cron/daily",
+      "actor": "system",
+      "action": "The daily job finds a workspace with no brand file whose account signed up more than 10 minutes ago.",
+      "ui_response": "The person receives one email, 'Noor is ready — give her your website', with a link to /{lang}/app/start (Arabic subject and text for Arabic accounts). The text says they signed up for Thakeen but have not started.",
+      "system_reaction": "It is sent only when the account is older than 10 minutes and mailReady() is true (RESEND_API_KEY and MAIL_FROM both set). sendOnce takes a short claim (SET NX, 120 s) so overlapping runs cannot both send, sends, and only after Resend accepted the mail writes the marker notified:{email}:nudge1 as a {sent} record kept for 400 days; the claim is released either way, so a refused or timed-out send (10 s) is tried again on the next run. If Resend refuses, sendEmail returns false and writes mail:refused to admin:log, and the outcome records mail_refused:nudge. A marker left by the old claim-before-send guard is repaired once, only when written before the repair cutoff. After the renewal, the top-up, setup-charge, offer and plan-hold steps (default brand only) and the to-do work, nothing else runs for that workspace that day: no ad sync, lifecycle email, brief or follow-ups.",
+      "branches": [
+        "Email not configured (key or MAIL_FROM missing): nothing sent",
+        "Already nudged once: nothing sent",
+        "Resend refuses: logged as mail:refused, tried again on the next run"
+      ],
+      "conditions": "Workspace without a brand file; account older than 10 minutes; mail configured",
+      "sources": [
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 87,
+          "end_line": 101
+        },
+        {
+          "path": "src/lib/notify.ts",
+          "line": 9
+        },
+        {
+          "path": "src/lib/notify.ts",
+          "line": 19,
+          "end_line": 51
+        },
+        {
+          "path": "src/lib/notify.ts",
+          "line": 58,
+          "end_line": 67
+        },
+        {
+          "path": "src/lib/notify.ts",
+          "line": 100,
+          "end_line": 125
+        }
+      ],
+      "next": [],
+      "note": "Leads back to the onboarding stage at /{lang}/app/start.",
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-ads-sync",
+      "title": "Ad results refresh",
+      "surface": "/api/cron/daily, then the Reports 'Campaign results' card",
+      "actor": "system",
+      "action": "For a brand with a Meta Ads or Snapchat Ads account connected, the daily job re-reads the connection whose last read is oldest, once that read is more than 20 hours old. It reads one platform per day.",
+      "ui_response": "No message is sent. The next time the person opens Reports, the Campaign results card shows the 'Live' badge and the last 30 days of results.",
+      "system_reaction": "syncAdsIfDue skips connections flagged for reconnect, then calls getFreshConnection and syncAds. syncAds makes read-only GETs for the last 30 whole UTC days, ending yesterday. It runs analyze, the same ranking as a CSV upload, with the NSR- ad-code index. savePerf stores perfimport:{scope} and rewrites performance-learnings.md, which memoryBlock feeds to every later generation. adsync:{scope}:{provider} records the read time. No model call and no credits. When the platform refuses the token (401 or 403), refusedToken marks the connection for reconnecting, and the outcome records ads_failed.",
+      "branches": [
+        "No ad connection, flagged for reconnect, or last read under 20 hours ago: skipped",
+        "Token refused: connection flagged for reconnect; the rest of the day continues",
+        "No results in 30 days: ads_failed:no_ad_results recorded"
+      ],
+      "conditions": "meta_ads or snapchat connected and not flagged for reconnect",
+      "sources": [
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 103,
+          "end_line": 105
+        },
+        {
+          "path": "src/lib/perf-store.ts",
+          "line": 39,
+          "end_line": 52
+        },
+        {
+          "path": "src/lib/perf-store.ts",
+          "line": 30,
+          "end_line": 36
+        },
+        {
+          "path": "src/lib/perf-store.ts",
+          "line": 18,
+          "end_line": 20
+        },
+        {
+          "path": "src/lib/connectors/ads.ts",
+          "line": 41,
+          "end_line": 46
+        },
+        {
+          "path": "src/lib/connectors/fresh.ts",
+          "line": 74,
+          "end_line": 81
+        },
+        {
+          "path": "src/lib/files.ts",
+          "line": 117,
+          "end_line": 118
+        }
+      ],
+      "next": [
+        "daily-lifecycle-emails"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-lifecycle-emails",
+      "title": "Lifecycle emails",
+      "surface": "Email (Resend) from /api/cron/daily",
+      "actor": "system",
+      "action": "The daily job checks which founder lifecycle emails are due for the account.",
+      "ui_response": "Plain-text emails signed '— Founder of Thakeen', with a WhatsApp line when SUPPORT_WHATSAPP is set. (1) Days 1-3: 'Noor wrote: “first item title”' (or 'Day one with Noor'), with a tip to say 'import my products'. (2) Trial with 24-48 hours left: 'Your trial ends tomorrow', with the approved and waiting counts, 'Pro at SAR 499/mo gives you 700 credits a month' (Arabic: 'خطة الاحتراف 499 ريال/شهر… 700 كريدت'), and a billing link. (3) Trial with under 24 hours left: 'Last day of your trial', which names the 15% first-month offer (the early offer with the date it ends, or a partner code's offer, with no end date); when the offer was used or a payment exists, it only links to billing. (4) Trial accounts on days 10-13: 'What stopped you?'.",
+      "system_reaction": "runLifecycle returns at once when mailReady() is false (RESEND_API_KEY or MAIL_FROM missing). lifecyclePlan decides first: day1 on days 1-3 since signup, day2 and day3 by the hours left in the trial, and day10 on days 10-13 for trial accounts. Only then does it read the brand and 90 days of the light task index for the counts. Each email goes through sendOnce('lifecycle:{key}'), side by side: the marker is set only after Resend accepts, so a refused note is tried again on the next run while its window lasts. The trial-end email takes the Pro price and credits from the plan table (PLAN_PRICE_SAR.pro, formatCount(PLAN_CREDITS.pro)), and the day-3 note names the offer the account holds (day3Offer). The email preference in the profile is not read. No model call.",
+      "branches": [
+        "Paying plan: only day 1 can fire",
+        "No brand: none (the nudge handles it)",
+        "Email not configured: nothing sent",
+        "Resend refuses: logged, tried again on the next run",
+        "Email preference 'none' does not stop these"
+      ],
+      "conditions": "Brand exists; mail configured; day2, day3 and day10 only on the trial plan",
+      "sources": [
+        {
+          "path": "src/lib/lifecycle.ts",
+          "line": 23,
+          "end_line": 27
+        },
+        {
+          "path": "src/lib/lifecycle.ts",
+          "line": 30,
+          "end_line": 66
+        },
+        {
+          "path": "src/lib/lifecycle.ts",
+          "line": 77,
+          "end_line": 91
+        },
+        {
+          "path": "src/lib/lifecycle.ts",
+          "line": 93,
+          "end_line": 116
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 106,
+          "end_line": 107
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 40,
+          "end_line": 42
+        }
+      ],
+      "next": [
+        "daily-brief-built"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-brief-built",
+      "title": "Morning brief written",
+      "surface": "/api/cron/daily (runDaily), stored in brief:{scope}",
+      "actor": "system",
+      "action": "The daily job writes Noor's morning brief for the brand.",
+      "ui_response": "Not shown until the person opens the inbox or chat, or reads the brief email. The English text opens with 'Good morning {name} ☀️ Noor's brief for today:'. It lists: items waiting for approval; approved items created in the last 7 days; credits, with the trial end date on a trial; and up to 2 upcoming seasons. Season names are written in Arabic even in the English brief, or the line says 'No major season within 35 days'. It then adds Reem's line (overdue, due today, waiting on others, to follow up, to confirm; in Ramadan the follow-ups count from a set hour that day) with the first three titles. It ends with a 'Next step' line: open the inbox, open My to-dos and start with what is overdue, or ask Noor for a new batch in chat.",
+      "system_reaction": "Skipped when schedule.dailyBrief is off. The job rebuilds the light index when it is over 7 days old and reconciles the pending set. Counts come from stored tasks. Reem's block comes from agendaFor (shaped for the brief by briefAgenda), which also auto-closes to-dos whose linked item was approved. It saves brief:{scope}, and lastDaily into the schedule record, which saveSchedule keeps to the fields set explicitly. No model call and no credits, so the brief is the same while paused. GET /api/brief returns the stored brief to any signed-in person (401 otherwise), but no page in src calls it.",
+      "branches": [
+        "Morning brief switched off: no brief, and the email falls back to follow-ups only",
+        "Arabic-first brand: Arabic text",
+        "Reem's list empty: no to-do line"
+      ],
+      "conditions": "Brand exists; Morning brief on (default on)",
+      "sources": [
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 184,
+          "end_line": 230
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 41,
+          "end_line": 63
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 1095,
+          "end_line": 1097
+        },
+        {
+          "path": "src/lib/secretary-agenda.ts",
+          "line": 753,
+          "end_line": 765
+        },
+        {
+          "path": "src/app/api/brief/route.ts",
+          "line": 5,
+          "end_line": 9
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 108
+        }
+      ],
+      "next": [
+        "daily-followups"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-followups",
+      "title": "Bell follow-ups created",
+      "surface": "/api/cron/daily (followUps), stored in the account's bell notifs:{email}",
+      "actor": "system",
+      "action": "The daily job computes follow-ups from the workspace and from Reem's list.",
+      "ui_response": "New bell items, seen on the next visit. (1) 'N item(s) due today or tomorrow' with 'Publish now; nothing goes out automatically', opening Calendar. (2) 'N item(s) waiting for you for over 2 days', opening the inbox. (3) 'Balance: N credits' when under 10, opening Billing. (4) 'Your trial ends within 24 hours', opening Billing. (5) Dana's 'N item(s) scored below 70', opening the inbox. (6) Reem's 'Overdue: «title»' with 'Do it, snooze it or reschedule it.' or 'Follow up with {who}, or change the date.', and 'Time to follow up: «title»' when it is not past its due date; after a contact's absence ends the first alert says '{who} is back: time to follow up', and in Ramadan 'Follow up today after HH:mm with {who}, or change the date.'; all open My to-dos. The 7th-day alert adds that it is the last one.",
+      "system_reaction": "Skipped when schedule.followUps is off. Each situation is claimed once with SET NX on notifseen:{email}:{fingerprint}, for 2 to 7 days depending on the kind, so it does not repeat daily. Due dates are compared as UTC days. Reem's alerts come from overdueAlerts through overdueTodoAlerts: on the local day an item fell behind, and on days 1, 3 and 7 after it, with contact follow-ups counted in working days and never on quiet days or, in Ramadan, before the set hour. At most 5 go out per brand per local day, critical and earliest first; extra claims are handed back for another day of their window. Notifications are stored as one list of up to 50 per account. No model call.",
+      "branches": [
+        "Team follow-ups switched off: none, Reem's overdue alerts included",
+        "Same situation already notified: skipped",
+        "More than 5 overdue alerts today: the rest wait for another day of their window"
+      ],
+      "conditions": "Brand exists; Team follow-ups on (default on)",
+      "sources": [
+        {
+          "path": "src/lib/notifications.ts",
+          "line": 98,
+          "end_line": 115
+        },
+        {
+          "path": "src/lib/notifications.ts",
+          "line": 127,
+          "end_line": 168
+        },
+        {
+          "path": "src/lib/notifications.ts",
+          "line": 204,
+          "end_line": 257
+        },
+        {
+          "path": "src/lib/secretary-agenda.ts",
+          "line": 595,
+          "end_line": 627
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 109,
+          "end_line": 110
+        }
+      ],
+      "next": [
+        "daily-brief-email"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-brief-email",
+      "title": "Brief email arrives",
+      "surface": "Email (Resend) to the account email",
+      "actor": "system",
+      "action": "The daily job emails the brief according to the account's email preference.",
+      "ui_response": "An email titled 'Noor's brief — YYYY-MM-DD' (Arabic 'ملخص نور') with the brief text, then 'Today's follow-ups from the team:' with each follow-up and its link, then a link to /{lang}/app. If the brief is off but follow-ups fired, the email is 'Follow-up from your Thakeen team' with the follow-ups only.",
+      "system_reaction": "The preference is read from profile:{scope}, else profile:{email}; the default is 'all'. 'all' sends every day a brief exists. 'important' sends only when something waits for approval, a follow-up fired, or a to-do is overdue or due today. 'none' sends no brief email and no follow-up email. Only the account (owner) address receives it; members get no email. Sending needs RESEND_API_KEY, and a refusal is written to admin:log as mail:refused.",
+      "branches": [
+        "Preference 'none': no email",
+        "Preference 'important' and nothing pending, fired or overdue: no email",
+        "Email not configured: nothing sent"
+      ],
+      "conditions": "Brand exists; RESEND_API_KEY set",
+      "sources": [
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 111,
+          "end_line": 120
+        },
+        {
+          "path": "src/lib/notifications.ts",
+          "line": 259,
+          "end_line": 262
+        },
+        {
+          "path": "src/lib/notify.ts",
+          "line": 19,
+          "end_line": 51
+        }
+      ],
+      "next": [
+        "daily-open-app"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-weekly-plan",
+      "title": "Sunday weekly plan",
+      "surface": "/api/cron/weekly (Vercel cron 0 3 * * 0), plus catch-ups kicked by the daily job Sunday to Tuesday",
+      "actor": "system",
+      "action": "On Sunday at 03:00 UTC (06:00 KSA), the weekly cron asks Noor for the week's plan for every brand whose weekly plan is on.",
+      "ui_response": "When the model is on: a bell item 'This week's plan is ready in your inbox' ('N item(s) from Noor. Approve what you like and set publish dates.', with the brand's name added on a multi-brand account), the plan items in the inbox, and 2 credits taken from the balance. An item is already approved when auto-approve covers weekly_plan and the brand gate passes. The first brand gets it by default; a brand added from the Brands page gets nothing on Sunday unless the owner switched the weekly plan on in Scheduled tasks. While paused (current state): nothing appears in any brand that week, no credit moves and nothing tells the person.",
+      "system_reaction": "Runs 4 brands at a time, with markers per Sunday period, and stops starting brands after 160 s. runWeekly checks, in order: no_brand; off (weekly plan switched off); already_this_week. getSchedule defaults weeklyPlan to on for the default brand and to off for an added brand (a scope containing '#'). On an added brand a stored weeklyPlan counts only with the weeklyPlanSetAt stamp that the owner's switch (PUT /api/schedule) writes. The model check comes next: while paused it returns 'retry:paused' before any charge. The attempt is not counted, so the week stays open for the catch-ups, which also answer paused. Then the weeklylock lock (retry:locked), trial_over, and the weekly cap: items the team made on its own in the last 7 days (isAutonomous: the Sunday plan, routines and Majed's auto-run) >= gov.weeklyCap (default 20) gives cap_reached. It then charges TASK_COST.weekly_plan, 2 credits, once per brand and week through the claim weekly:{scope}:{week}, held until the plan is saved, against Noor's monthly cap (agent_cap or no_credits, with the 80% warning). It generates weekly_plan with preferences, memory files, feedback and the reviewer, and refunds the 2 credits if that throws. Items are saved with initialStatus (auto-approve plus the brand gate), and judgeLater scores them after the response. lastWeekly is set when the batch is committed, and the notification uses fingerprint weekly:{date}. A charge whose run was killed is settled by the daily plan-hold sweep.",
+      "branches": [
+        "Paused (current): retry:paused, no items, no charge, no notification",
+        "Added brand not switched on: 'off', nothing arrives and nothing is charged",
+        "Weekly plan off, trial over, cap reached, no credits or agent cap: skipped with no message to the person",
+        "Generation fails: the 2 credits are refunded"
+      ],
+      "conditions": "Brand exists; Weekly plan on (default on for the first brand, off for added brands); trial not over; at least 2 credits",
+      "sources": [
+        {
+          "path": "vercel.json",
+          "line": 3
+        },
+        {
+          "path": "vercel.json",
+          "line": 4
+        },
+        {
+          "path": "src/app/api/cron/weekly/route.ts",
+          "line": 15,
+          "end_line": 26
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 96,
+          "end_line": 181
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 27,
+          "end_line": 63
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 178,
+          "end_line": 182
+        },
+        {
+          "path": "src/lib/cron-batch.ts",
+          "line": 20
+        },
+        {
+          "path": "src/lib/cron-batch.ts",
+          "line": 24,
+          "end_line": 85
+        },
+        {
+          "path": "src/lib/model.ts",
+          "line": 15
+        },
+        {
+          "path": "src/lib/model.ts",
+          "line": 25,
+          "end_line": 34
+        },
+        {
+          "path": "src/lib/brand-rules.ts",
+          "line": 186,
+          "end_line": 188
+        },
+        {
+          "path": "src/lib/tasks.ts",
+          "line": 25
+        },
+        {
+          "path": "src/lib/brand.ts",
+          "line": 140
+        },
+        {
+          "path": "src/lib/governance.ts",
+          "line": 32
+        }
+      ],
+      "next": [
+        "daily-open-notifications"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-routines-run",
+      "title": "Routines run",
+      "surface": "/api/cron/routines (Vercel cron 0 6 * * *)",
+      "actor": "system",
+      "action": "Every day at 06:00 UTC, the routines cron runs each routine the owner switched on that has not yet run this week or month.",
+      "ui_response": "When the model is on: a bell item '<type> from <agent> is in your inbox' ('N item(s) from a routine you turned on. Review them and approve what fits.'), the items in the inbox, and the routine's cost taken from the balance (Dana's weekly report: 3 credits a run). While paused, idle or without data: nothing appears and nothing is charged.",
+      "system_reaction": "dueRoutines keeps routines that are on and have not run in their period: the UTC week from Sunday, or the UTC month. The same cron also runs Majed's auto-run for brands whose owner switched it on, first. Items run 4 at a time, start until 160 s, and the route re-invokes itself until everyone is served. runRoutine checks, in order: off; already_this_period; paused, which answers retry:paused and is asked again the next day; mock mode (no API key outside production: skip:mock); the lock (retry:locked); trial_over. Then a gate checked in code answers idle or no_data, at no charge, when its data is missing. Dana's weekly report needs owner-made items, decisions, or a store or ad sync in the last 7 days. Noor's cart recovery needs abandoned-cart data from a store sync newer than its last run. Razan's cash forecast needs store sales synced in the last 35 days. Majed's monthly review needs decisions on 3 or more items in the last 30 days. With less than 180 s of the invocation left it answers retry:late and charges nothing. The weekly cap is shared with the weekly plan and checked under a per-brand lock, counting this batch and other routines' held batches (cap_reached). At most 2 unsettled charges are allowed per period (attempts_exhausted). The run charges TASK_COST[type] against the agent's cap (agent_cap or no_credits): Dana's weekly report 3, Noor's cart recovery 3, Razan's cash forecast 4, Majed's monthly review 5, generates with the data blocks, and refunds if generation throws. Items are saved with source 'scheduled', judgeLater runs, the last run is set, and one notification goes out per routine and period.",
+      "branches": [
+        "Paused (current): retry:paused every day, nothing produced",
+        "Gate not met: idle or no_data, free",
+        "Cap reached, no credits or agent cap: skipped with no message",
+        "Under 180 s left: retry:late, handed to the next hop"
+      ],
+      "conditions": "Routine switched on for the brand (all are off by default)",
+      "sources": [
+        {
+          "path": "vercel.json",
+          "line": 7
+        },
+        {
+          "path": "src/app/api/cron/routines/route.ts",
+          "line": 32,
+          "end_line": 47
+        },
+        {
+          "path": "src/lib/routines.ts",
+          "line": 40,
+          "end_line": 88
+        },
+        {
+          "path": "src/lib/routines.ts",
+          "line": 147,
+          "end_line": 157
+        },
+        {
+          "path": "src/lib/routines.ts",
+          "line": 174,
+          "end_line": 200
+        },
+        {
+          "path": "src/lib/routines.ts",
+          "line": 212,
+          "end_line": 231
+        },
+        {
+          "path": "src/lib/routines.ts",
+          "line": 233,
+          "end_line": 278
+        },
+        {
+          "path": "src/lib/tasks.ts",
+          "line": 24,
+          "end_line": 32
+        },
+        {
+          "path": "src/lib/generate-batch.ts",
+          "line": 99
+        }
+      ],
+      "next": [
+        "daily-open-notifications"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-open-app",
+      "title": "Open the app",
+      "surface": "/{lang}/app layout and Sidebar",
+      "actor": "any-signed-in",
+      "action": "Clicks the link in an email, or opens the app directly.",
+      "ui_response": "Without a session: redirect to /{lang}/app/login. Signed in, the sidebar shows the brand, then under 'Channels': main (chat), approvals with a pending badge, my-to-dos, calendar, performance and content-inspo. It also has an account menu with 'Notifications (N)', the plan and the credits. On mobile, the header shows a bell with the unread count and the credits. Trial accounts see a strip reading 'Your trial ends in N days' or 'Your trial has ended', with what Noor does for them. It shows 'Activate Noor' for the owner and 'Ask the account owner to activate.' for everyone else; the strip is hidden on /billing, /start and /join.",
+      "system_reaction": "currentUser returns the account plus the acting person, and getBrand(sc(u)) loads the brand. On every navigation the sidebar fetches GET /api/notifications?count=1, GET /api/tasks?count=pending and GET /api/conversations; each answers 401 without a session. The pending badge also refreshes on the nashr:pending-changed event. The limit modal is mounted here for the whole app.",
+      "branches": [
+        "No session: login page",
+        "Trial over: banner says the trial ended",
+        "Member: credits shown are the shared account credits (tooltip)"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/layout.tsx",
+          "line": 26,
+          "end_line": 27
+        },
+        {
+          "path": "src/app/[lang]/app/layout.tsx",
+          "line": 43,
+          "end_line": 63
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 39,
+          "end_line": 47
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 82,
+          "end_line": 87
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 158
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 166
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 183,
+          "end_line": 190
+        },
+        {
+          "path": "src/components/app/TrialBanner.tsx",
+          "line": 8,
+          "end_line": 27
+        },
+        {
+          "path": "src/app/api/notifications/route.ts",
+          "line": 5,
+          "end_line": 12
+        },
+        {
+          "path": "src/app/api/tasks/route.ts",
+          "line": 6,
+          "end_line": 13
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 287
+        }
+      ],
+      "next": [
+        "daily-inbox-brief",
+        "daily-chat-home",
+        "daily-open-notifications",
+        "daily-todo-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-inbox-brief",
+      "title": "Read brief in inbox",
+      "surface": "/{lang}/app (approvals inbox)",
+      "actor": "any-signed-in",
+      "action": "Lands on the approvals inbox.",
+      "ui_response": "With no brand: redirect to /{lang}/app/start. Otherwise the page shows, from the top: Chat and Feed tabs and the title, with the pending, approved, rejected and all filters beside it. Below them come the launch-path card, with a flame 'N-day streak' badge for consecutive days with a decision, and Noor's brief card with the full text of the latest stored brief. The item cards follow.",
+      "system_reaction": "The server reads tasks, the latest brief, connections, the journey and the switched-off media models in one parallel round. The paused flag is passed to the media controls. The streak counts consecutive UTC days, ending today or yesterday, on which an item got a decidedAt.",
+      "branches": [
+        "No brief yet, or brief switched off before the first run: no brief card",
+        "The brief comes from the last 05:00 UTC run, or from 'Run now'"
+      ],
+      "conditions": "Brand exists",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/page.tsx",
+          "line": 17,
+          "end_line": 29
+        },
+        {
+          "path": "src/components/app/Inbox.tsx",
+          "line": 215,
+          "end_line": 236
+        },
+        {
+          "path": "src/components/app/JourneyCard.tsx",
+          "line": 146,
+          "end_line": 148
+        },
+        {
+          "path": "src/lib/journey.ts",
+          "line": 43,
+          "end_line": 50
+        }
+      ],
+      "next": [
+        "daily-journey-toggle",
+        "daily-open-notifications",
+        "daily-todo-open"
+      ],
+      "note": "Approving, rejecting, editing, dating and publishing items belong to the approvals stage.",
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-journey-toggle",
+      "title": "Hide launch path",
+      "surface": "/{lang}/app, launch-path card (JourneyCard)",
+      "actor": "any-signed-in",
+      "action": "Clicks the ✕ (Hide) on the launch-path card, or 'Show path' on the collapsed pill.",
+      "ui_response": "The card collapses to a small pill showing the level and 'N/M · Show path'; clicking the pill opens the card again.",
+      "system_reaction": "Client only: the hidden flag is saved in this browser's localStorage, and failures are ignored. No request is made.",
+      "branches": [
+        "Private window: the choice is not remembered"
+      ],
+      "conditions": "Brand exists; launch path not hidden",
+      "sources": [
+        {
+          "path": "src/components/app/JourneyCard.tsx",
+          "line": 42,
+          "end_line": 46
+        },
+        {
+          "path": "src/components/app/JourneyCard.tsx",
+          "line": 120
+        },
+        {
+          "path": "src/components/app/JourneyCard.tsx",
+          "line": 134
+        },
+        {
+          "path": "src/components/app/JourneyCard.tsx",
+          "line": 148
+        }
+      ],
+      "next": [
+        "daily-inbox-brief"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-chat-home",
+      "title": "Today card in chat",
+      "surface": "/{lang}/app/chat (ChatPanel and HomeSide)",
+      "actor": "any-signed-in",
+      "action": "Opens chat from the sidebar's Main entry, Noor, or the mobile header logo.",
+      "ui_response": "While a launch-path step is left, a compact launch-path card heads the thread. A thread with at most one message also shows a 'From the team today' card when something waits or a brief exists. The Today card holds brief lines 2-4, a 'Waiting for you (N) · Review all' button to the inbox, and the first pending item card, whose approve button appears only for the owner or an admin. Under the message box, a line reads '{left} of {allowance} messages left this month' ('… left in your trial'), or, once used, that chat resumes on the 1st (UTC), continues on credits, or is paused. On wide screens a right panel shows this week's created, approved and pending tiles, with 'All' linking to Reports. It also shows the channels and the Scheduled tasks feed: weekly plan, morning brief and follow-ups, each with Live or Paused (meaning switched on or off, not the model pause; in an added brand the weekly plan shows Paused until the owner switches it on), the next run 'in Nh/Nd', the last run, and 'Manage'/'Run now' links to /tasks. The panel ends with the latest brief (4 lines), the first unread notification with a 'Review with the team' button to its link, and the brand files.",
+      "system_reaction": "The server reads history, connections, schedule, files, brief, notifications, the light index, the onboarding plan, the journey and the chat allowance (chatStatus) in one round, then the KPIs, the first pending task's body and Majed's handoff cards. Rendering the page makes no model call.",
+      "branches": [
+        "No brand, member: sent to /start",
+        "No brand, owner or admin: sent to /start unless the site was confirmed there, then the onboarding thread (onboarding stage)",
+        "Thread already has more than one message: the Today card is hidden"
+      ],
+      "conditions": "Brand exists",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 32,
+          "end_line": 49
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 56,
+          "end_line": 57
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 70
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 100,
+          "end_line": 111
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 625
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 662,
+          "end_line": 672
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 724
+        },
+        {
+          "path": "src/components/app/HomeSide.tsx",
+          "line": 47,
+          "end_line": 109
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 41,
+          "end_line": 50
+        }
+      ],
+      "next": [
+        "daily-todo-reem-chat",
+        "daily-open-notifications",
+        "daily-schedule-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-open-notifications",
+      "title": "Open notifications",
+      "surface": "/{lang}/app/notifications (NotificationsPanel)",
+      "actor": "any-signed-in",
+      "action": "Taps the bell on mobile, or 'Notifications (N)' in the account menu.",
+      "ui_response": "A list of up to 50 follow-ups, newest first. Each shows a kind label (Due, Waiting, Weekly plan, Balance, Trial, Quality, Info or To-dos), the agent's name, the UTC time, the title, the body and an 'Open' button; unread rows are highlighted. When empty: 'No notifications. The team writes here when it needs your decision.' A footnote explains that follow-ups are computed every morning at 08:00 KSA, that Reem's evening wrap comes from 18:00 your brand's time (21:30 in Ramadan, when timed reminders run), that both can be switched off in “Scheduled tasks”, and that reminders you set ignore that switch: they come at their time, or with the next morning brief while timed reminders are not running. After 1.5 s every item turns read, and the badge clears on the next navigation.",
+      "system_reaction": "The server renders listNotifs for the account email. The panel POSTs /api/notifications (401 without a session), which marks every item read. The bell belongs to the account, not the person: a member sees the owner's notifications, and marking them read clears them for everyone. No role check beyond a session.",
+      "branches": [
+        "Nothing unread: no POST",
+        "Empty list: empty text"
+      ],
+      "conditions": "Signed in, any role",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/notifications/page.tsx",
+          "line": 10,
+          "end_line": 16
+        },
+        {
+          "path": "src/components/app/NotificationsPanel.tsx",
+          "line": 8,
+          "end_line": 37
+        },
+        {
+          "path": "src/app/api/notifications/route.ts",
+          "line": 13,
+          "end_line": 18
+        },
+        {
+          "path": "src/lib/notifications.ts",
+          "line": 19,
+          "end_line": 32
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 523
+        }
+      ],
+      "next": [
+        "daily-notification-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-notification-open",
+      "title": "Follow a notification",
+      "surface": "/{lang}/app/notifications, then the target page",
+      "actor": "any-signed-in",
+      "action": "Clicks 'Open' on a notification.",
+      "ui_response": "Goes to the notification's link. Calendar: items due today or tomorrow. Approvals inbox: waiting 2+ days, weekly plan ready, routine batch ready, Majed's auto-run batch ready, quality below 70, auto-approved items sent back, image or video ready or refunded. Billing: low balance, trial ending. My to-dos: Reem's reminders, overdue alerts, evening wrap and the warning before closed copies of a recurring series are deleted. Members: team invitations and acceptances. Governance: an agent near its monthly cap.",
+      "system_reaction": "Plain navigation. Each href was fixed when the notification was pushed; notifyItem turns a relative href into /{lang}/app/...",
+      "branches": [
+        "Due: calendar",
+        "Balance or Trial: billing",
+        "To-dos: My to-dos",
+        "Team notice: members",
+        "Agent cap: governance",
+        "Everything else: inbox"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/components/app/NotificationsPanel.tsx",
+          "line": 29
+        },
+        {
+          "path": "src/lib/notifications.ts",
+          "line": 127,
+          "end_line": 168
+        },
+        {
+          "path": "src/lib/notifications.ts",
+          "line": 204,
+          "end_line": 257
+        },
+        {
+          "path": "src/lib/notifications.ts",
+          "line": 276,
+          "end_line": 301
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 179
+        },
+        {
+          "path": "src/lib/routines.ts",
+          "line": 270,
+          "end_line": 275
+        },
+        {
+          "path": "src/lib/judge.ts",
+          "line": 156
+        },
+        {
+          "path": "src/lib/judge.ts",
+          "line": 165
+        },
+        {
+          "path": "src/lib/media/jobs.ts",
+          "line": 640,
+          "end_line": 651
+        },
+        {
+          "path": "src/lib/secretary-remind.ts",
+          "line": 77,
+          "end_line": 95
+        },
+        {
+          "path": "src/lib/handoff-auto.ts",
+          "line": 176,
+          "end_line": 184
+        },
+        {
+          "path": "src/lib/secretary-series.ts",
+          "line": 113,
+          "end_line": 118
+        }
+      ],
+      "next": [
+        "daily-calendar-review",
+        "daily-todo-open",
+        "daily-governance-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-agent-cap-hit",
+      "title": "Agent cap warning",
+      "surface": "Bell notification and LimitModal (any page)",
+      "actor": "system",
+      "action": "A paid charge for an agent with a monthly cap in this brand crosses 80% of the cap, or would pass the cap.",
+      "ui_response": "At 80%: a bell item '<Agent> in “<brand>”: X of Y credits this month'. It explains that at the cap the agent's batches, images and videos stop, and links to Governance. At the cap: the request is refused and nothing is charged. A modal says 'This agent reached its monthly cap', with 'Open Governance' for whoever may change caps (governance.write, the owner); everyone else is told to ask the account owner to raise it. Cron runs at the cap end as agent_cap with no message.",
+      "system_reaction": "charge() checks spent + cost > cap under the user lock (debit) and returns agent_cap; the month's plan credits are spent first, then top-up packs. An added brand's setup charge (9 credits, Noor) goes through the same check and the same 80% warning. On the charge that crosses 80%, warnAgentCap pushes one notification per brand, agent and month; the fingerprint is kept 35 days. Chat messages carry no agent counter, so they are never capped.",
+      "branches": [
+        "80% crossed: one warning per month",
+        "Cap reached: refused, modal"
+      ],
+      "conditions": "A cap set in Governance for that agent in this brand",
+      "sources": [
+        {
+          "path": "src/lib/credits.ts",
+          "line": 76,
+          "end_line": 114
+        },
+        {
+          "path": "src/lib/notifications.ts",
+          "line": 276,
+          "end_line": 301
+        },
+        {
+          "path": "src/components/app/LimitModal.tsx",
+          "line": 30,
+          "end_line": 35
+        },
+        {
+          "path": "src/components/app/LimitModal.tsx",
+          "line": 42,
+          "end_line": 53
+        },
+        {
+          "path": "src/components/app/LimitModal.tsx",
+          "line": 70,
+          "end_line": 104
+        },
+        {
+          "path": "src/app/api/generate/route.ts",
+          "line": 28
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 136,
+          "end_line": 146
+        },
+        {
+          "path": "src/lib/roles.ts",
+          "line": 16
+        }
+      ],
+      "next": [
+        "daily-governance-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-email-prefs",
+      "title": "Choose email prefs",
+      "surface": "/{lang}/app/profile, 'Email preferences' card",
+      "actor": "owner",
+      "action": "Chooses 'All emails', 'Important only' or 'None' and saves the profile form.",
+      "ui_response": "'Saved'. A refusal names its reason and ends 'Nothing was saved.' (403: 'Your role in this account does not allow this.'); a dropped connection or server error shows 'Could not confirm the save.' and reloads what is stored. Other roles do not see the card.",
+      "system_reaction": "PUT /api/profile with emails requires profile.account (owner only, 403 otherwise) and stores profile:{scope} {emails}. The next 05:00 UTC run reads it for the brief and follow-up email. 'Important' is a rule in code: something waits for approval, a follow-up fired, or a to-do is overdue or due today. The card says the agent decides. 'None' also stops Reem's reminder emails (the bell item still comes). Account and billing emails, and the founder lifecycle emails, are not affected.",
+      "branches": [
+        "Not owner: card hidden, 403"
+      ],
+      "conditions": "Account owner (profile.account)",
+      "sources": [
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 117,
+          "end_line": 159
+        },
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 256,
+          "end_line": 262
+        },
+        {
+          "path": "src/app/api/profile/route.ts",
+          "line": 51
+        },
+        {
+          "path": "src/app/api/profile/route.ts",
+          "line": 115,
+          "end_line": 119
+        },
+        {
+          "path": "src/app/api/profile/route.ts",
+          "line": 176,
+          "end_line": 177
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 111,
+          "end_line": 120
+        },
+        {
+          "path": "src/lib/lifecycle.ts",
+          "line": 93,
+          "end_line": 116
+        },
+        {
+          "path": "src/lib/roles.ts",
+          "line": 30
+        },
+        {
+          "path": "src/lib/secretary-remind.ts",
+          "line": 110
+        }
+      ],
+      "next": [
+        "daily-brief-email"
+      ],
+      "verified": true,
+      "stage": "daily"
+    }
+  ]
+}

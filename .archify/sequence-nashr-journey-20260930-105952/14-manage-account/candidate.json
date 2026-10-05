@@ -1,0 +1,1360 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Manage: plan, credits, profile and brands",
+    "locale": "en",
+    "output": ".archify/sequence-nashr-journey-20260930-105952/14-manage-account/14-manage-account.html",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "repository": {
+      "url": "https://github.com/iAbulkhair/Nashr.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "f0e7fdecf7d70d8c60ba76650f22440433926add"
+    }
+  },
+  "participants": [
+    {
+      "id": "person",
+      "type": "external",
+      "label": "Person",
+      "sublabel": "owner or team",
+      "sources": [
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 152,
+          "end_line": 176
+        },
+        {
+          "path": "src/lib/roles.ts",
+          "line": 9,
+          "end_line": 104
+        }
+      ]
+    },
+    {
+      "id": "page",
+      "type": "frontend",
+      "label": "Browser page",
+      "sublabel": "what they see",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/billing/page.tsx",
+          "line": 65,
+          "end_line": 118
+        },
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 182,
+          "end_line": 250
+        },
+        {
+          "path": "src/components/app/BrandsPanel.tsx",
+          "line": 54,
+          "end_line": 91
+        }
+      ]
+    },
+    {
+      "id": "checks",
+      "type": "security",
+      "label": "Checks in code",
+      "sublabel": "auth · roles · limits",
+      "sources": [
+        {
+          "path": "src/lib/roles.ts",
+          "line": 109,
+          "end_line": 122
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 66,
+          "end_line": 85
+        },
+        {
+          "path": "src/lib/rate.ts",
+          "line": 74,
+          "end_line": 93
+        }
+      ]
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "Nashr server",
+      "sublabel": "API routes",
+      "sources": [
+        {
+          "path": "src/app/api/profile/route.ts",
+          "line": 35,
+          "end_line": 94
+        },
+        {
+          "path": "src/app/api/admin/plan/route.ts",
+          "line": 110,
+          "end_line": 159
+        },
+        {
+          "path": "src/app/api/brands/route.ts",
+          "line": 42,
+          "end_line": 48
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "account data",
+      "sources": [
+        {
+          "path": "src/lib/account.ts",
+          "line": 37,
+          "end_line": 134
+        },
+        {
+          "path": "src/lib/brands.ts",
+          "line": 63,
+          "end_line": 78
+        },
+        {
+          "path": "src/lib/credits.ts",
+          "line": 447,
+          "end_line": 464
+        }
+      ]
+    },
+    {
+      "id": "cron",
+      "type": "cloud",
+      "label": "Scheduled jobs",
+      "sublabel": "Vercel cron",
+      "sources": [
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 24,
+          "end_line": 40
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 163,
+          "end_line": 165
+        },
+        {
+          "path": "vercel.json",
+          "line": 4
+        }
+      ]
+    },
+    {
+      "id": "email",
+      "type": "external",
+      "label": "Email",
+      "sublabel": "Resend",
+      "sources": [
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 111,
+          "end_line": 120
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 612,
+      "label": "Menu and roles"
+    },
+    {
+      "from": 638,
+      "to": 1084,
+      "label": "Trial and limits"
+    },
+    {
+      "from": 1110,
+      "to": 3146,
+      "label": "Plan and payment"
+    },
+    {
+      "from": 3172,
+      "to": 4412,
+      "label": "Profile and account"
+    },
+    {
+      "from": 4438,
+      "to": 5388,
+      "label": "Brands"
+    }
+  ],
+  "messages": [
+    {
+      "id": "manage-account-menu--do",
+      "from": "person",
+      "to": "page",
+      "y": 186,
+      "label": "Click own name in sidebar",
+      "variant": "emphasis",
+      "note": "On mobile the header bell opens Notifications and the credit count opens Subscription"
+    },
+    {
+      "id": "manage-account-menu--layout",
+      "from": "page",
+      "to": "server",
+      "y": 228,
+      "label": "App layout + sidebar counts",
+      "variant": "default",
+      "note": "Each navigation fetches unread, pending approvals and chats"
+    },
+    {
+      "id": "manage-account-menu--flags",
+      "from": "server",
+      "to": "checks",
+      "y": 270,
+      "label": "can() show flags by role",
+      "variant": "security",
+      "note": "owner = billing, refer = referral, mcp = mcp.token, partner = partner code + partner; display only"
+    },
+    {
+      "id": "manage-account-menu--see",
+      "from": "page",
+      "to": "person",
+      "y": 312,
+      "label": "Name, role, plan, credits + menu",
+      "variant": "return",
+      "note": "MCP, Earn credits, Partner: owner only. Founder console: founders"
+    },
+    {
+      "id": "manage-lang-toggle--do",
+      "from": "person",
+      "to": "page",
+      "y": 362,
+      "label": "Click the language toggle",
+      "variant": "default"
+    },
+    {
+      "id": "manage-lang-toggle--see",
+      "from": "page",
+      "to": "person",
+      "y": 392,
+      "label": "Same page under /ar or /en",
+      "variant": "return",
+      "note": "No server call: sets nashr_lang cookie; account language unchanged"
+    },
+    {
+      "id": "manage-role-view--do",
+      "from": "person",
+      "to": "page",
+      "y": 442,
+      "label": "Admin/member opens owner screen",
+      "variant": "default"
+    },
+    {
+      "id": "manage-role-view--route",
+      "from": "page",
+      "to": "server",
+      "y": 472,
+      "label": "Load screen for this role",
+      "variant": "default"
+    },
+    {
+      "id": "manage-role-view--role",
+      "from": "server",
+      "to": "checks",
+      "y": 502,
+      "label": "can(): MIN_ROLE table",
+      "variant": "security",
+      "note": "Founder impersonating: delete, password, invites, roles, MCP, partner bank blocked"
+    },
+    {
+      "id": "manage-role-view--deny",
+      "from": "server",
+      "to": "page",
+      "y": 544,
+      "label": "Owner/admin action: 403",
+      "variant": "security",
+      "note": "Routes answer {error:'forbidden'} whatever the UI shows"
+    },
+    {
+      "id": "manage-role-view--see",
+      "from": "page",
+      "to": "person",
+      "y": 586,
+      "label": "Read-only view with lock note",
+      "variant": "return",
+      "note": "e.g. Subscription: no pay buttons, chat switch or top-up request"
+    },
+    {
+      "id": "manage-trial-banner--do",
+      "from": "person",
+      "to": "page",
+      "y": 666,
+      "label": "Open any app page",
+      "variant": "default"
+    },
+    {
+      "id": "manage-trial-banner--days",
+      "from": "page",
+      "to": "server",
+      "y": 696,
+      "label": "Layout: trialDaysLeft",
+      "variant": "default",
+      "note": "Only when plan = trial; a new trial ends 3 days after signup"
+    },
+    {
+      "id": "manage-trial-banner--owner",
+      "from": "server",
+      "to": "checks",
+      "y": 738,
+      "label": "can(u,'billing') for owner",
+      "variant": "security"
+    },
+    {
+      "id": "manage-trial-banner--see",
+      "from": "page",
+      "to": "person",
+      "y": 768,
+      "label": "'Your trial ends in N days'",
+      "variant": "return",
+      "note": "Owner: Activate Noor opens billing. Others: ask the owner. 0 days: ended"
+    },
+    {
+      "id": "manage-limit-dialog--do",
+      "from": "person",
+      "to": "page",
+      "y": 818,
+      "label": "Chat, ask for content, media or setup",
+      "variant": "default",
+      "note": "Or press Go on an added brand's /start page"
+    },
+    {
+      "id": "manage-limit-dialog--api",
+      "from": "page",
+      "to": "server",
+      "y": 860,
+      "label": "Chat, generate, render or setup",
+      "variant": "default"
+    },
+    {
+      "id": "manage-limit-dialog--paused",
+      "from": "server",
+      "to": "page",
+      "y": 890,
+      "label": "Paused: 'No credits were used'",
+      "variant": "return",
+      "note": "Chat, Ask Noor, reports: no dialog; /api/generate and /api/onboard 503"
+    },
+    {
+      "id": "manage-limit-dialog--check",
+      "from": "server",
+      "to": "checks",
+      "y": 932,
+      "label": "trialOver, slow-down, messages, credits, cap",
+      "variant": "security",
+      "note": "Image, video and the /start confirm still check while paused"
+    },
+    {
+      "id": "manage-limit-dialog--chat",
+      "from": "server",
+      "to": "page",
+      "y": 974,
+      "label": "402 chat_allowance / chat_credits",
+      "variant": "security",
+      "note": "Month's chat messages used, or under the 5-credit hold; 429 slow_down is a notice, no dialog"
+    },
+    {
+      "id": "manage-limit-dialog--refuse",
+      "from": "server",
+      "to": "page",
+      "y": 1016,
+      "label": "402 no_credits / trial_over / cap",
+      "variant": "security",
+      "note": "Nothing is charged; an added brand setup needs 9 credits"
+    },
+    {
+      "id": "manage-limit-dialog--see",
+      "from": "page",
+      "to": "person",
+      "y": 1058,
+      "label": "Limit dialog: Top up, View plans or OK",
+      "variant": "return",
+      "note": "Owner: Top up credits, View plans, Open Subscription or Open Governance. Others: ask the owner"
+    },
+    {
+      "id": "manage-billing-open--do",
+      "from": "person",
+      "to": "page",
+      "y": 1138,
+      "label": "Open Subscription",
+      "variant": "emphasis",
+      "note": "From menu, banner, limit dialog, profile, Members or mobile"
+    },
+    {
+      "id": "manage-billing-open--page",
+      "from": "page",
+      "to": "server",
+      "y": 1180,
+      "label": "Billing page (server render)",
+      "variant": "default"
+    },
+    {
+      "id": "manage-billing-open--read",
+      "from": "server",
+      "to": "store",
+      "y": 1210,
+      "label": "Read user, seats, chat status, top-up packs",
+      "variant": "default"
+    },
+    {
+      "id": "manage-billing-open--offer",
+      "from": "server",
+      "to": "store",
+      "y": 1240,
+      "label": "Trial last 24 h: grant 15% offer",
+      "variant": "dashed",
+      "note": "Owner only, never while a founder impersonates; same grant as the cron"
+    },
+    {
+      "id": "manage-billing-open--owner",
+      "from": "server",
+      "to": "checks",
+      "y": 1282,
+      "label": "can(u,'billing') for pay links",
+      "variant": "security",
+      "note": "Owner only: PAY_LINK_STARTER/PRO/BUSINESS, WhatsApp 'Thakeen {email}'"
+    },
+    {
+      "id": "manage-billing-open--see",
+      "from": "page",
+      "to": "person",
+      "y": 1324,
+      "label": "Plan, credits, seats, chat, top-ups, 4 tiers",
+      "variant": "return",
+      "note": "Starter 299, Pro 499, Business 999 SAR; Agency: Contact us; open offer: 15% price on each card; trial, unattributed: partner-code field"
+    },
+    {
+      "id": "manage-chat-allowance--do",
+      "from": "person",
+      "to": "page",
+      "y": 1374,
+      "label": "Flip 'Continue on credits'",
+      "variant": "emphasis"
+    },
+    {
+      "id": "manage-chat-allowance--post",
+      "from": "page",
+      "to": "server",
+      "y": 1404,
+      "label": "POST /api/billing/chat-overflow {on}",
+      "variant": "default"
+    },
+    {
+      "id": "manage-chat-allowance--check",
+      "from": "server",
+      "to": "checks",
+      "y": 1434,
+      "label": "billing (owner) + 30 changes an hour",
+      "variant": "security",
+      "note": "Real boolean only; others get 403"
+    },
+    {
+      "id": "manage-chat-allowance--refuse",
+      "from": "server",
+      "to": "page",
+      "y": 1476,
+      "label": "429 slow_down / 409 trial",
+      "variant": "security",
+      "note": "'Too many changes' or 'Not available on a trial'"
+    },
+    {
+      "id": "manage-chat-allowance--write",
+      "from": "server",
+      "to": "store",
+      "y": 1518,
+      "label": "chatOverflow flag under user lock",
+      "variant": "dashed"
+    },
+    {
+      "id": "manage-chat-allowance--see",
+      "from": "page",
+      "to": "person",
+      "y": 1548,
+      "label": "Switch saved, chat status shown",
+      "variant": "return",
+      "note": "Past the allowance each message bills its cost, at most 5 credits, while 5 are in the balance"
+    },
+    {
+      "id": "manage-partner-code--do",
+      "from": "person",
+      "to": "page",
+      "y": 1598,
+      "label": "Type a partner code, apply",
+      "variant": "emphasis"
+    },
+    {
+      "id": "manage-partner-code--post",
+      "from": "page",
+      "to": "server",
+      "y": 1628,
+      "label": "POST /api/partner/code",
+      "variant": "default"
+    },
+    {
+      "id": "manage-partner-code--check",
+      "from": "server",
+      "to": "checks",
+      "y": 1658,
+      "label": "billing (owner) + 10 tries an hour",
+      "variant": "security",
+      "note": "Trial, never attributed, never paid"
+    },
+    {
+      "id": "manage-partner-code--refuse",
+      "from": "server",
+      "to": "page",
+      "y": 1700,
+      "label": "400 bad code / own code, 409 taken",
+      "variant": "security",
+      "note": "already_attributed or already_paid: 409; slow_down: 429"
+    },
+    {
+      "id": "manage-partner-code--write",
+      "from": "server",
+      "to": "store",
+      "y": 1742,
+      "label": "Account attributed to the partner",
+      "variant": "dashed",
+      "note": "Replaces an unused early offer, no end date; one offer per account, discounts never stack"
+    },
+    {
+      "id": "manage-partner-code--see",
+      "from": "page",
+      "to": "person",
+      "y": 1784,
+      "label": "Page refreshes: 15% banner, code named",
+      "variant": "return",
+      "note": "'From partner code {code}.'; the field is gone"
+    },
+    {
+      "id": "manage-billing-pay--do",
+      "from": "person",
+      "to": "page",
+      "y": 1834,
+      "label": "Click Subscribe or Contact us",
+      "variant": "emphasis"
+    },
+    {
+      "id": "manage-billing-pay--see",
+      "from": "page",
+      "to": "person",
+      "y": 1864,
+      "label": "Opens pay link, WhatsApp or mail",
+      "variant": "return",
+      "note": "Open offer: each card's button opens WhatsApp with the 15% text; the banner has no button. Agency: WhatsApp or enterprise form; activation stays manual"
+    },
+    {
+      "id": "manage-topup-request--do",
+      "from": "person",
+      "to": "page",
+      "y": 1914,
+      "label": "Pick a 100, 300 or 1,000 pack",
+      "variant": "emphasis"
+    },
+    {
+      "id": "manage-topup-request--see",
+      "from": "page",
+      "to": "person",
+      "y": 1944,
+      "label": "WhatsApp or mail opens with the pack",
+      "variant": "return",
+      "note": "Client link only: '({price} SAR + VAT)'; mail fallback uses the message as subject. Trial: no button. 1 SAR a credit, 90 days"
+    },
+    {
+      "id": "manage-founder-activate--post",
+      "from": "page",
+      "to": "server",
+      "y": 1994,
+      "label": "Founder: POST /api/admin/plan",
+      "variant": "default",
+      "note": "Founder console: plan (trial to agency), add credits (amount, then reason) or seats, with a reason"
+    },
+    {
+      "id": "manage-founder-activate--auth",
+      "from": "server",
+      "to": "checks",
+      "y": 2036,
+      "label": "adminActor: console key or founder",
+      "variant": "security"
+    },
+    {
+      "id": "manage-founder-activate--refuse",
+      "from": "server",
+      "to": "page",
+      "y": 2066,
+      "label": "400 bad_credits / bad_seats",
+      "variant": "security",
+      "note": "Unknown email: 404. The founder sees '{email}: {error}'"
+    },
+    {
+      "id": "manage-founder-activate--write",
+      "from": "server",
+      "to": "store",
+      "y": 2108,
+      "label": "Plan, allowance, seats + admin:log",
+      "variant": "dashed",
+      "note": "Plan credits = allowanceOf; packs kept; leaving Agency drops the deal, seats and chat override"
+    },
+    {
+      "id": "manage-founder-activate--see",
+      "from": "page",
+      "to": "person",
+      "y": 2150,
+      "label": "New plan and allowance next load",
+      "variant": "return",
+      "note": "Founder sees '{email} → {plan}'; owner gets no email or notification"
+    },
+    {
+      "id": "manage-founder-deal--do",
+      "from": "person",
+      "to": "page",
+      "y": 2200,
+      "label": "Founder: Agency deal… prompts",
+      "variant": "default",
+      "note": "Agency accounts only: credits, price, seats; parseDeal checks first"
+    },
+    {
+      "id": "manage-founder-deal--post",
+      "from": "page",
+      "to": "server",
+      "y": 2242,
+      "label": "POST /api/admin/plan {deal}",
+      "variant": "default"
+    },
+    {
+      "id": "manage-founder-deal--check",
+      "from": "server",
+      "to": "checks",
+      "y": 2272,
+      "label": "Floor: 999 SAR for 1,500 credits",
+      "variant": "security",
+      "note": "Never cheaper per credit than Business"
+    },
+    {
+      "id": "manage-founder-deal--refuse",
+      "from": "server",
+      "to": "page",
+      "y": 2314,
+      "label": "400 below_floor / bad_deal",
+      "variant": "security",
+      "note": "Or deal_needs_agency, checked under the lock; nothing is written"
+    },
+    {
+      "id": "manage-founder-deal--write",
+      "from": "server",
+      "to": "store",
+      "y": 2356,
+      "label": "Deal on the user record + log",
+      "variant": "dashed",
+      "note": "First deal or 'apply now': balance = the deal's credits. Clearing a deal also drops its seat and chat overrides unless sent"
+    },
+    {
+      "id": "manage-founder-deal--see",
+      "from": "page",
+      "to": "person",
+      "y": 2398,
+      "label": "'Deal {credits} @ {price} SAR'",
+      "variant": "return",
+      "note": "The owner's monthly allowance becomes the deal's credits"
+    },
+    {
+      "id": "manage-founder-chat--post",
+      "from": "page",
+      "to": "server",
+      "y": 2448,
+      "label": "Founder: POST /api/admin/plan {chatAllowance}",
+      "variant": "default",
+      "note": "Chat cell: whole number, 0 stops chat, empty or 'plan' clears"
+    },
+    {
+      "id": "manage-founder-chat--auth",
+      "from": "server",
+      "to": "checks",
+      "y": 2490,
+      "label": "adminActor: console key or founder",
+      "variant": "security"
+    },
+    {
+      "id": "manage-founder-chat--refuse",
+      "from": "server",
+      "to": "page",
+      "y": 2520,
+      "label": "400 bad_chat",
+      "variant": "security",
+      "note": "Same isChatOverride test runs in the console first"
+    },
+    {
+      "id": "manage-founder-chat--write",
+      "from": "server",
+      "to": "store",
+      "y": 2562,
+      "label": "Chat override on the user + admin:log",
+      "variant": "dashed",
+      "note": "Wins over the plan: trial 30, Starter 250, Pro 650, Business and Agency 1,300; cleared with a deal unless sent"
+    },
+    {
+      "id": "manage-founder-chat--see",
+      "from": "page",
+      "to": "person",
+      "y": 2604,
+      "label": "Chat cell shows the override",
+      "variant": "return",
+      "note": "Owner sees the new allowance on the chat card; 0 gives the OK-only dialog"
+    },
+    {
+      "id": "manage-founder-topup--post",
+      "from": "page",
+      "to": "server",
+      "y": 2654,
+      "label": "Founder: POST /api/admin/topups add",
+      "variant": "default",
+      "note": "Detail panel button, disabled on a trial. Pack 100, 300 or 1,000; paid SAR before VAT, date, reference"
+    },
+    {
+      "id": "manage-founder-topup--auth",
+      "from": "server",
+      "to": "checks",
+      "y": 2696,
+      "label": "adminActor + parseTopup",
+      "variant": "security",
+      "note": "Request id kept, so a retry adds one pack"
+    },
+    {
+      "id": "manage-founder-topup--refuse",
+      "from": "server",
+      "to": "page",
+      "y": 2738,
+      "label": "400 bad_pack/paid/date/ref, 409 trial",
+      "variant": "security",
+      "note": "topup_needs_paid_plan, too_many_topups, payment_voided"
+    },
+    {
+      "id": "manage-founder-topup--write",
+      "from": "server",
+      "to": "store",
+      "y": 2780,
+      "label": "Pack (90 days) + payment recorded",
+      "variant": "dashed",
+      "note": "Partner commission when due; void removes pack, unspent credits, payment and commission; refund removes credits left"
+    },
+    {
+      "id": "manage-founder-topup--see",
+      "from": "page",
+      "to": "person",
+      "y": 2822,
+      "label": "Pack listed with credits and expiry",
+      "variant": "return",
+      "note": "Spent after the plan credits; owner gets no email"
+    },
+    {
+      "id": "manage-seat-refit--fit",
+      "from": "server",
+      "to": "store",
+      "y": 2872,
+      "label": "enforceSeats under lock:team",
+      "variant": "dashed",
+      "note": "Also when leaving Agency drops a deal's seats; nobody is deleted"
+    },
+    {
+      "id": "manage-seat-refit--block",
+      "from": "server",
+      "to": "checks",
+      "y": 2914,
+      "label": "Paused member refused",
+      "variant": "security",
+      "note": "resolveSession at the next request; login answers 403 'disabled'"
+    },
+    {
+      "id": "manage-seat-refit--see",
+      "from": "page",
+      "to": "person",
+      "y": 2956,
+      "label": "'Paused: over the plan's seats'",
+      "variant": "return",
+      "note": "Paused members come back oldest first when the plan grows"
+    },
+    {
+      "id": "manage-monthly-renewal--cron",
+      "from": "cron",
+      "to": "server",
+      "y": 3006,
+      "label": "Daily cron, 05:00 UTC",
+      "variant": "default",
+      "note": "Also runs before the first paid text batch of a month"
+    },
+    {
+      "id": "manage-monthly-renewal--auth",
+      "from": "server",
+      "to": "checks",
+      "y": 3048,
+      "label": "Bearer CRON_SECRET",
+      "variant": "security"
+    },
+    {
+      "id": "manage-monthly-renewal--renew",
+      "from": "server",
+      "to": "store",
+      "y": 3078,
+      "label": "renewIfDue: plan credits = allowance",
+      "variant": "dashed",
+      "note": "Top-up packs keep their credits; expired packs settled on read, saved by the cron; Agency: floor-valid deal else 1,500; trial never renewed"
+    },
+    {
+      "id": "manage-monthly-renewal--see",
+      "from": "page",
+      "to": "person",
+      "y": 3120,
+      "label": "Plan credits back at the allowance",
+      "variant": "return",
+      "note": "Plan credits do not roll over; packs stay until they expire; no email or notification"
+    },
+    {
+      "id": "manage-profile-open--do",
+      "from": "person",
+      "to": "page",
+      "y": 3200,
+      "label": "Open Your profile",
+      "variant": "emphasis"
+    },
+    {
+      "id": "manage-profile-open--get",
+      "from": "page",
+      "to": "server",
+      "y": 3230,
+      "label": "GET /api/profile",
+      "variant": "default"
+    },
+    {
+      "id": "manage-profile-open--usage",
+      "from": "server",
+      "to": "store",
+      "y": 3260,
+      "label": "Usage, chat status, top-up packs",
+      "variant": "default",
+      "note": "Images and videos at what their renders charged; packs without payment details"
+    },
+    {
+      "id": "manage-profile-open--may",
+      "from": "server",
+      "to": "checks",
+      "y": 3302,
+      "label": "may flags from can()",
+      "variant": "security",
+      "note": "passwordChange, accountDelete, plus an impersonating flag"
+    },
+    {
+      "id": "manage-profile-open--see",
+      "from": "page",
+      "to": "person",
+      "y": 3344,
+      "label": "Usage, chat, plan and account cards",
+      "variant": "return",
+      "note": "Plan/top-up split only when top-up credits > 0; chat bar; 'Extra messages on credits' once used. Rows: images/videos 1–2 · 12–24, brand setup 9"
+    },
+    {
+      "id": "manage-profile-save--do",
+      "from": "person",
+      "to": "page",
+      "y": 3394,
+      "label": "Edit fields, Save changes",
+      "variant": "emphasis"
+    },
+    {
+      "id": "manage-profile-save--put",
+      "from": "page",
+      "to": "server",
+      "y": 3424,
+      "label": "PUT /api/profile",
+      "variant": "default"
+    },
+    {
+      "id": "manage-profile-save--check",
+      "from": "server",
+      "to": "checks",
+      "y": 3454,
+      "label": "Role check on every field",
+      "variant": "security",
+      "note": "profile.self, profile.account, brand.write; one forbidden field: 403"
+    },
+    {
+      "id": "manage-profile-save--refuse",
+      "from": "server",
+      "to": "page",
+      "y": 3496,
+      "label": "400 required / bad_phone / read_only",
+      "variant": "security",
+      "note": "Name, business and owner phone required; under 9 digits: bad_phone; 409 busy when a brand, user or member lock is taken"
+    },
+    {
+      "id": "manage-profile-save--write",
+      "from": "server",
+      "to": "store",
+      "y": 3538,
+      "label": "Member, user or brand file",
+      "variant": "dashed",
+      "note": "Under lock; products, audience, tone, website and handles can be cleared"
+    },
+    {
+      "id": "manage-profile-save--see",
+      "from": "page",
+      "to": "person",
+      "y": 3580,
+      "label": "'Saved' or the refusal",
+      "variant": "return",
+      "note": "Each refusal ends 'Nothing was saved.'; 403: 'Your role does not allow this.' Language changed: opens /{newLang}/app/profile"
+    },
+    {
+      "id": "manage-email-prefs--do",
+      "from": "person",
+      "to": "page",
+      "y": 3630,
+      "label": "Pick All, Important or None",
+      "variant": "default"
+    },
+    {
+      "id": "manage-email-prefs--put",
+      "from": "page",
+      "to": "server",
+      "y": 3660,
+      "label": "PUT /api/profile",
+      "variant": "default"
+    },
+    {
+      "id": "manage-email-prefs--owner",
+      "from": "server",
+      "to": "checks",
+      "y": 3690,
+      "label": "profile.account (owner)",
+      "variant": "security"
+    },
+    {
+      "id": "manage-email-prefs--write",
+      "from": "server",
+      "to": "store",
+      "y": 3720,
+      "label": "profile:{scope}, per brand",
+      "variant": "dashed"
+    },
+    {
+      "id": "manage-email-prefs--see",
+      "from": "page",
+      "to": "person",
+      "y": 3750,
+      "label": "'Saved'",
+      "variant": "return"
+    },
+    {
+      "id": "manage-email-prefs--read",
+      "from": "cron",
+      "to": "store",
+      "y": 3780,
+      "label": "Daily cron reads the level",
+      "variant": "default",
+      "note": "Falls back to profile:{email}; none also stops follow-ups"
+    },
+    {
+      "id": "manage-email-prefs--brief",
+      "from": "cron",
+      "to": "email",
+      "y": 3822,
+      "label": "Brief sent by level",
+      "variant": "dashed",
+      "note": "important: only if items need attention"
+    },
+    {
+      "id": "manage-password-change--do",
+      "from": "person",
+      "to": "page",
+      "y": 3872,
+      "label": "Enter current + new password",
+      "variant": "default"
+    },
+    {
+      "id": "manage-password-change--patch",
+      "from": "page",
+      "to": "server",
+      "y": 3902,
+      "label": "PATCH /api/account",
+      "variant": "default"
+    },
+    {
+      "id": "manage-password-change--check",
+      "from": "server",
+      "to": "checks",
+      "y": 3932,
+      "label": "password.change, strength, hash",
+      "variant": "security",
+      "note": "Impersonating: 403. Weak: 400 before the current password is checked"
+    },
+    {
+      "id": "manage-password-change--refuse",
+      "from": "server",
+      "to": "page",
+      "y": 3974,
+      "label": "400 weak / 401 wrong_password",
+      "variant": "security",
+      "note": "'Password too weak…' or 'Current password is wrong'"
+    },
+    {
+      "id": "manage-password-change--write",
+      "from": "server",
+      "to": "store",
+      "y": 4016,
+      "label": "New hash + sessionsAfter",
+      "variant": "dashed",
+      "note": "Owner: revokeAllMcp removes the MCP token and OAuth grants"
+    },
+    {
+      "id": "manage-password-change--see",
+      "from": "page",
+      "to": "person",
+      "y": 4058,
+      "label": "'Password changed'",
+      "variant": "return",
+      "note": "Other devices signed out; owner is not told MCP was revoked"
+    },
+    {
+      "id": "manage-account-delete--do",
+      "from": "person",
+      "to": "page",
+      "y": 4108,
+      "label": "Delete account + password",
+      "variant": "default",
+      "note": "Browser prompt; cancel or empty does nothing"
+    },
+    {
+      "id": "manage-account-delete--del",
+      "from": "page",
+      "to": "server",
+      "y": 4150,
+      "label": "DELETE /api/account",
+      "variant": "default"
+    },
+    {
+      "id": "manage-account-delete--check",
+      "from": "server",
+      "to": "checks",
+      "y": 4180,
+      "label": "account.delete + bcrypt check",
+      "variant": "security",
+      "note": "Owner only, never while impersonating"
+    },
+    {
+      "id": "manage-account-delete--refuse",
+      "from": "server",
+      "to": "page",
+      "y": 4222,
+      "label": "401 wrong_password",
+      "variant": "security",
+      "note": "Shows 'Wrong password'; a 403 shows the role message"
+    },
+    {
+      "id": "manage-account-delete--wipe",
+      "from": "server",
+      "to": "store",
+      "y": 4264,
+      "label": "wipeAccount + wipeTeam",
+      "variant": "dashed",
+      "note": "All brand scopes, onboarding records, account chat counters, partner data, members, invites, user"
+    },
+    {
+      "id": "manage-account-delete--see",
+      "from": "page",
+      "to": "person",
+      "y": 4306,
+      "label": "Signed out, sent to /{lang}",
+      "variant": "return",
+      "note": "No email is sent"
+    },
+    {
+      "id": "account-profile-leave--do",
+      "from": "person",
+      "to": "page",
+      "y": 4356,
+      "label": "Leave card: click Members",
+      "variant": "default"
+    },
+    {
+      "id": "account-profile-leave--see",
+      "from": "page",
+      "to": "person",
+      "y": 4386,
+      "label": "Opens /{lang}/app/team",
+      "variant": "return",
+      "note": "Client link only; leaving (team.leave) is in the team stage"
+    },
+    {
+      "id": "manage-brands-open--do",
+      "from": "person",
+      "to": "page",
+      "y": 4466,
+      "label": "Open Brands",
+      "variant": "emphasis",
+      "note": "Or click the brand name at the top of the sidebar"
+    },
+    {
+      "id": "manage-brands-open--get",
+      "from": "page",
+      "to": "server",
+      "y": 4508,
+      "label": "GET /api/brands",
+      "variant": "default"
+    },
+    {
+      "id": "manage-brands-open--read",
+      "from": "server",
+      "to": "store",
+      "y": 4538,
+      "label": "brands:{owner} + brand files",
+      "variant": "default"
+    },
+    {
+      "id": "manage-brands-open--see",
+      "from": "page",
+      "to": "person",
+      "y": 4568,
+      "label": "'Brands: N', no limit",
+      "variant": "return",
+      "note": "Added brand setup: 9 credits, the first free. Members: Switch only"
+    },
+    {
+      "id": "manage-brand-add--do",
+      "from": "person",
+      "to": "page",
+      "y": 4618,
+      "label": "Type a name, click + Add",
+      "variant": "emphasis"
+    },
+    {
+      "id": "manage-brand-add--post",
+      "from": "page",
+      "to": "server",
+      "y": 4648,
+      "label": "POST /api/brands add",
+      "variant": "default"
+    },
+    {
+      "id": "manage-brand-add--check",
+      "from": "server",
+      "to": "checks",
+      "y": 4678,
+      "label": "brands.manage + add rate",
+      "variant": "security",
+      "note": "10 an hour, 30 a day per account; no plan limit"
+    },
+    {
+      "id": "manage-brand-add--slow",
+      "from": "server",
+      "to": "page",
+      "y": 4720,
+      "label": "429 slow_down / 409 busy",
+      "variant": "security",
+      "note": "'Try again in an hour' or 'tomorrow'; busy: another change runs"
+    },
+    {
+      "id": "manage-brand-add--write",
+      "from": "server",
+      "to": "store",
+      "y": 4762,
+      "label": "New brand under brandslock",
+      "variant": "dashed",
+      "note": "activebrand set for the acting login"
+    },
+    {
+      "id": "manage-brand-add--see",
+      "from": "page",
+      "to": "person",
+      "y": 4804,
+      "label": "Sent to /app/start for setup",
+      "variant": "return",
+      "note": "Add is disabled while a brand change runs"
+    },
+    {
+      "id": "manage-brand-switch--do",
+      "from": "person",
+      "to": "page",
+      "y": 4854,
+      "label": "Click Switch",
+      "variant": "default"
+    },
+    {
+      "id": "manage-brand-switch--post",
+      "from": "page",
+      "to": "server",
+      "y": 4884,
+      "label": "POST /api/brands switch",
+      "variant": "default"
+    },
+    {
+      "id": "manage-brand-switch--check",
+      "from": "server",
+      "to": "checks",
+      "y": 4914,
+      "label": "brands.switch, in owner list",
+      "variant": "security",
+      "note": "Every role may switch; unknown id: 404 not_found"
+    },
+    {
+      "id": "manage-brand-switch--write",
+      "from": "server",
+      "to": "store",
+      "y": 4956,
+      "label": "activebrand:{acting login}",
+      "variant": "dashed",
+      "note": "Owner, others and the MCP token keep their own brand"
+    },
+    {
+      "id": "manage-brand-switch--see",
+      "from": "page",
+      "to": "person",
+      "y": 4998,
+      "label": "New ACTIVE brand for this login",
+      "variant": "return",
+      "note": "Chat, inbox, files, brand file and sidebar show it"
+    },
+    {
+      "id": "manage-brand-rename--do",
+      "from": "person",
+      "to": "page",
+      "y": 5048,
+      "label": "Rename via browser prompt",
+      "variant": "default"
+    },
+    {
+      "id": "manage-brand-rename--post",
+      "from": "page",
+      "to": "server",
+      "y": 5078,
+      "label": "POST /api/brands rename",
+      "variant": "default"
+    },
+    {
+      "id": "manage-brand-rename--check",
+      "from": "server",
+      "to": "checks",
+      "y": 5108,
+      "label": "brands.manage",
+      "variant": "security"
+    },
+    {
+      "id": "manage-brand-rename--write",
+      "from": "server",
+      "to": "store",
+      "y": 5138,
+      "label": "Name in brands:{owner}, locked",
+      "variant": "dashed",
+      "note": "409 busy, or 404 if the brand vanished"
+    },
+    {
+      "id": "manage-brand-rename--see",
+      "from": "page",
+      "to": "person",
+      "y": 5180,
+      "label": "List shows the new name",
+      "variant": "return",
+      "note": "Sidebar keeps the brand-file name"
+    },
+    {
+      "id": "manage-brand-archive--do",
+      "from": "person",
+      "to": "page",
+      "y": 5230,
+      "label": "Archive or Restore",
+      "variant": "default"
+    },
+    {
+      "id": "manage-brand-archive--post",
+      "from": "page",
+      "to": "server",
+      "y": 5260,
+      "label": "POST /api/brands archive",
+      "variant": "default"
+    },
+    {
+      "id": "manage-brand-archive--check",
+      "from": "server",
+      "to": "checks",
+      "y": 5290,
+      "label": "Default brand refused (400)",
+      "variant": "security"
+    },
+    {
+      "id": "manage-brand-archive--write",
+      "from": "server",
+      "to": "store",
+      "y": 5320,
+      "label": "Toggle status, reset active",
+      "variant": "dashed",
+      "note": "Under brandslock (409 busy); restore has no brand limit"
+    },
+    {
+      "id": "manage-brand-archive--see",
+      "from": "page",
+      "to": "person",
+      "y": 5362,
+      "label": "'archived', faded, no Switch",
+      "variant": "return",
+      "note": "Open brand archived: workspace moves to the default brand"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Refusals and limits",
+      "items": [
+        "Routes answer 403 {error:'forbidden'} whatever the UI shows",
+        "402 trial_over, no_credits or agent_cap: nothing is charged",
+        "Chat: 402 chat_allowance (month's messages used) or chat_credits (under the 5-credit hold); 429 slow_down is a notice, no dialog",
+        "Media with too few credits: inline 'Needs N credits; you have M.'",
+        "Chat switch: 409 trial, 429 slow_down. Partner code: 400 bad_partner_code / self_referral, 409 already_attributed / already_paid",
+        "Founder plan route (400): bad_credits, bad_seats, bad_chat, bad_deal, below_floor, deal_needs_agency; unknown email 404. Top-ups: bad_pack, bad_paid, bad_date, bad_ref, 409 topup_needs_paid_plan",
+        "Brand add: 429 slow_down after 10 an hour or 30 a day; 409 busy while the brand list is locked; the default brand cannot be archived (400)"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Plans and allowances",
+      "items": [
+        "Starter 299 SAR: 300 credits and 250 chat messages a month, 1 seat",
+        "Pro 499 SAR: 700 credits and 650 chat messages a month, 3 seats",
+        "Business 999 SAR: 1,500 credits and 1,300 chat messages a month, 7 seats",
+        "Trial: 50 credits, 30 chat messages for the whole trial, 3 seats, 3 days",
+        "Agency: by contract, at least 999 SAR and 1,500 credits; without a valid deal it gets 1,500 credits and 7 seats",
+        "Top-up packs: 100, 300 or 1,000 credits at 1 SAR each before VAT, valid 90 days, spent after the plan credits, kept at renewal",
+        "Chat past the allowance: off by default; on, each message bills its cost, at most 5 credits. First-month offer: 15% off",
+        "Brands are unlimited on every plan; setting up an added brand from its URL costs 9 credits, the first brand is free"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Who can do this",
+      "items": [
+        "Owner only: billing, chat switch, partner code, account delete, MCP token, partner and payout bank, phone and email prefs, roles",
+        "Admin and owner: manage brands, edit brand fields, invite and remove plain members",
+        "Every role: switch brand, view team, change own password and name",
+        "Founder impersonating: owner view, but delete, password, invites, roles, MCP token, OAuth approval and partner bank are blocked",
+        "Founder console only: plan, credits, chat messages, top-up packs, seat override and the Agency deal"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "While the model is paused",
+      "items": [
+        "Model calls are paused since 2026-09-28",
+        "Chat replies that the agents are paused; no credits were used. A chat whose messages for the month are used still raises the chat dialog first",
+        "Ask Noor and reports: 'Content generation is paused for now.' (/api/generate 503 model_paused, before trial and credit checks)",
+        "Image and video renders still run with a fixed prompt, and the /start confirm calls no model, so only they can raise the credits dialog"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1097 @@
+{
+ "key": "08-review-inbox",
+ "title": "Review: the approval inbox",
+ "person": "owner or team",
+ "steps": [
+  {
+   "id": "publish-open-inbox",
+   "title": "Open approval inbox",
+   "surface": "/{lang}/app (Inbox)",
+   "actor": "any-signed-in",
+   "action": "Opens the app home, where the approval inbox lives: from the sidebar, a notification, Reem's to-do page, the chat's Waiting button, the 'Read the notes in the inbox' button on a chat draft that another agent flagged, or right after a batch is created.",
+   "ui_response": "Signed out: redirect to /{lang}/app/login. No brand file yet: redirect to /{lang}/app/start. Otherwise the page shows Chat and Feed tabs (Feed selected), the 'Approval inbox' title, and filter chips with Waiting selected (Waiting, Approved and Rejected show counts; All does not). Below that come the launch-journey card, 'Noor's brief' when there is one, and one card per item under day separators. An empty filter shows 'Nothing waiting. Ask Noor for a first batch.' with an 'Ask for a new batch' button. The sidebar shows the pending-count badge.",
+   "system_reaction": "The server component reads the user and the brand file, then makes one Promise.all read under sc(u): tasks, latest brief, connections, journey, and the media models the breaker switched off. It passes the connected publish targets, banned words, available media models, credits, plan, paused, canPublish (can(u,'publish')) and owner (can(u,'billing')). paused is modelState() !== 'on', so it is true while CLAUDE_PAUSED. The sidebar fetches GET /api/tasks?count=pending for the badge and fetches it again on the 'nashr:pending-changed' event. No model call is made.",
+   "branches": [
+    "signed out -> /{lang}/app/login",
+    "no brand file -> /{lang}/app/start",
+    "empty filter -> 'Ask for a new batch' -> /{lang}/app/generate"
+   ],
+   "conditions": "Signed in; the brand file exists.",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/page.tsx",
+     "line": 17,
+     "end_line": 30
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 213,
+     "end_line": 228
+    },
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 36,
+     "end_line": 46
+    },
+    {
+     "path": "src/app/api/tasks/route.ts",
+     "line": 6,
+     "end_line": 13
+    },
+    {
+     "path": "src/lib/model.ts",
+     "line": 15
+    },
+    {
+     "path": "src/lib/model.ts",
+     "line": 25,
+     "end_line": 34
+    },
+    {
+     "path": "src/components/app/ChatPanel.tsx",
+     "line": 667
+    },
+    {
+     "path": "src/components/app/ChatPanel.tsx",
+     "line": 82
+    },
+    {
+     "path": "src/components/app/TodoPanel.tsx",
+     "line": 383,
+     "end_line": 386
+    }
+   ],
+   "next": [
+    "publish-filter-tabs",
+    "publish-read-card"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-filter-tabs",
+   "title": "Filter by status",
+   "surface": "/{lang}/app (Inbox header)",
+   "actor": "any-signed-in",
+   "action": "Clicks one of the chips Waiting, Approved, Rejected or All.",
+   "ui_response": "The list shows only items with that status, still grouped by day. Waiting, Approved and Rejected show their counts, and the counts follow changes made on this page.",
+   "system_reaction": "Browser only: the list is filtered in memory, with no request.",
+   "branches": [],
+   "conditions": "None.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 75
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 163
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 222,
+     "end_line": 226
+    }
+   ],
+   "next": [
+    "publish-read-card"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-chat-tab",
+   "title": "Switch to Chat tab",
+   "surface": "/{lang}/app (Inbox tabs)",
+   "actor": "any-signed-in",
+   "action": "Clicks the 'Chat' tab next to 'Feed' at the top of the inbox.",
+   "ui_response": "The browser goes to /{lang}/app/chat.",
+   "system_reaction": "A plain link. Nothing is recorded.",
+   "branches": [],
+   "conditions": "None.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 215,
+     "end_line": 218
+    }
+   ],
+   "next": [],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-journey-card",
+   "title": "Use the journey card",
+   "surface": "/{lang}/app (JourneyCard above the list)",
+   "actor": "any-signed-in",
+   "action": "Hides the launch-journey card with its x button (or shows it again with the 'Show path' pill), clicks a milestone, or clicks 'Start' on the next step.",
+   "ui_response": "Hiding collapses the card into a small pill, and this browser remembers it. A milestone link or 'Start' opens that step's page. The first time an approve, a date or a publish lands in this browser, the card ticks that step and shows a 'Milestone unlocked' toast with confetti.",
+   "system_reaction": "Browser only. The hidden flag and the steps already seen are kept in localStorage (nashr:journey:v1). The inbox fires milestone('approve'|'schedule'|'publish') after a successful change.",
+   "branches": [
+    "hide -> 'Show path' pill",
+    "milestone -> that page"
+   ],
+   "conditions": "None.",
+   "sources": [
+    {
+     "path": "src/components/app/JourneyCard.tsx",
+     "line": 49,
+     "end_line": 51
+    },
+    {
+     "path": "src/components/app/JourneyCard.tsx",
+     "line": 88,
+     "end_line": 104
+    },
+    {
+     "path": "src/components/app/JourneyCard.tsx",
+     "line": 120
+    },
+    {
+     "path": "src/components/app/JourneyCard.tsx",
+     "line": 134
+    },
+    {
+     "path": "src/components/app/JourneyCard.tsx",
+     "line": 148
+    },
+    {
+     "path": "src/components/app/JourneyCard.tsx",
+     "line": 165
+    },
+    {
+     "path": "src/components/app/JourneyCard.tsx",
+     "line": 185
+    }
+   ],
+   "next": [
+    "publish-read-card"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-read-card",
+   "title": "Read an item card",
+   "surface": "/{lang}/app (Inbox card)",
+   "actor": "any-signed-in",
+   "action": "Reads one item card.",
+   "ui_response": "The card shows the channel icon and name, and the title. For customer-facing types, when the brand file bans words or the item is held, a shield pill reads 'Passes brand guard' or 'Held by brand guard'. A 'Quality NN' chip is green at 85 or more, amber at 70 or more and red below that. Hovering it shows the judge's note, prefixed with the automatic-fail code when there is one. The pills wrap onto a new line on a phone. The header can also carry another agent's review pills and an origin pill (see the steps on those). The card also shows: a Waiting, Approved or Rejected badge; any 'Published x' or 'Draft on x' links; the rendered text; a character count against the channel limit (X 280, Snapchat 250, WhatsApp 1024, Business Profile 1500, Instagram and TikTok 2200, LinkedIn 3000; red when over); and any image or video. Items created while paused have no Quality chip.",
+   "system_reaction": "The brand check runs in the browser with gateTask, the same function the server uses. The text is rendered through render() from src/lib/md.ts. The quality score is whatever the judge wrote on the task. While paused the judge returns nothing, so nothing is written.",
+   "branches": [
+    "held item -> brand-guard box",
+    "paused -> no quality score on new items"
+   ],
+   "conditions": "None.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 256,
+     "end_line": 281
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 283,
+     "end_line": 285
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 375,
+     "end_line": 383
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 39
+    },
+    {
+     "path": "src/lib/brand-rules.ts",
+     "line": 181,
+     "end_line": 183
+    },
+    {
+     "path": "src/lib/judge.ts",
+     "line": 89,
+     "end_line": 92
+    }
+   ],
+   "next": [
+    "publish-origin-chips",
+    "publish-held-card",
+    "publish-approve",
+    "publish-open-editor",
+    "publish-reject"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-origin-chips",
+   "stage": "publish",
+   "title": "See where an item came from",
+   "surface": "/{lang}/app (Inbox card header)",
+   "actor": "any-signed-in",
+   "action": "Reads the header of a card that was written outside Thakeen, or made by a run of one of Majed's handoffs.",
+   "ui_response": "A card saved by the person's own assistant through MCP carries a grey pill 'unreviewed · written outside Thakeen'; hovering it says that neither the second reviewer nor another agent checked it and that the brand guard still does. A card made by a handoff run carries a pill \"from Majed's handoff\", or \"from Majed's handoff · started on its own\" when his auto-run started it. When the conversation id is valid, the handoff pill is a link to /{lang}/app/chat?conv=<id>; otherwise it is plain text.",
+   "system_reaction": "Browser only. The source ('external' or 'handoff') and the parent are set in code when the task is built, never taken from the model: MCP save_draft always creates an 'external' item that is never auto-approved, and a batch run for a handoff carries its parent. The link is built only when the conversation id is 6 to 16 hexadecimal characters. Nothing is recorded by reading the pill.",
+   "branches": [
+    "handoff with a valid conversation id -> link to that chat",
+    "handoff without one -> plain pill"
+   ],
+   "conditions": "Item source is external (MCP save_draft) or handoff.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 273,
+     "end_line": 278
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 419
+    },
+    {
+     "path": "src/lib/external-drafts.ts",
+     "line": 63,
+     "end_line": 67
+    },
+    {
+     "path": "src/lib/generate-batch.ts",
+     "line": 148,
+     "end_line": 160
+    }
+   ],
+   "next": [
+    "publish-held-card",
+    "publish-approve",
+    "publish-open-editor"
+   ],
+   "verified": true
+  },
+  {
+   "id": "publish-auto-approved",
+   "title": "Auto-approve on create",
+   "surface": "Creation sites (Generate, chat, weekly plan, routines, Majed's handoffs, MCP generate)",
+   "actor": "system",
+   "action": "An agent creates an item of a type the owner set to auto-approve in Governance.",
+   "ui_response": "The item appears directly under Approved, not Waiting, and does not count in the pending badge. An item that breaks a brand rule still arrives in Waiting, held with the rule named.",
+   "system_reaction": "Every batch builds its tasks in taskFromItem (src/lib/generate-batch.ts), which calls initialStatus(forcePending or flagged ? false : gov.autoApprove[type], brand, item). It returns 'approved' only when auto-approve is on, the batch was not forced to pending, no other agent flagged the item, and gateTask finds nothing. saveTask keeps the pending set in step. Auto-approval is not a human decision, so no decision record is written. decidedAt stays empty, so the judge can still send the item back. The chat publish_item tool also refuses it, and the owner publishes it from the inbox instead. Drafts saved through MCP save_draft are always created pending (initialStatus(false, ...)), even for an auto-approved type.",
+   "branches": [
+    "breaks a brand rule -> created pending",
+    "another agent flagged it -> created pending",
+    "MCP save_draft -> always pending"
+   ],
+   "conditions": "The owner switched auto-approve on for that type in Governance (owner only).",
+   "sources": [
+    {
+     "path": "src/lib/brand-rules.ts",
+     "line": 186,
+     "end_line": 188
+    },
+    {
+     "path": "src/lib/generate-batch.ts",
+     "line": 144,
+     "end_line": 158
+    },
+    {
+     "path": "src/lib/generate-batch.ts",
+     "line": 236,
+     "end_line": 239
+    },
+    {
+     "path": "src/lib/governance.ts",
+     "line": 9
+    },
+    {
+     "path": "src/lib/governance.ts",
+     "line": 32
+    },
+    {
+     "path": "src/components/app/GovernancePanel.tsx",
+     "line": 190,
+     "end_line": 195
+    },
+    {
+     "path": "src/lib/decisions.ts",
+     "line": 14,
+     "end_line": 16
+    },
+    {
+     "path": "src/lib/brand.ts",
+     "line": 260,
+     "end_line": 275
+    },
+    {
+     "path": "src/lib/chat.ts",
+     "line": 719,
+     "end_line": 722
+    },
+    {
+     "path": "src/lib/external-drafts.ts",
+     "line": 63,
+     "end_line": 67
+    }
+   ],
+   "next": [
+    "publish-judge-scores"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-judge-scores",
+   "title": "Judge scores the item",
+   "surface": "Background after generation; bell notifications",
+   "actor": "system",
+   "action": "A batch was just created by chat, Generate, the weekly plan, routines, Majed's handoffs or MCP.",
+   "ui_response": "A 'Quality NN' chip appears on each card at the next load. If any item scored below 70, a bell notification reads 'N of M <agent> item(s) scored below 70', with the judge's note for the first weak item. The notification links to the inbox. While paused none of this happens, because no batch is generated.",
+   "system_reaction": "generateBatch calls judgeLater after the batch is saved and the response is on its way. Claude Sonnet scores completeness, brand, honesty, language and format with the rubric kept in code (JUDGE_RUBRIC), and the score is weighted. An automatic-fail code (invented_fact, results_promise, fake_proof, fake_scarcity, injected_instruction) caps the score at 60 and honesty at 40, enforced in code. An item with no usable verdict stays unscored. Scores are written under the task lock, usage is metered as 'judge', and the batch's mean score and any automatic-fail codes go to the activity log. Each attempt is time-limited with one retry. While paused, scoreItems returns [] before making any call, and /api/generate refuses with 503 model_paused before charging.",
+   "branches": [
+    "score < 70 -> quality notification",
+    "paused -> no score, no alert"
+   ],
+   "conditions": "Model on (not paused).",
+   "sources": [
+    {
+     "path": "src/lib/judge.ts",
+     "line": 33,
+     "end_line": 44
+    },
+    {
+     "path": "src/lib/judge.ts",
+     "line": 64,
+     "end_line": 75
+    },
+    {
+     "path": "src/lib/judge.ts",
+     "line": 89,
+     "end_line": 129
+    },
+    {
+     "path": "src/lib/judge.ts",
+     "line": 132,
+     "end_line": 168
+    },
+    {
+     "path": "src/lib/judge.ts",
+     "line": 175,
+     "end_line": 186
+    },
+    {
+     "path": "src/lib/generate-batch.ts",
+     "line": 258,
+     "end_line": 260
+    },
+    {
+     "path": "src/app/api/generate/route.ts",
+     "line": 16,
+     "end_line": 17
+    }
+   ],
+   "next": [
+    "publish-judge-veto",
+    "publish-cross-review",
+    "publish-read-card"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-judge-veto",
+   "title": "Judge withdraws approval",
+   "surface": "/{lang}/app (Inbox) and bell notifications",
+   "actor": "system",
+   "action": "The judge gives an automatic fail to an item that only auto-approval had passed.",
+   "ui_response": "The card moves back to Waiting. A bell notification reads 'N auto-approved <agent> item(s) sent back to your inbox', with the judge's note (prefixed by the fail code) as its body. This never happens while paused.",
+   "system_reaction": "Inside updateTask, status is set to pending only when the item has an autofail code, is approved, has no decidedAt (no person decided it) and was never published. Approvals made by the owner or an admin, and items already published, are left alone. A model can withhold an approval but never grant one.",
+   "branches": [
+    "person-approved or published -> untouched"
+   ],
+   "conditions": "Auto-approved item, not yet published; model on.",
+   "sources": [
+    {
+     "path": "src/lib/judge.ts",
+     "line": 141,
+     "end_line": 157
+    }
+   ],
+   "next": [
+    "publish-cross-review",
+    "publish-approve",
+    "publish-open-editor"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-cross-review",
+   "stage": "publish",
+   "title": "Read another agent's notes",
+   "surface": "/{lang}/app (Inbox card) and the chat draft card",
+   "actor": "any-signed-in",
+   "action": "Opens a card for a plan, strategy, pricing, deck or memo item that another agent reviewed after it was written.",
+   "ui_response": "The card header shows one pill per reviewing agent: 'Razan: checked', 'Razan: 1 note' or 'Razan: N notes' (Majed in the same way). For each review with notes, a yellow box titled \"Razan's notes, a review by another agent\" shows the notes as plain text, with the hint 'Notes only: the item's text is unchanged, and this item waits for your decision even when its type is auto-approved.' In chat, a flagged draft says 'Another agent left notes on this item: read them in the inbox before you approve it.' and offers 'Read the notes in the inbox' instead of Approve.",
+   "system_reaction": "Right after the writing and review passes, noor.ts asks the reviewing agents for notes: Razan checks the numbers (budgets, VAT, placeholders, scenarios), Majed the strategy and promises. Types covered: gtm_plan (both), growth_experiments, retention_play, board_deck, decision_memo and strategy_review (Razan), pricing_review (Majed). Never the item's own author, never Reem; notes are cut to 300 characters; the review is skipped when less than 60 seconds of the request are left. taskFromItem keeps the verdicts on the task, and a 'flag' makes initialStatus return pending even when the type is auto-approved. One 'cross_reviewed' activity row is written per reviewer. The notes are model text, rendered as text and never as HTML. The owner can still approve: the notes are advice, not a lock. Drafts saved through MCP save_draft are never cross-reviewed (an MCP generate runs a normal batch and is). No verdicts are produced while the model is paused.",
+   "branches": [
+    "no flag -> 'checked' pill only",
+    "flag -> notes box and the item waits in Waiting",
+    "Governance cross-review off -> no reviews"
+   ],
+   "conditions": "Type has a reviewer; Governance cross-review is on (the default); model on.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 44,
+     "end_line": 49
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 268,
+     "end_line": 272
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 309,
+     "end_line": 316
+    },
+    {
+     "path": "src/components/app/ChatPanel.tsx",
+     "line": 77
+    },
+    {
+     "path": "src/lib/noor.ts",
+     "line": 331,
+     "end_line": 355
+    },
+    {
+     "path": "src/lib/noor.ts",
+     "line": 363,
+     "end_line": 374
+    },
+    {
+     "path": "src/lib/governance.ts",
+     "line": 18,
+     "end_line": 22
+    },
+    {
+     "path": "src/lib/generate-batch.ts",
+     "line": 144,
+     "end_line": 158
+    },
+    {
+     "path": "src/lib/generate-batch.ts",
+     "line": 167,
+     "end_line": 175
+    }
+   ],
+   "next": [
+    "publish-approve",
+    "publish-open-editor",
+    "publish-reject"
+   ],
+   "verified": true
+  },
+  {
+   "id": "publish-held-card",
+   "title": "See brand guard hold",
+   "surface": "/{lang}/app (Inbox card)",
+   "actor": "any-signed-in",
+   "action": "Sees a card whose text breaks a brand rule.",
+   "ui_response": "A red 'Held by brand guard' box names the rule ('Banned-words rule' or 'Empty-placeholder rule'). It explains that the item cannot be approved or published until edited, and lists each offending term with its excerpt highlighted. Its buttons are 'Fix the text', which opens the editor, and for banned words 'Brand file', which goes to /{lang}/app/onboarding. The Approve and Publish buttons are disabled.",
+   "system_reaction": "gateTask runs in the browser. Banned words are matched with Arabic letters folded and Arabic prefixes allowed. Unfilled placeholders such as [رقم], [date] or {{1}} are caught. At approval, personalisation slots ({{1}}, [name], [الاسم]) are allowed on WhatsApp, email, SMS and call channels, and script directions such as [VO] or [CTA] are allowed. The server applies the same rules on approve (409). It applies a stricter version on publish (409), where no placeholder or direction of any kind passes.",
+   "branches": [
+    "Fix the text -> editor",
+    "Brand file -> /{lang}/app/onboarding"
+   ],
+   "conditions": "Customer-facing type (social, article, whatsapp, ads, gbp, followup_seq, cart_recovery).",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 297,
+     "end_line": 308
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 21,
+     "end_line": 24
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 33,
+     "end_line": 37
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 398
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 425
+    },
+    {
+     "path": "src/lib/brand-rules.ts",
+     "line": 25,
+     "end_line": 26
+    },
+    {
+     "path": "src/lib/brand-rules.ts",
+     "line": 136,
+     "end_line": 183
+    }
+   ],
+   "next": [
+    "publish-open-editor"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-member-wait",
+   "title": "Member sees wait note",
+   "surface": "/{lang}/app (Inbox card)",
+   "actor": "member",
+   "action": "A plain member opens the inbox.",
+   "ui_response": "There is no Approve button and no 'Publish to' button. Waiting cards read 'Waiting for the account owner or an admin to approve. You can edit or reject it.' Edit, Reject, the image and video buttons, and the date field stay available.",
+   "system_reaction": "canPublish is false and targets() returns [], so no publish target is offered. The server refuses approve and publish with 403 anyway.",
+   "branches": [],
+   "conditions": "Role member.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 57,
+     "end_line": 63
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 97
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 366
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 399
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 51,
+     "end_line": 52
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 83
+    }
+   ],
+   "next": [
+    "publish-save-member",
+    "publish-reject"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-approve",
+   "title": "Approve an item",
+   "surface": "/{lang}/app (Inbox card)",
+   "actor": "owner",
+   "action": "Clicks 'Approve' on a Waiting or Rejected card.",
+   "ui_response": "The card flips to Approved at once (optimistic update) and leaves the Waiting filter. After the server confirms, the sidebar badge recounts and the journey card ticks 'approve'. On a brand violation, the card returns to its previous state and shows the held box. A refused role shows 'Your role does not allow this.' A failed or missing request shows 'The change was not saved. Check your connection and try again.'",
+   "system_reaction": "The browser sends PATCH /api/tasks/{id} {status:'approved'}. The route checks the session (401) and the 'drafts' role. Inside updateTask(sc(u), id), it requires 'publish' because the item ends approved (403, nothing saved). It sets decidedAt and runs gateTask on the final text (409 brand_violation, nothing saved). A task outside the caller's scope returns 404. Who decided is worked out from the session, never from the body. After the response it runs track('approve') and appends an 'approve' decision, with who decided, the judge's score and autofail code, to decisions:{scope}, plus one activity row. No credits and no model call, so it works while paused and after the trial ends.",
+   "branches": [
+    "409 brand_violation -> held box",
+    "403 forbidden -> role message",
+    "network/404 -> not saved message"
+   ],
+   "conditions": "Owner or admin; the item is not held by the brand guard.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 174,
+     "end_line": 211
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 398
+    },
+    {
+     "path": "src/app/api/tasks/[id]/route.ts",
+     "line": 15,
+     "end_line": 46
+    },
+    {
+     "path": "src/app/api/tasks/[id]/route.ts",
+     "line": 56,
+     "end_line": 81
+    },
+    {
+     "path": "src/app/api/tasks/[id]/route.ts",
+     "line": 83,
+     "end_line": 106
+    },
+    {
+     "path": "src/lib/decisions.ts",
+     "line": 46,
+     "end_line": 57
+    }
+   ],
+   "next": [
+    "publish-to-platform",
+    "publish-schedule",
+    "publish-decisions"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-open-editor",
+   "title": "Open the editor",
+   "surface": "/{lang}/app (Inbox card)",
+   "actor": "any-signed-in",
+   "action": "Clicks 'Edit', or 'Fix the text' on a held card.",
+   "ui_response": "A textarea opens with the current text (the edited text when there is one). For customer-facing types, a live line below it reads 'Live check: No banned words or empty placeholders. Ready to approve.', or lists the offending terms as the person types. The buttons shown depend on the role.",
+   "system_reaction": "Browser only. The live check uses the same gateTask as the server.",
+   "branches": [
+    "owner/admin -> 'Save edit' / 'Save without approving'",
+    "member -> 'Save edit' / 'Save and send back for review'",
+    "Cancel -> editor closes"
+   ],
+   "conditions": "None.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 400
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 304
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 342,
+     "end_line": 355
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 357,
+     "end_line": 369
+    }
+   ],
+   "next": [
+    "publish-save-admin",
+    "publish-save-member"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-save-admin",
+   "title": "Save edit as admin",
+   "surface": "/{lang}/app (Inbox editor)",
+   "actor": "owner",
+   "action": "Clicks 'Save edit', which also approves. While the live check shows hits, 'Save edit' is disabled and 'Save without approving' is offered instead.",
+   "ui_response": "The card shows the new text with the Approved badge. After 'Save without approving' it shows Waiting instead. On 409 the editor reopens with the typed text and the violations. On 403 or a network error, the message appears inside the editor and the typed text is kept.",
+   "system_reaction": "The browser sends PATCH {editedBody, status:'approved'|'pending'}. editedBody is stored, cut to 20,000 characters, when it differs from the agent's original text. An 'edit' decision with editPct is recorded when the text changed since the last save, plus 'approve' or 'reopen' when the status changes. An approved item rewritten by an admin gets decidedAt, so the judge veto no longer applies to it. The brand gate runs before an approved save. With Governance learning on, the note 'Owner edited a <type> item (<channel>). Prefer this style: ...' is pushed to prefs:{scope} (newest 100). It is also appended to preferences.md, a core file the agents read on every generation.",
+   "branches": [
+    "409 -> editor reopens with violations",
+    "403 -> role message in editor",
+    "network -> not saved message in editor"
+   ],
+   "conditions": "Owner or admin.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 358,
+     "end_line": 362
+    },
+    {
+     "path": "src/app/api/tasks/[id]/route.ts",
+     "line": 39,
+     "end_line": 55
+    },
+    {
+     "path": "src/app/api/tasks/[id]/route.ts",
+     "line": 66,
+     "end_line": 76
+    },
+    {
+     "path": "src/app/api/tasks/[id]/route.ts",
+     "line": 87,
+     "end_line": 105
+    },
+    {
+     "path": "src/lib/brand.ts",
+     "line": 378,
+     "end_line": 380
+    },
+    {
+     "path": "src/lib/files.ts",
+     "line": 114
+    }
+   ],
+   "next": [
+    "publish-to-platform",
+    "publish-decisions"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-save-member",
+   "title": "Save edit as member",
+   "surface": "/{lang}/app (Inbox editor)",
+   "actor": "member",
+   "action": "Clicks 'Save edit' on a pending or rejected item, or 'Save and send back for review' on an approved one.",
+   "ui_response": "The card shows the new text. An approved item goes back to Waiting for an admin. There is no way to approve.",
+   "system_reaction": "PATCH {editedBody}, or {editedBody, status:'pending'}, needs only the 'drafts' role. Approved to pending is recorded as 'reopen', and decidedAt is cleared. The edit record and the learning note are written as for an admin. The brand gate does not apply, because the item does not end approved. If the item became approved on the server meanwhile, a text change needs 'publish' and gets 403.",
+   "branches": [
+    "403 -> editor keeps text with role message",
+    "network -> not saved"
+   ],
+   "conditions": "Role member.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 366
+    },
+    {
+     "path": "src/app/api/tasks/[id]/route.ts",
+     "line": 20,
+     "end_line": 46
+    },
+    {
+     "path": "src/app/api/tasks/[id]/route.ts",
+     "line": 56,
+     "end_line": 60
+    }
+   ],
+   "next": [
+    "publish-decisions"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-reject",
+   "title": "Reject with reason",
+   "surface": "/{lang}/app (Inbox card)",
+   "actor": "any-signed-in",
+   "action": "Clicks 'Reject' on a Waiting or Approved card (published ones too), optionally types a reason in 'Why? (Noor learns from this)', and clicks 'Reject' (or Cancel).",
+   "ui_response": "The card shows Rejected and leaves the Waiting filter. The Reject button is hidden on rejected cards. An admin can still approve the item later. A post already on a platform stays there.",
+   "system_reaction": "PATCH {status:'rejected', note} needs only the 'drafts' role, so a member can reject an approved item. It sets decidedAt, runs track('reject') and records a 'reject' decision with the note (first 300 characters). With learning on and a reason typed, 'Owner rejected a <type> item (<channel>). Reason: ...' goes to prefs:{scope} and preferences.md, and is filtered per agent into later prompts. A rejected item can never be published (409 rejected_item).",
+   "branches": [
+    "403 / network -> old card restored with message"
+   ],
+   "conditions": "Any role.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 385,
+     "end_line": 393
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 401
+    },
+    {
+     "path": "src/app/api/tasks/[id]/route.ts",
+     "line": 56,
+     "end_line": 65
+    },
+    {
+     "path": "src/app/api/tasks/[id]/route.ts",
+     "line": 87,
+     "end_line": 105
+    },
+    {
+     "path": "src/lib/brand.ts",
+     "line": 378,
+     "end_line": 396
+    },
+    {
+     "path": "src/app/api/publish/[id]/route.ts",
+     "line": 29
+    },
+    {
+     "path": "src/app/api/publish/[id]/route.ts",
+     "line": 45
+    }
+   ],
+   "next": [
+    "publish-decisions"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-schedule",
+   "title": "Set a publish date",
+   "surface": "/{lang}/app (Inbox card, 'Publish date')",
+   "actor": "any-signed-in",
+   "action": "Picks a date in the card's 'Publish date' field, or clears it.",
+   "ui_response": "The date stays on the card, the journey card ticks 'schedule', and the calendar shows the item on that day (rejected items excepted).",
+   "system_reaction": "PATCH {scheduledFor:'YYYY-MM-DD'|null} needs the 'drafts' role. A value in any other format is ignored. Nothing publishes automatically. The daily cron (05:00 UTC) sends a notification about approved, unpublished items due today or tomorrow.",
+   "branches": [
+    "cleared -> date removed"
+   ],
+   "conditions": "Any role.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 432,
+     "end_line": 435
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 204
+    },
+    {
+     "path": "src/app/api/tasks/[id]/route.ts",
+     "line": 47,
+     "end_line": 48
+    },
+    {
+     "path": "src/components/app/CalendarPanel.tsx",
+     "line": 30,
+     "end_line": 32
+    },
+    {
+     "path": "src/lib/notifications.ts",
+     "line": 142,
+     "end_line": 146
+    }
+   ],
+   "next": [
+    "publish-daily-reminders",
+    "publish-to-platform"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-copy-share",
+   "title": "Copy or share text",
+   "surface": "/{lang}/app (Inbox card)",
+   "actor": "any-signed-in",
+   "action": "Clicks Copy, Share, or Collapse/Expand.",
+   "ui_response": "Copy puts the (edited) text on the clipboard and shows 'Copied' for 1.5 s. Share opens the device's share sheet with the title and text. Without a share sheet, or when the sheet is cancelled, a new tab opens wa.me with that text. Collapse hides the body, and Expand shows it again.",
+   "system_reaction": "Browser only. Nothing is recorded and the item's status does not change.",
+   "branches": [
+    "no share sheet or cancelled -> wa.me link"
+   ],
+   "conditions": "None.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 166,
+     "end_line": 170
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 378,
+     "end_line": 382
+    }
+   ],
+   "next": [
+    "publish-read-card"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-copy-adcode",
+   "title": "Copy the ad code",
+   "surface": "/{lang}/app (Inbox card, ads and social items)",
+   "actor": "any-signed-in",
+   "action": "Clicks the copy icon on the 'Ad code NSR-XXXXX' chip.",
+   "ui_response": "The chip's hover hint reads 'Put it in the ad's name in your ads manager, and Noor measures its results when they come in.' The copy icon turns into a check mark for 1.5 s.",
+   "system_reaction": "saveTask assigned the code when the item was created, using letters and digits that cannot be confused, and indexed it in adcodes:{scope}. When campaign results arrive by CSV or from a connected ad account, rows whose names carry a code of this workspace are matched to the item (codesIn).",
+   "branches": [],
+   "conditions": "Item type ads or social, created with a code.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 409,
+     "end_line": 415
+    },
+    {
+     "path": "src/lib/ad-codes.ts",
+     "line": 11,
+     "end_line": 27
+    },
+    {
+     "path": "src/lib/brand.ts",
+     "line": 102,
+     "end_line": 103
+    },
+    {
+     "path": "src/lib/brand.ts",
+     "line": 260,
+     "end_line": 275
+    },
+    {
+     "path": "src/lib/perf-import.ts",
+     "line": 299
+    }
+   ],
+   "next": [
+    "publish-read-card"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-decisions",
+   "title": "Decisions recorded",
+   "surface": "Background (decisions:{scope}, prefs:{scope}, preferences.md)",
+   "actor": "system",
+   "action": "Runs after every approve, reject, edit or reopen, and after an inbox publish that approved a pending item.",
+   "ui_response": "Nothing on screen. Later drafts from the agents follow the owner's edits and reasons while 'Learn from your edits' is on in Governance (on by default).",
+   "system_reaction": "Each decision record is appended to decisions:{scope}, keeping the newest 500, whatever the learning setting. A record holds the task, the agent from the item type, type, channel, action, time, title, note, editPct, who decided (taken from the session), and the judge's score and autofail code. Each record except a publish also adds a 'decision' row to the activity log; the publish route writes its own 'published' row for every post. Preference notes are written only while learning is on, to prefs:{scope} (newest 100) and preferences.md, and are read per agent into prompts. Routines read the decisions, and the per-agent feedback reads them only when learning is on. Auto-approvals and publishes of already-approved items are not recorded.",
+   "branches": [
+    "learning off -> records only, no preference notes"
+   ],
+   "conditions": "None.",
+   "sources": [
+    {
+     "path": "src/lib/decisions.ts",
+     "line": 7,
+     "end_line": 17
+    },
+    {
+     "path": "src/lib/decisions.ts",
+     "line": 46,
+     "end_line": 57
+    },
+    {
+     "path": "src/lib/decisions.ts",
+     "line": 59,
+     "end_line": 68
+    },
+    {
+     "path": "src/app/api/tasks/[id]/route.ts",
+     "line": 87,
+     "end_line": 106
+    },
+    {
+     "path": "src/app/api/publish/[id]/route.ts",
+     "line": 50,
+     "end_line": 56
+    },
+    {
+     "path": "src/lib/brand.ts",
+     "line": 378,
+     "end_line": 396
+    },
+    {
+     "path": "src/lib/governance.ts",
+     "line": 12
+    },
+    {
+     "path": "src/lib/routines.ts",
+     "line": 72,
+     "end_line": 78
+    },
+    {
+     "path": "src/lib/feedback.ts",
+     "line": 38,
+     "end_line": 56
+    },
+    {
+     "path": "src/lib/db.ts",
+     "line": 423
+    }
+   ],
+   "next": [
+    "publish-daily-reminders"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-daily-reminders",
+   "title": "Daily inbox reminders",
+   "surface": "Bell notifications and the daily e-mail",
+   "actor": "system",
+   "action": "The daily cron runs at 05:00 UTC for each workspace.",
+   "ui_response": "Bell notifications can include: 'N item(s) due today or tomorrow' with 'Publish now; nothing goes out automatically: <titles>', linking to the calendar; 'N item(s) waiting for you for over 2 days' with 'Approve or reject with a reason; Noor learns from your decision.', linking to the inbox; and 'N item(s) scored below 70' with the judge's note and 'Regenerate with a clearer note or edit before approving.', linking to the inbox. On an account with several brands the due and waiting titles end with the brand's name. Reem's overdue to-do notices come in the same run, and low-credit and trial-ending notices come the same way. The same follow-ups are also e-mailed, inside Noor's brief or on their own, depending on the e-mail preference.",
+   "system_reaction": "followUps(user, scope) reads the light task index and pushes notifications, deduplicated by fingerprint, unless follow-ups are switched off in the schedule. The daily route then sends the brief e-mail with the follow-ups attached (preference 'all', or 'important' when an item waits for a decision, a follow-up fired or a to-do is overdue or due today), or a follow-up-only e-mail titled 'Follow-up from your Thakeen team' when there is no brief (unless the preference is 'none').",
+   "branches": [
+    "follow-ups off -> none",
+    "e-mail preference none -> bell only"
+   ],
+   "conditions": "Due, stale or weak items exist.",
+   "sources": [
+    {
+     "path": "src/lib/notifications.ts",
+     "line": 127,
+     "end_line": 168
+    },
+    {
+     "path": "src/app/api/cron/daily/route.ts",
+     "line": 108,
+     "end_line": 119
+    },
+    {
+     "path": "vercel.json",
+     "line": 4
+    }
+   ],
+   "next": [
+    "publish-open-inbox"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-milestone-toast",
+   "stage": "publish",
+   "title": "Milestone celebration",
+   "surface": "JourneyCard on /{lang}/app and /{lang}/app/chat",
+   "actor": "any-signed-in",
+   "action": "Reaches a launch-path milestone: approves an item, sets a publish date or publishes from the inbox, or finishes a milestone elsewhere (brand file, guard word, connection, AI link) and then sees the card.",
+   "ui_response": "A confetti burst and a toast 'Milestone unlocked: {milestone}' for about 3.6 s. A level change shows 'Level up: Sapling', 'Level up: Palm' or 'Level up: Oasis' instead. On the first visit in a browser, only the brand milestone is celebrated. Under prefers-reduced-motion there is no confetti or animation.",
+   "system_reaction": "After a successful approve, date or publish, the inbox dispatches nashr:milestone so the card updates before the next server render. The card compares the done set and the level with localStorage nashr:journey:v1 and writes them back; if storage fails, a celebration may repeat. Points and levels are cosmetic and buy nothing.",
+   "branches": [
+    "level up",
+    "private window: may repeat",
+    "reduced motion: no animation"
+   ],
+   "conditions": "Launch path card shown and not yet complete.",
+   "sources": [
+    {
+     "path": "src/components/app/JourneyCard.tsx",
+     "line": 42,
+     "end_line": 50
+    },
+    {
+     "path": "src/components/app/JourneyCard.tsx",
+     "line": 81,
+     "end_line": 110
+    },
+    {
+     "path": "src/components/app/JourneyCard.tsx",
+     "line": 124,
+     "end_line": 128
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 106
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 203,
+     "end_line": 204
+    },
+    {
+     "path": "src/app/globals.css",
+     "line": 187,
+     "end_line": 197
+    }
+   ],
+   "next": [
+    "publish-journey-card"
+   ],
+   "verified": true
+  }
+ ]
+}

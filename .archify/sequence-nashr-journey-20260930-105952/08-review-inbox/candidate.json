@@ -1,0 +1,1023 @@
+{
+ "schema_version": 1,
+ "diagram_type": "sequence",
+ "meta": {
+  "title": "Review: the approval inbox",
+  "locale": "en",
+  "output": ".archify/sequence-nashr-journey-20260930-105952/08-review-inbox/08-review-inbox.html",
+  "quality_profile": "showcase",
+  "column_fit": "spread",
+  "repository": {
+   "url": "https://github.com/iAbulkhair/Nashr.git",
+   "provider": "github",
+   "link_mode": "web",
+   "revision": "f0e7fdecf7d70d8c60ba76650f22440433926add"
+  }
+ },
+ "participants": [
+  {
+   "id": "person",
+   "type": "external",
+   "label": "Person",
+   "sublabel": "owner or team",
+   "sources": [
+    {
+     "path": "src/lib/roles.ts",
+     "line": 51,
+     "end_line": 52
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 83
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 57,
+     "end_line": 63
+    }
+   ]
+  },
+  {
+   "id": "page",
+   "type": "frontend",
+   "label": "Browser page",
+   "sublabel": "what they see",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 213,
+     "end_line": 228
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 256,
+     "end_line": 281
+    },
+    {
+     "path": "src/components/app/JourneyCard.tsx",
+     "line": 81,
+     "end_line": 110
+    }
+   ]
+  },
+  {
+   "id": "checks",
+   "type": "security",
+   "label": "Checks in code",
+   "sublabel": "auth · roles · limits",
+   "sources": [
+    {
+     "path": "src/app/api/tasks/[id]/route.ts",
+     "line": 15,
+     "end_line": 46
+    },
+    {
+     "path": "src/lib/brand-rules.ts",
+     "line": 136,
+     "end_line": 183
+    },
+    {
+     "path": "src/lib/judge.ts",
+     "line": 141,
+     "end_line": 157
+    }
+   ]
+  },
+  {
+   "id": "server",
+   "type": "backend",
+   "label": "Nashr server",
+   "sublabel": "API routes",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/page.tsx",
+     "line": 17,
+     "end_line": 30
+    },
+    {
+     "path": "src/app/api/tasks/[id]/route.ts",
+     "line": 56,
+     "end_line": 81
+    },
+    {
+     "path": "src/app/api/tasks/route.ts",
+     "line": 6,
+     "end_line": 13
+    }
+   ]
+  },
+  {
+   "id": "agents",
+   "type": "backend",
+   "label": "AI agents",
+   "sublabel": "model paused now",
+   "sources": [
+    {
+     "path": "src/lib/judge.ts",
+     "line": 89,
+     "end_line": 129
+    },
+    {
+     "path": "src/lib/judge.ts",
+     "line": 33,
+     "end_line": 44
+    },
+    {
+     "path": "src/lib/model.ts",
+     "line": 15
+    }
+   ]
+  },
+  {
+   "id": "store",
+   "type": "database",
+   "label": "Redis",
+   "sublabel": "account data",
+   "sources": [
+    {
+     "path": "src/lib/decisions.ts",
+     "line": 46,
+     "end_line": 57
+    },
+    {
+     "path": "src/lib/brand.ts",
+     "line": 378,
+     "end_line": 396
+    },
+    {
+     "path": "src/lib/db.ts",
+     "line": 423
+    }
+   ]
+  },
+  {
+   "id": "cron",
+   "type": "cloud",
+   "label": "Scheduled jobs",
+   "sublabel": "Vercel cron",
+   "sources": [
+    {
+     "path": "vercel.json",
+     "line": 4
+    },
+    {
+     "path": "src/app/api/cron/daily/route.ts",
+     "line": 108,
+     "end_line": 119
+    },
+    {
+     "path": "src/lib/notifications.ts",
+     "line": 127,
+     "end_line": 168
+    }
+   ]
+  }
+ ],
+ "segments": [
+  {
+   "from": 156,
+   "to": 736,
+   "label": "Open the inbox"
+  },
+  {
+   "from": 762,
+   "to": 1698,
+   "label": "Cards and the judge"
+  },
+  {
+   "from": 1724,
+   "to": 2252,
+   "label": "Guards and approve"
+  },
+  {
+   "from": 2278,
+   "to": 3110,
+   "label": "Edit and reject"
+  },
+  {
+   "from": 3136,
+   "to": 3482,
+   "label": "Dates and copying"
+  },
+  {
+   "from": 3508,
+   "to": 3994,
+   "label": "Records and reminders"
+  }
+ ],
+ "messages": [
+  {
+   "id": "publish-open-inbox--do",
+   "from": "person",
+   "to": "page",
+   "y": 186,
+   "label": "Open the app home (inbox)",
+   "variant": "emphasis",
+   "note": "From the sidebar, a notification, Reem's to-do, chat's Waiting or 'Read the notes', or a new batch"
+  },
+  {
+   "id": "publish-open-inbox--render",
+   "from": "page",
+   "to": "server",
+   "y": 228,
+   "label": "Render /{lang}/app",
+   "variant": "emphasis"
+  },
+  {
+   "id": "publish-open-inbox--auth",
+   "from": "server",
+   "to": "checks",
+   "y": 256,
+   "label": "Signed in? Brand file?",
+   "variant": "security"
+  },
+  {
+   "id": "publish-open-inbox--redirect",
+   "from": "server",
+   "to": "page",
+   "y": 284,
+   "label": "Redirect to login or start",
+   "variant": "security",
+   "note": "Signed out → /{lang}/app/login · no brand file → /{lang}/app/start"
+  },
+  {
+   "id": "publish-open-inbox--read",
+   "from": "server",
+   "to": "store",
+   "y": 326,
+   "label": "Promise.all read under sc(u)",
+   "variant": "default",
+   "note": "Tasks, brief, connections, journey, switched-off media models"
+  },
+  {
+   "id": "publish-open-inbox--props",
+   "from": "server",
+   "to": "page",
+   "y": 368,
+   "label": "Inbox data, canPublish, paused",
+   "variant": "return",
+   "note": "paused = modelState() !== 'on', true while CLAUDE_PAUSED; no model call"
+  },
+  {
+   "id": "publish-open-inbox--badge",
+   "from": "page",
+   "to": "server",
+   "y": 410,
+   "label": "GET /api/tasks?count=pending",
+   "variant": "default",
+   "note": "Sidebar badge; fetched again on 'nashr:pending-changed'"
+  },
+  {
+   "id": "publish-open-inbox--see",
+   "from": "page",
+   "to": "person",
+   "y": 452,
+   "label": "Inbox on Waiting, pending badge",
+   "variant": "return",
+   "note": "Empty: 'Nothing waiting. Ask Noor for a first batch.' + 'Ask for a new batch'"
+  },
+  {
+   "id": "publish-filter-tabs--do",
+   "from": "person",
+   "to": "page",
+   "y": 504,
+   "label": "Pick Waiting/Approved/Rejected/All",
+   "variant": "default"
+  },
+  {
+   "id": "publish-filter-tabs--see",
+   "from": "page",
+   "to": "person",
+   "y": 532,
+   "label": "Only that status, grouped by day",
+   "variant": "return",
+   "note": "Browser only, no request"
+  },
+  {
+   "id": "publish-chat-tab--do",
+   "from": "person",
+   "to": "page",
+   "y": 584,
+   "label": "Click the 'Chat' tab",
+   "variant": "default"
+  },
+  {
+   "id": "publish-chat-tab--see",
+   "from": "page",
+   "to": "person",
+   "y": 612,
+   "label": "Goes to /{lang}/app/chat",
+   "variant": "return"
+  },
+  {
+   "id": "publish-journey-card--do",
+   "from": "person",
+   "to": "page",
+   "y": 664,
+   "label": "Hide the journey card, or 'Start'",
+   "variant": "default",
+   "note": "Or click a milestone; the 'Show path' pill shows it again"
+  },
+  {
+   "id": "publish-journey-card--see",
+   "from": "page",
+   "to": "person",
+   "y": 706,
+   "label": "'Show path' pill, or that page",
+   "variant": "return",
+   "note": "Hidden flag kept in localStorage nashr:journey:v1"
+  },
+  {
+   "id": "publish-read-card--do",
+   "from": "person",
+   "to": "page",
+   "y": 792,
+   "label": "Read an item card",
+   "variant": "emphasis",
+   "note": "Brand pill from gateTask in the browser; text rendered through render()"
+  },
+  {
+   "id": "publish-read-card--see",
+   "from": "page",
+   "to": "person",
+   "y": 834,
+   "label": "Status, Quality NN, text, count",
+   "variant": "return",
+   "note": "Quality green ≥85, amber ≥70, red below; items made while paused: no chip; pills wrap on a phone"
+  },
+  {
+   "id": "publish-origin-chips--do",
+   "from": "person",
+   "to": "page",
+   "y": 886,
+   "label": "Read the card header",
+   "variant": "default",
+   "note": "Pill from MCP save_draft or from one of Majed's handoffs"
+  },
+  {
+   "id": "publish-origin-chips--see",
+   "from": "page",
+   "to": "person",
+   "y": 928,
+   "label": "Origin pill, maybe a chat link",
+   "variant": "return",
+   "note": "'unreviewed · written outside Thakeen' · \"from Majed's handoff\" links to /{lang}/app/chat?conv=<id>; browser only"
+  },
+  {
+   "id": "publish-auto-approved--status",
+   "from": "server",
+   "to": "checks",
+   "y": 980,
+   "label": "initialStatus: auto-approve + gate",
+   "variant": "security",
+   "note": "'approved' only if Governance auto-approve is on, no other agent flagged it and gateTask finds nothing"
+  },
+  {
+   "id": "publish-auto-approved--save",
+   "from": "server",
+   "to": "store",
+   "y": 1022,
+   "label": "saveTask keeps pending set in step",
+   "variant": "dashed",
+   "note": "No decision record; decidedAt stays empty; MCP save_draft always pending"
+  },
+  {
+   "id": "publish-auto-approved--see",
+   "from": "page",
+   "to": "person",
+   "y": 1064,
+   "label": "Under Approved, not in the badge",
+   "variant": "return",
+   "note": "Breaks a brand rule → arrives in Waiting, held with the rule named"
+  },
+  {
+   "id": "publish-judge-scores--judge",
+   "from": "server",
+   "to": "agents",
+   "y": 1116,
+   "label": "judgeLater: score the saved batch",
+   "variant": "default",
+   "note": "Model paused since 2026-09-28: scoreItems returns [] before any call"
+  },
+  {
+   "id": "publish-judge-scores--verdict",
+   "from": "agents",
+   "to": "server",
+   "y": 1158,
+   "label": "Scores + automatic-fail code",
+   "variant": "return"
+  },
+  {
+   "id": "publish-judge-scores--cap",
+   "from": "server",
+   "to": "checks",
+   "y": 1186,
+   "label": "Autofail caps the score at 60",
+   "variant": "security",
+   "note": "Honesty capped at 40, enforced in code; no usable verdict → unscored"
+  },
+  {
+   "id": "publish-judge-scores--write",
+   "from": "server",
+   "to": "store",
+   "y": 1228,
+   "label": "Write scores under the task lock",
+   "variant": "dashed",
+   "note": "Usage metered as 'judge'; batch mean and autofail codes go to the activity log"
+  },
+  {
+   "id": "publish-judge-scores--bell",
+   "from": "server",
+   "to": "page",
+   "y": 1270,
+   "label": "Bell: 'N of M ... scored below 70'",
+   "variant": "return",
+   "note": "Only if an item scored below 70; judge's note; links to the inbox"
+  },
+  {
+   "id": "publish-judge-scores--see",
+   "from": "page",
+   "to": "person",
+   "y": 1312,
+   "label": "Quality NN chip at the next load",
+   "variant": "return",
+   "note": "While paused: no batch, so no score and no alert"
+  },
+  {
+   "id": "publish-judge-veto--check",
+   "from": "server",
+   "to": "checks",
+   "y": 1364,
+   "label": "Autofail on an auto-approved item?",
+   "variant": "security",
+   "note": "Autofail, approved, no decidedAt, never published; human approvals untouched"
+  },
+  {
+   "id": "publish-judge-veto--write",
+   "from": "server",
+   "to": "store",
+   "y": 1406,
+   "label": "Status back to pending",
+   "variant": "dashed"
+  },
+  {
+   "id": "publish-judge-veto--see",
+   "from": "page",
+   "to": "person",
+   "y": 1434,
+   "label": "Back in Waiting + bell notice",
+   "variant": "return",
+   "note": "'N auto-approved ... sent back to your inbox'; never while paused"
+  },
+  {
+   "id": "publish-cross-review--review",
+   "from": "server",
+   "to": "agents",
+   "y": 1486,
+   "label": "Cross-agent review (Razan, Majed)",
+   "variant": "default",
+   "note": "Notes only; skipped with under 60 s left; none while paused"
+  },
+  {
+   "id": "publish-cross-review--verdict",
+   "from": "agents",
+   "to": "server",
+   "y": 1528,
+   "label": "Verdict per reviewer: ok or flag",
+   "variant": "return",
+   "note": "Notes cut to 300 chars; never the author, never Reem; none for MCP save_draft drafts"
+  },
+  {
+   "id": "publish-cross-review--hold",
+   "from": "server",
+   "to": "checks",
+   "y": 1570,
+   "label": "A flag holds the item pending",
+   "variant": "security",
+   "note": "Even when the type is auto-approved; the owner can still approve"
+  },
+  {
+   "id": "publish-cross-review--save",
+   "from": "server",
+   "to": "store",
+   "y": 1612,
+   "label": "Save verdicts + 'cross_reviewed' row",
+   "variant": "dashed"
+  },
+  {
+   "id": "publish-cross-review--do",
+   "from": "person",
+   "to": "page",
+   "y": 1640,
+   "label": "Open a card with another agent's review",
+   "variant": "default"
+  },
+  {
+   "id": "publish-cross-review--see",
+   "from": "page",
+   "to": "person",
+   "y": 1668,
+   "label": "Reviewer pills + notes box",
+   "variant": "return",
+   "note": "'Razan: 1 note' · notes shown as text · chat: 'Read the notes in the inbox'"
+  },
+  {
+   "id": "publish-held-card--do",
+   "from": "person",
+   "to": "page",
+   "y": 1754,
+   "label": "See a card that breaks a rule",
+   "variant": "default",
+   "note": "Customer-facing types; gateTask runs in the browser"
+  },
+  {
+   "id": "publish-held-card--see",
+   "from": "page",
+   "to": "person",
+   "y": 1796,
+   "label": "Red 'Held by brand guard' box",
+   "variant": "security",
+   "note": "Names the rule; Approve/Publish disabled; 'Fix the text', 'Brand file'"
+  },
+  {
+   "id": "publish-member-wait--do",
+   "from": "person",
+   "to": "page",
+   "y": 1848,
+   "label": "Member opens the inbox",
+   "variant": "default"
+  },
+  {
+   "id": "publish-member-wait--see",
+   "from": "page",
+   "to": "person",
+   "y": 1876,
+   "label": "No Approve, no 'Publish to'",
+   "variant": "security",
+   "note": "'Waiting for the account owner or an admin to approve...'; edit, reject, date stay"
+  },
+  {
+   "id": "publish-approve--do",
+   "from": "person",
+   "to": "page",
+   "y": 1928,
+   "label": "Click 'Approve'",
+   "variant": "emphasis",
+   "note": "Owner or admin; the card flips to Approved at once (optimistic)"
+  },
+  {
+   "id": "publish-approve--patch",
+   "from": "page",
+   "to": "server",
+   "y": 1970,
+   "label": "PATCH /api/tasks/{id} approved",
+   "variant": "emphasis"
+  },
+  {
+   "id": "publish-approve--role",
+   "from": "server",
+   "to": "checks",
+   "y": 1998,
+   "label": "Session, 'drafts' + 'publish'",
+   "variant": "security",
+   "note": "401 signed out · 403 nothing saved · 404 outside the caller's scope"
+  },
+  {
+   "id": "publish-approve--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 2040,
+   "label": "gateTask on the final text",
+   "variant": "security",
+   "note": "409 brand_violation, nothing saved"
+  },
+  {
+   "id": "publish-approve--save",
+   "from": "server",
+   "to": "store",
+   "y": 2082,
+   "label": "updateTask(sc(u)), decidedAt set",
+   "variant": "dashed"
+  },
+  {
+   "id": "publish-approve--ok",
+   "from": "server",
+   "to": "page",
+   "y": 2110,
+   "label": "Confirmed",
+   "variant": "return",
+   "note": "No credits, no model call: works while paused and after the trial"
+  },
+  {
+   "id": "publish-approve--decision",
+   "from": "server",
+   "to": "store",
+   "y": 2152,
+   "label": "Append 'approve' decision",
+   "variant": "dashed",
+   "note": "After the response; decisions:{scope} with who decided, judge score + autofail code, plus an activity row"
+  },
+  {
+   "id": "publish-approve--see",
+   "from": "page",
+   "to": "person",
+   "y": 2194,
+   "label": "Approved; badge recounts",
+   "variant": "return"
+  },
+  {
+   "id": "publish-approve--refused",
+   "from": "page",
+   "to": "person",
+   "y": 2222,
+   "label": "Card reverts: held box or message",
+   "variant": "security",
+   "note": "409 → held box · 403 'Your role does not allow this.' · else 'not saved'"
+  },
+  {
+   "id": "publish-open-editor--do",
+   "from": "person",
+   "to": "page",
+   "y": 2308,
+   "label": "Click 'Edit' or 'Fix the text'",
+   "variant": "default"
+  },
+  {
+   "id": "publish-open-editor--see",
+   "from": "page",
+   "to": "person",
+   "y": 2336,
+   "label": "Textarea + live brand check",
+   "variant": "return",
+   "note": "Same gateTask as the server; buttons depend on the role"
+  },
+  {
+   "id": "publish-save-admin--do",
+   "from": "person",
+   "to": "page",
+   "y": 2388,
+   "label": "Click 'Save edit' (approves)",
+   "variant": "emphasis",
+   "note": "Live check hits → 'Save without approving' instead"
+  },
+  {
+   "id": "publish-save-admin--patch",
+   "from": "page",
+   "to": "server",
+   "y": 2430,
+   "label": "PATCH {editedBody, status}",
+   "variant": "emphasis"
+  },
+  {
+   "id": "publish-save-admin--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 2458,
+   "label": "Brand gate before approved save",
+   "variant": "security",
+   "note": "409 → the editor reopens with the violations"
+  },
+  {
+   "id": "publish-save-admin--save",
+   "from": "server",
+   "to": "store",
+   "y": 2500,
+   "label": "Store editedBody if it changed",
+   "variant": "dashed",
+   "note": "Cut to 20,000 chars; approved → decidedAt set, so no judge veto"
+  },
+  {
+   "id": "publish-save-admin--decision",
+   "from": "server",
+   "to": "store",
+   "y": 2542,
+   "label": "'edit' decision with editPct",
+   "variant": "dashed",
+   "note": "When the text changed; plus 'approve' or 'reopen' on a status change"
+  },
+  {
+   "id": "publish-save-admin--learn",
+   "from": "server",
+   "to": "store",
+   "y": 2584,
+   "label": "Learning note to prefs:{scope}",
+   "variant": "dashed",
+   "note": "Only with learning on; newest 100; also appended to preferences.md"
+  },
+  {
+   "id": "publish-save-admin--see",
+   "from": "page",
+   "to": "person",
+   "y": 2626,
+   "label": "New text with Approved badge",
+   "variant": "return",
+   "note": "'Save without approving' → Waiting instead"
+  },
+  {
+   "id": "publish-save-admin--refused",
+   "from": "page",
+   "to": "person",
+   "y": 2668,
+   "label": "Editor stays open, text kept",
+   "variant": "security",
+   "note": "409 → violations listed · 403 or network → message in the editor"
+  },
+  {
+   "id": "publish-save-member--do",
+   "from": "person",
+   "to": "page",
+   "y": 2720,
+   "label": "Member clicks 'Save edit'",
+   "variant": "default",
+   "note": "Approved item: 'Save and send back for review'"
+  },
+  {
+   "id": "publish-save-member--patch",
+   "from": "page",
+   "to": "server",
+   "y": 2762,
+   "label": "PATCH {editedBody} (+ pending)",
+   "variant": "default"
+  },
+  {
+   "id": "publish-save-member--role",
+   "from": "server",
+   "to": "checks",
+   "y": 2790,
+   "label": "Needs only the 'drafts' role",
+   "variant": "security",
+   "note": "No brand gate; approved on the server meanwhile → 403"
+  },
+  {
+   "id": "publish-save-member--save",
+   "from": "server",
+   "to": "store",
+   "y": 2832,
+   "label": "Save; approved → 'reopen'",
+   "variant": "dashed",
+   "note": "decidedAt cleared; edit record and learning note as for an admin"
+  },
+  {
+   "id": "publish-save-member--see",
+   "from": "page",
+   "to": "person",
+   "y": 2874,
+   "label": "Card shows the new text",
+   "variant": "return",
+   "note": "Approved item → Waiting for an admin · 403/network: text kept + message"
+  },
+  {
+   "id": "publish-reject--do",
+   "from": "person",
+   "to": "page",
+   "y": 2926,
+   "label": "'Reject', optional 'Why?' reason",
+   "variant": "default",
+   "note": "On Waiting or Approved cards, published ones too"
+  },
+  {
+   "id": "publish-reject--patch",
+   "from": "page",
+   "to": "server",
+   "y": 2968,
+   "label": "PATCH {status:'rejected', note}",
+   "variant": "default"
+  },
+  {
+   "id": "publish-reject--role",
+   "from": "server",
+   "to": "checks",
+   "y": 2996,
+   "label": "Needs only the 'drafts' role",
+   "variant": "security",
+   "note": "Any role, so a member can reject an approved item"
+  },
+  {
+   "id": "publish-reject--save",
+   "from": "server",
+   "to": "store",
+   "y": 3038,
+   "label": "decidedAt + 'reject' decision",
+   "variant": "dashed",
+   "note": "Note: first 300 chars; reason → prefs:{scope} if learning is on"
+  },
+  {
+   "id": "publish-reject--see",
+   "from": "page",
+   "to": "person",
+   "y": 3080,
+   "label": "Card shows Rejected",
+   "variant": "return",
+   "note": "A post already on a platform stays · 403/network → old card back"
+  },
+  {
+   "id": "publish-schedule--do",
+   "from": "person",
+   "to": "page",
+   "y": 3166,
+   "label": "Pick or clear 'Publish date'",
+   "variant": "default"
+  },
+  {
+   "id": "publish-schedule--patch",
+   "from": "page",
+   "to": "server",
+   "y": 3194,
+   "label": "PATCH {scheduledFor}",
+   "variant": "default",
+   "note": "'YYYY-MM-DD' or null; other formats ignored"
+  },
+  {
+   "id": "publish-schedule--role",
+   "from": "server",
+   "to": "checks",
+   "y": 3236,
+   "label": "Needs the 'drafts' role",
+   "variant": "security"
+  },
+  {
+   "id": "publish-schedule--save",
+   "from": "server",
+   "to": "store",
+   "y": 3264,
+   "label": "Save the date",
+   "variant": "dashed"
+  },
+  {
+   "id": "publish-schedule--see",
+   "from": "page",
+   "to": "person",
+   "y": 3292,
+   "label": "Date on the card and calendar",
+   "variant": "return",
+   "note": "Nothing publishes automatically; journey ticks 'schedule'"
+  },
+  {
+   "id": "publish-copy-share--do",
+   "from": "person",
+   "to": "page",
+   "y": 3344,
+   "label": "Copy, Share or Collapse",
+   "variant": "default"
+  },
+  {
+   "id": "publish-copy-share--see",
+   "from": "page",
+   "to": "person",
+   "y": 3372,
+   "label": "'Copied' or the share sheet",
+   "variant": "return",
+   "note": "No sheet or cancelled → wa.me tab; nothing recorded"
+  },
+  {
+   "id": "publish-copy-adcode--do",
+   "from": "person",
+   "to": "page",
+   "y": 3424,
+   "label": "Copy the 'Ad code NSR-XXXXX'",
+   "variant": "default"
+  },
+  {
+   "id": "publish-copy-adcode--see",
+   "from": "page",
+   "to": "person",
+   "y": 3452,
+   "label": "Check mark for 1.5 s",
+   "variant": "return",
+   "note": "Hint: put it in the ad's name; result rows with it match (codesIn)"
+  },
+  {
+   "id": "publish-decisions--append",
+   "from": "server",
+   "to": "store",
+   "y": 3538,
+   "label": "Append to decisions:{scope}",
+   "variant": "dashed",
+   "note": "Approve, reject, edit, reopen · newest 500 · even with learning off · plus an activity row"
+  },
+  {
+   "id": "publish-decisions--prefs",
+   "from": "server",
+   "to": "store",
+   "y": 3580,
+   "label": "Preference notes if learning on",
+   "variant": "dashed",
+   "note": "prefs:{scope} (newest 100) and preferences.md"
+  },
+  {
+   "id": "publish-decisions--prompts",
+   "from": "server",
+   "to": "agents",
+   "y": 3622,
+   "label": "Notes read per agent into prompts",
+   "variant": "default",
+   "note": "Routines read decisions; feedback only with learning on"
+  },
+  {
+   "id": "publish-decisions--see",
+   "from": "page",
+   "to": "person",
+   "y": 3664,
+   "label": "Later drafts follow your edits",
+   "variant": "return",
+   "note": "Nothing on screen; 'Learn from your edits' is on by default"
+  },
+  {
+   "id": "publish-daily-reminders--run",
+   "from": "cron",
+   "to": "server",
+   "y": 3716,
+   "label": "Daily run, 05:00 UTC",
+   "variant": "default"
+  },
+  {
+   "id": "publish-daily-reminders--read",
+   "from": "server",
+   "to": "store",
+   "y": 3744,
+   "label": "followUps reads the task index",
+   "variant": "default",
+   "note": "Due today/tomorrow, waiting over 2 days, below 70, Reem's overdue to-dos"
+  },
+  {
+   "id": "publish-daily-reminders--bell",
+   "from": "server",
+   "to": "page",
+   "y": 3786,
+   "label": "Push bell notifications",
+   "variant": "return",
+   "note": "Deduped by fingerprint; none if follow-ups are off"
+  },
+  {
+   "id": "publish-daily-reminders--see",
+   "from": "page",
+   "to": "person",
+   "y": 3828,
+   "label": "Due, waiting, below-70 notices",
+   "variant": "return",
+   "note": "Due → calendar · waiting over 2 days, below 70 → inbox · brand name on multi-brand accounts"
+  },
+  {
+   "id": "publish-daily-reminders--email",
+   "from": "server",
+   "to": "person",
+   "y": 3870,
+   "label": "Same follow-ups by e-mail",
+   "variant": "return",
+   "note": "In the brief ('all', 'important') or alone as 'Follow-up from your Thakeen team'; 'none' → bell only"
+  },
+  {
+   "id": "publish-milestone-toast--do",
+   "from": "person",
+   "to": "page",
+   "y": 3922,
+   "label": "Reach a launch-path milestone",
+   "variant": "default",
+   "note": "Approve, date or publish here, or a milestone elsewhere"
+  },
+  {
+   "id": "publish-milestone-toast--see",
+   "from": "page",
+   "to": "person",
+   "y": 3964,
+   "label": "Confetti + 'Milestone unlocked'",
+   "variant": "return",
+   "note": "About 3.6 s; 'Level up' on a new level; reduced motion: no animation"
+  }
+ ],
+ "cards": [
+  {
+   "dot": "rose",
+   "title": "Refusals and limits",
+   "items": [
+    "Approve: 401 signed out; 403 without 'publish' or 409 brand_violation, nothing saved; 404 outside scope",
+    "Publish applies a stricter brand gate (409): no placeholder or direction of any kind passes",
+    "A rejected item can never be published (409 rejected_item)",
+    "Chat publish_item refuses auto-approved items; the owner publishes them from the inbox",
+    "A model can withhold an approval but never grant one",
+    "Another agent's flag keeps an item in Waiting, even for an auto-approved type"
+   ]
+  },
+  {
+   "dot": "cyan",
+   "title": "Who can do this",
+   "items": [
+    "Owner or admin: approve, and save an edit that approves",
+    "Any role ('drafts'): edit, reject and set a publish date",
+    "A member has no Approve or Publish to; the server refuses both with 403 anyway",
+    "A member's edit of an approved item sends it back to Waiting as 'reopen'",
+    "Auto-approve per type is switched on by the owner in Governance"
+   ]
+  },
+  {
+   "dot": "amber",
+   "title": "While the model is paused",
+   "items": [
+    "Model calls are paused since 2026-09-28; paused is true while CLAUDE_PAUSED",
+    "/api/generate refuses with 503 model_paused before charging, so no new batch",
+    "No Quality score, no below-70 alert, no judge veto and no other-agent notes while paused",
+    "Approving needs no credits and no model call, so it works while paused and after the trial ends"
+   ]
+  }
+ ]
+}

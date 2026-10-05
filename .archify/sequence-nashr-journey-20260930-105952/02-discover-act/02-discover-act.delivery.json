@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "f7041cb2-0327-4d59-9eb1-7356b87e8012",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/02-discover-act/candidate.json",
+  "output": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/02-discover-act/02-discover-act.html",
+  "specification": {
+    "sha256": "4105ccdf16decebe7fca0678be1b7e32592fac3fb823712301be882d975f5e56",
+    "bytes": 26318
+  },
+  "artifact": {
+    "sha256": "f311a4422290e925faf8c1a8156610eae0b98a1474ad87f35e3e6edbdf0d76a1",
+    "bytes": 841994
+  }
+}

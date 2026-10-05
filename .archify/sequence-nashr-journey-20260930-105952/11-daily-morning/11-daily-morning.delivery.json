@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "59e8dd24-0153-4d2c-93e0-3f1d07fd53b6",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/11-daily-morning/candidate.json",
+  "output": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/11-daily-morning/11-daily-morning.html",
+  "specification": {
+    "sha256": "2d624a1923cc2dc6759dd4596f2cd7c51887b8cde3a507464bdaf59d764ffe43",
+    "bytes": 27772
+  },
+  "artifact": {
+    "sha256": "b82240cf3c41626e42d03095520d8fafe56fa18554d8a897609c10a9e7d97fcd",
+    "bytes": 837299
+  }
+}

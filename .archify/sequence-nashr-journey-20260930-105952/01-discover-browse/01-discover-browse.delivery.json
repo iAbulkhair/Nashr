@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "d570db02-efbb-4be1-9edd-854f9c8a6520",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/01-discover-browse/candidate.json",
+  "output": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/01-discover-browse/01-discover-browse.html",
+  "specification": {
+    "sha256": "f55f1ce4242f71012793cb7076258243d1a30f0519c54e9f7c9aecede6caab1d",
+    "bytes": 17936
+  },
+  "artifact": {
+    "sha256": "baa2779b4995e6f3fca8c1224ebf714b0c23492919ddc7ce350784305c37d52f",
+    "bytes": 814108
+  }
+}

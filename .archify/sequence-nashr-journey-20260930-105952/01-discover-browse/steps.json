@@ -1,0 +1,906 @@
+{
+ "key": "01-discover-browse",
+ "title": "Discover: land and browse the website",
+ "person": "visitor",
+ "steps": [
+  {
+   "id": "discover-open-root",
+   "title": "Open the site",
+   "surface": "/ (src/proxy.ts)",
+   "actor": "visitor",
+   "action": "Types the bare domain or opens a link to \"/\".",
+   "ui_response": "The browser lands on /ar. It lands on /en instead when the browser's first language is English and the list does not start with Arabic, or on the language the person picked before. Any query string is kept.",
+   "system_reaction": "The proxy reads the nashr_lang cookie, then Accept-Language, defaults to Arabic, and answers 307 to /{lang}. Nothing is stored. The proxy matcher covers only \"/\" and /:lang/app/*, so marketing pages are served without it.",
+   "branches": [
+    "cookie nashr_lang=ar|en wins",
+    "Accept-Language starts with en and not ar → /en",
+    "otherwise → /ar"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/proxy.ts",
+     "line": 5,
+     "end_line": 13
+    },
+    {
+     "path": "src/proxy.ts",
+     "line": 18,
+     "end_line": 24
+    },
+    {
+     "path": "src/proxy.ts",
+     "line": 32
+    }
+   ],
+   "next": [
+    "discover-see-home"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-see-home",
+   "title": "See the home page",
+   "surface": "/{lang}",
+   "actor": "visitor",
+   "action": "Reads the home page and scrolls through it, or follows an anchor link in the nav.",
+   "ui_response": "The page renders right to left in Arabic and left to right in English, under the public name Thakeen (ذكين). In order: the nav (the wordmark, six anchor links: Team, Rules, Your day, How Thakeen works, Plans and Questions, then the language pill, a Log in link and a ghost 'Start free' button); the cover, with an 'Issue No. 1' stamp, the wordmark with 'Smart. Steadfast.' boxed beside it, the offer 'Eight agents who know your brand.' and 'They do the work, you approve.', a hint to hover over or tap a figure, and the lineup of the eight agents and the owner; 'Team rules', four short chats between agents, each pinned with the rule it shows; 'Your day', four panels from 7:58 a.m. to the owner's one word, 'Approved.'; 'What happens after you paste the link?', seven steps (Your brand, Your words, Plan, Draft, Your approval, Analysis, Measurement), each with the line its agent says; 'Plans.' with the Starter, Pro, Business and Agency cards; 'Questions before you start' with three questions; and the footer. While the model is paused, a 'Today:' note sits under steps 1, 3, 4, 5 and 6. There is no URL box on the page: the ways to start are the nav button and the plan buttons.",
+   "system_reaction": "A static server render. src/app/[lang]/page.tsx composes Cover, Rules, Day, Steps, Plans and HomeFaq from the copy in src/lib/home.ts and the dictionary. Steps reads CLAUDE_PAUSED (src/lib/model.ts, currently true, so the notes show) and shows each paused note only while it is true. Plans builds its cards from PUBLIC_TIERS and the dictionary's pricing block, which reads src/lib/pricing.ts, so no price is typed in the page. The title and description come from SITE_DEFAULT (the slogan) in src/lib/page-meta.ts; the language layout adds the base URL, hreflang and share-card fields, and calls notFound() for any prefix other than ar or en. Nothing is read from Redis and no model is called.",
+   "branches": [
+    "unknown language prefix → notFound (404)",
+    "model paused (CLAUDE_PAUSED true) → 'Today:' notes under steps 1, 3, 4, 5, 6",
+    "model turned back on → no notes"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/layout.tsx",
+     "line": 29,
+     "end_line": 48
+    },
+    {
+     "path": "src/app/[lang]/layout.tsx",
+     "line": 50,
+     "end_line": 58
+    },
+    {
+     "path": "src/app/[lang]/page.tsx",
+     "line": 16,
+     "end_line": 39
+    },
+    {
+     "path": "src/components/home/Cover.tsx",
+     "line": 14,
+     "end_line": 51
+    },
+    {
+     "path": "src/components/home/Steps.tsx",
+     "line": 17,
+     "end_line": 90
+    },
+    {
+     "path": "src/lib/home.ts",
+     "line": 235,
+     "end_line": 243
+    },
+    {
+     "path": "src/lib/home.ts",
+     "line": 335,
+     "end_line": 406
+    },
+    {
+     "path": "src/lib/model.ts",
+     "line": 15
+    },
+    {
+     "path": "src/lib/page-meta.ts",
+     "line": 20,
+     "end_line": 23
+    },
+    {
+     "path": "src/lib/i18n.ts",
+     "line": 303
+    }
+   ],
+   "next": [
+    "discover-meet-team",
+    "discover-switch-language",
+    "discover-browse-menus",
+    "discover-read-faq",
+    "discover-view-pricing",
+    "discover-start-free"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-meet-team",
+   "title": "Meet the team in the lineup",
+   "surface": "/{lang} cover (Lineup)",
+   "actor": "visitor",
+   "action": "Hovers over, tabs to or taps one of the nine figures (the eight agents and the owner). May press 'Pause motion', then Escape or a tap elsewhere.",
+   "ui_response": "A thought cloud opens above the figure's head with one of its questions, for example Noor: 'What do I post today?'. Each new hover, focus or tap shows that agent's next question, and the owner's cloud says 'Approved.'. The chosen figure grows from its feet, nothing around it moves, and the name tag stays under it. Under the owner a caption reads '…and this is you. You have one word to say.' A permanent 'AI agents' label discloses what the figures are. A hover lets go 450 ms after the pointer leaves. A tap keeps the figure chosen until it is tapped again, another is chosen, Escape is pressed or the page is tapped elsewhere. Keyboard focus and taps are also read out through a polite live region; a passing mouse is silent. The 'Pause motion' button turns into 'Play motion' and stops the page's drifting drawings.",
+   "system_reaction": "Client only (Lineup.tsx). The questions come from AGENT_CAST in src/lib/home.ts: each maps to a task type its agent really performs, or, for Reem, to her to-do list. They rotate in order, per figure. The motion switch is one in-memory flag in motion.ts, written by the single button in the lineup's head; it sets data-motion=off on the page for this visit and stores nothing. Without JavaScript the button is hidden. No request is sent and no model is called.",
+   "branches": [
+    "pointer or keyboard focus → cloud",
+    "tap → figure stays chosen",
+    "Escape or tap outside → cloud closes",
+    "Pause motion → page motion stops"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/components/home/Lineup.tsx",
+     "line": 31,
+     "end_line": 69
+    },
+    {
+     "path": "src/components/home/Lineup.tsx",
+     "line": 120,
+     "end_line": 190
+    },
+    {
+     "path": "src/components/home/MotionToggle.tsx",
+     "line": 12,
+     "end_line": 20
+    },
+    {
+     "path": "src/components/home/motion.ts",
+     "line": 18,
+     "end_line": 25
+    },
+    {
+     "path": "src/lib/home.ts",
+     "line": 70,
+     "end_line": 178
+    }
+   ],
+   "next": [
+    "discover-view-pricing",
+    "discover-start-free"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-switch-language",
+   "title": "Switch language",
+   "surface": "LangToggle in the nav and footer, every public page",
+   "actor": "visitor",
+   "action": "Clicks عربي or EN in the language pill.",
+   "ui_response": "The same page opens in the other language and keeps the query and the hash. Clicking the language already shown does nothing.",
+   "system_reaction": "Client only. It sets the cookie nashr_lang={lang} for one year (path=/, samesite=lax) and swaps the /ar or /en prefix with router.push. After that, the \"/\" redirect uses the cookie. The pill is a plain link to the swapped path, so a click that lands before the page hydrates follows that link: no cookie is set and the query is dropped.",
+   "branches": [
+    "same language → no-op",
+    "clicked before hydration → plain link, no cookie"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/components/LangToggle.tsx",
+     "line": 7,
+     "end_line": 9
+    },
+    {
+     "path": "src/components/LangToggle.tsx",
+     "line": 12,
+     "end_line": 16
+    },
+    {
+     "path": "src/components/LangToggle.tsx",
+     "line": 22,
+     "end_line": 27
+    },
+    {
+     "path": "src/components/LangToggle.tsx",
+     "line": 33,
+     "end_line": 45
+    },
+    {
+     "path": "src/components/Nav.tsx",
+     "line": 73
+    },
+    {
+     "path": "src/components/Footer.tsx",
+     "line": 39
+    }
+   ],
+   "next": [
+    "discover-see-home"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-browse-menus",
+   "title": "Browse menus and footer",
+   "surface": "Nav and Footer on every public page",
+   "actor": "visitor",
+   "action": "Clicks the wordmark, follows an anchor link on the home page, hovers over or focuses the Agents, Industries and Resources dropdowns on another page, clicks Customers, Agencies or Pricing, opens the mobile menu, or clicks a footer link.",
+   "ui_response": "The wordmark goes to /{lang}. On the home page the desktop nav shows six in-page anchor links in place of the menus: Team, Rules, Your day, How Thakeen works, Plans and Questions, each with a hand-drawn underline on hover or focus. On every other public page it shows: the Agents dropdown (its label links to /{lang}/agents/noor; the menu lists the 8 agents plus 'The whole team', /agents); the Industries dropdown (its label links to /{lang}/customers; the menu lists the 7 industry pages); Customers; Agencies ('الوكالات' in Arabic, opening /{lang}/enterprise); the Resources dropdown (its label goes to /{lang}/resources; the menu lists Blog and guides, Free tools, Help center, 'What is an AI marketing agent?', Affiliate program, and Updates & wishlist); and Pricing. The dropdowns open on hover or keyboard focus without JavaScript. On the right: the language pill, a Log in link (hidden on the narrowest screens) and a ghost 'Start free' button to signup. Below the lg breakpoint a hamburger (a <details> menu) opens a list: on the home page the six anchors first, then the Agents, Industries and Resources groups, then Customers, Agencies, Pricing and Log in. The footer lists every agent (name · role), every industry and every resource, then Customers, Agencies, Pricing, Comparisons (/resources#compare), Privacy and Terms, with the wordmark, a tagline and a language pill.",
+   "system_reaction": "Plain links and in-page anchors. No server call. The anchors come from HOME_NAV (src/lib/home.ts) and are passed to Nav only by the home page. The labels come from SITE[lang].menu.",
+   "branches": [
+    "home page → anchor links replace the desktop menus",
+    "other pages → desktop dropdowns (lg and up)",
+    "mobile hamburger (below lg)"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/components/Nav.tsx",
+     "line": 13,
+     "end_line": 20
+    },
+    {
+     "path": "src/components/Nav.tsx",
+     "line": 23,
+     "end_line": 42
+    },
+    {
+     "path": "src/components/Nav.tsx",
+     "line": 48,
+     "end_line": 71
+    },
+    {
+     "path": "src/components/Nav.tsx",
+     "line": 79,
+     "end_line": 93
+    },
+    {
+     "path": "src/components/Footer.tsx",
+     "line": 15,
+     "end_line": 20
+    },
+    {
+     "path": "src/components/Footer.tsx",
+     "line": 37,
+     "end_line": 40
+    },
+    {
+     "path": "src/lib/home.ts",
+     "line": 246,
+     "end_line": 253
+    },
+    {
+     "path": "src/lib/site.ts",
+     "line": 56
+    },
+    {
+     "path": "src/lib/site.ts",
+     "line": 60
+    }
+   ],
+   "next": [
+    "discover-view-pricing",
+    "discover-browse-agents",
+    "discover-open-agent-page",
+    "discover-open-industry-page",
+    "discover-resources-hub",
+    "discover-customers-page",
+    "discover-enterprise-page",
+    "discover-log-in-link",
+    "discover-read-legal"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-read-faq",
+   "title": "Read the FAQ",
+   "surface": "/{lang}#faq (HomeFaq) and /{lang}/pricing (Faq); FAQ blocks on the industry, comparison and AI-agent pages",
+   "actor": "visitor",
+   "action": "Clicks a question.",
+   "ui_response": "The answer expands under the question. On the home page there are three questions: 'Does anything get published without my approval?', 'I approved… does it go out right away?' and 'What do you do with my data?'. Each has a hand-drawn plus that turns into a minus when open and a bracket beside the answer. On the pricing, industry, comparison and definition pages the + turns 45 degrees and reads as an ×. On the pricing FAQ, 'How much does it cost?' answers: Starter 299, Pro 499, Business 999 SAR, and Agency by contract; a post is 1 credit, an article 2, a board deck 5; chat with the team is included up to the plan's monthly messages (Starter 250, Pro 650, Business 1,300, 30 for the whole trial); when they run out, chat pauses until the 1st (UTC), or on the trial until you pick a plan, unless the owner of a paid plan turns on continuing on credits, where each extra message is charged its real cost, at most 5 credits, and needs at least 5 in the balance; setting up the first brand is free and each added brand from its URL is 9 credits.",
+   "system_reaction": "Native <details> elements. No script and no server call. The home answers are static copy (HOME_FAQ in src/lib/home.ts). The price answer on the pricing FAQ is built from PLAN_PRICE_SAR, TASK_COST, CHAT_ALLOWANCE, the overflow hold (chatOverflowHold) and ONBOARD_EXTRA_BRAND_COST.",
+   "branches": [],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/components/home/HomeFaq.tsx",
+     "line": 12,
+     "end_line": 53
+    },
+    {
+     "path": "src/lib/home.ts",
+     "line": 408,
+     "end_line": 430
+    },
+    {
+     "path": "src/components/home/home.module.css",
+     "line": 891,
+     "end_line": 892
+    },
+    {
+     "path": "src/components/Faq.tsx",
+     "line": 5,
+     "end_line": 20
+    },
+    {
+     "path": "src/components/Faq.tsx",
+     "line": 23,
+     "end_line": 39
+    },
+    {
+     "path": "src/app/[lang]/for/[industry]/page.tsx",
+     "line": 72
+    },
+    {
+     "path": "src/app/[lang]/vs/[competitor]/page.tsx",
+     "line": 66
+    },
+    {
+     "path": "src/app/[lang]/ai-marketing-agent/page.tsx",
+     "line": 86
+    },
+    {
+     "path": "src/lib/i18n.ts",
+     "line": 420
+    }
+   ],
+   "next": [
+    "discover-start-free"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-view-pricing",
+   "title": "View pricing",
+   "surface": "/{lang}/pricing (also the Plans section #price on the home page and the #pricing section on industry pages)",
+   "actor": "visitor",
+   "action": "Opens Pricing from the nav or footer, follows the Plans anchor on the home page, or scrolls to it.",
+   "ui_response": "On /pricing: the headline 'Cheaper than one hire.' with 'Prices in Saudi riyals, excluding VAT. Cancel anytime.', and two badges: '3-day free trial: 50 credits and 30 chat messages — no card' and 'Pay yearly, get two months free (coming soon)'. Four plan cards: Starter 299 SAR/month with 300 credits, 'Unlimited brands, 1 seat' and 250 chat messages a month; Pro 499 with 700 credits, 3 seats and 650 chat messages (highlighted); Business 999 with 1,500 credits reset monthly, 7 seats and 1,300 chat messages, 'For bigger teams and businesses'; Agency 'Contact us', annual billing, 'Custom credits, from 1,500 a month', custom monthly chat messages and 'Seats sized to your team'. Then 'What does each task cost?': social post / ad / WhatsApp message 1; image 1–2; SEO article / lead qualification card / weekly plan 2; weekly report / unit economics 3; sales scripts / pricing review / cash forecast / growth experiments / follow-up cadence 4; go-to-market plan / board deck / strategy review 5; chatting with the team, up to the plan's monthly messages (then only if the owner turns on continuing on credits, at most 5 credits a message) Included; setting up the first brand from its URL Free; each added brand 9 (refunded if the brand file cannot be built; the manual form is free). The FAQ and a final CTA follow. On the home page, 'Plans.' repeats the 'Prices in Saudi riyals' line and the trial stamp, with Razan saying 'Before you spend… let me run the numbers.', then shows the same four cards in a short form (price, credits and the first three features, a 'Start here' tape on Pro) with the line 'Every plan has the same rule: nothing goes out without your approval.', and no credit table.",
+   "system_reaction": "A static render from the dictionary (i18n.ts pricing). The cards read PLAN_PRICE_SAR, PLAN_CREDITS, PLAN_SEATS, CHAT_ALLOWANCE and AGENCY_MIN (the Business price and credits) from src/lib/pricing.ts, and each card carries data-tier (starter, pro, business, agency). creditRows groups the table's task types by TASK_COST / TASK_COUNT, inserts the image price range from the media catalogue, then appends the chat row (with the overflow hold), the free first-brand row and the ONBOARD_EXTRA_BRAND_COST (9) row. The home Plans section maps PUBLIC_TIERS over the same plans. Nothing is read from the account or from billing.",
+   "branches": [],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/pricing/page.tsx",
+     "line": 20,
+     "end_line": 35
+    },
+    {
+     "path": "src/components/Pricing.tsx",
+     "line": 16,
+     "end_line": 87
+    },
+    {
+     "path": "src/components/home/Plans.tsx",
+     "line": 18,
+     "end_line": 83
+    },
+    {
+     "path": "src/lib/i18n.ts",
+     "line": 78,
+     "end_line": 101
+    },
+    {
+     "path": "src/lib/i18n.ts",
+     "line": 397,
+     "end_line": 411
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 27
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 40,
+     "end_line": 55
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 167
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 198
+    },
+    {
+     "path": "src/lib/tasks.ts",
+     "line": 24,
+     "end_line": 32
+    },
+    {
+     "path": "src/lib/media-catalog.ts",
+     "line": 35,
+     "end_line": 40
+    },
+    {
+     "path": "src/lib/home.ts",
+     "line": 262,
+     "end_line": 267
+    }
+   ],
+   "next": [
+    "discover-pick-plan",
+    "discover-read-faq",
+    "discover-start-free"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-pick-plan",
+   "title": "Pick a plan",
+   "surface": "Plan card button in Pricing (and in the home Plans section)",
+   "actor": "visitor",
+   "action": "Clicks the button on one of the four plan cards: 'Start free' on Starter, Pro and Business, or 'Contact us' on Agency.",
+   "ui_response": "Starter, Pro and Business open /{lang}/app/signup with no plan parameter. Agency's 'Contact us' opens /{lang}/enterprise#contact, the Agencies page scrolled to its #contact block: the 'Not available yet, plainly' list and the 'Talk to us' contact form.",
+   "system_reaction": "Plain link picked by plan.id on the pricing page and on the home Plans cards: agency → /{lang}/enterprise#contact, anything else → /{lang}/app/signup. Whichever self-serve card was clicked, the account created at signup starts on plan 'trial' with the trial credits (50) and trialEnds set to now + 3 days. A paid plan is chosen later, inside the app.",
+   "branches": [
+    "Starter, Pro or Business → /{lang}/app/signup, no plan param",
+    "Agency 'Contact us' → /{lang}/enterprise#contact"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/components/Pricing.tsx",
+     "line": 61,
+     "end_line": 64
+    },
+    {
+     "path": "src/components/home/Plans.tsx",
+     "line": 73
+    },
+    {
+     "path": "src/lib/i18n.ts",
+     "line": 404,
+     "end_line": 407
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 188,
+     "end_line": 207
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 42
+    }
+   ],
+   "next": [
+    "discover-enterprise-page",
+    "discover-send-contact-form"
+   ],
+   "note": "Starter, Pro and Business exit to the signup stage; Agency continues to the contact form on the Agencies page.",
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-browse-agents",
+   "title": "Browse the agents",
+   "surface": "/{lang}/agents",
+   "actor": "visitor",
+   "action": "Opens the agents page and clicks an agent card.",
+   "ui_response": "A hero, 'Eight agents. One conversation. One brand file.', with the UrlStart URL box. Then a card for each of the 8 agents (Noor full width, then Sami, Razan, Faris, Dana, Majed, Layan and Reem), each with the agent's drawn face, role, tagline and intro, linking to that agent's page. A final CTA closes the page.",
+   "system_reaction": "A static render from AGENTS and AGENT_PAGES.",
+   "branches": [],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/agents/page.tsx",
+     "line": 21,
+     "end_line": 58
+    },
+    {
+     "path": "src/lib/agents.ts",
+     "line": 25,
+     "end_line": 90
+    },
+    {
+     "path": "src/lib/site.ts",
+     "line": 57
+    }
+   ],
+   "next": [
+    "discover-open-agent-page",
+    "discover-url-box-agents",
+    "discover-start-free"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-open-agent-page",
+   "title": "Open an agent page",
+   "surface": "/{lang}/agents/{agent}",
+   "actor": "visitor",
+   "action": "Opens one agent from the cards, the nav dropdown or the footer, and may click the Noor link, a 'Try asking' chip or another agent.",
+   "ui_response": "The page shows:\n- the agent's role, name, tagline and intro, with the UrlStart box, and the agent's drawing standing on its own colour beside them;\n- on every agent except Noor, the line 'Everything starts with Noor: same conversation, same brand files.' followed by a Noor link to /agents/noor;\n- 'What you get' cards, then 'How it works' (numbered) and 'Try asking' sample chips, each opening the in-app chat with that prompt;\n- 'The rest of the team' cards with each agent's face;\n- a final CTA.\nAn unknown agent slug shows the 404 page.",
+   "system_reaction": "Static params for the 8 agent slugs. The sample chips come from the in-app dictionary (appDict[lang].agents[agent].suggestions).",
+   "branches": [
+    "unknown slug → 404",
+    "non-Noor page shows the link to Noor"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/agents/[agent]/page.tsx",
+     "line": 17,
+     "end_line": 19
+    },
+    {
+     "path": "src/app/[lang]/agents/[agent]/page.tsx",
+     "line": 27,
+     "end_line": 55
+    },
+    {
+     "path": "src/app/[lang]/agents/[agent]/page.tsx",
+     "line": 56,
+     "end_line": 98
+    },
+    {
+     "path": "src/app/[lang]/agents/[agent]/page.tsx",
+     "line": 99,
+     "end_line": 111
+    }
+   ],
+   "next": [
+    "discover-ask-sample",
+    "discover-url-box-agents",
+    "discover-start-free"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-ai-agent-explainer",
+   "title": "Read AI agent explainer",
+   "surface": "/{lang}/ai-marketing-agent",
+   "actor": "visitor",
+   "action": "Reads the explainer page and may click an 'Ask AI' button or a 'Read next' link.",
+   "ui_response": "In order:\n1. A date, the title and 'Ask an AI about this page:' with ChatGPT and Perplexity buttons, each opening a new tab with a pre-written question.\n2. A definition box and how it works.\n3. An 'Agent, assistant, tool, or agency?' table and what is different in the Gulf.\n4. An FAQ, where 'How much does it cost?' answers 'A monthly subscription of SAR 299–999 depending on volume, or an Agency contract.'\n5. 'Read next' links: the benchmark blog post, /vs/chatgpt and the replace-your-agency post.\n6. A final CTA.",
+   "system_reaction": "A static page with FAQPage and Article JSON-LD (author and publisher Thakeen); the FAQPage JSON-LD carries the same price answer, read from PLAN_PRICE_SAR (starter and business). The Ask AI buttons are external links that carry the question in ?q=, naming this page on the canonical host (appHost). Nothing goes through Thakeen's servers.",
+   "branches": [
+    "Ask AI → external tab (chatgpt.com, perplexity.ai)"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/ai-marketing-agent/page.tsx",
+     "line": 16,
+     "end_line": 39
+    },
+    {
+     "path": "src/app/[lang]/ai-marketing-agent/page.tsx",
+     "line": 52,
+     "end_line": 53
+    },
+    {
+     "path": "src/app/[lang]/ai-marketing-agent/page.tsx",
+     "line": 55,
+     "end_line": 56
+    },
+    {
+     "path": "src/app/[lang]/ai-marketing-agent/page.tsx",
+     "line": 70,
+     "end_line": 73
+    },
+    {
+     "path": "src/app/[lang]/ai-marketing-agent/page.tsx",
+     "line": 74,
+     "end_line": 87
+    }
+   ],
+   "next": [
+    "discover-read-blog",
+    "discover-read-comparison",
+    "discover-start-free"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-read-blog",
+   "title": "Read the blog",
+   "surface": "/{lang}/blog and /{lang}/blog/{slug}",
+   "actor": "visitor",
+   "action": "Opens the blog list and clicks a post.",
+   "ui_response": "The list shows each post's title, description and date, newest first. A post shows its date, title, description and article body, then the final CTA. An unknown slug shows the 404 page.",
+   "system_reaction": "Static posts read from content/blog/*.md and generated for every language and slug. The body goes through render() from src/lib/md.ts, which blog.ts re-exports.",
+   "branches": [
+    "unknown slug → 404"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/blog/page.tsx",
+     "line": 20,
+     "end_line": 46
+    },
+    {
+     "path": "src/app/[lang]/blog/[slug]/page.tsx",
+     "line": 21,
+     "end_line": 40
+    },
+    {
+     "path": "src/lib/blog.ts",
+     "line": 25,
+     "end_line": 36
+    },
+    {
+     "path": "src/lib/blog.ts",
+     "line": 48
+    }
+   ],
+   "next": [
+    "discover-start-free",
+    "discover-resources-hub"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-resources-hub",
+   "title": "Open resources hub",
+   "surface": "/{lang}/resources",
+   "actor": "visitor",
+   "action": "Opens Resources and clicks a card, a recent post or a comparison.",
+   "ui_response": "Cards for Blog and guides, Free tools, Help center, 'What is an AI marketing agent?', Affiliate program, and Updates & wishlist. Next come the 3 newest posts (only when posts exist), a 'Comparisons' list (#compare) linking every comparison page, and the final CTA.",
+   "system_reaction": "Static render.",
+   "branches": [],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/resources/page.tsx",
+     "line": 24
+    },
+    {
+     "path": "src/app/[lang]/resources/page.tsx",
+     "line": 39,
+     "end_line": 67
+    },
+    {
+     "path": "src/lib/site.ts",
+     "line": 60
+    }
+   ],
+   "next": [
+    "discover-read-blog",
+    "discover-open-tools",
+    "discover-help-search",
+    "discover-ai-agent-explainer",
+    "discover-affiliate-apply",
+    "discover-read-updates",
+    "discover-read-comparison"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-read-comparison",
+   "title": "Read a comparison",
+   "surface": "/{lang}/vs/{competitor}",
+   "actor": "visitor",
+   "action": "Opens a comparison page: enrich-labs, chatgpt, jasper, agency or hootsuite (the same five in both languages).",
+   "ui_response": "A TL;DR box, a side-by-side table against 'Noor (Thakeen)', 'Choose X if:' and 'Choose Noor if:' lists, the verdict, an FAQ when the page has one, 'More comparisons' links, and the final CTA. Noor's price cell reads 'from SAR 299' (Enrich Labs, Jasper, Hootsuite), 'from SAR 299/mo' (ChatGPT) or 'SAR 299–999' (agency), and Noor's cell in the Enrich Labs trial row reads '3 days, 50 credits' (Enrich's reads '3 days'). The Enrich Labs page is titled 'Thakeen vs Enrich Labs: which one for the Gulf?'. An unknown slug shows the 404 page.",
+   "system_reaction": "Static render from VS_PAGES, whose Noor prices read PLAN_PRICE_SAR and PLAN_CREDITS.trial from src/lib/pricing.ts.",
+   "branches": [
+    "unknown slug → 404"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/vs/[competitor]/page.tsx",
+     "line": 25,
+     "end_line": 73
+    },
+    {
+     "path": "src/lib/pages-vs.ts",
+     "line": 9,
+     "end_line": 23
+    },
+    {
+     "path": "src/lib/pages-vs.ts",
+     "line": 2
+    }
+   ],
+   "next": [
+    "discover-start-free",
+    "discover-read-faq"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-open-industry-page",
+   "title": "Open an industry page",
+   "surface": "/{lang}/for/{industry}",
+   "actor": "visitor",
+   "action": "Opens an industry page and clicks its Start button, a plan card or another industry.",
+   "ui_response": "The page shows the industry name and headline with a 'Start your free trial' button to signup. Then come 'What happens today', 'What Noor does', a figures block, the full pricing section (the same four cards as /pricing), an industry FAQ, 'Other industries' links and the final CTA. The figures read '299 SAR/month to start' on ecommerce and restaurants and '499 SAR/month' on legal and clinics. The agencies page lists 'Unlimited brands' on every plan (first setup free, each added brand from its URL 9 credits), 7 seats on Business, a 'Referral commission' card (15% of every payment for each client you refer, for their first 4 months, with the client getting 15% off their first month), and the figures '999 SAR/month on Business, with unlimited brands', '15% partner commission for each client's first 4 months' and '1,500 credits a month on Business, reset monthly'. Real estate and restaurants say several projects or branches work on any plan. An unknown slug shows the 404 page.",
+   "system_reaction": "Static render from INDUSTRY_PAGES (7 slugs: ecommerce, real-estate, legal, startups, clinics, restaurants, agencies), which reads PLAN_PRICE_SAR, PLAN_CREDITS, PLAN_SEATS, ONBOARD_EXTRA_BRAND_COST and FIRST_MONTH_DISCOUNT_PCT from src/lib/pricing.ts and COMMISSION_PCT and COMMISSION_MONTHS from src/lib/partner-rules.ts.",
+   "branches": [
+    "unknown slug → 404"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/for/[industry]/page.tsx",
+     "line": 25,
+     "end_line": 80
+    },
+    {
+     "path": "src/lib/pages-industry.ts",
+     "line": 28,
+     "end_line": 36
+    },
+    {
+     "path": "src/lib/pages-industry.ts",
+     "line": 2,
+     "end_line": 3
+    }
+   ],
+   "next": [
+    "discover-start-free",
+    "discover-pick-plan",
+    "discover-read-faq"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-customers-page",
+   "title": "Open customers page",
+   "surface": "/{lang}/customers",
+   "actor": "visitor",
+   "action": "Opens Customers from the nav or footer.",
+   "ui_response": "The page shows:\n- the title 'Who Thakeen is built for';\n- 'Industries we serve', with industry cards (name and headline) linking to /for/{slug};\n- 'Why are there no logos here?', which says the product is at its early-adopter stage;\n- the 'Early adopter program' ticked list;\n- an 'Apply to the program' contact form.\nThere is no final CTA on this page.",
+   "system_reaction": "Static render.",
+   "branches": [],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/customers/page.tsx",
+     "line": 20,
+     "end_line": 69
+    },
+    {
+     "path": "src/lib/site.ts",
+     "line": 58
+    }
+   ],
+   "next": [
+    "discover-send-contact-form",
+    "discover-open-industry-page"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-enterprise-page",
+   "title": "Open the Agencies page",
+   "surface": "/{lang}/enterprise (labelled Agencies in the nav and footer)",
+   "actor": "visitor",
+   "action": "Opens Agencies from the nav or footer, or arrives from the Agency card's 'Contact us', and clicks the 'Talk to us' hero button.",
+   "ui_response": "The eyebrow reads 'Agencies and groups' ('الوكالات والمجموعات') over 'Many brands, one team, clear governance'. The hero button, 'Talk to us', jumps to #contact on the same page. The features grid has six cards: 'Multi-brand workspaces' with unlimited brands on every plan (the first brand's setup free, each added brand from its URL 9 credits), 'Approval governance', 'MCP server with OAuth 2.1', 'Encrypted connectors', 'Credits sized to your volume' (an Agency allowance agreed in the contract, from 1,500 credits a month) and 'Arabic and English'. Then a 'Not available yet, plainly' list (single sign-on, a written SLA, automated tax invoices) and the 'Talk to us' contact form.",
+   "system_reaction": "Static render from SITE[lang].enterprise, whose figures read ONBOARD_EXTRA_BRAND_COST and AGENCY_MIN from src/lib/pricing.ts. The button is an in-page anchor. The contact form is the shared ContactForm (kind 'enterprise').",
+   "branches": [
+    "arrived from the Agency card → opens at #contact"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/enterprise/page.tsx",
+     "line": 17,
+     "end_line": 62
+    },
+    {
+     "path": "src/lib/site.ts",
+     "line": 59
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 55
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 207
+    }
+   ],
+   "next": [
+    "discover-send-contact-form"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-read-legal",
+   "title": "Read privacy and terms",
+   "surface": "/{lang}/privacy and /{lang}/terms",
+   "actor": "visitor",
+   "action": "Opens Privacy or Terms from the footer.",
+   "ui_response": "The legal document with a title, a 'Last updated' date (2026-10-01 for Privacy, 2026-10-02 for Terms) and its sections.",
+   "system_reaction": "Static render from LEGAL[lang].",
+   "branches": [],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/components/Footer.tsx",
+     "line": 19
+    },
+    {
+     "path": "src/app/[lang]/privacy/page.tsx",
+     "line": 19,
+     "end_line": 40
+    },
+    {
+     "path": "src/app/[lang]/terms/page.tsx",
+     "line": 19,
+     "end_line": 40
+    },
+    {
+     "path": "src/lib/legal.ts",
+     "line": 2,
+     "end_line": 4
+    }
+   ],
+   "next": [
+    "discover-start-free"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-page-not-found",
+   "title": "Hit a missing page",
+   "surface": "/{lang}/{anything unmatched}, or an unknown agent, tool, blog, industry or comparison slug",
+   "actor": "visitor",
+   "action": "Opens a mistyped or old link.",
+   "ui_response": "A bilingual 404: a lemon '404' stamp, then 'الصفحة غير موجودة' / 'Page not found', with buttons 'الصفحة الرئيسية' to /ar and 'Home' to /en. There is no nav on this page.",
+   "system_reaction": "The [...rest] catch-all and each page's notFound() both render [lang]/not-found.tsx inside the language layout.",
+   "branches": [],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/[...rest]/page.tsx",
+     "line": 11,
+     "end_line": 15
+    },
+    {
+     "path": "src/app/[lang]/not-found.tsx",
+     "line": 13,
+     "end_line": 31
+    }
+   ],
+   "next": [
+    "discover-see-home"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-error-page",
+   "title": "Hit an error page",
+   "surface": "Any /{lang}/... page that throws while rendering",
+   "actor": "visitor",
+   "action": "Opens a page whose render fails, then clicks 'Try again' or 'Home'.",
+   "ui_response": "A bilingual 'صار خطأ غير متوقع' / 'Something went wrong' screen with 'إعادة المحاولة · Try again', which re-renders the route, and 'الرئيسية · Home' to /ar. A 'ref: <digest>' line shows when a digest exists. When the layout itself fails, a plain full-page version shows 'Try again' only.",
+   "system_reaction": "The route error boundary logs the digest, or the message, to the browser console. reset() retries the render. global-error.tsx replaces the whole document for errors thrown by the layout.",
+   "branches": [
+    "Try again → reset()",
+    "Home → /ar",
+    "layout error → global-error page"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/error.tsx",
+     "line": 12,
+     "end_line": 35
+    },
+    {
+     "path": "src/app/global-error.tsx",
+     "line": 8,
+     "end_line": 25
+    }
+   ],
+   "next": [
+    "discover-see-home"
+   ],
+   "verified": true,
+   "stage": "discover"
+  }
+ ]
+}

@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Nashr System Architecture",
+    "output": ".archify/architecture-nashr-system-20260930-092953/nashr-system.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/iAbulkhair/Nashr.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "2c71b742f0ab62ea1cb77318a11789e9841787a2"
+    }
+  },
+  "components": [
+    { "id": "mcpclient", "type": "external", "label": "Claude / ChatGPT", "sublabel": "owner's own assistant", "pos": [40, 60], "size": [150, 64],
+      "sources": [{ "path": "src/app/api/mcp/route.ts", "line": 63, "end_line": 73, "label": "POST /api/mcp" }] },
+    { "id": "mcpauth", "type": "security", "label": "MCP auth", "sublabel": "bearer token · OAuth 2.1", "pos": [790, 60], "size": [150, 64],
+      "sources": [
+        { "path": "src/lib/mcp.ts", "line": 35, "label": "userFromBearer" },
+        { "path": "src/lib/oauth.ts", "line": 56, "end_line": 91, "label": "OAuth server" }
+      ] },
+    { "id": "cron", "type": "cloud", "label": "Vercel Cron", "sublabel": "5 jobs · CRON_SECRET", "pos": [1040, 60], "size": [150, 64],
+      "sources": [
+        { "path": "vercel.json", "line": 1, "end_line": 9, "label": "schedules" },
+        { "path": "src/app/api/cron/daily/route.ts", "line": 85, "label": "sameSecret" }
+      ] },
+    { "id": "resend", "type": "external", "label": "Resend", "sublabel": "brief + lifecycle email", "pos": [1290, 60], "size": [150, 64],
+      "sources": [
+        { "path": "src/lib/notify.ts", "line": 12, "end_line": 15, "label": "sendEmail" },
+        { "path": "src/app/api/cron/daily/route.ts", "line": 60, "label": "brief email" }
+      ] },
+
+    { "id": "owner", "type": "external", "label": "Owner + team", "sublabel": "browser · ar / en", "pos": [40, 250], "size": [150, 64],
+      "sources": [{ "path": "src/lib/roles.ts", "line": 9, "label": "roles" }] },
+    { "id": "proxy", "type": "cloud", "label": "Proxy", "sublabel": "lang redirect, no auth", "pos": [290, 250], "size": [150, 64],
+      "sources": [{ "path": "src/proxy.ts", "line": 5, "end_line": 32, "label": "proxy + matcher" }] },
+    { "id": "pages", "type": "frontend", "label": "App pages", "sublabel": "RSC /{lang}/app", "pos": [540, 250], "size": [150, 64],
+      "sources": [{ "path": "src/app/[lang]/app/layout.tsx", "line": 25, "end_line": 26, "label": "session gate" }] },
+    { "id": "api", "type": "backend", "label": "API routes", "sublabel": "77 files · auth first", "pos": [790, 250], "size": [150, 64], "tag": "role table",
+      "sources": [
+        { "path": "src/app/api/chat/route.ts", "line": 23, "end_line": 36, "label": "currentUser → chat" },
+        { "path": "src/lib/roles.ts", "line": 129, "end_line": 141, "label": "can / forbid" }
+      ] },
+    { "id": "agents", "type": "backend", "label": "Agent engine", "sublabel": "8 agents · chat · generate", "pos": [1040, 250], "size": [150, 64],
+      "sources": [
+        { "path": "src/lib/chat.ts", "line": 228, "end_line": 262, "label": "chat loop" },
+        { "path": "src/lib/noor.ts", "line": 159, "end_line": 170, "label": "generate" },
+        { "path": "src/lib/judge.ts", "line": 159, "end_line": 162, "label": "judge after()" }
+      ] },
+    { "id": "anthropic", "type": "external", "label": "Anthropic API", "sublabel": "Opus 5 · Sonnet 5", "pos": [1290, 250], "size": [150, 64], "tag": "paused",
+      "sources": [
+        { "path": "src/lib/chat.ts", "line": 262, "label": "messages.stream" },
+        { "path": "src/lib/model.ts", "line": 12, "end_line": 16, "label": "CLAUDE_PAUSED" }
+      ] },
+
+    { "id": "gates", "type": "security", "label": "Approval gates", "sublabel": "brand gate · publishOnce", "pos": [540, 440], "size": [150, 64], "tag": "in code",
+      "sources": [
+        { "path": "src/app/api/publish/[id]/route.ts", "line": 14, "end_line": 36, "label": "publish route" },
+        { "path": "src/lib/brand-rules.ts", "line": 181, "label": "gateTask" },
+        { "path": "src/lib/publish-once.ts", "line": 60, "label": "publishOnce" }
+      ] },
+    { "id": "media", "type": "backend", "label": "Media engine", "sublabel": "jobs · refund once", "pos": [1040, 440], "size": [150, 64],
+      "sources": [
+        { "path": "src/lib/media/jobs.ts", "line": 117, "label": "startMedia" },
+        { "path": "src/lib/media/jobs.ts", "line": 641, "end_line": 666, "label": "sweep" },
+        { "path": "src/lib/chat.ts", "line": 554, "label": "chat tool render" }
+      ] },
+    { "id": "providers", "type": "external", "label": "Image/video APIs", "sublabel": "fal · kie.ai · Higgsfield", "pos": [1290, 440], "size": [150, 64],
+      "sources": [
+        { "path": "src/lib/media/fal.ts", "line": 7, "label": "fal.ai" },
+        { "path": "src/lib/media/kie.ts", "line": 12, "label": "kie.ai" },
+        { "path": "src/lib/media/higgsfield.ts", "line": 13, "label": "Higgsfield" }
+      ] },
+
+    { "id": "platforms", "type": "external", "label": "Platforms", "sublabel": "X · Shopify · Meta · WP", "pos": [290, 630], "size": [150, 64],
+      "sources": [{ "path": "src/lib/connectors/publish.ts", "line": 15, "label": "publishTask" }] },
+    { "id": "connectors", "type": "backend", "label": "Connectors", "sublabel": "AES-GCM tokens · post", "pos": [540, 630], "size": [150, 64],
+      "sources": [
+        { "path": "src/lib/connectors/publish.ts", "line": 15, "label": "publishTask" },
+        { "path": "src/lib/connectors/store.ts", "line": 30, "end_line": 45, "label": "encrypt + save" }
+      ] },
+    { "id": "redis", "type": "database", "label": "Upstash Redis", "sublabel": "all state · db.ts", "pos": [790, 630], "size": [150, 64], "tag": "keys from sc(u)",
+      "sources": [
+        { "path": "src/lib/db.ts", "line": 47, "label": "upstash" },
+        { "path": "src/lib/db.ts", "line": 142, "end_line": 273, "label": "memory fallback" },
+        { "path": "src/lib/auth.ts", "line": 59, "label": "sc(u)" }
+      ] },
+    { "id": "blob", "type": "cloud", "label": "Vercel Blob", "sublabel": "media/{hex}.jpg|mp4", "pos": [1040, 630], "size": [150, 64],
+      "sources": [{ "path": "src/lib/media/blob.ts", "line": 95, "end_line": 111, "label": "copyToBlob" }] }
+  ],
+  "connections": [
+    { "id": "owner-proxy", "from": "owner", "to": "proxy", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "proxy-pages", "from": "proxy", "to": "pages", "label": "x-pathname" },
+    { "id": "pages-api", "from": "pages", "to": "api", "label": "fetch /api", "variant": "emphasis" },
+    { "id": "api-agents", "from": "api", "to": "agents", "label": "run agent", "variant": "emphasis" },
+    { "id": "agents-anthropic", "from": "agents", "to": "anthropic", "label": "Messages API" },
+    { "id": "mcp-auth", "from": "mcpclient", "to": "mcpauth", "label": "bearer / OAuth 2.1", "variant": "security" },
+    { "id": "auth-api", "from": "mcpauth", "to": "api", "label": "owner scope", "variant": "security" },
+    { "id": "cron-agents", "from": "cron", "to": "agents", "label": "weekly + routines", "variant": "dashed" },
+    { "id": "cron-resend", "from": "cron", "to": "resend", "label": "email", "variant": "dashed" },
+    { "id": "api-gates", "from": "api", "to": "gates", "label": "approve · publish", "fromSide": "bottom", "toSide": "right" },
+    { "id": "gates-connectors", "from": "gates", "to": "connectors", "label": "once per platform" },
+    { "id": "connectors-platforms", "from": "connectors", "to": "platforms", "label": "post" },
+    { "id": "api-redis", "from": "api", "to": "redis", "label": "scoped keys" },
+    { "id": "agents-media", "from": "agents", "to": "media", "label": "render" },
+    { "id": "media-providers", "from": "media", "to": "providers", "label": "start · poll" },
+    { "id": "media-blob", "from": "media", "to": "blob", "label": "copy (https)" }
+  ],
+  "cards": [
+    { "dot": "rose", "title": "Rules checked in code", "items": [
+      "Every route authenticates first: session, MCP bearer, admin or CRON_SECRET",
+      "Redis keys come from sc(u), never from the request",
+      "Publishing passes the brand gate and publishOnce; the model never approves alone",
+      "User URLs go through safeFetch (crawl, catalogs, connectors, Blob copy)"
+    ] },
+    { "dot": "amber", "title": "Money and limits", "items": [
+      "Credits live on the owner's record, shared by the team",
+      "charge before generation, per-agent monthly caps, refund exactly once",
+      "Anthropic calls paused since 2026-09-28 (CLAUDE_PAUSED)"
+    ] },
+    { "dot": "slate", "title": "Also in the app, not drawn", "items": [
+      "Public marketing site /ar and /en with support and affiliate forms",
+      "Reem, the secretary: free to-do list and agenda, no model call",
+      "Founder console under /api/admin (isAdmin)",
+      "Provider webhooks at /api/media/hook/{provider}; judge scores after the response"
+    ] }
+  ]
+}

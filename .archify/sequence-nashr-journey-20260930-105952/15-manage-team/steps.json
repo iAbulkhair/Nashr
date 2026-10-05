@@ -1,0 +1,768 @@
+{
+ "key": "15-manage-team",
+ "title": "Manage: team members and referrals",
+ "person": "owner, members, invitees",
+ "steps": [
+  {
+   "id": "manage-team-open",
+   "title": "Open Members page",
+   "surface": "/{lang}/app/team",
+   "actor": "any-signed-in",
+   "action": "Opens Members from the sidebar, the seats link on Subscription, a bell item, or the Profile 'Leave the account' card.",
+   "ui_response": "Seats 'used / limit' appear with a bar and the note 'The owner takes a seat, and each pending invite holds one until it is accepted or cancelled.' The limit is 3 on Trial, 1 on Starter, 3 on Pro, 7 on Business and 7 on Agency, unless the founder has set a seat override, which replaces the number on any plan (an Agency deal's seats are that override). An account stored under the retired Enterprise plan reads as Agency, so it shows 7 unless overridden (it showed 25 before). When more seats are in use than the limit, the count reads above it (for example '12 / 7') and the page treats the seats as full. The roster lists the owner first, with role badges, '(you)', the joined date and 'Paused: over the plan's seats' with 'Comes back on its own when the plan grows. Nothing is deleted.' What else appears depends on the role. Owner: role dropdowns and Remove on everyone but themselves, the invite form (Member or Admin) and pending invites with Cancel. Admin: Remove on plain members, the invite form (Member only), pending invites with Cancel on member invites, and a 'Leave the account' card. Plain member: 'Only the owner and admins can invite or remove people.' and the Leave card. Founder viewing: 'Invites, role changes and removals are off while you view this account as the founder.' and pending invites without Cancel. When seats are full, the invite button is disabled. The owner then sees a 'Plans' link and 'Every seat is in use. Cancel an invite, remove someone, or upgrade the plan for more seats.' An admin sees 'Every seat is in use. Ask the account owner to upgrade the plan.'",
+   "system_reaction": "Rendered on the server from teamView, with no request on mount. Seats used = 1 + enabled members + unexpired invites. Limit = seatLimit (src/lib/pricing.ts): the User.seats override when it is 1 or more, on any plan; then Agency → Business's 7; then PLAN_SEATS (trial 3, starter 1, pro 3, business 7); else 1. getUser reads a stored 'enterprise' plan as 'agency' (planFromStore), so a former Enterprise account without an override gets 7. Members over the limit are paused only at the next refit: POST /api/admin/plan runs enforceSeats when the founder changes the plan or the seats, or when leaving Agency or clearing the deal drops the seat override (unless the same request sets seats). enforceSeats pauses the newest enabled members over the limit, cancels the newest pending invites that no longer fit, and when the limit grows brings paused members back oldest-first into seats no invite holds. Invites are included only for team.invites.view. Controls come from teamPerms(u), which calls can(). After each action the panel re-reads GET /api/team.",
+   "branches": [
+    "owner",
+    "admin",
+    "member",
+    "founder impersonating",
+    "seats full",
+    "stored Enterprise -> reads as Agency, 7 seats unless overridden",
+    "over the limit -> invite disabled; newest members paused at the next founder plan or seat change",
+    "account leaves Agency or its deal is cleared -> seat override dropped, team refit to the plan's seats"
+   ],
+   "conditions": "team.view (every role)",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/team/page.tsx",
+     "line": 18,
+     "end_line": 27
+    },
+    {
+     "path": "src/components/app/teamPerms.ts",
+     "line": 21,
+     "end_line": 33
+    },
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 135,
+     "end_line": 192
+    },
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 195,
+     "end_line": 257
+    },
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 60,
+     "end_line": 61
+    },
+    {
+     "path": "src/lib/team.ts",
+     "line": 474,
+     "end_line": 487
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 44
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 115,
+     "end_line": 123
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 35
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 169,
+     "end_line": 172
+    },
+    {
+     "path": "src/app/api/admin/plan/route.ts",
+     "line": 145,
+     "end_line": 146
+    },
+    {
+     "path": "src/app/api/admin/plan/route.ts",
+     "line": 121,
+     "end_line": 127
+    },
+    {
+     "path": "src/lib/team.ts",
+     "line": 416,
+     "end_line": 427
+    },
+    {
+     "path": "src/app/api/team/route.ts",
+     "line": 10,
+     "end_line": 18
+    }
+   ],
+   "next": [
+    "manage-team-invite",
+    "manage-invite-cancel",
+    "manage-team-role",
+    "manage-team-remove",
+    "manage-team-leave",
+    "manage-billing-open"
+   ],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-team-invite",
+   "title": "Send invite",
+   "surface": "/{lang}/app/team invite form",
+   "actor": "owner",
+   "action": "Types an email, picks Member or Admin, and clicks 'Send invite' ('Create invite link' when email is not set up).",
+   "ui_response": "'Sending…', then 'Invite sent to {email}.' and the pending list reloads. With email off, a box shows the one-time link with a Copy button. Errors: 'That email is not valid.', 'This email cannot be invited. It may already be registered or have a pending invite.', 'No free seat (X of Y).', 'Too many attempts in a short time. Try again shortly.', 'The invitation email could not be sent, so no invitation was created. Try again shortly.', 'Your role does not allow this.'",
+   "system_reaction": "POST /api/team/invite. forbid team.invite.member. Rate limits: 20 a day per account (5 on trial), 30 an hour per IP, and 5 a day per invited address (hashed); these are checked before the address is validated. In createInvite, an admin invite needs the owner, the actor must still hold their role, and the owner's or the inviter's own address is refused (unavailable). Under lock:team, an existing login anywhere or a pending invite in this team gives 409 unavailable, and a full team gives 409 seats. The token is 32 random bytes; only its SHA-256 is stored (invite:{hash}, 7 days). The link is {origin}/{lang}/app/join#t=token, where the origin is the canonical app origin (APP_ORIGIN, else the production host), not the request's Host header. With mail on (RESEND_API_KEY and MAIL_FROM), a fixed-template email ('You are invited to join a team on Thakeen', or the Arabic equivalent) naming only the inviter's address goes to the invitee. If sending fails, or Resend gives no answer within 10 seconds (EMAIL_TIMEOUT_MS), the invite is withdrawn (502 send_failed). The account's bell, seen by every login, gets 'A new invitation was sent' (or 'A new invitation link was created'); it names the inviter but not the invited address or the role.",
+   "branches": [
+    "mail on -> emailed",
+    "mail off -> link shown once",
+    "send failed or no answer in 10 s -> 502, no invite",
+    "409 unavailable / seats",
+    "429 rate limited",
+    "admin inviting admin -> forbidden"
+   ],
+   "conditions": "Owner (either role) or admin (members only); not while impersonating",
+   "sources": [
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 87,
+     "end_line": 102
+    },
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 63,
+     "end_line": 67
+    },
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 195,
+     "end_line": 214
+    },
+    {
+     "path": "src/app/api/team/invite/route.ts",
+     "line": 16,
+     "end_line": 19
+    },
+    {
+     "path": "src/app/api/team/invite/route.ts",
+     "line": 29,
+     "end_line": 62
+    },
+    {
+     "path": "src/app/api/team/invite/route.ts",
+     "line": 72,
+     "end_line": 104
+    },
+    {
+     "path": "src/lib/team.ts",
+     "line": 200,
+     "end_line": 228
+    },
+    {
+     "path": "src/app/api/team/respond.ts",
+     "line": 7,
+     "end_line": 14
+    },
+    {
+     "path": "src/lib/notify.ts",
+     "line": 9
+    },
+    {
+     "path": "src/lib/notify.ts",
+     "line": 16
+    },
+    {
+     "path": "src/lib/notify.ts",
+     "line": 35,
+     "end_line": 39
+    },
+    {
+     "path": "src/lib/origin.ts",
+     "line": 19
+    }
+   ],
+   "next": [
+    "manage-invite-link-copy",
+    "manage-join-preview",
+    "manage-invite-cancel"
+   ],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-invite-link-copy",
+   "title": "Copy invite link",
+   "surface": "/{lang}/app/team link box",
+   "actor": "owner",
+   "action": "Clicks 'Copy' next to the invite link and sends it to the invited person themselves.",
+   "ui_response": "The button shows 'Copied' for 1.5 seconds, with the note 'Shown once only. Send it to {email} alone: anyone holding the link can accept the invite.' If the clipboard fails, the link stays on screen to copy by hand. It can never be shown again; to resend, cancel and invite again.",
+   "system_reaction": "No server call. The server stored only the token's hash.",
+   "branches": [
+    "clipboard blocked -> copy by hand"
+   ],
+   "conditions": "Email not configured (mailReady false)",
+   "sources": [
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 96,
+     "end_line": 100
+    },
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 124,
+     "end_line": 133
+    },
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 215,
+     "end_line": 224
+    },
+    {
+     "path": "src/app/api/team/invite/route.ts",
+     "line": 103
+    }
+   ],
+   "next": [
+    "manage-join-preview"
+   ],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-invite-cancel",
+   "title": "Cancel invite",
+   "surface": "/{lang}/app/team Pending invites",
+   "actor": "owner",
+   "action": "Clicks 'Cancel' on a pending invite and confirms.",
+   "ui_response": "The confirm dialog reads 'Cancel the invite to {email}?'. The list reloads without the invite and the seat frees. Errors: 'Not found. Refresh the page.' and 'Your role does not allow this.'",
+   "system_reaction": "DELETE /api/team/invite {id}. team.invite.cancel (admin+, not while impersonating); an admin may cancel member invites only. The invite must belong to this account (404). Under lock:team the invite record and its index entry are deleted, so the link stops working.",
+   "branches": [
+    "already accepted or gone -> 404",
+    "admin cancelling admin invite -> 403"
+   ],
+   "conditions": "Owner, or admin for member invites",
+   "sources": [
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 111,
+     "end_line": 114
+    },
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 136
+    },
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 243
+    },
+    {
+     "path": "src/app/api/team/invite/route.ts",
+     "line": 107,
+     "end_line": 116
+    },
+    {
+     "path": "src/lib/team.ts",
+     "line": 315,
+     "end_line": 332
+    }
+   ],
+   "next": [],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-join-preview",
+   "title": "Invitee opens link",
+   "surface": "/{lang}/app/join (JoinForm)",
+   "actor": "visitor",
+   "action": "The invited person opens the link from the email 'You are invited to join a team on Thakeen', or the link passed by hand.",
+   "ui_response": "'Checking your invite…', then '{inviter} invited you to join {team} as {role}.' This comes with a role explanation, the expiry date, the email pre-filled and read-only, and name and password fields. Invalid, expired or used: 'This invite is invalid, expired or already used. Ask whoever invited you for a new one.' with a Log in link. No token: 'This invite link is incomplete. Open it from the invite message again, or ask for a new invite.' Already signed in: 'You are signed in as {email}. Log out first to accept this invite.' with Log out and 'Back to the app' buttons.",
+   "system_reaction": "The token is read from the URL fragment (never a query string), cleared from the address bar and kept in sessionStorage for the tab. POST /api/team/accept {token} is a preview, limited to 30 per 15 minutes per IP. peekInvite checks for a live invite, an owner that exists and is not suspended, and an inviter who is still valid. Nothing is consumed. Log out on this page calls /api/auth/logout and reloads with the token.",
+   "branches": [
+    "valid -> form",
+    "invalid -> 400 message",
+    "429 -> too many attempts",
+    "signed in -> log out first"
+   ],
+   "conditions": "Holds a live invite link",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/join/page.tsx",
+     "line": 14,
+     "end_line": 19
+    },
+    {
+     "path": "src/components/app/JoinForm.tsx",
+     "line": 35,
+     "end_line": 59
+    },
+    {
+     "path": "src/components/app/JoinForm.tsx",
+     "line": 96,
+     "end_line": 126
+    },
+    {
+     "path": "src/app/api/team/accept/route.ts",
+     "line": 42,
+     "end_line": 47
+    },
+    {
+     "path": "src/lib/team.ts",
+     "line": 231,
+     "end_line": 239
+    },
+    {
+     "path": "src/app/api/team/invite/route.ts",
+     "line": 36,
+     "end_line": 39
+    },
+    {
+     "path": "src/components/app/JoinForm.tsx",
+     "line": 61,
+     "end_line": 68
+    }
+   ],
+   "next": [
+    "manage-join-accept"
+   ],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-join-accept",
+   "title": "Invitee joins",
+   "surface": "/{lang}/app/join form",
+   "actor": "visitor",
+   "action": "Enters a name and a password and clicks 'Join'. The live checklist (8+ characters, a letter, a number) shows a check or cross per rule. Until the name and all three rules are met the button is marked disabled but stays focusable.",
+   "ui_response": "'Joining…', then they land at /{lang}/app inside the owner's workspace, signed in as the new member. Pressing Join before the rules are met sends nothing: the form says 'Your password still needs: …' with the unmet rules and puts focus in the password field. Errors: 'Enter your name.', 'The password does not meet the rules.', 'This account has no free seat right now. Tell whoever invited you.', 'This email already has a login. Log in with it, or ask for an invite to another address.', 'Too many attempts. Try again in a few minutes.', and the invalid-invite message.",
+   "system_reaction": "POST /api/team/accept {token, name, password, lang}, limited to 10 per 15 minutes per IP. acceptInvite hashes the password with bcrypt and takes a single-use claim on inviteuse:{hash}. Under lock:team it re-checks that the invite is still indexed, the owner and inviter are valid, and seats are free (409 seats). Under lock:login it checks the address is still free (409 unavailable). It writes member:{email} with the role, adds the roster entry and deletes the invite. The member gets no trial credits, no referral code and no signup tracking. Any session on the device is destroyed and the member's session is created. The account's bell gets '{name} joined your members'.",
+   "branches": [
+    "Join pressed early -> unmet rules listed, no request",
+    "seats full -> 409",
+    "address taken -> 409",
+    "weak password -> 400",
+    "invite gone -> invalid"
+   ],
+   "conditions": "Signed out, live invite",
+   "sources": [
+    {
+     "path": "src/components/app/JoinForm.tsx",
+     "line": 70,
+     "end_line": 94
+    },
+    {
+     "path": "src/components/app/JoinForm.tsx",
+     "line": 127,
+     "end_line": 138
+    },
+    {
+     "path": "src/app/api/team/accept/route.ts",
+     "line": 11,
+     "end_line": 27
+    },
+    {
+     "path": "src/app/api/team/accept/route.ts",
+     "line": 49,
+     "end_line": 56
+    },
+    {
+     "path": "src/lib/team.ts",
+     "line": 249,
+     "end_line": 304
+    },
+    {
+     "path": "src/lib/auth-client.ts",
+     "line": 86,
+     "end_line": 89
+    },
+    {
+     "path": "src/lib/auth-client.ts",
+     "line": 72
+    },
+    {
+     "path": "src/components/app/PasswordRules.tsx",
+     "line": 12,
+     "end_line": 27
+    }
+   ],
+   "next": [
+    "manage-role-view"
+   ],
+   "note": "Continues into the member's first use of the workspace (daily-use stage).",
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-team-role",
+   "title": "Change member role",
+   "surface": "/{lang}/app/team role dropdown",
+   "actor": "owner",
+   "action": "Changes a person's role in the dropdown (Member or Admin).",
+   "ui_response": "There is no confirmation. The controls lock while saving and the roster reloads with the new badge; an error line shows on failure.",
+   "system_reaction": "PATCH /api/team/member {email, role}. team.role (owner only, not while impersonating). Only admin or member is allowed; the owner role is never assignable. The role is saved under lock:team and lock:member. Demoting an admin deletes the invites that admin sent. The new role takes effect at the member's next request.",
+   "branches": [
+    "demote admin -> their invites deleted",
+    "unknown member -> 404",
+    "invalid role -> 400"
+   ],
+   "conditions": "Owner",
+   "sources": [
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 103,
+     "end_line": 106
+    },
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 181,
+     "end_line": 186
+    },
+    {
+     "path": "src/app/api/team/member/route.ts",
+     "line": 7,
+     "end_line": 16
+    },
+    {
+     "path": "src/lib/team.ts",
+     "line": 378,
+     "end_line": 397
+    }
+   ],
+   "next": [],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-team-remove",
+   "title": "Remove member",
+   "surface": "/{lang}/app/team",
+   "actor": "owner",
+   "action": "Clicks 'Remove' on a person and confirms.",
+   "ui_response": "The confirm dialog reads 'Remove {name} from the account? They are signed out at once and need a new invite to come back.' The roster reloads without them and the seat frees.",
+   "system_reaction": "DELETE /api/team/member {email}. team.remove.member (admin+); removing an admin needs the owner. The UI never offers the owner or yourself. Under lock:team and lock:member it deletes the member record, their active brand, the roster entry and the invites they sent. Their sessions fail at the next request because resolveSession finds no record.",
+   "branches": [
+    "admin removing admin -> 403",
+    "not in team -> 404"
+   ],
+   "conditions": "Owner, or admin for plain members; not while impersonating",
+   "sources": [
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 107,
+     "end_line": 110
+    },
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 135
+    },
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 187
+    },
+    {
+     "path": "src/app/api/team/member/route.ts",
+     "line": 23,
+     "end_line": 32
+    },
+    {
+     "path": "src/lib/team.ts",
+     "line": 342,
+     "end_line": 364
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 316,
+     "end_line": 324
+    }
+   ],
+   "next": [
+    "manage-member-locked-out"
+   ],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-team-leave",
+   "title": "Leave the account",
+   "surface": "/{lang}/app/team Leave card (the Profile card links here)",
+   "actor": "member",
+   "action": "Clicks 'Leave the account' and confirms.",
+   "ui_response": "The confirm dialog reads 'Leave this account now?'. They are signed out and sent to /{lang}/app/login.",
+   "system_reaction": "POST /api/team/leave. team.leave allows member logins only (admin or member); the owner, a token or a founder get 403. It runs the same deletion as a removal (record, active brand, roster entry, sent invites), then destroySession.",
+   "branches": [
+    "owner -> 403 (no card shown)"
+   ],
+   "conditions": "Admin or member login",
+   "sources": [
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 115,
+     "end_line": 123
+    },
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 251,
+     "end_line": 257
+    },
+    {
+     "path": "src/app/api/team/leave/route.ts",
+     "line": 7,
+     "end_line": 16
+    },
+    {
+     "path": "src/lib/team.ts",
+     "line": 400,
+     "end_line": 407
+    },
+    {
+     "path": "src/components/app/ProfilePanel.tsx",
+     "line": 322,
+     "end_line": 324
+    }
+   ],
+   "next": [],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-member-locked-out",
+   "title": "Paused member locked out",
+   "surface": "Any /{lang}/app page, then /{lang}/app/login",
+   "actor": "member",
+   "action": "This is a member who was paused by a seat refit, or removed. They keep using an open tab, or try to sign in again.",
+   "ui_response": "The next page load sends them to /{lang}/app/login. On the login form, a paused member who types the right password sees 'Your login is paused because the account's plan has no free seat. Ask the account owner to upgrade.' (Arabic: دخولك موقوف مؤقتاً لأن خطة الحساب لا تتسع له). A removed member sees 'Wrong email or password.', since the login no longer exists, and a wrong password says the same. A member of a suspended owner account sees 'This account is suspended. Contact us on WhatsApp.'",
+   "system_reaction": "resolveSession returns no user for a disabled member, one off the roster, or a missing record, and the layout redirects to login. POST /api/auth/login checks the password first (401 invalid), then answers 403 {error:'disabled'} for a paused member, 403 suspended when the owner is suspended, and 401 invalid for a removed one. The form maps the code with authMessage: 'disabled' has its own shared message, 'invalid' and 'suspended' use the login dictionary.",
+   "branches": [
+    "paused -> 403 disabled, shown as 'Your login is paused…'",
+    "removed -> 401 invalid, 'Wrong email or password.'",
+    "owner suspended -> 403 suspended",
+    "plan grows -> paused member can sign in again"
+   ],
+   "conditions": "Member disabled by enforceSeats, or removed",
+   "sources": [
+    {
+     "path": "src/lib/auth.ts",
+     "line": 316
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 323,
+     "end_line": 324
+    },
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 27
+    },
+    {
+     "path": "src/app/api/auth/login/route.ts",
+     "line": 33,
+     "end_line": 39
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 107,
+     "end_line": 110
+    },
+    {
+     "path": "src/lib/auth-client.ts",
+     "line": 35,
+     "end_line": 42
+    },
+    {
+     "path": "src/lib/auth-client.ts",
+     "line": 53
+    },
+    {
+     "path": "src/lib/auth-client.ts",
+     "line": 62
+    },
+    {
+     "path": "src/lib/auth-client.ts",
+     "line": 67,
+     "end_line": 69
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 356
+    }
+   ],
+   "next": [],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-refer-open",
+   "title": "Open Earn credits",
+   "surface": "/{lang}/app/refer",
+   "actor": "owner",
+   "action": "Opens 'Earn credits' from the sidebar.",
+   "ui_response": "'Share your link. You and your friend each get 50 credits when they sign up.' There are two tabs, 'Refer a friend' and 'Share on social'. The page shows the link {origin}/{lang}/app/signup?ref=CODE with Copy and 'Share on WhatsApp', the code, 'Successful referrals' and 'Credits earned' (referrals x 50). Other roles see only the owner-only note.",
+   "system_reaction": "The server page registers ref:{CODE} (an 8-character code derived from a SHA-256 hash of the email) and reads referrals:{email}. The link's origin is the canonical app origin (APP_ORIGIN, else the production host), not the request's Host header, so a link copied on a preview or alias still points at the production domain. Nothing is read for other roles. On mount the panel calls GET /api/referral/share (owner only) to learn which platforms were already claimed.",
+   "branches": [
+    "non-owner -> note only"
+   ],
+   "conditions": "Owner (referral)",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/refer/page.tsx",
+     "line": 12,
+     "end_line": 34
+    },
+    {
+     "path": "src/components/app/ReferPanel.tsx",
+     "line": 7,
+     "end_line": 13
+    },
+    {
+     "path": "src/components/app/ReferPanel.tsx",
+     "line": 26,
+     "end_line": 54
+    },
+    {
+     "path": "src/lib/referral.ts",
+     "line": 8,
+     "end_line": 15
+    },
+    {
+     "path": "src/lib/referral.ts",
+     "line": 31,
+     "end_line": 34
+    },
+    {
+     "path": "src/app/api/referral/share/route.ts",
+     "line": 31,
+     "end_line": 42
+    },
+    {
+     "path": "src/lib/origin.ts",
+     "line": 19
+    }
+   ],
+   "next": [
+    "manage-refer-share-link",
+    "manage-social-share"
+   ],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-refer-share-link",
+   "title": "Share referral link",
+   "surface": "/{lang}/app/refer Refer a friend tab",
+   "actor": "owner",
+   "action": "Clicks Copy, or 'Share on WhatsApp'.",
+   "ui_response": "'Copied' shows for 1.5 seconds. Or WhatsApp opens with the text 'Try Thakeen — Noor, an AI marketing agent that writes in your dialect. Sign up with my link and get 50 free credits:' followed by the link.",
+   "system_reaction": "No server call: the browser clipboard or a wa.me link.",
+   "branches": [],
+   "conditions": "Owner",
+   "sources": [
+    {
+     "path": "src/components/app/ReferPanel.tsx",
+     "line": 42,
+     "end_line": 50
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 412
+    }
+   ],
+   "next": [
+    "manage-refer-friend-signup"
+   ],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-refer-friend-signup",
+   "title": "Friend signs up",
+   "surface": "/{lang}/app/signup?ref=CODE",
+   "actor": "visitor",
+   "action": "The friend opens the referral link and completes signup: email first, then name and password, with an optional partner-code field.",
+   "ui_response": "The normal signup flow, then the start page. The screen says nothing about the bonus; the friend's balance starts at 50 trial plus 50 referral credits. On the referrer's side, the Earn credits page shows the count and 'Credits earned' going up, and the balance is 50 higher. The referrer gets no notification.",
+   "system_reaction": "The signup form sends ref from ?ref=. POST /api/auth/signup is limited to 5 an hour per IP (429, 'Too many sign-ups from this connection. Try again in an hour.'), and it checks the email and password rules, Cloudflare Turnstile when its keys are set, and a typed partner code (400 bad_partner_code), all before the account is created. The route then accepts a ref of 6-10 alphanumerics and calls applyReferral. The code's owner must exist and have a different email. Each side gets +50 through adjust under the user lock, the friend is pushed onto referrals:{referrer}, and referredBy:{new} is set. Self-referral is blocked only by comparing the emails. The friend's 50 trial credits come from createUser.",
+   "branches": [
+    "unknown code or same email -> no bonus, signup still succeeds",
+    "5 sign-ups an hour per IP -> 429",
+    "captcha not completed -> blocked before the account exists"
+   ],
+   "conditions": "New signup with a valid ref code",
+   "sources": [
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 26
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 51
+    },
+    {
+     "path": "src/app/api/auth/signup/route.ts",
+     "line": 14,
+     "end_line": 27
+    },
+    {
+     "path": "src/app/api/auth/signup/route.ts",
+     "line": 36,
+     "end_line": 38
+    },
+    {
+     "path": "src/lib/referral.ts",
+     "line": 20,
+     "end_line": 30
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 196,
+     "end_line": 197
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 42
+    }
+   ],
+   "next": [
+    "manage-refer-open"
+   ],
+   "note": "Signup itself belongs to the acquisition stage.",
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-social-share",
+   "title": "Share on social",
+   "surface": "/{lang}/app/refer Share on social tab",
+   "actor": "owner",
+   "action": "Clicks X, LinkedIn or WhatsApp.",
+   "ui_response": "The platform's share window opens with a Thakeen post. The page says '+20 credits' the first time, or 'You already earned credits for this platform.' The button turns into a disabled check. The sidebar balance is not refreshed.",
+   "system_reaction": "POST /api/referral/share {platform}, owner only (referral). The platform must be x, linkedin, whatsapp or instagram; instagram has no button, and anything else gets 400. A legacy per-platform key or sadd on shared:{email} makes sure only one request is paid; adjust adds +20 under the user lock. No proof of sharing is checked.",
+   "branches": [
+    "already claimed -> credited 0",
+    "bad platform -> 400"
+   ],
+   "conditions": "Owner",
+   "sources": [
+    {
+     "path": "src/components/app/ReferPanel.tsx",
+     "line": 16,
+     "end_line": 25
+    },
+    {
+     "path": "src/components/app/ReferPanel.tsx",
+     "line": 34,
+     "end_line": 41
+    },
+    {
+     "path": "src/app/api/referral/share/route.ts",
+     "line": 16,
+     "end_line": 30
+    },
+    {
+     "path": "src/lib/credits.ts",
+     "line": 116,
+     "end_line": 128
+    }
+   ],
+   "next": [],
+   "verified": true,
+   "stage": "manage"
+  }
+ ]
+}

@@ -1,0 +1,82 @@
+[
+ {
+  "key": "01-discover-browse",
+  "title": "Discover: land and browse the website",
+  "n": 20
+ },
+ {
+  "key": "02-discover-act",
+  "title": "Discover: try tools, send forms, start",
+  "n": 17
+ },
+ {
+  "key": "03-account",
+  "title": "Sign up, sign in and join a team",
+  "n": 21
+ },
+ {
+  "key": "04-onboard-build",
+  "title": "First run: confirm the site and build the workspace",
+  "n": 16
+ },
+ {
+  "key": "05-onboard-workspace",
+  "title": "First run: starter plan, launch path and files",
+  "n": 16
+ },
+ {
+  "key": "06-create-chat",
+  "title": "Create: chat with the agents",
+  "n": 18
+ },
+ {
+  "key": "07-create-more",
+  "title": "Create: brand facts, threads, Generate, inspiration, calendar",
+  "n": 14
+ },
+ {
+  "key": "08-review-inbox",
+  "title": "Review: the approval inbox",
+  "n": 21
+ },
+ {
+  "key": "09-review-media",
+  "title": "Review: images, video and slides",
+  "n": 10
+ },
+ {
+  "key": "10-connect-publish",
+  "title": "Publish: connect platforms and post",
+  "n": 13
+ },
+ {
+  "key": "11-daily-morning",
+  "title": "Every day: morning jobs, brief, bell and email",
+  "n": 17
+ },
+ {
+  "key": "12-daily-todos",
+  "title": "Every day: to-dos with Reem and the schedule",
+  "n": 17
+ },
+ {
+  "key": "13-daily-results",
+  "title": "Every day: reports, results and governance",
+  "n": 14
+ },
+ {
+  "key": "14-manage-account",
+  "title": "Manage: plan, credits, profile and brands",
+  "n": 21
+ },
+ {
+  "key": "15-manage-team",
+  "title": "Manage: team members and referrals",
+  "n": 14
+ },
+ {
+  "key": "16-manage-mcp-help",
+  "title": "Manage: own AI assistant (MCP), help and wishlist",
+  "n": 14
+ }
+]

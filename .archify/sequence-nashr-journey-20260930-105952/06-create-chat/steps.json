@@ -1,0 +1,1432 @@
+{
+  "key": "06-create-chat",
+  "title": "Create: chat with the agents",
+  "person": "owner or team",
+  "steps": [
+    {
+      "id": "create-open-chat",
+      "title": "Open the chat",
+      "surface": "/{lang}/app/chat",
+      "actor": "any-signed-in",
+      "action": "Opens the chat from the sidebar 'main' row (or the Noor row), at the end of onboarding, or through a link with ?conv=, ?agent= or ?prompt=.",
+      "ui_response": "The header shows the agent's initial and name with the thread title (e.g. 'Noor · Getting started'), a '+ New conversation' button and a credits pill that links to billing. Below it: the agent tabs and the thread's 40 newest messages, including any Majed handoff card, Reem away card or brand-change card with its stored state. Under the input a small line shows the month's chat allowance ('{left} of {allowance} messages left this month'). On a thread with at most one message, a 'From the team today' card can appear. It shows 'Waiting for you (n) · Review all', the first pending item as a card, and lines 2-4 of the latest brief. An empty thread shows Noor's greeting, or the specialist's one-line description, with that agent's suggestion chips. On trial accounts: if onboarding stored a goal, a bar shows the goal, the first plan task that is not yet added, and 'Activate Noor' (links to billing). Without a goal, a 'First up' hint shows instead (import catalog, add offer, connect, first batch). On xl screens a side panel shows metrics, channels, the routine feed, the first unread notification and files, all as links.",
+      "system_reaction": "The layout and the page call currentUser(). With a brand file, the page reads 11 things in parallel: history(scope, conv) with brand-card states, connections, schedule, files, latest brief, notifications, brand, the light task index since kpiSince() (90 days), onboardplan:{scope}, the launch journey and chatStatus(u), the account's chat allowance. It then reads, for every handoff card named in the thread, the handoff records and the settings in one batch (a record that is gone is sent as null), computes KPIs, loads the first pending task, and sets firstStep: catalog if there is no products.md, else offer if the brand has no offers, else connect if nothing is connected, else batch. ?conv must be 6-16 hex characters. ?agent must be a known agent other than Noor. ?prompt pre-fills the input (up to 2000 characters) without sending it. The page passes the login's role flags (publish, brand.write, generate, drafts) to ChatPanel, which hides the buttons a role may not use; the routes check the same actions. In the browser, GET /api/conversations loads the thread list; with ?conv it sets the agent from that conversation record (Noor if not found).",
+      "branches": [
+        "No session: redirect to /{lang}/app/login",
+        "No brand file and not admin/owner ('onboard'): redirect to /{lang}/app/start",
+        "No brand file, admin or owner, no confirmed site: redirect to /{lang}/app/start (with ?url= only when the link carried ?onboard=)",
+        "No brand file, admin or owner, site confirmed: the page reads the history and the chat status and the build runs inside the Getting-started thread (the first-run effect; an added brand's setup that cannot be paid opens the limit dialog; while paused the build answers 'paused' before its pay check)",
+        "?prompt= only pre-fills the input; nothing is sent",
+        "Side panel hidden below the xl breakpoint"
+      ],
+      "conditions": "Signed in, any role; the active brand has a brand file",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 27,
+          "end_line": 80
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 457,
+          "end_line": 728
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 492,
+          "end_line": 534
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 724,
+          "end_line": 725
+        },
+        {
+          "path": "src/components/app/OnboardCards.tsx",
+          "line": 89,
+          "end_line": 99
+        },
+        {
+          "path": "src/components/app/HomeSide.tsx",
+          "line": 64,
+          "end_line": 105
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 52,
+          "end_line": 67
+        },
+        {
+          "path": "src/lib/stats.ts",
+          "line": 68,
+          "end_line": 71
+        }
+      ],
+      "next": [
+        "create-send-message",
+        "create-plan-start",
+        "create-approve-card",
+        "create-pick-agent",
+        "create-review-all"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-review-all",
+      "title": "Review what waits",
+      "surface": "/{lang}/app/chat ('From the team today' card)",
+      "actor": "any-signed-in",
+      "action": "Presses 'Waiting for you (n) · Review all' on the 'From the team today' card.",
+      "ui_response": "The approvals inbox /{lang}/app opens.",
+      "system_reaction": "Navigation only. The card appears only when the thread has at most one message and something is pending or a brief exists.",
+      "branches": [],
+      "conditions": "At least one pending item in the 90-day index",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 664,
+          "end_line": 675
+        }
+      ],
+      "next": [],
+      "note": "Exits to the review stage.",
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-plan-start",
+      "title": "Start a plan item",
+      "surface": "PlanCard in the Getting-started thread (/{lang}/app/chat)",
+      "actor": "any-signed-in",
+      "action": "On the starter-plan card that onboarding left in the thread, presses 'Start now' on a task, 'Add task', or 'Skip'.",
+      "ui_response": "'Start now' sends the task's title and brief as a chat message, which then works like any sent message. 'Add task' switches the button to 'Added' (disabled) right away. 'Skip' hides the card for this page view.",
+      "system_reaction": "On mount, GET /api/onboard/plan refreshes the added flags. 'Add task' sends POST /api/onboard/plan {index, added:true}. That needs 'onboard' (admin or owner) and only sets plan[index].added in onboardplan:{scope}: no to-do or task is created. The flag decides which task the trial activation bar names next. 'Start now' calls send(), which posts to POST /api/chat.",
+      "branches": [
+        "Member presses Add: the POST gets 403, but the button still shows 'Added' (optimistic, never rolled back; a reload shows it not added)",
+        "Paused: 'Start now' gets the paused reply",
+        "The card is part of the 40 newest messages only; once more than 40 newer messages exist it no longer shows"
+      ],
+      "conditions": "Getting-started thread that holds the onboarding plan message",
+      "sources": [
+        {
+          "path": "src/components/app/OnboardCards.tsx",
+          "line": 37,
+          "end_line": 65
+        },
+        {
+          "path": "src/app/api/onboard/plan/route.ts",
+          "line": 10,
+          "end_line": 28
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 661,
+          "end_line": 716
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 56,
+          "end_line": 76
+        }
+      ],
+      "next": [
+        "create-send-message"
+      ],
+      "note": "The onboarding run itself, the WhatsApp phone card and the journey card belong to the onboarding and journey stages.",
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-send-message",
+      "title": "Send a message",
+      "surface": "/{lang}/app/chat (ChatPanel input, suggestion chips)",
+      "actor": "any-signed-in",
+      "action": "Types in 'Message Noor… e.g. prepare 10 posts for National Day' and presses Send or Enter, or taps a suggestion chip. The '/' key focuses the input.",
+      "ui_response": "The person's bubble appears at once, the input clears and Send is disabled. A working line shows 'Noor is thinking…' (or '{Agent}…'), then status lines prefixed with the agent's name: first '{Agent}: Reading your brand file and my notes…', then one line per tool. The reply appears as a bubble with the agent's name and rendered markdown. Under it can come: item cards, a Majed handoff card, brand-change cards, a Reem away card, and short labels ('{n} added to approvals', 'Brand file updated', 'A brand change waits for your Save', 'An absence waits for your Save', 'Your to-do list was updated'). Each reply gets thumbs, the credits pill updates, and the 'messages left' line under the box counts down. In a new thread the title becomes the first 60 characters of the message. WHILE PAUSED: after the first status line the reply reads 'The agents are paused for now, so I can't reply or create content yet. No credits were used.' (Arabic for Arabic readers), with no cards.",
+      "system_reaction": "The browser sends POST /api/chat {text, conv, agent, stream:true} with the x-lang header. The server checks the session and trims the text to 4000 characters (empty text gives 400). An unknown agent falls back to Noor. Before anything is saved it runs the refusals in a fixed order (trial_over, slow_down, then the month's allowance; see the next two steps) and reserves one message with reserveChatTurn. It then streams SSE with a ping every 10 s (or answers JSON when stream is off). chat() sends the first status, then saves the user message to chat:{scope}[:{conv}] (the thread keeps 400) and checks modelState(). When the model is on, it reads 10 things in parallel: brand, this agent's preferences (up to 30), memory files, file names, connections, the thread, feedbackFor with chat thumbs, the handoff notes left for this agent (its last 5 from 7 days, added to its prompt as data), who is acting, and the brand's working-days calendar. The thread sent to the model is at most the last 16 messages and 24,000 characters. It then runs up to 5 claude-opus-5 calls with tools, and meter() records each call. Before every call the per-message ceiling CHAT_TURN_MAX_USD ($0.35) is checked in code: a call's output is capped to what is left, and the loop ends when too little is left for a useful answer. The system prompt quotes TASK_COST (weekly_plan=2, weekly_report=3, followup_seq=4), the HELP answers, and for planning questions: plans differ in monthly credits and seats, brands are unlimited on every plan, the first brand's setup is free, each added brand's setup from its URL costs ONBOARD_EXTRA_BRAND_COST (9) credits (the manual form is free), and the trial is 3 days with PLAN_CREDITS.trial (50) credits. The reply is saved with at most 10 item cards, 5 brand cards and 5 away cards, plus one handoff card for Majed. The route then settles the reserved message, calls track('chat') and, for a non-default thread, touchConversation (count +1, updatedAt, title if still '…'). Chat itself costs no credits inside the allowance; only tools charge. WHILE PAUSED: no model call and no tool run. PAUSED_REPLY in the reader's language is saved and returned; the message is given back to the allowance (no model call was made); the conversation count still goes up.",
+      "branches": [
+        "Paused (CLAUDE_PAUSED = true): fixed paused reply, no tool, no charge; both messages saved; the allowance count is given back",
+        "Refused before saving (trial over, too many in a short time, month used up, too few credits for a message on credits): see the next steps; nothing is saved on the server",
+        "Server error: SSE error chat_failed gives '⚠︎ Could not reply. Try again.' and the reserved message is given back",
+        "Connection drops: 'Connection dropped, recovering the reply…', then GET /api/chat?conv= every 5 s up to 40 times. Found: the reply shows. Not found: '⚠︎ Connection lost. Try again.'",
+        "The loop ends without a closing answer: model refusal or 5 calls used gives 'Done. Check your approvals inbox.'; the $0.35 ceiling reached gives 'This reply reached its limit, so I stopped here…'; a reply cut off at its cap keeps its text with '(The reply was cut off at its limit…)'; out of time gives 'This reply ran out of time before I could finish it…'. The item, handoff, brand and away cards and the limit dialog are kept in every case",
+        "Workspace too large for even one call: 'I could not answer this message: your workspace files are too large for one message…'; no model call, so the message is not counted",
+        "No ANTHROPIC_API_KEY (dev/CI): '[DEV MOCK]' reply"
+      ],
+      "conditions": "Signed in, any role; not busy with another reply; trial not over; a chat turn left (plan allowance, or credits when continue-on-credits is on)",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 549,
+          "end_line": 613
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 661,
+          "end_line": 722
+        },
+        {
+          "path": "src/app/api/chat/route.ts",
+          "line": 31,
+          "end_line": 87
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 363,
+          "end_line": 470
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 52,
+          "end_line": 81
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 229,
+          "end_line": 291
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 477,
+          "end_line": 502
+        },
+        {
+          "path": "src/lib/model.ts",
+          "line": 15,
+          "end_line": 34
+        },
+        {
+          "path": "src/lib/conversations.ts",
+          "line": 22,
+          "end_line": 29
+        },
+        {
+          "path": "src/lib/chat-budget.ts",
+          "line": 19,
+          "end_line": 27
+        }
+      ],
+      "next": [
+        "create-chat-allowance",
+        "create-ask-batch",
+        "create-ask-drafts",
+        "create-brand-fact",
+        "create-rate-reply",
+        "create-ask-reem",
+        "create-ask-inbox",
+        "create-handoff-propose"
+      ],
+      "note": "Reply HTML goes through render() in src/lib/md.ts. The inspiration 'Use as reference' button uses the same route without streaming. The prices in the prompt and tool text are built from the same constants the charges use (TASK_COST, pricing.ts, the media catalogue).",
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-chat-allowance",
+      "title": "Chat allowance counter",
+      "surface": "/{lang}/app/chat (line under the message box)",
+      "actor": "any-signed-in",
+      "action": "Sends messages and watches the line under the box.",
+      "ui_response": "Under the input a line reads '{left} of {allowance} messages left this month' (on a trial: '… left in your trial'). It turns to the warning colour at 10% or less left. When the month's messages are used it reads 'This month's chat messages ({allowance}) are used. Chat resumes on the 1st (UTC).' (a trial: chat comes back with a subscription). With 'continue on credits' on, it says each message is billed what it actually cost, at most {hold} credits, and needs at least {hold} credits in the balance; below that it says chat is paused. An allowance of 0 reads 'Chat is not available on this account. Contact support.'",
+      "system_reaction": "The allowance is the account's, not the login's: trial 30 once, starter 250, pro 650, business 1300 a UTC month, counted across seats, brands and MCP (CHAT_ALLOWANCE, chatAllowanceOf). The page and every chat answer carry chatStatus. For each turn reserveChatTurn adds one with INCRBY, so parallel turns can never pass the allowance. Past it the reservation is taken back, and a paid account whose owner turned on 'continue on credits' may go on when credits cover the hold, hold = ceil(CHAT_TURN_MAX_USD 0.35 / the dearest credit's cost) (chatOverflowHold), 5 credits today. After the turn settleChatTurn gives the message back when no model call was made (paused, failed), and on credits bills the metered cost at the floor rate, at most the hold. Chat inside the allowance never touches credits.",
+      "branches": [
+        "Allowance 0 (chat turned off for the account): no message goes through, not even on credits",
+        "Continue on credits is paid plans only; a trial has none",
+        "A turn that fails or makes no model call is given back to the count"
+      ],
+      "conditions": "Signed in; any role (the count is the account's)",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 100,
+          "end_line": 111
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 724
+        },
+        {
+          "path": "src/lib/chat-allowance.ts",
+          "line": 24,
+          "end_line": 35
+        },
+        {
+          "path": "src/lib/chat-allowance.ts",
+          "line": 65,
+          "end_line": 89
+        },
+        {
+          "path": "src/lib/chat-allowance.ts",
+          "line": 96,
+          "end_line": 133
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 167,
+          "end_line": 198
+        }
+      ],
+      "next": [
+        "create-chat-refused"
+      ],
+      "verified": true,
+      "stage": "create",
+      "note": "The credits of an overflow message are billed at the floor rate, so they never fall under the margin floor."
+    },
+    {
+      "id": "create-chat-refused",
+      "title": "Chat refuses a message",
+      "surface": "/{lang}/app/chat (ChatPanel input)",
+      "actor": "any-signed-in",
+      "action": "Sends a message when the trial ended, after sending many in a short time, or after the month's messages are used.",
+      "ui_response": "The bubble disappears from the thread and the text goes back into the message box. Too many in a short time: a notice 'Too many messages in a short time. Wait a little, then send again; your message was not counted and is back in the message box.' Month used or too few credits: 'Your message was not sent and not counted; it is back in the message box.' and the chat limit dialog opens (next step). A trial that ended is the exception: the message stays in the thread, an assistant bubble below it says the free trial has ended, with a link to the Subscription page, and the trial dialog opens.",
+      "system_reaction": "POST /api/chat answers before anything is saved, in a fixed order, always as JSON (even when stream is on): 1) trialOver: 402 trial_over with the refusal bubble; it uses neither a ceiling nor an allowance message. 2) chatRefusal: the hourly and the daily burst ceilings, 30 an hour and 150 a day on a paid plan, 10 an hour and 30 a day on a trial, counted per account; the hour is counted first and the day only for a turn the hour let through; 429 slow_down. 3) reserveChatTurn: 402 chat_allowance (month used, or chat off) or 402 chat_credits (continue on credits is on but the balance is below the hold). The browser maps 402 chat_allowance, 402 chat_credits and 429 slow_down with refusalOf and 'unsends' the message, restoring the box and the credits pill.",
+      "branches": [
+        "Trial over: 402 trial_over, a bubble in the thread and the trial dialog",
+        "Hour or day ceiling: 429 slow_down; the notice names no hour or day, nothing is saved, no dialog",
+        "Month's allowance used, continue on credits off: 402 chat_allowance, dialog",
+        "Continue on credits on, balance below the hold: 402 chat_credits, dialog",
+        "Allowance 0: 402 chat_allowance and the dialog says chat is off for the account"
+      ],
+      "conditions": "Signed in; any role",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 118,
+          "end_line": 123
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 549,
+          "end_line": 572
+        },
+        {
+          "path": "src/app/api/chat/route.ts",
+          "line": 44,
+          "end_line": 50
+        },
+        {
+          "path": "src/lib/rate.ts",
+          "line": 40,
+          "end_line": 60
+        },
+        {
+          "path": "src/lib/chat-allowance.ts",
+          "line": 76,
+          "end_line": 89
+        },
+        {
+          "path": "src/lib/chat-allowance.ts",
+          "line": 136,
+          "end_line": 141
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 342,
+          "end_line": 355
+        }
+      ],
+      "next": [
+        "create-limit-chat"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-ask-batch",
+      "title": "Ask for a full batch",
+      "surface": "/{lang}/app/chat (generate_content tool)",
+      "actor": "any-signed-in",
+      "action": "Asks an agent for a full batch, e.g. '10 posts for National Day', a weekly plan, a sales script or a PRD.",
+      "ui_response": "Status line '{Agent}: Writing the batch and running the second-pass reviewer…'. The system prompt tells the agent to sum up the angles in 2-3 lines and end with one offer (for 3 items or fewer, the tool also hands it the bodies to show). Up to 10 item cards appear, each with channel, title, rendered body and a 'Waiting' or 'Approved' badge. The label reads '{n} added to approvals', and the credits pill drops by the batch cost. When a limit stops the batch, the agent says so and the limit dialog opens. When Majed is asked for another agent's type (for example a Razan pricing review), the tool refuses and he proposes a handoff instead; every other agent may still write any type.",
+      "system_reaction": "runTool first applies the role gate for the tool, then generate_content checks the type with isTaskType and with leadRefusal (code, not prompt): in a turn where Majed is talking, a type another agent owns is refused with 'Not done: {type} is {agent}'s work…' and the way forward (propose_handoff); every other agent keeps calling any type. It then calls the one paid-text pipeline, generateBatch: brand file exists, trial not over, and, for cart_recovery only, that synced cart data exists (no_brand, trial_over, missing_data). renewIfDue runs, then charge(account email, TASK_COST[type], {scope, agent, cap}) under the user lock. It refuses with agent_cap (checked first) or no_credits without touching the balance; otherwise the plan's credits are spent first and top-up packs after them, and the agent's monthly counter is raised in the same save. warnAgentCap then runs. Inside a refunding try, it reads the agent's preferences, memory, workspace stats and feedback, and calls generate(): claude-opus-5, then the claude-sonnet-5 reviewer unless governance turned the reviewer off, then, for some types, a cross-agent review (Razan, Majed) that adds notes only. It strips dashes when governance's noEmDash is on, and applies capDiscounts for cart_recovery. On a throw, refund() returns the credits and lowers the agent counter. The items are saved in parallel as tasks with source 'chat' and a brief (notes, trimmed to 500 characters). A task is 'approved' only when auto-approve is on for the type, gateTask finds no banned word or placeholder, and no reviewer flagged it; otherwise it is 'pending'. Activity rows are recorded and judgeLater is queued.",
+      "branches": [
+        "Unknown type: nothing charged; the agent is told the valid types",
+        "Majed asks for another agent's type (leadRefusal): refused in code, nothing charged; he is told who owns it and to use propose_handoff",
+        "No brand file: the agent asks the owner to run onboarding",
+        "Trial over: nothing charged; limit dialog 'Your free trial has ended'",
+        "Not enough credits: nothing charged; limit dialog 'You're out of credits'",
+        "Agent's monthly cap reached: nothing charged; limit dialog 'This agent reached its monthly cap'",
+        "cart_recovery with no synced cart data: nothing charged; the agent says to connect Salla or Shopify and press Sync on Reports",
+        "Generation fails: credits refunded; the agent relays the tool error",
+        "Auto-approve on and no brand rule broken and no reviewer flag: cards arrive Approved",
+        "A reviewer flagged an item: it stays Waiting even under auto-approve",
+        "Paused: never reached, because chat answers first. As a backstop, generate() throws ModelPaused and the charge is refunded."
+      ],
+      "conditions": "Brand file; any role, members included (no role gate on this tool); credits >= TASK_COST[type] (e.g. social 10, ads 5, sales_script 4, followup_seq 4, whatsapp 3, gbp 3, cart_recovery 3, weekly_report 3, article 2, weekly_plan 2); agent cap not passed; trial not over; when Majed is talking, the type is his own",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 589,
+          "end_line": 604
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 515,
+          "end_line": 520
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 531,
+          "end_line": 542
+        },
+        {
+          "path": "src/lib/generate-batch.ts",
+          "line": 148,
+          "end_line": 160
+        },
+        {
+          "path": "src/lib/generate-batch.ts",
+          "line": 176,
+          "end_line": 261
+        },
+        {
+          "path": "src/lib/credits.ts",
+          "line": 76,
+          "end_line": 114
+        },
+        {
+          "path": "src/lib/noor.ts",
+          "line": 174,
+          "end_line": 238
+        },
+        {
+          "path": "src/lib/noor.ts",
+          "line": 337,
+          "end_line": 345
+        },
+        {
+          "path": "src/lib/tasks.ts",
+          "line": 24,
+          "end_line": 42
+        },
+        {
+          "path": "src/lib/brand-rules.ts",
+          "line": 181,
+          "end_line": 188
+        },
+        {
+          "path": "src/lib/cart-recovery.ts",
+          "line": 19,
+          "end_line": 23
+        }
+      ],
+      "next": [
+        "create-read-card",
+        "create-approve-card",
+        "create-limit-modal",
+        "create-judge-later",
+        "create-cap-alert",
+        "create-xflag-card"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-ask-drafts",
+      "title": "Ask for 1-3 drafts",
+      "surface": "/{lang}/app/chat (draft_items tool)",
+      "actor": "any-signed-in",
+      "action": "Asks for a few items, e.g. 'one caption', 'two WhatsApp messages', 'three ad variants', 'one Google post'.",
+      "ui_response": "Status line '{Agent}: Drafting the items and reviewing them…'. The system prompt tells the agent to give one line per item's angle, say the items are also in the inbox, and add at most one sentence of advice and one offer. 1-3 item cards appear with the label '{n} added to approvals', and the credits pill drops by 1 per item. Only these four types are drafts: the tool's strict schema lists only them, and a draft_items call with any other type creates nothing and charges nothing; the tool result tells the agent to use generate_content, which charges that type's full batch cost (TASK_COST).",
+      "system_reaction": "runTool draft_items first applies isDraftType and then leadRefusal (Majed only): only DRAFT_TYPES (social, whatsapp, ads, gbp) pass, because the type is model input (a code backstop: the strict tool schema's enum already lists only these). Any other type returns 'Not a draft type. draft_items takes: social, whatsapp, ads, gbp; use generate_content for other types. Nothing was created and no credits were used.' before any read or charge. The tool schema's enum is built from the same DRAFT_TYPES. It clamps the count to 1-3. The cost is max(1, ceil(TASK_COST/TASK_COUNT × count)), which is 1 credit per item for all four types (social 10/10, whatsapp 3/3, ads 5/5, gbp 3/3). It then calls generateBatch with that count: brand file and trial (the cart-data check never applies, since cart_recovery is not a draft type), then agent cap and balance inside charge(), then warnAgentCap, generate() with count, refund on a throw, and tasks saved with source 'chat' and the brief. judgeLater is queued with requested = count.",
+      "branches": [
+        "Type outside social, whatsapp, ads and gbp: refused in code before any read or charge; nothing created; the tool result points the agent to generate_content",
+        "Majed asks for another agent's type: refused in code (leadRefusal); he is told to use propose_handoff",
+        "No brand file: the agent asks the owner to run onboarding",
+        "Trial over, no credits or agent cap: nothing charged; limit dialog",
+        "Generation fails: refunded; the agent relays the error",
+        "Paused: never reached; the paused reply instead"
+      ],
+      "conditions": "Brand file; any role; a draft type (social, whatsapp, ads, gbp); enough credits; trial not over; agent cap not passed",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 605,
+          "end_line": 620
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 515,
+          "end_line": 520
+        },
+        {
+          "path": "src/lib/generate-batch.ts",
+          "line": 176,
+          "end_line": 261
+        },
+        {
+          "path": "src/lib/tasks.ts",
+          "line": 24,
+          "end_line": 42
+        },
+        {
+          "path": "src/lib/tasks.ts",
+          "line": 67,
+          "end_line": 69
+        }
+      ],
+      "next": [
+        "create-read-card",
+        "create-approve-card",
+        "create-limit-modal",
+        "create-judge-later"
+      ],
+      "note": "The tool schema's enum and the code check both come from DRAFT_TYPES in src/lib/tasks.ts (rule 250).",
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-xflag-card",
+      "title": "Reviewer note on a card",
+      "surface": "ItemCard in chat",
+      "actor": "any-signed-in",
+      "action": "Looks at an item card that another agent reviewed and flagged.",
+      "ui_response": "The card shows a pill for each reviewing agent ('{name}: 1 note' or '{name}: {n} notes') and a hint: 'Another agent left notes on this item: read them in the inbox before you approve it.' Instead of Approve there is a 'Read the notes in the inbox' link. Once the item is approved from the inbox the card no longer shows the pills.",
+      "system_reaction": "In generateBatch, for the types in CROSS_REVIEW (Razan reviews most, Majed the pricing reviews and go-to-market plans), the reviewer reads the batch and returns 'ok' or 'flag' with notes (notes only: the text is never changed; it adds a little time and no credits, metered to the reviewing agent). taskFromItem keeps the verdicts on the task and a 'flag' holds it pending even under auto-approve; crossReviewRows records one activity row per reviewer with 'flags:N'. The chat reply's item cards carry the flags as xflag. Governance can turn the cross-agent review off.",
+      "branches": [
+        "Cross-agent review off in Governance: no verdicts, no pills",
+        "Verdict 'ok': no pill, the item is approved as usual (or waits, per auto-approve)",
+        "A person already approved it: the pills are hidden"
+      ],
+      "conditions": "A batch of a type in CROSS_REVIEW (go-to-market plans, growth experiments, retention plays, board decks, decision memos, strategy reviews, pricing reviews), cross-agent review on in Governance",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 32,
+          "end_line": 88
+        },
+        {
+          "path": "src/lib/generate-batch.ts",
+          "line": 148,
+          "end_line": 174
+        },
+        {
+          "path": "src/lib/noor.ts",
+          "line": 337,
+          "end_line": 345
+        },
+        {
+          "path": "src/lib/noor.ts",
+          "line": 455,
+          "end_line": 482
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "create",
+      "note": "Reading the notes and approving belong to the review stage."
+    },
+    {
+      "id": "create-read-card",
+      "title": "Read an item card",
+      "surface": "ItemCard in chat",
+      "actor": "any-signed-in",
+      "action": "On an item card, presses Collapse/Expand or Copy.",
+      "ui_response": "The body folds or unfolds. Copy puts the body on the clipboard and shows 'Copied' for 1.5 s; once the item is approved the button reads 'Copy to {channel}'. A counter shows the length against the channel limit (Instagram 2200, X 280, Snapchat 250, TikTok 2200, WhatsApp 1024, GBP 1500, Meta 63206, LinkedIn 3000). It is shown bold in the warning color when over the limit.",
+      "system_reaction": "Nothing on the server; everything happens in the browser. The body is rendered through render().",
+      "branches": [
+        "Over the channel limit: Approve is disabled"
+      ],
+      "conditions": "An item card is shown",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 32,
+          "end_line": 88
+        }
+      ],
+      "next": [
+        "create-approve-card"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-approve-card",
+      "title": "Approve in chat",
+      "surface": "ItemCard in chat (reply cards and the 'From the team today' card)",
+      "actor": "owner",
+      "action": "Presses Approve on an item card, and may press Undo within about 4 seconds.",
+      "ui_response": "The badge turns 'Approved' and '✓ Approved · Undo' shows for about 4 seconds. The sidebar approvals badge recounts. On the 'From the team today' card, the 'Waiting for you' count also drops by one. Undo returns the badge to 'Waiting'.",
+      "system_reaction": "The browser sends PATCH /api/tasks/{id} {status:'approved'}. The server checks the session and forbid('drafts'), then works under the task lock on the task as stored now. Ending approved needs 'publish' (admin or owner). gateTask(brand) checks banned words and placeholders; on a hit nothing is saved. Otherwise it sets status and decidedAt. After the response it runs track('approve') and writes a decision record. Decision records feed the owning agent's feedbackFor block when learning is on. A plain approve writes no preference note. Undo sends {status:'pending'}: a reopen that only needs 'drafts' and clears decidedAt. The browser fires nashr:pending-changed and the sidebar refetches the pending count. No model call, so this works while paused.",
+      "branches": [
+        "Member: no button; note 'Waiting for the account owner or an admin to approve. You can edit or reject it.'",
+        "Text over the channel limit: Approve disabled with the tooltip 'Text exceeds the channel limit'",
+        "Brand rule or placeholder hit: 409 brand_violation, shown as 'Held by brand guard: {words} · Fix it in the inbox', and Approve disabled",
+        "403: 'Your role does not allow this.'",
+        "Other failure (e.g. item deleted, 404): 'Could not approve, try again.'"
+      ],
+      "conditions": "Owner or admin ('publish') to approve; any role may undo",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 32,
+          "end_line": 88
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 673,
+          "end_line": 716
+        },
+        {
+          "path": "src/app/api/tasks/[id]/route.ts",
+          "line": 15,
+          "end_line": 24
+        },
+        {
+          "path": "src/app/api/tasks/[id]/route.ts",
+          "line": 74,
+          "end_line": 93
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 36,
+          "end_line": 47
+        },
+        {
+          "path": "src/lib/feedback.ts",
+          "line": 41,
+          "end_line": 66
+        }
+      ],
+      "next": [
+        "create-ask-image",
+        "create-ask-publish"
+      ],
+      "note": "Editing, rejecting, scheduling and publishing from the inbox belong to the review stage.",
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-limit-modal",
+      "title": "Limit dialog",
+      "surface": "LimitModal (app layout, every app page)",
+      "actor": "any-signed-in",
+      "action": "Hits a wall: a chat tool (batch, drafts, image), the Generate page or a handoff Run reports no credits, trial over or the agent's monthly cap; or an added brand's setup cannot be paid, after Go on /{lang}/app/start or when the build starts in the Getting-started thread.",
+      "ui_response": "A modal opens. Out of credits: 'You're out of credits'. A paid plan's owner is offered a top-up pack first ('Top up credits', which opens the packs on the Subscription page at #topup) or an upgrade; on a trial the text says packs come with a plan and the button is 'View plans'. Trial over: 'Your free trial has ended' with 'View plans'. Agent cap: 'This agent reached its monthly cap' with 'Open Governance'. Each has 'Maybe later'. Anyone who may not act (only the owner has 'billing' and 'governance.write') gets an 'Ask the account owner…' text and a single OK. Escape or a click outside closes it. In chat, the agent's reply also says it in plain words. On /start, a 402 after 'Go, Noor' also shows 'Your balance is {credits} credits, and setting up an added brand needs {n}. Nothing was charged.' (or 'Trial ended. Subscribe to continue.') under the form; when the page already knows the balance is short, 'Go, Noor' is disabled and the note's button opens the credits dialog. In the Getting-started thread Noor adds 'Setup of this brand did not start, and no credits were used.'",
+      "system_reaction": "Nothing was charged. The chat tool pushes limit:{kind}. The final message carries limit, and ChatPanel calls raiseLimit(kind), which dispatches the nashr:limit event. The Generate page, the reports panel and the handoff card map the error with limitFromError. StartLaunch maps the 402 from POST /api/onboard/confirm (no_credits or trial_over), and ChatPanel maps the 402 from POST /api/onboard (no_credits, trial_over or Noor's agent_cap) with limitFromError, which raises the same event. The layout passes owner = can(billing), governs = can(governance.write) and topups = whether the plan may buy top-up packs (paid plans only). limitText picks the title and body by kind, role and topups. WHILE PAUSED (CLAUDE_PAUSED = true): chat tools are never reached, POST /api/generate answers 503 model_paused before its charge, a handoff Run answers 503 model_paused before any charge, and POST /api/onboard answers 503 'paused' before its pay check, so of the paths above only the /start confirm check (no model call) and the short-balance button can open the dialog; the chat's own refusals before the turn (trial over, and the chat-message variants of the next step) also open it while paused.",
+      "branches": [
+        "Owner on a paid plan, credits: 'Top up credits' goes to /{lang}/app/billing#topup",
+        "Owner on a trial, credits or trial over: 'View plans' goes to /{lang}/app/billing",
+        "Owner, agent cap: 'Open Governance' goes to /{lang}/app/governance",
+        "Admin or member: 'Ask the account owner…' and OK only",
+        "A chat turn that ends without a closing answer (refusal, 5 calls, the $0.35 ceiling, out of time) still raises the dialog of the limit a tool hit",
+        "An added brand's setup: 402 from /api/onboard/confirm (no_credits or trial_over) or /api/onboard (also Noor's agent_cap), before any charge (the first brand's setup is free); /api/onboard only when the model is on",
+        "Paused: only the /start setup check and its button, and the chat's trial-over and chat-message refusals, open it; the chat tools, the Generate page, handoff Run and the Getting-started build answer 'paused' first"
+      ],
+      "conditions": "A charging action was refused",
+      "sources": [
+        {
+          "path": "src/components/app/LimitModal.tsx",
+          "line": 18,
+          "end_line": 53
+        },
+        {
+          "path": "src/components/app/LimitModal.tsx",
+          "line": 70,
+          "end_line": 104
+        },
+        {
+          "path": "src/app/[lang]/app/layout.tsx",
+          "line": 48,
+          "end_line": 63
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 492,
+          "end_line": 534
+        },
+        {
+          "path": "src/components/app/StartLaunch.tsx",
+          "line": 56,
+          "end_line": 73
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 116,
+          "end_line": 145
+        },
+        {
+          "path": "src/app/api/onboard/confirm/route.ts",
+          "line": 20,
+          "end_line": 50
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 531,
+          "end_line": 542
+        },
+        {
+          "path": "src/lib/roles.ts",
+          "line": 12,
+          "end_line": 16
+        }
+      ],
+      "next": [
+        "create-limit-chat"
+      ],
+      "note": "Exits to the billing or governance stage. The added-brand setup itself belongs to the onboarding stage. The chat-allowance variants of this dialog are the next step.",
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-limit-chat",
+      "title": "Chat limit dialog",
+      "surface": "LimitModal (chat variant)",
+      "actor": "any-signed-in",
+      "action": "Reads the dialog that opens when chat refuses a message for the month.",
+      "ui_response": "A modal with one of four texts. Month used (paid): 'This month's chat messages are used up', chat resumes on the 1st (UTC), upgrade or turn on 'continue on credits'; button 'Open Subscription'. Trial: 'Your trial's chat messages are used up', subscribe to keep chatting; button 'View plans'. Too few credits: 'Not enough credits for another message', which names the hold and says each message is billed what it cost; 'Open Subscription'. Chat off for the account: 'Chat is not available on this account', only OK. Everyone says the message was not sent and nothing was charged. Anyone who is not the owner gets an 'Ask the account owner…' text and a single OK.",
+      "system_reaction": "ChatPanel calls raiseLimit('chat' or 'chat_credits', {period, hold, allowance}) from the ChatStatus the server returned, and the app layout's LimitModal listens for nashr:limit. limitText picks the text by kind, period and allowance; the button goes to /{lang}/app/billing (the plan and 'continue on credits' both live there). Top-up packs are not offered here: a pack buys credits, and chat inside the allowance does not use credits.",
+      "branches": [
+        "Owner: button to the Subscription page",
+        "Admin or member: 'Ask the account owner…' and OK only",
+        "Allowance 0: no page can fix it, so only OK",
+        "Escape or a click outside closes it"
+      ],
+      "conditions": "A chat message was refused 402 chat_allowance or chat_credits",
+      "sources": [
+        {
+          "path": "src/components/app/LimitModal.tsx",
+          "line": 18,
+          "end_line": 53
+        },
+        {
+          "path": "src/components/app/LimitModal.tsx",
+          "line": 70,
+          "end_line": 104
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 563,
+          "end_line": 572
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "create",
+      "note": "Exits to the billing stage."
+    },
+    {
+      "id": "create-cap-alert",
+      "title": "Agent cap 80% alert",
+      "surface": "Notifications bell",
+      "actor": "system",
+      "action": "A metered charge, e.g. a chat batch or drafts, the Generate page, an image render, or an added brand's setup from its URL (counted to Noor), pushes the owning agent's spend in this brand past 80% of the monthly cap set in Governance.",
+      "ui_response": "A bell notification: '{Agent} in “{brand}”: X of Y credits this month'. It says that at the cap this agent's batches, images and videos stop, and that chat is not counted. It links to Governance.",
+      "system_reaction": "charge() (and chargeOnboard() for an added brand's setup) returns warn80 on the charge that crosses 80%. warnAgentCap runs right after that charge and calls notifyItem(kind 'credits'); a reused setup hold is not a new charge and sends nothing. A fingerprint (35 days) keeps it to once per brand scope, agent and month. It never throws and never blocks the charge. A handoff run and Majed's auto-run charge the same way.",
+      "branches": [
+        "No cap set for that agent: no alert",
+        "Paused: the chat tools, the Generate page, handoff runs and an added brand's setup never reach a charge, so they cannot trigger it"
+      ],
+      "conditions": "Owner set a cap for that agent",
+      "sources": [
+        {
+          "path": "src/lib/credits.ts",
+          "line": 76,
+          "end_line": 114
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 116,
+          "end_line": 145
+        },
+        {
+          "path": "src/lib/notifications.ts",
+          "line": 276,
+          "end_line": 301
+        },
+        {
+          "path": "src/lib/media/jobs.ts",
+          "line": 213,
+          "end_line": 217
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-judge-later",
+      "title": "Judge scores later",
+      "surface": "Inbox items and notifications bell",
+      "actor": "system",
+      "action": "After a batch or drafts are saved (from chat or the Generate page), the response is sent and the judge runs.",
+      "ui_response": "Nothing at once. Later, a quality notification from Dana: '{weak} of {n} {Agent} item(s) scored below 70', with the main fix as its body. If an auto-approved item hits an automatic-fail code: '{n} auto-approved {Agent} item(s) sent back to your inbox', and the item is 'Waiting' again. WHILE PAUSED: no scores and no alerts.",
+      "system_reaction": "judgeLater queues judgeTasks through Next after() (inline if there is no request scope). scoreItems calls claude-sonnet-5 with the task spec, brand file and grounding. An autofail (invented_fact, results_promise, fake_proof, fake_scarcity, injected_instruction) caps honesty at 40 and the score at 60. Each verdict is written with updateTask under the task lock. An item that auto-approval passed, with no decidedAt and not published, goes back to pending. notifyItem sends the alerts with fingerprints judgeveto:{id} and judge:{id}, kept for 7 days. WHILE PAUSED: scoreItems returns [] when modelState() is not 'on'.",
+      "branches": [
+        "Paused: no verdicts are written",
+        "A person already approved it, or it was published: the veto leaves it alone"
+      ],
+      "conditions": "Items were created",
+      "sources": [
+        {
+          "path": "src/lib/judge.ts",
+          "line": 89,
+          "end_line": 130
+        },
+        {
+          "path": "src/lib/judge.ts",
+          "line": 132,
+          "end_line": 168
+        },
+        {
+          "path": "src/lib/judge.ts",
+          "line": 175,
+          "end_line": 186
+        },
+        {
+          "path": "src/lib/judge.ts",
+          "line": 193,
+          "end_line": 200
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-rate-reply",
+      "title": "Rate a reply",
+      "surface": "Thumbs under each assistant reply (/{lang}/app/chat)",
+      "actor": "any-signed-in",
+      "action": "Presses thumbs up; or presses thumbs down, optionally types in 'What was missing? (optional)' and presses Send.",
+      "ui_response": "The chosen thumb fills at once. Thumbs down first opens the reason field. Each message takes one vote per page view.",
+      "system_reaction": "The browser sends POST /api/chat/feedback {agent, value, reason?, at}. The server checks the session and a per-account rate limit (FEEDBACK_PER_HOUR, 120 an hour; over it the vote is refused with 429); an unknown agent or a value other than ±1 gives 400. recordThumb pushes {agent, value, reason (up to 300 characters), msgAt} to fblog:{scope}, which keeps 500. On the agent's next chat turn, feedbackFor(chat:true) adds its 5 newest thumbs-down reasons from the last 30 days to the prompt as data, unless learning is off in Governance.",
+      "branches": [
+        "Bad agent or value: 400, nothing shown (the thumb still looks filled)",
+        "Too many votes in an hour: 429, nothing shown (the thumb still looks filled)"
+      ],
+      "conditions": "An assistant reply is shown",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 614,
+          "end_line": 620
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 673,
+          "end_line": 716
+        },
+        {
+          "path": "src/app/api/chat/feedback/route.ts",
+          "line": 8,
+          "end_line": 18
+        },
+        {
+          "path": "src/lib/evals.ts",
+          "line": 191,
+          "end_line": 193
+        },
+        {
+          "path": "src/lib/feedback.ts",
+          "line": 41,
+          "end_line": 50
+        },
+        {
+          "path": "src/lib/feedback.ts",
+          "line": 82,
+          "end_line": 90
+        }
+      ],
+      "next": [
+        "create-send-message"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-pick-agent",
+      "title": "Pick a specialist",
+      "surface": "/{lang}/app/chat (agent tabs)",
+      "actor": "any-signed-in",
+      "action": "Presses '+ Ask a specialist' and picks one of seven: Sami, Razan, Faris, Dana, Majed, Layan or Reem. Or presses the Noor tab.",
+      "ui_response": "A list opens with each agent's name, role and one-line description; Escape closes it. After a pick, the header and the active tab show that agent. A new empty thread shows the agent's description and its suggestion chips.",
+      "system_reaction": "pick() first checks the current thread. On the Getting-started thread, or on a thread whose stored message count is above 0, it sends POST /api/conversations {title:'…', agent}. createConversation writes conv:{scope}:{id} (12 hex characters, count 0) and pushes the id onto convs:{scope}. On an empty thread, only the agent in the browser changes. No model call, no credits.",
+      "branches": [
+        "A reply is running, or the same agent is picked: nothing happens",
+        "Empty stored thread: switched in the browser only (the stored thread keeps its first agent and reopens with it)",
+        "A thread created in this page view still counts 0 in the browser, so even after messages the pick switches the agent in place rather than opening a new thread",
+        "Noor picked on the Getting-started thread while a specialist is open there: nothing happens"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 540,
+          "end_line": 548
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 641,
+          "end_line": 659
+        },
+        {
+          "path": "src/app/api/conversations/route.ts",
+          "line": 13,
+          "end_line": 18
+        },
+        {
+          "path": "src/lib/conversations.ts",
+          "line": 16,
+          "end_line": 21
+        },
+        {
+          "path": "src/lib/agents.ts",
+          "line": 25,
+          "end_line": 90
+        }
+      ],
+      "next": [
+        "create-send-message",
+        "create-ask-reem"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-sidebar-agent",
+      "title": "Specialist from sidebar",
+      "surface": "Sidebar 'Direct messages' (every app page)",
+      "actor": "any-signed-in",
+      "action": "Opens 'Specialists (7)' in the sidebar and clicks an agent's name or its '+'; or presses '+ New' on the Noor row.",
+      "ui_response": "The name opens /{lang}/app/chat?agent={id}: the Getting-started thread with that agent selected. The '+' (or '+ New' next to Noor) opens a new empty thread at /{lang}/app/chat?conv={id} with that agent.",
+      "system_reaction": "The '+' sends POST /api/conversations {title:'…', agent}, then navigates. The name link only navigates; the chat page accepts any known agent except Noor.",
+      "branches": [],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 53,
+          "end_line": 56
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 94,
+          "end_line": 100
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 101,
+          "end_line": 119
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 56,
+          "end_line": 60
+        }
+      ],
+      "next": [
+        "create-send-message"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-ask-inbox",
+      "title": "Ask what is pending",
+      "surface": "/{lang}/app/chat (list_inbox tool)",
+      "actor": "any-signed-in",
+      "action": "Asks 'What's waiting for my approval?' (also a Noor suggestion chip).",
+      "ui_response": "Status line '{Agent}: Checking your inbox…'. The reply gives counts and the latest items.",
+      "system_reaction": "list_inbox reads the light task index for the last 90 days. It returns pending, approved and rejected counts, plus the 8 newest items with ids and image or video flags. No credits.",
+      "branches": [
+        "Paused: the paused reply"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 98,
+          "end_line": 159
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 800,
+          "end_line": 804
+        }
+      ],
+      "next": [
+        "create-ask-image",
+        "create-ask-publish"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-ask-publish",
+      "title": "Ask to publish",
+      "surface": "/{lang}/app/chat (publish_item tool)",
+      "actor": "owner",
+      "action": "Asks an agent to publish an approved item to a connected platform: WordPress or Shopify as a draft; X, Facebook, Instagram or Telegram live.",
+      "ui_response": "Status line '{Agent}: Publishing the item…'. The reply gives 'Published to {provider} as {status}: {url}', or a plain reason why not.",
+      "system_reaction": "Needs 'publish' (admin or owner); refused over MCP. The item must exist, and the provider must be connected and fit the item (targetsFor). The status must be approved, and a person must have reviewed it (decidedAt set, or published before); auto-approval alone is not enough. gateTask runs with publish:true (banned words, no placeholders of any kind). publishOnce re-checks under the publish lock and records the result.",
+      "branches": [
+        "Member: refused",
+        "Not connected, or wrong type",
+        "Not approved, or only auto-approved: the agent sends the owner to the inbox",
+        "Brand rule or placeholder: not published; the agent says what to fix",
+        "Already published, earlier attempt with unknown outcome, publish already running, or already live: not posted again",
+        "Duplicate text refused by the platform",
+        "Paused: the paused reply"
+      ],
+      "conditions": "Owner or admin; a connector; an item a person approved",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 550,
+          "end_line": 566
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 708,
+          "end_line": 756
+        }
+      ],
+      "next": [],
+      "note": "Publishing from the inbox and connecting platforms belong to other stages.",
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-ask-image",
+      "title": "Ask for an image",
+      "surface": "/{lang}/app/chat (generate_image tool)",
+      "actor": "any-signed-in",
+      "action": "Asks an agent for a visual for a specific inbox item (the agent gets its id from list_inbox).",
+      "ui_response": "Status line '{Agent}: Generating the image…'. The reply says the image is being drawn and will appear in the inbox shortly, or that it is attached. Credits drop by 1. A trial, credits or cap refusal opens the limit dialog. The prices the agent is given to quote: the chat image (default model) 1 credit, the image models in the inbox 1-2 credits.",
+      "system_reaction": "The tool text and the prompt take the prices from the media catalogue: CHAT_IMAGE_CREDITS is the default model's price (img-fast, 1 credit) and IMAGE_RANGE spans the image models (1-2). runTool generate_image loads the brand and the task. With less than 60 s left in the request, it refuses without charging. Otherwise renderImage runs with the default model (img-fast, 1 credit; the model never picks another): trial check, image types only (social, ads, gbp, whatsapp, cart_recovery). If the default image model is switched off, the item gets a placeholder card and no credit is taken. Otherwise startMedia charges the credit to the item's owning agent under its cap before the render, and refunds once if the render fails.",
+      "branches": [
+        "Item not found",
+        "Too late in the reply: not started, no credit",
+        "Image service unavailable: placeholder, no credit",
+        "Model unavailable and the item already has artwork: artwork kept, no credit",
+        "Trial over, no credits or agent cap: limit dialog",
+        "Wrong item type",
+        "Already being drawn",
+        "Busy: no credit",
+        "30 an hour / 150 a day reached: no credit",
+        "Content refused (nsfw): credit returned",
+        "Paused: the paused reply; the tool never runs"
+      ],
+      "conditions": "An inbox item of an image type; credits; any role",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 93,
+          "end_line": 95
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 815,
+          "end_line": 858
+        },
+        {
+          "path": "src/lib/media/start.ts",
+          "line": 47,
+          "end_line": 89
+        },
+        {
+          "path": "src/lib/media-catalog.ts",
+          "line": 35,
+          "end_line": 40
+        },
+        {
+          "path": "src/lib/media/jobs.ts",
+          "line": 126,
+          "end_line": 134
+        }
+      ],
+      "next": [
+        "create-ask-publish"
+      ],
+      "note": "Image and video buttons on inbox items belong to the review stage.",
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-ask-reem",
+      "title": "Ask Reem for a to-do",
+      "surface": "/{lang}/app/chat with Reem or any agent (secretary tools)",
+      "actor": "any-signed-in",
+      "action": "Tells Reem (or any agent) about something to do, follow up or wait for, asks for the agenda or 'what is next', or says something is done.",
+      "ui_response": "Status lines such as '{Agent}: Adding it to your list…', 'Updating the item…', 'Checking your to-do list…', 'Getting the next item…' or 'Asking you to confirm it is done…'. After a successful write the label reads 'Your to-do list was updated'. The agent is told to repeat the saved date exactly. 'Done' only becomes a proposal to confirm on My to-dos. Asking 'what is next' walks the agenda one item at a time (agenda_next).",
+      "system_reaction": "runSecretaryTool (agenda_get, agenda_next, todo_create, todo_update, todo_propose_done) is free, with no model call of its own, and scoped to the active brand. Writes allow 600 an hour per account. New items: at most 200 a day per account and 500 open per brand. propose_done never completes an item; only the owner or an admin completes, deletes or restores, on /app/todo.",
+      "branches": [
+        "Rate or open-item limit: nothing saved; the agent says so",
+        "Bad or out-of-range date: nothing saved",
+        "Unknown item id: the agent is told to call agenda_get",
+        "Store unreachable: 'Not done…'",
+        "Paused: the paused reply (no tool runs)"
+      ],
+      "conditions": "Signed in, any role",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 567,
+          "end_line": 588
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 122,
+          "end_line": 126
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 1341,
+          "end_line": 1373
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 1565,
+          "end_line": 1668
+        }
+      ],
+      "next": [
+        "create-away-card",
+        "create-handoff-note"
+      ],
+      "note": "Confirming, completing and deleting to-dos belong to the /app/todo stage.",
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-away-card",
+      "title": "Reem proposes an absence",
+      "surface": "/{lang}/app/chat with Reem (contact_away tool, away card)",
+      "actor": "any-signed-in",
+      "action": "Tells Reem that someone is away until a date, or is back.",
+      "ui_response": "Status line 'Reem: Preparing an away card for you to save…'. Under her reply an away card (up to 5 per reply) shows the person, the last day away or 'end the absence now', how many open items they owe, with 'Save' and 'Dismiss', and the label 'An absence waits for your Save'. Reem says plainly that nothing changes until Save is pressed. After Save the card reads 'Saved to the away list on My to-dos.'; Reem then stops suggesting follow-ups to that person until their first working day back.",
+      "system_reaction": "contact_away is checked in code: only Reem's own turn, never over MCP or a token, at most 5 cards a reply, and the 600 writes an hour limit. proposeAway stores a proposal (7 days) and changes nothing. The card's Save or Dismiss sends POST /api/secretary/away/proposals/{id} {action}: it needs 'todo.write', the same write rate limit, and decideAwayProposal in the active brand.",
+      "branches": [
+        "Any other agent: 'only Reem proposes that a contact is away', nothing saved",
+        "A name not on the away list when ending: refused, nothing saved",
+        "Absence already ended: refused",
+        "Bad action: 400; unknown id: 404; card older than 7 days: gone",
+        "Too many writes in an hour: 429"
+      ],
+      "conditions": "Signed in; the talking agent is Reem; in the app's chat",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 192,
+          "end_line": 204
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 772,
+          "end_line": 799
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 374,
+          "end_line": 441
+        },
+        {
+          "path": "src/app/api/secretary/away/proposals/[id]/route.ts",
+          "line": 15,
+          "end_line": 29
+        },
+        {
+          "path": "src/lib/secretary-away.ts",
+          "line": 213,
+          "end_line": 241
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "create",
+      "note": "The Away list itself lives on the to-do page."
+    },
+    {
+      "id": "create-handoff-note",
+      "title": "Agent leaves a note for another",
+      "surface": "/{lang}/app/chat (handoff_note tool, any agent)",
+      "actor": "any-signed-in",
+      "action": "Says something an agent should pass on, e.g. 'Layan is waiting for the offer from the owner' or 'Razan: the price is ready'.",
+      "ui_response": "Status line '{Agent}: Leaving a note for the team…'. The agent confirms the note. A note that says an agent is blocked on the owner opens a to-do on Reem's list that is due today, so it shows in the agenda and the morning brief; the agent says so only when the saved item really is in the brief.",
+      "system_reaction": "handoff_note {to, kind, body} is a free tool for every agent; it is refused over MCP, and the sender is the talking agent, never an argument. 'to' is another agent or 'owner'. Write rate limit 600 an hour; blocked notes 20 a day per account. Notes are kept in a capped list (last 30); the receiving agent sees its last 5 from 7 days in its prompt as data (Reem also the owner's). A 'blocked' note creates a Reem item in code: to the owner, the owner owes input; to another agent, that agent owes it with the usual two-working-day chase. Before that the brand's open items are checked, so a note that says the same thing as an open item adds to it instead of a second one.",
+      "branches": [
+        "Over MCP: refused, nothing saved",
+        "Over the hour limit or 20 blocked notes in a day: nothing saved",
+        "Same block already open: the new body is added as a note, no second item",
+        "Unknown receiver: refused"
+      ],
+      "conditions": "Signed in, any role; in the app's chat",
+      "sources": [
+        {
+          "path": "src/lib/secretary-handoff.ts",
+          "line": 45,
+          "end_line": 56
+        },
+        {
+          "path": "src/lib/secretary-handoff.ts",
+          "line": 102,
+          "end_line": 147
+        },
+        {
+          "path": "src/lib/secretary-handoff.ts",
+          "line": 153,
+          "end_line": 168
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 567,
+          "end_line": 588
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "create",
+      "note": "Reem's list and the morning brief belong to the to-do stage."
+    },
+    {
+      "id": "create-brand-fact",
+      "title": "Tell Noor a brand fact",
+      "surface": "/{lang}/app/chat (update_brand tool, brand-change card)",
+      "actor": "any-signed-in",
+      "action": "Tells an agent something about the brand ('our tone is premium and calm, remember that'), a new offer, or a banned word to add or take out.",
+      "ui_response": "Status line '{Agent}: Saving this to your brand file…'. Plain fields save at once and the label reads 'Brand file updated'. Adding banned words applies at once (the agent relays 'Added to the banned words: …' and the label reads 'Brand file updated'). A new offer, or taking a banned word out, becomes a card under the reply showing the old and the new value with 'Save to brand file' and 'Dismiss', and the label 'A brand change waits for your Save'; the agent says plainly that nothing changed until the owner presses Save. After Save the card reads 'Saved to the brand file.'; if the field changed meanwhile it reads 'This field changed after the proposal, so nothing was saved. Change it on the Brand page.'",
+      "system_reaction": "Only an admin or the owner (brand.write) may use update_brand (the role gate comes first in runTool). Under the brand lock, only the editable text fields are accepted (channels, languages and handles are the owner's on the Brand page). A banned addition merges with the existing list (the Brand page keeps 400 characters) and writes a brand_changed activity row. 'offers' and 'banned_remove' go through proposeBrandChange: a stored proposal with from and to, kept 7 days, up to 5 cards per reply; nothing changes. The card's Save or Dismiss sends POST /api/brand/proposals/{id} {action}, which needs brand.write and decideProposal: the proposal must still be open and its 'from' must still match the brand (else 409 stale); applying writes the brand and a brand_changed row.",
+      "branches": [
+        "Member: the tool is refused ('needs the owner or an admin'); a member sees the card but cannot decide it",
+        "Field not editable: refused, the agent lists the editable fields",
+        "Banned list would pass 400 characters: not saved",
+        "Brand changed since the card was made: 409 stale, nothing applied",
+        "Card older than 7 days: gone",
+        "Paused: the paused reply, no tool runs"
+      ],
+      "conditions": "Admin or owner (brand.write); a brand file",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 621,
+          "end_line": 682
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 310,
+          "end_line": 361
+        },
+        {
+          "path": "src/app/api/brand/proposals/[id]/route.ts",
+          "line": 15,
+          "end_line": 27
+        },
+        {
+          "path": "src/lib/brand-proposals.ts",
+          "line": 55,
+          "end_line": 130
+        },
+        {
+          "path": "src/lib/brand-rules.ts",
+          "line": 181,
+          "end_line": 188
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "create",
+      "note": "The brand page itself belongs to the brand stage."
+    },
+    {
+      "id": "create-handoff-propose",
+      "title": "Majed proposes a handoff",
+      "surface": "/{lang}/app/chat with Majed (propose_handoff tool)",
+      "actor": "any-signed-in",
+      "action": "Asks Majed (the lead) for a plan that needs other agents' work, e.g. 'get the team ready for the launch'.",
+      "ui_response": "Status line 'Majed: Preparing a handoff for the team…'. Under his reply one handoff card appears: title '{name}'s handoff', the sub-line 'Nothing runs and no credits are charged until you press Run', a 'Why' line, and 1-3 items, each with the agent and type, a brief, the cost ('{n} credits') and its own Run and Decline buttons, plus 'Total if every item runs: {n} credits', 'Run all' and 'Decline the rest'. When the owner switched Majed's auto-run on, items it may start on its own say 'may start on its own'. Majed says plainly that nothing runs until Run is pressed.",
+      "system_reaction": "propose_handoff is checked in code, not in the prompt: only Majed's own turn may propose, never over MCP or a token, and one proposal per reply. parseProposal accepts 1-3 items of types owned by other agents (never Majed's own or Reem's, never renders), a bounded brief and 'why'. createHandoff stores the record in Redis (180 days) with the owner's message, the conversation and who asked, and the card is read back with its state (handoffView). It creates no task and charges nothing; the tool text lists which items auto-run may start. Majed may not write other agents' types himself: generate_content and draft_items refuse them (leadRefusal).",
+      "branches": [
+        "Any other agent proposes: 'only Majed, the lead, proposes handoffs', nothing saved",
+        "Over MCP or with a token: refused, nothing saved",
+        "A second proposal in the same reply: refused",
+        "Bad item (own type, render, over 3 items): the agent is told what was wrong",
+        "Paused: the paused reply; no tool runs"
+      ],
+      "conditions": "Signed in; the talking agent is Majed; in the app's chat",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 174,
+          "end_line": 185
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 757,
+          "end_line": 771
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 505,
+          "end_line": 520
+        },
+        {
+          "path": "src/lib/handoffs.ts",
+          "line": 47,
+          "end_line": 76
+        },
+        {
+          "path": "src/lib/handoffs.ts",
+          "line": 324,
+          "end_line": 331
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 153,
+          "end_line": 304
+        }
+      ],
+      "next": [
+        "create-handoff-run",
+        "create-handoff-decline",
+        "create-handoff-auto"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-handoff-run",
+      "title": "Run a handoff item",
+      "surface": "HandoffCard in chat",
+      "actor": "any-signed-in",
+      "action": "Presses Run on one item, or 'Run all'.",
+      "ui_response": "The item shows 'Working on the item…' (the card reads the stored state every 10 s while it runs), then 'Done' with the item cards the batch made and the credits pill dropping by the item's cost. 'Run all' runs the items one at a time in order and stops at the first refusal. On a refusal the card shows its reason ('Another item of this handoff is running now…', 'No abandoned-cart data yet…', 'The generation failed and the credits were returned…') and the credits and cap limits open the limit dialog. If the answer never arrives, the card says the item may still be running and may be charged, and reads its state again by itself instead of offering Run.",
+      "system_reaction": "POST /api/handoffs/{id}/run {item} needs 'generate'; 60 runs an hour per account (429 slow_down); the id must be well formed; the item is an integer position, never anything else from the body. The paused model answers 503 model_paused before any charge. runHandoffItem reads the record only under sc(u), under the handoff's run lock (300 s, so a second run or a decline meanwhile is 409 busy), refuses an item that is done, declined or running (409), and sends the batch through generateBatch with the item's own type and agent, so the same checks run as for generate_content: brand, trial, missing_data, agent cap, credits. A failed generation is refunded and answered 502 generation_failed with the card's new state.",
+      "branches": [
+        "No 'generate' right: Run is hidden, and the route answers 403",
+        "Too many requests in an hour: 429 slow_down",
+        "Another item running, done or declined: 409",
+        "Paused: 503 model_paused, no credits used",
+        "Trial over, no credits or agent cap: 402 and the limit dialog",
+        "cart_recovery without cart data: 409 missing_data, nothing charged",
+        "Not enough time left in the request: 503 too_late, nothing charged",
+        "Generation failed: refunded, 502; the item can be tried again"
+      ],
+      "conditions": "Owner, admin or any role with 'generate'; the item is still proposed or failed",
+      "sources": [
+        {
+          "path": "src/app/api/handoffs/[id]/run/route.ts",
+          "line": 27,
+          "end_line": 71
+        },
+        {
+          "path": "src/lib/handoffs.ts",
+          "line": 465,
+          "end_line": 477
+        },
+        {
+          "path": "src/lib/handoffs.ts",
+          "line": 503,
+          "end_line": 569
+        },
+        {
+          "path": "src/lib/rate.ts",
+          "line": 124
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 135,
+          "end_line": 140
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 153,
+          "end_line": 304
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-handoff-decline",
+      "title": "Decline a handoff item",
+      "surface": "HandoffCard in chat",
+      "actor": "any-signed-in",
+      "action": "Presses Decline on one item, or 'Decline the rest'.",
+      "ui_response": "The item shows 'Declined' and cannot be run any more; the rest of the card stays. Declining everything marks the handoff declined. No credits are touched.",
+      "system_reaction": "POST /api/handoffs/{id}/decline {item?} needs 'drafts'; 120 declines an hour per account. declineHandoff rewrites the record under a short lock (10 s) and refuses an item that is done, declined or running (409). The decision is recorded. An item declined this way is also taken out of Majed's auto-run queue.",
+      "branches": [
+        "No 'drafts' right: the button is hidden and the route answers 403",
+        "Item already done, declined or running: 409 with the card's state",
+        "Too many in an hour: 429 slow_down",
+        "Record gone: 404 'This handoff is no longer available.'"
+      ],
+      "conditions": "Owner, admin or any role with 'drafts'",
+      "sources": [
+        {
+          "path": "src/app/api/handoffs/[id]/decline/route.ts",
+          "line": 1,
+          "end_line": 40
+        },
+        {
+          "path": "src/lib/handoffs.ts",
+          "line": 577,
+          "end_line": 603
+        },
+        {
+          "path": "src/lib/rate.ts",
+          "line": 125
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 153,
+          "end_line": 304
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-handoff-auto",
+      "title": "Majed's auto-run",
+      "surface": "Cron 06:00 UTC, then the Notifications bell",
+      "actor": "system",
+      "action": "Nothing: the owner switched on 'Majed's auto-run' in Governance earlier and did not run or decline an item.",
+      "ui_response": "Later, a bell notification: '{type} from {agent} is in your inbox', saying Majed started it himself because auto-run is on, and how many items wait for approval. The item on the card reads 'started by auto-run'. The result always waits in the approval inbox, even for auto-approved types.",
+      "system_reaction": "The daily cron (bearer secret, sameSecret) lists the due handoffs with dueHandoffs and starts at most one item a day per brand scope through autoRunHandoff, under the same run lock as a login's Run. autoBlock refuses unless: auto-run is on and an agent Majed hands work to has a monthly cap; the proposal is Majed's, made in the app's chat by the OWNER (never a member, support or a connected app); its card was shown and its thread still exists; the item is still proposed; the proposal is at most 7 days old; the item's agent has an owner-set cap; the type keeps the margin floor (never article or followup_seq); the whole proposal is at most 3 items and 12 credits. It also counts against the weekly cap and a hold, and the number of tries is bounded. The result is 'ok:N', a refusal (agent_cap, no_credits, trial_over), 'failed' (refunded; the item waits for the owner) or 'retry:paused' (paused: the item stays as it is). The notice is sent once per item.",
+      "branches": [
+        "Auto-run off, or no cap for the item's agent: nothing starts",
+        "Owner declined the item (Governance queue or the card): never starts",
+        "Paused: 'retry:paused', nothing charged, the next day's run asks again",
+        "Item type article or followup_seq: never starts on its own",
+        "Failed: refunded, the item waits for the owner's Run"
+      ],
+      "conditions": "Owner turned on auto-run and set a cap; a handoff Majed proposed to the owner in the last 7 days",
+      "sources": [
+        {
+          "path": "src/app/api/cron/routines/route.ts",
+          "line": 39,
+          "end_line": 44
+        },
+        {
+          "path": "src/lib/handoff-auto.ts",
+          "line": 85,
+          "end_line": 164
+        },
+        {
+          "path": "src/lib/handoff-auto.ts",
+          "line": 166,
+          "end_line": 187
+        },
+        {
+          "path": "src/lib/handoffs.ts",
+          "line": 138,
+          "end_line": 142
+        },
+        {
+          "path": "src/lib/handoffs.ts",
+          "line": 185,
+          "end_line": 202
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "create",
+      "note": "The switch and the queue live on the Governance page (another stage)."
+    }
+  ]
+}

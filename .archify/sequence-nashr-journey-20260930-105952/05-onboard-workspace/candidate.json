@@ -1,0 +1,913 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "First run: starter plan, launch path and files",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "output": ".archify/sequence-nashr-journey-20260930-105952/05-onboard-workspace/05-onboard-workspace.html",
+    "repository": {
+      "url": "https://github.com/iAbulkhair/Nashr.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "f0e7fdecf7d70d8c60ba76650f22440433926add"
+    }
+  },
+  "participants": [
+    {
+      "id": "person",
+      "type": "external",
+      "label": "Person",
+      "sublabel": "owner or team",
+      "sources": [
+        {
+          "path": "src/components/app/OnboardCards.tsx",
+          "line": 37,
+          "end_line": 45
+        },
+        {
+          "path": "src/components/app/JourneyCard.tsx",
+          "line": 137,
+          "end_line": 190
+        },
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 98,
+          "end_line": 126
+        }
+      ]
+    },
+    {
+      "id": "page",
+      "type": "frontend",
+      "label": "Browser page",
+      "sublabel": "what they see",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 549,
+          "end_line": 613
+        },
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 30,
+          "end_line": 51
+        },
+        {
+          "path": "src/components/app/Inbox.tsx",
+          "line": 213,
+          "end_line": 242
+        }
+      ]
+    },
+    {
+      "id": "checks",
+      "type": "security",
+      "label": "Checks in code",
+      "sublabel": "auth · roles · limits",
+      "sources": [
+        {
+          "path": "src/app/api/onboard/plan/route.ts",
+          "line": 10,
+          "end_line": 28
+        },
+        {
+          "path": "src/app/api/files/route.ts",
+          "line": 17,
+          "end_line": 38
+        },
+        {
+          "path": "src/lib/rate.ts",
+          "line": 29,
+          "end_line": 60
+        }
+      ]
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "Nashr server",
+      "sublabel": "API routes",
+      "sources": [
+        {
+          "path": "src/app/api/chat/route.ts",
+          "line": 31,
+          "end_line": 50
+        },
+        {
+          "path": "src/app/api/catalog/route.ts",
+          "line": 9,
+          "end_line": 32
+        },
+        {
+          "path": "src/app/[lang]/app/page.tsx",
+          "line": 17,
+          "end_line": 30
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "account data",
+      "sources": [
+        {
+          "path": "src/lib/files.ts",
+          "line": 68,
+          "end_line": 91
+        },
+        {
+          "path": "src/lib/journey-load.ts",
+          "line": 13,
+          "end_line": 22
+        },
+        {
+          "path": "src/app/api/chat/feedback/route.ts",
+          "line": 8,
+          "end_line": 17
+        }
+      ]
+    },
+    {
+      "id": "outside",
+      "type": "external",
+      "label": "Outside services",
+      "sublabel": "your website",
+      "sources": [
+        {
+          "path": "src/lib/catalog.ts",
+          "line": 42,
+          "end_line": 77
+        },
+        {
+          "path": "src/lib/catalog.ts",
+          "line": 97,
+          "end_line": 117
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 490,
+      "label": "Thread cards"
+    },
+    {
+      "from": 520,
+      "to": 1170,
+      "label": "Starter plan"
+    },
+    {
+      "from": 1200,
+      "to": 1604,
+      "label": "Owner prompts"
+    },
+    {
+      "from": 1634,
+      "to": 2336,
+      "label": "Path, side panel, inbox"
+    },
+    {
+      "from": 2366,
+      "to": 3260,
+      "label": "Files"
+    },
+    {
+      "from": 3290,
+      "to": 3642,
+      "label": "Import products"
+    }
+  ],
+  "messages": [
+    {
+      "id": "onboard-file-card--do",
+      "from": "person",
+      "to": "page",
+      "y": 188,
+      "label": "Expand, Copy or 'Open in Files'",
+      "variant": "emphasis"
+    },
+    {
+      "id": "onboard-file-card--see",
+      "from": "page",
+      "to": "person",
+      "y": 218,
+      "label": "Full file, rendered by render()",
+      "variant": "return",
+      "note": "Card shows name, 'File', 'Saved'; thread chat:{scope} is shared by every role"
+    },
+    {
+      "id": "onboard-file-card--copy",
+      "from": "page",
+      "to": "person",
+      "y": 262,
+      "label": "Copy: raw markdown, 'Copied' 1.5 s",
+      "variant": "return",
+      "note": "'Open in Files' goes to /{lang}/app/files"
+    },
+    {
+      "id": "onboard-rate-message--do",
+      "from": "person",
+      "to": "page",
+      "y": 314,
+      "label": "Thumbs up, or down + reason",
+      "variant": "default",
+      "note": "Thumbs down first opens 'What was missing? (optional)'"
+    },
+    {
+      "id": "onboard-rate-message--post",
+      "from": "page",
+      "to": "server",
+      "y": 358,
+      "label": "POST /api/chat/feedback",
+      "variant": "default"
+    },
+    {
+      "id": "onboard-rate-message--check",
+      "from": "server",
+      "to": "checks",
+      "y": 388,
+      "label": "session, rate, known agent + value",
+      "variant": "security",
+      "note": "401 without a session; 429 over 120 an hour; 400 bad_request"
+    },
+    {
+      "id": "onboard-rate-message--save",
+      "from": "server",
+      "to": "store",
+      "y": 432,
+      "label": "recordThumb(sc(u), agent, …)",
+      "variant": "dashed"
+    },
+    {
+      "id": "onboard-rate-message--see",
+      "from": "page",
+      "to": "person",
+      "y": 462,
+      "label": "Thumb highlighted",
+      "variant": "return",
+      "note": "Client ignores the answer; one rating per message per page view"
+    },
+    {
+      "id": "onboard-plan-add--do",
+      "from": "person",
+      "to": "page",
+      "y": 550,
+      "label": "Press + 'Add task' on a plan item",
+      "variant": "emphasis"
+    },
+    {
+      "id": "onboard-plan-add--post",
+      "from": "page",
+      "to": "server",
+      "y": 580,
+      "label": "POST /api/onboard/plan {index}",
+      "variant": "emphasis"
+    },
+    {
+      "id": "onboard-plan-add--role",
+      "from": "server",
+      "to": "checks",
+      "y": 610,
+      "label": "session + forbid(u,'onboard')",
+      "variant": "security",
+      "note": "Admin or owner, else 403; 404 when no plan or no such index"
+    },
+    {
+      "id": "onboard-plan-add--save",
+      "from": "server",
+      "to": "store",
+      "y": 654,
+      "label": "set plan[index].added",
+      "variant": "dashed",
+      "note": "Key onboardplan:{scope}; GET /api/onboard/plan re-reads it on mount"
+    },
+    {
+      "id": "onboard-plan-add--see",
+      "from": "page",
+      "to": "person",
+      "y": 698,
+      "label": "'Added' with a check, disabled",
+      "variant": "return",
+      "note": "Shown at once, even when refused (member 403) until reload"
+    },
+    {
+      "id": "onboard-plan-add--next",
+      "from": "page",
+      "to": "person",
+      "y": 742,
+      "label": "Next load: 'First up' updates",
+      "variant": "return",
+      "note": "Names the first task not yet added; 'Add' makes no draft, to-do or inbox item"
+    },
+    {
+      "id": "onboard-plan-start--do",
+      "from": "person",
+      "to": "page",
+      "y": 794,
+      "label": "Press 'Start now'",
+      "variant": "emphasis",
+      "note": "Title and brief go in as the person's chat message"
+    },
+    {
+      "id": "onboard-plan-start--post",
+      "from": "page",
+      "to": "server",
+      "y": 838,
+      "label": "POST /api/chat conv:'default'",
+      "variant": "emphasis"
+    },
+    {
+      "id": "onboard-plan-start--limit",
+      "from": "server",
+      "to": "checks",
+      "y": 868,
+      "label": "trial, pace limit, allowance",
+      "variant": "security",
+      "note": "401; 400 empty; 402 trial_over; 429 slow_down over 30 an hour or 150 a day (trial 10 and 30); 402 chat_allowance or chat_credits"
+    },
+    {
+      "id": "onboard-plan-start--save",
+      "from": "server",
+      "to": "store",
+      "y": 912,
+      "label": "save user message to chat:{scope}",
+      "variant": "dashed"
+    },
+    {
+      "id": "onboard-plan-start--paused",
+      "from": "server",
+      "to": "store",
+      "y": 942,
+      "label": "paused: save PAUSED_REPLY",
+      "variant": "dashed",
+      "note": "Model calls paused since 2026-09-28: no tool runs, nothing is charged, the reserved message is given back"
+    },
+    {
+      "id": "onboard-plan-start--reply",
+      "from": "server",
+      "to": "page",
+      "y": 986,
+      "label": "Noor's reply (stream)",
+      "variant": "return"
+    },
+    {
+      "id": "onboard-plan-start--see",
+      "from": "page",
+      "to": "person",
+      "y": 1016,
+      "label": "'The agents are paused for now…'",
+      "variant": "return",
+      "note": "'…No credits were used.' Unpaused: status lines, reply, item cards"
+    },
+    {
+      "id": "onboard-plan-start--refused",
+      "from": "page",
+      "to": "person",
+      "y": 1060,
+      "label": "Refused: message back in the box",
+      "variant": "security",
+      "note": "429: 'Too many messages…'; 402 allowance: 'not sent and not counted' + limit dialog. Ended trial: reply with a plan link + subscription dialog. Failed turn: 'Could not reply.'"
+    },
+    {
+      "id": "onboard-plan-skip--do",
+      "from": "person",
+      "to": "page",
+      "y": 1112,
+      "label": "Click 'Skip' under the plan",
+      "variant": "default"
+    },
+    {
+      "id": "onboard-plan-skip--see",
+      "from": "page",
+      "to": "person",
+      "y": 1142,
+      "label": "Plan card hidden in this view",
+      "variant": "return",
+      "note": "Client only: nothing is saved, the card returns on reload"
+    },
+    {
+      "id": "onboard-whatsapp--do",
+      "from": "person",
+      "to": "page",
+      "y": 1230,
+      "label": "Type WhatsApp number, press Save",
+      "variant": "default",
+      "note": "'Later' hides the card until the next page load"
+    },
+    {
+      "id": "onboard-whatsapp--short",
+      "from": "page",
+      "to": "person",
+      "y": 1274,
+      "label": "Under 9 digits: 'Invalid number'",
+      "variant": "return",
+      "note": "No request is sent"
+    },
+    {
+      "id": "onboard-whatsapp--put",
+      "from": "page",
+      "to": "server",
+      "y": 1318,
+      "label": "PUT /api/profile {phone}",
+      "variant": "default"
+    },
+    {
+      "id": "onboard-whatsapp--role",
+      "from": "server",
+      "to": "checks",
+      "y": 1348,
+      "label": "profile.self + profile.account",
+      "variant": "security",
+      "note": "401 without a session; 403 unless owner; 400 for an empty or short number"
+    },
+    {
+      "id": "onboard-whatsapp--save",
+      "from": "server",
+      "to": "store",
+      "y": 1392,
+      "label": "store phone (withUserLock)",
+      "variant": "dashed",
+      "note": "Trimmed, max 30 characters, needs 9+ digits"
+    },
+    {
+      "id": "onboard-whatsapp--see",
+      "from": "page",
+      "to": "person",
+      "y": 1436,
+      "label": "Card becomes 'Number saved'",
+      "variant": "return",
+      "note": "A refused save (400 or 403) also shows 'Invalid number'"
+    },
+    {
+      "id": "onboard-activate-bar--do",
+      "from": "person",
+      "to": "page",
+      "y": 1488,
+      "label": "Click 'Activate Noor'",
+      "variant": "default",
+      "note": "Bar above the message box, or the trial banner"
+    },
+    {
+      "id": "onboard-activate-bar--go",
+      "from": "page",
+      "to": "person",
+      "y": 1532,
+      "label": "Opens /{lang}/app/billing",
+      "variant": "return",
+      "note": "Plain link: the billing stage takes over"
+    },
+    {
+      "id": "onboard-activate-bar--banner",
+      "from": "page",
+      "to": "person",
+      "y": 1576,
+      "label": "'Your trial ends in N days'",
+      "variant": "return",
+      "note": "Or 'Your trial has ended'. Non-owners: 'Ask the account owner to activate.'"
+    },
+    {
+      "id": "onboard-journey-card--do",
+      "from": "person",
+      "to": "page",
+      "y": 1664,
+      "label": "Read Launch path, press 'Start'",
+      "variant": "emphasis",
+      "note": "Or a milestone in the full card on the inbox"
+    },
+    {
+      "id": "onboard-journey-card--load",
+      "from": "page",
+      "to": "server",
+      "y": 1708,
+      "label": "page render: loadJourney",
+      "variant": "default"
+    },
+    {
+      "id": "onboard-journey-card--read",
+      "from": "server",
+      "to": "store",
+      "y": 1738,
+      "label": "brand, tasks, connections, MCP",
+      "variant": "default",
+      "note": "One parallel round with OAuth grants; computeJourney uses real data"
+    },
+    {
+      "id": "onboard-journey-card--see",
+      "from": "page",
+      "to": "person",
+      "y": 1782,
+      "label": "'Level: Seed' · '10 / 150 pts'",
+      "variant": "return",
+      "note": "'1 of 7'; footer 'Next step · +20' and 'Switch on the brand guard'"
+    },
+    {
+      "id": "onboard-journey-card--start",
+      "from": "page",
+      "to": "person",
+      "y": 1826,
+      "label": "'Start' opens /onboarding#guard",
+      "variant": "return",
+      "note": "Full card: 7 milestones; all done shows 'Oasis reached…'"
+    },
+    {
+      "id": "onboard-journey-hide--do",
+      "from": "person",
+      "to": "page",
+      "y": 1878,
+      "label": "Click X, later 'Show path'",
+      "variant": "default"
+    },
+    {
+      "id": "onboard-journey-hide--see",
+      "from": "page",
+      "to": "person",
+      "y": 1908,
+      "label": "Pill 'Seed · 1/7 · Show path'",
+      "variant": "return",
+      "note": "Client only: hidden flag in localStorage 'nashr:journey:v1'"
+    },
+    {
+      "id": "onboard-home-side--do",
+      "from": "person",
+      "to": "page",
+      "y": 1960,
+      "label": "Read the side panel, follow links",
+      "variant": "default",
+      "note": "xl screens only; the panel only holds links"
+    },
+    {
+      "id": "onboard-home-side--load",
+      "from": "page",
+      "to": "server",
+      "y": 2004,
+      "label": "chat page server render",
+      "variant": "default"
+    },
+    {
+      "id": "onboard-home-side--read",
+      "from": "server",
+      "to": "store",
+      "y": 2034,
+      "label": "kpis, channels, getSchedule, files",
+      "variant": "default",
+      "note": "Parallel reads plus brief and first unread notice; added brand: weekly plan off unless set by the switch"
+    },
+    {
+      "id": "onboard-home-side--see",
+      "from": "page",
+      "to": "person",
+      "y": 2078,
+      "label": "Metrics at 0; first brand: tasks Live",
+      "variant": "return",
+      "note": "Up to 4 files; none: 'No files yet. Run onboarding from your URL.'"
+    },
+    {
+      "id": "onboard-home-side--added",
+      "from": "page",
+      "to": "person",
+      "y": 2122,
+      "label": "Added brand: Weekly plan 'Paused'",
+      "variant": "return",
+      "note": "Morning brief and Team follow-ups stay Live by default; an admin or the owner switches it on in Scheduled tasks"
+    },
+    {
+      "id": "onboard-inbox-first--do",
+      "from": "person",
+      "to": "page",
+      "y": 2174,
+      "label": "Open the home inbox",
+      "variant": "emphasis"
+    },
+    {
+      "id": "onboard-inbox-first--load",
+      "from": "page",
+      "to": "server",
+      "y": 2204,
+      "label": "render /{lang}/app",
+      "variant": "emphasis"
+    },
+    {
+      "id": "onboard-inbox-first--nobrand",
+      "from": "server",
+      "to": "page",
+      "y": 2234,
+      "label": "No brand: redirect to /start",
+      "variant": "return"
+    },
+    {
+      "id": "onboard-inbox-first--read",
+      "from": "server",
+      "to": "store",
+      "y": 2264,
+      "label": "tasks, brief, channels, journey",
+      "variant": "default",
+      "note": "Plus offModels; media controls get paused = modelState() !== 'on'"
+    },
+    {
+      "id": "onboard-inbox-first--see",
+      "from": "page",
+      "to": "person",
+      "y": 2308,
+      "label": "'Nothing waiting. Ask Noor…'",
+      "variant": "return",
+      "note": "Waiting, Approved, Rejected (0); 'Ask for a new batch' opens /generate"
+    },
+    {
+      "id": "onboard-files-view--do",
+      "from": "person",
+      "to": "page",
+      "y": 2396,
+      "label": "Open Files, click a file",
+      "variant": "emphasis"
+    },
+    {
+      "id": "onboard-files-view--load",
+      "from": "page",
+      "to": "server",
+      "y": 2426,
+      "label": "render /{lang}/app/files",
+      "variant": "emphasis",
+      "note": "No brand redirect: it opens before setup"
+    },
+    {
+      "id": "onboard-files-view--read",
+      "from": "server",
+      "to": "store",
+      "y": 2470,
+      "label": "listFiles(scope)",
+      "variant": "default"
+    },
+    {
+      "id": "onboard-files-view--lock",
+      "from": "server",
+      "to": "checks",
+      "y": 2500,
+      "label": "files.core.write + delete",
+      "variant": "security",
+      "note": "Core files locked unless admin or owner; canImport = can('catalog.import')"
+    },
+    {
+      "id": "onboard-files-view--see",
+      "from": "page",
+      "to": "person",
+      "y": 2544,
+      "label": "List, first file as plain text",
+      "variant": "return",
+      "note": "'written by Noor' or 'written by you'; empty: 'No files yet…'"
+    },
+    {
+      "id": "onboard-files-view--member",
+      "from": "page",
+      "to": "person",
+      "y": 2588,
+      "label": "Members: no Edit or Delete on core",
+      "variant": "security",
+      "note": "'Only the account owner or an admin can change this.'"
+    },
+    {
+      "id": "onboard-files-edit--do",
+      "from": "person",
+      "to": "page",
+      "y": 2640,
+      "label": "Edit, change text, Save",
+      "variant": "emphasis"
+    },
+    {
+      "id": "onboard-files-edit--put",
+      "from": "page",
+      "to": "server",
+      "y": 2670,
+      "label": "PUT /api/files {name, content}",
+      "variant": "emphasis"
+    },
+    {
+      "id": "onboard-files-edit--check",
+      "from": "server",
+      "to": "checks",
+      "y": 2700,
+      "label": "session, rate, size, core role",
+      "variant": "security",
+      "note": "401; 429 over 60 an hour; 413 over 200 KB; 400 missing field"
+    },
+    {
+      "id": "onboard-files-edit--save",
+      "from": "server",
+      "to": "store",
+      "y": 2744,
+      "label": "writeFile by 'user'",
+      "variant": "dashed",
+      "note": "Clipped to 40,000 chars; a new name past 200 files: 409 file_limit"
+    },
+    {
+      "id": "onboard-files-edit--see",
+      "from": "page",
+      "to": "person",
+      "y": 2788,
+      "label": "Saved: now 'written by you'",
+      "variant": "return",
+      "note": "Later agent writes go to a '-imported' sibling; Cancel saves nothing"
+    },
+    {
+      "id": "onboard-files-edit--refused",
+      "from": "page",
+      "to": "person",
+      "y": 2832,
+      "label": "'Your role does not allow this.'",
+      "variant": "security",
+      "note": "403 on core files; other failures: 'That did not work. Try again.'; editor stays open"
+    },
+    {
+      "id": "onboard-files-new--do",
+      "from": "person",
+      "to": "page",
+      "y": 2884,
+      "label": "Type a 'New file' name, press +",
+      "variant": "default"
+    },
+    {
+      "id": "onboard-files-new--put",
+      "from": "page",
+      "to": "server",
+      "y": 2914,
+      "label": "PUT /api/files (same path)",
+      "variant": "default"
+    },
+    {
+      "id": "onboard-files-new--check",
+      "from": "server",
+      "to": "checks",
+      "y": 2944,
+      "label": "same checks as an edit",
+      "variant": "security",
+      "note": "Rate limit, size, core-name role check, 200-file cap"
+    },
+    {
+      "id": "onboard-files-new--save",
+      "from": "server",
+      "to": "store",
+      "y": 2988,
+      "label": "save '# {name}' by 'user'",
+      "variant": "dashed",
+      "note": "'.md' is added when missing"
+    },
+    {
+      "id": "onboard-files-new--see",
+      "from": "page",
+      "to": "person",
+      "y": 3032,
+      "label": "List refreshes; errors in red",
+      "variant": "return",
+      "note": "A member typing a core file name gets the 403 role message"
+    },
+    {
+      "id": "onboard-files-delete--do",
+      "from": "person",
+      "to": "page",
+      "y": 3084,
+      "label": "Delete, confirm 'Delete {name}?'",
+      "variant": "default",
+      "note": "Cancelling the dialog does nothing"
+    },
+    {
+      "id": "onboard-files-delete--del",
+      "from": "page",
+      "to": "server",
+      "y": 3128,
+      "label": "DELETE /api/files?name=",
+      "variant": "default"
+    },
+    {
+      "id": "onboard-files-delete--role",
+      "from": "server",
+      "to": "checks",
+      "y": 3158,
+      "label": "session, name, files.core.delete",
+      "variant": "security",
+      "note": "401; 400 missing name; core files need admin or owner (403)"
+    },
+    {
+      "id": "onboard-files-delete--remove",
+      "from": "server",
+      "to": "store",
+      "y": 3202,
+      "label": "deleteFile: record + index",
+      "variant": "dashed"
+    },
+    {
+      "id": "onboard-files-delete--see",
+      "from": "page",
+      "to": "person",
+      "y": 3232,
+      "label": "File gone from the list",
+      "variant": "return",
+      "note": "A refusal shows a red message instead"
+    },
+    {
+      "id": "onboard-files-import--do",
+      "from": "person",
+      "to": "page",
+      "y": 3320,
+      "label": "Press 'Import store products'",
+      "variant": "emphasis",
+      "note": "Admin or owner: members do not see the button"
+    },
+    {
+      "id": "onboard-files-import--post",
+      "from": "page",
+      "to": "server",
+      "y": 3364,
+      "label": "POST /api/catalog {}",
+      "variant": "emphasis"
+    },
+    {
+      "id": "onboard-files-import--role",
+      "from": "server",
+      "to": "checks",
+      "y": 3394,
+      "label": "session + forbid('catalog.import')",
+      "variant": "security",
+      "note": "401; 403 role message; no brand website: 400 no_site"
+    },
+    {
+      "id": "onboard-files-import--fetch",
+      "from": "server",
+      "to": "outside",
+      "y": 3438,
+      "label": "robots, sitemap, product pages",
+      "variant": "emphasis",
+      "note": "All through safeFetch; 40 s budget, up to 25 URLs, 5 at a time"
+    },
+    {
+      "id": "onboard-files-import--progress",
+      "from": "server",
+      "to": "page",
+      "y": 3482,
+      "label": "SSE progress: 'found:12'",
+      "variant": "return",
+      "note": "After 'Reading sitemap and product pages…'"
+    },
+    {
+      "id": "onboard-files-import--write",
+      "from": "server",
+      "to": "store",
+      "y": 3526,
+      "label": "write products.md by noor",
+      "variant": "dashed",
+      "note": "Owner-written products.md: import goes to products-imported.md"
+    },
+    {
+      "id": "onboard-files-import--see",
+      "from": "page",
+      "to": "person",
+      "y": 3570,
+      "label": "'Imported N', products.md selected",
+      "variant": "return",
+      "note": "No model call, no credits; the trial 'First up' hint moves past 'Import your products…'"
+    },
+    {
+      "id": "onboard-files-import--empty",
+      "from": "page",
+      "to": "person",
+      "y": 3614,
+      "label": "'No product pages found…'",
+      "variant": "return",
+      "note": "Also on a stream error, a connection dropped before the result, or a 400; 0 found still writes a header-only products.md"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "violet",
+      "title": "Who can do this",
+      "items": [
+        "Any signed-in role: file cards, ratings, 'Start now', Skip, the path card and Files",
+        "Admin or owner: 'Add task', core file edits and deletes, 'Import store products'",
+        "Owner only: the WhatsApp card and the banner's 'Activate Noor'; the bar's link shows to every role",
+        "Members' launch path links lead to read-only pages"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Refusals and limits",
+      "items": [
+        "Chat: 30 an hour and 150 a day per account (a trial 10 and 30), or past the plan's message allowance: the message goes back into the box, not counted",
+        "Files: 60 writes an hour, 200 KB per request, 200 files, 40,000 characters a file",
+        "A refused 'Add task' still shows 'Added' until reload",
+        "Import reads at most 25 product pages, only through safeFetch"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "While the model is paused",
+      "items": [
+        "Model calls are paused since 2026-09-28",
+        "'Start now' gets 'The agents are paused for now…' and no credits are used",
+        "No tool runs and nothing is charged; the reserved message is given back; unpaused, the chat turn and its tools can charge credits",
+        "Import store products makes no model call and spends no credits"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "e2756af3-905e-45ae-88d8-c109868f1fc4",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/15-manage-team/candidate.json",
+  "output": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/15-manage-team/15-manage-team.html",
+  "specification": {
+    "sha256": "2cd1bf897ed7b668a454b8ab563790cf439ce10f8b5c965be55a1192b0569f66",
+    "bytes": 25515
+  },
+  "artifact": {
+    "sha256": "84a070053d8fa6bc83c2768a99b939b4906570c63957e4310e58fbf011443d1b",
+    "bytes": 841060
+  }
+}

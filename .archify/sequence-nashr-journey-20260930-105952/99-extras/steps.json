@@ -1,0 +1,1709 @@
+{
+ "key": "99-extras",
+ "title": "Founder console and repeated steps",
+ "person": "founder, or the same person reaching a step from another screen",
+ "steps": [
+  {
+   "id": "account-lang-toggle",
+   "title": "Switch language",
+   "surface": "LangToggle in the signed-out app header and in the account menu",
+   "actor": "any-signed-in",
+   "action": "Clicks عربي or EN (signed out on signup, login, forgot, reset or join, or signed in from the account menu).",
+   "ui_response": "The same page opens under the other /ar or /en prefix, keeping the query string and fragment. The interface switches language and direction.",
+   "system_reaction": "Client only, with no API call. It writes the nashr_lang cookie for 1 year, which the root / redirect reads, and pushes the swapped path. The account's saved language, which the emails use, does not change; that happens on the profile page. On the join page the invite token survives the switch through sessionStorage, because the fragment was already cleared from the address bar.",
+   "branches": [
+    "already in that language -> nothing happens"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 35
+    },
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 172
+    },
+    {
+     "path": "src/components/LangToggle.tsx",
+     "line": 7,
+     "end_line": 9
+    },
+    {
+     "path": "src/components/LangToggle.tsx",
+     "line": 22,
+     "end_line": 27
+    },
+    {
+     "path": "src/proxy.ts",
+     "line": 5,
+     "end_line": 24
+    },
+    {
+     "path": "src/components/app/JoinForm.tsx",
+     "line": 39,
+     "end_line": 42
+    }
+   ],
+   "next": [
+    "account-signup-email"
+   ],
+   "note": "The actor can be a signed-out visitor or anyone signed in.",
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-nudge-email",
+   "title": "Setup nudge email",
+   "surface": "Email (daily cron /api/cron/daily)",
+   "actor": "system",
+   "action": "Runs automatically at 05:00 UTC every day for an account that signed up but has no brand yet.",
+   "ui_response": "The person receives one email, \"Noor is ready — give her your website\" (in Arabic for Arabic accounts), with a link to /{lang}/app/start. Nothing appears in the app.",
+   "system_reaction": "The daily cron checks the CRON_SECRET bearer with sameSecret and runs dailyFor for every active brand scope of every non-suspended account. With no brand, an account older than 10 minutes and mailReady() (RESEND_API_KEY and MAIL_FROM both set), it calls sendOnce(nudge1): a 120-second claim so two cron runs cannot both send, then sendEmail (10 s timeout), and the long once-marker (a dated record, 400 days) is written only after the provider accepted the message. A refused or timed-out send releases the claim and is tried again on the next run while the account still has no brand; the cron reports it as mail_refused:nudge and admin:log gets mail:refused (the recipient is not recorded). A marker burned by the old claim-before-send guard before 2026-10-01 17:00 UTC is cleared once and the nudge goes out again. The text says Thakeen and the link uses the app origin. While the model is paused, /api/onboard answers \"paused\", so an owner who tries to build the brand through onboarding stays without a brand and on this branch.",
+   "branches": [
+    "RESEND_API_KEY or MAIL_FROM missing -> no email attempted",
+    "already sent (confirmed marker) -> no email",
+    "provider refuses or times out -> logged as mail:refused, retried on the next run",
+    "another run holds the claim -> skipped this run",
+    "suspended account -> skipped"
+   ],
+   "conditions": "No brand; account older than 10 minutes; mailReady() (RESEND_API_KEY and MAIL_FROM); not suspended",
+   "sources": [
+    {
+     "path": "vercel.json",
+     "line": 4
+    },
+    {
+     "path": "src/app/api/cron/daily/route.ts",
+     "line": 86,
+     "end_line": 102
+    },
+    {
+     "path": "src/lib/schedule.ts",
+     "line": 237,
+     "end_line": 253
+    },
+    {
+     "path": "src/lib/notify.ts",
+     "line": 9
+    },
+    {
+     "path": "src/lib/notify.ts",
+     "line": 16
+    },
+    {
+     "path": "src/lib/notify.ts",
+     "line": 19,
+     "end_line": 51
+    },
+    {
+     "path": "src/lib/notify.ts",
+     "line": 58,
+     "end_line": 67
+    },
+    {
+     "path": "src/lib/notify.ts",
+     "line": 100,
+     "end_line": 125
+    },
+    {
+     "path": "src/app/api/onboard/route.ts",
+     "line": 116
+    }
+   ],
+   "next": [
+    "account-land-app"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-lifecycle-emails",
+   "title": "Trial emails",
+   "surface": "Email and notification bell (daily cron)",
+   "actor": "system",
+   "action": "Runs automatically on the daily cron for an account with a brand in its first days.",
+   "ui_response": "Plain-text emails signed \"Founder of Thakeen\" (or the Arabic signature), each sent once, with links on the app's own origin. Day 1 (1-3 days after signup, any plan): \"Noor wrote: “<item title>”\", or \"Day one with Noor\" when there is no item yet, which is what a paused model leaves. With 24-48 h of the trial left: \"Your trial ends tomorrow\", which gives approved and waiting counts, names Pro at SAR 499/mo with 700 credits a month and links to billing. In the last 24 h: \"Last day of your trial\". It names the 15% first-month offer when one applies: the early-partner offer with its last day (\"first month only, ending on <date>\") or the partner code's offer (\"first month only\", with the code, no end date); with no offer it only links billing and offers WhatsApp activation. Days 10-13, still on trial: \"What stopped you?\". Separately, the daily follow-ups add a bell item \"Your trial ends within 24 hours\" that links to billing. Depending on the email preference, it can also appear in that day's brief or follow-up email.",
+   "system_reaction": "runLifecycle returns nothing unless mailReady() (RESEND_API_KEY and MAIL_FROM). lifecyclePlan decides which notes are due from createdAt and the time left on trialEnds, before any read; then it requires a brand and reads 90 days of tasks for the counts. Each due note goes out through sendOnce(lifecycle:key): claim, sendEmail (10 s timeout), and the marker only after the provider accepted it, so a refused note is tried again on the next run while its window lasts. day3Offer decides the offer line: early when the account has no offer and no payment, or an unused early offer; partner for an unused partner-code offer; none once the offer was used or the account has paid. Earlier in the same daily run, on the default brand's entry, grantEarlyOffer gives an account with no offer {kind:\"early\"} in the last day of its trial, whether or not mail is set up (the billing page shows it). The day2 price and credits come from PLAN_PRICE_SAR.pro and PLAN_CREDITS.pro in src/lib/pricing.ts and the offer percentage from FIRST_MONTH_DISCOUNT_PCT. followUps adds the trial bell item in the last 24 h unless follow-ups are turned off in the schedule; that part does not need mail. No model call.",
+   "branches": [
+    "no brand -> skipped (nudge instead)",
+    "paid plan -> only day1",
+    "mail not ready -> no emails, bell item still added",
+    "provider refuses -> retried on the next run",
+    "offer used or account paid -> day-3 note names no offer",
+    "follow-ups off -> no bell item"
+   ],
+   "conditions": "Brand exists; mailReady() for the emails; plan trial for day2/day3/day10 and for the bell item",
+   "sources": [
+    {
+     "path": "src/app/api/cron/daily/route.ts",
+     "line": 59,
+     "end_line": 63
+    },
+    {
+     "path": "src/app/api/cron/daily/route.ts",
+     "line": 106,
+     "end_line": 107
+    },
+    {
+     "path": "src/lib/lifecycle.ts",
+     "line": 23,
+     "end_line": 27
+    },
+    {
+     "path": "src/lib/lifecycle.ts",
+     "line": 30,
+     "end_line": 66
+    },
+    {
+     "path": "src/lib/lifecycle.ts",
+     "line": 77,
+     "end_line": 91
+    },
+    {
+     "path": "src/lib/lifecycle.ts",
+     "line": 93,
+     "end_line": 116
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 40,
+     "end_line": 42
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 244
+    },
+    {
+     "path": "src/lib/partner-rules.ts",
+     "line": 153
+    },
+    {
+     "path": "src/lib/notifications.ts",
+     "line": 156,
+     "end_line": 158
+    }
+   ],
+   "next": [
+    "account-trial-ends"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-change-password",
+   "title": "Change password",
+   "surface": "/{lang}/app/profile (Password card) -> PATCH /api/account",
+   "actor": "any-signed-in",
+   "action": "Fills \"Current password\" and \"New password (at least 8 characters)\" in the Password card and clicks \"Change\".",
+   "ui_response": "A status line shows one of: \"Password changed\", \"Current password is wrong\", \"Password too weak: at least 8 characters, with a letter and a digit\", \"Your role does not allow this.\" on 403, or \"That did not work. Try again.\". The form clears, and this device stays signed in. A founder viewing the account sees, instead of the form, a note that changing the password and deleting the account are off.",
+   "system_reaction": "It requires a session and forbid(password.change), which allows every login but refuses a founder who is impersonating. Then strongPassword (400 weak_password), then the current password is checked against the acting login's own hash (401 wrong_password). For the owner, the new hash and sessionsAfter are saved under the user lock, then revokeAllMcp runs. For a member, only its own record and its own sessionsAfter change, under lock:member. Then destroySession and createSession run for the same login, so only the other devices are signed out. An owner's change does not sign the members out.",
+   "branches": [
+    "401 wrong_password",
+    "400 weak_password",
+    "403 forbidden (founder impersonating)",
+    "ok -> other devices of this login signed out"
+   ],
+   "conditions": "Signed in; not a founder impersonating",
+   "sources": [
+    {
+     "path": "src/components/app/ProfilePanel.tsx",
+     "line": 84,
+     "end_line": 86
+    },
+    {
+     "path": "src/components/app/ProfilePanel.tsx",
+     "line": 163,
+     "end_line": 173
+    },
+    {
+     "path": "src/components/app/ProfilePanel.tsx",
+     "line": 304,
+     "end_line": 312
+    },
+    {
+     "path": "src/app/api/account/route.ts",
+     "line": 32,
+     "end_line": 66
+    },
+    {
+     "path": "src/app/api/account/route.ts",
+     "line": 63,
+     "end_line": 64
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 101
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 109,
+     "end_line": 122
+    }
+   ],
+   "next": [
+    "account-session-ends"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-delete",
+   "title": "Delete account",
+   "surface": "/{lang}/app/profile (Delete account card) -> DELETE /api/account",
+   "actor": "owner",
+   "action": "Clicks \"Delete account\" and types the password into the browser prompt \"To permanently delete, enter your password:\".",
+   "ui_response": "On success the browser goes to the marketing home /{lang}, signed out. Errors: \"Wrong password\", \"Your role does not allow this.\" or \"That did not work. Try again.\" Cancelling the prompt, or leaving it empty, does nothing.",
+   "system_reaction": "forbid(account.delete) allows the owner only, and never while a founder impersonates. After the password check against the owner's hash, wipeAccount deletes every brand scope (including each brand's onboarding confirmation onboardok:{scope} and run lock onboardlock:{scope}), files, tasks, chats, connections, notifications, referral records, the MCP token and OAuth grants, and the user record, which also holds any added brand's held setup charge. wipeTeam then removes every member login and invite, so members are signed out at their next request. The address is removed from users:all and logged to deleted-accounts. destroySession ends this session. This cannot be undone.",
+   "branches": [
+    "prompt cancelled -> nothing",
+    "401 wrong_password",
+    "403 forbidden",
+    "ok -> /{lang}"
+   ],
+   "conditions": "Owner, not a founder impersonating",
+   "sources": [
+    {
+     "path": "src/components/app/ProfilePanel.tsx",
+     "line": 85
+    },
+    {
+     "path": "src/components/app/ProfilePanel.tsx",
+     "line": 175,
+     "end_line": 181
+    },
+    {
+     "path": "src/components/app/ProfilePanel.tsx",
+     "line": 315,
+     "end_line": 321
+    },
+    {
+     "path": "src/app/api/account/route.ts",
+     "line": 68,
+     "end_line": 79
+    },
+    {
+     "path": "src/lib/account.ts",
+     "line": 37,
+     "end_line": 132
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 14
+    }
+   ],
+   "next": [
+    "account-arrive-signup"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-impersonation-stop",
+   "title": "Stop impersonation",
+   "surface": "Impersonation banner in the app layout -> POST /api/admin/impersonate",
+   "actor": "founder",
+   "action": "While viewing a customer's account from the founder console, clicks \"Stop and return to console\".",
+   "ui_response": "Every app page shows the banner \"Viewing as <email> (2 hours max)\". The button redirects to /{lang}/app/admin (without ?login=1).",
+   "system_reaction": "A form post deletes the temporary impersonation session and logs impersonate:stop to admin:log, naming the founder from the session record. If the founder's saved session (nashr_return) is still alive it is restored for 30 days; otherwise there is no session. The route deletes nashr_return and nashr_impersonate and redirects with 303. A session opened from the console-key session ends with that key session as well (15 minutes without a request on either side, End key session, or a key rotation). While impersonating, password change, account delete, invites, role changes, removals, MCP tokens, OAuth approval and partner bank details are refused in code.",
+   "branches": [
+    "saved founder session gone (a key-session founder has none) -> the console opens only while the key session is still live; otherwise it answers 404 unless ?login=1 shows the key form"
+   ],
+   "conditions": "nashr_impersonate cookie present (set by the console's impersonate action for 2 hours)",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 44
+    },
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 53,
+     "end_line": 58
+    },
+    {
+     "path": "src/app/api/admin/impersonate/route.ts",
+     "line": 7,
+     "end_line": 23
+    },
+    {
+     "path": "src/app/[lang]/app/admin/page.tsx",
+     "line": 9,
+     "end_line": 22
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 109,
+     "end_line": 122
+    }
+   ],
+   "next": [],
+   "note": "Returns to the founder console stage.",
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "daily-calendar-review",
+   "title": "Review the calendar",
+   "surface": "/{lang}/app/calendar (CalendarPanel)",
+   "actor": "any-signed-in",
+   "action": "Opens Calendar from the sidebar or a 'due today or tomorrow' notification. Moves between weeks or months with ‹ › or the arrow keys, uses 'Today' (T), and switches Week/Month (V). Picks a day by clicking an item or a month cell, or steps the day panel with its own ‹ ›.",
+   "ui_response": "Week view: one row per channel, with approved items dark and pending items light. Month view: a count per day. The day panel lists that day's items with channel, title, status and a preview, or 'Nothing on this day'. It also shows 'Approved, no date: N · Set dates'.",
+   "system_reaction": "The server reads 365 days of the light index and the brand's channels. Only non-rejected items that are approved or have a publish date appear, placed on their scheduled day or else their creation day (UTC). Everything else is client-side and read-only: nothing is scheduled or published from this page. Dates are set in the inbox, and nothing goes out automatically.",
+   "branches": [
+    "Approved without a date: link to the inbox to set dates"
+   ],
+   "conditions": "Signed in",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/calendar/page.tsx",
+     "line": 8,
+     "end_line": 17
+    },
+    {
+     "path": "src/components/app/CalendarPanel.tsx",
+     "line": 30,
+     "end_line": 62
+    },
+    {
+     "path": "src/components/app/CalendarPanel.tsx",
+     "line": 64,
+     "end_line": 144
+    }
+   ],
+   "next": [
+    "daily-calendar-add"
+   ],
+   "verified": true,
+   "stage": "daily"
+  },
+  {
+   "id": "daily-calendar-add",
+   "title": "Add content for a day",
+   "surface": "/{lang}/app/calendar, day panel or empty week cell",
+   "actor": "any-signed-in",
+   "action": "On an empty day clicks 'Add content', clicks an empty week cell, or clicks 'Set dates'.",
+   "ui_response": "'Add content' opens chat with the prompt 'Prepare content for YYYY-MM-DD' pre-filled. An empty cell and 'Set dates' open the approvals inbox.",
+   "system_reaction": "Navigation only. Anything sent in chat follows the chat stage; while paused it gets the paused reply.",
+   "branches": [
+    "Paused (current): the chat request answers paused"
+   ],
+   "conditions": "Signed in",
+   "sources": [
+    {
+     "path": "src/components/app/CalendarPanel.tsx",
+     "line": 104
+    },
+    {
+     "path": "src/components/app/CalendarPanel.tsx",
+     "line": 138
+    },
+    {
+     "path": "src/components/app/CalendarPanel.tsx",
+     "line": 143
+    }
+   ],
+   "next": [],
+   "note": "Continues in the chat stage or the approvals stage.",
+   "verified": true,
+   "stage": "daily"
+  },
+  {
+   "id": "manage-trial-emails",
+   "title": "Trial-end emails",
+   "surface": "Email (daily cron, 05:00 UTC)",
+   "actor": "system",
+   "action": "The daily cron sends lifecycle emails to trial accounts.",
+   "ui_response": "Plain-text emails signed by the founder (\"Founder of Thakeen\"). 'Your trial ends tomorrow' is sent with 24-48 h left; it gives approved and waiting counts, names Pro at SAR 499/mo with 700 credits a month and links to /billing. 'Last day of your trial' is sent in the last 24 h; it names the 15% first-month offer (with its last day for the early-partner offer) and links to /billing or offers a WhatsApp activation. 'What stopped you?' is sent on days 10-13 while still on trial.",
+   "system_reaction": "runLifecycle runs inside the daily job only for a workspace that has a brand file. It needs mailReady() (RESEND_API_KEY and MAIL_FROM). It decides which emails are due before reading anything, sends each key through sendOnce (claim, 10 s send, marker only once the provider accepted it, so a refused note is retried while its window lasts), and builds the counts from the last 90 days of tasks. The Pro price and credits in the day2 email are read from PLAN_PRICE_SAR.pro and PLAN_CREDITS.pro (src/lib/pricing.ts). On the trial's last day the same daily run grants an account without an offer the early-partner 15% first-month offer on its default brand entry, whether or not mail is set up. Without a brand file the cron instead sends a one-time 'Noor is ready — give her your website' nudge.",
+   "branches": [
+    "no brand -> signup nudge instead",
+    "mail not ready -> nothing sent",
+    "already sent -> skipped",
+    "provider refuses -> retried on the next run"
+   ],
+   "conditions": "plan = trial, brand file exists, mailReady()",
+   "sources": [
+    {
+     "path": "src/lib/lifecycle.ts",
+     "line": 23,
+     "end_line": 27
+    },
+    {
+     "path": "src/lib/lifecycle.ts",
+     "line": 30,
+     "end_line": 66
+    },
+    {
+     "path": "src/lib/lifecycle.ts",
+     "line": 77,
+     "end_line": 91
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 40,
+     "end_line": 42
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 244
+    },
+    {
+     "path": "src/app/api/cron/daily/route.ts",
+     "line": 59,
+     "end_line": 63
+    },
+    {
+     "path": "src/app/api/cron/daily/route.ts",
+     "line": 106,
+     "end_line": 107
+    },
+    {
+     "path": "vercel.json",
+     "line": 4
+    }
+   ],
+   "next": [
+    "manage-billing-open"
+   ],
+   "note": "The lifecycle also has a day1 onboarding email (days 1-3, any plan), which belongs to the onboarding stage.",
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-logout",
+   "title": "Log out",
+   "surface": "Sidebar account menu",
+   "actor": "any-signed-in",
+   "action": "Clicks 'Log out' in the account menu.",
+   "ui_response": "Sent to /{lang}/app/login.",
+   "system_reaction": "POST /api/auth/logout calls destroySession, which deletes session:{token} and the nashr_session cookie. Other devices stay signed in. The founder's console key session is separate (its own cookie and server record) and is not ended; only the console's \"End key session\" button or its idle and 12-hour limits end it.",
+   "branches": [],
+   "conditions": "Signed in",
+   "sources": [
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 173
+    },
+    {
+     "path": "src/components/app/LogoutButton.tsx",
+     "line": 4,
+     "end_line": 17
+    },
+    {
+     "path": "src/app/api/auth/logout/route.ts",
+     "line": 4,
+     "end_line": 7
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 275,
+     "end_line": 280
+    }
+   ],
+   "next": [],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-founder-key-login",
+   "stage": "manage",
+   "title": "Founder key sign-in",
+   "surface": "/{lang}/app/admin?login=1 (AdminLogin)",
+   "actor": "founder",
+   "action": "Opens /{lang}/app/admin?login=1 without a founder session, types the admin key in 'Admin key' and clicks 'Enter'.",
+   "ui_response": "With the right key the page refreshes into the founder console. With a wrong key, 'Wrong key.' appears under the field. After too many tries it shows 'Too many attempts. Try again in 15 minutes.', and 'Could not sign in right now. Try again.' for any other failure. Without ?login=1 the page is a plain 404, so the console stays hidden.",
+   "system_reaction": "POST /api/admin/login. It allows 5 attempts per 15 minutes per IP and answers 429 slow_down after that. The key is compared in constant time with WAITLIST_ADMIN_KEY (401 otherwise). On success createAdminSession sets a random session cookie and stores a server record adminsession:{sha256 of the id} bound to the key's fingerprint. The session ends after 15 minutes without a console request (ADMIN_SESSION_IDLE) or 12 hours at most (ADMIN_SESSION_MAX), on \"End key session\" (DELETE /api/admin/login), or when the key is rotated; each console request renews it at most once a minute. isAdminCookie() then opens the page, and an expired session makes the console's calls answer 401 (adminFetch announces it and the console shows that the session ended).",
+   "branches": [
+    "wrong key",
+    "6th try in 15 min: 429",
+    "no ?login=1: 404",
+    "key not configured: always refused",
+    "15 min idle or 12 h: session ends, console calls 401"
+   ],
+   "conditions": "Knows the admin key. Not needed for a founder signed in as themselves.",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/admin/page.tsx",
+     "line": 9,
+     "end_line": 22
+    },
+    {
+     "path": "src/components/app/AdminLogin.tsx",
+     "line": 6,
+     "end_line": 9
+    },
+    {
+     "path": "src/components/app/AdminLogin.tsx",
+     "line": 16,
+     "end_line": 30
+    },
+    {
+     "path": "src/app/api/admin/login/route.ts",
+     "line": 10,
+     "end_line": 24
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 370,
+     "end_line": 418
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 503,
+     "end_line": 533
+    },
+    {
+     "path": "src/lib/admin-fetch.ts",
+     "line": 1,
+     "end_line": 14
+    }
+   ],
+   "next": [
+    "manage-founder-console"
+   ],
+   "verified": true
+  },
+  {
+   "id": "manage-founder-console",
+   "stage": "manage",
+   "title": "Open founder console",
+   "surface": "/{lang}/app/admin (AdminConsole)",
+   "actor": "founder",
+   "action": "Clicks 'Founder' in the sidebar or the account menu, or opens /{lang}/app/admin. Then switches between the Overview, Users, Leads, Usage, Billing, Partners, Quality, Wishlist and Audit log tabs. On a key session, 'End key session' ends it.",
+   "ui_response": "Top tiles: Users, Paying, signed up today, Trial, model cost this month, tokens, model calls and Suspended. Paying and Trial count unsuspended accounts only, so a suspended account still counts in Users (and signed up today) and in Suspended, but not in Paying or Trial. The Leads tab shows a count of unread sales leads. Overview tiles: Users, New (7d), Activated (brand file) with its rate, Active today, Active this week, Active this month, Stickiness DAU/MAU, 7-day retention, MRR (SAR, est.), 'Top-ups this month (SAR, excl. VAT, not in MRR)', Credits used (month), Model cost (USD, month) and Errors (7d); below them the events per day for the last 14 days, the 30-day funnel (signup, activated, first batch, first approval, paid) and the recent users. Billing shows MRR, Top-ups this month, ARPU, model and render cost and gross margin, render spend by model and provider, and the plan mix. MRR sums the monthly price of every unsuspended account: 0 for a trial, 299, 499 or 999 SAR by plan, or an Agency account's deal price (999, as Business, without a deal); top-ups are not in MRR; ARPU is MRR over the paying count. Quality shows agent quality from the last 30 days and the golden set. Audit log shows the last 50 founder actions with before → after (plan, credits, seats, deal, chat allowance, top-ups and payments) and the reason. Everyone else gets a plain 404, including customers, members and a founder who is impersonating. When a console call answers 401 the console is replaced by 'The key session has ended: 15 minutes passed without activity, or it reached 12 hours. Enter the key again to continue.' with 'Enter the key' (to ?login=1), or for a founder login 'Your founder console session has ended. Sign in again to continue.' with 'Sign in'.",
+   "system_reaction": "The page checks isAdminCookie(): either a live key session (random cookie, 15 minutes idle, 12 hours at most), or isFounderActor (the owner login itself, its email in ADMIN_EMAILS, not impersonating). On load the console calls GET /api/admin/plan, /api/admin/evals, /api/admin/overview, /api/admin/log and /api/admin/leads?limit=0 (the unread count). Each route answers 401 without isAdmin, and a 401 makes the console show that the session ended. /api/admin/plan returns each account's deal, allowance (allowanceOf), priceSar (priceOf), chat allowance and top-up credits left (topupCredits; the packs themselves come with the user pane), and the margin column uses SAR_PER_USD from src/lib/pricing.ts. overview() drops suspended accounts before counting paying and MRR (MRR = sum of priceOf). It only reads: no credits and no model calls.",
+   "branches": [
+    "not a founder: 404",
+    "founder impersonating: 404",
+    "key session idle 15 min or past 12 h: calls answer 401, console shows the session ended",
+    "tab still loading: 'Loading…'"
+   ],
+   "conditions": "Founder account signed in as itself, or a live admin key session.",
+   "sources": [
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 147
+    },
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 168
+    },
+    {
+     "path": "src/app/[lang]/app/admin/page.tsx",
+     "line": 9,
+     "end_line": 22
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 503,
+     "end_line": 533
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 77,
+     "end_line": 82
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 176,
+     "end_line": 182
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 200,
+     "end_line": 203
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 466,
+     "end_line": 474
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 476,
+     "end_line": 503
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 524,
+     "end_line": 545
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 547,
+     "end_line": 554
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 619,
+     "end_line": 646
+    },
+    {
+     "path": "src/app/api/admin/plan/route.ts",
+     "line": 40,
+     "end_line": 76
+    },
+    {
+     "path": "src/app/api/admin/overview/route.ts",
+     "line": 8,
+     "end_line": 11
+    },
+    {
+     "path": "src/app/api/admin/evals/route.ts",
+     "line": 6,
+     "end_line": 7
+    },
+    {
+     "path": "src/app/api/admin/log/route.ts",
+     "line": 6,
+     "end_line": 8
+    },
+    {
+     "path": "src/lib/admin-stats.ts",
+     "line": 61,
+     "end_line": 76
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 101,
+     "end_line": 125
+    },
+    {
+     "path": "src/lib/admin-fetch.ts",
+     "line": 17,
+     "end_line": 33
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 448,
+     "end_line": 456
+    }
+   ],
+   "next": [
+    "manage-founder-find-user",
+    "manage-founder-agency-deal",
+    "manage-founder-activate",
+    "manage-founder-leads",
+    "manage-founder-partners",
+    "manage-founder-media-check",
+    "manage-founder-export",
+    "manage-founder-golden-run",
+    "manage-wish-moderate",
+    "manage-founder-key-end"
+   ],
+   "verified": true
+  },
+  {
+   "id": "manage-founder-find-user",
+   "stage": "manage",
+   "title": "Find a user",
+   "surface": "/{lang}/app/admin, Users tab",
+   "actor": "founder",
+   "action": "Types in 'Search email, name, phone, plan…' and clicks an email in the table to open its detail pane. For an exact address that is not in the list (a member login), clicks 'Look up this address'.",
+   "ui_response": "The table filters while they type. It shows the Seats and Chat columns beside the plan; its plan dropdown lists trial, starter, pro, business and agency; an Agency row also shows 'Agency deal… {credits @ price SAR}', or 'Agency deal… no deal: Business'. Under the table a note explains that a plan change resets the balance and how Agency deals work. An account opens a detail pane with name, phone, plan (for Agency with the deal in brackets, e.g. 'agency (3,000 @ 2,000 SAR)'), credits and a SUSPENDED marker, then the action buttons, the Payments block, the chat allowance box, model usage by kind and agent, trial end and renewal, integrations, brand, conversation and referral counts with the average judge score, the Top-ups block (packs, 'Add top-up', Void, Refund unused), the brand file, the tasks with judge scores and the account's recent activity. A member login opens a smaller pane: role, 'member of' the owner (clickable), invited by, the accepted date, and a warning when the owner is gone or the login is off the roster. An unknown address shows 'No account and no member login at this address.'",
+   "system_reaction": "GET /api/admin/users/{email} (needs isAdmin). For an account it returns the user without passHash, the default brand, tasks of all brands, usage, chat usage, connection metadata, the brand list, conversation and referral counts, recent activity, unfinished top-up refunds (unfinishedRefunds), the chat cost per message (chatUsdPerMsg) and the average judge score. For a member login it returns the record with owner and roster checks. Otherwise 404 not_found. The table itself comes from GET /api/admin/plan.",
+   "branches": [
+    "account found",
+    "member login found",
+    "not found"
+   ],
+   "conditions": "Founder console access.",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 559
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 561
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 563,
+     "end_line": 573
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 574,
+     "end_line": 614
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 615,
+     "end_line": 616
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 652,
+     "end_line": 788
+    },
+    {
+     "path": "src/app/api/admin/users/[email]/route.ts",
+     "line": 23,
+     "end_line": 64
+    }
+   ],
+   "next": [
+    "manage-founder-impersonate",
+    "manage-founder-extend-trial",
+    "manage-founder-reset-password",
+    "manage-founder-suspend",
+    "manage-founder-email-lang",
+    "manage-founder-delete-user",
+    "manage-founder-remove-member",
+    "manage-founder-activate",
+    "manage-founder-agency-deal",
+    "manage-founder-chat-allowance",
+    "manage-founder-topup",
+    "manage-founder-payments"
+   ],
+   "verified": true
+  },
+  {
+   "id": "manage-founder-activate",
+   "title": "Change plan, seats or credits",
+   "surface": "/{lang}/app/admin, Users tab (plan dropdown, seats and credits controls) -> POST /api/admin/plan",
+   "actor": "founder",
+   "action": "In the Users table picks a plan in the plan dropdown (trial, starter, pro, business or agency), or sets the seat count, or clicks '+ credits'. Each then asks 'Reason (logged)'. The seats prompt comes first and takes 0 to clear the override; 'Credits to add (negative to remove):' comes first for credits and is filled with 100.",
+   "ui_response": "A line '{email} → {plan}' appears, followed by any team change ('paused: …', 'back: …', 'invites cancelled: n'), or '{email}: seats N', or '{email} +N credits'. The table reloads with the new plan, balance and seat limit. A bad seat count shows '{email}: bad_seats' and nothing is sent; a server refusal shows its code, e.g. '{email}: bad_credits'. Cancelling the seats or credits prompt does nothing. Cancelling the reason prompt does not stop a change: it is sent with an empty reason, and a plan picked in the dropdown is always sent.",
+   "system_reaction": "POST /api/admin/plan authenticates with adminActor (401). A plan in the body sets the plan under the user lock, resets the month's plan credits to allowanceOf (the plan's credits, or the Agency deal's) with setMonthly, keeps live top-up packs, and stamps renewedAt with this month. Leaving Agency clears the deal and, unless the same request sets them, the seat override and the chat override. seats sets or clears the founder seat override (a whole number 1 to MAX_SEAT_OVERRIDE, 500; 0 or null clears it). addCredits takes a finite number of at most MAX_ADD_CREDITS (100,000) either way, truncated to a whole number, and adds it to or takes it from the month's plan credits only, never from top-up packs (400 bad_credits otherwise). A seat change, a plan change or a seat reset runs enforceSeats, which pauses the newest members over the limit, cancels invites that no longer fit, or brings paused members back. Every change is written to admin:log with plan, credits, seats, chat allowance and deal before and after, the team change and the reason. It records no customer payment: that is the Payments block, which also drives partner commission.",
+   "branches": [
+    "bad_seats / bad_credits -> caught or refused, nothing written",
+    "fewer seats than members -> newest members paused, invites that no longer fit cancelled",
+    "plan changed -> the month's plan credits reset to the new allowance, top-up packs kept",
+    "plan changed away from agency -> deal, seat override and chat override cleared unless set in the same request"
+   ],
+   "conditions": "Founder console access.",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 224,
+     "end_line": 246
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 308,
+     "end_line": 318
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 586,
+     "end_line": 592
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 609
+    },
+    {
+     "path": "src/app/api/admin/plan/route.ts",
+     "line": 78,
+     "end_line": 159
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 101,
+     "end_line": 125
+    }
+   ],
+   "next": [
+    "manage-seat-refit",
+    "manage-monthly-renewal"
+   ],
+   "note": "Plan changes made here do not record a payment.",
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-founder-agency-deal",
+   "stage": "manage",
+   "title": "Set an Agency deal",
+   "surface": "/{lang}/app/admin, Users tab ('Agency deal…' beside an Agency row's plan) -> POST /api/admin/plan",
+   "actor": "founder",
+   "action": "On a row whose plan is agency, clicks 'Agency deal…'. Types the monthly credits (1,500 to 100,000; filled with the current deal's or 1,500), then the monthly price in SAR excluding VAT (at least 999 and never cheaper per credit than Business; filled with the current deal's or 999), then the seats, owner included (1-500; filled with the current seat override, if any; empty keeps the current number), then 'Reason (logged)'. On an account that already has a deal, a confirm 'Apply the new deal now?' comes between the price and the seats. Leaving the credits empty clears the deal and goes straight to the reason.",
+   "ui_response": "A line '{email}: Deal 3,000 @ 2,000 SAR' appears ('Deal no deal: Business' after a clear), followed by any team change ('paused: …', 'back: …', 'invites cancelled: n'), and the table reloads with the new deal, seat limit and margin. A typo shows '{email}: bad_deal', '{email}: below_floor' or '{email}: bad_seats' and nothing is sent; a server refusal shows its code, e.g. '{email}: deal_needs_agency'. Cancelling the credits, price or seats prompt does nothing. The owner gets no email or bell item. The month's plan credits become the deal's credits at once (live top-up packs are kept) on a first deal or when the founder chose OK, otherwise at the next monthly renewal, and Profile shows the deal's credits as 'Your plan includes N credits per month'. Profile never shows who set the deal or when.",
+   "system_reaction": "The browser checks the numbers with parseDeal (whole numbers within the bounds, credits at least 1,500, price at least 999 and price × 1,500 ≥ credits × 999) and sends {email, deal, plan:'agency' on a first deal or on OK, seats when typed, reason}, or {email, deal:null, reason} to clear. POST /api/admin/plan authenticates with adminActor (401), checks seats (400 bad_seats), parses the deal again (400 bad_deal or below_floor) and reads the account (404 not_found). Under the user lock it refuses a deal when the resulting plan (the plan in the body, else the stored one) is not agency (400 deal_needs_agency, nothing written), so a request carrying plan:'agency' is never refused and puts the account on Agency. Otherwise it stores u.deal {credits, priceSar, setAt, setBy}. With plan it also resets the month's plan credits to allowanceOf (the deal's credits) with setMonthly, keeping live top-up packs, and stamps renewedAt with this month. deal:null deletes the deal and, with it, a chat allowance override (chat goes back to the plan's messages), and, when there was one and the request does not set seats, the seat override with it, so seats go back to Business's 7; the balance is kept until the next renewal, which grants Business's 1,500. A seat change, a plan in the body or that seat reset runs enforceSeats, which pauses the newest members over the limit, cancels pending invites that no longer fit, or brings paused members back into free seats. admin:log records what changed (e.g. 'plan:agency deal:3000@2000 seats:20') with plan, credits, seats, chat allowance and deal before and after, the team change and the reason. From then on allowanceOf and priceOf use the deal for renewal, Profile, MRR, the margin column and the CSV. A stored deal below the Business rate is ignored, and the account then counts as Business (1,500 credits, 999 SAR). GET /api/profile returns only the deal's credits and price, never setAt or setBy.",
+   "branches": [
+    "first deal -> sent with plan agency: balance = deal credits now, renewal cycle restarts",
+    "changed deal, OK -> applied now",
+    "changed deal, Cancel -> balance kept, new allowance at the next renewal",
+    "credits left empty -> deal and its seat override cleared, balance kept, account counts as Business",
+    "bad_deal / below_floor / bad_seats -> caught in the browser, nothing sent",
+    "deal sent without plan (changed deal, Cancel) while the account is no longer on agency -> 400 deal_needs_agency, nothing written",
+    "fewer seats than members -> newest members paused, invites that no longer fit cancelled"
+   ],
+   "conditions": "Founder console access. The row's plan is agency: the link shows only there.",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 280,
+     "end_line": 307
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 589
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 224,
+     "end_line": 232
+    },
+    {
+     "path": "src/app/api/admin/plan/route.ts",
+     "line": 78,
+     "end_line": 159
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 48,
+     "end_line": 85
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 97,
+     "end_line": 125
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 62,
+     "end_line": 71
+    },
+    {
+     "path": "src/lib/credits.ts",
+     "line": 450,
+     "end_line": 460
+    },
+    {
+     "path": "src/app/api/profile/route.ts",
+     "line": 74,
+     "end_line": 78
+    },
+    {
+     "path": "src/components/app/ProfilePanel.tsx",
+     "line": 183,
+     "end_line": 186
+    }
+   ],
+   "next": [
+    "manage-seat-refit",
+    "manage-monthly-renewal",
+    "manage-profile-open"
+   ],
+   "verified": true
+  },
+  {
+   "id": "manage-founder-chat-allowance",
+   "title": "Set a chat allowance",
+   "surface": "/{lang}/app/admin, Users tab (Chat cell) -> POST /api/admin/plan",
+   "actor": "founder",
+   "action": "Clicks the account's chat-messages cell ('Chat messages…'; its tooltip shows this month's chat cost, the cost per message and whether overflow onto credits is on). Types the messages per month (the whole trial for a trial account) in the prompt, or 'plan' or nothing to clear the override, then 'Reason (logged)'.",
+   "ui_response": "A line '{email}: Chat <allowance>' appears, with the seats-override label when an override is set, and the table and open pane reload. A number outside 0 to 100,000 shows '{email}: bad_chat' and nothing is sent. Cancelling the first prompt does nothing.",
+   "system_reaction": "POST /api/admin/plan {email, chatAllowance, reason}. The server checks isChatOverride (a whole number 0 to MAX_CHAT_OVERRIDE = 100,000; 0 is an override that stops chat for the account) or accepts null to return to the plan's messages (chatAllowanceOf). The override is stored on the account, applies to every seat of it, is cleared when an Agency deal ends, and is logged to admin:log with before and after. The CSV export and the customer's chat status read the same value.",
+   "branches": [
+    "empty or 'plan' -> override cleared",
+    "0 -> chat stopped for the account",
+    "not a whole number 0-100,000 -> bad_chat, nothing sent"
+   ],
+   "conditions": "Founder console access.",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 251,
+     "end_line": 268
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 598,
+     "end_line": 602
+    },
+    {
+     "path": "src/app/api/admin/plan/route.ts",
+     "line": 78,
+     "end_line": 159
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 169,
+     "end_line": 172
+    },
+    {
+     "path": "src/lib/chat-allowance.ts",
+     "line": 1
+    }
+   ],
+   "next": [],
+   "note": "Chat itself is paused in code today (CLAUDE_PAUSED), so the allowance matters once the model is switched back on.",
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-founder-topup",
+   "title": "Add, void or refund a top-up",
+   "surface": "/{lang}/app/admin, user pane (Top-ups block) -> POST /api/admin/topups",
+   "actor": "founder",
+   "action": "In a paid account's detail pane, in the Top-ups block, clicks 'Add top-up' and answers the prompts: 'Pack, in credits (100 / 300 / 1,000):' (filled with 100), 'Amount paid in SAR, excluding VAT:' (filled with the pack's list price, 1 SAR per credit), 'Payment date (YYYY-MM-DD, the day in Riyadh, not after today):' (filled with today in Riyadh), 'Payment reference (bank transfer or receipt number; optional):' and 'Reason (logged)'. On a listed pack clicks 'Void' (after a confirm), or 'Refund unused' on a paid pack with credits left: a confirm showing the amount to transfer (credits left × the price per credit paid, excluding VAT), 'Transfer date (YYYY-MM-DD, the day in Riyadh, not after today):', 'Transfer reference (bank transfer number; required):' and the reason. 'Finish refund' appears on a pack whose refund stopped before its payment was marked.",
+   "ui_response": "A line '{email}: Top-ups +N → <balance>' appears, with ' · commission SAR x' when a partner earns one on it; the block lists each pack with credits left, expiry (90 days), amount paid, date, reference and who added it, or 'No live top-up pack.'. On a trial the 'Add top-up' button is disabled with 'Top-ups are sold to paid plans only: change the plan first.'. Void shows '{email}: Top-ups Void −N → <balance>'; a refund shows '{email}: Refund unused −N · x SAR → <balance>' and the pack then reads 'refunded N credits · x SAR on <date>'. A bad pack or amount shows '{email}: bad_pack' or '{email}: bad_paid' and nothing is sent; an empty transfer reference shows '{email}: bad_ref'; a pack whose credits left changed shows 'left_changed: the pack now has N credits left (x SAR); nothing was refunded. Check the amount and try again.'. Cancelling any prompt but the reason does nothing. The pane and the Payments block reload.",
+   "system_reaction": "POST /api/admin/topups {email, action: add | void | refund} authenticates with adminActor (401) and parses the pack again (parseTopup: a listed pack, amount, date, reference; paymentId pay_<hex>). addPaidTopup under the account lock refuses a trial (409 topup_needs_paid_plan) and a 51st live pack (409 too_many_topups, at most 50), adds a credit lot valid for 90 days and records the pack's payment and, when one is due, the partner's commission (15% within the partner's window) with it; a repeated click of the same pack reuses one paymentId so a retry cannot add it twice. voidPaidTopup voids the payment and the commission first, then removes the lot's unspent credits. refundPaidTopup takes the credits the console showed (409 left_changed when they changed), a transfer date and a required reference, records the refund (refundId rf_…) on the pack's payment and lowers the commission in proportion; finish:true completes an interrupted refund from the pack's own refund record. A top-up never uses the 15% first-month offer. Each action is logged to admin:log.",
+   "branches": [
+    "trial account -> button disabled; server 409 topup_needs_paid_plan",
+    "51st live pack -> 409 too_many_topups",
+    "bad_pack / bad_paid / bad date -> nothing written",
+    "void -> payment and commission voided, unspent credits removed",
+    "refund unused -> credits left removed, refund on the payment, commission lowered in proportion",
+    "credits left changed since the confirm -> 409 left_changed, nothing refunded",
+    "empty transfer reference -> bad_ref, nothing sent",
+    "interrupted refund -> Finish refund completes it",
+    "retry of the same add -> one pack only"
+   ],
+   "conditions": "Founder console access. A paid account.",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 326,
+     "end_line": 356
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 361,
+     "end_line": 375
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 383,
+     "end_line": 409
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 414,
+     "end_line": 428
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 718,
+     "end_line": 751
+    },
+    {
+     "path": "src/app/api/admin/topups/route.ts",
+     "line": 68,
+     "end_line": 139
+    },
+    {
+     "path": "src/lib/partners.ts",
+     "line": 438
+    },
+    {
+     "path": "src/lib/partners.ts",
+     "line": 469
+    },
+    {
+     "path": "src/lib/partners.ts",
+     "line": 520
+    },
+    {
+     "path": "src/lib/topups.ts",
+     "line": 96
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 221
+    }
+   ],
+   "next": [],
+   "note": "Top-up payments show in the Payments block as 'top-up N' but are never entered there.",
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-founder-payments",
+   "title": "Record or void a payment",
+   "surface": "/{lang}/app/admin, user pane (Payments block) -> POST /api/admin/payments/{email}",
+   "actor": "founder",
+   "action": "In a user's detail pane, in the Payments block, picks 'Plan' (starter, pro, business or agency), fills 'Amount SAR excl. VAT' (the expected price is the placeholder), 'Date' (today in Riyadh) and 'Reference', and clicks 'Record payment'. On a listed payment clicks 'Void' and answers 'Why is this payment voided (refund, mistake)?'.",
+   "ui_response": "The block lists each payment with its date, plan (or 'top-up N'), amount with any refund, the first-month discount used, the commission ('commission SAR x') or why not ('not counted': no partner, self-referral, same team, paid before the referral, first payment after 30 days, after the first 4 months, refunded in full), and the reference. A 'Partner' line names the code, partner, 'by link' or 'by code', the date and the status. Before the first payment it says the 15% first-month offer is unused (with the expected first month per plan and 'It can be used until <day>'), used, or ended on its last day ('no longer shown to the customer'). A voided payment shows 'voided'. A top-up whose pack is live shows 'void it with its pack (Top-ups)'. After a click the line reads 'record ✓' or 'void ✓', or 'Failed: <code>'.",
+   "system_reaction": "GET /api/admin/payments/{email} (isAdmin) returns paymentsView; POST uses adminActor and calls recordPayment or voidPayment. recordPayment stores the plan payment (SAR excluding VAT) as the source of truth for partner commission: 15% of each payment for the first 4 months within 30 days of the referral, for a partner that is not the account itself or on its team; the plan's first payment also uses the account's unused first-month offer (the early-partner or partner-code 15%, until its last day). voidPayment keeps the record, marks it voided and takes its commission back; voiding the first plan payment gives the first-month offer back to the next one. A top-up payment whose pack is live is refused (409 topup_live). Either action re-takes the account's commission decisions and logs the ones that changed as reclassified. Neither changes the account's plan or credits: that is done in the Users table. Logged to admin:log.",
+   "branches": [
+    "no partner / self / same team / before attribution / lapsed / after 4 months -> payment recorded, no commission",
+    "void -> payment and commission voided",
+    "first payment -> uses the first-month offer",
+    "void of the first payment -> the offer goes back to the next one",
+    "top-up payment with a live pack -> 409 topup_live, void it with its pack instead"
+   ],
+   "conditions": "Founder console access.",
+   "sources": [
+    {
+     "path": "src/components/app/PaymentsPanel.tsx",
+     "line": 69,
+     "end_line": 141
+    },
+    {
+     "path": "src/app/api/admin/payments/[email]/route.ts",
+     "line": 9,
+     "end_line": 14
+    },
+    {
+     "path": "src/app/api/admin/payments/[email]/route.ts",
+     "line": 29,
+     "end_line": 49
+    },
+    {
+     "path": "src/lib/partners.ts",
+     "line": 354
+    },
+    {
+     "path": "src/lib/partners.ts",
+     "line": 398
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 244
+    }
+   ],
+   "next": [],
+   "note": "The partner's payable balance appears in the Partners tab.",
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-founder-impersonate",
+   "stage": "manage",
+   "title": "Log in as a user",
+   "surface": "/{lang}/app/admin user pane -> /{lang}/app",
+   "actor": "founder",
+   "action": "In a user's detail pane, clicks 'Log in as user'.",
+   "ui_response": "The browser goes to /{lang}/app in the user's language, signed in as that account. Every app page shows a strip 'Viewing as {email} (2 hours max)' with 'Stop and return to console'. The Members page says 'Invites, role changes and removals are off while you view this account as the founder.'",
+   "system_reaction": "POST /api/admin/users/{email} {action:'impersonate'}. It saves the founder's own session (if any) in nashr_return for 2 hours, sets nashr_impersonate, creates a 2-hour session whose record names the founder (imp), and logs 'impersonate' to admin:log. When the console was opened with the key, the session is tied to that key session: it also ends after 15 minutes without a request on either side (customer-side requests renew it), at 'End key session' and at a key rotation. The actor kind is 'founder': can() refuses account delete, password change, every team change, the MCP token, OAuth approval and partner bank details, and the founder console answers 404 until the founder stops.",
+   "branches": [
+    "action failed: 'impersonate failed: …'",
+    "2 hours pass: session ends"
+   ],
+   "conditions": "Founder console access. The target is an account, not a member login.",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 190
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 659
+    },
+    {
+     "path": "src/app/api/admin/users/[email]/route.ts",
+     "line": 120,
+     "end_line": 135
+    },
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 53,
+     "end_line": 58
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 109,
+     "end_line": 122
+    },
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 227
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 544
+    }
+   ],
+   "next": [
+    "account-impersonation-stop"
+   ],
+   "verified": true
+  },
+  {
+   "id": "manage-founder-extend-trial",
+   "stage": "manage",
+   "title": "Extend a trial",
+   "surface": "/{lang}/app/admin user pane",
+   "actor": "founder",
+   "action": "Clicks 'Extend trial' and types a number of days into the prompt 'Extend trial by days:' (7 is filled in).",
+   "ui_response": "A line '{email}: extendTrial ✓' appears. The table and the pane reload with the new trial end date.",
+   "system_reaction": "POST action extendTrial. Days are clamped to 1-90. Under the user lock, the new end is the later of now and the current trialEnds, plus the days. It is logged to admin:log with before and after. The customer's trial banner counts from the new date on their next page load. Credits do not change, and no email or bell item is sent.",
+   "branches": [
+    "Cancel or empty in the prompt still extends by 7 days (Number(null)||7)",
+    "over 90 capped at 90"
+   ],
+   "conditions": "Founder console access.",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 660
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 183,
+     "end_line": 191
+    },
+    {
+     "path": "src/app/api/admin/users/[email]/route.ts",
+     "line": 94,
+     "end_line": 105
+    }
+   ],
+   "next": [
+    "account-trial-banner"
+   ],
+   "verified": true
+  },
+  {
+   "id": "manage-founder-reset-password",
+   "stage": "manage",
+   "title": "Reset user password",
+   "surface": "/{lang}/app/admin user pane",
+   "actor": "founder",
+   "action": "Clicks 'Reset password'. No confirmation step: the reset happens on the click.",
+   "ui_response": "A browser prompt '{email}: Temporary password (shown once, send it on WhatsApp):' opens with the temporary password filled in to copy, then the line '{email}: password reset'. The phone number in the Users table is a wa.me link for sending it.",
+   "system_reaction": "POST action resetPassword. It makes a 10-character random password plus '!' and stores it bcrypt-hashed under the user lock. It ends the owner's sessions and every member's (revokeSessions, revokeTeamSessions). revokeAllMcp removes the personal MCP token and every OAuth grant. The action is logged. The password is never stored in clear. The customer and their members are signed out on their next request and sign in with the temporary password.",
+   "branches": [
+    "no confirmation dialog"
+   ],
+   "conditions": "Founder console access.",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 661
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 189
+    },
+    {
+     "path": "src/app/api/admin/users/[email]/route.ts",
+     "line": 106,
+     "end_line": 114
+    },
+    {
+     "path": "src/lib/mcp.ts",
+     "line": 32,
+     "end_line": 35
+    }
+   ],
+   "next": [
+    "account-session-ends",
+    "account-login-submit"
+   ],
+   "verified": true
+  },
+  {
+   "id": "manage-founder-suspend",
+   "stage": "manage",
+   "title": "Suspend an account",
+   "surface": "/{lang}/app/admin user pane",
+   "actor": "founder",
+   "action": "Clicks 'Suspend', or 'Unsuspend' on a suspended account. There is no confirmation.",
+   "ui_response": "A line '{email}: suspend ✓' appears. The row is tinted with a suspended badge, the pane title shows 'SUSPENDED', and the Suspended tile counts it. The account leaves the Paying or Trial tile and no longer counts towards MRR and ARPU.",
+   "system_reaction": "POST suspend or unsuspend sets user.suspended under the lock and logs it. While suspended, every session of the owner and of the members resolves to nobody, so they land on login. Login answers 403, shown as 'This account is suspended. Contact us on WhatsApp.' The daily, weekly and routine jobs skip the account: no scheduled work, no charges and no email, and only Reem's purge still runs on its scopes. After unsuspend, sessions that have not expired work again.",
+   "branches": [
+    "owner sign-in refused",
+    "member sign-in refused",
+    "unsuspend restores access"
+   ],
+   "conditions": "Founder console access.",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 663
+    },
+    {
+     "path": "src/app/api/admin/users/[email]/route.ts",
+     "line": 88,
+     "end_line": 93
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 307
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 324
+    },
+    {
+     "path": "src/app/api/auth/login/route.ts",
+     "line": 25
+    },
+    {
+     "path": "src/app/api/auth/login/route.ts",
+     "line": 37
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 110
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 76
+    },
+    {
+     "path": "src/lib/schedule.ts",
+     "line": 246
+    },
+    {
+     "path": "src/lib/admin-stats.ts",
+     "line": 69,
+     "end_line": 76
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 356
+    }
+   ],
+   "next": [
+    "account-session-ends"
+   ],
+   "verified": true
+  },
+  {
+   "id": "manage-founder-email-lang",
+   "stage": "manage",
+   "title": "Set email language",
+   "surface": "/{lang}/app/admin user pane",
+   "actor": "founder",
+   "action": "Clicks 'Emails in English' or 'Emails in Arabic'. The label names the other language.",
+   "ui_response": "A line '{email}: setLang ✓' appears and the pane reloads.",
+   "system_reaction": "POST setLang {lang} sets user.lang under the lock. It is the one action not written to admin:log. The daily job's nudge, brief and follow-up emails are written in that language, and 'Log in as user' lands on /{lang}/app in it.",
+   "branches": [
+    "bad lang: 400"
+   ],
+   "conditions": "Founder console access.",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 662
+    },
+    {
+     "path": "src/app/api/admin/users/[email]/route.ts",
+     "line": 115,
+     "end_line": 119
+    }
+   ],
+   "next": [
+    "daily-brief-email"
+   ],
+   "verified": true
+  },
+  {
+   "id": "manage-founder-delete-user",
+   "stage": "manage",
+   "title": "Delete a user account",
+   "surface": "/{lang}/app/admin user pane",
+   "actor": "founder",
+   "action": "Clicks 'Delete account' and types the account's email into the prompt 'Type the email to permanently delete this account and all its data:'.",
+   "ui_response": "If the email matches exactly, '{email} deleted' appears and the pane closes. Anything else does nothing.",
+   "system_reaction": "POST delete runs wipeAccount. It removes every brand scope, files, tasks, chats, connections, tokens and the user record, plus the whole team: member logins, invites and indexes. The action is logged. The customer's and the members' sessions stop working on their next request. No email is sent to the customer.",
+   "branches": [
+    "typed email mismatch: nothing happens"
+   ],
+   "conditions": "Founder console access.",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 664
+    },
+    {
+     "path": "src/app/api/admin/users/[email]/route.ts",
+     "line": 136,
+     "end_line": 140
+    },
+    {
+     "path": "src/lib/account.ts",
+     "line": 37,
+     "end_line": 132
+    }
+   ],
+   "next": [
+    "account-session-ends"
+   ],
+   "verified": true
+  },
+  {
+   "id": "manage-founder-remove-member",
+   "stage": "manage",
+   "title": "Remove member login",
+   "surface": "/{lang}/app/admin, member login pane",
+   "actor": "founder",
+   "action": "After 'Look up this address' finds a member login, clicks 'Remove this member login', types the member's email into 'Type the email to delete this member login (it frees the address):', then answers 'Reason (logged)'.",
+   "ui_response": "A line '{email}: member login removed' appears and the pane closes. A mismatched email does nothing.",
+   "system_reaction": "POST /api/admin/users/{email} {action:'removeMember'} for an address that is not an account. Any other action there answers 400. forceRemoveMember drops the login under the team lock, whatever state it is in, and logs it with memberOf and role. The member is signed out, the address is free to sign up as its own account, and the owner's Members list no longer shows it.",
+   "branches": [
+    "typed email mismatch",
+    "not found: 404"
+   ],
+   "conditions": "Founder console access. The address is a member login.",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 563,
+     "end_line": 573
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 192
+    },
+    {
+     "path": "src/app/api/admin/users/[email]/route.ts",
+     "line": 77,
+     "end_line": 85
+    },
+    {
+     "path": "src/lib/team.ts",
+     "line": 371,
+     "end_line": 375
+    }
+   ],
+   "next": [
+    "manage-member-locked-out",
+    "account-signup-email"
+   ],
+   "verified": true
+  },
+  {
+   "id": "manage-founder-leads",
+   "title": "Read sales leads",
+   "surface": "/{lang}/app/admin, Leads tab (LeadsPanel) -> GET /api/admin/leads",
+   "actor": "founder",
+   "action": "Opens the Leads tab. Switches between 'Sales leads' and 'All tickets', pages with 'Newer' and 'Older', and clicks 'Export CSV'.",
+   "ui_response": "A table of enterprise requests, early-customer requests and affiliate applications, newest first, with date, type, name and company, message and contact; 'All tickets' adds every other support ticket. Leads that arrived since the last visit carry a 'new' badge, and the tab's unread count clears. A banner warns when mail is not fully set up ('Email is not fully set up (MAIL_FROM on a verified domain)…') or WAITLIST_TO is not set, and that affiliate applications are never emailed and appear only here. 'No leads yet.' when empty, 'Could not load the leads' on a failure. The CSV downloads as thakeen-leads-YYYY-MM-DD.csv.",
+   "system_reaction": "GET /api/admin/leads (isAdmin, no-store) reads the newest 500 of support-tickets and of affiliate-applications in one round trip, merges them by date, and pages 50 at a time (100 at most); format=csv returns every row read with a BOM, every cell through csvSafe. Opening the tab posts {action:'seen', until: newest lead on screen}: admin:leads:seen moves to that lead's time, never to the clock and never backwards, so a lead that arrived meanwhile stays unread. Every field is visitor-typed text, rendered as text, never as HTML. Nothing is logged.",
+   "branches": [
+    "no leads: empty list",
+    "mail not ready or WAITLIST_TO unset: warning banner",
+    "an unauthenticated call: 401",
+    "affiliate applications: shown here only, never emailed"
+   ],
+   "conditions": "Founder console access.",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 650
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 203
+    },
+    {
+     "path": "src/components/app/LeadsPanel.tsx",
+     "line": 35,
+     "end_line": 113
+    },
+    {
+     "path": "src/app/api/admin/leads/route.ts",
+     "line": 19,
+     "end_line": 44
+    },
+    {
+     "path": "src/lib/leads.ts",
+     "line": 15,
+     "end_line": 17
+    },
+    {
+     "path": "src/lib/leads.ts",
+     "line": 78,
+     "end_line": 91
+    },
+    {
+     "path": "src/lib/leads.ts",
+     "line": 99,
+     "end_line": 106
+    },
+    {
+     "path": "src/lib/leads.ts",
+     "line": 109,
+     "end_line": 113
+    }
+   ],
+   "next": [
+    "manage-founder-partners"
+   ],
+   "note": "Affiliate applications continue in the Partners tab.",
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-founder-partners",
+   "title": "Review partners and pay out",
+   "surface": "/{lang}/app/admin, Partners tab (PartnersPanel) -> /api/admin/partners",
+   "actor": "founder",
+   "action": "Opens the Partners tab. Approves or rejects an application (choosing the code), or approves an email by hand ('Approve by email (no application)'). For a partner with confirmed bank details clicks 'Mark payout paid' and enters the commission, date and transfer reference (with optional VAT paid on top and withholding borne), or 'Void' on a payout, or 'I checked these details with the partner'.",
+   "ui_response": "Applications waiting, then partners with referrals, earned, paid, balance and payable amounts, bank details with flags (unconfirmed, VAT-registered, outside Saudi Arabia, no country), the terms consent on record, and each partner's commissions and payouts with VAT and withholding totals. An application sent under the old terms shows a warning to tell the applicant the new terms (15% of each payment for the first 4 months, 30 days, SAR 200 minimum) before approving; one with no consent on record asks for the terms page first or the tick 'agreed outside the form'. Errors appear in words ('That code is taken.', 'The balance is below SAR 200.', 'Confirm the bank details first.', 'The bank details changed since you loaded them. Reload and check again.').",
+   "system_reaction": "GET /api/admin/partners (isAdmin) lists applications and partners. POST uses adminActor: approve claims a unique code (3 to 16 letters or digits, no reserved word) and links it to the applicant's email, so the partner page appears when that email has an account; reject marks the application; payout marks a bank transfer paid only for a payable balance (SAR 200 or more), never past it, and only to bank details the founder confirmed, with the amounts actually paid; void_payout keeps the record and returns the amount to the balance; confirm_bank records that the founder checked the details by phone. Commissions come from the recorded payments (15% for the first 4 months within 30 days of the referral). Bank-detail changes by an impersonating founder are refused in code. Each action is logged to admin:log.",
+   "branches": [
+    "no consent on record: needs the tick or the terms page",
+    "code taken or reserved: refused",
+    "balance below SAR 200 or over the payable balance: refused",
+    "bank details unconfirmed or changed since loaded: refused",
+    "void payout: amount back in the balance"
+   ],
+   "conditions": "Founder console access.",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 647
+    },
+    {
+     "path": "src/components/app/PartnersPanel.tsx",
+     "line": 85,
+     "end_line": 114
+    },
+    {
+     "path": "src/components/app/PartnersPanel.tsx",
+     "line": 120,
+     "end_line": 148
+    },
+    {
+     "path": "src/components/app/PartnersPanel.tsx",
+     "line": 157,
+     "end_line": 220
+    },
+    {
+     "path": "src/components/app/PartnersPanel.tsx",
+     "line": 222,
+     "end_line": 283
+    },
+    {
+     "path": "src/app/api/admin/partners/route.ts",
+     "line": 14,
+     "end_line": 18
+    },
+    {
+     "path": "src/app/api/admin/partners/route.ts",
+     "line": 36,
+     "end_line": 75
+    },
+    {
+     "path": "src/lib/partners.ts",
+     "line": 354
+    },
+    {
+     "path": "src/lib/partners.ts",
+     "line": 398
+    }
+   ],
+   "next": [],
+   "note": null,
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-founder-media-check",
+   "stage": "manage",
+   "title": "Check media providers",
+   "surface": "/{lang}/app/admin, Billing tab",
+   "actor": "founder",
+   "action": "Clicks 'Check media providers'.",
+   "ui_response": "The button shows loading, then a report appears: configuration flags, the Blob probe result, the kie balance, Higgsfield estimates per model, the switched-off models, this month's render spend and the last 50 renders. On an error it shows 'Check failed: HTTP n'.",
+   "system_reaction": "GET /api/admin/media (needs isAdmin, 60 s maximum). It writes, checks and deletes a tiny Blob file, asks kie for the balance and asks Higgsfield /estimate per model, with 10 s timeouts. The answer holds flags only, never variable values. Customers are not affected.",
+   "branches": [
+    "check failed"
+   ],
+   "conditions": "Founder console access.",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 89,
+     "end_line": 116
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 211,
+     "end_line": 222
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 535
+    },
+    {
+     "path": "src/app/api/admin/media/route.ts",
+     "line": 38,
+     "end_line": 60
+    }
+   ],
+   "next": [],
+   "verified": true
+  },
+  {
+   "id": "manage-founder-export",
+   "stage": "manage",
+   "title": "Export users CSV",
+   "surface": "/{lang}/app/admin, Billing tab",
+   "actor": "founder",
+   "action": "Clicks 'Export users CSV'.",
+   "ui_response": "A new tab downloads nashr-users-YYYY-MM-DD.csv. It is UTF-8 with a BOM so Excel shows Arabic correctly. Columns: email, name, phone, plan, credits, trial_ends, created_at, renewed_at, monthly_price_sar (299, 499 or 999 by plan, 0 for a trial, or the Agency deal's price; 999 for Agency without a deal), monthly_credits (the plan's allowance or the deal's credits), chat_allowance (the founder override, else the plan's messages), seats (the seat limit, owner included) and deal ('credits@price', empty without one).",
+   "system_reaction": "GET /api/admin/export (401 without isAdmin) reads every account in users:all in parallel with pmap and getUser (which maps a stored 'enterprise' plan to agency), then builds the CSV with usersCsv: priceOf, allowanceOf, chatAllowanceOf, seatLimit and the deal, every cell through csvSafe.",
+   "branches": [
+    "not admin: 401 JSON"
+   ],
+   "conditions": "Founder console access.",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 541
+    },
+    {
+     "path": "src/app/api/admin/export/route.ts",
+     "line": 13,
+     "end_line": 20
+    },
+    {
+     "path": "src/lib/admin-stats.ts",
+     "line": 138
+    },
+    {
+     "path": "src/lib/admin-stats.ts",
+     "line": 143,
+     "end_line": 153
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 101,
+     "end_line": 125
+    }
+   ],
+   "next": [],
+   "verified": true
+  },
+  {
+   "id": "manage-founder-golden-run",
+   "stage": "manage",
+   "title": "Run golden set",
+   "surface": "/{lang}/app/admin, Quality tab (GoldenPanel)",
+   "actor": "founder",
+   "action": "Clicks 'Run now' on 'Golden set · weekly', or 'Finish missing cases' when the latest run is partial. Clicks Show or Hide on a case to read its items.",
+   "ui_response": "In a normal run the button reads 'Running… up to 5 minutes, keep this tab open', then the table refreshes with scores per case and any regressions. The panel shows 'Another run is in progress.' when locked and 'Run failed: …' on other errors. While paused (today), 'Run now' is disabled and the panel says 'Claude is paused in code (src/lib/model.ts), so the set cannot run.' Without a key it says 'ANTHROPIC_API_KEY is not set here, so the set cannot run.'",
+   "system_reaction": "POST /api/admin/golden {resume} (needs isAdmin, 300 s). runGolden('manual') returns nothing unless modelState() is on; it takes the golden lock (300 s), runs fixed cases on fictional brands through agent → reviewer → judge and meters the cost under the golden account. It stores golden:run:{id}, compares it with the previous run of the same version, and logs to admin:log. It answers 409 already_running, model_paused or no_model_key.",
+   "branches": [
+    "paused: disabled",
+    "no key",
+    "already running",
+    "partial run: resume"
+   ],
+   "conditions": "Founder console access. Model on (CLAUDE_PAUSED false).",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 648
+    },
+    {
+     "path": "src/components/app/GoldenPanel.tsx",
+     "line": 12,
+     "end_line": 57
+    },
+    {
+     "path": "src/app/api/admin/golden/route.ts",
+     "line": 14,
+     "end_line": 29
+    },
+    {
+     "path": "src/lib/golden.ts",
+     "line": 247,
+     "end_line": 253
+    },
+    {
+     "path": "src/lib/golden.ts",
+     "line": 295
+    },
+    {
+     "path": "src/lib/model.ts",
+     "line": 15
+    },
+    {
+     "path": "src/lib/model.ts",
+     "line": 25,
+     "end_line": 33
+    }
+   ],
+   "next": [
+    "manage-founder-console"
+   ],
+   "verified": true
+  },
+  {
+   "id": "manage-golden-weekly",
+   "stage": "manage",
+   "title": "Weekly golden check",
+   "surface": "/api/cron/golden, then the founder's bell",
+   "actor": "system",
+   "action": "No action. On Saturday at 01:00 UTC (04:00 Riyadh), Vercel cron calls GET /api/cron/golden with the CRON_SECRET bearer.",
+   "ui_response": "When a run finds regressions, each founder account gets a quality bell item in Arabic, 'المجموعة الذهبية: N تنبيه، المتوسط X', linking to /ar/app/admin. While paused (today) nothing runs and no bell item is sent.",
+   "system_reaction": "The bearer is checked with sameSecret. runGolden('cron') returns nothing when the model is not on or the golden lock is held, and the cron answers 409 locked_or_no_model_key. Otherwise it runs and stores the run. On regressions, notifyItem goes to every ADMIN_EMAILS account with fingerprint golden:{id}:{n}, kept for 7 days.",
+   "branches": [
+    "paused or locked: 409, nothing sent",
+    "no regressions: no bell"
+   ],
+   "conditions": "CRON_SECRET set. Model on.",
+   "sources": [
+    {
+     "path": "vercel.json",
+     "line": 5
+    },
+    {
+     "path": "src/app/api/cron/golden/route.ts",
+     "line": 10,
+     "end_line": 16
+    },
+    {
+     "path": "src/lib/golden.ts",
+     "line": 247,
+     "end_line": 253
+    },
+    {
+     "path": "src/lib/golden.ts",
+     "line": 295
+    }
+   ],
+   "next": [
+    "manage-founder-console",
+    "manage-founder-golden-run"
+   ],
+   "verified": true
+  },
+  {
+   "id": "manage-founder-key-end",
+   "title": "End the key session",
+   "surface": "/{lang}/app/admin, top of the console (End key session) -> DELETE /api/admin/login",
+   "actor": "founder",
+   "action": "On a console opened with the admin key, clicks 'End key session'.",
+   "ui_response": "The browser goes to the marketing home /{lang}. Reopening /{lang}/app/admin without ?login=1 is a 404; the key form is again at ?login=1.",
+   "system_reaction": "DELETE /api/admin/login calls destroyAdminSession: the server record is removed, so the same cookie never opens the console again, and any impersonation session opened from it ends with it. The button is shown only for a key session, not for a founder signed in as themselves. A key session also ends by itself after 15 minutes without a console request or 12 hours, or when the key is rotated.",
+   "branches": [
+    "founder signed in as themselves: no button",
+    "idle 15 min / 12 h: the same end, without a click"
+   ],
+   "conditions": "A live admin key session.",
+   "sources": [
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 460,
+     "end_line": 465
+    },
+    {
+     "path": "src/app/api/admin/login/route.ts",
+     "line": 20,
+     "end_line": 24
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 370,
+     "end_line": 418
+    },
+    {
+     "path": "src/lib/admin-fetch.ts",
+     "line": 1,
+     "end_line": 14
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 495,
+     "end_line": 501
+    }
+   ],
+   "next": [],
+   "note": null,
+   "verified": true,
+   "stage": "manage"
+  }
+ ]
+}

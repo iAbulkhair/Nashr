@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "eb4f201e-b894-4f9d-b4d5-b333e90abb9a",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/06-create-chat/candidate.json",
+  "output": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/06-create-chat/06-create-chat.html",
+  "specification": {
+    "sha256": "b9170a0818c73c2ece88281cd66356bf555dde1a46e3e1e40053b82d4095a427",
+    "bytes": 45626
+  },
+  "artifact": {
+    "sha256": "defc12f3bdeaac94b14ebcec9b9e87933e119be7001b21a03d6da8035fa16521",
+    "bytes": 899349
+  }
+}

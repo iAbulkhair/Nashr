@@ -1,0 +1,690 @@
+{
+ "key": "16-manage-mcp-help",
+ "title": "Manage: own AI assistant (MCP), help and wishlist",
+ "person": "owner or team",
+ "steps": [
+  {
+   "id": "manage-mcp-open",
+   "title": "Open MCP page",
+   "surface": "/{lang}/app/mcp",
+   "actor": "owner",
+   "action": "Opens MCP from the account menu.",
+   "ui_response": "'Noor inside Claude and ChatGPT (MCP)'. An Access token card shows 'No token yet.' or 'A token exists. Generate a new one to see it (old one is revoked).' An OAuth card shows the server URL {origin}/api/mcp (the canonical app origin, never the request's Host header) and Connected apps (name, connected date, last renewed, Disconnect); its steps say Claude opens the Thakeen login, then Allow. Below are Claude Code and JSON config snippets (server name 'thakeen'). The page also explains the brand check, using your own Claude/ChatGPT subscription, free versus credit-spending tools, the hourly save_draft limit, and the tool list, which now includes agenda_get, todo_create / todo_update (with an optional repeat) and todo_propose_done. Admins and members see an owner-only note. A founder viewing sees a note and the apps only.",
+   "system_reaction": "On mount it calls GET /api/mcp/token (owner only; returns the first 12 characters and exists) and GET /api/mcp/grants (owner only; grants without tokens, expired ones dropped). Nothing is fetched for other roles.",
+   "branches": [
+    "owner",
+    "founder viewing: apps only",
+    "admin/member: note only"
+   ],
+   "conditions": "Owner",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/mcp/page.tsx",
+     "line": 9,
+     "end_line": 18
+    },
+    {
+     "path": "src/components/app/McpPanel.tsx",
+     "line": 17,
+     "end_line": 20
+    },
+    {
+     "path": "src/components/app/McpPanel.tsx",
+     "line": 32,
+     "end_line": 101
+    },
+    {
+     "path": "src/app/api/mcp/token/route.ts",
+     "line": 16,
+     "end_line": 23
+    },
+    {
+     "path": "src/app/api/mcp/grants/route.ts",
+     "line": 10,
+     "end_line": 16
+    },
+    {
+     "path": "src/lib/oauth.ts",
+     "line": 116,
+     "end_line": 121
+    }
+   ],
+   "next": [
+    "manage-mcp-token-create",
+    "manage-oauth-consent",
+    "manage-mcp-app-disconnect"
+   ],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-mcp-token-create",
+   "title": "Generate MCP token",
+   "surface": "/{lang}/app/mcp Access token card",
+   "actor": "owner",
+   "action": "Clicks 'Generate token'. There is no confirmation, even when a token already exists.",
+   "ui_response": "The full token appears once with 'Shown once. Copy it now.' The Claude Code and JSON snippets fill in with it, and a Revoke button appears.",
+   "system_reaction": "POST /api/mcp/token. forbid mcp.token (owner, not while impersonating). It revokes the previous personal token, then creates 'nashr_' plus 24 random bytes (base64url), stored at mcptoken:{token} with no expiry.",
+   "branches": [
+    "member/founder -> 403"
+   ],
+   "conditions": "Owner signed in as themselves",
+   "sources": [
+    {
+     "path": "src/components/app/McpPanel.tsx",
+     "line": 25,
+     "end_line": 28
+    },
+    {
+     "path": "src/components/app/McpPanel.tsx",
+     "line": 41,
+     "end_line": 49
+    },
+    {
+     "path": "src/components/app/McpPanel.tsx",
+     "line": 66,
+     "end_line": 71
+    },
+    {
+     "path": "src/app/api/mcp/token/route.ts",
+     "line": 24,
+     "end_line": 32
+    },
+    {
+     "path": "src/lib/mcp.ts",
+     "line": 17,
+     "end_line": 22
+    }
+   ],
+   "next": [
+    "manage-mcp-use",
+    "manage-mcp-token-revoke"
+   ],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-mcp-token-revoke",
+   "title": "Revoke MCP token",
+   "surface": "/{lang}/app/mcp Access token card",
+   "actor": "owner",
+   "action": "Clicks 'Revoke'.",
+   "ui_response": "The card returns to 'No token yet.' Clients still using the token get an Unauthorized JSON-RPC error.",
+   "system_reaction": "DELETE /api/mcp/token revokes the personal token only; OAuth grants are untouched.",
+   "branches": [],
+   "conditions": "Owner",
+   "sources": [
+    {
+     "path": "src/components/app/McpPanel.tsx",
+     "line": 29
+    },
+    {
+     "path": "src/components/app/McpPanel.tsx",
+     "line": 47
+    },
+    {
+     "path": "src/app/api/mcp/token/route.ts",
+     "line": 33,
+     "end_line": 40
+    },
+    {
+     "path": "src/app/api/mcp/route.ts",
+     "line": 70,
+     "end_line": 71
+    }
+   ],
+   "next": [],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-oauth-consent",
+   "title": "OAuth consent screen",
+   "surface": "/oauth/authorize (English-only page)",
+   "actor": "owner",
+   "action": "Pastes the server URL in Claude (Settings, Connectors, Add custom connector) or in ChatGPT Developer mode. The app registers itself and opens Thakeen's authorize page.",
+   "ui_response": "A signed-out person is sent to /ar/app/login?next=... (always the Arabic login) and returned to the consent page after logging in. The page (headed 'Thakeen · Noor', in the new palette) asks 'Allow {app name} to use Noor?' and shows 'Signed in as {email}' and what the app can do: chat with Noor, create content in the inbox (uses credits), read workspace files. It names the host that will receive the authorization code, with the warning 'Any developer can register an app under any name. Only continue if you recognise that address.' A bad request shows 'Cannot authorize' with the reason: unknown client, redirect_uri not registered or not https/loopback, response_type must be code, or PKCE required. Admins, members and a founder viewing see 'Cannot authorize' with 'Only the account owner can connect apps to this account. Ask the owner to approve it from their own login.' and no form.",
+   "system_reaction": "The server page checks the client, the exact registered redirect_uri, validRedirectUri, response_type=code and code_challenge, then can(u,'oauth.approve'). Client registration (/api/oauth/register) is open and done by the app.",
+   "branches": [
+    "signed out -> login -> back",
+    "bad request -> Cannot authorize",
+    "non-owner -> no form"
+   ],
+   "conditions": "Owner signed in as themselves",
+   "sources": [
+    {
+     "path": "src/app/oauth/authorize/page.tsx",
+     "line": 9,
+     "end_line": 56
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 97,
+     "end_line": 98
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 111
+    },
+    {
+     "path": "src/components/app/McpPanel.tsx",
+     "line": 81,
+     "end_line": 82
+    },
+    {
+     "path": "src/lib/oauth.ts",
+     "line": 46,
+     "end_line": 54
+    }
+   ],
+   "next": [
+    "manage-oauth-decide"
+   ],
+   "note": "The consent page footer says access can be revoked 'from Thakeen → MCP → Revoke, or by generating a new personal token' (line 49). In code, that Revoke and a new token affect only the personal token; a connected app is cut off only by Disconnect, a password change/reset, or account deletion.",
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-oauth-decide",
+   "title": "Allow or Deny app",
+   "surface": "/oauth/authorize form",
+   "actor": "owner",
+   "action": "Clicks Allow or Deny.",
+   "ui_response": "The browser returns to the app (Claude) with a code (Allow) or error=access_denied (Deny). After Allow, the app appears under Connected apps on the MCP page. Errors show as raw JSON pages: 401 when the session is gone, 403 {error:'forbidden'} for a non-owner, and 400 invalid_request for a bad client/redirect or missing S256 PKCE.",
+   "system_reaction": "POST /api/oauth/approve needs a session and oauth.approve (owner only, not while impersonating). It re-validates the client and redirect_uri. Deny answers a 303 with access_denied. Allow requires S256 PKCE (400 otherwise) and issues a 10-minute single-use code bound to client, redirect, challenge, email and scope (only 'noor'). The app then calls /api/oauth/token: the code is redeemed once, PKCE is verified, and the app gets a 30-day access token, a 90-day refresh token and a grant record (mcpgrant). Refreshing rotates both tokens.",
+   "branches": [
+    "deny -> access_denied",
+    "no S256 -> 400",
+    "member -> 403"
+   ],
+   "conditions": "Owner",
+   "sources": [
+    {
+     "path": "src/app/api/oauth/approve/route.ts",
+     "line": 12,
+     "end_line": 34
+    },
+    {
+     "path": "src/lib/oauth.ts",
+     "line": 70,
+     "end_line": 83
+    },
+    {
+     "path": "src/lib/oauth.ts",
+     "line": 91,
+     "end_line": 113
+    },
+    {
+     "path": "src/app/api/oauth/token/route.ts",
+     "line": 23,
+     "end_line": 32
+    }
+   ],
+   "next": [
+    "manage-mcp-use",
+    "manage-mcp-app-disconnect"
+   ],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-mcp-app-disconnect",
+   "title": "Disconnect app",
+   "surface": "/{lang}/app/mcp Connected apps",
+   "actor": "owner",
+   "action": "Clicks 'Disconnect' next to a connected app.",
+   "ui_response": "The row disappears. On failure nothing is shown and the row stays.",
+   "system_reaction": "DELETE /api/mcp/grants?id=. oauth.grants is owner-only, and a founder viewing may also do it. The id must be 16 hex characters (400) and one of the caller's own grants (404). The access token, refresh token and grant are deleted at once. A password change or reset also disconnects every app.",
+   "branches": [
+    "bad id -> 400",
+    "other account's id -> 404"
+   ],
+   "conditions": "Owner",
+   "sources": [
+    {
+     "path": "src/components/app/McpPanel.tsx",
+     "line": 21,
+     "end_line": 24
+    },
+    {
+     "path": "src/components/app/McpPanel.tsx",
+     "line": 60
+    },
+    {
+     "path": "src/app/api/mcp/grants/route.ts",
+     "line": 17,
+     "end_line": 28
+    },
+    {
+     "path": "src/lib/oauth.ts",
+     "line": 123,
+     "end_line": 128
+    }
+   ],
+   "next": [],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-mcp-use",
+   "title": "Use Noor from Claude",
+   "surface": "Claude / ChatGPT (MCP client) calling /api/mcp",
+   "actor": "owner",
+   "action": "Asks their own assistant to use the Thakeen tools: get_brand_rules, check_brand, save_draft, list_inbox, read_file, list_files, the to-do tools (agenda_get, agenda_next, todo_create, todo_update, todo_propose_done), ask_noor and generate_content.",
+   "ui_response": "While paused, ask_noor answers 'The agents are paused for now, so I can't reply or create content yet. No credits were used.' (the message count taken for it is given back) and generate_content returns the tool error 'Content generation is paused for now. No credits were used.' The free tools still work: brand rules, brand checks, drafts saved to the approvals inbox as pending, inbox and file reads, and the to-do tools. Normally ask_noor answers like the web chat: the message is trimmed and capped at 4,000 characters (empty: 'Empty message. Nothing was sent.'), it counts toward the account's monthly chat messages, and a low balance of messages is appended ('[chat: N of M messages left this month]'). When the messages are used up the connected app is refused with 'Chat paused: this account used its N chat messages this month (it renews on the 1st, UTC). Nothing was sent.' ('for the trial' on a trial) plus what the owner can do (upgrade, or turn on \"continue on credits\" on the Subscription page; on a trial, subscribe). With continue on credits on but fewer credits than the most one message can cost, the refusal says continuing on credits needs at least that many credits and the owner can top up or upgrade; otherwise, the message goes ahead and the reply says it was billed N credits. An ended trial or the hourly/daily chat limit gives the same refusal text as the web chat. generate_content charges the task's credits and adds items to the inbox; weekly_plan takes 2 credits, weekly_report 3 and followup_seq 4.",
+   "system_reaction": "POST /api/mcp (JSON-RPC, server name 'thakeen'). initialize and tools/list need no auth. A 401 carries WWW-Authenticate with the canonical origin (appOrigin()). Every tools/call resolves the bearer with userFromBearer (owner accounts only, scoped to the owner's active brand). Each tool is mapped to a role action in MCP_TOOL_ACTION (agenda_next included), and unknown tools are refused. ask_noor applies the web chat's gates in order: trialOver, chatRefusal (hourly and daily limits), then reserveChatTurn (the shared monthly allowance, or credits when continue on credits is on). It then runs chat inside runChatTurn with via 'mcp', so it never publishes or rewrites core memory, and the turn is settled after the reply. generate_content checks the pause before brand, trial and credits; when the model is on it charges TASK_COST[type] under the agent's monthly cap.",
+   "branches": [
+    "no or revoked token -> Unauthorized",
+    "empty message -> tool error",
+    "trial over, hourly or daily limit -> chat refusal text",
+    "monthly chat messages used up -> 'Chat paused' (or billed on credits when continue on credits is on)",
+    "continue on credits on but too few credits -> 'Chat paused' with the credits needed",
+    "paused -> paused text, no charge",
+    "trial over (when not paused) -> tool error",
+    "agent cap or too few credits (when not paused) -> tool error",
+    "too many drafts an hour -> save_draft refused"
+   ],
+   "conditions": "Valid personal token or OAuth grant",
+   "sources": [
+    {
+     "path": "src/app/api/mcp/route.ts",
+     "line": 28,
+     "end_line": 40
+    },
+    {
+     "path": "src/app/api/mcp/route.ts",
+     "line": 59,
+     "end_line": 79
+    },
+    {
+     "path": "src/app/api/mcp/route.ts",
+     "line": 81,
+     "end_line": 102
+    },
+    {
+     "path": "src/app/api/mcp/route.ts",
+     "line": 103,
+     "end_line": 122
+    },
+    {
+     "path": "src/app/api/mcp/route.ts",
+     "line": 136,
+     "end_line": 184
+    },
+    {
+     "path": "src/lib/mcp.ts",
+     "line": 14
+    },
+    {
+     "path": "src/lib/mcp.ts",
+     "line": 36,
+     "end_line": 54
+    },
+    {
+     "path": "src/lib/chat-allowance.ts",
+     "line": 76,
+     "end_line": 93
+    },
+    {
+     "path": "src/lib/chat-allowance.ts",
+     "line": 117,
+     "end_line": 141
+    },
+    {
+     "path": "src/lib/rate.ts",
+     "line": 53,
+     "end_line": 60
+    },
+    {
+     "path": "src/lib/chat.ts",
+     "line": 342,
+     "end_line": 355
+    },
+    {
+     "path": "src/lib/chat.ts",
+     "line": 380,
+     "end_line": 387
+    },
+    {
+     "path": "src/lib/generate-batch.ts",
+     "line": 189,
+     "end_line": 191
+    },
+    {
+     "path": "src/lib/model.ts",
+     "line": 15
+    },
+    {
+     "path": "src/lib/model.ts",
+     "line": 25,
+     "end_line": 34
+    },
+    {
+     "path": "src/lib/model.ts",
+     "line": 53,
+     "end_line": 56
+    },
+    {
+     "path": "src/lib/brand-rules.ts",
+     "line": 186,
+     "end_line": 188
+    },
+    {
+     "path": "src/lib/tasks.ts",
+     "line": 24,
+     "end_line": 32
+    },
+    {
+     "path": "src/lib/secretary.ts",
+     "line": 1368,
+     "end_line": 1376
+    }
+   ],
+   "next": [],
+   "note": "The daily-use stage may also cover MCP tool use in depth. Model state: CLAUDE_PAUSED is still true (since 2026-09-28); a production deploy with no key also answers as paused, and outside production a missing key gives a dev mock.",
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-help-open",
+   "title": "Open Help center",
+   "surface": "/{lang}/app/help",
+   "actor": "any-signed-in",
+   "action": "Opens Help from the account menu, or from the sidebar 'Contact us' when WhatsApp is not configured. Searches, picks a topic chip, and expands questions.",
+   "ui_response": "'Help center' with a search box, an 'All' chip and topic chips (Getting started, Credits and plans, 'The team: Sami, Razan, Faris, Dana', Inbox and files, Connecting and publishing, Scheduled tasks and governance, 'MCP and your AI assistant', Privacy and account). FAQ accordions filter as the person types; with no match it says 'No results. Ask Noor or message us below.' The 'Credits and plans' answers carry the prices: each task's cost (weekly plan 2, 10 posts 10, article 2, 3 WhatsApp 3, 5 ads 5, 3 Google posts 3, image 1-2, video 12-24, your first brand's setup free, each added brand's setup from its URL 9); a new 'What happens when my chat messages run out?' answer (Starter 250, Pro 650 and Business 1,300 messages a month, 30 for the whole trial, shared by every seat, brand and connected app; when they run out chat pauses unless the owner turns on 'continue on credits' on the Subscription page, which needs at least the hold in credits and bills each message its actual cost); and the trial: 3 days, 50 credits, no card, 'Then pick a plan: Starter 299, Pro 499, Business 999 SAR/month, or Agency by contract.' Under 'Scheduled tasks and governance', Noor's weekly plan every Sunday 06:00 (KSA time) costs 2 credits and is on by default for the first brand only; added brands run it once switched on. The MCP answer names the app's canonical address {origin}/api/mcp. Below are a 'Talk to us' panel, with a WhatsApp button when one is configured, and the support form.",
+   "system_reaction": "Static content from src/lib/help.ts, filtered in the browser. No server call. The help page reads the canonical origin (appOrigin()) on the server and passes it to helpTopics, which fills the {origin} slot. The prices, chat messages, credits and task costs in the answers are read from src/lib/pricing.ts and src/lib/tasks.ts.",
+   "branches": [
+    "no results"
+   ],
+   "conditions": "Signed in",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/help/page.tsx",
+     "line": 6,
+     "end_line": 12
+    },
+    {
+     "path": "src/components/HelpCenter.tsx",
+     "line": 7,
+     "end_line": 74
+    },
+    {
+     "path": "src/lib/help.ts",
+     "line": 13
+    },
+    {
+     "path": "src/lib/help.ts",
+     "line": 22,
+     "end_line": 28
+    },
+    {
+     "path": "src/lib/help.ts",
+     "line": 38
+    },
+    {
+     "path": "src/lib/help.ts",
+     "line": 40,
+     "end_line": 41
+    },
+    {
+     "path": "src/lib/help.ts",
+     "line": 73
+    },
+    {
+     "path": "src/lib/help.ts",
+     "line": 81
+    }
+   ],
+   "next": [
+    "manage-help-support",
+    "manage-contact-whatsapp"
+   ],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-help-support",
+   "title": "Send support request",
+   "surface": "/{lang}/app/help support form",
+   "actor": "any-signed-in",
+   "action": "Types an email (not pre-filled), picks a type (Question, Bug, Billing, Feature request), writes a message, then clicks Send.",
+   "ui_response": "The form is replaced by 'Got it. We'll reply on WhatsApp or email.' On any refusal, including the rate limit, it shows 'Didn't send. Try again.'",
+   "system_reaction": "POST /api/support, a public route limited to 10 an hour per IP (429). Email and message are required (400). The ticket (the address typed, the acting login, the account, type, page path, language, status open) is pushed to support-tickets (capped) and emailed to WAITLIST_TO when that is set (subject 'Thakeen support [type] address'). No console screen lists tickets; they can be read only through the admin-authenticated GET /api/support.",
+   "branches": [
+    "429 -> error text",
+    "missing field -> 400"
+   ],
+   "conditions": "None (the route is public)",
+   "sources": [
+    {
+     "path": "src/components/HelpCenter.tsx",
+     "line": 16,
+     "end_line": 22
+    },
+    {
+     "path": "src/components/HelpCenter.tsx",
+     "line": 58,
+     "end_line": 70
+    },
+    {
+     "path": "src/app/api/support/route.ts",
+     "line": 7,
+     "end_line": 23
+    }
+   ],
+   "next": [],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-contact-whatsapp",
+   "title": "Contact on WhatsApp",
+   "surface": "Sidebar 'Contact us' / Help 'Talk to us'",
+   "actor": "any-signed-in",
+   "action": "Clicks 'Contact us' in the sidebar or the WhatsApp button on Help.",
+   "ui_response": "A WhatsApp chat with support opens in a new tab when SUPPORT_WHATSAPP is set. Otherwise the sidebar link goes to /{lang}/app/help#support. No element has that id, so the page opens at the top, and Help shows no WhatsApp button.",
+   "system_reaction": "No server call.",
+   "branches": [
+    "no WhatsApp configured -> Help page"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 148
+    },
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 51
+    },
+    {
+     "path": "src/components/HelpCenter.tsx",
+     "line": 50,
+     "end_line": 57
+    }
+   ],
+   "next": [],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-updates-open",
+   "title": "Open Updates page",
+   "surface": "/{lang}/updates",
+   "actor": "any-signed-in",
+   "action": "Clicks 'Updates & wishlist' in the sidebar. The page is also linked from the marketing Resources page.",
+   "ui_response": "A public page in the marketing site's shell (Nav and Footer, no app sidebar), with anchor tabs 'What's new' and 'Wishlist'. What's new lists dated entries tagged new, improved or fixed. The top date, 2026-10-03, has two entries: 'Repeating to-dos on My to-dos' and 'Reem knows your working days and who is away'. Below are 'Monthly chat messages' (2026-10-01) and, on 2026-09-30, the agent-team entries and 'New plans and prices, and unlimited brands': Starter 299, Pro 499 and Business 999 SAR a month excluding VAT, Agency by contract; unlimited brands on every plan, with the first brand's setup free and each added brand's setup from its URL 9 credits; the Sunday plan on its own for the first brand while added brands switch it on in Tasks; and three tasks cost more (weekly plan 2, weekly report 3, follow-up cadence 4). The Wishlist lists items with a status (in progress, planned, shipped), an area and a vote count; the viewer's own votes show as pressed. In-progress items come first, then planned, then shipped, each sorted by votes. Signed-out visitors see 'Voting and suggesting wishes are for account holders.' and 'Sign in to vote' links instead of vote buttons.",
+   "system_reaction": "Rendered dynamically on the server (force-dynamic). It reads currentUser (optional) and listWishes: seeded plus founder-promoted items, minus hidden ones, with statuses and every count in one pipelined read. What's new is the static CHANGELOG, newest date first; the pricing and chat-message entries read their prices, allowances and task costs from src/lib/pricing.ts and src/lib/tasks.ts.",
+   "branches": [
+    "signed out -> sign-in links"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/updates/page.tsx",
+     "line": 18
+    },
+    {
+     "path": "src/app/[lang]/updates/page.tsx",
+     "line": 45,
+     "end_line": 48
+    },
+    {
+     "path": "src/app/[lang]/updates/page.tsx",
+     "line": 55,
+     "end_line": 95
+    },
+    {
+     "path": "src/lib/changelog.ts",
+     "line": 30,
+     "end_line": 40
+    },
+    {
+     "path": "src/app/[lang]/updates/page.tsx",
+     "line": 97,
+     "end_line": 144
+    },
+    {
+     "path": "src/lib/wishlist.ts",
+     "line": 74,
+     "end_line": 85
+    },
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 145
+    },
+    {
+     "path": "src/lib/site.ts",
+     "line": 60
+    }
+   ],
+   "next": [
+    "manage-wish-vote",
+    "manage-wish-suggest"
+   ],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-wish-vote",
+   "title": "Vote on a wish",
+   "surface": "/{lang}/updates#wishlist (WishVote)",
+   "actor": "any-signed-in",
+   "action": "Clicks the vote button on a wish, and clicks again to take the vote back.",
+   "ui_response": "The count and pressed state change at once. On failure they revert, with 'Too many votes in a short time. Try again shortly.' or 'Could not save your vote. Please try again.' A signed-out click (401) goes to login with next=/{lang}/updates.",
+   "system_reaction": "POST /api/wishlist/vote {id, on}. A session is required (401), the limit is 60 an hour per account (429), and the id must be votable (400). The route runs sadd or srem on wish:votes:{id} and wish:mine:{account} and returns the new count. The voter is the account (the owner's email), so a member's vote counts for the whole account.",
+   "branches": [
+    "401 -> login",
+    "429 -> slow down",
+    "unknown item -> 400"
+   ],
+   "conditions": "Signed in",
+   "sources": [
+    {
+     "path": "src/components/WishVote.tsx",
+     "line": 17,
+     "end_line": 36
+    },
+    {
+     "path": "src/app/api/wishlist/vote/route.ts",
+     "line": 13,
+     "end_line": 22
+    },
+    {
+     "path": "src/lib/wishlist.ts",
+     "line": 91,
+     "end_line": 97
+    }
+   ],
+   "next": [],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-wish-suggest",
+   "title": "Suggest a wish",
+   "surface": "/{lang}/updates#wishlist (WishSuggest)",
+   "actor": "any-signed-in",
+   "action": "Types a suggestion (5-280 characters) and clicks 'Send suggestion'.",
+   "ui_response": "A len/280 counter; Send is disabled while the box is empty. On success, 'Thanks, we got it. We review suggestions before they appear in the list.' shows and the box clears. Otherwise it shows the too-short, too-long, slow-down or failed message. A note says suggestions are not published directly.",
+   "system_reaction": "POST /api/wishlist/suggest. A session is required. The text is cleaned and must be 5 to 280 characters. The limit is 5 a day per account, counted only for well-formed text. The suggestion is stored in wish:suggestions (capped) and is never shown publicly.",
+   "branches": [
+    "too short/long -> 400",
+    "sixth in a day -> 429"
+   ],
+   "conditions": "Signed in",
+   "sources": [
+    {
+     "path": "src/components/WishSuggest.tsx",
+     "line": 15,
+     "end_line": 47
+    },
+    {
+     "path": "src/app/api/wishlist/suggest/route.ts",
+     "line": 13,
+     "end_line": 24
+    },
+    {
+     "path": "src/lib/wishlist.ts",
+     "line": 99,
+     "end_line": 103
+    }
+   ],
+   "next": [
+    "manage-wish-moderate"
+   ],
+   "verified": true,
+   "stage": "manage"
+  },
+  {
+   "id": "manage-wish-moderate",
+   "title": "Founder moderates wish",
+   "surface": "/{lang}/app/admin Wishlist tab (WishlistPanel)",
+   "actor": "founder",
+   "action": "Promotes a suggestion (writing Arabic and English titles, optional area), sets statuses, hides or restores seeded items, deletes promoted items, or dismisses suggestions.",
+   "ui_response": "For users, a promoted wish appears on the public wishlist under the founder's title, and status badges change. The person who suggested it is not notified. If the founder's key session has ended (15 minutes idle, 12 hours at most) the console shows a 'session ended' notice with a link back to the key form instead of the list.",
+   "system_reaction": "Every call goes through adminFetch, which announces a 401. /api/admin/wishlist (isAdmin). Actions: promote (the suggestion leaves the queue), status, delete, restore and dismiss. Each is logged to admin:log as wish:*.",
+   "branches": [
+    "missing title -> 400",
+    "unknown item/suggestion -> 400"
+   ],
+   "conditions": "Founder console",
+   "sources": [
+    {
+     "path": "src/components/app/WishlistPanel.tsx",
+     "line": 21,
+     "end_line": 29
+    },
+    {
+     "path": "src/components/app/WishlistPanel.tsx",
+     "line": 52,
+     "end_line": 64
+    },
+    {
+     "path": "src/app/api/admin/wishlist/route.ts",
+     "line": 28,
+     "end_line": 66
+    },
+    {
+     "path": "src/lib/wishlist.ts",
+     "line": 120,
+     "end_line": 124
+    },
+    {
+     "path": "src/components/app/AdminConsole.tsx",
+     "line": 649
+    },
+    {
+     "path": "src/lib/admin-fetch.ts",
+     "line": 9,
+     "end_line": 13
+    }
+   ],
+   "next": [
+    "manage-updates-open"
+   ],
+   "verified": true,
+   "stage": "manage"
+  }
+ ]
+}
