@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { newMember, newUser, signIn } from "./helpers/session";
 import { currentUser } from "@/lib/auth";
@@ -83,13 +84,38 @@ describe("feed token (rules 530-533)", () => {
     const tb = await createFeed(b, b, "en");
     const held = await db.lockOwned(`lock:feed:${a}`, 10);
     expect(held).not.toBeNull();
-    expect(await createFeed(a, a, "ar")).toBe("busy");
-    await revokeFeeds([a, b]);
-    expect(await resolveFeed(ta)).toBeNull();
-    expect(await resolveFeed(tb)).toBeNull();
-    expect(recordsOf(a)).toEqual([]);
-    expect(recordsOf(b)).toEqual([]);
-    await db.unlockOwned(`lock:feed:${a}`, held!);
+    try {
+      expect(await createFeed(a, a, "ar")).toBe("busy");
+      await revokeFeeds([a, b]);
+      expect(await resolveFeed(ta)).toBeNull();
+      expect(await resolveFeed(tb)).toBeNull();
+      expect(recordsOf(a)).toEqual([]);
+      expect(recordsOf(b)).toEqual([]);
+    } finally {
+      await db.unlockOwned(`lock:feed:${a}`, held!);
+    }
+  });
+
+  it("rule 532: a record that sec:feedof does not name is dead (a create that outran a revoke)", async () => {
+    const login = (await newUser("feed")).email;
+    const live = await createFeed(login, login, "ar");
+    expect(live).toMatch(FEED_TOKEN);
+    expect(await resolveFeed(live)).not.toBeNull();
+
+    // What a stalled create leaves after a revoke that gave up waiting: its record written, `of` naming something else or nothing.
+    const orphan = randomBytes(32).toString("base64url");
+    await db.set(FEED_KEYS.rec(hashFeedToken(orphan)), { login, scope: login, lang: "ar", createdAt: new Date().toISOString() });
+    expect(await resolveFeed(orphan)).toBeNull();
+    expect(await resolveFeed(live)).not.toBeNull();
+
+    await revokeFeed(login);
+    expect(await db.get(FEED_KEYS.of(login))).toBeNull();
+    expect(await db.get(FEED_KEYS.rec(hashFeedToken(orphan)))).not.toBeNull();
+    expect(await resolveFeed(orphan)).toBeNull();
+
+    // Named by `of`, the same record works: the check is `of === hash`, nothing else.
+    await db.set(FEED_KEYS.of(login), hashFeedToken(orphan));
+    expect(await resolveFeed(orphan)).toEqual({ hash: hashFeedToken(orphan), rec: expect.objectContaining({ login }) });
   });
 
   it("rule 533: feed.manage is member-level and blocked while a founder impersonates", async () => {

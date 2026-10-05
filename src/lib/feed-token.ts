@@ -45,12 +45,18 @@ export async function createFeed(login: string, scope: string, lang: "ar" | "en"
   }
 }
 
-/** The record behind a link, or null. A token of the wrong shape is refused before any store read. */
+/**
+ * The record behind a link, or null. A token of the wrong shape is refused before any store read. A record that
+ * `sec:feedof:{login}` does not name is dead: a revoke that gave up waiting for the lock can race a create still running,
+ * and the record that create wrote must not outlive the revoke, named by nothing.
+ */
 export async function resolveFeed(token: string): Promise<{ hash: string; rec: FeedRecord } | null> {
   if (typeof token !== "string" || !FEED_TOKEN.test(token)) return null;
   const hash = hashFeedToken(token);
   const rec = await db.get<FeedRecord>(FEED_KEYS.rec(hash));
-  return rec ? { hash, rec } : null;
+  if (!rec) return null;
+  const current = await db.get<string>(FEED_KEYS.of(rec.login));
+  return current === hash ? { hash, rec } : null;
 }
 
 /** Whether `login` has a live link, and when it was made. Never returns the token or its hash. */
