@@ -1087,3 +1087,20 @@ describe("no charge, result or refund is lost to a failed write (review fixes)",
     expect(vi.mocked(refund)).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("new media after approval needs a person again (rule 576)", () => {
+  it("an image delivered to an approved, unpublished item clears decidedAt; a pending or published item keeps its record", async () => {
+    const u = await owner();
+    const approved = await taskFor(u, { status: "approved", decidedAt: "2026-10-05T08:00:00.000Z" });
+    const published = await taskFor(u, { status: "approved", decidedAt: "2026-10-05T08:00:00.000Z", published: [{ provider: "instagram", url: "https://instagram.com/p/1", status: "published", at: "2026-10-05T09:00:00.000Z" }] });
+    const pending = await taskFor(u);
+    const deps = fakeDeps({ fal: fakeAdapter("fal") });
+    for (const t of [approved, published, pending]) started(await startMedia(input(u, t, "img-fast"), deps));
+    const [a, p, q] = await Promise.all([getTask(u.email, approved.id), getTask(u.email, published.id), getTask(u.email, pending.id)]);
+    expect(a!.imageUrl).toBeTruthy();
+    expect(a!.status).toBe("approved");
+    expect(a!.decidedAt, "chat publish_item needs decidedAt: a re-rendered image was never approved").toBeUndefined();
+    expect(p!.decidedAt).toBe("2026-10-05T08:00:00.000Z");
+    expect(q!.decidedAt).toBeUndefined();
+  });
+});

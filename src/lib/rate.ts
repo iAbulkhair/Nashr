@@ -101,6 +101,12 @@ export const OAUTH_TOKEN_PER_IP = 60, OAUTH_TOKEN_WINDOW = 900;
 export const OAUTH_REGISTER_PER_IP = 30, OAUTH_REGISTER_WINDOW = 3600;
 
 /**
+ * Impersonation stops per client address (POST /api/admin/impersonate, public because the impersonated session is a
+ * customer's). Far above any founder's use, low enough that a script cannot churn the store. Rule 542.
+ */
+export const IMPERSONATE_STOP_PER_IP = 30, IMPERSONATE_STOP_WINDOW = 900;
+
+/**
  * Governance restores per account (`POST /api/governance/rollback`). Each one rewrites every setting and adds a history
  * record, so a script must not be able to churn them; an owner undoing a few changes stays far below this.
  */

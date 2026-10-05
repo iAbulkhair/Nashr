@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { json, jar, newUser, params, settle, signIn, signOut } from "./helpers/session";
+import { vjson } from "./helpers/version";
 import { getUser } from "@/lib/auth";
 import { getBrand, getTask, listLite, type Task } from "@/lib/brand";
 import { listFiles } from "@/lib/files";
@@ -76,7 +77,7 @@ describe("journey: sign up, build the workspace, generate, approve, publish", ()
 
     // 5. The owner edits one item and approves it.
     const target = inbox.tasks[0];
-    const patched = await body(await taskRoute.PATCH(json(`/api/tasks/${target.id}`, "PATCH", { status: "approved", editedBody: "نص المالك بعد التعديل" }), params({ id: target.id })));
+    const patched = await body(await taskRoute.PATCH(await vjson(`/api/tasks/${target.id}`, "PATCH", { status: "approved", editedBody: "نص المالك بعد التعديل" }), params({ id: target.id })));
     expect(patched).toMatchObject({ ok: true });
     await settle();
     const saved = (await getTask(email, target.id))!;
@@ -89,9 +90,9 @@ describe("journey: sign up, build the workspace, generate, approve, publish", ()
     expect((await listLite(email)).find((l) => l.id === target.id)).toMatchObject({ status: "approved", edited: true });
 
     // 7. Publishing needs a connected platform; then the item records where it went.
-    expect((await publishRoute.POST(json(`/api/publish/${target.id}`, "POST", { provider: "telegram" }), params({ id: target.id }))).status).toBe(400); // nothing connected yet
+    expect((await publishRoute.POST(await vjson(`/api/publish/${target.id}`, "POST", { provider: "telegram" }), params({ id: target.id }))).status).toBe(400); // nothing connected yet
     await saveConnection(email, { provider: "telegram", data: { botToken: "t", chatId: "c" }, connectedAt: new Date().toISOString() });
-    expect((await publishRoute.POST(json(`/api/publish/${target.id}`, "POST", { provider: "telegram" }), params({ id: target.id }))).status).toBe(200);
+    expect((await publishRoute.POST(await vjson(`/api/publish/${target.id}`, "POST", { provider: "telegram" }), params({ id: target.id }))).status).toBe(200);
     expect(published).toEqual([{ id: target.id, scope: email }]);
     expect((await getTask(email, target.id))!.published).toHaveLength(1);
 

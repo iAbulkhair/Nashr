@@ -416,6 +416,9 @@ function withResult(t: Task, j: MediaJob, url: string): Task | null {
   const next: Task = { ...t, mediaCredits: (t.mediaCredits ?? (hasArtwork(t) ? IMAGE_COST : 0)) + j.credits, mediaApplied: [...(t.mediaApplied ?? []), j.id].slice(-APPLIED_KEEP) };
   if (t.mediaJob?.[j.kind] !== j.id) return next;
   next.mediaJob = without(t.mediaJob, j.kind);
+  // New media on an approved item was never seen by whoever approved it: drop the human decision so chat's
+  // `publish_item` (which needs `decidedAt`) refuses it until a person approves again (rule 576).
+  if (t.status === "approved" && t.decidedAt && !t.published?.length) delete next.decidedAt;
   if (j.kind === "image") return { ...next, imageUrl: url, imagePrompt: j.prompt, imageProvider: j.provider, imageModel: j.model as ImageModelId };
   return { ...next, videoUrl: url, videoPrompt: j.prompt, ...(j.provider !== "fal" ? { videoProvider: j.provider } : {}), videoModel: j.model as VideoModelId };
 }

@@ -86,7 +86,7 @@ describe("the profile's brand write holds the brand lock (rule 372)", () => {
     const saving = put({ tone: "calm" }).then((r) => ((finished = true), r));
     await new Promise((r) => setTimeout(r, 120));
     expect(finished, "the save waits for the brand lock instead of writing over it").toBe(false);
-    // What an agent's update_brand does under the same lock (src/lib/chat.ts): read, add a word, save.
+    // What a proposal the owner applies does under the same lock (src/lib/brand-proposals.ts): read, add a word, save.
     await saveBrand(u.email, { ...(await getBrand(u.email))!, banned: "cheap" });
     await db.unlock(lock);
     expect((await saving).status).toBe(200);

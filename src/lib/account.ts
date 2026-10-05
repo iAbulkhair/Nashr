@@ -4,7 +4,7 @@ import { listBrands, scopeFor } from "./brands";
 import { pmap } from "./parallel";
 import { revokeAllGrants } from "./oauth";
 import { EVENTS } from "./track";
-import { codeFor } from "./referral";
+import { codeFor, referralKeys } from "./referral";
 import { forgetPartnerData } from "./partners";
 import { monthKey } from "./credits";
 import { AGENTS, AGENT_IDS } from "./agents";
@@ -112,6 +112,8 @@ export async function wipeAccount(email: string) {
     `referrals:${e}`,
     `referredBy:${e}`,
     `ref:${codeFor(e)}`,
+    // Referrer bonuses waiting for a friend's first payment, the friends already claimed, this month's paid count.
+    ...referralKeys(e),
     `shared:${e}`,
     ...["x", "linkedin", "whatsapp", "instagram"].map((p) => `shared:${e}:${p}`), // pre-set markers
     `ulast:${e}`,

@@ -17,6 +17,7 @@ import JourneyCard, { milestone } from "./JourneyCard";
 import { isAgentId } from "@/lib/agents";
 import AgentAvatar from "@/components/app/AgentAvatar";
 import Scribble from "@/components/Scribble";
+import { taskVersion } from "@/lib/task-version";
 
 const GUARD = {
   ar: { code: "كود الإعلان", codeHint: "ضعه في اسم الإعلان في مدير الإعلانات، فتقيس نور نتيجته حين تصل.", copyCode: "نسخ الكود", ok: "يطابق حارس العلامة", held: "محجوز بحارس العلامة", heldBody: "يحتوي على كلمة ممنوعة في ملف علامتك، فلا يُعتمد ولا يُنشر حتى تعدّله:", heldPh: "فيه خانات لم تُعبّأ بعد (مثل [رقم] أو [date])، فلا يُعتمد ولا يُنشر حتى تضع القيمة الحقيقية مكانها أو تحذفها:", fix: "عدّل النص", live: "فحص مباشر", liveOk: "لا كلمات ممنوعة ولا خانات فارغة. جاهز للاعتماد.", saveDraft: "احفظ دون اعتماد", rule: "قاعدة الكلمات الممنوعة", rulePh: "قاعدة الخانات الفارغة", editBrand: "ملف العلامة" },
@@ -27,6 +28,16 @@ const GUARD = {
 const AGAIN = {
   ar: { already: (p: string) => `نُشر هذا العنصر على ${p} من قبل. هل يُنشر مرة ثانية؟`, unknown: (p: string) => `محاولة النشر على ${p} انتهت دون رد، فقد يكون المنشور ظهر فعلاً. تحقّق من ${p} أولاً، ثم انشر مرة أخرى إن لم تجده.`, busy: "النشر جارٍ الآن. انتظر دقيقة ثم حدّث الصفحة.", duplicate: (p: string) => `رفض ${p} هذا النص لأنه نُشر عنده من قبل. لم يُنشر شيء، والاتصال سليم. غيّر الصياغة ثم انشر.`, earlier: (p: string) => `${p} يقول إن هذا النص منشور عنده، فالمحاولة السابقة ظهرت فعلاً. سُجّلت على العنصر، ولم يُنشر شيء جديد.`, slots: "لا يُنشر كما هو: فيه خانات مثل {{1}} تُعبّأ لكل مستلم أو توجيهات تصوير مثل [VO]. انسخه إلى المكان الذي يُستخدم فيه.", again: "انشر مرة أخرى" },
   en: { already: (p: string) => `This item was already published to ${p}. Publish it again?`, unknown: (p: string) => `The publish to ${p} ended without an answer, so the post may already be live. Check ${p} first, then publish again if it is not there.`, busy: "A publish is already running. Wait a minute, then refresh.", duplicate: (p: string) => `${p} refused this text because it was already posted there. Nothing went out and the connection is fine. Change the wording, then publish.`, earlier: (p: string) => `${p} says this text is already there, so the earlier attempt went live. It is now recorded on the item; nothing new was posted.`, slots: "Not published as written: it has slots such as {{1}} filled per recipient, or script directions such as [VO]. Copy it to where it is used.", again: "Publish again" },
+} as const;
+
+/**
+ * Approve and Publish carry the version of the card on screen (src/lib/task-version.ts). When someone else edited the
+ * item, or a new image arrived, after the card was shown, the server refuses with `changed` and sends the item as it is
+ * now: the card shows it, and the person decides again on what will actually go out.
+ */
+const CHANGED = {
+  ar: "تغيّر هذا العنصر بعد أن فتحته: عدّله شخص آخر أو وصلت له صورة جديدة. لم يُعتمد ولم يُنشر شيء. راجع النسخة الحالية ثم قرّر من جديد.",
+  en: "This item changed after you opened it: someone else edited it or a new image arrived. Nothing was approved or published. Review the current version, then decide again.",
 } as const;
 
 /** The matched word inside its excerpt, highlighted (both come from the same checker the server runs). */
@@ -88,7 +99,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
   // Tasks the owner changed in this session, layered over the server-rendered list.
   const [local, setLocal] = useState<Record<string, Task>>({});
   /** The card whose last change was refused, and why: a role refusal is never reported as a connection problem. */
-  const [failed, setFailed] = useState<{ id: string; why: "forbidden" | "network" } | null>(null);
+  const [failed, setFailed] = useState<{ id: string; why: "forbidden" | "network" | "changed" } | null>(null);
   const view = tasks.map((x) => local[x.id] ?? x);
   /** Drop the optimistic copy of one task so the next server render is what the owner sees. */
   const forgetLocal = (id: string) => setLocal((p) => { const next = { ...p }; delete next[id]; return next; });
@@ -97,9 +108,13 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
   const targets = (x: Task) => (canPublish ? targetsFor(x, connected) : []);
 
   async function publish(id: string, provider: string, repeat = false) {
+    const shownCard = view.find((x) => x.id === id);
+    if (!shownCard) return;
     setPublishing(id + provider);
     setAgain(null);
-    const res = await fetch(`/api/publish/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(repeat ? { provider, again: true } : { provider }) }).catch(() => null);
+    setFailed(null);
+    const version = taskVersion(shownCard);
+    const res = await fetch(`/api/publish/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(repeat ? { provider, again: true, version } : { provider, version }) }).catch(() => null);
     setPublishing(null);
     // No answer, or the platform's time limit (a 5xx with no reason): the post may be live, so the owner checks first.
     if (!res || (res.status >= 500 && res.status !== 502)) { setAgain({ id, provider, kind: "unknown" }); forgetLocal(id); r.refresh(); return; }
@@ -107,6 +122,8 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
     else {
       const j = (await res.json().catch(() => ({}))) as { error?: string; violations?: Violation[]; url?: string };
       if (j.error === "brand_violation" && j.violations) setRefused((p) => ({ ...p, [id]: j.violations! }));
+      // Changed since the card was shown: nothing went out. The refresh below brings the current version.
+      else if (j.error === "changed") setFailed({ id, why: "changed" });
       // Already on that platform, a result nobody saw, or a publish still running: the server did not post, and the
       // owner is asked, never a silent second post (src/lib/publish-once.ts).
       else if (j.error === "already_published" || j.error === "publish_unknown" || j.error === "publish_busy" || j.error === "duplicate_post" || j.error === "earlier_live") setAgain({ id, provider, kind: j.error === "already_published" ? "already" : j.error === "publish_unknown" ? "unknown" : j.error === "duplicate_post" ? "duplicate" : j.error === "earlier_live" ? "earlier" : "busy", url: j.url });
@@ -181,13 +198,22 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
     setWhy("");
     setFailed(null);
     try {
-      const res = await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      // The version of the card as shown: the server checks it whenever the change ends in an approval.
+      const res = await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, version: taskVersion(before) }) });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; task?: Task; error?: string; violations?: Violation[] };
       if (res.status === 409 && j.error === "brand_violation") {
         // Held by the brand rules on the server: put the card back as it was and, for an edit, reopen the editor.
         setLocal((p) => ({ ...p, [id]: before }));
         setRefused((p) => ({ ...p, [id]: j.violations ?? [] }));
         if (typeof body.editedBody === "string") { setEditing(id); setDraft(body.editedBody); }
+        return;
+      }
+      if (res.status === 409 && j.error === "changed") {
+        // Someone changed the item since this card was shown: show it as it is now, keep any typed edit in the editor.
+        setLocal((p) => ({ ...p, [id]: j.task ?? before }));
+        setFailed({ id, why: "changed" });
+        if (typeof body.editedBody === "string") { setEditing(id); setDraft(body.editedBody); }
+        else r.refresh();
         return;
       }
       if (res.status === 403) {
@@ -353,7 +379,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                             {live.length ? live.map((v) => <span key={v.ruleId} className="guard-hit font-semibold" dir="auto">{v.term}</span>) : <span>{G.liveOk}</span>}
                           </p>
                         )}
-                        {failed?.id === x.id && <p role="alert" className="text-sm text-danger">{failed.why === "forbidden" ? t.team.errors.forbidden : lang === "ar" ? "لم يُحفظ التغيير. تحقق من الاتصال وحاول مرة أخرى." : "The change was not saved. Check your connection and try again."}</p>}
+                        {failed?.id === x.id && <p role="alert" className="text-sm text-danger">{failed.why === "forbidden" ? t.team.errors.forbidden : failed.why === "changed" ? CHANGED[lang] : lang === "ar" ? "لم يُحفظ التغيير. تحقق من الاتصال وحاول مرة أخرى." : "The change was not saved. Check your connection and try again."}</p>}
                         <div className="flex flex-wrap gap-2">
                           {canPublish ? (
                             <>
@@ -394,7 +420,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
               </div>
               {editing !== x.id && rejecting !== x.id && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-ink/5 bg-ground px-4 py-3 text-sm">
-                  {failed?.id === x.id && <p role="alert" className="w-full text-sm text-danger">{failed.why === "forbidden" ? t.team.errors.forbidden : lang === "ar" ? "لم يُحفظ التغيير. تحقق من الاتصال وحاول مرة أخرى." : "The change was not saved. Check your connection and try again."}</p>}
+                  {failed?.id === x.id && <p role="alert" className="w-full text-sm text-danger">{failed.why === "forbidden" ? t.team.errors.forbidden : failed.why === "changed" ? CHANGED[lang] : lang === "ar" ? "لم يُحفظ التغيير. تحقق من الاتصال وحاول مرة أخرى." : "The change was not saved. Check your connection and try again."}</p>}
                   {x.status !== "approved" && canPublish && <button disabled={hits.length > 0} title={hits.length ? G.held : undefined} onClick={() => patch(x.id, { status: "approved" })} className="btn btn-primary btn-pill">{i.approve}</button>}
                   {x.status === "pending" && !canPublish && <p className="w-full text-xs text-muted">{i.waitAdmin}</p>}
                   <button onClick={() => { setEditing(x.id); setDraft(body); }} className="btn btn-secondary btn-pill">{i.edit}</button>
