@@ -7,14 +7,16 @@
  * its events and its place in the sync queue, audits `cal_unlink`, and never calls a provider's revoke endpoint (ruling R7).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { json, newMember, newUser, signIn, signOut } from "./helpers/session";
+import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { db } from "@/lib/db";
 import { SEC_KEYS } from "@/lib/secretary";
 import { addBrand, setActiveBrand } from "@/lib/brands";
 import { saveBrand, type Brand } from "@/lib/brand";
 import { getLink, openTokens, putEvents, putLink, scheduleSync, sealTokens, type CalLink } from "@/lib/secretary-cal-link";
 import * as link from "@/app/api/secretary/calendar-link/route";
+import { freshAccess } from "@/lib/secretary-gcal";
 import * as calendars from "@/app/api/secretary/calendar-link/calendars/route";
+import * as start from "@/app/api/connect/[provider]/start/route";
 
 const ENV = { GOOGLE_CLIENT_ID: "gid", GOOGLE_CLIENT_SECRET: "gsecret", MICROSOFT_CLIENT_ID: "mid", MICROSOFT_CLIENT_SECRET: "msecret" };
 const PROVIDER_TEXT = "SECRET-PROVIDER-TEXT";
@@ -39,6 +41,8 @@ type Fake = {
   tid?: string;
   orgDomains?: string[];
   upn?: string;
+  /** Runs inside the stubbed calendar-list call, before it answers: a slow provider during which the brand changes. */
+  onList?: () => Promise<void>;
 };
 let calls: { url: string; method: string; body: string }[] = [];
 function fakeProviders(o: Fake = {}) {
@@ -55,10 +59,12 @@ function fakeProviders(o: Fake = {}) {
       return Response.json(t);
     }
     if (url.startsWith("https://www.googleapis.com/calendar/v3/users/me/calendarList")) {
+      await o.onList?.();
       if (o.listStatus) return new Response(PROVIDER_TEXT, { status: o.listStatus });
       return Response.json({ items: [...owned.map((c) => ({ id: c.id, summary: c.name, accessRole: "owner" })), ...(o.notOwned ?? [{ id: "shared-x", name: "Someone else's" }]).map((c) => ({ id: c.id, summary: c.name, accessRole: "reader" }))] });
     }
     if (url.startsWith("https://graph.microsoft.com/v1.0/me/calendars")) {
+      await o.onList?.();
       if (o.listStatus) return new Response(PROVIDER_TEXT, { status: o.listStatus });
       return Response.json({
         value: [
@@ -322,6 +328,129 @@ describe("rule 614: choosing the calendar needs proof or the owner's declaration
     expect(res.status).toBe(404);
     expect((await body(res)).error).toBe("not_linked");
     expect((await list()).status).toBe(404);
+    expect(calls.length).toBe(0);
+  });
+});
+
+describe("rule 614 (ruling R8): the calendar lock is owned, and a slow choose cannot undo a change made while it ran", () => {
+  it("a busy calendar lock is 503 provider_error on the choice, the list and the unlink, and nothing is touched", async () => {
+    fakeProviders();
+    const o = await owner();
+    await putLink(o.email, seed(o.email));
+    expect(await db.lock(SEC_KEYS.lock(o.email, "cal"), 60)).toBe(true);
+    const all = await Promise.all([put({ choice: 0, declare: true, rev: 1 }), list(), del()]);
+    expect(all.map((r) => r.status)).toEqual([503, 503, 503]);
+    for (const r of all) expect((await body(r)).error).toBe("provider_error");
+    expect(await getLink(o.email)).toMatchObject({ state: "choose", rev: 1 });
+    expect(calls.length).toBe(0);
+  });
+
+  it("an unlink that lands while a choose waits on the provider wins: 409 stale and nothing is written back", async () => {
+    const o = await owner();
+    await putLink(o.email, seed(o.email));
+    await scheduleSync(o.email, 0);
+    await db.zrem(SEC_KEYS.calDue, o.email);
+    fakeProviders({ onList: async () => { await db.del(SEC_KEYS.calLink(o.email)); } });
+    const res = await put({ choice: 0, declare: true, rev: 1 });
+    expect(res.status).toBe(409);
+    expect((await body(res)).error).toBe("stale");
+    expect(await getLink(o.email)).toBeNull();
+    expect(await db.zscore(SEC_KEYS.calDue, o.email)).toBeNull();
+    expect((await auditOf(o.email)).some((l) => l.action === "cal_choose")).toBe(false);
+  });
+
+  it("a rev that moved while a choose waited on the provider is 409 stale and the newer record stays", async () => {
+    const o = await owner();
+    await putLink(o.email, seed(o.email));
+    fakeProviders({ onList: async () => { await putLink(o.email, { ...(await getLink(o.email))!, rev: 5 }); } });
+    const res = await put({ choice: 0, declare: true, rev: 1 });
+    expect(res.status).toBe(409);
+    const stored = (await getLink(o.email))!;
+    expect(stored).toMatchObject({ rev: 5, state: "choose" });
+    expect(stored.calendarId).toBeUndefined();
+    expect(await db.zscore(SEC_KEYS.calDue, o.email)).toBeNull();
+    expect((await auditOf(o.email)).some((l) => l.action === "cal_choose")).toBe(false);
+  });
+
+  it("a refresh slower than 8 s is retry (nothing written), not a hang", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+      const o = await newUser("calslow");
+      const l = seed(o.email, { tokens: sealTokens({ access: "OLD", refresh: REFRESH, expiresAt: NOW() - 1000 }) });
+      await putLink(o.email, l);
+      const p = freshAccess(o.email, l, NOW());
+      await vi.advanceTimersByTimeAsync(8_000);
+      expect(await p).toEqual({ ok: false, retry: true });
+      expect(await getLink(o.email)).toEqual(l);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("rule 614 (ruling R9): only invalid_grant, or a 401 from the calendar list, marks the link lost", () => {
+  const expired = () => sealTokens({ access: "OLD", refresh: REFRESH, expiresAt: NOW() - 1000 });
+
+  it("a 401 from the token endpoint (a wrong client secret) is provider_error and the link stays ok", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    fakeProviders({ refreshStatus: 401 });
+    const o = await owner();
+    await putLink(o.email, seed(o.email, { state: "ok", proof: "domain", calendarId: CAL1, tokens: expired() }));
+    await putEvents(o.email, { syncedAt: Date.now(), events: [] });
+    const res = await put({ choice: 0, declare: true, rev: 1 });
+    expect(res.status).toBe(502);
+    expect((await list()).status).toBe(502);
+    expect(await getLink(o.email)).toMatchObject({ state: "ok", rev: 1 });
+    expect(await db.get(SEC_KEYS.calEvents(o.email))).not.toBeNull();
+    expect((await auditOf(o.email)).some((l) => l.action === "cal_lost")).toBe(false);
+  });
+
+  it("a 401 from the calendar list after a fresh refresh marks the link reconnect, on the choice and on the list", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    fakeProviders({ listStatus: 401 });
+    const o = await owner();
+    await putLink(o.email, seed(o.email, { tokens: expired() }));
+    const res = await put({ choice: 0, declare: true, rev: 1 });
+    expect(res.status).toBe(502);
+    expect(JSON.stringify(await res.json())).not.toContain(PROVIDER_TEXT);
+    expect(await getLink(o.email)).toMatchObject({ state: "reconnect", lostReason: "token" });
+    expect((await auditOf(o.email)).find((l) => l.action === "cal_lost")).toMatchObject({ login: o.email, diff: "provider=gcal" });
+
+    const p = await owner("calrt");
+    await putLink(p.email, seed(p.email, { state: "ok", proof: "domain", calendarId: CAL1, choices: undefined, tokens: expired() }));
+    const res2 = await list();
+    expect(res2.status).toBe(502);
+    expect(await getLink(p.email)).toMatchObject({ state: "reconnect", lostReason: "token" });
+  });
+
+  it("another list failure (500) is provider_error and the link is unchanged", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    fakeProviders({ listStatus: 500 });
+    const o = await owner();
+    await putLink(o.email, seed(o.email));
+    expect((await put({ choice: 0, declare: true, rev: 1 })).status).toBe(502);
+    expect(await getLink(o.email)).toMatchObject({ state: "choose", rev: 1 });
+  });
+});
+
+describe("rule 622 (ruling R10): a founder's support session cannot link, choose or unlink", () => {
+  it("is 403 on PUT, DELETE and the start of the Google flow, and changes nothing", async () => {
+    const FOUNDER = "founder-cal@test.example";
+    vi.stubEnv("ADMIN_EMAILS", FOUNDER);
+    fakeProviders();
+    const o = await newUser("calimp");
+    await putLink(o.email, seed(o.email));
+    await signIn(o.email, { imp: FOUNDER });
+    const p = await put({ choice: 0, declare: true, rev: 1 });
+    expect(p.status).toBe(403);
+    expect(await p.json()).toEqual({ error: "forbidden" });
+    expect((await del()).status).toBe(403);
+    expect((await get()).status).toBe(403);
+    expect((await list()).status).toBe(403);
+    const s = await start.GET(new Request("https://app.test/api/connect/gcal/start"), params({ provider: "gcal" }));
+    expect(s.status).toBe(403);
+    expect(await getLink(o.email)).toMatchObject({ state: "choose", rev: 1 });
     expect(calls.length).toBe(0);
   });
 });

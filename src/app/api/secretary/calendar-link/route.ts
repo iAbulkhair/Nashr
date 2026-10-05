@@ -3,10 +3,10 @@ import { currentUser } from "@/lib/auth";
 import { forbid } from "@/lib/roles";
 import { db } from "@/lib/db";
 import { getBrand } from "@/lib/brand";
-import { SEC_KEYS, audit, withLock } from "@/lib/secretary";
+import { SEC_KEYS, audit } from "@/lib/secretary";
 import { CAL_DECLARATION_V, proofOf } from "@/lib/secretary-cal-proof";
 import { dropLink, getLink, putLink, scheduleSync, type CalLink } from "@/lib/secretary-cal-link";
-import { LOCK_TTL_S, freshAccess, listOwnCalendars, loseLink, reproof } from "@/lib/secretary-gcal";
+import { freshAccess, listOwnCalendars, loseLink, reproof, withCalLock } from "@/lib/secretary-gcal";
 import { calLimit, linkView, refuse } from "@/lib/secretary-cal-routes";
 
 /**
@@ -15,18 +15,17 @@ import { calLimit, linkView, refuse } from "@/lib/secretary-cal-routes";
  * the session. Never a token, a calendar id or the declaration in an answer.
  * GET: `{ ok, link: { provider, account, calendarName?, proof, state, lostReason?, lastSyncAt?, rev, today } | null }`, `today` being
  * the kept meetings of the brand's local day as `HH:mm` and a title (`cal:read:{login}` 120 an hour).
- * PUT `{ choice, declare?, rev }`, strict keys: picks from the choices GET calendars stored (10 minutes), under `withLock(scope,
- * "cal")`: the stored `rev` must match (409 `stale`), the choices must be alive (409 `choices_expired`), then (P3) the token is
+ * PUT `{ choice, declare?, rev }`, strict keys: picks from the choices GET calendars stored (10 minutes), under `withCalLock(scope)` (ruling R8: an owned lock of 45 s): the stored `rev` must match (409 `stale`), the choices must be alive (409 `choices_expired`), then (P3) the token is
  * refreshed, the proof is read again (a Google refresh without an `id_token` keeps the stored domain, ruling R3; Outlook asks
  * Graph every time), a save whose proof is not `domain` needs `declare: true` (400 `declaration_required`), and the live list of
  * owned calendars must still hold the choice (400 `not_owned`). Saves state `ok`, bumps `rev`, clears the choices and the old
  * calendar's events, schedules the first sync now and audits `cal_choose`; answers GET's (`cal:write:{login}` 30 an hour).
  * DELETE: drops the link, its events and its sync entry, audits `cal_unlink`. Nashr never calls a provider's revoke endpoint
  * (ruling R7); the owner removes access in their Google or Microsoft account (`cal:write:{login}`).
- * A provider failure is 502 `provider_error` with no provider text; a refresh refused as `invalid_grant` or 401 also marks the
- * link `reconnect` (`cal_lost`). A brand with no link, or one in `reconnect`, is 404 `not_linked` for PUT and the list.
+ * A provider failure is 502 `provider_error` with no provider text; a refresh refused as `invalid_grant`, or a 401 from the
+ * calendar list, also marks the link `reconnect` (`cal_lost`, ruling R9: a 401 from the token endpoint changes nothing). A busy
+ * lock is 503 `provider_error`. Just before the save the link is read again: one gone or changed meanwhile is 409 `stale`. A brand with no link, or one in `reconnect`, is 404 `not_linked` for PUT and the list.
  */
-const LOCK = "cal";
 type Out = { ok: true; link: CalLink } | { ok: false; error: string; status: number };
 const CHOOSE_KEYS = new Set(["choice", "declare", "rev"]);
 
@@ -58,7 +57,7 @@ export async function PUT(req: Request) {
   const { scope, login } = g;
   const now = Date.now();
   const website = (await getBrand(scope))?.website;
-  const r = await withLock(scope, LOCK, async (): Promise<Out> => {
+  const r = await withCalLock(scope, async (): Promise<Out> => {
     const link = await getLink(scope);
     if (!link || link.state === "reconnect") return { ok: false, error: "not_linked", status: 404 };
     if (link.rev !== rev) return { ok: false, error: "stale", status: 409 };
@@ -101,6 +100,9 @@ export async function PUT(req: Request) {
     }
     const hit = owned.find((c) => c.id === id);
     if (!hit) return { ok: false, error: "not_owned", status: 400 };
+    // The provider calls above are slow: if the link was unlinked or changed meanwhile, this save must not undo that (ruling R8).
+    const now2 = await getLink(scope);
+    if (!now2 || now2.rev !== link.rev || now2.connectedAt !== link.connectedAt) return { ok: false, error: "stale", status: 409 };
     const saved: CalLink = {
       ...known,
       proof: proven ? "domain" : "declaration",
@@ -123,7 +125,7 @@ export async function PUT(req: Request) {
       audit(scope, { actor: "owner", via: "web", login }, "cal_choose", "-", `provider=${saved.provider}`),
     ]);
     return { ok: true, link: saved };
-  }, LOCK_TTL_S);
+  });
   if (!r.ok) return refuse(r.error, r.status);
   return NextResponse.json({ ok: true, link: await linkView(scope, r.link, g.lang, now) });
 }
@@ -136,13 +138,13 @@ export async function DELETE() {
   const g = await calLimit(u, "write");
   if (g instanceof Response) return g;
   const { scope, login } = g;
-  const r = await withLock(scope, LOCK, async (): Promise<{ ok: true } | { ok: false; error: string; status: number }> => {
+  const r = await withCalLock(scope, async (): Promise<{ ok: true } | { ok: false; error: string; status: number }> => {
     const link = await getLink(scope);
     if (!link) return { ok: false, error: "not_linked", status: 404 };
     await dropLink(scope);
     await audit(scope, { actor: "owner", via: "web", login }, "cal_unlink", "-", `provider=${link.provider}`);
     return { ok: true };
-  }, LOCK_TTL_S);
+  });
   if (!r.ok) return refuse(r.error, r.status);
   return NextResponse.json({ ok: true });
 }

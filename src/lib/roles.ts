@@ -124,6 +124,8 @@ export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
   "oauth.approve",
   "partner.bank",
   "feed.manage",
+  // The declaration is the owner's own statement and the link outlives a support session (Reem B3, ruling R10).
+  "calendar.link",
 ]);
 
 const RANK: Record<Role, number> = { member: 1, admin: 2, owner: 3 };

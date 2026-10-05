@@ -13,7 +13,7 @@ import { listBrands, scopeFor } from "./brands";
 import { refreshTokens } from "./connectors/oauth";
 import { getProvider, type CalProvider } from "./connectors/registry";
 import { db } from "./db";
-import { SEC_KEYS, audit, withLock } from "./secretary";
+import { SEC_KEYS, audit } from "./secretary";
 import { dropLink, getLink, openTokens, putLink, sealTokens, type CalLink } from "./secretary-cal-link";
 import { decodeIdToken, googleAccount, microsoftDomain, MS_CONSUMER_TENANT } from "./secretary-cal-proof";
 
@@ -22,9 +22,39 @@ export const GRAPH = "https://graph.microsoft.com/v1.0";
 
 /** One provider call must not hold the brand's calendar lock for long. */
 const PROVIDER_TIMEOUT_MS = 8_000;
-/** The lock is held across the proof calls, so it outlives the default 10 s. */
-// Worst case inside the lock: Graph `/me` plus `/organization` at 8 s each is 16 s, under 25 s.
-export const LOCK_TTL_S = 25;
+/** One refresh of the token gets the same 8 s as a provider call (`refreshTokens` itself has no timeout). */
+const REFRESH_TIMEOUT_MS = 8_000;
+/**
+ * How long a calendar critical section may hold the brand's calendar lock (ruling R8). The worst case inside it is a refresh
+ * (8 s), Graph `/me` and `/organization` (8 s each) and the calendar list (8 s): 32 s of provider time plus a few store reads,
+ * so 45 s outlives it; a run that still overran would lose its lock to the next one, never free that one's (`unlockOwned`).
+ */
+export const CAL_LOCK_TTL_S = 45;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** What a calendar critical section answers when the lock could not be taken: a busy brand, shown as a provider failure (ruling R8). */
+export type CalBusy = { ok: false; error: "provider_error"; status: 503 };
+
+/**
+ * The brand's calendar lock (`sec:lock:{scope}:cal`, the key the Working days save also takes) for the link's critical
+ * sections: connect, choose, the calendar list, unlink and, later, the sync. SET NX with an owner token and `CAL_LOCK_TTL_S`,
+ * 60 tries 50 ms apart, released with `unlockOwned` so a run whose lock expired can never delete the lock of the run that took
+ * it next (plain `withLock` would, and a slow choose could then undo an unlink).
+ */
+export async function withCalLock<T>(scope: string, fn: () => Promise<T>): Promise<T | CalBusy> {
+  const key = SEC_KEYS.lock(scope, "cal");
+  let token: string | null = null;
+  for (let i = 0; i < 60 && !token; i++) {
+    token = await db.lockOwned(key, CAL_LOCK_TTL_S);
+    if (!token) await sleep(50);
+  }
+  if (!token) return { ok: false, error: "provider_error", status: 503 };
+  try {
+    return await fn();
+  } finally {
+    await db.unlockOwned(key, token).catch((e) => console.error("cal lock release failed", e instanceof Error ? e.name : "error"));
+  }
+}
 
 const bearer = (access: string) => ({ Authorization: `Bearer ${access}`, Accept: "application/json" });
 
@@ -71,7 +101,7 @@ export type ConnectResult = { ok: true } | { ok: false; code: "brand_inactive" |
  * Throws when the provider could not be read; the callback turns that into `provider_error`.
  */
 export async function connectCalendar(scope: string, login: string, p: CalProvider, data: Record<string, string>, now: number): Promise<ConnectResult> {
-  const r = await withLock(scope, "cal", async (): Promise<ConnectResult> => {
+  const r = await withCalLock(scope, async (): Promise<ConnectResult> => {
     const owner = scope.split("#")[0];
     const active = (await listBrands(owner)).some((b) => b.status === "active" && scopeFor(owner, b.id) === scope);
     if (!active) {
@@ -100,7 +130,7 @@ export async function connectCalendar(scope: string, login: string, p: CalProvid
     await putLink(scope, link);
     await audit(scope, { actor: "owner", via: "web", login }, "cal_link", "-", `provider=${p}`);
     return { ok: true };
-  }, LOCK_TTL_S);
+  });
   // A lock that could not be taken is a busy brand, not a bad token: the owner can try again.
   return "code" in r || r.ok ? r : { ok: false, code: "provider_error" };
 }
@@ -126,7 +156,8 @@ export type Fresh =
  * A usable access token for the link, refreshed through `refreshTokens` when it expires within 2 minutes. The caller holds the
  * brand's calendar lock. The refresh token is kept when the answer carries none; the resealed tokens are written to the link
  * (same `rev`). `data` is the refresh answer (empty when nothing was refreshed), for `reproof`. `lost: "token"` is a refresh
- * the provider refused with `invalid_grant` or 401, or tokens that no longer open; anything else is `retry`. The provider's
+ * the provider refused with `invalid_grant`, or tokens that no longer open (ruling R9); anything else, a 401 from the token
+ * endpoint (a wrong client secret) and a refresh slower than 8 s included, is `retry` and changes nothing. The provider's
  * text never leaves this function: the error's name is all that is logged.
  */
 export async function freshAccess(scope: string, link: CalLink, now: number): Promise<Fresh> {
@@ -136,13 +167,16 @@ export async function freshAccess(scope: string, link: CalLink, now: number): Pr
   const p = getProvider(link.provider);
   if (!p) return { ok: false, retry: true };
   let data: Record<string, string>;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    data = await refreshTokens(p, t.refresh);
+    const slow = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("refresh_timeout")), REFRESH_TIMEOUT_MS); });
+    data = await Promise.race([refreshTokens(p, t.refresh), slow]);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "";
-    if (msg.includes("invalid_grant") || msg.includes(`${link.provider} token 401:`)) return { ok: false, lost: "token" };
+    if (e instanceof Error && e.message.includes("invalid_grant")) return { ok: false, lost: "token" };
     console.error("cal refresh failed", e instanceof Error ? e.name : "error");
     return { ok: false, retry: true };
+  } finally {
+    clearTimeout(timer);
   }
   const access = data.access_token;
   if (!access) return { ok: false, retry: true };
