@@ -221,7 +221,7 @@ export type SecError =
   // An away proposal (Reem's contact_away card) that a person already saved or dismissed, or that another Save holds now.
   | "already_decided" | "busy"
   // Recurring items: a rule out of range (`parseRepeat`), a rule on an item with no due date, and the 500-series keep limit.
-  | "repeat_invalid" | "repeat_needs_due" | "keep_limit";
+  | "repeat_invalid" | "repeat_needs_due" | "repeat_until_before_due" | "keep_limit";
 export type SecFail = { ok: false; error: SecError; field?: string; status: number; item?: SecItem };
 export const fail = (error: SecError, status = 400, field?: string): SecFail => ({ ok: false, error, status, ...(field ? { field } : {}) });
 
@@ -511,6 +511,8 @@ const futureOnly = (remindAt: string | null | undefined, now: number) => (remind
 const closer = (who: Who): NonNullable<SecItem["closedBy"]> => ({ actor: who.actor, ...(who.login ? { login: who.login } : {}) });
 /** R38, the one check: a recurring item always has a due date, whichever change built `next`. */
 const needsDue = (it: SecItem) => !!it.repeat && !it.dueAt;
+/** An end date before the copy's own due day: the series would end before it began, and no next copy would ever open. */
+const untilBeforeDue = (it: SecItem, z: Zone) => !!it.repeat?.until && !!it.dueAt && it.repeat.until < zoneDay(Date.parse(it.dueAt), z);
 
 /**
  * Settle the repeat rule of an item after its fields were applied (R36, R37, R42, R53), in zone `z` on calendar `cal`.
@@ -582,7 +584,8 @@ function settleRepeat(it: SecItem, f: SecFields, who: Who, now: number, z: Zone,
 export function mutateItem(it: SecItem, c: Change, who: Who, now: number, z: Zone = DEFAULT_ZONE, cal?: CalData): { ok: true; item: SecItem } | SecFail {
   const m = mutate(it, c, who, now, z, cal);
   // R38: the one check, after every branch that builds the next item (update, reschedule and clear_due alike).
-  return m.ok && needsDue(m.item) ? fail("repeat_needs_due", 400, "dueAt") : m;
+  if (m.ok && needsDue(m.item)) return fail("repeat_needs_due", 400, "dueAt");
+  return m.ok && untilBeforeDue(m.item, z) ? fail("repeat_until_before_due", 400, "repeat") : m;
 }
 function mutate(it: SecItem, c: Change, who: Who, now: number, z: Zone, cal: CalData | undefined): { ok: true; item: SecItem } | SecFail {
   const at = new Date(now).toISOString();
@@ -791,6 +794,7 @@ export async function createItem(user: Pick<User, "email" | "scope">, raw: Recor
   const bad = settleRepeat(item, p.fields, who, now, zone, cal);
   if (bad) return bad;
   if (needsDue(item)) return fail("repeat_needs_due", 400, "dueAt");
+  if (untilBeforeDue(item, zone)) return fail("repeat_until_before_due", 400, "repeat");
   // Someone owes the owner and no date was given: the owner expects it within two working days, then Reem says chase.
   if (item.owedBy !== "owner" && !item.dueAt && !item.expectBy) item.expectBy = defaultExpectBy(now, zone, cal);
   await Promise.all([db.set(SEC_KEYS.item(scope, item.id), item), ...indexWrites(scope, null, item), audit(scope, who, "create", item.id, `title=${JSON.stringify(item.title).slice(0, 60)}; source=${who.source}`)]);
@@ -1463,6 +1467,7 @@ const TOOL_ERRORS: Record<SecError, string> = {
   busy: "Someone is saving this away card right now; try again in a moment. Nothing more was changed.",
   repeat_invalid: "The repeat rule is not valid. Nothing was saved. Allowed: every day, workday, week, month, year, hmonth or hyear; an interval from 1 to 99 (hyear at most 10); weekdays 0-6; a month day 1-31 (hmonth 1-30) or -1 for the last day; an end day that is a real date and not before today; a count from 1 to 999; a reminder from 0 to 10080 minutes before the due time.",
   repeat_needs_due: "A repeating item needs a due date. Give one, or ask the owner to stop the repeat first. Nothing was saved.",
+  repeat_until_before_due: "The repeat's end date is before the item's due date, so the series would end before it began. Give an end date on or after the due date, or no end date. Nothing was saved.",
   keep_limit: "This brand already keeps 500 series, the maximum. Ask the owner to release some on the My to-dos page first.",
 };
 /** A friendly sentence for a tool answer. */
