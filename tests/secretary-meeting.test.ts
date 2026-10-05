@@ -395,7 +395,7 @@ describe("meeting proposals and approve (rules 600-603)", () => {
     await db.del(`rate:sec:write:${u.email}`);
   });
 
-  it("rule 604: approve is idempotent: an error mid-way, then a retry, makes every item exactly once and loses none", async () => {
+  it("rule 602: approve is idempotent: an error mid-way, then a retry, makes every item exactly once and loses none", async () => {
     const u = await newUser("mt604");
     const scope = sc(u);
     const who = { ...OWNER, login: u.email };
@@ -480,7 +480,7 @@ describe("meeting proposals and approve (rules 600-603)", () => {
     expect(racing.some((r) => !r.ok && r.error === "lock_timeout")).toBe(false);
   });
 
-  it("rule 605: a pending write and a discard take the approve lock, so an approve never undoes them", async () => {
+  it("rule 603: a pending write and a discard take the approve lock, so an approve never undoes them", async () => {
     const u = await newUser("mt605");
     const scope = sc(u);
     const who = { ...OWNER, login: u.email };
