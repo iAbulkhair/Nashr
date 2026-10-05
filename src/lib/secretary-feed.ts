@@ -19,8 +19,9 @@ const BREAKS = new RegExp("\\r\\n|[\\r\\n\\x85" + String.fromCharCode(0x2028, 0x
 /** Control characters and the bidi overrides, isolates and marks; the same cleaning an item's title got on create. */
 const UNSAFE = new RegExp("[\\x00-\\x1f\\x7f-\\x9f" + [[0x202a, 0x202e], [0x2066, 0x2069], [0x200e, 0x200f]].map(([a, b]) => `${String.fromCharCode(a)}-${String.fromCharCode(b)}`).join("") + "]", "g");
 
+const clean = (s: string): string => s.replace(BREAKS, " ").replace(UNSAFE, "");
 /** One RFC 5545 TEXT value: cleaned of line breaks, control and direction characters, then `\`, `;` and `,` escaped. */
-export const icsEscape = (s: string): string => s.replace(BREAKS, " ").replace(UNSAFE, "").replace(/[\\;,]/g, (c) => `\\${c}`);
+export const icsEscape = (s: string): string => clean(s).replace(/[\\;,]/g, (c) => `\\${c}`);
 
 /** Fold a content line at 75 octets (the leading space of a continuation counts); a UTF-8 sequence is never split. */
 export const icsFold = (line: string): string => {
@@ -60,7 +61,8 @@ const compactDay = (day: string) => day.replace(/-/g, "");
 /** The whole calendar, `BEGIN:VCALENDAR` to `END:VCALENDAR`, every line folded and ended with CRLF. */
 export function buildIcs(items: SecItem[], o: { lang: "ar" | "en"; zone: Zone; origin: string; now: number }): string {
   const ar = o.lang === "ar";
-  const url = `${o.origin}/${o.lang}/app/todo`;
+  // The origin is caller-supplied: cleaned like a text value, but not escaped, since `URL` is a URI.
+  const url = clean(`${o.origin}/${o.lang}/app/todo`);
   const out: string[] = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
@@ -73,7 +75,9 @@ export function buildIcs(items: SecItem[], o: { lang: "ar" | "en"; zone: Zone; o
   ];
   for (const it of items) {
     const due = Date.parse(it.dueAt!);
-    const stamp = utc(Date.parse(it.updatedAt));
+    // A value that does not parse must not fail the whole feed: fall back to the due time, then to now.
+    const updated = [Date.parse(it.updatedAt), due, o.now].find((t) => Number.isFinite(t))!;
+    const stamp = utc(updated);
     const who =
       it.owedBy === "owner" ? (ar ? "عليّ أنا" : "Mine") : `${ar ? "ننتظر" : "Waiting on"} ${partyName(it.owedBy, o.lang)}`;
     out.push("BEGIN:VEVENT", `UID:${it.id}@thakeen`, `DTSTAMP:${stamp}`, `LAST-MODIFIED:${stamp}`, `SEQUENCE:${Number.isFinite(it.rev) ? it.rev : 0}`);
