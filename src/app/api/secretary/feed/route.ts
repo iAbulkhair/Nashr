@@ -8,7 +8,7 @@ import { appOrigin } from "@/lib/origin";
 /**
  * One's own private calendar feed link (Reem phase 3 B1), managed by a signed-in login. The record belongs to the login
  * that is acting: the member's own address for a member, the account address for an owner. Neither the login, the scope
- * nor the language is taken from the request except `lang`, which only picks "ar" or "en" for the calendar text.
+ * nor the language is taken from the request except `lang`, which only picks "ar" or "en" for the calendar text (default: the acting login's own language).
  * GET: whether a link exists and when it was made (`read`), never the link or its hash. POST: mint a new link, replacing
  * the old one (`feed.manage`, refused while a founder impersonates); the link is in this one answer, `Cache-Control:
  * no-store`, and is never stored in plain form. DELETE: stop the link, idempotently (`feed.manage`). Each authenticates,
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
   if (!(await allow(`sec:feed:${login}`, PER_HOUR, 3600))) return tooMany();
   const body: unknown = await req.json().catch(() => null);
   const asked = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>).lang : undefined;
-  const lang: "ar" | "en" = asked === "ar" || asked === "en" ? asked : u.lang === "en" ? "en" : "ar";
+  const lang: "ar" | "en" = asked === "ar" || asked === "en" ? asked : (u.actor?.lang ?? u.lang) === "en" ? "en" : "ar";
   const token = await createFeed(login, sc(u), lang);
   if (token === "busy") return NextResponse.json({ ok: false, error: "busy" }, { status: 409, headers: { "cache-control": "no-store" } });
   const url = `${appOrigin()}/api/secretary/feed/${token}.ics`;

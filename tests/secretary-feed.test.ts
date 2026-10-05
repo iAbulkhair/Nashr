@@ -541,6 +541,7 @@ describe("feed management (rules 543-544)", () => {
 
       const st = await status();
       expect(st.status).toBe(200);
+      expect(st.headers.get("cache-control")).toBe("no-store");
       const text = await st.text();
       expect(JSON.parse(text)).toEqual({ ok: true, exists: true, createdAt: recs[0][1] && (recs[0][1] as { createdAt: string }).createdAt });
       expect(text).not.toContain(tokenOf(b.url));
@@ -550,7 +551,9 @@ describe("feed management (rules 543-544)", () => {
     }
     // The three logins have three separate links: stopping one leaves the others.
     await signIn(member.email);
-    expect((await stop()).status).toBe(200);
+    const stopped = await stop();
+    expect(stopped.status).toBe(200);
+    expect(stopped.headers.get("cache-control")).toBe("no-store");
     expect(await getFeedStatus(member.email)).toEqual({ exists: false, createdAt: null });
     expect((await getFeedStatus(owner.email)).exists).toBe(true);
     expect((await getFeedStatus(admin.email)).exists).toBe(true);
@@ -566,6 +569,26 @@ describe("feed management (rules 543-544)", () => {
     const g = await status();
     expect(g.status).toBe(200);
     expect(await g.json()).toMatchObject({ ok: true, exists: true });
+  });
+
+  it("rule 543: with no valid lang in the body the link takes the acting login's own language, a valid lang wins", async () => {
+    const langOf = (login: string) => (recordsOf(login)[0][1] as { lang: string }).lang;
+    for (const [ownerLang, memberLang] of [["en", "ar"], ["ar", "en"]] as const) {
+      const owner = await newUser(`feed543l${ownerLang}`);
+      await saveUser({ ...(await getUser(owner.email))!, lang: ownerLang });
+      const member = await newMember(owner, "member");
+      await saveMember({ ...(await getMember(member.email))!, lang: memberLang });
+      await signIn(member.email);
+      expect((await create({})).status).toBe(200);
+      expect(langOf(member.email)).toBe(memberLang);
+      expect((await create({ lang: "fr" })).status).toBe(200);
+      expect(langOf(member.email)).toBe(memberLang);
+      expect((await create({ lang: ownerLang })).status).toBe(200);
+      expect(langOf(member.email)).toBe(ownerLang);
+      await signIn(owner.email);
+      expect((await create({})).status).toBe(200);
+      expect(langOf(owner.email)).toBe(ownerLang);
+    }
   });
 
   it("rule 543: a body cannot choose the login, scope or language outside ar and en, and a bad body never gives a 500", async () => {
