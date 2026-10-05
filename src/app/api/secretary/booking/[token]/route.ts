@@ -7,16 +7,18 @@ import { applyBooking, parseCalcom, parseCalendly, verifyCalcomSignature, verify
  * POST: one booking tool's webhook (Reem phase 3 B2a). No session: the random token in the path locates the link and the
  * provider's signature over the raw body proves the sender, so a leaked URL alone forges nothing (spec sections 3 and 7;
  * the second founder-approved URL-secret exception, `permissions.md`). In order: the body read with a 64 KB cap; the
- * token shape (no store read for a wrong one); 1200 an hour per client IP (providers deliver every customer's webhooks
- * from a few shared addresses); the record (`resolveBook`); 120 an hour per link; the record's shape; the validity check
+ * token shape (no store read for a wrong one); the record (`resolveBook`), and on a miss only, a count of 1200 an hour per
+ * client IP, answered with the same empty 404 over the limit or not (spec B2-R6 as amended: providers deliver every
+ * customer's webhooks from a few shared addresses, so a stranger's misses must never refuse a live link); 120 an hour
+ * per link; the record's shape; the validity check
  * (`loginHolds`: the login still active and the scope still one of its account's active brands); the signature, picked by
  * `rec.provider` and keyed by `bookingKey(hash)` (Cal.com `x-cal-signature-256`, Calendly `Calendly-Webhook-Signature`,
  * a header over 512 characters refused unread); the JSON (400 when malformed: the sender is authenticated); the parser;
  * `applyBooking`, which acts on `rec.scope` only.
  *
  * Every failure up to and including a bad or missing signature is the same empty 404, so a probe learns nothing, with
- * these named exceptions: the two 429s (the per-link one shows a holder of a live token that the record exists); a store
- * failure before the signature check (the counters, `resolveBook`, `loginHolds`) is 503; a record that is not well
+ * these named exceptions: the per-link 429 (it shows a holder of a live token that the record exists); a store failure
+ * before the signature check (the counters, `resolveBook`, `loginHolds`) is 503; a record that is not well
  * formed is 500, on purpose, and is answered BEFORE the validity check and the signature (it exists only if a token was
  * minted); and an error deriving the signing key or running the check (`CONNECT_SECRET` unset in production) is 500.
  * After a good signature: malformed JSON is 400; handled, ignored or replayed is 200; a held lock or a store failure
@@ -64,9 +66,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   let rec: BookRecord;
   let hash: string;
   try {
-    if (!(await allow(`book:ip:${clientIp(req)}`, PER_IP_HOUR, 3600))) return answer(429, { "retry-after": "3600" });
     const found = await resolveBook(token);
-    if (!found) return notFound();
+    if (!found) {
+      // A miss counts against the address; over the limit or not, it is the same empty 404. A live link never meets
+      // this bucket: providers deliver every customer's webhooks from a few shared addresses.
+      await allow(`book:ip:${clientIp(req)}`, PER_IP_HOUR, 3600);
+      return notFound();
+    }
     rec = found;
     hash = hashBookToken(token);
     if (!(await allow(`book:t:${hash}`, PER_LINK_HOUR, 3600))) return answer(429, { "retry-after": "3600" });

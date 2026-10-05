@@ -783,7 +783,7 @@ describe("booking webhook (rules 594-595)", () => {
     }
   });
 
-  it("rule 595: a signed create, move and cancel return 200 and act on rec.scope only; a signed unknown event is 200 and changes nothing; malformed JSON under a good signature is 400; a held lock is 503; IP and link buckets answer 429 with Retry-After before any item read", async () => {
+  it("rule 595: a signed create, move and cancel return 200 and act on rec.scope only; a signed unknown event is 200 and changes nothing; malformed JSON under a good signature is 400; a held lock is 503; the address bucket counts only misses and never refuses a live link; the link bucket answers 429 with Retry-After before any item read", async () => {
     const { u, token, key } = await link();
     const other = await newUser("bkother");
     const start = minuteFrom(3 * DAY);
@@ -869,26 +869,39 @@ describe("booking webhook (rules 594-595)", () => {
     expect(r500.status).toBe(500);
     expect(await listOpenItems(bad.u.email)).toHaveLength(0);
 
-    // buckets: the address bucket answers 429 before the record is read
+    // Buckets. The address bucket counts misses only (a well-shaped token with no live record), after the record read:
+    // a flood of unknown tokens from one address runs it past 1200, and every miss, over the limit or not, is the same
+    // empty 404 with the same headers (the answer never tells a miss over the limit from one under it).
     const ip = nextIp();
-    await db.set(`rate:book:ip:${ip}`, 1200, 3600);
-    const get = vi.spyOn(db, "get");
-    try {
-      const r = await post(token, JSON.stringify(created), {}, ip);
-      expect(r.status).toBe(429);
-      expect(r.headers.get("retry-after")).toBe("3600");
-      expect(await r.text()).toBe("");
-      expect(get).not.toHaveBeenCalled();
-    } finally {
-      get.mockRestore();
+    const missKey = `rate:book:ip:${ip}`;
+    await db.set(missKey, 1195, 3600);
+    const misses: Response[] = [];
+    for (let i = 0; i < 10; i++) misses.push(await post(randomBytes(32).toString("base64url"), JSON.stringify(created), calcomSig(JSON.stringify(created), key), ip));
+    const missHeaders = [...misses[0].headers];
+    for (const r of misses) {
+      await empty404(r);
+      expect([...r.headers]).toEqual(missHeaders);
     }
-    // the link bucket: after the record is found, before the holds check, the signature and any item work
+    expect(await db.get(missKey)).toBe(1205);
+    expect(await rate.allow(`book:ip:${ip}`, 1200, 3600)).toBe(false);
+    // A live link is never refused by the address bucket: providers send every customer's deliveries from a few shared
+    // addresses, so a stranger's misses from that address must not cost a real booking. A signed delivery from the
+    // exhausted address is handled (200, one item), and a hit does not count against the address.
+    const live = await link();
+    const lb0 = JSON.stringify(calcomCreate(minuteFrom(2 * DAY), "bk_595_live"));
+    const ok = await post(live.token, lb0, calcomSig(lb0, live.key), ip);
+    expect(ok.status).toBe(200);
+    expect(await listOpenItems(live.u.email)).toHaveLength(1);
+    expect(await db.get(missKey)).toBe(1206);
+    expect(await db.get(`rate:book:t:${live.hash}`)).toBe(1);
+    // the link bucket still limits hits, per token, from any address: after the record is found, before the holds check,
+    // the signature and any item work
     const lim = await link();
     await db.set(`rate:book:t:${lim.hash}`, 120, 3600);
     const lockSpy = vi.spyOn(db, "lock");
     try {
       const lb = JSON.stringify(calcomCreate(minuteFrom(2 * DAY), "bk_595_lim"));
-      const r = await post(lim.token, lb, calcomSig(lb, lim.key));
+      const r = await post(lim.token, lb, calcomSig(lb, lim.key), ip);
       expect(r.status).toBe(429);
       expect(r.headers.get("retry-after")).toBe("3600");
       expect(await r.text()).toBe("");
