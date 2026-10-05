@@ -165,9 +165,9 @@ describe("Salla orders and abandoned carts, as totals only (rule 72)", () => {
 
   it("offers the sales sync only to store connectors that read sales", async () => {
     const u = await newUser("sales2");
-    await saveConnection(u.email, { provider: "woocommerce", data: { site: "https://w.example", consumerKey: "k", consumerSecret: "s" }, connectedAt: new Date().toISOString() });
+    await saveConnection(u.email, { provider: "prestashop", data: { site: "https://p.example", apiKey: "k" }, connectedAt: new Date().toISOString() });
     await signIn(u.email);
-    const res = await connectRoute.POST(json("/api/connect/woocommerce", "POST", { action: "sync_sales" }), { params: Promise.resolve({ provider: "woocommerce" }) });
+    const res = await connectRoute.POST(json("/api/connect/prestashop", "POST", { action: "sync_sales" }), { params: Promise.resolve({ provider: "prestashop" }) });
     expect(res.status).toBe(400);
   });
 });

@@ -16,5 +16,5 @@ export const WORKING_PROVIDERS: readonly string[] = ["wordpress", "shopify", "te
 export const IMPORTS_PRODUCTS: readonly string[] = ["shopify", "woocommerce", "odoo", "prestashop", "salla", "zid"];
 /** Ad accounts whose results are read into the campaign results card (syncAds in src/lib/perf-store.ts). */
 export const READS_ADS: readonly string[] = ["meta_ads", "snapchat"];
-export const READS_METRICS: readonly string[] = ["salla", "shopify", "zid", ...READS_ADS];
+export const READS_METRICS: readonly string[] = ["salla", "shopify", "woocommerce", "zid", ...READS_ADS];
 export const isWorking = (id: string) => WORKING_PROVIDERS.includes(id);

@@ -1,22 +1,24 @@
 /**
- * Store sales as totals, shared by the store connectors that read orders and abandoned carts (Salla, Shopify, Zid).
+ * Store sales as totals, shared by the store connectors that read orders and abandoned carts (Salla, Shopify, WooCommerce, Zid).
  * Only counts, money and product names leave a connector: never a customer's name, phone, email, address or
  * checkout link. No imports, so client components can use the type and the formatting.
  */
 
 export const SALES_DAYS = 30;
-export const SALES_PROVIDERS = ["salla", "shopify", "zid"] as const;
+export const SALES_PROVIDERS = ["salla", "shopify", "woocommerce", "zid"] as const;
 export type SalesProvider = (typeof SALES_PROVIDERS)[number];
-export const PROVIDER_NAME: Record<SalesProvider, string> = { salla: "Salla", shopify: "Shopify", zid: "Zid" };
+export const PROVIDER_NAME: Record<SalesProvider, string> = { salla: "Salla", shopify: "Shopify", woocommerce: "WooCommerce", zid: "Zid" };
 
 export type SalesSnapshot = {
   provider: SalesProvider;
   at: string;
   days: number;
-  /** `capped`: the store has more orders in the window than the sync reads, and it could not say how many. */
-  orders: { count: number; read: number; canceled: number; revenue: Record<string, number>; top: { name: string; qty: number }[]; capped?: boolean };
+  /** `capped`: the store has more orders in the window than the sync reads, and it could not say how many. `pending`:
+   * orders still awaiting payment (WooCommerce): counted in `count`, left out of `revenue` until the store marks them paid. */
+  orders: { count: number; read: number; canceled: number; revenue: Record<string, number>; top: { name: string; qty: number }[]; capped?: boolean; pending?: number };
   /** `capped`: the store has more open carts than the sync reads, and it could not say how many. `unavailable`: the
-   * store refused the app access to its carts, so nothing about them is known (not zero). */
+   * store refused the app access to its carts, or has no cart data at all (WooCommerce), so nothing about them is known
+   * (not zero). */
   carts: { count: number; read: number; value: Record<string, number>; top: { name: string; qty: number }[]; capped?: boolean; unavailable?: boolean };
   /** Records whose total could not be read: a non-zero value means the platform's shape differs from what the code expects. */
   unread: number;
@@ -62,11 +64,14 @@ export function salesMarkdown(s: SalesSnapshot, store?: string) {
     `## Orders`,
     `- Orders: ${s.orders.count}${partialOrders}`,
     `- Revenue (excluding ${s.orders.canceled} canceled or refunded): ${moneyText(s.orders.revenue)}`,
+    ...(s.orders.pending ? [`- ${s.orders.pending} orders are still awaiting payment: they are in the order count and not in the revenue.`] : []),
     ...(s.orders.top.length ? ["- Best sellers by quantity:", ...s.orders.top.map((t) => `  - ${t.name}: ${t.qty}`)] : []),
     "",
     `## Abandoned carts`,
     ...(s.carts.unavailable
-      ? ["- Not available: the store did not give the app access to its abandoned carts. Their number and value are unknown, not zero."]
+      ? [s.provider === "woocommerce"
+          ? "- Not available: WooCommerce does not record abandoned carts. Their number and value are unknown, not zero."
+          : "- Not available: the store did not give the app access to its abandoned carts. Their number and value are unknown, not zero."]
       : [`- Open abandoned carts: ${s.carts.count}${partialCarts}`, `- Value left in them: ${moneyText(s.carts.value)}`]),
     ...(s.carts.top.length ? ["- Products most often left in carts:", ...s.carts.top.map((t) => `  - ${t.name}: ${t.qty}`)] : []),
   ].join("\n");
