@@ -4,6 +4,7 @@ import { forbid } from "@/lib/roles";
 import { allow } from "@/lib/rate";
 import { createFeed, getFeedStatus, revokeFeed } from "@/lib/feed-token";
 import { appOrigin } from "@/lib/origin";
+import { SEC_READS_PER_HOUR } from "@/lib/secretary";
 
 /**
  * One's own private calendar feed link (Reem phase 3 B1), managed by a signed-in login. The record belongs to the login
@@ -11,8 +12,10 @@ import { appOrigin } from "@/lib/origin";
  * nor the language is taken from the request except `lang`, which only picks "ar" or "en" for the calendar text (default: the acting login's own language).
  * GET: whether a link exists and when it was made (`read`), never the link or its hash. POST: mint a new link, replacing
  * the old one (`feed.manage`, refused while a founder impersonates); the link is in this one answer, `Cache-Control:
- * no-store`, and is never stored in plain form. DELETE: stop the link, idempotently (`feed.manage`). Each authenticates,
- * checks the role, then counts against one bucket per login (20 an hour, `too_many`). The URL origin is `appOrigin()`,
+ * no-store`, and is never stored in plain form. DELETE: stop the link, idempotently (`feed.manage`). Each authenticates
+ * and checks the role first. POST and DELETE count against one bucket per login (`sec:feed:{login}`, 20 an hour,
+ * `too_many`); the status read has its own, like the other read routes (`sec:read:{login}`, `SEC_READS_PER_HOUR`), so
+ * opening My to-dos never uses up the writes. The URL origin is `appOrigin()`,
  * never the request's.
  */
 const PER_HOUR = 20;
@@ -26,7 +29,7 @@ export async function GET() {
   const no = forbid(u, "read");
   if (no) return no;
   const login = loginOf(u);
-  if (!(await allow(`sec:feed:${login}`, PER_HOUR, 3600))) return tooMany();
+  if (!(await allow(`sec:read:${login}`, SEC_READS_PER_HOUR, 3600))) return tooMany();
   const { exists, createdAt } = await getFeedStatus(login);
   return NextResponse.json({ ok: true, exists, createdAt }, { headers: { "cache-control": "no-store" } });
 }

@@ -1,9 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import { fill } from "@/lib/fill";
 import { formatWhen } from "@/lib/secretary-agenda";
-import { useOneWrite } from "./useOneWrite";
+import { refusalText, useOneWrite } from "./useOneWrite";
 
 /**
  * What the card shows. `created` holds the link: it is component state only (never stored, never in the URL, never
@@ -12,7 +12,7 @@ import { useOneWrite } from "./useOneWrite";
  */
 export type FeedState =
   | { kind: "loading" }
-  | { kind: "failed" }
+  | { kind: "failed"; text?: string }
   | { kind: "none" }
   | { kind: "created"; url: string; webcal: string }
   | { kind: "exists"; since: string };
@@ -23,9 +23,9 @@ type Copied = "url" | "webcal" | null;
  * The card's markup for one state (no fetching, so a test can render each state). `busy` names the running write
  * (`create`, `renew` or `stop`), `confirming` shows the inline "Stop?" question, `copied` which Copy button was pressed.
  */
-export function FeedView({ t, state, busy = null, error = null, confirming = false, copied = null, onCreate, onStop, onConfirmStop, onCancel, onCopy }: {
+export function FeedView({ t, state, busy = null, error = null, confirming = false, copied = null, onCreate, onStop, onConfirmStop, onCancel, onCopy, onRetry }: {
   t: AppDict; state: FeedState; busy?: string | null; error?: string | null; confirming?: boolean; copied?: Copied;
-  onCreate?: (key: "create" | "renew") => void; onStop?: () => void; onConfirmStop?: (on: boolean) => void; onCancel?: () => void; onCopy?: (which: "url" | "webcal", text: string) => void;
+  onCreate?: (key: "create" | "renew") => void; onStop?: () => void; onConfirmStop?: (on: boolean) => void; onCancel?: () => void; onCopy?: (which: "url" | "webcal", text: string) => void; onRetry?: () => void;
 }) {
   const T = t.todo.feed;
   const off = !!busy;
@@ -34,7 +34,8 @@ export function FeedView({ t, state, busy = null, error = null, confirming = fal
       <p className="text-xs text-ink/70">{label}</p>
       <div className="mt-1 flex flex-wrap items-start gap-2">
         <code className="min-w-0 flex-1 basis-56 break-all rounded bg-lilac px-3 py-2 text-xs" dir="ltr">{text}</code>
-        <button type="button" onClick={() => onCopy?.(which, text)} className="btn btn-secondary btn-xs">{copied === which ? T.copied : T.copy}</button>
+        <button type="button" onClick={() => onCopy?.(which, text)} aria-label={`${T.copy}: ${label}`} className="btn btn-secondary btn-xs">{copied === which ? T.copied : T.copy}</button>
+        <span role="status" aria-live="polite" className="sr-only">{copied === which ? T.copied : ""}</span>
       </div>
     </div>
   );
@@ -43,7 +44,12 @@ export function FeedView({ t, state, busy = null, error = null, confirming = fal
       <h2 id="todo-feed-title" className="card-title">{T.title}</h2>
       <p className="mt-1 text-sm text-muted">{T.sub}</p>
       {state.kind === "loading" && <p className="mt-3 text-sm text-muted">{T.loading}</p>}
-      {state.kind === "failed" && <p role="alert" className="mt-3 text-sm text-danger">{T.error}</p>}
+      {state.kind === "failed" && (
+        <div className="mt-3">
+          <p role="alert" className="text-sm text-danger">{state.text ?? T.error}</p>
+          <button type="button" onClick={() => onRetry?.()} className="btn btn-secondary btn-sm mt-2">{t.handoff.retry}</button>
+        </div>
+      )}
       {state.kind === "none" && (
         <div className="mt-3">
           <button type="button" disabled={off} onClick={() => onCreate?.("create")} className="btn btn-primary btn-sm">{busy === "create" ? T.creating : T.create}</button>
@@ -98,20 +104,34 @@ export default function FeedCard({ t, lang }: { t: AppDict; lang: "ar" | "en" })
   const [state, setState] = useState<FeedState>({ kind: "loading" });
   const [confirming, setConfirming] = useState(false);
   const [copied, setCopied] = useState<Copied>(null);
-  const { busy, error, send } = useOneWrite(t, { busy: T.busy, forbidden: T.error });
+  const words = { busy: T.busy, forbidden: T.error };
+  const { busy, error, send } = useOneWrite(t, words);
+  // Bumped by "Try again": the status read runs again.
+  const [attempt, setAttempt] = useState(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let live = true;
     fetch("/api/secretary/feed", { cache: "no-store" })
-      .then(async (r) => ({ ok: r.ok, j: (await r.json().catch(() => ({}))) as { ok?: boolean; exists?: boolean; createdAt?: string | null } }))
-      .then(({ ok, j }) => {
+      .then(async (r) => ({ status: r.status, ok: r.ok, j: (await r.json().catch(() => ({}))) as { ok?: boolean; error?: unknown; exists?: boolean; createdAt?: string | null } }))
+      .then(({ status, ok, j }) => {
         if (!live) return;
-        if (!ok || !j.ok) return setState({ kind: "failed" });
+        // A refusal (too many requests, no access) says so in the page's words, as a refused write does.
+        if (!ok || !j.ok) return setState({ kind: "failed", text: refusalText(t, status, j.error, words) });
         setState(j.exists && j.createdAt ? { kind: "exists", since: formatWhen(j.createdAt, true, lang, Date.now()) } : { kind: "none" });
       })
       .catch(() => live && setState({ kind: "failed" }));
     return () => { live = false; };
-  }, [lang]);
+    // `t`, `words` and `lang` do not change while the page is open: the read runs on mount and on "Try again".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attempt]);
+
+  // The "Copied" label goes after a moment; a pending timeout is cleared when the card goes away.
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  function retry() {
+    setState({ kind: "loading" });
+    setAttempt((n) => n + 1);
+  }
 
   async function create(key: "create" | "renew") {
     const j = await send(key, "/api/secretary/feed", "POST", { lang });
@@ -132,11 +152,12 @@ export default function FeedCard({ t, lang }: { t: AppDict; lang: "ar" | "en" })
     try {
       await navigator.clipboard.writeText(text);
       setCopied(which);
-      setTimeout(() => setCopied(null), 1500);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setCopied(null), 1500);
     } catch {
       // The link stays on screen to copy by hand.
     }
   }
 
-  return <FeedView t={t} state={state} busy={busy} error={error?.text ?? null} confirming={confirming} copied={copied} onCreate={create} onStop={stop} onConfirmStop={setConfirming} onCancel={() => setConfirming(false)} onCopy={copy} />;
+  return <FeedView t={t} state={state} busy={busy} error={error?.text ?? null} confirming={confirming} copied={copied} onCreate={create} onStop={stop} onConfirmStop={setConfirming} onCancel={() => setConfirming(false)} onCopy={copy} onRetry={retry} />;
 }

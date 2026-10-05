@@ -676,7 +676,7 @@ describe("feed management (rules 543-544)", () => {
     expect(recordsOf(owner.email)).toEqual([]);
   });
 
-  it("rule 544: a lock held by another create answers 409 busy; the 21st call in an hour is 429 and writes nothing", async () => {
+  it("rule 544: a lock held by another create answers 409 busy; the 21st write in an hour is 429 and writes nothing, and the status read has its own bucket", async () => {
     const owner = await newUser("feed544b");
     await signIn(owner.email);
     const owned = await db.lockOwned(`lock:feed:${owner.email}`, 10);
@@ -688,14 +688,19 @@ describe("feed management (rules 543-544)", () => {
     await db.unlockOwned(`lock:feed:${owner.email}`, owned!);
     expect(recordsOf(owner.email)).toEqual([]);
 
-    // That busy answer was call 1; GET, POST and DELETE share one bucket per login.
-    const calls = [status, () => create({}), stop];
-    for (let i = 1; i < 20; i++) expect((await calls[i % 3]()).status).toBe(200);
-    const over = [await status(), await create({}), await stop()];
-    for (const r of over) {
+    // That busy answer was write 1; POST and DELETE share one bucket per login (`sec:feed:{login}`, 20 an hour).
+    // Status reads in between use their own bucket and do not count against it.
+    const writes = [() => create({}), stop];
+    for (let i = 1; i < 20; i++) {
+      expect((await writes[i % 2]()).status).toBe(200);
+      expect((await status()).status).toBe(200);
+    }
+    for (const r of [await create({}), await stop()]) {
       expect(r.status).toBe(429);
       expect(await r.json()).toEqual({ ok: false, error: "too_many" });
     }
+    // The manage bucket is spent, and the status read still answers: 25 calls, all 200 (no refusal from the shared bucket).
+    for (let i = 0; i < 25; i++) expect((await status()).status).toBe(200);
     // Another login has its own bucket.
     const mate = await newUser("feed544c");
     await signIn(mate.email);
@@ -893,7 +898,10 @@ describe("feed card (rules 547-548)", () => {
       const created = view(lang, { kind: "created", url: URL_, webcal: WEBCAL });
       expect(created, lang).toContain(URL_);
       expect(created, lang).toContain(WEBCAL);
-      expect(created.split(T.copy).length - 1, lang).toBe(2);
+      // One visible Copy button per link, each named for what it copies.
+      expect(created.split(`>${T.copy}</button>`).length - 1, lang).toBe(2);
+      expect(created, lang).toContain(`aria-label="${T.copy}: ${T.link}"`);
+      expect(created, lang).toContain(`aria-label="${T.copy}: ${html(T.webcal)}"`);
       for (const k of ["warning", "iphone", "google", "outlook", "shownOnce", "renew", "stop"] as const) expect(created, `${lang}.${k}`).toContain(html(T[k]));
       expect(created, lang).not.toContain(T.create);
       // Exists (the page was left and came back): the date, Renew and Stop, and no link.
@@ -911,6 +919,11 @@ describe("feed card (rules 547-548)", () => {
       expect(none, lang).toContain(T.create);
       expect(none, lang).not.toContain("/api/secretary/feed/");
       for (const state of [{ kind: "loading" }, { kind: "failed" }] as FeedState[]) expect(view(lang, state), lang).not.toContain(T.create);
+      // A failed read offers "Try again" (the handoff card's word) and says why in its own words when it has them.
+      const failed = view(lang, { kind: "failed", text: "REFUSED" });
+      expect(failed, lang).toContain("REFUSED");
+      expect(failed, lang).toContain(`>${appDict[lang].handoff.retry}</button>`);
+      expect(view(lang, { kind: "failed" }), lang).toContain(T.error);
     }
     // Stop asks first, inline.
     const T = appDict.en.todo.feed;
@@ -918,13 +931,23 @@ describe("feed card (rules 547-548)", () => {
     expect(asking).toContain(T.confirmStop);
     expect(asking).toContain(T.confirmYes);
     // A copied button says so, and only the pressed one.
-    expect(view("en", { kind: "created", url: URL_, webcal: WEBCAL }, { copied: "url" }).split(T.copied).length - 1).toBe(1);
+    // (one visible label and one polite live-region announcement for the pressed button; none for the other).
+    expect(view("en", { kind: "created", url: URL_, webcal: WEBCAL }, { copied: "url" }).split(T.copied).length - 1).toBe(2);
+    expect(view("en", { kind: "created", url: URL_, webcal: WEBCAL }, { copied: "url" })).toContain('aria-live="polite"');
+    expect(view("en", { kind: "created", url: URL_, webcal: WEBCAL }).split(T.copied).length - 1).toBe(0);
   });
 
   it("rule 548: the link lives in component state only, and the card sits on My to-dos below the Away panel", () => {
-    const card = readFileSync("src/components/app/FeedCard.tsx", "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    // The two files the link passes through: the card and the shared write hook. Comments are dropped so a banned word in
+    // prose does not trip it. `location.` stays in the list: neither file has a legitimate use of it (no redirect, no URL
+    // read), so a hit is real; `window.name`, `sendBeacon` and `postMessage` would carry the link out of the page.
+    const code = (f: string) => readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const card = code("src/components/app/FeedCard.tsx");
     expect(card).toContain("useState");
-    for (const banned of ["localStorage", "sessionStorage", "indexedDB", "document.cookie", "console.", "history.", "router.push", "router.replace", "location."]) expect(card, banned).not.toContain(banned);
+    const BANNED = ["localStorage", "sessionStorage", "indexedDB", "document.cookie", "console.", "history.", "router.push", "router.replace", "location.", "sendBeacon", "postMessage", "window.open", "window.name"];
+    for (const f of ["src/components/app/FeedCard.tsx", "src/components/app/useOneWrite.ts"]) for (const banned of BANNED) expect(code(f), `${f}: ${banned}`).not.toContain(banned);
+    // The Copied label's timeout is cleared when the card goes away.
+    expect(card).toContain("clearTimeout");
     const panel = readFileSync("src/components/app/TodoPanel.tsx", "utf8");
     expect(panel.indexOf("<AwayPanel")).toBeGreaterThan(-1);
     expect(panel.indexOf("<FeedCard")).toBeGreaterThan(panel.indexOf("<AwayPanel"));
