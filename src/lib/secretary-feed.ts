@@ -1,10 +1,13 @@
+import { getLogin, normalizeEmail } from "./auth";
+import { listBrands, scopeFor } from "./brands";
+import type { FeedRecord } from "./feed-token";
 import { listOpenItems } from "./secretary";
 import { addDays, partyName, zoneDay, type SecItem } from "./secretary-agenda";
 import type { Zone } from "./zones";
 
 /**
- * The calendar file of one brand's open dated to-dos (Reem phase 3 B1, spec section 2 and 7). Pure text building: the
- * route (feed/[token]) decides who may read it. Only title, due date, all-day flag, direction, party name, `rev` and
+ * The calendar file of one brand's open dated to-dos (Reem phase 3 B1, spec section 2 and 7), and `feedHolds`, the
+ * validity check the route (feed/[token]) runs on a link's record before anything is read. Only title, due date, all-day flag, direction, party name, `rev` and
  * `updatedAt` of an item are read; notes, description, phone and inbox links never reach the file.
  */
 
@@ -52,6 +55,42 @@ export async function feedItems(scope: string, now: number): Promise<SecItem[]> 
     })
     .sort((a, b) => Date.parse(a.dueAt!) - Date.parse(b.dueAt!) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
     .slice(0, MAX_EVENTS);
+}
+
+/** The brand id `scope` names in `owner`'s account (`owner` itself is "default", `owner#{id}` is `id`), else null. */
+const brandIdOf = (scope: string, owner: string): string | null => {
+  if (scope === owner) return "default";
+  if (!scope.startsWith(`${owner}#`)) return null;
+  const id = scope.slice(owner.length + 1);
+  return id && id !== "default" && scopeFor(owner, id) === scope ? id : null;
+};
+
+/**
+ * Whether a feed record still holds, read fresh on every fetch (the session-free half of `resolveSession` in auth.ts):
+ * the login exists and is active, and `rec.scope` is one of its account's active brands. An owner must not be suspended.
+ * A member must be on the owner's roster (`getLogin` checks it), not disabled, an admin or member, joined after the owner
+ * record was made, and the owner must exist and not be suspended. The scope is compared with the owner's stored email
+ * exactly, as `sc(u)` builds it: a member's own address, another account or an archived brand is never a scope here.
+ */
+export async function feedHolds(rec: FeedRecord): Promise<boolean> {
+  const login = await getLogin(rec.login);
+  if (!login) return false;
+  let owner: string;
+  if (login.kind === "owner") {
+    if (login.user.suspended) return false;
+    owner = login.user.email;
+  } else {
+    const { member: m, owner: u } = login;
+    if (!u || u.suspended || m.disabled) return false;
+    if (m.role !== "admin" && m.role !== "member") return false;
+    if (typeof m.memberOf !== "string" || !m.memberOf || m.memberOf === normalizeEmail(rec.login)) return false;
+    // NaN on either side (a malformed date) refuses too.
+    if (!(new Date(m.acceptedAt).getTime() >= new Date(u.createdAt).getTime())) return false;
+    owner = u.email;
+  }
+  const id = brandIdOf(rec.scope, owner);
+  if (!id) return false;
+  return (await listBrands(owner)).some((b) => b.id === id && b.status === "active");
 }
 
 /** `YYYYMMDDTHHMMSSZ` of an instant. */

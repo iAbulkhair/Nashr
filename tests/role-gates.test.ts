@@ -243,6 +243,7 @@ const READS: Record<string, Gate> = {
   "GET /api/secretary/series/[seriesId]/export": g("member", "read"),
 
   "GET /api/mcp": "public-read",
+  "GET /api/secretary/feed/[token]": "public-read", // the token in the path is the credential; rate limited per IP and per link
   "GET /api/oauth/meta": "public-read",
   "GET /api/oauth/resource": "public-read",
   "OPTIONS /api/mcp": "public-read",

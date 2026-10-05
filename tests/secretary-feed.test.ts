@@ -1,12 +1,18 @@
 import { randomBytes } from "node:crypto";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { newMember, newUser, signIn } from "./helpers/session";
-import { currentUser } from "@/lib/auth";
+import { newMember, newUser, params, signIn } from "./helpers/session";
+import { currentUser, getUser, saveUser } from "@/lib/auth";
+import { saveBrands } from "@/lib/brands";
+import { getMember, saveMember, type Member } from "@/lib/team";
 import { db } from "@/lib/db";
+import { appOrigin } from "@/lib/origin";
+import * as rate from "@/lib/rate";
 import { can, MIN_ROLE } from "@/lib/roles";
+import * as secretary from "@/lib/secretary";
 import { SEC_KEYS } from "@/lib/secretary";
 import type { SecItem } from "@/lib/secretary-agenda";
-import { buildIcs, feedItems, icsFold } from "@/lib/secretary-feed";
+import { buildIcs, feedHolds, feedItems, icsFold } from "@/lib/secretary-feed";
+import * as feedRoute from "@/app/api/secretary/feed/[token]/route";
 import { createFeed, FEED_KEYS, FEED_TOKEN, getFeedStatus, hashFeedToken, resolveFeed, revokeFeed, revokeFeeds } from "@/lib/feed-token";
 
 const FOUNDER = "founder-feed@test.example";
@@ -322,5 +328,177 @@ describe("feed content (rules 534-538)", () => {
     expect(ev(bad.id)).toContain("DTSTAMP:20261005T090000Z\r\n");
     expect(ev(bad.id)).toContain("LAST-MODIFIED:20261005T090000Z\r\n");
     expect(ev(good.id)).toContain("DTSTAMP:20261005T080000Z\r\n");
+  });
+});
+
+let ipN = 0;
+/** A fresh client address per use, so the per-IP bucket of one test never touches another's. */
+const nextIp = () => { const n = ++ipN; return `10.9.${n >> 8}.${n & 255}`; };
+const callFeed = (token: string, ip = nextIp()) =>
+  feedRoute.GET(new Request(`http://x/api/secretary/feed/${token}`, { headers: { "x-real-ip": ip } }), params({ token }));
+const brandRows = (status: "active" | "archived") => [
+  { id: "default", name: "", createdAt: iso(NOW), status: "active" as const },
+  { id: "b2", name: "Two", createdAt: iso(NOW), status },
+];
+
+describe("public feed route (rules 539-542)", () => {
+  it("rule 539: malformed, unknown, revoked and no-longer-valid logins give the same empty 404, and a malformed token reads nothing", async () => {
+    const ip = nextIp();
+    const due = iso(Date.now() + DAY);
+    const owner = await newUser("feed539");
+    const revoked = await createFeed(owner.email, owner.email, "en");
+    await revokeFeed(owner.email);
+
+    const member = await newMember(owner, "member");
+    await seed(owner.email, { dueAt: due });
+    const removed = await createFeed(member.email, owner.email, "en");
+    const sus = await newUser("feed539s");
+    await seed(sus.email, { dueAt: due });
+    const suspended = await createFeed(sus.email, sus.email, "en");
+    const arch = await newUser("feed539a");
+    await saveBrands(arch.email, brandRows("active"));
+    await seed(`${arch.email}#b2`, { dueAt: due });
+    const archived = await createFeed(arch.email, `${arch.email}#b2`, "en");
+    // Each one works while its login and brand hold.
+    for (const t of [removed, suspended, archived]) expect((await callFeed(t, ip)).status).toBe(200);
+
+    // The member is removed the way dropMember does it (record and roster entry), without revoking the link: the stale
+    // record must still be refused by the validity check alone.
+    await Promise.all([db.del(`member:${member.email}`), db.srem(`members:${owner.email}`, member.email)]);
+    await saveUser({ ...(await getUser(sus.email))!, suspended: true });
+    await saveBrands(arch.email, brandRows("archived"));
+    for (const t of [removed, suspended, archived]) {
+      const found = await resolveFeed(t);
+      expect(found).not.toBeNull();
+      expect(await feedHolds(found!.rec)).toBe(false);
+    }
+
+    const responses: Response[] = [];
+    const get = vi.spyOn(db, "get");
+    const limit = vi.spyOn(rate, "allow");
+    try {
+      for (const bad of ["x", "a".repeat(44), ".ics"]) responses.push(await callFeed(bad, ip));
+      expect(get).not.toHaveBeenCalled();
+      expect(limit).not.toHaveBeenCalled();
+    } finally {
+      get.mockRestore();
+      limit.mockRestore();
+    }
+    for (const t of [randomBytes(32).toString("base64url"), revoked, removed, suspended, archived]) responses.push(await callFeed(t, ip));
+    expect(responses).toHaveLength(8);
+    const first = [...responses[0].headers];
+    for (const r of responses) {
+      expect(r.status).toBe(404);
+      expect(await r.text()).toBe("");
+      expect([...r.headers]).toEqual(first);
+    }
+  });
+
+  it("rule 539: a member's link holds only while resolveSession would let that member in", async () => {
+    const owner = await newUser("feed539m");
+    const { email } = await newMember(owner, "admin");
+    const rec = { login: email, scope: owner.email, lang: "en" as const, createdAt: iso(NOW) };
+    const original = (await getMember(email))!;
+    const holdsWith = async (m: Partial<Member>) => {
+      await saveMember({ ...original, ...m });
+      try { return await feedHolds(rec); } finally { await saveMember(original); }
+    };
+    expect(await feedHolds(rec)).toBe(true);
+    expect(await holdsWith({ disabled: "seats" })).toBe(false);
+    expect(await holdsWith({ role: "owner" as Member["role"] })).toBe(false);
+    expect(await holdsWith({ acceptedAt: iso(Date.parse(owner.createdAt) - 1000) })).toBe(false);
+    expect(await holdsWith({ acceptedAt: "not a date" })).toBe(false);
+    expect(await holdsWith({ role: "member" })).toBe(true);
+    await saveUser({ ...(await getUser(owner.email))!, suspended: true });
+    expect(await feedHolds(rec)).toBe(false);
+  });
+
+  it("rule 540: tenant isolation, the feed reads only the record's scope", async () => {
+    const due = iso(Date.now() + DAY);
+    const a = await newUser("feed540");
+    const b = await newUser("feed540b");
+    await saveBrands(a.email, brandRows("active"));
+    const inDefault = await seed(a.email, { dueAt: due });
+    const inTwo = await seed(`${a.email}#b2`, { dueAt: due });
+    const inOther = await seed(b.email, { dueAt: due });
+    const uid = (it: SecItem) => `UID:${it.id}@thakeen`;
+
+    const brandTwo = await (await callFeed(await createFeed(a.email, `${a.email}#b2`, "en"))).text();
+    expect(brandTwo).toContain(uid(inTwo));
+    for (const x of [inDefault, inOther]) expect(brandTwo).not.toContain(uid(x));
+
+    const member = await newMember(a, "member");
+    const ownAddress = await seed(member.email, { dueAt: due });
+    const memberFeed = await (await callFeed(await createFeed(member.email, a.email, "en"))).text();
+    expect(memberFeed).toContain(uid(inDefault));
+    for (const x of [inTwo, inOther, ownAddress]) expect(memberFeed).not.toContain(uid(x));
+
+    // A record whose scope is not one of its login's own active brands is refused, whatever it names.
+    const refused = [
+      [member.email, member.email],
+      [member.email, b.email],
+      [a.email, b.email],
+      [a.email, `${a.email}#nope`],
+      [a.email, `${a.email}#default`],
+      [a.email, `${a.email}x`],
+      [a.email, a.email.toUpperCase()],
+    ];
+    for (const [login, scope] of refused) {
+      const r = await callFeed(await createFeed(login, scope, "en"));
+      expect(r.status, `${login} -> ${scope}`).toBe(404);
+      expect(await r.text()).toBe("");
+    }
+  });
+
+  it("rule 541: rate limits answer 429 with Retry-After before any item read", async () => {
+    const o = await newUser("feed541");
+    await seed(o.email, { dueAt: iso(Date.now() + DAY) });
+    const token = await createFeed(o.email, o.email, "en");
+    const refusedWithoutRead = async (ip: string) => {
+      const list = vi.spyOn(secretary, "listOpenItems");
+      try {
+        const r = await callFeed(token, ip);
+        expect(r.status).toBe(429);
+        expect(r.headers.get("retry-after")).toBe("3600");
+        expect(await r.text()).toBe("");
+        expect(list).not.toHaveBeenCalled();
+      } finally {
+        list.mockRestore();
+      }
+    };
+
+    // 120 calls from one address pass its bucket (unknown links, so the link's own bucket is untouched); the 121st is refused.
+    const ip = nextIp();
+    for (let i = 0; i < 120; i++) expect((await callFeed(randomBytes(32).toString("base64url"), ip)).status).toBe(404);
+    await refusedWithoutRead(ip);
+
+    // 60 calls for one link from 60 addresses pass; the 61st is refused, from a fresh address too.
+    for (let i = 0; i < 60; i++) expect((await callFeed(token)).status).toBe(200);
+    await refusedWithoutRead(nextIp());
+  });
+
+  it("rule 542: headers", async () => {
+    const o = await newUser("feed542");
+    const it = await seed(o.email, { dueAt: iso(Date.now() + DAY) });
+    const token = await createFeed(o.email, o.email, "ar");
+    const r = await callFeed(token);
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toBe("text/calendar; charset=utf-8");
+    expect(r.headers.get("cache-control")).toBe("private, max-age=300");
+    expect(r.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(r.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    expect(r.headers.get("set-cookie")).toBeNull();
+    const body = await r.text();
+    expect(body.startsWith("BEGIN:VCALENDAR\r\n")).toBe(true);
+    expect(body).toContain(`UID:${it.id}@thakeen\r\n`);
+    expect(unfold(body)).toContain("X-WR-CALNAME:ذكين: مهامي\r\n");
+    // The link inside is the app's own origin, never the request's host.
+    expect(unfold(body)).toContain(`URL:${appOrigin()}/ar/app/todo\r\n`);
+    expect(body).not.toContain("http://x/");
+
+    const ics = await callFeed(`${token}.ics`);
+    expect(ics.status).toBe(200);
+    expect(await ics.text()).toBe(body);
+    expect((await callFeed(`${token}.ics.ics`)).status).toBe(404);
   });
 });
