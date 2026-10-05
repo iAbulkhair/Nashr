@@ -269,7 +269,7 @@ export const dict: Record<Lang, Dict> = {
         { q: "الخصوصية؟", a: "بياناتك لمساحة عملك فقط: لا تستخدمها منصة ذكين لتدريب النماذج، ولا تشاركها بين الحسابات. مفاتيح التكاملات مشفّرة. تحذف حسابك وبيانات مساحة عملك بنفسك من صفحة «حسابك»." },
         { q: "هل تتعلم صوت علامتي؟", a: "نعم. من موقعك أولاً، ثم من كل تعديل ورفض تكتبه، يُحفظ في preferences.md وتلتزم به." },
         { q: "أقدر ألغي؟", a: "نعم. تجربة 3 أيام بدون بطاقة، وبعدها تختار خطتك من صفحة الاشتراك. ولتغيير خطتك أو إلغائها، تواصل معنا." },
-        { q: "من هم بقية الفريق؟", a: "سامي للمبيعات، رزان للمالية والتسعير، فارس للنمو، دانة للتقارير والعروض، ماجد المستشار التنفيذي، ليان للمنتج والاحتفاظ، وريم السكرتيرة لمهامك ومتابعاتك. كلهم في الدردشة نفسها ومن ملف العلامة نفسه." },
+        { q: "من هم بقية الفريق؟", a: "سامي للمبيعات، رزان للمالية والتسعير، فارس للنمو، دانة للتقارير والعروض، ماجد المستشار التنفيذي، ليان للمنتج والاحتفاظ، وريم السكرتيرة لمتابعة تسويق علامتك. كلهم في الدردشة نفسها ومن ملف العلامة نفسه." },
       ],
     },
     waitlist: {
@@ -421,7 +421,7 @@ export const dict: Record<Lang, Dict> = {
         { q: "What about privacy?", a: "Your data stays in your workspace, is never used by Thakeen to train models and never shared across accounts. Integration keys are encrypted. Delete your account and its workspace data yourself from Profile." },
         { q: "Does Noor learn my brand voice?", a: "Yes. From your website first, then from every edit and rejection you write, saved to preferences.md and followed." },
         { q: "Can I cancel anytime?", a: "Yes. 3-day trial with no card. Upgrade from Subscription; to change or cancel your plan, contact us." },
-        { q: "Who else is on the team?", a: "Sami for sales, Razan for finance and pricing, Faris for growth, Dana for reports and decks, Majed the executive advisor, Layan for product and retention, and Reem the secretary for your to-dos and follow-ups. All in the same chat, from the same brand file." },
+        { q: "Who else is on the team?", a: "Sami for sales, Razan for finance and pricing, Faris for growth, Dana for reports and decks, Majed the executive advisor, Layan for product and retention, and Reem the secretary for your brand's marketing to-dos and follow-ups. All in the same chat, from the same brand file." },
       ],
     },
     waitlist: {
