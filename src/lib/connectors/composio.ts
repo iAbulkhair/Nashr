@@ -21,7 +21,7 @@ import { isOurBlobUrl } from "../media-catalog";
 type ExecResult = { data?: unknown; error?: string | null; successful: boolean };
 export type ComposioClient = {
   connectedAccounts: {
-    link(userId: string, authConfigId: string, o: { callbackUrl: string }): Promise<{ id: string; redirectUrl?: string | null }>;
+    link(userId: string, authConfigId: string, o: { callbackUrl: string; allowMultiple?: boolean }): Promise<{ id: string; redirectUrl?: string | null }>;
     waitForConnection(id: string, timeoutMs?: number): Promise<{ id: string; status?: string }>;
     list(q: { userIds: string[]; toolkitSlugs?: string[]; statuses?: "ACTIVE"[] }): Promise<{ items: { id: string }[] }>;
     revoke(id: string): Promise<unknown>;
@@ -36,8 +36,27 @@ export type ComposioClient = {
 };
 export type StagedFile = { name: string; mimetype: string; s3key: string };
 
-/** Pinned toolkit versions, set from the measured run (plan Task 8). Empty means Composio's default for the key. */
-export const TOOLKIT_VERSION: Partial<Record<Toolkit, string>> = {};
+/**
+ * Pinned toolkit versions (`composio dev toolkits version <slug>`, latest on 2026-10-05). The SDK refuses to execute a
+ * tool whose toolkit resolves to "latest" (ComposioToolVersionRequiredError, before any request), and a pin also keeps
+ * the argument names in composio-catalog.ts matching the schema they were checked against. "00000000_00" is the only
+ * version Composio lists for an unversioned toolkit. Every toolkit must have one: the type has no optional keys.
+ */
+export const TOOLKIT_VERSION: Readonly<Record<Toolkit, string>> = {
+  facebook: "20251208_00",
+  instagram: "20251229_00",
+  twitter: "20251230_00",
+  linkedin: "20250915_00",
+  tiktok: "00000000_00",
+  whatsapp: "00000000_00",
+  youtube: "20251208_01",
+  metaads: "20251208_00",
+  snapchat: "00000000_00",
+  googleads: "00000000_00",
+  tiktok_ads: "00000000_00",
+  google_analytics: "20251017_00",
+  google_search_console: "00000000_00",
+};
 
 const CALL_TIMEOUT_MS = 20_000;
 export const PER_ACCOUNT_HOURLY = 600;
@@ -194,7 +213,12 @@ export async function composioConnect(scope: string, toolkit: Toolkit, state: st
   if (!auth) throw new Error("provider_not_configured");
   const c = await getClient();
   await count(scope);
-  const req = await c.connectedAccounts.link(composioUserId(scope), auth, { callbackUrl: `${appOrigin()}/api/connect/${TOOLKITS[toolkit].provider}/callback?state=${encodeURIComponent(state)}` });
+  const req = await c.connectedAccounts.link(composioUserId(scope), auth, {
+    callbackUrl: `${appOrigin()}/api/connect/${TOOLKITS[toolkit].provider}/callback?state=${encodeURIComponent(state)}`,
+    // A reconnect holds two accounts until the callback revokes the old one (connectViaComposio); without this the SDK
+    // refuses the link while the old account is still ACTIVE (TS-SDK::MULTIPLE_CONNECTED_ACCOUNTS).
+    allowMultiple: true,
+  });
   if (!req.redirectUrl || !okRedirect(req.redirectUrl)) {
     await quietDelete(c, req.id);
     throw new Error("composio_bad_redirect");
@@ -214,6 +238,12 @@ export async function composioVerify(scope: string, toolkit: Toolkit, accountId:
     await quietDelete(c, accountId);
     throw new Error("connect_failed");
   }
+}
+
+/** Delete an account the callback verified but could not store, so it does not linger ACTIVE at Composio. Never throws. */
+export async function composioDiscard(accountId: string): Promise<void> {
+  const c = await getClient().catch(() => null);
+  if (c) await quietDelete(c, accountId);
 }
 
 /** Revoke at the platform, then delete at Composio. Rejects on either failure so the caller keeps its record. */

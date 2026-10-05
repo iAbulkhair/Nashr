@@ -6,7 +6,7 @@ import { sameSecret } from "@/lib/rate";
 import { getProvider } from "@/lib/connectors/registry";
 import { exchangeCode } from "@/lib/connectors/oauth";
 import { OAUTH_COOKIE, getConnection, saveConnection, takeState, type Connection } from "@/lib/connectors/store";
-import { composioVerify } from "@/lib/connectors/composio";
+import { composioDiscard, composioVerify } from "@/lib/connectors/composio";
 import { isToolkit, PROVIDER_TOOLKITS } from "@/lib/connectors/composio-catalog";
 import { connectViaComposio } from "@/lib/connectors/via-composio";
 import { syncSite } from "@/lib/site-stats";
@@ -53,16 +53,20 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
     // be ACTIVE and to belong to this workspace's Composio user before anything is stored.
     const toolkit = st.toolkit ?? "";
     if (!isToolkit(toolkit) || !(PROVIDER_TOOLKITS[p.id] ?? []).includes(toolkit) || !st.accountId) return back("error=invalid_state");
+    let saved = false;
     try {
       await composioVerify(st.email, toolkit, st.accountId);
       const conn = await connectViaComposio(st.email, p.id, toolkit, st.accountId, await getConnection(st.email, p.id));
       await saveConnection(st.email, conn);
+      saved = true;
       // A first read so Dana's next report has the site's figures; the daily run retries whatever fails here.
       if (p.id === "google") await syncSite(st.email, conn).catch(() => console.error("site first read failed"));
       await track(st.email.split("#")[0], "connect");
       return back(`connected=${p.id}`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
+      // Composio's OAuth went through, but nothing was stored: the new account would otherwise stay ACTIVE there.
+      if (!saved) await composioDiscard(st.accountId);
       console.error("composio callback failed", p.id, toolkit, /^[a-z_]+$/.test(msg) ? msg : "error");
       return back(`error=${/^[a-z_]+$/.test(msg) ? msg : "connect_failed"}`);
     }

@@ -4,8 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { jar, json, newUser, signIn } from "./helpers/session";
 import { db } from "@/lib/db";
 import { getConnection, OAUTH_COOKIE, saveConnection, saveState, type Connection } from "@/lib/connectors/store";
-import { bucketFor, errorShape, composioEnabled, composioRead, composioUserId, composioWrite, setComposioClientForTests, type ComposioClient } from "@/lib/connectors/composio";
+import { bucketFor, errorShape, TOOLKIT_VERSION, composioEnabled, composioRead, composioUserId, composioWrite, setComposioClientForTests, type ComposioClient } from "@/lib/connectors/composio";
 import { liEscape } from "@/lib/connectors/via-composio";
+import { TOOLKITS } from "@/lib/connectors/composio-catalog";
 import { connectedTargets, targetsFor } from "@/lib/connectors/targets";
 import { publishTask } from "@/lib/connectors/publish";
 import { getProvider, isAvailable } from "@/lib/connectors/registry";
@@ -24,7 +25,7 @@ import * as connectRoute from "@/app/api/connect/[provider]/route";
  */
 type Exec = { slug: string; userId: string; accountId: string; args: Record<string, unknown> };
 type Answer = { data?: unknown; error?: string | null; successful: boolean } | (() => never);
-let calls: { exec: Exec[]; link: { userId: string; auth: string; callbackUrl: string }[]; revoked: string[]; deleted: string[] };
+let calls: { exec: Exec[]; link: { userId: string; auth: string; callbackUrl: string; allowMultiple?: boolean }[]; revoked: string[]; deleted: string[] };
 let answers: Record<string, Answer>;
 let owned: Record<string, string[]>;
 let status = "ACTIVE";
@@ -34,7 +35,7 @@ let revokeFails: string | null = null;
 function fake(): ComposioClient {
   return {
     connectedAccounts: {
-      link: async (userId, auth, o) => { calls.link.push({ userId, auth, callbackUrl: o.callbackUrl }); return { id: "ca_new", redirectUrl: redirect }; },
+      link: async (userId, auth, o) => { calls.link.push({ userId, auth, callbackUrl: o.callbackUrl, allowMultiple: o.allowMultiple }); return { id: "ca_new", redirectUrl: redirect }; },
       waitForConnection: async (id) => ({ id, status }),
       list: async (q) => ({ items: (owned[q.userIds[0]] ?? []).map((id) => ({ id })) }),
       revoke: async (id) => { if (revokeFails) throw new Error(revokeFails); calls.revoked.push(id); },
@@ -152,7 +153,7 @@ describe("connecting (rule 632)", () => {
     await signIn(u.email);
     const res = await start.GET(new Request("https://app.test/api/connect/meta/start?lang=en&toolkit=facebook"), ctx("meta"));
     expect(res.headers.get("location")).toBe(redirect);
-    expect(calls.link[0]).toMatchObject({ userId: composioUserId(u.email), auth: "ac_facebook" });
+    expect(calls.link[0]).toMatchObject({ userId: composioUserId(u.email), auth: "ac_facebook", allowMultiple: true });
     const state = jar().get(OAUTH_COOKIE)!;
     expect(calls.link[0].callbackUrl).toContain(`/api/connect/meta/callback?state=${state}`);
     expect(await db.get(`oauthstate:${state}`)).toMatchObject({ via: "composio", toolkit: "facebook", accountId: "ca_new", provider: "meta" });
@@ -162,7 +163,8 @@ describe("connecting (rule 632)", () => {
 
     redirect = "https://evil.example/phish";
     const bad = await start.GET(new Request("https://app.test/api/connect/x/start?lang=en"), ctx("x"));
-    expect(bad.status).toBe(502);
+    expect(new URL(bad.headers.get("location")!).pathname, "back to the page, not raw JSON").toBe("/en/app/integrations");
+    expect(new URL(bad.headers.get("location")!).searchParams.get("error")).toBe("connect_failed");
     expect(calls.deleted).toEqual(["ca_new"]);
   });
 
@@ -213,6 +215,20 @@ describe("connecting (rule 632)", () => {
     await finish(u, "x", "twitter", "ca_x2");
     expect((await getConnection(u.email, "x"))!).toMatchObject({ data: { twitter: "ca_x2" }, meta: { account: "@ward" } });
     expect(calls.revoked).toEqual(["ca_x1"]);
+  });
+
+  it("deletes the new Composio account when the callback cannot store it, so a retry is not blocked", async () => {
+    const u = await newUser("cpdisc");
+    owned[composioUserId(u.email)] = ["ca_li"];
+    answers.LINKEDIN_GET_MY_INFO = { successful: false, error: "profile unavailable" };
+    expect((await finish(u, "linkedin", "linkedin", "ca_li")).get("error")).toBe("connect_failed");
+    expect(calls.deleted).toEqual(["ca_li"]);
+    expect(await getConnection(u.email, "linkedin")).toBeNull();
+  });
+
+  it("pins a dated version for every toolkit, since the SDK will not execute a tool on \"latest\"", () => {
+    expect(Object.keys(TOOLKIT_VERSION).sort()).toEqual(Object.keys(TOOLKITS).sort());
+    for (const [t, v] of Object.entries(TOOLKIT_VERSION)) expect(v, t).toMatch(/^\d{8}_\d{2}$/);
   });
 
   it("keeps LinkedIn's author from the profile", async () => {

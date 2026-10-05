@@ -9,6 +9,7 @@ import { authorizeUrl, pkcePair } from "@/lib/connectors/oauth";
 import { OAUTH_COOKIE, saveState } from "@/lib/connectors/store";
 import { SHOP_HOST } from "@/lib/connectors/shopify";
 import { forbid } from "@/lib/roles";
+import { appOrigin } from "@/lib/origin";
 
 /**
  * GET /api/connect/{provider}/start?shop=xxx.myshopify.com&lang=ar → redirect to provider.
@@ -40,7 +41,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       console.error("composio connect start failed", provider, toolkit, /^[a-z_]+$/.test(msg) ? msg : errorShape(e));
-      return NextResponse.json({ ok: false, error: /^composio_rate_limited$|^provider_not_configured$/.test(msg) ? msg : "connect_failed" }, { status: msg === "composio_rate_limited" ? 429 : 502 });
+      // The browser navigated here (IntegrationsPanel), so it goes back to the page with a code it can show, not raw JSON.
+      const code = /^composio_rate_limited$|^provider_not_configured$/.test(msg) ? msg : "connect_failed";
+      return NextResponse.redirect(`${appOrigin()}/${lang}/app/integrations?error=${code}`);
     }
   }
   let shop = (url.searchParams.get("shop") ?? "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
