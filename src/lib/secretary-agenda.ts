@@ -25,7 +25,8 @@ export type SecParty = string;
 /** Who changed an item: the owner in the app, an agent in chat, the owner's own assistant over MCP, the daily job, or a code rule. */
 export type SecActor = "owner" | AgentId | "mcp" | "cron" | "rule";
 export type SecVia = "web" | "chat" | "mcp" | "cron";
-export type SecSource = "owner" | "chat" | "mcp" | "agent";
+/** Where an item came from. `booking`: a Cal.com or Calendly webhook through the owner's booking link (Reem B2a, `applyBooking`). */
+export type SecSource = "owner" | "chat" | "mcp" | "agent" | "booking";
 /**
  * One note on an item. Some notes are written by code with a `kind`, and `noteText` words them in the reader's
  * language (the page in Arabic or English, a tool answer in English): `not_yet`, left by the owner's "Not yet", whose

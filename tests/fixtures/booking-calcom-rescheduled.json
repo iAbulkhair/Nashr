@@ -1,0 +1,24 @@
+{
+  "triggerEvent": "BOOKING_RESCHEDULED",
+  "createdAt": "2026-10-07T09:00:00.000Z",
+  "payload": {
+    "type": "intro-call",
+    "title": "Intro call between Sara Example and Omar Example",
+    "eventTitle": "Intro call",
+    "startTime": "2026-10-14T10:00:00Z",
+    "endTime": "2026-10-14T10:30:00Z",
+    "organizer": { "id": 1, "name": "Sara Example", "email": "sara@example.com", "username": "sara-example", "timeZone": "Asia/Riyadh" },
+    "attendees": [
+      { "email": "omar@example.com", "name": "Omar Example", "timeZone": "Asia/Riyadh" }
+    ],
+    "uid": "bk_uid_bbbbbbbbbbbbbbbb",
+    "bookingId": 101,
+    "rescheduleId": 100,
+    "rescheduleUid": "bk_uid_aaaaaaaaaaaaaaaa",
+    "rescheduleStartTime": "2026-10-12T09:00:00Z",
+    "rescheduleEndTime": "2026-10-12T09:30:00Z",
+    "iCalUID": "bk_uid_bbbbbbbbbbbbbbbb@Cal.com",
+    "iCalSequence": 1,
+    "status": "ACCEPTED"
+  }
+}

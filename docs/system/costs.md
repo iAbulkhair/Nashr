@@ -17,6 +17,8 @@ the founder console — see "Where the real numbers live" at the end.
 | `onboard` | `claude-opus-5` × 3 parallel, 10000 + 12000 + 12000 | `src/lib/onboard.ts` | **nothing** for the first brand (the default scope); **9 credits** for each added brand since 2026-09-30 (`ONBOARD_EXTRA_BRAND_COST`, `src/lib/pricing.ts`), charged to Noor in that brand's scope before the stream and refunded when the brand is not saved; once per workspace |
 | `image_prompt` | `claude-sonnet-5`, 400, effort low, one attempt of at most 20 s, no SDK retries | `src/lib/media/prompts.ts` (image **and** video prompts; video is metered under this kind too, spec A18) | charged with the render (section 3.1); a fixed template, and no model call, while Claude is paused |
 
+Reem phase 3 B2a (2026-10-05, bookings in from Cal.com and Calendly) makes no model call and charges no credits: it is webhook handling, the owner's setup (Calendly's two API calls) and revocation only, so it adds no row above. A booking creates an open task through `createItem` as the rule, which spends no credits (it counts against the owner's `sec:create` allowance of 200 a day, and a link's own cap of 60 new items a day).
+
 ## 2. Prompt size, measured
 
 `systemPrompt` (`noor.ts`) builds three blocks. The first two carry `cache_control`, the third never can (it holds
