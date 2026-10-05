@@ -183,11 +183,15 @@ export function chatAllowanceOf(u: { plan: Plan; chatAllowance?: number }): numb
 }
 
 /**
- * The most one chat message may cost us in model calls, in USD (founder decision 2026-10-01). Checked in code before
- * every model call of a turn (src/lib/chat-budget.ts): a call's output is capped to what is left, and the tool loop ends
- * when too little is left for a useful answer. Without it a turn could make five calls of 8,000 output tokens (≈ $1+).
+ * The most one chat message may cost us in model calls, in USD. Checked in code before every model call of a turn
+ * (src/lib/chat-budget.ts): a call's output is capped to what is left, and the tool loop ends when too little is left for
+ * a useful answer. Without it a turn could make five calls of 8,000 output tokens (≈ $1+ on Opus).
+ *
+ * $0.35 on Opus 5 (founder decision 2026-10-01); $0.14 since chat moved to Sonnet 5.5 (founder decision 2026-10-02).
+ * Sonnet 5.5's rates are Opus 5's divided by 2.5 and so is this ceiling, so a message gets the same tokens as before and
+ * the worst full allowance costs 2.5 times less (docs/system/costs.md section 4.1). `chatOverflowHold()` follows: 2.
  */
-export const CHAT_TURN_MAX_USD = 0.35;
+export const CHAT_TURN_MAX_USD = 0.14;
 
 /**
  * The most a message past the allowance can cost the owner, when they turned "continue on credits" on: the ceiling above

@@ -272,9 +272,10 @@ describe("the hard per-message ceiling (rule 311)", () => {
   it("nextMaxTokens: what is left of the ceiling at the output rate, at most CHAT_MAX_OUT, 0 below CHAT_MIN_OUT or on bad numbers", () => {
     expect(nextMaxTokens(CHAT_MODEL, 0, 0)).toBe(CHAT_MAX_OUT);
     const out = costUsd(CHAT_MODEL, { output_tokens: 1 });
-    const n = nextMaxTokens(CHAT_MODEL, 0.2, 0.05);
-    expect(n).toBe(Math.floor((CHAT_TURN_MAX_USD - 0.25) / out));
-    expect(0.25 + n * out).toBeLessThanOrEqual(CHAT_TURN_MAX_USD + 1e-9);
+    const spent = CHAT_TURN_MAX_USD * 0.4, input = CHAT_TURN_MAX_USD * 0.1;
+    const n = nextMaxTokens(CHAT_MODEL, spent, input);
+    expect(n).toBe(Math.min(CHAT_MAX_OUT, Math.floor((CHAT_TURN_MAX_USD - spent - input) / out)));
+    expect(spent + input + n * out).toBeLessThanOrEqual(CHAT_TURN_MAX_USD + 1e-9);
     expect(nextMaxTokens(CHAT_MODEL, CHAT_TURN_MAX_USD - (CHAT_MIN_OUT - 1) * out, 0)).toBe(0);
     expect(nextMaxTokens(CHAT_MODEL, Number.NaN, 0)).toBe(0);
     expect(nextMaxTokens(CHAT_MODEL, 0, Number.POSITIVE_INFINITY)).toBe(0);
@@ -323,6 +324,23 @@ describe("the hard per-message ceiling (rule 311)", () => {
     h.turns.push(reply("ok"));
     const j = await (await send()).json();
     expect(j.message).not.toHaveProperty("usd");
+  });
+  it("chat runs on Sonnet 5.5 under a $0.14 ceiling: the same tokens a message had under $0.35 on Opus 5, and a 2-credit hold", () => {
+    expect(CHAT_MODEL).toBe("claude-sonnet-5-5");
+    expect(CHAT_TURN_MAX_USD).toBe(0.14);
+    expect(chatOverflowHold()).toBe(2);
+    const tokensUnder = (ceiling: number, model: string) => ceiling / costUsd(model, { output_tokens: 1 });
+    expect(tokensUnder(CHAT_TURN_MAX_USD, CHAT_MODEL)).toBeCloseTo(tokensUnder(0.35, "claude-opus-5"), 6);
+  });
+  it("a turn the model refuses says so, never \"Done\", and is still metered", async () => {
+    const u = await owner("starter");
+    h.turns.push(() => ({ content: [], stop_reason: "refusal", model: CHAT_MODEL, usage: CHEAP }));
+    const m = await chat(u, "something it declines", undefined, "noor", { lang: "en" });
+    expect(h.seen).toHaveLength(1);
+    expect(m.content).toMatch(/^I couldn't complete this request\. Try wording it another way/);
+    expect(m.usd).toBeCloseTo(costUsd(CHAT_MODEL, CHEAP), 9);
+    h.turns.push(() => ({ content: [], stop_reason: "refusal", model: CHAT_MODEL, usage: CHEAP }));
+    expect((await chat(u, "مرة ثانية", undefined, "noor", { lang: "ar" })).content).toMatch(/^لم أستطع إكمال هذا الطلب/);
   });
   it("the code passes the computed cap and the chat model, never a typed 8000", () => {
     const src = readFileSync(join(process.cwd(), "src/lib/chat.ts"), "utf8");
