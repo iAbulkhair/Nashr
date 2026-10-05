@@ -1,0 +1,1072 @@
+{
+ "schema_version": 1,
+ "diagram_type": "sequence",
+ "meta": {
+  "title": "Manage: team members and referrals",
+  "locale": "en",
+  "output": ".archify/sequence-nashr-journey-20260930-105952/15-manage-team/15-manage-team.html",
+  "quality_profile": "showcase",
+  "column_fit": "spread",
+  "repository": {
+   "url": "https://github.com/iAbulkhair/Nashr.git",
+   "provider": "github",
+   "link_mode": "web",
+   "revision": "f0e7fdecf7d70d8c60ba76650f22440433926add"
+  }
+ },
+ "participants": [
+  {
+   "id": "person",
+   "type": "external",
+   "label": "Person",
+   "sublabel": "owner, members, invitees",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/team/page.tsx",
+     "line": 18,
+     "end_line": 27
+    },
+    {
+     "path": "src/components/app/JoinForm.tsx",
+     "line": 70,
+     "end_line": 94
+    },
+    {
+     "path": "src/components/app/ReferPanel.tsx",
+     "line": 26,
+     "end_line": 54
+    }
+   ]
+  },
+  {
+   "id": "page",
+   "type": "frontend",
+   "label": "Browser page",
+   "sublabel": "what they see",
+   "sources": [
+    {
+     "path": "src/components/app/TeamPanel.tsx",
+     "line": 195,
+     "end_line": 257
+    },
+    {
+     "path": "src/components/app/JoinForm.tsx",
+     "line": 35,
+     "end_line": 59
+    },
+    {
+     "path": "src/components/app/ReferPanel.tsx",
+     "line": 16,
+     "end_line": 25
+    }
+   ]
+  },
+  {
+   "id": "checks",
+   "type": "security",
+   "label": "Checks in code",
+   "sublabel": "auth · roles · limits",
+   "sources": [
+    {
+     "path": "src/components/app/teamPerms.ts",
+     "line": 21,
+     "end_line": 33
+    },
+    {
+     "path": "src/app/api/team/invite/route.ts",
+     "line": 72,
+     "end_line": 104
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 316,
+     "end_line": 324
+    }
+   ]
+  },
+  {
+   "id": "server",
+   "type": "backend",
+   "label": "Nashr server",
+   "sublabel": "API routes",
+   "sources": [
+    {
+     "path": "src/app/api/team/route.ts",
+     "line": 10,
+     "end_line": 18
+    },
+    {
+     "path": "src/app/api/team/accept/route.ts",
+     "line": 49,
+     "end_line": 56
+    },
+    {
+     "path": "src/app/api/referral/share/route.ts",
+     "line": 16,
+     "end_line": 30
+    }
+   ]
+  },
+  {
+   "id": "store",
+   "type": "database",
+   "label": "Redis",
+   "sublabel": "account data",
+   "sources": [
+    {
+     "path": "src/lib/team.ts",
+     "line": 200,
+     "end_line": 228
+    },
+    {
+     "path": "src/lib/team.ts",
+     "line": 249,
+     "end_line": 304
+    },
+    {
+     "path": "src/lib/referral.ts",
+     "line": 20,
+     "end_line": 30
+    }
+   ]
+  },
+  {
+   "id": "email",
+   "type": "external",
+   "label": "Email",
+   "sublabel": "Resend",
+   "sources": [
+    {
+     "path": "src/app/api/team/invite/route.ts",
+     "line": 72,
+     "end_line": 104
+    }
+   ]
+  }
+ ],
+ "segments": [
+  {
+   "from": 152,
+   "to": 434,
+   "label": "Members page"
+  },
+  {
+   "from": 444,
+   "to": 1076,
+   "label": "Invite"
+  },
+  {
+   "from": 1086,
+   "to": 1678,
+   "label": "Invitee joins"
+  },
+  {
+   "from": 1688,
+   "to": 2480,
+   "label": "Roles, removal, leaving"
+  },
+  {
+   "from": 2490,
+   "to": 3282,
+   "label": "Referrals"
+  }
+ ],
+ "messages": [
+  {
+   "id": "manage-team-open--do",
+   "from": "person",
+   "to": "page",
+   "y": 172,
+   "label": "Open Members",
+   "variant": "emphasis",
+   "note": "sidebar, seats link, bell or Profile card"
+  },
+  {
+   "id": "manage-team-open--render",
+   "from": "page",
+   "to": "server",
+   "y": 202,
+   "label": "render /{lang}/app/team",
+   "variant": "default",
+   "note": "server render, no request on mount"
+  },
+  {
+   "id": "manage-team-open--perms",
+   "from": "server",
+   "to": "checks",
+   "y": 232,
+   "label": "team.view; teamPerms(u) via can()",
+   "variant": "security",
+   "note": "invites only with team.invites.view"
+  },
+  {
+   "id": "manage-team-open--read",
+   "from": "server",
+   "to": "store",
+   "y": 262,
+   "label": "teamView: members + invites",
+   "variant": "default"
+  },
+  {
+   "id": "manage-team-open--limit",
+   "from": "server",
+   "to": "checks",
+   "y": 292,
+   "label": "seatLimit: override, else plan seats",
+   "variant": "security",
+   "note": "Agency 7; a stored Enterprise reads as Agency"
+  },
+  {
+   "id": "manage-team-open--view",
+   "from": "server",
+   "to": "page",
+   "y": 322,
+   "label": "seats used / limit, roster",
+   "variant": "return",
+   "note": "used = 1 + enabled members + unexpired invites"
+  },
+  {
+   "id": "manage-team-open--see",
+   "from": "page",
+   "to": "person",
+   "y": 352,
+   "label": "roster and role-based controls",
+   "variant": "return",
+   "note": "owner: roles, Remove, invite form, Cancel"
+  },
+  {
+   "id": "manage-team-open--full",
+   "from": "page",
+   "to": "person",
+   "y": 382,
+   "label": "seats full: invite disabled",
+   "variant": "security",
+   "note": "owner sees Plans; admin: ask the owner"
+  },
+  {
+   "id": "manage-team-open--reload",
+   "from": "page",
+   "to": "server",
+   "y": 412,
+   "label": "GET /api/team after each action",
+   "variant": "default",
+   "note": "the panel re-reads the roster"
+  },
+  {
+   "id": "manage-team-invite--do",
+   "from": "person",
+   "to": "page",
+   "y": 464,
+   "label": "email + role, Send invite",
+   "variant": "emphasis",
+   "note": "'Create invite link' when email is off"
+  },
+  {
+   "id": "manage-team-invite--post",
+   "from": "page",
+   "to": "server",
+   "y": 494,
+   "label": "POST /api/team/invite",
+   "variant": "emphasis"
+  },
+  {
+   "id": "manage-team-invite--role",
+   "from": "server",
+   "to": "checks",
+   "y": 524,
+   "label": "forbid team.invite.member",
+   "variant": "security",
+   "note": "admin: members only; off while impersonating"
+  },
+  {
+   "id": "manage-team-invite--limits",
+   "from": "server",
+   "to": "checks",
+   "y": 554,
+   "label": "rate limits, before address check",
+   "variant": "security",
+   "note": "20/day account (5 trial), 30/h IP, 5/day address"
+  },
+  {
+   "id": "manage-team-invite--create",
+   "from": "server",
+   "to": "checks",
+   "y": 584,
+   "label": "createInvite: role, address, seats",
+   "variant": "security",
+   "note": "under lock:team: 409 unavailable or 409 seats"
+  },
+  {
+   "id": "manage-team-invite--token",
+   "from": "server",
+   "to": "store",
+   "y": 614,
+   "label": "invite:{hash} for 7 days",
+   "variant": "dashed",
+   "note": "32 random bytes; only the SHA-256 is stored"
+  },
+  {
+   "id": "manage-team-invite--mail",
+   "from": "server",
+   "to": "email",
+   "y": 644,
+   "label": "invite email with join link",
+   "variant": "default",
+   "note": "mail on; fixed template, names only the inviter"
+  },
+  {
+   "id": "manage-team-invite--failed",
+   "from": "server",
+   "to": "page",
+   "y": 674,
+   "label": "502 send_failed, no invite",
+   "variant": "return",
+   "note": "withdrawn if sending fails or no answer in 10 s"
+  },
+  {
+   "id": "manage-team-invite--bell",
+   "from": "server",
+   "to": "store",
+   "y": 704,
+   "label": "bell: 'A new invitation was sent'",
+   "variant": "dashed",
+   "note": "names the inviter, not the address or role"
+  },
+  {
+   "id": "manage-team-invite--see",
+   "from": "server",
+   "to": "page",
+   "y": 734,
+   "label": "emailed, or the link once",
+   "variant": "return"
+  },
+  {
+   "id": "manage-team-invite--shown",
+   "from": "page",
+   "to": "person",
+   "y": 764,
+   "label": "'Invite sent to {email}.'",
+   "variant": "return",
+   "note": "with email off: the link box with Copy"
+  },
+  {
+   "id": "manage-team-invite--refused",
+   "from": "page",
+   "to": "person",
+   "y": 794,
+   "label": "'No free seat (X of Y).'",
+   "variant": "security",
+   "note": "or invalid/uninvitable email, too many attempts, role"
+  },
+  {
+   "id": "manage-invite-link-copy--do",
+   "from": "person",
+   "to": "page",
+   "y": 834,
+   "label": "Copy link, send it to the invitee",
+   "variant": "default",
+   "note": "email not set up; no server call"
+  },
+  {
+   "id": "manage-invite-link-copy--see",
+   "from": "page",
+   "to": "person",
+   "y": 864,
+   "label": "'Copied' for 1.5 seconds",
+   "variant": "return",
+   "note": "shown once; anyone holding it can accept"
+  },
+  {
+   "id": "manage-invite-cancel--do",
+   "from": "person",
+   "to": "page",
+   "y": 904,
+   "label": "Cancel a pending invite",
+   "variant": "default",
+   "note": "confirm: 'Cancel the invite to {email}?'"
+  },
+  {
+   "id": "manage-invite-cancel--delete",
+   "from": "page",
+   "to": "server",
+   "y": 934,
+   "label": "DELETE /api/team/invite {id}",
+   "variant": "default"
+  },
+  {
+   "id": "manage-invite-cancel--role",
+   "from": "server",
+   "to": "checks",
+   "y": 964,
+   "label": "team.invite.cancel",
+   "variant": "security",
+   "note": "admin: member invites only (403)"
+  },
+  {
+   "id": "manage-invite-cancel--remove",
+   "from": "server",
+   "to": "store",
+   "y": 994,
+   "label": "delete invite + index entry",
+   "variant": "dashed",
+   "note": "under lock:team; gone or not this account: 404"
+  },
+  {
+   "id": "manage-invite-cancel--ok",
+   "from": "server",
+   "to": "page",
+   "y": 1024,
+   "label": "deleted: the link stops working",
+   "variant": "return"
+  },
+  {
+   "id": "manage-invite-cancel--see",
+   "from": "page",
+   "to": "person",
+   "y": 1054,
+   "label": "list reloads, the seat frees",
+   "variant": "return",
+   "note": "or 'Not found. Refresh the page.'"
+  },
+  {
+   "id": "manage-join-preview--mail",
+   "from": "email",
+   "to": "person",
+   "y": 1106,
+   "label": "email: 'You are invited to join…'",
+   "variant": "return",
+   "note": "from Thakeen; or the link passed by hand"
+  },
+  {
+   "id": "manage-join-preview--do",
+   "from": "person",
+   "to": "page",
+   "y": 1136,
+   "label": "Invitee opens the join link",
+   "variant": "emphasis",
+   "note": "#t= fragment, cleared, kept in sessionStorage"
+  },
+  {
+   "id": "manage-join-preview--post",
+   "from": "page",
+   "to": "server",
+   "y": 1166,
+   "label": "POST /api/team/accept {token}",
+   "variant": "emphasis",
+   "note": "a preview: nothing is consumed"
+  },
+  {
+   "id": "manage-join-preview--limit",
+   "from": "server",
+   "to": "checks",
+   "y": 1196,
+   "label": "30 per 15 min per IP",
+   "variant": "security",
+   "note": "over the limit: 429"
+  },
+  {
+   "id": "manage-join-preview--peek",
+   "from": "server",
+   "to": "store",
+   "y": 1226,
+   "label": "peekInvite: invite, owner, inviter",
+   "variant": "default",
+   "note": "owner not suspended, inviter still valid"
+  },
+  {
+   "id": "manage-join-preview--view",
+   "from": "server",
+   "to": "page",
+   "y": 1256,
+   "label": "inviter, team, role, expiry",
+   "variant": "return"
+  },
+  {
+   "id": "manage-join-preview--see",
+   "from": "page",
+   "to": "person",
+   "y": 1286,
+   "label": "who invited you, and as which role",
+   "variant": "return",
+   "note": "expiry; email read-only; name, password fields"
+  },
+  {
+   "id": "manage-join-preview--bad",
+   "from": "page",
+   "to": "person",
+   "y": 1316,
+   "label": "invalid, expired or used",
+   "variant": "security",
+   "note": "no token: incomplete; signed in: log out first"
+  },
+  {
+   "id": "manage-join-accept--do",
+   "from": "person",
+   "to": "page",
+   "y": 1356,
+   "label": "name + password, Join",
+   "variant": "emphasis",
+   "note": "Join marked off until a name, 8+ chars, a letter, a number"
+  },
+  {
+   "id": "manage-join-accept--early",
+   "from": "page",
+   "to": "person",
+   "label": "pressed early: 'Your password still needs…'",
+   "variant": "security",
+   "note": "no request; focus moves to the password field",
+   "y": 1386
+  },
+  {
+   "id": "manage-join-accept--post",
+   "from": "page",
+   "to": "server",
+   "y": 1416,
+   "label": "POST /api/team/accept + password",
+   "variant": "emphasis",
+   "note": "{token, name, password, lang}"
+  },
+  {
+   "id": "manage-join-accept--limit",
+   "from": "server",
+   "to": "checks",
+   "y": 1446,
+   "label": "10 per 15 min per IP",
+   "variant": "security"
+  },
+  {
+   "id": "manage-join-accept--claim",
+   "from": "server",
+   "to": "store",
+   "y": 1476,
+   "label": "claim inviteuse:{hash} once",
+   "variant": "dashed",
+   "note": "password hashed with bcrypt"
+  },
+  {
+   "id": "manage-join-accept--recheck",
+   "from": "server",
+   "to": "checks",
+   "y": 1506,
+   "label": "re-check invite, owner, seats",
+   "variant": "security",
+   "note": "lock:team, lock:login: 409 seats or unavailable"
+  },
+  {
+   "id": "manage-join-accept--write",
+   "from": "server",
+   "to": "store",
+   "y": 1536,
+   "label": "write member:{email}, roster",
+   "variant": "dashed",
+   "note": "invite deleted; no trial credits or referral code"
+  },
+  {
+   "id": "manage-join-accept--bell",
+   "from": "server",
+   "to": "store",
+   "y": 1566,
+   "label": "bell: '{name} joined your members'",
+   "variant": "dashed"
+  },
+  {
+   "id": "manage-join-accept--see",
+   "from": "server",
+   "to": "page",
+   "y": 1596,
+   "label": "session: signed in as the member",
+   "variant": "return",
+   "note": "any session on the device is destroyed"
+  },
+  {
+   "id": "manage-join-accept--land",
+   "from": "page",
+   "to": "person",
+   "y": 1626,
+   "label": "lands in the owner's workspace",
+   "variant": "return",
+   "note": "at /{lang}/app"
+  },
+  {
+   "id": "manage-join-accept--refused",
+   "from": "page",
+   "to": "person",
+   "y": 1656,
+   "label": "'This account has no free seat…'",
+   "variant": "security",
+   "note": "or email has a login, weak password, too many"
+  },
+  {
+   "id": "manage-team-role--do",
+   "from": "person",
+   "to": "page",
+   "y": 1708,
+   "label": "change a role: Member or Admin",
+   "variant": "default",
+   "note": "no confirmation; controls lock while saving"
+  },
+  {
+   "id": "manage-team-role--patch",
+   "from": "page",
+   "to": "server",
+   "y": 1738,
+   "label": "PATCH /api/team/member",
+   "variant": "default",
+   "note": "{email, role}"
+  },
+  {
+   "id": "manage-team-role--role",
+   "from": "server",
+   "to": "checks",
+   "y": 1768,
+   "label": "team.role: owner only",
+   "variant": "security",
+   "note": "admin or member only (400); unknown: 404"
+  },
+  {
+   "id": "manage-team-role--save",
+   "from": "server",
+   "to": "store",
+   "y": 1798,
+   "label": "save role, lock:team + lock:member",
+   "variant": "dashed",
+   "note": "demoting an admin deletes their invites"
+  },
+  {
+   "id": "manage-team-role--ok",
+   "from": "server",
+   "to": "page",
+   "y": 1828,
+   "label": "role saved",
+   "variant": "return",
+   "note": "applies at the member's next request"
+  },
+  {
+   "id": "manage-team-role--see",
+   "from": "page",
+   "to": "person",
+   "y": 1858,
+   "label": "roster shows the new badge",
+   "variant": "return",
+   "note": "an error line shows on failure"
+  },
+  {
+   "id": "manage-team-remove--do",
+   "from": "person",
+   "to": "page",
+   "y": 1898,
+   "label": "Remove a person, confirm",
+   "variant": "default",
+   "note": "'They are signed out at once …'"
+  },
+  {
+   "id": "manage-team-remove--delete",
+   "from": "page",
+   "to": "server",
+   "y": 1928,
+   "label": "DELETE /api/team/member {email}",
+   "variant": "default"
+  },
+  {
+   "id": "manage-team-remove--role",
+   "from": "server",
+   "to": "checks",
+   "y": 1958,
+   "label": "team.remove.member (admin+)",
+   "variant": "security",
+   "note": "admin removing admin: 403; not in team: 404"
+  },
+  {
+   "id": "manage-team-remove--wipe",
+   "from": "server",
+   "to": "store",
+   "y": 1988,
+   "label": "delete record + roster entry",
+   "variant": "dashed",
+   "note": "active brand, sent invites; lock:team + lock:member"
+  },
+  {
+   "id": "manage-team-remove--ok",
+   "from": "server",
+   "to": "page",
+   "y": 2018,
+   "label": "member removed",
+   "variant": "return",
+   "note": "their sessions fail at the next request"
+  },
+  {
+   "id": "manage-team-remove--see",
+   "from": "page",
+   "to": "person",
+   "y": 2048,
+   "label": "roster reloads, the seat frees",
+   "variant": "return",
+   "note": "never offered for the owner or yourself"
+  },
+  {
+   "id": "manage-team-leave--do",
+   "from": "person",
+   "to": "page",
+   "y": 2088,
+   "label": "Leave the account, confirm",
+   "variant": "default",
+   "note": "'Leave this account now?'"
+  },
+  {
+   "id": "manage-team-leave--post",
+   "from": "page",
+   "to": "server",
+   "y": 2118,
+   "label": "POST /api/team/leave",
+   "variant": "default"
+  },
+  {
+   "id": "manage-team-leave--role",
+   "from": "server",
+   "to": "checks",
+   "y": 2148,
+   "label": "team.leave: member logins only",
+   "variant": "security",
+   "note": "owner, token or founder: 403"
+  },
+  {
+   "id": "manage-team-leave--wipe",
+   "from": "server",
+   "to": "store",
+   "y": 2178,
+   "label": "same deletion as a removal",
+   "variant": "dashed",
+   "note": "record, active brand, roster entry, sent invites"
+  },
+  {
+   "id": "manage-team-leave--out",
+   "from": "server",
+   "to": "page",
+   "y": 2208,
+   "label": "destroySession: signed out",
+   "variant": "return"
+  },
+  {
+   "id": "manage-team-leave--see",
+   "from": "page",
+   "to": "person",
+   "y": 2238,
+   "label": "sent to /{lang}/app/login",
+   "variant": "return"
+  },
+  {
+   "id": "manage-member-locked-out--do",
+   "from": "person",
+   "to": "page",
+   "y": 2278,
+   "label": "paused or removed: keep using tab",
+   "variant": "default",
+   "note": "or try to sign in again"
+  },
+  {
+   "id": "manage-member-locked-out--load",
+   "from": "page",
+   "to": "server",
+   "y": 2308,
+   "label": "next /{lang}/app page load",
+   "variant": "default"
+  },
+  {
+   "id": "manage-member-locked-out--session",
+   "from": "server",
+   "to": "checks",
+   "y": 2338,
+   "label": "resolveSession: no user",
+   "variant": "security",
+   "note": "disabled, off the roster or no record"
+  },
+  {
+   "id": "manage-member-locked-out--redirect",
+   "from": "server",
+   "to": "page",
+   "y": 2368,
+   "label": "layout redirects to login",
+   "variant": "return"
+  },
+  {
+   "id": "manage-member-locked-out--login",
+   "from": "page",
+   "to": "server",
+   "y": 2398,
+   "label": "sign in: POST /api/auth/login",
+   "variant": "default"
+  },
+  {
+   "id": "manage-member-locked-out--refuse",
+   "from": "server",
+   "to": "page",
+   "y": 2428,
+   "label": "paused 403 disabled; removed 401",
+   "variant": "security",
+   "note": "password checked first; plan grows: paused member can sign in again"
+  },
+  {
+   "id": "manage-member-locked-out--see",
+   "from": "page",
+   "to": "person",
+   "y": 2458,
+   "label": "'Your login is paused…' (paused)",
+   "variant": "return",
+   "note": "removed or wrong password: 'Wrong email or password.'"
+  },
+  {
+   "id": "manage-refer-open--do",
+   "from": "person",
+   "to": "page",
+   "y": 2510,
+   "label": "Open 'Earn credits'",
+   "variant": "emphasis",
+   "note": "from the sidebar"
+  },
+  {
+   "id": "manage-refer-open--render",
+   "from": "page",
+   "to": "server",
+   "y": 2540,
+   "label": "render /{lang}/app/refer",
+   "variant": "default"
+  },
+  {
+   "id": "manage-refer-open--role",
+   "from": "server",
+   "to": "checks",
+   "y": 2570,
+   "label": "referral: owner only",
+   "variant": "security",
+   "note": "other roles: owner-only note, nothing read"
+  },
+  {
+   "id": "manage-refer-open--code",
+   "from": "server",
+   "to": "store",
+   "y": 2600,
+   "label": "register ref:{CODE}",
+   "variant": "dashed",
+   "note": "8-character code from a SHA-256 of the email"
+  },
+  {
+   "id": "manage-refer-open--read",
+   "from": "server",
+   "to": "store",
+   "y": 2630,
+   "label": "read referrals:{email}",
+   "variant": "default"
+  },
+  {
+   "id": "manage-refer-open--view",
+   "from": "server",
+   "to": "page",
+   "y": 2660,
+   "label": "link, code, referrals, credits",
+   "variant": "return",
+   "note": "link uses the canonical app origin"
+  },
+  {
+   "id": "manage-refer-open--claimed",
+   "from": "page",
+   "to": "server",
+   "y": 2690,
+   "label": "GET /api/referral/share",
+   "variant": "default",
+   "note": "owner only: platforms already claimed"
+  },
+  {
+   "id": "manage-refer-open--see",
+   "from": "page",
+   "to": "person",
+   "y": 2720,
+   "label": "'Share your link…', two tabs",
+   "variant": "return",
+   "note": "credits earned = referrals x 50"
+  },
+  {
+   "id": "manage-refer-share-link--do",
+   "from": "person",
+   "to": "page",
+   "y": 2760,
+   "label": "Copy, or Share on WhatsApp",
+   "variant": "emphasis",
+   "note": "no server call: clipboard or a wa.me link"
+  },
+  {
+   "id": "manage-refer-share-link--see",
+   "from": "page",
+   "to": "person",
+   "y": 2790,
+   "label": "'Copied' for 1.5 seconds",
+   "variant": "return"
+  },
+  {
+   "id": "manage-refer-share-link--wa",
+   "from": "page",
+   "to": "person",
+   "y": 2820,
+   "label": "or WhatsApp opens with the text",
+   "variant": "return",
+   "note": "'Try Thakeen … get 50 free credits:' + the link"
+  },
+  {
+   "id": "manage-refer-friend-signup--do",
+   "from": "person",
+   "to": "page",
+   "y": 2860,
+   "label": "friend signs up via ?ref=CODE",
+   "variant": "emphasis",
+   "note": "email first, then name and password"
+  },
+  {
+   "id": "manage-refer-friend-signup--post",
+   "from": "page",
+   "to": "server",
+   "y": 2890,
+   "label": "POST /api/auth/signup with ref",
+   "variant": "default",
+   "note": "code of 6-10 alphanumerics"
+  },
+  {
+   "id": "manage-refer-friend-signup--captcha",
+   "from": "server",
+   "to": "checks",
+   "label": "5 sign-ups an hour per IP, captcha",
+   "variant": "security",
+   "note": "429, or captcha_failed when Turnstile keys are set; typed partner code checked too",
+   "y": 2920
+  },
+  {
+   "id": "manage-refer-friend-signup--check",
+   "from": "server",
+   "to": "checks",
+   "y": 2950,
+   "label": "code owner exists, other email",
+   "variant": "security",
+   "note": "else no bonus; signup still succeeds"
+  },
+  {
+   "id": "manage-refer-friend-signup--credit",
+   "from": "server",
+   "to": "store",
+   "y": 2980,
+   "label": "+50 each side, referrals list",
+   "variant": "dashed",
+   "note": "adjust under the user lock; referredBy set"
+  },
+  {
+   "id": "manage-refer-friend-signup--see",
+   "from": "page",
+   "to": "person",
+   "y": 3010,
+   "label": "start page; bonus not mentioned",
+   "variant": "return",
+   "note": "friend's balance: 50 trial + 50 referral"
+  },
+  {
+   "id": "manage-refer-friend-signup--referrer",
+   "from": "page",
+   "to": "person",
+   "y": 3040,
+   "label": "referrer: 'Credits earned' goes up",
+   "variant": "return",
+   "note": "balance 50 higher; no notification"
+  },
+  {
+   "id": "manage-social-share--do",
+   "from": "person",
+   "to": "page",
+   "y": 3080,
+   "label": "click X, LinkedIn or WhatsApp",
+   "variant": "emphasis"
+  },
+  {
+   "id": "manage-social-share--open",
+   "from": "page",
+   "to": "person",
+   "y": 3110,
+   "label": "the platform's share window opens",
+   "variant": "return",
+   "note": "with a Thakeen post"
+  },
+  {
+   "id": "manage-social-share--post",
+   "from": "page",
+   "to": "server",
+   "y": 3140,
+   "label": "POST /api/referral/share",
+   "variant": "emphasis",
+   "note": "{platform}"
+  },
+  {
+   "id": "manage-social-share--role",
+   "from": "server",
+   "to": "checks",
+   "y": 3170,
+   "label": "owner only; allowed platform",
+   "variant": "security",
+   "note": "x, linkedin, whatsapp, instagram; else 400"
+  },
+  {
+   "id": "manage-social-share--credit",
+   "from": "server",
+   "to": "store",
+   "y": 3200,
+   "label": "one paid claim, +20 via adjust",
+   "variant": "dashed",
+   "note": "shared:{email}; no proof of sharing"
+  },
+  {
+   "id": "manage-social-share--result",
+   "from": "server",
+   "to": "page",
+   "y": 3230,
+   "label": "credited 20, or 0 if claimed",
+   "variant": "return"
+  },
+  {
+   "id": "manage-social-share--see",
+   "from": "page",
+   "to": "person",
+   "y": 3260,
+   "label": "'+20 credits', button turns ✓",
+   "variant": "return",
+   "note": "or 'already earned'; sidebar not refreshed"
+  }
+ ],
+ "cards": [
+  {
+   "dot": "violet",
+   "title": "Who can do this",
+   "items": [
+    "Owner: invites Member or Admin, changes roles, removes anyone but themselves",
+    "Admin: invites and removes plain members, cancels member invites, can leave",
+    "Member: sees the roster, 'Only the owner and admins can invite or remove people.' and the Leave card",
+    "Founder viewing: invites, role changes and removals are off",
+    "Earn credits is owner only; other roles see only the owner-only note"
+   ]
+  },
+  {
+   "dot": "rose",
+   "title": "Refusals and limits",
+   "items": [
+    "Invites: 20 a day per account (5 on trial), 30 an hour per IP, 5 a day per invited address; an email that gets no answer in 10 s counts as failed",
+    "Join link: preview 30 and accept 10 per 15 minutes per IP",
+    "Seats: trial 3, starter 1, pro 3, business 7, agency 7; a founder seat override replaces any plan's number; each pending invite holds a seat",
+    "A former Enterprise account reads as Agency (7 unless overridden); members over the limit are paused at the founder's next plan or seat change, or when an Agency deal's override is dropped",
+    "A paused member who types the right password sees 'Your login is paused because the account's plan has no free seat…'; a removed one sees 'Wrong email or password.'",
+    "Join: pressing the button before the password rules are met lists what is missing; friend sign-ups: 5 an hour per IP"
+   ]
+  },
+  {
+   "dot": "cyan",
+   "title": "Links and credits",
+   "items": [
+    "Invite token: 32 random bytes; only its SHA-256 is stored, for 7 days",
+    "The token travels in the URL fragment, never a query string; with email off the link is shown once",
+    "Referral signup: +50 credits to each side; social share: +20 once per platform, no proof checked"
+   ]
+  }
+ ]
+}

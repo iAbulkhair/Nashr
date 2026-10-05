@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { json, newUser, params, settle, signIn } from "./helpers/session";
+import { vjson } from "./helpers/version";
 import { getUser, saveUser } from "@/lib/auth";
 import { addBrand, scopeFor } from "@/lib/brands";
 import { getTask, listLite, listPreferences, saveTask, type Brand, type Task } from "@/lib/brand";
@@ -28,8 +29,8 @@ import * as mcpRoute from "@/app/api/mcp/route";
 const brand: Brand = { name: "مقهى الفنجان", website: "", industry: "مقاهي", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة مختصة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-09-29T00:00:00.000Z" };
 const quality = (score: number, autofail?: string): Task["quality"] => ({ score, dims: { completeness: 80, brand: 80, honesty: 80, language: 80, format: 80 }, notes: "ready", model: "m", at: "2026-09-29T00:00:00.000Z", ...(autofail ? { autofail } : {}) });
 const task = (id: string, over: Partial<Task> = {}): Task => ({ id, type: "social", channel: "instagram", title: `title ${id}`, body: "قهوة اليوم من محمصتنا في الرياض مع حليب طازج", status: "pending", createdAt: new Date().toISOString(), lang: "ar", ...over });
-const patch = async (id: string, body: unknown) => { const res = await taskRoute.PATCH(json(`/api/tasks/${id}`, "PATCH", body), params({ id })); await settle(); return res; };
-const publish = (id: string, again = false) => publishRoute.POST(json(`/api/publish/${id}`, "POST", again ? { provider: "telegram", again: true } : { provider: "telegram" }), params({ id }));
+const patch = async (id: string, body: unknown) => { const res = await taskRoute.PATCH(await vjson(`/api/tasks/${id}`, "PATCH", body), params({ id })); await settle(); return res; };
+const publish = async (id: string, again = false) => publishRoute.POST(await vjson(`/api/publish/${id}`, "POST", again ? { provider: "telegram", again: true } : { provider: "telegram" }), params({ id }));
 const withBrand = async (prefix: string) => { const u = await newUser(prefix); await db.set(`brand:${u.email}`, brand); await signIn(u.email); return u; };
 const rpc = (token: string, name: string, args: Record<string, unknown>) =>
   mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) }));

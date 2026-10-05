@@ -11,6 +11,7 @@ import { byOf } from "@/lib/actor";
 import { recordActivity } from "@/lib/activity";
 import { agentForTask } from "@/lib/agents";
 import { forbid } from "@/lib/roles";
+import { taskVersion } from "@/lib/task-version";
 
 export const maxDuration = 60;
 
@@ -23,8 +24,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   const t = await getTask(sc(u), id);
   if (!t) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
-  const b = (await req.json().catch(() => ({}))) as { provider?: string; again?: unknown };
+  const raw = (await req.json().catch(() => ({}))) as { provider?: string; again?: unknown; version?: unknown } | null;
+  const b = raw && typeof raw === "object" ? raw : {};
   if (!b.provider) return NextResponse.json({ ok: false, error: "provider_required" }, { status: 400 });
+  // The publish is bound to the card the admin saw (src/lib/task-version.ts): a member may edit a pending draft, and
+  // that edit must never go out under the admin's click. Compared here and again on the copy that is sent, under the lock.
+  if (typeof b.version !== "string") return NextResponse.json({ ok: false, error: "version_required" }, { status: 400 });
+  const version = b.version;
+  if (taskVersion(t) !== version) return NextResponse.json({ ok: false, error: "changed", task: t }, { status: 409 });
   // The owner's click is the approval here, but a rejected item stays unpublished and the target must fit the item type.
   if (t.status === "rejected") return NextResponse.json({ ok: false, error: "rejected_item" }, { status: 409 });
   // Who publishes, from the session (never the body), for the decision record and the activity row below.
@@ -43,6 +50,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     lockS: 70,
     check: (cur) => {
       if (cur.status === "rejected") return { error: "rejected_item" };
+      if (taskVersion(cur) !== version) return { error: "changed" };
       const v = gateTask(brand, cur, { publish: true });
       return v.length ? { error: "brand_violation", violations: v } : null;
     },

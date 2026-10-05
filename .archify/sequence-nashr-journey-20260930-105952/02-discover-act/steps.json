@@ -1,0 +1,943 @@
+{
+ "key": "02-discover-act",
+ "title": "Discover: try tools, send forms, start",
+ "person": "visitor",
+ "steps": [
+  {
+   "id": "discover-start-free",
+   "title": "Click Start free",
+   "surface": "Nav button; plan cards on the home page (Plans) and on Pricing; FinalCta on the pricing, agents, agent, blog post, industry, comparison, resources and AI-agent pages; industry hero button",
+   "actor": "visitor",
+   "action": "Clicks 'Start free' (nav and plan cards) or 'Start your free trial' (closing call and industry hero).",
+   "ui_response": "Opens /{lang}/app/signup with no parameters, at the email step of signup.",
+   "system_reaction": "Plain link. The signup page redirects a signed-in person to /{lang}/app. The account itself is created in the signup stage. The home page itself has no site-URL box now; the URL-first form lives on the agent pages.",
+   "branches": [
+    "already signed in → /{lang}/app"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/components/Nav.tsx",
+     "line": 75,
+     "end_line": 78
+    },
+    {
+     "path": "src/components/home/Plans.tsx",
+     "line": 73
+    },
+    {
+     "path": "src/components/Pricing.tsx",
+     "line": 61
+    },
+    {
+     "path": "src/components/FinalCta.tsx",
+     "line": 17,
+     "end_line": 20
+    },
+    {
+     "path": "src/app/[lang]/for/[industry]/page.tsx",
+     "line": 44
+    },
+    {
+     "path": "src/app/[lang]/pricing/page.tsx",
+     "line": 30
+    },
+    {
+     "path": "src/app/[lang]/blog/[slug]/page.tsx",
+     "line": 36
+    },
+    {
+     "path": "src/app/[lang]/app/signup/page.tsx",
+     "line": 13
+    }
+   ],
+   "next": [],
+   "note": "Exits to the signup stage.",
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-partner-link",
+   "title": "Open a partner's link",
+   "surface": "/p/{CODE} (a partner's link, shared outside the product)",
+   "actor": "visitor",
+   "action": "Opens a partner's link, /p/{CODE}.",
+   "ui_response": "The browser is redirected (307) to /{lang}/app/signup, at the email step. With a known code the address carries ?partner=CODE and, on the password step the optional 'Partner code' box already holds CODE, with the line 'Partner code CODE: 15% off your first month.' under it With an unknown code, or over the limit, signup opens with nothing set.",
+   "system_reaction": "GET /p/{CODE}, public. The language is ?lang=, then the nashr_lang cookie, then Accept-Language, Arabic by default. The code is trimmed, upper-cased and checked for form; then 60 per IP per hour (plink:ip). partnerByCode reads the code to its partner in Redis. A known code sets the first-party httpOnly cookie nashr_partner for 30 days, value CODE.<click time>, so the 30-day attribution window runs from this click. A visitor who already carries a valid partner cookie keeps it (first touch): clicking again, or another partner's link, never restarts the 30 days, and the redirect carries the held code. The credits referral (?ref=) is a separate thing this never reads. A signed-in person is sent on to /{lang}/app by the signup page.",
+   "branches": [
+    "unknown or malformed code → signup with nothing set",
+    "over 60 per IP per hour → signup with nothing set",
+    "valid partner cookie already held → kept, redirect carries the held code",
+    "already signed in → /{lang}/app by the signup page"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/p/[code]/route.ts",
+     "line": 10,
+     "end_line": 17
+    },
+    {
+     "path": "src/app/p/[code]/route.ts",
+     "line": 27,
+     "end_line": 43
+    },
+    {
+     "path": "src/lib/partners.ts",
+     "line": 115,
+     "end_line": 121
+    },
+    {
+     "path": "src/lib/partners.ts",
+     "line": 129,
+     "end_line": 131
+    },
+    {
+     "path": "src/components/app/PartnerCodeField.tsx",
+     "line": 19,
+     "end_line": 25
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 82
+    },
+    {
+     "path": "src/app/[lang]/app/signup/page.tsx",
+     "line": 13
+    }
+   ],
+   "next": [],
+   "note": "Exits to the signup stage; the code is applied to the account when signup succeeds.",
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-log-in-link",
+   "title": "Click Log in",
+   "surface": "Nav (header from the sm breakpoint, and in the mobile menu)",
+   "actor": "visitor",
+   "action": "Clicks Log in.",
+   "ui_response": "Opens /{lang}/app/login, which shows email and password fields, 'Forgot your password?' and a signup link.",
+   "system_reaction": "Plain link. The login page redirects a signed-in person to /{lang}/app.",
+   "branches": [
+    "already signed in → /{lang}/app"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/components/Nav.tsx",
+     "line": 74
+    },
+    {
+     "path": "src/components/Nav.tsx",
+     "line": 91
+    },
+    {
+     "path": "src/app/[lang]/app/login/page.tsx",
+     "line": 11
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 118,
+     "end_line": 130
+    }
+   ],
+   "next": [],
+   "note": "Exits to the login stage.",
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-url-box-agents",
+   "title": "Submit URL on agent page",
+   "surface": "UrlStart on /{lang}/agents and /{lang}/agents/{agent}",
+   "actor": "visitor",
+   "action": "Types a website or store URL and presses 'Start your free trial'. The field may be left empty.",
+   "ui_response": "A plain GET form opens /{lang}/app/signup?url=<value>, at the email step of signup.",
+   "system_reaction": "No JavaScript is needed. The signup form reads up to 300 characters of url. After a successful signup it pushes /{lang}/app/start?url=... when the value has at least 4 characters, otherwise /{lang}/app/start. The URL is not fetched here. The signup page redirects a signed-in person to /{lang}/app.",
+   "branches": [
+    "value shorter than 4 characters → start page without a URL",
+    "already signed in → /{lang}/app, URL dropped"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/components/UrlStart.tsx",
+     "line": 11,
+     "end_line": 20
+    },
+    {
+     "path": "src/app/[lang]/agents/page.tsx",
+     "line": 38
+    },
+    {
+     "path": "src/app/[lang]/agents/[agent]/page.tsx",
+     "line": 47
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 27
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 60
+    },
+    {
+     "path": "src/app/[lang]/app/signup/page.tsx",
+     "line": 13
+    }
+   ],
+   "next": [],
+   "note": "Exits to the signup stage.",
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-ask-sample",
+   "title": "Tap a sample request",
+   "surface": "'Try asking' chips on /{lang}/agents/{agent}",
+   "actor": "visitor",
+   "action": "Clicks a sample request chip.",
+   "ui_response": "What happens depends on the session:\n- Signed out: the browser is redirected to /{lang}/app/login with no next parameter, so the prompt is lost. After login the person lands on /{lang}/app.\n- Signed in with a workspace: chat opens with that agent selected (Noor needs no parameter) and the prompt already typed in the box, not sent.\n- Signed in without a brand: a member is sent to /{lang}/app/start. An owner or admin who has not confirmed a site is also sent to /{lang}/app/start. An owner or admin who confirmed a site sees the 'Getting started' thread, and the prompt is not used.",
+   "system_reaction": "The chip links to /{lang}/app/chat?agent={id}&prompt={text}; Noor's chips carry only prompt. The app layout finds no session on a non-public path and redirects to login, and the chat page repeats that check. For a signed-in person, the chat page accepts only a registry agent id other than noor, cuts the prompt to 2000 characters, and passes both to ChatPanel as the initial state. Nothing reaches a model until the person presses send.",
+   "branches": [
+    "signed out → /{lang}/app/login (prompt dropped)",
+    "signed in, no brand, member → /{lang}/app/start",
+    "signed in, no brand, owner/admin, site not confirmed → /{lang}/app/start",
+    "signed in, no brand, site confirmed → Getting started thread",
+    "signed in with brand → chat with agent and prompt pre-filled"
+   ],
+   "conditions": "None to click; a session and a workspace to land in chat with the prompt",
+   "sources": [
+    {
+     "path": "src/app/[lang]/agents/[agent]/page.tsx",
+     "line": 89
+    },
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 16,
+     "end_line": 27
+    },
+    {
+     "path": "src/app/[lang]/app/chat/page.tsx",
+     "line": 31,
+     "end_line": 32
+    },
+    {
+     "path": "src/app/[lang]/app/chat/page.tsx",
+     "line": 35,
+     "end_line": 44
+    },
+    {
+     "path": "src/app/[lang]/app/chat/page.tsx",
+     "line": 53
+    },
+    {
+     "path": "src/app/[lang]/app/chat/page.tsx",
+     "line": 76
+    },
+    {
+     "path": "src/components/app/ChatPanel.tsx",
+     "line": 459
+    },
+    {
+     "path": "src/components/app/ChatPanel.tsx",
+     "line": 467
+    }
+   ],
+   "next": [],
+   "note": "Exits to the login stage, or to the start or chat stage for a signed-in person.",
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-open-tools",
+   "title": "Open free tools",
+   "surface": "/{lang}/tools",
+   "actor": "visitor",
+   "action": "Opens the free tools list from Resources or the footer, and clicks a tool card.",
+   "ui_response": "'12 free Arabic marketing tools' with the line 'All powered by Noor, in your dialect, no signup — 5 uses a day.'. The cards are: Hook Generator, Instagram Caption, Snapchat Ad Copy, TikTok Script, WhatsApp Cart Recovery, Google Business Post, Product Description, Hashtag Generator, Ramadan Campaign Planner, National Day Post, Email Subject Lines and Instagram Bio. Each card opens /{lang}/tools/{slug}.",
+   "system_reaction": "A static render from TOOLS.",
+   "branches": [],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/tools/page.tsx",
+     "line": 24,
+     "end_line": 36
+    },
+    {
+     "path": "src/lib/tools.ts",
+     "line": 19,
+     "end_line": 32
+    },
+    {
+     "path": "src/components/Nav.tsx",
+     "line": 53
+    },
+    {
+     "path": "src/components/Footer.tsx",
+     "line": 18
+    }
+   ],
+   "next": [
+    "discover-run-free-tool"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-run-free-tool",
+   "title": "Run a free tool",
+   "surface": "/{lang}/tools/{tool} (ToolForm)",
+   "actor": "visitor",
+   "action": "Fills the tool's fields, including a Language select on every tool except Hashtag Generator, and clicks 'Generate free'.",
+   "ui_response": "The button changes to 'Noor is writing…'. On success the text appears in the output panel with a Copy button.\nNOW, while the model is paused, every submit shows 'The free tools are paused for now. Please check back later.'\nOther outcomes:\n- Over the limit: 'Daily limit of N reached. Sign up free for more.' with a 'Sign up' link.\n- A model error: 'Something failed, try again.'",
+   "system_reaction": "POST /api/tools/{slug}. The route:\n1. Answers 404 unknown_tool for an unknown slug.\n2. Checks modelState() before the rate limit. The state is paused when CLAUDE_PAUSED is true and ANTHROPIC_API_KEY is set, and also on a Vercel production deployment with no key. A paused call answers 503 'paused' without using any allowance. With no key elsewhere (a laptop, CI) the state is mock.\n3. Reads currentUser(). A visitor gets 5 calls per IP (rate:tool:{ip}) and a signed-in account 50 (rate:tool:u:{email}), each in a 24-hour window that starts at the first use. Over that it answers 429 rate_limited with the limit.\n4. Cuts each field to 600 characters and forces the language to one of the four choices (default: Saudi Arabic).\n5. In mock, returns a '[DEV MOCK]' echo, after the allowance is counted.\n6. Otherwise calls claude-sonnet-5 (adaptive thinking, low effort, 2000 max tokens) with a Noor system prompt, with one retry; both attempts are bounded by a 45-second budget inside the route's 60 seconds.\nOn success it meters token usage as kind 'tool' (the global monthly total, plus the account when signed in) and increments toolusage:{slug}. No credits are charged and there is no trial check. An error in the call answers 502 'failed'.",
+   "branches": [
+    "paused (current) → 503 'paused' message, allowance not used",
+    "mock (no API key, not production) → '[DEV MOCK]' echo",
+    "429 rate_limited (5 per IP anonymous, 50 per account signed in) → limit message with a Sign up link, even for a signed-in person",
+    "502 failed → 'Something failed, try again.'",
+    "network failure or non-JSON reply: there is no try/catch, so the button stays on 'Noor is writing…'"
+   ],
+   "conditions": "None. A session raises the daily ceiling from 5 to 50.",
+   "sources": [
+    {
+     "path": "src/components/ToolForm.tsx",
+     "line": 13,
+     "end_line": 22
+    },
+    {
+     "path": "src/components/ToolForm.tsx",
+     "line": 34,
+     "end_line": 35
+    },
+    {
+     "path": "src/app/api/tools/[tool]/route.ts",
+     "line": 11,
+     "end_line": 13
+    },
+    {
+     "path": "src/app/api/tools/[tool]/route.ts",
+     "line": 15,
+     "end_line": 30
+    },
+    {
+     "path": "src/app/api/tools/[tool]/route.ts",
+     "line": 31,
+     "end_line": 49
+    },
+    {
+     "path": "src/lib/model.ts",
+     "line": 15,
+     "end_line": 34
+    },
+    {
+     "path": "src/lib/tools.ts",
+     "line": 13,
+     "end_line": 15
+    },
+    {
+     "path": "src/lib/rate.ts",
+     "line": 6,
+     "end_line": 22
+    },
+    {
+     "path": "src/lib/usage.ts",
+     "line": 60,
+     "end_line": 62
+    }
+   ],
+   "next": [
+    "discover-copy-tool-output",
+    "discover-tool-upsell"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-copy-tool-output",
+   "title": "Copy tool output",
+   "surface": "/{lang}/tools/{tool} output panel",
+   "actor": "visitor",
+   "action": "Clicks Copy under a generated result.",
+   "ui_response": "The text is copied to the clipboard. There is no toast or confirmation.",
+   "system_reaction": "Client only: navigator.clipboard.writeText. It is only reachable when a tool returned output, which cannot happen while the model is paused (only in mock or on).",
+   "branches": [
+    "not reachable while paused"
+   ],
+   "conditions": "A successful tool run",
+   "sources": [
+    {
+     "path": "src/components/ToolForm.tsx",
+     "line": 41,
+     "end_line": 42
+    }
+   ],
+   "next": [
+    "discover-tool-upsell"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-tool-upsell",
+   "title": "Try Noor from a tool",
+   "surface": "/{lang}/tools/{tool}",
+   "actor": "visitor",
+   "action": "Clicks 'Try Noor free' in the upsell box, '← All tools', a 'More tools' chip, or the 'Sign up' link in the limit message.",
+   "ui_response": "'Try Noor free' and 'Sign up' open /{lang}/app/signup. '← All tools' opens /{lang}/tools, and a chip opens that tool's page. An unknown tool slug shows the 404 page.",
+   "system_reaction": "Plain links.",
+   "branches": [
+    "unknown tool slug → 404"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/components/ToolForm.tsx",
+     "line": 35
+    },
+    {
+     "path": "src/components/ToolForm.tsx",
+     "line": 47,
+     "end_line": 50
+    },
+    {
+     "path": "src/app/[lang]/tools/[tool]/page.tsx",
+     "line": 25,
+     "end_line": 26
+    },
+    {
+     "path": "src/app/[lang]/tools/[tool]/page.tsx",
+     "line": 32
+    },
+    {
+     "path": "src/app/[lang]/tools/[tool]/page.tsx",
+     "line": 37,
+     "end_line": 38
+    }
+   ],
+   "next": [
+    "discover-run-free-tool",
+    "discover-start-free"
+   ],
+   "note": "'Try Noor free' and 'Sign up' exit to the signup stage.",
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-send-contact-form",
+   "title": "Send a contact form",
+   "surface": "ContactForm on /{lang}/customers (kind early-adopter) and /{lang}/enterprise, the page the menu calls Agencies (kind enterprise). The Agency card's 'Contact us' on Pricing opens /{lang}/enterprise#contact, at this form.",
+   "actor": "visitor",
+   "action": "Fills name, email, company and message (all required in the browser) and clicks Send.",
+   "ui_response": "The button shows '…' while sending. On success the form is replaced by 'We got your message and will reply soon.' (role=status). Otherwise 'Could not send. Please try again.' appears above the button.",
+   "system_reaction": "POST /api/support with {email, message: 'Name: … / Company: … / text', type: kind, page, lang}. The route:\n- allows 10 per IP per hour (429 slow_down);\n- requires email and message (400);\n- records the login and the account when a session exists;\n- pushes the ticket with status 'open' onto support-tickets (capped at 2000);\n- emails WAITLIST_TO when it is set (sendEmail sends nothing without RESEND_API_KEY, and a send that gets no answer in 10 seconds counts as not sent).\nThe founder reads enterprise and early-adopter tickets in the console's Leads tab (GET /api/admin/leads, isAdmin; the 'all' view adds every other ticket) or through GET /api/support (isAdmin). No route updates a ticket, and nothing is sent to the person.",
+   "branches": [
+    "429 slow_down → error text",
+    "400 missing field → error text",
+    "network failure → error text (fetch errors are caught)"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/components/ContactForm.tsx",
+     "line": 10,
+     "end_line": 28
+    },
+    {
+     "path": "src/app/api/support/route.ts",
+     "line": 7,
+     "end_line": 18
+    },
+    {
+     "path": "src/lib/leads.ts",
+     "line": 78,
+     "end_line": 91
+    },
+    {
+     "path": "src/app/api/admin/leads/route.ts",
+     "line": 19,
+     "end_line": 20
+    },
+    {
+     "path": "src/lib/notify.ts",
+     "line": 19,
+     "end_line": 22
+    },
+    {
+     "path": "src/lib/db.ts",
+     "line": 419,
+     "end_line": 423
+    },
+    {
+     "path": "src/app/[lang]/customers/page.tsx",
+     "line": 61
+    },
+    {
+     "path": "src/app/[lang]/enterprise/page.tsx",
+     "line": 54
+    },
+    {
+     "path": "src/lib/site.ts",
+     "line": 61
+    },
+    {
+     "path": "src/components/Pricing.tsx",
+     "line": 61
+    }
+   ],
+   "next": [],
+   "note": "Follow-up happens outside the product: the founder replies by email. Email may not reach the founder, so the Leads tab is where the ticket is certain to be seen.",
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-help-search",
+   "title": "Search help center",
+   "surface": "/{lang}/help (HelpCenter)",
+   "actor": "visitor",
+   "action": "Types in 'Search help…', clicks All or a topic chip (8 topics), expands an answer, or clicks WhatsApp.",
+   "ui_response": "The list filters as the person types, matching the question and the answer. With no match it shows 'No results. Ask Noor or message us below.' Answers expand in place.\nThe price answers quote the pricing tables:\n- 'What does each task cost?': weekly plan 2, 10 posts 10, article 2, 3 WhatsApp 3, 5 ads 5, 3 Google posts 3, image 1-2, video 12-24, and 'your first brand's setup free, each added brand's setup from its URL 9'.\n- 'The free trial?': '3 days, 50 credits, no card. Then pick a plan: Starter 299, Pro 499, Business 999 SAR/month, or Agency by contract.'\n- 'What happens when my chat messages run out?': Starter 250, Pro 650 and Business 1,300 messages a month, 30 for the trial; chat pauses until the 1st, unless the owner turns on 'continue on credits' (paid plans only), which needs a minimum balance per message.\n- 'What does Noor do on her own?': a weekly plan every Sunday 06:00 (2 credits) and a free 08:00 morning brief; the weekly plan is on by default for the first brand, and added brands run it once it is switched on.\n- The board deck answer says 5 credits.\nThe WhatsApp button appears in the 'Talk to us' box only when SUPPORT_WHATSAPP is set, and opens wa.me in a new tab.",
+   "system_reaction": "Client-side filtering of the static HELP content. No server call. The page reads the app origin on the server (appOrigin) and passes it in, so answers that name the MCP URL show the real address. The price, cost and chat answers are filled from PLAN_PRICE_SAR, PLAN_CREDITS, CHAT_ALLOWANCE, ONBOARD_EXTRA_BRAND_COST, TASK_COST and TASK_COUNT, so they follow the pricing and task tables; the image and video ranges are typed text. The page builds the wa.me link from the digits of SUPPORT_WHATSAPP.",
+   "branches": [
+    "no results message",
+    "WhatsApp shown only when configured"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/help/page.tsx",
+     "line": 16,
+     "end_line": 20
+    },
+    {
+     "path": "src/components/HelpCenter.tsx",
+     "line": 8,
+     "end_line": 15
+    },
+    {
+     "path": "src/components/HelpCenter.tsx",
+     "line": 29,
+     "end_line": 48
+    },
+    {
+     "path": "src/components/HelpCenter.tsx",
+     "line": 49,
+     "end_line": 56
+    },
+    {
+     "path": "src/lib/help.ts",
+     "line": 2,
+     "end_line": 3
+    },
+    {
+     "path": "src/lib/help.ts",
+     "line": 50
+    },
+    {
+     "path": "src/lib/help.ts",
+     "line": 25,
+     "end_line": 28
+    },
+    {
+     "path": "src/lib/help.ts",
+     "line": 38
+    },
+    {
+     "path": "src/lib/help.ts",
+     "line": 40,
+     "end_line": 41
+    },
+    {
+     "path": "src/lib/help.ts",
+     "line": 73
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 40,
+     "end_line": 42
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 167
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 207
+    },
+    {
+     "path": "src/lib/tasks.ts",
+     "line": 24,
+     "end_line": 29
+    }
+   ],
+   "next": [
+    "discover-help-request"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-help-request",
+   "title": "Send a support request",
+   "surface": "/{lang}/help 'Send a support request' form",
+   "actor": "visitor",
+   "action": "Enters an email, picks a type (Question, Bug, Billing or Feature request), writes a message and clicks Send.",
+   "ui_response": "The button is disabled while sending. On success the form is replaced by 'Got it. We'll reply on WhatsApp or email.' Any answer that is not OK shows 'Didn't send. Try again.'",
+   "system_reaction": "POST /api/support with {email, type, message, lang, page: location.pathname}. It is the same route as the contact forms: 10 per IP per hour, required fields, a ticket on support-tickets, an email to WAITLIST_TO when configured, and the login and account recorded when signed in. The founder sees the ticket in the console's Leads tab (the 'all' view) or through GET /api/support.",
+   "branches": [
+    "429 or 400 → 'Didn't send. Try again.'",
+    "network failure: there is no catch around fetch, so the button stays disabled"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/components/HelpCenter.tsx",
+     "line": 16,
+     "end_line": 22
+    },
+    {
+     "path": "src/components/HelpCenter.tsx",
+     "line": 58,
+     "end_line": 70
+    },
+    {
+     "path": "src/app/api/support/route.ts",
+     "line": 7,
+     "end_line": 18
+    }
+   ],
+   "next": [],
+   "note": "Follow-up happens outside the product.",
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-affiliate-terms",
+   "title": "Read the partner terms",
+   "surface": "/{lang}/affiliates (the link under Terms), the consent link in the application form",
+   "actor": "visitor",
+   "action": "Clicks 'Read the full partner programme terms' on the partner page, or the 'partner programme terms' link in the application form (opens in a new tab).",
+   "ui_response": "Opens /{lang}/affiliates/terms: a title, an updated line, an intro and sections (who can join, commission, the customer discount, payouts, taxes, what is not allowed, disclosure, and changes and ending), with a 'Partner programme' link back to the partner page above the title.",
+   "system_reaction": "Static server render from PARTNER_TERMS in Arabic and English (rule 413). No server call and nothing is stored. The version the application records, PARTNER_TERMS_VERSION, is the one these terms carry.",
+   "branches": [],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/affiliates/page.tsx",
+     "line": 58
+    },
+    {
+     "path": "src/components/AffiliateForm.tsx",
+     "line": 34,
+     "end_line": 37
+    },
+    {
+     "path": "src/app/[lang]/affiliates/terms/page.tsx",
+     "line": 23,
+     "end_line": 47
+    },
+    {
+     "path": "src/lib/partner-terms.ts",
+     "line": 15
+    },
+    {
+     "path": "src/lib/partner-rules.ts",
+     "line": 35
+    }
+   ],
+   "next": [
+    "discover-affiliate-apply"
+   ],
+   "note": null,
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-affiliate-apply",
+   "title": "Apply as affiliate",
+   "surface": "/{lang}/affiliates (AffiliateForm)",
+   "actor": "visitor",
+   "action": "Reads the terms and submits the form. The terms: 15% of every payment for the first 4 months of a referred customer's paid subscription, 15% off the customer's first month with the partner's code, a 30-day attribution window, monthly bank payouts with a SAR 200 minimum, and rules on self-referral, voided payments and paid ads on the Thakeen name. The form takes name, email, WhatsApp with country code and a promotion channel (required in the browser), an optional audience size, and a required box agreeing to the partner programme terms.",
+   "ui_response": "The button is disabled while sending. On success the form is replaced by 'Got it. We reply within one business day on WhatsApp or email.' If the consent box is somehow off when the form runs, it shows 'Agree to the partner programme terms to send your application.' and sends nothing. On any failure it shows 'Didn't send. Try again.'",
+   "system_reaction": "POST /api/affiliates with {…, consent: true, lang}. The route allows 10 per IP per hour (429 slow_down), requires name and email (400), and refuses an application whose consent is not an explicit yes (400 consent_required). It builds a record with an id, the fields clipped, the consent time and the terms version (PARTNER_TERMS_VERSION), and pushes it onto affiliate-applications (capped at 2000). No email is sent, and no code or link is issued automatically. The founder sees applications in the console's Leads tab, through GET /api/affiliates or in the partner console (GET /api/admin/partners), and approving one, which claims the partner's code, is the founder's own action.",
+   "branches": [
+    "consent box unticked → blocked by the browser (required), or the consent message",
+    "429 slow_down, 400 (missing name or email, or consent_required) → 'Didn't send. Try again.'",
+    "network failure → the same 'Didn't send. Try again.' (the fetch error is caught)"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/affiliates/page.tsx",
+     "line": 9,
+     "end_line": 14
+    },
+    {
+     "path": "src/app/[lang]/affiliates/page.tsx",
+     "line": 34,
+     "end_line": 35
+    },
+    {
+     "path": "src/app/[lang]/affiliates/page.tsx",
+     "line": 54,
+     "end_line": 57
+    },
+    {
+     "path": "src/components/AffiliateForm.tsx",
+     "line": 11,
+     "end_line": 22
+    },
+    {
+     "path": "src/components/AffiliateForm.tsx",
+     "line": 27,
+     "end_line": 41
+    },
+    {
+     "path": "src/app/api/affiliates/route.ts",
+     "line": 15,
+     "end_line": 31
+    },
+    {
+     "path": "src/app/api/affiliates/route.ts",
+     "line": 32,
+     "end_line": 36
+    },
+    {
+     "path": "src/lib/partner-rules.ts",
+     "line": 23,
+     "end_line": 28
+    }
+   ],
+   "next": [],
+   "note": "Follow-up happens outside the product.",
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-read-updates",
+   "title": "Read updates page",
+   "surface": "/{lang}/updates",
+   "actor": "visitor",
+   "action": "Opens Updates & wishlist and uses the 'What's new' and 'Wishlist' tabs.",
+   "ui_response": "A changelog grouped by date, newest first, each entry tagged new, improved or fixed. The first entry, dated 2026-10-03 and tagged new, is 'Repeating to-dos on My to-dos': a to-do can repeat every day, working day, week, month or year, on the Gregorian or the Hijri calendar; closing one copy opens the next on the next date; closed copies are deleted some time after they close, after a warning, and the owner can keep or download a to-do's history as a CSV. Below it, among others, are the 2026-10-01 'Monthly chat messages' entry and the 2026-09-30 entry 'New plans and prices, and unlimited brands': Starter 299, Pro 499 and Business 999 SAR a month, excluding VAT, and Agency by contract.\nThe wishlist tab shows the number of items. Each wish shows its status (in progress, planned or shipped), its area and its vote count, or 'Nothing here yet.' when the list is empty.\n- Signed out: 'Voting and suggesting wishes are for account holders.' with 'Sign in to vote'. The vote tiles are login links, and a 'Sign in to suggest' card appears.\n- Signed in: live vote buttons with the person's own votes pressed, and a suggestion form.",
+   "system_reaction": "A dynamic page (force-dynamic). The changelog is the static CHANGELOG array, newest first; the pricing entry reads its prices and costs from PLAN_PRICE_SAR, ONBOARD_EXTRA_BRAND_COST and TASK_COST, and the chat entry from CHAT_ALLOWANCE and chatOverflowHold. The page reads currentUser(), which is optional, and then listWishes(email). That gets the seeded and promoted items minus the hidden ones, their statuses and the viewer's own votes in parallel reads, then every count in one pipelined request. The list is sorted in progress, then planned, then shipped, with the most votes first. The tabs are plain anchors.",
+   "branches": [
+    "signed out → login links",
+    "signed in → WishVote and WishSuggest",
+    "no items → 'Nothing here yet.'"
+   ],
+   "conditions": "None to read",
+   "sources": [
+    {
+     "path": "src/app/[lang]/updates/page.tsx",
+     "line": 18
+    },
+    {
+     "path": "src/app/[lang]/updates/page.tsx",
+     "line": 45,
+     "end_line": 47
+    },
+    {
+     "path": "src/app/[lang]/updates/page.tsx",
+     "line": 69,
+     "end_line": 70
+    },
+    {
+     "path": "src/app/[lang]/updates/page.tsx",
+     "line": 78,
+     "end_line": 93
+    },
+    {
+     "path": "src/app/[lang]/updates/page.tsx",
+     "line": 97,
+     "end_line": 144
+    },
+    {
+     "path": "src/lib/changelog.ts",
+     "line": 30,
+     "end_line": 33
+    },
+    {
+     "path": "src/lib/changelog.ts",
+     "line": 38
+    },
+    {
+     "path": "src/lib/changelog.ts",
+     "line": 48
+    },
+    {
+     "path": "src/lib/wishlist.ts",
+     "line": 74,
+     "end_line": 85
+    }
+   ],
+   "next": [
+    "discover-updates-sign-in",
+    "discover-wish-vote",
+    "discover-wish-suggest"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-updates-sign-in",
+   "title": "Sign in from updates",
+   "surface": "/{lang}/updates (the sign-in button, the vote tiles and the suggest card when signed out)",
+   "actor": "visitor",
+   "action": "Clicks 'Sign in to vote', a vote tile or 'Sign in to suggest'.",
+   "ui_response": "Opens /{lang}/app/login?next=/{lang}/updates. After a successful login the browser returns to /updates.",
+   "system_reaction": "Plain link. LoginForm accepts a next that starts with '/' but not '//' or '/\\', and sets window.location.href to it after login.",
+   "branches": [
+    "session already started in another tab → the login page redirects to /{lang}/app, not back to /updates"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/app/[lang]/updates/page.tsx",
+     "line": 48
+    },
+    {
+     "path": "src/app/[lang]/updates/page.tsx",
+     "line": 101,
+     "end_line": 106
+    },
+    {
+     "path": "src/app/[lang]/updates/page.tsx",
+     "line": 121
+    },
+    {
+     "path": "src/app/[lang]/updates/page.tsx",
+     "line": 139
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 97,
+     "end_line": 98
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 111
+    },
+    {
+     "path": "src/app/[lang]/app/login/page.tsx",
+     "line": 11
+    }
+   ],
+   "next": [
+    "discover-wish-vote",
+    "discover-wish-suggest"
+   ],
+   "note": "Passes through the login stage and returns here.",
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-wish-vote",
+   "title": "Vote for a wish",
+   "surface": "/{lang}/updates wishlist (WishVote)",
+   "actor": "any-signed-in",
+   "action": "Clicks Vote on an item, or clicks Voted again to take the vote back.",
+   "ui_response": "The count and pressed state change right away, before the server answers. Clicks are ignored while one is in flight. On success the server's count replaces the shown one.\n- Session expired: the browser goes to login?next=/updates.\n- Over the limit: the change is undone and 'Too many votes in a short time. Try again shortly.' shows.\n- Any other failure: the change is undone and 'Could not save your vote. Please try again.' shows.",
+   "system_reaction": "POST /api/wishlist/vote {id, on}. The route checks currentUser() first (401 auth). It allows 60 per account per hour (rate:wishvote:{email}, 429 slow_down). It requires an id that is a visible seeded item or a promoted one (400 unknown_item). setVote then runs sadd or srem on wish:votes:{id} and wish:mine:{email} side by side and returns the new count. on states the wanted result, so repeating it changes nothing. Any role may vote. The vote is recorded under the account's email, so a member votes as the owner's account.",
+   "branches": [
+    "401 → login redirect",
+    "429 slow_down → revert + slow-down text",
+    "400 unknown_item → revert + failed text",
+    "network error → revert + failed text"
+   ],
+   "conditions": "Signed in, any role",
+   "sources": [
+    {
+     "path": "src/components/WishVote.tsx",
+     "line": 17,
+     "end_line": 36
+    },
+    {
+     "path": "src/app/api/wishlist/vote/route.ts",
+     "line": 13,
+     "end_line": 22
+    },
+    {
+     "path": "src/lib/wishlist.ts",
+     "line": 60,
+     "end_line": 65
+    },
+    {
+     "path": "src/lib/wishlist.ts",
+     "line": 91,
+     "end_line": 97
+    }
+   ],
+   "next": [
+    "discover-wish-suggest"
+   ],
+   "verified": true,
+   "stage": "discover"
+  },
+  {
+   "id": "discover-wish-suggest",
+   "title": "Suggest a wish",
+   "surface": "/{lang}/updates wishlist (WishSuggest)",
+   "actor": "any-signed-in",
+   "action": "Types a suggestion (a counter shows n/280 and the box stops at 280) and clicks 'Send suggestion'.",
+   "ui_response": "Send is disabled while the box is empty. Under 5 characters it shows 'Write your idea in a few more words.' without sending. On success the box clears and 'Thanks, we got it. We review suggestions before they appear in the list.' appears. Other outcomes:\n- Too long: 'The suggestion is longer than allowed.'\n- Over the daily limit: 'You reached today's limit for suggestions. Come back tomorrow.'\n- Any other failure: the shared vote text 'Could not save your vote. Please try again.'",
+   "system_reaction": "POST /api/wishlist/suggest {text, lang}. The route:\n1. Checks currentUser() first (401).\n2. Cleans the text: control characters become spaces, zero-width and direction-override characters are removed, and whitespace is collapsed.\n3. Requires 5 to 280 characters (400 too_short or too_long).\n4. Allows 5 per account per day (rate:wishsuggest:{email}, 429). Only a well-formed text counts.\n5. Pushes the suggestion onto wish:suggestions (capped at 500).\nThe suggestion is never shown publicly. The founder reviews it in the console Wishlist tab and may promote it under a title the founder writes.",
+   "branches": [
+    "too_short / too_long 400",
+    "slow_down 429",
+    "401 when the session is gone → failed text"
+   ],
+   "conditions": "Signed in, any role",
+   "sources": [
+    {
+     "path": "src/components/WishSuggest.tsx",
+     "line": 15,
+     "end_line": 47
+    },
+    {
+     "path": "src/app/[lang]/updates/page.tsx",
+     "line": 133
+    },
+    {
+     "path": "src/app/api/wishlist/suggest/route.ts",
+     "line": 13,
+     "end_line": 24
+    },
+    {
+     "path": "src/lib/wishlist.ts",
+     "line": 44,
+     "end_line": 52
+    },
+    {
+     "path": "src/lib/wishlist.ts",
+     "line": 99,
+     "end_line": 103
+    },
+    {
+     "path": "src/lib/changelog.ts",
+     "line": 135,
+     "end_line": 136
+    },
+    {
+     "path": "src/lib/changelog.ts",
+     "line": 170
+    },
+    {
+     "path": "src/app/api/admin/wishlist/route.ts",
+     "line": 22
+    },
+    {
+     "path": "src/app/api/admin/wishlist/route.ts",
+     "line": 33,
+     "end_line": 38
+    }
+   ],
+   "next": [],
+   "verified": true,
+   "stage": "discover"
+  }
+ ]
+}

@@ -28,6 +28,7 @@ import { fill } from "./fill";
 import { SEC_ID, SEC_KEYS, agendaFor } from "./secretary";
 import { formatWhen, linkFactText, nextStepText, type AgendaEntry, type LinkedFact } from "./secretary-agenda";
 import type { Zone } from "./zones";
+import { taskVersion } from "./task-version";
 
 export const WALK_SKIP_MS = 3 * 3600_000;
 export const WALK_APPROVALS_MAX = 50;
@@ -50,6 +51,11 @@ export type WalkCard = {
   excerpt?: string;
   /** An approval card the brand guard holds: why (no Approve on it). */
   held?: string;
+  /**
+   * An approval card: the version of the draft it was built from (src/lib/task-version.ts). Approve sends it, so an edit
+   * made after the card was shown is refused (409 `changed`) instead of approved unseen.
+   */
+  version?: string;
 };
 export type Walk = { card: WalkCard | null; left: number; zone: Zone };
 
@@ -117,6 +123,7 @@ function approvalCard(task: Task, brand: Parameters<typeof gateTask>[0], c: Ctx)
     key: `task:${task.id}`, kind: "approval", id: task.id, title: task.title,
     line: fill(appDict[c.lang].todo.walk.approvalLine, { what: `${task.type}/${task.channel}`, since }),
     excerpt: (task.editedBody ?? task.body ?? "").slice(0, WALK_EXCERPT_MAX),
+    version: taskVersion(task),
     ...(v.length ? { held: explain(v, c.lang) } : {}),
     table: v.length ? "held" : "approval",
   };

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { json, newUser, signIn } from "./helpers/session";
+import { newUser, signIn } from "./helpers/session";
+import { vjson } from "./helpers/version";
 import { getTask, listTasks, pendingCount, saveBrand, type Brand } from "@/lib/brand";
 import { getUser } from "@/lib/auth";
 import { createMcpToken } from "@/lib/mcp";
@@ -81,7 +82,7 @@ describe("MCP save_draft: the owner's own assistant saves into the inbox (rules 
     expect(r.next).toMatch(/cannot approve/);
     // The same gate the approve button uses holds it.
     await signIn(u.email);
-    const res = await taskRoute.PATCH(json(`/api/tasks/${r.id}`, "PATCH", { status: "approved" }), { params: Promise.resolve({ id: r.id }) });
+    const res = await taskRoute.PATCH(await vjson(`/api/tasks/${r.id}`, "PATCH", { status: "approved" }), { params: Promise.resolve({ id: r.id }) });
     expect(res.status).toBe(409);
     expect((await getTask(u.email, r.id))!.status).toBe("pending");
     // The title is checked too, and an internal document may quote the word.

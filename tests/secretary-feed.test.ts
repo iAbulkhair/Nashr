@@ -368,7 +368,7 @@ const brandRows = (status: "active" | "archived") => [
   { id: "b2", name: "Two", createdAt: iso(NOW), status },
 ];
 
-describe("public feed route (rules 539-542)", () => {
+describe("public feed route (rules 539, 577-579)", () => {
   it("rule 539: malformed, unknown, revoked and no-longer-valid logins give the same empty 404, and a malformed token reads nothing", async () => {
     const ip = nextIp();
     const due = iso(Date.now() + DAY);
@@ -477,10 +477,10 @@ describe("public feed route (rules 539-542)", () => {
     expect(await feedHolds({ ...(await resolveFeed(freshOwner))!.rec, createdAt: "not a date" })).toBe(true);
   });
 
-  it("rule 540: tenant isolation, the feed reads only the record's scope", async () => {
+  it("rule 577: tenant isolation, the feed reads only the record's scope", async () => {
     const due = iso(Date.now() + DAY);
-    const a = await newUser("feed540");
-    const b = await newUser("feed540b");
+    const a = await newUser("feed577");
+    const b = await newUser("feed577b");
     await saveBrands(a.email, brandRows("active"));
     const inDefault = await seed(a.email, { dueAt: due });
     const inTwo = await seed(`${a.email}#b2`, { dueAt: due });
@@ -514,8 +514,8 @@ describe("public feed route (rules 539-542)", () => {
     }
   });
 
-  it("rule 541: rate limits answer 429 with Retry-After before any item read", async () => {
-    const o = await newUser("feed541");
+  it("rule 578: rate limits answer 429 with Retry-After before any item read", async () => {
+    const o = await newUser("feed578");
     await seed(o.email, { dueAt: iso(Date.now() + DAY) });
     const token = await createFeed(o.email, o.email, "en");
     const refusedWithoutRead = async (ip: string) => {
@@ -541,8 +541,8 @@ describe("public feed route (rules 539-542)", () => {
     await refusedWithoutRead(nextIp());
   });
 
-  it("rule 542: headers", async () => {
-    const o = await newUser("feed542");
+  it("rule 579: headers", async () => {
+    const o = await newUser("feed579");
     const it = await seed(o.email, { dueAt: iso(Date.now() + DAY) });
     const token = await createFeed(o.email, o.email, "ar");
     const r = await callFeed(token);
@@ -567,7 +567,7 @@ describe("public feed route (rules 539-542)", () => {
   });
 });
 
-describe("feed management (rules 543-544)", () => {
+describe("feed management (rules 580-581)", () => {
   const FEED = "/api/secretary/feed";
   const status = () => manageRoute.GET();
   const create = (body?: unknown, raw?: string) =>
@@ -575,14 +575,14 @@ describe("feed management (rules 543-544)", () => {
   const stop = () => manageRoute.DELETE();
   const tokenOf = (url: string) => url.replace(/^.*\/feed\//, "").replace(/\.ics$/, "");
 
-  it("rule 543: anonymous 401; owner, admin and member 200; a founder impersonating gets 403 on POST and DELETE; GET never returns the link", async () => {
+  it("rule 580: anonymous 401; owner, admin and member 200; a founder impersonating gets 403 on POST and DELETE; GET never returns the link", async () => {
     signOut();
     for (const r of [await status(), await create({}), await stop()]) {
       expect(r.status).toBe(401);
       expect(await r.json()).toEqual({ ok: false, error: "unauthorized" });
     }
 
-    const owner = await newUser("feed543");
+    const owner = await newUser("feed580");
     const admin = await newMember(owner, "admin");
     const member = await newMember(owner, "member");
     for (const login of [owner.email, admin.email, member.email]) {
@@ -634,10 +634,10 @@ describe("feed management (rules 543-544)", () => {
     expect(await g.json()).toMatchObject({ ok: true, exists: true });
   });
 
-  it("rule 543: with no valid lang in the body the link takes the acting login's own language, a valid lang wins", async () => {
+  it("rule 580: with no valid lang in the body the link takes the acting login's own language, a valid lang wins", async () => {
     const langOf = (login: string) => (recordsOf(login)[0][1] as { lang: string }).lang;
     for (const [ownerLang, memberLang] of [["en", "ar"], ["ar", "en"]] as const) {
-      const owner = await newUser(`feed543l${ownerLang}`);
+      const owner = await newUser(`feed580l${ownerLang}`);
       await saveUser({ ...(await getUser(owner.email))!, lang: ownerLang });
       const member = await newMember(owner, "member");
       await saveMember({ ...(await getMember(member.email))!, lang: memberLang });
@@ -654,9 +654,9 @@ describe("feed management (rules 543-544)", () => {
     }
   });
 
-  it("rule 543: a body cannot choose the login, scope or language outside ar and en, and a bad body never gives a 500", async () => {
-    const owner = await newUser("feed543b");
-    const other = await newUser("feed543c");
+  it("rule 580: a body cannot choose the login, scope or language outside ar and en, and a bad body never gives a 500", async () => {
+    const owner = await newUser("feed580b");
+    const other = await newUser("feed580c");
     await signIn(owner.email);
     const evil = await create({ login: other.email, email: other.email, scope: other.email, lang: "fr" });
     expect(evil.status).toBe(200);
@@ -666,8 +666,8 @@ describe("feed management (rules 543-544)", () => {
     expect(recordsOf(owner.email)).toHaveLength(1);
   });
 
-  it("rule 544: the status says whether the link was made in the brand shown now (sameBrand), and never the scope", async () => {
-    const owner = await newUser("feed544b");
+  it("rule 581: the status says whether the link was made in the brand shown now (sameBrand), and never the scope", async () => {
+    const owner = await newUser("feed581b");
     await saveBrands(owner.email, [
       { id: "default", name: "", createdAt: iso(NOW), status: "active" },
       { id: "b2", name: "Two", createdAt: iso(NOW), status: "active" },
@@ -689,8 +689,8 @@ describe("feed management (rules 543-544)", () => {
     expect(await (await status()).json()).toMatchObject({ exists: true, sameBrand: true });
   });
 
-  it("rule 544: create, status, stop; stop twice is 200; the stopped link gives 404 on the public route; a second create replaces the first", async () => {
-    const owner = await newUser("feed544");
+  it("rule 581: create, status, stop; stop twice is 200; the stopped link gives 404 on the public route; a second create replaces the first", async () => {
+    const owner = await newUser("feed581");
     await signIn(owner.email);
     expect(await (await status()).json()).toEqual({ ok: true, exists: false, createdAt: null, sameBrand: true });
     const first = tokenOf((await (await create({})).json()).url);
@@ -712,8 +712,8 @@ describe("feed management (rules 543-544)", () => {
     expect(recordsOf(owner.email)).toEqual([]);
   });
 
-  it("rule 544: a lock held by another create answers 409 busy; the 21st write in an hour is 429 and writes nothing, and the status read has its own bucket", async () => {
-    const owner = await newUser("feed544b");
+  it("rule 581: a lock held by another create answers 409 busy; the 21st write in an hour is 429 and writes nothing, and the status read has its own bucket", async () => {
+    const owner = await newUser("feed581b");
     await signIn(owner.email);
     const owned = await db.lockOwned(`lock:feed:${owner.email}`, 10);
     expect(owned).toBeTruthy();
@@ -738,13 +738,13 @@ describe("feed management (rules 543-544)", () => {
     // The manage bucket is spent, and the status read still answers: 25 calls, all 200 (no refusal from the shared bucket).
     for (let i = 0; i < 25; i++) expect((await status()).status).toBe(200);
     // Another login has its own bucket.
-    const mate = await newUser("feed544c");
+    const mate = await newUser("feed581c");
     await signIn(mate.email);
     expect((await status()).status).toBe(200);
   });
 });
 
-describe("feed revocation (rules 545-546)", () => {
+describe("feed revocation (rules 582-583)", () => {
   const live = async (login: string, scope: string) => {
     const token = await createFeed(login, scope, "en");
     expect(token).not.toBe("busy");
@@ -773,10 +773,10 @@ describe("feed revocation (rules 545-546)", () => {
     return resetRoute.POST(json("/api/auth/reset", "POST", { token, password }, ipH()));
   };
 
-  it("rule 545: removing a member, resetting a password and changing a password end that login's feed, and only that login's", async () => {
-    const owner = await newUser("feed545");
+  it("rule 582: removing a member, resetting a password and changing a password end that login's feed, and only that login's", async () => {
+    const owner = await newUser("feed582");
     const [m1, m2, m3, m4, m5, m6] = [await newMember(owner, "member"), await newMember(owner, "member"), await newMember(owner, "admin"), await newMember(owner, "member"), await newMember(owner, "member"), await newMember(owner, "admin")];
-    const other = await newUser("feed545x");
+    const other = await newUser("feed582x");
     const t = {
       owner: await live(owner.email, owner.email),
       m1: await live(m1.email, owner.email),
@@ -842,8 +842,8 @@ describe("feed revocation (rules 545-546)", () => {
     await expectAlive(other.email, bystander);
   });
 
-  it("rule 545: a password event ends the old links at read time even when the revoke fails, and a link made after it works", async () => {
-    const owner = await newUser("feed545s");
+  it("rule 582: a password event ends the old links at read time even when the revoke fails, and a link made after it works", async () => {
+    const owner = await newUser("feed582s");
     const m1 = await newMember(owner, "member");
     const m2 = await newMember(owner, "member");
     const wait = () => new Promise((r) => setTimeout(r, 15));
@@ -898,8 +898,8 @@ describe("feed revocation (rules 545-546)", () => {
     await live(m1.email, owner.email);
   });
 
-  it("rule 545: a member who leaves the team loses the link", async () => {
-    const owner = await newUser("feed545l");
+  it("rule 582: a member who leaves the team loses the link", async () => {
+    const owner = await newUser("feed582l");
     const m = await newMember(owner, "member");
     const stay = await newMember(owner, "member");
     const mine = await live(m.email, owner.email);
@@ -910,9 +910,9 @@ describe("feed revocation (rules 545-546)", () => {
     await expectAlive(stay.email, theirs);
   });
 
-  it("rule 546: deleting the account leaves no sec:feed or sec:feedof key for the owner or any member", async () => {
-    const owner = await newUser("feed546");
-    const bystander = await newUser("feed546b");
+  it("rule 583: deleting the account leaves no sec:feed or sec:feedof key for the owner or any member", async () => {
+    const owner = await newUser("feed583");
+    const bystander = await newUser("feed583b");
     const m1 = await newMember(owner, "member");
     const m2 = await newMember(owner, "admin");
     const logins = [owner.email, m1.email, m2.email];
@@ -934,8 +934,8 @@ describe("feed revocation (rules 545-546)", () => {
     await expectAlive(bystander.email, keep);
   });
 
-  it("rule 546: a revoke that fails stops the wipe before the account is touched, and a second wipe finishes it", async () => {
-    const owner = await newUser("feed546f");
+  it("rule 583: a revoke that fails stops the wipe before the account is touched, and a second wipe finishes it", async () => {
+    const owner = await newUser("feed583f");
     const m = await newMember(owner, "member");
     const tokens = [await live(owner.email, owner.email), await live(m.email, owner.email)];
     const lock = vi.spyOn(db, "lockOwned").mockRejectedValueOnce(new Error("store down"));
@@ -955,9 +955,9 @@ describe("feed revocation (rules 545-546)", () => {
   });
 });
 
-describe("feed card (rules 547-548)", () => {
+describe("feed card (rules 584-585)", () => {
   const LANGS = ["ar", "en"] as const;
-  it("rule 547: both languages carry every feed string, Latin digits, no number of ours", () => {
+  it("rule 584: both languages carry every feed string, Latin digits, no number of ours", () => {
     const ar = appDict.ar.todo.feed as Record<string, string>;
     const en = appDict.en.todo.feed as Record<string, string>;
     expect(Object.keys(ar).sort()).toEqual(Object.keys(en).sort());
@@ -995,7 +995,7 @@ describe("feed card (rules 547-548)", () => {
   const view = (lang: "ar" | "en", state: FeedState, extra: Record<string, unknown> = {}) =>
     renderToStaticMarkup(createElement(FeedView, { t: appDict[lang], state, ...extra }));
 
-  it("rule 548: the card shows the link once", () => {
+  it("rule 585: the card shows the link once", () => {
     for (const lang of LANGS) {
       const T = appDict[lang].todo.feed;
       // Created: the https link and the webcal:// version, a Copy button for each, the warning and the three apps.
@@ -1018,7 +1018,7 @@ describe("feed card (rules 547-548)", () => {
       expect(exists, lang).not.toContain("/api/secretary/feed/");
       expect(exists, lang).not.toContain("webcal:");
       expect(exists, lang).not.toContain(T.warning);
-      // The line about another brand shows only when the link was made in a different brand (rule 548).
+      // The line about another brand shows only when the link was made in a different brand (rule 585).
       expect(exists, lang).not.toContain(html(T.otherBrand));
       expect(view(lang, { kind: "exists", since, sameBrand: true }), lang).not.toContain(html(T.otherBrand));
       expect(view(lang, { kind: "exists", since, sameBrand: false }), lang).toContain(html(T.otherBrand));
@@ -1046,7 +1046,7 @@ describe("feed card (rules 547-548)", () => {
     expect(view("en", { kind: "created", url: URL_, webcal: WEBCAL }).split(T.copied).length - 1).toBe(0);
   });
 
-  it("rule 548: the link lives in component state only, and the card sits on My to-dos below the Away panel", () => {
+  it("rule 585: the link lives in component state only, and the card sits on My to-dos below the Away panel", () => {
     // The two files the link passes through: the card and the shared write hook. Comments are dropped so a banned word in
     // prose does not trip it. `location.` stays in the list: neither file has a legitimate use of it (no redirect, no URL
     // read), so a hit is real; `window.name`, `sendBeacon` and `postMessage` would carry the link out of the page.

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, signIn, signOut } from "./helpers/session";
+import { vjson } from "./helpers/version";
 import { noSiteBrand, type GameAnswers } from "@/lib/dictionary";
 import { currentUser, getUser } from "@/lib/auth";
 import { getBrand, getTask, saveTask, type Task } from "@/lib/brand";
@@ -230,7 +231,7 @@ describe("publishing needs an approval made in code (rule 3)", () => {
     await saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
     await saveTask(u.email, task("rej", "rejected"), true);
     await saveTask(u.email, task("ok", "pending"), true);
-    const call = (id: string, provider: string) => publishRoute.POST(json(`/api/publish/${id}`, "POST", { provider }), { params: Promise.resolve({ id }) });
+    const call = async (id: string, provider: string) => publishRoute.POST(await vjson(`/api/publish/${id}`, "POST", { provider }), { params: Promise.resolve({ id }) });
     expect((await call("rej", "telegram")).status).toBe(409);
     expect((await call("ok", "wordpress")).status).toBe(400);
     expect((await call("ok", "telegram")).status).toBe(200); // the owner's own click is the approval

@@ -1,0 +1,467 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Nashr Product Journey",
+    "output": ".archify/workflow-nashr-product-20260930-094525/nashr-product.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/iAbulkhair/Nashr.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "2c71b742f0ab62ea1cb77318a11789e9841787a2"
+    }
+  },
+  "lanes": [
+    {
+      "id": "people",
+      "label": "Owner journey"
+    },
+    {
+      "id": "agents",
+      "label": "AI agents and results"
+    },
+    {
+      "id": "checks",
+      "label": "Checks in code",
+      "variant": "exception"
+    },
+    {
+      "id": "outside",
+      "label": "Outside"
+    }
+  ],
+  "phases": [
+    {
+      "id": "setup",
+      "label": "Set up",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "create",
+      "label": "Create + approve",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "publish",
+      "label": "Publish + learn",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "signup",
+    "confirm",
+    "chat",
+    "draft",
+    "inbox",
+    "gate",
+    "platforms",
+    "reports"
+  ],
+  "nodes": [
+    {
+      "id": "signup",
+      "lane": "people",
+      "col": 0,
+      "type": "frontend",
+      "label": "Sign up",
+      "sublabel": "50 credits to start",
+      "tag": "3-day trial",
+      "sources": [
+        {
+          "path": "src/app/api/auth/signup/route.ts",
+          "line": 8,
+          "label": "POST signup"
+        },
+        {
+          "path": "src/lib/auth.ts",
+          "line": 115,
+          "label": "createUser"
+        }
+      ],
+      "width": 132
+    },
+    {
+      "id": "confirm",
+      "lane": "people",
+      "col": 1,
+      "type": "frontend",
+      "label": "Confirm website",
+      "sublabel": "start wizard",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/start/page.tsx",
+          "line": 10,
+          "label": "start page"
+        },
+        {
+          "path": "src/app/api/onboard/confirm/route.ts",
+          "line": 12,
+          "label": "confirm URL"
+        }
+      ],
+      "width": 132
+    },
+    {
+      "id": "chat",
+      "lane": "people",
+      "col": 2,
+      "type": "frontend",
+      "label": "Chat with agents",
+      "sublabel": "8 agents · ar / en",
+      "sources": [
+        {
+          "path": "src/app/api/chat/route.ts",
+          "line": 23,
+          "end_line": 54,
+          "label": "POST /api/chat"
+        },
+        {
+          "path": "src/lib/agents.ts",
+          "line": 12,
+          "end_line": 25,
+          "label": "agent roster"
+        }
+      ],
+      "width": 132
+    },
+    {
+      "id": "inbox",
+      "lane": "people",
+      "col": 3,
+      "type": "frontend",
+      "label": "Approval inbox",
+      "sublabel": "approve · edit · reject",
+      "sources": [
+        {
+          "path": "src/app/api/tasks/[id]/route.ts",
+          "line": 14,
+          "end_line": 40,
+          "label": "PATCH task"
+        }
+      ],
+      "width": 132
+    },
+    {
+      "id": "reports",
+      "lane": "agents",
+      "col": 5,
+      "type": "frontend",
+      "label": "Reports + brief",
+      "sublabel": "Dana · daily brief",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/reports/page.tsx",
+          "line": 25,
+          "label": "reports page"
+        },
+        {
+          "path": "src/lib/perf-store.ts",
+          "line": 13,
+          "end_line": 18,
+          "label": "results snapshot"
+        }
+      ],
+      "width": 132
+    },
+    {
+      "id": "build",
+      "lane": "agents",
+      "col": 1,
+      "type": "backend",
+      "label": "Build workspace",
+      "sublabel": "brand file + plan",
+      "sources": [
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 43,
+          "end_line": 58,
+          "label": "confirmed, then crawl"
+        },
+        {
+          "path": "src/lib/onboard.ts",
+          "line": 70,
+          "label": "buildFromSite"
+        }
+      ],
+      "width": 132
+    },
+    {
+      "id": "draft",
+      "lane": "agents",
+      "col": 3,
+      "type": "backend",
+      "label": "Draft content",
+      "sublabel": "reviewer + judge score",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 324,
+          "end_line": 335,
+          "label": "generate_content"
+        },
+        {
+          "path": "src/lib/judge.ts",
+          "line": 159,
+          "end_line": 162,
+          "label": "judgeLater"
+        }
+      ],
+      "width": 132
+    },
+    {
+      "id": "media",
+      "lane": "agents",
+      "col": 4,
+      "type": "backend",
+      "label": "Images + video",
+      "sublabel": "fal · kie · Higgsfield",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 554,
+          "label": "chat tool render"
+        },
+        {
+          "path": "src/lib/media/start.ts",
+          "line": 70,
+          "end_line": 88,
+          "label": "renderImage / Video"
+        }
+      ],
+      "width": 132
+    },
+    {
+      "id": "credits",
+      "lane": "checks",
+      "col": 3,
+      "type": "security",
+      "label": "Credits",
+      "sublabel": "charge · agent caps",
+      "tag": "refund once",
+      "sources": [
+        {
+          "path": "src/lib/credits.ts",
+          "line": 70,
+          "label": "charge"
+        },
+        {
+          "path": "src/lib/credits.ts",
+          "line": 123,
+          "label": "refund"
+        }
+      ],
+      "width": 132
+    },
+    {
+      "id": "gate",
+      "lane": "people",
+      "col": 4,
+      "type": "security",
+      "label": "Brand gate",
+      "sublabel": "banned words · blanks",
+      "tag": "publish once",
+      "sources": [
+        {
+          "path": "src/lib/brand-rules.ts",
+          "line": 181,
+          "label": "gateTask"
+        },
+        {
+          "path": "src/lib/publish-once.ts",
+          "line": 60,
+          "label": "publishOnce"
+        },
+        {
+          "path": "src/app/api/publish/[id]/route.ts",
+          "line": 14,
+          "end_line": 36,
+          "label": "publish route"
+        }
+      ],
+      "width": 132
+    },
+    {
+      "id": "site",
+      "lane": "outside",
+      "col": 1,
+      "type": "external",
+      "label": "Owner's website",
+      "sublabel": "read via safeFetch",
+      "sources": [
+        {
+          "path": "src/lib/crawl.ts",
+          "line": 45,
+          "end_line": 51,
+          "label": "crawl"
+        },
+        {
+          "path": "src/lib/safe-fetch.ts",
+          "line": 65,
+          "label": "safeFetch"
+        }
+      ],
+      "width": 132
+    },
+    {
+      "id": "platforms",
+      "lane": "people",
+      "col": 5,
+      "type": "external",
+      "label": "Platforms",
+      "sublabel": "X · Shopify · Meta · WP",
+      "sources": [
+        {
+          "path": "src/lib/connectors/publish.ts",
+          "line": 15,
+          "label": "publishTask"
+        }
+      ],
+      "width": 132
+    }
+  ],
+  "edges": [
+    {
+      "id": "signup-confirm",
+      "from": "signup",
+      "to": "confirm",
+      "label": "site URL",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "confirm-chat",
+      "from": "confirm",
+      "to": "chat",
+      "label": "onboard",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "confirm-build",
+      "from": "confirm",
+      "to": "build",
+      "label": "build once",
+      "variant": "dashed",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "build-site",
+      "from": "build",
+      "to": "site",
+      "label": "read",
+      "variant": "dashed",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "chat-draft",
+      "from": "chat",
+      "to": "draft",
+      "label": "ask",
+      "variant": "emphasis",
+      "role": "main",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "draft-credits",
+      "from": "draft",
+      "to": "credits",
+      "label": "charge",
+      "variant": "security",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "draft-inbox",
+      "from": "draft",
+      "to": "inbox",
+      "label": "pending",
+      "variant": "emphasis",
+      "role": "main",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "route": "straight"
+    },
+    {
+      "id": "draft-media",
+      "from": "draft",
+      "to": "media",
+      "label": "render",
+      "variant": "dashed",
+      "role": "branch",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "straight"
+    },
+    {
+      "id": "inbox-gate",
+      "from": "inbox",
+      "to": "gate",
+      "label": "publish",
+      "variant": "security",
+      "role": "main"
+    },
+    {
+      "id": "gate-platforms",
+      "from": "gate",
+      "to": "platforms",
+      "label": "post once",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "platforms-reports",
+      "from": "platforms",
+      "to": "reports",
+      "label": "results",
+      "variant": "dashed",
+      "role": "main",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Who works in an account",
+      "items": [
+        "Owner invites admins and members; one role table decides who may approve or publish",
+        "Credits sit on the owner's record and the whole team shares them",
+        "The owner's own Claude or ChatGPT can save drafts into the inbox over MCP, free"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Reem, the secretary",
+      "items": [
+        "Keeps the owner's to-do list, agenda and follow-ups",
+        "Free: no credits, no model call; overdue alerts on days 0, 1, 3 and 7"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "What the model cannot do alone",
+      "items": [
+        "Publishing passes the brand gate and one-publish-per-platform in code",
+        "An agent may only propose brand changes; the owner decides",
+        "Claude calls are paused since 2026-09-28 (CLAUDE_PAUSED)"
+      ]
+    }
+  ]
+}

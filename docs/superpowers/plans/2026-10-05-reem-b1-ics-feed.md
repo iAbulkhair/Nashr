@@ -108,8 +108,8 @@
 - Modify: `src/lib/secretary-feed.ts` (add `feedHolds`)
 - Create: `src/app/api/secretary/feed/[token]/route.ts`
 - Modify: `tests/role-gates.test.ts` (route table: `"GET /api/secretary/feed/[token]": "public-read"`)
-- Test: `tests/secretary-feed.test.ts` (`describe("public feed route (rules 539-542)")`)
-- Docs: tests.md rows 539-542
+- Test: `tests/secretary-feed.test.ts` (`describe("public feed route (rules 539, 577-579)")`)
+- Docs: tests.md rows 539, 577-579
 
 **Interfaces:**
 - Consumes: `resolveFeed`, `FEED_TOKEN`, `type FeedRecord` (Task 1); `feedItems`, `buildIcs` (Task 2); `allow`, `clientIp` from `src/lib/rate.ts`; `getLogin` from `src/lib/auth.ts`; `listBrands` from `src/lib/brands.ts`; `getBrand` from `src/lib/brand`; `zoneOf`.
@@ -121,9 +121,9 @@
 
 - [ ] **Step 1: Write the failing tests** (call the route with `new Request("http://x/api/secretary/feed/" + t)` and `params({ token })`)
   - `"rule 539: malformed, unknown, revoked and no-longer-valid logins give the same empty 404, and a malformed token reads nothing"`: for `"x"`, a 44-character token, `".ics"`, an unknown 43-character token, a revoked token, a member removed after the feed was made, an owner suspended, an archived brand: status 404, `await res.text()` is `""`, headers equal. With a spy on `db.get`, the malformed cases call it zero times and `allow` zero times.
-  - `"rule 540: tenant isolation, the feed reads only the record's scope"`: two brands of one owner and a second owner, each with a dated item; the feed made in brand A shows only A's item; a member's feed shows the owner's brand scope, never the member's own address as a scope.
-  - `"rule 541: rate limits answer 429 with Retry-After before any item read"`: the 121st call from one IP and the 61st for one token; a spy on `listOpenItems` shows it was not called on the refused call.
-  - `"rule 542: headers"`: 200 has `text/calendar; charset=utf-8`, `private, max-age=300`, `no-referrer`, `noindex, nofollow`, no `set-cookie`; the `.ics` suffix returns the same body as the bare token.
+  - `"rule 577: tenant isolation, the feed reads only the record's scope"`: two brands of one owner and a second owner, each with a dated item; the feed made in brand A shows only A's item; a member's feed shows the owner's brand scope, never the member's own address as a scope.
+  - `"rule 578: rate limits answer 429 with Retry-After before any item read"`: the 121st call from one IP and the 61st for one token; a spy on `listOpenItems` shows it was not called on the refused call.
+  - `"rule 579: headers"`: 200 has `text/calendar; charset=utf-8`, `private, max-age=300`, `no-referrer`, `noindex, nofollow`, no `set-cookie`; the `.ics` suffix returns the same body as the bare token.
 - [ ] **Step 2: Run** — expect FAIL.
 - [ ] **Step 3: Implement** `feedHolds` and the route. Brand zone from `zoneOf(await getBrand(rec.scope))`; origin from `appOrigin()` (a trusted constant, never the request's URL or `Host`).
 - [ ] **Step 4: Run** `npx vitest run tests/secretary-feed.test.ts tests/role-gates.test.ts` — expect PASS.
@@ -134,8 +134,8 @@
 **Files:**
 - Create: `src/app/api/secretary/feed/route.ts` (GET, POST, DELETE)
 - Modify: `tests/role-gates.test.ts` (three entries)
-- Test: `tests/secretary-feed.test.ts` (`describe("feed management (rules 543-544)")`)
-- Docs: tests.md rows 543-544
+- Test: `tests/secretary-feed.test.ts` (`describe("feed management (rules 580-581)")`)
+- Docs: tests.md rows 580-581
 
 **Interfaces:**
 - Consumes: `createFeed`, `getFeedStatus`, `revokeFeed` (Task 1); `currentUser`, `sc` from `src/lib/auth`; `forbid` from `src/lib/roles`; `allow`.
@@ -146,8 +146,8 @@
   - All three: `currentUser()` first (401), then the gate, then the limit (429 `too_many`): `allow("sec:feed:{login}", 20, 3600)` for POST and DELETE, and for the status GET its own bucket `allow("sec:read:{login}", SEC_READS_PER_HOUR, 3600)` (B1-R13; the acting login, where other Reem reads key on the account email). Gate entries: `"GET /api/secretary/feed": g("member", "read")`, `"POST /api/secretary/feed": g("member", "feed.manage")`, `"DELETE /api/secretary/feed": g("member", "feed.manage")`.
 
 - [ ] **Step 1: Write the failing tests**
-  - `"rule 543: anonymous 401; owner, admin and member 200; a founder impersonating gets 403 on POST and DELETE; GET never returns the link"`.
-  - `"rule 544: create, status, stop; stop twice is 200; the stopped link gives 404 on the public route; the 21st call in an hour is 429"`.
+  - `"rule 580: anonymous 401; owner, admin and member 200; a founder impersonating gets 403 on POST and DELETE; GET never returns the link"`.
+  - `"rule 581: create, status, stop; stop twice is 200; the stopped link gives 404 on the public route; the 21st call in an hour is 429"`.
 - [ ] **Step 2: Run** — expect FAIL.
 - [ ] **Step 3: Implement** the three handlers.
 - [ ] **Step 4: Run** both test files and `npm run check` — expect PASS (the route-gate scan now sees the three new keys).
@@ -157,8 +157,8 @@
 
 **Files:**
 - Modify: `src/lib/team.ts` (`dropMember`, `wipeTeam`), `src/lib/account.ts` (`wipeAccount`), `src/app/api/auth/reset/route.ts:65`, `src/app/api/admin/users/[email]/route.ts:110`, `src/app/api/account/route.ts:60`
-- Test: `tests/secretary-feed.test.ts` (`describe("feed revocation (rules 545-546)")`)
-- Docs: tests.md rows 545-546
+- Test: `tests/secretary-feed.test.ts` (`describe("feed revocation (rules 582-583)")`)
+- Docs: tests.md rows 582-583
 
 **Interfaces:**
 - Consumes: `revokeFeed`, `revokeFeeds` (Task 1).
@@ -169,8 +169,8 @@
   - password reset, founder reset and password change call `revokeFeed(login)` next to `revokeAllMcp`; account deletion is covered by `wipeAccount`.
 
 - [ ] **Step 1: Write the failing tests**
-  - `"rule 545: removing a member, resetting a password and changing a password end that login's feed"`: a member removed through `removeMember`, then an owner password reset (`POST /api/auth/reset`), the founder reset (`/api/admin/users/[email]`), and an owner password change (`/api/account`): each time the public route answers 404 and both keys are gone. An owner reset and a founder reset also end every roster member's link; an owner password change ends only the owner's (B1-R12). Since the final review a link also ends at read time when it is older than the login's `sessionsAfter` (and, for a member, the owner's `teamSessionsAfter`), so a revoke that fails cannot leave it working (B1-R15).
-  - `"rule 546: deleting the account leaves no sec:feed or sec:feedof key for the owner or any member"`: owner and two members with feeds; `wipeAccount(owner)`; scan the fake store: none left.
+  - `"rule 582: removing a member, resetting a password and changing a password end that login's feed"`: a member removed through `removeMember`, then an owner password reset (`POST /api/auth/reset`), the founder reset (`/api/admin/users/[email]`), and an owner password change (`/api/account`): each time the public route answers 404 and both keys are gone. An owner reset and a founder reset also end every roster member's link; an owner password change ends only the owner's (B1-R12). Since the final review a link also ends at read time when it is older than the login's `sessionsAfter` (and, for a member, the owner's `teamSessionsAfter`), so a revoke that fails cannot leave it working (B1-R15).
+  - `"rule 583: deleting the account leaves no sec:feed or sec:feedof key for the owner or any member"`: owner and two members with feeds; `wipeAccount(owner)`; scan the fake store: none left.
 - [ ] **Step 2: Run** — expect FAIL.
 - [ ] **Step 3: Implement** the six call sites; no `await` inside a loop.
 - [ ] **Step 4: Run** `npm run check` — expect PASS (existing team and account tests stay green).
@@ -181,16 +181,16 @@
 **Files:**
 - Create: `src/components/app/FeedCard.tsx`
 - Modify: `src/components/app/TodoPanel.tsx` (render the card below the Away panel), `src/lib/app-i18n.ts` (both `todo` objects: key group `feed`), `src/lib/secretary-feed.ts` (read the two "who acts" strings from `appDict`), `src/lib/changelog.ts`, `src/lib/help.ts`
-- Test: `tests/secretary-feed.test.ts` (`describe("feed card (rules 547-548)")`)
-- Docs: tests.md rows 547-548
+- Test: `tests/secretary-feed.test.ts` (`describe("feed card (rules 584-585)")`)
+- Docs: tests.md rows 584-585
 
 **Interfaces:**
 - Consumes: the routes of Tasks 3-4.
 - Produces: `export default function FeedCard({ t, lang }: { t: AppDict; lang: "ar" | "en" })` (client component). States: loading, none (button "Create my link"), created (link and `webcal://` version with Copy, the warning, one sentence per app; the link lives in component state only and is gone when the page is left), exists (since date, Renew, Stop with an inline confirm). Writes go through `useOneWrite`. Strings in `appDict[lang].todo.feed`: title, create, renew, stop, copy, copied, since, warning (anyone with the link sees your dated task titles; renew it if shared by mistake; the calendar app updates on its own schedule), iphone, google (does not accept `webcal://`), outlook, busy, error, mine, waiting.
 
 - [ ] **Step 1: Write the failing tests**
-  - `"rule 547: both languages carry every feed string, Latin digits, no number of ours"`: the key sets of `appDict.ar.todo.feed` and `appDict.en.todo.feed` are equal; no Arabic-Indic digit in any value; nothing from the forbidden list in `tests/pricing-copy.test.ts` appears.
-  - `"rule 548: the card shows the link once"`: render `FeedCard` in the created state (the render pattern other panel tests use) and assert the link is present; in the exists state assert the since date is present and the link is not.
+  - `"rule 584: both languages carry every feed string, Latin digits, no number of ours"`: the key sets of `appDict.ar.todo.feed` and `appDict.en.todo.feed` are equal; no Arabic-Indic digit in any value; nothing from the forbidden list in `tests/pricing-copy.test.ts` appears.
+  - `"rule 585: the card shows the link once"`: render `FeedCard` in the created state (the render pattern other panel tests use) and assert the link is present; in the exists state assert the since date is present and the link is not.
 - [ ] **Step 2: Run** — expect FAIL.
 - [ ] **Step 3: Implement** the card and strings. Changelog entry: `tag: "new"`, dated 2026-10-05 with the same "set to the merge day" comment A2 has. One help item under the Reem topic.
 - [ ] **Step 4: Run** `npm run check` — expect PASS. Then `preview_start` the dev server and check the to-do page at 375 px and in dark mode (long Arabic link wrapping, Copy buttons); report what was seen.
@@ -199,7 +199,7 @@
 ### Task 7: Docs and the last gates
 
 **Files:**
-- Modify: `docs/system/flows.md` (new section after 40: "41. Reem's calendar subscription feed"; no new environment variable, stated there), `docs/system/permissions.md` (two route rows, the `feed.manage` action, and a named-exception paragraph with the section 6 limits), `docs/system/architecture.md` (route counts from `find src/app/api -name route.ts | wc -l` and the handler count, the two routes in the Workspace row, the two modules, keys `sec:feed:{hash}`, `sec:feedof:{login}`, `lock:feed:{login}`), `docs/system/tests.md` (rows 530-548 all present, no duplicate numbers), `docs/superpowers/specs/2026-10-05-secretary-reem-b1-ics-feed-design.md` (sections 8 and 9: the card is on My to-dos, B1-R9)
+- Modify: `docs/system/flows.md` (new section after 40: "41. Reem's calendar subscription feed"; no new environment variable, stated there), `docs/system/permissions.md` (two route rows, the `feed.manage` action, and a named-exception paragraph with the section 6 limits), `docs/system/architecture.md` (route counts from `find src/app/api -name route.ts | wc -l` and the handler count, the two routes in the Workspace row, the two modules, keys `sec:feed:{hash}`, `sec:feedof:{login}`, `lock:feed:{login}`), `docs/system/tests.md` (rows 530-539, 577-585 all present, no duplicate numbers), `docs/superpowers/specs/2026-10-05-secretary-reem-b1-ics-feed-design.md` (sections 8 and 9: the card is on My to-dos, B1-R9)
 
 - [ ] **Step 1:** Update the docs; every count equals what its command prints.
 - [ ] **Step 2:** Run `npm run check` — expect green, including `role-gates`, the docs pins and `pricing-copy`.

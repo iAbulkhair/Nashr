@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
 import PartnerCodeField from "./PartnerCodeField";
@@ -9,6 +9,8 @@ import { PLAN_CREDITS } from "@/lib/pricing";
 import { authMessage, failureCode, passwordChecks, postJson, succeeded, unmetRules } from "@/lib/auth-client";
 import { PasswordRules } from "./PasswordRules";
 import { Turnstile } from "./Turnstile";
+import { safeNext } from "@/lib/safe-next";
+import { readInviteToken as readFragmentToken, withoutFragment } from "./inviteToken";
 import Scribble from "@/components/Scribble";
 
 const input = "input";
@@ -26,7 +28,7 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
   const ref = sp.get("ref") ?? "";
   const site = (sp.get("url") ?? "").slice(0, 300);
   const nextParam = sp.get("next") ?? "";
-  const next = /^\/(?![\/\\])/.test(nextParam) ? nextParam : "";
+  const next = safeNext(nextParam);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState("");
@@ -95,7 +97,7 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
 export function LoginForm({ t, lang }: { t: AppDict; lang: Lang }) {
   const r = useRouter();
   const nextParam = useSearchParams().get("next") ?? "";
-  const next = /^\/(?![\/\\])/.test(nextParam) ? nextParam : "";
+  const next = safeNext(nextParam);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -184,9 +186,19 @@ export function ForgotForm({ lang, whatsapp, turnstileKey = null }: { lang: Lang
   );
 }
 
+/**
+ * The reset link is /{lang}/app/reset#t=<64 hex> (../../app/api/auth/forgot/route.ts). The token rides in the URL
+ * fragment, which browsers never send to a server, so it stays out of server, proxy and edge logs and the Referer header,
+ * the same way team invite links work. It is read once on the client, taken out of the address bar and history, and
+ * posted in a JSON body. A `?token=` query is never read. Rules 546-547.
+ */
 export function ResetForm({ lang }: { lang: Lang }) {
   const r = useRouter();
-  const token = useSearchParams().get("token") ?? "";
+  const tokenRef = useRef("");
+  useEffect(() => {
+    tokenRef.current ||= readFragmentToken(window.location.hash);
+    if (window.location.hash) window.history.replaceState(window.history.state, "", withoutFragment(window.location));
+  }, []);
   const S = PW[lang], rules = SU[lang].rules;
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
@@ -201,7 +213,7 @@ export function ResetForm({ lang }: { lang: Lang }) {
     if (busy) return;
     setBusy(true);
     try {
-      const p = await postJson("/api/auth/reset", { token, password: pw });
+      const p = await postJson("/api/auth/reset", { token: tokenRef.current, password: pw });
       // bad_token, weak_password, slow_down and suspended keep their own messages; disabled, network and server errors
       // get the shared ones.
       if (!succeeded(p)) return setErr(authMessage(failureCode(p), lang, S as Record<string, string>));

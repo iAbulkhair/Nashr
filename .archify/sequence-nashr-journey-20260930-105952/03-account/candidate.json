@@ -1,0 +1,1167 @@
+{
+ "schema_version": 1,
+ "diagram_type": "sequence",
+ "meta": {
+  "title": "Sign up, sign in and join a team",
+  "locale": "en",
+  "output": ".archify/sequence-nashr-journey-20260930-105952/03-account/03-account.html",
+  "quality_profile": "showcase",
+  "column_fit": "spread",
+  "repository": {
+   "url": "https://github.com/iAbulkhair/Nashr.git",
+   "provider": "github",
+   "link_mode": "web",
+   "revision": "f0e7fdecf7d70d8c60ba76650f22440433926add"
+  },
+  "legend": {
+   "entries": {
+    "emphasis": {
+     "label": "main journey"
+    },
+    "return": {
+     "label": "what comes back"
+    },
+    "security": {
+     "label": "check or refusal"
+    },
+    "dashed": {
+     "label": "write to Redis"
+    },
+    "default": {
+     "label": "request or read"
+    }
+   }
+  }
+ },
+ "participants": [
+  {
+   "id": "person",
+   "type": "external",
+   "label": "Person",
+   "sublabel": "visitor then owner or member",
+   "sources": [
+    {
+     "path": "src/components/Nav.tsx",
+     "line": 75
+    },
+    {
+     "path": "src/app/api/team/invite/route.ts",
+     "line": 89,
+     "end_line": 103
+    },
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 153,
+     "end_line": 162
+    }
+   ]
+  },
+  {
+   "id": "page",
+   "type": "frontend",
+   "label": "Browser page",
+   "sublabel": "what they see",
+   "sources": [
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 40,
+     "end_line": 65
+    },
+    {
+     "path": "src/components/app/JoinForm.tsx",
+     "line": 38,
+     "end_line": 44
+    },
+    {
+     "path": "src/components/app/LimitModal.tsx",
+     "line": 92,
+     "end_line": 100
+    }
+   ]
+  },
+  {
+   "id": "checks",
+   "type": "security",
+   "label": "Checks in code",
+   "sublabel": "auth · roles · limits",
+   "sources": [
+    {
+     "path": "src/lib/rate.ts",
+     "line": 6,
+     "end_line": 8
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 282,
+     "end_line": 334
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 12
+    }
+   ]
+  },
+  {
+   "id": "server",
+   "type": "backend",
+   "label": "Nashr server",
+   "sublabel": "API routes",
+   "sources": [
+    {
+     "path": "src/app/api/auth/signup/route.ts",
+     "line": 10,
+     "end_line": 44
+    },
+    {
+     "path": "src/app/api/auth/login/route.ts",
+     "line": 13,
+     "end_line": 45
+    },
+    {
+     "path": "src/app/api/team/accept/route.ts",
+     "line": 12,
+     "end_line": 27
+    }
+   ]
+  },
+  {
+   "id": "store",
+   "type": "database",
+   "label": "Redis",
+   "sublabel": "account data",
+   "sources": [
+    {
+     "path": "src/lib/auth.ts",
+     "line": 188,
+     "end_line": 207
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 267,
+     "end_line": 273
+    },
+    {
+     "path": "src/lib/team.ts",
+     "line": 249,
+     "end_line": 304
+    }
+   ]
+  },
+  {
+   "id": "email",
+   "type": "external",
+   "label": "Email",
+   "sublabel": "Resend",
+   "sources": [
+    {
+     "path": "src/lib/notify.ts",
+     "line": 19,
+     "end_line": 67
+    },
+    {
+     "path": "src/app/api/auth/forgot/route.ts",
+     "line": 21,
+     "end_line": 51
+    },
+    {
+     "path": "src/lib/notify.ts",
+     "line": 9
+    }
+   ]
+  }
+ ],
+ "segments": [
+  {
+   "from": 162,
+   "to": 1122,
+   "label": "Sign up"
+  },
+  {
+   "from": 1176,
+   "to": 1798,
+   "label": "In the app"
+  },
+  {
+   "from": 1852,
+   "to": 2570,
+   "label": "Log out and log in"
+  },
+  {
+   "from": 2624,
+   "to": 3382,
+   "label": "Reset password"
+  },
+  {
+   "from": 3436,
+   "to": 4314,
+   "label": "Join a team"
+  },
+  {
+   "from": 4368,
+   "to": 4528,
+   "label": "Session ends"
+  }
+ ],
+ "messages": [
+  {
+   "id": "account-arrive-signup--do",
+   "from": "person",
+   "to": "page",
+   "y": 190,
+   "label": "Click a signup, referral or partner link",
+   "variant": "emphasis",
+   "note": "Or the URL box; keeps ?url=, ?ref=, ?partner= · the Agency card's Contact us goes to /enterprise"
+  },
+  {
+   "id": "account-arrive-signup--load",
+   "from": "page",
+   "to": "server",
+   "y": 230,
+   "label": "GET /{lang}/app/signup",
+   "variant": "default"
+  },
+  {
+   "id": "account-arrive-signup--session",
+   "from": "server",
+   "to": "checks",
+   "y": 260,
+   "label": "currentUser(): already signed in?",
+   "variant": "security",
+   "note": "Signed in → redirected to /{lang}/app"
+  },
+  {
+   "id": "account-arrive-signup--see",
+   "from": "page",
+   "to": "person",
+   "y": 300,
+   "label": "Start your free trial: email box",
+   "variant": "return",
+   "note": "3 days, 50 credits, no card · Log in, Terms and Privacy links"
+  },
+  {
+   "id": "account-signup-email--do",
+   "from": "person",
+   "to": "page",
+   "y": 346,
+   "label": "Type email, click Continue",
+   "variant": "emphasis",
+   "note": "Client-side format check only; nothing sent yet"
+  },
+  {
+   "id": "account-signup-email--see",
+   "from": "page",
+   "to": "person",
+   "y": 386,
+   "label": "Step 2: name and password boxes",
+   "variant": "return",
+   "note": "Bad format → \"Invalid email.\" in red"
+  },
+  {
+   "id": "account-signup-details--do",
+   "from": "person",
+   "to": "page",
+   "y": 432,
+   "label": "Type name and password",
+   "variant": "emphasis",
+   "note": "Optional partner code box · Turnstile check when its keys are set · \"Edit\" goes back to the email step"
+  },
+  {
+   "id": "account-signup-details--see",
+   "from": "page",
+   "to": "person",
+   "y": 472,
+   "label": "3 rules tick off, button unlocks",
+   "variant": "return",
+   "note": "Check marks and \"met\" text, not colour alone · an early press names the unmet rules"
+  },
+  {
+   "id": "account-signup-submit--do",
+   "from": "person",
+   "to": "page",
+   "y": 518,
+   "label": "Click Create account",
+   "variant": "emphasis"
+  },
+  {
+   "id": "account-signup-submit--post",
+   "from": "page",
+   "to": "server",
+   "y": 548,
+   "label": "POST /api/auth/signup",
+   "variant": "default"
+  },
+  {
+   "id": "account-signup-submit--rate",
+   "from": "server",
+   "to": "checks",
+   "y": 578,
+   "label": "Rate limit: 5 per IP per hour",
+   "variant": "security",
+   "note": "Every attempt counts, refused ones too → 429 slow_down"
+  },
+  {
+   "id": "account-signup-submit--validate",
+   "from": "server",
+   "to": "checks",
+   "y": 618,
+   "label": "Bot check, email, password, taken?",
+   "variant": "security",
+   "note": "400 captcha_failed / bad_email / weak_password · 503 captcha_unavailable · 409 exists, checked under lock:login:{email}"
+  },
+  {
+   "id": "account-signup-submit--write",
+   "from": "server",
+   "to": "store",
+   "y": 658,
+   "label": "user:{email}, trial, 50 credits",
+   "variant": "dashed",
+   "note": "bcrypt cost 10 · trialEnds = now + 3 days · added to users:all"
+  },
+  {
+   "id": "account-signup-submit--session",
+   "from": "server",
+   "to": "store",
+   "y": 698,
+   "label": "registerCode; session:{token}",
+   "variant": "dashed",
+   "note": "Session 30 days in the httpOnly nashr_session cookie · track(signup)"
+  },
+  {
+   "id": "account-signup-submit--ok",
+   "from": "server",
+   "to": "page",
+   "y": 738,
+   "label": "ok + session cookie",
+   "variant": "return"
+  },
+  {
+   "id": "account-signup-submit--see",
+   "from": "page",
+   "to": "person",
+   "y": 768,
+   "label": "Go to ?next= or /{lang}/app/start",
+   "variant": "return",
+   "note": "No email verification, welcome email or model call; Turnstile only when both keys are set"
+  },
+  {
+   "id": "account-signup-submit--refused",
+   "from": "page",
+   "to": "person",
+   "y": 808,
+   "label": "Red error, e.g. already registered",
+   "variant": "security",
+   "note": "409 exists · 400 invalid email or partner code · 429 \"Too many sign-ups…\" · captcha, network, server text"
+  },
+  {
+   "id": "account-signup-referral--apply",
+   "from": "server",
+   "to": "checks",
+   "y": 854,
+   "label": "applyReferral: valid ?ref= code?",
+   "variant": "security",
+   "note": "Inside the signup call · 6-10 letters/digits · unknown or self code → no bonus"
+  },
+  {
+   "id": "account-signup-referral--credit",
+   "from": "server",
+   "to": "store",
+   "y": 894,
+   "label": "+50 credits to both accounts",
+   "variant": "dashed",
+   "note": "Also referrals:{referrer} and referredBy:{new}"
+  },
+  {
+   "id": "account-signup-referral--see",
+   "from": "page",
+   "to": "person",
+   "y": 934,
+   "label": "100 credits in the sidebar",
+   "variant": "return",
+   "note": "Nothing announced; referrer sees the count on /refer"
+  },
+  {
+   "id": "account-signup-partner--link",
+   "from": "person",
+   "to": "page",
+   "label": "Open a partner link or type a code",
+   "variant": "emphasis",
+   "note": "/p/CODE sets a 30-day cookie and fills the box · or type it in the optional Partner code box",
+   "y": 980
+  },
+  {
+   "id": "account-signup-partner--check",
+   "from": "server",
+   "to": "checks",
+   "label": "signupPartner: typed code or link cookie",
+   "variant": "security",
+   "note": "After Turnstile, before anything is created · typed wins over cookie · not a partner's → 400 bad_partner_code",
+   "y": 1020
+  },
+  {
+   "id": "account-signup-partner--attribute",
+   "from": "server",
+   "to": "store",
+   "label": "referredBy + 15% first-month offer",
+   "variant": "dashed",
+   "note": "Own address never attributed · 30 days from the link click · cookie spent · a failure is logged, signup still succeeds",
+   "y": 1060
+  },
+  {
+   "id": "account-signup-partner--see",
+   "from": "page",
+   "to": "person",
+   "label": "Hint: 15% off the first month",
+   "variant": "return",
+   "note": "A bad code shows \"That partner code is not valid…\" and no account is created",
+   "y": 1100
+  },
+  {
+   "id": "account-land-app--do",
+   "from": "person",
+   "to": "page",
+   "y": 1204,
+   "label": "Arrive in the app",
+   "variant": "emphasis",
+   "note": "After signup, login, reset or joining"
+  },
+  {
+   "id": "account-land-app--load",
+   "from": "page",
+   "to": "server",
+   "y": 1244,
+   "label": "GET /{lang}/app",
+   "variant": "default"
+  },
+  {
+   "id": "account-land-app--read",
+   "from": "server",
+   "to": "store",
+   "y": 1274,
+   "label": "Read session, user, member, brand",
+   "variant": "default",
+   "note": "session:{token}, then user:, member:, activebrand: in one parallel round · stored enterprise reads as agency, unknown as trial"
+  },
+  {
+   "id": "account-land-app--role",
+   "from": "server",
+   "to": "checks",
+   "y": 1314,
+   "label": "Resolve account and acting role",
+   "variant": "security",
+   "note": "No brand: owner/admin → first-login game on /start, member → wait note"
+  },
+  {
+   "id": "account-land-app--see",
+   "from": "page",
+   "to": "person",
+   "y": 1354,
+   "label": "Start page or approval inbox",
+   "variant": "return",
+   "note": "Sidebar: name, role chip, plan, shared credits; Partner entry for approved partners · first brand setup is free · /start sends to the inbox once a brand exists"
+  },
+  {
+   "id": "account-trial-banner--do",
+   "from": "person",
+   "to": "page",
+   "y": 1400,
+   "label": "Use the app on the trial plan",
+   "variant": "default"
+  },
+  {
+   "id": "account-trial-banner--load",
+   "from": "page",
+   "to": "server",
+   "y": 1430,
+   "label": "Each app page request",
+   "variant": "default"
+  },
+  {
+   "id": "account-trial-banner--days",
+   "from": "server",
+   "to": "checks",
+   "y": 1460,
+   "label": "trialDaysLeft and can(u, billing)",
+   "variant": "security",
+   "note": "Only while plan = trial; hidden on /billing, /start, /join"
+  },
+  {
+   "id": "account-trial-banner--see",
+   "from": "page",
+   "to": "person",
+   "y": 1500,
+   "label": "Your trial ends in N days",
+   "variant": "return",
+   "note": "Owner: Activate Noor → billing · others: ask the owner"
+  },
+  {
+   "id": "account-trial-ends--do",
+   "from": "person",
+   "to": "page",
+   "y": 1546,
+   "label": "Try to spend credits after trial",
+   "variant": "default",
+   "note": "Generate, report draft, chat message, item image or video, an added brand's setup"
+  },
+  {
+   "id": "account-trial-ends--call",
+   "from": "page",
+   "to": "server",
+   "y": 1586,
+   "label": "POST /api/generate, /api/chat and others",
+   "variant": "default",
+   "note": "Also POST /api/onboard/confirm for an added brand on /start; under 9 credits Go is off, no request"
+  },
+  {
+   "id": "account-trial-ends--check",
+   "from": "server",
+   "to": "checks",
+   "y": 1616,
+   "label": "trialOver(u): trial ended?",
+   "variant": "security",
+   "note": "Chat checks the trial first; generate checks the model pause first; media and added-brand setup check the trial first"
+  },
+  {
+   "id": "account-trial-ends--allowance",
+   "from": "server",
+   "to": "checks",
+   "label": "Trial chat allowance: 30 messages",
+   "variant": "security",
+   "note": "Counted once for the whole trial · used up → 402 chat_allowance, dialog, message not sent",
+   "y": 1656
+  },
+  {
+   "id": "account-trial-ends--refuse",
+   "from": "server",
+   "to": "page",
+   "y": 1696,
+   "label": "402 trial_over, before any charge",
+   "variant": "security",
+   "note": "Chat: 402 with the trial-ended reply, nothing saved · chat tools push limit:trial instead"
+  },
+  {
+   "id": "account-trial-ends--see",
+   "from": "page",
+   "to": "person",
+   "y": 1736,
+   "label": "Dialog: Your free trial has ended",
+   "variant": "return",
+   "note": "Owner: View plans → billing · others: OK · reading still works"
+  },
+  {
+   "id": "account-trial-ends--paused",
+   "from": "page",
+   "to": "person",
+   "y": 1776,
+   "label": "Model paused: generate says paused",
+   "variant": "return",
+   "note": "\"Content generation is paused for now. No credits were used.\" · chat after the trial says trial ended, not paused"
+  },
+  {
+   "id": "account-menu--do",
+   "from": "person",
+   "to": "page",
+   "y": 1880,
+   "label": "Click own name in the sidebar",
+   "variant": "default",
+   "note": "On phones the top-bar menu opens the drawer first"
+  },
+  {
+   "id": "account-menu--see",
+   "from": "page",
+   "to": "person",
+   "y": 1920,
+   "label": "Menu: profile, members, log out…",
+   "variant": "return",
+   "note": "MCP entry owner only; routes behind entries enforce the same rules"
+  },
+  {
+   "id": "account-logout--do",
+   "from": "person",
+   "to": "page",
+   "y": 1966,
+   "label": "Click Log out",
+   "variant": "default"
+  },
+  {
+   "id": "account-logout--post",
+   "from": "page",
+   "to": "server",
+   "y": 1996,
+   "label": "POST /api/auth/logout",
+   "variant": "default"
+  },
+  {
+   "id": "account-logout--delete",
+   "from": "server",
+   "to": "store",
+   "y": 2026,
+   "label": "Delete session:{token}",
+   "variant": "dashed",
+   "note": "Cookie cleared too · this device only; other devices untouched"
+  },
+  {
+   "id": "account-logout--see",
+   "from": "page",
+   "to": "person",
+   "y": 2066,
+   "label": "Sent to /{lang}/app/login",
+   "variant": "return"
+  },
+  {
+   "id": "account-login-open--do",
+   "from": "person",
+   "to": "page",
+   "y": 2102,
+   "label": "Open Log in or a private page",
+   "variant": "emphasis",
+   "note": "Also login links with ?next= (updates page, OAuth consent)"
+  },
+  {
+   "id": "account-login-open--load",
+   "from": "page",
+   "to": "server",
+   "y": 2142,
+   "label": "GET /{lang}/app/login",
+   "variant": "default"
+  },
+  {
+   "id": "account-login-open--session",
+   "from": "server",
+   "to": "checks",
+   "y": 2172,
+   "label": "currentUser() null → login page",
+   "variant": "security",
+   "note": "Private /app paths redirect here with no return path"
+  },
+  {
+   "id": "account-login-open--see",
+   "from": "page",
+   "to": "person",
+   "y": 2212,
+   "label": "Email, password, Forgot link",
+   "variant": "return",
+   "note": "Already signed in → /{lang}/app"
+  },
+  {
+   "id": "account-login-submit--do",
+   "from": "person",
+   "to": "page",
+   "y": 2258,
+   "label": "Enter email, password; Log in",
+   "variant": "emphasis",
+   "note": "As an owner or as a team member"
+  },
+  {
+   "id": "account-login-submit--post",
+   "from": "page",
+   "to": "server",
+   "y": 2298,
+   "label": "POST /api/auth/login",
+   "variant": "default"
+  },
+  {
+   "id": "account-login-submit--rate",
+   "from": "server",
+   "to": "checks",
+   "y": 2328,
+   "label": "20 per IP, 8 per email / 15 min",
+   "variant": "security",
+   "note": "429 \"Too many attempts. Wait 15 minutes…\" · no lockout beyond the rate limits"
+  },
+  {
+   "id": "account-login-submit--lookup",
+   "from": "server",
+   "to": "store",
+   "y": 2368,
+   "label": "getLogin: user: or member:",
+   "variant": "default",
+   "note": "A member counts only on its owner's roster"
+  },
+  {
+   "id": "account-login-submit--verify",
+   "from": "server",
+   "to": "checks",
+   "y": 2408,
+   "label": "Password, suspended, seat paused",
+   "variant": "security",
+   "note": "Member: owner exists, predates acceptance, not suspended"
+  },
+  {
+   "id": "account-login-submit--session",
+   "from": "server",
+   "to": "store",
+   "y": 2448,
+   "label": "createSession, 30 days",
+   "variant": "dashed",
+   "note": "track(login) under the owner's email"
+  },
+  {
+   "id": "account-login-submit--ok",
+   "from": "server",
+   "to": "page",
+   "y": 2488,
+   "label": "ok + session cookie",
+   "variant": "return"
+  },
+  {
+   "id": "account-login-submit--see",
+   "from": "page",
+   "to": "person",
+   "y": 2518,
+   "label": "Go to ?next= or /{lang}/app",
+   "variant": "return"
+  },
+  {
+   "id": "account-login-submit--refused",
+   "from": "page",
+   "to": "person",
+   "y": 2548,
+   "label": "Refused: text depends on the cause",
+   "variant": "security",
+   "note": "401 \"Wrong email or password.\" · 429 and seat-paused have their own text · suspended too"
+  },
+  {
+   "id": "account-forgot-open--do",
+   "from": "person",
+   "to": "page",
+   "y": 2652,
+   "label": "Click Forgot your password?",
+   "variant": "default"
+  },
+  {
+   "id": "account-forgot-open--load",
+   "from": "page",
+   "to": "server",
+   "y": 2682,
+   "label": "GET /{lang}/app/forgot",
+   "variant": "default",
+   "note": "Reads SUPPORT_WHATSAPP for an optional wa.me link"
+  },
+  {
+   "id": "account-forgot-open--see",
+   "from": "page",
+   "to": "person",
+   "y": 2722,
+   "label": "Reset your password: email box",
+   "variant": "return",
+   "note": "Link valid for one hour · Turnstile when its keys are set · signed in → /{lang}/app"
+  },
+  {
+   "id": "account-forgot-submit--do",
+   "from": "person",
+   "to": "page",
+   "y": 2768,
+   "label": "Type email, click Send the link",
+   "variant": "default"
+  },
+  {
+   "id": "account-forgot-submit--post",
+   "from": "page",
+   "to": "server",
+   "y": 2798,
+   "label": "POST /api/auth/forgot",
+   "variant": "default"
+  },
+  {
+   "id": "account-forgot-submit--rate",
+   "from": "server",
+   "to": "checks",
+   "y": 2828,
+   "label": "Format, 8/IP, Turnstile, 3/email",
+   "variant": "security",
+   "note": "Bad format → 400; IP and email limits answer ok silently; captcha 400/503 shown"
+  },
+  {
+   "id": "account-forgot-submit--token",
+   "from": "server",
+   "to": "store",
+   "y": 2868,
+   "label": "pwreset:{sha256} for 1 hour",
+   "variant": "dashed",
+   "note": "Only when a login exists and mailReady() is true"
+  },
+  {
+   "id": "account-forgot-submit--mail",
+   "from": "server",
+   "to": "email",
+   "y": 2908,
+   "label": "Email: Reset your Thakeen password",
+   "variant": "default",
+   "note": "Provider refusal or 10 s timeout logged as mail:refused; page unchanged"
+  },
+  {
+   "id": "account-forgot-submit--see",
+   "from": "page",
+   "to": "person",
+   "y": 2948,
+   "label": "Same answer for unknown emails",
+   "variant": "return",
+   "note": "Malformed → \"Invalid email\" · mail off: Thakeen not-enabled text + WhatsApp support"
+  },
+  {
+   "id": "account-forgot-submit--inbox",
+   "from": "email",
+   "to": "person",
+   "y": 2988,
+   "label": "Email with /app/reset?token= link",
+   "variant": "return"
+  },
+  {
+   "id": "account-reset-open--do",
+   "from": "person",
+   "to": "page",
+   "y": 3024,
+   "label": "Open the reset link",
+   "variant": "default",
+   "note": "The token is carried in the query string"
+  },
+  {
+   "id": "account-reset-open--load",
+   "from": "page",
+   "to": "server",
+   "y": 3064,
+   "label": "GET /{lang}/app/reset?token=…",
+   "variant": "default",
+   "note": "Public; the token is checked only on submit"
+  },
+  {
+   "id": "account-reset-open--see",
+   "from": "page",
+   "to": "person",
+   "y": 3104,
+   "label": "New password box + 3 live rules",
+   "variant": "return",
+   "note": "Save and log in is marked disabled until the rules pass"
+  },
+  {
+   "id": "account-reset-submit--do",
+   "from": "person",
+   "to": "page",
+   "y": 3150,
+   "label": "Type new password, Save and log in",
+   "variant": "default"
+  },
+  {
+   "id": "account-reset-submit--post",
+   "from": "page",
+   "to": "server",
+   "y": 3180,
+   "label": "POST /api/auth/reset",
+   "variant": "default"
+  },
+  {
+   "id": "account-reset-submit--check",
+   "from": "server",
+   "to": "checks",
+   "y": 3210,
+   "label": "10/IP limit, rules, live token?",
+   "variant": "security",
+   "note": "Single use: SET NX pwresetuse:{hash}, record deleted"
+  },
+  {
+   "id": "account-reset-submit--write",
+   "from": "server",
+   "to": "store",
+   "y": 3250,
+   "label": "New hash, sign out every device",
+   "variant": "dashed",
+   "note": "Owner: every owner and member device, revokeAllMcp · member: own only"
+  },
+  {
+   "id": "account-reset-submit--ok",
+   "from": "server",
+   "to": "page",
+   "y": 3290,
+   "label": "ok + new session",
+   "variant": "return",
+   "note": "Seat-paused member → 403 disabled, no session"
+  },
+  {
+   "id": "account-reset-submit--see",
+   "from": "page",
+   "to": "person",
+   "y": 3330,
+   "label": "Signed in at /{lang}/app",
+   "variant": "return"
+  },
+  {
+   "id": "account-reset-submit--refused",
+   "from": "page",
+   "to": "person",
+   "y": 3360,
+   "label": "Link invalid or expired",
+   "variant": "security",
+   "note": "Link to /forgot · seat-paused member sees the paused-seat text, password saved · 429, suspended"
+  },
+  {
+   "id": "account-join-open--do",
+   "from": "person",
+   "to": "page",
+   "y": 3464,
+   "label": "Open invite link /join#t=…",
+   "variant": "emphasis",
+   "note": "From the Thakeen invite email, or a link the inviter copied"
+  },
+  {
+   "id": "account-join-open--load",
+   "from": "page",
+   "to": "server",
+   "y": 3504,
+   "label": "GET /{lang}/app/join",
+   "variant": "default",
+   "note": "The #t= fragment never reaches a server"
+  },
+  {
+   "id": "account-join-open--see",
+   "from": "page",
+   "to": "person",
+   "y": 3544,
+   "label": "Join an account: Checking invite…",
+   "variant": "return",
+   "note": "Token kept in sessionStorage, removed from the address bar"
+  },
+  {
+   "id": "account-join-signed-in--do",
+   "from": "person",
+   "to": "page",
+   "y": 3590,
+   "label": "Open the invite while signed in",
+   "variant": "default"
+  },
+  {
+   "id": "account-join-signed-in--see",
+   "from": "page",
+   "to": "person",
+   "y": 3620,
+   "label": "Log out first to accept invite",
+   "variant": "return",
+   "note": "Back to the app → /{lang}/app; nobody joins an open session"
+  },
+  {
+   "id": "account-join-signed-in--click",
+   "from": "person",
+   "to": "page",
+   "y": 3660,
+   "label": "Click Log out",
+   "variant": "default"
+  },
+  {
+   "id": "account-join-signed-in--logout",
+   "from": "page",
+   "to": "server",
+   "y": 3690,
+   "label": "Log out: POST /api/auth/logout",
+   "variant": "default",
+   "note": "destroySession; token put back in the fragment"
+  },
+  {
+   "id": "account-join-signed-in--reload",
+   "from": "page",
+   "to": "person",
+   "y": 3730,
+   "label": "Reloads signed out: the invite",
+   "variant": "return"
+  },
+  {
+   "id": "account-join-preview--auto",
+   "from": "page",
+   "to": "server",
+   "y": 3766,
+   "label": "POST /api/team/accept {token}",
+   "variant": "emphasis",
+   "note": "Automatic on load when signed out"
+  },
+  {
+   "id": "account-join-preview--check",
+   "from": "server",
+   "to": "checks",
+   "y": 3806,
+   "label": "30/IP limit; peekInvite",
+   "variant": "security",
+   "note": "Unexpired, owner active, inviter still owner or enabled admin"
+  },
+  {
+   "id": "account-join-preview--read",
+   "from": "server",
+   "to": "store",
+   "y": 3846,
+   "label": "Read invite:{sha256} and owner",
+   "variant": "default",
+   "note": "Team name = brand name, else owner's name; nothing consumed"
+  },
+  {
+   "id": "account-join-preview--ok",
+   "from": "server",
+   "to": "page",
+   "y": 3886,
+   "label": "Inviter, team, role, valid until",
+   "variant": "return"
+  },
+  {
+   "id": "account-join-preview--see",
+   "from": "page",
+   "to": "person",
+   "y": 3916,
+   "label": "Invite card, then name + password",
+   "variant": "return"
+  },
+  {
+   "id": "account-join-preview--refused",
+   "from": "page",
+   "to": "person",
+   "y": 3946,
+   "label": "Invalid, expired or used invite",
+   "variant": "security",
+   "note": "Also incomplete link, too many attempts, network error"
+  },
+  {
+   "id": "account-join-submit--do",
+   "from": "person",
+   "to": "page",
+   "y": 3992,
+   "label": "Type name, password; click Join",
+   "variant": "emphasis",
+   "note": "Email fixed by the invite; Join is marked disabled until the rules pass"
+  },
+  {
+   "id": "account-join-submit--post",
+   "from": "page",
+   "to": "server",
+   "y": 4032,
+   "label": "POST /api/team/accept + name",
+   "variant": "default"
+  },
+  {
+   "id": "account-join-submit--check",
+   "from": "server",
+   "to": "checks",
+   "y": 4062,
+   "label": "10/IP limit, live invite, password",
+   "variant": "security",
+   "note": "bcrypt before any lock; 30 s inviteuse lock stops double accepts"
+  },
+  {
+   "id": "account-join-submit--seats",
+   "from": "server",
+   "to": "checks",
+   "y": 4102,
+   "label": "Free seat? Address not a login?",
+   "variant": "security",
+   "note": "Under lock:team and lock:login; seats: founder count, else plan (Business and Agency 7) · 409 seats / unavailable"
+  },
+  {
+   "id": "account-join-submit--write",
+   "from": "server",
+   "to": "store",
+   "y": 4142,
+   "label": "Write member:, delete the invite",
+   "variant": "dashed",
+   "note": "acceptedAt = sessionsAfter = now; added to roster; single use"
+  },
+  {
+   "id": "account-join-submit--session",
+   "from": "server",
+   "to": "store",
+   "y": 4182,
+   "label": "New session, bell item for owner",
+   "variant": "dashed",
+   "note": "No trial credits, referral code or signup tracking"
+  },
+  {
+   "id": "account-join-submit--ok",
+   "from": "server",
+   "to": "page",
+   "y": 4222,
+   "label": "ok + member session",
+   "variant": "return"
+  },
+  {
+   "id": "account-join-submit--see",
+   "from": "page",
+   "to": "person",
+   "y": 4252,
+   "label": "Inside the account, role chip",
+   "variant": "return",
+   "note": "No brand yet: admin → first-login game, member → wait note"
+  },
+  {
+   "id": "account-join-submit--refused",
+   "from": "page",
+   "to": "person",
+   "y": 4292,
+   "label": "No free seat, or email has login",
+   "variant": "security",
+   "note": "Also too many attempts, or back to the invalid-invite screen"
+  },
+  {
+   "id": "account-session-ends--read",
+   "from": "server",
+   "to": "store",
+   "y": 4396,
+   "label": "Read session and sessionsAfter",
+   "variant": "default",
+   "note": "30 days (2 h impersonation, which also ends with its console key session), then Redis TTL removes it"
+  },
+  {
+   "id": "account-session-ends--check",
+   "from": "server",
+   "to": "checks",
+   "y": 4436,
+   "label": "currentUser() returns null",
+   "variant": "security",
+   "note": "Reset elsewhere, suspended, member removed, left or paused"
+  },
+  {
+   "id": "account-session-ends--redirect",
+   "from": "server",
+   "to": "page",
+   "y": 4476,
+   "label": "Next /app load → login; APIs 401",
+   "variant": "return"
+  },
+  {
+   "id": "account-session-ends--see",
+   "from": "page",
+   "to": "person",
+   "y": 4506,
+   "label": "Login page, no warning",
+   "variant": "return",
+   "note": "Suspended → suspended text · removed member → \"Wrong email or password.\" · seat-paused member → seat-paused text"
+  }
+ ],
+ "cards": [
+  {
+   "dot": "rose",
+   "title": "Refusals and limits",
+   "items": [
+    "Signup: 5 per IP per hour; every attempt counts; Turnstile when both keys are set",
+    "Login: 20 per IP and 8 per email per 15 min; no lockout",
+    "Forgot: 8 per IP, 3 per email per 15 min; still answers ok",
+    "Reset 10, invite check 30, accept 10 per IP per 15 min",
+    "Wrong password shows \"Wrong email or password.\"; rate limit and seat pause have their own text"
+   ]
+  },
+  {
+   "dot": "violet",
+   "title": "Who can do this",
+   "items": [
+    "Owner: Activate Noor and View plans lead to billing",
+    "Admin and member: ask-the-owner text, a single OK",
+    "MCP menu entry: owner only, off while a founder impersonates; Partner entry: approved partners",
+    "Joining: signed out, a live 7-day invite and a free seat (founder's count, else Trial 3, Starter 1, Pro 3, Business and Agency 7)",
+    "A founder can extend a trial by 1-90 days"
+   ]
+  },
+  {
+   "dot": "amber",
+   "title": "While the model is paused",
+   "items": [
+    "Model calls are paused (CLAUDE_PAUSED)",
+    "Signup makes no model call, so the pause does not touch it",
+    "Generate says \"Content generation is paused for now. No credits were used.\"",
+    "Chat after the trial ended answers trial-ended first; inside the trial it gives its paused reply",
+    "Item image, video and an added brand's setup still raise the trial dialog; onboarding from /start answers \"paused\""
+   ]
+  }
+ ]
+}

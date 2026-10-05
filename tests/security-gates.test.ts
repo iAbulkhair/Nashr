@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { json, newMember, newUser, params, signIn } from "./helpers/session";
+import { vjson } from "./helpers/version";
 import { claudeOn } from "./helpers/model";
 import { currentUser, getUser, saveUser, type User } from "@/lib/auth";
 import { getBrand, getTask, saveBrand, saveTask, type Brand, type Task } from "@/lib/brand";
@@ -54,8 +55,8 @@ async function owner(prefix: string): Promise<User> {
   await signIn(u.email);
   return (await currentUser())!;
 }
-const patch = (id: string, body: unknown) => taskRoute.PATCH(json(`/api/tasks/${id}`, "PATCH", body), params({ id }));
-const publish = (id: string, body: Record<string, unknown> = { provider: "telegram" }) => publishRoute.POST(json(`/api/publish/${id}`, "POST", body), params({ id }));
+const patch = async (id: string, body: unknown) => taskRoute.PATCH(await vjson(`/api/tasks/${id}`, "PATCH", body), params({ id }));
+const publish = async (id: string, body: Record<string, unknown> = { provider: "telegram" }) => publishRoute.POST(await vjson(`/api/publish/${id}`, "POST", body), params({ id }));
 const decide = (id: string, action: unknown) => proposalRoute.POST(json(`/api/brand/proposals/${id}`, "POST", { action }), params({ id }));
 
 beforeEach(() => { h.posts.length = 0; h.fail = null; h.slow = 0; });
@@ -194,13 +195,17 @@ describe("chat publishes only what a person approved, and never over MCP (rule 2
   });
 });
 
-describe("an agent adds banned words; offers and removals wait for the owner's Save (rule 215)", () => {
-  it("adds new banned words at once and keeps every word already there", async () => {
+describe("banned words, offers and removals wait for the owner's Save (rules 215, 568)", () => {
+  it("an addition of banned words is a proposal too (rule 568): it keeps every word already there and saves nothing yet", async () => {
     const u = await owner("ban");
     const actions: string[] = [];
-    expect(await runTool(u, "update_brand", { field: "banned", value: "أرخص" }, actions)).toMatch(/Added to the banned words: أرخص/);
+    const proposed: BrandProposal[] = [];
+    expect(await runTool(u, "update_brand", { field: "banned", value: "أرخص" }, actions, [], undefined, { proposed })).toMatch(/Not saved yet: adding "أرخص"/);
+    expect(proposed.map((p) => [p.field, p.from, p.to, p.added])).toEqual([["banned", "مضمون، رخيص", "مضمون، رخيص, أرخص", ["أرخص"]]]);
+    expect((await getBrand(u.email))!.banned).toBe(BRAND.banned);
+    expect(actions).toEqual(["brandprop:banned"]);
+    expect(await (await decide(proposed[0].id, "apply")).json()).toMatchObject({ ok: true, applied: true });
     expect((await getBrand(u.email))!.banned).toBe("مضمون، رخيص, أرخص");
-    expect(actions).toEqual(["brand:banned"]);
     expect(await runTool(u, "update_brand", { field: "banned", value: "رخيص" }, [])).toMatch(/already on the banned list/);
     expect(await runTool(u, "update_brand", { field: "banned_remove", value: "غالي" }, [])).toMatch(/none of those words/);
     expect(await runTool(u, "update_brand", { field: "banned", value: " , " }, [])).toMatch(/send the words to add/);
@@ -257,7 +262,8 @@ describe("an agent adds banned words; offers and removals wait for the owner's S
     const u = await owner("remove");
     const proposed: BrandProposal[] = [];
     await runTool(u, "update_brand", { field: "banned_remove", value: "رخيص" }, [], [], undefined, { proposed });
-    expect(await runTool(u, "update_brand", { field: "banned", value: "أرخص" }, [])).toMatch(/Added/);
+    expect(await runTool(u, "update_brand", { field: "banned", value: "أرخص" }, [], [], undefined, { proposed })).toMatch(/Not saved yet: adding/);
+    expect(await (await decide(proposed[1].id, "apply")).json()).toMatchObject({ ok: true, applied: true });
     expect(await (await decide(proposed[0].id, "apply")).json()).toMatchObject({ ok: true, applied: true });
     expect((await getBrand(u.email))!.banned).toBe("مضمون, أرخص");
   });

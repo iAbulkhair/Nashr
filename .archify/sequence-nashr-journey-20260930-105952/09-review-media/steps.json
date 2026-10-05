@@ -1,0 +1,519 @@
+{
+ "key": "09-review-media",
+ "title": "Review: images, video and slides",
+ "person": "owner or team",
+ "steps": [
+  {
+   "id": "publish-pick-style",
+   "title": "Pick a media style",
+   "surface": "/{lang}/app (MediaControls on the card)",
+   "actor": "any-signed-in",
+   "action": "Chooses an image style or a video style. Image styles: Fast 1, Balanced 1, Premium ad image 2, English headline image 1, Lifestyle photo 1, Graphic design 1 credit. Video styles: Quick clip 5s 12, Clip with sound 8s 12, Premium 10s 24, Cinematic 5s 12, Photo to motion 6s 12 credits.",
+   "ui_response": "Radio cards show each price. A closed card says why: 'Available after you subscribe' (a video style not open to trials), 'Needs a generated image for this post first', 'This image can't be animated; generate the image again first', or 'Not enough credits'. The style hint may add 'Builds on this post's image', or 'The clip keeps the photo's square shape.' While paused, the controls also read 'Content generation is paused, so images and videos are made from a fixed description of your brand, not from this post.' The wording names only images or only videos when just one kind has a style.",
+   "system_reaction": "Only models this deployment can run are offered. That means the provider key is present, a Blob store exists for kie and Higgsfield, and the model is listed in MEDIA_MODELS_ON (Fast is always on) and not switched off by the breaker. Images are offered for social, ads, gbp, whatsapp and cart_recovery; video for social and ads. Choosing a style is browser only.",
+   "branches": [
+    "no video model -> video section hidden",
+    "no image model -> image button without a picker"
+   ],
+   "conditions": "The item type takes media.",
+   "sources": [
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 170,
+     "end_line": 186
+    },
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 229,
+     "end_line": 270
+    },
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 297,
+     "end_line": 306
+    },
+    {
+     "path": "src/lib/media-catalog.ts",
+     "line": 34,
+     "end_line": 46
+    },
+    {
+     "path": "src/lib/media/config.ts",
+     "line": 21,
+     "end_line": 24
+    },
+    {
+     "path": "src/lib/media/config.ts",
+     "line": 37,
+     "end_line": 42
+    },
+    {
+     "path": "src/lib/tasks.ts",
+     "line": 44,
+     "end_line": 46
+    }
+   ],
+   "next": [
+    "publish-make-image",
+    "publish-make-video"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-make-image",
+   "title": "Generate an image",
+   "surface": "/{lang}/app (MediaControls)",
+   "actor": "any-signed-in",
+   "action": "Clicks 'Generate image' (with a refresh arrow when an image exists). When it would replace real artwork, the person confirms 'This uses N credits and replaces the current one. Continue?' or cancels.",
+   "ui_response": "The button reads 'Noor is drawing…'. The Fast style returns the image in the same request. Other styles show 'N credits used; they come back automatically if the render fails.' while the card polls. The card then refreshes with the image, its prompt and the new balance.",
+   "system_reaction": "POST /api/tasks/{id}/image {model} checks the session, then reads the task and brand under sc(u) (404). renderImage refuses trial_over (402), bad_model and wrong_type. An unavailable non-default model gets 409 model_unavailable; an unavailable default model gets the free placeholder instead. startMedia then checks, in order: the Blob store (kie and Higgsfield styles only); the owning agent's monthly cap (402 agent_cap); the balance (402 no_credits); one render per task and kind (409 in_progress); 30 per hour and 150 per day (429 too_many); and the provider throttles (429 busy or one_open). It charges the owning agent (plan credits first, then any top-up pack), which can trigger the 80%-of-cap warning, writes an activity row for the render, saves the job and points the task at it. Claude Sonnet writes the prompt in 20 s at most; if it does not answer, a fixed brand template is used. While paused, that template is always used and the render is still charged. The job is submitted once and never retried. fal answers inline: the result is copied to Blob when a store exists, the task is updated and track('image') runs. kie and Higgsfield answer 202 running. The result is also recorded in the activity log. A generator refusal (nsfw) is refunded with 422, a busy provider at submit is refunded with 429 busy, and any other failed submit is refunded with 502 media_failed. An opportunistic sweep runs after the response.",
+   "branches": [
+    "200 done -> image shown",
+    "202 running -> polling",
+    "refused -> see Render refused",
+    "paused -> fixed brand prompt, still charged"
+   ],
+   "conditions": "Trial not over; enough credits; under the agent cap; the item type takes images.",
+   "sources": [
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 188,
+     "end_line": 227
+    },
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 271,
+     "end_line": 284
+    },
+    {
+     "path": "src/app/api/tasks/[id]/image/route.ts",
+     "line": 12,
+     "end_line": 36
+    },
+    {
+     "path": "src/lib/media/start.ts",
+     "line": 72,
+     "end_line": 89
+    },
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 118,
+     "end_line": 224
+    },
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 265,
+     "end_line": 309
+    },
+    {
+     "path": "src/lib/media/prompts.ts",
+     "line": 72,
+     "end_line": 94
+    },
+    {
+     "path": "src/lib/notifications.ts",
+     "line": 276,
+     "end_line": 300
+    }
+   ],
+   "next": [
+    "publish-wait-render",
+    "publish-render-refused",
+    "publish-placeholder"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-placeholder",
+   "title": "Placeholder image card",
+   "surface": "/{lang}/app (Inbox card)",
+   "actor": "any-signed-in",
+   "action": "Clicks 'Generate image' on a card that offers no image style, because the default Fast style is unavailable (no fal key, or switched off by the breaker).",
+   "ui_response": "The card shows a coloured card with the brand name, labelled 'Placeholder — the image service was unavailable', and the balance does not change. Instagram publishing is not offered for it. If the post already has real artwork, the button is disabled and reads 'No image style is available right now, so the current image stays as it is.'",
+   "system_reaction": "placeholder() runs under the task lock and only when the item has no artwork. It records mediaCredits as 0 and charges nothing, with no balance or cap check (the trial check still applies). If artwork exists it returns 409 model_unavailable, so a placeholder never covers an image the owner paid for.",
+   "branches": [
+    "artwork exists -> kept, 409 model_unavailable"
+   ],
+   "conditions": "Default image model unavailable.",
+   "sources": [
+    {
+     "path": "src/lib/media/start.ts",
+     "line": 43,
+     "end_line": 70
+    },
+    {
+     "path": "src/lib/media/start.ts",
+     "line": 80
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 324
+    },
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 221
+    },
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 242,
+     "end_line": 243
+    },
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 283
+    },
+    {
+     "path": "src/lib/connectors/targets.ts",
+     "line": 31,
+     "end_line": 33
+    },
+    {
+     "path": "src/lib/media-catalog.ts",
+     "line": 75,
+     "end_line": 77
+    }
+   ],
+   "next": [
+    "publish-to-platform"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-make-video",
+   "title": "Generate a video",
+   "surface": "/{lang}/app (MediaControls)",
+   "actor": "any-signed-in",
+   "action": "Picks a video style, clicks 'Generate video' and confirms 'This uses N credits. Continue?' (asked for every video, which costs 12 or 24 credits), or 'N credits and replaces the current one' when a clip exists.",
+   "ui_response": "The person sees 'Noor is rendering the video…', then 'N credits used; they come back automatically if the render fails.' and 'This can take a few minutes. You can leave the page; a notification arrives when it finishes.'",
+   "system_reaction": "POST /api/tasks/{id}/video runs renderVideo, which refuses in turn: trial_over (402); an unknown or missing model (bad_model); types other than social and ads (wrong_type); on a trial, any style but Quick, Sound or Photo to motion (402 plan_required); an unavailable model (409 model_unavailable); and Photo to motion without our own copy of an image (409 needs_image). startMedia then checks the Blob store, the agent cap, the balance and in_progress, and applies 6 per hour and 20 per day (429 too_many). On a trial it takes the one-clip marker (402 trial_video_used; released again if the clip is refunded). Next come the provider throttles. It then charges, writes the prompt (a fixed template while paused) and submits. The answer is 202 running.",
+   "branches": [
+    "402 plan_required / trial_video_used -> billing link",
+    "refused -> see Render refused"
+   ],
+   "conditions": "A video model is available; the item is social or ads; trial accounts get one clip.",
+   "sources": [
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 190,
+     "end_line": 196
+    },
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 271,
+     "end_line": 285
+    },
+    {
+     "path": "src/app/api/tasks/[id]/video/route.ts",
+     "line": 13,
+     "end_line": 34
+    },
+    {
+     "path": "src/lib/media/start.ts",
+     "line": 91,
+     "end_line": 109
+    },
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 50,
+     "end_line": 51
+    },
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 142,
+     "end_line": 150
+    },
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 564
+    },
+    {
+     "path": "src/lib/media-catalog.ts",
+     "line": 57,
+     "end_line": 60
+    }
+   ],
+   "next": [
+    "publish-wait-render",
+    "publish-render-refused"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-render-refused",
+   "title": "Render refused",
+   "surface": "/{lang}/app (MediaControls, limit dialog)",
+   "actor": "any-signed-in",
+   "action": "A render request is refused.",
+   "ui_response": "trial_over, agent_cap, and no_credits at a zero balance open the limit dialog. Its title is 'Your free trial has ended', \"You're out of credits\" or 'This agent reached its monthly cap'. For no credits on a paid plan the owner's button reads 'Top up credits' and goes to the top-up packs on billing (/{lang}/app/billing#topup); on a trial it reads 'View plans' and the text says packs come once you subscribe. For agent_cap, whoever may change Governance gets 'Open Governance'. Anyone else is told to ask the account owner and sees only 'OK'. no_credits with some balance left shows 'Needs N credits; you have M.' In an owner's note on a paid plan it adds 'Top up with a credit pack or upgrade your plan on the Subscription page.' with a 'Top-ups and plans' link to the packs; a trial's owner gets the 'Plans and credits' link; anyone else is told to ask the account owner, with no link. plan_required and trial_video_used show their text with the 'Plans and credits' link. in_progress picks up the running render, or says 'A render is already running for this post...'. busy, one_open, too_many, model_unavailable, needs_image, bad_model and wrong_type show their text, which says no credits were used ('No credits were used.'; busy: 'No credits were used; try again in a minute.'). nsfw shows '...the credits were returned.' media_failed shows 'The render didn't work this time; all credits were returned.' media_pending shows 'Something went wrong while starting the render. If it does not work out, any credits used come back automatically.'",
+   "system_reaction": "A refusal before the charge moves no credit; a refusal at the agent cap or the balance is written to the activity log as a row with nothing charged. After a charge, a failed prompt, submit or nsfw is refunded at once, back to the top-up pack the credits came from when they came from one. A start that threw after the charge leaves a saved job, which the next poll or a sweep refunds exactly once (the mrefund marker).",
+   "branches": [
+    "limit dialog -> /{lang}/app/billing#topup, /{lang}/app/billing or /{lang}/app/governance"
+   ],
+   "conditions": "None.",
+   "sources": [
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 211,
+     "end_line": 227
+    },
+    {
+     "path": "src/components/app/LimitModal.tsx",
+     "line": 30,
+     "end_line": 104
+    },
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 63
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 427,
+     "end_line": 433
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 455,
+     "end_line": 455
+    },
+    {
+     "path": "src/lib/media/start.ts",
+     "line": 137,
+     "end_line": 152
+    },
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 130,
+     "end_line": 168
+    },
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 511,
+     "end_line": 531
+    },
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 36,
+     "end_line": 49
+    }
+   ],
+   "next": [
+    "publish-make-image",
+    "publish-make-video"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-wait-render",
+   "title": "Wait while it renders",
+   "surface": "/{lang}/app (MediaControls)",
+   "actor": "any-signed-in",
+   "action": "Stays on the page while a render runs. After a reload, the card picks up the running job again.",
+   "ui_response": "The button stays disabled. Two minutes past the maximum age (10 min for images, 30 min for video) the card reads 'Not done yet. If it does not finish within minutes, the credits come back automatically and the reason shows here.' When done, the image or clip appears and the balance refreshes. When failed, it shows 'The render didn't work this time; all credits were returned.' or the specific reason. Later it shows 'The last render did not finish; N credits were returned.'",
+   "system_reaction": "The browser polls GET /api/media/{jobId}: every 3 s for images and 6 s for video, every 15 s after 2 minutes, and every 60 s once late. After an error or a 429 the gap doubles, up to 30 s. The route checks the session and reads the job only under sc(u) (404 otherwise). It allows 120 polls per minute (429 slow_down), then runs advance(), which makes at most one provider status call per 4 s under the job lock. When done, the result is copied to the Blob store, written to the task and the credits are kept. On failure or timeout, the provider job is cancelled where possible. The charge is then refunded exactly once, to the paying account (and its top-up pack) and the agent's counter, and mediaLast is recorded. Either end also writes a render_done or render_failed row to the activity log.",
+   "branches": [
+    "done -> media on card",
+    "failed/timeout -> refund + reason",
+    "late -> still-rendering note"
+   ],
+   "conditions": "A job is running.",
+   "sources": [
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 56,
+     "end_line": 90
+    },
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 129,
+     "end_line": 151
+    },
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 284,
+     "end_line": 292
+    },
+    {
+     "path": "src/app/api/media/[jobId]/route.ts",
+     "line": 16,
+     "end_line": 36
+    },
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 359,
+     "end_line": 406
+    },
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 424,
+     "end_line": 492
+    },
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 539,
+     "end_line": 583
+    }
+   ],
+   "next": [
+    "publish-download-image",
+    "publish-save-video",
+    "publish-to-platform"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-render-unattended",
+   "title": "Render ends unattended",
+   "surface": "Bell notifications",
+   "actor": "system",
+   "action": "The person left the page. A provider callback, another request's sweep or the daily media cron finishes the job.",
+   "ui_response": "On success, a bell notification reads 'Your image is ready: <title>' or 'Your video is ready: <title>' with 'It's in your inbox.'. After a refund it reads 'The image (or video) for “<title>” did not finish' with 'N credits were returned.'. Both link to /{lang}/app.",
+   "system_reaction": "POST /api/media/hook/{kie|higgsfield} allows 240 calls per minute per IP and a body of 64 KB at most, and checks kie's signature when a key is set. Only the provider task id is read. The job is found through the stored pointer and advanced under the same throttle. maybeSweep runs after image, video and poll requests: once per 5 minutes, 6 jobs at most. GET /api/cron/media runs daily at 05:20 UTC, checks CRON_SECRET with sameSecret, and sweeps every open job older than 2 minutes. The end of the job is also written to the activity log as the system's row (via cron for a sweep). notifyOwner sends a notice only for outcomes reached by a callback or a sweep, and for failures only once refunded.",
+   "branches": [
+    "done -> ready notice",
+    "refunded -> did-not-finish notice"
+   ],
+   "conditions": "A running job with nobody polling.",
+   "sources": [
+    {
+     "path": "src/app/api/media/hook/[provider]/route.ts",
+     "line": 43,
+     "end_line": 70
+    },
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 637,
+     "end_line": 654
+    },
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 575,
+     "end_line": 583
+    },
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 671,
+     "end_line": 705
+    },
+    {
+     "path": "src/app/api/cron/media/route.ts",
+     "line": 14,
+     "end_line": 19
+    },
+    {
+     "path": "vercel.json",
+     "line": 6
+    }
+   ],
+   "next": [
+    "publish-open-inbox"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-download-image",
+   "title": "Download the image",
+   "surface": "/{lang}/app (Inbox card)",
+   "actor": "any-signed-in",
+   "action": "Clicks 'Download' under the image.",
+   "ui_response": "The image opens in a new tab. The prompt it was made from is shown under the link.",
+   "system_reaction": "None. The URL points to the Blob store, fal or placehold.co.",
+   "branches": [],
+   "conditions": "The item has an image.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 317,
+     "end_line": 326
+    }
+   ],
+   "next": [
+    "publish-to-platform"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-save-video",
+   "title": "Save or share video",
+   "surface": "/{lang}/app (Inbox card)",
+   "actor": "any-signed-in",
+   "action": "Clicks 'Download video' or, where the browser has a share sheet, 'Save or share'.",
+   "ui_response": "'Download video' saves the MP4. 'Save or share' shows 'Save or share…' while it fetches the clip, then opens the share sheet (Save Video on a phone). If the sheet takes no files, the copy is saved as video.mp4. If the share permission expired during the download, the card reads 'The video is ready on this device; tap Save or share again to open the save options.' If the clip cannot be read in the browser, the button goes and the browser follows the download link. The card always reads 'Publishing video from Thakeen isn't available yet; download it and post it from your phone.'",
+   "system_reaction": "Browser only: a ?download=1 link on our Blob store. No publish target accepts video.",
+   "branches": [
+    "share refused -> tap again",
+    "fetch failed -> download link only"
+   ],
+   "conditions": "The item has a video.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 54,
+     "end_line": 55
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 126,
+     "end_line": 161
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 327,
+     "end_line": 341
+    },
+    {
+     "path": "src/lib/connectors/targets.ts",
+     "line": 31,
+     "end_line": 32
+    }
+   ],
+   "next": [
+    "publish-read-card"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-pptx",
+   "title": "Download PowerPoint",
+   "surface": "/{lang}/app (Inbox card, board deck)",
+   "actor": "any-signed-in",
+   "action": "Clicks 'Download PowerPoint' on a board deck item.",
+   "ui_response": "The browser downloads <brand>-board_deck-<id>.pptx.",
+   "system_reaction": "GET /api/tasks/{id}/pptx checks the session and reads the task under sc(u) (404 otherwise). It parses the edited text into slides: each heading starts a slide, with bullets, tables flattened to rows, and speaker notes. Overflow continues on numbered slides, up to 30. It adds a cover with the brand name (Thakeen when there is none), a 'Thakeen · ذكين' footer on each slide, in 16:9, and right-to-left for Arabic items. No model call and no credits, so it works while paused.",
+   "branches": [
+    "404 -> not found JSON"
+   ],
+   "conditions": "Type board_deck.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 402,
+     "end_line": 404
+    },
+    {
+     "path": "src/app/api/tasks/[id]/pptx/route.ts",
+     "line": 13,
+     "end_line": 58
+    },
+    {
+     "path": "src/app/api/tasks/[id]/pptx/route.ts",
+     "line": 60,
+     "end_line": 103
+    }
+   ],
+   "next": [
+    "publish-read-card"
+   ],
+   "verified": true,
+   "stage": "publish"
+  }
+ ]
+}

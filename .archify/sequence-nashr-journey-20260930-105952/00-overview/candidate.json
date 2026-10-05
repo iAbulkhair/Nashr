@@ -1,0 +1,670 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Nashr User Journey: Overview",
+    "output": ".archify/sequence-nashr-journey-20260930-105952/00-overview/00-overview.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/iAbulkhair/Nashr.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "f0e7fdecf7d70d8c60ba76650f22440433926add"
+    }
+  },
+  "lanes": [
+    {
+      "id": "does",
+      "label": "What the person does"
+    },
+    {
+      "id": "reacts",
+      "label": "What the system does"
+    },
+    {
+      "id": "sees",
+      "label": "What the person sees"
+    }
+  ],
+  "phases": [
+    {
+      "id": "ph-discover",
+      "label": "Discover",
+      "fromCol": 0,
+      "toCol": 0
+    },
+    {
+      "id": "ph-join",
+      "label": "Join + set up",
+      "fromCol": 1,
+      "toCol": 2,
+      "variant": "emphasis"
+    },
+    {
+      "id": "ph-work",
+      "label": "Create + publish",
+      "fromCol": 3,
+      "toCol": 4,
+      "variant": "emphasis"
+    },
+    {
+      "id": "ph-daily",
+      "label": "Every day",
+      "fromCol": 5,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "p-visit",
+    "p-signup",
+    "p-confirm",
+    "p-ask",
+    "p-approve",
+    "p-daily"
+  ],
+  "nodes": [
+    {
+      "id": "p-visit",
+      "lane": "does",
+      "col": 0,
+      "type": "external",
+      "label": "Visit the site",
+      "sublabel": "browse · tools · 01–02",
+      "width": 132,
+      "sources": [
+        {
+          "path": "src/proxy.ts",
+          "line": 5,
+          "end_line": 13,
+          "label": "Open the site"
+        },
+        {
+          "path": "src/components/ToolForm.tsx",
+          "line": 13,
+          "end_line": 22,
+          "label": "Run a free tool"
+        }
+      ]
+    },
+    {
+      "id": "p-signup",
+      "lane": "does",
+      "col": 1,
+      "type": "external",
+      "label": "Sign up or join",
+      "sublabel": "sign up · join · 03",
+      "width": 132,
+      "sources": [
+        {
+          "path": "src/components/app/AuthForm.tsx",
+          "line": 40,
+          "end_line": 65,
+          "label": "Create account"
+        },
+        {
+          "path": "src/components/app/JoinForm.tsx",
+          "line": 70,
+          "end_line": 96,
+          "label": "Accept invite"
+        }
+      ]
+    },
+    {
+      "id": "p-confirm",
+      "lane": "does",
+      "col": 2,
+      "type": "external",
+      "label": "Start the Dictionary",
+      "sublabel": "dictionary · url · 04–05",
+      "width": 132,
+      "sources": [
+        {
+          "path": "src/components/app/DictionaryStart.tsx",
+          "line": 82,
+          "end_line": 198,
+          "label": "Play the Dictionary"
+        },
+        {
+          "path": "src/components/app/StartLaunch.tsx",
+          "line": 39,
+          "end_line": 73,
+          "label": "Press Go, Noor"
+        }
+      ]
+    },
+    {
+      "id": "p-ask",
+      "lane": "does",
+      "col": 3,
+      "type": "external",
+      "label": "Ask an agent",
+      "sublabel": "chat · Generate · 06–07",
+      "width": 132,
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 549,
+          "end_line": 613,
+          "label": "Send a message"
+        },
+        {
+          "path": "src/components/app/GeneratePanel.tsx",
+          "line": 23,
+          "end_line": 46,
+          "label": "Run a batch type"
+        }
+      ]
+    },
+    {
+      "id": "p-approve",
+      "lane": "does",
+      "col": 4,
+      "type": "external",
+      "label": "Approve, publish",
+      "sublabel": "inbox · post · 08–10",
+      "width": 132,
+      "sources": [
+        {
+          "path": "src/components/app/Inbox.tsx",
+          "line": 174,
+          "end_line": 211,
+          "label": "Approve an item"
+        },
+        {
+          "path": "src/components/app/Inbox.tsx",
+          "line": 95,
+          "end_line": 122,
+          "label": "Publish to a platform"
+        }
+      ]
+    },
+    {
+      "id": "p-daily",
+      "lane": "does",
+      "col": 5,
+      "type": "external",
+      "label": "Open app daily",
+      "sublabel": "brief · to-dos · 11–13",
+      "width": 132,
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/layout.tsx",
+          "line": 26,
+          "end_line": 27,
+          "label": "Open the app"
+        },
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 449,
+          "end_line": 483,
+          "label": "Add a to-do"
+        }
+      ]
+    },
+    {
+      "id": "s-visit",
+      "lane": "reacts",
+      "col": 0,
+      "type": "backend",
+      "label": "Free tools, forms",
+      "sublabel": "rate limits per IP",
+      "width": 132,
+      "sources": [
+        {
+          "path": "src/app/api/tools/[tool]/route.ts",
+          "line": 15,
+          "end_line": 30,
+          "label": "Free tool rate limit"
+        },
+        {
+          "path": "src/components/HelpCenter.tsx",
+          "line": 58,
+          "end_line": 70,
+          "label": "Send a support request"
+        }
+      ]
+    },
+    {
+      "id": "s-signup",
+      "lane": "reacts",
+      "col": 1,
+      "type": "security",
+      "label": "Account + session",
+      "sublabel": "trial · referral · code",
+      "width": 132,
+      "sources": [
+        {
+          "path": "src/lib/auth.ts",
+          "line": 188,
+          "end_line": 207,
+          "label": "Create account and trial"
+        },
+        {
+          "path": "src/app/api/auth/signup/route.ts",
+          "line": 37,
+          "end_line": 38,
+          "label": "Referral bonus"
+        }
+      ]
+    },
+    {
+      "id": "s-confirm",
+      "lane": "reacts",
+      "col": 2,
+      "type": "backend",
+      "label": "Crawl + build",
+      "sublabel": "brand files · plan",
+      "width": 132,
+      "sources": [
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 94,
+          "end_line": 126,
+          "label": "Noor starts the build"
+        },
+        {
+          "path": "src/lib/onboard.ts",
+          "line": 112,
+          "end_line": 136,
+          "label": "Brand files are written"
+        }
+      ]
+    },
+    {
+      "id": "s-ask",
+      "lane": "reacts",
+      "col": 3,
+      "type": "security",
+      "label": "Credits + judge",
+      "sublabel": "chat allowance · charge",
+      "width": 132,
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 589,
+          "end_line": 604,
+          "label": "Ask for a full batch"
+        },
+        {
+          "path": "src/lib/judge.ts",
+          "line": 89,
+          "end_line": 130,
+          "label": "Judge scores later"
+        }
+      ]
+    },
+    {
+      "id": "s-approve",
+      "lane": "reacts",
+      "col": 4,
+      "type": "security",
+      "label": "Brand gate",
+      "sublabel": "publish once",
+      "width": 132,
+      "sources": [
+        {
+          "path": "src/app/api/tasks/[id]/route.ts",
+          "line": 72,
+          "end_line": 81,
+          "label": "Brand rules checked in code"
+        },
+        {
+          "path": "src/lib/publish-once.ts",
+          "line": 62,
+          "end_line": 75,
+          "label": "Publish once"
+        }
+      ]
+    },
+    {
+      "id": "s-daily",
+      "lane": "reacts",
+      "col": 5,
+      "type": "cloud",
+      "label": "Morning jobs",
+      "sublabel": "brief · bell · email",
+      "width": 132,
+      "sources": [
+        {
+          "path": "vercel.json",
+          "line": 4,
+          "label": "Morning job runs"
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 184,
+          "end_line": 230,
+          "label": "Morning brief written"
+        }
+      ]
+    },
+    {
+      "id": "v-visit",
+      "lane": "sees",
+      "col": 0,
+      "type": "frontend",
+      "label": "Site in ar / en",
+      "sublabel": "Thakeen · Start free",
+      "width": 132,
+      "sources": [
+        {
+          "path": "src/app/[lang]/layout.tsx",
+          "line": 29,
+          "end_line": 48,
+          "label": "See the home page"
+        },
+        {
+          "path": "src/components/Nav.tsx",
+          "line": 75,
+          "end_line": 78,
+          "label": "Click Start free"
+        }
+      ]
+    },
+    {
+      "id": "v-signup",
+      "lane": "sees",
+      "col": 1,
+      "type": "frontend",
+      "label": "Trial starts",
+      "sublabel": "3 days · 50 credits",
+      "width": 132,
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/page.tsx",
+          "line": 20,
+          "end_line": 23,
+          "label": "Land in the app"
+        },
+        {
+          "path": "src/app/[lang]/app/layout.tsx",
+          "line": 48,
+          "label": "Trial countdown"
+        }
+      ]
+    },
+    {
+      "id": "v-confirm",
+      "lane": "sees",
+      "col": 2,
+      "type": "frontend",
+      "label": "Workspace ready",
+      "sublabel": "live build status",
+      "width": 132,
+      "sources": [
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 31,
+          "end_line": 33,
+          "label": "Watch live progress"
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 525,
+          "label": "Workspace opens"
+        }
+      ]
+    },
+    {
+      "id": "v-ask",
+      "lane": "sees",
+      "col": 3,
+      "type": "frontend",
+      "label": "Drafts pending",
+      "sublabel": "cards in inbox",
+      "width": 132,
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 32,
+          "end_line": 88,
+          "label": "Read an item card"
+        },
+        {
+          "path": "src/app/[lang]/app/page.tsx",
+          "line": 17,
+          "end_line": 30,
+          "label": "Open approval inbox"
+        }
+      ]
+    },
+    {
+      "id": "v-approve",
+      "lane": "sees",
+      "col": 4,
+      "type": "frontend",
+      "label": "Posted, results",
+      "sublabel": "reports · decisions",
+      "width": 132,
+      "sources": [
+        {
+          "path": "src/components/app/Inbox.tsx",
+          "line": 95,
+          "end_line": 122,
+          "label": "Publish to a platform"
+        },
+        {
+          "path": "src/app/[lang]/app/reports/page.tsx",
+          "line": 18,
+          "end_line": 33,
+          "label": "Open Reports"
+        }
+      ]
+    },
+    {
+      "id": "v-daily",
+      "lane": "sees",
+      "col": 5,
+      "type": "frontend",
+      "label": "Today's brief",
+      "sublabel": "bell · agenda",
+      "width": 132,
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/page.tsx",
+          "line": 17,
+          "end_line": 29,
+          "label": "Read brief in inbox"
+        },
+        {
+          "path": "src/app/[lang]/app/notifications/page.tsx",
+          "line": 10,
+          "end_line": 16,
+          "label": "Open notifications"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "p-visit-p-signup",
+      "from": "p-visit",
+      "to": "p-signup",
+      "label": "start free",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "p-signup-p-confirm",
+      "from": "p-signup",
+      "to": "p-confirm",
+      "label": "first run",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "p-confirm-p-ask",
+      "from": "p-confirm",
+      "to": "p-ask",
+      "label": "ready",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "p-ask-p-approve",
+      "from": "p-ask",
+      "to": "p-approve",
+      "label": "review",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "p-approve-p-daily",
+      "from": "p-approve",
+      "to": "p-daily",
+      "label": "next day",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "do-visit",
+      "from": "p-visit",
+      "to": "s-visit",
+      "variant": "default",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "see-visit",
+      "from": "s-visit",
+      "to": "v-visit",
+      "variant": "dashed",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "do-signup",
+      "from": "p-signup",
+      "to": "s-signup",
+      "variant": "default",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "see-signup",
+      "from": "s-signup",
+      "to": "v-signup",
+      "variant": "dashed",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "do-confirm",
+      "from": "p-confirm",
+      "to": "s-confirm",
+      "variant": "default",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "see-confirm",
+      "from": "s-confirm",
+      "to": "v-confirm",
+      "variant": "dashed",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "do-ask",
+      "from": "p-ask",
+      "to": "s-ask",
+      "variant": "default",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "see-ask",
+      "from": "s-ask",
+      "to": "v-ask",
+      "variant": "dashed",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "do-approve",
+      "from": "p-approve",
+      "to": "s-approve",
+      "variant": "default",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "see-approve",
+      "from": "s-approve",
+      "to": "v-approve",
+      "variant": "dashed",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "do-daily",
+      "from": "p-daily",
+      "to": "s-daily",
+      "variant": "default",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "see-daily",
+      "from": "s-daily",
+      "to": "v-daily",
+      "variant": "dashed",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "How to read it",
+      "items": [
+        "Top row: what the person does; middle: what the system does; bottom: what they see",
+        "Numbers on the top row (01–16) name the detailed step-by-step diagrams"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Any time (diagrams 14–16)",
+      "items": [
+        "Plan, credits, top-up packs and billing; profile and brands",
+        "Team invites, roles and referrals",
+        "Own Claude or ChatGPT over MCP; help; wishlist"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "While the model is paused",
+      "items": [
+        "Claude calls are off since 2026-09-28 (CLAUDE_PAUSED in src/lib/model.ts)",
+        "Free tools, chat, Generate and the Dictionary build answer paused before any credit moves",
+        "Still work: pages, manual brand form, inbox, to-dos, publishing, billing, team"
+      ]
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { jar, json, newUser, signIn } from "./helpers/session";
+import { vjson } from "./helpers/version";
 import { getTask, saveTask, type Task } from "@/lib/brand";
 import { getConnection, OAUTH_COOKIE, saveConnection, saveState, type Connection } from "@/lib/connectors/store";
 import { connectedTargets, targetsFor } from "@/lib/connectors/targets";
@@ -69,7 +70,7 @@ async function connectedUser(tag: string, conn = metaConn()) {
   await signIn(u.email);
   return u;
 }
-const publish = (id: string, provider: string) => publishRoute.POST(json(`/api/publish/${id}`, "POST", { provider }), { params: Promise.resolve({ id }) });
+const publish = async (id: string, provider: string) => publishRoute.POST(await vjson(`/api/publish/${id}`, "POST", { provider }), { params: Promise.resolve({ id }) });
 
 describe("connecting Meta (rule 75)", () => {
   it("asks only for the permissions of built features", () => {

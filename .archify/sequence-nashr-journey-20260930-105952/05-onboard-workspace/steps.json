@@ -1,0 +1,715 @@
+{
+  "key": "05-onboard-workspace",
+  "title": "First run: starter plan, launch path and files",
+  "person": "owner or team",
+  "steps": [
+    {
+      "id": "onboard-file-card",
+      "title": "Read a file card",
+      "surface": "/{lang}/app/chat (FileCard)",
+      "actor": "any-signed-in",
+      "action": "Clicks Expand/Collapse, Copy or 'Open in Files' on a file card in the thread.",
+      "ui_response": "Each card shows the file name, 'File' and a 'Saved' badge. Collapsed, it shows a faded preview; Expand shows the whole rendered file. Copy puts the raw markdown on the clipboard and shows 'Copied' for 1.5 s. 'Open in Files' goes to /{lang}/app/files.",
+      "system_reaction": "Client only. The model-written markdown is rendered through render() from src/lib/md.ts. The thread is chat:{scope}, so every role in the workspace sees the same cards.",
+      "branches": [],
+      "conditions": "Thread holds the files message",
+      "sources": [
+        {
+          "path": "src/components/app/OnboardCards.tsx",
+          "line": 14,
+          "end_line": 34
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 685
+        }
+      ],
+      "next": [
+        "onboard-files-view"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-rate-message",
+      "title": "Rate a Noor message",
+      "surface": "/{lang}/app/chat (thumbs under each Noor bubble)",
+      "actor": "any-signed-in",
+      "action": "Clicks thumbs up, or thumbs down and then optionally types a reason and presses Send, under one of Noor's onboarding bubbles.",
+      "ui_response": "Thumbs up highlights at once. The first thumbs-down click opens a 'What was missing? (optional)' field with a Send button; submitting it highlights the thumb. Each message can be rated once per page view.",
+      "system_reaction": "POST /api/chat/feedback {agent, value, reason, at}: session (401), allow() of 120 thumbs an hour per account (429 slow_down, read before the body), 400 bad_request for an unknown agent or value, then recordThumb(sc(u), agent, value, reason, at). The client ignores the answer.",
+      "branches": [
+        "thumbs down -> reason field first",
+        "over 120 an hour -> 429, the thumb still lights up"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 614,
+          "end_line": 620
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 691,
+          "end_line": 702
+        },
+        {
+          "path": "src/app/api/chat/feedback/route.ts",
+          "line": 8,
+          "end_line": 17
+        },
+        {
+          "path": "src/lib/rate.ts",
+          "line": 132
+        }
+      ],
+      "next": [],
+      "note": "The same control is on every agent reply in daily chat.",
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-plan-add",
+      "title": "Add a starter task",
+      "surface": "/{lang}/app/chat (PlanCard)",
+      "actor": "owner",
+      "action": "Presses 'Add task' (+) on one of the plan items, under the hint 'Tap + to add a task to your list, or start it now.'",
+      "ui_response": "The button flips at once to 'Added' with a check and is disabled. It creates no draft, no to-do and no inbox item.",
+      "system_reaction": "POST /api/onboard/plan {index, added:true}: session (401), forbid(u,'onboard') (admin or owner, 403), 404 not_found when there is no plan or no such index. It sets plan[index].added in onboardplan:{scope}. The client ignores errors, so a refused call still shows 'Added' until reload. On mount the card re-reads GET /api/onboard/plan and adopts the stored flags when the length matches. The flag is read only by the chat page: on the next full page load, the activation bar's 'First up' names the first task not yet added.",
+      "branches": [
+        "member -> 403 on the server, but the button still shows 'Added' until reload"
+      ],
+      "conditions": "Admin or owner, onboardplan exists",
+      "sources": [
+        {
+          "path": "src/components/app/OnboardCards.tsx",
+          "line": 37,
+          "end_line": 45
+        },
+        {
+          "path": "src/components/app/OnboardCards.tsx",
+          "line": 57
+        },
+        {
+          "path": "src/app/api/onboard/plan/route.ts",
+          "line": 10,
+          "end_line": 28
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 56
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 71
+        }
+      ],
+      "next": [
+        "onboard-plan-start"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-plan-start",
+      "title": "Start a task now",
+      "surface": "/{lang}/app/chat (PlanCard)",
+      "actor": "any-signed-in",
+      "action": "Presses 'Start now' on a plan item.",
+      "ui_response": "The task title and brief are sent as the person's chat message in the Getting started thread. While paused, Noor replies 'The agents are paused for now, so I can't reply or create content yet. No credits were used.' Normally Noor shows status lines and replies, with item cards when a tool drafted content. A message refused before it is saved leaves the thread and goes back into the message box: too many messages in a short time shows 'Too many messages in a short time. Wait a little, then send again; your message was not counted and is back in the message box.'; a used-up chat allowance shows 'Your message was not sent and not counted; it is back in the message box.' and opens the limit dialog. An ended trial gets a reply with a link to choose a plan and the subscription dialog. A failed turn shows 'Could not reply. Try again.' with a warning sign.",
+      "system_reaction": "POST /api/chat {text, conv:'default', agent, stream:true}: session (401), empty text gives 400. An ended trial gets 402 trial_over with limit 'trial' and a message, before anything is counted (rule 330). chatRefusal then paces the account: 30 turns an hour and 150 a day on a paid plan, 10 and 30 on a trial; over it 429 slow_down with retry 'hour' or 'day' (rule 331). reserveChatTurn counts the message against the plan's monthly chat allowance; past it 402 chat_allowance (paused) or chat_credits (continue on credits is on but the balance is too low). Only then does chat() save the user message to chat:{scope}. While paused, PAUSED_REPLY is saved, no tool runs, nothing is charged and the reserved message is given back. When unpaused, the chat turn and its tools can charge credits and raise the credits, trial or agent-cap limit dialog (chat/generation stage).",
+      "branches": [
+        "paused -> paused reply, 0 credits, message given back",
+        "429 slow_down -> message back in the box with a red note",
+        "402 chat_allowance or chat_credits -> message back in the box and the limit dialog",
+        "402 trial_over -> reply with the plan link and the subscription dialog",
+        "credits/trial/agent-cap limit -> LimitModal (next stage)"
+      ],
+      "conditions": "Signed in (every role may chat)",
+      "sources": [
+        {
+          "path": "src/components/app/OnboardCards.tsx",
+          "line": 58
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 549,
+          "end_line": 613
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 686
+        },
+        {
+          "path": "src/app/api/chat/route.ts",
+          "line": 31,
+          "end_line": 50
+        },
+        {
+          "path": "src/lib/rate.ts",
+          "line": 29,
+          "end_line": 60
+        },
+        {
+          "path": "src/lib/chat-allowance.ts",
+          "line": 76,
+          "end_line": 89
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 342,
+          "end_line": 355
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 369,
+          "end_line": 387
+        },
+        {
+          "path": "src/lib/model.ts",
+          "line": 53,
+          "end_line": 56
+        }
+      ],
+      "next": [],
+      "note": "Continues in the chat/content-generation stage.",
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-plan-skip",
+      "title": "Skip the plan card",
+      "surface": "/{lang}/app/chat (PlanCard)",
+      "actor": "any-signed-in",
+      "action": "Clicks 'Skip' under the plan.",
+      "ui_response": "The plan card hides in this view.",
+      "system_reaction": "Client only. Nothing is saved, so the card comes back on reload.",
+      "branches": [],
+      "conditions": "Plan message in the thread",
+      "sources": [
+        {
+          "path": "src/components/app/OnboardCards.tsx",
+          "line": 40
+        },
+        {
+          "path": "src/components/app/OnboardCards.tsx",
+          "line": 46
+        },
+        {
+          "path": "src/components/app/OnboardCards.tsx",
+          "line": 62
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-whatsapp",
+      "title": "Give WhatsApp number",
+      "surface": "/{lang}/app/chat (WhatsAppCard)",
+      "actor": "owner",
+      "action": "Types a WhatsApp number in 'WhatsApp number (optional)' and presses Save, or presses Later.",
+      "ui_response": "Fewer than 9 digits shows 'Invalid number' and sends no request. A successful save replaces the card with 'Number saved'. A refused save also shows 'Invalid number'. Typing again clears the error. 'Later' hides the card for this view.",
+      "system_reaction": "PUT /api/profile {phone}: session (401). It needs profile.self plus profile.account (owner only, else 403). An empty phone or one with fewer than 9 digits is refused with 400 (required, bad_phone) before any write. Under withUserLock it stores the phone (trimmed, max 30 characters) on the account record. The card renders only for owners without a phone, once onboarding has finished in this view or the thread holds a plan message and nothing is running.",
+      "branches": [
+        "<9 digits -> Invalid number",
+        "Later -> hidden until the next page load, then shown again while there is no phone"
+      ],
+      "conditions": "Owner (profile.account) without a phone",
+      "sources": [
+        {
+          "path": "src/components/app/OnboardCards.tsx",
+          "line": 68,
+          "end_line": 86
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 706
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 34
+        },
+        {
+          "path": "src/app/api/profile/route.ts",
+          "line": 112,
+          "end_line": 121
+        },
+        {
+          "path": "src/app/api/profile/route.ts",
+          "line": 132,
+          "end_line": 134
+        },
+        {
+          "path": "src/app/api/profile/route.ts",
+          "line": 166,
+          "end_line": 174
+        },
+        {
+          "path": "src/lib/roles.ts",
+          "line": 30
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-activate-bar",
+      "title": "Activate Noor bar",
+      "surface": "/{lang}/app/chat (ActivationBar) and TrialBanner (layout)",
+      "actor": "owner",
+      "action": "Clicks 'Activate Noor' in the bar above the message box, or in the trial banner.",
+      "ui_response": "Goes to /{lang}/app/billing. The banner reads 'Your trial ends in N days' (or 'Your trial has ended') with 'With Noor: a weekly plan every Sunday...'. Non-owners see 'Ask the account owner to activate.' in the banner instead of the button. The activation bar's link is shown to every role.",
+      "system_reaction": "A plain link; the billing stage takes over. The bar shows only while the plan is 'trial' and an onboarding goal exists. The banner shows only on the trial plan and is hidden on /billing, /start and /join. The owner flag is can(user,'billing').",
+      "branches": [
+        "trial over -> banner says 'Your trial has ended'"
+      ],
+      "conditions": "Plan trial",
+      "sources": [
+        {
+          "path": "src/components/app/OnboardCards.tsx",
+          "line": 89,
+          "end_line": 99
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 718
+        },
+        {
+          "path": "src/components/app/TrialBanner.tsx",
+          "line": 8,
+          "end_line": 27
+        },
+        {
+          "path": "src/app/[lang]/app/layout.tsx",
+          "line": 48
+        },
+        {
+          "path": "src/app/[lang]/app/layout.tsx",
+          "line": 60
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 71
+        }
+      ],
+      "next": [],
+      "note": "Exits to the billing stage.",
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-journey-card",
+      "title": "Launch path card",
+      "surface": "/{lang}/app/chat (compact) and /{lang}/app (full): JourneyCard",
+      "actor": "any-signed-in",
+      "action": "Reads the Launch path card and clicks 'Start' on the next step, or a milestone in the full card.",
+      "ui_response": "Header 'Launch path', 'Level: Seed' and '10 / 150 pts' (tooltip 'Points are for fun, not credits.'). Progress '1 of 7' and '1 to next level · Sapling'. Footer 'Next step · +20' with 'Switch on the brand guard' and 'Add banned words. Thakeen refuses to approve text that contains one, in code, not by promise.', and 'Start' going to /{lang}/app/onboarding#guard. The full card (inbox) lists seven milestones: brand (/files), guard (/onboarding#guard), approve (inbox), schedule (/calendar), connect (/integrations), publish (inbox), ai (/mcp). Done ones show a check, the next one its icon, the rest a lock. A '{n}-day streak' chip appears after owner decisions.",
+      "system_reaction": "loadJourney reads the brand, task rows, connections, MCP token and OAuth grants in one parallel round. computeJourney derives every milestone from real data, never from a counter. The celebration compares against localStorage 'nashr:journey:v1': a browser's first visit celebrates only 'brand', and a level change gets 'Level up: {level}'. Later the inbox fires 'nashr:milestone' after a successful approve, date or publish, so the card updates before the next server render.",
+      "branches": [
+        "all 7 done -> full card says 'Oasis reached: every launch step is done.'; the chat hides the card"
+      ],
+      "conditions": "Brand exists. The chat shows the compact card only while a milestone is open. Links for members lead to read-only pages.",
+      "sources": [
+        {
+          "path": "src/components/app/JourneyCard.tsx",
+          "line": 137,
+          "end_line": 190
+        },
+        {
+          "path": "src/components/app/JourneyCard.tsx",
+          "line": 88,
+          "end_line": 110
+        },
+        {
+          "path": "src/lib/journey.ts",
+          "line": 15,
+          "end_line": 30
+        },
+        {
+          "path": "src/lib/journey.ts",
+          "line": 59,
+          "end_line": 84
+        },
+        {
+          "path": "src/lib/journey-load.ts",
+          "line": 13,
+          "end_line": 22
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 662
+        },
+        {
+          "path": "src/components/app/Inbox.tsx",
+          "line": 203,
+          "end_line": 204
+        },
+        {
+          "path": "src/components/app/Inbox.tsx",
+          "line": 230
+        },
+        {
+          "path": "src/components/app/Inbox.tsx",
+          "line": 106
+        }
+      ],
+      "next": [
+        "onboard-guard-words"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-journey-hide",
+      "title": "Hide the path card",
+      "surface": "JourneyCard",
+      "actor": "any-signed-in",
+      "action": "Clicks the X on the card header, and later the 'Show path' pill.",
+      "ui_response": "The card collapses to a pill such as 'Seed · 1/7 · Show path'. Clicking the pill restores the card.",
+      "system_reaction": "Client only: a hidden flag in localStorage 'nashr:journey:v1' (per browser). Storage failures are ignored.",
+      "branches": [],
+      "conditions": "Brand exists",
+      "sources": [
+        {
+          "path": "src/components/app/JourneyCard.tsx",
+          "line": 45,
+          "end_line": 46
+        },
+        {
+          "path": "src/components/app/JourneyCard.tsx",
+          "line": 120
+        },
+        {
+          "path": "src/components/app/JourneyCard.tsx",
+          "line": 134
+        },
+        {
+          "path": "src/components/app/JourneyCard.tsx",
+          "line": 148
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-home-side",
+      "title": "Side panel overview",
+      "surface": "/{lang}/app/chat (HomeSide, xl screens only)",
+      "actor": "any-signed-in",
+      "action": "Looks at the right-hand panel and follows its links.",
+      "ui_response": "Metrics: tiles 'Created this week', 'Approved' and 'Waiting for you' (0 at first, each linking to the inbox), 'All' to /reports, and 'Connect analytics and ads for deeper numbers (coming soon)' to /integrations. Channels: 'No channels connected yet...' with 'Add channel' to /integrations. Scheduled tasks ('Manage' to /tasks): Weekly plan, Morning brief and Team follow-ups, each with a Live or Paused dot, next run and 'last never', and 'Run now' links to /tasks. On the account's first brand all three are Live by default. In a brand added from the Brands page, Weekly plan shows Paused until an admin or the owner switches it on in Scheduled tasks; Morning brief and Team follow-ups stay Live by default. A first unread notification shows with 'Review with the team'. Brand assets & knowledge lists up to 4 files with MM-DD dates (to /files), plus 'Complete your brand file for better accuracy' going to /onboarding.",
+      "system_reaction": "Server-rendered from the chat page's parallel reads (kpis, listConnections, getSchedule(scope), listFiles, latestBrief, first unread notification). getSchedule defaults dailyBrief and followUps on. weeklyPlan defaults on only for the default brand (scope = the account email) and off for an added brand (scope 'email#brandId'), because the Sunday plan charges credits with nobody asking. On an added brand a stored weeklyPlan counts only with a weeklyPlanSetAt stamp, which saveSchedule adds whenever a save sets weeklyPlan (only the switch, PUT /api/schedule, schedule.write: admin or owner). An unstamped stored value, including one saved before the stamp existed, even by the switch, is ignored and the default (off) applies, so it has to be switched on again. On the default brand a stored value counts as before. The panel only holds links.",
+      "branches": [
+        "no files (manual brand) -> 'No files yet. Run onboarding from your URL.'",
+        "added brand -> Weekly plan shows Paused until switched on in Scheduled tasks"
+      ],
+      "conditions": "Brand exists; xl viewport. Weekly plan default depends on the brand: on for the first brand, off for an added one.",
+      "sources": [
+        {
+          "path": "src/components/app/HomeSide.tsx",
+          "line": 47,
+          "end_line": 108
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 56
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 77
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 22,
+          "end_line": 50
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 58,
+          "end_line": 63
+        },
+        {
+          "path": "src/app/api/schedule/route.ts",
+          "line": 19,
+          "end_line": 21
+        },
+        {
+          "path": "src/app/api/schedule/route.ts",
+          "line": 35
+        }
+      ],
+      "next": [
+        "onboard-files-view",
+        "onboard-manual-form"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-inbox-first",
+      "title": "First look at inbox",
+      "surface": "/{lang}/app (Inbox)",
+      "actor": "any-signed-in",
+      "action": "Opens the home inbox for the first time.",
+      "ui_response": "Tabs 'Chat' (a link to /chat) and 'Feed' with a 'New' badge. Title 'Approval inbox' and filters Waiting (selected), Approved and Rejected, each with a count of (0), plus All without a count. Below them the full Launch path card, no brief yet, and the empty state 'Nothing waiting. Ask Noor for a first batch.' with 'Ask for a new batch' going to /{lang}/app/generate.",
+      "system_reaction": "The page redirects to /start without a brand. Otherwise one parallel round runs listTasks, latestBrief, listConnections, loadJourney (with the brand passed in) and offModels. paused = modelState() !== 'on' is passed to the media controls. The filters run in the browser.",
+      "branches": [
+        "no brand -> /{lang}/app/start"
+      ],
+      "conditions": "Brand exists",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/page.tsx",
+          "line": 17,
+          "end_line": 30
+        },
+        {
+          "path": "src/components/app/Inbox.tsx",
+          "line": 63
+        },
+        {
+          "path": "src/components/app/Inbox.tsx",
+          "line": 213,
+          "end_line": 242
+        }
+      ],
+      "next": [
+        "onboard-first-brief"
+      ],
+      "note": "Exits to generation and approval (daily use).",
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-files-view",
+      "title": "Open Files page",
+      "surface": "/{lang}/app/files (FilesPanel)",
+      "actor": "any-signed-in",
+      "action": "Opens Files (from a file card, the side panel or the brand milestone) and clicks a file in the list.",
+      "ui_response": "Title 'Files' with 'Noor's memory. She reads the core ones (brand, products, strategy, market research, preferences) on every generation. Edit anything.' The list shows each file with its date and 'written by Noor' or 'written by you'. The first file is selected, and the selected file shows as plain text on the right. An empty workspace shows 'No files yet. Run setup from your website URL.' Members see 'Only the account owner or an admin can change this.' and no Edit or Delete on core files.",
+      "system_reaction": "The page reads listFiles(scope) and has no brand redirect, so it also opens before setup. locked = CORE_FILES (brand.md, products.md, store-sales.md, performance-learnings.md, strategy.md, market-research.md, preferences.md) unless the person has files.core.write and files.core.delete (admin or owner). canImport = can('catalog.import').",
+      "branches": [
+        "no files (manual brand) -> empty text"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/files/page.tsx",
+          "line": 11,
+          "end_line": 19
+        },
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 16,
+          "end_line": 29
+        },
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 70,
+          "end_line": 97
+        },
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 98,
+          "end_line": 126
+        },
+        {
+          "path": "src/lib/files.ts",
+          "line": 114
+        }
+      ],
+      "next": [
+        "onboard-files-edit",
+        "onboard-files-new",
+        "onboard-files-delete",
+        "onboard-files-import"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-files-edit",
+      "title": "Edit a memory file",
+      "surface": "/{lang}/app/files (FilesPanel)",
+      "actor": "any-signed-in",
+      "action": "Clicks Edit, changes the text, then Save (or Cancel).",
+      "ui_response": "A textarea editor. Save closes the editor and refreshes the list, with the file now 'written by you'. A refused save keeps the editor open with the text in it and shows 'Your role does not allow this.' (403) or 'That did not work. Try again.' in red. Cancel closes without saving.",
+      "system_reaction": "PUT /api/files {name, content}: session (401). allow('files:{scope}', 60, 3600) gives 429. A Content-Length over 200 KB gives 413. A missing field gives 400. Core file names (after normalisation) need files.core.write (admin or owner). writeFile saves the file by 'user', clipped to 40,000 characters. A new name beyond 200 files gives 409 file_limit. Later agent writes never overwrite a file the owner wrote: they go to a '-imported' sibling instead.",
+      "branches": [
+        "403 -> role message",
+        "429/413/409 -> generic failure"
+      ],
+      "conditions": "Core files: admin or owner. Other files: any signed-in role.",
+      "sources": [
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 53,
+          "end_line": 60
+        },
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 103,
+          "end_line": 118
+        },
+        {
+          "path": "src/app/api/files/route.ts",
+          "line": 17,
+          "end_line": 38
+        },
+        {
+          "path": "src/lib/files.ts",
+          "line": 68,
+          "end_line": 91
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-files-new",
+      "title": "Create a new file",
+      "surface": "/{lang}/app/files (FilesPanel)",
+      "actor": "any-signed-in",
+      "action": "Types a name in 'New file' and presses '+'.",
+      "ui_response": "The file is created with a '# {typed name}' heading ('.md' is added to the name if missing) and the list refreshes. Errors show in red.",
+      "system_reaction": "Same PUT /api/files path and checks as an edit (rate limit, size, core-name role check, 200-file cap). The file is saved by 'user'.",
+      "branches": [
+        "core file name typed by a member -> 403 role message"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 93,
+          "end_line": 96
+        },
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 53,
+          "end_line": 60
+        },
+        {
+          "path": "src/app/api/files/route.ts",
+          "line": 17,
+          "end_line": 38
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-files-delete",
+      "title": "Delete a file",
+      "surface": "/{lang}/app/files (FilesPanel)",
+      "actor": "any-signed-in",
+      "action": "Clicks Delete and confirms the browser dialog 'Delete {name}?'.",
+      "ui_response": "The file disappears from the list. The right panel then shows the empty text until another file is picked. A refusal shows a red message instead.",
+      "system_reaction": "DELETE /api/files?name=: session (401), missing name gives 400. Core files need files.core.delete (admin or owner), checked after name normalisation. deleteFile removes both the record and its index entry.",
+      "branches": [
+        "cancel dialog -> nothing",
+        "403 -> role message"
+      ],
+      "conditions": "Core files: admin or owner. Other files: any signed-in role.",
+      "sources": [
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 61,
+          "end_line": 68
+        },
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 112
+        },
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 123,
+          "end_line": 125
+        },
+        {
+          "path": "src/app/api/files/route.ts",
+          "line": 39,
+          "end_line": 51
+        },
+        {
+          "path": "src/lib/files.ts",
+          "line": 92,
+          "end_line": 97
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-files-import",
+      "title": "Import store products",
+      "surface": "/{lang}/app/files (FilesPanel)",
+      "actor": "owner",
+      "action": "Presses 'Import store products'.",
+      "ui_response": "The status 'Reading sitemap and product pages…' shows, followed by raw progress codes (e.g. 'found:12', 'fetched:5'). It ends with 'Imported N', and products.md is selected. When nothing was found, on a stream error, a connection that drops before a result, or a 400, it shows 'No product pages found. Send Noor 3-5 product links in chat.' A 403 shows 'Your role does not allow this.' Members do not see the button.",
+      "system_reaction": "POST /api/catalog: session (401); forbid('catalog.import') (admin or owner). The site is the body URL or the brand's website; the button sends {}, so it is the brand website, and with none it returns 400 no_site. Over SSE it reads robots.txt and sitemap candidates (40 s budget), falling back to homepage links. It collects up to 25 product URLs and fetches them 5 at a time, all through safeFetch. It then writes products.md by noor, even when no product was found. If the owner wrote products.md by hand, the import goes to products-imported.md instead. No model call and no credits. Once products.md exists, the trial 'First up' hint under the chat message box (shown when there is no starter goal) moves on from 'Import your products from your store so Noor writes with real names and prices' to the next step.",
+      "branches": [
+        "no site on the brand -> failure text",
+        "0 products -> failure text, but a header-only products.md is still written",
+        "403 -> role message"
+      ],
+      "conditions": "Admin or owner; brand website set",
+      "sources": [
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 30,
+          "end_line": 51
+        },
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 75,
+          "end_line": 76
+        },
+        {
+          "path": "src/components/app/catalogImport.ts",
+          "line": 10,
+          "end_line": 43
+        },
+        {
+          "path": "src/app/api/catalog/route.ts",
+          "line": 9,
+          "end_line": 32
+        },
+        {
+          "path": "src/lib/catalog.ts",
+          "line": 42,
+          "end_line": 77
+        },
+        {
+          "path": "src/lib/catalog.ts",
+          "line": 97,
+          "end_line": 117
+        },
+        {
+          "path": "src/lib/files.ts",
+          "line": 74,
+          "end_line": 81
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 72,
+          "end_line": 73
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 725
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "onboard"
+    }
+  ]
+}

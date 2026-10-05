@@ -1,0 +1,70 @@
+<title>Thakeen User Journey</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Sans+Arabic:wght@400;600&family=Fraunces:opsz,wght@9..144,600&display=swap">
+<style>
+/* Layout: one column; journey stages run top to bottom as labelled groups of diagram cards */
+:root{
+  --bg:#f6f6f2;--card:#ffffff;--ink:#1c1d1a;--mute:#55574f;--line:#e1e1d9;--acc:#245a4b;--chip:#e9f1ed;
+  --display:"Fraunces",Georgia,serif;--body:"IBM Plex Sans","IBM Plex Sans Arabic",-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141513;--card:#1d1e1b;--ink:#ebebe4;--mute:#a2a49b;--line:#33352f;--acc:#7fcdb3;--chip:#1f2c27;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#141513;--card:#1d1e1b;--ink:#ebebe4;--mute:#a2a49b;--line:#33352f;--acc:#7fcdb3;--chip:#1f2c27;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--body)}
+main{max-width:1100px;margin:0 auto;padding-inline:16px;padding-block:36px 64px;display:flex;flex-direction:column;gap:8px}
+h1{font:600 34px/1.15 var(--display);margin:0;text-wrap:balance}
+.ar{font-size:17px;color:var(--mute);margin:0}
+.lead{color:var(--mute);margin:6px 0 10px;max-width:68ch}
+.lead b{color:var(--ink);font-variant-numeric:tabular-nums}
+a{color:var(--acc)}
+a:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.top{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:8px}
+.big,.card{border:1px solid var(--line);background:var(--card);color:var(--ink);text-decoration:none;border-radius:8px;min-width:0}
+.big{display:flex;flex-direction:column;gap:4px;padding:18px}
+.big b{font-size:17px}.big span{color:var(--mute);font-size:14px}
+.big:hover,.card:hover{border-color:var(--acc)}
+h2{font-size:12px;margin:26px 0 10px;color:var(--mute);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.card{display:flex;flex-direction:column;gap:4px;padding:14px}
+.num{align-self:flex-start;padding:0 7px;border-radius:5px;background:var(--chip);color:var(--acc);font-weight:600;font-size:12px;font-variant-numeric:tabular-nums}
+.t{font-weight:600}.m{color:var(--mute);font-size:13px;font-variant-numeric:tabular-nums}
+.foot{margin-top:28px;color:var(--mute);font-size:13px;max-width:72ch}
+</style>
+<main>
+<h1>Thakeen user journey</h1>
+<p class="ar" dir="rtl" lang="ar">رحلة المستخدم في ذكين، خطوة بخطوة</p>
+<p class="lead">Every step a person takes, from the first visit to daily use: what they do, how the product answers, and what the system does behind it. <b>303</b> customer steps in <b>16</b> step-by-step diagrams (<b>1,613</b> arrows), traced in the code at commit f0e7fde (code name Nashr).</p>
+<div class="top">
+<a class="big" href="00-overview/00-overview.html"><b>Start here: the journey on one page</b><span>Six stages: what the person does, what the system does, what they see</span></a>
+<a class="big" href="catalog.html"><b>Every step as a table</b><span>335 rows with links to the exact lines of code (needs repo access)</span></a>
+</div>
+<section><h2>Discover</h2><div class="grid">
+<a class="card" href="01-discover-browse/01-discover-browse.html"><span class="num">01</span><span class="t">Land and browse the website</span><span class="m">20 steps · 72 arrows</span></a>
+<a class="card" href="02-discover-act/02-discover-act.html"><span class="num">02</span><span class="t">Try tools, send forms, start</span><span class="m">18 steps · 93 arrows</span></a>
+</div></section>
+<section><h2>Join and set up</h2><div class="grid">
+<a class="card" href="03-account/03-account.html"><span class="num">03</span><span class="t">Sign up, sign in and join a team</span><span class="m">22 steps · 106 arrows</span></a>
+<a class="card" href="04-onboard-build/04-onboard-build.html"><span class="num">04</span><span class="t">The Dictionary: confirm the site and build the workspace</span><span class="m">18 steps · 102 arrows</span></a>
+<a class="card" href="05-onboard-workspace/05-onboard-workspace.html"><span class="num">05</span><span class="t">Starter plan, launch path and files</span><span class="m">16 steps · 80 arrows</span></a>
+</div></section>
+<section><h2>Create</h2><div class="grid">
+<a class="card" href="06-create-chat/06-create-chat.html"><span class="num">06</span><span class="t">Chat with the agents</span><span class="m">29 steps · 156 arrows</span></a>
+<a class="card" href="07-create-more/07-create-more.html"><span class="num">07</span><span class="t">Brand facts, threads, Generate, inspiration, calendar</span><span class="m">14 steps · 76 arrows</span></a>
+</div></section>
+<section><h2>Review and publish</h2><div class="grid">
+<a class="card" href="08-review-inbox/08-review-inbox.html"><span class="num">08</span><span class="t">The approval inbox</span><span class="m">23 steps · 89 arrows</span></a>
+<a class="card" href="09-review-media/09-review-media.html"><span class="num">09</span><span class="t">Images, video and slides</span><span class="m">10 steps · 55 arrows</span></a>
+<a class="card" href="10-connect-publish/10-connect-publish.html"><span class="num">10</span><span class="t">Connect platforms and post</span><span class="m">13 steps · 80 arrows</span></a>
+</div></section>
+<section><h2>Every day</h2><div class="grid">
+<a class="card" href="11-daily-morning/11-daily-morning.html"><span class="num">11</span><span class="t">Morning jobs, brief, bell and email</span><span class="m">21 steps · 88 arrows</span></a>
+<a class="card" href="12-daily-todos/12-daily-todos.html"><span class="num">12</span><span class="t">To-dos with Reem and the schedule</span><span class="m">28 steps · 207 arrows</span></a>
+<a class="card" href="13-daily-results/13-daily-results.html"><span class="num">13</span><span class="t">Reports, results and governance</span><span class="m">16 steps · 96 arrows</span></a>
+</div></section>
+<section><h2>Manage any time</h2><div class="grid">
+<a class="card" href="14-manage-account/14-manage-account.html"><span class="num">14</span><span class="t">Plan, credits, top-ups, profile and brands</span><span class="m">27 steps · 129 arrows</span></a>
+<a class="card" href="15-manage-team/15-manage-team.html"><span class="num">15</span><span class="t">Team members and referrals</span><span class="m">14 steps · 98 arrows</span></a>
+<a class="card" href="16-manage-mcp-help/16-manage-mcp-help.html"><span class="num">16</span><span class="t">Own AI assistant (MCP), help and wishlist</span><span class="m">14 steps · 86 arrows</span></a>
+</div></section>
+<p class="foot">Model calls are paused in this build, so the diagrams show both what the person sees while the model is off and what happens when it is on. Code links open the private GitHub repository and need access to it. Diagrams made with Archify.</p>
+</main>

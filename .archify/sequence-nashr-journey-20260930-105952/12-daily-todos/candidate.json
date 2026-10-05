@@ -1,0 +1,2043 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Every day: to-dos with Reem and the schedule",
+    "output": ".archify/sequence-nashr-journey-20260930-105952/12-daily-todos/12-daily-todos.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "repository": {
+      "url": "https://github.com/iAbulkhair/Nashr.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "f0e7fdecf7d70d8c60ba76650f22440433926add"
+    }
+  },
+  "participants": [
+    {
+      "id": "person",
+      "type": "external",
+      "label": "Person",
+      "sublabel": "owner or team",
+      "sources": [
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 84
+        },
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 207,
+          "end_line": 215
+        },
+        {
+          "path": "src/components/app/TasksPanel.tsx",
+          "line": 81,
+          "end_line": 100
+        }
+      ]
+    },
+    {
+      "id": "page",
+      "type": "frontend",
+      "label": "Browser page",
+      "sublabel": "what they see",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/todo/page.tsx",
+          "line": 41,
+          "end_line": 75
+        },
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 258,
+          "end_line": 317
+        },
+        {
+          "path": "src/components/app/TasksPanel.tsx",
+          "line": 15,
+          "end_line": 51
+        }
+      ]
+    },
+    {
+      "id": "checks",
+      "type": "security",
+      "label": "Checks in code",
+      "sublabel": "auth · roles · limits",
+      "sources": [
+        {
+          "path": "src/app/api/secretary/[id]/route.ts",
+          "line": 19,
+          "end_line": 42
+        },
+        {
+          "path": "src/lib/roles.ts",
+          "line": 76
+        },
+        {
+          "path": "src/lib/rate.ts",
+          "line": 40,
+          "end_line": 43
+        }
+      ]
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "Nashr server",
+      "sublabel": "API routes",
+      "sources": [
+        {
+          "path": "src/app/api/secretary/route.ts",
+          "line": 30,
+          "end_line": 40
+        },
+        {
+          "path": "src/app/api/chat/route.ts",
+          "line": 31,
+          "end_line": 50
+        },
+        {
+          "path": "src/app/api/schedule/route.ts",
+          "line": 38,
+          "end_line": 48
+        }
+      ]
+    },
+    {
+      "id": "agents",
+      "type": "backend",
+      "label": "AI agents",
+      "sublabel": "model paused now",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 363,
+          "end_line": 387
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 1565,
+          "end_line": 1668
+        },
+        {
+          "path": "src/lib/model.ts",
+          "line": 15,
+          "end_line": 34
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "account data",
+      "sources": [
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 361,
+          "end_line": 430
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 703,
+          "end_line": 707
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 58,
+          "end_line": 63
+        }
+      ]
+    },
+    {
+      "id": "cron",
+      "type": "cloud",
+      "label": "Scheduled jobs",
+      "sublabel": "Vercel cron",
+      "sources": [
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 163,
+          "end_line": 185
+        },
+        {
+          "path": "src/app/api/cron/secretary/route.ts",
+          "line": 48,
+          "end_line": 72
+        },
+        {
+          "path": "src/app/api/cron/evening/route.ts",
+          "line": 23,
+          "end_line": 47
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 1808,
+      "label": "See and add"
+    },
+    {
+      "from": 1832,
+      "to": 3258,
+      "label": "Work a row"
+    },
+    {
+      "from": 3282,
+      "to": 4906,
+      "label": "Reminders and repeats"
+    },
+    {
+      "from": 4930,
+      "to": 5416,
+      "label": "Agent claims"
+    },
+    {
+      "from": 5440,
+      "to": 6402,
+      "label": "Delete and clean up"
+    },
+    {
+      "from": 6426,
+      "to": 7006,
+      "label": "Away and working days"
+    },
+    {
+      "from": 7030,
+      "to": 7908,
+      "label": "Scheduled tasks"
+    },
+    {
+      "from": 7932,
+      "to": 8808,
+      "label": "Run now, routines"
+    }
+  ],
+  "messages": [
+    {
+      "id": "daily-todo-open--do",
+      "from": "person",
+      "to": "page",
+      "label": "Click My to-dos",
+      "variant": "emphasis",
+      "note": "Or open a Reem overdue notification. Signed in; no brand needed",
+      "y": 184
+    },
+    {
+      "id": "daily-todo-open--render",
+      "from": "page",
+      "to": "server",
+      "label": "render /app/todo (todoPage)",
+      "variant": "emphasis",
+      "y": 230
+    },
+    {
+      "id": "daily-todo-open--agenda",
+      "from": "server",
+      "to": "store",
+      "label": "agendaFor: classify at render time",
+      "variant": "default",
+      "note": "Chase clock, snoozes, quiet days and absences",
+      "y": 260
+    },
+    {
+      "id": "daily-todo-open--autoclose",
+      "from": "server",
+      "to": "store",
+      "label": "auto-close approved-linked items",
+      "variant": "dashed",
+      "note": "Under the item lock; audit actor 'rule'",
+      "y": 306
+    },
+    {
+      "id": "daily-todo-open--lists",
+      "from": "server",
+      "to": "store",
+      "label": "done + deleted lists, linked facts",
+      "variant": "default",
+      "note": "Free, no model call",
+      "y": 352
+    },
+    {
+      "id": "daily-todo-open--sections",
+      "from": "server",
+      "to": "page",
+      "label": "sections, away and calendar panels",
+      "variant": "return",
+      "y": 398
+    },
+    {
+      "id": "daily-todo-open--panels",
+      "from": "page",
+      "to": "person",
+      "label": "Away and Working days panels",
+      "variant": "return",
+      "note": "Below the list, with the add form and the reminder note",
+      "y": 428
+    },
+    {
+      "id": "daily-todo-open--see",
+      "from": "page",
+      "to": "person",
+      "label": "Agenda in the brand's time zone",
+      "variant": "return",
+      "note": "9 sections, e.g. Overdue, Today, Needs your confirmation, Waiting on others; row buttons by role",
+      "y": 474
+    },
+    {
+      "id": "daily-todo-open--empty",
+      "from": "page",
+      "to": "person",
+      "label": "Empty text, or inbox banner",
+      "variant": "return",
+      "note": "'Your list is empty…' or 'N items waiting for your approval'",
+      "y": 520
+    },
+    {
+      "id": "daily-todo-add--do",
+      "from": "person",
+      "to": "page",
+      "label": "Fill the add form, click Add",
+      "variant": "emphasis",
+      "note": "What? (up to 200 chars), Due, Who owes it?, optional Reminder, WhatsApp number, repeat",
+      "y": 574
+    },
+    {
+      "id": "daily-todo-add--post",
+      "from": "page",
+      "to": "server",
+      "label": "POST /api/secretary",
+      "variant": "emphasis",
+      "y": 620
+    },
+    {
+      "id": "daily-todo-add--auth",
+      "from": "server",
+      "to": "checks",
+      "label": "session 401; forbid('todo.write')",
+      "variant": "security",
+      "note": "Every role passes",
+      "y": 650
+    },
+    {
+      "id": "daily-todo-add--limits",
+      "from": "server",
+      "to": "checks",
+      "label": "createItem: fields and limits",
+      "variant": "security",
+      "note": "200 new a day per account (429); 500 open per brand (409); a phone is written in the app only",
+      "y": 696
+    },
+    {
+      "id": "daily-todo-add--save",
+      "from": "server",
+      "to": "store",
+      "label": "item, index moves, audit line",
+      "variant": "dashed",
+      "note": "One round, with the reminder index. 'Someone owes me' without a date: expectBy 2 working days",
+      "y": 742
+    },
+    {
+      "id": "daily-todo-add--ok",
+      "from": "server",
+      "to": "page",
+      "label": "item created",
+      "variant": "return",
+      "y": 788
+    },
+    {
+      "id": "daily-todo-add--see",
+      "from": "page",
+      "to": "person",
+      "label": "Item in its section; form clears",
+      "variant": "return",
+      "y": 818
+    },
+    {
+      "id": "daily-todo-add--refused",
+      "from": "page",
+      "to": "person",
+      "label": "Error under the form",
+      "variant": "security",
+      "note": "'Write a title.', 'You reached today's limit for new items.', 'The list is full…'",
+      "y": 848
+    },
+    {
+      "id": "daily-todo-reem-chat--do",
+      "from": "person",
+      "to": "page",
+      "label": "Ask Reem in chat",
+      "variant": "emphasis",
+      "note": "e.g. 'add: call the supplier Thursday 10am' or 'what is overdue?'",
+      "y": 902
+    },
+    {
+      "id": "daily-todo-reem-chat--post",
+      "from": "page",
+      "to": "server",
+      "label": "POST /api/chat",
+      "variant": "emphasis",
+      "y": 948
+    },
+    {
+      "id": "daily-todo-reem-chat--rate",
+      "from": "server",
+      "to": "checks",
+      "label": "trial, allowance, hourly caps",
+      "variant": "security",
+      "note": "Paid 30 an hour, 150 a day; trial 10 and 30. Trial over 402; too fast 429 slow_down; no allowance or credits 402",
+      "y": 978
+    },
+    {
+      "id": "daily-todo-reem-chat--refuse",
+      "from": "server",
+      "to": "page",
+      "label": "402 trial_over, chat_allowance, chat_credits",
+      "variant": "security",
+      "note": "Checked in code before any model call; the allowance count is given back when the turn is paused or fails",
+      "y": 1024
+    },
+    {
+      "id": "daily-todo-reem-chat--msg",
+      "from": "server",
+      "to": "store",
+      "label": "store the user's message first",
+      "variant": "dashed",
+      "y": 1070
+    },
+    {
+      "id": "daily-todo-reem-chat--paused",
+      "from": "server",
+      "to": "store",
+      "label": "paused now: store PAUSED_REPLY",
+      "variant": "dashed",
+      "note": "modelState() is not 'on': no tool runs, no credits",
+      "y": 1100
+    },
+    {
+      "id": "daily-todo-reem-chat--model",
+      "from": "server",
+      "to": "agents",
+      "label": "when on: model + to-do tools",
+      "variant": "default",
+      "note": "agenda_get, agenda_next, todo_create, todo_update, todo_propose_done",
+      "y": 1146
+    },
+    {
+      "id": "daily-todo-reem-chat--tools",
+      "from": "agents",
+      "to": "server",
+      "label": "tool calls via runSecretaryTool",
+      "variant": "return",
+      "note": "600 writes an hour; only Reem or MCP set a repeat; never close, delete or restore",
+      "y": 1192
+    },
+    {
+      "id": "daily-todo-reem-chat--write",
+      "from": "server",
+      "to": "store",
+      "label": "save item or proposed done",
+      "variant": "dashed",
+      "note": "Links only at creation, only to a pending inbox item. MCP: same tools, source 'mcp'",
+      "y": 1238
+    },
+    {
+      "id": "daily-todo-reem-chat--reply",
+      "from": "server",
+      "to": "page",
+      "label": "reply (the paused reply now)",
+      "variant": "return",
+      "y": 1284
+    },
+    {
+      "id": "daily-todo-reem-chat--see",
+      "from": "page",
+      "to": "person",
+      "label": "Paused reply; no to-do written",
+      "variant": "return",
+      "note": "'The agents are paused…' When on: reads back the date; a done is only proposed",
+      "y": 1314
+    },
+    {
+      "id": "daily-todo-reem-chat--slow",
+      "from": "page",
+      "to": "person",
+      "label": "Refused: notice, message kept",
+      "variant": "security",
+      "note": "Too fast: message goes back into the box. Trial over: notice in the thread. Failure: 'Could not reply.'",
+      "y": 1360
+    },
+    {
+      "id": "daily-todo-walk--do",
+      "from": "person",
+      "to": "page",
+      "label": "Click Walk me through",
+      "variant": "emphasis",
+      "note": "Any role; 'Next' or 'End the walk' to leave",
+      "y": 1414
+    },
+    {
+      "id": "daily-todo-walk--get",
+      "from": "page",
+      "to": "server",
+      "label": "GET /api/secretary/walk",
+      "variant": "emphasis",
+      "y": 1460
+    },
+    {
+      "id": "daily-todo-walk--auth",
+      "from": "server",
+      "to": "checks",
+      "label": "401, read, 600 reads an hour",
+      "variant": "security",
+      "note": "Card buttons are filtered by role",
+      "y": 1490
+    },
+    {
+      "id": "daily-todo-walk--read",
+      "from": "server",
+      "to": "store",
+      "label": "agenda + pending approvals (max 50)",
+      "variant": "default",
+      "note": "Free, no model call",
+      "y": 1536
+    },
+    {
+      "id": "daily-todo-walk--card",
+      "from": "server",
+      "to": "page",
+      "label": "next card and 'N left'",
+      "variant": "return",
+      "y": 1582,
+      "note": "Buttons by role: Done, Tomorrow 9 AM, Followed up, Yes, it's done, Not yet, Approve, Open in the inbox"
+    },
+    {
+      "id": "daily-todo-walk--see",
+      "from": "page",
+      "to": "person",
+      "label": "Next card, in priority order",
+      "variant": "return",
+      "note": "Confirm, overdue, today, chase, then approvals oldest first",
+      "y": 1612
+    },
+    {
+      "id": "daily-todo-walk--next",
+      "from": "page",
+      "to": "server",
+      "label": "POST {action:'next', key}",
+      "variant": "default",
+      "note": "todo.write; 600 writes an hour",
+      "y": 1658
+    },
+    {
+      "id": "daily-todo-walk--skip",
+      "from": "server",
+      "to": "store",
+      "label": "remember the skip for 3 hours",
+      "variant": "dashed",
+      "note": "The item itself is not changed",
+      "y": 1704
+    },
+    {
+      "id": "daily-todo-walk--approve",
+      "from": "page",
+      "to": "server",
+      "label": "PATCH /api/tasks/{id} (Approve)",
+      "variant": "default",
+      "note": "The inbox's own checks apply",
+      "y": 1750
+    },
+    {
+      "id": "daily-todo-walk--empty",
+      "from": "page",
+      "to": "person",
+      "label": "'Nothing waiting now'",
+      "variant": "return",
+      "y": 1796
+    },
+    {
+      "id": "daily-todo-done--do",
+      "from": "person",
+      "to": "page",
+      "label": "Done, write result, Close it",
+      "variant": "emphasis",
+      "note": "Owner or admin. Empty result: 'Write what was done to close it.'",
+      "y": 1858
+    },
+    {
+      "id": "daily-todo-done--patch",
+      "from": "page",
+      "to": "server",
+      "label": "PATCH /api/secretary/{id}",
+      "variant": "emphasis",
+      "note": "{action:'complete', result, rev}",
+      "y": 1904
+    },
+    {
+      "id": "daily-todo-done--auth",
+      "from": "server",
+      "to": "checks",
+      "label": "401, todo.write, id (404)",
+      "variant": "security",
+      "note": "Over 600 writes an hour: 429, shown as 'You reached today's limit…'",
+      "y": 1950
+    },
+    {
+      "id": "daily-todo-done--role",
+      "from": "server",
+      "to": "checks",
+      "label": "result (400), todo.close (403)",
+      "variant": "security",
+      "note": "OWNER_ONLY plus can('todo.close')",
+      "y": 1996
+    },
+    {
+      "id": "daily-todo-done--lock",
+      "from": "server",
+      "to": "store",
+      "label": "changeItem under the item lock",
+      "variant": "dashed",
+      "note": "503 lock_timeout; 409 on rev mismatch. Sets result, completedAt, audit line; a repeating item opens its next copy",
+      "y": 2042
+    },
+    {
+      "id": "daily-todo-done--ok",
+      "from": "server",
+      "to": "page",
+      "label": "item closed",
+      "variant": "return",
+      "y": 2088
+    },
+    {
+      "id": "daily-todo-done--next",
+      "from": "server",
+      "to": "store",
+      "label": "spawn next copy (repeating items)",
+      "variant": "dashed",
+      "note": "sec:spawn claim, 2-day TTL; done, confirm, skip and auto-close all do this",
+      "y": 2118
+    },
+    {
+      "id": "daily-todo-done--see",
+      "from": "page",
+      "to": "person",
+      "label": "Row moves to Done recently",
+      "variant": "return",
+      "y": 2164
+    },
+    {
+      "id": "daily-todo-done--conflict",
+      "from": "page",
+      "to": "person",
+      "label": "Conflict: page refreshed",
+      "variant": "return",
+      "note": "'It just changed; the page was refreshed.'",
+      "y": 2194
+    },
+    {
+      "id": "daily-todo-snooze--do",
+      "from": "person",
+      "to": "page",
+      "label": "Snooze: 2 h, 8 PM, 9 AM, next week",
+      "variant": "default",
+      "note": "Brand's local time; 'Tonight 8 PM' only while still ahead",
+      "y": 2248
+    },
+    {
+      "id": "daily-todo-snooze--patch",
+      "from": "page",
+      "to": "server",
+      "label": "PATCH {action:'snooze', preset}",
+      "variant": "default",
+      "y": 2294
+    },
+    {
+      "id": "daily-todo-snooze--save",
+      "from": "server",
+      "to": "store",
+      "label": "set snoozeUntil (brand zone)",
+      "variant": "dashed",
+      "y": 2324
+    },
+    {
+      "id": "daily-todo-snooze--ok",
+      "from": "server",
+      "to": "page",
+      "label": "snoozed",
+      "variant": "return",
+      "y": 2354
+    },
+    {
+      "id": "daily-todo-snooze--see",
+      "from": "page",
+      "to": "person",
+      "label": "Row leaves; Snoozed count +1",
+      "variant": "return",
+      "note": "A proposed done still shows under 'Needs your confirmation'",
+      "y": 2384
+    },
+    {
+      "id": "daily-todo-snooze--past",
+      "from": "page",
+      "to": "person",
+      "label": "'That time has passed.'",
+      "variant": "return",
+      "y": 2430
+    },
+    {
+      "id": "daily-todo-reschedule--do",
+      "from": "person",
+      "to": "page",
+      "label": "Reschedule: edit date, Save",
+      "variant": "default",
+      "note": "An empty field clears the date",
+      "y": 2468
+    },
+    {
+      "id": "daily-todo-reschedule--patch",
+      "from": "page",
+      "to": "server",
+      "label": "PATCH {action:'reschedule'}",
+      "variant": "default",
+      "y": 2514
+    },
+    {
+      "id": "daily-todo-reschedule--save",
+      "from": "server",
+      "to": "store",
+      "label": "parseWhen; new due ends snooze",
+      "variant": "dashed",
+      "note": "parseWhen; new due ends snooze. A repeating item moves this copy only",
+      "y": 2544
+    },
+    {
+      "id": "daily-todo-reschedule--ok",
+      "from": "server",
+      "to": "page",
+      "label": "rescheduled",
+      "variant": "return",
+      "y": 2590
+    },
+    {
+      "id": "daily-todo-reschedule--see",
+      "from": "page",
+      "to": "person",
+      "label": "Row moves to its new section",
+      "variant": "return",
+      "note": "Date cleared: No due date, or back on the chase clock",
+      "y": 2620
+    },
+    {
+      "id": "daily-todo-reschedule--bad",
+      "from": "page",
+      "to": "person",
+      "label": "Bad date: error text",
+      "variant": "return",
+      "note": "'That date was not understood.' or 'too far back or ahead.'",
+      "y": 2666
+    },
+    {
+      "id": "daily-todo-chased--do",
+      "from": "person",
+      "to": "page",
+      "label": "Click Followed up",
+      "variant": "default",
+      "note": "Only on items someone else owes",
+      "y": 2720
+    },
+    {
+      "id": "daily-todo-chased--patch",
+      "from": "page",
+      "to": "server",
+      "label": "PATCH {action:'chased'}",
+      "variant": "default",
+      "y": 2766
+    },
+    {
+      "id": "daily-todo-chased--save",
+      "from": "server",
+      "to": "store",
+      "label": "lastChasedAt, note, audit 'chased'",
+      "variant": "dashed",
+      "note": "Chase clock restarts; this never closes the item",
+      "y": 2796
+    },
+    {
+      "id": "daily-todo-chased--ok",
+      "from": "server",
+      "to": "page",
+      "label": "follow-up recorded",
+      "variant": "return",
+      "y": 2842
+    },
+    {
+      "id": "daily-todo-chased--see",
+      "from": "page",
+      "to": "person",
+      "label": "'Followed up' note, Last follow-up",
+      "variant": "return",
+      "note": "Moves to 'Waiting on others' until 2 working days pass, never before due",
+      "y": 2872
+    },
+    {
+      "id": "daily-todo-chased--theirs",
+      "from": "page",
+      "to": "person",
+      "label": "Own item: 409 not_theirs",
+      "variant": "return",
+      "note": "'Only something another person owes you can be followed up.'",
+      "y": 2918
+    },
+    {
+      "id": "daily-todo-phone-whatsapp--do",
+      "from": "person",
+      "to": "page",
+      "label": "'WhatsApp number': type it, Save",
+      "variant": "default",
+      "note": "Item someone else owes; country code needed",
+      "y": 2972
+    },
+    {
+      "id": "daily-todo-phone-whatsapp--patch",
+      "from": "page",
+      "to": "server",
+      "label": "PATCH {phone}",
+      "variant": "default",
+      "y": 3018
+    },
+    {
+      "id": "daily-todo-phone-whatsapp--checks",
+      "from": "server",
+      "to": "checks",
+      "label": "bad_phone 400; owner_only 403",
+      "variant": "security",
+      "note": "Digits only, 8 to 15, no leading zero; chat and MCP cannot write a phone",
+      "y": 3048
+    },
+    {
+      "id": "daily-todo-phone-whatsapp--save",
+      "from": "server",
+      "to": "store",
+      "label": "phone on the item, audit line",
+      "variant": "dashed",
+      "y": 3094
+    },
+    {
+      "id": "daily-todo-phone-whatsapp--ok",
+      "from": "server",
+      "to": "page",
+      "label": "saved",
+      "variant": "return",
+      "y": 3124
+    },
+    {
+      "id": "daily-todo-phone-whatsapp--see",
+      "from": "page",
+      "to": "person",
+      "label": "'Follow up on WhatsApp' opens a ready message",
+      "variant": "return",
+      "note": "Shown once a valid number is saved. The app sends nothing",
+      "y": 3154
+    },
+    {
+      "id": "daily-todo-phone-whatsapp--chased",
+      "from": "page",
+      "to": "server",
+      "label": "PATCH {action:'chased'} (keepalive)",
+      "variant": "default",
+      "note": "Records the follow-up; the wait starts again",
+      "y": 3200
+    },
+    {
+      "id": "daily-todo-phone-whatsapp--bad",
+      "from": "page",
+      "to": "person",
+      "label": "bad_phone: country code needed",
+      "variant": "security",
+      "y": 3246,
+      "note": "'Enter the number with the country code, e.g. 9665…'"
+    },
+    {
+      "id": "daily-todo-remind--do",
+      "from": "person",
+      "to": "page",
+      "label": "Reminder: pick a time, Save",
+      "variant": "default",
+      "note": "Or on the add form, or ask Reem",
+      "y": 3308
+    },
+    {
+      "id": "daily-todo-remind--patch",
+      "from": "page",
+      "to": "server",
+      "label": "PATCH {remindAt}",
+      "variant": "default",
+      "y": 3354
+    },
+    {
+      "id": "daily-todo-remind--auth",
+      "from": "server",
+      "to": "checks",
+      "label": "401, todo.write, remind_past",
+      "variant": "security",
+      "note": "Date only means 08:00; a past time is refused",
+      "y": 3384
+    },
+    {
+      "id": "daily-todo-remind--save",
+      "from": "server",
+      "to": "store",
+      "label": "remindAt, sec:due and duescopes",
+      "variant": "dashed",
+      "note": "Cleared reminder: removed from the index",
+      "y": 3430
+    },
+    {
+      "id": "daily-todo-remind--ok",
+      "from": "server",
+      "to": "page",
+      "label": "saved",
+      "variant": "return",
+      "y": 3476
+    },
+    {
+      "id": "daily-todo-remind--see",
+      "from": "page",
+      "to": "person",
+      "label": "'Reminder: {when}' on the row",
+      "variant": "return",
+      "note": "Ticker not running: it arrives with the next morning brief after that ({brief})",
+      "y": 3506
+    },
+    {
+      "id": "daily-todo-remind--past",
+      "from": "page",
+      "to": "person",
+      "label": "'That reminder time has passed.'",
+      "variant": "security",
+      "y": 3552
+    },
+    {
+      "id": "daily-todo-remind-fire--tick",
+      "from": "cron",
+      "to": "server",
+      "label": "QStash tick every 15 minutes",
+      "variant": "dashed",
+      "note": "/api/cron/secretary, QStash-signed or with the CRON_SECRET bearer",
+      "y": 3590
+    },
+    {
+      "id": "daily-todo-remind-fire--mark",
+      "from": "server",
+      "to": "store",
+      "label": "sec:tick marker (QStash tick only)",
+      "variant": "dashed",
+      "note": "Reminders count as timed while it is under an hour old",
+      "y": 3636
+    },
+    {
+      "id": "daily-todo-remind-fire--due",
+      "from": "server",
+      "to": "store",
+      "label": "read sec:due for due reminders",
+      "variant": "default",
+      "y": 3682,
+      "note": "330-second lease per due id, taken before firing"
+    },
+    {
+      "id": "daily-todo-remind-fire--hold",
+      "from": "server",
+      "to": "checks",
+      "label": "suspended or archived: hold 6 hours",
+      "variant": "security",
+      "note": "Nothing is sent for them",
+      "y": 3712
+    },
+    {
+      "id": "daily-todo-remind-fire--bell",
+      "from": "server",
+      "to": "store",
+      "label": "bell 'Reminder: «title»'",
+      "variant": "dashed",
+      "note": "Fingerprint todo-remind: a retry never doubles it",
+      "y": 3758
+    },
+    {
+      "id": "daily-todo-remind-fire--mail",
+      "from": "server",
+      "to": "person",
+      "label": "email 'Reminder from Reem: {title}' if the bell was new",
+      "variant": "dashed",
+      "note": "Needs RESEND_API_KEY; skipped when the preference is 'none'",
+      "y": 3804
+    },
+    {
+      "id": "daily-todo-remind-fire--clear",
+      "from": "server",
+      "to": "store",
+      "label": "clear remindAt, add a 'reminded' note",
+      "variant": "dashed",
+      "y": 3850,
+      "note": "Under the item's lock"
+    },
+    {
+      "id": "daily-todo-remind-fire--fallback",
+      "from": "cron",
+      "to": "server",
+      "label": "daily 05:00 sweep if the ticker is down",
+      "variant": "dashed",
+      "note": "60-second budget; sends missed reminders late",
+      "y": 3880
+    },
+    {
+      "id": "daily-todo-remind-fire--see",
+      "from": "page",
+      "to": "person",
+      "label": "Bell and email at the time",
+      "variant": "return",
+      "y": 3926
+    },
+    {
+      "id": "daily-todo-repeat--do",
+      "from": "person",
+      "to": "page",
+      "label": "Repeat: choose the rule, Save",
+      "variant": "default",
+      "note": "Unit, interval, days, end, count, remind before",
+      "y": 3964
+    },
+    {
+      "id": "daily-todo-repeat--patch",
+      "from": "page",
+      "to": "server",
+      "label": "PATCH {repeat}",
+      "variant": "default",
+      "y": 4010
+    },
+    {
+      "id": "daily-todo-repeat--gate",
+      "from": "server",
+      "to": "checks",
+      "label": "needs a due date; agents refused",
+      "variant": "security",
+      "note": "In chat only Reem or MCP set a repeat; an agent's own item never repeats",
+      "y": 4040
+    },
+    {
+      "id": "daily-todo-repeat--save",
+      "from": "server",
+      "to": "store",
+      "label": "rule and series id on the item",
+      "variant": "dashed",
+      "note": "No copies are made ahead",
+      "y": 4086
+    },
+    {
+      "id": "daily-todo-repeat--ok",
+      "from": "server",
+      "to": "page",
+      "label": "rule saved",
+      "variant": "return",
+      "y": 4132
+    },
+    {
+      "id": "daily-todo-repeat--see",
+      "from": "page",
+      "to": "person",
+      "label": "Row shows the rule",
+      "variant": "return",
+      "note": "The next copy opens when this one is closed",
+      "y": 4162
+    },
+    {
+      "id": "daily-todo-repeat--spawn",
+      "from": "server",
+      "to": "store",
+      "label": "on close: next copy at the next date",
+      "variant": "dashed",
+      "note": "sec:spawn claim, 2-day TTL; ends at until or count",
+      "y": 4208
+    },
+    {
+      "id": "daily-todo-repeat--bad",
+      "from": "page",
+      "to": "person",
+      "label": "'repeat needs a due date' error",
+      "variant": "security",
+      "y": 4254
+    },
+    {
+      "id": "daily-todo-skip-stop--do",
+      "from": "person",
+      "to": "page",
+      "label": "Click Skip or Stop repeat",
+      "variant": "default",
+      "note": "Skip is owner or admin; Stop repeat any role",
+      "y": 4292
+    },
+    {
+      "id": "daily-todo-skip-stop--patch",
+      "from": "page",
+      "to": "server",
+      "label": "PATCH {action:'skip'|'stop_repeat'}",
+      "variant": "default",
+      "y": 4338
+    },
+    {
+      "id": "daily-todo-skip-stop--role",
+      "from": "server",
+      "to": "checks",
+      "label": "skip: todo.close (403); needs a rule",
+      "variant": "security",
+      "note": "Stop repeat: todo.write; bad_action without a rule",
+      "y": 4368
+    },
+    {
+      "id": "daily-todo-skip-stop--save",
+      "from": "server",
+      "to": "store",
+      "label": "skip closes the copy; stop clears the rule",
+      "variant": "dashed",
+      "note": "Under the item lock; skip opens the next copy; the series id stays",
+      "y": 4414
+    },
+    {
+      "id": "daily-todo-skip-stop--ok",
+      "from": "server",
+      "to": "page",
+      "label": "done",
+      "variant": "return",
+      "y": 4460
+    },
+    {
+      "id": "daily-todo-skip-stop--see",
+      "from": "page",
+      "to": "person",
+      "label": "'Skipped this time' in Done, or rule gone",
+      "variant": "return",
+      "y": 4490
+    },
+    {
+      "id": "daily-todo-series--do",
+      "from": "person",
+      "to": "page",
+      "label": "Click History on a closed copy",
+      "variant": "default",
+      "note": "Opens /todo?series=id",
+      "y": 4528
+    },
+    {
+      "id": "daily-todo-series--get",
+      "from": "page",
+      "to": "server",
+      "label": "render /app/todo?series=id",
+      "variant": "default",
+      "y": 4574
+    },
+    {
+      "id": "daily-todo-series--read",
+      "from": "server",
+      "to": "store",
+      "label": "seriesRows for this scope",
+      "variant": "default",
+      "note": "Never another account's series",
+      "y": 4604
+    },
+    {
+      "id": "daily-todo-series--see",
+      "from": "page",
+      "to": "person",
+      "label": "closed copies, 'Closed by'",
+      "variant": "return",
+      "note": "Latest only, with 'N of M'; unknown series: not found text",
+      "y": 4650
+    },
+    {
+      "id": "daily-todo-series--keep",
+      "from": "page",
+      "to": "server",
+      "label": "PUT .../keep {keep}",
+      "variant": "default",
+      "y": 4696
+    },
+    {
+      "id": "daily-todo-series--auth",
+      "from": "server",
+      "to": "checks",
+      "label": "todo.write; keep off needs todo.close; 500 kept",
+      "variant": "security",
+      "note": "SERIES_ID; keep_limit 409 ('…kept series: 500. Release some first.'); unknown series 404",
+      "y": 4726
+    },
+    {
+      "id": "daily-todo-series--kept",
+      "from": "server",
+      "to": "store",
+      "label": "move copies in or out of the purge list",
+      "variant": "dashed",
+      "y": 4772
+    },
+    {
+      "id": "daily-todo-series--csv",
+      "from": "page",
+      "to": "server",
+      "label": "GET .../export",
+      "variant": "default",
+      "note": "Up to 5000 rows, every cell through csvSafe",
+      "y": 4802
+    },
+    {
+      "id": "daily-todo-series--file",
+      "from": "server",
+      "to": "page",
+      "label": "CSV file with a BOM",
+      "variant": "return",
+      "y": 4848
+    },
+    {
+      "id": "daily-todo-series--warn",
+      "from": "cron",
+      "to": "server",
+      "label": "daily: warn 7 days before, purge at 90",
+      "variant": "dashed",
+      "note": "Only series that are not kept",
+      "y": 4878
+    },
+    {
+      "id": "daily-todo-confirm--do",
+      "from": "person",
+      "to": "page",
+      "label": "Read claim, click Yes, it's done",
+      "variant": "emphasis",
+      "note": "The app's check comes from the stored linked task, never the claim",
+      "y": 4956
+    },
+    {
+      "id": "daily-todo-confirm--patch",
+      "from": "page",
+      "to": "server",
+      "label": "PATCH {action:'confirm_done'}",
+      "variant": "emphasis",
+      "y": 5002
+    },
+    {
+      "id": "daily-todo-confirm--checks",
+      "from": "server",
+      "to": "checks",
+      "label": "owner-only (403), proposal (409)",
+      "variant": "security",
+      "note": "No proposal any more: not_proposed 409",
+      "y": 5032
+    },
+    {
+      "id": "daily-todo-confirm--save",
+      "from": "server",
+      "to": "store",
+      "label": "evidence becomes the result",
+      "variant": "dashed",
+      "note": "completedAt is set",
+      "y": 5078
+    },
+    {
+      "id": "daily-todo-confirm--ok",
+      "from": "server",
+      "to": "page",
+      "label": "confirmed",
+      "variant": "return",
+      "y": 5124
+    },
+    {
+      "id": "daily-todo-confirm--see",
+      "from": "page",
+      "to": "person",
+      "label": "Item moves to Done recently",
+      "variant": "return",
+      "note": "With the claim as its result",
+      "y": 5154
+    },
+    {
+      "id": "daily-todo-confirm--gone",
+      "from": "page",
+      "to": "person",
+      "label": "Proposal gone: 'Could not save.'",
+      "variant": "return",
+      "y": 5200
+    },
+    {
+      "id": "daily-todo-reject--do",
+      "from": "person",
+      "to": "page",
+      "label": "Click Not yet",
+      "variant": "default",
+      "y": 5238
+    },
+    {
+      "id": "daily-todo-reject--patch",
+      "from": "page",
+      "to": "server",
+      "label": "PATCH {action:'reject_done'}",
+      "variant": "default",
+      "y": 5268
+    },
+    {
+      "id": "daily-todo-reject--checks",
+      "from": "server",
+      "to": "checks",
+      "label": "owner-only; not_proposed 409",
+      "variant": "security",
+      "y": 5298
+    },
+    {
+      "id": "daily-todo-reject--save",
+      "from": "server",
+      "to": "store",
+      "label": "'not_yet' note; clear proposal",
+      "variant": "dashed",
+      "y": 5328
+    },
+    {
+      "id": "daily-todo-reject--ok",
+      "from": "server",
+      "to": "page",
+      "label": "sent back",
+      "variant": "return",
+      "y": 5358
+    },
+    {
+      "id": "daily-todo-reject--see",
+      "from": "page",
+      "to": "person",
+      "label": "Back in its section, with a note",
+      "variant": "return",
+      "note": "'Not done yet (proposed: …)'",
+      "y": 5388
+    },
+    {
+      "id": "daily-todo-delete--do",
+      "from": "person",
+      "to": "page",
+      "label": "Click Delete",
+      "variant": "default",
+      "note": "Owner or admin (todo.close)",
+      "y": 5466
+    },
+    {
+      "id": "daily-todo-delete--patch",
+      "from": "page",
+      "to": "server",
+      "label": "PATCH {action:'delete'}",
+      "variant": "default",
+      "y": 5512
+    },
+    {
+      "id": "daily-todo-delete--save",
+      "from": "server",
+      "to": "store",
+      "label": "deletedAt, expiresAt in 30 days",
+      "variant": "dashed",
+      "note": "The id moves to the deleted set",
+      "y": 5542
+    },
+    {
+      "id": "daily-todo-delete--ok",
+      "from": "server",
+      "to": "page",
+      "label": "deleted",
+      "variant": "return",
+      "y": 5588
+    },
+    {
+      "id": "daily-todo-delete--see",
+      "from": "page",
+      "to": "person",
+      "label": "Toast: restore within 30 days",
+      "variant": "return",
+      "note": "'Undo' for 8 seconds sends {action:'restore'}; also listed under Deleted",
+      "y": 5618
+    },
+    {
+      "id": "daily-todo-restore--do",
+      "from": "person",
+      "to": "page",
+      "label": "Click Restore in Deleted list",
+      "variant": "default",
+      "y": 5672
+    },
+    {
+      "id": "daily-todo-restore--patch",
+      "from": "page",
+      "to": "server",
+      "label": "PATCH {action:'restore'}, no rev",
+      "variant": "default",
+      "y": 5702
+    },
+    {
+      "id": "daily-todo-restore--checks",
+      "from": "server",
+      "to": "checks",
+      "label": "deleted? expired? open limit?",
+      "variant": "security",
+      "note": "not_deleted 409; restore_expired 410; open_limit 409 past 500 open; a passed reminder is dropped",
+      "y": 5732
+    },
+    {
+      "id": "daily-todo-restore--ok",
+      "from": "server",
+      "to": "page",
+      "label": "restored",
+      "variant": "return",
+      "y": 5778
+    },
+    {
+      "id": "daily-todo-restore--see",
+      "from": "page",
+      "to": "person",
+      "label": "Item back where it was",
+      "variant": "return",
+      "note": "Open or done",
+      "y": 5808
+    },
+    {
+      "id": "daily-todo-restore--refused",
+      "from": "page",
+      "to": "person",
+      "label": "Too old, or the list is full",
+      "variant": "return",
+      "note": "'Over 30 days ago; it cannot be restored.' or 'The list is full: 500 open items.'",
+      "y": 5854
+    },
+    {
+      "id": "daily-todo-reopen--do",
+      "from": "person",
+      "to": "page",
+      "label": "Click Reopen on a done item",
+      "variant": "default",
+      "note": "Owner or admin (todo.close)",
+      "y": 5908
+    },
+    {
+      "id": "daily-todo-reopen--patch",
+      "from": "page",
+      "to": "server",
+      "label": "PATCH {action:'reopen'}",
+      "variant": "default",
+      "y": 5954
+    },
+    {
+      "id": "daily-todo-reopen--checks",
+      "from": "server",
+      "to": "checks",
+      "label": "owner-only; not_done; open_limit",
+      "variant": "security",
+      "note": "not_done 409; open_limit 409 past 500 open",
+      "y": 5984
+    },
+    {
+      "id": "daily-todo-reopen--save",
+      "from": "server",
+      "to": "store",
+      "label": "clear result, link and past reminder; note",
+      "variant": "dashed",
+      "note": "Back in the open index and out of the done list",
+      "y": 6030
+    },
+    {
+      "id": "daily-todo-reopen--next",
+      "from": "server",
+      "to": "store",
+      "label": "delete an untouched next copy",
+      "variant": "dashed",
+      "note": "Repeating items only",
+      "y": 6076
+    },
+    {
+      "id": "daily-todo-reopen--ok",
+      "from": "server",
+      "to": "page",
+      "label": "reopened",
+      "variant": "return",
+      "y": 6122
+    },
+    {
+      "id": "daily-todo-reopen--see",
+      "from": "page",
+      "to": "person",
+      "label": "Item back in its section",
+      "variant": "return",
+      "note": "With a 'reopened' note",
+      "y": 6152
+    },
+    {
+      "id": "daily-todo-auto-close--cron",
+      "from": "cron",
+      "to": "server",
+      "label": "05:00 UTC: secretaryDaily",
+      "variant": "dashed",
+      "note": "For every workspace; opening My to-dos also reads the agenda",
+      "y": 6206
+    },
+    {
+      "id": "daily-todo-auto-close--purge",
+      "from": "server",
+      "to": "store",
+      "label": "purge + away cleanup, then repeat history",
+      "variant": "dashed",
+      "note": "purgeExpired and cleanAway together, then seriesDaily (warn 7 days, purge 90), then the agenda (actor cron). Archived brands, suspended accounts: purge only",
+      "y": 6252
+    },
+    {
+      "id": "daily-todo-auto-close--mget",
+      "from": "server",
+      "to": "store",
+      "label": "agendaFor: MGET linked tasks",
+      "variant": "default",
+      "y": 6298
+    },
+    {
+      "id": "daily-todo-auto-close--close",
+      "from": "server",
+      "to": "store",
+      "label": "closeLinked re-checks under lock",
+      "variant": "dashed",
+      "note": "Stored status, never the model; auto_close audit. Pending link stays open",
+      "y": 6328
+    },
+    {
+      "id": "daily-todo-auto-close--see",
+      "from": "page",
+      "to": "person",
+      "label": "'Closed automatically' in Done",
+      "variant": "return",
+      "note": "On the next read; purged items leave Deleted. Free, no model call",
+      "y": 6374
+    },
+    {
+      "id": "daily-todo-away--do",
+      "from": "person",
+      "to": "page",
+      "label": "Add name, last day, Save the absence",
+      "variant": "default",
+      "note": "Or 'Away until…' on a row",
+      "y": 6452
+    },
+    {
+      "id": "daily-todo-away--put",
+      "from": "page",
+      "to": "server",
+      "label": "PUT /api/secretary/away",
+      "variant": "default",
+      "y": 6498
+    },
+    {
+      "id": "daily-todo-away--auth",
+      "from": "server",
+      "to": "checks",
+      "label": "todo.write; contact only; date range; 200 max",
+      "variant": "security",
+      "note": "not_contact, away_range; 600 writes an hour",
+      "y": 6528
+    },
+    {
+      "id": "daily-todo-away--save",
+      "from": "server",
+      "to": "store",
+      "label": "sec:away entry",
+      "variant": "dashed",
+      "note": "Cleaned up by the daily cron",
+      "y": 6574
+    },
+    {
+      "id": "daily-todo-away--ok",
+      "from": "server",
+      "to": "page",
+      "label": "entry saved",
+      "variant": "return",
+      "y": 6620
+    },
+    {
+      "id": "daily-todo-away--see",
+      "from": "page",
+      "to": "person",
+      "label": "'Last day away: {date}'",
+      "variant": "return",
+      "note": "Follow-ups resume the first working day after",
+      "y": 6650
+    },
+    {
+      "id": "daily-todo-away--end",
+      "from": "page",
+      "to": "server",
+      "label": "DELETE away (End now or Remove)",
+      "variant": "default",
+      "y": 6696
+    },
+    {
+      "id": "daily-todo-away--bad",
+      "from": "page",
+      "to": "person",
+      "label": "refusal text under the form",
+      "variant": "security",
+      "note": "'Only a contact can be away, not you or an agent.'; 'The last away day is today or up to 366 days ahead.'",
+      "y": 6726
+    },
+    {
+      "id": "daily-todo-working-days--do",
+      "from": "person",
+      "to": "page",
+      "label": "Set weekend, Ramadan hours, Eid; Save",
+      "variant": "default",
+      "note": "Owner or admin; members read only",
+      "y": 6780
+    },
+    {
+      "id": "daily-todo-working-days--put",
+      "from": "page",
+      "to": "server",
+      "label": "PUT /api/secretary/calendar",
+      "variant": "default",
+      "y": 6826
+    },
+    {
+      "id": "daily-todo-working-days--auth",
+      "from": "server",
+      "to": "checks",
+      "label": "401, brand.write, 30 saves an hour",
+      "variant": "security",
+      "note": "Members 403; sec:cal limit 429",
+      "y": 6856
+    },
+    {
+      "id": "daily-todo-working-days--save",
+      "from": "server",
+      "to": "store",
+      "label": "calendar under lock 'cal'",
+      "variant": "dashed",
+      "note": "parseCalendar validates every field",
+      "y": 6902
+    },
+    {
+      "id": "daily-todo-working-days--ok",
+      "from": "server",
+      "to": "page",
+      "label": "saved",
+      "variant": "return",
+      "y": 6948
+    },
+    {
+      "id": "daily-todo-working-days--see",
+      "from": "page",
+      "to": "person",
+      "label": "'Saved.' and the days off list",
+      "variant": "return",
+      "note": "Follow-ups to outside contacts skip these days",
+      "y": 6978
+    },
+    {
+      "id": "daily-schedule-open--do",
+      "from": "person",
+      "to": "page",
+      "label": "Open Scheduled tasks",
+      "variant": "emphasis",
+      "note": "Account menu, or 'Manage' / 'Run now' in the chat side panel",
+      "y": 7056
+    },
+    {
+      "id": "daily-schedule-open--render",
+      "from": "page",
+      "to": "server",
+      "label": "render /app/tasks",
+      "variant": "emphasis",
+      "y": 7102
+    },
+    {
+      "id": "daily-schedule-open--read",
+      "from": "server",
+      "to": "store",
+      "label": "read schedule, routines' last runs",
+      "variant": "default",
+      "note": "Weekly plan defaults: on for the first brand, off for added ones",
+      "y": 7132
+    },
+    {
+      "id": "daily-schedule-open--ok",
+      "from": "server",
+      "to": "page",
+      "label": "cards and Team routines",
+      "variant": "return",
+      "y": 7178
+    },
+    {
+      "id": "daily-schedule-open--see",
+      "from": "page",
+      "to": "person",
+      "label": "Three cards and Team routines",
+      "variant": "return",
+      "note": "Weekly plan Sun 06:00 KSA, 2 credits; Morning brief daily 08:00 KSA, no credits; follow-ups card always reads 'Last run: Never'",
+      "y": 7208
+    },
+    {
+      "id": "daily-schedule-open--added",
+      "from": "page",
+      "to": "person",
+      "label": "Added brand: Weekly plan Off",
+      "variant": "return",
+      "note": "Until switched on here. Routines show credits per run, e.g. Dana 3",
+      "y": 7254
+    },
+    {
+      "id": "daily-schedule-open--member",
+      "from": "page",
+      "to": "person",
+      "label": "Members: switches read-only",
+      "variant": "return",
+      "note": "'Only the account owner or an admin can change this.'; 'Run now' still available",
+      "y": 7300
+    },
+    {
+      "id": "daily-schedule-toggle--do",
+      "from": "person",
+      "to": "page",
+      "label": "Click a card's On/Off pill",
+      "variant": "default",
+      "y": 7354
+    },
+    {
+      "id": "daily-schedule-toggle--put",
+      "from": "page",
+      "to": "server",
+      "label": "PUT /api/schedule",
+      "variant": "default",
+      "y": 7384
+    },
+    {
+      "id": "daily-schedule-toggle--auth",
+      "from": "server",
+      "to": "checks",
+      "label": "401, forbid('schedule.write')",
+      "variant": "security",
+      "note": "Members: 403; only boolean fields are kept",
+      "y": 7414
+    },
+    {
+      "id": "daily-schedule-toggle--save",
+      "from": "server",
+      "to": "store",
+      "label": "saveSchedule stores only what was set",
+      "variant": "dashed",
+      "note": "Stamps weeklyPlanSetAt. Plan on in an added brand starts its Sunday charge",
+      "y": 7460
+    },
+    {
+      "id": "daily-schedule-toggle--ok",
+      "from": "server",
+      "to": "page",
+      "label": "switches over brand defaults",
+      "variant": "return",
+      "y": 7506
+    },
+    {
+      "id": "daily-schedule-toggle--see",
+      "from": "page",
+      "to": "person",
+      "label": "Pill shows the stored value",
+      "variant": "return",
+      "note": "Follow-ups off: no bell follow-ups, no overdue alerts, no evening wrap",
+      "y": 7536
+    },
+    {
+      "id": "daily-schedule-toggle--fail",
+      "from": "page",
+      "to": "person",
+      "label": "'Could not save. Try again.'",
+      "variant": "return",
+      "y": 7582
+    },
+    {
+      "id": "daily-evening-wrap--tick",
+      "from": "cron",
+      "to": "server",
+      "label": "QStash tick with ?zones=, or Vercel 15:00 UTC",
+      "variant": "dashed",
+      "note": "Tick: zones whose wrap time passed within 16 minutes. Vercel run skips Ramadan; the tick sends at 21:30 then",
+      "y": 7620
+    },
+    {
+      "id": "daily-evening-wrap--gate",
+      "from": "server",
+      "to": "checks",
+      "label": "once per day; follow-ups not off",
+      "variant": "security",
+      "note": "sec:wrap marker; 'Team follow-ups' off silences it",
+      "y": 7666
+    },
+    {
+      "id": "daily-evening-wrap--read",
+      "from": "server",
+      "to": "store",
+      "label": "build four parts after the agenda",
+      "variant": "default",
+      "note": "Done today, decisions today, newly overdue, first 3 for the next working morning. Free, no model call",
+      "y": 7712
+    },
+    {
+      "id": "daily-evening-wrap--silent",
+      "from": "server",
+      "to": "checks",
+      "label": "all four parts empty: silent",
+      "variant": "security",
+      "note": "Nothing is sent",
+      "y": 7758
+    },
+    {
+      "id": "daily-evening-wrap--bell",
+      "from": "server",
+      "to": "store",
+      "label": "bell \"Reem's evening wrap\" and wrap marker",
+      "variant": "dashed",
+      "y": 7804
+    },
+    {
+      "id": "daily-evening-wrap--mail",
+      "from": "server",
+      "to": "person",
+      "label": "email to the owner, preference 'all'",
+      "variant": "dashed",
+      "note": "Needs RESEND_API_KEY",
+      "y": 7834
+    },
+    {
+      "id": "daily-evening-wrap--see",
+      "from": "page",
+      "to": "person",
+      "label": "Evening wrap in the bell",
+      "variant": "return",
+      "note": "From 18:00 brand time",
+      "y": 7880
+    },
+    {
+      "id": "daily-run-weekly-now--do",
+      "from": "person",
+      "to": "page",
+      "label": "Run now on Weekly plan",
+      "variant": "default",
+      "y": 7958
+    },
+    {
+      "id": "daily-run-weekly-now--post",
+      "from": "page",
+      "to": "server",
+      "label": "POST /api/schedule {run:'weekly'}",
+      "variant": "default",
+      "y": 7988
+    },
+    {
+      "id": "daily-run-weekly-now--auth",
+      "from": "server",
+      "to": "checks",
+      "label": "session only (401)",
+      "variant": "security",
+      "note": "No role check, no rate limit; charged to the account",
+      "y": 8018
+    },
+    {
+      "id": "daily-run-weekly-now--gates",
+      "from": "server",
+      "to": "checks",
+      "label": "runWeekly: same checks as cron",
+      "variant": "security",
+      "note": "No brand, off, already this week, paused: all before any charge; once-a-week claim",
+      "y": 8064
+    },
+    {
+      "id": "daily-run-weekly-now--gen",
+      "from": "server",
+      "to": "agents",
+      "label": "when on: charge 2 credits, generate",
+      "variant": "default",
+      "note": "Noor's cap; refund on failure; judge runs after",
+      "y": 8110
+    },
+    {
+      "id": "daily-run-weekly-now--inbox",
+      "from": "server",
+      "to": "store",
+      "label": "plan to inbox, bell; lastWeekly only",
+      "variant": "dashed",
+      "y": 8156
+    },
+    {
+      "id": "daily-run-weekly-now--ok",
+      "from": "server",
+      "to": "page",
+      "label": "result or code",
+      "variant": "return",
+      "y": 8186
+    },
+    {
+      "id": "daily-run-weekly-now--see",
+      "from": "page",
+      "to": "person",
+      "label": "Paused: generation is paused",
+      "variant": "return",
+      "note": "'Content generation is paused for now. No credits were used.' On: 'Done: ok:N'",
+      "y": 8216
+    },
+    {
+      "id": "daily-run-weekly-now--off",
+      "from": "page",
+      "to": "person",
+      "label": "Plan off: nothing charged",
+      "variant": "security",
+      "note": "'The weekly plan is off for this brand… Switch it on first, then run it.'",
+      "y": 8262
+    },
+    {
+      "id": "daily-run-weekly-now--err",
+      "from": "page",
+      "to": "person",
+      "label": "Refused: failed, with the code",
+      "variant": "return",
+      "note": "Only 'ok:N' counts as ran. Codes: already_this_week, trial_over, cap_reached, no_credits, retry:locked, no_brand; agent cap: 'reached its monthly cap'",
+      "y": 8308
+    },
+    {
+      "id": "daily-run-brief-now--do",
+      "from": "person",
+      "to": "page",
+      "label": "Run now on Morning brief",
+      "variant": "default",
+      "y": 8362
+    },
+    {
+      "id": "daily-run-brief-now--post",
+      "from": "page",
+      "to": "server",
+      "label": "POST /api/schedule {run:'daily'}",
+      "variant": "default",
+      "y": 8392
+    },
+    {
+      "id": "daily-run-brief-now--run",
+      "from": "server",
+      "to": "store",
+      "label": "runDaily: brief; saves lastDaily only",
+      "variant": "dashed",
+      "note": "Also auto-closes linked approved to-dos; no email, no follow-ups",
+      "y": 8422
+    },
+    {
+      "id": "daily-run-brief-now--ok",
+      "from": "server",
+      "to": "page",
+      "label": "the brief's second line",
+      "variant": "return",
+      "y": 8468
+    },
+    {
+      "id": "daily-run-brief-now--see",
+      "from": "page",
+      "to": "person",
+      "label": "Done: Waiting for your approval: N",
+      "variant": "return",
+      "note": "Inbox and chat show the new brief; works while paused. Off: '(off)'",
+      "y": 8498
+    },
+    {
+      "id": "daily-routine-toggle--do",
+      "from": "person",
+      "to": "page",
+      "label": "Flip a routine's switch",
+      "variant": "default",
+      "note": "Dana, Noor, Razan or Majed; no 'Run now' for a routine",
+      "y": 8552
+    },
+    {
+      "id": "daily-routine-toggle--put",
+      "from": "page",
+      "to": "server",
+      "label": "PUT /api/schedule {routines}",
+      "variant": "default",
+      "y": 8598
+    },
+    {
+      "id": "daily-routine-toggle--auth",
+      "from": "server",
+      "to": "checks",
+      "label": "schedule.write; known ids only",
+      "variant": "security",
+      "note": "Members: 403; only boolean values are kept",
+      "y": 8628
+    },
+    {
+      "id": "daily-routine-toggle--save",
+      "from": "server",
+      "to": "store",
+      "label": "merge the switch per routine id",
+      "variant": "dashed",
+      "y": 8674
+    },
+    {
+      "id": "daily-routine-toggle--ok",
+      "from": "server",
+      "to": "page",
+      "label": "stored value",
+      "variant": "return",
+      "y": 8704
+    },
+    {
+      "id": "daily-routine-toggle--see",
+      "from": "page",
+      "to": "person",
+      "label": "Switch shows the stored value",
+      "variant": "return",
+      "note": "On failure: 'Could not save. Try again.'",
+      "y": 8734
+    },
+    {
+      "id": "daily-routine-toggle--cron",
+      "from": "cron",
+      "to": "server",
+      "label": "06:00 UTC routines cron",
+      "variant": "dashed",
+      "note": "Paused now: retry:paused every day, nothing charged or produced",
+      "y": 8780
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Who can do this",
+      "items": [
+        "Any signed-in role: open, add, walk through, snooze, reschedule, follow up, remind, repeat, away list, ask Reem, Run now",
+        "Owner or admin (todo.close): Done, Skip, Delete, Restore, Reopen, Yes it's done, Not yet; members don't see them",
+        "Owner or admin: working days (brand.write); On/Off pills and routine switches (schedule.write)"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "While the model is paused",
+      "items": [
+        "Model calls are still paused (CLAUDE_PAUSED in model.ts)",
+        "Reem replies 'The agents are paused for now…'; no to-do is written, no credits used",
+        "Weekly plan Run now: 'Content generation is paused for now. No credits were used.'",
+        "Reminders, repeats, the walk and the evening wrap need no model and still work; routines answer retry:paused"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Limits and gaps",
+      "items": [
+        "200 new to-dos a day per account; 500 open per brand; 600 writes an hour",
+        "Chat: paid 30 an hour and 150 a day, trial 10 and 30, plus the monthly allowance",
+        "Reminders arrive in the app and by email; no WhatsApp or Telegram reminders yet",
+        "Weekly plan: 2 credits a run; added brands start with it off",
+        "Weekly Run now codes: already_this_week, trial_over, cap_reached, no_credits, retry:locked, no_brand",
+        "The Team follow-ups card always reads 'Last run: Never'"
+      ]
+    }
+  ]
+}

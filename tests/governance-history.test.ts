@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToReadableStream } from "react-dom/server.edge";
 import { adminSignIn, jar, json, newMember, newUser, params, settle, signIn, signOut, supportAccess } from "./helpers/session";
+import { vjson } from "./helpers/version";
 import { currentUser, getUser, saveUser, type User } from "@/lib/auth";
 import { addBrand, scopeFor } from "@/lib/brands";
 import { saveTask, type Task } from "@/lib/brand";
@@ -95,7 +96,7 @@ describe("who acted is worked out in code (rule 225)", () => {
     await Promise.all([saveTask(u.email, t("own"), true), saveTask(u.email, t("imp"), true)]);
     // The owner's own impersonation cookie, set by hand, changes nothing: still the owner.
     jar().set("nashr_impersonate", u.email);
-    await taskRoute.PATCH(json("/api/tasks/own", "PATCH", { status: "approved", by: { kind: "system", job: "cron" } }), params({ id: "own" }));
+    await taskRoute.PATCH(await vjson("/api/tasks/own", "PATCH", { status: "approved", by: { kind: "system", job: "cron" } }), params({ id: "own" }));
     await settle();
 
     // The founder, signed in to their own account, starts support access through the console exactly as the button does.
@@ -105,7 +106,7 @@ describe("who acted is worked out in code (rule 225)", () => {
       await signIn(founder.email);
       const res = await adminUser.POST(json(`/api/admin/users/x`, "POST", { action: "impersonate" }), params({ email: encodeURIComponent(u.email) }));
       expect(res.status).toBe(200);
-      await taskRoute.PATCH(json("/api/tasks/imp", "PATCH", { status: "rejected", note: "no", by: { kind: "owner", email: u.email } }), params({ id: "imp" }));
+      await taskRoute.PATCH(await vjson("/api/tasks/imp", "PATCH", { status: "rejected", note: "no", by: { kind: "owner", email: u.email } }), params({ id: "imp" }));
       await settle();
     } finally {
       vi.unstubAllEnvs();

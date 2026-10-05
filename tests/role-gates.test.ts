@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { json, newMember, newUser, params, signIn, signOut, jar } from "./helpers/session";
+import { vjson } from "./helpers/version";
 import { currentUser, getUser, saveUser, type User } from "@/lib/auth";
 import { getBrand, getTask, saveBrand, saveTask, type Brand, type Task } from "@/lib/brand";
 import { db } from "@/lib/db";
 import { getGov, listGovHistory, saveGovAs } from "@/lib/governance";
 import { getSchedule } from "@/lib/schedule";
 import { MCP_TOOL_ACTION, createMcpToken, getMcpToken } from "@/lib/mcp";
+import { tokenHash } from "@/lib/oauth";
 import { CORE_FILES, readFile, writeFile } from "@/lib/files";
 import { activeBrandId } from "@/lib/brands";
 import { OAUTH_COOKIE, getConnection, saveConnection, saveState } from "@/lib/connectors/store";
@@ -481,7 +483,7 @@ describe("a plain member is refused every owner and admin route, and nothing cha
 
     expect(await status(governanceRoute.PUT(json("/api/governance", "PUT", { autoApprove: { social: true }, learning: false })))).toBe(403);
     expect(await status(tokenRoute.POST())).toBe(403);
-    expect(await status(publishRoute.POST(json("/api/publish/t1", "POST", { provider: "telegram" }), ctx({ id: "t1" })))).toBe(403);
+    expect(await status(publishRoute.POST(await vjson("/api/publish/t1", "POST", { provider: "telegram" }), ctx({ id: "t1" })))).toBe(403);
     expect(await status(brandRoute.PUT(json("/api/brand", "PUT", brandBody)))).toBe(403);
     expect(await status(scheduleRoute.PUT(json("/api/schedule", "PUT", { weeklyPlan: false, routines: {} })))).toBe(403);
     expect(await status(startRoute.GET(new Request("https://nashr.test/api/connect/x/start?lang=en"), ctx({ provider: "x" })))).toBe(403);
@@ -549,8 +551,8 @@ describe("a plain member is refused every owner and admin route, and nothing cha
     await writeFile(owner.email, "notes.md", "mine", "user");
     await as(member);
     expect(await status(filesRoute.PUT(json("/api/files", "PUT", { name: "ideas.md", content: "a member's own notes" })))).toBe(200);
-    expect(await status(taskRoute.PATCH(json("/api/tasks/d1", "PATCH", { editedBody: "قهوة مختصة" }), ctx({ id: "d1" })))).toBe(200);
-    expect(await status(taskRoute.PATCH(json("/api/tasks/d2", "PATCH", { status: "rejected", note: "no" }), ctx({ id: "d2" })))).toBe(200);
+    expect(await status(taskRoute.PATCH(await vjson("/api/tasks/d1", "PATCH", { editedBody: "قهوة مختصة" }), ctx({ id: "d1" })))).toBe(200);
+    expect(await status(taskRoute.PATCH(await vjson("/api/tasks/d2", "PATCH", { status: "rejected", note: "no" }), ctx({ id: "d2" })))).toBe(200);
     expect(await status(filesRoute.DELETE(new Request("https://nashr.test/api/files?name=notes.md", { method: "DELETE" })))).toBe(200);
     // A sync is not refused for the role: it gets as far as looking for the connection.
     expect(await status(connRoute.POST(json("/api/connect/shopify", "POST", { action: "sync_sales" }), ctx({ provider: "shopify" })))).toBe(404);
@@ -566,16 +568,16 @@ describe("approval is admin and owner only, in the inbox as on the publish butto
     await saveTask(owner.email, task("p1", "pending"), true);
     await saveTask(owner.email, task("a1", "approved"), true);
     await as(member);
-    expect(await status(taskRoute.PATCH(json("/api/tasks/p1", "PATCH", { status: "approved" }), ctx({ id: "p1" })))).toBe(403);
-    expect(await status(taskRoute.PATCH(json("/api/tasks/p1", "PATCH", { editedBody: "نص آخر", status: "approved" }), ctx({ id: "p1" })))).toBe(403);
-    expect(await status(taskRoute.PATCH(json("/api/tasks/a1", "PATCH", { editedBody: "نص لم يوافق عليه أحد" }), ctx({ id: "a1" })))).toBe(403);
+    expect(await status(taskRoute.PATCH(await vjson("/api/tasks/p1", "PATCH", { status: "approved" }), ctx({ id: "p1" })))).toBe(403);
+    expect(await status(taskRoute.PATCH(await vjson("/api/tasks/p1", "PATCH", { editedBody: "نص آخر", status: "approved" }), ctx({ id: "p1" })))).toBe(403);
+    expect(await status(taskRoute.PATCH(await vjson("/api/tasks/a1", "PATCH", { editedBody: "نص لم يوافق عليه أحد" }), ctx({ id: "a1" })))).toBe(403);
     expect(await getTask(owner.email, "p1")).toMatchObject({ status: "pending", body: "قهوة طازجة" });
     expect((await getTask(owner.email, "a1"))!.editedBody).toBeUndefined();
     // Taking an approval back is not an approval: a member may reopen it, and that puts it back in front of an admin.
-    expect(await status(taskRoute.PATCH(json("/api/tasks/a1", "PATCH", { status: "pending" }), ctx({ id: "a1" })))).toBe(200);
+    expect(await status(taskRoute.PATCH(await vjson("/api/tasks/a1", "PATCH", { status: "pending" }), ctx({ id: "a1" })))).toBe(200);
 
     await as(admin);
-    expect(await status(taskRoute.PATCH(json("/api/tasks/p1", "PATCH", { status: "approved" }), ctx({ id: "p1" })))).toBe(200);
+    expect(await status(taskRoute.PATCH(await vjson("/api/tasks/p1", "PATCH", { status: "approved" }), ctx({ id: "p1" })))).toBe(200);
     expect((await getTask(owner.email, "p1"))!.status).toBe("approved");
   });
 });
@@ -641,7 +643,7 @@ describe("an admin runs the workspace but not the account", () => {
     expect((await getGov(owner.email)).learning).toBe(false);
     const minted = (await (await tokenRoute.POST()).json()) as { token: string };
     expect(minted.token).toMatch(/^nashr_/);
-    expect(await getMcpToken(owner.email)).toBe(minted.token);
+    expect(await getMcpToken(owner.email)).toBe(tokenHash(minted.token)); // stored hashed, never raw (rules 548-555)
   });
 });
 
@@ -682,12 +684,14 @@ describe("asking Noor is not a way around a gate (chat runTool)", () => {
   });
   it("an admin and the owner may, and a user resolved with no actor may not (fail closed)", async () => {
     const { owner, admin } = await team();
-    expect(await runTool(await as(admin), "update_brand", { field: "tone", value: "رسمي" }, [])).toMatch(/Updated brand\.tone/);
-    expect(await runTool(await as(owner.email), "update_brand", { field: "city", value: "جدة" }, [])).toMatch(/Updated brand\.city/);
+    // May propose (rule 568): no tool call writes the brand file, an admin's and the owner's included.
+    expect(await runTool(await as(admin), "update_brand", { field: "tone", value: "رسمي" }, [])).toMatch(/^Not saved yet: brand\.tone/);
+    expect(await runTool(await as(owner.email), "update_brand", { field: "city", value: "جدة" }, [])).toMatch(/^Not saved yet: brand\.city/);
     expect(await runTool(await as(admin), "write_file", { name: "strategy.md", content: "# strategy" }, [])).toMatch(/^Saved strategy\.md/);
     const bare = { ...owner, actor: undefined };
     expect(await runTool(bare, "update_brand", { field: "tone", value: "x" }, [])).toMatch(/^Not done/);
-    expect((await getBrand(owner.email))!).toMatchObject({ tone: "رسمي", city: "جدة" });
+    expect((await getBrand(owner.email))!.tone).not.toBe("رسمي");
+    expect((await getBrand(owner.email))!.city).not.toBe("جدة");
   });
 });
 

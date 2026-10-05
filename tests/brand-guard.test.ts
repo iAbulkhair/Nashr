@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { json, newUser, signIn } from "./helpers/session";
+import { newUser, signIn } from "./helpers/session";
+import { vjson } from "./helpers/version";
 import { currentUser } from "@/lib/auth";
 import { getTask, saveBrand, saveTask, type Brand, type Task } from "@/lib/brand";
 import { bannedTerms, brandRules, checkText, gateTask, initialStatus } from "@/lib/brand-rules";
@@ -69,7 +70,7 @@ describe("brand rules: the banned list as code (rule 77)", () => {
 });
 
 describe("the approve and publish routes enforce the brand rules in code (rule 78)", () => {
-  const patch = (id: string, body: unknown) => taskRoute.PATCH(json(`/api/tasks/${id}`, "PATCH", body), { params: Promise.resolve({ id }) });
+  const patch = async (id: string, body: unknown) => taskRoute.PATCH(await vjson(`/api/tasks/${id}`, "PATCH", body), { params: Promise.resolve({ id }) });
 
   it("refuses to approve an item that breaks a rule, and saves nothing", async () => {
     const u = await newUser("guard");
@@ -104,13 +105,13 @@ describe("the approve and publish routes enforce the brand rules in code (rule 7
     await saveBrand(u.email, BRAND);
     await saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
     await saveTask(u.email, { ...task("old", "أفضل قهوة وأرخص... رخيص", "approved"), decidedAt: new Date().toISOString() }, true);
-    const res = await publishRoute.POST(json("/api/publish/old", "POST", { provider: "telegram" }), { params: Promise.resolve({ id: "old" }) });
+    const res = await publishRoute.POST(await vjson("/api/publish/old", "POST", { provider: "telegram" }), { params: Promise.resolve({ id: "old" }) });
     expect(res.status).toBe(409);
     expect((await res.json()).error).toBe("brand_violation");
     expect(await runTool((await currentUser())!, "publish_item", { task_id: "old", provider: "telegram" }, [])).toMatch(/Not published.*رخيص/);
     expect(published).toEqual([]);
     await saveTask(u.email, task("clean", "قهوة طازجة من المحمصة", "approved"), true);
-    expect((await publishRoute.POST(json("/api/publish/clean", "POST", { provider: "telegram" }), { params: Promise.resolve({ id: "clean" }) })).status).toBe(200);
+    expect((await publishRoute.POST(await vjson("/api/publish/clean", "POST", { provider: "telegram" }), { params: Promise.resolve({ id: "clean" }) })).status).toBe(200);
     expect(published).toEqual(["clean"]);
   });
 });

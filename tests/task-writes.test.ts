@@ -30,7 +30,8 @@ import { runTool } from "@/lib/chat";
 import { advance, startMedia } from "@/lib/media/jobs";
 import type { MediaJob, StartInput } from "@/lib/media/types";
 import { fakeAdapter, fakeDeps, noNetwork, resetMediaCounters } from "./helpers/media";
-import { json, newUser, params, settle, signIn } from "./helpers/session";
+import { newUser, params, settle, signIn } from "./helpers/session";
+import { vjson } from "./helpers/version";
 import { currentUser, type User } from "@/lib/auth";
 import * as publishRoute from "@/app/api/publish/[id]/route";
 import * as taskRoute from "@/app/api/tasks/[id]/route";
@@ -103,7 +104,7 @@ describe("a render finishing while another writer holds the task", () => {
     const t = await taskFor(u);
     const video = await runningVideo(u, t);
     h.duringPublish = video.finish;
-    const res = await publishRoute.POST(json(`/api/publish/${t.id}`, "POST", { provider: "telegram" }), params({ id: t.id }));
+    const res = await publishRoute.POST(await vjson(`/api/publish/${t.id}`, "POST", { provider: "telegram" }), params({ id: t.id }));
     expect(res.status).toBe(200);
     const saved = (await getTask(u.email, t.id))!;
     expect(saved).toMatchObject({ videoUrl: video.deps.stored[0].url, videoModel: "vid-quick", mediaCredits: 12, status: "approved", published: [{ provider: "telegram" }] });
@@ -131,7 +132,7 @@ describe("a render finishing while another writer holds the task", () => {
     const t = await taskFor(u);
     const video = await runningVideo(u, t);
     h.duringGov = video.finish;
-    const res = await taskRoute.PATCH(json(`/api/tasks/${t.id}`, "PATCH", { status: "approved" }), params({ id: t.id }));
+    const res = await taskRoute.PATCH(await vjson(`/api/tasks/${t.id}`, "PATCH", { status: "approved" }), params({ id: t.id }));
     expect(res.status).toBe(200);
     expect((await getTask(u.email, t.id))!).toMatchObject({ status: "approved", videoUrl: video.deps.stored[0].url, mediaCredits: 12 });
   });
@@ -152,7 +153,7 @@ describe("a render finishing while another writer holds the task", () => {
       if (k === key && ++reads === 1) {
         // The finalize has just read the task: the owner approves now. Before the fix the approval read the same task
         // at once and one of the two writes erased the other; with the task lock it waits for the finalize to save.
-        patching = taskRoute.PATCH(json(`/api/tasks/${t.id}`, "PATCH", { status: "approved" }), params({ id: t.id }));
+        patching = taskRoute.PATCH(await vjson(`/api/tasks/${t.id}`, "PATCH", { status: "approved" }), params({ id: t.id }));
         await Promise.race([patchHasRead, sleep(100)]);
       } else if (k === key && reads === 2) patchRead();
       return v;

@@ -73,13 +73,14 @@ describe("the brand file is not writable field by field from a tool call", () =>
     expect(after.channels).toEqual(["instagram", "whatsapp"]);
     expect(Array.isArray(after.languages)).toBe(true);
   });
-  it("still writes the fields the tool is meant for", async () => {
+  it("still proposes the fields the tool is meant for, and saves nothing until the owner's Save (rule 568)", async () => {
     const u = await newUser("brandtool");
     await saveBrand(u.email, brand());
     await signIn(u.email);
     const actions: string[] = [];
-    expect(await runTool((await currentUser())!, "update_brand", { field: "tone", value: "رسمي" }, actions)).toMatch(/Updated brand\.tone/);
-    expect((await getBrand(u.email))!.tone).toBe("رسمي");
+    expect(await runTool((await currentUser())!, "update_brand", { field: "tone", value: "رسمي" }, actions)).toMatch(/Not saved yet: brand\.tone/);
+    expect(actions).toEqual(["brandprop:tone"]);
+    expect((await getBrand(u.email))!.tone).toBe(brand().tone);
     expect(EDITABLE_BRAND_FIELDS).toContain("tone");
     expect(EDITABLE_BRAND_FIELDS).not.toContain("channels");
   });

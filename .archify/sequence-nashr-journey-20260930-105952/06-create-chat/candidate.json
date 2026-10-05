@@ -1,0 +1,1611 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Create: chat with the agents",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "output": ".archify/sequence-nashr-journey-20260930-105952/06-create-chat/06-create-chat.html",
+    "repository": {
+      "url": "https://github.com/iAbulkhair/Nashr.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "f0e7fdecf7d70d8c60ba76650f22440433926add"
+    }
+  },
+  "participants": [
+    {
+      "id": "person",
+      "type": "external",
+      "label": "Person",
+      "sublabel": "owner or team",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 549,
+          "end_line": 613
+        }
+      ]
+    },
+    {
+      "id": "page",
+      "type": "frontend",
+      "label": "Browser page",
+      "sublabel": "what they see",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 27,
+          "end_line": 80
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 457,
+          "end_line": 728
+        },
+        {
+          "path": "src/components/app/LimitModal.tsx",
+          "line": 70,
+          "end_line": 104
+        }
+      ]
+    },
+    {
+      "id": "checks",
+      "type": "security",
+      "label": "Checks in code",
+      "sublabel": "auth · roles · limits",
+      "sources": [
+        {
+          "path": "src/lib/rate.ts",
+          "line": 40,
+          "end_line": 60
+        },
+        {
+          "path": "src/lib/credits.ts",
+          "line": 76,
+          "end_line": 114
+        },
+        {
+          "path": "src/app/api/tasks/[id]/route.ts",
+          "line": 74,
+          "end_line": 93
+        }
+      ]
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "Nashr server",
+      "sublabel": "API routes",
+      "sources": [
+        {
+          "path": "src/app/api/chat/route.ts",
+          "line": 31,
+          "end_line": 87
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 363,
+          "end_line": 470
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 567,
+          "end_line": 588
+        }
+      ]
+    },
+    {
+      "id": "agents",
+      "type": "backend",
+      "label": "AI agents",
+      "sublabel": "model paused now",
+      "sources": [
+        {
+          "path": "src/lib/model.ts",
+          "line": 15,
+          "end_line": 34
+        },
+        {
+          "path": "src/lib/noor.ts",
+          "line": 174,
+          "end_line": 238
+        },
+        {
+          "path": "src/lib/judge.ts",
+          "line": 89,
+          "end_line": 130
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "account data",
+      "sources": [
+        {
+          "path": "src/lib/conversations.ts",
+          "line": 16,
+          "end_line": 21
+        },
+        {
+          "path": "src/lib/tasks.ts",
+          "line": 24,
+          "end_line": 42
+        },
+        {
+          "path": "src/lib/feedback.ts",
+          "line": 41,
+          "end_line": 50
+        }
+      ]
+    },
+    {
+      "id": "outside",
+      "type": "external",
+      "label": "Outside",
+      "sublabel": "platforms, images",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 708,
+          "end_line": 756
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 815,
+          "end_line": 858
+        },
+        {
+          "path": "src/lib/media/start.ts",
+          "line": 47,
+          "end_line": 89
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 156,
+      "to": 772,
+      "label": "Open the chat"
+    },
+    {
+      "from": 800,
+      "to": 1676,
+      "label": "Send a message"
+    },
+    {
+      "from": 1704,
+      "to": 2590,
+      "label": "Batches and drafts"
+    },
+    {
+      "from": 2618,
+      "to": 3494,
+      "label": "Approve, limits, scores"
+    },
+    {
+      "from": 3522,
+      "to": 3988,
+      "label": "Rate and switch agent"
+    },
+    {
+      "from": 4016,
+      "to": 5750,
+      "label": "More chat tools"
+    },
+    {
+      "from": 5778,
+      "to": 6708,
+      "label": "Majed's handoffs"
+    }
+  ],
+  "messages": [
+    {
+      "id": "create-open-chat--do",
+      "from": "person",
+      "to": "page",
+      "y": 182,
+      "label": "Open /{lang}/app/chat",
+      "variant": "emphasis",
+      "note": "sidebar, end of onboarding, or ?conv= ?agent= link; ?prompt= only pre-fills"
+    },
+    {
+      "id": "create-open-chat--render",
+      "from": "page",
+      "to": "server",
+      "y": 226,
+      "label": "server renders the chat page",
+      "variant": "default"
+    },
+    {
+      "id": "create-open-chat--auth",
+      "from": "server",
+      "to": "checks",
+      "y": 256,
+      "label": "currentUser(): signed in?",
+      "variant": "security"
+    },
+    {
+      "id": "create-open-chat--redirect",
+      "from": "server",
+      "to": "page",
+      "y": 286,
+      "label": "redirect: /app/login or /app/start",
+      "variant": "security",
+      "note": "no session: login; no brand file: start, unless owner/admin with a confirmed site"
+    },
+    {
+      "id": "create-open-chat--read",
+      "from": "server",
+      "to": "store",
+      "y": 330,
+      "label": "read 11 things in parallel",
+      "variant": "default",
+      "note": "history, brief, notifications, brand, 90-day task index, onboardplan, chat allowance; then the handoff cards"
+    },
+    {
+      "id": "create-open-chat--data",
+      "from": "server",
+      "to": "page",
+      "y": 374,
+      "label": "KPIs, first task, firstStep, handoff cards",
+      "variant": "return"
+    },
+    {
+      "id": "create-open-chat--threads",
+      "from": "page",
+      "to": "server",
+      "y": 404,
+      "label": "GET /api/conversations",
+      "variant": "default"
+    },
+    {
+      "id": "create-open-chat--see",
+      "from": "page",
+      "to": "person",
+      "y": 434,
+      "label": "Header, tabs, 40 newest msgs, allowance line",
+      "variant": "return",
+      "note": "empty thread: greeting + chips; trial: goal bar or 'First up' hint"
+    },
+    {
+      "id": "create-review-all--do",
+      "from": "person",
+      "to": "page",
+      "y": 486,
+      "label": "Press 'Review all' on team card",
+      "variant": "default",
+      "note": "the card shows on a thread with at most one message"
+    },
+    {
+      "id": "create-review-all--see",
+      "from": "page",
+      "to": "person",
+      "y": 530,
+      "label": "Approvals inbox /{lang}/app opens",
+      "variant": "return"
+    },
+    {
+      "id": "create-plan-start--do",
+      "from": "person",
+      "to": "page",
+      "y": 568,
+      "label": "Plan: Start now, Add task or Skip",
+      "variant": "default"
+    },
+    {
+      "id": "create-plan-start--add",
+      "from": "page",
+      "to": "server",
+      "y": 598,
+      "label": "Add: POST /api/onboard/plan",
+      "variant": "default"
+    },
+    {
+      "id": "create-plan-start--start",
+      "from": "page",
+      "to": "server",
+      "y": 628,
+      "label": "Start now: POST /api/chat",
+      "variant": "default",
+      "note": "sends the task's title and brief as a chat message"
+    },
+    {
+      "id": "create-plan-start--role",
+      "from": "server",
+      "to": "checks",
+      "y": 672,
+      "label": "needs 'onboard' (admin or owner)",
+      "variant": "security",
+      "note": "member: 403, yet the button still shows 'Added'"
+    },
+    {
+      "id": "create-plan-start--flag",
+      "from": "server",
+      "to": "store",
+      "y": 716,
+      "label": "set plan[i].added in onboardplan",
+      "variant": "dashed",
+      "note": "no to-do or task is created"
+    },
+    {
+      "id": "create-plan-start--see",
+      "from": "page",
+      "to": "person",
+      "y": 760,
+      "label": "'Added' at once; Skip hides card",
+      "variant": "return"
+    },
+    {
+      "id": "create-send-message--do",
+      "from": "person",
+      "to": "page",
+      "y": 826,
+      "label": "Type a message, press Send",
+      "variant": "emphasis",
+      "note": "or tap a suggestion chip; '/' focuses the input"
+    },
+    {
+      "id": "create-send-message--post",
+      "from": "page",
+      "to": "server",
+      "y": 870,
+      "label": "POST /api/chat {text, conv, agent}",
+      "variant": "emphasis"
+    },
+    {
+      "id": "create-send-message--rate",
+      "from": "server",
+      "to": "checks",
+      "y": 900,
+      "label": "session; trial, burst limits, allowance",
+      "variant": "security",
+      "note": "details in the next two steps; all before anything is saved"
+    },
+    {
+      "id": "create-send-message--save",
+      "from": "server",
+      "to": "store",
+      "y": 944,
+      "label": "save user message chat:{scope}",
+      "variant": "dashed",
+      "note": "the thread keeps 400; then modelState() is checked"
+    },
+    {
+      "id": "create-send-message--read",
+      "from": "server",
+      "to": "store",
+      "y": 988,
+      "label": "if on: read brand, memory, thread, notes",
+      "variant": "default",
+      "note": "10 reads in parallel, incl. thumbs, handoff notes, working days; thread: last 16 messages"
+    },
+    {
+      "id": "create-send-message--model",
+      "from": "server",
+      "to": "agents",
+      "y": 1018,
+      "label": "claude-opus-5, up to 5 calls, $0.35 cap",
+      "variant": "emphasis",
+      "note": "paused since 2026-09-28: no model call and no tool run"
+    },
+    {
+      "id": "create-send-message--reply",
+      "from": "server",
+      "to": "store",
+      "y": 1062,
+      "label": "save reply + item, brand, away cards",
+      "variant": "dashed",
+      "note": "at most 10 item, 5 brand and 5 away cards; one handoff card"
+    },
+    {
+      "id": "create-send-message--stream",
+      "from": "server",
+      "to": "page",
+      "y": 1106,
+      "label": "SSE: status lines, then the reply",
+      "variant": "return",
+      "note": "ping every 10 s; server error: 'Could not reply. Try again.'"
+    },
+    {
+      "id": "create-send-message--see",
+      "from": "page",
+      "to": "person",
+      "y": 1150,
+      "label": "Reply bubble, thumbs, cards",
+      "variant": "return",
+      "note": "paused: 'The agents are paused for now…' and no cards"
+    },
+    {
+      "id": "create-chat-allowance--do",
+      "from": "person",
+      "to": "page",
+      "y": 1202,
+      "label": "Read '{n} of {m} messages left'",
+      "variant": "default",
+      "note": "the account's count, shared by every seat and brand"
+    },
+    {
+      "id": "create-chat-allowance--post",
+      "from": "page",
+      "to": "server",
+      "y": 1246,
+      "label": "each turn: POST /api/chat",
+      "variant": "default"
+    },
+    {
+      "id": "create-chat-allowance--reserve",
+      "from": "server",
+      "to": "checks",
+      "y": 1276,
+      "label": "reserveChatTurn: INCRBY the month",
+      "variant": "security",
+      "note": "trial 30 once; starter 250, pro 650, business 1300; 0 = chat off"
+    },
+    {
+      "id": "create-chat-allowance--over",
+      "from": "server",
+      "to": "checks",
+      "y": 1320,
+      "label": "past it: on credits? balance >= hold",
+      "variant": "security",
+      "note": "paid plans only; hold = 5 credits today"
+    },
+    {
+      "id": "create-chat-allowance--settle",
+      "from": "server",
+      "to": "store",
+      "y": 1364,
+      "label": "settleChatTurn: give back or bill",
+      "variant": "dashed",
+      "note": "no model call: count given back; on credits: cost at the floor rate, at most the hold"
+    },
+    {
+      "id": "create-chat-allowance--see",
+      "from": "page",
+      "to": "person",
+      "y": 1408,
+      "label": "Line updates; low at 10% or less",
+      "variant": "return",
+      "note": "used up: 'Chat resumes on the 1st (UTC)'"
+    },
+    {
+      "id": "create-chat-refused--do",
+      "from": "person",
+      "to": "page",
+      "y": 1460,
+      "label": "Send with no turn left",
+      "variant": "default"
+    },
+    {
+      "id": "create-chat-refused--post",
+      "from": "page",
+      "to": "server",
+      "y": 1490,
+      "label": "POST /api/chat",
+      "variant": "default"
+    },
+    {
+      "id": "create-chat-refused--order",
+      "from": "server",
+      "to": "checks",
+      "y": 1520,
+      "label": "trial_over, slow_down, allowance, credits",
+      "variant": "security",
+      "note": "fixed order, always JSON, before anything is saved"
+    },
+    {
+      "id": "create-chat-refused--bursts",
+      "from": "server",
+      "to": "page",
+      "y": 1564,
+      "label": "429 slow_down: 30/h, 150/d (trial 10/h, 30/d)",
+      "variant": "security",
+      "note": "the notice names no window; no dialog"
+    },
+    {
+      "id": "create-chat-refused--month",
+      "from": "server",
+      "to": "page",
+      "y": 1608,
+      "label": "402 chat_allowance or chat_credits",
+      "variant": "security",
+      "note": "trial_over: 402 with a bubble and the trial dialog"
+    },
+    {
+      "id": "create-chat-refused--see",
+      "from": "page",
+      "to": "person",
+      "y": 1652,
+      "label": "Message back in the box + notice",
+      "variant": "return",
+      "note": "'Your message was not sent and not counted'"
+    },
+    {
+      "id": "create-ask-batch--do",
+      "from": "person",
+      "to": "page",
+      "y": 1730,
+      "label": "Ask for a batch, e.g. 10 posts",
+      "variant": "emphasis"
+    },
+    {
+      "id": "create-ask-batch--tool",
+      "from": "agents",
+      "to": "server",
+      "y": 1760,
+      "label": "tool call: generate_content",
+      "variant": "default",
+      "note": "the model calls it inside the chat turn; paused: never reached"
+    },
+    {
+      "id": "create-ask-batch--lead",
+      "from": "server",
+      "to": "checks",
+      "y": 1804,
+      "label": "valid type; Majed: his own types only",
+      "variant": "security",
+      "note": "isTaskType + leadRefusal: Majed asking for another agent's type is refused; other agents may write any type"
+    },
+    {
+      "id": "create-ask-batch--gates",
+      "from": "server",
+      "to": "checks",
+      "y": 1848,
+      "label": "brand file, trial, cart data",
+      "variant": "security"
+    },
+    {
+      "id": "create-ask-batch--charge",
+      "from": "server",
+      "to": "checks",
+      "y": 1878,
+      "label": "charge(): agent cap, then credits",
+      "variant": "security",
+      "note": "refused: nothing charged; the limit dialog opens"
+    },
+    {
+      "id": "create-ask-batch--gen",
+      "from": "server",
+      "to": "agents",
+      "y": 1922,
+      "label": "generate(): opus-5, sonnet review",
+      "variant": "emphasis",
+      "note": "some types add a cross-agent review; a throw refunds the credits"
+    },
+    {
+      "id": "create-ask-batch--save",
+      "from": "server",
+      "to": "store",
+      "y": 1966,
+      "label": "save tasks: pending or approved",
+      "variant": "dashed",
+      "note": "approved only with auto-approve on, a clean gateTask and no reviewer flag"
+    },
+    {
+      "id": "create-ask-batch--cards",
+      "from": "server",
+      "to": "page",
+      "y": 2010,
+      "label": "up to 10 item cards",
+      "variant": "return"
+    },
+    {
+      "id": "create-ask-batch--see",
+      "from": "page",
+      "to": "person",
+      "y": 2040,
+      "label": "'{n} added to approvals'",
+      "variant": "return",
+      "note": "the credits pill drops by the batch cost"
+    },
+    {
+      "id": "create-ask-drafts--do",
+      "from": "person",
+      "to": "page",
+      "y": 2092,
+      "label": "Ask for 1-3 drafts",
+      "variant": "default"
+    },
+    {
+      "id": "create-ask-drafts--tool",
+      "from": "agents",
+      "to": "server",
+      "y": 2122,
+      "label": "tool call: draft_items (1-3)",
+      "variant": "default"
+    },
+    {
+      "id": "create-ask-drafts--type",
+      "from": "server",
+      "to": "checks",
+      "y": 2152,
+      "label": "isDraftType: social, whatsapp, ads, gbp",
+      "variant": "security",
+      "note": "backstop to the schema enum; any other type: 'Not a draft type', nothing created or charged; then leadRefusal (Majed only)"
+    },
+    {
+      "id": "create-ask-drafts--gates",
+      "from": "server",
+      "to": "checks",
+      "y": 2196,
+      "label": "brand, trial, then charge by count",
+      "variant": "security",
+      "note": "1 credit per item; cap or credits refused: limit dialog"
+    },
+    {
+      "id": "create-ask-drafts--gen",
+      "from": "server",
+      "to": "agents",
+      "y": 2240,
+      "label": "generate() with count",
+      "variant": "default",
+      "note": "a throw refunds the credits"
+    },
+    {
+      "id": "create-ask-drafts--save",
+      "from": "server",
+      "to": "store",
+      "y": 2284,
+      "label": "save tasks, source 'chat'",
+      "variant": "dashed"
+    },
+    {
+      "id": "create-ask-drafts--see",
+      "from": "page",
+      "to": "person",
+      "y": 2314,
+      "label": "1-3 item cards appear",
+      "variant": "return",
+      "note": "'{n} added to approvals'; the credits pill drops"
+    },
+    {
+      "id": "create-xflag-card--do",
+      "from": "person",
+      "to": "page",
+      "y": 2366,
+      "label": "Look at a reviewed item card",
+      "variant": "default"
+    },
+    {
+      "id": "create-xflag-card--review",
+      "from": "server",
+      "to": "agents",
+      "y": 2396,
+      "label": "cross-agent review: ok or flag",
+      "variant": "default",
+      "note": "notes only, text unchanged; no credits"
+    },
+    {
+      "id": "create-xflag-card--hold",
+      "from": "server",
+      "to": "store",
+      "y": 2440,
+      "label": "flagged task saved as pending",
+      "variant": "dashed",
+      "note": "a flag holds it even under auto-approve"
+    },
+    {
+      "id": "create-xflag-card--see",
+      "from": "page",
+      "to": "person",
+      "y": 2484,
+      "label": "Reviewer pills, 'Read the notes in the inbox'",
+      "variant": "return",
+      "note": "pills '{name}: 1 note' / '{name}: {n} notes'; no Approve button on the card"
+    },
+    {
+      "id": "create-read-card--do",
+      "from": "person",
+      "to": "page",
+      "y": 2536,
+      "label": "Collapse, Expand or Copy a card",
+      "variant": "default"
+    },
+    {
+      "id": "create-read-card--see",
+      "from": "page",
+      "to": "person",
+      "y": 2566,
+      "label": "'Copied'; length vs channel limit",
+      "variant": "return",
+      "note": "over the limit: Approve is disabled"
+    },
+    {
+      "id": "create-approve-card--do",
+      "from": "person",
+      "to": "page",
+      "y": 2644,
+      "label": "Press Approve on an item card",
+      "variant": "emphasis",
+      "note": "Undo within about 4 s sends it back to pending"
+    },
+    {
+      "id": "create-approve-card--patch",
+      "from": "page",
+      "to": "server",
+      "y": 2688,
+      "label": "PATCH /api/tasks/{id} approved",
+      "variant": "emphasis"
+    },
+    {
+      "id": "create-approve-card--role",
+      "from": "server",
+      "to": "checks",
+      "y": 2718,
+      "label": "forbid('drafts'), needs 'publish'",
+      "variant": "security",
+      "note": "member: no button; a 403 shows 'Your role does not allow this.'"
+    },
+    {
+      "id": "create-approve-card--gate",
+      "from": "server",
+      "to": "checks",
+      "y": 2762,
+      "label": "gateTask: banned word, placeholder",
+      "variant": "security"
+    },
+    {
+      "id": "create-approve-card--held",
+      "from": "server",
+      "to": "page",
+      "y": 2792,
+      "label": "409: 'Held by brand guard'",
+      "variant": "security",
+      "note": "nothing saved; Approve disabled"
+    },
+    {
+      "id": "create-approve-card--save",
+      "from": "server",
+      "to": "store",
+      "y": 2836,
+      "label": "set status + decidedAt",
+      "variant": "dashed",
+      "note": "then track('approve') and a decision record"
+    },
+    {
+      "id": "create-approve-card--see",
+      "from": "page",
+      "to": "person",
+      "y": 2880,
+      "label": "'Approved · Undo' for about 4 s",
+      "variant": "return",
+      "note": "the approvals badge recounts; other failure: 'Could not approve'"
+    },
+    {
+      "id": "create-limit-modal--do",
+      "from": "person",
+      "to": "page",
+      "y": 2932,
+      "label": "Hit a wall: credits, trial, cap",
+      "variant": "default",
+      "note": "chat tool, Generate page, handoff Run or an added brand's setup"
+    },
+    {
+      "id": "create-limit-modal--limit",
+      "from": "server",
+      "to": "page",
+      "y": 2976,
+      "label": "final message carries limit:{kind}",
+      "variant": "security",
+      "note": "nothing was charged"
+    },
+    {
+      "id": "create-limit-modal--setup",
+      "from": "server",
+      "to": "page",
+      "y": 3020,
+      "label": "402 from /api/onboard or /confirm",
+      "variant": "security",
+      "note": "added brand's setup; nothing charged; paused: only /confirm (on /start) answers this"
+    },
+    {
+      "id": "create-limit-modal--see",
+      "from": "page",
+      "to": "person",
+      "y": 3064,
+      "label": "Limit dialog opens",
+      "variant": "return",
+      "note": "owner on a paid plan: 'Top up credits' (#topup); trial: 'View plans'; cap: 'Open Governance'; others: 'Ask the account owner…'"
+    },
+    {
+      "id": "create-limit-chat--do",
+      "from": "person",
+      "to": "page",
+      "y": 3116,
+      "label": "Send after the month's turns",
+      "variant": "default"
+    },
+    {
+      "id": "create-limit-chat--limit",
+      "from": "server",
+      "to": "page",
+      "y": 3146,
+      "label": "402 chat_allowance / chat_credits",
+      "variant": "security",
+      "note": "ChatStatus rides along: period, hold, allowance"
+    },
+    {
+      "id": "create-limit-chat--see",
+      "from": "page",
+      "to": "person",
+      "y": 3190,
+      "label": "Chat limit dialog opens",
+      "variant": "return",
+      "note": "month used / trial / too few credits / chat off; owner: 'Open Subscription' or 'View plans'; others: 'Ask the account owner…'"
+    },
+    {
+      "id": "create-cap-alert--charge",
+      "from": "server",
+      "to": "checks",
+      "y": 3242,
+      "label": "charge() passes 80% of agent cap",
+      "variant": "security",
+      "note": "also chargeOnboard, handoff runs and auto-run"
+    },
+    {
+      "id": "create-cap-alert--notify",
+      "from": "server",
+      "to": "store",
+      "y": 3286,
+      "label": "warnAgentCap: notifyItem 'credits'",
+      "variant": "dashed",
+      "note": "once per brand, agent and month; never blocks the charge"
+    },
+    {
+      "id": "create-cap-alert--see",
+      "from": "page",
+      "to": "person",
+      "y": 3330,
+      "label": "Bell: 'X of Y credits this month'",
+      "variant": "return",
+      "note": "links to Governance; chat is not counted"
+    },
+    {
+      "id": "create-judge-later--judge",
+      "from": "server",
+      "to": "agents",
+      "y": 3382,
+      "label": "after(): sonnet-5 scores items",
+      "variant": "dashed",
+      "note": "paused: scoreItems returns [], no scores, no alerts"
+    },
+    {
+      "id": "create-judge-later--verdict",
+      "from": "server",
+      "to": "store",
+      "y": 3426,
+      "label": "updateTask verdict under lock",
+      "variant": "dashed",
+      "note": "autofail on an auto-approved item: back to pending"
+    },
+    {
+      "id": "create-judge-later--see",
+      "from": "page",
+      "to": "person",
+      "y": 3470,
+      "label": "Bell: items scored below 70",
+      "variant": "return",
+      "note": "veto: 'sent back to your inbox'"
+    },
+    {
+      "id": "create-rate-reply--do",
+      "from": "person",
+      "to": "page",
+      "y": 3548,
+      "label": "Thumbs up, or down + reason",
+      "variant": "default"
+    },
+    {
+      "id": "create-rate-reply--post",
+      "from": "page",
+      "to": "server",
+      "y": 3578,
+      "label": "POST /api/chat/feedback",
+      "variant": "default"
+    },
+    {
+      "id": "create-rate-reply--check",
+      "from": "server",
+      "to": "checks",
+      "y": 3608,
+      "label": "session; 120/h; agent, value ±1",
+      "variant": "security",
+      "note": "429 or 400: nothing shown"
+    },
+    {
+      "id": "create-rate-reply--save",
+      "from": "server",
+      "to": "store",
+      "y": 3652,
+      "label": "recordThumb to fblog:{scope}",
+      "variant": "dashed",
+      "note": "5 newest thumbs-down reasons feed the next turn, unless learning is off"
+    },
+    {
+      "id": "create-rate-reply--see",
+      "from": "page",
+      "to": "person",
+      "y": 3696,
+      "label": "Chosen thumb fills at once",
+      "variant": "return"
+    },
+    {
+      "id": "create-pick-agent--do",
+      "from": "person",
+      "to": "page",
+      "y": 3734,
+      "label": "'+ Ask a specialist', pick one",
+      "variant": "default",
+      "note": "Sami, Razan, Faris, Dana, Majed, Layan or Reem"
+    },
+    {
+      "id": "create-pick-agent--post",
+      "from": "page",
+      "to": "server",
+      "y": 3778,
+      "label": "POST /api/conversations {agent}",
+      "variant": "default",
+      "note": "only on Getting-started or a thread with messages"
+    },
+    {
+      "id": "create-pick-agent--save",
+      "from": "server",
+      "to": "store",
+      "y": 3822,
+      "label": "write conv:{scope}:{id}, count 0",
+      "variant": "dashed"
+    },
+    {
+      "id": "create-pick-agent--see",
+      "from": "page",
+      "to": "person",
+      "y": 3852,
+      "label": "Header and tab show the agent",
+      "variant": "return",
+      "note": "no model call, no credits"
+    },
+    {
+      "id": "create-sidebar-agent--do",
+      "from": "person",
+      "to": "page",
+      "y": 3904,
+      "label": "Sidebar: Specialists (7) or '+'",
+      "variant": "default"
+    },
+    {
+      "id": "create-sidebar-agent--post",
+      "from": "page",
+      "to": "server",
+      "y": 3934,
+      "label": "'+': POST /api/conversations",
+      "variant": "default"
+    },
+    {
+      "id": "create-sidebar-agent--see",
+      "from": "page",
+      "to": "person",
+      "y": 3964,
+      "label": "Chat opens with that agent",
+      "variant": "return",
+      "note": "name: ?agent={id}; '+': a new thread at ?conv={id}"
+    },
+    {
+      "id": "create-ask-inbox--do",
+      "from": "person",
+      "to": "page",
+      "y": 4042,
+      "label": "Ask what waits for approval",
+      "variant": "default"
+    },
+    {
+      "id": "create-ask-inbox--tool",
+      "from": "agents",
+      "to": "server",
+      "y": 4072,
+      "label": "tool call: list_inbox",
+      "variant": "default"
+    },
+    {
+      "id": "create-ask-inbox--read",
+      "from": "server",
+      "to": "store",
+      "y": 4102,
+      "label": "read task index, last 90 days",
+      "variant": "default"
+    },
+    {
+      "id": "create-ask-inbox--see",
+      "from": "page",
+      "to": "person",
+      "y": 4132,
+      "label": "Counts + 8 newest items",
+      "variant": "return",
+      "note": "no credits"
+    },
+    {
+      "id": "create-ask-publish--do",
+      "from": "person",
+      "to": "page",
+      "y": 4184,
+      "label": "Ask to publish an approved item",
+      "variant": "default"
+    },
+    {
+      "id": "create-ask-publish--tool",
+      "from": "agents",
+      "to": "server",
+      "y": 4214,
+      "label": "tool call: publish_item",
+      "variant": "default"
+    },
+    {
+      "id": "create-ask-publish--role",
+      "from": "server",
+      "to": "checks",
+      "y": 4244,
+      "label": "needs 'publish'; refused over MCP",
+      "variant": "security",
+      "note": "member: refused"
+    },
+    {
+      "id": "create-ask-publish--gate",
+      "from": "server",
+      "to": "checks",
+      "y": 4288,
+      "label": "person reviewed it + gateTask",
+      "variant": "security",
+      "note": "provider connected; auto-approval alone is not enough"
+    },
+    {
+      "id": "create-ask-publish--post",
+      "from": "server",
+      "to": "outside",
+      "y": 4332,
+      "label": "publishOnce: re-check, then post",
+      "variant": "emphasis",
+      "note": "WordPress, Shopify: draft; X, Facebook, Instagram, Telegram: live"
+    },
+    {
+      "id": "create-ask-publish--record",
+      "from": "server",
+      "to": "store",
+      "y": 4376,
+      "label": "record the result",
+      "variant": "dashed",
+      "note": "already published or outcome unknown: not posted again"
+    },
+    {
+      "id": "create-ask-publish--see",
+      "from": "page",
+      "to": "person",
+      "y": 4420,
+      "label": "Reply: 'Published to {provider}'",
+      "variant": "return",
+      "note": "or a plain reason, e.g. duplicate text refused by the platform"
+    },
+    {
+      "id": "create-ask-image--do",
+      "from": "person",
+      "to": "page",
+      "y": 4472,
+      "label": "Ask for an image for an item",
+      "variant": "default"
+    },
+    {
+      "id": "create-ask-image--tool",
+      "from": "agents",
+      "to": "server",
+      "y": 4502,
+      "label": "tool call: generate_image",
+      "variant": "default",
+      "note": "tool text: default image 1 credit; inbox models 1-2"
+    },
+    {
+      "id": "create-ask-image--load",
+      "from": "server",
+      "to": "store",
+      "y": 4546,
+      "label": "load the brand and the task",
+      "variant": "default"
+    },
+    {
+      "id": "create-ask-image--check",
+      "from": "server",
+      "to": "checks",
+      "y": 4576,
+      "label": "time left, trial, image type",
+      "variant": "security",
+      "note": "under 60 s left: not started; model off: placeholder, no credit"
+    },
+    {
+      "id": "create-ask-image--charge",
+      "from": "server",
+      "to": "checks",
+      "y": 4620,
+      "label": "startMedia: 1 credit, agent cap",
+      "variant": "security",
+      "note": "busy, or 30 an hour / 150 a day reached: no credit"
+    },
+    {
+      "id": "create-ask-image--render",
+      "from": "server",
+      "to": "outside",
+      "y": 4664,
+      "label": "render with img-fast",
+      "variant": "emphasis",
+      "note": "a failed render refunds once; nsfw refusal: credit returned"
+    },
+    {
+      "id": "create-ask-image--see",
+      "from": "page",
+      "to": "person",
+      "y": 4708,
+      "label": "'Being drawn', then in the inbox",
+      "variant": "return",
+      "note": "credits drop by 1; trial, credits or cap refusal: limit dialog"
+    },
+    {
+      "id": "create-ask-reem--do",
+      "from": "person",
+      "to": "page",
+      "y": 4760,
+      "label": "Tell Reem a to-do, or 'done'",
+      "variant": "default"
+    },
+    {
+      "id": "create-ask-reem--tool",
+      "from": "agents",
+      "to": "server",
+      "y": 4790,
+      "label": "secretary tools, e.g. todo_create",
+      "variant": "default",
+      "note": "free, no model call of its own; 'what is next' walks the agenda"
+    },
+    {
+      "id": "create-ask-reem--rate",
+      "from": "server",
+      "to": "checks",
+      "y": 4834,
+      "label": "600 writes/h, 200 new/d, 500 open",
+      "variant": "security",
+      "note": "over a limit: nothing saved"
+    },
+    {
+      "id": "create-ask-reem--save",
+      "from": "server",
+      "to": "store",
+      "y": 4878,
+      "label": "save to-do in the active brand",
+      "variant": "dashed",
+      "note": "'done' is only a proposal to confirm"
+    },
+    {
+      "id": "create-ask-reem--see",
+      "from": "page",
+      "to": "person",
+      "y": 4922,
+      "label": "'Your to-do list was updated'",
+      "variant": "return"
+    },
+    {
+      "id": "create-away-card--do",
+      "from": "person",
+      "to": "page",
+      "y": 4960,
+      "label": "Tell Reem who is away until when",
+      "variant": "default",
+      "note": "then Save or Dismiss on the card"
+    },
+    {
+      "id": "create-away-card--tool",
+      "from": "agents",
+      "to": "server",
+      "y": 5004,
+      "label": "tool call: contact_away",
+      "variant": "default",
+      "note": "only Reem's turn, never over MCP; up to 5 cards a reply"
+    },
+    {
+      "id": "create-away-card--propose",
+      "from": "server",
+      "to": "store",
+      "y": 5048,
+      "label": "store the proposal, 7 days",
+      "variant": "dashed",
+      "note": "nothing changes yet"
+    },
+    {
+      "id": "create-away-card--save",
+      "from": "page",
+      "to": "server",
+      "y": 5092,
+      "label": "Save: POST /api/secretary/away/proposals/{id}",
+      "variant": "default",
+      "note": "needs 'todo.write'; same write limit as to-dos"
+    },
+    {
+      "id": "create-away-card--write",
+      "from": "server",
+      "to": "store",
+      "y": 5136,
+      "label": "decideAwayProposal: write the absence",
+      "variant": "dashed",
+      "note": "no follow-ups to them until their first working day back"
+    },
+    {
+      "id": "create-away-card--see",
+      "from": "page",
+      "to": "person",
+      "y": 5180,
+      "label": "Away card: Save or Dismiss",
+      "variant": "return",
+      "note": "'An absence waits for your Save'; Reem says nothing changes until Save"
+    },
+    {
+      "id": "create-handoff-note--do",
+      "from": "person",
+      "to": "page",
+      "y": 5232,
+      "label": "Tell an agent to pass something on",
+      "variant": "default"
+    },
+    {
+      "id": "create-handoff-note--tool",
+      "from": "agents",
+      "to": "server",
+      "y": 5262,
+      "label": "tool call: handoff_note",
+      "variant": "default",
+      "note": "every agent; not over MCP"
+    },
+    {
+      "id": "create-handoff-note--rate",
+      "from": "server",
+      "to": "checks",
+      "y": 5306,
+      "label": "600 writes/h; 20 blocked notes/day",
+      "variant": "security",
+      "note": "over a limit: nothing saved"
+    },
+    {
+      "id": "create-handoff-note--save",
+      "from": "server",
+      "to": "store",
+      "y": 5350,
+      "label": "save note; 'blocked' opens a Reem to-do",
+      "variant": "dashed",
+      "note": "same open block: added as a note, no second item"
+    },
+    {
+      "id": "create-handoff-note--see",
+      "from": "page",
+      "to": "person",
+      "y": 5394,
+      "label": "Agent confirms the note",
+      "variant": "return",
+      "note": "a blocked note shows in today's agenda and the brief"
+    },
+    {
+      "id": "create-brand-fact--do",
+      "from": "person",
+      "to": "page",
+      "y": 5446,
+      "label": "Tell Noor a brand fact",
+      "variant": "default"
+    },
+    {
+      "id": "create-brand-fact--tool",
+      "from": "agents",
+      "to": "server",
+      "y": 5476,
+      "label": "tool call: update_brand",
+      "variant": "default"
+    },
+    {
+      "id": "create-brand-fact--role",
+      "from": "server",
+      "to": "checks",
+      "y": 5506,
+      "label": "needs 'brand.write'; editable fields",
+      "variant": "security",
+      "note": "member: refused; channels and handles are owner-only"
+    },
+    {
+      "id": "create-brand-fact--save",
+      "from": "server",
+      "to": "store",
+      "y": 5550,
+      "label": "plain field or banned word: save now",
+      "variant": "dashed",
+      "note": "banned words are only added here; a brand_changed row"
+    },
+    {
+      "id": "create-brand-fact--prop",
+      "from": "server",
+      "to": "store",
+      "y": 5594,
+      "label": "offers / banned_remove: store proposal",
+      "variant": "dashed",
+      "note": "kept 7 days; nothing changes yet"
+    },
+    {
+      "id": "create-brand-fact--decide",
+      "from": "page",
+      "to": "server",
+      "y": 5638,
+      "label": "Save: POST /api/brand/proposals/{id}",
+      "variant": "default",
+      "note": "needs 'brand.write'"
+    },
+    {
+      "id": "create-brand-fact--stale",
+      "from": "server",
+      "to": "page",
+      "y": 5682,
+      "label": "409 stale: brand changed meanwhile",
+      "variant": "security",
+      "note": "nothing applied"
+    },
+    {
+      "id": "create-brand-fact--see",
+      "from": "page",
+      "to": "person",
+      "y": 5726,
+      "label": "'A brand change waits for your Save'",
+      "variant": "return",
+      "note": "card with old and new value, 'Save to brand file' and 'Dismiss'"
+    },
+    {
+      "id": "create-handoff-propose--do",
+      "from": "person",
+      "to": "page",
+      "y": 5804,
+      "label": "Ask Majed for a team plan",
+      "variant": "emphasis"
+    },
+    {
+      "id": "create-handoff-propose--tool",
+      "from": "agents",
+      "to": "server",
+      "y": 5834,
+      "label": "tool call: propose_handoff",
+      "variant": "default",
+      "note": "free; creates no task and charges nothing"
+    },
+    {
+      "id": "create-handoff-propose--gate",
+      "from": "server",
+      "to": "checks",
+      "y": 5878,
+      "label": "only Majed; app chat; one per reply",
+      "variant": "security",
+      "note": "any other agent, MCP or token: refused; 1-3 items of others' types"
+    },
+    {
+      "id": "create-handoff-propose--save",
+      "from": "server",
+      "to": "store",
+      "y": 5922,
+      "label": "createHandoff: record, 180 days",
+      "variant": "dashed"
+    },
+    {
+      "id": "create-handoff-propose--see",
+      "from": "page",
+      "to": "person",
+      "y": 5952,
+      "label": "Handoff card: items, costs, Run",
+      "variant": "return",
+      "note": "'Nothing runs and no credits are charged until you press Run'"
+    },
+    {
+      "id": "create-handoff-run--do",
+      "from": "person",
+      "to": "page",
+      "y": 6004,
+      "label": "Press Run on an item, or Run all",
+      "variant": "emphasis"
+    },
+    {
+      "id": "create-handoff-run--post",
+      "from": "page",
+      "to": "server",
+      "y": 6034,
+      "label": "POST /api/handoffs/{id}/run {item}",
+      "variant": "emphasis"
+    },
+    {
+      "id": "create-handoff-run--role",
+      "from": "server",
+      "to": "checks",
+      "y": 6064,
+      "label": "'generate'; 60/h; not paused; item runnable",
+      "variant": "security",
+      "note": "run lock 300 s: another run meanwhile is 409"
+    },
+    {
+      "id": "create-handoff-run--charge",
+      "from": "server",
+      "to": "checks",
+      "y": 6108,
+      "label": "generateBatch: cap, then credits",
+      "variant": "security",
+      "note": "same checks as generate_content"
+    },
+    {
+      "id": "create-handoff-run--refuse",
+      "from": "server",
+      "to": "page",
+      "y": 6152,
+      "label": "402 / 409 / 503: reason on the card",
+      "variant": "security",
+      "note": "no credits, cap, no cart data, too late, busy: nothing charged; credits and cap open the dialog"
+    },
+    {
+      "id": "create-handoff-run--gen",
+      "from": "server",
+      "to": "agents",
+      "y": 6196,
+      "label": "item's own agent: opus-5 + review",
+      "variant": "emphasis",
+      "note": "a failure refunds and answers 502"
+    },
+    {
+      "id": "create-handoff-run--save",
+      "from": "server",
+      "to": "store",
+      "y": 6240,
+      "label": "save tasks; item status 'done'",
+      "variant": "dashed"
+    },
+    {
+      "id": "create-handoff-run--see",
+      "from": "page",
+      "to": "person",
+      "y": 6270,
+      "label": "Item 'Done' with its cards",
+      "variant": "return",
+      "note": "the credits pill drops; a lost answer: the card re-reads its state"
+    },
+    {
+      "id": "create-handoff-decline--do",
+      "from": "person",
+      "to": "page",
+      "y": 6322,
+      "label": "Press Decline on an item",
+      "variant": "default"
+    },
+    {
+      "id": "create-handoff-decline--post",
+      "from": "page",
+      "to": "server",
+      "y": 6352,
+      "label": "POST /api/handoffs/{id}/decline",
+      "variant": "default"
+    },
+    {
+      "id": "create-handoff-decline--role",
+      "from": "server",
+      "to": "checks",
+      "y": 6382,
+      "label": "'drafts'; 120/h; item not done or running",
+      "variant": "security",
+      "note": "else 403, 429 or 409 with the card's state"
+    },
+    {
+      "id": "create-handoff-decline--save",
+      "from": "server",
+      "to": "store",
+      "y": 6426,
+      "label": "item 'declined' + activity row",
+      "variant": "dashed",
+      "note": "no credits touched"
+    },
+    {
+      "id": "create-handoff-decline--see",
+      "from": "page",
+      "to": "person",
+      "y": 6470,
+      "label": "Item shows 'Declined'",
+      "variant": "return"
+    },
+    {
+      "id": "create-handoff-auto--cron",
+      "from": "server",
+      "to": "checks",
+      "y": 6508,
+      "label": "06:00 UTC cron: bearer secret",
+      "variant": "security",
+      "note": "sameSecret; wrong secret: 401"
+    },
+    {
+      "id": "create-handoff-auto--block",
+      "from": "server",
+      "to": "checks",
+      "y": 6552,
+      "label": "autoBlock: owner's proposal, cap, floor",
+      "variant": "security",
+      "note": "off, no cap, member's, too old, article or followup_seq: skipped"
+    },
+    {
+      "id": "create-handoff-auto--gen",
+      "from": "server",
+      "to": "agents",
+      "y": 6596,
+      "label": "one item a day per brand: generateBatch",
+      "variant": "emphasis",
+      "note": "paused: retry the next day; a failure refunds"
+    },
+    {
+      "id": "create-handoff-auto--save",
+      "from": "server",
+      "to": "store",
+      "y": 6640,
+      "label": "save tasks (pending) + notice",
+      "variant": "dashed",
+      "note": "always waits for approval, even auto-approved types"
+    },
+    {
+      "id": "create-handoff-auto--see",
+      "from": "page",
+      "to": "person",
+      "y": 6684,
+      "label": "Bell: 'is in your inbox'",
+      "variant": "return",
+      "note": "'started by auto-run' on the card"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "While the model is paused",
+      "items": [
+        "Model calls are paused since 2026-09-28 (CLAUDE_PAUSED = true).",
+        "A sent message still gets the first status line, then: 'The agents are paused for now, so I can't reply or create content yet. No credits were used.' Both messages are saved, and the message is given back to the month's allowance.",
+        "No tool runs: batches, drafts, inbox checks, images, publishing, to-dos, brand changes, handoff proposals and away cards are never reached. The conversation count still goes up.",
+        "Handoff Run answers 503 model_paused before any charge, and Majed's auto-run waits a day. The judge writes no scores and sends no alerts. Approve, Undo, Decline, and Save or Dismiss on a card still work, since they need no model call.",
+        "An added brand's setup in the Getting-started thread and the Generate page answer 'paused' before any charge; the /start setup check (no model call), and chat's trial-over and chat-message refusals, can still open the limit dialog."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Refusals and limits",
+      "items": [
+        "Chat refuses before anything is saved, in this order: trial over (402), too many in a short time (429: 30 an hour and 150 a day on a paid plan, 10 an hour and 30 a day on a trial), the month's allowance used (402), too few credits for a message on credits (402). The message goes back into the box.",
+        "Trial over, no credits or the agent's monthly cap: nothing is charged and the limit dialog opens. A paid plan's owner is offered a top-up pack first.",
+        "draft_items takes only social, whatsapp, ads and gbp; any type another agent owns is refused in code for Majed, the lead. Both before any charge.",
+        "An added brand's setup it cannot pay for opens the same dialog after 'Go, Noor' on /start, and (model on only) when the build starts in the Getting-started thread; nothing is charged.",
+        "A failed generation refunds the credits, a handoff Run too. A reviewer's flag holds an item for the owner even under auto-approve.",
+        "A turn that ends without a closing answer (model refusal, 5 calls, the $0.35 ceiling, a cut-off reply or out of time) still shows its item and brand cards and opens the dialog of any limit a tool hit.",
+        "A dropped connection retries GET /api/chat?conv= every 5 s, up to 40 times; if the reply is not found: 'Connection lost. Try again.'"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "What the agents quote (model on)",
+      "items": [
+        "The prompt and tool text take their numbers from the constants the charges use: TASK_COST, src/lib/pricing.ts and the media catalogue.",
+        "Batch costs include weekly_plan 2, weekly_report 3 and followup_seq 4; drafts cost 1 credit per item.",
+        "Chat messages: trial 30 once, starter 250, pro 650, business 1300 a UTC month, counted per account. 'Continue on credits' (paid only) bills a message at most 5 credits.",
+        "Plans differ in monthly credits and seats; brands are unlimited on every plan; the first brand's setup is free, each added brand's setup from its URL costs 9 credits, the manual form is free.",
+        "The trial is 3 days with 50 credits that do not renew. A chat image (default model) costs 1 credit; the image models in the inbox cost 1-2."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Who can do this",
+      "items": [
+        "Any signed-in role: open and send chat, batches, drafts, images, to-dos, handoff notes, thumbs and specialist threads.",
+        "Owner or admin: Approve, Add task on the plan card, publish through chat, and Save or Dismiss a brand change.",
+        "'generate' runs a handoff item and 'drafts' declines one; 'todo.write' saves or dismisses an away card.",
+        "Only the owner gets 'Top up credits', 'View plans', 'Open Subscription' or 'Open Governance' in the limit dialog; others get 'Ask the account owner…'."
+      ]
+    }
+  ]
+}

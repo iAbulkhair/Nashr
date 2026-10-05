@@ -1,0 +1,794 @@
+{
+ "schema_version": 1,
+ "diagram_type": "sequence",
+ "meta": {
+  "title": "Discover: land and browse the website",
+  "locale": "en",
+  "output": ".archify/sequence-nashr-journey-20260930-105952/01-discover-browse/01-discover-browse.html",
+  "quality_profile": "showcase",
+  "column_fit": "spread",
+  "repository": {
+   "url": "https://github.com/iAbulkhair/Nashr.git",
+   "provider": "github",
+   "link_mode": "web",
+   "revision": "f0e7fdecf7d70d8c60ba76650f22440433926add"
+  }
+ },
+ "participants": [
+  {
+   "id": "person",
+   "type": "external",
+   "label": "Person",
+   "sublabel": "visitor",
+   "sources": [
+    {
+     "path": "src/components/Footer.tsx",
+     "line": 15,
+     "end_line": 20
+    },
+    {
+     "path": "src/components/Nav.tsx",
+     "line": 48,
+     "end_line": 71
+    },
+    {
+     "path": "src/components/home/Cover.tsx",
+     "line": 14,
+     "end_line": 51
+    }
+   ]
+  },
+  {
+   "id": "page",
+   "type": "frontend",
+   "label": "Browser page",
+   "sublabel": "what they see",
+   "sources": [
+    {
+     "path": "src/components/LangToggle.tsx",
+     "line": 22,
+     "end_line": 27
+    },
+    {
+     "path": "src/components/home/Lineup.tsx",
+     "line": 120,
+     "end_line": 190
+    },
+    {
+     "path": "src/app/[lang]/error.tsx",
+     "line": 12,
+     "end_line": 35
+    }
+   ]
+  },
+  {
+   "id": "server",
+   "type": "backend",
+   "label": "Nashr server",
+   "sublabel": "API routes",
+   "sources": [
+    {
+     "path": "src/proxy.ts",
+     "line": 18,
+     "end_line": 24
+    },
+    {
+     "path": "src/app/[lang]/layout.tsx",
+     "line": 50,
+     "end_line": 58
+    },
+    {
+     "path": "src/app/[lang]/[...rest]/page.tsx",
+     "line": 11,
+     "end_line": 15
+    }
+   ]
+  },
+  {
+   "id": "outside",
+   "type": "external",
+   "label": "Outside services",
+   "sublabel": "Ask AI sites",
+   "sources": [
+    {
+     "path": "src/app/[lang]/ai-marketing-agent/page.tsx",
+     "line": 55,
+     "end_line": 56
+    },
+    {
+     "path": "src/app/[lang]/ai-marketing-agent/page.tsx",
+     "line": 70,
+     "end_line": 73
+    }
+   ]
+  }
+ ],
+ "segments": [
+  {
+   "from": 142,
+   "to": 506,
+   "label": "Land on home"
+  },
+  {
+   "from": 510,
+   "to": 634,
+   "label": "Menus and FAQ"
+  },
+  {
+   "from": 638,
+   "to": 846,
+   "label": "Pricing"
+  },
+  {
+   "from": 850,
+   "to": 1234,
+   "label": "Agents and explainer"
+  },
+  {
+   "from": 1238,
+   "to": 1474,
+   "label": "Blog and resources"
+  },
+  {
+   "from": 1478,
+   "to": 2074,
+   "label": "Industry and company"
+  },
+  {
+   "from": 2078,
+   "to": 2314,
+   "label": "Not found and errors"
+  }
+ ],
+ "messages": [
+  {
+   "id": "discover-open-root--do",
+   "from": "person",
+   "to": "page",
+   "y": 160,
+   "label": "open \"/\" (the bare domain)",
+   "variant": "emphasis"
+  },
+  {
+   "id": "discover-open-root--request",
+   "from": "page",
+   "to": "server",
+   "y": 188,
+   "label": "GET / (proxy)",
+   "variant": "default"
+  },
+  {
+   "id": "discover-open-root--redirect",
+   "from": "server",
+   "to": "page",
+   "y": 216,
+   "label": "307 to /ar or /en",
+   "variant": "return",
+   "note": "nashr_lang cookie, then Accept-Language, else ar"
+  },
+  {
+   "id": "discover-open-root--see",
+   "from": "page",
+   "to": "person",
+   "y": 244,
+   "label": "lands on /ar (or /en)",
+   "variant": "return",
+   "note": "query string kept; nothing stored"
+  },
+  {
+   "id": "discover-see-home--do",
+   "from": "person",
+   "to": "page",
+   "y": 280,
+   "label": "read and scroll the home page",
+   "variant": "emphasis"
+  },
+  {
+   "id": "discover-see-home--request",
+   "from": "page",
+   "to": "server",
+   "y": 308,
+   "label": "GET /{lang}",
+   "variant": "default"
+  },
+  {
+   "id": "discover-see-home--render",
+   "from": "server",
+   "to": "page",
+   "y": 336,
+   "label": "static render from home.ts + dict",
+   "variant": "return",
+   "note": "prefix not ar or en: notFound (404); model paused: Today notes"
+  },
+  {
+   "id": "discover-see-home--see",
+   "from": "page",
+   "to": "person",
+   "y": 364,
+   "label": "cover, lineup, rules, day, 7 steps, plans, FAQ",
+   "variant": "return",
+   "note": "no URL box; RTL in Arabic, LTR in English"
+  },
+  {
+   "id": "discover-meet-team--do",
+   "from": "person",
+   "to": "page",
+   "y": 400,
+   "label": "hover, focus or tap an agent",
+   "variant": "default"
+  },
+  {
+   "id": "discover-meet-team--see",
+   "from": "page",
+   "to": "person",
+   "y": 428,
+   "label": "thought cloud with one of their questions",
+   "variant": "return",
+   "note": "client only; Pause motion button; Escape or tap outside closes"
+  },
+  {
+   "id": "discover-switch-language--do",
+   "from": "person",
+   "to": "page",
+   "y": 464,
+   "label": "click عربي or EN",
+   "variant": "default"
+  },
+  {
+   "id": "discover-switch-language--see",
+   "from": "page",
+   "to": "person",
+   "y": 492,
+   "label": "same page, other language",
+   "variant": "return",
+   "note": "client sets nashr_lang for one year"
+  },
+  {
+   "id": "discover-browse-menus--do",
+   "from": "person",
+   "to": "page",
+   "y": 528,
+   "label": "use nav anchors, dropdowns or footer links",
+   "variant": "default"
+  },
+  {
+   "id": "discover-browse-menus--see",
+   "from": "page",
+   "to": "person",
+   "y": 556,
+   "label": "home anchors; menus on other pages",
+   "variant": "return",
+   "note": "Industries opens /customers; Agencies opens /enterprise; hamburger below lg"
+  },
+  {
+   "id": "discover-read-faq--do",
+   "from": "person",
+   "to": "page",
+   "y": 592,
+   "label": "click a FAQ question",
+   "variant": "default"
+  },
+  {
+   "id": "discover-read-faq--see",
+   "from": "page",
+   "to": "person",
+   "y": 620,
+   "label": "answer expands under it",
+   "variant": "return",
+   "note": "native details; 3 answers on home; price answer on /pricing"
+  },
+  {
+   "id": "discover-view-pricing--do",
+   "from": "person",
+   "to": "page",
+   "y": 656,
+   "label": "open Pricing",
+   "variant": "emphasis"
+  },
+  {
+   "id": "discover-view-pricing--request",
+   "from": "page",
+   "to": "server",
+   "y": 684,
+   "label": "GET /{lang}/pricing",
+   "variant": "default",
+   "note": "or the Plans anchor on home"
+  },
+  {
+   "id": "discover-view-pricing--render",
+   "from": "server",
+   "to": "page",
+   "y": 712,
+   "label": "static render, plan table",
+   "variant": "return",
+   "note": "pricing.ts, chat allowance and task costs; no account read"
+  },
+  {
+   "id": "discover-view-pricing--see",
+   "from": "page",
+   "to": "person",
+   "y": 740,
+   "label": "4 plans and credit cost table",
+   "variant": "return",
+   "note": "299 / 499 / 999 SAR; Agency: Contact us; home shows a short version"
+  },
+  {
+   "id": "discover-pick-plan--do",
+   "from": "person",
+   "to": "page",
+   "y": 776,
+   "label": "click Start free or Contact us",
+   "variant": "emphasis"
+  },
+  {
+   "id": "discover-pick-plan--see",
+   "from": "page",
+   "to": "person",
+   "y": 804,
+   "label": "opens /{lang}/app/signup",
+   "variant": "return",
+   "note": "Starter, Pro, Business; no plan param"
+  },
+  {
+   "id": "discover-pick-plan--agency",
+   "from": "page",
+   "to": "person",
+   "y": 832,
+   "label": "Agency: opens /enterprise#contact",
+   "variant": "return",
+   "note": "the Agencies page, #contact block"
+  },
+  {
+   "id": "discover-browse-agents--do",
+   "from": "person",
+   "to": "page",
+   "y": 868,
+   "label": "open the agents page",
+   "variant": "default"
+  },
+  {
+   "id": "discover-browse-agents--request",
+   "from": "page",
+   "to": "server",
+   "y": 896,
+   "label": "GET /{lang}/agents",
+   "variant": "default"
+  },
+  {
+   "id": "discover-browse-agents--render",
+   "from": "server",
+   "to": "page",
+   "y": 924,
+   "label": "static render from AGENTS",
+   "variant": "return"
+  },
+  {
+   "id": "discover-browse-agents--see",
+   "from": "page",
+   "to": "person",
+   "y": 952,
+   "label": "8 agent cards and a URL box",
+   "variant": "return"
+  },
+  {
+   "id": "discover-open-agent-page--do",
+   "from": "person",
+   "to": "page",
+   "y": 988,
+   "label": "open one agent's page",
+   "variant": "default"
+  },
+  {
+   "id": "discover-open-agent-page--request",
+   "from": "page",
+   "to": "server",
+   "y": 1016,
+   "label": "GET /{lang}/agents/{agent}",
+   "variant": "default"
+  },
+  {
+   "id": "discover-open-agent-page--render",
+   "from": "server",
+   "to": "page",
+   "y": 1044,
+   "label": "static page, 8 agent slugs",
+   "variant": "return",
+   "note": "unknown slug: 404"
+  },
+  {
+   "id": "discover-open-agent-page--see",
+   "from": "page",
+   "to": "person",
+   "y": 1072,
+   "label": "role, drawing, how it works, sample chips",
+   "variant": "return",
+   "note": "non-Noor pages link to Noor"
+  },
+  {
+   "id": "discover-ai-agent-explainer--do",
+   "from": "person",
+   "to": "page",
+   "y": 1108,
+   "label": "read the AI agent explainer",
+   "variant": "default"
+  },
+  {
+   "id": "discover-ai-agent-explainer--request",
+   "from": "page",
+   "to": "server",
+   "y": 1136,
+   "label": "GET /{lang}/ai-marketing-agent",
+   "variant": "default"
+  },
+  {
+   "id": "discover-ai-agent-explainer--render",
+   "from": "server",
+   "to": "page",
+   "y": 1164,
+   "label": "static page + JSON-LD",
+   "variant": "return",
+   "note": "FAQPage and Article"
+  },
+  {
+   "id": "discover-ai-agent-explainer--see",
+   "from": "page",
+   "to": "person",
+   "y": 1192,
+   "label": "definition, table, FAQ, Read next",
+   "variant": "return",
+   "note": "FAQ: SAR 299–999 or Agency contract"
+  },
+  {
+   "id": "discover-ai-agent-explainer--ask-ai",
+   "from": "page",
+   "to": "outside",
+   "y": 1220,
+   "label": "Ask AI click: new tab, ?q=question",
+   "variant": "default",
+   "note": "chatgpt.com, perplexity.ai; not via Thakeen"
+  },
+  {
+   "id": "discover-read-blog--do",
+   "from": "person",
+   "to": "page",
+   "y": 1256,
+   "label": "open the blog, click a post",
+   "variant": "default"
+  },
+  {
+   "id": "discover-read-blog--request",
+   "from": "page",
+   "to": "server",
+   "y": 1284,
+   "label": "GET /{lang}/blog/{slug}",
+   "variant": "default"
+  },
+  {
+   "id": "discover-read-blog--render",
+   "from": "server",
+   "to": "page",
+   "y": 1312,
+   "label": "static post from content/blog",
+   "variant": "return",
+   "note": "body goes through render() in md.ts"
+  },
+  {
+   "id": "discover-read-blog--see",
+   "from": "page",
+   "to": "person",
+   "y": 1340,
+   "label": "date, title, body, final CTA",
+   "variant": "return",
+   "note": "unknown slug: 404"
+  },
+  {
+   "id": "discover-resources-hub--do",
+   "from": "person",
+   "to": "page",
+   "y": 1376,
+   "label": "open Resources",
+   "variant": "default"
+  },
+  {
+   "id": "discover-resources-hub--request",
+   "from": "page",
+   "to": "server",
+   "y": 1404,
+   "label": "GET /{lang}/resources",
+   "variant": "default"
+  },
+  {
+   "id": "discover-resources-hub--render",
+   "from": "server",
+   "to": "page",
+   "y": 1432,
+   "label": "static render",
+   "variant": "return"
+  },
+  {
+   "id": "discover-resources-hub--see",
+   "from": "page",
+   "to": "person",
+   "y": 1460,
+   "label": "6 cards, newest posts, comparisons",
+   "variant": "return",
+   "note": "3 newest posts only when posts exist"
+  },
+  {
+   "id": "discover-read-comparison--do",
+   "from": "person",
+   "to": "page",
+   "y": 1496,
+   "label": "open a comparison page",
+   "variant": "default"
+  },
+  {
+   "id": "discover-read-comparison--request",
+   "from": "page",
+   "to": "server",
+   "y": 1524,
+   "label": "GET /{lang}/vs/{competitor}",
+   "variant": "default"
+  },
+  {
+   "id": "discover-read-comparison--render",
+   "from": "server",
+   "to": "page",
+   "y": 1552,
+   "label": "static render from VS_PAGES",
+   "variant": "return",
+   "note": "5 slugs; unknown slug: 404"
+  },
+  {
+   "id": "discover-read-comparison--see",
+   "from": "page",
+   "to": "person",
+   "y": 1580,
+   "label": "TL;DR, table vs Noor (Thakeen), verdict, FAQ",
+   "variant": "return",
+   "note": "Noor from SAR 299; trial 50 credits"
+  },
+  {
+   "id": "discover-open-industry-page--do",
+   "from": "person",
+   "to": "page",
+   "y": 1616,
+   "label": "open an industry page",
+   "variant": "default"
+  },
+  {
+   "id": "discover-open-industry-page--request",
+   "from": "page",
+   "to": "server",
+   "y": 1644,
+   "label": "GET /{lang}/for/{industry}",
+   "variant": "default"
+  },
+  {
+   "id": "discover-open-industry-page--render",
+   "from": "server",
+   "to": "page",
+   "y": 1672,
+   "label": "static render, 7 industry slugs",
+   "variant": "return",
+   "note": "unknown slug: 404"
+  },
+  {
+   "id": "discover-open-industry-page--see",
+   "from": "page",
+   "to": "person",
+   "y": 1700,
+   "label": "free-trial button, pricing, FAQ",
+   "variant": "return",
+   "note": "figures read pricing.ts; agencies page adds the 15% partner commission"
+  },
+  {
+   "id": "discover-customers-page--do",
+   "from": "person",
+   "to": "page",
+   "y": 1736,
+   "label": "open Customers",
+   "variant": "default"
+  },
+  {
+   "id": "discover-customers-page--request",
+   "from": "page",
+   "to": "server",
+   "y": 1764,
+   "label": "GET /{lang}/customers",
+   "variant": "default"
+  },
+  {
+   "id": "discover-customers-page--render",
+   "from": "server",
+   "to": "page",
+   "y": 1792,
+   "label": "static render",
+   "variant": "return"
+  },
+  {
+   "id": "discover-customers-page--see",
+   "from": "page",
+   "to": "person",
+   "y": 1820,
+   "label": "who it is for, program, apply form",
+   "variant": "return",
+   "note": "no logos: early-adopter stage; no final CTA"
+  },
+  {
+   "id": "discover-enterprise-page--do",
+   "from": "person",
+   "to": "page",
+   "y": 1856,
+   "label": "open Agencies, click Talk to us",
+   "variant": "default"
+  },
+  {
+   "id": "discover-enterprise-page--request",
+   "from": "page",
+   "to": "server",
+   "y": 1884,
+   "label": "GET /{lang}/enterprise",
+   "variant": "default"
+  },
+  {
+   "id": "discover-enterprise-page--render",
+   "from": "server",
+   "to": "page",
+   "y": 1912,
+   "label": "static render",
+   "variant": "return"
+  },
+  {
+   "id": "discover-enterprise-page--see",
+   "from": "page",
+   "to": "person",
+   "y": 1940,
+   "label": "jumps to the #contact form",
+   "variant": "return",
+   "note": "6 feature cards; Agency from 1,500 credits"
+  },
+  {
+   "id": "discover-read-legal--do",
+   "from": "person",
+   "to": "page",
+   "y": 1976,
+   "label": "open Privacy or Terms",
+   "variant": "default"
+  },
+  {
+   "id": "discover-read-legal--request",
+   "from": "page",
+   "to": "server",
+   "y": 2004,
+   "label": "GET /{lang}/privacy or /terms",
+   "variant": "default"
+  },
+  {
+   "id": "discover-read-legal--render",
+   "from": "server",
+   "to": "page",
+   "y": 2032,
+   "label": "static render from LEGAL[lang]",
+   "variant": "return"
+  },
+  {
+   "id": "discover-read-legal--see",
+   "from": "page",
+   "to": "person",
+   "y": 2060,
+   "label": "title, updated date, sections",
+   "variant": "return",
+   "note": "Last updated: Privacy 2026-10-01, Terms 2026-10-02"
+  },
+  {
+   "id": "discover-page-not-found--do",
+   "from": "person",
+   "to": "page",
+   "y": 2096,
+   "label": "open a mistyped or old link",
+   "variant": "default"
+  },
+  {
+   "id": "discover-page-not-found--request",
+   "from": "page",
+   "to": "server",
+   "y": 2124,
+   "label": "GET /{lang}/{unmatched}",
+   "variant": "default"
+  },
+  {
+   "id": "discover-page-not-found--render",
+   "from": "server",
+   "to": "page",
+   "y": 2152,
+   "label": "not-found page (404)",
+   "variant": "return",
+   "note": "[...rest] catch-all or notFound()"
+  },
+  {
+   "id": "discover-page-not-found--see",
+   "from": "page",
+   "to": "person",
+   "y": 2180,
+   "label": "bilingual 404, /ar and /en buttons",
+   "variant": "return",
+   "note": "no nav on this page"
+  },
+  {
+   "id": "discover-error-page--do",
+   "from": "person",
+   "to": "page",
+   "y": 2216,
+   "label": "open a page that fails to render",
+   "variant": "default"
+  },
+  {
+   "id": "discover-error-page--request",
+   "from": "page",
+   "to": "server",
+   "y": 2244,
+   "label": "GET /{lang}/...",
+   "variant": "default"
+  },
+  {
+   "id": "discover-error-page--render",
+   "from": "server",
+   "to": "page",
+   "y": 2272,
+   "label": "render throws",
+   "variant": "return",
+   "note": "boundary logs the digest to the console"
+  },
+  {
+   "id": "discover-error-page--see",
+   "from": "page",
+   "to": "person",
+   "y": 2300,
+   "label": "Something went wrong, Try again",
+   "variant": "return",
+   "note": "Try again: reset(); Home: /ar"
+  }
+ ],
+ "cards": [
+  {
+   "dot": "rose",
+   "title": "Dead ends",
+   "items": [
+    "Unknown language prefix, agent, blog, industry or comparison slug: the 404 page",
+    "Unmatched path: the [...rest] catch-all shows the bilingual 404",
+    "A layout render error shows global-error with 'Try again' only"
+   ]
+  },
+  {
+   "dot": "slate",
+   "title": "No account, no model",
+   "items": [
+    "Home and pricing are static renders from home.ts and the dictionaries",
+    "Home: nothing is read from Redis and no model is called",
+    "Prices, credits, seats and chat messages come from the plan table in pricing.ts, never the account",
+    "Starter, Pro and Business open signup with no plan param; the account starts on plan 'trial' with 50 credits for 3 days",
+    "Agency 'Contact us' opens the contact form at /enterprise#contact",
+    "No URL box on the home page: the nav button and plan buttons lead to signup"
+   ]
+  },
+  {
+   "dot": "amber",
+   "title": "Model paused",
+   "items": [
+    "The model is still paused: CLAUDE_PAUSED is true in src/lib/model.ts",
+    "Home steps 1, 3, 4, 5 and 6 (Your brand, Plan, Draft, Your approval, Analysis) show a 'Today:' note while it is paused",
+    "Turning the model back on removes the notes by itself; the home page never calls a model"
+   ]
+  },
+  {
+   "dot": "cyan",
+   "title": "Language",
+   "items": [
+    "\"/\" uses the nashr_lang cookie, then Accept-Language, else Arabic",
+    "The pill keeps the query and hash; the same language is a no-op",
+    "Clicked before hydration: a plain link, no cookie, query dropped"
+   ]
+  }
+ ]
+}

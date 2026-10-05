@@ -18,8 +18,9 @@ export async function GET() {
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const no = forbid(u, "mcp.token");
   if (no) return no;
+  // Only whether one exists: the token is stored as a hash and is shown once, by POST, never again.
   const t = await getMcpToken(holder(u));
-  return NextResponse.json({ ok: true, token: t ? `${t.slice(0, 12)}…` : null, exists: !!t });
+  return NextResponse.json({ ok: true, exists: !!t });
 }
 export async function POST() {
   const u = await currentUser();

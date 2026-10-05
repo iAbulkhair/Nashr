@@ -1,0 +1,648 @@
+{
+ "key": "10-connect-publish",
+ "title": "Publish: connect platforms and post",
+ "person": "owner",
+ "steps": [
+  {
+   "id": "publish-open-integrations",
+   "title": "Open Integrations",
+   "surface": "/{lang}/app/integrations (IntegrationsPanel)",
+   "actor": "any-signed-in",
+   "action": "Opens the Integrations page to connect a publishing platform.",
+   "ui_response": "The page shows the 'Integrations' title and the note that publishing to Meta, Snap and TikTok needs platform approvals. After returning from a platform, a status line reads 'Connected: x' or 'Verification failed. Check the details. (error)'. Members see a read-only note. A Connected section lists each connection with its account or site and its date. The catalog is grouped into Commerce, Ads, Messaging, Publishing, Data and Payments. Each card is badged Connected, Ready to connect, 'Coming soon, needs platform approval', Coming soon or Planned, with a Connect or 'I want this' button.",
+   "system_reaction": "The page checks the session (redirect to login) and passes manage = can(u,'connectors'). The panel calls GET /api/connect, which returns the providers and the scope's connections. OAuth providers are marked available only when both client env vars are set. Connections carry metadata only; tokens stay encrypted. Only connectors the code actually uses get a Connect button: publishing, product import and ad results.",
+   "branches": [
+    "member -> read-only note, request buttons only"
+   ],
+   "conditions": "Signed in.",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/integrations/page.tsx",
+     "line": 9,
+     "end_line": 17
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 19,
+     "end_line": 38
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 95,
+     "end_line": 184
+    },
+    {
+     "path": "src/app/api/connect/route.ts",
+     "line": 6,
+     "end_line": 15
+    },
+    {
+     "path": "src/lib/connectors/registry.ts",
+     "line": 102,
+     "end_line": 105
+    },
+    {
+     "path": "src/lib/connectors/working.ts",
+     "line": 14,
+     "end_line": 20
+    }
+   ],
+   "next": [
+    "publish-start-oauth",
+    "publish-connect-key",
+    "publish-request-integration"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-start-oauth",
+   "title": "Start OAuth connect",
+   "surface": "/{lang}/app/integrations -> /api/connect/{provider}/start",
+   "actor": "owner",
+   "action": "Clicks Connect on an OAuth platform: X, Facebook or Instagram (Meta), Shopify, Salla, Zid, Meta Ads or Snapchat Ads. Shopify first asks for the store name in a dialog.",
+   "ui_response": "The whole page goes to the platform's consent screen. A refusal before the redirect shows a raw JSON page: 401, 403 forbidden, 404 unknown_provider, 503 provider_not_configured, or 400 shop_required or bad_shop.",
+   "system_reaction": "GET /api/connect/{provider}/start?lang&shop checks the session, the 'connectors' role (admin and above) and that the OAuth provider is configured. A Shopify host is normalised to *.myshopify.com and validated. A random state is saved for 10 minutes with the scope, provider, lang, shop, the PKCE verifier (X only) and the acting login. The nashr_oauth cookie is set: httpOnly, SameSite lax, 10 min, path /api/connect. The route then answers with a 307 redirect to the authorize URL.",
+   "branches": [
+    "403 forbidden",
+    "503 provider_not_configured",
+    "400 bad_shop"
+   ],
+   "conditions": "Owner or admin; provider configured.",
+   "sources": [
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 87,
+     "end_line": 93
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 174,
+     "end_line": 175
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 213,
+     "end_line": 226
+    },
+    {
+     "path": "src/app/api/connect/[provider]/start/route.ts",
+     "line": 15,
+     "end_line": 41
+    },
+    {
+     "path": "src/lib/connectors/store.ts",
+     "line": 65,
+     "end_line": 67
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 254,
+     "end_line": 260
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 48
+    }
+   ],
+   "next": [
+    "publish-oauth-return"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-oauth-return",
+   "title": "Return from platform",
+   "surface": "Platform consent -> /api/connect/{provider}/callback -> /{lang}/app/integrations",
+   "actor": "owner",
+   "action": "Grants (or declines) access on the platform, which sends the browser back.",
+   "ui_response": "The person lands on /{lang}/app/integrations?connected=<id>, which shows 'Connected: <id>' and the new card under Connected. A Meta card shows the chosen Page. When that Page has no Instagram professional account, it adds 'No Instagram professional account is linked to this Page, so posts go to Facebook only...'. On failure or a decline, the person lands on ?error=<code> with 'Verification failed. Check the details. (<code>)'. Codes include the platform's own error such as access_denied, invalid_state, session_mismatch, forbidden, bad_hmac, bad_shop, meta_no_page, no_ad_account, or a token error.",
+   "system_reaction": "GET /api/connect/{provider}/callback reads and clears the cookie and takes the state, which can be used once. It checks: the same provider; that the cookie equals the state (sameSecret); the same account; and the same acting login. It then re-checks the 'connectors' role, and for Shopify also the HMAC and the shop. It exchanges the code and reads the account name (X @user; Salla or Zid store). For Meta it gets a long-lived token, lists the Pages, and picks the first Page with Instagram, else the first Page. For ad providers it lists the ad accounts and picks the first. The connection is saved AES-256-GCM encrypted under the scope from the state, and track('connect') runs. The inbox then offers the matching Publish buttons. The way back to the integrations page is built on the configured app origin, never on the request's Host header.",
+   "branches": [
+    "error=access_denied (declined)",
+    "error=session_mismatch / forbidden / invalid_state",
+    "error=meta_no_page"
+   ],
+   "conditions": "The same browser and login that started the flow.",
+   "sources": [
+    {
+     "path": "src/app/api/connect/[provider]/callback/route.ts",
+     "line": 18,
+     "end_line": 70
+    },
+    {
+     "path": "src/lib/connectors/meta.ts",
+     "line": 69,
+     "end_line": 82
+    },
+    {
+     "path": "src/lib/connectors/ads.ts",
+     "line": 143,
+     "end_line": 153
+    },
+    {
+     "path": "src/lib/connectors/store.ts",
+     "line": 30,
+     "end_line": 49
+    },
+    {
+     "path": "src/lib/connectors/targets.ts",
+     "line": 17,
+     "end_line": 23
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 32
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 131
+    }
+   ],
+   "next": [
+    "publish-choose-page",
+    "publish-to-platform"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-connect-key",
+   "title": "Connect with a key",
+   "surface": "/{lang}/app/integrations (key dialog)",
+   "actor": "owner",
+   "action": "Clicks Connect on WordPress, WooCommerce, Odoo, PrestaShop or Telegram, fills in the dialog fields and clicks Connect. The fields are, for example, site, username and application password, or bot token and chat id. A 'Where do I find these?' line helps.",
+   "ui_response": "The button reads 'Verifying…'. On success the dialog closes and the card appears under Connected. On failure the dialog stays open with 'Verification failed. Check the details. <detail>', for example 'bot cannot see this chat (add the bot as channel admin)'. The x button or a click outside closes the dialog.",
+   "system_reaction": "POST /api/connect/{provider}/key checks the session, the 'connectors' role and that the provider takes a key (404 otherwise). Every field is required (400 missing_<field>), and URL fields get https:// added. It verifies the details live: WordPress, WooCommerce, Odoo and PrestaShop through safeFetch, and Telegram with getChat (400 verify_failed with a detail). The credentials are saved encrypted and track('connect') runs.",
+   "branches": [
+    "400 verify_failed -> message in dialog",
+    "400 missing field"
+   ],
+   "conditions": "Owner or admin.",
+   "sources": [
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 50,
+     "end_line": 61
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 191,
+     "end_line": 212
+    },
+    {
+     "path": "src/app/api/connect/[provider]/key/route.ts",
+     "line": 11,
+     "end_line": 60
+    },
+    {
+     "path": "src/lib/connectors/keyed.ts",
+     "line": 51,
+     "end_line": 59
+    },
+    {
+     "path": "src/lib/connectors/wordpress.ts",
+     "line": 11,
+     "end_line": 22
+    }
+   ],
+   "next": [
+    "publish-import-products",
+    "publish-to-platform"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-choose-page",
+   "title": "Choose Facebook Page",
+   "surface": "/{lang}/app/integrations (Meta card)",
+   "actor": "owner",
+   "action": "Picks another Page in 'Page we publish to'. The select appears only when Meta returned more than one Page.",
+   "ui_response": "The select is disabled while saving. An error appears as a browser alert (for example unknown_page, not_connected or reconnect_required), then the card reloads.",
+   "system_reaction": "POST /api/connect/meta {action:'select_page', pageId} needs the 'connectors' role and a fresh connection. It accepts only a Page that Meta returned. The Instagram account follows the chosen Page, and the change is saved. The inbox then offers Facebook, and Instagram only when that Page has an Instagram professional account.",
+   "branches": [
+    "400 unknown_page -> alert"
+   ],
+   "conditions": "Owner or admin; Meta connected.",
+   "sources": [
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 69,
+     "end_line": 77
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 123,
+     "end_line": 131
+    },
+    {
+     "path": "src/app/api/connect/[provider]/route.ts",
+     "line": 35,
+     "end_line": 59
+    },
+    {
+     "path": "src/lib/connectors/meta.ts",
+     "line": 85,
+     "end_line": 93
+    }
+   ],
+   "next": [
+    "publish-to-platform"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-choose-ad-account",
+   "title": "Choose ad account",
+   "surface": "/{lang}/app/integrations (Meta Ads or Snapchat card)",
+   "actor": "owner",
+   "action": "Picks the account in 'Ad account we read results from'. The select appears only when the platform returned more than one account.",
+   "ui_response": "An error appears as a browser alert, then the card reloads.",
+   "system_reaction": "POST /api/connect/{provider} {action:'select_ad_account', accountId} needs the 'connectors' role. It accepts only an account the platform returned (400 unknown_account). Results are only read, into reports.",
+   "branches": [
+    "400 unknown_account -> alert"
+   ],
+   "conditions": "Owner or admin; ad provider connected.",
+   "sources": [
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 78,
+     "end_line": 86
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 132,
+     "end_line": 139
+    },
+    {
+     "path": "src/app/api/connect/[provider]/route.ts",
+     "line": 60,
+     "end_line": 65
+    },
+    {
+     "path": "src/lib/connectors/ads.ts",
+     "line": 156,
+     "end_line": 163
+    }
+   ],
+   "next": [
+    "publish-open-integrations"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-import-products",
+   "title": "Import store products",
+   "surface": "/{lang}/app/integrations (store card)",
+   "actor": "owner",
+   "action": "Clicks 'Import products' on a connected Shopify, WooCommerce, Odoo, PrestaShop, Salla or Zid card.",
+   "ui_response": "The button is disabled while the import runs. A browser alert then shows 'Import products: N', Zid's permission message, or the error code.",
+   "system_reaction": "POST /api/connect/{provider} {action:'import_products'} needs the 'catalog.import' role (admin and above) and a fresh connection. It writes the products into products.md, a core file every agent reads. A 401 or 403 on an OAuth connection marks it for reconnecting and answers 502 reconnect_required.",
+   "branches": [
+    "zid_access_denied -> permission alert",
+    "refused token -> reconnect"
+   ],
+   "conditions": "Owner or admin.",
+   "sources": [
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 62,
+     "end_line": 68
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 143
+    },
+    {
+     "path": "src/app/api/connect/[provider]/route.ts",
+     "line": 35,
+     "end_line": 53
+    },
+    {
+     "path": "src/app/api/connect/[provider]/route.ts",
+     "line": 70,
+     "end_line": 73
+    },
+    {
+     "path": "src/lib/connectors/fresh.ts",
+     "line": 74,
+     "end_line": 81
+    }
+   ],
+   "next": [
+    "publish-open-integrations"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-reconnect",
+   "title": "Reconnect a platform",
+   "surface": "/{lang}/app/integrations (Connected card)",
+   "actor": "owner",
+   "action": "Clicks 'Reconnect' on an OAuth connection the platform stopped accepting.",
+   "ui_response": "The card read 'The platform stopped accepting this connection. Connect again'. Reconnect starts the same OAuth hand-off (Shopify asks for the store again), and after the return the warning is gone.",
+   "system_reaction": "needsReconnect is set in four cases: a token refresh fails; a refresh token is missing; the platform answers 401 or 403 during a publish; or it does so during an action on the connection. A new save from the callback replaces the record and clears the flag. Until then the inbox still shows the Publish button, and every publish to that platform fails with reconnect_required.",
+   "branches": [],
+   "conditions": "Owner or admin; OAuth connection flagged.",
+   "sources": [
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 122
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 142
+    },
+    {
+     "path": "src/lib/connectors/fresh.ts",
+     "line": 19,
+     "end_line": 58
+    },
+    {
+     "path": "src/lib/connectors/fresh.ts",
+     "line": 74,
+     "end_line": 81
+    },
+    {
+     "path": "src/lib/connectors/store.ts",
+     "line": 45,
+     "end_line": 49
+    }
+   ],
+   "next": [
+    "publish-start-oauth"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-disconnect",
+   "title": "Disconnect a platform",
+   "surface": "/{lang}/app/integrations (Connected card)",
+   "actor": "owner",
+   "action": "Clicks 'Disconnect'.",
+   "ui_response": "There is no confirmation dialog. The card leaves Connected after the list reloads, and the inbox stops offering that platform. A refusal shows no message; the card simply stays.",
+   "system_reaction": "DELETE /api/connect/{provider} checks the session and the 'connectors' role, deletes the encrypted record and removes the provider from the scope's index. Posts already made stay on the platform and in the item's published list.",
+   "branches": [
+    "403 forbidden -> nothing changes"
+   ],
+   "conditions": "Owner or admin.",
+   "sources": [
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 45,
+     "end_line": 49
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 144
+    },
+    {
+     "path": "src/app/api/connect/[provider]/route.ts",
+     "line": 20,
+     "end_line": 28
+    },
+    {
+     "path": "src/lib/connectors/store.ts",
+     "line": 60,
+     "end_line": 63
+    }
+   ],
+   "next": [
+    "publish-open-integrations"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-request-integration",
+   "title": "Request an integration",
+   "surface": "/{lang}/app/integrations (catalog cards, 'Need another integration?')",
+   "actor": "any-signed-in",
+   "action": "Clicks 'I want this' on a card that cannot be connected yet, or types another integration and clicks Send.",
+   "ui_response": "The card button becomes 'Requested · N' with the vote count and is disabled. The free-text form only clears its input.",
+   "system_reaction": "POST /api/integrations {id,name} checks the session. It adds the request to integration-requests (capped), with the acting login, the account, the name and the time, and increments integration-votes:<name>. The founder reads the list through the admin GET.",
+   "branches": [],
+   "conditions": "Any role.",
+   "sources": [
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 40,
+     "end_line": 44
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 176,
+     "end_line": 177
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 186,
+     "end_line": 189
+    },
+    {
+     "path": "src/app/api/integrations/route.ts",
+     "line": 6,
+     "end_line": 24
+    }
+   ],
+   "next": [
+    "publish-open-inbox"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-to-platform",
+   "title": "Publish to a platform",
+   "surface": "/{lang}/app (Inbox card)",
+   "actor": "owner",
+   "action": "Clicks 'Publish to <platform>' on a card. The buttons show to admins and owners (a member is offered none) on any card whose type fits a connected target, including Rejected cards, which the server refuses. Articles go to WordPress or Shopify as drafts. X-channel social posts go to X. Social and cart-recovery posts on the Instagram or Facebook channel go to Facebook, and to Instagram only with a generated image. Social, gbp and whatsapp items can go to Telegram.",
+   "ui_response": "The button reads 'Publishing…'. On success, the card shows 'Published <platform> ↗' linking to the live post, or 'Draft on <platform> ↗' for WordPress and Shopify. The status becomes Approved and the journey card ticks 'publish'. If the text has a slot like {{1}} or a direction like [VO], the buttons are disabled and the card reads 'Not published as written: it has slots such as {{1}} filled per recipient, or script directions such as [VO]. Copy it to where it is used.' An Instagram-channel post without an image shows 'Instagram takes no post without an image: generate one for this post and the Publish to Instagram button appears.'",
+   "system_reaction": "POST /api/publish/{id} {provider} checks, in order: the session; the 'publish' role (403); the task in scope (404); a provider (400); not rejected (409 rejected_item); the brand gate with publish:true (409 brand_violation); and that the provider is in targetsFor(connected) (400 wrong_target). publishOnce then takes the 70 s publock (409 publish_busy), re-reads and re-checks the item, and refuses a leftover attempt marker (publish_unknown) or a platform already published (already_published). It writes the marker and calls publishTask with a fresh token, refreshing it or throwing reconnect_required. WordPress and Shopify create drafts. X (first 280 characters), Telegram (first 4000), a Facebook feed or photo post, and Instagram (container, then publish) go live. It appends {provider,url,status,at} to task.published, sets status approved, and sets decidedAt when the item was pending. It then clears the marker and runs track('publish'). A 'publish' decision, with who approved, is recorded only when this approved a pending item, and every post that went out adds one 'published' row to the activity log (agent of the item's type, the acting person, via app, the platform). No credits and no model call, so it works while paused.",
+   "branches": [
+    "success -> post link on card",
+    "ask again -> see Confirm publish again",
+    "refused -> see Publish refused"
+   ],
+   "conditions": "Owner or admin; platform connected; item not rejected; passes the publish-strength brand gate.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 95,
+     "end_line": 122
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 283,
+     "end_line": 285
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 408
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 417,
+     "end_line": 432
+    },
+    {
+     "path": "src/lib/connectors/targets.ts",
+     "line": 26,
+     "end_line": 37
+    },
+    {
+     "path": "src/app/api/publish/[id]/route.ts",
+     "line": 17,
+     "end_line": 76
+    },
+    {
+     "path": "src/lib/publish-once.ts",
+     "line": 62,
+     "end_line": 123
+    },
+    {
+     "path": "src/lib/connectors/publish.ts",
+     "line": 15,
+     "end_line": 58
+    },
+    {
+     "path": "src/lib/connectors/x.ts",
+     "line": 3,
+     "end_line": 15
+    },
+    {
+     "path": "src/lib/connectors/keyed.ts",
+     "line": 60,
+     "end_line": 70
+    },
+    {
+     "path": "src/lib/connectors/meta.ts",
+     "line": 97,
+     "end_line": 123
+    }
+   ],
+   "next": [
+    "publish-confirm-again",
+    "publish-refused",
+    "publish-decisions"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-confirm-again",
+   "title": "Confirm publish again",
+   "surface": "/{lang}/app (Inbox card, yellow notice)",
+   "actor": "owner",
+   "action": "Reads the notice on the card and, where offered, chooses 'Publish again' or Cancel.",
+   "ui_response": "The notice depends on what happened. Already published: 'This item was already published to <p>. Publish it again?', with a link to the earlier post. Unknown result (no answer, a 5xx other than 502, or a marker left from an earlier try): 'The publish to <p> ended without an answer, so the post may already be live. Check <p> first, then publish again if it is not there.' Only these two offer 'Publish again' and Cancel. Busy: 'A publish is already running. Wait a minute, then refresh.' Duplicate: '<p> refused this text because it was already posted there. Nothing went out and the connection is fine. Change the wording, then publish.' Earlier attempt live: '<p> says this text is already there, so the earlier attempt went live. It is now recorded on the item; nothing new was posted.' These three have no buttons.",
+   "system_reaction": "'Publish again' sends the POST again with again:true. That skips the once-per-platform and unknown-result checks, but keeps the lock and the role, rejection and brand gates. mayHavePosted treats timeouts, network errors, 5xx answers and unreadable answers as 'may have posted', and the marker is kept for 3 days. Only a clear refusal counts as 'not posted'. A duplicate answer after an unknown attempt is recorded as that earlier post (earlier_live): the item is marked approved, a pending item gets its decision record and every case gets the activity row the unknown attempt never wrote. Otherwise it is 409 duplicate_post.",
+   "branches": [
+    "Publish again -> repeat publish",
+    "Cancel -> notice closes"
+   ],
+   "conditions": "Owner or admin.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 26,
+     "end_line": 30
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 99,
+     "end_line": 113
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 286,
+     "end_line": 296
+    },
+    {
+     "path": "src/lib/publish-once.ts",
+     "line": 30,
+     "end_line": 58
+    },
+    {
+     "path": "src/lib/publish-once.ts",
+     "line": 72,
+     "end_line": 99
+    },
+    {
+     "path": "src/app/api/publish/[id]/route.ts",
+     "line": 59,
+     "end_line": 75
+    }
+   ],
+   "next": [
+    "publish-to-platform"
+   ],
+   "verified": true,
+   "stage": "publish"
+  },
+  {
+   "id": "publish-refused",
+   "title": "Publish refused",
+   "surface": "/{lang}/app (Inbox card, browser alert)",
+   "actor": "owner",
+   "action": "The publish is refused.",
+   "ui_response": "brand_violation shows the held box on the card with the rule and excerpts. This happens only when the brand file or the text changed after the page loaded, because otherwise the button is already disabled. 403 shows the alert 'Your role does not allow this.' Anything else shows the alert 'Publish failed.': a Rejected card, not_connected, reconnect_required, wrong_target, meta_no_instagram, or a platform 4xx. A refused OAuth token also makes the Integrations page show 'The platform stopped accepting this connection. Connect again'.",
+   "system_reaction": "The route answers 400, 404, 409 or 502. publishTask turns a 401 or 403 from an OAuth platform into reconnect_required and marks the connection. Nothing is recorded on the item, and the attempt marker is cleared after a clear refusal.",
+   "branches": [
+    "409 brand_violation -> held box",
+    "403 -> role alert",
+    "409 rejected_item / 502 / 400 -> 'Publish failed.'",
+    "reconnect_required -> Integrations Reconnect"
+   ],
+   "conditions": "None.",
+   "sources": [
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 106,
+     "end_line": 114
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 97
+    },
+    {
+     "path": "src/app/api/publish/[id]/route.ts",
+     "line": 21,
+     "end_line": 37
+    },
+    {
+     "path": "src/app/api/publish/[id]/route.ts",
+     "line": 59,
+     "end_line": 66
+    },
+    {
+     "path": "src/lib/publish-once.ts",
+     "line": 70,
+     "end_line": 71
+    },
+    {
+     "path": "src/lib/connectors/publish.ts",
+     "line": 15,
+     "end_line": 21
+    },
+    {
+     "path": "src/lib/connectors/fresh.ts",
+     "line": 74,
+     "end_line": 81
+    }
+   ],
+   "next": [
+    "publish-open-editor",
+    "publish-reconnect"
+   ],
+   "verified": true,
+   "stage": "publish"
+  }
+ ]
+}

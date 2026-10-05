@@ -1,0 +1,1156 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "First run: confirm the site and build the workspace",
+    "output": ".archify/sequence-nashr-journey-20260930-105952/04-onboard-build/04-onboard-build.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "repository": {
+      "url": "https://github.com/iAbulkhair/Nashr.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "f0e7fdecf7d70d8c60ba76650f22440433926add"
+    }
+  },
+  "participants": [
+    {
+      "id": "person",
+      "type": "external",
+      "label": "Person",
+      "sublabel": "owner",
+      "sources": [
+        {
+          "path": "src/components/app/DictionaryStart.tsx",
+          "line": 82,
+          "end_line": 198
+        },
+        {
+          "path": "src/components/app/BrandForm.tsx",
+          "line": 49,
+          "end_line": 108
+        }
+      ]
+    },
+    {
+      "id": "page",
+      "type": "frontend",
+      "label": "Browser page",
+      "sublabel": "what they see",
+      "sources": [
+        {
+          "path": "src/components/app/StartLaunch.tsx",
+          "line": 39,
+          "end_line": 73
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 496,
+          "end_line": 534
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 525,
+          "end_line": 528
+        }
+      ]
+    },
+    {
+      "id": "checks",
+      "type": "security",
+      "label": "Checks in code",
+      "sublabel": "auth · roles · limits",
+      "sources": [
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 94,
+          "end_line": 126
+        },
+        {
+          "path": "src/lib/rate.ts",
+          "line": 6,
+          "end_line": 23
+        },
+        {
+          "path": "src/lib/roles.ts",
+          "line": 44
+        }
+      ]
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "Nashr server",
+      "sublabel": "API routes",
+      "sources": [
+        {
+          "path": "src/app/api/onboard/confirm/route.ts",
+          "line": 22,
+          "end_line": 47
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 94,
+          "end_line": 126
+        },
+        {
+          "path": "src/app/api/brand/route.ts",
+          "line": 14,
+          "end_line": 24
+        }
+      ]
+    },
+    {
+      "id": "agents",
+      "type": "backend",
+      "label": "AI agents",
+      "sublabel": "model paused now",
+      "sources": [
+        {
+          "path": "src/lib/onboard.ts",
+          "line": 112,
+          "end_line": 136
+        },
+        {
+          "path": "src/lib/model.ts",
+          "line": 25,
+          "end_line": 34
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "account data",
+      "sources": [
+        {
+          "path": "src/lib/onboard-confirm.ts",
+          "line": 16,
+          "end_line": 34
+        },
+        {
+          "path": "src/lib/credits.ts",
+          "line": 235,
+          "end_line": 274
+        },
+        {
+          "path": "src/lib/files.ts",
+          "line": 68,
+          "end_line": 81
+        }
+      ]
+    },
+    {
+      "id": "outside",
+      "type": "external",
+      "label": "Outside",
+      "sublabel": "your website",
+      "sources": [
+        {
+          "path": "src/lib/crawl.ts",
+          "line": 45,
+          "end_line": 62
+        },
+        {
+          "path": "src/lib/safe-fetch.ts",
+          "line": 65,
+          "end_line": 83
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 156,
+      "to": 840,
+      "label": "Land on start"
+    },
+    {
+      "from": 864,
+      "to": 1008,
+      "label": "Play the Dictionary"
+    },
+    {
+      "from": 1032,
+      "to": 1892,
+      "label": "Confirm the site"
+    },
+    {
+      "from": 1916,
+      "to": 2550,
+      "label": "Build or pause"
+    },
+    {
+      "from": 2574,
+      "to": 3836,
+      "label": "Live build"
+    },
+    {
+      "from": 3860,
+      "to": 4770,
+      "label": "No site, manual form"
+    },
+    {
+      "from": 4794,
+      "to": 4938,
+      "label": "First brief"
+    }
+  ],
+  "messages": [
+    {
+      "id": "onboard-arrive-start--do",
+      "from": "person",
+      "to": "page",
+      "y": 186,
+      "label": "Open the start page",
+      "variant": "emphasis",
+      "note": "signup, a no-brand redirect, the nudge email, a link on the home page or adding a brand"
+    },
+    {
+      "id": "onboard-arrive-start--load",
+      "from": "page",
+      "to": "server",
+      "y": 230,
+      "label": "GET /{lang}/app/start",
+      "variant": "emphasis"
+    },
+    {
+      "id": "onboard-arrive-start--auth",
+      "from": "server",
+      "to": "checks",
+      "y": 274,
+      "label": "currentUser(), can 'onboard' + 'brand.write'",
+      "variant": "security",
+      "note": "not signed in → /{lang}/app/login; member → waiting note; brand exists → /{lang}/app"
+    },
+    {
+      "id": "onboard-arrive-start--wizard",
+      "from": "server",
+      "to": "page",
+      "y": 318,
+      "label": "DictionaryStart: seven-step game",
+      "variant": "return",
+      "note": "?url= and the setup cost + balance are passed; nothing is stored"
+    },
+    {
+      "id": "onboard-arrive-start--see",
+      "from": "page",
+      "to": "person",
+      "y": 362,
+      "label": "'The Thakeen Dictionary', step 1: name + sector",
+      "variant": "return",
+      "note": "Next stays off until the step is complete; the link field comes on step 7"
+    },
+    {
+      "id": "onboard-arrive-start--cost",
+      "from": "page",
+      "to": "person",
+      "y": 406,
+      "label": "step 7 cost line under the link field",
+      "variant": "return",
+      "note": "first brand free; added brand 9 credits, refunded if not built"
+    },
+    {
+      "id": "onboard-arrive-start--short",
+      "from": "page",
+      "to": "person",
+      "y": 450,
+      "label": "added brand under 9: Go stays off",
+      "variant": "return",
+      "note": "'Nothing was charged' + View plans → credits dialog; Go stays off"
+    },
+    {
+      "id": "onboard-member-wait--do",
+      "from": "person",
+      "to": "page",
+      "y": 500,
+      "label": "Member opens the app",
+      "variant": "default",
+      "note": "invited plain member, no brand yet"
+    },
+    {
+      "id": "onboard-member-wait--load",
+      "from": "page",
+      "to": "server",
+      "y": 544,
+      "label": "GET /{lang}/app/start",
+      "variant": "default"
+    },
+    {
+      "id": "onboard-member-wait--role",
+      "from": "server",
+      "to": "checks",
+      "y": 588,
+      "label": "lacks 'onboard' or 'brand.write'",
+      "variant": "security",
+      "note": "brand exists by now → redirect to /{lang}/app"
+    },
+    {
+      "id": "onboard-member-wait--note",
+      "from": "server",
+      "to": "page",
+      "y": 632,
+      "label": "'This account is not set up yet'",
+      "variant": "return"
+    },
+    {
+      "id": "onboard-member-wait--see",
+      "from": "page",
+      "to": "person",
+      "y": 676,
+      "label": "read-only note, no form",
+      "variant": "return"
+    },
+    {
+      "id": "onboard-nudge-email--bearer",
+      "from": "server",
+      "to": "checks",
+      "y": 726,
+      "label": "cron bearer = CRON_SECRET",
+      "variant": "security",
+      "note": "Vercel cron 05:00 UTC, GET /api/cron/daily; else 401"
+    },
+    {
+      "id": "onboard-nudge-email--once",
+      "from": "server",
+      "to": "store",
+      "y": 770,
+      "label": "sendOnce(email,'nudge1'): claim, send, marker",
+      "variant": "dashed",
+      "note": "no brand, account > 10 min, RESEND_API_KEY and MAIL_FROM set; marker only after Resend accepts"
+    },
+    {
+      "id": "onboard-nudge-email--see",
+      "from": "server",
+      "to": "person",
+      "y": 814,
+      "label": "Resend email: 'Noor is ready'",
+      "variant": "return",
+      "note": "one per account, link to /start; a refused send is retried next run"
+    },
+    {
+      "id": "onboard-dict-play--do",
+      "from": "person",
+      "to": "page",
+      "variant": "default",
+      "label": "Play steps 1 to 6",
+      "note": "name, sector, five words, sample plan and draft, Approve",
+      "y": 894
+    },
+    {
+      "id": "onboard-dict-play--rules",
+      "from": "person",
+      "to": "page",
+      "variant": "security",
+      "label": "canAdvance() gates each Next",
+      "note": "name + sector; exactly 5 words; Approve only on step 5",
+      "y": 938
+    },
+    {
+      "id": "onboard-dict-play--see",
+      "from": "page",
+      "to": "person",
+      "variant": "return",
+      "label": "Noor and agent reactions, sample plan and draft",
+      "note": "samples tagged 'Example'; nothing sent, saved or charged; reload loses answers",
+      "y": 982
+    },
+    {
+      "id": "onboard-confirm-url--do",
+      "from": "person",
+      "to": "page",
+      "y": 1062,
+      "label": "Step 7: press 'Go, Noor'",
+      "variant": "emphasis",
+      "note": "website, store or Instagram link"
+    },
+    {
+      "id": "onboard-confirm-url--post",
+      "from": "page",
+      "to": "server",
+      "y": 1106,
+      "label": "POST /api/onboard/confirm {url, answers}",
+      "variant": "emphasis"
+    },
+    {
+      "id": "onboard-confirm-url--auth",
+      "from": "server",
+      "to": "checks",
+      "y": 1150,
+      "label": "session 401, role 'onboard' 403",
+      "variant": "security"
+    },
+    {
+      "id": "onboard-confirm-url--url",
+      "from": "server",
+      "to": "checks",
+      "y": 1194,
+      "label": "URL 4+ chars (400), answers valid (400), no brand (409)",
+      "variant": "security",
+      "note": "URL clipped to 300 characters; bad_answers if the game is not finished"
+    },
+    {
+      "id": "onboard-confirm-url--pay",
+      "from": "server",
+      "to": "checks",
+      "y": 1238,
+      "label": "added brand: trial on, 9+ credits",
+      "variant": "security",
+      "note": "skipped when a charge is already held"
+    },
+    {
+      "id": "onboard-confirm-url--write",
+      "from": "server",
+      "to": "store",
+      "y": 1282,
+      "label": "onboardok + onboardgame:{scope}, 1 day",
+      "variant": "dashed",
+      "note": "URL and the Dictionary answers; no crawl, no model call, nothing charged here"
+    },
+    {
+      "id": "onboard-confirm-url--ok",
+      "from": "server",
+      "to": "page",
+      "y": 1326,
+      "label": "200 or 409 → chat?onboard={url}",
+      "variant": "return",
+      "note": "200 carries {cost, paid?}; 409: chat opens, no build"
+    },
+    {
+      "id": "onboard-confirm-url--refuse",
+      "from": "server",
+      "to": "page",
+      "y": 1370,
+      "label": "402 no_credits or trial_over",
+      "variant": "security",
+      "note": "added brand only; nothing written or charged"
+    },
+    {
+      "id": "onboard-confirm-url--limit",
+      "from": "page",
+      "to": "person",
+      "y": 1414,
+      "label": "red balance text + limit dialog",
+      "variant": "return",
+      "note": "ended trial → 'Trial ended. Subscribe to continue.'"
+    },
+    {
+      "id": "onboard-confirm-url--error",
+      "from": "page",
+      "to": "person",
+      "y": 1458,
+      "label": "else red 'Something failed' alert",
+      "variant": "return",
+      "note": "'Try again or fill the form manually.'"
+    },
+    {
+      "id": "onboard-manual-link--do",
+      "from": "person",
+      "to": "page",
+      "y": 1508,
+      "label": "Click 'I'd rather fill the form manually'",
+      "variant": "default",
+      "note": "under the title on every step"
+    },
+    {
+      "id": "onboard-manual-link--see",
+      "from": "page",
+      "to": "person",
+      "y": 1552,
+      "label": "opens /{lang}/app/onboarding",
+      "variant": "return",
+      "note": "plain link, nothing stored; game answers are not carried over"
+    },
+    {
+      "id": "onboard-chat-gate--do",
+      "from": "person",
+      "to": "page",
+      "y": 1602,
+      "label": "Land on /chat?onboard={url}",
+      "variant": "emphasis"
+    },
+    {
+      "id": "onboard-chat-gate--load",
+      "from": "page",
+      "to": "server",
+      "y": 1646,
+      "label": "GET /{lang}/app/chat",
+      "variant": "emphasis"
+    },
+    {
+      "id": "onboard-chat-gate--role",
+      "from": "server",
+      "to": "checks",
+      "y": 1690,
+      "label": "no brand: admin or owner only",
+      "variant": "security",
+      "note": "member → /start waiting note"
+    },
+    {
+      "id": "onboard-chat-gate--read",
+      "from": "server",
+      "to": "store",
+      "y": 1734,
+      "label": "read onboardok:{scope} + history",
+      "variant": "default"
+    },
+    {
+      "id": "onboard-chat-gate--redirect",
+      "from": "server",
+      "to": "page",
+      "y": 1778,
+      "label": "no confirmation → /start?url=",
+      "variant": "security",
+      "note": "expired after 1 day, or a link someone else sent"
+    },
+    {
+      "id": "onboard-chat-gate--url",
+      "from": "server",
+      "to": "page",
+      "y": 1822,
+      "label": "confirmed URL → onboardUrl",
+      "variant": "return",
+      "note": "the ?onboard= value itself is never used to build"
+    },
+    {
+      "id": "onboard-chat-gate--see",
+      "from": "page",
+      "to": "person",
+      "y": 1866,
+      "label": "'Noor · Getting started' thread",
+      "variant": "return",
+      "note": "no greeting chips; the build starts by itself"
+    },
+    {
+      "id": "onboard-build-start--post",
+      "from": "page",
+      "to": "server",
+      "y": 1946,
+      "label": "POST /api/onboard {url}",
+      "variant": "emphasis",
+      "note": "sent by the page once per load; the owner clicks nothing"
+    },
+    {
+      "id": "onboard-build-start--auth",
+      "from": "server",
+      "to": "checks",
+      "y": 1990,
+      "label": "session, role, URL, no brand",
+      "variant": "security",
+      "note": "401 · 403 forbidden · 400 bad_url · 409 already_onboarded"
+    },
+    {
+      "id": "onboard-build-start--confirm",
+      "from": "server",
+      "to": "checks",
+      "y": 2034,
+      "label": "URL = onboardok (403 unconfirmed)",
+      "variant": "security"
+    },
+    {
+      "id": "onboard-build-start--paused",
+      "from": "server",
+      "to": "checks",
+      "y": 2078,
+      "label": "model on? else 503 paused",
+      "variant": "security"
+    },
+    {
+      "id": "onboard-build-start--pay",
+      "from": "server",
+      "to": "checks",
+      "y": 2122,
+      "label": "added brand: trial, Noor cap, 9 credits",
+      "variant": "security",
+      "note": "else 402 JSON before the tries, with a cap_reached or no_credits activity row; skipped with a held charge"
+    },
+    {
+      "id": "onboard-build-start--rate",
+      "from": "server",
+      "to": "checks",
+      "y": 2166,
+      "label": "3 tries / 24 h (else 429)",
+      "variant": "security",
+      "note": "per account; fixed window, counted before the lock"
+    },
+    {
+      "id": "onboard-build-start--lock",
+      "from": "server",
+      "to": "store",
+      "y": 2210,
+      "label": "owned lock onboardlock:{scope} 330 s",
+      "variant": "dashed",
+      "note": "held → 409 busy; brand, confirmation and game answers re-read"
+    },
+    {
+      "id": "onboard-build-start--charge",
+      "from": "server",
+      "to": "store",
+      "y": 2254,
+      "label": "added brand: 9 credits to Noor + hold",
+      "variant": "dashed",
+      "note": "one locked save + onboard_charged activity row; a held charge is reused, not charged"
+    },
+    {
+      "id": "onboard-build-start--stream",
+      "from": "server",
+      "to": "page",
+      "y": 2298,
+      "label": "SSE stream, 10 s ping",
+      "variant": "return"
+    },
+    {
+      "id": "onboard-build-start--see",
+      "from": "page",
+      "to": "person",
+      "y": 2342,
+      "label": "'Noor is building your workspace'",
+      "variant": "return",
+      "note": "Send button disabled while it runs"
+    },
+    {
+      "id": "onboard-paused-notice--refuse",
+      "from": "server",
+      "to": "page",
+      "y": 2392,
+      "label": "503 paused, nothing saved",
+      "variant": "security",
+      "note": "before payment, tries, lock, crawl; paused since 2026-09-28"
+    },
+    {
+      "id": "onboard-paused-notice--see",
+      "from": "page",
+      "to": "person",
+      "y": 2436,
+      "label": "'Workspace setup is paused'",
+      "variant": "return",
+      "note": "only in the browser; each refresh repeats it"
+    },
+    {
+      "id": "onboard-paused-notice--refresh",
+      "from": "person",
+      "to": "page",
+      "y": 2480,
+      "label": "Refresh later",
+      "variant": "default",
+      "note": "after 1 day → /start?url= to press Go again"
+    },
+    {
+      "id": "onboard-paused-notice--other",
+      "from": "page",
+      "to": "person",
+      "variant": "return",
+      "label": "Other ways in skip the model",
+      "note": "manual form or Dictionary 'I don't have a website': free, saved without the model",
+      "y": 2524
+    },
+    {
+      "id": "onboard-live-progress--do",
+      "from": "person",
+      "to": "page",
+      "y": 2604,
+      "label": "Watch Noor work (model on)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "onboard-live-progress--push",
+      "from": "server",
+      "to": "store",
+      "y": 2648,
+      "label": "push each message to chat:{scope}",
+      "variant": "dashed",
+      "note": "a reload shows the thread"
+    },
+    {
+      "id": "onboard-live-progress--guard",
+      "from": "server",
+      "to": "checks",
+      "y": 2692,
+      "label": "safeFetch: http(s), no private IPs",
+      "variant": "security",
+      "note": "re-checked on every redirect hop (max 5)"
+    },
+    {
+      "id": "onboard-live-progress--crawl",
+      "from": "server",
+      "to": "outside",
+      "y": 2736,
+      "label": "crawl(url), 9 s timeout",
+      "variant": "emphasis",
+      "note": "no JS rendering"
+    },
+    {
+      "id": "onboard-live-progress--html",
+      "from": "outside",
+      "to": "server",
+      "y": 2780,
+      "label": "HTML (first 600,000 chars kept)",
+      "variant": "return",
+      "note": "server extracts title, text, links, platform, colours, fonts"
+    },
+    {
+      "id": "onboard-live-progress--status",
+      "from": "server",
+      "to": "page",
+      "y": 2824,
+      "label": "SSE status per model part",
+      "variant": "return"
+    },
+    {
+      "id": "onboard-live-progress--see",
+      "from": "page",
+      "to": "person",
+      "y": 2868,
+      "label": "progress card: 5 steps, bar ≤ 92%",
+      "variant": "return",
+      "note": "site unreadable → built from the domain, marked (inferred)"
+    },
+    {
+      "id": "onboard-build-files--model",
+      "from": "server",
+      "to": "agents",
+      "y": 2918,
+      "label": "3 parallel claude-opus-5 calls",
+      "variant": "emphasis",
+      "note": "core, identity, market; JSON schema, adaptive thinking, retry only if the deadline allows"
+    },
+    {
+      "id": "onboard-build-files--parts",
+      "from": "agents",
+      "to": "server",
+      "y": 2962,
+      "label": "brand, plan, goal + 5 files",
+      "variant": "return"
+    },
+    {
+      "id": "onboard-build-files--brand",
+      "from": "server",
+      "to": "store",
+      "y": 3006,
+      "label": "saveBrand → brand:{scope}",
+      "variant": "dashed",
+      "note": "Dictionary name, industry and tone override the model's; website = crawled URL; no refund after this"
+    },
+    {
+      "id": "onboard-build-files--files",
+      "from": "server",
+      "to": "store",
+      "y": 3050,
+      "label": "files, preferences, onboardplan",
+      "variant": "dashed",
+      "note": "owner's same-name file kept; Noor's saved as -imported.md"
+    },
+    {
+      "id": "onboard-build-files--clear",
+      "from": "server",
+      "to": "store",
+      "y": 3094,
+      "label": "clearOnboard + settleOnboard",
+      "variant": "dashed",
+      "note": "onboardok and onboardgame deleted, hold dropped: the 9 credits stay spent"
+    },
+    {
+      "id": "onboard-build-files--done",
+      "from": "server",
+      "to": "page",
+      "y": 3138,
+      "label": "SSE done: brand, goal, credits",
+      "variant": "return",
+      "note": "owned lock released; first brand never charged"
+    },
+    {
+      "id": "onboard-build-files--see",
+      "from": "page",
+      "to": "person",
+      "y": 3182,
+      "label": "5 file cards + 'Here's your plan'",
+      "variant": "return",
+      "note": "up to 3 starter tasks"
+    },
+    {
+      "id": "onboard-build-fail--refuse",
+      "from": "server",
+      "to": "page",
+      "y": 3232,
+      "label": "402 can't pay or 429 daily limit",
+      "variant": "security",
+      "note": "no stream, nothing charged"
+    },
+    {
+      "id": "onboard-build-fail--limit",
+      "from": "page",
+      "to": "person",
+      "y": 3276,
+      "label": "402: limit dialog + 'did not start'",
+      "variant": "return",
+      "note": "'Setup of this brand did not start, and no credits were used.'"
+    },
+    {
+      "id": "onboard-build-fail--daily",
+      "from": "page",
+      "to": "person",
+      "y": 3320,
+      "label": "429: 'today's brand setup limit'",
+      "variant": "return",
+      "note": "'This try charged nothing...' Try again tomorrow"
+    },
+    {
+      "id": "onboard-build-fail--refund",
+      "from": "server",
+      "to": "store",
+      "y": 3364,
+      "label": "error before brand file: refund 9",
+      "variant": "dashed",
+      "note": "credits back, Noor's counter down, hold dropped, 'onboard_refunded' row; only once"
+    },
+    {
+      "id": "onboard-build-fail--error",
+      "from": "server",
+      "to": "page",
+      "y": 3408,
+      "label": "{type:'error'} + refunded, credits, saved",
+      "variant": "security",
+      "note": "lock released; the request deadline ends slow model calls first; onboardok stays until its day ends"
+    },
+    {
+      "id": "onboard-build-fail--see",
+      "from": "page",
+      "to": "person",
+      "y": 3452,
+      "label": "'Could not set up the workspace'",
+      "variant": "return",
+      "note": "any 409 → 'Setup is still running. Refresh in a minute.'"
+    },
+    {
+      "id": "onboard-build-fail--refunded",
+      "from": "page",
+      "to": "person",
+      "y": 3496,
+      "label": "'the 9 credits went back'",
+      "variant": "return",
+      "note": "credits pill updates; a refresh uses 9 credits again"
+    },
+    {
+      "id": "onboard-build-fail--saved",
+      "from": "page",
+      "to": "person",
+      "y": 3540,
+      "label": "'Your brand file was saved, but…'",
+      "variant": "return",
+      "note": "error after saveBrand: no refund; refresh opens it"
+    },
+    {
+      "id": "onboard-build-fail--refresh",
+      "from": "person",
+      "to": "page",
+      "y": 3584,
+      "label": "Refresh to try again",
+      "variant": "default",
+      "note": "a try past the pause and pay checks counts toward 3 / 24 h"
+    },
+    {
+      "id": "onboard-build-fail--sweep",
+      "from": "server",
+      "to": "store",
+      "y": 3628,
+      "label": "daily cron: refund a hold unused 1 day",
+      "variant": "dashed",
+      "note": "killed run or failed refund; only dropped if the brand exists"
+    },
+    {
+      "id": "onboard-done-redirect--refresh",
+      "from": "page",
+      "to": "server",
+      "y": 3678,
+      "label": "router.refresh → /{lang}/app/chat",
+      "variant": "emphasis",
+      "note": "after 'done'; credits pill set from the event"
+    },
+    {
+      "id": "onboard-done-redirect--read",
+      "from": "server",
+      "to": "store",
+      "y": 3722,
+      "label": "read brand, onboardplan, journey",
+      "variant": "default"
+    },
+    {
+      "id": "onboard-done-redirect--chat",
+      "from": "server",
+      "to": "page",
+      "y": 3766,
+      "label": "full chat; brand milestone done",
+      "variant": "return",
+      "note": "level Seed, 10 of 150 points"
+    },
+    {
+      "id": "onboard-done-redirect--see",
+      "from": "page",
+      "to": "person",
+      "y": 3810,
+      "label": "Launch path card + confetti toast",
+      "variant": "return",
+      "note": "first visit: 'Milestone unlocked: Noor read your brand'"
+    },
+    {
+      "id": "onboard-no-site-save--do",
+      "from": "person",
+      "to": "page",
+      "variant": "default",
+      "label": "Press 'Save and start' (no website)",
+      "note": "answers 'What exactly do you sell?' and 'Who are your customers?'",
+      "y": 3890
+    },
+    {
+      "id": "onboard-no-site-save--put",
+      "from": "page",
+      "to": "server",
+      "variant": "default",
+      "label": "PUT /api/brand {create: true}",
+      "note": "name, sector, tones and the two answers from the game",
+      "y": 3934
+    },
+    {
+      "id": "onboard-no-site-save--auth",
+      "from": "server",
+      "to": "checks",
+      "variant": "security",
+      "label": "session 401, 'brand.write' 403, 409 exists",
+      "note": "400 missing without name, industry, products, audience; an existing brand stays whole",
+      "y": 3978
+    },
+    {
+      "id": "onboard-no-site-save--save",
+      "from": "server",
+      "to": "store",
+      "variant": "dashed",
+      "label": "saveBrand → brand:{scope}",
+      "note": "no crawl, no model, no charge: works while paused",
+      "y": 4022
+    },
+    {
+      "id": "onboard-no-site-save--ok",
+      "from": "server",
+      "to": "page",
+      "variant": "return",
+      "label": "200 or 409 → /{lang}/app",
+      "note": "other failures: red 'Something failed' alert, button re-enables",
+      "y": 4066
+    },
+    {
+      "id": "onboard-no-site-save--see",
+      "from": "page",
+      "to": "person",
+      "variant": "return",
+      "label": "Inbox opens: no files, no plan card",
+      "note": "Files page still says 'Run setup from your website URL'; site build now blocked: 409",
+      "y": 4110
+    },
+    {
+      "id": "onboard-manual-form--do",
+      "from": "person",
+      "to": "page",
+      "y": 4160,
+      "label": "Open and fill the brand form",
+      "variant": "default",
+      "note": "'Introduce Noor to your brand'"
+    },
+    {
+      "id": "onboard-manual-form--load",
+      "from": "page",
+      "to": "server",
+      "y": 4204,
+      "label": "GET /{lang}/app/onboarding",
+      "variant": "default"
+    },
+    {
+      "id": "onboard-manual-form--read",
+      "from": "server",
+      "to": "store",
+      "y": 4248,
+      "label": "getBrand(scope) to pre-fill",
+      "variant": "default"
+    },
+    {
+      "id": "onboard-manual-form--role",
+      "from": "server",
+      "to": "checks",
+      "y": 4292,
+      "label": "can(u,'brand.write')?",
+      "variant": "security",
+      "note": "no → every field read-only, no Save button"
+    },
+    {
+      "id": "onboard-manual-form--form",
+      "from": "server",
+      "to": "page",
+      "y": 4336,
+      "label": "pre-filled form with defaults",
+      "variant": "return",
+      "note": "Riyadh, Light Saudi; nothing is sent until Save"
+    },
+    {
+      "id": "onboard-manual-form--see",
+      "from": "page",
+      "to": "person",
+      "y": 4380,
+      "label": "5 required fields, channel chips",
+      "variant": "return"
+    },
+    {
+      "id": "onboard-guard-words--do",
+      "from": "person",
+      "to": "page",
+      "y": 4430,
+      "label": "Add banned words (brand guard)",
+      "variant": "default",
+      "note": "type words or tap chips like '+ guaranteed'"
+    },
+    {
+      "id": "onboard-guard-words--see",
+      "from": "page",
+      "to": "person",
+      "y": 4474,
+      "label": "'N protected words' badge",
+      "variant": "return",
+      "note": "after Save: guard milestone done → level Sapling"
+    },
+    {
+      "id": "onboard-manual-save--do",
+      "from": "person",
+      "to": "page",
+      "y": 4524,
+      "label": "Press 'Save and start'",
+      "variant": "default"
+    },
+    {
+      "id": "onboard-manual-save--put",
+      "from": "page",
+      "to": "server",
+      "y": 4568,
+      "label": "PUT /api/brand",
+      "variant": "default"
+    },
+    {
+      "id": "onboard-manual-save--auth",
+      "from": "server",
+      "to": "checks",
+      "y": 4612,
+      "label": "session 401, 'brand.write' 403",
+      "variant": "security",
+      "note": "400 missing without name, industry, products, audience"
+    },
+    {
+      "id": "onboard-manual-save--save",
+      "from": "server",
+      "to": "store",
+      "y": 4656,
+      "label": "saveBrand → brand:{scope}",
+      "variant": "dashed",
+      "note": "no create flag: replaces any brand; no crawl, no model, no charge: works while paused"
+    },
+    {
+      "id": "onboard-manual-save--ok",
+      "from": "server",
+      "to": "page",
+      "y": 4700,
+      "label": "'Saved' → /{lang}/app/chat",
+      "variant": "return",
+      "note": "400/403: nothing shown, button re-enables"
+    },
+    {
+      "id": "onboard-manual-save--see",
+      "from": "page",
+      "to": "person",
+      "y": 4744,
+      "label": "workspace opens: no files, no plan",
+      "variant": "return",
+      "note": "site build now blocked: 409 already_onboarded"
+    },
+    {
+      "id": "onboard-first-brief--brief",
+      "from": "server",
+      "to": "store",
+      "y": 4824,
+      "label": "runDaily: brief:{scope}, lastDaily",
+      "variant": "dashed",
+      "note": "next 05:00 UTC cron; from counts, no model call"
+    },
+    {
+      "id": "onboard-first-brief--mail",
+      "from": "server",
+      "to": "person",
+      "y": 4868,
+      "label": "email 'Noor's brief — {date}'",
+      "variant": "return",
+      "note": "pref 'all' (default), or 'important' with something due"
+    },
+    {
+      "id": "onboard-first-brief--see",
+      "from": "page",
+      "to": "person",
+      "y": 4912,
+      "label": "'Noor's brief' box in the inbox",
+      "variant": "return",
+      "note": "also under 'Latest run'; none if the daily brief is off"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Refusals and limits",
+      "items": [
+        "Confirm: 401, 403 forbidden, 400 bad_url or bad_answers, 409 already_onboarded; an added brand also 402 no_credits or trial_over",
+        "Build: 403 unconfirmed, 503 paused, 402 (trial, Noor's cap, credits), 429 after 3 tries in 24 h, 409 busy",
+        "402 raises the limit dialog; 429 says today's setup limit (manual form still works); any 409 says 'Setup is still running'; others 'Could not set up the workspace'",
+        "Once a brand exists, confirm and /api/onboard both answer 409 already_onboarded",
+        "Banned words: approve and publish refuse a breaking draft in code (409 brand_violation)"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "While the model is paused",
+      "items": [
+        "Model calls are paused since 2026-09-28 (CLAUDE_PAUSED)",
+        "/api/onboard answers 503 paused before the payment check, the tries, the lock and the crawl: nothing is charged",
+        "The owner sees 'Workspace setup is paused for now and nothing was saved'",
+        "buildFromSite never falls back to the mock",
+        "The manual brand form and the Dictionary's 'I don't have a website' path still save a brand without the model"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Added brand setup: 9 credits",
+      "items": [
+        "The first brand (the default scope) is free; each added brand costs 9 credits to set up from its URL",
+        "Step 7 states the cost and the balance; Go is off under 9 credits unless the setup is already paid for",
+        "Charged to Noor under her monthly cap, under the run's lock, before the stream starts (80% cap warning on a fresh charge)",
+        "Held on the account (onboardPaid): a retry reuses the hold and never pays twice",
+        "Refunded when the brand file was not saved; kept once it was",
+        "The daily cron refunds a hold nobody used for a day, or only drops it when the brand exists",
+        "The manual form and the no-website path are free"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "The Dictionary game",
+      "items": [
+        "Seven steps in the browser only: name, sector, five words, sample plan, sample draft, Approve, analysis",
+        "Nothing is sent, saved or charged until step 7; reload loses the answers",
+        "The finished answers go with the link and are checked in code (bad_answers if not a finished game)",
+        "On a site build the owner's name, sector and tone override the model's"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Who can do this",
+      "items": [
+        "Admin or owner: play the Dictionary, confirm the site, run the build and save the brand",
+        "Plain member: waiting note on /start and a read-only brand form",
+        "The cost comes from the session's active brand, never from the request"
+      ]
+    }
+  ]
+}

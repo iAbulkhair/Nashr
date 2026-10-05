@@ -9,8 +9,41 @@ import { decisionOf, recordDecisions, type DecisionAction } from "@/lib/decision
 import { editPctOf } from "@/lib/similarity";
 import { byOf } from "@/lib/actor";
 import { can, forbid } from "@/lib/roles";
+import { db } from "@/lib/db";
+import { taskVersion } from "@/lib/task-version";
 
-type Patch = { status?: string; editedBody?: string; note?: string; scheduledFor?: string | null };
+type Patch = { status?: string; editedBody?: string; note?: unknown; scheduledFor?: string | null; version?: unknown };
+
+/** The longest reason a person may give for an edit or a rejection. */
+const NOTE_MAX = 300;
+/**
+ * The typed reason as it is stored: a string or nothing, on one line, without control or direction characters, at most
+ * `NOTE_MAX` characters. Any member may reject (role "drafts"), and the reason lands in preferences.md, a core file every
+ * agent reads, so it is the member's words inside a fixed sentence, never a block of text or a new markdown section.
+ */
+function cleanNote(v: unknown): string {
+  if (typeof v !== "string") return "";
+  return v.replace(/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, " ").replace(/\s+/g, " ").trim().slice(0, NOTE_MAX).trim();
+}
+
+/** Learned notes are appended to preferences.md one request at a time: two rejections at once must not drop one. */
+const PREFS_LOCK_S = 10;
+async function appendPreferences(scope: string, lines: string) {
+  const key = `prefsfile:${scope}`;
+  let token: string | null = null;
+  // Waiting for the lock is the one awaited call that repeats, as in updateTask (src/lib/brand.ts): ~3 s at most.
+  for (let i = 0; i < 60 && !token; i++) {
+    token = await db.lockOwned(key, PREFS_LOCK_S);
+    if (!token) await new Promise((r) => setTimeout(r, 50));
+  }
+  if (!token) throw new Error("prefs_lock_timeout");
+  try {
+    const f = await readFile(scope, "preferences.md");
+    await writeFile(scope, "preferences.md", `${f?.content ?? "# Preferences learned from the owner\n"}\n${lines}`.slice(-20000), "noor");
+  } finally {
+    await db.unlockOwned(key, token).catch((e) => console.error("prefs lock release failed", e instanceof Error ? e.name : "error"));
+  }
+}
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const u = await currentUser();
@@ -23,9 +56,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   // inside the task lock below, on the task as stored now, so an approval landing mid-request is judged correctly.
   const no = forbid(u, "drafts");
   if (no) return no;
-  const gate = { refused: false };
+  const gate = { refused: false, missing: false, changed: false };
   // Who decides is worked out from the session's actor (`byOf`), never from the body.
-  const [b, gov, brand, by] = await Promise.all([req.json().catch(() => ({})) as Promise<Patch>, getGov(scope), getBrand(scope), byOf(u)]);
+  const [raw, gov, brand, by] = await Promise.all([req.json().catch(() => ({})) as Promise<Patch>, getGov(scope), getBrand(scope), byOf(u)]);
+  const b: Patch = raw && typeof raw === "object" ? raw : {};
+  const note = cleanNote(b.note);
 
   // What the owner waits for is the saved task. Preference learning, event tracking and the decision records are
   // collected here and run after the response.
@@ -44,12 +79,21 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       gate.refused = true;
       return null;
     }
+    // An approval covers the words the approver saw (src/lib/task-version.ts): a request that ends approved by approving
+    // or by rewriting, or that says "approved", carries the version of the card it was made from, and it must still be
+    // the item's version now, read under the task lock. Otherwise a member's edit made after the admin opened the card
+    // would be approved, and later published, under the admin's name. Nothing is saved; the card reloads.
+    if (need === "publish" || b.status === "approved") {
+      if (typeof b.version !== "string") gate.missing = true;
+      else if (b.version !== taskVersion(t)) gate.changed = true;
+      if (gate.missing || gate.changed) return null;
+    }
     if (b.scheduledFor === null) delete t.scheduledFor;
     else if (typeof b.scheduledFor === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.scheduledFor)) t.scheduledFor = b.scheduledFor;
     if (typeof b.editedBody === "string" && b.editedBody !== t.body) {
       const before = t.editedBody ?? t.body;
       t.editedBody = b.editedBody.slice(0, 20000);
-      notes.push(`Owner edited a ${t.type} item (${t.channel}). ${b.note ? "Reason: " + b.note : "Prefer this style: " + b.editedBody.slice(0, 200)}`);
+      notes.push(`Owner edited a ${t.type} item (${t.channel}). ${note ? "Reason: " + note : "Prefer this style: " + b.editedBody.slice(0, 200)}`);
       // Saving the same text again (approving an edit made earlier) is not a new edit.
       if (t.editedBody !== before) decided.push({ action: "edit", editPct: editPctOf(t.body, t.editedBody) });
     }
@@ -61,7 +105,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       t.status = b.status;
       if (b.status === "approved") events.push("approve");
       if (b.status === "rejected") events.push("reject");
-      if (b.status === "rejected" && b.note) notes.push(`Owner rejected a ${t.type} item (${t.channel}). Reason: ${b.note}`);
+      if (b.status === "rejected" && note) notes.push(`Owner rejected a ${t.type} item (${t.channel}). Reason: ${note}`);
     }
     // An admin or owner who rewrites an item that stays approved has decided it (the role check above needed "publish"):
     // an item only auto-approval had passed becomes theirs, so the judge's veto and the chat's "nobody reviewed it" no
@@ -78,10 +122,13 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   });
   if (gate.refused) return forbid(u, "publish") ?? NextResponse.json({ error: "forbidden" }, { status: 403 });
   if (!t) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  if (gate.missing) return NextResponse.json({ ok: false, error: "version_required" }, { status: 400 });
+  // The item as stored now goes back, so the card shows what changed before anyone decides again.
+  if (gate.changed) return NextResponse.json({ ok: false, error: "changed", task: t }, { status: 409 });
   if (violations.length) return NextResponse.json({ ok: false, error: "brand_violation", violations }, { status: 409 });
   // The owner's typed reason belongs to the rejection when there is one, else to the edit: one note, one record.
   const reasoned = decided.find((d) => d.action === "reject") ?? decided.find((d) => d.action === "edit");
-  if (reasoned) reasoned.note = b.note;
+  if (reasoned && note) reasoned.note = note;
   const records = decided.map((d) => decisionOf(t, d.action, now, { ...d, by }));
 
   const later = async () => {
@@ -93,11 +140,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         recordDecisions(scope, records),
         ...(gov.learning ? notes.map((n) => addPreference(scope, n)) : []),
       ]);
-      if (gov.learning && notes.length) {
-        const f = await readFile(scope, "preferences.md");
-        const lines = notes.map((n) => `- ${new Date().toISOString().slice(0, 10)}: ${n}`).join("\n");
-        await writeFile(scope, "preferences.md", `${f?.content ?? "# Preferences learned from the owner\n"}\n${lines}`.slice(-20000), "noor");
-      }
+      if (gov.learning && notes.length) await appendPreferences(scope, notes.map((n) => `- ${new Date().toISOString().slice(0, 10)}: ${n}`).join("\n"));
     } catch (e) {
       console.error("task patch follow-up failed", e);
     }

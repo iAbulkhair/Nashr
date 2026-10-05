@@ -1,0 +1,726 @@
+{
+ "schema_version": 1,
+ "diagram_type": "sequence",
+ "meta": {
+  "title": "Review: images, video and slides",
+  "locale": "en",
+  "output": ".archify/sequence-nashr-journey-20260930-105952/09-review-media/09-review-media.html",
+  "quality_profile": "showcase",
+  "column_fit": "fixed",
+  "repository": {
+   "url": "https://github.com/iAbulkhair/Nashr.git",
+   "provider": "github",
+   "link_mode": "web",
+   "revision": "f0e7fdecf7d70d8c60ba76650f22440433926add"
+  }
+ },
+ "participants": [
+  {
+   "id": "person",
+   "type": "external",
+   "label": "Person",
+   "sublabel": "owner or team",
+   "sources": [
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 188,
+     "end_line": 227
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 317,
+     "end_line": 326
+    },
+    {
+     "path": "src/components/app/Inbox.tsx",
+     "line": 402,
+     "end_line": 404
+    }
+   ]
+  },
+  {
+   "id": "page",
+   "type": "frontend",
+   "label": "Browser page",
+   "sublabel": "what they see",
+   "sources": [
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 170,
+     "end_line": 186
+    },
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 56,
+     "end_line": 90
+    },
+    {
+     "path": "src/components/app/LimitModal.tsx",
+     "line": 30,
+     "end_line": 104
+    }
+   ]
+  },
+  {
+   "id": "checks",
+   "type": "security",
+   "label": "Code checks",
+   "sublabel": "auth · roles · limits",
+   "sources": [
+    {
+     "path": "src/app/api/tasks/[id]/image/route.ts",
+     "line": 12,
+     "end_line": 36
+    },
+    {
+     "path": "src/lib/media/start.ts",
+     "line": 91,
+     "end_line": 109
+    },
+    {
+     "path": "src/app/api/media/[jobId]/route.ts",
+     "line": 16,
+     "end_line": 36
+    }
+   ]
+  },
+  {
+   "id": "server",
+   "type": "backend",
+   "label": "Nashr server",
+   "sublabel": "API routes",
+   "sources": [
+    {
+     "path": "src/app/api/tasks/[id]/video/route.ts",
+     "line": 13,
+     "end_line": 34
+    },
+    {
+     "path": "src/app/api/tasks/[id]/pptx/route.ts",
+     "line": 13,
+     "end_line": 58
+    },
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 637,
+     "end_line": 654
+    }
+   ]
+  },
+  {
+   "id": "agents",
+   "type": "backend",
+   "label": "AI agents",
+   "sublabel": "model paused now",
+   "sources": [
+    {
+     "path": "src/lib/media/prompts.ts",
+     "line": 72,
+     "end_line": 94
+    }
+   ]
+  },
+  {
+   "id": "store",
+   "type": "database",
+   "label": "Redis",
+   "sublabel": "account data",
+   "sources": [
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 118,
+     "end_line": 224
+    },
+    {
+     "path": "src/lib/media/start.ts",
+     "line": 43,
+     "end_line": 70
+    },
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 539,
+     "end_line": 583
+    }
+   ]
+  },
+  {
+   "id": "cron",
+   "type": "cloud",
+   "label": "Scheduled job",
+   "sublabel": "Vercel cron",
+   "sources": [
+    {
+     "path": "src/app/api/cron/media/route.ts",
+     "line": 14,
+     "end_line": 19
+    },
+    {
+     "path": "vercel.json",
+     "line": 6
+    }
+   ]
+  },
+  {
+   "id": "outside",
+   "type": "external",
+   "label": "Outside",
+   "sublabel": "providers, Blob",
+   "sources": [
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 265,
+     "end_line": 309
+    },
+    {
+     "path": "src/lib/media/jobs.ts",
+     "line": 359,
+     "end_line": 406
+    },
+    {
+     "path": "src/app/api/media/hook/[provider]/route.ts",
+     "line": 43,
+     "end_line": 70
+    }
+   ]
+  }
+ ],
+ "segments": [
+  {
+   "from": 170,
+   "to": 300,
+   "label": "Pick a style"
+  },
+  {
+   "from": 332,
+   "to": 920,
+   "label": "Generate an image"
+  },
+  {
+   "from": 952,
+   "to": 1396,
+   "label": "Video and refusals"
+  },
+  {
+   "from": 1428,
+   "to": 1944,
+   "label": "Render finishes"
+  },
+  {
+   "from": 1976,
+   "to": 2384,
+   "label": "Download"
+  }
+ ],
+ "messages": [
+  {
+   "id": "publish-pick-style--do",
+   "from": "person",
+   "to": "page",
+   "y": 202,
+   "label": "Chooses an image or video style",
+   "variant": "emphasis",
+   "note": "Images 1 or 2 credits, video 12 or 24; choosing is browser only"
+  },
+  {
+   "id": "publish-pick-style--see",
+   "from": "page",
+   "to": "person",
+   "y": 244,
+   "label": "Radio cards with each price",
+   "variant": "return",
+   "note": "Closed cards say why; with no video model, no video section"
+  },
+  {
+   "id": "publish-pick-style--paused",
+   "from": "page",
+   "to": "person",
+   "y": 286,
+   "label": "Paused: fixed brand description",
+   "variant": "return"
+  },
+  {
+   "id": "publish-make-image--do",
+   "from": "person",
+   "to": "page",
+   "y": 364,
+   "label": "Clicks 'Generate image'",
+   "variant": "emphasis",
+   "note": "Confirms first when it replaces real artwork"
+  },
+  {
+   "id": "publish-make-image--post",
+   "from": "page",
+   "to": "server",
+   "y": 406,
+   "label": "POST /api/tasks/{id}/image",
+   "variant": "emphasis"
+  },
+  {
+   "id": "publish-make-image--checks",
+   "from": "server",
+   "to": "checks",
+   "y": 436,
+   "label": "Session, task under sc(u), limits",
+   "variant": "security",
+   "note": "404; 402 trial_over, agent_cap, no_credits; 409 in_progress; 429 too_many"
+  },
+  {
+   "id": "publish-make-image--charge",
+   "from": "server",
+   "to": "store",
+   "y": 478,
+   "label": "Charge the agent, save the job",
+   "variant": "dashed",
+   "note": "Plan credits, then packs; can trigger the 80%-of-cap warning; activity row written"
+  },
+  {
+   "id": "publish-make-image--prompt",
+   "from": "server",
+   "to": "agents",
+   "y": 520,
+   "label": "Sonnet writes prompt, 20 s max",
+   "variant": "default",
+   "note": "Paused: a fixed brand template, still charged"
+  },
+  {
+   "id": "publish-make-image--submit",
+   "from": "server",
+   "to": "outside",
+   "y": 562,
+   "label": "Submit once, never retried",
+   "variant": "default",
+   "note": "kie and Higgsfield answer 202 running"
+  },
+  {
+   "id": "publish-make-image--inline",
+   "from": "outside",
+   "to": "server",
+   "y": 604,
+   "label": "fal: image in the same request",
+   "variant": "return",
+   "note": "Copied to Blob when a store exists"
+  },
+  {
+   "id": "publish-make-image--reply",
+   "from": "server",
+   "to": "page",
+   "y": 634,
+   "label": "200 done or 202 running",
+   "variant": "return",
+   "note": "nsfw 422 and failed 502 media_failed are refunded"
+  },
+  {
+   "id": "publish-make-image--see",
+   "from": "page",
+   "to": "person",
+   "y": 676,
+   "label": "Image, its prompt, new balance",
+   "variant": "return",
+   "note": "'Noor is drawing…'; other styles poll first"
+  },
+  {
+   "id": "publish-placeholder--do",
+   "from": "person",
+   "to": "page",
+   "y": 718,
+   "label": "Generate image, no style offered",
+   "variant": "default",
+   "note": "Default Fast style unavailable"
+  },
+  {
+   "id": "publish-placeholder--post",
+   "from": "page",
+   "to": "server",
+   "y": 760,
+   "label": "POST /api/tasks/{id}/image",
+   "variant": "default"
+  },
+  {
+   "id": "publish-placeholder--trial",
+   "from": "server",
+   "to": "checks",
+   "y": 790,
+   "label": "Trial check still applies",
+   "variant": "security",
+   "note": "No balance or cap check"
+  },
+  {
+   "id": "publish-placeholder--save",
+   "from": "server",
+   "to": "store",
+   "y": 832,
+   "label": "Placeholder, mediaCredits 0",
+   "variant": "dashed",
+   "note": "Under the task lock, only with no artwork"
+  },
+  {
+   "id": "publish-placeholder--reply",
+   "from": "server",
+   "to": "page",
+   "y": 862,
+   "label": "Brand-name card, nothing charged",
+   "variant": "return"
+  },
+  {
+   "id": "publish-placeholder--see",
+   "from": "page",
+   "to": "person",
+   "y": 892,
+   "label": "'Placeholder' card, same balance",
+   "variant": "return",
+   "note": "Not for Instagram; real artwork kept (409 model_unavailable)"
+  },
+  {
+   "id": "publish-make-video--do",
+   "from": "person",
+   "to": "page",
+   "y": 984,
+   "label": "Clicks 'Generate video'",
+   "variant": "emphasis",
+   "note": "Confirms 'This uses N credits' for every video (12 or 24)"
+  },
+  {
+   "id": "publish-make-video--post",
+   "from": "page",
+   "to": "server",
+   "y": 1026,
+   "label": "POST /api/tasks/{id}/video",
+   "variant": "emphasis"
+  },
+  {
+   "id": "publish-make-video--checks",
+   "from": "server",
+   "to": "checks",
+   "y": 1056,
+   "label": "Trial, plan, model, image, limits",
+   "variant": "security",
+   "note": "402 plan_required; 409 needs_image; 429 too_many (6/h, 20/day)"
+  },
+  {
+   "id": "publish-make-video--charge",
+   "from": "server",
+   "to": "store",
+   "y": 1098,
+   "label": "Charge the credits",
+   "variant": "dashed",
+   "note": "Trial: takes the one-clip marker, else 402 trial_video_used"
+  },
+  {
+   "id": "publish-make-video--prompt",
+   "from": "server",
+   "to": "agents",
+   "y": 1140,
+   "label": "Write the video prompt",
+   "variant": "default",
+   "note": "Paused: a fixed template"
+  },
+  {
+   "id": "publish-make-video--submit",
+   "from": "server",
+   "to": "outside",
+   "y": 1170,
+   "label": "Submit the render",
+   "variant": "default"
+  },
+  {
+   "id": "publish-make-video--reply",
+   "from": "server",
+   "to": "page",
+   "y": 1200,
+   "label": "202 running",
+   "variant": "return"
+  },
+  {
+   "id": "publish-make-video--see",
+   "from": "page",
+   "to": "person",
+   "y": 1230,
+   "label": "'Noor is rendering the video…'",
+   "variant": "return",
+   "note": "Can take minutes; a notification arrives"
+  },
+  {
+   "id": "publish-render-refused--refund",
+   "from": "server",
+   "to": "store",
+   "y": 1266,
+   "label": "Refund if already charged",
+   "variant": "dashed",
+   "note": "Refused before the charge: no credit moves (a cap or balance refusal is logged); a refund returns to the pack it came from"
+  },
+  {
+   "id": "publish-render-refused--reply",
+   "from": "server",
+   "to": "page",
+   "y": 1296,
+   "label": "Refusal: 402, 409, 429, 422, 502",
+   "variant": "security"
+  },
+  {
+   "id": "publish-render-refused--dialog",
+   "from": "page",
+   "to": "person",
+   "y": 1326,
+   "label": "Dialog: trial, credits or cap",
+   "variant": "return",
+   "note": "Paid owner: 'Top up credits' to the packs; trial: 'View plans'; Governance editors 'Open Governance'; others ask owner"
+  },
+  {
+   "id": "publish-render-refused--see",
+   "from": "page",
+   "to": "person",
+   "y": 1368,
+   "label": "Reason: no credits were used",
+   "variant": "return",
+   "note": "nsfw and media_failed: credits were returned; short of credits: pack link (paid owner), plans link (trial) or ask the owner"
+  },
+  {
+   "id": "publish-wait-render--do",
+   "from": "person",
+   "to": "page",
+   "y": 1460,
+   "label": "Stays on the page",
+   "variant": "emphasis",
+   "note": "After a reload the card picks up the job"
+  },
+  {
+   "id": "publish-wait-render--poll",
+   "from": "page",
+   "to": "server",
+   "y": 1502,
+   "label": "GET /api/media/{jobId}",
+   "variant": "emphasis",
+   "note": "Every 3 s (image) or 6 s (video), slower later"
+  },
+  {
+   "id": "publish-wait-render--auth",
+   "from": "server",
+   "to": "checks",
+   "y": 1544,
+   "label": "Session, job under sc(u), 120/min",
+   "variant": "security",
+   "note": "404 otherwise; 429 slow_down"
+  },
+  {
+   "id": "publish-wait-render--status",
+   "from": "server",
+   "to": "outside",
+   "y": 1574,
+   "label": "Status call, 1 per 4 s at most",
+   "variant": "default"
+  },
+  {
+   "id": "publish-wait-render--blob",
+   "from": "server",
+   "to": "outside",
+   "y": 1604,
+   "label": "Copy the result to Blob",
+   "variant": "dashed",
+   "note": "Failed or timed out: cancel where possible"
+  },
+  {
+   "id": "publish-wait-render--write",
+   "from": "server",
+   "to": "store",
+   "y": 1646,
+   "label": "Write task, or refund once",
+   "variant": "dashed",
+   "note": "Refund to the account (and its pack) and the agent counter; activity row"
+  },
+  {
+   "id": "publish-wait-render--reply",
+   "from": "server",
+   "to": "page",
+   "y": 1676,
+   "label": "done, failed or running",
+   "variant": "return"
+  },
+  {
+   "id": "publish-wait-render--see",
+   "from": "page",
+   "to": "person",
+   "y": 1706,
+   "label": "Image or clip, new balance",
+   "variant": "return",
+   "note": "Failed: 'all credits were returned'; late: 'Not done yet…'"
+  },
+  {
+   "id": "publish-render-unattended--cron",
+   "from": "cron",
+   "to": "server",
+   "y": 1742,
+   "label": "GET /api/cron/media, 05:20 UTC",
+   "variant": "default",
+   "note": "Daily; sweeps open jobs older than 2 minutes"
+  },
+  {
+   "id": "publish-render-unattended--secret",
+   "from": "server",
+   "to": "checks",
+   "y": 1784,
+   "label": "CRON_SECRET via sameSecret",
+   "variant": "security"
+  },
+  {
+   "id": "publish-render-unattended--hook",
+   "from": "outside",
+   "to": "server",
+   "y": 1814,
+   "label": "Or POST /api/media/hook/{provider}",
+   "variant": "default",
+   "note": "kie or Higgsfield; 240/min per IP, 64 KB, kie signature if key set"
+  },
+  {
+   "id": "publish-render-unattended--advance",
+   "from": "server",
+   "to": "store",
+   "y": 1856,
+   "label": "Advance the job, refund once",
+   "variant": "dashed",
+   "note": "Or swept after requests: once per 5 min, 6 jobs max; system activity row (cron for a sweep)"
+  },
+  {
+   "id": "publish-render-unattended--notify",
+   "from": "server",
+   "to": "page",
+   "y": 1886,
+   "label": "Bell notice to the owner",
+   "variant": "return"
+  },
+  {
+   "id": "publish-render-unattended--see",
+   "from": "page",
+   "to": "person",
+   "y": 1916,
+   "label": "'Your image is ready: <title>'",
+   "variant": "return",
+   "note": "Or video; after a refund: 'did not finish', N credits returned"
+  },
+  {
+   "id": "publish-download-image--do",
+   "from": "person",
+   "to": "page",
+   "y": 2008,
+   "label": "Clicks 'Download'",
+   "variant": "default"
+  },
+  {
+   "id": "publish-download-image--see",
+   "from": "page",
+   "to": "person",
+   "y": 2038,
+   "label": "Image opens in a new tab",
+   "variant": "return",
+   "note": "Prompt shown; URL is Blob, fal or placehold.co"
+  },
+  {
+   "id": "publish-save-video--do",
+   "from": "person",
+   "to": "page",
+   "y": 2080,
+   "label": "Download video, or Save or share",
+   "variant": "default"
+  },
+  {
+   "id": "publish-save-video--fetch",
+   "from": "page",
+   "to": "outside",
+   "y": 2110,
+   "label": "?download=1 link on Blob",
+   "variant": "default",
+   "note": "Browser only; if the clip can't be read, plain download"
+  },
+  {
+   "id": "publish-save-video--see",
+   "from": "page",
+   "to": "person",
+   "y": 2152,
+   "label": "MP4 saved or share sheet opens",
+   "variant": "return",
+   "note": "'Publishing video from Thakeen isn't available yet'"
+  },
+  {
+   "id": "publish-pptx--do",
+   "from": "person",
+   "to": "page",
+   "y": 2194,
+   "label": "Clicks 'Download PowerPoint'",
+   "variant": "default"
+  },
+  {
+   "id": "publish-pptx--get",
+   "from": "page",
+   "to": "server",
+   "y": 2224,
+   "label": "GET /api/tasks/{id}/pptx",
+   "variant": "default"
+  },
+  {
+   "id": "publish-pptx--auth",
+   "from": "server",
+   "to": "checks",
+   "y": 2254,
+   "label": "Session; task under sc(u)",
+   "variant": "security",
+   "note": "404 otherwise"
+  },
+  {
+   "id": "publish-pptx--read",
+   "from": "server",
+   "to": "store",
+   "y": 2284,
+   "label": "Read the task",
+   "variant": "default"
+  },
+  {
+   "id": "publish-pptx--reply",
+   "from": "server",
+   "to": "page",
+   "y": 2314,
+   "label": "Slides, up to 30, 16:9",
+   "variant": "return",
+   "note": "No model call, no credits: works while paused"
+  },
+  {
+   "id": "publish-pptx--see",
+   "from": "page",
+   "to": "person",
+   "y": 2356,
+   "label": "<brand>-board_deck-<id>.pptx",
+   "variant": "return",
+   "note": "The browser downloads the deck"
+  }
+ ],
+ "cards": [
+  {
+   "dot": "rose",
+   "title": "Refusals and limits",
+   "items": [
+    "Images: 30 per hour and 150 per day; video: 6 per hour and 20 per day (429 too_many)",
+    "trial_over, agent_cap and no_credits at a zero balance open the limit dialog",
+    "no_credits with a balance left shows 'Needs N credits; you have M.' with a top-up pack link (paid owner) or plans link (trial owner); anyone else is told to ask the owner; plan_required and trial_video_used show a billing link",
+    "Refused before the charge: no credit moves. After the charge, a failed render is refunded exactly once, back to its top-up pack when it came from one"
+   ]
+  },
+  {
+   "dot": "amber",
+   "title": "While the model is paused",
+   "items": [
+    "Model calls are paused since 2026-09-28",
+    "Prompts come from a fixed brand template and the render is still charged",
+    "The controls say images and videos are made from a fixed description of your brand, not from this post",
+    "PowerPoint needs no model call and no credits, so it works while paused"
+   ]
+  },
+  {
+   "dot": "cyan",
+   "title": "Who can do this",
+   "items": [
+    "Any signed-in owner or team member; images on social, ads, gbp, whatsapp and cart_recovery items, video on social and ads",
+    "Only styles this deployment can run are offered: provider key, a Blob store for kie and Higgsfield, listed in MEDIA_MODELS_ON, not switched off by the breaker",
+    "Trials get one video clip, in the Quick, Sound or Photo to motion styles",
+    "Limit dialog: a paid owner gets 'Top up credits', a trial owner 'View plans'; for agent_cap, whoever may change Governance gets 'Open Governance'; others ask the owner"
+   ]
+  }
+ ]
+}

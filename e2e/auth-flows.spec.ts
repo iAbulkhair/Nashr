@@ -330,7 +330,7 @@ test.describe("auth forms survive a failing request", () => {
 
 test.describe("password reset", () => {
   test("the reset rules say met or not met, and an early press names the unmet ones", async ({ page }) => {
-    await open(page, `/en/app/reset?token=${"b".repeat(64)}`);
+    await open(page, `/en/app/reset#t=${"b".repeat(64)}`);
     const password = page.getByRole("textbox", { name: "New password" });
     await fillWhenReady(password, "abc");
     await expect(page.locator("#reset-rules li").nth(0)).toContainText("(not met)");
@@ -344,7 +344,7 @@ test.describe("password reset", () => {
   });
 
   test("a made-up token is refused", async ({ page }) => {
-    await open(page, `/en/app/reset?token=${"a".repeat(64)}`);
+    await open(page, `/en/app/reset#t=${"a".repeat(64)}`);
     await fillWhenReady(page.getByRole("textbox", { name: /password/i }), "brandnew123");
     await page.getByRole("button", { name: "Save and log in" }).click();
     await expect(formAlert(page)).toBeVisible();

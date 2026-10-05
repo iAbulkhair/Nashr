@@ -1,0 +1,972 @@
+{
+ "schema_version": 1,
+ "diagram_type": "sequence",
+ "meta": {
+  "title": "Manage: own AI assistant (MCP), help and wishlist",
+  "output": ".archify/sequence-nashr-journey-20260930-105952/16-manage-mcp-help/16-manage-mcp-help.html",
+  "locale": "en",
+  "quality_profile": "showcase",
+  "column_fit": "spread",
+  "repository": {
+   "url": "https://github.com/iAbulkhair/Nashr.git",
+   "provider": "github",
+   "link_mode": "web",
+   "revision": "f0e7fdecf7d70d8c60ba76650f22440433926add"
+  }
+ },
+ "participants": [
+  {
+   "id": "person",
+   "type": "external",
+   "label": "Person",
+   "sublabel": "owner or team",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/mcp/page.tsx",
+     "line": 9,
+     "end_line": 18
+    },
+    {
+     "path": "src/components/HelpCenter.tsx",
+     "line": 7,
+     "end_line": 74
+    },
+    {
+     "path": "src/components/WishVote.tsx",
+     "line": 17,
+     "end_line": 36
+    }
+   ]
+  },
+  {
+   "id": "page",
+   "type": "frontend",
+   "label": "Browser page",
+   "sublabel": "what they see",
+   "sources": [
+    {
+     "path": "src/components/app/McpPanel.tsx",
+     "line": 32,
+     "end_line": 101
+    },
+    {
+     "path": "src/app/oauth/authorize/page.tsx",
+     "line": 9,
+     "end_line": 56
+    },
+    {
+     "path": "src/app/[lang]/updates/page.tsx",
+     "line": 55,
+     "end_line": 95
+    }
+   ]
+  },
+  {
+   "id": "checks",
+   "type": "security",
+   "label": "Checks in code",
+   "sublabel": "auth · roles · limits",
+   "sources": [
+    {
+     "path": "src/app/api/mcp/token/route.ts",
+     "line": 24,
+     "end_line": 32
+    },
+    {
+     "path": "src/app/api/oauth/approve/route.ts",
+     "line": 12,
+     "end_line": 34
+    },
+    {
+     "path": "src/app/api/wishlist/vote/route.ts",
+     "line": 13,
+     "end_line": 22
+    }
+   ]
+  },
+  {
+   "id": "server",
+   "type": "backend",
+   "label": "Nashr server",
+   "sublabel": "API routes",
+   "sources": [
+    {
+     "path": "src/app/api/mcp/route.ts",
+     "line": 59,
+     "end_line": 79
+    },
+    {
+     "path": "src/app/api/mcp/grants/route.ts",
+     "line": 17,
+     "end_line": 28
+    },
+    {
+     "path": "src/app/api/support/route.ts",
+     "line": 7,
+     "end_line": 23
+    }
+   ]
+  },
+  {
+   "id": "store",
+   "type": "database",
+   "label": "Redis",
+   "sublabel": "account data",
+   "sources": [
+    {
+     "path": "src/lib/mcp.ts",
+     "line": 17,
+     "end_line": 22
+    },
+    {
+     "path": "src/lib/oauth.ts",
+     "line": 91,
+     "end_line": 113
+    },
+    {
+     "path": "src/lib/wishlist.ts",
+     "line": 91,
+     "end_line": 97
+    }
+   ]
+  },
+  {
+   "id": "outside",
+   "type": "external",
+   "label": "Outside services",
+   "sublabel": "AI apps, WhatsApp, email",
+   "sources": [
+    {
+     "path": "src/app/api/mcp/route.ts",
+     "line": 136,
+     "end_line": 184
+    },
+    {
+     "path": "src/components/HelpCenter.tsx",
+     "line": 50,
+     "end_line": 57
+    },
+    {
+     "path": "src/app/api/support/route.ts",
+     "line": 7,
+     "end_line": 23
+    }
+   ]
+  }
+ ],
+ "segments": [
+  {
+   "from": 162,
+   "to": 688,
+   "label": "MCP page and token"
+  },
+  {
+   "from": 704,
+   "to": 1380,
+   "label": "Connect an AI app"
+  },
+  {
+   "from": 1396,
+   "to": 1774,
+   "label": "Use Noor from an AI app"
+  },
+  {
+   "from": 1790,
+   "to": 2256,
+   "label": "Help and support"
+  },
+  {
+   "from": 2272,
+   "to": 3022,
+   "label": "Updates and wishlist"
+  }
+ ],
+ "messages": [
+  {
+   "id": "manage-mcp-open--do",
+   "from": "person",
+   "to": "page",
+   "y": 184,
+   "label": "Open MCP from the account menu",
+   "variant": "emphasis"
+  },
+  {
+   "id": "manage-mcp-open--load",
+   "from": "page",
+   "to": "server",
+   "y": 214,
+   "label": "GET /api/mcp/token and /grants",
+   "variant": "emphasis",
+   "note": "on mount; nothing fetched for other roles"
+  },
+  {
+   "id": "manage-mcp-open--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 244,
+   "label": "owner only, both routes",
+   "variant": "security"
+  },
+  {
+   "id": "manage-mcp-open--result",
+   "from": "server",
+   "to": "page",
+   "y": 274,
+   "label": "12-char token prefix, grants",
+   "variant": "return",
+   "note": "expired grants dropped"
+  },
+  {
+   "id": "manage-mcp-open--see",
+   "from": "page",
+   "to": "person",
+   "y": 304,
+   "label": "Token card, server URL, apps",
+   "variant": "return",
+   "note": "canonical origin; admin/member: owner-only note; founder viewing: apps only"
+  },
+  {
+   "id": "manage-mcp-token-create--do",
+   "from": "person",
+   "to": "page",
+   "y": 348,
+   "label": "Click 'Generate token'",
+   "variant": "emphasis",
+   "note": "no confirmation, even over an old token"
+  },
+  {
+   "id": "manage-mcp-token-create--post",
+   "from": "page",
+   "to": "server",
+   "y": 378,
+   "label": "POST /api/mcp/token",
+   "variant": "emphasis"
+  },
+  {
+   "id": "manage-mcp-token-create--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 408,
+   "label": "forbid mcp.token",
+   "variant": "security",
+   "note": "owner, not while impersonating; else 403"
+  },
+  {
+   "id": "manage-mcp-token-create--save",
+   "from": "server",
+   "to": "store",
+   "y": 438,
+   "label": "revoke old, save mcptoken:{token}",
+   "variant": "dashed",
+   "note": "'nashr_' + 24 random bytes, no expiry"
+  },
+  {
+   "id": "manage-mcp-token-create--result",
+   "from": "server",
+   "to": "page",
+   "y": 468,
+   "label": "full token, once",
+   "variant": "return"
+  },
+  {
+   "id": "manage-mcp-token-create--see",
+   "from": "page",
+   "to": "person",
+   "y": 498,
+   "label": "'Shown once. Copy it now.'",
+   "variant": "return",
+   "note": "snippets filled in; Revoke appears"
+  },
+  {
+   "id": "manage-mcp-token-revoke--do",
+   "from": "person",
+   "to": "page",
+   "y": 542,
+   "label": "Click 'Revoke'",
+   "variant": "default"
+  },
+  {
+   "id": "manage-mcp-token-revoke--delete",
+   "from": "page",
+   "to": "server",
+   "y": 572,
+   "label": "DELETE /api/mcp/token",
+   "variant": "default"
+  },
+  {
+   "id": "manage-mcp-token-revoke--clear",
+   "from": "server",
+   "to": "store",
+   "y": 602,
+   "label": "revoke the personal token only",
+   "variant": "dashed",
+   "note": "OAuth grants untouched"
+  },
+  {
+   "id": "manage-mcp-token-revoke--result",
+   "from": "server",
+   "to": "page",
+   "y": 632,
+   "label": "revoked",
+   "variant": "return"
+  },
+  {
+   "id": "manage-mcp-token-revoke--see",
+   "from": "page",
+   "to": "person",
+   "y": 662,
+   "label": "Card back to 'No token yet.'",
+   "variant": "return",
+   "note": "clients still using it get Unauthorized"
+  },
+  {
+   "id": "manage-oauth-consent--do",
+   "from": "person",
+   "to": "outside",
+   "y": 726,
+   "label": "Paste server URL in Claude/ChatGPT",
+   "variant": "emphasis",
+   "note": "Add custom connector, or ChatGPT Developer mode"
+  },
+  {
+   "id": "manage-oauth-consent--register",
+   "from": "outside",
+   "to": "server",
+   "y": 756,
+   "label": "register, open /oauth/authorize",
+   "variant": "emphasis",
+   "note": "/api/oauth/register is open"
+  },
+  {
+   "id": "manage-oauth-consent--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 786,
+   "label": "client, redirect_uri, PKCE, role",
+   "variant": "security",
+   "note": "response_type=code; can(u,'oauth.approve')"
+  },
+  {
+   "id": "manage-oauth-consent--refuse",
+   "from": "server",
+   "to": "page",
+   "y": 816,
+   "label": "'Cannot authorize' + reason",
+   "variant": "security",
+   "note": "bad client/redirect/PKCE; non-owner: ask owner, no form"
+  },
+  {
+   "id": "manage-oauth-consent--page",
+   "from": "server",
+   "to": "page",
+   "y": 846,
+   "label": "'Allow {app name} to use Noor?'",
+   "variant": "return",
+   "note": "signed out: Arabic login first, then back; 'Thakeen · Noor'"
+  },
+  {
+   "id": "manage-oauth-consent--see",
+   "from": "page",
+   "to": "person",
+   "y": 876,
+   "label": "Consent form, receiving host",
+   "variant": "return",
+   "note": "warns any developer can use any app name"
+  },
+  {
+   "id": "manage-oauth-decide--do",
+   "from": "person",
+   "to": "page",
+   "y": 920,
+   "label": "Click Allow or Deny",
+   "variant": "emphasis"
+  },
+  {
+   "id": "manage-oauth-decide--post",
+   "from": "page",
+   "to": "server",
+   "y": 950,
+   "label": "POST /api/oauth/approve",
+   "variant": "emphasis"
+  },
+  {
+   "id": "manage-oauth-decide--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 980,
+   "label": "session, oauth.approve, S256",
+   "variant": "security",
+   "note": "401 no session; 403 non-owner; 400 bad client/redirect, no S256"
+  },
+  {
+   "id": "manage-oauth-decide--code",
+   "from": "server",
+   "to": "store",
+   "y": 1010,
+   "label": "Allow: 10-minute single-use code",
+   "variant": "dashed",
+   "note": "bound to client, redirect, challenge, email, 'noor'"
+  },
+  {
+   "id": "manage-oauth-decide--redirect",
+   "from": "server",
+   "to": "outside",
+   "y": 1040,
+   "label": "back to app: code or access_denied",
+   "variant": "return",
+   "note": "Deny answers 303 with access_denied"
+  },
+  {
+   "id": "manage-oauth-decide--token",
+   "from": "outside",
+   "to": "server",
+   "y": 1070,
+   "label": "call /api/oauth/token",
+   "variant": "default",
+   "note": "code redeemed once, PKCE verified"
+  },
+  {
+   "id": "manage-oauth-decide--grant",
+   "from": "server",
+   "to": "store",
+   "y": 1100,
+   "label": "save the grant record (mcpgrant)",
+   "variant": "dashed"
+  },
+  {
+   "id": "manage-oauth-decide--tokens",
+   "from": "server",
+   "to": "outside",
+   "y": 1130,
+   "label": "access 30 days, refresh 90 days",
+   "variant": "return",
+   "note": "refreshing rotates both tokens"
+  },
+  {
+   "id": "manage-oauth-decide--see",
+   "from": "page",
+   "to": "person",
+   "y": 1160,
+   "label": "App listed in Connected apps",
+   "variant": "return",
+   "note": "errors show as raw JSON pages"
+  },
+  {
+   "id": "manage-mcp-app-disconnect--do",
+   "from": "person",
+   "to": "page",
+   "y": 1204,
+   "label": "Click 'Disconnect' on an app",
+   "variant": "default"
+  },
+  {
+   "id": "manage-mcp-app-disconnect--delete",
+   "from": "page",
+   "to": "server",
+   "y": 1234,
+   "label": "DELETE /api/mcp/grants?id=",
+   "variant": "default"
+  },
+  {
+   "id": "manage-mcp-app-disconnect--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 1264,
+   "label": "oauth.grants, own 16-hex id",
+   "variant": "security",
+   "note": "owner or founder viewing; 400 bad id, 404 not yours"
+  },
+  {
+   "id": "manage-mcp-app-disconnect--clear",
+   "from": "server",
+   "to": "store",
+   "y": 1294,
+   "label": "delete access, refresh and grant",
+   "variant": "dashed",
+   "note": "password change or reset disconnects every app"
+  },
+  {
+   "id": "manage-mcp-app-disconnect--result",
+   "from": "server",
+   "to": "page",
+   "y": 1324,
+   "label": "deleted",
+   "variant": "return"
+  },
+  {
+   "id": "manage-mcp-app-disconnect--see",
+   "from": "page",
+   "to": "person",
+   "y": 1354,
+   "label": "The row disappears",
+   "variant": "return",
+   "note": "on failure nothing is shown, the row stays"
+  },
+  {
+   "id": "manage-mcp-use--do",
+   "from": "person",
+   "to": "outside",
+   "y": 1418,
+   "label": "Ask own assistant for Noor tools",
+   "variant": "emphasis",
+   "note": "brand rules, drafts, inbox, files, agenda and to-dos, ask_noor"
+  },
+  {
+   "id": "manage-mcp-use--call",
+   "from": "outside",
+   "to": "server",
+   "y": 1448,
+   "label": "POST /api/mcp (JSON-RPC)",
+   "variant": "emphasis",
+   "note": "initialize and tools/list need no auth; server 'thakeen'"
+  },
+  {
+   "id": "manage-mcp-use--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 1478,
+   "label": "userFromBearer, tool role action",
+   "variant": "security",
+   "note": "owner accounts, active brand; unknown tools refused"
+  },
+  {
+   "id": "manage-mcp-use--unauth",
+   "from": "server",
+   "to": "outside",
+   "y": 1508,
+   "label": "Unauthorized: no or revoked token",
+   "variant": "security",
+   "note": "401 names the canonical origin for OAuth"
+  },
+  {
+   "id": "manage-mcp-use--chatgate",
+   "from": "server",
+   "to": "checks",
+   "label": "ask_noor: trial, rate limit, allowance",
+   "variant": "security",
+   "note": "message capped at 4,000 characters; same gates as the web chat",
+   "y": 1538
+  },
+  {
+   "id": "manage-mcp-use--chatrefuse",
+   "from": "server",
+   "to": "outside",
+   "label": "'Chat paused': messages used up",
+   "variant": "security",
+   "note": "also trial ended or hourly/daily limit; Nothing was sent; continue on credits goes ahead unless credits are below one message's maximum",
+   "y": 1568
+  },
+  {
+   "id": "manage-mcp-use--ask",
+   "from": "server",
+   "to": "outside",
+   "y": 1598,
+   "label": "ask_noor: paused reply, no charge",
+   "variant": "return",
+   "note": "chat via 'mcp', never publishes; message count given back; paused since 2026-09-28"
+  },
+  {
+   "id": "manage-mcp-use--generate",
+   "from": "server",
+   "to": "checks",
+   "y": 1628,
+   "label": "generate_content: pause first",
+   "variant": "security",
+   "note": "paused: tool error; when on: brand, trial, cap, credits"
+  },
+  {
+   "id": "manage-mcp-use--charge",
+   "from": "server",
+   "to": "store",
+   "label": "when on: charge TASK_COST[type]",
+   "variant": "dashed",
+   "note": "weekly_plan 2, weekly_report 3, followup_seq 4",
+   "y": 1658
+  },
+  {
+   "id": "manage-mcp-use--draft",
+   "from": "server",
+   "to": "store",
+   "y": 1688,
+   "label": "save_draft: pending in inbox",
+   "variant": "dashed",
+   "note": "hourly limit; free tools work while paused"
+  },
+  {
+   "id": "manage-mcp-use--reply",
+   "from": "server",
+   "to": "outside",
+   "y": 1718,
+   "label": "free tool results",
+   "variant": "return",
+   "note": "brand rules and checks, inbox, files, agenda, to-dos"
+  },
+  {
+   "id": "manage-mcp-use--see",
+   "from": "outside",
+   "to": "person",
+   "y": 1748,
+   "label": "Answers inside own assistant",
+   "variant": "return",
+   "note": "paused: 'No credits were used.'"
+  },
+  {
+   "id": "manage-help-open--do",
+   "from": "person",
+   "to": "page",
+   "y": 1812,
+   "label": "Open Help, search, pick a topic",
+   "variant": "emphasis",
+   "note": "account menu, or 'Contact us' without WhatsApp"
+  },
+  {
+   "id": "manage-help-open--see",
+   "from": "page",
+   "to": "person",
+   "y": 1842,
+   "label": "FAQ filters as they type",
+   "variant": "return",
+   "note": "static help.ts, no server call; no match: 'No results.'"
+  },
+  {
+   "id": "manage-help-open--prices",
+   "from": "page",
+   "to": "person",
+   "label": "Plans, task costs, chat messages",
+   "variant": "return",
+   "note": "299, 499, 999 SAR; Starter 250, Pro 650, Business 1,300 messages a month; weekly plan 2",
+   "y": 1872
+  },
+  {
+   "id": "manage-help-support--do",
+   "from": "person",
+   "to": "page",
+   "y": 1916,
+   "label": "Fill the support form, click Send",
+   "variant": "default",
+   "note": "email not pre-filled; Question, Bug, Billing, Feature request"
+  },
+  {
+   "id": "manage-help-support--post",
+   "from": "page",
+   "to": "server",
+   "y": 1946,
+   "label": "POST /api/support",
+   "variant": "default",
+   "note": "public route"
+  },
+  {
+   "id": "manage-help-support--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 1976,
+   "label": "10 an hour per IP, required fields",
+   "variant": "security",
+   "note": "429 over the limit; 400 missing email or message"
+  },
+  {
+   "id": "manage-help-support--save",
+   "from": "server",
+   "to": "store",
+   "y": 2006,
+   "label": "push to support-tickets (capped)",
+   "variant": "dashed",
+   "note": "no console screen; admin GET /api/support only"
+  },
+  {
+   "id": "manage-help-support--mail",
+   "from": "server",
+   "to": "outside",
+   "y": 2036,
+   "label": "email the ticket to WAITLIST_TO",
+   "variant": "dashed",
+   "note": "subject 'Thakeen support [type]'; only when WAITLIST_TO is set"
+  },
+  {
+   "id": "manage-help-support--result",
+   "from": "server",
+   "to": "page",
+   "y": 2066,
+   "label": "sent, or 429 / 400",
+   "variant": "return"
+  },
+  {
+   "id": "manage-help-support--see",
+   "from": "page",
+   "to": "person",
+   "y": 2096,
+   "label": "'Got it.' replaces the form",
+   "variant": "return",
+   "note": "any refusal: 'Didn't send. Try again.'"
+  },
+  {
+   "id": "manage-contact-whatsapp--do",
+   "from": "person",
+   "to": "page",
+   "y": 2140,
+   "label": "Click 'Contact us' or WhatsApp",
+   "variant": "default"
+  },
+  {
+   "id": "manage-contact-whatsapp--open",
+   "from": "page",
+   "to": "outside",
+   "y": 2170,
+   "label": "open WhatsApp chat in a new tab",
+   "variant": "default",
+   "note": "only when SUPPORT_WHATSAPP is set; no server call"
+  },
+  {
+   "id": "manage-contact-whatsapp--chat",
+   "from": "outside",
+   "to": "person",
+   "y": 2200,
+   "label": "WhatsApp chat with support",
+   "variant": "return"
+  },
+  {
+   "id": "manage-contact-whatsapp--fallback",
+   "from": "page",
+   "to": "person",
+   "y": 2230,
+   "label": "Not set: Help page, at the top",
+   "variant": "return",
+   "note": "link to #support finds no element; no WhatsApp button"
+  },
+  {
+   "id": "manage-updates-open--do",
+   "from": "person",
+   "to": "page",
+   "y": 2294,
+   "label": "Click 'Updates & wishlist'",
+   "variant": "emphasis",
+   "note": "sidebar; also linked from the Resources page"
+  },
+  {
+   "id": "manage-updates-open--load",
+   "from": "page",
+   "to": "server",
+   "y": 2324,
+   "label": "render /{lang}/updates",
+   "variant": "emphasis",
+   "note": "force-dynamic; currentUser is optional"
+  },
+  {
+   "id": "manage-updates-open--read",
+   "from": "server",
+   "to": "store",
+   "y": 2354,
+   "label": "listWishes: one pipelined read",
+   "variant": "default",
+   "note": "seeded + promoted, minus hidden; statuses, counts"
+  },
+  {
+   "id": "manage-updates-open--render",
+   "from": "server",
+   "to": "page",
+   "y": 2384,
+   "label": "What's new + Wishlist",
+   "variant": "return",
+   "note": "static CHANGELOG newest first; wishes by status, votes"
+  },
+  {
+   "id": "manage-updates-open--news",
+   "from": "page",
+   "to": "person",
+   "label": "Top: repeating to-dos, working days",
+   "variant": "return",
+   "note": "2026-10-03; then chat messages (10-01), plans and prices (09-30)",
+   "y": 2414
+  },
+  {
+   "id": "manage-updates-open--see",
+   "from": "page",
+   "to": "person",
+   "y": 2444,
+   "label": "Dated entries, wishes, own votes",
+   "variant": "return",
+   "note": "signed out: 'Sign in to vote' links instead of votes"
+  },
+  {
+   "id": "manage-wish-vote--do",
+   "from": "person",
+   "to": "page",
+   "y": 2488,
+   "label": "Vote, or click again to undo",
+   "variant": "default",
+   "note": "count and pressed state change at once"
+  },
+  {
+   "id": "manage-wish-vote--post",
+   "from": "page",
+   "to": "server",
+   "y": 2518,
+   "label": "POST /api/wishlist/vote {id, on}",
+   "variant": "default"
+  },
+  {
+   "id": "manage-wish-vote--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 2548,
+   "label": "session, 60 an hour, votable id",
+   "variant": "security",
+   "note": "401 to login; 429 slow down; 400 unknown item"
+  },
+  {
+   "id": "manage-wish-vote--save",
+   "from": "server",
+   "to": "store",
+   "y": 2578,
+   "label": "sadd/srem wish:votes, wish:mine",
+   "variant": "dashed",
+   "note": "voter is the account: a member votes for it"
+  },
+  {
+   "id": "manage-wish-vote--result",
+   "from": "server",
+   "to": "page",
+   "y": 2608,
+   "label": "new count",
+   "variant": "return"
+  },
+  {
+   "id": "manage-wish-vote--see",
+   "from": "page",
+   "to": "person",
+   "y": 2638,
+   "label": "Count kept, or reverted",
+   "variant": "return",
+   "note": "429: 'Too many votes in a short time.'"
+  },
+  {
+   "id": "manage-wish-suggest--do",
+   "from": "person",
+   "to": "page",
+   "y": 2682,
+   "label": "Type a wish, 'Send suggestion'",
+   "variant": "default",
+   "note": "5-280 characters, len/280 counter"
+  },
+  {
+   "id": "manage-wish-suggest--post",
+   "from": "page",
+   "to": "server",
+   "y": 2712,
+   "label": "POST /api/wishlist/suggest",
+   "variant": "default"
+  },
+  {
+   "id": "manage-wish-suggest--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 2742,
+   "label": "session, 5-280 chars, 5 a day",
+   "variant": "security",
+   "note": "400 too short or long; sixth in a day: 429"
+  },
+  {
+   "id": "manage-wish-suggest--save",
+   "from": "server",
+   "to": "store",
+   "y": 2772,
+   "label": "store in wish:suggestions",
+   "variant": "dashed",
+   "note": "capped; never shown publicly"
+  },
+  {
+   "id": "manage-wish-suggest--result",
+   "from": "server",
+   "to": "page",
+   "y": 2802,
+   "label": "saved, or 400 / 429",
+   "variant": "return"
+  },
+  {
+   "id": "manage-wish-suggest--see",
+   "from": "page",
+   "to": "person",
+   "y": 2832,
+   "label": "'Thanks, we got it.'",
+   "variant": "return",
+   "note": "reviewed before they appear in the list"
+  },
+  {
+   "id": "manage-wish-moderate--do",
+   "from": "person",
+   "to": "page",
+   "y": 2876,
+   "label": "Founder: promote, status, hide",
+   "variant": "default",
+   "note": "admin Wishlist tab; Arabic and English titles"
+  },
+  {
+   "id": "manage-wish-moderate--post",
+   "from": "page",
+   "to": "server",
+   "y": 2906,
+   "label": "/api/admin/wishlist",
+   "variant": "default"
+  },
+  {
+   "id": "manage-wish-moderate--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 2936,
+   "label": "isAdmin",
+   "variant": "security",
+   "note": "missing title or unknown item: 400; ended key session: notice with link"
+  },
+  {
+   "id": "manage-wish-moderate--save",
+   "from": "server",
+   "to": "store",
+   "y": 2966,
+   "label": "apply action; log to admin:log",
+   "variant": "dashed",
+   "note": "promote, status, delete, restore, dismiss; wish:*"
+  },
+  {
+   "id": "manage-wish-moderate--see",
+   "from": "page",
+   "to": "person",
+   "y": 2996,
+   "label": "Promoted wish shows publicly",
+   "variant": "return",
+   "note": "under the founder's title; suggester not notified"
+  }
+ ],
+ "cards": [
+  {
+   "dot": "cyan",
+   "title": "Who can do this",
+   "items": [
+    "Personal token and app consent: the owner, signed in as themselves, not while impersonating",
+    "Admins and members see an owner-only note on MCP; a founder viewing sees the apps and may disconnect them",
+    "Help, support, votes and suggestions: any signed-in person; /api/support is a public route",
+    "Wishlist moderation: the founder console (isAdmin)"
+   ]
+  },
+  {
+   "dot": "rose",
+   "title": "Refusals and limits",
+   "items": [
+    "Support: 10 an hour per IP; votes: 60 an hour per account; suggestions: 5 a day per account",
+    "OAuth needs the exact registered redirect_uri, response_type=code and S256 PKCE; codes last 10 minutes, single use",
+    "Revoke cuts off only the personal token (OAuth grants untouched); a new token revokes the old one; apps are cut off by Disconnect or a password change or reset",
+    "MCP tool calls need a valid token or grant; unknown tools are refused; ask_noor is refused when the trial has ended, a chat rate limit is hit or the account's monthly chat messages are used up (unless continue on credits is on and the balance covers the most one message can cost); save_draft has an hourly limit; when not paused, an ended trial, the agent's monthly cap or too few credits is a tool error for generate_content"
+   ]
+  },
+  {
+   "dot": "amber",
+   "title": "While the model is paused",
+   "items": [
+    "Model calls are paused since 2026-09-28 (CLAUDE_PAUSED in src/lib/model.ts; a production deploy with no key is paused too)",
+    "ask_noor: 'The agents are paused for now, so I can't reply or create content yet. No credits were used.' The chat message it reserved is given back",
+    "generate_content: 'Content generation is paused for now. No credits were used.'",
+    "Free tools still work: brand rules and checks, drafts, inbox and file reads, to-dos",
+    "Normally ask_noor answers like the web chat, counted in the plan's monthly chat messages (4,000 characters at most), and generate_content charges TASK_COST credits (weekly_plan 2, weekly_report 3, followup_seq 4) and adds inbox items"
+   ]
+  }
+ ]
+}
