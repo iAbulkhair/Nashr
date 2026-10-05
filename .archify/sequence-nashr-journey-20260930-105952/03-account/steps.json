@@ -1,0 +1,1349 @@
+{
+ "key": "03-account",
+ "title": "Sign up, sign in and join a team",
+ "person": "visitor then owner or member",
+ "steps": [
+  {
+   "id": "account-arrive-signup",
+   "title": "Open signup page",
+   "surface": "/{lang}/app/signup",
+   "actor": "visitor",
+   "action": "Clicks a signup call to action on the marketing site (\"Start free\" in the nav and on the Starter, Pro and Business pricing cards, \"Start your free trial\" in the final call to action and on industry pages, \"Try Noor free\" under a free-tool result), submits the website-URL box on the home page or the agents pages, opens a referral link /{lang}/app/signup?ref=CODE, or opens a partner link /p/CODE. The Agency pricing card's \"Contact us\" goes to the contact form on /{lang}/enterprise instead, not to signup.",
+   "ui_response": "Signup page with the title \"Start your free trial\" and the subtitle \"3 days, 50 credits, no card.\" It has one email box and \"Continue\", then \"3-day trial · 50 credits · no card required\", \"Have an account? Log in\" and the Terms and Privacy Policy links. The header is bare: the app name, which links to the marketing home /{lang}, and the language toggle. A visitor who is already signed in is redirected to /{lang}/app.",
+   "system_reaction": "proxy.ts forwards the path as the x-pathname header for /:lang/app/*. The app layout treats /signup as public and renders the signed-out shell. The signup page calls currentUser() and redirects a signed-in visitor, and hands the form the public Turnstile site key (null unless both Turnstile keys are set). The form reads ?url= (cut to 300 chars), ?next= (kept only when it starts with a single '/' not followed by '/' or '\\') and ?ref= from the address; the partner code box reads ?partner=CODE. GET /p/CODE is public and rate limited per IP: for a partner's code it sets the 30-day nashr_partner cookie (unless a valid partner cookie is already held, which is kept) and redirects here with ?partner= set to the code that will count; an unknown code, or a visitor over the limit, is redirected with nothing set. The 50 credits in the subtitle and in the trial line are read from PLAN_CREDITS.trial in src/lib/pricing.ts.",
+   "branches": [
+    "signed in -> redirect to /{lang}/app",
+    "URL box -> ?url=site",
+    "referral link -> ?ref=CODE",
+    "partner link /p/CODE -> ?partner=CODE and a 30-day cookie",
+    "Agency pricing card \"Contact us\" -> /{lang}/enterprise#contact, not signup",
+    "\"Log in\" link -> login page",
+    "header name -> marketing home /{lang}",
+    "Terms / Privacy links -> legal pages"
+   ],
+   "conditions": "Public, no session needed",
+   "sources": [
+    {
+     "path": "src/components/Nav.tsx",
+     "line": 75
+    },
+    {
+     "path": "src/components/home/Plans.tsx",
+     "line": 73
+    },
+    {
+     "path": "src/components/Pricing.tsx",
+     "line": 61
+    },
+    {
+     "path": "src/components/FinalCta.tsx",
+     "line": 17
+    },
+    {
+     "path": "src/app/[lang]/for/[industry]/page.tsx",
+     "line": 44
+    },
+    {
+     "path": "src/components/ToolForm.tsx",
+     "line": 50
+    },
+    {
+     "path": "src/components/UrlStart.tsx",
+     "line": 11,
+     "end_line": 20
+    },
+    {
+     "path": "src/components/home/StartForm.tsx",
+     "line": 12,
+     "end_line": 13
+    },
+    {
+     "path": "src/app/p/[code]/route.ts",
+     "line": 27,
+     "end_line": 40
+    },
+    {
+     "path": "src/components/app/ReferPanel.tsx",
+     "line": 9
+    },
+    {
+     "path": "src/proxy.ts",
+     "line": 26,
+     "end_line": 32
+    },
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 17,
+     "end_line": 41
+    },
+    {
+     "path": "src/app/[lang]/app/signup/page.tsx",
+     "line": 13,
+     "end_line": 14
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 26,
+     "end_line": 29
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 86,
+     "end_line": 90
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 357
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 42
+    }
+   ],
+   "next": [
+    "account-lang-toggle",
+    "account-signup-email",
+    "account-login-open"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-signup-email",
+   "title": "Enter email",
+   "surface": "/{lang}/app/signup (SignupForm step 1)",
+   "actor": "visitor",
+   "action": "Types an email and clicks \"Continue\".",
+   "ui_response": "An address that passes the check moves the form to step 2. Step 2 shows the email with an \"Edit\" button, a \"Your name\" box and a password box. An address that fails shows \"Invalid email.\" in red.",
+   "system_reaction": "A client-side check only, with the regex ^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$. Nothing is sent to the server yet.",
+   "branches": [
+    "bad format -> \"Invalid email.\""
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 43
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 71,
+     "end_line": 73
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 83
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 357
+    }
+   ],
+   "next": [
+    "account-signup-details"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-signup-details",
+   "title": "Name and password",
+   "surface": "/{lang}/app/signup (SignupForm step 2)",
+   "actor": "visitor",
+   "action": "Types a name and a password, may add a partner code, and may click \"Edit\" to go back to the email step.",
+   "ui_response": "Three rules (\"At least 8 characters\", \"At least one letter\", \"At least one number\") each show a check or a cross, with \"met\" or \"not met\" for screen readers and one status line such as \"2 of 3 password rules met\", so colour is not the only signal. A \"Partner code (optional)\" box says \"A partner code gives you 15% off your first month.\"; when a partner link filled it, it says \"Partner code CODE: 15% off your first month.\" When Turnstile is on, its widget shows under the rules. \"Create account\" stays focusable but is marked disabled (aria-disabled) until all three rules pass: pressing it early shows \"Your password still needs: ...\" with the unmet rules and moves focus to the password box.",
+   "system_reaction": "None: client state only. The Turnstile widget loads Cloudflare's script and hands its token to the form.",
+   "branches": [
+    "\"Edit\" -> back to the email step",
+    "early press on \"Create account\" -> unmet rules named in red, focus on the password box"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 38,
+     "end_line": 39
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 74,
+     "end_line": 82
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 84
+    },
+    {
+     "path": "src/components/app/PasswordRules.tsx",
+     "line": 14,
+     "end_line": 26
+    },
+    {
+     "path": "src/components/app/PartnerCodeField.tsx",
+     "line": 17,
+     "end_line": 27
+    },
+    {
+     "path": "src/components/app/Turnstile.tsx",
+     "line": 35,
+     "end_line": 59
+    },
+    {
+     "path": "src/lib/auth-client.ts",
+     "line": 72,
+     "end_line": 89
+    }
+   ],
+   "next": [
+    "account-signup-submit"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-signup-submit",
+   "title": "Create account",
+   "surface": "/{lang}/app/signup -> POST /api/auth/signup",
+   "actor": "visitor",
+   "action": "Clicks \"Create account\".",
+   "ui_response": "The button disables while waiting. On success there is no message: the browser goes to ?next= if one was given, else to /{lang}/app/start, with ?url= prefilled when a site of 4 or more characters was carried. Errors appear in red. \"This email is already registered.\" also appears for an address that is already a team member's login. \"Invalid email.\" also appears when the server refuses ':', '#' or more than 120 characters. \"Password too short (8+ characters).\" is only a server backstop, because the rules are checked first. \"That partner code is not valid. Check it or leave the field empty.\" appears for a typed code that is not a partner's. On the rate limit the page says \"Too many sign-ups from this connection. Try again in an hour.\" When Turnstile is on and the widget has no token, the form says \"The security check wasn't completed. Complete it and try again.\" before sending; a refused check shows the same text and a Cloudflare outage shows \"The security check isn't responding right now. Try again shortly.\" A dropped connection shows \"Couldn't reach the server. Check your internet connection and try again.\" and a 5xx \"Something went wrong on our side. Please try again shortly.\"",
+   "system_reaction": "The rate limit comes first: 5 per IP per hour, and every attempt counts, including refused ones (429 slow_down). Then the route normalises the email (trim, lowercase) and checks validEmail, strongPassword and an optional phone of at least 9 digits; the form sends no phone. When both Turnstile keys are set, the token is checked at Cloudflare before the address is looked up (400 captcha_failed, 503 captcha_unavailable); with either key missing nothing is checked. signupPartner then reads a typed partner code or the link cookie (a typed code that is not a partner's is 400 bad_partner_code). Under lock:login:{email}, getLogin answers 409 exists for an owner login or for a member login on its owner's roster. Otherwise createUser runs: bcrypt cost 10, plan trial, 50 credits, trialEnds = now + 3 days, sessionsAfter = now. It writes user:{email} and adds the email to users:all. Then registerCode writes ref:{CODE}, applyReferral runs when ref is valid, the partner attribution runs, and createSession stores a 32-byte hex token as session:{token} for 30 days, in the httpOnly nashr_session cookie. track(signup) records the event. There is no email verification, no welcome email and no model call, so CLAUDE_PAUSED does not affect this step. The 3-day trial clock starts at once.",
+   "branches": [
+    "409 exists -> \"This email is already registered.\"",
+    "400 bad_email -> \"Invalid email.\"",
+    "400 weak_password -> \"Password too short (8+ characters).\"",
+    "400 bad_partner_code -> partner code text",
+    "400 captcha_failed / 503 captcha_unavailable -> security-check text",
+    "429 -> \"Too many sign-ups from this connection. Try again in an hour.\"",
+    "network or 5xx -> connection or server text",
+    "ok + next -> go to next",
+    "ok -> /{lang}/app/start[?url=site]"
+   ],
+   "conditions": "Address not yet used by an owner login or by a member login on its owner's roster; Turnstile passed when it is on",
+   "sources": [
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 40,
+     "end_line": 65
+    },
+    {
+     "path": "src/app/api/auth/signup/route.ts",
+     "line": 10,
+     "end_line": 44
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 145,
+     "end_line": 151
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 188,
+     "end_line": 207
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 267,
+     "end_line": 273
+    },
+    {
+     "path": "src/lib/team.ts",
+     "line": 99
+    },
+    {
+     "path": "src/lib/rate.ts",
+     "line": 6,
+     "end_line": 8
+    },
+    {
+     "path": "src/lib/turnstile.ts",
+     "line": 24,
+     "end_line": 56
+    },
+    {
+     "path": "src/lib/auth-client.ts",
+     "line": 35,
+     "end_line": 64
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 357
+    }
+   ],
+   "next": [
+    "account-signup-referral",
+    "account-signup-partner",
+    "account-land-app"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-signup-referral",
+   "title": "Referral bonus",
+   "surface": "/api/auth/signup (server)",
+   "actor": "system",
+   "action": "Runs automatically when the new owner signed up through a referral link ?ref=CODE.",
+   "ui_response": "Nothing is announced. The signup form ignores the returned `referred` flag, so the new owner only sees 100 credits instead of 50 in the sidebar. The referrer gets no notification; the count shows on their /{lang}/app/refer page.",
+   "system_reaction": "applyReferral resolves ref:{CODE} (upper-cased) to the referrer. It refuses unknown codes, the same email and a missing account. adjust() adds 50 credits to each of the two accounts under each account's user lock. lpush adds an entry to referrals:{referrer}, and referredBy:{new} is set.",
+   "branches": [
+    "unknown code or self-referral -> no bonus, signup still succeeds",
+    "code not 6-10 letters or digits -> not even looked up"
+   ],
+   "conditions": "ref matches ^[A-Za-z0-9]{6,10}$ and the referrer account exists",
+   "sources": [
+    {
+     "path": "src/app/api/auth/signup/route.ts",
+     "line": 37,
+     "end_line": 38
+    },
+    {
+     "path": "src/lib/referral.ts",
+     "line": 6,
+     "end_line": 30
+    },
+    {
+     "path": "src/lib/credits.ts",
+     "line": 121,
+     "end_line": 128
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 52,
+     "end_line": 61
+    }
+   ],
+   "next": [
+    "account-land-app"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-signup-partner",
+   "title": "Partner code",
+   "surface": "/{lang}/app/signup -> POST /api/auth/signup (server)",
+   "actor": "visitor",
+   "action": "Arrives through a partner link /p/CODE (which fills the partner code box) or types a partner's code in the optional \"Partner code\" box, then creates the account.",
+   "ui_response": "Nothing extra is announced on success: the hint under the box already said \"A partner code gives you 15% off your first month.\" (or \"Partner code CODE: 15% off your first month.\" when the link filled it). A typed code that is not a partner's stops the signup with \"That partner code is not valid. Check it or leave the field empty.\" and no account is created. The partner themselves (an approved partner's address that signs up later) gets a Partner entry in the sidebar.",
+   "system_reaction": "signupPartner runs after the Turnstile check and before anything is created, so a script cannot probe which codes exist without passing it. A typed code wins over the link cookie: it must belong to a partner (\"bad\" gives 400 bad_partner_code); without one, the code in the nashr_partner cookie counts if it is still a partner's. After the account exists, afterSignup attributes it: referredBy = {partner, code, at, via, ref} (the 30 days run from the link click when the code is the link's, else from signup), firstMonthOffer = 15% for the first paid month, and the account is added to the partner's refs set. A partner's own address is never attributed to itself. The link cookie is deleted either way. A failed attribution is logged and never fails the signup. The response carries partner: true when the account was attributed. This is separate from the credits referral (?ref=), which gives no discount.",
+   "branches": [
+    "typed code not a partner's -> 400 bad_partner_code, nothing created",
+    "no typed code + valid link cookie -> attributed via link",
+    "typed code that is not the link's -> attributed via code",
+    "own address as the partner -> not attributed",
+    "attribution fails -> logged, signup still succeeds"
+   ],
+   "conditions": "A typed code is a partner's code, or a valid partner link cookie is held; the account has no earlier referredBy",
+   "sources": [
+    {
+     "path": "src/components/app/PartnerCodeField.tsx",
+     "line": 17,
+     "end_line": 27
+    },
+    {
+     "path": "src/app/p/[code]/route.ts",
+     "line": 27,
+     "end_line": 40
+    },
+    {
+     "path": "src/app/api/auth/signup/route.ts",
+     "line": 23,
+     "end_line": 27
+    },
+    {
+     "path": "src/app/api/auth/signup/route.ts",
+     "line": 40
+    },
+    {
+     "path": "src/lib/partners.ts",
+     "line": 142,
+     "end_line": 184
+    },
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 51
+    },
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 140
+    }
+   ],
+   "next": [
+    "account-land-app"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-land-app",
+   "title": "Land in the app",
+   "surface": "/{lang}/app, /{lang}/app/start and the app shell (layout + Sidebar)",
+   "actor": "any-signed-in",
+   "action": "Arrives in the app after signup, login, reset or joining.",
+   "ui_response": "The app shell has a sidebar; on phones it is a top bar with a bell, the credit count and a menu button. The sidebar footer shows the acting person's name, email and role chip (Owner/Admin/Member) and the account's plan and credit balance. The plan reads Trial, Starter, Pro, Business or Agency (Arabic: تجربة, البداية, الاحتراف, الأعمال, الوكالات); an account still stored as \"enterprise\" shows Agency. For non-owners the credit balance has the tooltip \"The account's shared credits…\". Owners also see an \"Earn credits\" entry, and an approved partner sees a Partner entry. A new owner lands on the start page: the first-login Dictionary game (seven steps, the first six local with nothing saved), whose last step asks for the site URL, prefilled and marked for review when one was carried, with the note \"Setting up your first brand is free.\", or offers a no-site form. /{lang}/app sends any workspace without a brand to /start. There, a plain member sees \"This account is not set up yet\" and a note that the owner or an admin sets the brand up first. Once a brand exists, /{lang}/app shows the approval inbox, and anyone opening /start is sent there.",
+   "system_reaction": "On every page load, currentUser() reads the cookie and session:{token}, then user:, member: and activebrand: in one parallel round. It resolves the account (always the owner's record) and the actor. getUser, the only reader of user:{email}, maps the stored plan through planFromStore: \"enterprise\" reads as \"agency\", and any unknown value reads as \"trial\" (never renewed, never counted as paying); the next locked save writes the mapped value back. The layout reads the brand and renders Sidebar, TrialBanner and LimitModal; the Sidebar entries for referrals, MCP and the partner page follow can(u, ...) and user.partnerCode. The Sidebar looks the plan name up in nav.plans, which is typed against Plan. On each navigation the Sidebar fetches the unread notification count, the pending-approval count and the conversation list. The start page passes the setup cost from onboardCost: 0 for the first (default) brand, and whether an unfinished charge already covers an added brand's setup.",
+   "branches": [
+    "no brand + owner/admin -> first-login game on /start",
+    "no brand + member -> wait note on /start",
+    "brand exists -> inbox (/start sends there too)"
+   ],
+   "conditions": "Valid session",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/page.tsx",
+     "line": 20,
+     "end_line": 23
+    },
+    {
+     "path": "src/app/[lang]/app/start/page.tsx",
+     "line": 17,
+     "end_line": 40
+    },
+    {
+     "path": "src/components/app/DictionaryStart.tsx",
+     "line": 73,
+     "end_line": 82
+    },
+    {
+     "path": "src/components/app/DictionaryStart.tsx",
+     "line": 195
+    },
+    {
+     "path": "src/components/app/StartLaunch.tsx",
+     "line": 96,
+     "end_line": 108
+    },
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 43,
+     "end_line": 63
+    },
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 39,
+     "end_line": 47
+    },
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 67
+    },
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 139,
+     "end_line": 140
+    },
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 153,
+     "end_line": 162
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 163,
+     "end_line": 177
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 29,
+     "end_line": 35
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 207,
+     "end_line": 208
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 282,
+     "end_line": 334
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 6
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 287
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 288,
+     "end_line": 289
+    }
+   ],
+   "next": [
+    "account-trial-banner",
+    "account-menu"
+   ],
+   "note": "Hands over to the onboarding stage (/start) or the daily-use stage (inbox). While the model is paused, onboarding from /start answers \"paused\" (onboarding stage).",
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-trial-banner",
+   "title": "Trial countdown",
+   "surface": "TrialBanner at the top of app pages (not on /billing, /start or /join)",
+   "actor": "any-signed-in",
+   "action": "Sees the trial strip and may click \"Activate Noor\".",
+   "ui_response": "\"Your trial ends in N days\" and one line: \"With Noor: a weekly plan every Sunday, content in your dialect whenever you ask, and nothing is published unless you ask.\" The owner gets an \"Activate Noor\" button to /{lang}/app/billing. Admins and members see \"Ask the account owner to activate.\" instead. Paid plans show no strip. A brand-new owner on /start does not see it yet.",
+   "system_reaction": "trialDaysLeft(trialEnds) is computed on the server on each request, as whole days rounded up. The owner flag is can(u, \"billing\").",
+   "branches": [
+    "owner -> \"Activate Noor\" -> billing",
+    "admin/member -> ask-owner text",
+    "paid plan -> hidden"
+   ],
+   "conditions": "plan = trial",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 48
+    },
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 60
+    },
+    {
+     "path": "src/components/app/TrialBanner.tsx",
+     "line": 8,
+     "end_line": 26
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 142
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 12
+    }
+   ],
+   "next": [
+    "account-trial-ends"
+   ],
+   "note": "\"Activate Noor\" leads to the billing stage.",
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-trial-ends",
+   "title": "Trial runs out",
+   "surface": "TrialBanner; LimitModal dialog (generate, reports, chat, item image/video buttons, an added brand's setup on /start)",
+   "actor": "any-signed-in",
+   "action": "Keeps using the app after trialEnds (3 days after signup) and tries something that spends credits: generate, a report draft, a chat message, an item image or video, or setting up an added brand from its URL on /start. Before the 3 days end, a trial can also use up its 30 chat messages.",
+   "ui_response": "The banner switches to \"Your trial has ended\". Spending actions come back as trial_over and open a dialog: \"Your free trial has ended\" / \"Everything in your inbox is kept. Choose a plan and the team picks up where it stopped.\" The dialog has \"View plans\" (to billing) and \"Maybe later\". Admins and members get the ask-the-owner text with a single \"OK\". The generate panel also shows \"Trial ended. Subscribe to continue.\", and so does the start page when an added brand's setup is refused. Chat answers with a reply that says \"Your free trial has ended, so the agents won't answer new messages until a plan is active\", together with the dialog; the message is not saved and no model runs. Signing in and reading keep working, and the first brand's setup is free, so it is not refused here. While the model is paused, generate shows \"Content generation is paused for now. No credits were used.\" because it checks the pause first; chat after the trial ended gives the trial-ended reply, not the paused one, because it checks the trial first (within the trial it gives its paused reply). The item image and video buttons, and an added brand's setup when the balance covers its 9 credits, still raise the trial dialog. The line under the chat box counts \"N of 30 messages left in your trial\"; when all 30 are used a dialog says \"Your trial's chat messages are used up\" and the message goes back into the box.",
+   "system_reaction": "trialOver(u) is true when the plan is trial and trialEnds has passed. /api/generate answers 503 model_paused first, then 402 trial_over before any charge. The media start (renderImage, renderVideo) answers 402 trial_over first. POST /api/onboard/confirm, which calls no model, answers 402 trial_over for an added brand whose setup is not already paid for, and the start page raises the dialog with limitFromError; nothing is charged. When the balance is below the 9 credits an added brand's setup costs (ONBOARD_EXTRA_BRAND_COST), the start page has already turned Go off and shows the balance note with a \"View plans\" button that opens the credits dialog, so no request is sent. POST /api/chat checks trialOver first: 402 trial_over with the trial-ended reply and limit \"trial\", before the short-window ceilings and before any message of the trial's allowance is counted; chat() repeats the check as a backstop. Then chatRefusal and reserveChatTurn count the trial's 30 messages (CHAT_ALLOWANCE.trial, once for the whole trial); past them the route answers 402 chat_allowance and ChatPanel raises the chat dialog. Chat tools push limit:trial, which ChatPanel turns into the dialog. The trial check stops applying when a founder extends the trial with extendTrial (1-90 days, counted from now if the trial has already ended) or when the plan moves off trial.",
+   "branches": [
+    "owner -> \"View plans\" -> billing",
+    "admin/member -> \"OK\"",
+    "model paused -> generate says paused; chat says trial ended first",
+    "chat after the trial -> trial-ended reply + dialog, nothing saved",
+    "30 trial chat messages used -> chat dialog, message not sent",
+    "added brand setup on /start -> dialog + \"Trial ended. Subscribe to continue.\"",
+    "added brand setup with fewer than 9 credits -> Go off, balance note, no request",
+    "founder extends trial -> banner shows days again"
+   ],
+   "conditions": "plan = trial and trialEnds in the past (or, for the chat dialog, all 30 trial chat messages used)",
+   "sources": [
+    {
+     "path": "src/lib/auth.ts",
+     "line": 140
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 198
+    },
+    {
+     "path": "src/components/app/TrialBanner.tsx",
+     "line": 17
+    },
+    {
+     "path": "src/app/api/generate/route.ts",
+     "line": 16,
+     "end_line": 17
+    },
+    {
+     "path": "src/app/api/generate/route.ts",
+     "line": 26
+    },
+    {
+     "path": "src/components/app/GeneratePanel.tsx",
+     "line": 38,
+     "end_line": 40
+    },
+    {
+     "path": "src/lib/media/start.ts",
+     "line": 73
+    },
+    {
+     "path": "src/lib/media/start.ts",
+     "line": 92
+    },
+    {
+     "path": "src/components/app/MediaControls.tsx",
+     "line": 224
+    },
+    {
+     "path": "src/app/api/chat/route.ts",
+     "line": 44,
+     "end_line": 50
+    },
+    {
+     "path": "src/lib/chat.ts",
+     "line": 342,
+     "end_line": 352
+    },
+    {
+     "path": "src/lib/chat.ts",
+     "line": 369
+    },
+    {
+     "path": "src/lib/chat.ts",
+     "line": 534
+    },
+    {
+     "path": "src/components/app/ChatPanel.tsx",
+     "line": 560
+    },
+    {
+     "path": "src/components/app/ChatPanel.tsx",
+     "line": 571
+    },
+    {
+     "path": "src/lib/chat-allowance.ts",
+     "line": 76
+    },
+    {
+     "path": "src/app/api/onboard/confirm/route.ts",
+     "line": 40,
+     "end_line": 43
+    },
+    {
+     "path": "src/components/app/StartLaunch.tsx",
+     "line": 50
+    },
+    {
+     "path": "src/components/app/StartLaunch.tsx",
+     "line": 68,
+     "end_line": 69
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 167
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 207,
+     "end_line": 208
+    },
+    {
+     "path": "src/components/app/LimitModal.tsx",
+     "line": 18
+    },
+    {
+     "path": "src/components/app/LimitModal.tsx",
+     "line": 42,
+     "end_line": 54
+    },
+    {
+     "path": "src/components/app/LimitModal.tsx",
+     "line": 92,
+     "end_line": 100
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 455,
+     "end_line": 457
+    },
+    {
+     "path": "src/app/api/admin/users/[email]/route.ts",
+     "line": 94,
+     "end_line": 105
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 303
+    }
+   ],
+   "next": [
+    "account-menu"
+   ],
+   "note": "\"View plans\" leads to the billing stage.",
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-menu",
+   "title": "Open account menu",
+   "surface": "Sidebar footer (inside the menu drawer on phones)",
+   "actor": "any-signed-in",
+   "action": "Clicks their own name/avatar at the bottom of the sidebar. On phones, the menu button in the top bar opens the drawer first.",
+   "ui_response": "A pop-up menu with Your profile, Notifications (with the unread count), Scheduled tasks, Ask Noor, Subscription, Brand file, Brands, Members, MCP (owner only), Help and Founder console (founder only), then a language toggle and \"Log out\". Escape or choosing an entry closes it.",
+   "system_reaction": "Client only. The MCP entry follows can(u, \"mcp.token\"), which is owner only and false while a founder impersonates. The founder entry follows isFounderActor. The routes behind them enforce the same rules.",
+   "branches": [
+    "Your profile -> password / delete / leave",
+    "Members -> team stage",
+    "Log out",
+    "language toggle"
+   ],
+   "conditions": "Signed in",
+   "sources": [
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 48,
+     "end_line": 52
+    },
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 153,
+     "end_line": 175
+    },
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 51
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 18
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 287
+    }
+   ],
+   "next": [
+    "account-logout",
+    "account-change-password",
+    "account-lang-toggle"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-logout",
+   "title": "Log out",
+   "surface": "Account menu -> POST /api/auth/logout",
+   "actor": "any-signed-in",
+   "action": "Clicks \"Log out\".",
+   "ui_response": "The browser goes to /{lang}/app/login.",
+   "system_reaction": "destroySession deletes session:{token} and the nashr_session cookie, on this device only. Other devices and the nashr_admin, nashr_return and nashr_impersonate cookies are untouched.",
+   "branches": [],
+   "conditions": "None (with no session it does nothing)",
+   "sources": [
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 173
+    },
+    {
+     "path": "src/components/app/LogoutButton.tsx",
+     "line": 8,
+     "end_line": 12
+    },
+    {
+     "path": "src/app/api/auth/logout/route.ts",
+     "line": 4,
+     "end_line": 7
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 275,
+     "end_line": 280
+    }
+   ],
+   "next": [
+    "account-login-open"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-login-open",
+   "title": "Open login page",
+   "surface": "/{lang}/app/login",
+   "actor": "visitor",
+   "action": "Clicks \"Log in\" (site nav, signup page, join page), opens any private /app page while signed out, or follows a login link that carries ?next= (updates page, OAuth consent).",
+   "ui_response": "The \"Log in\" page has email, password, a \"Log in\" button, a \"Forgot your password?\" link and \"No account? Create one\". A visitor who is already signed in goes to /{lang}/app.",
+   "system_reaction": "When currentUser() is null, the app layout redirects every non-public /app path to /{lang}/app/login with no return path, and individual pages repeat the check. The OAuth consent page redirects to /ar/app/login?next=<itself>. The login form keeps ?next= only when it starts with a single '/'.",
+   "branches": [
+    "signed in -> /{lang}/app",
+    "\"Create one\" -> signup",
+    "\"Forgot your password?\" -> forgot page"
+   ],
+   "conditions": "Public",
+   "sources": [
+    {
+     "path": "src/components/Nav.tsx",
+     "line": 74
+    },
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 25,
+     "end_line": 27
+    },
+    {
+     "path": "src/app/[lang]/app/login/page.tsx",
+     "line": 11,
+     "end_line": 12
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 95,
+     "end_line": 98
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 118,
+     "end_line": 132
+    },
+    {
+     "path": "src/app/oauth/authorize/page.tsx",
+     "line": 15
+    },
+    {
+     "path": "src/app/[lang]/updates/page.tsx",
+     "line": 48
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 356
+    }
+   ],
+   "next": [
+    "account-login-submit",
+    "account-forgot-open"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-login-submit",
+   "title": "Log in",
+   "surface": "/{lang}/app/login -> POST /api/auth/login",
+   "actor": "visitor",
+   "action": "Types an email and a password and clicks \"Log in\", as an owner or as a team member.",
+   "ui_response": "On success the browser goes to ?next= or to /{lang}/app: the inbox, or /start when there is no brand. A suspended account, or a member whose owner is suspended, shows \"This account is suspended. Contact us on WhatsApp.\". \"Wrong email or password.\" appears for an unknown email or a wrong password, and for a member whose account is gone or newer than the membership. The rate limit shows \"Too many attempts. Wait 15 minutes, then try again.\", a seat-paused member sees \"Your login is paused because the account's plan has no free seat. Ask the account owner to upgrade.\", a dropped connection shows \"Couldn't reach the server. Check your internet connection and try again.\", and a server error shows \"Something went wrong on our side. Please try again shortly.\"",
+   "system_reaction": "Rate limits: 20 per IP and 8 per typed email per 15 min (429 slow_down). getLogin finds user:{email}, or member:{email} when it is on the owner's roster. bcrypt then checks that login's own hash (401 invalid). An owner gets 403 suspended if suspended. For a member, the owner must exist, match memberOf and have been created before the acceptance (else 401), and must not be suspended (403 suspended); a seat-paused member gets 403 disabled. Then createSession(login email) for 30 days and track(login) under the owner's email. There is no lockout beyond the rate limits.",
+   "branches": [
+    "401 invalid -> \"Wrong email or password.\"",
+    "429 slow_down -> \"Too many attempts. Wait 15 minutes, then try again.\"",
+    "403 disabled (seat-paused member) -> seat-paused text",
+    "403 suspended -> suspended text",
+    "network or 5xx -> connection or server text",
+    "ok -> next or /{lang}/app"
+   ],
+   "conditions": "An existing owner login, or a member login on its owner's roster",
+   "sources": [
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 101,
+     "end_line": 117
+    },
+    {
+     "path": "src/app/api/auth/login/route.ts",
+     "line": 13,
+     "end_line": 45
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 344,
+     "end_line": 352
+    },
+    {
+     "path": "src/lib/auth-client.ts",
+     "line": 35,
+     "end_line": 69
+    },
+    {
+     "path": "src/app/[lang]/app/page.tsx",
+     "line": 21,
+     "end_line": 23
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 356
+    }
+   ],
+   "next": [
+    "account-land-app"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-forgot-open",
+   "title": "Forgot password link",
+   "surface": "/{lang}/app/forgot",
+   "actor": "visitor",
+   "action": "Clicks \"Forgot your password?\" on the login page.",
+   "ui_response": "The \"Reset your password\" page: \"Enter your account email and we send a link valid for one hour.\", an email box, the Turnstile widget when it is on, \"Send the link\" and \"Back to log in\". A visitor who is already signed in goes to /{lang}/app.",
+   "system_reaction": "The server page reads SUPPORT_WHATSAPP to build an optional wa.me support link and hands the form the public Turnstile site key (null unless both Turnstile keys are set).",
+   "branches": [
+    "signed in -> /{lang}/app",
+    "\"Back to log in\" -> login"
+   ],
+   "conditions": "Public",
+   "sources": [
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 135,
+     "end_line": 138
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 140,
+     "end_line": 145
+    },
+    {
+     "path": "src/app/[lang]/app/forgot/page.tsx",
+     "line": 11,
+     "end_line": 13
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 165,
+     "end_line": 182
+    }
+   ],
+   "next": [
+    "account-forgot-submit"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-forgot-submit",
+   "title": "Request reset link",
+   "surface": "/{lang}/app/forgot -> POST /api/auth/forgot",
+   "actor": "visitor",
+   "action": "Types their email and clicks \"Send the link\".",
+   "ui_response": "The form is replaced by a status box. With email delivery configured, it says \"If this email has an account, a link arrives within minutes. Check spam too.\", the same text for unknown addresses. Without it, it says \"Email delivery is not enabled on Thakeen yet, so no link can reach you. Contact support and we reset your password manually.\", plus a \"Contact support on WhatsApp\" button when SUPPORT_WHATSAPP is set. A malformed address shows \"Invalid email\". With Turnstile on, an incomplete or refused check shows \"The security check wasn't completed. Complete it and try again.\"; a Cloudflare outage shows the \"isn't responding\" text.",
+   "system_reaction": "Format check first (400 bad_email). The per-IP limit (8 per 15 min) still answers ok, silently, and comes before the captcha call so a script cannot make Cloudflare calls without limit. When both Turnstile keys are set, the token is then checked (400 captcha_failed, 503 captcha_unavailable). The per-address limit (3 per 15 min) also answers ok silently. getLogin runs, and a member counts only while its owner exists. When a login exists and mailReady() is true (RESEND_API_KEY and MAIL_FROM), the route makes a 64-hex token and stores pwreset:{sha256} = {email, kind} for 1 hour. It emails \"Reset your Thakeen password\" with appOrigin()/{lang}/app/reset?token=… to the login's own address. A provider refusal or a send slower than 10 seconds is logged to admin:log as mail:refused, without the recipient, while the page still says a link is on its way.",
+   "branches": [
+    "mail off -> WhatsApp support fallback",
+    "rate limited -> same answer, no email",
+    "unknown email -> same answer, no email",
+    "Turnstile refused -> 400/503 text, nothing sent",
+    "provider refuses -> logged, page unchanged"
+   ],
+   "conditions": "Public",
+   "sources": [
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 146,
+     "end_line": 164
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 135,
+     "end_line": 138
+    },
+    {
+     "path": "src/app/api/auth/forgot/route.ts",
+     "line": 21,
+     "end_line": 51
+    },
+    {
+     "path": "src/lib/notify.ts",
+     "line": 9
+    },
+    {
+     "path": "src/lib/notify.ts",
+     "line": 19,
+     "end_line": 67
+    },
+    {
+     "path": "src/lib/turnstile.ts",
+     "line": 50,
+     "end_line": 56
+    },
+    {
+     "path": "src/lib/origin.ts",
+     "line": 19
+    }
+   ],
+   "next": [
+    "account-reset-open"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-reset-open",
+   "title": "Open reset link",
+   "surface": "/{lang}/app/reset?token=…",
+   "actor": "visitor",
+   "action": "Opens the link from the reset email.",
+   "ui_response": "The \"New password\" page has one password box, the three live rules and \"Save and log in\", which stays focusable but is marked disabled until the rules pass. The page is shown even when already signed in; then it sits inside the app shell.",
+   "system_reaction": "The token is carried in the query string. The page is public and does not check the token until submit.",
+   "branches": [],
+   "conditions": "The token is checked only on submit: it must be less than 1 hour old and unused",
+   "sources": [
+    {
+     "path": "src/app/api/auth/forgot/route.ts",
+     "line": 45
+    },
+    {
+     "path": "src/app/[lang]/app/reset/page.tsx",
+     "line": 6,
+     "end_line": 10
+    },
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 17
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 187,
+     "end_line": 196
+    },
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 214,
+     "end_line": 224
+    }
+   ],
+   "next": [
+    "account-reset-submit"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-reset-submit",
+   "title": "Set new password",
+   "surface": "/{lang}/app/reset -> POST /api/auth/reset",
+   "actor": "visitor",
+   "action": "Types a new password and clicks \"Save and log in\".",
+   "ui_response": "On success the browser goes to /{lang}/app, signed in. The main error is \"This link is invalid or expired. Request a new one.\" with a \"Reset your password\" link to /{lang}/app/forgot. Other errors: \"The password does not meet the rules.\" (only a backstop), \"Too many attempts. Try again in 15 minutes.\", \"This account is suspended. Contact support.\", and, for a seat-paused member whose new password was saved, \"Your login is paused because the account's plan has no free seat. Ask the account owner to upgrade.\" Network and server errors have their own text. \"Save and log in\" stays focusable but marked disabled until the rules pass; pressing it early names the unmet rules.",
+   "system_reaction": "Rate limit: 10 per IP per 15 min. Then strongPassword. The token must match ^[a-f0-9]{64}$ and pwreset:{hash} must exist. It is single use: SET NX pwresetuse:{hash}, then the record is deleted, before the suspended check. The login must still be the same kind (owner or member). For an owner, a suspended account gets 403. Otherwise, under the user lock, the new hash, sessionsAfter and teamSessionsAfter sign out every owner and member device. revokeAllMcp revokes the MCP token and every OAuth grant, and a new session is created. For a member, a suspended owner gets 403. Only the member's own record and its own sessionsAfter change, then a new session is created, unless the member is seat-paused (403 disabled).",
+   "branches": [
+    "400 bad_token -> invalid-link text + link to forgot page",
+    "403 disabled -> password saved, no session, seat-paused text",
+    "403 suspended -> suspended text (link already used up)",
+    "429 slow_down",
+    "ok -> /{lang}/app"
+   ],
+   "conditions": "Valid, unused token less than 1 hour old",
+   "sources": [
+    {
+     "path": "src/components/app/AuthForm.tsx",
+     "line": 197,
+     "end_line": 213
+    },
+    {
+     "path": "src/app/api/auth/reset/route.ts",
+     "line": 20,
+     "end_line": 68
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 230,
+     "end_line": 239
+    },
+    {
+     "path": "src/lib/mcp.ts",
+     "line": 32,
+     "end_line": 35
+    }
+   ],
+   "next": [
+    "account-land-app"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-join-open",
+   "title": "Open invite link",
+   "surface": "/{lang}/app/join#t=<token>",
+   "actor": "visitor",
+   "action": "Opens the link from the invite email (sent when mail is set up), or a link the inviter copied and passed on (when mail is off).",
+   "ui_response": "The \"Join an account\" page. A signed-out visitor sees \"Checking your invite…\". The token disappears from the address bar.",
+   "system_reaction": "The link is built with appOrigin() in the invite's language, with the token in the URL fragment, which never reaches a server. With mail on, the invite is created, the Thakeen-branded mail \"You are invited to join a team on Thakeen\" is sent, and if the send fails the invite is discarded and the inviter gets 502 send_failed, so nobody holds a link that did not arrive. JoinForm reads the fragment (64 hex, lower-cased) and keeps it in sessionStorage for this tab. It strips the fragment with history.replaceState. /join is a public path, and the trial banner is hidden there.",
+   "branches": [
+    "signed in -> log-out-first screen",
+    "no or malformed token -> incomplete-link message"
+   ],
+   "conditions": "Public; the invite lasts 7 days",
+   "sources": [
+    {
+     "path": "src/app/api/team/invite/route.ts",
+     "line": 29,
+     "end_line": 43
+    },
+    {
+     "path": "src/app/api/team/invite/route.ts",
+     "line": 89,
+     "end_line": 103
+    },
+    {
+     "path": "src/lib/team.ts",
+     "line": 61
+    },
+    {
+     "path": "src/app/[lang]/app/join/page.tsx",
+     "line": 14,
+     "end_line": 19
+    },
+    {
+     "path": "src/components/app/JoinForm.tsx",
+     "line": 38,
+     "end_line": 44
+    },
+    {
+     "path": "src/components/app/inviteToken.ts",
+     "line": 10,
+     "end_line": 16
+    },
+    {
+     "path": "src/components/app/inviteToken.ts",
+     "line": 34,
+     "end_line": 49
+    },
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 17
+    },
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 60
+    }
+   ],
+   "next": [
+    "account-join-signed-in",
+    "account-join-preview"
+   ],
+   "note": "The invite itself is created on the Members page (team stage).",
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-join-signed-in",
+   "title": "Join while signed in",
+   "surface": "/{lang}/app/join (JoinForm signedIn phase, inside the app shell)",
+   "actor": "any-signed-in",
+   "action": "Opens an invite link while already signed in, then clicks \"Log out\" or \"Back to the app\".",
+   "ui_response": "\"You are signed in as <email>. Log out first to accept this invite.\" \"Log out\" reloads the page signed out and shows the invite. \"Back to the app\" goes to /{lang}/app.",
+   "system_reaction": "Nobody is joined into an existing session. \"Log out\" posts /api/auth/logout (destroySession), puts the token back into the fragment for the reload, and reloads the page.",
+   "branches": [
+    "Log out -> invite preview",
+    "Back to the app -> /{lang}/app"
+   ],
+   "conditions": "Signed in",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/join/page.tsx",
+     "line": 17,
+     "end_line": 18
+    },
+    {
+     "path": "src/components/app/JoinForm.tsx",
+     "line": 29
+    },
+    {
+     "path": "src/components/app/JoinForm.tsx",
+     "line": 61,
+     "end_line": 68
+    },
+    {
+     "path": "src/components/app/JoinForm.tsx",
+     "line": 103,
+     "end_line": 111
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 553
+    }
+   ],
+   "next": [
+    "account-join-preview"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-join-preview",
+   "title": "See invite details",
+   "surface": "/{lang}/app/join -> POST /api/team/accept {token}",
+   "actor": "visitor",
+   "action": "Signed out, the page checks the invite automatically on load.",
+   "ui_response": "A card reads \"<inviter> invited you to join <team> as <role>.\", with the role explanation and \"Valid until <date>\", then the form. Refusals: \"This invite link is incomplete. Open it from the invite message again, or ask for a new invite.\" (no token); \"This invite is invalid, expired or already used. Ask whoever invited you for a new one.\" (400; the token is also forgotten in this tab); \"Too many attempts. Try again in a few minutes.\" (429); \"Could not join. Try again.\" (network). Each refusal comes with an \"Already have a login? Log in\" link.",
+   "system_reaction": "Rate limit: 30 per IP per 15 min. peekInvite checks that invite:{sha256} exists and is unexpired and that the owner exists and is not suspended. The invite must have been created after the owner record. The inviter must still be the owner or an enabled admin inviting a plain member. The team name is the brand name, else the owner's name. Nothing is consumed.",
+   "branches": [
+    "400 invalid -> invalid-invite text",
+    "429 -> too-many-attempts text",
+    "no token -> incomplete-link text",
+    "network error -> could-not-join text",
+    "ok -> preview + form"
+   ],
+   "conditions": "Signed out",
+   "sources": [
+    {
+     "path": "src/components/app/JoinForm.tsx",
+     "line": 45,
+     "end_line": 58
+    },
+    {
+     "path": "src/components/app/JoinForm.tsx",
+     "line": 113,
+     "end_line": 126
+    },
+    {
+     "path": "src/app/api/team/accept/route.ts",
+     "line": 42,
+     "end_line": 47
+    },
+    {
+     "path": "src/lib/team.ts",
+     "line": 184,
+     "end_line": 188
+    },
+    {
+     "path": "src/lib/team.ts",
+     "line": 231,
+     "end_line": 239
+    },
+    {
+     "path": "src/app/api/team/respond.ts",
+     "line": 14
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 547,
+     "end_line": 555
+    }
+   ],
+   "next": [
+    "account-join-submit",
+    "account-login-open"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-join-submit",
+   "title": "Accept invite",
+   "surface": "/{lang}/app/join -> POST /api/team/accept {token, name, password, lang}",
+   "actor": "visitor",
+   "action": "Types a name and a password and clicks \"Join\". The email is fixed by the invite and read-only.",
+   "ui_response": "\"Join\" stays focusable but marked disabled until a name is typed and the three password rules pass; pressing it with a name but unmet rules names them and focuses the password box. While waiting it shows \"Joining…\". On success the browser goes to /{lang}/app inside the inviting account, with an Admin or Member chip and the account's shared credits. If that account has no brand yet, it goes on to /start: an admin gets the first-login game, a member the wait note. Errors: \"This account has no free seat right now. Tell whoever invited you.\", \"This email already has a login. Log in with it, or ask for an invite to another address.\", \"Too many attempts. Try again in a few minutes.\", or a return to the invalid-invite screen. \"Enter your name.\" and \"The password does not meet the rules.\" are server backstops.",
+   "system_reaction": "Rate limit: 10 per IP per 15 min. acceptInvite needs a live invite. It cleans the name (control characters removed, 80 chars), checks strongPassword and hashes with bcrypt before taking any lock. A 30 s inviteuse:{hash} lock stops two accepts of one invite running at once. Under lock:team it re-reads the invite and its index entry, the owner, the inviter and the seat count against seatLimit (409 seats): the founder's seat count when set, else Trial 3, Starter 1, Pro 3, Business 7 and Agency 7, owner included. Under lock:login the address must be free across user: and member: (409 unavailable). It writes member:{email} with acceptedAt = sessionsAfter = now and adds it to the roster. It then deletes the invite, which is what makes it single use. The route runs destroySession and createSession(member), and puts a bell item \"<name> joined your members\" on the owner. There are no trial credits, no referral code and no signup tracking.",
+   "branches": [
+    "400 invalid_name",
+    "400 weak_password",
+    "409 seats",
+    "409 unavailable",
+    "400 invalid -> invalid screen, token forgotten",
+    "429 rate_limited",
+    "ok -> /{lang}/app"
+   ],
+   "conditions": "Signed out, live invite, a free seat, address not yet a login",
+   "sources": [
+    {
+     "path": "src/components/app/JoinForm.tsx",
+     "line": 70,
+     "end_line": 96
+    },
+    {
+     "path": "src/components/app/JoinForm.tsx",
+     "line": 127,
+     "end_line": 142
+    },
+    {
+     "path": "src/app/api/team/accept/route.ts",
+     "line": 12,
+     "end_line": 27
+    },
+    {
+     "path": "src/app/api/team/accept/route.ts",
+     "line": 49,
+     "end_line": 56
+    },
+    {
+     "path": "src/lib/team.ts",
+     "line": 249,
+     "end_line": 304
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 115,
+     "end_line": 123
+    },
+    {
+     "path": "src/app/api/team/respond.ts",
+     "line": 7,
+     "end_line": 14
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 555
+    }
+   ],
+   "next": [
+    "account-land-app"
+   ],
+   "verified": true,
+   "stage": "account"
+  },
+  {
+   "id": "account-session-ends",
+   "title": "Session ends",
+   "surface": "Any /{lang}/app page or API call",
+   "actor": "system",
+   "action": "Happens automatically when a session stops being valid. For everyone: after 30 days (2 hours for an impersonation session, which also ends with its console key session, after 15 minutes without a request, or at a key rotation), a password change or reset on another device, a founder suspension, a founder password reset, or account deletion. For a member also: removal, leaving, a seat pause, or the owner's password reset.",
+   "ui_response": "The next page load inside /app redirects to /{lang}/app/login, with no return path kept. API calls answer 401, and each screen shows its own error. There is no advance warning. Trying to log in again then shows the suspended text for a suspended account, \"Wrong email or password.\" for a removed member, or the seat-paused text (\"Your login is paused because the account's plan has no free seat. Ask the account owner to upgrade.\") for a seat-paused member.",
+   "system_reaction": "currentUser() returns null in these cases: the cookie or session:{token} is gone (Redis TTL); a key-bound impersonation session whose console key session is no longer live (keyImpLive); the owner is suspended; the session predates sessionsAfter. For a member also: the record is missing or disabled, it is off the roster, the session predates member.sessionsAfter or owner.teamSessionsAfter, or the owner is gone or suspended. A founder reset sets sessionsAfter and teamSessionsAfter and revokes MCP; a founder suspension sets suspended.",
+   "branches": [
+    "expired -> login",
+    "revoked by password change/reset -> login",
+    "key-bound impersonation ended -> login",
+    "suspended -> login refuses with suspended text",
+    "member removed -> login says wrong email or password; seat-paused -> seat-paused text"
+   ],
+   "conditions": "None",
+   "sources": [
+    {
+     "path": "src/lib/auth.ts",
+     "line": 131
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 267,
+     "end_line": 273
+    },
+    {
+     "path": "src/lib/auth.ts",
+     "line": 282,
+     "end_line": 334
+    },
+    {
+     "path": "src/app/api/admin/users/[email]/route.ts",
+     "line": 88,
+     "end_line": 93
+    },
+    {
+     "path": "src/app/api/admin/users/[email]/route.ts",
+     "line": 106,
+     "end_line": 114
+    },
+    {
+     "path": "src/app/[lang]/app/layout.tsx",
+     "line": 27
+    },
+    {
+     "path": "src/app/[lang]/app/page.tsx",
+     "line": 21
+    },
+    {
+     "path": "src/app/api/auth/login/route.ts",
+     "line": 34,
+     "end_line": 39
+    }
+   ],
+   "next": [
+    "account-login-open"
+   ],
+   "verified": true,
+   "stage": "account"
+  }
+ ]
+}

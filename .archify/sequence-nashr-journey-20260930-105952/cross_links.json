@@ -1,0 +1,232 @@
+[
+ {
+  "from": "discover-hero-url-start",
+  "to": "account-arrive-signup",
+  "label": "URL carried to signup"
+ },
+ {
+  "from": "discover-url-box-agents",
+  "to": "account-arrive-signup",
+  "label": "URL box opens signup"
+ },
+ {
+  "from": "discover-start-free",
+  "to": "account-arrive-signup",
+  "label": "Start free"
+ },
+ {
+  "from": "discover-pick-plan",
+  "to": "account-arrive-signup",
+  "label": "plan card Start free"
+ },
+ {
+  "from": "discover-tool-upsell",
+  "to": "account-arrive-signup",
+  "label": "Try Noor / Sign up"
+ },
+ {
+  "from": "discover-log-in-link",
+  "to": "account-login-open",
+  "label": "Log in"
+ },
+ {
+  "from": "discover-updates-sign-in",
+  "to": "account-login-open",
+  "label": "sign in to vote (?next=)"
+ },
+ {
+  "from": "discover-ask-sample",
+  "to": "create-open-chat",
+  "label": "chip opens chat ?prompt= (login first)"
+ },
+ {
+  "from": "account-signup-submit",
+  "to": "onboard-arrive-start",
+  "label": "new owner -> /app/start?url="
+ },
+ {
+  "from": "account-land-app",
+  "to": "onboard-arrive-start",
+  "label": "no brand yet"
+ },
+ {
+  "from": "account-nudge-email",
+  "to": "onboard-arrive-start",
+  "label": "email link to /app/start"
+ },
+ {
+  "from": "account-join-submit",
+  "to": "onboard-member-wait",
+  "label": "joined before brand exists"
+ },
+ {
+  "from": "account-join-submit",
+  "to": "publish-open-inbox",
+  "label": "joined, lands on /app"
+ },
+ {
+  "from": "onboard-done-redirect",
+  "to": "create-open-chat",
+  "label": "workspace ready"
+ },
+ {
+  "from": "onboard-manual-save",
+  "to": "create-open-chat",
+  "label": "Save and start -> chat"
+ },
+ {
+  "from": "onboard-plan-start",
+  "to": "create-send-message",
+  "label": "task sent as chat message"
+ },
+ {
+  "from": "onboard-first-brief",
+  "to": "daily-inbox-brief",
+  "label": "brief every morning"
+ },
+ {
+  "from": "create-ask-batch",
+  "to": "publish-judge-scores",
+  "label": "batch saved, judged"
+ },
+ {
+  "from": "create-run-generate",
+  "to": "publish-open-inbox",
+  "label": "items wait in inbox"
+ },
+ {
+  "from": "create-approve-card",
+  "to": "publish-decisions",
+  "label": "approval recorded"
+ },
+ {
+  "from": "create-ask-publish",
+  "to": "publish-open-integrations",
+  "label": "no platform connected"
+ },
+ {
+  "from": "create-limit-modal",
+  "to": "manage-billing-open",
+  "label": "out of credits / trial over"
+ },
+ {
+  "from": "account-trial-ends",
+  "to": "manage-billing-open",
+  "label": "Activate Noor"
+ },
+ {
+  "from": "onboard-activate-bar",
+  "to": "manage-billing-open",
+  "label": "Activate Noor"
+ },
+ {
+  "from": "manage-billing-pay",
+  "to": "manage-founder-activate",
+  "label": "founder activates after payment"
+ },
+ {
+  "from": "publish-to-platform",
+  "to": "daily-reports-open",
+  "label": "published counts in Reports"
+ },
+ {
+  "from": "publish-daily-reminders",
+  "to": "daily-open-notifications",
+  "label": "bell reminders"
+ },
+ {
+  "from": "daily-brief-email",
+  "to": "daily-open-app",
+  "label": "email link"
+ },
+ {
+  "from": "daily-weekly-plan",
+  "to": "publish-open-inbox",
+  "label": "week's plan waits"
+ },
+ {
+  "from": "daily-routines-run",
+  "to": "publish-open-inbox",
+  "label": "routine batch waits"
+ },
+ {
+  "from": "daily-notification-open",
+  "to": "publish-open-inbox",
+  "label": "Open"
+ },
+ {
+  "from": "daily-inbox-brief",
+  "to": "publish-approve",
+  "label": "decide waiting items"
+ },
+ {
+  "from": "daily-perf-to-chat",
+  "to": "create-send-message",
+  "label": "results prompt to Noor"
+ },
+ {
+  "from": "daily-cart-draft",
+  "to": "publish-open-inbox",
+  "label": "cart messages drafted"
+ },
+ {
+  "from": "daily-governance-save",
+  "to": "publish-auto-approved",
+  "label": "auto-approve types"
+ },
+ {
+  "from": "create-cap-alert",
+  "to": "daily-governance-open",
+  "label": "cap 80% bell"
+ },
+ {
+  "from": "create-ask-reem",
+  "to": "daily-todo-open",
+  "label": "to-do on My to-dos"
+ },
+ {
+  "from": "publish-approve",
+  "to": "daily-todo-auto-close",
+  "label": "linked to-do closes"
+ },
+ {
+  "from": "manage-team-invite",
+  "to": "account-join-open",
+  "label": "invite email or link"
+ },
+ {
+  "from": "manage-refer-share-link",
+  "to": "account-signup-referral",
+  "label": "friend signs up ?ref="
+ },
+ {
+  "from": "manage-brand-add",
+  "to": "onboard-arrive-start",
+  "label": "new brand -> /app/start"
+ },
+ {
+  "from": "manage-oauth-consent",
+  "to": "account-login-open",
+  "label": "signed out -> login ?next="
+ },
+ {
+  "from": "manage-founder-impersonate",
+  "to": "account-impersonation-stop",
+  "label": "Stop and return"
+ },
+ {
+  "from": "manage-founder-reset-password",
+  "to": "account-session-ends",
+  "label": "all sessions ended"
+ },
+ {
+  "from": "manage-founder-suspend",
+  "to": "account-session-ends",
+  "label": "sign-in refused"
+ },
+ {
+  "from": "manage-founder-extend-trial",
+  "to": "account-trial-banner",
+  "label": "new trial end"
+ }
+]

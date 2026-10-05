@@ -1,0 +1,1359 @@
+{
+  "key": "12-daily-todos",
+  "title": "Every day: to-dos with Reem and the schedule",
+  "person": "owner or team",
+  "steps": [
+    {
+      "id": "daily-todo-open",
+      "title": "Open My to-dos",
+      "surface": "/{lang}/app/todo (TodoPanel)",
+      "actor": "any-signed-in",
+      "action": "Clicks 'My to-dos' in the sidebar, or opens a Reem overdue notification.",
+      "ui_response": "The page shows, in order: (1) The title 'My to-dos' and a subtitle naming the brand's time zone, with a 'Walk me through' button. (2) When the inbox has pending items, a banner such as 'N items waiting for your approval' with 'Open the approval inbox'. (3) The empty text 'Your list is empty. Add the first item with the form, or ask Reem in chat.', or 'Nothing overdue and nothing due today.'. (4) Sections with counts: Overdue, Today, Needs your confirmation, Time to follow up, Next 7 days, Waiting on others, Later, No due date, Untouched for 14 days. Each row shows the title, the due date in the brand's zone, who owes it, and badges (Critical, Urgent, High priority, From chat, From your assistant, Linked to an inbox item, From an agent). It also shows the description, 'Expected by' or 'Last follow-up', 'Reminder: when', the repeat rule, the last 3 notes, the next step, and the row's buttons: Done, Snooze, Reschedule, Reminder, Followed up and 'WhatsApp number' (items someone else owes), 'Follow up on WhatsApp' (once a number is saved), 'Away until…', Repeat, Skip, Stop repeat, Delete. (5) 'Snoozed, back on time: N'. (6) The add form, then the Away panel, then 'Done recently' (10 items) and 'Deleted (restorable for 30 days)' (up to 50). (7) The Working days panel. (8) A note that reminders arrive at their set time in the app and by email, that WhatsApp and Telegram reminders are not available yet, and where the list also appears (brief, evening wrap, email, overdue alerts). Members do not see Done, Delete, Restore, Reopen, Skip, Yes it's done or Not yet; Repeat and Stop repeat need todo.write.",
+      "system_reaction": "todoPage computes the agenda at render time with agendaFor (todoMain). The agenda classifies each open item: a proposed done always waits for the owner; a snoozed item is held; someone else's item follows the chase clock (quiet days, Ramadan hours and absences push it later); then overdue, today, next 7 days, later, no date, untouched for 14 days. Any item linked to an inbox item that has since been approved is closed under its lock (audit actor 'rule'); closing a recurring item also opens its next copy. It then shows under Done with 'Closed automatically because the linked item was approved'. The page also reads the done and deleted lists, the linked tasks' facts, the away list and the working-days calendar. With ?series=id it renders the series history instead. Free, no model call.",
+      "branches": [
+        "Empty list: empty text",
+        "Pending approvals: banner links to the inbox",
+        "Linked item approved: auto-closed on this read"
+      ],
+      "conditions": "Signed in (no brand needed)",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/todo/page.tsx",
+          "line": 41,
+          "end_line": 75
+        },
+        {
+          "path": "src/app/[lang]/app/todo/page.tsx",
+          "line": 130,
+          "end_line": 161
+        },
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 258,
+          "end_line": 317
+        },
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 441,
+          "end_line": 447
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 1099,
+          "end_line": 1152
+        },
+        {
+          "path": "src/lib/secretary-agenda.ts",
+          "line": 485,
+          "end_line": 512
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 84
+        }
+      ],
+      "next": [
+        "daily-todo-add",
+        "daily-todo-walk",
+        "daily-todo-done",
+        "daily-todo-snooze",
+        "daily-todo-confirm",
+        "daily-todo-reem-chat"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-add",
+      "title": "Add a to-do",
+      "surface": "/{lang}/app/todo, add form",
+      "actor": "any-signed-in",
+      "action": "Fills in 'What?' (required, up to 200 characters), 'Due' (datetime-local in the brand's zone, optional) and 'Who owes it?' ('I do' or 'Someone owes me'). Then fills 'For whom? (optional)', or 'Who?' (required when someone owes), and optionally 'Reminder' and, when someone owes, 'WhatsApp number', and a repeat rule. Clicks 'Add'.",
+      "ui_response": "The button reads 'Adding…', then the page refreshes with the item in its section and the form clears. Possible errors under the form: 'Write a title.', 'Say who owes it.', 'That date was not understood.', 'That date is too far back or ahead.', 'That reminder time has passed.', 'Enter the number with the country code, e.g. 9665…', 'You reached today's limit for new items.', 'The list is full: 500 open items.', or 'Could not save. Try again.'.",
+      "system_reaction": "POST /api/secretary: 401 without a session, then forbid('todo.write'), which every role passes. createItem requires a title and validates the fields with parseFields in the brand's zone (date-only reminders fire at 08:00). A phone number is written in the app only (chat and MCP get owner_only 403), and an agent's own handoff item never repeats (owner_only 403). Limits: 200 new items per day per account (429 too_many) and 500 open items per brand (409 open_limit). A 'someone owes me' item without a date gets expectBy at 2 working days. The item, its index moves, the reminder index and one audit line are saved in one round. Free, no model call.",
+      "branches": [
+        "Validation error: shown under the form",
+        "Daily create limit or open limit reached: refused"
+      ],
+      "conditions": "Signed in, any role",
+      "sources": [
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 207,
+          "end_line": 215
+        },
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 449,
+          "end_line": 483
+        },
+        {
+          "path": "src/app/api/secretary/route.ts",
+          "line": 30,
+          "end_line": 40
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 361,
+          "end_line": 430
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 760,
+          "end_line": 798
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 122,
+          "end_line": 129
+        }
+      ],
+      "next": [
+        "daily-todo-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-reem-chat",
+      "title": "Tell Reem in chat",
+      "surface": "/{lang}/app/chat?agent=reem (or any agent)",
+      "actor": "any-signed-in",
+      "action": "Picks Reem through 'Ask a specialist' or the sidebar's Specialists list, and writes, for example, 'add: call the supplier Thursday 10am', 'what is overdue?', or 'I sent the quote'.",
+      "ui_response": "Normally: a streamed reply in which Reem saves the item. The tool answer gives the stored date, for example 'Friday, October 2, 10:00 AM (Riyadh time)', and tells her to read it back exactly. She is told to check a date that has already passed with the owner. She also says a 'done' is only proposed and waits under 'Needs your confirmation'. While paused (current): the reply is 'The agents are paused for now, so I can't reply or create content yet. No credits were used.' No to-do is written, though the message and the paused reply stay in the thread. Refusals: a trial that ended gets the trial-over notice in the thread (402); sending too fast (paid 30 an hour or 150 a day, trial 10 an hour or 30 a day) shows 'Too many messages in a short time. Wait a little, then send again; your message was not counted and is back in the message box.'; an empty monthly allowance or no credits shows the allowance or credits notice. An unexpected failure shows '⚠︎ Could not reply. Try again.'.",
+      "system_reaction": "POST /api/chat checks in order: the deadline, the session (401), an empty message (400), trialOver (402 trial_over), chatRefusal (429 slow_down) and reserveChatTurn (402 chat_allowance or chat_credits), then runChatTurn calls chat(). The monthly allowance count is given back when the turn is paused, mock or failed. The user's message is stored first. While modelState() is not 'on', PAUSED_REPLY is stored and no tool runs. Otherwise the model can call agenda_get, agenda_next, todo_create, todo_update or todo_propose_done through runSecretaryTool. That tool allows 600 writes per hour (reads and agenda_next without a skip are free), only Reem or the owner's MCP assistant may set a repeat, and it links only at creation and only to a pending inbox item. These tools never close, delete or restore an item. The owner's own MCP assistant can call the same tools, recorded with source 'mcp'. Free: no credits for to-do work.",
+      "branches": [
+        "Paused (current): the paused reply, no to-do written",
+        "Proposed done: appears under 'Needs your confirmation'",
+        "Past date: Reem is told to check it with the owner",
+        "Trial over, too fast, no allowance or no credits: refused with a notice"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/app/api/chat/route.ts",
+          "line": 31,
+          "end_line": 50
+        },
+        {
+          "path": "src/lib/rate.ts",
+          "line": 40,
+          "end_line": 43
+        },
+        {
+          "path": "src/lib/chat-allowance.ts",
+          "line": 76,
+          "end_line": 125
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 232,
+          "end_line": 238
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 341,
+          "end_line": 355
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 363,
+          "end_line": 387
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 1565,
+          "end_line": 1668
+        },
+        {
+          "path": "src/app/api/mcp/route.ts",
+          "line": 173,
+          "end_line": 177
+        },
+        {
+          "path": "src/lib/model.ts",
+          "line": 15,
+          "end_line": 34
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 558,
+          "end_line": 572
+        }
+      ],
+      "next": [
+        "daily-todo-open",
+        "daily-todo-confirm"
+      ],
+      "note": "The rest of chat (content requests to Noor and the specialists) belongs to the chat stage.",
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-walk",
+      "title": "Walk me through",
+      "surface": "/{lang}/app/todo, Walk me through",
+      "actor": "any-signed-in",
+      "action": "Clicks 'Walk me through'. Then acts on the card ('Done', 'Tomorrow 9 AM', 'Followed up', 'Yes, it's done', 'Not yet', 'Approve', 'Open in the inbox') or clicks 'Next'. 'End the walk' closes it.",
+      "ui_response": "One card at a time, with 'N left'. The order is: needs your confirmation, overdue, due today, time to follow up, then pending approvals, oldest first ('X waiting for your approval since …' with 'Approve' and 'Open in the inbox'). Buttons on a card depend on the person's role. 'Next' puts the card aside for 3 hours. When nothing is waiting: 'Nothing waiting now: nothing to confirm, overdue, due today, to follow up or to approve.'. An approval that cannot go through as it is shows 'Cannot be approved as it is:' with the reason.",
+      "system_reaction": "GET /api/secretary/walk: 401, forbid('read') and 600 reads an hour (429), then walkNext builds the next card from the agenda and the pending inbox (max 50 approvals); the buttons are filtered by role. 'Next' sends POST {action:'next', key}: todo.write and 600 writes an hour, then walkSkip remembers the key for 3 hours (WALK_SKIP_MS) and returns the next card. The item itself is not changed. An item button calls the item's own route; 'Approve' calls PATCH /api/tasks/{id}, so the inbox's own checks apply. Free, no model call.",
+      "branches": [
+        "Nothing waiting: empty text",
+        "Next: the card is set aside for 3 hours",
+        "Approval held: the reason is shown"
+      ],
+      "conditions": "Signed in; any role (buttons follow the role)",
+      "sources": [
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 222,
+          "end_line": 255
+        },
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 389,
+          "end_line": 430
+        },
+        {
+          "path": "src/lib/secretary-walk.ts",
+          "line": 32,
+          "end_line": 64
+        },
+        {
+          "path": "src/lib/secretary-walk.ts",
+          "line": 97,
+          "end_line": 158
+        },
+        {
+          "path": "src/app/api/secretary/walk/route.ts",
+          "line": 20,
+          "end_line": 42
+        }
+      ],
+      "next": [
+        "daily-todo-open",
+        "daily-todo-done"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-done",
+      "title": "Mark to-do done",
+      "surface": "/{lang}/app/todo row",
+      "actor": "admin",
+      "action": "Clicks 'Done', writes 'What was done?' (required), then clicks 'Close it' (or 'Cancel').",
+      "ui_response": "An empty result shows 'Write what was done to close it.'. On success the row moves to 'Done recently' with its result. If the item changed meanwhile: 'It just changed; the page was refreshed.'",
+      "system_reaction": "PATCH /api/secretary/{id} {action:'complete', result, rev}. The checks run in order: 401; forbid('todo.write'); the id must match SEC_ID (404); 600 writes per hour (429 too_many); parseOwnerChange (400 result_required); OWNER_ONLY plus can('todo.close') (403). changeItem then runs under the item lock (503 lock_timeout after about 3 seconds), where a rev mismatch gives 409 conflict. It sets result and completedAt, clears any proposal or snooze, bumps rev and writes an audit line. A recurring item then opens its next copy (spawnNext). Only this route closes an item, apart from the linked-approval rule.",
+      "branches": [
+        "Member: button not shown; the route answers 403",
+        "Conflict: page refreshed",
+        "Over 600 changes in an hour: 429, shown as 'You reached today's limit for new items.'"
+      ],
+      "conditions": "Owner or admin (todo.close)",
+      "sources": [
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 199,
+          "end_line": 202
+        },
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 301,
+          "end_line": 314
+        },
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 319,
+          "end_line": 324
+        },
+        {
+          "path": "src/app/api/secretary/[id]/route.ts",
+          "line": 19,
+          "end_line": 42
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 494
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 625,
+          "end_line": 628
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 936,
+          "end_line": 989
+        },
+        {
+          "path": "src/lib/roles.ts",
+          "line": 76
+        }
+      ],
+      "next": [
+        "daily-todo-open",
+        "daily-todo-repeat"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-snooze",
+      "title": "Snooze a to-do",
+      "surface": "/{lang}/app/todo row",
+      "actor": "any-signed-in",
+      "action": "Clicks 'Snooze', then '2 hours', 'Tonight 8 PM' (offered only while that time is still ahead), 'Tomorrow 9 AM' or 'Next week 9 AM', all in the brand's local time.",
+      "ui_response": "The row leaves its section and the 'Snoozed, back on time: N' count goes up. If the time has already passed: 'That time has passed.'",
+      "system_reaction": "PATCH {action:'snooze', preset, rev}. snoozePreset computes the time in the brand's zone, and mutateItem sets snoozeUntil. The agenda counts the item as snoozed until then, but an agent's proposed done still shows under 'Needs your confirmation'.",
+      "branches": [
+        "Preset in the past: refused",
+        "Proposal on the item: still shown for confirmation"
+      ],
+      "conditions": "Signed in, any role",
+      "sources": [
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 327,
+          "end_line": 333
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 629,
+          "end_line": 632
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 1263,
+          "end_line": 1285
+        },
+        {
+          "path": "src/lib/secretary-agenda.ts",
+          "line": 485,
+          "end_line": 494
+        }
+      ],
+      "next": [
+        "daily-todo-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-reschedule",
+      "title": "Reschedule a to-do",
+      "surface": "/{lang}/app/todo row",
+      "actor": "any-signed-in",
+      "action": "Clicks 'Reschedule', edits the pre-filled date and time (brand zone), then clicks 'Save' (or 'Cancel'). An empty field clears the date.",
+      "ui_response": "The row moves to the section for its new date. A bad date shows 'That date was not understood.' or 'That date is too far back or ahead.'",
+      "system_reaction": "PATCH {action:'reschedule', dueAt, rev}. parseWhen reads the value in the brand's zone. The new due date ends any snooze. An item someone else owes that loses its date gets the 2-working-day expectBy. A repeating item moves this copy only; the rule and its time stay, and the date must still fall inside the accepted range. Overdue-alert fingerprints include the due time, so a new date starts its alerts afresh.",
+      "branches": [
+        "Date cleared: moves to No due date, or back onto the chase clock for someone else's item"
+      ],
+      "conditions": "Signed in, any role",
+      "sources": [
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 356,
+          "end_line": 362
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 633,
+          "end_line": 638
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 361,
+          "end_line": 411
+        },
+        {
+          "path": "src/lib/secretary-agenda.ts",
+          "line": 553,
+          "end_line": 595
+        }
+      ],
+      "next": [
+        "daily-todo-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-chased",
+      "title": "Record a follow-up",
+      "surface": "/{lang}/app/todo row (items someone else owes)",
+      "actor": "any-signed-in",
+      "action": "Clicks 'Followed up' on an item someone else owes. The button's hint says the two-working-day wait starts again and the item stays open.",
+      "ui_response": "A 'Followed up' note appears, with 'Last follow-up' on the row. The item moves to 'Waiting on others' until 2 working days pass, and never before its due time. If the item turned out not to be someone else's: 'Only something another person owes you can be followed up.'",
+      "system_reaction": "PATCH {action:'chased', rev} is parsed as an update with chased=true. It sets lastChasedAt, adds a note of kind 'chased' and writes the audit action 'chased'. The chase clock restarts, and the item is never closed by this.",
+      "branches": [
+        "Own item (button normally hidden): 409 not_theirs"
+      ],
+      "conditions": "Signed in, any role; item owed by someone other than the owner",
+      "sources": [
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 299,
+          "end_line": 314
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 587,
+          "end_line": 624
+        },
+        {
+          "path": "src/lib/secretary-agenda.ts",
+          "line": 485,
+          "end_line": 503
+        }
+      ],
+      "next": [
+        "daily-todo-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-phone-whatsapp",
+      "title": "Save a number, follow up on WhatsApp",
+      "surface": "/{lang}/app/todo, row buttons",
+      "actor": "any-signed-in",
+      "action": "On an item someone else owes: clicks 'WhatsApp number', types the number with the country code and clicks 'Save'. Later clicks 'Follow up on WhatsApp'.",
+      "ui_response": "A bad number shows 'Enter the number with the country code, e.g. 9665…'. With a valid number saved, 'Follow up on WhatsApp' opens WhatsApp with a ready message ('Hi {name}, following up on: {title}. Thank you.') and the row gets a 'Followed up' note. The app sends nothing itself.",
+      "system_reaction": "PATCH /api/secretary/{id} {phone}: 401, todo.write, SEC_ID, 600 writes an hour. cleanPhone keeps digits only and the number must be 8 to 15 digits with no leading zero (bad_phone 400); a contact's phone number is written in the app only; chat and MCP get owner_only 403. Tapping the WhatsApp link also sends PATCH {action:'chased'} (keepalive), so the follow-up is recorded and the two-working-day wait starts again.",
+      "branches": [
+        "Bad number: 'Enter the number with the country code, e.g. 9665…'",
+        "Chat or MCP writing a phone: owner_only 403"
+      ],
+      "conditions": "Signed in; item owed by someone else",
+      "sources": [
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 216,
+          "end_line": 219
+        },
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 301,
+          "end_line": 314
+        },
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 346,
+          "end_line": 354
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 338,
+          "end_line": 349
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 424,
+          "end_line": 428
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 760,
+          "end_line": 770
+        }
+      ],
+      "next": [
+        "daily-todo-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-remind",
+      "title": "Set a reminder time",
+      "surface": "/{lang}/app/todo, Reminder",
+      "actor": "any-signed-in",
+      "action": "Clicks 'Reminder' on a row, picks a time in the brand's zone, then clicks 'Save' (or 'Remove the reminder'). It can also be set on the add form or by asking Reem.",
+      "ui_response": "The row shows 'Reminder: {when}'. While the 15-minute ticker runs: 'Reminders arrive at their time, in the app and by email per your preference.'. While it is not running: 'For now, reminders arrive with the next morning brief ({brief}, your brand's time), not at the minute.', and a saved reminder reads 'Reminder saved for {when}; it arrives with the next morning brief after that ({brief})'. A past time shows 'That reminder time has passed.'.",
+      "system_reaction": "PATCH {remindAt}: 401, todo.write, 600 writes an hour. parseFields reads the time in the brand's zone; a date alone means 08:00 (REMIND_DAY_AT) and a past time is refused (remind_past 400). indexWrites adds the item to the sec:due index of its scope and the scope to sec:duescopes, or removes it when the reminder is cleared. timedReminders() is true while sec:tick is less than an hour old.",
+      "branches": [
+        "Past time: remind_past",
+        "Ticker not running: the reminder rides with the morning brief",
+        "Cleared: removed from the due index"
+      ],
+      "conditions": "Signed in, any role",
+      "sources": [
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 335,
+          "end_line": 345
+        },
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 154
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 352
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 405,
+          "end_line": 418
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 703,
+          "end_line": 707
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 1062,
+          "end_line": 1065
+        }
+      ],
+      "next": [
+        "daily-todo-remind-fire"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-remind-fire",
+      "title": "The reminder arrives",
+      "surface": "Bell, email (no page action)",
+      "actor": "system",
+      "action": "Nothing to do. The reminder time arrives.",
+      "ui_response": "A bell notification 'Reminder: «title»' ('You asked to be reminded of this. Due: …') appears in the app at the set time, and an email 'Reminder from Reem: {title}' follows when the profile preference allows it. The row's reminder line goes and a 'reminded' note is added.",
+      "system_reaction": "A QStash tick calls /api/cron/secretary every 15 minutes, signed by QStash (Upstash-Signature) or with the CRON_SECRET bearer; only a QStash tick records sec:tick. sweepReminders reads the sec:duescopes and sec:due indexes up to the current time and takes a 330-second lease per due id before firing. Accounts that are suspended or archived are held for 6 hours. fireReminder delivers first: the bell (fingerprint todo-remind, so a retry never doubles it), then the email only when the bell was new, RESEND_API_KEY is set and the preference is not 'none'. Only then does it clear the reminder (remindAt null) and add a 'reminded' note, under the item's lock. If the ticker is down, the daily cron (05:00 UTC) sweeps the missed ones as a fallback, within a 60-second budget.",
+      "branches": [
+        "Suspended or archived account: held 6 hours",
+        "Email off or no key: bell only",
+        "Ticker down: the daily sweep sends it late"
+      ],
+      "conditions": "A reminder is set and its time has passed",
+      "sources": [
+        {
+          "path": "src/app/api/cron/secretary/route.ts",
+          "line": 48,
+          "end_line": 72
+        },
+        {
+          "path": "src/lib/secretary-remind.ts",
+          "line": 36,
+          "end_line": 47
+        },
+        {
+          "path": "src/lib/secretary-remind.ts",
+          "line": 77,
+          "end_line": 144
+        },
+        {
+          "path": "src/lib/secretary-remind.ts",
+          "line": 180,
+          "end_line": 195
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 1028,
+          "end_line": 1051
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 145,
+          "end_line": 154
+        }
+      ],
+      "next": [
+        "daily-todo-open"
+      ],
+      "verified": true,
+      "stage": "daily",
+      "note": "Delivery here is the owner's bell and email only; WhatsApp and Telegram reminders do not exist yet."
+    },
+    {
+      "id": "daily-todo-repeat",
+      "title": "Make an item repeat",
+      "surface": "/{lang}/app/todo, Repeat",
+      "actor": "any-signed-in",
+      "action": "Clicks 'Repeat' on a row (or fills the repeat fields on the add form), chooses the unit (day, working day, week, month, year, Hijri month or year), the interval, optional days, end date, count and 'Remind before each copy', and clicks 'Save the repeat'.",
+      "ui_response": "The row shows the rule. The panel explains that the next copy opens when this one is closed and no copies are made ahead. Errors appear under the row.",
+      "system_reaction": "PATCH {repeat}: the rule is validated and stored on the item; a repeat needs a due date (repeat_needs_due 400), and an agent's own item never repeats (owner_only 403). In chat, a repeat can be set only by Reem or the owner's MCP assistant; other agents are refused in code. When this copy is closed (done, confirmed, skipped or auto-closed), spawnNext claims sec:spawn (2-day TTL, so a retry makes no second copy) and creates the next copy at the next date the rule gives, with the same series id. Free, no model call.",
+      "branches": [
+        "No due date: repeat_needs_due",
+        "Other agents: refused in code",
+        "Rule ended (until or count): no next copy"
+      ],
+      "conditions": "Signed in, any role",
+      "sources": [
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 365,
+          "end_line": 373
+        },
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 75,
+          "end_line": 128
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 525,
+          "end_line": 576
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 857,
+          "end_line": 903
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 1572,
+          "end_line": 1576
+        }
+      ],
+      "next": [
+        "daily-todo-skip-stop",
+        "daily-todo-series"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-skip-stop",
+      "title": "Skip a copy or stop repeating",
+      "surface": "/{lang}/app/todo, Skip and Stop repeat",
+      "actor": "admin",
+      "action": "Clicks 'Skip' to pass this time of a repeating item, or 'Stop repeat' to end the rule.",
+      "ui_response": "Skip: the copy moves to 'Done recently' as 'Skipped this time' and the next copy opens. Stop repeat: the rule is removed and the item stays as a normal one.",
+      "system_reaction": "PATCH {action:'skip'} is owner-only (todo.close, 403 otherwise) and needs a rule (bad_action 400). It closes the copy with the skipped result and spawns the next copy. PATCH {action:'stop_repeat'} needs only todo.write at the route and clears the rule; the series id stays so its history stays exportable. Both run under the item lock with a rev check.",
+      "branches": [
+        "Member skipping: 403",
+        "Item without a rule: bad_action"
+      ],
+      "conditions": "Skip: owner or admin (todo.close); Stop repeat: any role",
+      "sources": [
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 301,
+          "end_line": 314
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 494
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 674,
+          "end_line": 682
+        },
+        {
+          "path": "src/lib/secretary-agenda.ts",
+          "line": 62
+        },
+        {
+          "path": "src/app/api/secretary/[id]/route.ts",
+          "line": 19,
+          "end_line": 42
+        }
+      ],
+      "next": [
+        "daily-todo-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-series",
+      "title": "Repeat history, keep and CSV",
+      "surface": "/{lang}/app/todo?series=id",
+      "actor": "any-signed-in",
+      "action": "Clicks 'History' on a closed copy of a repeating item. There, switches 'Keep this series' history' on or off, or clicks 'Download CSV'.",
+      "ui_response": "A page 'History of a repeating item' lists the closed copies with 'Closed by you / your assistant / automatically' and the closing time (the latest only, with 'Showing the latest only: N of M'). 'Back to My to-dos' returns. An unknown series shows 'We could not find this series…'. Keeping stops the deletion; turning it off is for the owner or an admin. Over the limit: 'You reached the limit for kept series: 500. Release some first.'. The CSV file downloads.",
+      "system_reaction": "The page renders seriesRows for the caller's scope only. PUT /api/secretary/series/{id}/keep: 401, todo.write, 600 writes an hour, SERIES_ID, series must exist (404), boolean keep (400), keep=false needs todo.close (403), 500 kept series (409 keep_limit); setSeriesKeep moves the closed copies in or out of the purge list. GET .../export returns a CSV with a BOM, up to 5000 rows, every cell through csvSafe. The daily cron warns 7 days before and purges closed copies of series that are not kept after 90 days.",
+      "branches": [
+        "Not found: 404",
+        "Keep limit: 409",
+        "Over 5000 rows: a 'truncated' line"
+      ],
+      "conditions": "Signed in; keep off needs the owner or an admin",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/todo/page.tsx",
+          "line": 49,
+          "end_line": 61
+        },
+        {
+          "path": "src/app/api/secretary/series/[seriesId]/keep/route.ts",
+          "line": 17,
+          "end_line": 34
+        },
+        {
+          "path": "src/app/api/secretary/series/[seriesId]/export/route.ts",
+          "line": 19,
+          "end_line": 52
+        },
+        {
+          "path": "src/lib/secretary-series.ts",
+          "line": 67,
+          "end_line": 80
+        },
+        {
+          "path": "src/lib/secretary-series.ts",
+          "line": 178,
+          "end_line": 200
+        },
+        {
+          "path": "src/lib/secretary-series.ts",
+          "line": 268,
+          "end_line": 296
+        },
+        {
+          "path": "src/lib/secretary-series.ts",
+          "line": 299,
+          "end_line": 330
+        }
+      ],
+      "next": [
+        "daily-todo-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-confirm",
+      "title": "Confirm agent's done",
+      "surface": "/{lang}/app/todo, 'Needs your confirmation' section",
+      "actor": "admin",
+      "action": "Reads the agent's claim and the app's check, then clicks 'Yes, it's done'.",
+      "ui_response": "The row shows the claim, for example 'Reem says: «…» (a claim the app has not checked)'. Under it comes either 'Checked by the app: …' or 'Nothing in the app confirms this; check it yourself before you confirm.'. The check says whether the linked inbox item is still waiting, was rejected, or was approved and where it was published. After confirming, the item moves to 'Done recently' with the claim as its result. If the proposal was already gone: 'Could not save. Try again.'",
+      "system_reaction": "PATCH {action:'confirm_done', rev}: owner-only action (403 otherwise), and not_proposed (409) when there is no proposal. The evidence becomes the result and completedAt is set. The fact shown comes from the stored linked task, never from the claim.",
+      "branches": [
+        "No proposal any more: 409, generic error text",
+        "Member: buttons hidden, 403"
+      ],
+      "conditions": "Owner or admin (todo.close); item has a proposed done from chat or MCP",
+      "sources": [
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 288,
+          "end_line": 292
+        },
+        {
+          "path": "src/app/[lang]/app/todo/page.tsx",
+          "line": 77,
+          "end_line": 119
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 494
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 644,
+          "end_line": 649
+        },
+        {
+          "path": "src/lib/secretary-agenda.ts",
+          "line": 730,
+          "end_line": 760
+        },
+        {
+          "path": "src/lib/secretary-walk.ts",
+          "line": 97,
+          "end_line": 112
+        }
+      ],
+      "next": [
+        "daily-todo-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-reject",
+      "title": "Send claim back",
+      "surface": "/{lang}/app/todo, 'Needs your confirmation' section",
+      "actor": "admin",
+      "action": "Clicks 'Not yet' on an agent's proposed done.",
+      "ui_response": "The item goes back to its normal section with a note 'Not done yet (proposed: …)'.",
+      "system_reaction": "PATCH {action:'reject_done', rev}: owner-only action, and not_proposed 409 when there is no proposal. A note of kind 'not_yet' stores the evidence, and proposedDone is cleared.",
+      "branches": [
+        "No proposal any more: 409, generic error text"
+      ],
+      "conditions": "Owner or admin (todo.close)",
+      "sources": [
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 288,
+          "end_line": 292
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 650,
+          "end_line": 655
+        },
+        {
+          "path": "src/lib/secretary-agenda.ts",
+          "line": 485,
+          "end_line": 493
+        }
+      ],
+      "next": [
+        "daily-todo-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-delete",
+      "title": "Delete, then Undo",
+      "surface": "/{lang}/app/todo row",
+      "actor": "admin",
+      "action": "Clicks 'Delete' on an item, and optionally 'Undo' on the toast.",
+      "ui_response": "The row disappears and a toast pinned to the bottom of the screen reads 'Deleted. You can restore it for 30 days.', with 'Undo' for 8 seconds. Undo restores the item. The item is also listed under 'Deleted (restorable for 30 days)'.",
+      "system_reaction": "PATCH {action:'delete', rev} sets deletedAt and expiresAt (30 days) and moves the id to the deleted set. Undo sends {action:'restore'}. The daily cron's purgeExpired removes expired items, up to 200 per scope per day.",
+      "branches": [
+        "Undo within 8 s: restored",
+        "After 30 days: purged by the daily job"
+      ],
+      "conditions": "Owner or admin (todo.close)",
+      "sources": [
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 204,
+          "end_line": 206
+        },
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 433,
+          "end_line": 438
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 656,
+          "end_line": 657
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 1173,
+          "end_line": 1195
+        }
+      ],
+      "next": [
+        "daily-todo-restore"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-restore",
+      "title": "Restore deleted item",
+      "surface": "/{lang}/app/todo, Deleted list",
+      "actor": "admin",
+      "action": "Clicks 'Restore' on an item in the Deleted list.",
+      "ui_response": "The item goes back where it was, open or done. Possible errors: 'Over 30 days ago; it cannot be restored.' and 'The list is full: 500 open items.'",
+      "system_reaction": "PATCH {action:'restore'}, sent without rev. The answers are not_deleted 409, restore_expired 410, and open_limit 409 when reopening the item would pass 500 open items. A reminder time that passed while the item was deleted is dropped, so it is not fired late.",
+      "branches": [
+        "Expired: 410",
+        "List full: 409"
+      ],
+      "conditions": "Owner or admin (todo.close)",
+      "sources": [
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 293,
+          "end_line": 294
+        },
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 487,
+          "end_line": 498
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 658,
+          "end_line": 662
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 936,
+          "end_line": 989
+        }
+      ],
+      "next": [
+        "daily-todo-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-reopen",
+      "title": "Reopen a done item",
+      "surface": "/{lang}/app/todo, Done recently",
+      "actor": "admin",
+      "action": "Clicks 'Reopen' on an item in 'Done recently'.",
+      "ui_response": "The item goes back to its section with a 'reopened' note; its result is gone. 'The list is full: 500 open items.' when the list is full.",
+      "system_reaction": "PATCH {action:'reopen'} is owner-only (todo.close). It needs a done item (not_done 409), clears the result, proposal and the inbox link (a link to an approved item would close it again on the next read), drops a reminder that already passed, and notes who reopened it. Reopening counts against the 500-open cap (open_limit 409). For a repeating item, deleteNextCopy removes the next copy when it is still untouched, so the series does not double.",
+      "branches": [
+        "Not done: not_done 409",
+        "Open list full: open_limit 409",
+        "Next copy already touched: it stays"
+      ],
+      "conditions": "Owner or admin (todo.close)",
+      "sources": [
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 295,
+          "end_line": 299
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 494
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 663,
+          "end_line": 673
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 911,
+          "end_line": 928
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 936,
+          "end_line": 989
+        }
+      ],
+      "next": [
+        "daily-todo-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-auto-close",
+      "stage": "daily",
+      "title": "To-do auto-close, purge",
+      "surface": "/{lang}/app/todo ('Done recently' and 'Deleted' lists), daily cron",
+      "actor": "system",
+      "action": "No action. A to-do is linked to an inbox item: an agent or MCP linked it at creation while the item was pending, or the owner linked it. Later the owner approves or publishes that item.",
+      "ui_response": "On the next agenda read (opening My to-dos, or the 05:00 UTC daily job), the to-do leaves the open list and shows under 'Done recently' with 'Closed automatically because the linked item was approved'. Items deleted more than 30 days ago disappear for good from 'Deleted (restorable for 30 days)'.",
+      "system_reaction": "agendaFor reads the linked tasks in one MGET. For each approved one, closeLinked re-checks the stored task status under the item's lock (never the model), sets the result 'linked item approved' and writes an auto_close audit entry; a recurring item opens its next copy. The daily cron's secretaryDaily runs purgeExpired and the away-list cleanup (cleanAway) together, then the repeat history warn and purge (seriesDaily), then the agenda (audit actor 'cron'), for every workspace, and reports an outcome like todo:{p}p{c}c{a}a{w}w{d}d. purgeIdle also runs for archived brands and suspended accounts. Free: no credits, no model call.",
+      "branches": [
+        "link to a still-pending item: stays open",
+        "deleted item past 30 days: purged"
+      ],
+      "conditions": "A to-do with a linked inbox item, or a deleted to-do older than 30 days.",
+      "sources": [
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 995,
+          "end_line": 1010
+        },
+        {
+          "path": "src/lib/secretary.ts",
+          "line": 1155,
+          "end_line": 1223
+        },
+        {
+          "path": "src/lib/secretary-agenda.ts",
+          "line": 137
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 82,
+          "end_line": 85
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 163,
+          "end_line": 185
+        },
+        {
+          "path": "vercel.json",
+          "line": 3,
+          "end_line": 8
+        }
+      ],
+      "next": [
+        "daily-todo-open"
+      ],
+      "verified": true
+    },
+    {
+      "id": "daily-todo-away",
+      "title": "Mark a contact as away",
+      "surface": "/{lang}/app/todo, Away panel",
+      "actor": "any-signed-in",
+      "action": "In the Away panel: types a name, the last day away and an optional note, then clicks 'Save the absence'. Or clicks 'Away until…' on a row. Later 'End now' or 'Remove from the list'.",
+      "ui_response": "The list shows 'Last day away: {date}'. Reem does not suggest following up with that person until the first working day after. 'Absence ended (last day: {date})' and 'That name is no longer on the away list.' appear when relevant. Errors: 'Only a contact can be away, not you or an agent.' and 'The last away day is today or up to 366 days ahead.'.",
+      "system_reaction": "PUT /api/secretary/away: 401, todo.write, 600 writes an hour, then setAway validates the name (a contact, never the owner or an agent: not_contact), the date range (away_range, up to 366 days ahead) and the 200-entry cap, and saves sec:away. DELETE ends or removes an entry (endAway). The daily cron cleans old entries (cleanAway). Reem can also propose an absence for the owner to accept or refuse.",
+      "branches": [
+        "Not a contact: refused",
+        "Date out of range: refused",
+        "End now: follow-ups resume"
+      ],
+      "conditions": "Signed in, any role",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/todo/page.tsx",
+          "line": 148
+        },
+        {
+          "path": "src/components/app/TodoPanel.tsx",
+          "line": 485
+        },
+        {
+          "path": "src/app/api/secretary/away/route.ts",
+          "line": 40,
+          "end_line": 67
+        },
+        {
+          "path": "src/lib/secretary-away.ts",
+          "line": 116,
+          "end_line": 160
+        },
+        {
+          "path": "src/lib/secretary-away.ts",
+          "line": 190
+        },
+        {
+          "path": "src/lib/secretary-agenda.ts",
+          "line": 485,
+          "end_line": 503
+        }
+      ],
+      "next": [
+        "daily-todo-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-todo-working-days",
+      "title": "Set working days",
+      "surface": "/{lang}/app/todo, Working days panel",
+      "actor": "admin",
+      "action": "In the Working days panel: sets the weekend, the Ramadan follow-up hours, and Eid and holidays (turn a day off or add one), then clicks 'Save the weekend' or 'Save the hours'.",
+      "ui_response": "The panel shows the default for the country, the days off in the next 12 months and what the owner changed; 'Saved.' follows. Members see the panel read-only. Reem then holds follow-ups to outside-team contacts on weekends, Eid and holidays, and in Ramadan within the set hours; the owner's own to-dos, reminders and agents' items keep running.",
+      "system_reaction": "PUT /api/secretary/calendar: 401, then forbid('brand.write') (403), 30 saves an hour (sec:cal 429), parseCalendar validates the weekend, hours, holidays and Eid shifts, and the write runs under withLock 'cal'. calendarView shows the saved values over the country default. The agenda's chase clock reads this calendar.",
+      "branches": [
+        "Member: read-only, 403 on save",
+        "More than 30 saves an hour: 429",
+        "Bad input: refused"
+      ],
+      "conditions": "Owner or admin (brand.write)",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/todo/page.tsx",
+          "line": 150,
+          "end_line": 160
+        },
+        {
+          "path": "src/app/api/secretary/calendar/route.ts",
+          "line": 57,
+          "end_line": 81
+        },
+        {
+          "path": "src/lib/secretary-calendar.ts",
+          "line": 546,
+          "end_line": 560
+        },
+        {
+          "path": "src/lib/secretary-calendar.ts",
+          "line": 731,
+          "end_line": 760
+        }
+      ],
+      "next": [
+        "daily-todo-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-schedule-open",
+      "title": "Open Scheduled tasks",
+      "surface": "/{lang}/app/tasks (TasksPanel)",
+      "actor": "any-signed-in",
+      "action": "Opens 'Scheduled tasks' from the account menu, or 'Manage' / 'Run now' in the chat side panel.",
+      "ui_response": "Three cards appear: 'Weekly plan' ('Every Sunday 06:00 KSA — a 7-day plan lands in your inbox (2 credits). On by default for your first brand; added brands start off until you switch it on here.'), 'Morning brief' (every day 08:00 KSA, no credits) and 'Team follow-ups'. Each has a 'Last run' line and an On/Off pill. In an added brand the Weekly plan pill shows Off until the owner switches it on. The follow-ups card always reads 'Last run: Never', because no value is passed to it. The first two cards have 'Run now'. Below them, 'Team routines' lists each routine with its agent, what it produces, Weekly or Monthly, credits per run (Dana's weekly report 3, Noor's cart recovery 3, Razan's cash forecast 4, Majed's monthly strategy review 5), the condition it waits for, its last run and a switch. A note says the Governance weekly cap applies to the weekly plan and the routines. Members see 'Only the account owner or an admin can change this.' and disabled switches.",
+      "system_reaction": "The server reads the schedule and the routines' last runs; the page makes no request on mount. getSchedule lays the stored switches over the brand's defaults: the weekly plan defaults to on only for the account's default brand, and to off for an added brand (scope 'email#brandId'). In an added brand a stored weekly plan counts only when it carries the stamp (weeklyPlanSetAt) that a save setting it writes from 2026-09-30 on. A value stored without the stamp is read as the old default and ignored: the 'on' the old save copied from the defaults, and an owner's own switch saved before then, both read Off until the owner switches it on again. The card text takes its price from TASK_COST.weekly_plan (2) and each routine row from TASK_COST of its type.",
+      "branches": [
+        "Member: read-only switches, 'Run now' still available",
+        "Added brand: Weekly plan Off until switched on"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/tasks/page.tsx",
+          "line": 10,
+          "end_line": 21
+        },
+        {
+          "path": "src/components/app/TasksPanel.tsx",
+          "line": 15,
+          "end_line": 51
+        },
+        {
+          "path": "src/components/app/TasksPanel.tsx",
+          "line": 101,
+          "end_line": 123
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 21,
+          "end_line": 50
+        },
+        {
+          "path": "src/components/app/HomeSide.tsx",
+          "line": 75,
+          "end_line": 81
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 166
+        }
+      ],
+      "next": [
+        "daily-schedule-toggle",
+        "daily-run-weekly-now",
+        "daily-run-brief-now",
+        "daily-routine-toggle"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-schedule-toggle",
+      "title": "Switch plan/brief/alerts",
+      "surface": "/{lang}/app/tasks cards",
+      "actor": "admin",
+      "action": "Clicks the On/Off pill of Weekly plan, Morning brief or Team follow-ups.",
+      "ui_response": "The pill shows the value the server returns. On failure: 'Could not save. Try again.' For members the pill is disabled.",
+      "system_reaction": "PUT /api/schedule: 401, then forbid('schedule.write') (403), then only boolean fields are kept. saveSchedule merges the change into the fields already set explicitly in schedule:{scope}, never the defaults, and stamps weeklyPlanSetAt whenever the weekly plan switch is set. It returns the switches over the brand's defaults. The effects apply from the next scheduled run. Weekly plan off makes the Sunday run answer 'off'; switched on in an added brand, the Sunday run starts charging 2 credits. Morning brief off means no brief, so the email becomes follow-ups only. Team follow-ups off means no bell follow-ups, Reem's overdue alerts included.",
+      "branches": [
+        "Member: 403",
+        "Save fails: error text",
+        "Added brand: switching the weekly plan on is what starts its Sunday charge"
+      ],
+      "conditions": "Owner or admin (schedule.write)",
+      "sources": [
+        {
+          "path": "src/components/app/TasksPanel.tsx",
+          "line": 25
+        },
+        {
+          "path": "src/components/app/TasksPanel.tsx",
+          "line": 66,
+          "end_line": 79
+        },
+        {
+          "path": "src/app/api/schedule/route.ts",
+          "line": 16,
+          "end_line": 36
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 58,
+          "end_line": 63
+        },
+        {
+          "path": "src/lib/notifications.ts",
+          "line": 127,
+          "end_line": 129
+        },
+        {
+          "path": "src/lib/roles.ts",
+          "line": 50
+        }
+      ],
+      "next": [
+        "daily-schedule-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-evening-wrap",
+      "title": "Reem's evening wrap",
+      "surface": "Bell and email (no page action)",
+      "actor": "system",
+      "action": "Nothing to do. At about 18:00 brand time (21:30 in Ramadan) the wrap arrives.",
+      "ui_response": "A bell notification lists four parts: items completed today, approvals and rejections decided today, items newly overdue since the last wrap, and the first three items for the next working morning. An email follows when the profile preference is 'all'. With nothing in any part, nothing is sent. 'Team follow-ups' off in Scheduled tasks stops it.",
+      "system_reaction": "A QStash tick (every 15 minutes, with ?zones=) starts the zones whose wrap time passed within the last 16 minutes; the Vercel cron /api/cron/evening runs at 15:00 UTC as a fallback and skips Ramadan. eveningWrap writes once per scope and day (sec:wrap marker), only when 'Team follow-ups' is not off. It builds the four parts in code from stored facts after the agenda's auto-close, and stays silent when all are empty; the email goes only when RESEND_API_KEY is set. Free: no model call, no credits.",
+      "branches": [
+        "Nothing to report: silent",
+        "Follow-ups off: nothing sent",
+        "Already sent today: skipped",
+        "Ramadan: the Vercel run skips; the tick sends at 21:30"
+      ],
+      "conditions": "A to-do list exists and follow-ups are on",
+      "sources": [
+        {
+          "path": "src/lib/secretary-evening.ts",
+          "line": 60,
+          "end_line": 71
+        },
+        {
+          "path": "src/lib/secretary-evening.ts",
+          "line": 195,
+          "end_line": 217
+        },
+        {
+          "path": "src/app/api/cron/evening/route.ts",
+          "line": 23,
+          "end_line": 47
+        },
+        {
+          "path": "src/app/api/cron/secretary/route.ts",
+          "line": 48,
+          "end_line": 72
+        },
+        {
+          "path": "src/lib/notifications.ts",
+          "line": 127,
+          "end_line": 129
+        },
+        {
+          "path": "vercel.json",
+          "line": 3,
+          "end_line": 8
+        }
+      ],
+      "next": [
+        "daily-schedule-open"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-run-weekly-now",
+      "title": "Run weekly plan now",
+      "surface": "/{lang}/app/tasks, Weekly plan card",
+      "actor": "any-signed-in",
+      "action": "Clicks 'Run now' on the Weekly plan card.",
+      "ui_response": "The button shows '…'. Success shows 'Done: ok:N', the plan lands in the inbox and a bell item appears. If the weekly plan is off (the default in an added brand): 'The weekly plan is off for this brand, so nothing was charged. Switch it on first, then run it.'. While paused (current): 'Content generation is paused for now. No credits were used.'. At an agent cap: 'This agent reached its monthly cap', with no modal. A thrown generation error shows 'Generation failed. Try again.'. Any other outcome shows 'Generation failed. Try again. (<code>)', where the code is already_this_week, trial_over, cap_reached, no_credits, retry:locked or no_brand. Only 'ok:N' counts as ran. The page then refreshes.",
+      "system_reaction": "POST /api/schedule {run:'weekly'} answers 401 without a session. It has no role check and no rate limit, and the run is charged to the account. It ends its model calls by the request's own deadline and calls runWeekly with the same checks as the cron: no brand, then 'off', then already this week, then paused, all before any charge. Otherwise it takes the once-a-week claim, charges TASK_COST.weekly_plan (2 credits) against Noor's cap, generates, refunds on failure, runs the judge after the response, saves only lastWeekly, and pushes a notification. A held charge that never finished is released by a sweep in the daily cron.",
+      "branches": [
+        "Weekly plan off (added brand default): clear message, no charge",
+        "Paused (current): no charge, no items",
+        "Already ran this week: refused",
+        "Trial over, cap reached or no credits: refused with the code shown"
+      ],
+      "conditions": "Signed in, any role; the plan must be on (off by default in an added brand)",
+      "sources": [
+        {
+          "path": "src/components/app/TasksPanel.tsx",
+          "line": 81,
+          "end_line": 100
+        },
+        {
+          "path": "src/app/api/schedule/route.ts",
+          "line": 38,
+          "end_line": 48
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 96,
+          "end_line": 149
+        },
+        {
+          "path": "src/lib/tasks.ts",
+          "line": 25
+        }
+      ],
+      "next": [
+        "daily-inbox-brief"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-run-brief-now",
+      "title": "Run brief now",
+      "surface": "/{lang}/app/tasks, Morning brief card",
+      "actor": "any-signed-in",
+      "action": "Clicks 'Run now' on the Morning brief card.",
+      "ui_response": "Shows 'Done: • Waiting for your approval: N' (the brief's second line), and the inbox and chat show the new brief. If the brief is off: 'Generation failed. Try again. (off)'.",
+      "system_reaction": "POST /api/schedule {run:'daily'} calls runDaily, which rewrites brief:{scope}, saves only lastDaily (defaults are never written into the record) and auto-closes linked approved to-dos. No email and no follow-ups are sent from this path. No model and no credits, so it works while paused.",
+      "branches": [
+        "Brief switched off: '(off)'"
+      ],
+      "conditions": "Signed in, any role",
+      "sources": [
+        {
+          "path": "src/components/app/TasksPanel.tsx",
+          "line": 81,
+          "end_line": 100
+        },
+        {
+          "path": "src/app/api/schedule/route.ts",
+          "line": 38,
+          "end_line": 48
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 184,
+          "end_line": 230
+        }
+      ],
+      "next": [
+        "daily-inbox-brief"
+      ],
+      "verified": true,
+      "stage": "daily"
+    },
+    {
+      "id": "daily-routine-toggle",
+      "title": "Switch a routine",
+      "surface": "/{lang}/app/tasks, Team routines",
+      "actor": "admin",
+      "action": "Flips the switch of Dana's weekly report, Noor's cart recovery, Razan's cash forecast or Majed's monthly review.",
+      "ui_response": "The switch shows the stored value. On failure: 'Could not save. Try again.' For members it is disabled. There is no 'Run now' for a routine.",
+      "system_reaction": "PUT /api/schedule {routines:{id:boolean}}: forbid('schedule.write'); only known routine ids with boolean values are kept, merged per id into the explicitly set fields of schedule:{scope}. The next 06:00 UTC routines cron picks it up. While paused (current), a routine that is on answers retry:paused every day: nothing is charged and nothing is produced.",
+      "branches": [
+        "Member: 403",
+        "Paused (current): switched on but produces nothing"
+      ],
+      "conditions": "Owner or admin (schedule.write)",
+      "sources": [
+        {
+          "path": "src/components/app/TasksPanel.tsx",
+          "line": 34,
+          "end_line": 51
+        },
+        {
+          "path": "src/components/app/TasksPanel.tsx",
+          "line": 80
+        },
+        {
+          "path": "src/app/api/schedule/route.ts",
+          "line": 25,
+          "end_line": 33
+        },
+        {
+          "path": "src/lib/routines.ts",
+          "line": 79,
+          "end_line": 83
+        },
+        {
+          "path": "src/lib/routines.ts",
+          "line": 164,
+          "end_line": 185
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 58,
+          "end_line": 63
+        }
+      ],
+      "next": [
+        "daily-routines-run"
+      ],
+      "verified": true,
+      "stage": "daily"
+    }
+  ]
+}

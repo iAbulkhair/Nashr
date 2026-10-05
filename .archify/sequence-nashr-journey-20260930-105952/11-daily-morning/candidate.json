@@ -1,0 +1,1030 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Every day: morning jobs, brief, bell and email",
+    "output": ".archify/sequence-nashr-journey-20260930-105952/11-daily-morning/11-daily-morning.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "repository": {
+      "url": "https://github.com/iAbulkhair/Nashr.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "f0e7fdecf7d70d8c60ba76650f22440433926add"
+    }
+  },
+  "participants": [
+    {
+      "id": "person",
+      "type": "external",
+      "label": "Person",
+      "sublabel": "owner or team",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/layout.tsx",
+          "line": 26,
+          "end_line": 27
+        },
+        {
+          "path": "src/components/app/TrialBanner.tsx",
+          "line": 8,
+          "end_line": 27
+        },
+        {
+          "path": "src/lib/roles.ts",
+          "line": 30
+        }
+      ]
+    },
+    {
+      "id": "page",
+      "type": "frontend",
+      "label": "Browser page",
+      "sublabel": "what they see",
+      "sources": [
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 39,
+          "end_line": 47
+        },
+        {
+          "path": "src/components/app/Inbox.tsx",
+          "line": 215,
+          "end_line": 236
+        },
+        {
+          "path": "src/components/app/NotificationsPanel.tsx",
+          "line": 8,
+          "end_line": 37
+        }
+      ]
+    },
+    {
+      "id": "checks",
+      "type": "security",
+      "label": "Checks in code",
+      "sublabel": "auth · roles · limits",
+      "sources": [
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 24,
+          "end_line": 43
+        },
+        {
+          "path": "src/lib/credits.ts",
+          "line": 76,
+          "end_line": 114
+        },
+        {
+          "path": "src/app/api/profile/route.ts",
+          "line": 115,
+          "end_line": 119
+        }
+      ]
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "Nashr server",
+      "sublabel": "API routes",
+      "sources": [
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 163,
+          "end_line": 185
+        },
+        {
+          "path": "src/app/api/notifications/route.ts",
+          "line": 5,
+          "end_line": 12
+        },
+        {
+          "path": "src/app/api/cron/weekly/route.ts",
+          "line": 15,
+          "end_line": 26
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "account data",
+      "sources": [
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 184,
+          "end_line": 230
+        },
+        {
+          "path": "src/lib/notifications.ts",
+          "line": 98,
+          "end_line": 115
+        },
+        {
+          "path": "src/lib/perf-store.ts",
+          "line": 39,
+          "end_line": 52
+        }
+      ]
+    },
+    {
+      "id": "cron",
+      "type": "cloud",
+      "label": "Scheduled jobs",
+      "sublabel": "Vercel cron",
+      "sources": [
+        {
+          "path": "vercel.json",
+          "line": 4
+        },
+        {
+          "path": "vercel.json",
+          "line": 3
+        },
+        {
+          "path": "vercel.json",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "id": "email",
+      "type": "external",
+      "label": "Email",
+      "sublabel": "Resend",
+      "sources": [
+        {
+          "path": "src/lib/notify.ts",
+          "line": 19,
+          "end_line": 51
+        },
+        {
+          "path": "src/lib/lifecycle.ts",
+          "line": 30,
+          "end_line": 66
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 111,
+          "end_line": 120
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 156,
+      "to": 1614,
+      "label": "Morning job 05:00 UTC"
+    },
+    {
+      "from": 1632,
+      "to": 2092,
+      "label": "Brief, bell and email"
+    },
+    {
+      "from": 2110,
+      "to": 2608,
+      "label": "Weekly plan, routines"
+    },
+    {
+      "from": 2626,
+      "to": 3444,
+      "label": "Open the app"
+    },
+    {
+      "from": 3462,
+      "to": 3828,
+      "label": "Bell and links"
+    },
+    {
+      "from": 3846,
+      "to": 4256,
+      "label": "Caps and email prefs"
+    }
+  ],
+  "messages": [
+    {
+      "id": "daily-cron-morning--call",
+      "from": "cron",
+      "to": "server",
+      "y": 182,
+      "label": "GET /api/cron/daily at 05:00 UTC",
+      "variant": "emphasis",
+      "note": "08:00 KSA · CRON_SECRET bearer"
+    },
+    {
+      "id": "daily-cron-morning--auth",
+      "from": "server",
+      "to": "checks",
+      "y": 226,
+      "label": "sameSecret on the bearer",
+      "variant": "security",
+      "note": "401 otherwise"
+    },
+    {
+      "id": "daily-cron-morning--roster",
+      "from": "server",
+      "to": "store",
+      "y": 270,
+      "label": "dailyRoster: account × brand",
+      "variant": "default",
+      "note": "8 at a time · 2 attempts each · up to 30 hops"
+    },
+    {
+      "id": "daily-cron-morning--renew",
+      "from": "server",
+      "to": "store",
+      "y": 314,
+      "label": "renewIfDue: reset plan credits",
+      "variant": "dashed",
+      "note": "UTC month start · plan or Agency deal · packs kept · trial never"
+    },
+    {
+      "id": "daily-cron-morning--topups",
+      "from": "server",
+      "to": "store",
+      "label": "settle expired top-up packs",
+      "variant": "dashed",
+      "note": "default brand only · saveSettledTopups",
+      "y": 358
+    },
+    {
+      "id": "daily-cron-morning--purge",
+      "from": "server",
+      "to": "store",
+      "y": 402,
+      "label": "purge, clean up Reem's to-dos",
+      "variant": "dashed",
+      "note": "after the offer and plan-hold sweeps · deleted 30+ days ago · idle: only the purge"
+    },
+    {
+      "id": "daily-cron-morning--weekly",
+      "from": "server",
+      "to": "cron",
+      "y": 446,
+      "label": "kick /api/cron/weekly catch-up",
+      "variant": "dashed",
+      "note": "Sun–Tue UTC, on the hop that does not chain"
+    },
+    {
+      "id": "daily-reminders-sweep--find",
+      "from": "server",
+      "to": "store",
+      "label": "sweepReminders: due reminders",
+      "variant": "default",
+      "note": "first hop only · 60 s budget · up to 4 more passes",
+      "y": 496
+    },
+    {
+      "id": "daily-reminders-sweep--lease",
+      "from": "server",
+      "to": "store",
+      "label": "lease each reminder, 330 s",
+      "variant": "dashed",
+      "note": "suspended or archived scope: held 6 h",
+      "y": 540
+    },
+    {
+      "id": "daily-reminders-sweep--bell",
+      "from": "server",
+      "to": "store",
+      "label": "bell item 'Reminder: «title»'",
+      "variant": "dashed",
+      "note": "fingerprint kept 7 days · no repeat",
+      "y": 584
+    },
+    {
+      "id": "daily-reminders-sweep--mail",
+      "from": "server",
+      "to": "email",
+      "label": "email: Reminder from Reem",
+      "variant": "default",
+      "note": "needs RESEND_API_KEY · preference 'none': no email",
+      "y": 628
+    },
+    {
+      "id": "daily-reminders-sweep--see",
+      "from": "page",
+      "to": "person",
+      "label": "Later: reminder in the bell",
+      "variant": "return",
+      "note": "opens My to-dos · without the QStash tick it comes with the morning job",
+      "y": 672
+    },
+    {
+      "id": "daily-onboard-sweep--find",
+      "from": "server",
+      "to": "store",
+      "y": 722,
+      "label": "setup holds unused for 24 h",
+      "variant": "default",
+      "note": "default-brand entry only · reads each stale brand's file"
+    },
+    {
+      "id": "daily-onboard-sweep--resolve",
+      "from": "server",
+      "to": "store",
+      "y": 766,
+      "label": "refund if never built, else drop",
+      "variant": "dashed",
+      "note": "one locked save · Noor's counter lowered · activity row per refund"
+    },
+    {
+      "id": "daily-onboard-sweep--see",
+      "from": "page",
+      "to": "person",
+      "y": 810,
+      "label": "Later: 9 credits back in balance",
+      "variant": "return",
+      "note": "no email, bell or message · built brand: charge stands"
+    },
+    {
+      "id": "daily-early-offer--due",
+      "from": "server",
+      "to": "store",
+      "label": "trial in its last 24 hours, no offer",
+      "variant": "default",
+      "note": "default-brand entry only · mail not needed",
+      "y": 860
+    },
+    {
+      "id": "daily-early-offer--grant",
+      "from": "server",
+      "to": "store",
+      "label": "grantEarlyOffer: 15% first month",
+      "variant": "dashed",
+      "note": "under the user lock · offer_failed does not stop the day",
+      "y": 904
+    },
+    {
+      "id": "daily-early-offer--see",
+      "from": "page",
+      "to": "person",
+      "label": "Later: Billing shows the 15% month",
+      "variant": "return",
+      "note": "the day-3 email names it · no bell item",
+      "y": 948
+    },
+    {
+      "id": "daily-weekly-sweep--find",
+      "from": "server",
+      "to": "store",
+      "label": "Sunday-plan holds of past weeks",
+      "variant": "default",
+      "note": "default-brand entry only · hold 10+ min old",
+      "y": 998
+    },
+    {
+      "id": "daily-weekly-sweep--resolve",
+      "from": "server",
+      "to": "store",
+      "label": "refund if no plan, else drop",
+      "variant": "dashed",
+      "note": "one locked save · plan exists: the charge stands",
+      "y": 1042
+    },
+    {
+      "id": "daily-weekly-sweep--see",
+      "from": "page",
+      "to": "person",
+      "label": "Later: 2 credits back in balance",
+      "variant": "return",
+      "note": "no email, bell or message · paused: nothing new to sweep",
+      "y": 1086
+    },
+    {
+      "id": "daily-signup-nudge--claim",
+      "from": "server",
+      "to": "store",
+      "label": "claim nudge1 for 120 s, then send",
+      "variant": "dashed",
+      "note": "no brand file · older than 10 min · 400-day marker only after Resend accepts",
+      "y": 1136
+    },
+    {
+      "id": "daily-signup-nudge--send",
+      "from": "server",
+      "to": "email",
+      "label": "send the nudge email",
+      "variant": "default",
+      "note": "needs RESEND_API_KEY and MAIL_FROM · refusal logged, retried next run",
+      "y": 1180
+    },
+    {
+      "id": "daily-signup-nudge--see",
+      "from": "email",
+      "to": "person",
+      "y": 1224,
+      "label": "'Noor is ready' → /app/start",
+      "variant": "return",
+      "note": "nothing else runs for this workspace today"
+    },
+    {
+      "id": "daily-ads-sync--due",
+      "from": "server",
+      "to": "store",
+      "y": 1274,
+      "label": "syncAdsIfDue: oldest read, 20 h+",
+      "variant": "default",
+      "note": "Meta Ads or Snapchat Ads · one a day · not if flagged"
+    },
+    {
+      "id": "daily-ads-sync--save",
+      "from": "server",
+      "to": "store",
+      "y": 1318,
+      "label": "savePerf: 30 days + learnings",
+      "variant": "dashed",
+      "note": "after read-only platform GETs · no model, no credits"
+    },
+    {
+      "id": "daily-ads-sync--refused",
+      "from": "server",
+      "to": "store",
+      "y": 1362,
+      "label": "token refused: flag reconnect",
+      "variant": "dashed",
+      "note": "401/403 from the platform · outcome ads_failed"
+    },
+    {
+      "id": "daily-ads-sync--see",
+      "from": "page",
+      "to": "person",
+      "y": 1406,
+      "label": "Later: Reports shows 'Live'",
+      "variant": "return",
+      "note": "Campaign results card, last 30 days"
+    },
+    {
+      "id": "daily-lifecycle-emails--plan",
+      "from": "server",
+      "to": "store",
+      "y": 1456,
+      "label": "read brand + 90-day task index",
+      "variant": "default",
+      "note": "only after lifecyclePlan picks a due email"
+    },
+    {
+      "id": "daily-lifecycle-emails--claim",
+      "from": "server",
+      "to": "store",
+      "y": 1500,
+      "label": "claim once lifecycle:{key}",
+      "variant": "dashed",
+      "note": "sent once per account · marker after Resend accepts"
+    },
+    {
+      "id": "daily-lifecycle-emails--send",
+      "from": "server",
+      "to": "email",
+      "y": 1544,
+      "label": "send founder lifecycle email",
+      "variant": "default",
+      "note": "needs RESEND_API_KEY and MAIL_FROM · email preference not read"
+    },
+    {
+      "id": "daily-lifecycle-emails--see",
+      "from": "email",
+      "to": "person",
+      "y": 1588,
+      "label": "Day 1, trial end, last day, day 10",
+      "variant": "return",
+      "note": "paying plans get day 1 only · last day names the 15% offer"
+    },
+    {
+      "id": "daily-brief-built--read",
+      "from": "server",
+      "to": "store",
+      "y": 1658,
+      "label": "read stored tasks + Reem's agenda",
+      "variant": "default",
+      "note": "skipped when Morning brief is off"
+    },
+    {
+      "id": "daily-brief-built--save",
+      "from": "server",
+      "to": "store",
+      "y": 1702,
+      "label": "save brief:{scope} and lastDaily",
+      "variant": "dashed",
+      "note": "no model call, no credits: same while paused"
+    },
+    {
+      "id": "daily-brief-built--see",
+      "from": "page",
+      "to": "person",
+      "y": 1746,
+      "label": "Later: brief in inbox, chat, email",
+      "variant": "return",
+      "note": "waiting, approved, credits, seasons, to-dos"
+    },
+    {
+      "id": "daily-followups--compute",
+      "from": "server",
+      "to": "store",
+      "y": 1796,
+      "label": "compute follow-ups (tasks, Reem)",
+      "variant": "default",
+      "note": "skipped when Team follow-ups is off"
+    },
+    {
+      "id": "daily-followups--claim",
+      "from": "server",
+      "to": "store",
+      "y": 1840,
+      "label": "claim notifseen:{email}:{fp}",
+      "variant": "dashed",
+      "note": "SET NX for 2–7 days, so no daily repeat"
+    },
+    {
+      "id": "daily-followups--push",
+      "from": "server",
+      "to": "store",
+      "y": 1884,
+      "label": "push to the bell notifs:{email}",
+      "variant": "dashed",
+      "note": "up to 50 kept · Reem overdue: max 5 per brand a day"
+    },
+    {
+      "id": "daily-followups--see",
+      "from": "page",
+      "to": "person",
+      "y": 1928,
+      "label": "Later: new bell items",
+      "variant": "return",
+      "note": "due soon, waiting 2+ days, low balance, trial, overdue"
+    },
+    {
+      "id": "daily-brief-email--pref",
+      "from": "server",
+      "to": "store",
+      "y": 1978,
+      "label": "read email preference (profile)",
+      "variant": "default",
+      "note": "default 'all' · 'none' sends no brief email"
+    },
+    {
+      "id": "daily-brief-email--send",
+      "from": "server",
+      "to": "email",
+      "y": 2022,
+      "label": "send brief + follow-ups email",
+      "variant": "emphasis",
+      "note": "'important': pending, fired, overdue or due today"
+    },
+    {
+      "id": "daily-brief-email--see",
+      "from": "email",
+      "to": "person",
+      "y": 2066,
+      "label": "'Noor's brief — YYYY-MM-DD'",
+      "variant": "return",
+      "note": "owner address only · members get no email"
+    },
+    {
+      "id": "daily-weekly-plan--call",
+      "from": "cron",
+      "to": "server",
+      "y": 2136,
+      "label": "GET /api/cron/weekly Sun 03:00 UTC",
+      "variant": "default",
+      "note": "plus daily-job catch-ups Sun–Tue · 4 brands at a time"
+    },
+    {
+      "id": "daily-weekly-plan--gates",
+      "from": "server",
+      "to": "checks",
+      "y": 2180,
+      "label": "brand, switched on, not done",
+      "variant": "security",
+      "note": "added brands: off until the owner switches it on"
+    },
+    {
+      "id": "daily-weekly-plan--paused",
+      "from": "server",
+      "to": "checks",
+      "y": 2224,
+      "label": "model paused → retry:paused",
+      "variant": "security",
+      "note": "paused since 2026-09-28 · before any charge"
+    },
+    {
+      "id": "daily-weekly-plan--charge",
+      "from": "server",
+      "to": "checks",
+      "y": 2268,
+      "label": "lock, trial, weekly cap, 2 credits",
+      "variant": "security",
+      "note": "cap 20 own items a week · held once a week · any refusal: skipped, no message"
+    },
+    {
+      "id": "daily-weekly-plan--save",
+      "from": "server",
+      "to": "store",
+      "y": 2312,
+      "label": "save weekly_plan items + notice",
+      "variant": "dashed",
+      "note": "not while paused · 2 credits back if generation throws"
+    },
+    {
+      "id": "daily-weekly-plan--see",
+      "from": "page",
+      "to": "person",
+      "y": 2356,
+      "label": "Bell: this week's plan is ready",
+      "variant": "return",
+      "note": "while paused: nothing appears, no credit moves"
+    },
+    {
+      "id": "daily-routines-run--call",
+      "from": "cron",
+      "to": "server",
+      "y": 2406,
+      "label": "GET /api/cron/routines, 06:00 UTC",
+      "variant": "default",
+      "note": "routines the owner switched on (all off by default) · Majed auto-run too"
+    },
+    {
+      "id": "daily-routines-run--paused",
+      "from": "server",
+      "to": "checks",
+      "y": 2450,
+      "label": "model paused → retry:paused",
+      "variant": "security",
+      "note": "paused since 2026-09-28 · asked again next day"
+    },
+    {
+      "id": "daily-routines-run--gate",
+      "from": "server",
+      "to": "checks",
+      "y": 2494,
+      "label": "data gate, shared cap, charge",
+      "variant": "security",
+      "note": "not met: idle or no_data, free · Dana's report: 3 credits"
+    },
+    {
+      "id": "daily-routines-run--save",
+      "from": "server",
+      "to": "store",
+      "y": 2538,
+      "label": "save routine items + notice",
+      "variant": "dashed",
+      "note": "not while paused · refund if generation throws"
+    },
+    {
+      "id": "daily-routines-run--see",
+      "from": "page",
+      "to": "person",
+      "y": 2582,
+      "label": "Bell: routine batch in the inbox",
+      "variant": "return",
+      "note": "while paused, idle or without data: nothing"
+    },
+    {
+      "id": "daily-open-app--do",
+      "from": "person",
+      "to": "page",
+      "y": 2652,
+      "label": "Click email link or open the app",
+      "variant": "emphasis"
+    },
+    {
+      "id": "daily-open-app--load",
+      "from": "page",
+      "to": "server",
+      "y": 2696,
+      "label": "load the /{lang}/app layout",
+      "variant": "emphasis"
+    },
+    {
+      "id": "daily-open-app--auth",
+      "from": "server",
+      "to": "checks",
+      "y": 2740,
+      "label": "currentUser: signed in?",
+      "variant": "security",
+      "note": "no session: redirect to /{lang}/app/login"
+    },
+    {
+      "id": "daily-open-app--brand",
+      "from": "server",
+      "to": "store",
+      "y": 2784,
+      "label": "getBrand(sc(u))",
+      "variant": "default"
+    },
+    {
+      "id": "daily-open-app--counts",
+      "from": "page",
+      "to": "server",
+      "y": 2828,
+      "label": "GET bell, pending and threads",
+      "variant": "default",
+      "note": "every navigation · 401 without a session"
+    },
+    {
+      "id": "daily-open-app--see",
+      "from": "page",
+      "to": "person",
+      "y": 2872,
+      "label": "Sidebar: badges, bell, credits",
+      "variant": "return",
+      "note": "trial strip: 'Activate Noor' for the owner only"
+    },
+    {
+      "id": "daily-inbox-brief--do",
+      "from": "person",
+      "to": "page",
+      "y": 2922,
+      "label": "Land on the approvals inbox",
+      "variant": "emphasis"
+    },
+    {
+      "id": "daily-inbox-brief--load",
+      "from": "page",
+      "to": "server",
+      "y": 2966,
+      "label": "GET /{lang}/app",
+      "variant": "default"
+    },
+    {
+      "id": "daily-inbox-brief--read",
+      "from": "server",
+      "to": "store",
+      "y": 3010,
+      "label": "tasks, brief, connections, journey",
+      "variant": "default",
+      "note": "one parallel round"
+    },
+    {
+      "id": "daily-inbox-brief--render",
+      "from": "server",
+      "to": "page",
+      "y": 3054,
+      "label": "brief card, N-day streak, items",
+      "variant": "return",
+      "note": "no brand: redirect to /{lang}/app/start"
+    },
+    {
+      "id": "daily-inbox-brief--see",
+      "from": "page",
+      "to": "person",
+      "y": 3098,
+      "label": "Noor's brief card, then items",
+      "variant": "return",
+      "note": "no brief yet: no brief card"
+    },
+    {
+      "id": "daily-journey-toggle--do",
+      "from": "person",
+      "to": "page",
+      "y": 3148,
+      "label": "Hide the launch-path card",
+      "variant": "default"
+    },
+    {
+      "id": "daily-journey-toggle--see",
+      "from": "page",
+      "to": "person",
+      "y": 3192,
+      "label": "Pill: 'N/M · Show path'",
+      "variant": "return",
+      "note": "saved in localStorage only · no request"
+    },
+    {
+      "id": "daily-chat-home--do",
+      "from": "person",
+      "to": "page",
+      "y": 3242,
+      "label": "Open chat (Main, Noor or logo)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "daily-chat-home--load",
+      "from": "page",
+      "to": "server",
+      "y": 3286,
+      "label": "GET /{lang}/app/chat",
+      "variant": "default",
+      "note": "no brand: /start, or the onboarding thread"
+    },
+    {
+      "id": "daily-chat-home--read",
+      "from": "server",
+      "to": "store",
+      "y": 3330,
+      "label": "history, brief, bell, chat allowance",
+      "variant": "default",
+      "note": "one round · rendering makes no model call"
+    },
+    {
+      "id": "daily-chat-home--today",
+      "from": "page",
+      "to": "person",
+      "y": 3374,
+      "label": "'From the team today' card",
+      "variant": "return",
+      "note": "at most 1 message · launch path while a step is left · messages-left line"
+    },
+    {
+      "id": "daily-chat-home--side",
+      "from": "page",
+      "to": "person",
+      "y": 3418,
+      "label": "Side panel: Scheduled tasks, brief",
+      "variant": "return",
+      "note": "Live/Paused = on/off · added brand: weekly plan Paused"
+    },
+    {
+      "id": "daily-open-notifications--do",
+      "from": "person",
+      "to": "page",
+      "y": 3488,
+      "label": "Tap the bell or Notifications (N)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "daily-open-notifications--load",
+      "from": "page",
+      "to": "server",
+      "y": 3532,
+      "label": "render /{lang}/app/notifications",
+      "variant": "default"
+    },
+    {
+      "id": "daily-open-notifications--list",
+      "from": "server",
+      "to": "store",
+      "y": 3576,
+      "label": "listNotifs(account email)",
+      "variant": "default",
+      "note": "the bell belongs to the account, not the person"
+    },
+    {
+      "id": "daily-open-notifications--see",
+      "from": "page",
+      "to": "person",
+      "y": 3620,
+      "label": "Up to 50 follow-ups, newest first",
+      "variant": "return",
+      "note": "empty: 'No notifications.'"
+    },
+    {
+      "id": "daily-open-notifications--mark",
+      "from": "page",
+      "to": "server",
+      "y": 3664,
+      "label": "POST /api/notifications",
+      "variant": "default",
+      "note": "after 1.5 s, only if unread · 401 without a session"
+    },
+    {
+      "id": "daily-open-notifications--read",
+      "from": "server",
+      "to": "store",
+      "y": 3708,
+      "label": "mark every item read",
+      "variant": "dashed",
+      "note": "clears them for everyone on the account"
+    },
+    {
+      "id": "daily-notification-open--do",
+      "from": "person",
+      "to": "page",
+      "y": 3758,
+      "label": "Click 'Open' on a notification",
+      "variant": "default"
+    },
+    {
+      "id": "daily-notification-open--see",
+      "from": "page",
+      "to": "person",
+      "y": 3802,
+      "label": "Calendar, inbox, billing, to-dos",
+      "variant": "return",
+      "note": "agent cap: Governance · team notice: Members · series warning: to-dos"
+    },
+    {
+      "id": "daily-agent-cap-hit--charge",
+      "from": "server",
+      "to": "checks",
+      "y": 3872,
+      "label": "charge(): spent + cost > cap?",
+      "variant": "security",
+      "note": "under the user lock · added-brand setup counts · chat never"
+    },
+    {
+      "id": "daily-agent-cap-hit--warn",
+      "from": "server",
+      "to": "store",
+      "y": 3916,
+      "label": "80%: warnAgentCap bell item",
+      "variant": "dashed",
+      "note": "one per brand, agent, month · links to Governance"
+    },
+    {
+      "id": "daily-agent-cap-hit--refuse",
+      "from": "server",
+      "to": "page",
+      "y": 3960,
+      "label": "at the cap: refused, not charged",
+      "variant": "security"
+    },
+    {
+      "id": "daily-agent-cap-hit--see",
+      "from": "page",
+      "to": "person",
+      "y": 4004,
+      "label": "Modal: agent reached monthly cap",
+      "variant": "return",
+      "note": "owner: 'Open Governance' · others: ask the owner"
+    },
+    {
+      "id": "daily-email-prefs--do",
+      "from": "person",
+      "to": "page",
+      "y": 4054,
+      "label": "Choose All, Important or None",
+      "variant": "default",
+      "note": "owner only · 'Important' is a rule in code"
+    },
+    {
+      "id": "daily-email-prefs--put",
+      "from": "page",
+      "to": "server",
+      "y": 4098,
+      "label": "PUT /api/profile {emails}",
+      "variant": "default"
+    },
+    {
+      "id": "daily-email-prefs--role",
+      "from": "server",
+      "to": "checks",
+      "y": 4142,
+      "label": "profile.account (owner only)",
+      "variant": "security",
+      "note": "403 otherwise"
+    },
+    {
+      "id": "daily-email-prefs--save",
+      "from": "server",
+      "to": "store",
+      "y": 4186,
+      "label": "save profile:{scope} {emails}",
+      "variant": "dashed",
+      "note": "read by the next 05:00 UTC run"
+    },
+    {
+      "id": "daily-email-prefs--see",
+      "from": "page",
+      "to": "person",
+      "y": 4230,
+      "label": "'Saved', or why nothing was saved",
+      "variant": "return",
+      "note": "'None' also stops reminder emails · lifecycle and billing not affected"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "While the model is paused",
+      "items": [
+        "Model calls are paused since 2026-09-28.",
+        "The daily job makes no model call, so it runs unchanged.",
+        "Weekly plan: retry:paused, no items, no charge, no notice.",
+        "Routines: retry:paused every day, nothing produced.",
+        "Added-brand setup answers 503 before charging: no new hold."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Refusals and limits",
+      "items": [
+        "Cron bearer checked with sameSecret: 401 otherwise.",
+        "No brand file: after renewal, sweeps and purge, only the nudge.",
+        "Nudge or lifecycle mail refused: logged, tried again next run.",
+        "Ad token refused (401/403): flagged for reconnect.",
+        "Added brand: weekly plan off until the owner switches it on.",
+        "Agent at its monthly cap: refused, nothing charged.",
+        "Cron runs at the cap end as agent_cap, with no message.",
+        "Weekly plan auto-approves only if the brand gate passes."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Who sees what",
+      "items": [
+        "The bell belongs to the account: members see the owner's.",
+        "Only the owner address gets the brief email.",
+        "Email preferences card: owner only, hidden for others.",
+        "Lifecycle emails ignore the email preference.",
+        "Reminder emails follow it: 'None' sends only the bell item.",
+        "Members see the shared account credits.",
+        "Today card approve button: owner or admin only."
+      ]
+    }
+  ]
+}

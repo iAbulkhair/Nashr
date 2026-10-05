@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "browser-check",
+  "evidenceKind": "automated-browser",
+  "status": "fail",
+  "visualReview": "not-requested",
+  "provenance": "current",
+  "deliveryReceiptId": "315fe5c3-1257-4aa6-97d9-cd378006664b",
+  "artifact": {
+    "path": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/10-connect-publish/10-connect-publish.html",
+    "sha256": "15d3f26dde1ea5e26baa6f9c5902bf6cfbd2df096a0d9211e128d72e7bc90e64",
+    "bytes": 825628
+  },
+  "state": {
+    "detail": "read",
+    "motion": "still"
+  },
+  "chrome": {
+    "status": "available",
+    "executable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+  },
+  "diagnostics": [
+    {
+      "code": "viewer/browser-check-runtime",
+      "severity": "error",
+      "message": "browser-check could not complete its Chrome inspection.",
+      "subject": {
+        "artifact": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/10-connect-publish/10-connect-publish.html"
+      },
+      "evidence": {
+        "reason": "Chrome DevTools read pipe failed: stream ended\nChrome process: still running.\nChrome stderr:\nsandbox_extension_issue_file_to_process failed for /Applications/Google Chrome.app: 1 (Operation not permitted)\n[0930/120425.174322:ERROR:third_party/crashpad/crashpad/util/mach/bootstrap.cc:65] bootstrap_check_in org.chromium.crashpad.child_port_handshake.92939.16752126.GSWSPAURYUUGYQCM: Permission denied (1100)\n[0930/120425.175097:ERROR:third_party/crashpad/crashpad/util/file/file_io.cc:103] ReadExactly: expected 4, observed 0\n[0930/120425.175594:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:208] open /Users/ihejazy/Library/Application Support/Google/Chrome/Crashpad/settings.dat: Operation not permitted (1)\n[0930/120425.175660:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:208] open /Users/ihejazy/Library/Application Support/Google/Chrome/Crashpad/settings.dat: Operation not permitted (1)\n[92926:16752084:0930/120425.184604:ERROR:chrome/browser/process_singleton_posix.cc:1043] Failed to create socket directory.\n[92926:16752084:0930/120425.184737:ERROR:chrome/app/chrome_main_delegate.cc:562] Failed to create a ProcessSingleton for your profile directory. This means that running multiple instances would start multiple browser processes rather than opening a new window in the existing process. Aborting now to avoid profile corruption.\nChrome transport: Node v24.5.0, libuv 1.51.0, darwin; pid=92926, exitCode=null, signalCode=null.\nChrome read pipe: readable=false, ended=true, destroyed=false, receivedBytes=0, messages=0, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=1, writtenBytes=50, bufferedBytes=0."
+      },
+      "supportedFixes": [
+        "resolve the reported Chrome inspection error, then rerun browser-check"
+      ]
+    }
+  ],
+  "containment": {
+    "status": "fail",
+    "policy": "fit-or-reader-declared-readable-vertical-scroll",
+    "viewports": []
+  },
+  "themeStates": {
+    "status": "fail",
+    "viewports": []
+  },
+  "readability": {
+    "status": "fail",
+    "minimumProjectedNodeTextPx": 6,
+    "viewports": []
+  },
+  "viewerChrome": {
+    "status": "fail",
+    "viewports": []
+  },
+  "captures": {
+    "status": "not-requested",
+    "screenshots": [],
+    "contactSheet": null
+  },
+  "sidecars": {
+    "directory": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/10-connect-publish/refresh",
+    "receipt": "10-connect-publish.browser-check.json",
+    "files": []
+  },
+  "error": "Chrome DevTools read pipe failed: stream ended\nChrome process: still running.\nChrome stderr:\nsandbox_extension_issue_file_to_process failed for /Applications/Google Chrome.app: 1 (Operation not permitted)\n[0930/120425.174322:ERROR:third_party/crashpad/crashpad/util/mach/bootstrap.cc:65] bootstrap_check_in org.chromium.crashpad.child_port_handshake.92939.16752126.GSWSPAURYUUGYQCM: Permission denied (1100)\n[0930/120425.175097:ERROR:third_party/crashpad/crashpad/util/file/file_io.cc:103] ReadExactly: expected 4, observed 0\n[0930/120425.175594:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:208] open /Users/ihejazy/Library/Application Support/Google/Chrome/Crashpad/settings.dat: Operation not permitted (1)\n[0930/120425.175660:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:208] open /Users/ihejazy/Library/Application Support/Google/Chrome/Crashpad/settings.dat: Operation not permitted (1)\n[92926:16752084:0930/120425.184604:ERROR:chrome/browser/process_singleton_posix.cc:1043] Failed to create socket directory.\n[92926:16752084:0930/120425.184737:ERROR:chrome/app/chrome_main_delegate.cc:562] Failed to create a ProcessSingleton for your profile directory. This means that running multiple instances would start multiple browser processes rather than opening a new window in the existing process. Aborting now to avoid profile corruption.\nChrome transport: Node v24.5.0, libuv 1.51.0, darwin; pid=92926, exitCode=null, signalCode=null.\nChrome read pipe: readable=false, ended=true, destroyed=false, receivedBytes=0, messages=0, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=1, writtenBytes=50, bufferedBytes=0."
+}

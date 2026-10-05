@@ -1,0 +1,894 @@
+{
+ "key": "13-daily-results",
+ "title": "Every day: reports, results and governance",
+ "person": "owner or team",
+ "steps": [
+  {
+   "id": "daily-reports-open",
+   "title": "Open Reports",
+   "surface": "/{lang}/app/reports (ReportsPanel)",
+   "actor": "any-signed-in",
+   "action": "Clicks 'performance' (Arabic: الأداء) in the sidebar's channel list, or 'All' on the chat metrics tile. Then picks a range pill (1, 2, 7, 30, 60, 90 days, year to date, last year) or a custom from/to range.",
+   "ui_response": "With no brand: redirect to /start. Otherwise the page shows: (1) A banner when a data source is missing, with buttons to Integrations. (2) The title, the range pills and the window dates. (3) The Campaign results card and, when a store is connected, the store card. (4) Metric tiles with change versus the previous period. (5) The trends chart, weekly bars, and lists by type and by channel. (6) The agent quality table (approval rate, edit rate, judge score, low scores, thumbs) with its denominators. (7) The 'Ask Dana' section. (8) 'Dana's reports and decks' (up to 20 in the window), each with 'Open in inbox' and, for board decks, 'Download PowerPoint'.",
+   "system_reaction": "The page reloads with ?range=. The server reads the light index for the window. Then it reads the KPIs, scopeMetrics, connections, the store sales snapshot and the performance snapshot in one round. No model call.",
+   "branches": [
+    "Missing data source: banner linking to Integrations",
+    "No brand: /start"
+   ],
+   "conditions": "Brand exists",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/reports/page.tsx",
+     "line": 18,
+     "end_line": 33
+    },
+    {
+     "path": "src/components/app/ReportsPanel.tsx",
+     "line": 83,
+     "end_line": 100
+    },
+    {
+     "path": "src/components/app/ReportsPanel.tsx",
+     "line": 178,
+     "end_line": 244
+    },
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 86
+    },
+    {
+     "path": "src/components/app/HomeSide.tsx",
+     "line": 64
+    }
+   ],
+   "next": [
+    "daily-reports-tiles",
+    "daily-perf-upload",
+    "daily-ads-read",
+    "daily-ask-dana"
+   ],
+   "verified": true,
+   "stage": "daily"
+  },
+  {
+   "id": "daily-reports-tiles",
+   "title": "Customize tiles & chart",
+   "surface": "/{lang}/app/reports, metrics and trends",
+   "actor": "any-signed-in",
+   "action": "Adds or removes metric tiles ('+ Add metric', ✕), clicks a locked platform metric, or toggles the created, approved and published lines (or 'Show all' / 'Hide all').",
+   "ui_response": "The tiles change at once and are remembered in this browser. A locked platform metric links to Integrations; a metric already read jumps to its card. The chart redraws.",
+   "system_reaction": "Client only: the tile choice is saved in localStorage 'nashr:metrics', and failures are ignored. No request.",
+   "branches": [
+    "Private window: the choice is not remembered"
+   ],
+   "conditions": "Signed in",
+   "sources": [
+    {
+     "path": "src/components/app/ReportsPanel.tsx",
+     "line": 31,
+     "end_line": 36
+    },
+    {
+     "path": "src/components/app/ReportsPanel.tsx",
+     "line": 102,
+     "end_line": 146
+    }
+   ],
+   "next": [
+    "daily-reports-open"
+   ],
+   "verified": true,
+   "stage": "daily"
+  },
+  {
+   "id": "daily-perf-upload",
+   "title": "Upload campaign CSV",
+   "surface": "/{lang}/app/reports, 'Campaign results (CSV)' card (PerformanceImport)",
+   "actor": "admin",
+   "action": "Drops or chooses an ads report CSV exported from Meta, Snapchat, TikTok or Google Ads; the parser also reads email-tool exports. 'How do I export it?' explains how.",
+   "ui_response": "Files over 2 MB are refused in the browser. While reading: 'Noor is reading the results…'. The result shows the platform, file, date range, ads in the file, ads ranked, the overall metric and spend. It lists the best and weakest performers, patterns labelled 'Worth acting on' or 'Idea to test', and spend with no result. A \"Thakeen's ads\" section covers ads carrying NSR- codes. Then come the honesty note and 'Saved as performance-learnings.md; Noor reads it on every generation.'. Errors: no known columns, no name column, not enough numbers, no rows, too large, an unreadable file, 'Too many imports in the last hour. Try again later.'. Members see a read-only note instead of the drop zone.",
+   "system_reaction": "POST /api/performance: 401; forbid('performance.import') (403); 20 per hour (429 slow_down); no_file 400; too_large 413. readRows and analyze run with the workspace's ad-code index; an ImportError answers 422. savePerf replaces perfimport:{scope} and performance-learnings.md. No model and no credits, so it works while paused. Later, every generation (weekly plan, routines, chat drafts) reads the file through memoryBlock.",
+   "branches": [
+    "Member: read-only",
+    "Bad file: reason shown",
+    "Rate limited: 429"
+   ],
+   "conditions": "Owner or admin (performance.import)",
+   "sources": [
+    {
+     "path": "src/components/app/PerformanceImport.tsx",
+     "line": 64,
+     "end_line": 79
+    },
+    {
+     "path": "src/components/app/PerformanceImport.tsx",
+     "line": 123,
+     "end_line": 131
+    },
+    {
+     "path": "src/components/app/PerformanceImport.tsx",
+     "line": 134,
+     "end_line": 223
+    },
+    {
+     "path": "src/app/api/performance/route.ts",
+     "line": 25,
+     "end_line": 44
+    },
+    {
+     "path": "src/lib/perf-import.ts",
+     "line": 4
+    },
+    {
+     "path": "src/lib/perf-store.ts",
+     "line": 18,
+     "end_line": 20
+    },
+    {
+     "path": "src/lib/files.ts",
+     "line": 117,
+     "end_line": 118
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 62,
+     "end_line": 63
+    }
+   ],
+   "next": [
+    "daily-perf-metric",
+    "daily-perf-to-chat"
+   ],
+   "verified": true,
+   "stage": "daily"
+  },
+  {
+   "id": "daily-perf-metric",
+   "title": "Switch ranking metric",
+   "surface": "/{lang}/app/reports, Campaign results 'Metric' select",
+   "actor": "admin",
+   "action": "Chooses another metric that the uploaded file supports: ROAS, cost per result, CTR, conversion rate or open rate.",
+   "ui_response": "The same file is re-ranked and the card updates.",
+   "system_reaction": "The same CSV is re-posted to POST /api/performance with a metric, which is accepted only when it is a known metric. The snapshot and the learnings file are replaced.",
+   "branches": [
+    "Only offered after an upload in this visit, when the file supports more than one metric"
+   ],
+   "conditions": "Owner or admin (performance.import)",
+   "sources": [
+    {
+     "path": "src/components/app/PerformanceImport.tsx",
+     "line": 141,
+     "end_line": 147
+    },
+    {
+     "path": "src/app/api/performance/route.ts",
+     "line": 34,
+     "end_line": 38
+    },
+    {
+     "path": "src/lib/perf-import.ts",
+     "line": 154,
+     "end_line": 160
+    }
+   ],
+   "next": [
+    "daily-perf-to-chat"
+   ],
+   "verified": true,
+   "stage": "daily"
+  },
+  {
+   "id": "daily-ads-read",
+   "title": "Read ad account results",
+   "surface": "/{lang}/app/reports, Campaign results card",
+   "actor": "any-signed-in",
+   "action": "Clicks 'Read results from Meta Ads' or 'Read results from Snapchat Ads'.",
+   "ui_response": "The card refreshes with a 'Live' badge and the note 'The last 30 days from your ad account, read only. Refreshed automatically every day.'. Errors: 'The connection expired. Reconnect the account on the Integrations page.', 'No ad results in the last 30 days in this account.', 'No active ad account was found on this connection.', or 'The import failed. Try again.'",
+   "system_reaction": "POST /api/connect/{meta_ads|snapchat} {action:'sync_ads'}: 401, then the 'read' role (any member), then getFreshConnection (404 not_connected). syncAds makes read-only GETs and runs analyze, then savePerf and adsync are written. On failure the route answers 502. A 401/403 from the platform marks the connection for reconnect via refusedToken. No model and no credits.",
+   "branches": [
+    "Expired token: reconnect on Integrations",
+    "No results: message"
+   ],
+   "conditions": "meta_ads or snapchat connected",
+   "sources": [
+    {
+     "path": "src/components/app/PerformanceImport.tsx",
+     "line": 80,
+     "end_line": 89
+    },
+    {
+     "path": "src/components/app/PerformanceImport.tsx",
+     "line": 117,
+     "end_line": 122
+    },
+    {
+     "path": "src/app/api/connect/[provider]/route.ts",
+     "line": 35
+    },
+    {
+     "path": "src/app/api/connect/[provider]/route.ts",
+     "line": 38,
+     "end_line": 74
+    },
+    {
+     "path": "src/lib/perf-store.ts",
+     "line": 30,
+     "end_line": 36
+    }
+   ],
+   "next": [
+    "daily-perf-to-chat"
+   ],
+   "verified": true,
+   "stage": "daily"
+  },
+  {
+   "id": "daily-perf-remove",
+   "title": "Remove results import",
+   "surface": "/{lang}/app/reports, Campaign results header",
+   "actor": "admin",
+   "action": "Clicks 'Remove import'.",
+   "ui_response": "The card empties only after the server confirms. On failure: 'The import was not removed. Try again.'",
+   "system_reaction": "DELETE /api/performance: forbid('performance.delete') (403). clearPerf deletes perfimport:{scope} and performance-learnings.md, so later generations no longer read the findings.",
+   "branches": [
+    "Member: button not shown, 403"
+   ],
+   "conditions": "Owner or admin (performance.delete)",
+   "sources": [
+    {
+     "path": "src/components/app/PerformanceImport.tsx",
+     "line": 90,
+     "end_line": 96
+    },
+    {
+     "path": "src/components/app/PerformanceImport.tsx",
+     "line": 113
+    },
+    {
+     "path": "src/app/api/performance/route.ts",
+     "line": 46,
+     "end_line": 53
+    },
+    {
+     "path": "src/lib/perf-store.ts",
+     "line": 22,
+     "end_line": 24
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 60,
+     "end_line": 61
+    }
+   ],
+   "next": [
+    "daily-reports-open"
+   ],
+   "verified": true,
+   "stage": "daily"
+  },
+  {
+   "id": "daily-perf-to-chat",
+   "title": "Ask Noor from results",
+   "surface": "/{lang}/app/reports, Campaign results footer",
+   "actor": "any-signed-in",
+   "action": "Clicks 'Ask Noor for 5 variants of the winners' or 'Plan next week on these results'.",
+   "ui_response": "Opens /{lang}/app/chat with the prompt pre-filled in the message box (read performance-learnings.md, then write the variants or next week's plan). While paused (current), sending it gets the paused reply and nothing is created.",
+   "system_reaction": "Navigation only; the chat page passes ?prompt (up to 2000 characters) to ChatPanel as the input's initial text. What happens after sending belongs to the chat stage.",
+   "branches": [
+    "Paused (current): paused reply, no credits"
+   ],
+   "conditions": "A results snapshot exists",
+   "sources": [
+    {
+     "path": "src/components/app/PerformanceImport.tsx",
+     "line": 102
+    },
+    {
+     "path": "src/components/app/PerformanceImport.tsx",
+     "line": 219,
+     "end_line": 223
+    },
+    {
+     "path": "src/app/[lang]/app/chat/page.tsx",
+     "line": 76
+    },
+    {
+     "path": "src/components/app/ChatPanel.tsx",
+     "line": 457,
+     "end_line": 459
+    }
+   ],
+   "next": [],
+   "note": "Continues in the chat stage.",
+   "verified": true,
+   "stage": "daily"
+  },
+  {
+   "id": "daily-store-sync",
+   "title": "Sync store sales",
+   "surface": "/{lang}/app/reports, store card (StoreSales)",
+   "actor": "any-signed-in",
+   "action": "Clicks 'Sync from {store}' on the store card (Salla, Shopify or Zid).",
+   "ui_response": "Before any sync the card says 'Store sales have not been read yet.'. While syncing, the button reads 'Reading…'. The card then shows orders, sales, open abandoned carts, the value left in them, best sellers and the products most often left in carts. A 'Last sync' time follows, with notes when totals are partial or carts are unavailable. Errors appear under the card: Shopify or Zid order-access messages, or else the raw error code or HTTP status.",
+   "system_reaction": "POST /api/connect/{provider} {action:'sync_sales'}: the 'read' role (any member), then getFreshConnection (404 not_connected). syncSales stores the snapshot and writes store-sales.md, which memoryBlock feeds to later generations. No model and no credits. A fresh snapshot is what the gates of Dana's weekly report, Noor's cart recovery and Razan's cash forecast routines look for.",
+   "branches": [
+    "Orders access denied: store-specific message",
+    "Not connected: 404"
+   ],
+   "conditions": "A store (Salla, Shopify or Zid) connected",
+   "sources": [
+    {
+     "path": "src/components/app/ReportsPanel.tsx",
+     "line": 264,
+     "end_line": 297
+    },
+    {
+     "path": "src/app/api/connect/[provider]/route.ts",
+     "line": 35
+    },
+    {
+     "path": "src/app/api/connect/[provider]/route.ts",
+     "line": 68
+    },
+    {
+     "path": "src/lib/store-sales.ts",
+     "line": 18,
+     "end_line": 23
+    },
+    {
+     "path": "src/lib/routines.ts",
+     "line": 48,
+     "end_line": 66
+    }
+   ],
+   "next": [
+    "daily-cart-draft"
+   ],
+   "verified": true,
+   "stage": "daily"
+  },
+  {
+   "id": "daily-cart-draft",
+   "title": "Draft cart recovery",
+   "surface": "/{lang}/app/reports, store card",
+   "actor": "any-signed-in",
+   "action": "Clicks 'Draft cart-recovery messages · 3', shown when the last sync lists products left in carts.",
+   "ui_response": "While drafting it reads 'Noor is writing…'. On success a note 'The drafts are in your approval inbox.' links to the inbox. While paused (current): 'Content generation is paused for now. No credits were used.'. Other refusals show the raw error code under the card; no_credits, trial_over and agent_cap also open the limit modal.",
+   "system_reaction": "POST /api/generate {type:'cart_recovery'}: 401 without a session, then a paused model answers 503 model_paused before anything is read or charged. After that the one batch pipeline (generateBatch) checks in order: no_brand 400, trial_over 402, missing cart data 409 (no_cart_data). It then charges 3 credits: Noor's monthly cap is checked first (agent_cap 402, with the 80% warning on the charge that crosses it), then the balance (no_credits 402); the month's plan credits are spent before any top-up pack. It then generates with memory, stats and past feedback, and caps any discount the brand file does not offer. It saves items with initialStatus, writes an activity row, and runs judgeLater. A failure refunds with the charge's receipt.",
+   "branches": [
+    "Paused (current): refused, nothing charged",
+    "Out of credits, trial over or agent cap: limit modal"
+   ],
+   "conditions": "Store connected with carted products in the last sync; the server needs at least 3 credits (the button is not disabled for fewer)",
+   "sources": [
+    {
+     "path": "src/components/app/ReportsPanel.tsx",
+     "line": 256,
+     "end_line": 263
+    },
+    {
+     "path": "src/components/app/ReportsPanel.tsx",
+     "line": 298,
+     "end_line": 303
+    },
+    {
+     "path": "src/app/api/generate/route.ts",
+     "line": 11,
+     "end_line": 39
+    },
+    {
+     "path": "src/lib/generate-batch.ts",
+     "line": 176,
+     "end_line": 211
+    },
+    {
+     "path": "src/lib/cart-recovery.ts",
+     "line": 19,
+     "end_line": 23
+    },
+    {
+     "path": "src/components/app/LimitModal.tsx",
+     "line": 30,
+     "end_line": 35
+    }
+   ],
+   "next": [
+    "daily-inbox-brief"
+   ],
+   "verified": true,
+   "stage": "daily"
+  },
+  {
+   "id": "daily-ask-dana",
+   "title": "Ask Dana for a report",
+   "surface": "/{lang}/app/reports, 'Ask Dana' section",
+   "actor": "any-signed-in",
+   "action": "Optionally writes notes, then clicks one of Dana's report types: weekly report (3 credits), board deck (5) or dashboard spec (2). Each button is disabled when the balance is below its cost.",
+   "ui_response": "'Noor is working…', then 'Done. Items are in your inbox.'. While paused (current): 'Content generation is paused for now. No credits were used.'. Short of credits the line depends on who is asking and the plan: an owner on a paid plan reads 'Not enough credits. Top up with a credit pack or upgrade your plan on the Subscription page.'; a trial's owner is sent to choose a plan; anyone else is told to ask the account owner. 'Trial ended. Subscribe to continue.' and the agent-cap line 'This agent reached its monthly cap' come with the limit modal. There is also 'Complete your brand file first.' and 'Generation failed. Try again.'.",
+   "system_reaction": "POST /api/generate {type, notes}: 401 without a session; a paused model answers 503 model_paused before the type is even read or anything is charged; bad_type 400. Then generateBatch runs the same order as any batch: brand, trial, data the type needs, then the charge of the type's TASK_COST (weekly report 3, board deck 5, dashboard spec 2). Dana's monthly cap is checked in the ledger before the balance (agent_cap 402, then no_credits 402). It generates with the workspace stats and past feedback. For a board deck Razan then checks the numbers and leaves notes only, unless Governance turned cross-agent review off; a flagged item waits for the owner even under auto-approve. It saves, writes an activity row and runs the judge later. A failure refunds with the receipt.",
+   "branches": [
+    "Paused (current): refused, nothing charged",
+    "Limit hit: limit modal"
+   ],
+   "conditions": "Brand exists; enough credits (3 for the weekly report)",
+   "sources": [
+    {
+     "path": "src/components/app/ReportsPanel.tsx",
+     "line": 38,
+     "end_line": 47
+    },
+    {
+     "path": "src/components/app/ReportsPanel.tsx",
+     "line": 207,
+     "end_line": 224
+    },
+    {
+     "path": "src/app/api/generate/route.ts",
+     "line": 11,
+     "end_line": 39
+    },
+    {
+     "path": "src/lib/generate-batch.ts",
+     "line": 176,
+     "end_line": 261
+    },
+    {
+     "path": "src/lib/tasks.ts",
+     "line": 24,
+     "end_line": 32
+    },
+    {
+     "path": "src/components/app/LimitModal.tsx",
+     "line": 60,
+     "end_line": 64
+    },
+    {
+     "path": "src/lib/noor.ts",
+     "line": 336,
+     "end_line": 345
+    }
+   ],
+   "next": [
+    "daily-inbox-brief",
+    "daily-dana-deck"
+   ],
+   "verified": true,
+   "stage": "daily"
+  },
+  {
+   "id": "daily-dana-deck",
+   "title": "Download board deck",
+   "surface": "/{lang}/app/reports, Dana's reports and decks list",
+   "actor": "any-signed-in",
+   "action": "Clicks 'Download PowerPoint' on a board deck, or 'Open in inbox' on any of Dana's items.",
+   "ui_response": "The browser downloads a 16:9 PowerPoint built from the deck's text, with a cover in the brand's name, right-to-left for Arabic. 'Open in inbox' goes to /{lang}/app.",
+   "system_reaction": "GET /api/tasks/{id}/pptx: 401 without a session. The task is read under sc(u) (404 not_found otherwise), and parseSlides turns its edited or original body into slides with pptxgenjs. No model and no credits.",
+   "branches": [
+    "Task not in this workspace: 404"
+   ],
+   "conditions": "Signed in; a board_deck item in the selected range",
+   "sources": [
+    {
+     "path": "src/components/app/ReportsPanel.tsx",
+     "line": 237,
+     "end_line": 238
+    },
+    {
+     "path": "src/app/api/tasks/[id]/pptx/route.ts",
+     "line": 60,
+     "end_line": 82
+    }
+   ],
+   "next": [
+    "daily-reports-open"
+   ],
+   "verified": true,
+   "stage": "daily"
+  },
+  {
+   "id": "daily-governance-open",
+   "title": "Open Governance",
+   "surface": "/{lang}/app/governance (GovernancePanel)",
+   "actor": "any-signed-in",
+   "action": "Opens Governance from the sidebar, from an agent-cap notification, or from 'Open Governance' in the cap modal.",
+   "ui_response": "The page shows auto-approve chips per content type ('Auto-approve (skips the inbox)') and switches for Second reviewer, Cross-agent review, Learn from your edits and No em-dashes. It shows 'Weekly cap for scheduled tasks' (0-200) and 'Notify before publishing (minutes)', whose help text says auto-publishing is coming soon. The monthly credit cap per agent comes with 'Used this month: N credits' and 'Near the cap' or 'Cap reached' badges. Its note says caps cover batches, drafts, images and videos, including what you ask for in chat, and an added brand's setup from its URL (Noor's cap), and that chat messages themselves do not count (they have their own monthly allowance). After the caps comes the \"Majed's auto-run\" switch (off by default). When it is on and items are waiting, a 'Waiting for Majed's auto-run' list shows each item. Below sits 'Change history': the latest saves with when, who and what changed, and 'Restore' on each entry for the owner. In an added brand, Noor's 'Used this month' includes that brand's 9-credit setup once it was charged. Everyone except the owner sees 'Only the account owner can change this.', disabled controls, no Save button and no Restore buttons; the history and the waiting list stay visible.",
+   "system_reaction": "The server renders getGov(sc(u)), this brand's per-agent spend for the month from the user record, the change history (listGovHistory, up to 100 entries) and the auto-run queue (autoQueue: empty while the switch is off or no agent Majed hands work to has a cap); no request on mount. The spend is the counter the ledger writes: POST /api/onboard charges an added brand's setup (9 credits) to Noor in that brand's scope, and a refunded setup comes off it again. While paused (current), setup is refused before any charge, so it adds nothing.",
+   "branches": [
+    "Admin or member: read-only, history still listed",
+    "Auto-run off: no waiting list"
+   ],
+   "conditions": "Signed in",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/governance/page.tsx",
+     "line": 14,
+     "end_line": 27
+    },
+    {
+     "path": "src/components/app/GovernancePanel.tsx",
+     "line": 64,
+     "end_line": 66
+    },
+    {
+     "path": "src/components/app/GovernancePanel.tsx",
+     "line": 183,
+     "end_line": 266
+    },
+    {
+     "path": "src/components/app/GovernancePanel.tsx",
+     "line": 267,
+     "end_line": 299
+    },
+    {
+     "path": "src/components/app/Sidebar.tsx",
+     "line": 141
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 287
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 320,
+     "end_line": 349
+    },
+    {
+     "path": "src/app/api/onboard/route.ts",
+     "line": 105,
+     "end_line": 121
+    },
+    {
+     "path": "src/lib/pricing.ts",
+     "line": 207,
+     "end_line": 208
+    },
+    {
+     "path": "src/lib/credits.ts",
+     "line": 57,
+     "end_line": 59
+    },
+    {
+     "path": "src/lib/governance.ts",
+     "line": 39,
+     "end_line": 41
+    },
+    {
+     "path": "src/lib/handoff-auto.ts",
+     "line": 101,
+     "end_line": 104
+    }
+   ],
+   "next": [
+    "daily-governance-save",
+    "daily-governance-restore",
+    "daily-governance-queue-decline"
+   ],
+   "verified": true,
+   "stage": "daily"
+  },
+  {
+   "id": "daily-governance-save",
+   "title": "Save governance",
+   "surface": "/{lang}/app/governance",
+   "actor": "owner",
+   "action": "Changes auto-approve types, reviewer, cross-agent review, learning, em-dashes, the weekly cap, notify minutes, agent caps or Majed's auto-run switch (empty cap means no cap), then clicks 'Save'. Switching Majed's auto-run on first asks in a confirm dialog.",
+   "ui_response": "A cap that is not a whole number shows 'A cap must be a whole number or empty. Fix the field marked in red, then save.' and nothing is sent. Cancelling the auto-run dialog leaves the switch off. Otherwise 'Saving…', then 'Saved', with the fields showing the stored, clamped values and a new row at the top of 'Change history' when something changed. Refusals: 'Majed's auto-run needs a monthly cap for at least one agent he hands work to...', the confirmation line, 'Another save is in progress. Try again in a moment.', and 'Could not save. Try again.'.",
+   "system_reaction": "PUT /api/governance: 401, then forbid('governance.write') (owner only, 403). saveGovAs takes a per-brand lock (busy 409 after about two seconds) and merges the body into the stored settings: auto-approve keys must be task types with boolean values; weeklyCap is clamped to 0-200, notifyMinutes to 0-1440, caps to 0-100000; null or empty removes a cap; only real booleans change the switches. Majed's auto-run can be on only while an agent he hands work to has a cap (400 auto_handoff_needs_cap), and switching it from off to on needs the literal confirmation the page sends after its dialog (400 auto_handoff_confirm). A save that changed something writes gov:{scope}, pushes one revision (who, what changed, before and after) onto govhist:{scope} and adds a 'Governance changed' row to the activity log; a save that changes nothing writes nothing. The later effects are these. (1) Auto-approve makes new items of those types start approved only when the brand gate passes (banned words, placeholders) and no cross-agent reviewer flagged them. The judge can send an auto-approved item it auto-fails back to the inbox, with a bell item. (2) The reviewer and em-dash settings apply on generation; cross-agent review adds Razan's or Majed's notes to money and strategy types. (3) Learning off stops writing edits and rejections to preferences, and stops feeding past decisions to the prompts. (4) The weekly cap limits the weekly plan, the routines and Majed's auto-run. (5) Agent caps are enforced in the ledger's charge, before the balance check. Noor's cap in an added brand also covers that brand's setup from its URL: POST /api/onboard reads gov.agentCaps.noor for the brand's scope, refuses early when the 9 credits would pass it, then charges the setup under it (402 agent_cap, which opens the cap modal and says nothing was used). A retry of a setup already paid for reuses that charge and is not checked again. The setup charge that crosses 80% of the cap sends the same cap warning as a batch. notifyMinutes is stored, but nothing outside this page reads it. While paused (current), settings save normally but have nothing to apply to: nothing is generated, and an added brand's setup is refused as paused before the cap check.",
+   "branches": [
+    "Invalid cap: blocked in the browser",
+    "Not owner: 403",
+    "Auto-run on with no cap on an agent Majed hands work to: refused, nothing saved",
+    "Auto-run confirm cancelled: stays off",
+    "Another save in progress: 409 busy",
+    "Noor's cap in an added brand: can block that brand's setup (402 agent_cap)",
+    "Paused (current): saved, no generation to apply to"
+   ],
+   "conditions": "Account owner (governance.write)",
+   "sources": [
+    {
+     "path": "src/components/app/GovernancePanel.tsx",
+     "line": 81,
+     "end_line": 118
+    },
+    {
+     "path": "src/components/app/GovernancePanel.tsx",
+     "line": 188,
+     "end_line": 266
+    },
+    {
+     "path": "src/app/api/governance/route.ts",
+     "line": 12,
+     "end_line": 28
+    },
+    {
+     "path": "src/lib/governance.ts",
+     "line": 54,
+     "end_line": 66
+    },
+    {
+     "path": "src/lib/governance.ts",
+     "line": 84,
+     "end_line": 118
+    },
+    {
+     "path": "src/lib/governance.ts",
+     "line": 168,
+     "end_line": 195
+    },
+    {
+     "path": "src/lib/brand-rules.ts",
+     "line": 186,
+     "end_line": 188
+    },
+    {
+     "path": "src/lib/generate-batch.ts",
+     "line": 141,
+     "end_line": 158
+    },
+    {
+     "path": "src/lib/judge.ts",
+     "line": 138,
+     "end_line": 150
+    },
+    {
+     "path": "src/lib/credits.ts",
+     "line": 98,
+     "end_line": 102
+    },
+    {
+     "path": "src/app/api/onboard/route.ts",
+     "line": 99,
+     "end_line": 121
+    },
+    {
+     "path": "src/app/api/onboard/route.ts",
+     "line": 137,
+     "end_line": 145
+    },
+    {
+     "path": "src/app/api/tasks/[id]/route.ts",
+     "line": 89,
+     "end_line": 97
+    },
+    {
+     "path": "src/lib/feedback.ts",
+     "line": 41,
+     "end_line": 50
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 15,
+     "end_line": 16
+    }
+   ],
+   "next": [
+    "daily-agent-cap-hit",
+    "daily-governance-restore"
+   ],
+   "verified": true,
+   "stage": "daily"
+  },
+  {
+   "id": "daily-governance-restore",
+   "stage": "daily",
+   "title": "Restore an earlier setting",
+   "surface": "/{lang}/app/governance, 'Change history'",
+   "actor": "owner",
+   "action": "Clicks 'Restore' on a history entry and confirms the question 'Put every setting back as it was before this change? Changes made after it are undone too. The history keeps every entry.'",
+   "ui_response": "'Restoring…', then 'Restored' and a new entry at the top marked 'Restore of an earlier change', with every setting back as it was before the chosen change. If nothing differs: 'The settings already match, so there was nothing to restore.'. If that would switch Majed's auto-run back on, a second confirm dialog asks first and the restore is sent again with the confirmation. Errors: 'This change is no longer in the history, so it cannot be restored. Reload the page.', the auto-run cap and busy lines, 'Could not restore. Try again.'.",
+   "system_reaction": "POST /api/governance/rollback {id}: 401, then forbid('governance.write') (owner only, 403), then 20 restores per hour (429 slow_down). The id must be 12 hex characters (400 bad_id) and is looked up only in this brand's own history (404 not_found otherwise). rollbackGov builds the full patch from the entry's 'before' settings and sends it through saveGovAs, so today's checks apply to old values: the cap rule and the auto-run confirmation (400 auto_handoff_needs_cap, 400 auto_handoff_confirm), and a busy lock answers 409. A restore that changes something saves gov:{scope}, pushes a new revision marked rollbackOf (nothing is deleted) and adds a 'Governance restored' row to the activity log. No model and no credits.",
+   "branches": [
+    "Not owner: 403",
+    "Entry dropped past 100: 404, reload",
+    "Restore would switch auto-run on: confirm again",
+    "Nothing differs: no new entry"
+   ],
+   "conditions": "Account owner (governance.write); at least one history entry",
+   "next": [
+    "daily-governance-open"
+   ],
+   "sources": [
+    {
+     "path": "src/components/app/GovernancePanel.tsx",
+     "line": 119,
+     "end_line": 147
+    },
+    {
+     "path": "src/components/app/GovernancePanel.tsx",
+     "line": 267,
+     "end_line": 299
+    },
+    {
+     "path": "src/app/api/governance/rollback/route.ts",
+     "line": 16,
+     "end_line": 29
+    },
+    {
+     "path": "src/lib/governance.ts",
+     "line": 198,
+     "end_line": 212
+    },
+    {
+     "path": "src/lib/governance.ts",
+     "line": 215,
+     "end_line": 243
+    },
+    {
+     "path": "src/lib/governance.ts",
+     "line": 168,
+     "end_line": 195
+    },
+    {
+     "path": "src/lib/rate.ts",
+     "line": 107
+    }
+   ],
+   "verified": true
+  },
+  {
+   "id": "daily-governance-queue-decline",
+   "stage": "daily",
+   "title": "Decline a waiting auto-run item",
+   "surface": "/{lang}/app/governance, 'Waiting for Majed's auto-run'",
+   "actor": "any-signed-in",
+   "action": "Clicks 'Decline' on an item of a handoff Majed proposed, listed under the auto-run switch. The list shows the agent and type, the credits, the time and 'Open the conversation'.",
+   "ui_response": "'Declining…', then the item leaves the list with 'Declined: it will not start on its own.'. If it already ran, is running, was declined or is gone, it also leaves the list with 'This item is no longer waiting for the auto-run.'. Other refusals (busy, rate limit, a 403) show the handoff's error line. The Decline button shows only for logins with the 'drafts' right.",
+   "system_reaction": "POST /api/handoffs/{id}/decline {item}: 401, then forbid('drafts') (every role has it: owner, admin and member; 403 otherwise), then 120 per hour (429 slow_down). A malformed id is 404 and a malformed item 400. The handoff is read only under sc(u) and changed under its lock; a done, declined or running item is refused with 409, and a handoff locked by a run answers 409 busy. The item is marked declined, so the daily 06:00 UTC auto-run skips it and its card in the conversation shows declined. Nothing is charged and nothing is generated.",
+   "branches": [
+    "Item already run, declined or running: 409, removed from the list",
+    "Auto-run off or no cap: the list is not shown",
+    "Rate limited: 429"
+   ],
+   "conditions": "Majed's auto-run on, an agent he hands work to has a monthly cap, and an eligible item is waiting",
+   "next": [
+    "daily-governance-open"
+   ],
+   "sources": [
+    {
+     "path": "src/components/app/GovernancePanel.tsx",
+     "line": 148,
+     "end_line": 172
+    },
+    {
+     "path": "src/components/app/GovernancePanel.tsx",
+     "line": 241,
+     "end_line": 266
+    },
+    {
+     "path": "src/app/api/handoffs/[id]/decline/route.ts",
+     "line": 14,
+     "end_line": 32
+    },
+    {
+     "path": "src/lib/handoff-auto.ts",
+     "line": 96,
+     "end_line": 104
+    },
+    {
+     "path": "src/lib/handoffs.ts",
+     "line": 577
+    },
+    {
+     "path": "src/lib/rate.ts",
+     "line": 125
+    }
+   ],
+   "verified": true
+  },
+  {
+   "id": "daily-role-read-only",
+   "stage": "daily",
+   "title": "Read-only work screens",
+   "surface": "/{lang}/app/governance, /integrations, /tasks, /files, /onboarding, /reports (Campaign results card)",
+   "actor": "member",
+   "action": "A plain member opens a work screen whose settings belong to a higher role. On Governance this applies to an admin too.",
+   "ui_response": "A lock note appears. Governance says 'Only the account owner can change this.': every control is disabled, there is no Save and no Restore button, and the history and the waiting list are still listed. The other screens say 'Only the account owner or an admin can change this.': Integrations has no Connect, Disconnect or Import buttons and its Page and ad-account selects are disabled; Scheduled tasks has its switches disabled but 'Run now' still works; Files locks the core memory files and has no 'Import store products'; the brand form has its fields disabled and no Save. The Campaign results card shows 'Importing campaign results from a file, or removing them, is for the account owner or an admin. The findings are here to read.' and no upload.",
+   "system_reaction": "Each page passes flags from can(): governance.write is owner only; connectors, schedule.write, files.core.write/delete, catalog.import, brand.write and performance.import need admin. The flags only change what is shown: the routes (PUT /api/governance, POST /api/governance/rollback and the others) refuse the same writes with 403 in code.",
+   "branches": [
+    "admin on Governance: read-only",
+    "member on the others: read-only"
+   ],
+   "conditions": "Role below the one the screen needs.",
+   "sources": [
+    {
+     "path": "src/lib/roles.ts",
+     "line": 14,
+     "end_line": 16
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 38,
+     "end_line": 63
+    },
+    {
+     "path": "src/app/[lang]/app/governance/page.tsx",
+     "line": 27
+    },
+    {
+     "path": "src/components/app/GovernancePanel.tsx",
+     "line": 187,
+     "end_line": 188
+    },
+    {
+     "path": "src/components/app/GovernancePanel.tsx",
+     "line": 232,
+     "end_line": 238
+    },
+    {
+     "path": "src/app/[lang]/app/integrations/page.tsx",
+     "line": 16
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 110
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 126
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 135
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 141
+    },
+    {
+     "path": "src/components/app/IntegrationsPanel.tsx",
+     "line": 165
+    },
+    {
+     "path": "src/app/[lang]/app/tasks/page.tsx",
+     "line": 20
+    },
+    {
+     "path": "src/components/app/TasksPanel.tsx",
+     "line": 105
+    },
+    {
+     "path": "src/components/app/TasksPanel.tsx",
+     "line": 115
+    },
+    {
+     "path": "src/app/[lang]/app/files/page.tsx",
+     "line": 17,
+     "end_line": 18
+    },
+    {
+     "path": "src/components/app/FilesPanel.tsx",
+     "line": 75
+    },
+    {
+     "path": "src/components/app/FilesPanel.tsx",
+     "line": 78
+    },
+    {
+     "path": "src/app/[lang]/app/onboarding/page.tsx",
+     "line": 15
+    },
+    {
+     "path": "src/components/app/BrandForm.tsx",
+     "line": 53,
+     "end_line": 55
+    },
+    {
+     "path": "src/components/app/BrandForm.tsx",
+     "line": 106
+    },
+    {
+     "path": "src/components/app/PerformanceImport.tsx",
+     "line": 123,
+     "end_line": 124
+    },
+    {
+     "path": "src/lib/app-i18n.ts",
+     "line": 557
+    }
+   ],
+   "next": [],
+   "note": "manage-role-view covers the owner/admin screens (Subscription, Brands, Members, Earn credits, MCP, Profile); this covers the work screens.",
+   "verified": true
+  }
+ ]
+}

@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "sequence",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/13-daily-results/candidate.json",
+    "sha256": "3a3054e416239f78616c11de1fa90f72e8fb72111fe6f3545aed7ee57c9c0533",
+    "bytes": 21595
+  },
+  "artifact": {
+    "path": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/13-daily-results/13-daily-results.html",
+    "sha256": "81e35b65d58ed2a3aedef10aaa7e2655a2b542374998050ba3446500a72f14d6",
+    "bytes": 826459
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "fail"
+  },
+  "failedStage": "browser-check",
+  "diagnostics": [
+    {
+      "code": "viewer/browser-check-runtime",
+      "severity": "error",
+      "message": "browser-check could not complete its Chrome inspection.",
+      "subject": {
+        "artifact": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/13-daily-results/13-daily-results.html"
+      },
+      "evidence": {
+        "reason": "Chrome DevTools read pipe failed: stream ended\nChrome process: still running.\nChrome stderr:\nsandbox_extension_issue_file_to_process failed for /Applications/Google Chrome.app: 1 (Operation not permitted)\n[0930/112728.578708:ERROR:third_party/crashpad/crashpad/util/mach/bootstrap.cc:65] bootstrap_check_in org.chromium.crashpad.child_port_handshake.15840.15678317.QJCEGYLSJQYQIVHK: Permission denied (1100)\n[0930/112728.579473:ERROR:third_party/crashpad/crashpad/util/file/file_io.cc:103] ReadExactly: expected 4, observed 0\n[0930/112728.579942:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:208] open /Users/ihejazy/Library/Application Support/Google/Chrome/Crashpad/settings.dat: Operation not permitted (1)\n[0930/112728.580015:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:208] open /Users/ihejazy/Library/Application Support/Google/Chrome/Crashpad/settings.dat: Operation not permitted (1)\n[15837:15678280:0930/112728.588664:ERROR:chrome/browser/process_singleton_posix.cc:1043] Failed to create socket directory.\n[15837:15678280:0930/112728.588762:ERROR:chrome/app/chrome_main_delegate.cc:562] Failed to create a ProcessSingleton for your profile directory. This means that running multiple instances would start multiple browser processes rather than opening a new window in the existing process. Aborting now to avoid profile corruption.\nChrome transport: Node v24.5.0, libuv 1.51.0, darwin; pid=15837, exitCode=null, signalCode=null.\nChrome read pipe: readable=false, ended=true, destroyed=false, receivedBytes=0, messages=0, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=1, writtenBytes=50, bufferedBytes=0."
+      },
+      "supportedFixes": [
+        "resolve the reported Chrome inspection error, then rerun browser-check"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 1,
+    "shown": 1,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/13-daily-results/13-daily-results.finalize.json",
+    "summaryReceipt": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/13-daily-results/13-daily-results.finalize-summary.json",
+    "browserCheckReceipt": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/13-daily-results/13-daily-results.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-09-30T06:31:06.555Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 588
+}

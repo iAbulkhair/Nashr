@@ -1,0 +1,691 @@
+{
+  "key": "07-create-more",
+  "title": "Create: brand facts, threads, Generate, inspiration, calendar",
+  "person": "owner or team",
+  "steps": [
+    {
+      "id": "create-brand-fact",
+      "title": "Tell a brand fact",
+      "surface": "/{lang}/app/chat (update_brand tool)",
+      "actor": "owner",
+      "action": "Tells an agent a fact or preference, e.g. 'our tone is premium and calm, remember that', 'never say cheap', 'our offer is 20% off', 'you can use the word sale again'.",
+      "ui_response": "Status line '{Agent}: Saving this to your brand file…'. On a direct write the reply says what changed, with the label 'Brand file updated'. A change to the offers, or taking banned words out, comes back as a brand-change card with the label 'A brand change waits for your Save'; the agent is told to say nothing changed until Save.",
+      "system_reaction": "runTool first checks TOOL_ACTION: update_brand needs 'brand.write' (admin or owner), before anything runs. It then runs under brandlock:{scope}, with the value cut to 1000 characters. Written at once: tone, products, audience, competitors, preferred, city and name, plus dialect (only msa, saudi, emirati, kuwaiti or english; anything else keeps the current value). For banned, only new words are added and every existing word stays; the list must stay within 400 characters. Each direct write, and each banned-word addition, adds one brand_changed row to the activity log (the agent, who is chatting, via chat, and the field's name, never the value). offers and banned_remove write nothing: proposeBrandChange stores brandprop:{scope}:{id} for 7 days (its id also goes into a per-account index so an account wipe can find it), and the reply carries the card.",
+      "branches": [
+        "Member: the agent says only the owner or an admin can do this; nothing changes",
+        "Channels, languages or handles: refused; the agent points to the Brand page",
+        "Banned list would pass 400 characters: not saved",
+        "Words already banned, empty banned value, no banned word to remove, or offers unchanged: 'No change'",
+        "No brand file: 'No brand file yet.'",
+        "Paused: the paused reply; no tool runs"
+      ],
+      "conditions": "Owner or admin for any write",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 83,
+          "end_line": 85
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 111,
+          "end_line": 116
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 296,
+          "end_line": 299
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 550
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 570,
+          "end_line": 572
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 621,
+          "end_line": 682
+        },
+        {
+          "path": "src/lib/brand-proposals.ts",
+          "line": 55,
+          "end_line": 62
+        }
+      ],
+      "next": [
+        "create-proposal-card"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-proposal-card",
+      "title": "Save or dismiss change",
+      "surface": "ProposalCard in chat",
+      "actor": "owner",
+      "action": "On a brand-change card (offers, or banned words to take out), presses 'Save to brand file' or 'Dismiss'.",
+      "ui_response": "The header reads 'A brand change waiting for your Save · Current offers' (or '· Banned words'). The card shows 'Now' and 'After Save' side by side, with a line on why it matters. A card that came over MCP warns that another assistant asked for it. Both buttons are disabled while saving. Outcomes: 'Saved to the brand file.', 'Dismissed. Nothing changed.', 'This change was already decided or has expired (7 days).', 'This field changed after the proposal, so nothing was saved. Change it on the Brand page.', 'This change is being decided in another window. Wait a moment, then refresh.', 'Not saved. Try again.', or 'Your role does not allow this.'. A reloaded thread shows each card's current state.",
+      "system_reaction": "The browser sends POST /api/brand/proposals/{id} {action}. The server checks the session (401) and forbid('brand.write'); an action other than apply or dismiss gives 400. decideProposal takes a 60 s setNx claim (busy gives 409) and reads the proposal from sc(u) (404 when gone). Dismiss closes it. Apply works under brandlock. An offers change applies only while the offers still equal 'from'. A removal takes its words out of the list as it is now, and is stale only if none of them is still there. Then saveBrand, and brandprop-done is set for 7 days (a stale proposal is recorded the same way). An applied change also adds one brand_changed row to the activity log, by the login that pressed Save, with the proposing agent and the field's name; a dismissal writes none. history() reads the states back with proposalStates. No model call, so this works while paused.",
+      "branches": [
+        "Member: header 'A brand change waiting for the owner or an admin', the note 'Waiting for the account owner or an admin to approve. You can edit or reject it.', and no buttons",
+        "Stale: 409, nothing saved",
+        "Already decided or expired: 404",
+        "Another tab deciding: 409 busy",
+        "No brand file: 409 shown as 'Not saved. Try again.'; can be answered again"
+      ],
+      "conditions": "Owner or admin ('brand.write'); proposal younger than 7 days",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 310,
+          "end_line": 362
+        },
+        {
+          "path": "src/app/api/brand/proposals/[id]/route.ts",
+          "line": 15,
+          "end_line": 27
+        },
+        {
+          "path": "src/lib/brand-proposals.ts",
+          "line": 96,
+          "end_line": 130
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 52,
+          "end_line": 66
+        }
+      ],
+      "next": [
+        "create-send-message"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-remember-file",
+      "title": "Ask to remember a file",
+      "surface": "/{lang}/app/chat (write_file, read_file tools)",
+      "actor": "any-signed-in",
+      "action": "Asks an agent to save a longer note, brief or calendar into memory, or to read a workspace file.",
+      "ui_response": "Status line '{Agent}: Writing to my memory…' or '{Agent}: Reading your files…'. The reply says what was saved or read. Files get no action label.",
+      "system_reaction": "write_file cleans the name with safeName. The core files (brand.md, products.md, store-sales.md, performance-learnings.md, strategy.md, market-research.md, preferences.md) are refused over MCP, and in the app need 'files.core.write' (admin or owner). Then writeFile runs, with at most 200 files per workspace, and one file_written row (the file name only) is added to the activity log. read_file returns up to 12,000 characters, or 'File not found.'. No credits.",
+      "branches": [
+        "Member writing a core file: refused; the agent offers another file name",
+        "200 files already: the agent asks the owner to delete one on the Files page",
+        "Paused: the paused reply"
+      ],
+      "conditions": "Any role for other files; admin or owner for core files",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 117,
+          "end_line": 128
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 683,
+          "end_line": 707
+        },
+        {
+          "path": "src/lib/files.ts",
+          "line": 63
+        },
+        {
+          "path": "src/lib/files.ts",
+          "line": 114
+        }
+      ],
+      "next": [
+        "create-send-message"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-catalog-chat",
+      "title": "Import catalog in chat",
+      "surface": "/{lang}/app/chat (import_catalog tool)",
+      "actor": "owner",
+      "action": "Asks an agent to learn the store's products, or mentions products and prices.",
+      "ui_response": "Status line '{Agent}: Importing your products from the store…'. The tool description says this takes 20-60 seconds. The reply gives 'Imported N products into products.md' with up to 5 examples, or asks for 3-5 product links when none were found.",
+      "system_reaction": "Needs 'catalog.import' (admin or owner). It is refused over MCP. The URL is the model's, or brand.website. discoverProductUrls reads robots.txt and sitemaps through safeFetch (40 s budget, falling back to homepage links) and keeps up to 25 product URLs. importCatalog fetches them in batches of 5 and writes products.md. No credits.",
+      "branches": [
+        "Member: refused, nothing changes",
+        "No store URL known: the agent asks for it",
+        "No product pages found: the agent asks for links; products.md is still rewritten with an empty list",
+        "Paused: the paused reply (no tool runs)"
+      ],
+      "conditions": "Owner or admin",
+      "sources": [
+        {
+          "path": "src/lib/chat.ts",
+          "line": 129,
+          "end_line": 134
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 302
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 805,
+          "end_line": 814
+        },
+        {
+          "path": "src/lib/catalog.ts",
+          "line": 42,
+          "end_line": 77
+        },
+        {
+          "path": "src/lib/catalog.ts",
+          "line": 97,
+          "end_line": 117
+        }
+      ],
+      "next": [
+        "create-ask-batch"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-catalog-files",
+      "title": "Import catalog (Files)",
+      "surface": "/{lang}/app/files (FilesPanel 'Import store products')",
+      "actor": "owner",
+      "action": "Presses 'Import store products' on the Files page.",
+      "ui_response": "The button is disabled and 'Reading sitemap and product pages…' shows, followed by the raw progress code (sitemap, found:N, fetched:N). It ends with 'Imported N', or 'No product pages found. Send Noor 3-5 product links in chat.'. The file list then opens products.md. A dropped connection, an error event, or a stream that ends without a result shows the same 'No product pages found…' text and re-enables the button. Members do not see the button. Works while paused: no model is involved.",
+      "system_reaction": "POST /api/catalog. The server checks the session and forbid('catalog.import'). It uses the url from the body (the page sends none) or brand.website; with neither it answers 400 no_site. Otherwise it streams SSE progress while importCatalog runs through safeFetch and writes products.md. No credits.",
+      "branches": [
+        "403: 'Your role does not allow this.'",
+        "No website on the brand: 400, shown as the same 'No product pages found…' text",
+        "No product pages: the same text; products.md is rewritten with an empty list",
+        "Connection dropped before the final result: 'No product pages found…' (a result already sent counts as done)"
+      ],
+      "conditions": "Owner or admin",
+      "sources": [
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 30,
+          "end_line": 52
+        },
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 75
+        },
+        {
+          "path": "src/components/app/catalogImport.ts",
+          "line": 10,
+          "end_line": 43
+        },
+        {
+          "path": "src/app/[lang]/app/files/page.tsx",
+          "line": 18
+        },
+        {
+          "path": "src/app/api/catalog/route.ts",
+          "line": 9,
+          "end_line": 32
+        },
+        {
+          "path": "src/lib/catalog.ts",
+          "line": 108,
+          "end_line": 115
+        }
+      ],
+      "next": [
+        "create-ask-batch"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-new-thread",
+      "title": "Start a new thread",
+      "surface": "/{lang}/app/chat header",
+      "actor": "any-signed-in",
+      "action": "Presses '+ New conversation' in the chat header, '+ New' beside Noor in the sidebar or '+' beside a specialist there, or picks another specialist tab on a thread that already has messages.",
+      "ui_response": "In the chat header the messages clear, the title shows '…' and the same agent stays; from the sidebar the chat opens on the new thread. After the first reply, the title becomes the first 60 characters of the first message.",
+      "system_reaction": "POST /api/conversations {title:'…', agent}, with a session check only (an unknown agent becomes noor). There is no limit on the count, but lists read only the newest 100. touchConversation later raises the count and sets updatedAt and the title.",
+      "branches": [
+        "Pressed while a reply is running: the new thread opens, and the running reply still appears in the view, though it is saved to the old thread",
+        "Picking another specialist on the Getting-started thread or a thread with messages opens a new thread for that specialist; on an empty thread only its agent changes"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 536,
+          "end_line": 539
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 540,
+          "end_line": 548
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 623
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 636
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 53,
+          "end_line": 56
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 99
+        },
+        {
+          "path": "src/lib/conversations.ts",
+          "line": 16,
+          "end_line": 29
+        },
+        {
+          "path": "src/app/api/conversations/route.ts",
+          "line": 13,
+          "end_line": 18
+        }
+      ],
+      "next": [
+        "create-send-message"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-search-history",
+      "title": "Search chat history",
+      "surface": "Sidebar history box and /{lang}/app/conversations",
+      "actor": "any-signed-in",
+      "action": "Types in 'Search conversations…' in the sidebar and presses Enter, presses 'See all conversations', or clicks one of the 3 recent threads.",
+      "ui_response": "/{lang}/app/conversations?q=… shows two tiles: Conversations (Getting started included) and 'Tasks from chat (90 days)'. Hits appear under '“q” · N', each with the thread title and a snippet linking to the thread. The full list follows, with agent, message count and date. A recent thread opens /{lang}/app/chat?conv={id}.",
+      "system_reaction": "The page calls searchConversations directly. It does a substring search across the default thread and up to 100 threads (the 200 newest messages each), stopping at 50 hits. The page also reads listConversations and the 90-day light index, counting tasks with source 'chat'. The sidebar list comes from GET /api/conversations. No model call.",
+      "branches": [
+        "Empty query: nothing submitted",
+        "A repeated ?q= key is treated as no query"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 45
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 125,
+          "end_line": 131
+        },
+        {
+          "path": "src/app/[lang]/app/conversations/page.tsx",
+          "line": 13,
+          "end_line": 55
+        },
+        {
+          "path": "src/lib/conversations.ts",
+          "line": 10,
+          "end_line": 15
+        },
+        {
+          "path": "src/lib/conversations.ts",
+          "line": 51,
+          "end_line": 65
+        },
+        {
+          "path": "src/app/api/conversations/route.ts",
+          "line": 6,
+          "end_line": 12
+        }
+      ],
+      "next": [
+        "create-reopen-thread"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-reopen-thread",
+      "title": "Reopen a past thread",
+      "surface": "/{lang}/app/chat?conv={id}",
+      "actor": "any-signed-in",
+      "action": "Clicks a thread in the list, in a search hit or in the sidebar.",
+      "ui_response": "The chat opens with that thread's 40 newest messages and its agent selected. Cards show their current state (a brand or absence card already decided shows its outcome; a Majed handoff card shows its stored state, or that it is no longer available).",
+      "system_reaction": "history(scope, conv) reads chat:{scope}:{conv} and looks up brand-card and absence-card states together. The page reads Majed's handoff records, their tasks and the settings once. ChatPanel sets the agent from the conversation record.",
+      "branches": [
+        "Non-hex or wrong-length id: the Getting-started thread opens",
+        "Hex id with no conversation record: an empty thread titled '…' with Noor. Messages sent there are saved under that key, but the thread never appears in any list."
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 51
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 53
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 56,
+          "end_line": 70
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 52,
+          "end_line": 66
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 466
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 481
+        }
+      ],
+      "next": [
+        "create-send-message"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-open-generate",
+      "title": "Open Generate page",
+      "surface": "/{lang}/app/generate",
+      "actor": "any-signed-in",
+      "action": "Opens 'Ask Noor' from the sidebar account menu, or 'Ask for a new batch' on an empty approvals inbox.",
+      "ui_response": "The page shows 'What do you need from Noor today?', the line 'Every request lands as ready items in your approval inbox.', and an optional notes box ('Notes for this batch (optional): season, specific product, offer…'). Below it, one section per agent that owns deliverables (all but Reem), each with type cards showing name, description and cost in credits. Since pricing phase 1 three types cost more: Noor's 'Weekly plan' shows 2 credits (was 1), Dana's 'Weekly report' 3 (was 2) and Sami's 'Follow-up cadence (7 touches)' 4 (was 3). A card is disabled when the balance at page load is below its cost.",
+      "system_reaction": "The server checks the session (none: /{lang}/app/login) and the brand file (none: /{lang}/app/start), then passes the balance, whether the person may subscribe and whether the plan sells top-up packs to the panel. Each card's cost is TASK_COST[type] from src/lib/tasks.ts, the same table POST /api/generate charges.",
+      "branches": [
+        "No brand file: redirect to /{lang}/app/start"
+      ],
+      "conditions": "Signed in, any role; brand file",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/generate/page.tsx",
+          "line": 10,
+          "end_line": 17
+        },
+        {
+          "path": "src/components/app/GeneratePanel.tsx",
+          "line": 48,
+          "end_line": 83
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 166
+        },
+        {
+          "path": "src/components/app/Inbox.tsx",
+          "line": 237,
+          "end_line": 241
+        },
+        {
+          "path": "src/lib/tasks.ts",
+          "line": 24,
+          "end_line": 32
+        }
+      ],
+      "next": [
+        "create-run-generate"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-run-generate",
+      "title": "Run a batch type",
+      "surface": "/{lang}/app/generate (GeneratePanel)",
+      "actor": "any-signed-in",
+      "action": "Optionally writes notes, then presses a type card (e.g. 10 social posts, SEO article, sales scripts, board deck).",
+      "ui_response": "The pressed card highlights, every card is disabled, and 'Noor is working…' shows. On success: 'Done. Items are in your inbox.' and the inbox opens. On failure, the message explains why (see branches). WHILE PAUSED: 'Content generation is paused for now. No credits were used.'",
+      "system_reaction": "POST /api/generate {type, notes} (maxDuration 300). The server checks the session, then whether the model is paused (503 model_paused, before any charge). It checks the type (400 bad_type), then generateBatch runs in a fixed order: brand (400 no_brand), trial (402 trial_over), cart data (409 no_cart_data). If the month's credits are due they are renewed first. charge() then takes TASK_COST[type] (weekly plan 2, weekly report 3, follow-up cadence 4) against the owning agent's cap (402 agent_cap, or 402 no_credits; either refusal writes one activity row and charges nothing), followed by warnAgentCap. In a refunding try it reads preferences, memory, stats and feedback and calls generate() (claude-opus-5, the reviewer and the cross-agent review when governance has them on), then saves every task together with source 'manual' and the notes as brief, auto-approved or pending. On a throw at any point it refunds, removes any saved tasks and answers 503 model_paused or 502 generation_failed. After the save it writes the batch's activity rows, then judgeLater and track('generate'). No role check beyond the session.",
+      "branches": [
+        "Paused: 503, 'Content generation is paused for now. No credits were used.'",
+        "No credits: the owner on a paid plan reads 'Not enough credits. Top up with a credit pack or upgrade your plan on the Subscription page.'; a trial owner is sent to choose a plan; another role is told to ask the account owner; the limit dialog opens",
+        "Trial over: 'Trial ended. Subscribe to continue.' and the limit dialog",
+        "Agent cap: 'This agent reached its monthly cap' and the limit dialog",
+        "No cart data: 'No abandoned-cart data yet. Connect Salla or Shopify and sync sales from Reports, then try again. No credits were used.'",
+        "No brand: 'Complete your brand file first.'",
+        "Server-side generation failure: 'Generation failed. Try again.' (credits refunded)",
+        "Dropped connection or non-JSON gateway answer: the same 'Generation failed' text; the page cannot tell whether the server finished"
+      ],
+      "conditions": "Signed in, any role; brand file; enough credits",
+      "sources": [
+        {
+          "path": "src/components/app/GeneratePanel.tsx",
+          "line": 23,
+          "end_line": 46
+        },
+        {
+          "path": "src/components/app/GeneratePanel.tsx",
+          "line": 52
+        },
+        {
+          "path": "src/app/api/generate/route.ts",
+          "line": 11,
+          "end_line": 40
+        },
+        {
+          "path": "src/lib/generate-batch.ts",
+          "line": 187,
+          "end_line": 262
+        },
+        {
+          "path": "src/lib/tasks.ts",
+          "line": 24,
+          "end_line": 32
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 367,
+          "end_line": 369
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 398
+        },
+        {
+          "path": "src/components/app/LimitModal.tsx",
+          "line": 30,
+          "end_line": 35
+        },
+        {
+          "path": "src/components/app/LimitModal.tsx",
+          "line": 60,
+          "end_line": 63
+        }
+      ],
+      "next": [
+        "create-judge-later",
+        "create-limit-modal",
+        "create-cap-alert"
+      ],
+      "note": "Success exits to the approvals inbox (review stage).",
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-browse-inspo",
+      "title": "Browse inspiration",
+      "surface": "/{lang}/app/inspo (InspoPanel)",
+      "actor": "any-signed-in",
+      "action": "Opens Gulf inspiration, types in 'Search brand or subject', and taps the channel and type pills.",
+      "ui_response": "16 fixed content patterns, each with channel, type, industry, title, example brand, 'Why it may work' and a sample. They filter live; 'No results' shows when nothing matches.",
+      "system_reaction": "Session check only (none: /{lang}/app/login). INSPO is a fixed list in code; the search matches title, brand, why, sample and industry in the browser. No model, no credits.",
+      "branches": [],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/inspo/page.tsx",
+          "line": 7,
+          "end_line": 12
+        },
+        {
+          "path": "src/components/app/InspoPanel.tsx",
+          "line": 12,
+          "end_line": 24
+        },
+        {
+          "path": "src/components/app/InspoPanel.tsx",
+          "line": 44,
+          "end_line": 60
+        },
+        {
+          "path": "src/lib/inspo.ts",
+          "line": 4,
+          "end_line": 21
+        }
+      ],
+      "next": [
+        "create-use-inspo"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-use-inspo",
+      "title": "Use as reference",
+      "surface": "/{lang}/app/inspo card button",
+      "actor": "any-signed-in",
+      "action": "Presses 'Use as reference →' on a pattern.",
+      "ui_response": "The button shows '…' while the whole chat turn runs. The chat then opens on the Getting-started thread with the request ('Use this as a reference for the next content: …') and Noor's reply. WHILE PAUSED: the thread shows the request and the paused reply. If the turn is refused, nothing is written to the chat and the person stays on the page: an ended trial or a used-up monthly chat allowance (or too few credits to continue on credits) raises the matching limit dialog, and an hourly or daily ceiling shows the server's own message in a box at the top of the page.",
+      "system_reaction": "POST /api/chat {text} with the x-lang header and no conv, agent or stream: Noor, the default thread, a JSON reply. The route checks the session, then an ended trial (402 trial_over), then the hourly and daily ceilings (429 slow_down), then the plan's monthly chat allowance (402 chat_allowance, or chat_credits when continue-on-credits is on but the balance is too low), all before anything is saved. The page reads only 402 and 429 answers; any other answer, including 502, still navigates to /{lang}/app/chat.",
+      "branches": [
+        "Trial over, allowance used up or too few credits: the limit dialog; the chat does not open",
+        "Hourly or daily ceiling (429): the server's message appears on the page; the chat does not open",
+        "Server error (502) or network failure: the chat still opens; the request may already be saved there without a reply, since chat() saves it before the model turn",
+        "Paused: paused reply in the thread (no model call, so the message is not counted)"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/components/app/InspoPanel.tsx",
+          "line": 25,
+          "end_line": 43
+        },
+        {
+          "path": "src/components/app/InspoPanel.tsx",
+          "line": 51
+        },
+        {
+          "path": "src/components/app/InspoPanel.tsx",
+          "line": 75
+        },
+        {
+          "path": "src/app/api/chat/route.ts",
+          "line": 43,
+          "end_line": 50
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 373
+        }
+      ],
+      "next": [
+        "create-send-message"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-view-calendar",
+      "title": "View the calendar",
+      "surface": "/{lang}/app/calendar (CalendarPanel)",
+      "actor": "any-signed-in",
+      "action": "Opens the calendar and switches Week or Month, uses ‹ › or the arrow keys (reversed in Arabic), T for today and V to switch view, and clicks a day, an item or the side card's ‹ ›.",
+      "ui_response": "Week view shows one row per channel (the brand's channels plus defaults and any item channel, up to 10) across 7 days. Month view is a day grid with counts. Items that are approved, or that have a scheduled date, sit on scheduledFor (else their creation date); rejected items are hidden. The side card lists the selected day's items with an 'Approved' or 'Waiting' badge and a preview.",
+      "system_reaction": "On the server: the session, then listLiteDays(scope, 365) and the brand's channels. Everything else happens in the browser. No model, no credits.",
+      "branches": [
+        "No session: /{lang}/app/login"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/calendar/page.tsx",
+          "line": 8,
+          "end_line": 17
+        },
+        {
+          "path": "src/components/app/CalendarPanel.tsx",
+          "line": 22,
+          "end_line": 53
+        },
+        {
+          "path": "src/components/app/CalendarPanel.tsx",
+          "line": 71,
+          "end_line": 74
+        },
+        {
+          "path": "src/components/app/CalendarPanel.tsx",
+          "line": 77,
+          "end_line": 80
+        },
+        {
+          "path": "src/components/app/CalendarPanel.tsx",
+          "line": 96,
+          "end_line": 110
+        },
+        {
+          "path": "src/components/app/CalendarPanel.tsx",
+          "line": 129,
+          "end_line": 133
+        },
+        {
+          "path": "src/components/app/CalendarPanel.tsx",
+          "line": 141
+        }
+      ],
+      "next": [
+        "create-calendar-add"
+      ],
+      "verified": true,
+      "stage": "create"
+    },
+    {
+      "id": "create-calendar-add",
+      "title": "Add content for a day",
+      "surface": "/{lang}/app/calendar",
+      "actor": "any-signed-in",
+      "action": "On an empty selected day presses 'Add content'; or clicks an empty cell in the week grid; or presses 'Set dates' next to the 'Approved, no date' count.",
+      "ui_response": "'Add content' opens /{lang}/app/chat?prompt=Prepare content for YYYY-MM-DD, with that text in the input ready to edit and send (it is not sent). An empty cell and 'Set dates' open the approvals inbox.",
+      "system_reaction": "Navigation only. The chat page cuts ?prompt to 2000 characters and passes it as the initial input.",
+      "branches": [],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/components/app/CalendarPanel.tsx",
+          "line": 104
+        },
+        {
+          "path": "src/components/app/CalendarPanel.tsx",
+          "line": 138
+        },
+        {
+          "path": "src/components/app/CalendarPanel.tsx",
+          "line": 143
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 76
+        }
+      ],
+      "next": [
+        "create-send-message"
+      ],
+      "verified": true,
+      "stage": "create"
+    }
+  ]
+}

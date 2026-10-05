@@ -1,0 +1,1040 @@
+{
+ "schema_version": 1,
+ "diagram_type": "sequence",
+ "meta": {
+  "title": "Every day: reports, results and governance",
+  "output": ".archify/sequence-nashr-journey-20260930-105952/13-daily-results/13-daily-results.html",
+  "locale": "en",
+  "quality_profile": "showcase",
+  "column_fit": "spread",
+  "repository": {
+   "url": "https://github.com/iAbulkhair/Nashr.git",
+   "provider": "github",
+   "link_mode": "web",
+   "revision": "f0e7fdecf7d70d8c60ba76650f22440433926add"
+  }
+ },
+ "participants": [
+  {
+   "id": "person",
+   "type": "external",
+   "label": "Person",
+   "sublabel": "owner or team",
+   "sources": [
+    {
+     "path": "src/lib/roles.ts",
+     "line": 14,
+     "end_line": 16
+    },
+    {
+     "path": "src/lib/roles.ts",
+     "line": 38,
+     "end_line": 63
+    }
+   ]
+  },
+  {
+   "id": "page",
+   "type": "frontend",
+   "label": "Browser page",
+   "sublabel": "what they see",
+   "sources": [
+    {
+     "path": "src/components/app/ReportsPanel.tsx",
+     "line": 178,
+     "end_line": 244
+    },
+    {
+     "path": "src/components/app/PerformanceImport.tsx",
+     "line": 134,
+     "end_line": 223
+    },
+    {
+     "path": "src/components/app/GovernancePanel.tsx",
+     "line": 81,
+     "end_line": 118
+    }
+   ]
+  },
+  {
+   "id": "checks",
+   "type": "security",
+   "label": "Checks in code",
+   "sublabel": "auth · roles · limits",
+   "sources": [
+    {
+     "path": "src/app/api/performance/route.ts",
+     "line": 25,
+     "end_line": 44
+    },
+    {
+     "path": "src/app/api/generate/route.ts",
+     "line": 11,
+     "end_line": 39
+    },
+    {
+     "path": "src/app/api/governance/route.ts",
+     "line": 12,
+     "end_line": 28
+    }
+   ]
+  },
+  {
+   "id": "server",
+   "type": "backend",
+   "label": "Nashr server",
+   "sublabel": "API routes",
+   "sources": [
+    {
+     "path": "src/app/[lang]/app/reports/page.tsx",
+     "line": 18,
+     "end_line": 33
+    },
+    {
+     "path": "src/app/api/connect/[provider]/route.ts",
+     "line": 38,
+     "end_line": 74
+    },
+    {
+     "path": "src/app/api/tasks/[id]/pptx/route.ts",
+     "line": 60,
+     "end_line": 82
+    }
+   ]
+  },
+  {
+   "id": "store",
+   "type": "database",
+   "label": "Redis",
+   "sublabel": "account data",
+   "sources": [
+    {
+     "path": "src/lib/perf-store.ts",
+     "line": 18,
+     "end_line": 20
+    },
+    {
+     "path": "src/lib/store-sales.ts",
+     "line": 18,
+     "end_line": 23
+    },
+    {
+     "path": "src/lib/governance.ts",
+     "line": 84,
+     "end_line": 118
+    }
+   ]
+  },
+  {
+   "id": "outside",
+   "type": "external",
+   "label": "Outside services",
+   "sublabel": "ad accounts, stores",
+   "sources": [
+    {
+     "path": "src/lib/perf-store.ts",
+     "line": 30,
+     "end_line": 36
+    },
+    {
+     "path": "src/lib/store-sales.ts",
+     "line": 18,
+     "end_line": 23
+    }
+   ]
+  }
+ ],
+ "segments": [
+  {
+   "from": 160,
+   "to": 472,
+   "label": "Reports"
+  },
+  {
+   "from": 504,
+   "to": 1606,
+   "label": "Campaign results"
+  },
+  {
+   "from": 1638,
+   "to": 2292,
+   "label": "Store sales"
+  },
+  {
+   "from": 2324,
+   "to": 2948,
+   "label": "Dana's reports"
+  },
+  {
+   "from": 2980,
+   "to": 4116,
+   "label": "Governance and roles"
+  }
+ ],
+ "messages": [
+  {
+   "id": "daily-reports-open--do",
+   "from": "person",
+   "to": "page",
+   "y": 190,
+   "label": "Open performance, pick a range",
+   "variant": "emphasis",
+   "note": "sidebar 'performance' or 'All' on the chat metrics tile; range pills or custom from/to"
+  },
+  {
+   "id": "daily-reports-open--load",
+   "from": "page",
+   "to": "server",
+   "y": 234,
+   "label": "reload /app/reports?range=",
+   "variant": "emphasis"
+  },
+  {
+   "id": "daily-reports-open--read",
+   "from": "server",
+   "to": "store",
+   "y": 264,
+   "label": "light index, then KPIs + snapshots",
+   "variant": "default",
+   "note": "KPIs, connections, snapshots in one round; no model call"
+  },
+  {
+   "id": "daily-reports-open--render",
+   "from": "server",
+   "to": "page",
+   "y": 308,
+   "label": "tiles, trends, agent quality, Dana",
+   "variant": "return",
+   "note": "no brand: redirect to /start"
+  },
+  {
+   "id": "daily-reports-open--see",
+   "from": "page",
+   "to": "person",
+   "y": 352,
+   "label": "Reports for the chosen window",
+   "variant": "return",
+   "note": "missing data source: banner to Integrations"
+  },
+  {
+   "id": "daily-reports-tiles--do",
+   "from": "person",
+   "to": "page",
+   "y": 400,
+   "label": "Add or remove tiles, toggle lines",
+   "variant": "default",
+   "note": "a locked platform metric links to Integrations"
+  },
+  {
+   "id": "daily-reports-tiles--see",
+   "from": "page",
+   "to": "person",
+   "y": 444,
+   "label": "Tiles change, chart redraws",
+   "variant": "return",
+   "note": "kept in localStorage 'nashr:metrics', no request; private window: not kept"
+  },
+  {
+   "id": "daily-perf-upload--do",
+   "from": "person",
+   "to": "page",
+   "y": 534,
+   "label": "Drop an ads report CSV",
+   "variant": "emphasis",
+   "note": "over 2 MB refused in the browser; members see a read-only note"
+  },
+  {
+   "id": "daily-perf-upload--post",
+   "from": "page",
+   "to": "server",
+   "y": 578,
+   "label": "POST /api/performance",
+   "variant": "emphasis"
+  },
+  {
+   "id": "daily-perf-upload--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 608,
+   "label": "401 · performance.import · 20/h",
+   "variant": "security",
+   "note": "403 member, 429 slow_down, 400 no_file, 413 too_large"
+  },
+  {
+   "id": "daily-perf-upload--save",
+   "from": "server",
+   "to": "store",
+   "y": 652,
+   "label": "savePerf: perfimport + learnings",
+   "variant": "dashed",
+   "note": "no model, no credits: works while paused"
+  },
+  {
+   "id": "daily-perf-upload--result",
+   "from": "server",
+   "to": "page",
+   "y": 696,
+   "label": "ranked ads, patterns, spend",
+   "variant": "return",
+   "note": "422: bad file, reason shown"
+  },
+  {
+   "id": "daily-perf-upload--see",
+   "from": "page",
+   "to": "person",
+   "y": 740,
+   "label": "Saved as performance-learnings.md",
+   "variant": "return",
+   "note": "best and weakest ads, patterns; Noor reads it on every generation"
+  },
+  {
+   "id": "daily-perf-metric--do",
+   "from": "person",
+   "to": "page",
+   "y": 788,
+   "label": "Pick another ranking metric",
+   "variant": "default",
+   "note": "only after an upload this visit, if the file supports several"
+  },
+  {
+   "id": "daily-perf-metric--post",
+   "from": "page",
+   "to": "server",
+   "y": 832,
+   "label": "re-POST same CSV + metric",
+   "variant": "default",
+   "note": "metric accepted only when it is a known one"
+  },
+  {
+   "id": "daily-perf-metric--save",
+   "from": "server",
+   "to": "store",
+   "y": 876,
+   "label": "replace snapshot + learnings",
+   "variant": "dashed"
+  },
+  {
+   "id": "daily-perf-metric--result",
+   "from": "server",
+   "to": "page",
+   "y": 906,
+   "label": "same file re-ranked",
+   "variant": "return"
+  },
+  {
+   "id": "daily-perf-metric--see",
+   "from": "page",
+   "to": "person",
+   "y": 936,
+   "label": "Card updates",
+   "variant": "return"
+  },
+  {
+   "id": "daily-ads-read--do",
+   "from": "person",
+   "to": "page",
+   "y": 978,
+   "label": "Read results from Meta/Snap Ads",
+   "variant": "default"
+  },
+  {
+   "id": "daily-ads-read--post",
+   "from": "page",
+   "to": "server",
+   "y": 1008,
+   "label": "POST /api/connect/{p} sync_ads",
+   "variant": "default"
+  },
+  {
+   "id": "daily-ads-read--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 1038,
+   "label": "401 · 'read' role · connected?",
+   "variant": "security",
+   "note": "any member; 404 not_connected"
+  },
+  {
+   "id": "daily-ads-read--pull",
+   "from": "server",
+   "to": "outside",
+   "y": 1082,
+   "label": "read-only GETs to the ad account",
+   "variant": "default",
+   "note": "platform 401/403: marked for reconnect"
+  },
+  {
+   "id": "daily-ads-read--save",
+   "from": "server",
+   "to": "store",
+   "y": 1126,
+   "label": "savePerf + adsync",
+   "variant": "dashed",
+   "note": "analyze, then save; no model, no credits"
+  },
+  {
+   "id": "daily-ads-read--result",
+   "from": "server",
+   "to": "page",
+   "y": 1170,
+   "label": "snapshot, or 502 on failure",
+   "variant": "return"
+  },
+  {
+   "id": "daily-ads-read--see",
+   "from": "page",
+   "to": "person",
+   "y": 1200,
+   "label": "'Live' badge, last 30 days",
+   "variant": "return",
+   "note": "expired: reconnect on Integrations; no results: message"
+  },
+  {
+   "id": "daily-perf-remove--do",
+   "from": "person",
+   "to": "page",
+   "y": 1248,
+   "label": "Remove import",
+   "variant": "default"
+  },
+  {
+   "id": "daily-perf-remove--delete",
+   "from": "page",
+   "to": "server",
+   "y": 1278,
+   "label": "DELETE /api/performance",
+   "variant": "default"
+  },
+  {
+   "id": "daily-perf-remove--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 1308,
+   "label": "performance.delete",
+   "variant": "security",
+   "note": "owner or admin; member: button hidden, 403"
+  },
+  {
+   "id": "daily-perf-remove--clear",
+   "from": "server",
+   "to": "store",
+   "y": 1352,
+   "label": "clearPerf: snapshot + .md deleted",
+   "variant": "dashed",
+   "note": "later generations no longer read the findings"
+  },
+  {
+   "id": "daily-perf-remove--result",
+   "from": "server",
+   "to": "page",
+   "y": 1396,
+   "label": "removal confirmed",
+   "variant": "return"
+  },
+  {
+   "id": "daily-perf-remove--see",
+   "from": "page",
+   "to": "person",
+   "y": 1426,
+   "label": "Card empties once confirmed",
+   "variant": "return",
+   "note": "failure: 'The import was not removed. Try again.'"
+  },
+  {
+   "id": "daily-perf-to-chat--do",
+   "from": "person",
+   "to": "page",
+   "y": 1474,
+   "label": "Ask Noor: 5 variants or next week",
+   "variant": "default"
+  },
+  {
+   "id": "daily-perf-to-chat--nav",
+   "from": "page",
+   "to": "server",
+   "y": 1504,
+   "label": "open /app/chat?prompt=",
+   "variant": "default",
+   "note": "navigation only; prompt up to 2000 characters"
+  },
+  {
+   "id": "daily-perf-to-chat--render",
+   "from": "server",
+   "to": "page",
+   "y": 1548,
+   "label": "prompt as the chat input text",
+   "variant": "return"
+  },
+  {
+   "id": "daily-perf-to-chat--see",
+   "from": "page",
+   "to": "person",
+   "y": 1578,
+   "label": "Chat opens, prompt pre-filled",
+   "variant": "return",
+   "note": "paused now: sending gets the paused reply, nothing is created"
+  },
+  {
+   "id": "daily-store-sync--do",
+   "from": "person",
+   "to": "page",
+   "y": 1668,
+   "label": "Sync from Salla, Shopify or Zid",
+   "variant": "emphasis"
+  },
+  {
+   "id": "daily-store-sync--post",
+   "from": "page",
+   "to": "server",
+   "y": 1698,
+   "label": "POST /api/connect/{p} sync_sales",
+   "variant": "emphasis"
+  },
+  {
+   "id": "daily-store-sync--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 1728,
+   "label": "'read' role · connected?",
+   "variant": "security",
+   "note": "any member; 404 not_connected"
+  },
+  {
+   "id": "daily-store-sync--pull",
+   "from": "server",
+   "to": "outside",
+   "y": 1772,
+   "label": "syncSales reads the store",
+   "variant": "default"
+  },
+  {
+   "id": "daily-store-sync--save",
+   "from": "server",
+   "to": "store",
+   "y": 1802,
+   "label": "snapshot + store-sales.md",
+   "variant": "dashed",
+   "note": "fed to later generations; no model, no credits"
+  },
+  {
+   "id": "daily-store-sync--result",
+   "from": "server",
+   "to": "page",
+   "y": 1846,
+   "label": "orders, sales, carts, best sellers",
+   "variant": "return"
+  },
+  {
+   "id": "daily-store-sync--see",
+   "from": "page",
+   "to": "person",
+   "y": 1876,
+   "label": "Store card with 'Last sync'",
+   "variant": "return",
+   "note": "orders access denied: store-specific message"
+  },
+  {
+   "id": "daily-cart-draft--do",
+   "from": "person",
+   "to": "page",
+   "y": 1924,
+   "label": "Draft cart-recovery messages · 3",
+   "variant": "emphasis",
+   "note": "shown when the last sync lists carted products"
+  },
+  {
+   "id": "daily-cart-draft--post",
+   "from": "page",
+   "to": "server",
+   "y": 1968,
+   "label": "POST /api/generate cart_recovery",
+   "variant": "emphasis"
+  },
+  {
+   "id": "daily-cart-draft--paused",
+   "from": "server",
+   "to": "checks",
+   "y": 1998,
+   "label": "paused? 503 before any charge",
+   "variant": "security"
+  },
+  {
+   "id": "daily-cart-draft--refused",
+   "from": "server",
+   "to": "page",
+   "y": 2028,
+   "label": "now: 503 model_paused",
+   "variant": "return"
+  },
+  {
+   "id": "daily-cart-draft--see-paused",
+   "from": "page",
+   "to": "person",
+   "y": 2058,
+   "label": "Paused: 'No credits were used.'",
+   "variant": "return",
+   "note": "'Content generation is paused for now.'"
+  },
+  {
+   "id": "daily-cart-draft--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 2102,
+   "label": "not paused: brand, trial, carts",
+   "variant": "security",
+   "note": "no_brand 400, trial_over 402, no cart data 409"
+  },
+  {
+   "id": "daily-cart-draft--charge",
+   "from": "server",
+   "to": "checks",
+   "y": 2146,
+   "label": "charge 3 credits, Noor's cap",
+   "variant": "security",
+   "note": "Noor's cap before the balance; agent_cap or no_credits 402; 80% warning"
+  },
+  {
+   "id": "daily-cart-draft--save",
+   "from": "server",
+   "to": "store",
+   "y": 2190,
+   "label": "save items with initialStatus",
+   "variant": "dashed",
+   "note": "after the model generates; refund on failure; judge later"
+  },
+  {
+   "id": "daily-cart-draft--result",
+   "from": "server",
+   "to": "page",
+   "y": 2234,
+   "label": "drafts saved",
+   "variant": "return"
+  },
+  {
+   "id": "daily-cart-draft--see",
+   "from": "page",
+   "to": "person",
+   "y": 2264,
+   "label": "Drafts in your approval inbox",
+   "variant": "return",
+   "note": "refusals: error code; no_credits, trial_over, agent_cap: limit modal"
+  },
+  {
+   "id": "daily-ask-dana--do",
+   "from": "person",
+   "to": "page",
+   "y": 2354,
+   "label": "Ask Dana: report, deck or spec",
+   "variant": "emphasis",
+   "note": "weekly report 3, board deck 5, dashboard spec 2 credits; disabled below the cost"
+  },
+  {
+   "id": "daily-ask-dana--post",
+   "from": "page",
+   "to": "server",
+   "y": 2398,
+   "label": "POST /api/generate {type, notes}",
+   "variant": "emphasis"
+  },
+  {
+   "id": "daily-ask-dana--paused",
+   "from": "server",
+   "to": "checks",
+   "y": 2428,
+   "label": "paused? 503 before type or charge",
+   "variant": "security"
+  },
+  {
+   "id": "daily-ask-dana--refused",
+   "from": "server",
+   "to": "page",
+   "y": 2458,
+   "label": "now: refused, nothing charged",
+   "variant": "return"
+  },
+  {
+   "id": "daily-ask-dana--see-paused",
+   "from": "page",
+   "to": "person",
+   "y": 2488,
+   "label": "Paused: 'No credits were used.'",
+   "variant": "return",
+   "note": "'Content generation is paused for now.'"
+  },
+  {
+   "id": "daily-ask-dana--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 2532,
+   "label": "not paused: brand, trial",
+   "variant": "security",
+   "note": "'Complete your brand file first.'; trial over: limit modal"
+  },
+  {
+   "id": "daily-ask-dana--charge",
+   "from": "server",
+   "to": "checks",
+   "y": 2576,
+   "label": "charge against Dana's cap",
+   "variant": "security",
+   "note": "3, 5 or 2 credits; Dana's cap before the balance; limit modal"
+  },
+  {
+   "id": "daily-ask-dana--save",
+   "from": "server",
+   "to": "store",
+   "y": 2620,
+   "label": "save items",
+   "variant": "dashed",
+   "note": "board deck: Razan checks numbers, notes only; refund on failure; judge later"
+  },
+  {
+   "id": "daily-ask-dana--result",
+   "from": "server",
+   "to": "page",
+   "y": 2664,
+   "label": "items saved",
+   "variant": "return"
+  },
+  {
+   "id": "daily-ask-dana--see",
+   "from": "page",
+   "to": "person",
+   "y": 2694,
+   "label": "'Done. Items are in your inbox.'",
+   "variant": "return",
+   "note": "no credits: owner told to top up or upgrade, others to ask the owner; failure: 'Generation failed.'"
+  },
+  {
+   "id": "daily-dana-deck--do",
+   "from": "person",
+   "to": "page",
+   "y": 2742,
+   "label": "Download PowerPoint",
+   "variant": "default"
+  },
+  {
+   "id": "daily-dana-deck--get",
+   "from": "page",
+   "to": "server",
+   "y": 2772,
+   "label": "GET /api/tasks/{id}/pptx",
+   "variant": "default"
+  },
+  {
+   "id": "daily-dana-deck--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 2802,
+   "label": "session, else 401",
+   "variant": "security"
+  },
+  {
+   "id": "daily-dana-deck--read",
+   "from": "server",
+   "to": "store",
+   "y": 2832,
+   "label": "read task under sc(u)",
+   "variant": "default",
+   "note": "not in this workspace: 404"
+  },
+  {
+   "id": "daily-dana-deck--build",
+   "from": "server",
+   "to": "page",
+   "y": 2876,
+   "label": "16:9 deck, RTL for Arabic",
+   "variant": "return",
+   "note": "brand-name cover; parseSlides + pptxgenjs; no model, no credits"
+  },
+  {
+   "id": "daily-dana-deck--see",
+   "from": "page",
+   "to": "person",
+   "y": 2920,
+   "label": "PowerPoint downloads",
+   "variant": "return",
+   "note": "'Open in inbox' goes to /app"
+  },
+  {
+   "id": "daily-governance-open--do",
+   "from": "person",
+   "to": "page",
+   "y": 3010,
+   "label": "Open Governance",
+   "variant": "emphasis",
+   "note": "sidebar, cap notification or cap modal"
+  },
+  {
+   "id": "daily-governance-open--load",
+   "from": "page",
+   "to": "server",
+   "y": 3054,
+   "label": "load /app/governance",
+   "variant": "emphasis"
+  },
+  {
+   "id": "daily-governance-open--read",
+   "from": "server",
+   "to": "store",
+   "y": 3084,
+   "label": "getGov(sc(u)), agent spend",
+   "variant": "default",
+   "note": "settings, 100-entry history, auto-run queue, agent spend; Noor's count includes an added brand's 9-credit setup"
+  },
+  {
+   "id": "daily-governance-open--render",
+   "from": "server",
+   "to": "page",
+   "y": 3128,
+   "label": "settings, caps, auto-run, history",
+   "variant": "return"
+  },
+  {
+   "id": "daily-governance-open--see",
+   "from": "page",
+   "to": "person",
+   "y": 3158,
+   "label": "'Used this month' + cap badges",
+   "variant": "return",
+   "note": "cap note: caps also cover an added brand's setup (Noor); not the owner: read-only, no Restore"
+  },
+  {
+   "id": "daily-governance-save--do",
+   "from": "person",
+   "to": "page",
+   "y": 3206,
+   "label": "Change settings, click Save",
+   "variant": "emphasis",
+   "note": "cap not a whole number: blocked, nothing sent; auto-run asks to confirm first"
+  },
+  {
+   "id": "daily-governance-save--put",
+   "from": "page",
+   "to": "server",
+   "y": 3250,
+   "label": "PUT /api/governance",
+   "variant": "emphasis"
+  },
+  {
+   "id": "daily-governance-save--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 3280,
+   "label": "401 · governance.write (owner)",
+   "variant": "security",
+   "note": "not the owner: 403; busy 409; auto-run needs a cap and a confirm, else 400"
+  },
+  {
+   "id": "daily-governance-save--save",
+   "from": "server",
+   "to": "store",
+   "y": 3324,
+   "label": "saveGovAs: lock, clamp, save + history row",
+   "variant": "dashed",
+   "note": "weekly cap 0-200, notify 0-1440, caps 0-100000; activity row; no change, no write"
+  },
+  {
+   "id": "daily-governance-save--result",
+   "from": "server",
+   "to": "page",
+   "y": 3368,
+   "label": "stored, clamped values",
+   "variant": "return"
+  },
+  {
+   "id": "daily-governance-save--see",
+   "from": "page",
+   "to": "person",
+   "y": 3398,
+   "label": "'Saved'",
+   "variant": "return",
+   "note": "new row in 'Change history'; failure: 'Could not save. Try again.'; paused now: nothing to apply to"
+  },
+  {
+   "id": "daily-governance-restore--do",
+   "from": "person",
+   "to": "page",
+   "y": 3446,
+   "label": "Click Restore on a history entry",
+   "variant": "default",
+   "note": "confirm: 'Put every setting back as it was before this change?'"
+  },
+  {
+   "id": "daily-governance-restore--post",
+   "from": "page",
+   "to": "server",
+   "y": 3490,
+   "label": "POST /api/governance/rollback {id}",
+   "variant": "default"
+  },
+  {
+   "id": "daily-governance-restore--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 3520,
+   "label": "401 · governance.write (owner) · 20/h",
+   "variant": "security",
+   "note": "403 not owner; 429; 400 bad_id; own history only, else 404"
+  },
+  {
+   "id": "daily-governance-restore--save",
+   "from": "server",
+   "to": "store",
+   "y": 3564,
+   "label": "saveGovAs with the old settings, new revision",
+   "variant": "dashed",
+   "note": "same checks as a save; auto-run on needs a confirm; no model, no credits"
+  },
+  {
+   "id": "daily-governance-restore--result",
+   "from": "server",
+   "to": "page",
+   "y": 3608,
+   "label": "restored settings and entry",
+   "variant": "return"
+  },
+  {
+   "id": "daily-governance-restore--see",
+   "from": "page",
+   "to": "person",
+   "y": 3638,
+   "label": "'Restored', new entry at the top",
+   "variant": "return",
+   "note": "nothing differs: 'already match'; entry gone: reload the page"
+  },
+  {
+   "id": "daily-governance-queue-decline--do",
+   "from": "person",
+   "to": "page",
+   "y": 3686,
+   "label": "Click Decline on a waiting item",
+   "variant": "default",
+   "note": "under the auto-run switch; shown only while it is on"
+  },
+  {
+   "id": "daily-governance-queue-decline--post",
+   "from": "page",
+   "to": "server",
+   "y": 3730,
+   "label": "POST /api/handoffs/{id}/decline",
+   "variant": "default"
+  },
+  {
+   "id": "daily-governance-queue-decline--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 3760,
+   "label": "401 · drafts role · 120/h",
+   "variant": "security",
+   "note": "every role has it; busy, or a done, declined or running item: 409"
+  },
+  {
+   "id": "daily-governance-queue-decline--save",
+   "from": "server",
+   "to": "store",
+   "y": 3804,
+   "label": "mark the item declined",
+   "variant": "dashed",
+   "note": "read under sc(u) only; nothing charged or generated"
+  },
+  {
+   "id": "daily-governance-queue-decline--result",
+   "from": "server",
+   "to": "page",
+   "y": 3848,
+   "label": "handoff after the decline",
+   "variant": "return"
+  },
+  {
+   "id": "daily-governance-queue-decline--see",
+   "from": "page",
+   "to": "person",
+   "y": 3878,
+   "label": "'Declined: it will not start on its own.'",
+   "variant": "return",
+   "note": "already run, running, declined or gone: removed from the list too"
+  },
+  {
+   "id": "daily-role-read-only--do",
+   "from": "person",
+   "to": "page",
+   "y": 3926,
+   "label": "Member opens a work screen",
+   "variant": "default",
+   "note": "Governance (admin too), integrations, tasks, files, brand, results"
+  },
+  {
+   "id": "daily-role-read-only--load",
+   "from": "page",
+   "to": "server",
+   "y": 3970,
+   "label": "load the screen",
+   "variant": "default"
+  },
+  {
+   "id": "daily-role-read-only--gate",
+   "from": "server",
+   "to": "checks",
+   "y": 4000,
+   "label": "can(): flags for the role",
+   "variant": "security",
+   "note": "governance.write: owner; the others: admin"
+  },
+  {
+   "id": "daily-role-read-only--render",
+   "from": "server",
+   "to": "page",
+   "y": 4044,
+   "label": "lock note, controls disabled",
+   "variant": "return",
+   "note": "flags only change the view; routes refuse writes with 403"
+  },
+  {
+   "id": "daily-role-read-only--see",
+   "from": "page",
+   "to": "person",
+   "y": 4088,
+   "label": "Lock note, read-only controls",
+   "variant": "return",
+   "note": "Scheduled tasks: 'Run now' still works; Governance keeps its history visible"
+  }
+ ],
+ "cards": [
+  {
+   "dot": "rose",
+   "title": "Refusals and limits",
+   "items": [
+    "CSV import and removal: owner or admin; 20 imports per hour",
+    "Cart recovery checks in order: paused 503, no_brand 400, trial_over 402, cart data 409, then the 3-credit charge: Noor's cap first, then the balance",
+    "no_credits, trial_over and agent_cap open the limit modal; the out-of-credits line differs for an owner, a trial and a member",
+    "Governance saves and restores: owner only, 403; Majed's auto-run needs a cap and a confirmation",
+    "Role flags only change the view; the routes refuse the same writes with 403"
+   ]
+  },
+  {
+   "dot": "amber",
+   "title": "While the model is paused",
+   "items": [
+    "Model calls are paused since 2026-09-28; the paused check runs before any charge",
+    "Cart recovery and Dana's reports: 'Content generation is paused for now. No credits were used.'",
+    "Chat prompts from results get the paused reply; nothing is created",
+    "CSV import, ad and store sync, and decks use no model and no credits, so they still work",
+    "Governance saves and restores normally, but nothing is generated to apply it to; Majed's auto-run waits; an added brand's setup is refused as paused before the cap check"
+   ]
+  },
+  {
+   "dot": "cyan",
+   "title": "What governance changes later",
+   "items": [
+    "Auto-approve starts new items approved only when the brand gate passes and no cross-agent reviewer flagged them; the judge can send auto-failed ones back to the inbox",
+    "Reviewer, cross-agent review and em-dash settings apply on generation",
+    "Learning off stops saving edits and rejections and stops feeding past decisions to the prompts",
+    "Weekly cap limits the weekly plan, routines and Majed's auto-run; agent caps are enforced in the ledger's charge, before the balance",
+    "Noor's cap in an added brand also covers its 9-credit setup from its URL: over it, 402 agent_cap and the cap modal",
+    "Every save that changes something is kept in the change history (latest 100) and can be restored by the owner",
+    "notifyMinutes is stored, but nothing outside this page reads it"
+   ]
+  }
+ ]
+}

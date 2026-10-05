@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "3db82440-3c38-431b-bfcd-60efdd12bc64",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/workflow-nashr-product-20260930-094525/candidate.json",
+  "output": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/workflow-nashr-product-20260930-094525/nashr-product.html",
+  "specification": {
+    "sha256": "19d2f3e310722eed83ebbcfb56c563b0a5aec0d601be37b86fc92ee4fa0734a9",
+    "bytes": 10368
+  },
+  "artifact": {
+    "sha256": "9f45857a5e29d09d47b753a47fc6df13686bae49db868604507e66523d9f7dc2",
+    "bytes": 771862
+  }
+}

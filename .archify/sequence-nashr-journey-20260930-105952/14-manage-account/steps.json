@@ -1,0 +1,1496 @@
+{
+  "key": "14-manage-account",
+  "title": "Manage: plan, credits, profile and brands",
+  "person": "owner or team",
+  "steps": [
+    {
+      "id": "manage-account-menu",
+      "title": "Open account menu",
+      "surface": "Sidebar (every signed-in /{lang}/app page)",
+      "actor": "any-signed-in",
+      "action": "Clicks their own name at the bottom of the sidebar. On mobile, the header shows a bell (with the unread count) that opens Notifications, and the credit count, which goes straight to Subscription.",
+      "ui_response": "The button always shows the person's initial, name, role badge, email, and the plan with the credit count. For non-owners the credits carry the tooltip 'The account's shared credits. Ask the account owner for more.' Clicking opens a menu upward with Your profile, Notifications (with the unread count), Scheduled tasks, Ask Noor, Subscription, Brand file, Brands, Members, MCP (owner only), Help and Founder console (founders only). The menu also has a language toggle and Log out. Escape closes it. The main nav also shows Files, Members, Earn credits (owner only), Partner (owner only, for partners), Governance, Activity, Integrations, Updates & wishlist, Founder console (founders only) and Contact us. The brand name at the top of the sidebar links to Brands.",
+      "system_reaction": "The server layout computes the show flags with can(): owner = billing, refer = referral, mcp = mcp.token, partner = a partner code on the account and can(partner), and admin = isFounderActor. These flags only change what is displayed; the routes enforce the same rules. On every navigation the sidebar fetches the unread notification count, the pending-approval count and the conversation list.",
+      "branches": [
+        "admin/member: no Earn credits, Partner or MCP entries",
+        "founder impersonating: MCP hidden (mcp.token blocked), Earn credits still shown",
+        "founder signed in as themselves: Founder console entry"
+      ],
+      "conditions": "Signed in (any role)",
+      "sources": [
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 152,
+          "end_line": 176
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 135,
+          "end_line": 150
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 183,
+          "end_line": 190
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 39,
+          "end_line": 52
+        },
+        {
+          "path": "src/app/[lang]/app/layout.tsx",
+          "line": 43,
+          "end_line": 51
+        },
+        {
+          "path": "src/lib/auth.ts",
+          "line": 368
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 287
+        }
+      ],
+      "next": [
+        "manage-lang-toggle",
+        "manage-profile-open",
+        "manage-billing-open",
+        "manage-brands-open",
+        "manage-team-open",
+        "manage-mcp-open",
+        "manage-help-open",
+        "manage-logout"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-lang-toggle",
+      "title": "Switch language",
+      "surface": "Sidebar account menu (LangToggle)",
+      "actor": "any-signed-in",
+      "action": "Clicks 'عربي' or 'EN' at the bottom of the account menu.",
+      "ui_response": "The same page opens under the other language prefix (/ar and /en swap), keeping the query string and hash. Clicking the language already shown does nothing.",
+      "system_reaction": "There is no server call. The toggle sets the nashr_lang cookie for one year and pushes the swapped path. The language stored on the account or member record is not changed; that language drives emails and is set on the Profile page.",
+      "branches": [
+        "same language -> nothing"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 171,
+          "end_line": 173
+        },
+        {
+          "path": "src/components/LangToggle.tsx",
+          "line": 7,
+          "end_line": 9
+        },
+        {
+          "path": "src/components/LangToggle.tsx",
+          "line": 12,
+          "end_line": 16
+        },
+        {
+          "path": "src/components/LangToggle.tsx",
+          "line": 22,
+          "end_line": 27
+        }
+      ],
+      "next": [
+        "manage-profile-save"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-role-view",
+      "title": "Role shapes the view",
+      "surface": "Subscription, Brands, Members, Earn credits, MCP, Profile pages",
+      "actor": "member",
+      "action": "An admin or a plain member, or the founder viewing an account, opens a screen that belongs to the owner or to admins.",
+      "ui_response": "The screen is read-only and shows a lock note. Subscription: no pay buttons, no chat switch, no top-up request and no partner code field, and 'The account owner manages the subscription. Ask them to upgrade if you need more credits or seats.' Brands: plain members get Switch only, with 'Only the account owner or an admin can change this.' Members: a plain member gets 'Only the owner and admins can invite or remove people.' and no invite form. Earn credits: only an owner-only note. MCP: an owner-only note with no token and no apps. Profile: no phone or email preferences; brand fields are disabled for plain members (with the admin note); and a 'Leave the account' card appears instead of Delete. The trial banner and the limit dialog tell them to ask the owner.",
+      "system_reaction": "One table, MIN_ROLE in roles.ts. Owner only: billing, account.delete, governance.write, mcp.token, oauth.approve, oauth.grants, referral, partner, partner.bank, profile.account, team.invite.admin, team.role, team.remove.admin. Admin and owner: brands.manage, brand.write, team.invite.member, team.remove.member, team.invites.view, team.invite.cancel (plus publishing, connectors and schedules). Every role: brands.switch, team.view, team.leave (member logins only), password.change and profile.self. Routes answer 403 {error:'forbidden'} whatever the UI shows. A founder impersonating holds the owner role but is refused the IMPERSONATION_BLOCKED actions: deleting the account, changing the password, inviting, cancelling invites, changing roles, removing people, the MCP token, OAuth approval and the partner payout bank details.",
+      "branches": [
+        "admin: manages brands and brand fields, invites and removes plain members, cancels member invites",
+        "member: switches own brand, views the roster, leaves, edits own name/language/password",
+        "founder impersonating: owner view minus the blocked actions"
+      ],
+      "conditions": "Role admin or member, or a founder impersonating",
+      "sources": [
+        {
+          "path": "src/lib/roles.ts",
+          "line": 9,
+          "end_line": 104
+        },
+        {
+          "path": "src/lib/roles.ts",
+          "line": 109,
+          "end_line": 122
+        },
+        {
+          "path": "src/lib/roles.ts",
+          "line": 134,
+          "end_line": 148
+        },
+        {
+          "path": "src/components/app/ReadOnlyNote.tsx",
+          "line": 8,
+          "end_line": 15
+        },
+        {
+          "path": "src/app/[lang]/app/billing/page.tsx",
+          "line": 74
+        },
+        {
+          "path": "src/app/[lang]/app/brands/page.tsx",
+          "line": 13,
+          "end_line": 14
+        },
+        {
+          "path": "src/app/[lang]/app/refer/page.tsx",
+          "line": 19,
+          "end_line": 27
+        },
+        {
+          "path": "src/components/app/McpPanel.tsx",
+          "line": 38,
+          "end_line": 40
+        },
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 80,
+          "end_line": 85
+        },
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 276
+        },
+        {
+          "path": "src/components/app/TeamPanel.tsx",
+          "line": 227
+        }
+      ],
+      "next": [
+        "manage-team-open",
+        "manage-team-leave"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-trial-banner",
+      "title": "Trial countdown banner",
+      "surface": "Top of every signed-in /{lang}/app page except billing, start and join",
+      "actor": "any-signed-in",
+      "action": "Sees the trial strip. The owner clicks 'Activate Noor'.",
+      "ui_response": "'Your trial ends in N days' (or 'Your trial has ended') above a line on what Noor does. The owner gets an 'Activate Noor' button that goes to /{lang}/app/billing. Everyone else sees 'Ask the account owner to activate.'",
+      "system_reaction": "The layout computes trialDaysLeft(trialEnds) on the server and passes owner = can(u,'billing'). The banner renders only when plan = trial. A new account's trial ends 3 days after signup. Trial expiry itself (trialOver) is enforced on the charging routes, not here. In the trial's last 24 hours the owner's Subscription page also grants the early-partner 15% first-month offer (see the Subscription step).",
+      "branches": [
+        "owner: Activate button",
+        "admin/member: ask-the-owner text",
+        "days = 0: 'Your trial has ended'"
+      ],
+      "conditions": "plan = trial",
+      "sources": [
+        {
+          "path": "src/components/app/TrialBanner.tsx",
+          "line": 8,
+          "end_line": 27
+        },
+        {
+          "path": "src/app/[lang]/app/layout.tsx",
+          "line": 60
+        },
+        {
+          "path": "src/lib/auth.ts",
+          "line": 140,
+          "end_line": 142
+        },
+        {
+          "path": "src/lib/auth.ts",
+          "line": 198
+        }
+      ],
+      "next": [
+        "manage-billing-open"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-limit-dialog",
+      "title": "Hit a limit dialog",
+      "surface": "LimitModal (global in the app layout), raised from chat, Ask Noor (/generate), reports, the image/video buttons, and an added brand's setup (/start and the Getting started thread)",
+      "actor": "any-signed-in",
+      "action": "Asks for content, an image or a video, sends a chat message, or presses Go to set up an added brand from its URL, when the credits are used up, the trial is over, the agent's monthly cap is reached, or the month's chat messages are used.",
+      "ui_response": "A modal titled 'You're out of credits', 'Your free trial has ended', 'This agent reached its monthly cap', 'This month's chat messages are used up', 'Your trial's chat messages are used up', 'Not enough credits for another message' or 'Chat is not available on this account'. The owner gets 'Top up credits' (credits on a paid plan, to /billing#topup), 'View plans' (trial or trial chat), 'Open Subscription' (chat messages used up on a paid plan, or not enough credits for another message), 'Open Governance' (agent cap) and 'Maybe later'. Anyone else gets 'OK' and a sentence telling them to ask the account owner; an account whose chat allowance is 0 gets 'OK' only. Escape or a click outside closes it. Chat sent too fast shows only a notice, 'Too many messages in a short time...', with no dialog; any refused message is put back in the message box with 'Your message was not sent and not counted; it is back in the message box.' Ask Noor and reports also show a status line. For images and videos with some credits left, no modal appears; an inline line reads 'Needs N credits; you have M.' with a plans link. On /start for an added brand whose 9-credit setup the balance cannot cover, the page reads 'Your balance is {credits} credits, and setting up an added brand needs 9. Nothing was charged.' with a 'View plans' link, and Go stays disabled; a 402 on Go opens the dialog too. In the Getting started thread a refused charge opens the dialog and Noor says 'Setup of this brand did not start, and no credits were used.' While the model is paused, chat answers 'The agents are paused for now, so I can't reply or create content yet. No credits were used.' and Ask Noor/reports show 'Content generation is paused for now. No credits were used.', with no dialog. So while paused the dialog comes only from the image and video buttons, an added brand's /start page, and a chat whose messages for the month are already used.",
+      "system_reaction": "The API answers 402 trial_over, 402 no_credits {need, have} or 402 agent_cap {agent, spent, cap}, and nothing is charged. limitFromError maps the error to a dialog kind, and chat returns a limit field. POST /api/chat checks in this order, all before the owner's message is saved or any model runs: trialOver (402 trial_over), the short-window ceiling (429 slow_down with a retry window, never touching the month's count), then reserveChatTurn, which answers 402 chat_allowance when the month's messages (the trial's 30 for the whole trial; Starter 250, Pro 650, Business 1,300 a month; a founder override takes precedence) are used and the owner has not switched on 'Continue on credits', and 402 chat_credits when the switch is on but the balance is under the 5-credit hold (chatOverflowHold). /api/onboard/confirm answers 402 no_credits or trial_over {need, credits} for an added brand the balance cannot cover, and /api/onboard answers 402 no_credits, trial_over or agent_cap before it charges; StartLaunch and ChatPanel map both with limitFromError. /api/generate returns 503 model_paused before the trial and credit checks, and /api/onboard returns 503 paused before its charge checks. Chat returns the paused reply before any tool runs. /api/onboard/confirm calls no model, so it still checks while paused. The image and video render routes check trialOver and still run while paused: only the model-written render prompt is replaced by a fixed one.",
+      "branches": [
+        "credits on a paid plan -> Top up credits -> billing#topup",
+        "trial or trial chat used -> View plans -> billing",
+        "chat messages used on a paid plan -> Open Subscription (switch on Continue on credits)",
+        "agent_cap -> Open Governance",
+        "non-owner -> OK only",
+        "media with credits left but too few -> inline 'Needs N credits' line",
+        "added brand setup the balance cannot cover -> dialog plus balance line on /start",
+        "chat too fast -> 429 slow_down notice, no dialog",
+        "paused -> chat/Ask Noor/reports answer 'paused', no dialog"
+      ],
+      "conditions": "Trial over, zero or insufficient credits (including an added brand's 9-credit setup), the agent's monthly cap reached, or the account's chat messages for the period used",
+      "sources": [
+        {
+          "path": "src/components/app/LimitModal.tsx",
+          "line": 18,
+          "end_line": 35
+        },
+        {
+          "path": "src/components/app/LimitModal.tsx",
+          "line": 42,
+          "end_line": 63
+        },
+        {
+          "path": "src/components/app/LimitModal.tsx",
+          "line": 70,
+          "end_line": 104
+        },
+        {
+          "path": "src/app/[lang]/app/layout.tsx",
+          "line": 63
+        },
+        {
+          "path": "src/app/api/generate/route.ts",
+          "line": 17
+        },
+        {
+          "path": "src/app/api/generate/route.ts",
+          "line": 21,
+          "end_line": 36
+        },
+        {
+          "path": "src/app/api/chat/route.ts",
+          "line": 44,
+          "end_line": 50
+        },
+        {
+          "path": "src/lib/chat-allowance.ts",
+          "line": 76,
+          "end_line": 110
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 118,
+          "end_line": 121
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 504,
+          "end_line": 507
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 564,
+          "end_line": 572
+        },
+        {
+          "path": "src/components/app/GeneratePanel.tsx",
+          "line": 32,
+          "end_line": 39
+        },
+        {
+          "path": "src/components/app/ReportsPanel.tsx",
+          "line": 43,
+          "end_line": 45
+        },
+        {
+          "path": "src/components/app/MediaControls.tsx",
+          "line": 44,
+          "end_line": 50
+        },
+        {
+          "path": "src/components/app/MediaControls.tsx",
+          "line": 222,
+          "end_line": 225
+        },
+        {
+          "path": "src/components/app/StartLaunch.tsx",
+          "line": 50,
+          "end_line": 73
+        },
+        {
+          "path": "src/components/app/StartLaunch.tsx",
+          "line": 102,
+          "end_line": 106
+        },
+        {
+          "path": "src/app/api/onboard/confirm/route.ts",
+          "line": 42,
+          "end_line": 43
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 37
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 116,
+          "end_line": 122
+        },
+        {
+          "path": "src/lib/media/start.ts",
+          "line": 73
+        },
+        {
+          "path": "src/lib/media/start.ts",
+          "line": 92
+        },
+        {
+          "path": "src/lib/media/prompts.ts",
+          "line": 75,
+          "end_line": 76
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 383,
+          "end_line": 384
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 455,
+          "end_line": 460
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 298
+        }
+      ],
+      "next": [
+        "manage-billing-open",
+        "manage-chat-allowance"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-billing-open",
+      "title": "Open Subscription page",
+      "surface": "/{lang}/app/billing",
+      "actor": "any-signed-in",
+      "action": "Opens Subscription from the menu, the trial banner, the limit dialog, the profile cards, the Members 'Plans' link or the mobile credit link.",
+      "ui_response": "Cards show the current plan (Trial, Starter, Pro, Business or Agency; in Arabic Business is 'الأعمال' and Agency 'الوكالات'), credits left, seats used/limit (linking to Members) and, on trial, the trial end date. Below them: the credits card adds 'incl. N from top-ups' when packs hold credits; the chat messages card (messages used out of the allowance, a runway line and, for the owner, the 'Continue on credits when messages run out' switch), the 'Top up credits' card with the 100, 300 and 1,000-credit packs and the list of the account's live packs, and, for an owner on trial, a 'What happens when you activate' panel. For an owner on trial with an open first-month offer a banner reads '15% off your first month' with where it came from, its end date (early offer only) and how the discount is activated, and each plan card adds '15% off your first month: SAR {now} instead of {list}, plus VAT'. Separately, an owner on trial never attributed to a partner and never paid sees the partner-code field. Four tier cards follow, 2 columns and then 4 on large screens: Starter 299 SAR/month (300 credits), Pro 499 SAR/month (700 credits) and Business 999 SAR/month (1,500 credits, reset monthly), each with its first four features, then Agency: 'Contact us', 'annual billing', 'Custom credits, from 1,500 a month' and its features that are not 'coming soon' (at most four: all specialist agents, custom monthly chat messages, a dedicated success manager, seats sized to your team). The owner sees 'Pay via the link or contact us on WhatsApp; your account is then activated manually. Send the receipt on WhatsApp for faster activation.' and a button on every card ('Activate with 15% off on WhatsApp' while an offer is open). Other roles see a lock note and no buttons. No trial banner appears on this page.",
+      "system_reaction": "A server page. It reads currentUser, seatsUsed (1 + enabled members + unexpired invites), seatLimit (the founder override, else trial 3, Starter 1, Pro 3, Business 7, and Agency 7), chatStatus (messages used and left in the period, the runway worked out on the server so server and browser agree) and openLots (the live top-up packs, without payment details). Each card finds its copy by plan id, never by position. Prices, credits and seats come from src/lib/pricing.ts through the pricing dictionary. For the owner only, it builds pay links from PAY_LINK_STARTER, PAY_LINK_PRO and PAY_LINK_BUSINESS and a WhatsApp link pre-filled with 'Thakeen {account email}'. PAY_LINK_AGENCY is not read: Agency has no pay link. For an owner who is not a founder impersonating, on a trial in its last 24 hours (up to the early-partner offer's last day) with no offer yet, the page grants the 15% first-month offer (grantEarlyOffer, the same grant the cron makes on the trial's last day). A stored 'enterprise' plan reads as Agency.",
+      "branches": [
+        "owner: pay or contact button on each card",
+        "owner: Agency 'Contact us'",
+        "admin/member: read-only note, no buttons",
+        "owner on trial: activation panel; offer banner and card prices when an offer is open; partner-code field when not attributed and never paid",
+        "owner: chat switch and top-up request"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/billing/page.tsx",
+          "line": 23,
+          "end_line": 37
+        },
+        {
+          "path": "src/app/[lang]/app/billing/page.tsx",
+          "line": 38,
+          "end_line": 50
+        },
+        {
+          "path": "src/app/[lang]/app/billing/page.tsx",
+          "line": 51,
+          "end_line": 64
+        },
+        {
+          "path": "src/app/[lang]/app/billing/page.tsx",
+          "line": 65,
+          "end_line": 118
+        },
+        {
+          "path": "src/lib/i18n.ts",
+          "line": 400,
+          "end_line": 411
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 40,
+          "end_line": 44
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 119,
+          "end_line": 123
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 35
+        },
+        {
+          "path": "src/lib/team.ts",
+          "line": 167,
+          "end_line": 170
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 435,
+          "end_line": 440
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 159
+        }
+      ],
+      "next": [
+        "manage-chat-allowance",
+        "manage-partner-code",
+        "manage-billing-pay",
+        "manage-team-open"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-chat-allowance",
+      "title": "Continue chat on credits",
+      "surface": "/{lang}/app/billing chat messages card",
+      "actor": "owner",
+      "action": "Flips 'Continue on credits when messages run out'.",
+      "ui_response": "The switch saves and the card shows the new state. Off (the default): when the month's chat messages run out, chat pauses until the 1st of the month (UTC). On: chat continues on credits while the balance holds at least 5 credits, each message billed what it actually cost, at most 5. A refusal shows under the switch: 'Only the account owner can change this.', 'Not available on a trial.', 'Too many changes. Try again shortly.' or 'Could not save. Try again.'",
+      "system_reaction": "POST /api/billing/chat-overflow {on}. forbid billing (owner only), then a rate limit of 30 changes an hour per account (429 slow_down). Only a real boolean is accepted (400 bad_request), and a trial is refused (409 trial: a trial's 30 messages are for the whole trial). The flag chatOverflow is set or deleted under the user lock, so it cannot undo a balance change saved at the same time, and the route answers the new chat status. The gate itself is in reserveChatTurn and settleChatTurn, which hold chatOverflowHold credits (5) for a message past the allowance and settle it at its metered cost.",
+      "branches": [
+        "on -> chat continues on credits past the allowance",
+        "off -> chat paused until the 1st (UTC)",
+        "409 trial -> not available on a trial",
+        "429 slow_down -> too many changes",
+        "non-owner -> 403"
+      ],
+      "conditions": "Owner on a paid plan",
+      "sources": [
+        {
+          "path": "src/components/app/ChatAllowanceCard.tsx",
+          "line": 22,
+          "end_line": 117
+        },
+        {
+          "path": "src/app/api/billing/chat-overflow/route.ts",
+          "line": 15,
+          "end_line": 31
+        },
+        {
+          "path": "src/lib/chat-allowance.ts",
+          "line": 76,
+          "end_line": 110
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 179
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 198
+        },
+        {
+          "path": "src/app/[lang]/app/billing/page.tsx",
+          "line": 42,
+          "end_line": 50
+        }
+      ],
+      "next": [
+        "manage-profile-open",
+        "manage-limit-dialog"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-partner-code",
+      "title": "Enter a partner code",
+      "surface": "/{lang}/app/billing partner-code field (trial)",
+      "actor": "owner",
+      "action": "Types a partner's code into the 'Partner code' field ('Have a code from a partner? Enter it before your first payment for 15% off your first month.') and clicks 'Apply code' (enabled from 3 characters; letters and digits only, up to 16).",
+      "ui_response": "On success the page refreshes: the account is attributed to that partner and the offer banner reads '15% off your first month' and 'From partner code {code}.', with no end date; the field is gone. A refusal shows under the field: 'That partner code is not valid.', 'You cannot use your own code or a code from your team.', 'Your account is already linked to a partner.', 'A code applies before the first payment only.', 'Too many tries. Try again in an hour.' or 'Could not save. Try again.'",
+      "system_reaction": "POST /api/partner/code {code}. forbid billing (owner only), then a rate limit of 10 tries an hour per account (429 slow_down). claimPartnerCode takes the code only for an account still on its trial, never attributed and never paid: 400 bad_partner_code or self_referral, 409 already_attributed or already_paid. The code's 15% offer replaces an unused early-partner offer and has no end date; still one offer per account, so discounts never stack. The offer is 15% off the price before VAT for the first month, applied when the founder records the first payment.",
+      "branches": [
+        "valid code -> attributed, 15% offer banner",
+        "bad code or own code -> 400",
+        "already attributed or paid -> 409",
+        "10 tries an hour -> 429 slow_down"
+      ],
+      "conditions": "Owner on a trial, never attributed and never paid",
+      "sources": [
+        {
+          "path": "src/components/app/PartnerCodeForm.tsx",
+          "line": 8,
+          "end_line": 52
+        },
+        {
+          "path": "src/app/api/partner/code/route.ts",
+          "line": 12,
+          "end_line": 22
+        },
+        {
+          "path": "src/lib/partners.ts",
+          "line": 194,
+          "end_line": 211
+        },
+        {
+          "path": "src/lib/partners.ts",
+          "line": 243,
+          "end_line": 248
+        },
+        {
+          "path": "src/app/[lang]/app/billing/page.tsx",
+          "line": 51,
+          "end_line": 64
+        }
+      ],
+      "next": [
+        "manage-billing-pay"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-billing-pay",
+      "title": "Click Subscribe",
+      "surface": "/{lang}/app/billing plan card",
+      "actor": "owner",
+      "action": "Clicks 'Subscribe' or 'Contact us on WhatsApp' on the Starter, Pro or Business card, the hello@nashr.ai button, 'Activate with 15% off on WhatsApp' on a plan card while an offer is open, or 'Contact us' on the Agency card.",
+      "ui_response": "A new tab opens: that tier's external payment link when its PAY_LINK_* is set, otherwise a WhatsApp chat pre-filled with 'Thakeen {email}'. With neither configured, a mailto to hello@nashr.ai opens. With an open offer, every plan card's button opens WhatsApp pre-filled with 'Thakeen {email} — please activate {plan} with 15% off the first month (SAR {price} + VAT)'; 'or pay the full price' under it keeps the tier's pay link when one is set, and without WhatsApp the card shows 'To use the discount, email us at hello@nashr.ai'. The banner itself has no button. Agency's 'Contact us' opens the same WhatsApp chat, or /{lang}/enterprise#contact in the same tab when WhatsApp is not set. Nothing changes in the app; plan and credits stay as they were until the founder activates.",
+      "system_reaction": "No checkout, payment webhook or plan change exists in code. The page only links out, and activation is manual. Pay links are keyed by plan id (PAY_LINK_STARTER, PAY_LINK_PRO, PAY_LINK_BUSINESS), so a card never shows one tier's price with another tier's link. A fixed-price pay link cannot carry a discount, so a discounted first month is activated on WhatsApp for the discounted amount (price before VAT cut by 15%, VAT on the discounted price). Agency is sold by contract and has no pay link.",
+      "branches": [
+        "pay link set -> external checkout",
+        "no pay link -> WhatsApp with account email",
+        "neither -> mailto",
+        "open offer -> WhatsApp with the 15%-off text",
+        "Agency -> WhatsApp, or the enterprise contact form"
+      ],
+      "conditions": "can(u,'billing'): the owner (a founder viewing the account also sees the links)",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/billing/page.tsx",
+          "line": 30,
+          "end_line": 34
+        },
+        {
+          "path": "src/app/[lang]/app/billing/page.tsx",
+          "line": 91,
+          "end_line": 104
+        },
+        {
+          "path": "src/app/[lang]/app/billing/page.tsx",
+          "line": 114,
+          "end_line": 115
+        },
+        {
+          "path": "src/components/app/BillingOffer.tsx",
+          "line": 12,
+          "end_line": 35
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 437,
+          "end_line": 438
+        }
+      ],
+      "next": [
+        "manage-topup-request",
+        "manage-founder-activate",
+        "manage-founder-deal"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-topup-request",
+      "title": "Request a top-up pack",
+      "surface": "/{lang}/app/billing Top up credits card",
+      "actor": "owner",
+      "action": "Clicks 'Request on WhatsApp' (or 'Request by email') on the 100, 300 or 1,000-credit pack.",
+      "ui_response": "WhatsApp opens with 'Thakeen: I'd like to top up with the {n}-credit pack ({price} SAR + VAT). Account: {email}'; without a WhatsApp number a mail draft to hello@nashr.ai opens with that message as its subject. Nothing changes in the app until the founder adds the pack. On a trial the card says 'Top-up packs are available once you subscribe to a paid plan.' and has no button; admin and member see 'Ask the account owner to top up the credits.' 'Your top-up packs' lists each live pack with the credits left and its expiry, and a note says 'Unused top-up credits can be refunded on request before they expire.'",
+      "system_reaction": "Client only: the card builds a link; no request reaches the server and nothing is charged. Packs cost 1 SAR per credit excluding VAT, are valid 90 days from activation and are spent after the month's plan credits. There is no payment gateway: the founder records the payment and the pack in the console.",
+      "branches": [
+        "WhatsApp number set -> wa.me link",
+        "no WhatsApp -> mailto",
+        "trial -> note that packs are for paid plans"
+      ],
+      "conditions": "Owner; admin and member see a lock note",
+      "sources": [
+        {
+          "path": "src/components/app/TopupCard.tsx",
+          "line": 17,
+          "end_line": 92
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 218,
+          "end_line": 227
+        },
+        {
+          "path": "src/app/[lang]/app/billing/page.tsx",
+          "line": 36,
+          "end_line": 40
+        },
+        {
+          "path": "src/lib/topups.ts",
+          "line": 130,
+          "end_line": 151
+        }
+      ],
+      "next": [
+        "manage-founder-topup"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-founder-activate",
+      "title": "Founder activates plan",
+      "surface": "/{lang}/app/admin (AdminConsole, Users tab)",
+      "actor": "founder",
+      "action": "After payment, the founder does one of three things in the console: picks the account's plan (trial, starter, pro, business or agency), adds credits ('+ credits', negative to remove), or sets a seat override (0 clears it). Each action prompts for a reason ('+ credits' asks for the amount first). For Agency the terms are set next with 'Agency deal…'.",
+      "ui_response": "The founder sees '{email} → {plan}', with a line about any team change, or '{email}: {error}' when refused; a '+ credits' amount beyond ±100,000 shows '{email}: bad_credits' instead of a success line, and an empty, zero or non-numeric amount sends nothing. The owner gets no notification or email. On their next page load (sidebar, Subscription, Profile) the new plan shows with the plan credits at its allowance: Starter 300, Pro 700, Business 1,500, Agency the deal's credits or 1,500 without one, plus whatever is left in any top-up pack.",
+      "system_reaction": "POST /api/admin/plan, authenticated by adminActor (the console key or a founder session). Before the account is read, addCredits must be a finite number within ±100,000 (400 bad_credits) and seats 1-500, null or 0 (400 bad_seats). Under the user lock a plan change sets the plan, the month's plan credits to allowanceOf(u) (trial 50, Starter 300, Pro 700, Business 1,500, Agency the deal's credits when it respects the floor, else 1,500) with setMonthly, which keeps any live top-up pack's credits, and renewedAt = the current month. Leaving Agency deletes the deal and, unless the request sets seats, the seat override, and clears the custom chat-message override unless the request sets chatAllowance. addCredits adds to the plan's credits with addMonthly and never touches a top-up pack, and never below 0. Any plan or seat change, or a dropped override, runs enforceSeats. An admin:log entry records the actor, the plan, credits, seats and deal before and after, the team change and the reason.",
+      "branches": [
+        "plan change -> plan credits = new allowance, packs kept, + seat refit",
+        "leave Agency -> deal, its seat override and the chat override cleared",
+        "addCredits -> plan credits only",
+        "bad addCredits -> 400 bad_credits",
+        "bad seats -> 400 bad_seats",
+        "unknown email -> 404"
+      ],
+      "conditions": "Founder console session or console key",
+      "sources": [
+        {
+          "path": "src/components/app/AdminConsole.tsx",
+          "line": 223,
+          "end_line": 245
+        },
+        {
+          "path": "src/components/app/AdminConsole.tsx",
+          "line": 308,
+          "end_line": 318
+        },
+        {
+          "path": "src/components/app/AdminConsole.tsx",
+          "line": 587
+        },
+        {
+          "path": "src/app/api/admin/plan/route.ts",
+          "line": 78,
+          "end_line": 100
+        },
+        {
+          "path": "src/app/api/admin/plan/route.ts",
+          "line": 110,
+          "end_line": 159
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 101,
+          "end_line": 104
+        }
+      ],
+      "next": [
+        "manage-founder-deal",
+        "manage-founder-topup",
+        "manage-seat-refit",
+        "manage-monthly-renewal"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-founder-deal",
+      "title": "Founder sets Agency deal",
+      "surface": "/{lang}/app/admin (AdminConsole, Users tab, 'Agency deal…' beside an Agency plan)",
+      "actor": "founder",
+      "action": "For an account on Agency, clicks 'Agency deal…' and answers the prompts: monthly credits (1,500 to 100,000; empty clears the deal), then the monthly price in SAR excluding VAT (at least 999, never cheaper per credit than Business), then, when a deal already exists, whether to apply the change now, then optional seats (1-500) and a reason.",
+      "ui_response": "The button shows the current terms as '{credits} @ {price} SAR' or 'no deal: Business'. A malformed deal or one under the floor shows '{email}: bad_deal' or '{email}: below_floor' and nothing is sent; bad seats show '{email}: bad_seats'. On success the founder sees '{email}: Deal {credits} @ {price} SAR' with any team change. The account's first deal applies at once; a changed deal applies now (OK) or at the next renewal (Cancel). The owner then sees the deal's credits as the monthly allowance on Profile, and never who set the deal.",
+      "system_reaction": "The console checks the deal with parseDeal, the server's own parser, before sending. POST /api/admin/plan (adminActor) checks again: 400 bad_deal for a value that is not a whole number in range, 400 below_floor under the Business rate (999 SAR for 1,500 credits), and 400 deal_needs_agency when the plan after the request (the one sent, else the stored one) is not Agency, decided under the user lock before anything is written. The deal {credits, priceSar, setAt, setBy} is saved on the user record. Sent with plan 'agency' (a first deal, or 'apply now'), the plan credits become the deal's credits (setMonthly keeps top-up packs) and renewedAt the current month; sent alone, or cleared, the balance is kept until the next renewal. deal: null clears it and, when a deal existed, also the seat override unless seats are sent and the chat-message override unless chatAllowance is sent; then enforceSeats refits the team. admin:log records the deal before and after.",
+      "branches": [
+        "first deal -> applies now: balance = deal credits",
+        "changed deal -> OK applies now, Cancel at next renewal",
+        "empty credits -> deal and its seats cleared",
+        "under the floor -> below_floor, nothing sent",
+        "account not on Agency -> 400 deal_needs_agency"
+      ],
+      "conditions": "Founder console session or console key; the account's plan is agency",
+      "sources": [
+        {
+          "path": "src/components/app/AdminConsole.tsx",
+          "line": 269,
+          "end_line": 307
+        },
+        {
+          "path": "src/components/app/AdminConsole.tsx",
+          "line": 589
+        },
+        {
+          "path": "src/app/api/admin/plan/route.ts",
+          "line": 101,
+          "end_line": 109
+        },
+        {
+          "path": "src/app/api/admin/plan/route.ts",
+          "line": 116,
+          "end_line": 143
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 66,
+          "end_line": 85
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 101,
+          "end_line": 104
+        }
+      ],
+      "next": [
+        "manage-founder-chat",
+        "manage-seat-refit",
+        "manage-monthly-renewal"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-founder-chat",
+      "title": "Founder sets chat messages",
+      "surface": "/{lang}/app/admin (AdminConsole, Users tab, chat cell)",
+      "actor": "founder",
+      "action": "Clicks the chat-messages cell for an account and enters a whole number of messages a month (0 stops chat; empty or 'plan' clears the override), with a reason.",
+      "ui_response": "The founder sees the result line, or '{email}: bad_chat' for a value that is not a whole number in range. The cell then shows the allowance, marked as an override, and its tooltip shows what chat cost this month in all and per message. The owner gets no email; on their next load the chat card shows the new allowance. An allowance of 0 gives the owner a chat dialog with 'OK' only.",
+      "system_reaction": "POST /api/admin/plan {email, chatAllowance}, authenticated by adminActor. The value must be a whole number from 0 to MAX_CHAT_OVERRIDE (400 bad_chat, before the account is read; the console runs the same isChatOverride test first and shows '{email}: bad_chat' without sending); null or an empty value clears the override back to the plan's messages (Starter 250, Pro 650, Business 1,300, Agency 1,300, trial 30). The override is saved on the user record under the user lock and wins over the plan in chatAllowanceOf; leaving Agency or clearing an existing deal clears it unless the request sets it. admin:log records it with the reason.",
+      "branches": [
+        "whole number -> override set",
+        "0 -> chat stopped for the account",
+        "empty -> back to the plan messages",
+        "bad value -> 400 bad_chat"
+      ],
+      "conditions": "Founder console session or console key",
+      "sources": [
+        {
+          "path": "src/components/app/AdminConsole.tsx",
+          "line": 251,
+          "end_line": 268
+        },
+        {
+          "path": "src/components/app/AdminConsole.tsx",
+          "line": 599,
+          "end_line": 602
+        },
+        {
+          "path": "src/app/api/admin/plan/route.ts",
+          "line": 18,
+          "end_line": 39
+        },
+        {
+          "path": "src/app/api/admin/plan/route.ts",
+          "line": 81,
+          "end_line": 100
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 167
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 179
+        }
+      ],
+      "next": [
+        "manage-limit-dialog"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-founder-topup",
+      "title": "Founder adds a top-up pack",
+      "surface": "/{lang}/app/admin (AdminConsole, Users tab, Add top-up)",
+      "actor": "founder",
+      "action": "After a pack is paid, clicks 'Add top-up' in the account's detail panel (disabled on a trial) and enters the pack (100, 300 or 1,000 credits), the amount paid before VAT, the payment date and a reference. Void and refund are separate buttons on the pack.",
+      "ui_response": "The founder sees the pack added for the account, or '{email}: {error}'. The owner gets no email; on the next load Subscription and Profile list the pack with its credits left and an expiry 90 days out, and the balance rises by the pack. A void removes the pack, its unspent credits, its payment and any commission; a refund removes the credits still left in a paid pack at once.",
+      "system_reaction": "POST /api/admin/topups {email, action: 'add', credits, paidSar, paidOn, ref, paymentId}, authenticated by adminActor. parseTopup checks the four fields before any read: 400 bad_pack, bad_paid, bad_date, bad_ref; the console's request id is checked too (400 bad_id), so a retry adds one pack and records one payment. A trial is refused (409 topup_needs_paid_plan), so is a 51st live pack (409 too_many_topups) and an id whose payment was voided (409 payment_voided). addPaidTopup puts the pack on the account (valid 90 days from now) and records the payment with the partner's commission when one is due. getUser settles expired packs on every read, so a pack leaves the balance the moment it expires. spendCredits uses the plan credits first, then the packs that expire soonest.",
+      "branches": [
+        "add -> pack on the account + payment recorded",
+        "trial -> 409 topup_needs_paid_plan",
+        "bad pack, amount, date or ref -> 400",
+        "void -> pack and payment removed",
+        "refund -> unused credits removed"
+      ],
+      "conditions": "Founder console session or console key; the account is on a paid plan",
+      "sources": [
+        {
+          "path": "src/components/app/AdminConsole.tsx",
+          "line": 326,
+          "end_line": 356
+        },
+        {
+          "path": "src/components/app/AdminConsole.tsx",
+          "line": 716,
+          "end_line": 724
+        },
+        {
+          "path": "src/app/api/admin/topups/route.ts",
+          "line": 20,
+          "end_line": 66
+        },
+        {
+          "path": "src/app/api/admin/topups/route.ts",
+          "line": 68,
+          "end_line": 88
+        },
+        {
+          "path": "src/lib/topups.ts",
+          "line": 130,
+          "end_line": 151
+        },
+        {
+          "path": "src/lib/topups.ts",
+          "line": 157,
+          "end_line": 172
+        },
+        {
+          "path": "src/lib/topups.ts",
+          "line": 246,
+          "end_line": 260
+        },
+        {
+          "path": "src/lib/partners.ts",
+          "line": 438
+        }
+      ],
+      "next": [
+        "manage-monthly-renewal"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-seat-refit",
+      "title": "Seats refit to plan",
+      "surface": "Members page and sign-in",
+      "actor": "system",
+      "action": "After a plan or seat-override change, or when an account leaves Agency or loses its deal, the team is fitted to the new seat limit.",
+      "ui_response": "Over the limit, the newest active members show 'Paused: over the plan's seats' on Members, with 'Comes back on its own when the plan grows. Nothing is deleted.' The newest pending invites beyond the room disappear. When the limit grows, paused members come back oldest first.",
+      "system_reaction": "enforceSeats runs under lock:team. Members over the limit get disabled:'seats' and are never deleted. Invites that no longer fit are dropped, newest first. Paused members resume only into seats that no pending invite holds. Leaving Agency or clearing a deal deletes the seat override unless the request sets seats, so a deal's seats never carry over to another plan, and the route then runs enforceSeats. Without an override the limit is the plan's: trial 3, Starter 1, Pro 3, Business 7, Agency 7. resolveSession refuses a disabled member at the next request, and the login route refuses them with 403 'disabled'.",
+      "branches": [
+        "downgrade -> pause newest members, cancel newest invites",
+        "leave Agency or clear deal -> back to the plan's seats",
+        "upgrade -> resume oldest paused"
+      ],
+      "conditions": "Plan, seat override or Agency deal changed by the founder",
+      "sources": [
+        {
+          "path": "src/lib/team.ts",
+          "line": 416,
+          "end_line": 448
+        },
+        {
+          "path": "src/app/api/admin/plan/route.ts",
+          "line": 120,
+          "end_line": 127
+        },
+        {
+          "path": "src/app/api/admin/plan/route.ts",
+          "line": 146
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 119,
+          "end_line": 123
+        },
+        {
+          "path": "src/lib/auth.ts",
+          "line": 316
+        },
+        {
+          "path": "src/app/api/auth/login/route.ts",
+          "line": 38,
+          "end_line": 39
+        },
+        {
+          "path": "src/components/app/TeamPanel.tsx",
+          "line": 173,
+          "end_line": 177
+        }
+      ],
+      "next": [
+        "manage-member-locked-out",
+        "manage-team-open"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-monthly-renewal",
+      "title": "Monthly credit reset",
+      "surface": "Cron (no page); visible in sidebar, Subscription and Profile",
+      "actor": "system",
+      "action": "On its first run of a new UTC month, the daily cron resets paid plan credits; the first paid text batch of the month does the same for that account.",
+      "ui_response": "A paid account's plan credits are back at the allowance: Starter 300, Pro 700, Business 1,500, and Agency the deal's credits (1,500 without a valid deal). Unused plan credits do not roll over; top-up packs keep what is left in them until they expire. Profile reads 'Your plan includes {allowance} credits per month. The plan's credits reset on the 1st of each month (UTC); top-up packs keep what is left in them until they expire. Next reset: {date}.' The chat message count restarts with the month. No email or notification is sent.",
+      "system_reaction": "The daily cron (bearer CRON_SECRET, 05:00 UTC) calls renewIfDue under the user lock; renewalDue also runs before the charge of every paid text batch, so whichever comes first renews. Trial accounts are never renewed, nor a stored plan the app cannot recognise (it reads as trial). When renewedAt (or the signup month) is not the current month, setMonthly sets the plan credits to allowanceOf(u), leaving the live top-up packs untouched, and renewedAt = that month. allowanceOf uses an Agency deal only while it respects the floor (at least 999 SAR and 1,500 credits, and not cheaper per credit than Business); otherwise Agency gets Business's 1,500. Expired top-up packs are settled whenever getUser reads the account (settleTopups), so a pack past its 90 days leaves the balance at once; the same cron run saves that settled record (saveSettledTopups).",
+      "branches": [
+        "trial -> no renewal",
+        "already renewed this month -> no-op",
+        "Agency without a valid deal -> 1,500",
+        "top-up packs -> keep their credits until they expire"
+      ],
+      "conditions": "plan is not trial",
+      "sources": [
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 24,
+          "end_line": 40
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 163,
+          "end_line": 165
+        },
+        {
+          "path": "src/lib/credits.ts",
+          "line": 447,
+          "end_line": 464
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 101,
+          "end_line": 104
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 66,
+          "end_line": 72
+        },
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 184,
+          "end_line": 188
+        },
+        {
+          "path": "vercel.json",
+          "line": 4
+        },
+        {
+          "path": "src/lib/generate-batch.ts",
+          "line": 205
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-profile-open",
+      "title": "Open profile",
+      "surface": "/{lang}/app/profile",
+      "actor": "any-signed-in",
+      "action": "Opens 'Your profile' from the account menu.",
+      "ui_response": "'…' shows while loading. Then these cards appear. Credit usage: used/allowance with %, where used counts task batches at today's costs plus what this month's images and videos really charged; credits remaining and, only when top-up credits are above 0, a split into plan credits (with the reset date) and 'Top-up credits (used after the plan credits; no reset)', with each live pack's credits left and its expiry date; a chat messages bar (used out of the allowance, a runway line and, when chat has continued on credits, how many extra messages and what they cost); a per-agent table of credits per batch (weekly plan 2, weekly report 3, follow-up cadence 4 among them), batches used and totals; an 'Images and videos' row with cost '1–2 · 12–24', the number of items with an image or a video this month and the credits their renders charged; 'Chat with the team (your plan's messages)' at 0 credits with messages used out of the allowance; an 'Extra messages on credits' row once chat has continued on credits; 'Setting up your first brand from its URL' at 0; and 'Setting up each added brand from its URL' at 9, with used shown as — because that charge shows only in the balance. It also shows the trial or monthly reset rule with the allowance, and a 'Start subscription' button for an owner on trial. Subscription: the plan by name (Trial, Starter, Pro, Business, Agency) plus 'Manage subscription', or the owner-only note. Email preferences (owner only). Account: full name, business name, phone (owner only, marked required), read-only email, language. Social media. About your business. SEO & website. Password. Last comes Delete account (owner) or a 'Leave the account' card linking to Members (admin/member), neither while a founder views the account.",
+      "system_reaction": "GET /api/profile (read, every role). Usage is summed over every brand scope of the account this month, with task credits at today's TASK_COST. mediaCredits is the sum of this month's items' mediaCredits (what their renders kept after refunds; 1 for older image rows), images counts this month's items with an image or a video, and allowance = allowanceOf(u), the plan's credits or an Agency deal's. The response carries the chat status (messages used and left, overflow) and the live top-up packs without their payment details. The owner also gets the phone, the email preferences and the deal's credits and price, but not who set it; a member gets their own name and email plus the account's name. The response carries may flags {passwordChange, accountDelete} from can() and an impersonating flag.",
+      "branches": [
+        "owner: all cards",
+        "admin: brand fields editable, no phone/email prefs",
+        "member: brand fields disabled",
+        "founder viewing: password form replaced by a note, no delete card"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/profile/page.tsx",
+          "line": 7,
+          "end_line": 12
+        },
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 80,
+          "end_line": 98
+        },
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 24,
+          "end_line": 29
+        },
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 182,
+          "end_line": 250
+        },
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 316,
+          "end_line": 325
+        },
+        {
+          "path": "src/app/api/profile/route.ts",
+          "line": 35,
+          "end_line": 94
+        },
+        {
+          "path": "src/lib/tasks.ts",
+          "line": 24,
+          "end_line": 32
+        }
+      ],
+      "next": [
+        "manage-profile-save",
+        "manage-email-prefs",
+        "manage-password-change",
+        "manage-account-delete",
+        "manage-billing-open"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-profile-save",
+      "title": "Save profile",
+      "surface": "/{lang}/app/profile form",
+      "actor": "any-signed-in",
+      "action": "Edits name, language, phone or brand fields and clicks 'Save changes'.",
+      "ui_response": "A status line: 'Saved', or the refusal, each ending 'Nothing was saved.': 'Full name is required.', 'Business name is required.', 'A mobile number is required.', 'That mobile number is not valid: use at least 9 digits.', 'The email is your login and cannot be changed here.', or 'Another change to this account was being saved. Nothing was saved; try again in a moment.' for busy. A 403 shows 'Your role does not allow this.' When the answer cannot be read: 'Could not confirm the save. The form now shows what is stored; check it and try again if something is missing.' The form re-mounts with what the server stored. If the language changed, the app navigates to /{newLang}/app/profile.",
+      "system_reaction": "PUT /api/profile checks every field before writing anything. Name and interface language need profile.self; for the owner, language needs profile.account. Phone and email preferences need profile.account (owner). Brand fields need brand.write (admin+). A forbidden field refuses the whole request with 403. Name, business name and (for the owner) phone are required: 400 required with the field (an owner save with no valid phone stored is refused as a required phone), 400 bad_phone for a phone under 9 digits, 400 read_only for an email change. A member's name and language go to their own member record under the member lock. The owner's go to the user record under the user lock; when the brand, user or member lock cannot be taken the answer is 409 busy. Brand fields rewrite the active brand's file. Products, audience, tone, value proposition, website, sitemap and social handles can be cleared.",
+      "branches": [
+        "403 forbidden -> 'Your role does not allow this.'",
+        "400 required / bad_phone / read_only -> named refusal",
+        "409 busy -> try again",
+        "language changed -> other-language profile page",
+        "no brand file -> brand fields ignored"
+      ],
+      "conditions": "Signed in; fields limited by role",
+      "sources": [
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 115,
+          "end_line": 162
+        },
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 278,
+          "end_line": 302
+        },
+        {
+          "path": "src/app/api/profile/route.ts",
+          "line": 112,
+          "end_line": 212
+        }
+      ],
+      "next": [
+        "manage-password-change"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-email-prefs",
+      "title": "Pick email level",
+      "surface": "/{lang}/app/profile Email preferences card",
+      "actor": "owner",
+      "action": "Chooses All emails, Important only, or None, then clicks 'Save changes'.",
+      "ui_response": "'Saved'. From then on the daily brief email comes always ('all'), only when something needs attention ('important'), or never ('none').",
+      "system_reaction": "PUT /api/profile (profile.account) stores the choice at profile:{scope}, per brand. The daily cron reads it, falling back to profile:{email}. 'important' sends the brief only when items wait for approval, a follow-up fired, or a to-do is overdue or due today. 'none' also stops the follow-up email. Lifecycle and nudge emails are not affected.",
+      "branches": [
+        "all",
+        "important",
+        "none"
+      ],
+      "conditions": "Owner",
+      "sources": [
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 256,
+          "end_line": 262
+        },
+        {
+          "path": "src/app/api/profile/route.ts",
+          "line": 119
+        },
+        {
+          "path": "src/app/api/profile/route.ts",
+          "line": 177
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 111,
+          "end_line": 120
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-password-change",
+      "title": "Change password",
+      "surface": "/{lang}/app/profile Password card",
+      "actor": "any-signed-in",
+      "action": "Types the current and new password and clicks 'Change'.",
+      "ui_response": "One of: 'Password changed', 'Current password is wrong', 'Password too weak: at least 8 characters, with a letter and a digit', or 'Your role does not allow this.' The form clears. A founder viewing the account sees a note instead of the form. The owner is not told that their MCP token and connected apps were revoked.",
+      "system_reaction": "PATCH /api/account. forbid password.change (blocked while impersonating). A weak new password answers 400 before the current password is checked. The current password is checked against the acting login's own hash; a mismatch answers 401 wrong_password. Owner: new hash and sessionsAfter under the user lock, then revokeAllMcp removes the personal token and every OAuth grant. Member: only their own member record and sessionsAfter change; the owner's sessions and MCP stay untouched. This device gets a fresh session, and every other device of that login is signed out.",
+      "branches": [
+        "weak -> 400",
+        "wrong current password -> 401",
+        "founder impersonating -> 403",
+        "owner -> MCP token and apps revoked"
+      ],
+      "conditions": "Any login signed in as itself",
+      "sources": [
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 163,
+          "end_line": 174
+        },
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 304,
+          "end_line": 314
+        },
+        {
+          "path": "src/app/api/account/route.ts",
+          "line": 32,
+          "end_line": 66
+        },
+        {
+          "path": "src/lib/mcp.ts",
+          "line": 32,
+          "end_line": 35
+        },
+        {
+          "path": "src/lib/auth.ts",
+          "line": 145
+        }
+      ],
+      "next": [
+        "manage-mcp-open"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-account-delete",
+      "title": "Delete account",
+      "surface": "/{lang}/app/profile Delete account card",
+      "actor": "owner",
+      "action": "Clicks 'Delete account' and types the password into the browser prompt ('To permanently delete, enter your password:').",
+      "ui_response": "On success the person is signed out and sent to the public home page /{lang}. A wrong password shows 'Wrong password'; a 403 shows 'Your role does not allow this.' Cancelling the prompt or leaving it empty does nothing.",
+      "system_reaction": "DELETE /api/account. forbid account.delete (owner only, never while impersonating), then a bcrypt check (401 wrong_password). For every brand scope, wipeAccount deletes tasks, files, chats, connections, schedules, governance, Reem's list, and the onboarding confirmation and lock (onboardok, onboardlock). It also deletes notifications, the referral graph, partner data, share markers, usage counters (the monthly and trial chat message counters among them), the MCP token, OAuth grants, wishlist votes and suggestions, and the user record, which carries any held brand-setup charge and the top-up packs. wipeTeam then deletes every member login and invite under lock:team. The email is removed from users:all and pushed to deleted-accounts, and the session is destroyed. No email is sent.",
+      "branches": [
+        "wrong password -> 401",
+        "member/admin -> no delete card (Leave card instead)"
+      ],
+      "conditions": "Owner signed in as themselves",
+      "sources": [
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 175,
+          "end_line": 181
+        },
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 316,
+          "end_line": 320
+        },
+        {
+          "path": "src/app/api/account/route.ts",
+          "line": 68,
+          "end_line": 79
+        },
+        {
+          "path": "src/lib/account.ts",
+          "line": 37,
+          "end_line": 134
+        },
+        {
+          "path": "src/lib/account.ts",
+          "line": 83,
+          "end_line": 87
+        },
+        {
+          "path": "src/lib/team.ts",
+          "line": 456,
+          "end_line": 468
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "account-profile-leave",
+      "title": "Leave card on profile",
+      "surface": "/{lang}/app/profile (Leave the account card)",
+      "actor": "member",
+      "action": "An admin or member opens their profile and clicks the \"Members\" button on the \"Leave the account\" card.",
+      "ui_response": "The card reads \"Leave the account\" / \"You leave this account and are signed out. You need a new invite to come back.\" The button goes to /{lang}/app/team, where leaving happens. A founder viewing the account sees neither this card nor the delete card.",
+      "system_reaction": "Client only: a link. The profile API returns the role, and the delete card is shown only to the owner. Leaving itself is the team.leave action, allowed only to member logins.",
+      "branches": [
+        "Members -> team stage"
+      ],
+      "conditions": "Admin or member login",
+      "sources": [
+        {
+          "path": "src/components/app/ProfilePanel.tsx",
+          "line": 316,
+          "end_line": 325
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 543
+        },
+        {
+          "path": "src/lib/roles.ts",
+          "line": 98,
+          "end_line": 99
+        },
+        {
+          "path": "src/lib/roles.ts",
+          "line": 141
+        }
+      ],
+      "next": [],
+      "note": "Leaving and removal are mapped in the team stage.",
+      "verified": true,
+      "stage": "account"
+    },
+    {
+      "id": "manage-brands-open",
+      "title": "Open Brands page",
+      "surface": "/{lang}/app/brands (also the brand name at the top of the sidebar)",
+      "actor": "any-signed-in",
+      "action": "Opens Brands.",
+      "ui_response": "'Brands: N', where N counts active brands; no limit is shown. Owners and admins get an add form and, under it, 'Brands are unlimited on every plan. Your first brand's setup is free; setting up each added brand from its URL uses 9 credits from the account's balance when setup starts, refunded if the brand file cannot be built, and filling the form by hand is free. The Sunday plan starts off for added brands; switch it on in Tasks.' Each brand in the list shows ACTIVE and archived badges, the creation date, and 'setup incomplete' when it has no brand file. Buttons: Switch (on other active brands), Rename, and Archive or Restore (not on the default brand). Plain members see 'Only the account owner or an admin can change this.' The page says credits are shared across brands.",
+      "system_reaction": "GET /api/brands (any signed-in role). It reads the brand list from brands:{owner} and fills names from each brand file (pmap). It returns the brands and the active id for this login, and no limit: there is no brand cap on any plan. The 9 comes from ONBOARD_EXTRA_BRAND_COST in src/lib/pricing.ts. The sidebar's brand name at the top links here.",
+      "branches": [
+        "owner/admin: manage controls",
+        "member: Switch only"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/brands/page.tsx",
+          "line": 8,
+          "end_line": 15
+        },
+        {
+          "path": "src/components/app/BrandsPanel.tsx",
+          "line": 28,
+          "end_line": 29
+        },
+        {
+          "path": "src/components/app/BrandsPanel.tsx",
+          "line": 54,
+          "end_line": 91
+        },
+        {
+          "path": "src/app/api/brands/route.ts",
+          "line": 12,
+          "end_line": 24
+        },
+        {
+          "path": "src/lib/brands.ts",
+          "line": 16,
+          "end_line": 20
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 207
+        },
+        {
+          "path": "src/components/app/Sidebar.tsx",
+          "line": 72,
+          "end_line": 75
+        }
+      ],
+      "next": [
+        "manage-brand-add",
+        "manage-brand-switch",
+        "manage-brand-rename",
+        "manage-brand-archive"
+      ],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-brand-add",
+      "title": "Add a brand",
+      "surface": "/{lang}/app/brands add form",
+      "actor": "owner",
+      "action": "Types a brand name and clicks '+ Add'.",
+      "ui_response": "On success the person is sent to /{lang}/app/start to set up the new brand, which is now their active brand. Add works on every plan and is disabled only while a brand change is in flight, so a double click sends one add. A refusal shows under the form: 'You added many brands in the last hour. Try again in an hour.', 'You reached today's limit for new brands. Try again tomorrow.' or 'Another brand change is in progress. Try again.'",
+      "system_reaction": "POST /api/brands {action:'add'}. forbid brands.manage (admin+). brandAddRefusal(account email) checks rate:brandadd:h:{email} (10 an hour), then rate:brandadd:d:{email} (30 a day), shared by everyone in the account and counted before the lock, and answers 429 {error:'slow_down', retry:'hour' or 'day'} with Retry-After. addBrand appends under brandslock:{email} (withBrandsLock waits about 1 s) and answers 409 busy when the lock cannot be taken. The new brand gets a random id and the name cut to 80 characters ('…' if empty), and activebrand:{acting login} is set. Never 402: there is no plan limit. Credits stay account-wide; the setup charge comes later, on /start.",
+      "branches": [
+        "10 this hour -> 429, retry in an hour",
+        "30 today -> 429, retry tomorrow",
+        "lock busy -> 409 busy",
+        "success -> onboarding at /start"
+      ],
+      "conditions": "Owner or admin (brands.manage)",
+      "sources": [
+        {
+          "path": "src/components/app/BrandsPanel.tsx",
+          "line": 26,
+          "end_line": 53
+        },
+        {
+          "path": "src/components/app/BrandsPanel.tsx",
+          "line": 59,
+          "end_line": 67
+        },
+        {
+          "path": "src/app/api/brands/route.ts",
+          "line": 42,
+          "end_line": 48
+        },
+        {
+          "path": "src/lib/rate.ts",
+          "line": 74,
+          "end_line": 93
+        },
+        {
+          "path": "src/lib/brands.ts",
+          "line": 25,
+          "end_line": 46
+        },
+        {
+          "path": "src/lib/brands.ts",
+          "line": 63,
+          "end_line": 78
+        }
+      ],
+      "next": [],
+      "note": "Success continues in the onboarding stage at /{lang}/app/start. Actor may also be an admin.",
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-brand-switch",
+      "title": "Switch brand",
+      "surface": "/{lang}/app/brands",
+      "actor": "any-signed-in",
+      "action": "Clicks 'Switch' on another active brand.",
+      "ui_response": "The list reloads with the new ACTIVE badge and the page refreshes. Chat, inbox, files, the brand file and the sidebar brand name now show that brand. While any brand change runs, Switch, Rename and Archive/Restore are disabled.",
+      "system_reaction": "POST /api/brands {action:'switch'}. brands.switch is open to every role. The target must be in the owner's list (404 otherwise). Only activebrand:{acting login} is set, without the brand-list lock, so the owner, other members and the MCP token keep their own active brand. A member's stored brand is honoured only while it is one of the owner's active brands.",
+      "branches": [
+        "unknown id -> 404 not_found"
+      ],
+      "conditions": "Signed in",
+      "sources": [
+        {
+          "path": "src/components/app/BrandsPanel.tsx",
+          "line": 85
+        },
+        {
+          "path": "src/app/api/brands/route.ts",
+          "line": 40,
+          "end_line": 41
+        },
+        {
+          "path": "src/app/api/brands/route.ts",
+          "line": 49,
+          "end_line": 52
+        },
+        {
+          "path": "src/lib/brands.ts",
+          "line": 48,
+          "end_line": 59
+        },
+        {
+          "path": "src/lib/auth.ts",
+          "line": 328,
+          "end_line": 331
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-brand-rename",
+      "title": "Rename brand",
+      "surface": "/{lang}/app/brands",
+      "actor": "owner",
+      "action": "Clicks 'Rename' and types a new name into the browser prompt.",
+      "ui_response": "The Brands list reloads with the new name. The sidebar brand name does not change, because it reads the name in the brand file, which Rename does not touch. A clash shows 'Another brand change is in progress. Try again.'",
+      "system_reaction": "POST /api/brands {action:'rename'}. forbid brands.manage. An unknown id answers 404 and an unknown action 400 bad_action, both before the lock. The name is cut to 80 characters and saved in brands:{owner} only, on the list as read under brandslock:{email}: 409 busy when the lock cannot be taken, 404 when the brand vanished meanwhile.",
+      "branches": [
+        "prompt cancelled or empty -> nothing",
+        "lock busy -> 409 'Another brand change is in progress'",
+        "brand gone -> 404"
+      ],
+      "conditions": "Owner or admin",
+      "sources": [
+        {
+          "path": "src/components/app/BrandsPanel.tsx",
+          "line": 86
+        },
+        {
+          "path": "src/app/api/brands/route.ts",
+          "line": 49,
+          "end_line": 66
+        },
+        {
+          "path": "src/lib/brands.ts",
+          "line": 25,
+          "end_line": 46
+        },
+        {
+          "path": "src/app/[lang]/app/layout.tsx",
+          "line": 43
+        },
+        {
+          "path": "src/app/[lang]/app/layout.tsx",
+          "line": 51
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "manage"
+    },
+    {
+      "id": "manage-brand-archive",
+      "title": "Archive or restore",
+      "surface": "/{lang}/app/brands",
+      "actor": "owner",
+      "action": "Clicks 'Archive' (or 'Restore') on a brand other than the default.",
+      "ui_response": "The brand shows 'archived', faded, with no Switch button. If it was the open brand, the workspace moves to the default brand. A clash shows 'Another brand change is in progress. Try again.'",
+      "system_reaction": "POST /api/brands {action:'archive'} toggles the status on the list as read under brandslock:{email} (409 busy when the lock cannot be taken, 404 when the brand vanished). The default brand is refused with 400 cannot_archive_default before the lock, and its button is hidden. The caller's active brand resets to default if they archived their open brand. When an admin archives the brand the owner has open, the owner's key resets too. Members fall back to default through resolveSession. Restore has no limit to check: brands are unlimited on every plan.",
+      "branches": [
+        "default brand -> 400",
+        "lock busy -> 409",
+        "restore -> active again"
+      ],
+      "conditions": "Owner or admin",
+      "sources": [
+        {
+          "path": "src/components/app/BrandsPanel.tsx",
+          "line": 87
+        },
+        {
+          "path": "src/app/api/brands/route.ts",
+          "line": 53,
+          "end_line": 72
+        },
+        {
+          "path": "src/lib/brands.ts",
+          "line": 25,
+          "end_line": 46
+        },
+        {
+          "path": "src/lib/auth.ts",
+          "line": 329
+        }
+      ],
+      "next": [],
+      "verified": true,
+      "stage": "manage"
+    }
+  ]
+}

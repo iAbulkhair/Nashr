@@ -1,0 +1,1120 @@
+{
+  "key": "04-onboard-build",
+  "title": "First run: confirm the site and build the workspace",
+  "person": "owner",
+  "steps": [
+    {
+      "id": "onboard-arrive-start",
+      "title": "Land on start page",
+      "surface": "/{lang}/app/start (DictionaryStart)",
+      "actor": "owner",
+      "action": "Arrives on the start page after signup, after a redirect from a page that needs a brand, from the nudge email link or after adding a brand.",
+      "ui_response": "Page title 'The Thakeen Dictionary' with 'Seven steps, from your brand's name to its first result.' and, under it, the link 'I'd rather fill the form manually'. A rail of seven numbered steps (Your brand, Your words, Plan, Draft, Your approval, Analysis and measurement, Launch) and step 1: the field 'What's your brand called?' and five sector choices (Coffee, Restaurant, Clinic, Online store, Services). From step 2 a Back button; Next stays disabled until the step is complete. The fields stay disabled until the page has finished loading in the browser. The link field, the setup-cost line and the 'Go, Noor' button are on step 7 (onboard-confirm-url): for the first brand a small 'Setting up your first brand is free.'; for an added brand a highlighted note 'Setting up this brand from its URL uses 9 credits (your first brand was free), refunded in full if the brand file cannot be built. Filling the form by hand is free. Your balance: {credits} credits.'; if an added brand's balance is under 9 the note reads 'Your balance is {credits} credits, and setting up an added brand needs 9. Nothing was charged.' with a 'View plans' link that opens the 'You're out of credits' dialog, and Go stays disabled; if a charge from a setup that did not finish is still held it reads 'This brand's setup is already paid for: the 9 credits taken for a setup that did not finish are used again, and nothing more is charged.' and Go stays enabled. A carried ?url= (clipped to 300 characters) waits for step 7, where it pre-fills the field with the note 'Check this link before Noor starts: she reads this site and builds your brand file from it. Make sure it is yours, or change it.' There is no trial banner on this page.",
+      "system_reaction": "Server page: currentUser() or redirect to /{lang}/app/login. A caller without both can(u,'onboard') and can(u,'brand.write') (a plain member) gets the waiting note (onboard-member-wait), or a redirect to /{lang}/app when the brand exists. For admin or owner whose workspace already has a brand it also redirects to /{lang}/app: there is nothing to set up. Otherwise it computes setupCost = onboardCost(u.brandId): 0 for the default brand, ONBOARD_EXTRA_BRAND_COST = 9 for any other; setupPaid = a hold exists at User.onboardPaid[scope] (heldOnboard); passes the account balance u.credits and the clipped ?url=. This is display only: the confirm and onboard routes check again. Nothing is read, crawled, charged or stored on arrival.",
+      "branches": [
+        "not signed in -> /{lang}/app/login",
+        "plain member -> waiting note (onboard-member-wait)",
+        "brand already exists -> redirect to /{lang}/app",
+        "carried ?url= -> kept for step 7 (onboard-confirm-url) as a pre-filled field + review note",
+        "added brand (the new brand is active after adding it) -> step 7 states 9 credits with the balance",
+        "added brand, balance under 9 and no held charge -> 'Nothing was charged' note + 'View plans' link, Go disabled",
+        "added brand with a held charge -> 'already paid for' note, Go enabled",
+        "steps 1 to 6 -> onboard-dict-play"
+      ],
+      "conditions": "Signed in, role admin or owner ('onboard' and 'brand.write'), no brand:{scope}. The cost depends on the active brand: default free, any added brand 9 credits.",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/start/page.tsx",
+          "line": 13,
+          "end_line": 41
+        },
+        {
+          "path": "src/components/app/DictionaryStart.tsx",
+          "line": 82,
+          "end_line": 249
+        },
+        {
+          "path": "src/components/app/DictionaryStart.tsx",
+          "line": 200,
+          "end_line": 229
+        },
+        {
+          "path": "src/lib/dictionary.ts",
+          "line": 273,
+          "end_line": 274
+        },
+        {
+          "path": "src/lib/dictionary.ts",
+          "line": 360,
+          "end_line": 368
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 207,
+          "end_line": 208
+        },
+        {
+          "path": "src/lib/onboard-confirm.ts",
+          "line": 47
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 288,
+          "end_line": 299
+        },
+        {
+          "path": "src/components/app/LimitModal.tsx",
+          "line": 30,
+          "end_line": 33
+        },
+        {
+          "path": "src/app/[lang]/app/page.tsx",
+          "line": 22,
+          "end_line": 23
+        },
+        {
+          "path": "src/app/[lang]/app/reports/page.tsx",
+          "line": 28
+        },
+        {
+          "path": "src/app/[lang]/app/generate/page.tsx",
+          "line": 15
+        },
+        {
+          "path": "src/components/app/AuthForm.tsx",
+          "line": 58,
+          "end_line": 61
+        },
+        {
+          "path": "src/components/home/StartForm.tsx",
+          "line": 9,
+          "end_line": 18
+        },
+        {
+          "path": "src/components/app/BrandsPanel.tsx",
+          "line": 48
+        },
+        {
+          "path": "src/app/[lang]/app/layout.tsx",
+          "line": 60
+        }
+      ],
+      "next": [
+        "onboard-dict-play",
+        "onboard-manual-link"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-member-wait",
+      "title": "Member waits for owner",
+      "surface": "/{lang}/app/start",
+      "actor": "member",
+      "action": "An invited plain member opens the app before the owner or an admin has set up the brand.",
+      "ui_response": "Title 'This account is not set up yet' and a read-only note: 'The account owner or an admin sets up the brand first. Once they have, the workspace opens for you here.' There is no form.",
+      "system_reaction": "The start page sees that the caller lacks can(u,'onboard') or can(u,'brand.write') (both need admin). If the brand exists by now, it redirects to /{lang}/app. The chat page sends members to /start while there is no brand. Inbox, reports and generate send every role there.",
+      "branches": [
+        "brand now exists -> redirect to /{lang}/app (daily use)"
+      ],
+      "conditions": "Role member, no brand:{scope}",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/start/page.tsx",
+          "line": 19,
+          "end_line": 32
+        },
+        {
+          "path": "src/app/[lang]/app/start/page.tsx",
+          "line": 34
+        },
+        {
+          "path": "src/app/[lang]/app/page.tsx",
+          "line": 22,
+          "end_line": 23
+        },
+        {
+          "path": "src/app/[lang]/app/reports/page.tsx",
+          "line": 28
+        },
+        {
+          "path": "src/app/[lang]/app/generate/page.tsx",
+          "line": 15
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 37
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 289
+        },
+        {
+          "path": "src/lib/roles.ts",
+          "line": 44
+        }
+      ],
+      "next": [],
+      "note": "The stage ends here for the member. They continue in daily use once an owner or admin has built the brand.",
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-nudge-email",
+      "title": "Nudge email if idle",
+      "surface": "email (daily cron /api/cron/daily)",
+      "actor": "system",
+      "action": "No action. The owner signed up but never built a brand.",
+      "ui_response": "One email, subject 'Noor is ready — give her your website' (Arabic for Arabic accounts): 'You signed up for Thakeen but have not started. Noor is ready: give her your website and she writes your brand file and plan in front of you, then ask her for your first batch of posts.', with a link to {app origin}/{account lang}/app/start.",
+      "system_reaction": "Vercel cron at 05:00 UTC calls GET /api/cron/daily. The bearer must match CRON_SECRET via sameSecret, else 401. For each active brand scope (dailyRoster), dailyFor(user) runs credit renewal, top-up and weekly-hold sweeps, the sweep of held onboarding charges (only on the default brand's entry of an account that holds one), the partner early offer and Reem's list upkeep. Then, if there is no brand, the account is more than 10 minutes old and mailReady() (RESEND_API_KEY and MAIL_FROM both set), sendOnce(email,'nudge1') takes a short claim, sends, and writes the 400-day marker only after Resend accepted the message, so at most one email per account. Without a brand it then returns: no lifecycle, no brief, no follow-ups.",
+      "branches": [
+        "already nudged -> nothing",
+        "email not configured (no RESEND_API_KEY or no MAIL_FROM) -> nothing",
+        "provider refuses or times out -> no marker is written, so the next daily run tries again",
+        "another run holds the claim -> skipped this run"
+      ],
+      "conditions": "No brand:{scope}, account older than 10 minutes, RESEND_API_KEY and MAIL_FROM set",
+      "sources": [
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 163,
+          "end_line": 185
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 44,
+          "end_line": 58
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 86,
+          "end_line": 102
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 237,
+          "end_line": 253
+        },
+        {
+          "path": "vercel.json",
+          "line": 4
+        },
+        {
+          "path": "src/lib/notify.ts",
+          "line": 9
+        },
+        {
+          "path": "src/lib/notify.ts",
+          "line": 100,
+          "end_line": 125
+        }
+      ],
+      "next": [
+        "onboard-arrive-start"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-dict-play",
+      "title": "Play the Dictionary",
+      "surface": "/{lang}/app/start (DictionaryStart, steps 1 to 6)",
+      "actor": "owner",
+      "action": "Types the brand name, picks a sector, picks exactly five words, then presses Next through a sample plan and a sample draft, taps Approve, and reads the analysis and measurement step.",
+      "ui_response": "Step 1: once the name is not empty Noor says 'Nice name. Let me get to know you.' Step 2: twelve word chips (Bold, Warm, Refined, Down-to-earth, Calm, Luxurious, Playful, Local, Quick, Honest, Family, Youthful); the counter '{n} of 5 picked'; each pick brings a one-line reaction from one agent; once five are picked the other seven chips are disabled (tapping a picked chip removes it); Next is off until five are picked. Step 3: a sample plan of three lines by Faris and Majed, tagged 'Example'. Step 4: a sample post by Noor and a sample WhatsApp message by Sami, each tagged 'Example' and using the typed name. Step 5: an 'Approve' button with 'Nothing goes out before this tap.' (no Next here; Approve moves on). Step 6: Dana says she will report next week what worked, from the owner's own numbers, plus a line on which sources are measured (Meta and Snapchat ad results, Salla, Shopify and Zid sales, or a CSV file). Back returns one step with the answers kept. Each step change moves focus to the new step's heading. The link 'I'd rather fill the form manually' stays under the title on every step.",
+      "system_reaction": "Browser only: a reducer (src/lib/dictionary.ts) in the page. No request is sent, nothing is saved or charged, and leaving or reloading the page loses the answers. The name collapses whitespace, is trimmed at the start and capped at 40 characters. Next works only when canAdvance() allows it: step 1 needs a non-empty name and a sector, step 2 exactly five words, steps 3, 4 and 6 always, step 5 only through Approve, step 7 has none. The samples are pre-written text filled with the name, the sector and the first word's tone: no model is called and none is generated for this owner.",
+      "branches": [
+        "Back -> previous step, answers kept in this tab",
+        "link under the title -> /{lang}/app/onboarding (onboard-manual-link)",
+        "reload or leave -> answers lost, back to step 1",
+        "step 7 -> a link (onboard-confirm-url) or 'I don't have a website' (onboard-no-site-save)"
+      ],
+      "conditions": "Admin or owner, no brand:{scope}; the fields work once the page has finished loading",
+      "sources": [
+        {
+          "path": "src/components/app/DictionaryStart.tsx",
+          "line": 82,
+          "end_line": 198
+        },
+        {
+          "path": "src/components/app/DictionaryStart.tsx",
+          "line": 200,
+          "end_line": 249
+        },
+        {
+          "path": "src/lib/dictionary.ts",
+          "line": 35,
+          "end_line": 90
+        },
+        {
+          "path": "src/lib/dictionary.ts",
+          "line": 92,
+          "end_line": 98
+        },
+        {
+          "path": "src/lib/dictionary.ts",
+          "line": 239,
+          "end_line": 258
+        },
+        {
+          "path": "src/lib/dictionary.ts",
+          "line": 273,
+          "end_line": 312
+        }
+      ],
+      "next": [
+        "onboard-confirm-url",
+        "onboard-no-site-save",
+        "onboard-manual-link"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-confirm-url",
+      "title": "Press Go, Noor",
+      "surface": "/{lang}/app/start (StartLaunch, step 7)",
+      "actor": "owner",
+      "action": "On step 7 keeps 'I have a link' selected, types or reviews the website, store or Instagram link and presses 'Go, Noor'.",
+      "ui_response": "Step 7 shows two choices, 'I have a link' (selected) and 'I don't have a website', and under the field the hint 'Your site, your Instagram profile, or your Salla or Zid store.' plus the setup-cost line (onboard-arrive-start). The button shows '…' while posting. On success, or on 409, the browser goes to /{lang}/app/chat?onboard={url}. On a 402 (an added brand only) nothing is charged: with too few credits the red text 'Your balance is {credits} credits, and setting up an added brand needs 9. Nothing was charged.' and the 'You're out of credits' dialog; with an ended trial the red text 'Trial ended. Subscribe to continue.' and the 'Your free trial has ended' dialog. The button re-enables. On any other failure (or a network error) a red alert 'Something failed. Try again or fill the form manually.' appears and the button re-enables.",
+      "system_reaction": "POST /api/onboard/confirm {url, answers} checks the session (401 unauthorized) and forbid(u,'onboard') (403 forbidden). The URL is trimmed and clipped to 300 characters; under 4 characters gives 400 bad_url. When answers are sent they must be a finished Dictionary game (a name of 1-40 characters, a known sector, exactly five distinct known words, a page language), else 400 bad_answers before anything is written. cost = onboardCost(u.brandId), computed from the session, never the request. If brand:{scope} exists it returns 409 already_onboarded. For an added brand with no held charge it then answers 402 {error:'trial_over'|'no_credits', need, credits} when the trial has ended or the balance is under 9. Otherwise it writes onboardok:{scope} = URL and onboardgame:{scope} = the answers (deleted when none were sent), both with a 1-day TTL, and answers {ok, cost, paid?} (paid when a charge is already held). No crawl, no model call and nothing is charged here: the charge and its authoritative checks are in POST /api/onboard. The session cookie is SameSite=Lax, so another site cannot submit this for a signed-in owner.",
+      "branches": [
+        "400 bad_url / 400 bad_answers / 403 forbidden / 401 / network -> red 'Something failed' text",
+        "402 no_credits (added brand) -> red balance text + credits dialog, nothing charged",
+        "402 trial_over (added brand) -> 'Trial ended. Subscribe to continue.' + trial dialog",
+        "409 already_onboarded -> chat opens as usual, the build never runs",
+        "200 -> chat first run (the first brand, or an added brand that can pay or is already paid for)"
+      ],
+      "conditions": "Admin or owner; a finished Dictionary game; URL of 4+ characters; for an added brand with no held charge, an active trial or plan and 9+ credits",
+      "sources": [
+        {
+          "path": "src/components/app/StartLaunch.tsx",
+          "line": 39,
+          "end_line": 73
+        },
+        {
+          "path": "src/components/app/StartLaunch.tsx",
+          "line": 86,
+          "end_line": 112
+        },
+        {
+          "path": "src/app/api/onboard/confirm/route.ts",
+          "line": 22,
+          "end_line": 47
+        },
+        {
+          "path": "src/lib/onboard-confirm.ts",
+          "line": 16,
+          "end_line": 34
+        },
+        {
+          "path": "src/lib/dictionary.ts",
+          "line": 314,
+          "end_line": 336
+        },
+        {
+          "path": "src/components/app/LimitModal.tsx",
+          "line": 30,
+          "end_line": 33
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 288,
+          "end_line": 299
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 398
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 207,
+          "end_line": 208
+        },
+        {
+          "path": "src/lib/roles.ts",
+          "line": 44
+        },
+        {
+          "path": "src/lib/auth.ts",
+          "line": 140
+        }
+      ],
+      "next": [
+        "onboard-chat-gate"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-manual-link",
+      "title": "Choose manual form",
+      "surface": "/{lang}/app/start (DictionaryStart)",
+      "actor": "owner",
+      "action": "Clicks 'I'd rather fill the form manually' under the title (visible on every step).",
+      "ui_response": "Navigates to /{lang}/app/onboarding (the brand form 'Introduce Noor to your brand').",
+      "system_reaction": "None. It is a plain link and nothing is stored or charged (the manual form is free for an added brand too). The Dictionary answers are not carried over. The onboarding page has no brand redirect, so it opens for a brandless workspace.",
+      "branches": [],
+      "conditions": "Any signed-in person can open /onboarding; only admin and owner can save it",
+      "sources": [
+        {
+          "path": "src/components/app/DictionaryStart.tsx",
+          "line": 208,
+          "end_line": 210
+        },
+        {
+          "path": "src/app/[lang]/app/onboarding/page.tsx",
+          "line": 9,
+          "end_line": 16
+        }
+      ],
+      "next": [
+        "onboard-manual-form"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-chat-gate",
+      "title": "Chat checks confirmation",
+      "surface": "/{lang}/app/chat?onboard={url}",
+      "actor": "owner",
+      "action": "The chat page loads for a workspace that has no brand yet.",
+      "ui_response": "With a confirmed URL, the 'Noor · Getting started' thread opens without the usual empty-state greeting and suggestion chips, and the build starts by itself. The trial banner shows above it for trial accounts, and a line under the message box shows the chat allowance left ('{left} of {allowance} messages left in your trial' or '... this month'). Without a confirmation the page redirects to /{lang}/app/start?url={value} (plain /start if the value is under 4 characters) for review.",
+      "system_reaction": "With no brand, a non-admin is redirected to /start. For admin or owner the page reads onboardok:{scope}, the chat history and the chat allowance status in parallel. The ?onboard= value is never used to build: only the confirmed URL is passed to ChatPanel as onboardUrl, along with needPhone, plan and the allowance.",
+      "branches": [
+        "no confirmation (expired after 1 day, or a link someone else sent) -> /start?url={value}",
+        "member -> /start waiting note",
+        "brand already exists -> normal chat, ?onboard ignored"
+      ],
+      "conditions": "Admin or owner, no brand:{scope}, onboardok:{scope} set",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 35,
+          "end_line": 50
+        },
+        {
+          "path": "src/lib/onboard-confirm.ts",
+          "line": 16,
+          "end_line": 23
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 457
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 623
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 673,
+          "end_line": 678
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 724
+        },
+        {
+          "path": "src/app/[lang]/app/layout.tsx",
+          "line": 60
+        }
+      ],
+      "next": [
+        "onboard-build-start"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-build-start",
+      "title": "Noor starts the build",
+      "surface": "/{lang}/app/chat (ChatPanel first run)",
+      "actor": "system",
+      "action": "The page itself posts {url: confirmed URL} to POST /api/onboard, once per page load (ranOnboard ref). The owner clicks nothing.",
+      "ui_response": "Progress card 'Noor is building your workspace', with 'Reading your site, writing your brand file and a starter plan. Stay on this page.' and a bar. The Send button is disabled while this runs, and a typed message is not sent. For an added brand the 9 credits are taken before the stream starts; the credits pill updates when the build ends.",
+      "system_reaction": "Checks in order: session (401 text); forbid 'onboard' (403 forbidden); URL of 4+ characters (400 bad_url); brand exists (409 already_onboarded); URL differs from onboardok:{scope} (403 unconfirmed); model paused (503 paused). Then, for an added brand (cost = onboardCost(u.brandId) = 9) with no held charge, cannotPay answers 402 JSON {error:'trial_over'|'agent_cap'|'no_credits', need, credits} from the session record (trial, Noor's monthly cap in that brand from governance, balance), before the daily allowance; a cap or balance refusal also adds a 'cap_reached' or 'no_credits' row to that brand's activity log. Then rate allow('onboard:{account email}', 3, 86400), a fixed 24-hour window (429 slow_down). Then an owned lock onboardlock:{scope} for 330 s (maxDuration 300 + 30), taken with db.lockOwned and released only with its token (409 busy). Under the lock it reads the brand, the confirmation and the Dictionary answers again (409 already_onboarded / 403 unconfirmed). For an added brand chargeOnboard then debits 9 credits to agent 'noor' in that brand scope, under Noor's cap, and writes the hold User.onboardPaid[scope] in the same locked save (402 if the ledger refuses). A run that finds a hold reuses it without charging and refreshes its time. On a fresh charge an 'onboard_charged' activity row is written and warnAgentCap runs (a notification when Noor crosses 80% of her cap). Then it opens an SSE stream with a 10 s ping. The first brand is free: no charge and no trial check. The whole request shares one deadline.",
+      "branches": [
+        "503 paused (current production state) -> onboard-paused-notice, nothing charged",
+        "402 trial_over / agent_cap / no_credits (added brand) -> limit dialog + 'Setup of this brand did not start' (onboard-build-fail)",
+        "429 slow_down -> 'You reached today's brand setup limit' (onboard-build-fail)",
+        "409 busy or already_onboarded -> 'Setup is still running' text",
+        "403 unconfirmed / 403 forbidden / 400 / 401 -> generic failure text",
+        "held charge from an unfinished run -> reused, not charged again",
+        "200 -> live progress"
+      ],
+      "conditions": "Admin or owner, no brand, confirmed URL, model on, fewer than 3 tries in the account's current 24-hour window; for an added brand with no held charge also an active trial or plan, Noor under her cap and 9+ credits",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 496,
+          "end_line": 534
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 551
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 94,
+          "end_line": 126
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 36,
+          "end_line": 70
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 131,
+          "end_line": 146
+        },
+        {
+          "path": "src/lib/credits.ts",
+          "line": 235,
+          "end_line": 274
+        },
+        {
+          "path": "src/lib/notifications.ts",
+          "line": 276,
+          "end_line": 298
+        },
+        {
+          "path": "src/lib/db.ts",
+          "line": 62,
+          "end_line": 67
+        },
+        {
+          "path": "src/lib/db.ts",
+          "line": 184,
+          "end_line": 190
+        },
+        {
+          "path": "src/lib/pricing.ts",
+          "line": 207,
+          "end_line": 208
+        },
+        {
+          "path": "src/lib/rate.ts",
+          "line": 6,
+          "end_line": 23
+        }
+      ],
+      "next": [
+        "onboard-paused-notice",
+        "onboard-live-progress",
+        "onboard-build-fail"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-paused-notice",
+      "title": "Setup paused notice",
+      "surface": "/{lang}/app/chat (Getting started thread)",
+      "actor": "owner",
+      "action": "Waits in the Getting started thread after confirming a URL. Every owner with a production key sees this today.",
+      "ui_response": "The progress card disappears and Noor says 'Workspace setup is paused for now and nothing was saved. Refresh later to try again.' This message exists only in the browser and is not saved to the thread. Each refresh of /chat repeats it. Inbox, reports and generate send the owner back to /start while there is no brand. The only ways in while paused skip the build: the manual brand form and the Dictionary's 'I don't have a website' path.",
+      "system_reaction": "CLAUDE_PAUSED = true (since 2026-09-28), so modelState() returns 'paused' when ANTHROPIC_API_KEY is set (and with no key in a Vercel production deployment). /api/onboard returns 503 paused before the payment check, the daily allowance, the lock and the crawl: nothing is crawled, charged or written (an added brand's 9 credits are not taken), and none of the three tries is used. onboardok stays for up to a day. As a backstop, buildFromSite throws ModelPaused and never falls back to the mock, because a saved mock brand would end onboarding for good. There is no switch: turning the model on means setting the constant to false and deploying.",
+      "branches": [
+        "refresh within a day -> same notice",
+        "after a day the confirmation expires -> refresh of /chat?onboard= redirects to /start?url={link} to press Go again",
+        "manual form -> brand saved without the model (onboard-manual-form)",
+        "Dictionary 'I don't have a website' -> brand saved without the model (onboard-no-site-save)"
+      ],
+      "conditions": "CLAUDE_PAUSED true and ANTHROPIC_API_KEY set. Without a key modelState() is 'mock' and the build saves [DEV MOCK] files (an added brand is charged there too), which is for a laptop or CI only.",
+      "sources": [
+        {
+          "path": "src/lib/model.ts",
+          "line": 7,
+          "end_line": 15
+        },
+        {
+          "path": "src/lib/model.ts",
+          "line": 25,
+          "end_line": 34
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 116
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 500
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 504
+        },
+        {
+          "path": "src/lib/onboard.ts",
+          "line": 75,
+          "end_line": 76
+        },
+        {
+          "path": "src/lib/onboard-confirm.ts",
+          "line": 16,
+          "end_line": 18
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 40,
+          "end_line": 44
+        },
+        {
+          "path": "src/app/[lang]/app/reports/page.tsx",
+          "line": 28
+        }
+      ],
+      "next": [
+        "onboard-manual-form"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-live-progress",
+      "title": "Watch live progress",
+      "surface": "/{lang}/app/chat (OnboardProgress)",
+      "actor": "owner",
+      "action": "Watches the thread while Noor works (a normal, unpaused run).",
+      "ui_response": "Noor's first bubble: 'Let me take a look at your site and start putting things together.' The streamed texts use the account's language. The progress card then ticks through 'Reading your website', 'Detecting the platform, colours and fonts', 'Researching your market and competitors', 'Writing your workspace files' and 'Preparing your starter plan'. Done steps get a check and the current one pulses. The bar never passes 92% before done. Footer: 'Your first launch-path milestone unlocks when this finishes: level one, Seed.' If the site could not be read, Noor adds: 'I could not open the site, so I am building from the domain and what I know about your field. Review the files and correct what is off.'",
+      "system_reaction": "Every assistant message is pushed to chat:{scope}, so a reload shows it. crawl(url) adds https:// if missing and fetches through safeFetch. The SSRF guard allows http(s) only and blocks credentials, localhost/.local/.internal, and private, loopback, link-local, metadata and multicast IPs. It re-checks every redirect hop (at most 5). The crawl has a 9 s timeout and no JS rendering. It keeps the first 600,000 characters of HTML and extracts title, description, text, links, platform (Salla, Zid, Shopify, WooCommerce, WordPress, Webflow, Wix), inline hex colours and fonts. The status line moves on when each of the three model parts lands.",
+      "branches": [
+        "site unreachable, HTTP error or under 50 characters of text -> build continues from the domain, facts marked (inferred)"
+      ],
+      "conditions": "Model on, all checks passed",
+      "sources": [
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 31,
+          "end_line": 33
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 151,
+          "end_line": 165
+        },
+        {
+          "path": "src/lib/crawl.ts",
+          "line": 45,
+          "end_line": 62
+        },
+        {
+          "path": "src/lib/safe-fetch.ts",
+          "line": 36,
+          "end_line": 48
+        },
+        {
+          "path": "src/lib/safe-fetch.ts",
+          "line": 65,
+          "end_line": 83
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 521
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 735,
+          "end_line": 763
+        },
+        {
+          "path": "src/lib/chat.ts",
+          "line": 69,
+          "end_line": 71
+        }
+      ],
+      "next": [
+        "onboard-build-files",
+        "onboard-build-fail"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-build-files",
+      "title": "Brand files are written",
+      "surface": "/{lang}/app/chat (Getting started thread)",
+      "actor": "system",
+      "action": "No action. The build continues until the three model parts land.",
+      "ui_response": "Two new Noor bubbles. The first says 'These are your workspace files. I read them before every task, and you can edit them under Files at any time.' with five collapsed file cards: brand.md, brand-guidelines.md, opportunities.md, market-research.md and strategy.md. The second is '**Here's your plan**' plus Noor's summary, with a plan card of up to 3 starter tasks.",
+      "system_reaction": "buildFromSite makes three parallel claude-opus-5 calls from the same snapshot. Each uses JSON-schema output, adaptive thinking and one retry, only while the request's deadline leaves time for one. The core part writes brand, brand_md, plan, goal and summary. The identity part writes the guidelines (colours only from detected visuals) and opportunities. The market part writes the research and the 90-day strategy. When the confirmation carried Dictionary answers, they replace the owner hints given to the model and, in code, their name, industry and tone are written over the model's brand fields. Usage is metered to Noor under 'onboard'. Then the route runs track(email,'onboard'). saveBrand writes brand:{scope} with website = the crawled URL and empty banned and preferred words, and the run marks the brand saved (from here a failure is not refunded). writeFile saves each file by noor. preferences.md is created if missing. onboardplan:{scope} = {goal, plan, at}; from then on the goal is read into every agent's memory as OWNER GOAL. clearOnboard deletes onboardok:{scope} and onboardgame:{scope} (one confirmation, one build). For an added brand settleOnboard drops the hold alongside these writes: the 9 credits stay spent. The SSE 'done' event carries the brand name, the goal and the balance after the charge. The owned lock is released. The first brand is never charged.",
+      "branches": [
+        "a part fails twice -> whole run errors (onboard-build-fail)",
+        "a file with the same name that the owner already wrote on the Files page -> Noor's copy is saved as {name}-imported.md"
+      ],
+      "conditions": "Model on",
+      "sources": [
+        {
+          "path": "src/lib/onboard.ts",
+          "line": 40,
+          "end_line": 45
+        },
+        {
+          "path": "src/lib/onboard.ts",
+          "line": 112,
+          "end_line": 136
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 165,
+          "end_line": 177
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 178,
+          "end_line": 182
+        },
+        {
+          "path": "src/lib/credits.ts",
+          "line": 289,
+          "end_line": 295
+        },
+        {
+          "path": "src/lib/files.ts",
+          "line": 68,
+          "end_line": 81
+        },
+        {
+          "path": "src/lib/files.ts",
+          "line": 117,
+          "end_line": 122
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 525
+        },
+        {
+          "path": "src/lib/dictionary.ts",
+          "line": 339,
+          "end_line": 349
+        }
+      ],
+      "next": [
+        "onboard-done-redirect"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-build-fail",
+      "title": "Setup failed, refresh",
+      "surface": "/{lang}/app/chat (Getting started thread)",
+      "actor": "owner",
+      "action": "Hits a refusal or a failure during the build, then refreshes.",
+      "ui_response": "A 402 (an added brand the trial, Noor's cap or the balance cannot cover) raises the matching dialog ('Your free trial has ended', 'This agent reached its monthly cap' or 'You're out of credits') and Noor says 'Setup of this brand did not start, and no credits were used.' A 429 says 'You reached today's brand setup limit. This try charged nothing, and a setup already paid for stays paid. Try again tomorrow.' Any 409 (busy: a second tab or a reload during a run; or already_onboarded) shows 'Setup is still running. Refresh in a minute.' Any other refusal (403 unconfirmed or forbidden, 400, 401) shows '⚠︎ Could not set up the workspace. Refresh to try again.' A stream error on a paid added brand before the brand file was saved shows, once the refund went through, '⚠︎ Could not set up this brand, and the 9 credits went back to your balance ({credits} credits). Refreshing tries again and uses 9 credits.' and the credits pill updates. If that refund itself failed, the generic text shows and the charge stays held, so the next run is not charged again. A stream error after the brand file was saved (any brand) shows '⚠︎ Your brand file was saved, but the rest of the setup did not finish. Refresh to open the workspace, then check your files.' Other stream errors (model failure after one retry, or the request's deadline) and a dropped connection show the generic text. The progress card disappears.",
+      "system_reaction": "Refusals (402, 429, 409, 403, 400, 401) come back as plain answers before any stream, and nothing is charged. The 409 busy, the 409 already_onboarded and 403 unconfirmed from the re-read under the lock, and a 402 from the ledger itself come after the daily count; the ones taken under the lock release it. On a stream error the route logs and tracks 'error'. If it holds a charge and the brand was not saved, refundOnboard gives the 9 credits back, lowers Noor's counter and drops the hold in one save, at most once (null when another run already refunded), and an 'onboard_refunded' activity row records it. The model calls end by the request's own deadline, so a slow model throws and the refund runs before the platform's kill. If the refund itself fails the hold stays: the next run reuses it, or the daily cron refunds a hold nobody used for a day (sweepOnboardHolds, only dropped when the brand exists). If the brand was saved, settleOnboard drops the hold with no refund. The error event carries refunded, credits and saved, and the owned lock is released in finally. Messages already pushed (intro, unreachable note) stay in the thread. With no brand saved, onboardok is not cleared, so until it expires (a day after Go) a refresh runs the build again (and charges an added brand again after a refund). Each try that passes the paused and payment checks counts toward the 3-per-24-hours allowance, taken before the lock, so a reload during a run also uses a try. If the browser disconnects, the server keeps working (send() swallows the closed stream), so the thread is complete on reload.",
+      "branches": [
+        "refresh -> onboard-build-start again (an added brand pays 9 again after a refund)",
+        "402 -> top up, subscribe or raise Noor's cap in Governance; the manual form and the no-website path are free",
+        "429 -> wait until 24 hours after the first try; the manual form is the way in",
+        "409 already_onboarded (another tab finished first) -> same 'still running' text; refresh opens the workspace",
+        "error after the brand file was saved -> 'brand file was saved' text, no refund; refresh opens the workspace",
+        "refund failed or run killed by the platform -> hold kept; the next run reuses it or the daily cron refunds it after a day",
+        "connection dropped mid-build -> generic text, but a refresh after the server finishes opens the built workspace"
+      ],
+      "conditions": "Admin or owner, no brand",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 496,
+          "end_line": 534
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 525,
+          "end_line": 528
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 36,
+          "end_line": 70
+        },
+        {
+          "path": "src/app/api/onboard/route.ts",
+          "line": 183,
+          "end_line": 205
+        },
+        {
+          "path": "src/lib/credits.ts",
+          "line": 276,
+          "end_line": 295
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 296,
+          "end_line": 299
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 455
+        },
+        {
+          "path": "src/components/app/LimitModal.tsx",
+          "line": 30,
+          "end_line": 33
+        },
+        {
+          "path": "src/components/app/LimitModal.tsx",
+          "line": 45,
+          "end_line": 47
+        },
+        {
+          "path": "src/lib/onboard-confirm.ts",
+          "line": 36,
+          "end_line": 63
+        },
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 44,
+          "end_line": 58
+        }
+      ],
+      "next": [
+        "onboard-build-start",
+        "onboard-manual-form"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-done-redirect",
+      "title": "Workspace opens",
+      "surface": "/{lang}/app/chat",
+      "actor": "owner",
+      "action": "The build finishes (the 'done' event arrives).",
+      "ui_response": "The URL changes to /{lang}/app/chat and the page re-renders as the full chat. The credits pill in the chat header shows the balance from the 'done' event right away (after the 9-credit charge for an added brand). The owner sees a compact Launch path card at the top of the thread. On the first visit in this browser there is confetti and the toast 'Milestone unlocked: Noor read your brand' (about 3.6 s). The files and plan bubbles stay in place. Trial accounts get a highlighted activation bar above the message box with the goal, 'First up: {first plan task}' and 'Activate Noor'. Owners without a phone get the WhatsApp card. On xl screens the side panel appears on the right. The trial banner stays at the top.",
+      "system_reaction": "ChatPanel applies the event's credits with setCredits (the component and its state survive the refresh), then router.replace and router.refresh re-render the chat page, now with a brand. One parallel read covers history, connections, schedule, files, brief, notifications, brand, task rows, onboardplan and the journey. computeJourney marks the brand milestone done: level Seed, 10 of 150 points, 1 of 7. The starter is the goal plus the first plan task not yet added (else the first).",
+      "branches": [],
+      "conditions": "brand:{scope} saved",
+      "sources": [
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 525
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 637
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 662
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 706
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 718
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 51,
+          "end_line": 77
+        },
+        {
+          "path": "src/components/app/JourneyCard.tsx",
+          "line": 88,
+          "end_line": 104
+        },
+        {
+          "path": "src/lib/journey.ts",
+          "line": 59,
+          "end_line": 84
+        },
+        {
+          "path": "src/lib/journey-load.ts",
+          "line": 13,
+          "end_line": 22
+        },
+        {
+          "path": "src/components/app/TrialBanner.tsx",
+          "line": 7,
+          "end_line": 27
+        }
+      ],
+      "next": [
+        "onboard-file-card",
+        "onboard-plan-add",
+        "onboard-plan-start",
+        "onboard-whatsapp",
+        "onboard-journey-card",
+        "onboard-inbox-first",
+        "onboard-first-brief"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-no-site-save",
+      "title": "Save without a website",
+      "surface": "/{lang}/app/start (StartLaunch, 'I don't have a website')",
+      "actor": "owner",
+      "action": "On step 7 chooses 'I don't have a website', answers 'What exactly do you sell?' and 'Who are your customers?' and presses 'Save and start'.",
+      "ui_response": "The two text fields (1,000 characters each, both required) replace the link field. 'Save and start' stays disabled until both have text and shows '…' while saving. On success, or on 409, the browser goes to /{lang}/app (the inbox) and refreshes: there is no Getting started thread, no files and no plan card. On any other failure, including a network error, a red alert 'Something failed. Try again or fill the form manually.' appears and the button re-enables. Nothing is charged, so no cost line is shown here.",
+      "system_reaction": "PUT /api/brand with the Dictionary's name as the business name, the sector's label as the industry, the five words' tones as the tone, the two typed answers, dialect saudi (Arabic page) or english (English page), languages = the page language and create: true. The route checks the session (401), forbid(u,'brand.write') (403) and 400 missing unless name, industry, products and audience are present. With create: true and a brand already there it answers 409 exists and keeps that brand whole. Otherwise saveBrand writes brand:{scope} (name, industry and tone clipped to 80, 60 and 300; no website, city or channels) and track(email,'onboard') runs. No crawl, no model call, no file and no charge (free for an added brand too), so this works while the model is paused. Once a brand exists the site build can never run for this workspace: confirm and /api/onboard both answer 409 already_onboarded.",
+      "branches": [
+        "409 exists (a brand was built meanwhile in another tab) -> treated as success, the workspace opens with that brand",
+        "400 / 403 / network error -> red alert, button re-enables",
+        "success -> inbox with no files; the Files page still says to run setup from the URL, which can no longer run"
+      ],
+      "conditions": "Admin or owner ('brand.write'); a finished Dictionary game; both answers non-empty",
+      "sources": [
+        {
+          "path": "src/components/app/StartLaunch.tsx",
+          "line": 75,
+          "end_line": 84
+        },
+        {
+          "path": "src/components/app/StartLaunch.tsx",
+          "line": 114,
+          "end_line": 126
+        },
+        {
+          "path": "src/lib/dictionary.ts",
+          "line": 339,
+          "end_line": 343
+        },
+        {
+          "path": "src/lib/dictionary.ts",
+          "line": 355,
+          "end_line": 357
+        },
+        {
+          "path": "src/app/api/brand/route.ts",
+          "line": 14,
+          "end_line": 24
+        },
+        {
+          "path": "src/app/api/brand/route.ts",
+          "line": 25,
+          "end_line": 50
+        },
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 82
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 319
+        }
+      ],
+      "next": [
+        "onboard-inbox-first",
+        "onboard-journey-card",
+        "onboard-first-brief"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-manual-form",
+      "title": "Fill brand form",
+      "surface": "/{lang}/app/onboarding (BrandForm)",
+      "actor": "owner",
+      "action": "Fills in 'Introduce Noor to your brand': business name, website, industry, city, dialect, time zone, content languages, tone, products, audience, offers, competitors and preferred words, and toggles channel chips.",
+      "ui_response": "Name, industry, tone, products and audience are required (browser validation). City defaults to Riyadh, dialect to Light Saudi, languages to the page language, and channels to instagram, snapchat, tiktok and whatsapp. Language checkboxes and channel chips toggle on click. Members see every field disabled, the note 'Only the account owner or an admin can change this.' and no Save button.",
+      "system_reaction": "The page reads getBrand(scope) to pre-fill and sets readOnly = !can(u,'brand.write'). Nothing is sent until Save.",
+      "branches": [
+        "member -> read-only form"
+      ],
+      "conditions": "Signed in; admin or owner to edit",
+      "sources": [
+        {
+          "path": "src/app/[lang]/app/onboarding/page.tsx",
+          "line": 9,
+          "end_line": 16
+        },
+        {
+          "path": "src/components/app/BrandForm.tsx",
+          "line": 22,
+          "end_line": 32
+        },
+        {
+          "path": "src/components/app/BrandForm.tsx",
+          "line": 49,
+          "end_line": 108
+        }
+      ],
+      "next": [
+        "onboard-guard-words",
+        "onboard-manual-save"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-guard-words",
+      "title": "Switch on brand guard",
+      "surface": "/{lang}/app/onboarding#guard (Brand guard section)",
+      "actor": "owner",
+      "action": "Types banned words, or taps example chips such as '+ guaranteed' or '+ #1', then saves the form.",
+      "ui_response": "Each word appears as a chip with a lock icon, and the tapped example chip disappears. The badge changes from 'No words yet: the guard is off.' to 'N protected words'. After saving, the launch path marks 'Switch on the brand guard' done, which is two milestones and level Sapling. If this browser had already seen the card at Seed, the next card shows 'Level up: Sapling' with confetti.",
+      "system_reaction": "Saved with the brand through PUT /api/brand (banned clipped to 400 characters). From then on the task approve route and the publish route refuse, in code, any draft whose text breaks the brand rules (409 brand_violation). The guard milestone is bannedTerms(brand.banned).length > 0; one-letter terms are ignored.",
+      "branches": [],
+      "conditions": "Admin or owner (brand.write)",
+      "sources": [
+        {
+          "path": "src/components/app/BrandForm.tsx",
+          "line": 13,
+          "end_line": 16
+        },
+        {
+          "path": "src/components/app/BrandForm.tsx",
+          "line": 29,
+          "end_line": 32
+        },
+        {
+          "path": "src/components/app/BrandForm.tsx",
+          "line": 90,
+          "end_line": 97
+        },
+        {
+          "path": "src/app/api/brand/route.ts",
+          "line": 37
+        },
+        {
+          "path": "src/lib/journey-load.ts",
+          "line": 21
+        },
+        {
+          "path": "src/lib/journey.ts",
+          "line": 62
+        },
+        {
+          "path": "src/components/app/JourneyCard.tsx",
+          "line": 97,
+          "end_line": 99
+        },
+        {
+          "path": "src/app/api/tasks/[id]/route.ts",
+          "line": 66,
+          "end_line": 81
+        },
+        {
+          "path": "src/app/api/publish/[id]/route.ts",
+          "line": 31,
+          "end_line": 35
+        }
+      ],
+      "next": [
+        "onboard-manual-save"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-manual-save",
+      "title": "Save and start",
+      "surface": "/{lang}/app/onboarding (BrandForm)",
+      "actor": "owner",
+      "action": "Presses 'Save and start'.",
+      "ui_response": "On success 'Saved' shows and the browser goes to /{lang}/app/chat. For a brand built this way the Getting started thread is usually empty: Noor's greeting 'Hi! I'm Noor. Ask me for content...' with suggestion chips, no files and no plan card. It has the compact Launch path card (brand milestone celebrated on this browser's first visit). Trial accounts see 'First up: Import your products from your store so Noor writes with real names and prices' under the message box. On a refusal (400 missing, 403 forbidden) nothing is shown and the button re-enables.",
+      "system_reaction": "PUT /api/brand: session (401); forbid(u,'brand.write') (admin or owner); 400 missing unless name, industry, products and audience are present. This form sends no create flag, so it writes a whole new brand record from the body, replacing any that exists. Fields are clipped, dialect falls back to saudi, languages default to ['ar'], and an unknown time zone is dropped. Fields not on the form (valueProp, sitemap, social) are not kept. Then saveBrand writes brand:{scope} and track(email,'onboard') runs. There is no crawl, no model call, no file and no charge (free for an added brand too), so this works while the model is paused. Once a brand exists the site build can never run for this workspace: confirm and /api/onboard both answer 409 already_onboarded.",
+      "branches": [
+        "400/403 -> silent, button re-enabled",
+        "network error -> no catch, the button stays disabled until reload",
+        "success -> workspace opens without files (Files page and side panel say to run setup from the URL, which can no longer run)"
+      ],
+      "conditions": "Admin or owner",
+      "sources": [
+        {
+          "path": "src/components/app/BrandForm.tsx",
+          "line": 34,
+          "end_line": 46
+        },
+        {
+          "path": "src/components/app/BrandForm.tsx",
+          "line": 106
+        },
+        {
+          "path": "src/app/api/brand/route.ts",
+          "line": 14,
+          "end_line": 50
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 662
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 673,
+          "end_line": 678
+        },
+        {
+          "path": "src/components/app/ChatPanel.tsx",
+          "line": 725
+        },
+        {
+          "path": "src/app/[lang]/app/chat/page.tsx",
+          "line": 71,
+          "end_line": 73
+        },
+        {
+          "path": "src/components/app/FilesPanel.tsx",
+          "line": 82
+        },
+        {
+          "path": "src/lib/app-i18n.ts",
+          "line": 319
+        }
+      ],
+      "next": [
+        "onboard-journey-card",
+        "onboard-files-view",
+        "onboard-inbox-first",
+        "onboard-first-brief"
+      ],
+      "verified": true,
+      "stage": "onboard"
+    },
+    {
+      "id": "onboard-first-brief",
+      "title": "First morning brief",
+      "surface": "email + /{lang}/app (Noor's brief) + HomeSide 'Latest run'",
+      "actor": "system",
+      "action": "No action. The first 05:00 UTC daily cron after the brand exists.",
+      "ui_response": "The inbox shows a 'Noor's brief' box: 'Good morning {name} ... Noor's brief for today', with waiting and approved counts, credits (and the trial end date), upcoming seasons, Reem's to-dos when there are any, and a next step. The side panel shows it under 'Latest run'. With email preference 'all' (the default), an email 'Noor's brief — {date}' carries the same text and a link to /{lang}/app.",
+      "system_reaction": "Now that a brand exists, dailyFor goes on to the ad sync, runLifecycle, runDaily and followUps. runDaily (only when dailyBrief is on) builds the brief from counts with no model call, stores brief:{scope} and sets lastDaily. The brief email is sent when the preference is 'all', or 'important' with something waiting, a follow-up or a to-do due. Otherwise follow-ups alone can still send 'Follow-up from your Thakeen team' unless the preference is 'none'.",
+      "branches": [
+        "email preference 'none' -> no email",
+        "daily brief switched off -> no brief"
+      ],
+      "conditions": "brand:{scope} exists; active brand; account not suspended",
+      "sources": [
+        {
+          "path": "src/app/api/cron/daily/route.ts",
+          "line": 103,
+          "end_line": 120
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 184,
+          "end_line": 230
+        },
+        {
+          "path": "src/lib/schedule.ts",
+          "line": 68,
+          "end_line": 70
+        },
+        {
+          "path": "src/components/app/Inbox.tsx",
+          "line": 230,
+          "end_line": 235
+        },
+        {
+          "path": "src/components/app/HomeSide.tsx",
+          "line": 87,
+          "end_line": 92
+        }
+      ],
+      "next": [],
+      "note": "Hands over to daily use.",
+      "verified": true,
+      "stage": "onboard"
+    }
+  ]
+}

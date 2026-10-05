@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "sequence",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/09-review-media/candidate.json",
+    "sha256": "6645e29a24329c5a1358424e0415999a6a9f6434c055ca157f37c51d1a8f1ebf",
+    "bytes": 17357
+  },
+  "artifact": {
+    "path": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/09-review-media/09-review-media.html",
+    "sha256": "a4919903bd68cd35d52c4f7b79185e697d6194b9895f9d16c0f4833747c044db",
+    "bytes": 804562
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "fail"
+  },
+  "failedStage": "browser-check",
+  "diagnostics": [
+    {
+      "code": "viewer/browser-check-runtime",
+      "severity": "error",
+      "message": "browser-check could not complete its Chrome inspection.",
+      "subject": {
+        "artifact": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/09-review-media/09-review-media.html"
+      },
+      "evidence": {
+        "reason": "Chrome DevTools read pipe failed: stream ended\nChrome process: still running.\nChrome stderr:\nsandbox_extension_issue_file_to_process failed for /Applications/Google Chrome.app: 1 (Operation not permitted)\n[1005/104734.075958:ERROR:third_party/crashpad/crashpad/util/mach/bootstrap.cc:65] bootstrap_check_in org.chromium.crashpad.child_port_handshake.34738.616176.XGMNHDEDKYSIECNY: Permission denied (1100)\n[1005/104734.076731:ERROR:third_party/crashpad/crashpad/util/file/file_io.cc:103] ReadExactly: expected 4, observed 0\n[1005/104734.077235:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:208] open /Users/ihejazy/Library/Application Support/Google/Chrome/Crashpad/settings.dat: Operation not permitted (1)\n[1005/104734.077291:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:208] open /Users/ihejazy/Library/Application Support/Google/Chrome/Crashpad/settings.dat: Operation not permitted (1)\n[34735:616142:1005/104734.085821:ERROR:chrome/browser/process_singleton_posix.cc:1043] Failed to create socket directory.\n[34735:616142:1005/104734.085945:ERROR:chrome/app/chrome_main_delegate.cc:562] Failed to create a ProcessSingleton for your profile directory. This means that running multiple instances would start multiple browser processes rather than opening a new window in the existing process. Aborting now to avoid profile corruption.\nChrome transport: Node v24.5.0, libuv 1.51.0, darwin; pid=34735, exitCode=null, signalCode=null.\nChrome read pipe: readable=false, ended=true, destroyed=false, receivedBytes=0, messages=0, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=1, writtenBytes=50, bufferedBytes=0."
+      },
+      "supportedFixes": [
+        "resolve the reported Chrome inspection error, then rerun browser-check"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 1,
+    "shown": 1,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/09-review-media/refresh-f0e7fde/09-review-media.finalize.json",
+    "summaryReceipt": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/09-review-media/refresh-f0e7fde/09-review-media.finalize-summary.json",
+    "browserCheckReceipt": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/sequence-nashr-journey-20260930-105952/09-review-media/refresh-f0e7fde/09-review-media.browser-check.json"
+  },
+  "update": {
+    "status": "unavailable",
+    "installedVersion": null,
+    "availableVersion": null,
+    "releaseNotes": null,
+    "checkedAt": null,
+    "source": null,
+    "noticeRequired": false,
+    "noticeText": null,
+    "reason": "cache-unavailable"
+  },
+  "visualReview": "not-requested",
+  "durationMs": 557
+}

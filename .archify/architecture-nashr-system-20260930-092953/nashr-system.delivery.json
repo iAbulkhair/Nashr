@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b21e4ea5-fb30-4d10-a17b-df7a8acdacf5",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/architecture-nashr-system-20260930-092953/candidate.json",
+  "output": "/Users/ihejazy/projects/nashr/.claude/worktrees/nashr-archify-diagram-f8ba2e/.archify/architecture-nashr-system-20260930-092953/nashr-system.html",
+  "specification": {
+    "sha256": "c6f1ebac1925c7894a5597dce3c46d39548066e2932a0ad4a6296373ad9720d6",
+    "bytes": 8958
+  },
+  "artifact": {
+    "sha256": "f1aed858e8d4d72a8a4883677fbec616f07271190ef7e8c7058502cfee158362",
+    "bytes": 786144
+  }
+}
