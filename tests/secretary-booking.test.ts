@@ -1,9 +1,11 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { newMember, newUser, signIn } from "./helpers/session";
-import { currentUser } from "@/lib/auth";
+import { newMember, newUser, params, signIn } from "./helpers/session";
+import { currentUser, getUser, saveUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import * as rate from "@/lib/rate";
+import * as bookingRoute from "@/app/api/secretary/booking/[token]/route";
 import { can, MIN_ROLE } from "@/lib/roles";
 import {
   BOOK_KEYS, BOOK_PROVIDERS, BOOK_TOKEN, bookingKey, createBook, getBookStatus, hashBookToken, resolveBook, revokeBook, revokeBooks,
@@ -642,5 +644,243 @@ describe("applying a booking (rules 590-593)", () => {
     expect(await applyBooking(recOf(w), p, newHash())).toBe("noop");
     expect(await listOpenItems(w.email)).toHaveLength(0);
     expect(await claimOf(w.email, "calcom", p.externalId)).toBeNull();
+  });
+});
+
+describe("booking webhook (rules 594-595)", () => {
+  const MIN = 60_000, DAY = 864e5;
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const minuteFrom = (ms: number) => Math.ceil((Date.now() + ms) / MIN) * MIN;
+  let ipN = 0;
+  /** A fresh client address per use, so one test's per-IP bucket never touches another's. */
+  const nextIp = () => { const n = ++ipN; return `10.7.${n >> 8}.${n & 255}`; };
+  /** A live link: owner, plain token, hash and the derived signing key. */
+  const link = async (provider: "calcom" | "calendly" = "calcom") => {
+    const u = await newUser("bkroute");
+    const token = await createBook(u.email, u.email, provider, "en");
+    if (token === "busy") throw new Error("busy");
+    const hash = hashBookToken(token);
+    return { u, token, hash, key: bookingKey(hash) };
+  };
+  const calcomSig = (body: string, key: string) => ({ "x-cal-signature-256": hex(key, body) });
+  const calendlySig = (body: string, key: string, t = Math.floor(Date.now() / 1000)) => ({ "calendly-webhook-signature": `t=${t},v1=${hex(key, `${t}.${body}`)}` });
+  const post = (token: string, body: string, headers: Record<string, string> = {}, ip = nextIp()) =>
+    bookingRoute.POST(new Request(`http://x/api/secretary/booking/${token}`, { method: "POST", headers: { "x-real-ip": ip, "content-type": "application/json", ...headers }, body }), params({ token }));
+  const calcomCreate = (startMs: number, uid: string) => {
+    const o = clone(fx("booking-calcom-created")) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    o.payload.uid = uid; o.payload.startTime = iso(startMs); o.payload.endTime = iso(startMs + 30 * MIN);
+    return o;
+  };
+  const calendlyShift = (name: string, startMs: number) => {
+    const o = clone(fx(name)) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    o.payload.scheduled_event.start_time = iso(startMs); o.payload.scheduled_event.end_time = iso(startMs + 30 * MIN);
+    return o;
+  };
+  const empty404 = async (r: Response) => { expect(r.status).toBe(404); expect(await r.text()).toBe(""); };
+
+  it("rule 594: malformed token, unknown token, revoked link, a login no longer holding the scope, a bad signature and a missing signature all give the same empty 404; a malformed token reads nothing from the store; a body over 64 KB is refused before parsing; the signature is checked against the raw body", async () => {
+    const ip = nextIp();
+    const { u, token, key } = await link();
+    const body = JSON.stringify(calcomCreate(minuteFrom(2 * DAY), "bk_594_ok"));
+    expect((await post(token, body, calcomSig(body, key))).status).toBe(200);
+    expect(await listOpenItems(u.email)).toHaveLength(1);
+
+    // A malformed token reads nothing and counts nothing, whatever the body and headers say.
+    const get = vi.spyOn(db, "get");
+    const limit = vi.spyOn(rate, "allow");
+    const responses: Response[] = [];
+    try {
+      for (const bad of ["x", "a".repeat(42), "a".repeat(44), token.replace(/.$/, "!"), "."]) responses.push(await post(bad, body, calcomSig(body, key), ip));
+      expect(get).not.toHaveBeenCalled();
+      expect(limit).not.toHaveBeenCalled();
+    } finally {
+      get.mockRestore();
+      limit.mockRestore();
+    }
+
+    // A body over 64 KB is refused before anything else: no rate count, no store read, even under a valid signature.
+    const big = JSON.stringify({ ...calcomCreate(minuteFrom(3 * DAY), "bk_594_big"), pad: "x".repeat(70_000) });
+    expect(big.length).toBeGreaterThan(64 * 1024);
+    const get2 = vi.spyOn(db, "get");
+    const limit2 = vi.spyOn(rate, "allow");
+    try {
+      responses.push(await post(token, big, calcomSig(big, key), ip));
+      expect(get2).not.toHaveBeenCalled();
+      expect(limit2).not.toHaveBeenCalled();
+    } finally {
+      get2.mockRestore();
+      limit2.mockRestore();
+    }
+    expect(await listOpenItems(u.email)).toHaveLength(1);
+
+    // Unknown token.
+    responses.push(await post(randomBytes(32).toString("base64url"), body, calcomSig(body, key), ip));
+    // Bad signatures: wrong key, altered body, missing header, empty header, the other provider's header, an over-long header.
+    const fresh = JSON.stringify(calcomCreate(minuteFrom(4 * DAY), "bk_594_sig"));
+    responses.push(await post(token, fresh, calcomSig(fresh, "k".repeat(64)), ip));
+    responses.push(await post(token, fresh + " ", calcomSig(fresh, key), ip));
+    responses.push(await post(token, fresh, {}, ip));
+    responses.push(await post(token, fresh, { "x-cal-signature-256": "" }, ip));
+    responses.push(await post(token, fresh, calendlySig(fresh, key), ip));
+    responses.push(await post(token, fresh, { "x-cal-signature-256": `${hex(key, fresh)}${"0".repeat(600)}` }, ip));
+    // The signature covers the raw bytes: the same JSON, pretty-printed, under the compact body's signature is refused;
+    // signed as sent, it is accepted.
+    const pretty = JSON.stringify(JSON.parse(fresh), null, 2);
+    responses.push(await post(token, pretty, calcomSig(fresh, key), ip));
+    expect(await listOpenItems(u.email)).toHaveLength(1);
+    expect((await post(token, pretty, calcomSig(pretty, key), ip)).status).toBe(200);
+    expect(await listOpenItems(u.email)).toHaveLength(2);
+
+    // Calendly: stale timestamp, a v1 list far past any real header, a missing header.
+    const cy = await link("calendly");
+    const cyBody = JSON.stringify(calendlyShift("booking-calendly-created", minuteFrom(2 * DAY)));
+    responses.push(await post(cy.token, cyBody, calendlySig(cyBody, cy.key, Math.floor(Date.now() / 1000) - 3600), ip));
+    const crowd = Array.from({ length: 200 }, (_, i) => `v1=${String(i).padStart(64, "0")}`).join(",");
+    responses.push(await post(cy.token, cyBody, { "calendly-webhook-signature": `${calendlySig(cyBody, cy.key)["calendly-webhook-signature"]},${crowd}` }, ip));
+    responses.push(await post(cy.token, cyBody, {}, ip));
+    responses.push(await post(cy.token, cyBody, calcomSig(cyBody, cy.key), ip));
+    expect(await listOpenItems(cy.u.email)).toHaveLength(0);
+    expect((await post(cy.token, cyBody, calendlySig(cyBody, cy.key), ip)).status).toBe(200);
+
+    // Revoked link, and a login that no longer holds the scope (suspended, the way the feed's check refuses it).
+    const gone = await link();
+    await revokeBook(gone.u.email);
+    responses.push(await post(gone.token, body, calcomSig(body, gone.key), ip));
+    const sus = await link();
+    expect((await post(sus.token, body, calcomSig(body, sus.key), ip)).status).toBe(200);
+    await saveUser({ ...(await getUser(sus.u.email))!, suspended: true });
+    responses.push(await post(sus.token, body, calcomSig(body, sus.key), ip));
+    expect(await listOpenItems(sus.u.email)).toHaveLength(1);
+    // A link made before the login's last password event is refused too.
+    const old = await link();
+    await saveUser({ ...(await getUser(old.u.email))!, sessionsAfter: new Date(Date.now() + 5000).toISOString() });
+    responses.push(await post(old.token, body, calcomSig(body, old.key), ip));
+    expect(await listOpenItems(old.u.email)).toHaveLength(0);
+
+    expect(responses.length).toBeGreaterThanOrEqual(20);
+    const first = [...responses[0].headers];
+    expect(Object.fromEntries(first)).toMatchObject({ "cache-control": "no-store", "referrer-policy": "no-referrer" });
+    for (const r of responses) {
+      await empty404(r);
+      expect([...r.headers]).toEqual(first);
+    }
+  });
+
+  it("rule 595: a signed create, move and cancel return 200 and act on rec.scope only; a signed unknown event is 200 and changes nothing; malformed JSON under a good signature is 400; a held lock is 503; IP and link buckets answer 429 with Retry-After before any item read", async () => {
+    const { u, token, key } = await link();
+    const other = await newUser("bkother");
+    const start = minuteFrom(3 * DAY);
+    const send = (o: unknown, headers?: Record<string, string>) => { const b = JSON.stringify(o); return post(token, b, headers ?? calcomSig(b, key)); };
+
+    // create: the payload may name any scope it likes; only the record's is used
+    const created = { ...calcomCreate(start, "bk_595_a"), scope: other.email, payload: { ...calcomCreate(start, "bk_595_a").payload, scope: other.email, email: other.email } };
+    const r1 = await send(created);
+    expect(r1.status).toBe(200);
+    expect(Object.fromEntries(r1.headers)).toMatchObject({ "cache-control": "no-store", "referrer-policy": "no-referrer" });
+    const [it] = await listOpenItems(u.email);
+    expect(it).toMatchObject({ source: "booking", title: "Meeting with Omar Example", dueAt: iso(start) });
+    expect(await listOpenItems(other.email)).toHaveLength(0);
+    // a replay is a 200 too
+    expect((await send(created)).status).toBe(200);
+    expect(await listOpenItems(u.email)).toHaveLength(1);
+
+    // move (a Cal.com reschedule names the previous uid): the same item at the new time
+    const resched = clone(fx("booking-calcom-rescheduled")) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const newStart = minuteFrom(5 * DAY);
+    resched.payload.rescheduleUid = "bk_595_a"; resched.payload.uid = "bk_595_b";
+    resched.payload.startTime = iso(newStart); resched.payload.endTime = iso(newStart + 30 * MIN);
+    expect((await send(resched)).status).toBe(200);
+    const moved = await listOpenItems(u.email);
+    expect(moved).toHaveLength(1);
+    expect(moved[0]).toMatchObject({ id: it.id, dueAt: iso(newStart) });
+
+    // a signed unknown event is a 200 that changes nothing
+    expect((await send({ triggerEvent: "MEETING_ENDED", payload: { uid: "bk_595_a" } })).status).toBe(200);
+    expect((await send({ hello: "world" })).status).toBe(200);
+    expect(await listOpenItems(u.email)).toHaveLength(1);
+
+    // malformed JSON, and an empty body, under a good signature: 400
+    for (const raw of ["{not json", ""]) {
+      const r = await post(token, raw, calcomSig(raw, key));
+      expect(r.status).toBe(400);
+      expect(r.headers.get("cache-control")).toBe("no-store");
+    }
+    expect(await listOpenItems(u.email)).toHaveLength(1);
+
+    // a held item lock: 503 (the provider retries); released, the same delivery is handled
+    const cancel = clone(fx("booking-calcom-cancelled")) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    cancel.payload.uid = "bk_595_b";
+    expect(await db.lock(SEC_KEYS.lock(u.email, it.id), 30)).toBe(true);
+    try {
+      const busy = await send(cancel);
+      expect(busy.status).toBe(503);
+      expect(busy.headers.get("cache-control")).toBe("no-store");
+      expect(await listOpenItems(u.email)).toHaveLength(1);
+    } finally {
+      await db.unlock(SEC_KEYS.lock(u.email, it.id));
+    }
+    expect((await send(cancel)).status).toBe(200);
+    expect(await listOpenItems(u.email)).toHaveLength(0);
+    expect((await send(cancel)).status).toBe(200);
+
+    // a store failure before the item work is 503, not a 404 that tells the sender to give up
+    const down = vi.spyOn(db, "get").mockRejectedValueOnce(new Error("store down"));
+    try {
+      expect((await send(created)).status).toBe(503);
+    } finally {
+      down.mockRestore();
+    }
+
+    // Calendly: create then cancel, signed its own way
+    const cy = await link("calendly");
+    const cyStart = minuteFrom(4 * DAY);
+    const cyCreate = JSON.stringify(calendlyShift("booking-calendly-created", cyStart));
+    expect((await post(cy.token, cyCreate, calendlySig(cyCreate, cy.key))).status).toBe(200);
+    expect(await listOpenItems(cy.u.email)).toHaveLength(1);
+    const cyCancel = JSON.stringify(calendlyShift("booking-calendly-canceled", cyStart));
+    expect((await post(cy.token, cyCancel, calendlySig(cyCancel, cy.key))).status).toBe(200);
+    expect(await listOpenItems(cy.u.email)).toHaveLength(0);
+
+    // a record whose provider is neither (corrupt): 500, nothing done
+    const bad = await link();
+    const badHash = bad.hash;
+    const rec = (await db.get<BookRecord>(BOOK_KEYS.rec(badHash)))!;
+    await db.set(BOOK_KEYS.rec(badHash), { ...rec, provider: "zoom" });
+    await db.set(BOOK_KEYS.of(rec.login, "zoom"), badHash);
+    const bb = JSON.stringify(calcomCreate(minuteFrom(2 * DAY), "bk_595_bad"));
+    const r500 = await post(bad.token, bb, calcomSig(bb, bad.key));
+    expect(r500.status).toBe(500);
+    expect(await listOpenItems(bad.u.email)).toHaveLength(0);
+
+    // buckets: the address bucket answers 429 before the record is read
+    const ip = nextIp();
+    await db.set(`rate:book:ip:${ip}`, 1200, 3600);
+    const get = vi.spyOn(db, "get");
+    try {
+      const r = await post(token, JSON.stringify(created), {}, ip);
+      expect(r.status).toBe(429);
+      expect(r.headers.get("retry-after")).toBe("3600");
+      expect(await r.text()).toBe("");
+      expect(get).not.toHaveBeenCalled();
+    } finally {
+      get.mockRestore();
+    }
+    // the link bucket: after the record is found, before the holds check, the signature and any item work
+    const lim = await link();
+    await db.set(`rate:book:t:${lim.hash}`, 120, 3600);
+    const lockSpy = vi.spyOn(db, "lock");
+    try {
+      const lb = JSON.stringify(calcomCreate(minuteFrom(2 * DAY), "bk_595_lim"));
+      const r = await post(lim.token, lb, calcomSig(lb, lim.key));
+      expect(r.status).toBe(429);
+      expect(r.headers.get("retry-after")).toBe("3600");
+      expect(await r.text()).toBe("");
+      // an unsigned call hits the same bucket first: the 429 shows a live record exists, as the feed's does
+      expect((await post(lim.token, lb, {})).status).toBe(429);
+      expect(lockSpy).not.toHaveBeenCalled();
+      expect(await listOpenItems(lim.u.email)).toHaveLength(0);
+    } finally {
+      lockSpy.mockRestore();
+    }
   });
 });
