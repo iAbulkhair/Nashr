@@ -19,7 +19,7 @@ import * as callback from "@/app/api/connect/[provider]/callback/route";
 import * as connectRoute from "@/app/api/connect/[provider]/route";
 
 /**
- * Rules 629-636: publishing through Composio (src/lib/connectors/composio.ts, via-composio.ts). Composio's client is
+ * Rules 645-652: publishing through Composio (src/lib/connectors/composio.ts, via-composio.ts). Composio's client is
  * replaced by a fake that records every call; the platforms' answers are given in the shapes Composio's tool schemas
  * describe, and `pick` reads them however deep they sit.
  */
@@ -75,7 +75,7 @@ const ok = (data: unknown) => ({ successful: true, data });
 /** The error a call that must fail threw. */
 const failure = (p: Promise<unknown>): Promise<Error> => p.then(() => { throw new Error("expected a failure"); }, (e: Error) => e);
 
-describe("who Composio sees (rule 629)", () => {
+describe("who Composio sees (rule 645)", () => {
   it("knows a workspace by an opaque id derived from its scope, never the email, the same on every call", async () => {
     const a = composioUserId("owner@shop.sa"), b = composioUserId("owner@shop.sa#b2"), again = composioUserId("owner@shop.sa");
     expect(a).toHaveLength(32);
@@ -89,7 +89,7 @@ describe("who Composio sees (rule 629)", () => {
   });
 });
 
-describe("what may be called (rule 630)", () => {
+describe("what may be called (rule 646)", () => {
   it("runs only listed tools with listed argument names, and a read tool is not a write", async () => {
     await expect(composioWrite("s", "facebook", "FACEBOOK_DELETE_POST", {}, "ca")).rejects.toThrow("composio_tool_not_allowed");
     await expect(composioWrite("s", "facebook", "FACEBOOK_LIST_MANAGED_PAGES", {}, "ca")).rejects.toThrow("composio_tool_not_allowed");
@@ -115,7 +115,7 @@ describe("what may be called (rule 630)", () => {
   });
 });
 
-describe("what a failure says (rule 631)", () => {
+describe("what a failure says (rule 647)", () => {
   it("shapes errors like the direct connectors, so a refused token reconnects and an unknown result is held", async () => {
     answers.FACEBOOK_CREATE_POST = { successful: false, error: "Error validating access token: Session has expired" };
     const e1 = await failure(composioWrite("s", "facebook", "FACEBOOK_CREATE_POST", { page_id: "1", message: "m" }, "ca"));
@@ -147,7 +147,7 @@ describe("what a failure says (rule 631)", () => {
   });
 });
 
-describe("connecting (rule 632)", () => {
+describe("connecting (rule 648)", () => {
   it("sends the browser only to Composio, with the account id kept server-side and one listed toolkit", async () => {
     const u = await newUser("cpstart");
     await signIn(u.email);
@@ -240,7 +240,7 @@ describe("connecting (rule 632)", () => {
   });
 });
 
-describe("publishing (rule 633)", () => {
+describe("publishing (rule 649)", () => {
   it("posts to X, Facebook and LinkedIn with the stored account, plain text and the platform's own link", async () => {
     const u = await newUser("cppub");
     await saveConnection(u.email, via("x", { twitter: "ca_x" }));
@@ -302,7 +302,7 @@ describe("publishing (rule 633)", () => {
   });
 });
 
-describe("where a post can go (rule 634)", () => {
+describe("where a post can go (rule 650)", () => {
   it("offers LinkedIn and TikTok only from a Composio record, TikTok only with artwork, and Instagram without a Page", () => {
     const conns = [via("linkedin", {}), via("tiktok", {}), via("meta", {}, { igId: "1784" })];
     const connected = connectedTargets(conns);
@@ -315,7 +315,7 @@ describe("where a post can go (rule 634)", () => {
   });
 });
 
-describe("disconnecting (rule 635)", () => {
+describe("disconnecting (rule 651)", () => {
   it("revokes at the platform before deleting, keeps a record it could not revoke, and treats a gone account as revoked", async () => {
     const u = await newUser("cpdel");
     await signIn(u.email);
@@ -349,7 +349,7 @@ describe("disconnecting (rule 635)", () => {
   });
 });
 
-describe("who can reach Composio (rule 636)", () => {
+describe("who can reach Composio (rule 652)", () => {
   const files = (dir: string): string[] => readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? files(p) : /\.tsx?$/.test(f) ? [p] : []; });
   it("only the connector layer, the connect routes and account deletion import it; no chat, MCP or agent code does", () => {
     const importers = files("src").filter((f) => /from "(?:\.\/|@\/lib\/connectors\/|\.\/connectors\/)(?:composio|via-composio)"/.test(readFileSync(f, "utf8"))).sort();

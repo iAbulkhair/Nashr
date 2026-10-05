@@ -4,7 +4,8 @@ import Anthropic from "@anthropic-ai/sdk";
  * One switch for every Claude call in the product: chat, generation and its reviewer, the judge, onboarding, image
  * prompts, the free tools and the golden set.
  *
- * Paused on 2026-09-28 at the owner's request. To turn Claude back on, set CLAUDE_PAUSED to false and deploy.
+ * Paused on 2026-09-28 at the owner's request, back on since 2026-10-05 at the owner's request. To pause again, set
+ * CLAUDE_PAUSED to true and deploy.
  *
  * Paused is not the no-key development path. Without ANTHROPIC_API_KEY (outside a Vercel production deployment, which
  * refuses as paused instead: `modelState`) the app answers with [DEV MOCK] placeholders,
@@ -12,7 +13,7 @@ import Anthropic from "@anthropic-ai/sdk";
  * would save a mock brand file that then blocks the real onboarding. Paused surfaces refuse instead, before a credit
  * moves or anything is written.
  */
-export const CLAUDE_PAUSED = true;
+export const CLAUDE_PAUSED = false;
 
 export type ModelState = "on" | "paused" | "mock";
 

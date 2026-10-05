@@ -8,12 +8,12 @@ import { getUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getTask, listLite, type Brand } from "@/lib/brand";
 import { codeHash, promptHashes, promptStamp } from "@/lib/prompt-stamp";
-import { contentHash, playbook, playbookHash } from "@/lib/skills";
+import { contentHash, playbook, playbookHash, skillsBlock, skillsHash } from "@/lib/skills";
 import { PLAYBOOKS, pickPlaybook } from "@/lib/playbooks";
 import { taskFromItem } from "@/lib/generate-batch";
 import { saveExternalDraft } from "@/lib/external-drafts";
 import { summarize, type GoldenResult, type GoldenRun } from "@/lib/golden";
-import type { AgentId } from "@/lib/agents";
+import { agentById, type AgentId } from "@/lib/agents";
 import * as generateRoute from "@/app/api/generate/route";
 
 /**
@@ -34,10 +34,12 @@ describe("every generated task records which prompts made it (rule 229)", () => 
   it("one hash per source: the owning agent's playbook, review.md, the brand's industry playbook, and the prompts in code", () => {
     const s = promptStamp("social", brand);
     const ecommerce = PLAYBOOKS.find((p) => p.id === "ecommerce")!;
-    expect(s).toEqual({ skills: contentHash(playbook("marketing")), review: contentHash(playbook("review")), industry: `ecommerce:${contentHash(ecommerce.text)}`, code: codeHash("social") });
+    expect(s).toEqual({ skills: contentHash(skillsBlock(agentById("noor"))), review: contentHash(playbook("review")), industry: `ecommerce:${contentHash(ecommerce.text)}`, code: codeHash("social") });
     for (const v of [s.skills, s.review, s.code]) expect(v).toMatch(HEX);
     expect(promptStamp("social", brand), "the same content gives the same stamp").toEqual(s);
-    expect(promptStamp("pricing_review").skills, "Razan's items carry her playbook's hash").toBe(playbookHash("finance"));
+    expect(promptStamp("pricing_review").skills, "Razan's items carry the hash of her playbook and slices").toBe(skillsHash(agentById("razan")));
+    expect(skillsHash(agentById("razan")), "her ads slice is part of what the stamp records").not.toBe(playbookHash("finance"));
+    expect(promptStamp("strategy_review").skills, "Majed has no slices: his stamp is his playbook alone").toBe(playbookHash("executive"));
     expect(promptStamp("social"), "no brand, no industry part").not.toHaveProperty("industry");
     expect(pickPlaybook("مقاهي")).toBeNull();
     expect(promptStamp("social", { industry: "مقاهي" }).industry).toMatch(/^general:[a-f0-9]{12}$/);

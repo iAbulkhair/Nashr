@@ -8,7 +8,7 @@
  * create, edit, pause or fund an ad, or change a property (the founder's rule of 2026-10-05: ads are read and analysed,
  * never published or edited).
  *
- * WhatsApp and YouTube are drafts only (rule 641): WhatsApp's one write submits a message template to Meta's review and
+ * WhatsApp and YouTube are drafts only (rule 657): WhatsApp's one write submits a message template to Meta's review and
  * no tool sends a message; YouTube's one write uploads a video whose privacyStatus is pinned to "private" in `fixed`.
  *
  * Not here on purpose: ad writes (money moves need their own spec, evaluation spec C-R1), comments and messages (untrusted

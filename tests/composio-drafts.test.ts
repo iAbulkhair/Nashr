@@ -11,7 +11,7 @@ import { mayHavePosted } from "@/lib/publish-once";
 import type { Task } from "@/lib/brand";
 
 /**
- * Rules 641-644: drafts through Composio and by API key. Nothing here reaches a customer or the public: a WhatsApp
+ * Rules 657-660: drafts through Composio and by API key. Nothing here reaches a customer or the public: a WhatsApp
  * message becomes a template for Meta's review, a clip a private YouTube video, an email a Brevo draft campaign or a
  * Klaviyo template. Composio's client and fetch are fakes; answers follow Composio's output schemas.
  */
@@ -56,7 +56,7 @@ const keyed = (provider: string): Connection => ({ provider, data: { apiKey: "k_
 const CLIP = `https://s1.public.blob.vercel-storage.com/media/${"b2".repeat(16)}.mp4`;
 const item = (over: Partial<Task> = {}): Task => ({ id: `t${Math.random().toString(16).slice(2, 10)}`, type: "whatsapp", channel: "whatsapp", title: "عرض العيد", body: "هلا {{1}}، وصل عطر العود الجديد. اطلبه من {{2}} اليوم. للإيقاف أرسل: إلغاء", status: "approved", createdAt: new Date().toISOString(), lang: "ar", ...over } as Task);
 
-describe("a draft stays a draft in code (rule 641)", () => {
+describe("a draft stays a draft in code (rule 657)", () => {
   it("refuses a public YouTube upload or a direct TikTok post before anything is sent", async () => {
     const yt = { title: "t", description: "d", tags: [], categoryId: "22", videoFilePath: {} };
     await expect(composioWrite("s", "youtube", "YOUTUBE_UPLOAD_VIDEO", { ...yt, privacyStatus: "public" }, "ca")).rejects.toThrow("composio_argument_not_allowed");
@@ -83,7 +83,7 @@ describe("a draft stays a draft in code (rule 641)", () => {
   });
 });
 
-describe("WhatsApp templates and private YouTube uploads (rule 642)", () => {
+describe("WhatsApp templates and private YouTube uploads (rule 658)", () => {
   it("renumbers the variables in order of first use and gives each a neutral example", () => {
     const t = whatsappTemplate("T-9x", "**مرحبا** {{2}}، طلبك {{1}} جاهز. شكراً {{2}} على ثقتك", "ar", "k1");
     expect(t).toMatchObject({ name: "thakeen_t9x_k1", category: "MARKETING", language: "ar", allow_category_change: true });
@@ -140,7 +140,7 @@ describe("WhatsApp templates and private YouTube uploads (rule 642)", () => {
   });
 });
 
-describe("where a draft can go (rule 643)", () => {
+describe("where a draft can go (rule 659)", () => {
   const conns = [via("whatsapp", { whatsapp: "a" }), via("youtube", { youtube: "b" }), keyed("brevo"), keyed("klaviyo")];
   it("sends a WhatsApp message to templates, an email to Brevo and Klaviyo, and our own clip to YouTube", () => {
     const c = connectedTargets(conns);
@@ -166,7 +166,7 @@ describe("where a draft can go (rule 643)", () => {
   });
 });
 
-describe("email drafts by API key (rule 644)", () => {
+describe("email drafts by API key (rule 660)", () => {
   type Req = { url: string; init: RequestInit };
   let reqs: Req[] = [];
   const stub = (answer: (url: string) => { status: number; body: unknown }) => {

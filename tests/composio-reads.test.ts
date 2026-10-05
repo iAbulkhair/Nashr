@@ -12,7 +12,7 @@ import { getSiteSnapshot, siteDataBlock, syncSite, syncSiteIfDue } from "@/lib/s
 import { wipeAccount } from "@/lib/account";
 
 /**
- * Rules 637-640: ad results and site figures read through Composio (ads-via-composio.ts, site-stats.ts). Read only: the
+ * Rules 653-656: ad results and site figures read through Composio (ads-via-composio.ts, site-stats.ts). Read only: the
  * founder's rule of 2026-10-05 is that ads are fetched and analysed, never published, created or edited. Composio's
  * client is a fake; answers follow the shapes of Composio's output schemas.
  */
@@ -57,7 +57,7 @@ const NOW = new Date("2026-10-05T09:00:00Z");
 const SNAP_ACC = "0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0";
 const snapAd = (n: number, status = "ACTIVE") => ({ ad: { id: `0b1c2d3e-4f50-6172-8394-${String(n).padStart(12, "0")}`, name: `ad ${n}`, status } });
 
-describe("read only by construction (rule 637)", () => {
+describe("read only by construction (rule 653)", () => {
   const READ_ONLY = ["metaads", "snapchat", "googleads", "tiktok_ads", "google_analytics", "google_search_console"] as const;
 
   it("lists no write tool for an ad or site toolkit, so no call can create, edit, pause or fund an ad", async () => {
@@ -75,7 +75,7 @@ describe("read only by construction (rule 637)", () => {
   });
 });
 
-describe("connecting an ad account or a site (rule 638)", () => {
+describe("connecting an ad account or a site (rule 654)", () => {
   it("keeps only the ad accounts the platform listed, active ones, and refuses a login with none", async () => {
     answers.METAADS_GET_AD_ACCOUNTS = ok({ data: [
       { id: "act_111", name: "متجر الورد", currency: "SAR", account_status: 1 },
@@ -121,7 +121,7 @@ describe("connecting an ad account or a site (rule 638)", () => {
   });
 });
 
-describe("ad results (rule 639)", () => {
+describe("ad results (rule 655)", () => {
   it("reads Meta insights page by page with the cursor Meta returned, never a URL", async () => {
     const seen: unknown[] = [];
     answers.METAADS_GET_INSIGHTS = (args) => {
@@ -183,7 +183,7 @@ describe("ad results (rule 639)", () => {
   });
 });
 
-describe("site figures for Dana (rule 640)", () => {
+describe("site figures for Dana (rule 656)", () => {
   const google = (meta: Record<string, string> = {}) => via("google", { google_analytics: "ca_ga", google_search_console: "ca_gsc" }, { gaProperty: "properties/987", gaName: "ward.sa", gscSite: "sc-domain:ward.sa", ...meta });
   const gaReport = (args: Record<string, unknown>) => (args.dimensions as { name: string }[])[0].name === "landingPage"
     ? ok({ rows: [{ dimensionValues: [{ value: "/oud" }], metricValues: [{ value: "300" }, { value: "6" }] }] })

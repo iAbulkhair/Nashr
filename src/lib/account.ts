@@ -22,6 +22,7 @@ import { proposalKeys } from "./brand-proposals";
 import { ONCE_INDEX, onceClaimKey, onceKey, onceRepairKey } from "./notify";
 import { getConnection } from "./connectors/store";
 import { isComposio, revokeAll } from "./connectors/via-composio";
+import { AD_PROVIDERS } from "./connectors/ads";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -110,6 +111,12 @@ export async function wipeAccount(email: string) {
       `onboardok:${s}`, `onboardlock:${s}`, `onboardgame:${s}`,
       // The site's GA4 and Search Console totals (src/lib/site-stats.ts): the public's search queries and the site's pages.
       `sitestats:${s}`,
+      // The store's sales snapshot (orders, revenue, best sellers, abandoned carts) and its failure note (14 days).
+      `storesales:${s}`, `storesyncfail:${s}`,
+      // The latest campaign results, from an upload or an ad account (src/lib/perf-store.ts).
+      `perfimport:${s}`,
+      // Each ad account's last read time, one per ad platform.
+      ...AD_PROVIDERS.map((p) => `adsync:${s}:${p}`),
       `onboardplan:${s}`, `pending:${s}`, `pendingidx:${s}`, `tidxm:${s}`, `tidxv:${s}`, `tasks:${s}`, `files:${s}`, `brand:${s}`, `prefs:${s}`, `chat:${s}`, `convs:${s}`, `gov:${s}`, `schedule:${s}`, `brief:${s}`, `conns:${s}`,
     );
   });
