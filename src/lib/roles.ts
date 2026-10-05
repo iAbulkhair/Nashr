@@ -91,6 +91,8 @@ export const MIN_ROLE = {
   "todo.write": "member",
   /** One's own private calendar feed link (src/lib/feed-token.ts): create, renew, revoke, status. Refused while impersonating. */
   "feed.manage": "member",
+  /** One's own booking links (src/lib/booking-token.ts, Reem B2a): create, renew, revoke, status. Refused while impersonating. */
+  "booking.manage": "member",
   /** Switch the active brand (per login). */
   "brands.switch": "member",
   /** Read anything in the workspace. */
@@ -122,6 +124,7 @@ export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
   "oauth.approve",
   "partner.bank",
   "feed.manage",
+  "booking.manage",
 ]);
 
 const RANK: Record<Role, number> = { member: 1, admin: 2, owner: 3 };

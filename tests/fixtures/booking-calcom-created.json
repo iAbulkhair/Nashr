@@ -1,0 +1,24 @@
+{
+  "triggerEvent": "BOOKING_CREATED",
+  "createdAt": "2026-10-06T08:00:00.000Z",
+  "payload": {
+    "type": "intro-call",
+    "title": "Intro call between Sara Example and Omar Example",
+    "eventTitle": "Intro call",
+    "description": "Private note the guest typed at booking",
+    "additionalNotes": "Private note the guest typed at booking",
+    "startTime": "2026-10-12T09:00:00Z",
+    "endTime": "2026-10-12T09:30:00Z",
+    "organizer": { "id": 1, "name": "Sara Example", "email": "sara@example.com", "username": "sara-example", "timeZone": "Asia/Riyadh" },
+    "attendees": [
+      { "email": "omar@example.com", "name": "Omar Example", "timeZone": "Asia/Riyadh", "phoneNumber": "+10000000000" }
+    ],
+    "location": "https://example.com/video/room-1",
+    "uid": "bk_uid_aaaaaaaaaaaaaaaa",
+    "bookingId": 100,
+    "iCalUID": "bk_uid_aaaaaaaaaaaaaaaa@Cal.com",
+    "iCalSequence": 0,
+    "status": "ACCEPTED",
+    "metadata": { "videoCallUrl": "https://example.com/video/room-1" }
+  }
+}

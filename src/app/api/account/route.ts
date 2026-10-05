@@ -4,6 +4,7 @@ import { createSession, currentUser, destroySession, revokeSessions, saveUser, s
 import { withUserLock } from "@/lib/credits";
 import { wipeAccount } from "@/lib/account";
 import { revokeAllMcp } from "@/lib/mcp";
+import { revokeBook } from "@/lib/booking-token";
 import { revokeFeed } from "@/lib/feed-token";
 import { forbid } from "@/lib/roles";
 import { getMember, saveMember, withMemberLock } from "@/lib/team";
@@ -53,14 +54,14 @@ export async function PATCH(req: Request) {
       return true;
     });
     if (!done) return NextResponse.json({ ok: false }, { status: 401 });
-    // This member's own calendar link ends with the old password; the owner's and the others' stay.
-    await revokeFeed(a.email);
+    // This member's own calendar feed and booking links end with the old password; the owner's and the others' stay.
+    await Promise.all([revokeFeed(a.email), revokeBook(a.email)]);
   } else {
     // Inside the user lock, on the fresh record: saving the copy read at the start of the request could undo a credit charge.
     await withUserLock(u.email, async (x) => { x.passHash = hash; revokeSessions(x); await saveUser(x); });
     // Every other device is signed out, and every MCP token and connected app dies with the old password, exactly as in
     // the reset route: a stolen bearer token must not outlive the password it was obtained with.
-    await Promise.all([revokeAllMcp(u.email), revokeFeed(u.email)]);
+    await Promise.all([revokeAllMcp(u.email), revokeFeed(u.email), revokeBook(u.email)]);
   }
   // This device stays signed in, as the same login that made the change.
   await destroySession();

@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { createSession, getLogin, revokeSessions, revokeTeamSessions, saveUser, strongPassword } from "@/lib/auth";
 import { withUserLock } from "@/lib/credits";
 import { revokeAllMcp } from "@/lib/mcp";
+import { revokeBook, revokeBooks } from "@/lib/booking-token";
 import { revokeFeed, revokeFeeds } from "@/lib/feed-token";
 import { membersKey, saveMember, withMemberLock } from "@/lib/team";
 import { db } from "@/lib/db";
@@ -52,9 +53,9 @@ export async function POST(req: Request) {
       return true;
     });
     if (!done) return badToken();
-    // The member's own calendar link ends with the password it was made under, as an owner's MCP tokens do. Only this
-    // login's: the owner's link and the rest of the team's are untouched.
-    await revokeFeed(member.email);
+    // The member's own calendar feed and booking links end with the password they were made under, as an owner's MCP
+    // tokens do. Only this login's: the owner's links and the rest of the team's are untouched.
+    await Promise.all([revokeFeed(member.email), revokeBook(member.email)]);
     // A seat-paused member gets the new password but no session: `currentUser` refuses it until the owner has room.
     if (member.disabled) return NextResponse.json({ ok: false, error: "disabled" }, { status: 403 });
     await createSession(member.email);
@@ -66,10 +67,10 @@ export async function POST(req: Request) {
   // A reset is what an owner does after losing control of the account: the owner's sessions, every member's session
   // (each signs back in with their own password) and every MCP token die with the old password.
   await withUserLock(owner.email, async (x) => { x.passHash = hash; revokeSessions(x); revokeTeamSessions(x); await saveUser(x); });
-  // The owner's calendar link and every member's go with the MCP tokens, as every member's session does above (the
+  // The owner's calendar feed and booking links and every member's go with the MCP tokens, as every member's session does above (the
   // password and the sessions are already saved: a failure here is a 500 and the user asks for a new reset link).
   const roster = await db.smembers(membersKey(owner.email));
-  await Promise.all([revokeAllMcp(owner.email), revokeFeeds([owner.email, ...roster])]);
+  await Promise.all([revokeAllMcp(owner.email), revokeFeeds([owner.email, ...roster]), revokeBooks([owner.email, ...roster])]);
   await createSession(owner.email);
   return NextResponse.json({ ok: true });
 }

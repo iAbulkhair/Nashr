@@ -30,13 +30,13 @@ Cancel and reschedule (the provider field names are confirmed against each provi
 | Provider event | Does |
 |---|---|
 | Cal.com `BOOKING_CREATED` | Create (or no-op when the booking id is known). |
-| Cal.com `BOOKING_RESCHEDULED` | Move the same item to the new start and end (`changeItem` `reschedule`), re-arm `remindAt`; unknown id creates it. |
-| Cal.com `BOOKING_CANCELLED` | Remove the item (section 3 helper). |
+| Cal.com `BOOKING_RESCHEDULED` | Move the same item to the new start and end (`changeItem` `reschedule`), re-arm `remindAt`; unknown id creates it. When the item was removed (Cal.com's "request reschedule" cancels the old booking first, then the guest books again naming it), the new booking gets a fresh item under its own claim (amended 2026-10-05, final review M-1). |
+| Cal.com `BOOKING_CANCELLED` | Remove the item (section 3 helper). An id never seen is claimed as cancelled, so a create delivered after the cancel makes nothing (amended 2026-10-05, final review M-2). |
 | Calendly `invitee.created` | Create; when it names an old invitee (a reschedule), move that invitee's item instead and map the new invitee to it. |
 | Calendly `invitee.canceled` | Remove the item, unless it says it is a reschedule, in which case do nothing (the matching `invitee.created` owns the move; arrival order is not guaranteed). |
 | Anything else with a valid signature | Answer 200, do nothing (the sender must not retry or disable the hook). |
 
-Idempotency: a claim `sec:book:ext:{scope}:{provider}:{externalId}` set with `SET NX`, value the item id, TTL 400 days, under the item's lock. A replayed create is a no-op; a cancel or reschedule finds its item through the claim; a claim older than its TTL is treated as unknown (a cancel is ignored, a reschedule creates). The key is added to `secretaryKeys` so account deletion removes it.
+Idempotency: a claim `sec:book:ext:{scope}:{provider}:{externalId}` set with `SET NX`, value the item id, TTL 400 days, under the item's lock. A replayed create is a no-op; a cancel or reschedule finds its item through the claim; a claim older than its TTL is treated as unknown (a cancel marks it cancelled, a reschedule creates). The key is added to `secretaryKeys` so account deletion removes it.
 
 ## 3. B2a: the link, the signature and the routes
 
@@ -60,8 +60,8 @@ New action `booking.manage`: minimum role `member`, in `IMPERSONATION_BLOCKED` (
 
 1. Read the body with a 64 KB cap (`readCapped`), before parsing; over the cap, empty 404.
 2. Token shape `^[A-Za-z0-9_-]{43}$`, else empty 404 (no store read).
-3. `allow("book:ip:{ip}", 1200, 3600)`: much higher than B1's 120, because the providers deliver every customer's webhooks from a few shared addresses (B2-R6).
-4. `resolveBook(token)` (record exists and is named by `bookof`), else empty 404.
+3. `resolveBook(token)` (record exists and is named by `bookof`), else empty 404.
+4. On a miss only (step 3 found no live record): `allow("book:ip:{ip}", 1200, 3600)`, the answer the same empty 404 over the count or not. Amended 2026-10-05 (B2-R6, final review I-1): the bucket was first charged before step 3, for every request; the providers deliver every customer's webhooks from a few shared addresses, so one party (a stranger with their own provider account, or an orphaned Calendly subscription) could exhaust it and get every customer of that provider refused for the hour, losing bookings. A live link is now limited only by step 5 and the per-link creation cap.
 5. `allow("book:t:{hash}", 120, 3600)`, 429 with `Retry-After`.
 6. `bookHolds(rec)`: the same checks as `feedHolds` (login active, scope belongs to the owner, brand active, record not older than the login's life or the session stamps; B1-R11, R14, R15), made into one shared function. Failure is the same empty 404.
 7. Verify the signature over the raw body, with `sameSecret`: Cal.com `x-cal-signature-256` is the hex HMAC-SHA256 of the body; Calendly `Calendly-Webhook-Signature` is `t=<unix>,v1=<hex>` where `v1` is the hex HMAC-SHA256 of `{t}.{body}`, and `t` must be within 5 minutes of now (B2-R4). A bad or missing signature is the same empty 404 (no oracle).
@@ -159,7 +159,7 @@ B2b:
 | B2-R3 | Signing key derived from `CONNECT_SECRET` and the link hash, not stored and not a new variable | Nothing to leak from a store; no new variable | Rotating `CONNECT_SECRET` ends all booking links |
 | B2-R4 | Calendly timestamp window of 5 minutes; Cal.com has no timestamp, so a replay is absorbed by idempotency | Cal.com signs the body only; replays of create, move and cancel are harmless by design | A captured Cal.com body replayed with its old content changes nothing new |
 | B2-R5 | Only name, event-type name, start, end and the provider's booking id are kept | Data minimisation; the item reaches the feed and agents | The attendee's email is not in the item |
-| B2-R6 | Webhook IP cap 1,200 an hour (feed: 120) | The two providers deliver all customers' webhooks from a few shared addresses | At large scale even 1,200 may be low; fix is to charge the IP bucket only on a miss |
+| B2-R6 | Webhook IP count 1,200 an hour (feed: 120), charged only on a miss and never refusing a live link (amended 2026-10-05, final review I-1; first written as a cap charged before the record read) | The two providers deliver all customers' webhooks from a few shared addresses, so a cap charged on every request let one party refuse every customer of a provider for the hour | A miss over the count is the same empty 404, so the count limits nothing a caller sees; a live link is limited by its own 120 an hour |
 | B2-R7 | One exported `removeBySystem` shared with `deleteNextCopy` | `OWNER_ONLY` forbids system deletes; copying the logic would let the restore window drift | A small refactor of the series code in B2a |
 | B2-R8 | Transcript cost: a flat 1 credit up to 40,000 characters (the limit `writeFile` also uses) | 40,000 characters is about 16,000 tokens at 2 characters per token: about $0.05 on Sonnet 5.5 against about $0.06 per credit at the floor (`maxCostPerCreditUsd`); the plan's first task measures a real Arabic transcript and sets 2 credits if it does not fit | If measured higher, the cost becomes 2 credits |
 | B2-R9 | Typed notes are free, capped at 20 a day; the chat route costs nothing extra (Reem writes the proposals inside her turn) | About $0.01 a call; the chat turn is already budgeted | At 20 a day a busy account pays nothing for up to 20 note runs |

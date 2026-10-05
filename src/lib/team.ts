@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
 import { pmap } from "./parallel";
+import { revokeBook } from "./booking-token";
 import { revokeFeed } from "./feed-token";
 import { getUser, normalizeEmail, seatLimit, strongPassword, validEmail, type Actor, type User } from "./auth";
 import { can } from "./roles";
@@ -346,11 +347,12 @@ async function dropMember(owner: string, email: string, may: (m: Member) => bool
     if (!may(cur)) return "forbidden" as const;
     const sent = (await listInvites(owner)).filter((i) => i.invitedBy === cur.email).map((i) => i.id);
     await Promise.all([db.del(memberKey(cur.email)), db.del(`activebrand:${cur.email}`), db.srem(membersKey(owner), cur.email), dropInvites(owner, sent)]);
-    // The login is gone, so its calendar link goes too. After the record is deleted, so nothing can mint a new one for
+    // The login is gone, so its calendar feed and booking links go too (their records and pointers; the booking claims
+    // belong to the brand scope and go with the account). After the record is deleted, so nothing can mint a new one for
     // it any more (`revokeFeed` waits out a create already running). A failed revoke is retried by nothing: the removal
     // is already done and the call answers 500. The link is refused at read time while the login is gone (`feedHolds`)
     // and, once the address is invited again, because the record is older than the new `acceptedAt` (`feedHolds`).
-    await revokeFeed(cur.email);
+    await Promise.all([revokeFeed(cur.email), revokeBook(cur.email)]);
     return "ok" as const;
   });
   return res ?? "not_found";
@@ -465,7 +467,7 @@ export async function wipeTeam(owner: string) {
     await Promise.all([
       pmap(emails, (e) =>
         withMemberLock(e, async (cur) => {
-          if (cur.memberOf === owner) await Promise.all([db.del(memberKey(cur.email)), db.del(`activebrand:${cur.email}`), revokeFeed(cur.email)]);
+          if (cur.memberOf === owner) await Promise.all([db.del(memberKey(cur.email)), db.del(`activebrand:${cur.email}`), revokeFeed(cur.email), revokeBook(cur.email)]);
         }),
       ),
       pmap([...ids.map(inviteKey), membersKey(owner), invitesKey(owner)], (k) => db.del(k)),
