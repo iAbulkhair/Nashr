@@ -1,7 +1,8 @@
 /**
  * Reem B3: the pure meeting helpers (spec 2026-10-05-secretary-reem-b3-calendar-read-design.md §6). A `Meeting` is one
  * synced event of the brand's marketing calendar. Importers: src/lib/secretary-cal-link.ts (the store) and, in later
- * tasks, the agenda, the quiet hold and `free_slots`. No I/O here; titles are untrusted text and are never rendered as HTML.
+ * tasks, the agenda, the quiet hold and `free_slots`. No I/O here, but it imports `cleanLine` from secretary.ts, so it is server-only (pinned in
+ * tests/client-bundle.test.ts). Titles are untrusted text and are never rendered as HTML.
  */
 import { addDays, zoneDay, zoneTime } from "./secretary-agenda";
 import { cleanLine } from "./secretary";
@@ -10,8 +11,8 @@ import type { Zone } from "./zones";
 /** Start and end are ISO UTC instants. A private event is stored with `title: ""` and `private: true` (ruling P1). */
 export type Meeting = { start: string; end: string; title: string; allDay: boolean; private?: true };
 
-/** What a reader shows for a meeting: its title, or «مشغول» / "Busy" when the event is private. */
-export const meetingTitle = (m: Meeting, lang: "ar" | "en"): string => (m.private ? (lang === "ar" ? "مشغول" : "Busy") : m.title);
+/** What a reader shows for a meeting: its title, or «مشغول» / "Busy" when the event is private or has no title (ruling R14). */
+export const meetingTitle = (m: Meeting, lang: "ar" | "en"): string => (m.private || !m.title ? (lang === "ar" ? "مشغول" : "Busy") : m.title);
 
 /**
  * The meetings that overlap the zone's local today, earliest first. One overlaps when it starts before the end of the
@@ -117,13 +118,13 @@ export function keepGoogle(e: GEvent, zone: Zone): Meeting | null {
     en = googleInstant(e.end.dateTime);
   }
   if (s === null || en === null || en <= s) return null;
-  const priv = e.visibility === "private";
+  const priv = e.visibility === "private" || e.visibility === "confidential";
   return { start: iso(s), end: iso(en), title: priv ? "" : cleanTitle(e.summary), allDay, ...(priv ? { private: true as const } : {}) };
 }
 
 /**
  * Keep a Graph event, or null: cancelled, declined (`responseStatus.response`) and free (`showAs: "free"`) are dropped, and an
- * all-day event is kept only when `showAs` is "busy". Graph's all-day times can come as UTC midnight or as the UTC form of the
+ * all-day event is kept only when `showAs` is "busy" or "oof" (ruling R13). Graph's all-day times can come as UTC midnight or as the UTC form of the
  * event's own local midnight, so each instant is rounded to the nearest local midnight of the brand zone (12 hours or later
  * rounds forward) and stored as that midnight (ruling R6). A private event is stored with `title: ""` and `private: true`.
  */
@@ -132,17 +133,19 @@ export function keepGraph(e: GraphEvent, zone: Zone): Meeting | null {
   if (e.isCancelled === true || e.showAs === "free") return null;
   if (isObj(e.responseStatus) && e.responseStatus.response === "declined") return null;
   if (!isObj(e.start) || !isObj(e.end)) return null;
+  // Asked for UTC with `Prefer`; an answer in another zone means the header was ignored, so its times cannot be trusted.
+  for (const z of [e.start.timeZone, e.end.timeZone]) if (z !== undefined && !(typeof z === "string" && /^(utc|etc\/utc)$/i.test(z))) return null;
   let s = graphInstant(e.start.dateTime);
   let en = graphInstant(e.end.dateTime);
   if (s === null || en === null) return null;
   const allDay = e.isAllDay === true;
   if (allDay) {
-    if (e.showAs !== "busy") return null;
+    if (e.showAs !== "busy" && e.showAs !== "oof") return null;
     s = zoneTime(zoneDay(s + HALF_DAY_MS, zone), 0, 0, zone);
     en = zoneTime(zoneDay(en + HALF_DAY_MS, zone), 0, 0, zone);
   }
   if (en <= s) return null;
-  const priv = e.sensitivity === "private";
+  const priv = e.sensitivity === "private" || e.sensitivity === "confidential" || e.sensitivity === "personal";
   return { start: iso(s), end: iso(en), title: priv ? "" : cleanTitle(e.subject), allDay, ...(priv ? { private: true as const } : {}) };
 }
 

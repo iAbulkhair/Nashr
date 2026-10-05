@@ -36,6 +36,8 @@ describe("rule 616: events of the chosen calendar, filtered to the busy meetings
     expect(keepGoogle({ ...gAll, transparency: "transparent" }, Z)).toBeNull();
     const mAll = (o: Partial<GraphEvent>) => m({ isAllDay: true, start: { dateTime: "2026-10-04T21:00:00.0000000", timeZone: "UTC" }, end: { dateTime: "2026-10-05T21:00:00.0000000", timeZone: "UTC" }, ...o });
     expect(keepGraph(mAll({ showAs: "busy" }), Z)).toMatchObject({ allDay: true });
+    expect(keepGraph(mAll({ showAs: "oof" }), Z)).toMatchObject({ allDay: true });
+    expect(keepGraph(m({ showAs: "oof" }), Z)).toMatchObject({ allDay: false });
     expect(keepGraph(mAll({ showAs: "tentative" }), Z)).toBeNull();
     expect(keepGraph(mAll({ showAs: "free" }), Z)).toBeNull();
     expect(keepGraph(mAll({ showAs: undefined }), Z)).toBeNull();
@@ -53,6 +55,31 @@ describe("rule 616: events of the chosen calendar, filtered to the busy meetings
     }
     expect(keepGoogle(g({ visibility: "default" }), Z)!.private).toBeUndefined();
     expect(keepGraph(m({ sensitivity: "normal" }), Z)!.private).toBeUndefined();
+  });
+
+  it("confidential and personal events are private too (ruling R12)", () => {
+    for (const x of [keepGoogle(g({ summary: "Secret", visibility: "confidential" }), Z)!, keepGraph(m({ subject: "Secret", sensitivity: "confidential" }), Z)!, keepGraph(m({ subject: "Secret", sensitivity: "personal" }), Z)!]) {
+      expect(x).toMatchObject({ title: "", private: true });
+      expect(JSON.stringify(x)).not.toContain("Secret");
+    }
+  });
+
+  it("an untitled event that is not private shows Busy too (ruling R14)", () => {
+    const x = keepGoogle(g({ summary: undefined }), Z)!;
+    expect(x.title).toBe("");
+    expect(x.private).toBeUndefined();
+    expect(meetingTitle(x, "ar")).toBe("مشغول");
+    expect(meetingTitle(x, "en")).toBe("Busy");
+    expect(meetingTitle({ ...x, title: "Launch" }, "en")).toBe("Launch");
+  });
+
+  it("a Graph event whose times are not in UTC is dropped, the answer to a `Prefer` that was ignored", () => {
+    const at = (timeZone: string) => ({ dateTime: "2026-10-05T09:00:00.0000000", timeZone });
+    expect(keepGraph(m({ start: at("Arab Standard Time"), end: at("UTC") }), Z)).toBeNull();
+    expect(keepGraph(m({ start: at("UTC"), end: at("Arab Standard Time") }), Z)).toBeNull();
+    expect(keepGraph(m({ start: { dateTime: "2026-10-05T09:00:00.0000000", timeZone: 5 as unknown as string } }), Z)).toBeNull();
+    for (const ok of ["UTC", "utc", "Etc/UTC"]) expect(keepGraph(m({ start: { dateTime: "2026-10-05T06:00:00.0000000", timeZone: ok }, end: { dateTime: "2026-10-05T07:00:00.0000000", timeZone: ok } }), Z)).not.toBeNull();
+    expect(keepGraph(m({ start: { dateTime: "2026-10-05T06:00:00.0000000" }, end: { dateTime: "2026-10-05T07:00:00.0000000" } }), Z)).not.toBeNull();
   });
 
   it("a 500-character title becomes 120 characters with control characters stripped", () => {
@@ -195,6 +222,12 @@ describe("rule 616: fetchEvents reads the chosen calendar only", () => {
   it("no chosen calendar means no request at all", async () => {
     stub(() => Response.json({ items: [] }));
     expect(await fetchEvents(link("gcal", null), "tok", FROM, TO)).toEqual({ ok: false, kind: "gone" });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("a calendar id of . or .. makes no request (a dot segment would leave the calendar path)", async () => {
+    stub(() => Response.json({ items: [] }));
+    for (const id of [".", ".."]) for (const p of ["gcal", "mscal"] as const) expect(await fetchEvents(link(p, id), "tok", FROM, TO)).toEqual({ ok: false, kind: "retry" });
     expect(calls).toHaveLength(0);
   });
 

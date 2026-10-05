@@ -242,6 +242,8 @@ function retryAfter(h: string | null, now = Date.now()): number | undefined {
  */
 export async function fetchEvents(link: CalLink, access: string, fromMs: number, toMs: number): Promise<EventsResult> {
   if (!link.calendarId) return { ok: false, kind: "gone" };
+  // `encodeURIComponent` leaves dots alone and a dot segment is resolved by URL parsing, so these two would leave the calendar path.
+  if (link.calendarId === "." || link.calendarId === "..") return { ok: false, kind: "retry" };
   const id = encodeURIComponent(link.calendarId);
   const from = new Date(fromMs).toISOString();
   const to = new Date(toMs).toISOString();
