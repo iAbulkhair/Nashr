@@ -20,6 +20,7 @@ import { forgetDueScope, secretaryKeys } from "./secretary";
 import { handoffKeys } from "./handoffs";
 import { proposalKeys } from "./brand-proposals";
 import { ONCE_INDEX, onceClaimKey, onceKey, onceRepairKey } from "./notify";
+import { AD_PROVIDERS } from "./connectors/ads";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -91,6 +92,12 @@ export async function wipeAccount(email: string) {
       // the default brand's lock was deleted, and the confirmation never was. An added brand's held setup charge lives on
       // the account record (`User.onboardPaid`) and goes with it. The game's answers hold the brand name the owner typed.
       `onboardok:${s}`, `onboardlock:${s}`, `onboardgame:${s}`,
+      // The store's sales snapshot (orders, revenue, best sellers, abandoned carts) and its failure note (14 days).
+      `storesales:${s}`, `storesyncfail:${s}`,
+      // The latest campaign results, from an upload or an ad account (src/lib/perf-store.ts).
+      `perfimport:${s}`,
+      // Each ad account's last read time, one per ad platform.
+      ...AD_PROVIDERS.map((p) => `adsync:${s}:${p}`),
       `onboardplan:${s}`, `pending:${s}`, `pendingidx:${s}`, `tidxm:${s}`, `tidxv:${s}`, `tasks:${s}`, `files:${s}`, `brand:${s}`, `prefs:${s}`, `chat:${s}`, `convs:${s}`, `gov:${s}`, `schedule:${s}`, `brief:${s}`, `conns:${s}`,
     );
   });
