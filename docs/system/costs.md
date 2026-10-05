@@ -28,6 +28,7 @@ work from `feedbackFor`, all of which move).
 | Block | Characters | Cacheable |
 |---|---|---|
 | fixed (rules + the agent's playbook from `content/skills/`) | 10,374 (Razan) – 16,657 (Majed) | yes |
+| paid ads slice from `content/skills/ads.md` (since 2026-10-05: Noor, Faris, Razan, Dana, Layan only; inside the fixed block) | about 4,400 (Dana) – 5,900 (Faris) | yes |
 | workspace (brand file + up to 5 × 6,000 chars of memory files) | 1,500 with an empty workspace, 31,500 at the cap | yes |
 | today (date, seasons, up to 30 preferences, recent feedback) | 500 – 8,800 (the feedback block is at most about 2,300 characters: counts, 5 notes of 200, 3 judge flags of 120; absent when there is none or learning is off) | no |
 

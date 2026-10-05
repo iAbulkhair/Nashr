@@ -29,8 +29,28 @@ export function playbookHash(name: string): string {
   return hashes.get(name)!;
 }
 
-/** The playbook injected into an agent's system prompt. */
-export const skillsBlock = (agent: Agent): string => (agent.skills ? playbook(agent.skills) : "");
+/** Sections of content/skills/ads.md every agent with an `ads` slice gets, besides its own. */
+export const ADS_SHARED = ["Ads principles", "Ads Gulf adaptations", "Ads output templates", "Ads never do"] as const;
+
+/** The agent's slice of the paid ads playbook: the shared sections and its own, in the file's order. "" without one. */
+export const adsBlock = (agent: Agent): string => (agent.ads?.length ? playbookSection("ads", [...ADS_SHARED, ...agent.ads]) : "");
+
+/** The playbook injected into an agent's system prompt, with its paid ads slice after it when it has one. */
+export const skillsBlock = (agent: Agent): string => {
+  const base = agent.skills ? playbook(agent.skills) : "";
+  const ads = adsBlock(agent);
+  return ads ? `${base}\n\nPAID ADS PLAYBOOK (${agent.name.en}; drafts only, the owner applies every account change)\n${ads}` : base;
+};
+
+const skillsHashes = new Map<string, string>();
+/**
+ * The version of everything `skillsBlock` gives this agent (its playbook and its ads slice): what the `skills` part of
+ * a prompt stamp records, so an edit to ads.md reads as a prompt change for the agents that receive it.
+ */
+export function skillsHash(agent: Agent): string {
+  if (!skillsHashes.has(agent.id)) skillsHashes.set(agent.id, contentHash(skillsBlock(agent)));
+  return skillsHashes.get(agent.id)!;
+}
 
 /**
  * Only the named `## ` sections of a playbook, each with its heading, in the playbook's own order: a slice for a prompt

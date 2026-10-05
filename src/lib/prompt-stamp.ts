@@ -7,12 +7,12 @@
  * OUTPUT FORMAT), the task spec (SPECS in noor.ts), the reviewer's checks for the owning agent (`reviewerRubric`), the
  * judge's rubric (`JUDGE_RUBRIC`) and the industry playbooks (playbooks.ts). Hashing
  * only content/skills would read "unchanged" after a change made in code, so each source has its own hash:
- * `skills` (the owning agent's playbook), `review` (review.md), `industry` (`id:hash`, when the brand is known) and
+ * `skills` (the owning agent's playbook and its paid ads slice from ads.md), `review` (review.md), `industry` (`id:hash`, when the brand is known) and
  * `code`. A missing playbook hashes to "none", which never equals a loaded one.
  */
 import type { Brand, Task } from "./brand";
 import { AGENTS, agentForTask } from "./agents";
-import { contentHash, playbookHash } from "./skills";
+import { contentHash, playbookHash, skillsHash } from "./skills";
 import { pickPlaybook } from "./playbooks";
 import { fixedPrompt, playbookBlock, reviewerRubric, taskSpec } from "./noor";
 import { JUDGE_RUBRIC } from "./judge";
@@ -44,11 +44,11 @@ export function industryStamp(brand: Pick<Brand, "industry">): string {
 export function promptStamp(type: TaskType, brand?: Partial<Pick<Brand, "industry">>): PromptStamp {
   const agent = agentForTask(type);
   const industry = typeof brand?.industry === "string" ? industryStamp({ industry: brand.industry }) : undefined;
-  return { skills: agent.skills ? playbookHash(agent.skills) : "none", review: playbookHash("review"), ...(industry ? { industry } : {}), code: codeHash(type) };
+  return { skills: agent.skills ? skillsHash(agent) : "none", review: playbookHash("review"), ...(industry ? { industry } : {}), code: codeHash(type) };
 }
 
 /** Every agent playbook's hash and review.md's, by file name, plus `code:<type>` for each of `types`: a golden run's versions. */
 export function promptHashes(types: readonly TaskType[]): Record<string, string> {
-  const names = [...new Set(AGENTS.flatMap((a) => (a.skills ? [a.skills] : []))), "review"];
+  const names = [...new Set(AGENTS.flatMap((a) => (a.skills ? [a.skills] : []))), "ads", "review"];
   return Object.fromEntries([...names.map((n) => [n, playbookHash(n)] as const), ...[...new Set(types)].map((t) => [`code:${t}`, codeHash(t)] as const)]);
 }
