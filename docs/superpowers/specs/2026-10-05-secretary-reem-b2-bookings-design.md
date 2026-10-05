@@ -30,13 +30,13 @@ Cancel and reschedule (the provider field names are confirmed against each provi
 | Provider event | Does |
 |---|---|
 | Cal.com `BOOKING_CREATED` | Create (or no-op when the booking id is known). |
-| Cal.com `BOOKING_RESCHEDULED` | Move the same item to the new start and end (`changeItem` `reschedule`), re-arm `remindAt`; unknown id creates it. |
-| Cal.com `BOOKING_CANCELLED` | Remove the item (section 3 helper). |
+| Cal.com `BOOKING_RESCHEDULED` | Move the same item to the new start and end (`changeItem` `reschedule`), re-arm `remindAt`; unknown id creates it. When the item was removed (Cal.com's "request reschedule" cancels the old booking first, then the guest books again naming it), the new booking gets a fresh item under its own claim (amended 2026-10-05, final review M-1). |
+| Cal.com `BOOKING_CANCELLED` | Remove the item (section 3 helper). An id never seen is claimed as cancelled, so a create delivered after the cancel makes nothing (amended 2026-10-05, final review M-2). |
 | Calendly `invitee.created` | Create; when it names an old invitee (a reschedule), move that invitee's item instead and map the new invitee to it. |
 | Calendly `invitee.canceled` | Remove the item, unless it says it is a reschedule, in which case do nothing (the matching `invitee.created` owns the move; arrival order is not guaranteed). |
 | Anything else with a valid signature | Answer 200, do nothing (the sender must not retry or disable the hook). |
 
-Idempotency: a claim `sec:book:ext:{scope}:{provider}:{externalId}` set with `SET NX`, value the item id, TTL 400 days, under the item's lock. A replayed create is a no-op; a cancel or reschedule finds its item through the claim; a claim older than its TTL is treated as unknown (a cancel is ignored, a reschedule creates). The key is added to `secretaryKeys` so account deletion removes it.
+Idempotency: a claim `sec:book:ext:{scope}:{provider}:{externalId}` set with `SET NX`, value the item id, TTL 400 days, under the item's lock. A replayed create is a no-op; a cancel or reschedule finds its item through the claim; a claim older than its TTL is treated as unknown (a cancel marks it cancelled, a reschedule creates). The key is added to `secretaryKeys` so account deletion removes it.
 
 ## 3. B2a: the link, the signature and the routes
 

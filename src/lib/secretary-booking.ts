@@ -146,8 +146,8 @@ export const BOOK_NEW_PER_DAY = 60;
 /** A booking more than a day in the past or more than 366 days ahead is not put on the list. */
 export const BOOK_WINDOW = { backMs: 864e5, aheadMs: 366 * 864e5 } as const;
 /**
- * A claim's value once its booking was cancelled before its item was written (`removeBySystem`'s `missing` hook):
- * nothing is created for that booking after.
+ * A claim's value once its booking was cancelled before its item was written (`removeBySystem`'s `missing` hook), or
+ * before the booking was ever seen (a cancel with no claim takes it, SET NX): nothing is created for that booking after.
  */
 const CANCELLED = "cancelled";
 const MIN = 60_000;
@@ -250,7 +250,9 @@ async function createBooked(rec: BookRecord, p: Parsed, hash: string, alsoIds: s
 /**
  * Move the booking's item to the new start, end and reminder (`changeItem` update as the rule, under the item's lock)
  * and claim the new external id for that item (SET NX: a claim naming another item is left alone), so a later cancel or
- * move under it finds the same item. An item the owner closed or deleted is left as it is ("noop"). A claim whose item
+ * move under it finds the same item. An item the owner closed is left as it is ("noop"). An item that was removed (a
+ * cancel that came first, as Cal.com's "request reschedule" sends, or the owner's delete) stays removed, and the new id
+ * gets a fresh item of its own (`createBooked`; a replay finds its claim and makes no second one). A claim whose item
  * does not exist (a creation that died or is still running, or an item purged after its 30 days) is finished at that id
  * with the new times (`createAt`); when that creation turns out to exist after all, the move is applied to it once more.
  */
@@ -261,6 +263,11 @@ async function moveBooked(rec: BookRecord, p: Parsed, hash: string, itemId: stri
   if (!parsed.ok) return "noop";
   const r = await changeItem(rec.scope, itemId, { action: "update", fields: parsed.fields }, SYSTEM, undefined, zone, cal);
   if (!r.ok && r.status === 503) return "busy";
+  // The item was removed (Cal.com's "request reschedule" cancels the old booking first, then the guest books again and
+  // the new booking names the old uid; or the owner deleted it): the new id is a booking of its own, created as one
+  // (`createBooked`: its own claim, SET NX, so a replay finds that claim and makes no second item). The removed item and
+  // its claim stay as they are.
+  if (!r.ok && r.error === "deleted") return createBooked(rec, p, hash);
   if (!r.ok && r.error === "not_found") {
     const made = await createAt(rec, p, hash, itemId, fromKey);
     if (made === "exists") return again ? "noop" : moveBooked(rec, p, hash, itemId, fromKey, true);
@@ -278,11 +285,13 @@ async function moveBooked(rec: BookRecord, p: Parsed, hash: string, itemId: stri
  *
  * - create: one item (`createBooked`). A booking whose start is more than a day back or more than 366 days ahead: noop.
  * - move: the item named by the previous id first (a Cal.com reschedule has a new uid; a Calendly one a new invitee),
- *   then by this id; moved (`moveBooked`). Neither id known: created, as a create, both ids claimed for it. A booking
- *   cancelled before its item was written: noop. Same window as a create.
+ *   then by this id; moved (`moveBooked`), or, when that item was removed, a fresh item for this id. Neither id names
+ *   an item: created, as a create, both ids claimed for it (a previous id marked cancelled keeps its mark). This id
+ *   marked cancelled: noop. Same window as a create.
  * - cancel: only the id is read (its start and end may be empty). The open item it names is removed (`removeBySystem`,
  *   restorable for 30 days, audit `booking_cancel` by the rule); a claimed item not yet written is marked cancelled
- *   under its lock, so its creation never happens; unknown, closed or already removed: noop.
+ *   under its lock, so its creation never happens; an id never seen is claimed as cancelled, so a create that comes
+ *   after makes nothing; closed or already removed: noop.
  * - ignore: noop.
  * A held item lock or a store failure: "busy" (the provider retries, and the retry finishes what this one began).
  */
@@ -291,7 +300,9 @@ export async function applyBooking(rec: BookRecord, p: Parsed, hash: string, now
     if (p.kind === "ignore" || !p.externalId) return "noop";
     if (p.kind === "cancel") {
       const key = claimKeyOf(rec, p.externalId);
-      const held = await db.get<string>(key);
+      // A booking never seen: its claim is taken as cancelled (indexed, SET NX, 400 days), so a create retried or
+      // delivered after this cancel makes nothing. A creation that took the claim in between is removed as below.
+      const held = (await db.get<string>(key)) ?? (await claim(rec, p.externalId, CANCELLED));
       if (typeof held !== "string" || !SEC_ID.test(held)) return "noop";
       const r = await removeBySystem(rec.scope, held, SYSTEM, "booking_cancel", {
         only: (it) => stateOf(it) === "open",
@@ -307,7 +318,10 @@ export async function applyBooking(rec: BookRecord, p: Parsed, hash: string, now
       const held = await Promise.all(keys.map((k) => db.get<string>(k)));
       const i = held.findIndex((h) => typeof h === "string" && SEC_ID.test(h));
       if (i >= 0) return await moveBooked(rec, p, hash, held[i]!, keys[i]);
-      if (held.includes(CANCELLED)) return "noop";
+      // This booking's own id cancelled: nothing. Only the previous id cancelled (Cal.com's "request reschedule" cancels
+      // the old booking, then the guest books again naming it): the new booking is created on its own; the previous id's
+      // marker stays, since a claim is never overwritten.
+      if (held[held.length - 1] === CANCELLED) return "noop";
       return await createBooked(rec, p, hash, p.oldExternalId ? [p.oldExternalId] : []);
     }
     return await createBooked(rec, p, hash);
