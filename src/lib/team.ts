@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
 import { pmap } from "./parallel";
+import { revokeFeed } from "./feed-token";
 import { getUser, normalizeEmail, seatLimit, strongPassword, validEmail, type Actor, type User } from "./auth";
 import { can } from "./roles";
 
@@ -63,7 +64,7 @@ const LOCK_TTL_SECONDS = 10;
 const TOKEN_RE = /^[a-f0-9]{64}$/;
 
 const memberKey = (email: string) => `member:${email}`;
-const membersKey = (owner: string) => `members:${owner}`;
+export const membersKey = (owner: string) => `members:${owner}`;
 const inviteKey = (id: string) => `invite:${id}`;
 const invitesKey = (owner: string) => `invites:${owner}`;
 const fail = (error: TeamError): TeamFail => ({ ok: false, error });
@@ -345,6 +346,10 @@ async function dropMember(owner: string, email: string, may: (m: Member) => bool
     if (!may(cur)) return "forbidden" as const;
     const sent = (await listInvites(owner)).filter((i) => i.invitedBy === cur.email).map((i) => i.id);
     await Promise.all([db.del(memberKey(cur.email)), db.del(`activebrand:${cur.email}`), db.srem(membersKey(owner), cur.email), dropInvites(owner, sent)]);
+    // The login is gone, so its calendar link goes too. After the record is deleted, so nothing can mint a new one for
+    // it any more (`revokeFeed` waits out a create already running); the public route also refuses a link whose login
+    // is no longer active (`feedHolds`), so even a failure here never leaves a working link.
+    await revokeFeed(cur.email);
     return "ok" as const;
   });
   return res ?? "not_found";
@@ -459,7 +464,7 @@ export async function wipeTeam(owner: string) {
     await Promise.all([
       pmap(emails, (e) =>
         withMemberLock(e, async (cur) => {
-          if (cur.memberOf === owner) await Promise.all([db.del(memberKey(cur.email)), db.del(`activebrand:${cur.email}`)]);
+          if (cur.memberOf === owner) await Promise.all([db.del(memberKey(cur.email)), db.del(`activebrand:${cur.email}`), revokeFeed(cur.email)]);
         }),
       ),
       pmap([...ids.map(inviteKey), membersKey(owner), invitesKey(owner)], (k) => db.del(k)),

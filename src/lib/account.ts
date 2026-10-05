@@ -12,7 +12,8 @@ import { chatTrialKey, usageMonthKeys } from "./usage";
 import { autoHoldKey, routineFingerprints, routineKeys, routineSkipKeys } from "./routines";
 import { activityKey } from "./activity";
 import { agentCapFingerprint, seenKey } from "./notifications";
-import { wipeTeam } from "./team";
+import { membersKey, wipeTeam } from "./team";
+import { revokeFeed, revokeFeeds } from "./feed-token";
 import { forgetWishlistUser } from "./wishlist";
 import { forgetDueScope, secretaryKeys } from "./secretary";
 import { handoffKeys } from "./handoffs";
@@ -36,6 +37,10 @@ function usageKeys(email: string): string[] {
  */
 export async function wipeAccount(email: string) {
   const e = email;
+  // Calendar links first, before anything slow can fail and before the roster is deleted: the owner's and every roster
+  // member's (`members:{owner}`). A member added after this read is revoked by `wipeTeam` under `lock:team`. A failure
+  // stops the wipe (a retry runs it again) rather than leaving a working link behind a half-wiped account.
+  await revokeFeeds([e, ...(await db.smembers(membersKey(e)))]);
   const scopes = (await listBrands(e)).map((b) => scopeFor(e, b.id));
   const now = new Date();
   const warnMonths = [monthKey(now), monthKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)))];
@@ -130,5 +135,7 @@ export async function wipeAccount(email: string) {
   // The global reminder index names every scope with a reminder: this account's leave it.
   await Promise.all(scopes.map((s) => forgetDueScope(s)));
   await wipeTeam(e);
-  await Promise.all([db.srem("users:all", e), db.lpush("deleted-accounts", JSON.stringify({ email: e, at: new Date().toISOString() }))]);
+  // The owner's link once more, now the account is gone: a create that ran between the first revoke and the deletion of
+  // `user:{owner}` could have written a new one.
+  await Promise.all([revokeFeed(e), db.srem("users:all", e), db.lpush("deleted-accounts", JSON.stringify({ email: e, at: new Date().toISOString() }))]);
 }

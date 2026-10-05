@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { ADMIN_SESSION_IDLE, adminActor, createSession, getUser, isAdmin, keyImpBinding, revokeSessions, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie } from "@/lib/auth";
 import { revokeAllMcp } from "@/lib/mcp";
+import { revokeFeed } from "@/lib/feed-token";
 import { getBrand, listTasks } from "@/lib/brand";
 import { getUsage } from "@/lib/usage";
 import { chatStatus } from "@/lib/chat-allowance";
@@ -107,7 +108,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       const temp = randomBytes(6).toString("base64url").slice(0, 10) + "!";
       // The owner's sessions and every member's: a founder reset answers "someone else has this account".
       await withUserLock(email, async (x) => { x.passHash = await bcrypt.hash(temp, 10); revokeSessions(x); revokeTeamSessions(x); await saveUser(x); });
-      await revokeAllMcp(email);
+      await Promise.all([revokeAllMcp(email), revokeFeed(email)]);
       await log("resetPassword");
       // Shown once to the admin; never stored in clear.
       return NextResponse.json({ ok: true, tempPassword: temp });

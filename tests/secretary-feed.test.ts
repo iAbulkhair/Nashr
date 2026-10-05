@@ -1,9 +1,13 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
-import { currentUser, getUser, saveUser } from "@/lib/auth";
+import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
 import { saveBrands } from "@/lib/brands";
-import { getMember, saveMember, type Member } from "@/lib/team";
+import { forceRemoveMember, getMember, removeMember, saveMember, type Member } from "@/lib/team";
+import { wipeAccount } from "@/lib/account";
+import * as resetRoute from "@/app/api/auth/reset/route";
+import * as adminUserRoute from "@/app/api/admin/users/[email]/route";
+import * as accountRoute from "@/app/api/account/route";
 import { db } from "@/lib/db";
 import { appOrigin } from "@/lib/origin";
 import * as rate from "@/lib/rate";
@@ -33,6 +37,8 @@ const resolveAs = async (email: string, opts: { imp?: string } = {}) => { await 
 
 beforeAll(() => {
   vi.stubEnv("ADMIN_EMAILS", FOUNDER);
+  // As teams-core.test.ts: the founder is admitted by email, with no console key configured.
+  vi.stubEnv("WAITLIST_ADMIN_KEY", "");
 });
 
 describe("feed token (rules 530-533)", () => {
@@ -650,5 +656,115 @@ describe("feed management (rules 543-544)", () => {
     const mate = await newUser("feed544c");
     await signIn(mate.email);
     expect((await status()).status).toBe(200);
+  });
+});
+
+describe("feed revocation (rules 545-546)", () => {
+  const live = async (login: string, scope: string) => {
+    const token = await createFeed(login, scope, "en");
+    expect(token).not.toBe("busy");
+    expect(FEED_TOKEN.test(token as string)).toBe(true);
+    // A link that answers 200 now, so the 404 later means the revoke and not a link that never worked.
+    expect((await callFeed(token as string)).status).toBe(200);
+    return token as string;
+  };
+  /** Dead in every way: the public route, the status, the record and the pointer. */
+  const expectEnded = async (login: string, token: string) => {
+    expect((await callFeed(token)).status, `public route for ${login}`).toBe(404);
+    expect(await getFeedStatus(login)).toEqual({ exists: false, createdAt: null });
+    expect(await db.get(FEED_KEYS.rec(hashFeedToken(token)))).toBeNull();
+    expect(await db.get(FEED_KEYS.of(login))).toBeNull();
+  };
+  const expectAlive = async (login: string, token: string) => {
+    expect((await callFeed(token)).status, `public route for ${login}`).toBe(200);
+    expect((await getFeedStatus(login)).exists).toBe(true);
+  };
+  let ipN2 = 0;
+  const ipH = () => ({ "x-real-ip": `198.18.7.${++ipN2}` });
+  /** A real reset link for this login (what /api/auth/forgot stores), redeemed through the real route. */
+  const resetAs = async (email: string, kind: "owner" | "member", password: string) => {
+    const token = randomBytes(32).toString("hex");
+    await db.set(`pwreset:${createHash("sha256").update(token).digest("hex")}`, { email, kind });
+    return resetRoute.POST(json("/api/auth/reset", "POST", { token, password }, ipH()));
+  };
+
+  it("rule 545: removing a member, resetting a password and changing a password end that login's feed, and only that login's", async () => {
+    const owner = await newUser("feed545");
+    const [m1, m2, m3, m4] = [await newMember(owner, "member"), await newMember(owner, "member"), await newMember(owner, "admin"), await newMember(owner, "member")];
+    const t = {
+      owner: await live(owner.email, owner.email),
+      m1: await live(m1.email, owner.email),
+      m2: await live(m2.email, owner.email),
+      m3: await live(m3.email, owner.email),
+      m4: await live(m4.email, owner.email),
+    };
+
+    // 1. Removed by the owner (removeMember): that member's feed ends, everyone else's stays.
+    const acting = (await resolveAs(owner.email))!;
+    expect(await removeMember(acting, acting.actor!, m1.email)).toEqual({ ok: true });
+    await expectEnded(m1.email, t.m1);
+    await expectAlive(owner.email, t.owner);
+    await expectAlive(m2.email, t.m2);
+
+    // 2. Removed by the founder console (forceRemoveMember, the same drop).
+    expect(await forceRemoveMember(m2.email)).toBe(true);
+    await expectEnded(m2.email, t.m2);
+    await expectAlive(owner.email, t.owner);
+
+    // 3. A member's own password reset ends that member's feed, not the owner's.
+    expect((await resetAs(m3.email, "member", "reset12345")).status).toBe(200);
+    await expectEnded(m3.email, t.m3);
+    await expectAlive(owner.email, t.owner);
+    await expectAlive(m4.email, t.m4);
+
+    // 4. A member's own password change ends that member's feed, not the owner's.
+    await signIn(m4.email);
+    expect((await accountRoute.PATCH(json("/api/account", "PATCH", { currentPassword: m4.password, newPassword: "fresh12345" }))).status).toBe(200);
+    await expectEnded(m4.email, t.m4);
+    await expectAlive(owner.email, t.owner);
+
+    // 5. The owner's password reset by the link.
+    expect((await resetAs(owner.email, "owner", "owner12345")).status).toBe(200);
+    await expectEnded(owner.email, t.owner);
+
+    // 6. The founder's reset of the owner.
+    t.owner = await live(owner.email, owner.email);
+    // The founder is a real account signed in as themselves (as in teams-core.test.ts).
+    if (!(await getUser(FOUNDER))) await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" });
+    await signIn(FOUNDER);
+    const res = await adminUserRoute.POST(json("/api/admin/users/x", "POST", { action: "resetPassword" }), params({ email: encodeURIComponent(owner.email) }));
+    expect(res.status).toBe(200);
+    const { tempPassword } = (await res.json()) as { tempPassword: string };
+    await expectEnded(owner.email, t.owner);
+
+    // 7. The owner's own password change.
+    t.owner = await live(owner.email, owner.email);
+    await signIn(owner.email);
+    expect((await accountRoute.PATCH(json("/api/account", "PATCH", { currentPassword: tempPassword, newPassword: "changed12345" }))).status).toBe(200);
+    await expectEnded(owner.email, t.owner);
+  });
+
+  it("rule 546: deleting the account leaves no sec:feed or sec:feedof key for the owner or any member", async () => {
+    const owner = await newUser("feed546");
+    const bystander = await newUser("feed546b");
+    const m1 = await newMember(owner, "member");
+    const m2 = await newMember(owner, "admin");
+    const logins = [owner.email, m1.email, m2.email];
+    const tokens = { [owner.email]: await live(owner.email, owner.email), [m1.email]: await live(m1.email, owner.email), [m2.email]: await live(m2.email, owner.email) };
+    const keep = await live(bystander.email, bystander.email);
+    const hashes = Object.values(tokens).map(hashFeedToken);
+    expect(memKeys().filter((k) => logins.some((l) => k === FEED_KEYS.of(l)))).toHaveLength(3);
+
+    await wipeAccount(owner.email);
+
+    const leftKeys = memKeys().filter((k) => logins.some((l) => k === FEED_KEYS.of(l)) || hashes.some((h) => k === FEED_KEYS.rec(h)));
+    expect(leftKeys).toEqual([]);
+    expect(logins.flatMap(recordsOf)).toEqual([]);
+    // No key of the feed family still ends with one of these logins, and no stored value names a hash of these links.
+    expect(memKeys().filter((k) => k.startsWith("sec:feed") && logins.some((l) => k.endsWith(`:${l}`)))).toEqual([]);
+    expect(memValues().filter((v) => hashes.some((h) => v.includes(h)))).toEqual([]);
+    for (const l of logins) expect((await callFeed(tokens[l])).status).toBe(404);
+    // Another account's link is not touched.
+    await expectAlive(bystander.email, keep);
   });
 });
