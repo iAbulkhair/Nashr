@@ -65,12 +65,23 @@ type Store = {
    */
   lockOwned(key: string, ttlSeconds: number): Promise<string | null>;
   unlockOwned(key: string, token: string): Promise<void>;
+  /**
+   * GETDEL: read a value and delete it in one command, so of two overlapping readers exactly one gets it (a single-use
+   * code or refresh token taken, not read then deleted). Null when the key is absent.
+   */
+  getdel<T = unknown>(key: string): Promise<T | null>;
+  /** RENAME in one command, keeping the value and its TTL. False when `from` does not exist (someone deleted it first). */
+  rename(from: string, to: string): Promise<boolean>;
+  /** Compare-and-set for a string value, keeping its TTL: writes `next` only while the key still holds `expected`. */
+  replaceIf(key: string, expected: string, next: string): Promise<boolean>;
 };
 
 /** A lock owner's token. Never valid JSON (the Upstash client parses what it reads back), never guessable. */
 const lockToken = () => `lk_${randomBytes(12).toString("hex")}`;
 /** Compare-and-delete in one step on the server: GET then DEL from here could delete a lock someone took in between. */
 const UNLOCK_OWNED = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) end return 0`;
+/** Compare-and-set on the server, keeping the TTL. */
+const REPLACE_IF = `if redis.call("get", KEYS[1]) == ARGV[1] then redis.call("set", KEYS[1], ARGV[2], "KEEPTTL") return 1 end return 0`;
 
 function upstash(): Store | null {
   const url = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
@@ -187,6 +198,21 @@ function upstash(): Store | null {
     },
     async unlockOwned(key, token) {
       await r.eval(UNLOCK_OWNED, [key], [token]);
+    },
+    async getdel<T>(key: string) {
+      return ((await r.getdel<T>(key)) ?? null) as T | null;
+    },
+    async rename(from, to) {
+      try {
+        await r.rename(from, to);
+        return true;
+      } catch (e) {
+        if (/no such key/i.test(String((e as Error)?.message ?? e))) return false;
+        throw e;
+      }
+    },
+    async replaceIf(key, expected, next) {
+      return Number(await r.eval(REPLACE_IF, [key], [expected, next])) === 1;
     },
   };
 }
@@ -370,6 +396,36 @@ function memory(): Store {
       m.kv.delete(key);
       exp.delete(key);
       owners.delete(key);
+    },
+    async getdel<T>(key: string) {
+      // Read and delete with no await between them: one caller gets the value, as with Redis.
+      live(key);
+      const v = m.kv.get(key);
+      if (v === undefined) return null;
+      m.kv.delete(key);
+      exp.delete(key);
+      owners.delete(key);
+      return copy(v as T);
+    },
+    async rename(from, to) {
+      live(from);
+      if (!m.kv.has(from)) return false;
+      const at = exp.get(from);
+      m.kv.set(to, m.kv.get(from));
+      if (at !== undefined) exp.set(to, at);
+      else exp.delete(to);
+      owners.delete(to);
+      m.kv.delete(from);
+      exp.delete(from);
+      owners.delete(from);
+      return true;
+    },
+    async replaceIf(key, expected, next) {
+      live(key);
+      if (m.kv.get(key) !== expected) return false;
+      m.kv.set(key, next);
+      owners.delete(key);
+      return true;
     },
   };
 }

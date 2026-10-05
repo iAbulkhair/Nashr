@@ -65,6 +65,8 @@ const UNDO_MS = 8000;
 type WalkCard = {
   key: string; kind: "todo" | "approval"; id: string; title: string; line: string; actions: ("done" | "confirm" | "not_yet" | "snooze" | "chased" | "approve" | "open")[];
   claim?: { by: string; text: string }; fact?: string; excerpt?: string; held?: string;
+  /** An approval card: the version of the draft it shows (src/lib/task-version.ts), sent with Approve. */
+  version?: string;
 };
 
 /**
@@ -237,12 +239,14 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
   async function walkAct(card: WalkCard, action: WalkCard["actions"][number]) {
     if (action === "done" && walkResult === null) { setWalkResult(""); return; }
     if (action === "done" && !walkResult?.trim()) { setError({ id: "walk", text: T.errors.result_required }); return; }
-    const body = action === "done" ? { action: "complete", result: walkResult } : action === "confirm" ? { action: "confirm_done" } : action === "not_yet" ? { action: "reject_done" } : action === "snooze" ? { action: "snooze", preset: "tomorrow" } : action === "chased" ? { action: "chased" } : { status: "approved" };
+    const body = action === "done" ? { action: "complete", result: walkResult } : action === "confirm" ? { action: "confirm_done" } : action === "not_yet" ? { action: "reject_done" } : action === "snooze" ? { action: "snooze", preset: "tomorrow" } : action === "chased" ? { action: "chased" } : { status: "approved", version: card.version };
     setBusy("walk");
     setError(null);
     try {
       const r = await fetch(card.kind === "approval" ? `/api/tasks/${card.id}` : `/api/secretary/${card.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => ({}));
+      // Edited since this card was built: nothing was approved, and the walk reloads the card with the current draft.
+      if (r.status === 409 && j.error === "changed") { await walkLoad(); setError({ id: "walk", text: lang === "ar" ? "تغيّرت هذه المسودة بعد عرض البطاقة، فلم تُعتمد. هذه نسختها الحالية." : "This draft changed after the card was shown, so it was not approved. Here is its current version." }); return; }
       if (!r.ok || j.ok === false) { setError({ id: "walk", text: errText(j.error) }); return; }
     } catch {
       setError({ id: "walk", text: T.errors.generic });

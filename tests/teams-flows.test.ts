@@ -55,7 +55,7 @@ const memberWithOwnPassword = async (owner: User, role: "admin" | "member" = "me
 const loginAs = (email: string, password: string) => login.POST(json("/api/auth/login", "POST", { email, password }, ip()));
 const inviteReq = (body: unknown) => invite.POST(json("/api/team/invite", "POST", body, ip()));
 const tokenOf = (text: string) => text.match(/#t=([a-f0-9]{64})/)![1];
-const resetTokenOf = (text: string) => text.match(/token=([a-f0-9]{64})/)![1];
+const resetTokenOf = (text: string) => text.match(/\/app\/reset#t=([a-f0-9]{64})/)![1];
 const sessionRec = () => db.get<{ email: string; at: number }>(`session:${jar().get("nashr_session")}`);
 
 beforeEach(() => {

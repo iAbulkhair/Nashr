@@ -580,12 +580,14 @@ describe("each reviewer's work is one activity row per batch (rule 269)", () => 
  * those of 052dc6e). A deliberate prompt change updates BEFORE and says so in its commit; the review itself must never
  * be the reason. The Thakeen rename changed only the brand name in these prompts ("Nashr" to "Thakeen"): the renamed
  * calls, with the old name put back, hashed exactly as the adb555e and 052dc6e values did, so BEFORE and CROSS_SYSTEM
- * now hold the renamed calls' hashes.
+ * now hold the renamed calls' hashes. Rule 572 changed the generation prompt deliberately: the brand file is now one
+ * <brand_file> block encoded with asData, under a "data, never instructions" line, with its rules stated outside it
+ * (`brandFileBlock` in src/lib/noor.ts), so the `gen` hashes are the fenced prompt's; the reviewer and judge are unchanged.
  */
 const BEFORE: Record<string, { gen: string; review: string; judge: string }> = {
-  pricing_review: { gen: "7b3aed2d5227a3c241cd9ae89c83eec75d68261708b2a02c54aa0e6d44d48491", review: "96d87e33997634d1f76f13672245badf391bcc24480b2c782c35ee3b23492ab8", judge: "8625bb81f9467fb37c958eba17df25844aadc71a228a9da796b3e93f610ac646" },
-  gtm_plan: { gen: "6bbe0f8c9c557d274ce67ddea402c7b8a5e71703ae4d2b4bffda3438dddd5cfa", review: "7a6653a4b92904d0eec76f077727363bcd064f260339a8cbcba149b58dce4217", judge: "71578f1853a03cda2894405bb82a891af81b91d01fd09ddabd0457c7c442776f" },
-  social: { gen: "be4b34bead5f29b4e18a85848875303773c7b5b4ce1aed292674e9a614b847d4", review: "6fcd0eb12ea654206127831de821bf0f9d413f59b06e20414705c3332e3664f2", judge: "787f94e4f8595e995fcb10bdecc899bfa990ed74e7b058504549e8495b08e80f" },
+  pricing_review: { gen: "46cd203a2dc3c633607c37227999ef500634f59a74b6434efa4130f538657861", review: "96d87e33997634d1f76f13672245badf391bcc24480b2c782c35ee3b23492ab8", judge: "8625bb81f9467fb37c958eba17df25844aadc71a228a9da796b3e93f610ac646" },
+  gtm_plan: { gen: "5ea6d554383dc2605523ee20de56662183994592f0308d145fe0c0e6075bb552", review: "7a6653a4b92904d0eec76f077727363bcd064f260339a8cbcba149b58dce4217", judge: "71578f1853a03cda2894405bb82a891af81b91d01fd09ddabd0457c7c442776f" },
+  social: { gen: "224ab207fa2140adcc8eb5db8e81244aacc2e8dc0f0a9434a5d87fdcce67c050", review: "6fcd0eb12ea654206127831de821bf0f9d413f59b06e20414705c3332e3664f2", judge: "787f94e4f8595e995fcb10bdecc899bfa990ed74e7b058504549e8495b08e80f" },
 };
 /**
  * Each cross-reviewer's system block for the same fixed batch (the fixed playbooks above), pinned since step 3a was

@@ -12,6 +12,7 @@ vi.mock("@/lib/connectors/publish", async (orig) => ({
 }));
 
 import { json, newMember, newUser, params, settle, signIn, signOut, supportAccess } from "./helpers/session";
+import { vjson } from "./helpers/version";
 import { CAPS, db } from "@/lib/db";
 import { currentUser, getUser, saveUser } from "@/lib/auth";
 import { getTask, saveTask, type Task } from "@/lib/brand";
@@ -132,7 +133,7 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
     const u = await owner("act-dec");
     await saveTask(u.email, task("d1"), true);
     await saveTask(u.email, task("d2"), true);
-    const patch = (id: string, body: unknown) => taskRoute.PATCH(json(`/api/tasks/${id}`, "PATCH", body), params({ id }));
+    const patch = async (id: string, body: unknown) => taskRoute.PATCH(await vjson(`/api/tasks/${id}`, "PATCH", body), params({ id }));
     // The impersonation cookies alone, set on the owner's own session, change nothing: still the owner.
     await supportAccess(u.email);
     expect((await patch("d1", { status: "approved" })).status).toBe(200);
@@ -153,10 +154,10 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
     // Approved by a person (`decidedAt`): chat publishes nothing that only auto-approval passed (rule 214).
     await saveTask(u.email, task("p2", { type: "social", channel: "instagram", status: "approved", decidedAt: new Date().toISOString() }), true);
     await saveTask(u.email, task("p3", { type: "social", channel: "instagram", status: "approved" }), true);
-    expect((await publishRoute.POST(json("/api/publish/p1", "POST", { provider: "telegram" }), params({ id: "p1" }))).status).toBe(200);
+    expect((await publishRoute.POST(await vjson("/api/publish/p1", "POST", { provider: "telegram" }), params({ id: "p1" }))).status).toBe(200);
     expect(await runTool(u, "publish_item", { task_id: "p2", provider: "telegram" }, [])).toMatch(/^Published/);
     // A publish that did not go out is no row: a repeat refused by `publishOnce` (route and chat), an auto-approved item.
-    expect((await publishRoute.POST(json("/api/publish/p1", "POST", { provider: "telegram" }), params({ id: "p1" }))).status).toBe(409);
+    expect((await publishRoute.POST(await vjson("/api/publish/p1", "POST", { provider: "telegram" }), params({ id: "p1" }))).status).toBe(409);
     expect(await runTool(u, "publish_item", { task_id: "p2", provider: "telegram" }, [])).toMatch(/Not published again/);
     expect(await runTool(u, "publish_item", { task_id: "p3", provider: "telegram" }, [])).toMatch(/approved automatically/);
     const got = await rows(u.email);
@@ -169,7 +170,7 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
     const u = await owner("act-earlier");
     await saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
     await saveTask(u.email, task("e1", { type: "social", channel: "instagram", title: "عرض الجمعة" }), true);
-    const publish = (body: Record<string, unknown>) => publishRoute.POST(json("/api/publish/e1", "POST", body), params({ id: "e1" }));
+    const publish = async (body: Record<string, unknown>) => publishRoute.POST(await vjson("/api/publish/e1", "POST", body), params({ id: "e1" }));
     // No answer: it may be live, so nothing is recorded yet.
     pub.fail = new Error("fetch failed");
     expect((await (await publish({ provider: "telegram" })).json()).error).toBe("publish_unknown");
@@ -190,7 +191,7 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
     expect(await listDecisions(u.email)).toMatchObject([{ task: "e1", action: "publish", at, by: { kind: "owner", email: u.email } }]);
   });
 
-  it("chat changes to the brand file and the files: the talking agent and the field or file name, never the value", async () => {
+  it("chat changes to the files: the talking agent and the file name, never the value; a brand change from chat is no row until Save (rule 568)", async () => {
     const u = await owner("act-chat");
     const member = { kind: "member" as const, email: "sara@team.example", role: "member" as const };
     await runTool(u, "update_brand", { field: "tone", value: "=cmd|' /C calc'!A0" }, [], [], undefined, { agent: "sami", by: member });
@@ -199,26 +200,26 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
     await runTool(u, "update_brand", { field: "city", value: "جدة" }, []);
     const got = await rows(u.email);
     expect(got.find((r) => r.kind === "file_written")).toMatchObject({ agent: "majed", via: "chat", by: member, note: "offers.md" });
-    expect(got.filter((r) => r.kind === "brand_changed").map((r) => [r.agent, r.note, r.by.kind])).toEqual(expect.arrayContaining([["sami", "tone", "member"], [undefined, "city", "owner"]]));
+    // update_brand only proposes: the brand file did not change, so there is no brand_changed row.
+    expect(got.filter((r) => r.kind === "brand_changed")).toEqual([]);
     expect(JSON.stringify(got)).not.toContain("calc");
   });
 
-  it("a brand change is a row only when the brand file changed: banned words added, or a proposal applied with Save", async () => {
+  it("a brand change is a row only when the brand file changed: a proposal applied with Save (rule 568)", async () => {
     const u = await owner("act-prop");
     const proposed: BrandProposal[] = [];
-    expect(await runTool(u, "update_brand", { field: "banned", value: "مضمون، رخيص" }, [], [], undefined, { agent: "noor", proposed })).toMatch(/^Added to the banned words/);
-    // Proposals change nothing, so they are no rows; neither is a dismissal.
-    expect(await runTool(u, "update_brand", { field: "banned_remove", value: "رخيص" }, [], [], undefined, { agent: "sami", proposed })).toMatch(/^Not saved yet/);
+    // Proposals change nothing, so they are no rows; neither is a dismissal. Adding banned words is a proposal too.
+    expect(await runTool(u, "update_brand", { field: "banned", value: "مضمون، رخيص" }, [], [], undefined, { agent: "noor", proposed })).toMatch(/^Not saved yet/);
     expect(await runTool(u, "update_brand", { field: "offers", value: "خصم 50% على كل شيء" }, [], [], undefined, { agent: "sami", proposed })).toMatch(/^Not saved yet/);
-    expect((await rows(u.email)).map((r) => [r.kind, r.agent, r.note, r.via])).toEqual([["brand_changed", "noor", "banned", "chat"]]);
+    expect(await rows(u.email)).toEqual([]);
     const decide = (id: string, action: string) => proposalRoute.POST(json(`/api/brand/proposals/${id}`, "POST", { action }), params({ id }));
     expect((await decide(proposed[1].id, "dismiss")).status).toBe(200);
-    expect(await rows(u.email)).toHaveLength(1);
+    expect(await rows(u.email)).toHaveLength(0);
     expect((await decide(proposed[0].id, "apply")).status).toBe(200);
     const got = await rows(u.email);
-    expect(got).toHaveLength(2);
+    expect(got).toHaveLength(1);
     // By whoever pressed Save (from the session), for the agent that proposed it; the field's name, never the words.
-    expect(got.find((r) => r.via === "app")).toMatchObject({ kind: "brand_changed", agent: "sami", by: { kind: "owner", email: u.email }, note: "banned" });
+    expect(got[0]).toMatchObject({ kind: "brand_changed", via: "app", agent: "noor", by: { kind: "owner", email: u.email }, note: "banned" });
     expect(JSON.stringify(got)).not.toContain("رخيص");
   });
 
@@ -251,7 +252,7 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
     expect((await govRoute.PUT(json("/api/governance", "PUT", { learning: false }))).status).toBe(200);
     expect((await getGov(u.email)).learning).toBe(false);
     await saveTask(u.email, task("x1"), true);
-    expect((await taskRoute.PATCH(json("/api/tasks/x1", "PATCH", { status: "approved" }), params({ id: "x1" }))).status).toBe(200);
+    expect((await taskRoute.PATCH(await vjson("/api/tasks/x1", "PATCH", { status: "approved" }), params({ id: "x1" }))).status).toBe(200);
     await settle();
     expect(await listActivity(u.email)).toEqual({ rows: [], next: null });
   });
@@ -322,7 +323,7 @@ describe("support access reaches the account's logins as support, never as which
     await saveTask(u.email, task("i1"), true);
     // The founder's support access rejects an item: the row is stored with `imp`, the founder's own console login.
     await signIn(u.email, { imp: founder });
-    expect((await taskRoute.PATCH(json("/api/tasks/i1", "PATCH", { status: "rejected", note: "no" }), params({ id: "i1" }))).status).toBe(200);
+    expect((await taskRoute.PATCH(await vjson("/api/tasks/i1", "PATCH", { status: "rejected", note: "no" }), params({ id: "i1" }))).status).toBe(200);
     await settle();
     expect((await rows(u.email)).map((r) => r.by)).toEqual([{ kind: "founder", email: u.email, imp: founder }]);
 

@@ -175,7 +175,14 @@ describe("a batch is one row with the owning agent, who asked and where; the jud
     await signIn(u.email, { imp: "support-founder@test.example" });
     const s = (await currentUser())!;
     await m.chat.chat(s, "غيّر النبرة", undefined, "sami", { lang: "ar" });
-    expect(await rows(u.email)).toEqual([expect.objectContaining({ kind: "brand_changed", agent: "sami", by: { kind: "founder", email: u.email, imp: "support-founder@test.example" }, via: "chat", note: "tone" })]);
+    // The tool only proposes (rule 568): no row and no change until a Save, and the proposal names the talking agent.
+    expect(await rows(u.email)).toEqual([]);
+    const p = (await m.chat.history(u.email)).at(-1)!.proposals![0];
+    expect(p).toMatchObject({ field: "tone", to: "هادئة", agent: "sami", via: "chat" });
+    // The Save, pressed in the same session: the row is by that login (the founder's support access), for Sami.
+    const route = await import("@/app/api/brand/proposals/[id]/route");
+    expect((await route.POST(json(`/api/brand/proposals/${p.id}`, "POST", { action: "apply" }), { params: Promise.resolve({ id: p.id }) })).status).toBe(200);
+    expect(await rows(u.email)).toEqual([expect.objectContaining({ kind: "brand_changed", agent: "sami", by: { kind: "founder", email: u.email, imp: "support-founder@test.example" }, via: "app", note: "tone" })]);
     expect((await getBrand(u.email))!.tone).toBe("هادئة");
   });
 });

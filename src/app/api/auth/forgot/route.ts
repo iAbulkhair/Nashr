@@ -42,7 +42,9 @@ export async function POST(req: Request) {
   if (target && mail) {
     const token = randomBytes(32).toString("hex");
     await db.set(`pwreset:${createHash("sha256").update(token).digest("hex")}`, target, 3600);
-    const link = `${appOrigin()}/${lang}/app/reset?token=${token}`;
+    // The token rides in the URL fragment (#t=), never a query string: browsers never send a fragment to a server, so it
+    // stays out of server, proxy and edge logs and the Referer header (src/components/app/AuthForm.tsx ResetForm). Rule 546.
+    const link = `${appOrigin()}/${lang}/app/reset#t=${token}`;
     await sendEmail(target.email, lang === "ar" ? "إعادة تعيين كلمة المرور في ذكين" : "Reset your Thakeen password", lang === "ar"
       ? `مرحباً،\n\nوصلنا طلب لإعادة تعيين كلمة مرور حسابك في ذكين. افتح الرابط التالي خلال ساعة واحدة:\n\n${link}\n\nإذا لم تطلب ذلك فتجاهل هذه الرسالة، ولن يتغير شيء.`
       : `Hello,\n\nWe received a request to reset your Thakeen password. Open this link within one hour:\n\n${link}\n\nIf you did not ask for this, ignore this email and nothing changes.`);

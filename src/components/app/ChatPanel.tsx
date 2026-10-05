@@ -19,6 +19,7 @@ import { ActivationBar, FileCard, PlanCard, WhatsAppCard } from "./OnboardCards"
 import type { Journey } from "@/lib/journey";
 import JourneyCard from "./JourneyCard";
 import AgentAvatar from "@/components/app/AgentAvatar";
+import { taskVersion } from "@/lib/task-version";
 
 type Conv = { id: string; title: string; updatedAt: string; count: number; agent?: AgentId };
 const LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250, tiktok: 2200, whatsapp: 1024, gbp: 1500, meta: 63206, linkedin: 3000 };
@@ -41,11 +42,15 @@ export function ItemCard({ item, t, lang, onApproved, canApprove = true }: { ite
   const chName = (t.channelNames as Record<string, string>)[item.channel] ?? item.channel;
   async function setState(next: "approved" | "pending") {
     setErr("");
-    const r = await fetch(`/api/tasks/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: next }) });
+    // The version of the text on this card (src/lib/task-version.ts): an approval is refused when the item changed since.
+    const r = await fetch(`/api/tasks/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: next, version: taskVersion(item) }) });
     if (!r.ok) {
       // The brand rules hold this item on the server: say which word, and send the owner to the inbox to fix it.
       const j = (await r.json().catch(() => ({}))) as { error?: string; violations?: { term: string }[] };
       if (r.status === 409 && j.error === "brand_violation") { setHeld((j.violations ?? []).map((v) => v.term)); return; }
+      // Edited in the inbox, or given an image, after this card was written: it is reviewed there, where the current
+      // version is shown.
+      if (r.status === 409 && j.error === "changed") { setErr(ar ? "تغيّر هذا العنصر بعد كتابة هذه البطاقة، فلم يُعتمد. راجع النسخة الحالية في صندوق الموافقة." : "This item changed after this card was written, so it was not approved. Review the current version in the inbox."); return; }
       setErr(r.status === 403 ? t.team.errors.forbidden : t.chat.approveFail);
       return;
     }
@@ -304,25 +309,34 @@ export function HandoffCard({ id, t, lang, initial, canRun = true, canDecline = 
 }
 
 /**
- * A brand change an agent proposed (src/lib/brand-proposals.ts): the offers, or banned words taken out. Nothing changed
- * yet; the owner sees the old and the new value and applies it with Save, or dismisses it.
+ * A brand change an agent proposed (src/lib/brand-proposals.ts): any field of the brand file a chat tool may change.
+ * Nothing changed yet; the owner sees the old and the new value and applies it with Save, or dismisses it.
  */
 export function ProposalCard({ p, t, lang, canBrand = true }: { p: BrandProposal; t: AppDict; lang: "ar" | "en"; /** `can(u, "brand.write")`: a plain member sees the change but cannot decide it */ canBrand?: boolean }) {
   const ar = lang === "ar";
   // A reloaded thread carries where the proposal stands now (history() reads it), so a decided change stays decided.
-  const [state, setState] = useState<"open" | "saving" | "applied" | "dismissed" | "gone" | "stale" | "forbidden" | "busy" | "error">(p.state === "applied" || p.state === "dismissed" || p.state === "stale" ? p.state : p.state === "expired" ? "gone" : "open");
+  const [state, setState] = useState<"open" | "saving" | "applied" | "dismissed" | "gone" | "stale" | "forbidden" | "busy" | "too_long" | "error">(p.state === "applied" || p.state === "dismissed" || p.state === "stale" ? p.state : p.state === "expired" ? "gone" : "open");
   async function decide(action: "apply" | "dismiss") {
     setState("saving");
     const r = await fetch(`/api/brand/proposals/${p.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) }).catch(() => null);
     if (!r) return setState("error");
     if (r.ok) return setState(action === "apply" ? "applied" : "dismissed");
     const j = (await r.json().catch(() => ({}))) as { error?: string };
-    setState(r.status === 403 ? "forbidden" : r.status === 404 ? "gone" : j.error === "stale" ? "stale" : j.error === "busy" ? "busy" : "error");
+    setState(r.status === 403 ? "forbidden" : r.status === 404 ? "gone" : j.error === "stale" ? "stale" : j.error === "busy" ? "busy" : j.error === "too_long" ? "too_long" : "error");
   }
-  const label = p.field === "offers" ? (ar ? "العروض الحالية" : "Current offers") : (ar ? "الكلمات الممنوعة" : "Banned words");
+  const labels: Record<BrandProposal["field"], [string, string]> = {
+    offers: ["العروض الحالية", "Current offers"], banned: ["الكلمات الممنوعة", "Banned words"], tone: ["نبرة الصوت", "Tone of voice"],
+    products: ["المنتجات والخدمات", "Products and services"], audience: ["الجمهور", "Audience"], competitors: ["المنافسون", "Competitors"],
+    preferred: ["الكلمات المفضلة", "Preferred words"], dialect: ["اللهجة", "Dialect"], city: ["المدينة / السوق", "City / market"], name: ["اسم النشاط", "Business name"],
+  };
+  const label = (labels[p.field] ?? [p.field, p.field])[ar ? 0 : 1];
   const why = p.field === "offers"
     ? (ar ? "العروض تحدد الخصومات والهدايا والمواعيد التي يَعِد بها الوكلاء، فلا تتغير إلا بحفظك." : "The offers decide which discounts, gifts and deadlines the agents may promise, so they change only when you press Save.")
-    : (ar ? `يُخرج من الكلمات الممنوعة: ${(p.dropped ?? []).join("، ")}. بعدها تمر هذه الكلمات في العناصر المعتمدة والمنشورة.` : `Takes out of the banned words: ${(p.dropped ?? []).join(", ")}. After that these words pass in approved and published items.`);
+    : p.field === "banned" && p.dropped?.length
+      ? (ar ? `يُخرج من الكلمات الممنوعة: ${p.dropped.join("، ")}. بعدها تمر هذه الكلمات في العناصر المعتمدة والمنشورة.` : `Takes out of the banned words: ${p.dropped.join(", ")}. After that these words pass in approved and published items.`)
+      : p.field === "banned" && p.added?.length
+        ? (ar ? `يُضيف إلى الكلمات الممنوعة: ${p.added.join("، ")}. بعدها يُوقَف كل عنصر يستخدمها.` : `Adds to the banned words: ${p.added.join(", ")}. After that every item that uses them is held.`)
+        : (ar ? "كل وكيل يقرأ ملف العلامة فيما يكتبه، فلا يتغير أي حقل فيه من المحادثة إلا بحفظك." : "Every agent reads the brand file in everything it writes, so no field changes from a chat until you press Save.");
   const done: Partial<Record<typeof state, string>> = {
     applied: ar ? "حُفظ في ملف العلامة." : "Saved to the brand file.",
     dismissed: ar ? "تُجوهل. لم يتغير شيء." : "Dismissed. Nothing changed.",
@@ -330,6 +344,7 @@ export function ProposalCard({ p, t, lang, canBrand = true }: { p: BrandProposal
     stale: ar ? "تغيّر هذا الحقل بعد الاقتراح، فلم يُحفظ شيء. عدّله من صفحة ملف العلامة." : "This field changed after the proposal, so nothing was saved. Change it on the Brand page.",
     forbidden: t.team.errors.forbidden,
     busy: ar ? "يُحسم هذا التغيير الآن في نافذة أخرى. انتظر لحظة ثم حدّث الصفحة." : "This change is being decided in another window. Wait a moment, then refresh.",
+    too_long: ar ? "لم يُحفظ: قائمة الكلمات الممنوعة ستتجاوز 400 حرف. اختصرها من صفحة ملف العلامة." : "Not saved: the banned list would pass 400 characters. Shorten it on the Brand page.",
     error: ar ? "لم يُحفظ. حاول مرة أخرى." : "Not saved. Try again.",
   };
   const closed = state === "applied" || state === "dismissed" || state === "gone" || state === "stale";

@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { json, newUser, params, settle, signIn, signOut } from "./helpers/session";
+import { vjson } from "./helpers/version";
 import { getBrand, getTask, saveBrand, saveTask, type Brand, type Task } from "@/lib/brand";
 import { readFile, writeFile } from "@/lib/files";
 import { createConversation, listConversations } from "@/lib/conversations";
@@ -46,11 +47,11 @@ describe("tenant isolation at the route level (rule 1)", () => {
     await signIn(B.email);
     const id = "a1b2c3d4e5f60718";
     const calls = [
-      taskRoute.PATCH(json(`/api/tasks/${id}`, "PATCH", { status: "approved", editedBody: "hijacked" }), params({ id })),
+      taskRoute.PATCH(await vjson(`/api/tasks/${id}`, "PATCH", { status: "approved", editedBody: "hijacked" }), params({ id })),
       imageRoute.POST(json(`/api/tasks/${id}/image`, "POST"), params({ id })),
       videoRoute.POST(json(`/api/tasks/${id}/video`, "POST", { model: "vid-quick" }), params({ id })),
       pptxRoute.GET(json(`/api/tasks/${id}/pptx`, "GET"), params({ id })),
-      publishRoute.POST(json(`/api/publish/${id}`, "POST", { provider: "telegram" }), params({ id })),
+      publishRoute.POST(await vjson(`/api/publish/${id}`, "POST", { provider: "telegram" }), params({ id })),
       mediaRoute.GET(json(`/api/media/${JOB}`, "GET"), params({ jobId: JOB })),
     ];
     for (const res of await Promise.all(calls)) expect(res.status).toBe(404);
@@ -98,11 +99,11 @@ describe("tenant isolation at the route level (rule 1)", () => {
     const id = "a1b2c3d4e5f60718";
     const res = await Promise.all([
       tasksRoute.GET(json("/api/tasks", "GET")),
-      taskRoute.PATCH(json(`/api/tasks/${id}`, "PATCH", { status: "approved" }), params({ id })),
+      taskRoute.PATCH(await vjson(`/api/tasks/${id}`, "PATCH", { status: "approved" }), params({ id })),
       imageRoute.POST(json(`/api/tasks/${id}/image`, "POST"), params({ id })),
       videoRoute.POST(json(`/api/tasks/${id}/video`, "POST", { model: "vid-quick" }), params({ id })),
       pptxRoute.GET(json(`/api/tasks/${id}/pptx`, "GET"), params({ id })),
-      publishRoute.POST(json(`/api/publish/${id}`, "POST", { provider: "telegram" }), params({ id })),
+      publishRoute.POST(await vjson(`/api/publish/${id}`, "POST", { provider: "telegram" }), params({ id })),
       mediaRoute.GET(json(`/api/media/${JOB}`, "GET"), params({ jobId: JOB })),
       filesRoute.GET(json("/api/files", "GET")),
       filesRoute.PUT(json("/api/files", "PUT", { name: "x.md", content: "x" })),
@@ -117,7 +118,7 @@ describe("tenant isolation at the route level (rule 1)", () => {
   it("the owner still reaches their own task (the 404s above are not a blanket refusal)", async () => {
     await signIn(A.email);
     const id = "a1b2c3d4e5f60718";
-    const res = await taskRoute.PATCH(json(`/api/tasks/${id}`, "PATCH", { status: "approved" }), params({ id }));
+    const res = await taskRoute.PATCH(await vjson(`/api/tasks/${id}`, "PATCH", { status: "approved" }), params({ id }));
     expect(res.status).toBe(200);
     await settle();
     expect((await getTask(A.email, id))!.status).toBe("approved");

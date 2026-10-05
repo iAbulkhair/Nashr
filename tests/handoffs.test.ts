@@ -281,9 +281,10 @@ const reply = (text: string, extra: Record<string, unknown> = {}) => ({ model: "
 type Sent = { system: unknown; messages: { role: string; content: string }[]; model: string; max_tokens: number; thinking?: unknown; output_config?: unknown };
 const sha = (p: Sent) => createHash("sha256").update(JSON.stringify({ model: p.model, max_tokens: p.max_tokens, thinking: p.thinking, output_config: p.output_config, system: p.system, messages: p.messages })).digest("hex");
 /** What the same fixed batch sent at adb555e (step 3a with #227 and #228), before cross-review or handoffs existed, with the brand name renamed to Thakeen (the hashes of rule 270). */
+// Rule 572 deliberately changed the generation prompt (the brand file fenced in <brand_file>, `brandFileBlock` in src/lib/noor.ts): the `gen` hashes are the fenced prompt's, the same values as BEFORE in tests/cross-review.test.ts.
 const BEFORE: Record<string, { gen: string; review: string; judge: string }> = {
-  pricing_review: { gen: "7b3aed2d5227a3c241cd9ae89c83eec75d68261708b2a02c54aa0e6d44d48491", review: "96d87e33997634d1f76f13672245badf391bcc24480b2c782c35ee3b23492ab8", judge: "8625bb81f9467fb37c958eba17df25844aadc71a228a9da796b3e93f610ac646" },
-  gtm_plan: { gen: "6bbe0f8c9c557d274ce67ddea402c7b8a5e71703ae4d2b4bffda3438dddd5cfa", review: "7a6653a4b92904d0eec76f077727363bcd064f260339a8cbcba149b58dce4217", judge: "71578f1853a03cda2894405bb82a891af81b91d01fd09ddabd0457c7c442776f" },
+  pricing_review: { gen: "46cd203a2dc3c633607c37227999ef500634f59a74b6434efa4130f538657861", review: "96d87e33997634d1f76f13672245badf391bcc24480b2c782c35ee3b23492ab8", judge: "8625bb81f9467fb37c958eba17df25844aadc71a228a9da796b3e93f610ac646" },
+  gtm_plan: { gen: "5ea6d554383dc2605523ee20de56662183994592f0308d145fe0c0e6075bb552", review: "7a6653a4b92904d0eec76f077727363bcd064f260339a8cbcba149b58dce4217", judge: "71578f1853a03cda2894405bb82a891af81b91d01fd09ddabd0457c7c442776f" },
 };
 
 /**

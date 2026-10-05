@@ -6,6 +6,7 @@ import { addTopup, voidTopup, withUserLock } from "./credits";
 import { lotsOf, refundUnused, type RefundRequest, type RefundUnusedError, type TopupLot, type TopupRefund, type TopupRequest } from "./topups";
 import { pmap } from "./parallel";
 import { onRoster } from "./team";
+import { rewardReferrer } from "./referral";
 import { lifecyclePlan } from "./lifecycle";
 import { FIRST_MONTH_DISCOUNT_PCT, SELF_SERVE_PLANS, firstMonthPriceSar, type SelfServePlan } from "./pricing";
 import {
@@ -361,7 +362,7 @@ export async function recordPayment(email: string, input: PaymentInput, by: stri
   if (!(await getUser(e))) return { ok: false, error: "not_found" };
   const id = (input.id as string | undefined) ?? newId("pay");
   const amountSar = input.amountSar, plan = input.plan as Plan, date = input.date;
-  return withUserLock(e, async (u) => {
+  const res = await withUserLock(e, async (u) => {
     const all = await db.hgetall<Payment>(paymentsKey(e));
     if (all[id]) return { ok: true as const, payment: all[id], already: true };
     const live = Object.values(all).filter((p) => !p.voidedAt);
@@ -384,6 +385,11 @@ export async function recordPayment(email: string, input: PaymentInput, by: stri
     await saveUser(u);
     return { ok: true as const, payment: payments[id], ...(reclassified.length ? { reclassified } : {}) };
   });
+  // The credits referral (src/lib/referral.ts, rules 557-558): the first payment that stands, plan or top-up, pays the
+  // referrer once. Outside this account's lock (the referrer's credits take the referrer's); a retry (`already`) runs it
+  // again, so a request that stopped here is completed, and the claim inside makes any later run a no-op.
+  if (res.ok && !res.payment.voidedAt) await rewardReferrer(e).catch((err) => console.error("referral reward failed", err instanceof Error ? err.message : "error"));
+  return res;
 }
 
 /**

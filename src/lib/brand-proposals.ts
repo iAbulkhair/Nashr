@@ -5,19 +5,30 @@ import { bannedTerms, normalize } from "./brand-rules";
 import type { AgentId } from "./agents";
 
 /**
- * Brand changes an agent may propose but never apply: the inputs of the code gates.
+ * Brand changes an agent may propose but never apply.
  *
- * `banned` is the list the approve and publish gates enforce, and `offers` decides which discounts and deadlines the
- * agents may promise (cart recovery's capDiscounts lets through only the percentages the offers name). A model call wrote
- * both directly (update_brand), and the model reads crawled sites, imported catalogs, uploads and MCP clients' text, so
- * one planted sentence could remove the rule that holds an item, or open a 50% discount. An agent may still ADD a banned
- * word at once (that only holds more). Taking words out, and any change to the offers, is saved here as a proposal and
- * shown to the owner as a card with the old and the new value; only the owner's click applies it, through the route
- * /api/brand/proposals/[id], under the same role as the Brand page ("brand.write").
+ * Every field of the brand file a chat tool may change (update_brand in src/lib/chat.ts) is read by every agent, and two
+ * of them are the inputs of the code gates: `banned` is the list the approve and publish gates enforce, and `offers`
+ * decides which discounts and deadlines the agents may promise (cart recovery's capDiscounts lets through only the
+ * percentages the offers name). The model that calls update_brand reads crawled sites, imported catalogs, uploads and
+ * MCP clients' text, so one planted sentence could rename the brand, rewrite its tone or products, ban its own name,
+ * remove the rule that holds an item, or open a 50% discount. So no tool call writes the brand file: every change is
+ * saved here as a proposal and shown to the owner as a card with the old and the new value; only the click of the owner
+ * or an admin applies it, through the route /api/brand/proposals/[id], under the same role as the Brand page
+ * ("brand.write").
  */
-export type ProposalField = "offers" | "banned";
+/** Every brand field a proposal may change: plain strings on `Brand` (dialect is one of DIALECTS). */
+export const PROPOSAL_FIELDS = ["offers", "banned", "tone", "products", "audience", "competitors", "preferred", "dialect", "city", "name"] as const;
+export type ProposalField = (typeof PROPOSAL_FIELDS)[number];
+export const DIALECTS = ["msa", "saudi", "emirati", "kuwaiti", "english"] as const;
+/** The most each field keeps, the same caps as the Brand page (PUT /api/brand), so a proposal never stores more than a Save would. */
+export const FIELD_MAX: Readonly<Record<ProposalField, number>> = { offers: 1000, banned: 400, tone: 300, products: 1000, audience: 1000, competitors: 400, preferred: 400, dialect: 20, city: 60, name: 80 };
 export type ProposalState = "open" | "applied" | "dismissed" | "stale" | "expired";
-export type BrandProposal = { id: string; field: ProposalField; from: string; to: string; at: string; agent: AgentId; via: "chat" | "mcp"; dropped?: string[]; /** filled in when a chat thread is read, never stored */ state?: ProposalState };
+/**
+ * `dropped`: banned words a removal takes out; `added`: banned words an addition puts in. Both apply to the list as it is
+ * when the owner presses Save, so words changed meanwhile by someone else stay.
+ */
+export type BrandProposal = { id: string; field: ProposalField; from: string; to: string; at: string; agent: AgentId; via: "chat" | "mcp"; dropped?: string[]; added?: string[]; /** filled in when a chat thread is read, never stored */ state?: ProposalState };
 
 const TTL_S = 7 * 86400;
 const key = (scope: string, id: string) => `brandprop:${scope}:${id}`;
@@ -34,8 +45,8 @@ const ID = /^[a-f0-9]{16}$/;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Every read-change-write of the brand file by an agent or a proposal runs under this lock, so a word an agent adds and a
- * proposal the owner applies cannot overwrite each other. (The Brand page saves the whole form, as before.)
+ * Every read-change-write of the brand file runs under this lock: a proposal the owner applies, the Profile page's brand
+ * fields and the Brand page's Save (PUT /api/brand), so none of them overwrites another with an older copy of the file.
  */
 export async function withBrandLock<T>(scope: string, fn: () => Promise<T>): Promise<T> {
   const k = lockKey(scope);
@@ -83,7 +94,7 @@ export async function proposalStates(scope: string, ids: string[]): Promise<Reco
 }
 
 /** An applied proposal names its field and the agent that proposed it, for the activity row the route writes. */
-export type Decided = { ok: true; applied: boolean; brand?: Brand; field?: ProposalField; agent?: AgentId } | { ok: false; error: "not_found" | "stale" | "no_brand" | "busy" };
+export type Decided = { ok: true; applied: boolean; brand?: Brand; field?: ProposalField; agent?: AgentId } | { ok: false; error: "not_found" | "stale" | "no_brand" | "busy" | "too_long" };
 
 /**
  * Apply or dismiss one proposal, once.
@@ -91,6 +102,10 @@ export type Decided = { ok: true; applied: boolean; brand?: Brand; field?: Propo
  *   overwrite a newer value (`stale`, dropped; the owner decides on the Brand page).
  * - A removal takes its words out of the list as it is now, so words added since (by the owner or an agent) stay; it is
  *   stale only when none of its words is on the list any more.
+ * - An addition puts its words on the list as it is now; it is stale when all of them are already there, and refused
+ *   (`too_long`, left open) when the list would pass the 400 characters the Brand page keeps.
+ * - Any other field applies only while it still says what it said when proposed (`stale` otherwise), capped at FIELD_MAX,
+ *   and a dialect only when it is one of DIALECTS.
  * A failure that is not a decision (no brand file yet, another tab deciding) leaves the proposal open for a retry.
  */
 export async function decideProposal(scope: string, id: string, action: "apply" | "dismiss"): Promise<Decided> {
@@ -107,15 +122,29 @@ export async function decideProposal(scope: string, id: string, action: "apply" 
     return await withBrandLock(scope, async (): Promise<Decided> => {
       const brand = await getBrand(scope);
       if (!brand) return { ok: false, error: "no_brand" };
+      if (!(PROPOSAL_FIELDS as readonly string[]).includes(p.field)) { await close("stale"); return { ok: false, error: "stale" }; }
       if (p.field === "banned" && p.dropped?.length) {
         const out = new Set(p.dropped.map(normalize));
         const cur = bannedTerms(brand.banned);
         const kept = cur.filter((t) => !out.has(normalize(t)));
         if (kept.length === cur.length) { await close("stale"); return { ok: false, error: "stale" }; }
         brand.banned = kept.join(", ");
+      } else if (p.field === "banned" && p.added?.length) {
+        const cur = bannedTerms(brand.banned);
+        const have = new Set(cur.map(normalize));
+        const add = p.added.filter((t) => !have.has(normalize(t)));
+        if (!add.length) { await close("stale"); return { ok: false, error: "stale" }; }
+        const merged = [(brand.banned ?? "").trim(), add.join(", ")].filter(Boolean).join(", ");
+        if (merged.length > FIELD_MAX.banned) return { ok: false, error: "too_long" };
+        brand.banned = merged;
       } else {
-        if ((brand[p.field] ?? "") !== p.from) { await close("stale"); return { ok: false, error: "stale" }; }
-        brand[p.field] = p.to;
+        const cur = String(brand[p.field] ?? "");
+        if (cur !== p.from) { await close("stale"); return { ok: false, error: "stale" }; }
+        const to = String(p.to).slice(0, FIELD_MAX[p.field]);
+        if (p.field === "dialect") {
+          if (!(DIALECTS as readonly string[]).includes(to)) { await close("stale"); return { ok: false, error: "stale" }; }
+          brand.dialect = to as Brand["dialect"];
+        } else (brand as unknown as Record<string, string>)[p.field] = to;
       }
       brand.updatedAt = new Date().toISOString();
       await saveBrand(scope, brand);
