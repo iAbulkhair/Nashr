@@ -14,11 +14,14 @@ import { applyBooking, parseCalcom, parseCalendly, verifyCalcomSignature, verify
  * a header over 512 characters refused unread); the JSON (400 when malformed: the sender is authenticated); the parser;
  * `applyBooking`, which acts on `rec.scope` only.
  *
- * Every failure up to and including a bad or missing signature is the same empty 404, so a probe learns nothing; the two
- * 429s are the named exceptions (the per-link one shows a holder of a live token that the record exists). After the
- * signature: handled, ignored or replayed is 200; a held lock or a store failure is 503 (a provider retries on 5xx); a
- * corrupt record is 500, on purpose. Never logs the token, body, signature or key. Writes only the rate counters, and
- * through `applyBooking` the item, its claim and its audit line.
+ * Every failure up to and including a bad or missing signature is the same empty 404, so a probe learns nothing, with
+ * these named exceptions: the two 429s (the per-link one shows a holder of a live token that the record exists); a store
+ * failure before the signature check (the counters, `resolveBook`, `loginHolds`) is 503; a record that is not well
+ * formed is 500, on purpose, and is answered BEFORE the validity check and the signature (it exists only if a token was
+ * minted); and an error deriving the signing key or running the check (`CONNECT_SECRET` unset in production) is 500.
+ * After a good signature: malformed JSON is 400; handled, ignored or replayed is 200; a held lock or a store failure
+ * inside `applyBooking` is 503 (a provider retries on 5xx). Never logs the token, body, signature or key. Writes only the
+ * rate counters, and through `applyBooking` the item, its claim and its audit line.
  */
 const MAX_BODY = 64 * 1024;
 const MAX_SIGNATURE = 512;
