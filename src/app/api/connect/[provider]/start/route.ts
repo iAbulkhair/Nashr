@@ -3,7 +3,7 @@ import { randomBytes } from "crypto";
 import { cookies } from "next/headers";
 import { currentUser, sc, sessionCookie } from "@/lib/auth";
 import { getProvider, isAvailable, routedViaComposio } from "@/lib/connectors/registry";
-import { composioConnect } from "@/lib/connectors/composio";
+import { composioConnect, errorShape } from "@/lib/connectors/composio";
 import { PROVIDER_TOOLKITS } from "@/lib/connectors/composio-catalog";
 import { authorizeUrl, pkcePair } from "@/lib/connectors/oauth";
 import { OAUTH_COOKIE, saveState } from "@/lib/connectors/store";
@@ -39,7 +39,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
       return NextResponse.redirect(redirectUrl);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
-      console.error("composio connect start failed", provider, toolkit, /^[a-z_]+$/.test(msg) ? msg : "error");
+      console.error("composio connect start failed", provider, toolkit, /^[a-z_]+$/.test(msg) ? msg : errorShape(e));
       return NextResponse.json({ ok: false, error: /^composio_rate_limited$|^provider_not_configured$/.test(msg) ? msg : "connect_failed" }, { status: msg === "composio_rate_limited" ? 429 : 502 });
     }
   }

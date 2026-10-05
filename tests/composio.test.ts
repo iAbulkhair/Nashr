@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { jar, json, newUser, signIn } from "./helpers/session";
 import { db } from "@/lib/db";
 import { getConnection, OAUTH_COOKIE, saveConnection, saveState, type Connection } from "@/lib/connectors/store";
-import { bucketFor, composioEnabled, composioRead, composioUserId, composioWrite, setComposioClientForTests, type ComposioClient } from "@/lib/connectors/composio";
+import { bucketFor, errorShape, composioEnabled, composioRead, composioUserId, composioWrite, setComposioClientForTests, type ComposioClient } from "@/lib/connectors/composio";
 import { liEscape } from "@/lib/connectors/via-composio";
 import { connectedTargets, targetsFor } from "@/lib/connectors/targets";
 import { publishTask } from "@/lib/connectors/publish";
@@ -357,5 +357,15 @@ describe("who can reach Composio (rule 636)", () => {
     expect(logged.length).toBeGreaterThan(0);
     for (const args of logged) expect(args, "a log carries a fixed message, the tool slug and the status only").toMatch(/^"[^"]*"(?:, (?:slug|status))*$/);
     for (const args of logged) expect(args).not.toMatch(/accountId|scope|\bdata\b|\berr|\be\b/);
+  });
+
+  it("a failed connect logs the error's class, status and code, never its message or body", () => {
+    class ApiError extends Error { status = 403; code = "Forbidden"; body = { user_id: "u-secret" }; }
+    class LinkFailed extends Error {}
+    const e = new LinkFailed("Failed for user u-secret in ac_123", { cause: new ApiError("u-secret has no access to ac_123") });
+    expect(errorShape(e)).toBe("LinkFailed ApiError 403 Forbidden");
+    expect(errorShape(new Error("ac_123 u-secret"))).toBe("Error");
+    expect(errorShape("plain string")).toBe("error");
+    expect(errorShape({ constructor: { name: "has space" }, status: "403", code: "not a code!" })).toBe("error");
   });
 });

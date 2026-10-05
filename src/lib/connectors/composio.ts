@@ -168,6 +168,24 @@ const okRedirect = (u: string) => {
   }
 };
 
+/**
+ * A loggable shape of an SDK error: class names down the cause chain, HTTP status and Composio error code. Never the
+ * message or body, which can carry ids or platform text.
+ */
+export function errorShape(e: unknown): string {
+  const parts: string[] = [];
+  let cur: unknown = e;
+  for (let i = 0; i < 3 && cur && typeof cur === "object"; i++) {
+    const o = cur as { constructor?: { name?: string }; status?: unknown; code?: unknown; cause?: unknown };
+    const name = o.constructor?.name ?? "";
+    if (/^[A-Za-z]{1,60}$/.test(name)) parts.push(name);
+    if (typeof o.status === "number") parts.push(String(o.status));
+    if (typeof o.code === "string" && /^[A-Za-z0-9_.:-]{1,60}$/.test(o.code)) parts.push(o.code);
+    cur = o.cause;
+  }
+  return parts.join(" ") || "error";
+}
+
 const quietDelete = (c: ComposioClient, id: string) => c.connectedAccounts.delete(id).then(() => undefined, () => undefined);
 
 /** Start a connection: the browser goes to `redirectUrl` (only ever a composio.dev host), then back to our callback with the state. */
