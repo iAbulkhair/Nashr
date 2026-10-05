@@ -1,4 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
@@ -18,6 +21,10 @@ import type { SecItem } from "@/lib/secretary-agenda";
 import { buildIcs, feedHolds, feedItems, icsFold } from "@/lib/secretary-feed";
 import * as feedRoute from "@/app/api/secretary/feed/[token]/route";
 import * as manageRoute from "@/app/api/secretary/feed/route";
+import { appDict } from "@/lib/app-i18n";
+import { CHAT_ALLOWANCE, PLAN_CREDITS, PLAN_PRICE_SAR, SELF_SERVE_PLANS, formatCount } from "@/lib/pricing";
+import { formatWhen } from "@/lib/secretary-agenda";
+import { FeedView, type FeedState } from "@/components/app/FeedCard";
 import { createFeed, FEED_KEYS, FEED_TOKEN, getFeedStatus, hashFeedToken, resolveFeed, revokeFeed, revokeFeeds } from "@/lib/feed-token";
 
 const FOUNDER = "founder-feed@test.example";
@@ -836,5 +843,91 @@ describe("feed revocation (rules 545-546)", () => {
     expect(await getMember(m.email)).toBeNull();
     for (const t of tokens) expect((await callFeed(t)).status).toBe(404);
     expect(memKeys().filter((k) => [owner.email, m.email].some((l) => k === FEED_KEYS.of(l)))).toEqual([]);
+  });
+});
+
+describe("feed card (rules 547-548)", () => {
+  const LANGS = ["ar", "en"] as const;
+  it("rule 547: both languages carry every feed string, Latin digits, no number of ours", () => {
+    const ar = appDict.ar.todo.feed as Record<string, string>;
+    const en = appDict.en.todo.feed as Record<string, string>;
+    expect(Object.keys(ar).sort()).toEqual(Object.keys(en).sort());
+    // The strings the card and the file need, named in the brief: none may go missing.
+    for (const k of ["title", "create", "renew", "stop", "copy", "copied", "since", "warning", "iphone", "google", "outlook", "busy", "error", "mine", "waiting"]) {
+      expect(ar[k], `ar.${k}`).toBeTruthy();
+      expect(en[k], `en.${k}`).toBeTruthy();
+    }
+    for (const [lang, d] of [["ar", ar], ["en", en]] as const) {
+      for (const [k, v] of Object.entries(d)) {
+        expect(v.trim(), `${lang}.${k}`).not.toBe("");
+        // No Arabic-Indic or Persian digit: Latin digits only.
+        expect(v, `${lang}.${k}`).not.toMatch(/[\u0660-\u0669\u06F0-\u06F9]/);
+        // No price, credit or message allowance of ours, and no digit at all beyond what a product name carries.
+        expect(v, `${lang}.${k}`).not.toMatch(/\d/);
+        for (const n of [...SELF_SERVE_PLANS.flatMap((p) => [PLAN_PRICE_SAR[p], PLAN_CREDITS[p], CHAT_ALLOWANCE[p]])]) {
+          expect(v, `${lang}.${k}`).not.toMatch(new RegExp(`\\b(${n}|${formatCount(n).replace(",", "\\,")})\\b`));
+        }
+      }
+    }
+    // The two who-acts phrases feed the file: the English and Arabic words stay what the calendar has always said.
+    expect(ar.mine).toBe("عليّ أنا");
+    expect(ar.waiting).toBe("ننتظر {name}");
+    expect(en.mine).toBe("Mine");
+    expect(en.waiting).toBe("Waiting on {name}");
+    // Google's line says it refuses webcal://; the webcal:// text is only ever a link's scheme, never a promise.
+    expect(ar.google).toContain("webcal://");
+    expect(en.google).toContain("webcal://");
+  });
+
+  /** The text as `renderToStaticMarkup` writes it. */
+  const html = (x: string) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const URL_ = "https://thakeen.example/api/secretary/feed/" + "a".repeat(43) + ".ics";
+  const WEBCAL = URL_.replace(/^https:/, "webcal:");
+  const view = (lang: "ar" | "en", state: FeedState, extra: Record<string, unknown> = {}) =>
+    renderToStaticMarkup(createElement(FeedView, { t: appDict[lang], state, ...extra }));
+
+  it("rule 548: the card shows the link once", () => {
+    for (const lang of LANGS) {
+      const T = appDict[lang].todo.feed;
+      // Created: the https link and the webcal:// version, a Copy button for each, the warning and the three apps.
+      const created = view(lang, { kind: "created", url: URL_, webcal: WEBCAL });
+      expect(created, lang).toContain(URL_);
+      expect(created, lang).toContain(WEBCAL);
+      expect(created.split(T.copy).length - 1, lang).toBe(2);
+      for (const k of ["warning", "iphone", "google", "outlook", "shownOnce", "renew", "stop"] as const) expect(created, `${lang}.${k}`).toContain(html(T[k]));
+      expect(created, lang).not.toContain(T.create);
+      // Exists (the page was left and came back): the date, Renew and Stop, and no link.
+      const since = formatWhen("2026-10-05T09:30:00.000Z", true, lang, Date.parse("2026-10-06T00:00:00.000Z"));
+      const exists = view(lang, { kind: "exists", since });
+      expect(since, lang).toMatch(/5/);
+      expect(exists, lang).toContain(T.since.replace("{date}", since));
+      expect(exists, lang).toContain(T.renew);
+      expect(exists, lang).toContain(T.stop);
+      expect(exists, lang).not.toContain("/api/secretary/feed/");
+      expect(exists, lang).not.toContain("webcal:");
+      expect(exists, lang).not.toContain(T.warning);
+      // None: one button; no link, no date. Loading and a failed read show neither the link nor a button.
+      const none = view(lang, { kind: "none" });
+      expect(none, lang).toContain(T.create);
+      expect(none, lang).not.toContain("/api/secretary/feed/");
+      for (const state of [{ kind: "loading" }, { kind: "failed" }] as FeedState[]) expect(view(lang, state), lang).not.toContain(T.create);
+    }
+    // Stop asks first, inline.
+    const T = appDict.en.todo.feed;
+    const asking = view("en", { kind: "exists", since: "5 October" }, { confirming: true });
+    expect(asking).toContain(T.confirmStop);
+    expect(asking).toContain(T.confirmYes);
+    // A copied button says so, and only the pressed one.
+    expect(view("en", { kind: "created", url: URL_, webcal: WEBCAL }, { copied: "url" }).split(T.copied).length - 1).toBe(1);
+  });
+
+  it("rule 548: the link lives in component state only, and the card sits on My to-dos below the Away panel", () => {
+    const card = readFileSync("src/components/app/FeedCard.tsx", "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(card).toContain("useState");
+    for (const banned of ["localStorage", "sessionStorage", "indexedDB", "document.cookie", "console.", "history.", "router.push", "router.replace", "location."]) expect(card, banned).not.toContain(banned);
+    const panel = readFileSync("src/components/app/TodoPanel.tsx", "utf8");
+    expect(panel.indexOf("<AwayPanel")).toBeGreaterThan(-1);
+    expect(panel.indexOf("<FeedCard")).toBeGreaterThan(panel.indexOf("<AwayPanel"));
+    expect(readFileSync("src/components/app/CalendarPanel.tsx", "utf8")).not.toContain("FeedCard");
   });
 });

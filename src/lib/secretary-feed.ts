@@ -1,6 +1,8 @@
+import { appDict } from "./app-i18n";
 import { getLogin, normalizeEmail } from "./auth";
 import { listBrands, scopeFor } from "./brands";
 import type { FeedRecord } from "./feed-token";
+import { fill } from "./fill";
 import { listOpenItems } from "./secretary";
 import { addDays, partyName, zoneDay, type SecItem } from "./secretary-agenda";
 import type { Zone } from "./zones";
@@ -113,6 +115,8 @@ const compactDay = (day: string) => day.replace(/-/g, "");
 /** The whole calendar, `BEGIN:VCALENDAR` to `END:VCALENDAR`, every line folded and ended with CRLF. */
 export function buildIcs(items: SecItem[], o: { lang: "ar" | "en"; zone: Zone; origin: string; now: number }): string {
   const ar = o.lang === "ar";
+  // The two "who acts" phrases are the page's words (`todo.feed`), one source for the card and the file.
+  const feedWords = appDict[o.lang].todo.feed;
   // The origin is caller-supplied: cleaned like a text value, but not escaped, since `URL` is a URI.
   const url = clean(`${o.origin}/${o.lang}/app/todo`);
   const out: string[] = [
@@ -131,7 +135,7 @@ export function buildIcs(items: SecItem[], o: { lang: "ar" | "en"; zone: Zone; o
     const updated = [Date.parse(it.updatedAt), due, o.now].find((t) => Number.isFinite(t))!;
     const stamp = utc(updated);
     const who =
-      it.owedBy === "owner" ? (ar ? "عليّ أنا" : "Mine") : `${ar ? "ننتظر" : "Waiting on"} ${partyName(it.owedBy, o.lang)}`;
+      it.owedBy === "owner" ? feedWords.mine : fill(feedWords.waiting, { name: partyName(it.owedBy, o.lang) });
     out.push("BEGIN:VEVENT", `UID:${it.id}@thakeen`, `DTSTAMP:${stamp}`, `LAST-MODIFIED:${stamp}`, `SEQUENCE:${Number.isFinite(it.rev) ? it.rev : 0}`);
     if (it.allDay) {
       const day = zoneDay(due, o.zone);
