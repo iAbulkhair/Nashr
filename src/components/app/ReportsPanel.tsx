@@ -266,7 +266,7 @@ function StoreSales({ R, paused, provider, store, lang }: { R: AppDict["reports"
     const res = await fetch(`/api/connect/${provider}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync_sales" }) });
     const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
     setBusy(false);
-    if (j.ok) r.refresh(); else setErr(j.error === "orders_access_denied" ? R.accessDenied : j.error === "zid_access_denied" ? R.zidDenied : j.error ?? `HTTP ${res.status}`);
+    if (j.ok) r.refresh(); else setErr(j.error === "orders_access_denied" ? R.accessDenied : j.error === "zid_access_denied" ? R.zidDenied : j.error === "woo_access_denied" ? R.wooDenied : j.error ?? `HTTP ${res.status}`);
   }
   const fill = (s: string, v: Record<string, number | string>) => s.replace(/\{(\w+)\}/g, (_, k) => String(v[k] ?? ""));
   const name = PROVIDER_NAME[provider];
@@ -292,7 +292,8 @@ function StoreSales({ R, paused, provider, store, lang }: { R: AppDict["reports"
             {R.asOf}: <span dir="ltr" suppressHydrationWarning>{dateFormat(lang, { dateStyle: "medium", timeStyle: "short" }).format(new Date(store.at))} UTC</span>
             {store.orders.read < store.orders.count && <> · {fill(R.partial, { read: store.orders.read, count: store.orders.count })}</>}
             {store.unread > 0 && <> · {fill(R.unread, { n: store.unread })}</>}
-            {store.carts.unavailable && <> · {R.cartsUnavailable}</>}
+            {!!store.orders.pending && <> · {fill(R.pending, { n: store.orders.pending })}</>}
+            {store.carts.unavailable && <> · {provider === "woocommerce" ? R.wooCarts : R.cartsUnavailable}</>}
           </p>
           <p className="mt-1 text-xs text-muted">{R.note}</p>
           {store.carts.top.length > 0 && (

@@ -4,6 +4,7 @@ import type { Connection } from "./connectors/store";
 import { sallaSales } from "./connectors/salla";
 import { shopifySales } from "./connectors/shopify";
 import { zidSales } from "./connectors/zid";
+import { wooHost, wooSales } from "./connectors/woocommerce";
 import { PROVIDER_NAME, salesMarkdown, type SalesProvider, type SalesSnapshot } from "./connectors/sales";
 import { asData } from "./json";
 
@@ -16,8 +17,8 @@ export async function getSalesSnapshot(scope: string) {
 
 /** Read orders and abandoned carts from the store, keep the totals, and give Noor the same totals as store-sales.md. */
 export async function syncSales(scope: string, provider: SalesProvider, c: Connection): Promise<SalesSnapshot> {
-  const snap = provider === "shopify" ? await shopifySales(c) : provider === "zid" ? await zidSales(c) : await sallaSales(c);
-  const store = provider === "shopify" ? c.meta?.shop : c.meta?.account;
+  const snap = provider === "shopify" ? await shopifySales(c) : provider === "zid" ? await zidSales(c) : provider === "woocommerce" ? await wooSales(c) : await sallaSales(c);
+  const store = provider === "shopify" ? c.meta?.shop : provider === "woocommerce" ? wooHost(c) : c.meta?.account;
   await Promise.all([db.set(KEY(scope), snap), writeFile(scope, "store-sales.md", salesMarkdown(snap, store), "noor")]);
   return snap;
 }
@@ -44,8 +45,8 @@ export async function salesDataBlock(scope: string, now = new Date()): Promise<s
     synced: s.at.slice(0, 10),
     synced_days_ago: age,
     window_days: s.days,
-    orders: { count: s.orders.count, capped: !!s.orders.capped, totals_cover_latest: s.orders.read, canceled_or_refunded_left_out: s.orders.canceled, revenue: codes(s.orders.revenue), best_sellers: s.orders.top.slice(0, 5) },
-    abandoned_carts: s.carts.unavailable ? "not available: the store did not give the app access to its carts (unknown, not zero)" : { count: s.carts.count, capped: !!s.carts.capped, value: codes(s.carts.value), most_often_left: s.carts.top.slice(0, 5) },
+    orders: { count: s.orders.count, capped: !!s.orders.capped, totals_cover_latest: s.orders.read, canceled_or_refunded_left_out: s.orders.canceled, ...(s.orders.pending ? { awaiting_payment_in_count_not_in_revenue: s.orders.pending } : {}), revenue: codes(s.orders.revenue), best_sellers: s.orders.top.slice(0, 5) },
+    abandoned_carts: s.carts.unavailable ? (s.provider === "woocommerce" ? "not available: WooCommerce does not record abandoned carts (unknown, not zero)" : "not available: the store did not give the app access to its carts (unknown, not zero)") : { count: s.carts.count, capped: !!s.carts.capped, value: codes(s.carts.value), most_often_left: s.carts.top.slice(0, 5) },
     records_with_unreadable_totals: s.unread,
   };
   return [
