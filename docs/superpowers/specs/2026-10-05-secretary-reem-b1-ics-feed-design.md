@@ -74,7 +74,7 @@ The project rule says secrets are never accepted in URLs. This feed is the one e
 A card "Subscribe from your calendar" on My to-dos (`/{lang}/app/todo`, `TodoPanel`, below the Away panel; B1-R9: not the publishing calendar page, which is about approved posts), for every role:
 
 - No link yet: one button, "Create my link".
-- On creating or renewing: the link and a `webcal://` version once, with Copy buttons, and one sentence per app (iPhone: Settings > Calendar > Accounts > Add subscribed calendar; Google: Other calendars > From URL, which does not accept `webcal://`; Outlook: Add calendar > Subscribe from web). The link disappears when the page is left; after that the card shows "A link exists since {date}" with Renew and Stop.
+- On creating or renewing: the link and a `webcal://` version once, with Copy buttons, and one sentence per app (iPhone: Settings > Apps > Calendar > Calendar Accounts > Add Account > Other > Add Subscribed Calendar, the path since iOS 18; Google: Other calendars > From URL, which does not accept `webcal://`; Outlook: Add calendar > Subscribe from web). The link disappears when the page is left; after that the card shows "A link exists since {date}" with Renew and Stop.
 - A short warning under the link: anyone with it sees your dated task titles; renew it if it was shared by mistake; the calendar app updates on its own schedule, so a change can take a while to appear.
 - Text in `app-i18n.ts` (Arabic and English), digits Latin, nothing invented.
 
