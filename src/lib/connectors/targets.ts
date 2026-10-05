@@ -35,3 +35,9 @@ export function targetsFor(task: Task, connected: string[]): string[] {
   if ((task.type === "social" || task.type === "gbp" || task.type === "whatsapp") && connected.includes("telegram")) out.push("telegram");
   return out;
 }
+
+/**
+ * An article for a Salla store has no publish target: Salla's Merchant API has no endpoint to create a blog article or
+ * a draft, so the inbox shows a copy-ready note instead of a button (docs/superpowers/specs/2026-10-05-store-connectors-design.md, section 6).
+ */
+export const copyOnlyNote = (task: Task, connected: string[]) => task.type === "article" && connected.includes("salla");

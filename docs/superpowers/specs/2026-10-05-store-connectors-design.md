@@ -22,7 +22,7 @@ Not in this spec: product or price writes to any store (needs its own spec with 
 
 | | Connect | Imports products | Sales snapshot (`store-sales.md`) | Publishes |
 |---|---|---|---|---|
-| Salla | OAuth, scope `offline_access` | yes | yes: orders last 30 days (10 pages) and abandoned carts (3 pages) | no. The registry lists `publish_article` but `publishWith` has no Salla case |
+| Salla | OAuth, scope `offline_access` | yes | yes: orders last 30 days (10 pages) and abandoned carts (3 pages) | no. Removed 2026-10-05: Salla has no article API; the inbox shows a copy-ready note |
 | Zid | OAuth, three headers (token, manager token, store id) | yes | yes: orders (5 pages) and abandoned carts (3 pages), 403 handling | no |
 | WooCommerce | key and secret | yes | **no** (`SALES_PROVIDERS` is `salla`, `shopify`, `zid`) | no |
 | WordPress | application password | no | no | drafts by default; live only on a per-item confirmation (Phase C) |
@@ -66,7 +66,11 @@ Not added: categories and tags (would need the owner's choice per post), schedul
 
 ## 6. Phase D: Salla and Zid
 
+<<<<<<< HEAD
+- **Salla `publish_article` (decided 2026-10-05):** removed. Task 0 read Salla's Merchant API (`https://api.salla.dev/admin/v2`) in three places: the changelog (docs.salla.dev/421127m0), `docs.salla.dev/llms.txt` (blogs appear only as Twilight theme templates), and a third-party listing of the API's 69 operations (none for blogs). No endpoint creates an article or a draft. Absence in three sources is strong evidence, not proof. The founder chose to remove the capability and show a copy-ready note: an article card for a Salla store says nothing is sent and the owner copies the text into Salla's blog editor with the card's copy button. If Salla later ships a blog endpoint, add a draft-only publish like Shopify's and restore the capability.
+=======
 - **Salla `publish_article` (founder's decision: keep it, and say what it is):** the capability stays in the registry. Task 0 still reads Salla's current Merchant API for a blog or articles endpoint that can hold a draft and adds a draft-only publish like Shopify's if one exists. Whatever Task 0 finds, the product tells the owner plainly, on the Salla card and where a Salla article is offered, that an article sent to Salla is a draft and cannot be published from Thakeen because of Salla's policies, so they publish it in Salla themselves. The claim about Salla's policy is the founder's; Task 0 checks it against Salla's documentation and the wording is adjusted to what is true.
+>>>>>>> origin/main
 - **Zid:** no publishing; nothing added this round beyond the scheduled sync of Phase B.
 - **Both:** the partner-app approvals and redirect URLs are checked by the founder (section 8); the code paths already handle 401 (reconnect) and 403 (permission message).
 
@@ -95,8 +99,13 @@ New or changed: `src/lib/connectors/woocommerce.ts` (`wooSales`), `sales.ts` and
 
 1. Is "pending" excluded from revenue the right rule for your Gulf merchants?
 2. Is a daily sync enough, or do you want near-real-time numbers badly enough to take the webhook surface (section 4)?
+<<<<<<< HEAD
+3. If Salla has no draft-capable blog endpoint, remove its `publish_article` capability (the default)? Answered 2026-10-05: yes, remove it and show a copy-ready note.
+4. Should WordPress ever be allowed to publish live, with a separate owner confirmation, or stay draft-only?
+=======
 3. If Salla has no draft-capable blog endpoint, remove its `publish_article` capability (the default)?
 4. Should WordPress ever be allowed to publish live, with a separate owner confirmation, or stay draft-only? (Answered 2026-10-05: live with a per-item confirmation, section 5.)
+>>>>>>> origin/main
 
 ## 11. Rulings made while writing this spec
 
