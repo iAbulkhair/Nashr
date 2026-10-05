@@ -36,7 +36,7 @@ const lockKey = (scope: string, id: string, provider: string) => `publock:${scop
 export const attemptKey = (scope: string, id: string, provider: string) => `pubtry:${scope}:${id}:${provider}`;
 
 /** Errors the code throws before anything is sent, and platform answers without a status that say the post was not made. */
-const REFUSED = /^(?:not_connected|unsupported_provider|instagram_needs_image|meta_no_page|meta_no_instagram|reconnect_required|x_duplicate|no blog on store)$|^shopify (?:graphql|article):|^meta media (?:ERROR|EXPIRED|not ready)/;
+const REFUSED = /^(?:not_connected|unsupported_provider|instagram_needs_image|meta_no_page|meta_no_instagram|reconnect_required|x_duplicate|wordpress_cannot_publish_live|no blog on store)$|^shopify (?:graphql|article):|^meta media (?:ERROR|EXPIRED|not ready)/;
 /** The HTTP status a connector puts at the start of its error ("x 403: …", "telegram 400: …", "meta feed 400: …"). */
 const LEADING_STATUS = /^(?:x|telegram|wordpress|shopify|prestashop|odoo|meta [\w-]+) (\d{3})\b/;
 /** The platform refused the text because it was already posted there (X's duplicate, Facebook's #506). */
@@ -59,7 +59,7 @@ export function mayHavePosted(e: unknown): boolean {
 
 const quietly = (p: Promise<unknown>, what: string) => p.catch((e) => console.error(`publish ${what} failed`, e instanceof Error ? e.name : "error"));
 
-export async function publishOnce(scope: string, id: string, provider: string, opts: { again?: boolean; check?: (t: Task) => Refusal | null; lockS?: number } = {}): Promise<PublishOnce> {
+export async function publishOnce(scope: string, id: string, provider: string, opts: { again?: boolean; live?: boolean; check?: (t: Task) => Refusal | null; lockS?: number } = {}): Promise<PublishOnce> {
   const lk = lockKey(scope, id, provider);
   if (!(await db.lock(lk, opts.lockS ?? LOCK_S))) return { ok: false, error: "publish_busy" };
   try {
@@ -79,7 +79,7 @@ export async function publishOnce(scope: string, id: string, provider: string, o
     await db.set(mk, { at: tryAt }, MARK_S);
     let r: PublishResult;
     try {
-      r = await publishTask(scope, t, provider);
+      r = await publishTask(scope, t, provider, { again: opts.again, live: opts.live });
     } catch (e) {
       if (mayHavePosted(e)) return { ok: false, error: "publish_unknown", at: tryAt };
       // "Already posted" after an attempt whose result nobody saw is the answer to that attempt: it went live. It is
@@ -106,7 +106,7 @@ export async function publishOnce(scope: string, id: string, provider: string, o
     // Applied to the task as stored now, not to the copy read before the publish: a render that finished during the
     // seconds a publish takes keeps its image or clip and its credits.
     const saved = await updateTask(scope, id, (cur) => {
-      cur.published = [...(cur.published ?? []), { provider: r.provider, url: r.url, status: r.status, at }];
+      cur.published = [...(cur.published ?? []), { provider: r.provider, url: r.url, status: r.status, at, ...(r.provider === "wordpress" ? { id: r.id } : {}) }];
       // Publishing a pending item is the owner approving it, so it records when that happened.
       approving = cur.status === "pending";
       if (approving) cur.decidedAt = at;

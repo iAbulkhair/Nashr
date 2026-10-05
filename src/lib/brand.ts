@@ -96,7 +96,8 @@ export type Task = {
   mediaApplied?: string[];
   /** The last failed render of each kind, until the next render of that kind starts (spec A28). */
   mediaLast?: { image?: MediaLast; video?: MediaLast };
-  published?: { provider: string; url: string; status: "draft" | "published"; at: string }[];
+  /** `id`: the platform's own post id, kept for WordPress only, so "publish again" updates that post instead of making a second one. */
+  published?: { provider: string; url: string; status: "draft" | "published"; at: string; id?: string }[];
   /** When the owner approved or rejected (for time-to-decision). */
   decidedAt?: string;
   /** Put in the ad's name so its results can be matched back to this item (src/lib/ad-codes.ts). */
