@@ -7,7 +7,7 @@
  * OUTPUT FORMAT), the task spec (SPECS in noor.ts), the reviewer's checks for the owning agent (`reviewerRubric`), the
  * judge's rubric (`JUDGE_RUBRIC`) and the industry playbooks (playbooks.ts). Hashing
  * only content/skills would read "unchanged" after a change made in code, so each source has its own hash:
- * `skills` (the owning agent's playbook and its paid ads slice from ads.md), `review` (review.md), `industry` (`id:hash`, when the brand is known) and
+ * `skills` (the owning agent's playbook and its slices of ads.md and growth.md), `review` (review.md), `industry` (`id:hash`, when the brand is known) and
  * `code`. A missing playbook hashes to "none", which never equals a loaded one.
  */
 import type { Brand, Task } from "./brand";
@@ -49,6 +49,6 @@ export function promptStamp(type: TaskType, brand?: Partial<Pick<Brand, "industr
 
 /** Every agent playbook's hash and review.md's, by file name, plus `code:<type>` for each of `types`: a golden run's versions. */
 export function promptHashes(types: readonly TaskType[]): Record<string, string> {
-  const names = [...new Set(AGENTS.flatMap((a) => (a.skills ? [a.skills] : []))), "ads", "review"];
+  const names = [...new Set(AGENTS.flatMap((a) => (a.skills ? [a.skills] : []))), "ads", "growth", "review"];
   return Object.fromEntries([...names.map((n) => [n, playbookHash(n)] as const), ...[...new Set(types)].map((t) => [`code:${t}`, codeHash(t)] as const)]);
 }

@@ -37,9 +37,9 @@ describe("every generated task records which prompts made it (rule 229)", () => 
     expect(s).toEqual({ skills: contentHash(skillsBlock(agentById("noor"))), review: contentHash(playbook("review")), industry: `ecommerce:${contentHash(ecommerce.text)}`, code: codeHash("social") });
     for (const v of [s.skills, s.review, s.code]) expect(v).toMatch(HEX);
     expect(promptStamp("social", brand), "the same content gives the same stamp").toEqual(s);
-    expect(promptStamp("pricing_review").skills, "Razan's items carry her playbook and ads slice's hash").toBe(skillsHash(agentById("razan")));
+    expect(promptStamp("pricing_review").skills, "Razan's items carry the hash of her playbook and slices").toBe(skillsHash(agentById("razan")));
     expect(skillsHash(agentById("razan")), "her ads slice is part of what the stamp records").not.toBe(playbookHash("finance"));
-    expect(promptStamp("sales_script").skills, "Sami has no ads slice: his stamp is his playbook alone").toBe(playbookHash("sales"));
+    expect(promptStamp("strategy_review").skills, "Majed has no slices: his stamp is his playbook alone").toBe(playbookHash("executive"));
     expect(promptStamp("social"), "no brand, no industry part").not.toHaveProperty("industry");
     expect(pickPlaybook("مقاهي")).toBeNull();
     expect(promptStamp("social", { industry: "مقاهي" }).industry).toMatch(/^general:[a-f0-9]{12}$/);

@@ -9,6 +9,9 @@ import type { TaskType } from "./brand";
  * (src/lib/secretary.ts), for free. `tasks` is empty for her, so `agentForTask` never returns her and every loop over
  * `a.tasks` simply skips her.
  */
+/** Playbooks in content/skills that agents receive by `## ` section rather than whole (src/lib/skills.ts `SLICED`). */
+export type SlicedPlaybook = "ads" | "growth";
+
 export type AgentId = "noor" | "sami" | "razan" | "faris" | "dana" | "majed" | "layan" | "reem";
 
 export type Agent = {
@@ -19,10 +22,10 @@ export type Agent = {
   /** content/skills/<file>.md injected into the system prompt */
   skills?: string;
   /**
-   * `## ` headings of content/skills/ads.md this agent gets on top of its playbook, besides the shared ads sections
-   * (`ADS_SHARED` in src/lib/skills.ts). Absent: no ads slice.
+   * Sliced playbooks this agent gets on top of its own: per file in content/skills (`SLICED` in src/lib/skills.ts), the
+   * `## ` headings that are its own. The file's shared sections always come with them. Absent: none.
    */
-  ads?: readonly string[];
+  slices?: Partial<Record<SlicedPlaybook, readonly string[]>>;
   /** English persona paragraph used at the top of system prompts */
   persona: string;
 };
@@ -34,7 +37,7 @@ export const AGENTS: Agent[] = [
     role: { ar: "التسويق", en: "Marketing" },
     tasks: ["weekly_plan", "social", "article", "whatsapp", "ads", "gbp", "cart_recovery"],
     skills: "marketing",
-    ads: ["Ads creative (Noor)"],
+    slices: { ads: ["Ads creative (Noor)"], growth: ["Offers, influencers and PR (Noor)"] },
     persona: "You are Noor (نور), the autonomous marketing agent of Thakeen, working for a Gulf business. You produce publish-ready marketing content that a busy owner approves in one click.",
   },
   {
@@ -43,6 +46,7 @@ export const AGENTS: Agent[] = [
     role: { ar: "تمكين المبيعات", en: "Sales enablement" },
     tasks: ["sales_script", "lead_qualifier", "followup_seq"],
     skills: "sales",
+    slices: { growth: ["Sales enablement and RevOps (Sami)"] },
     persona: "You are Sami (سامي), the sales enablement agent of Thakeen, working for a Gulf business alongside Noor (marketing). You turn attention into closed deals: you qualify leads, write discovery and WhatsApp scripts, handle objections, design follow-up cadences, structure proposals, and keep the pipeline honest. You write like a senior Gulf sales lead: respectful, concrete, never pushy.",
   },
   {
@@ -51,7 +55,7 @@ export const AGENTS: Agent[] = [
     role: { ar: "المالية والتسعير والإيرادات", en: "Finance, pricing and revenue" },
     tasks: ["pricing_review", "unit_economics", "cash_forecast"],
     skills: "finance",
-    ads: ["Ads budget and math (Razan)"],
+    slices: { ads: ["Ads budget and math (Razan)"] },
     persona: "You are Razan (رزان), the finance, pricing and revenue agent of Thakeen, working for a Gulf business alongside Noor (marketing). You build pricing reviews, unit-economics worksheets, cash-flow forecasts and revenue reviews in SAR with 15% VAT awareness. Every number you did not receive is a labeled assumption or a [رقم] placeholder. You give general financial guidance, not tax or legal advice, and you say when a licensed accountant is needed.",
   },
   {
@@ -60,7 +64,7 @@ export const AGENTS: Agent[] = [
     role: { ar: "الدخول للسوق والنمو", en: "Go-to-market and growth" },
     tasks: ["gtm_plan", "growth_experiments", "retention_play"],
     skills: "gtm",
-    ads: ["Ads planning and audits (Faris)"],
+    slices: { ads: ["Ads planning and audits (Faris)"], growth: ["Events, partners and research (Faris)"] },
     persona: "You are Faris (فارس), the go-to-market and growth strategy agent of Thakeen, working for a Gulf business alongside Noor (marketing). You write positioning, 90-day GTM plans, growth-loop designs, ICE-scored experiments and retention or referral plays that fit Gulf channels (Snapchat, TikTok, Instagram, WhatsApp, Google Business, creators, marketplaces) and Gulf seasons.",
   },
   {
@@ -69,7 +73,7 @@ export const AGENTS: Agent[] = [
     role: { ar: "التقارير ولوحات المؤشرات والعروض", en: "Reports, dashboards and decks" },
     tasks: ["weekly_report", "board_deck", "dashboard_spec"],
     skills: "reporting",
-    ads: ["Ads reporting and monitoring (Dana)"],
+    slices: { ads: ["Ads reporting and monitoring (Dana)"], growth: ["Attribution and reconciliation (Dana)"] },
     persona: "You are Dana (دانة), the reporting, dashboards and decks agent of Thakeen, working for a Gulf business alongside Noor (marketing). You turn the WORKSPACE DATA you are given into honest weekly reports, KPI dashboard specifications, executive summaries and board or investor deck outlines. You lead with the decision, compare to the prior period, never invent a number, and mark every estimate.",
   },
   {
@@ -86,7 +90,7 @@ export const AGENTS: Agent[] = [
     role: { ar: "المنتج والاحتفاظ بالعملاء", en: "Product and retention" },
     tasks: ["prd", "roadmap", "feedback_synthesis", "onboarding_flow"],
     skills: "product",
-    ads: ["Ads landing pages and tests (Layan)"],
+    slices: { ads: ["Ads landing pages and tests (Layan)"], growth: ["Retention and cancel flow (Layan)"] },
     persona: "You are Layan (ليان), the product management, product marketing and retention agent of Thakeen, working for a Gulf business alongside Noor (marketing). You write PRDs, now/next/later roadmaps, feedback syntheses, PMF surveys, product launches, onboarding and activation flows, and customer-success and retention programs, for Arabic-first customers reached mostly on WhatsApp. You never invent research or metrics; every assumption is labeled.",
   },
   {
