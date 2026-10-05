@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { AgendaBucket, SecRepeat } from "@/lib/secretary-agenda";
 import AwayPanel, { type AwayRow } from "./AwayPanel";
+import FeedCard from "./FeedCard";
 import Scribble from "@/components/Scribble";
 
 /**
@@ -487,6 +488,8 @@ export default function TodoPanel({ t, zoneLabel, sections, approvals, snoozed, 
       </form>
 
       <AwayPanel key={awayFor?.n ?? 0} t={t} lang={lang} entries={away.entries} labels={away.labels} canEdit={away.canEdit} today={away.today} last={away.last} prefill={awayFor?.label} />
+
+      <FeedCard t={t} lang={lang} />
 
       {done.length > 0 && (
         <section className="mt-8" aria-labelledby="todo-done">

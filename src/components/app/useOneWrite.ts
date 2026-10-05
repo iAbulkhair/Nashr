@@ -5,7 +5,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import { formatWhen } from "@/lib/secretary-agenda";
 
 /**
- * Shared by the to-do page's Away and Working days panels (client components).
+ * Shared by the to-do page's Away, Working days and calendar feed panels (client components).
  *
  * `localDay(lang, today)` writes a local day "YYYY-MM-DD" the way the to-do page writes dates (through `dates.ts`, Latin
  * digits), with its year when that is not `today`'s; the day is the same in every Gulf zone. Text formatted in the
@@ -33,13 +33,13 @@ export function useOneWrite(t: AppDict, words?: Readonly<Record<string, string>>
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<{ key: string; text: string } | null>(null);
   const inflight = useRef(false);
-  async function send(key: string, url: string, method: "PUT" | "DELETE", body: unknown): Promise<Record<string, unknown> | null> {
+  async function send(key: string, url: string, method: "PUT" | "POST" | "DELETE", body?: unknown): Promise<Record<string, unknown> | null> {
     if (inflight.current) return null;
     inflight.current = true;
     setBusy(key);
     setError(null);
     try {
-      const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
       const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
       if (!r.ok || !j.ok) {
         setError({ key, text: refusalText(t, r.status, j.error, words) });

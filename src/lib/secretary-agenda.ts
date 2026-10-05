@@ -477,6 +477,9 @@ export function chaseMoment(it: SecItem, now: number, cal: CalData, away: AwayMa
   return { anchor, at: anchor, why: s.moved ?? "normal" };
 }
 
+/** True while an item's snooze runs: the to-do page hides it (only counted) and the calendar feed leaves it out. A proposal is never snoozed, the owner must be able to confirm it. */
+export const isSnoozed = (it: SecItem, now: number): boolean => !it.proposedDone && !!it.snoozeUntil && Date.parse(it.snoozeUntil) > now;
+
 /**
  * Where one open item stands at `now` in zone `z`. Null for an item that is not open (done or deleted). Items someone
  * else owes follow `chaseMoment` with the brand's calendar (the zone's own weekend when none is given) and away map,
@@ -491,7 +494,7 @@ export function classify(
   const m = moment ? { moment } : {};
   // A proposal waits for the owner even when the item was snoozed before it: the owner must be able to confirm it now.
   if (it.proposedDone) return { bucket: "confirm", reason: "proposed_done", actionOwner: "owner", next: "confirm", ...m };
-  if (it.snoozeUntil && Date.parse(it.snoozeUntil) > now) return { bucket: "snoozed", reason: "snoozed", actionOwner: it.owedBy, next: others ? "wait" : "do", ...m };
+  if (isSnoozed(it, now)) return { bucket: "snoozed", reason: "snoozed", actionOwner: it.owedBy, next: others ? "wait" : "do", ...m };
   const due = it.dueAt ? Date.parse(it.dueAt) : null;
   if (moment) {
     // The chase clock: past it, it is the owner's move (follow up); a follow-up starts it again. Before it (a quiet day,
