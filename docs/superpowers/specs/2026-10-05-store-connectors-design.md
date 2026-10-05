@@ -25,7 +25,7 @@ Not in this spec: product or price writes to any store (needs its own spec with 
 | Salla | OAuth, scope `offline_access` | yes | yes: orders last 30 days (10 pages) and abandoned carts (3 pages) | no. The registry lists `publish_article` but `publishWith` has no Salla case |
 | Zid | OAuth, three headers (token, manager token, store id) | yes | yes: orders (5 pages) and abandoned carts (3 pages), 403 handling | no |
 | WooCommerce | key and secret | yes | **no** (`SALES_PROVIDERS` is `salla`, `shopify`, `zid`) | no |
-| WordPress | application password | no | no | drafts only (`status: "draft"`), plain post body |
+| WordPress | application password | no | no | drafts by default; live only on a per-item confirmation (Phase C) |
 
 Whether the Salla and Zid partner apps are approved and their client ids set in production is not visible in code (`isAvailable` needs `SALLA_CLIENT_ID/SECRET` and `ZID_CLIENT_ID/SECRET`). That is a founder-side check, listed in section 8.
 
@@ -53,17 +53,16 @@ A scheduled sync for the connected store, twice a day, not webhooks. Founder dec
 - No model call and no credits. Rules 623-627.
 - **Why not webhooks now:** each store's webhooks need a public route (signature check with `sameSecret`, rate limit, body cap, replay marker) and, for WooCommerce, a key with write permission to register one, which is a scope escalation for a daily report. If the founder later wants near-real-time numbers, the safe shape is a **doorbell**: the webhook only triggers a debounced re-sync (`SET NX EX 300` per account and provider) and never writes the numbers in its body; its token is a random 43-character value per connection, stored hashed, and an unknown or malformed token is a 404 with an empty body. Specified then, not built now.
 
-## 5. Phase C: WordPress publishing, still draft-only
+## 5. Phase C: WordPress publishing (built 2026-10-05)
 
-Keep `status: "draft"` by default: the owner publishes inside WordPress after reading it. The founder agreed that live publishing may come, so the last item below is the live option, built last, behind its own confirmation. Add, in this order:
+A post is a draft by default: the owner reads it in WordPress and publishes there. Built, in this order:
 
-1. **Featured image.** When the item has artwork (`hasArtwork`), upload it to `POST /wp-json/wp/v2/media` and set `featured_media`. The image URL is Thakeen's own storage, fetched through `safeFetch` anyway; a failed upload still creates the draft without an image and says so. `verifyWordPress` also checks the user's capability `upload_files` and reports it.
-2. **Update in place.** If the item was already sent and the owner confirms "publish again", the connector updates the stored post id (`PUT /wp-json/wp/v2/posts/{id}`) instead of creating a second draft. The id is read from the task's own record under `sc(u)`, never from a request; `publishOnce` keeps its lock and its "result unknown" marker.
-3. **Excerpt and slug** from the item's own fields only (no invented text).
+1. **Featured image.** When the item has artwork (`hasArtwork`), it is copied to `POST /wp-json/wp/v2/media` and set as `featured_media`. The image URL goes through `safeFetch` (https only; png, jpeg, webp or gif; at most 8 MB). A failed copy still creates the draft and the answer carries `notes: ["image_failed"]`, which the inbox shows. Not built: a `verifyWordPress` check of the `upload_files` capability (a missing capability shows as `image_failed` instead).
+2. **Update in place.** On the owner's "publish again", the connector updates the post id kept on the item's own WordPress record (`published[].id`, WordPress only) with `POST /wp-json/wp/v2/posts/{id}`; the id is digits only and never comes from a request. `publishOnce` keeps its lock and its "result unknown" marker. The update sends a status only when the owner also confirmed live, so a post the owner already published stays published; it does not touch the image; a 404 (post deleted) makes a new draft. **It replaces the title and body with Thakeen's text, so edits made in WordPress are lost**; the inbox says so in the confirmation.
+3. **Excerpt and slug: dropped.** The item has no excerpt or slug field, and inventing them is against the rule of using the item's own fields only.
+4. **Live publish, one item at a time (founder decision 2026-10-05).** A second button, "Publish live on WordPress", opens its own inline confirmation; only then does the body carry `live: true`. Checked in code: the route accepts it for `wordpress` only (400 `live_unsupported` otherwise), the site user must hold `publish_posts` (502 `wordpress_cannot_publish_live` before anything is sent), the `publish` role applies first, and the chat and MCP tool never pass `live` or `again`. The status in the record is what WordPress answers.
 
-4. **Publish live, only on the owner's explicit confirmation for that one item** (a separate confirm step in the inbox, not a setting that stays on; the `publish` role and `publishOnce` apply as for any publish). Needs the `publish_posts` capability, which `verifyWordPress` reports.
-
-Not added: categories and tags (would need the owner's choice per post), scheduled posts, comments, any read of posts.
+Not added: categories and tags (would need the owner's choice per post), scheduled posts, comments, any read of posts. Not tested against a real site: capabilities on a multisite or a role plugin, and the media upload on a host that limits upload size below 8 MB (the failure shows as `image_failed`).
 
 ## 6. Phase D: Salla and Zid
 
@@ -94,12 +93,10 @@ New or changed: `src/lib/connectors/woocommerce.ts` (`wooSales`), `sales.ts` and
 
 ## 10. Questions for the founder
 
-All four were answered on 2026-10-05 (section 1 holds the decisions):
-
-1. Only paid orders count as revenue. Open: whether the stores carry an accounting status that says paid. WooCommerce has `date_paid_gmt` and no cash-collected field (section 3); Salla and Zid carry a payment status that Phase D reads when it touches their reducers.
-2. Twice a day if it costs nothing; no webhooks for now.
-3. Keep Salla's `publish_article` and tell the owner it is a draft they publish in Salla.
-4. WordPress may publish live, on a separate confirmation.
+1. Is "pending" excluded from revenue the right rule for your Gulf merchants?
+2. Is a daily sync enough, or do you want near-real-time numbers badly enough to take the webhook surface (section 4)?
+3. If Salla has no draft-capable blog endpoint, remove its `publish_article` capability (the default)?
+4. Should WordPress ever be allowed to publish live, with a separate owner confirmation, or stay draft-only? (Answered 2026-10-05: live with a per-item confirmation, section 5.)
 
 ## 11. Rulings made while writing this spec
 
@@ -108,5 +105,5 @@ All four were answered on 2026-10-05 (section 1 holds the decisions):
 - S-R6: revenue is paid orders only; `on-hold` is awaiting payment in WooCommerce, so it is not revenue (founder, 2026-10-05).
 - S-R7: 401 and 403 from WooCommerce are one error, because WooCommerce answers both for a key without access.
 - S-R3: daily scheduled sync before any webhook; webhooks, if ever, are a doorbell that never carries numbers.
-- S-R4: WordPress is draft by default; a featured image failure never blocks the draft; live publishing only on a per-item owner confirmation.
+- S-R4: WordPress is a draft by default; live is a separate per-item confirmation (founder, 2026-10-05); a featured image failure never blocks the draft.
 - S-R5: a store key over plain http is refused.
