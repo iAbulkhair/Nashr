@@ -125,7 +125,7 @@
   - `"rule 541: rate limits answer 429 with Retry-After before any item read"`: the 121st call from one IP and the 61st for one token; a spy on `listOpenItems` shows it was not called on the refused call.
   - `"rule 542: headers"`: 200 has `text/calendar; charset=utf-8`, `private, max-age=300`, `no-referrer`, `noindex, nofollow`, no `set-cookie`; the `.ics` suffix returns the same body as the bare token.
 - [ ] **Step 2: Run** — expect FAIL.
-- [ ] **Step 3: Implement** `feedHolds` and the route. Brand zone from `zoneOf(await getBrand(rec.scope))`; origin from `new URL(req.url).origin`.
+- [ ] **Step 3: Implement** `feedHolds` and the route. Brand zone from `zoneOf(await getBrand(rec.scope))`; origin from `appOrigin()` (a trusted constant, never the request's URL or `Host`).
 - [ ] **Step 4: Run** `npx vitest run tests/secretary-feed.test.ts tests/role-gates.test.ts` — expect PASS.
 - [ ] **Step 5: Commit** `feat(reem): B1 public ICS feed route with validity check and two rate limits`.
 
@@ -141,7 +141,7 @@
 - Consumes: `createFeed`, `getFeedStatus`, `revokeFeed` (Task 1); `currentUser`, `sc` from `src/lib/auth`; `forbid` from `src/lib/roles`; `allow`.
 - Produces:
   - `GET` → `{ ok: true, exists: boolean, createdAt: string | null }` (`forbid(u, "read")`), never the link.
-  - `POST` → `{ ok: true, url, webcal }` (`forbid(u, "feed.manage")`); `url` is `{origin}/api/secretary/feed/{token}.ics`, `webcal` the same with a `webcal://` scheme. The login is `u.actor.email` for a member and `u.email` for an owner or founder; scope is `sc(u)`; lang from the body `{ lang: "ar" | "en" }`, default `u.lang`. 409 `{ ok: false, error: "busy" }` when `createFeed` returns `"busy"`.
+  - `POST` → `{ ok: true, url, webcal }` (`forbid(u, "feed.manage")`); `url` is `{appOrigin()}/api/secretary/feed/{token}.ics`, `webcal` the same with a `webcal://` scheme. The login is `u.actor.email` for a member and `u.email` for an owner or founder; scope is `sc(u)`; lang from the body `{ lang: "ar" | "en" }`, default `u.lang`. 409 `{ ok: false, error: "busy" }` when `createFeed` returns `"busy"`.
   - `DELETE` → `{ ok: true }`, idempotent (`forbid(u, "feed.manage")`).
   - All three: `currentUser()` first (401), then the gate, then `allow("sec:feed:{login}", 20, 3600)` (429 `too_many`). Gate entries: `"GET /api/secretary/feed": g("member", "read")`, `"POST /api/secretary/feed": g("member", "feed.manage")`, `"DELETE /api/secretary/feed": g("member", "feed.manage")`.
 

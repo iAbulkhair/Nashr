@@ -39,8 +39,8 @@ At every request the record's `scope` and `login` are checked, never trusted alo
 |---|---|---|
 | `GET /api/secretary/feed/{token}` (the `.ics` suffix is optional and stripped) | token only (public) | Validates `^[A-Za-z0-9_-]{43}$`, then the record, then returns `text/calendar; charset=utf-8`. Unknown, malformed, revoked or no-longer-valid: 404, an empty body, no hint which. |
 | `GET /api/secretary/feed` | login, `read` | `{ ok, exists, createdAt }`. Never the link. |
-| `POST /api/secretary/feed` | login, `read` | Creates or renews; answers `{ ok, url, webcal }` once. |
-| `DELETE /api/secretary/feed` | login, `read` | Stops the link. Idempotent. |
+| `POST /api/secretary/feed` | login, `feed.manage` | Creates or renews; answers `{ ok, url, webcal }` once. The origin of the link is `appOrigin()`, never the request's URL or `Host`. |
+| `DELETE /api/secretary/feed` | login, `feed.manage` | Stops the link. Idempotent. |
 
 - The management routes authenticate first (`currentUser()`), bind to the caller's own login (no id in the URL), and use `allow("sec:feed:{login}", 20, 3600)`.
 - A founder impersonating an account cannot create, renew or stop its feed (`IMPERSONATION_BLOCKED`, new action `feed.manage`; minimum role `member`, like `read`).
@@ -71,7 +71,7 @@ The project rule says secrets are never accepted in URLs. This feed is the one e
 
 ## 8. The page
 
-A card "Subscribe from your calendar" on the calendar page (`/{lang}/app/calendar`), for every role:
+A card "Subscribe from your calendar" on My to-dos (`/{lang}/app/todo`, `TodoPanel`, below the Away panel; B1-R9: not the publishing calendar page, which is about approved posts), for every role:
 
 - No link yet: one button, "Create my link".
 - On creating or renewing: the link and a `webcal://` version once, with Copy buttons, and one sentence per app (iPhone: Settings > Calendar > Accounts > Add subscribed calendar; Google: Other calendars > From URL, which does not accept `webcal://`; Outlook: Add calendar > Subscribe from web). The link disappears when the page is left; after that the card shows "A link exists since {date}" with Renew and Stop.
@@ -80,7 +80,7 @@ A card "Subscribe from your calendar" on the calendar page (`/{lang}/app/calenda
 
 ## 9. Files
 
-New: `src/lib/secretary-feed.ts` (token, records, validity check, `buildIcs`, escape and fold), `src/app/api/secretary/feed/route.ts`, `src/app/api/secretary/feed/[token]/route.ts`, `src/components/app/FeedCard.tsx`, `tests/secretary-feed.test.ts`. Changed: `src/lib/roles.ts` (`feed.manage`), `src/lib/account.ts` and `src/lib/team.ts` (revocation), the calendar page, `src/lib/app-i18n.ts`, `tests/role-gates.test.ts`, `src/lib/changelog.ts`, `src/lib/help.ts`, and `docs/system/{flows,permissions,architecture,tests,variables}.md` (variables: none new). Rules 530 onward (the plan confirms the numbers are free).
+New: `src/lib/secretary-feed.ts` (token, records, validity check, `buildIcs`, escape and fold), `src/app/api/secretary/feed/route.ts`, `src/app/api/secretary/feed/[token]/route.ts`, `src/components/app/FeedCard.tsx`, `src/lib/feed-token.ts` (token, records and revocation, split from `secretary-feed.ts` so `team.ts` and `account.ts` can import it without a cycle), `tests/secretary-feed.test.ts`. Changed: `src/lib/roles.ts` (`feed.manage`), `src/lib/account.ts` and `src/lib/team.ts` (revocation), `src/components/app/TodoPanel.tsx` (the card; B1-R9), `src/lib/app-i18n.ts`, `tests/role-gates.test.ts`, `src/lib/changelog.ts`, `src/lib/help.ts`, and `docs/system/{flows,permissions,architecture,tests,variables}.md` (variables: none new). Rules 530 onward (the plan confirms the numbers are free).
 
 ## 10. Tests (one rule each, numbers set in the plan)
 
@@ -109,3 +109,9 @@ New: `src/lib/secretary-feed.ts` (token, records, validity check, `buildIcs`, es
 | B1-R6 | Feed is public GET with the strictest 404 (no oracle) and two rate limits | New public routes need a rate limit | A shared network polling a lot could hit the IP cap and see 429 |
 | B1-R7 | Founder impersonation cannot manage a feed | A feed handed out by an impersonator would outlive the session | None meaningful |
 | B1-R8 | Vercel path logs are a named residual risk, not fixed | No header-based alternative exists for calendar apps | An attacker with log access reads titles until renewal |
+| B1-R9 | The card goes on My to-dos (`TodoPanel`), not on `/app/calendar`. Spec sections 8 and 9 named the calendar page, which is the publishing calendar of approved posts. | The feed is about Reem's items, and that is where the items and the Away panel live | Moving a card is a one-file change |
+| B1-R10 | A held lock makes create answer 409 `busy`; revoke retries 20 times, then revokes anyway | A link must never outlive a revoke; a failed create is a harmless retry | One retry click, or a revoke that is 1 s slower |
+| B1-R11 | Validity uses `getLogin` plus the checks `resolveSession` makes that need no session (disabled, suspended, roster, `acceptedAt` against owner `createdAt`, brand active), not the session-stamp checks | A feed has no session; the rest decides whether the login still belongs to that brand | A login restored by hand would see its old feed work again until renewed |
+| B1-R12 | An owner's password reset and the founder's reset of an owner revoke the owner's feed and every roster member's; an owner's password change revokes only the owner's; a member's reset or change only that member's | A reset signs everyone out, so no link should survive it; a change keeps the members' sessions, so their links stay | Members recreate their links after an owner reset |
+| B1-R13 | The status read (`GET /api/secretary/feed`) has its own bucket, `sec:read:{login}` (`SEC_READS_PER_HOUR`); POST and DELETE keep `sec:feed:{login}`, 20 an hour | Opening My to-dos would otherwise spend the budget of Create | The status read is no longer capped at 20 an hour |
+| B1-R14 | `feedHolds` also refuses a record older than the login's life (a member's `acceptedAt`, an owner's `createdAt`) | A revoke that failed when a member was removed must not bring the link back after the address is invited again | A stricter read-time check; links made before an account was re-created stay dead |
