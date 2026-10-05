@@ -1,4 +1,5 @@
 # Nashr (نشر) — Product Requirements Document
+> **Superseded on 2026-10-05 by [`PRD-Thakeen.md`](PRD-Thakeen.md)** (product name Thakeen | ذكين, eight agents, current pricing and status). This file is kept as the 17 September 2026 record.
 > **Status update (2026-09-17):** agent roster expanded to Noor (marketing), Sami (sales enablement), Razan (finance/pricing/revenue), Faris (GTM/growth), Dana (reports/dashboards/decks) with distilled skill playbooks in `content/skills/`; 12 new task types; Reports dashboard; PowerPoint export; atomic credit ledger with monthly renewal and token metering.
 
 **Product:** Nashr — an autonomous AI marketing agent ("Noor") for GCC businesses
