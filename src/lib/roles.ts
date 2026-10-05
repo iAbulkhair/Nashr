@@ -89,6 +89,8 @@ export const MIN_ROLE = {
   "integrations.request": "member",
   /** Reem's list: add, update, snooze, reschedule, note, record a follow-up (POST /api/secretary, PATCH, the tools). */
   "todo.write": "member",
+  /** One's own private calendar feed link (src/lib/feed-token.ts): create, renew, revoke, status. Refused while impersonating. */
+  "feed.manage": "member",
   /** Switch the active brand (per login). */
   "brands.switch": "member",
   /** Read anything in the workspace. */
@@ -119,6 +121,7 @@ export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
   "mcp.token",
   "oauth.approve",
   "partner.bank",
+  "feed.manage",
 ]);
 
 const RANK: Record<Role, number> = { member: 1, admin: 2, owner: 3 };
