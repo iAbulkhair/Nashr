@@ -26,6 +26,8 @@ export const MIN_ROLE = {
   partner: "owner",
   /** The partner's bank details (PUT /api/partner): where commission is paid. Refused while impersonating. */
   "partner.bank": "owner",
+  /** Link, choose or unlink the one calendar Reem reads (Reem B3): start, callback and /api/secretary/calendar-link. */
+  "calendar.link": "owner",
   /** Account-level profile fields: phone, WhatsApp, account language, email preferences. */
   "profile.account": "owner",
   /** Invite an admin, or promote a member to admin. */
