@@ -2,7 +2,11 @@ import { createHash, createHmac, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
-import { currentUser, getUser, saveUser } from "@/lib/auth";
+import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
+import { forceRemoveMember, getMember, leaveTeam, removeMember, wipeTeam } from "@/lib/team";
+import * as resetRoute from "@/app/api/auth/reset/route";
+import * as adminUserRoute from "@/app/api/admin/users/[email]/route";
+import * as accountRoute from "@/app/api/account/route";
 import { db } from "@/lib/db";
 import * as rate from "@/lib/rate";
 import * as bookingRoute from "@/app/api/secretary/booking/[token]/route";
@@ -1145,5 +1149,200 @@ describe("booking management (rules 596-597)", () => {
     expect(memText()).not.toContain(PAT);
     expect(logged()).not.toContain(PAT);
     expect(okText).not.toContain(PAT);
+  });
+});
+
+describe("booking revocation (rule 598)", () => {
+  const FOUNDER = "founder-book598@test.example";
+  const PROVIDERS = BOOK_PROVIDERS;
+  const mem = () => (globalThis as unknown as { __nashrMem: { kv: Map<string, unknown>; sets: Map<string, unknown> } }).__nashrMem;
+  const resolveAs = async (email: string) => { await signIn(email); return currentUser(); };
+  let ipN = 0;
+  const ipH = () => ({ "x-real-ip": `198.18.9.${++ipN}` });
+  /** A real reset link for this login (what /api/auth/forgot stores), redeemed through the real route. */
+  const resetAs = async (email: string, kind: "owner" | "member", password: string) => {
+    const token = randomBytes(32).toString("hex");
+    await db.set(`pwreset:${createHash("sha256").update(token).digest("hex")}`, { email, kind });
+    return resetRoute.POST(json("/api/auth/reset", "POST", { token, password }, ipH()));
+  };
+  const rec = (scope: string, login: string): BookRecord => ({ login, scope, provider: "calcom", lang: "en", createdAt: new Date().toISOString() });
+  const parsed = (externalId: string): Parsed => ({ kind: "create", externalId, name: "Omar Example", eventName: "Intro call", start: new Date(Date.now() + 2 * 864e5).toISOString(), end: new Date(Date.now() + 2 * 864e5 + 1800_000).toISOString() });
+  /** One live link per provider for this login. */
+  const live = async (login: string, scope: string) => {
+    const t: Record<string, string> = {};
+    for (const p of PROVIDERS) {
+      const token = await createBook(login, scope, p, "en");
+      expect(token).toMatch(BOOK_TOKEN);
+      expect(await resolveBook(token)).not.toBeNull();
+      t[p] = token;
+    }
+    return t;
+  };
+  /** Dead in every way, for every provider: the resolver, the status, the record and the pointer. */
+  const expectEnded = async (login: string, t: Record<string, string>) => {
+    for (const p of PROVIDERS) {
+      expect(await resolveBook(t[p]), `${login} ${p}`).toBeNull();
+      expect(await db.get(BOOK_KEYS.rec(hashBookToken(t[p]))), `${login} ${p} record`).toBeNull();
+      expect(await db.get(BOOK_KEYS.of(login, p)), `${login} ${p} pointer`).toBeNull();
+    }
+    expect(await getBookStatus(login)).toEqual([]);
+  };
+  const expectAlive = async (login: string, t: Record<string, string>) => {
+    for (const p of PROVIDERS) expect(await resolveBook(t[p]), `${login} ${p}`).toMatchObject({ login, provider: p });
+    expect((await getBookStatus(login)).map((r) => r.provider).sort()).toEqual([...PROVIDERS].sort());
+  };
+
+  beforeAll(() => {
+    vi.stubEnv("ADMIN_EMAILS", FOUNDER);
+    vi.stubEnv("WAITLIST_ADMIN_KEY", "");
+  });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("rule 598: owner reset and founder reset revoke the owner's and every roster member's booking links; an owner password change only the owner's; a member's own reset or change only theirs; removing a member (by the owner, by the founder console, by leaving) only theirs", async () => {
+    const owner = await newUser("book598");
+    const [m1, m2, m3, m4, m5, m6, m7] = [await newMember(owner, "member"), await newMember(owner, "member"), await newMember(owner, "admin"), await newMember(owner, "member"), await newMember(owner, "member"), await newMember(owner, "admin"), await newMember(owner, "member")];
+    const other = await newUser("book598x");
+    const t = {
+      owner: await live(owner.email, owner.email),
+      m1: await live(m1.email, owner.email),
+      m2: await live(m2.email, owner.email),
+      m3: await live(m3.email, owner.email),
+      m4: await live(m4.email, owner.email),
+      m5: await live(m5.email, owner.email),
+      m6: await live(m6.email, owner.email),
+      m7: await live(m7.email, owner.email),
+    };
+    const bystander = await live(other.email, other.email);
+    // A claim of the owner's brand: it belongs to the scope, so no member leaving takes it.
+    const claim = `sec:book:ext:${owner.email}:calcom:bk_scope598`;
+    expect(await applyBooking(rec(owner.email, owner.email), parsed("bk_scope598"), hashBookToken(t.owner.calcom))).toBe("created");
+
+    // 1. Removed by the owner (removeMember): that member's links end, everyone else's stay.
+    const acting = (await resolveAs(owner.email))!;
+    expect(await removeMember(acting, acting.actor!, m1.email)).toEqual({ ok: true });
+    await expectEnded(m1.email, t.m1);
+    await expectAlive(owner.email, t.owner);
+    await expectAlive(m2.email, t.m2);
+
+    // 2. Removed by the founder console (forceRemoveMember, the same drop).
+    expect(await forceRemoveMember(m2.email)).toBe(true);
+    await expectEnded(m2.email, t.m2);
+    await expectAlive(owner.email, t.owner);
+
+    // 3. A member's own leave (the same drop).
+    const leaving = await resolveAs(m7.email);
+    expect(await leaveTeam(leaving!)).toEqual({ ok: true });
+    await expectEnded(m7.email, t.m7);
+    await expectAlive(owner.email, t.owner);
+    await expectAlive(m3.email, t.m3);
+    expect(await db.get(claim)).not.toBeNull();
+
+    // 4. A member's own password reset ends that member's links, not the owner's.
+    expect((await resetAs(m3.email, "member", "reset12345")).status).toBe(200);
+    await expectEnded(m3.email, t.m3);
+    await expectAlive(owner.email, t.owner);
+    await expectAlive(m4.email, t.m4);
+
+    // 5. A member's own password change ends that member's links, not the owner's.
+    await signIn(m4.email);
+    expect((await accountRoute.PATCH(json("/api/account", "PATCH", { currentPassword: m4.password, newPassword: "fresh12345" }))).status).toBe(200);
+    await expectEnded(m4.email, t.m4);
+    await expectAlive(owner.email, t.owner);
+    await expectAlive(m5.email, t.m5);
+
+    // 6. The owner's password reset by the link ends the owner's links and every member's.
+    expect((await resetAs(owner.email, "owner", "owner12345")).status).toBe(200);
+    await expectEnded(owner.email, t.owner);
+    await expectEnded(m5.email, t.m5);
+    await expectEnded(m6.email, t.m6);
+    await expectAlive(other.email, bystander);
+
+    // 7. The founder's reset of the owner: the same, for the owner and the members that have links again.
+    t.owner = await live(owner.email, owner.email);
+    t.m5 = await live(m5.email, owner.email);
+    if (!(await getUser(FOUNDER))) await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" });
+    await signIn(FOUNDER);
+    const res = await adminUserRoute.POST(json("/api/admin/users/x", "POST", { action: "resetPassword" }), params({ email: encodeURIComponent(owner.email) }));
+    expect(res.status).toBe(200);
+    const { tempPassword } = (await res.json()) as { tempPassword: string };
+    await expectEnded(owner.email, t.owner);
+    await expectEnded(m5.email, t.m5);
+    await expectAlive(other.email, bystander);
+
+    // 8. The owner's own password change ends the owner's links only: the members keep their sessions, so their links stay.
+    t.owner = await live(owner.email, owner.email);
+    t.m5 = await live(m5.email, owner.email);
+    await signIn(owner.email);
+    expect((await accountRoute.PATCH(json("/api/account", "PATCH", { currentPassword: tempPassword, newPassword: "changed12345" }))).status).toBe(200);
+    await expectEnded(owner.email, t.owner);
+    await expectAlive(m5.email, t.m5);
+    await expectAlive(other.email, bystander);
+  });
+
+  it("rule 598: wipeAccount deletes the booking records and pointers of the owner and every roster member, and the scope's claims and claim index; another account's links and claims stay", async () => {
+    const owner = await newUser("book598w");
+    const bystander = await newUser("book598wb");
+    const m1 = await newMember(owner, "member");
+    const m2 = await newMember(owner, "admin");
+    const logins = [owner.email, m1.email, m2.email];
+    const t = { [owner.email]: await live(owner.email, owner.email), [m1.email]: await live(m1.email, owner.email), [m2.email]: await live(m2.email, owner.email) };
+    const keep = await live(bystander.email, bystander.email);
+    const hashes = Object.values(t).flatMap((x) => Object.values(x)).map(hashBookToken);
+    expect(await applyBooking(rec(owner.email, owner.email), parsed("bk_wipe598"), hashes[0])).toBe("created");
+    expect(await applyBooking(rec(bystander.email, bystander.email), parsed("bk_keep598"), hashes[0])).toBe("created");
+    expect(await db.get(`sec:book:ext:${owner.email}:calcom:bk_wipe598`)).not.toBeNull();
+
+    await wipeAccount(owner.email);
+
+    const keys = [...mem().kv.keys(), ...mem().sets.keys()];
+    expect(keys.filter((k) => logins.some((l) => PROVIDERS.some((p) => k === BOOK_KEYS.of(l, p))) || hashes.some((h) => k === BOOK_KEYS.rec(h)))).toEqual([]);
+    expect(keys.filter((k) => k.includes(owner.email) && (k.startsWith("sec:book:ext:") || k.startsWith("sec:bookext:")))).toEqual([]);
+    for (const l of logins) for (const p of PROVIDERS) expect(await resolveBook(t[l][p])).toBeNull();
+    // Another account's links and claims are not touched.
+    await expectAlive(bystander.email, keep);
+    expect(await db.get(`sec:book:ext:${bystander.email}:calcom:bk_keep598`)).not.toBeNull();
+  });
+
+  it("rule 598: a link made while the wipe runs is revoked by its last step (the owner's) and by wipeTeam (a member's)", async () => {
+    const owner = await newUser("book598r");
+    // The owner's link appears after the first revoke, as a create already running would leave it: the wipe's last step ends it.
+    const real = db.lrange.bind(db);
+    const spy = vi.spyOn(db, "lrange").mockImplementationOnce(async (...a: Parameters<typeof db.lrange>) => {
+      await createBook(owner.email, owner.email, "calcom", "en");
+      return real(...a);
+    });
+    await wipeAccount(owner.email);
+    spy.mockRestore();
+    expect(await getBookStatus(owner.email)).toEqual([]);
+    expect(await db.get(BOOK_KEYS.of(owner.email, "calcom"))).toBeNull();
+    // wipeTeam on its own deletes the members' links (a member added after the roster read of the first step).
+    const o2 = await newUser("book598t");
+    const m = await newMember(o2, "member");
+    const t = await live(m.email, o2.email);
+    await wipeTeam(o2.email);
+    expect(await getMember(m.email)).toBeNull();
+    for (const p of PROVIDERS) expect(await resolveBook(t[p])).toBeNull();
+    expect(await getBookStatus(m.email)).toEqual([]);
+  });
+
+  it("rule 598: a booking revoke that fails stops the wipe before the account is touched, and a second wipe finishes it", async () => {
+    const owner = await newUser("book598f");
+    const m = await newMember(owner, "member");
+    const t = [await live(owner.email, owner.email), await live(m.email, owner.email)];
+    // Only the booking locks fail (the feed revoke runs first and succeeds): the wipe stops before anything is deleted.
+    const real = db.lockOwned.bind(db);
+    const lock = vi.spyOn(db, "lockOwned").mockImplementation((key: string, ttl: number) => (key.startsWith("lock:book:") ? Promise.reject(new Error("store down")) : real(key, ttl)));
+    try {
+      await expect(wipeAccount(owner.email)).rejects.toThrow("store down");
+    } finally {
+      lock.mockRestore();
+    }
+    expect(await getUser(owner.email)).not.toBeNull();
+    expect(await getMember(m.email)).not.toBeNull();
+    await wipeAccount(owner.email);
+    expect(await getUser(owner.email)).toBeNull();
+    expect(await getMember(m.email)).toBeNull();
+    for (const x of t) for (const p of PROVIDERS) expect(await resolveBook(x[p])).toBeNull();
+    expect([...mem().kv.keys()].filter((k) => [owner.email, m.email].some((l) => PROVIDERS.some((p) => k === BOOK_KEYS.of(l, p))))).toEqual([]);
   });
 });
