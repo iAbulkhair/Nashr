@@ -17,14 +17,14 @@ export const maxDuration = MEET_PROPOSE_MAX_DURATION_S;
  * format-checked and must be a live `booking` item of the caller's active brand (`sc(u)`), else the same 404 for every id,
  * before the body is read; a body over 256 KB is refused unread. The account and the scope are the session's, never the
  * body's. 200 `{ ok, proposals }` (each `{ ref, title, agent, dueAt? }`, stored as the item's pending set, replacing any);
- * it creates nothing, `POST .../approve` alone does. Refusals `{ ok: false, error }`: 400 `bad_request`, 402 `no_credits`
- * (no credits, the trial over, or the owner's monthly cap for Reem), 413 `too_long`, 422 `no_tasks`, 429 `too_many`, 502
+ * it creates nothing, `POST .../approve` alone does. Refusals `{ ok: false, error }`: 400 `bad_request`, 402 `no_credits`,
+ * 402 `trial_over`, 402 `agent_cap` with `{ agent, spent, cap }` (the owner's monthly cap for Reem, as `/api/generate`), 413 `too_long`, 422 `no_tasks`, 429 `too_many`, 502
  * `model_failed`, 503 `busy` / `lock_timeout` / `model_paused`. The text is never stored or logged. `sec:write:{email}`,
  * like the other Reem writes.
  */
 const MAX_BODY = 256_000;
 const unauthorized = () => NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-const STATUS: Record<string, number> = { bad_request: 400, no_credits: 402, too_long: 413, no_tasks: 422, too_many: 429, model_failed: 502, busy: 503, lock_timeout: 503, not_found: 404 };
+const STATUS: Record<string, number> = { bad_request: 400, no_credits: 402, trial_over: 402, agent_cap: 402, too_long: 413, no_tasks: 422, too_many: 429, model_failed: 502, busy: 503, lock_timeout: 503, not_found: 404 };
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const deadline = deadlineFor(maxDuration);
@@ -46,6 +46,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { kind, text } = b && typeof b === "object" && !Array.isArray(b) ? (b as { kind?: unknown; text?: unknown }) : {};
   if ((kind !== "notes" && kind !== "transcript") || typeof text !== "string") return NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
   const r = await proposeFromText(u, id, kind, text, u.lang, { deadline });
-  if (!r.ok) return NextResponse.json({ ok: false, error: r.error }, { status: STATUS[r.error] ?? 400 });
+  // As /api/generate: `agent_cap` names the agent and what it spent of the owner's cap, so the app raises the same dialog.
+  if (!r.ok) return NextResponse.json({ ok: false, error: r.error, ...(r.error === "agent_cap" ? { agent: r.agent, spent: r.spent, cap: r.cap } : {}) }, { status: STATUS[r.error] ?? 400 });
   return NextResponse.json({ ok: true, proposals: r.proposals.map((p) => ({ ref: p.ref, title: p.title, agent: p.agent, ...(p.dueAt ? { dueAt: p.dueAt } : {}) })) }, { headers: { "cache-control": "no-store" } });
 }

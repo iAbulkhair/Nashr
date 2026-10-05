@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
-import { getUser, sc, type User } from "@/lib/auth";
+import { getUser, saveUser, sc, type User } from "@/lib/auth";
 import { adjust, chargeOnce } from "@/lib/credits";
 import { asData } from "@/lib/json";
 import { MEETING_NOTES_MAX, MEETING_TEXT_MAX, MEETING_TRANSCRIPT_COST, maxCostPerCreditUsd } from "@/lib/pricing";
@@ -19,8 +19,8 @@ import { MEET_MAX, MEET_TITLE_MAX, approveMeeting, cleanProposals, dropPending, 
 
 // Nothing here reaches a network: B2b's approve and the routes are plain code over the in-memory store, and the one model
 // call (`proposeFromText`) goes to a mocked client that records what it was sent.
-const model = vi.hoisted(() => ({ create: vi.fn() }));
-vi.mock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => "on" as const, anthropic: () => ({ messages: { create: model.create } }) }));
+const model = vi.hoisted(() => ({ create: vi.fn(), state: "on" as "on" | "paused" }));
+vi.mock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => model.state, anthropic: () => ({ messages: { create: model.create } }) }));
 const ZONE = "Asia/Riyadh" as const;
 const OWNER = { actor: "owner", via: "web" } as const;
 const TTL_14_DAYS = 14 * 86400;
@@ -743,7 +743,7 @@ describe("proposing from text (rules 604-606)", () => {
     });
     const down = await proposeFromText(u, m4.id, "transcript", TXT(500), "ar");
     spy.mockRestore();
-    expect(down.ok).toBe(false);
+    expect(down).toEqual({ ok: false, error: "busy" });
     expect(await credits(u)).toBe(b4);
     expect((await holds(u)).some((h) => h.includes(m4.id))).toBe(false);
     expect(await db.get(SEC_KEYS.mrun(scope, m4.id))).toBeNull();
@@ -797,19 +797,52 @@ describe("proposing from text (rules 604-606)", () => {
     const capped = await newUser("mt605c");
     const cm = await booking(capped);
     await db.set(`gov:${sc(capped)}`, { agentCaps: { reem: 0 } });
-    expect(await proposeFromText(capped, cm.id, "transcript", TXT(500), "ar")).toEqual({ ok: false, error: "no_credits" });
+    expect(await proposeFromText(capped, cm.id, "transcript", TXT(500), "ar")).toEqual({ ok: false, error: "agent_cap", agent: "reem", spent: 0, cap: 0 });
     expect(model.create).toHaveBeenCalledTimes(calls2);
     expect(await holds(capped)).toEqual([]);
+    const capCredits = await credits(capped);
+    // An ended trial is its own refusal, before any charge or call.
+    const ended = await newUser("mt605e");
+    const em = await booking(ended);
+    await saveUser({ ...(await getUser(ended.email))!, trialEnds: new Date(Date.now() - 864e5).toISOString() });
+    const endedUser = (await getUser(ended.email))!;
+    expect(await proposeFromText(endedUser, em.id, "transcript", TXT(500), "ar")).toEqual({ ok: false, error: "trial_over" });
+    expect(model.create).toHaveBeenCalledTimes(calls2);
+    expect(await holds(ended)).toEqual([]);
+
+    // The counter has no TTL: chargeOnce reuses a hold whatever its age, so a counter that lapsed after idle days would make
+    // the next run free. Idle 15 days (the clock moved), a second transcript is a new claim and is charged again.
+    const idle = await newUser("mt605f");
+    await saveUser({ ...(await getUser(idle.email))!, trialEnds: new Date(Date.now() + 60 * 864e5).toISOString() });
+    const idleUser = (await getUser(idle.email))!;
+    const im = await booking(idle);
+    const ib = await credits(idle);
+    model.create.mockResolvedValueOnce(reply([prop("Idle one", "owner")]));
+    expect((await proposeFromText(idleUser, im.id, "transcript", TXT(500), "ar")).ok).toBe(true);
+    expect(await db.ttl(SEC_KEYS.mrun(sc(idle), im.id))).toBe(-1);
+    expect(await credits(idle)).toBe(ib - 1);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now() + 15 * 864e5);
+      expect(await db.get(SEC_KEYS.mrun(sc(idle), im.id))).toBe(1);
+      model.create.mockResolvedValueOnce(reply([prop("Idle two", "owner")]));
+      expect((await proposeFromText((await getUser(idle.email))!, im.id, "transcript", TXT(500), "ar", { now: Date.now() })).ok).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect((await credits(idle)) <= ib - 2).toBe(true);
+    expect((await holds(idle)).filter((h) => h.includes(im.id))).toEqual(expect.arrayContaining([`meeting:${sc(idle)}:${im.id}:1`]));
 
     // An item that is not a live booking item of the caller's brand is not found: no charge, no call, whatever its owner holds.
     const other = await newUser("mt605d");
     const om = await booking(other);
     const plain = await booking(u, "A plain task", "owner");
     const b7 = await credits(u);
+    const calls3 = model.create.mock.calls.length;
     expect(await proposeFromText(u, om.id, "transcript", TXT(500), "ar")).toMatchObject({ ok: false, error: "not_found" });
     expect(await proposeFromText(u, plain.id, "transcript", TXT(500), "ar")).toMatchObject({ ok: false, error: "not_found" });
     expect(await proposeFromText(u, "not-an-id", "transcript", TXT(500), "ar")).toMatchObject({ ok: false, error: "not_found" });
-    expect(model.create).toHaveBeenCalledTimes(calls2);
+    expect(model.create).toHaveBeenCalledTimes(calls3);
     expect(await credits(u)).toBe(b7);
 
     // The route: authenticates first, needs todo.write, one 404 for every id that is not the caller's live booking item, and
@@ -853,6 +886,31 @@ describe("proposing from text (rules 604-606)", () => {
     const broke = await call(m.id, { kind: "transcript", text: "Omar sends the deck" });
     expect(broke.status).toBe(402);
     expect(await broke.json()).toEqual({ ok: false, error: "no_credits" });
+    // The owner's cap and an ended trial are 402 with their own codes, as /api/generate answers them.
+    await signIn(capped.email);
+    const cap = await call(cm.id, { kind: "transcript", text: "Omar sends the deck" });
+    expect(cap.status).toBe(402);
+    expect(await cap.json()).toEqual({ ok: false, error: "agent_cap", agent: "reem", spent: 0, cap: 0 });
+    expect(await credits(capped)).toBe(capCredits);
+    await signIn(ended.email);
+    const over = await call(em.id, { kind: "transcript", text: "Omar sends the deck" });
+    expect(over.status).toBe(402);
+    expect(await over.json()).toEqual({ ok: false, error: "trial_over" });
+    // Claude paused: 503 model_paused before a credit moves or a call is made.
+    await signIn(u.email);
+    const callsP = model.create.mock.calls.length;
+    await adjust(u.email, 5);
+    const bp = await credits(u);
+    model.state = "paused";
+    try {
+      const paused = await call(m.id, { kind: "transcript", text: "Omar sends the deck" });
+      expect(paused.status).toBe(503);
+      expect(await paused.json()).toEqual({ ok: false, error: "model_paused" });
+    } finally {
+      model.state = "on";
+    }
+    expect(model.create).toHaveBeenCalledTimes(callsP);
+    expect(await credits(u)).toBe(bp);
   }, 40000);
 
   it("rule 606: a transcript that orders approval, another agent or a new instruction produces only schema-valid proposals (an unknown agent is dropped, extra fields ignored); the text reaches the model only inside meeting_text through asData; nothing is created and the transcript is stored nowhere (not in the item, notes, files or the pending record)", async () => {

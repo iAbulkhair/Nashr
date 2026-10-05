@@ -298,8 +298,9 @@ export async function approveMeeting(user: Pick<User, "email" | "scope">, itemId
 
 // ---- Proposing from notes or a transcript (rules 604-606) ----
 
-export type ProposeError = "too_long" | "no_credits" | "no_tasks" | "model_failed" | "too_many" | SecFail["error"];
-export type ProposeResult = { ok: true; proposals: Proposal[] } | { ok: false; error: ProposeError };
+export type ProposeError = "too_long" | "no_credits" | "trial_over" | "agent_cap" | "no_tasks" | "model_failed" | "too_many" | SecFail["error"];
+/** `agent`, `spent` and `cap` come with `agent_cap`: the owner's monthly cap for Reem and what she has spent of it. */
+export type ProposeResult = { ok: true; proposals: Proposal[] } | { ok: false; error: ProposeError; agent?: AgentId; spent?: number; cap?: number };
 /** Typed notes a day, per account: the notes are free, so this is what bounds them (a transcript is bounded by its price). */
 export const MEET_NOTES_PER_DAY = 20;
 /** The extraction's output cap, in tokens: ten short tasks. The estimate in src/lib/task-costs.ts prices exactly this. */
@@ -359,11 +360,13 @@ export async function proposeFromText(user: User, itemId: string, kind: "notes" 
   // One run at a time per item: the second of two clicks is turned away before it charges or calls the model, and the
   // run counter below cannot be read twice for one `n`.
   const lock = SEC_KEYS.lock(scope, `mrun:${itemId}`);
-  if (!(await db.lock(lock, RUN_LOCK_S))) return { ok: false, error: "busy" };
+  const token = await db.lockOwned(lock, RUN_LOCK_S);
+  if (!token) return { ok: false, error: "busy" };
   try {
     return await run(user, scope, itemId, kind, text, lang, opts);
   } finally {
-    await db.unlock(lock).catch((e) => console.error("meeting run lock release failed", e instanceof Error ? e.name : "error"));
+    // Only while the lock is still this run's: a run whose lock lapsed cannot free the next run's.
+    await db.unlockOwned(lock, token).catch((e) => console.error("meeting run lock release failed", e instanceof Error ? e.name : "error"));
   }
 }
 
@@ -376,14 +379,14 @@ async function run(user: User, scope: string, itemId: string, kind: "notes" | "t
   if (!paid) {
     if (!(await allow(`meet:notes:${user.email}`, MEET_NOTES_PER_DAY, 86400))) return { ok: false, error: "too_many" };
   } else {
-    if (trialOver(user)) return { ok: false, error: "no_credits" };
+    if (trialOver(user)) return { ok: false, error: "trial_over" };
     // A paid account's monthly credits arrive before its first charge of the month (rule 332).
     if (renewalDue(user)) await renewIfDue(user.email);
     const [gov, ran] = await Promise.all([getGov(scope), db.get<number>(runKey)]);
     const n = typeof ran === "number" && Number.isSafeInteger(ran) && ran > 0 ? ran : 0;
     claim = `meeting:${scope}:${itemId}:${n}`;
     const c = await chargeOnce(user.email, MEETING_TRANSCRIPT_COST, { scope, agent: "reem", cap: gov.agentCaps.reem }, claim);
-    if (!c.ok) return { ok: false, error: "no_credits" };
+    if (!c.ok) return c.reason === "agent_cap" ? { ok: false, error: "agent_cap", agent: c.agent, spent: c.spent, cap: c.cap } : { ok: false, error: "no_credits" };
   }
   // From here a failure gives the credit back, once: the hold is dropped in the same save as the refund.
   const back = async () => {
@@ -431,7 +434,7 @@ async function run(user: User, scope: string, itemId: string, kind: "notes" | "t
   // hold (one run free), never charges twice.
   if (paid) {
     const ran = Number(claim.slice(claim.lastIndexOf(":") + 1)) + 1;
-    await db.set(runKey, ran, MEET_PENDING_TTL_S).catch((e) => console.error("meeting run counter failed", e instanceof Error ? e.name : "error"));
+    await db.set(runKey, ran).catch((e) => console.error("meeting run counter failed", e instanceof Error ? e.name : "error"));
   }
   return { ok: true, proposals };
 }

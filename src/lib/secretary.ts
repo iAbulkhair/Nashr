@@ -132,7 +132,7 @@ export const SEC_KEYS = {
   mprops: (scope: string) => `sec:mprops:${scope}`,
   /**
    * How many transcript runs an item's proposals have had (`proposeFromText`): the `n` of its charge claim, so a retry of one
-   * run reuses the hold and a new run is charged. 14 days; `secretaryKeys` names it for every id still in `sec:all`.
+   * run reuses the hold and a new run is charged. No TTL (`chargeOnce` reuses a hold whatever its age, so a counter that lapsed would hand a free run); `secretaryKeys` names it for every id still in `sec:all`.
    */
   mrun: (scope: string, id: string) => `sec:mrun:${scope}:${id}`,
 };
