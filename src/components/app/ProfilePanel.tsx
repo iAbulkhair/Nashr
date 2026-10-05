@@ -13,6 +13,7 @@ import type { Role } from "@/lib/auth";
 import type { ChatStatus } from "@/lib/chat-allowance";
 import { paceStart, runway, runwayLine } from "@/lib/usage-view";
 import ReadOnlyNote from "./ReadOnlyNote";
+import Scribble from "@/components/Scribble";
 
 /**
  * GET /api/profile. `me` and `role` are the person acting; `user` is the account summary (the owner also gets the
@@ -43,7 +44,7 @@ type Data = {
 };
 
 function Card({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
-  return <section className="card"><h2 className="font-display text-lg font-bold">{title}</h2>{sub && <p className="mt-1 text-sm text-ink/60">{sub}</p>}<div className="mt-3">{children}</div></section>;
+  return <section className="card"><h2 className="font-display text-lg font-bold">{title}</h2>{sub && <p className="mt-1 text-sm text-muted">{sub}</p>}<div className="mt-3">{children}</div></section>;
 }
 /**
  * A field's visible label, linked to its control by `id` (#14): a screen reader reads it on focus, a click focuses the
@@ -52,8 +53,8 @@ function Card({ title, sub, children }: { title: string; sub?: string; children:
  */
 const L = (k: string, id: string, req?: string) => (
   <div className="flex items-baseline gap-2">
-    <label htmlFor={id} className="block text-xs font-semibold uppercase tracking-wide text-ink/50">{k}</label>
-    {req && <span aria-hidden="true" className="text-xs text-ink/50">{req}</span>}
+    <label htmlFor={id} className="block text-xs font-semibold uppercase tracking-wide text-muted">{k}</label>
+    {req && <span aria-hidden="true" className="text-xs text-muted">{req}</span>}
   </div>
 );
 /** GET /api/profile: read on load and again after every save, so the form shows what the server stored. */
@@ -74,7 +75,7 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
   // values the server stored instead of what was typed.
   const [formKey, setFormKey] = useState(0);
   useEffect(() => { fetchProfile().then((j) => { if (j.ok) setD(j); }).catch(() => {}); }, []);
-  if (!d) return <p className="text-ink/60">…</p>;
+  if (!d) return <p className="text-muted">…</p>;
   const input = "input";
   // Owner-only: phone, account language, email preferences, subscription and deleting the account. Admin+: brand fields.
   const role: Role = d.role ?? d.me?.role ?? "owner";
@@ -189,21 +190,21 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
 
   return (
     <div className="mx-auto grid max-w-3xl gap-5">
-      <div><h1 className="page-title">{ar ? "حسابك" : "Your profile"}</h1><p className="mt-1 text-ink/60">{ar ? "إدارة الحساب والتفضيلات وما يعرفه الفريق عن علامتك." : "Manage your account, preferences and what the team knows about your brand."}</p></div>
-      {msg && <p role="status" className="rounded-lg bg-salt-dim p-3 text-sm text-oasis">{msg}</p>}
+      <div><h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="profilepanel-t1" />{ar ? "حسابك" : "Your profile"}</span></h1><p className="mt-1 text-muted">{ar ? "إدارة الحساب والتفضيلات وما يعرفه الفريق عن علامتك." : "Manage your account, preferences and what the team knows about your brand."}</p></div>
+      {msg && <p role="status" className="rounded-lg bg-lilac p-3 text-sm text-ink">{msg}</p>}
 
       <Card title={ar ? "استخدام الكريدت" : "Credit usage"} sub={rules}>
         <div className="flex items-center justify-between text-sm"><span>{ar ? "المستخدم" : "Credits used"}</span><span className="font-mono" dir="ltr">{usedCredits} / {d.allowance} ({pct}%)</span></div>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-salt-dim"><div className="h-full bg-oasis" style={{ width: `${pct}%` }} /></div>
-        {creditLine && <p className="mt-1 text-xs text-ink/60" data-runway="credits">{creditLine}</p>}
-        <div className="mt-3 rounded-lg bg-oasis/5 p-3" data-credit-split="">
-          <span className="font-display text-2xl font-bold text-oasis" dir="ltr">{d.user.credits}</span> <span className="text-sm text-ink/60">{ar ? "كريدت متبقٍ" : "credits remaining"}</span>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-lilac"><div className="h-full bg-ink" style={{ width: `${pct}%` }} /></div>
+        {creditLine && <p className="mt-1 text-xs text-muted" data-runway="credits">{creditLine}</p>}
+        <div className="mt-3 rounded-lg bg-ink/5 p-3" data-credit-split="">
+          <span className="font-display text-2xl font-bold text-ink" dir="ltr">{d.user.credits}</span> <span className="text-sm text-muted">{ar ? "كريدت متبقٍ" : "credits remaining"}</span>
           {split.topup > 0 && (
             <dl className="mt-2 grid gap-1 text-xs text-ink/70">
               <div className="flex justify-between gap-2" data-plan-credits=""><dt>{trial ? (ar ? "كريدت التجربة" : "Trial credits") : (ar ? `كريدت الخطة (يتجدد في ${d.nextReset})` : `Plan credits (reset on ${d.nextReset})`)}</dt><dd className="font-mono" dir="ltr">{formatCount(split.plan)}</dd></div>
               <div className="flex justify-between gap-2" data-topup-credits=""><dt>{ar ? "كريدت باقات الشحن (يُصرف بعد كريدت الخطة، ولا يتجدد)" : "Top-up credits (used after the plan credits; no reset)"}</dt><dd className="font-mono" dir="ltr">{formatCount(split.topup)}</dd></div>
               {split.packs.map((p, i) => (
-                <div key={i} className="flex justify-between gap-2 ps-3 text-ink/60" data-pack-expiry="">
+                <div key={i} className="flex justify-between gap-2 ps-3 text-muted" data-pack-expiry="">
                   <dt>{ar ? <>باقة <span dir="ltr">{formatCount(p.credits)}</span>: متبقٍ <span dir="ltr">{formatCount(p.left)}</span></> : `${formatCount(p.credits)}-credit pack: ${formatCount(p.left)} left`}</dt>
                   <dd>{ar ? "تنتهي" : "expires"} <span className="font-mono" dir="ltr">{p.expiresAt.slice(0, 10)}</span></dd>
                 </div>
@@ -215,16 +216,16 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
         {chat && (
           <div className="mt-4" data-chat-usage="">
             <div className="flex items-center justify-between text-sm"><span>{chatTrial ? (ar ? "رسائل الدردشة في التجربة" : "Chat messages in your trial") : (ar ? "رسائل الدردشة هذا الشهر" : "Chat messages this month")}</span><span className="font-mono" dir="ltr">{formatCount(chat.used)} / {formatCount(chat.allowance)}</span></div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-salt-dim"><div className={`h-full ${chat.left > 0 ? "bg-oasis" : "bg-saffron"}`} style={{ width: `${chatPct}%` }} /></div>
-            {chatLine && <p className="mt-1 text-xs text-ink/60" data-runway="messages">{chatLine}</p>}
-            {chatOverflowShown && <p className="mt-1 text-xs text-ink/60" data-chat-overflow-used="">{ar ? `${formatCount(chat.overflow.used)} رسالة إضافية هذا الشهر على الكريدت، خُصم عليها ${formatCount(chatCredits)} كريدت.` : `${formatCount(chat.overflow.used)} more this month, continued on credits: ${formatCount(chatCredits)} ${chatCredits === 1 ? "credit" : "credits"} billed.`}</p>}
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-lilac"><div className={`h-full ${chat.left > 0 ? "bg-ink" : "bg-lemon"}`} style={{ width: `${chatPct}%` }} /></div>
+            {chatLine && <p className="mt-1 text-xs text-muted" data-runway="messages">{chatLine}</p>}
+            {chatOverflowShown && <p className="mt-1 text-xs text-muted" data-chat-overflow-used="">{ar ? `${formatCount(chat.overflow.used)} رسالة إضافية هذا الشهر على الكريدت، خُصم عليها ${formatCount(chatCredits)} كريدت.` : `${formatCount(chat.overflow.used)} more this month, continued on credits: ${formatCount(chatCredits)} ${chatCredits === 1 ? "credit" : "credits"} billed.`}</p>}
           </div>
         )}
         <h3 className="mt-4 text-sm font-semibold">{ar ? "تفصيل الاستخدام" : "Usage breakdown"}</h3>
-        <div className="overflow-x-auto"><table className="mt-2 w-full text-sm"><thead className="text-start text-xs text-ink/50"><tr><th className="py-1 text-start">{ar ? "الإجراء" : "Action"}</th><th>{ar ? "كريدت لكل دفعة" : "Credits each"}</th><th>{ar ? "دفعات" : "Used"}</th><th>{ar ? "الإجمالي" : "Total credits"}</th></tr></thead>
+        <div className="overflow-x-auto"><table className="mt-2 w-full text-sm"><thead className="text-start text-xs text-muted"><tr><th className="py-1 text-start">{ar ? "الإجراء" : "Action"}</th><th>{ar ? "كريدت لكل دفعة" : "Credits each"}</th><th>{ar ? "دفعات" : "Used"}</th><th>{ar ? "الإجمالي" : "Total credits"}</th></tr></thead>
           <tbody>
             {AGENTS.map((a) => a.tasks.map((k: TaskType) => (
-              <tr key={k} className="border-t border-ink/5"><td className="py-1"><span className="text-xs text-ink/50">{t.agents[a.id].name} · </span>{t.generate.types[k].t}</td><td className="text-center font-mono">{TASK_COST[k]}</td><td className="text-center font-mono">{Math.round((d.usage[k]?.count ?? 0) / TASK_COUNT[k])}</td><td className="text-center font-mono">{d.usage[k]?.credits ?? 0}</td></tr>
+              <tr key={k} className="border-t border-ink/5"><td className="py-1"><span className="text-xs text-muted">{t.agents[a.id].name} · </span>{t.generate.types[k].t}</td><td className="text-center font-mono">{TASK_COST[k]}</td><td className="text-center font-mono">{Math.round((d.usage[k]?.count ?? 0) / TASK_COUNT[k])}</td><td className="text-center font-mono">{d.usage[k]?.credits ?? 0}</td></tr>
             )))}
             {/* The catalogue's prices (src/lib/media-catalog.ts), as the pricing page states them, and what the renders really charged. */}
             <tr className="border-t border-ink/5"><td className="py-1">{ar ? "الصور ومقاطع الفيديو" : "Images and videos"}</td><td className="text-center font-mono" dir="ltr">{mediaRange("image")} · {mediaRange("video")}</td><td className="text-center font-mono">{d.images}</td><td className="text-center font-mono">{mediaUsed}</td></tr>
@@ -244,7 +245,7 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
 
       <Card title={ar ? "الاشتراك" : "Subscription"}>
         <p className="text-sm">{owner ? (ar ? "أنت الآن على خطة" : "You're currently on the") : (ar ? "الحساب على خطة" : "The account is on the")} <b>{planLabel}</b>{ar ? "" : " plan"}.</p>
-        {!owner && <p className="mt-1 text-sm text-ink/60">{t.billing.ownerOnly}</p>}
+        {!owner && <p className="mt-1 text-sm text-muted">{t.billing.ownerOnly}</p>}
         <Link href={`/${lang}/app/billing`} className="mt-3 inline-block btn btn-secondary btn-sm">{owner ? (ar ? "إدارة الاشتراك" : "Manage subscription") : t.billing.title}</Link>
       </Card>
 
@@ -255,7 +256,7 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
         {owner && <Card title={ar ? "تفضيلات الإيميل" : "Email preferences"} sub={ar ? "تتحكم في إيميلات الوكلاء والمهام المجدولة. إيميلات الحساب والفوترة تصل دائماً." : "Controls emails from your agents and their scheduled tasks. Account and billing emails always come through."}>
           <div className="grid gap-2 text-sm">
             {[["all", ar ? "كل الإيميلات" : "All emails", ar ? "كل ملخص ومتابعة ومهمة مجدولة." : "Every agent and scheduled task email."], ["important", ar ? "المهم فقط" : "Important only", ar ? "الوكيل يقرر ما يستحق الإرسال: الأخطاء وما ينتظر موافقتك؛ التقارير الروتينية تُتجاوز." : "Your agent decides what is worth emailing: errors and items needing approval come through; routine reports are skipped."], ["none", ar ? "لا شيء" : "None", ar ? "إيقاف كل إيميلات الوكلاء والمهام المجدولة." : "Stop all agent and scheduled task emails."]].map(([v, l, s]) => (
-              <label key={v} className="flex items-start gap-2 rounded-lg border border-ink/10 p-3"><input type="radio" name="emails" value={v} defaultChecked={d.emails === v} className="mt-1" /><span><b>{l}</b><span className="block text-xs text-ink/60">{s}</span></span></label>
+              <label key={v} className="flex items-start gap-2 rounded-lg border border-ink/10 p-3"><input type="radio" name="emails" value={v} defaultChecked={d.emails === v} className="mt-1" /><span><b>{l}</b><span className="block text-xs text-muted">{s}</span></span></label>
             ))}
           </div>
         </Card>}
@@ -314,7 +315,7 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
 
       {d.impersonating ? null : canDelete ? (
         <Card title={ar ? "حذف الحساب" : "Delete account"}>
-          <p className="text-sm text-ink/60">{ar ? "يحذف حسابك وكل بياناته نهائياً. لا رجوع." : "Permanently delete your account and all associated data. This action cannot be undone."}</p>
+          <p className="text-sm text-muted">{ar ? "يحذف حسابك وكل بياناته نهائياً. لا رجوع." : "Permanently delete your account and all associated data. This action cannot be undone."}</p>
           <button onClick={del} className="mt-3 btn btn-danger btn-sm">{ar ? "احذف حسابي" : "Delete account"}</button>
         </Card>
       ) : (

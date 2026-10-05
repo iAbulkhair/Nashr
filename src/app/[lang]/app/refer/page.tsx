@@ -7,6 +7,7 @@ import { referralStats, registerCode } from "@/lib/referral";
 import ReferPanel from "@/components/app/ReferPanel";
 import ReadOnlyNote from "@/components/app/ReadOnlyNote";
 import { appOrigin } from "@/lib/origin";
+import Scribble from "@/components/Scribble";
 export const dynamic = "force-dynamic";
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
@@ -18,8 +19,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (!can(u, "referral")) {
     const t = appDict[lang];
     return (
-      <div className="mx-auto max-w-2xl">
-        <h1 className="page-title">{t.refer.title}</h1>
+      <div className="mx-auto w-full max-w-2xl">
+        <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="refer-t1" />{t.refer.title}</span></h1>
         <ReadOnlyNote className="mt-4" text={t.refer.ownerOnly} />
       </div>
     );

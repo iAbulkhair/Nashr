@@ -6,6 +6,7 @@ import { resolveOnceHolds } from "./credits";
 import { modelState } from "./model";
 import { getGov } from "./governance";
 import { activeSeasons } from "./seasons";
+import { zoneOf } from "./zones";
 import { dateFormat } from "./dates";
 import type { RoutineId } from "./routines";
 import { systemBy, type By } from "./actor";
@@ -192,11 +193,15 @@ export async function runDaily(user: User): Promise<Brief | null> {
   const dayAgo = Date.now() - 7 * 864e5;
   const pending = tasks.filter((t) => t.status === "pending").length;
   const approved7d = tasks.filter((t) => t.status === "approved" && new Date(t.createdAt).getTime() > dayAgo).length;
-  const seasons = activeSeasons().slice(0, 2).map((s) => `${s.nameAr} (${s.daysLeft} يوم)`);
+  const seasons = activeSeasons(new Date(), zoneOf(brand)).slice(0, 2).map((s) => `${s.nameAr} (${s.daysLeft} يوم)`);
   const ar = (brand?.languages[0] ?? user.lang) === "ar";
   // Reem's block: counts from the computed agenda (no model), and the titles of the first three overdue or due-today items.
   const agenda = briefAgenda(await agendaFor(email, Date.now(), { actor: "cron", via: "cron" }));
   const chase = agenda.chase ?? 0;
+  // On a Ramadan morning the chases whose window opens later today say when (spec §2.2).
+  const after = agenda.chaseAfter;
+  const afterAr = after ? (after.count === chase ? ` (اليوم بعد ${after.time})` : ` (${after.count} منها اليوم بعد ${after.time})`) : "";
+  const afterEn = after ? (after.count === chase ? ` (today after ${after.time})` : ` (${after.count} of them today after ${after.time})`) : "";
   const hasAgenda = agenda.overdue + agenda.today + agenda.waiting + agenda.confirm + chase > 0;
   const top = agenda.top.map((t) => `«${t.slice(0, 80)}»`).join(ar ? "، " : ", ");
   const lines = ar
@@ -206,7 +211,7 @@ export async function runDaily(user: User): Promise<Brief | null> {
         `• اعتمدت خلال 7 أيام: ${approved7d} عنصر`,
         `• رصيدك: ${user.credits} كريدت${user.plan === "trial" ? ` (التجربة تنتهي ${dateFormat("ar", { day: "numeric", month: "long" }).format(new Date(user.trialEnds))})` : ""}`,
         seasons.length ? `• المواسم القريبة: ${seasons.join("، ")}` : "• لا مواسم كبرى خلال 35 يوماً — وقت مناسب لبناء الجمهور",
-        ...(hasAgenda ? [`• مهامك (ريم): ${agenda.overdue} متأخرة، ${agenda.today} لليوم، ${agenda.waiting} بانتظار غيرك${chase ? `، ${chase} حان وقت متابعتها` : ""}${agenda.confirm ? `، ${agenda.confirm} تحتاج تأكيدك` : ""}`, ...(top ? [`  أولها: ${top}`] : [])] : []),
+        ...(hasAgenda ? [`• مهامك (ريم): ${agenda.overdue} متأخرة، ${agenda.today} لليوم، ${agenda.waiting} بانتظار غيرك${chase ? `، ${chase} حان وقت متابعتها${afterAr}` : ""}${agenda.confirm ? `، ${agenda.confirm} تحتاج تأكيدك` : ""}`, ...(top ? [`  أولها: ${top}`] : [])] : []),
         pending ? "الخطوة التالية: افتح صندوق الموافقة واعتمد ما يعجبك." : agenda.overdue + agenda.today ? "الخطوة التالية: افتح «مهامي» وابدأ بالمتأخر." : "الخطوة التالية: اطلب من نور دفعة جديدة في الدردشة.",
       ]
     : [
@@ -215,7 +220,7 @@ export async function runDaily(user: User): Promise<Brief | null> {
         `• Approved in the last 7 days: ${approved7d}`,
         `• Credits: ${user.credits}${user.plan === "trial" ? ` (trial ends ${dateFormat("en", { day: "numeric", month: "long" }).format(new Date(user.trialEnds))})` : ""}`,
         seasons.length ? `• Upcoming seasons: ${seasons.join(", ")}` : "• No major season within 35 days — good time to build audience",
-        ...(hasAgenda ? [`• Your to-dos (Reem): ${agenda.overdue} overdue, ${agenda.today} due today, ${agenda.waiting} waiting on others${chase ? `, ${chase} to follow up` : ""}${agenda.confirm ? `, ${agenda.confirm} to confirm` : ""}`, ...(top ? [`  First: ${top}`] : [])] : []),
+        ...(hasAgenda ? [`• Your to-dos (Reem): ${agenda.overdue} overdue, ${agenda.today} due today, ${agenda.waiting} waiting on others${chase ? `, ${chase} to follow up${afterEn}` : ""}${agenda.confirm ? `, ${agenda.confirm} to confirm` : ""}`, ...(top ? [`  First: ${top}`] : [])] : []),
         pending ? "Next step: open the inbox and approve what you like." : agenda.overdue + agenda.today ? "Next step: open My to-dos and start with what is overdue." : "Next step: ask Noor for a new batch in chat.",
       ];
   const brief: Brief = { date: new Date().toISOString().slice(0, 10), text: lines.join("\n"), pending, approved7d, credits: user.credits, seasons, agenda };

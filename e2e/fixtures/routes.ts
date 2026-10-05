@@ -21,7 +21,8 @@ export const DEFAULT_TITLE: Record<Lang, string> = {
 };
 
 export const PUBLIC_ROUTES: PublicRoute[] = [
-  { path: "", unique: { en: "Thakeen solves them", ar: "وذكين يحلها" }, ownTitle: false },
+  // The cover's offer line (src/lib/home.ts `HERO.offer`, rule 516).
+  { path: "", unique: { en: "Eight agents who know your brand.", ar: "ثمانية وكلاء يعرفون علامتك." }, ownTitle: false },
   { path: "/pricing", unique: { en: "SAR", ar: "ريال" }, ownTitle: true },
   { path: "/tools", unique: { en: "free Arabic marketing tools", ar: "أداة تسويق مجانية" }, ownTitle: true },
   { path: "/agents", unique: { en: "Eight agents", ar: "ثمانية وكلاء" }, ownTitle: true },
@@ -47,7 +48,11 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
  * The authenticated route patterns under /[lang]/app. `heading` is the page's own first-level heading, taken from the
  * running app, and is what proves the named page loaded rather than the shell around it.
  */
-export type AppRoute = { path: string; heading: Partial<Record<Lang, string>> & { en: string } };
+/**
+ * `ownerGoesTo`: the page sends the signed-in, seeded owner elsewhere instead of rendering. `/app/start` is the
+ * first-login game, shown only to an owner without a brand file (rule 524); the seeded owner has one.
+ */
+export type AppRoute = { path: string; heading: Partial<Record<Lang, string>> & { en: string }; ownerGoesTo?: string };
 
 /** Reachable only with a session. Every one of these redirects a signed-out visitor to the login page. */
 export const APP_ROUTES: AppRoute[] = [
@@ -74,7 +79,7 @@ export const APP_ROUTES: AppRoute[] = [
   { path: "/app/mcp", heading: { en: "Noor inside Claude and ChatGPT (MCP)" } },
   { path: "/app/help", heading: { en: "Help center" } },
   { path: "/app/billing", heading: { en: "Subscription" } },
-  { path: "/app/start", heading: { en: "Give Noor your website." } },
+  { path: "/app/start", heading: { en: "The Thakeen Dictionary" }, ownerGoesTo: "/app" },
 ];
 
 /** Reachable without a session: the layout's PUBLIC list. */

@@ -250,46 +250,46 @@ export default function MediaControls({ task, lang, t, available, credits, plan,
               {models.map((m) => {
                 const off = why(m);
                 return (
-                  <label key={m.id} className={`flex items-start gap-2 rounded-lg border border-ink/15 bg-white p-2 text-xs has-checked:border-oasis has-checked:bg-oasis/5 ${off ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
-                    <input type="radio" name={`${uid}-${kind}`} value={m.id} checked={sel.id === m.id} disabled={!!off} onChange={() => setPick((p) => ({ ...p, [kind]: m.id }))} className="mt-0.5 accent-oasis" />
+                  <label key={m.id} className={`flex items-start gap-2 rounded-lg border border-ink/15 bg-white p-2 text-xs has-checked:border-ink has-checked:bg-ink/5 ${off ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
+                    <input type="radio" name={`${uid}-${kind}`} value={m.id} checked={sel.id === m.id} disabled={!!off} onChange={() => setPick((p) => ({ ...p, [kind]: m.id }))} className="mt-0.5 accent-ink" />
                     <span className="grid gap-0.5">
                       <span className="font-semibold">{m.label[lang]}</span>
-                      <span className="tnum text-ink/60">{m.credits} {plural(i.credits, m.credits)}</span>
-                      {off && <span className="text-sadu-deep">{off}</span>}
+                      <span className="tnum text-muted">{m.credits} {plural(i.credits, m.credits)}</span>
+                      {off && <span className="text-danger">{off}</span>}
                     </span>
                   </label>
                 );
               })}
             </div>
-            <p id={hintId} className="text-xs text-ink/60">
+            <p id={hintId} className="text-xs text-muted">
               {sel.hint[lang]}
-              {mediaImageFor(sel, task) && <span className="ms-1.5 inline-block rounded-full bg-oasis/10 px-2 text-oasis">{i.buildsOnImage}</span>}
+              {mediaImageFor(sel, task) && <span className="ms-1.5 inline-block rounded-full bg-ink/10 px-2 text-ink">{i.buildsOnImage}</span>}
               {sel.id === "vid-motion" && aspectFor("image", task.channel) === "square" && ` ${i.squareClip}`}
             </p>
           </fieldset>
         )}
         {asking[kind] ? (
-          <div role="group" aria-labelledby={askId} className="flex flex-wrap items-center gap-2 rounded-lg border border-saffron/50 bg-saffron/10 p-2 text-xs">
+          <div role="group" aria-labelledby={askId} className="flex flex-wrap items-center gap-2 rounded-lg border border-lemon/50 bg-lemon/10 p-2 text-xs">
             <p id={askId} className="w-full sm:w-auto">{plural(replacing(kind) ? i.confirmReplace : i.confirmCost, price)}</p>
             {/* autoFocus: the button that asked was just replaced by this question, so focus would otherwise be lost. */}
             <button autoFocus onClick={() => go(kind, sel)} className="btn btn-primary btn-xs">{i.continue}</button>
             <button onClick={() => setAsking((p) => ({ ...p, [kind]: false }))} className="btn btn-secondary btn-xs">{i.cancel}</button>
           </div>
         ) : (
-          <button disabled={rendering || keeps} onClick={() => ask(kind, sel)} className="w-fit rounded-full border border-saffron px-4 py-1.5 disabled:opacity-50">
+          <button disabled={rendering || keeps} onClick={() => ask(kind, sel)} className="w-fit rounded-full border border-lemon px-4 py-1.5 disabled:opacity-50">
             {rendering ? (kind === "image" ? i.imaging : i.videoing) : (has ? "↻ " : "") + (kind === "image" ? i.image : i.video)}
           </button>
         )}
-        {keeps && !rendering && !n && <p className="text-xs text-ink/60">{i.keepsImage}</p>}
-        {rendering && job && <p className="text-xs text-ink/60">{plural(i.charged, job.credits)}</p>}
-        {kind === "video" && jobId && <p className="text-xs text-ink/60">{i.videoSlow}</p>}
+        {keeps && !rendering && !n && <p className="text-xs text-muted">{i.keepsImage}</p>}
+        {rendering && job && <p className="text-xs text-muted">{plural(i.charged, job.credits)}</p>}
+        {kind === "video" && jobId && <p className="text-xs text-muted">{i.videoSlow}</p>}
         {n && (
-          <p role="alert" className="text-xs text-sadu-deep">
+          <p role="alert" className="text-xs text-danger">
             {n.text}
             {n.billing && <> <Link href={`/${lang}/app/billing${n.topup ? "#topup" : ""}`} className="font-semibold underline">{n.topup ? i.topupLink : i.billingLink}</Link></>}
           </p>
         )}
-        {!rendering && !n && last && <p className="text-xs text-sadu-deep">{plural(i.mediaLastFailed, last.credits)} {errText(last.error)}</p>}
+        {!rendering && !n && last && <p className="text-xs text-danger">{plural(i.mediaLastFailed, last.credits)} {errText(last.error)}</p>}
       </div>
     );
   }
@@ -303,7 +303,7 @@ export default function MediaControls({ task, lang, t, available, credits, plan,
   const pausedText = made.length === 2 ? i.pausedNote : made[0] === "image" ? i.pausedNoteImage : made[0] === "video" ? i.pausedNoteVideo : null;
   return (
     <div className="grid w-full gap-4">
-      {paused && pausedText && <p className="text-xs text-ink/60">{pausedText}</p>}
+      {paused && pausedText && <p className="text-xs text-muted">{pausedText}</p>}
       {kinds.map(section)}
     </div>
   );

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { dict, isLang } from "@/lib/i18n";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
+import Scribble from "@/components/Scribble";
 import { LEGAL } from "@/lib/legal";
 
 export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
@@ -24,12 +25,12 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
     <>
       <Nav t={t} lang={lang} />
       <main className="page-wrap">
-        <h1 className="page-title">{doc.title}</h1>
-        <p className="mt-2 text-sm text-ink/50">{doc.updated}</p>
+        <h1 className="font-display text-3xl font-bold leading-tight sm:text-4xl"><span className="s-ul"><Scribble kind="underline" seed="terms-h" />{doc.title}</span></h1>
+        <p className="mt-2 text-sm text-muted">{doc.updated}</p>
         {doc.sections.map((s) => (
           <section key={s.h} className="mt-8">
-            <h2 className="font-display text-xl font-medium">{s.h}</h2>
-            {s.p.map((p, i) => <p key={i} className="mt-2 leading-relaxed text-ink/80">{p}</p>)}
+            <h2 className="font-display text-xl font-bold">{s.h}</h2>
+            {s.p.map((p, i) => <p key={i} className="mt-2 leading-relaxed">{p}</p>)}
           </section>
         ))}
       </main>

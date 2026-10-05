@@ -82,8 +82,8 @@ export async function wipeAccount(email: string) {
       ...routineFingerprints(s).map((fp) => seenKey(e, fp)),
       // Onboarding's per-brand records: the owner's confirmed site and the run's lock (src/lib/onboard-confirm.ts). Only
       // the default brand's lock was deleted, and the confirmation never was. An added brand's held setup charge lives on
-      // the account record (`User.onboardPaid`) and goes with it.
-      `onboardok:${s}`, `onboardlock:${s}`,
+      // the account record (`User.onboardPaid`) and goes with it. The game's answers hold the brand name the owner typed.
+      `onboardok:${s}`, `onboardlock:${s}`, `onboardgame:${s}`,
       `onboardplan:${s}`, `pending:${s}`, `pendingidx:${s}`, `tidxm:${s}`, `tidxv:${s}`, `tasks:${s}`, `files:${s}`, `brand:${s}`, `prefs:${s}`, `chat:${s}`, `convs:${s}`, `gov:${s}`, `schedule:${s}`, `brief:${s}`, `conns:${s}`,
     );
   });
@@ -104,8 +104,9 @@ export async function wipeAccount(email: string) {
   keys.push(`profile:${e}`, `mcptoken-of:${e}`, `brands:${e}`, `activebrand:${e}`, `user:${e}`);
   // Account-level records that are not brand-scoped. Missing these meant a deleted account left its notifications,
   // referral graph, share-bonus markers and activity history behind, so re-registering the same address inherited
-  // them. The other `notifseen:` markers are not listed: they live a week at most and their suffix cannot be
-  // enumerated (the ones that can, per brand, are deleted above).
+  // them. The other `notifseen:` markers are not listed: they live a week at most after their last write (Reem's to-do
+  // alert markers are set again by each daily run while their step holds, and no run reaches a deleted account) and
+  // their suffix cannot be enumerated (the ones that can, per brand, are deleted above).
   keys.push(
     `notifs:${e}`,
     `referrals:${e}`,

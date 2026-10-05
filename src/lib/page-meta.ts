@@ -3,8 +3,9 @@ import { SLOGAN } from "./home";
 import type { Lang } from "./i18n";
 
 /**
- * The founder's slogan (decision of 2026-10-01), as the homepage's h1 already shows it: `SLOGAN.line1` in src/lib/home.ts,
- * «ذكين. الذكي المكين.» and its approved English, "Thakeen. Smart. Steadfast.". Read from there so the two never drift.
+ * The founder's slogan (decision of 2026-10-01): `SLOGAN.line1` in src/lib/home.ts, «ذكين. الذكي المكين.» and its
+ * approved English, "Thakeen. Smart. Steadfast.". The homepage's h1 draws it as the wordmark and `HERO.tbox` (Cover.tsx);
+ * tests/home-copy.test.ts keeps the two in step.
  */
 export const SLOGAN_AR = SLOGAN.line1.ar;
 

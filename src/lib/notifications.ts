@@ -4,10 +4,11 @@ import type { User } from "./auth";
 import { getBrand, listLite } from "./brand";
 import { listBrands, scopeFor } from "./brands";
 import { getSchedule } from "./schedule";
-import { agentById, type AgentId } from "./agents";
+import { agentById, isAgentId, type AgentId } from "./agents";
 import type { AgentCharge } from "./credits";
-import { SEC_ALERTS_PER_DAY, SEC_KEYS, agendaFor, overdueAlertFingerprint } from "./secretary";
-import { overdueAlerts, partyName, zoneDay } from "./secretary-agenda";
+import { SEC_ALERTS_PER_DAY, SEC_KEYS, agendaFor, backFingerprint, overdueAlertFingerprint } from "./secretary";
+import { compareItems, daysBetween, overdueAlerts, partyKey, partyName, zoneDay, type AwayMap, type OverdueAlert, type SecItem } from "./secretary-agenda";
+import type { Zone } from "./zones";
 import { appOrigin } from "./origin";
 
 /**
@@ -166,48 +167,90 @@ export async function followUps(user: User, scope: string): Promise<Notif[]> {
   return out;
 }
 
-/** How long an overdue alert's marker lives: past the longest window between two steps (days 3 to 6). */
-const ALERT_TTL_DAYS = 5;
+/**
+ * How long an alert step's marker lives: a week at most (spec §7; `wipeAccount` leaves these markers to expire). Every
+ * daily run sets it again while its step still holds, on quiet days too (ruling R15), so a step whose window runs over
+ * a weekend or Eid al-Adha is never sent twice.
+ */
+const ALERT_TTL_DAYS = 7;
+/** An absence that ended this many days ago or less is named on the item's next alert; its marker lives as long. */
+const BACK_DAYS = 7;
 
 /**
- * One alert per overdue item, spaced, then silence: on the day it became overdue and the 1st, 3rd and 7th local day
- * after (`overdueAlerts`), each step once, keyed by (scope, item, due time, step), so a new due date starts afresh and
- * the same text never repeats every day. After the 7th day the item is only in the morning brief. At most
- * `SEC_ALERTS_PER_DAY` a brand a local day, critical and earliest first. The markers are claimed with SET NX before
- * anything is pushed; a claim beyond the day's allowance is handed back, so that item can still go on another day of
- * its window. Reads and writes are batched: no store call per item in turn.
+ * The last day of a contact's absence that ended in the last `BACK_DAYS` days (`endedAt`, ruling R3), when the item
+ * already existed by then: an item made after the contact came back has no absence to report.
+ */
+function endedAbsence(it: SecItem, away: AwayMap, today: string, zone: Zone): string | null {
+  if (it.owedBy === "owner" || isAgentId(it.owedBy)) return null;
+  const key = partyKey(it.owedBy);
+  const entry = key !== null && Object.prototype.hasOwnProperty.call(away, key) ? away[key] : undefined;
+  if (!entry?.endedAt || daysBetween(entry.endedAt, today) > BACK_DAYS) return null;
+  const made = Date.parse(it.createdAt);
+  return Number.isFinite(made) && zoneDay(made, zone) <= entry.endedAt ? entry.endedAt : null;
+}
+
+/**
+ * One alert per item that fell behind, spaced, then silence (`overdueAlerts`, spec §2.3): the owner's own overdue items
+ * on the local day they fell behind and the 1st, 3rd and 7th day after, any day; an agent's from its chase moment the
+ * same way; a contact's from its chase moment in working days, never on a quiet day, and on a Ramadan morning while it
+ * is held for a window later today, saying "today after 10:00". Each step once, keyed by (scope, item, anchor, step), so
+ * a new due date or chase moment starts afresh; after the 7th, only the morning brief. A step's marker lives seven days
+ * and is set again (SET XX: never a claim) on every run its step still holds, including a quiet day's run that sends
+ * nothing. The first alert after a contact's absence ended says they are back, once per absence (`backFingerprint`, 7
+ * days). At most `SEC_ALERTS_PER_DAY` a brand a local day, critical and earliest first. The markers are claimed with SET
+ * NX before anything is pushed; a claim beyond the day's allowance is handed back, so that item can still go on another
+ * day of its window. Reads and writes are batched: no store call per item in turn.
  */
 async function overdueTodoAlerts(user: User, scope: string): Promise<Notif[]> {
   const now = Date.now();
-  const agenda = await agendaFor(scope, now, { actor: "cron", via: "cron" });
-  const due = overdueAlerts(agenda.buckets.overdue, now, agenda.zone);
-  if (!due.length) return [];
+  const { zone, cal, away, buckets } = await agendaFor(scope, now, { actor: "cron", via: "cron" });
+  const entries = [...buckets.overdue, ...buckets.chase, ...buckets.waiting].sort((a, b) => compareItems(a.item, b.item));
+  const steps = overdueAlerts(entries, now, zone, cal);
+  if (!steps.length) return [];
   const ar = user.lang === "ar";
   const lang = user.lang;
-  const fps = due.map((a) => overdueAlertFingerprint(scope, a.entry.item.id, a.entry.item.dueAt!, a.step));
-  const won = await Promise.all(fps.map((fp) => db.setNx(seenKey(user.email, fp), 1, ALERT_TTL_DAYS * 86400)));
-  const claimed = due.filter((_, i) => won[i]);
-  if (!claimed.length) return [];
-  const counter = SEC_KEYS.alerts(scope, zoneDay(now, agenda.zone));
-  const total = await db.incrby(counter, claimed.length);
+  const ttl = ALERT_TTL_DAYS * 86400;
+  const marker = (a: OverdueAlert) => seenKey(user.email, overdueAlertFingerprint(scope, a.entry.item.id, a.anchorMs, a.step));
+  const due = steps.filter((a) => a.send), held = steps.filter((a) => !a.send);
+  // One round: claim the steps that can be sent; keep alive the markers of steps that only hold today.
+  const claims = Promise.all(due.map((a) => db.setNx(marker(a), 1, ttl)));
+  await Promise.all([claims, ...held.map((a) => db.setXx(marker(a), 1, ttl))]);
+  const won = await claims;
+  const claimed = due.filter((_, i) => won[i]), kept = due.filter((_, i) => !won[i]);
+  const today = zoneDay(now, zone);
+  const counter = SEC_KEYS.alerts(scope, today);
+  const total = claimed.length ? await db.incrby(counter, claimed.length) : 0;
   const allowed = Math.max(0, SEC_ALERTS_PER_DAY - (total - claimed.length));
   const send = claimed.slice(0, allowed), back = claimed.slice(allowed);
+  const ended = send.map((a) => endedAbsence(a.entry.item, away, today, zone));
+  const backWon = Promise.all(send.map((a, i) => (ended[i] ? db.setNx(seenKey(user.email, backFingerprint(scope, a.entry.item.id, ended[i]!)), 1, BACK_DAYS * 86400) : false)));
   await Promise.all([
-    db.expireNx(counter, 2 * 86400),
-    ...(back.length ? [db.incrby(counter, -back.length), ...back.map((a) => db.del(seenKey(user.email, fps[due.indexOf(a)])))] : []),
+    ...(claimed.length ? [db.expireNx(counter, 2 * 86400)] : []),
+    backWon,
+    // Sent on an earlier run and still this step: its marker lives on.
+    ...kept.map((a) => db.setXx(marker(a), 1, ttl)),
+    ...(back.length ? [db.incrby(counter, -back.length), ...back.map((a) => db.del(marker(a)))] : []),
   ]);
   if (!send.length) return [];
+  const isBack = await backWon;
   // Already claimed above: pushed without a fingerprint, in one write of the bell.
-  return pushMany(user.email, send.map(({ entry, step }): Push => {
-    const t = `«${entry.item.title.slice(0, 80)}»`;
-    const chase = entry.next === "chase";
-    const who = partyName(entry.item.owedBy, lang);
+  return pushMany(user.email, send.map(({ entry, step, ramadanToday: at }, i): Push => {
+    const it = entry.item;
+    const t = `«${it.title.slice(0, 80)}»`;
+    const theirs = it.owedBy !== "owner";
+    const late = !!it.dueAt && Date.parse(it.dueAt) < now;
+    const who = partyName(it.owedBy, lang);
     const last = step === 7 ? (ar ? " هذا آخر تنبيه لها؛ بعده تظهر في ملخص الصباح فقط." : " This is its last alert; after today it is only in the morning brief.") : "";
+    let body: string;
+    if (isBack[i]) body = ar ? `انتهى غياب ${who} — وقت المتابعة${at ? ` (اليوم بعد ${at})` : ""}.` : `${who} is back: time to follow up${at ? ` (today after ${at})` : ""}.`;
+    else if (at) body = ar ? `تابعه اليوم بعد ${at} مع ${who}، أو غيّر الموعد.` : `Follow up today after ${at} with ${who}, or change the date.`;
+    else if (theirs) body = ar ? `تابِع مع ${who}، أو غيّر الموعد.` : `Follow up with ${who}, or change the date.`;
+    else body = ar ? "أنجزها أو أجّلها أو غيّر موعدها." : "Do it, snooze it or reschedule it.";
     return {
       n: {
         kind: "todo", agent: "reem", href: `/${lang}/app/todo`,
-        title: ar ? `متأخرة: ${t}` : `Overdue: ${t}`,
-        body: (ar ? (chase ? `تابِع مع ${who}، أو غيّر الموعد.` : "أنجزها أو أجّلها أو غيّر موعدها.") : chase ? `Follow up with ${who}, or change the date.` : "Do it, snooze it or reschedule it.") + last,
+        title: late ? (ar ? `متأخرة: ${t}` : `Overdue: ${t}`) : ar ? `حان وقت المتابعة: ${t}` : `Time to follow up: ${t}`,
+        body: body + last,
       },
     };
   }));

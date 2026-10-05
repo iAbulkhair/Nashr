@@ -6,6 +6,8 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { ChatMsg, ChatItem } from "@/lib/chat";
 import type { HandoffItemStatus, HandoffView } from "@/lib/handoffs";
 import type { BrandProposal } from "@/lib/brand-proposals";
+import type { AwayProposal } from "@/lib/secretary-away";
+import { endOfZoneDay, formatWhen } from "@/lib/secretary-agenda";
 // Type only: chat-allowance.ts reads the store. The numbers arrive from the server in each answer's `chat`.
 import type { ChatStatus } from "@/lib/chat-allowance";
 import { formatCount } from "@/lib/pricing";
@@ -16,6 +18,7 @@ import { Icon, channelIcon } from "./Icons";
 import { ActivationBar, FileCard, PlanCard, WhatsAppCard } from "./OnboardCards";
 import type { Journey } from "@/lib/journey";
 import JourneyCard from "./JourneyCard";
+import AgentAvatar from "@/components/app/AgentAvatar";
 
 type Conv = { id: string; title: string; updatedAt: string; count: number; agent?: AgentId };
 const LIMITS: Record<string, number> = { instagram: 2200, x: 280, snapchat: 250, tiktok: 2200, whatsapp: 1024, gbp: 1500, meta: 63206, linkedin: 3000 };
@@ -59,23 +62,23 @@ export function ItemCard({ item, t, lang, onApproved, canApprove = true }: { ite
   return (
     <article className="mt-3 overflow-hidden rounded-xl border border-ink/10 bg-white text-ink">
       <header className="flex items-center justify-between gap-2 border-b border-ink/5 px-3 py-2 text-xs">
-        <span className="flex min-w-0 items-center gap-2 font-semibold"><Icon name={channelIcon(item.channel)} className="h-4 w-4 text-oasis" />{chName}<span className="clip font-normal text-ink/60" dir="auto">· {item.title}</span></span>
+        <span className="flex min-w-0 items-center gap-2 font-semibold"><Icon name={channelIcon(item.channel)} className="h-4 w-4 text-ink" />{chName}<span className="clip font-normal text-muted" dir="auto">· {item.title}</span></span>
         <span className="flex flex-wrap items-center justify-end gap-1.5">
-          {flags.map((f) => <span key={f.by} className="whitespace-nowrap rounded-full bg-saffron/20 px-2 py-0.5 font-semibold text-sadu-deep">{f.n === 1 ? fill(t.inbox.xNote, { name: t.agents[f.by].name }) : fill(t.inbox.xNotes, { name: t.agents[f.by].name, n: f.n })}</span>)}
+          {flags.map((f) => <span key={f.by} className="whitespace-nowrap rounded-full bg-lemon/20 px-2 py-0.5 font-semibold text-danger">{f.n === 1 ? fill(t.inbox.xNote, { name: t.agents[f.by].name }) : fill(t.inbox.xNotes, { name: t.agents[f.by].name, n: f.n })}</span>)}
           <span className={`badge whitespace-nowrap ${status === "approved" ? "badge-primary" : "badge-accent"}`}>{status === "approved" ? t.inbox.approved : t.inbox.pending}</span>
         </span>
       </header>
       {open && <div className="prose-nashr prose-compact px-4 py-3 text-sm" dir="auto" dangerouslySetInnerHTML={{ __html: render(item.body) }} />}
       <footer className="flex flex-wrap items-center gap-2 border-t border-ink/5 px-3 py-2 text-xs">
-        <span className={`tnum ${over ? "font-semibold text-sadu-deep" : "text-ink/60"}`} dir="ltr">{item.body.length}{limit ? ` / ${limit}` : ""}</span>
-        {err && <span className="text-sadu-deep">{err}</span>}
-        {held.length > 0 && <span role="alert" className="flex items-center gap-1 font-semibold text-sadu-deep"><Icon name="shield" className="h-3.5 w-3.5" /><span dir="auto">{ar ? `محجوز بحارس العلامة: ${held.join("، ")}` : `Held by brand guard: ${held.join(", ")}`}</span> · <Link href={`/${lang}/app`} className="underline">{ar ? "عدّله في صندوق الموافقة" : "Fix it in the inbox"}</Link></span>}
-        {undoAt > 0 && status === "approved" && <span className="flex items-center gap-2 text-oasis"><Icon name="check" className="h-4 w-4" />{t.chat.approved} · <button onClick={() => setState("pending")} className="underline">{t.chat.undo}</button></span>}
-        {flagged && <span className="font-semibold text-sadu-deep">{t.chat.xflagHint}</span>}
+        <span className={`tnum ${over ? "font-semibold text-danger" : "text-muted"}`} dir="ltr">{item.body.length}{limit ? ` / ${limit}` : ""}</span>
+        {err && <span className="text-danger">{err}</span>}
+        {held.length > 0 && <span role="alert" className="flex items-center gap-1 font-semibold text-danger"><Icon name="shield" className="h-3.5 w-3.5" /><span dir="auto">{ar ? `محجوز بحارس العلامة: ${held.join("، ")}` : `Held by brand guard: ${held.join(", ")}`}</span> · <Link href={`/${lang}/app`} className="underline">{ar ? "عدّله في صندوق الموافقة" : "Fix it in the inbox"}</Link></span>}
+        {undoAt > 0 && status === "approved" && <span className="flex items-center gap-2 text-ink"><Icon name="check" className="h-4 w-4" />{t.chat.approved} · <button onClick={() => setState("pending")} className="underline">{t.chat.undo}</button></span>}
+        {flagged && <span className="font-semibold text-danger">{t.chat.xflagHint}</span>}
         <span className="ms-auto flex gap-1.5">
           <button onClick={() => setOpen(!open)} className="btn btn-secondary btn-xs">{open ? (ar ? "طيّ" : "Collapse") : (ar ? "عرض" : "Expand")}</button>
           <button onClick={async () => { await navigator.clipboard.writeText(item.body); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="btn btn-secondary btn-xs"><Icon name="copy" className="h-3.5 w-3.5" />{copied ? t.inbox.copied : status === "approved" ? `${t.chat.copyTo} ${chName}` : t.inbox.copy}</button>
-          {status !== "approved" && !canApprove && <span className="text-ink/60">{t.inbox.waitAdmin}</span>}
+          {status !== "approved" && !canApprove && <span className="text-muted">{t.inbox.waitAdmin}</span>}
           {flagged && canApprove && <Link href={`/${lang}/app`} className="btn btn-primary btn-xs">{t.chat.readNotes}</Link>}
           {status !== "approved" && canApprove && !flagged && <button onClick={() => setState("approved")} disabled={over || held.length > 0} title={over ? (ar ? "النص أطول من حد القناة" : "Text exceeds the channel limit") : undefined} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{t.inbox.approve}</button>}
         </span>
@@ -244,16 +247,16 @@ export function HandoffCard({ id, t, lang, initial, canRun = true, canDecline = 
   const total = open.reduce((sum, it) => sum + it.cost, 0);
   const badge = (s: HandoffItemStatus) => (s === "done" ? "badge-primary" : s === "declined" ? "badge-danger" : "badge-accent");
   return (
-    <section className="mt-3 overflow-hidden rounded-xl border border-oasis/25 bg-white text-ink" aria-label={fill(H.title, { name: t.agents.majed.name })} aria-busy={busy !== null || all}>
+    <section className="mt-3 overflow-hidden rounded-xl border border-ink/25 bg-white text-ink" aria-label={fill(H.title, { name: t.agents.majed.name })} aria-busy={busy !== null || all}>
       <header className="border-b border-ink/5 px-3 py-2">
-        <p className="flex items-center gap-2 text-sm font-semibold text-oasis"><Icon name="users" className="h-4 w-4" />{fill(H.title, { name: t.agents.majed.name })}</p>
+        <p className="flex items-center gap-2 text-sm font-semibold text-ink"><Icon name="users" className="h-4 w-4" />{fill(H.title, { name: t.agents.majed.name })}</p>
         {/* "Nothing runs until you press Run" is untrue while Majed's auto-run may start an item: the server says which. */}
-        <p className="mt-0.5 text-xs text-ink/60">{view?.auto?.length ? H.subAuto : H.sub}</p>
+        <p className="mt-0.5 text-xs text-muted">{view?.auto?.length ? H.subAuto : H.sub}</p>
         {/* The label follows the page's language; Majed's line is isolated, so it takes its own direction from its own text. */}
         {view?.why && <p className="mt-1 text-xs text-ink/80"><span className="font-semibold">{H.why}:</span> <bdi dir="auto">{view.why}</bdi></p>}
       </header>
-      {!view && !gone && !err && <p className="px-3 py-2 text-xs text-ink/60">{H.loading}</p>}
-      {gone && <p className="px-3 py-2 text-xs text-ink/60">{H.gone}</p>}
+      {!view && !gone && !err && <p className="px-3 py-2 text-xs text-muted">{H.loading}</p>}
+      {gone && <p className="px-3 py-2 text-xs text-muted">{H.gone}</p>}
       {view && (
         <ol className="divide-y divide-ink/5">
           {view.items.map((it, n) => {
@@ -264,12 +267,12 @@ export function HandoffCard({ id, t, lang, initial, canRun = true, canDecline = 
                   <span className="font-semibold">{fill(H.to, { agent: t.agents[it.agent].name, type: t.generate.types[it.type].t })}</span>
                   <span className="flex items-center gap-2">
                     {it.status === "proposed" && view.auto?.includes(n) && <span className="badge">{H.autoItem}</span>}
-                    {it.ranAuto && <span className="text-ink/60">{H.ranAuto}</span>}
+                    {it.ranAuto && <span className="text-muted">{H.ranAuto}</span>}
                     <span className="tnum text-ink/70">{fill(H.cost, { n: it.cost })}</span>
                     <span className={`badge ${badge(it.status)}`}>{busy === n ? H.status.running : H.status[it.status]}</span>
                   </span>
                 </div>
-                <p className="mt-1.5 text-xs font-semibold text-sadu-deep">{fill(H.brief, { name: t.agents.majed.name })}</p>
+                <p className="mt-1.5 text-xs font-semibold text-danger">{fill(H.brief, { name: t.agents.majed.name })}</p>
                 {/* Model-written: rendered as text, never as HTML. */}
                 <p className="mt-0.5 whitespace-pre-line break-words text-sm leading-relaxed text-ink/85" dir="auto">{it.brief}</p>
                 {can && (canRun || canDecline) && (
@@ -292,10 +295,10 @@ export function HandoffCard({ id, t, lang, initial, canRun = true, canDecline = 
             {canRun && open.length > 1 && <button type="button" onClick={runAll} disabled={busy !== null || all || lost} className="btn btn-primary btn-xs">{all ? H.running : H.runAll}</button>}
             {canDecline && open.length > 1 && <button type="button" onClick={() => decline()} disabled={busy !== null || all} className="btn btn-secondary btn-xs">{H.declineAll}</button>}
           </span>
-          {!canRun && !canDecline && <p className="w-full text-ink/60">{H.memberNote}</p>}
+          {!canRun && !canDecline && <p className="w-full text-muted">{H.memberNote}</p>}
         </footer>
       )}
-      {err && <p role="alert" className="border-t border-ink/5 px-3 py-2 text-xs font-semibold text-sadu-deep" dir="auto">{err}</p>}
+      {err && <p role="alert" className="border-t border-ink/5 px-3 py-2 text-xs font-semibold text-danger" dir="auto">{err}</p>}
     </section>
   );
 }
@@ -331,25 +334,105 @@ export function ProposalCard({ p, t, lang, canBrand = true }: { p: BrandProposal
   };
   const closed = state === "applied" || state === "dismissed" || state === "gone" || state === "stale";
   return (
-    <article className="mt-3 overflow-hidden rounded-xl border border-saffron/40 bg-white text-ink">
+    <article className="mt-3 overflow-hidden rounded-xl border border-lemon/40 bg-white text-ink">
       <header className="flex items-center gap-2 border-b border-ink/5 px-3 py-2 text-xs font-semibold">
-        <Icon name="shield" className="h-4 w-4 text-sadu-deep" />{canBrand ? (ar ? "تغيير في ملف العلامة ينتظر حفظك" : "A brand change waiting for your Save") : (ar ? "تغيير في ملف العلامة ينتظر قرار المالك أو المشرف" : "A brand change waiting for the owner or an admin")}<span className="font-normal text-ink/60">· {label}</span>
+        <Icon name="shield" className="h-4 w-4 text-danger" />{canBrand ? (ar ? "تغيير في ملف العلامة ينتظر حفظك" : "A brand change waiting for your Save") : (ar ? "تغيير في ملف العلامة ينتظر قرار المالك أو المشرف" : "A brand change waiting for the owner or an admin")}<span className="font-normal text-muted">· {label}</span>
       </header>
       <div className="grid gap-2 px-4 py-3 text-sm">
-        {p.via === "mcp" && <p className="text-xs font-semibold text-sadu-deep">{ar ? "طلب هذا التغيير مساعد آخر متصل عبر MCP، لا هذه المحادثة. احفظه فقط إن كنت طلبته بنفسك." : "Another assistant connected over MCP asked for this change, not this chat. Save it only if you asked for it yourself."}</p>}
+        {p.via === "mcp" && <p className="text-xs font-semibold text-danger">{ar ? "طلب هذا التغيير مساعد آخر متصل عبر MCP، لا هذه المحادثة. احفظه فقط إن كنت طلبته بنفسك." : "Another assistant connected over MCP asked for this change, not this chat. Save it only if you asked for it yourself."}</p>}
         <p className="text-ink/70">{why}</p>
         <div className="grid gap-2 sm:grid-cols-2">
-          <div className="min-w-0 rounded-lg bg-salt-dim p-2"><p className="text-xs text-ink/60">{ar ? "الآن" : "Now"}</p><p className="whitespace-pre-wrap break-words" dir="auto">{p.from || "—"}</p></div>
-          <div className="min-w-0 rounded-lg bg-oasis/5 p-2"><p className="text-xs text-ink/60">{ar ? "بعد الحفظ" : "After Save"}</p><p className="whitespace-pre-wrap break-words" dir="auto">{p.to || "—"}</p></div>
+          <div className="min-w-0 rounded-lg bg-lilac p-2"><p className="text-xs text-muted">{ar ? "الآن" : "Now"}</p><p className="whitespace-pre-wrap break-words" dir="auto">{p.from || "—"}</p></div>
+          <div className="min-w-0 rounded-lg bg-ink/5 p-2"><p className="text-xs text-muted">{ar ? "بعد الحفظ" : "After Save"}</p><p className="whitespace-pre-wrap break-words" dir="auto">{p.to || "—"}</p></div>
         </div>
       </div>
       <footer className="flex flex-wrap items-center gap-2 border-t border-ink/5 px-3 py-2 text-xs">
-        {done[state] && <span role="status" className={state === "applied" || state === "dismissed" ? "text-oasis" : "text-sadu-deep"}>{done[state]}</span>}
-        {!closed && !canBrand && <span className="ms-auto text-ink/60">{t.inbox.waitAdmin}</span>}
+        {done[state] && <span role="status" className={state === "applied" || state === "dismissed" ? "text-ink" : "text-danger"}>{done[state]}</span>}
+        {!closed && !canBrand && <span className="ms-auto text-muted">{t.inbox.waitAdmin}</span>}
         {!closed && canBrand && (
           <span className="ms-auto flex gap-1.5">
             <button disabled={state === "saving"} onClick={() => decide("dismiss")} className="btn btn-secondary btn-xs">{ar ? "تجاهل" : "Dismiss"}</button>
             <button disabled={state === "saving"} onClick={() => decide("apply")} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{ar ? "احفظ في ملف العلامة" : "Save to brand file"}</button>
+          </span>
+        )}
+      </footer>
+    </article>
+  );
+}
+
+/**
+ * An absence Reem proposed in chat (`contact_away`, src/lib/secretary-away.ts): nothing is on the away list yet. The
+ * card shows the name as typed, the contact it matches on the open items, the last away day (or that the absence ends
+ * now) and how many open items that contact owes; Save puts it on the list through the list's own checks, Dismiss drops
+ * it (POST /api/secretary/away/proposals/{id}, `todo.write`: every member of the account).
+ */
+/**
+ * Why a Save or Dismiss on an away card was refused, in the reader's words, when the card stays open to try again or
+ * dismiss: another Save of the card is running (`busy`), too many changes this hour, the name has left the away list,
+ * or a check the away list runs now (a last day that has passed, a full list). Undefined: no words for it.
+ */
+export function awayCardRefusal(t: AppDict, lang: "ar" | "en", status: number, error: string | undefined): string | undefined {
+  const ar = lang === "ar";
+  if (status === 429) return t.handoff.errors.slow_down;
+  if (error === "busy") return ar ? "يحفظ أحدٌ هذه البطاقة الآن. حاول مرة أخرى بعد لحظة." : "Someone is saving this card right now. Try again in a moment.";
+  if (error === "nothing_to_change") return ar ? "لم يعد هذا الاسم في قائمة الغائبين، فلا غياب لإنهائه." : "This name is no longer on the away list, so there is no absence to end.";
+  return error ? t.todo.errors[error] : undefined;
+}
+
+export function AwayProposalCard({ p, t, lang }: { p: AwayProposal; t: AppDict; lang: "ar" | "en" }) {
+  const ar = lang === "ar";
+  // A reloaded thread carries where the proposal stands now (history() reads it), so a decided card stays decided.
+  const [state, setState] = useState<"open" | "saving" | "saved" | "dismissed" | "gone" | "decided" | "forbidden" | "refused" | "error">(p.state === "saved" || p.state === "dismissed" ? p.state : p.state === "expired" ? "gone" : "open");
+  const [why, setWhy] = useState("");
+  async function decide(action: "save" | "dismiss") {
+    setState("saving");
+    const r = await fetch(`/api/secretary/away/proposals/${p.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) }).catch(() => null);
+    if (!r) return setState("error");
+    if (r.ok) return setState(action === "save" ? "saved" : "dismissed");
+    const j = (await r.json().catch(() => ({}))) as { error?: string };
+    if (r.status === 403) return setState("forbidden");
+    if (r.status === 404) return setState("gone");
+    if (j.error === "already_decided") return setState("decided");
+    const words = awayCardRefusal(t, lang, r.status, j.error);
+    if (words) { setWhy(words); return setState("refused"); }
+    setState("error");
+  }
+  // A local day "YYYY-MM-DD" as the to-do page writes dates (Latin digits), the same day in any Gulf zone; the year is
+  // shown when it is not the year the card was proposed in. Formatted in the browser too, where ICU may word it
+  // differently from the server's (src/lib/dates.ts): the element holding it carries `suppressHydrationWarning`.
+  const day = (d: string) => formatWhen(new Date(endOfZoneDay(d)).toISOString(), true, lang, Date.parse(p.at));
+  const ending = p.until === null;
+  const done: Partial<Record<typeof state, string>> = {
+    saved: ending ? (ar ? "حُفظ: انتهى الغياب، وتعود المتابعة كالمعتاد." : "Saved: the absence has ended and chasing resumes as usual.") : (ar ? "حُفظ في قائمة الغائبين بصفحة مهامي." : "Saved to the away list on My to-dos."),
+    dismissed: ar ? "تُجوهل. لم يتغير شيء." : "Dismissed. Nothing changed.",
+    gone: ar ? "حُسمت هذه البطاقة من قبل أو انتهت مدتها (7 أيام)." : "This card was already decided or has expired (7 days).",
+    decided: ar ? "حُفظت هذه البطاقة أو تُجوهلت من قبل." : "This card was already saved or dismissed.",
+    forbidden: t.team.errors.forbidden,
+    refused: why,
+    error: ar ? "لم يُحفظ. حاول مرة أخرى." : "Not saved. Try again.",
+  };
+  const closed = state === "saved" || state === "dismissed" || state === "gone" || state === "decided";
+  const items = ar ? `المهام المفتوحة على هذا الاسم: ${p.openItems}` : `${p.openItems} open item${p.openItems === 1 ? "" : "s"} they owe`;
+  return (
+    <article className="mt-3 overflow-hidden rounded-xl border border-lemon/40 bg-white text-ink">
+      <header className="flex items-center gap-2 border-b border-ink/5 px-3 py-2 text-xs font-semibold">
+        <Icon name="calendar" className="h-4 w-4 text-danger" />
+        {ending ? (ar ? "إنهاء غياب ينتظر حفظك" : "Ending an absence, waiting for your Save") : (ar ? "غياب جهة اتصال ينتظر حفظك" : "A contact away, waiting for your Save")}
+      </header>
+      <dl className="grid gap-1.5 px-4 py-3 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-3">
+        <dt className="text-xs text-muted">{ar ? "الاسم كما كُتب" : "Name as written"}</dt>
+        <dd className="min-w-0 break-words" dir="auto">{p.label}</dd>
+        <dt className="text-xs text-muted">{ar ? "يطابق" : "Matches"}</dt>
+        <dd className="min-w-0 break-words" dir="auto">{p.contact ? <><span>{p.contact}</span><span className="text-muted"> · {items}</span></> : <span className="text-danger">{ar ? "لا مهمة مفتوحة على هذا الاسم: تأكد من كتابته." : "No open item is owed by this name: check the spelling."}</span>}</dd>
+        <dt className="text-xs text-muted">{ending ? (ar ? "الغياب" : "Absence") : (ar ? "غياب حتى" : "Away until")}</dt>
+        <dd className="min-w-0" dir="auto" suppressHydrationWarning>{ending ? (ar ? "ينتهي الآن، وتعود المتابعة كالمعتاد" : "Ends now; chasing resumes as usual") : <>{day(p.until as string)} <span className="text-muted">{ar ? "(آخر يوم غياب)" : "(last day away)"}</span></>}</dd>
+      </dl>
+      <footer className="flex flex-wrap items-center gap-2 border-t border-ink/5 px-3 py-2 text-xs">
+        {done[state] && <span role="status" className={state === "saved" || state === "dismissed" ? "text-ink" : "text-danger"}>{done[state]}</span>}
+        {!closed && (
+          <span className="ms-auto flex gap-1.5">
+            <button disabled={state === "saving"} onClick={() => decide("dismiss")} className="btn btn-secondary btn-xs">{ar ? "تجاهل" : "Dismiss"}</button>
+            <button disabled={state === "saving"} onClick={() => decide("save")} className="btn btn-primary btn-xs"><Icon name="check" className="h-3.5 w-3.5" />{ar ? "احفظ" : "Save"}</button>
           </span>
         )}
       </footer>
@@ -364,6 +447,7 @@ function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[
     const [kind, , n] = a.split(":");
     if (kind === "brand") out.add(lang === "ar" ? "حُدّث ملف العلامة" : "Brand file updated");
     else if (kind === "brandprop") out.add(lang === "ar" ? "تغيير في ملف العلامة ينتظر حفظك" : "A brand change waits for your Save");
+    else if (kind === "awayprop") out.add(lang === "ar" ? "غياب ينتظر حفظك" : "An absence waits for your Save");
     else if (kind === "generated" || kind === "drafted") out.add(lang === "ar" ? `أُضيف ${n ?? ""} إلى صندوق الموافقات`.replace("  ", " ") : `${n ?? ""} added to approvals`.trim());
     else if (kind === "todo") out.add(lang === "ar" ? "حُدّثت قائمة مهامك" : "Your to-do list was updated");
   }
@@ -545,27 +629,27 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-oasis font-display text-sm font-bold text-saffron" aria-hidden>{A[agent].name.charAt(0)}</span>
-          <h1 className="clip font-display text-xl font-bold text-oasis">{A[agent].name} <span className="text-sm font-normal text-ink/60">· {title}</span></h1>
+          <AgentAvatar id={agent} name={A[agent].name} />
+          <h1 className="clip font-display text-xl font-bold text-ink">{A[agent].name} <span className="text-sm font-normal text-muted">· {title}</span></h1>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => newConv()} className="btn btn-secondary btn-xs"><Icon name="plus" className="h-3.5 w-3.5" />{t.chat.newConv}</button>
-          <Link href={`/${lang}/app/billing`} className="tnum rounded-full bg-salt-dim px-3 py-1 text-xs text-ink/80">{credits} {t.nav.credits}</Link>
+          <Link href={`/${lang}/app/billing`} className="tnum rounded-full bg-lilac px-3 py-1 text-xs text-ink/80">{credits} {t.nav.credits}</Link>
         </div>
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5" role="tablist" aria-label={t.agents.pick}>
-        <button role="tab" aria-selected={agent === "noor"} aria-label={A.noor.name} onClick={() => pick("noor")} className={`rounded-full border px-3 py-1.5 text-sm transition ${agent === "noor" ? "border-oasis bg-oasis text-mist" : "border-ink/15 bg-white text-ink/70 hover:border-oasis"}`}><span className="font-semibold">{A.noor.name}</span> <span className="opacity-70">· {A.noor.role}</span></button>
-        {agent !== "noor" && <button role="tab" aria-selected aria-label={A[agent].name} className="rounded-full border border-oasis bg-oasis px-3 py-1.5 text-sm text-mist"><span className="font-semibold">{A[agent].name}</span> <span className="opacity-70">· {A[agent].role}</span></button>}
+        <button role="tab" aria-selected={agent === "noor"} aria-label={A.noor.name} onClick={() => pick("noor")} className={`rounded-full border px-3 py-1.5 text-sm transition ${agent === "noor" ? "border-ink bg-ink text-lilac" : "border-ink/15 bg-white text-ink/70 hover:border-ink"}`}><span className="font-semibold">{A.noor.name}</span> <span className="opacity-70">· {A.noor.role}</span></button>
+        {agent !== "noor" && <button role="tab" aria-selected aria-label={A[agent].name} className="rounded-full border border-ink bg-ink px-3 py-1.5 text-sm text-lilac"><span className="font-semibold">{A[agent].name}</span> <span className="opacity-70">· {A[agent].role}</span></button>}
         <span className="relative">
-          <button onClick={() => setPickOpen(!pickOpen)} aria-expanded={pickOpen} aria-haspopup="listbox" className="rounded-full border border-dashed border-ink/25 px-3 py-1.5 text-sm text-ink/70 hover:border-oasis hover:text-oasis"><Icon name="plus" className="me-1 inline h-3.5 w-3.5" />{t.nav.askSpecialist}</button>
+          <button onClick={() => setPickOpen(!pickOpen)} aria-expanded={pickOpen} aria-haspopup="listbox" className="rounded-full border border-dashed border-ink/25 px-3 py-1.5 text-sm text-ink/70 hover:border-ink hover:text-ink"><Icon name="plus" className="me-1 inline h-3.5 w-3.5" />{t.nav.askSpecialist}</button>
           {pickOpen && (
-            <ul role="listbox" className="absolute start-0 top-full z-20 mt-1 w-72 rounded-xl border border-ink/10 bg-white p-1.5 shadow-lg">
+            <ul role="listbox" className="absolute start-0 top-full z-20 mt-1 w-72 rounded-xl border-[1.5px] border-ink bg-white p-1.5">
               {AGENTS.filter((a) => a.id !== "noor").map((a) => (
                 <li key={a.id} role="option" aria-selected={agent === a.id}>
-                  <button onClick={() => pick(a.id)} className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-start text-sm hover:bg-salt-dim">
-                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-oasis text-xs font-bold text-saffron">{A[a.id].name.charAt(0)}</span>
-                    <span className="min-w-0"><span className="block font-semibold">{A[a.id].name} <span className="font-normal text-ink/60">· {A[a.id].role}</span></span><span className="clip block text-xs text-ink/60">{A[a.id].blurb}</span></span>
+                  <button onClick={() => pick(a.id)} className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-start text-sm hover:bg-lilac">
+                    <AgentAvatar id={a.id} name={A[a.id].name} className="h-7 w-7 text-xs" />
+                    <span className="min-w-0"><span className="block font-semibold">{A[a.id].name} <span className="font-normal text-muted">· {A[a.id].role}</span></span><span className="clip block text-xs text-muted">{A[a.id].blurb}</span></span>
                   </button>
                 </li>
               ))}
@@ -577,9 +661,9 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
       <div ref={list} className="mt-2 min-h-0 flex-1 space-y-4 overflow-y-auto rounded-xl border border-ink/10 bg-white p-4">
         {journey?.next && <JourneyCard journey={journey} lang={lang} compact />}
         {(left > 0 || briefLines.length > 0) && msgs.length <= 1 && (
-          <section className="rounded-xl border border-oasis/20 bg-salt p-3" aria-label={t.chat.todayFromTeam}>
+          <section className="rounded-xl border border-ink/20 bg-ground p-3" aria-label={t.chat.todayFromTeam}>
             <div className="flex items-center justify-between gap-2">
-              <p className="flex items-center gap-2 text-sm font-semibold text-oasis"><Icon name="sun" className="h-4 w-4 text-saffron" />{t.chat.todayFromTeam}</p>
+              <p className="flex items-center gap-2 text-sm font-semibold text-ink"><Icon name="sun" className="h-4 w-4 text-ink" />{t.chat.todayFromTeam}</p>
               {left > 0 && <Link href={`/${lang}/app`} className="btn btn-primary btn-xs"><Icon name="inbox" className="h-3.5 w-3.5" />{t.chat.pending} <span className="tnum" dir="ltr">({left})</span> · {t.chat.reviewAll}</Link>}
             </div>
             {briefLines.length > 0 && <ul className="mt-2 text-sm text-ink/80">{briefLines.map((l, i) => <li key={i} dir="auto">{l}</li>)}</ul>}
@@ -589,24 +673,25 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         {msgs.length === 0 && !onboardUrl && (
           <div>
             <p className="text-ink/70">{agent === "noor" ? t.chat.empty : A[agent].blurb}</p>
-            <div className="mt-4 flex flex-wrap gap-2">{A[agent].suggestions.map((s) => <button key={s} onClick={() => send(s)} className="rounded-full border border-oasis/30 px-3 py-1.5 text-sm text-oasis hover:bg-oasis hover:text-mist">{s}</button>)}</div>
+            <div className="mt-4 flex flex-wrap gap-2">{A[agent].suggestions.map((s) => <button key={s} onClick={() => send(s)} className="rounded-full border border-ink/30 px-3 py-1.5 text-sm text-ink hover:bg-ink hover:text-lilac">{s}</button>)}</div>
           </div>
         )}
         {msgs.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`${m.items?.length || m.files?.length || m.plan?.length || m.handoff || m.proposals?.length ? "w-full max-w-[95%]" : "max-w-[85%]"} rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-oasis text-mist" : "bg-salt-dim text-ink"}`} dir="auto">
-              {m.role === "assistant" && <span className="mb-1 block text-xs font-semibold text-sadu-deep">{A[m.agent ?? agent].name}</span>}
+            <div className={`${m.items?.length || m.files?.length || m.plan?.length || m.handoff || m.proposals?.length || m.awayProposals?.length ? "w-full max-w-[95%]" : "max-w-[85%]"} rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === "user" ? "bg-ink text-lilac" : "bg-lilac text-ink"}`} dir="auto">
+              {m.role === "assistant" && <span className="mb-1 block text-xs font-semibold text-danger">{A[m.agent ?? agent].name}</span>}
               {m.role === "assistant" ? <div className="prose-nashr prose-compact" dangerouslySetInnerHTML={{ __html: render(m.content) }} /> : <p className="whitespace-pre-wrap">{m.content}</p>}
               {m.items && m.items.length > 0 && <div className="mt-1">{m.items.map((it) => <ItemCard key={it.id} item={it} t={t} lang={lang} canApprove={canApprove} />)}</div>}
               {m.files && m.files.length > 0 && <div className="mt-1">{m.files.map((f, n) => <FileCard key={f.name} file={f} lang={lang} defaultOpen={n === 0 && m.files!.length === 1} />)}</div>}
               {m.plan && m.plan.length > 0 && <PlanCard plan={m.plan} lang={lang} onStart={(prompt) => send(prompt)} />}
               {m.handoff && <HandoffCard id={m.handoff.id} t={t} lang={lang} initial={handoffs?.[m.handoff.id]} canRun={canRun} canDecline={canDecline} canApprove={canApprove} onCredits={setCredits} />}
               {m.proposals && m.proposals.length > 0 && <div className="mt-1">{m.proposals.map((p) => <ProposalCard key={p.id} p={p} t={t} lang={lang} canBrand={canBrand} />)}</div>}
-              {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-ink/60" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}
+              {m.awayProposals && m.awayProposals.length > 0 && <div className="mt-1">{m.awayProposals.map((p) => <AwayProposalCard key={p.id} p={p} t={t} lang={lang} />)}</div>}
+              {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-muted" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}
               {m.role === "assistant" && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
-                  <button onClick={() => vote(m, 1)} aria-label={t.chat.helpful} title={t.chat.helpful} className={`rounded p-1 ${voted[m.at] === 1 ? "bg-oasis text-mist" : "text-ink/50 hover:text-oasis"}`}><Icon name="thumbUp" className="h-4 w-4" /></button>
-                  <button onClick={() => vote(m, -1)} aria-label={t.chat.notHelpful} title={t.chat.notHelpful} className={`rounded p-1 ${voted[m.at] === -1 ? "bg-sadu-deep text-white" : "text-ink/50 hover:text-sadu-deep"}`}><Icon name="thumbDown" className="h-4 w-4" /></button>
+                  <button onClick={() => vote(m, 1)} aria-label={t.chat.helpful} title={t.chat.helpful} className={`rounded p-1 ${voted[m.at] === 1 ? "bg-ink text-lilac" : "text-muted hover:text-ink"}`}><Icon name="thumbUp" className="h-4 w-4" /></button>
+                  <button onClick={() => vote(m, -1)} aria-label={t.chat.notHelpful} title={t.chat.notHelpful} className={`rounded p-1 ${voted[m.at] === -1 ? "bg-danger text-white" : "text-muted hover:text-danger"}`}><Icon name="thumbDown" className="h-4 w-4" /></button>
                   {reasonFor === m.at && !voted[m.at] && (
                     <form onSubmit={(e) => { e.preventDefault(); vote(m, -1); }} className="flex flex-1 items-center gap-1">
                       <input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t.chat.whyBad} className="input py-1 text-xs" />
@@ -624,7 +709,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         )}
         {busy && !onboardUrl && (
           <div className="text-sm text-ink/70">
-            {steps.map((s, i) => <p key={i} className={`flex items-center gap-2 ${i < steps.length - 1 ? "opacity-70" : ""}`}><span className={`h-2 w-2 rounded-full ${i < steps.length - 1 ? "bg-oasis" : "animate-pulse bg-saffron"}`} />{A[agent].name}: {s}</p>)}
+            {steps.map((s, i) => <p key={i} className={`flex items-center gap-2 ${i < steps.length - 1 ? "opacity-70" : ""}`}><span className={`h-2 w-2 rounded-full ${i < steps.length - 1 ? "bg-ink" : "animate-pulse bg-lemon"}`} />{A[agent].name}: {s}</p>)}
             {steps.length === 0 && <p>{agent === "noor" ? t.chat.thinking : `${A[agent].name}…`}</p>}
           </div>
         )}
@@ -635,9 +720,9 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
         <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder={t.chat.placeholder} aria-label={t.chat.placeholder} className="input rounded-full" />
         <button disabled={busy || !text.trim()} className="btn btn-accent btn-lg shrink-0" aria-label={t.chat.send}><Icon name="send" className="h-4 w-4" /><span className="hidden sm:inline">{t.chat.send}</span></button>
       </form>
-      {notice && <p role="alert" className="mt-2 text-xs font-semibold text-sadu-deep" dir="auto">{notice}</p>}
-      {line && <p className={`tnum mt-2 text-xs ${line.low ? "font-semibold text-sadu-deep" : "text-ink/70"}`} dir="auto">{line.text}</p>}
-      {step && plan === "trial" && !goal?.goal && <p className="mt-2 flex items-center gap-2 text-xs text-ink/70"><Icon name="spark" className="h-3.5 w-3.5 text-saffron" />{t.limit.firstUp}: {step}</p>}
+      {notice && <p role="alert" className="mt-2 text-xs font-semibold text-danger" dir="auto">{notice}</p>}
+      {line && <p className={`tnum mt-2 text-xs ${line.low ? "font-semibold text-danger" : "text-ink/70"}`} dir="auto">{line.text}</p>}
+      {step && plan === "trial" && !goal?.goal && <p className="mt-2 flex items-center gap-2 text-xs text-ink/70"><Icon name="spark" className="h-3.5 w-3.5 text-ink" />{t.limit.firstUp}: {step}</p>}
     </div>
   );
 }
@@ -652,27 +737,27 @@ function OnboardProgress({ lang, steps, name }: { lang: "ar" | "en"; steps: stri
   const EXPECTED = 5;
   const pct = Math.min(92, Math.round(((steps.length + 0.4) / EXPECTED) * 100));
   return (
-    <section className="rounded-2xl border border-oasis/20 bg-salt p-4" aria-live="polite">
+    <section className="rounded-2xl border border-ink/20 bg-ground p-4" aria-live="polite">
       <div className="flex items-center gap-3">
-        <span className="journey-next grid h-11 w-11 shrink-0 place-items-center rounded-full bg-oasis font-display text-lg font-bold text-saffron" aria-hidden>{name.charAt(0)}</span>
+        <AgentAvatar id="noor" name={name} className="journey-next h-11 w-11 text-lg" />
         <div className="min-w-0 flex-1">
-          <p className="font-display font-bold text-oasis">{ar ? `${name} تبني مساحة عملك` : `${name} is building your workspace`}</p>
-          <p className="text-xs text-ink/60">{ar ? "تقرأ موقعك وتكتب ملف علامتك وخطة البداية. ابقَ هنا." : "Reading your site, writing your brand file and a starter plan. Stay on this page."}</p>
+          <p className="font-display font-bold text-ink">{ar ? `${name} تبني مساحة عملك` : `${name} is building your workspace`}</p>
+          <p className="text-xs text-muted">{ar ? "تقرأ موقعك وتكتب ملف علامتك وخطة البداية. ابقَ هنا." : "Reading your site, writing your brand file and a starter plan. Stay on this page."}</p>
         </div>
       </div>
-      <div className="journey-track mt-3"><div className="journey-fill" style={{ width: `${pct}%` }} /></div>
+      <div className="journey-track mt-3"><div className="journey-fill" style={{ "--p": pct / 100 } as React.CSSProperties} /></div>
       <ol className="mt-3 grid gap-1.5 text-sm">
         {steps.map((st, i) => {
           const current = i === steps.length - 1;
           return (
             <li key={i} className="log-row flex items-center gap-2">
-              <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${current ? "border-2 border-saffron bg-white" : "pop-in bg-oasis text-saffron"}`}>{current ? <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-saffron" /> : <Icon name="check" className="h-3 w-3" />}</span>
-              <span className={current ? "font-semibold text-ink" : "text-ink/60"} dir="auto">{st}</span>
+              <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${current ? "border-2 border-ink bg-lemon" : "pop-in bg-ink text-lemon"}`}>{current ? <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-lemon" /> : <Icon name="check" className="h-3 w-3" />}</span>
+              <span className={current ? "font-semibold text-ink" : "text-muted"} dir="auto">{st}</span>
             </li>
           );
         })}
       </ol>
-      <p className="mt-3 flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs text-ink/70"><Icon name="seed" className="h-4 w-4 text-oasis" />{ar ? "أول إنجاز في مسار الانطلاق يُفتح حين تنتهي: مستواك الأول «بذرة»." : "Your first launch-path milestone unlocks when this finishes: level one, Seed."}</p>
+      <p className="mt-3 flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs text-ink/70"><Icon name="seed" className="h-4 w-4 text-ink" />{ar ? "أول إنجاز في مسار الانطلاق يُفتح حين تنتهي: مستواك الأول «بذرة»." : "Your first launch-path milestone unlocks when this finishes: level one, Seed."}</p>
     </section>
   );
 }

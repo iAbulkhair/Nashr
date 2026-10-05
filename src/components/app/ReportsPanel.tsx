@@ -16,6 +16,7 @@ import { dateFormat } from "@/lib/dates";
 import type { PerfSnapshot } from "@/lib/perf-import";
 import PerformanceImport from "./PerformanceImport";
 import { READS_ADS } from "@/lib/connectors/working";
+import Scribble from "@/components/Scribble";
 
 type Item = { id: string; type: TaskType; title: string; status: string; createdAt: string };
 
@@ -79,7 +80,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
   const rangeHref = (rg: string) => `/${lang}/app/reports?range=${rg}`;
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto w-full max-w-5xl">
       {sources.banner && (
         <div className="mb-5 rounded-xl border border-ink/15 bg-white p-4 text-sm" data-testid="sources-banner">
           <p>{sources.banner === "some" ? <><b>{R.warnSomeTitle}</b> {R.warnSomeBody}</> : <><b>{R.warnTitle}</b> {R.warnBody}</>}</p>
@@ -88,13 +89,13 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
           </div>
         </div>
       )}
-      <h1 className="page-title">{R.title}</h1>
+      <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="reportspanel-t1" />{R.title}</span></h1>
       <p className="mt-2 text-ink/70">{R.sub}</p>
       <div className="mt-4 flex flex-wrap gap-2">
-        {(["1", "2", "7", "30", "60", "90", "ytd", "ly"] as const).map((rg) => <Link key={rg} href={rangeHref(rg)} className={`rounded-full px-3 py-1 text-xs ${range === rg ? "bg-ink text-salt" : "border border-ink/15 text-ink/60 hover:border-oasis"}`}>{R.ranges[rg]}</Link>)}
-        <form action={`/${lang}/app/reports`} className="flex items-center gap-1 text-xs"><input type="hidden" name="range" value="custom" /><input type="date" name="from" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><input type="date" name="to" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><button className={`rounded-full px-3 py-1 ${range === "custom" ? "bg-ink text-salt" : "border border-ink/15 text-ink/60"}`}>{R.ranges.custom}</button></form>
+        {(["1", "2", "7", "30", "60", "90", "ytd", "ly"] as const).map((rg) => <Link key={rg} href={rangeHref(rg)} className={`rounded-full px-3 py-1 text-xs ${range === rg ? "bg-ink text-ground" : "border border-ink/15 text-muted hover:border-ink"}`}>{R.ranges[rg]}</Link>)}
+        <form action={`/${lang}/app/reports`} className="flex items-center gap-1 text-xs"><input type="hidden" name="range" value="custom" /><input type="date" name="from" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><input type="date" name="to" dir="ltr" className="rounded-full border border-ink/15 px-2 py-1" /><button className={`rounded-full px-3 py-1 ${range === "custom" ? "bg-ink text-ground" : "border border-ink/15 text-muted"}`}>{R.ranges.custom}</button></form>
       </div>
-      <p className="mt-2 font-mono text-xs text-ink/50" dir="ltr">{k.window.from} → {k.window.to}</p>
+      <p className="mt-2 font-mono text-xs text-muted" dir="ltr">{k.window.from} → {k.window.to}</p>
       <PerformanceImport lang={lang} initial={perf} ads={connected.filter((p) => READS_ADS.includes(p))} canImport={perfImport} canDelete={perfDelete} />
       {salesProvider && <StoreSales R={R.store} paused={t.generate.paused} provider={salesProvider} store={store?.provider === salesProvider ? store : null} lang={lang} />}
 
@@ -102,21 +103,21 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {picked.map((key) => (
           <div key={key} className="card card-sm relative">
-            <button onClick={() => savePicked(picked.filter((p) => p !== key))} className="absolute end-2 top-2 text-xs text-ink/30 hover:text-sadu" aria-label={R.removeMetric}>✕</button>
-            <p className="text-xs text-ink/60">{value[key].label}</p>
-            <p className="mt-1 font-display text-3xl font-bold text-oasis" dir="ltr">{value[key].value}</p>
-            {value[key].sub && <p className="mt-0.5 text-xs text-ink/50" dir="auto">{value[key].sub}</p>}
+            <button onClick={() => savePicked(picked.filter((p) => p !== key))} className="absolute end-2 top-2 text-xs text-muted hover:text-danger" aria-label={R.removeMetric}>✕</button>
+            <p className="text-xs text-muted">{value[key].label}</p>
+            <p className="mt-1 font-display text-3xl font-bold text-ink" dir="ltr">{value[key].value}</p>
+            {value[key].sub && <p className="mt-0.5 text-xs text-muted" dir="auto">{value[key].sub}</p>}
           </div>
         ))}
-        <button onClick={() => setAdding(!adding)} className="grid min-h-24 place-items-center rounded-xl border-2 border-dashed border-ink/15 text-sm text-ink/50 hover:border-oasis hover:text-oasis"><span><span className="block text-2xl">+</span>{R.addMetric}</span></button>
+        <button onClick={() => setAdding(!adding)} className="grid min-h-24 place-items-center rounded-xl border-2 border-dashed border-ink/15 text-sm text-muted hover:border-ink hover:text-ink"><span><span className="block text-2xl">+</span>{R.addMetric}</span></button>
       </div>
       {adding && (
         <div className="card mt-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink/60">{R.workspaceMetrics}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">{R.workspaceMetrics}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {METRICS.filter((m) => !picked.includes(m)).map((m) => <button key={m} onClick={() => { savePicked([...picked, m]); }} className="btn btn-secondary btn-xs">+ {value[m].label}</button>)}
           </div>
-          <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink/60">{R.platformMetrics}</p>
+          <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted">{R.platformMetrics}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {PLATFORM_METRICS.map((m) => {
               const on = sources.read.includes(m.source);
@@ -146,15 +147,15 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
 
       <div className="mt-6 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
         <div className="card card-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink/60">{R.weeks}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">{R.weeks}</p>
           <div className="mt-4 flex h-40 items-end gap-2" dir="ltr">
             {k.weeks.map((w) => (
               <div key={w.label} className="flex flex-1 flex-col items-center gap-1" title={`${w.label}: ${w.created} / ${w.approved}`}>
                 <div className="flex w-full items-end justify-center gap-0.5" style={{ height: "128px" }}>
-                  <div className="w-1/2 rounded-t bg-oasis/30" style={{ height: `${(w.created / max) * 100}%` }} />
-                  <div className="w-1/2 rounded-t bg-oasis" style={{ height: `${(w.approved / max) * 100}%` }} />
+                  <div className="w-1/2 rounded-t bg-ink/30" style={{ height: `${(w.created / max) * 100}%` }} />
+                  <div className="w-1/2 rounded-t bg-ink" style={{ height: `${(w.approved / max) * 100}%` }} />
                 </div>
-                <span className="font-mono text-xs text-ink/50">{w.label}</span>
+                <span className="font-mono text-xs text-muted">{w.label}</span>
               </div>
             ))}
           </div>
@@ -162,9 +163,9 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
         <div className="grid gap-4">
           {lists.map((l) => (
             <div key={l.label} className="card card-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-ink/60">{l.label}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">{l.label}</p>
               <ul className="mt-2 space-y-1 text-sm">
-                {l.rows.length === 0 && <li className="text-ink/40">—</li>}
+                {l.rows.length === 0 && <li className="text-muted">—</li>}
                 {l.rows.map(([name, n]) => (
                   <li key={name} className="flex items-center justify-between"><span>{l.isType ? typeLabel(name) : name}</span><span className="font-mono text-xs" dir="ltr">{n}</span></li>
                 ))}
@@ -177,21 +178,21 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
       <section className="mt-8">
         {/* The table is computed over the selected range. Its title used to say "last 30 days" whatever was selected,
             so on the default 7-day view it described a period four times longer than the numbers under it. */}
-        <h2 className="font-display text-lg font-semibold text-oasis">{R.qualityTitle} <span className="text-sm font-normal text-ink/50">· {Object.entries(R.ranges).find(([key]) => key === range)?.[1] ?? R.ranges.custom}</span></h2>
-        <p className="mt-1 text-xs text-ink/60">{R.qualitySub}</p>
-        <p className="mt-1 text-xs text-ink/50">{R.denomNote}</p>
+        <h2 className="font-display text-lg font-semibold text-ink">{R.qualityTitle} <span className="text-sm font-normal text-muted">· {Object.entries(R.ranges).find(([key]) => key === range)?.[1] ?? R.ranges.custom}</span></h2>
+        <p className="mt-1 text-xs text-muted">{R.qualitySub}</p>
+        <p className="mt-1 text-xs text-muted">{R.denomNote}</p>
         <div className="mt-3 overflow-x-auto rounded-xl border border-ink/10 bg-white">
           <table className="w-full text-sm">
-            <thead className="bg-salt-dim text-xs text-ink/60"><tr><th className="p-2 text-start">{R.colAgent}</th><th>{R.colItems}</th><th>{R.colApproval}</th><th>{R.colEdit}</th><th>{R.colJudge}</th><th>{R.colLow}</th><th>{R.colThumbs}</th></tr></thead>
+            <thead className="bg-lilac text-xs text-muted"><tr><th className="p-2 text-start">{R.colAgent}</th><th>{R.colItems}</th><th>{R.colApproval}</th><th>{R.colEdit}</th><th>{R.colJudge}</th><th>{R.colLow}</th><th>{R.colThumbs}</th></tr></thead>
             <tbody>
               {quality.map((a) => (
                 <tr key={a.agent} className="border-t border-ink/5 text-center">
-                  <td className="p-2 text-start font-medium">{t.agents[a.agent].name} <span className="text-xs text-ink/50">· {t.agents[a.agent].role}</span></td>
+                  <td className="p-2 text-start font-medium">{t.agents[a.agent].name} <span className="text-xs text-muted">· {t.agents[a.agent].role}</span></td>
                   <td className="font-mono" dir="ltr">{a.n}</td>
                   {/* Each rate carries its own denominator. "Items" is not the denominator of any of them. */}
-                  <td className="font-mono" dir="ltr" data-testid={`q-approval-${a.agent}`}>{a.approvalRate === null ? "—" : a.approvalRate + "%"}<span className="text-ink/40"> · {a.decided}</span></td>
-                  <td className="font-mono" dir="ltr" data-testid={`q-edit-${a.agent}`}>{a.editRate === null ? "—" : a.editRate + "%"}<span className="text-ink/40"> · {a.reviewedApproved}</span></td>
-                  <td className={`font-mono ${a.avgScore !== null && a.avgScore < 70 ? "text-sadu" : a.avgScore !== null && a.avgScore >= 85 ? "text-oasis" : ""}`} dir="ltr" data-testid={`q-judge-${a.agent}`}>{a.avgScore ?? "—"}<span className="text-ink/40"> · {a.judged}</span></td>
+                  <td className="font-mono" dir="ltr" data-testid={`q-approval-${a.agent}`}>{a.approvalRate === null ? "—" : a.approvalRate + "%"}<span className="text-muted"> · {a.decided}</span></td>
+                  <td className="font-mono" dir="ltr" data-testid={`q-edit-${a.agent}`}>{a.editRate === null ? "—" : a.editRate + "%"}<span className="text-muted"> · {a.reviewedApproved}</span></td>
+                  <td className={`font-mono ${a.avgScore !== null && a.avgScore < 70 ? "text-danger" : a.avgScore !== null && a.avgScore >= 85 ? "text-ink" : ""}`} dir="ltr" data-testid={`q-judge-${a.agent}`}>{a.avgScore ?? "—"}<span className="text-muted"> · {a.judged}</span></td>
                   <td className="font-mono" dir="ltr" data-testid={`q-low-${a.agent}`}>{a.low}/{a.judged}</td>
                   <td className="font-mono" dir="ltr">{a.thumbsUp}/{a.thumbsDown}</td>
                 </tr>
@@ -199,38 +200,38 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
             </tbody>
           </table>
         </div>
-        {quality.some((a) => a.autoApproved > 0) && <p className="mt-2 text-xs text-ink/50" data-testid="q-auto-note"><span className="font-mono" dir="ltr">{quality.reduce((s, a) => s + a.autoApproved, 0)}</span> {R.autoNote}</p>}
-        <p className="mt-2 text-xs text-ink/50">{R.judgeNote}</p>
+        {quality.some((a) => a.autoApproved > 0) && <p className="mt-2 text-xs text-muted" data-testid="q-auto-note"><span className="font-mono" dir="ltr">{quality.reduce((s, a) => s + a.autoApproved, 0)}</span> {R.autoNote}</p>}
+        <p className="mt-2 text-xs text-muted">{R.judgeNote}</p>
       </section>
 
-      <section className="mt-8 rounded-xl border border-oasis/20 bg-salt-dim p-5">
-        <h2 className="font-display text-lg font-semibold text-oasis">{R.ask} <span className="text-sm font-normal text-ink/60">· {t.agents.dana.role}</span></h2>
-        <p className="mt-1 text-xs text-ink/60">{store ? R.noteStore : R.note}</p>
+      <section className="mt-8 rounded-xl border border-ink/20 bg-lilac p-5">
+        <h2 className="font-display text-lg font-semibold text-ink">{R.ask} <span className="text-sm font-normal text-muted">· {t.agents.dana.role}</span></h2>
+        <p className="mt-1 text-xs text-muted">{store ? R.noteStore : R.note}</p>
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder={t.generate.notes} className="mt-3 input" />
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
           {agentById("dana").tasks.map((type) => {
             const cost = TASK_COST[type];
             const can = credits >= cost && !busy;
             return (
-              <button key={type} disabled={!can} onClick={() => run(type)} className={`rounded-xl border p-4 text-start transition ${busy === type ? "border-saffron bg-oasis text-mist" : "border-ink/10 bg-white hover:border-oasis"} disabled:opacity-50`}>
-                <div className="flex items-center justify-between"><span className="font-display font-medium">{t.generate.types[type].t}</span><span className="font-mono text-xs text-sadu" dir="ltr">{cost} {t.generate.cost}</span></div>
-                <p className={`mt-1 text-xs ${busy === type ? "text-mist-dim" : "text-ink/70"}`}>{t.generate.types[type].d}</p>
+              <button key={type} disabled={!can} onClick={() => run(type)} className={`rounded-xl border p-4 text-start transition ${busy === type ? "border-lemon bg-ink text-lilac" : "border-ink/10 bg-white hover:border-ink"} disabled:opacity-50`}>
+                <div className="flex items-center justify-between"><span className="font-display font-medium">{t.generate.types[type].t}</span><span className="font-mono text-xs text-danger" dir="ltr">{cost} {t.generate.cost}</span></div>
+                <p className={`mt-1 text-xs ${busy === type ? "text-lilac/75" : "text-ink/70"}`}>{t.generate.types[type].d}</p>
               </button>
             );
           })}
         </div>
-        {msg && <p role="status" className="mt-3 rounded-lg border border-oasis/30 bg-white p-3 text-sm text-oasis">{msg}</p>}
+        {msg && <p role="status" className="mt-3 rounded-lg border border-ink/30 bg-white p-3 text-sm text-ink">{msg}</p>}
       </section>
 
       <section className="mt-8">
-        <h2 className="font-display text-lg font-semibold text-oasis">{R.items}</h2>
-        {items.length === 0 ? <p className="mt-2 text-sm text-ink/60">{R.empty}</p> : (
+        <h2 className="font-display text-lg font-semibold text-ink">{R.items}</h2>
+        {items.length === 0 ? <p className="mt-2 text-sm text-muted">{R.empty}</p> : (
           <ul className="mt-3 divide-y divide-ink/10 rounded-xl border border-ink/10 bg-white">
             {items.map((x) => (
               <li key={x.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
                 <div className="min-w-0">
                   <p className="truncate font-medium" dir="auto">{x.title}</p>
-                  <p className="text-xs text-ink/50"><span>{typeLabel(x.type)}</span> · <span className="font-mono" dir="ltr">{x.createdAt.slice(0, 10)}</span> · {x.status}</p>
+                  <p className="text-xs text-muted"><span>{typeLabel(x.type)}</span> · <span className="font-mono" dir="ltr">{x.createdAt.slice(0, 10)}</span> · {x.status}</p>
                 </div>
                 <div className="flex gap-2">
                   {x.type === "board_deck" && <a href={`/api/tasks/${x.id}/pptx`} className="btn btn-accent btn-xs">{t.inbox.pptx}</a>}
@@ -275,34 +276,34 @@ function StoreSales({ R, paused, provider, store, lang }: { R: AppDict["reports"
         <h2 className="font-display text-xl font-bold">{fill(R.title, { store: name })}</h2>
         <button onClick={sync} disabled={busy} className="btn btn-secondary btn-xs">{busy ? R.syncing : fill(R.sync, { store: name })}</button>
       </div>
-      {!store ? <p className="mt-3 text-sm text-ink/60">{R.never}</p> : (
+      {!store ? <p className="mt-3 text-sm text-muted">{R.never}</p> : (
         <>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[[R.orders, store.orders.capped ? `${store.orders.count} ${R.capped}` : String(store.orders.count)], [R.revenue, moneyText(store.orders.revenue)], [R.carts, store.carts.unavailable ? "—" : store.carts.capped ? `${store.carts.count} ${R.capped}` : String(store.carts.count)], [R.cartValue, store.carts.unavailable ? "—" : moneyText(store.carts.value)]].map(([label, v]) => (
-              <div key={label} className="card card-sm"><p className="text-xs text-ink/60">{label}</p><p className="mt-1 font-display text-2xl font-bold text-oasis" dir="ltr">{v}</p></div>
+              <div key={label} className="card card-sm"><p className="text-xs text-muted">{label}</p><p className="mt-1 font-display text-2xl font-bold text-ink" dir="ltr">{v}</p></div>
             ))}
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             {[[R.top, store.orders.top], [R.topCarts, store.carts.top]].map(([label, rows]) => (rows as { name: string; qty: number }[]).length > 0 && (
-              <div key={label as string}><p className="text-xs font-semibold text-ink/60">{label as string}</p><ul className="mt-1 text-sm">{(rows as { name: string; qty: number }[]).slice(0, 5).map((t) => <li key={t.name} className="flex justify-between gap-2"><span dir="auto">{t.name}</span><span className="font-mono" dir="ltr">{t.qty}</span></li>)}</ul></div>
+              <div key={label as string}><p className="text-xs font-semibold text-muted">{label as string}</p><ul className="mt-1 text-sm">{(rows as { name: string; qty: number }[]).slice(0, 5).map((t) => <li key={t.name} className="flex justify-between gap-2"><span dir="auto">{t.name}</span><span className="font-mono" dir="ltr">{t.qty}</span></li>)}</ul></div>
             ))}
           </div>
-          <p className="mt-3 text-xs text-ink/50">
+          <p className="mt-3 text-xs text-muted">
             {R.asOf}: <span dir="ltr" suppressHydrationWarning>{dateFormat(lang, { dateStyle: "medium", timeStyle: "short" }).format(new Date(store.at))} UTC</span>
             {store.orders.read < store.orders.count && <> · {fill(R.partial, { read: store.orders.read, count: store.orders.count })}</>}
             {store.unread > 0 && <> · {fill(R.unread, { n: store.unread })}</>}
             {store.carts.unavailable && <> · {R.cartsUnavailable}</>}
           </p>
-          <p className="mt-1 text-xs text-ink/40">{R.note}</p>
+          <p className="mt-1 text-xs text-muted">{R.note}</p>
           {store.carts.top.length > 0 && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button onClick={draft} disabled={drafting || busy} className="btn btn-primary btn-xs">{drafting ? R.drafting : R.draft} <span className="font-mono" dir="ltr">· {TASK_COST.cart_recovery}</span></button>
-              {note && <Link href={`/${lang}/app`} className="text-xs text-oasis underline">{note}</Link>}
+              {note && <Link href={`/${lang}/app`} className="text-xs text-ink underline">{note}</Link>}
             </div>
           )}
         </>
       )}
-      {err && <p className="mt-2 text-xs text-sadu" dir="auto">{err}</p>}
+      {err && <p className="mt-2 text-xs text-danger" dir="auto">{err}</p>}
     </div>
   );
 }

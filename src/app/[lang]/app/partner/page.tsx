@@ -9,6 +9,7 @@ import PartnerPanel from "@/components/app/PartnerPanel";
 import { PARTNER_COPY } from "@/lib/partner-copy";
 import { countryOptions } from "@/lib/partner-rules";
 import ReadOnlyNote from "@/components/app/ReadOnlyNote";
+import Scribble from "@/components/Scribble";
 
 export const dynamic = "force-dynamic";
 
@@ -26,8 +27,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const S = PARTNER_COPY[lang];
   if (!can(u, "partner")) {
     return (
-      <div className="mx-auto max-w-2xl">
-        <h1 className="page-title">{S.title}</h1>
+      <div className="mx-auto w-full max-w-2xl">
+        <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="partner-t1" />{S.title}</span></h1>
         <ReadOnlyNote className="mt-4" text={S.ownerOnly} />
       </div>
     );
@@ -35,9 +36,9 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const d = await partnerDashboard(u.email);
   if (!d) {
     return (
-      <div className="mx-auto max-w-2xl">
-        <h1 className="page-title">{S.title}</h1>
-        <p className="mt-3 text-ink/70">{S.notPartner} <Link href={`/${lang}/affiliates/terms`} data-terms-link className="text-oasis underline">{S.terms}</Link></p>
+      <div className="mx-auto w-full max-w-2xl">
+        <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="partner-t2" />{S.title}</span></h1>
+        <p className="mt-3 text-ink/70">{S.notPartner} <Link href={`/${lang}/affiliates/terms`} data-terms-link className="text-ink underline">{S.terms}</Link></p>
         <Link href={`/${lang}/affiliates`} className="btn btn-primary mt-4 inline-block">{S.apply}</Link>
       </div>
     );

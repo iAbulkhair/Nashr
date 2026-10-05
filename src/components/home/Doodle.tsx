@@ -393,8 +393,36 @@ const FIGURES: Record<CastId, Figure> = {
 /** Reflection across the vertical line x = axis. */
 const mirror = (axis: number) => `matrix(-1 0 0 1 ${2 * axis} 0)`;
 
-export default function Doodle({ who, pose = "stand" }: { who: CastId; pose?: "stand" | "turn" }) {
-  const f = FIGURES[who];
+/** D's crops of the same drawing: the face alone, the face with a little shoulder (peeking), and head and shoulders. */
+export const CROP = { face: "56 14 88 88", peek: "56 14 88 100", bust: "28 6 144 176" } as const;
+
+/** D's strip, panel one: the arms bent up to the head, in the figures' own line (any figure, drawn for the owner). */
+const HANDS = {
+  armL: (
+    <>
+      <path className={styles.fill} d="M68 104 Q55 125 45 149 A6 6 0 0 0 56 154 Q66 131 82 109" />
+      <path className={styles.fill} d="M46 150 Q56 110 76 74 A4.5 4.5 0 0 1 84 78 Q66 116 56 154" />
+    </>
+  ),
+  armR: (
+    <>
+      <path className={styles.fill} d="M132 104 Q145 125 155 149 A6 6 0 0 1 144 154 Q134 131 118 109" />
+      <path className={styles.fill} d="M154 150 Q144 110 124 74 A4.5 4.5 0 0 0 116 78 Q134 116 144 154" />
+    </>
+  ),
+  /** On top of everything: the two hands on the head and three worry lines. */
+  over: (
+    <>
+      <ellipse className={styles.paper} cx="85" cy="69" rx="6" ry="10" transform="rotate(18 85 69)" />
+      <ellipse className={styles.paper} cx="115" cy="69" rx="6" ry="10" transform="rotate(-18 115 69)" />
+      <path className={styles.fine} d="M80 27 L73 18 M100 22 L100 11 M120 27 L127 18" />
+    </>
+  ),
+};
+
+export default function Doodle({ who, pose = "stand", crop }: { who: CastId; pose?: "stand" | "turn" | "hands"; crop?: keyof typeof CROP }) {
+  const hands = pose === "hands";
+  const f = hands ? { ...FIGURES[who], armL: HANDS.armL, armR: HANDS.armR } : FIGURES[who];
   const turn = pose === "turn";
   const parts: Record<Part, ReactNode> = {
     body: (
@@ -442,8 +470,9 @@ export default function Doodle({ who, pose = "stand" }: { who: CastId; pose?: "s
   };
   const order: readonly Part[] = f.order.includes("prop") ? f.order : [...f.order, "prop"];
   return (
-    <svg viewBox="0 0 200 480" className={styles.doodle} data-cast={who} data-pose={pose} aria-hidden="true">
+    <svg viewBox={crop ? CROP[crop] : "0 0 200 480"} className={crop ? `${styles.doodle} ${styles.crop}` : styles.doodle} data-cast={who} data-pose={pose} aria-hidden="true">
       {order.map((p) => parts[p])}
+      {hands && HANDS.over}
     </svg>
   );
 }

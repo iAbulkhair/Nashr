@@ -8,7 +8,8 @@ import { readFile, writeFile } from "@/lib/files";
 import { push, type ChatMsg } from "@/lib/chat";
 import { db } from "@/lib/db";
 import { modelState } from "@/lib/model";
-import { clearOnboard, confirmedOnboard, heldOnboard, onboardUrl } from "@/lib/onboard-confirm";
+import { clearOnboard, confirmedAnswers, confirmedOnboard, heldOnboard, onboardUrl } from "@/lib/onboard-confirm";
+import { answersHint, answersToBrand } from "@/lib/dictionary";
 import { forbid } from "@/lib/roles";
 import { agentSpendFor, capOf, chargeOnboard, refundOnboard, settleOnboard, type OnboardCharge } from "@/lib/credits";
 import { getGov } from "@/lib/governance";
@@ -73,7 +74,8 @@ async function refuse(u: User, scope: string, cost: number, r: PayRefusal): Prom
  * conversation). POST {url, hints?} → text/event-stream in the chat protocol:
  * {type:"status",text} · {type:"message",message} (several) · {type:"done",credits} · {type:"error",error,refunded?,credits?,saved?}.
  * Every message is also persisted, so a reload shows the same thread. Builds only from the URL the owner confirmed
- * (src/lib/onboard-confirm.ts).
+ * (src/lib/onboard-confirm.ts). When that confirmation carried the first-login game's answers, they replace `hints` for
+ * the model and their name, industry and tone are written over the built brand (rule 523).
  *
  * The first brand (the default scope) is free. A second or later brand costs ONBOARD_EXTRA_BRAND_COST credits
  * (src/lib/pricing.ts `onboardCost`), charged to Noor in that brand's scope under her monthly cap there, after every
@@ -125,7 +127,8 @@ export async function POST(req: Request) {
   const release = () => db.unlockOwned(lockKey, token).catch(() => {});
   // Read again under the lock: a run that finished between the reads above and the lock saved the brand and used up
   // the confirmation, and building again would overwrite that brand.
-  const [built, stillConfirmed] = await Promise.all([getBrand(scope), confirmedOnboard(scope)]);
+  // The game's answers come from the confirmation's store under this scope, never from this request (rule 523).
+  const [built, stillConfirmed, answers] = await Promise.all([getBrand(scope), confirmedOnboard(scope), confirmedAnswers(scope)]);
   if (built) { await release(); return new Response("already_onboarded", { status: 409 }); }
   if (stillConfirmed !== url) { await release(); return new Response("unconfirmed", { status: 403 }); }
   // Whether this run holds a charge: one it took now, or one a run that did not finish took (reused, never charged twice).
@@ -159,8 +162,10 @@ export async function POST(req: Request) {
         const stages = [t.research, t.files, t.plan];
         let landed = 0;
         send({ type: "status", text: stages[0] });
-        const r = await buildFromSite(site, u.lang, b.hints, u.email, () => { landed++; if (landed < stages.length) send({ type: "status", text: stages[landed] }); }, deadline);
+        const r = await buildFromSite(site, u.lang, answers ? answersHint(answers) : b.hints, u.email, () => { landed++; if (landed < stages.length) send({ type: "status", text: stages[landed] }); }, deadline);
         await track(u.email, "onboard");
+        // What the owner chose in the game wins over what the model read off the site, in code, not in the prompt.
+        if (answers) r.brand = { ...r.brand, ...answersToBrand(answers) };
         await saveBrand(scope, r.brand);
         brandSaved = true;
         const [saved, prefs] = await Promise.all([

@@ -15,7 +15,7 @@ export function swapLang(path: string, to: Lang): string {
   return `/${to}${m[2] ?? ""}`;
 }
 
-export default function LangToggle({ lang, tone = "dark", size = "md" }: { lang: Lang; tone?: "dark" | "light"; size?: "sm" | "md" }) {
+export default function LangToggle({ lang, size = "md" }: { lang: Lang; size?: "sm" | "md" }) {
   const path = usePathname() || `/${lang}`;
   const router = useRouter();
 
@@ -26,9 +26,8 @@ export default function LangToggle({ lang, tone = "dark", size = "md" }: { lang:
     router.push(swapLang(path, to) + window.location.search + window.location.hash);
   }
 
-  const wrap = tone === "dark" ? "border-mist/20 bg-oasis/40" : "border-ink/15 bg-salt-dim";
-  const on = tone === "dark" ? "bg-saffron text-ink" : "bg-oasis text-mist";
-  const off = tone === "dark" ? "text-mist-dim hover:text-mist" : "text-ink/60 hover:text-ink";
+  const on = "bg-ink text-paper";
+  const off = "text-muted hover:text-ink";
   const pad = size === "sm" ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs";
 
   const seg = (to: Lang, label: string, title: string) => (
@@ -46,7 +45,7 @@ export default function LangToggle({ lang, tone = "dark", size = "md" }: { lang:
   );
 
   return (
-    <span role="group" aria-label={lang === "ar" ? "اللغة" : "Language"} dir="ltr" className={`inline-flex items-center gap-0.5 rounded-full border p-0.5 ${wrap}`}>
+    <span role="group" aria-label={lang === "ar" ? "اللغة" : "Language"} dir="ltr" className="inline-flex items-center gap-0.5 rounded-full border-[1.5px] border-ink bg-paper p-0.5">
       {seg("ar", "عربي", "العربية")}
       {seg("en", "EN", "English")}
     </span>

@@ -1,26 +1,36 @@
 @import "tailwindcss";
 @import "./tokens.css";
+@import "./scribble.css" layer(components);
 
 /*
- * Nashr design system
- * Layer 1 primitives and layer 2 semantics live in tokens.css (generated from
- * assets/design-tokens.json). Tailwind utilities map onto the primitives here;
- * layer 3 component classes below use the semantic tokens only.
+ * Thakeen design system: prototype D (rule 510)
+ * Layer 1 primitives and layer 2 semantics live in tokens.css (kept by hand
+ * from assets/design-tokens.json). Tailwind utilities map onto the primitives
+ * here; layer 3 component classes below use the semantic tokens only.
  */
 @theme inline {
-  --color-oasis: var(--primitive-color-oasis-500);
-  --color-oasis-deep: var(--primitive-color-oasis-700);
-  --color-salt: var(--primitive-color-salt-100);
-  --color-salt-dim: var(--primitive-color-salt-200);
-  --color-saffron: var(--primitive-color-saffron-500);
-  --color-sadu: var(--primitive-color-sadu-500);
-  --color-sadu-deep: var(--primitive-color-sadu-600);
-  --color-ink: var(--primitive-color-ink-500);
-  --color-mist: var(--primitive-color-mist-100);
-  --color-mist-dim: var(--primitive-color-mist-300);
-  --color-white: var(--primitive-color-salt-50);
+  --color-ink: var(--primitive-color-ink);
+  --color-muted: var(--primitive-color-muted);
+  --color-paper: var(--primitive-color-paper);
+  --color-ground: var(--primitive-color-ground);
+  --color-lilac: var(--primitive-color-lilac);
+  --color-lemon: var(--primitive-color-lemon);
+  --color-gold: var(--primitive-color-gold);
+  --color-danger: var(--primitive-color-danger);
+  --color-agent-noor: var(--primitive-color-agent-noor);
+  --color-agent-sami: var(--primitive-color-agent-sami);
+  --color-agent-razan: var(--primitive-color-agent-razan);
+  --color-agent-faris: var(--primitive-color-agent-faris);
+  --color-agent-dana: var(--primitive-color-agent-dana);
+  --color-agent-majed: var(--primitive-color-agent-majed);
+  --color-agent-layan: var(--primitive-color-agent-layan);
+  --color-agent-reem: var(--primitive-color-agent-reem);
+  --color-agent-you: var(--primitive-color-agent-you);
 
-  --font-display: var(--font-readex);
+  /* Tailwind's white is D's paper, so `bg-white` and `text-white` stay on the palette. */
+  --color-white: var(--primitive-color-paper);
+
+  --font-display: var(--font-thmanyah);
   --font-body: var(--font-plex-arabic);
   --font-mono: var(--font-plex-mono);
 }
@@ -30,7 +40,7 @@ html {
 }
 
 /* Browser surfaces carry the palette too */
-::selection { background: color-mix(in oklab, var(--color-accent) 45%, transparent); color: var(--color-foreground); }
+::selection { background: var(--color-accent); color: var(--color-accent-foreground); }
 * { caret-color: var(--color-primary); scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--color-foreground) 22%, transparent) transparent; }
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-thumb { background: color-mix(in oklab, var(--color-foreground) 22%, transparent); border-radius: 999px; }
@@ -47,7 +57,14 @@ body {
   font-family: var(--font-display), var(--font-body), sans-serif;
 }
 
+/* The wordmark «ذكين» (components/Wordmark.tsx): the heading face's own Stylistic Alternates give the long, sent-out kaf,
+   on the kaf alone so the noon stays round; no kashida. */
+.wordmark-kaf {
+  font-feature-settings: "salt" 1;
+}
+
 /* ---------- Layer 3: components (states: default / hover / active / focus / disabled) ---------- */
+/* Prototype D, quiet version (re-skin spec §3, decision A): ink lines, flat fills, no drop shadows. */
 @layer components {
   /* Buttons */
   .btn {
@@ -55,22 +72,22 @@ body {
     padding: var(--button-padding-y) var(--button-padding-x);
     border-radius: var(--button-radius);
     font-size: var(--button-font-size); font-weight: 600; line-height: 1.25;
-    border: 1px solid transparent; cursor: pointer; text-decoration: none;
-    transition: background-color var(--primitive-duration-fast), border-color var(--primitive-duration-fast), color var(--primitive-duration-fast), opacity var(--primitive-duration-fast);
+    border: var(--stroke-figure) solid transparent; cursor: pointer; text-decoration: none;
+    transition: background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out);
   }
   .btn:disabled, .btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
-  .btn-primary { background: var(--button-bg); color: var(--button-fg); }
-  .btn-primary:hover:not(:disabled) { background: var(--button-hover-bg); }
-  .btn-primary:active:not(:disabled) { background: var(--button-active-bg); }
-  .btn-accent { background: var(--color-accent); color: var(--color-accent-foreground); }
-  .btn-accent:hover:not(:disabled) { background: var(--color-accent-hover); }
+  .btn-primary { background: var(--button-bg); color: var(--button-fg); border-color: var(--button-bg); }
+  .btn-primary:hover:not(:disabled) { background: var(--button-hover-bg); border-color: var(--button-hover-bg); }
+  .btn-primary:active:not(:disabled) { background: var(--button-active-bg); border-color: var(--button-active-bg); }
+  .btn-accent { background: var(--color-accent); color: var(--color-accent-foreground); border-color: var(--color-ink); }
+  .btn-accent:hover:not(:disabled) { background: var(--color-paper); }
   .btn-accent:active:not(:disabled) { background: var(--color-accent-active); }
-  .btn-secondary { background: transparent; color: var(--color-foreground); border-color: color-mix(in oklab, var(--color-foreground) 20%, transparent); }
-  .btn-secondary:hover:not(:disabled) { border-color: var(--color-primary); color: var(--color-primary); }
+  .btn-secondary { background: transparent; color: var(--color-foreground); border-color: color-mix(in oklab, var(--color-ink) 25%, transparent); }
+  .btn-secondary:hover:not(:disabled) { border-color: var(--color-ink); }
   .btn-secondary:active:not(:disabled) { background: var(--color-background-muted); }
   .btn-danger { background: transparent; color: var(--color-danger); border-color: color-mix(in oklab, var(--color-danger) 40%, transparent); }
-  .btn-danger:hover:not(:disabled) { background: var(--color-danger); color: var(--color-danger-foreground); }
-  .btn-danger-solid { background: var(--color-danger); color: var(--color-danger-foreground); }
+  .btn-danger:hover:not(:disabled) { background: var(--color-danger); border-color: var(--color-danger); color: var(--color-danger-foreground); }
+  .btn-danger-solid { background: var(--color-danger); color: var(--color-danger-foreground); border-color: var(--color-danger); }
   .btn-danger-solid:hover:not(:disabled) { background: var(--color-danger-hover); }
   .btn-ghost-inverse { background: transparent; color: var(--color-inverse-foreground); border-color: color-mix(in oklab, var(--color-inverse-foreground) 25%, transparent); }
   .btn-ghost-inverse:hover:not(:disabled) { border-color: color-mix(in oklab, var(--color-inverse-foreground) 60%, transparent); }
@@ -80,30 +97,31 @@ body {
   .btn-lg { border-radius: var(--primitive-radius-full); padding: 0.75rem 1.5rem; font-size: var(--primitive-fontSize-base); }
 
   /* Cards */
-  .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--card-radius); padding: var(--card-padding); box-shadow: var(--card-shadow); }
+  .card { background: var(--card-bg); border: var(--stroke-figure) solid var(--card-border); border-radius: var(--card-radius); padding: var(--card-padding); box-shadow: var(--card-shadow); }
   .card-sm { padding: var(--primitive-spacing-4); }
-  .card-inverse { background: var(--color-inverse-surface); color: var(--color-inverse-foreground); border-color: color-mix(in oklab, var(--color-inverse-foreground) 10%, transparent); }
+  .card-inverse { background: var(--color-inverse-surface); color: var(--color-inverse-foreground); border-color: color-mix(in oklab, var(--color-inverse-foreground) 15%, transparent); }
   .card-title { font-family: var(--font-display), var(--font-body), sans-serif; font-size: var(--primitive-fontSize-lg); font-weight: 700; }
 
   /* Inputs */
-  .input { width: 100%; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: var(--input-radius); padding: var(--input-padding-y) var(--input-padding-x); font-size: var(--primitive-fontSize-sm); color: var(--color-foreground); transition: border-color var(--primitive-duration-fast); }
-  .input:hover { border-color: color-mix(in oklab, var(--color-foreground) 30%, transparent); }
-  .input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px color-mix(in oklab, var(--input-focus-ring) 45%, transparent); }
+  .input { width: 100%; background: var(--input-bg); border: var(--stroke-figure) solid var(--input-border); border-radius: var(--input-radius); padding: var(--input-padding-y) var(--input-padding-x); font-size: var(--primitive-fontSize-sm); color: var(--color-foreground); transition: border-color var(--duration-fast) var(--ease-out); }
+  .input::placeholder { color: var(--color-muted); opacity: 1; }
+  .input:hover { border-color: color-mix(in oklab, var(--color-ink) 80%, transparent); }
+  .input:focus { outline: var(--stroke-focus) solid var(--input-focus-ring); outline-offset: 1px; border-color: var(--color-ink); }
   .input:disabled { opacity: 0.6; cursor: not-allowed; }
   .input[aria-invalid="true"] { border-color: var(--color-danger); }
 
-  /* Badges */
-  .badge { display: inline-flex; align-items: center; border-radius: var(--primitive-radius-full); padding: 0.125rem 0.5rem; font-size: var(--primitive-fontSize-xs); font-weight: 500; }
-  .badge-primary { background: color-mix(in oklab, var(--color-primary) 10%, transparent); color: var(--color-primary); }
-  .badge-accent { background: color-mix(in oklab, var(--color-accent) 20%, transparent); color: var(--color-foreground); }
-  .badge-danger { background: color-mix(in oklab, var(--color-danger) 10%, transparent); color: var(--color-danger); }
+  /* Badges: a flat D fill with ink text */
+  .badge { display: inline-flex; align-items: center; border-radius: var(--primitive-radius-full); padding: 0.125rem 0.5rem; font-size: var(--primitive-fontSize-xs); font-weight: 500; color: var(--color-ink); }
+  .badge-primary { background: var(--color-lilac); }
+  .badge-accent { background: var(--color-lemon); }
+  .badge-danger { background: var(--color-agent-sami); }
 
   /* Typography */
   .page-title { font-family: var(--font-display), var(--font-body), sans-serif; font-size: var(--primitive-fontSize-3xl); font-weight: 700; line-height: 1.2; color: var(--color-primary); }
-  .page-sub { margin-top: 0.5rem; color: color-mix(in oklab, var(--color-foreground) 70%, transparent); }
+  .page-sub { margin-top: 0.5rem; color: var(--color-muted); }
   .section-title { font-family: var(--font-display), var(--font-body), sans-serif; font-size: var(--primitive-fontSize-3xl); font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; }
   @media (min-width: 640px) { .section-title { font-size: var(--primitive-fontSize-4xl); } }
-  .eyebrow { margin-bottom: 0.75rem; font-size: var(--primitive-fontSize-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.2em; color: var(--color-danger); }
+  .eyebrow { margin-bottom: 0.75rem; font-size: var(--primitive-fontSize-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.2em; color: var(--color-muted); }
   .eyebrow-accent { color: var(--color-accent); }
 
   /* Text clipping (single line with ellipsis) */
@@ -116,37 +134,27 @@ body {
   @media (min-width: 640px) { .page-wrap { padding-inline: 1.5rem; } }
 }
 
-/* Sadu weave band: the signature divider. Says: this is Gulf-made. */
-.sadu {
-  height: 14px;
-  background-image: repeating-linear-gradient(90deg, var(--color-danger) 0 12px, var(--color-foreground) 12px 16px, var(--color-background) 16px 22px, var(--color-foreground) 22px 26px, var(--color-accent) 26px 38px, var(--color-foreground) 38px 42px, var(--color-background) 42px 48px, var(--color-foreground) 48px 52px);
-}
-.sadu-thin {
-  height: 4px;
-  background-image: repeating-linear-gradient(90deg, var(--color-danger) 0 8px, var(--color-accent) 8px 16px, var(--color-foreground) 16px 20px);
-}
-
 /* Overnight log rows rise one by one on load */
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .log-row { animation: rise 0.5s ease-out both; }
 @media (prefers-reduced-motion: reduce) { .log-row { animation: none; } html { scroll-behavior: auto; } }
 
-:focus-visible { outline: 3px solid var(--color-ring); outline-offset: 2px; }
+:focus-visible { outline: var(--stroke-focus) solid var(--color-ring); outline-offset: 2px; }
 
 details > summary { list-style: none; cursor: pointer; }
 details > summary::-webkit-details-marker { display: none; }
 
 /* Blog article typography */
-.prose-nashr h2 { font-family: var(--font-display), var(--font-body), sans-serif; font-size: 1.5rem; font-weight: 700; margin-top: 2.5rem; color: var(--color-primary); }
-.prose-nashr h3 { font-family: var(--font-display), var(--font-body), sans-serif; font-size: 1.2rem; font-weight: 600; margin-top: 1.75rem; }
-.prose-nashr p, .prose-nashr li { line-height: 1.8; margin-top: 0.75rem; color: color-mix(in oklab, var(--color-foreground) 85%, transparent); }
+.prose-nashr h2 { font-family: var(--font-display), var(--font-body), sans-serif; font-size: 1.5rem; font-weight: 700; margin-top: 2.5rem; color: var(--color-ink); }
+.prose-nashr h3 { font-family: var(--font-display), var(--font-body), sans-serif; font-size: 1.2rem; font-weight: 700; margin-top: 1.75rem; }
+.prose-nashr p, .prose-nashr li { line-height: 1.8; margin-top: 0.75rem; color: var(--color-ink); }
 .prose-nashr ul { list-style: disc; padding-inline-start: 1.5rem; }
 .prose-nashr ol { list-style: decimal; padding-inline-start: 1.5rem; }
-.prose-nashr a { color: var(--color-primary); text-decoration: underline; }
+.prose-nashr a { color: var(--color-ink); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .prose-nashr table { width: 100%; margin-top: 1rem; border-collapse: collapse; font-size: 0.9rem; }
-.prose-nashr th { background: var(--color-primary); color: var(--color-primary-foreground); text-align: start; padding: 0.5rem 0.75rem; }
-.prose-nashr td { border-top: 1px solid color-mix(in oklab, var(--color-foreground) 10%, transparent); padding: 0.5rem 0.75rem; }
-.prose-nashr strong { font-weight: 600; }
+.prose-nashr th { font-family: var(--font-display), var(--font-body), sans-serif; text-align: start; padding: 0.5rem 0.75rem; border-bottom: 1.5px solid var(--color-ink); }
+.prose-nashr td { border-top: 1px solid color-mix(in oklab, var(--color-ink) 15%, transparent); padding: 0.5rem 0.75rem; }
+.prose-nashr strong { font-weight: 700; }
 
 /* Compact prose for inbox items and chat bubbles */
 .prose-compact h2, .prose-compact h3, .prose-compact h4 { font-size: 1rem; margin-top: 0.9rem; color: var(--color-primary); }
@@ -162,17 +170,19 @@ details > summary::-webkit-details-marker { display: none; }
 /* ---------- Launch journey (JourneyCard): progress, milestones, celebration ---------- */
 .journey-track { height: 10px; border-radius: 999px; background: color-mix(in oklab, var(--color-foreground) 8%, transparent); overflow: hidden; }
 .journey-fill {
-  height: 100%; border-radius: 999px;
+  height: 100%; width: 100%;
   background-image: linear-gradient(90deg, var(--color-primary), color-mix(in oklab, var(--color-primary) 60%, var(--color-accent)) 70%, var(--color-accent));
-  transition: width 900ms cubic-bezier(.2,.8,.2,1);
+  transform: scaleX(var(--p)); transform-origin: left;
+  transition: transform var(--duration-slow) var(--ease-out);
   position: relative;
 }
+[dir="rtl"] .journey-fill { transform-origin: right; }
 .journey-fill::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 20%, rgba(255,255,255,.45) 50%, transparent 80%); background-size: 200% 100%; animation: shine 2.4s ease-in-out infinite; }
 @keyframes shine { from { background-position: 150% 0; } to { background-position: -50% 0; } }
 .journey-next { box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-accent) 70%, transparent); animation: ring 1.8s ease-out infinite; }
 @keyframes ring { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-accent) 60%, transparent); } 100% { box-shadow: 0 0 0 10px transparent; } }
-@keyframes pop { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); } }
-.pop-in { animation: pop 420ms cubic-bezier(.2,.9,.3,1.3) both; }
+@keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.pop-in { animation: pop var(--duration-slow) var(--ease-out) both; }
 @keyframes toast-in { from { transform: translate(-50%, 16px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
 .journey-toast { position: fixed; inset-inline-start: 50%; bottom: 1.5rem; transform: translateX(-50%); z-index: 60; animation: toast-in 380ms ease-out both; }
 [dir="rtl"] .journey-toast { transform: translateX(50%); animation-name: toast-in-rtl; }

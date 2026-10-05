@@ -17,6 +17,10 @@ for (const lang of LANGS) {
         void failures;
         const res = await open(page, path);
         expect(res.status(), `${path} must answer 200`).toBe(200);
+        if (route.ownerGoesTo) {
+          expect(new URL(page.url()).pathname, `${path} sends an owner with a brand on`).toBe(`/${lang}${route.ownerGoesTo}`);
+          return;
+        }
         expect(new URL(page.url()).pathname, `${path} must not redirect a signed-in owner`).toBe(path);
 
         const html = page.locator("html");
