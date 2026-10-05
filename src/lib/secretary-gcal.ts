@@ -1,6 +1,7 @@
 /**
  * Reem B3: the provider side of the calendar link (spec 2026-10-05-secretary-reem-b3-calendar-read-design.md §3, §4, §5).
- * This part: the proof read at connection time, the best-effort revoke and the connect step the OAuth callback calls.
+ * This part: the proof read at connection time and the connect step the OAuth callback calls. Nashr never calls a
+ * provider's revoke endpoint (ruling R7): Google grants are shared per user and client with the publishing connection.
  * Later tasks add the calendar list, the token refresh and the event fetch to this file.
  *
  * Importers: `src/app/api/connect/[provider]/callback/route.ts` (and the calendar routes and the sync, later). The hosts
@@ -10,16 +11,16 @@
 import { listBrands, scopeFor } from "./brands";
 import type { CalProvider } from "./connectors/registry";
 import { audit, withLock } from "./secretary";
-import { dropLink, getLink, openTokens, putLink, sealTokens, type CalLink } from "./secretary-cal-link";
+import { dropLink, getLink, putLink, sealTokens, type CalLink } from "./secretary-cal-link";
 import { decodeIdToken, googleAccount, microsoftDomain, MS_CONSUMER_TENANT } from "./secretary-cal-proof";
 
 export const GOOGLE_API = "https://www.googleapis.com";
 export const GRAPH = "https://graph.microsoft.com/v1.0";
-export const GOOGLE_REVOKE = "https://oauth2.googleapis.com/revoke";
 
 /** One provider call must not hold the brand's calendar lock for long. */
 const PROVIDER_TIMEOUT_MS = 8_000;
 /** The lock is held across the proof calls, so it outlives the default 10 s. */
+// Worst case inside the lock: Graph `/me` plus `/organization` at 8 s each is 16 s, under 25 s.
 const LOCK_TTL_S = 25;
 
 const bearer = (access: string) => ({ Authorization: `Bearer ${access}`, Accept: "application/json" });
@@ -55,36 +56,11 @@ export async function connectProof(p: CalProvider, data: Record<string, string>,
   return { account, accountDomain: microsoftDomain(tid, upn, names) };
 }
 
-/** Google only: tells Google to forget this refresh token. Best effort, never throws, says nothing about the answer. */
-async function revokeGoogle(refresh: string | undefined): Promise<void> {
-  if (!refresh) return;
-  try {
-    await fetch(GOOGLE_REVOKE, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ token: refresh }),
-      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
-    });
-  } catch {
-    // Best effort: the link is dropped on our side either way.
-  }
-}
-
-/** Revokes the link's grant at the provider where the provider has an endpoint for it (Google; Microsoft has none here). */
-export async function revokeAtProvider(link: CalLink): Promise<void> {
-  try {
-    if (link.provider !== "gcal") return;
-    await revokeGoogle(openTokens(link)?.refresh);
-  } catch {
-    // Never throws.
-  }
-}
-
 export type ConnectResult = { ok: true } | { ok: false; code: "brand_inactive" | "token_failed" | "provider_error" };
 
 /**
  * What the OAuth callback does with a code exchange: under the brand's calendar lock, check the brand is still active, read
- * the proof, revoke and drop any earlier link, and write the new one in state `choose` (no calendar yet, proof decided at
+ * the proof, drop any earlier link, and write the new one in state `choose` (no calendar yet, proof decided at
  * the save). `scope` is the brand the flow started on (from the saved state), `login` the owner login that finished it.
  * Throws when the provider could not be read; the callback turns that into `provider_error`.
  */
@@ -93,8 +69,6 @@ export async function connectCalendar(scope: string, login: string, p: CalProvid
     const owner = scope.split("#")[0];
     const active = (await listBrands(owner)).some((b) => b.status === "active" && scopeFor(owner, b.id) === scope);
     if (!active) {
-      // The code was already traded: the grant must not outlive a link that is never written.
-      if (p === "gcal") await revokeGoogle(data.refresh_token);
       return { ok: false, code: "brand_inactive" };
     }
     const access = data.access_token;
@@ -102,10 +76,8 @@ export async function connectCalendar(scope: string, login: string, p: CalProvid
     if (!access || !refresh) return { ok: false, code: "token_failed" };
     const proof = await connectProof(p, data, access);
     const earlier = await getLink(scope);
-    if (earlier) {
-      await revokeAtProvider(earlier);
-      await dropLink(scope);
-    }
+    // Only our side: the sealed tokens go with the record. Nashr never calls Google's revoke endpoint (ruling R7).
+    if (earlier) await dropLink(scope);
     const expires = Number(data.expires_in);
     const link: CalLink = {
       v: 1,

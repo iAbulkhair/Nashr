@@ -2,7 +2,7 @@
  * Reem B3, the OAuth start and callback for the secretary calendar providers (spec
  * 2026-10-05-secretary-reem-b3-calendar-read-design.md §3 and §5). Rule 612 (connect part): only the account owner starts or
  * finishes a `gcal` or `mscal` flow, the shared state, cookie, login and actor rules still hold, the link is written in state
- * `choose` and never as a publishing connection, a second link replaces and revokes the first, and no provider text ever
+ * `choose` and never as a publishing connection, a second link replaces the first (no revoke call, ruling R7), and no provider text ever
  * reaches a URL or a log.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,13 +12,14 @@ import { SEC_KEYS } from "@/lib/secretary";
 import { addBrand, listBrands, saveBrands, scopeFor } from "@/lib/brands";
 import { OAUTH_COOKIE, getConnection, listConnections, saveState } from "@/lib/connectors/store";
 import { getLink, openTokens, putLink, sealTokens, type CalLink } from "@/lib/secretary-cal-link";
-import { GOOGLE_REVOKE } from "@/lib/secretary-gcal";
 import * as start from "@/app/api/connect/[provider]/start/route";
 import * as callback from "@/app/api/connect/[provider]/callback/route";
 import * as key from "@/app/api/connect/[provider]/key/route";
 
 const ENV = { GOOGLE_CLIENT_ID: "gid", GOOGLE_CLIENT_SECRET: "gsecret", MICROSOFT_CLIENT_ID: "mid", MICROSOFT_CLIENT_SECRET: "msecret" };
 const PROVIDER_TEXT = "SECRET-PROVIDER-TEXT";
+/** Nashr never calls it (ruling R7): a Google grant is shared per user and client with the publishing connection. */
+const GOOGLE_REVOKE = "https://oauth2.googleapis.com/revoke";
 
 const idToken = (claims: Record<string, unknown>) => `h.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.s`;
 
@@ -246,6 +247,21 @@ describe("rule 612c: the same state, cookie, login and role rules as every provi
     expect(tokenCalls()).toHaveLength(0);
   });
 
+  it("a gcal state used at the google callback is refused with the Integrations invalid-state error and adds no connection (R4)", async () => {
+    fakeProviders();
+    const owner = await newUser("calrev");
+    await signIn(owner.email);
+    const state = await begin("gcal");
+    const res = await callback.GET(cbReq("google", `state=${state}&code=c1`), ctx("google"));
+    expect(where(res).pathname).toBe("/ar/app/integrations");
+    expect(where(res).search).toBe("?error=invalid_state");
+    expect(await listConnections(owner.email)).toEqual([]);
+    expect(await getConnection(owner.email, "google")).toBeNull();
+    expect(await getConnection(owner.email, "gcal")).toBeNull();
+    expect(await getLink(owner.email)).toBeNull();
+    expect(tokenCalls()).toHaveLength(0);
+  });
+
   it("an unknown or reused state is invalid_state", async () => {
     fakeProviders();
     const owner = await newUser("caluse");
@@ -272,7 +288,7 @@ describe("rule 612c: the same state, cookie, login and role rules as every provi
 });
 
 describe("rule 612c: failures end in fixed codes, with no provider text and no leftover link", () => {
-  it("a brand archived between start and callback is brand_inactive, and the new grant is revoked", async () => {
+  it("a brand archived between start and callback is brand_inactive, with no link and no revoke call", async () => {
     fakeProviders();
     const owner = await newUser("calarch");
     const b = (await addBrand(owner, "Gone")) as { id: string };
@@ -284,8 +300,7 @@ describe("rule 612c: failures end in fixed codes, with no provider text and no l
     const res = await callback.GET(cbReq("gcal", "state=s-arch&code=c1"), ctx("gcal"));
     expect(where(res).search).toBe("?cal_error=brand_inactive");
     expect(await getLink(scope)).toBeNull();
-    const revoke = calls.find((c) => c.url === GOOGLE_REVOKE);
-    expect(revoke?.body).toBe("token=g-refresh");
+    expect(calls.some((c) => c.url === GOOGLE_REVOKE)).toBe(false);
   });
 
   it("a token endpoint 500 is token_failed, and neither the URL nor the log carries the provider's text", async () => {
@@ -329,32 +344,31 @@ describe("rule 612c: failures end in fixed codes, with no provider text and no l
   });
 });
 
-describe("rule 612c: a second link replaces the first and revokes its token", () => {
-  it("POSTs the first refresh token to Google's revoke endpoint and keeps only the new link", async () => {
+describe("rule 612c: a second link replaces the first and Nashr never calls Google's revoke endpoint (R7)", () => {
+  it("drops the first link's tokens, keeps only the new link, and never calls the revoke URL", async () => {
     const owner = await newUser("calswap");
     await signIn(owner.email);
     fakeProviders({ refresh: "refresh-one" });
     let state = await begin("gcal");
     await callback.GET(cbReq("gcal", `state=${state}&code=c1`), ctx("gcal"));
-    expect(calls.some((c) => c.url === GOOGLE_REVOKE)).toBe(false);
     // The owner picks a calendar in between: the next link still starts over in "choose".
     const one = (await getLink(owner.email))!;
+    expect(openTokens(one)?.refresh).toBe("refresh-one");
     await putLink(owner.email, { ...one, state: "ok", calendarId: "cal1", proof: "domain", rev: 5 });
     fakeProviders({ refresh: "refresh-two", email: "new@brand.example" });
     state = await begin("gcal");
     await callback.GET(cbReq("gcal", `state=${state}&code=c2`), ctx("gcal"));
-    const revoke = calls.filter((c) => c.url === GOOGLE_REVOKE);
-    expect(revoke).toHaveLength(1);
-    expect(revoke[0].method).toBe("POST");
-    expect(revoke[0].body).toBe("token=refresh-one");
     const two = (await getLink(owner.email))!;
     expect(two).toMatchObject({ account: "new@brand.example", state: "choose", proof: null, rev: 1 });
     expect(two.calendarId).toBeUndefined();
     expect(openTokens(two)?.refresh).toBe("refresh-two");
+    expect(two.tokens).not.toBe(one.tokens);
+    expect(JSON.stringify(await db.get(SEC_KEYS.calLink(owner.email)))).not.toContain(one.tokens);
+    expect(calls.some((c) => c.url === GOOGLE_REVOKE || c.url.includes("/revoke"))).toBe(false);
     expect((await auditOf(owner.email)).filter((l) => l.action === "cal_link")).toHaveLength(2);
   });
 
-  it("replacing an Outlook link revokes nothing (Microsoft has no revoke endpoint here)", async () => {
+  it("replacing an Outlook link by a Google one calls no revoke endpoint either", async () => {
     const owner = await newUser("calswap2");
     await putLink(owner.email, { v: 1, provider: "mscal", login: owner.email, account: "a@brand.example", proof: null, tokens: sealTokens({ access: "a", refresh: "r", expiresAt: 1 }), state: "choose", connectedAt: 1, rev: 1 });
     fakeProviders();
