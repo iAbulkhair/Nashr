@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { newMember, newUser, params, signIn } from "./helpers/session";
+import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { currentUser, getUser, saveUser } from "@/lib/auth";
 import { saveBrands } from "@/lib/brands";
 import { getMember, saveMember, type Member } from "@/lib/team";
@@ -13,6 +13,7 @@ import { SEC_KEYS } from "@/lib/secretary";
 import type { SecItem } from "@/lib/secretary-agenda";
 import { buildIcs, feedHolds, feedItems, icsFold } from "@/lib/secretary-feed";
 import * as feedRoute from "@/app/api/secretary/feed/[token]/route";
+import * as manageRoute from "@/app/api/secretary/feed/route";
 import { createFeed, FEED_KEYS, FEED_TOKEN, getFeedStatus, hashFeedToken, resolveFeed, revokeFeed, revokeFeeds } from "@/lib/feed-token";
 
 const FOUNDER = "founder-feed@test.example";
@@ -500,5 +501,131 @@ describe("public feed route (rules 539-542)", () => {
     expect(ics.status).toBe(200);
     expect(await ics.text()).toBe(body);
     expect((await callFeed(`${token}.ics.ics`)).status).toBe(404);
+  });
+});
+
+describe("feed management (rules 543-544)", () => {
+  const FEED = "/api/secretary/feed";
+  const status = () => manageRoute.GET();
+  const create = (body?: unknown, raw?: string) =>
+    manageRoute.POST(raw === undefined ? json(FEED, "POST", body) : new Request(`https://nashr.test${FEED}`, { method: "POST", headers: { "content-type": "application/json" }, body: raw }));
+  const stop = () => manageRoute.DELETE();
+  const tokenOf = (url: string) => url.replace(/^.*\/feed\//, "").replace(/\.ics$/, "");
+
+  it("rule 543: anonymous 401; owner, admin and member 200; a founder impersonating gets 403 on POST and DELETE; GET never returns the link", async () => {
+    signOut();
+    for (const r of [await status(), await create({}), await stop()]) {
+      expect(r.status).toBe(401);
+      expect(await r.json()).toEqual({ ok: false, error: "unauthorized" });
+    }
+
+    const owner = await newUser("feed543");
+    const admin = await newMember(owner, "admin");
+    const member = await newMember(owner, "member");
+    for (const login of [owner.email, admin.email, member.email]) {
+      await signIn(login);
+      const made = await create({ lang: "en" });
+      expect(made.status).toBe(200);
+      expect(made.headers.get("cache-control")).toBe("no-store");
+      const b = await made.json();
+      expect(b.ok).toBe(true);
+      expect(b.url).toBe(`${appOrigin()}/api/secretary/feed/${tokenOf(b.url)}.ics`);
+      expect(tokenOf(b.url)).toMatch(FEED_TOKEN);
+      expect(b.webcal).toBe(b.url.replace(/^https?:/, "webcal:"));
+      expect(b.webcal.startsWith("webcal://")).toBe(true);
+      // The record is the acting login's own, in the account's scope, never another login's.
+      const recs = recordsOf(login);
+      expect(recs).toHaveLength(1);
+      expect(recs[0][1]).toMatchObject({ login, scope: owner.email, lang: "en" });
+      expect(hashFeedToken(tokenOf(b.url))).toBe(await db.get(FEED_KEYS.of(login)));
+
+      const st = await status();
+      expect(st.status).toBe(200);
+      const text = await st.text();
+      expect(JSON.parse(text)).toEqual({ ok: true, exists: true, createdAt: recs[0][1] && (recs[0][1] as { createdAt: string }).createdAt });
+      expect(text).not.toContain(tokenOf(b.url));
+      expect(text).not.toContain("webcal");
+      expect(text).not.toContain("http");
+      expect(text).not.toContain(hashFeedToken(tokenOf(b.url)));
+    }
+    // The three logins have three separate links: stopping one leaves the others.
+    await signIn(member.email);
+    expect((await stop()).status).toBe(200);
+    expect(await getFeedStatus(member.email)).toEqual({ exists: false, createdAt: null });
+    expect((await getFeedStatus(owner.email)).exists).toBe(true);
+    expect((await getFeedStatus(admin.email)).exists).toBe(true);
+
+    // A founder impersonating the account: status is readable, but nothing that outlives the session may be made or stopped.
+    await signIn(owner.email, { imp: FOUNDER });
+    const before = recordsOf(owner.email);
+    const p = await create({});
+    expect(p.status).toBe(403);
+    expect(await p.json()).toEqual({ error: "forbidden" });
+    expect((await stop()).status).toBe(403);
+    expect(recordsOf(owner.email)).toEqual(before);
+    const g = await status();
+    expect(g.status).toBe(200);
+    expect(await g.json()).toMatchObject({ ok: true, exists: true });
+  });
+
+  it("rule 543: a body cannot choose the login, scope or language outside ar and en, and a bad body never gives a 500", async () => {
+    const owner = await newUser("feed543b");
+    const other = await newUser("feed543c");
+    await signIn(owner.email);
+    const evil = await create({ login: other.email, email: other.email, scope: other.email, lang: "fr" });
+    expect(evil.status).toBe(200);
+    expect(recordsOf(other.email)).toEqual([]);
+    expect(recordsOf(owner.email)[0][1]).toMatchObject({ login: owner.email, scope: owner.email, lang: owner.lang });
+    for (const raw of ["", "{", "null", "[]", '"x"', "7"]) expect((await create(undefined, raw)).status).toBe(200);
+    expect(recordsOf(owner.email)).toHaveLength(1);
+  });
+
+  it("rule 544: create, status, stop; stop twice is 200; the stopped link gives 404 on the public route; a second create replaces the first", async () => {
+    const owner = await newUser("feed544");
+    await signIn(owner.email);
+    expect(await (await status()).json()).toEqual({ ok: true, exists: false, createdAt: null });
+    const first = tokenOf((await (await create({})).json()).url);
+    expect((await callFeed(first)).status).toBe(200);
+    const second = tokenOf((await (await create({ lang: "en" })).json()).url);
+    expect(second).not.toBe(first);
+    expect((await callFeed(first)).status).toBe(404);
+    expect((await callFeed(second)).status).toBe(200);
+    expect(recordsOf(owner.email)).toHaveLength(1);
+    expect((await (await status()).json()).exists).toBe(true);
+
+    for (let i = 0; i < 2; i++) {
+      const r = await stop();
+      expect(r.status).toBe(200);
+      expect(await r.json()).toEqual({ ok: true });
+    }
+    expect((await callFeed(second)).status).toBe(404);
+    expect(await (await status()).json()).toEqual({ ok: true, exists: false, createdAt: null });
+    expect(recordsOf(owner.email)).toEqual([]);
+  });
+
+  it("rule 544: a lock held by another create answers 409 busy; the 21st call in an hour is 429 and writes nothing", async () => {
+    const owner = await newUser("feed544b");
+    await signIn(owner.email);
+    const owned = await db.lockOwned(`lock:feed:${owner.email}`, 10);
+    expect(owned).toBeTruthy();
+    const busy = await create({});
+    expect(busy.status).toBe(409);
+    expect(busy.headers.get("cache-control")).toBe("no-store");
+    expect(await busy.json()).toEqual({ ok: false, error: "busy" });
+    await db.unlockOwned(`lock:feed:${owner.email}`, owned!);
+    expect(recordsOf(owner.email)).toEqual([]);
+
+    // That busy answer was call 1; GET, POST and DELETE share one bucket per login.
+    const calls = [status, () => create({}), stop];
+    for (let i = 1; i < 20; i++) expect((await calls[i % 3]()).status).toBe(200);
+    const over = [await status(), await create({}), await stop()];
+    for (const r of over) {
+      expect(r.status).toBe(429);
+      expect(await r.json()).toEqual({ ok: false, error: "too_many" });
+    }
+    // Another login has its own bucket.
+    const mate = await newUser("feed544c");
+    await signIn(mate.email);
+    expect((await status()).status).toBe(200);
   });
 });
