@@ -218,3 +218,50 @@ export async function listOwnCalendars(p: CalProvider, access: string, account: 
     .slice(0, 50)
     .map((c) => ({ id: c.id as string, name: cleanName(p === "gcal" ? c.summary : c.name) }));
 }
+
+/** The longest a provider's `Retry-After` is honoured (spec §7: capped at 60 minutes). */
+const RETRY_AFTER_MAX_S = 3_600;
+export type EventsResult = { ok: true; raw: unknown[] } | { ok: false; kind: "auth" | "gone" | "retry"; retryAfterS?: number };
+
+/** `Retry-After` as whole seconds (the number form, or an HTTP date), at most 60 minutes; anything else is undefined. */
+function retryAfter(h: string | null, now = Date.now()): number | undefined {
+  if (!h) return undefined;
+  const t = h.trim();
+  const secs = /^\d+$/.test(t) ? Number(t) : (Date.parse(t) - now) / 1000;
+  return Number.isFinite(secs) && secs >= 0 ? Math.min(RETRY_AFTER_MAX_S, Math.ceil(secs)) : undefined;
+}
+
+/**
+ * The raw events of the chosen calendar between two instants (spec §7 step 4), requested from `link.calendarId` and nothing
+ * else: no `primary`, no calendar list, never Outlook's all-calendars `/me/events`. The hosts are the fixed constants above and
+ * the id only goes through `encodeURIComponent` into the path. Only the selected fields are asked for, so no attendee names,
+ * descriptions, places or meeting links are ever received. 401 is `auth`, 404 `gone` (the calendar is no longer there); 429,
+ * 5xx, any other status, a timeout, a network error and an unreadable answer are `retry`, with the provider's `Retry-After`
+ * when it gave one. Nothing of a response text leaves this function and only the error's name is logged. `raw` is untrusted:
+ * the caller passes each item through `keepGoogle` / `keepGraph`.
+ */
+export async function fetchEvents(link: CalLink, access: string, fromMs: number, toMs: number): Promise<EventsResult> {
+  if (!link.calendarId) return { ok: false, kind: "gone" };
+  const id = encodeURIComponent(link.calendarId);
+  const from = new Date(fromMs).toISOString();
+  const to = new Date(toMs).toISOString();
+  const google = link.provider === "gcal";
+  const url = google
+    ? `${GOOGLE_API}/calendar/v3/calendars/${id}/events?${new URLSearchParams({ timeMin: from, timeMax: to, singleEvents: "true", orderBy: "startTime", maxResults: "300", fields: "items(status,summary,start,end,transparency,visibility,attendees(self,responseStatus))" })}`
+    : `${GRAPH}/me/calendars/${id}/calendarView?startDateTime=${encodeURIComponent(from)}&endDateTime=${encodeURIComponent(to)}&$select=subject,start,end,isAllDay,showAs,isCancelled,sensitivity,responseStatus&$top=300`;
+  try {
+    const res = await fetch(url, { headers: google ? bearer(access) : { ...bearer(access), Prefer: 'outlook.timezone="UTC"' }, signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS) });
+    if (res.status === 401) return { ok: false, kind: "auth" };
+    if (res.status === 404) return { ok: false, kind: "gone" };
+    if (!res.ok) {
+      const after = retryAfter(res.headers.get("retry-after"));
+      return { ok: false, kind: "retry", ...(after === undefined ? {} : { retryAfterS: after }) };
+    }
+    const j = (await res.json()) as { items?: unknown; value?: unknown } | null;
+    const rows = google ? j?.items ?? [] : j?.value;
+    return Array.isArray(rows) ? { ok: true, raw: rows } : { ok: false, kind: "retry" };
+  } catch (e) {
+    console.error("cal events fetch failed", e instanceof Error ? e.name : "error");
+    return { ok: false, kind: "retry" };
+  }
+}
