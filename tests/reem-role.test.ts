@@ -1,5 +1,5 @@
 /**
- * Reem's role (founder, 2026-10-05). Rules 600-602: she works for one Thakeen customer, within the Thakeen contract and
+ * Reem's role (founder, 2026-10-05). Rules 609-611: she works for one Thakeen customer, within the Thakeen contract and
  * only on the marketing work that serves the brand; she follows the team but never assigns it work or plans its time;
  * and she declines what is outside that scope. The scope is held by her persona and playbook (a prompt); what code holds
  * is the data boundary (every key from `sc(u)`, rules 101-103). The product copy says the same thing in both languages.
@@ -16,18 +16,18 @@ import { HELP } from "@/lib/help";
 const reem = AGENTS.find((a) => a.id === "reem")!;
 const playbook = readFileSync("content/skills/secretary.md", "utf8");
 
-describe("rule 600: Reem's persona and playbook keep her to the brand's marketing within the Thakeen contract", () => {
+describe("rule 609: Reem's persona and playbook keep her to the brand's marketing within the Thakeen contract", () => {
   it("the persona says whom she works for, the scope, the team boundary and the refusal", () => {
     expect(reem.persona).toContain("the secretary of a Thakeen customer");
     expect(reem.persona).toContain("within their contract with Thakeen and only on the marketing work that serves their brand");
-    expect(reem.persona).toContain("never assign the team work, plan their time or arrange their schedule");
+    expect(reem.persona).toContain("never assign the team work on your own, plan their time or arrange their schedule: work for the team is the owner's decision");
     expect(reem.persona).toMatch(/decline anything outside that scope/);
   });
 
   it("the playbook's first principle is Role and scope (rule 96 keeps Principles first), and it names the refusal line in both languages", () => {
     expect(playbook).toMatch(/^# Secretary playbook \(Reem\)\n\n## Principles\n- Role and scope: You work for one Thakeen customer/);
     expect(playbook).toContain("only on the marketing work that serves their brand");
-    expect(playbook).toContain("You never assign work to a team member or an agent, plan their time or arrange their schedule.");
+    expect(playbook).toContain("You never assign work to a team member or an agent on your own, plan their time or arrange their schedule: work for the team is the owner's decision.");
     expect(playbook).toContain("Save nothing for it.");
     expect(playbook).toContain("«هذا خارج عملي في ذكين. أتابع لك تسويق علامتك: مهامه ومواعيد نشره ومتابعاته.»");
     expect(playbook).toContain("That's outside my work at Thakeen.");
@@ -42,7 +42,7 @@ describe("rule 600: Reem's persona and playbook keep her to the brand's marketin
   });
 });
 
-describe("rule 601: Reem's examples are marketing work, and non-marketing duties are declined, not reminded", () => {
+describe("rule 610: Reem's examples are marketing work, and non-marketing duties are declined, not reminded", () => {
   it("the playbook's examples are marketing, and government filings are out of scope", () => {
     expect(playbook).not.toMatch(/Al Nukhba|renew the commercial registration|about the delivery/);
     expect(playbook).toContain("Zakat, VAT, commercial registration, Muqeem and GOSI are the business's other operations: decline them");
@@ -60,7 +60,7 @@ describe("rule 601: Reem's examples are marketing work, and non-marketing duties
   });
 });
 
-describe("rule 602: the site, help and FAQ describe Reem by the same role", () => {
+describe("rule 611: the site, help and FAQ describe Reem by the same role", () => {
   it("her agent page says she works only on the brand's marketing and never manages the team", () => {
     const ar = JSON.stringify(AGENT_PAGES.ar.reem);
     const en = JSON.stringify(AGENT_PAGES.en.reem);
