@@ -4,6 +4,9 @@ import { newMember, newUser, signIn } from "./helpers/session";
 import { currentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { can, MIN_ROLE } from "@/lib/roles";
+import { SEC_KEYS } from "@/lib/secretary";
+import type { SecItem } from "@/lib/secretary-agenda";
+import { buildIcs, feedItems, icsFold } from "@/lib/secretary-feed";
 import { createFeed, FEED_KEYS, FEED_TOKEN, getFeedStatus, hashFeedToken, resolveFeed, revokeFeed, revokeFeeds } from "@/lib/feed-token";
 
 const FOUNDER = "founder-feed@test.example";
@@ -129,5 +132,131 @@ describe("feed token (rules 530-533)", () => {
     const founder = await resolveAs(owner.email, { imp: FOUNDER });
     expect(founder!.actor).toMatchObject({ kind: "founder" });
     expect(can(founder, "feed.manage")).toBe(false);
+  });
+});
+
+const DAY = 864e5;
+const NOW = Date.parse("2026-10-05T08:00:00.000Z");
+const iso = (ms: number) => new Date(ms).toISOString();
+let seq = 0;
+/** One open item written straight to the store, so dueAt, updatedAt and rev are exact. */
+async function seed(scope: string, o: Partial<SecItem> = {}): Promise<SecItem> {
+  const id = o.id ?? `s${(++seq).toString(16).padStart(16, "0")}`;
+  const it: SecItem = {
+    id, kind: "task", title: `Item ${id}`, description: "", result: null, direction: "i_owe", owedBy: "owner", owedTo: null,
+    dueAt: null, allDay: false, snoozeUntil: null, priority: 0, critical: false, links: {}, source: "owner", notes: [],
+    createdAt: iso(NOW), updatedAt: iso(NOW), completedAt: null, proposedDone: null, deletedAt: null, expiresAt: null, rev: 1, ...o,
+  };
+  await db.set(SEC_KEYS.item(scope, id), it);
+  await db.zadd(SEC_KEYS.open(scope), it.dueAt ? Date.parse(it.dueAt) : Number.MAX_SAFE_INTEGER, id);
+  return it;
+}
+const lines = (ics: string) => ics.split("\r\n");
+const unfold = (ics: string) => ics.replace(/\r\n /g, "");
+const opts = { lang: "en" as const, zone: "Asia/Riyadh" as const, origin: "https://thakeen.example", now: NOW };
+
+describe("feed content (rules 534-538)", () => {
+  it("rule 534: only open dated items in the window, nearest first, 500 at most", async () => {
+    const scope = "feed-t534";
+    const old = await seed(scope, { dueAt: iso(NOW - 20 * DAY) });
+    const recent = await seed(scope, { dueAt: iso(NOW - 10 * DAY) });
+    const soon = await seed(scope, { dueAt: iso(NOW + 5 * DAY) });
+    const far = await seed(scope, { dueAt: iso(NOW + 400 * DAY) });
+    const undated = await seed(scope, { dueAt: null });
+    const done = await seed(scope, { dueAt: iso(NOW + DAY), completedAt: iso(NOW) });
+    const gone = await seed(scope, { dueAt: iso(NOW + DAY), deletedAt: iso(NOW) });
+    const got = (await feedItems(scope, NOW)).map((i) => i.id);
+    expect(got).toEqual([recent.id, soon.id]);
+    for (const x of [old, far, undated, done, gone]) expect(got).not.toContain(x.id);
+
+    const many = "feed-t534-many";
+    const made = await Promise.all(Array.from({ length: 520 }, (_, i) => seed(many, { dueAt: iso(NOW + (i + 1) * 60_000) })));
+    const all = await feedItems(many, NOW);
+    expect(all).toHaveLength(500);
+    expect(all.map((i) => i.id)).toEqual(made.slice(0, 500).map((i) => i.id));
+  });
+
+  it("rule 535: a recurring series shows its one open copy; a ghost id in sec:open does not appear", async () => {
+    const scope = "feed-t535";
+    const copy = await seed(scope, {
+      dueAt: iso(NOW + DAY), allDay: true, series: { id: "r0123456789abcdef0", n: 3 },
+      repeat: { every: "week", interval: 1, anchor: "2026-10-06", weekStart: 0 },
+    });
+    const ghost = await seed(scope, { dueAt: iso(NOW + 2 * DAY), completedAt: iso(NOW) });
+    const got = await feedItems(scope, NOW);
+    expect(got.map((i) => i.id)).toEqual([copy.id]);
+    const ics = buildIcs(got, opts);
+    expect(lines(ics).filter((l) => l === "BEGIN:VEVENT")).toHaveLength(1);
+    expect(ics).not.toContain(ghost.id);
+    expect(ics).not.toContain("RRULE");
+  });
+
+  it("rule 536: a timed item is UTC with a 30 minute end, an all-day item is a date in the brand zone", async () => {
+    const scope = "feed-t536";
+    const timed = await seed(scope, { dueAt: "2026-10-05T09:00:00.000Z", updatedAt: "2026-10-04T10:11:12.000Z", rev: 7 });
+    const allDay = await seed(scope, { dueAt: "2026-10-05T20:59:00.000Z", allDay: true, updatedAt: "2026-10-03T01:02:03.000Z", rev: 2 });
+    const ics = buildIcs(await feedItems(scope, NOW), opts);
+    const events = ics.split("BEGIN:VEVENT\r\n").slice(1);
+    const ev = (id: string) => events.find((e) => e.includes(`UID:${id}@thakeen\r\n`))!;
+    const t = ev(timed.id);
+    expect(t).toContain("DTSTART:20261005T090000Z\r\n");
+    expect(t).toContain("DTEND:20261005T093000Z\r\n");
+    expect(t).toContain("SEQUENCE:7\r\n");
+    expect(t).toContain("DTSTAMP:20261004T101112Z\r\n");
+    expect(t).toContain("LAST-MODIFIED:20261004T101112Z\r\n");
+    expect(t).toContain("STATUS:CONFIRMED\r\n");
+    const a = ev(allDay.id);
+    expect(a).toContain("DTSTART;VALUE=DATE:20261005\r\n");
+    expect(a).toContain("DTEND;VALUE=DATE:20261006\r\n");
+    expect(a).toContain("SEQUENCE:2\r\n");
+    expect(a).toContain("LAST-MODIFIED:20261003T010203Z\r\n");
+    expect(ics.startsWith("BEGIN:VCALENDAR\r\n")).toBe(true);
+    expect(ics.endsWith("END:VCALENDAR\r\n")).toBe(true);
+    expect(ics).toContain("X-WR-CALNAME:Thakeen: my to-dos\r\n");
+    expect(ics).toContain("REFRESH-INTERVAL;VALUE=DURATION:PT1H\r\n");
+    expect(ics).toContain("X-PUBLISHED-TTL:PT1H\r\n");
+    expect(unfold(buildIcs([], { ...opts, lang: "ar" }))).toContain("X-WR-CALNAME:ذكين: مهامي\r\n");
+  });
+
+  it("rule 537: no notes, description or phone in the body", async () => {
+    const scope = "feed-t537";
+    await seed(scope, {
+      title: "Send the quote", description: "SECRET-DESC", phone: "966500000000", dueAt: iso(NOW + DAY),
+      notes: [{ at: iso(NOW), by: "owner", text: "SECRET-NOTE", private: true }],
+    });
+    await seed(scope, { title: "Signed contract", direction: "they_owe", owedBy: "Sara", owedTo: "owner", dueAt: iso(NOW + 2 * DAY) });
+    const items = await feedItems(scope, NOW);
+    for (const lang of ["en", "ar"] as const) {
+      const ics = unfold(buildIcs(items, { ...opts, lang }));
+      for (const secret of ["SECRET-NOTE", "SECRET-DESC", "966500000000"]) expect(ics).not.toContain(secret);
+      expect(ics).not.toMatch(/\b(SAR|USD)\b|ر\.س|ريال|\$/);
+      const desc = lines(ics).filter((l) => l.startsWith("DESCRIPTION:"));
+      expect(desc).toHaveLength(2);
+      const url = `https://thakeen.example/${lang}/app/todo`;
+      expect(desc[0]).toBe(`DESCRIPTION:${lang === "ar" ? "عليّ أنا" : "Mine"} - ${url}`);
+      expect(desc[1]).toBe(`DESCRIPTION:${lang === "ar" ? "ننتظر Sara" : "Waiting on Sara"} - ${url}`);
+      expect(ics).toContain(`URL:${url}`);
+    }
+  });
+
+  it("rule 538: file safety", async () => {
+    const scope = "feed-t538";
+    const evil = "a,b;c\r\nEND:VEVENT\r\nBEGIN:VEVENT\u202e";
+    const arabic = "مهمة ".repeat(40).trim();
+    await seed(scope, { title: evil, dueAt: iso(NOW + DAY) });
+    await seed(scope, { title: arabic, dueAt: iso(NOW + 2 * DAY) });
+    const ics = buildIcs(await feedItems(scope, NOW), opts);
+    expect(ics.replace(/\r\n/g, "")).not.toMatch(/[\r\n]/);
+    expect(lines(ics).filter((l) => l === "BEGIN:VEVENT")).toHaveLength(2);
+    expect(lines(ics).filter((l) => l === "END:VEVENT")).toHaveLength(2);
+    expect(ics).not.toContain("\u202e");
+    expect(unfold(ics)).toContain("SUMMARY:a\\,b\\;c END:VEVENT BEGIN:VEVENT\r\n");
+    for (const l of lines(ics)) expect(Buffer.byteLength(l, "utf8")).toBeLessThanOrEqual(75);
+    expect(Buffer.byteLength(`SUMMARY:${arabic}`, "utf8")).toBeGreaterThan(75);
+    expect(unfold(ics)).toContain(`SUMMARY:${arabic}\r\n`);
+    // folding directly: continuation lines start with one space and the text round-trips
+    const folded = icsFold("X:" + "ع".repeat(100));
+    expect(folded.split("\r\n").slice(1).every((l) => l.startsWith(" "))).toBe(true);
+    expect(folded.replace(/\r\n /g, "")).toBe("X:" + "ع".repeat(100));
   });
 });
