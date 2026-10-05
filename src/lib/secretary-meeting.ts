@@ -37,7 +37,7 @@ import { db } from "./db";
 import { pmap } from "./parallel";
 import { sc, type User } from "./auth";
 import { isAgentId, type AgentId } from "./agents";
-import { SEC_ID, SEC_KEYS, calFor, cleanLine, createItem, fail, getItem, isLocalDay, newSecId, withLock, type SecFail, type Who } from "./secretary";
+import { SEC_ID, SEC_KEYS, calFor, cleanLine, createItem, fail, getItem, isLocalDay, newSecId, reindexOpen, withLock, type SecFail, type Who } from "./secretary";
 import { addDays, zoneDay, type SecItem } from "./secretary-agenda";
 import { agentTaskItem } from "./secretary-handoff";
 import type { Zone } from "./zones";
@@ -151,7 +151,8 @@ async function delPending(scope: string, itemId: string): Promise<void> {
  */
 export async function savePending(scope: string, itemId: string, p: Proposal[]): Promise<SecFail | void> {
   if (!SEC_ID.test(itemId)) return;
-  return setLock(scope, itemId, () => putPending(scope, itemId, p));
+  // Only the code that approves chooses an item id: a proposer's `itemId` is dropped here.
+  return setLock(scope, itemId, () => putPending(scope, itemId, p.map(({ ref, title, agent, dueAt }) => ({ ref, title, agent, ...(dueAt ? { dueAt } : {}) }))));
 }
 
 /** Discard the pending set of an item. Idempotent. Under the approve lock like `savePending`. */
@@ -243,7 +244,12 @@ export async function approveMeeting(user: Pick<User, "email" | "scope">, itemId
     const made = await pmap(chosen, async (p) => {
       const id = ids.get(p.ref) as string;
       try {
-        if (await getItem(scope, id)) return { p, id, c: { ok: true } as const }; // made by an earlier try
+        // Made by an earlier try: its indexes are written again in case that try died between the record and them.
+        const cur = await getItem(scope, id);
+        if (cur) {
+          await reindexOpen(scope, cur);
+          return { p, id, c: { ok: true } as const };
+        }
         const fields = p.agent === "owner"
           ? { title: p.title, description, kind: "task", direction: "i_owe", ...(p.dueAt ? { dueAt: p.dueAt } : {}) }
           : agentTaskItem(p.agent, p.title, description, { owedTo: "owner", ...(p.dueAt ? { dueAt: p.dueAt } : {}) });

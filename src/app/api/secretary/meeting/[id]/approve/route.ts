@@ -14,7 +14,9 @@ import { approveMeeting, liveBooking } from "@/lib/secretary-meeting";
  * of the caller's active brand (`sc(u)`), else 404; the body is read only after that and over 64 KB is refused unread.
  * The account and the scope are the session's, never the body's; who approved is the session's login. 200 `{ ok, created }`
  * with the new item ids; on a refusal `{ ok: false, error, field?, created? }` (`created` names the items made before an
- * allowance ran out). Nothing is charged. `sec:write:{email}`, like the other Reem writes.
+ * allowance ran out). `busy` (503) is a failed write or an item that could not be made, with `created` when some were: the
+ * UI's existing `busy` text is the away card's wording and is wrong once items were created, so the approve screen needs
+ * its own busy copy (Task 11 owns it). Nothing is charged. `sec:write:{email}`, like the other Reem writes.
  */
 const MAX_BODY = 64_000;
 const unauthorized = () => NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });

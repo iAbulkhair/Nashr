@@ -396,10 +396,12 @@ describe("meeting proposals and approve (rules 600-603)", () => {
   });
 
   it("rule 602: approve is idempotent: an error mid-way, then a retry, makes every item exactly once and loses none", async () => {
-    const u = await newUser("mt604");
+    const u = await newUser("mt602r");
     const scope = sc(u);
     const who = { ...OWNER, login: u.email };
     const orig = db.set.bind(db);
+    const orig4zadd = db.zadd.bind(db);
+    const orig4sadd = db.sadd.bind(db);
     const titlesOf = async (prefix: string) => (await listOpenItems(scope)).map((i) => i.title).filter((t) => t.startsWith(prefix)).sort();
 
     // 1. The store fails while one item is written and also while the leftovers are stored (as when the store is down or the
@@ -453,10 +455,46 @@ describe("meeting proposals and approve (rules 600-603)", () => {
     expect((part as { created?: string[] }).created).toHaveLength(2);
     const left = (await getPending(scope, m2.id)) ?? [];
     expect(left.map((p) => p.title)).toEqual(["Twice B"]);
+    // the stored leftover holds its item id, and the read route never shows it
+    expect(left[0].itemId).toMatch(/^s[a-f0-9]{16}$/);
+    await signIn(u.email);
+    const shown = await (await meetRoute.GET(json(`/api/secretary/meeting/${m2.id}`, "GET"), params({ id: m2.id }))).json();
+    expect(shown.proposals).toEqual([{ ref: left[0].ref, title: "Twice B", agent: "owner" }]);
     expect(await approveMeeting(u, m2.id, [{ ref: ps2[0].ref }], who)).toMatchObject({ ok: false, error: "not_found" });
     const done = await approveMeeting(u, m2.id, [{ ref: left[0].ref }], who);
     expect(done).toMatchObject({ ok: true });
     expect(await titlesOf("Twice ")).toEqual(["Twice A", "Twice B", "Twice C"]);
+
+    // 4. The record of an item was written but its indexes were not (the store failed between them): the retry finds the
+    //    record by its id, writes the indexes again, and the item is open, listed and found by account deletion.
+    const m4 = await booking(u, "Meeting with Fourth Example");
+    const ps4 = await pend(u, m4, [prop("Index A", "owner"), prop("Index B", "owner")]);
+    let failOpen = false;
+    let failAll = false;
+    vi.spyOn(db, "zadd").mockImplementation(async (key: string, ...rest: [number, string]) => {
+      if (key === SEC_KEYS.open(scope) && !failOpen) { failOpen = true; throw new Error("transient"); }
+      return (orig4zadd as (k: string, ...r: [number, string]) => Promise<unknown>)(key, ...rest) as never;
+    });
+    vi.spyOn(db, "sadd").mockImplementation(async (key: string, ...rest: string[]) => {
+      if (key === SEC_KEYS.all(scope) && !failAll) { failAll = true; throw new Error("transient"); }
+      return (orig4sadd as (k: string, ...r: string[]) => Promise<unknown>)(key, ...rest) as never;
+    });
+    const half = await approveMeeting(u, m4.id, ps4.map((p) => ({ ref: p.ref })), who);
+    vi.restoreAllMocks();
+    expect(half).toMatchObject({ ok: false, error: "busy", status: 503 });
+    // the failed item has its record but is in neither index; it is the one left pending, by its stored id
+    const stuck = (await getPending(scope, m4.id)) ?? [];
+    expect(stuck).toHaveLength(1);
+    const stuckId = stuck[0].itemId as string;
+    expect(await getItem(scope, stuckId)).not.toBeNull();
+    expect((await listOpenItems(scope)).map((i) => i.id)).not.toContain(stuckId);
+    expect(await db.smembers(SEC_KEYS.all(scope))).not.toContain(stuckId);
+    const fixed = await approveMeeting(u, m4.id, [{ ref: stuck[0].ref }], who);
+    expect(fixed).toMatchObject({ ok: true, created: [stuckId] });
+    expect(await titlesOf("Index ")).toEqual(["Index A", "Index B"]);
+    expect((await listOpenItems(scope)).map((i) => i.id)).toContain(stuckId);
+    expect(await db.smembers(SEC_KEYS.all(scope))).toContain(stuckId);
+    expect(await getPending(scope, m4.id)).toBeNull();
 
     // 3. No worker outlives the lock: an item write that fails while others are still running does not release the lock early.
     const m3 = await booking(u, "Meeting with Third Example");
@@ -481,7 +519,7 @@ describe("meeting proposals and approve (rules 600-603)", () => {
   });
 
   it("rule 603: a pending write and a discard take the approve lock, so an approve never undoes them", async () => {
-    const u = await newUser("mt605");
+    const u = await newUser("mt603l");
     const scope = sc(u);
     const who = { ...OWNER, login: u.email };
     const orig = db.set.bind(db);
@@ -511,7 +549,7 @@ describe("meeting proposals and approve (rules 600-603)", () => {
 
     // A discard lands while an approve is creating and the allowance runs out part-way: the discard is not undone by the
     // approve writing the leftovers back.
-    const lim = await newUser("mt605l");
+    const lim = await newUser("mt603a");
     const lm = await booking(lim);
     const lps = await pend(lim, lm, [prop("D one", "owner"), prop("D two", "owner"), prop("D three", "owner")]);
     await db.set(`rate:sec:create:${lim.email}`, 198, 86400);
@@ -543,6 +581,22 @@ describe("meeting proposals and approve (rules 600-603)", () => {
     expect((await del).status).toBe(200);
     expect(await getPending(scope, m3.id)).toBeNull();
     await db.del(`rate:sec:write:${u.email}`);
-  });
+
+    // A proposer cannot smuggle an item id: savePending stores the proposals without one.
+    const m4 = await booking(u, "Meeting with Smuggle Example");
+    const smuggled = cleanProposals([prop("S one", "owner")], Date.now(), ZONE).map((p) => ({ ...p, itemId: `s${"a".repeat(16)}` }));
+    await savePending(scope, m4.id, smuggled);
+    expect(await getPending(scope, m4.id)).toEqual(smuggled.map(({ ref, title, agent }) => ({ ref, title, agent })));
+
+    // While the lock is held for longer than the wait, the discard answers 503 lock_timeout and discards nothing.
+    const key4 = SEC_KEYS.lock(scope, `mprop:${m4.id}`);
+    expect(await db.lock(key4, 10)).toBe(true);
+    const timedOut = await meetRoute.DELETE(json(`/api/secretary/meeting/${m4.id}`, "DELETE"), params({ id: m4.id }));
+    await db.unlock(key4);
+    expect(timedOut.status).toBe(503);
+    expect(await timedOut.json()).toEqual({ ok: false, error: "lock_timeout" });
+    expect(await getPending(scope, m4.id)).not.toBeNull();
+    await db.del(`rate:sec:write:${u.email}`);
+  }, 20000);
 });
 
