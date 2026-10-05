@@ -36,9 +36,9 @@ const lockKey = (scope: string, id: string, provider: string) => `publock:${scop
 export const attemptKey = (scope: string, id: string, provider: string) => `pubtry:${scope}:${id}:${provider}`;
 
 /** Errors the code throws before anything is sent, and platform answers without a status that say the post was not made. */
-const REFUSED = /^(?:not_connected|unsupported_provider|instagram_needs_image|meta_no_page|meta_no_instagram|reconnect_required|x_duplicate|wordpress_cannot_publish_live|no blog on store)$|^shopify (?:graphql|article):|^meta media (?:ERROR|EXPIRED|not ready)/;
-/** The HTTP status a connector puts at the start of its error ("x 403: …", "telegram 400: …", "meta feed 400: …"). */
-const LEADING_STATUS = /^(?:x|telegram|wordpress|shopify|prestashop|odoo|meta [\w-]+) (\d{3})\b/;
+const REFUSED = /^(?:not_connected|unsupported_provider|instagram_needs_image|tiktok_needs_image|meta_no_page|meta_no_instagram|linkedin_no_author|reconnect_required|x_duplicate|wordpress_cannot_publish_live|no blog on store|composio_unavailable|composio_rate_limited|composio_tool_not_allowed|composio_argument_not_allowed|instagram_limit_reached)$|^shopify (?:graphql|article):|^meta media (?:ERROR|EXPIRED|not ready)/;
+/** The HTTP status a connector puts at the start of its error ("x 403: …", "telegram 400: …", "meta feed 400: …", "linkedin 502: …"). */
+const LEADING_STATUS = /^(?:x|telegram|wordpress|shopify|prestashop|odoo|linkedin|tiktok|meta [\w-]+) (\d{3})\b/;
 /** The platform refused the text because it was already posted there (X's duplicate, Facebook's #506). */
 export const isDuplicate = (msg: string) => msg === "x_duplicate" || /\(#506\)|duplicate status/i.test(msg);
 

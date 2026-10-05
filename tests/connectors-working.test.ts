@@ -22,7 +22,8 @@ describe("which connectors do something", () => {
   });
 
   it("does not treat a stored connection with no code behind it as working", () => {
-    for (const id of ["klaviyo", "brevo", "google", "instagram", "whatsapp", "tiktok", "snapchat", "linkedin"]) expect(isWorking(id)).toBe(false);
+    // LinkedIn and TikTok work through Composio only (rule 634 keeps a direct record of them from being a target).
+    for (const id of ["klaviyo", "brevo", "google", "instagram", "whatsapp", "snapchat"]) expect(isWorking(id)).toBe(false);
   });
 
   it("offers Import products exactly where import_products imports", () => {

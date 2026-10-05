@@ -13,12 +13,16 @@ export type ConnLite = { provider: string; meta?: Record<string, string> };
 
 export const CONNECTION_OF: Record<string, string> = { facebook: "meta", instagram: "meta" };
 
+/** Providers that publish only through Composio (via-composio.ts): a direct record of them is not a target. */
+const VIA_ONLY = ["linkedin", "tiktok"];
+
 /** The stored provider ids, plus the publish targets a Meta connection provides. */
 export function connectedTargets(conns: ConnLite[]): string[] {
-  const out = conns.map((c) => c.provider);
+  const out = conns.filter((c) => !VIA_ONLY.includes(c.provider) || c.meta?.via === "composio").map((c) => c.provider);
   const meta = conns.find((c) => c.provider === "meta");
   if (meta?.meta?.pageId) out.push("facebook");
-  if (meta?.meta?.pageId && meta.meta.igId) out.push("instagram");
+  // Through Composio, Instagram is its own connection and needs no Facebook Page.
+  if (meta?.meta?.igId && (meta.meta.pageId || meta.meta.via === "composio")) out.push("instagram");
   return out;
 }
 
@@ -28,6 +32,9 @@ export function targetsFor(task: Task, connected: string[]): string[] {
   const social = task.type === "social" || task.type === "cart_recovery";
   if (task.type === "article") for (const p of ["wordpress", "shopify"]) if (connected.includes(p)) out.push(p);
   if (task.type === "social" && task.channel === "x" && connected.includes("x")) out.push("x");
+  if (task.type === "social" && task.channel === "linkedin" && connected.includes("linkedin")) out.push("linkedin");
+  // TikTok takes a photo post as a draft in the owner's TikTok inbox, so it needs a generated image too.
+  if (social && task.channel === "tiktok" && connected.includes("tiktok") && hasArtwork(task)) out.push("tiktok");
   // Instagram takes only a post with a generated image, from any provider: it has no text-only posts, and a placeholder
   // card is not artwork. A clip is never a target in this round, so a post with only a video does not qualify.
   if (social && task.channel === "instagram" && connected.includes("instagram") && hasArtwork(task)) out.push("instagram");

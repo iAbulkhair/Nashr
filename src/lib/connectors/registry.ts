@@ -1,3 +1,5 @@
+import { composioEnabled, composioReady } from "./composio";
+
 /** Every platform Nashr can connect to. OAuth ones activate when their env keys exist. */
 export type KeyField = { name: string; label: string; labelAr: string; type?: "text" | "password" | "url"; placeholder?: string };
 export type Provider = {
@@ -98,8 +100,16 @@ export const PROVIDERS: Provider[] = [
 export function getProvider(id: string) {
   return PROVIDERS.find((p) => p.id === id) ?? null;
 }
-/** OAuth providers are "available" only when their app credentials are configured. */
+/** Providers with no direct publishing code: they connect through Composio or not at all. */
+const COMPOSIO_ONLY = ["linkedin", "tiktok"];
+
+/** The provider connects through Composio (COMPOSIO_PROVIDERS names it and the key is set), not its own OAuth app. */
+export const routedViaComposio = (id: string) => composioEnabled(id);
+
+/** OAuth providers are "available" only when their app credentials, or their Composio auth configs, are configured. */
 export function isAvailable(p: Provider) {
   if (p.kind === "key") return true;
+  if (routedViaComposio(p.id)) return composioReady(p.id);
+  if (COMPOSIO_ONLY.includes(p.id)) return false;
   return !!(process.env[p.oauth!.clientIdEnv] && process.env[p.oauth!.clientSecretEnv]);
 }

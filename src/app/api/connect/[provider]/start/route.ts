@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { cookies } from "next/headers";
 import { currentUser, sc, sessionCookie } from "@/lib/auth";
-import { getProvider, isAvailable } from "@/lib/connectors/registry";
+import { getProvider, isAvailable, routedViaComposio } from "@/lib/connectors/registry";
+import { composioConnect } from "@/lib/connectors/composio";
+import { PROVIDER_TOOLKITS } from "@/lib/connectors/composio-catalog";
 import { authorizeUrl, pkcePair } from "@/lib/connectors/oauth";
 import { OAUTH_COOKIE, saveState } from "@/lib/connectors/store";
 import { SHOP_HOST } from "@/lib/connectors/shopify";
@@ -23,6 +25,24 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   if (!isAvailable(p)) return NextResponse.json({ ok: false, error: "provider_not_configured" }, { status: 503 });
   const url = new URL(req.url);
   const lang = url.searchParams.get("lang") === "en" ? "en" : "ar";
+  if (routedViaComposio(p.id)) {
+    // Through Composio (src/lib/connectors/composio.ts): one toolkit per flow, only one this provider lists. The pending
+    // account id is kept in the server-side state, so the callback never takes an account id from its query.
+    const toolkits = PROVIDER_TOOLKITS[p.id] ?? [];
+    const toolkit = toolkits.find((t) => t === url.searchParams.get("toolkit")) ?? toolkits[0];
+    if (!toolkit) return NextResponse.json({ ok: false, error: "unknown_provider" }, { status: 404 });
+    const state = randomBytes(16).toString("hex");
+    try {
+      const { accountId, redirectUrl } = await composioConnect(sc(u), toolkit, state);
+      await saveState(state, { email: sc(u), provider, lang, shop: "", verifier: "", actor: u.actor?.email ?? u.email, via: "composio", toolkit, accountId });
+      (await cookies()).set(OAUTH_COOKIE, state, { ...(await sessionCookie(600)), path: "/api/connect" });
+      return NextResponse.redirect(redirectUrl);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      console.error("composio connect start failed", provider, toolkit, /^[a-z_]+$/.test(msg) ? msg : "error");
+      return NextResponse.json({ ok: false, error: /^composio_rate_limited$|^provider_not_configured$/.test(msg) ? msg : "connect_failed" }, { status: msg === "composio_rate_limited" ? 429 : 502 });
+    }
+  }
   let shop = (url.searchParams.get("shop") ?? "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
   if (p.oauth!.needsShop) {
     if (!shop) return NextResponse.json({ ok: false, error: "shop_required" }, { status: 400 });

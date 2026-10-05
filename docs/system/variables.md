@@ -81,6 +81,20 @@ Read indirectly as `process.env[o.clientIdEnv]` and `process.env[o.clientSecretE
 | `SNAP_CLIENT_ID` | Snapchat Ads | No, keep internal |
 | `SNAP_CLIENT_SECRET` | Snapchat Ads | Yes |
 
+### 5a. Composio (publishing through Composio's apps, branch `claude/composio-api-install-1d5bfc`, 2026-10-05)
+
+Read in `src/lib/connectors/composio.ts` (`composioEnabled`, `composioReady`, `getClient`) and declared per toolkit in `src/lib/connectors/composio-catalog.ts` (`authEnv`). A provider routes through Composio only when `COMPOSIO_API_KEY` is set and `COMPOSIO_PROVIDERS` names it; its Connect button shows only when the auth config of each of its toolkits is set too. LinkedIn and TikTok have no direct path: without Composio they are not available, whatever `LINKEDIN_*` or `TIKTOK_*` hold. Composio is called with `allowTracking: false`. The workspace is sent as an HMAC of its scope keyed by `CONNECT_SECRET`, never the email.
+
+| Name | Purpose | Secret |
+|---|---|---|
+| `COMPOSIO_API_KEY` | Server-side key for Composio's API | Yes |
+| `COMPOSIO_PROVIDERS` | Comma list of providers routed through Composio (`meta`, `x`, `linkedin`, `tiktok`). Unset: none, and Meta and X keep their direct apps | No |
+| `COMPOSIO_AUTH_FACEBOOK` | Composio auth config id for the Facebook toolkit | No, keep internal |
+| `COMPOSIO_AUTH_INSTAGRAM` | Composio auth config id for the Instagram toolkit | No, keep internal |
+| `COMPOSIO_AUTH_TWITTER` | Composio auth config id for the X toolkit | No, keep internal |
+| `COMPOSIO_AUTH_LINKEDIN` | Composio auth config id for the LinkedIn toolkit | No, keep internal |
+| `COMPOSIO_AUTH_TIKTOK` | Composio auth config id for the TikTok toolkit, set up with Thakeen's own TikTok app (plan Task 0) | No, keep internal |
+
 ## 6. Summary for auditors
 
 - Total distinct names read: 49 (30 in sections 1 to 4; `VERCEL_ENV`, `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` added 2026-10-01; 19 in section 5, the 18 connector client credentials plus `META_CONFIG_ID`). Reem phase 2 (2026-09-30) added the two QStash signing keys; pricing phase 1 (2026-09-30) added `PAY_LINK_BUSINESS` and stopped reading `PAY_LINK_AGENCY`, which left the count unchanged, and section 4 keeps the retired name so the founder removes it. This summary said 44 before the QStash keys and 37 (19 + 18) before 2026-09-29, when it had not counted `META_CONFIG_ID`.

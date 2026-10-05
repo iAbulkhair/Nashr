@@ -20,6 +20,8 @@ import { forgetDueScope, secretaryKeys } from "./secretary";
 import { handoffKeys } from "./handoffs";
 import { proposalKeys } from "./brand-proposals";
 import { ONCE_INDEX, onceClaimKey, onceKey, onceRepairKey } from "./notify";
+import { getConnection } from "./connectors/store";
+import { isComposio, revokeAll } from "./connectors/via-composio";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -29,6 +31,18 @@ import { ONCE_INDEX, onceClaimKey, onceKey, onceRepairKey } from "./notify";
 function usageKeys(email: string): string[] {
   const now = new Date();
   return Array.from({ length: 36 }, (_, back) => usageMonthKeys(email, monthKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1))))).flat();
+}
+
+async function revokeComposio(scopes: string[]) {
+  const ids = await pmap(scopes, (s) => db.smembers(`conns:${s}`));
+  const pairs = scopes.flatMap((s, i) => ids[i].map((p) => [s, p] as const));
+  const conns = await pmap(pairs, ([s, p]) => getConnection(s, p).catch(() => null));
+  const left = await pmap(pairs, ([s], i) => {
+    const c = conns[i];
+    return c && isComposio(c) ? revokeAll(s, c).catch(() => ["all"]) : Promise.resolve([] as string[]);
+  });
+  const failed = left.flat().length;
+  if (failed) console.error("account wipe: composio revoke failed", failed);
 }
 
 /**
@@ -44,6 +58,9 @@ export async function wipeAccount(email: string) {
   const logins = [e, ...(await db.smembers(membersKey(e)))];
   await Promise.all([revokeFeeds(logins), revokeBooks(logins)]);
   const scopes = (await listBrands(e)).map((b) => scopeFor(e, b.id));
+  // Platform grants held by Composio are revoked while the records that name them still exist. A failure is logged, not
+  // fatal: the account must still be deleted, and the founder can revoke what is left from Composio's dashboard.
+  await revokeComposio(scopes);
   const now = new Date();
   const warnMonths = [monthKey(now), monthKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)))];
   const keys: string[] = [];

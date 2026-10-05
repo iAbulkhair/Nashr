@@ -5,7 +5,10 @@ import { currentUser } from "@/lib/auth";
 import { sameSecret } from "@/lib/rate";
 import { getProvider } from "@/lib/connectors/registry";
 import { exchangeCode } from "@/lib/connectors/oauth";
-import { OAUTH_COOKIE, saveConnection, takeState, type Connection } from "@/lib/connectors/store";
+import { OAUTH_COOKIE, getConnection, saveConnection, takeState, type Connection } from "@/lib/connectors/store";
+import { composioVerify } from "@/lib/connectors/composio";
+import { isToolkit, PROVIDER_TOOLKITS } from "@/lib/connectors/composio-catalog";
+import { connectViaComposio } from "@/lib/connectors/via-composio";
 import { xMe } from "@/lib/connectors/x";
 import { sallaStore } from "@/lib/connectors/salla";
 import { zidStore } from "@/lib/connectors/zid";
@@ -29,7 +32,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   const st = await takeState(state);
   const lang = st?.lang === "en" ? "en" : "ar";
   const back = (q: string) => NextResponse.redirect(`${origin}/${lang}/app/integrations?${q}`);
-  if (!st || !code) return back(`error=${encodeURIComponent(url.searchParams.get("error") ?? "invalid_state")}`);
+  // A Composio flow comes back with no code: the account was created at start and is verified below.
+  if (!st || (!code && st.via !== "composio")) return back(`error=${encodeURIComponent(url.searchParams.get("error") ?? "invalid_state")}`);
   // A state names the provider it was issued for; it cannot complete another provider's flow (#38).
   if (st.provider !== provider) return back("error=invalid_state");
   const p = getProvider(provider);
@@ -43,6 +47,24 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   if ((st.actor || u.email) !== (u.actor?.email ?? "")) return back("error=session_mismatch");
   // Re-checked here, not only at start: a role removed while the provider's page was open does not finish the connection.
   if (!can(u, "connectors")) return back("error=forbidden");
+  if (st.via === "composio") {
+    // Everything comes from the saved state: the toolkit must be one this provider lists, and the account is checked to
+    // be ACTIVE and to belong to this workspace's Composio user before anything is stored.
+    const toolkit = st.toolkit ?? "";
+    if (!isToolkit(toolkit) || !(PROVIDER_TOOLKITS[p.id] ?? []).includes(toolkit) || !st.accountId) return back("error=invalid_state");
+    try {
+      await composioVerify(st.email, toolkit, st.accountId);
+      const conn = await connectViaComposio(st.email, p.id, toolkit, st.accountId, await getConnection(st.email, p.id));
+      await saveConnection(st.email, conn);
+      await track(st.email.split("#")[0], "connect");
+      return back(`connected=${p.id}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      console.error("composio callback failed", p.id, toolkit, /^[a-z_]+$/.test(msg) ? msg : "error");
+      return back(`error=${/^[a-z_]+$/.test(msg) ? msg : "connect_failed"}`);
+    }
+  }
+  if (!code) return back("error=invalid_state");
   if (p.id === "shopify") {
     // Shopify signs its callback (#113), and the store must be the one the flow started for, never the unsigned query.
     if (!validShopifyHmac(url.searchParams, process.env[p.oauth!.clientSecretEnv])) return back("error=bad_hmac");
