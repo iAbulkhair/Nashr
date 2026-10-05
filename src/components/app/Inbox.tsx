@@ -1,5 +1,5 @@
 "use client";
-import { targetsFor } from "@/lib/connectors/targets";
+import { copyOnlyNote, targetsFor } from "@/lib/connectors/targets";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -452,6 +452,7 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                         ))}
                         {/* The reason in words, not only on hover: most owners use the inbox on a phone. */}
                         {slotsOnly && list.length > 0 && <p className="w-full text-xs text-muted" dir="auto">{A.slots}</p>}
+                        {copyOnlyNote(x, connected) && <p className="w-full text-xs text-muted" dir="auto">{i.sallaArticle}</p>}
                       </>
                     );
                   })()}
