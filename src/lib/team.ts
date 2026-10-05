@@ -347,8 +347,9 @@ async function dropMember(owner: string, email: string, may: (m: Member) => bool
     const sent = (await listInvites(owner)).filter((i) => i.invitedBy === cur.email).map((i) => i.id);
     await Promise.all([db.del(memberKey(cur.email)), db.del(`activebrand:${cur.email}`), db.srem(membersKey(owner), cur.email), dropInvites(owner, sent)]);
     // The login is gone, so its calendar link goes too. After the record is deleted, so nothing can mint a new one for
-    // it any more (`revokeFeed` waits out a create already running); the public route also refuses a link whose login
-    // is no longer active (`feedHolds`), so even a failure here never leaves a working link.
+    // it any more (`revokeFeed` waits out a create already running). A failed revoke is retried by nothing: the removal
+    // is already done and the call answers 500. The link is refused at read time while the login is gone (`feedHolds`)
+    // and, once the address is invited again, because the record is older than the new `acceptedAt` (`feedHolds`).
     await revokeFeed(cur.email);
     return "ok" as const;
   });

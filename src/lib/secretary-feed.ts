@@ -65,12 +65,23 @@ const brandIdOf = (scope: string, owner: string): string | null => {
   return id && id !== "default" && scopeFor(owner, id) === scope ? id : null;
 };
 
+/** Whether `recAt` is strictly before `lifeAt`. A missing or unparsable date on either side is not older. */
+const olderThan = (recAt: unknown, lifeAt: unknown): boolean => {
+  if (typeof recAt !== "string" || typeof lifeAt !== "string") return false;
+  const r = Date.parse(recAt);
+  const l = Date.parse(lifeAt);
+  return Number.isFinite(r) && Number.isFinite(l) && r < l;
+};
+
 /**
  * Whether a feed record still holds, read fresh on every fetch (the session-free half of `resolveSession` in auth.ts):
  * the login exists and is active, and `rec.scope` is one of its account's active brands. An owner must not be suspended.
  * A member must be on the owner's roster (`getLogin` checks it), not disabled, an admin or member, joined after the owner
  * record was made, and the owner must exist and not be suspended. The scope is compared with the owner's stored email
  * exactly, as `sc(u)` builds it: a member's own address, another account or an archived brand is never a scope here.
+ * A record made before the login's current life began (a member's `acceptedAt`, an owner's `createdAt`) is stale: the
+ * login was removed or deleted and the address taken again, so a link that outlived its revoke does not carry over. A
+ * missing or unparsable date on either side is not a reason to refuse (existing links keep working).
  */
 export async function feedHolds(rec: FeedRecord): Promise<boolean> {
   const login = await getLogin(rec.login);
@@ -78,6 +89,7 @@ export async function feedHolds(rec: FeedRecord): Promise<boolean> {
   let owner: string;
   if (login.kind === "owner") {
     if (login.user.suspended) return false;
+    if (olderThan(rec.createdAt, login.user.createdAt)) return false;
     owner = login.user.email;
   } else {
     const { member: m, owner: u } = login;
@@ -86,6 +98,7 @@ export async function feedHolds(rec: FeedRecord): Promise<boolean> {
     if (typeof m.memberOf !== "string" || !m.memberOf || m.memberOf === normalizeEmail(rec.login)) return false;
     // NaN on either side (a malformed date) refuses too.
     if (!(new Date(m.acceptedAt).getTime() >= new Date(u.createdAt).getTime())) return false;
+    if (olderThan(rec.createdAt, m.acceptedAt)) return false;
     owner = u.email;
   }
   const id = brandIdOf(rec.scope, owner);

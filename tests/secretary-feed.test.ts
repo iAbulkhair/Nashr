@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
 import { saveBrands } from "@/lib/brands";
-import { forceRemoveMember, getMember, removeMember, saveMember, type Member } from "@/lib/team";
+import { createMember, forceRemoveMember, getMember, removeMember, saveMember, type Member } from "@/lib/team";
 import { wipeAccount } from "@/lib/account";
 import * as resetRoute from "@/app/api/auth/reset/route";
 import * as adminUserRoute from "@/app/api/admin/users/[email]/route";
@@ -404,7 +404,8 @@ describe("public feed route (rules 539-542)", () => {
   it("rule 539: a member's link holds only while resolveSession would let that member in", async () => {
     const owner = await newUser("feed539m");
     const { email } = await newMember(owner, "admin");
-    const rec = { login: email, scope: owner.email, lang: "en" as const, createdAt: iso(NOW) };
+    // Made after the member joined: a record from before the login's life is refused (the re-invite test below).
+    const rec = { login: email, scope: owner.email, lang: "en" as const, createdAt: new Date(Date.now() + 1000).toISOString() };
     const original = (await getMember(email))!;
     const holdsWith = async (m: Partial<Member>) => {
       await saveMember({ ...original, ...m });
@@ -418,6 +419,42 @@ describe("public feed route (rules 539-542)", () => {
     expect(await holdsWith({ role: "member" })).toBe(true);
     await saveUser({ ...(await getUser(owner.email))!, suspended: true });
     expect(await feedHolds(rec)).toBe(false);
+  });
+
+  it("rule 539: a link made before the login's current life began is refused (re-invited member, re-registered owner); a fresh one and an unparsable date are not", async () => {
+    const later = () => new Promise((r) => setTimeout(r, 5));
+    const ip = nextIp();
+    // A member removed without a revoke (as if it failed) and invited again at the same address.
+    const owner = await newUser("feed539r");
+    const { email } = await newMember(owner, "member");
+    const old = (await createFeed(email, owner.email, "en")) as string;
+    expect((await callFeed(old, ip)).status).toBe(200);
+    await Promise.all([db.del(`member:${email}`), db.srem(`members:${owner.email}`, email)]);
+    await later();
+    await createMember(owner.email, { email, name: "Again", password: "abc12345", lang: "ar", role: "member", invitedBy: owner.email });
+    const found = await resolveFeed(old);
+    expect(found).not.toBeNull();
+    expect(Date.parse(found!.rec.createdAt)).toBeLessThan(Date.parse((await getMember(email))!.acceptedAt));
+    expect(await feedHolds(found!.rec)).toBe(false);
+    const stale = await callFeed(old, ip);
+    expect(stale.status).toBe(404);
+    expect(await stale.text()).toBe("");
+    const fresh = (await createFeed(email, owner.email, "en")) as string;
+    expect((await callFeed(fresh, ip)).status).toBe(200);
+    // The same record with a date that cannot be read is not refused for that reason.
+    expect(await feedHolds({ ...(await resolveFeed(fresh))!.rec, createdAt: "not a date" })).toBe(true);
+
+    // An owner deleted without a revoke and registered again at the same address.
+    const o2 = await newUser("feed539o");
+    const oldOwner = (await createFeed(o2.email, o2.email, "en")) as string;
+    expect((await callFeed(oldOwner, ip)).status).toBe(200);
+    await db.del(`user:${o2.email}`);
+    await later();
+    await createUser({ email: o2.email, name: "Again", phone: "", password: "abc12345", lang: "ar" });
+    expect((await callFeed(oldOwner, ip)).status).toBe(404);
+    const freshOwner = (await createFeed(o2.email, o2.email, "en")) as string;
+    expect((await callFeed(freshOwner, ip)).status).toBe(200);
+    expect(await feedHolds({ ...(await resolveFeed(freshOwner))!.rec, createdAt: "not a date" })).toBe(true);
   });
 
   it("rule 540: tenant isolation, the feed reads only the record's scope", async () => {
@@ -690,14 +727,18 @@ describe("feed revocation (rules 545-546)", () => {
 
   it("rule 545: removing a member, resetting a password and changing a password end that login's feed, and only that login's", async () => {
     const owner = await newUser("feed545");
-    const [m1, m2, m3, m4] = [await newMember(owner, "member"), await newMember(owner, "member"), await newMember(owner, "admin"), await newMember(owner, "member")];
+    const [m1, m2, m3, m4, m5, m6] = [await newMember(owner, "member"), await newMember(owner, "member"), await newMember(owner, "admin"), await newMember(owner, "member"), await newMember(owner, "member"), await newMember(owner, "admin")];
+    const other = await newUser("feed545x");
     const t = {
       owner: await live(owner.email, owner.email),
       m1: await live(m1.email, owner.email),
       m2: await live(m2.email, owner.email),
       m3: await live(m3.email, owner.email),
       m4: await live(m4.email, owner.email),
+      m5: await live(m5.email, owner.email),
+      m6: await live(m6.email, owner.email),
     };
+    const bystander = await live(other.email, other.email);
 
     // 1. Removed by the owner (removeMember): that member's feed ends, everyone else's stays.
     const acting = (await resolveAs(owner.email))!;
@@ -723,12 +764,16 @@ describe("feed revocation (rules 545-546)", () => {
     await expectEnded(m4.email, t.m4);
     await expectAlive(owner.email, t.owner);
 
-    // 5. The owner's password reset by the link.
+    // 5. The owner's password reset by the link ends the owner's link and every member's, as it ends every member's session.
     expect((await resetAs(owner.email, "owner", "owner12345")).status).toBe(200);
     await expectEnded(owner.email, t.owner);
+    await expectEnded(m5.email, t.m5);
+    await expectEnded(m6.email, t.m6);
+    await expectAlive(other.email, bystander);
 
-    // 6. The founder's reset of the owner.
+    // 6. The founder's reset of the owner: the same, for the owner and the members that have a link again.
     t.owner = await live(owner.email, owner.email);
+    t.m5 = await live(m5.email, owner.email);
     // The founder is a real account signed in as themselves (as in teams-core.test.ts).
     if (!(await getUser(FOUNDER))) await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" });
     await signIn(FOUNDER);
@@ -736,12 +781,17 @@ describe("feed revocation (rules 545-546)", () => {
     expect(res.status).toBe(200);
     const { tempPassword } = (await res.json()) as { tempPassword: string };
     await expectEnded(owner.email, t.owner);
+    await expectEnded(m5.email, t.m5);
+    await expectAlive(other.email, bystander);
 
-    // 7. The owner's own password change.
+    // 7. The owner's own password change ends the owner's link only: the members keep their sessions, so their links stay.
     t.owner = await live(owner.email, owner.email);
+    t.m5 = await live(m5.email, owner.email);
     await signIn(owner.email);
     expect((await accountRoute.PATCH(json("/api/account", "PATCH", { currentPassword: tempPassword, newPassword: "changed12345" }))).status).toBe(200);
     await expectEnded(owner.email, t.owner);
+    await expectAlive(m5.email, t.m5);
+    await expectAlive(other.email, bystander);
   });
 
   it("rule 546: deleting the account leaves no sec:feed or sec:feedof key for the owner or any member", async () => {
@@ -766,5 +816,25 @@ describe("feed revocation (rules 545-546)", () => {
     for (const l of logins) expect((await callFeed(tokens[l])).status).toBe(404);
     // Another account's link is not touched.
     await expectAlive(bystander.email, keep);
+  });
+
+  it("rule 546: a revoke that fails stops the wipe before the account is touched, and a second wipe finishes it", async () => {
+    const owner = await newUser("feed546f");
+    const m = await newMember(owner, "member");
+    const tokens = [await live(owner.email, owner.email), await live(m.email, owner.email)];
+    const lock = vi.spyOn(db, "lockOwned").mockRejectedValueOnce(new Error("store down"));
+    try {
+      await expect(wipeAccount(owner.email)).rejects.toThrow("store down");
+    } finally {
+      lock.mockRestore();
+    }
+    // The first step failed: nothing of the account was deleted yet, so the owner can still see and retry.
+    expect(await getUser(owner.email)).not.toBeNull();
+    expect(await getMember(m.email)).not.toBeNull();
+    await wipeAccount(owner.email);
+    expect(await getUser(owner.email)).toBeNull();
+    expect(await getMember(m.email)).toBeNull();
+    for (const t of tokens) expect((await callFeed(t)).status).toBe(404);
+    expect(memKeys().filter((k) => [owner.email, m.email].some((l) => k === FEED_KEYS.of(l)))).toEqual([]);
   });
 });

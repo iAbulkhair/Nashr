@@ -4,8 +4,8 @@ import { NextResponse } from "next/server";
 import { createSession, getLogin, revokeSessions, revokeTeamSessions, saveUser, strongPassword } from "@/lib/auth";
 import { withUserLock } from "@/lib/credits";
 import { revokeAllMcp } from "@/lib/mcp";
-import { revokeFeed } from "@/lib/feed-token";
-import { saveMember, withMemberLock } from "@/lib/team";
+import { revokeFeed, revokeFeeds } from "@/lib/feed-token";
+import { membersKey, saveMember, withMemberLock } from "@/lib/team";
 import { db } from "@/lib/db";
 import { allow, clientIp } from "@/lib/rate";
 
@@ -66,8 +66,10 @@ export async function POST(req: Request) {
   // A reset is what an owner does after losing control of the account: the owner's sessions, every member's session
   // (each signs back in with their own password) and every MCP token die with the old password.
   await withUserLock(owner.email, async (x) => { x.passHash = hash; revokeSessions(x); revokeTeamSessions(x); await saveUser(x); });
-  // The owner's calendar link goes with the MCP tokens (a failure of either is a 500, never a half-done reset).
-  await Promise.all([revokeAllMcp(owner.email), revokeFeed(owner.email)]);
+  // The owner's calendar link and every member's go with the MCP tokens, as every member's session does above (the
+  // password and the sessions are already saved: a failure here is a 500 and the user asks for a new reset link).
+  const roster = await db.smembers(membersKey(owner.email));
+  await Promise.all([revokeAllMcp(owner.email), revokeFeeds([owner.email, ...roster])]);
   await createSession(owner.email);
   return NextResponse.json({ ok: true });
 }
