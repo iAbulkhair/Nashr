@@ -123,6 +123,13 @@ export const SEC_KEYS = {
   bookClaim: (scope: string, provider: string, externalId: string) => `sec:book:ext:${scope}:${provider}:${externalId}`,
   /** Every `{provider}:{externalId}` the brand ever claimed, added before the claim, so account deletion finds each claim. */
   bookIds: (scope: string) => `sec:bookext:${scope}`,
+  /**
+   * The follow-up tasks proposed for one booking item (Reem B2b, src/lib/secretary-meeting.ts): one JSON `Proposal[]`, at
+   * most 10, 14 days. Only `approveMeeting` turns any of them into items.
+   */
+  mprop: (scope: string, id: string) => `sec:mprop:${scope}:${id}`,
+  /** Every item id that ever had a pending set, added before the set is written, so `secretaryKeys` finds each `sec:mprop` key. */
+  mprops: (scope: string) => `sec:mprops:${scope}`,
 };
 const UNDATED_SCORE = 32503680000000; // year 3000: after every dated item
 
@@ -1270,7 +1277,7 @@ export async function secretaryDaily(scope: string, now = Date.now()) {
  * member of the global `sec:duescopes` is not a key: `wipeAccount` removes it with `forgetDueScope`.
  */
 export async function secretaryKeys(scope: string): Promise<string[]> {
-  const [ids, props, series, books] = await Promise.all([db.smembers(SEC_KEYS.all(scope)), db.smembers(SEC_KEYS.awayProps(scope)), db.smembers(SEC_KEYS.seriesList(scope)), db.smembers(SEC_KEYS.bookIds(scope))]);
+  const [ids, props, series, books, meets] = await Promise.all([db.smembers(SEC_KEYS.all(scope)), db.smembers(SEC_KEYS.awayProps(scope)), db.smembers(SEC_KEYS.seriesList(scope)), db.smembers(SEC_KEYS.bookIds(scope)), db.smembers(SEC_KEYS.mprops(scope))]);
   // The alert counters and wrap markers live two days; every local day they can name, in any zone, from two days back
   // to tomorrow.
   const days = [...new Set([-2, -1, 0, 1].map((d) => new Date(Date.now() + d * 864e5).toISOString().slice(0, 10)))];
@@ -1292,6 +1299,9 @@ export async function secretaryKeys(scope: string): Promise<string[]> {
       return i > 0 ? [SEC_KEYS.bookClaim(scope, m.slice(0, i), m.slice(i + 1))] : [];
     }),
     SEC_KEYS.bookIds(scope),
+    // Meeting proposals (Reem B2b): each pending set by the item ids its index holds, and the index. The approve lock
+    // (`sec:lock:{scope}:mprop:{id}`) lives 10 s.
+    ...meets.map((id) => SEC_KEYS.mprop(scope, id)), SEC_KEYS.mprops(scope),
   ];
 }
 /** Account deletion: the scope leaves the sweep's global index. */

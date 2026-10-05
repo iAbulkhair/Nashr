@@ -179,6 +179,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // One's own booking links (Reem B2a): the same, with their own action (rule 596).
   "POST /api/secretary/booking": g("member", "booking.manage"),
   "DELETE /api/secretary/booking": g("member", "booking.manage"),
+  // The follow-up after a meeting (Reem B2b, rules 600-603): discarding the proposals and approving some of them (the one path that makes items) are the same role as any Reem write.
+  "DELETE /api/secretary/meeting/[id]": g("member", "todo.write"),
+  "POST /api/secretary/meeting/[id]/approve": g("member", "todo.write"),
   // Majed's handoffs: a run spends credits like a generation; a decline is a draft decision, like rejecting an item.
   "POST /api/handoffs/[id]/run": g("member", "generate"),
   "POST /api/handoffs/[id]/decline": g("member", "drafts"),
@@ -253,6 +256,7 @@ const READS: Record<string, Gate> = {
   "GET /api/secretary/series/[seriesId]/export": g("member", "read"),
   "GET /api/secretary/feed": g("member", "read"),
   "GET /api/secretary/booking": g("member", "read"),
+  "GET /api/secretary/meeting/[id]": g("member", "read"),
 
   "GET /api/mcp": "public-read",
   "GET /api/secretary/feed/[token]": "public-read", // the token in the path is the credential; rate limited per IP and per link
