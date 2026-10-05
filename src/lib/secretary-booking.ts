@@ -24,6 +24,7 @@ import { isAgentId } from "./agents";
 import type { BookRecord } from "./booking-token";
 import { db } from "./db";
 import { allow, sameSecret } from "./rate";
+import { safeFetch } from "./safe-fetch";
 import { OWNER_ALIASES, SEC_ID, SEC_KEYS, calFor, changeItem, cleanLine, createItem, newSecId, parseFields, reindexOpen, removeBySystem, stateOf, withLock, type Who } from "./secretary";
 import { SEC_LIMITS, zoneLocalInput, type SecItem } from "./secretary-agenda";
 import type { Zone } from "./zones";
@@ -313,5 +314,47 @@ export async function applyBooking(rec: BookRecord, p: Parsed, hash: string, now
   } catch (e) {
     console.error("booking apply failed", e instanceof Error ? e.name : "error");
     return "busy";
+  }
+}
+
+const CALENDLY_API = "https://api.calendly.com";
+const CALENDLY_TIMEOUT_MS = 10_000;
+/** A Calendly resource URI is an address on Calendly's own API. */
+const calendlyUri = (v: unknown): v is string => typeof v === "string" && v.startsWith(`${CALENDLY_API}/`) && v.length <= 300;
+
+export type CalendlySetup = { ok: true } | { ok: false; error: "calendly_rejected" | "calendly_plan" };
+
+/**
+ * Subscribe Calendly to our webhook for the owner of `pat`, a personal access token the owner pasted. Two calls, both
+ * through `safeFetch` (https only): `GET /users/me` for the user and organization addresses (Calendly's subscription
+ * call requires `organization` even for `scope: "user"`), then `POST /webhook_subscriptions` for
+ * `invitee.created` and `invitee.canceled` with `signing_key`, the key `verifyCalendlySignature` later checks against.
+ *
+ * The token lives only in this function's two Authorization headers: never stored, logged, put in a URL, returned or
+ * carried by an error. Every failure is a typed answer, never a throw and never a message: a refusal from the plan
+ * (402 or 403 on the subscription: webhooks need Calendly's Standard plan or above) is `calendly_plan`; anything else,
+ * including a malformed answer, a 5xx and a network error, is `calendly_rejected`.
+ */
+export async function calendlySubscribe(pat: string, url: string, signingKey: string): Promise<CalendlySetup> {
+  const rejected = { ok: false, error: "calendly_rejected" } as const;
+  const call = (path: string, init: RequestInit) =>
+    safeFetch(
+      `${CALENDLY_API}${path}`,
+      { ...init, headers: { authorization: `Bearer ${pat}`, accept: "application/json", ...(init.body ? { "content-type": "application/json" } : {}) }, signal: AbortSignal.timeout(CALENDLY_TIMEOUT_MS) },
+      { httpsOnly: true },
+    );
+  try {
+    const me = await call("/users/me", { method: "GET" });
+    if (!me.ok) return rejected;
+    const resource = ((await me.json()) as { resource?: { uri?: unknown; current_organization?: unknown } } | null)?.resource;
+    if (!resource || !calendlyUri(resource.uri) || !calendlyUri(resource.current_organization)) return rejected;
+    const res = await call("/webhook_subscriptions", {
+      method: "POST",
+      body: JSON.stringify({ url, events: ["invitee.created", "invitee.canceled"], organization: resource.current_organization, user: resource.uri, scope: "user", signing_key: signingKey }),
+    });
+    if (res.ok) return { ok: true };
+    return res.status === 402 || res.status === 403 ? { ok: false, error: "calendly_plan" } : rejected;
+  } catch {
+    return rejected;
   }
 }

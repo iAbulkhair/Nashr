@@ -1,11 +1,14 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { newMember, newUser, params, signIn } from "./helpers/session";
+import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { currentUser, getUser, saveUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import * as rate from "@/lib/rate";
 import * as bookingRoute from "@/app/api/secretary/booking/[token]/route";
+import * as manageRoute from "@/app/api/secretary/booking/route";
+import { safeFetch } from "@/lib/safe-fetch";
+import { appOrigin } from "@/lib/origin";
 import { can, MIN_ROLE } from "@/lib/roles";
 import {
   BOOK_KEYS, BOOK_PROVIDERS, BOOK_TOKEN, bookingKey, createBook, getBookStatus, hashBookToken, resolveBook, revokeBook, revokeBooks,
@@ -16,6 +19,10 @@ import { SEC_RESTORE_DAYS, type SecItem } from "@/lib/secretary-agenda";
 import { wipeAccount } from "@/lib/account";
 import type { BookRecord } from "@/lib/booking-token";
 import type { User } from "@/lib/auth";
+
+// Only the outbound fetch is mocked (Calendly's API); the store and everything else is real. The module's other exports stay real.
+vi.mock("@/lib/safe-fetch", async (orig) => ({ ...(await orig<typeof import("@/lib/safe-fetch")>()), safeFetch: vi.fn() }));
+const safeFetchMock = vi.mocked(safeFetch);
 
 const fx = (name: string): Record<string, unknown> => JSON.parse(readFileSync(`tests/fixtures/${name}.json`, "utf8"));
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -882,5 +889,261 @@ describe("booking webhook (rules 594-595)", () => {
     } finally {
       lockSpy.mockRestore();
     }
+  });
+});
+
+describe("booking management (rules 596-597)", () => {
+  const FOUNDER = "founder-book@test.example";
+  const BOOKING = "/api/secretary/booking";
+  const status = () => manageRoute.GET();
+  const create = (body?: unknown) => manageRoute.POST(json(BOOKING, "POST", body));
+  const stop = (provider?: string) => manageRoute.DELETE(new Request(`https://nashr.test${BOOKING}${provider === undefined ? "" : `?provider=${provider}`}`, { method: "DELETE" }));
+  const tokenOf = (url: string) => url.replace(`${appOrigin()}/api/secretary/booking/`, "");
+  const webhook = (token: string, body: string, headers: Record<string, string>) =>
+    bookingRoute.POST(new Request(`https://nashr.test${BOOKING}/${token}`, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": `10.9.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`, ...headers }, body }), params({ token }));
+  const memText = () => {
+    const m = (globalThis as unknown as { __nashrMem: { kv: Map<string, unknown>; lists: Map<string, unknown>; sets: Map<string, unknown>; hashes?: Map<string, unknown>; zsets?: Map<string, unknown> } }).__nashrMem;
+    const ser = (v: unknown) => JSON.stringify(v, (_k, x) => (x instanceof Set ? [...x] : x instanceof Map ? [...x.entries()] : x));
+    const keys = [...m.kv.keys(), ...m.lists.keys(), ...m.sets.keys(), ...(m.hashes?.keys() ?? []), ...(m.zsets?.keys() ?? [])];
+    const values = [...m.kv.values(), ...m.lists.values(), ...m.sets.values(), ...(m.hashes?.values() ?? []), ...(m.zsets?.values() ?? [])].map(ser);
+    return [...keys, ...values].join("\n");
+  };
+
+  beforeAll(() => {
+    vi.stubEnv("ADMIN_EMAILS", FOUNDER);
+    vi.stubEnv("WAITLIST_ADMIN_KEY", "");
+  });
+  afterEach(() => {
+    safeFetchMock.mockReset();
+    vi.restoreAllMocks();
+  });
+
+  const reply = (status: number, body: unknown = {}) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const ME = { resource: { uri: "https://api.calendly.com/users/UUSER", current_organization: "https://api.calendly.com/organizations/ORG" } };
+  /** Calendly accepts: users/me then the subscription. */
+  const calendlyOk = () => safeFetchMock.mockResolvedValueOnce(reply(200, ME)).mockResolvedValueOnce(reply(201, { resource: { uri: "https://api.calendly.com/webhook_subscriptions/W" } }));
+
+  it("rule 596: anonymous 401; owner, admin and member 200; a founder impersonating gets 403 on POST and DELETE; GET never returns the link or the key; stop twice is 200 and the stopped link then gives the empty 404; the 21st write in an hour is 429", async () => {
+    signOut();
+    for (const r of [await status(), await create({ provider: "calcom" }), await stop("calcom")]) {
+      expect(r.status).toBe(401);
+      expect(await r.json()).toEqual({ ok: false, error: "unauthorized" });
+    }
+
+    const owner = await newUser("book596");
+    const admin = await newMember(owner, "admin");
+    const member = await newMember(owner, "member");
+    const secrets: string[] = [];
+    for (const login of [owner.email, admin.email, member.email]) {
+      await signIn(login);
+      const made = await create({ provider: "calcom", lang: "en" });
+      expect(made.status).toBe(200);
+      expect(made.headers.get("cache-control")).toBe("no-store");
+      const b = await made.json();
+      expect(b.ok).toBe(true);
+      const token = tokenOf(b.url);
+      expect(b.url).toBe(`${appOrigin()}/api/secretary/booking/${token}`);
+      expect(token).toMatch(BOOK_TOKEN);
+      // The secret is the derived signing key, shown only here; a webhook signed with it is accepted.
+      expect(b.secret).toBe(bookingKey(hashBookToken(token)));
+      secrets.push(b.secret, token, hashBookToken(token));
+      // The record is the acting login's own, in the account's scope (never a body value).
+      expect(await resolveBook(token)).toMatchObject({ login, scope: owner.email, provider: "calcom", lang: "en" });
+      const signed = JSON.stringify(fx("booking-calcom-created"));
+      expect((await webhook(token, signed, { "x-cal-signature-256": hex(b.secret, signed) })).status).toBe(200);
+
+      const st = await status();
+      expect(st.status).toBe(200);
+      expect(st.headers.get("cache-control")).toBe("no-store");
+      const text = await st.text();
+      const links = (await getBookStatus(login)).map((l) => ({ ...l, sameBrand: true }));
+      expect(JSON.parse(text)).toEqual({ ok: true, links });
+      expect(links).toHaveLength(1);
+      expect(Object.keys(JSON.parse(text).links[0]).sort()).toEqual(["createdAt", "provider", "sameBrand"]);
+      for (const s of secrets.slice(-3)) expect(text).not.toContain(s);
+      expect(text).not.toContain("http");
+    }
+
+    // Bad bodies are 400 and make nothing.
+    await signIn(owner.email);
+    for (const bad of [undefined, null, [], "calcom", {}, { provider: "zoom" }, { provider: 7 }]) {
+      expect((await create(bad)).status).toBe(400);
+    }
+    expect((await getBookStatus(owner.email)).map((l) => l.provider)).toEqual(["calcom"]);
+
+    // Stopping needs the provider named and valid.
+    expect((await stop()).status).toBe(400);
+    expect((await stop("zoom")).status).toBe(400);
+    expect((await stop("calcom,calendly")).status).toBe(400);
+
+    // Stop twice is 200, and the stopped link (signed correctly) gives the empty 404.
+    await signIn(member.email);
+    const memberToken = secrets[7];
+    const memberKey = secrets[6];
+    const body = JSON.stringify(fx("booking-calcom-created"));
+    for (let i = 0; i < 2; i++) {
+      const r = await stop("calcom");
+      expect(r.status).toBe(200);
+      expect(r.headers.get("cache-control")).toBe("no-store");
+      expect(await r.json()).toEqual({ ok: true });
+    }
+    expect(await getBookStatus(member.email)).toEqual([]);
+    const dead = await webhook(memberToken, body, { "x-cal-signature-256": hex(memberKey, body) });
+    expect(dead.status).toBe(404);
+    expect(await dead.text()).toBe("");
+    // The other two logins keep their links; stopping calendly (none) is also 200 and leaves them.
+    expect((await stop("calendly")).status).toBe(200);
+    expect((await getBookStatus(owner.email)).map((l) => l.provider)).toEqual(["calcom"]);
+    expect((await getBookStatus(admin.email)).map((l) => l.provider)).toEqual(["calcom"]);
+
+    // A founder impersonating the account: status is readable, but nothing that outlives the session may be made or stopped.
+    await signIn(owner.email, { imp: FOUNDER });
+    const before = await getBookStatus(owner.email);
+    const p = await create({ provider: "calcom" });
+    expect(p.status).toBe(403);
+    expect(await p.json()).toEqual({ error: "forbidden" });
+    expect((await create({ provider: "calendly", token: "x" })).status).toBe(403);
+    expect((await stop("calcom")).status).toBe(403);
+    expect(safeFetchMock).not.toHaveBeenCalled();
+    expect(await getBookStatus(owner.email)).toEqual(before);
+    const g = await status();
+    expect(g.status).toBe(200);
+    expect(await g.json()).toMatchObject({ ok: true, links: [{ provider: "calcom" }] });
+
+    // Writes share one bucket per login: 20 an hour across POST and DELETE; the 21st is 429; status has its own bucket.
+    const heavy = await newUser("book596rate");
+    await signIn(heavy.email);
+    for (let i = 0; i < 10; i++) {
+      expect((await create({ provider: "calcom" })).status).toBe(200);
+      expect((await stop("calcom")).status).toBe(200);
+    }
+    for (const r of [await create({ provider: "calcom" }), await stop("calcom"), await create({ provider: "calcom" })]) {
+      expect(r.status).toBe(429);
+      expect(await r.json()).toEqual({ ok: false, error: "too_many" });
+    }
+    expect((await status()).status).toBe(200);
+  });
+
+  it("rule 597: Calendly: the pasted token never reaches the store, a log line or an answer; a 4xx from Calendly leaves no record and answers a typed error; the signing key sent to Calendly equals the key the webhook later verifies against; a token over 2,000 characters is 400", async () => {
+    const PAT = "eyJ-pat-SECRET-" + "a".repeat(40);
+    const logs = ["log", "info", "warn", "error", "debug"].map((m) => vi.spyOn(console, m as "log").mockImplementation(() => {}));
+    const logged = () => JSON.stringify(logs.flatMap((l) => l.mock.calls));
+    const owner = await newUser("book597");
+    await signIn(owner.email);
+
+    // Success: the answer is { ok: true } only, and Calendly is called twice, https only, the token only in the header.
+    calendlyOk();
+    const ok = await create({ provider: "calendly", token: PAT });
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get("cache-control")).toBe("no-store");
+    const okText = await ok.text();
+    expect(JSON.parse(okText)).toEqual({ ok: true });
+    expect(safeFetchMock).toHaveBeenCalledTimes(2);
+    const [me, sub] = safeFetchMock.mock.calls;
+    expect(me[0]).toBe("https://api.calendly.com/users/me");
+    expect(me[2]).toEqual({ httpsOnly: true });
+    expect((me[1] as RequestInit).method ?? "GET").toBe("GET");
+    expect(sub[0]).toBe("https://api.calendly.com/webhook_subscriptions");
+    expect(sub[2]).toEqual({ httpsOnly: true });
+    expect((sub[1] as RequestInit).method).toBe("POST");
+    for (const call of safeFetchMock.mock.calls) {
+      expect(call[0]).not.toContain(PAT);
+      expect(new Headers((call[1] as RequestInit).headers).get("authorization")).toBe(`Bearer ${PAT}`);
+    }
+    const sent = JSON.parse((sub[1] as RequestInit).body as string);
+    expect(sent).toMatchObject({
+      events: ["invitee.created", "invitee.canceled"],
+      organization: "https://api.calendly.com/organizations/ORG",
+      user: "https://api.calendly.com/users/UUSER",
+      scope: "user",
+    });
+    expect(sent.url).toMatch(new RegExp(`^${appOrigin().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/api/secretary/booking/[A-Za-z0-9_-]{43}$`));
+    // The record exists, names the login and scope, and the signing key sent equals the key the webhook verifies against.
+    const token = tokenOf(sent.url);
+    const rec = await resolveBook(token);
+    expect(rec).toMatchObject({ login: owner.email, scope: owner.email, provider: "calendly" });
+    expect(sent.signing_key).toBe(bookingKey(hashBookToken(token)));
+    const hook = JSON.stringify(fx("booking-calendly-created"));
+    const t = Math.floor(Date.now() / 1000);
+    const signedWith = (key: string) => ({ "calendly-webhook-signature": `t=${t},v1=${hex(key, `${t}.${hook}`)}` });
+    expect((await webhook(token, hook, signedWith(sent.signing_key))).status).toBe(200);
+    expect((await webhook(token, hook, signedWith("j".repeat(64)))).status).toBe(404);
+    // The status lists it without any token, key or url.
+    const st = await (await status()).text();
+    expect(JSON.parse(st).links).toEqual([expect.objectContaining({ provider: "calendly", sameBrand: true })]);
+    expect(st).not.toContain(token);
+    expect(st).not.toContain(sent.signing_key);
+
+    // Failures: each leaves no record and answers a typed error; the token is nowhere in the answer, the store or the logs.
+    const failed: Record<string, Response>[] = [];
+    const cases: [string, () => void, number, string][] = [
+      ["users/me 401", () => safeFetchMock.mockResolvedValueOnce(reply(401, { title: "Unauthenticated", message: PAT })), 422, "calendly_rejected"],
+      ["subscription 400", () => safeFetchMock.mockResolvedValueOnce(reply(200, ME)).mockResolvedValueOnce(reply(400, { message: PAT })), 422, "calendly_rejected"],
+      ["subscription 401", () => safeFetchMock.mockResolvedValueOnce(reply(200, ME)).mockResolvedValueOnce(reply(401)), 422, "calendly_rejected"],
+      ["subscription 403 (plan)", () => safeFetchMock.mockResolvedValueOnce(reply(200, ME)).mockResolvedValueOnce(reply(403, { message: "Please upgrade" })), 422, "calendly_plan"],
+      ["subscription 402 (plan)", () => safeFetchMock.mockResolvedValueOnce(reply(200, ME)).mockResolvedValueOnce(reply(402)), 422, "calendly_plan"],
+      ["subscription 500", () => safeFetchMock.mockResolvedValueOnce(reply(200, ME)).mockResolvedValueOnce(reply(500)), 422, "calendly_rejected"],
+      ["users/me with no organization", () => safeFetchMock.mockResolvedValueOnce(reply(200, { resource: { uri: "https://api.calendly.com/users/U" } })), 422, "calendly_rejected"],
+      ["users/me not JSON", () => safeFetchMock.mockResolvedValueOnce(new Response("<html>", { status: 200 })), 422, "calendly_rejected"],
+      ["network error carrying the token", () => safeFetchMock.mockRejectedValueOnce(new Error(`connect failed with ${PAT}`)), 422, "calendly_rejected"],
+      ["second call network error", () => safeFetchMock.mockResolvedValueOnce(reply(200, ME)).mockRejectedValueOnce(Object.assign(new Error(PAT), { cause: PAT })), 422, "calendly_rejected"],
+    ];
+    const other = await newUser("book597f");
+    await signIn(other.email);
+    for (const [name, arm, statusCode, error] of cases) {
+      safeFetchMock.mockReset();
+      arm();
+      const r = await create({ provider: "calendly", token: PAT });
+      const text = await r.text();
+      expect(r.status, name).toBe(statusCode);
+      expect(r.headers.get("cache-control"), name).toBe("no-store");
+      expect(JSON.parse(text), name).toEqual({ ok: false, error });
+      expect(text).not.toContain(PAT);
+      expect(await getBookStatus(other.email), name).toEqual([]);
+      expect(await db.get(BOOK_KEYS.of(other.email, "calendly")), name).toBeNull();
+      failed.push({});
+    }
+    expect(failed).toHaveLength(cases.length);
+    // A failed re-setup leaves the login with no Calendly link (the earlier one was replaced when the new record was made).
+    await signIn(owner.email);
+    safeFetchMock.mockReset();
+    safeFetchMock.mockResolvedValueOnce(reply(401));
+    expect((await create({ provider: "calendly", token: PAT })).status).toBe(422);
+    expect(await getBookStatus(owner.email)).toEqual([]);
+
+    // The token is bounded: over 2,000 characters, empty, blank, or not a string is 400 and nothing is called or made.
+    safeFetchMock.mockReset();
+    const fresh = await newUser("book597g");
+    await signIn(fresh.email);
+    const lockSpy = vi.spyOn(db, "lockOwned");
+    for (const bad of ["x".repeat(2001), "", "   ", 12345, null, { a: 1 }, undefined]) {
+      const r = await create({ provider: "calendly", token: bad });
+      expect(r.status).toBe(400);
+      expect(JSON.parse(await r.text())).toEqual({ ok: false, error: "bad_token" });
+    }
+    expect(safeFetchMock).not.toHaveBeenCalled();
+    expect(lockSpy).not.toHaveBeenCalled();
+    expect(await getBookStatus(fresh.email)).toEqual([]);
+    // Exactly 2,000 characters is accepted.
+    calendlyOk();
+    expect((await create({ provider: "calendly", token: "y".repeat(2000) })).status).toBe(200);
+
+    // A held lock is 409 busy and Calendly is not called.
+    safeFetchMock.mockReset();
+    const busy = await newUser("book597h");
+    await signIn(busy.email);
+    const lockKey = `lock:book:${busy.email}:calendly`;
+    const owned = await db.lockOwned(lockKey, 30);
+    expect(owned).toBeTruthy();
+    const b = await create({ provider: "calendly", token: PAT });
+    expect(b.status).toBe(409);
+    expect(await b.json()).toEqual({ ok: false, error: "busy" });
+    expect(safeFetchMock).not.toHaveBeenCalled();
+    await db.unlockOwned(lockKey, owned!);
+
+    // Nowhere does the pasted token appear: not in any stored key or value, not in a log line.
+    expect(memText()).not.toContain(PAT);
+    expect(logged()).not.toContain(PAT);
+    expect(okText).not.toContain(PAT);
   });
 });

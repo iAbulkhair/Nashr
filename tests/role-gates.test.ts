@@ -176,6 +176,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // One's own private calendar feed link: any member manages their own, refused while a founder impersonates (rule 533).
   "POST /api/secretary/feed": g("member", "feed.manage"),
   "DELETE /api/secretary/feed": g("member", "feed.manage"),
+  // One's own booking links (Reem B2a): the same, with their own action (rule 596).
+  "POST /api/secretary/booking": g("member", "booking.manage"),
+  "DELETE /api/secretary/booking": g("member", "booking.manage"),
   // Majed's handoffs: a run spends credits like a generation; a decline is a draft decision, like rejecting an item.
   "POST /api/handoffs/[id]/run": g("member", "generate"),
   "POST /api/handoffs/[id]/decline": g("member", "drafts"),
@@ -249,6 +252,7 @@ const READS: Record<string, Gate> = {
   "GET /api/secretary/calendar": g("member", "read"),
   "GET /api/secretary/series/[seriesId]/export": g("member", "read"),
   "GET /api/secretary/feed": g("member", "read"),
+  "GET /api/secretary/booking": g("member", "read"),
 
   "GET /api/mcp": "public-read",
   "GET /api/secretary/feed/[token]": "public-read", // the token in the path is the credential; rate limited per IP and per link
