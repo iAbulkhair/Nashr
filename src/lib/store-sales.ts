@@ -1,14 +1,16 @@
 import { db } from "./db";
 import { writeFile } from "./files";
-import type { Connection } from "./connectors/store";
+import { listConnections, type Connection } from "./connectors/store";
+import { getFreshConnection, refusedToken } from "./connectors/fresh";
 import { sallaSales } from "./connectors/salla";
 import { shopifySales } from "./connectors/shopify";
 import { zidSales } from "./connectors/zid";
 import { wooHost, wooSales } from "./connectors/woocommerce";
-import { PROVIDER_NAME, salesMarkdown, type SalesProvider, type SalesSnapshot } from "./connectors/sales";
+import { PROVIDER_NAME, SALES_PROVIDERS, salesMarkdown, type SalesProvider, type SalesSnapshot } from "./connectors/sales";
 import { asData } from "./json";
 
 const KEY = (scope: string) => `storesales:${scope}`;
+const FAIL = (scope: string) => `storesyncfail:${scope}`;
 
 /** The latest store sales snapshot for this workspace, or null if it was never synced. One store per workspace. */
 export async function getSalesSnapshot(scope: string) {
@@ -19,8 +21,56 @@ export async function getSalesSnapshot(scope: string) {
 export async function syncSales(scope: string, provider: SalesProvider, c: Connection): Promise<SalesSnapshot> {
   const snap = provider === "shopify" ? await shopifySales(c) : provider === "zid" ? await zidSales(c) : provider === "woocommerce" ? await wooSales(c) : await sallaSales(c);
   const store = provider === "shopify" ? c.meta?.shop : provider === "woocommerce" ? wooHost(c) : c.meta?.account;
-  await Promise.all([db.set(KEY(scope), snap), writeFile(scope, "store-sales.md", salesMarkdown(snap, store), "noor")]);
+  // A good read replaces the snapshot and clears the note of an earlier failed automatic sync.
+  await Promise.all([db.set(KEY(scope), snap), db.del(FAIL(scope)), writeFile(scope, "store-sales.md", salesMarkdown(snap, store), "noor")]);
   return snap;
+}
+
+/** The last automatic sync that failed, kept until a sync succeeds: the card says so next to the snapshot's own date. */
+export type SyncFailure = { at: string; provider: SalesProvider; error: string };
+export const getSyncFailure = (scope: string) => db.get<SyncFailure>(FAIL(scope));
+
+/** Twice a day (src/app/api/cron/stores): a snapshot younger than this is left alone, so a manual sync is not repeated. */
+export const AUTO_SYNC_MIN_AGE_MS = 10 * 36e5;
+const FAIL_TTL_S = 14 * 86400;
+
+/** A status or a known code only: never the platform's own message text. */
+const failCode = (e: unknown) => {
+  const m = e instanceof Error ? e.message : "";
+  return /^(?:[a-z]+ \d{3}|[a-z_]*access_denied|reconnect_required|[a-z]+ unexpected_orders)$/.test(m) ? m : "failed";
+};
+/** Retrying cannot help: the owner must reconnect, change the key's access, or the platform refused the request. */
+const permanent = (e: unknown) => {
+  const m = e instanceof Error ? e.message : "";
+  return m === "reconnect_required" || /access_denied$/.test(m) || /^[a-z]+ 4\d\d$/.test(m);
+};
+
+/**
+ * One workspace's scheduled store sync. Reads only the store the workspace already reports on: the store of its last
+ * snapshot while it is still connected, or the only connected one when it never synced. Several connected stores and no
+ * snapshot is the owner's choice to make (the sync button), never a guess. Answers a short outcome for the cron report:
+ * `none`, `choose`, `reconnect`, `fresh`, `synced:{provider}` or `failed:{code}`. A transient failure (5xx, network)
+ * throws so the batch retries it once; every failure leaves the last good snapshot and its date untouched.
+ */
+export async function syncStoreIfDue(scope: string, now = Date.now()): Promise<string> {
+  const [snap, conns] = await Promise.all([getSalesSnapshot(scope), listConnections(scope)]);
+  const have = SALES_PROVIDERS.filter((p) => conns.some((c) => c.provider === p));
+  const provider = snap && have.includes(snap.provider) ? snap.provider : have.length === 1 ? have[0] : null;
+  if (!provider) return have.length ? "choose" : "none";
+  if (conns.find((c) => c.provider === provider)?.needsReconnect) return "reconnect";
+  if (snap?.provider === provider && now - Date.parse(snap.at) < AUTO_SYNC_MIN_AGE_MS) return "fresh";
+  try {
+    const c = await getFreshConnection(scope, provider);
+    if (!c) return "none";
+    await syncSales(scope, provider, c);
+    return `synced:${provider}`;
+  } catch (e) {
+    // A revoked token marks the connection for reconnecting, exactly as a click on Sync would.
+    const err = await refusedToken(scope, provider, e);
+    await db.set(FAIL(scope), { at: new Date(now).toISOString(), provider, error: failCode(err) } satisfies SyncFailure, FAIL_TTL_S);
+    if (permanent(err)) return `failed:${failCode(err)}`;
+    throw err;
+  }
 }
 
 /** A snapshot older than this is flagged to Dana as stale, with a nudge to sync again. */

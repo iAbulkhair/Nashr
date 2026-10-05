@@ -42,12 +42,15 @@ The same `SalesSnapshot` the other stores produce (`src/lib/connectors/sales.ts`
 - **Key permission:** the connection form today asks for a key used for products. Orders need read access to orders; the form text says "Read" is enough and that "Read/Write" is not needed. The key stays encrypted with `CONNECT_SECRET` as now.
 - **Cost:** no model call, no credits.
 
-## 4. Phase B: keep every store fresh without a button
+## 4. Phase B: keep every store fresh without a button (built 2026-10-05)
 
-A scheduled sync for the four stores, not webhooks. Founder's answer: twice a day if it costs nothing. There is no model call, so the cost is the scheduler and the Redis writes; the plan checks first what the hosting plan allows (a once-a-day limit on the cron of a free hosting tier would make twice a day a paid change) and falls back to once a day.
+A scheduled sync for the connected store, twice a day, not webhooks. Founder decision 2026-10-05: twice a day if the hosting cost allows it.
 
-- A daily sync of the connected store's snapshot (and ads, where a connection exists), through the existing cron path (`src/lib/cron-batch.ts` and the cron bearer secret). The plan first reads what the cron runs today and adds the stores to it with `pmap` (never an awaited Redis call in a loop) and a per-account cap.
-- A failed sync keeps the last good snapshot and its `at` time; the card shows the age, never a fresh-looking old number.
+- **Hosting:** no extra cost. `vercel.json` gets two entries on one path, `/api/cron/stores` at `0 2 * * *` and `0 14 * * *` (05:00 and 17:00 Riyadh, so the 06:00 routines read a fresh snapshot). Each entry runs once a day, which is the limit of the most restricted plan, and Vercel documents several schedules for one path. The route is the cron path of `daily` and `evening`: bearer secret, `runCronBatch` markers per workspace and half-day (`{date}-am` or `-pm`), six at a time, resumable. Ads keep their own once-a-day read in `cron/daily`; a second ad read a day was not asked for.
+- **Which store:** the store of the workspace's own snapshot while it is still connected, or its only connected store when it never synced. Several connected stores and no snapshot is the owner's choice (the button), never a guess; a connection marked for reconnect is skipped, not retried.
+- **Not repeated:** a snapshot younger than 10 hours is left alone, so a manual sync is not read again an hour later and both daily runs still sync.
+- **A failed read keeps the last good snapshot and its own date** (the card already shows "as of {date}"). It also writes a note, `storesyncfail:{scope}` (`{at, provider, error}`, status or known code only, 14 days), shown under the card until a sync succeeds. A 5xx or a network error is retried once by the batch; a key without access or a 4xx is not.
+- No model call and no credits. Rules 623-627.
 - **Why not webhooks now:** each store's webhooks need a public route (signature check with `sameSecret`, rate limit, body cap, replay marker) and, for WooCommerce, a key with write permission to register one, which is a scope escalation for a daily report. If the founder later wants near-real-time numbers, the safe shape is a **doorbell**: the webhook only triggers a debounced re-sync (`SET NX EX 300` per account and provider) and never writes the numbers in its body; its token is a random 43-character value per connection, stored hashed, and an unknown or malformed token is a 404 with an empty body. Specified then, not built now.
 
 ## 5. Phase C: WordPress publishing, still draft-only

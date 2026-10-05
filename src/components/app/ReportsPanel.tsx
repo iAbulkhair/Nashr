@@ -22,7 +22,7 @@ type Item = { id: string; type: TaskType; title: string; status: string; created
 
 const METRICS = ["created", "approved", "approvalRate", "pending", "published", "images", "videos", "creditsUsed", "scheduled"] as const;
 type MetricKey = (typeof METRICS)[number];
-export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null, perf = null, perfImport = true, perfDelete = true, owner = true, topups = true }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null; perf?: PerfSnapshot | null; /** `can(u, "performance.import")` */ perfImport?: boolean; /** `can(u, "performance.delete")` */ perfDelete?: boolean; /** `can(u, "billing")`: picks the out-of-credits line (rule 457). */ owner?: boolean; /** `topupsSold(u.plan)` */ topups?: boolean }) {
+export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null, syncFailure = null, perf = null, perfImport = true, perfDelete = true, owner = true, topups = true }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null; /** `getSyncFailure`: the last automatic store sync that failed, until one succeeds. */ syncFailure?: { at: string; provider: string } | null; perf?: PerfSnapshot | null; /** `can(u, "performance.import")` */ perfImport?: boolean; /** `can(u, "performance.delete")` */ perfDelete?: boolean; /** `can(u, "billing")`: picks the out-of-credits line (rule 457). */ owner?: boolean; /** `topupsSold(u.plan)` */ topups?: boolean }) {
   const r = useRouter();
   const R = t.reports;
   const [busy, setBusy] = useState<TaskType | null>(null);
@@ -97,7 +97,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
       </div>
       <p className="mt-2 font-mono text-xs text-muted" dir="ltr">{k.window.from} → {k.window.to}</p>
       <PerformanceImport lang={lang} initial={perf} ads={connected.filter((p) => READS_ADS.includes(p))} canImport={perfImport} canDelete={perfDelete} />
-      {salesProvider && <StoreSales R={R.store} paused={t.generate.paused} provider={salesProvider} store={store?.provider === salesProvider ? store : null} lang={lang} />}
+      {salesProvider && <StoreSales R={R.store} paused={t.generate.paused} provider={salesProvider} store={store?.provider === salesProvider ? store : null} failedAt={syncFailure?.provider === salesProvider ? syncFailure.at : null} lang={lang} />}
 
       <h2 className="mt-8 font-display text-xl font-bold">{R.metricsTitle}</h2>
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -247,7 +247,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
 }
 
 /** Store orders and abandoned carts, as totals from the last sync. The numbers are the store's, never estimated. */
-function StoreSales({ R, paused, provider, store, lang }: { R: AppDict["reports"]["store"]; paused: string; provider: SalesProvider; store: SalesSnapshot | null; lang: Lang }) {
+function StoreSales({ R, paused, provider, store, failedAt, lang }: { R: AppDict["reports"]["store"]; paused: string; provider: SalesProvider; store: SalesSnapshot | null; failedAt: string | null; lang: Lang }) {
   const r = useRouter();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -296,6 +296,8 @@ function StoreSales({ R, paused, provider, store, lang }: { R: AppDict["reports"
             {store.carts.unavailable && <> · {provider === "woocommerce" ? R.wooCarts : R.cartsUnavailable}</>}
           </p>
           <p className="mt-1 text-xs text-muted">{R.note}</p>
+          <p className="mt-1 text-xs text-muted">{R.auto}</p>
+          {failedAt && <p className="mt-1 text-xs text-danger" role="status">{fill(R.syncFailed, { date: dateFormat(lang, { dateStyle: "medium", timeStyle: "short" }).format(new Date(failedAt)) })}</p>}
           {store.carts.top.length > 0 && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button onClick={draft} disabled={drafting || busy} className="btn btn-primary btn-xs">{drafting ? R.drafting : R.draft} <span className="font-mono" dir="ltr">· {TASK_COST.cart_recovery}</span></button>
