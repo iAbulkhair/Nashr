@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "check": "tsc --noEmit -p . && eslint && vitest run"
+    "check": "tsc --noEmit -p . && eslint && vitest run",
+    "build:hostinger": "next build --webpack"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.126.0",
