@@ -13,7 +13,7 @@ afterEach(() => { vi.unstubAllEnvs(); signOut(); });
 let ipN = 0;
 /** Never repeats within a run, and never meets the IPs of the other verify test files. */
 const freshIp = () => { ipN++; return `192.0.${Math.floor(ipN / 250) % 250}.${(ipN % 250) + 1}`; };
-const logIn = (email: string, password = "abc12345") => login.POST(json("/api/auth/login", "POST", { email, password }, { "x-real-ip": freshIp() }));
+const logIn = (email: string, password = "abc12345") => login.POST(json("/api/auth/login", "POST", { email, password }, { "x-forwarded-for": freshIp() }));
 
 /** Rules 751-752: a password-signup owner who has not proved the address reads as signed out, everywhere. */
 describe("email verification gate", () => {
@@ -194,7 +194,7 @@ describe("password reset and the verification gate", () => {
   async function resetWith(email: string, kind: "owner" | "member") {
     const token = randomBytes(32).toString("hex");
     await db.set(`pwreset:${createHash("sha256").update(token).digest("hex")}`, { email, kind }, 3600);
-    return reset.POST(json("/api/auth/reset", "POST", { token, password: "newpass123" }, { "x-real-ip": freshIp() }));
+    return reset.POST(json("/api/auth/reset", "POST", { token, password: "newpass123" }, { "x-forwarded-for": freshIp() }));
   }
 
   it("an unverified owner's reset stamps emailVerifiedAt and signs in through the gate", async () => {
