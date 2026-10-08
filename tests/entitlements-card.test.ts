@@ -80,6 +80,24 @@ describe("the owner's plan-includes card (rule 785)", () => {
     }
   });
 
+  it("an ended trial says the trial ended on its last day, not that it ends then (M2)", () => {
+    const ent = entitlements({ plan: "trial", trialEnds: "2026-10-01T00:00:00Z" }, NOW);
+    expect(ent.inactive).toBe("trial_over");
+    const ended: EntitlementView = { ent, base: ent, used: { credits: 0, seats: 1, chat: chat({ used: 30, allowance: 30, period: "trial" }) }, resetsAt: null, grants: { video: null } };
+    expect(appDict.ar.billing.includes.trialEnded).toBe("انتهت التجربة");
+    for (const lang of ["en", "ar"] as const) {
+      const words = text(render(ended, lang));
+      expect(words, lang).toContain(`${appDict[lang].billing.includes.trialEnded} 2026-10-01`);
+      expect(words, lang).not.toContain(appDict[lang].billing.includes.trialEnds);
+    }
+    // A live trial still reads "ends", and the ended label is not shown there.
+    for (const lang of ["en", "ar"] as const) {
+      const words = text(render(trial(), lang));
+      expect(words, lang).toContain(`${appDict[lang].billing.includes.trialEnds} 2026-10-20`);
+      expect(words, lang).not.toContain(appDict[lang].billing.includes.trialEnded);
+    }
+  });
+
   it("a paid plan names the day it is paid through when it has one, and no end line when it has none", () => {
     const through = paid();
     through.ent = { ...through.ent, endsAt: "2026-11-08" };
@@ -128,10 +146,23 @@ describe("the owner's plan-includes card (rule 785)", () => {
     }
   });
 
+  it("the card is a server component that cannot name the founder's grants (I1, ruling R10)", () => {
+    // The markup test above would stay green if a "use client" card put `view.grants` into the page payload: the payload is
+    // not text on the page. So pin the structure: no client directive, no mention of `grants` in the code, and a prop type
+    // that is only `ent` and `used`. Comments are stripped, they may say what the card never reads.
+    const src = readFileSync("src/components/app/PlanIncludesCard.tsx", "utf8");
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(src, "a client card would serialize its props into the page").not.toMatch(/^\s*["']use client["']/m);
+    expect(code, "the card never names grants").not.toMatch(/\bgrants\b/);
+    expect(code).toMatch(/view: Pick<EntitlementView, "ent" \| "used">/);
+  });
+
   it("the billing page reads the view once, shows the card above the chat card, and no longer reads the seats and chat itself", () => {
     const page = readFileSync("src/app/[lang]/app/billing/page.tsx", "utf8");
     expect(page.match(/entitlementView\(u\)/g)).toHaveLength(1);
     expect(page).not.toMatch(/\bseatsUsed\b|\bchatStatus\b/);
+    // Founder-only data (`grants`, with the founder's email and note) never leaves the page: the card gets `ent` and `used` only (I1).
+    expect(/<PlanIncludesCard view=\{\{ ent: view\.ent, used: view\.used \}\}/.test(page), "the card gets ent and used only").toBe(true);
     const card = page.indexOf("<PlanIncludesCard");
     const chatCard = page.indexOf("<ChatAllowanceCard");
     expect(card).toBeGreaterThan(-1);

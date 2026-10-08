@@ -167,7 +167,7 @@ const ar = {
       seats: "المقاعد المستخدمة",
       chat: "رسائل الدردشة هذا الشهر", chatTrial: "رسائل الدردشة في التجربة",
       video: "نماذج الفيديو", agents: "الوكلاء",
-      trialEnds: "تنتهي التجربة في", paidThrough: "الاشتراك مدفوع حتى",
+      trialEnds: "تنتهي التجربة في", trialEnded: "انتهت التجربة", paidThrough: "الاشتراك مدفوع حتى",
     },
   },
   agents: {
@@ -495,7 +495,7 @@ const en: typeof ar = {
       seats: "Seats in use",
       chat: "Chat messages this month", chatTrial: "Chat messages in your trial",
       video: "Video models", agents: "Agents",
-      trialEnds: "Your trial ends", paidThrough: "Paid through",
+      trialEnds: "Your trial ends", trialEnded: "Trial ended", paidThrough: "Paid through",
     },
   },
   agents: {

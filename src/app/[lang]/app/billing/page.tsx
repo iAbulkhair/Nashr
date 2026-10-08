@@ -53,6 +53,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   // The balance goes with it: below `overflow.hold` credits, chat past the allowance is paused even with the switch on.
   // The seats in use and the chat status come from the account's entitlement view (src/lib/entitlements.ts, rules 784-785),
   // read once: the "what your plan includes" card below shows the same view, so the page never reads the same data twice.
+  // The card is handed `ent` and `used` only: `view.grants` holds the founder's email and note, which an owner never sees.
   const view = await entitlementView(u);
   const { seats: used, chat } = view.used;
   const now = new Date();
@@ -88,7 +89,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <p role="status" className="mt-4 card text-sm" data-paymob-return="">{lang === "ar" ? "إذا تمّ الدفع، يتفعّل اشتراكك خلال دقيقة. حدّث الصفحة لترى حالته." : "If your payment went through, your plan is activated within a minute. Refresh this page to see it."}</p>
       )}
       {sub && <PaymobPlanCard lang={lang} billing={sub} />}
-      <PlanIncludesCard view={view} lang={lang} />
+      <PlanIncludesCard view={{ ent: view.ent, used: view.used }} lang={lang} />
       <ChatAllowanceCard lang={lang} status={chat} owner={owner} nextReset={nextReset} trialEnds={u.trialEnds.slice(0, 10)} runway={chatRunway} credits={u.credits} />
       <TopupCard lang={lang} plan={u.plan} owner={owner} email={owner ? u.email : undefined} whatsapp={owner && waNumber ? waNumber : null} lots={lots} topupCredits={fromTopups} payOnline={online} />
       {owner && u.plan === "trial" && (

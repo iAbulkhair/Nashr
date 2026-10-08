@@ -12,13 +12,16 @@ import type { EntitlementView } from "@/lib/entitlements";
  * It has no number of its own. Credits, seats, chat, the end day and the count of agents come from `view.ent` and
  * `view.used`; the video models and the agents are named from the media catalogue and the roster, over the lists in
  * `view.ent`, so a trial shows its three models and a live founder grant shows all of them without the card knowing why.
- * It never reads `view.grants`: who set a grant and the founder's note are private to the console (ruling R10). The one
- * sentence of copy about scope is the same for every plan (`appDict[lang].billing.includes.scope`).
+ * It never reads `view.grants`: who set a grant and the founder's note are private to the console (ruling R10). That is
+ * kept by structure, not by habit: the prop type leaves the grants out (`Pick<EntitlementView, "ent" | "used">`), the
+ * billing page hands over `{ ent, used }` only, and the card is a server component, so its props are not serialized into the
+ * page (tests/entitlements-card.test.ts scans for a client directive and for the word `grants`). The one sentence of copy
+ * about scope is the same for every plan (`appDict[lang].billing.includes.scope`).
  *
  * A server component with no state; the chat figures are the ones the chat card below it shows (`used.chat.used` of
  * `used.chat.allowance`, which is `ent.chat.monthly` for the period).
  */
-export default function PlanIncludesCard({ view, lang }: { view: EntitlementView; lang: "ar" | "en" }) {
+export default function PlanIncludesCard({ view, lang }: { view: Pick<EntitlementView, "ent" | "used">; lang: "ar" | "en" }) {
   const t = appDict[lang].billing.includes;
   const { ent, used } = view;
   // A trial's chat messages and credits are granted once for the whole trial; a plan's renew each month (chat-allowance.ts).
@@ -29,7 +32,8 @@ export default function PlanIncludesCard({ view, lang }: { view: EntitlementView
     { key: "seats", label: t.seats, value: `${formatCount(used.seats)} / ${formatCount(ent.seats)}` },
     { key: "chat", label: trial ? t.chatTrial : t.chat, value: `${formatCount(used.chat.used)} / ${formatCount(used.chat.allowance)}` },
   ];
-  if (day) rows.push({ key: "ends", label: trial ? t.trialEnds : t.paidThrough, value: day });
+  // An ended trial's last day is in the past: "ends" would be false, so it reads "ended" (M2). Other states keep their label.
+  if (day) rows.push({ key: "ends", label: ent.inactive === "trial_over" ? t.trialEnded : trial ? t.trialEnds : t.paidThrough, value: day });
 
   return (
     <section className="mt-6 card" aria-labelledby="plan-includes-title" data-plan-includes="">
