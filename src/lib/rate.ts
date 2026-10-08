@@ -1,5 +1,9 @@
+import { NextResponse } from "next/server";
 import { db } from "./db";
 import type { User } from "./auth";
+
+/** The two windows the per-account buckets use, in seconds; a refusal that names one ("hour", "day") waits this long. */
+export const WINDOW = { hour: 3600, day: 86400 } as const;
 
 /** Fixed-window rate limit. True when the caller is still inside the allowance. */
 export async function allow(bucket: string, max: number, windowSeconds: number): Promise<boolean> {
@@ -18,6 +22,21 @@ export async function allow(bucket: string, max: number, windowSeconds: number):
     if (n === 1) await db.set(key, 1, windowSeconds).catch(() => {});
   }
   return n <= max;
+}
+
+/** The `Retry-After` header for a wait of `seconds`: whole seconds, at least one. */
+export const retryAfter = (seconds: number) => ({ "Retry-After": String(Math.max(1, Math.ceil(seconds))) });
+
+/**
+ * The answer to a call a bucket refused: 429 with `Retry-After` in whole seconds, the window that bucket was given
+ * (`allow`'s third argument; with several buckets, the one that refused, the longest when more than one did). A window
+ * starts at its first hit, so its counter is gone by then: the longest a caller can have to wait, never a guess. The
+ * body is the route's own, unchanged; a string or null is sent as it is (the onboarding stream answers text, the
+ * calendar feed nothing). `headers` adds the route's own, such as CORS. Rule 680, tests/retry-after.test.ts.
+ */
+export function retryLater(body: Record<string, unknown> | string | null, windowSeconds: number, headers: Record<string, string> = {}): NextResponse {
+  const init = { status: 429, headers: { ...headers, ...retryAfter(windowSeconds) } };
+  return body !== null && typeof body === "object" ? NextResponse.json(body, init) : new NextResponse(body, init);
 }
 
 /** Client IP for throttling. Platform-set headers first; the caller-suppliable x-forwarded-for is the last resort and its LAST hop is used. */
@@ -51,11 +70,11 @@ export const chatCaps = (u: Pick<User, "plan">): ChatCaps => (u.plan === "trial"
  */
 export async function chatRefusal(u: Pick<User, "email" | "plan">): Promise<"hour" | "day" | null> {
   const caps = chatCaps(u);
-  if (!(await allow(`chat:h:${u.email}`, caps.hour, 3600))) {
+  if (!(await allow(`chat:h:${u.email}`, caps.hour, WINDOW.hour))) {
     const used = Number((await db.get<number | string>(`rate:chat:d:${u.email}`)) ?? 0);
     return used >= caps.day ? "day" : "hour";
   }
-  return (await allow(`chat:d:${u.email}`, caps.day, 86400)) ? null : "day";
+  return (await allow(`chat:d:${u.email}`, caps.day, WINDOW.day)) ? null : "day";
 }
 
 /**
@@ -86,8 +105,8 @@ export const BRANDS_PER_DAY = 30;
  * which only matters within the hour and never outlasts the day's refusal.
  */
 export async function brandAddRefusal(email: string): Promise<"hour" | "day" | null> {
-  if (!(await allow(`brandadd:h:${email}`, BRANDS_PER_HOUR, 3600))) return "hour";
-  if (!(await allow(`brandadd:d:${email}`, BRANDS_PER_DAY, 86400))) return "day";
+  if (!(await allow(`brandadd:h:${email}`, BRANDS_PER_HOUR, WINDOW.hour))) return "hour";
+  if (!(await allow(`brandadd:d:${email}`, BRANDS_PER_DAY, WINDOW.day))) return "day";
   return null;
 }
 

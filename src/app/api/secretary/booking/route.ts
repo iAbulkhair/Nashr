@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc, type User } from "@/lib/auth";
 import { forbid } from "@/lib/roles";
-import { allow } from "@/lib/rate";
+import { allow, retryLater } from "@/lib/rate";
 import { BOOK_PROVIDERS, bookingKey, createBook, getBookStatus, hashBookToken, revokeBook, type BookRecord } from "@/lib/booking-token";
 import { calendlySubscribe } from "@/lib/secretary-booking";
 import { appOrigin } from "@/lib/origin";
@@ -26,7 +26,8 @@ const MAX_TOKEN = 2000;
 const NO_STORE = { "cache-control": "no-store" };
 const loginOf = (u: User): string => (u.actor?.kind === "member" ? u.actor.email : u.email);
 const unauthorized = () => NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-const tooMany = () => NextResponse.json({ ok: false, error: "too_many" }, { status: 429 });
+/** Every bucket here is an hour long. */
+const tooMany = () => retryLater({ ok: false, error: "too_many" }, 3600);
 const bad = (error: "bad_provider" | "bad_token") => NextResponse.json({ ok: false, error }, { status: 400, headers: NO_STORE });
 const providerOf = (v: unknown): BookRecord["provider"] | null => ((BOOK_PROVIDERS as readonly unknown[]).includes(v) ? (v as BookRecord["provider"]) : null);
 

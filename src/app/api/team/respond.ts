@@ -1,3 +1,4 @@
+import { retryLater } from "@/lib/rate";
 import type { TeamFail } from "@/lib/team";
 
 /**
@@ -11,4 +12,5 @@ export function teamFail(f: TeamFail): Response {
 }
 
 export const unauthorized = () => Response.json({ error: "unauthorized" }, { status: 401 });
-export const rateLimited = () => Response.json({ error: "rate_limited" }, { status: 429 });
+/** 429 with `Retry-After`: the window, in seconds, of the bucket that refused. */
+export const rateLimited = (windowSeconds: number) => retryLater({ error: "rate_limited" }, windowSeconds);
