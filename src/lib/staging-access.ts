@@ -4,8 +4,8 @@ import { sameSecret } from "@/lib/secret";
 /**
  * The staging lock's cookie and token (rules 674-675). The cookie holds an HMAC of a fixed label keyed by
  * `STAGING_ACCESS_KEY`, never the code itself, so a copied cookie cannot be turned back into the code and changing
- * the key signs everyone out. This file and `src/proxy.ts` never import `db`, `rate` or `auth`: the proxy must not
- * load Redis. `STAGING_ACCESS_KEY` is read at call time.
+ * the key signs everyone out. This file and `src/proxy.ts` never pull in the store, the rate limiter or the auth
+ * module: the proxy must not load Redis. `STAGING_ACCESS_KEY` is read at call time.
  */
 export const STAGING_COOKIE = "thakeen_staging";
 
