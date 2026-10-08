@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 
 const read = (p: string) => readFileSync(p, "utf8");
 
-// Rule 730: the way out can be seen and found. The sidebar's button was lilac on paper (#efe7f7 on white), so the
+// Rule 750: the way out can be seen and found. The sidebar's button was lilac on paper (#efe7f7 on white), so the
 // founder could not find it on 2026-10-08; the profile page now carries a second one.
-describe("log out is visible (rule 730)", () => {
+describe("log out is visible (rule 750)", () => {
   it("the button's default colour is ink, never a lilac tint", () => {
     const src = read("src/components/app/LogoutButton.tsx");
     expect(src).not.toMatch(/text-lilac/);
