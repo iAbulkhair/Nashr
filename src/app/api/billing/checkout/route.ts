@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth";
 import { forbid } from "@/lib/roles";
-import { allow } from "@/lib/rate";
+import { allow, retryLater } from "@/lib/rate";
 import { paymobConfig } from "@/lib/paymob";
 import { startCheckout, type CheckoutError } from "@/lib/billing";
 
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   const no = forbid(u, "billing.pay");
   if (no) return no;
   if (!paymobConfig()) return NextResponse.json({ ok: false, error: "not_enabled" }, { status: 404 });
-  if (!(await allow(`paycheckout:${u.email}`, 10, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
+  if (!(await allow(`paycheckout:${u.email}`, 10, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
   const body = await req.json().catch(() => null);
   const lang = body && typeof body === "object" && (body as { lang?: unknown }).lang === "en" ? "en" : body && typeof body === "object" && (body as { lang?: unknown }).lang === "ar" ? "ar" : u.lang;
   const r = await startCheckout(u, body, lang);
