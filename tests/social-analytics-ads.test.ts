@@ -225,7 +225,7 @@ describe("the previous 30 days beside each ad read (rule 733)", () => {
     vi.stubEnv("COMPOSIO_API_KEY", "test-key");
     setComposioClientForTests(f.client);
   });
-  afterEach(() => { setComposioClientForTests(null); vi.unstubAllEnvs(); });
+  afterEach(() => { setComposioClientForTests(null); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
   const CUR = adWindow(NOW);
   const PREV = adWindow(prevNow(NOW));
