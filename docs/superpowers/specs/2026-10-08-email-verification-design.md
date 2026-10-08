@@ -104,7 +104,7 @@ New tests, each checked to fail with its fix reverted:
 - Booking and feed endpoints refuse an unverified owner.
 
 Docs in the same commit: `docs/system/flows.md` (signup, login, verify), `permissions.md` (gate), `architecture.md`
-(new keys `verify:code:*`, `verify:send:*`), `tests.md` rules from 731.
+(new keys `verify:code:*`, `verify:send:*`), `tests.md` rules from 751 (730-749 belong to social analytics, 750 to the logout fix).
 
 ## 9. Release
 
