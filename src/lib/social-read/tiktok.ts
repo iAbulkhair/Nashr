@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { clean } from "../perf-import";
-import { composioRead } from "../connectors/composio";
+import { SCOPE_REFUSED, composioRead } from "../connectors/composio";
 import { accountOf, findKey, isComposio, listOf } from "../connectors/composio-shape";
 import type { Connection } from "../connectors/store";
 import type { Range, ReadPart, SocialPost } from "../social-stats";
@@ -23,9 +23,10 @@ const TT_FIELDS = ["follower_count", "likes_count", "video_count"] as const;
 const VIDEO_ID = /^\d{1,30}$/;
 /**
  * TikTok's refusal for want of `user.info.stats` or `video.list` (on the app or on this login): `scope_not_authorized`,
- * `scope_permission_missed`. The adapter may read such a text as 401 (composio.ts statusOf), so it is checked first.
+ * `scope_permission_missed`, or an insufficient or missing scope. The adapter may read such a text as 401 (composio.ts
+ * statusOf), so it is checked first. The adapter's own pattern, so a text the client threw is read the same way.
  */
-const NO_SCOPE = /scope_not_authorized|scope_permission_missed|insufficient.?scope|missing.?scope/i;
+const NO_SCOPE = SCOPE_REFUSED;
 
 /** A Composio TikTok record with its TikTok account. */
 export function holdsTt(c: Connection | null | undefined): boolean {

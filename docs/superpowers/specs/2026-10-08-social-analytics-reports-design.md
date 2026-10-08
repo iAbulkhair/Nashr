@@ -141,8 +141,9 @@ free, and both set `ownersync:{scope}` (A7). The daily cron keeps refreshing eve
 Social answers and first reads (amended 2026-10-08, phase B review):
 
 - A social read that saved the snapshot while a part's token was refused (`PartlyRead`) answers 200 `{ ok: true, read:
-  true, reconnect: "<provider>" }` only when at least one part was actually read; when no part was read (the other parts
-  failed or held only known states), it answers 502 `reconnect_required` and the snapshot keeps the errors.
+  true, reconnect: "<provider>" }` only when at least one part was actually read; when no part was read, it answers 502
+  `reconnect_required`: with only known states beside the refused part, the snapshot is written with those states and
+  the refused part's error; when the other parts failed, nothing is written and the last snapshot stands.
 - The record of every part whose token was refused is marked for reconnect (`SocialReadError.refusedBy`), and only
   those. Only the adapter's 401 is a refused token: a 403 such as `quotaExceeded`, or any other failure, is answered 502
   with its message and marks nothing.
@@ -239,8 +240,9 @@ C1. **TikTok organic.** Pin tiktok to 20260917_00. Allowlist `TIKTOK_GET_USER_ST
 2 pages for 30 posts). Composio with our own TikTok app (no managed auth); needs `user.info.stats` and `video.list`
 approved on our app and added to the Composio auth config (section 9), and owners connect again. Only public videos are
 listed, so an account with no public posts shows none; that is not a failure. Counters are lifetime; changes come from
-history (section 7). Links only on `tiktok.com`/`www.tiktok.com`. A scope refusal (`scope_not_authorized` or
-`scope_permission_missed`) keeps that code through the adapter's catch, so it is never a reconnect. When both calls
+history (section 7). Links only on `tiktok.com`/`www.tiktok.com`. A scope refusal (`scope_not_authorized`,
+`scope_permission_missed`, or an insufficient or missing scope: one pattern, `SCOPE_REFUSED`, for the adapter and the
+reader) keeps that code through the adapter's catch, so it is never a reconnect. When both calls
 fail, the read is the known `tt_no_scope` only when both were scope refusals, else it fails with the other call's error
 (amended 2026-10-08, phase B review).
 

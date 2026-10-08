@@ -820,6 +820,15 @@ describe("TikTok account results (rule 742)", () => {
     expect(s?.v === 2 && s.errors).toEqual({ tiktok: "tt_no_scope" });
     expect(s?.v === 2 && s.parts.tiktok).toMatchObject({ followers: null, posts: [{ id: ttId(1) }] });
     expect((await getConnection(u.email, "tiktok"))?.needsReconnect).toBeFalsy();
+    // The OAuth words the reader accepts (an insufficient or missing scope) are kept by the adapter's catch too, though
+    // statusOf reads the text as 401: one pattern for both, so the record is still not marked.
+    for (const text of ["Unauthorized: insufficient_scope", "Unauthorized: missing scope video.list"]) {
+      answers.TIKTOK_GET_USER_STATS = () => { throw new Error(text); };
+      expect(await syncSocialIfDue(u.email, NOW, true), text).toBe(true);
+      const t = await getSocialSnapshot(u.email);
+      expect(t?.v === 2 && t.errors, text).toEqual({ tiktok: "tt_no_scope" });
+      expect((await getConnection(u.email, "tiktok"))?.needsReconnect, text).toBeFalsy();
+    }
     // Any other thrown text keeps only the adapter's own word: a refused token still asks for a reconnect.
     answers.TIKTOK_GET_USER_STATS = () => { throw new Error("Unauthorized: token revoked for open_id 123"); };
     answers.TIKTOK_LIST_VIDEOS = () => { throw new Error("Unauthorized: token revoked for open_id 123"); };

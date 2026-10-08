@@ -729,11 +729,14 @@ describe("LinkedIn page views (rule 748)", () => {
     const owner = await newUser("socliviewslate");
     liAnswers();
     // The deadline passes at the read's third check, the page statistics': the share statistics and followers were asked.
+    // The three checks run in readLi's order (share statistics, followers, page statistics) before any call is sent; the
+    // asserts below name the one slug refused, so a change of that order or of the check fails here rather than passing.
     const clock = Date.now.bind(Date);
     let checks = 0;
     vi.spyOn(Date, "now").mockImplementation(() => ((new Error().stack ?? "").includes("beforeDeadline") && ++checks === 3 ? Number.MAX_SAFE_INTEGER : clock()));
     const s = await syncSocial(owner.email, { linkedin: liConn() }, NOW);
-    expect(checks).toBeGreaterThanOrEqual(3);
+    expect(checks, "one deadline check per LinkedIn call, through beforeDeadline").toBe(3);
+    expect(calls.map((c) => c.slug), "the page statistics, and only they, were refused by the deadline").not.toContain("LINKEDIN_GET_ORG_PAGE_STATS");
     expect(calls.map((c) => c.slug).sort()).toEqual(["LINKEDIN_GET_NETWORK_SIZE", "LINKEDIN_GET_SHARE_STATS"]);
     expect(s.parts.linkedin).toMatchObject({ followers: 812, totals: { views: 900, clicks: 9, engagements: 14, pageViews: null } });
     expect(s.errors).toEqual({});

@@ -109,8 +109,12 @@ function shaped(toolkit: Toolkit, slug: string, status: number, text: string): E
   return new Error(provider === "meta" ? `meta ${short} ${status}: ${detail}` : `${provider} ${status}: ${short} ${detail}`);
 }
 
-/** A platform's refusal for want of a scope, as TikTok words it, in a text the client threw. */
-const SCOPE_REFUSED = /scope_not_authorized|scope_permission_missed/i;
+/**
+ * A platform's refusal for want of a scope, in a text the client threw or a tool answered: TikTok's words
+ * (`scope_not_authorized`, `scope_permission_missed`) and the OAuth ones (insufficient or missing scope). The TikTok
+ * reader reads the same pattern (rule 742), so the adapter's catch and the reader never disagree on what a scope refusal is.
+ */
+export const SCOPE_REFUSED = /scope_not_authorized|scope_permission_missed|insufficient.?scope|missing.?scope/i;
 
 /** The adapter's own reading of a failure; a number inside the platform's text never becomes the status. */
 export function statusOf(text: string): number {
