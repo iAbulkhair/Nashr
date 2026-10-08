@@ -8,6 +8,9 @@
  * create, edit, pause or fund an ad, or change a property (the founder's rule of 2026-10-05: ads are read and analysed,
  * never published or edited).
  *
+ * Instagram and LinkedIn page results are reads (rule 661, spec 2026-10-08-social-results): no tool here posts, replies,
+ * likes or edits on the strength of them.
+ *
  * WhatsApp and YouTube are drafts only (rule 657): WhatsApp's one write submits a message template to Meta's review and
  * no tool sends a message; YouTube's one write uploads a video whose privacyStatus is pinned to "private" in `fixed`.
  *
@@ -37,7 +40,14 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
   instagram: {
     provider: "meta",
     authEnv: "COMPOSIO_AUTH_INSTAGRAM",
-    read: { INSTAGRAM_GET_USER_INFO: ["fields"], INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT: ["ig_user_id", "fields"] },
+    read: {
+      INSTAGRAM_GET_USER_INFO: ["fields"],
+      INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT: ["ig_user_id", "fields"],
+      // Results (rule 661): the account's totals, its recent posts, and each post's lifetime numbers.
+      INSTAGRAM_GET_USER_INSIGHTS: ["ig_user_id", "metric", "period", "metric_type", "since", "until"],
+      INSTAGRAM_GET_IG_USER_MEDIA: ["ig_user_id", "fields", "limit", "since", "after"],
+      INSTAGRAM_GET_IG_MEDIA_INSIGHTS: ["ig_media_id", "metric"],
+    },
     write: { INSTAGRAM_POST_IG_USER_MEDIA: ["ig_user_id", "image_url", "caption"], INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH: ["ig_user_id", "creation_id", "max_wait_seconds"] },
   },
   twitter: {
@@ -49,7 +59,13 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
   linkedin: {
     provider: "linkedin",
     authEnv: "COMPOSIO_AUTH_LINKEDIN",
-    read: { LINKEDIN_GET_MY_INFO: [] },
+    read: {
+      LINKEDIN_GET_MY_INFO: [],
+      // Company pages the member runs, and a page's totals and followers (rule 661). Results exist only for pages.
+      LINKEDIN_GET_COMPANY_INFO: ["start", "count", "state"],
+      LINKEDIN_GET_SHARE_STATS: ["organizational_entity", "time_intervals"],
+      LINKEDIN_GET_NETWORK_SIZE: ["organization_id", "edgeType"],
+    },
     write: { LINKEDIN_CREATE_LINKED_IN_POST: ["author", "commentary", "visibility", "lifecycleState"] },
   },
   tiktok: {
