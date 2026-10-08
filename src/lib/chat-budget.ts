@@ -14,8 +14,12 @@ import type { ChatMsg } from "./chat";
  *   never acted on (src/lib/chat.ts): its tool calls may be cut off.
  * - History: the last `CHAT_HISTORY_MAX_MSGS` messages, each cut to `CHAT_HISTORY_MSG_MAX_CHARS` and together at most
  *   `CHAT_HISTORY_MAX_CHARS`, newest kept first; and when even then the first call would get less than
- *   `CHAT_FIRST_MIN_OUT`, the oldest are dropped until it fits (`fitFirstCall`), so a full workspace shortens the
- *   memory of the thread rather than the answer.
+ *   `CHAT_FIRST_MIN_OUT`, the oldest are dropped until it fits (`fitFirstCall`). A full workspace first shortens the
+ *   memory of the thread; with the newest message alone left it shortens the answer (down to `CHAT_MIN_OUT`), and past
+ *   that no call is made: the turn ends with LARGE_REPLY, given back and not billed (rule 309). Where that happens is per
+ *   model: Opus 5's ceiling is twice the Sonnets' at 2.5 times their rates, so it has 80% of their room and reaches the
+ *   cliff first (on 2026-10-09 with every core memory file at the budget, for 6 of 8 agents; the Sonnets still get
+ *   `CHAT_FIRST_MIN_OUT`). `tests/pricing-floor.test.ts` pins the figures and the exact cliff per model.
  */
 export const CHAT_MAX_CALLS = 5;
 export const CHAT_MAX_OUT = 8000;

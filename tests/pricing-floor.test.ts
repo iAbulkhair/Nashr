@@ -12,12 +12,17 @@ import { countCost } from "@/lib/generate-batch";
 import { MEDIA_MODELS } from "@/lib/media-catalog";
 import { COST_USD } from "@/lib/media/config";
 import { HANDOFF_TYPES, autoBlock, autoUnderFloor, type Handoff } from "@/lib/handoffs";
-import { agentForTask } from "@/lib/agents";
+import { AGENTS, agentForTask } from "@/lib/agents";
 import { MODELS, modelAllowsTask, modelById } from "@/lib/models/catalog";
 import { route } from "@/lib/models/route";
 import { PRICED_AT } from "@/lib/models/tiers";
 import { chatHoldFor, chatTurnMaxUsd, chatUnitsFor, creditsFor, tierMultiplier } from "@/lib/models/credits";
-import { CHAT_FIRST_MIN_OUT } from "@/lib/chat-budget";
+import { CHAT_FIRST_MIN_OUT, CHAT_HISTORY_MAX_CHARS, CHAT_HISTORY_MAX_MSGS, CHAT_MIN_OUT, fitFirstCall } from "@/lib/chat-budget";
+import { system, toolsFor } from "@/lib/chat";
+import { CORE_FILES, memoryBlock, writeFile } from "@/lib/files";
+import { db } from "@/lib/db";
+import type { Brand } from "@/lib/brand";
+import { newUser } from "./helpers/session";
 
 /**
  * Rule 241: the 60% margin floor is a test, not a comment. What one credit may cost us is at most 40% of the cheapest
@@ -378,8 +383,8 @@ describe("every catalog model keeps the floor on every task type it allows, per 
 /**
  * Rule 313 by tier: a message past the allowance needs `chatHoldFor(model)` credits in the balance and is billed its
  * metered cost at the floor rate, at most that hold. The hold must cover the model's own per-message ceiling
- * (`chatTurnMaxUsd`, CHAT_TURN_MAX_USD times the chat multiplier) at the floor rate, and be the smallest that does; the
- * ceiling must still buy a useful first answer on that model.
+ * (`chatTurnMaxUsd`, CHAT_TURN_MAX_USD times the chat multiplier) at the floor rate, and be the smallest that does. What
+ * that ceiling leaves for the answer on each model is the next describe block.
  */
 describe("chat keeps the floor per tier: the hold covers each model's own ceiling (rule 313 by tier)", () => {
   const chatModels = pickable.filter((m) => m.caps.tools);
@@ -401,13 +406,6 @@ describe("chat keeps the floor per tier: the hold covers each model's own ceilin
       ["claude-sonnet-5", 0.14, 2],
       ["claude-sonnet-5-5", 0.14, 2],
     ]);
-  });
-
-  it("the ceiling buys every chat model a first answer of at least CHAT_FIRST_MIN_OUT tokens", () => {
-    for (const m of chatModels) {
-      const tokens = chatTurnMaxUsd(m.id) / costUsd(m.id, { output_tokens: 1 });
-      expect(tokens, m.id).toBeGreaterThanOrEqual(CHAT_FIRST_MIN_OUT);
-    }
   });
 
   /**
@@ -435,5 +433,127 @@ describe("chat keeps the floor per tier: the hold covers each model's own ceilin
     const pct = (usdPerUnit: number) => Object.fromEntries(SELF_SERVE.map((p) => [p, Math.round(((CHAT_ALLOWANCE[p] * usdPerUnit) / (creditRevenueUsd(p) * PLAN_CREDITS[p])) * 100)]));
     expect(pct(worstPerUnit)).toEqual({ starter: 44, pro: 68, business: 68 });
     expect(pct(opusPerMessage), "the hole counting one unit per Opus message would have left").toEqual({ starter: 88, pro: 137, business: 137 });
+  });
+});
+
+/**
+ * Rule 313 by tier, what the ceiling leaves for the answer (final branch review, Important 1). Opus 5's ceiling is twice
+ * the Sonnets' ($0.28, founder-approved with x2 credits, 2 units and a hold of 4), but every Opus 5 rate is 2.5 times
+ * Sonnet 5.5's (src/lib/usage.ts `RATES`), so an Opus message has 0.28 / 2.5 = $0.112 of Sonnet-priced room against the
+ * Sonnets' $0.14: 80%. The first call pays the cached prefix as a cache write (`fitFirstCall`, src/lib/chat-budget.ts),
+ * so on Opus a large workspace takes the room first from the thread and then from the answer, and past a size (the cliff
+ * below) the turn ends with LARGE_REPLY: no model call, given back and not counted (`settleChatTurn` with usd 0,
+ * src/lib/chat-allowance.ts; rule 309).
+ *
+ * The sizes are the code's own, never estimates: the prefix and the volatile block are what chat() passes at
+ * src/lib/chat.ts (`JSON.stringify(tools).length + sys[0] + sys[1]`, and `sys[2]`), built here by the real `system()` and
+ * `toolsFor()` for every agent; "at the cap" is the 7 CORE_FILES each over MEMORY_BUDGET (6,000 characters, src/lib/files.ts)
+ * plus the onboarding goal at `goalLine`'s 140; the thread is the history guard's cap, CHAT_HISTORY_MAX_MSGS messages
+ * together CHAT_HISTORY_MAX_CHARS (src/lib/chat-budget.ts). docs/system/costs.md section 2 measures the batch prompt
+ * (`systemPrompt`), not chat's, which carries the tool definitions and the chat rules on top: hence the larger figures.
+ * On 2026-10-09 the live prefix was 63,029 to 71,575 characters on an empty workspace and 105,948 to 114,494 with
+ * the memory at the cap. The pinned figures use round sizes just above the live maxima (P_EMPTY, P_CAP, V), so
+ * preferences, a longer brand, feedback or handoff notes, which the live prompt here leaves out, are what moves a real
+ * account toward the cliff; a larger volatile block or a longer newest message moves the cliff itself lower.
+ */
+describe("what each chat model's ceiling leaves for the answer, from the real chat prompt (rule 313 by tier)", () => {
+  const chatModels = pickable.filter((m) => m.caps.tools);
+  const OPUS = "claude-opus-5", AUTO = route("chat").model;
+  const brand: Brand = { name: "مقهى الفنجان", website: "", industry: "مقاهي", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة مختصة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-09-29T00:00:00.000Z" };
+  // The history guard's cap: CHAT_HISTORY_MAX_MSGS messages of CHAT_HISTORY_MAX_CHARS / CHAT_HISTORY_MAX_MSGS = 1,500
+  // characters each, the newest the owner's (chat() pushes it before the call).
+  const per = CHAT_HISTORY_MAX_CHARS / CHAT_HISTORY_MAX_MSGS;
+  const thread = Array.from({ length: CHAT_HISTORY_MAX_MSGS }, (_, i) => ({ role: (i % 2 ? "user" : "assistant") as "user" | "assistant", content: `${i}`.padEnd(per, "x") }));
+  const newest = thread.slice(-1);
+  const P_EMPTY = 72_000, P_CAP = 115_000, V = 1_000;
+  const fit = (model: string, prefix: number, volatile = V, msgs = thread) => fitFirstCall(model, msgs, prefix, volatile);
+  /** The largest prefix whose first call still gets CHAT_MIN_OUT with only the newest message: past it, LARGE_REPLY. */
+  const cliff = (model: string) => {
+    let lo = 0, hi = 1_000_000;
+    while (hi - lo > 1) { const mid = Math.floor((lo + hi) / 2); if (fit(model, mid, V, newest).maxTokens) lo = mid; else hi = mid; }
+    return lo;
+  };
+
+  /** The live prefix and volatile sizes for every agent, as chat() computes them, on an empty and on a full workspace. */
+  async function live() {
+    const empty = await newUser("room-empty"), full = await newUser("room-cap");
+    await Promise.all([...CORE_FILES.map((n) => writeFile(full.email, n, n.padEnd(6_001, "م"), "user")), db.set(`onboardplan:${full.email}`, { goal: "g".repeat(140), plan: [], at: "2026-10-09T00:00:00.000Z" })]);
+    const [memEmpty, memFull] = await Promise.all([memoryBlock(empty.email), memoryBlock(full.email)]);
+    expect(memEmpty).toBe("");
+    expect(memFull.split("(showing the ").length - 1, "every core file is cut at the budget").toBe(CORE_FILES.length);
+    const size = (u: typeof empty, memory: string, files: string[], id: (typeof AGENTS)[number]["id"]) => {
+      const sys = system(brand, u, [], memory, files, [], id);
+      return { prefix: JSON.stringify(toolsFor(id)).length + sys[0].text.length + sys[1].text.length, volatile: sys[2].text.length };
+    };
+    return AGENTS.map((a) => ({ id: a.id, empty: size(empty, memEmpty, [], a.id), cap: size(full, memFull, [...CORE_FILES], a.id) }));
+  }
+
+  it("Automatic is Sonnet 5.5; Opus 5's ceiling buys 80% of its room at x2 credits (every Opus rate is Sonnet 5.5's x 2.5)", () => {
+    expect(AUTO).toBe(PRICED_AT.chat);
+    expect(AUTO).toBe("claude-sonnet-5-5");
+    const same = { cache_creation_input_tokens: 1000, input_tokens: 1000, output_tokens: 1000 };
+    expect(costUsd(OPUS, same) / costUsd(AUTO, same)).toBeCloseTo(2.5, 12);
+    expect(chatTurnMaxUsd(OPUS) / 2.5 / chatTurnMaxUsd(AUTO)).toBeCloseTo(0.8, 12);
+    expect(chatUnitsFor(OPUS)).toBe(2);
+  });
+
+  it("the live prompt: every agent's prefix and volatile block fit under the pinned sizes", async () => {
+    const rows = await live();
+    expect(rows.map((r) => r.id).sort()).toEqual(AGENTS.map((a) => a.id).sort());
+    expect(Math.max(...rows.map((r) => r.empty.prefix)), "empty workspace").toBeLessThanOrEqual(P_EMPTY);
+    expect(Math.max(...rows.map((r) => r.cap.prefix)), "memory at the cap").toBeLessThanOrEqual(P_CAP);
+    expect(Math.max(...rows.flatMap((r) => [r.empty.volatile, r.cap.volatile])), "volatile block").toBeLessThanOrEqual(V);
+  });
+
+  it("empty workspace, full thread, live: every chat model's first call gets at least CHAT_FIRST_MIN_OUT on every agent", async () => {
+    const short: string[] = [];
+    for (const r of await live()) {
+      for (const m of chatModels) {
+        const f = fit(m.id, r.empty.prefix, r.empty.volatile);
+        if (f.maxTokens < CHAT_FIRST_MIN_OUT) short.push(`${m.id} ${r.id}: ${f.maxTokens}`);
+      }
+    }
+    expect(short).toEqual([]);
+  });
+
+  it("memory at the cap, full thread, live: the Sonnets still get CHAT_FIRST_MIN_OUT; Opus 5 is answered only for the agents under its cliff", async () => {
+    const rows = await live();
+    const short: string[] = [];
+    for (const r of rows) for (const m of chatModels.filter((x) => x.id !== OPUS)) if (fit(m.id, r.cap.prefix, r.cap.volatile).maxTokens < CHAT_FIRST_MIN_OUT) short.push(`${m.id} ${r.id}`);
+    expect(short).toEqual([]);
+    // The known cliff (founder decision pending; the pricing stays): an Opus 5 conversation with this agent and a full
+    // memory ends with LARGE_REPLY. If this list changes, update docs/system/costs.md section 4.1 and tests.md row 817.
+    const opus = rows.map((r) => ({ id: r.id, max: fit(OPUS, r.cap.prefix, r.cap.volatile).maxTokens }));
+    expect(opus.filter((r) => !r.max).map((r) => r.id).sort(), "agents whose Opus 5 turn ends with LARGE_REPLY at the cap").toEqual(["dana", "faris", "layan", "noor", "razan", "sami"]);
+    for (const r of opus.filter((x) => x.max)) {
+      expect(r.max, r.id).toBeGreaterThanOrEqual(CHAT_MIN_OUT);
+      expect(r.max, `${r.id}: answered, but with less than the first-call minimum`).toBeLessThan(CHAT_FIRST_MIN_OUT);
+    }
+  });
+
+  it("pinned at P_EMPTY: Automatic keeps the whole thread with room to spare, Opus 5 drops the oldest messages to reach CHAT_FIRST_MIN_OUT", () => {
+    const row = (model: string) => { const f = fit(model, P_EMPTY); return [model, f.maxTokens, f.messages.length]; };
+    // [model, max_tokens of the first call, messages of the thread kept]
+    expect(chatModels.map((m) => row(m.id))).toEqual([
+      ["claude-opus-5", 4010, 11],
+      ["claude-sonnet-5", 6299, 16],
+      ["claude-sonnet-5-5", 6299, 16],
+    ]);
+  });
+
+  it("pinned at P_CAP: Automatic drops the oldest messages and still answers; Opus 5 ends with LARGE_REPLY (no call, not counted)", () => {
+    const row = (model: string) => { const f = fit(model, P_CAP); return [model, f.maxTokens, f.messages.length]; };
+    expect(chatModels.map((m) => row(m.id))).toEqual([
+      ["claude-opus-5", 0, 1],
+      ["claude-sonnet-5", 4043, 3],
+      ["claude-sonnet-5-5", 4043, 3],
+    ]);
+  });
+
+  it("the cliff: the largest prefix still answered with only the newest message (volatile V), exact, per chat model", () => {
+    expect(Object.fromEntries(chatModels.map((m) => [m.id, cliff(m.id)]))).toEqual({ "claude-opus-5": 107_796, "claude-sonnet-5": 141_396, "claude-sonnet-5-5": 141_396 });
+    const c = cliff(OPUS);
+    expect(fit(OPUS, c, V, newest).maxTokens).toBe(CHAT_MIN_OUT);
+    expect(fit(OPUS, c + 1, V, newest).maxTokens).toBe(0);
   });
 });
