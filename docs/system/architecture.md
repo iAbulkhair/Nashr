@@ -460,3 +460,28 @@ Bounded lists (2026-09-18): `pushCapped` in `db.ts` trims on write. Caps in `CAP
 | Founder to console | `WAITLIST_ADMIN_KEY` (header `x-admin-key`, or once through the key form, which opens a server-side key session that ends after 15 minutes without an admin request, 12 hours at most; never the URL, never in a cookie) or a founder session | `adminActor` / `isAdmin` / `isAdminCookie` (`src/lib/auth.ts`): the session path requires the founder's own owner login (`isFounderActor`), so a member of a founder's account and a founder impersonating never pass; see `permissions.md` section 4. |
 | Invitee to the join page and `/api/team/accept` (2026-09-29) | The invite token in the link's URL fragment (read by the page's script, sent in a JSON body, never a query string); name, password | Only the token's SHA-256 is stored (`invite:{hash}`, 7 days); single use under `inviteuse:{hash}`; the invite (record and index entry), the owner (existence, suspension, seat limit) and the inviter re-read under `lock:team:{owner}`, and the address under `lock:login:{email}`; the preview applies the same inviter check; per-IP rate limits for preview and accept. |
 | Member login to the owner's account (2026-09-29) | A session naming the member's own login | Re-resolved on every request (`currentUser`); the member acts in the owner's workspace under the role table; its password, sessions and reset links are its own and never the owner's. |
+
+## 6. Environments (2026-10-08)
+
+Spec `docs/superpowers/specs/2026-10-08-staging-smooth-releases-design.md` sections 3 and 4; the steps from branch to live are `docs/system/flows.md` ("Releases: staging, release pull request, rollback"), the lock is flows section 49. Sections 1, 2.6 and 5 above were written when the site ran on Vercel and still say so (the cron schedules still live in `vercel.json`); thakeen.com itself runs on Hostinger (webpack build since 2026-10-08). A Vercel preview of a pull request builds with Turbopack on Vercel, so a green preview does not prove the Hostinger build; staging does.
+
+Two Node.js web apps on one Hostinger Business order (the plan includes five, so staging adds no hosting cost). Status on 2026-10-08: the staging app and the `production` branch are not created yet, and thakeen.com still deploys from `main`; the "Live" column is what it becomes once the founder says yes to those steps (spec section 11, steps 3 and 4).
+
+| | Live | Staging |
+|---|---|---|
+| Address | `https://thakeen.com` | `https://staging.thakeen.com` (`APP_ORIGIN` is its own origin, so links, robots and the access redirect stay on it) |
+| Git auto-deploy branch | `production` (`main` until the switch) | `main` |
+| What moves it | The founder's merge of a release pull request `main` to `production` | Every merge into `main` |
+| Build | `npm run build:hostinger` (`next build --webpack`), Node 22, npm, output `.next` | The same settings, the same build |
+| `APP_ENV` | Unset | `staging`: still production for rules 430 and 431 (never the memory store, never the model mock), and it turns the lock on |
+| Access | Public | Locked: a bare 404 on every path but the access page, its route and `/robots.txt`, unless the request carries the `thakeen_staging` cookie (`STAGING_ACCESS_KEY` decides who gets in; rules 674 and 675) |
+| Indexing | `robots.txt` and sitemap as in 2.1 | Disallow everything, empty sitemap, `X-Robots-Tag: noindex, nofollow` on every response (rule 677) |
+| Redis | The live Upstash database, customer data | A new, empty Upstash database (`KV_REST_API_URL`, `KV_REST_API_TOKEN`); test accounts made by Claude; customer data is never copied in |
+| Anthropic | The live key | Its own key with a low monthly limit set in the Anthropic console: real chat and agents, bounded spend, visible apart from live |
+| Secrets | The live values | New values for every secret in `variables.md` (`CRON_SECRET`, `CONNECT_SECRET` and the rest): nothing signed or encrypted on staging is valid on live, and a staging `CRON_SECRET` can never call a live cron |
+| Crons | The schedules of 2.6 (whether hPanel runs them yet is open, spec section 12) | None scheduled; when a release touches a cron, Claude calls that one route by hand with the staging `CRON_SECRET` and the access cookie |
+| `GET /api/health` | Public, shows the release commit | The same route behind the lock; the scripts send the cookie |
+
+Left unset on staging: `RESEND_API_KEY` and `MAIL_FROM` (`mailReady()` is false, so staging sends no email), payment, connector and media provider credentials (added one by one, as test credentials, only when a change needs them), and `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` (unset means not checked; the lock already keeps strangers out). `docs/system/variables.md` is the authoritative list of names; the founder copies each from the live app into hPanel and gives it the staging value above. Values are entered by the founder in hPanel, never in chat and never committed.
+
+Build identity: `next.config.ts` inlines `BUILD_COMMIT` and `BUILD_TIME`, and `GET /api/health` answers them. Both apps are built from a Git checkout, so `commit` is expected to be a real sha; if the build area has no `.git` it is `unknown` and the host's build record (`hosting_nodejs_list-builds`, `options.source_options.commit.hash`) names the commit instead (spec section 12).
