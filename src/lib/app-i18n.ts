@@ -158,6 +158,17 @@ const ar = {
     sub: "ادفع عبر الرابط أو تواصل معنا على واتساب، ثم يُفعَّل حسابك يدوياً. أرسل إيصال الدفع على واتساب لتفعيل أسرع.",
     pay: "اشترك الآن", contact: "تواصل معنا على واتساب", plans: { starter: "البداية", pro: "الاحتراف", business: "الأعمال", agency: "الوكالات", trial: "تجربة" } satisfies Record<Plan, string>,
     seats: "المقاعد", ownerOnly: "مالك الحساب يدير الاشتراك. اطلب منه الترقية إذا احتجت كريدت أو مقاعد أكثر.",
+    // The "what your plan includes" card (rule 785). No figure is written here: every number on the card comes from the
+    // account's entitlement view (src/lib/entitlements.ts), and the model and agent names from the catalogue and the roster.
+    includes: {
+      title: "ما تشمله خطتك",
+      scope: "يعمل فريق ذكين على التسويق والمبيعات والنمو والمالية والتحليلات لعلاماتك التجارية.",
+      credits: "الكريدت كل شهر", creditsTrial: "كريدت التجربة",
+      seats: "المقاعد المستخدمة",
+      chat: "رسائل الدردشة هذا الشهر", chatTrial: "رسائل الدردشة في التجربة",
+      video: "نماذج الفيديو", agents: "الوكلاء",
+      trialEnds: "تنتهي التجربة في", paidThrough: "الاشتراك مدفوع حتى",
+    },
   },
   agents: {
     title: "الفريق", pick: "اختر من تتحدث معه",
@@ -471,6 +482,15 @@ const en: typeof ar = {
     sub: "Pay via the link or contact us on WhatsApp; your account is then activated manually. Send the receipt on WhatsApp for faster activation.",
     pay: "Subscribe", contact: "Contact us on WhatsApp", plans: { starter: "Starter", pro: "Pro", business: "Business", agency: "Agency", trial: "Trial" },
     seats: "Seats", ownerOnly: "The account owner manages the subscription. Ask them to upgrade if you need more credits or seats.",
+    includes: {
+      title: "What your plan includes",
+      scope: "Your Thakeen team works on marketing, sales, growth, finance and analytics for your brands.",
+      credits: "Credits each month", creditsTrial: "Trial credits",
+      seats: "Seats in use",
+      chat: "Chat messages this month", chatTrial: "Chat messages in your trial",
+      video: "Video models", agents: "Agents",
+      trialEnds: "Your trial ends", paidThrough: "Paid through",
+    },
   },
   agents: {
     title: "The team", pick: "Choose who you talk to",
