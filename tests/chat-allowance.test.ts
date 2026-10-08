@@ -342,10 +342,13 @@ describe("the hard per-message ceiling (rule 311)", () => {
     h.turns.push(() => ({ content: [], stop_reason: "refusal", model: CHAT_MODEL, usage: CHEAP }));
     expect((await chat(u, "مرة ثانية", undefined, "noor", { lang: "ar" })).content).toMatch(/^لم أستطع إكمال هذا الطلب/);
   });
-  it("the code passes the computed cap and the chat model, never a typed 8000", () => {
+  it("the code passes the computed cap and the turn's one model (the caller's, else route), never a typed 8000", () => {
     const src = readFileSync(join(process.cwd(), "src/lib/chat.ts"), "utf8");
     expect(src).toContain("max_tokens: maxTokens");
-    expect(src).toContain("model: CHAT_MODEL");
+    // Resolved once per turn and used by the first-call fit, every later cap and every stream; CHAT_MODEL is only the export.
+    expect(src).toContain('const model = opts.model ?? route("chat").model;');
+    expect(src).toContain(".stream({ model, max_tokens: maxTokens");
+    expect(src.match(/\bCHAT_MODEL\b/g)).toHaveLength(1);
     expect(src).not.toMatch(/max_tokens: 8000/);
   });
 });

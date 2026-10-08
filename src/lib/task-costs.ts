@@ -16,19 +16,24 @@
 import { costUsd } from "./usage";
 import { TASK_COST, TASK_COUNT, type TaskType } from "./tasks";
 import { modelById } from "./models/catalog";
+import { DEFAULTS } from "./models/route";
 
-/** The model each call is priced at. tests/pricing-floor.test.ts checks these literals are the ones the code calls. */
+/**
+ * The model each call is priced at: what `route()` runs each purpose on by default (src/lib/models/route.ts `DEFAULTS`), so
+ * the estimates and the calls read one table. tests/pricing-floor.test.ts checks each call site asks `route()` for its
+ * purpose, and that no model the routing can pick for the judge costs more than the one priced here.
+ */
 export const ESTIMATE_MODELS = {
   /** src/lib/noor.ts `generate` */
-  generate: "claude-opus-5",
+  generate: DEFAULTS.generate,
   /** src/lib/noor.ts `critique` */
-  review: "claude-sonnet-5",
+  review: DEFAULTS.review,
   /** src/lib/judge.ts */
-  judge: "claude-sonnet-5",
+  judge: DEFAULTS.judge,
   /** src/lib/onboard.ts */
-  onboard: "claude-opus-5",
+  onboard: DEFAULTS.onboard,
   /** src/lib/media/prompts.ts: the prompt a render is made from */
-  mediaPrompt: "claude-sonnet-5",
+  mediaPrompt: DEFAULTS.imagePrompt,
 } as const;
 
 export type ItemSize = "short" | "medium" | "long";

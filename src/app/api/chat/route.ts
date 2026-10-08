@@ -7,6 +7,7 @@ import { isAgentId } from "@/lib/agents";
 import { WINDOW, chatCaps, chatRefusal, retryLater } from "@/lib/rate";
 import { deadlineFor } from "@/lib/media/keys";
 import { chatStatus, reserveChatTurn, runChatTurn } from "@/lib/chat-allowance";
+import { route } from "@/lib/models/route";
 
 export const maxDuration = 300;
 
@@ -46,12 +47,13 @@ export async function POST(req: Request) {
   // allowance, all before chat() saves the owner's message (src/lib/chat-allowance.ts).
   const slow = await chatRefusal(u);
   if (slow) return retryLater({ ok: false, error: "slow_down", retry: slow, message: refused(slow, chatCaps(u)[slow]) }, WINDOW[slow]);
-  const gate = await reserveChatTurn(u);
+  // The turn's one model: the messages are reserved for it and chat() runs on the gate's copy of it.
+  const gate = await reserveChatTurn(u, route("chat").model);
   if (!gate.ok) return NextResponse.json({ ok: false, error: gate.error, chat: gate.status, credits: gate.credits }, { status: 402 });
 
   if (!b.stream) {
     try {
-      const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline }));
+      const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, model: gate.model }));
       await track(u.email, "chat");
       if (b.conv && b.conv !== "default") await touchConversation(sc(u), b.conv, text);
       return NextResponse.json({ ok: true, message: m, credits: u.credits, limit: m.limit ?? null, chat: status, charged });
@@ -69,7 +71,7 @@ export async function POST(req: Request) {
       // Mobile carriers and proxies drop connections that stay silent for 30-60 s, and a batch takes longer than that.
       const beat = setInterval(() => { try { controller.enqueue(enc.encode(": ping\n\n")); } catch { /* closed */ } }, 10000);
       try {
-        const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, onStatus: (s) => send({ type: "status", text: s }) }));
+        const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, model: gate.model, onStatus: (s) => send({ type: "status", text: s }) }));
         await track(u.email, "chat");
         if (b.conv && b.conv !== "default") await touchConversation(sc(u), b.conv, text);
         send({ type: "message", message: m, credits: u.credits, limit: m.limit ?? null, chat: status, charged });

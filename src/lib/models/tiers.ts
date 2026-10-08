@@ -18,7 +18,7 @@ export const isTier = (x: unknown): x is Tier => typeof x === "string" && Object
  * `TIER_MULTIPLIER[its tier] / TIER_MULTIPLIER[this model's tier]` (src/lib/models/credits.ts), so the model each surface
  * runs by default keeps today's prices. Generation is priced at Opus 5 (premium), so a standard model is x0.5 there; chat
  * at Sonnet 5.5 (standard), so Opus 5 is x2 there. These are the models the code calls today (tests/model-credits.test.ts
- * pins them against `CHAT_MODEL` and `ESTIMATE_MODELS.generate`); Task 5 asserts that the `route()` defaults equal them.
+ * pins them against `CHAT_MODEL` and `ESTIMATE_MODELS.generate`; tests/model-route.test.ts asserts that the `route()` defaults equal them).
  * Ids only, no rates: the browser may read this file.
  */
 export const PRICED_AT = Object.freeze({ chat: "claude-sonnet-5-5", generate: "claude-opus-5" } as const);

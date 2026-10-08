@@ -48,8 +48,8 @@ export type ChatStatus = {
 type Refusal = { ok: false; error: "chat_allowance" | "chat_credits"; status: ChatStatus; credits: number; need?: number };
 /**
  * `units`: the messages this turn counts (`chatUnitsFor(model)`), on `key`; `model`: the catalog id they were computed
- * for. The caller must run the turn on that same model (`chat()` calls `CHAT_MODEL` today; plan Task 5 wires the pick to
- * both), or the count and the ceiling would price another model.
+ * for. The caller must run the turn on that same model, or the count and the ceiling would price another model: the chat
+ * routes resolve `route("chat").model` once, reserve with it and hand `gate.model` to `chat()` (tests/model-route-calls.test.ts).
  */
 type Reserved = { ok: true; key: string; units: number; model: string; status: ChatStatus };
 export type ChatGate = (Reserved & { mode: "included" }) | (Reserved & { mode: "overflow"; hold: number }) | Refusal;

@@ -38,6 +38,7 @@ import { zoneOf } from "./zones";
 import { can, type Action } from "./roles";
 import { HANDOFF_BRIEF_MAX, HANDOFF_MAX_ITEMS, HANDOFF_TYPES, autoItems, chatItemOf, createHandoff, markShown, parseProposal, proposalText } from "./handoffs";
 import { getGov } from "./governance";
+import { DEFAULTS, route } from "./models/route";
 
 /**
  * An inbox item as a chat card shows it. `xflag`: the other agents that flagged it in the cross-agent review, each with
@@ -325,8 +326,11 @@ export const CHAT_RENDER_MIN_MS = 60_000;
  * `deadline`: the request's one deadline (spec A23), `deadlineFor(maxDuration)` from the route's start. Without it, counted from chat()'s own start.
  * `by`: who is talking, for the activity log; the MCP route passes `tokenBy(user)`, and without it `byOf(user)` reads the session.
  * `via`: "mcp" when the turn came through ask_noor, so tools that publish or rewrite core memory are refused (runTool).
+ * `model`: the turn's model, which the caller already resolved with `route("chat")` and reserved the allowance for
+ * (`reserveChatTurn`, src/lib/chat-allowance.ts): every call of the turn runs on it, so the model called and the model
+ * counted are one value. Left out, `chat()` asks `route("chat")` itself (a caller that reserves nothing).
  */
-export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en"; deadline?: number; by?: By; via?: "app" | "mcp" };
+export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en"; deadline?: number; by?: By; via?: "app" | "mcp"; model?: string };
 /** Why a tool could not spend: the app raises the matching limit dialog. `agent_cap` is the owner's monthly cap for one agent. */
 export type ChatLimit = "credits" | "trial" | "agent_cap";
 
@@ -361,6 +365,8 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   // Taken first: up to five model turns can use most of the ceiling before a tool starts a render.
   const deadline = opts.deadline ?? deadlineFor(CHAT_MAX_DURATION_S);
   const lang = opts.lang ?? user.lang;
+  // The turn's one model: the first-call fit, every later cap and every stream below use this value.
+  const model = opts.model ?? route("chat").model;
   // The backstop of the routes' own check (rule 330): an ended trial gets no model turn from any caller, and nothing is
   // written, not even the owner's message.
   if (trialOver(user)) return { role: "assistant", content: chatRefusedText("trial", lang), at: new Date().toISOString(), agent: agentId, limit: "trial" };
@@ -395,7 +401,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   // call: the thread, already cut by the history guard, is shortened from its oldest end until the call has room for a
   // full answer. Every later call: estimated from the previous call's metered input (its cached prefix as a cache read)
   // and output, plus the tool results added since.
-  const fit = fitFirstCall(CHAT_MODEL, trimHistory(thread), JSON.stringify(tools).length + sys[0].text.length + sys[1].text.length, sys[2].text.length);
+  const fit = fitFirstCall(model, trimHistory(thread), JSON.stringify(tools).length + sys[0].text.length + sys[1].text.length, sys[2].text.length);
   const messages: Anthropic.MessageParam[] = fit.messages;
   if (!messages.length || messages[messages.length - 1].role !== "user") messages.push({ role: "user", content: text });
   let spent = 0;
@@ -409,7 +415,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   // charged inside the turn (generate_content, draft_items) has its own refund within the same deadline.
   let outOfTime = false;
   for (let turn = 0; turn < CHAT_MAX_CALLS; turn++) {
-    const maxTokens = turn === 0 ? fit.maxTokens : nextMaxTokens(CHAT_MODEL, spent, inputEstimateUsd(CHAT_MODEL, next, false));
+    const maxTokens = turn === 0 ? fit.maxTokens : nextMaxTokens(model, spent, inputEstimateUsd(model, next, false));
     if (!maxTokens) {
       ended = turn === 0 ? "large" : "capped";
       break;
@@ -419,7 +425,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
     let res: Anthropic.Message;
     try {
       res = await client.messages
-        .stream({ model: CHAT_MODEL, max_tokens: maxTokens, system: sys, messages, tools, thinking: { type: "adaptive" }, output_config: { effort: "medium" } }, call)
+        .stream({ model, max_tokens: maxTokens, system: sys, messages, tools, thinking: { type: "adaptive" }, output_config: { effort: "medium" } }, call)
         .finalMessage();
     } catch (e) {
       if (call.signal.aborted) { outOfTime = true; break; }
@@ -488,11 +494,13 @@ function withLimit(m: ChatTurn, actions: string[], spent: number): ChatTurn {
 }
 
 /**
- * The chat model: Sonnet 5.5 since 2026-10-02 (founder decision; it was Opus 5), at the same effort and adaptive
- * thinking. Its rates are Opus 5's divided by 2.5, and so is the per-message ceiling (`CHAT_TURN_MAX_USD`). Generation,
- * onboarding and the reviewer keep their own models (src/lib/task-costs.ts `ESTIMATE_MODELS`).
+ * The default chat model: Sonnet 5.5 since 2026-10-02 (founder decision; it was Opus 5), at the same effort and adaptive
+ * thinking. Its rates are Opus 5's divided by 2.5, and so is the per-message ceiling (`CHAT_TURN_MAX_USD`). It is
+ * `DEFAULTS.chat` (src/lib/models/route.ts), the model the chat credit multipliers are relative to; a turn runs on
+ * `route("chat").model`, which is this unless the owner picked another. Generation, onboarding and the reviewer keep their
+ * own models (src/lib/task-costs.ts `ESTIMATE_MODELS`).
  */
-export const CHAT_MODEL = "claude-sonnet-5-5";
+export const CHAT_MODEL = DEFAULTS.chat;
 /** A turn's reply plus what only the route reads (never saved, never sent to the browser): the limit dialog to raise and what the turn's model calls cost in USD. */
 export type ChatTurn = ChatMsg & { limit?: ChatLimit; usd?: number };
 const DONE_REPLY = { ar: "تم. تحقق من صندوق الموافقة.", en: "Done. Check your approvals inbox." } as const;

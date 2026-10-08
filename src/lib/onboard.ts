@@ -6,6 +6,7 @@ import type { SiteSnapshot } from "./crawl";
 
 import type { PlanItem } from "./chat";
 import { asData } from "./json";
+import { route } from "./models/route";
 
 export type OnboardResult = { brand: Brand; files: { name: string; content: string }[]; /** three starter tasks the owner can add with one tap */ plan: PlanItem[]; /** an output goal Nashr controls (items shipped), never a results promise */ goal: string; /** closing chat message */ summary: string };
 
@@ -123,12 +124,14 @@ strategy_md: 90-day plan in 3 phases with concrete weekly cadence per channel, t
   };
 
   const user = onboardUserMessage(site, hints);
+  // One decision for the run: the three parts, and a part's retry, run on the same model.
+  const model = route("onboard").model;
 
   const run = async (name: PartName, attempt = 0): Promise<Record<string, unknown>> => {
     try {
       const msg = await client.messages
         .stream({
-          model: "claude-opus-5",
+          model,
           max_tokens: PARTS[name].maxTokens,
           system: `${shared}${asks[name]}`,
           messages: [{ role: "user", content: user }],

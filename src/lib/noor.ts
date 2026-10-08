@@ -11,12 +11,10 @@ import { activeSeasons } from "./seasons";
 import { zoneOf } from "./zones";
 import { capDiscounts } from "./cart-recovery";
 import { feedbackBlock } from "./feedback";
+import { route } from "./models/route";
 
 /** One generated item. `crossReview` is added by the cross-agent review and never changes the other three fields. */
 export type Generated = { channel: string; title: string; body: string; crossReview?: CrossVerdict[] };
-
-/** The cheaper model of the pipeline: the reviewer, the cross-agent review and the judge (judge.ts) run on it. */
-const REVIEW_MODEL = "claude-sonnet-5";
 
 const DIALECT: Record<Brand["dialect"], string> = {
   msa: "Modern Standard Arabic, simple and warm (not classical).",
@@ -187,7 +185,7 @@ function mock(type: TaskType, brand: Brand): Generated[] {
   }));
 }
 
-export type GenOptions = { /** account email for token metering */ meter?: string; memory?: string; reviewer?: boolean; noEmDash?: boolean; /** WORKSPACE DATA block for report tasks */ stats?: string; /** produce exactly this many items instead of the batch size (small asks from chat) */ count?: number; /** `feedbackFor` output for the owning agent, placed in the uncached block; the golden set passes none */ feedback?: string; /** the cross-agent review (`Governance.crossReview`); on unless false. The golden set passes false */ crossReview?: boolean; /** an item of Majed's handoff (src/lib/handoffs.ts): his brief, a labelled data block for the agent, the reviewer, the cross-reviewers and the judge; never owner notes */ leadBrief?: string; /** when the caller's request ends (epoch ms): the cross-agent review, notes only, is skipped when less than CROSS_REVIEW_MIN_MS of it is left */ deadline?: number };
+export type GenOptions = { /** account email for token metering */ meter?: string; memory?: string; reviewer?: boolean; noEmDash?: boolean; /** WORKSPACE DATA block for report tasks */ stats?: string; /** produce exactly this many items instead of the batch size (small asks from chat) */ count?: number; /** `feedbackFor` output for the owning agent, placed in the uncached block; the golden set passes none */ feedback?: string; /** the cross-agent review (`Governance.crossReview`); on unless false. The golden set passes false */ crossReview?: boolean; /** an item of Majed's handoff (src/lib/handoffs.ts): his brief, a labelled data block for the agent, the reviewer, the cross-reviewers and the judge; never owner notes */ leadBrief?: string; /** when the caller's request ends (epoch ms): the cross-agent review, notes only, is skipped when less than CROSS_REVIEW_MIN_MS of it is left */ deadline?: number; /** the model that writes the batch: the one the caller priced (`generateBatch` resolves it once and passes it here); left out, `route("generate")` */ model?: string };
 
 function stripDashes(items: Generated[]) {
   return items.map((i) => ({ ...i, body: i.body.replace(/\s*[—–]\s*/g, ", ") }));
@@ -211,7 +209,7 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
   const userMsg = `TASK: ${SPECS[type]}${n !== TASK_COUNT[type] ? `\n\nOVERRIDE: the owner asked for exactly ${n} item(s) of this type, not the full batch. Pick the most relevant channel(s) and angles; keep every quality rule.` : ""}${extra ? `\n\nOWNER NOTES FOR THIS BATCH: ${extra.slice(0, 2000)}` : ""}${lead ? `\n\n${lead}` : ""}${opts.stats ? `\n\n${opts.stats}` : ""}\n\nReturn exactly ${n} item(s) as a JSON array.`;
 
   const params = {
-    model: "claude-opus-5",
+    model: opts.model ?? route("generate").model,
     max_tokens: 16000,
     system: systemPrompt(brand, prefs, agent, opts.memory, opts.feedback),
     messages: [{ role: "user" as const, content: userMsg }],
@@ -316,7 +314,7 @@ async function critique(client: Anthropic, brand: Brand, prefs: string[], type: 
   }
   try {
     const review = await client.messages.create({
-      model: REVIEW_MODEL,
+      model: route("review").model,
       max_tokens: 16000,
       thinking: { type: "adaptive" },
       output_config: { effort: "low" },
@@ -479,10 +477,12 @@ async function crossReview(client: Anthropic, brand: Brand, type: TaskType, item
   if (!items.length || !reviewers.length || modelState() !== "on") return items;
   try {
     const content = crossReviewMessage(type, brand, items, ctx);
+    // One decision for the batch: every reviewer runs on the same model.
+    const model = route("xreview").model;
     const per = await Promise.all(reviewers.map(async (r): Promise<(CrossVerdict | null)[]> => {
       try {
         const res = await client.messages.create({
-          model: REVIEW_MODEL,
+          model,
           max_tokens: 4000,
           thinking: { type: "adaptive" },
           output_config: { effort: "low" },

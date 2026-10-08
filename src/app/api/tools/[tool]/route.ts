@@ -6,6 +6,7 @@ import { allow, clientIp, retryLater } from "@/lib/rate";
 import { currentUser } from "@/lib/auth";
 import { MODEL_BUDGET, anthropic, modelState, until } from "@/lib/model";
 import { deadlineFor } from "@/lib/media/keys";
+import { route } from "@/lib/models/route";
 
 export const maxDuration = 60;
 const FREE_PER_DAY = 5;
@@ -32,7 +33,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ tool: string }
     // between them included) end by the route's deadline, 15 s inside its 60 (rule 335).
     const client = anthropic({ timeoutMs: MODEL_BUDGET.TOOL_MS, maxRetries: 1 });
     const res = await client.messages.create({
-      model: "claude-sonnet-5",
+      model: route("tool").model,
       max_tokens: 2000,
       thinking: { type: "adaptive" },
       output_config: { effort: "low" },

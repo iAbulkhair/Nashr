@@ -13,7 +13,8 @@ import { MEDIA_MODELS } from "@/lib/media-catalog";
 import { COST_USD } from "@/lib/media/config";
 import { HANDOFF_TYPES, autoBlock, type Handoff } from "@/lib/handoffs";
 import { agentForTask } from "@/lib/agents";
-import { MODELS, modelAllowsTask } from "@/lib/models/catalog";
+import { MODELS, modelAllowsTask, modelById } from "@/lib/models/catalog";
+import { route } from "@/lib/models/route";
 import { PRICED_AT } from "@/lib/models/tiers";
 import { chatHoldFor, chatTurnMaxUsd, chatUnitsFor, creditsFor, tierMultiplier } from "@/lib/models/credits";
 import { CHAT_FIRST_MIN_OUT } from "@/lib/chat-budget";
@@ -150,14 +151,37 @@ describe("Majed's auto-run is a cron path: every type it may start keeps the flo
 describe("the estimates price the models the code calls (rule 241)", () => {
   const src = (p: string) => readFileSync(p, "utf8");
 
-  it("noor.ts, judge.ts, onboard.ts and media/prompts.ts call the models the estimates assume", () => {
-    expect(src("src/lib/noor.ts")).toContain(`model: "${ESTIMATE_MODELS.generate}"`);
-    // The reviewer (`critique`) and, since step 3b, the cross-agent review call Sonnet through one constant in noor.ts.
-    expect(src("src/lib/noor.ts")).toContain(`const REVIEW_MODEL = "${ESTIMATE_MODELS.review}";`);
-    expect(src("src/lib/noor.ts").match(/model: REVIEW_MODEL,/g)?.length).toBe(2);
-    expect(src("src/lib/judge.ts")).toContain(`model: "${ESTIMATE_MODELS.judge}"`);
-    expect(src("src/lib/onboard.ts")).toContain(`model: "${ESTIMATE_MODELS.onboard}"`);
-    expect(src("src/lib/media/prompts.ts")).toContain(`model: "${ESTIMATE_MODELS.mediaPrompt}"`);
+  it("each call site sends route(purpose).model, and the estimates price exactly what route() resolves for that purpose", () => {
+    // One table: the estimates read the routing's defaults, so a model change in route.ts moves the estimates with it.
+    expect({ ...ESTIMATE_MODELS }).toEqual({
+      generate: route("generate").model,
+      review: route("review").model,
+      judge: route("judge").model,
+      onboard: route("onboard").model,
+      mediaPrompt: route("imagePrompt").model,
+    });
+    // The calls: no literal, each site asks for its own purpose (tests/model-route-calls.test.ts runs them and checks what is sent).
+    const noor = src("src/lib/noor.ts");
+    expect(noor).toContain('model: opts.model ?? route("generate").model,');
+    // The reviewer (`critique`) asks for "review"; the cross-agent review asks once for "xreview" and both reviewers use it.
+    expect(noor.match(/model: route\("review"\)\.model,/g)?.length).toBe(1);
+    expect(noor.match(/const model = route\("xreview"\)\.model;/g)?.length).toBe(1);
+    expect(noor.match(/^\s+model,$/gm)?.length).toBe(1);
+    expect(src("src/lib/judge.ts")).toContain('model: route("judge", { generatedBy: ctx.generatedBy }).model,');
+    // Onboarding asks once; its three parts and a retry run on the same model.
+    expect(src("src/lib/onboard.ts")).toContain('const model = route("onboard").model;');
+    expect(src("src/lib/onboard.ts").match(/^\s+model,$/gm)?.length).toBe(1);
+    expect(src("src/lib/media/prompts.ts")).toContain('model: route("imagePrompt").model,');
+    expect(src("src/app/api/tools/[tool]/route.ts")).toContain('model: route("tool").model,');
+  });
+
+  it("whichever model generated the batch, the judge the routing picks costs no more than the estimate's judge on every bucket", () => {
+    const est = modelById(ESTIMATE_MODELS.judge)!.rate;
+    const buckets = ["in", "out", "cacheRead", "cacheWrite"] as const;
+    for (const generatedBy of [undefined, ...MODELS.map((m) => m.id)]) {
+      const picked = modelById(route("judge", { generatedBy }).model)!;
+      for (const b of buckets) expect(picked.rate[b], `${String(generatedBy)}: ${picked.id} ${b}`).toBeLessThanOrEqual(est[b]);
+    }
   });
 
   it("every assumed model has its own rate: costUsd would otherwise price it as Opus without saying so", () => {
