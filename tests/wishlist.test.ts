@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { json, newUser, signIn, signOut } from "./helpers/session";
+import { json, markVerified, newUser, signIn, signOut } from "./helpers/session";
 import { createUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { wipeAccount } from "@/lib/account";
@@ -24,6 +24,7 @@ const count = async (id: string) => (await listWishes(null, { includeHidden: tru
 beforeAll(async () => {
   vi.stubEnv("ADMIN_EMAILS", FOUNDER);
   founder = await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" });
+  founder = await markVerified(FOUNDER);
 });
 afterEach(() => vi.restoreAllMocks());
 

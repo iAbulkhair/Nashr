@@ -19,7 +19,7 @@ import * as affiliatesRoute from "@/app/api/affiliates/route";
 import * as chatRoute from "@/app/api/chat/route";
 import * as callbackRoute from "@/app/api/connect/[provider]/callback/route";
 
-const ip = (addr: string) => ({ "x-real-ip": addr });
+const ip = (addr: string) => ({ "x-forwarded-for": addr });
 const brand = (over: Partial<Brand> = {}): Brand => ({ name: "محمصة", website: "", industry: "قهوة", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram", "whatsapp"], city: "الرياض", updatedAt: new Date().toISOString(), ...over });
 
 beforeEach(() => signOut());

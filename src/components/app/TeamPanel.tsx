@@ -8,6 +8,7 @@ import type { Role } from "@/lib/auth";
 import type { TeamPerms } from "./teamPerms";
 import ReadOnlyNote from "./ReadOnlyNote";
 import { Icon } from "./Icons";
+import { useConfirm } from "./ConfirmDialog";
 import Scribble from "@/components/Scribble";
 
 type TeamRole = "admin" | "member";
@@ -53,6 +54,8 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
   const [msg, setMsg] = useState("");
   const [link, setLink] = useState<{ email: string; url: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  // Remove, cancel and leave ask in the app's own dialog: each answer is "Go back" or the row's own action.
+  const [ask, confirmDialog] = useConfirm();
 
   const canInvite = perms.inviteMember || perms.inviteAdmin;
   const locked = busy !== "";
@@ -104,16 +107,17 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
     if (next === m.role) return;
     void run(`role:${m.email}`, () => call("/api/team/member", "PATCH", { email: m.email, role: next }));
   }
-  function remove(m: Row) {
-    if (!window.confirm(fill(T.confirmRemove, { name: m.name || m.email }))) return;
+  async function remove(m: Row) {
+    const label = m.name || m.email;
+    if (!(await ask({ title: label, message: fill(T.confirmRemove, { name: label }), confirmLabel: T.remove, cancelLabel: t.dialog.back, destructive: true }))) return;
     void run(`remove:${m.email}`, () => call("/api/team/member", "DELETE", { email: m.email }));
   }
-  function cancel(inv: PendingRow) {
-    if (!window.confirm(fill(T.confirmCancel, { email: inv.email }))) return;
+  async function cancel(inv: PendingRow) {
+    if (!(await ask({ title: inv.email, message: fill(T.confirmCancel, { email: inv.email }), confirmLabel: T.cancel, cancelLabel: t.dialog.back, destructive: true }))) return;
     void run(`cancel:${inv.id}`, () => call("/api/team/invite", "DELETE", { id: inv.id }));
   }
   async function leave() {
-    if (!window.confirm(T.confirmLeave)) return;
+    if (!(await ask({ title: T.leave, message: T.confirmLeave, confirmLabel: T.leave, cancelLabel: t.dialog.back, destructive: true }))) return;
     setBusy("leave"); setErr(""); setMsg("");
     const r = await call("/api/team/leave", "POST");
     if (!r.ok) { setErr(errorText(r)); setBusy(""); return; }
@@ -256,6 +260,7 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true }: { 
           </section>
         )}
       </div>
+      {confirmDialog}
     </div>
   );
 }

@@ -42,7 +42,7 @@ const MEMBER_PW = "member999";
 
 // Every call gets its own client IP, so one test's throttle window never leaks into another's.
 let ipN = 0;
-const ip = () => { ipN++; return { "x-real-ip": `198.18.${Math.floor(ipN / 250)}.${ipN % 250}` }; };
+const ip = () => { ipN++; return { "x-forwarded-for": `198.18.${Math.floor(ipN / 250)}.${ipN % 250}` }; };
 const freshEmail = (p = "inv") => `${p}-${randomBytes(4).toString("hex")}@test.example`;
 const sha = (t: string) => createHash("sha256").update(t).digest("hex");
 const withPlan = async (u: User, p: Plan, seats?: number) => { const x = { ...(await getUser(u.email))!, plan: p, seats }; await saveUser(x); return x; };

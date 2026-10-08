@@ -62,11 +62,12 @@ type Role = "owner" | "admin" | "member";
 /**
  * public: no session (rate limited per IP when it writes). public-read: a GET, HEAD or OPTIONS with no session that
  * serves only public metadata, a static list or a CORS preflight, and writes nothing. bearer: the MCP token.
+ * unverified-session: the email-verification routes, called by an owner who `currentUser` still reads as signed out (rule 751): the handler must read `currentUserUnverified` and be rate limited (allow).
  * admin-console: the founder console. cron: the CRON_SECRET bearer. owner / admin / member: a session, and at least
  * that role, checked with forbid()/can() for the listed actions of src/lib/roles.ts (a bare "member" needs only the
  * session).
  */
-type Gate = "public" | "public-read" | "cron" | "admin-console" | "bearer" | "member" | { role: Role; actions: Action[] };
+type Gate = "public" | "public-read" | "cron" | "admin-console" | "bearer" | "unverified-session" | "member" | { role: Role; actions: Action[] };
 const g = (role: Role, ...actions: Action[]): Gate => ({ role, actions });
 
 /** Every POST, PUT, PATCH and DELETE handler anywhere under src/app. */
@@ -77,6 +78,11 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/auth/forgot": "public",
   "POST /api/auth/reset": "public",
   "POST /api/auth/logout": "public",
+  // Email verification (rules 759-761): the caller is an owner who is still signed out for `currentUser` (rule 751), so the
+  // routes read `currentUserUnverified` and refuse without it; both are rate limited (allow).
+  "POST /api/auth/verify/send": "unverified-session",
+  "POST /api/auth/verify/check": "unverified-session",
+  "POST /api/auth/verify/email": "unverified-session",
   "POST /api/team/accept": "public",
   "POST /api/support": "public",
   "POST /api/affiliates": "public",
@@ -120,6 +126,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "PUT /api/profile": g("owner", "profile.account", "brand.write", "profile.self"),
   "PATCH /api/team/member": g("owner", "team.role"),
   "POST /api/billing/chat-overflow": g("owner", "billing"), // how the account's credits are spent once chat runs out
+  "POST /api/billing/checkout": g("owner", "billing.pay"), // online payment (Paymob), never while impersonating
+  "POST /api/billing/renewal": g("owner", "billing.pay"), // the online subscription's renewal and saved card
 
   // Admin and owner (some handlers also serve a member-level action, listed with it, or member-level names such as
   // non-core files, which need no action of their own).
@@ -187,6 +195,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/admin/wishlist": "admin-console",
   "POST /api/admin/leads": "admin-console",
   "POST /api/media/hook/[provider]": "public",
+  "POST /api/billing/paymob/webhook": "public", // Paymob callbacks: HMAC only, rules 700-729
 };
 
 /**
@@ -261,6 +270,7 @@ const READS: Record<string, Gate> = {
   "GET /api/secretary/feed/[token]": "public-read", // the token in the path is the credential; rate limited per IP and per link
   "GET /api/oauth/meta": "public-read",
   "GET /api/oauth/resource": "public-read",
+  "GET /llms.txt": "public-read", // site copy for language models, static at build time (rule 698)
   "GET /api/health": "public-read", // the release probe's build identity (rule 676): { ok, commit, built } only; rate limited per IP, and still answers when the limiter's store is down
   "OPTIONS /api/mcp": "public-read",
   "OPTIONS /api/oauth/meta": "public-read",
@@ -340,6 +350,7 @@ function violations(h: Handler, gate: Gate): string[] {
     return out;
   }
   if (gate === "cron") return /sameSecret\(/.test(h.body) ? [] : ["cron handler without the sameSecret bearer check"];
+  if (gate === "unverified-session") return /\bcurrentUserUnverified\(/.test(h.body) && /\b(?:allow|verifySendRefusal)\(/.test(h.body) ? [] : ["verify handler without currentUserUnverified and allow (or verifySendRefusal)"];
   if (gate === "bearer") return /userFromBearer\(/.test(h.body) ? [] : ["bearer handler without userFromBearer"];
   if (gate === "admin-console") return /\b(?:isAdmin|adminActor)\(/.test(h.body) || CONSOLE_SELF[h.key] ? [] : ["console handler without isAdmin/adminActor"];
   if (!/\bcurrentUser\(/.test(h.body)) out.push("no session read (currentUser)");

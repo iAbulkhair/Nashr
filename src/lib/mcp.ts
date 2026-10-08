@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 import { db } from "./db";
 import { grantHoldsAccess, revokeAllGrants, tokenHash } from "./oauth";
-import { getUser, type User } from "./auth";
+import { emailVerified, getUser, type User } from "./auth";
 import type { Action } from "./roles";
 
 /**
@@ -71,8 +71,9 @@ export async function userFromBearer(req: Request): Promise<User | null> {
   // An OAuth access token is accepted only while its grant exists and lists it (revoked, or rotated past, is refused).
   // Read alongside the account, so it costs no extra round trip.
   const [u, member, brandId, granted] = await Promise.all([getUser(email), getMember(email), activeBrandId(email), rec.grant ? grantHoldsAccess(email, rec.grant, rec.hash) : true]);
-  // A suspended account is blocked everywhere, including tokens issued before the suspension.
-  if (!u || u.suspended || member || !granted) return null;
+  // A suspended account is blocked everywhere, including tokens issued before the suspension; so is an owner who has
+  // not proved the address yet (rule 753), which covers a token minted before the gate or by a not-yet-verified owner.
+  if (!u || u.suspended || !emailVerified(u) || member || !granted) return null;
   // Same scope resolution as a browser session (src/lib/auth.ts `currentUser`): without it every MCP call read and
   // wrote the default brand even while the owner had another brand active.
   u.brandId = brandId;

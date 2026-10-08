@@ -75,7 +75,8 @@ const codeKey = (code: string) => `partnercode:${code}`;
 const PARTNERS = "partners:all";
 const refsKey = (email: string) => `partner:refs:${email}`;
 const ledgerKey = (email: string) => `partner:ledger:${email}`;
-const paymentsKey = (email: string) => `payments:${email}`;
+/** The account's recorded payments (a hash by payment id). Exported for the Paymob refund (src/lib/billing.ts). */
+export const paymentsKey = (email: string) => `payments:${email}`;
 export const APPLICATIONS = "affiliate-applications";
 const DECISIONS = "affiliate:decisions";
 
@@ -182,6 +183,13 @@ export async function afterSignup(email: string, found: SignupPartner): Promise<
   const jar = await cookies();
   if (jar.get(PARTNER_COOKIE)) jar.delete(PARTNER_COOKIE);
   return done;
+}
+
+/** An unverified owner corrected the address they signed up with: the partner's referral set names the new one (add first, remove last). */
+export async function movePartnerRef(partner: string, from: string, to: string): Promise<void> {
+  const key = refsKey(normalizeEmail(partner));
+  await db.sadd(key, to);
+  await db.srem(key, from);
 }
 
 export type ClaimError = "bad_partner_code" | "self_referral" | "already_attributed" | "already_paid";

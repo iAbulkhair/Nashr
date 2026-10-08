@@ -4,6 +4,7 @@ import { getUser, saveUser, trialOver, type OnboardHold, type User } from "./aut
 import type { AgentId } from "./agents";
 import { allowanceOf, topupsSold, type Plan } from "./pricing";
 import { addMonthly, newLot, returnCredits, setMonthly, spendCredits, MAX_LIVE_TOPUPS, type Receipt, type TopupLot, type TopupRequest } from "./topups";
+import { billingLocked } from "./billing-state";
 
 /**
  * Credit ledger. Every balance change goes through a per-user lock so two
@@ -466,6 +467,7 @@ export async function renewIfDue(email: string): Promise<boolean> {
 /**
  * Whether `renewIfDue` would renew this record now: a paid plan whose last renewal (or, before the first, its creation)
  * is not in the current UTC month. A copy read before the lock may only skip the lock: `renewedAt` only moves forward,
- * so a copy that says "not due" is never wrong, and one that says "due" is checked again under the lock.
+ * so a copy that says "not due" is never wrong, and one that says "due" is checked again under the lock. A Paymob
+ * subscription locked for an unpaid renewal gets no new month (rule 712): paying again gives it the month's credits.
  */
-export const renewalDue = (u: Pick<User, "plan" | "renewedAt" | "createdAt">, month = monthKey()) => u.plan !== "trial" && (u.renewedAt ?? u.createdAt.slice(0, 7)) !== month;
+export const renewalDue = (u: Pick<User, "plan" | "renewedAt" | "createdAt" | "billing">, month = monthKey()) => u.plan !== "trial" && !billingLocked(u.billing) && (u.renewedAt ?? u.createdAt.slice(0, 7)) !== month;

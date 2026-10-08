@@ -23,7 +23,7 @@ const payId = () => `pay_${randomBytes(8).toString("hex")}`;
 async function signupWith(ref?: string) {
   jar().clear();
   const email = `refd-${randomBytes(4).toString("hex")}@test.example`;
-  const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Friend", lang: "en", ...(ref ? { ref } : {}) }, { "x-real-ip": ip() }));
+  const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Friend", lang: "en", ...(ref ? { ref } : {}) }, { "x-forwarded-for": ip() }));
   return { res, email };
 }
 async function referrer() {

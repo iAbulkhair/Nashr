@@ -8,6 +8,7 @@ import PartnerCodeField from "./PartnerCodeField";
 import { PLAN_CREDITS } from "@/lib/pricing";
 import { authMessage, failureCode, passwordChecks, postJson, succeeded, unmetRules } from "@/lib/auth-client";
 import { PasswordRules } from "./PasswordRules";
+import PasswordField from "./PasswordField";
 import { Turnstile } from "./Turnstile";
 import { safeNext } from "@/lib/safe-next";
 import { readInviteToken as readFragmentToken, withoutFragment } from "./inviteToken";
@@ -57,9 +58,11 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
         const code = failureCode(p);
         return setErr(authMessage(code === "slow_down" ? "slow_down_signup" : code, lang, t.signup as Record<string, string>));
       }
-      if (next) { window.location.assign(next); return; }
-      // A carried site only pre-fills the start page: the owner confirms it there before anything is read (onboard-confirm.ts).
-      r.push(`/${lang}/app/start${site.length >= 4 ? `?url=${encodeURIComponent(site)}` : ""}`);
+      // The new owner proves the address first (rule 754): the verify page carries the old destination on in `next`. A carried
+      // site only pre-fills the start page: the owner confirms it there before anything is read (onboard-confirm.ts).
+      const after = next || `/${lang}/app/start${site.length >= 4 ? `?url=${encodeURIComponent(site)}` : ""}`;
+      // `sent=0`: the first mail did not go out, so the verify page does not say it did (copy only).
+      r.push(`/${lang}/app/verify?next=${encodeURIComponent(after)}${p.body.mail === false ? "&sent=0" : ""}`);
       r.refresh();
     } finally {
       setBusy(false);
@@ -76,7 +79,7 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
           <>
             <p className="flex items-center justify-between gap-2 rounded-lg bg-lilac px-3 py-2 text-sm"><span dir="ltr" className="clip">{email}</span><button type="button" onClick={() => setStep(1)} className="text-xs text-ink underline">{S.edit}</button></p>
             <input name="name" required autoFocus autoComplete="name" placeholder={S.nameOpt} aria-label={S.nameOpt} className={input} />
-            <input ref={pwRef} name="password" required type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={t.signup.password} aria-label={t.signup.password} aria-describedby="signup-rules" className={input} />
+            <PasswordField lang={lang} ref={pwRef} name="password" required autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={t.signup.password} aria-label={t.signup.password} aria-describedby="signup-rules" className={input} />
             <PasswordRules id="signup-rules" rules={S.rules} checks={checks} lang={lang} />
             {turnstileKey && <Turnstile siteKey={turnstileKey} onToken={setToken} resetKey={resetKey} lang={lang} />}
           </>
@@ -110,6 +113,9 @@ export function LoginForm({ t, lang }: { t: AppDict; lang: Lang }) {
       // "Wrong email or password" only for a 401: a rate limit, a dropped connection and a server error each say so,
       // so a customer with the right password is not sent to a reset (rule 433).
       if (!succeeded(p)) return setErr(authMessage(failureCode(p), lang, { invalid: t.login.invalid, suspended: t.login.suspended }));
+      // An owner who has not proved the address goes to the code page first, carrying the destination (rule 754), so a
+      // `next` outside the app (the OAuth consent page) is reached after the code instead of looping back here.
+      if (p.body.verify === true) { r.push(`/${lang}/app/verify?next=${encodeURIComponent(next || `/${lang}/app`)}`); return; }
       if (next) { window.location.href = next; return; }
       r.push(`/${lang}/app`);
       r.refresh();
@@ -122,7 +128,7 @@ export function LoginForm({ t, lang }: { t: AppDict; lang: Lang }) {
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t2" />{t.login.title}</span></h1>
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
         <input name="email" required type="email" dir="ltr" placeholder={t.login.email} className={input} />
-        <input name="password" required type="password" placeholder={t.login.password} className={input} />
+        <PasswordField lang={lang} name="password" required autoComplete="current-password" placeholder={t.login.password} className={input} />
         {err && <p role="alert" className="text-sm text-danger">{err}</p>}
         <button disabled={busy} className="s-btn"><Scribble kind="pill" seed="authform-b2" fill="ink" shadow ring />{t.login.submit}</button>
         <Link href={`/${lang}/app/forgot`} className="text-center text-sm text-muted underline">{lang === "ar" ? "نسيت كلمة المرور؟" : "Forgot your password?"}</Link>
@@ -227,7 +233,7 @@ export function ResetForm({ lang }: { lang: Lang }) {
     <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t4" />{S.resetTitle}</span></h1>
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
-        <input ref={pwRef} name="password" required autoFocus type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} aria-label={S.resetTitle} aria-describedby="reset-rules" className={input} />
+        <PasswordField lang={lang} ref={pwRef} name="password" required autoFocus autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} aria-label={S.resetTitle} aria-describedby="reset-rules" className={input} />
         <PasswordRules id="reset-rules" rules={rules} checks={checks} lang={lang} />
         {err && <p role="alert" className="text-sm text-danger">{err} {err === S.bad_token && <Link href={`/${lang}/app/forgot`} className="underline">{S.forgotTitle}</Link>}</p>}
         <button disabled={busy} aria-disabled={!ready ? true : undefined} aria-describedby="reset-rules" className="s-btn"><Scribble kind="pill" seed="authform-b4" fill="ink" shadow ring />{S.save}</button>

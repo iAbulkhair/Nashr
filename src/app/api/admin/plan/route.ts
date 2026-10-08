@@ -113,6 +113,7 @@ export async function POST(req: Request) {
   const before = { plan: String(prev.plan), credits: Number(prev.credits), seats: seatLimit(prev), chat: chatAllowanceOf(prev), deal: dealLabel(prev.deal) };
   let seatsReset = false;
   let chatReset = false;
+  let billingEnded = false;
   const done = await withUserLock(email, async (u) => {
     const plan = planGiven ? (b.plan as Plan) : u.plan;
     // Decided on the record as it is under the lock, before anything changes: a refused request writes nothing.
@@ -131,6 +132,9 @@ export async function POST(req: Request) {
     if (planGiven) {
       setMonthly(u, allowanceOf(u));
       u.renewedAt = monthKey();
+      // A plan set by hand makes the account hand-managed: the online subscription (src/lib/billing.ts, rule 717) stops
+      // renewing, and a renewal lock on it ends here. The saved card stays until the owner removes it or the account goes.
+      if (u.billing) { delete u.billing; billingEnded = true; }
     }
     if (addGiven) addMonthly(u, add);
     if (clearSeats) delete u.seats;
@@ -152,6 +156,7 @@ export async function POST(req: Request) {
     addGiven ? `credits:${add}` : "",
     seatsGiven ? `seats:${clearSeats ? "plan" : b.seats}` : seatsReset ? "seats:plan" : "",
     chatGiven ? `chat:${clearChat ? "plan" : b.chatAllowance}` : chatReset ? "chat:plan" : "",
+    billingEnded ? "billing:manual" : "",
   ].filter(Boolean).join(" ") || "none";
   const teamChange = team && (team.disabled.length || team.enabled.length || team.cancelled.length) ? { disabled: team.disabled, enabled: team.enabled, cancelledInvites: team.cancelled.length } : undefined;
   await pushCapped("admin:log", JSON.stringify({ actor: who, email: user.email, what, before, after: { plan: user.plan, credits: user.credits, seats: seatLimit(user), chat: chatAllowanceOf(user), deal: dealAfter }, team: teamChange, reason: (typeof b.reason === "string" ? b.reason.slice(0, 200) : "") || undefined, at: new Date().toISOString() }), CAPS.adminLog);
