@@ -11,7 +11,7 @@
  * A refusal throws one of two fixed messages that never contain the value (it can hold user info) or a key.
  */
 export const DEFAULT_GATEWAY_BASE_URL = "https://api.straitly.ai";
-/** Not a URL, or a scheme the key may not travel over. */
+/** Not a URL (whitespace or a control character inside, port 0 included), or a scheme the key may not travel over. */
 export const INVALID_GATEWAY_URL = "invalid_straitly_base_url";
 /** A URL with more than an origin in it. */
 export const GATEWAY_URL_NOT_ORIGIN = "invalid_straitly_base_url: origin only, no /v1 or other path, no query, fragment or user info";
@@ -21,6 +21,9 @@ const LOOPBACK: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "[::1]"
 /** The origin to send to (`https://host[:port]`, lower-case), from STRAITLY_BASE_URL's value, or the default when it is empty. */
 export function gatewayOrigin(raw: string | undefined): string {
   const value = raw?.trim() || DEFAULT_GATEWAY_BASE_URL;
+  // Whitespace or a control character left inside after the trim: the parser drops a tab or newline without a word, so
+  // "https://api.straitly.ai\n.evil.com" would become the host api.straitly.ai.evil.com.
+  if (/[\s\p{Cc}]/u.test(value)) throw new Error(INVALID_GATEWAY_URL);
   let u: URL;
   try {
     u = new URL(value);
@@ -28,6 +31,7 @@ export function gatewayOrigin(raw: string | undefined): string {
     throw new Error(INVALID_GATEWAY_URL);
   }
   if (u.protocol !== "https:" && !(u.protocol === "http:" && LOOPBACK.has(u.hostname))) throw new Error(INVALID_GATEWAY_URL);
+  if (u.port === "0") throw new Error(INVALID_GATEWAY_URL);
   // `?`, `#` and `@` in the text too: an empty query, fragment or user info parses to nothing and would otherwise pass.
   if (u.username || u.password || u.pathname !== "/" || u.search || u.hash || /[?#@]/.test(value)) throw new Error(GATEWAY_URL_NOT_ORIGIN);
   return u.origin;

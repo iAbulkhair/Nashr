@@ -20,8 +20,11 @@ import { forbid } from "@/lib/roles";
  * cannot run chat's tools; never a rate), each one's credit multiplier per surface
  * (relative to that surface's default model, `tierMultiplier`), the messages of the chat allowance one message on it
  * counts (`chatUnitsFor`), and whether the owner confirmed China-hosted models. Any signed-in login; it reads only what
- * `currentUser()` reads to resolve the session (the login's user and member records and active brand id; for a member,
- * the owner's user record, brand list and roster entry too) and writes nothing.
+ * `currentUser()` reads to resolve the session (the `session:{token}` record behind the cookie; for a founder
+ * impersonation opened with the console key, `keyImpLive`'s liveness check of that key's console session,
+ * `adminsession:{as}`; the login's user and member records and active brand id; for a member, the owner's user record,
+ * brand list and roster entry too) and writes nothing of its own (`currentUser()` renews such a console session at most
+ * once a minute, src/lib/auth.ts `readSession`).
  *
  * PUT `{ target: "conversation", id, model }` sets (a catalog id) or clears (`null`) a conversation's chat pick; any login
  * of the account (`conversations`). PUT `{ target: "brand", id?, model }` does the same for the ACTIVE brand's

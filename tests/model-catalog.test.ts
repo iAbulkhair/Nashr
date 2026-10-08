@@ -333,10 +333,10 @@ describe("scripts/check-models.ts", () => {
 
   it("refuses a base URL that is not https (loopback excepted) before any request, so the key never travels in clear", async () => {
     const f = vi.fn<F>(ok(all()));
-    for (const base of ["http://api.straitly.ai", "ftp://x", "not a url", "http://localhost.evil.test", "http://localhost@evil.test"]) {
+    for (const base of ["http://api.straitly.ai", "ftp://x", "not a url", "http://localhost.evil.test", "http://localhost@evil.test", "https://api.straitly.ai\n.evil.test", "https://api.straitly.ai\t.evil.test", "https://api.straitly.ai\u0000.evil.test", "https://api.straitly.ai:0"]) {
       const r = await checkModels({ STRAITLY_API_KEY: KEY, STRAITLY_BASE_URL: base }, f);
       expect(r.code, base).toBe(2);
-      expect(r.lines, base).toEqual(["STRAITLY_BASE_URL must be an https URL (http only for a loopback host: localhost, 127.0.0.1, [::1]). Nothing was sent."]);
+      expect(r.lines, base).toEqual(["STRAITLY_BASE_URL must be an https URL with no space, control character or port 0 in it (http only for a loopback host: localhost, 127.0.0.1, [::1]). Nothing was sent."]);
     }
     expect(f).not.toHaveBeenCalled();
     const r = await checkModels({ STRAITLY_API_KEY: KEY, STRAITLY_BASE_URL: "http://127.0.0.1:8787" }, f);

@@ -844,33 +844,40 @@ Status on 2026-10-08: the flow the founder chose, not switched on yet. The `prod
 Spec `docs/superpowers/specs/2026-10-08-straitly-model-routing-design.md` sections 9 to 11, plan `docs/superpowers/plans/2026-10-08-straitly-model-routing.md`; rules 810-866 in `tests.md`. Each line is ticked in the release pull request that carries this work, and the release pull request names the step. Keys are set by the founder in the environment or the host's settings, by name only: never in chat, a command line that is saved, a commit or a pull request.
 
 - [ ] Rule 679 step: EXPAND. The new stored fields are optional and additive: `Conversation.model`, `Brand.model` and `User.chinaHostingOk` (section 8 step 15.6). Old code ignores them. No contract release is needed, except a later one that removes the `RATES` fallback from `src/lib/usage.ts` once every metered id is in the catalog.
-- [ ] Spike (plan Task 1): the founder sets `STRAITLY_API_KEY` in the shell that runs it. Record the result table in the spec's section 2 for the five unknowns:
+- [ ] Spike (plan Task 1): the founder sets `STRAITLY_API_KEY` in the shell that runs it, as in the next item. Record the result table in the spec's section 2 for the five unknowns:
   - strict tool schemas (`strict: true`);
   - adaptive thinking with `effort`;
   - the cache counts in `usage` (`cache_read_input_tokens` above 0 on the second identical call);
   - a non-Claude model on `/v1/messages`;
   - the rate limits and the auth header (`x-api-key` or `Authorization: Bearer`).
 
-  The SDK adds `/v1/messages` itself, so the base it is given is `https://api.straitly.ai`, without `/v1`. `STRAITLY_BASE_URL`, when set, is an origin only: the app and the script refuse a `/v1` or any other path, a query, a fragment or user info (rule 810).
-- [ ] Catalog ids: with `STRAITLY_API_KEY` exported in the same shell, run `npx --no-install jiti scripts/check-models.ts`. This reads `GET /v1/models` (rule 812). Exit 0: every catalog id is listed. Exit 1: it prints the ids the list lacks. Exit 2: the check could not be made.
-- [ ] Staging first: set `LLM_PROVIDER=straitly` and `STRAITLY_API_KEY` on staging.thakeen.com only, keeping `ANTHROPIC_API_KEY` for the direct fallback, and rebuild (item 10). Production keeps `LLM_PROVIDER` unset.
+  The SDK adds `/v1/messages` itself, so the base it is given is `https://api.straitly.ai`, without `/v1`. `STRAITLY_BASE_URL`, when set, is an origin only: the app and the script refuse a `/v1` or any other path, a query, a fragment or user info, and whitespace, a control character or port 0 inside it (rule 810).
+- [ ] Catalog ids: in the shell that runs the check, the founder types `read -rs STRAITLY_API_KEY; export STRAITLY_API_KEY` and pastes the key at the silent prompt, so it is neither shown nor saved in the shell history; then run `npx --no-install jiti scripts/check-models.ts`. This reads `GET /v1/models` (rule 812). Exit 0: every catalog id is listed. Exit 1: it prints the ids the list lacks. Exit 2: the check could not be made.
+- [ ] Staging first, in this order:
+  1. Direct run: while staging.thakeen.com still has `LLM_PROVIDER` unset (direct Anthropic), run the golden set once (next item).
+  2. Switch: set `LLM_PROVIDER=straitly` and `STRAITLY_API_KEY` on staging only, keeping `ANTHROPIC_API_KEY` for the direct fallback, and rebuild (item 10). Production keeps `LLM_PROVIDER` unset.
+  3. Straitly run: run the golden set again.
+
+  To go back to direct Anthropic on staging, unset `LLM_PROVIDER` there and rebuild.
 - [ ] Golden set on staging: in the founder console's Golden set panel, press "Run" (`POST /api/admin/golden`; `src/lib/golden.ts`).
-  - Run it once on direct Anthropic and once on Straitly, at the same `GOLDEN_VERSION`.
+  - The two runs of the item above, direct first and Straitly second, at the same `GOLDEN_VERSION` (a constant in `src/lib/golden.ts`: nothing that changes it reaches staging between the runs).
   - Compare the overall score and each agent's judge score. The panel's own note says a move under ±5 is noise.
   - A drop beyond that stops the release.
+  - The judge's scores on real work come from `src/lib/evals.ts` (`GET /api/admin/evals?days=N`, the last N days; the console's Quality tab shows 30). Read each agent's average judge score just before the switch and again N days after it, so the two windows do not overlap.
 - [ ] Cost and refusals: the founder console's Billing tab, model usage block (rules 855-865):
   - each model's calls and USD;
   - each provider's USD (`anthropic`, `straitly`) and the fallback count (requests re-sent to Anthropic);
   - the refused picks.
 
-  Then recalibrate the rates against the first Straitly invoice:
-  - Today's rates are Anthropic list prices; Straitly bills 40% below list (spec section 2).
-  - Change them in `src/lib/models/catalog.ts` and in the `RATES` fallback of `src/lib/usage.ts`, together.
-  - Then run `npx vitest run tests/pricing-floor.test.ts tests/model-catalog.test.ts`.
+  Then check the rates against the first Straitly invoice. This step lowers no Claude rate:
+  - The Claude entries in `src/lib/models/catalog.ts` and the `RATES` fallback in `src/lib/usage.ts` stay at the Anthropic LIST price while any route can reach Anthropic directly: the fallback (`withDirectFallback` in `src/lib/model.ts`), and all of production while `LLM_PROVIDER` is unset. Pricing the dearest route keeps the margin floor honest (the comment above `MODELS` in `catalog.ts`).
+  - The invoice confirms the gateway's 40% below list (spec section 2), or corrects it. It sets or verifies the gateway-only entries (provider list price x 0.6). It is also the real figure behind the console's caveat: the provider USD there is at catalog (list) rates, so the `straitly` line for a Claude model reads above the invoice.
+  - Changing a Claude rate is a separate founder decision, made with `docs/system/costs.md` updated in the same change and a full `npm run check`.
+  - Any rate that does change, of either kind, is followed by `npx vitest run tests/pricing-floor.test.ts tests/model-catalog.test.ts` (part of `npm run check` as well).
 - [ ] Opus by hand: use an environment with a model key (staging), because without a key chat runs in mock mode and gives the message back.
   - Pick Opus in the chat picker and send one message.
   - The allowance line drops by 2 messages (`chatUnitsFor`, rule 818).
-  - The overflow hold shows 4 credits (`chatHoldFor`, rule 817).
+  - The overflow hold is 4 credits (`chatHoldFor`, rule 817). It shows as `chat.overflow.hold` in `GET /api/chat?conv={id}` for that conversation (and in the `chat` field of the reply). On screen it shows only with the allowance used up: in the line under the box when "continue on credits" is on, or in the `chat_credits` limit dialog.
 - [ ] Before any economy model becomes pickable (`pick: true` on an entry whose chat multiplier is below 1), both of these must be done:
   - Chat says that a message "counts as 1 message". Today the line appears only when `chatUnits` is above 1 (rule 846).
   - `POST /api/conversations` answers the new conversation's `chat` status. Today the allowance line keeps the previous conversation's ceiling until the first answer (rule 853, "Not pinned").

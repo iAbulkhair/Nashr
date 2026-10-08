@@ -68,7 +68,9 @@ const STANDARD_CLAUDE_TASKS: readonly string[] = [
  * - A model that is reachable only through the Straitly gateway carries the gateway's price: provider list price x 0.6
  *   (the gateway is 40% below list on each of the four buckets).
  *
- * Update both when a provider changes a price, and move the date. `tests/pricing-floor.test.ts` prices every task on these.
+ * When a provider changes a price, update both (this table and, for a Claude model, `RATES` in `usage.ts`), and set the
+ * date the list prices were "checked" (2026-09-27 above, and the same date in `usage.ts`) to the day the new price was read.
+ * `tests/pricing-floor.test.ts` prices every task on these.
  *
  * Only the three Claude models used today are listed. The other vendors' entries (with their `dialect` and `caps`) come
  * from the Straitly spike (plan Task 1: `GET /v1/models`, then one call per model) and are added after it has run; so is

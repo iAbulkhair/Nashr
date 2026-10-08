@@ -38,7 +38,7 @@ async function withCatalog(extra: ModelEntry[] = [], patch: (m: ModelEntry) => M
   vi.doMock("@/lib/models/catalog", async (orig) => {
     const m = await orig<typeof import("@/lib/models/catalog")>();
     const all = [...m.MODELS.map(patch), ...extra];
-    return { ...m, MODELS: all, modelById: (id: unknown) => all.find((e) => e.id === id), autoModels: () => all.filter((e) => e.auto), pickModels: () => all.filter((e) => e.pick) };
+    return { ...m, MODELS: all, modelById: (id: unknown) => all.find((e) => e.id === id), autoModels: () => m.automaticOf(all), pickModels: () => all.filter((e) => e.pick) };
   });
   return import("@/lib/models/route");
 }

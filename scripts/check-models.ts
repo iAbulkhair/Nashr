@@ -38,7 +38,7 @@ export function modelsUrl(base: string): string {
 
 /** Why STRAITLY_BASE_URL was refused, as a fixed sentence: the value itself is never printed (it can hold user info). */
 const BASE_REFUSED = {
-  scheme: "STRAITLY_BASE_URL must be an https URL (http only for a loopback host: localhost, 127.0.0.1, [::1]). Nothing was sent.",
+  scheme: "STRAITLY_BASE_URL must be an https URL with no space, control character or port 0 in it (http only for a loopback host: localhost, 127.0.0.1, [::1]). Nothing was sent.",
   shape: "STRAITLY_BASE_URL must be an origin only, such as https://api.straitly.ai: no /v1 (this check adds /v1/models itself), no other path, query, fragment or user info. Nothing was sent.",
 };
 

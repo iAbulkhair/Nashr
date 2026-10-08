@@ -116,8 +116,16 @@ describe("the provider switch", () => {
       return reason(Promise.resolve().then(() => anthropic({ timeoutMs: 1000, maxRetries: 0 })));
     };
     // Not a URL, or a scheme the key may not travel over: plain http is for a loopback HOST only, and a host that merely
-    // starts with "localhost" or puts it in the user info is not one.
-    for (const bad of ["http://gateway.example.test", "not a url", "ftp://gateway.example.test", "//gateway.example.test", "http://localhost.evil.com", "http://localhost@evil.com", "http://127.0.0.1@evil.com", "http://127.0.0.2:8787"]) {
+    // starts with "localhost" or puts it in the user info is not one. Whitespace or a control character inside the value
+    // is refused too (the parser drops a tab or newline without a word, so "...ai\n.evil.com" would be the host
+    // api.straitly.ai.evil.com), and so is port 0. A NUL never gets here: process.env ends the value at it (the script's
+    // test, which passes its env object directly, has that case).
+    for (const bad of [
+      "http://gateway.example.test", "not a url", "ftp://gateway.example.test", "//gateway.example.test", "http://localhost.evil.com", "http://localhost@evil.com", "http://127.0.0.1@evil.com", "http://127.0.0.2:8787",
+      "https://api.straitly.ai\n.evil.com", "https://api.straitly.ai\t.evil.com", "https://api.straitly.ai\r.evil.com", "https://api.straitly.ai\r\n.evil.com",
+      "https://api.straitly.ai\u007f.evil.com", "https://api.straitly.ai .evil.com", "https://api.straitly.ai .evil.com",
+      "https://api.straitly.ai:0", "https://api.straitly.ai:00", "http://localhost:0",
+    ]) {
       const e = await refused(bad);
       expect(e?.message, bad).toBe("invalid_straitly_base_url");
       expect(everything(e), bad).not.toContain("evil");

@@ -357,7 +357,10 @@ describe("no call site names a model", () => {
     "src/lib/usage.ts": "RATES: the rate table from before the catalog, the fallback for an id the catalog lacks until a contract release removes it (rule 679)",
   };
   const LITERAL = /["'`]claude-[a-z0-9.-]+["'`]/;
-  /** The code without its comments: a comment may name a model, a string may not. */
+  /**
+   * The code without its comments: a comment may name a model, a string may not.
+   * Parked: a "/*" inside a string (an accept header's "*" + "/*") also starts a strip, so a literal after one could hide; none does today.
+   */
   const code = (f: string) => readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
   it("no file under src holds a Claude model id outside the four that define the defaults, the catalog, the priced-at models and the old rates", () => {
