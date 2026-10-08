@@ -9,12 +9,13 @@ import { AGENTS, AGENT_IDS, isAgentId, type AgentId } from "@/lib/agents";
 import { TASK_COST, isTaskType, type TaskType } from "@/lib/tasks";
 import { dateFormat } from "@/lib/dates";
 import ReadOnlyNote from "./ReadOnlyNote";
+import { useConfirm } from "./ConfirmDialog";
 import Scribble from "@/components/Scribble";
 
 /** `label` is the switch's accessible name (its row's title): a screen reader announces what it turns on, not "switch, off". */
-function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
+function Toggle({ on, onChange, label, disabled }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-ink" : "bg-ink/20"}`}>
+    <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)} className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${on ? "bg-ink" : "bg-ink/20"}`}>
       <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${on ? "start-[22px]" : "start-0.5"}`} />
     </button>
   );
@@ -79,13 +80,19 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
   // The owner confirmed switching Majed's auto-run on in this page's dialog: only then does Save send the server the
   // confirmation it requires for that change (PUT /api/governance refuses it otherwise).
   const [autoConfirmed, setAutoConfirmed] = useState(false);
+  const [ask, confirmDialog] = useConfirm();
+  /** The auto-run question, the same from the switch and from a restore that would turn it back on. */
+  const askAutoHandoff = () => ask({ title: g.autoHandoff, message: g.autoHandoffConfirm, confirmLabel: t.dialog.confirm, cancelLabel: t.dialog.back });
   /** A refused save or restore, in the owner's words: the server's typed codes. */
   const refusal = (code: unknown, fallback: string) => (code === "busy" ? g.busy : code === "auto_handoff_needs_cap" ? g.autoHandoffNeedsCap : code === "auto_handoff_confirm" ? g.autoHandoffConfirmNeeded : fallback);
-  /** The switch: turning it on asks first, in plain words; turning it off needs nothing. */
-  function toggleAuto(on: boolean) {
-    if (on && !window.confirm(g.autoHandoffConfirm)) return;
+  /**
+   * The switch: turning it on asks first, in plain words; turning it off needs nothing. The settings are read again
+   * after the answer (the updater form), not taken from before the question.
+   */
+  async function toggleAuto(on: boolean) {
+    if (on && !(await askAutoHandoff())) return;
     setAutoConfirmed(on);
-    setGov({ ...gov, majedAutoHandoff: on });
+    setGov((cur) => ({ ...cur, majedAutoHandoff: on }));
   }
   /** What the server stored, after its own checks, is what the page shows; a change it recorded joins the history. */
   function applySaved(j: { governance: Governance; entry?: GovHistoryEntry | null }) {
@@ -123,7 +130,7 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
    */
   async function restore(id: string) {
     setMsg(""); setErr(""); setHistMsg(""); setHistErr("");
-    if (!window.confirm(g.restoreConfirm)) return;
+    if (!(await ask({ title: g.history, message: g.restoreConfirm, confirmLabel: g.restore, cancelLabel: t.dialog.back, destructive: true }))) return;
     setRestoring(id);
     try {
       const send = (confirmAutoHandoff: boolean) => fetch("/api/governance/rollback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(confirmAutoHandoff ? { id, confirmAutoHandoff } : { id }) });
@@ -131,7 +138,7 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
       let res = await send(false);
       let j = (await res.json().catch(() => ({}))) as Reply;
       if (j.error === "auto_handoff_confirm") {
-        if (!window.confirm(g.autoHandoffConfirm)) return;
+        if (!(await askAutoHandoff())) return;
         res = await send(true);
         j = (await res.json().catch(() => ({}))) as Reply;
       }
@@ -228,7 +235,7 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
           </ul>
         </div>
         {/* After the caps it depends on. Off for a record saved before the switch existed. Turning it on asks first. */}
-        <Row title={g.autoHandoff} sub={g.autoHandoffSub}><Toggle label={g.autoHandoff} on={gov.majedAutoHandoff === true} onChange={toggleAuto} /></Row>
+        <Row title={g.autoHandoff} sub={g.autoHandoffSub}><Toggle label={g.autoHandoff} on={gov.majedAutoHandoff === true} onChange={toggleAuto} disabled={!!restoring} /></Row>
         {!readOnly && (
           <div className="flex items-center gap-3">
             <button onClick={save} disabled={busy || !!restoring} className="btn btn-primary btn-sm">{busy ? g.saving : g.save}</button>
@@ -297,6 +304,8 @@ export default function GovernancePanel({ t, lang, initial, spend, history: init
           </ul>
         )}
       </section>
+      {/* Outside the fieldset too: a disabled fieldset would disable the dialog's buttons with it. */}
+      {confirmDialog}
     </div>
   );
 }

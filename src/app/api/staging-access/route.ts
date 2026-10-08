@@ -9,7 +9,7 @@ import { STAGING_COOKIE, accessToken } from "@/lib/staging-access";
 /**
  * POST /api/staging-access (rule 675): the staging site's door. A form posts `code` (and `lang`); the right code is
  * answered with the access cookie the proxy checks (`hasAccess`, rule 674) and a 303 to the site, anything else with a
- * 303 back to the page with `?e=1` and no cookie. Off staging the route does not exist (404).
+ * 303 back to the page with `?e=1` and no cookie. Off staging the route does not exist (404, whatever the method).
  *
  * Public by design: it is open on staging because nobody holds the cookie yet. So it is rate-limited per IP (5 tries
  * per 15 minutes, counted before the code is read, so the sixth is refused even with the right one), compares with
@@ -47,3 +47,15 @@ export async function POST(req: Request) {
   res.cookies.set(STAGING_COOKIE, token, { ...opts, secure: opts.secure || appOrigin().startsWith("https://") });
   return res;
 }
+
+/**
+ * Every other method is a bare 404, on staging too (the door only takes the form's POST). Without these, Next answers GET
+ * with 405 and OPTIONS with 204 and `Allow: OPTIONS, POST`, which would show off staging that the route is there.
+ */
+const notFound = () => new NextResponse(null, { status: 404 });
+export const GET = notFound;
+export const HEAD = notFound;
+export const PUT = notFound;
+export const PATCH = notFound;
+export const DELETE = notFound;
+export const OPTIONS = notFound;

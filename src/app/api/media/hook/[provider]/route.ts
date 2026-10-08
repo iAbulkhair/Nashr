@@ -14,7 +14,11 @@ export const maxDuration = 120;
 const MAX_BODY_BYTES = 64 * 1024;
 const HOOK_PER_IP = { max: 240, windowS: 60 };
 
-/** The body as text, or null past the cap: the declared length first, then a running total, so a lying header cannot get more read. */
+/**
+ * The body as text, or null past the cap: the declared length first, then a running total, so a lying header cannot get
+ * more kept. The proxy has already buffered the body by then (up to `proxyClientMaxBodySize`, next.config.ts, rule 774),
+ * so this bounds what the route keeps and parses, not what the server reads.
+ */
 async function readCapped(req: Request, max: number): Promise<string | null> {
   if (Number(req.headers.get("content-length") ?? 0) > max) return null;
   if (!req.body) return "";

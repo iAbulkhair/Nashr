@@ -5,6 +5,7 @@ import type { AppDict } from "@/lib/app-i18n";
 import type { WFile } from "@/lib/files";
 import ReadOnlyNote from "./ReadOnlyNote";
 import { readImportStream } from "./catalogImport";
+import { useConfirm } from "./ConfirmDialog";
 import Scribble from "@/components/Scribble";
 
 /**
@@ -24,6 +25,7 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
   const [err, setErr] = useState("");
+  const [ask, confirmDialog] = useConfirm();
   const isLocked = (name: string) => locked.includes(name);
   /** The message for a refused call: the role for a 403, otherwise the generic failure. */
   const refusal = (status: number, generic: string) => (status === 403 ? t.team.errors.forbidden : generic);
@@ -59,7 +61,7 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
     r.refresh();
   }
   async function del(name: string) {
-    if (!confirm(`${f.delete} ${name}?`)) return;
+    if (!(await ask({ title: name, message: `${f.delete} ${name}?`, confirmLabel: f.delete, cancelLabel: t.dialog.back, destructive: true }))) return;
     setErr("");
     const res = await fetch(`/api/files?name=${encodeURIComponent(name)}`, { method: "DELETE" }).catch(() => null);
     if (!res?.ok) { setErr(res ? refusal(res.status, t.team.errors.failed) : t.team.errors.failed); return; }
@@ -125,6 +127,7 @@ export default function FilesPanel({ t, files, canImport = true, locked = [] }: 
           )}
         </section>
       </div>
+      {confirmDialog}
     </div>
   );
 }
