@@ -54,6 +54,8 @@ export async function GET(req: Request) {
       // Of `credits`, what is left in live top-up packs (src/lib/topups.ts): the rest is the month's plan credits.
       topupCredits: topupCredits(u),
       renewedAt: u.renewedAt ?? null, suspended: !!u.suspended, lang: u.lang,
+      // Rule 776: when the owner proved the address (null: not yet, so the account reads as signed out until they do).
+      emailVerifiedAt: u.emailVerifiedAt ?? null,
       seats: seatLimit(u), seatsOverride: u.seats ?? null,
       deal: u.deal ?? null, allowance: allowanceOf(u),
       tokens: usage.in + usage.out, usd: usage.usd, calls: usage.calls, byKind: usage.byKind,

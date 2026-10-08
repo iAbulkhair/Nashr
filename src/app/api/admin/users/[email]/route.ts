@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
-import { ADMIN_SESSION_IDLE, adminActor, createSession, getUser, isAdmin, keyImpBinding, revokeSessions, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie } from "@/lib/auth";
+import { ADMIN_SESSION_IDLE, adminActor, createSession, emailVerified, getUser, isAdmin, keyImpBinding, revokeSessions, revokeTeamSessions, saveUser, normalizeEmail, sessionCookie } from "@/lib/auth";
 import { revokeAllMcp } from "@/lib/mcp";
 import { revokeBooks } from "@/lib/booking-token";
 import { revokeFeeds } from "@/lib/feed-token";
@@ -19,6 +19,7 @@ import { listActivity } from "@/lib/activity";
 import { cookies } from "next/headers";
 import { forceRemoveMember, getMember, membersKey, onRoster } from "@/lib/team";
 import { unfinishedRefunds } from "@/lib/partners";
+import { sendVerifyCode, verifySendRefusal, VERIFY } from "@/lib/verify-email";
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +66,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
   });
 }
 
-type Action = { action: "suspend" | "unsuspend" | "extendTrial" | "resetPassword" | "delete" | "impersonate" | "setLang" | "removeMember"; days?: number; lang?: "ar" | "en"; reason?: string };
+type Action = { action: "suspend" | "unsuspend" | "extendTrial" | "resetPassword" | "delete" | "impersonate" | "setLang" | "removeMember" | "resendVerification"; days?: number; lang?: "ar" | "en"; reason?: string };
 
 /** POST actions on one user. Every action is logged to admin:log with WHO did it: the founder's email, or "key". */
 export async function POST(req: Request, ctx: { params: Promise<{ email: string }> }) {
@@ -136,6 +137,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
       // side (customer-side requests renew it, `keyImpLive`), at "End key session" or at a key rotation.
       await log("impersonate", { expiresInMin: 120, ...(bind?.as ? { idleMin: ADMIN_SESSION_IDLE / 60, endsWithKeySession: true } : {}) });
       return NextResponse.json({ ok: true, redirect: `/${u.lang}/app` });
+    }
+    case "resendVerification": {
+      // Rule 777: support mails a fresh code to the account's own address, through the same refusals as the owner's
+      // resend (one a minute, five an hour, ten a day per address), so the console never floods an inbox. The code is
+      // never in the response, not even on a test deploy: only the owner's own routes hand it back there (rule 766).
+      if (emailVerified(u)) return NextResponse.json({ ok: false, error: "already_verified" }, { status: 409 });
+      const refused = await verifySendRefusal(email, req);
+      if (refused) return refused;
+      const { sent } = await sendVerifyCode(u);
+      await log("resendVerification", { sent });
+      if (!sent) return NextResponse.json({ ok: false, error: "send_failed" }, { status: 502 });
+      return NextResponse.json({ ok: true, resendIn: VERIFY.gap });
     }
     case "delete": {
       await wipeAccount(email);
