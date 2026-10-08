@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { NextRequest } from "next/server";
+import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import manifest from "@/app/manifest";
 import { proxy, config as proxyConfig } from "@/proxy";
 import { SITE_DEFAULT } from "@/lib/page-meta";
@@ -68,7 +69,7 @@ describe("rule 681: the manifest makes the app installable, Arabic first, openin
   });
 
   it("/app redirects (307) to the app in the language the person uses: cookie, then Accept-Language, default Arabic", () => {
-    expect(proxyConfig.matcher).toContain("/app");
+    expect(unstable_doesMiddlewareMatch({ config: proxyConfig, url: "/app" })).toBe(true);
     const go = (headers: Record<string, string> = {}, path = "/app") => proxy(new NextRequest(`https://thakeen.example${path}`, { headers }));
     const at = (r: Response) => new URL(r.headers.get("location")!).pathname;
     const plain = go();

@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import type { NextConfig } from "next";
 
 // The CSP sets no default-src, script-src, frame-src or connect-src, so the Cloudflare Turnstile widget on signup and
@@ -12,7 +13,21 @@ const SECURITY_HEADERS = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
 ];
 
+// The commit this build was made from: BUILD_COMMIT when the host sets it, else the checkout's HEAD, else "unknown". A
+// host without git, or a build outside a checkout, must never fail the build over it. /api/health reports it (rule 676).
+const buildCommit = () => {
+  if (process.env.BUILD_COMMIT) return process.env.BUILD_COMMIT;
+  try {
+    return execSync("git rev-parse HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim() || "unknown";
+  } catch {
+    return "unknown";
+  }
+};
+
 const nextConfig: NextConfig = {
+  // Inlined into the server bundle at build time (process.env.BUILD_COMMIT and BUILD_TIME, read as written, never
+  // destructured). Neither is a secret. BUILD_TIME alone tells two builds apart when the commit is unknown.
+  env: { BUILD_COMMIT: buildCommit(), BUILD_TIME: new Date().toISOString() },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

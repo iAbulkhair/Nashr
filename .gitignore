@@ -45,3 +45,6 @@ next-env.d.ts
 e2e/.auth/
 e2e/.output/
 e2e/.report/
+
+# release smoke script: staging test account and secrets, never committed
+.smoke.local

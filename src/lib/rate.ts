@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { db } from "./db";
 import type { User } from "./auth";
@@ -156,8 +155,6 @@ export const HANDOFF_DECLINES_PER_HOUR = 120;
  */
 export const FEEDBACK_PER_HOUR = 120;
 
-/** Constant-time string comparison for secrets. */
-export function sameSecret(a: string | null | undefined, b: string | null | undefined): boolean {
-  const x = Buffer.from(a ?? ""), y = Buffer.from(b ?? "");
-  return x.length > 0 && x.length === y.length && timingSafeEqual(x, y);
-}
+/** Constant-time string comparison for secrets. It lives in secret.ts, which has no store behind it, so the proxy can use
+ * it; this re-export keeps every existing import working. */
+export { sameSecret } from "./secret";
