@@ -319,6 +319,20 @@ describe("starting a render", () => {
     expect(await balance(u)).toBe(200 - 36);
   });
 
+  it("7b. a paid plan starts the premium video (M1)", async () => {
+    mediaEnv({ kie: true, blob: true, models: "all" });
+    const kie = kieFake();
+    useDeps({ kie });
+    const u = await paid();
+    expect(u.plan).toBe("pro");
+    u.credits = 200;
+    await saveUser(u);
+    const r = await start("video", u, await taskFor(u), { model: "vid-premium" });
+    expect([r.status, r.body.error]).toEqual([202, undefined]);
+    expect(kie.submits).toHaveLength(1);
+    expect(await balance(u)).toBe(200 - 24);   // the premium clip costs 24 credits (media-catalog)
+  });
+
   it("a start that throws after the charge answers with its durable job, which a poll later settles and refunds", async () => {
     mediaEnv({ kie: true, blob: true, models: "all" });
     const kie = kieFake();

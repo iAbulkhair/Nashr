@@ -61,12 +61,29 @@ describe("callers read what a plan includes from entitlements", () => {
   });
 });
 
+describe("rule 784: the view's read model", () => {
+  it("entitlementView reads the store in one Promise.all and awaits no db call of its own", () => {
+    // The page and the detail GET hand the view their one round trip (the rule-315 source check moved off the page with the
+    // reads), so pin it where the reads now are. Comments are stripped: the doc comment above it may say "Promise.all".
+    const src = read("src/lib/entitlements.ts");
+    const start = src.indexOf("export async function entitlementView");
+    expect(start, "entitlementView is found").toBeGreaterThan(-1);
+    const end = src.indexOf("\n}\n", start);
+    expect(end, "its closing brace is found").toBeGreaterThan(start);
+    const body = src.slice(start, end).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(body.match(/Promise\.all\(/g), "exactly one Promise.all").toHaveLength(1);
+    expect(body, "no await db.* in the view").not.toMatch(/await\s+db\./);
+  });
+});
+
 /**
  * Rule 786: comparing the account's plan with "trial" is how each feature used to decide who may use it, once per feature.
  * What an account may do is asked of `entitlements(u)`; the comparisons that remain outside it are counted here, each with
  * what it does, so a new one has to be argued for in review. A new file or a higher count fails: decide the access in
  * src/lib/entitlements.ts, or add a display-only use below with a reason. A LOWER count fails too, so the map shrinks when a
- * use is removed. Matches are counted, not lines (two on one line are two).
+ * use is removed. Matches are counted, not lines (two on one line are two), and a match inside a comment counts like any other:
+ * a comment that quotes `plan === "trial"` raises its file's count. Only the literal `plan ===` / `plan !==` form is seen: not
+ * the reversed `"trial" === u.plan`, and not a check derived from the plan such as `chat.period === "trial"`.
  * The entries marked ACCESS decide what an account may do (or how much) outside entitlements.ts. Part A moved none of them,
  * because it changes no behaviour; they are the list for a follow-up, and the count is what keeps that list from growing.
  */
@@ -79,7 +96,7 @@ const ALLOWED: Record<string, { n: number; why: string }> = {
   "src/components/app/ProfilePanel.tsx": { n: 3, why: "display and copy: the runway lines and the plan rules text differ for a trial, and its owner gets the subscribe button" },
   "src/components/app/TrialBanner.tsx": { n: 1, why: "display: the countdown strip renders for a trial only" },
   "src/lib/admin-stats.ts": { n: 4, why: "stats: the founder's counts of paying, active-trial and expired-trial accounts, and signups that paid" },
-  "src/lib/auth.ts": { n: 1, why: "ACCESS: `trialOver`, the spend gate every route asks (an ended trial may not spend); entitlements() reports the same state as `inactive`" },
+  "src/lib/auth.ts": { n: 1, why: "ACCESS: `trialOver`, the spend gate (chat, MCP, media, generation, onboarding, routines, the weekly plan): an ended trial or a Paymob-locked subscription may not spend; entitlements() reports them as inactive `trial_over` / `billing_locked`" },
   "src/lib/chat-allowance.ts": { n: 4, why: "ACCESS and mechanics: which counter holds a trial's messages, the status period, and `overflowAvailable` (continue on credits is a paid plan's option, not a trial's)" },
   "src/lib/chat.ts": { n: 1, why: "copy: the PLAN line of the chat's system prompt adds the trial end day" },
   "src/lib/credits.ts": { n: 1, why: "billing: `renewalDue`, a monthly renewal runs for a paid plan and never for a trial" },

@@ -5,9 +5,9 @@ import { ALL_VIDEO_MODELS, entitlementView, entitlements, grantActive, isUtcDay,
 import { getUser, saveUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { chatStatus } from "@/lib/chat-allowance";
-import { seatsUsed } from "@/lib/team";
+import { getMember, saveMember, seatsUsed } from "@/lib/team";
 import { chatTrialKey } from "@/lib/usage";
-import { newUser } from "./helpers/session";
+import { newMember, newUser } from "./helpers/session";
 import { AGENT_IDS } from "@/lib/agents";
 import { allowanceOf, chatAllowanceOf, seatLimit } from "@/lib/pricing";
 import { chatCaps } from "@/lib/rate";
@@ -96,6 +96,31 @@ describe("entitlements (rule 780)", () => {
     for (const u of [suspended, ended, locked]) {   // inactive accounts still report the plan's own numbers
       const e = entitlements(u, NOW);
       expect([e.credits.monthly, e.seats, e.chat.monthly]).toEqual([allowanceOf(u), seatLimit(u), chatAllowanceOf(u)]);
+    }
+  });
+
+  it("inactive is absent on an active account, and the first reason wins when several apply (M9)", () => {
+    const active = entitlements(user(), NOW);
+    expect(active.active).toBe(true);
+    expect(active.inactive).toBeUndefined();
+    expect("inactive" in active, "the key is left out, not set to undefined").toBe(false);
+    const locked = billingFixture({ status: "locked", paidThrough: "2026-10-05" });
+    const ended = { plan: "trial" as const, trialEnds: "2026-10-01T00:00:00Z" };
+    // The order the gates refuse in (flows: What a plan includes, item 1): suspended, then a locked subscription, then an ended trial.
+    expect(entitlements(user({ suspended: true, billing: locked }), NOW).inactive).toBe("suspended");
+    expect(entitlements(user({ ...ended, billing: locked }), NOW).inactive).toBe("billing_locked");
+    expect(entitlements(user({ ...ended, suspended: true }), NOW).inactive).toBe("suspended");
+    expect(entitlements(user({ ...ended, suspended: true, billing: locked }), NOW).inactive).toBe("suspended");
+    // Only the one reason is reported; the account is not active whichever it is.
+    expect(entitlements(user({ ...ended, billing: locked }), NOW).active).toBe(false);
+  });
+
+  it("a Paymob subscription that is past due, inside its grace days, still reads active (only `locked` is inactive)", () => {
+    for (const status of ["active", "past_due"] as const) {
+      const e = entitlements(user({ billing: billingFixture({ status, failures: status === "past_due" ? 1 : 0, ...(status === "past_due" ? { graceUntil: "2026-10-12" } : {}) }) }), NOW);
+      expect(e.active, status).toBe(true);
+      expect(e.inactive, status).toBeUndefined();
+      expect(e.endsAt, status).toBe("2026-11-08");   // still the paid-through day
     }
   });
 
@@ -199,6 +224,17 @@ describe("entitlementView (rule 784)", () => {
     expect(l.base).toMatchObject({ active: false, inactive: "billing_locked", endsAt: "2026-10-05", seats: seatLimit({ plan: "pro" }) });
   });
 
+  it("used.seats counts the owner and the active members, not a paused one, and is what seatsUsed says (M8)", async () => {
+    const owner = await stored({ plan: "pro" });
+    expect((await entitlementView(owner, NOW)).used.seats).toBe(1);   // the owner alone
+    await newMember(owner);
+    const paused = await newMember(owner);
+    await saveMember({ ...(await getMember(paused.email))!, disabled: "seats" });   // what enforceSeats does when a plan shrinks
+    const v = await entitlementView(owner, NOW);
+    expect(v.used.seats).toBe(await seatsUsed(owner.email));
+    expect(v.used.seats).toBe(2);   // the owner and the one active member
+  });
+
   it("is read-only: it writes nothing to the store", async () => {
     const mem = (globalThis as unknown as { __nashrMem: { kv: Map<string, unknown>; lists: Map<string, string[]>; sets: Map<string, Set<string>> } }).__nashrMem;
     const snapshot = () => JSON.stringify([[...mem.kv], [...mem.lists], [...mem.sets].map(([k, v]) => [k, [...v]])]);
@@ -287,6 +323,41 @@ describe("EntitlementsTable (rule 784)", () => {
     expect(effective).toBe("4000");
     expect(override).toContain("4000@2800");
     expect(override).toContain("founder@x");
+  });
+
+  it("an Agency deal at the floor (1500 credits, Business's own number) still shows in the Override cell (M4)", async () => {
+    // The effective credits equal the plan's, so a check on "credits differ" would hide the contract and who set it.
+    const u = await stored({ plan: "agency", deal: { credits: 1500, priceSar: 999, setAt: "x", setBy: "founder@x" } });
+    const view = await entitlementView(u, NOW);
+    expect(view.ent.credits.monthly).toBe(view.base.credits.monthly);
+    const [, plan, override, effective] = cells(renderToStaticMarkup(createElement(EntitlementsTable, { view, lang: "en", deal: u.deal })), "credits");
+    expect([plan, effective]).toEqual(["1500", "1500"]);
+    expect(override).toContain("1500@999");
+    expect(override).toContain("founder@x");
+    // With no deal on the record the cell is still a dash.
+    const plain = await stored({ plan: "agency" });
+    const [, , o] = cells(renderToStaticMarkup(createElement(EntitlementsTable, { view: await entitlementView(plain, NOW), lang: "en", deal: plain.deal })), "credits");
+    expect(o).toBe("—");
+  });
+
+  it("Arabic: every day, email and credits@price sits in a left-to-right, no-wrap island, inside a scrolling box (M5)", async () => {
+    const u = await stored({ plan: "agency", deal: { credits: 4000, priceSar: 2800, setAt: "x", setBy: "founder@x" }, grants: grant(day(3)) });
+    const out = renderToStaticMarkup(createElement(EntitlementsTable, { view: await entitlementView(u, NOW), lang: "ar", deal: u.deal }));
+    const island = (inner: string) => `<bdi dir="ltr" class="whitespace-nowrap">${inner}</bdi>`;
+    // The status cell's day: a trial's last day (the agency account above is activated by hand and has none).
+    const trialOut = renderToStaticMarkup(createElement(EntitlementsTable, { view: await entitlementView(await stored(trial), NOW), lang: "ar" }));
+    expect(trialOut).toContain(island("2026-10-20"));
+    expect(cells(trialOut, "status")[3]).toContain("مفعّل");
+    expect(out).toContain(island(day(3)));          // the grant's last day
+    expect(out).toContain(island("founder@x"));     // who set the grant, and the deal
+    expect(out).toContain(island("4000@2800 SAR")); // credits@price
+    expect(out).toContain(island("2026-11-01"));    // the reset day
+    // Every ISO day in the markup is inside such an island (none is bare text in a cell).
+    const bare = out.replace(/<bdi dir="ltr" class="whitespace-nowrap">[^<]*<\/bdi>/g, "");
+    expect(bare.match(/\d{4}-\d{2}-\d{2}/g) ?? []).toEqual([]);
+    expect(bare).not.toMatch(/[\w.-]+@[\w.-]+/);
+    // The table scrolls inside its own box instead of widening the page.
+    expect(out).toMatch(/<div class="overflow-x-auto"><table/);
   });
 
   it("a chat override and a live grant on a trial: base values in Plan, the override in its cell", async () => {
