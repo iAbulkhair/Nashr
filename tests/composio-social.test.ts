@@ -5,7 +5,7 @@ import { saveConnection } from "@/lib/connectors/store";
 import { saveTask, type Task } from "@/lib/brand";
 import { publishOnce } from "@/lib/publish-once";
 import { wipeAccount } from "@/lib/account";
-import { SOCIAL_PUB_KEY } from "@/lib/social-stats";
+import { getSocialSnapshot, SOCIAL_KEY, SOCIAL_PUB_KEY, syncSocial } from "@/lib/social-stats";
 import { composioWrite, setComposioClientForTests, type ComposioClient } from "@/lib/connectors/composio";
 import { TOOLKITS, type Toolkit } from "@/lib/connectors/composio-catalog";
 import type { Connection } from "@/lib/connectors/store";
@@ -97,5 +97,146 @@ describe("the post id is kept on publish, for results", () => {
     expect(await db.smembers(SOCIAL_PUB_KEY(other.email))).toEqual([]);
     await wipeAccount(u.email);
     expect(await db.smembers(SOCIAL_PUB_KEY(u.email))).toEqual([]);
+  });
+});
+
+const NOW = new Date("2026-10-08T09:00:00Z");
+const igConn = () => via("meta", { instagram: "ca_ig" }, { igId: "1784" });
+const liConn = () => via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrg: "urn:li:organization:42" });
+const media = (n: number, over: Record<string, unknown> = {}) => ({ id: `m${n}`, caption: `post ${n}`, media_type: "IMAGE", permalink: `https://www.instagram.com/p/${n}/`, timestamp: "2026-10-01T10:00:00+0000", ...over });
+function igAnswers(posts: Record<string, unknown>[] = [media(1), media(2, { media_type: "VIDEO", media_product_type: "REELS" })]) {
+  answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1784", username: "oud", followers_count: 1200 } });
+  answers.INSTAGRAM_GET_USER_INSIGHTS = ok({ data: { data: [{ name: "reach", period: "day", total_value: { value: 5400 } }, { name: "views", period: "day", total_value: { value: 9100 } }] } });
+  answers.INSTAGRAM_GET_IG_USER_MEDIA = ok({ data: { data: posts, paging: { cursors: { before: "b0" } } } });
+  answers.INSTAGRAM_GET_IG_MEDIA_INSIGHTS = (a) => ok({ data: { data: (a.metric as string[]).map((m, i) => ({ name: m, period: "lifetime", values: [{ value: 10 + i }] })) } });
+}
+
+describe("Instagram results (rules 662-665, 667)", () => {
+  it("reads the account and its recent posts with fixed arguments", async () => {
+    const u = await newUser("sig");
+    igAnswers();
+    const snap = await syncSocial(u.email, { meta: igConn() }, NOW);
+    expect(snap.ig).toMatchObject({ user: "oud", followers: 1200, reach: 5400, views: 9100, range: { from: "2026-09-10", to: "2026-10-08" } });
+    expect(snap.ig!.posts).toHaveLength(2);
+    expect(snap.ig!.posts[0]).toEqual({ id: "m1", at: "2026-10-01T10:00:00+0000", type: "IMAGE", caption: "post 1", url: "https://www.instagram.com/p/1/", views: 10, reach: 11, likes: 12, comments: 13, saved: 14, shares: 15, fromThakeen: false });
+    expect(snap.ig!.posts[1].type).toBe("REELS");
+    const since = Math.floor(NOW.getTime() / 1000) - 28 * 86400;
+    expect(calls.find((c) => c.slug === "INSTAGRAM_GET_USER_INSIGHTS")!.args).toEqual({ ig_user_id: "1784", metric: ["reach", "views"], period: "day", metric_type: "total_value", since, until: Math.floor(NOW.getTime() / 1000) });
+    expect(calls.find((c) => c.slug === "INSTAGRAM_GET_IG_USER_MEDIA")!.args).toEqual({ ig_user_id: "1784", fields: "id,caption,media_type,media_product_type,permalink,timestamp", limit: 25, since });
+    expect(calls.find((c) => c.slug === "INSTAGRAM_GET_IG_MEDIA_INSIGHTS")!.args).toEqual({ ig_media_id: "m1", metric: ["views", "reach", "likes", "comments", "saved", "shares"] });
+    expect(await getSocialSnapshot(u.email)).toEqual(snap);
+  });
+
+  it("keeps Instagram when LinkedIn fails, and throws only when every held part fails (662)", async () => {
+    const u = await newUser("sig662");
+    igAnswers();
+    const snap = await syncSocial(u.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    expect(snap.ig).toBeDefined();
+    expect(snap.liError).toBeTruthy();
+    answers.INSTAGRAM_GET_USER_INFO = { successful: false, error: "expired token" };
+    await expect(syncSocial(u.email, { meta: igConn(), linkedin: liConn() }, NOW)).rejects.toThrow(/401/);
+  });
+
+  it("a refused Instagram token throws even when nothing else is held, so the owner is asked to reconnect", async () => {
+    const u = await newUser("sig401");
+    igAnswers(Array.from({ length: 12 }, (_, i) => media(i + 1)));
+    answers.INSTAGRAM_GET_IG_MEDIA_INSIGHTS = { successful: false, error: "Error validating access token: session has expired" };
+    await expect(syncSocial(u.email, { meta: igConn() }, NOW)).rejects.toMatchObject({ provider: "meta", message: expect.stringMatching(/ 401:/) });
+    // Neither retried nor carried on past the posts already in flight.
+    expect(calls.filter((c) => c.slug === "INSTAGRAM_GET_IG_MEDIA_INSIGHTS").length).toBeLessThanOrEqual(4);
+  });
+
+  it("a post whose insights fail twice keeps null numbers, and the read succeeds (663)", async () => {
+    const u = await newUser("sig663");
+    igAnswers([media(1)]);
+    answers.INSTAGRAM_GET_IG_MEDIA_INSIGHTS = { successful: false, error: "metric not supported for this media" };
+    const snap = await syncSocial(u.email, { meta: igConn() }, NOW);
+    expect(snap.ig!.posts[0]).toMatchObject({ views: null, reach: null, likes: null, comments: null, saved: null, shares: null });
+    expect(calls.filter((c) => c.slug === "INSTAGRAM_GET_IG_MEDIA_INSIGHTS").map((c) => c.args.metric)).toEqual([
+      ["views", "reach", "likes", "comments", "saved", "shares"],
+      ["reach", "likes", "comments", "saved"],
+    ]);
+  });
+
+  it("caps posts at 30, never keeps paging.next or a foreign link, and stops on a repeated cursor (664)", async () => {
+    const u = await newUser("sig664");
+    igAnswers();
+    const page = (from: number) => Array.from({ length: 25 }, (_, i) => media(from + i, from + i === 3 ? { permalink: "https://evil.example/p" } : {}));
+    answers.INSTAGRAM_GET_IG_USER_MEDIA = (a) => ok({ data: { data: page(a.after ? 26 : 1), paging: { next: "https://graph.facebook.com/v21.0/1784/media?access_token=SECRET&after=c1", cursors: { after: "c1" } } } });
+    const snap = await syncSocial(u.email, { meta: igConn() }, NOW);
+    expect(snap.ig!.posts).toHaveLength(30);
+    expect(JSON.stringify(await getSocialSnapshot(u.email))).not.toContain("access_token");
+    expect(snap.ig!.posts.find((p) => p.id === "m3")!.url).toBeNull();
+    expect(calls.filter((c) => c.slug === "INSTAGRAM_GET_IG_USER_MEDIA")).toHaveLength(2);
+    expect(calls.filter((c) => c.slug === "INSTAGRAM_GET_IG_MEDIA_INSIGHTS")).toHaveLength(30);
+  });
+
+  it("reads rows nested as data.data and stops when a page brings no new cursor", async () => {
+    const u = await newUser("signest");
+    igAnswers();
+    answers.INSTAGRAM_GET_IG_USER_MEDIA = ok({ data: { data: { data: [media(7)] } } });
+    const snap = await syncSocial(u.email, { meta: igConn() }, NOW);
+    expect(snap.ig!.posts.map((p) => p.id)).toEqual(["m7"]);
+    expect(calls.filter((c) => c.slug === "INSTAGRAM_GET_IG_USER_MEDIA")).toHaveLength(1);
+  });
+
+  it("account totals that fail leave reach and views unknown, not zero", async () => {
+    const u = await newUser("sigtot");
+    igAnswers();
+    answers.INSTAGRAM_GET_USER_INSIGHTS = { successful: false, error: "(#100) metric views is not available" };
+    const snap = await syncSocial(u.email, { meta: igConn() }, NOW);
+    expect(snap.ig).toMatchObject({ reach: null, views: null, followers: 1200 });
+  });
+
+  it("a refused token is thrown with its provider, and nothing is written when nothing was read", async () => {
+    const u = await newUser("sigboth");
+    igAnswers();
+    answers.INSTAGRAM_GET_USER_INFO = { successful: false, error: "token expired" };
+    // Only Instagram is held in this task, so the part that succeeds is checked once LinkedIn reads (plan Task 8).
+    await expect(syncSocial(u.email, { meta: igConn() }, NOW)).rejects.toMatchObject({ provider: "meta" });
+    expect(await getSocialSnapshot(u.email)).toBeNull();
+  });
+
+  it("cleans and caps captions", async () => {
+    const u = await newUser("sigcap");
+    igAnswers([media(1, { caption: "<b>bold</b> " + "x".repeat(200) })]);
+    const snap = await syncSocial(u.email, { meta: igConn() }, NOW);
+    expect(snap.ig!.posts[0].caption.length).toBeLessThanOrEqual(80);
+    expect(snap.ig!.posts[0].caption).not.toContain("<");
+  });
+
+  it("marks a post from Thakeen only in the workspace that published it (665)", async () => {
+    const a = await newUser("sig665a");
+    const b = await newUser("sig665b");
+    await db.sadd(SOCIAL_PUB_KEY(a.email), "m1");
+    igAnswers([media(1)]);
+    expect((await syncSocial(b.email, { meta: igConn() }, NOW)).ig!.posts[0].fromThakeen).toBe(false);
+    expect((await syncSocial(a.email, { meta: igConn() }, NOW)).ig!.posts[0].fromThakeen).toBe(true);
+  });
+
+  it("calls a non-professional account a known state, not a failure", async () => {
+    const u = await newUser("signp");
+    igAnswers();
+    answers.INSTAGRAM_GET_USER_INFO = { successful: false, error: "(#10) Application does not have permission for this action" };
+    const snap = await syncSocial(u.email, { meta: igConn() }, NOW);
+    expect(snap).toMatchObject({ igError: "ig_not_professional" });
+    expect(snap.ig).toBeUndefined();
+  });
+
+  it("skips a Meta record without Instagram, and refuses a workspace with nothing to read", async () => {
+    const u = await newUser("signoig");
+    const fbOnly = via("meta", { facebook: "ca_fb" }, { pageId: "1" });
+    // The LinkedIn part fails until plan Task 8; the failure is LinkedIn's, and Instagram is never called.
+    await expect(syncSocial(u.email, { meta: fbOnly, linkedin: liConn() }, NOW)).rejects.toMatchObject({ provider: "linkedin" });
+    expect(calls.some((c) => c.slug.startsWith("INSTAGRAM_"))).toBe(false);
+    await expect(syncSocial(u.email, { meta: fbOnly }, NOW)).rejects.toThrow("not_connected");
+    await expect(syncSocial(u.email, { meta: via("meta", { instagram: "ca_ig" }, { igId: "1784", via: "oauth" }) }, NOW)).rejects.toThrow("not_connected");
+  });
+
+  it("wipes the snapshot with the account (667)", async () => {
+    const u = await newUser("sig667");
+    await db.set(SOCIAL_KEY(u.email), { at: NOW.toISOString() });
+    await wipeAccount(u.email);
+    expect(await getSocialSnapshot(u.email)).toBeNull();
   });
 });
