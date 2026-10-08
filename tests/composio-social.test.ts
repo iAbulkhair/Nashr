@@ -9,6 +9,10 @@ import { getSocialSnapshot, socialDataBlock, SOCIAL_KEY, SOCIAL_PUB_KEY, syncSoc
 import { composioWrite, setComposioClientForTests, type ComposioClient } from "@/lib/connectors/composio";
 import { TOOLKITS, type Toolkit } from "@/lib/connectors/composio-catalog";
 import type { Connection } from "@/lib/connectors/store";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import SocialStats from "@/components/app/SocialStats";
+import { socialRead } from "@/lib/report-sources";
 
 /**
  * Rules 661-671: Instagram and LinkedIn page results read through Composio (social-stats.ts), and the owner's choice to
@@ -336,5 +340,46 @@ describe("Dana's social data (rule 666)", () => {
     await db.set(SOCIAL_KEY(u.email), snap());
     const { statsFor } = await import("@/lib/stats");
     expect(await statsFor("weekly_report", u.email)).toContain("<social_data>");
+  });
+});
+
+describe("the social card on Reports (rule 668)", () => {
+  const ig = (posts: Partial<IgPostT>[]): SocialSnapshot => ({
+    at: NOW.toISOString(),
+    ig: { user: "oud", followers: 1200, range: { from: "2026-09-10", to: "2026-10-08" }, reach: 5400, views: null, posts: posts.map((p, i) => ({
+      id: `m${i}`, at: "2026-10-01T10:00:00+0000", type: "IMAGE", caption: `post ${i}`, url: null, views: null, reach: null, likes: null, comments: null, saved: null, shares: null, fromThakeen: false, ...p,
+    })) },
+  });
+  type IgPostT = NonNullable<SocialSnapshot["ig"]>["posts"][number];
+  const html = (social: SocialSnapshot, lang: "ar" | "en" = "en") => renderToStaticMarkup(createElement(SocialStats, { lang, social }));
+
+  it("the followers tile unlocks only when a part was read", () => {
+    expect(socialRead(null)).toBe(false);
+    expect(socialRead({ at: "x" })).toBe(false);
+    expect(socialRead({ at: "x", igError: "ig_not_professional" })).toBe(false);
+    expect(socialRead(ig([]))).toBe(true);
+  });
+
+  it("shows the top five posts by views then reach, unknown as a dash, and Instagram links only as safe links", () => {
+    const out = html(ig([
+      { caption: "low", reach: 5 }, { caption: "top", views: 900, url: "https://www.instagram.com/p/1/", fromThakeen: true },
+      { caption: "second", views: 300 }, { caption: "third", reach: 50 }, { caption: "fourth", reach: 10 }, { caption: "hidden" },
+    ]));
+    expect(out).toContain('id="social-stats"');
+    expect(out).toContain("@oud");
+    const order = ["top", "second", "third", "fourth", "low"].map((c) => out.indexOf(`>${c}<`));
+    expect(order.every((x, i) => x > 0 && (i === 0 || x > order[i - 1]))).toBe(true);
+    expect(out).not.toContain(">hidden<");
+    expect(out).toContain("—");
+    expect(out).toMatch(/<a [^>]*href="https:\/\/www.instagram.com\/p\/1\/"[^>]*rel="noopener noreferrer"[^>]*target="_blank"|<a [^>]*rel="noopener noreferrer"[^>]*href="https:\/\/www.instagram.com\/p\/1\/"/);
+    expect(out.match(/<a /g)).toHaveLength(1);
+    expect(out).toContain("from Thakeen");
+    expect(html(ig([{ fromThakeen: true }]), "ar")).toContain("من ذكين");
+  });
+
+  it("renders a caption as text and says when the account is not professional", () => {
+    expect(html(ig([{ caption: "<img src=x onerror=alert(1)>", views: 1 }]))).not.toContain("<img");
+    const np = html({ at: NOW.toISOString(), igError: "ig_not_professional" });
+    expect(np).toContain("not a professional account");
   });
 });

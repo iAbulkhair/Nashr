@@ -33,10 +33,12 @@ describe("which connectors do something", () => {
 
   it("reads platform numbers only from the stores the sales sync reads and the ad accounts syncAds reads, and stats.ts reads no connection", () => {
     expect([...READS_ADS].sort()).toEqual([...AD_PROVIDERS].sort());
-    // Google is read only for the site block (src/lib/site-stats.ts), and only through Composio.
-    expect([...READS_METRICS].sort()).toEqual([...SALES_PROVIDERS, ...AD_PROVIDERS, "google"].sort());
+    // Google is read only for the site block (src/lib/site-stats.ts), Meta only for Instagram results
+    // (src/lib/social-stats.ts), and both only through Composio.
+    expect([...READS_METRICS].sort()).toEqual([...SALES_PROVIDERS, ...AD_PROVIDERS, "google", "meta"].sort());
     expect(reportSources(["meta_ads"]).read).toEqual(["ads"]);
-    expect(reportSources(["meta"]).read).toEqual([]); // the Page connection publishes; it reads no ad numbers
+    // The Page connection reads no ad numbers; through Composio it reads Instagram results.
+    expect(reportSources(["meta"]).read).toEqual(["social"]);
     expect(readFileSync("src/lib/stats.ts", "utf8")).not.toMatch(/getConnection|listConnections/);
   });
 
@@ -47,14 +49,16 @@ describe("which connectors do something", () => {
     expect(reportSources(["zid"]).read).toEqual(["store"]);
     expect(reportSources(["woocommerce"]).read).toEqual(["store"]);
     // The Meta Page connection publishes; it reads no numbers.
-    expect(reportSources(["meta"])).toMatchObject({ read: [], banner: "none" });
-    // Google is the site connection: analytics only, never ads. The reports page drops a direct (non-Composio) record.
+    expect(reportSources(["meta"])).toMatchObject({ read: ["social"], banner: "some" });
+    // Google is the site connection: analytics only, never ads. The reports page drops a direct (non-Composio) Google or
+    // Meta record: neither has a reader behind it.
     expect(reportSources(["google"]).read).toEqual(["analytics"]);
     // Snapchat is Snapchat Ads: ad results, not a social account.
     expect(reportSources(["snapchat"]).read).toEqual(["ads"]);
     expect(reportSources(["tiktok_ads"]).read).toEqual(["ads"]);
     expect(reportSources(["google_ads"]).read).toEqual(["ads"]);
-    expect(readFileSync("src/app/[lang]/app/reports/page.tsx", "utf8")).toMatch(/c\.provider !== "google" \|\| isComposio\(c\)/);
+    expect(readFileSync("src/app/[lang]/app/reports/page.tsx", "utf8")).toMatch(/!READ_VIA_COMPOSIO\.includes\(c\.provider\) \|\| isComposio\(c\)/);
+    expect(readFileSync("src/app/[lang]/app/reports/page.tsx", "utf8")).toMatch(/READ_VIA_COMPOSIO = \["google", "meta"\]/);
   });
 });
 

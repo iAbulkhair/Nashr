@@ -10,13 +10,15 @@ import type { Kpis } from "@/lib/stats";
 import type { AgentMetrics } from "@/lib/evals";
 import type { Lang } from "@/lib/i18n";
 import { kpiDelta } from "@/lib/kpi-delta";
-import { PLATFORM_METRICS, reportSources } from "@/lib/report-sources";
+import { PLATFORM_METRICS, reportSources, socialRead } from "@/lib/report-sources";
 import { PROVIDER_NAME, SALES_PROVIDERS, moneyText, type SalesProvider, type SalesSnapshot } from "@/lib/connectors/sales";
 import { dateFormat } from "@/lib/dates";
 import type { PerfSnapshot } from "@/lib/perf-import";
 import PerformanceImport from "./PerformanceImport";
 import SiteStats from "./SiteStats";
 import type { SiteSnapshot } from "@/lib/site-stats";
+import SocialStats from "./SocialStats";
+import type { SocialSnapshot } from "@/lib/social-stats";
 import { READS_ADS } from "@/lib/connectors/working";
 import Scribble from "@/components/Scribble";
 
@@ -24,7 +26,7 @@ type Item = { id: string; type: TaskType; title: string; status: string; created
 
 const METRICS = ["created", "approved", "approvalRate", "pending", "published", "images", "videos", "creditsUsed", "scheduled"] as const;
 type MetricKey = (typeof METRICS)[number];
-export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null, site = null, syncFailure = null, perf = null, perfImport = true, perfDelete = true, owner = true, topups = true }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null; /** `getSiteSnapshot`: GA4 and Search Console totals (src/lib/site-stats.ts). */ site?: SiteSnapshot | null; /** `getSyncFailure`: the last automatic store sync that failed, until one succeeds. */ syncFailure?: { at: string; provider: string } | null; perf?: PerfSnapshot | null; /** `can(u, "performance.import")` */ perfImport?: boolean; /** `can(u, "performance.delete")` */ perfDelete?: boolean; /** `can(u, "billing")`: picks the out-of-credits line (rule 457). */ owner?: boolean; /** `topupsSold(u.plan)` */ topups?: boolean }) {
+export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null, site = null, social = null, syncFailure = null, perf = null, perfImport = true, perfDelete = true, owner = true, topups = true }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null; /** `getSiteSnapshot`: GA4 and Search Console totals (src/lib/site-stats.ts). */ site?: SiteSnapshot | null; /** `getSocialSnapshot`: Instagram and LinkedIn page results (src/lib/social-stats.ts). */ social?: SocialSnapshot | null; /** `getSyncFailure`: the last automatic store sync that failed, until one succeeds. */ syncFailure?: { at: string; provider: string } | null; perf?: PerfSnapshot | null; /** `can(u, "performance.import")` */ perfImport?: boolean; /** `can(u, "performance.delete")` */ perfDelete?: boolean; /** `can(u, "billing")`: picks the out-of-credits line (rule 457). */ owner?: boolean; /** `topupsSold(u.plan)` */ topups?: boolean }) {
   const r = useRouter();
   const R = t.reports;
   const [busy, setBusy] = useState<TaskType | null>(null);
@@ -100,6 +102,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
       <p className="mt-2 font-mono text-xs text-muted" dir="ltr">{k.window.from} → {k.window.to}</p>
       <PerformanceImport lang={lang} initial={perf} ads={connected.filter((p) => READS_ADS.includes(p))} canImport={perfImport} canDelete={perfDelete} />
       {site && (site.ga || site.gsc) && <SiteStats lang={lang} site={site} />}
+      {social && <SocialStats lang={lang} social={social} />}
       {salesProvider && <StoreSales R={R.store} paused={t.generate.paused} provider={salesProvider} store={store?.provider === salesProvider ? store : null} failedAt={syncFailure?.provider === salesProvider ? syncFailure.at : null} lang={lang} />}
 
       <h2 className="mt-8 font-display text-xl font-bold">{R.metricsTitle}</h2>
@@ -123,10 +126,11 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
           <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted">{R.platformMetrics}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {PLATFORM_METRICS.map((m) => {
-              const on = sources.read.includes(m.source);
-              // A read source's numbers live in their own card (store, campaign results, site), not in a tile.
+              // Followers unlock once a social part was read, not when a record merely exists (rule 668).
+              const on = m.source === "social" ? socialRead(social) : sources.read.includes(m.source);
+              // A read source's numbers live in their own card (store, campaign results, site, social), not in a tile.
               return on
-                ? <a key={m.key} href={m.source === "ads" ? "#campaign-results" : m.source === "analytics" ? "#site-stats" : "#store-sales"} className="btn btn-xs btn-secondary">✓ {R.platform[m.key as keyof typeof R.platform]} · {m.source === "ads" ? R.inResultsCard : m.source === "analytics" ? R.inSiteCard : R.inStoreCard}</a>
+                ? <a key={m.key} href={m.source === "ads" ? "#campaign-results" : m.source === "analytics" ? "#site-stats" : m.source === "social" ? "#social-stats" : "#store-sales"} className="btn btn-xs btn-secondary">✓ {R.platform[m.key as keyof typeof R.platform]} · {m.source === "ads" ? R.inResultsCard : m.source === "analytics" ? R.inSiteCard : m.source === "social" ? R.inSocialCard : R.inStoreCard}</a>
                 : <Link key={m.key} href={`/${lang}/app/integrations`} className="btn btn-xs btn-secondary opacity-70">🔒 {R.platform[m.key as keyof typeof R.platform]} · {m.source === "store" ? R.connectStore : R.connectNow}</Link>;
             })}
           </div>
