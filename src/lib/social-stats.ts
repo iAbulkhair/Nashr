@@ -3,12 +3,12 @@ import { db } from "./db";
 import { asData } from "./json";
 import { clean } from "./perf-import";
 import { pmap } from "./parallel";
-import { roundTo, sumRead, type N } from "./figures";
+import { rate as rateOf, roundTo, sumRead, type N } from "./figures";
 import { composioRead } from "./connectors/composio";
 import { accountOf, at, isComposio, listOf, num, pick } from "./connectors/composio-shape";
 import { ReconnectRequired, getFreshConnection, refusedToken } from "./connectors/fresh";
 import { getConnection, type Connection } from "./connectors/store";
-import { DAY_MS, EMPTY_TOTALS, SOCIAL_PUB_KEY, beforeDeadline, busy, dateOf, day, late, rangeBefore, refused, splitDays } from "./social-read/common";
+import { DAY_MS, EMPTY_TOTALS, SOCIAL_PUB_KEY, beforeDeadline, busy, count, dateOf, day, late, rangeBefore, refused, splitDays } from "./social-read/common";
 import { holdsFb, readFacebook } from "./social-read/facebook";
 import { holdsTt, readTiktok } from "./social-read/tiktok";
 import { holdsYt, readYoutube } from "./social-read/youtube";
@@ -81,10 +81,13 @@ export type StoredSocial = SocialSnapshot | LegacySocial;
 
 /**
  * A failed part keeps its provider, so the daily sync asks the right record to reconnect (refusedToken). `saved` is set
- * when the snapshot was written before the error was thrown: the other part was read.
+ * when the snapshot was written before the error was thrown: the other part was read. `refusedBy` lists, on the refused
+ * token `syncSocial` throws, the provider of every part whose token was refused in that read (Instagram and YouTube
+ * refused together), so each of those records is asked to reconnect, not only the first.
  */
 export class SocialReadError extends Error {
   saved = false;
+  refusedBy: SocialProvider[] = [];
   constructor(readonly provider: SocialProvider, cause: unknown) {
     super(cause instanceof Error ? cause.message : "read_failed");
     this.name = "SocialReadError";
@@ -133,10 +136,10 @@ const METRICS = ["views", "reach", "likes", "comments", "saved", "shares"] as co
 const FALLBACK = ["reach", "likes", "comments", "saved"];
 const MEDIA_FIELDS = "id,caption,media_type,media_product_type,permalink,timestamp";
 
-/** Each metric's value by name, from `values[0].value` or `total_value.value`. */
+/** Each metric's value by name, from `values[0].value` or `total_value.value`: a strict count, so junk is not read (rule 737). */
 function metrics(r: unknown): Record<string, number | null> {
   const out: Record<string, number | null> = {};
-  for (const row of listOf(r, "name")) out[String(row.name)] = num(at(row, "values.0.value", "total_value.value"));
+  for (const row of listOf(r, "name")) out[String(row.name)] = count(at(row, "values.0.value", "total_value.value"));
   return out;
 }
 
@@ -237,7 +240,7 @@ async function readIg(scope: string, c: Connection, now: Date, stop: number): Pr
     platform: "instagram",
     account: clean(pick(info, ["username"]) ?? "", 80),
     range: { from: day(new Date(since * 1000)), to: day(now) },
-    followers: num(pick(info, ["followers_count"])),
+    followers: count(pick(info, ["followers_count"])),
     totals: { ...EMPTY_TOTALS, views: totals.views ?? null, reach: totals.reach ?? null },
     // Only a range Instagram answered with a figure: none read (a failed read, an account with no earlier days) is no prev.
     ...(prevViews != null || prevReach != null
@@ -259,7 +262,7 @@ export const isSocialProvider = (p: string): p is SocialProvider => (SOCIAL_PROV
  */
 function liTotals(rows: unknown[]): Totals {
   const [views, clicks, likes, comments, shares] = ["impressionCount", "clickCount", "likeCount", "commentCount", "shareCount"]
-    .map((k) => sumRead(rows.map((row) => num(at(row, `totalShareStatistics.${k}`)))));
+    .map((k) => sumRead(rows.map((row) => count(at(row, `totalShareStatistics.${k}`)))));
   return { ...EMPTY_TOTALS, views, clicks, likes, comments, shares, engagements: views == null ? null : sumRead([clicks, likes, comments, shares]) };
 }
 /** A row's day from LinkedIn's `timeRange.start` (ms), or "" when it has none. */
@@ -269,7 +272,7 @@ function liDay(row: unknown): string {
   return d && !Number.isNaN(d.getTime()) ? day(d) : "";
 }
 /** One period's page views (rule 748): the sum of the DAY rows' views of every page of the company page, null when no day carried one. */
-const liPageViews = (rows: { row: unknown }[]) => sumRead(rows.map((r) => num(at(r.row, "totalPageStatistics.views.allPageViews.pageViews"))));
+const liPageViews = (rows: { row: unknown }[]) => sumRead(rows.map((r) => count(at(r.row, "totalPageStatistics.views.allPageViews.pageViews"))));
 
 /**
  * The company page's last 28 whole days and the 28 before them (rule 733, spec A2): 56 days of DAY share statistics in
@@ -310,7 +313,7 @@ async function readLi(scope: string, c: Connection, now: Date, deadline: number)
     platform: "linkedin",
     account: clean(name, 80) || `Page ${org.slice(org.lastIndexOf(":") + 1)}`,
     range: window,
-    followers: size == null ? null : num(pick(size, ["firstDegreeSize"])),
+    followers: size == null ? null : count(pick(size, ["firstDegreeSize"])),
     totals,
     // Only days LinkedIn answered for the earlier 28: a page with none (new, or quiet then) has no prev.
     ...(Object.values(before).some((v) => v != null) ? { prev: { range: rangeBefore(window), totals: before } } : {}),
@@ -378,7 +381,8 @@ export async function getSocialSnapshot(scope: string) {
 /**
  * Read every part the workspace holds, all at once, and keep what succeeded: one part per platform, with an error code
  * for each part that failed, and the history built on the stored snapshot's (read once, beside the reads). A refused
- * token is thrown after the rest is written, so refusedToken asks the owner to reconnect that record; a known state (a
+ * token is thrown after the rest is written, carrying every refused part's provider (`refusedBy`), so refusedToken asks
+ * the owner to reconnect each of those records; a known state (a
  * non-professional account) is written and not thrown, and one a reader answers beside its part (`known`) goes to the
  * errors with the part kept. Anything else is thrown only when nothing was read.
  */
@@ -405,7 +409,10 @@ export async function syncSocial(scope: string, conns: Partial<Record<SocialProv
       if (state) errors[p] = state;
     } else { errors[p] = errCode(r.reason); failed.push(new SocialReadError(READERS[p].provider, r.reason)); }
   });
-  const token = failed.find(refused);
+  // Every refused part's provider rides on the first refused token, so each of those records is asked to reconnect.
+  const tokens = failed.filter(refused);
+  const token = tokens[0];
+  if (token) token.refusedBy = [...new Set(tokens.map((t) => t.provider))];
   const known = Object.values(errors).some((x) => x && KNOWN.has(x));
   if (!Object.keys(parts).length && !known) throw token ?? failed[0];
   const stored = last?.v === 2 ? last : null;
@@ -438,16 +445,20 @@ export async function syncSocialIfDue(scope: string, now = new Date(), force = f
     const fresh = await Promise.all(due.map((p) => getFreshConnection(scope, p)));
     await syncSocial(scope, Object.fromEntries(due.map((p, i) => [p, fresh[i]])), now);
   } catch (e) {
-    // The only place a social read's refused token is converted: with the refused part's own provider, never the path's.
-    if (!(e instanceof SocialReadError)) throw e;
-    const err = await refusedToken(scope, e.provider, e);
+    // The only place a social read's refused token is converted: with each refused part's own provider, never the path's.
+    // Only the adapter's 401 is a refused token: any other failure (a 403 quota or permission answer included) is thrown
+    // as it is and marks no record, so a quota day never asks the owner to reconnect.
+    if (!(e instanceof SocialReadError) || !refused(e)) throw e;
+    const providers = e.refusedBy.length ? e.refusedBy : [e.provider];
+    const errs = await Promise.all(providers.map((p) => refusedToken(scope, p, e)));
+    const err = errs[Math.max(0, providers.indexOf(e.provider))];
     throw e.saved && err instanceof ReconnectRequired ? new PartlyRead(e.provider) : err;
   }
   return true;
 }
 
 /**
- * A first read once a part can be read (an Instagram or LinkedIn connect, a new company page), after the response: the
+ * A first read once a part can be read (a social connect, a new Facebook Page or company page), after the response: the
  * owner does not wait, and a failure only logs, since the daily run reads again.
  */
 export function readSocialSoon(scope: string) {
@@ -456,8 +467,11 @@ export function readSocialSoon(scope: string) {
 }
 
 const NA = "not available (unknown, not zero)";
-/** Engagements over views, as a fraction (0.0733 is 7.33%); null when either was not read or views are 0. */
-const rate = (t: Totals) => (t.engagements != null && t.views ? roundTo(t.engagements / t.views, 4) : null);
+/** Engagements over views, as a fraction (0.0733 is 7.33%), four decimals; null when either was not read or views are 0. */
+const rate = (t: Totals) => {
+  const r = rateOf(t);
+  return r == null ? null : roundTo(r, 4);
+};
 /** Best first: views, then reach; a post with neither read sorts last. */
 const best = (posts: SocialPost[]) => [...posts].sort((a, b) => (b.views ?? -1) - (a.views ?? -1) || (b.reach ?? -1) - (a.reach ?? -1));
 

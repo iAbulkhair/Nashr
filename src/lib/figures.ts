@@ -1,6 +1,7 @@
 /**
- * Figure helpers shared by the ad totals (ad-stats.ts), the site totals (site-stats.ts) and the Reports card
- * (SiteStats.tsx). No imports, so the server and the client bundle can both use it.
+ * Figure helpers shared by the ad totals (ad-stats.ts), the site totals (site-stats.ts), the social block
+ * (social-stats.ts) and the Reports cards (SiteStats.tsx, SocialStats.tsx). No imports, so the server and the client
+ * bundle can both use it.
  *
  * `null` is a figure that was not read: unknown, never zero (rules 731, 737). A change over time exists only where both
  * figures were read and the previous one is not 0, so a report never says "up from 0" (rule 733).
@@ -26,3 +27,10 @@ export function pctChange(cur: N, prev: N): N {
   if (cur == null || prev == null || prev === 0) return null;
   return ((cur - prev) / prev) * 100;
 }
+
+/**
+ * Engagements over views as a fraction (0.0733 is 7.33%), unrounded; null when either was not read or views are 0.
+ * Worked out where it is shown (Dana's block rounds it to four decimals, the Reports card prints it as a percent), never
+ * stored (rule 737).
+ */
+export const rate = (t: { engagements: N; views: N }): N => (t.engagements != null && t.views ? t.engagements / t.views : null);

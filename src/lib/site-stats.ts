@@ -4,7 +4,7 @@ import { asData } from "./json";
 import { clean } from "./perf-import";
 import { round2, roundTo, sumRead, type N } from "./figures";
 import { composioRead } from "./connectors/composio";
-import { accountOf, at, isComposio, listOf, num } from "./connectors/composio-shape";
+import { accountOf, at, findKey, isComposio, listOf, num } from "./connectors/composio-shape";
 import { getFreshConnection, refusedToken } from "./connectors/fresh";
 import { getConnection, type Connection } from "./connectors/store";
 
@@ -76,20 +76,8 @@ type GaRow = { dim: string; range: typeof CUR | typeof PREV | null; m: N[] };
 
 /** The report's dimension names in column order, wherever Composio nests GA4's `dimensionHeaders`; [] when absent. */
 function gaHeaders(r: unknown): string[] {
-  let level: unknown[] = [r];
-  for (let depth = 0; depth < 5 && level.length; depth++) {
-    const next: unknown[] = [];
-    for (const v of level) {
-      if (Array.isArray(v)) next.push(...v);
-      else if (v && typeof v === "object") {
-        const h = (v as Record<string, unknown>).dimensionHeaders ?? (v as Record<string, unknown>).dimension_headers;
-        if (Array.isArray(h)) return h.map((x) => String(at(x, "name") ?? ""));
-        next.push(...Object.values(v as Record<string, unknown>));
-      }
-    }
-    level = next;
-  }
-  return [];
+  const h = findKey(r, ["dimensionHeaders", "dimension_headers"], Array.isArray) as unknown[] | undefined;
+  return h ? h.map((x) => String(at(x, "name") ?? "")) : [];
 }
 
 /**

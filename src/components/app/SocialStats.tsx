@@ -1,6 +1,7 @@
 import type { Lang } from "@/lib/i18n";
 import type { Platform, PlatformPart, SocialPost, StoredSocial } from "@/lib/social-stats";
 import { dateFormat } from "@/lib/dates";
+import { rate as rateOf } from "@/lib/figures";
 
 /**
  * The social card on Reports: one block per platform part from the last read (src/lib/social-stats.ts), each with its
@@ -42,7 +43,7 @@ const top = (posts: SocialPost[]) => [...posts].sort((a, b) => (b.views ?? -1) -
 
 const pct = (n: number | null) => (n == null ? "—" : `${NUM.format(n * 100)}%`);
 /** Engagements over views; a dash when either was not read or views are 0. */
-const rate = (p: PlatformPart) => (p.totals.engagements != null && p.totals.views ? p.totals.engagements / p.totals.views : null);
+const rate = (p: PlatformPart) => rateOf(p.totals);
 
 /** `liNoPage`: LinkedIn is connected through Composio with no company page chosen (report-sources.ts `liNeedsPage`). */
 export default function SocialStats({ lang, social, liNoPage = false }: { lang: Lang; social: StoredSocial | null; liNoPage?: boolean }) {

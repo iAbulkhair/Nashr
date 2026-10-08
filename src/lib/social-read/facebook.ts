@@ -6,7 +6,7 @@ import { composioRead } from "../connectors/composio";
 import { accountOf, at, isComposio, listOf } from "../connectors/composio-shape";
 import type { Connection } from "../connectors/store";
 import type { PlatformPart, Range, SocialPost, Totals } from "../social-stats";
-import { DAY_MS, EMPTY_TOTALS, SOCIAL_PUB_KEY, beforeDeadline, count, dateOf, day, rangeBefore, refused, settle, splitDays } from "./common";
+import { DAY_MS, EMPTY_TOTALS, SOCIAL_PUB_KEY, beforeDeadline, count, dateOf, day, message, rangeBefore, refused, settle, splitDays } from "./common";
 
 /**
  * The Facebook Page's results (rule 739, spec 2026-10-08-social-analytics-reports B1): the Page chosen for publishing
@@ -76,8 +76,6 @@ function postMetrics(r: unknown): Record<string, N> {
   for (const row of listOf(r, "name")) out[String(row.name)] = count(at(row, "values.0.value", "total_value.value"));
   return out;
 }
-
-const message = (e: unknown) => (e instanceof Error ? e.message : "");
 
 /**
  * The Page's last 28 whole days and the 28 before them (rule 733): 56 days of daily insights in one call (Meta allows

@@ -404,6 +404,26 @@ describe("the previous 30 days beside each ad read (rule 733)", () => {
     expect(await stored(partial, "snapchat")).toMatchObject({ spend: 25.5 });
     expect(await stored(partial, "snapchat")).not.toHaveProperty("prev");
     expect(block(await adDataBlock(partial, NOW)).every((r) => !("prev" in r))).toBe(true);
+
+    // A deleted ad, or an entry without a Snap id, is listed but not read: the account's figure still holds its spend.
+    answers.SNAPCHAT_GET_AD_STATS = adStats(1_000_000);
+    answers.SNAPCHAT_LIST_ADS_BY_ACCOUNT = ok({ ads: [snapAd(1), { ad: { ...snapAd(2).ad, deleted: true } }] });
+    expect((await adRowsVia("s", snapComposio(), NOW)).allAds, "a deleted ad").toBe(false);
+    answers.SNAPCHAT_LIST_ADS_BY_ACCOUNT = ok({ ads: [snapAd(1), { ad: { id: "not-a-snap-id", name: "x", status: "ACTIVE" } }] });
+    expect((await adRowsVia("s", snapComposio(), NOW)).allAds, "an entry without a Snap id").toBe(false);
+
+    // Snap says there is another page, but its link carries no cursor: the list was not read to its end.
+    answers.SNAPCHAT_LIST_ADS_BY_ACCOUNT = ok({ ads: [snapAd(1)], paging: { next_link: "https://adsapi.snapchat.com/v1/adaccounts/x/ads?limit=1000" } });
+    expect((await adRowsVia("s", snapComposio(), NOW)).allAds, "a next page without a cursor").toBe(false);
+    // Nor when every page asked for still had a next one (the page cap).
+    answers.SNAPCHAT_LIST_ADS_BY_ACCOUNT = (args) => ok({ ads: [snapAd(Number(args.cursor ?? 0) + 1)], paging: { next_link: `https://adsapi.snapchat.com/v1/adaccounts/x/ads?cursor=${Number(args.cursor ?? 0) + 1}` } });
+    expect((await adRowsVia("s", snapComposio(), NOW)).allAds, "the page cap").toBe(false);
+    const paged = (await newUser("adprevpaged")).email;
+    await syncAds(paged, "snapchat", snapComposio(), NOW);
+    expect(await stored(paged, "snapchat")).not.toHaveProperty("prev");
+    // The same list read to its end (the last page has no next link) is every ad.
+    answers.SNAPCHAT_LIST_ADS_BY_ACCOUNT = (args) => ok({ ads: [snapAd(Number(args.cursor ?? 0) + 1)], ...(args.cursor ? {} : { paging: { next_link: "https://adsapi.snapchat.com/v1/adaccounts/x/ads?cursor=1" } }) });
+    expect((await adRowsVia("s", snapComposio(), NOW)).allAds, "two pages, read to the end").toBe(true);
   });
 
   it("Meta and TikTok Ads through Composio read the previous window with the same reader (733)", async () => {

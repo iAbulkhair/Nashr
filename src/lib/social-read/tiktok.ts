@@ -1,10 +1,10 @@
 import { db } from "../db";
 import { clean } from "../perf-import";
 import { composioRead } from "../connectors/composio";
-import { accountOf, isComposio, listOf } from "../connectors/composio-shape";
+import { accountOf, findKey, isComposio, listOf } from "../connectors/composio-shape";
 import type { Connection } from "../connectors/store";
 import type { Range, ReadPart, SocialPost } from "../social-stats";
-import { DAY_MS, EMPTY_TOTALS, ISO_DAY, SOCIAL_PUB_KEY, beforeDeadline, count, day, late, refused, settle } from "./common";
+import { DAY_MS, EMPTY_TOTALS, ISO_DAY, SOCIAL_PUB_KEY, beforeDeadline, count, day, late, message, refused, settle } from "./common";
 
 /**
  * The TikTok account's results (rule 742, spec 2026-10-08-social-analytics-reports C1): the account the owner connected
@@ -45,19 +45,7 @@ export function ttUrl(v: unknown): string | null {
 }
 
 /** The first value under `key`, breadth-first, at most five levels down: Composio wraps TikTok's answer in its own keys. */
-function valueAt(o: unknown, key: string): unknown {
-  let level: unknown[] = [o];
-  for (let depth = 0; depth < 5 && level.length; depth++) {
-    const next: unknown[] = [];
-    for (const v of level) {
-      if (!v || typeof v !== "object") continue;
-      if (!Array.isArray(v) && key in v) return (v as Record<string, unknown>)[key];
-      next.push(...(Array.isArray(v) ? v : Object.values(v as Record<string, unknown>)));
-    }
-    level = next;
-  }
-  return undefined;
-}
+const valueAt = (o: unknown, key: string): unknown => findKey(o, [key]);
 
 /** A video's id as TikTok sends it (a digit string, or a whole number), or "". */
 function idOf(v: Record<string, unknown>): string {
@@ -82,7 +70,6 @@ function cursorOf(r: unknown): number | null {
   return c != null && c > 0 && Number.isSafeInteger(c) ? c : null;
 }
 
-const message = (e: unknown) => (e instanceof Error ? e.message : "");
 const noScope = (r: { ok: boolean; error?: unknown }) => !r.ok && !late(r.error) && NO_SCOPE.test(message(r.error));
 
 /**

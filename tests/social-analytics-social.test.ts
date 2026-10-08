@@ -375,7 +375,13 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
     expect(socialRead({ v: 2, at: "", parts: { youtube: part("youtube") }, errors: {}, history: [] })).toBe(true);
     expect(socialRead({ v: 2, at: "", parts: {}, errors: { instagram: "ig_not_professional" }, history: [] })).toBe(false);
     // YouTube and TikTok are read through Composio only, X only on its direct connection (spec C3).
-    expect(connectedSources([{ provider: "youtube", meta: { via: "composio" } }, { provider: "tiktok", meta: { via: "composio" } }, { provider: "x", meta: {} }])).toEqual(["youtube", "tiktok", "x"]);
+    expect(connectedSources([{ provider: "youtube", meta: { via: "composio", channelId: "UCddiUEpeqJcYeBxX1IVBKvQ" } }, { provider: "tiktok", meta: { via: "composio" } }, { provider: "x", meta: {} }])).toEqual(["youtube", "tiktok", "x"]);
+    // A YouTube record counts only with the channel its reader reads (holdsYt's test): none, or one that is not a channel id, is no source.
+    for (const channelId of [undefined, "", "UC1", "channel==MINE"]) {
+      const meta: Record<string, string> = channelId == null ? { via: "composio" } : { via: "composio", channelId };
+      expect(connectedSources([{ provider: "youtube", meta }]), String(channelId)).toEqual([]);
+    }
+    expect(reportSources(connectedSources([{ provider: "youtube", meta: { via: "composio" } }])).missing).toContain("social");
     expect(connectedSources([{ provider: "youtube", meta: {} }, { provider: "tiktok", meta: {} }, { provider: "x", meta: { via: "composio" } }])).toEqual([]);
     for (const p of ["youtube", "tiktok", "x"]) expect(reportSources([p]).read, p).toEqual(["social"]);
   });
@@ -598,5 +604,26 @@ describe("LinkedIn page views (rule 748)", () => {
     // A token LinkedIn refused is not a missing scope: thrown with its provider, after nothing else was hidden.
     answers.LINKEDIN_GET_ORG_PAGE_STATS = { successful: false, error: "The token used in the request has expired" };
     await expect(syncSocial(owner.email, { linkedin: liConn() }, NOW)).rejects.toMatchObject({ provider: "linkedin", message: expect.stringMatching(/ 401:/) });
+  });
+
+  it("Instagram and LinkedIn figures are strict counts: a negative, an exponent, N/A or {} is not read, never a number (737)", async () => {
+    const owner = await newUser("socjunk");
+    answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1784", username: "oud", followers_count: "-5" } });
+    answers.INSTAGRAM_GET_USER_INSIGHTS = ok({ data: { data: [{ name: "reach", total_value: { value: "N/A" } }, { name: "views", total_value: { value: "1e3" } }] } });
+    answers.INSTAGRAM_GET_IG_USER_MEDIA = ok({ data: { data: [] } });
+    answers.LINKEDIN_GET_SHARE_STATS = (a) => {
+      const d = liDay(liEnd(a), 1, 0);
+      return ok({ elements: [{ ...d, totalShareStatistics: { impressionCount: "1e3", clickCount: -4, likeCount: {}, commentCount: "N/A", shareCount: "2" } }] });
+    };
+    answers.LINKEDIN_GET_NETWORK_SIZE = ok({ firstDegreeSize: -1 });
+    answers.LINKEDIN_GET_ORG_PAGE_STATS = (a) => ok({ elements: [pageDay(pageEnd(a), 1, "-3"), pageDay(pageEnd(a), 2, "2e2")] });
+    const s = await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    expect(s.parts.instagram).toMatchObject({ followers: null, totals: EMPTY_TOTALS });
+    expect(s.parts.instagram, "no figure read for the earlier 28 days: no prev").not.toHaveProperty("prev");
+    // Only the reposts were read: no impressions, so no engagements either.
+    expect(s.parts.linkedin).toMatchObject({ followers: null, totals: { ...EMPTY_TOTALS, shares: 2 } });
+    for (const part of [s.parts.instagram!, s.parts.linkedin!]) {
+      for (const v of [part.followers, ...Object.values(part.totals)]) expect(v === null || (typeof v === "number" && Number.isFinite(v) && v >= 0), `${part.platform} ${v}`).toBe(true);
+    }
   });
 });

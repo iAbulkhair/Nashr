@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { pctChange, round2, roundTo, sumRead } from "@/lib/figures";
+import { pctChange, rate, round2, roundTo, sumRead } from "@/lib/figures";
 
 /**
  * Rules 731, 733 and 737: the figure helpers the ad totals, the site totals and the Reports card share. null is a
@@ -40,6 +40,14 @@ describe("figures (rules 731, 733, 737)", () => {
     expect(pctChange(null, 80)).toBeNull();
     expect(pctChange(100, null)).toBeNull();
     expect(pctChange(null, null)).toBeNull();
+  });
+
+  it("rate is engagements over views as an unrounded fraction, null when either was not read or views are 0", () => {
+    expect(rate({ engagements: 14, views: 900 })).toBe(14 / 900);
+    expect(rate({ engagements: 0, views: 900 })).toBe(0);
+    expect(rate({ engagements: 14, views: 0 }), "no rate over no views").toBeNull();
+    expect(rate({ engagements: null, views: 900 })).toBeNull();
+    expect(rate({ engagements: 14, views: null })).toBeNull();
   });
 
   it("imports nothing, so the server and the Reports card share it", () => {

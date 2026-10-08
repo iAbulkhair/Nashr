@@ -604,7 +604,7 @@ it("the block tells the model to list exactly these, and goes to Dana (738)", as
 ```
 
 - [ ] **Step 2: Run** — FAIL.
-- [ ] **Step 3: Implement**: one `Promise.all` over the reads; a platform counts as read when its part or ad row exists; reasons by precedence `reconnect` (needsReconnect), `choose_page` (`liNeedsPage`), `x_direct_only`, `refresh_x`, `analytics_scope` (`errors.youtube === "yt_no_analytics"`), `read_failed` (an error code without a part), then `not_connected`; fixed reasons `closed_to_apps` (snapchat_organic) and `waiting_approval` (google_business_profile).
+- [ ] **Step 3: Implement**: one `Promise.all` over the reads; a platform counts as read when its part or ad row exists; reasons by precedence `reconnect` (needsReconnect), `choose_page` (`liNeedsPage`), `x_direct_only`, `refresh_x`, `analytics_scope` (a scope the owner grants on the platform: `errors.youtube === "yt_no_analytics"`, `errors.facebook === "fb_no_insights"`, or `errors.tiktok === "tt_no_scope"` with no TikTok part), `read_failed` (any other error code without a part, `ig_not_professional` and `li_no_page_access` included: the card keeps its own line for each, and the nine reasons of spec A6 are not widened), then `not_connected`; fixed reasons `closed_to_apps` (snapchat_organic) and `waiting_approval` (google_business_profile).
 - [ ] **Step 4: Run** `npm run check` — PASS.
 - [ ] **Step 5: Commit** `feat(reports): the not-read list is built in code (rule 738)`.
 
@@ -613,8 +613,8 @@ it("the block tells the model to list exactly these, and goes to Dana (738)", as
 **Files:** Modify `src/components/app/SocialStats.tsx`, `src/components/app/SiteStats.tsx`, `src/components/app/ReportsPanel.tsx`, `src/app/[lang]/app/reports/page.tsx`; Test `tests/composio-social.test.ts` (card tests, rule 670); Docs `tests.md` 670 amended.
 
 **Interfaces:**
-- Consumes: `SocialSnapshot`, `XStats`, `notRead` items, `can(u, "read")`, `can(u, "generate")`, `can(u, "connectors")`.
-- Produces: `SocialStats` props `{ lang; social: SocialSnapshot | null; x: XStats | null; notRead: { platform: NotReadPlatform; reason: NotReadReason }[]; liNoPage?: boolean; canRefresh: boolean; canRefreshX: boolean; xConnected: boolean }`; `SiteStats` gains `properties?: { ga: { id: string; name: string }[]; gsc: string[]; gaCurrent?: string; gscCurrent?: string }` and `canChoose: boolean`.
+- Consumes: `StoredSocial` (v2, or a snapshot from before v2 read as not read yet), `XStats`, `notRead` items, `can(u, "read")`, `can(u, "generate")`, `can(u, "connectors")`.
+- Produces: `SocialStats` props `{ lang; social: StoredSocial | null; x: XStats | null; notRead: { platform: NotReadPlatform; reason: NotReadReason }[]; liNoPage?: boolean; canRefresh: boolean; canRefreshX: boolean; xConnected: boolean }`; `SiteStats` gains `properties?: { ga: { id: string; name: string }[]; gsc: string[]; gaCurrent?: string; gscCurrent?: string }` and `canChoose: boolean`.
 
 - [ ] **Step 1: Failing tests** (server-rendered markup, like the existing card tests):
 

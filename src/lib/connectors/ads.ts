@@ -22,8 +22,9 @@ export type AdAccount = { id: string; name: string; currency?: string };
 export type AdPull = {
   rows: Row[]; range: { from: string; to: string }; platform: string; account: string; currency?: string;
   /**
-   * Snapchat through Composio only: true when the per-ad read covered every ad of the account (no more than
-   * SNAP_ADS_READ listed and no per-ad read skipped), so the window's figures are the account's (rule 733).
+   * Snapchat through Composio only: true when the per-ad read covered every ad of the account (the whole list read with
+   * no page left, no listed ad dropped as deleted or without an id, no more than SNAP_ADS_READ listed and no per-ad read
+   * skipped), so the window's figures are the account's (rule 733).
    */
   allAds?: boolean;
 };

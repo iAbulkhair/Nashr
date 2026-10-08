@@ -2,10 +2,10 @@ import { db } from "../db";
 import { clean } from "../perf-import";
 import { sumRead, type N } from "../figures";
 import { composioRead } from "../connectors/composio";
-import { accountOf, at, isComposio, listOf } from "../connectors/composio-shape";
+import { accountOf, at, findKey, isComposio, listOf } from "../connectors/composio-shape";
 import type { Connection } from "../connectors/store";
 import type { Range, ReadPart, SocialPost, Totals } from "../social-stats";
-import { DAY_MS, EMPTY_TOTALS, ISO_DAY, SOCIAL_PUB_KEY, beforeDeadline, count, dateOf, day, late, rangeBefore, refused, settle, splitDays } from "./common";
+import { DAY_MS, EMPTY_TOTALS, ISO_DAY, SOCIAL_PUB_KEY, beforeDeadline, count, dateOf, day, late, message, rangeBefore, refused, settle, splitDays } from "./common";
 
 /**
  * The YouTube channel's results (rule 740, spec 2026-10-08-social-analytics-reports B2): the channel the owner connected
@@ -39,19 +39,7 @@ export function ytUrl(id: string): string | null {
 }
 
 /** The first array under `key`, breadth-first, at most five levels down: Composio wraps Google's answer in its own keys. */
-function arrayAt(o: unknown, key: string): unknown[] {
-  let level: unknown[] = [o];
-  for (let depth = 0; depth < 5 && level.length; depth++) {
-    const next: unknown[] = [];
-    for (const v of level) {
-      if (!v || typeof v !== "object") continue;
-      if (!Array.isArray(v) && Array.isArray((v as Record<string, unknown>)[key])) return (v as Record<string, unknown>)[key] as unknown[];
-      next.push(...(Array.isArray(v) ? v : Object.values(v as Record<string, unknown>)));
-    }
-    level = next;
-  }
-  return [];
-}
+const arrayAt = (o: unknown, key: string): unknown[] => (findKey(o, [key], Array.isArray) as unknown[] | undefined) ?? [];
 
 type DayRow = { day: string; v: Record<string, N> };
 /**
@@ -89,8 +77,6 @@ function videoIdOf(row: unknown): string {
   const v = at(row, "snippet.resourceId.videoId", "contentDetails.videoId", "id.videoId", "videoId", "id");
   return typeof v === "string" && VIDEO_ID.test(v) ? v : "";
 }
-
-const message = (e: unknown) => (e instanceof Error ? e.message : "");
 
 /**
  * The channel's last 28 whole days and the 28 before them (rule 733): 56 days of daily analytics in one call, from 56

@@ -35,7 +35,7 @@ const arr = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.fil
  * Run `fn` over `items` and keep what succeeded. One failed item is skipped; when every item failed, the first error is
  * thrown so a refused token still reaches refusedToken (fresh.ts) and asks the owner to reconnect.
  */
-async function settle<T, R>(items: readonly T[], fn: (x: T) => Promise<R>, limit: number): Promise<R[]> {
+async function settleAll<T, R>(items: readonly T[], fn: (x: T) => Promise<R>, limit: number): Promise<R[]> {
   const out = await pmap(items, (x) => fn(x).then((v) => ({ ok: true as const, v }), (e: unknown) => ({ ok: false as const, e })), limit);
   const ok = out.flatMap((r) => (r.ok ? [r.v] : []));
   const failed = out.find((r) => !r.ok);
@@ -64,7 +64,7 @@ export async function adAccountsVia(scope: string, provider: string, accountId: 
   if (provider === "google_ads") {
     const r = await composioRead(scope, "googleads", "GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS", {}, accountId);
     const ids = [...new Set([...JSON.stringify(r ?? {}).matchAll(/customers\/(\d{6,12})/g)].map((m) => m[1]))].slice(0, GOOGLE_CUSTOMERS);
-    const found = await settle(ids, async (id): Promise<AdAccount | null> => {
+    const found = await settleAll(ids, async (id): Promise<AdAccount | null> => {
       const row = listOf(await composioRead(scope, "googleads", "GOOGLEADS_SEARCH_STREAM_GAQL", { query: GOOGLE_CUSTOMER_Q, customer_id: id }, accountId), "customer")[0];
       // A manager account holds no ads of its own; its client accounts are listed separately.
       if (!row || at(row, "customer.manager") === true) return null;
@@ -118,20 +118,26 @@ async function snapVia(scope: string, c: Connection, now: Date): Promise<AdPull>
   const w = adWindow(now);
   const ads: { id: string; name: string; active: boolean }[] = [];
   let cursor: string | undefined;
+  // `dropped`: a listed ad not kept (deleted, or without a Snap id), whose spend the account's figure still holds.
+  // `more`: Snap said there was another page and the listing stopped anyway (no cursor in its link, or the page cap).
+  let dropped = false;
+  let more = false;
   for (let i = 0; i < PAGES; i++) {
     const r = await composioRead(scope, "snapchat", "SNAPCHAT_LIST_ADS_BY_ACCOUNT", { ad_account_id: account, limit: 1000, ...(cursor ? { cursor } : {}) }, acc);
     for (const x of listOf(r, "ad")) {
       const ad = x.ad as Record<string, unknown> | undefined;
       if (ad && SNAP_ID.test(str(ad.id)) && ad.deleted !== true) ads.push({ id: str(ad.id), name: str(ad.name) || str(ad.id), active: ad.status === "ACTIVE" });
+      else dropped = true;
     }
     const link = str(at(r, "paging.next_link"));
+    more = !!link;
     if (!link) break;
     try { cursor = new URL(link).searchParams.get("cursor") ?? undefined; } catch { cursor = undefined; }
     if (!cursor) break;
   }
   // Running ads first: when there are more than the cap, the ones spending now matter most.
   const chosen = [...ads.filter((a) => a.active), ...ads.filter((a) => !a.active)].slice(0, SNAP_ADS_READ);
-  const stats = await settle(chosen, async (a) => {
+  const stats = await settleAll(chosen, async (a) => {
     const r = await composioRead(scope, "snapchat", "SNAPCHAT_GET_AD_STATS", { ad_id: a.id, fields: SNAP_FIELDS, granularity: "TOTAL", start_time: w.start.toISOString(), end_time: w.end.toISOString() }, acc);
     // Snap nests the figures as total_stats[].total_stat.stats, under Composio's own wrapper: deeper than pick's default.
     const v = (k: string) => num(pick(r, [k], 7));
@@ -141,8 +147,9 @@ async function snapVia(scope: string, c: Connection, now: Date): Promise<AdPull>
     name: clean(s.a.name), text: "", group: "",
     impressions: s.impressions, clicks: s.swipes, spend: micro(s.spend), conversions: s.purchases, revenue: micro(s.value), sends: null, opens: null,
   }));
-  // Every ad read: no more than the cap listed, and no per-ad read skipped (settle keeps the ones that answered).
-  const allAds = ads.length <= SNAP_ADS_READ && stats.length === chosen.length;
+  // Every ad of the account read: the whole list read (no page left), no listed ad dropped, no more than the cap listed,
+  // and no per-ad read skipped (settleAll keeps the ones that answered). Only then is the account-wide prev comparable.
+  const allAds = !more && !dropped && ads.length <= SNAP_ADS_READ && stats.length === chosen.length;
   return { rows, range: w.range, platform: "Snapchat Ads", account: c.meta?.account ?? account, currency: c.meta?.currency, allAds };
 }
 

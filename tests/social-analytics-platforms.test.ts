@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { json, newUser, settle, signIn } from "./helpers/session";
+import { jar, json, newUser, settle, signIn } from "./helpers/session";
 import { db } from "@/lib/db";
-import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
+import { OAUTH_COOKIE, getConnection, saveConnection, saveState, type Connection } from "@/lib/connectors/store";
 import { setComposioClientForTests } from "@/lib/connectors/composio";
 import { EMPTY_TOTALS, SOCIAL_PUB_KEY, getSocialSnapshot, holdsSocial, socialDataBlock, syncSocial, syncSocialIfDue, type Totals } from "@/lib/social-stats";
 import { fbUrl, holdsFb } from "@/lib/social-read/facebook";
 import { holdsYt, ytUrl } from "@/lib/social-read/youtube";
 import { holdsTt, ttUrl } from "@/lib/social-read/tiktok";
 import * as connRoute from "@/app/api/connect/[provider]/route";
+import * as callbackRoute from "@/app/api/connect/[provider]/callback/route";
 import { fakeComposio, ok, type Answer, type Call, type Result } from "./helpers/composio-fake";
 
 /**
@@ -32,9 +33,10 @@ const NOW = new Date("2026-10-08T09:00:00Z");
 
 let calls: Call[];
 let answers: Record<string, Answer>;
+let owned: string[];
 beforeEach(() => {
   const f = fakeComposio();
-  ({ calls, answers } = f);
+  ({ calls, answers, owned } = f);
   vi.stubEnv("COMPOSIO_API_KEY", "test-key");
   vi.stubEnv("COMPOSIO_PROVIDERS", "meta,linkedin");
   setComposioClientForTests(f.client);
@@ -770,5 +772,114 @@ describe("TikTok account results (rule 742)", () => {
       "http://www.tiktok.com/@ward/video/1", "https://m.tiktok.com/v/1.html", "https://vm.tiktok.com/ZMabc/", "https://www.tiktok.com.evil.example/x",
       "https://www.tiktok.com:8443/@ward/video/1", "javascript:alert(1)", "not a link", 42, null,
     ]) expect(ttUrl(bad), String(bad)).toBeNull();
+  });
+});
+
+describe("review of the whole phase (rules 735, 739, 740, 742)", () => {
+  it("a 403 that is not a refused token (a quota or permission answer) asks no record to reconnect (735)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    // YouTube's quota answer carries a 403 but is no refused token: the read fails as it is and the channel stays connected.
+    const yt = await newUser("ytquota");
+    await saveConnection(yt.email, ytConn());
+    const quota = { successful: false, error: "HttpError 403 quotaExceeded: The request cannot be completed because you have exceeded your quota." };
+    answers.YOUTUBE_LIST_CHANNELS = quota;
+    answers.YOUTUBE_QUERY_ANALYTICS = quota;
+    answers.YOUTUBE_LIST_CHANNEL_VIDEOS = quota;
+    await expect(syncSocialIfDue(yt.email, NOW, true)).rejects.toMatchObject({ provider: "youtube", message: expect.stringMatching(/ 502:/) });
+    expect((await getConnection(yt.email, "youtube"))?.needsReconnect).toBeFalsy();
+    await signIn(yt.email);
+    const r = await post("youtube", { action: "sync_social" });
+    expect(r.status).toBe(502);
+    expect((await r.json()).error).not.toBe("reconnect_required");
+    expect((await getConnection(yt.email, "youtube"))?.needsReconnect).toBeFalsy();
+
+    // The Facebook Page: a 403 that is not about read_insights, on both sides, is a failed read and no reconnect either.
+    const fb = await newUser("fbforbid");
+    await saveConnection(fb.email, fbConn());
+    const forbidden = { successful: false, error: "(#200) Forbidden 403: permission error" };
+    answers.FACEBOOK_GET_PAGE_INSIGHTS = forbidden;
+    answers.FACEBOOK_GET_PAGE_POSTS = forbidden;
+    await signIn(fb.email);
+    const f = await post("meta", { action: "sync_social" });
+    expect(f.status).toBe(502);
+    expect((await f.json()).error).toMatch(/ 502:/);
+    expect((await getConnection(fb.email, "meta"))?.needsReconnect).toBeFalsy();
+  });
+
+  it("every part whose token was refused asks its own record to reconnect, not only the first (735)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const u = await newUser("tworefused");
+    await Promise.all([saveConnection(u.email, both()), saveConnection(u.email, ytConn())]);
+    fbAnswers();
+    igAnswers();
+    ytAnswers();
+    const expired = { successful: false, error: "Token has been expired or revoked." };
+    answers.INSTAGRAM_GET_USER_INFO = expired;
+    answers.YOUTUBE_LIST_CHANNEL_VIDEOS = expired;
+    await signIn(u.email);
+    const r = await post("youtube", { action: "sync_social" });
+    // The Page was read and saved; the first refused part in PLATFORMS order (Instagram, on the Meta record) names the answer.
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, read: true, reconnect: "meta" });
+    const [meta, yt] = await Promise.all([getConnection(u.email, "meta"), getConnection(u.email, "youtube")]);
+    expect(meta?.needsReconnect, "Instagram's record").toBeTruthy();
+    expect(yt?.needsReconnect, "the channel's record too").toBeTruthy();
+    const s = await getSocialSnapshot(u.email);
+    expect(s?.v === 2 && Object.keys(s.parts)).toEqual(["facebook"]);
+    expect(s?.v === 2 && s.errors).toEqual({ instagram: "read_failed", youtube: "read_failed" });
+  });
+
+  it("connecting the Facebook Page, a YouTube channel or a TikTok account reads its results at once (739, 740, 742)", async () => {
+    const u = await newUser("connread");
+    owned.push("ca_fb", "ca_yt", "ca_tt");
+    const finish = async (provider: string, toolkit: string, accountId: string) => {
+      const st = `st-${Math.random().toString(16).slice(2)}`;
+      await saveState(st, { email: u.email, provider, lang: "en", shop: "", verifier: "", via: "composio", toolkit, accountId });
+      await signIn(u.email);
+      jar().set(OAUTH_COOKIE, st);
+      const res = await callbackRoute.GET(new Request(`https://app.test/api/connect/${provider}/callback?state=${st}`), ctx(provider));
+      await settle();
+      return new URL(res.headers.get("location")!).searchParams;
+    };
+    answers.FACEBOOK_LIST_MANAGED_PAGES = ok({ data: [{ id: "123", name: "عود الشرق" }] });
+    fbAnswers();
+    expect((await finish("meta", "facebook", "ca_fb")).get("connected")).toBe("meta");
+    let s = await getSocialSnapshot(u.email);
+    expect(s?.v === 2 && s.parts.facebook?.followers).toBe(512);
+
+    ytAnswers();
+    const channels = answers.YOUTUBE_LIST_CHANNELS;
+    // The connect asks for the channel's snippet (its id and title), the reader for its statistics.
+    answers.YOUTUBE_LIST_CHANNELS = (a) => (a.part === "snippet" ? ok({ data: { items: [{ kind: "youtube#channel", id: CH, snippet: { title: "Ward TV" } }] } }) : (channels as Result));
+    expect((await finish("youtube", "youtube", "ca_yt")).get("connected")).toBe("youtube");
+    s = await getSocialSnapshot(u.email);
+    expect(s?.v === 2 && s.parts.youtube?.followers).toBe(5000);
+
+    ttAnswers();
+    expect((await finish("tiktok", "tiktok", "ca_tt")).get("connected")).toBe("tiktok");
+    s = await getSocialSnapshot(u.email);
+    expect(s?.v === 2 && s.parts.tiktok?.followers).toBe(1000);
+    expect(s?.v === 2 && Object.keys(s.parts).sort()).toEqual(["facebook", "tiktok", "youtube"]);
+  });
+
+  it("choosing another Facebook Page reads it at once while the workspace's six social reads an hour last (739)", async () => {
+    const u = await newUser("fbpick");
+    await saveConnection(u.email, fbConn({ pages: JSON.stringify([{ id: "123", name: "عود الشرق", ig: "" }, { id: "456", name: "Ward", ig: "" }]) }));
+    fbAnswers();
+    await signIn(u.email);
+    const r = await post("meta", { action: "select_page", pageId: "456" });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ ok: true, read: true });
+    await settle();
+    expect(calls.find((c) => c.slug === "FACEBOOK_GET_PAGE_INSIGHTS")?.args.page_id, "the new Page, from the record").toBe("456");
+    // The bucket is the sync_social one: once the six are spent, the choice is still saved and nothing is read.
+    for (let i = 0; i < 5; i++) expect((await post("meta", { action: "sync_social" })).status, `refresh ${i + 1}`).toBe(200);
+    calls.length = 0;
+    const late = await post("meta", { action: "select_page", pageId: "123" });
+    expect(late.status).toBe(200);
+    expect(await late.json()).toMatchObject({ ok: true, read: false });
+    await settle();
+    expect(calls).toEqual([]);
+    expect((await getConnection(u.email, "meta"))?.meta?.pageId).toBe("123");
   });
 });

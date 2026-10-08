@@ -3,7 +3,7 @@ import type { Range, Totals } from "../social-stats";
 
 /**
  * What every social reader shares: the key of the posts Thakeen published, the empty totals, the deadline, the split of
- * one read into two periods, the strict count, and the adapter's error shapes. Kept apart from social-stats.ts, which lists the readers
+ * one read into two periods, the strict count, and the adapter's error shapes and messages. Kept apart from social-stats.ts, which lists the readers
  * (READERS) and so imports each platform's file: a reader importing social-stats.ts back would load in a cycle. This file
  * imports nothing at run time and never reaches Composio (rule 652).
  */
@@ -54,6 +54,8 @@ export function count(v: unknown): N {
 export const settle = <T>(p: Promise<T>) => p.then((value) => ({ ok: true as const, value }), (error: unknown) => ({ ok: false as const, error }));
 /** A platform's timestamp as its date (YYYY-MM-DD), or "" when it does not start with one. */
 export const dateOf = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : "");
+/** An error's message, or "" for anything thrown that is not an Error. */
+export const message = (e: unknown) => (e instanceof Error ? e.message : "");
 /** The adapter's 401 (composio.ts statusOf): only a new connection fixes it, so it is never retried or hidden. */
 export const refused = (e: unknown) => e instanceof Error && / 401:/.test(e.message);
 /** A timeout or a rate limit: asking again for fewer metrics only spends more of the same budget. */

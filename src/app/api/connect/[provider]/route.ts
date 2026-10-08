@@ -91,7 +91,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
       const next = isComposio(c) ? selectPageVia(c, String(b.pageId ?? "")) : selectPage(c, String(b.pageId ?? ""));
       if (!next) return NextResponse.json({ ok: false, error: "unknown_page" }, { status: 400 });
       await saveConnection(sc(u), next);
-      return NextResponse.json({ ok: true, account: next.meta?.account });
+      // A direct Meta record has no social reader. On a Composio record the new Page's results (rule 739) are read at once
+      // only while the workspace's six social reads an hour last (the sync_social bucket), else the daily run or a later
+      // refresh reads it.
+      if (!isComposio(c)) return NextResponse.json({ ok: true, account: next.meta?.account });
+      const read = await allow(`socialsync:${sc(u)}`, OWNER_SYNCS_PER_HOUR, WINDOW.hour);
+      if (read) readSocialSoon(sc(u));
+      return NextResponse.json({ ok: true, account: next.meta?.account, read });
     }
     // The LinkedIn company page whose results are read (rule 671); only a page listed at connect time.
     if (b.action === "select_org" && provider === "linkedin" && isComposio(c)) {

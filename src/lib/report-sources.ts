@@ -34,13 +34,17 @@ type Conn = { provider: string; meta?: Record<string, string> };
 /** Providers whose figures are read only through Composio (site-stats.ts, social-stats.ts). */
 export const READ_VIA_COMPOSIO = ["google", "meta", "linkedin", "youtube", "tiktok"];
 
+/** A YouTube channel id as the connect stores it (social-read/youtube.ts `holdsYt`), kept here so this file stays client-safe. */
+const YT_CHANNEL = /^UC[\w-]{10,}$/;
+
 /**
  * The connected providers that can be read, for reportSources. A Google, Meta, LinkedIn, YouTube or TikTok record counts
  * only through Composio, and only once its part exists: Meta needs an Instagram account or a Facebook Page (`igId` or
- * `pageId`) and LinkedIn a chosen company page (`liOrg`). X is read only on its direct record. Anything less would
- * silence the social warning with nothing behind it. The Facebook Page, YouTube, TikTok and X count here before their
- * readers land (rules 739, 740, 742, 744): the branch that adds them ships as one release, so that interim state is never
- * released on its own (docs/system/flows.md section 50 step 10), and `socialRead` keeps the followers tile shut meanwhile.
+ * `pageId`), LinkedIn a chosen company page (`liOrg`) and YouTube the channel chosen at connect (a `UC` `channelId`, the
+ * reader's own test). X is read only on its direct record. Anything less would silence the social warning with nothing
+ * behind it. X counts here before its reader lands (rule 744): the branch that adds it ships as one release, so that
+ * interim state is never released on its own (docs/system/flows.md section 50 step 10), and `socialRead` keeps the
+ * followers tile shut meanwhile.
  */
 export function connectedSources(conns: readonly Conn[]): string[] {
   return conns
@@ -50,6 +54,7 @@ export function connectedSources(conns: readonly Conn[]): string[] {
       if (c.meta?.via !== "composio") return false;
       if (c.provider === "meta") return !!(c.meta.igId || c.meta.pageId);
       if (c.provider === "linkedin") return !!c.meta.liOrg;
+      if (c.provider === "youtube") return YT_CHANNEL.test(c.meta.channelId ?? "");
       return true;
     })
     .map((c) => c.provider);
