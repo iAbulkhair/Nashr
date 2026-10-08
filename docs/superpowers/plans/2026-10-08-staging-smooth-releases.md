@@ -134,7 +134,7 @@ describe("the staging access token (rules 674-675)", () => {
 ```
 
 - [ ] **Step 2:** Run `npx vitest run tests/staging.test.ts`. Expected: FAIL, missing exports.
-- [ ] **Step 3:** Implement the five exports. `staging-access.ts` imports only `createHmac` from `node:crypto`, `@/lib/secret`, and (if needed) `@/lib/deploy-env`.
+- [ ] **Step 3:** Implement the five exports. `staging-access.ts` imports only `createHmac` from `node:crypto`, `@/lib/secret`, and (if needed) `@/lib/deploy-env`. Spell these specifiers exactly (`"node:crypto"`, `"@/lib/secret"`, `"@/lib/deploy-env"`, no `.ts` suffix): Task 3 pins the file's import list and rejects any other specifier.
 - [ ] **Step 4:** Run `npx vitest run tests/staging.test.ts tests/launch-security.test.ts`. Expected: PASS. launch-security already treats `{ APP_ENV: "staging" }` as production; that case is rule 678.
 - [ ] **Step 5:** Update the two docs, run `npm run check`, commit `feat(staging): isStaging and the access token`.
 
@@ -203,8 +203,23 @@ describe("the staging lock (rules 674, 677)", () => {
     expect(proxy(req("/ar", accessToken(key)!)).status).toBe(404);
   });
   it("the proxy and its lock never load the store", () => {
-    for (const f of ["src/proxy.ts", "src/lib/staging-access.ts"])
-      expect(readFileSync(f, "utf8"), f).not.toMatch(/from\s+["'](@\/lib\/|\.\/)(db|rate|auth)["']/);
+    // Every module a file names, however it spells the path: static and side-effect imports, re-exports, import() and
+    // require(). Comments are not stripped on purpose: a comment that looks like an import fails, the safe direction.
+    const specs = (src: string) =>
+      [...new Set([...src.matchAll(/\b(?:from|import|require)\s*\(?\s*["'`]([^"'`]+)["'`]/g)].map((m) => m[1]))].sort();
+    // A closed list: proxy -> {deploy-env, staging-access}; staging-access -> {secret, deploy-env}; secret -> crypto;
+    // deploy-env -> nothing. Anything else fails, so "./lib/rate", "@/lib/rate.ts" and import("@/lib/db") cannot slip by.
+    const allowed: Record<string, string[]> = {
+      "src/proxy.ts": ["@/lib/deploy-env", "@/lib/staging-access", "next/server"],
+      "src/lib/staging-access.ts": ["@/lib/deploy-env", "@/lib/secret", "node:crypto"],
+      "src/lib/deploy-env.ts": [],
+      "src/lib/secret.ts": ["crypto"],
+    };
+    for (const [f, ok] of Object.entries(allowed))
+      expect(specs(readFileSync(f, "utf8")).filter((s) => !ok.includes(s)), f).toEqual([]);
+    // And the lock gets sameSecret from the module with no store behind it, through no other path.
+    expect(specs(readFileSync("src/lib/staging-access.ts", "utf8"))).toContain("@/lib/secret");
+    expect(specs(readFileSync("src/proxy.ts", "utf8"))).toContain("@/lib/staging-access");
   });
 });
 ```
