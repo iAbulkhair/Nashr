@@ -5,7 +5,7 @@ import { getUser, saveUser } from "@/lib/auth";
 import { addBrand, scopeFor } from "@/lib/brands";
 import { wipeAccount } from "@/lib/account";
 import { statsFor, statsText, type Kpis } from "@/lib/stats";
-import { getPerf, savePerf, syncAds } from "@/lib/perf-store";
+import { failCode, getPerf, savePerf, syncAds } from "@/lib/perf-store";
 import type { Row } from "@/lib/perf-import";
 import type { Connection } from "@/lib/connectors/store";
 import type { SalesSnapshot } from "@/lib/connectors/sales";
@@ -35,10 +35,11 @@ const realFetch = globalThis.fetch;
 let fetched: string[] = [];
 /**
  * Meta and Snapchat in their documented shapes. The current window (from 2026-09-08 for NOW) answers the ads below; the
- * 30 days before it answer per `prev`: one smaller ad, nothing ("empty", a new account), or a server error ("fail").
- * `cur: "fail"` makes the current window fail instead.
+ * 30 days before it answer per `prev`: one smaller ad, nothing ("empty", a new account), the account's ad with every
+ * figure 0 ("zeros": Snap's per-ad breakdown lists ads that did not run, as `omit_empty` defaults to false), or a server
+ * error ("fail"). `cur: "fail"` makes the current window fail instead.
  */
-function fakePlatforms(opts: { prev?: "rows" | "empty" | "fail"; cur?: "fail" } = {}) {
+function fakePlatforms(opts: { prev?: "rows" | "empty" | "zeros" | "fail"; cur?: "fail" } = {}) {
   fetched = [];
   const prev = opts.prev ?? "rows";
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
@@ -50,7 +51,7 @@ function fakePlatforms(opts: { prev?: "rows" | "empty" | "fail"; cur?: "fail" } 
       if (path === "/act_111/insights") {
         const current = JSON.parse(u.searchParams.get("time_range") ?? "{}").since === "2026-09-08";
         if (current ? opts.cur === "fail" : prev === "fail") return Response.json({ error: { message: "Service temporarily unavailable", code: 2 } }, { status: 500 });
-        if (!current) return Response.json({ data: prev === "empty" ? [] : [{ ad_id: "0901", ad_name: "إطلاق المحمصة", impressions: "500", inline_link_clicks: "20", spend: "7" }] });
+        if (!current) return Response.json({ data: prev === "empty" ? [] : prev === "zeros" ? [{ ad_id: "0901", ad_name: "إطلاق المحمصة", impressions: "0", inline_link_clicks: "0", spend: "0" }] : [{ ad_id: "0901", ad_name: "إطلاق المحمصة", impressions: "500", inline_link_clicks: "20", spend: "7" }] });
         return Response.json({ data: [
           { ad_id: "1001", ad_name: "خصم 20% على القهوة", impressions: "9000", inline_link_clicks: "360", spend: "300.10", actions: [{ action_type: "omni_purchase", value: "12" }], action_values: [{ action_type: "omni_purchase", value: "1440" }] },
           { ad_id: "1002", ad_name: "قصة المحمصة", impressions: "8000", inline_link_clicks: "100", spend: "200.20" },
@@ -65,7 +66,8 @@ function fakePlatforms(opts: { prev?: "rows" | "empty" | "fail"; cur?: "fail" } 
         if (current ? opts.cur === "fail" : prev === "fail") return Response.json({ request_status: "ERROR", debug_message: "Internal error" }, { status: 500 });
         const ad = current
           ? [{ id: "a1", stats: { impressions: 12000, swipes: 480, spend: 150_000_000, conversion_purchases: 12, conversion_purchases_value: 1_800_000_000 } }]
-          : prev === "empty" ? [] : [{ id: "a1", stats: { impressions: 4000, swipes: 100, spend: 60_000_000, conversion_purchases: 3, conversion_purchases_value: 450_000_000 } }];
+          : prev === "empty" ? [] : prev === "zeros" ? [{ id: "a1", stats: { impressions: 0, swipes: 0, spend: 0, conversion_purchases: 0, conversion_purchases_value: 0 } }]
+          : [{ id: "a1", stats: { impressions: 4000, swipes: 100, spend: 60_000_000, conversion_purchases: 3, conversion_purchases_value: 450_000_000 } }];
         return Response.json({ total_stats: [{ total_stat: { breakdown_stats: { ad } } }] });
       }
     }
@@ -255,6 +257,8 @@ describe("the previous 30 days beside each ad read (rule 733)", () => {
     // The current figures and Noor's analysis are the current window's alone.
     expect(s).toMatchObject({ range: CUR.range, spend: 500.3, impressions: 17000 });
     expect((await getPerf(scope))!.rows).toBe(2);
+    // The ad copy is read for the current window only: the previous read keeps totals, never copy.
+    expect(fetched.filter((u) => new URL(u).searchParams.has("ids"))).toHaveLength(1);
     expect(block(await adDataBlock(scope, NOW))[0]).toMatchObject({ spend: 500.3, prev: { from: "2026-08-09", to: "2026-09-07", spend: 7, clicks: 20, revenue: null } });
   });
 
@@ -270,6 +274,8 @@ describe("the previous 30 days beside each ad read (rule 733)", () => {
     const s = await stored(scope, "snapchat");
     expect(s.prev).toEqual({ range: PREV.range, spend: 60, impressions: 4000, clicks: 100, conversions: 3, revenue: 450 });
     expect(s).toMatchObject({ range: CUR.range, spend: 150, impressions: 12000 });
+    // The ad names are listed for the current window only: the previous read keeps totals, never names.
+    expect(fetched.filter((u) => new URL(u).pathname.endsWith("/ads"))).toHaveLength(1);
   });
 
   it("an empty previous window leaves no prev (Review Focus 3)", async () => {
@@ -284,8 +290,22 @@ describe("the previous 30 days beside each ad read (rule 733)", () => {
     expect(block(await adDataBlock(scope, NOW)).every((r) => !("prev" in r))).toBe(true);
   });
 
+  it("a previous window of ads that did not run leaves no prev, so no \"up from 0\" (Review Focus 3)", async () => {
+    fakePlatforms({ prev: "zeros" });
+    const scope = (await newUser("adprev")).email;
+    await syncAds(scope, "snapchat", snapConn(), NOW);
+    await syncAds(scope, "meta_ads", metaConn(), NOW);
+    // Both previous windows were read, and each answered a row whose every figure is 0.
+    expect(fetched.filter((u) => u.includes("/stats"))).toHaveLength(2);
+    expect(fetched.filter((u) => u.includes("/insights"))).toHaveLength(2);
+    for (const p of ["snapchat", "meta_ads"] as const) expect(await stored(scope, p)).not.toHaveProperty("prev");
+    expect(await stored(scope, "snapchat")).toMatchObject({ spend: 150, impressions: 12000 });
+    expect(block(await adDataBlock(scope, NOW)).every((r) => !("prev" in r))).toBe(true);
+  });
+
   it("a failed previous read leaves no prev and the sync succeeds (733)", async () => {
     fakePlatforms({ prev: "fail" });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const scope = (await newUser("adprev")).email;
     const snap = await syncAds(scope, "meta_ads", metaConn(), NOW);
     expect(snap.source).toBe("meta_ads");
@@ -298,6 +318,21 @@ describe("the previous 30 days beside each ad read (rule 733)", () => {
       expect(await db.get(`adsync:${scope}:${p}`)).toBe(NOW.toISOString());
     }
     expect((await getPerf(scope))!.source).toBe("snapchat");
+    // Each failure is logged by its code alone: never the platform's text, a token or a URL.
+    const logged = warn.mock.calls.filter((a) => a[0] === "ad_prev_failed");
+    warn.mockRestore();
+    expect(logged).toEqual([["ad_prev_failed", "meta_ads", "meta_ads insights 500"], ["ad_prev_failed", "snapchat", "snapchat stats 500"]]);
+    expect(JSON.stringify(logged)).not.toMatch(/long-ads|snap-access|https?:|unavailable|Internal/);
+  });
+
+  it("the logged code is the error's first code words only (733)", () => {
+    expect(failCode(new Error("meta_ads insights 403: (#200) Ad account owner has NOT grant ads_management or ads_read"))).toBe("meta_ads insights 403");
+    expect(failCode(new Error("snapchat 502: get_ad_accounts_stats Forbidden (403)"))).toBe("snapchat 502 get_ad_accounts_stats");
+    expect(failCode(new Error("no_ad_account"))).toBe("no_ad_account");
+    expect(failCode(new Error("https://graph.facebook.com/v23.0/act_1/insights?access_token=EAAB1x refused"))).toBe("refused");
+    expect(failCode(new Error("https://graph.facebook.com/v23.0/act_1/insights?access_token=EAAB1x"))).toBe("error");
+    expect(failCode(new Error("Bearer EAAB1x denied"))).toBe("denied");
+    expect(failCode("not an error")).toBe("error");
   });
 
   it("a failed current read still fails the sync and writes nothing, whatever the previous read did (733)", async () => {
@@ -340,8 +375,13 @@ describe("the previous 30 days beside each ad read (rule 733)", () => {
     // A refused account read never fails the sync.
     snapAds();
     answers.SNAPCHAT_GET_AD_ACCOUNTS_STATS = { successful: false, error: "Forbidden (403)" };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const scope = (await newUser("adprev")).email;
     await syncAds(scope, "snapchat", snapComposio(), NOW);
+    const logged = warn.mock.calls.filter((a) => a[0] === "ad_prev_failed");
+    warn.mockRestore();
+    // Composio's adapter reads a refusal it cannot place as 502 (statusOf); the slug names the call that failed.
+    expect(logged).toEqual([["ad_prev_failed", "snapchat", "snapchat 502 get_ad_accounts_stats"]]);
     const s = await stored(scope, "snapchat");
     expect(s).not.toHaveProperty("prev");
     expect(s.spend).toBe(25.5);

@@ -151,6 +151,8 @@ describe("reading results (rule 88)", () => {
     expect(insights).toHaveLength(4);
     expect(new Set(insights.filter(since).map(since)).size).toBe(2);
     expect(new URL(insights[0].url).searchParams.get("level")).toBe("ad");
+    // The ad copy is read once, for the window: the previous read keeps totals only (totalsOnly).
+    expect(calls.filter((k) => new URL(k.url).searchParams.has("ids"))).toHaveLength(1);
     expect((await (await import("@/lib/auth")).getUser(u.email))!.credits).toBe(credits);
   });
 
@@ -176,6 +178,9 @@ describe("reading results (rule 88)", () => {
     const stats = new URL(calls.find((k) => k.url.includes("/stats"))!.url);
     expect(stats.searchParams.get("granularity")).toBe("TOTAL");
     expect(stats.searchParams.get("breakdown")).toBe("ad");
+    // Stats for the window and the 30 days before it (rule 733); the ad names are listed once, for the window only.
+    expect(calls.filter((k) => k.url.includes("/stats"))).toHaveLength(2);
+    expect(calls.filter((k) => new URL(k.url).pathname.endsWith("/ads"))).toHaveLength(1);
   });
 
   it("a revoked token asks the owner to reconnect instead of showing a raw error", async () => {
