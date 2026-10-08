@@ -14,6 +14,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import SocialStats from "@/components/app/SocialStats";
 import { liNeedsPage, reportSources, socialRead } from "@/lib/report-sources";
 import { connectViaComposio } from "@/lib/connectors/via-composio";
+import { listActivity } from "@/lib/activity";
 import * as connRoute from "@/app/api/connect/[provider]/route";
 
 /**
@@ -518,5 +519,75 @@ describe("LinkedIn page results (rule 662)", () => {
     expect(out, "Instagram not held: no Instagram line").not.toContain("Instagram has not been read yet");
     expect(renderToStaticMarkup(createElement(SocialStats, { lang: "en", social: { at: NOW.toISOString(), liError: "li_no_page_access" } }))).toContain("Connect a company page");
     expect(renderToStaticMarkup(createElement(SocialStats, { lang: "ar", social: null, liNoPage: true }))).toContain("اربط صفحة شركة");
+  });
+});
+
+describe("posting to LinkedIn as the company page (rule 670)", () => {
+  const ctx = { params: Promise.resolve({ provider: "linkedin" }) };
+  const call = (body: Record<string, unknown>) => connRoute.POST(json("/api/connect/linkedin", "POST", body), ctx);
+  const orgs = JSON.stringify([{ urn: "urn:li:organization:42", name: "عود الشرق" }, { urn: "urn:li:organization:43", name: "B" }]);
+  const authorOfLastPost = () => [...calls].reverse().find((c) => c.slug === "LINKEDIN_CREATE_LINKED_IN_POST")!.args.author;
+  async function publish(email: string) {
+    const t = post({ channel: "linkedin", imageUrl: undefined, imageProvider: undefined });
+    await saveTask(email, t, true);
+    const r = await publishOnce(email, t.id, "linkedin");
+    expect(r.ok).toBe(true);
+  }
+
+  it("refuses a page that was never chosen, a value that is not me or org, and a member", async () => {
+    const owner = await newUser("s670a");
+    await saveConnection(owner.email, via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrgs: orgs }));
+    await signIn(owner.email);
+    const none = await call({ action: "post_as", value: "org" });
+    expect(none.status).toBe(400);
+    expect((await none.json()).error).toBe("no_page");
+    await saveConnection(owner.email, via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrgs: orgs, liOrg: "urn:li:organization:42" }));
+    for (const value of ["page", "", "ORG", "urn:li:organization:42"]) expect((await call({ action: "post_as", value })).status).toBe(400);
+    const member = await newMember(owner, "member");
+    await signIn(member.email);
+    expect((await call({ action: "post_as", value: "org" })).status).toBe(403);
+    expect((await getConnection(owner.email, "linkedin"))!.meta!.liPostAs).toBeUndefined();
+  });
+
+  it("posts as the page once the owner switches, and as the person after switching back, a new page or a reconnect", async () => {
+    const owner = await newUser("s670b");
+    answers.LINKEDIN_CREATE_LINKED_IN_POST = ok({ id: "urn:li:share:9" });
+    await saveConnection(owner.email, via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrgs: orgs, liOrg: "urn:li:organization:42" }));
+    await signIn(owner.email);
+    await publish(owner.email);
+    expect(authorOfLastPost(), "absent means the person").toBe("urn:li:person:abc");
+
+    expect((await call({ action: "post_as", value: "org" })).status).toBe(200);
+    await publish(owner.email);
+    expect(authorOfLastPost()).toBe("urn:li:organization:42");
+
+    expect((await call({ action: "post_as", value: "me" })).status).toBe(200);
+    await publish(owner.email);
+    expect(authorOfLastPost()).toBe("urn:li:person:abc");
+
+    await call({ action: "post_as", value: "org" });
+    expect((await call({ action: "select_org", org: "urn:li:organization:43" })).status).toBe(200);
+    await publish(owner.email);
+    expect(authorOfLastPost(), "a new page is read, not posted to, until chosen again").toBe("urn:li:person:abc");
+
+    await call({ action: "post_as", value: "org" });
+    answers.LINKEDIN_GET_MY_INFO = ok({ response_dict: { sub: "abc", name: "Abulkhair" } });
+    answers.LINKEDIN_GET_COMPANY_INFO = ok({ elements: [{ role: "ADMINISTRATOR", state: "APPROVED", organization: "urn:li:organization:43" }] });
+    const again = await connectViaComposio(owner.email, "linkedin", "linkedin", "ca_li", (await getConnection(owner.email, "linkedin"))!);
+    await saveConnection(owner.email, again);
+    expect(again.meta!.liPostAs).toBeUndefined();
+    await publish(owner.email);
+    expect(authorOfLastPost()).toBe("urn:li:person:abc");
+  });
+
+  it("writes one activity row per change, naming the page", async () => {
+    const owner = await newUser("s670c");
+    await saveConnection(owner.email, via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrgs: orgs, liOrg: "urn:li:organization:42" }));
+    await signIn(owner.email);
+    await call({ action: "post_as", value: "org" });
+    await call({ action: "post_as", value: "me" });
+    const rows = (await listActivity(owner.email)).rows.filter((r) => r.kind === "connector_changed");
+    expect(rows.map((r) => r.outcome).sort()).toEqual(["linkedin:post_as:me", "linkedin:post_as:org"]);
+    expect(rows.every((r) => r.via === "app" && r.note === "عود الشرق" && r.by)).toBe(true);
   });
 });

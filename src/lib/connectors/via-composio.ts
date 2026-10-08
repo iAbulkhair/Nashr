@@ -87,7 +87,8 @@ const LI_TEXT = 3000;
 export const liEscape = (s: string) => s.replace(/[\\|{}@[\]()<>#*_~]/g, (ch) => `\\${ch}`);
 
 export async function postToLinkedInVia(scope: string, c: Connection, text: string): Promise<{ url: string; id: string }> {
-  const author = c.meta?.author;
+  // The company page only when the owner chose it (rule 670); absent means the member's own profile.
+  const author = c.meta?.liPostAs === "org" && c.meta?.liOrg ? c.meta.liOrg : c.meta?.author;
   if (!author) throw new Error("linkedin_no_author");
   const r = await composioWrite(scope, "linkedin", "LINKEDIN_CREATE_LINKED_IN_POST", { author, commentary: liEscape(plain(text).slice(0, LI_TEXT)), visibility: "PUBLIC", lifecycleState: "PUBLISHED" }, account(c, "linkedin"));
   const id = pick(r, ["id", "x-restli-id", "urn", "post_urn"]);
@@ -327,6 +328,26 @@ export function selectOrgVia(c: Connection, org: string): Connection | null {
   try { orgs = JSON.parse(c.meta?.liOrgs ?? "[]") as Org[]; } catch { return null; }
   if (!Array.isArray(orgs) || !orgs.some((o) => o?.urn === org)) return null;
   return { ...c, meta: { ...c.meta, liOrg: org, liPostAs: "me" } };
+}
+
+/** The chosen company page's name, as listed at connect time; "" when it is not listed. */
+export function liOrgName(c: Connection): string {
+  try {
+    const orgs = JSON.parse(c.meta?.liOrgs ?? "[]") as Org[];
+    return (Array.isArray(orgs) ? orgs.find((o) => o?.urn === c.meta?.liOrg)?.name : "") ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Post to LinkedIn as the member ("me") or as the chosen company page ("org", rule 670). Null when the value is neither,
+ * or "org" without a chosen page.
+ */
+export function postAsVia(c: Connection, value: string): Connection | null {
+  if (value !== "me" && value !== "org") return null;
+  if (value === "org" && !c.meta?.liOrg) return null;
+  return { ...c, meta: { ...c.meta, liPostAs: value } };
 }
 
 /**

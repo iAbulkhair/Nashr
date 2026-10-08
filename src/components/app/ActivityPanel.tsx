@@ -92,6 +92,8 @@ export default function ActivityPanel({ t, lang, initial, next: firstNext }: { t
         // Majed's handoffs: `note` is the item types, written in code; each is named, with the agent who owns it.
         case "handoff_proposed": return [typesOf(r.note), n(a.items, r.count), n(a.handoffCost, r.credits), a.notCharged];
         case "handoff_declined": return [typesOf(r.note), n(a.items, r.count)];
+        // `outcome` is written in code; `note` is the page's name as LinkedIn listed it.
+        case "connector_changed": return [r.outcome === "linkedin:post_as:org" ? fill(a.postAsPage, { page: r.note ?? "" }) : r.outcome === "linkedin:post_as:me" ? a.postAsMe : ""];
         case "handoff_run": {
           const owner = r.type && isTaskType(r.type) ? agentForTask(r.type).id : undefined;
           const failed = (r.outcome ?? "").startsWith("failed:");
