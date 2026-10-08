@@ -2,6 +2,7 @@ import { db } from "./db";
 import { asData } from "./json";
 import { clean, type Row } from "./perf-import";
 import { AD_PROVIDERS } from "./connectors/ads";
+import { sumRead, type N } from "./figures";
 
 /**
  * Per-platform ad totals for Dana's reports (rules 731, 732; spec 2026-10-08-social-analytics-reports-design.md A1).
@@ -14,7 +15,7 @@ import { AD_PROVIDERS } from "./connectors/ads";
  * `null` is a figure that was not read, never zero. Ad names and the account label are the advertiser's text: cleaned to
  * one plain line of 80 characters before storage, and handed to the model only inside <ad_data> through asData.
  */
-export type N = number | null;
+export type { N } from "./figures";
 export type AdTotals = { spend: N; impressions: N; clicks: N; conversions: N; revenue: N };
 export type AdPrev = AdTotals & { range: { from: string; to: string } };
 export const AD_STATS_SOURCES = [...AD_PROVIDERS, "csv"] as const;
@@ -40,15 +41,10 @@ const SOURCE_NAME: Record<AdSource, string> = { meta_ads: "Meta Ads", snapchat: 
 
 const fig = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const orNull = (v: unknown): N => (fig(v) ? v : null);
-/** Sums are rounded to two decimals, so float noise (0.1 + 0.2) never reaches a report. */
-const round2 = (x: number) => Math.round(x * 100) / 100;
 
-/** Each total is the sum over the rows that carry the figure; no row carrying it is null, never 0. */
+/** Each total is the sum over the rows that carry the figure (two decimals); no row carrying it is null, never 0. */
 export function totalsOf(rows: Row[]): AdTotals {
-  const sum = (k: keyof AdTotals): N => {
-    const xs = rows.map((r) => r[k]).filter(fig);
-    return xs.length ? round2(xs.reduce((a, b) => a + b, 0)) : null;
-  };
+  const sum = (k: keyof AdTotals): N => sumRead(rows.map((r) => orNull(r[k])));
   return { spend: sum("spend"), impressions: sum("impressions"), clicks: sum("clicks"), conversions: sum("conversions"), revenue: sum("revenue") };
 }
 

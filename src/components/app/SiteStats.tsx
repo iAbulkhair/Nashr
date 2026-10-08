@@ -1,6 +1,7 @@
 import type { Lang } from "@/lib/i18n";
 import type { SiteSnapshot } from "@/lib/site-stats";
 import { dateFormat } from "@/lib/dates";
+import { pctChange, type N } from "@/lib/figures";
 
 /**
  * The site card on Reports: GA4 and Search Console totals from the last read (src/lib/site-stats.ts). Read only, and the
@@ -22,13 +23,15 @@ const STR = {
   },
 } as const;
 
-type N = number | null;
 const NUM = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 const PCT = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0, signDisplay: "exceptZero" });
 /** A figure not read is a dash, never 0. */
 const fmt = (n: N) => (n == null ? "—" : NUM.format(n));
 /** The change against the previous period, only where both were read and the previous one is above 0. */
-const change = (cur: N, prev: N | undefined) => (cur != null && prev != null && prev > 0 ? PCT.format((cur - prev) / prev) : null);
+function change(cur: N, prev: N | undefined) {
+  const p = prev != null && prev > 0 ? pctChange(cur, prev) : null;
+  return p == null ? null : PCT.format(p / 100);
+}
 
 export default function SiteStats({ lang, site }: { lang: Lang; site: SiteSnapshot }) {
   const S = STR[lang];
