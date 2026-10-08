@@ -14,6 +14,7 @@ import type { ChatStatus } from "@/lib/chat-allowance";
 import { paceStart, runway, runwayLine } from "@/lib/usage-view";
 import ReadOnlyNote from "./ReadOnlyNote";
 import PasswordField from "./PasswordField";
+import LogoutButton from "./LogoutButton";
 import Scribble from "@/components/Scribble";
 
 /**
@@ -313,6 +314,11 @@ export default function ProfilePanel({ t, lang, initial }: { t: AppDict; lang: L
       ) : (
         <ReadOnlyNote className="" text={blockedNote} />
       )}
+
+      <Card title={ar ? "تسجيل الخروج" : "Log out"}>
+        <p className="text-sm text-muted">{ar ? "تخرج من هذا الجهاز فقط." : "Signs you out on this device only."}</p>
+        <div className="mt-3"><LogoutButton label={t.nav.logout} lang={lang} className="btn btn-secondary btn-sm" /></div>
+      </Card>
 
       {d.impersonating ? null : canDelete ? (
         <Card title={ar ? "حذف الحساب" : "Delete account"}>
