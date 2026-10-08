@@ -286,7 +286,9 @@ describe("the Governance page shows the switch truly (rule 284)", () => {
     expect(entry.desc.en).toContain("a monthly cap on at least one agent Majed hands work to");
     expect(entry.desc.ar).toContain("حداً شهرياً لوكيل واحد على الأقل ممن يسلّمهم ماجد العمل");
     const panel = readFileSync("src/components/app/GovernancePanel.tsx", "utf8");
-    expect(panel).toMatch(/if \(on && !window\.confirm\(g\.autoHandoffConfirm\)\) return;/);
+    // Turning it on asks first, in the app's confirmation dialog (rule 697), with the words above.
+    expect(panel).toMatch(/if \(on && !\(await askAutoHandoff\(\)\)\) return;/);
+    expect(panel).toContain("const askAutoHandoff = () => ask({ title: g.autoHandoff, message: g.autoHandoffConfirm,");
     expect(panel).toContain("confirmAutoHandoff: true");
     expect(panel).toContain('code === "auto_handoff_needs_cap" ? g.autoHandoffNeedsCap');
   });

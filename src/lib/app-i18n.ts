@@ -314,6 +314,12 @@ const ar = {
   },
   /** One-line notes on screens a lower role sees read-only. The server enforces the same rule regardless. */
   readOnly: { owner: "فقط مالك الحساب يستطيع تغيير هذا.", admin: "فقط مالك الحساب أو المدير يستطيع تغيير هذا." },
+  /**
+   * The confirmation dialog's shared buttons (ConfirmDialog.tsx): `back` closes it and changes nothing; `confirm` is for
+   * a question whose own action has no button word. The way out is not "Cancel" (إلغاء): on the Members page, cancelling
+   * an invite (ألغِ) is itself the action being confirmed.
+   */
+  dialog: { back: "رجوع", confirm: "تأكيد" },
 };
 
 const en: typeof ar = {
@@ -623,6 +629,7 @@ const en: typeof ar = {
     errors: { invalid: "This invite is invalid, expired or already used. Ask whoever invited you for a new one.", invalid_name: "Enter your name.", weak_password: "The password does not meet the rules.", seats: "This account has no free seat right now. Tell whoever invited you.", unavailable: "This email already has a login. Log in with it, or ask for an invite to another address.", rate_limited: "Too many attempts. Try again in a few minutes.", failed: "Could not join. Try again." },
   },
   readOnly: { owner: "Only the account owner can change this.", admin: "Only the account owner or an admin can change this." },
+  dialog: { back: "Go back", confirm: "Confirm" },
 };
 
 export const appDict: Record<Lang, typeof ar> = { ar, en };

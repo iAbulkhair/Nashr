@@ -274,6 +274,7 @@ const READS: Record<string, Gate> = {
   "GET /api/secretary/feed/[token]": "public-read", // the token in the path is the credential; rate limited per IP and per link
   "GET /api/oauth/meta": "public-read",
   "GET /api/oauth/resource": "public-read",
+  "GET /llms.txt": "public-read", // site copy for language models, static at build time (rule 698)
   "GET /api/health": "public-read", // the release probe's build identity (rule 676): { ok, commit, built } only; rate limited per IP, and still answers when the limiter's store is down
   "GET /api/staging-access": "public-read", // a bare 404, so the door shows nothing off staging (rule 675)
   "HEAD /api/staging-access": "public-read",
