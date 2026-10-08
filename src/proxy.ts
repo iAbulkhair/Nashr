@@ -29,10 +29,11 @@ export function proxy(req: NextRequest) {
   }
 
   let res: NextResponse;
-  if (pathname === "/") {
-    // Root: pick language from cookie, then Accept-Language, default Arabic.
+  // Root: pick language from cookie, then Accept-Language, default Arabic. `/app` is the installed app's start URL
+  // (src/app/manifest.ts, rule 681): the same choice, into the app.
+  if (pathname === "/" || pathname === "/app") {
     const url = req.nextUrl.clone();
-    url.pathname = `/${pickLang(req)}`;
+    url.pathname = pathname === "/" ? `/${pickLang(req)}` : `/${pickLang(req)}/app`;
     url.search = search;
     res = NextResponse.redirect(url, 307);
   } else if (APP_PATH.test(pathname)) {
@@ -48,6 +49,6 @@ export function proxy(req: NextRequest) {
   return res;
 }
 
-// Every path except Next's static assets and the favicon: the staging lock must see them all. Off staging the other
-// paths pass through untouched.
+// Every path except Next's static assets and the favicon: the staging lock must see them all (`/` and `/app` included).
+// Off staging the other paths pass through untouched.
 export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"] };

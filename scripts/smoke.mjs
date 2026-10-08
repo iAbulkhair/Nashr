@@ -8,7 +8,7 @@
 // file is ever printed. All four are listed in docs/system/variables.md section 7.
 //
 // Not before the client-address check: do not run this, or scripts/probe.mjs, against staging until the plan's Task 13,
-// step 4 has passed (docs/system/flows.md section 49, item 7). Until then a host that forwards no client address puts
+// step 4 has passed (docs/system/flows.md section 51, item 7). Until then a host that forwards no client address puts
 // every caller of /api/health into one bucket. Nothing in this file can tell whether it has passed.
 //
 // /api/health allows 60 a minute per client address. A 429 there is the app answering, not an outage, so that one check
@@ -161,7 +161,7 @@ async function main() {
   await expectStatus("GET /api/cron/weekly without a bearer is 401", "/api/cron/weekly", 401);
   await check("GET /api/health is 200", async () => {
     const r = await fetchRetryOnce(`${origin}/api/health`, init());
-    if (r.status === 429) return "429 after one retry: the health bucket is shared or full (docs/system/permissions.md row 150), not an outage";
+    if (r.status === 429) return "429 after one retry: the health bucket is shared or full (docs/system/permissions.md row 153), not an outage";
     if (r.status !== 200) return `got ${r.status}`;
   });
 

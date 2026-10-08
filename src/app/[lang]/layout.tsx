@@ -41,7 +41,11 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
     title: SITE_DEFAULT[lang].title,
     description: SITE_DEFAULT[lang].description,
     alternates: { languages: { ar: "/ar", en: "/en" } },
-    other: { google: "notranslate" },
+    // Home-screen install (rule 682): the name under the icon, a plain status bar (the app header is paper). Next writes
+    // `mobile-web-app-capable` for `capable`; older iOS reads only the apple- name, so `other` adds it. The manifest and
+    // the apple-touch-icon come from src/app/manifest.ts and src/app/apple-icon.png.
+    appleWebApp: { capable: true, title: t.brand, statusBarStyle: "default" },
+    other: { google: "notranslate", "apple-mobile-web-app-capable": "yes" },
     openGraph: { siteName: t.brand, type: "website", locale: lang === "ar" ? "ar_SA" : "en_US", alternateLocale: lang === "ar" ? "en_US" : "ar_SA" },
     twitter: { card: "summary_large_image" },
   };

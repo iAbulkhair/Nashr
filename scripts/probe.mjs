@@ -3,7 +3,7 @@
 // staging host's STAGING_ACCESS_KEY; listed in docs/system/variables.md section 7). Node 22, no dependencies.
 //
 // Not before the client-address check: do not run this, or scripts/smoke.mjs, against staging until the plan's Task 13,
-// step 4 has passed (docs/system/flows.md section 49, item 7). Until then a host that forwards no client address puts
+// step 4 has passed (docs/system/flows.md section 51, item 7). Until then a host that forwards no client address puts
 // every caller of /api/health into one bucket, and this probe alone fills most of it. Nothing in this file can tell
 // whether the check has passed.
 //
@@ -102,7 +102,7 @@ async function main() {
   console.log(`commit changed at: ${s.commitChangedAt === null ? "never" : `${s.commitChangedAt.toFixed(1)} s`}`);
   console.log(`throttled (429): ${s.throttled}`);
   if (s.throttled > 0) {
-    console.log("throttled above 0 means something else shares the health bucket, or the host forwards no client address (docs/system/permissions.md row 150).");
+    console.log("throttled above 0 means something else shares the health bucket, or the host forwards no client address (docs/system/permissions.md row 153).");
   }
 }
 

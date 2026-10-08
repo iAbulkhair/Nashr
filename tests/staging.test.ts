@@ -90,6 +90,14 @@ describe("the staging lock (rules 674, 677)", () => {
     expect(specs(readFileSync("src/lib/staging-access.ts", "utf8"))).toContain("@/lib/secret");
     expect(specs(readFileSync("src/proxy.ts", "utf8"))).toContain("@/lib/staging-access");
   });
+
+  it("the proxy runs on every path but Next's static assets and the favicon, so nothing slips past the lock", async () => {
+    const { unstable_doesMiddlewareMatch: runs } = await import("next/experimental/testing/server");
+    const { config } = await import("@/proxy");
+    for (const url of ["/", "/app", "/ar", "/en/pricing", "/ar/app/chat", "/api/health", "/api/chat", "/robots.txt", "/sitemap.xml", "/manifest.webmanifest", "/icon-192.png"])
+      expect(runs({ config, url }), url).toBe(true);
+    for (const url of ["/_next/static/chunks/main.js", "/favicon.ico"]) expect(runs({ config, url }), url).toBe(false);
+  });
 });
 
 describe("the staging access route (rule 675)", () => {
@@ -175,7 +183,7 @@ describe("the staging access route (rule 675)", () => {
   });
   it("with no address header at all every caller shares one bucket: the case the staging check rules out", async () => {
     // Pins the known limit so a change is deliberate: if the host forwarded no client address, five tries from anyone
-    // would lock everyone out for 15 minutes. flows.md section 49 (item 7) has the check that Hostinger does forward one.
+    // would lock everyone out for 15 minutes. flows.md section 51 (item 7) has the check that Hostinger does forward one.
     const { POST } = await import("@/app/api/staging-access/route");
     const blind = () => POST(new Request("http://localhost:3000/api/staging-access", {
       method: "POST", body: new URLSearchParams({ code: key, lang: "ar" }), headers: { "content-type": "application/x-www-form-urlencoded" },

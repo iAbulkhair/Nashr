@@ -1,9 +1,10 @@
 import { READS_METRICS } from "./connectors/working";
+import type { SocialSnapshot } from "./social-stats";
 
 /**
  * What the Reports page can say about platform numbers, from the connected providers alone. A source counts as read
  * only when one of its connected providers is in READS_METRICS: a stored connection with no reader behind it reads
- * nothing, so it must not silence the banner or unlock a metric. No other imports, so the client panel can use it.
+ * nothing, so it must not silence the banner or unlock a metric. No other imports but a type, so the client panel can use it.
  */
 export type SourceKey = "analytics" | "ads" | "store" | "social";
 export const SOURCES: { key: SourceKey; provs: string[] }[] = [
@@ -11,7 +12,9 @@ export const SOURCES: { key: SourceKey; provs: string[] }[] = [
   // Ad accounts only: "snapchat" is Snapchat Ads, and "google" is the site connection (analytics), never an ad account.
   { key: "ads", provs: ["meta_ads", "snapchat", "tiktok_ads", "google_ads"] },
   { key: "store", provs: ["shopify", "salla", "zid", "woocommerce"] },
-  { key: "social", provs: ["instagram", "tiktok", "x", "linkedin"] },
+  // "meta" is the Facebook and Instagram connection; through Composio it reads Instagram results, and "linkedin" the
+  // chosen company page.
+  { key: "social", provs: ["meta", "instagram", "tiktok", "x", "linkedin"] },
 ];
 export const PLATFORM_METRICS: { key: string; source: SourceKey }[] = [
   { key: "visitors", source: "analytics" }, { key: "sessions", source: "analytics" }, { key: "adSpend", source: "ads" }, { key: "roas", source: "ads" },
@@ -25,3 +28,35 @@ export function reportSources(connected: readonly string[]) {
   /** "none": nothing is read, so every number on the page is the workspace's. "some": at least one source is read. */
   return { read, missing, banner: missing.length === 0 ? null : read.length === 0 ? ("none" as const) : ("some" as const) };
 }
+
+type Conn = { provider: string; meta?: Record<string, string> };
+
+/** Providers whose figures are read only through Composio (site-stats.ts, social-stats.ts). */
+export const READ_VIA_COMPOSIO = ["google", "meta", "linkedin"];
+
+/**
+ * The connected providers that can be read, for reportSources. A Google, Meta or LinkedIn record counts only through
+ * Composio, and only once its part exists: Meta needs an Instagram account (`igId`; a Facebook-only record reads nothing)
+ * and LinkedIn a chosen company page (`liOrg`). Anything less would silence the social warning with nothing behind it.
+ */
+export function connectedSources(conns: readonly Conn[]): string[] {
+  return conns
+    .filter((c) => {
+      if (!READ_VIA_COMPOSIO.includes(c.provider)) return true;
+      if (c.meta?.via !== "composio") return false;
+      if (c.provider === "meta") return !!c.meta.igId;
+      if (c.provider === "linkedin") return !!c.meta.liOrg;
+      return true;
+    })
+    .map((c) => c.provider);
+}
+
+/** Followers unlock only once Instagram or a LinkedIn page was actually read, not when a record merely exists. */
+export const socialRead = (s: SocialSnapshot | null | undefined) => !!(s?.ig || s?.li);
+
+/**
+ * A LinkedIn connection through Composio with no company page chosen reads nothing, so the social card asks for a page.
+ * A direct LinkedIn record has no reader at all.
+ */
+export const liNeedsPage = (conns: readonly Conn[]) =>
+  conns.some((c) => c.provider === "linkedin" && c.meta?.via === "composio" && !c.meta?.liOrg);

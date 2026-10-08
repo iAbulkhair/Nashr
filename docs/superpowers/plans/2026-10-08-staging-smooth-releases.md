@@ -411,7 +411,7 @@ describe("the health route (rule 676)", () => {
 - Test: `tests/scripts.test.ts`
 - Modify: `.gitignore` (add `.smoke.local`)
 - Docs, same commit:
-  - `docs/system/permissions.md` row 150: one sentence on how the probe paces itself and how smoke retries a 429.
+  - `docs/system/permissions.md` row 153: one sentence on how the probe paces itself and how smoke retries a 429.
   - `docs/system/tests.md` row 676: add the scripts' behaviour below and `scripts.test.ts` to its test column.
 
 **Why the health route's limit shapes both scripts:** `GET /api/health` allows 60 a minute per client address (`src/app/api/health/route.ts:16`, a fixed window that starts at its first hit). One probe request a second is 60 a minute, exactly the cap with no room, and if the host forwards no client address every caller shares the `unknown` bucket (`docs/system/permissions.md` row 150). A 429 from this route is the app answering, so it proves the process is up. Neither script may count it as an outage, and neither may be run before the client-address check of Task 13, step 4 has passed.
@@ -575,7 +575,7 @@ describe("the smoke health check against the route's limiter", () => {
   - `curl -s https://staging.thakeen.com/robots.txt` contains `Disallow: /` and no `Sitemap:` line. `robots.txt` is built statically, so a staging build made without `APP_ENV=staging` serves the live body (`Allow: /`) here even though the lock still works; if so, set `APP_ENV=staging` in hPanel and rebuild. This curl is also the only check of the real Hostinger edge for a static `/robots.txt`.
   - The access page works in a browser.
   - `/api/health` shows the merge commit.
-  - The two host facts of `docs/system/flows.md` section 49, item 7, last, because they use up a network's access tries for 15 minutes:
+  - The two host facts of `docs/system/flows.md` section 51, item 7, last, because they use up a network's access tries for 15 minutes:
     - The right code's `Set-Cookie` lists `HttpOnly`, `Secure`, `SameSite=lax` and `Max-Age` (the `curl` there prints flag names only).
     - The tries are per client: six tries from one network end in 429, and one try from a second network is still 303. If it is 429, stop: Hostinger forwards no client address and `clientIp` needs fixing before staging is relied on.
     - This one check also settles the health route, which keys its bucket `health:{ip}` with the same `clientIp`. If the tries are per client, so is the 60-a-minute health bucket the probe and smoke script use. If they are not, every caller shares it and the probe alone fills most of it (`docs/system/permissions.md` row 150). Do not run Task 14 until this passes.
