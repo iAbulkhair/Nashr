@@ -6,7 +6,8 @@ import { saveTask, type Brand, type Task } from "@/lib/brand";
 import { publishOnce } from "@/lib/publish-once";
 import { wipeAccount } from "@/lib/account";
 import { getSocialSnapshot, socialDataBlock, SOCIAL_KEY, SOCIAL_PUB_KEY, syncSocial, syncSocialIfDue, type SocialSnapshot } from "@/lib/social-stats";
-import { composioWrite, setComposioClientForTests, type ComposioClient } from "@/lib/connectors/composio";
+import { composioWrite, setComposioClientForTests } from "@/lib/connectors/composio";
+import { fakeComposio, ok, type Answer, type Call, type Result } from "./helpers/composio-fake";
 import { TOOLKITS, type Toolkit } from "@/lib/connectors/composio-catalog";
 import type { Connection } from "@/lib/connectors/store";
 import { createElement } from "react";
@@ -22,46 +23,22 @@ import * as callbackRoute from "@/app/api/connect/[provider]/callback/route";
  * Rules 663-673: Instagram and LinkedIn page results read through Composio (social-stats.ts), and the owner's choice to
  * publish to LinkedIn as the page (docs/superpowers/specs/2026-10-08-social-results-via-composio-design.md). Read only:
  * the founder's rule of 2026-10-05 is that results are fetched and analysed, never posted, replied to or edited.
- * Composio's client is a fake; answers follow the shapes of Composio's output schemas.
+ * Composio's client is the shared fake (tests/helpers/composio-fake.ts); answers follow the shapes of Composio's output
+ * schemas.
  */
-type Result = { data?: unknown; error?: string | null; successful: boolean };
-type Answer = Result | ((args: Record<string, unknown>) => Result);
-let calls: { slug: string; args: Record<string, unknown> }[];
+let calls: Call[];
 let answers: Record<string, Answer>;
 let owned: string[];
 
-function fake(): ComposioClient {
-  return {
-    connectedAccounts: {
-      link: async () => ({ id: "ca_new", redirectUrl: "https://connect.composio.dev/link/lk_1" }),
-      waitForConnection: async (id) => ({ id, status: "ACTIVE" }),
-      list: async () => ({ items: owned.map((id) => ({ id })) }),
-      revoke: async () => {},
-      delete: async () => {},
-    },
-    tools: {
-      execute: async (slug, body) => {
-        calls.push({ slug, args: body.arguments });
-        const a = answers[slug];
-        if (typeof a === "function") return a(body.arguments);
-        return a ?? { successful: false, error: "not mocked" };
-      },
-    },
-    files: { upload: async () => ({}) },
-  };
-}
-
 beforeEach(() => {
-  calls = [];
-  answers = {};
-  owned = [];
+  const f = fakeComposio();
+  ({ calls, answers, owned } = f);
   vi.stubEnv("COMPOSIO_API_KEY", "test-key");
   vi.stubEnv("COMPOSIO_PROVIDERS", "meta,linkedin");
-  setComposioClientForTests(fake());
+  setComposioClientForTests(f.client);
 });
 afterEach(() => { setComposioClientForTests(null); vi.unstubAllEnvs(); });
 
-const ok = (data: unknown): Result => ({ successful: true, data });
 const via = (provider: string, data: Record<string, string>, meta: Record<string, string> = {}): Connection => ({ provider, data, meta: { via: "composio", ...meta }, connectedAt: new Date().toISOString() });
 const IMG = `https://s1.public.blob.vercel-storage.com/media/${"a1".repeat(16)}.jpg`;
 const post = (over: Partial<Task> = {}): Task => ({ id: `t${Math.random().toString(16).slice(2, 10)}`, type: "social", channel: "instagram", title: "t", body: "عود ملكي جديد", status: "approved", createdAt: new Date().toISOString(), lang: "ar", imageUrl: IMG, imageProvider: "kie", ...over });
@@ -285,7 +262,7 @@ describe("daily social read (rule 673)", () => {
     answers.INSTAGRAM_GET_USER_INFO = { successful: false, error: "Unauthorized: token revoked" };
     await expect(syncSocialIfDue(u.email, NOW)).rejects.toBeTruthy();
     expect((await getConnection(u.email, "meta"))!.needsReconnect).toBeTruthy();
-    calls = [];
+    calls.length = 0;
     expect(await syncSocialIfDue(u.email, new Date(NOW.getTime() + 21 * H))).toBe(false);
     expect(calls).toEqual([]);
   });
@@ -616,12 +593,12 @@ describe("final review fixes", () => {
     const t = await syncSocial(u.email, { meta: igConn() }, NOW);
     expect(t.ig!.posts[0].views).toBeNull();
     expect(calls.filter((c) => c.slug === "INSTAGRAM_GET_IG_MEDIA_INSIGHTS")).toHaveLength(1);
-    calls = [];
+    calls.length = 0;
     answers.INSTAGRAM_GET_IG_MEDIA_INSIGHTS = { successful: false, error: "Too many requests" };
     await syncSocial(u.email, { meta: igConn() }, NOW);
     expect(calls.filter((c) => c.slug === "INSTAGRAM_GET_IG_MEDIA_INSIGHTS")).toHaveLength(1);
 
-    calls = [];
+    calls.length = 0;
     igAnswers(Array.from({ length: 30 }, (_, i) => media(i + 1)));
     // Assigned above in this test, so TypeScript narrows it to a Result; igAnswers just replaced it with the function.
     const insights = answers.INSTAGRAM_GET_IG_MEDIA_INSIGHTS as unknown as Exclude<Answer, Result>;
@@ -664,7 +641,7 @@ describe("final review fixes", () => {
       await settle();
       return new URL(res.headers.get("location")!).searchParams;
     };
-    owned = ["ca_li", "ca_ig"];
+    owned.push("ca_li", "ca_ig");
     answers.LINKEDIN_GET_MY_INFO = ok({ response_dict: { sub: "abc", name: "Abulkhair" } });
     answers.LINKEDIN_GET_COMPANY_INFO = ok({ elements: [{ role: "ADMINISTRATOR", state: "APPROVED", organization: "urn:li:organization:42", organization_name: "A" }, { role: "ADMINISTRATOR", state: "APPROVED", organization: "urn:li:organization:43", organization_name: "B" }] });
     liAnswers();

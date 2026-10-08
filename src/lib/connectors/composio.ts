@@ -37,21 +37,24 @@ export type ComposioClient = {
 export type StagedFile = { name: string; mimetype: string; s3key: string };
 
 /**
- * Pinned toolkit versions (`composio dev toolkits version <slug>`, latest on 2026-10-05). The SDK refuses to execute a
- * tool whose toolkit resolves to "latest" (ComposioToolVersionRequiredError, before any request), and a pin also keeps
+ * Pinned toolkit versions. Pinned to the `version` that `composio tools info <slug>` reported when the allowlisted args
+ * were checked; the `latest_version` field of `dev toolkits version` is stale and is not used (rule 749; facebook,
+ * youtube, linkedin, tiktok and snapchat read 2026-10-08, the others 2026-10-05). The SDK refuses to execute a tool
+ * whose toolkit resolves to "latest" (ComposioToolVersionRequiredError, before any request), and fetches the tool at
+ * the pinned version before any platform call (ComposioToolNotFoundError when it is missing there), so a pin also keeps
  * the argument names in composio-catalog.ts matching the schema they were checked against. "00000000_00" is the only
  * version Composio lists for an unversioned toolkit. Every toolkit must have one: the type has no optional keys.
  */
 export const TOOLKIT_VERSION: Readonly<Record<Toolkit, string>> = {
-  facebook: "20251208_00",
+  facebook: "20261008_00",
   instagram: "20251229_00",
   twitter: "20251230_00",
-  linkedin: "20250915_00",
-  tiktok: "00000000_00",
+  linkedin: "20260924_00",
+  tiktok: "20260917_00",
   whatsapp: "00000000_00",
-  youtube: "20251208_01",
+  youtube: "20261008_00",
   metaads: "20251208_00",
-  snapchat: "00000000_00",
+  snapchat: "20260918_00",
   googleads: "00000000_00",
   tiktok_ads: "00000000_00",
   google_analytics: "20251017_00",

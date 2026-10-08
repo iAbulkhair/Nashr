@@ -4,9 +4,10 @@
  * section 3). Slugs and argument names were read from Composio's tool schemas on 2026-10-05; the measured run on the
  * founder's own accounts confirms them (plan Task 8). No imports: the registry and tests read it freely.
  *
- * Ad accounts and Google's analytics are read only: their toolkits list no write tool at all, so nothing here can
- * create, edit, pause or fund an ad, or change a property (the founder's rule of 2026-10-05: ads are read and analysed,
- * never published or edited).
+ * Ad accounts and Google's analytics are read only here. Composio's own toolkits do list write tools (for example
+ * `METAADS_COPY_AD_OBJECT`, `GOOGLE_SEARCH_CONSOLE_ADD_SITE`); only this allowlist keeps them read-only: their entries
+ * below list no write tool at all, so nothing here can create, edit, pause or fund an ad, or change a property (the
+ * founder's rule of 2026-10-05: ads are read and analysed, never published or edited; rule 653).
  *
  * Instagram and LinkedIn page results are reads (rule 663, spec 2026-10-08-social-results): no tool here posts, replies,
  * likes or edits on the strength of them.
