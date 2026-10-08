@@ -14,6 +14,8 @@ import RefreshButton, { selectNote } from "./RefreshButton";
  * A figure Google did not return shows a dash, never 0; a change is shown only where the previous 28 days were read.
  * Any member may refresh it (`sync_site`, rule 735); the owner and an admin choose the GA4 property and the Search
  * Console site when more than one was listed at connect (`select_property`, rule 734). The route checks both roles.
+ * With no read yet (`site` null: the first read has not landed, or both parts failed and nothing was written) the card
+ * still shows, with both parts as not read, so the choice and the refresh that fix it stay reachable.
  */
 const STR = {
   ar: {
@@ -77,7 +79,8 @@ function Choice({ lang, kind, label, options, current }: { lang: Lang; kind: "ga
 
 type Props = {
   lang: Lang;
-  site: SiteSnapshot;
+  /** `getSiteSnapshot`; null when nothing was read yet. */
+  site: SiteSnapshot | null;
   /** `siteChoices`: the properties and sites listed at connect on the Composio Google record, with the ones chosen. */
   properties?: SiteChoices;
   /** `can(u, "connectors")`: the owner and an admin choose what is read (rule 734). */
@@ -90,7 +93,8 @@ export default function SiteStats({ lang, site, properties, canChoose = false, c
   const S = STR[lang];
   const ga4 = canChoose && properties && properties.ga.length >= 2 ? properties.ga : null;
   const sites = canChoose && properties && properties.gsc.length >= 2 ? properties.gsc : null;
-  const when = dateFormat(lang, { day: "numeric", month: "short", year: "numeric" }).format(new Date(site.at));
+  const at = site ? new Date(site.at) : null;
+  const when = at && !Number.isNaN(at.getTime()) ? dateFormat(lang, { day: "numeric", month: "short", year: "numeric" }).format(at) : null;
   const tile = (label: string, value: string, sub?: string, delta?: string | null) => (
     <div className="rounded-lg border border-ink/10 p-3">
       <p className="text-xs text-muted">{label}</p>
@@ -99,13 +103,13 @@ export default function SiteStats({ lang, site, properties, canChoose = false, c
       {delta && <p className="mt-0.5 text-xs text-muted"><span dir="ltr">{delta}</span> {S.vsPrev}</p>}
     </div>
   );
-  const ga = site.ga;
-  const gsc = site.gsc;
+  const ga = site?.ga;
+  const gsc = site?.gsc;
   return (
     <div id="site-stats" className="card mt-6" dir={lang === "ar" ? "rtl" : "ltr"}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-display text-xl font-bold">{S.title}</h2>
-        <p className="text-xs text-muted">{S.read}: {when}</p>
+        {when && <p className="text-xs text-muted">{S.read}: {when}</p>}
       </div>
       {canRefresh && <div className="mt-2"><RefreshButton lang={lang} kind="site" path="google" /></div>}
       {(ga4 || sites) && (

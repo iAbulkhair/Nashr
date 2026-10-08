@@ -25,7 +25,7 @@ import { NOT_READ_PLATFORMS, NOT_READ_REASONS, type NotReadItem } from "@/lib/no
 import { XSTATS_KEY } from "@/lib/x-stats";
 import type { SiteSnapshot } from "@/lib/site-stats";
 import { appDict } from "@/lib/app-i18n";
-import { readFileSync } from "node:fs";
+import { pageNote } from "@/components/app/IntegrationsPanel";
 
 // The Reports card's buttons read the router; outside Next there is none. Server-only helpers (redirect, notFound) stay real.
 vi.mock("next/navigation", async (orig) => ({
@@ -672,16 +672,28 @@ describe("the Reports page (spec section 8; rules 670, 734, 735, 738, 744)", () 
     expect(ar).toContain('dir="rtl"');
     expect(ar).toContain('data-choose="ga4"');
     expect(ar).toContain(">حدّث<");
+    // No read yet (the first read has not landed, or both parts failed and nothing was written): both parts not read,
+    // no date, and the choice and the refresh that fix it.
+    const none = s({ site: null, properties, canChoose: true, canRefresh: true });
+    expect(none).toContain('data-choose="ga4"');
+    expect(none).toContain(">Refresh<");
+    expect(none).toContain("Google Analytics has not been read yet.");
+    expect(none).toContain("Search Console has not been read yet.");
+    expect(none).not.toContain("Last read");
+    expect(s({ site: null, properties, canChoose: false, canRefresh: true }), "a member: Refresh, no choice").not.toContain("<select");
 
     expect(selectNote("en", 200, { ok: true, read: false })).toMatch(/next read/);
     expect(selectNote("ar", 200, { ok: true, read: false })).toContain("القراءة القادمة");
     expect(selectNote("en", 200, { ok: true, read: true })).toMatch(/being read now/);
     expect(selectNote("en", 400, { ok: false, error: "unknown_property" })).toMatch(/not on the list/);
     expect(selectNote("en", 403, { error: "forbidden" })).toMatch(/owner or an admin/);
-    // Meta's Page selector on Integrations says so too when the read waits.
-    expect(readFileSync("src/components/app/IntegrationsPanel.tsx", "utf8")).toContain("j.read === false ? g.readLater");
-    expect(appDict.ar.integrations.readLater).toContain("القراءة القادمة");
+    // Meta's Page selector on Integrations says so too when the read waits, and says nothing otherwise.
+    expect(pageNote(appDict.en.integrations, { ok: true, read: false })).toBe(appDict.en.integrations.readLater);
+    expect(pageNote(appDict.ar.integrations, { ok: true, read: false })).toContain("القراءة القادمة");
     expect(appDict.en.integrations.readLater).toMatch(/next read/);
+    expect(pageNote(appDict.en.integrations, { ok: true, read: true })).toBe("");
+    expect(pageNote(appDict.en.integrations, { ok: true })).toBe("");
+    expect(pageNote(appDict.en.integrations, { ok: false, read: false })).toBe("");
 
     const w = await workspace("rpprop");
     for (const [who, may] of [[w.member.email, false], [w.admin.email, true], [w.owner.email, true]] as const) {
@@ -692,6 +704,58 @@ describe("the Reports page (spec section 8; rules 670, 734, 735, 738, 744)", () 
       expect(html.includes('data-choose="ga4"'), who).toBe(may);
       expect(html.includes('data-choose="gsc"'), who).toBe(false);
     }
+  });
+
+  it("opens the site card on a Composio Google record with no read, so the choice and Refresh stay reachable (734, 735)", async () => {
+    const owner = await newUser("rpnosite");
+    await Promise.all([
+      saveBrand(owner.email, BRAND),
+      saveConnection(owner.email, via("google", { google_analytics: "ca_ga", google_search_console: "ca_gsc" }, { gaProperty: "properties/1", gaProperties: JSON.stringify([{ id: "properties/1", name: "Shop A" }, { id: "properties/2", name: "Shop B" }]), gscSite: "https://oud.example/", gscSites: JSON.stringify(["https://oud.example/"]) })),
+    ]);
+    const admin = await newMember(owner, "admin", "rpnositea");
+    const member = await newMember(owner, "member", "rpnositem");
+    expect(await db.get(`sitestats:${owner.email}`), "no sitestats: key").toBeNull();
+    /** The site card: from its block to the social card (or the page's end). */
+    const siteCard = (html: string) => {
+      const i = html.indexOf('id="site-stats"');
+      if (i < 0) return "";
+      const j = html.indexOf('id="social-stats"', i);
+      return html.slice(i, j < 0 ? undefined : j);
+    };
+    for (const [who, may] of [[member.email, false], [admin.email, true], [owner.email, true]] as const) {
+      await signIn(who);
+      const { props, html } = await page();
+      expect(props.site, who).toBeNull();
+      const c = siteCard(html);
+      expect(c, who).toContain("Google Analytics has not been read yet.");
+      expect(c, who).not.toContain("Last read");
+      expect(c.includes('data-choose="ga4"'), who).toBe(may);
+      expect(c, `${who}: any member may refresh`).toContain(">Refresh<");
+    }
+
+    // Without a Composio Google record and without a read there is no site card.
+    const bare = await newUser("rpnogoogle");
+    await saveBrand(bare.email, BRAND);
+    await signIn(bare.email);
+    expect((await page()).html).not.toContain('id="site-stats"');
+  });
+
+  it("X's fallback account is not repeated, and a known state is not also listed as a read that the next read fixes", () => {
+    expect(row(card({ x: { ...x, account: "X" } }), "x")).toMatch(/>X<\/p>/);
+    expect(row(card({ x: { ...x, account: "X" }, lang: "ar" }), "x")).toMatch(/>إكس<\/p>/);
+    expect(row(card({ x }), "x")).toContain("@oud");
+
+    const known: StoredSocial = { v: 2, at: NOW.toISOString(), parts: {}, errors: { instagram: "ig_not_professional", linkedin: "li_no_page_access", youtube: "read_failed" }, history: [] };
+    const notRead: NotReadItem[] = [{ platform: "instagram", reason: "read_failed" }, { platform: "linkedin", reason: "read_failed" }, { platform: "youtube", reason: "read_failed" }];
+    const h = card({ social: known, notRead });
+    expect(h).toContain("not a professional account");
+    expect(h).toContain("Connect a company page");
+    expect(h).not.toContain("Instagram: the last read gave no figures");
+    expect(h).not.toContain("LinkedIn page: the last read gave no figures");
+    expect(h, "any other failure is still listed").toContain("YouTube: the last read gave no figures");
+    const only = card({ social: { ...known, errors: { instagram: "ig_not_professional" } }, notRead: notRead.slice(0, 1) });
+    expect(only, "nothing else to list: no not-read block").not.toContain("data-not-read");
+    expect(card({ social: { ...known, errors: {} }, notRead: notRead.slice(0, 1) }), "a plain failure keeps its item").toContain("Instagram: the last read gave no figures");
   });
 });
 

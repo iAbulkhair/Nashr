@@ -13,6 +13,14 @@ type P = { id: string; name: string; kind: "oauth" | "key"; capabilities: string
 type C = { provider: string; meta?: Record<string, string>; connectedAt: string; needsReconnect?: string };
 
 /**
+ * The note after a Meta Page choice (`select_page`): a new Page is read at once only while the workspace's hourly reads
+ * last (rule 739), so a saved choice whose read waits says so; any other answer leaves no note.
+ */
+export function pageNote(g: Pick<AppDict["integrations"], "readLater">, j: { ok?: boolean; read?: boolean }): string {
+  return j.ok && j.read === false ? g.readLater : "";
+}
+
+/**
  * `manage` (owner, admin): connect, reconnect, disconnect, keys, page and ad-account choice, product import. Everyone
  * else sees the connections read-only and can still ask for an integration. Display only: the routes enforce it.
  */
@@ -72,9 +80,8 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
     const res = await fetch("/api/connect/meta", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "select_page", pageId }) });
     const j = await res.json().catch(() => ({}));
     setBusy(false);
-    // A new Page is read at once only while the workspace's hourly reads last (rule 739); otherwise the owner is told it waits.
     if (!j.ok) alert(j.error ?? res.status);
-    else setNote(j.read === false ? g.readLater : "");
+    else setNote(pageNote(g, j));
     await load();
     r.refresh();
   }

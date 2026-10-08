@@ -105,6 +105,8 @@ const fmt = (n: N | undefined) => (n == null ? "—" : NUM.format(n));
 /** Best first: views, then reach; a post with neither read sorts last. */
 const top = (posts: SocialPost[]) => [...posts].sort((a, b) => (b.views ?? -1) - (a.views ?? -1) || (b.reach ?? -1) - (a.reach ?? -1)).slice(0, 5);
 const pct = (n: number | null) => (n == null ? "—" : `${NUM.format(n * 100)}%`);
+/** The known states that keep their own line on the card (the not-professional line, the company page line). */
+const KNOWN_LINE: Partial<Record<NotReadPlatform, string>> = { instagram: "ig_not_professional", linkedin: "li_no_page_access" };
 /** Figures some readers fill and others leave null: shown only where read. */
 const EXTRA = ["pageViews", "watchMinutes", "followsGained", "followsLost"] as const satisfies readonly (keyof Totals)[];
 
@@ -152,12 +154,16 @@ export default function SocialStats({ lang, social, x = null, notRead = [], liNo
     return <>{fmt(cur)}{c && ` (${c})`} {label}</>;
   };
   const range = (r: { from: string; to: string }) => `${r.from} → ${r.to}`;
-  const head = (name: Platform | "x", account: string) => (
-    <p className="text-sm font-semibold" dir="auto">
-      {S.names[name]}
-      {account ? <> · {name === "instagram" ? <span dir="ltr">@{account}</span> : name === "x" ? <span dir="ltr">{account}</span> : account}</> : null}
-    </p>
-  );
+  // X's reader falls back to the account "X" when neither the username nor the stored account is known: that only repeats the name.
+  const head = (name: Platform | "x", account: string) => {
+    const shown = name === "x" && (account === "X" || account === S.names.x) ? "" : account;
+    return (
+      <p className="text-sm font-semibold" dir="auto">
+        {S.names[name]}
+        {shown ? <> · {name === "instagram" ? <span dir="ltr">@{shown}</span> : name === "x" ? <span dir="ltr">{shown}</span> : shown}</> : null}
+      </p>
+    );
+  };
   const postList = (posts: SocialPost[], name: Platform | "x") =>
     posts.length > 0 && (
       <div className="mt-3">
@@ -224,8 +230,12 @@ export default function SocialStats({ lang, social, x = null, notRead = [], liNo
       </p>
     );
   const choosePage = notRead.some((i) => i.platform === "linkedin" && i.reason === "choose_page");
-  const unconnected = notRead.filter((i) => i.reason === "not_connected");
-  const other = notRead.filter((i) => i.reason !== "not_connected");
+  // A personal Instagram account or a company page the member does not administer already says why on its own line;
+  // its `read_failed` item ("the next read tries again") would promise a fix a read cannot bring, so the card leaves it out.
+  // Dana's NOT READ block keeps it (not-read.ts).
+  const shownNotRead = notRead.filter((i) => !(i.reason === "read_failed" && KNOWN_LINE[i.platform] && v2?.errors?.[i.platform as Platform] === KNOWN_LINE[i.platform]));
+  const unconnected = shownNotRead.filter((i) => i.reason === "not_connected");
+  const other = shownNotRead.filter((i) => i.reason !== "not_connected");
   const refresh = canRefresh && !!socialVia;
   const refreshX = canRefreshX && xConnected;
   return (
@@ -255,7 +265,7 @@ export default function SocialStats({ lang, social, x = null, notRead = [], liNo
         </div>
       )}
       {(liNoPage || v2?.errors?.linkedin === "li_no_page_access") && !choosePage && <p className="mt-3 text-sm text-muted">{S.liNoPage}</p>}
-      {notRead.length > 0 && (
+      {shownNotRead.length > 0 && (
         <div data-not-read="" className="mt-4 border-t border-ink/10 pt-3">
           <p className="text-sm font-semibold">{S.notRead}</p>
           <ul className="mt-1 grid gap-1 text-sm text-muted">

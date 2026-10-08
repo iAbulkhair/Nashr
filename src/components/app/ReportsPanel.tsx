@@ -104,7 +104,9 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
       </div>
       <p className="mt-2 font-mono text-xs text-muted" dir="ltr">{k.window.from} → {k.window.to}</p>
       <PerformanceImport lang={lang} initial={perf} ads={connected.filter((p) => READS_ADS.includes(p))} canImport={perfImport} canDelete={perfDelete} />
-      {site && (site.ga || site.gsc) && <SiteStats lang={lang} site={site} properties={siteChoices ?? undefined} canChoose={canConnectors} canRefresh={canRead} />}
+      {/* A Composio Google record opens the card before its first read, or after a read that failed for both parts, so
+          the property choice and the refresh stay reachable (rules 734, 735). */}
+      {((site && (site.ga || site.gsc)) || siteChoices) && <SiteStats lang={lang} site={site} properties={siteChoices ?? undefined} canChoose={canConnectors} canRefresh={canRead} />}
       {(social || x || liNoPage || socialVia || xConnected || notRead.some((i) => !QUIET.includes(i.reason))) && (
         <SocialStats lang={lang} social={social} x={x} notRead={notRead} liNoPage={liNoPage} canRefresh={canRead} socialVia={socialVia} canRefreshX={canGenerate} xConnected={xConnected} noCredits={noCreditsText(t.generate, owner, topups)} />
       )}
