@@ -370,6 +370,7 @@ describe("who can reach Composio (rule 652)", () => {
       "src/lib/connectors/registry.ts",
       "src/lib/connectors/via-composio.ts",
       "src/lib/site-stats.ts",
+      "src/lib/social-read/facebook.ts",
       "src/lib/social-stats.ts",
     ]);
     expect(readFileSync("src/lib/connectors/composio-catalog.ts", "utf8")).not.toMatch(/^import /m);

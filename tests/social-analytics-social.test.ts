@@ -147,11 +147,12 @@ describe("the owner's refresh of the social results (rule 735)", () => {
     const none = await post("meta", { action: "sync_social" });
     expect(none.status).toBe(404);
     expect(await none.json()).toEqual({ ok: false, error: "not_connected" });
-    // A direct Meta record, a Facebook-only Composio record, a LinkedIn record with no page chosen, and a YouTube record
-    // (its reader comes with rule 740): none holds a part this path reads.
+    // A direct Meta record, a Facebook-only Composio record with no Page chosen (or an id that is not one), a LinkedIn
+    // record with no page chosen, and a YouTube record (its reader comes with rule 740): none holds a part this path reads.
     const held: [string, Connection][] = [
       ["meta", { provider: "meta", data: { access_token: "t" }, meta: { pageId: "1", igId: "1784" }, connectedAt: NOW.toISOString() }],
-      ["meta", via("meta", { facebook: "ca_fb" }, { pageId: "1" })],
+      ["meta", via("meta", { facebook: "ca_fb" })],
+      ["meta", via("meta", { facebook: "ca_fb" }, { pageId: "p-1" })],
       ["linkedin", via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc" })],
       ["youtube", via("youtube", { youtube: "ca_yt" }, { channelId: "UC1" })],
     ];
@@ -380,8 +381,10 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
     expect(holdsSocial("meta", igConn())).toBe(true);
     expect(holdsSocial("linkedin", liConn())).toBe(true);
     expect(holdsSocial("linkedin", igConn())).toBe(false);
-    // YouTube, TikTok and the Facebook Page hold nothing until their readers exist (rules 739, 740, 742).
-    expect(holdsSocial("meta", via("meta", { facebook: "ca_fb" }, { pageId: "1" }))).toBe(false);
+    // The Facebook Page holds once a Page is chosen (rule 739); YouTube and TikTok hold nothing until their readers exist
+    // (rules 740, 742).
+    expect(holdsSocial("meta", via("meta", { facebook: "ca_fb" }, { pageId: "1" }))).toBe(true);
+    expect(holdsSocial("meta", via("meta", { facebook: "ca_fb" }))).toBe(false);
     expect(holdsSocial("youtube", yt)).toBe(false);
     expect(READERS.youtube.provider).toBe("youtube");
     expect(READERS.facebook.provider).toBe("meta");

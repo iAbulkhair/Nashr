@@ -47,6 +47,8 @@ const NEW_READS = {
   instagram: ["INSTAGRAM_GET_USER_INSIGHTS", "INSTAGRAM_GET_IG_USER_MEDIA", "INSTAGRAM_GET_IG_MEDIA_INSIGHTS"],
   // The page's own views (rule 748) join the page's totals and followers.
   linkedin: ["LINKEDIN_GET_COMPANY_INFO", "LINKEDIN_GET_SHARE_STATS", "LINKEDIN_GET_NETWORK_SIZE", "LINKEDIN_GET_ORG_PAGE_STATS"],
+  // The Facebook Page's insights, its posts and each post's insights (rule 739).
+  facebook: ["FACEBOOK_GET_PAGE_INSIGHTS", "FACEBOOK_GET_PAGE_POSTS", "FACEBOOK_GET_POST_INSIGHTS"],
   // The ad account's previous spend (rule 733): Snap serves only spend at the account level.
   snapchat: ["SNAPCHAT_GET_AD_ACCOUNTS_STATS"],
 } as const;
@@ -62,11 +64,20 @@ describe("social results are reads only (rule 663)", () => {
     expect(TOOLKITS.snapchat.write).toEqual({});
     // LinkedIn's page statistics take exactly the spec's arguments (B3): the page, the range and the granularity.
     expect(TOOLKITS.linkedin.read.LINKEDIN_GET_ORG_PAGE_STATS).toEqual(["organization", "timeRangeStart", "timeRangeEnd", "timeGranularityType"]);
+    // The Facebook Page's three reads take exactly the spec's arguments (B1), and the toolkit's writes are still the two posts.
+    expect(TOOLKITS.facebook.read).toEqual({
+      FACEBOOK_LIST_MANAGED_PAGES: ["fields", "limit"],
+      FACEBOOK_GET_PAGE_INSIGHTS: ["page_id", "metrics", "period", "since", "until"],
+      FACEBOOK_GET_PAGE_POSTS: ["page_id", "fields", "limit"],
+      FACEBOOK_GET_POST_INSIGHTS: ["post_id", "metrics", "period"],
+    });
+    expect(Object.keys(TOOLKITS.facebook.write).sort()).toEqual(["FACEBOOK_CREATE_PHOTO_POST", "FACEBOOK_CREATE_POST"]);
   });
   it("refuses a new read slug through composioWrite", async () => {
     await expect(composioWrite("s1", "instagram", "INSTAGRAM_GET_IG_USER_MEDIA", { ig_user_id: "1" }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
     await expect(composioWrite("s1", "snapchat", "SNAPCHAT_GET_AD_ACCOUNTS_STATS", { ad_account_id: "x" }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
     await expect(composioWrite("s1", "linkedin", "LINKEDIN_GET_ORG_PAGE_STATS", { organization: "urn:li:organization:42" }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
+    for (const slug of NEW_READS.facebook) await expect(composioWrite("s1", "facebook", slug, { page_id: "1" }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
     expect(calls).toEqual([]);
   });
 });
@@ -237,7 +248,8 @@ describe("Instagram results (rules 664-667, 669)", () => {
 
   it("skips a Meta record without Instagram, and refuses a workspace with nothing to read", async () => {
     const u = await newUser("signoig");
-    const fbOnly = via("meta", { facebook: "ca_fb" }, { pageId: "1" });
+    // Facebook only and no Page chosen: the Page's reader (rule 739) holds nothing either.
+    const fbOnly = via("meta", { facebook: "ca_fb" });
     liAnswers();
     const snap = await syncSocial(u.email, { meta: fbOnly, linkedin: liConn() }, NOW);
     expect(snap.parts.linkedin).toBeDefined();
@@ -261,8 +273,9 @@ describe("daily social read (rule 673)", () => {
     const u = await newUser("sdue");
     await saveConnection(u.email, { provider: "meta", data: { access_token: "t" }, meta: { igId: "1784" }, connectedAt: NOW.toISOString() });
     expect(await syncSocialIfDue(u.email, NOW)).toBe(false);
-    // Facebook only: nothing to read, so no daily failure line.
-    await saveConnection(u.email, via("meta", { facebook: "ca_fb" }, { pageId: "1" }));
+    // Facebook only with no Page chosen: nothing to read, so no daily failure line. With a Page it is read (rule 739,
+    // tests/social-analytics-platforms.test.ts).
+    await saveConnection(u.email, via("meta", { facebook: "ca_fb" }));
     expect(await syncSocialIfDue(u.email, NOW)).toBe(false);
     expect(calls).toEqual([]);
 

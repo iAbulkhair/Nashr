@@ -9,8 +9,8 @@
  * below list no write tool at all, so nothing here can create, edit, pause or fund an ad, or change a property (the
  * founder's rule of 2026-10-05: ads are read and analysed, never published or edited; rule 653).
  *
- * Instagram and LinkedIn page results are reads (rule 663, spec 2026-10-08-social-results): no tool here posts, replies,
- * likes or edits on the strength of them.
+ * Instagram, Facebook Page and LinkedIn page results are reads (rules 663 and 739, specs 2026-10-08-social-results and
+ * 2026-10-08-social-analytics-reports B1): no tool here posts, replies, likes or edits on the strength of them.
  *
  * WhatsApp and YouTube are drafts only (rule 657): WhatsApp's one write submits a message template to Meta's review and
  * no tool sends a message; YouTube's one write uploads a video whose privacyStatus is pinned to "private" in `fixed`.
@@ -35,7 +35,14 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
     provider: "meta",
     authEnv: "COMPOSIO_AUTH_FACEBOOK",
     // `fields` is always sent: the tool's default includes each Page's access_token, which Thakeen must never receive.
-    read: { FACEBOOK_LIST_MANAGED_PAGES: ["fields", "limit"] },
+    // The Page's results (rule 739): its daily insights, its own posts and each post's two insights, with constant
+    // metrics and fields (social-read/facebook.ts); no field list here or there names access_token.
+    read: {
+      FACEBOOK_LIST_MANAGED_PAGES: ["fields", "limit"],
+      FACEBOOK_GET_PAGE_INSIGHTS: ["page_id", "metrics", "period", "since", "until"],
+      FACEBOOK_GET_PAGE_POSTS: ["page_id", "fields", "limit"],
+      FACEBOOK_GET_POST_INSIGHTS: ["post_id", "metrics", "period"],
+    },
     write: { FACEBOOK_CREATE_POST: ["page_id", "message", "published"], FACEBOOK_CREATE_PHOTO_POST: ["page_id", "url", "message", "published"] },
   },
   instagram: {

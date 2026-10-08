@@ -8,6 +8,8 @@ import { composioRead } from "./connectors/composio";
 import { accountOf, at, isComposio, listOf, num, pick } from "./connectors/composio-shape";
 import { ReconnectRequired, getFreshConnection, refusedToken } from "./connectors/fresh";
 import { getConnection, type Connection } from "./connectors/store";
+import { DAY_MS, EMPTY_TOTALS, SOCIAL_PUB_KEY, beforeDeadline, busy, dateOf, day, late, rangeBefore, refused, splitDays } from "./social-read/common";
+import { holdsFb, readFacebook } from "./social-read/facebook";
 
 /**
  * Social platform results, read through Composio for Dana's reports and the Reports page
@@ -17,11 +19,8 @@ import { getConnection, type Connection } from "./connectors/store";
  * never from a request. Captions are the owner's or the public's text: cleaned, capped and handed to the model only as data.
  */
 
-/**
- * Post ids Thakeen published for this workspace on a platform whose results are read (publish-once.ts), so a result can
- * say «من ذكين». No TTL: the wrapper cannot refresh a set's TTL, one id is about 20 bytes, and wipeAccount deletes it.
- */
-export const SOCIAL_PUB_KEY = (scope: string) => `socialpub:${scope}`;
+/** The shared helpers live in social-read/common.ts so each platform's reader can use them without a cycle. */
+export { EMPTY_TOTALS, SOCIAL_PUB_KEY, beforeDeadline, rangeBefore, splitDays };
 export const SOCIAL_KEY = (scope: string) => `socialstats:${scope}`;
 const DAYS = 28;
 const MAX_POSTS = 30;
@@ -46,7 +45,6 @@ export const PLATFORMS: readonly Platform[] = ["instagram", "facebook", "linkedi
 export type Range = { from: string; to: string };
 /** A part's figures over its window. `null` is "not read", never zero (rule 737). A rate is worked out where it is shown. */
 export type Totals = { views: N; reach: N; engagements: N; clicks: N; likes: N; comments: N; shares: N; pageViews: N; followsGained: N; followsLost: N; watchMinutes: N };
-export const EMPTY_TOTALS: Totals = Object.freeze({ views: null, reach: null, engagements: null, clicks: null, likes: null, comments: null, shares: null, pageViews: null, followsGained: null, followsLost: null, watchMinutes: null });
 /** One post; its figures are its lifetime totals on the read date. */
 export type SocialPost = { id: string; date: string; type: string; caption: string; url: string | null; views: N; reach: N; likes: N; comments: N; shares: N; saved: N; fromThakeen: boolean };
 export type PlatformPart = {
@@ -103,44 +101,18 @@ export class PartlyRead extends ReconnectRequired {
   }
 }
 
-const day = (d: Date) => d.toISOString().slice(0, 10);
-const DAY_MS = 864e5;
-const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
-
-/** Throws `deadline` once the shared deadline has come (rule 741): every reader calls it before each Composio read. */
-export function beforeDeadline(deadline: number): void {
-  if (Date.now() >= deadline) throw new Error("deadline");
-}
-const late = (e: unknown) => e instanceof Error && e.message === "deadline";
 /** A Composio read asked only before the deadline. */
 async function ask(deadline: number, ...a: Parameters<typeof composioRead>) {
   beforeDeadline(deadline);
   return composioRead(...a);
 }
 
-/** The same number of whole days as `r`, ending the day before it starts (rule 733): the previous period. */
-export function rangeBefore(r: Range): Range {
-  const start = Date.parse(r.from);
-  const len = Math.round((Date.parse(r.to) - start) / DAY_MS) + 1;
-  return { from: day(new Date(start - len * DAY_MS)), to: day(new Date(start - DAY_MS)) };
-}
-
-/**
- * Rows of one read split into the window's days and the same number of days just before it (rule 733): one call for
- * both periods, split in code. A row without a date (YYYY-MM-DD), or dated in neither period, counts in neither.
- */
-export function splitDays<T extends { day: string }>(rows: T[], window: Range): { cur: T[]; prev: T[] } {
-  const before = rangeBefore(window);
-  const within = (d: string, r: Range) => ISO_DAY.test(d) && d >= r.from && d <= r.to;
-  return { cur: rows.filter((r) => within(r.day, window)), prev: rows.filter((r) => within(r.day, before)) };
-}
-/** A platform's timestamp as its date (YYYY-MM-DD), or "" when it does not start with one. */
-const dateOf = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : "");
 const errCode = (e: unknown) => (e instanceof Error && /^[a-z_]+$/.test(e.message) ? e.message : "read_failed");
-/** The adapter's 401 (composio.ts statusOf): only a new connection fixes it, so it is never retried or hidden. */
-const refused = (e: unknown) => e instanceof Error && / 401:/.test(e.message);
-/** States the owner fixes on the platform, not by reconnecting: written to the snapshot and never thrown. */
-const KNOWN = new Set(["ig_not_professional", "li_no_page_access"]);
+/**
+ * States the owner fixes on the platform, not by reconnecting: written to the snapshot and never thrown. `fb_no_insights`:
+ * the Facebook Page's insights need the `read_insights` permission the connected app does not hold (rule 739).
+ */
+const KNOWN = new Set(["ig_not_professional", "li_no_page_access", "fb_no_insights"]);
 /** LinkedIn refuses a page the member does not administer, or an app without organization access, with a 403. */
 const denied = (e: unknown) => e instanceof Error && /403|forbidden|access.?denied/i.test(e.message);
 /**
@@ -148,9 +120,6 @@ const denied = (e: unknown) => e instanceof Error && /403|forbidden|access.?deni
  * network failure, a timeout or an unknown error is a failed read, and the last good read stays.
  */
 const NOT_PROFESSIONAL = /professional|business account|nonexisting field|unsupported get request/i;
-/** A timeout or a rate limit: asking again for fewer metrics only spends more of the same budget. */
-const busy = (e: unknown) =>
-  e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError" || / 429:|rate.?limit|composio_rate_limited/i.test(e.message));
 
 const TYPES = ["IMAGE", "VIDEO", "CAROUSEL_ALBUM"] as const;
 const METRICS = ["views", "reach", "likes", "comments", "saved", "shares"] as const;
@@ -351,13 +320,14 @@ export type SocialReader = {
 };
 const notYet: SocialReader = { provider: "meta", holds: () => false, read: async () => { throw new Error("not_connected"); } };
 /**
- * Every platform's reader. Instagram: a Composio Meta record with the Instagram part and its id. LinkedIn: a Composio
- * record with the chosen company page. The Facebook Page (rule 739), YouTube (740) and TikTok (742) hold nothing until
- * their readers exist.
+ * Every platform's reader. Instagram: a Composio Meta record with the Instagram part and its id. The Facebook Page (rule
+ * 739, social-read/facebook.ts): a Composio Meta record with the Facebook part and the page chosen for publishing.
+ * LinkedIn: a Composio record with the chosen company page. YouTube (740) and TikTok (742) hold nothing until their
+ * readers exist.
  */
 export const READERS: Record<Platform, SocialReader> = {
   instagram: { provider: "meta", holds: (c) => !!(c && isComposio(c) && c.data.instagram && c.meta?.igId), read: readIg },
-  facebook: { ...notYet, provider: "meta" },
+  facebook: { provider: "meta", holds: holdsFb, read: readFacebook },
   linkedin: { provider: "linkedin", holds: (c) => !!(c && isComposio(c) && c.meta?.liOrg), read: readLi },
   youtube: { ...notYet, provider: "youtube" },
   tiktok: { ...notYet, provider: "tiktok" },
@@ -440,8 +410,8 @@ export async function syncSocial(scope: string, conns: Partial<Record<SocialProv
 
 /**
  * Daily: refresh when a record holds a part and the last v2 read is older than 20 hours; a snapshot from before v2 is due
- * at once (rule 737). A record waiting for the owner to reconnect is left alone; a Facebook-only Meta record has nothing
- * to read, so it adds no daily failure line. `force` reads at once whatever the last read's age: after a connect or a new
+ * at once (rule 737). A record waiting for the owner to reconnect is left alone; a Facebook-only Meta record with its page
+ * chosen is read like the others (rule 673 as amended by 739), and one without a page holds nothing and adds no line. `force` reads at once whatever the last read's age: after a connect or a new
  * page, so the card does not wait for tomorrow. The four records and the snapshot are read in one round.
  */
 export async function syncSocialIfDue(scope: string, now = new Date(), force = false): Promise<boolean> {
@@ -504,6 +474,7 @@ export async function socialDataBlock(scope: string, now = new Date()): Promise<
     "- Followers are a count on the read date, not growth.",
     `- Each post's figures (views, reach, likes, comments, shares, saved) are its lifetime totals on the read date, not only within the part's from/to. top_posts lists at most ${BLOCK_POSTS}, best by views then reach; posts_read is how many posts were read.`,
     "- engagement_rate is a fraction of views, not a percent: 0.0733 means 7.33%. On the LinkedIn page, views are impressions, likes are reactions and pageViews are visits to the page itself.",
+    "- On the Facebook Page, reach adds up each day's unique viewers (one person seen on three days counts three times), engagements are engagements with its posts and clicks are actions on the Page.",
     "- null is a figure that was not read: unknown, never zero. from_thakeen marks a post Thakeen published.",
     ...(age > SOCIAL_STALE_DAYS ? [`- The read is ${age} days old: label these figures with the read date.`] : []),
   ].join("\n");
