@@ -263,6 +263,7 @@ describe("the workspace file index is bounded", () => {
     for (let i = 1; i < 60; i++) await put(`f${i}.md`);
     const throttled = await put("too-fast.md");
     expect(throttled.status).toBe(429);
+    expect(throttled.headers.get("retry-after")).toBe("3600");
     expect((await throttled.json()).error).toBe("slow_down");
   });
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth";
-import { allow } from "@/lib/rate";
+import { allow, retryLater } from "@/lib/rate";
 import { SUGGESTION_MAX, SUGGESTION_MIN } from "@/lib/changelog";
 import { addSuggestion, cleanText } from "@/lib/wishlist";
 
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   if (text.length < SUGGESTION_MIN) return NextResponse.json({ ok: false, error: "too_short" }, { status: 400 });
   if (text.length > SUGGESTION_MAX) return NextResponse.json({ ok: false, error: "too_long" }, { status: 400 });
   // Counted only for a well-formed suggestion, so a typo does not use up one of the day's five.
-  if (!(await allow(`wishsuggest:${u.email}`, SUGGESTIONS_PER_DAY, 86400))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
+  if (!(await allow(`wishsuggest:${u.email}`, SUGGESTIONS_PER_DAY, 86400))) return retryLater({ ok: false, error: "slow_down" }, 86400);
   await addSuggestion(u.email, text, b.lang === "en" ? "en" : "ar");
   return NextResponse.json({ ok: true });
 }

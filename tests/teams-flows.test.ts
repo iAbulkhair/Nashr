@@ -457,6 +457,7 @@ describe("invite, preview and accept", () => {
     for (let i = 0; i < 20; i++) expect((await inviteReq({ email: `bad-${i}`, role: "member" })).status).toBe(400);
     const limited = await inviteReq({ email: freshEmail(), role: "member" });
     expect(limited.status, "the 21st attempt from one account in a day").toBe(429);
+    expect(limited.headers.get("retry-after"), "the daily bucket refused (rule 680)").toBe("86400");
     expect(await limited.json()).toEqual({ error: "rate_limited" });
 
     signOut();

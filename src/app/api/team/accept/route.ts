@@ -40,13 +40,13 @@ export async function POST(req: Request) {
   const ip = clientIp(req);
 
   if (b.name === undefined && b.password === undefined) {
-    if (!(await allow(`team:peek:ip:${ip}`, PEEKS, 900))) return rateLimited();
+    if (!(await allow(`team:peek:ip:${ip}`, PEEKS, 900))) return rateLimited(900);
     const preview = await peekInvite(token);
     if (!preview) return Response.json({ error: "invalid" }, { status: 400 });
     return Response.json({ preview });
   }
 
-  if (!(await allow(`team:accept:ip:${ip}`, ACCEPTS, 900))) return rateLimited();
+  if (!(await allow(`team:accept:ip:${ip}`, ACCEPTS, 900))) return rateLimited(900);
   const res = await acceptInvite(token, { name: b.name, password: b.password, lang: b.lang });
   if (!res.ok) return teamFail(res);
   // Whoever was signed in on this device is signed out: from here the browser is the new member.

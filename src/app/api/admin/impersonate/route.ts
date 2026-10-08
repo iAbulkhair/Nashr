@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { CAPS, db, pushCapped } from "@/lib/db";
 import { sessionCookie, type Session } from "@/lib/auth";
-import { allow, clientIp, IMPERSONATE_STOP_PER_IP, IMPERSONATE_STOP_WINDOW } from "@/lib/rate";
+import { allow, clientIp, IMPERSONATE_STOP_PER_IP, IMPERSONATE_STOP_WINDOW, retryLater } from "@/lib/rate";
 
 /**
  * POST /api/admin/impersonate (stop): restore the founder's own session saved when impersonation started.
@@ -15,7 +15,7 @@ import { allow, clientIp, IMPERSONATE_STOP_PER_IP, IMPERSONATE_STOP_WINDOW } fro
  */
 export async function POST(req: Request) {
   if (!(await allow(`impstop:ip:${clientIp(req)}`, IMPERSONATE_STOP_PER_IP, IMPERSONATE_STOP_WINDOW))) {
-    return NextResponse.json({ error: "slow_down" }, { status: 429 });
+    return retryLater({ error: "slow_down" }, IMPERSONATE_STOP_WINDOW);
   }
   const lang = (await req.formData().catch(() => null))?.get("lang") === "en" ? "en" : "ar";
   const jar = await cookies();

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { registerClient } from "@/lib/oauth";
-import { allow, clientIp, OAUTH_REGISTER_PER_IP, OAUTH_REGISTER_WINDOW } from "@/lib/rate";
+import { allow, clientIp, OAUTH_REGISTER_PER_IP, OAUTH_REGISTER_WINDOW, retryLater } from "@/lib/rate";
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "*" };
 export async function POST(req: Request) {
   if (!(await allow(`oauth:register:ip:${clientIp(req)}`, OAUTH_REGISTER_PER_IP, OAUTH_REGISTER_WINDOW)))
-    return NextResponse.json({ error: "slow_down", error_description: "too many registrations" }, { status: 429, headers: { ...cors, "Retry-After": String(OAUTH_REGISTER_WINDOW) } });
+    return retryLater({ error: "slow_down", error_description: "too many registrations" }, OAUTH_REGISTER_WINDOW, cors);
   try {
     const b = await req.json();
     const c = await registerClient(b);

@@ -24,8 +24,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // throw after the charge leaves a durable job, not yet refunded, that the next poll or a sweep settles: the answer
   // points the inbox at it and never says credits were returned.
   try {
-    const { status, body } = mediaResponse(await renderImage(u, t, brand, model, { deadline }));
-    return NextResponse.json(body, { status });
+    const { status, body, headers } = mediaResponse(await renderImage(u, t, brand, model, { deadline }));
+    return NextResponse.json(body, { status, headers });
   } catch (e) {
     console.error("image route", errCode(e));
     const { status, body } = await startThrew(u, t.id, "image");
