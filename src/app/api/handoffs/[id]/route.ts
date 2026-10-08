@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { forbid } from "@/lib/roles";
-import { allow, HANDOFF_READS_PER_HOUR } from "@/lib/rate";
+import { allow, HANDOFF_READS_PER_HOUR, retryLater } from "@/lib/rate";
 import { getHandoff, handoffView, isHandoffId } from "@/lib/handoffs";
 
 /**
@@ -15,7 +15,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!u) return NextResponse.json({ ok: false, error: "auth" }, { status: 401 });
   const no = forbid(u, "read");
   if (no) return no;
-  if (!(await allow(`handoffread:${u.email}`, HANDOFF_READS_PER_HOUR, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
+  if (!(await allow(`handoffread:${u.email}`, HANDOFF_READS_PER_HOUR, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
   const { id } = await ctx.params;
   if (!isHandoffId(id)) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   const scope = sc(u);

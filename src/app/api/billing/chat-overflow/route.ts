@@ -3,7 +3,7 @@ import { currentUser, saveUser } from "@/lib/auth";
 import { forbid } from "@/lib/roles";
 import { withUserLock } from "@/lib/credits";
 import { chatStatus, overflowAvailable } from "@/lib/chat-allowance";
-import { allow } from "@/lib/rate";
+import { allow, retryLater } from "@/lib/rate";
 
 /**
  * POST {on: boolean}: the owner's choice for when the month's chat messages run out (src/lib/chat-allowance.ts). Off
@@ -17,7 +17,7 @@ export async function POST(req: Request) {
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const no = forbid(u, "billing");
   if (no) return no;
-  if (!(await allow(`chatovf:${u.email}`, 30, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
+  if (!(await allow(`chatovf:${u.email}`, 30, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
   const b = (await req.json().catch(() => ({}))) as { on?: unknown };
   if (typeof b.on !== "boolean") return NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
   if (!overflowAvailable(u)) return NextResponse.json({ ok: false, error: "trial" }, { status: 409 });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { allow, clientIp, sameSecret } from "@/lib/rate";
+import { allow, clientIp, sameSecret, retryLater } from "@/lib/rate";
 import { createAdminSession, destroyAdminSession } from "@/lib/auth";
 
 /**
@@ -9,7 +9,7 @@ import { createAdminSession, destroyAdminSession } from "@/lib/auth";
  */
 export async function POST(req: Request) {
   // Five attempts per 15 minutes per IP: the key must not be guessable by brute force.
-  if (!(await allow(`adminkey:${clientIp(req)}`, 5, 900))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
+  if (!(await allow(`adminkey:${clientIp(req)}`, 5, 900))) return retryLater({ ok: false, error: "slow_down" }, 900);
   const { key } = (await req.json().catch(() => ({}))) as { key?: unknown };
   if (typeof key !== "string" || !sameSecret(key, process.env.WAITLIST_ADMIN_KEY)) {
     return NextResponse.json({ ok: false }, { status: 401 });

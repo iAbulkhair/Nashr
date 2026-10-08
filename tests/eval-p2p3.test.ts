@@ -115,6 +115,7 @@ describe("chat thumbs belong to the brand the chat ran in", () => {
     expect((await thumb()).status).toBe(200);
     const refused = await thumb();
     expect(refused.status).toBe(429);
+    expect(refused.headers.get("retry-after")).toBe("3600");
     expect(await refused.json()).toMatchObject({ error: "slow_down" });
     expect(await db.lrange(`fblog:${u.email}`, 0, -1), "the refused thumb wrote nothing").toHaveLength(1);
   });

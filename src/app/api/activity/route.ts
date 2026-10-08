@@ -3,7 +3,7 @@ import { currentUser, sc } from "@/lib/auth";
 import { forbid } from "@/lib/roles";
 import { isAgentId } from "@/lib/agents";
 import { ACTIVITY_PAGE, isActivityCursor, isActivityKind, listActivity, publicActivity } from "@/lib/activity";
-import { ACTIVITY_READS_PER_HOUR, allow } from "@/lib/rate";
+import { ACTIVITY_READS_PER_HOUR, allow, retryLater } from "@/lib/rate";
 
 /**
  * GET ?agent&kind&before — one page of the caller's activity log, newest first, for the Activity page's filters and
@@ -17,7 +17,7 @@ export async function GET(req: Request) {
   if (!u) return NextResponse.json({ ok: false, error: "auth" }, { status: 401 });
   const no = forbid(u, "read");
   if (no) return no;
-  if (!(await allow(`activitylist:${u.email}`, ACTIVITY_READS_PER_HOUR, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429, headers: { "Retry-After": "3600" } });
+  if (!(await allow(`activitylist:${u.email}`, ACTIVITY_READS_PER_HOUR, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
   const q = new URL(req.url).searchParams;
   const agent = q.get("agent") || undefined, kind = q.get("kind") || undefined, before = q.get("before") || undefined;
   if (agent !== undefined && !isAgentId(agent)) return NextResponse.json({ ok: false, error: "bad_agent" }, { status: 400 });

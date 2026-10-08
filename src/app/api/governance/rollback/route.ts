@@ -3,7 +3,7 @@ import { currentUser, sc } from "@/lib/auth";
 import { historyView, isRevisionId, rollbackGov } from "@/lib/governance";
 import { byOf } from "@/lib/actor";
 import { forbid } from "@/lib/roles";
-import { allow, GOV_ROLLBACKS_PER_HOUR } from "@/lib/rate";
+import { allow, GOV_ROLLBACKS_PER_HOUR, retryLater } from "@/lib/rate";
 
 /**
  * POST {id, confirmAutoHandoff?} — put the governance settings back as they were before revision `id`. A restore that
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   if (!u) return NextResponse.json({ ok: false, error: "auth" }, { status: 401 });
   const no = forbid(u, "governance.write");
   if (no) return no;
-  if (!(await allow(`govrollback:${u.email}`, GOV_ROLLBACKS_PER_HOUR, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
+  if (!(await allow(`govrollback:${u.email}`, GOV_ROLLBACKS_PER_HOUR, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
   const b = ((await req.json().catch(() => ({}))) ?? {}) as { id?: unknown; confirmAutoHandoff?: unknown };
   if (!isRevisionId(b.id)) return NextResponse.json({ ok: false, error: "bad_id" }, { status: 400 });
   // A restore that would switch Majed's auto-run back on needs the same explicit confirmation as a save.
