@@ -9,6 +9,7 @@ import Sidebar from "@/components/app/Sidebar";
 import TrialBanner from "@/components/app/TrialBanner";
 import InstallHint from "@/components/app/InstallHint";
 import LangToggle from "@/components/LangToggle";
+import Wordmark from "@/components/Wordmark";
 import LimitModal from "@/components/app/LimitModal";
 import { getBrand } from "@/lib/brand";
 import { sc } from "@/lib/auth";
@@ -44,7 +45,7 @@ export default async function AppLayout({ children, params }: { children: React.
       <div className="min-h-screen bg-ground">
         <header className="border-b-[1.5px] border-ink bg-ground text-ink">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-            <Link href={`/${lang}`} className="font-display text-xl font-bold">{t.appName}</Link>
+            <Link href={`/${lang}`} className="font-display text-xl font-bold"><Wordmark lang={lang} name={t.appName} /></Link>
             <LangToggle lang={lang} />
           </div>
         </header>

@@ -92,6 +92,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/oauth/token": "public",
   // A booking tool's webhook (Reem B2a): the token in the path locates the link and the provider's signature over the body proves the sender; rate limited per IP and per link.
   "POST /api/secretary/booking/[token]": "public",
+  // The staging site's door (rule 675): 404 off staging, rate limited per IP, the access code in the form body is the credential (sameSecret).
+  "POST /api/staging-access": "public",
 
   "POST /api/mcp": "bearer",
   // Reem's tick: a signed QStash call (src/lib/qstash.ts) or the CRON_SECRET bearer, rate limited per IP first.
@@ -265,6 +267,7 @@ const READS: Record<string, Gate> = {
   "GET /api/secretary/feed/[token]": "public-read", // the token in the path is the credential; rate limited per IP and per link
   "GET /api/oauth/meta": "public-read",
   "GET /api/oauth/resource": "public-read",
+  "GET /api/health": "public-read", // the release probe's build identity (rule 676): { ok, commit, built } only; rate limited per IP, and still answers when the limiter's store is down
   "OPTIONS /api/mcp": "public-read",
   "OPTIONS /api/oauth/meta": "public-read",
   "OPTIONS /api/oauth/register": "public-read",
