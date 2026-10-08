@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
 import { csvSafe } from "@/lib/admin-stats";
 import { db } from "@/lib/db";
-import { allow, clientIp } from "@/lib/rate";
+import { allow, clientIp, retryLater } from "@/lib/rate";
 
 const LIST_KEY = "waitlist:entries";
 const EMAIL_SET = "waitlist:emails";
@@ -13,7 +13,7 @@ const EMAIL_SET = "waitlist:emails";
 
 export async function POST(req: Request) {
   // Public, unauthenticated write: throttled per IP like every other open endpoint.
-  if (!(await allow(`waitlist:ip:${clientIp(req)}`, 10, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
+  if (!(await allow(`waitlist:ip:${clientIp(req)}`, 10, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
   let body: { email?: string; company?: string; industry?: string; lang?: string };
   try {
     body = await req.json();

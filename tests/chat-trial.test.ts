@@ -160,6 +160,7 @@ describe("chat ceilings are the account's own, by plan (rule 331)", () => {
     await db.set(`rate:chat:d:${u.email}`, CHAT_CAPS.trial.day, 86400);
     const res = await chatRoute.POST(json("/api/chat", "POST", { text: "مرحبا", stream: true }));
     expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after"), "the day's window (rule 680)").toBe("86400");
     const body = (await res.json()) as { error: string; retry: string; message: { content: string } };
     expect([body.error, body.retry]).toEqual(["slow_down", "day"]);
     expect(body.message.content).toContain(`(${CHAT_CAPS.trial.day})`);

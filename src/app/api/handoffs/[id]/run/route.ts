@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { forbid } from "@/lib/roles";
-import { allow, HANDOFF_RUNS_PER_HOUR } from "@/lib/rate";
+import { allow, HANDOFF_RUNS_PER_HOUR, retryLater } from "@/lib/rate";
 import { byOf } from "@/lib/actor";
 import { track } from "@/lib/track";
 import { ModelPaused, modelState } from "@/lib/model";
@@ -28,7 +28,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!u) return NextResponse.json({ ok: false, error: "auth" }, { status: 401 });
   const no = forbid(u, "generate");
   if (no) return no;
-  if (!(await allow(`handoffrun:${u.email}`, HANDOFF_RUNS_PER_HOUR, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
+  if (!(await allow(`handoffrun:${u.email}`, HANDOFF_RUNS_PER_HOUR, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
   const { id } = await ctx.params;
   if (!isHandoffId(id)) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   const b = (await req.json().catch(() => null)) as { item?: unknown } | null;

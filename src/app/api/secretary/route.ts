@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { forbid } from "@/lib/roles";
-import { allow } from "@/lib/rate";
+import { allow, retryLater } from "@/lib/rate";
 import { SEC_READS_PER_HOUR, agendaFor, createItem, listDeleted, listDone } from "@/lib/secretary";
 
 /**
@@ -14,7 +14,7 @@ import { SEC_READS_PER_HOUR, agendaFor, createItem, listDeleted, listDone } from
 export async function GET(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-  if (!(await allow(`sec:read:${u.email}`, SEC_READS_PER_HOUR, 3600))) return NextResponse.json({ ok: false, error: "too_many" }, { status: 429 });
+  if (!(await allow(`sec:read:${u.email}`, SEC_READS_PER_HOUR, 3600))) return retryLater({ ok: false, error: "too_many" }, 3600);
   const scope = sc(u);
   const view = new URL(req.url).searchParams.get("view");
   if (view === "done") return NextResponse.json({ ok: true, items: await listDone(scope) });
@@ -36,6 +36,10 @@ export async function POST(req: Request) {
   if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
   // "owner" is Reem's word for a person in the app (not an agent); `login` records which one.
   const r = await createItem(u, body as Record<string, unknown>, { actor: "owner", via: "web", source: "owner", login: u.actor?.email });
-  if (!r.ok) return NextResponse.json({ ok: false, error: r.error, ...(r.field ? { field: r.field } : {}) }, { status: r.status });
+  if (!r.ok) {
+    const body = { ok: false, error: r.error, ...(r.field ? { field: r.field } : {}) };
+    // The day's create allowance is the one 429 here; it says when the next item fits.
+    return r.status === 429 && r.retryAfter ? retryLater(body, r.retryAfter) : NextResponse.json(body, { status: r.status });
+  }
   return NextResponse.json({ ok: true, item: r.item });
 }

@@ -19,10 +19,11 @@ export function proxy(req: NextRequest) {
   // untouched. The language and x-pathname logic below is for pages only.
   if (pathname.startsWith("/api/")) return crossSiteRefusal(req) ?? NextResponse.next();
 
-  // Root: pick language from cookie, then Accept-Language, default Arabic.
-  if (pathname === "/") {
+  // Root: pick language from cookie, then Accept-Language, default Arabic. `/app` is the installed app's start URL
+  // (src/app/manifest.ts, rule 681): the same choice, into the app.
+  if (pathname === "/" || pathname === "/app") {
     const url = req.nextUrl.clone();
-    url.pathname = `/${pickLang(req)}`;
+    url.pathname = pathname === "/" ? `/${pickLang(req)}` : `/${pickLang(req)}/app`;
     url.search = search;
     return NextResponse.redirect(url, 307);
   }
@@ -37,4 +38,4 @@ export function proxy(req: NextRequest) {
 // anyway: Next buffers the body of each request the proxy sees and waits for the whole upload, which would undo the
 // webhook and cron routes' 64 KB caps. An exact entry is written `name/*$`; a prefix needs a character after its slash,
 // as isCrossSiteExempt reads it. Next needs a literal here, so the list is repeated; tests/csrf.test.ts pins the two.
-export const config = { matcher: ["/", "/:lang/app/:path*", "/api/((?!mcp/*$|oauth/token/*$|oauth/register/*$|media/hook/[^/]|secretary/booking/[^/]|billing/paymob/[^/]|cron/[^/]).*)"] };
+export const config = { matcher: ["/", "/app", "/:lang/app/:path*", "/api/((?!mcp/*$|oauth/token/*$|oauth/register/*$|media/hook/[^/]|secretary/booking/[^/]|billing/paymob/[^/]|cron/[^/]).*)"] };

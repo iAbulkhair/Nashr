@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { SIGNED_IN_PER_DAY, getTool, toolLang } from "@/lib/tools";
 import { meter } from "@/lib/usage";
 import { db } from "@/lib/db";
-import { allow, clientIp } from "@/lib/rate";
+import { allow, clientIp, retryLater } from "@/lib/rate";
 import { currentUser } from "@/lib/auth";
 import { MODEL_BUDGET, anthropic, modelState, until } from "@/lib/model";
 import { deadlineFor } from "@/lib/media/keys";
@@ -22,7 +22,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ tool: string }
   // Every caller gets a ceiling. Signing up is free and unthrottled beyond five accounts per IP per hour, so leaving
   // authenticated callers unlimited made this the cheapest way to spend our model budget: no credits, no trial check.
   const [bucket, limit] = u ? [`tool:u:${u.email}`, SIGNED_IN_PER_DAY] : [`tool:${clientIp(req)}`, FREE_PER_DAY];
-  if (!(await allow(bucket, limit, 86400))) return NextResponse.json({ ok: false, error: "rate_limited", limit }, { status: 429 });
+  if (!(await allow(bucket, limit, 86400))) return retryLater({ ok: false, error: "rate_limited", limit }, 86400);
   const b = (await req.json().catch(() => ({}))) as Record<string, string>;
   const inputs = t.fields.map((f) => `${f.label.en}: ${(b[f.name] ?? "").toString().slice(0, 600)}`).join("\n");
   const lang = toolLang(b.lang);

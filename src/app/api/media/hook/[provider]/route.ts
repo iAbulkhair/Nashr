@@ -1,5 +1,5 @@
 import { NextResponse, after } from "next/server";
-import { allow, clientIp } from "@/lib/rate";
+import { allow, clientIp, retryLater } from "@/lib/rate";
 import { advance, jobForHook } from "@/lib/media/jobs";
 import { mediaDeps } from "@/lib/media/registry";
 import { providerConfigured } from "@/lib/media/config";
@@ -46,7 +46,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
   // fal answers in the request and never calls back.
   if ((provider !== "kie" && provider !== "higgsfield") || !providerConfigured(provider)) return NextResponse.json({ ok: false }, { status: 404 });
   // Per IP only: a global bucket spent before validation would let anyone starve real callbacks (spec A30).
-  if (!(await allow(`mhook:${provider}:${clientIp(req)}`, HOOK_PER_IP.max, HOOK_PER_IP.windowS))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
+  if (!(await allow(`mhook:${provider}:${clientIp(req)}`, HOOK_PER_IP.max, HOOK_PER_IP.windowS))) return retryLater({ ok: false, error: "slow_down" }, HOOK_PER_IP.windowS);
   let body: unknown;
   try {
     const text = await readCapped(req, MAX_BODY_BYTES);

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { CAPS, db, pushCapped } from "@/lib/db";
 import { isAdmin } from "@/lib/auth";
-import { allow, clientIp } from "@/lib/rate";
+import { allow, clientIp, retryLater } from "@/lib/rate";
 import { APPLICATIONS, newId, type Application } from "@/lib/partners";
 import { PARTNER_TERMS_VERSION } from "@/lib/partner-rules";
 
@@ -14,7 +14,7 @@ const text = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, ma
  */
 export async function POST(req: Request) {
   // Public, unauthenticated write: throttled per IP.
-  if (!(await allow(`affiliates:ip:${clientIp(req)}`, 10, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
+  if (!(await allow(`affiliates:ip:${clientIp(req)}`, 10, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const name = text(b.name, 80), email = text(b.email, 120);
   if (!email || !name) return NextResponse.json({ ok: false }, { status: 400 });
