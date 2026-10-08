@@ -41,6 +41,12 @@ const ECONOMY: ModelEntry = {
   auto: false,
   pick: true,
 };
+/** A catalog entry the routing may not offer (neither `auto` nor `pick`): internal only, outside the floor test's set. */
+const INTERNAL: ModelEntry = { ...ECONOMY, id: "test-internal-1", label: { ar: "نموذج داخلي تجريبي", en: "Test internal model" }, tier: "standard", auto: false, pick: false };
+/** An offered entry without tool use: it may generate, never run chat. */
+const NOTOOLS: ModelEntry = { ...ECONOMY, id: "test-notools-1", label: { ar: "نموذج بلا أدوات", en: "Test model without tools" }, tier: "standard", caps: { ...ECONOMY.caps, tools: false } };
+const EXTRA: readonly ModelEntry[] = [ECONOMY, INTERNAL, NOTOOLS];
+const extraById = (id: unknown) => EXTRA.find((e) => e.id === id);
 /** Ids that are not exactly a catalog id: they must price like the surface's default, never cheaper, never NaN. */
 const NOT_IDS: unknown[] = ["claude-unknown-9", "constructor", "__proto__", "toString", "hasOwnProperty", "valueOf", "", " claude-opus-5", "CLAUDE-OPUS-5", undefined, null, 5, {}, []];
 
@@ -49,7 +55,7 @@ async function withEconomy() {
   vi.resetModules();
   vi.doMock("@/lib/models/catalog", async (orig) => {
     const m = await orig<typeof import("@/lib/models/catalog")>();
-    return { ...m, MODELS: [...m.MODELS, ECONOMY], modelById: (id: unknown) => (id === ECONOMY.id ? ECONOMY : m.modelById(id)) };
+    return { ...m, MODELS: [...m.MODELS, ...EXTRA], modelById: (id: unknown) => extraById(id) ?? m.modelById(id) };
   });
   return import("@/lib/models/credits");
 }
@@ -195,8 +201,12 @@ describe("estimateFor: one batch, cold cache, at the model's catalog rate", () =
     }
   });
 
-  it("refuses a model that is not exactly a catalog id rather than pricing it as Opus", () => {
-    for (const id of NOT_IDS) expect(() => estimateFor("social", id as string), String(id)).toThrow(/bad_estimate_model/);
+  it("refuses a model that is not exactly a catalog id rather than pricing it as Opus; an explicit undefined is the default", () => {
+    for (const id of NOT_IDS.filter((x) => x !== undefined)) expect(() => estimateFor("social", id as string), String(id)).toThrow(/bad_estimate_model/);
+    // The same rule as generateBatch's `model`: left out or undefined, the default; anything else must be a catalog id.
+    expect(estimateFor("social", undefined as unknown as string)).toBe(estimateFor("social", PRICED_AT.generate));
+    expect(estimateBatch("social", { cache: "cold", model: undefined })).toEqual(estimateBatch("social", { cache: "cold" }));
+    expect(() => estimateBatch("social", { cache: "cold", model: null as unknown as string })).toThrow(/bad_estimate_model/);
   });
 });
 
@@ -380,6 +390,22 @@ describe("the chat allowance per tier: a message counts chatUnitsFor(model), com
     for (const id of ["claude-unknown-9", "constructor", "__proto__", ""]) await expect(reserveChatTurn(u, id), id).rejects.toThrow(/unknown_model/);
     expect(await msgs(u)).toBe(0);
   });
+
+  it("only an offered model with tools runs chat: an internal entry and one without tools are refused before counting", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/models/catalog", async (orig) => {
+      const m = await orig<typeof import("@/lib/models/catalog")>();
+      return { ...m, MODELS: [...m.MODELS, ...EXTRA], modelById: (id: unknown) => extraById(id) ?? m.modelById(id) };
+    });
+    const a = await import("@/lib/chat-allowance");
+    const u = await owner();
+    await expect(a.reserveChatTurn(u, INTERNAL.id)).rejects.toThrow(/^model_not_offered:test-internal-1$/);
+    await expect(a.reserveChatTurn(u, NOTOOLS.id)).rejects.toThrow(/^model_not_chat:test-notools-1$/);
+    expect(await msgs(u)).toBe(0);
+    // An offered economy model with tools is accepted and counts 1.
+    expect(await a.reserveChatTurn(u, ECONOMY.id)).toMatchObject({ ok: true, mode: "included", units: 1, model: ECONOMY.id });
+    expect(await msgs(u)).toBe(1);
+  });
 });
 
 // ---- charge then refund through the real pipeline, per tier ----
@@ -396,7 +422,7 @@ async function load() {
   vi.doMock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => "paused" }));
   vi.doMock("@/lib/models/catalog", async (orig) => {
     const m = await orig<typeof import("@/lib/models/catalog")>();
-    return { ...m, MODELS: [...m.MODELS, ECONOMY], modelById: (id: unknown) => (id === ECONOMY.id ? ECONOMY : m.modelById(id)) };
+    return { ...m, MODELS: [...m.MODELS, ...EXTRA], modelById: (id: unknown) => extraById(id) ?? m.modelById(id) };
   });
   const seen = { charges: [] as number[], onceCharges: [] as number[], refunds: [] as number[] };
   vi.doMock("@/lib/credits", async (orig) => {
@@ -469,6 +495,25 @@ describe("a charge then a refund returns exactly the charged credits, for each t
     expect([seen.charges, seen.onceCharges, await credits(u.email)]).toEqual([[], [], before]);
   });
 
+  it("model: undefined is the default (10), the same as leaving it out", async () => {
+    const { generateBatch, seen } = await load();
+    const u = await brandOwner("mc-undef");
+    await generateBatch(u, u.email, { type: "social", source: "chat", via: "chat", model: undefined });
+    expect([seen.charges.at(-1), seen.refunds.at(-1)]).toEqual([10, 10]);
+  });
+
+  it("only an offered model may generate: an internal entry is refused before any read or charge; tools are not needed", async () => {
+    const { generateBatch, seen } = await load();
+    const u = await brandOwner("mc-internal");
+    const before = await credits(u.email);
+    await expect(generateBatch(u, u.email, { type: "social", source: "chat", via: "chat", model: INTERNAL.id })).rejects.toThrow(/^model_not_offered:test-internal-1$/);
+    expect([seen.charges, seen.onceCharges, await credits(u.email)]).toEqual([[], [], before]);
+    // Generation calls no tools: an offered model without them is priced at its tier (standard, x0.5) and runs.
+    const r = await generateBatch(u, u.email, { type: "social", source: "chat", via: "chat", model: NOTOOLS.id });
+    expect(!r.ok && r.reason).toBe("failed");
+    expect([seen.charges.at(-1), seen.refunds.at(-1), await credits(u.email)]).toEqual([5, 5, before]);
+  });
+
   it("a type outside the model's allow-list is refused before the charge (article on a Sonnet misses the floor)", async () => {
     const { generateBatch, seen } = await load();
     const u = await brandOwner("mc-allow");
@@ -485,5 +530,9 @@ describe("a charge then a refund returns exactly the charged credits, for each t
     expect(src).toContain("chargeOnce(user.email,cost,meta,opts.once)");
     expect(src).toContain("charge(user.email,cost,meta)");
     expect(src).toContain("refund(user.email,cost,receipt)");
+    // What is reported is what was charged: the price, or a reused hold's credits (chargeOnce reuses only an equal one).
+    expect(src).toContain('constcharged="hold"inpaid?paid.hold.credits:cost;');
+    expect(src).toContain("count:tasks.length,credits:charged}");
+    expect(src).toContain("receipt,cost:charged,agent,gov}");
   });
 });

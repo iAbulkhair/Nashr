@@ -93,11 +93,19 @@ export type BatchOpts = {
    */
   commit?: (tasks: Task[]) => Promise<unknown>;
   /**
-   * The model the batch is generated on and charged for (spec 2026-10-08-straitly-model-routing, section 6): the batch
-   * costs its base credits times the model's tier multiplier (`creditsFor`, src/lib/models/credits.ts), one value for
-   * the charge, the refund, the activity row and `BatchDone.cost`. Default `PRICED_AT.generate` (Opus 5, x1: today's
-   * price). Exactly a catalog id that may run the type, or the batch throws before anything is read or charged. The
-   * routing (plan Task 5) sets it and passes the same model to `generate()`; until then no caller sets it.
+   * The model the batch is charged for (spec 2026-10-08-straitly-model-routing, section 6): the batch costs its base
+   * credits times the model's tier multiplier (`creditsFor`, src/lib/models/credits.ts). Left out or `undefined`:
+   * `PRICED_AT.generate` (Opus 5, x1: today's price). Anything else must be exactly a catalog id the routing may offer
+   * (`auto` or `pick`) that may run the type, or the batch throws (`unknown_model`, `model_not_offered`,
+   * `model_task_not_allowed`) before anything is read or charged.
+   *
+   * The invariant: what the balance lost, the activity row's `credits` and `BatchDone.cost` are one number, the credits
+   * finally charged. A fresh charge charges the batch's price; a claim's hold (`once`) is reused only when it holds exactly
+   * that price, and one of another price is given back and the price charged in the same save (`chargeOnce`); a failure
+   * gives back what was charged (`refund` of that number, or `refundOnce` of the hold).
+   *
+   * The caller must pass the same model to the call it prices: today `generate()` always runs Opus 5, so no caller sets
+   * this before the routing (plan Task 5) wires both.
    */
   model?: string;
 };
@@ -190,11 +198,14 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   // calls this; here it is an invariant, before any read or charge, so no caller can buy one item of a batch type at
   // its pro-rata price.
   if (opts.count !== undefined && !isDraftType(type)) throw new Error(`not_draft_type:${type}`);
-  // The model the batch is charged for: exactly a catalog id, allowed to run the type (its `tasks`, set where the type
-  // misses the margin floor at the model's tier). Checked in code before any read or charge, never left to the routing.
+  // The model the batch is charged for: undefined is the default; otherwise exactly a catalog id the routing may offer,
+  // allowed to run the type (its `tasks`, set where the type misses the margin floor at the model's tier). Checked in code
+  // before any read or charge, never left to the routing.
   const model = opts.model === undefined ? PRICED_AT.generate : opts.model;
   const entry = modelById(model);
   if (!entry) throw new Error("unknown_model");
+  // Only a model the routing may offer, the set the margin-floor test covers (tests/pricing-floor.test.ts).
+  if (!entry.auto && !entry.pick) throw new Error(`model_not_offered:${entry.id}`);
   if (!modelAllowsTask(entry, type)) throw new Error(`model_task_not_allowed:${entry.id}:${type}`);
   // A scheduled run records its own outcome (`recordRun`), so a refusal at its charge is one row there, not two.
   const scheduled = opts.via === "weekly" || opts.via === "routine";
@@ -213,8 +224,8 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   const missing = await missingData(type, scope);
   if (missing) return refuse({ ok: false, reason: "missing_data", missing });
   const base = opts.count ? countCost(type, opts.count) : TASK_COST[type];
-  // The batch's price at its model's tier, computed once: the charge, the refund (`refund` below, or the claim's hold that
-  // `chargeOnce` stores and `refundOnce` gives back), the activity row and `BatchDone.cost` all read this one value.
+  // The batch's price at its model's tier, computed once. It is what is charged: `charge`, or `chargeOnce`, which reuses a
+  // claim's hold only when it holds exactly this price and otherwise swaps it for this price in one save.
   const cost = creditsFor(base, model, "generate");
   // The agent that owns the type, computed in code: never taken from the request or the model.
   const agent = agentForTask(type).id;
@@ -231,6 +242,9 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   if (!paid.ok) return refuse({ ok: false, reason: "no_credits", need: cost, credits: paid.credits }, await refused("no_credits"));
   user.credits = paid.credits;
   let receipt: BatchDone["receipt"];
+  // What this batch is paid with: its price, or a reused hold's credits (equal to it: `chargeOnce` swaps any other). The
+  // activity row and `BatchDone.cost` report this, so they always say what the balance lost.
+  const charged = "hold" in paid ? paid.hold.credits : cost;
   // A reused hold (a claim this batch paid in an earlier, killed run) was warned about by the run that took it.
   // The hold keeps the top-up receipt of the run that paid (`from`, rule 442), so the receipt names the same packs.
   if ("hold" in paid) receipt = { ok: true, credits: paid.credits, scope: paid.hold.scope, agent: paid.hold.agent, month: paid.hold.month, ...(paid.hold.from ? { from: paid.hold.from } : {}) };
@@ -274,9 +288,9 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
 
   // After the guard: the work is saved and paid for, so a failed log write must not refund it. The batch's one activity
   // row and, when other agents reviewed it, one row per reviewer.
-  const done: Activity = { at: createdAt, kind: "generated", agent, by: await who(), via: opts.via, type, tasks: tasks.map((t) => t.id), count: tasks.length, credits: cost };
+  const done: Activity = { at: createdAt, kind: "generated", agent, by: await who(), via: opts.via, type, tasks: tasks.map((t) => t.id), count: tasks.length, credits: charged };
   await recordActivity(scope, [done, ...crossReviewRows(tasks, createdAt, opts.via)]);
   // The judge scores against what the agent had, and against the count the owner asked for.
   judgeLater(scope, user.email, brand, tasks, opts.count, { ...ground, via: opts.via });
-  return { ok: true, tasks, credits: user.credits, receipt, cost, agent, gov };
+  return { ok: true, tasks, credits: user.credits, receipt, cost: charged, agent, gov };
 }

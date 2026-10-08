@@ -46,7 +46,11 @@ export type ChatStatus = {
 };
 
 type Refusal = { ok: false; error: "chat_allowance" | "chat_credits"; status: ChatStatus; credits: number; need?: number };
-/** `units`: the messages this turn counts (`chatUnitsFor(model)`), on `key`; `model`: the catalog id they were computed for. */
+/**
+ * `units`: the messages this turn counts (`chatUnitsFor(model)`), on `key`; `model`: the catalog id they were computed
+ * for. The caller must run the turn on that same model (`chat()` calls `CHAT_MODEL` today; plan Task 5 wires the pick to
+ * both), or the count and the ceiling would price another model.
+ */
 type Reserved = { ok: true; key: string; units: number; model: string; status: ChatStatus };
 export type ChatGate = (Reserved & { mode: "included" }) | (Reserved & { mode: "overflow"; hold: number }) | Refusal;
 export type ChatReserved = Extract<ChatGate, { ok: true }>;
@@ -84,12 +88,16 @@ export async function chatStatus(u: Pick<User, "email" | "plan" | "chatOverflow"
  * the reservation is taken back, and the turn goes ahead only when the owner turned overflow on and the balance covers the
  * most the message can cost (`chatHoldFor(model)`), counted by the same units on the month's overflow counter; otherwise
  * `chat_allowance` (paused) or `chat_credits` (overflow on, too few credits). `model` is the turn's chat model (default
- * `PRICED_AT.chat`). An id that is not exactly a catalog id (`unknown_model`), or a chat multiplier that is not a finite
- * number above 0 (`chat_allowance_unpriced`), throws before anything is counted.
+ * `PRICED_AT.chat`). An id that is not exactly a catalog id (`unknown_model`), an entry the routing may not offer (neither
+ * `auto` nor `pick`: `model_not_offered`), one without tool use (`model_not_chat`), or a chat multiplier that is not a
+ * finite number above 0 (`chat_allowance_unpriced`) throws before anything is counted.
  */
 export async function reserveChatTurn(u: User, model: string = PRICED_AT.chat): Promise<ChatGate> {
   const entry = modelById(model);
   if (!entry) throw new Error("unknown_model");
+  // Only a model the routing may offer (the set the floor tests cover), and one that can run chat's tools.
+  if (!entry.auto && !entry.pick) throw new Error(`model_not_offered:${entry.id}`);
+  if (!entry.caps.tools) throw new Error(`model_not_chat:${entry.id}`);
   const units = chatUnitsFor(entry.id);
   const hold = chatHoldFor(entry.id);
   const key = counterKey(u);

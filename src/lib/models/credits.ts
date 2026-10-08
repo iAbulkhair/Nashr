@@ -34,7 +34,7 @@ export function tierMultiplier(model: string, surface: Surface): number {
 
 /**
  * What `base` credits cost on `model`: base times the multiplier, rounded up, never less than 1. The product is rounded to
- * six decimals before rounding up, so a floating-point excess (10 x 0.3 = 3.0000000000000004) is never charged as a whole
+ * six decimals before rounding up, so a floating-point excess (50 x 1.1 = 55.00000000000001) is never charged as a whole
  * extra credit. A base that is not a finite number of at least 0 throws (`invalid_cost`, as `charge` does): a bad cost
  * is never charged as 1.
  */

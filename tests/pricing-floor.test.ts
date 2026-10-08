@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
-  MARGIN_FLOOR, ONBOARD_EXTRA_BRAND_COST, PLAN_CREDITS, PLAN_PRICE_SAR, PRICES_INCLUDE_VAT, cheapestCreditUsd, creditRevenueUsd, maxCostPerCreditUsd,
+  CHAT_ALLOWANCE, CHAT_TURN_MAX_USD, MARGIN_FLOOR, ONBOARD_EXTRA_BRAND_COST, PLAN_CREDITS, PLAN_PRICE_SAR, PRICES_INCLUDE_VAT, SELF_SERVE_PLANS as SELF_SERVE,
+  cheapestCreditUsd, creditRevenueUsd, maxCostPerCreditUsd,
 } from "@/lib/pricing";
-import { ASSUME, ESTIMATE_MODELS, ITEM_SIZE, draftCredits, estimateBatch, estimateDraft, mediaPromptUsd, onboardEstimateUsd } from "@/lib/task-costs";
-import { DRAFT_TYPES, TASK_COST, TASK_COUNT, TASK_TYPES, type TaskType } from "@/lib/tasks";
-import { hasRate } from "@/lib/usage";
+import { ASSUME, ESTIMATE_MODELS, ITEM_SIZE, draftCredits, estimateBatch, estimateDraft, estimateFor, mediaPromptUsd, onboardEstimateUsd } from "@/lib/task-costs";
+import { DRAFT_TYPES, TASK_COST, TASK_COUNT, TASK_TYPES, isTaskType, type TaskType } from "@/lib/tasks";
+import { costUsd, hasRate } from "@/lib/usage";
 import { ROUTINES } from "@/lib/routines";
 import { countCost } from "@/lib/generate-batch";
 import { MEDIA_MODELS } from "@/lib/media-catalog";
@@ -15,11 +16,7 @@ import { agentForTask } from "@/lib/agents";
 import { MODELS, modelAllowsTask } from "@/lib/models/catalog";
 import { PRICED_AT } from "@/lib/models/tiers";
 import { chatHoldFor, chatTurnMaxUsd, chatUnitsFor, creditsFor, tierMultiplier } from "@/lib/models/credits";
-import { estimateFor } from "@/lib/task-costs";
-import { CHAT_ALLOWANCE, CHAT_TURN_MAX_USD, SELF_SERVE_PLANS as SELF_SERVE } from "@/lib/pricing";
 import { CHAT_FIRST_MIN_OUT } from "@/lib/chat-budget";
-import { costUsd } from "@/lib/usage";
-import { isTaskType } from "@/lib/tasks";
 
 /**
  * Rule 241: the 60% margin floor is a test, not a comment. What one credit may cost us is at most 40% of the cheapest
