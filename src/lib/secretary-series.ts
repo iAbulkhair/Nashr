@@ -4,6 +4,7 @@ import { listBrands } from "./brands";
 import { brandFingerprint, brandTag, pushNotifs, withBrand, type Notif } from "./notifications";
 import { sendEmail } from "./notify";
 import { appOrigin } from "./origin";
+import { COPY, notice, paragraphs } from "../emails";
 import { pmap } from "./parallel";
 import { SEC_ID, SEC_KEYS, SEC_PURGE_BATCH, SERIES_ID, audit, fail, stateOf, withLock, zoneFor, type SecFail, type Who } from "./secretary";
 import { arCount, formatWhen, zoneDay, type SecItem } from "./secretary-agenda";
@@ -127,7 +128,7 @@ export async function warnSeries(scope: string, now = Date.now()): Promise<numbe
     try {
       const [brandProfile, accountProfile] = await Promise.all([db.get<{ emails?: string }>(`profile:${scope}`), db.get<{ emails?: string }>(`profile:${email}`)]);
       const pref = brandProfile?.emails ?? accountProfile?.emails ?? "all";
-      if (pref !== "none") await sendEmail(email, title, `${text.body}\n\n${appOrigin()}${href}`);
+      if (pref !== "none") await sendEmail(email, title, `${text.body}\n\n${appOrigin()}${href}`, notice({ lang, title, paragraphs: paragraphs(text.body), cta: { href: `${appOrigin()}${href}`, label: COPY[lang].notice.todo } }));
     } catch (e) {
       console.error("sec series warning email failed", e instanceof Error ? e.name : "error");
     }

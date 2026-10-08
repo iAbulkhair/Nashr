@@ -2,14 +2,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/admin-fetch";
 import { TITLE_MAX, WISH_STATUSES, type Bi, type WishArea, type WishStatus } from "@/lib/changelog";
+import { useConfirm } from "./ConfirmDialog";
 
 type Item = { id: string; title: Bi; area: WishArea | null; status: WishStatus; votes: number; seeded: boolean; hidden: boolean };
 type Sugg = { id: string; email: string; text: string; lang: "ar" | "en"; at: string };
 
 const AREAS: WishArea[] = ["agents", "onboarding", "content", "channels", "commerce", "ads", "reports", "team", "billing", "integrations", "app"];
 const S = {
-  en: { queue: "Suggestions to review", queueNote: "Only you see these. Promote writes a public title in both languages; the suggester's text is never published as is.", none: "No suggestions waiting.", promote: "Promote", dismiss: "Dismiss", newItem: "Add a wish yourself", titleAr: "Public title (Arabic)", titleEn: "Public title (English)", area: "Area", noArea: "No area", publish: "Publish to the wishlist", cancel: "Cancel", items: "Wishlist items", votes: "Votes", status: "Status", seeded: "in code", promoted: "promoted", hidden: "hidden", hide: "Hide", del: "Delete", restore: "Show again", confirmDel: "Delete this wish and its votes?", loading: "Loading…", failed: "Failed", statuses: { planned: "Planned", in_progress: "In progress", shipped: "Shipped" } },
-  ar: { queue: "اقتراحات للمراجعة", queueNote: "لا يراها غيرك. الترقية تكتب عنواناً عاماً باللغتين؛ نص المقترح لا يُنشر كما هو.", none: "لا اقتراحات بانتظار المراجعة.", promote: "رقِّ إلى القائمة", dismiss: "تجاهل", newItem: "أضف أمنية بنفسك", titleAr: "العنوان العام (عربي)", titleEn: "العنوان العام (إنجليزي)", area: "المجال", noArea: "بلا مجال", publish: "انشر في قائمة الأمنيات", cancel: "إلغاء", items: "عناصر القائمة", votes: "الأصوات", status: "الحالة", seeded: "في الكود", promoted: "مُرقّاة", hidden: "مخفية", hide: "إخفاء", del: "حذف", restore: "إظهار", confirmDel: "حذف هذه الأمنية وأصواتها؟", loading: "جارٍ التحميل…", failed: "فشل", statuses: { planned: "مخطط", in_progress: "قيد العمل", shipped: "أُطلق" } },
+  en: { queue: "Suggestions to review", queueNote: "Only you see these. Promote writes a public title in both languages; the suggester's text is never published as is.", none: "No suggestions waiting.", promote: "Promote", dismiss: "Dismiss", newItem: "Add a wish yourself", titleAr: "Public title (Arabic)", titleEn: "Public title (English)", area: "Area", noArea: "No area", publish: "Publish to the wishlist", cancel: "Cancel", back: "Go back", items: "Wishlist items", votes: "Votes", status: "Status", seeded: "in code", promoted: "promoted", hidden: "hidden", hide: "Hide", del: "Delete", restore: "Show again", confirmDel: "Delete this wish and its votes?", loading: "Loading…", failed: "Failed", statuses: { planned: "Planned", in_progress: "In progress", shipped: "Shipped" } },
+  ar: { queue: "اقتراحات للمراجعة", queueNote: "لا يراها غيرك. الترقية تكتب عنواناً عاماً باللغتين؛ نص المقترح لا يُنشر كما هو.", none: "لا اقتراحات بانتظار المراجعة.", promote: "رقِّ إلى القائمة", dismiss: "تجاهل", newItem: "أضف أمنية بنفسك", titleAr: "العنوان العام (عربي)", titleEn: "العنوان العام (إنجليزي)", area: "المجال", noArea: "بلا مجال", publish: "انشر في قائمة الأمنيات", cancel: "إلغاء", back: "رجوع", items: "عناصر القائمة", votes: "الأصوات", status: "الحالة", seeded: "في الكود", promoted: "مُرقّاة", hidden: "مخفية", hide: "إخفاء", del: "حذف", restore: "إظهار", confirmDel: "حذف هذه الأمنية وأصواتها؟", loading: "جارٍ التحميل…", failed: "فشل", statuses: { planned: "مخطط", in_progress: "قيد العمل", shipped: "أُطلق" } },
 } as const;
 
 function PromoteForm({ lang, initial, suggestionId, onDone, onCancel }: { lang: "ar" | "en"; initial?: Partial<Bi>; suggestionId?: string; onDone: (msg: string) => void; onCancel?: () => void }) {
@@ -49,6 +50,8 @@ export default function WishlistPanel({ lang }: { lang: "ar" | "en" }) {
   const [data, setData] = useState<{ suggestions: Sugg[]; items: Item[] } | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
+  // Above the early return below: hooks run on every render.
+  const [ask, confirmDialog] = useConfirm();
   const load = useCallback(async () => {
     const j = await adminFetch("/api/admin/wishlist").then((r) => r.json()).catch(() => ({}));
     if (j.ok) setData({ suggestions: j.suggestions, items: j.items });
@@ -109,13 +112,14 @@ export default function WishlistPanel({ lang }: { lang: "ar" | "en" }) {
                 <td className="p-1 text-end">
                   {w.hidden
                     ? <button onClick={() => act({ action: "restore", id: w.id })} className="btn btn-secondary btn-xs">{L.restore}</button>
-                    : <button onClick={() => { if (w.seeded || confirm(L.confirmDel)) void act({ action: "delete", id: w.id }); }} className="btn btn-danger btn-xs">{w.seeded ? L.hide : L.del}</button>}
+                    : <button onClick={async () => { if (w.seeded || (await ask({ title: w.title[lang], message: L.confirmDel, confirmLabel: L.del, cancelLabel: L.back, destructive: true }))) void act({ action: "delete", id: w.id }); }} className="btn btn-danger btn-xs">{w.seeded ? L.hide : L.del}</button>}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </section>
+      {confirmDialog}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "crypto";
 import { NextResponse } from "next/server";
+import { resetPassword } from "@/emails";
 import { getLogin, normalizeEmail } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { mailReady, sendEmail } from "@/lib/notify";
@@ -45,9 +46,10 @@ export async function POST(req: Request) {
     // The token rides in the URL fragment (#t=), never a query string: browsers never send a fragment to a server, so it
     // stays out of server, proxy and edge logs and the Referer header (src/components/app/AuthForm.tsx ResetForm). Rule 546.
     const link = `${appOrigin()}/${lang}/app/reset#t=${token}`;
+    // The text part stays as it was; the HTML part (src/emails/reset-password.ts) says the same in the shared layout.
     await sendEmail(target.email, lang === "ar" ? "إعادة تعيين كلمة المرور في ذكين" : "Reset your Thakeen password", lang === "ar"
       ? `مرحباً،\n\nوصلنا طلب لإعادة تعيين كلمة مرور حسابك في ذكين. افتح الرابط التالي خلال ساعة واحدة:\n\n${link}\n\nإذا لم تطلب ذلك فتجاهل هذه الرسالة، ولن يتغير شيء.`
-      : `Hello,\n\nWe received a request to reset your Thakeen password. Open this link within one hour:\n\n${link}\n\nIf you did not ask for this, ignore this email and nothing changes.`);
+      : `Hello,\n\nWe received a request to reset your Thakeen password. Open this link within one hour:\n\n${link}\n\nIf you did not ask for this, ignore this email and nothing changes.`, resetPassword({ lang, link }));
   }
   return NextResponse.json({ ok: true, mail });
 }

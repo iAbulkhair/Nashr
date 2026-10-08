@@ -36,6 +36,7 @@ import { AUTO_CLOSE_RESULT, addDays, computeAgenda, daysBetween, endOfZoneDay, f
 import { dateFormat } from "./dates";
 import { DEFAULT_ZONE, ZONE_IDS, type Zone } from "./zones";
 import { appOrigin } from "./origin";
+import { COPY, notice, paragraphs } from "../emails";
 
 /** The wrap's local time, and in Ramadan (after Taraweeh). */
 export const EVENING_AT = { hh: 18, mm: 0 } as const;
@@ -211,7 +212,7 @@ export async function eveningWrap(user: User, now = Date.now()): Promise<"sent" 
   if (process.env.RESEND_API_KEY) {
     const pref = ((await db.get<{ emails?: string }>(`profile:${scope}`)) ?? (await db.get<{ emails?: string }>(`profile:${user.email}`)) ?? {}).emails ?? "all";
     const subject = user.lang === "ar" ? `ملخص المساء — ${w.day}${brand ? ` — «${brand}»` : ""}` : `Evening wrap — ${w.day}${brand ? ` — “${brand}”` : ""}`;
-    if (pref === "all") await sendEmail(user.email, subject, `${title}\n\n${body}\n\n${appOrigin()}/${user.lang}/app/todo`);
+    if (pref === "all") await sendEmail(user.email, subject, `${title}\n\n${body}\n\n${appOrigin()}/${user.lang}/app/todo`, notice({ lang: user.lang, title, paragraphs: paragraphs(body), cta: { href: `${appOrigin()}/${user.lang}/app/todo`, label: COPY[user.lang].notice.todo } }));
   }
   return "sent";
 }
