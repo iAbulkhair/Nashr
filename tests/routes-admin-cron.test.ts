@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { jar, json, newUser, params, settle, signIn, signOut } from "./helpers/session";
+import { jar, json, markVerified, newUser, params, settle, signIn, signOut } from "./helpers/session";
 import { createUser, currentUser, getUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 
@@ -48,6 +48,7 @@ beforeAll(async () => {
   vi.stubEnv("ADMIN_EMAILS", "founder@test.example");
   customer = await newUser("customer");
   founder = await createUser({ email: "founder@test.example", name: "Founder", phone: "", password: "abc12345", lang: "ar" });
+  founder = await markVerified(founder.email);
 });
 
 describe("founder console routes (rule 6)", () => {

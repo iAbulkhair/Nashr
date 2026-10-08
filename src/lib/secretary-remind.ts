@@ -17,13 +17,13 @@
  * - One account's or one scope's failure never stops another's delivery (`Promise.allSettled`; the zone read falls back
  *   to Riyadh; the index rescore is logged, not thrown).
  * - A deadline: no account is started and no lease taken after it; what is left stays due for the next sweep.
- * - A suspended account, and a brand that is not active (archived), get no scheduled work: their scopes are looked at
+ * - A suspended account, an unverified owner, and a brand that is not active (archived), get no scheduled work: their scopes are looked at
  *   again `SUSPENDED_HOLD_MS` later and their reminders wait in `sec:due`, delivered late once they are active again.
  * - Free: no credits, no model call. The text is the item's title, which is the owner's record.
  */
 import { db } from "./db";
 import { pmap } from "./parallel";
-import { getUser, type User } from "./auth";
+import { emailVerified, getUser, type User } from "./auth";
 import { listBrands, scopeFor } from "./brands";
 import { SEC_KEYS, fireReminder, zoneFor } from "./secretary";
 import { formatWhen, type SecItem } from "./secretary-agenda";
@@ -152,11 +152,12 @@ async function sweepAccount(email: string, scopes: string[], now: number, deadli
     await Promise.all(scopes.map((s) => db.zrem(SEC_KEYS.dueScopes, s)));
     return tally;
   }
-  // A suspended account, and a brand that is not active, get no scheduled work: their reminders wait, looked at again
-  // later (one brand-list read per account, not one per scope).
+  // A suspended account, an owner who has not verified the address yet (rule 755), and a brand that is not active get no
+  // scheduled work: their reminders wait, looked at again later (one brand-list read per account, not one per scope).
   const active = new Set(brands.filter((b) => b.status === "active").map((b) => scopeFor(email, b.id)));
-  const held = user.suspended ? scopes : scopes.filter((s) => !active.has(s));
-  const live = user.suspended ? [] : scopes.filter((s) => active.has(s));
+  const hold = user.suspended || !emailVerified(user);
+  const held = hold ? scopes : scopes.filter((s) => !active.has(s));
+  const live = hold ? [] : scopes.filter((s) => active.has(s));
   if (held.length) {
     await Promise.all(held.map((s) => db.zadd(SEC_KEYS.dueScopes, now + SUSPENDED_HOLD_MS, s)));
     tally.held += held.length;

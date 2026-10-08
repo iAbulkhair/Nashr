@@ -2,8 +2,9 @@ import Link from "next/link";
 import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
+import { safeNext } from "@/lib/safe-next";
 import { appDict } from "@/lib/app-i18n";
-import { currentUser, isFounderActor, trialDaysLeft } from "@/lib/auth";
+import { currentUser, currentUserUnverified, isFounderActor, trialDaysLeft } from "@/lib/auth";
 import Sidebar from "@/components/app/Sidebar";
 import TrialBanner from "@/components/app/TrialBanner";
 import InstallHint from "@/components/app/InstallHint";
@@ -15,8 +16,12 @@ import { sc } from "@/lib/auth";
 import { can } from "@/lib/roles";
 import { topupsSold } from "@/lib/pricing";
 
-/** Paths reachable without a session. `/join` accepts a team invite (the token is in the URL fragment). */
-const PUBLIC = ["/login", "/signup", "/forgot", "/reset", "/admin", "/join"];
+/**
+ * Paths reachable without a session. `/join` accepts a team invite (the token is in the URL fragment). `/verify` is the
+ * page an owner who has not proved the address lands on: `currentUser()` reads that owner as signed out (rule 751), so the
+ * page reads the session itself (`currentUserUnverified`, rule 752).
+ */
+const PUBLIC = ["/login", "/signup", "/forgot", "/reset", "/admin", "/join", "/verify"];
 
 export default async function AppLayout({ children, params }: { children: React.ReactNode; params: Promise<{ lang: string }> }) {
   const { lang } = await params;
@@ -26,6 +31,13 @@ export default async function AppLayout({ children, params }: { children: React.
   const path = h.get("x-pathname") ?? "";
   const isPublic = PUBLIC.some((p) => path.endsWith(p));
   const user = await currentUser();
+  // An owner who has not verified the address reads as signed out above; send them to the code page, not to login (rule 754).
+  const pending = !user && !isPublic && path ? await currentUserUnverified() : null;
+  if (pending?.actor?.kind === "owner") {
+    // The requested page rides along in `next`, kept to a same-site path, so verifying lands where the owner was going.
+    const back = safeNext(path);
+    redirect(`/${lang}/app/verify${back ? `?next=${encodeURIComponent(back)}` : ""}`);
+  }
   if (!user && !isPublic && path) redirect(`/${lang}/app/login`);
 
   if (!user) {
