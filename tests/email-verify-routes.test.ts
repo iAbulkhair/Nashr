@@ -17,7 +17,8 @@ import * as check from "@/app/api/auth/verify/check/route";
 import * as signup from "@/app/api/auth/signup/route";
 
 let ipN = 0;
-const freshIp = () => `203.0.113.${(++ipN % 250) + 1}`;
+/** Never repeats within a run: two octets from a counter. */
+const freshIp = () => { ipN++; return `203.0.${Math.floor(ipN / 250) % 250}.${(ipN % 250) + 1}`; };
 const post = (route: typeof send | typeof check, path: string, body: unknown = {}, ip = freshIp()) =>
   route.POST(json(path, "POST", body, { "x-real-ip": ip }));
 const sendCode = (ip?: string) => post(send, "/api/auth/verify/send", {}, ip);
@@ -131,6 +132,17 @@ describe("email verify routes", () => {
     const again = await checkCode(code);
     expect(again.status).toBe(200);
     expect(await again.json()).toEqual({ ok: true });
+  });
+
+  it("two parallel submits of the right code both answer ok", async () => {
+    const u = await newUser("vr", { verified: false });
+    await signIn(u.email);
+    await sendCode();
+    const code = codeIn(mails[0]);
+    const [a, b] = await Promise.all([checkCode(code), checkCode(code)]);
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    expect(await b.json()).toEqual({ ok: true });
   });
 
   it("check refuses a wrong code with attemptsLeft", async () => {
@@ -256,5 +268,42 @@ describe("email verify routes", () => {
     const prod = await (await sendCode()).json();
     expect(prod.ok).toBe(true);
     expect(prod.devCode).toBeUndefined();
+  });
+
+  it("APP_ENV=test returns devCode without mail, and the code verifies", async () => {
+    vi.stubEnv("APP_ENV", "test");
+    vi.stubEnv("MAIL_FROM", "");
+    const email = `signup-nm-${Date.now()}@test.example`;
+    const s = await (await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N" }, { "x-real-ip": freshIp() }))).json();
+    expect(s).toMatchObject({ ok: true, verify: true, mail: false });
+    expect(s.devCode).toMatch(/^\d{6}$/);
+    const res = await checkCode(s.devCode);
+    expect(res.status).toBe(200);
+    expect((await currentUser())!.email).toBe(email);
+
+    const u = await newUser("vr", { verified: false });
+    await signIn(u.email);
+    const r = await sendCode();
+    expect(r.status).toBe(200);
+    const body = await r.json();
+    expect(body).toMatchObject({ ok: true, resendIn: 60 });
+    expect((await checkCode(body.devCode)).status).toBe(200);
+    expect((await getUser(u.email))!.emailVerifiedAt).toBeTruthy();
+    expect(mails).toHaveLength(0);
+  });
+
+  it("a refused mail still returns devCode under APP_ENV=test and stays 502 elsewhere", async () => {
+    mailOk = false;
+    vi.stubEnv("APP_ENV", "test");
+    const u = await newUser("vr", { verified: false });
+    await signIn(u.email);
+    const r = await sendCode();
+    expect(r.status).toBe(200);
+    expect((await r.json()).devCode).toMatch(/^\d{6}$/);
+    vi.stubEnv("VERCEL_ENV", "production");
+    const u2 = await newUser("vr", { verified: false });
+    await signIn(u2.email);
+    expect((await sendCode()).status).toBe(502);
+    expect(await hasPendingCode(u2.email)).toBe(false);
   });
 });

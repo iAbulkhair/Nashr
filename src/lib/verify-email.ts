@@ -3,6 +3,8 @@ import { db } from "./db";
 import { saveUser, type User } from "./auth";
 import { withUserLock } from "./credits";
 import { sameSecret } from "./rate";
+import { isProductionDeploy } from "./deploy-env";
+import { mailReady, sendEmail } from "./notify";
 
 /**
  * Email verification codes (rules 757-758). A new owner proves the address with a 6-digit code mailed to it; until then
@@ -89,4 +91,31 @@ export function verifyMail(u: Pick<User, "lang">, code: string): { subject: stri
         subject: `رمز التحقق في ذكين: ${code}`,
         text: `رمز التحقق: ${code}\nصالح لمدة 15 دقيقة.\nإذا لم تطلب هذا الرمز، تجاهل هذه الرسالة.`,
       };
+}
+
+/** Drop a pending code and its attempt counter (a code nobody received must not be left to guess against). */
+export async function dropVerifyCode(email: string): Promise<void> {
+  await Promise.all([db.del(codeKey(email)), db.del(triesKey(email))]);
+}
+
+/**
+ * Rule 766: a test deploy (`APP_ENV=test`, never a production deploy) hands the code back in the response, so the e2e
+ * suite can verify an account without a mailbox. Nothing else ever returns a code.
+ */
+export const devCodeExposed = (): boolean => process.env.APP_ENV === "test" && !isProductionDeploy();
+
+/**
+ * Issue a fresh code and mail it in the owner's language. `sent` is whether the mail went out (false when mail is off, the
+ * provider refused it or the call threw). A code nobody received is dropped, except on a test deploy (`devCodeExposed`),
+ * where the caller hands it back as `devCode`. The address is the session's `u.email`, never one from a request.
+ */
+export async function sendVerifyCode(u: Pick<User, "email" | "lang">): Promise<{ sent: boolean; code: string }> {
+  const code = await issueVerifyCode(u.email);
+  let sent = false;
+  if (mailReady()) {
+    const m = verifyMail(u, code);
+    sent = await sendEmail(u.email, m.subject, m.text).catch(() => false);
+  }
+  if (!sent && !devCodeExposed()) await dropVerifyCode(u.email);
+  return { sent, code };
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentUserUnverified, emailVerified } from "@/lib/auth";
+import { currentUserUnverified, emailVerified, getUser } from "@/lib/auth";
 import { allow, clientIp, retryLater } from "@/lib/rate";
 import { checkVerifyCode, markVerified, normalizeCode } from "@/lib/verify-email";
 
@@ -22,6 +22,8 @@ export async function POST(req: Request) {
     await markVerified(u.email);
     return NextResponse.json({ ok: true });
   }
+  // A parallel submit of the right code may have won a moment ago and consumed it: the account is verified now, so ok.
+  if (emailVerified((await getUser(u.email)) ?? {})) return NextResponse.json({ ok: true });
   if (r.reason === "wrong") return NextResponse.json({ ok: false, error: "wrong_code", attemptsLeft: r.attemptsLeft }, { status: 400 });
   return NextResponse.json({ ok: false, error: r.reason }, { status: 400 });
 }

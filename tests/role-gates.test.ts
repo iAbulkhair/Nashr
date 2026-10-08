@@ -62,11 +62,12 @@ type Role = "owner" | "admin" | "member";
 /**
  * public: no session (rate limited per IP when it writes). public-read: a GET, HEAD or OPTIONS with no session that
  * serves only public metadata, a static list or a CORS preflight, and writes nothing. bearer: the MCP token.
+ * unverified-session: the email-verification routes, called by an owner who `currentUser` still reads as signed out (rule 751): the handler must read `currentUserUnverified` and be rate limited (allow).
  * admin-console: the founder console. cron: the CRON_SECRET bearer. owner / admin / member: a session, and at least
  * that role, checked with forbid()/can() for the listed actions of src/lib/roles.ts (a bare "member" needs only the
  * session).
  */
-type Gate = "public" | "public-read" | "cron" | "admin-console" | "bearer" | "member" | { role: Role; actions: Action[] };
+type Gate = "public" | "public-read" | "cron" | "admin-console" | "bearer" | "unverified-session" | "member" | { role: Role; actions: Action[] };
 const g = (role: Role, ...actions: Action[]): Gate => ({ role, actions });
 
 /** Every POST, PUT, PATCH and DELETE handler anywhere under src/app. */
@@ -79,8 +80,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/auth/logout": "public",
   // Email verification (rules 759-761): the caller is an owner who is still signed out for `currentUser` (rule 751), so the
   // routes read `currentUserUnverified` and refuse without it; both are rate limited (allow).
-  "POST /api/auth/verify/send": "public",
-  "POST /api/auth/verify/check": "public",
+  "POST /api/auth/verify/send": "unverified-session",
+  "POST /api/auth/verify/check": "unverified-session",
   "POST /api/team/accept": "public",
   "POST /api/support": "public",
   "POST /api/affiliates": "public",
@@ -341,6 +342,7 @@ function violations(h: Handler, gate: Gate): string[] {
     return out;
   }
   if (gate === "cron") return /sameSecret\(/.test(h.body) ? [] : ["cron handler without the sameSecret bearer check"];
+  if (gate === "unverified-session") return /\bcurrentUserUnverified\(/.test(h.body) && /\ballow\(/.test(h.body) ? [] : ["verify handler without currentUserUnverified and allow"];
   if (gate === "bearer") return /userFromBearer\(/.test(h.body) ? [] : ["bearer handler without userFromBearer"];
   if (gate === "admin-console") return /\b(?:isAdmin|adminActor)\(/.test(h.body) || CONSOLE_SELF[h.key] ? [] : ["console handler without isAdmin/adminActor"];
   if (!/\bcurrentUser\(/.test(h.body)) out.push("no session read (currentUser)");
