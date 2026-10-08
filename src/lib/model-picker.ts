@@ -170,6 +170,13 @@ export function storedPick(conv: string, made: MadePicks, active: ConvPickRow | 
  */
 export const pickChanges = (stored: unknown, id: string | null): boolean => (typeof stored === "string" ? stored : null) !== id;
 
+/**
+ * Whether the chat picker takes no pick now: while its own pick is being saved, while a message of the panel is in flight
+ * (that reply's chat status arrives after the pick's and would overwrite the new model's ceiling with the old one's), and
+ * before the list has loaded, unless loading failed (the trigger then opens to say so).
+ */
+export const pickerLocked = (s: { picking: boolean; replying: boolean; loaded: boolean; failed: boolean }): boolean => s.picking || s.replying || (!s.loaded && !s.failed);
+
 /** One step of a pick: "pending" before the answer, null when it landed, else the refusal. */
 export type PickOutcome = "pending" | Refusal | null;
 

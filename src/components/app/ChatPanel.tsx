@@ -661,7 +661,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           <h1 className="clip font-display text-xl font-bold text-ink">{A[agent].name} <span className="text-sm font-normal text-muted">· {title}</span></h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <ChatModelPicker t={t} lang={lang} conv={conv} stored={storedPick(conv, made, active, convs)} canConfirmChina={canConfirmChina} onPicked={(c, previous, model, outcome) => setMade((p) => nextMadePicks(p, c, previous, model, outcome))} onChat={setChatNow} onGone={reloadConvs} />
+          <ChatModelPicker t={t} lang={lang} conv={conv} stored={storedPick(conv, made, active, convs)} replying={busy} canConfirmChina={canConfirmChina} onPicked={(c, previous, model, outcome) => setMade((p) => nextMadePicks(p, c, previous, model, outcome))} onChat={setChatNow} onGone={reloadConvs} />
           <button onClick={() => newConv()} className="btn btn-secondary btn-xs"><Icon name="plus" className="h-3.5 w-3.5" />{t.chat.newConv}</button>
           <Link href={`/${lang}/app/billing`} className="tnum rounded-full bg-lilac px-3 py-1 text-xs text-ink/80">{credits} {t.nav.credits}</Link>
         </div>

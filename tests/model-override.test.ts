@@ -443,6 +443,34 @@ describe("PUT /api/models: setting and clearing", () => {
     expect(await r.json()).toEqual({ error: "not_found" });
   });
 
+  it("a pick that landed stays landed when the status read after it fails: 200 { ok: true } without a status, the pick stored, and a warning that names nothing (re-review minor 1)", async () => {
+    const { u, conv } = await owner("mo-chatstatus-fail");
+    const counter = chatMsgKey(u.email);
+    const real = db.get.bind(db) as (k: string) => Promise<unknown>;
+    let failed = 0;
+    // The counter GET fails once, as an Upstash HTTP error would; its message names the key, so it must not be logged.
+    vi.spyOn(db, "get").mockImplementation((async (k: string) => {
+      if (k === counter && failed === 0) {
+        failed++;
+        throw new Error(`upstash: GET ${k} failed`);
+      }
+      return real(k);
+    }) as typeof db.get);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const r = await put({ target: "conversation", id: conv, model: OPUS });
+    expect(failed).toBe(1);
+    expect(r.status).toBe(200);
+    // No `chat`: the client's `pickedChat` hands over nothing and the allowance line keeps its value.
+    expect(await r.json()).toEqual({ ok: true });
+    expect((await convOf(u, conv))!.model).toBe(OPUS);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const logged = JSON.stringify(warn.mock.calls);
+    for (const s of [u.email, conv, OPUS, sc(u), counter, "upstash"]) expect(logged, s).not.toContain(s);
+    // Only that read is caught: the next pick answers the status again.
+    const again = (await (await put({ target: "conversation", id: conv, model: null })).json()) as { chat?: unknown };
+    expect(again.chat).toEqual(await chatStatus(u, DEFAULTS.chat));
+  });
+
   it("the brand pick does not change the brand file's content or its updatedAt", async () => {
     const { u } = await owner("mo-brandfile");
     await put({ target: "brand", model: SONNET });

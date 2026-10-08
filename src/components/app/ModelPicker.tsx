@@ -9,6 +9,7 @@ import {
   nextBrandPick,
   pickBodies,
   pickChanges,
+  pickerLocked,
   pickedChat,
   pickerOptions,
   readModelsView,
@@ -134,8 +135,9 @@ export function ModelOptionList({ t, lang, surface, options, selected, onPick }:
  * rolled back), `onChat` hands over the account's chat status the server answered for the new model (the allowance line
  * shows it as it came), `onGone` reloads the conversation list after a `not_found`. The default thread has no record, so
  * it explains how to choose instead of listing. The trigger discloses the popover: Escape closes it and gives focus back.
+ * `replying`: a message of the panel is in flight; no pick is taken until its reply ends (`pickerLocked`).
  */
-export function ChatModelPicker({ t, lang, conv, stored, canConfirmChina, onPicked, onChat, onGone }: { t: AppDict; lang: Lang; conv: string; stored: string | undefined; canConfirmChina: boolean; onPicked: (conv: string, previous: string | null, model: string | null, outcome: PickOutcome) => void; onChat: (chat: PickedChat) => void; onGone: () => void }) {
+export function ChatModelPicker({ t, lang, conv, stored, replying, canConfirmChina, onPicked, onChat, onGone }: { t: AppDict; lang: Lang; conv: string; stored: string | undefined; replying: boolean; canConfirmChina: boolean; onPicked: (conv: string, previous: string | null, model: string | null, outcome: PickOutcome) => void; onChat: (chat: PickedChat) => void; onGone: () => void }) {
   const router = useRouter();
   const { view, setView, failed, reload } = useModels(lang);
   const [open, setOpen] = useState(false);
@@ -154,6 +156,7 @@ export function ChatModelPicker({ t, lang, conv, stored, canConfirmChina, onPick
   const options = view ? pickerOptions(view, "chat", lang, m.auto) : [];
   const selected = chosenId(stored, options);
   const current = options.find((x) => x.id === selected);
+  const locked = pickerLocked({ picking: busy, replying, loaded: !!view, failed });
 
   useEffect(() => { openConv.current = conv; }, [conv]);
 
@@ -179,7 +182,7 @@ export function ChatModelPicker({ t, lang, conv, stored, canConfirmChina, onPick
     setOpen(false);
     setNote("");
     // Against the stored value itself: over a stored id the list no longer offers, Automatic is a change (it sends null).
-    if (!view || busy || !pickChanges(stored, o.id)) return;
+    if (!view || locked || !pickChanges(stored, o.id)) return;
     const confirmFirst = needsChinaConfirm(o, view.chinaConfirmed);
     if (confirmFirst) {
       if (!canConfirmChina) { setNote(m.ownerOnly); return; }
@@ -211,7 +214,7 @@ export function ChatModelPicker({ t, lang, conv, stored, canConfirmChina, onPick
   const shown = current?.label ?? m.auto;
   return (
     <span ref={box} className="relative">
-      <button ref={trigger} type="button" onClick={() => { setNote(""); setOpen(!open); }} disabled={busy || (!view && !failed)} aria-expanded={open} aria-controls={open ? popId : undefined} aria-label={`${m.label}: ${shown}`} className="btn btn-secondary btn-xs max-w-48 disabled:opacity-60">
+      <button ref={trigger} type="button" onClick={() => { setNote(""); setOpen(!open); }} disabled={locked} aria-expanded={open} aria-controls={open ? popId : undefined} aria-label={`${m.label}: ${shown}`} className="btn btn-secondary btn-xs max-w-48 disabled:opacity-60">
         <Icon name="spark" className="h-3.5 w-3.5 shrink-0" />
         <bdi className="clip">{shown}</bdi>
         <Icon name="chevron" className="h-3 w-3 shrink-0" />

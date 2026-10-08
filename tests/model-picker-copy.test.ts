@@ -16,6 +16,7 @@ import {
   pickChanges,
   pickRefusal,
   pickedChat,
+  pickerLocked,
   pickerOptions,
   readModelsView,
   sendPick,
@@ -535,6 +536,28 @@ describe("review minor 8: the refusal note goes away by itself", () => {
     expect(src).toMatch(/if \(e\.key === "Escape"\) setNoted\(null\);/);
     // The next pick starts by clearing it.
     expect(src).toMatch(/async function choose\(o: PickerOption\) \{\s*setOpen\(false\);\s*setNote\(""\);/);
+  });
+});
+
+describe("re-review minor 2: no conversation pick while a message is in flight", () => {
+  it("the chat picker's trigger is locked while a pick is being saved, while a reply is in flight, and before the list loads (a failed load still opens, to say so)", () => {
+    const base = { picking: false, replying: false, loaded: true, failed: false };
+    expect(pickerLocked(base)).toBe(false);
+    expect(pickerLocked({ ...base, replying: true })).toBe(true);
+    expect(pickerLocked({ ...base, picking: true })).toBe(true);
+    expect(pickerLocked({ ...base, loaded: false })).toBe(true);
+    expect(pickerLocked({ ...base, loaded: false, failed: true })).toBe(false);
+    expect(pickerLocked({ ...base, loaded: false, failed: true, replying: true })).toBe(true);
+  });
+
+  it("the panel hands the picker its in-flight flag, and the picker locks the trigger and refuses a pick with the helper", () => {
+    const panel = readFileSync("src/components/app/ChatPanel.tsx", "utf8");
+    expect(panel).toMatch(/<ChatModelPicker [^\n]*\breplying=\{busy\}/);
+    const src = readFileSync("src/components/app/ModelPicker.tsx", "utf8");
+    expect(src).toMatch(/const locked = pickerLocked\(\{ picking: busy, replying, loaded: !!view, failed \}\);/);
+    expect(src).toMatch(/<button ref=\{trigger\}[^\n]*\bdisabled=\{locked\}/);
+    // A list left open when the reply started picks nothing.
+    expect(src).toMatch(/if \(!view \|\| locked \|\| !pickChanges\(stored, o\.id\)\) return;/);
   });
 });
 

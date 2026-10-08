@@ -43,8 +43,9 @@ import { forbid } from "@/lib/roles";
  * A conversation pick that landed answers `{ ok: true, chat }`: the account's chat status (`chatStatus`, the same one the
  * chat page shows under the box) for the model the conversation now runs on (`chatRouteFor` on the record as written,
  * the page's own resolver), so the allowance line and its overflow ceiling follow the pick without the client working
- * out anything. Counters only (the account's, as for every seat); no rate, no model id. A brand pick and the
- * confirmation answer `{ ok: true }`: they change no chat ceiling.
+ * out anything. Counters only (the account's, as for every seat); no rate, no model id. When that read fails after the
+ * write, the pick still answers `{ ok: true }`, without `chat` (the line keeps its value until the next answer). A brand
+ * pick and the confirmation answer `{ ok: true }`: they change no chat ceiling.
  *
  * A refusal answers `{ error }` with 400 `bad_request` | `unknown_model` | `not_pickable`, 409
  * `china_unconfirmed` | `busy` (the brand lock), 503 `busy` with Retry-After (the conversation's lock, not taken within
@@ -110,8 +111,16 @@ export async function PUT(req: Request) {
     if (done === "busy") return NextResponse.json({ error: "busy" }, { status: 503, headers: retryAfter(1) });
     if (done !== "ok") return fail("not_found", 404);
     // The chat ceiling for the model the conversation runs on from now: the record holds `model` (or nothing) as written.
-    const chat = await chatStatus(u, chatRouteFor(u, { model: model ?? undefined }).model);
-    return NextResponse.json({ ok: true, chat });
+    // The pick has landed, so a failed read of the counters (a Redis HTTP error) must not answer a failure: the client
+    // would roll back a pick the next turn runs on. It answers without `chat` and the allowance line keeps its value. The
+    // warning names nothing: no account, conversation or model, and not the error, whose message can carry the key.
+    try {
+      const chat = await chatStatus(u, chatRouteFor(u, { model: model ?? undefined }).model);
+      return NextResponse.json({ ok: true, chat });
+    } catch {
+      console.warn("model pick saved; chat status read failed");
+      return NextResponse.json({ ok: true });
+    }
   }
 
   // Only the active brand: its scope is the session's, and an id, when sent, must name it.
