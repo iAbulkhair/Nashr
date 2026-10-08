@@ -12,6 +12,14 @@ import { MEDIA_MODELS } from "@/lib/media-catalog";
 import { COST_USD } from "@/lib/media/config";
 import { HANDOFF_TYPES, autoBlock, type Handoff } from "@/lib/handoffs";
 import { agentForTask } from "@/lib/agents";
+import { MODELS, modelAllowsTask } from "@/lib/models/catalog";
+import { PRICED_AT } from "@/lib/models/tiers";
+import { chatHoldFor, chatTurnMaxUsd, creditsFor, tierMultiplier } from "@/lib/models/credits";
+import { estimateFor } from "@/lib/task-costs";
+import { CHAT_TURN_MAX_USD } from "@/lib/pricing";
+import { CHAT_FIRST_MIN_OUT } from "@/lib/chat-budget";
+import { costUsd } from "@/lib/usage";
+import { isTaskType } from "@/lib/tasks";
 
 /**
  * Rule 241: the 60% margin floor is a test, not a comment. What one credit may cost us is at most 40% of the cheapest
@@ -181,7 +189,9 @@ describe("chat drafts (rules 241, 250)", () => {
     // (src/lib/chat.ts), which charges `countCost` (src/lib/generate-batch.ts).
     for (const t of TASK_TYPES) expect([1, 2, 3].map((n) => countCost(t, n)), t).toEqual([1, 2, 3].map((n) => draftCredits(t, n)));
     expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain("Math.max(1,Math.ceil((TASK_COST[type]/(TASK_COUNT[type]||1))*count))");
-    expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain("constcost=opts.count?countCost(type,opts.count):TASK_COST[type];");
+    // The base is the batch's or the draft's share; the charge is that base at the batch model's tier (rule 241 by tier, below).
+    expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain("constbase=opts.count?countCost(type,opts.count):TASK_COST[type];");
+    expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain('constcost=creditsFor(base,model,"generate");');
     expect(src("src/lib/chat.ts").replace(/\s+/g, "")).toContain('generateBatch(user,email,{type,notes:String(input.brief??""),count,');
   });
 
@@ -207,5 +217,151 @@ describe("media renders are under the ceiling too (rule 241)", () => {
     const top = per.reduce((a, b) => (b.usdPerCredit > a.usdPerCredit ? b : a));
     expect(top.id).toBe("vid-cinematic");
     expect(top.usdPerCredit).toBeCloseTo(0.05875, 5);
+  });
+});
+
+/**
+ * Rule 241 over the model catalog (spec 2026-10-08-straitly-model-routing, section 6; plan Task 4). A task run on another
+ * model is charged its base credits times that model's tier multiplier, relative to the generation default
+ * (`PRICED_AT.generate`, Opus 5: x1; a standard model x0.5; an economy one x0.3; src/lib/models/credits.ts). The cost per
+ * CHARGED credit (after rounding up, at least 1) must keep the floor for every catalog model that routing or a customer may
+ * use (`auto` or `pick`), on every task type the model allows (`tasks`; unset means all). Every model is checked on a COLD
+ * cache, the dearest case (`estimateFor`), with no exemption but the one below.
+ *
+ * When a model misses the floor on a type, the fix is its `tasks` allow-list in src/lib/models/catalog.ts, never a lower
+ * floor (the Sonnets below).
+ */
+const pickable = MODELS.filter((m) => m.auto || m.pick);
+const perCredit = (type: TaskType, model: string) => estimateFor(type, model) / creditsFor(TASK_COST[type], model, "generate");
+
+/**
+ * NAMED EXEMPTION (founder decision 2026-09-29, rules 241 and 296): on the generation default (Opus 5), article and
+ * followup_seq are over the ceiling on a cold cache. That is today's price, not a new one: an owner pressing Run finds the
+ * cache warm (both keep the floor on a hit, checked above and here), and Majed's auto-run, the only cron path that could
+ * start them, leaves both to a login (`autoBlock`, rule 296). `maxColdUsdPerCredit` is today's cold figure: if either
+ * gets dearer this test fails and the price must be decided again. No other model and no other type is exempt.
+ */
+const DEFAULT_MODEL_COLD_EXEMPTION = {
+  model: PRICED_AT.generate,
+  maxColdUsdPerCredit: { article: 0.0918, followup_seq: 0.0774 } as Partial<Record<TaskType, number>>,
+  reason: "on-demand on a warm cache (hit) and kept off the auto-run, founder decision 2026-09-29",
+} as const;
+const exempt = (model: string, type: TaskType) => model === DEFAULT_MODEL_COLD_EXEMPTION.model && DEFAULT_MODEL_COLD_EXEMPTION.maxColdUsdPerCredit[type] !== undefined;
+
+describe("every catalog model keeps the floor on every task type it allows, per charged credit, cold (rule 241 by tier)", () => {
+  it("the catalog models routing or a customer may use are the three Claude models (the spike adds the rest)", () => {
+    expect(pickable.map((m) => m.id).sort()).toEqual(["claude-opus-5", "claude-sonnet-5", "claude-sonnet-5-5"]);
+  });
+
+  it("no model costs more per charged credit than the ceiling on any type it allows, on a cold cache", () => {
+    const over: string[] = [];
+    for (const m of pickable) {
+      for (const t of TASK_TYPES.filter((t) => modelAllowsTask(m, t))) {
+        const pc = perCredit(t, m.id);
+        if (pc > ceiling && !exempt(m.id, t)) over.push(`${m.id} on ${t}: ${usd(pc)} per credit cold at ${creditsFor(TASK_COST[t], m.id, "generate")} credits (ceiling ${usd(ceiling)})`);
+      }
+    }
+    expect(over).toEqual([]);
+  });
+
+  it("the default model's exemption: exactly article and followup_seq, at no more than today's cold figures, both under on a hit", () => {
+    const m = PRICED_AT.generate;
+    const overCold = TASK_TYPES.filter((t) => perCredit(t, m) > ceiling);
+    expect(overCold, "remove a type from the exemption once it keeps the floor cold").toEqual(Object.keys(DEFAULT_MODEL_COLD_EXEMPTION.maxColdUsdPerCredit));
+    expect(overCold.map((t) => perCredit(t, m))).toEqual([expect.closeTo(0.0917875, 6), expect.closeTo(0.0773438, 6)]);
+    for (const t of overCold) {
+      expect(perCredit(t, m), `${t}: ${DEFAULT_MODEL_COLD_EXEMPTION.reason}`).toBeLessThanOrEqual(DEFAULT_MODEL_COLD_EXEMPTION.maxColdUsdPerCredit[t]!);
+      expect(estimateBatch(t, { cache: "hit", model: m }).usdPerCredit, `${t} on a hit`).toBeLessThanOrEqual(ceiling);
+    }
+    // At x1 the charge is today's TASK_COST, so the default model's figures are today's (the tables above).
+    for (const t of TASK_TYPES) expect(creditsFor(TASK_COST[t], m, "generate"), t).toBe(TASK_COST[t]);
+  });
+
+  it("the Sonnets run every type but article and followup_seq, which miss the floor at x0.5 even on a warm cache", () => {
+    const rest = TASK_TYPES.filter((t) => t !== "article" && t !== "followup_seq");
+    for (const id of ["claude-sonnet-5", "claude-sonnet-5-5"]) {
+      const m = MODELS.find((x) => x.id === id)!;
+      expect([...(m.tasks ?? [])].sort(), id).toEqual([...rest].sort());
+      expect(TASK_TYPES.filter((t) => !modelAllowsTask(m, t)), id).toEqual(["article", "followup_seq"]);
+      // Not vacuous: the two left out are over the ceiling cold and on a hit. Article is 1 credit at x0.5 and the reviewer
+      // and the judge cost the same on any generation model.
+      expect(["article", "followup_seq"].map((t) => perCredit(t as TaskType, id)), id).toEqual([expect.closeTo(0.09635, 6), expect.closeTo(0.082575, 6)]);
+      const hit = (t: TaskType) => estimateBatch(t, { cache: "hit", model: id, credits: creditsFor(TASK_COST[t], id, "generate") }).usdPerCredit;
+      expect([hit("article"), hit("followup_seq")], id).toEqual([expect.closeTo(0.0791, 6), expect.closeTo(0.07395, 6)]);
+      for (const t of ["article", "followup_seq"] as const) expect(hit(t), `${id} ${t} on a hit`).toBeGreaterThan(ceiling);
+    }
+  });
+
+  it("an allow-list names only real task types, never an empty list", () => {
+    for (const m of MODELS) {
+      if (!m.tasks) continue;
+      expect(m.tasks.length, m.id).toBeGreaterThan(0);
+      expect(m.tasks.filter((t) => !isTaskType(t)), m.id).toEqual([]);
+      expect(new Set(m.tasks).size, m.id).toBe(m.tasks.length);
+    }
+  });
+
+  it("the floor divides by the CHARGED credits: a 2-credit type at x0.5 is charged 1, and its figure is per that 1", () => {
+    for (const t of ["weekly_plan", "lead_qualifier", "dashboard_spec"] as const) {
+      expect(TASK_COST[t], t).toBe(2);
+      expect(creditsFor(TASK_COST[t], "claude-sonnet-5", "generate"), t).toBe(1);
+      expect(perCredit(t, "claude-sonnet-5"), t).toBe(estimateFor(t, "claude-sonnet-5"));
+    }
+  });
+
+  it("the watch list on the other models: only the three 2-credit medium types are above 95% of the ceiling cold (97%)", () => {
+    const near = pickable.filter((m) => m.id !== PRICED_AT.generate).flatMap((m) => TASK_TYPES.filter((t) => modelAllowsTask(m, t) && perCredit(t, m.id) > 0.95 * ceiling).map((t) => `${m.id}:${t}`));
+    expect(near.sort()).toEqual(["claude-sonnet-5-5:dashboard_spec", "claude-sonnet-5-5:lead_qualifier", "claude-sonnet-5-5:weekly_plan", "claude-sonnet-5:dashboard_spec", "claude-sonnet-5:lead_qualifier", "claude-sonnet-5:weekly_plan"]);
+    expect(perCredit("weekly_plan", "claude-sonnet-5")).toBeCloseTo(0.06915, 6);
+  });
+
+  it("chat drafts on another model keep the floor cold at every size, with no exemption", () => {
+    const over: string[] = [];
+    for (const m of pickable.filter((x) => x.id !== PRICED_AT.generate)) {
+      for (const t of DRAFT_TYPES.filter((t) => modelAllowsTask(m, t))) {
+        for (const n of [1, 2, 3]) {
+          const charged = creditsFor(draftCredits(t, n), m.id, "generate");
+          const e = estimateBatch(t, { items: n, credits: charged, cache: "cold", model: m.id });
+          if (e.usdPerCredit > ceiling) over.push(`${m.id} ${t} x${n}: ${usd(e.usdPerCredit)} per credit at ${charged}`);
+        }
+      }
+    }
+    expect(over).toEqual([]);
+  });
+});
+
+/**
+ * Rule 313 by tier: a message past the allowance needs `chatHoldFor(model)` credits in the balance and is billed its
+ * metered cost at the floor rate, at most that hold. The hold must cover the model's own per-message ceiling
+ * (`chatTurnMaxUsd`, CHAT_TURN_MAX_USD times the chat multiplier) at the floor rate, and be the smallest that does; the
+ * ceiling must still buy a useful first answer on that model.
+ */
+describe("chat keeps the floor per tier: the hold covers each model's own ceiling (rule 313 by tier)", () => {
+  const chatModels = pickable.filter((m) => m.caps.tools);
+
+  it("each model's ceiling is CHAT_TURN_MAX_USD times its chat multiplier; the hold is the smallest that covers it", () => {
+    for (const m of chatModels) {
+      const max = chatTurnMaxUsd(m.id);
+      expect(max / CHAT_TURN_MAX_USD, m.id).toBeCloseTo(tierMultiplier(m.id, "chat"), 12);
+      const hold = chatHoldFor(m.id);
+      expect(Number.isInteger(hold) && hold >= 1, m.id).toBe(true);
+      expect(hold * ceiling, `${m.id}: the hold covers the ceiling at the floor rate`).toBeGreaterThanOrEqual(max);
+      expect((hold - 1) * ceiling, `${m.id}: and is the smallest that does`).toBeLessThan(max);
+    }
+  });
+
+  it("today's figures: the Sonnets $0.14 and 2 credits, Opus 5 $0.28 and 4", () => {
+    expect(chatModels.map((m) => [m.id, chatTurnMaxUsd(m.id), chatHoldFor(m.id)])).toEqual([
+      ["claude-opus-5", expect.closeTo(0.28, 12), 4],
+      ["claude-sonnet-5", 0.14, 2],
+      ["claude-sonnet-5-5", 0.14, 2],
+    ]);
+  });
+
+  it("the ceiling buys every chat model a first answer of at least CHAT_FIRST_MIN_OUT tokens", () => {
+    for (const m of chatModels) {
+      const tokens = chatTurnMaxUsd(m.id) / costUsd(m.id, { output_tokens: 1 });
+      expect(tokens, m.id).toBeGreaterThanOrEqual(CHAT_FIRST_MIN_OUT);
+    }
   });
 });

@@ -1,7 +1,10 @@
 import { db } from "./db";
 import type { User } from "./auth";
 import { settleChatOverflow } from "./credits";
-import { chatAllowanceOf, chatOverflowHold, maxCostPerCreditUsd } from "./pricing";
+import { chatAllowanceOf, maxCostPerCreditUsd } from "./pricing";
+import { chatHoldFor, tierMultiplier } from "./models/credits";
+import { modelById } from "./models/catalog";
+import { PRICED_AT } from "./models/tiers";
 import { chatCredKey, chatMsgKey, chatOverKey, chatTrialKey } from "./usage";
 import type { ChatTurn } from "./chat";
 
@@ -18,6 +21,12 @@ import type { ChatTurn } from "./chat";
  * balance covers `chatOverflowHold()` credits (the most a message can cost), and after it the metered cost is billed at
  * the floor rate, at most that much (`settleChatOverflow`). Nothing is held before the turn, so the turn's own tools can
  * spend the whole balance. Both web chat and MCP `ask_noor` go through here, before `chat()` saves the owner's message.
+ *
+ * By model tier (spec 2026-10-08-straitly-model-routing, section 6): the hold is the chat model's own (`chatHoldFor`: 2 on
+ * the default Sonnet 5.5, 4 on Opus 5), and so is the per-message ceiling it covers (src/lib/chat-budget.ts). The count
+ * against the allowance is still one per message: a model dearer than the default (multiplier above 1) is refused in code
+ * (`chat_allowance_unpriced`) until how such a message counts is decided, so no pick can spend the allowance at a higher
+ * cost per message than the plans were priced for.
  */
 
 /** What the app and the founder console show: messages used of the allowance, and the over-allowance settings. */
@@ -48,7 +57,7 @@ const overflowOn = (u: Pick<User, "plan" | "chatOverflow">) => overflowAvailable
 const creditMicro = () => Math.round(maxCostPerCreditUsd() * 1e6);
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : Number(v ?? 0) || 0);
 
-function statusOf(u: Pick<User, "plan" | "chatOverflow" | "chatAllowance">, counted: number, overUsed: number, overCredits: number): ChatStatus {
+function statusOf(u: Pick<User, "plan" | "chatOverflow" | "chatAllowance">, counted: number, overUsed: number, overCredits: number, hold: number): ChatStatus {
   const allowance = chatAllowanceOf(u);
   const used = Math.max(0, Math.min(allowance, counted));
   return {
@@ -57,35 +66,41 @@ function statusOf(u: Pick<User, "plan" | "chatOverflow" | "chatAllowance">, coun
     left: Math.max(0, allowance - used),
     counted: Math.max(0, counted),
     period: u.plan === "trial" ? "trial" : "month",
-    overflow: { on: overflowOn(u), available: overflowAvailable(u), used: Math.max(0, overUsed), credits: Math.max(0, overCredits), hold: chatOverflowHold() },
+    overflow: { on: overflowOn(u), available: overflowAvailable(u), used: Math.max(0, overUsed), credits: Math.max(0, overCredits), hold },
   };
 }
 
-/** The account's chat status now: up to three reads, in parallel. */
-export async function chatStatus(u: Pick<User, "email" | "plan" | "chatOverflow" | "chatAllowance">): Promise<ChatStatus> {
+/** The account's chat status now: up to three reads, in parallel. `model`: the chat model whose hold is shown. */
+export async function chatStatus(u: Pick<User, "email" | "plan" | "chatOverflow" | "chatAllowance">, model: string = PRICED_AT.chat): Promise<ChatStatus> {
   const trial = u.plan === "trial";
   const [counted, over, cred] = await Promise.all([db.get<number>(counterKey(u)), trial ? 0 : db.get<number>(chatOverKey(u.email)), trial ? 0 : db.get<number>(chatCredKey(u.email))]);
-  return statusOf(u, num(counted), num(over), num(cred));
+  return statusOf(u, num(counted), num(over), num(cred), chatHoldFor(model));
 }
 
 /**
  * Reserve one message before the turn. Inside the allowance: counted (INCRBY, so N parallel turns can never pass it).
  * Past it: the reservation is taken back, and the turn goes ahead only when the owner turned overflow on and the balance
  * covers the most a message can cost; otherwise `chat_allowance` (paused) or `chat_credits` (overflow on, too few credits).
+ * `model` is the turn's chat model (default `PRICED_AT.chat`): its hold is the one checked and carried to the settle. An id
+ * that is not exactly a catalog id, or a model whose chat multiplier is above 1, throws before anything is counted (see
+ * the note at the top of this file).
  */
-export async function reserveChatTurn(u: User): Promise<ChatGate> {
+export async function reserveChatTurn(u: User, model: string = PRICED_AT.chat): Promise<ChatGate> {
+  const entry = modelById(model);
+  if (!entry) throw new Error("unknown_model");
+  if (tierMultiplier(entry.id, "chat") > 1) throw new Error(`chat_allowance_unpriced:${entry.id}`);
+  const hold = chatHoldFor(model);
   const key = counterKey(u);
   const allowance = chatAllowanceOf(u);
   const n = await db.incrby(key, 1);
-  if (n <= allowance) return { ok: true, mode: "included", key, status: statusOf(u, n, 0, 0) };
+  if (n <= allowance) return { ok: true, mode: "included", key, status: statusOf(u, n, 0, 0, hold) };
   await db.incrby(key, -1);
   const credits = Math.max(0, num(u.credits));
   // An allowance of 0 is the founder turning chat off for the account: no message, not even on credits.
-  if (!overflowOn(u) || allowance === 0) return { ok: false, error: "chat_allowance", status: await chatStatus(u), credits };
-  const hold = chatOverflowHold();
-  if (credits < hold) return { ok: false, error: "chat_credits", status: await chatStatus(u), credits, need: hold };
+  if (!overflowOn(u) || allowance === 0) return { ok: false, error: "chat_allowance", status: await chatStatus(u, model), credits };
+  if (credits < hold) return { ok: false, error: "chat_credits", status: await chatStatus(u, model), credits, need: hold };
   const [over, cred] = await Promise.all([db.incrby(chatOverKey(u.email), 1), db.get<number>(chatCredKey(u.email))]);
-  return { ok: true, mode: "overflow", key: chatOverKey(u.email), hold, status: statusOf(u, n - 1, over, num(cred)) };
+  return { ok: true, mode: "overflow", key: chatOverKey(u.email), hold, status: statusOf(u, n - 1, over, num(cred), hold) };
 }
 
 /**

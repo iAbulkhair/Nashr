@@ -23,6 +23,9 @@ import { TASK_COST, TASK_COUNT, isDraftType, type TaskType } from "./tasks";
 import { getGov, type Governance } from "./governance";
 import { missingData } from "./cart-recovery";
 import { modelState } from "./model";
+import { modelAllowsTask, modelById } from "./models/catalog";
+import { creditsFor } from "./models/credits";
+import { PRICED_AT } from "./models/tiers";
 import { memoryBlock } from "./files";
 import { statsFor } from "./stats";
 import { feedbackFor } from "./feedback";
@@ -89,6 +92,14 @@ export type BatchOpts = {
    * here refunds the batch like a failed generation, so a charge is kept only with its tasks and its marker written.
    */
   commit?: (tasks: Task[]) => Promise<unknown>;
+  /**
+   * The model the batch is generated on and charged for (spec 2026-10-08-straitly-model-routing, section 6): the batch
+   * costs its base credits times the model's tier multiplier (`creditsFor`, src/lib/models/credits.ts), one value for
+   * the charge, the refund, the activity row and `BatchDone.cost`. Default `PRICED_AT.generate` (Opus 5, x1: today's
+   * price). Exactly a catalog id that may run the type, or the batch throws before anything is read or charged. The
+   * routing (plan Task 5) sets it and passes the same model to `generate()`; until then no caller sets it.
+   */
+  model?: string;
 };
 
 /**
@@ -179,6 +190,12 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   // calls this; here it is an invariant, before any read or charge, so no caller can buy one item of a batch type at
   // its pro-rata price.
   if (opts.count !== undefined && !isDraftType(type)) throw new Error(`not_draft_type:${type}`);
+  // The model the batch is charged for: exactly a catalog id, allowed to run the type (its `tasks`, set where the type
+  // misses the margin floor at the model's tier). Checked in code before any read or charge, never left to the routing.
+  const model = opts.model === undefined ? PRICED_AT.generate : opts.model;
+  const entry = modelById(model);
+  if (!entry) throw new Error("unknown_model");
+  if (!modelAllowsTask(entry, type)) throw new Error(`model_task_not_allowed:${entry.id}:${type}`);
   // A scheduled run records its own outcome (`recordRun`), so a refusal at its charge is one row there, not two.
   const scheduled = opts.via === "weekly" || opts.via === "routine";
   const refuse = async (r: BatchRefusal, row?: Activity): Promise<BatchRefusal> => {
@@ -195,7 +212,10 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   if (trialOver(user)) return refuse({ ok: false, reason: "trial_over" });
   const missing = await missingData(type, scope);
   if (missing) return refuse({ ok: false, reason: "missing_data", missing });
-  const cost = opts.count ? countCost(type, opts.count) : TASK_COST[type];
+  const base = opts.count ? countCost(type, opts.count) : TASK_COST[type];
+  // The batch's price at its model's tier, computed once: the charge, the refund (`refund` below, or the claim's hold that
+  // `chargeOnce` stores and `refundOnce` gives back), the activity row and `BatchDone.cost` all read this one value.
+  const cost = creditsFor(base, model, "generate");
   // The agent that owns the type, computed in code: never taken from the request or the model.
   const agent = agentForTask(type).id;
   // A paid account's monthly credits arrive before its first charge of the month, whichever job runs first (rule 332).

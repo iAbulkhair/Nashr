@@ -1,13 +1,14 @@
 import { costUsd } from "./usage";
-import { CHAT_TURN_MAX_USD } from "./pricing";
+import { chatTurnMaxUsd } from "./models/credits";
 import type { ChatMsg } from "./chat";
 
 /**
  * The hard per-message guards of a chat turn (pricing phase 2, rules 311-312), checked in code before every model call,
  * never left to the prompt. A turn is one owner message: up to `CHAT_MAX_CALLS` model calls with tools in between.
  *
- * - Output: each call's `max_tokens` is what is left of `CHAT_TURN_MAX_USD` after what the turn already cost and an
- *   upper estimate of the call's input, at the model's output rate, and never more than `CHAT_MAX_OUT`.
+ * - Output: each call's `max_tokens` is what is left of the model's per-message ceiling (`chatTurnMaxUsd`: CHAT_TURN_MAX_USD
+ *   on the default chat model, times the chat tier multiplier on another, src/lib/models/credits.ts) after what the turn
+ *   already cost and an upper estimate of the call's input, at the model's output rate, and never more than `CHAT_MAX_OUT`.
  * - The loop: when less than `CHAT_MIN_OUT` tokens would be left, no further call is made and the turn ends with the
  *   work already done (the items its tools made are on the reply's cards). A call the model ended at `max_tokens` is
  *   never acted on (src/lib/chat.ts): its tool calls may be cut off.
@@ -55,9 +56,10 @@ const outRate = (model: string) => costUsd(model, { output_tokens: 1 });
 /**
  * `max_tokens` for the next call of a turn, or 0 when the call must not be made: what is left of the ceiling after
  * `spentUsd` and `inputUsd`, at the output rate, capped at CHAT_MAX_OUT; 0 below CHAT_MIN_OUT. Non-finite inputs give
- * 0: a guard that cannot read the numbers stops the loop rather than letting it run unbounded.
+ * 0: a guard that cannot read the numbers stops the loop rather than letting it run unbounded. The ceiling is the model's
+ * own (`chatTurnMaxUsd(model)`), the same one its overflow hold covers (`chatHoldFor`), unless a caller passes one.
  */
-export function nextMaxTokens(model: string, spentUsd: number, inputUsd: number, ceilingUsd: number = CHAT_TURN_MAX_USD): number {
+export function nextMaxTokens(model: string, spentUsd: number, inputUsd: number, ceilingUsd: number = chatTurnMaxUsd(model)): number {
   if (![spentUsd, inputUsd, ceilingUsd].every(Number.isFinite)) return 0;
   const room = Math.floor((ceilingUsd - spentUsd - inputUsd) / outRate(model));
   return room >= CHAT_MIN_OUT ? Math.min(CHAT_MAX_OUT, room) : 0;

@@ -15,6 +15,7 @@
  */
 import { costUsd } from "./usage";
 import { TASK_COST, TASK_COUNT, type TaskType } from "./tasks";
+import { modelById } from "./models/catalog";
 
 /** The model each call is priced at. tests/pricing-floor.test.ts checks these literals are the ones the code calls. */
 export const ESTIMATE_MODELS = {
@@ -78,23 +79,37 @@ export type BatchEstimate = {
 /**
  * One batch: the generation call (fresh input, the cached block read on a hit or written when cold, thinking plus the
  * items as output), the reviewer and the judge. `items` and `credits` default to TASK_COUNT and TASK_COST; `cache`
- * defaults to "hit" (an owner working in the app). Cron-driven types are checked "cold".
+ * defaults to "hit" (an owner working in the app). Cron-driven types are checked "cold". `model` is the generation
+ * call's model (default `ESTIMATE_MODELS.generate`), priced at its catalog rate; it must be exactly a catalog id, or
+ * `costUsd` would price it as Opus without saying so. The reviewer and the judge keep their own models.
  */
-export function estimateBatch(type: TaskType, opts: { items?: number; credits?: number; cache?: "hit" | "cold" } = {}): BatchEstimate {
+export function estimateBatch(type: TaskType, opts: { items?: number; credits?: number; cache?: "hit" | "cold"; model?: string } = {}): BatchEstimate {
   const size = Object.prototype.hasOwnProperty.call(ITEM_SIZE, type) ? ITEM_SIZE[type] : undefined;
   const items = opts.items ?? TASK_COUNT[type];
   const credits = opts.credits ?? TASK_COST[type];
   if (!size || !Number.isInteger(items) || items < 1 || !Number.isFinite(credits) || credits <= 0) {
     throw new Error(`bad_estimate:${String(type)}:${String(items)}:${String(credits)}`);
   }
+  const model = "model" in opts ? opts.model : ESTIMATE_MODELS.generate;
+  if (!modelById(model)) throw new Error(`bad_estimate_model:${String(model)}`);
   const itemsOut = items * ITEM_OUT_TOKENS[size];
   const outTokens = ASSUME.thinking + itemsOut;
   const cached = opts.cache === "cold" ? { cache_creation_input_tokens: ASSUME.cachedIn } : { cache_read_input_tokens: ASSUME.cachedIn };
-  const generateUsd = costUsd(ESTIMATE_MODELS.generate, { input_tokens: ASSUME.freshIn, output_tokens: outTokens, ...cached });
+  const generateUsd = costUsd(model as string, { input_tokens: ASSUME.freshIn, output_tokens: outTokens, ...cached });
   const reviewUsd = costUsd(ESTIMATE_MODELS.review, { input_tokens: ASSUME.review.in + itemsOut, output_tokens: ASSUME.review.out + ASSUME.review.outShare * itemsOut });
   const judgeUsd = costUsd(ESTIMATE_MODELS.judge, { input_tokens: ASSUME.judge.in + itemsOut, output_tokens: ASSUME.judge.out + ASSUME.judge.outPerItem * items });
   const totalUsd = generateUsd + reviewUsd + judgeUsd;
   return { type, items, credits, outTokens, generateUsd, reviewUsd, judgeUsd, totalUsd, usdPerCredit: totalUsd / credits };
+}
+
+/**
+ * One batch of `type` generated on `model`, in USD, on a COLD cache (the dearest case: a cron run, or the first ask after
+ * the five-minute cache expired), at that model's catalog rate. On the default model it is exactly today's cold estimate.
+ * tests/pricing-floor.test.ts divides it by the credits the model is charged (`creditsFor`, src/lib/models/credits.ts)
+ * for every catalog model and every type it allows (rule 241 by tier). Throws for an id that is not exactly a catalog id.
+ */
+export function estimateFor(type: TaskType, model: string): number {
+  return estimateBatch(type, { cache: "cold", model }).totalUsd;
 }
 
 /**

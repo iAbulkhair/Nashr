@@ -26,7 +26,10 @@ export type ModelEntry = {
   auto: boolean;
   /** A customer may choose it for chat or content generation. */
   pick: boolean;
-  /** Task types it may run, when it must not run all of them (a premium model that cannot meet the margin floor on some). */
+  /**
+   * Task types it may run, when it must not run all of them: a model that cannot meet the margin floor on some at the
+   * credits its tier charges (tests/pricing-floor.test.ts, rule 241 by tier). Unset: every type (`modelAllowsTask`).
+   */
   tasks?: readonly string[];
 };
 
@@ -37,6 +40,21 @@ function deepFreeze<T>(x: T): T {
   }
   return x;
 }
+
+/**
+ * The task types a standard-tier Claude model may run: every type but `article` and `followup_seq`. Generation is priced
+ * at Opus 5 (`PRICED_AT.generate`), so a standard model charges x0.5 (src/lib/models/credits.ts); the reviewer and the
+ * judge cost the same whatever model generated, and on these two types the cost per charged credit stays over the margin
+ * floor even on a warm cache (article $0.0791, followup_seq $0.0739 against $0.0710; tests/pricing-floor.test.ts, rule 241
+ * by tier). Written out rather than derived from the task list on purpose: a new task type runs on these models only once
+ * it is added here, after the floor test has priced it. `generateBatch` refuses a type outside the list before charging.
+ */
+const STANDARD_CLAUDE_TASKS: readonly string[] = [
+  "weekly_plan", "social", "whatsapp", "ads", "gbp", "cart_recovery", "sales_script", "lead_qualifier",
+  "pricing_review", "unit_economics", "cash_forecast", "gtm_plan", "growth_experiments", "retention_play", "weekly_report",
+  "board_deck", "dashboard_spec", "strategy_review", "okrs", "decision_memo", "prd", "roadmap", "feedback_synthesis",
+  "onboarding_flow",
+];
 
 /**
  * Rates, date checked 2026-10-08. `rate` is what we actually pay per million tokens by the route the model normally takes:
@@ -79,6 +97,7 @@ export const MODELS: readonly ModelEntry[] = deepFreeze<ModelEntry[]>([
     rate: { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 },
     auto: true,
     pick: true,
+    tasks: STANDARD_CLAUDE_TASKS,
   },
   {
     id: "claude-sonnet-5-5",
@@ -91,6 +110,7 @@ export const MODELS: readonly ModelEntry[] = deepFreeze<ModelEntry[]>([
     rate: { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 },
     auto: true,
     pick: true,
+    tasks: STANDARD_CLAUDE_TASKS,
   },
 ]);
 
@@ -102,6 +122,11 @@ const PICK: readonly ModelEntry[] = Object.freeze(MODELS.filter((m) => m.pick));
 /** The entry for `id`, or undefined for anything that is not exactly a catalog id (non-strings, unknown ids, prototype names). */
 export function modelById(id: unknown): ModelEntry | undefined {
   return typeof id === "string" ? BY_ID.get(id) : undefined;
+}
+
+/** True when `m` may run task type `type`: its `tasks` allow-list names it, or it has none (it may run every type). */
+export function modelAllowsTask(m: Pick<ModelEntry, "tasks">, type: string): boolean {
+  return !m.tasks || m.tasks.includes(type);
 }
 
 /** What automatic routing may choose from. */
