@@ -45,7 +45,7 @@ feature branch ──PR──▶ main ──auto──▶ staging.thakeen.com   
 
 ### 4.1 Host
 
-A second Node.js web app on the same Hostinger order, domain `staging.thakeen.com`, Git auto-deploy on `main`, the same build settings as live (`app_type` next, `build:hostinger`, Node 22, npm, output `.next`). Section 12 lists what must be checked first (a subdomain as its own Node.js app). DNS for `staging` points where Hostinger says.
+A second Node.js web app on the same Hostinger order, domain `staging.thakeen.com`, Git auto-deploy on `main` (created off, and switched on only once the lock is merged into `main`; step 4 of section 11), the same build settings as live (`app_type` next, `build:hostinger`, Node 22, npm, output `.next`). Section 12 lists what must be checked first (a subdomain as its own Node.js app). DNS for `staging` points where Hostinger says.
 
 ### 4.2 Environment variables (entered by the founder in hPanel; never in chat, never committed)
 
@@ -118,8 +118,8 @@ Each unit has one job and can be tested alone.
 
 ### 5.8 Scripts
 
-- `scripts/probe.mjs <origin> <seconds>`: one `GET /api/health` every 1.2 seconds (50 a minute; one a second is 60, exactly the route's cap of 5.5, so any other caller on the same client address would push it to 429); prints each status change and commit change with a timestamp; ends with the longest run of failed requests, the slowest answer, the moment the commit changed and how many answers were throttled. A 429 is the route's limiter answering, so the process is up: it is counted apart (`throttled`) and is not a failure. Reads the access code from `STAGING_ACCESS_CODE` in the environment and never prints it.
-- `scripts/smoke.mjs <origin>`: the checks of section 7, exit code 0 or 1, one line per check. On the live site it runs only the anonymous checks; sign-in and chat run on staging only, with the test account from section 4.3. Its `/api/health` check waits for `Retry-After` on a 429 and retries once. Neither script is relied on before the client-address check of `docs/system/flows.md` section 49, item 7 passes: if the host forwards no client address, every caller shares one health bucket of 60 a minute.
+- `scripts/probe.mjs <origin> <seconds>`: one `GET /api/health` every 1.2 seconds (50 a minute; one a second is 60, exactly the route's cap of 5.5, so any other caller on the same client address would push it to 429); prints each status change and commit change with a timestamp; ends with the longest run of failed requests, the slowest answer, the moment the commit changed and how many answers were throttled. A 429 is the route's limiter answering, so the process is up: it is counted apart (`throttled`) and is not a failure. Reads the access code from `STAGING_ACCESS_CODE` in the environment, else from `.smoke.local` (as `smoke.mjs` does), stops at once when staging has none, and never prints it.
+- `scripts/smoke.mjs <origin>`: the checks of section 7, exit code 0 or 1, one line per check. On the live site it runs only the anonymous checks; sign-in and chat run on staging only, with the test account from section 4.3. Both scripts accept only `https://thakeen.com`, `https://staging.thakeen.com` and a local server (`http://localhost:<port>`, `http://127.0.0.1:<port>`): any other origin exits 2 before a request, so no secret reaches another host. Its `/api/health` check waits for `Retry-After` on a 429 and retries once. Neither script is relied on before the client-address check of `docs/system/flows.md` section 51, item 7 passes: if the host forwards no client address, every caller shares one health bucket of 60 a minute.
 
 ### 5.9 A chat answer cut by the switch
 
@@ -129,7 +129,7 @@ Each unit has one job and can be tested alone.
 
 ### 6.1 When
 
-- A release starts at night in Saudi Arabia, between 22:00 and 00:50 UTC (01:00 to 03:50 Riyadh), unless the live site is broken.
+- A release starts at night in Saudi Arabia, between 22:00 and 00:40 UTC (01:00 to 03:40 Riyadh), unless the live site is broken.
 - Not within 10 minutes of a cron in `vercel.json`'s schedules, and at minutes :05 to :10, :20 to :25, :35 to :40 or :50 to :55, so the roughly 2-minute build finishes before the next quarter-hour secretary cron.
 - After the switch, Claude calls `/ar`, `/en`, `/ar/app` and `/api/health` once each to warm the new process before customers do.
 
@@ -210,7 +210,7 @@ Each step that changes something outside the repository is done only after the f
 1. **Founder:** creates the second Upstash database and the capped Anthropic key, makes the `STAGING_ACCESS_KEY` code. Fixing GitHub billing helps but does not block.
 2. **Claude, read-only first:** confirms on the Hostinger API that a subdomain can be its own Node.js app on this order, and how its environment variables are set.
 3. **Claude, needs approval (touches the live site's settings, not its code):** creates `production` at the live commit, then switches thakeen.com's Git auto-deploy from `main` to `production`. No rebuild happens (saving these settings on a Node.js site does not build). After this, merging to `main` cannot reach customers.
-4. **Claude, needs approval:** creates the staging app (`staging.thakeen.com`, auto-deploy on `main`).
+4. **Claude, needs approval:** creates the staging app (`staging.thakeen.com`) with auto-deploy off and no build, then turns auto-deploy on (`main`) and starts the first build only after the lock is merged into `main` and the staging variables are set: any build of a `main` without the lock would serve an open copy of the site.
 5. **Founder:** enters staging's environment variables in hPanel (4.2).
 6. **Claude:** the code pull request (sections 5, 9, 10) into `main`. The founder reviews and merges; it builds staging only.
 7. **Claude:** step 0 (section 8) and the smoke run on staging; report to the founder.
@@ -220,7 +220,7 @@ Each step that changes something outside the repository is done only after the f
 
 - A subdomain of `thakeen.com` as a separate Node.js web app on order 1009870060, with its own environment variables and Git settings.
 - `git` is available during the Hostinger build (for `BUILD_COMMIT`); if not, the build record's commit hash stands in (5.6).
-- Hostinger forwards a client address header (`x-real-ip` or `x-forwarded-for`). Without one, `clientIp` is the shared `unknown` for every public rate limit, the 60-a-minute health bucket included (`docs/system/flows.md` section 49, item 7).
+- Hostinger forwards a client address header (`x-real-ip` or `x-forwarded-for`). Without one, `clientIp` is the shared `unknown` for every public rate limit, the 60-a-minute health bucket included (`docs/system/flows.md` section 51, item 7).
 - A pushed tag does not start a Hostinger build.
 - A failed build leaves the previous build serving.
 - The restart gap after a successful switch (section 8).

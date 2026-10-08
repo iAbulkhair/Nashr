@@ -1,11 +1,15 @@
 // Post-release checks (spec 2026-10-08-staging-smooth-releases, sections 5.8 and 7).
 // Usage: node scripts/smoke.mjs <origin>. One PASS or FAIL line per check, exit 0 when all pass, else 1. Node 22, no dependencies.
 //
-// On https://thakeen.com only the anonymous checks run. On any other origin (staging) the checks that sign in, chat and
-// call a cron run too. Their values come from `.smoke.local` at the repository root (gitignored, one KEY=value per
-// line, no quotes; an environment variable of the same name wins): STAGING_ACCESS_CODE (the value of the staging host's
-// STAGING_ACCESS_KEY), SMOKE_EMAIL, SMOKE_PASSWORD and SMOKE_CRON_SECRET (the staging CRON_SECRET). Nothing from that
-// file is ever printed. All four are listed in docs/system/variables.md section 7.
+// The origin is exactly https://thakeen.com, https://staging.thakeen.com, or a local server (http://localhost:<port>,
+// http://127.0.0.1:<port>). Anything else (a typo, www, plain http, a path) exits 2 with a message before any request,
+// because the checks below send secrets. On https://thakeen.com only the anonymous checks run and nothing secret is sent.
+// On staging, and on a local server (which can run with APP_ENV=staging to try every check), the checks that sign in,
+// chat and call a cron run too. Their values come from `.smoke.local` at the repository root (gitignored, one KEY=value
+// per line, no quotes; an environment variable of the same name wins, and scripts/probe.mjs reads STAGING_ACCESS_CODE the
+// same way): STAGING_ACCESS_CODE (the value of the staging host's STAGING_ACCESS_KEY), SMOKE_EMAIL, SMOKE_PASSWORD and
+// SMOKE_CRON_SECRET (the staging CRON_SECRET). Nothing from that file is ever printed. All four are listed in
+// docs/system/variables.md section 7.
 //
 // Not before the client-address check: do not run this, or scripts/probe.mjs, against staging until the plan's Task 13,
 // step 4 has passed (docs/system/flows.md section 51, item 7). Until then a host that forwards no client address puts
@@ -23,11 +27,9 @@
 // - Every staging run sends ONE real chat message to the model on the staging Anthropic key. A message costs at most
 //   CHAT_TURN_MAX_USD (0.14 USD today, src/lib/pricing.ts) and counts against the account's chat allowance, so N runs
 //   cost at most N x 0.14 USD. That spend is intended (spec section 7).
-import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { stagingCookie } from "./staging-cookie.mjs";
+import { classifyOrigin, originRefusal, readLocal, stagingCookie, valueOf } from "./staging-cookie.mjs";
 
-const LIVE = "https://thakeen.com";
 const DEFAULT_WAIT_MS = 60_000;
 const MAX_WAIT_MS = 65_000;
 
@@ -91,21 +93,6 @@ export function chatProblem(status, body) {
   return `got ${status}${error ? ` ${error}` : ""}${why}`;
 }
 
-/** `.smoke.local` as a map: KEY=value lines, blank lines and # comments skipped, a missing file is an empty map. */
-function readLocal() {
-  /** @type {Record<string, string>} */
-  const out = {};
-  let text = "";
-  try { text = readFileSync(new URL("../.smoke.local", import.meta.url), "utf8"); } catch { return out; }
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    const at = line.indexOf("=");
-    if (!line || line.startsWith("#") || at < 1) continue;
-    out[line.slice(0, at).trim()] = line.slice(at + 1).trim();
-  }
-  return out;
-}
-
 /** The `name=value` pair of one cookie in a response's Set-Cookie headers, or null. */
 function cookiePair(/** @type {Response} */ res, /** @type {string} */ name) {
   return res.headers.getSetCookie().map((c) => c.split(";")[0]).find((c) => c.startsWith(`${name}=`)) ?? null;
@@ -117,10 +104,15 @@ async function main() {
     console.error("usage: node scripts/smoke.mjs <origin>");
     process.exit(2);
   }
-  const origin = arg.replace(/\/+$/, "");
-  const staging = new URL(origin).origin !== LIVE;
+  const target = classifyOrigin(arg);
+  if (!target) {
+    console.error(originRefusal(arg));
+    process.exit(2);
+  }
+  const { origin } = target;
+  const staging = target.kind !== "live";
   const local = readLocal();
-  const val = (/** @type {string} */ key) => process.env[key] || local[key];
+  const val = (/** @type {string} */ key) => valueOf(key, local);
 
   let stagingPair = /** @type {string | null} */ (null);
   let session = /** @type {string | null} */ (null);

@@ -22,7 +22,7 @@ import { STAGING_COOKIE, accessToken } from "@/lib/staging-access";
  * The per-IP bucket assumes `clientIp(req)` sees the real client. If the host forwarded no address header at all, every
  * caller would share one "unknown" bucket and five tries from anyone would lock the team out for 15 minutes. That is a
  * fact about Hostinger's proxy that no code here can settle, so it is checked on staging (docs/system/flows.md, section
- * 49, item 7) and pinned for the cases the proxy can differ in (tests/staging.test.ts).
+ * 51, item 7) and pinned for the cases the proxy can differ in (tests/staging.test.ts).
  */
 export async function POST(req: Request) {
   if (!isStaging()) return new NextResponse(null, { status: 404 });

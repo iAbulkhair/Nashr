@@ -4,7 +4,7 @@
 
 **Goal:** staging.thakeen.com, locked and never indexed, builds from `main`; thakeen.com builds from a `production` branch that only the founder's merge of a release pull request moves; a health route and two scripts measure and verify each switch.
 
-**Architecture:** Code tasks 1 to 9 land on one branch and one pull request into `main`. Ops tasks 10 to 15 change Hostinger and GitHub, each behind the founder's explicit yes. Task 11 (live auto-deploy on `production`) must be done before the code pull request merges, or the merge goes live.
+**Architecture:** Code tasks 1 to 9 land on one branch and one pull request into `main`. Ops tasks 10 to 15 change Hostinger and GitHub, each behind the founder's explicit yes. Task 11 (live auto-deploy on `production`) must be done before the code pull request merges, or the merge goes live. Task 12 creates the staging app with auto-deploy off; Task 13 turns it on after the merge, so no build of a `main` without the lock can reach staging.
 
 **Tech Stack:** Next.js 16 app router (`src/proxy.ts` runs on Node.js, matcher must be a constant), vitest with the in-memory store, Node 22 on Hostinger, Hostinger API MCP (`hosting_*`), GitHub (`gh` needs the sandbox off).
 
@@ -414,7 +414,7 @@ describe("the health route (rule 676)", () => {
   - `docs/system/permissions.md` row 153: one sentence on how the probe paces itself and how smoke retries a 429.
   - `docs/system/tests.md` row 676: add the scripts' behaviour below and `scripts.test.ts` to its test column.
 
-**Why the health route's limit shapes both scripts:** `GET /api/health` allows 60 a minute per client address (`src/app/api/health/route.ts:16`, a fixed window that starts at its first hit). One probe request a second is 60 a minute, exactly the cap with no room, and if the host forwards no client address every caller shares the `unknown` bucket (`docs/system/permissions.md` row 150). A 429 from this route is the app answering, so it proves the process is up. Neither script may count it as an outage, and neither may be run before the client-address check of Task 13, step 4 has passed.
+**Why the health route's limit shapes both scripts:** `GET /api/health` allows 60 a minute per client address (`src/app/api/health/route.ts:16`, a fixed window that starts at its first hit). One probe request a second is 60 a minute, exactly the cap with no room, and if the host forwards no client address every caller shares the `unknown` bucket (`docs/system/permissions.md` row 153). A 429 from this route is the app answering, so it proves the process is up. Neither script may count it as an outage, and neither may be run before the client-address check of Task 13, step 4 has passed.
 
 **Interfaces:**
 - `staging-cookie.mjs`: `export async function stagingCookie(origin: string, code: string | undefined): Promise<string | null>`. It POSTs the form with `redirect: "manual"` and returns the `thakeen_staging=...` pair, or `null`. It never prints the code.
@@ -425,7 +425,7 @@ describe("the health route (rule 676)", () => {
     - A 429 is not a failure: it ends a failure run and is counted in `throttled`.
     - A sample with `commit: null` (a failure or a 429) is skipped when looking for the commit change.
   - The main block runs only when the file is invoked directly. Usage: `node scripts/probe.mjs <origin> <seconds>`.
-  - Reads `STAGING_ACCESS_CODE`; prints one line per status or commit change, then the summary with `throttled`. On a 429 it does not wait or stop: it keeps its pace, because the measurement needs every request. A `throttled` above 0 means something else shares the bucket or the host forwards no client address; say so in the Task 14 report.
+  - Reads `STAGING_ACCESS_CODE` from the environment, else `.smoke.local` (`valueOf` in `staging-cookie.mjs`, the reader smoke uses), and stops at once with exit 2 on staging when there is none; checks the origin first (`classifyOrigin`, below); prints one line per status or commit change, then the summary with `throttled`. On a 429 it does not wait or stop: it keeps its pace, because the measurement needs every request. A `throttled` above 0 means something else shares the bucket or the host forwards no client address; say so in the Task 14 report.
 - `smoke.mjs`: usage `node scripts/smoke.mjs <origin>`; exit 0 or 1; one `PASS <name>` or `FAIL <name>` line per check.
   - `export async function fetchRetryOnce(url: string, init: RequestInit, opts?: { fetchImpl?: typeof fetch; sleep?: (ms: number) => Promise<void> }): Promise<Response>`:
     - One fetch. On a 429 only, it waits for the `Retry-After` header in whole seconds (60 000 ms when the header is missing or not a number, never more than 65 000 ms) and fetches once more.
@@ -436,8 +436,8 @@ describe("the health route (rule 676)", () => {
     - `/ar` and `/en` 200.
     - `/api/tasks` 401.
     - `/api/cron/weekly` without bearer 401.
-    - `/api/health` 200, fetched with `fetchRetryOnce`. A 429 that survives the one retry is a `FAIL` whose line says the health bucket is shared or full (permissions.md row 150), not an outage.
-  - Staging only (any origin other than `https://thakeen.com`). Values come from `.smoke.local` (gitignored, `KEY=value` lines):
+    - `/api/health` 200, fetched with `fetchRetryOnce`. A 429 that survives the one retry is a `FAIL` whose line says the health bucket is shared or full (permissions.md row 153), not an outage.
+  - Staging and a local server only: the origin is checked against the allowlist first (exactly `https://thakeen.com`, `https://staging.thakeen.com`, `http://localhost:<port>`, `http://127.0.0.1:<port>`; any other exits 2 before a request), and anything but `https://thakeen.com` runs these. Values come from `.smoke.local` (gitignored, `KEY=value` lines):
     - `/robots.txt` contains `Disallow: /`.
     - Sign in with `POST /api/auth/login` using `SMOKE_EMAIL` and `SMOKE_PASSWORD`.
     - `/ar/app` 200 with that session.
@@ -521,7 +521,7 @@ describe("the smoke health check against the route's limiter", () => {
 
 - [ ] **Step 1:** Write the flows section from spec sections 3, 6 and 7. It covers:
   - The release pull request's description fields.
-  - The window: 22:00 to 00:50 UTC, at minutes :05-:10, :20-:25, :35-:40 or :50-:55, and 10 minutes clear of the `vercel.json` crons.
+  - The window: 22:00 to 00:40 UTC, at minutes :05-:10, :20-:25, :35-:40 or :50-:55, and 10 minutes clear of the `vercel.json` crons.
   - The warm-up calls, then verify, then tag `live-YYYY-MM-DD-N`.
   - Rollback: a revert pull request into `production`, then the same revert into `main`; the fix starts by reverting that revert.
 - [ ] **Step 2:** Run the duplicate-number check `grep -o "^| [0-9]* |" docs/system/tests.md | sort | uniq -d`. Expected: no output.
@@ -561,30 +561,30 @@ describe("the smoke health check against the route's limiter", () => {
 ### Task 12: Create the staging app (founder's yes required)
 
 - [ ] **Step 1:** Ask for a yes naming this step, with the shape decided in Task 10.
-- [ ] **Step 2:** Create the app: `app_type` next, `build_script` `build:hostinger`, Node 22, npm, output `.next`, Git auto-deploy on `main`. Do not start a build yet.
+- [ ] **Step 2:** Create the app: `app_type` next, `build_script` `build:hostinger`, Node 22, npm, output `.next`. Git auto-deploy OFF (`is_enabled: false`, branch `main` recorded) and no build: do not start one.
 - [ ] **Step 3:** The founder enters the environment variables of spec section 4.2 in hPanel, never in chat; they include `APP_ENV=staging` and `STAGING_ACCESS_KEY`. The founder also fills `.smoke.local` on their machine, then says "done".
-- [ ] **Step 4:** No build before Task 13 merges: today's `main` has no lock, so an early build would put an open copy of the site on staging. The merge's auto-deploy builds staging. If no build starts within 3 minutes of the merge, start one with `hosting_nodejs_start-build` (`source_type` git, branch `main`). Poll `hosting_nodejs_build` until `completed`.
+- [ ] **Step 4:** No build, and auto-deploy stays off, until Task 13 has merged the lock into `main` and step 3's variables are set (`APP_ENV=staging` among them). Today's `main` has no lock, and other sessions merge into `main`: with auto-deploy on, any of those merges would put an open copy of the site on staging. Task 13, step 3 turns auto-deploy on and starts the first build.
 
 ### Task 13: The code pull request into `main`
 
 - [ ] **Step 1:** Rule-number check (Global Constraints), `npx next build` outside the sandbox, `npm run check`.
 - [ ] **Step 2:** Confirm Task 11 is done (auto-deploy on `production`). If not, stop.
-- [ ] **Step 3:** Open the pull request with the Task 9 findings in its description and bind it with `ccd_pr`. The founder reviews and merges. Only staging builds.
+- [ ] **Step 3:** Open the pull request with the Task 9 findings in its description and bind it with `ccd_pr`. The founder reviews and merges. Nothing builds yet: live is on `production` (Task 11) and staging's auto-deploy is still off. Once the merge is on `main` (so the lock is on `main`) and `APP_ENV=staging` and the other staging variables of Task 12, step 3 are set, turn staging's Git auto-deploy on (`hosting_git_update-auto-deployment-settings`, branch `main`, `is_enabled: true`) and start the first build with `hosting_nodejs_start-build` (`source_type` git, branch `main`). Poll `hosting_nodejs_build` until `completed`. From then on every merge into `main` builds staging.
 - [ ] **Step 4:** Check staging once its build completes:
   - `curl -s -o /dev/null -w "%{http_code}" https://staging.thakeen.com/ar` is 404 without the cookie.
   - `curl -s https://staging.thakeen.com/robots.txt` contains `Disallow: /` and no `Sitemap:` line. `robots.txt` is built statically, so a staging build made without `APP_ENV=staging` serves the live body (`Allow: /`) here even though the lock still works; if so, set `APP_ENV=staging` in hPanel and rebuild. This curl is also the only check of the real Hostinger edge for a static `/robots.txt`.
   - The access page works in a browser.
   - `/api/health` shows the merge commit.
   - The two host facts of `docs/system/flows.md` section 51, item 7, last, because they use up a network's access tries for 15 minutes:
-    - The right code's `Set-Cookie` lists `HttpOnly`, `Secure`, `SameSite=lax` and `Max-Age` (the `curl` there prints flag names only).
+    - The right code's `Set-Cookie` lists `HttpOnly`, `Secure`, `SameSite=lax` and `Max-Age`, and the 303's `Location` starts with `https://staging.thakeen.com/`. The flags show whatever `APP_ORIGIN` holds, so only the `Location` checks it (the `curl` there prints flag names and that URL only).
     - The tries are per client: six tries from one network end in 429, and one try from a second network is still 303. If it is 429, stop: Hostinger forwards no client address and `clientIp` needs fixing before staging is relied on.
-    - This one check also settles the health route, which keys its bucket `health:{ip}` with the same `clientIp`. If the tries are per client, so is the 60-a-minute health bucket the probe and smoke script use. If they are not, every caller shares it and the probe alone fills most of it (`docs/system/permissions.md` row 150). Do not run Task 14 until this passes.
+    - This one check also settles the health route, which keys its bucket `health:{ip}` with the same `clientIp`. If the tries are per client, so is the 60-a-minute health bucket the probe and smoke script use. If they are not, every caller shares it and the probe alone fills most of it (`docs/system/permissions.md` row 153). Do not run Task 14 until this passes.
 
 ### Task 14: Step 0 measurement on staging
 
 Before step 1: Task 13, step 4's client-address check passed (it also settles the health bucket), and 15 minutes have passed since it, because it used up one network's access tries.
 
-- [ ] **Step 1:** Run `node scripts/probe.mjs https://staging.thakeen.com 300` in the background, then trigger a staging rebuild (`hosting_nodejs_start-build`, branch `main`). Record the summary: the longest failure run, the slowest answer, when the commit changed, and `throttled`. A 429 is the app answering, so it is not in the failure run; a `throttled` above 0 means another caller shared the health bucket or the host forwards no client address. Find out which and say so in the report.
+- [ ] **Step 1:** Run `node scripts/probe.mjs https://staging.thakeen.com 300` in the background (it reads the access code from the environment, else the `.smoke.local` the founder filled in Task 12; with none it stops at once, exit 2), then trigger a staging rebuild (`hosting_nodejs_start-build`, branch `main`). Record the summary: the longest failure run, the slowest answer, when the commit changed, and `throttled`. A 429 is the app answering, so it is not in the failure run; a `throttled` above 0 means another caller shared the health bucket or the host forwards no client address. Find out which and say so in the report.
 - [ ] **Step 2:** Test a failed build, then delete the branch:
   - Push a throwaway branch `claude/staging-build-fail-probe` with one commit that breaks the build (a type error).
   - Start a staging build of that branch through the API.

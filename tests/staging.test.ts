@@ -96,7 +96,13 @@ describe("the staging lock (rules 674, 677)", () => {
     const { config } = await import("@/proxy");
     for (const url of ["/", "/app", "/ar", "/en/pricing", "/ar/app/chat", "/api/health", "/api/chat", "/robots.txt", "/sitemap.xml", "/manifest.webmanifest", "/icon-192.png"])
       expect(runs({ config, url }), url).toBe(true);
-    for (const url of ["/_next/static/chunks/main.js", "/favicon.ico"]) expect(runs({ config, url }), url).toBe(false);
+    for (const url of ["/_next/static/chunks/main.js", "/_next/static/a", "/_next/image", "/_next/image?url=%2Fa.png&w=64&q=75", "/favicon.ico"]) expect(runs({ config, url }), url).toBe(false);
+  });
+  it("the exclusions are anchored: look-alikes of the static paths still meet the lock", async () => {
+    const { unstable_doesMiddlewareMatch: runs } = await import("next/experimental/testing/server");
+    const { config } = await import("@/proxy");
+    for (const url of ["/favicon.icox", "/faviconXico/pricing", "/_next/staticx/a", "/_next/staticx", "/_next/imagex", "/_next/image/ar", "/favicon.ico/x"])
+      expect(runs({ config, url }), url).toBe(true);
   });
 });
 

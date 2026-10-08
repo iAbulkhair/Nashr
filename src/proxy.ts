@@ -50,5 +50,6 @@ export function proxy(req: NextRequest) {
 }
 
 // Every path except Next's static assets and the favicon: the staging lock must see them all (`/` and `/app` included).
-// Off staging the other paths pass through untouched.
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"] };
+// The exclusions are anchored (`_next/static/`, `_next/image` and `favicon.ico` end the path), so a look-alike such as
+// `/favicon.icox` or `/_next/staticx/a` still meets the lock. Off staging the other paths pass through untouched.
+export const config = { matcher: ["/((?!_next/static/|_next/image$|favicon\\.ico$).*)"] };
