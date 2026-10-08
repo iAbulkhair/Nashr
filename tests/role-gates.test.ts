@@ -82,6 +82,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // routes read `currentUserUnverified` and refuse without it; both are rate limited (allow).
   "POST /api/auth/verify/send": "unverified-session",
   "POST /api/auth/verify/check": "unverified-session",
+  "POST /api/auth/verify/email": "unverified-session",
   "POST /api/team/accept": "public",
   "POST /api/support": "public",
   "POST /api/affiliates": "public",
@@ -342,7 +343,7 @@ function violations(h: Handler, gate: Gate): string[] {
     return out;
   }
   if (gate === "cron") return /sameSecret\(/.test(h.body) ? [] : ["cron handler without the sameSecret bearer check"];
-  if (gate === "unverified-session") return /\bcurrentUserUnverified\(/.test(h.body) && /\ballow\(/.test(h.body) ? [] : ["verify handler without currentUserUnverified and allow"];
+  if (gate === "unverified-session") return /\bcurrentUserUnverified\(/.test(h.body) && /\b(?:allow|verifySendRefusal)\(/.test(h.body) ? [] : ["verify handler without currentUserUnverified and allow"];
   if (gate === "bearer") return /userFromBearer\(/.test(h.body) ? [] : ["bearer handler without userFromBearer"];
   if (gate === "admin-console") return /\b(?:isAdmin|adminActor)\(/.test(h.body) || CONSOLE_SELF[h.key] ? [] : ["console handler without isAdmin/adminActor"];
   if (!/\bcurrentUser\(/.test(h.body)) out.push("no session read (currentUser)");

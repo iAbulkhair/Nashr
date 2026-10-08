@@ -1,10 +1,15 @@
 import { createHash, randomInt } from "crypto";
 import { db } from "./db";
-import { saveUser, type User } from "./auth";
+import { NextResponse } from "next/server";
+import { getLogin, saveUser, type User } from "./auth";
+import { wipeAccount } from "./account";
 import { withUserLock } from "./credits";
-import { sameSecret } from "./rate";
+import { movePartnerRef } from "./partners";
+import { moveReferral, registerCode } from "./referral";
+import { allow, clientIp, retryLater, sameSecret } from "./rate";
 import { isProductionDeploy } from "./deploy-env";
 import { mailReady, sendEmail } from "./notify";
+import { withLoginLock } from "./team";
 
 /**
  * Email verification codes (rules 757-758). A new owner proves the address with a 6-digit code mailed to it; until then
@@ -118,4 +123,68 @@ export async function sendVerifyCode(u: Pick<User, "email" | "lang">): Promise<{
   }
   if (!sent && !devCodeExposed()) await dropVerifyCode(u.email);
   return { sent, code };
+}
+
+/**
+ * The refusals every code send goes through, in order (rules 759-760, 766): mail is off (503, unless a test deploy hands the
+ * code back), then three buckets, the refusing one names the wait: one send a minute and five an hour per address, twenty
+ * an hour per IP. `email` is the session's (or, after a move, the new) address, never one taken from a request as a source
+ * account. Null when the send may go ahead.
+ */
+export async function verifySendRefusal(email: string, req: Request): Promise<NextResponse | null> {
+  if (!devCodeExposed() && !mailReady()) return NextResponse.json({ ok: false, error: "mail_unavailable" }, { status: 503 });
+  if (!(await allow(`verify:gap:${email}`, 1, VERIFY.gap))) return retryLater({ ok: false, error: "slow_down" }, VERIFY.gap);
+  if (!(await allow(`verify:hour:${email}`, VERIFY.perHour, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
+  if (!(await allow(`verify:ip:${clientIp(req)}`, VERIFY.perIpHour, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
+  return null;
+}
+
+const utcDay = (now: number) => new Date(now).toISOString().slice(0, 10);
+/** Seconds until the next UTC midnight, when the day's address moves are counted again. */
+export const secondsToUtcMidnight = (now: number = Date.now()) => Math.max(1, Math.ceil((Date.parse(`${utcDay(now)}T00:00:00Z`) + 864e5 - now) / 1000));
+
+export type MoveResult = "ok" | "exists" | "not_allowed" | "limit";
+
+/**
+ * Rules 763-765: an owner who signed up through the gate and has not proved the address may correct a mistyped one, so a
+ * typo never strands the account. Only `from` itself is moved (the caller passes the session's user, never a request's
+ * address as the source) and only to an address no owner or member login holds. Three moves per account per UTC day, the
+ * counter carried to the new record.
+ *
+ * Locks, in a fixed order: the login locks of both addresses (the alphabetically smaller first, so two moves crossing
+ * each other cannot deadlock; src/lib/team.ts keeps its own order), then the old account's user lock, re-reading the
+ * record inside it, so two moves from one account cannot both succeed. Inside: write the new record, register its
+ * referral code, carry the referral and the partner attribution, and only then wipe the old account. A stop before the
+ * wipe leaves two records; the retry finds the copy (same createdAt, same password hash, still gated and unverified) and
+ * finishes the wipe instead of answering `exists`. Rare residue after a stop: the referrer's list and the partner's set
+ * may name both addresses until that retry.
+ */
+export async function moveUnverifiedAccount(from: User, to: string): Promise<MoveResult> {
+  const old = from.email;
+  if (!from.gatedSignup || from.emailVerifiedAt) return "not_allowed";
+  if (to === old) return "exists";
+  const [first, second] = old < to ? [old, to] : [to, old];
+  try {
+    return await withLoginLock(first, () => withLoginLock(second, () => withUserLock(old, async (cur): Promise<MoveResult> => {
+      if (!cur.gatedSignup || cur.emailVerifiedAt) return "not_allowed";
+      const now = Date.now();
+      const today = utcDay(now);
+      const used = cur.emailMoves && cur.emailMoves.day === today ? cur.emailMoves.n : 0;
+      if (used >= VERIFY.movesPerDay) return "limit";
+      const login = await getLogin(to);
+      const unfinished = login?.kind === "owner" && login.user.gatedSignup === true && !login.user.emailVerifiedAt && login.user.createdAt === cur.createdAt && login.user.passHash === cur.passHash;
+      if (login && !unfinished) return "exists";
+      if (!unfinished) await saveUser({ ...cur, email: to, emailMoves: { day: today, n: used + 1 } });
+      await registerCode(to);
+      await moveReferral(old, to);
+      if (cur.referredBy?.partner) await movePartnerRef(cur.referredBy.partner, old, to);
+      await dropVerifyCode(old);
+      await wipeAccount(old);
+      return "ok";
+    })));
+  } catch (e) {
+    // The account vanished under the lock (a parallel move or a deletion won): nothing here to move.
+    if (e instanceof Error && e.message === "user_not_found") return "not_allowed";
+    throw e;
+  }
 }

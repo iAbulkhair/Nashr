@@ -184,6 +184,13 @@ export async function afterSignup(email: string, found: SignupPartner): Promise<
   return done;
 }
 
+/** An unverified owner corrected the address they signed up with: the partner's referral set names the new one (add first, remove last). */
+export async function movePartnerRef(partner: string, from: string, to: string): Promise<void> {
+  const key = refsKey(normalizeEmail(partner));
+  await db.sadd(key, to);
+  await db.srem(key, from);
+}
+
 export type ClaimError = "bad_partner_code" | "self_referral" | "already_attributed" | "already_paid";
 /**
  * The billing page's partner-code field: an account still on its trial, never attributed and never paid, takes a
