@@ -25,7 +25,8 @@ import { missingData } from "./cart-recovery";
 import { modelState } from "./model";
 import { modelAllowsTask, modelById } from "./models/catalog";
 import { creditsFor } from "./models/credits";
-import { route } from "./models/route";
+import { type Rejected } from "./models/route";
+import { generateRouteFor } from "./models/overrides";
 import { memoryBlock } from "./files";
 import { statsFor } from "./stats";
 import { feedbackFor } from "./feedback";
@@ -95,18 +96,23 @@ export type BatchOpts = {
   /**
    * The model the batch runs on and is charged for (spec 2026-10-08-straitly-model-routing, sections 4 and 6): the batch
    * costs its base credits times the model's tier multiplier (`creditsFor`, src/lib/models/credits.ts). Left out or
-   * `undefined`: `route("generate").model`, resolved once here (today Opus 5, x1: today's price). Anything else must be
-   * exactly a catalog id the routing may offer (`auto` or `pick`) that may run the type, or the batch throws
-   * (`unknown_model`, `model_not_offered`, `model_task_not_allowed`) before anything is read or charged.
+   * `undefined`: resolved once here, after the brand file is read, by `generateRouteFor` (src/lib/models/overrides.ts):
+   * the brand's pick (`Brand.model`) when `route("generate")` accepts it for this type, else the automatic choice (today
+   * Opus 5, x1: today's price) and `BatchDone.modelRejected` says why, so the caller tells the owner. Anything passed here
+   * must be exactly a catalog id the routing may offer (`auto` or `pick`) that may run the type, or the batch throws
+   * (`unknown_model`, `model_not_offered`, `model_task_not_allowed`) before anything is read or charged; the routed model
+   * is held to the same checks after the brand read, still before the charge (a backstop: `route()` already refused
+   * a pick that would fail them, `task_not_allowed` included).
    *
    * The invariant: what the balance lost, the activity row's `credits` and `BatchDone.cost` are one number, the credits
    * finally charged. A fresh charge charges the batch's price; a claim's hold (`once`) is reused only when it holds exactly
    * that price, and one of another price is given back and the price charged in the same save (`chargeOnce`); a failure
    * gives back what was charged (`refund` of that number, or `refundOnce` of the hold).
    *
-   * One decision: the model resolved here is the one `generate()` runs on, the one `creditsFor` prices and the one the judge
-   * is told generated the batch (`judgeLater`), so the model called and the model charged cannot differ. A caller that
-   * resolves its own model (a customer's pick, plan Task 6) passes it here; it does not call `generate()` itself.
+   * One decision: the model resolved here is the one `generate()` is asked for (the requested model), the one
+   * `creditsFor` prices and the one the judge is told generated the batch (`judgeLater`). `generate()` asks for the
+   * server-side fallback only when the requested model is the automatic default (`DEFAULTS.generate`, src/lib/noor.ts):
+   * a pick is never answered by another model than the one it was priced at, and when it fails the batch is refunded.
    */
   model?: string;
 };
@@ -128,8 +134,12 @@ export type BatchRefusal =
   /** The charge was refunded (`credits` is the balance after it); the caller decides how to report `error`. */
   | { ok: false; reason: "failed"; error: unknown; credits: number };
 
-/** `receipt`: what the batch's charge was booked to (a reused hold's, for a batch that paid in an earlier run). */
-export type BatchDone = { ok: true; tasks: Task[]; credits: number; receipt: SpendRef & { ok: true; credits: number }; cost: number; agent: AgentId; gov: Governance };
+/**
+ * `receipt`: what the batch's charge was booked to (a reused hold's, for a batch that paid in an earlier run).
+ * `modelRejected`: the brand's pick was not used and why (the batch ran on the automatic choice); the caller tells the
+ * owner (`MODEL_UNAVAILABLE`, src/lib/models/overrides.ts). Absent when the pick ran, or there was none.
+ */
+export type BatchDone = { ok: true; tasks: Task[]; credits: number; receipt: SpendRef & { ok: true; credits: number }; cost: number; agent: AgentId; gov: Governance; modelRejected?: Rejected };
 export type BatchResult = BatchDone | BatchRefusal;
 
 /**
@@ -199,15 +209,18 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   // calls this; here it is an invariant, before any read or charge, so no caller can buy one item of a batch type at
   // its pro-rata price.
   if (opts.count !== undefined && !isDraftType(type)) throw new Error(`not_draft_type:${type}`);
-  // The model the batch runs on and is charged for, resolved once: undefined is the routing's choice; otherwise exactly a
-  // catalog id the routing may offer, allowed to run the type (its `tasks`, set where the type misses the margin floor at the
-  // model's tier). Checked in code before any read or charge, never left to the routing.
-  const model = opts.model === undefined ? route("generate").model : opts.model;
-  const entry = modelById(model);
-  if (!entry) throw new Error("unknown_model");
-  // Only a model the routing may offer, the set the margin-floor test covers (tests/pricing-floor.test.ts).
-  if (!entry.auto && !entry.pick) throw new Error(`model_not_offered:${entry.id}`);
-  if (!modelAllowsTask(entry, type)) throw new Error(`model_task_not_allowed:${entry.id}:${type}`);
+  // The model the batch runs on and is charged for must be exactly a catalog id the routing may offer, allowed to run the
+  // type (its `tasks`, set where the type misses the margin floor at the model's tier). Checked in code, never left to the
+  // routing: a caller's model before any read, the routed one after the brand read, both before the charge.
+  const usable = (id: string) => {
+    const entry = modelById(id);
+    if (!entry) throw new Error("unknown_model");
+    // Only a model the routing may offer, the set the margin-floor test covers (tests/pricing-floor.test.ts).
+    if (!entry.auto && !entry.pick) throw new Error(`model_not_offered:${entry.id}`);
+    if (!modelAllowsTask(entry, type)) throw new Error(`model_task_not_allowed:${entry.id}:${type}`);
+    return entry.id;
+  };
+  if (opts.model !== undefined) usable(opts.model);
   // A scheduled run records its own outcome (`recordRun`), so a refusal at its charge is one row there, not two.
   const scheduled = opts.via === "weekly" || opts.via === "routine";
   const refuse = async (r: BatchRefusal, row?: Activity): Promise<BatchRefusal> => {
@@ -221,6 +234,11 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   // Governance before the charge: the owner's monthly cap for this agent is checked inside the ledger's lock.
   const [brand, gov] = await Promise.all([opts.brand ?? getBrand(scope), opts.gov ?? getGov(scope)]);
   if (!brand) return refuse({ ok: false, reason: "no_brand" });
+  // Resolved once (one decision): the caller's model, or the brand's pick when route() accepts it for this type, else
+  // the automatic choice. `user` is the account's own record, so the China confirmation is the owner's stored one.
+  const routed = opts.model === undefined ? generateRouteFor(user, brand, type) : null;
+  const model = usable(routed ? routed.model : opts.model!);
+  const modelRejected = routed?.rejected;
   if (trialOver(user)) return refuse({ ok: false, reason: "trial_over" });
   const missing = await missingData(type, scope);
   if (missing) return refuse({ ok: false, reason: "missing_data", missing });
@@ -293,5 +311,5 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   await recordActivity(scope, [done, ...crossReviewRows(tasks, createdAt, opts.via)]);
   // The judge scores against what the agent had, and against the count the owner asked for.
   judgeLater(scope, user.email, brand, tasks, opts.count, { ...ground, via: opts.via, generatedBy: model });
-  return { ok: true, tasks, credits: user.credits, receipt, cost: charged, agent, gov };
+  return { ok: true, tasks, credits: user.credits, receipt, cost: charged, agent, gov, ...(modelRejected ? { modelRejected } : {}) };
 }

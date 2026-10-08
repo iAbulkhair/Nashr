@@ -7,6 +7,7 @@ import { saveTask, type Task } from "@/lib/brand";
 import { AGENCY_MIN, CHAT_ALLOWANCE, MAX_CHAT_OVERRIDE, PLAN_CREDITS, PLAN_SEATS, chatAllowanceOf } from "@/lib/pricing";
 import { chatCredKey, chatMsgKey, chatOverKey, chatTrialKey, meter } from "@/lib/usage";
 import { reserveChatTurn } from "@/lib/chat-allowance";
+import { DEFAULTS } from "@/lib/models/route";
 
 import * as plan from "@/app/api/admin/plan/route";
 import * as exportRoute from "@/app/api/admin/export/route";
@@ -250,7 +251,7 @@ describe("the founder sets an account's chat messages (rule 316)", () => {
     expect(stopped.chatAllowance).toBe(0);
     expect(chatAllowanceOf(stopped)).toBe(0);
     expect(await lastLog()).toMatchObject({ what: "chat:0", before: { chat: 2000 }, after: { chat: 0 } });
-    const gate = await reserveChatTurn(stopped);
+    const gate = await reserveChatTurn(stopped, DEFAULTS.chat);
     expect(gate.ok, "an override of 0 refuses the next message before the model").toBe(false);
     expect(gate).toMatchObject({ error: "chat_allowance" });
 

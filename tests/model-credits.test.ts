@@ -293,7 +293,7 @@ describe("the chat allowance per tier: a message counts chatUnitsFor(model), com
   const over = async (u: User) => (await db.get<number>(chatOverKey(u.email))) ?? 0;
   const reply = (usd: number): ChatTurn => ({ role: "assistant", content: "ok", at: new Date().toISOString(), usd }) as ChatTurn;
   async function reserved(u: User, model?: string) {
-    const g = await reserveChatTurn(u, model);
+    const g = await reserveChatTurn(u, model ?? SONNET55);
     if (!g.ok) throw new Error(`refused: ${g.error}`);
     return g;
   }
@@ -306,7 +306,7 @@ describe("the chat allowance per tier: a message counts chatUnitsFor(model), com
     const s = await settleChatTurn(u, g, null);
     expect(await msgs(u)).toBe(0);
     expect(s).toMatchObject({ charged: 0, status: { used: 0, left: 250, counted: 0 } });
-    expect((await chatStatus(u)).overflow.hold).toBe(2);
+    expect((await chatStatus(u, SONNET55)).overflow.hold).toBe(2);
     expect(await reserved(u, SONNET)).toMatchObject({ mode: "included", units: 1 });
   });
 
@@ -533,6 +533,6 @@ describe("a charge then a refund returns exactly the charged credits, for each t
     // What is reported is what was charged: the price, or a reused hold's credits (chargeOnce reuses only an equal one).
     expect(src).toContain('constcharged="hold"inpaid?paid.hold.credits:cost;');
     expect(src).toContain("count:tasks.length,credits:charged}");
-    expect(src).toContain("receipt,cost:charged,agent,gov}");
+    expect(src).toContain("receipt,cost:charged,agent,gov,...(modelRejected?{modelRejected}:{})}");
   });
 });

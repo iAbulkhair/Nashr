@@ -199,10 +199,15 @@ describe("chat: the model the turn runs on is the model its messages were counte
     expect(await count(u)).toBe(250);
   });
 
-  it("the routes reserve with route(\"chat\") and hand the gate's model to chat(): no other source for either", () => {
-    for (const f of ["src/app/api/chat/route.ts", "src/app/api/mcp/route.ts"]) {
+  it("the routes reserve with the routed model and hand the gate's model to chat(): no other source for either", () => {
+    // Web chat routes the conversation's pick (`chatRouteFor`, plan Task 6); MCP ask_noor has no conversation record.
+    const reserve: Record<string, RegExp> = {
+      "src/app/api/chat/route.ts": /const routed = chatRouteFor\(u, record\);\s*const gate = await reserveChatTurn\(u, routed\.model\)/,
+      "src/app/api/mcp/route.ts": /reserveChatTurn\(\w+, route\("chat"\)\.model\)/,
+    };
+    for (const [f, re] of Object.entries(reserve)) {
       const src = readFileSync(f, "utf8");
-      expect(src, f).toMatch(/reserveChatTurn\(\w+, route\("chat"\)\.model\)/);
+      expect(src, f).toMatch(re);
       const turns = src.split("\n").filter((l) => /(await|=>) chat\(/.test(l));
       expect(turns.length, f).toBeGreaterThan(0);
       for (const l of turns) expect(l, f).toMatch(/\bmodel: gate\.model\b/);

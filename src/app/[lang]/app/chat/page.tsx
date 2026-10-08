@@ -21,6 +21,9 @@ import { can } from "@/lib/roles";
 import { chatItemOf, getHandoffs, handoffViews, type Handoff, type HandoffView } from "@/lib/handoffs";
 import { getGov } from "@/lib/governance";
 import { chatStatus } from "@/lib/chat-allowance";
+import { route } from "@/lib/models/route";
+import { chatRouteFor } from "@/lib/models/overrides";
+import { getConversation } from "@/lib/conversations";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +40,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
     if (!can(u, "onboard")) redirect(`/${lang}/app/start`);
     // First run: the workspace is built inside the "Getting started" thread, not on a form, and only from the site the
     // owner confirmed on the start page. A `?onboard=` from a link goes back there as the pre-filled value to review.
-    const [onboard, initial, chat] = await Promise.all([confirmedOnboard(sc(u)), history(sc(u)), chatStatus(u)]);
+    const [onboard, initial, chat] = await Promise.all([confirmedOnboard(sc(u)), history(sc(u)), chatStatus(u, route("chat").model)]);
     if (!onboard) {
       const asked = onboardUrl(sp.onboard);
       redirect(`/${lang}/app/start${asked.length >= 4 ? `?url=${encodeURIComponent(asked)}` : ""}`);
@@ -53,7 +56,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   const agentParam = isAgentId(sp.agent) && sp.agent !== "noor" ? sp.agent : undefined;
   // One light read feeds both the side panel numbers and the "waiting for you" card; only that one card needs a body.
   // The chat allowance is the ACCOUNT's (`u` is the owner's record for every seat), shown under the box (rule 315).
-  const [initial, connections, schedule, files, brief, notifs, brand, rows, op, journey, chat] = await Promise.all([history(sc(u), conv), listConnections(sc(u)), getSchedule(sc(u)), listFiles(sc(u)), latestBrief(sc(u)), listNotifs(u.email), getBrand(sc(u)), listLite(sc(u), kpiSince()), db.get<{ goal: string; plan: PlanItem[] }>(`onboardplan:${sc(u)}`), loadJourney(sc(u), u.email), chatStatus(u)]);
+  const [initial, connections, schedule, files, brief, notifs, brand, rows, op, journey, chat] = await Promise.all([history(sc(u), conv), listConnections(sc(u)), getSchedule(sc(u)), listFiles(sc(u)), latestBrief(sc(u)), listNotifs(u.email), getBrand(sc(u)), listLite(sc(u), kpiSince()), db.get<{ goal: string; plan: PlanItem[] }>(`onboardplan:${sc(u)}`), loadJourney(sc(u), u.email), getConversation(sc(u), conv).then((c) => chatStatus(u, chatRouteFor(u, c).model))]);
   const firstPending = rows.find((x) => x.status === "pending");
   // Majed's handoff cards in this thread (every one it names: the thread holds at most 40 messages, one card each), read
   // here with their stored state: the records in one MGET, the tasks they made in another, the settings once. A card

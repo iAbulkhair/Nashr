@@ -8,6 +8,7 @@ import { openLots, topupCredits, topupView } from "@/lib/topups";
 import { can } from "@/lib/roles";
 import { seatsUsed } from "@/lib/team";
 import { chatStatus } from "@/lib/chat-allowance";
+import { route } from "@/lib/models/route";
 import { paceStart, runway } from "@/lib/usage-view";
 import ReadOnlyNote from "@/components/app/ReadOnlyNote";
 import { OFFER_COPY, OfferBanner } from "@/components/app/BillingOffer";
@@ -42,7 +43,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   // The chat card (rule 315): the account's messages, read here and handed to the client card with the runway already
   // worked out, so the server and the browser render the same dates. Everyone sees it; only the owner gets the switch.
   // The balance goes with it: below `overflow.hold` credits, chat past the allowance is paused even with the switch on.
-  const [used, chat] = await Promise.all([seatsUsed(u.email), chatStatus(u)]);
+  const [used, chat] = await Promise.all([seatsUsed(u.email), chatStatus(u, route("chat").model)]);
   const now = new Date();
   const nextReset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
   const trial = chat.period === "trial";

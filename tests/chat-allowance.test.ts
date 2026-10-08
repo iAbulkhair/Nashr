@@ -120,7 +120,7 @@ describe("messages are counted per account, before the turn (rule 309)", () => {
   });
   it("parallel messages never pass the allowance", async () => {
     const u = await owner("starter", 245);
-    const gates = await Promise.all(Array.from({ length: 20 }, () => reserveChatTurn(u)));
+    const gates = await Promise.all(Array.from({ length: 20 }, () => reserveChatTurn(u, CHAT_MODEL)));
     expect(gates.filter((g) => g.ok)).toHaveLength(5);
     expect(await count(u)).toBe(250);
   });
@@ -215,7 +215,7 @@ describe("past the allowance: paused, or continued on credits when the owner say
   });
   it("nothing is held before the turn, so the turn's own tools can spend the whole balance", async () => {
     const u = await owner("starter", 250, { chatOverflow: true, credits: chatOverflowHold() });
-    const g = await reserveChatTurn(u);
+    const g = await reserveChatTurn(u, CHAT_MODEL);
     expect(g).toMatchObject({ ok: true, mode: "overflow", hold: chatOverflowHold() });
     expect((await getUser(u.email))!.credits).toBe(chatOverflowHold());
     if (g.ok) await settleChatTurn(u, g, null);
@@ -258,10 +258,10 @@ describe("past the allowance: paused, or continued on credits when the owner say
   });
   it("the gate refuses with the account's status when overflow is off", async () => {
     const u = await owner("business", 1300);
-    const g = await reserveChatTurn(u);
+    const g = await reserveChatTurn(u, CHAT_MODEL);
     expect(g).toMatchObject({ ok: false, error: "chat_allowance", status: { used: 1300, allowance: 1300, left: 0, counted: 1300 } });
-    expect(await chatStatus(u)).toMatchObject({ used: 1300, left: 0 });
-    const ok = await reserveChatTurn({ ...u, chatAllowance: 1301 });
+    expect(await chatStatus(u, CHAT_MODEL)).toMatchObject({ used: 1300, left: 0 });
+    const ok = await reserveChatTurn({ ...u, chatAllowance: 1301 }, CHAT_MODEL);
     expect(ok.ok).toBe(true);
     if (ok.ok) await settleChatTurn(u, ok, null);
     expect(await count(u)).toBe(1300);

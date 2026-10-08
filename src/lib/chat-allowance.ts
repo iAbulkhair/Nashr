@@ -4,7 +4,6 @@ import { settleChatOverflow } from "./credits";
 import { chatAllowanceOf, maxCostPerCreditUsd } from "./pricing";
 import { chatHoldFor, chatUnitsFor } from "./models/credits";
 import { modelById } from "./models/catalog";
-import { PRICED_AT } from "./models/tiers";
 import { chatCredKey, chatMsgKey, chatOverKey, chatTrialKey } from "./usage";
 import type { ChatTurn } from "./chat";
 
@@ -49,7 +48,8 @@ type Refusal = { ok: false; error: "chat_allowance" | "chat_credits"; status: Ch
 /**
  * `units`: the messages this turn counts (`chatUnitsFor(model)`), on `key`; `model`: the catalog id they were computed
  * for. The caller must run the turn on that same model, or the count and the ceiling would price another model: the chat
- * routes resolve `route("chat").model` once, reserve with it and hand `gate.model` to `chat()` (tests/model-route-calls.test.ts).
+ * routes resolve the turn's model once (`chatRouteFor`, the conversation's pick or automatic; MCP `route("chat")`), reserve
+ * with it and hand `gate.model` to `chat()` (tests/model-route-calls.test.ts, tests/model-override.test.ts).
  */
 type Reserved = { ok: true; key: string; units: number; model: string; status: ChatStatus };
 export type ChatGate = (Reserved & { mode: "included" }) | (Reserved & { mode: "overflow"; hold: number }) | Refusal;
@@ -75,8 +75,12 @@ function statusOf(u: Pick<User, "plan" | "chatOverflow" | "chatAllowance">, coun
   };
 }
 
-/** The account's chat status now: up to three reads, in parallel. `model`: the chat model whose hold is shown. */
-export async function chatStatus(u: Pick<User, "email" | "plan" | "chatOverflow" | "chatAllowance">, model: string = PRICED_AT.chat): Promise<ChatStatus> {
+/**
+ * The account's chat status now: up to three reads, in parallel. `model`: the chat model whose hold is shown, required
+ * (coordinator ruling 2026-10-08): a conversation's routed model (`chatRouteFor`, src/lib/models/overrides.ts), or
+ * `route("chat").model` where no conversation is in view (the account's pages and the founder console).
+ */
+export async function chatStatus(u: Pick<User, "email" | "plan" | "chatOverflow" | "chatAllowance">, model: string): Promise<ChatStatus> {
   const trial = u.plan === "trial";
   const [counted, over, cred] = await Promise.all([db.get<number>(counterKey(u)), trial ? 0 : db.get<number>(chatOverKey(u.email)), trial ? 0 : db.get<number>(chatCredKey(u.email))]);
   return statusOf(u, num(counted), num(over), num(cred), chatHoldFor(model));
@@ -87,12 +91,13 @@ export async function chatStatus(u: Pick<User, "email" | "plan" | "chatOverflow"
  * Inside the allowance: counted (INCRBY by the units, so N parallel turns can never pass it). Past it, by even one unit:
  * the reservation is taken back, and the turn goes ahead only when the owner turned overflow on and the balance covers the
  * most the message can cost (`chatHoldFor(model)`), counted by the same units on the month's overflow counter; otherwise
- * `chat_allowance` (paused) or `chat_credits` (overflow on, too few credits). `model` is the turn's chat model (default
- * `PRICED_AT.chat`). An id that is not exactly a catalog id (`unknown_model`), an entry the routing may not offer (neither
+ * `chat_allowance` (paused) or `chat_credits` (overflow on, too few credits). `model` is the turn's chat model, required
+ * (coordinator ruling 2026-10-08): the routes pass the turn's routed model, a conversation's pick when it passed
+ * `route("chat")`. An id that is not exactly a catalog id (`unknown_model`), an entry the routing may not offer (neither
  * `auto` nor `pick`: `model_not_offered`), one without tool use (`model_not_chat`), or a chat multiplier that is not a
  * finite number above 0 (`chat_allowance_unpriced`) throws before anything is counted.
  */
-export async function reserveChatTurn(u: User, model: string = PRICED_AT.chat): Promise<ChatGate> {
+export async function reserveChatTurn(u: User, model: string): Promise<ChatGate> {
   const entry = modelById(model);
   if (!entry) throw new Error("unknown_model");
   // Only a model the routing may offer (the set the floor tests cover), and one that can run chat's tools.

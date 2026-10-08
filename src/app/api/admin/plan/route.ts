@@ -4,6 +4,7 @@ import { CAPS, db, pushCapped } from "@/lib/db";
 import { monthKey, withUserLock } from "@/lib/credits";
 import { getUsage } from "@/lib/usage";
 import { chatStatus } from "@/lib/chat-allowance";
+import { route } from "@/lib/models/route";
 import { chatUsdPerMessage } from "@/lib/admin-stats";
 import { pmap } from "@/lib/parallel";
 import { enforceSeats } from "@/lib/team";
@@ -43,7 +44,7 @@ export async function GET(req: Request) {
   const rows = await pmap(emails, async (e) => {
     const u = await getUser(e);
     if (!u) return null;
-    const [usage, chat] = await Promise.all([getUsage(u.email), chatStatus(u)]);
+    const [usage, chat] = await Promise.all([getUsage(u.email), chatStatus(u, route("chat").model)]);
     // The list price, or an Agency account's deal price (Business's without a deal).
     const priceSar = priceOf(u);
     const costSar = usage.usd * SAR_PER_USD;

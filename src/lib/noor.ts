@@ -11,7 +11,7 @@ import { activeSeasons } from "./seasons";
 import { zoneOf } from "./zones";
 import { capDiscounts } from "./cart-recovery";
 import { feedbackBlock } from "./feedback";
-import { route } from "./models/route";
+import { DEFAULTS, route } from "./models/route";
 
 /** One generated item. `crossReview` is added by the cross-agent review and never changes the other three fields. */
 export type Generated = { channel: string; title: string; body: string; crossReview?: CrossVerdict[] };
@@ -217,10 +217,14 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
     output_config: { effort: "medium" as const },
   };
 
+  // The server-side fallback (another model answers when this one is overloaded) only for the automatic default: a
+  // customer's pick (`Brand.model`, src/lib/models/overrides.ts) was priced at its own tier, so it runs on the model
+  // requested or fails, and the caller refunds. The batch is charged for the requested model either way.
+  const serverFallback = params.model === DEFAULTS.generate;
   let text = "";
   try {
     const msg = await client.beta.messages
-      .stream({ ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" }, until(deadline, { cap: MODEL_BUDGET.GEN_MS }))
+      .stream(serverFallback ? { ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" } : params, until(deadline, { cap: MODEL_BUDGET.GEN_MS }))
       .finalMessage();
     // Meter first. A refused call is still billed by the API — input, thinking and output — but this threw before
     // metering, so the account showed a free event (the route refunds the credits) and the founder console never saw
@@ -229,8 +233,9 @@ export async function generate(type: TaskType, brand: Brand, prefs: string[], ex
     if (msg.stop_reason === "refusal") throw new Error("refused");
     text = msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
   } catch (e) {
-    // Fallback parameter not accepted (older org/plan) → plain request.
-    if (e instanceof Anthropic.BadRequestError) {
+    // Fallback parameter not accepted (older org/plan) → plain request. Only when the fallback was asked for: a request
+    // without it that is refused is the model's own answer, and asking again would pay twice.
+    if (serverFallback && e instanceof Anthropic.BadRequestError) {
       const msg = await client.messages.stream(params, until(deadline, { cap: MODEL_BUDGET.GEN_MS })).finalMessage();
       await meter(opts.meter, msg.model, "generate", msg.usage, agent.id);
       // The same refusal check as the main path; without it a refused fallback fell through with empty text.

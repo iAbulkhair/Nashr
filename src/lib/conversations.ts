@@ -4,8 +4,40 @@ import { pmap } from "./parallel";
 import type { ChatMsg } from "./chat";
 import type { AgentId } from "./agents";
 
-/** Multiple conversations per scope, searchable. `chat:{scope}` stays the legacy default thread. */
-export type Conversation = { id: string; title: string; createdAt: string; updatedAt: string; count: number; agent?: AgentId };
+/**
+ * Multiple conversations per scope, searchable. `chat:{scope}` stays the legacy default thread, which has no record.
+ * `model`: the conversation's chat pick (src/lib/models/overrides.ts), set and cleared only by PUT /api/models; absent:
+ * automatic. Absent on conversations saved before 2026-10-08.
+ */
+export type Conversation = { id: string; title: string; createdAt: string; updatedAt: string; count: number; agent?: AgentId; model?: string };
+
+/**
+ * A conversation id as `createConversation` makes them, checked before it is put in a key: letters, digits, "_" and "-",
+ * at most 64. A request's id is never trusted as is; within the caller's scope it can only name the caller's own records.
+ */
+const isConversationId = (id: unknown): id is string => typeof id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(id);
+
+/** The record of conversation `id` under `scope`, or null: not one, or not a well-formed id (nothing is read then). */
+export async function getConversation(scope: string, id: unknown): Promise<Conversation | null> {
+  if (!isConversationId(id)) return null;
+  return db.get<Conversation>(`conv:${scope}:${id}`);
+}
+
+/**
+ * Set (`model`, an id the caller validated) or clear (null: the field is deleted, never stored as "null") the
+ * conversation's chat pick. False, and nothing written, when there is no such conversation under `scope`. Read and
+ * written without a lock, like a rename: a pick saved while a turn's `touchConversation` runs can be lost, and the owner
+ * sets it again.
+ */
+export async function setConversationModel(scope: string, id: unknown, model: string | null): Promise<boolean> {
+  if (!isConversationId(id)) return false;
+  const c = await db.get<Conversation>(`conv:${scope}:${id}`);
+  if (!c) return false;
+  if (model === null) delete c.model;
+  else c.model = model;
+  await db.set(`conv:${scope}:${id}`, c);
+  return true;
+}
 
 export async function listConversations(scope: string): Promise<Conversation[]> {
   const ids = await db.lrange(`convs:${scope}`, 0, 99);

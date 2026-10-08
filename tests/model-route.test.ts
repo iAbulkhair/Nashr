@@ -126,12 +126,16 @@ describe("a stored pick for chat or generate", () => {
     expect(route("chat", { stored: SONNET55 })).toEqual({ model: SONNET55, overridden: true });
   });
 
-  it("nothing stored (undefined) is the default with nothing rejected", () => {
-    for (const p of OVERRIDABLE) expect(route(p, { stored: undefined })).toEqual({ model: DEFAULTS[p], overridden: false });
+  it("nothing stored (undefined or null, an unset or cleared override) is the default with nothing rejected", () => {
+    for (const p of OVERRIDABLE) {
+      expect(route(p, { stored: undefined })).toEqual({ model: DEFAULTS[p], overridden: false });
+      expect(route(p, { stored: null })).toEqual({ model: DEFAULTS[p], overridden: false });
+      expect(route(p, { stored: null, confirmedChina: true, task: "article" })).toEqual({ model: DEFAULTS[p], overridden: false });
+    }
   });
 
   it("unknown, removed and prototype ids fall back to the default with rejected set to unknown", () => {
-    const bad: unknown[] = ["claude-unknown-9", "claude-opus-4", "constructor", "__proto__", "toString", "hasOwnProperty", "valueOf", "", " claude-opus-5", "claude-opus-5 ", "CLAUDE-OPUS-5", 5, true, {}, [], [OPUS], { id: OPUS }, null];
+    const bad: unknown[] = ["claude-unknown-9", "claude-opus-4", "constructor", "__proto__", "toString", "hasOwnProperty", "valueOf", "", " claude-opus-5", "claude-opus-5 ", "CLAUDE-OPUS-5", 5, true, false, 0, {}, [], [OPUS], { id: OPUS }, "null"];
     for (const p of OVERRIDABLE) {
       for (const stored of bad) expect(route(p, { stored }), `${p} ${JSON.stringify(stored)}`).toEqual({ model: DEFAULTS[p], overridden: false, rejected: "unknown" });
     }
@@ -161,6 +165,29 @@ describe("a stored pick for chat or generate", () => {
     const r = await withCatalog([entry({ id: "test-notools-1", caps: { tools: false, strict: false, thinking: false, cache: true, vision: false } })]);
     expect(r.route("chat", { stored: "test-notools-1" })).toEqual({ model: r.DEFAULTS.chat, overridden: false, rejected: "needs_tools" });
     expect(r.route("generate", { stored: "test-notools-1" })).toEqual({ model: "test-notools-1", overridden: true });
+  });
+
+  it("a generate pick the model may not run for ctx.task is rejected task_not_allowed and the default runs (Sonnet off article and followup_seq)", () => {
+    for (const task of ["article", "followup_seq"] as const) {
+      for (const stored of [SONNET, SONNET55]) {
+        expect(modelById(stored)!.tasks?.includes(task), `${stored} ${task}`).toBe(false);
+        expect(route("generate", { stored, task }), `${stored} ${task}`).toEqual({ model: DEFAULTS.generate, overridden: false, rejected: "task_not_allowed" });
+      }
+    }
+    // A type on the allow-list, or a model with no allow-list, is accepted.
+    expect(route("generate", { stored: SONNET, task: "social" })).toEqual({ model: SONNET, overridden: true });
+    expect(route("generate", { stored: OPUS, task: "article" })).toEqual({ model: OPUS, overridden: true });
+    // No task given: the allow-list is the caller's backstop (generateBatch), as before.
+    expect(route("generate", { stored: SONNET })).toEqual({ model: SONNET, overridden: true });
+    // Chat has no task: ctx.task is ignored there.
+    expect(route("chat", { stored: SONNET, task: "article" })).toEqual({ model: SONNET, overridden: true });
+  });
+
+  it("task_not_allowed is checked last, after the china confirmation", async () => {
+    const r = await withCatalog([entry({ id: "test-china-social", hosting: "china", pick: true, auto: false, tasks: ["social"] })]);
+    expect(r.route("generate", { stored: "test-china-social", task: "article" })).toMatchObject({ rejected: "china_unconfirmed" });
+    expect(r.route("generate", { stored: "test-china-social", task: "article", confirmedChina: true })).toMatchObject({ rejected: "task_not_allowed" });
+    expect(r.route("generate", { stored: "test-china-social", task: "social", confirmedChina: true })).toEqual({ model: "test-china-social", overridden: true });
   });
 
   it("the checks run in a fixed order: unknown, then not_pickable, then china_unconfirmed, then needs_tools", async () => {

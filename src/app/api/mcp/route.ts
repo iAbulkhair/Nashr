@@ -18,6 +18,7 @@ import { can } from "@/lib/roles";
 import { deadlineFor } from "@/lib/media/keys";
 import { appOrigin } from "@/lib/origin";
 import { route } from "@/lib/models/route";
+import { MODEL_UNAVAILABLE_NOTE } from "@/lib/models/overrides";
 
 export const maxDuration = 300;
 
@@ -120,7 +121,8 @@ export async function POST(req: Request) {
             case "failed": throw r.error;
           }
         }
-        return ok(id, text(`Created ${r.tasks.length} ${type} item(s). Credits left: ${user.credits}.\n\n` + r.tasks.map((i) => `## ${i.title} (${i.channel})\n${i.body}`).join("\n\n")));
+        // The brand's model pick was not used (src/lib/models/overrides.ts): the connected assistant relays it to the owner.
+        return ok(id, text(`Created ${r.tasks.length} ${type} item(s). Credits left: ${user.credits}.\n\n` + r.tasks.map((i) => `## ${i.title} (${i.channel})\n${i.body}`).join("\n\n") + (r.modelRejected ? `\n\n${MODEL_UNAVAILABLE_NOTE}` : "")));
       }
       case "list_inbox": {
         const status = String(args.status ?? "pending");

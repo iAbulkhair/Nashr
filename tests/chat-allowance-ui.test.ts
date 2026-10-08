@@ -197,7 +197,9 @@ describe("the messages-left line under the chat box (rule 315)", () => {
     // The chat page passes it in both branches (first run and the workspace thread).
     const page = readFileSync("src/app/[lang]/app/chat/page.tsx", "utf8");
     expect(page.match(/chat=\{chat\}/g)?.length).toBe(2);
-    expect(page).toContain("chatStatus(u)");
+    expect(page).toContain('chatStatus(u, route("chat").model)');
+    // The workspace thread shows the hold of the conversation's own model (its pick when route() accepts it).
+    expect(page).toContain("chatStatus(u, chatRouteFor(u, c).model)");
   });
 });
 

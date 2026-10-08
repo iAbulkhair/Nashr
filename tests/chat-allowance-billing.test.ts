@@ -231,7 +231,7 @@ describe("rule 315: the client card and the profile panel, by source", () => {
     // The page decides who the owner is with the same check the route makes.
     expect(page).toContain('const owner = can(u, "billing");');
     expect(page).toMatch(/<ChatAllowanceCard [^>]*owner=\{owner\}/);
-    expect(page).toMatch(/Promise\.all\(\[seatsUsed\(u\.email\), chatStatus\(u\)\]\)/);
+    expect(page).toMatch(/Promise\.all\(\[seatsUsed\(u\.email\), chatStatus\(u, route\("chat"\)\.model\)\]\)/);
   });
 
   it("the profile's chat row is the account's count, not a typed 0 credits each", () => {

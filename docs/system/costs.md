@@ -285,7 +285,8 @@ what is left of the allowance is refused before any model call (or, with "contin
 credits, needing that model's hold: 4 credits on Opus 5). A multiplier that is not a finite number above 0 throws
 `chat_allowance_unpriced` before anything is counted. What the owner and the founder console read as "messages" (used,
 left, the console's cost per message) are these units from then on; the copy that explains that an Opus message counts
-2 belongs to the model picker (plan Task 6). No caller passes a chat model yet, so every account still counts 1.
+2 belongs to the model picker's interface (plan Task 7). Since plan Task 6 a conversation's pick reaches the reserve
+(`chatRouteFor`), so a message on Opus 5 counts 2; with no pick every message still counts 1.
 
 ## 5. What bounds the spend today
 

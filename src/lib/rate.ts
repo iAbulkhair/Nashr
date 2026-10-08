@@ -155,6 +155,13 @@ export const HANDOFF_DECLINES_PER_HOUR = 120;
  */
 export const FEEDBACK_PER_HOUR = 120;
 
+/**
+ * Model picks per account (`PUT /api/models`): a conversation's or a brand's model, cleared or set, and the owner's
+ * China-hosting confirmation. Each one is a write to a record every chat turn or batch reads back, so a script must not
+ * churn them; an owner trying a few models stays far below this. One bucket for the account, shared by every seat.
+ */
+export const MODEL_PICKS_PER_HOUR = 60;
+
 /** Constant-time string comparison for secrets. It lives in secret.ts, which has no store behind it, so the proxy can use
  * it; this re-export keeps every existing import working. */
 export { sameSecret } from "./secret";

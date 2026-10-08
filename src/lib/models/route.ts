@@ -1,4 +1,5 @@
-import { MODELS, modelById, type ModelEntry } from "./catalog";
+import { MODELS, modelAllowsTask, modelById, type ModelEntry } from "./catalog";
+import type { TaskType } from "../tasks";
 
 /**
  * The one place that decides which model a call runs on (spec 2026-10-08-straitly-model-routing, section 4). Every call
@@ -6,8 +7,9 @@ import { MODELS, modelById, type ModelEntry } from "./catalog";
  * SERVER AND TEST ONLY (`SERVER_ONLY` in tests/client-bundle.test.ts): it reads the catalog, which holds our rates.
  *
  * The first release keeps today's models: every purpose resolves to the model its call site used to hard-code, so nothing
- * a customer pays or receives changes. A customer's stored pick (plan Task 6 supplies it as `ctx.stored`) can change
- * only `chat` and `generate`, and only when it passes every check below. Every other purpose is ours alone.
+ * a customer pays or receives changes. A customer's stored pick (`Conversation.model` for chat, `Brand.model` for
+ * generation, read by the callers under `sc(u)` and passed as `ctx.stored`, src/lib/models/overrides.ts) can change only
+ * `chat` and `generate`, and only when it passes every check below. Every other purpose is ours alone.
  *
  * Synchronous and cheap on purpose: no store, no network. The caller that already holds the customer's record passes
  * what it read; routing never reads on its own.
@@ -44,15 +46,24 @@ export const DEFAULTS: Readonly<Record<Purpose, string>> = Object.freeze({
 /** The purposes a customer's pick may change. Everything else ignores `ctx.stored` completely. */
 export const OVERRIDABLE: readonly Purpose[] = Object.freeze<Purpose[]>(["chat", "generate"]);
 
-/** Why a stored pick was not used (the default ran instead): not a catalog id, not offered to customers, China-hosted without the owner's confirmation, or no tool use for chat. */
-export type Rejected = "unknown" | "not_pickable" | "china_unconfirmed" | "needs_tools";
+/**
+ * Why a stored pick was not used (the default ran instead): not a catalog id, not offered to customers, China-hosted
+ * without the owner's confirmation, no tool use for chat, or a generation pick not allowed to run `ctx.task` (its `tasks`
+ * allow-list, set where the type misses the margin floor at the model's tier).
+ */
+export type Rejected = "unknown" | "not_pickable" | "china_unconfirmed" | "needs_tools" | "task_not_allowed";
 export type RouteContext = {
-  /** The customer's stored pick for this purpose, exactly as read: any value, validated here. `undefined`: nothing stored. */
+  /**
+   * The customer's stored pick for this purpose, exactly as read: any value, validated here. `undefined` or `null`:
+   * nothing stored (an override that was never set, or was cleared), the default with nothing rejected.
+   */
   stored?: unknown;
   /** True only when the owner confirmed using a China-hosted model; anything else is not a confirmation. */
   confirmedChina?: boolean;
   /** The model that generated the batch being judged (`judge` only): the judge will not be that model when it can avoid it. */
   generatedBy?: string;
+  /** The task type of the batch (`generate` only): a pick whose `tasks` allow-list leaves it out is `task_not_allowed`. */
+  task?: TaskType;
 };
 export type Routed = { model: string; overridden: boolean; rejected?: Rejected };
 
@@ -92,8 +103,10 @@ function judgeAlternative(def: string): string {
  * - `chat` and `generate`: `ctx.stored`, when there is one and it passes, in this order: it is exactly a catalog id (a
  *   string, found by an exact lookup: prototype names and anything else are `unknown`), the entry is offered to customers
  *   (`pick`, else `not_pickable`), a model not hosted in the west needs `ctx.confirmedChina === true` (else
- *   `china_unconfirmed`), and chat needs tool use (else `needs_tools`; generation calls no tools). A rejected pick returns
- *   the default with `overridden: false` and says why in `rejected`; the caller decides whether to tell the owner.
+ *   `china_unconfirmed`), chat needs tool use (else `needs_tools`; generation calls no tools), and generation with
+ *   `ctx.task` needs the pick to be allowed that type (`modelAllowsTask`, else `task_not_allowed`). A rejected pick
+ *   returns the default with `overridden: false` and says why in `rejected`; the caller tells the owner.
+ *   `undefined` and `null` are nothing stored: the default, nothing rejected.
  * - `judge`: the default, or when that is `ctx.generatedBy`, an automatic alternative that costs no more (`judgeAlternative`).
  * - every other purpose: the default. `ctx` is ignored.
  *
@@ -104,12 +117,13 @@ export function route(purpose: Purpose, ctx: RouteContext = {}): Routed {
   if (typeof purpose !== "string" || !Object.hasOwn(DEFAULTS, purpose)) throw new Error(`unknown_purpose:${String(purpose)}`);
   const model = defaultFor(purpose);
   if (purpose === "judge") return { model: ctx.generatedBy === model ? judgeAlternative(model) : model, overridden: false };
-  if (ctx.stored === undefined || !OVERRIDABLE.includes(purpose)) return { model, overridden: false };
+  if (ctx.stored === undefined || ctx.stored === null || !OVERRIDABLE.includes(purpose)) return { model, overridden: false };
   const reject = (rejected: Rejected): Routed => ({ model, overridden: false, rejected });
   const pick = modelById(ctx.stored);
   if (!pick) return reject("unknown");
   if (!pick.pick) return reject("not_pickable");
   if (pick.hosting !== "west" && ctx.confirmedChina !== true) return reject("china_unconfirmed");
   if (purpose === "chat" && !pick.caps.tools) return reject("needs_tools");
+  if (purpose === "generate" && ctx.task !== undefined && !modelAllowsTask(pick, ctx.task)) return reject("task_not_allowed");
   return { model: pick.id, overridden: true };
 }
