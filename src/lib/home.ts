@@ -502,13 +502,13 @@ export const SCENES_COPY: { h: L; sub: L; kinds: Record<SceneKind, L>; with: L; 
 export const SCENES: Scene[] = [
   {
     role: { ar: "صاحبة متجر عطور", en: "Perfume shop owner" },
-    line: { ar: "نور تكتب منشورات الأسبوع بصوت متجري، وأنا أعدّل كلمة وأوافق.", en: "Noor drafts my week of posts in my shop's voice. I tweak a word and approve." },
+    line: { ar: "خلّيت نور تكتب لي منشورات الأسبوع بصوت متجري، وأنا عدّلت عليها بس واعتمدت المحتوى.", en: "I had Noor write my week of posts in my shop's voice. I only tweaked them and approved." },
     kind: "like", agent: "noor", task: "social",
     look: { head: "shayla", eyes: "laugh", tone: "noor" },
   },
   {
     role: { ar: "صاحب مقهى", en: "Café owner" },
-    line: { ar: "قبل ما أغيّر سعر القهوة، رزان تفرد لي الحسبة وأشوف الربح بعيني.", en: "Before I change the coffee price, Razan lays out the math and I see the margin myself." },
+    line: { ar: "قبل ما أغيّر سعر القهوة، رزان أعطتني التكلفة الصح، وصرت أشوف الربح بعيني.", en: "Before I changed the coffee price, Razan gave me the real cost, and I could see the margin myself." },
     kind: "like", agent: "razan", task: "pricing_review",
     look: { head: "ghutra", beard: "full", eyes: "laugh", tone: "razan" },
   },
@@ -520,44 +520,44 @@ export const SCENES: Scene[] = [
   },
   {
     role: { ar: "وسيط عقاري", en: "Real-estate broker" },
-    line: { ar: "خلّ سامي يكتب المتابعة من أول يوم، لا تنتظر العميل يبرد.", en: "Let Sami write the follow-up on day one. Don't wait for the lead to go cold." },
-    kind: "tip", agent: "sami", task: "followup_seq",
+    line: { ar: "خلّيت سامي يتابع العملاء معي من أول يوم، وصار كل عميل يوصله رد في وقته.", en: "I had Sami follow up with customers alongside me from day one, so every customer hears back on time." },
+    kind: "like", agent: "sami", task: "followup_seq",
     look: { head: "shemagh", beard: "short", eyes: "laugh", tone: "sami" },
   },
   {
     role: { ar: "صاحبة مخبز", en: "Bakery owner" },
-    line: { ar: "نور تجهّز رسالة الواتساب للعملاء كل خميس، وأنا أراجعها وأرسلها.", en: "Noor gets the WhatsApp message for my customers ready every Thursday. I review it and send it." },
+    line: { ar: "نور جهّزت لي رسالة الواتساب للعملاء كل خميس، وأنا أراجعها وأرسلها.", en: "Noor gets my WhatsApp message to customers ready every Thursday. I review it and send it." },
     kind: "like", agent: "noor", task: "whatsapp",
     look: { head: "shayla", eyes: "dot", tone: "reem" },
   },
   {
     role: { ar: "مدرب لياقة", en: "Fitness coach" },
-    line: { ar: "جرّب صغير قبل ما تصرف كبير. فارس يعطيني تجربة وحدة كل أسبوع.", en: "Test small before you spend big. Faris gives me one test a week." },
-    kind: "tip", agent: "faris", task: "growth_experiments",
+    line: { ar: "فارس ساعدني أجرّب السوق بأفكار صغيرة، وصار يعطيني تجربة وحدة كل أسبوع.", en: "Faris helped me test the market with small ideas, and now he gives me one test a week." },
+    kind: "like", agent: "faris", task: "growth_experiments",
     look: { head: "hair", eyes: "laugh", tone: "layan" },
   },
   {
     role: { ar: "صاحبة متجر إلكتروني", en: "Online store owner" },
-    line: { ar: "أحب إن رسائل السلة المتروكة من نور صارت بلهجتنا، مو مترجمة.", en: "I love that Noor's abandoned-cart messages sound like us, not like a translation." },
+    line: { ar: "أحب إن رسائل السلة المتروكة من نور صارت بلهجتنا وبهوية متجري. كفو يا نور!", en: "I love that Noor's abandoned-cart messages sound like us and carry my shop's identity. Well done, Noor!" },
     kind: "like", agent: "noor", task: "cart_recovery",
     look: { head: "shayla", eyes: "laugh", tone: "razan" },
   },
   {
     role: { ar: "مدير مطعم", en: "Restaurant manager" },
-    line: { ar: "دانة تجمع أرقام الأسبوع في تقرير واحد، بدل ما أدوّر عليها يوم الأحد.", en: "Dana pulls the week's numbers into one report, instead of me hunting for them on Sunday." },
+    line: { ar: "دانة تجمع لي أرقام الأسبوع في تقرير واحد، بدل ما أدوّر عليها كل يوم.", en: "Dana pulls the week's numbers into one report for me, instead of me hunting for them every day." },
     kind: "like", agent: "dana", task: "weekly_report",
     look: { head: "ghutra", beard: "full", glasses: true, eyes: "dot", tone: "dana" },
   },
   {
     role: { ar: "صاحبة محل ورد", en: "Flower shop owner" },
-    line: { ar: "ريم تحط مهامي ومتابعاتي في قائمة وحدة. أفتحها الصبح وأعرف وش عليّ.", en: "Reem keeps my to-dos and follow-ups in one list. I open it in the morning and know what's on me." },
+    line: { ar: "ريم تحط مهامي ومتابعات الفريق في قائمة وحدة. أفتحها الصبح وأعرف وش عليّ ووش ينتظرني.", en: "Reem keeps my tasks and my team's follow-ups in one list. I open it in the morning and know what's on me and what's waiting." },
     kind: "like", agent: "reem", feature: "todo",
     look: { head: "shayla", eyes: "laugh", tone: "layan" },
   },
   {
     role: { ar: "مسوّقة عيادة", en: "Clinic marketer" },
-    line: { ar: "حدّث صفحة قوقل ماب مع كل عرض. نور تكتب النص، وأنا أنسخه.", en: "Update your Google Maps page with every offer. Noor writes the text, I paste it." },
-    kind: "idea", agent: "noor", task: "gbp",
+    line: { ar: "أحدّث صفحة قوقل ماب مع كل عرض. نور تكتب النص، وأنا أنسخه.", en: "I update my Google Maps page with every offer. Noor writes the text, I paste it." },
+    kind: "tip", agent: "noor", task: "gbp",
     look: { head: "shayla", glasses: true, eyes: "laugh", tone: "faris" },
   },
   {
@@ -568,20 +568,20 @@ export const SCENES: Scene[] = [
   },
   {
     role: { ar: "صاحب محل خياطة", en: "Tailor shop owner" },
-    line: { ar: "لما العميل يقول «غالي»، سامي عنده رد محترم ما يكسر السعر.", en: "When a customer says “too expensive”, Sami has a polite answer that keeps the price." },
+    line: { ar: "لما العميل يقول «غالي»، سامي عنده رد محترم ما يكسر السعر ويخلّي الباب مفتوح.", en: "When a customer says “too expensive”, Sami has a polite answer that keeps the price and keeps the door open." },
     kind: "like", agent: "sami", task: "sales_script",
     look: { head: "shemagh", beard: "full", eyes: "laugh", tone: "sami" },
   },
   {
     role: { ar: "مؤسسة محمصة قهوة", en: "Coffee roastery founder" },
-    line: { ar: "كنت محتارة أفتح فرع ولا لا. ماجد حطّها في صفحة وحدة، وقررت.", en: "I couldn't decide on a new branch. Majed put it on one page, and I made the call." },
+    line: { ar: "كنت محتارة أفتح فرع ولا لا. ماجد حطّ لي الخطة في صفحة وحدة، وقررت.", en: "I couldn't decide on a new branch. Majed put the plan on one page for me, and I made the call." },
     kind: "like", agent: "majed", task: "decision_memo",
     look: { head: "shayla", eyes: "dot", tone: "majed" },
   },
   {
     role: { ar: "صاحبة علامة عناية بالبشرة", en: "Skincare brand owner" },
-    line: { ar: "اكتب عرضك مرة وحدة واضحة لنور، وهي تفصّله لإعلان سناب وتيك توك.", en: "Give Noor your offer once, clearly, and she shapes it into Snapchat and TikTok ads." },
-    kind: "tip", agent: "noor", task: "ads",
+    line: { ar: "اكتب فكرتك مرة وحدة واضحة لنور، وهي تفصّلها لإعلان سناب وتيك توك.", en: "Give Noor your idea once, clearly, and she shapes it into Snapchat and TikTok ads." },
+    kind: "idea", agent: "noor", task: "ads",
     look: { head: "shayla", eyes: "laugh", tone: "sami" },
   },
   {
@@ -592,13 +592,13 @@ export const SCENES: Scene[] = [
   },
   {
     role: { ar: "صاحبة متجر هدايا يدوية", en: "Handmade gifts seller" },
-    line: { ar: "اسأل ليان عن أول تجربة لعميلك. غيّرنا رسالة الترحيب بعدها.", en: "Ask Layan about your customer's first experience. We rewrote our welcome message after." },
-    kind: "idea", agent: "layan", task: "onboarding_flow",
+    line: { ar: "سألت ليان عن أول تجربة وانطباع لعميلنا، وبعدها غيّرنا رسالة الترحيب.", en: "I asked Layan about our customer's first experience and impression, then we rewrote our welcome message." },
+    kind: "like", agent: "layan", task: "onboarding_flow",
     look: { head: "shayla", glasses: true, eyes: "dot", tone: "noor" },
   },
   {
     role: { ar: "صاحب مغسلة ملابس", en: "Laundry owner" },
-    line: { ar: "دانة قالت لي أي رقم أراقب، وخلّيت الباقي. ارتحت.", en: "Dana told me which number to watch, and I let the rest go. What a relief." },
+    line: { ar: "دانة قالت لي أي رقم أراقب في الحملات، وتجاهلت الباقي. ارتحت.", en: "Dana told me which number to watch in my campaigns, and I ignored the rest. What a relief." },
     kind: "like", agent: "dana", task: "dashboard_spec",
     look: { head: "curls", eyes: "laugh", tone: "reem" },
   },
@@ -610,7 +610,7 @@ export const SCENES: Scene[] = [
   },
   {
     role: { ar: "شريك في محل حلويات", en: "Sweets shop partner" },
-    line: { ar: "قبل اجتماع الشريك، دانة تجهّز لي وش أعرض عليه.", en: "Before I meet my partner, Dana gets ready what I show them." },
+    line: { ar: "قبل اجتماع الإدارة، دانة تجهّز لي وش أعرض عليهم.", en: "Before the management meeting, Dana prepares what I'll present to them." },
     kind: "like", agent: "dana", task: "board_deck",
     look: { head: "ghutra", beard: "full", eyes: "laugh", tone: "noor" },
   },
@@ -622,7 +622,7 @@ export const SCENES: Scene[] = [
   },
   {
     role: { ar: "صاحبة متجر أزياء", en: "Fashion store owner" },
-    line: { ar: "اختر أولويات قليلة للربع مع ماجد، وقل لا لكل شي ثاني.", en: "Pick a few priorities for the quarter with Majed, and say no to everything else." },
+    line: { ar: "اختر أولويات قليلة حسب الخطة اللي سويتها مع ماجد، وقل لا لأي شي ثاني.", en: "Pick a few priorities from the plan you made with Majed, and say no to anything else." },
     kind: "tip", agent: "majed", task: "okrs",
     look: { head: "shayla", eyes: "laugh", tone: "majed" },
   },
@@ -634,14 +634,14 @@ export const SCENES: Scene[] = [
   },
   {
     role: { ar: "صاحبة صالون", en: "Salon owner" },
-    line: { ar: "أحلى عادة: كل أحد أوافق على خطة نور للأسبوع، وبعدها أركّز على المحل.", en: "Best habit: every Sunday I approve Noor's plan for the week, then I focus on the salon." },
+    line: { ar: "أحلى عادة: كل سبت أوافق على خطة نور للأسبوع، وبعدها أركّز على متجري.", en: "Best habit: every Saturday I approve Noor's plan for the week, then I focus on my shop." },
     kind: "tip", agent: "noor", task: "weekly_plan",
     look: { head: "shayla", glasses: true, eyes: "laugh", tone: "razan" },
   },
   {
     role: { ar: "مؤسس تطبيق", en: "App founder" },
-    line: { ar: "خلّ ليان تكتب وش يطلب العملاء قبل ما تبرمج أي ميزة.", en: "Have Layan write up what customers ask for before you build any feature." },
-    kind: "idea", agent: "layan", task: "prd",
+    line: { ar: "خلّيت ليان تكتب وش يطلب العملاء قبل ما أبرمج أي ميزة.", en: "I had Layan write up what customers ask for before I built any feature." },
+    kind: "like", agent: "layan", task: "prd",
     look: { head: "hair", beard: "short", eyes: "laugh", tone: "dana" },
   },
 ];
