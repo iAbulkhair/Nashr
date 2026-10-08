@@ -48,6 +48,28 @@ const mv = (m: (string | null)[]) => m.map((value) => (value == null ? {} : { va
 /** A GA4 row: the requested dimension, then the date range GA4 appends (the name we sent), then the metrics. */
 const gaRow = (dim: string, range: string, ...m: (string | null)[]) => ({ dimensionValues: [{ value: dim }, { value: range }], metricValues: mv(m) });
 const dims = (c: Call) => (c.args.dimensions as { name: string }[]).map((d) => d.name);
+type GaFixtureRow = ReturnType<typeof gaRow>;
+const rowsOf = (r: { data?: unknown }) => (r.data as { rows: GaFixtureRow[] }).rows;
+/**
+ * The report GA4 would return for `rows`: each orderBy in turn (a dimension alphanumerically, a metric by value), then
+ * the limit. `names` are the row's dimension columns in order.
+ */
+function gaOrdered(rows: GaFixtureRow[], names: string[], args: Record<string, unknown>) {
+  type OrderBy = { desc?: boolean; dimension?: { dimensionName: string }; metric?: { metricName: string } };
+  const metrics = (args.metrics as { name: string }[]).map((m) => m.name);
+  const key = (row: GaFixtureRow, o: OrderBy): string | number => (o.dimension
+    ? row.dimensionValues[names.indexOf(o.dimension.dimensionName)].value
+    : Number(row.metricValues[metrics.indexOf(o.metric!.metricName)].value));
+  const sorted = [...rows].sort((a, b) => {
+    for (const o of (args.orderBys ?? []) as OrderBy[]) {
+      const [x, y] = [key(a, o), key(b, o)];
+      const c = x < y ? -1 : x > y ? 1 : 0;
+      if (c) return o.desc ? -c : c;
+    }
+    return 0;
+  });
+  return sorted.slice(0, Number(args.limit));
+}
 
 /**
  * The channel report (sessions, users, engagement rate, key events, revenue): 100 sessions in the window and 80 before
@@ -82,7 +104,7 @@ describe("the previous 28 days beside each site read (rule 733)", () => {
       expect(r.args.dateRanges).toEqual([{ startDate: GA_CUR.from, endDate: GA_CUR.to, name: "cur" }, { startDate: GA_PREV.from, endDate: GA_PREV.to, name: "prev" }]);
       expect((r.args.dateRanges as { name: string }[]).map((d) => d.name)).toEqual(["cur", "prev"]);
     }
-    // 20 channels and 10 pages per range, as before: the limits double because each range returns its own rows.
+    // Up to 40 channel rows across both ranges; 20 landing-page rows, the window's first (the landing-page test below).
     expect(Object.fromEntries(reports.map((r) => [dims(r)[0], r.args.limit]))).toEqual({ sessionDefaultChannelGroup: 40, landingPage: 20 });
     expect(GA_PREV.to).toBe(dayBefore(GA_CUR.from));
   });
@@ -102,6 +124,78 @@ describe("the previous 28 days beside each site read (rule 733)", () => {
     expect(snap.ga?.prev).toEqual({ range: GA_PREV, sessions: 80, keyEvents: 12, revenue: 1000, engagementRate: 0.325 });
     expect(snap.ga?.channels.map((c) => [c.name, c.sessions])).toEqual([["Organic Search", 60], ["Paid Social", 40]]);
     expect(snap.ga?.pages).toEqual([{ path: "/oud", sessions: 300, keyEvents: 6 }, { path: "/bakhoor", sessions: 100, keyEvents: 2 }]);
+  });
+
+  it("GA4's default range names read like ours, and the dateRange column is found by its header (733)", async () => {
+    const u = await newUser("sitelabels");
+    answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = gscQuery;
+    answers.GOOGLE_ANALYTICS_RUN_REPORT = gaReport;
+    const named = (await syncSite(u.email, google(), NOW)).ga;
+    expect(named?.sessions).toBe(100);
+    expect(named?.prev?.sessions).toBe(80);
+
+    // A range sent without a name comes back as date_range_0, date_range_1, … in request order.
+    const DEFAULT: Record<string, string> = { cur: "date_range_0", prev: "date_range_1" };
+    answers.GOOGLE_ANALYTICS_RUN_REPORT = (args) => {
+      const r = gaReport(args);
+      for (const row of rowsOf(r)) row.dimensionValues[1].value = DEFAULT[row.dimensionValues[1].value];
+      return r;
+    };
+    expect((await syncSite(u.email, google(), NOW)).ga, "unnamed default labels").toEqual(named);
+
+    // The dateRange column is wherever dimensionHeaders puts it, not always after the requested dimension.
+    answers.GOOGLE_ANALYTICS_RUN_REPORT = (args) => {
+      const r = gaReport(args);
+      (r.data as { dimensionHeaders?: { name: string }[] }).dimensionHeaders = [{ name: "dateRange" }, { name: dims({ slug: "", args })[0] }];
+      for (const row of rowsOf(r)) row.dimensionValues.reverse();
+      return r;
+    };
+    expect((await syncSite(u.email, google(), NOW)).ga, "dateRange first").toEqual(named);
+  });
+
+  it("rows labelled with no known range give null figures, never 0, and log ga_no_range_column once (733)", async () => {
+    const u = await newUser("sitenolabel");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const coded = () => warn.mock.calls.filter((c) => c[0] === "ga_no_range_column");
+    answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = gscQuery;
+    answers.GOOGLE_ANALYTICS_RUN_REPORT = (args) => {
+      const r = gaReport(args);
+      for (const row of rowsOf(r)) row.dimensionValues[1].value = `range_${row.dimensionValues[1].value}`;
+      return r;
+    };
+    const snap = await syncSite(u.email, google(), NOW);
+    expect(snap.ga).toMatchObject({ sessions: null, keyEvents: null, revenue: null, engagementRate: null, channels: [], pages: [] });
+    expect(snap.ga?.prev).toBeUndefined();
+    expect(JSON.stringify(snap)).not.toMatch(/NaN/);
+    // Once for the read (both reports were unlabelled), with nothing but the code: never a label, a path or a figure.
+    expect(coded()).toEqual([["ga_no_range_column"]]);
+
+    // Labelled rows, or a report with no rows at all, log nothing.
+    warn.mockClear();
+    answers.GOOGLE_ANALYTICS_RUN_REPORT = gaReport;
+    await syncSite(u.email, google(), NOW);
+    answers.GOOGLE_ANALYTICS_RUN_REPORT = ok({ rows: [] });
+    await syncSite(u.email, google(), NOW);
+    expect(coded()).toEqual([]);
+  });
+
+  it("landing pages: the window's rows come first, so a busy previous range cannot crowd them out (733)", async () => {
+    const u = await newUser("sitepages");
+    answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = gscQuery;
+    // 25 previous pages, each busier than any of the window's 12.
+    const all = [
+      ...Array.from({ length: 25 }, (_, i) => gaRow(`/old-${i}`, "prev", String(1000 + i), "1")),
+      ...Array.from({ length: 12 }, (_, i) => gaRow(`/new-${i}`, "cur", String(10 + i), "1")),
+    ];
+    answers.GOOGLE_ANALYTICS_RUN_REPORT = (args) => (dims({ slug: "", args })[0] === "landingPage"
+      ? ok({ dimensionHeaders: [{ name: "landingPage" }, { name: "dateRange" }], rows: gaOrdered(all, ["landingPage", "dateRange"], args) })
+      : gaReport(args));
+    const snap = await syncSite(u.email, google(), NOW);
+    const pages = calls.find((c) => c.slug === "GOOGLE_ANALYTICS_RUN_REPORT" && dims(c)[0] === "landingPage")!;
+    expect(pages.args.orderBys).toEqual([{ desc: false, dimension: { dimensionName: "dateRange" } }, { desc: true, metric: { metricName: "sessions" } }]);
+    expect(pages.args.limit).toBe(20);
+    // The window's ten busiest, most sessions first; none of the previous range's pages.
+    expect(snap.ga?.pages.map((p) => p.path)).toEqual(Array.from({ length: 10 }, (_, i) => `/new-${11 - i}`));
   });
 
   it("Search Console reads the previous range by date (733)", async () => {
