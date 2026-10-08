@@ -256,7 +256,8 @@ test.describe("logout", () => {
     const authed = await signedIn.newPage();
     await authed.goto("/en/app/profile", { waitUntil: "domcontentloaded" });
     // Log out lives in the sidebar's account menu, which has to be opened first — the trigger is the button showing
-    // the signed-in address. The profile page has its own Log out card too (rule 750), so the click is scoped to the menu.
+    // the signed-in address. The profile page has its own Log out button too (rule 750), so the click is scoped to
+    // the menu: an unscoped `getByRole("button", { name: "Log out" })` matches both and fails strict mode.
     await authed.getByRole("button").filter({ hasText: solo.email }).click();
     await authed.getByRole("menu").getByRole("button", { name: "Log out" }).click();
     await authed.waitForURL("**/app/login");
