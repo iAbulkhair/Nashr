@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 /**
- * Rule 730: CI stays inside the plan's Actions minutes without losing a check. Every pull request and every push to main
+ * Rule 770: CI stays inside the plan's Actions minutes without losing a check. Every pull request and every push to main
  * runs the job and reports "Nashr CI" (Vercel's Deployment Check waits for it); draft PRs and pushes to main skip the
  * end-to-end suite, which runs once a PR is ready for review; a change to docs only runs the unit tests alone. The
  * Scope step's shell is executed here for real, in throwaway git repositories, so the test pins what CI decides.
@@ -62,7 +62,7 @@ function scope(files: string[], how: { event: "pull_request"; draft: boolean } |
   return Object.fromEntries(readFileSync(out, "utf8").trim().split("\n").map((l) => l.split("=") as [string, string]));
 }
 
-describe("rule 730: CI checks every change and runs the end-to-end suite where it counts", () => {
+describe("rule 770: CI checks every change and runs the end-to-end suite where it counts", () => {
   it("the job always runs and reports Nashr CI: no workflow-level path filter, drafts marked ready start a run", () => {
     expect(yml).toMatch(/\n    name: Nashr CI\n/);
     const on = yml.slice(yml.indexOf("\non:"), yml.indexOf("\nconcurrency:"));
