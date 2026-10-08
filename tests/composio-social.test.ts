@@ -96,10 +96,17 @@ describe("the post id is kept on publish, for results", () => {
 const NOW = new Date("2026-10-08T09:00:00Z");
 const igConn = () => via("meta", { instagram: "ca_ig" }, { igId: "1784" });
 const liConn = () => via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrg: "urn:li:organization:42", liOrgs: JSON.stringify([{ urn: "urn:li:organization:42", name: "عود الشرق" }]) });
-const dayRow = (impressionCount: number, clickCount: number, likeCount: number, commentCount: number, shareCount: number) =>
-  ({ organizationalEntity: "urn:li:organization:42", timeRange: { start: 0, end: 0 }, totalShareStatistics: { impressionCount, clickCount, likeCount, commentCount, shareCount, uniqueImpressionsCount: 0, engagement: 0 } });
-function liAnswers(rows = [dayRow(100, 5, 3, 1, 0), dayRow(50, 0, 1, 0, 1), dayRow(0, 0, 0, 0, 0)]) {
-  answers.LINKEDIN_GET_SHARE_STATS = ok({ elements: rows, paging: { count: 10, start: 0 } });
+/**
+ * One day of the page's share statistics, `back` whole days before the end LinkedIn was asked for (1 is the window's last
+ * day), so the row falls in the window whatever the read's date (rule 733 splits the 56 days by day).
+ */
+const dayRow = (impressionCount: number, clickCount: number, likeCount: number, commentCount: number, shareCount: number, back = 1) => (end: number) =>
+  ({ organizationalEntity: "urn:li:organization:42", timeRange: { start: end - back * 864e5, end: end - (back - 1) * 864e5 }, totalShareStatistics: { impressionCount, clickCount, likeCount, commentCount, shareCount, uniqueImpressionsCount: 0, engagement: 0 } });
+function liAnswers(rows = [dayRow(100, 5, 3, 1, 0, 1), dayRow(50, 0, 1, 0, 1, 2), dayRow(0, 0, 0, 0, 0, 3)]) {
+  answers.LINKEDIN_GET_SHARE_STATS = (a) => {
+    const end = Number(/end:(\d+)/.exec(String(a.time_intervals))?.[1]);
+    return ok({ elements: rows.map((r) => r(end)), paging: { count: 10, start: 0 } });
+  };
   answers.LINKEDIN_GET_NETWORK_SIZE = ok({ firstDegreeSize: 812 });
 }
 const media = (n: number, over: Record<string, unknown> = {}) => ({ id: `m${n}`, caption: `post ${n}`, media_type: "IMAGE", permalink: `https://www.instagram.com/p/${n}/`, timestamp: "2026-10-01T10:00:00+0000", ...over });
@@ -466,12 +473,14 @@ describe("LinkedIn page results (rule 664)", () => {
     const u = await newUser("sli662");
     liAnswers();
     const snap = await syncSocial(u.email, { linkedin: liConn() }, NOW);
+    // The 28 whole days before today (amended by rule 733): no day of the 28 before them was answered, so no prev.
     expect(snap.parts.linkedin).toEqual({
-      platform: "linkedin", account: "عود الشرق", followers: 812, range: { from: "2026-09-10", to: "2026-10-08" },
+      platform: "linkedin", account: "عود الشرق", followers: 812, range: { from: "2026-09-10", to: "2026-10-07" },
       totals: { ...EMPTY_TOTALS, views: 150, clicks: 5, likes: 4, comments: 1, shares: 1, engagements: 11 }, posts: [],
     });
-    const end = NOW.getTime();
-    expect(calls.find((c) => c.slug === "LINKEDIN_GET_SHARE_STATS")!.args).toEqual({ organizational_entity: "urn:li:organization:42", time_intervals: `(timeRange:(start:${end - 28 * 864e5},end:${end}),timeGranularityType:DAY)` });
+    // One call for 56 whole UTC days ending at today's midnight: the window and the 28 days before it (rule 733).
+    const end = Date.UTC(2026, 9, 8);
+    expect(calls.find((c) => c.slug === "LINKEDIN_GET_SHARE_STATS")!.args).toEqual({ organizational_entity: "urn:li:organization:42", time_intervals: `(timeRange:(start:${end - 56 * 864e5},end:${end}),timeGranularityType:DAY)` });
     expect(calls.find((c) => c.slug === "LINKEDIN_GET_NETWORK_SIZE")!.args).toEqual({ organization_id: "42", edgeType: "COMPANY_FOLLOWED_BY_MEMBER" });
     expect(await getSocialSnapshot(u.email)).toEqual(snap);
   });
@@ -618,7 +627,7 @@ describe("final review fixes", () => {
     }
   });
 
-  it("a timed-out or rate-limited post read is not retried, and the read stops asking for posts after its time budget", async () => {
+  it("a timed-out or rate-limited post read is not retried, and the read stops asking for posts at the shared 30 s deadline", async () => {
     const u = await newUser("sfx2");
     igAnswers([media(1)]);
     answers.INSTAGRAM_GET_IG_MEDIA_INSIGHTS = timeout;
@@ -636,11 +645,20 @@ describe("final review fixes", () => {
     const insights = answers.INSTAGRAM_GET_IG_MEDIA_INSIGHTS as unknown as Exclude<Answer, Result>;
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
-      answers.INSTAGRAM_GET_IG_MEDIA_INSIGHTS = (a) => { vi.setSystemTime(Date.now() + 60_000); return insights(a); };
+      // The first post read lands 1 ms before the deadline (rule 741, 30 s from the start of the read): every post is read.
+      vi.setSystemTime(NOW);
+      answers.INSTAGRAM_GET_IG_MEDIA_INSIGHTS = (a) => { vi.setSystemTime(NOW.getTime() + 29_999); return insights(a); };
+      const inTime = await syncSocial(u.email, { meta: igConn() }, NOW);
+      expect(calls.filter((c) => c.slug === "INSTAGRAM_GET_IG_MEDIA_INSIGHTS")).toHaveLength(30);
+      expect(inTime.parts.instagram!.posts.filter((p) => p.views == null)).toHaveLength(0);
+      // It lands at the deadline: the four reads already asked land, and no other post is asked for.
+      calls.length = 0;
+      vi.setSystemTime(NOW);
+      answers.INSTAGRAM_GET_IG_MEDIA_INSIGHTS = (a) => { vi.setSystemTime(NOW.getTime() + 30_000); return insights(a); };
       const late = await syncSocial(u.email, { meta: igConn() }, NOW);
       expect(late.parts.instagram!.posts).toHaveLength(30);
-      expect(calls.filter((c) => c.slug === "INSTAGRAM_GET_IG_MEDIA_INSIGHTS").length).toBeLessThanOrEqual(4);
-      expect(late.parts.instagram!.posts.filter((p) => p.views == null).length).toBeGreaterThanOrEqual(26);
+      expect(calls.filter((c) => c.slug === "INSTAGRAM_GET_IG_MEDIA_INSIGHTS")).toHaveLength(4);
+      expect(late.parts.instagram!.posts.filter((p) => p.views == null)).toHaveLength(26);
     } finally {
       vi.useRealTimers();
     }

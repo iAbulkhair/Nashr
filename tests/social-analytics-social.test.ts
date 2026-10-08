@@ -11,7 +11,7 @@ import * as publish from "@/lib/connectors/publish";
 import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
 import * as fresh from "@/lib/connectors/fresh";
 import { setComposioClientForTests } from "@/lib/connectors/composio";
-import { EMPTY_TOTALS, PLATFORMS, READERS, SOCIAL_KEY, SOCIAL_PUB_KEY, getSocialSnapshot, holdsSocial, socialDataBlock, syncSocial, syncSocialIfDue, upsertHistory, type HistoryRow, type Platform, type PlatformPart, type SocialSnapshot } from "@/lib/social-stats";
+import { EMPTY_TOTALS, PLATFORMS, READERS, SOCIAL_DEADLINE_MS, SOCIAL_KEY, SOCIAL_PUB_KEY, beforeDeadline, getSocialSnapshot, holdsSocial, rangeBefore, socialDataBlock, splitDays, syncSocial, syncSocialIfDue, upsertHistory, type HistoryRow, type Platform, type PlatformPart, type SocialSnapshot } from "@/lib/social-stats";
 import { connectedSources, reportSources, socialRead } from "@/lib/report-sources";
 import SocialStats from "@/components/app/SocialStats";
 import { syncSiteIfDue } from "@/lib/site-stats";
@@ -25,8 +25,9 @@ import { fakeComposio, ok, type Answer, type Call } from "./helpers/composio-fak
  * team and every social path share it); a refusal is 429 with Retry-After. The click, never the daily cron's read, counts
  * as activity for Dana's weekly-report routine (`ownersync:{scope}`). Rules 737 and 746 (A8, section 7): the social
  * snapshot v2, one part per platform with `null` for a figure not read, a v1 snapshot read as "not read yet" and due, and
- * the monthly history. Composio is the shared fake; its answers follow the Instagram, LinkedIn, GA4 and Search Console
- * shapes the reader tests use.
+ * the monthly history. Rules 733 and 741 (A2, B4): the previous period each social reader reads in the same run, and the
+ * one 30-second deadline every reader shares. Composio is the shared fake; its answers follow the Instagram, LinkedIn, GA4
+ * and Search Console shapes the reader tests use.
  */
 const NOW = new Date("2026-10-08T09:00:00Z");
 const HOUR = 3600e3;
@@ -49,16 +50,23 @@ const igConn = () => via("meta", { instagram: "ca_ig" }, { igId: "1784" });
 const liConn = () => via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrg: "urn:li:organization:42" });
 const google = () => via("google", { google_analytics: "ca_ga", google_search_console: "ca_gsc" }, { gaProperty: "properties/987", gscSite: "sc-domain:roastery.example" });
 
-/** An Instagram account with no posts in the window: three calls a read. */
+/** An Instagram account with no posts in the window: four calls a read (the account, its two periods, its posts). */
 function igAnswers() {
   answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1784", username: "oud", followers_count: 1200 } });
   answers.INSTAGRAM_GET_USER_INSIGHTS = ok({ data: { data: [{ name: "reach", total_value: { value: 5400 } }, { name: "views", total_value: { value: 9100 } }] } });
   answers.INSTAGRAM_GET_IG_USER_MEDIA = ok({ data: { data: [] } });
 }
+/** The end LinkedIn was asked for, in ms, from the RestLi interval of a share-statistics call. */
+const liEnd = (a: Record<string, unknown>) => Number(/end:(\d+)/.exec(String(a.time_intervals))?.[1]);
+/** One day of the page's share statistics, dated `back` whole days before the end LinkedIn was asked for. */
+const liDay = (end: number, back: number, impressionCount: number | string, clickCount = 0, likeCount = 0, commentCount = 0, shareCount = 0) =>
+  ({ timeRange: { start: end - back * 864e5, end: end - (back - 1) * 864e5 }, totalShareStatistics: { impressionCount, clickCount, likeCount, commentCount, shareCount } });
+/** The page's last day only: inside the window whatever the read's date, so there is no previous period. */
 function liAnswers() {
-  answers.LINKEDIN_GET_SHARE_STATS = ok({ elements: [{ totalShareStatistics: { impressionCount: 900, clickCount: 9, likeCount: 4, commentCount: 1, shareCount: 0 } }] });
+  answers.LINKEDIN_GET_SHARE_STATS = (a) => ok({ elements: [liDay(liEnd(a), 1, 900, 9, 4, 1, 0)] });
   answers.LINKEDIN_GET_NETWORK_SIZE = ok({ firstDegreeSize: 812 });
 }
+const media = (n: number) => ({ id: `m${n}`, caption: `post ${n}`, media_type: "IMAGE", permalink: `https://www.instagram.com/p/${n}/`, timestamp: "2026-10-01T10:00:00+0000" });
 function siteAnswers() {
   answers.GOOGLE_ANALYTICS_RUN_REPORT = ok({ rows: [] });
   answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = ok({ rows: [] });
@@ -123,7 +131,7 @@ describe("the owner's refresh of the social results (rule 735)", () => {
     await signIn(owner.email);
     const r = await post("linkedin", { action: "sync_social" });
     expect(await r.json()).toEqual({ ok: true, read: true });
-    expect(calls.map((c) => c.slug).sort()).toEqual(["INSTAGRAM_GET_IG_USER_MEDIA", "INSTAGRAM_GET_USER_INFO", "INSTAGRAM_GET_USER_INSIGHTS", "LINKEDIN_GET_NETWORK_SIZE", "LINKEDIN_GET_SHARE_STATS"]);
+    expect(calls.map((c) => c.slug).sort()).toEqual(["INSTAGRAM_GET_IG_USER_MEDIA", "INSTAGRAM_GET_USER_INFO", "INSTAGRAM_GET_USER_INSIGHTS", "INSTAGRAM_GET_USER_INSIGHTS", "LINKEDIN_GET_NETWORK_SIZE", "LINKEDIN_GET_SHARE_STATS"]);
     expect((await getSocialSnapshot(owner.email))?.at).toBe(NOW.toISOString());
   });
 
@@ -390,5 +398,125 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
     expect(await db.sismember(SOCIAL_PUB_KEY(owner.email), "id-telegram"), "Telegram has no results to mark").toBe(false);
     const other = await newUser("socpub2");
     expect(await db.smembers(SOCIAL_PUB_KEY(other.email))).toEqual([]);
+  });
+});
+
+describe("the social previous period and the shared deadline (rules 733, 741; amended 665)", () => {
+  const U = Math.floor(NOW.getTime() / 1000);
+  const S = U - 28 * 86400;
+  const igTotals = (reach: number, views: number) => ok({ data: { data: [{ name: "reach", total_value: { value: reach } }, { name: "views", total_value: { value: views } }] } });
+  /** Instagram's account insights by window: the window's figures, and the 28 days before it answered by `prev`. */
+  const igInsights = (prev: Answer): Answer => (a) => (a.since === S ? igTotals(5400, 9100) : typeof prev === "function" ? prev(a) : prev);
+
+  it("Instagram reads the 28 days before the window as prev (733)", async () => {
+    const owner = await newUser("socprevig");
+    igAnswers();
+    answers.INSTAGRAM_GET_USER_INSIGHTS = igInsights(igTotals(4500, 7000));
+    const s = await syncSocial(owner.email, { meta: igConn() }, NOW);
+    const ins = calls.filter((c) => c.slug === "INSTAGRAM_GET_USER_INSIGHTS");
+    expect(ins.map((c) => [c.args.since, c.args.until])).toEqual([[S, U], [S - 28 * 86400, S]]);
+    // The same metrics, period and type: only the dates differ.
+    expect(ins[1].args).toEqual({ ...ins[0].args, since: S - 28 * 86400, until: S });
+    expect(s.parts.instagram?.totals).toEqual({ ...EMPTY_TOTALS, reach: 5400, views: 9100 });
+    expect(s.parts.instagram?.prev).toEqual({ range: { from: "2026-08-13", to: "2026-09-10" }, totals: { ...EMPTY_TOTALS, reach: 4500, views: 7000 } });
+  });
+
+  it("a previous read that fails or reads no figure leaves no prev, and the part stands (733)", async () => {
+    const owner = await newUser("socprevigfail");
+    igAnswers();
+    answers.INSTAGRAM_GET_USER_INSIGHTS = igInsights({ successful: false, error: "Internal error (500)" });
+    const failed = await syncSocial(owner.email, { meta: igConn() }, NOW);
+    expect(failed.parts.instagram).toMatchObject({ followers: 1200, totals: { reach: 5400, views: 9100 } });
+    expect(failed.parts.instagram).not.toHaveProperty("prev");
+    expect(failed.errors).toEqual({});
+    // An account with no figure for the earlier days (professional only since this month): no prev, so no "up from" either.
+    answers.INSTAGRAM_GET_USER_INSIGHTS = igInsights(ok({ data: { data: [] } }));
+    expect((await syncSocial(owner.email, { meta: igConn() }, NOW)).parts.instagram).not.toHaveProperty("prev");
+    // A refused token on the previous read is still a refused token: thrown with its provider, never hidden as "no prev".
+    answers.INSTAGRAM_GET_USER_INSIGHTS = igInsights({ successful: false, error: "token expired" });
+    await expect(syncSocial(owner.email, { meta: igConn() }, NOW)).rejects.toMatchObject({ provider: "meta", message: expect.stringMatching(/ 401:/) });
+  });
+
+  it("LinkedIn asks 56 whole days once and splits them by day (733)", async () => {
+    const owner = await newUser("socprevli");
+    const end = Date.UTC(2026, 9, 8);
+    // Each of the 56 days asked: 20 impressions a day in the window, 10 in the 28 days before. A day after the window, one
+    // before both periods and an undated row count in neither.
+    answers.LINKEDIN_GET_SHARE_STATS = (a) => ok({ elements: [
+      ...Array.from({ length: 56 }, (_, i) => liDay(liEnd(a), i + 1, i < 28 ? 20 : 10, 1)),
+      liDay(liEnd(a), 0, 5000), liDay(liEnd(a), 57, 5000), { totalShareStatistics: { impressionCount: 5000 } },
+    ] });
+    answers.LINKEDIN_GET_NETWORK_SIZE = ok({ firstDegreeSize: 812 });
+    const s = await syncSocial(owner.email, { linkedin: liConn() }, NOW);
+    const asked = calls.filter((c) => c.slug === "LINKEDIN_GET_SHARE_STATS");
+    expect(asked).toHaveLength(1);
+    // Whole UTC days ending at today's midnight, so both periods are whole days however LinkedIn cuts its DAY rows.
+    expect(asked[0].args).toEqual({ organizational_entity: "urn:li:organization:42", time_intervals: `(timeRange:(start:${end - 56 * 864e5},end:${end}),timeGranularityType:DAY)` });
+    expect(s.parts.linkedin).toMatchObject({ range: { from: "2026-09-10", to: "2026-10-07" }, totals: { views: 560, clicks: 28, engagements: 28 } });
+    expect(s.parts.linkedin?.prev).toEqual({ range: { from: "2026-08-13", to: "2026-09-09" }, totals: { ...EMPTY_TOTALS, views: 280, clicks: 28, likes: 0, comments: 0, shares: 0, engagements: 28 } });
+  });
+
+  it("a page with days only in the window has no prev; rows dated in neither period leave null figures, said once (733)", async () => {
+    const owner = await newUser("socprevlinew");
+    liAnswers();
+    const s = await syncSocial(owner.email, { linkedin: liConn() }, NOW);
+    expect(s.parts.linkedin?.totals.views).toBe(900);
+    expect(s.parts.linkedin).not.toHaveProperty("prev");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    answers.LINKEDIN_GET_SHARE_STATS = ok({ elements: [{ totalShareStatistics: { impressionCount: 900 } }, { timeRange: { start: 0, end: 864e5 }, totalShareStatistics: { impressionCount: 900 } }] });
+    const odd = await syncSocial(owner.email, { linkedin: liConn() }, NOW);
+    expect(odd.parts.linkedin).toMatchObject({ followers: 812, totals: { views: null, clicks: null, engagements: null } });
+    expect(odd.parts.linkedin).not.toHaveProperty("prev");
+    expect(warn.mock.calls).toEqual([["li_no_day_rows"]]);
+  });
+
+  it("splitDays keeps the window's days and the same number of days just before it (733)", () => {
+    const w = { from: "2026-09-10", to: "2026-10-07" };
+    expect(rangeBefore(w)).toEqual({ from: "2026-08-13", to: "2026-09-09" });
+    expect(rangeBefore({ from: "2026-10-01", to: "2026-10-01" })).toEqual({ from: "2026-09-30", to: "2026-09-30" });
+    const rows = ["2026-08-12", "2026-08-13", "2026-09-09", "2026-09-10", "2026-10-07", "2026-10-08", "", "junk", "2026-09-20T00:00:00Z"].map((day, i) => ({ day, i }));
+    const { cur, prev } = splitDays(rows, w);
+    expect(cur.map((r) => r.day)).toEqual(["2026-09-10", "2026-10-07"]);
+    expect(prev.map((r) => r.day)).toEqual(["2026-08-13", "2026-09-09"]);
+  });
+
+  it("the deadline is 30 s on the clock from the start of the read (741, amended 665)", () => {
+    expect(SOCIAL_DEADLINE_MS).toBe(30_000);
+    expect(() => beforeDeadline(Date.now() + 1)).not.toThrow();
+    expect(() => beforeDeadline(Date.now())).toThrow("deadline");
+  });
+
+  it("every reader stops asking at 30 s; one slow platform never loses another (741)", async () => {
+    const owner = await newUser("socdeadline");
+    igAnswers();
+    liAnswers();
+    answers.INSTAGRAM_GET_IG_USER_MEDIA = ok({ data: { data: Array.from({ length: 9 }, (_, i) => media(i + 1)) } });
+    // Each post read lands 31 s after the read began.
+    answers.INSTAGRAM_GET_IG_MEDIA_INSIGHTS = (a) => {
+      vi.setSystemTime(NOW.getTime() + 31_000);
+      return ok({ data: { data: (a.metric as string[]).map((name) => ({ name, values: [{ value: 7 }] })) } });
+    };
+    const s = await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    expect(s.parts.linkedin?.totals.views).toBe(900);
+    // Four post reads run at a time: the four asked before the clock passed 30 s land, and none is asked after.
+    expect(calls.filter((c) => c.slug === "INSTAGRAM_GET_IG_MEDIA_INSIGHTS")).toHaveLength(4);
+    expect(s.parts.instagram?.posts).toHaveLength(9);
+    expect(s.parts.instagram?.posts.filter((p) => p.views === 7)).toHaveLength(4);
+    expect(s.parts.instagram?.posts.filter((p) => p.views === null)).toHaveLength(5);
+    expect(s.errors).toEqual({});
+
+    // The clock reaches 30 s while Instagram's account is read: Instagram asks for nothing more (no totals, no previous
+    // period, no posts) and keeps what it read; LinkedIn's reads were asked at the start and stand.
+    calls.length = 0;
+    vi.setSystemTime(NOW);
+    answers.INSTAGRAM_GET_USER_INFO = () => {
+      vi.setSystemTime(NOW.getTime() + SOCIAL_DEADLINE_MS);
+      return ok({ data: { id: "1784", username: "oud", followers_count: 1200 } });
+    };
+    const late = await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    expect(calls.map((c) => c.slug).sort()).toEqual(["INSTAGRAM_GET_USER_INFO", "LINKEDIN_GET_NETWORK_SIZE", "LINKEDIN_GET_SHARE_STATS"]);
+    expect(late.parts.instagram).toMatchObject({ account: "oud", followers: 1200, totals: EMPTY_TOTALS, posts: [] });
+    expect(late.parts.instagram).not.toHaveProperty("prev");
+    expect(late.parts.linkedin).toMatchObject({ followers: 812, totals: { views: 900 } });
   });
 });

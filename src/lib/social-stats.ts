@@ -27,10 +27,12 @@ const DAYS = 28;
 const MAX_POSTS = 30;
 const DUE_MS = 20 * 36e5;
 /**
- * The post reads stop asking after this long, on the real clock, so a slow platform leaves dashes instead of holding the
- * daily run: a post not read keeps null figures. `syncSocial` hands every reader the same deadline.
+ * One deadline for every social reader (rule 741, spec B4), counted on the real clock from the start of `syncSocial`:
+ * past it no reader asks Composio for anything, so a slow platform leaves dashes instead of holding the daily run. A call
+ * already asked can still take `CALL_TIMEOUT_MS` (20 s), so one read's worst case is 30 + 20 s. Replaces the 25-second
+ * post budget (rule 665).
  */
-const POSTS_BUDGET_MS = 25_000;
+export const SOCIAL_DEADLINE_MS = 30_000;
 export const SOCIAL_STALE_DAYS = 7;
 /** Monthly history rows kept per platform (rule 746). */
 export const HISTORY_MONTHS = 13;
@@ -41,7 +43,7 @@ export type { N };
 export type Platform = "instagram" | "facebook" | "linkedin" | "youtube" | "tiktok";
 /** Every platform `syncSocial` can hold a part for, in the order the block and the card list them. */
 export const PLATFORMS: readonly Platform[] = ["instagram", "facebook", "linkedin", "youtube", "tiktok"];
-type Range = { from: string; to: string };
+export type Range = { from: string; to: string };
 /** A part's figures over its window. `null` is "not read", never zero (rule 737). A rate is worked out where it is shown. */
 export type Totals = { views: N; reach: N; engagements: N; clicks: N; likes: N; comments: N; shares: N; pageViews: N; followsGained: N; followsLost: N; watchMinutes: N };
 export const EMPTY_TOTALS: Totals = Object.freeze({ views: null, reach: null, engagements: null, clicks: null, likes: null, comments: null, shares: null, pageViews: null, followsGained: null, followsLost: null, watchMinutes: null });
@@ -102,6 +104,36 @@ export class PartlyRead extends ReconnectRequired {
 }
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
+const DAY_MS = 864e5;
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Throws `deadline` once the shared deadline has come (rule 741): every reader calls it before each Composio read. */
+export function beforeDeadline(deadline: number): void {
+  if (Date.now() >= deadline) throw new Error("deadline");
+}
+const late = (e: unknown) => e instanceof Error && e.message === "deadline";
+/** A Composio read asked only before the deadline. */
+async function ask(deadline: number, ...a: Parameters<typeof composioRead>) {
+  beforeDeadline(deadline);
+  return composioRead(...a);
+}
+
+/** The same number of whole days as `r`, ending the day before it starts (rule 733): the previous period. */
+export function rangeBefore(r: Range): Range {
+  const start = Date.parse(r.from);
+  const len = Math.round((Date.parse(r.to) - start) / DAY_MS) + 1;
+  return { from: day(new Date(start - len * DAY_MS)), to: day(new Date(start - DAY_MS)) };
+}
+
+/**
+ * Rows of one read split into the window's days and the same number of days just before it (rule 733): one call for
+ * both periods, split in code. A row without a date (YYYY-MM-DD), or dated in neither period, counts in neither.
+ */
+export function splitDays<T extends { day: string }>(rows: T[], window: Range): { cur: T[]; prev: T[] } {
+  const before = rangeBefore(window);
+  const within = (d: string, r: Range) => ISO_DAY.test(d) && d >= r.from && d <= r.to;
+  return { cur: rows.filter((r) => within(r.day, window)), prev: rows.filter((r) => within(r.day, before)) };
+}
 /** A platform's timestamp as its date (YYYY-MM-DD), or "" when it does not start with one. */
 const dateOf = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : "");
 const errCode = (e: unknown) => (e instanceof Error && /^[a-z_]+$/.test(e.message) ? e.message : "read_failed");
@@ -144,24 +176,35 @@ function igUrl(v: unknown): string | null {
   }
 }
 
-/** The posts of the last 28 days, newest first, at most 30. Only the cursor is read from `paging`, never its links. */
+/**
+ * The posts of the last 28 days, newest first, at most 30. Only the cursor is read from `paging`, never its links. Past
+ * the deadline no page is asked for: the posts already listed stand.
+ */
 async function mediaList(scope: string, acc: string, igId: string, since: number, stop: number): Promise<Record<string, unknown>[]> {
   const rows: Record<string, unknown>[] = [];
   const seen = new Set<string>();
   let after: string | undefined;
-  do {
-    const r = await composioRead(scope, "instagram", "INSTAGRAM_GET_IG_USER_MEDIA", { ig_user_id: igId, fields: MEDIA_FIELDS, limit: 25, since, ...(after ? { after } : {}) }, acc);
+  while (rows.length < MAX_POSTS) {
+    let r: unknown;
+    try {
+      r = await ask(stop, scope, "instagram", "INSTAGRAM_GET_IG_USER_MEDIA", { ig_user_id: igId, fields: MEDIA_FIELDS, limit: 25, since, ...(after ? { after } : {}) }, acc);
+    } catch (e) {
+      if (late(e)) break;
+      throw e;
+    }
     const page = listOf(r);
     rows.push(...page);
     if (after) seen.add(after);
     after = page.length ? pick(r, ["after"], 6) : undefined;
-  } while (rows.length < MAX_POSTS && after && !seen.has(after) && Date.now() < stop);
+    if (!after || seen.has(after)) break;
+  }
   return rows.slice(0, MAX_POSTS);
 }
 
 /**
  * The Instagram account's last 28 days: views and reach from the account insights, followers on the read date, and its
- * posts. `stop` is the shared deadline: past it no post (or media page) is asked for.
+ * posts; and the 28 days before them from a second account-insights read with the same metrics (rule 733, spec A2: both
+ * windows stay inside Instagram's 90 days). `stop` is the shared deadline (rule 741): past it nothing more is asked for.
  */
 async function readIg(scope: string, c: Connection, now: Date, stop: number): Promise<PlatformPart> {
   const acc = accountOf(c, "instagram");
@@ -169,28 +212,32 @@ async function readIg(scope: string, c: Connection, now: Date, stop: number): Pr
   if (!igId) throw new Error("not_connected");
   const until = Math.floor(now.getTime() / 1000);
   const since = until - DAYS * 86400;
+  const prevSince = since - DAYS * 86400;
   // A personal or creator account the Graph API does not serve answers with a refusal that says so, not with data.
-  const info = await composioRead(scope, "instagram", "INSTAGRAM_GET_USER_INFO", { fields: "username,followers_count" }, acc).catch((e) => {
-    throw refused(e) || !NOT_PROFESSIONAL.test(e instanceof Error ? e.message : "") ? e : new Error("ig_not_professional");
+  const info = await ask(stop, scope, "instagram", "INSTAGRAM_GET_USER_INFO", { fields: "username,followers_count" }, acc).catch((e) => {
+    throw late(e) || refused(e) || !NOT_PROFESSIONAL.test(e instanceof Error ? e.message : "") ? e : new Error("ig_not_professional");
   });
-  const [totals, rows, mine] = await Promise.all([
-    composioRead(scope, "instagram", "INSTAGRAM_GET_USER_INSIGHTS", { ig_user_id: igId, metric: ["reach", "views"], period: "day", metric_type: "total_value", since, until }, acc)
-      .then(metrics, (e) => { if (refused(e)) throw e; return {} as Record<string, number | null>; }),
+  // A window's figures, or none: a failed read or one past the deadline leaves them null; a refused token ends the read.
+  const insights = (from: number, to: number) =>
+    ask(stop, scope, "instagram", "INSTAGRAM_GET_USER_INSIGHTS", { ig_user_id: igId, metric: ["reach", "views"], period: "day", metric_type: "total_value", since: from, until: to }, acc)
+      .then(metrics, (e) => { if (refused(e)) throw e; return {} as Record<string, number | null>; });
+  const [totals, before, rows, mine] = await Promise.all([
+    insights(since, until),
+    insights(prevSince, since),
     mediaList(scope, acc, igId, since, stop),
     db.smembers(SOCIAL_PUB_KEY(scope)),
   ]);
   const ours = new Set(mine);
   // A refused token is not retried: it ends the read, and each worker stops at its own refusal. A timeout or a rate limit
-  // leaves that post unread, and past the budget no post is asked for.
+  // leaves that post unread, and past the deadline no post is asked for.
   const results = await pmap(rows, async (row) => {
     const id = String(row.id);
     for (const metric of [[...METRICS], FALLBACK]) {
-      if (Date.now() >= stop) break;
       try {
-        return metrics(await composioRead(scope, "instagram", "INSTAGRAM_GET_IG_MEDIA_INSIGHTS", { ig_media_id: id, metric }, acc));
+        return metrics(await ask(stop, scope, "instagram", "INSTAGRAM_GET_IG_MEDIA_INSIGHTS", { ig_media_id: id, metric }, acc));
       } catch (e) {
         if (refused(e)) throw e;
-        if (busy(e)) break;
+        if (busy(e) || late(e)) break;
       }
     }
     return {} as Record<string, number | null>;
@@ -209,12 +256,18 @@ async function readIg(scope: string, c: Connection, now: Date, stop: number): Pr
       fromThakeen: ours.has(String(row.id)),
     };
   });
+  const prevViews = before.views ?? null;
+  const prevReach = before.reach ?? null;
   return {
     platform: "instagram",
     account: clean(pick(info, ["username"]) ?? "", 80),
     range: { from: day(new Date(since * 1000)), to: day(now) },
     followers: num(pick(info, ["followers_count"])),
     totals: { ...EMPTY_TOTALS, views: totals.views ?? null, reach: totals.reach ?? null },
+    // Only a range Instagram answered with a figure: none read (a failed read, an account with no earlier days) is no prev.
+    ...(prevViews != null || prevReach != null
+      ? { prev: { range: { from: day(new Date(prevSince * 1000)), to: day(new Date(since * 1000)) }, totals: { ...EMPTY_TOTALS, views: prevViews, reach: prevReach } } }
+      : {}),
     posts,
   };
 }
@@ -225,35 +278,57 @@ export type SocialProvider = (typeof SOCIAL_PROVIDERS)[number];
 export const isSocialProvider = (p: string): p is SocialProvider => (SOCIAL_PROVIDERS as readonly string[]).includes(p);
 
 /**
- * The company page's last 28 days, one row per day summed here, and its followers on the read date. Impressions are the
- * part's views and reactions its likes; engagements are clicks, reactions, comments and reposts together, only when
- * impressions were read.
+ * One period's page totals from its DAY rows: each statistic is the sum over the days LinkedIn answered for, null when no
+ * day carried it. Impressions are the part's views and reactions its likes; engagements are clicks, reactions, comments
+ * and reposts together, only when impressions were read.
  */
-async function readLi(scope: string, c: Connection, now: Date): Promise<PlatformPart> {
+function liTotals(rows: unknown[]): Totals {
+  const [views, clicks, likes, comments, shares] = ["impressionCount", "clickCount", "likeCount", "commentCount", "shareCount"]
+    .map((k) => sumRead(rows.map((row) => num(at(row, `totalShareStatistics.${k}`)))));
+  return { ...EMPTY_TOTALS, views, clicks, likes, comments, shares, engagements: views == null ? null : sumRead([clicks, likes, comments, shares]) };
+}
+/** A row's day from LinkedIn's `timeRange.start` (ms), or "" when it has none. */
+function liDay(row: unknown): string {
+  const ms = num(at(row, "timeRange.start"));
+  const d = ms == null ? null : new Date(ms);
+  return d && !Number.isNaN(d.getTime()) ? day(d) : "";
+}
+
+/**
+ * The company page's last 28 whole days and the 28 before them (rule 733, spec A2): 56 days of DAY share statistics in
+ * the one allowlisted call, asked from midnight to midnight UTC so each day falls whole in one period however LinkedIn
+ * cuts them, split here by day; and its followers on the read date. `deadline` is the shared one (rule 741).
+ */
+async function readLi(scope: string, c: Connection, now: Date, deadline: number): Promise<PlatformPart> {
   const acc = accountOf(c, "linkedin");
   const org = c.meta?.liOrg;
   if (!org || !/^urn:li:organization:\d+$/.test(org)) throw new Error("not_connected");
-  const end = now.getTime();
-  const start = end - DAYS * 864e5;
+  const end = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const start = end - 2 * DAYS * DAY_MS;
+  const window: Range = { from: day(new Date(end - DAYS * DAY_MS)), to: day(new Date(end - DAY_MS)) };
   const [stats, size] = await Promise.all([
-    composioRead(scope, "linkedin", "LINKEDIN_GET_SHARE_STATS", { organizational_entity: org, time_intervals: `(timeRange:(start:${start},end:${end}),timeGranularityType:DAY)` }, acc).catch((e) => {
+    ask(deadline, scope, "linkedin", "LINKEDIN_GET_SHARE_STATS", { organizational_entity: org, time_intervals: `(timeRange:(start:${start},end:${end}),timeGranularityType:DAY)` }, acc).catch((e) => {
       throw refused(e) || !denied(e) ? e : new Error("li_no_page_access");
     }),
-    composioRead(scope, "linkedin", "LINKEDIN_GET_NETWORK_SIZE", { organization_id: org.slice(org.lastIndexOf(":") + 1), edgeType: "COMPANY_FOLLOWED_BY_MEMBER" }, acc)
+    ask(deadline, scope, "linkedin", "LINKEDIN_GET_NETWORK_SIZE", { organization_id: org.slice(org.lastIndexOf(":") + 1), edgeType: "COMPANY_FOLLOWED_BY_MEMBER" }, acc)
       .catch((e) => { if (refused(e)) throw e; return null; }),
   ]);
-  const rows = listOf(stats, "totalShareStatistics");
-  // Each statistic is the sum over the days LinkedIn answered for; null when no day carried it.
-  const [views, clicks, likes, comments, shares] = ["impressionCount", "clickCount", "likeCount", "commentCount", "shareCount"]
-    .map((k) => sumRead(rows.map((row) => num(at(row, `totalShareStatistics.${k}`)))));
+  const rows = listOf(stats, "totalShareStatistics").map((row) => ({ day: liDay(row), row }));
+  const { cur, prev } = splitDays(rows, window);
+  // Rows LinkedIn answered that fall in neither period (no date, another range) are not summed: said once, never guessed.
+  if (rows.length && !cur.length && !prev.length) console.warn("li_no_day_rows");
+  const totals = liTotals(cur.map((r) => r.row));
+  const before = liTotals(prev.map((r) => r.row));
   let name = "";
   try { name = (JSON.parse(c.meta?.liOrgs ?? "[]") as { urn: string; name: string }[]).find((o) => o?.urn === org)?.name ?? ""; } catch { /* the page list is optional */ }
   return {
     platform: "linkedin",
     account: clean(name, 80) || `Page ${org.slice(org.lastIndexOf(":") + 1)}`,
-    range: { from: day(new Date(start)), to: day(now) },
+    range: window,
     followers: size == null ? null : num(pick(size, ["firstDegreeSize"])),
-    totals: { ...EMPTY_TOTALS, views, clicks, likes, comments, shares, engagements: views == null ? null : sumRead([clicks, likes, comments, shares]) },
+    totals,
+    // Only days LinkedIn answered for the earlier 28: a page with none (new, or quiet then) has no prev.
+    ...(Object.values(before).some((v) => v != null) ? { prev: { range: rangeBefore(window), totals: before } } : {}),
     posts: [],
   };
 }
@@ -321,7 +396,8 @@ export async function syncSocial(scope: string, conns: Partial<Record<SocialProv
     return c && READERS[p].holds(c) ? [{ p, c }] : [];
   });
   if (!held.length) throw new Error("not_connected");
-  const deadline = Date.now() + POSTS_BUDGET_MS;
+  // One deadline for every reader, on the real clock (rule 741): `now` may be a fixed date, the wait is real.
+  const deadline = Date.now() + SOCIAL_DEADLINE_MS;
   const [last, results] = await Promise.all([
     getSocialSnapshot(scope),
     Promise.allSettled(held.map(({ p, c }) => READERS[p].read(scope, c, now, deadline))),
