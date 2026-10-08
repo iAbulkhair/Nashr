@@ -75,7 +75,8 @@ const codeKey = (code: string) => `partnercode:${code}`;
 const PARTNERS = "partners:all";
 const refsKey = (email: string) => `partner:refs:${email}`;
 const ledgerKey = (email: string) => `partner:ledger:${email}`;
-const paymentsKey = (email: string) => `payments:${email}`;
+/** The account's recorded payments (a hash by payment id). Exported for the Paymob refund (src/lib/billing.ts). */
+export const paymentsKey = (email: string) => `payments:${email}`;
 export const APPLICATIONS = "affiliate-applications";
 const DECISIONS = "affiliate:decisions";
 

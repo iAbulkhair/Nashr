@@ -6,6 +6,7 @@ import type { AgentId } from "./agents";
 import type { Member } from "./team";
 import { PLAN_CREDITS, planFromStore, type AgencyDeal, type Plan } from "./pricing";
 import { settleTopups, type Receipt, type TopupLot } from "./topups";
+import { billingLocked, type Billing } from "./billing-state";
 
 // The plan table lives in src/lib/pricing.ts (import-free, so client components can read it). Re-exported here so the
 // existing `@/lib/auth` imports keep working.
@@ -116,6 +117,12 @@ export type User = {
    * (src/lib/credits.ts), all under `withUserLock`. `credits` above is the whole balance, packs included.
    */
   topups?: TopupLot[];
+  /**
+   * The online subscription (Paymob KSA, src/lib/billing.ts, rules 700-729): the paid-through day, the renewal state and
+   * the saved card's brand and last four digits (the card token itself lives in `paymob:card:{email}`, never here).
+   * Written only by src/lib/billing.ts under `withUserLock`. Absent for accounts activated by hand.
+   */
+  billing?: Billing;
   /** Runtime only: `getUser` settled the stored packs (one expired); the next locked save writes them. Never persisted. */
   topupsDirty?: boolean;
   /** ISO time: every MEMBER session issued before it is dead (founder reset, owner reset). The owner's own sessions follow `sessionsAfter`. */
@@ -145,9 +152,10 @@ const COOKIE = "nashr_session";
 /**
  * An ended trial may not spend. Written once because it was written five times: the image route and the chat's
  * generate_image tool were the two spending paths that never got a copy, so an expired trial went on paying for
- * fal.ai and Anthropic calls indefinitely.
+ * fal.ai and Anthropic calls indefinitely. A Paymob subscription locked after its failed renewal's grace (rule 712)
+ * stops the same way, through every gate that already reads this.
  */
-export const trialOver = (u: Pick<User, "plan" | "trialEnds">) => u.plan === "trial" && new Date(u.trialEnds) < new Date();
+export const trialOver = (u: Pick<User, "plan" | "trialEnds" | "billing">) => (u.plan === "trial" && new Date(u.trialEnds) < new Date()) || billingLocked(u.billing);
 
 export const trialDaysLeft = (trialEnds: string) => Math.max(0, Math.ceil((new Date(trialEnds).getTime() - Date.now()) / 864e5));
 
