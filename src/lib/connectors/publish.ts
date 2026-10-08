@@ -3,10 +3,12 @@ import { getFreshConnection, refusedToken } from "./fresh";
 import { publishWordPress } from "./wordpress";
 import { postToX } from "./x";
 import { publishShopifyArticle } from "./shopify";
-import { postTelegram } from "./keyed";
+import { draftBrevoCampaign, draftKlaviyoTemplate, postTelegram } from "./keyed";
 import { postToFacebook, postToInstagram } from "./meta";
+import { isComposio, postToFacebookVia, postToInstagramVia, postToLinkedInVia, postToTikTokVia, postToXVia, submitWhatsAppTemplateVia, uploadToYouTubeVia } from "./via-composio";
 import { CONNECTION_OF } from "./targets";
-import { hasArtwork } from "../media-catalog";
+import { hasArtwork, isOurBlobUrl } from "../media-catalog";
+import { render } from "../md";
 
 /** `notes`: things the owner should know about a publish that went out (WordPress: `image_failed`, the draft has no featured image). */
 export type PublishResult = { url: string; id: string; provider: string; status: "draft" | "published"; notes?: string[] };
@@ -49,18 +51,54 @@ async function publishWith(email: string, task: Task, provider: string, opts: Pu
       return { ...r, provider, status: "published" };
     }
     case "x": {
-      const r = await postToX(c, body);
+      const r = isComposio(c) ? await postToXVia(email, c, body) : await postToX(c, body);
       return { ...r, provider, status: "published" };
     }
     case "facebook": {
-      const r = await postToFacebook(c, body, hasArtwork(task) ? task.imageUrl : undefined);
+      const image = hasArtwork(task) ? task.imageUrl : undefined;
+      const r = isComposio(c) ? await postToFacebookVia(email, c, body, image) : await postToFacebook(c, body, image);
       return { ...r, provider, status: "published" };
     }
     case "instagram": {
       // targetsFor already requires a generated image; checked again here because this is the call that posts.
       if (!hasArtwork(task)) throw new Error("instagram_needs_image");
-      const r = await postToInstagram(c, body, task.imageUrl!);
+      const r = isComposio(c) ? await postToInstagramVia(email, c, body, task.imageUrl!) : await postToInstagram(c, body, task.imageUrl!);
       return { ...r, provider, status: "published" };
+    }
+    // LinkedIn and TikTok publish only through Composio: Thakeen has no direct publishing code for them.
+    case "linkedin": {
+      if (!isComposio(c)) throw new Error("unsupported_provider");
+      const r = await postToLinkedInVia(email, c, body);
+      return { ...r, provider, status: "published" };
+    }
+    case "tiktok": {
+      if (!isComposio(c)) throw new Error("unsupported_provider");
+      if (!hasArtwork(task)) throw new Error("tiktok_needs_image");
+      // The image lands in the owner's TikTok inbox; they finish the post in the app.
+      const r = await postToTikTokVia(email, c, body, task.imageUrl!);
+      return { ...r, provider, status: "draft" };
+    }
+    // Drafts only from here: nothing reaches a customer or the public until the owner acts in that platform.
+    case "whatsapp": {
+      // A template submitted to Meta's review; nobody is messaged.
+      if (!isComposio(c)) throw new Error("unsupported_provider");
+      const r = await submitWhatsAppTemplateVia(email, c, task.id, body, task.lang);
+      return { ...r, provider, status: "draft" };
+    }
+    case "youtube": {
+      // A private upload; the owner makes it public in YouTube Studio.
+      if (!isComposio(c)) throw new Error("unsupported_provider");
+      if (!isOurBlobUrl(task.videoUrl)) throw new Error("youtube_needs_video");
+      const r = await uploadToYouTubeVia(email, c, task.title, body, task.videoUrl!);
+      return { ...r, provider, status: "draft" };
+    }
+    case "brevo": {
+      const r = await draftBrevoCampaign(c, { name: `Thakeen: ${task.title}`, subject: task.title, html: render(body) });
+      return { ...r, provider, status: "draft" };
+    }
+    case "klaviyo": {
+      const r = await draftKlaviyoTemplate(c, { name: `Thakeen: ${task.title}`, html: render(body) });
+      return { ...r, provider, status: "draft" };
     }
     default:
       throw new Error("unsupported_provider");

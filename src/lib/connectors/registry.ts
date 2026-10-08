@@ -1,3 +1,5 @@
+import { composioEnabled, composioReady } from "./composio";
+
 /** Every platform Nashr can connect to. OAuth ones activate when their env keys exist. */
 export type KeyField = { name: string; label: string; labelAr: string; type?: "text" | "password" | "url"; placeholder?: string };
 export type Provider = {
@@ -46,7 +48,7 @@ export const PROVIDERS: Provider[] = [
   {
     id: "klaviyo", name: "Klaviyo", kind: "key", capabilities: ["messaging"],
     keyFields: [{ name: "apiKey", label: "Private API key", labelAr: "مفتاح API الخاص", type: "password", placeholder: "pk_…" }],
-    docs: "Klaviyo → Settings → API keys → Create private key (lists:read, campaigns:write)",
+    docs: "Klaviyo → Settings → API keys → Create private key (templates:write)",
   },
   {
     id: "odoo", name: "Odoo", kind: "key", capabilities: ["products", "orders"],
@@ -93,13 +95,27 @@ export const PROVIDERS: Provider[] = [
   { id: "linkedin", name: "LinkedIn", kind: "oauth", capabilities: ["publish_post"], oauth: { authorizeUrl: "https://www.linkedin.com/oauth/v2/authorization", tokenUrl: "https://www.linkedin.com/oauth/v2/accessToken", scopes: ["openid", "profile", "w_member_social"], clientIdEnv: "LINKEDIN_CLIENT_ID", clientSecretEnv: "LINKEDIN_CLIENT_SECRET" } },
   { id: "tiktok", name: "TikTok", kind: "oauth", capabilities: ["publish_post"], oauth: { authorizeUrl: "https://www.tiktok.com/v2/auth/authorize/", tokenUrl: "https://open.tiktokapis.com/v2/oauth/token/", scopes: ["user.info.basic", "video.publish", "video.upload"], clientIdEnv: "TIKTOK_CLIENT_KEY", clientSecretEnv: "TIKTOK_CLIENT_SECRET", scopeSeparator: "," } },
   { id: "snapchat", name: "Snapchat Ads", kind: "oauth", capabilities: ["ads"], oauth: { authorizeUrl: "https://accounts.snapchat.com/login/oauth2/authorize", tokenUrl: "https://accounts.snapchat.com/login/oauth2/access_token", scopes: ["snapchat-marketing-api"], clientIdEnv: "SNAP_CLIENT_ID", clientSecretEnv: "SNAP_CLIENT_SECRET" } },
+  // Read only, and only through Composio (ads-via-composio.ts): no direct app, so no `oauth` block.
+  { id: "google_ads", name: "Google Ads (results)", kind: "oauth", capabilities: ["ads"] },
+  { id: "tiktok_ads", name: "TikTok Ads (results)", kind: "oauth", capabilities: ["ads"] },
+  // Drafts only, and only through Composio: a template for Meta's review, a private upload.
+  { id: "whatsapp", name: "WhatsApp Business (templates)", kind: "oauth", capabilities: ["messaging"] },
+  { id: "youtube", name: "YouTube (private uploads)", kind: "oauth", capabilities: ["publish_post"] },
 ];
 
 export function getProvider(id: string) {
   return PROVIDERS.find((p) => p.id === id) ?? null;
 }
-/** OAuth providers are "available" only when their app credentials are configured. */
+/** Providers with no direct publishing code: they connect through Composio or not at all. */
+const COMPOSIO_ONLY = ["linkedin", "tiktok", "google_ads", "tiktok_ads", "google", "whatsapp", "youtube"];
+
+/** The provider connects through Composio (COMPOSIO_PROVIDERS names it and the key is set), not its own OAuth app. */
+export const routedViaComposio = (id: string) => composioEnabled(id);
+
+/** OAuth providers are "available" only when their app credentials, or their Composio auth configs, are configured. */
 export function isAvailable(p: Provider) {
   if (p.kind === "key") return true;
+  if (routedViaComposio(p.id)) return composioReady(p.id);
+  if (COMPOSIO_ONLY.includes(p.id)) return false;
   return !!(process.env[p.oauth!.clientIdEnv] && process.env[p.oauth!.clientSecretEnv]);
 }

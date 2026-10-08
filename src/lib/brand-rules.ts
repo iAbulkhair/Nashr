@@ -166,20 +166,30 @@ export const textOf = (t: Checkable) => `${t.title ?? ""}\n${t.editedBody ?? t.b
  */
 const placeholderText = (t: Checkable) => (t.type === "article" ? textOf(t) : t.editedBody ?? t.body);
 
-function placeholderViolations(t: Checkable, publish: boolean): Violation[] {
+/**
+ * Publish targets whose numbered {{n}} slots are the platform's own variables, filled per recipient by the platform:
+ * a WhatsApp template (connectors/via-composio.ts) declares them for Meta's review. Any other placeholder still holds.
+ */
+const TEMPLATE_TARGETS = ["whatsapp"];
+const TEMPLATE_VAR = /^\{\{\s*\d{1,2}\s*\}\}$/;
+
+function placeholderViolations(t: Checkable, publish: boolean, provider?: string): Violation[] {
   const text = placeholderText(t);
   const personal = !publish && PERSONAL_CHANNELS.includes(String(t.channel ?? ""));
+  const templateVars = publish && TEMPLATE_TARGETS.includes(String(provider ?? ""));
   return placeholderHits(text, { publish })
     .filter((h) => !(h.slot && personal))
+    .filter((h) => !(templateVars && TEMPLATE_VAR.test(h.term)))
     .map((h) => ({ ruleId: `placeholder:${normalize(h.term)}`, kind: "placeholder" as const, term: h.term, excerpt: `${h.at > 30 ? "…" : ""}${text.slice(Math.max(0, h.at - 30), h.at + h.term.length + 30).replace(/\s+/g, " ").trim()}${h.at + h.term.length + 30 < text.length ? "…" : ""}` }));
 }
 
 /**
  * Violations that hold this item back from approval and publishing. Internal documents are not held. `publish` is the
  * stricter check of the publish route and tool: a personalisation slot is fine in a WhatsApp draft, never in a post.
+ * `provider` is the publish target: a WhatsApp template keeps its {{n}} variables (TEMPLATE_TARGETS).
  */
-export function gateTask(brand: Pick<Brand, "banned"> | null | undefined, t: Checkable, opts: { publish?: boolean } = {}): Violation[] {
-  return isCustomerFacing(t.type) ? [...checkText(brandRules(brand), textOf(t)), ...placeholderViolations(t, !!opts.publish)] : [];
+export function gateTask(brand: Pick<Brand, "banned"> | null | undefined, t: Checkable, opts: { publish?: boolean; provider?: string } = {}): Violation[] {
+  return isCustomerFacing(t.type) ? [...checkText(brandRules(brand), textOf(t)), ...placeholderViolations(t, !!opts.publish, opts.provider)] : [];
 }
 
 /** Auto-approval never skips the gate: an item that breaks a rule waits in the inbox with the rule named. */

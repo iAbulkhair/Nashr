@@ -85,7 +85,10 @@ describe("connecting ad accounts (rule 87)", () => {
   it("Meta Ads is its own connection asking only for ads_read, and the Page connection's review pack is unchanged", () => {
     expect(getProvider("meta_ads")!.oauth!.scopes).toEqual(["ads_read"]);
     expect(getProvider("meta")!.oauth!.scopes).not.toContain("ads_read");
-    expect(READS_ADS).toEqual(["meta_ads", "snapchat"]);
+    expect(READS_ADS).toEqual(["meta_ads", "snapchat", "google_ads", "tiktok_ads"]);
+    // Google Ads and TikTok Ads have no direct app: they connect through Composio or not at all.
+    expect(getProvider("google_ads")!.oauth).toBeUndefined();
+    expect(getProvider("tiktok_ads")!.oauth).toBeUndefined();
   });
 
   it("Meta: keeps a long-lived token with its expiry, lists only active ad accounts, and never puts a token or the app secret in view", async () => {

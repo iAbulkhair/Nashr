@@ -37,8 +37,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // Who publishes, from the session (never the body), for the decision record and the activity row below.
   const [connections, brand, by] = await Promise.all([listConnections(sc(u)), getBrand(sc(u)), byOf(u)]);
   // Publishing approves the item, so it passes the same brand gate as the approve button, plus the publish-only part:
-  // no placeholder of any kind goes out, not even a WhatsApp {{1}} (src/lib/brand-rules.ts).
-  const violations = gateTask(brand, t, { publish: true });
+  // no placeholder goes out, not even a WhatsApp {{1}}, except a template's own {{n}} sent to Meta's review (src/lib/brand-rules.ts).
+  const violations = gateTask(brand, t, { publish: true, provider: b.provider });
   if (violations.length) return NextResponse.json({ ok: false, error: "brand_violation", violations }, { status: 409 });
   // Going live is the owner's per-item confirmation for the WordPress site; no other platform has a draft to go live from.
   if (b.live === true && b.provider !== "wordpress") return NextResponse.json({ ok: false, error: "live_unsupported" }, { status: 400 });
@@ -54,7 +54,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     check: (cur) => {
       if (cur.status === "rejected") return { error: "rejected_item" };
       if (taskVersion(cur) !== version) return { error: "changed" };
-      const v = gateTask(brand, cur, { publish: true });
+      const v = gateTask(brand, cur, { publish: true, provider: b.provider });
       return v.length ? { error: "brand_violation", violations: v } : null;
     },
   });

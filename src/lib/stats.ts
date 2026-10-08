@@ -3,6 +3,7 @@ import { db } from "./db";
 import { agentForTask } from "./agents";
 import { cartDataBlock } from "./cart-recovery";
 import { salesDataBlock } from "./store-sales";
+import { siteDataBlock } from "./site-stats";
 
 /** Workspace KPIs for the Reports page and for Dana's prompts. Computed from stored tasks only; no model call. */
 export type Kpis = {
@@ -162,12 +163,12 @@ export function statsText(k: Kpis, opts: { store?: boolean } = {}): string {
 }
 
 /** Returns the data block a task is built on: workspace stats for Dana's reports and Majed's strategy review, plus
- * STORE DATA when a store was synced; STORE DATA alone for Razan's cash forecast ("" when no store was synced); the
+ * STORE DATA when a store was synced, SITE DATA when Google Analytics or Search Console was read (src/lib/site-stats.ts); STORE DATA alone for Razan's cash forecast ("" when no store was synced); the
  * store's abandoned carts for cart-recovery drafts; and nothing for everything else. Each block is labelled as data. */
 export async function statsFor(type: TaskType, scope: string): Promise<string> {
   if (type === "cart_recovery") return cartDataBlock(scope);
   if (type === "cash_forecast") return salesDataBlock(scope);
   if (agentForTask(type).id !== "dana" && type !== "strategy_review") return "";
-  const [k, store] = await Promise.all([kpis(scope), salesDataBlock(scope)]);
-  return store ? `${statsText(k, { store: true })}\n\n${store}` : statsText(k);
+  const [k, store, site] = await Promise.all([kpis(scope), salesDataBlock(scope), siteDataBlock(scope)]);
+  return [store ? statsText(k, { store: true }) : statsText(k), store, site].filter(Boolean).join("\n\n");
 }

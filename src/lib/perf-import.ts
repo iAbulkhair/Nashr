@@ -16,7 +16,7 @@ export type Ranked = { name: string; value: number; sample: number; spend: numbe
 export type Finding = { kind: "winner" | "weakest" | "pattern" | "group" | "dead_spend" | "spread"; text: { ar: string; en: string }; sample: number; confidence: "low" | "medium" };
 export type PerfSnapshot = {
   /** "csv" for an upload, else the ad connection it was read from (src/lib/connectors/ads.ts). */
-  source?: "csv" | "meta_ads" | "snapchat";
+  source?: "csv" | "meta_ads" | "snapchat" | "google_ads" | "tiktok_ads";
   at: string; file: string; platform: string; metric: MetricId; rows: number; ranked: number; excluded: number;
   range: { from: string; to: string } | null; overall: number | null; totals: Partial<Record<keyof Row, number>>;
   top: Ranked[]; bottom: Ranked[]; findings: Finding[];
