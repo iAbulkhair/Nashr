@@ -18,7 +18,7 @@ import * as log from "@/app/api/admin/log/route";
 const KEY = "launch-admin-key-0123456789";
 let ipN = 0;
 /** A fresh client address per test, so the per-IP throttles of one test never refuse another's calls. */
-const ip = () => ({ "x-real-ip": `198.51.100.${++ipN}` });
+const ip = () => ({ "x-forwarded-for": `198.51.100.${++ipN}` });
 
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
 
@@ -668,7 +668,7 @@ describe("Cloudflare Turnstile on signup and forgot-password (rules 426-428)", (
     const { getUser } = await import("@/lib/auth");
     const f = answer({ success: true });
     const email = fresh();
-    const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Human", turnstile: "good-token" }, { "x-real-ip": "203.0.113.9" }));
+    const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Human", turnstile: "good-token" }, { "x-forwarded-for": "203.0.113.9" }));
     expect(res.status).toBe(200);
     expect(await getUser(email)).not.toBeNull();
     expect(f).toHaveBeenCalledTimes(1);

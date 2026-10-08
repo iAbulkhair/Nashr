@@ -42,7 +42,7 @@ export const SEEDED_BRAND = {
  * With no `devCode` in hand (a login to an account an earlier run left unverified) a fresh one is asked for first.
  */
 export async function verifyEmail(request: APIRequestContext, ip: string, devCode?: string) {
-  const headers = { "x-real-ip": simulatedIp(ip) };
+  const headers = { "x-forwarded-for": simulatedIp(ip) };
   let code = devCode;
   if (!code) {
     const send = await request.post("/api/auth/verify/send", { headers });
@@ -57,7 +57,7 @@ export async function verifyEmail(request: APIRequestContext, ip: string, devCod
 
 /** Sign up and, when the signup was accepted, verify the address from the response's `devCode`. Returns the signup response. */
 export async function signUpVerified(request: APIRequestContext, data: { email: string; name: string; password: string; lang: string }, clientIp = data.email) {
-  const signup = await request.post("/api/auth/signup", { data, headers: { "x-real-ip": simulatedIp(clientIp) } });
+  const signup = await request.post("/api/auth/signup", { data, headers: { "x-forwarded-for": simulatedIp(clientIp) } });
   if (!signup.ok()) return signup;
   await verifyEmail(request, clientIp, ((await signup.json()) as { devCode?: string }).devCode);
   return signup;
@@ -72,9 +72,10 @@ export async function signUpVerified(request: APIRequestContext, data: { email: 
  * suite rerunning against a still-live server sees 429 rather than 409 from the sixth run onward.
  */
 export async function signUpOrLogIn(request: APIRequestContext, account: Account, clientIp = account.email) {
-  // Sign-up is capped at five per IP per hour, and every spec in the suite shares one address. `clientIp()` in
-  // src/lib/rate.ts reads x-real-ip first — the header the platform sets — so giving each account its own value
-  // makes the suite look like the separate clients it is simulating, instead of one client tripping a real limit.
+  // Sign-up is capped at five per IP per hour, and every spec in the suite shares one address. Off Vercel `clientIp()`
+  // in src/lib/rate.ts reads only the last x-forwarded-for hop (rule 773), and `next start` keeps a header the request
+  // already carries, so giving each account its own value makes the suite look like the separate clients it is
+  // simulating, instead of one client tripping a real limit.
   const signup = await signUpVerified(request, { email: account.email, name: account.name, password: account.password, lang: "en" }, clientIp);
   if (signup.ok()) return;
 
