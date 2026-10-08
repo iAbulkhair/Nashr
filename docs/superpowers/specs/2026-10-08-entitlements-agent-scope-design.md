@@ -1,6 +1,6 @@
 # Entitlements and agent scope: one "what may happen" layer
 
-Status: draft for the founder's review, 2026-10-08. Design agreed section by section in chat on 2026-10-08; this file is the written form. No code yet. Nothing here reaches the live site without the founder's explicit approval.
+Status: approved by the founder on 2026-10-08 ("go with your recommend"), including the recommendations in section 13. Refreshed the same day against main after the Paymob billing merge (#279). No code yet. Nothing here reaches the live site without the founder's explicit approval.
 
 ## 1. Goal and what the founder decided
 
@@ -24,7 +24,7 @@ Decided by the founder on 2026-10-08:
 - **Chat replies are checked before they are shown** ("Block chat too").
 - **Founder view and overrides:** the console shows each account's entitlements and lets the founder override a dimension until a date.
 - **Approach A:** entitlements are computed from the plan, plus stored overrides. No separate entitlement record to keep in sync.
-- **Two later projects** (section 12): agents gated by plan, and payment-driven expiry.
+- **One later project** (section 12): agents gated by plan. Payment-driven expiry, the other one first named, arrived with the Paymob billing merge (#279) and is read here, not built.
 
 ## 2. What exists today (read from the code, 2026-10-08)
 
@@ -34,12 +34,13 @@ They exist but are spread across files.
 
 | Dimension | Where it is decided today |
 |---|---|
-| Account active | `u.suspended`, `trialOver(u)` (`src/lib/auth.ts`) |
+| Account active | `u.suspended`, `trialOver(u)` (`src/lib/auth.ts`), which since #279 is also true for a Paymob subscription locked after its failed renewal's grace (`billingLocked`, `src/lib/billing-state.ts`) |
+| Paid through | `u.billing.paidThrough` (Paymob, Riyadh day), absent for accounts activated by hand |
 | Monthly credits | `allowanceOf` (`src/lib/pricing.ts`), `PLAN_CREDITS` |
 | Seats | `seatLimit` (`src/lib/auth.ts`), override `u.seats`, agency `deal` |
 | Chat messages a month | `chatAllowanceOf` (`src/lib/pricing.ts`), override `u.chatAllowance` |
 | Chat burst ceiling | `chatCaps` (`src/lib/rate.ts`) |
-| Video models | `u.plan === "trial" && !TRIAL_VIDEO_MODELS.includes(model)` in `src/lib/media/start.ts:97`, mirrored in `src/components/app/MediaControls.tsx:171` |
+| Video models | `u.plan === "trial" && !TRIAL_VIDEO_MODELS.includes(model)` in `src/lib/media/start.ts:98`, mirrored in `src/components/app/MediaControls.tsx:171` |
 | Agents | none: all eight agents for every plan |
 
 Founder overrides today:
@@ -53,7 +54,7 @@ Founder overrides today:
 - **Closed tool list.** The tools have no web search (`toolsFor(agentId)` in `src/lib/chat.ts`), and `runTool` refuses any tool the agent is not offered.
 - **Caller's scope only.** Every tool works on `sc(u)`; no tool takes a brand id or scope from the model.
 - **Publishing.** Only approved items are published, and never over MCP.
-- **Own work types.** Only Majed is held to his own work types in code (`leadRefusal`, `src/lib/chat.ts:532`). Every other agent may call any type.
+- **Own work types.** Only Majed is held to his own work types in code (`leadRefusal`, `src/lib/chat.ts:526`). Every other agent may call any type.
 - **Off-topic answers.** The system prompt describes the agents' work, but nothing stops an off-topic answer. "Write me a Python script" or "what dose of this medicine" is answered if the model chooses to.
 - **Chat delivery.** Chat already delivers the reply in one piece (`src/app/api/chat/route.ts:66-86`): the event stream sends status lines while tools run, then one `message` event. Checking the reply before it is shown loses no streaming; it adds one check before the final event.
 
@@ -66,8 +67,8 @@ A new file `src/lib/entitlements.ts` exports a pure, synchronous function:
 ```ts
 type Entitlements = {
   active: boolean;
-  endsAt: string | null;          // trial end, or null for a paid plan (no payment webhook yet, section 12)
-  inactive?: "suspended" | "trial_over";
+  endsAt: string | null;          // trial end, Paymob paid-through day, or null for an account activated by hand
+  inactive?: "suspended" | "trial_over" | "billing_locked";   // for display; refusal codes stay as they are
   credits: { monthly: number };
   seats: number;
   chat: { monthly: number; hour: number; day: number };
@@ -81,7 +82,7 @@ It reads only the user record and constants, so it costs nothing and can be call
 
 | Field | Source |
 |---|---|
-| `active`, `inactive`, `endsAt` | `u.suspended`, `trialOver(u)`, `u.trialEnds` |
+| `active`, `inactive`, `endsAt` | `u.suspended`, `trialOver(u)`, `billingLocked(u.billing)`, `u.trialEnds`, `u.billing.paidThrough` |
 | `credits.monthly` | `allowanceOf(u)` |
 | `seats` | `seatLimit(u)` |
 | `chat.monthly` | `chatAllowanceOf(u)` |
@@ -189,7 +190,7 @@ A classifier call on the owner's free text before any model work starts.
 - Only refusals count. `allow()` increments on every call, so:
   - before the classifier call, the gate reads both counters with one `Promise.all` of `db.get`;
   - after a refusal, it counts it with `allow()`.
-- Past the ceiling, the chat answers 429 `slow_down` without a classifier call.
+- Past the ceiling, the chat answers 429 `slow_down` through `retryLater` with the window's `Retry-After` (rule 680), without a classifier call.
 
 ### 4.3 Layer 3: code on actions
 
@@ -361,8 +362,8 @@ The same classifier runs on text an agent wrote, before it is shown, saved or se
 
 ### Rule numbers
 
-- Rules 700 to 729 are reserved for this work.
-- The highest number in `docs/system/tests.md` on 2026-10-08 is 662. The gap leaves room for open PRs.
+- Rules 780 to 809 are reserved for this work.
+- The highest number in `docs/system/tests.md` on main and on every remote branch on 2026-10-08 is 775 (700-729 went to Paymob). The gap leaves room for open PRs.
 - Recheck for duplicates before each commit.
 
 ## 10. Docs to update in the same commits
@@ -376,8 +377,8 @@ The same classifier runs on text an agent wrote, before it is shown, saved or se
   - the four layers and their switches;
   - the founder release;
   - the refusal log and what it keeps;
-  - gaps #20 and #32 still open (project 3).
-- **`docs/system/tests.md`:** rules 700-729.
+  - how `endsAt` reads the Paymob subscription.
+- **`docs/system/tests.md`:** rules 780-809.
 - **`docs/system/variables.md`:** no new environment variables. The classifier uses the existing API key, and the switches live in Redis.
 
 ## 11. Rollout
@@ -392,15 +393,19 @@ Nothing is merged, deployed or switched to enforce without the founder's explici
 ## 12. Not in this spec
 
 - **Project 2, agents gated by plan.** Needs a pricing decision on which plans get which agents. The `agents` dimension and its grant are ready for it.
-- **Project 3, payment-driven expiry.** Needs a payment provider with webhooks (permissions gaps #20 and #32). Until then `endsAt` is null for paid plans.
+- **Payment-driven expiry.** Built by the Paymob merge (#279, rules 700-729); this spec only reads `u.billing`.
 - **Overage metering** beyond what exists (chat continue-on-credits, credit top-ups).
 - **Moving the existing overrides** (seats, chat allowance, deal) into `grants`.
 - **Web search for agents.** None today, none added.
 
-## 13. Points for the founder to confirm in review
+## 13. Points the founder confirmed in review (2026-10-08)
 
-1. **Section 3.3 (callers move to one function).** It was presented in chat, but its approval question was dismissed when the discussion turned to agent scope. Confirm it here.
-2. **Code for the owner's own landing page.** HTML or code is refused, including for the owner's own landing page. Say if marketing pages should be the exception.
-3. **Noor and other agents' types.** Once layer 3 is enforced, Noor stops making other agents' types and points the owner to the right agent. Shadow mode measures it first.
+The founder approved the spec with the recommendations as written ("go with your recommend"):
+
+1. **Section 3.3 (callers move to one function):** confirmed.
+2. **Code for the owner's own landing page:** refused as code, no exception.
+3. **Noor and other agents' types:** once layer 3 is enforced, Noor stops making other agents' types and points the owner to the right agent; shadow mode measures it first.
 4. **The thresholds:** 95% recall on refused categories, at most 2% wrong refusals.
-5. **The refusal log** keeps 200 characters of a request for 30 days, founder-only.
+5. **The refusal log:** keeps 200 characters of a request for 30 days, founder-only.
+
+Planning is in two parts, each with its own plan: Part A (entitlements) first, then Part B (agent scope).
