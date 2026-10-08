@@ -20,7 +20,7 @@ let ipN = 0;
 /** Never repeats within a run: two octets from a counter. */
 const freshIp = () => { ipN++; return `203.0.${Math.floor(ipN / 250) % 250}.${(ipN % 250) + 1}`; };
 const post = (route: typeof send | typeof check, path: string, body: unknown = {}, ip = freshIp()) =>
-  route.POST(json(path, "POST", body, { "x-real-ip": ip }));
+  route.POST(json(path, "POST", body, { "x-forwarded-for": ip }));
 const sendCode = (ip?: string) => post(send, "/api/auth/verify/send", {}, ip);
 const checkCode = (code: unknown, ip?: string) => post(check, "/api/auth/verify/check", { code }, ip);
 const codeIn = (m: Mail) => m.text.match(/\d{6}/)![0];
@@ -250,7 +250,7 @@ describe("email verify routes", () => {
 
   it("signup sends the first code", async () => {
     const email = `signup-${Date.now()}@test.example`;
-    const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N" }, { "x-real-ip": freshIp() }));
+    const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N" }, { "x-forwarded-for": freshIp() }));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
@@ -264,7 +264,7 @@ describe("email verify routes", () => {
 
   it("an early resend right after signup is refused with Retry-After, and the mailed code stays valid", async () => {
     const email = `signup-g-${Date.now()}@test.example`;
-    expect((await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N" }, { "x-real-ip": freshIp() }))).status).toBe(200);
+    expect((await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N" }, { "x-forwarded-for": freshIp() }))).status).toBe(200);
     expect(mails).toHaveLength(1);
     await signIn(email);
     const res = await sendCode();
@@ -277,7 +277,7 @@ describe("email verify routes", () => {
   it("signup still succeeds when the mail fails, with mail false", async () => {
     mailOk = false;
     const email = `signup-f-${Date.now()}@test.example`;
-    const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N" }, { "x-real-ip": freshIp() }));
+    const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N" }, { "x-forwarded-for": freshIp() }));
     const body = await res.json();
     expect(body).toMatchObject({ ok: true, verify: true, mail: false });
     expect(await hasPendingCode(email)).toBe(false);
@@ -287,7 +287,7 @@ describe("email verify routes", () => {
   it("a failed signup mail leaves the buckets alone, so the page's first send goes through", async () => {
     mailOk = false;
     const email = `signup-fb-${Date.now()}@test.example`;
-    expect((await (await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N" }, { "x-real-ip": freshIp() }))).json()).mail).toBe(false);
+    expect((await (await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N" }, { "x-forwarded-for": freshIp() }))).json()).mail).toBe(false);
     mailOk = true;
     await signIn(email);
     const res = await sendCode();
@@ -299,7 +299,7 @@ describe("email verify routes", () => {
   it("signup without mail configured answers mail false and sends nothing", async () => {
     vi.stubEnv("RESEND_API_KEY", "");
     const email = `signup-n-${Date.now()}@test.example`;
-    const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N" }, { "x-real-ip": freshIp() }));
+    const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N" }, { "x-forwarded-for": freshIp() }));
     expect(await res.json()).toMatchObject({ ok: true, verify: true, mail: false });
     expect(mails).toHaveLength(0);
   });
@@ -312,7 +312,7 @@ describe("email verify routes", () => {
     expect(body.devCode).toBe(codeIn(mails[0]));
 
     const email = `signup-d-${Date.now()}@test.example`;
-    const s = await (await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N" }, { "x-real-ip": freshIp() }))).json();
+    const s = await (await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N" }, { "x-forwarded-for": freshIp() }))).json();
     expect(s.devCode).toBe(codeIn(mails[mails.length - 1]));
 
     vi.stubEnv("VERCEL_ENV", "production");
@@ -327,7 +327,7 @@ describe("email verify routes", () => {
     vi.stubEnv("APP_ENV", "test");
     vi.stubEnv("MAIL_FROM", "");
     const email = `signup-nm-${Date.now()}@test.example`;
-    const s = await (await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N" }, { "x-real-ip": freshIp() }))).json();
+    const s = await (await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N" }, { "x-forwarded-for": freshIp() }))).json();
     expect(s).toMatchObject({ ok: true, verify: true, mail: false });
     expect(s.devCode).toMatch(/^\d{6}$/);
     const res = await checkCode(s.devCode);

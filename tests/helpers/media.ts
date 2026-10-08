@@ -23,8 +23,8 @@ export function resetMediaCounters() {
   for (const k of [...mem.lists.keys()]) if (global.test(k)) mem.lists.delete(k);
   for (const k of [...mem.sets.keys()]) if (k.startsWith("mjobs:open:")) mem.sets.delete(k);
 }
-/** A distinct client IP per webhook test, so clientIp() is never "unknown" for all of them (src/lib/rate.ts:14-16). */
-export const ipHeaders = (n: number) => ({ "x-vercel-forwarded-for": `203.0.113.${n}` });
+/** A distinct client IP per webhook test, so clientIp() is never "unknown" for all of them (`clientIp` in src/lib/rate.ts: off Vercel only the last x-forwarded-for hop counts, rule 773). */
+export const ipHeaders = (n: number) => ({ "x-forwarded-for": `203.0.113.${n}` });
 
 /** Any fetch fails loudly and is recorded. Returns the recorder and a restore function. */
 export function noNetwork() {

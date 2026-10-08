@@ -16,7 +16,7 @@ import type { Lead } from "@/lib/leads";
 
 const FOUNDER = "leads-founder@test.example";
 let ip = 0;
-const from = () => ({ "x-real-ip": `10.9.${Math.floor(ip / 250)}.${(ip++ % 250) + 1}` });
+const from = () => ({ "x-forwarded-for": `10.9.${Math.floor(ip / 250)}.${(ip++ % 250) + 1}` });
 const contact = (name: string, company: string, message: string) => [`Name: ${name}`, `Company: ${company}`, "", message].join("\n");
 type Body = { ok: boolean; leads: Lead[]; total: number; unread: number; seenAt: string | null; mail: { ready: boolean; forwardTo: boolean } };
 const list = async (query = "") => {

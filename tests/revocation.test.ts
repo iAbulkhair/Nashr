@@ -18,7 +18,7 @@ import * as approve from "@/app/api/oauth/approve/route";
 
 const bearer = (t: string) => new Request("https://nashr.test/api/mcp", { headers: { authorization: `Bearer ${t}` } });
 let ipN = 0;
-const ip = () => ({ "x-real-ip": `198.51.100.${++ipN}` });
+const ip = () => ({ "x-forwarded-for": `198.51.100.${++ipN}` });
 
 describe("sessions end when the password changes", () => {
   it("changing the password signs out every other device and keeps this one", async () => {
