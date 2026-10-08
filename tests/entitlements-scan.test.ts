@@ -47,4 +47,16 @@ describe("callers read what a plan includes from entitlements", () => {
       expect(read(f), f).not.toMatch(/from\s+["']@\/lib\/entitlements["']/);
     }
   });
+
+  it("rule 784: the console and its entitlements table take the view as a type only, so the store stays out of the browser bundle", () => {
+    for (const f of ["src/components/app/AdminConsole.tsx", "src/components/app/EntitlementsTable.tsx"]) {
+      const imports = [...read(f).matchAll(/^import\s+(type\s+)?[^;]*?from\s+["']@\/lib\/entitlements["']/gm)];
+      expect(imports.length, `${f} imports the view type`).toBeGreaterThan(0);
+      expect(imports.every((m) => !!m[1]), `${f} must use import type`).toBe(true);
+    }
+    // The detail GET builds the view once, as one more entry of its own Promise.all, not as a second round trip after it.
+    const route = read("src/app/api/admin/users/[email]/route.ts");
+    expect(route.match(/entitlementView\(u\)/g)).toHaveLength(1);
+    expect(route).not.toMatch(/await\s+entitlementView/);
+  });
 });

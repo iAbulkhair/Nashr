@@ -1,15 +1,19 @@
 import { AGENT_IDS, type AgentId } from "./agents";
 import type { Grant, User } from "./auth";
 import { billingLocked } from "./billing-state";
+import { chatStatus, type ChatStatus } from "./chat-allowance";
 import { MEDIA_MODELS, TRIAL_VIDEO_MODELS, type VideoModelId } from "./media-catalog";
 import { allowanceOf, chatAllowanceOf, seatLimit } from "./pricing";
 import { chatCaps } from "./rate";
+import { seatsUsed } from "./team";
 
 /**
  * What an account's plan includes, in one pure function (spec docs/superpowers/specs/2026-10-08-entitlements-agent-scope-design.md
  * section 3.1, rule 780). It reads only the user record and constants, so it costs nothing and can be called anywhere;
  * it does not replace `allowanceOf`, `seatLimit`, `chatAllowanceOf` or `chatCaps`, it asks them, so there is still one
- * source for each number. It imports `chatCaps` from src/lib/rate.ts, which imports the db client: a server module.
+ * source for each number. It imports `chatCaps` from src/lib/rate.ts, which imports the db client, and (for
+ * `entitlementView`, rule 784) `seatsUsed` and `chatStatus`, which read the store: a server module, never imported by a
+ * client component at runtime (a type import is erased).
  *
  * Deliberately outside the layer, because they are the owner's settings or Thakeen's protection rather than what the
  * plan includes (spec 3.1): whether a media model is switched on (`MEDIA_MODELS_ON` and the breaker in
@@ -116,5 +120,45 @@ export function entitlements(u: EntUser, now: number = Date.now()): Entitlements
     chat: { monthly: chatAllowanceOf(u), hour: caps.hour, day: caps.day },
     media: { video: u.plan === "trial" && !grantActive(u.grants?.video, now) ? TRIAL_VIDEO_MODELS : ALL_VIDEO_MODELS },
     agents: AGENT_IDS,
+  };
+}
+
+/**
+ * What the founder's console shows for one account (rule 784): the plan's numbers (`ent`), what the account has used,
+ * when the month's numbers start again, and the video grant with whether it has run out. `grants.video` is the stored
+ * grant with `expired` set by `grantActive`, so an old grant is shown as expired and never as in force.
+ */
+export type EntitlementView = {
+  ent: Entitlements;
+  used: { credits: number; seats: number; chat: ChatStatus };
+  /** The next 1st of the month (a UTC day, YYYY-MM-DD) for a paid plan that renews; null for a trial and for a locked Paymob subscription. */
+  resetsAt: string | null;
+  grants: { video: (Grant<"all"> & { expired: boolean }) | null };
+};
+
+/**
+ * The next 1st of the month after `now`, as a UTC day. Only a paid plan that is not billing-locked has one: that is the
+ * account `renewalDue` (src/lib/credits.ts) renews at the start of the UTC month, and the one whose chat count restarts
+ * with `monthKey` (rule 712: a locked subscription gets no new month until it pays; a trial's chat and credits do not reset).
+ */
+function resetsAtOf(u: EntUser, now: number): string | null {
+  if (u.plan === "trial" || billingLocked(u.billing)) return null;
+  const d = new Date(now);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
+}
+
+/**
+ * The entitlement view of one stored account for the founder's console (`GET /api/admin/users/{email}`, rule 784).
+ * Reads only: the seats in use and the chat status, in one `Promise.all` (the chat status is also read by the route for
+ * its own `chat`; reading it twice is accepted, ruling R11). `now` is for tests.
+ */
+export async function entitlementView(u: User, now: number = Date.now()): Promise<EntitlementView> {
+  const [seats, chat] = await Promise.all([seatsUsed(u.email), chatStatus(u)]);
+  const g = u.grants?.video;
+  return {
+    ent: entitlements(u, now),
+    used: { credits: u.credits, seats, chat },
+    resetsAt: resetsAtOf(u, now),
+    grants: { video: g ? { ...g, expired: !grantActive(g, now) } : null },
   };
 }

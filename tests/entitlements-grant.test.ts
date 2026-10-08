@@ -1,10 +1,13 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { adminSignIn, jar, json, newUser, signIn } from "./helpers/session";
+import { adminSignIn, jar, json, newUser, params, signIn } from "./helpers/session";
 import { getUser, saveUser, type Plan, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { ALL_VIDEO_MODELS, entitlements, parseVideoGrant } from "@/lib/entitlements";
+import { ALL_VIDEO_MODELS, entitlements, parseVideoGrant, type EntitlementView } from "@/lib/entitlements";
+import { seatLimit } from "@/lib/pricing";
+import { TRIAL_VIDEO_MODELS } from "@/lib/media-catalog";
 
 import * as plan from "@/app/api/admin/plan/route";
+import * as adminUser from "@/app/api/admin/users/[email]/route";
 import * as profileRoute from "@/app/api/profile/route";
 
 /**
@@ -12,7 +15,8 @@ import * as profileRoute from "@/app/api/profile/route";
  * one account through the end of a UTC day, `null` clears it. The body is checked in code before the account is read
  * (400 `bad_grant`, nothing written, nothing logged), only `until` and `note` are read from it, the grant is written
  * under the user lock with the actor and the time, logged before and after, survives a plan change and is cleared only
- * by `null`. `parseVideoGrant` is the one check (src/lib/entitlements.ts).
+ * by `null`. `parseVideoGrant` is the one check (src/lib/entitlements.ts). The founder's detail read (rule 784) carries the
+ * account's entitlement view, and shows a grant that has run out as expired.
  */
 const KEY = "grant-admin-key-0123456789";
 beforeAll(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); });
@@ -221,5 +225,44 @@ describe("parseVideoGrant (rule 783)", () => {
     // A real leap day is a day.
     expect(parseVideoGrant({ until: "2028-02-29" }, Date.parse("2028-02-01T00:00:00Z"))).toEqual({ ok: true, until: "2028-02-29" });
     expect(parseVideoGrant({ until: "2027-02-29" }, Date.parse("2027-02-01T00:00:00Z"))).toEqual({ ok: false });
+  });
+});
+
+describe("the founder's detail carries the entitlement view (rule 784)", () => {
+  const detail = async (email: string, h: Record<string, string> = headers) =>
+    adminUser.GET(json("/api/admin/users/x", "GET", undefined, h), params({ email: encodeURIComponent(email) }));
+
+  it("GET /api/admin/users/{email} answers entitlements with the plan's numbers, the use and the grant", async () => {
+    const u = await account("pro");
+    const until = dayFromNow(9);
+    await call(u.email, { videoGrant: { until, note: "for the demo" } });
+    const body = (await (await detail(u.email)).json()) as { ok: boolean; user: User; entitlements: EntitlementView };
+    const v = body.entitlements;
+    expect(body.ok).toBe(true);
+    expect(v.ent.seats).toBe(seatLimit(u));
+    expect(v.ent.credits.monthly).toBe(entitlements(u).credits.monthly);
+    expect(v.ent.media.video).toEqual(ALL_VIDEO_MODELS);
+    expect(v.used.seats).toBe(1);
+    expect(v.used.credits).toBe((await getUser(u.email))!.credits);
+    expect(v.used.chat).toMatchObject({ used: 0, allowance: v.ent.chat.monthly, period: "month" });
+    expect(v.resetsAt).toMatch(/^\d{4}-\d{2}-01$/);
+    expect(v.grants.video).toMatchObject({ value: "all", until, note: "for the demo", by: "key", expired: false });
+  });
+
+  it("a trial whose grant has run out reads as the trial's own list, with the grant marked expired", async () => {
+    const u = await account("trial");
+    await saveUser({ ...(await getUser(u.email))!, grants: { video: { value: "all", until: dayFromNow(-3), by: "key", at: "2026-01-01T00:00:00.000Z" } } });
+    const v = ((await (await detail(u.email)).json()) as { entitlements: EntitlementView }).entitlements;
+    expect(v.ent.media.video).toEqual(TRIAL_VIDEO_MODELS);
+    expect(v.grants.video).toMatchObject({ value: "all", expired: true });
+    expect(v.resetsAt).toBeNull();
+  });
+
+  it("is the founder's only: without the key the detail is 401 and carries no entitlements", async () => {
+    const u = await account("pro");
+    jar().clear();
+    const r = await detail(u.email, {});
+    expect(r.status).toBe(401);
+    expect(JSON.stringify(await r.json())).not.toContain("entitlements");
   });
 });
