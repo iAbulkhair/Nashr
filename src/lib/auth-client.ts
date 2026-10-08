@@ -52,6 +52,7 @@ export const AUTH_ERR = {
     captcha_failed: "لم يكتمل التحقق الأمني. أكمل التحقق ثم حاول مرة أخرى.",
     captcha_unavailable: "خدمة التحقق الأمني لا تستجيب الآن. حاول مرة أخرى بعد قليل.",
     disabled: "دخولك موقوف مؤقتاً لأن خطة الحساب لا تتسع له. اطلب من مالك الحساب ترقية الخطة.",
+    owner_unverified: "صاحب الحساب لم يؤكد بريده بعد.",
   },
   en: {
     network: "Couldn't reach the server. Check your internet connection and try again.",
@@ -61,6 +62,7 @@ export const AUTH_ERR = {
     captcha_failed: "The security check wasn't completed. Complete it and try again.",
     captcha_unavailable: "The security check isn't responding right now. Try again shortly.",
     disabled: "Your login is paused because the account's plan has no free seat. Ask the account owner to upgrade.",
+    owner_unverified: "The account owner has not confirmed their email yet.",
   },
 } as const;
 

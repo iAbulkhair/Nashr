@@ -10,7 +10,8 @@ import VerifyForm from "@/components/app/VerifyForm";
  * Where an owner who has not proved the address lands (rule 754). The layout sends them here; `currentUser()` reads them
  * as signed out, so this page (and the three verify routes) read the session with `currentUserUnverified` (rule 752). The
  * address shown is the session's, never one from the URL. A member, a founder session or an owner who is already verified
- * has nothing to prove and goes on to the app.
+ * has nothing to prove and goes on to the app. A member whose owner has not verified reads as signed out in both resolvers
+ * (rule 767), so they go to login, which answers `owner_unverified`.
  */
 export default async function Page({ params, searchParams }: { params: Promise<{ lang: string }>; searchParams: Promise<{ next?: string | string[]; sent?: string | string[] }> }) {
   const { lang } = await params;

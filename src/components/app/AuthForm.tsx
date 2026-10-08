@@ -112,6 +112,9 @@ export function LoginForm({ t, lang }: { t: AppDict; lang: Lang }) {
       // "Wrong email or password" only for a 401: a rate limit, a dropped connection and a server error each say so,
       // so a customer with the right password is not sent to a reset (rule 433).
       if (!succeeded(p)) return setErr(authMessage(failureCode(p), lang, { invalid: t.login.invalid, suspended: t.login.suspended }));
+      // An owner who has not proved the address goes to the code page first, carrying the destination (rule 754), so a
+      // `next` outside the app (the OAuth consent page) is reached after the code instead of looping back here.
+      if (p.body.verify === true) { r.push(`/${lang}/app/verify?next=${encodeURIComponent(next || `/${lang}/app`)}`); return; }
       if (next) { window.location.href = next; return; }
       r.push(`/${lang}/app`);
       r.refresh();

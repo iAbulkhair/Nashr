@@ -324,8 +324,8 @@ export async function currentUserUnverified(): Promise<User | null> {
  *
  * The account is always the owner's `User`, so every `sc(u)`, charge and plan check keeps working unchanged. Scope is
  * built from the OWNER email: a member's own address never becomes a workspace key. A member is refused when disabled,
- * when the session predates their own or the team's revocation stamp, when the owner is gone or suspended, when the
- * member is not on the owner's roster (`members:{owner}`), or when the member record predates the owner record (a
+ * when the session predates their own or the team's revocation stamp, when the owner is gone, suspended or has not
+ * verified the address (rule 767), when the member is not on the owner's roster (`members:{owner}`), or when the member record predates the owner record (a
  * re-registered owner address never inherits an old team).
  */
 async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): Promise<User | null> {
@@ -337,8 +337,8 @@ async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): 
     if (u.suspended) return null;
     if (issuedBefore(s.at, u.sessionsAfter)) return null; // issued before the last password change (or before the account existed)
     // The verification gate (rule 751): an owner who has not proved the address is signed out for every caller except
-    // `currentUserUnverified`. A founder impersonation passes (support must reach the account); a member login (below) is
-    // not gated by its owner's state.
+    // `currentUserUnverified`. A founder impersonation passes (support must reach the account). A member login (below)
+    // is gated by its owner's state too (rule 767).
     if (!emailVerified(u) && !s.imp && !opts.unverified) return null;
     u.brandId = brandId;
     u.scope = scopeFor(u.email, brandId);
@@ -356,6 +356,10 @@ async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): 
   // not sign in either.
   const [owner, brands, listed] = await Promise.all([getUser(m.memberOf), listBrands(m.memberOf), onRoster(m.memberOf, email)]);
   if (!owner || owner.suspended || !listed) return null;
+  // Rule 767: while the owner has not proved the address, the account spends nothing, so its members are signed out too,
+  // in both resolvers. A member has no address of the owner's to prove, so `currentUserUnverified` never hands one to the
+  // verify page: they read as signed out, and login answers `owner_unverified`. (Impersonation never reaches this branch.)
+  if (!emailVerified(owner)) return null;
   if (issuedBefore(s.at, owner.teamSessionsAfter)) return null;
   // NaN on either side (a malformed date) refuses too.
   if (!(new Date(m.acceptedAt).getTime() >= new Date(owner.createdAt).getTime())) return null;

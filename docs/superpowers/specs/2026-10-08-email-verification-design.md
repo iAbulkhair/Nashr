@@ -20,8 +20,10 @@ Founder decisions (2026-10-08):
 | Login | Verified when | Gated |
 |---|---|---|
 | Owner account (`user:{email}`) | `emailVerifiedAt` is set | yes, until set |
-| Team member (`member:{email}`) | always: accepting the invite used the emailed link | no |
+| Team member (`member:{email}`) | always: accepting the invite used the emailed link | while the owner is unverified (amended 2026-10-08, final review ruling I2) |
 | Founder impersonating an owner | n/a | no (support must reach a stuck account) |
+
+Amendment (2026-10-08, final review, ruling I2): §1's "an unverified owner spends nothing" outranks the member row as first written, which assumed a verified owner. A member of an unverified owner is signed out in both resolvers; login answers that member 403 `owner_unverified` ("The account owner has not confirmed their email yet"), and the member's session works again once the owner verifies. Rule 767.
 
 `emailVerifiedAt?: string` (ISO) is added to `User`. Absent means unverified, which is every account that exists on
 release day. `gatedSignup?: true` is set by `createUser` from release day on; it marks an account created under the gate.
@@ -37,8 +39,12 @@ release day. `gatedSignup?: true` is set by `createUser` from release day on; it
 - `userFromBearer` (`src/lib/mcp.ts`) refuses a token whose owner is unverified.
 - `src/app/[lang]/app/layout.tsx`: when `currentUser()` is null but `currentUserUnverified()` is an owner, redirect to
   `/{lang}/app/verify` instead of the login page. The verify page is in the layout's public list.
-- Login (`POST /api/auth/login`) is unchanged: the password still creates the session; the gate then sends the person
-  to the verify page. The login form follows the redirect it already follows.
+- Login (`POST /api/auth/login`): the password still creates an owner's session. Amended 2026-10-08 (final review
+  ruling I1): the answer carries `verify: true` for an unverified owner, and the login form then goes to
+  `/{lang}/app/verify?next=` with the (`safeNext`'d) destination. Without it a destination outside `/[lang]/app` (the
+  OAuth consent page) looped back to login, because the layout redirect only covers app pages.
+- Password reset (amended 2026-10-08, ruling M1): an owner's reset proves the address (the single-use link was mailed
+  to it), so it stamps `emailVerifiedAt` when unset, in the same lock that saves the new password. Rule 769.
 - Signup sends the first code right after `createSession` and answers `{ ok: true, verify: true }`; the form goes to
   `/{lang}/app/verify`.
 
@@ -60,7 +66,10 @@ Consequence the founder accepted: an existing customer's automations and booking
   `{ hash, attempts, sentAt }` and a 15-minute TTL. A new code replaces the old one. Compared with `sameSecret`.
 - 5 wrong attempts delete the code; the person requests a new one.
 - Send limits: once per 60 s per account (`verify:send:{email}`), 5 per hour per account, 20 per hour per IP
-  (`allow` + `retryLater`, rule 680).
+  (`allow` + `retryLater`, rule 680). Amended 2026-10-08 (final review ruling I3): also 10 per day per account
+  (`verify:day:{email}`, checked after the hour), so guessing against an address the account does not own and mail to
+  one inbox are bounded per day. Rule 768. Signup's first code counts in the account buckets only when its mail went
+  out.
 - A correct code sets `emailVerifiedAt` under the account lock, deletes the code, and the client goes to
   `/{lang}/app` (onboarding for a new account, as today).
 - When `mailReady()` is false the send route answers `{ ok: false, error: "mail_unavailable" }` and the page shows the
@@ -93,7 +102,7 @@ Such an account can hold no brand data (the gate blocked every route), so the mo
 ## 8. Testing
 
 New tests, each checked to fail with its fix reverted:
-- `currentUser` null for an unverified owner; returns the member and the impersonated owner; `currentUserUnverified`
+- `currentUser` null for an unverified owner and for a member of one; returns the member of a verified owner and the impersonated owner (founder login and console key); `currentUserUnverified`
   has exactly the listed callers.
 - `userFromBearer` refuses an unverified owner.
 - Layout redirects an unverified owner to verify.

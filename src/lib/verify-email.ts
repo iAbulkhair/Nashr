@@ -15,15 +15,17 @@ import { withLoginLock } from "./team";
  * Email verification codes (rules 757-758). A new owner proves the address with a 6-digit code mailed to it; until then
  * the account reads as signed out (rule 751).
  *
- * Only a SHA-256 hash of the code is stored (`verify:code:{email}`), so a Redis read never reveals a live code, and the
- * hash is salted with the address so one guess does not match two accounts. The record expires with the code (900 s).
+ * Only a SHA-256 hash of the code is stored (`verify:code:{email}`), which keeps the plain code out of storage and logs,
+ * and the hash is salted with the address so one guess does not match two accounts. It is not secret against a Redis
+ * reader: there are only 10^6 codes and the salt is the address, so anyone who can read Redis reverses it offline at
+ * once. That is why the record expires with the code (900 s) and attempts are capped.
  *
  * Wrong guesses are counted in their own key (`verify:tries:{email}`) with an atomic INCRBY BEFORE the comparison, not
  * read-modify-written inside the code record: twelve parallel guesses each get a distinct count, so no more than five
  * ever reach the comparison. The fifth wrong answer deletes the code. Callers pass the session's normalized email,
  * never an address taken from the request.
  */
-export const VERIFY = { ttl: 900, attempts: 5, gap: 60, perHour: 5, perIpHour: 20, movesPerDay: 3 } as const;
+export const VERIFY = { ttl: 900, attempts: 5, gap: 60, perHour: 5, perDay: 10, perIpHour: 20, movesPerDay: 3 } as const;
 
 const codeKey = (email: string) => `verify:code:${email}`;
 const triesKey = (email: string) => `verify:tries:${email}`;
@@ -127,26 +129,30 @@ export async function sendVerifyCode(u: Pick<User, "email" | "lang">): Promise<{
 
 const gapBucket = (email: string) => allow(`verify:gap:${email}`, 1, VERIFY.gap);
 const hourBucket = (email: string) => allow(`verify:hour:${email}`, VERIFY.perHour, 3600);
+// Rule 768: ten codes a day per address. Without it the hour bucket allowed 120 mails a day to one inbox and 600 guesses a
+// day against an address the account does not own.
+const dayBucket = (email: string) => allow(`verify:day:${email}`, VERIFY.perDay, 86400);
 
 /**
- * Count a send that did not go through `verifySendRefusal` (signup's first code) in the per-address buckets, so a resend
- * a moment later is refused honestly instead of replacing the code that was just mailed. The IP bucket is the send
+ * Count a send that did not go through `verifySendRefusal` (signup's first code, once its mail went out) in the
+ * per-address buckets, so a resend a moment later is refused honestly instead of replacing the code that was just mailed. The IP bucket is the send
  * route's own and is left alone: signup has its own per-IP limit.
  */
 export async function countVerifySend(email: string): Promise<void> {
-  await Promise.all([gapBucket(email), hourBucket(email)]);
+  await Promise.all([gapBucket(email), hourBucket(email), dayBucket(email)]);
 }
 
 /**
- * The refusals every code send goes through, in order (rules 759-760, 766): mail is off (503, unless a test deploy hands the
- * code back), then three buckets, the refusing one names the wait: one send a minute and five an hour per address, twenty
- * an hour per IP. `email` is the session's (or, after a move, the new) address, never one taken from a request as a source
+ * The refusals every code send goes through, in order (rules 759-760, 766, 768): mail is off (503, unless a test deploy
+ * hands the code back), then four buckets, the refusing one names the wait: one send a minute, five an hour and ten a day
+ * per address, twenty an hour per IP. `email` is the session's (or, after a move, the new) address, never one taken from a request as a source
  * account. Null when the send may go ahead.
  */
 export async function verifySendRefusal(email: string, req: Request): Promise<NextResponse | null> {
   if (!devCodeExposed() && !mailReady()) return NextResponse.json({ ok: false, error: "mail_unavailable" }, { status: 503 });
   if (!(await gapBucket(email))) return retryLater({ ok: false, error: "slow_down" }, VERIFY.gap);
   if (!(await hourBucket(email))) return retryLater({ ok: false, error: "slow_down" }, 3600);
+  if (!(await dayBucket(email))) return retryLater({ ok: false, error: "slow_down" }, 86400);
   if (!(await allow(`verify:ip:${clientIp(req)}`, VERIFY.perIpHour, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
   return null;
 }

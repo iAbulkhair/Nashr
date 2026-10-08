@@ -15,6 +15,7 @@ vi.mock("@/lib/notify", async (orig) => ({
 }));
 
 import * as change from "@/app/api/auth/verify/email/route";
+import * as check from "@/app/api/auth/verify/check/route";
 
 let ipN = 0;
 /** Never repeats within a run, and never meets the IPs of the other verify test files. */
@@ -58,10 +59,15 @@ describe("change a mistyped signup email", () => {
 
   it("refused without a session, to a member login, and for a member session", async () => {
     expect((await move(addr("x"))).status).toBe(401);
-    const owner = await newUser("ch", { verified: false });
+    const owner = await newUser("ch");
     const m = await newMember(owner);
     await signIn(m.email);
     expect((await move(addr("x"))).status).toBe(403);
+    // Rule 767: a member of an unverified owner reads as signed out here too.
+    const pending = await newUser("ch", { verified: false });
+    const m2 = await newMember(pending);
+    await signIn(m2.email);
+    expect((await move(addr("x"))).status).toBe(401);
   });
 
   it("bad address is 400 and changes nothing", async () => {
@@ -196,6 +202,7 @@ describe("change a mistyped signup email", () => {
     expect(res.status).toBe(429);
     expect(await res.json()).toEqual({ ok: false, error: "slow_down" });
     expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(0);
+    expect(Number(res.headers.get("Retry-After"))).toBeLessThanOrEqual(86400);
     expect(await getUser(at)).not.toBeNull();
   });
 
@@ -221,6 +228,29 @@ describe("change a mistyped signup email", () => {
     expect(await getUser(to)).not.toBeNull();
     expect((await currentUserUnverified())!.email).toBe(to);
     expect(await hasPendingCode(to)).toBe(false);
+  });
+
+  // Rule 766 on the change route: a test deploy hands the new address's code back, and it verifies; a production
+  // deploy never does, even with APP_ENV=test.
+  it("devCode only under APP_ENV=test off a production deploy, and it verifies", async () => {
+    vi.stubEnv("APP_ENV", "test");
+    const old = await newUser("ch", { verified: false });
+    await signIn(old.email);
+    const to = addr("dev");
+    const body = await (await move(to)).json();
+    expect(body).toMatchObject({ ok: true, email: to });
+    expect(body.devCode).toBe(mails.find((m) => m.to === to)!.text.match(/\d{6}/)![0]);
+    const res = await check.POST(json("/api/auth/verify/check", "POST", { code: body.devCode }, { "x-real-ip": freshIp() }));
+    expect(res.status).toBe(200);
+    expect((await getUser(to))!.emailVerifiedAt).toBeTruthy();
+
+    vi.stubEnv("VERCEL_ENV", "production");
+    const old2 = await newUser("ch", { verified: false });
+    await signIn(old2.email);
+    const to2 = addr("prod");
+    const prod = await (await move(to2)).json();
+    expect(prod).toEqual({ ok: true, email: to2 });
+    expect(prod.devCode).toBeUndefined();
   });
 
   it("a full send bucket after the move still answers 200 with mail: false", async () => {

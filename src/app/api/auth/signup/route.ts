@@ -46,10 +46,11 @@ export async function POST(req: Request) {
   let mail = false;
   let devCode: string | undefined;
   try {
-    // The send counts in the address buckets of the send route (rule 759): a resend right after signup waits its minute.
-    await countVerifySend(account.email);
     const r = await sendVerifyCode(account);
     mail = r.sent;
+    // A mail that went out counts in the address buckets of the send route (rule 759): a resend right after signup waits
+    // its minute. One that did not is not counted, so the verify page's own first send goes through.
+    if (r.sent) await countVerifySend(account.email);
     if (devCodeExposed()) devCode = r.code;
   } catch (e) {
     console.error("verify code failed", e instanceof Error ? e.name : "error");

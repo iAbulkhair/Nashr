@@ -3,11 +3,11 @@ import { currentUserUnverified, emailVerified } from "@/lib/auth";
 import { devCodeExposed, sendVerifyCode, verifySendRefusal, VERIFY } from "@/lib/verify-email";
 
 /**
- * Mail a fresh 6-digit code to the signed-in owner (rules 759-760, 766). The address is the session's, never one from the
- * request. A member login or an already verified owner has nothing to prove (409). Three buckets, checked in order, the
- * refusing one names the wait: one send a minute, five an hour per address, twenty an hour per IP. The code is never in a
- * response, except as `devCode` on a test deploy (`devCodeExposed`), where mail may be off or refused and the code is
- * returned anyway.
+ * Mail a fresh 6-digit code to the signed-in owner (rules 759-760, 766, 768). The address is the session's, never one
+ * from the request. A member login or an already verified owner has nothing to prove (409). Four buckets, checked in
+ * order, the refusing one names the wait: one send a minute, five an hour and ten a day per address, twenty an hour per
+ * IP. The code is never in a response, except as `devCode` on a test deploy (`devCodeExposed`), where mail may be off
+ * or refused and the code is returned anyway.
  */
 export async function POST(req: Request) {
   const u = await currentUserUnverified();

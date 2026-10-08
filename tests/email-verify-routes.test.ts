@@ -74,6 +74,23 @@ describe("email verify routes", () => {
     expect(mails).toHaveLength(5);
   });
 
+  // Rule 768: ten a day per address, checked after the hour bucket; the refusal names a day.
+  it("eleventh send in a day is 429 with Retry-After 86400", async () => {
+    const u = await newUser("vr", { verified: false });
+    await signIn(u.email);
+    for (let i = 0; i < 10; i++) {
+      await db.del(`rate:verify:gap:${u.email}`); // the 60 s gap passed
+      if (i === 5) await db.del(`rate:verify:hour:${u.email}`); // and an hour
+      expect((await sendCode()).status).toBe(200);
+    }
+    await Promise.all([db.del(`rate:verify:gap:${u.email}`), db.del(`rate:verify:hour:${u.email}`)]);
+    const res = await sendCode();
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("86400");
+    expect(await res.json()).toEqual({ ok: false, error: "slow_down" });
+    expect(mails).toHaveLength(10);
+  });
+
   it("21st send from one IP is 429", async () => {
     const ip = freshIp();
     for (let i = 0; i < 20; i++) {
@@ -209,14 +226,25 @@ describe("email verify routes", () => {
     expect(mails).toHaveLength(0);
   });
 
-  it("a member gets 409 on send and ok on check", async () => {
-    const owner = await newUser("vr", { verified: false });
+  it("a member of a verified owner gets 409 on send and ok on check", async () => {
+    const owner = await newUser("vr");
     const m = await newMember(owner);
     await signIn(m.email);
     expect((await sendCode()).status).toBe(409);
     const res = await checkCode("123456");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
+    expect(mails).toHaveLength(0);
+  });
+
+  // Rule 767: a member cannot prove the owner's address, and reads as signed out while the owner has not.
+  it("a member of an unverified owner gets 401 on send and check, and the owner stays unverified", async () => {
+    const owner = await newUser("vr", { verified: false });
+    const m = await newMember(owner);
+    await signIn(m.email);
+    expect((await sendCode()).status).toBe(401);
+    expect((await checkCode("123456")).status).toBe(401);
+    expect(mails).toHaveLength(0);
     expect((await getUser(owner.email))!.emailVerifiedAt).toBeUndefined();
   });
 
@@ -253,6 +281,19 @@ describe("email verify routes", () => {
     const body = await res.json();
     expect(body).toMatchObject({ ok: true, verify: true, mail: false });
     expect(await hasPendingCode(email)).toBe(false);
+  });
+
+  // A first mail that did not go out is not counted, so the verify page's own first send is not refused for a minute.
+  it("a failed signup mail leaves the buckets alone, so the page's first send goes through", async () => {
+    mailOk = false;
+    const email = `signup-fb-${Date.now()}@test.example`;
+    expect((await (await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N" }, { "x-real-ip": freshIp() }))).json()).mail).toBe(false);
+    mailOk = true;
+    await signIn(email);
+    const res = await sendCode();
+    expect(res.status).toBe(200);
+    expect(mails.filter((m) => m.to === email)).toHaveLength(2);
+    expect(await hasPendingCode(email)).toBe(true);
   });
 
   it("signup without mail configured answers mail false and sends nothing", async () => {
