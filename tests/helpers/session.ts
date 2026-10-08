@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 import { vi } from "vitest";
-import { createUser, type User } from "@/lib/auth";
+import { createUser, getUser, saveUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createMember } from "@/lib/team";
 
@@ -71,8 +71,25 @@ export async function outsideRequestScope<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 let n = 0;
-export async function newUser(prefix = "u"): Promise<User> {
-  return createUser({ email: `${prefix}${++n}-${randomBytes(3).toString("hex")}@test.example`, name: "Test", phone: "", password: "abc12345", lang: "ar" });
+/**
+ * Stamp `emailVerifiedAt` on an existing owner, as the verify route does once the code matches (rule 751: an owner
+ * without it reads as signed out). For fixtures that build the owner by hand (`createUser`, the signup route) and then
+ * sign in. A plain read-modify-write: the account is brand new and nobody else holds it.
+ */
+export async function markVerified(email: string): Promise<User> {
+  const stored = (await getUser(email))!;
+  stored.emailVerifiedAt = new Date().toISOString();
+  await saveUser(stored);
+  return stored;
+}
+
+/**
+ * A real owner account. Verified by default (`emailVerifiedAt` saved), because an unverified owner reads as signed out
+ * (rule 751); pass `{ verified: false }` for the account `createUser` makes, which still has to prove its address.
+ */
+export async function newUser(prefix = "u", { verified = true }: { verified?: boolean } = {}): Promise<User> {
+  const u = await createUser({ email: `${prefix}${++n}-${randomBytes(3).toString("hex")}@test.example`, name: "Test", phone: "", password: "abc12345", lang: "ar" });
+  return verified ? markVerified(u.email) : u;
 }
 
 /**

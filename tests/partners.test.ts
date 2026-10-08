@@ -3,7 +3,7 @@ import { randomBytes } from "crypto";
 import { readFileSync } from "node:fs";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { jar, json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { jar, json, markVerified, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { createUser, getUser, saveUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { codeFor } from "@/lib/referral";
@@ -106,7 +106,7 @@ const visit = (c: string, headers: Record<string, string> = {}, query = "") => p
 beforeAll(async () => {
   vi.stubEnv("ADMIN_EMAILS", FOUNDER);
   vi.stubEnv("WAITLIST_ADMIN_KEY", "");
-  if (!(await getUser(FOUNDER))) await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "en" });
+  if (!(await getUser(FOUNDER))) await markVerified((await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "en" })).email);
 });
 afterEach(() => signOut());
 
@@ -376,6 +376,7 @@ describe("rule 395: the billing page quotes the discounted first month and route
     try {
       const a = await partner("bp");
       const { email } = await signupVia({ partnerCode: a.code });
+      await markVerified(email);
       await signIn(email);
       const h = await html(BillingPage);
       const starter = h.split('data-tier="starter"')[1].split('data-tier="pro"')[0];
@@ -928,6 +929,7 @@ describe("rule 409: the commission base and the first-month discount are taken b
   it("the billing card says so in both languages, and so do the public pages", async () => {
     const a = await partner("vat");
     const { email } = await signupVia({ partnerCode: a.code });
+    await markVerified(email);
     await signIn(email);
     expect(await html(BillingPage)).toContain("The discount comes off the price before VAT; VAT is then computed on the discounted price.");
     expect(await html(BillingPage, "ar")).toContain("الخصم على السعر قبل الضريبة، ثم تُحسب ضريبة القيمة المضافة على السعر بعد الخصم.");

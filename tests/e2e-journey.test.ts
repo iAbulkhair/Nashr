@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { json, jar, newUser, params, settle, signIn, signOut } from "./helpers/session";
+import { jar, json, markVerified, newUser, params, settle, signIn, signOut } from "./helpers/session";
 import { vjson } from "./helpers/version";
 import { getUser } from "@/lib/auth";
 import { getBrand, getTask, listLite, type Task } from "@/lib/brand";
@@ -53,6 +53,8 @@ describe("journey: sign up, build the workspace, generate, approve, publish", ()
     expect((await signupRoute.POST(json("/api/auth/signup", "POST", { email, name: "Roastery", password: "coffee123", lang: "ar" }))).status).toBe(200);
     expect(jar().get("nashr_session")).toBeTruthy();
     expect((await getUser(email))!.credits).toBe(50);
+    // Signup leaves the account unverified, so its session reads as signed out until the address is proved (rule 751).
+    await markVerified(email);
 
     // 2. Onboarding: the owner confirms the site on the start page, then it is free for the first brand, once, and it
     // leaves a brand file and the workspace files behind.

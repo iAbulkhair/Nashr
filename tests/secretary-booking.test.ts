@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { json, markVerified, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
 import { forceRemoveMember, getMember, leaveTeam, removeMember, wipeTeam } from "@/lib/team";
 import * as resetRoute from "@/app/api/auth/reset/route";
@@ -1346,7 +1346,7 @@ describe("booking revocation (rule 598)", () => {
     // 7. The founder's reset of the owner: the same, for the owner and the members that have links again.
     t.owner = await live(owner.email, owner.email);
     t.m5 = await live(m5.email, owner.email);
-    if (!(await getUser(FOUNDER))) await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" });
+    if (!(await getUser(FOUNDER))) await markVerified((await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" })).email);
     await signIn(FOUNDER);
     const res = await adminUserRoute.POST(json("/api/admin/users/x", "POST", { action: "resetPassword" }), params({ email: encodeURIComponent(owner.email) }));
     expect(res.status).toBe(200);

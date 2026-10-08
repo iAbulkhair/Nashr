@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { json, newUser, signIn, signOut } from "./helpers/session";
+import { json, markVerified, newUser, signIn, signOut } from "./helpers/session";
 import { createUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import * as support from "@/app/api/support/route";
@@ -27,6 +27,7 @@ const list = async (query = "") => {
 beforeAll(async () => {
   vi.stubEnv("ADMIN_EMAILS", FOUNDER);
   await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" });
+  await markVerified(FOUNDER);
 });
 afterEach(() => signOut());
 
