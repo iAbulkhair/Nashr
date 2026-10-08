@@ -59,6 +59,6 @@ export function proxy(req: NextRequest) {
 // The exclusions are anchored (`_next/static/`, `_next/image` and `favicon.ico` end the path), so a look-alike such as
 // `/favicon.icox` or `/_next/staticx/a` still meets the lock. Off staging the other paths pass through untouched, but
 // for the cross-site check on /api. Next buffers the body of every request the proxy sees, up to
-// `experimental.proxyClientMaxBodySize` (10 MB by default), the webhook and cron routes included: their 64 KB caps still
-// refuse a larger body, after Next has read it (src/lib/csrf.ts, the CROSS_SITE_EXEMPT comment).
+// `experimental.proxyClientMaxBodySize` (6 MB, next.config.ts, rule 774), the webhook and cron routes included: their
+// 64 KB caps still refuse a larger body, after Next has read it (src/lib/csrf.ts, the CROSS_SITE_EXEMPT comment).
 export const config = { matcher: ["/((?!_next/static/|_next/image$|favicon\\.ico$).*)"] };
