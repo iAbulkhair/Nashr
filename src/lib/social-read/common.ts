@@ -13,6 +13,12 @@ import type { Range, Totals } from "../social-stats";
  * say «من ذكين». No TTL: the wrapper cannot refresh a set's TTL, one id is about 20 bytes, and wipeAccount deletes it.
  */
 export const SOCIAL_PUB_KEY = (scope: string) => `socialpub:${scope}`;
+/**
+ * The X account's last read (src/lib/x-stats.ts, rule 744): its own key, beside `socialstats:{scope}`, so the daily social
+ * sync never reads or writes it and Dana's block merges it with its own date. Kept here, with no import, so social-stats.ts
+ * can read it without loading the paid refresh. wipeAccount deletes it (rule 747).
+ */
+export const XSTATS_KEY = (scope: string) => `xstats:${scope}`;
 export const EMPTY_TOTALS: Totals = Object.freeze({ views: null, reach: null, engagements: null, clicks: null, likes: null, comments: null, shares: null, pageViews: null, followsGained: null, followsLost: null, watchMinutes: null });
 
 export const DAY_MS = 864e5;

@@ -5,6 +5,7 @@ import { isComposio, liOrgName, postAsVia, revokeAll, selectOrgVia, selectPageVi
 import { recordActivity } from "@/lib/activity";
 import { PartlyRead, holdsSocial, isSocialProvider, readSocialSoon, syncSocialIfDue } from "@/lib/social-stats";
 import { holdsSite, readSiteSoon, syncSiteIfDue } from "@/lib/site-stats";
+import { X_RETRY_DEFAULT_S, refreshX } from "@/lib/x-stats";
 import { markOwnerSync } from "@/lib/routines";
 import { WINDOW, allow, retryLater } from "@/lib/rate";
 import { byOf } from "@/lib/actor";
@@ -47,10 +48,11 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ provider: s
 /**
  * What each action needs (src/lib/roles.ts). Choosing the page or ad account a connection posts to, or the GA4 property
  * and Search Console site it reads, is connector setup, admin and owner only, and so is overwriting products.md from the
- * store. The syncs only pull the platform's own numbers into the reports, which any member may refresh. An action not
+ * store. The syncs only pull the platform's own numbers into the reports, which any member may refresh. X's refresh
+ * spends a credit of the account (rule 744), so it needs what any spending needs, `generate` (any member). An action not
  * listed here is refused.
  */
-const ACTION_ROLE: Record<string, Action> = { select_page: "connectors", select_org: "connectors", post_as: "connectors", select_ad_account: "connectors", select_property: "connectors", import_products: "catalog.import", sync_ads: "read", sync_sales: "read", sync_site: "read", sync_social: "read" };
+const ACTION_ROLE: Record<string, Action> = { select_page: "connectors", select_org: "connectors", post_as: "connectors", select_ad_account: "connectors", select_property: "connectors", import_products: "catalog.import", sync_ads: "read", sync_sales: "read", sync_site: "read", sync_social: "read", sync_x: "generate" };
 
 /** Refreshes of the site or the social results one workspace may ask for in an hour, the team together (rule 735). */
 const OWNER_SYNCS_PER_HOUR = 6;
@@ -70,7 +72,7 @@ async function ownerRefresh(scope: string, read: () => Promise<boolean>) {
   return NextResponse.json({ ok: false, error: r.reason instanceof Error ? r.reason.message : "failed" }, { status: 502 });
 }
 
-/** POST {action:"import_products"}, for Salla, Shopify, WooCommerce and Zid {action:"sync_sales"}, for Meta {action:"select_page", pageId}, for LinkedIn {action:"select_org", org} and {action:"post_as", value:"me"|"org"}, for Google {action:"select_property", kind:"ga4"|"gsc", id} and {action:"sync_site"}, for Meta, LinkedIn, YouTube and TikTok {action:"sync_social"} */
+/** POST {action:"import_products"}, for Salla, Shopify, WooCommerce and Zid {action:"sync_sales"}, for Meta {action:"select_page", pageId}, for LinkedIn {action:"select_org", org} and {action:"post_as", value:"me"|"org"}, for Google {action:"select_property", kind:"ga4"|"gsc", id} and {action:"sync_site"}, for Meta, LinkedIn, YouTube and TikTok {action:"sync_social"}, for X {action:"sync_x"} (1 credit, at most once a UTC day) */
 export async function POST(req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
@@ -158,6 +160,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
       if (!holdsSocial(provider, c)) return NextResponse.json({ ok: false, error: "not_connected" }, { status: 404 });
       if (!(await allow(`socialsync:${sc(u)}`, OWNER_SYNCS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
       return await ownerRefresh(sc(u), () => syncSocialIfDue(sc(u), new Date(), true));
+    }
+    // X's results, paid by the account (rules 744, 745): the charge, its cap, the day's free re-read and the refund are
+    // checked in refreshX, before X is asked. X's 401 is thrown to the catch below, which asks the owner to reconnect.
+    if (b.action === "sync_x" && provider === "x") {
+      const r = await refreshX(u, c);
+      if (r.ok) return NextResponse.json({ ok: true, x: r.x, charged: r.charged });
+      if (r.status === 429) return retryLater({ ok: false, error: r.error }, r.retryAfter ?? X_RETRY_DEFAULT_S);
+      return NextResponse.json({ ok: false, error: r.error, ...r.extra }, { status: r.status });
     }
     return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
   } catch (e) {

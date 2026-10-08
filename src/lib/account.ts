@@ -25,6 +25,7 @@ import { getConnection } from "./connectors/store";
 import { isComposio, revokeAll } from "./connectors/via-composio";
 import { AD_PROVIDERS } from "./connectors/ads";
 import { AD_STATS_SOURCES, ADSTATS_KEY } from "./ad-stats";
+import { XSTATS_KEY } from "./social-read/common";
 
 /**
  * Every per-month usage counter this account can have, from signup month to now. The list per month comes from
@@ -118,6 +119,8 @@ export async function wipeAccount(email: string) {
       // Instagram and LinkedIn page results (src/lib/social-stats.ts): captions are the owner's or the public's text,
       // and the Instagram ids Thakeen published.
       `socialstats:${s}`, `socialpub:${s}`,
+      // The X account's last read, paid on a click (src/lib/x-stats.ts, rule 747): its posts' text is the owner's.
+      XSTATS_KEY(s),
       // The store's sales snapshot (orders, revenue, best sellers, abandoned carts) and its failure note (14 days).
       `storesales:${s}`, `storesyncfail:${s}`,
       // The latest campaign results, from an upload or an ad account (src/lib/perf-store.ts).
