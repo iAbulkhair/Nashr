@@ -69,14 +69,16 @@ session has open:
 - Google sign-in (2 days) and email magic link (1 day); Apple later if a store app needs it;
 - active sessions list with per-device sign-out (2.5-3 days);
 - daily brief, nudge and follow-up mail moved to the HTML layout;
-- invite-only signup switch (needs a variable, founder decision).
 
-## Waiting on the founder
+## Founder decisions (2026-10-08)
 
-- Analytics vendor for the marketing site, and whether a consent banner is needed (PDPL).
-- Invite-only switch: close public signup until launch?
-- Google OAuth client for sign-in (the founder adds the variables).
-- npm supply-chain gate (`.npmrc` `min-release-age` or equivalent).
+- Analytics: not a marketing-site snippet. The founder means social platform analytics (Meta, Google, X, LinkedIn,
+  TikTok, Snapchat and more) read by the agents for their reports: a separate feature that builds on the Composio
+  read-only work (PR #272, merged) and the social results branch (PR #281), not part of this adoption.
+- Invite-only switch: no, signup stays open.
+- Google sign-in: yes, after the Paymob branch merges (the founder creates the Google OAuth client and adds the
+  variables).
+- npm supply-chain gate: yes, 7 days. Done on this branch: `.npmrc` `min-release-age=7` (rule 699).
 
 ## Open sessions and file ownership
 
