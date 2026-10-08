@@ -108,6 +108,19 @@ describe("the staging lock (rules 674, 677)", () => {
   });
 });
 
+describe("the proxy buffers at most 6 MB of a request body (rule 774)", () => {
+  it("next.config caps it under Next's 10 MB default and above the largest body a route takes", async () => {
+    const cap = (await import("../next.config")).default.experimental?.proxyClientMaxBodySize;
+    expect(cap).toBe(6 * 1024 * 1024);
+    // The largest: POST /api/performance with the longest CSV it accepts, every character three bytes in UTF-8 (U+FFFD,
+    // what a byte that is not UTF-8 becomes when the page reads the file), and a long file name.
+    const { MAX_CSV_CHARS, METRICS } = await import("@/lib/perf-import");
+    const worst = JSON.stringify({ csv: "�".repeat(MAX_CSV_CHARS), file: "ت".repeat(255) + ".csv", metric: Object.keys(METRICS)[0] });
+    expect(Buffer.byteLength(worst)).toBeLessThan(cap as number);
+    expect(cap as number).toBeLessThan(10 * 1024 * 1024);
+  });
+});
+
 describe("the staging access route (rule 675)", () => {
   const key = "staging-key-" + "z".repeat(30);
   const post = async (code: string | null, ip: string, url = "http://localhost:3000/api/staging-access") => {
@@ -209,6 +222,24 @@ describe("the staging access route (rule 675)", () => {
     expect((await post(key, "10.0.0.5")).status).toBe(404);
     const Page = (await import("@/app/[lang]/staging-access/page")).default;
     await expect(Page({ params: Promise.resolve({ lang: "ar" }), searchParams: Promise.resolve({}) })).rejects.toThrow();
+  });
+  it("every method but POST is a bare 404, off staging and on it: no 405, no OPTIONS that lists the route's methods", async () => {
+    const route: Record<string, unknown> = await import("@/app/api/staging-access/route");
+    const { HTTP_METHODS } = await import("next/dist/server/web/http");
+    // Each method Next routes must be exported here, or Next fills it in (405, or 204 with `Allow`) and shows the route.
+    const others = HTTP_METHODS.filter((m) => m !== "POST");
+    expect(others.length).toBe(6);
+    for (const env of ["", "staging"]) {
+      vi.stubEnv("APP_ENV", env);
+      for (const m of others) {
+        const handler = route[m] as (req: Request) => Response | Promise<Response>;
+        expect(typeof handler, m).toBe("function");
+        const r = await handler(new Request("http://localhost:3000/api/staging-access", { method: m }));
+        expect(r.status, `${env || "live"} ${m}`).toBe(404);
+        expect(r.headers.get("allow"), m).toBeNull();
+        expect(await r.text(), m).toBe("");
+      }
+    }
   });
   it("never logs the code", () => {
     expect(readFileSync("src/app/api/staging-access/route.ts", "utf8")).not.toMatch(/console\.\w+\([^)]*code/);

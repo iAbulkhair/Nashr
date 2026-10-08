@@ -301,7 +301,7 @@ describe("rule 693: proxy() runs the cross-site check for every /api/ path after
     }
   });
 
-  it("a capped webhook or cron post passes the proxy untouched; Next still buffers its body (up to 10 MB) before the route's 64 KB check", () => {
+  it("a capped webhook or cron post passes the proxy untouched; Next still buffers its body (up to 6 MB, rule 774) before the route's 64 KB check", () => {
     // Recorded, not wanted: the staging lock needs the proxy on every path (rule 674), so no matcher can leave these out.
     for (const path of ["/api/cron/secretary", "/api/media/hook/kie", "/api/secretary/booking/0123abcd", "/api/billing/paymob/webhook"]) {
       const res = proxy(req(path, { headers: CROSS }));
