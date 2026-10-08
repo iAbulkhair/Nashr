@@ -77,6 +77,10 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/auth/forgot": "public",
   "POST /api/auth/reset": "public",
   "POST /api/auth/logout": "public",
+  // Email verification (rules 759-761): the caller is an owner who is still signed out for `currentUser` (rule 751), so the
+  // routes read `currentUserUnverified` and refuse without it; both are rate limited (allow).
+  "POST /api/auth/verify/send": "public",
+  "POST /api/auth/verify/check": "public",
   "POST /api/team/accept": "public",
   "POST /api/support": "public",
   "POST /api/affiliates": "public",

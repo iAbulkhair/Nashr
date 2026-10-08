@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 import { afterSignup, signupPartner } from "@/lib/partners";
 import { createSession, createUser, getLogin, normalizeEmail, strongPassword, validEmail } from "@/lib/auth";
 import { allow, clientIp, retryLater } from "@/lib/rate";
+import { db } from "@/lib/db";
+import { isProductionDeploy } from "@/lib/deploy-env";
+import { mailReady, sendEmail } from "@/lib/notify";
+import { issueVerifyCode, verifyMail } from "@/lib/verify-email";
 import { applyReferral, registerCode } from "@/lib/referral";
 import { captchaRefusal } from "@/lib/turnstile";
 import { withLoginLock } from "@/lib/team";
@@ -40,5 +44,21 @@ export async function POST(req: Request) {
   const partnered = await afterSignup(account.email, partner).catch((e) => { console.error("partner attribution failed", e instanceof Error ? e.message : "error"); return false; });
   await createSession(account.email);
   await track(account.email, "signup");
-  return NextResponse.json({ ok: true, referred, partner: partnered });
+  // The first verification code (rule 762). The account exists and is signed in by now, so a mail that cannot go out
+  // never fails the signup: `mail: false` tells the verify page to offer a resend. Rule 766: `devCode` only on a test deploy.
+  let mail = false;
+  let devCode: string | undefined;
+  if (mailReady()) {
+    try {
+      const code = await issueVerifyCode(account.email);
+      const m = verifyMail(account, code);
+      mail = await sendEmail(account.email, m.subject, m.text);
+      if (mail) devCode = code;
+      else await db.del(`verify:code:${account.email}`);
+    } catch (e) {
+      console.error("verify code failed", e instanceof Error ? e.name : "error");
+    }
+  }
+  const exposeCode = process.env.APP_ENV === "test" && !isProductionDeploy();
+  return NextResponse.json({ ok: true, referred, partner: partnered, verify: true, mail, ...(exposeCode && devCode ? { devCode } : {}) });
 }
