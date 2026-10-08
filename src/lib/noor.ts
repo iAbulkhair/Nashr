@@ -181,7 +181,7 @@ function mock(type: TaskType, brand: Brand): Generated[] {
     // No brackets: the publish gates read "[…]" in customer-facing copy as an unfilled placeholder (brand-rules.ts), and
     // the no-key e2e journey approves and publishes these. golden.ts still catches mock output by its body text.
     title: `DEV MOCK ${type} #${i + 1} for ${brand.name}`,
-    body: `ANTHROPIC_API_KEY is not set, so this is placeholder content.\n\nBrand: ${brand.name}\nTask: ${type}\nItem ${i + 1} of ${n}.`,
+    body: `No model key is set for the configured provider, so this is placeholder content.\n\nBrand: ${brand.name}\nTask: ${type}\nItem ${i + 1} of ${n}.`,
   }));
 }
 

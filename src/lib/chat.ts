@@ -388,7 +388,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   const state = modelState();
   if (state !== "on") {
     // Paused: no tool runs, so nothing is charged or written; the owner is told plainly, in their language.
-    const content = state === "paused" ? PAUSED_REPLY[lang] : "[DEV MOCK] ANTHROPIC_API_KEY not set. I would answer here and use tools.";
+    const content = state === "paused" ? PAUSED_REPLY[lang] : "[DEV MOCK] No model key for the configured provider (ANTHROPIC_API_KEY; with LLM_PROVIDER=straitly, STRAITLY_API_KEY or ANTHROPIC_API_KEY). I would answer here and use tools.";
     const m: ChatMsg = { role: "assistant", content, at: new Date().toISOString(), actions, ...(state === "paused" ? { agent: agentId } : {}) };
     await push(email, m, conv);
     return m;

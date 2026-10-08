@@ -20,7 +20,8 @@ import { forbid } from "@/lib/roles";
  * cannot run chat's tools; never a rate), each one's credit multiplier per surface
  * (relative to that surface's default model, `tierMultiplier`), the messages of the chat allowance one message on it
  * counts (`chatUnitsFor`), and whether the owner confirmed China-hosted models. Any signed-in login; it reads only what
- * `currentUser()` reads (the session and the account's user record) and writes nothing.
+ * `currentUser()` reads to resolve the session (the login's user and member records and active brand id; for a member,
+ * the owner's user record, brand list and roster entry too) and writes nothing.
  *
  * PUT `{ target: "conversation", id, model }` sets (a catalog id) or clears (`null`) a conversation's chat pick; any login
  * of the account (`conversations`). PUT `{ target: "brand", id?, model }` does the same for the ACTIVE brand's

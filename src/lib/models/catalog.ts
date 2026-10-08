@@ -57,7 +57,9 @@ const STANDARD_CLAUDE_TASKS: readonly string[] = [
 ];
 
 /**
- * Rates, date checked 2026-10-08. `rate` is what we actually pay per million tokens by the route the model normally takes:
+ * Rates. `rate` is what we actually pay per million tokens by the route the model normally takes. The three Claude rates
+ * were copied on 2026-10-08 from the `RATES` table in `usage.ts`, whose list prices were checked on 2026-09-27 (Sonnet 5.5
+ * added 2026-10-02); they were not checked again against Anthropic's or Straitly's price list when copied:
  *
  * - A Claude model can also be called directly at Anthropic (the gateway's fallback, `src/lib/model.ts`), and there it
  *   costs the full list price. Its `rate` is therefore the CURRENT ANTHROPIC LIST PRICE, the same numbers the old `RATES`

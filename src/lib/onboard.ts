@@ -51,7 +51,7 @@ function mock(site: SiteSnapshot, lang: "ar" | "en"): OnboardResult {
   return {
     brand: { name, website: site.url, industry: "متجر إلكتروني", city: "الرياض", dialect: "saudi", languages: [lang, lang === "ar" ? "en" : "ar"], tone: "ودود، واضح", products: site.description || "(dev mock)", audience: "عملاء في السعودية", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram", "snapchat", "tiktok", "whatsapp"], updatedAt: new Date().toISOString() },
     files: [
-      { name: "brand.md", content: `# ${name}\n\n(DEV MOCK — set ANTHROPIC_API_KEY)\n\nSite: ${site.url}\nPlatform: ${site.platform}` },
+      { name: "brand.md", content: `# ${name}\n\n(DEV MOCK — no model key for the configured provider)\n\nSite: ${site.url}\nPlatform: ${site.platform}` },
       { name: "brand-guidelines.md", content: `# Brand guidelines\n\n(DEV MOCK)\n\nColours: ${(site.colors ?? []).join(", ") || "not detected"}\nFonts: ${(site.fonts ?? []).join(", ") || "not detected"}` },
       { name: "opportunities.md", content: "# Opportunities\n\n(DEV MOCK)" },
       { name: "market-research.md", content: "# Market research\n\n(DEV MOCK)" },
