@@ -86,6 +86,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/oauth/token": "public",
   // A booking tool's webhook (Reem B2a): the token in the path locates the link and the provider's signature over the body proves the sender; rate limited per IP and per link.
   "POST /api/secretary/booking/[token]": "public",
+  // The staging site's door (rule 675): 404 off staging, rate limited per IP, the access code in the form body is the credential (sameSecret).
+  "POST /api/staging-access": "public",
 
   "POST /api/mcp": "bearer",
   // Reem's tick: a signed QStash call (src/lib/qstash.ts) or the CRON_SECRET bearer, rate limited per IP first.
@@ -118,6 +120,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "PUT /api/profile": g("owner", "profile.account", "brand.write", "profile.self"),
   "PATCH /api/team/member": g("owner", "team.role"),
   "POST /api/billing/chat-overflow": g("owner", "billing"), // how the account's credits are spent once chat runs out
+  "POST /api/billing/checkout": g("owner", "billing.pay"), // online payment (Paymob), never while impersonating
+  "POST /api/billing/renewal": g("owner", "billing.pay"), // the online subscription's renewal and saved card
 
   // Admin and owner (some handlers also serve a member-level action, listed with it, or member-level names such as
   // non-core files, which need no action of their own).
@@ -185,6 +189,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/admin/wishlist": "admin-console",
   "POST /api/admin/leads": "admin-console",
   "POST /api/media/hook/[provider]": "public",
+  "POST /api/billing/paymob/webhook": "public", // Paymob callbacks: HMAC only, rules 700-729
 };
 
 /**
@@ -259,6 +264,7 @@ const READS: Record<string, Gate> = {
   "GET /api/secretary/feed/[token]": "public-read", // the token in the path is the credential; rate limited per IP and per link
   "GET /api/oauth/meta": "public-read",
   "GET /api/oauth/resource": "public-read",
+  "GET /api/health": "public-read", // the release probe's build identity (rule 676): { ok, commit, built } only; rate limited per IP, and still answers when the limiter's store is down
   "OPTIONS /api/mcp": "public-read",
   "OPTIONS /api/oauth/meta": "public-read",
   "OPTIONS /api/oauth/register": "public-read",

@@ -10,6 +10,8 @@ export const MIN_ROLE = {
   // ── Owner only ──
   /** Billing and plan: pay links, WhatsApp activation, checkout, seat changes. */
   billing: "owner",
+  /** Paying online (Paymob checkout, renewal settings, src/lib/billing.ts). Owner only and never while the founder impersonates: the founder never spends a customer's card. */
+  "billing.pay": "owner",
   /** DELETE /api/account. */
   "account.delete": "owner",
   /** PUT /api/governance (agent caps, auto-approve, weekly cap, reviewer, learning). */
@@ -125,6 +127,7 @@ export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
   "partner.bank",
   "feed.manage",
   "booking.manage",
+  "billing.pay",
 ]);
 
 const RANK: Record<Role, number> = { member: 1, admin: 2, owner: 3 };
