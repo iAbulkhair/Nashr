@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { adminActor, isAdmin } from "@/lib/auth";
 import { CAPS, pushCapped } from "@/lib/db";
 import { paymentsView, recordPayment, voidPayment } from "@/lib/partners";
+import { refundPaymobPayment } from "@/lib/billing";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ email: string }
  *   {action:"void", id, reason?}  refunded or entered by mistake: voids its commission too (rule 397). A top-up pack's
  *   payment whose pack is still live is refused (409 topup_live, rule 455): it is voided with the pack, from the
  *   console's Top-ups block (POST /api/admin/topups "void").
+ *   {action:"refund", id, reason?}  a payment taken online through Paymob (rules 700-729): the whole transaction is
+ *   refunded at Paymob once, then the payment is voided as above (a pack's payment with its pack). 409 not_paymob for a
+ *   payment recorded by hand, 502 paymob_refund_failed when Paymob refused (nothing is voided), 404 while Paymob is off.
  * A top-up's payment is never recorded here: "Add top-up" (POST /api/admin/topups) records it with the pack (rule 454).
  * The body's fields are passed one by one, so no request can mark a payment as a top-up's.
  * Either action re-takes every commission decision of the account (a backdated payment or a voided first payment moves
@@ -43,6 +47,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ email: string 
     const res = await voidPayment(email, b.id, who, b.reason);
     if (!res.ok) return NextResponse.json(res, { status: res.error === "topup_live" ? 409 : 404 });
     await log(`payment:${res.payment.id} void${res.reclassified ? ` reclassified:${res.reclassified.join(",")}` : ""}`, res.payment.voidReason);
+    return NextResponse.json(res);
+  }
+  if (b.action === "refund") {
+    const res = await refundPaymobPayment(email, b.id, who, b.reason);
+    if (!res.ok) return NextResponse.json(res, { status: res.error === "not_paymob" || res.error === "busy" ? 409 : res.error === "paymob_refund_failed" ? 502 : 404 });
+    await log(`paymob_refund payment:${res.payment.id}${res.alreadyRefunded ? " already_refunded" : ""}`, res.payment.voidReason);
     return NextResponse.json(res);
   }
   return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });

@@ -2,19 +2,22 @@ import type { Lang } from "@/lib/i18n";
 import { PRICES_INCLUDE_VAT, TOPUP_PACKS, TOPUP_VALID_DAYS, formatCount, topupPriceSar, topupsSold, type Plan } from "@/lib/pricing";
 import type { TopupView } from "@/lib/topups";
 import ReadOnlyNote from "./ReadOnlyNote";
+import { PaymobPayButton } from "./PaymobBilling";
 
 /**
  * The billing page's "Top up credits" section (rule 449). A server component with no state: the page reads the account
  * and passes what this shows. Every number comes from src/lib/pricing.ts (the packs, the price per credit, how long a pack lasts)
  * or from the account's own packs, never from the copy.
  *
- * There is no payment gateway yet, so nothing here takes a payment: the owner of a paid plan gets one button per pack that
+ * With Paymob configured (`payOnline`, src/lib/billing.ts, rules 700-729) the owner of a paid plan pays a pack by card: the
+ * server prices it and the pack is added when Paymob's callback confirms the payment. Otherwise nothing here takes a
+ * payment: the owner of a paid plan gets one button per pack that
  * opens WhatsApp support (`SUPPORT_WHATSAPP`, as the plan activation does) with a message naming the pack, its price and
  * the account's email, or an email to support when no number is set; the founder activates the pack after the payment
  * (POST /api/admin/topups). A trial sees the packs as available after subscribing, with no button. Anyone else sees the
  * packs and the account's packs read-only and is told to ask the owner.
  */
-export default function TopupCard({ lang, plan, owner, email, whatsapp, lots, topupCredits }: {
+export default function TopupCard({ lang, plan, owner, email, whatsapp, lots, topupCredits, payOnline = false }: {
   lang: Lang;
   plan: Plan;
   /** `can(u, "billing")`: only the owner is offered a button (the message carries the account email). */
@@ -27,6 +30,8 @@ export default function TopupCard({ lang, plan, owner, email, whatsapp, lots, to
   lots: TopupView[];
   /** Credits left in them. */
   topupCredits: number;
+  /** Paymob is configured and the owner themself is here (`billing.pay`): packs are paid by card. */
+  payOnline?: boolean;
 }) {
   const ar = lang === "ar";
   const n = formatCount;
@@ -58,7 +63,9 @@ export default function TopupCard({ lang, plan, owner, email, whatsapp, lots, to
               <p className="font-display text-2xl font-bold" dir="ltr">{n(credits)} <span className="text-sm font-normal text-muted">{ar ? "كريدت" : "credits"}</span></p>
               <p className="mt-1 text-sm text-danger" data-pack-price="">{price(credits)}</p>
               <p className="mt-1 flex-1 text-xs text-muted">{ar ? `صالحة ${n(TOPUP_VALID_DAYS)} يوماً` : `Valid ${n(TOPUP_VALID_DAYS)} days`}</p>
-              {link && (
+              {owner && sold && payOnline ? (
+                <PaymobPayButton lang={lang} kind="topup" credits={credits} className="rounded-full bg-ink px-4 py-2 text-center text-sm font-semibold text-lilac" />
+              ) : link && (
                 <a href={link} target="_blank" rel="noreferrer" data-pack-request="" className="mt-3 rounded-full bg-ink px-4 py-2 text-center text-sm font-semibold text-lilac">
                   {whatsapp ? (ar ? "اطلبها عبر واتساب" : "Request on WhatsApp") : (ar ? "اطلبها بالبريد" : "Request by email")}
                 </a>
@@ -69,6 +76,10 @@ export default function TopupCard({ lang, plan, owner, email, whatsapp, lots, to
       </div>
       {!sold ? (
         <p className="mt-3 text-sm text-ink/70" data-topup-trial="">{ar ? "باقات الشحن متاحة بعد الاشتراك في خطة مدفوعة." : "Top-up packs are available once you subscribe to a paid plan."}</p>
+      ) : owner && payOnline ? (
+        <p className="mt-3 text-xs text-muted" data-topup-online="">{ar
+          ? "ادفع بالبطاقة: تُضاف الباقة إلى حسابك فور تأكيد بوابة الدفع."
+          : "Pay by card: the pack is added to your account as soon as the payment gateway confirms it."}</p>
       ) : owner ? (
         <p className="mt-3 text-xs text-muted">{ar
           ? "لا دفع إلكتروني بعد: يفتح الزر محادثة مع الدعم برسالة جاهزة تذكر الباقة وبريد حسابك، وبعد الدفع نفعّل الباقة على حسابك يدوياً."
