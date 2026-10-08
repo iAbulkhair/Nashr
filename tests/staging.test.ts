@@ -91,3 +91,55 @@ describe("the staging lock (rules 674, 677)", () => {
     expect(specs(readFileSync("src/proxy.ts", "utf8"))).toContain("@/lib/staging-access");
   });
 });
+
+describe("the staging access route (rule 675)", () => {
+  const key = "staging-key-" + "z".repeat(30);
+  const post = async (code: string | null, ip: string, url = "http://localhost:3000/api/staging-access") => {
+    const { POST } = await import("@/app/api/staging-access/route");
+    const body = new URLSearchParams(code === null ? { lang: "ar" } : { code, lang: "ar" });
+    return POST(new Request(url, { method: "POST", body, headers: { "x-real-ip": ip, "content-type": "application/x-www-form-urlencoded" } }));
+  };
+  beforeEach(async () => {
+    // The store is chosen when `db` first loads, and staging counts as production (rule 430): load it before the stub
+    // so the limiter gets the memory store, not the one that refuses.
+    await import("@/lib/db");
+    vi.stubEnv("APP_ENV", "staging"); vi.stubEnv("STAGING_ACCESS_KEY", key); vi.stubEnv("APP_ORIGIN", "https://staging.example");
+  });
+
+  it("right code: 303 to APP_ORIGIN (never req.url's host) with the token cookie, flags set, code absent", async () => {
+    const { accessToken } = await import("@/lib/staging-access");
+    const r = await post(key, "10.0.0.1");
+    expect(r.status).toBe(303);
+    expect(r.headers.get("location")).toBe("https://staging.example/ar");
+    const c = r.headers.get("set-cookie") ?? "";
+    expect(c).toContain(`thakeen_staging=${accessToken(key)}`);
+    expect(c).toMatch(/HttpOnly/i); expect(c).toMatch(/Secure/i); expect(c).toMatch(/SameSite=lax/i);
+    expect(c).not.toContain(key);
+  });
+  it("wrong code, a code only in the URL, and a missing key: back to the page with e=1, no cookie", async () => {
+    for (const [code, url] of [["nope", undefined], [null, `http://localhost:3000/api/staging-access?code=${key}`]] as const) {
+      const r = await post(code, "10.0.0.2", url);
+      expect(r.headers.get("location")).toBe("https://staging.example/ar/staging-access?e=1");
+      expect(r.headers.get("set-cookie")).toBeNull();
+    }
+    vi.stubEnv("STAGING_ACCESS_KEY", "");
+    expect((await post("", "10.0.0.3")).headers.get("set-cookie")).toBeNull();
+  });
+  it("five tries per IP per 15 minutes, then 429 even with the right code", async () => {
+    for (let i = 0; i < 5; i++) await post("nope", "10.0.0.4");
+    const r = await post(key, "10.0.0.4");
+    expect(r.status).toBe(429);
+    expect(r.headers.get("retry-after")).toBe("900");
+    expect(r.headers.get("set-cookie")).toBeNull();
+    expect(await r.json()).toEqual({ ok: false, error: "slow_down" });
+  });
+  it("off staging the route and the page are 404", async () => {
+    vi.stubEnv("APP_ENV", "");
+    expect((await post(key, "10.0.0.5")).status).toBe(404);
+    const Page = (await import("@/app/[lang]/staging-access/page")).default;
+    await expect(Page({ params: Promise.resolve({ lang: "ar" }), searchParams: Promise.resolve({}) })).rejects.toThrow();
+  });
+  it("never logs the code", () => {
+    expect(readFileSync("src/app/api/staging-access/route.ts", "utf8")).not.toMatch(/console\.\w+\([^)]*code/);
+  });
+});
