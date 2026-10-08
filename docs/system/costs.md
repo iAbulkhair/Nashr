@@ -221,7 +221,7 @@ Agency gets Business's 1,300 unless the founder sets an override (`User.chatAllo
 
 Spec `docs/superpowers/specs/2026-10-08-straitly-model-routing-design.md` section 6, plan Task 4. Files:
 `src/lib/models/tiers.ts` (`TIER_MULTIPLIER`, `PRICED_AT`, import-free), `src/lib/models/credits.ts` (`tierMultiplier`,
-`creditsFor`, `chatTurnMaxUsd`, `chatHoldFor`, server only), `src/lib/task-costs.ts` (`estimateFor`), the `tasks`
+`creditsFor`, `chatTurnMaxUsd`, `chatHoldFor`, `chatUnitsFor`, server only), `src/lib/task-costs.ts` (`estimateFor`), the `tasks`
 allow-lists in `src/lib/models/catalog.ts`. Tests: `tests/model-credits.test.ts` and the "rule 241 by tier" and
 "rule 313 by tier" blocks of `tests/pricing-floor.test.ts`. No caller picks a model yet (plan Tasks 5 and 6), so every
 figure the product charges today is unchanged.
@@ -259,15 +259,26 @@ the overflow hold is the ceiling at the floor rate, rounded up:
 | Opus 5 (x2) | $0.28 | 4 credits |
 | an economy model (x0.6) | $0.084 | 2 credits |
 
-**Not decided: how a message on a dearer model counts against the allowance.** The allowance is a whole number of
-messages per account (INCRBY on one counter), so x0.6 cannot be counted, and counting 2 for a premium message changes
-what "messages left" means to the owner. Left at 1 per message, an Opus 5 chat at its $0.28 ceiling would cost a full
-allowance $70.00 on Starter (88% of $79.73 net), $182.00 on Pro (137% of $133.07) and $364.00 on Business (137% of
-$266.40), against 44% / 68% / 68% today (section 4.1). Until the founder decides, `reserveChatTurn` refuses a model above
-x1 in code (`chat_allowance_unpriced`) before counting anything. The options: count `ceil(multiplier)` per message
-(Opus 2, economy 1: the worst case returns to today's, the counters and copy change meaning); keep 1 per message (the
-hole above); allow a premium chat model only past the allowance, where it is metered and billed at the floor rate; or a
-fractional counter (a stored-shape change, two releases, rule 679).
+**How a message on a dearer model counts against the allowance (coordinator ruling 2026-10-08, option a).** A message
+counts `chatUnitsFor(model)` = ceil(its chat multiplier) messages of the allowance: 1 on Sonnet 5.5 and Sonnet 5 (as
+today), 2 on Opus 5, 1 on an economy model. Its ceiling stays its own (`chatTurnMaxUsd`), so each unit carries at most
+$0.14, the ceiling the allowances were priced at in section 4.1, whatever the owner picks:
+
+| Chat model | Units per message | Ceiling per unit | Full allowance at the ceiling, Starter / Pro / Business |
+|---|---|---|---|
+| Sonnet 5.5, Sonnet 5 | 1 | $0.14 | $35.00 (44%) / $91.00 (68%) / $182.00 (68%) |
+| Opus 5 | 2 | $0.14 | the same: 125 / 325 / 650 Opus messages, $35.00 / $91.00 / $182.00 |
+| an economy model | 1 | $0.084 | $21.00 (26%) / $54.60 (41%) / $109.20 (41%) |
+
+Counted at 1 per message, Opus 5 would have cost a full allowance $70.00 (88% of $79.73 net), $182.00 (137% of $133.07)
+and $364.00 (137% of $266.40); the "rule 313 by tier" block of `tests/pricing-floor.test.ts` pins both rows of
+percentages. The units are computed once per turn in `reserveChatTurn` and carried on the gate (`units`), so the reserve,
+the give-back of a failed turn and the overflow counter all move by the same number; a message whose units would pass
+what is left of the allowance is refused before any model call (or, with "continue on credits" on, goes wholly on
+credits, needing that model's hold: 4 credits on Opus 5). A multiplier that is not a finite number above 0 throws
+`chat_allowance_unpriced` before anything is counted. What the owner and the founder console read as "messages" (used,
+left, the console's cost per message) are these units from then on; the copy that explains that an Opus message counts
+2 belongs to the model picker (plan Task 6). No caller passes a chat model yet, so every account still counts 1.
 
 ## 5. What bounds the spend today
 

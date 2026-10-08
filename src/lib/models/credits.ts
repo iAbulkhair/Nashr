@@ -50,6 +50,20 @@ export function chatTurnMaxUsd(model: string): number {
 }
 
 /**
+ * How many messages of the chat allowance one message on `model` counts (coordinator ruling 2026-10-08, option a): its
+ * chat multiplier rounded up, at least 1 (Sonnet 5.5 and Sonnet 5 count 1, Opus 5 counts 2, an economy model 1). Each
+ * unit then carries at most CHAT_TURN_MAX_USD, the ceiling the plans' allowances were priced at (docs/system/costs.md
+ * section 4.1), whatever model the owner picks. The multiplier is rounded to six decimals before rounding up, as in
+ * `creditsFor`. A multiplier that is not a finite number above 0 throws (`chat_allowance_unpriced`): a message is never
+ * counted as 0 or NaN. `reserveChatTurn` computes it once per turn and the settle gives back that stored count.
+ */
+export function chatUnitsFor(model: string): number {
+  const m = tierMultiplier(model, "chat");
+  if (typeof m !== "number" || !Number.isFinite(m) || m <= 0) throw new Error(`chat_allowance_unpriced:${String(model)}`);
+  return Math.max(1, Math.ceil(Math.round(m * 1e6) / 1e6));
+}
+
+/**
  * The most a message past the allowance on `model` can cost the owner, in credits: its own ceiling at the floor rate,
  * rounded up (2 at x1, 4 on Opus 5). The balance must cover it before the turn, and the message is billed its metered
  * cost at the floor rate, never more than this (src/lib/credits.ts `settleChatOverflow`, rule 313).

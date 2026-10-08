@@ -7,14 +7,14 @@ import { db } from "@/lib/db";
 import type { Brand } from "@/lib/brand";
 import { PRICED_AT, TIER_MULTIPLIER, type Surface } from "@/lib/models/tiers";
 import { MODELS, modelById, type ModelEntry } from "@/lib/models/catalog";
-import { chatHoldFor, chatTurnMaxUsd, creditsFor, tierMultiplier } from "@/lib/models/credits";
+import { chatHoldFor, chatTurnMaxUsd, chatUnitsFor, creditsFor, tierMultiplier } from "@/lib/models/credits";
 import { CHAT_TURN_MAX_USD, chatOverflowHold, maxCostPerCreditUsd } from "@/lib/pricing";
 import { TASK_COST, TASK_TYPES } from "@/lib/tasks";
 import { ESTIMATE_MODELS, estimateBatch, estimateFor } from "@/lib/task-costs";
-import { CHAT_MODEL } from "@/lib/chat";
+import { CHAT_MODEL, type ChatTurn } from "@/lib/chat";
 import { CHAT_MIN_OUT, nextMaxTokens } from "@/lib/chat-budget";
-import { chatStatus, reserveChatTurn } from "@/lib/chat-allowance";
-import { chatMsgKey } from "@/lib/usage";
+import { chatStatus, reserveChatTurn, runChatTurn, settleChatTurn } from "@/lib/chat-allowance";
+import { chatCredKey, chatMsgKey, chatOverKey } from "@/lib/usage";
 
 /**
  * Credits by tier (spec 2026-10-08-straitly-model-routing, section 6; plan Task 4). A task's credits and a chat message's
@@ -230,39 +230,155 @@ describe("chatTurnMaxUsd and the overflow hold scale with the chat tier (rules 3
   });
 });
 
-describe("the chat allowance per tier", () => {
-  async function owner(): Promise<User> {
-    const u = await newUser("mc-chat");
-    await saveUser({ ...u, plan: "starter", chatOverflow: true, credits: 10 });
-    return (await getUser(u.email))!;
+describe("chatUnitsFor: one chat message counts ceil(its chat multiplier) messages of the allowance", () => {
+  it("Sonnet 5.5 and Sonnet 5 count 1, Opus 5 counts 2, an economy model 1; an id not in the catalog 1", async () => {
+    expect([SONNET55, SONNET, OPUS].map(chatUnitsFor)).toEqual([1, 1, 2]);
+    for (const id of NOT_IDS) expect(chatUnitsFor(id as string), String(id)).toBe(1);
+    const eco = await withEconomy();
+    expect(eco.chatUnitsFor(ECONOMY.id)).toBe(1);
+  });
+
+  it("each unit carries at most CHAT_TURN_MAX_USD, the ceiling the allowances were priced at", async () => {
+    for (const m of [SONNET55, SONNET, OPUS]) expect(chatTurnMaxUsd(m) / chatUnitsFor(m), m).toBeLessThanOrEqual(CHAT_TURN_MAX_USD + 1e-12);
+    const eco = await withEconomy();
+    expect(eco.chatTurnMaxUsd(ECONOMY.id) / eco.chatUnitsFor(ECONOMY.id)).toBeCloseTo(0.084, 12);
+  });
+
+  async function tiered(economy: number) {
+    vi.resetModules();
+    vi.doMock("@/lib/models/tiers", async (orig) => {
+      const m = await orig<typeof import("@/lib/models/tiers")>();
+      return { ...m, TIER_MULTIPLIER: Object.freeze({ economy, standard: 1, premium: 2 }) };
+    });
+    vi.doMock("@/lib/models/catalog", async (orig) => {
+      const m = await orig<typeof import("@/lib/models/catalog")>();
+      return { ...m, modelById: (id: unknown) => (id === ECONOMY.id ? ECONOMY : m.modelById(id)) };
+    });
+    return { credits: await import("@/lib/models/credits"), allowance: await import("@/lib/chat-allowance") };
   }
 
-  it("the default model reserves one message and holds 2 credits in overflow, as before", async () => {
+  it("rounds up without a floating-point extra unit: x1.1 counts 2, x1.0000000000000002 counts 1", async () => {
+    expect((await tiered(1.1)).credits.chatUnitsFor(ECONOMY.id)).toBe(2);
+    expect((await tiered(1.0000000000000002)).credits.chatUnitsFor(ECONOMY.id)).toBe(1);
+  });
+
+  it("a multiplier that is not a finite number above 0 throws chat_allowance_unpriced, and reserveChatTurn counts nothing", async () => {
+    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const { credits: c, allowance: a } = await tiered(bad);
+      expect(() => c.chatUnitsFor(ECONOMY.id), String(bad)).toThrow(/chat_allowance_unpriced/);
+      const u = await newUser("mc-bad");
+      await expect(a.reserveChatTurn(u, ECONOMY.id), String(bad)).rejects.toThrow(/chat_allowance_unpriced/);
+      expect(await db.get<number>(chatMsgKey(u.email)), String(bad)).toBeFalsy();
+    }
+  });
+});
+
+describe("the chat allowance per tier: a message counts chatUnitsFor(model), computed once at the reserve", () => {
+  async function owner(over: Partial<User> = {}): Promise<User> {
+    const u = await newUser("mc-chat");
+    await saveUser({ ...u, plan: "starter", chatOverflow: true, credits: 10, ...over });
+    return (await getUser(u.email))!;
+  }
+  const msgs = async (u: User) => (await db.get<number>(chatMsgKey(u.email))) ?? 0;
+  const over = async (u: User) => (await db.get<number>(chatOverKey(u.email))) ?? 0;
+  const reply = (usd: number): ChatTurn => ({ role: "assistant", content: "ok", at: new Date().toISOString(), usd }) as ChatTurn;
+  async function reserved(u: User, model?: string) {
+    const g = await reserveChatTurn(u, model);
+    if (!g.ok) throw new Error(`refused: ${g.error}`);
+    return g;
+  }
+
+  it("the default model (Sonnet 5.5) reserves 1 and a failed turn gives back 1, as today", async () => {
     const u = await owner();
-    const g = await reserveChatTurn(u);
-    expect(g).toMatchObject({ ok: true, mode: "included" });
+    const g = await reserved(u);
+    expect(g).toMatchObject({ mode: "included", units: 1, model: SONNET55, status: { used: 1, left: 249, counted: 1 } });
+    expect(await msgs(u)).toBe(1);
+    const s = await settleChatTurn(u, g, null);
+    expect(await msgs(u)).toBe(0);
+    expect(s).toMatchObject({ charged: 0, status: { used: 0, left: 250, counted: 0 } });
     expect((await chatStatus(u)).overflow.hold).toBe(2);
-    expect((await chatStatus(u, SONNET)).overflow.hold).toBe(2);
+    expect(await reserved(u, SONNET)).toMatchObject({ mode: "included", units: 1 });
   });
 
-  it("a model above x1 is refused in code before anything is counted: counting it per tier awaits a decision", async () => {
+  it("Opus 5 reserves 2 and a failed turn gives back exactly 2; an answered one keeps 2", async () => {
     const u = await owner();
-    await expect(reserveChatTurn(u, OPUS)).rejects.toThrow(/chat_allowance_unpriced/);
-    expect(await db.get<number>(chatMsgKey(u.email))).toBeFalsy();
-    // An id that is not exactly a catalog id is refused the same way, never priced as the default.
-    for (const id of ["claude-unknown-9", "constructor", "__proto__", ""]) await expect(reserveChatTurn(u, id), id).rejects.toThrow(/unknown_model/);
-    expect(await db.get<number>(chatMsgKey(u.email))).toBeFalsy();
-    // A model at or below x1 counts one message, as the default does.
-    expect(await reserveChatTurn(u, SONNET)).toMatchObject({ ok: true, mode: "included" });
-    expect(await db.get<number>(chatMsgKey(u.email))).toBe(1);
+    const g = await reserved(u, OPUS);
+    expect(g).toMatchObject({ mode: "included", units: 2, model: OPUS, status: { used: 2, left: 248, counted: 2 } });
+    expect(await msgs(u)).toBe(2);
+    expect(await settleChatTurn(u, g, null)).toMatchObject({ charged: 0, status: { used: 0, left: 250, counted: 0 } });
+    expect(await msgs(u)).toBe(0);
+    // The same through runChatTurn: a throw gives back the 2 before it is rethrown; a reply keeps them, nothing billed.
+    await expect(runChatTurn(u, await reserved(u, OPUS), async () => { throw new Error("boom"); })).rejects.toThrow("boom");
+    expect(await msgs(u)).toBe(0);
+    const r = await runChatTurn(u, await reserved(u, OPUS), async () => reply(0.2));
+    expect(r).toMatchObject({ charged: 0, chat: { used: 2, left: 248 } });
+    expect(await msgs(u)).toBe(2);
+    expect((await getUser(u.email))!.credits).toBe(10);
   });
 
-  it("past the allowance with the switch on, the gate carries the model's own hold to the settle", async () => {
+  it("the settle reads the count the reserve stored, never the model again; a gate with a bad count moves nothing", async () => {
+    const src = readFileSync("src/lib/chat-allowance.ts", "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "").replace(/\s+/g, "");
+    expect(src.match(/chatUnitsFor\(/g), "one computation, in reserveChatTurn").toEqual(["chatUnitsFor("]);
+    expect(src).toContain("constunits=chatUnitsFor(entry.id);");
+    expect(src).toContain("db.incrby(gate.key,-gate.units)");
     const u = await owner();
+    const g = await reserved(u, OPUS);
+    for (const units of [0, -2, 1.5, Number.NaN, undefined]) {
+      await expect(settleChatTurn(u, { ...g, units } as typeof g, null), String(units)).rejects.toThrow(/invalid_units/);
+    }
+    expect(await msgs(u)).toBe(2);
+  });
+
+  it("a message that would pass the allowance by its count is refused before any model call, the counter as it was", async () => {
+    const u = await owner({ chatOverflow: false });
+    await db.set(chatMsgKey(u.email), 249);
+    const g = await reserveChatTurn(u, OPUS);
+    expect(g).toMatchObject({ ok: false, error: "chat_allowance", status: { used: 249, left: 1 } });
+    expect(await msgs(u)).toBe(249);
+    // The last message is still there for a model that counts 1.
+    expect(await reserved(u, SONNET55)).toMatchObject({ mode: "included", units: 1, status: { used: 250, left: 0 } });
+    expect(await msgs(u)).toBe(250);
+    // The route answers a refusal before chat() runs (rule 309); an allowance of 0 refuses Opus with the switch on too.
+    const off = await owner({ chatAllowance: 0 });
+    expect(await reserveChatTurn(off, OPUS)).toMatchObject({ ok: false, error: "chat_allowance" });
+    expect(await msgs(off)).toBe(0);
+  });
+
+  it("past the allowance the overflow scales the same way: Opus needs a hold of 4, counts 2 on chat_over, gives back 2", async () => {
+    const u = await owner({ credits: 3 });
     await db.set(chatMsgKey(u.email), 250);
-    const g = await reserveChatTurn(u, SONNET);
-    expect(g).toMatchObject({ ok: true, mode: "overflow", hold: chatHoldFor(SONNET) });
-    expect(g.ok && g.status.overflow.hold).toBe(2);
+    expect(await reserveChatTurn(u, OPUS)).toMatchObject({ ok: false, error: "chat_credits", need: 4, credits: 3 });
+    expect([await msgs(u), await over(u)]).toEqual([250, 0]);
+    // 3 credits cover a Sonnet message's hold of 2.
+    const s = await reserved(u, SONNET55);
+    expect(s).toMatchObject({ mode: "overflow", units: 1, hold: 2 });
+    expect(await over(u)).toBe(1);
+    await settleChatTurn(u, s, null);
+    expect(await over(u)).toBe(0);
+
+    const v = await owner({ credits: 10 });
+    await db.set(chatMsgKey(v.email), 249); // one left: Opus counts 2, so the whole message goes on credits
+    const g = await reserved(v, OPUS);
+    expect(g).toMatchObject({ mode: "overflow", units: 2, hold: 4, status: { used: 249, overflow: { used: 2, hold: 4 } } });
+    expect([await msgs(v), await over(v)]).toEqual([249, 2]);
+    expect(await settleChatTurn(v, g, null)).toMatchObject({ charged: 0, status: { overflow: { used: 0 } } });
+    expect([await msgs(v), await over(v), (await getUser(v.email))!.credits]).toEqual([249, 0, 10]);
+    // Answered at its $0.28 ceiling: billed 3 credits at the floor rate (the rest carried), at most the hold of 4.
+    const a = await reserved(v, OPUS);
+    const r = await settleChatTurn(v, a, chatTurnMaxUsd(OPUS));
+    expect(r.charged).toBe(Math.floor(Math.round(chatTurnMaxUsd(OPUS) * 1e6) / Math.round(maxCostPerCreditUsd() * 1e6)));
+    expect(r.charged).toBe(3);
+    expect([await over(v), await db.get<number>(chatCredKey(v.email)), (await getUser(v.email))!.credits]).toEqual([2, 3, 7]);
+    // A metered cost past the ceiling is still billed at most the hold.
+    const b = await reserved(v, OPUS);
+    expect((await settleChatTurn(v, b, 1)).charged).toBe(4);
+    expect([await over(v), (await getUser(v.email))!.credits]).toEqual([4, 3]);
+  });
+
+  it("an id that is not exactly a catalog id is refused before anything is counted", async () => {
+    const u = await owner();
+    for (const id of ["claude-unknown-9", "constructor", "__proto__", ""]) await expect(reserveChatTurn(u, id), id).rejects.toThrow(/unknown_model/);
+    expect(await msgs(u)).toBe(0);
   });
 });
 

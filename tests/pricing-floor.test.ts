@@ -14,9 +14,9 @@ import { HANDOFF_TYPES, autoBlock, type Handoff } from "@/lib/handoffs";
 import { agentForTask } from "@/lib/agents";
 import { MODELS, modelAllowsTask } from "@/lib/models/catalog";
 import { PRICED_AT } from "@/lib/models/tiers";
-import { chatHoldFor, chatTurnMaxUsd, creditsFor, tierMultiplier } from "@/lib/models/credits";
+import { chatHoldFor, chatTurnMaxUsd, chatUnitsFor, creditsFor, tierMultiplier } from "@/lib/models/credits";
 import { estimateFor } from "@/lib/task-costs";
-import { CHAT_TURN_MAX_USD } from "@/lib/pricing";
+import { CHAT_ALLOWANCE, CHAT_TURN_MAX_USD, SELF_SERVE_PLANS as SELF_SERVE } from "@/lib/pricing";
 import { CHAT_FIRST_MIN_OUT } from "@/lib/chat-budget";
 import { costUsd } from "@/lib/usage";
 import { isTaskType } from "@/lib/tasks";
@@ -363,5 +363,32 @@ describe("chat keeps the floor per tier: the hold covers each model's own ceilin
       const tokens = chatTurnMaxUsd(m.id) / costUsd(m.id, { output_tokens: 1 });
       expect(tokens, m.id).toBeGreaterThanOrEqual(CHAT_FIRST_MIN_OUT);
     }
+  });
+
+  /**
+   * The allowance by tier (coordinator ruling 2026-10-08, option a): a message counts `chatUnitsFor(model)` =
+   * ceil(chat multiplier) messages, so each unit of the allowance carries at most CHAT_TURN_MAX_USD, the ceiling the plans'
+   * allowances were priced at (costs.md section 4.1), whatever model the owner picks.
+   */
+  it("each allowance unit carries at most CHAT_TURN_MAX_USD on every chat model, with the fewest units that do", () => {
+    for (const m of chatModels) {
+      const units = chatUnitsFor(m.id);
+      expect(Number.isSafeInteger(units) && units >= 1, m.id).toBe(true);
+      expect(chatTurnMaxUsd(m.id) / units, `${m.id}: per unit`).toBeLessThanOrEqual(CHAT_TURN_MAX_USD + 1e-12);
+      if (units > 1) expect(chatTurnMaxUsd(m.id) / (units - 1), `${m.id}: one unit fewer would not`).toBeGreaterThan(CHAT_TURN_MAX_USD);
+    }
+  });
+
+  it("today's figures: per unit $0.14 on every model, a full allowance at 44% / 68% / 68% of net revenue (88% / 137% / 137% at one per Opus message)", () => {
+    expect(chatModels.map((m) => [m.id, chatUnitsFor(m.id), chatTurnMaxUsd(m.id) / chatUnitsFor(m.id)])).toEqual([
+      ["claude-opus-5", 2, expect.closeTo(0.14, 12)],
+      ["claude-sonnet-5", 1, 0.14],
+      ["claude-sonnet-5-5", 1, 0.14],
+    ]);
+    const worstPerUnit = Math.max(...chatModels.map((m) => chatTurnMaxUsd(m.id) / chatUnitsFor(m.id)));
+    const opusPerMessage = chatTurnMaxUsd("claude-opus-5");
+    const pct = (usdPerUnit: number) => Object.fromEntries(SELF_SERVE.map((p) => [p, Math.round(((CHAT_ALLOWANCE[p] * usdPerUnit) / (creditRevenueUsd(p) * PLAN_CREDITS[p])) * 100)]));
+    expect(pct(worstPerUnit)).toEqual({ starter: 44, pro: 68, business: 68 });
+    expect(pct(opusPerMessage), "the hole counting one unit per Opus message would have left").toEqual({ starter: 88, pro: 137, business: 137 });
   });
 });
