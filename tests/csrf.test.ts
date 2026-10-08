@@ -178,11 +178,13 @@ describe("rule 692: same-origin requests, requests with neither header, GET, HEA
   // (currentUser, isAdmin, sessionCookie, createAdminSession, keyImpBinding, partners.ts cookieRef or afterSignup...)
   // fails the test, and so does any other reachable module that reads a cookie (`cookies()`, `req.cookies`, a Cookie
   // header, next/headers) or names a session cookie. Naming another cookie, as partner-rules.ts and connectors/store.ts
-  // do, is not reading it. A merge that makes an exempt route reach a new name (the Paymob webhook reaches partners.ts
-  // through billing.ts) adds it here once someone has read that it touches no cookie.
+  // do, is not reading it. A merge that makes an exempt route reach a new name adds it here once someone has read that
+  // it touches no cookie: the Paymob webhook (#279) reaches auth.ts normalizePhone and the six partners.ts payment and
+  // offer names through billing.ts, read on 2026-10-08 with everything they call (only getUser, normalizeEmail and
+  // saveUser from auth.ts, no cookieRef, signupPartner, afterSignup or partnerCookie).
   const COOKIE_MODULES: Record<string, ReadonlySet<string>> = {
-    "src/lib/auth.ts": new Set(["getLogin", "getUser", "normalizeEmail", "saveUser", "sc", "seatLimit", "strongPassword", "trialOver", "validEmail"]),
-    "src/lib/partners.ts": new Set<string>(),
+    "src/lib/auth.ts": new Set(["getLogin", "getUser", "normalizeEmail", "normalizePhone", "saveUser", "sc", "seatLimit", "strongPassword", "trialOver", "validEmail"]),
+    "src/lib/partners.ts": new Set(["addPaidTopup", "openOffer", "paymentsKey", "recordPayment", "voidPaidTopup", "voidPayment"]),
   };
   const COOKIE_ACCESS = /cookies\(|\.cookies\b|\.get\(\s*["'`]cookie["'`]\s*\)|["']next\/headers["']|["'`]nashr_(session|admin|impersonate|return)["'`]/i;
   const STATEFUL = /export\s+(async\s+)?(function|const)\s+(POST|PUT|PATCH|DELETE)\b/;
@@ -246,6 +248,7 @@ describe("rule 692: same-origin requests, requests with neither header, GET, HEA
       join("src/app/api/oauth/token/route.ts"),
       join("src/app/api/media/hook/[provider]/route.ts"),
       join("src/app/api/secretary/booking/[token]/route.ts"),
+      join("src/app/api/billing/paymob/webhook/route.ts"),
       join("src/app/api/cron/secretary/route.ts"),
     ]));
   });

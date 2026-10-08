@@ -120,6 +120,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "PUT /api/profile": g("owner", "profile.account", "brand.write", "profile.self"),
   "PATCH /api/team/member": g("owner", "team.role"),
   "POST /api/billing/chat-overflow": g("owner", "billing"), // how the account's credits are spent once chat runs out
+  "POST /api/billing/checkout": g("owner", "billing.pay"), // online payment (Paymob), never while impersonating
+  "POST /api/billing/renewal": g("owner", "billing.pay"), // the online subscription's renewal and saved card
 
   // Admin and owner (some handlers also serve a member-level action, listed with it, or member-level names such as
   // non-core files, which need no action of their own).
@@ -187,6 +189,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/admin/wishlist": "admin-console",
   "POST /api/admin/leads": "admin-console",
   "POST /api/media/hook/[provider]": "public",
+  "POST /api/billing/paymob/webhook": "public", // Paymob callbacks: HMAC only, rules 700-729
 };
 
 /**

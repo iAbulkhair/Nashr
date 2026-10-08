@@ -60,9 +60,9 @@ export const CROSS_SITE_ERROR = "cross_site";
  * - `/api/secretary/booking/`: Cal.com and Calendly booking webhooks, proven by the provider's signature over the body.
  *   Their HTTP clients are not ours either. With the slash: `/api/secretary/booking` itself manages the links with the
  *   session cookie and stays checked.
- * - `/api/billing/paymob/`: reserved for the Paymob webhook and return path (branch `claude/quizzical-galileo-5b3662`,
- *   not on this one), proven by Paymob's HMAC. The webhook comes from Paymob's servers and the return path from
- *   Paymob's page, which is another site.
+ * - `/api/billing/paymob/`: the Paymob webhook, `/api/billing/paymob/webhook` (PR #279), posted by Paymob's servers and
+ *   proven by Paymob's HMAC. The buyer's return from Paymob's page lands on the billing page (a GET), not here;
+ *   `/api/billing/checkout` and `/api/billing/renewal` are cookie routes outside the prefix and stay checked.
  * - `/api/cron/`: the cron runner (GET with the CRON_SECRET bearer, which the check never looks at) and POST
  *   `/api/cron/secretary` from our own QStash schedule or with that bearer. They send neither header and would pass
  *   anyway; the entry keeps that true if a cron route ever reads a browser header. No cron handler reads a session.
