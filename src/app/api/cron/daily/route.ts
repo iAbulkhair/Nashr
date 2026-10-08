@@ -14,6 +14,7 @@ import { followUps, notifEmailText } from "@/lib/notifications";
 import { getUser } from "@/lib/auth";
 import { syncAdsIfDue } from "@/lib/perf-store";
 import { syncSiteIfDue } from "@/lib/site-stats";
+import { syncSocialIfDue } from "@/lib/social-stats";
 import { sweepOnboardHolds } from "@/lib/onboard-confirm";
 import { purgeExpired, secretaryDaily } from "@/lib/secretary";
 import { SWEEP_BUDGET_DAILY_MS, SWEEP_SCOPES, mergeReports, sweepReminders, type SweepReport } from "@/lib/secretary-remind";
@@ -121,6 +122,9 @@ async function dailyFor(u: User): Promise<string> {
   } else if (fu.length && pref !== "none") {
     if (await sendEmail(u.email, u.lang === "ar" ? "متابعة من فريق ذكين" : "Follow-up from your Thakeen team", notifEmailText(u, fu))) out.push("email");
   }
+  // Instagram and LinkedIn page results for Dana (src/lib/social-stats.ts), last: up to 30 post reads may be slow, and a
+  // slow platform must never cost this workspace its brief or its email. Tomorrow's report reads what lands here.
+  try { if (await syncSocialIfDue(u.scope ?? u.email)) out.push("social"); } catch (e) { out.push(`social_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   return out.join("+") || "nothing_due";
 }
 

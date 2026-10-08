@@ -23,6 +23,8 @@ export const ACTIVITY_KINDS = [
   "cross_reviewed",
   // Majed's handoffs (src/lib/handoffs.ts): the proposal in chat, an item run from its card, items declined.
   "handoff_proposed", "handoff_run", "handoff_declined",
+  // A connection setting the owner changed that decides where posts go (LinkedIn: as the member or as the page).
+  "connector_changed",
 ] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 /** Where it happened. Not a task's `source`: chat and MCP batches are both `source: "chat"`. */
