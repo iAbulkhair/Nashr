@@ -8,6 +8,7 @@ import type { Role } from "@/lib/auth";
 import { AGENTS, type AgentId } from "@/lib/agents";
 import LogoutButton from "./LogoutButton";
 import LangToggle from "../LangToggle";
+import Wordmark from "../Wordmark";
 import { Icon, type IconName } from "./Icons";
 import { PARTNER_COPY } from "@/lib/partner-copy";
 
@@ -181,7 +182,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
     <>
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 border-e-[1.5px] border-ink bg-paper text-ink lg:block">{body}</aside>
       <header className="sticky top-0 z-40 flex items-center justify-between border-b-[1.5px] border-ink bg-paper px-4 py-3 text-ink lg:hidden">
-        <Link href={`${base}/chat`} className="font-display text-xl font-bold">{t.appName}</Link>
+        <Link href={`${base}/chat`} className="font-display text-xl font-bold"><Wordmark lang={lang} name={t.appName} /></Link>
         <div className="flex items-center gap-3">
           <Link href={`${base}/notifications`} aria-label={N.notifications} className="relative text-ink"><Icon name="bell" className="h-5 w-5" />{unread > 0 && <span className="tnum absolute -end-2 -top-1.5 rounded-full bg-danger px-1.5 text-xs font-semibold text-paper" dir="ltr">{unread}</span>}</Link>
           <Link href={`${base}/billing`} title={show.owner ? undefined : N.sharedCredits} className="tnum text-xs font-semibold text-ink">{user.credits} {N.credits}</Link>

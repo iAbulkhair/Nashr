@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { dict } from "@/lib/i18n";
+import { appDict } from "@/lib/app-i18n";
 
 /**
  * Rule 317. Thmanyah Serif Display («ثمانية للعناوين») is the heading face, and only the heading face: body text stays
@@ -70,6 +71,10 @@ describe("the heading face is Thmanyah, loaded within its license (rule 317)", (
     expect(wm).not.toMatch(/\\u0640|ـ/);
     expect(read("src/components/Nav.tsx")).toMatch(/<Wordmark lang=\{lang\} name=\{t\.brand\} \/>/);
     expect(read("src/components/Footer.tsx")).toMatch(/<Wordmark lang=\{lang\} name=\{t\.brand\} \/>/);
+    // the app headers too: the signed-out header (login, signup) and the phone header inside the app
+    expect(read("src/app/[lang]/app/layout.tsx")).toMatch(/<Wordmark lang=\{lang\} name=\{t\.appName\} \/>/);
+    expect(read("src/components/app/Sidebar.tsx")).toMatch(/<Wordmark lang=\{lang\} name=\{t\.appName\} \/>/);
+    expect(appDict.ar.appName).toBe(dict.ar.brand);
     // the presentation forms spell the same word the dictionary names
     expect("ذ\uFEDB\uFEF4\uFEE6".normalize("NFKC")).toBe(dict.ar.brand);
     expect(dict.ar.brand).not.toContain("\u0640");
