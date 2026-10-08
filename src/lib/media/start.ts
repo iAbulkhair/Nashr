@@ -127,7 +127,7 @@ export function mediaResponse(r: ImageOutcome): MediaHttp {
   const error = r.error === "media_failed" && credits == null ? "media_pending" : r.error;
   return {
     status,
-    // A 429 says when to try again: the refusing bucket's window, else a minute (rule 672).
+    // A 429 says when to try again: the refusing bucket's window, else a minute (rule 680).
     ...(status === 429 ? { headers: retryAfter(r.retryAfter ?? BUSY_RETRY_S) } : {}),
     body: {
       ok: false, error, ...(need != null ? { need } : {}), ...(have != null ? { have } : {}), ...(credits != null ? { credits } : {}), ...(job ? { job } : {}),

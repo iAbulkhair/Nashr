@@ -230,7 +230,7 @@ export type SecError =
   | "already_decided" | "busy"
   // Recurring items: a rule out of range (`parseRepeat`), a rule on an item with no due date, and the 500-series keep limit.
   | "repeat_invalid" | "repeat_needs_due" | "repeat_until_before_due" | "keep_limit";
-/** `retryAfter`, with a 429 only: the refusing bucket's window in seconds, which the route sends as `Retry-After` (rule 672). */
+/** `retryAfter`, with a 429 only: the refusing bucket's window in seconds, which the route sends as `Retry-After` (rule 680). */
 export type SecFail = { ok: false; error: SecError; field?: string; status: number; item?: SecItem; retryAfter?: number };
 export const fail = (error: SecError, status = 400, field?: string): SecFail => ({ ok: false, error, status, ...(field ? { field } : {}) });
 

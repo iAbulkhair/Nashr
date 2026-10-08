@@ -257,7 +257,7 @@ describe("starting a render: charge, submit, deliver", () => {
     expect(await flightFree(u, tasks[18])).toBe(true);
   });
 
-  it("the account render limit answers 429 too_many before the charge, with the window that refused (rule 672)", async () => {
+  it("the account render limit answers 429 too_many before the charge, with the window that refused (rule 680)", async () => {
     const u = await owner();
     const t = await taskFor(u);
     await db.set(`rate:media:image:h:${u.email}`, 30, 3600);

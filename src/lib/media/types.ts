@@ -142,7 +142,7 @@ export type StartResult =
       ok: false; status: 400 | 402 | 409 | 422 | 429 | 502; error: StartError; credits?: number; need?: number; have?: number; job?: PublicJob;
       /** With agent_cap: the agent, its credits this month and the owner's cap, as /api/generate answers them. */
       agent?: AgentId; spent?: number; cap?: number;
-      /** With 429: seconds until a retry can be let in, sent as `Retry-After` (rule 672). */
+      /** With 429: seconds until a retry can be let in, sent as `Retry-After` (rule 680). */
       retryAfter?: number;
     };
 

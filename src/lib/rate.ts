@@ -33,7 +33,7 @@ export const retryAfter = (seconds: number) => ({ "Retry-After": String(Math.max
  * (`allow`'s third argument; with several buckets, the one that refused, the longest when more than one did). A window
  * starts at its first hit, so its counter is gone by then: the longest a caller can have to wait, never a guess. The
  * body is the route's own, unchanged; a string or null is sent as it is (the onboarding stream answers text, the
- * calendar feed nothing). `headers` adds the route's own, such as CORS. Rule 672, tests/retry-after.test.ts.
+ * calendar feed nothing). `headers` adds the route's own, such as CORS. Rule 680, tests/retry-after.test.ts.
  */
 export function retryLater(body: Record<string, unknown> | string | null, windowSeconds: number, headers: Record<string, string> = {}): NextResponse {
   const init = { status: 429, headers: { ...headers, ...retryAfter(windowSeconds) } };

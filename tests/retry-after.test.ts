@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { WINDOW, retryAfter, retryLater } from "@/lib/rate";
 
 /**
- * Rule 672: every 429 tells the caller when to try again. A refusal by one of our buckets (`allow` in src/lib/rate.ts)
+ * Rule 680: every 429 tells the caller when to try again. A refusal by one of our buckets (`allow` in src/lib/rate.ts)
  * answers through `retryLater`, which sets `Retry-After` to the window that bucket was given; a 429 a library hands to a
  * route (Reem's day of new items, a media start) carries `retryAfter` for the route to send. Without the header a client
  * can only guess, and a guess that is too short keeps the counter full.
@@ -22,7 +22,7 @@ const missing = (src: string, sent: RegExp) =>
   [...src.matchAll(BUILDS_429)].filter((m) => !inComment(src, m.index) && !sent.test(statement(src, m.index))).map((m) => src.slice(0, m.index).split("\n").length);
 const unsent = (files: string[], sent: RegExp) => files.flatMap((p) => missing(readFileSync(p, "utf8"), sent).map((line) => `${p}:${line}`));
 
-describe("rule 672: a 429 says when to try again", () => {
+describe("rule 680: a 429 says when to try again", () => {
   it("no API route builds a 429 without Retry-After: they all answer through retryLater", () => {
     expect(unsent(walk("src/app/api"), /retry-after/i)).toEqual([]);
   });

@@ -372,7 +372,7 @@ describe("starting a render", () => {
     expect(mediaResponse({ ok: false, status: 502, error: "media_failed", credits: 50 }).body).toEqual({ ok: false, error: "media_failed", credits: 50 });
     expect(mediaResponse({ ok: false, status: 502, error: "media_failed" })).toEqual({ status: 502, body: { ok: false, error: "media_pending" } });
     expect(mediaResponse({ ok: false, status: 422, error: "nsfw" }).body.error, "other codes pass through").toBe("nsfw");
-    // Rule 672: a 429 says when to try again, the refusing window when the engine named one, else BUSY_RETRY_S.
+    // Rule 680: a 429 says when to try again, the refusing window when the engine named one, else BUSY_RETRY_S.
     expect(mediaResponse({ ok: false, status: 429, error: "too_many", retryAfter: 86400 })).toEqual({ status: 429, headers: { "Retry-After": "86400" }, body: { ok: false, error: "too_many" } });
     expect(mediaResponse({ ok: false, status: 429, error: "busy" }).headers).toEqual({ "Retry-After": String(BUSY_RETRY_S) });
     expect(mediaResponse({ ok: false, status: 402, error: "no_credits", need: 50, have: 0 }).headers, "only a 429 carries it").toBeUndefined();

@@ -349,7 +349,7 @@ describe("limits (rule 195)", () => {
     expect((await create({ title: "The 200th" })).status).toBe(200);
     const over = await create({ title: "The 201st" });
     expect(over.status).toBe(429);
-    expect(over.headers.get("retry-after"), "the day's window (rule 672)").toBe("86400");
+    expect(over.headers.get("retry-after"), "the day's window (rule 680)").toBe("86400");
     expect(await over.json()).toEqual({ ok: false, error: "too_many" });
     await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
     await setActiveBrand(u.email, "b2");
