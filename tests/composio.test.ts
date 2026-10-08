@@ -350,8 +350,11 @@ describe("disconnecting (rule 651)", () => {
   });
 });
 
-/** Any import path that ends in `/composio` or `/via-composio`: `@/lib/connectors/…`, `./…` and `../connectors/…` alike. */
-const IMPORTS_COMPOSIO = /from "[^"]*\/(?:composio|via-composio)"/;
+/**
+ * Any import path that ends in `/composio` or `/via-composio`: `@/lib/connectors/…`, `./…` and `../connectors/…` alike,
+ * in double or single quotes, static (`from`) or dynamic (`import(…)`).
+ */
+const IMPORTS_COMPOSIO = /(?:from|import\()\s*["'][^"']*\/(?:composio|via-composio)["']/;
 
 describe("who can reach Composio (rule 652)", () => {
   const files = (dir: string): string[] => readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? files(p) : /\.tsx?$/.test(f) ? [p] : []; });
@@ -402,5 +405,11 @@ describe("pins and the importer check (rule 749)", () => {
     expect(IMPORTS_COMPOSIO.test('import { connectViaComposio } from "@/lib/connectors/via-composio";')).toBe(true);
     expect(IMPORTS_COMPOSIO.test('import x from "./composio-shape";')).toBe(false);
     expect(IMPORTS_COMPOSIO.test('import { TOOLKITS } from "./composio-catalog";')).toBe(false);
+    // A dynamic import and single quotes are imports too.
+    expect(IMPORTS_COMPOSIO.test('const { composioRead } = await import("./composio");')).toBe(true);
+    expect(IMPORTS_COMPOSIO.test("import { composioRead } from '../connectors/composio';")).toBe(true);
+    expect(IMPORTS_COMPOSIO.test("const v = await import('@/lib/connectors/via-composio');")).toBe(true);
+    expect(IMPORTS_COMPOSIO.test("import { TOOLKITS } from './composio-catalog';")).toBe(false);
+    expect(IMPORTS_COMPOSIO.test('const c = await import("./composio-catalog");')).toBe(false);
   });
 });

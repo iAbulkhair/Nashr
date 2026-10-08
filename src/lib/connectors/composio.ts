@@ -37,13 +37,14 @@ export type ComposioClient = {
 export type StagedFile = { name: string; mimetype: string; s3key: string };
 
 /**
- * Pinned toolkit versions. Pinned to the `version` that `composio tools info <slug>` reported when the allowlisted args
- * were checked; the `latest_version` field of `dev toolkits version` is stale and is not used (rule 749; facebook,
- * youtube, linkedin, tiktok and snapchat read 2026-10-08, the others 2026-10-05). The SDK refuses to execute a tool
- * whose toolkit resolves to "latest" (ComposioToolVersionRequiredError, before any request), and fetches the tool at
- * the pinned version before any platform call (ComposioToolNotFoundError when it is missing there), so a pin also keeps
- * the argument names in composio-catalog.ts matching the schema they were checked against. "00000000_00" is the only
- * version Composio lists for an unversioned toolkit. Every toolkit must have one: the type has no optional keys.
+ * Pinned toolkit versions (rule 749). facebook, youtube, linkedin, tiktok and snapchat are pinned to the `version` that
+ * `composio tools info <slug>` reported on 2026-10-08, when their allowlisted args were checked; the other pins date
+ * from 2026-10-05 and were not re-read with `tools info`. The `latest_version` field of `dev toolkits version` is stale
+ * and is not used. The SDK refuses to execute a tool whose toolkit resolves to "latest"
+ * (ComposioToolVersionRequiredError, before any request), and fetches the tool at the pinned version before any
+ * platform call (ComposioToolNotFoundError when it is missing there), so a pin also keeps the argument names in
+ * composio-catalog.ts matching the schema they were checked against. "00000000_00" is the only version Composio lists
+ * for an unversioned toolkit. Every toolkit must have one: the type has no optional keys.
  */
 export const TOOLKIT_VERSION: Readonly<Record<Toolkit, string>> = {
   facebook: "20261008_00",
