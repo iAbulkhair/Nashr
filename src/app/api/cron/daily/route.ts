@@ -19,12 +19,25 @@ import { sweepOnboardHolds } from "@/lib/onboard-confirm";
 import { purgeExpired, secretaryDaily } from "@/lib/secretary";
 import { SWEEP_BUDGET_DAILY_MS, SWEEP_SCOPES, mergeReports, sweepReminders, type SweepReport } from "@/lib/secretary-remind";
 import { appOrigin } from "@/lib/origin";
+import { paymobConfig } from "@/lib/paymob";
+import { renewPaymob } from "@/lib/billing";
 
 export const maxDuration = 300;
 
 /** Everything the daily job does for one workspace. Returns a short outcome used for the report and the done marker. */
 async function dailyFor(u: User): Promise<string> {
   const out: string[] = [];
+  // Once per account, on its default brand's entry, and only when Paymob is configured: a subscription whose paid month
+  // ended is charged on its saved card, or marked past due, or locked once its grace days are over (src/lib/billing.ts
+  // `renewPaymob`, rules 710-714). Before the credit renewal, so a locked account gets no new month. Never fatal.
+  if ((u.brandId ?? "default") === "default" && u.billing && paymobConfig()) {
+    try {
+      const r = await renewPaymob(u.email);
+      if (r) out.push(r);
+    } catch (e) {
+      out.push(`paymob_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`);
+    }
+  }
   // Monthly credit renewal for paid plans (no-op after the first brand of a multi-brand account).
   if (await renewIfDue(u.email)) {
     out.push("renewed");

@@ -18,6 +18,7 @@ import { revokeFeed, revokeFeeds } from "./feed-token";
 import { forgetWishlistUser } from "./wishlist";
 import { forgetDueScope, secretaryKeys } from "./secretary";
 import { handoffKeys } from "./handoffs";
+import { paymobAccountKeys } from "./billing";
 import { proposalKeys } from "./brand-proposals";
 import { ONCE_INDEX, onceClaimKey, onceKey, onceRepairKey } from "./notify";
 import { getConnection } from "./connectors/store";
@@ -127,6 +128,10 @@ export async function wipeAccount(email: string) {
   // index `sendOnce()` keeps (src/lib/notify.ts).
   const onceNames = await db.smembers(ONCE_INDEX(e));
   keys.push(...onceNames.flatMap((k) => [onceKey(e, k), onceClaimKey(e, k), onceRepairKey(e, k)]), ONCE_INDEX(e));
+
+  // The saved Paymob card token (src/lib/billing.ts): it charges the card, so it never outlives the account. The intents,
+  // transaction records and done markers stay to their TTL: they hold no card data, and the founder may still refund.
+  keys.push(...paymobAccountKeys(e));
 
   const token = await db.get<string>(`mcptoken-of:${e}`);
   if (token) keys.push(`mcptoken:${token}`);

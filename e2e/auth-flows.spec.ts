@@ -65,7 +65,22 @@ test.describe("signup", () => {
 
     await fillWhenReady(page.getByRole("textbox", { name: "Your name" }), "E2E Signup");
     await fillWhenReady(page.getByRole("textbox", { name: "Password (8+ characters)" }), "signup12345");
+    // The test server returns the emailed code in the signup response (rule 766); a real mailbox is not needed.
+    const signupReply = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/auth/signup");
     await page.getByRole("button", { name: "Create account" }).click();
+    const { devCode } = (await (await signupReply).json()) as { devCode?: string };
+    expect(devCode, "the test server hands back the code").toMatch(/^\d{6}$/);
+
+    // A new owner proves the address first (rule 754), and the app stays closed until then.
+    await page.waitForURL(/\/en\/app\/verify\?next=/);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Check your email");
+    const verifyUrl = new URL(page.url());
+    await open(page, "/en/app/chat");
+    // The gate keeps where the owner was going, so the code returns them there (rule 754).
+    await page.waitForURL((u) => u.pathname === "/en/app/verify" && u.searchParams.get("next") === "/en/app/chat");
+    await open(page, verifyUrl.pathname + verifyUrl.search);
+    await fillWhenReady(page.getByRole("textbox", { name: "The 6-digit code" }), devCode!);
+    await page.getByRole("button", { name: "Confirm" }).click();
 
     await page.waitForURL("**/en/app/start?url=roastery.example");
     await playToLaunch(page);
@@ -256,9 +271,10 @@ test.describe("logout", () => {
     const authed = await signedIn.newPage();
     await authed.goto("/en/app/profile", { waitUntil: "domcontentloaded" });
     // Log out lives in the sidebar's account menu, which has to be opened first — the trigger is the button showing
-    // the signed-in address.
+    // the signed-in address. The profile page has its own Log out button too (rule 750), so the click is scoped to
+    // the menu: an unscoped `getByRole("button", { name: "Log out" })` matches both and fails strict mode.
     await authed.getByRole("button").filter({ hasText: solo.email }).click();
-    await authed.getByRole("button", { name: "Log out" }).click();
+    await authed.getByRole("menu").getByRole("button", { name: "Log out" }).click();
     await authed.waitForURL("**/app/login");
 
     await authed.goto("/en/app", { waitUntil: "domcontentloaded" });
