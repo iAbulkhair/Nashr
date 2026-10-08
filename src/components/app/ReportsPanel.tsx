@@ -18,7 +18,7 @@ import PerformanceImport from "./PerformanceImport";
 import SiteStats from "./SiteStats";
 import type { SiteSnapshot } from "@/lib/site-stats";
 import SocialStats from "./SocialStats";
-import type { SocialSnapshot } from "@/lib/social-stats";
+import type { StoredSocial } from "@/lib/social-stats";
 import { READS_ADS } from "@/lib/connectors/working";
 import Scribble from "@/components/Scribble";
 
@@ -26,7 +26,7 @@ type Item = { id: string; type: TaskType; title: string; status: string; created
 
 const METRICS = ["created", "approved", "approvalRate", "pending", "published", "images", "videos", "creditsUsed", "scheduled"] as const;
 type MetricKey = (typeof METRICS)[number];
-export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null, site = null, social = null, liNoPage = false, syncFailure = null, perf = null, perfImport = true, perfDelete = true, owner = true, topups = true }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null; /** `getSiteSnapshot`: GA4 and Search Console totals (src/lib/site-stats.ts). */ site?: SiteSnapshot | null; /** `getSocialSnapshot`: Instagram and LinkedIn page results (src/lib/social-stats.ts). */ social?: SocialSnapshot | null; /** `liNeedsPage`: LinkedIn is connected through Composio with no company page chosen. */ liNoPage?: boolean; /** `getSyncFailure`: the last automatic store sync that failed, until one succeeds. */ syncFailure?: { at: string; provider: string } | null; perf?: PerfSnapshot | null; /** `can(u, "performance.import")` */ perfImport?: boolean; /** `can(u, "performance.delete")` */ perfDelete?: boolean; /** `can(u, "billing")`: picks the out-of-credits line (rule 457). */ owner?: boolean; /** `topupsSold(u.plan)` */ topups?: boolean }) {
+export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null, site = null, social = null, liNoPage = false, syncFailure = null, perf = null, perfImport = true, perfDelete = true, owner = true, topups = true }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null; /** `getSiteSnapshot`: GA4 and Search Console totals (src/lib/site-stats.ts). */ site?: SiteSnapshot | null; /** `getSocialSnapshot`: every platform part from the last read, or a snapshot from before v2 (src/lib/social-stats.ts). */ social?: StoredSocial | null; /** `liNeedsPage`: LinkedIn is connected through Composio with no company page chosen. */ liNoPage?: boolean; /** `getSyncFailure`: the last automatic store sync that failed, until one succeeds. */ syncFailure?: { at: string; provider: string } | null; perf?: PerfSnapshot | null; /** `can(u, "performance.import")` */ perfImport?: boolean; /** `can(u, "performance.delete")` */ perfDelete?: boolean; /** `can(u, "billing")`: picks the out-of-credits line (rule 457). */ owner?: boolean; /** `topupsSold(u.plan)` */ topups?: boolean }) {
   const r = useRouter();
   const R = t.reports;
   const [busy, setBusy] = useState<TaskType | null>(null);

@@ -1,11 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { json, newMember, newUser, settle, signIn } from "./helpers/session";
 import { db } from "@/lib/db";
 import { getUser } from "@/lib/auth";
+import { wipeAccount } from "@/lib/account";
+import { saveTask, type Task } from "@/lib/brand";
+import { publishOnce } from "@/lib/publish-once";
+import * as publish from "@/lib/connectors/publish";
 import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
 import * as fresh from "@/lib/connectors/fresh";
 import { setComposioClientForTests } from "@/lib/connectors/composio";
-import { getSocialSnapshot, syncSocial, syncSocialIfDue } from "@/lib/social-stats";
+import { EMPTY_TOTALS, READERS, SOCIAL_KEY, SOCIAL_PUB_KEY, getSocialSnapshot, holdsSocial, socialDataBlock, syncSocial, syncSocialIfDue, upsertHistory, type HistoryRow, type Platform, type PlatformPart } from "@/lib/social-stats";
+import { connectedSources, reportSources, socialRead } from "@/lib/report-sources";
+import SocialStats from "@/components/app/SocialStats";
 import { syncSiteIfDue } from "@/lib/site-stats";
 import { OWNER_SYNC_KEY, ROUTINES } from "@/lib/routines";
 import * as connRoute from "@/app/api/connect/[provider]/route";
@@ -15,8 +23,10 @@ import { fakeComposio, ok, type Answer, type Call } from "./helpers/composio-fak
  * Rules 735 and 736 (spec docs/superpowers/specs/2026-10-08-social-analytics-reports-design.md, A4 and A7): any member
  * may refresh the social results at once, free, six times an hour per workspace (the bucket is the workspace's, so the
  * team and every social path share it); a refusal is 429 with Retry-After. The click, never the daily cron's read, counts
- * as activity for Dana's weekly-report routine (`ownersync:{scope}`). Composio is the shared fake; its answers follow
- * the Instagram, LinkedIn, GA4 and Search Console shapes the reader tests use.
+ * as activity for Dana's weekly-report routine (`ownersync:{scope}`). Rules 737 and 746 (A8, section 7): the social
+ * snapshot v2, one part per platform with `null` for a figure not read, a v1 snapshot read as "not read yet" and due, and
+ * the monthly history. Composio is the shared fake; its answers follow the Instagram, LinkedIn, GA4 and Search Console
+ * shapes the reader tests use.
  */
 const NOW = new Date("2026-10-08T09:00:00Z");
 const HOUR = 3600e3;
@@ -183,8 +193,8 @@ describe("the owner's refresh of the social results (rule 735)", () => {
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ ok: true, read: true, reconnect: "linkedin" });
     const snap = await getSocialSnapshot(owner.email);
-    expect(snap).toMatchObject({ at: NOW.toISOString(), ig: { followers: 1200 } });
-    expect(snap?.li).toBeUndefined();
+    expect(snap).toMatchObject({ v: 2, at: NOW.toISOString(), parts: { instagram: { followers: 1200 } } });
+    expect(snap?.v === 2 && snap.parts.linkedin).toBeUndefined();
     const [meta, linkedin] = await Promise.all([getConnection(owner.email, "meta"), getConnection(owner.email, "linkedin")]);
     expect(linkedin?.needsReconnect).toBe(NOW.toISOString());
     expect(meta?.needsReconnect, "the part that read is not asked to reconnect").toBeUndefined();
@@ -193,7 +203,7 @@ describe("the owner's refresh of the social results (rule 735)", () => {
     // The daily run reads the same way and still reports the reconnect it needs.
     await saveConnection(owner.email, liConn());
     await expect(syncSocialIfDue(owner.email, NOW, true)).rejects.toThrow("reconnect_required");
-    expect((await getSocialSnapshot(owner.email))?.ig?.followers).toBe(1200);
+    expect(await getSocialSnapshot(owner.email)).toMatchObject({ parts: { instagram: { followers: 1200 } } });
   });
 });
 
@@ -231,5 +241,125 @@ describe("Dana's routine counts the owner's click, never the cron's read (rule 7
     expect(await danaGate(owner.email)).toBeNull();
     const other = await newUser("socgate3");
     expect(await danaGate(other.email)).toBe("idle");
+  });
+});
+
+describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 667, 670)", () => {
+  const part = (platform: Platform, over: Partial<PlatformPart> = {}): PlatformPart => ({
+    platform, account: platform, range: { from: "2026-09-10", to: "2026-10-08" }, followers: 100, totals: { ...EMPTY_TOTALS, views: 10 }, posts: [], ...over,
+  });
+  /** A snapshot as the code before v2 wrote it: Instagram under `ig`, no `v`. */
+  const legacyV1 = { at: NOW.toISOString(), ig: { user: "oud", followers: 1200, range: { from: "2026-09-10", to: "2026-10-08" }, reach: 5400, views: 0, posts: [] } };
+
+  it("writes v2 with one part per read platform; null is not read (737)", async () => {
+    const owner = await newUser("socv2");
+    igAnswers();
+    liAnswers();
+    answers.INSTAGRAM_GET_USER_INSIGHTS = ok({ data: { data: [{ name: "reach", total_value: { value: 1200 } }, { name: "views", total_value: { value: 9100 } }] } });
+    const s = await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    expect(s.v).toBe(2);
+    expect(s.parts.instagram?.totals.reach).toBe(1200);
+    expect(s.parts.instagram?.totals.clicks).toBeNull();
+    expect(s.parts.linkedin?.totals.views).toBe(900);
+    expect(Object.keys(s.parts).sort()).toEqual(["instagram", "linkedin"]);
+    expect(s.errors).toEqual({});
+    // LinkedIn's actions are a count; the rate is worked out where it is shown, never stored.
+    expect(s.parts.linkedin?.totals).toMatchObject({ clicks: 9, likes: 4, comments: 1, shares: 0, engagements: 14, pageViews: null, watchMinutes: null });
+    expect(Object.keys(s.parts.linkedin!.totals)).not.toContain("engagement");
+    // Nothing that was not read became 0: Instagram read reach and views only.
+    expect(Object.entries(s.parts.instagram!.totals).filter(([, v]) => v !== null).map(([k]) => k).sort()).toEqual(["reach", "views"]);
+    expect(await getSocialSnapshot(owner.email)).toEqual(s);
+  });
+
+  it("a v1 snapshot renders as not read and is due (Review Focus 2)", async () => {
+    const owner = await newUser("socv1");
+    await saveConnection(owner.email, igConn());
+    igAnswers();
+    await db.set(SOCIAL_KEY(owner.email), legacyV1);
+    // Until the next read: Dana's block is empty, the card says not read yet without a figure, the followers tile stays shut.
+    expect(await socialDataBlock(owner.email, NOW)).toBe("");
+    const html = renderToStaticMarkup(createElement(SocialStats, { lang: "en", social: legacyV1 as never }));
+    expect(html).toContain("Social results have not been read yet.");
+    expect(html).not.toContain("1200");
+    expect(html).not.toContain("@oud");
+    expect(renderToStaticMarkup(createElement(SocialStats, { lang: "ar", social: legacyV1 as never }))).toContain("لم تُقرأ بعد");
+    expect(socialRead(legacyV1 as never)).toBe(false);
+    // Read at NOW, so the daily run would wait 20 hours; a v1 snapshot is read again at once, never migrated in place.
+    expect(await syncSocialIfDue(owner.email, NOW)).toBe(true);
+    expect(await getSocialSnapshot(owner.email)).toMatchObject({ v: 2, parts: { instagram: { account: "oud", followers: 1200 } } });
+    expect(await syncSocialIfDue(owner.email, NOW), "a v2 read an instant old is not due").toBe(false);
+  });
+
+  it("history keeps one row per platform and month, newest 13 (746)", () => {
+    let h: HistoryRow[] = [];
+    for (let m = 0; m < 15; m++) h = upsertHistory(h, [part("instagram"), ...(m < 2 ? [part("linkedin")] : [])], new Date(Date.UTC(2025, m, 15)));
+    expect(h.filter((r) => r.platform === "instagram")).toHaveLength(13);
+    expect(h.filter((r) => r.platform === "instagram").map((r) => r.month).sort()[0], "the two oldest months went").toBe("2025-03");
+    expect(h.filter((r) => r.platform === "linkedin"), "a platform not read since keeps its rows").toHaveLength(2);
+    h = upsertHistory(h, [part("instagram", { followers: 9 })], new Date(Date.UTC(2026, 2, 20)));
+    expect(h.filter((r) => r.month === "2026-03")).toHaveLength(1);
+    expect(h.find((r) => r.month === "2026-03")).toEqual({ month: "2026-03", platform: "instagram", followers: 9, totals: { ...EMPTY_TOTALS, views: 10 } });
+  });
+
+  it("each read adds its UTC month to the stored history, and a part that failed keeps its rows (746)", async () => {
+    const owner = await newUser("sochist");
+    igAnswers();
+    liAnswers();
+    await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    // A month later LinkedIn fails: Instagram gets November's row, LinkedIn keeps October's.
+    answers.LINKEDIN_GET_SHARE_STATS = { successful: false, error: "Internal error (500)" };
+    const later = new Date(Date.UTC(2026, 10, 1, 0, 30));
+    const s = await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, later);
+    expect(s.errors.linkedin).toBe("read_failed");
+    expect(s.history.map((r) => `${r.month} ${r.platform}`).sort()).toEqual(["2026-10 instagram", "2026-10 linkedin", "2026-11 instagram"]);
+    // A v1 snapshot has no history: the first v2 read starts one.
+    await db.set(SOCIAL_KEY(owner.email), legacyV1);
+    expect((await syncSocial(owner.email, { meta: igConn() }, NOW)).history.map((r) => r.platform)).toEqual(["instagram"]);
+  });
+
+  it("history goes with the account (746)", async () => {
+    const owner = await newUser("socwipe");
+    await db.set(SOCIAL_KEY(owner.email), { v: 2, at: NOW.toISOString(), parts: { instagram: part("instagram") }, errors: {}, history: upsertHistory([], [part("instagram"), part("linkedin")], NOW) });
+    await wipeAccount(owner.email);
+    expect(await getSocialSnapshot(owner.email)).toBeNull();
+  });
+
+  it("a Meta record with a Page counts as a social source; followers unlock on any part (664, 670)", () => {
+    expect(connectedSources([{ provider: "meta", meta: { via: "composio", pageId: "1" } }])).toEqual(["meta"]);
+    expect(socialRead({ v: 2, at: "", parts: { youtube: part("youtube") }, errors: {}, history: [] })).toBe(true);
+    expect(socialRead({ v: 2, at: "", parts: {}, errors: { instagram: "ig_not_professional" }, history: [] })).toBe(false);
+    // YouTube and TikTok are read through Composio only, X only on its direct connection (spec C3).
+    expect(connectedSources([{ provider: "youtube", meta: { via: "composio" } }, { provider: "tiktok", meta: { via: "composio" } }, { provider: "x", meta: {} }])).toEqual(["youtube", "tiktok", "x"]);
+    expect(connectedSources([{ provider: "youtube", meta: {} }, { provider: "tiktok", meta: {} }, { provider: "x", meta: { via: "composio" } }])).toEqual([]);
+    for (const p of ["youtube", "tiktok", "x"]) expect(reportSources([p]).read, p).toEqual(["social"]);
+  });
+
+  it("a social path holds a part exactly when one of its platform readers holds the record", () => {
+    const yt = via("youtube", { youtube: "ca_yt" }, { channelId: "UC1" });
+    expect(holdsSocial("meta", igConn())).toBe(true);
+    expect(holdsSocial("linkedin", liConn())).toBe(true);
+    expect(holdsSocial("linkedin", igConn())).toBe(false);
+    // YouTube, TikTok and the Facebook Page hold nothing until their readers exist (rules 739, 740, 742).
+    expect(holdsSocial("meta", via("meta", { facebook: "ca_fb" }, { pageId: "1" }))).toBe(false);
+    expect(holdsSocial("youtube", yt)).toBe(false);
+    expect(READERS.youtube.provider).toBe("youtube");
+    expect(READERS.facebook.provider).toBe("meta");
+    // The answer is the readers': once YouTube's holds the record, the youtube path does too.
+    vi.spyOn(READERS.youtube, "holds").mockReturnValue(true);
+    expect(holdsSocial("youtube", yt)).toBe(true);
+    expect(holdsSocial("tiktok", yt)).toBe(false);
+  });
+
+  it("publishing to Facebook, LinkedIn, YouTube, TikTok or X records the post id (667)", async () => {
+    const owner = await newUser("socpub");
+    vi.spyOn(publish, "publishTask").mockImplementation(async (_scope, _task, provider) => ({ url: "", id: `id-${provider}`, provider, status: "published" }));
+    const t: Task = { id: "tsocpub1", type: "social", channel: "instagram", title: "t", body: "عود ملكي جديد", status: "approved", createdAt: NOW.toISOString(), lang: "ar" };
+    await saveTask(owner.email, t, true);
+    const providers = ["facebook", "linkedin", "youtube", "tiktok", "x", "telegram"];
+    for (const p of providers) expect((await publishOnce(owner.email, t.id, p)).ok, p).toBe(true);
+    for (const p of providers.slice(0, 5)) expect(await db.sismember(SOCIAL_PUB_KEY(owner.email), `id-${p}`), p).toBe(true);
+    expect(await db.sismember(SOCIAL_PUB_KEY(owner.email), "id-telegram"), "Telegram has no results to mark").toBe(false);
+    const other = await newUser("socpub2");
+    expect(await db.smembers(SOCIAL_PUB_KEY(other.email))).toEqual([]);
   });
 });
