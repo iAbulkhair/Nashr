@@ -25,10 +25,10 @@ import { appOrigin } from "@/lib/origin";
  *    CRON_SECRET bearer, QStash, webhooks, MCP and OAuth clients, curl) hold no browser's cookie.
  *
  * Paths in `CROSS_SITE_EXEMPT` skip the check. The proxy still runs on them, because the staging lock must see every
- * path (src/proxy.ts `config`, rule 674), so Next buffers their body up to `experimental.proxyClientMaxBodySize` (10 MB)
- * before the routes' own 64 KB caps refuse it. None of their state-changing handlers reaches the session or a cookie,
- * even through what they import, which tests/csrf.test.ts pins, so a cross-site post to them can only do what its own
- * token or signature allows.
+ * path (src/proxy.ts `config`, rule 674), so Next buffers their body up to `experimental.proxyClientMaxBodySize` (6 MB,
+ * next.config.ts, rule 774) before the routes' own 64 KB caps refuse it. None of their state-changing handlers reaches
+ * the session or a cookie, even through what they import, which tests/csrf.test.ts pins, so a cross-site post to them
+ * can only do what its own token or signature allows.
  */
 
 /** The methods that are checked. */
@@ -44,11 +44,11 @@ export const CROSS_SITE_ERROR = "cross_site";
  * Routes that take cross-site browser or third-party posts, or that no browser session can reach. An entry ending in
  * `/` is a prefix; any other entry is one exact path, because a prefix would also cover the cookie routes beside it.
  *
- * Buffering. For every request the proxy sees with a body, Next clones that body, buffers up to 10 MB of it
- * (`experimental.proxyClientMaxBodySize`) and waits for the whole upload before the proxy's answer or the route runs.
- * Since the staging lock (rule 674) the proxy sees every path, these included, so the webhook and cron routes' 64 KB
- * caps refuse a larger body only after Next has read it. Lowering that limit for every route is a separate decision:
- * file and media uploads go through the same proxy.
+ * Buffering. For every request the proxy sees with a body, Next clones that body, buffers up to 6 MB of it
+ * (`experimental.proxyClientMaxBodySize` in next.config.ts, rule 774) and waits for the whole upload before the proxy's
+ * answer or the route runs. Since the staging lock (rule 674) the proxy sees every path, these included, so the webhook
+ * and cron routes' 64 KB caps refuse a larger body only after Next has read it. The limit is one for every route, file
+ * and media uploads included, so it stays above the largest legitimate body (`POST /api/performance`).
  *
  * - `/api/mcp`: the MCP endpoint. Bearer token only, `Access-Control-Allow-Origin: *`, and browser-based MCP clients
  *   post to it from their own origin. Exact: `/api/mcp/token` and `/api/mcp/grants` are cookie routes and stay checked.
