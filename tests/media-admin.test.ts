@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { json, newUser, signIn, signOut } from "./helpers/session";
+import { json, markVerified, newUser, signIn, signOut } from "./helpers/session";
 import { MEDIA_ENV, mediaEnv, noNetwork, resetMediaCounters } from "./helpers/media";
 
 const blob = vi.hoisted(() => ({
@@ -51,6 +51,7 @@ const get = async () => {
 beforeAll(async () => {
   customer = await newUser("mediaadm");
   await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" });
+  await markVerified(FOUNDER);
 });
 beforeEach(() => {
   calls = [];
