@@ -184,14 +184,14 @@ If the gap is zero or a second or two, sections 5 and 6 are enough. If it is lon
 
 ## 9. Rules and tests
 
-New rules, pinned in `docs/system/tests.md`:
+New rules, pinned in `docs/system/tests.md` (674 onward: 663 to 673 are taken by the Composio social results on `claude/composio-api-install-1d5bfc`; recheck before the code pull request):
 
-- **663** Staging lock: with `APP_ENV=staging`, every path but the access page and route answers 404 without a valid cookie; with `STAGING_ACCESS_KEY` missing nobody gets in; with `APP_ENV` unset or `production` the proxy behaves as before. `tests/staging.test.ts`.
-- **664** Access route: 404 off staging; rate-limited; compares with `sameSecret`; the cookie holds the HMAC token, never the code; the cookie is `HttpOnly`, `Secure`, `SameSite=Lax`; the code is never read from the URL. `tests/staging.test.ts`.
-- **665** Health route: no session needed; rate-limited; the body has exactly `ok`, `commit`, `built`; `Cache-Control: no-store`. `tests/health.test.ts`.
-- **666** Staging is never indexed: robots disallows everything, the sitemap is empty, `X-Robots-Tag` on every response. `tests/staging.test.ts`.
-- **667** `APP_ENV=staging` is production for rules 430 and 431. Added to `tests/launch-security.test.ts`.
-- **668** Expand and contract for stored shapes (section 6.3). A process rule; listed in `tests.md` as not pinned.
+- **674** Staging lock: with `APP_ENV=staging`, every path but the access page and route answers 404 without a valid cookie; with `STAGING_ACCESS_KEY` missing nobody gets in; with `APP_ENV` unset or `production` the proxy behaves as before. `tests/staging.test.ts`.
+- **675** Access route: 404 off staging; rate-limited; compares with `sameSecret`; the cookie holds the HMAC token, never the code; the cookie is `HttpOnly`, `Secure`, `SameSite=Lax`; the code is never read from the URL. `tests/staging.test.ts`.
+- **676** Health route: no session needed; rate-limited; the body has exactly `ok`, `commit`, `built`; `Cache-Control: no-store`. `tests/health.test.ts`.
+- **677** Staging is never indexed: robots disallows everything, the sitemap is empty, `X-Robots-Tag` on every response. `tests/staging.test.ts`.
+- **678** `APP_ENV=staging` is production for rules 430 and 431. Added to `tests/launch-security.test.ts`.
+- **679** Expand and contract for stored shapes (section 6.3). A process rule; listed in `tests.md` as not pinned.
 
 `tests/route-exports.test.ts` walks every route module, so the two new routes are held to handlers and segment config only with no change to it.
 
@@ -201,7 +201,7 @@ New rules, pinned in `docs/system/tests.md`:
 - `docs/system/flows.md`: release, rollback, staging access.
 - `docs/system/permissions.md`: `/api/health` (public) and `/api/staging-access` (staging only, public, rate-limited).
 - `docs/system/variables.md`: `APP_ENV=staging`, `STAGING_ACCESS_KEY`, `BUILD_COMMIT`, `BUILD_TIME`, and the staging column of 4.2.
-- `docs/system/tests.md`: rules 663 to 668.
+- `docs/system/tests.md`: rules 674 to 679.
 
 ## 11. Order of work and approvals
 
