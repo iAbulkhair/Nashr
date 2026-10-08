@@ -20,7 +20,7 @@ export default function Stories({ lang }: { lang: Lang }) {
   const rtl = lang === "ar";
   const sets = Array.from({ length: Math.ceil(SCENES.length / PER_SLIDE) }, (_, i) => SCENES.slice(i * PER_SLIDE, (i + 1) * PER_SLIDE));
   return (
-    <section className={styles.sec} id="scenes" aria-labelledby="t-scenes">
+    <section className={styles.sec} aria-labelledby="t-scenes">
       <div className={styles.sh}>
         <h2 id="t-scenes">
           <span className={styles.ul}>
