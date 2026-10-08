@@ -92,7 +92,7 @@ Each unit has one job and can be tested alone.
 
 - `src/lib/staging-access.ts`: the cookie name `thakeen_staging`, and `accessToken(key)` = HMAC-SHA256 of the fixed label `staging-access-v1` keyed by `STAGING_ACCESS_KEY`, hex. The cookie holds this token, never the code itself. `hasAccess(cookieValue)` compares it with `sameSecret`. Changing `STAGING_ACCESS_KEY` signs everyone out.
 - `src/proxy.ts`: the matcher widens from `["/", "/:lang/app/:path*"]` to every path except `_next/static`, `_next/image` and `favicon.ico`. When `isStaging()` is false the proxy does exactly what it does today, plus an early `NextResponse.next()` for paths it used not to see. When `isStaging()` is true:
-  - The access page (`/ar/staging-access`, `/en/staging-access`) and `POST /api/staging-access` pass.
+  - The access page (`/ar/staging-access`, `/en/staging-access`), `POST /api/staging-access` and `/robots.txt` pass. `robots.txt` stays open because a crawler reads a 404 robots file as "everything allowed"; on staging it says `Disallow: /` (section 5.7).
   - Any other request without a valid cookie gets a bare 404 (no page, no hint that a site exists).
   - Every response gets `X-Robots-Tag: noindex, nofollow`.
   - `STAGING_ACCESS_KEY` missing or empty means nobody gets in (fail closed).
