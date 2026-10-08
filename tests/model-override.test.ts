@@ -385,11 +385,11 @@ describe("PUT /api/models: tenant isolation", () => {
 describe("PUT /api/models: setting and clearing", () => {
   it("model null clears the override: the field is deleted, never stored as a string", async () => {
     const { u, conv } = await owner("mo-clear");
-    expect(await (await put({ target: "conversation", id: conv, model: OPUS })).json()).toEqual({ ok: true });
+    expect(await (await put({ target: "conversation", id: conv, model: OPUS })).json()).toMatchObject({ ok: true });
     expect(await (await put({ target: "brand", model: SONNET })).json()).toEqual({ ok: true });
     expect((await convOf(u, conv))!.model).toBe(OPUS);
     expect((await brandOf(u.email))!.model).toBe(SONNET);
-    expect(await (await put({ target: "conversation", id: conv, model: null })).json()).toEqual({ ok: true });
+    expect(await (await put({ target: "conversation", id: conv, model: null })).json()).toMatchObject({ ok: true });
     expect(await (await put({ target: "brand", model: null })).json()).toEqual({ ok: true });
     const c = (await convOf(u, conv))!;
     const b = (await brandOf(u.email))!;
@@ -399,6 +399,48 @@ describe("PUT /api/models: setting and clearing", () => {
     // The rest of each record is untouched, and clearing what is already clear is fine.
     expect(b).toEqual(brand);
     expect((await put({ target: "brand", model: null })).status).toBe(200);
+  });
+
+  it("a conversation pick answers the account's chat status for the model that conversation now runs on, worked out on the server; a brand pick and the confirmation answer none", async () => {
+    const { u, conv } = await owner("mo-chatstatus");
+    // Some of the allowance already used, so the answer is visibly the account's own counter.
+    await db.set(chatMsgKey(u.email), 3);
+    const opus = await put({ target: "conversation", id: conv, model: OPUS });
+    expect(opus.status).toBe(200);
+    const j = (await opus.json()) as { ok: boolean; chat: Awaited<ReturnType<typeof chatStatus>> };
+    // The answer's keys are pinned: no rate and nothing of the catalog entry, only the status the chat page already shows.
+    expect(Object.keys(j).sort()).toEqual(["chat", "ok"]);
+    expect(j.ok).toBe(true);
+    expect(Object.keys(j.chat).sort()).toEqual(["allowance", "counted", "left", "overflow", "period", "used"]);
+    expect(Object.keys(j.chat.overflow).sort()).toEqual(["available", "credits", "hold", "on", "used"]);
+    // The same server function and resolver the chat page uses, on the conversation as just written.
+    expect(j.chat).toEqual(await chatStatus(u, OPUS));
+    expect(j.chat.used).toBe(3);
+    expect(j.chat.overflow.hold).toBe(chatHoldFor(OPUS));
+    expect(chatHoldFor(OPUS)).toBeGreaterThan(chatHoldFor(DEFAULTS.chat));
+    const text = JSON.stringify(j);
+    for (const k of ["\"rate\"", "cacheRead", "cacheWrite", "\"in\"", "\"out\"", "usd", "Usd", "\"model\"", OPUS]) expect(text, k).not.toContain(k);
+    // Clearing the pick answers the default chat model's hold (Automatic).
+    const cleared = (await (await put({ target: "conversation", id: conv, model: null })).json()) as typeof j;
+    expect(cleared.chat).toEqual(await chatStatus(u, DEFAULTS.chat));
+    expect(cleared.chat.overflow.hold).toBe(chatHoldFor(DEFAULTS.chat));
+    // A brand pick and the China confirmation change no chat ceiling: they answer exactly { ok: true }.
+    expect(await (await put({ target: "brand", model: OPUS })).json()).toEqual({ ok: true });
+    expect(await (await put({ confirmChina: true })).json()).toEqual({ ok: true });
+  });
+
+  it("the chat status a pick answers is the caller's account's: a member's pick answers the owner's counter, another account's conversation answers 404 with no status", async () => {
+    const { u, conv } = await owner("mo-chatstatus-acc");
+    await db.set(chatMsgKey(u.email), 5);
+    const member = await newMember((await getUser(u.email))!, "member");
+    await signIn(member.email);
+    const j = (await (await put({ target: "conversation", id: conv, model: OPUS })).json()) as { chat: { used: number } };
+    expect(j.chat.used).toBe(5);
+    const other = await owner("mo-chatstatus-other");
+    await signIn(other.u.email);
+    const r = await put({ target: "conversation", id: conv, model: OPUS });
+    expect(r.status).toBe(404);
+    expect(await r.json()).toEqual({ error: "not_found" });
   });
 
   it("the brand pick does not change the brand file's content or its updatedAt", async () => {
@@ -621,6 +663,9 @@ describe("call time: the chat routes", () => {
   it("a valid conversation pick runs the turn on it and counts its messages; the default thread stays automatic", async () => {
     const { u, conv } = await owner("mo-chat-pick");
     await put({ target: "conversation", id: conv, model: OPUS });
+    // The pick resolved the conversation's model once for its chat status answer; count the turn's own resolution only.
+    expect(askedFor("chat")).toHaveLength(1);
+    rt.asked = [];
     const r = await send({ conv });
     expect(r.status).toBe(200);
     const j = (await r.json()) as { message: { content: string } };

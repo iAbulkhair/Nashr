@@ -99,18 +99,99 @@ export function pickRefusal(status: number, error: unknown, confirming: boolean)
   return "failed";
 }
 
-/** Send the bodies in order and stop at the first refusal (a refused confirmation never sends the pick). null: all landed. */
-export async function sendPick(bodies: readonly PickBody[], send: (b: PickBody) => Promise<{ status: number; error?: unknown }>): Promise<Refusal | null> {
+/**
+ * Send the bodies in order and stop at the first refusal (a refused confirmation never sends the pick). `why` null: all
+ * landed, and `body` is the last answer (the pick's), passed through as it came; on a refusal `body` is that answer.
+ */
+export async function sendPick(bodies: readonly PickBody[], send: (b: PickBody) => Promise<{ status: number; body?: unknown }>): Promise<{ why: Refusal | null; body: unknown }> {
+  let body: unknown = null;
   for (const b of bodies) {
-    let r: { status: number; error?: unknown };
+    let r: { status: number; body?: unknown };
     try {
       r = await send(b);
     } catch {
-      return "failed";
+      return { why: "failed", body: null };
     }
-    if (r.status < 200 || r.status >= 300) return pickRefusal(r.status, r.error, "confirmChina" in b);
+    body = r.body ?? null;
+    if (r.status < 200 || r.status >= 300) return { why: pickRefusal(r.status, isObj(body) ? body.error : undefined, "confirmChina" in b), body };
   }
-  return null;
+  return { why: null, body };
+}
+
+/**
+ * The account's chat status as `PUT /api/models` answers it after a conversation pick: `chatStatus` worked out on the
+ * server for the model that conversation now runs on. The same shape as `ChatStatus` (src/lib/chat-allowance.ts, a
+ * server module this file may not import; tests/model-picker-copy.test.ts checks the two agree both ways).
+ */
+export type PickedChat = {
+  used: number;
+  allowance: number;
+  left: number;
+  counted: number;
+  period: "trial" | "month";
+  overflow: { on: boolean; available: boolean; used: number; credits: number; hold: number };
+};
+
+const nums = (o: Record<string, unknown>, keys: readonly string[]) => keys.every((k) => typeof o[k] === "number" && Number.isFinite(o[k]));
+
+/** The `chat` of a pick's answer when it has the server's shape, else null (the allowance line then keeps what it shows). */
+export function pickedChat(body: unknown): PickedChat | null {
+  if (!isObj(body) || !isObj(body.chat)) return null;
+  const c = body.chat;
+  if (!nums(c, ["used", "allowance", "left", "counted"]) || (c.period !== "trial" && c.period !== "month")) return null;
+  const o = c.overflow;
+  if (!isObj(o) || typeof o.on !== "boolean" || typeof o.available !== "boolean" || !nums(o, ["used", "credits", "hold"])) return null;
+  return c as PickedChat;
+}
+
+/** How long a refusal note stays under the picker before it goes away by itself (it also goes on Escape and the next pick). */
+export const NOTE_MS = 8_000;
+
+/** A conversation as the picker needs it: its id and its stored pick. */
+export type ConvPickRow = { id: string; model?: string | null };
+
+/** The picks made in this chat panel, by conversation id; null: cleared here (Automatic). */
+export type MadePicks = Readonly<Record<string, string | null>>;
+
+/**
+ * The stored pick of conversation `conv`, latest first: a pick made in this panel, then the active conversation's record
+ * as the chat page read it on the server (so a conversation older than the hundred newest listed still shows its own
+ * pick), then the listed rows (`GET /api/conversations`).
+ */
+export function storedPick(conv: string, made: MadePicks, active: ConvPickRow | null | undefined, listed: readonly ConvPickRow[]): string | undefined {
+  if (Object.prototype.hasOwnProperty.call(made, conv)) return made[conv] ?? undefined;
+  if (active && active.id === conv) return active.model ?? undefined;
+  return listed.find((c) => c.id === conv)?.model ?? undefined;
+}
+
+/**
+ * Whether choosing `id` changes what is stored. Compared with the stored value itself, not with the entry shown: a stored
+ * id the list no longer offers shows as Automatic, and choosing Automatic then sends null, which clears the stale record.
+ */
+export const pickChanges = (stored: unknown, id: string | null): boolean => (typeof stored === "string" ? stored : null) !== id;
+
+/** One step of a pick: "pending" before the answer, null when it landed, else the refusal. */
+export type PickOutcome = "pending" | Refusal | null;
+
+/**
+ * The panel's picks after one step of a pick on `conv`: shown at once, kept when it landed, and on a refusal `previous`
+ * put back on that same conversation. Only `conv` changes, so a refusal that arrives after the person moved to another
+ * conversation restores the one the pick was for, never the one open now.
+ */
+export function nextMadePicks(made: MadePicks, conv: string, previous: string | null, model: string | null, outcome: PickOutcome): MadePicks {
+  return { ...made, [conv]: outcome === "pending" || outcome === null ? model : previous };
+}
+
+/** The brand field: the stored pick (`saved`) and the person's unsaved choice (`choice`, undefined: none). */
+export type BrandPick = { saved: string | null; choice: string | null | undefined };
+
+/**
+ * The brand field after one step of a save: saved at once, kept when it landed; on a refusal the saved value goes back to
+ * `previous` and the choice stays selected so Save can be pressed again, unless the list no longer offers it.
+ */
+export function nextBrandPick(previous: string | null, model: string | null, outcome: PickOutcome): BrandPick {
+  if (outcome === "pending" || outcome === null) return { saved: model, choice: undefined };
+  return { saved: previous, choice: outcome === "unavailable" ? undefined : model };
 }
 
 /** "{x}" and "{n}" filled in. */

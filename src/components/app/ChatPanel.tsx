@@ -20,6 +20,7 @@ import type { Journey } from "@/lib/journey";
 import JourneyCard from "./JourneyCard";
 import AgentAvatar from "@/components/app/AgentAvatar";
 import { ChatModelPicker } from "./ModelPicker";
+import { nextMadePicks, storedPick, type MadePicks } from "@/lib/model-picker";
 import { taskVersion } from "@/lib/task-version";
 
 /** A conversation as GET /api/conversations lists it. `model`: its chat pick (absent: automatic), shown by the header's picker. */
@@ -471,7 +472,7 @@ function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[
   return [...out];
 }
 
-export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey, canApprove = true, canBrand = true, canRun = true, canDecline = true, handoffs, chat: chat0, canConfirmChina = false }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey; /** `can(u, "publish")`: approve buttons on item cards */ canApprove?: boolean; /** `can(u, "brand.write")`: Save and Dismiss on brand-change cards */ canBrand?: boolean; /** `can(u, "generate")` and `can(u, "drafts")`: Run and Decline on Majed's handoff cards */ canRun?: boolean; canDecline?: boolean; /** the handoffs this thread names, read on the server (`handoffViews`): null for one whose record is gone */ handoffs?: Record<string, HandoffView | null>; /** the account's chat messages now (`chatStatus`, read on the server); each answer brings the next */ chat?: ChatStatus; /** the owner, not a founder impersonating (`can(u, "profile.account")`): may allow China-hosted models in the model picker */ canConfirmChina?: boolean }) {
+export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey, canApprove = true, canBrand = true, canRun = true, canDecline = true, handoffs, chat: chat0, canConfirmChina = false, active = null }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey; /** `can(u, "publish")`: approve buttons on item cards */ canApprove?: boolean; /** `can(u, "brand.write")`: Save and Dismiss on brand-change cards */ canBrand?: boolean; /** `can(u, "generate")` and `can(u, "drafts")`: Run and Decline on Majed's handoff cards */ canRun?: boolean; canDecline?: boolean; /** the handoffs this thread names, read on the server (`handoffViews`): null for one whose record is gone */ handoffs?: Record<string, HandoffView | null>; /** the account's chat messages now (`chatStatus`, read on the server); each answer brings the next */ chat?: ChatStatus; /** the owner, not a founder impersonating (`can(u, "profile.account")`): may allow China-hosted models in the model picker */ canConfirmChina?: boolean; /** the open conversation's record as the page read it (`getConversation`): its id and chat pick, for the model picker */ active?: { id: string; model?: string } | null }) {
   const [msgs, setMsgs] = useState<ChatMsg[]>(initial);
   const [text, setText] = useState(initialPrompt);
   const [busy, setBusy] = useState(false);
@@ -498,14 +499,9 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
   useEffect(() => { fetch("/api/conversations").then((r) => r.json()).then((j) => { if (j.ok) { setConvs(j.conversations); if (initialConv) setAgent((j.conversations as Conv[]).find((c) => c.id === initialConv)?.agent ?? "noor"); } }); }, [initialConv]);
   // After the model picker's `not_found` (the conversation is gone): the list again, without touching the agent.
   const reloadConvs = useCallback(() => { fetch("/api/conversations").then((r) => r.json()).then((j) => { if (j.ok) setConvs(j.conversations); }).catch(() => {}); }, []);
-  // The picker's optimistic change and its rollback: the conversation's `model` in the panel's copy of the list.
-  const setConvModel = useCallback((id: string, model: string | undefined) => setConvs((p) => p.map((c) => {
-    if (c.id !== id) return c;
-    const next = { ...c };
-    if (model === undefined) delete next.model;
-    else next.model = model;
-    return next;
-  })), []);
+  // The picks made in this panel, by conversation (the picker's optimistic change and its rollback, `nextMadePicks`).
+  // They come before the page's record of the open conversation and the listed rows (`storedPick`).
+  const [made, setMade] = useState<MadePicks>({});
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -665,7 +661,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           <h1 className="clip font-display text-xl font-bold text-ink">{A[agent].name} <span className="text-sm font-normal text-muted">· {title}</span></h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <ChatModelPicker t={t} lang={lang} conv={conv} stored={convs.find((c) => c.id === conv)?.model} canConfirmChina={canConfirmChina} onStored={(model) => setConvModel(conv, model)} onGone={reloadConvs} />
+          <ChatModelPicker t={t} lang={lang} conv={conv} stored={storedPick(conv, made, active, convs)} canConfirmChina={canConfirmChina} onPicked={(c, previous, model, outcome) => setMade((p) => nextMadePicks(p, c, previous, model, outcome))} onChat={setChatNow} onGone={reloadConvs} />
           <button onClick={() => newConv()} className="btn btn-secondary btn-xs"><Icon name="plus" className="h-3.5 w-3.5" />{t.chat.newConv}</button>
           <Link href={`/${lang}/app/billing`} className="tnum rounded-full bg-lilac px-3 py-1 text-xs text-ink/80">{credits} {t.nav.credits}</Link>
         </div>

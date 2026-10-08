@@ -6,19 +6,28 @@ import { join } from "node:path";
 import { appDict } from "@/lib/app-i18n";
 import { MODELS, pickerView } from "@/lib/models/catalog";
 import {
+  NOTE_MS,
   chosenId,
   formatMultiplier,
   needsChinaConfirm,
+  nextBrandPick,
+  nextMadePicks,
   pickBodies,
+  pickChanges,
   pickRefusal,
+  pickedChat,
   pickerOptions,
   readModelsView,
   sendPick,
+  storedPick,
   unitsText,
+  type MadePicks,
   type ModelsView,
   type PickBody,
+  type PickedChat,
   type PickerRowView,
 } from "@/lib/model-picker";
+import type { ChatStatus } from "@/lib/chat-allowance";
 import { ModelOptionList } from "@/components/app/ModelPicker";
 
 /**
@@ -80,40 +89,89 @@ describe("the picker's copy (app dictionary, both languages)", () => {
     expect(M.ar.china).toBe("مستضاف في الصين");
     expect(M.en.brandTitle).toBe("Default model for content");
   });
+
+  it("the brand multiplier reads as a multiplier, never as a price: '{x} per batch', no credit count (review I-1)", () => {
+    expect(M.en.perBatch).toBe("{x} per batch");
+    expect(M.ar.perBatch).toBe("{x} لكل دفعة");
+    expect(M.en.perMessage).toBe("{x} per message");
+    for (const s of [M.en.perBatch, M.ar.perBatch, M.en.perMessage, M.ar.perMessage]) expect(s).not.toMatch(/credit|كريدت/i);
+  });
+
+  it("the Arabic refusals read unambiguously without vowel marks, and the brand note reads naturally (review minor 1 and 2)", () => {
+    expect(M.ar.unavailable).toBe("هذا النموذج غير متاح الآن. أعدنا تحميل القائمة، اختر نموذجاً آخر.");
+    expect(M.ar.notFound).toBe("لم نجد هذه المحادثة. أعدنا تحميل قائمة المحادثات.");
+    expect(M.ar.brandSub).toBe("تعمل عليه كل دفعة محتوى لهذه العلامة. وإن كان نوع الدفعة مما لا يكتبه هذا النموذج، تعمل على الاختيار التلقائي.");
+    for (const [k, s] of leaves(M.ar)) expect(s, k).not.toContain("حدّثنا");
+  });
 });
 
-/** Words and ids that name a model or its maker. Case-sensitive: `CLAUDE_PAUSED` is an identifier, not copy. */
+/**
+ * Words and ids that name a MODEL (ruling 6: no model name in public copy). Case-sensitive: `CLAUDE_PAUSED` is an
+ * identifier, not copy. A model maker is not a model name; see MAKERS below for the one place a maker is named.
+ */
 const NAMES = new RegExp(
   [
-    "\\b(Claude|Anthropic|Opus|Sonnet|Haiku|DeepSeek|Qwen|Kimi|GLM)\\b",
-    "كلود|أنثروبيك|أوبس|سونيت|هايكو",
+    "\\b(Claude|Opus|Sonnet|Haiku|DeepSeek|Qwen|Kimi|GLM)\\b",
+    "كلود|أوبس|سونيت|هايكو",
     ...MODELS.flatMap((m) => [m.id, m.label.en, m.label.ar]).map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
   ].join("|"),
 );
+const MAKERS = /\bAnthropic\b|أنثروبيك/;
+/**
+ * The one allowed maker mention: the privacy policy's list of AI providers that process the customer's content
+ * (`src/lib/legal.ts`, shown on the privacy and terms pages and in `llms.txt`). A sub-processor disclosure is owed to
+ * the customer, so it names the text provider; it names no model.
+ */
+const MAKER_ALLOWED = [{ file: "src/lib/legal.ts", line: /Anthropic للنصوص|Anthropic for text/ }];
 const walk = (p: string): string[] =>
   statSync(p).isDirectory() ? readdirSync(p).flatMap((f) => walk(join(p, f))) : /\.(ts|tsx|md|mdx|txt)$/.test(p) ? [p] : [];
+/** Comments removed with their line breaks kept, so a hit still reports its own line. A `//` after `:` (a URL) stays. */
+const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, "")).replace(/(?<![:"'\w])\/\/.*$/gm, "");
+
+/** The public copy: the pages outside the signed-in app, `llms.txt`, `/p`, the site components, copy modules and the blog. */
+const PUBLIC = () => [
+  ...walk("src/app/[lang]").filter((f) => !f.startsWith(join("src/app/[lang]", "app") + "/")),
+  ...walk("src/app/llms.txt"),
+  ...walk("src/app/p"),
+  ...readdirSync("src/components").filter((f) => f.endsWith(".tsx")).map((f) => join("src/components", f)),
+  ...walk("src/components/home"),
+  ...["i18n", "home", "site", "help", "pages-vs", "pages-industry", "changelog", "dictionary", "legal"].map((f) => `src/lib/${f}.ts`),
+  ...walk("content/blog"),
+];
+/** Copy modules whose comments are notes for developers (they name models there), scanned with the comments removed. */
+const PUBLIC_CODE = ["src/lib/tools.ts", "src/lib/pricing.ts"];
+const linesOf = (f: string) => (PUBLIC_CODE.includes(f) ? stripComments(readFileSync(f, "utf8")) : readFileSync(f, "utf8")).split("\n");
 
 describe("no public marketing page mentions a model name", () => {
-  it("the pages outside the signed-in app, the site copy modules and the blog name no model and no model maker", () => {
-    const files = [
-      ...walk("src/app/[lang]").filter((f) => !f.startsWith(join("src/app/[lang]", "app") + "/")),
-      ...walk("src/app/llms.txt"),
-      ...walk("src/app/p"),
-      ...readdirSync("src/components").filter((f) => f.endsWith(".tsx")).map((f) => join("src/components", f)),
-      ...walk("src/components/home"),
-      ...["i18n", "home", "site", "help", "pages-vs", "pages-industry", "changelog", "dictionary"].map((f) => `src/lib/${f}.ts`),
-      ...walk("content/blog"),
-    ];
+  it("the pages outside the signed-in app, the site copy modules (privacy, free tools and pricing included) and the blog name no model", () => {
+    const files = [...PUBLIC(), ...PUBLIC_CODE];
     expect(files.length).toBeGreaterThan(40);
-    const hits = files.flatMap((f) => readFileSync(f, "utf8").split("\n").flatMap((l, i) => (NAMES.test(l) ? [`${f}:${i + 1}`] : [])));
+    const hits = files.flatMap((f) => linesOf(f).flatMap((l, i) => (NAMES.test(l) ? [`${f}:${i + 1}`] : [])));
     expect(hits).toEqual([]);
+    // The comments removed from the two code modules do name models: the scan above would catch them if they reached copy.
+    expect(PUBLIC_CODE.some((f) => NAMES.test(readFileSync(f, "utf8")))).toBe(true);
+    expect(stripComments("a // Claude\nb /* Opus\n */ c 'https://x.example/Kimi'")).toBe("a \nb \n c 'https://x.example/Kimi'");
+  });
+
+  it("a model maker is named only in the privacy policy's AI-provider disclosure, which is allow-listed by file and line", () => {
+    const files = [...PUBLIC(), ...PUBLIC_CODE];
+    const hits = files.flatMap((f) => linesOf(f).flatMap((l, i) => (MAKERS.test(l) && !MAKER_ALLOWED.some((a) => a.file === f && a.line.test(l)) ? [`${f}:${i + 1}`] : [])));
+    expect(hits).toEqual([]);
+    // The disclosure is there (in both languages), so the allow-list is not hiding a line that moved away.
+    const legal = readFileSync("src/lib/legal.ts", "utf8");
+    expect(legal).toMatch(/Anthropic للنصوص/);
+    expect(legal).toMatch(/Anthropic for text/);
   });
 
   it("the picker's own copy names no model either: names reach the signed-in picker only from the server's labels", () => {
-    for (const [k, s] of [...leaves(M.ar), ...leaves(M.en)]) expect(s, k).not.toMatch(NAMES);
+    for (const [k, s] of [...leaves(M.ar), ...leaves(M.en)]) {
+      expect(s, k).not.toMatch(NAMES);
+      expect(s, k).not.toMatch(MAKERS);
+    }
     for (const f of ["src/lib/model-picker.ts", "src/components/app/ModelPicker.tsx"]) {
-      const code = readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
+      const code = stripComments(readFileSync(f, "utf8"));
       expect(code, f).not.toMatch(NAMES);
+      expect(code, f).not.toMatch(MAKERS);
     }
   });
 });
@@ -136,10 +194,24 @@ describe("the picker lists Automatic first and labels china entries", () => {
     expect(en.indexOf("Hosted in China")).toBeGreaterThan(en.indexOf("China model"));
     expect(ar.split("مستضاف في الصين").length - 1).toBe(1);
     expect(ar.indexOf("تلقائي (موصى به)")).toBeLessThan(ar.indexOf("نموذج غربي"));
-    // The chosen entry is marked for assistive technology, and only that one.
+    // The chosen entry is marked for assistive technology, and only that one: a plain list of buttons, the chosen one
+    // `aria-current` (review minor 5: no listbox or option role around a button, which assistive technology reports as
+    // a nested interactive control).
     const sel = renderToStaticMarkup(createElement(ModelOptionList, { t: appDict.en, lang: "en", surface: "chat", options: pickerOptions(view(), "chat", "en", M.en.auto), selected: "w-std", onPick: () => {} }));
-    expect(sel.split('aria-selected="true"').length - 1).toBe(1);
-    expect(sel).toMatch(/aria-selected="true"[^>]*>(?:(?!<\/li>).)*West model/);
+    expect(sel.split('aria-current="true"').length - 1).toBe(1);
+    expect(sel).toMatch(/<button[^>]*aria-current="true"[^>]*>(?:(?!<\/li>).)*West model/);
+    expect(sel).not.toMatch(/role="(?:listbox|option)"|aria-selected/);
+    expect((sel.match(/<button\b/g) ?? []).length).toBe(3);
+  });
+
+  it("the trigger is a disclosure: aria-controls names the popover only while it is shown, whatever it holds, and Escape gives focus back to the trigger (review minor 5)", () => {
+    const src = readFileSync("src/components/app/ModelPicker.tsx", "utf8");
+    expect(src).not.toMatch(/role="(?:listbox|option)"|aria-selected|aria-haspopup/);
+    // The id it points at is on the popover itself, which wraps the list, the default-thread hint and the load failure alike.
+    expect(src).toMatch(/aria-controls=\{open \? popId : undefined\}/);
+    expect(src).toMatch(/<div id=\{popId\}/);
+    expect(src).toMatch(/e\.key === "Escape"\) \{ setOpen\(false\); trigger\.current\?\.focus\(\); \}/);
+    expect(src).toMatch(/<button ref=\{trigger\}/);
   });
 });
 
@@ -183,11 +255,16 @@ describe("ruling 1: multipliers come from the server, per surface and per model 
     expect(html).not.toContain("counts as 1 message");
   });
 
-  it("the brand list words the multiplier per batch of credits", () => {
+  it("the brand list words the multiplier per batch, never as a number of credits", () => {
     const html = renderToStaticMarkup(createElement(ModelOptionList, { t: appDict.en, lang: "en", surface: "generate", options: pickerOptions(view(), "generate", "en", M.en.auto), selected: null, onPick: () => {} }));
     // The multiplier sits in its own left-to-right span inside the sentence: compare the text without the markup.
-    expect(html.replace(/<[^>]+>/g, "")).toContain(M.en.perBatch.replace("{x}", "x0.45"));
+    const text = html.replace(/<[^>]+>/g, "");
+    expect(text).toContain("x0.45 per batch");
+    expect(text).not.toMatch(/credits? per batch/);
     expect(html).not.toContain("x1.25");
+    const ar = renderToStaticMarkup(createElement(ModelOptionList, { t: appDict.ar, lang: "ar", surface: "generate", options: pickerOptions(view(), "generate", "ar", M.ar.auto), selected: null, onPick: () => {} })).replace(/<[^>]+>/g, "");
+    expect(ar).toContain("x0.45 لكل دفعة");
+    expect(ar).not.toContain("كريدت");
   });
 
   it("neither the picker module nor the component holds a multiplier, a tier table or a rate", () => {
@@ -257,14 +334,14 @@ describe("ruling 4: a China-hosted pick asks the owner once, then sends the conf
     const bodies = pickBodies("conversation", "abc123", "cn-eco", true);
     expect(bodies).toEqual([{ confirmChina: true }, { target: "conversation", id: "abc123", model: "cn-eco" }]);
     const sent: PickBody[] = [];
-    expect(await sendPick(bodies, async (b) => { sent.push(b); return { status: 200 }; })).toBeNull();
+    expect((await sendPick(bodies, async (b) => { sent.push(b); return { status: 200, body: { ok: true } }; })).why).toBeNull();
     expect(sent).toEqual(bodies);
   });
 
   it("a refused confirmation stops there: the pick is never sent", async () => {
     const sent: PickBody[] = [];
-    const out = await sendPick(pickBodies("brand", undefined, "cn-eco", true), async (b) => { sent.push(b); return { status: 403, error: "forbidden" }; });
-    expect(out).toBe("owner_only");
+    const out = await sendPick(pickBodies("brand", undefined, "cn-eco", true), async (b) => { sent.push(b); return { status: 403, body: { error: "forbidden" } }; });
+    expect(out.why).toBe("owner_only");
     expect(sent).toEqual([{ confirmChina: true }]);
   });
 });
@@ -285,7 +362,13 @@ describe("ruling 5: each refusal maps to one answer, and a failure is reported s
   });
 
   it("a request that throws (offline) is a failure, not a success", async () => {
-    expect(await sendPick(pickBodies("conversation", "abc123", "w-std", false), async () => { throw new Error("offline"); })).toBe("failed");
+    expect((await sendPick(pickBodies("conversation", "abc123", "w-std", false), async () => { throw new Error("offline"); })).why).toBe("failed");
+  });
+
+  it("the refusal's error code is read from the answer's body", async () => {
+    expect((await sendPick(pickBodies("conversation", "abc123", "w-std", false), async () => ({ status: 400, body: { error: "not_pickable" } }))).why).toBe("unavailable");
+    expect((await sendPick(pickBodies("conversation", "abc123", "w-std", false), async () => ({ status: 409, body: { error: "busy" } }))).why).toBe("busy");
+    expect((await sendPick(pickBodies("conversation", "abc123", "w-std", false), async () => ({ status: 500, body: null }))).why).toBe("failed");
   });
 
   it("every refusal has its sentence in both languages", () => {
@@ -312,6 +395,146 @@ describe("ruling 7: right to left and left to right", () => {
     const html = renderToStaticMarkup(createElement(ModelOptionList, { t: appDict.ar, lang: "ar", surface: "chat", options: pickerOptions(view({ models: [{ ...WEST, label: { ar: "Model X", en: "Model X" } }] }), "chat", "ar", M.ar.auto), selected: null, onPick: () => {} }));
     expect(html).toMatch(/<bdi[^>]*>Model X<\/bdi>/);
     expect(html).toMatch(/dir="ltr"[^>]*>x1\.25</);
+  });
+});
+
+/** The account's chat status as `PUT /api/models` answers it for a conversation pick (`chatStatus`, on the server). */
+const STATUS: ChatStatus = { used: 3, allowance: 30, left: 27, counted: 3, period: "month", overflow: { on: true, available: true, used: 0, credits: 0, hold: 4 } };
+
+describe("review I-2: after a conversation pick the allowance line takes the server's chat status for the new model", () => {
+  it("the client's copy of the status has exactly the server's shape, both ways (a drift fails the type check)", () => {
+    const toStatus = (p: PickedChat): ChatStatus => p;
+    const toPicked = (s: ChatStatus): PickedChat => s;
+    expect(toPicked(toStatus(STATUS))).toEqual(STATUS);
+  });
+
+  it("the pick's answer is passed through as it came: the chat status when it has the shape, else nothing", async () => {
+    const out = await sendPick(pickBodies("conversation", "abc123", "w-std", true), async (b) => ("confirmChina" in b ? { status: 200, body: { ok: true } } : { status: 200, body: { ok: true, chat: STATUS } }));
+    expect(out.why).toBeNull();
+    // The last answer is the pick's, not the confirmation's.
+    expect(pickedChat(out.body)).toEqual(STATUS);
+    expect(pickedChat({ ok: true })).toBeNull();
+    expect(pickedChat(null)).toBeNull();
+    expect(pickedChat({ chat: { ...STATUS, left: "27" } })).toBeNull();
+    expect(pickedChat({ chat: { ...STATUS, period: "year" } })).toBeNull();
+    expect(pickedChat({ chat: { ...STATUS, overflow: { ...STATUS.overflow, hold: undefined } } })).toBeNull();
+    // A refused pick hands over nothing to show.
+    const refused = await sendPick(pickBodies("conversation", "abc123", "w-std", false), async () => ({ status: 503, body: { error: "busy", chat: STATUS } }));
+    expect(refused.why).toBe("busy");
+  });
+
+  it("the chat panel replaces its status with the one the pick answered, and computes nothing itself", () => {
+    const picker = readFileSync("src/components/app/ModelPicker.tsx", "utf8");
+    expect(picker).toMatch(/const chat = pickedChat\(body\);\s*if \(chat\) onChat\(chat\);/);
+    const panel = readFileSync("src/components/app/ChatPanel.tsx", "utf8");
+    expect(panel).toMatch(/onChat=\{setChatNow\}/);
+  });
+});
+
+describe("review minor 6: the selection comes from the active conversation's record, not only from the newest hundred listed", () => {
+  const listed = [{ id: "c1", model: "w-std" }, { id: "c2" }];
+  it("a pick made here first, then the record the chat page read on the server, then the list", () => {
+    // An old conversation opened with ?conv=, not among the listed rows: its own record decides.
+    expect(storedPick("old", {}, { id: "old", model: "w-std" }, listed)).toBe("w-std");
+    expect(storedPick("old", {}, { id: "old" }, listed)).toBeUndefined();
+    // The active record wins over a listed copy of the same conversation.
+    expect(storedPick("c1", {}, { id: "c1" }, listed)).toBeUndefined();
+    expect(storedPick("c2", {}, { id: "c2", model: "cn-eco" }, listed)).toBe("cn-eco");
+    // Another conversation than the active one: the list.
+    expect(storedPick("c1", {}, { id: "old", model: "cn-eco" }, listed)).toBe("w-std");
+    expect(storedPick("c1", {}, null, listed)).toBe("w-std");
+    expect(storedPick("nope", {}, null, listed)).toBeUndefined();
+    // A pick made in this panel is the latest: it wins, a cleared one (null) included.
+    expect(storedPick("old", { old: "cn-eco" }, { id: "old", model: "w-std" }, listed)).toBe("cn-eco");
+    expect(storedPick("c1", { c1: null }, null, listed)).toBeUndefined();
+    // An inherited name is not a pick.
+    expect(storedPick("toString", {}, null, listed)).toBeUndefined();
+  });
+
+  it("the chat page hands the panel the active conversation's id and pick only, and the panel feeds them to storedPick", () => {
+    const page = readFileSync("src/app/[lang]/app/chat/page.tsx", "utf8");
+    expect(page).toMatch(/active=\{active \? \{ id: active\.id, model: active\.model \} : null\}/);
+    // The same record the allowance line's chat status was worked out for.
+    expect(page).toMatch(/const record = getConversation\(sc\(u\), conv\);/);
+    expect(page).toMatch(/record\.then\(\(c\) => chatStatus\(u, chatRouteFor\(u, c\)\.model\)\)/);
+    const panel = readFileSync("src/components/app/ChatPanel.tsx", "utf8");
+    expect(panel).toMatch(/stored=\{storedPick\(conv, made, active, convs\)\}/);
+  });
+});
+
+describe("review minor 7: a stored id the list no longer offers can be cleared", () => {
+  it("choosing Automatic over a stale stored id is a change (it sends null); choosing what is stored is not", () => {
+    expect(pickChanges("gone-model", null)).toBe(true);
+    expect(pickChanges(undefined, null)).toBe(false);
+    expect(pickChanges(null, null)).toBe(false);
+    expect(pickChanges("w-std", "w-std")).toBe(false);
+    expect(pickChanges("w-std", null)).toBe(true);
+    expect(pickChanges(undefined, "w-std")).toBe(true);
+    // What the list shows for the stale id is Automatic, and the Automatic body is model null.
+    const opts = pickerOptions(view(), "generate", "en", M.en.auto);
+    expect(chosenId("gone-model", opts)).toBeNull();
+    expect(pickBodies("brand", undefined, chosenId("gone-model", opts), false)).toEqual([{ target: "brand", model: null }]);
+  });
+
+  it("both pickers decide a change from the stored value itself, not from the entry shown", () => {
+    const src = readFileSync("src/components/app/ModelPicker.tsx", "utf8");
+    expect(src).toMatch(/!pickChanges\(stored, o\.id\)/);
+    expect(src).toMatch(/const canSave = pickChanges\(pick\.saved, current\);/);
+    expect(src).not.toMatch(/o\.id === selected\)/);
+  });
+});
+
+describe("review minor 9: the optimistic change and its rollback are one pure step", () => {
+  it("a conversation pick shows at once, stays when it landed, and a refusal puts back that conversation's previous pick", () => {
+    let made: MadePicks = {};
+    made = nextMadePicks(made, "c1", null, "w-std", "pending");
+    expect(made).toEqual({ c1: "w-std" });
+    expect(nextMadePicks(made, "c1", null, "w-std", null)).toEqual({ c1: "w-std" });
+    expect(nextMadePicks(made, "c1", null, "w-std", "busy")).toEqual({ c1: null });
+    expect(nextMadePicks({ c1: "cn-eco" }, "c1", "w-std", null, "unavailable")).toEqual({ c1: "w-std" });
+  });
+
+  it("a rollback that arrives after the person switched conversation restores the conversation the pick was for, not the one open now", () => {
+    // Pick on c1 (was w-std), then switch to c2 and pick there; c1's request is refused afterwards.
+    let made: MadePicks = {};
+    made = nextMadePicks(made, "c1", "w-std", "cn-eco", "pending");
+    made = nextMadePicks(made, "c2", null, "w-std", "pending");
+    made = nextMadePicks(made, "c1", "w-std", "cn-eco", "failed");
+    expect(made).toEqual({ c1: "w-std", c2: "w-std" });
+    expect(storedPick("c1", made, { id: "c2" }, [])).toBe("w-std");
+    expect(storedPick("c2", made, { id: "c2" }, [])).toBe("w-std");
+  });
+
+  it("the brand field: saved at once, kept when it landed; a refusal restores the saved value and keeps the choice for another try, unless the list dropped it", () => {
+    expect(nextBrandPick("w-std", "cn-eco", "pending")).toEqual({ saved: "cn-eco", choice: undefined });
+    expect(nextBrandPick("w-std", "cn-eco", null)).toEqual({ saved: "cn-eco", choice: undefined });
+    expect(nextBrandPick("w-std", "cn-eco", "busy")).toEqual({ saved: "w-std", choice: "cn-eco" });
+    expect(nextBrandPick(null, "cn-eco", "unavailable")).toEqual({ saved: null, choice: undefined });
+    // Clearing a stale id that is refused puts the stale id back as it was.
+    expect(nextBrandPick("gone-model", null, "failed")).toEqual({ saved: "gone-model", choice: null });
+  });
+
+  it("the components apply these steps and nothing else to roll back", () => {
+    const src = readFileSync("src/components/app/ModelPicker.tsx", "utf8");
+    expect(src).toMatch(/onPicked\(at, previous, o\.id, "pending"\)/);
+    expect(src).toMatch(/onPicked\(at, previous, o\.id, why\)/);
+    expect(src).toMatch(/setPick\(nextBrandPick\(previous, o\.id, "pending"\)\)/);
+    expect(src).toMatch(/setPick\(nextBrandPick\(previous, o\.id, why\)\)/);
+    expect(src).not.toMatch(/onStored\(/);
+    const panel = readFileSync("src/components/app/ChatPanel.tsx", "utf8");
+    expect(panel).toMatch(/setMade\(\(p\) => nextMadePicks\(p, c, previous, model, outcome\)\)/);
+  });
+});
+
+describe("review minor 8: the refusal note goes away by itself", () => {
+  it("after 8 seconds, on Escape and on the next pick", () => {
+    expect(NOTE_MS).toBe(8000);
+    const src = readFileSync("src/components/app/ModelPicker.tsx", "utf8");
+    expect(src).toMatch(/setTimeout\(\(\) => setNoted\(null\), NOTE_MS\)/);
+    expect(src).toMatch(/clearTimeout\(timer\)/);
+    expect(src).toMatch(/if \(e\.key === "Escape"\) setNoted\(null\);/);
+    // The next pick starts by clearing it.
+    expect(src).toMatch(/async function choose\(o: PickerOption\) \{\s*setOpen\(false\);\s*setNote\(""\);/);
   });
 });
 

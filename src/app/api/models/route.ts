@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { currentUser, saveUser, sc } from "@/lib/auth";
 import { getBrand, saveBrand } from "@/lib/brand";
 import { withBrandLock } from "@/lib/brand-proposals";
+import { chatStatus } from "@/lib/chat-allowance";
 import { setConversationModel } from "@/lib/conversations";
 import { withUserLock } from "@/lib/credits";
 import { modelById, pickerView } from "@/lib/models/catalog";
 import { chatUnitsFor, tierMultiplier } from "@/lib/models/credits";
-import { chinaConfirmed } from "@/lib/models/overrides";
+import { chatRouteFor, chinaConfirmed } from "@/lib/models/overrides";
 import { MODEL_PICKS_PER_HOUR, allow, retryAfter, retryLater } from "@/lib/rate";
 import { forbid } from "@/lib/roles";
 
@@ -39,7 +40,13 @@ import { forbid } from "@/lib/roles";
  * `china_unconfirmed`: a request that skipped the UI gets no further). Validated again at every call (`route()`), so a
  * pick the catalog later drops falls back to automatic.
  *
- * Answers `{ ok: true }`, or `{ error }` with 400 `bad_request` | `unknown_model` | `not_pickable`, 409
+ * A conversation pick that landed answers `{ ok: true, chat }`: the account's chat status (`chatStatus`, the same one the
+ * chat page shows under the box) for the model the conversation now runs on (`chatRouteFor` on the record as written,
+ * the page's own resolver), so the allowance line and its overflow ceiling follow the pick without the client working
+ * out anything. Counters only (the account's, as for every seat); no rate, no model id. A brand pick and the
+ * confirmation answer `{ ok: true }`: they change no chat ceiling.
+ *
+ * A refusal answers `{ error }` with 400 `bad_request` | `unknown_model` | `not_pickable`, 409
  * `china_unconfirmed` | `busy` (the brand lock), 503 `busy` with Retry-After (the conversation's lock, not taken within
  * about 3 s; nothing written), 404 `not_found`, 403 `forbidden`, 429 `slow_down` past MODEL_PICKS_PER_HOUR for the
  * account (with Retry-After), 401 without a session.
@@ -101,7 +108,10 @@ export async function PUT(req: Request) {
     // Under the conversation's lock, which every writer of its record holds (src/lib/conversations.ts).
     const done = await setConversationModel(sc(u), b.id, model);
     if (done === "busy") return NextResponse.json({ error: "busy" }, { status: 503, headers: retryAfter(1) });
-    return done === "ok" ? NextResponse.json({ ok: true }) : fail("not_found", 404);
+    if (done !== "ok") return fail("not_found", 404);
+    // The chat ceiling for the model the conversation runs on from now: the record holds `model` (or nothing) as written.
+    const chat = await chatStatus(u, chatRouteFor(u, { model: model ?? undefined }).model);
+    return NextResponse.json({ ok: true, chat });
   }
 
   // Only the active brand: its scope is the session's, and an id, when sent, must name it.

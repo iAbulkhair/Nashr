@@ -59,7 +59,11 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   const agentParam = isAgentId(sp.agent) && sp.agent !== "noor" ? sp.agent : undefined;
   // One light read feeds both the side panel numbers and the "waiting for you" card; only that one card needs a body.
   // The chat allowance is the ACCOUNT's (`u` is the owner's record for every seat), shown under the box (rule 315).
-  const [initial, connections, schedule, files, brief, notifs, brand, rows, op, journey, chat] = await Promise.all([history(sc(u), conv), listConnections(sc(u)), getSchedule(sc(u)), listFiles(sc(u)), latestBrief(sc(u)), listNotifs(u.email), getBrand(sc(u)), listLite(sc(u), kpiSince()), db.get<{ goal: string; plan: PlanItem[] }>(`onboardplan:${sc(u)}`), loadJourney(sc(u), u.email), getConversation(sc(u), conv).then((c) => chatStatus(u, chatRouteFor(u, c).model))]);
+  // The active conversation's record, read once: its pick sets the allowance line's ceiling and the model picker's
+  // selection (the sidebar's list holds only the newest hundred, so an older conversation opened by link needs its own).
+  const record = getConversation(sc(u), conv);
+  const [initial, connections, schedule, files, brief, notifs, brand, rows, op, journey, chat] = await Promise.all([history(sc(u), conv), listConnections(sc(u)), getSchedule(sc(u)), listFiles(sc(u)), latestBrief(sc(u)), listNotifs(u.email), getBrand(sc(u)), listLite(sc(u), kpiSince()), db.get<{ goal: string; plan: PlanItem[] }>(`onboardplan:${sc(u)}`), loadJourney(sc(u), u.email), record.then((c) => chatStatus(u, chatRouteFor(u, c).model))]);
+  const active = await record;
   const firstPending = rows.find((x) => x.status === "pending");
   // Majed's handoff cards in this thread (every one it names: the thread holds at most 40 messages, one card each), read
   // here with their stored state: the records in one MGET, the tasks they made in another, the settings once. A card
@@ -79,7 +83,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   const firstStep = !hasProducts ? "catalog" : !brand?.offers ? "offer" : connections.length === 0 ? "connect" : "batch";
   return (
     <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[1fr_320px]">
-      <ChatPanel t={appDict[lang]} journey={journey} initial={initial} credits={u.credits} lang={lang} initialConv={conv} starter={starter} needPhone={needPhone} canApprove={can(u, "publish")} canBrand={can(u, "brand.write")} canRun={can(u, "generate")} canDecline={can(u, "drafts")} handoffs={handoffs} initialPrompt={typeof sp.prompt === "string" ? sp.prompt.slice(0, 2000) : ""} plan={u.plan} firstStep={firstStep} initialAgent={agentParam} pending={(pendingTask ? [pendingTask] : []).map(chatItemOf)} pendingCount={k.pending} brief={brief?.text ?? null} chat={chat} canConfirmChina={canConfirmChina} />
+      <ChatPanel t={appDict[lang]} journey={journey} initial={initial} credits={u.credits} lang={lang} initialConv={conv} starter={starter} needPhone={needPhone} canApprove={can(u, "publish")} canBrand={can(u, "brand.write")} canRun={can(u, "generate")} canDecline={can(u, "drafts")} handoffs={handoffs} initialPrompt={typeof sp.prompt === "string" ? sp.prompt.slice(0, 2000) : ""} plan={u.plan} firstStep={firstStep} initialAgent={agentParam} pending={(pendingTask ? [pendingTask] : []).map(chatItemOf)} pendingCount={k.pending} brief={brief?.text ?? null} chat={chat} canConfirmChina={canConfirmChina} active={active ? { id: active.id, model: active.model } : null} />
       <div className="hidden overflow-y-auto xl:block"><HomeSide t={appDict[lang]} lang={lang} k={k} connections={connections} schedule={schedule} files={files.map((f) => ({ name: f.name, updatedAt: f.updatedAt }))} brief={brief?.text ?? null} action={notifs.find((n) => !n.read) ?? null} /></div>
     </div>
   );
