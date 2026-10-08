@@ -1,5 +1,11 @@
 // Watches GET /api/health while the site rebuilds (spec 2026-10-08-staging-smooth-releases, section 5.8).
-// Usage: node scripts/probe.mjs <origin> <seconds>. On staging, STAGING_ACCESS_CODE in the environment. Node 22, no dependencies.
+// Usage: node scripts/probe.mjs <origin> <seconds>. On staging, STAGING_ACCESS_CODE in the environment (the value of the
+// staging host's STAGING_ACCESS_KEY; listed in docs/system/variables.md section 7). Node 22, no dependencies.
+//
+// Not before the client-address check: do not run this, or scripts/smoke.mjs, against staging until the plan's Task 13,
+// step 4 has passed (docs/system/flows.md section 49, item 7). Until then a host that forwards no client address puts
+// every caller of /api/health into one bucket, and this probe alone fills most of it. Nothing in this file can tell
+// whether the check has passed.
 //
 // The health route allows 60 a minute per client address (a fixed window that starts at its first hit), so one request
 // a second would sit exactly on the cap. The probe starts requests at least 1.2 s apart: at most 51 in any 60 seconds,
