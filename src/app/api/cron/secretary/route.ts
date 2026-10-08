@@ -8,11 +8,15 @@ export const maxDuration = 60;
 
 /** Failed calls per IP a minute. QStash calls once every 15 minutes; this only bounds what an unsigned caller can cost. */
 const PER_IP_PER_MINUTE = 60;
-/** QStash's body is empty or tiny, and its signature a few hundred characters: anything far bigger is refused unread. */
+/** QStash's body is empty or tiny, and its signature a few hundred characters: anything far bigger is refused before any check. */
 const TICK_BODY_MAX = 64 * 1024;
 const TICK_SIGNATURE_MAX = 4096;
 
-/** The raw body, or null past `max` bytes: refused by its declared length, else by counting while reading. */
+/**
+ * The raw body, or null past `max` bytes: refused by its declared length, else by counting while reading. The proxy has
+ * already buffered the body by then (up to `proxyClientMaxBodySize`, next.config.ts, rule 774), so this bounds what the
+ * route keeps and parses, not what the server reads.
+ */
 async function readCapped(req: Request, max: number): Promise<string | null> {
   const declared = Number(req.headers.get("content-length") ?? "");
   if (Number.isFinite(declared) && declared > max) return null;
@@ -41,8 +45,9 @@ async function readCapped(req: Request, max: number): Promise<string | null> {
  *
  * Who may call: QStash, proven by the `Upstash-Signature` JWT over the raw body (src/lib/qstash.ts: the current or next
  * signing key, issuer, destination, validity window, body hash); or the CRON_SECRET bearer, compared with `sameSecret`,
- * for manual runs. Oversized input is refused first, unread (413 for a body over 64 KB, 401 for a signature header over
- * 4096 characters). Anything unauthenticated is 401 and nothing runs; only those failed calls count against the per-IP
+ * for manual runs. Oversized input is refused before any check or count (413 for a body over 64 KB, 401 for a signature
+ * header over 4096 characters); the proxy has buffered the body before this route runs (rule 774), so the 64 KB is what
+ * the route keeps, not what the server reads. Anything unauthenticated is 401 and nothing runs; only those failed calls count against the per-IP
  * limit (429 past it), so strangers sharing QStash's egress addresses can never fill the bucket the real tick uses.
  */
 export async function POST(req: Request) {

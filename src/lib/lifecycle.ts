@@ -5,10 +5,11 @@ import { getBrand, listLiteDays } from "./brand";
 import { mailReady, sendOnce } from "./notify";
 import { PLAN_CREDITS, PLAN_PRICE_SAR, formatCount } from "./pricing";
 import { appOrigin } from "./origin";
+import { COPY, notice, paragraphs } from "../emails";
 
 /**
- * Lifecycle emails (plain text, from the founder). Runs inside the daily cron.
- * Day counts are since signup. Each fires once per user.
+ * Lifecycle emails (from the founder): a plain-text part written here, and the same words as an HTML notice
+ * (`lifecycleHtml`). Runs inside the daily cron. Day counts are since signup. Each fires once per user.
  */
 const WA = () => (process.env.SUPPORT_WHATSAPP ? `https://wa.me/${process.env.SUPPORT_WHATSAPP.replace(/\D/g, "")}` : "");
 
@@ -66,6 +67,23 @@ export function lifecycleTemplate(u: User, key: string, ctx: { firstTitle?: stri
 }
 
 /**
+ * The HTML part of a lifecycle note (rule 685): the template's own subject and body in the shared notice layout, so the
+ * words cannot drift from the text part. The paragraph that is only the app's address becomes the button instead; the
+ * trial notes (day 2 and day 3) point it at the subscription page they talk about. Every other address stays where the
+ * text has it, as text kept left to right, never as a link (rule 687: links go into the app only).
+ */
+export function lifecycleHtml(u: Pick<User, "lang">, key: string, tpl: Tpl): string {
+  const app = `${appOrigin()}/${u.lang}/app`;
+  const billing = key === "day2" || key === "day3";
+  return notice({
+    lang: u.lang,
+    title: tpl.subject,
+    paragraphs: paragraphs(tpl.body).filter((p) => p !== app),
+    cta: billing ? { href: `${app}/billing`, label: COPY[u.lang].notice.billing } : { href: app, label: COPY[u.lang].notice.open },
+  });
+}
+
+/**
  * Which lifecycle emails are due for this account right now.
  *
  * The trial-deadline notes are gated on the time LEFT, not on days elapsed since signup. Elapsed days were wrong for
@@ -110,7 +128,7 @@ export async function runLifecycle(u: User): Promise<string[]> {
   const due = plan.filter(([, d]) => d).map(([key]) => key);
   const results = await Promise.all(due.map(async (key) => {
     const tpl = lifecycleTemplate(u, key, ctx);
-    return tpl && (await sendOnce(u.email, `lifecycle:${key}`, tpl.subject, tpl.body)) === "sent" ? key : null;
+    return tpl && (await sendOnce(u.email, `lifecycle:${key}`, tpl.subject, tpl.body, lifecycleHtml(u, key, tpl))) === "sent" ? key : null;
   }));
   return results.filter((k): k is string => k !== null);
 }

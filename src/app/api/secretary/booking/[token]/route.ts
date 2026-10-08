@@ -33,7 +33,11 @@ const HEADERS = { "cache-control": "no-store", "referrer-policy": "no-referrer" 
 const answer = (status: number, extra: Record<string, string> = {}) => new Response(null, { status, headers: { ...HEADERS, ...extra } });
 const notFound = () => answer(404);
 
-/** The raw body, or null past `max` bytes: refused by its declared length, else by counting while reading. */
+/**
+ * The raw body, or null past `max` bytes: refused by its declared length, else by counting while reading. The proxy has
+ * already buffered the body by then (up to `proxyClientMaxBodySize`, next.config.ts, rule 774), so this bounds what the
+ * route keeps and parses, not what the server reads.
+ */
 async function readCapped(req: Request, max: number): Promise<string | null> {
   const declared = Number(req.headers.get("content-length") ?? "");
   if (Number.isFinite(declared) && declared > max) return null;
