@@ -10,7 +10,8 @@ import { listConnections } from "@/lib/connectors/store";
 import { getSalesSnapshot, getSyncFailure } from "@/lib/store-sales";
 import { getPerf } from "@/lib/perf-store";
 import { getSiteSnapshot } from "@/lib/site-stats";
-import { isComposio } from "@/lib/connectors/composio-shape";
+import { getSocialSnapshot } from "@/lib/social-stats";
+import { connectedSources, liNeedsPage } from "@/lib/report-sources";
 import ReportsPanel from "@/components/app/ReportsPanel";
 import { can } from "@/lib/roles";
 import { topupsSold } from "@/lib/pricing";
@@ -29,10 +30,10 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   if (!u) redirect(`/${lang}/app/login`);
   if (!(await getBrand(sc(u)))) redirect(`/${lang}/app/start`);
   const tasks = await listLite(sc(u), kpiSince(win));
-  const [k, quality, connections, store, syncFailure, perf, site] = await Promise.all([kpis(sc(u), undefined, win, tasks), scopeMetrics(sc(u), win), listConnections(sc(u)), getSalesSnapshot(sc(u)), getSyncFailure(sc(u)), getPerf(sc(u)), getSiteSnapshot(sc(u))]);
-  // A direct Google record (from before Composio) has no reader behind it: it must not count as a read source.
-  const connected = connections.filter((c) => c.provider !== "google" || isComposio(c)).map((c) => c.provider);
+  const [k, quality, connections, store, syncFailure, perf, site, social] = await Promise.all([kpis(sc(u), undefined, win, tasks), scopeMetrics(sc(u), win), listConnections(sc(u)), getSalesSnapshot(sc(u)), getSyncFailure(sc(u)), getPerf(sc(u)), getSiteSnapshot(sc(u)), getSocialSnapshot(sc(u))]);
+  // A direct Google or Meta record (from before Composio) has no reader behind it: it must not count as a read source.
+  const connected = connectedSources(connections);
   const dana = agentById("dana").tasks;
   const items = tasks.filter((t) => dana.includes(t.type)).slice(0, 20).map((t) => ({ id: t.id, type: t.type, title: t.title, status: t.status, createdAt: t.createdAt }));
-  return <ReportsPanel t={appDict[lang]} lang={lang} k={k} items={items} credits={u.credits} quality={quality} range={range} connected={connected} store={store} site={site} syncFailure={syncFailure} perf={perf} perfImport={can(u, "performance.import")} perfDelete={can(u, "performance.delete")} owner={can(u, "billing")} topups={topupsSold(u.plan)} />;
+  return <ReportsPanel t={appDict[lang]} lang={lang} k={k} items={items} credits={u.credits} quality={quality} range={range} connected={connected} store={store} site={site} social={social} liNoPage={liNeedsPage(connections)} syncFailure={syncFailure} perf={perf} perfImport={can(u, "performance.import")} perfDelete={can(u, "performance.delete")} owner={can(u, "billing")} topups={topupsSold(u.plan)} />;
 }
