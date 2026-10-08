@@ -15,7 +15,7 @@ import * as register from "@/app/api/oauth/register/route";
  */
 // Each test gets its own client IP so one test's throttle window never leaks into the next.
 let ipN = 0;
-const ip = () => ({ "x-real-ip": `192.0.2.${++ipN}` });
+const ip = () => ({ "x-forwarded-for": `192.0.2.${++ipN}` });
 const REDIRECT = "https://claude.example/cb";
 const verifier = "v".repeat(50), challenge = createHash("sha256").update(verifier).digest("base64url");
 

@@ -20,7 +20,7 @@ import * as check from "@/app/api/auth/verify/check/route";
 let ipN = 0;
 /** Never repeats within a run, and never meets the IPs of the other verify test files. */
 const freshIp = () => { ipN++; return `198.51.${Math.floor(ipN / 250) % 250}.${(ipN % 250) + 1}`; };
-const move = (email: unknown, ip = freshIp()) => change.POST(json("/api/auth/verify/email", "POST", { email }, { "x-real-ip": ip }));
+const move = (email: unknown, ip = freshIp()) => change.POST(json("/api/auth/verify/email", "POST", { email }, { "x-forwarded-for": ip }));
 const addr = (p: string) => `${p}-${randomBytes(4).toString("hex")}@test.example`;
 
 beforeEach(() => {
@@ -240,7 +240,7 @@ describe("change a mistyped signup email", () => {
     const body = await (await move(to)).json();
     expect(body).toMatchObject({ ok: true, email: to });
     expect(body.devCode).toBe(mails.find((m) => m.to === to)!.text.match(/\d{6}/)![0]);
-    const res = await check.POST(json("/api/auth/verify/check", "POST", { code: body.devCode }, { "x-real-ip": freshIp() }));
+    const res = await check.POST(json("/api/auth/verify/check", "POST", { code: body.devCode }, { "x-forwarded-for": freshIp() }));
     expect(res.status).toBe(200);
     expect((await getUser(to))!.emailVerifiedAt).toBeTruthy();
 

@@ -124,7 +124,7 @@ describe("the staging access route (rule 675)", () => {
   const post = async (code: string | null, ip: string, url = "http://localhost:3000/api/staging-access") => {
     const { POST } = await import("@/app/api/staging-access/route");
     const body = new URLSearchParams(code === null ? { lang: "ar" } : { code, lang: "ar" });
-    return POST(new Request(url, { method: "POST", body, headers: { "x-real-ip": ip, "content-type": "application/x-www-form-urlencoded" } }));
+    return POST(new Request(url, { method: "POST", body, headers: { "x-forwarded-for": ip, "content-type": "application/x-www-form-urlencoded" } }));
   };
   beforeEach(async () => {
     // The store is chosen when `db` first loads, and staging counts as production (rule 430): load it before the stub
@@ -184,13 +184,14 @@ describe("the staging access route (rule 675)", () => {
     expect(r.headers.get("set-cookie")).toBeNull();
     expect(await r.json()).toEqual({ ok: false, error: "slow_down" });
   });
-  it("the bucket is per client address: x-real-ip or the last x-forwarded-for hop each get their own five tries", async () => {
+  it("the bucket is per client address: the last x-forwarded-for hop gets its own five tries, a spoofed header none (rule 773)", async () => {
+    vi.stubEnv("VERCEL", ""); // Hostinger: no VERCEL
     const { POST } = await import("@/app/api/staging-access/route");
     const from = (h: Record<string, string>) => POST(new Request("http://localhost:3000/api/staging-access", {
       method: "POST", body: new URLSearchParams({ code: "nope", lang: "ar" }), headers: { ...h, "content-type": "application/x-www-form-urlencoded" },
     }));
     const clients: Record<string, string>[][] = [
-      [{ "x-real-ip": "10.0.2.1" }, { "x-real-ip": "10.0.2.2" }],
+      [{ "x-forwarded-for": "10.0.2.1" }, { "x-forwarded-for": "10.0.2.2" }],
       // A proxy that only appends to x-forwarded-for: the caller's own earlier hops do not matter, the last one does.
       [{ "x-forwarded-for": "9.9.9.9, 10.0.2.3" }, { "x-forwarded-for": "9.9.9.9, 10.0.2.4" }],
     ];
@@ -198,6 +199,10 @@ describe("the staging access route (rule 675)", () => {
       for (let i = 0; i < 5; i++) expect((await from(a)).status).toBe(303);
       expect((await from(a)).status, "the sixth try of the first client").toBe(429);
       expect((await from(b)).status, "a second client is not locked out by the first").toBe(303);
+    }
+    // Off Vercel, x-vercel-forwarded-for and x-real-ip come from the caller: a new value of either is not a new client.
+    for (const spoof of [{ "x-vercel-forwarded-for": "198.51.100.1" }, { "x-real-ip": "198.51.100.2" }] as Record<string, string>[]) {
+      expect((await from({ ...spoof, "x-forwarded-for": "9.9.9.9, 10.0.2.3" })).status, JSON.stringify(spoof)).toBe(429);
     }
   });
   it("with no address header at all every caller shares one bucket: the case the staging check rules out", async () => {

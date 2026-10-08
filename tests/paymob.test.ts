@@ -85,7 +85,7 @@ function txnObj(o: { id?: number; amount: number; orderId: number; ref: string; 
 const sign = (obj: Record<string, unknown>, fields: readonly string[] = TXN_HMAC_FIELDS, secret = ENV.PAYMOB_HMAC_SECRET) => signHmac(hmacString(obj, fields), secret);
 let ipSeq = 0;
 const hook = (obj: Record<string, unknown>, type: "TRANSACTION" | "TOKEN" = "TRANSACTION", hmac?: string) =>
-  webhook.POST(json(`/api/billing/paymob/webhook?hmac=${hmac ?? sign(obj, type === "TOKEN" ? TOKEN_HMAC_FIELDS : TXN_HMAC_FIELDS)}`, "POST", { type, obj }, { "x-real-ip": `10.9.${++ipSeq % 250}.${ipSeq % 250}` }));
+  webhook.POST(json(`/api/billing/paymob/webhook?hmac=${hmac ?? sign(obj, type === "TOKEN" ? TOKEN_HMAC_FIELDS : TXN_HMAC_FIELDS)}`, "POST", { type, obj }, { "x-forwarded-for": `10.9.${++ipSeq % 250}.${ipSeq % 250}` }));
 const pay = (body: Record<string, unknown>) => checkout.POST(json("/api/billing/checkout", "POST", body));
 const payments = async (email: string) => Object.values(await db.hgetall<Payment>(`payments:${email}`));
 

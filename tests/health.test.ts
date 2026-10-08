@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("the health route (rule 676)", () => {
-  const get = async (ip: string) => (await import("@/app/api/health/route")).GET(new Request("https://x.example/api/health", { headers: { "x-real-ip": ip } }));
+  const get = async (ip: string) => (await import("@/app/api/health/route")).GET(new Request("https://x.example/api/health", { headers: { "x-forwarded-for": ip } }));
   afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
   it("answers without a session with exactly ok, commit, built and no-store", async () => {
