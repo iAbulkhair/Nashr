@@ -57,9 +57,10 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
         const code = failureCode(p);
         return setErr(authMessage(code === "slow_down" ? "slow_down_signup" : code, lang, t.signup as Record<string, string>));
       }
-      if (next) { window.location.assign(next); return; }
-      // A carried site only pre-fills the start page: the owner confirms it there before anything is read (onboard-confirm.ts).
-      r.push(`/${lang}/app/start${site.length >= 4 ? `?url=${encodeURIComponent(site)}` : ""}`);
+      // The new owner proves the address first (rule 754): the verify page carries the old destination on in `next`. A carried
+      // site only pre-fills the start page: the owner confirms it there before anything is read (onboard-confirm.ts).
+      const after = next || `/${lang}/app/start${site.length >= 4 ? `?url=${encodeURIComponent(site)}` : ""}`;
+      r.push(`/${lang}/app/verify?next=${encodeURIComponent(after)}`);
       r.refresh();
     } finally {
       setBusy(false);

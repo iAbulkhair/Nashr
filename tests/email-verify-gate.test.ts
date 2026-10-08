@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createUser, currentUser, currentUserUnverified, emailVerified, getUser, saveUser } from "@/lib/auth";
 import { newMember, newUser, signIn } from "./helpers/session";
 
@@ -54,8 +56,22 @@ describe("email verification gate", () => {
     expect(await currentUserUnverified()).toBeNull();
   });
 
-  // Rule 752. Task 6 turns this into an `it` that walks src/ for `currentUserUnverified(` and expects exactly:
-  // src/app/[lang]/app/layout.tsx, src/app/[lang]/app/verify/page.tsx, src/app/api/auth/verify/{check,email,send}/route.ts,
-  // src/lib/auth.ts. It cannot pass before the verify routes and page exist (Tasks 4-6).
-  it.todo("currentUserUnverified has exactly the allowed callers");
+  // Rule 752: only the app layout, the verify page, the three verify routes and the resolver itself may call
+  // `currentUserUnverified`. Anywhere else an unverified owner would read as signed in.
+  it("currentUserUnverified has exactly the allowed callers", () => {
+    const callers = (readdirSync("src", { recursive: true }) as string[])
+      .map((f) => join("src", f))
+      .filter((f) => /\.(?:ts|tsx)$/.test(f) && /currentUserUnverified\(/.test(readFileSync(f, "utf8")))
+      .sort();
+    expect(callers).toEqual(
+      [
+        "src/app/[lang]/app/layout.tsx",
+        "src/app/[lang]/app/verify/page.tsx",
+        "src/app/api/auth/verify/check/route.ts",
+        "src/app/api/auth/verify/email/route.ts",
+        "src/app/api/auth/verify/send/route.ts",
+        "src/lib/auth.ts",
+      ].sort(),
+    );
+  });
 });

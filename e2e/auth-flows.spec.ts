@@ -65,7 +65,21 @@ test.describe("signup", () => {
 
     await fillWhenReady(page.getByRole("textbox", { name: "Your name" }), "E2E Signup");
     await fillWhenReady(page.getByRole("textbox", { name: "Password (8+ characters)" }), "signup12345");
+    // The test server returns the emailed code in the signup response (rule 766); a real mailbox is not needed.
+    const signupReply = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/auth/signup");
     await page.getByRole("button", { name: "Create account" }).click();
+    const { devCode } = (await (await signupReply).json()) as { devCode?: string };
+    expect(devCode, "the test server hands back the code").toMatch(/^\d{6}$/);
+
+    // A new owner proves the address first (rule 754), and the app stays closed until then.
+    await page.waitForURL(/\/en\/app\/verify\?next=/);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Check your email");
+    const verifyUrl = new URL(page.url());
+    await open(page, "/en/app/chat");
+    await page.waitForURL("**/en/app/verify");
+    await open(page, verifyUrl.pathname + verifyUrl.search);
+    await fillWhenReady(page.getByRole("textbox", { name: "The 6-digit code" }), devCode!);
+    await page.getByRole("button", { name: "Confirm" }).click();
 
     await page.waitForURL("**/en/app/start?url=roastery.example");
     await playToLaunch(page);

@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 
-export default function LogoutButton({ label, lang }: { label: string; lang: string }) {
+export default function LogoutButton({ label, lang, className = "text-xs text-lilac/75 hover:text-lilac" }: { label: string; lang: string; className?: string }) {
   const r = useRouter();
   return (
     <button
@@ -10,7 +10,7 @@ export default function LogoutButton({ label, lang }: { label: string; lang: str
         r.push(`/${lang}/app/login`);
         r.refresh();
       }}
-      className="text-xs text-lilac/75 hover:text-lilac"
+      className={className}
     >
       {label}
     </button>
