@@ -273,7 +273,8 @@ test.describe("logout", () => {
     // Log out lives in the sidebar's account menu, which has to be opened first — the trigger is the button showing
     // the signed-in address.
     await authed.getByRole("button").filter({ hasText: solo.email }).click();
-    await authed.getByRole("button", { name: "Log out" }).click();
+    // The profile page has its own Log out button too (rule 750); this test drives the menu's.
+    await authed.getByRole("menu").getByRole("button", { name: "Log out" }).click();
     await authed.waitForURL("**/app/login");
 
     await authed.goto("/en/app", { waitUntil: "domcontentloaded" });
