@@ -1,7 +1,7 @@
 import { createHash, randomInt } from "crypto";
 import { db } from "./db";
 import { NextResponse } from "next/server";
-import { getLogin, saveUser, type User } from "./auth";
+import { getLogin, normalizeEmail, saveUser, type User } from "./auth";
 import { wipeAccount } from "./account";
 import { withUserLock } from "./credits";
 import { movePartnerRef } from "./partners";
@@ -159,8 +159,9 @@ export type MoveResult = "ok" | "exists" | "not_allowed" | "limit";
  * finishes the wipe instead of answering `exists`. Rare residue after a stop: the referrer's list and the partner's set
  * may name both addresses until that retry.
  */
-export async function moveUnverifiedAccount(from: User, to: string): Promise<MoveResult> {
+export async function moveUnverifiedAccount(from: User, target: string): Promise<MoveResult> {
   const old = from.email;
+  const to = normalizeEmail(target);
   if (!from.gatedSignup || from.emailVerifiedAt) return "not_allowed";
   if (to === old) return "exists";
   const [first, second] = old < to ? [old, to] : [to, old];
@@ -174,7 +175,12 @@ export async function moveUnverifiedAccount(from: User, to: string): Promise<Mov
       const login = await getLogin(to);
       const unfinished = login?.kind === "owner" && login.user.gatedSignup === true && !login.user.emailVerifiedAt && login.user.createdAt === cur.createdAt && login.user.passHash === cur.passHash;
       if (login && !unfinished) return "exists";
-      if (!unfinished) await saveUser({ ...cur, email: to, emailMoves: { day: today, n: used + 1 } });
+      // A fresh session window (as `createUser` stamps): a session issued earlier for the TARGET address (a deleted former
+      // owner, a removed member, this owner's own devices after A to B to A) must never resolve to the moved account. The
+      // session the route opens right after has `at >= sessionsAfter` (the check is a strict `<`), so it still resolves.
+      const fresh = new Date(now).toISOString();
+      if (unfinished) await saveUser({ ...login.user, sessionsAfter: fresh });
+      else await saveUser({ ...cur, email: to, sessionsAfter: fresh, emailMoves: { day: today, n: used + 1 } });
       await registerCode(to);
       await moveReferral(old, to);
       if (cur.referredBy?.partner) await movePartnerRef(cur.referredBy.partner, old, to);

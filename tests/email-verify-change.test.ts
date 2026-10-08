@@ -94,7 +94,8 @@ describe("change a mistyped signup email", () => {
     const u = await newUser("ch", { verified: false });
     await signIn(u.email);
     const res = await move(u.email.toUpperCase());
-    expect([400, 409]).toContain(res.status);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ ok: false, error: "same_email" });
     expect(await getUser(u.email)).not.toBeNull();
   });
 
@@ -122,9 +123,11 @@ describe("change a mistyped signup email", () => {
     const after = (await getUser(to))!;
     expect(after).not.toBeNull();
     expect(after.email).toBe(to);
-    for (const k of ["name", "phone", "passHash", "lang", "plan", "credits", "trialEnds", "createdAt", "sessionsAfter", "gatedSignup", "referredBy", "firstMonthOffer"] as const) {
+    for (const k of ["name", "phone", "passHash", "lang", "plan", "credits", "trialEnds", "createdAt", "gatedSignup", "referredBy", "firstMonthOffer"] as const) {
       expect(after[k], k).toEqual(before[k]);
     }
+    // A fresh session window, not the old one (as createUser stamps): see the session test below.
+    expect(Date.parse(after.sessionsAfter!)).toBeGreaterThan(Date.parse(before.sessionsAfter!));
     expect(after.emailVerifiedAt).toBeUndefined();
     expect(after.emailMoves).toEqual({ day: new Date().toISOString().slice(0, 10), n: 1 });
     expect(await getUser(old.email)).toBeNull();
@@ -220,7 +223,7 @@ describe("change a mistyped signup email", () => {
     expect(await hasPendingCode(to)).toBe(false);
   });
 
-  it("the send buckets answer 429 after the move", async () => {
+  it("a full send bucket after the move still answers 200 with mail: false", async () => {
     const old = await newUser("ch", { verified: false });
     await signIn(old.email);
     const to = addr("fixed");
@@ -258,5 +261,82 @@ describe("change a mistyped signup email", () => {
     expect(res.status).toBe(200);
     expect(await getUser(old.email)).toBeNull();
     expect((await getUser(to))!.emailMoves!.n).toBe(1);
+  });
+  it("a session issued earlier for the target address never resolves to the moved account", async () => {
+    const old = await newUser("ch", { verified: false });
+    const to = addr("fixed");
+    // What a former owner of the address, a removed member or this owner's own old device left behind.
+    const stale = randomBytes(32).toString("hex");
+    await db.set(`session:${stale}`, { email: to, at: Date.now() - 5000 }, 3600);
+    await signIn(old.email);
+    expect((await move(to)).status).toBe(200);
+    expect((await currentUserUnverified())!.email).toBe(to);
+    jar().set("nashr_session", stale);
+    expect(await currentUserUnverified()).toBeNull();
+  });
+
+  it("the repair of a stopped move applies the same fresh session window", async () => {
+    const old = await newUser("ch", { verified: false });
+    await signIn(old.email);
+    const to = addr("fixed");
+    await saveUser({ ...(await getUser(old.email))!, email: to, emailMoves: { day: new Date().toISOString().slice(0, 10), n: 1 } });
+    const stale = randomBytes(32).toString("hex");
+    await db.set(`session:${stale}`, { email: to, at: Date.now() - 5000 }, 3600);
+    expect((await move(to)).status).toBe(200);
+    expect(Date.parse((await getUser(to))!.sessionsAfter!)).toBeGreaterThan(Date.parse(old.sessionsAfter!));
+    expect((await currentUserUnverified())!.email).toBe(to);
+    jar().set("nashr_session", stale);
+    expect(await currentUserUnverified()).toBeNull();
+  });
+
+  it("no repair for a look-alike: same password hash but another createdAt is 409", async () => {
+    const old = await newUser("ch", { verified: false });
+    await signIn(old.email);
+    const to = addr("taken");
+    await saveUser({ ...(await getUser(old.email))!, email: to, createdAt: new Date(Date.now() - 86400000).toISOString() });
+    const res = await move(to);
+    expect(res.status).toBe(409);
+    expect(await getUser(old.email)).not.toBeNull();
+  });
+
+  it("no repair for a verified copy at the target: 409", async () => {
+    const old = await newUser("ch", { verified: false });
+    await signIn(old.email);
+    const to = addr("taken");
+    await saveUser({ ...(await getUser(old.email))!, email: to, emailVerifiedAt: new Date().toISOString() });
+    expect((await move(to)).status).toBe(409);
+    expect(await getUser(old.email)).not.toBeNull();
+  });
+
+  it("the 11th move attempt of an account in a day is 429, taken addresses included", async () => {
+    const taken = await newUser("tk");
+    const old = await newUser("ch", { verified: false });
+    await signIn(old.email);
+    for (let i = 1; i <= 10; i++) expect((await move(taken.email)).status, `attempt ${i}`).toBe(409);
+    const res = await move(taken.email);
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({ ok: false, error: "slow_down" });
+    expect(res.headers.get("Retry-After")).toBe("86400");
+    expect(await getUser(old.email)).not.toBeNull();
+  });
+
+  it("the 21st request from one IP in an hour is 429", async () => {
+    const ip = freshIp();
+    const old = await newUser("ch", { verified: false });
+    await signIn(old.email);
+    for (let i = 0; i < 20; i++) expect((await move("nope", ip)).status).toBe(400);
+    const res = await move("nope", ip);
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("3600");
+  });
+
+  it("a founder impersonating the account cannot move it (403)", async () => {
+    const old = await newUser("ch", { verified: false });
+    await signIn(old.email, { imp: "founder@test.example" });
+    const to = addr("fixed");
+    const res = await move(to);
+    expect(res.status).toBe(403);
+    expect(await getUser(to)).toBeNull();
+    expect(await getUser(old.email)).not.toBeNull();
   });
 });

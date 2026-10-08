@@ -21,6 +21,8 @@ export async function POST(req: Request) {
   const to = normalizeEmail(typeof b.email === "string" ? b.email : "");
   if (!validEmail(to)) return NextResponse.json({ ok: false, error: "bad_email" }, { status: 400 });
   if (to === u.email) return NextResponse.json({ ok: false, error: "same_email" }, { status: 400 });
+  // Every attempt counts, taken or not: the 409 `exists` answer is otherwise an address oracle for a long-lived session.
+  if (!(await allow(`verifymove:acct:${u.email}`, 10, 86400))) return retryLater({ ok: false, error: "slow_down" }, 86400);
   const r = await moveUnverifiedAccount(u, to);
   if (r === "not_allowed") return NextResponse.json({ ok: false, error: "not_allowed" }, { status: 403 });
   if (r === "exists") return NextResponse.json({ ok: false, error: "exists" }, { status: 409 });
