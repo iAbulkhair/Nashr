@@ -11,6 +11,10 @@
  *   3. `VERCEL_ENV` `preview` or `development`: not production (Vercel previews keep their old behaviour).
  *   4. Otherwise `NODE_ENV === "production"`. `next dev` is "development", vitest is "test".
  * Rules 430-431, tests/launch-security.test.ts.
+ *
+ * `APP_ENV=staging` is production by this function (step 2: any other value is production), so staging keeps rules
+ * 430 and 431. `isStaging()` below is the separate question "is this the staging site", read by the staging lock
+ * (rule 674).
  */
 const NOT_PRODUCTION = new Set(["test", "development", "preview"]);
 
@@ -21,4 +25,9 @@ export function isProductionDeploy(): boolean {
   if (app) return !NOT_PRODUCTION.has(app);
   if (vercel === "preview" || vercel === "development") return false;
   return process.env.NODE_ENV === "production";
+}
+
+/** Is this the staging site? Exactly `APP_ENV=staging`; read at call time. Does not change `isProductionDeploy()`. */
+export function isStaging(): boolean {
+  return process.env.APP_ENV === "staging";
 }
