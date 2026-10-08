@@ -7,7 +7,7 @@ import { withUserLock } from "@/lib/credits";
 import { modelById, pickerView } from "@/lib/models/catalog";
 import { chatUnitsFor, tierMultiplier } from "@/lib/models/credits";
 import { chinaConfirmed } from "@/lib/models/overrides";
-import { MODEL_PICKS_PER_HOUR, allow, retryLater } from "@/lib/rate";
+import { MODEL_PICKS_PER_HOUR, allow, retryAfter, retryLater } from "@/lib/rate";
 import { forbid } from "@/lib/roles";
 
 /**
@@ -17,14 +17,15 @@ import { forbid } from "@/lib/roles";
  * GET: what the picker shows, all worked out here so no rate and no multiplier is hard-coded in the client: the entries
  * customers may pick (`pickerView`: id, label, tier, hosting, never a rate), each one's credit multiplier per surface
  * (relative to that surface's default model, `tierMultiplier`), the messages of the chat allowance one message on it
- * counts (`chatUnitsFor`), and whether the owner confirmed China-hosted models. Any signed-in login; nothing is read
- * beyond the session.
+ * counts (`chatUnitsFor`), and whether the owner confirmed China-hosted models. Any signed-in login; it reads only what
+ * `currentUser()` reads (the session and the account's user record) and writes nothing.
  *
  * PUT `{ target: "conversation", id, model }` sets (a catalog id) or clears (`null`) a conversation's chat pick; any login
  * of the account (`conversations`). PUT `{ target: "brand", id?, model }` does the same for the ACTIVE brand's
  * generation pick: `id`, when sent, must be the active brand's (`u.brandId`, "default" for the account's first); admin
  * or owner (`brand.write`). PUT `{ confirmChina: true }` stores the owner's confirmation on the account; owner only
- * (`profile.account`), never while a founder impersonates (a consent is the owner's own).
+ * (`profile.account`), never while a founder impersonates (a consent is the owner's own); sent with `target`, `id` or
+ * `model` it is a bad request and nothing is written.
  *
  * Every record is found under the caller's own scope: `sc(u)` for the conversation and the brand, the session's account
  * email for the confirmation. Nothing in the body names a scope or an account, and a field that tries is ignored. A
@@ -38,8 +39,9 @@ import { forbid } from "@/lib/roles";
  * pick the catalog later drops falls back to automatic.
  *
  * Answers `{ ok: true }`, or `{ error }` with 400 `bad_request` | `unknown_model` | `not_pickable`, 409
- * `china_unconfirmed` | `busy` (the brand lock), 404 `not_found`, 403 `forbidden`, 429 `slow_down` past
- * MODEL_PICKS_PER_HOUR for the account (with Retry-After), 401 without a session.
+ * `china_unconfirmed` | `busy` (the brand lock), 503 `busy` with Retry-After (the conversation's lock, not taken within
+ * about 3 s; nothing written), 404 `not_found`, 403 `forbidden`, 429 `slow_down` past MODEL_PICKS_PER_HOUR for the
+ * account (with Retry-After), 401 without a session.
  */
 export async function GET() {
   const u = await currentUser();
@@ -66,7 +68,8 @@ export async function PUT(req: Request) {
   const b = raw as Body;
 
   if (Object.hasOwn(b, "confirmChina")) {
-    if (b.confirmChina !== true) return fail("bad_request", 400);
+    // The confirmation goes alone: sent with a pick it would be half applied, so nothing is written for it.
+    if (b.confirmChina !== true || Object.hasOwn(b, "target") || Object.hasOwn(b, "id") || Object.hasOwn(b, "model")) return fail("bad_request", 400);
     const no = forbid(u, "profile.account");
     if (no) return no;
     if (u.actor?.kind === "founder") return fail("forbidden", 403);
@@ -94,7 +97,10 @@ export async function PUT(req: Request) {
   }
 
   if (target === "conversation") {
-    return (await setConversationModel(sc(u), b.id, model)) ? NextResponse.json({ ok: true }) : fail("not_found", 404);
+    // Under the conversation's lock, which every writer of its record holds (src/lib/conversations.ts).
+    const done = await setConversationModel(sc(u), b.id, model);
+    if (done === "busy") return NextResponse.json({ error: "busy" }, { status: 503, headers: retryAfter(1) });
+    return done === "ok" ? NextResponse.json({ ok: true }) : fail("not_found", 404);
   }
 
   // Only the active brand: its scope is the session's, and an id, when sent, must name it.

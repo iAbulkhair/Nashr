@@ -65,7 +65,7 @@ vi.mock("@/lib/models/route", async (orig) => {
 import { db } from "@/lib/db";
 import { currentUser, getUser, saveUser, sc, type User } from "@/lib/auth";
 import type { Brand, Task } from "@/lib/brand";
-import { createConversation, type Conversation } from "@/lib/conversations";
+import { createConversation, deleteConversation, liveConversations, renameConversation, touchConversation, type Conversation } from "@/lib/conversations";
 import { PAUSED_REPLY } from "@/lib/model";
 import { DEFAULTS } from "@/lib/models/route";
 import { MODELS, modelById, pickerView, type ModelEntry } from "@/lib/models/catalog";
@@ -85,6 +85,7 @@ import * as modelsRoute from "@/app/api/models/route";
 import * as chatRoute from "@/app/api/chat/route";
 import * as brandRoute from "@/app/api/brand/route";
 import * as generateRoute from "@/app/api/generate/route";
+import * as conversationsRoute from "@/app/api/conversations/route";
 
 const OPUS = "claude-opus-5";
 const SONNET = "claude-sonnet-5";
@@ -270,6 +271,21 @@ describe("PUT /api/models: validation", () => {
       expect(await r.json(), JSON.stringify(body)).toEqual({ error: "bad_request" });
     }
   });
+
+  it("{ confirmChina: true } sent with a target, an id or a model is a bad request and writes nothing at all", async () => {
+    const { u, conv } = await owner("mo-mixed");
+    const before = { user: await getUser(u.email), conv: await convOf(u, conv), brand: await brandOf(sc(u)) };
+    const sets = vi.spyOn(db, "set");
+    for (const extra of [{ target: "conversation", id: conv, model: SONNET }, { target: "brand", model: SONNET }, { target: "conversation" }, { id: conv }, { model: null }, { model: SONNET }]) {
+      const r = await put({ confirmChina: true, ...extra });
+      expect(r.status, JSON.stringify(extra)).toBe(400);
+      expect(await r.json(), JSON.stringify(extra)).toEqual({ error: "bad_request" });
+    }
+    expect(sets.mock.calls.filter(([k]) => !String(k).startsWith("rate:"))).toEqual([]);
+    expect({ user: await getUser(u.email), conv: await convOf(u, conv), brand: await brandOf(sc(u)) }).toEqual(before);
+    // Alone it still works.
+    expect((await put({ confirmChina: true })).status).toBe(200);
+  });
 });
 
 describe("PUT /api/models: tenant isolation", () => {
@@ -400,6 +416,180 @@ describe("PUT /api/models: setting and clearing", () => {
     await put({ target: "brand", model: null });
     expect((await save({ model: OPUS })).status).toBe(200);
     expect((await brandOf(u.email))!).not.toHaveProperty("model");
+  });
+});
+
+/**
+ * The four writers of a conversation record (the pick, a turn's touch, a rename, a delete) each read the whole record and
+ * write it back, so a writer that read before another one wrote would put back what it read. They share one lock per
+ * conversation (`convlock:{scope}:{id}`, src/lib/conversations.ts). Each test below holds one writer between its read and
+ * its write, starts another, and only then lets the first one go: without the lock the second runs in that gap.
+ */
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Hold the first `db.get` (after it read) or `db.del` (before it deletes) of `key` until `release()`. */
+function hold(method: "get" | "del", key: string) {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  let arrive!: () => void;
+  const reached = new Promise<void>((r) => (arrive = r));
+  let held = false;
+  const stop = async (k: string) => {
+    if (held || k !== key) return;
+    held = true;
+    arrive();
+    await gate;
+  };
+  if (method === "get") {
+    const real = db.get.bind(db) as (k: string) => Promise<unknown>;
+    vi.spyOn(db, "get").mockImplementation((async (k: string) => {
+      const v = await real(k);
+      await stop(k);
+      return v;
+    }) as typeof db.get);
+  } else {
+    const real = db.del.bind(db);
+    vi.spyOn(db, "del").mockImplementation(async (k: string) => {
+      await stop(k);
+      return real(k);
+    });
+  }
+  return { reached, release };
+}
+const convKey = (u: User, id: string) => `conv:${sc(u)}:${id}`;
+const indexed = async (u: User, id: string) => (await db.lrange(`convs:${sc(u)}`, 0, -1)).includes(id);
+const patchConv = (body: unknown) => conversationsRoute.PATCH(json("/api/conversations", "PATCH", body));
+const deleteConv = (id: string) => conversationsRoute.DELETE(json(`/api/conversations?id=${encodeURIComponent(id)}`, "DELETE"));
+
+describe("conversation writers share one lock: no stale copy is written back, no deleted record comes back", () => {
+  it("clear vs touch: an owner clearing the pick while a turn's touch is between its read and its write; the cleared pick never comes back", async () => {
+    const { u, conv } = await owner("mo-lock-touch");
+    await put({ target: "conversation", id: conv, model: OPUS });
+    const before = (await convOf(u, conv))!;
+    const h = hold("get", convKey(u, conv));
+    const touch = touchConversation(sc(u), conv, "مرحبا");
+    await h.reached;
+    const clear = put({ target: "conversation", id: conv, model: null });
+    await wait(200);
+    h.release();
+    const [, r] = await Promise.all([touch, clear]);
+    expect(r.status).toBe(200);
+    const after = (await convOf(u, conv))!;
+    expect(after, "the stale copy holding the pick was written back").not.toHaveProperty("model");
+    expect(after.count, "the touch still counted").toBe(before.count + 1);
+  });
+
+  it("pick vs delete: a pick read before a delete and written after it does not recreate the record outside the index", async () => {
+    const { u, conv } = await owner("mo-lock-pickdel");
+    const h = hold("get", convKey(u, conv));
+    const pick = put({ target: "conversation", id: conv, model: OPUS });
+    await h.reached;
+    const del = deleteConversation(sc(u), conv);
+    await wait(200);
+    h.release();
+    await Promise.all([pick, del]);
+    expect(await db.get(convKey(u, conv)), "the record came back after its delete").toBeNull();
+    expect(await indexed(u, conv)).toBe(false);
+    expect([...(await liveConversations(sc(u), [conv]))], "an orphan record reads as a live thread").toEqual([]);
+  });
+
+  it("delete vs pick: a pick that waits for a delete in progress finds no record, answers not_found and writes nothing", async () => {
+    const { u, conv } = await owner("mo-lock-delpick");
+    const h = hold("del", convKey(u, conv));
+    const del = deleteConversation(sc(u), conv);
+    await h.reached;
+    const pick = put({ target: "conversation", id: conv, model: OPUS });
+    await wait(200);
+    h.release();
+    const [, r] = await Promise.all([del, pick]);
+    expect(r.status).toBe(404);
+    expect(await r.json()).toEqual({ error: "not_found" });
+    expect(await db.get(convKey(u, conv))).toBeNull();
+    expect(await indexed(u, conv)).toBe(false);
+  });
+
+  it("rename vs delete: a rename read before a delete and written after it does not recreate the record", async () => {
+    const { u, conv } = await owner("mo-lock-rename");
+    const h = hold("get", convKey(u, conv));
+    const rename = renameConversation(sc(u), conv, "اسم جديد");
+    await h.reached;
+    const del = deleteConversation(sc(u), conv);
+    await wait(200);
+    h.release();
+    await Promise.all([rename, del]);
+    expect(await db.get(convKey(u, conv))).toBeNull();
+    expect(await indexed(u, conv)).toBe(false);
+    expect([...(await liveConversations(sc(u), [conv]))]).toEqual([]);
+  });
+
+  it("touch and rename never create a record that does not exist", async () => {
+    const { u } = await owner("mo-lock-none");
+    await touchConversation(sc(u), "abcdef012345", "مرحبا");
+    await renameConversation(sc(u), "abcdef012345", "x");
+    expect(await db.get(`conv:${sc(u)}:abcdef012345`)).toBeNull();
+  });
+
+  it("the lock key is the caller's scope and the checked id, and an id that fails the check takes no lock and reads nothing", async () => {
+    const { u, conv } = await owner("mo-lock-key");
+    const locks = vi.spyOn(db, "lockOwned");
+    const convLocks = () => locks.mock.calls.map(([k]) => String(k)).filter((k) => k.startsWith("convlock:"));
+    expect((await put({ target: "conversation", id: conv, model: SONNET })).status).toBe(200);
+    await touchConversation(sc(u), conv, "x");
+    expect(await renameConversation(sc(u), conv, "x")).toBe("ok");
+    expect(await deleteConversation(sc(u), conv)).toBe("ok");
+    expect(convLocks()).toEqual(Array(4).fill(`convlock:${sc(u)}:${conv}`));
+    locks.mockClear();
+    const gets = vi.spyOn(db, "get");
+    for (const id of ["../x", `${conv}:x`, "", "a".repeat(65), "a b"]) {
+      await touchConversation(sc(u), id, "x");
+      expect(await renameConversation(sc(u), id, "x"), id).toBe("not_found");
+      expect(await deleteConversation(sc(u), id), id).toBe("not_found");
+    }
+    expect(convLocks()).toEqual([]);
+    expect(gets.mock.calls.map(([k]) => String(k)).filter((k) => k.startsWith("conv:"))).toEqual([]);
+  });
+
+  it("a lock not taken within its bound: the pick, a rename and a delete answer 503 busy and write nothing; the touch is skipped and the chat turn still answers", async () => {
+    const { u, conv } = await owner("mo-lock-busy");
+    await put({ target: "conversation", id: conv, model: OPUS });
+    const before = await db.get(convKey(u, conv));
+    // Another writer holds the conversation's lock for longer than anyone waits.
+    const token = await db.lockOwned(`convlock:${sc(u)}:${conv}`, 60);
+    expect(token).not.toBeNull();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const sets = vi.spyOn(db, "set");
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      const settled = async <T>(p: Promise<T>) => {
+        await vi.advanceTimersByTimeAsync(10_000);
+        return p;
+      };
+      const r = await settled(put({ target: "conversation", id: conv, model: null }));
+      expect(r.status).toBe(503);
+      expect(await r.json()).toEqual({ error: "busy" });
+      expect(r.headers.get("Retry-After")).toBe("1");
+      expect(await settled(touchConversation(sc(u), conv, "x"))).toBeUndefined();
+      expect(await settled(renameConversation(sc(u), conv, "x"))).toBe("busy");
+      const p = await settled(patchConv({ id: conv, title: "x" }));
+      expect(p.status).toBe(503);
+      expect(await p.json()).toEqual({ ok: false, error: "busy" });
+      const d = await settled(deleteConv(conv));
+      expect(d.status).toBe(503);
+      expect(await d.json()).toEqual({ ok: false, error: "busy" });
+      // A turn whose touch cannot take the lock still answers: only the sidebar's count and time wait for the next turn.
+      const turn = await settled(send({ conv }));
+      expect(turn.status).toBe(200);
+      expect(((await turn.json()) as { message: { content: string } }).message.content).toBe("أهلاً");
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await db.get(convKey(u, conv))).toEqual(before);
+    expect(await indexed(u, conv)).toBe(true);
+    expect(sets.mock.calls.map(([k]) => String(k)).filter((k) => k.startsWith("conv:"))).toEqual([]);
+    expect(warn).toHaveBeenCalled();
+    // Nothing the warning logs names the account or the conversation.
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(u.email);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(conv);
+    await db.unlockOwned(`convlock:${sc(u)}:${conv}`, token!);
   });
 });
 

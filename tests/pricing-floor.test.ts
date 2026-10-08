@@ -11,7 +11,7 @@ import { ROUTINES } from "@/lib/routines";
 import { countCost } from "@/lib/generate-batch";
 import { MEDIA_MODELS } from "@/lib/media-catalog";
 import { COST_USD } from "@/lib/media/config";
-import { HANDOFF_TYPES, autoBlock, type Handoff } from "@/lib/handoffs";
+import { HANDOFF_TYPES, autoBlock, autoUnderFloor, type Handoff } from "@/lib/handoffs";
 import { agentForTask } from "@/lib/agents";
 import { MODELS, modelAllowsTask, modelById } from "@/lib/models/catalog";
 import { route } from "@/lib/models/route";
@@ -280,6 +280,30 @@ describe("every catalog model keeps the floor on every task type it allows, per 
       for (const t of TASK_TYPES.filter((t) => modelAllowsTask(m, t))) {
         const pc = perCredit(t, m.id);
         if (pc > ceiling && !exempt(m.id, t)) over.push(`${m.id} on ${t}: ${usd(pc)} per credit cold at ${creditsFor(TASK_COST[t], m.id, "generate")} credits (ceiling ${usd(ceiling)})`);
+      }
+    }
+    expect(over).toEqual([]);
+  });
+
+  it("every catalog id customers may pick is in the set checked here (the auto-run's floor check relies on it)", () => {
+    const picks = MODELS.filter((m) => m.pick).map((m) => m.id);
+    expect(picks.length).toBeGreaterThan(0);
+    expect(picks.filter((id) => !pickable.some((m) => m.id === id))).toEqual([]);
+  });
+
+  /**
+   * Majed's auto-run checks the floor on the generation default (`autoUnderFloor`, src/lib/handoffs.ts), while the batch
+   * it starts runs on the brand's pick when route() accepts it, and on the default otherwise (a pick not allowed for the
+   * type falls back, `task_not_allowed`). That is safe only while the default's check is never looser than a pick's:
+   * every type it lets through keeps the floor cold on every pickable model that allows the type.
+   */
+  it("the auto-run's check on the default model is never looser than a brand pick: what it lets through keeps the floor cold on every pick", () => {
+    const passed = TASK_TYPES.filter(autoUnderFloor);
+    expect(passed.length).toBeGreaterThan(0);
+    const over: string[] = [];
+    for (const t of passed) {
+      for (const m of MODELS.filter((x) => x.pick && modelAllowsTask(x, t))) {
+        if (perCredit(t, m.id) > ceiling) over.push(`${m.id} on ${t}: ${usd(perCredit(t, m.id))} per credit cold`);
       }
     }
     expect(over).toEqual([]);

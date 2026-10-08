@@ -73,7 +73,8 @@ export async function wipeAccount(email: string) {
     keys.push(
       ...taskIds.map((id) => `task:${s}:${id}`),
       ...files.map((f) => `file:${s}:${f.name}`),
-      ...convIds.flatMap((id) => [`conv:${s}:${id}`, `chat:${s}:${id}`]),
+      // With the conversation's writer lock (10 s TTL, src/lib/conversations.ts).
+      ...convIds.flatMap((id) => [`conv:${s}:${id}`, `chat:${s}:${id}`, `convlock:${s}:${id}`]),
       ...conns.map((p) => `conn:${s}:${p}`), // encrypted third-party credentials
       ...months.map((m) => `tidx:${s}:${m}`),
       // The chat feedback log: per brand, and it holds the free-text reason the owner typed, so it must not outlive
