@@ -82,7 +82,7 @@ Consequence the founder accepted: an existing customer's automations and booking
 `POST /api/auth/verify/email {email}`, allowed only when the acting owner has `gatedSignup` and no `emailVerifiedAt`.
 Such an account can hold no brand data (the gate blocked every route), so the move is small:
 - The new address must be valid and free (`getLogin`), checked and moved under `withLoginLock` on both addresses.
-- Carried over: name, phone, password hash, lang, plan, credits, trial end, createdAt, `sessionsAfter`, `gatedSignup`.
+- Carried over: name, phone, password hash, lang, plan, credits, trial end, createdAt, `gatedSignup`. NOT `sessionsAfter`: the moved record gets a fresh one, so a session issued earlier for the target address never resolves to it.
   Referral code re-registered for the new address; a referral applied at signup and the partner attribution move
   with it. Old `user:{email}`, its login index and its pending code are deleted.
 - A new session is issued for the new address and the old one destroyed; a code is sent to the new address.
