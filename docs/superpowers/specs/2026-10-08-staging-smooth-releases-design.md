@@ -212,7 +212,7 @@ Each step that changes something outside the repository is done only after the f
 3. **Claude, needs approval (touches the live site's settings, not its code):** creates `production` at the live commit, then switches thakeen.com's Git auto-deploy from `main` to `production`. No rebuild happens (saving these settings on a Node.js site does not build). After this, merging to `main` cannot reach customers.
 4. **Claude, needs approval:** creates the staging app (`staging.thakeen.com`) with auto-deploy off and no build, then turns auto-deploy on (`main`) and starts the first build only after the lock is merged into `main` and the staging variables are set: any build of a `main` without the lock would serve an open copy of the site.
 5. **Founder:** enters staging's environment variables in hPanel (4.2).
-6. **Claude:** the code pull request (sections 5, 9, 10) into `main`. The founder reviews and merges; it builds staging only.
+6. **Claude:** the code pull request (sections 5, 9, 10) into `main`. The founder reviews and merges; nothing builds on the merge (live builds from `production`, staging auto-deploy is still off), and step 4 then starts staging's first build.
 7. **Claude:** step 0 (section 8) and the smoke run on staging; report to the founder.
 8. **Claude:** the first release pull request; the founder merges in the window of 6.1; Claude verifies (6.2) and tags.
 

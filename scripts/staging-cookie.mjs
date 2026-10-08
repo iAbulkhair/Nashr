@@ -10,7 +10,7 @@ const STAGING = "https://staging.thakeen.com";
  * secret is ever sent there), exactly https://staging.thakeen.com is staging, and http://localhost:<port> or
  * http://127.0.0.1:<port> is a local server. Anything else (a typo, www, plain http, a look-alike host, a path, a port, a
  * user part) is null, so a caller can refuse it before the access code, the test password or the cron secret leave the
- * machine. One trailing slash is dropped; nothing else is normalised.
+ * machine. Trailing slashes are dropped; nothing else is normalised.
  * @param {string | undefined} arg
  * @returns {{ origin: string; kind: "live" | "staging" | "local" } | null}
  */
