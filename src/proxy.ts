@@ -15,10 +15,11 @@ function pickLang(req: NextRequest): Lang {
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
-  // Root: pick language from cookie, then Accept-Language, default Arabic.
-  if (pathname === "/") {
+  // Root: pick language from cookie, then Accept-Language, default Arabic. `/app` is the installed app's start URL
+  // (src/app/manifest.ts, rule 681): the same choice, into the app.
+  if (pathname === "/" || pathname === "/app") {
     const url = req.nextUrl.clone();
-    url.pathname = `/${pickLang(req)}`;
+    url.pathname = pathname === "/" ? `/${pickLang(req)}` : `/${pickLang(req)}/app`;
     url.search = search;
     return NextResponse.redirect(url, 307);
   }
@@ -29,4 +30,4 @@ export function proxy(req: NextRequest) {
   return NextResponse.next({ request: { headers: reqHeaders } });
 }
 
-export const config = { matcher: ["/", "/:lang/app/:path*"] };
+export const config = { matcher: ["/", "/app", "/:lang/app/:path*"] };

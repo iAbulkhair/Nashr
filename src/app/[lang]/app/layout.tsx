@@ -6,6 +6,7 @@ import { appDict } from "@/lib/app-i18n";
 import { currentUser, isFounderActor, trialDaysLeft } from "@/lib/auth";
 import Sidebar from "@/components/app/Sidebar";
 import TrialBanner from "@/components/app/TrialBanner";
+import InstallHint from "@/components/app/InstallHint";
 import LangToggle from "@/components/LangToggle";
 import LimitModal from "@/components/app/LimitModal";
 import { getBrand } from "@/lib/brand";
@@ -58,6 +59,7 @@ export default async function AppLayout({ children, params }: { children: React.
           </form>
         )}
         {!path.endsWith("/billing") && !path.endsWith("/start") && !path.endsWith("/join") && <TrialBanner lang={lang} days={trialDaysLeft(user.trialEnds)} plan={user.plan} industry={brand?.industry} owner={owner} />}
+        <InstallHint lang={lang} />
         {children}
       </main>
       <LimitModal t={t} lang={lang} owner={owner} governs={can(user, "governance.write")} topups={topupsSold(user.plan)} />
