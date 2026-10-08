@@ -22,13 +22,23 @@ describe("callers read what a plan includes from entitlements", () => {
   });
 
   it("rule 782: each of those checks comes before the trial gate, so a refused agent counts nothing", () => {
+    // The code expressions, not the words: `agent_not_included` also appears in the route's doc comment.
     const chat = read("src/app/api/chat/route.ts");
-    expect(chat.indexOf("agent_not_included")).toBeGreaterThan(-1);
-    expect(chat.indexOf("agent_not_included")).toBeLessThan(chat.indexOf("trialOver(u)"));
+    const agentRead = chat.indexOf("const agent = ");
+    const chatCheck = chat.indexOf("entitlements(u).agents.includes(agent)");
+    const chatTrial = chat.indexOf("if (trialOver(u))");
+    expect([agentRead, chatCheck, chatTrial].every((i) => i > -1), "chat: all three expressions are found").toBe(true);
+    expect(chatCheck, "chat: after the agent is read").toBeGreaterThan(agentRead);
+    expect(chatCheck, "chat: before the trial gate").toBeLessThan(chatTrial);
+    expect(chat.slice(chatCheck, chatCheck + 200), "chat: refuses with 403 agent_not_included").toMatch(/error: "agent_not_included" \}, \{ status: 403 \}/);
+
     const mcp = read("src/app/api/mcp/route.ts");
     const ask = mcp.slice(mcp.indexOf('case "ask_noor"'));
-    expect(ask.indexOf("entitlements(user).agents")).toBeGreaterThan(-1);
-    expect(ask.indexOf("entitlements(user).agents")).toBeLessThan(ask.indexOf("trialOver(user)"));
+    const mcpCheck = ask.indexOf('entitlements(user).agents.includes("noor")');
+    const mcpTrial = ask.indexOf("if (trialOver(user))");
+    expect([mcpCheck, mcpTrial].every((i) => i > -1), "mcp: both expressions are found").toBe(true);
+    expect(mcpCheck, "mcp: before the trial gate").toBeLessThan(mcpTrial);
+    expect(ask.slice(mcpCheck, mcpCheck + 250), "mcp: a tool error").toMatch(/not included in this account's plan\. Nothing was sent\.[\s\S]*isError: true/);
   });
 
   it("rule 781: the inbox takes the plan's video list as a prop, and the client files never import entitlements at runtime", () => {
