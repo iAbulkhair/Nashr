@@ -29,6 +29,28 @@ export function reportSources(connected: readonly string[]) {
   return { read, missing, banner: missing.length === 0 ? null : read.length === 0 ? ("none" as const) : ("some" as const) };
 }
 
+type Conn = { provider: string; meta?: Record<string, string> };
+
+/** Providers whose figures are read only through Composio (site-stats.ts, social-stats.ts). */
+export const READ_VIA_COMPOSIO = ["google", "meta", "linkedin"];
+
+/**
+ * The connected providers that can be read, for reportSources. A Google, Meta or LinkedIn record counts only through
+ * Composio, and only once its part exists: Meta needs an Instagram account (`igId`; a Facebook-only record reads nothing)
+ * and LinkedIn a chosen company page (`liOrg`). Anything less would silence the social warning with nothing behind it.
+ */
+export function connectedSources(conns: readonly Conn[]): string[] {
+  return conns
+    .filter((c) => {
+      if (!READ_VIA_COMPOSIO.includes(c.provider)) return true;
+      if (c.meta?.via !== "composio") return false;
+      if (c.provider === "meta") return !!c.meta.igId;
+      if (c.provider === "linkedin") return !!c.meta.liOrg;
+      return true;
+    })
+    .map((c) => c.provider);
+}
+
 /** Followers unlock only once Instagram or a LinkedIn page was actually read, not when a record merely exists. */
 export const socialRead = (s: SocialSnapshot | null | undefined) => !!(s?.ig || s?.li);
 
@@ -36,5 +58,5 @@ export const socialRead = (s: SocialSnapshot | null | undefined) => !!(s?.ig || 
  * A LinkedIn connection through Composio with no company page chosen reads nothing, so the social card asks for a page.
  * A direct LinkedIn record has no reader at all.
  */
-export const liNeedsPage = (conns: readonly { provider: string; meta?: Record<string, string> }[]) =>
+export const liNeedsPage = (conns: readonly Conn[]) =>
   conns.some((c) => c.provider === "linkedin" && c.meta?.via === "composio" && !c.meta?.liOrg);

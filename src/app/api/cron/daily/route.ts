@@ -107,8 +107,6 @@ async function dailyFor(u: User): Promise<string> {
   try { const ads = await syncAdsIfDue(u.scope ?? u.email); if (ads) out.push(`ads:${ads}`); } catch (e) { out.push(`ads_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   // The site's GA4 and Search Console totals for Dana, read the same way (src/lib/site-stats.ts).
   try { if (await syncSiteIfDue(u.scope ?? u.email)) out.push("site"); } catch (e) { out.push(`site_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
-  // Instagram and LinkedIn page results for Dana, read the same way (src/lib/social-stats.ts).
-  try { if (await syncSocialIfDue(u.scope ?? u.email)) out.push("social"); } catch (e) { out.push(`social_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   const lc = await runLifecycle(u);
   if (lc.length) out.push(`lifecycle:${lc.length}`);
   const brief = await runDaily(u);
@@ -124,6 +122,9 @@ async function dailyFor(u: User): Promise<string> {
   } else if (fu.length && pref !== "none") {
     if (await sendEmail(u.email, u.lang === "ar" ? "متابعة من فريق ذكين" : "Follow-up from your Thakeen team", notifEmailText(u, fu))) out.push("email");
   }
+  // Instagram and LinkedIn page results for Dana (src/lib/social-stats.ts), last: up to 30 post reads may be slow, and a
+  // slow platform must never cost this workspace its brief or its email. Tomorrow's report reads what lands here.
+  try { if (await syncSocialIfDue(u.scope ?? u.email)) out.push("social"); } catch (e) { out.push(`social_failed:${e instanceof Error ? e.message.slice(0, 40) : "error"}`); }
   return out.join("+") || "nothing_due";
 }
 

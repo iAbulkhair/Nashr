@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { json, newMember, newUser, signIn } from "./helpers/session";
+import { jar, json, newMember, newUser, settle, signIn } from "./helpers/session";
 import { db } from "@/lib/db";
-import { getConnection, saveConnection } from "@/lib/connectors/store";
+import { getConnection, OAUTH_COOKIE, saveConnection, saveState } from "@/lib/connectors/store";
 import { saveTask, type Brand, type Task } from "@/lib/brand";
 import { publishOnce } from "@/lib/publish-once";
 import { wipeAccount } from "@/lib/account";
@@ -12,10 +12,11 @@ import type { Connection } from "@/lib/connectors/store";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import SocialStats from "@/components/app/SocialStats";
-import { liNeedsPage, reportSources, socialRead } from "@/lib/report-sources";
+import { connectedSources, liNeedsPage, reportSources, socialRead } from "@/lib/report-sources";
 import { connectViaComposio } from "@/lib/connectors/via-composio";
 import { listActivity } from "@/lib/activity";
 import * as connRoute from "@/app/api/connect/[provider]/route";
+import * as callbackRoute from "@/app/api/connect/[provider]/callback/route";
 
 /**
  * Rules 661-671: Instagram and LinkedIn page results read through Composio (social-stats.ts), and the owner's choice to
@@ -27,13 +28,14 @@ type Result = { data?: unknown; error?: string | null; successful: boolean };
 type Answer = Result | ((args: Record<string, unknown>) => Result);
 let calls: { slug: string; args: Record<string, unknown> }[];
 let answers: Record<string, Answer>;
+let owned: string[];
 
 function fake(): ComposioClient {
   return {
     connectedAccounts: {
       link: async () => ({ id: "ca_new", redirectUrl: "https://connect.composio.dev/link/lk_1" }),
       waitForConnection: async (id) => ({ id, status: "ACTIVE" }),
-      list: async () => ({ items: [] }),
+      list: async () => ({ items: owned.map((id) => ({ id })) }),
       revoke: async () => {},
       delete: async () => {},
     },
@@ -52,6 +54,7 @@ function fake(): ComposioClient {
 beforeEach(() => {
   calls = [];
   answers = {};
+  owned = [];
   vi.stubEnv("COMPOSIO_API_KEY", "test-key");
   vi.stubEnv("COMPOSIO_PROVIDERS", "meta,linkedin");
   setComposioClientForTests(fake());
@@ -230,7 +233,7 @@ describe("Instagram results (rules 662-665, 667)", () => {
   it("calls a non-professional account a known state, not a failure", async () => {
     const u = await newUser("signp");
     igAnswers();
-    answers.INSTAGRAM_GET_USER_INFO = { successful: false, error: "(#10) Application does not have permission for this action" };
+    answers.INSTAGRAM_GET_USER_INFO = { successful: false, error: "(#100) Tried accessing nonexisting field (followers_count) on node type (User)" };
     const snap = await syncSocial(u.email, { meta: igConn() }, NOW);
     expect(snap).toMatchObject({ igError: "ig_not_professional" });
     expect(snap.ig).toBeUndefined();
@@ -589,5 +592,104 @@ describe("posting to LinkedIn as the company page (rule 670)", () => {
     const rows = (await listActivity(owner.email)).rows.filter((r) => r.kind === "connector_changed");
     expect(rows.map((r) => r.outcome).sort()).toEqual(["linkedin:post_as:me", "linkedin:post_as:org"]);
     expect(rows.every((r) => r.via === "app" && r.note === "عود الشرق" && r.by)).toBe(true);
+  });
+});
+
+describe("final review fixes", () => {
+  const timeout = () => { throw Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" }); };
+
+  it("a failure that does not say the account is personal is a failure, and the last good read is kept", async () => {
+    const u = await newUser("sfx1");
+    igAnswers();
+    const good = await syncSocial(u.email, { meta: igConn() }, NOW);
+    for (const fail of [() => { throw new Error("socket hang up"); }, timeout, { successful: false, error: "An unknown error occurred (code 2)" }] as Answer[]) {
+      answers.INSTAGRAM_GET_USER_INFO = fail;
+      await expect(syncSocial(u.email, { meta: igConn() }, new Date(NOW.getTime() + 864e5))).rejects.toBeTruthy();
+      expect(await getSocialSnapshot(u.email)).toEqual(good);
+    }
+  });
+
+  it("a timed-out or rate-limited post read is not retried, and the read stops asking for posts after its time budget", async () => {
+    const u = await newUser("sfx2");
+    igAnswers([media(1)]);
+    answers.INSTAGRAM_GET_IG_MEDIA_INSIGHTS = timeout;
+    const t = await syncSocial(u.email, { meta: igConn() }, NOW);
+    expect(t.ig!.posts[0].views).toBeNull();
+    expect(calls.filter((c) => c.slug === "INSTAGRAM_GET_IG_MEDIA_INSIGHTS")).toHaveLength(1);
+    calls = [];
+    answers.INSTAGRAM_GET_IG_MEDIA_INSIGHTS = { successful: false, error: "Too many requests" };
+    await syncSocial(u.email, { meta: igConn() }, NOW);
+    expect(calls.filter((c) => c.slug === "INSTAGRAM_GET_IG_MEDIA_INSIGHTS")).toHaveLength(1);
+
+    calls = [];
+    igAnswers(Array.from({ length: 30 }, (_, i) => media(i + 1)));
+    // Assigned above in this test, so TypeScript narrows it to a Result; igAnswers just replaced it with the function.
+    const insights = answers.INSTAGRAM_GET_IG_MEDIA_INSIGHTS as unknown as Exclude<Answer, Result>;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      answers.INSTAGRAM_GET_IG_MEDIA_INSIGHTS = (a) => { vi.setSystemTime(Date.now() + 60_000); return insights(a); };
+      const late = await syncSocial(u.email, { meta: igConn() }, NOW);
+      expect(late.ig!.posts).toHaveLength(30);
+      expect(calls.filter((c) => c.slug === "INSTAGRAM_GET_IG_MEDIA_INSIGHTS").length).toBeLessThanOrEqual(4);
+      expect(late.ig!.posts.filter((p) => p.views == null).length).toBeGreaterThanOrEqual(26);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("the daily social read runs after the brief, so a slow platform never costs the workspace its brief", async () => {
+    const src = (await import("fs")).readFileSync("src/app/api/cron/daily/route.ts", "utf8");
+    expect(src.indexOf("syncSocialIfDue(u.scope")).toBeGreaterThan(src.indexOf("await runDaily(u)"));
+    expect(src.indexOf("syncSocialIfDue(u.scope")).toBeGreaterThan(src.indexOf("await sendEmail("));
+  });
+
+  it("a social source counts only once a part can be read: Instagram on the Meta record, a chosen LinkedIn page", () => {
+    expect(connectedSources([{ provider: "meta", meta: { via: "composio", pageId: "1" } }])).toEqual([]);
+    expect(connectedSources([{ provider: "meta", meta: { via: "composio", igId: "1784" } }])).toEqual(["meta"]);
+    expect(connectedSources([{ provider: "meta", meta: { igId: "1784" } }]), "a direct Meta record has no reader").toEqual([]);
+    expect(connectedSources([{ provider: "linkedin", meta: { via: "composio" } }])).toEqual([]);
+    expect(connectedSources([{ provider: "linkedin", meta: { via: "composio", liOrg: "urn:li:organization:42" } }])).toEqual(["linkedin"]);
+    expect(connectedSources([{ provider: "google", meta: {} }, { provider: "google_ads", meta: {} }, { provider: "salla" }])).toEqual(["google_ads", "salla"]);
+    expect(reportSources(connectedSources([{ provider: "meta", meta: { via: "composio", pageId: "1" } }])).missing).toContain("social");
+  });
+
+  it("connecting Instagram or LinkedIn, and choosing another page, read results at once", async () => {
+    const u = await newUser("sfx4");
+    const finish = async (provider: string, toolkit: string, accountId: string) => {
+      const st = `st-${Math.random().toString(16).slice(2)}`;
+      await saveState(st, { email: u.email, provider, lang: "en", shop: "", verifier: "", via: "composio", toolkit, accountId });
+      await signIn(u.email);
+      jar().set(OAUTH_COOKIE, st);
+      const res = await callbackRoute.GET(new Request(`https://app.test/api/connect/${provider}/callback?state=${st}`), { params: Promise.resolve({ provider }) });
+      await settle();
+      return new URL(res.headers.get("location")!).searchParams;
+    };
+    owned = ["ca_li", "ca_ig"];
+    answers.LINKEDIN_GET_MY_INFO = ok({ response_dict: { sub: "abc", name: "Abulkhair" } });
+    answers.LINKEDIN_GET_COMPANY_INFO = ok({ elements: [{ role: "ADMINISTRATOR", state: "APPROVED", organization: "urn:li:organization:42", organization_name: "A" }, { role: "ADMINISTRATOR", state: "APPROVED", organization: "urn:li:organization:43", organization_name: "B" }] });
+    liAnswers();
+    expect((await finish("linkedin", "linkedin", "ca_li")).get("connected")).toBe("linkedin");
+    expect(await getSocialSnapshot(u.email), "two pages: nothing chosen, nothing to read").toBeNull();
+
+    await saveConnection(u.email, { ...(await getConnection(u.email, "linkedin"))!, meta: { ...(await getConnection(u.email, "linkedin"))!.meta, liOrg: "urn:li:organization:42", liPostAs: "org" } });
+    expect((await connRoute.POST(json("/api/connect/linkedin", "POST", { action: "select_org", org: "urn:li:organization:43" }), { params: Promise.resolve({ provider: "linkedin" }) })).status).toBe(200);
+    await settle();
+    expect((await getSocialSnapshot(u.email))?.li?.org).toBe("urn:li:organization:43");
+    const rows = (await listActivity(u.email)).rows.filter((r) => r.kind === "connector_changed");
+    expect(rows.map((r) => r.outcome), "leaving the page's posting is logged").toEqual(["linkedin:post_as:me"]);
+
+    igAnswers();
+    answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1784", username: "oud", followers_count: 1200 } });
+    expect((await finish("meta", "instagram", "ca_ig")).get("connected")).toBe("meta");
+    expect((await getSocialSnapshot(u.email))?.ig?.user).toBe("oud");
+  });
+
+  it("tells Dana that post numbers are lifetime totals and that engagement is a fraction", async () => {
+    const u = await newUser("sfx6");
+    liAnswers();
+    await syncSocial(u.email, { linkedin: liConn() }, NOW);
+    const block = await socialDataBlock(u.email, NOW);
+    expect(block).toMatch(/lifetime/);
+    expect(block).toMatch(/engagement is a fraction/);
   });
 });

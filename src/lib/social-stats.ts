@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { db } from "./db";
 import { asData } from "./json";
 import { clean } from "./perf-import";
@@ -23,6 +24,11 @@ export const SOCIAL_KEY = (scope: string) => `socialstats:${scope}`;
 const DAYS = 28;
 const MAX_POSTS = 30;
 const DUE_MS = 20 * 36e5;
+/**
+ * The post reads stop asking after this long, on the real clock, so a slow platform leaves dashes instead of holding the
+ * daily run: a post not read keeps null figures.
+ */
+const POSTS_BUDGET_MS = 25_000;
 export const SOCIAL_STALE_DAYS = 7;
 
 type Range = { from: string; to: string };
@@ -56,6 +62,14 @@ const refused = (e: unknown) => e instanceof Error && / 401:/.test(e.message);
 const KNOWN = new Set(["ig_not_professional", "li_no_page_access"]);
 /** LinkedIn refuses a page the member does not administer, or an app without organization access, with a 403. */
 const denied = (e: unknown) => e instanceof Error && /403|forbidden|access.?denied/i.test(e.message);
+/**
+ * Graph API's words for an account it does not serve (personal or not professional). Only these mark the account: a
+ * network failure, a timeout or an unknown error is a failed read, and the last good read stays.
+ */
+const NOT_PROFESSIONAL = /professional|business account|nonexisting field|unsupported get request/i;
+/** A timeout or a rate limit: asking again for fewer metrics only spends more of the same budget. */
+const busy = (e: unknown) =>
+  e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError" || / 429:|rate.?limit|composio_rate_limited/i.test(e.message));
 
 const TYPES: readonly IgPost["type"][] = ["IMAGE", "VIDEO", "CAROUSEL_ALBUM"];
 const METRICS = ["views", "reach", "likes", "comments", "saved", "shares"] as const;
@@ -82,7 +96,7 @@ function igUrl(v: unknown): string | null {
 }
 
 /** The posts of the last 28 days, newest first, at most 30. Only the cursor is read from `paging`, never its links. */
-async function mediaList(scope: string, acc: string, igId: string, since: number): Promise<Record<string, unknown>[]> {
+async function mediaList(scope: string, acc: string, igId: string, since: number, stop: number): Promise<Record<string, unknown>[]> {
   const rows: Record<string, unknown>[] = [];
   const seen = new Set<string>();
   let after: string | undefined;
@@ -92,7 +106,7 @@ async function mediaList(scope: string, acc: string, igId: string, since: number
     rows.push(...page);
     if (after) seen.add(after);
     after = page.length ? pick(r, ["after"], 6) : undefined;
-  } while (rows.length < MAX_POSTS && after && !seen.has(after));
+  } while (rows.length < MAX_POSTS && after && !seen.has(after) && Date.now() < stop);
   return rows.slice(0, MAX_POSTS);
 }
 
@@ -102,28 +116,32 @@ async function readIg(scope: string, c: Connection, now: Date): Promise<Ig> {
   if (!igId) throw new Error("not_connected");
   const until = Math.floor(now.getTime() / 1000);
   const since = until - DAYS * 86400;
-  // A personal or creator account the Graph API does not serve answers with a refusal, not with data.
+  const stop = Date.now() + POSTS_BUDGET_MS;
+  // A personal or creator account the Graph API does not serve answers with a refusal that says so, not with data.
   const info = await composioRead(scope, "instagram", "INSTAGRAM_GET_USER_INFO", { fields: "username,followers_count" }, acc).catch((e) => {
-    throw refused(e) || !/ 502:/.test(e instanceof Error ? e.message : "") ? e : new Error("ig_not_professional");
+    throw refused(e) || !NOT_PROFESSIONAL.test(e instanceof Error ? e.message : "") ? e : new Error("ig_not_professional");
   });
   const [totals, rows, mine] = await Promise.all([
     composioRead(scope, "instagram", "INSTAGRAM_GET_USER_INSIGHTS", { ig_user_id: igId, metric: ["reach", "views"], period: "day", metric_type: "total_value", since, until }, acc)
       .then(metrics, (e) => { if (refused(e)) throw e; return {} as Record<string, number | null>; }),
-    mediaList(scope, acc, igId, since),
+    mediaList(scope, acc, igId, since, stop),
     db.smembers(SOCIAL_PUB_KEY(scope)),
   ]);
   const ours = new Set(mine);
-  // A refused token is not retried: it ends the read, and each worker stops at its own refusal.
+  // A refused token is not retried: it ends the read, and each worker stops at its own refusal. A timeout or a rate limit
+  // leaves that post unread, and past the budget no post is asked for.
   const results = await pmap(rows, async (row) => {
     const id = String(row.id);
     for (const metric of [[...METRICS], FALLBACK]) {
+      if (Date.now() >= stop) break;
       try {
         return metrics(await composioRead(scope, "instagram", "INSTAGRAM_GET_IG_MEDIA_INSIGHTS", { ig_media_id: id, metric }, acc));
       } catch (e) {
         if (refused(e)) throw e;
+        if (busy(e)) break;
       }
     }
-    return {};
+    return {} as Record<string, number | null>;
   }, 4);
   const posts = rows.map((row, i): IgPost => {
     const m = results[i];
@@ -230,14 +248,15 @@ export async function syncSocial(scope: string, conns: { meta?: Connection | nul
 
 /**
  * Daily: refresh when a record holds a part and the last read is older than 20 hours. A record waiting for the owner to
- * reconnect is left alone; a Facebook-only Meta record has nothing to read, so it adds no daily failure line.
+ * reconnect is left alone; a Facebook-only Meta record has nothing to read, so it adds no daily failure line. `force`
+ * reads at once whatever the last read's age: after a connect or a new page, so the card does not wait for tomorrow.
  */
-export async function syncSocialIfDue(scope: string, now = new Date()): Promise<boolean> {
+export async function syncSocialIfDue(scope: string, now = new Date(), force = false): Promise<boolean> {
   const [meta, linkedin, last] = await Promise.all([getConnection(scope, "meta"), getConnection(scope, "linkedin"), getSocialSnapshot(scope)]);
   const ig = holdsIg(meta) && !meta.needsReconnect;
   const li = holdsLi(linkedin) && !linkedin.needsReconnect;
   if (!ig && !li) return false;
-  if (last && now.getTime() - Date.parse(last.at) < DUE_MS) return false;
+  if (!force && last && now.getTime() - Date.parse(last.at) < DUE_MS) return false;
   try {
     const [m, l] = await Promise.all([ig ? getFreshConnection(scope, "meta") : null, li ? getFreshConnection(scope, "linkedin") : null]);
     await syncSocial(scope, { meta: m, linkedin: l }, now);
@@ -245,6 +264,15 @@ export async function syncSocialIfDue(scope: string, now = new Date()): Promise<
     throw e instanceof SocialReadError ? await refusedToken(scope, e.provider, e) : e;
   }
   return true;
+}
+
+/**
+ * A first read once a part can be read (an Instagram or LinkedIn connect, a new company page), after the response: the
+ * owner does not wait, and a failure only logs, since the daily run reads again.
+ */
+export function readSocialSoon(scope: string) {
+  const later = () => syncSocialIfDue(scope, new Date(), true).then(() => undefined, () => console.error("social first read failed"));
+  try { after(later); } catch { void later(); }
 }
 
 const NA = "not available (unknown, not zero)";
@@ -275,6 +303,8 @@ export async function socialDataBlock(scope: string, now = new Date()): Promise<
     `<social_data>${asData(data)}</social_data>`,
     `- Each part covers the ${DAYS} days in its own from/to. No previous period: never invent a change; write [رقم] for it and say it needs a second read.`,
     "- Followers are a count on the read date, not growth.",
+    "- Each post's figures (views, reach, likes, comments, saved, shares) are its lifetime totals on the read date, not only within the 28 days.",
+    "- LinkedIn engagement is a fraction of impressions, not a percent: 0.0733 means 7.33%.",
     "- null is a figure that was not read: unknown, never zero. from_thakeen marks a post Thakeen published.",
     ...(age > SOCIAL_STALE_DAYS ? [`- The read is ${age} days old: label these figures with the read date.`] : []),
   ].join("\n");

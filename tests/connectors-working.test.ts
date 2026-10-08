@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { IMPORTS_PRODUCTS, READS_ADS, READS_METRICS, WORKING_PROVIDERS, isWorking } from "@/lib/connectors/working";
 import { AD_PROVIDERS } from "@/lib/connectors/ads";
 import { SALES_PROVIDERS } from "@/lib/connectors/sales";
-import { reportSources } from "@/lib/report-sources";
+import { READ_VIA_COMPOSIO, reportSources } from "@/lib/report-sources";
 import { costUsd } from "@/lib/usage";
 
 // Rule 65: the app calls a connection "Connected", offers "Connect", or reads numbers from it only when code uses it.
@@ -57,8 +57,9 @@ describe("which connectors do something", () => {
     expect(reportSources(["snapchat"]).read).toEqual(["ads"]);
     expect(reportSources(["tiktok_ads"]).read).toEqual(["ads"]);
     expect(reportSources(["google_ads"]).read).toEqual(["ads"]);
-    expect(readFileSync("src/app/[lang]/app/reports/page.tsx", "utf8")).toMatch(/!READ_VIA_COMPOSIO\.includes\(c\.provider\) \|\| isComposio\(c\)/);
-    expect(readFileSync("src/app/[lang]/app/reports/page.tsx", "utf8")).toMatch(/READ_VIA_COMPOSIO = \["google", "meta", "linkedin"\]/);
+    // The page passes only readable records (report-sources.ts connectedSources, pinned in composio-social.test.ts).
+    expect(readFileSync("src/app/[lang]/app/reports/page.tsx", "utf8")).toMatch(/const connected = connectedSources\(connections\)/);
+    expect(READ_VIA_COMPOSIO).toEqual(["google", "meta", "linkedin"]);
   });
 });
 

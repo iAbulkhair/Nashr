@@ -3,6 +3,7 @@ import { currentUser, sc } from "@/lib/auth";
 import { deleteConnection, getConnection } from "@/lib/connectors/store";
 import { isComposio, liOrgName, postAsVia, revokeAll, selectOrgVia, selectPageVia } from "@/lib/connectors/via-composio";
 import { recordActivity } from "@/lib/activity";
+import { readSocialSoon } from "@/lib/social-stats";
 import { byOf } from "@/lib/actor";
 import { getFreshConnection, refusedToken } from "@/lib/connectors/fresh";
 import { importShopify } from "@/lib/connectors/shopify";
@@ -74,7 +75,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
     if (b.action === "select_org" && provider === "linkedin" && isComposio(c)) {
       const next = selectOrgVia(c, String(b.org ?? ""));
       if (!next) return NextResponse.json({ ok: false, error: "unknown_org" }, { status: 400 });
-      await saveConnection(sc(u), next);
+      // A new page posts as the member until the owner says otherwise; leaving the page's posting is logged like post_as.
+      await Promise.all([
+        saveConnection(sc(u), next),
+        c.meta?.liPostAs === "org" ? recordActivity(sc(u), [{ at: new Date().toISOString(), kind: "connector_changed", by: byOf(u), via: "app", outcome: "linkedin:post_as:me", note: "" }]) : null,
+      ]);
+      readSocialSoon(sc(u));
       return NextResponse.json({ ok: true, account: next.meta?.account });
     }
     // Publish to LinkedIn as the member or as the chosen page (rule 670): checked here, never left to a prompt.
