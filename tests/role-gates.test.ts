@@ -261,6 +261,7 @@ const READS: Record<string, Gate> = {
   "GET /api/secretary/feed/[token]": "public-read", // the token in the path is the credential; rate limited per IP and per link
   "GET /api/oauth/meta": "public-read",
   "GET /api/oauth/resource": "public-read",
+  "GET /api/health": "public-read", // the release probe's build identity (rule 676): { ok, commit, built } only; rate limited per IP, and still answers when the limiter's store is down
   "OPTIONS /api/mcp": "public-read",
   "OPTIONS /api/oauth/meta": "public-read",
   "OPTIONS /api/oauth/register": "public-read",
