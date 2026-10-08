@@ -101,7 +101,8 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
   const hasBanned = useMemo(() => brandRules({ banned }).length > 0, [banned]);
   const held = (x: Pick<Task, "type" | "channel" | "title" | "body" | "editedBody">) => gateTask({ banned }, x);
   // What the publish route checks: stricter than approval, since no placeholder of any kind is ever published.
-  const pubHeld = (x: Task) => gateTask({ banned }, x, { publish: true });
+  // Per target: a WhatsApp template keeps its {{n}} variables, every other target refuses them (src/lib/brand-rules.ts).
+  const pubHeld = (x: Task, provider?: string) => gateTask({ banned }, x, { publish: true, provider });
   const A = AGAIN[lang];
   const W = WP[lang];
   const [liveAsk, setLiveAsk] = useState<string | null>(null);
@@ -477,12 +478,13 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                     // Publish buttons follow the publish gate, so a WhatsApp draft with {{1}} (fine to approve) never
                     // offers a Telegram post the server would refuse.
                     const pub = pubHeld(x);
-                    const slotsOnly = pub.length > 0 && hits.length === 0;
                     const list = targets(x);
+                    const heldFor = (p: string) => (p === "whatsapp" ? pubHeld(x, p) : pub);
+                    const slotsOnly = list.some((p) => heldFor(p).length > 0) && hits.length === 0;
                     return (
                       <>
                         {list.map((p) => (
-                          <button key={p} disabled={publishing === x.id + p || pub.length > 0} title={slotsOnly ? A.slots : pub.length ? G.held : undefined} onClick={() => publish(x.id, p)} className="btn btn-primary btn-pill">{publishing === x.id + p ? i.publishing : `${i.publishTo} ${p}`}</button>
+                          <button key={p} disabled={publishing === x.id + p || heldFor(p).length > 0} title={heldFor(p).length ? (hits.length === 0 ? A.slots : G.held) : undefined} onClick={() => publish(x.id, p)} className="btn btn-primary btn-pill">{publishing === x.id + p ? i.publishing : `${i.publishTo} ${p}`}</button>
                         ))}
                         {list.includes("wordpress") && <button disabled={publishing === x.id + "wordpress" || pub.length > 0} onClick={() => setLiveAsk(x.id)} className="btn btn-secondary btn-pill">{W.live}</button>}
                         {liveAsk === x.id && (

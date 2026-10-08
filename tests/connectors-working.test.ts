@@ -22,7 +22,9 @@ describe("which connectors do something", () => {
   });
 
   it("does not treat a stored connection with no code behind it as working", () => {
-    for (const id of ["klaviyo", "brevo", "google", "instagram", "whatsapp", "tiktok", "snapchat", "linkedin"]) expect(isWorking(id)).toBe(false);
+    // LinkedIn and TikTok work through Composio only (rule 650 keeps a direct record of them from being a target). Klaviyo,
+    // Brevo, WhatsApp and YouTube work as drafts since rule 658 (publish.ts has their cases).
+    for (const id of ["google", "instagram", "snapchat", "unifonic", "mailchimp"]) expect(isWorking(id)).toBe(false);
   });
 
   it("offers Import products exactly where import_products imports", () => {
@@ -31,7 +33,8 @@ describe("which connectors do something", () => {
 
   it("reads platform numbers only from the stores the sales sync reads and the ad accounts syncAds reads, and stats.ts reads no connection", () => {
     expect([...READS_ADS].sort()).toEqual([...AD_PROVIDERS].sort());
-    expect([...READS_METRICS].sort()).toEqual([...SALES_PROVIDERS, ...AD_PROVIDERS].sort());
+    // Google is read only for the site block (src/lib/site-stats.ts), and only through Composio.
+    expect([...READS_METRICS].sort()).toEqual([...SALES_PROVIDERS, ...AD_PROVIDERS, "google"].sort());
     expect(reportSources(["meta_ads"]).read).toEqual(["ads"]);
     expect(reportSources(["meta"]).read).toEqual([]); // the Page connection publishes; it reads no ad numbers
     expect(readFileSync("src/lib/stats.ts", "utf8")).not.toMatch(/getConnection|listConnections/);
@@ -43,8 +46,15 @@ describe("which connectors do something", () => {
     expect(reportSources(["shopify", "x"]).read).toEqual(["store"]);
     expect(reportSources(["zid"]).read).toEqual(["store"]);
     expect(reportSources(["woocommerce"]).read).toEqual(["store"]);
-    // Meta and Google store a connection, but nothing reads their numbers.
-    expect(reportSources(["meta", "google"])).toMatchObject({ read: [], banner: "none" });
+    // The Meta Page connection publishes; it reads no numbers.
+    expect(reportSources(["meta"])).toMatchObject({ read: [], banner: "none" });
+    // Google is the site connection: analytics only, never ads. The reports page drops a direct (non-Composio) record.
+    expect(reportSources(["google"]).read).toEqual(["analytics"]);
+    // Snapchat is Snapchat Ads: ad results, not a social account.
+    expect(reportSources(["snapchat"]).read).toEqual(["ads"]);
+    expect(reportSources(["tiktok_ads"]).read).toEqual(["ads"]);
+    expect(reportSources(["google_ads"]).read).toEqual(["ads"]);
+    expect(readFileSync("src/app/[lang]/app/reports/page.tsx", "utf8")).toMatch(/c\.provider !== "google" \|\| isComposio\(c\)/);
   });
 });
 

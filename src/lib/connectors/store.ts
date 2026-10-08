@@ -16,7 +16,7 @@ export type Connection = {
 export const OAUTH_COOKIE = "nashr_oauth";
 
 /** Production must use its own CONNECT_SECRET: reusing the admin key would let one leaked secret decrypt every tenant's platform credentials. */
-function connectSecret(): string {
+export function connectSecret(): string {
   const v = process.env.CONNECT_SECRET;
   if (v) return v;
   if (process.env.NODE_ENV === "production") throw new Error("CONNECT_SECRET is not set");

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
-import { deleteConnection } from "@/lib/connectors/store";
+import { deleteConnection, getConnection } from "@/lib/connectors/store";
+import { isComposio, revokeAll, selectPageVia } from "@/lib/connectors/via-composio";
 import { getFreshConnection, refusedToken } from "@/lib/connectors/fresh";
 import { importShopify } from "@/lib/connectors/shopify";
 import { importWoo } from "@/lib/connectors/woocommerce";
@@ -23,6 +24,16 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ provider: s
   const no = forbid(u, "connectors");
   if (no) return no;
   const { provider } = await ctx.params;
+  // A Composio connection is revoked at the platform first. If that fails the record stays, marked, so the owner can
+  // try again: deleting it would leave a live grant Thakeen can no longer find.
+  const c = await getConnection(sc(u), provider);
+  if (c && isComposio(c)) {
+    const left = await revokeAll(sc(u), c).catch(() => ["all"]);
+    if (left.length) {
+      await saveConnection(sc(u), { ...c, needsReconnect: "revoke_failed" });
+      return NextResponse.json({ ok: false, error: "revoke_failed" }, { status: 502 });
+    }
+  }
   await deleteConnection(sc(u), provider);
   return NextResponse.json({ ok: true });
 }
@@ -52,7 +63,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
       return NextResponse.json({ ok: true, count: n });
     }
     if (b.action === "select_page" && provider === "meta") {
-      const next = selectPage(c, String(b.pageId ?? ""));
+      const next = isComposio(c) ? selectPageVia(c, String(b.pageId ?? "")) : selectPage(c, String(b.pageId ?? ""));
       if (!next) return NextResponse.json({ ok: false, error: "unknown_page" }, { status: 400 });
       await saveConnection(sc(u), next);
       return NextResponse.json({ ok: true, account: next.meta?.account });

@@ -731,13 +731,13 @@ export async function runTool(user: User, name: string, input: Record<string, un
       // Approved before a banned word was added to the brand file, or edited since: the rule still holds it. At publish no
       // placeholder of any kind may go out.
       const brandNow = await getBrand(email);
-      const held = gateTask(brandNow, t, { publish: true });
+      const held = gateTask(brandNow, t, { publish: true, provider });
       if (held.length) return `Not published. ${explain(held)} Tell the owner what to fix and where; do not work around the rule.`;
       // The same checks again on the copy that is sent, under the publish lock.
       const r = await publishOnce(email, t.id, provider, {
         check: (cur) => {
           if (cur.status !== "approved" || !reviewed(cur)) return { error: "not_approved" };
-          const v = gateTask(brandNow, cur, { publish: true });
+          const v = gateTask(brandNow, cur, { publish: true, provider });
           return v.length ? { error: "brand_violation", violations: v } : null;
         },
       });
