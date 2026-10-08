@@ -49,6 +49,8 @@ const NEW_READS = {
   linkedin: ["LINKEDIN_GET_COMPANY_INFO", "LINKEDIN_GET_SHARE_STATS", "LINKEDIN_GET_NETWORK_SIZE", "LINKEDIN_GET_ORG_PAGE_STATS"],
   // The Facebook Page's insights, its posts and each post's insights (rule 739).
   facebook: ["FACEBOOK_GET_PAGE_INSIGHTS", "FACEBOOK_GET_PAGE_POSTS", "FACEBOOK_GET_POST_INSIGHTS"],
+  // The YouTube channel's analytics, its uploads and their details (rule 740).
+  youtube: ["YOUTUBE_QUERY_ANALYTICS", "YOUTUBE_LIST_CHANNEL_VIDEOS", "YOUTUBE_GET_VIDEO_DETAILS_BATCH"],
   // The ad account's previous spend (rule 733): Snap serves only spend at the account level.
   snapchat: ["SNAPCHAT_GET_AD_ACCOUNTS_STATS"],
 } as const;
@@ -72,12 +74,22 @@ describe("social results are reads only (rule 663)", () => {
       FACEBOOK_GET_POST_INSIGHTS: ["post_id", "metrics", "period"],
     });
     expect(Object.keys(TOOLKITS.facebook.write).sort()).toEqual(["FACEBOOK_CREATE_PHOTO_POST", "FACEBOOK_CREATE_POST"]);
+    // The YouTube channel's three reads take exactly the spec's arguments (B2); the toolkit's one write is still the
+    // private upload.
+    expect(TOOLKITS.youtube.read).toEqual({
+      YOUTUBE_LIST_CHANNELS: ["part", "mine", "maxResults"],
+      YOUTUBE_QUERY_ANALYTICS: ["ids", "startDate", "endDate", "metrics", "dimensions"],
+      YOUTUBE_LIST_CHANNEL_VIDEOS: ["mine", "part", "maxResults"],
+      YOUTUBE_GET_VIDEO_DETAILS_BATCH: ["id", "parts"],
+    });
+    expect(Object.keys(TOOLKITS.youtube.write)).toEqual(["YOUTUBE_UPLOAD_VIDEO"]);
   });
   it("refuses a new read slug through composioWrite", async () => {
     await expect(composioWrite("s1", "instagram", "INSTAGRAM_GET_IG_USER_MEDIA", { ig_user_id: "1" }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
     await expect(composioWrite("s1", "snapchat", "SNAPCHAT_GET_AD_ACCOUNTS_STATS", { ad_account_id: "x" }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
     await expect(composioWrite("s1", "linkedin", "LINKEDIN_GET_ORG_PAGE_STATS", { organization: "urn:li:organization:42" }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
     for (const slug of NEW_READS.facebook) await expect(composioWrite("s1", "facebook", slug, { page_id: "1" }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
+    for (const slug of NEW_READS.youtube) await expect(composioWrite("s1", "youtube", slug, { mine: true }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
     expect(calls).toEqual([]);
   });
 });

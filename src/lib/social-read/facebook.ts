@@ -6,7 +6,7 @@ import { composioRead } from "../connectors/composio";
 import { accountOf, at, isComposio, listOf } from "../connectors/composio-shape";
 import type { Connection } from "../connectors/store";
 import type { PlatformPart, Range, SocialPost, Totals } from "../social-stats";
-import { DAY_MS, EMPTY_TOTALS, SOCIAL_PUB_KEY, beforeDeadline, dateOf, day, rangeBefore, refused, splitDays } from "./common";
+import { DAY_MS, EMPTY_TOTALS, SOCIAL_PUB_KEY, beforeDeadline, count, dateOf, day, rangeBefore, refused, settle, splitDays } from "./common";
 
 /**
  * The Facebook Page's results (rule 739, spec 2026-10-08-social-analytics-reports B1): the Page chosen for publishing
@@ -47,15 +47,6 @@ export function fbUrl(v: unknown): string | null {
 }
 
 /**
- * A Graph count: a finite number of zero or more, or one written in digits ("1234"). Anything else is not read: an empty
- * `{}`, "", "N/A", NaN, Infinity or a negative becomes null, never NaN, a string or zero.
- */
-function count(v: unknown): N {
-  const x = typeof v === "number" ? v : typeof v === "string" && /^\s*\d+(?:\.\d+)?\s*$/.test(v) ? Number(v) : NaN;
-  return Number.isFinite(x) && x >= 0 ? x : null;
-}
-
-/**
  * The day a daily value covers. Meta stamps it with the end of the Page's day (`end_time`, midnight in the Page's time
  * zone), so 12 hours earlier falls inside that day for any time zone from UTC-11 to UTC+12. "" when there is no stamp.
  */
@@ -86,7 +77,6 @@ function postMetrics(r: unknown): Record<string, N> {
   return out;
 }
 
-const settle = <T>(p: Promise<T>) => p.then((value) => ({ ok: true as const, value }), (error: unknown) => ({ ok: false as const, error }));
 const message = (e: unknown) => (e instanceof Error ? e.message : "");
 
 /**

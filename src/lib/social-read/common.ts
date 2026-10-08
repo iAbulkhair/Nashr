@@ -1,8 +1,9 @@
+import type { N } from "../figures";
 import type { Range, Totals } from "../social-stats";
 
 /**
  * What every social reader shares: the key of the posts Thakeen published, the empty totals, the deadline, the split of
- * one read into two periods, and the adapter's error shapes. Kept apart from social-stats.ts, which lists the readers
+ * one read into two periods, the strict count, and the adapter's error shapes. Kept apart from social-stats.ts, which lists the readers
  * (READERS) and so imports each platform's file: a reader importing social-stats.ts back would load in a cycle. This file
  * imports nothing at run time and never reaches Composio (rule 652).
  */
@@ -16,7 +17,8 @@ export const EMPTY_TOTALS: Totals = Object.freeze({ views: null, reach: null, en
 
 export const DAY_MS = 864e5;
 export const day = (d: Date) => d.toISOString().slice(0, 10);
-const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+/** A date as the platforms take and give it (YYYY-MM-DD). */
+export const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Throws `deadline` once the shared deadline has come (rule 741): every reader calls it before each Composio read. */
 export function beforeDeadline(deadline: number): void {
@@ -40,6 +42,16 @@ export function splitDays<T extends { day: string }>(rows: T[], window: Range): 
   const within = (d: string, r: Range) => ISO_DAY.test(d) && d >= r.from && d <= r.to;
   return { cur: rows.filter((r) => within(r.day, window)), prev: rows.filter((r) => within(r.day, before)) };
 }
+/**
+ * A platform's count: a finite number of zero or more, or one written in digits ("1234"). Anything else is not read: an
+ * empty `{}`, "", "N/A", NaN, Infinity or a negative becomes null, never NaN, a string or zero (Review Focus 5).
+ */
+export function count(v: unknown): N {
+  const x = typeof v === "number" ? v : typeof v === "string" && /^\s*\d+(?:\.\d+)?\s*$/.test(v) ? Number(v) : NaN;
+  return Number.isFinite(x) && x >= 0 ? x : null;
+}
+/** A call's answer or its error, so one failed side of a read never rejects the others. */
+export const settle = <T>(p: Promise<T>) => p.then((value) => ({ ok: true as const, value }), (error: unknown) => ({ ok: false as const, error }));
 /** A platform's timestamp as its date (YYYY-MM-DD), or "" when it does not start with one. */
 export const dateOf = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : "");
 /** The adapter's 401 (composio.ts statusOf): only a new connection fixes it, so it is never retried or hidden. */

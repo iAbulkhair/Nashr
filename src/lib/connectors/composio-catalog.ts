@@ -9,8 +9,9 @@
  * below list no write tool at all, so nothing here can create, edit, pause or fund an ad, or change a property (the
  * founder's rule of 2026-10-05: ads are read and analysed, never published or edited; rule 653).
  *
- * Instagram, Facebook Page and LinkedIn page results are reads (rules 663 and 739, specs 2026-10-08-social-results and
- * 2026-10-08-social-analytics-reports B1): no tool here posts, replies, likes or edits on the strength of them.
+ * Instagram, Facebook Page, LinkedIn page and YouTube channel results are reads (rules 663, 739 and 740, specs
+ * 2026-10-08-social-results and 2026-10-08-social-analytics-reports B1, B2): no tool here posts, replies, likes or edits
+ * on the strength of them.
  *
  * WhatsApp and YouTube are drafts only (rule 657): WhatsApp's one write submits a message template to Meta's review and
  * no tool sends a message; YouTube's one write uploads a video whose privacyStatus is pinned to "private" in `fixed`.
@@ -98,7 +99,14 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
   youtube: {
     provider: "youtube",
     authEnv: "COMPOSIO_AUTH_YOUTUBE",
-    read: { YOUTUBE_LIST_CHANNELS: ["part", "mine", "maxResults"] },
+    read: {
+      YOUTUBE_LIST_CHANNELS: ["part", "mine", "maxResults"],
+      // The channel's results (rule 740): its own analytics (`ids` is always channel==MINE), its latest uploads and those
+      // videos' public counts, with constant metrics and parts (social-read/youtube.ts). Read only, like the list above.
+      YOUTUBE_QUERY_ANALYTICS: ["ids", "startDate", "endDate", "metrics", "dimensions"],
+      YOUTUBE_LIST_CHANNEL_VIDEOS: ["mine", "part", "maxResults"],
+      YOUTUBE_GET_VIDEO_DETAILS_BATCH: ["id", "parts"],
+    },
     write: { YOUTUBE_UPLOAD_VIDEO: ["title", "description", "tags", "categoryId", "privacyStatus", "videoFilePath"] },
     fixed: { YOUTUBE_UPLOAD_VIDEO: { privacyStatus: "private" } },
   },

@@ -5,6 +5,7 @@ import { saveConnection, type Connection } from "@/lib/connectors/store";
 import { setComposioClientForTests } from "@/lib/connectors/composio";
 import { EMPTY_TOTALS, SOCIAL_PUB_KEY, getSocialSnapshot, holdsSocial, socialDataBlock, syncSocial, syncSocialIfDue, type Totals } from "@/lib/social-stats";
 import { fbUrl, holdsFb } from "@/lib/social-read/facebook";
+import { holdsYt, ytUrl } from "@/lib/social-read/youtube";
 import * as connRoute from "@/app/api/connect/[provider]/route";
 import { fakeComposio, ok, type Answer, type Call, type Result } from "./helpers/composio-fake";
 
@@ -14,6 +15,11 @@ import { fakeComposio, ok, type Answer, type Call, type Result } from "./helpers
  * the 28 days before it, the Page's own posts inside the window, and each post's lifetime views and reach. Amends 663 (the
  * three reads are reads only), 664 (the Page is a part beside Instagram) and 673 (a Facebook-only record with a Page is
  * read daily). Composio is the shared fake; answers follow the Graph API shapes Composio passes through (`data.data`).
+ *
+ * Rule 740 (same spec, B2): the YouTube channel chosen at connect, read the same way: its subscriber count, 56 days of
+ * daily channel analytics split into the window and the 28 days before it, and its latest uploads (at most 30) with each
+ * video's public counts. Amends 663 (the three new tools are reads only), 664 (the channel is a part), 673 (a YouTube
+ * record is read daily) and 735 (the YouTube path answers sync_social). Answers follow the Data and Analytics API shapes.
  */
 const NOW = new Date("2026-10-08T09:00:00Z");
 
@@ -273,5 +279,255 @@ describe("Facebook Page results (rule 739)", () => {
       "https://m.facebook.com/123/posts/1", "http://www.facebook.com/123/posts/1", "https://www.facebook.com.evil.example/1",
       "https://www.facebook.com:8443/123/posts/1", "https://www.facebook.com/photo.php?fbid=1", "javascript:alert(1)", "not a link", 42, null,
     ]) expect(fbUrl(bad), String(bad)).toBeNull();
+  });
+});
+
+const YT_METRICS = "views,estimatedMinutesWatched,likes,comments,shares,subscribersGained,subscribersLost";
+const CH = "UCddiUEpeqJcYeBxX1IVBKvQ";
+const ytConn = (meta: Record<string, string> = {}) => via("youtube", { youtube: "ca_yt" }, { channelId: CH, account: "Ward TV", ...meta });
+/** An eleven-character video id: vid00000001, vid00000002, ... */
+const vid = (n: number) => `vid${String(n).padStart(8, "0")}`;
+const HEADS = ["day", ...YT_METRICS.split(",")];
+const heads = (names: string[]) => names.map((name) => ({ name, columnType: name === "day" ? "DIMENSION" : "METRIC", dataType: name === "day" ? "STRING" : "INTEGER" }));
+/** One analytics day: views, minutes watched, likes, comments, shares, subscribers gained and lost, in HEADS order. */
+type Day = [string, ...unknown[]];
+const DAYS: Day[] = [
+  ["2026-10-07", 100, 250, 10, 2, 1, 5, 1],
+  ["2026-10-06", 50, 120, 4, 1, 0, 3, 0],
+  ["2026-09-10", 5, 10, 0, 0, 0, 0, 0],
+  ["2026-09-09", 40, 90, 2, 0, 0, 1, 2],
+  ["2026-08-13", 2, 3, 0, 0, 0, 0, 0],
+  ["2026-08-12", 999, 999, 999, 999, 999, 999, 999], // before both periods
+];
+const report = (rows: unknown[], names: string[] | null = HEADS) => ok({ data: { kind: "youtubeAnalytics#resultTable", ...(names ? { columnHeaders: heads(names) } : {}), rows } });
+const ytVideo = (id: string, published: string, over: Record<string, unknown> = {}) => ({
+  kind: "youtube#video", id, snippet: { title: `video ${id}`, publishedAt: `${published}T12:00:00Z`, channelId: CH },
+  statistics: { viewCount: "1500", likeCount: "80", commentCount: "6", favoriteCount: "0" }, status: { privacyStatus: "public" }, ...over,
+});
+/** The channel's upload list as playlist items (the playlist item's own id is not a video id). */
+const listing = (ids: string[]) => ok({ data: { items: ids.map((id, i) => ({ kind: "youtube#playlistItem", id: `UUpl${i}aGVsbG8gd29ybGQgaXRlbQ`, snippet: { title: `video ${id}`, resourceId: { kind: "youtube#video", videoId: id } } })) } });
+function ytAnswers(videos: Record<string, unknown>[] = [ytVideo(vid(1), "2026-10-05")], rows: unknown[] = DAYS) {
+  answers.YOUTUBE_LIST_CHANNELS = ok({ data: { kind: "youtube#channelListResponse", items: [{ kind: "youtube#channel", id: CH, statistics: { viewCount: "90000", subscriberCount: "5000", hiddenSubscriberCount: false, videoCount: "40" } }] } });
+  answers.YOUTUBE_QUERY_ANALYTICS = report(rows);
+  answers.YOUTUBE_LIST_CHANNEL_VIDEOS = listing(videos.map((v) => String(v.id)));
+  answers.YOUTUBE_GET_VIDEO_DETAILS_BATCH = (a) => ok({ data: { items: videos.filter((v) => (a.id as string[]).includes(String(v.id))) } });
+}
+const YT_TOTALS = { ...EMPTY_TOTALS, views: 155, watchMinutes: 380, likes: 14, comments: 3, shares: 1, followsGained: 8, followsLost: 1 };
+
+describe("YouTube channel results (rule 740)", () => {
+  it("reads the connected channel with constant metrics and parts, never a channel id (740)", async () => {
+    const u = await newUser("ytread");
+    await db.sadd(SOCIAL_PUB_KEY(u.email), vid(1));
+    ytAnswers();
+    const snap = await syncSocial(u.email, { youtube: ytConn() }, NOW);
+    const args = (slug: string) => calls.find((c) => c.slug === slug)?.args;
+    expect(args("YOUTUBE_LIST_CHANNELS")).toEqual({ part: "statistics", mine: true, maxResults: 1 });
+    expect(args("YOUTUBE_QUERY_ANALYTICS")).toEqual({ ids: "channel==MINE", startDate: "2026-08-13", endDate: "2026-10-07", metrics: YT_METRICS, dimensions: "day" });
+    expect(args("YOUTUBE_LIST_CHANNEL_VIDEOS")).toEqual({ mine: true, part: "snippet", maxResults: 30 });
+    expect(args("YOUTUBE_GET_VIDEO_DETAILS_BATCH")).toEqual({ id: [vid(1)], parts: ["snippet", "statistics", "status"] });
+    expect(calls).toHaveLength(4);
+    // The login's own channel is asked for (channel==MINE, mine): the stored channel id and any token never leave.
+    for (const c of calls) expect(JSON.stringify(c.args)).not.toMatch(new RegExp(`${CH}|access_token`));
+
+    const yt = snap.parts.youtube!;
+    expect(yt).toMatchObject({ platform: "youtube", account: "Ward TV", range: { from: "2026-09-10", to: "2026-10-07" }, followers: 5000 });
+    expect(yt.totals).toEqual(YT_TOTALS);
+    // The 28 days before the window, from the same call: a day before them (2026-08-12) counts in neither.
+    expect(yt.prev).toEqual({ range: { from: "2026-08-13", to: "2026-09-09" }, totals: { ...EMPTY_TOTALS, views: 42, watchMinutes: 93, likes: 2, comments: 0, shares: 0, followsGained: 1, followsLost: 2 } });
+    expect(yt.posts).toEqual([{ id: vid(1), date: "2026-10-05", type: "VIDEO", caption: `video ${vid(1)}`, url: `https://www.youtube.com/watch?v=${vid(1)}`, views: 1500, reach: null, likes: 80, comments: 6, shares: null, saved: null, fromThakeen: true }]);
+    expect(snap.errors).toEqual({});
+    expect(snap.history).toEqual([{ month: "2026-10", platform: "youtube", followers: 5000, totals: yt.totals }]);
+    // Dana is told what YouTube's figures are, beside them.
+    const block = await socialDataBlock(u.email, NOW);
+    expect(block).toContain('"youtube":{"account":"Ward TV"');
+    expect(block).toContain("On the YouTube channel, followers are subscribers");
+  });
+
+  it("keeps at most 30 uploads, published inside the window and not private, links only on youtube.com (740)", async () => {
+    const u = await newUser("ytposts");
+    const videos = Array.from({ length: 35 }, (_, i) => ytVideo(vid(i + 1), "2026-10-01"));
+    videos[0] = ytVideo(vid(1), "2026-10-08"); // today: after the window
+    videos[1] = ytVideo(vid(2), "2026-10-02", { status: { privacyStatus: "private" } }); // a private draft (Thakeen's uploads)
+    videos[2] = ytVideo(vid(3), "2026-09-09"); // older than the window
+    videos[3] = ytVideo(vid(4), "2026-10-03", { snippet: { title: "<b>ورد</b> طائفي\n" + "x".repeat(200), publishedAt: "2026-10-03T08:00:00Z" } });
+    videos[4] = ytVideo(vid(5), "2026-09-10", { status: { privacyStatus: "unlisted" }, statistics: { viewCount: "N/A", likeCount: "12abc", commentCount: -1 } });
+    ytAnswers(videos);
+    // Ids that are not video ids, a repeat and a search result's shape: the bad ones and the repeat are never asked for.
+    const ids = [vid(1), "bad id!!!!!", "../../../me", vid(2), vid(2), ...videos.slice(2).map((v) => String(v.id))];
+    answers.YOUTUBE_LIST_CHANNEL_VIDEOS = ok({ data: { items: ids.map((id, i) => (i === 0 ? { id: { kind: "youtube#video", videoId: id }, snippet: { title: "t" } } : { id: `item${i}`, snippet: { resourceId: { videoId: id } } })) } });
+    // The answer also carries a video not asked for: never kept.
+    const base = answers.YOUTUBE_GET_VIDEO_DETAILS_BATCH as (a: Record<string, unknown>) => Result;
+    answers.YOUTUBE_GET_VIDEO_DETAILS_BATCH = (a) => {
+      const r = base(a) as { data: { data: { items: unknown[] } } };
+      return ok({ data: { items: [...r.data.data.items, ytVideo("zzzzzzzzzzz", "2026-10-01")] } });
+    };
+    const yt = (await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!;
+    const asked = calls.find((c) => c.slug === "YOUTUBE_GET_VIDEO_DETAILS_BATCH")!.args.id as string[];
+    expect(asked).toEqual(Array.from({ length: 30 }, (_, i) => vid(i + 1)));
+    expect(calls.filter((c) => c.slug === "YOUTUBE_GET_VIDEO_DETAILS_BATCH")).toHaveLength(1);
+    expect(yt.posts).toHaveLength(27);
+    expect(yt.posts.map((p) => p.id)).toEqual([vid(4), vid(5), ...Array.from({ length: 25 }, (_, i) => vid(i + 6))]);
+    for (const p of yt.posts) expect(p.url).toMatch(/^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/);
+    const [p4, p5] = yt.posts;
+    expect(p4.caption.length).toBeLessThanOrEqual(80);
+    expect(p4.caption).not.toMatch(/[<>\n]/);
+    // An unlisted video stands; counts that are not numbers are not read, never zero.
+    expect(p5).toMatchObject({ date: "2026-09-10", views: null, likes: null, comments: null, reach: null, shares: null, saved: null, fromThakeen: false });
+  });
+
+  it("analytics refused for want of their scope keep the subscribers and videos as a known state (740)", async () => {
+    const u = await newUser("ytnoana");
+    ytAnswers();
+    answers.YOUTUBE_QUERY_ANALYTICS = { successful: false, error: "Request had insufficient authentication scopes." };
+    const snap = await syncSocial(u.email, { youtube: ytConn() }, NOW);
+    expect(snap.errors).toEqual({ youtube: "yt_no_analytics" });
+    const yt = snap.parts.youtube!;
+    expect(yt).toMatchObject({ followers: 5000, totals: EMPTY_TOTALS, posts: [{ id: vid(1), views: 1500 }] });
+    expect(yt.totals.views).toBeNull();
+    expect(yt).not.toHaveProperty("prev");
+    expect(yt).not.toHaveProperty("known");
+    // The stored part carries no state of its own, and the daily run writes it without a failure line.
+    expect(JSON.stringify(await getSocialSnapshot(u.email))).not.toContain('"known"');
+    const alone = await newUser("ytnoana2");
+    await saveConnection(alone.email, ytConn());
+    expect(await syncSocialIfDue(alone.email, NOW)).toBe(true);
+    expect(await getSocialSnapshot(alone.email)).toMatchObject({ v: 2, parts: { youtube: { followers: 5000 } }, errors: { youtube: "yt_no_analytics" } });
+    // Google's other refusal texts for the same cause.
+    for (const error of ["The caller does not have permission (403)", "Forbidden", "YouTube Analytics API has not been used in project 1 before or it is disabled."]) {
+      answers.YOUTUBE_QUERY_ANALYTICS = { successful: false, error };
+      expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).errors, error).toEqual({ youtube: "yt_no_analytics" });
+    }
+    // Any other failure leaves the figures unread with no code: not a state the owner can act on.
+    answers.YOUTUBE_QUERY_ANALYTICS = { successful: false, error: "Backend Error" };
+    const other = await syncSocial(u.email, { youtube: ytConn() }, NOW);
+    expect(other.errors).toEqual({});
+    expect(other.parts.youtube).toMatchObject({ followers: 5000, totals: EMPTY_TOTALS });
+  });
+
+  it("a refused token ends the read; one failed side keeps the others; nothing read is a failed read", async () => {
+    const u = await newUser("ytfail");
+    ytAnswers();
+    answers.YOUTUBE_LIST_CHANNEL_VIDEOS = { successful: false, error: "Token has been expired or revoked." };
+    await expect(syncSocial(u.email, { youtube: ytConn() }, NOW)).rejects.toMatchObject({ provider: "youtube", message: expect.stringMatching(/ 401:/) });
+    // The only part not read: nothing is written over the last read.
+    expect(await getSocialSnapshot(u.email)).toBeNull();
+
+    // A refused token on the video details too.
+    ytAnswers();
+    answers.YOUTUBE_GET_VIDEO_DETAILS_BATCH = { successful: false, error: "Unauthorized" };
+    await expect(syncSocial(u.email, { youtube: ytConn() }, NOW)).rejects.toMatchObject({ provider: "youtube", message: expect.stringMatching(/ 401:/) });
+
+    // Failed details keep the channel's figures; a failed channel list keeps the analytics and the videos.
+    answers.YOUTUBE_GET_VIDEO_DETAILS_BATCH = { successful: false, error: "Backend Error" };
+    expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube).toMatchObject({ followers: 5000, totals: YT_TOTALS, posts: [] });
+    ytAnswers();
+    answers.YOUTUBE_LIST_CHANNELS = { successful: false, error: "Backend Error" };
+    expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube).toMatchObject({ followers: null, totals: YT_TOTALS, posts: [{ id: vid(1) }] });
+
+    // All three failing: the channel is not read.
+    answers.YOUTUBE_QUERY_ANALYTICS = { successful: false, error: "Backend Error" };
+    answers.YOUTUBE_LIST_CHANNEL_VIDEOS = { successful: false, error: "Backend Error" };
+    const kept = await getSocialSnapshot(u.email);
+    await expect(syncSocial(u.email, { youtube: ytConn() }, NOW)).rejects.toMatchObject({ provider: "youtube", message: expect.stringMatching(/ 502:/) });
+    expect(await getSocialSnapshot(u.email)).toEqual(kept);
+  });
+
+  it("analytics are read by their column names, and junk is never a figure (Review Focus 5)", async () => {
+    const u = await newUser("ytjunk");
+    ytAnswers([ytVideo(vid(1), "2026-10-05", { statistics: { viewCount: Infinity, likeCount: "7", commentCount: {} } })]);
+    // Columns in another order than asked: read by name.
+    const order = ["views", "day", "subscribersLost", "likes", "estimatedMinutesWatched", "comments", "shares", "subscribersGained"];
+    answers.YOUTUBE_QUERY_ANALYTICS = report([
+      ["1234", "2026-10-07", 1, " 8 ", "2.5", {}, "N/A", -3],
+      [NaN, "2026-10-06", Infinity, "", null, "12abc", "9".repeat(400), "0x10"],
+      [-5, "2026-10-05", [1], "-3", 4, 2, 1, 6],
+    ], order);
+    answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [{ id: CH, statistics: { subscriberCount: "N/A" } }] } });
+    const yt = (await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!;
+    expect(yt.totals).toEqual({ ...EMPTY_TOTALS, views: 1234, watchMinutes: 6.5, likes: 8, comments: 2, shares: 1, followsGained: 6, followsLost: 1 });
+    expect(yt.followers).toBeNull();
+    expect(yt).not.toHaveProperty("prev");
+    expect(yt.posts[0]).toMatchObject({ views: null, likes: 7, comments: null });
+    const figures: unknown[] = [yt.followers, ...Object.values(yt.totals as Totals), ...yt.posts.flatMap((p) => [p.views, p.reach, p.likes, p.comments, p.shares, p.saved])];
+    for (const v of figures) expect(clean(v), String(v)).toBe(true);
+
+    // Without column headers, rows are read in the order asked; rows sent as objects are read by name.
+    answers.YOUTUBE_QUERY_ANALYTICS = report([["2026-10-07", 100, 250, 10, 2, 1, 5, 1]], null);
+    expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!.totals).toMatchObject({ views: 100, watchMinutes: 250, followsGained: 5, followsLost: 1 });
+    answers.YOUTUBE_QUERY_ANALYTICS = report([{ day: "2026-10-07", views: 30, estimatedMinutesWatched: "45" }], null);
+    expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!.totals).toEqual({ ...EMPTY_TOTALS, views: 30, watchMinutes: 45 });
+  });
+
+  it("subscribers come only from the connected channel, and a hidden count is not read", async () => {
+    const u = await newUser("ytsubs");
+    ytAnswers();
+    answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [{ id: "UCanotherchannel000000", statistics: { subscriberCount: "777" } }] } });
+    expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!.followers).toBeNull();
+    answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [{ id: CH, statistics: { subscriberCount: "0", hiddenSubscriberCount: true } }] } });
+    expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!.followers).toBeNull();
+    answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [{ id: CH, statistics: { subscriberCount: "0", hiddenSubscriberCount: false } }] } });
+    expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!.followers).toBe(0);
+  });
+
+  it("no video details are asked past the shared deadline (741)", async () => {
+    const u = await newUser("ytdeadline");
+    ytAnswers();
+    const list = answers.YOUTUBE_LIST_CHANNEL_VIDEOS as Result;
+    answers.YOUTUBE_LIST_CHANNEL_VIDEOS = () => { vi.setSystemTime(NOW.getTime() + 31_000); return list; };
+    const yt = (await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!;
+    expect(calls.filter((c) => c.slug === "YOUTUBE_GET_VIDEO_DETAILS_BATCH")).toHaveLength(0);
+    expect(yt).toMatchObject({ followers: 5000, totals: YT_TOTALS, posts: [] });
+  });
+
+  it("rows dated in neither period are not summed, and said once", async () => {
+    const u = await newUser("ytnoday");
+    ytAnswers();
+    answers.YOUTUBE_QUERY_ANALYTICS = report([["", 10, 1, 1, 1, 1, 1, 1], ["yesterday", 20, 1, 1, 1, 1, 1, 1], ["2025-01-01", 30, 1, 1, 1, 1, 1, 1], [null, 40]]);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const yt = (await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!;
+    expect(yt.totals).toEqual(EMPTY_TOTALS);
+    expect(warn.mock.calls.filter((c) => c[0] === "yt_no_day_rows")).toHaveLength(1);
+  });
+
+  it("a YouTube record is read daily, and the owner's refresh on the YouTube path reads it (673, 735)", async () => {
+    const u = await newUser("ytdaily");
+    await saveConnection(u.email, ytConn());
+    ytAnswers();
+    expect(await syncSocialIfDue(u.email, NOW)).toBe(true);
+    const s = await getSocialSnapshot(u.email);
+    expect(s?.v === 2 && s.parts.youtube?.totals.views).toBe(155);
+    expect(await syncSocialIfDue(u.email, new Date(NOW.getTime() + 19 * 3600e3))).toBe(false);
+    // holdsSocial derives from READERS: the YouTube path answers sync_social, never 404 not_connected.
+    expect(holdsSocial("youtube", ytConn())).toBe(true);
+    await signIn(u.email);
+    calls.length = 0;
+    const r = await post("youtube", { action: "sync_social" });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, read: true });
+    expect(calls.map((c) => c.slug)).toContain("YOUTUBE_QUERY_ANALYTICS");
+    await settle();
+  });
+
+  it("holds a Composio YouTube record with the channel chosen at connect, and the account falls back to the channel id", async () => {
+    expect(holdsYt(ytConn())).toBe(true);
+    expect(holdsYt(via("youtube", { youtube: "ca_yt" }))).toBe(false);
+    for (const channelId of ["UC1", "channel==MINE", "UCddiUEpeqJc YeBxX1", "XXddiUEpeqJcYeBxX1IVBKvQ"]) expect(holdsYt(ytConn({ channelId })), channelId).toBe(false);
+    expect(holdsYt(via("youtube", {}, { channelId: CH }))).toBe(false);
+    expect(holdsYt({ provider: "youtube", data: { access_token: "t" }, meta: { channelId: CH }, connectedAt: NOW.toISOString() })).toBe(false);
+    expect(holdsYt(null)).toBe(false);
+    const u = await newUser("ytname");
+    ytAnswers();
+    const conn = ytConn();
+    delete conn.meta!.account;
+    expect((await syncSocial(u.email, { youtube: conn }, NOW)).parts.youtube?.account).toBe(`Channel ${CH}`);
+    const marked = await syncSocial(u.email, { youtube: ytConn({ account: "<b>Ward</b>\n" + "y".repeat(120) }) }, NOW);
+    expect(marked.parts.youtube!.account).not.toMatch(/[<>\n]/);
+    expect(marked.parts.youtube!.account.length).toBeLessThanOrEqual(80);
+  });
+
+  it("links only to a video's watch page on www.youtube.com", () => {
+    expect(ytUrl(vid(1))).toBe(`https://www.youtube.com/watch?v=${vid(1)}`);
+    expect(ytUrl("dQw4w9WgX-_")).toBe("https://www.youtube.com/watch?v=dQw4w9WgX-_");
+    for (const bad of ["vid0000001", "vid000000012", "vid00000/01", "vid0000000 ", "javascript:", "a&list=xyz1", "", "https://e.x"]) expect(ytUrl(bad), bad).toBeNull();
   });
 });
