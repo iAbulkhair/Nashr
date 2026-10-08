@@ -2,6 +2,7 @@ import { db } from "./db";
 import { getTask, updateTask, type Task } from "./brand";
 import { publishTask, type PublishResult } from "./connectors/publish";
 import { ReconnectRequired } from "./connectors/fresh";
+import { SOCIAL_PUB_KEY } from "./social-stats";
 
 /**
  * One publish per item and platform, and an honest answer when a publish may or may not have landed.
@@ -57,6 +58,11 @@ export function mayHavePosted(e: unknown): boolean {
   return !REFUSED.test(msg);
 }
 
+/**
+ * Platforms whose post id is kept on the item: WordPress updates the same post on "publish again", Instagram and
+ * LinkedIn ids join a post to its results (social-stats.ts).
+ */
+const KEEPS_ID: readonly string[] = ["wordpress", "instagram", "linkedin"];
 const quietly = (p: Promise<unknown>, what: string) => p.catch((e) => console.error(`publish ${what} failed`, e instanceof Error ? e.name : "error"));
 
 export async function publishOnce(scope: string, id: string, provider: string, opts: { again?: boolean; live?: boolean; check?: (t: Task) => Refusal | null; lockS?: number } = {}): Promise<PublishOnce> {
@@ -106,7 +112,7 @@ export async function publishOnce(scope: string, id: string, provider: string, o
     // Applied to the task as stored now, not to the copy read before the publish: a render that finished during the
     // seconds a publish takes keeps its image or clip and its credits.
     const saved = await updateTask(scope, id, (cur) => {
-      cur.published = [...(cur.published ?? []), { provider: r.provider, url: r.url, status: r.status, at, ...(r.provider === "wordpress" ? { id: r.id } : {}) }];
+      cur.published = [...(cur.published ?? []), { provider: r.provider, url: r.url, status: r.status, at, ...(KEEPS_ID.includes(r.provider) && r.id ? { id: r.id } : {}) }];
       // Publishing a pending item is the owner approving it, so it records when that happened.
       approving = cur.status === "pending";
       if (approving) cur.decidedAt = at;
@@ -115,7 +121,9 @@ export async function publishOnce(scope: string, id: string, provider: string, o
     });
     // The post is recorded on the item, so the marker has done its job. A failed clear is only logged: the post went out
     // and is recorded, and a marker left behind makes the next attempt ask the owner, which errs on the safe side.
-    await quietly(db.del(mk), "marker clear");
+    // Instagram's media id joins the workspace's own list, so a result read later can say the post came from Thakeen
+    // (social-stats.ts). Only logged on failure: the post went out and is recorded on the item.
+    await Promise.all([quietly(db.del(mk), "marker clear"), r.provider === "instagram" && r.id ? quietly(db.sadd(SOCIAL_PUB_KEY(scope), r.id), "post id") : null]);
     return { ok: true, result: r, task: saved ?? t, approving };
   } finally {
     await quietly(db.unlock(lk), "lock release");
