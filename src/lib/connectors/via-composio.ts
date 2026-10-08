@@ -5,6 +5,7 @@ import { plain } from "./meta";
 import { accountOf as account, isComposio, listOf, pick } from "./composio-shape";
 import { accountMeta } from "./ads";
 import { adAccountsVia } from "./ads-via-composio";
+import { clean } from "../perf-import";
 
 export { isComposio, pick };
 
@@ -187,6 +188,26 @@ async function gscSites(scope: string, acc: string): Promise<string[]> {
     .filter((u) => /^(sc-domain:[a-z0-9.-]+|https?:\/\/[^\s]+)$/i.test(u) && u.length <= 200);
 }
 
+type Org = { urn: string; name: string };
+const ORG_URN = /^urn:li:organization:\d+$/;
+
+/**
+ * LinkedIn: the company pages this member administers (rule 669), at most 20. A page they only analyse has no results
+ * we may read and nothing they may post. A refusal (no organization scope) is the caller's to ignore: the connect stands.
+ */
+async function adminPages(scope: string, acc: string): Promise<Org[]> {
+  const r = await composioRead(scope, "linkedin", "LINKEDIN_GET_COMPANY_INFO", { start: 0, count: 50, state: "APPROVED" }, acc);
+  const out: Org[] = [];
+  for (const row of listOf(r, "role")) {
+    if (row.role !== "ADMINISTRATOR" && row.role !== "CONTENT_ADMINISTRATOR") continue;
+    const urn = [row.organization, row.organizationalTarget, row.organization_urn].find((x): x is string => typeof x === "string" && ORG_URN.test(x));
+    if (!urn || out.some((o) => o.urn === urn)) continue;
+    const name = clean(pick(row, ["localizedName", "organization_name", "name"]) ?? "", 80);
+    out.push({ urn, name: name || `Page ${urn.slice(urn.lastIndexOf(":") + 1)}` });
+  }
+  return out.slice(0, 20);
+}
+
 const metaLabel = (pageName?: string, ig?: string) => [pageName, ig ? `@${ig}` : ""].filter(Boolean).join(" · ") || "Meta";
 
 /**
@@ -230,6 +251,17 @@ export async function connectViaComposio(scope: string, provider: string, toolki
     if (!author) throw new Error("linkedin_no_author");
     meta.author = author;
     meta.account = pick(me, ["name", "localizedFirstName"]) ?? "LinkedIn";
+    // Posting as a page is chosen again after every connect (rule 670): the page list may have changed.
+    delete meta.liPostAs;
+    const orgs = await adminPages(scope, accountId).catch(() => [] as Org[]);
+    if (orgs.length) {
+      meta.liOrgs = JSON.stringify(orgs);
+      if (orgs.length === 1) meta.liOrg = orgs[0].urn;
+      else if (!orgs.some((o) => o.urn === meta.liOrg)) delete meta.liOrg;
+    } else {
+      delete meta.liOrgs;
+      delete meta.liOrg;
+    }
   }
   if (toolkit === "tiktok") meta.account = "TikTok";
   if (toolkit === "whatsapp") {
@@ -284,6 +316,17 @@ export function selectPageVia(c: Connection, pageId: string): Connection | null 
   const meta: Record<string, string> = { ...c.meta, pageId: p.id, pageName: p.name };
   meta.account = metaLabel(p.name, meta.ig);
   return { ...c, meta };
+}
+
+/**
+ * Choose the LinkedIn company page whose results are read. The URN must be one listed at connect time. Posting goes back
+ * to the member's own profile: posting as the new page is a separate, explicit choice (rule 670).
+ */
+export function selectOrgVia(c: Connection, org: string): Connection | null {
+  let orgs: Org[] = [];
+  try { orgs = JSON.parse(c.meta?.liOrgs ?? "[]") as Org[]; } catch { return null; }
+  if (!Array.isArray(orgs) || !orgs.some((o) => o?.urn === org)) return null;
+  return { ...c, meta: { ...c.meta, liOrg: org, liPostAs: "me" } };
 }
 
 /**

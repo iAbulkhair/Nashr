@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { newUser } from "./helpers/session";
+import { json, newMember, newUser, signIn } from "./helpers/session";
 import { db } from "@/lib/db";
 import { getConnection, saveConnection } from "@/lib/connectors/store";
 import { saveTask, type Brand, type Task } from "@/lib/brand";
@@ -13,6 +13,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import SocialStats from "@/components/app/SocialStats";
 import { socialRead } from "@/lib/report-sources";
+import { connectViaComposio } from "@/lib/connectors/via-composio";
+import * as connRoute from "@/app/api/connect/[provider]/route";
 
 /**
  * Rules 661-671: Instagram and LinkedIn page results read through Composio (social-stats.ts), and the owner's choice to
@@ -381,5 +383,58 @@ describe("the social card on Reports (rule 668)", () => {
     expect(html(ig([{ caption: "<img src=x onerror=alert(1)>", views: 1 }]))).not.toContain("<img");
     const np = html({ at: NOW.toISOString(), igError: "ig_not_professional" });
     expect(np).toContain("not a professional account");
+  });
+});
+
+describe("LinkedIn company pages (rule 669)", () => {
+  const acl = (role: string, id: string, name?: string) => ({ role, state: "APPROVED", organization: `urn:li:organization:${id}`, roleAssignee: "urn:li:person:abc", ...(name ? { organization_name: name } : {}) });
+  const me = () => { answers.LINKEDIN_GET_MY_INFO = ok({ response_dict: { sub: "abc", name: "Abulkhair" } }); };
+  const ctx = (provider: string) => ({ params: Promise.resolve({ provider }) });
+
+  it("keeps only the pages the member administers, and picks one only when there is one", async () => {
+    me();
+    answers.LINKEDIN_GET_COMPANY_INFO = ok({ elements: [acl("ADMINISTRATOR", "1", "عود الشرق"), acl("CONTENT_ADMINISTRATOR", "2"), acl("ANALYST", "3", "Watcher"), { ...acl("ADMINISTRATOR", "4"), organization: "urn:li:organization:12x" }, acl("ADMINISTRATOR", "1", "عود الشرق")] });
+    const c = await connectViaComposio("s669", "linkedin", "linkedin", "ca_li", null);
+    expect(JSON.parse(c.meta!.liOrgs)).toEqual([{ urn: "urn:li:organization:1", name: "عود الشرق" }, { urn: "urn:li:organization:2", name: "Page 2" }]);
+    expect(c.meta!.liOrg).toBeUndefined();
+    expect(calls.find((x) => x.slug === "LINKEDIN_GET_COMPANY_INFO")!.args).toEqual({ start: 0, count: 50, state: "APPROVED" });
+
+    answers.LINKEDIN_GET_COMPANY_INFO = ok({ elements: [acl("ADMINISTRATOR", "1", "<b>عود</b>")] });
+    const one = await connectViaComposio("s669", "linkedin", "linkedin", "ca_li", null);
+    expect(one.meta).toMatchObject({ liOrg: "urn:li:organization:1", author: "urn:li:person:abc" });
+    expect(JSON.parse(one.meta!.liOrgs)[0].name).toBe("bعود/b");
+  });
+
+  it("connects as today when LinkedIn refuses the page list, and a reconnect drops the posting choice", async () => {
+    me();
+    answers.LINKEDIN_GET_COMPANY_INFO = { successful: false, error: "403 Forbidden: Not enough permissions to access organizationAcls" };
+    const c = await connectViaComposio("s669b", "linkedin", "linkedin", "ca_li", null);
+    expect(c.meta).toMatchObject({ author: "urn:li:person:abc", account: "Abulkhair" });
+    expect(c.meta!.liOrgs).toBeUndefined();
+
+    answers.LINKEDIN_GET_COMPANY_INFO = ok({ elements: [acl("ADMINISTRATOR", "1"), acl("ADMINISTRATOR", "2")] });
+    const held = via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrgs: JSON.stringify([{ urn: "urn:li:organization:2", name: "B" }]), liOrg: "urn:li:organization:2", liPostAs: "org" });
+    const again = await connectViaComposio("s669b", "linkedin", "linkedin", "ca_li", held);
+    expect(again.meta!.liPostAs).toBeUndefined();
+    expect(again.meta!.liOrg, "the page chosen before is still the member's, so it stays").toBe("urn:li:organization:2");
+    answers.LINKEDIN_GET_COMPANY_INFO = ok({ elements: [acl("ADMINISTRATOR", "1"), acl("ADMINISTRATOR", "3")] });
+    expect((await connectViaComposio("s669b", "linkedin", "linkedin", "ca_li", held)).meta!.liOrg).toBeUndefined();
+  });
+
+  it("select_org takes only a stored page, from an owner or admin, and resets posting to the member", async () => {
+    const owner = await newUser("s669r");
+    const orgs = JSON.stringify([{ urn: "urn:li:organization:1", name: "A" }, { urn: "urn:li:organization:2", name: "B" }]);
+    await saveConnection(owner.email, via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrgs: orgs, liPostAs: "org", liOrg: "urn:li:organization:1" }));
+    const member = await newMember(owner, "member");
+    await signIn(member.email);
+    expect((await connRoute.POST(json("/api/connect/linkedin", "POST", { action: "select_org", org: "urn:li:organization:2" }), ctx("linkedin"))).status).toBe(403);
+    await signIn(owner.email);
+    const bad = await connRoute.POST(json("/api/connect/linkedin", "POST", { action: "select_org", org: "urn:li:organization:9" }), ctx("linkedin"));
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).error).toBe("unknown_org");
+    expect((await connRoute.POST(json("/api/connect/meta", "POST", { action: "select_org", org: "urn:li:organization:2" }), ctx("meta"))).status).toBe(404);
+    const okr = await connRoute.POST(json("/api/connect/linkedin", "POST", { action: "select_org", org: "urn:li:organization:2" }), ctx("linkedin"));
+    expect(okr.status).toBe(200);
+    expect((await getConnection(owner.email, "linkedin"))!.meta).toMatchObject({ liOrg: "urn:li:organization:2", liPostAs: "me" });
   });
 });
