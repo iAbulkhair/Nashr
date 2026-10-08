@@ -87,6 +87,7 @@ const U_SMALL = { input_tokens: 10, output_tokens: 10 }; // 0.0003 USD on Opus
 beforeEach(() => {
   vi.stubEnv("ANTHROPIC_API_KEY", "test");
   vi.stubEnv("LLM_PROVIDER", "");
+  vi.stubEnv("STRAITLY_API_KEY", ""); // the machine running the tests may carry one: the default provider depends on it
   sdk.calls = [];
 });
 afterEach(async () => {
@@ -132,34 +133,48 @@ describe("meter records calls and money per model", () => {
 });
 
 describe("meter records the provider", () => {
-  it("the configured provider by default, 'anthropic' when LLM_PROVIDER is unset or a typo", async () => {
+  it("the provider the client really uses by default: anthropic when LLM_PROVIDER is unset or a typo, straitly only with LLM_PROVIDER=straitly AND the Straitly key, anthropic for straitly with only the Anthropic key", async () => {
     pin("2031-02-10T12:00:00Z");
     const u = await newUser("um-prov-default");
+    // 1. Unset, and a typo even with a Straitly key lying around: Anthropic.
     await meter(u.email, OPUS, "generate", U_OPUS);
     vi.stubEnv("LLM_PROVIDER", "openai");
+    vi.stubEnv("STRAITLY_API_KEY", "gw-test-key");
     await meter(u.email, OPUS, "generate", U_OPUS);
     expect((await getUsage("_all", "2031-02")).providers).toEqual({ anthropic: { calls: 2, usd: usdOf(60000) } });
+    // 2. Straitly with its key: the gateway.
     vi.stubEnv("LLM_PROVIDER", "straitly");
     await meter(u.email, SONNET, "judge", U_SONNET);
     expect(await db.get("usage:_all:2031-02:provider:straitly:calls")).toBe(1);
     expect(await db.get("usage:_all:2031-02:provider:straitly:usd_micro")).toBe(9600);
     expect((await getUsage("_all", "2031-02")).providers).toEqual({ anthropic: { calls: 2, usd: usdOf(60000) }, straitly: { calls: 1, usd: usdOf(9600) } });
+    // 3. Straitly without its key but with ANTHROPIC_API_KEY (a supported setup): anthropic() builds the plain Anthropic
+    // client, every call goes direct, so it is counted under anthropic and not under the gateway.
+    vi.stubEnv("STRAITLY_API_KEY", "");
+    await meter(u.email, SONNET, "judge", U_SONNET);
+    expect((await getUsage("_all", "2031-02")).providers).toEqual({ anthropic: { calls: 3, usd: usdOf(69600) }, straitly: { calls: 1, usd: usdOf(9600) } });
+    expect(allKeys().filter((k) => k.startsWith("usage:_all:2031-02:provider:")).sort()).toEqual([
+      "usage:_all:2031-02:provider:anthropic:calls", "usage:_all:2031-02:provider:anthropic:usd_micro",
+      "usage:_all:2031-02:provider:straitly:calls", "usage:_all:2031-02:provider:straitly:usd_micro",
+    ]);
   });
 
-  it("an explicit provider overrides the configured one", async () => {
+  it("an explicit provider overrides the effective one, in both directions, whatever the keys", async () => {
     pin("2031-11-11T12:00:00Z");
     const u = await newUser("um-prov-explicit");
     vi.stubEnv("LLM_PROVIDER", "anthropic");
     await meter(u.email, SONNET, "judge", U_SONNET, undefined, "straitly");
     vi.stubEnv("LLM_PROVIDER", "straitly");
+    vi.stubEnv("STRAITLY_API_KEY", "gw-test-key");
     await meter(u.email, OPUS, "generate", U_OPUS, "faris", "anthropic");
     expect((await getUsage("_all", "2031-11")).providers).toEqual({ straitly: { calls: 1, usd: usdOf(9600) }, anthropic: { calls: 1, usd: usdOf(30000) } });
   });
 
-  it("a provider that is not one of the two is ignored: the configured one is used and no other key is made", async () => {
+  it("a provider that is not one of the two is ignored: the effective one is used and no other key is made", async () => {
     pin("2031-12-12T12:00:00Z");
     const u = await newUser("um-prov-bogus");
     vi.stubEnv("LLM_PROVIDER", "straitly");
+    vi.stubEnv("STRAITLY_API_KEY", "gw-test-key"); // so the effective default is straitly, not the other value
     const bogus: unknown[] = ["openai", "constructor", "__proto__", "straitly:calls", "evil\nusage:x", "", "ANTHROPIC", 7, null, {}, ["anthropic"]];
     for (const p of bogus) await meter(u.email, OPUS, "generate", U_SMALL, undefined, p as never);
     expect((await getUsage("_all", "2031-12")).providers).toEqual({ straitly: { calls: bogus.length, usd: usdOf(300 * bogus.length) } });
@@ -289,14 +304,20 @@ describe("noteRejectedPick", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const incr = vi.spyOn(db, "incrby").mockRejectedValue(new Error("redis exploded for secret@owner.example key usage:_all"));
     await expect(noteRejectedPick("chat", "unknown")).resolves.toBeUndefined();
+    // Written once, and it is exactly the fixed line: no key, id, email or error text as an argument.
+    expect(err.mock.calls).toEqual([["pick_reject_counter_failed"]]);
     incr.mockImplementation(() => { throw new Error("sync failure for secret@owner.example"); });
     await expect(noteRejectedPick("generate", "needs_tools")).resolves.toBeUndefined();
+    expect(err.mock.calls).toEqual([["pick_reject_counter_failed"], ["pick_reject_counter_failed"]]);
+    expect(warn).not.toHaveBeenCalled();
+    expect(log).not.toHaveBeenCalled();
     expect(incr).toHaveBeenCalled();
     const logged = JSON.stringify([...err.mock.calls, ...warn.mock.calls, ...log.mock.calls]);
     expect(logged).not.toContain("secret@owner.example");
     expect(logged).not.toContain("redis exploded");
     expect(logged).not.toContain("usage:_all");
     expect(logged).not.toContain("chat");
+    expect(logged).not.toContain("generate");
   });
 });
 
@@ -500,7 +521,7 @@ describe("the founder console", () => {
     const src = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
     const block = src.slice(src.indexOf("modelUsage-section"), src.indexOf("modelUsage-section-end"));
     expect(block.length).toBeGreaterThan(400);
-    for (const key of ["llmModels", "llmCalls", "llmPerCall", "llmProviders", "llmFallbacks", "llmRejected", "llmNone"]) {
+    for (const key of ["llmModels", "llmModel", "llmCalls", "llmPerCall", "llmProviders", "llmProvider", "llmCaveat", "llmFallbacks", "llmRejected", "llmNone"]) {
       expect(src.match(new RegExp(`\\b${key}:`, "g"))?.length, `${key} in both languages`).toBe(2);
       expect(block, key).toContain(`O.${key}`);
     }
@@ -510,5 +531,41 @@ describe("the founder console", () => {
     expect(block).toContain("ov.modelUsage.fallbacks");
     expect(block).not.toMatch(/text-ink\/\d|\btext-(left|right)\b|\b(ml|mr|pl|pr)-\d|\b(left|right)-\d/);
     expect(block).toContain("text-muted");
+  });
+
+  it("the console block has its own column headers (Provider, and the Arabic word for model) and one muted line saying what the figures are", () => {
+    const src = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
+    const block = src.slice(src.indexOf("modelUsage-section"), src.indexOf("modelUsage-section-end"));
+    // The providers table's first header is "Provider", not the section's own "Per provider"; the model column does not reuse the
+    // render table's `O.model`, whose Arabic is the word for "type".
+    expect(block).toMatch(/<th[^>]*>\{O\.llmProvider\}<\/th>/);
+    expect(block).not.toMatch(/<th[^>]*>\{O\.llmProviders\}<\/th>/);
+    expect(block).toMatch(/<th[^>]*>\{O\.llmModel\}<\/th>/);
+    expect(block).not.toMatch(/<th[^>]*>\{O\.model\}<\/th>/);
+    expect(src).toMatch(/\bllmModel: "النموذج"/);
+    expect(src).toMatch(/\bllmModel: "Model"/);
+    expect(src).toMatch(/\bllmProvider: "Provider"/);
+    // The caveat: one muted paragraph under the providers table, in both languages, with no number in it.
+    expect(block).toMatch(/<p className="[^"]*\btext-muted\b[^"]*">\{O\.llmCaveat\}<\/p>/);
+    const caveats = [...src.matchAll(/\bllmCaveat: "([^"]+)"/g)].map((m) => m[1]);
+    expect(caveats).toHaveLength(2);
+    expect(caveats[0]).toMatch(/catalog/i);
+    expect(caveats[0]).toMatch(/Anthropic/);
+    expect(caveats[0]).toMatch(/straitly/i);
+    expect(caveats[1]).toMatch(/[\u0600-\u06FF]/);
+    expect(caveats[1]).toMatch(/Anthropic/);
+    for (const c of caveats) expect(c).not.toMatch(/\d/);
+  });
+
+  it("an overview answer without modelUsage (an older server, a rollback while the page is open) renders nothing for it and does not throw", () => {
+    const src = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
+    const block = src.slice(src.indexOf("modelUsage-section"), src.indexOf("modelUsage-section-end"));
+    // The client type says it may be absent, so the compiler enforces the guard, and the whole block sits behind it.
+    expect(src).toMatch(/\bmodelUsage\?: \{/);
+    const guard = block.indexOf("ov.modelUsage && (");
+    expect(guard).toBeGreaterThanOrEqual(0);
+    expect(block.indexOf("ov.modelUsage.month")).toBeGreaterThan(guard);
+    // Nothing of the block's reads comes before the guard.
+    expect(block.slice(0, guard)).not.toMatch(/ov\.modelUsage\./);
   });
 });

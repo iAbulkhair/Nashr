@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { inspect } from "node:util";
-import { anthropic, llmProvider, modelState } from "@/lib/model";
+import { anthropic, effectiveProvider, llmProvider, modelState } from "@/lib/model";
 import { db } from "@/lib/db";
 
 /**
@@ -202,6 +202,8 @@ describe("the direct Anthropic fallback", () => {
 
   it("counts each request it re-sends to Anthropic in one global counter, and nothing else (plan Task 8)", async () => {
     const key = `usage:_all:${new Date().toISOString().slice(0, 7)}:provider:fallback`;
+    const spy = vi.spyOn(db, "incrby");
+    const incrKeys = () => [...new Set(spy.mock.calls.map((c) => String(c[0])))];
     const count = async () => Number((await db.get<number>(key)) ?? 0);
     const base = await count();
     // A gateway success, a 4xx, a non-claude model and a missing Anthropic key re-send nothing: no count.
@@ -233,8 +235,10 @@ describe("the direct Anthropic fallback", () => {
       vi.unstubAllGlobals();
     }
     await vi.waitFor(async () => expect(await count()).toBe(base + 2));
-    // The counter has no account, model or key in its name.
-    expect(key).toMatch(/^usage:_all:\d{4}-\d{2}:provider:fallback$/);
+    // The counter has no account, model or key in its name: every key written is a global usage counter of this month.
+    const written = incrKeys();
+    expect(written.length).toBeGreaterThan(0);
+    expect(written.filter((k) => k !== key)).toEqual([]);
   });
 
   it("a store that fails never changes the retry or what is logged", async () => {
@@ -345,5 +349,38 @@ describe("the keys stay secret", () => {
       for (const key of [STRAITLY_KEY, ANTHROPIC_KEY]) expect(everything(e)).not.toContain(key);
     }
     for (const s of spies) for (const key of [STRAITLY_KEY, ANTHROPIC_KEY]) expect(JSON.stringify(s.mock.calls)).not.toContain(key);
+  });
+});
+
+describe("the provider a call really goes to (effectiveProvider, plan Task 8)", () => {
+  it("is straitly only with LLM_PROVIDER=straitly AND STRAITLY_API_KEY, and always the origin the client built by anthropic() sends to", async () => {
+    const configs: { label: string; provider: string; keys: { straitly?: string; anthropic?: string }; expected: "anthropic" | "straitly" }[] = [
+      { label: "unset, Anthropic key", provider: "", keys: { anthropic: ANTHROPIC_KEY }, expected: "anthropic" },
+      { label: "a typo with both keys", provider: "openai", keys: { straitly: STRAITLY_KEY, anthropic: ANTHROPIC_KEY }, expected: "anthropic" },
+      { label: "anthropic with both keys", provider: "anthropic", keys: { straitly: STRAITLY_KEY, anthropic: ANTHROPIC_KEY }, expected: "anthropic" },
+      { label: "straitly with both keys", provider: "straitly", keys: { straitly: STRAITLY_KEY, anthropic: ANTHROPIC_KEY }, expected: "straitly" },
+      { label: "straitly with only its key", provider: "straitly", keys: { straitly: STRAITLY_KEY }, expected: "straitly" },
+      { label: "straitly with only the Anthropic key", provider: "straitly", keys: { anthropic: ANTHROPIC_KEY }, expected: "anthropic" },
+    ];
+    for (const c of configs) {
+      vi.stubEnv("LLM_PROVIDER", c.provider);
+      vi.stubEnv("STRAITLY_API_KEY", c.keys.straitly ?? "");
+      vi.stubEnv("ANTHROPIC_API_KEY", c.keys.anthropic ?? "");
+      expect(effectiveProvider(), c.label).toBe(c.expected);
+      // The same answer as the request itself: the host the real SDK client sends to.
+      const calls = stubFetch(ok);
+      await ask("claude-opus-5");
+      expect(new URL(calls[0].url).host === "api.straitly.ai" ? "straitly" : "anthropic", `${c.label}: where the call went`).toBe(c.expected);
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("is anthropic when no key is set at all, and it reads the configuration at call time", () => {
+    vi.stubEnv("LLM_PROVIDER", "straitly");
+    expect(effectiveProvider()).toBe("anthropic");
+    vi.stubEnv("STRAITLY_API_KEY", STRAITLY_KEY);
+    expect(effectiveProvider()).toBe("straitly");
+    vi.stubEnv("LLM_PROVIDER", "anthropic");
+    expect(effectiveProvider()).toBe("anthropic");
   });
 });

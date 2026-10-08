@@ -459,12 +459,15 @@ per account:
   GLOBALLY only (never per account), `usage:_all:{YYYY-MM}:model:{modelKey}:calls|usd_micro` and
   `usage:_all:{YYYY-MM}:provider:{anthropic|straitly}:calls|usd_micro`. `modelKey` is the catalog id, or `other` for an id
   outside it (a dated alias or a gateway form; priced as Opus, as before), so `other` is the tell that the catalog needs
-  an id. The provider is the one the call was configured for (`llmProvider()`), unless the caller states it; requests the
-  gateway failed and were re-sent to Anthropic are counted separately (`provider:fallback`), because the provider counter
-  still says `straitly` for them. `getUsage("_all")` returns them and the console shows calls, USD and USD per call per
-  model, calls and USD per provider, the fallback count and the picks the router refused (`pickreject`, by purpose and
-  reason). Nothing is backfilled: months before this release read as zero, and the per-model rows add up to the month's
-  total only from the day the counters began. The rates and `costUsd` did not change.
+  an id. The provider is where the call is SENT (`effectiveProvider()` in `src/lib/model.ts`, the same decision
+  `anthropic()` makes): `straitly` only with `LLM_PROVIDER=straitly` and `STRAITLY_API_KEY`, else `anthropic`, so
+  `LLM_PROVIDER=straitly` with only `ANTHROPIC_API_KEY` counts under `anthropic`; a caller may state it. A request the
+  gateway failed and that was re-sent to Anthropic still counts under `straitly` (it was sent there first); how many is
+  the separate `provider:fallback` count. The USD in every row is at the catalog's list rates, the same as every other
+  figure here, not what a provider invoiced (the console says so). `getUsage("_all")` returns them and the console shows
+  calls, USD and USD per call per model, calls and USD per provider, the fallback count and the picks the router
+  refused (`pickreject`, by purpose and reason). Nothing is backfilled: months before this release read as zero, and the
+  per-model rows add up to the month's total only from the day the counters began. The rates and `costUsd` did not change.
 
 That makes section 3 checkable: compare the estimate against `byKind.generate.usd / byKind.generate.calls` for a real
 account and correct the assumptions here.

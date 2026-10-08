@@ -3,7 +3,7 @@ import { monthKey } from "./credits";
 import { AGENT_IDS, isAgentId, type AgentId } from "./agents";
 import { MODELS, modelById } from "./models/catalog";
 import type { Rejected } from "./models/route";
-import { llmProvider, type LlmProvider } from "./model";
+import { effectiveProvider, type LlmProvider } from "./model";
 
 /**
  * Model token metering per account per month. Credits are what users pay;
@@ -84,8 +84,8 @@ const modelKeyOf = (model: string): string => modelById(model)?.id ?? OTHER_MODE
 /**
  * Record one model call. `email` undefined = anonymous (free tools); still counted globally. `agent` is the agent the
  * call worked for (the owner of the task type; the chat agent for a chat turn; Noor for onboarding), computed in code.
- * `provider` is the provider the call went to; left out, it is the configured one (`llmProvider()`), and a value that is
- * not one of the two is ignored the same way. The model and the provider also count in the two global families above.
+ * `provider` is the provider the call went to; left out, it is the one the client really uses (`effectiveProvider()`: the
+ * gateway only with `LLM_PROVIDER=straitly` and its key), and a value that is not one of the two is ignored the same way. The model and the provider also count in the two global families above.
  */
 export async function meter(email: string | undefined, model: string, kind: Kind, usage?: TokenUsage | null, agent?: AgentId, provider?: LlmProvider) {
   if (!usage) return;
@@ -95,7 +95,7 @@ export async function meter(email: string | undefined, model: string, kind: Kind
   const micro = Math.round(costUsd(model, usage) * 1e6);
   const targets = [`usage:_all:${m}`, ...(email ? [`usage:${email}:${m}`] : [])];
   const mk = `usage:_all:${m}:model:${modelKeyOf(model)}`;
-  const pk = `usage:_all:${m}:provider:${PROVIDERS.includes(provider as LlmProvider) ? provider : llmProvider()}`;
+  const pk = `usage:_all:${m}:provider:${PROVIDERS.includes(provider as LlmProvider) ? provider : effectiveProvider()}`;
   try {
     await Promise.all([
       ...targets.flatMap((k) => [

@@ -31,6 +31,26 @@ export function llmProvider(): LlmProvider {
 }
 
 /**
+ * The key that sends calls to the gateway, or undefined when they do not go there: the gateway is used only with
+ * `LLM_PROVIDER=straitly` AND `STRAITLY_API_KEY`. The one place that decides it: `anthropic()` builds its client from it and
+ * `effectiveProvider()` names the provider from it, so the metering (src/lib/usage.ts) cannot disagree with the client.
+ */
+function straitlyKey(): string | undefined {
+  return llmProvider() === "straitly" ? process.env.STRAITLY_API_KEY : undefined;
+}
+
+/**
+ * The provider the model calls really go to (Task 8, plan section "metering"): `straitly` only when `anthropic()` builds the
+ * gateway client, so with `LLM_PROVIDER=straitly` and only ANTHROPIC_API_KEY (a supported setup, see `hasModelKey`) it is
+ * `anthropic`, which is where those calls go. A closed set of two, never a string from the environment. It names where a
+ * call was SENT: a request the gateway failed and `withDirectFallback` re-sent to Anthropic still counts as `straitly`
+ * (the `usage:_all:{month}:provider:fallback` counter says how many). Read at call time, like `llmProvider()`.
+ */
+export function effectiveProvider(): LlmProvider {
+  return straitlyKey() ? "straitly" : "anthropic";
+}
+
+/**
  * Is there a key for the active provider? With `anthropic`, ANTHROPIC_API_KEY. With `straitly`, either key: STRAITLY_API_KEY
  * sends the calls through the gateway, and ANTHROPIC_API_KEY alone sends them to Anthropic directly (`anthropic` below),
  * the same key the gateway's fallback uses. STRAITLY_API_KEY is read here and in `anthropic` and nowhere else in `src`
@@ -108,7 +128,7 @@ export function anthropic(o: { timeoutMs: number; maxRetries: number }): Anthrop
   if (!(Number.isFinite(o.timeoutMs) && o.timeoutMs > 0)) throw new Error(`invalid_model_timeout:${String(o.timeoutMs)}`);
   if (!(Number.isInteger(o.maxRetries) && o.maxRetries >= 0 && o.maxRetries <= 2)) throw new Error(`invalid_model_retries:${String(o.maxRetries)}`);
   const timeout = Math.floor(o.timeoutMs);
-  const gatewayKey = llmProvider() === "straitly" ? process.env.STRAITLY_API_KEY : undefined;
+  const gatewayKey = straitlyKey();
   if (!gatewayKey) return new Anthropic({ timeout, maxRetries: o.maxRetries });
   const baseURL = gatewayBaseUrl();
   // `authToken: null` so an ambient ANTHROPIC_AUTH_TOKEN is not sent to the gateway along with its key.
