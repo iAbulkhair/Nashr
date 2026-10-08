@@ -267,7 +267,9 @@ describe("change a mistyped signup email", () => {
     const to = addr("fixed");
     // What a former owner of the address, a removed member or this owner's own old device left behind.
     const stale = randomBytes(32).toString("hex");
-    await db.set(`session:${stale}`, { email: to, at: Date.now() - 5000 }, 3600);
+    // Issued after the source account's own window opened, so only the fresh stamp on the moved record can refuse it.
+    await db.set(`session:${stale}`, { email: to, at: Date.parse(old.sessionsAfter!) + 1 }, 3600);
+    await new Promise((r) => setTimeout(r, 5));
     await signIn(old.email);
     expect((await move(to)).status).toBe(200);
     expect((await currentUserUnverified())!.email).toBe(to);
@@ -281,7 +283,9 @@ describe("change a mistyped signup email", () => {
     const to = addr("fixed");
     await saveUser({ ...(await getUser(old.email))!, email: to, emailMoves: { day: new Date().toISOString().slice(0, 10), n: 1 } });
     const stale = randomBytes(32).toString("hex");
-    await db.set(`session:${stale}`, { email: to, at: Date.now() - 5000 }, 3600);
+    // Issued after the source account's own window opened, so only the fresh stamp on the moved record can refuse it.
+    await db.set(`session:${stale}`, { email: to, at: Date.parse(old.sessionsAfter!) + 1 }, 3600);
+    await new Promise((r) => setTimeout(r, 5));
     expect((await move(to)).status).toBe(200);
     expect(Date.parse((await getUser(to))!.sessionsAfter!)).toBeGreaterThan(Date.parse(old.sessionsAfter!));
     expect((await currentUserUnverified())!.email).toBe(to);
