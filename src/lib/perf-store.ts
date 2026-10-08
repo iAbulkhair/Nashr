@@ -45,8 +45,11 @@ export async function syncAds(scope: string, provider: AdProvider, c: Connection
     adCodeIndex(scope),
   ]);
   if (!pull.rows.length) throw new Error("no_ad_results");
+  // Snapchat through Composio: the previous spend is the whole account's, so it compares with the window only when the
+  // window's per-ad read covered every ad; a capped or partial read keeps no prev (rule 733).
+  const kept = c.provider === "snapchat" && isComposio(c) && pull.allAds !== true ? null : prev;
   const snap: PerfSnapshot = { ...analyze(pull.rows, `${pull.account}${pull.currency ? ` (${pull.currency})` : ""}`, pull.platform, pull.range, undefined, now.toISOString(), codes), source: provider };
-  await Promise.all([savePerf(scope, snap), db.set(`adsync:${scope}:${provider}`, now.toISOString()), db.set(ADSTATS_KEY(scope, provider), adStatsFrom(provider, pull, prev, now))]);
+  await Promise.all([savePerf(scope, snap), db.set(`adsync:${scope}:${provider}`, now.toISOString()), db.set(ADSTATS_KEY(scope, provider), adStatsFrom(provider, pull, kept, now))]);
   return snap;
 }
 
@@ -57,7 +60,7 @@ export async function syncAds(scope: string, provider: AdProvider, c: Connection
  * lists every ad of the account, with zeros for the ones that did not run, and a window of zeros is no previous period.
  * None is null, so a new account with nothing before never reads as "up 100%" or "up from 0". Snapchat through Composio
  * has no account-wide per-ad breakdown, so its account's spend is read in one call (`snapPrevSpendVia`) instead of a
- * second per-ad pass.
+ * second per-ad pass, and `syncAds` keeps it only when the window's per-ad read covered every ad (`AdPull.allAds`).
  */
 async function prevOf(scope: string, c: Connection, read: (at: Date, totalsOnly?: boolean) => Promise<AdPull>, now: Date): Promise<AdPrev | null> {
   if (c.provider === "snapchat" && isComposio(c)) return snapPrevSpendVia(scope, c, now);

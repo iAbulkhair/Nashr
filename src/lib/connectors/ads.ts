@@ -19,7 +19,14 @@ export const AD_PROVIDERS = ["meta_ads", "snapchat", "google_ads", "tiktok_ads"]
 export type AdProvider = (typeof AD_PROVIDERS)[number];
 export const isAdProvider = (p: string): p is AdProvider => (AD_PROVIDERS as readonly string[]).includes(p);
 export type AdAccount = { id: string; name: string; currency?: string };
-export type AdPull = { rows: Row[]; range: { from: string; to: string }; platform: string; account: string; currency?: string };
+export type AdPull = {
+  rows: Row[]; range: { from: string; to: string }; platform: string; account: string; currency?: string;
+  /**
+   * Snapchat through Composio only: true when the per-ad read covered every ad of the account (no more than
+   * SNAP_ADS_READ listed and no per-ad read skipped), so the window's figures are the account's (rule 733).
+   */
+  allAds?: boolean;
+};
 
 const DAYS = 30;
 export const MAX_ROWS = 2000;

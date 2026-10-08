@@ -141,7 +141,9 @@ async function snapVia(scope: string, c: Connection, now: Date): Promise<AdPull>
     name: clean(s.a.name), text: "", group: "",
     impressions: s.impressions, clicks: s.swipes, spend: micro(s.spend), conversions: s.purchases, revenue: micro(s.value), sends: null, opens: null,
   }));
-  return { rows, range: w.range, platform: "Snapchat Ads", account: c.meta?.account ?? account, currency: c.meta?.currency };
+  // Every ad read: no more than the cap listed, and no per-ad read skipped (settle keeps the ones that answered).
+  const allAds = ads.length <= SNAP_ADS_READ && stats.length === chosen.length;
+  return { rows, range: w.range, platform: "Snapchat Ads", account: c.meta?.account ?? account, currency: c.meta?.currency, allAds };
 }
 
 /**

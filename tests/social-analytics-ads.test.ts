@@ -11,7 +11,7 @@ import type { Connection } from "@/lib/connectors/store";
 import type { SalesSnapshot } from "@/lib/connectors/sales";
 import type { SiteSnapshot } from "@/lib/site-stats";
 import { AD_PROVIDERS, adWindow, prevNow } from "@/lib/connectors/ads";
-import { googleQuery, snapPrevSpendVia } from "@/lib/connectors/ads-via-composio";
+import { adRowsVia, googleQuery, snapPrevSpendVia } from "@/lib/connectors/ads-via-composio";
 import { setComposioClientForTests } from "@/lib/connectors/composio";
 import { AD_STATS_SOURCES, ADSTATS_KEY, adDataBlock, adStatsFrom, getAdStats, totalsOf, type AdStats } from "@/lib/ad-stats";
 import { fakeComposio, ok, type Answer, type Call } from "./helpers/composio-fake";
@@ -37,9 +37,10 @@ let fetched: string[] = [];
  * Meta and Snapchat in their documented shapes. The current window (from 2026-09-08 for NOW) answers the ads below; the
  * 30 days before it answer per `prev`: one smaller ad, nothing ("empty", a new account), the account's ad with every
  * figure 0 ("zeros": Snap's per-ad breakdown lists ads that did not run, as `omit_empty` defaults to false), or a server
- * error ("fail"). `cur: "fail"` makes the current window fail instead.
+ * error ("fail"). `cur: "fail"` makes the current window fail instead; `values: false` leaves out Meta's action_values, so
+ * no ad carries a purchase value.
  */
-function fakePlatforms(opts: { prev?: "rows" | "empty" | "zeros" | "fail"; cur?: "fail" } = {}) {
+function fakePlatforms(opts: { prev?: "rows" | "empty" | "zeros" | "fail"; cur?: "fail"; values?: false } = {}) {
   fetched = [];
   const prev = opts.prev ?? "rows";
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
@@ -53,7 +54,7 @@ function fakePlatforms(opts: { prev?: "rows" | "empty" | "zeros" | "fail"; cur?:
         if (current ? opts.cur === "fail" : prev === "fail") return Response.json({ error: { message: "Service temporarily unavailable", code: 2 } }, { status: 500 });
         if (!current) return Response.json({ data: prev === "empty" ? [] : prev === "zeros" ? [{ ad_id: "0901", ad_name: "إطلاق المحمصة", impressions: "0", inline_link_clicks: "0", spend: "0" }] : [{ ad_id: "0901", ad_name: "إطلاق المحمصة", impressions: "500", inline_link_clicks: "20", spend: "7" }] });
         return Response.json({ data: [
-          { ad_id: "1001", ad_name: "خصم 20% على القهوة", impressions: "9000", inline_link_clicks: "360", spend: "300.10", actions: [{ action_type: "omni_purchase", value: "12" }], action_values: [{ action_type: "omni_purchase", value: "1440" }] },
+          { ad_id: "1001", ad_name: "خصم 20% على القهوة", impressions: "9000", inline_link_clicks: "360", spend: "300.10", actions: [{ action_type: "omni_purchase", value: "12" }], ...(opts.values === false ? {} : { action_values: [{ action_type: "omni_purchase", value: "1440" }] }) },
           { ad_id: "1002", ad_name: "قصة المحمصة", impressions: "8000", inline_link_clicks: "100", spend: "200.20" },
         ] });
       }
@@ -74,7 +75,7 @@ function fakePlatforms(opts: { prev?: "rows" | "empty" | "zeros" | "fail"; cur?:
     return new Response("not mocked", { status: 500 });
   }) as typeof fetch;
 }
-afterEach(() => { globalThis.fetch = realFetch; });
+afterEach(() => { globalThis.fetch = realFetch; vi.useRealTimers(); });
 
 const metaConn = (): Connection => ({ provider: "meta_ads", connectedAt: NOW.toISOString(), data: { access_token: "long-ads" }, meta: { adAccount: "act_111", account: "Roastery Ads", currency: "SAR" } });
 const snapConn = (): Connection => ({ provider: "snapchat", connectedAt: NOW.toISOString(), data: { access_token: "snap-access" }, meta: { adAccount: SNAP_ACC, account: "Roastery Snap", currency: "AED" } });
@@ -131,6 +132,13 @@ describe("ad totals per platform (rules 731, 732)", () => {
     await savePerf(scope, snap);
     expect(await db.get(ADSTATS_KEY(scope, "csv"))).toBeNull();
     expect((await getAdStats(scope)).map((s) => s.provider).sort()).toEqual(["meta_ads", "snapchat"]);
+
+    // No ad carries action_values: the revenue total is not read, so it is null, never 0; the other figures stand.
+    fakePlatforms({ values: false });
+    const bare = (await newUser("adstatsbare")).email;
+    await Promise.all([syncAds(bare, "meta_ads", metaConn(), NOW), syncAds(bare, "snapchat", snapConn(), NOW)]);
+    expect(await db.get<AdStats>(ADSTATS_KEY(bare, "meta_ads"))).toMatchObject({ spend: 500.3, impressions: 17000, clicks: 460, conversions: 12, revenue: null });
+    expect((await db.get<AdStats>(ADSTATS_KEY(bare, "snapchat")))?.revenue).toBe(1800);
   });
 
   it("a CSV upload writes adstats:csv from its rows and DELETE removes it (731)", async () => {
@@ -162,6 +170,8 @@ describe("ad totals per platform (rules 731, 732)", () => {
 
 describe("<ad_data> for Dana's reports (rule 731)", () => {
   it("<ad_data> is labelled data with each row's date, and goes to Dana's reports (731)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
     const scope = (await newUser("addata")).email;
     await Promise.all([
       db.set(ADSTATS_KEY(scope, "meta_ads"), adStatsFrom("meta_ads", { rows: [{ ...row, name: "خصم 20%", spend: 300, clicks: 360 }], range: R, account: "Roastery Ads", currency: "SAR" }, null, NOW)),
@@ -194,6 +204,8 @@ describe("<ad_data> for Dana's reports (rule 731)", () => {
   });
 
   it("no row is an empty block, and an ad name cannot close the data tag (731)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
     const scope = (await newUser("addata")).email;
     expect(await adDataBlock(scope, NOW)).toBe("");
     expect(await statsFor("weekly_report", scope)).not.toContain("<ad_data>");
@@ -361,6 +373,65 @@ describe("the previous 30 days beside each ad read (rule 733)", () => {
     expect(s).toMatchObject({ spend: 25.5, impressions: 2000, clicks: 30, conversions: 2, revenue: 90 });
   });
 
+  it("Snapchat through Composio keeps the account's previous spend only when every ad was read (733)", async () => {
+    answers.SNAPCHAT_GET_AD_ACCOUNTS_STATS = accountStats({ spend: 12_500_000 });
+    const adStats = (spend: number) => ok({ data: { request_status: "SUCCESS", total_stats: [{ sub_request_status: "SUCCESS", total_stat: { granularity: "TOTAL", stats: { impressions: 2000, swipes: 30, spend, conversion_purchases: 2, conversion_purchases_value: 90_000_000 } } }] } });
+    const snapAd = (i: number) => ({ ad: { id: `0b1c2d3e-4f50-6172-8394-${String(i).padStart(12, "0")}`, name: `ad ${i}`, status: "ACTIVE" } });
+
+    // One ad, read: the account-wide spend compares with the window.
+    snapAds();
+    expect((await adRowsVia("s", snapComposio(), NOW)).allAds).toBe(true);
+
+    // 51 running ads: only 50 are read, so the window's spend is not the account's and no prev is kept.
+    answers.SNAPCHAT_LIST_ADS_BY_ACCOUNT = ok({ ads: Array.from({ length: 51 }, (_, i) => snapAd(i + 1)) });
+    answers.SNAPCHAT_GET_AD_STATS = adStats(1_000_000);
+    expect((await adRowsVia("s", snapComposio(), NOW)).allAds).toBe(false);
+    const capped = (await newUser("adprevcap")).email;
+    calls.length = 0;
+    await syncAds(capped, "snapchat", snapComposio(), NOW);
+    expect(calls.filter((c) => c.slug === "SNAPCHAT_GET_AD_STATS")).toHaveLength(50);
+    expect(calls.filter((c) => c.slug === "SNAPCHAT_GET_AD_ACCOUNTS_STATS"), "the account read answered spend").toHaveLength(1);
+    expect(await stored(capped, "snapchat")).toMatchObject({ spend: 50 });
+    expect(await stored(capped, "snapchat")).not.toHaveProperty("prev");
+
+    // Two ads, one per-ad read skipped: the window misses that ad's spend, so no prev either.
+    answers.SNAPCHAT_LIST_ADS_BY_ACCOUNT = ok({ ads: [snapAd(1), snapAd(2)] });
+    answers.SNAPCHAT_GET_AD_STATS = (args) => (String(args.ad_id).endsWith("2") ? { successful: false, error: "Internal error (500)" } : adStats(25_500_000));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect((await adRowsVia("s", snapComposio(), NOW)).allAds).toBe(false);
+    const partial = (await newUser("adprevpart")).email;
+    await syncAds(partial, "snapchat", snapComposio(), NOW);
+    expect(await stored(partial, "snapchat")).toMatchObject({ spend: 25.5 });
+    expect(await stored(partial, "snapchat")).not.toHaveProperty("prev");
+    expect(block(await adDataBlock(partial, NOW)).every((r) => !("prev" in r))).toBe(true);
+  });
+
+  it("Meta and TikTok Ads through Composio read the previous window with the same reader (733)", async () => {
+    answers.METAADS_GET_INSIGHTS = (args) => ok({ data: (args.time_range as { since: string }).since === CUR.range.from
+      ? [{ ad_id: "1", ad_name: "عود ملكي", impressions: "1000", inline_link_clicks: "40", spend: "120.5" }]
+      : [{ ad_id: "1", ad_name: "عود ملكي", impressions: "400", inline_link_clicks: "10", spend: "60" }] });
+    answers.TIKTOK_ADS_GET_REPORT_INTEGRATED = (args) => ok({ list: [{ dimensions: { ad_id: "1" }, metrics: args.start_date === CUR.range.from
+      ? { ad_name: "Oud reel", spend: "200", impressions: "8000", clicks: "120", complete_payment: "5", complete_payment_roas: "2.5" }
+      : { ad_name: "Oud reel", spend: "80", impressions: "3000", clicks: "40", complete_payment: "1", complete_payment_roas: "2" } }], page_info: { page: 1, total_page: 1 } });
+    const scope = (await newUser("adprevvia")).email;
+    await syncAds(scope, "meta_ads", { provider: "meta_ads", connectedAt: NOW.toISOString(), data: { metaads: "ca_m" }, meta: { via: "composio", adAccount: "act_111", account: "Ward", currency: "SAR" } }, NOW);
+    await syncAds(scope, "tiktok_ads", { provider: "tiktok_ads", connectedAt: NOW.toISOString(), data: { tiktok_ads: "ca_t" }, meta: { via: "composio", adAccount: "7012345678901234567", account: "Ward TikTok", currency: "SAR" } }, NOW);
+
+    const meta = calls.filter((c) => c.slug === "METAADS_GET_INSIGHTS");
+    expect(meta).toHaveLength(2);
+    expect(meta[1].args.time_range).toEqual({ since: PREV.range.from, until: PREV.range.to });
+    const tiktok = calls.filter((c) => c.slug === "TIKTOK_ADS_GET_REPORT_INTEGRATED");
+    expect(tiktok).toHaveLength(2);
+    expect([tiktok[1].args.start_date, tiktok[1].args.end_date]).toEqual([PREV.range.from, PREV.range.to]);
+    // Only the dates differ between the two reads.
+    const rest = (a: Record<string, unknown>, ...k: string[]) => Object.fromEntries(Object.entries(a).filter(([x]) => !k.includes(x)));
+    expect(rest(meta[1].args, "time_range")).toEqual(rest(meta[0].args, "time_range"));
+    expect(rest(tiktok[1].args, "start_date", "end_date")).toEqual(rest(tiktok[0].args, "start_date", "end_date"));
+
+    expect((await db.get<AdStats>(ADSTATS_KEY(scope, "meta_ads")))?.prev).toEqual({ range: PREV.range, spend: 60, impressions: 400, clicks: 10, conversions: null, revenue: null });
+    expect((await db.get<AdStats>(ADSTATS_KEY(scope, "tiktok_ads")))?.prev).toEqual({ range: PREV.range, spend: 80, impressions: 3000, clicks: 40, conversions: 1, revenue: 160 });
+  });
+
   it("the account read keeps the id check; no, zero or junk spend, or a refused read, leaves no prev (733)", async () => {
     await expect(snapPrevSpendVia("s", snapComposio({ adAccount: "act_111" }), NOW)).rejects.toThrow("no_ad_account");
     await expect(snapPrevSpendVia("s", snapComposio({ adAccount: `${SNAP_ACC}/../x` }), NOW)).rejects.toThrow("no_ad_account");
@@ -433,6 +504,8 @@ describe("the workspace block says a figure is absent only when its block is (ru
   });
 
   it("statsFor sets each flag from a non-empty block (730)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
     const scope = (await newUser("absent")).email;
     // Nothing read: every figure is said to be missing.
     expect(absent(await statsFor("weekly_report", scope))).toMatch(/^- Sales, revenue, traffic and ad-spend figures are NOT/);
