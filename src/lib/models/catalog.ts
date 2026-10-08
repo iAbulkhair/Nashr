@@ -118,7 +118,7 @@ export const MODELS: readonly ModelEntry[] = deepFreeze<ModelEntry[]>([
 
 /** Map-backed on purpose: a plain object lookup would answer for "constructor" and "__proto__". */
 const BY_ID: ReadonlyMap<string, ModelEntry> = new Map(MODELS.map((m) => [m.id, m]));
-const AUTO: readonly ModelEntry[] = Object.freeze(MODELS.filter((m) => m.auto));
+const AUTO: readonly ModelEntry[] = Object.freeze(automaticOf(MODELS));
 const PICK: readonly ModelEntry[] = Object.freeze(MODELS.filter((m) => m.pick));
 
 /** The entry for `id`, or undefined for anything that is not exactly a catalog id (non-strings, unknown ids, prototype names). */
@@ -131,7 +131,15 @@ export function modelAllowsTask(m: Pick<ModelEntry, "tasks">, type: string): boo
   return !m.tasks || m.tasks.includes(type);
 }
 
-/** What automatic routing may choose from. */
+/**
+ * The entries automatic routing may choose from: `auto` AND west-hosted. `validateCatalog` already refuses a China-hosted
+ * entry with `auto`, and `route()` checks both again on the model it is about to send; this list does not rely on either.
+ */
+export function automaticOf(list: readonly ModelEntry[]): ModelEntry[] {
+  return list.filter((m) => m.auto === true && m.hosting === "west");
+}
+
+/** What automatic routing may choose from in the real catalog (`automaticOf(MODELS)`), frozen. */
 export function autoModels(): readonly ModelEntry[] {
   return AUTO;
 }

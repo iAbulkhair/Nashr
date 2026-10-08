@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { MODELS, autoModels, modelById, pickModels, pickerView, toPickerView, validateCatalog, type ModelEntry } from "@/lib/models/catalog";
+import { MODELS, autoModels, automaticOf, modelById, pickModels, pickerView, toPickerView, validateCatalog, type ModelEntry } from "@/lib/models/catalog";
 import { TIERS, TIER_MULTIPLIER } from "@/lib/models/tiers";
 import { costUsd, hasRate } from "@/lib/usage";
 import { checkModels, missingIds, modelsUrl, parseModelList } from "../scripts/check-models";
@@ -86,8 +86,26 @@ describe("the real catalog", () => {
     expect(modelById("claude-opus-5")!.tier).toBe("premium");
     expect(modelById("claude-sonnet-5")!.tier).toBe("standard");
     expect(modelById("claude-sonnet-5-5")!.tier).toBe("standard");
-    // Until the Straitly spike has run, these three are the whole catalog (plan Task 1 adds the rest).
-    expect(MODELS.map((m) => m.id).sort()).toEqual([...CLAUDE].sort());
+  });
+
+  it("every entry, whoever adds it, holds what routing and pricing read: a known tier, hosting and dialect, a vendor, the five caps", () => {
+    // The Straitly spike (plan Task 1) adds the other vendors' entries; this holds for them without naming them.
+    for (const m of MODELS) {
+      expect(["economy", "standard", "premium"], m.id).toContain(m.tier);
+      expect(["west", "china"], m.id).toContain(m.hosting);
+      expect(["messages", "chat"], m.id).toContain(m.dialect);
+      expect(m.vendor.trim().length, m.id).toBeGreaterThan(0);
+      expect(Object.keys(m.caps).sort(), m.id).toEqual(["cache", "strict", "thinking", "tools", "vision"]);
+      expect(typeof m.auto === "boolean" && typeof m.pick === "boolean", m.id).toBe(true);
+      // The gateway's fallback re-sends any `claude-*` model to Anthropic (src/lib/model.ts), so such an id is Anthropic's own.
+      if (m.id.startsWith("claude-")) expect([m.vendor, m.dialect], m.id).toEqual(["anthropic", "messages"]);
+    }
+  });
+
+  it("autoModels() is the real catalog's automatic list: auto and west-hosted, frozen", () => {
+    expect(autoModels().map((m) => m.id)).toEqual(automaticOf(MODELS).map((m) => m.id));
+    for (const m of autoModels()) expect([m.auto, m.hosting], m.id).toEqual([true, "west"]);
+    expect(Object.isFrozen(autoModels())).toBe(true);
   });
 
   it("every label has an Arabic and an English text", () => {
@@ -162,6 +180,12 @@ describe("validateCatalog and toPickerView on lists built here", () => {
       entry({ id: "constructor", tier: "constructor" as never }),
     ]).join("\n");
     for (const re of [/"t".*tier/, /"h".*hosting/, /"d".*dialect/, /"l".*label/, /"v".*vendor/, /"constructor".*tier/]) expect(out).toMatch(re);
+  });
+
+  it("automaticOf keeps only entries that are auto AND west-hosted: a China-hosted entry marked auto by mistake is never chosen automatically", () => {
+    const list = [entry({ id: "a", auto: true }), entry({ id: "cn", hosting: "china", auto: true }), entry({ id: "off", auto: false }), entry({ id: "b", auto: true, pick: false })];
+    expect(automaticOf(list).map((m) => m.id)).toEqual(["a", "b"]);
+    expect(automaticOf([])).toEqual([]);
   });
 
   it("toPickerView lists only entries a customer may pick, with hosting so the picker can say where it runs and tools so chat can leave out what cannot run its tools", () => {
@@ -276,6 +300,8 @@ describe("scripts/check-models.ts", () => {
     expect(url).toBe("https://api.straitly.ai/v1/models");
     expect(init.method ?? "GET").toBe("GET");
     expect((init.headers as Record<string, string>).authorization ?? (init.headers as Record<string, string>).Authorization).toBe(`Bearer ${KEY}`);
+    // A redirect is refused, not followed: the bearer header would go along to wherever it points.
+    expect(init.redirect).toBe("error");
     expect(r.lines.join("\n")).not.toContain(KEY);
   });
 
@@ -307,14 +333,32 @@ describe("scripts/check-models.ts", () => {
 
   it("refuses a base URL that is not https (loopback excepted) before any request, so the key never travels in clear", async () => {
     const f = vi.fn<F>(ok(all()));
-    for (const base of ["http://api.straitly.ai", "ftp://x", "not a url", "http://localhost.evil.test"]) {
+    for (const base of ["http://api.straitly.ai", "ftp://x", "not a url", "http://localhost.evil.test", "http://localhost@evil.test"]) {
       const r = await checkModels({ STRAITLY_API_KEY: KEY, STRAITLY_BASE_URL: base }, f);
       expect(r.code, base).toBe(2);
-      expect(r.lines.join("\n"), base).not.toContain(KEY);
+      expect(r.lines, base).toEqual(["STRAITLY_BASE_URL must be an https URL (http only for a loopback host: localhost, 127.0.0.1, [::1]). Nothing was sent."]);
     }
     expect(f).not.toHaveBeenCalled();
     const r = await checkModels({ STRAITLY_API_KEY: KEY, STRAITLY_BASE_URL: "http://127.0.0.1:8787" }, f);
     expect(r.code).toBe(0);
     expect(f.mock.calls[0][0]).toBe("http://127.0.0.1:8787/v1/models");
+  });
+
+  it("refuses a base with /v1 or any other path, a query, a fragment or user info, with a hint, and never prints the value", async () => {
+    const f = vi.fn<F>(ok(all()));
+    for (const base of ["https://api.straitly.ai/v1", "https://api.straitly.ai/v1/", "https://api.straitly.ai/proxy", "https://api.straitly.ai/?a=1", "https://api.straitly.ai#x", "https://user:pw-SECRET@api.straitly.ai", "https://localhost@evil.test"]) {
+      const r = await checkModels({ STRAITLY_API_KEY: KEY, STRAITLY_BASE_URL: base }, f);
+      expect(r.code, base).toBe(2);
+      const out = r.lines.join("\n");
+      expect(out, base).toMatch(/origin only, such as https:\/\/api\.straitly\.ai/);
+      expect(out, base).toMatch(/no \/v1 \(this check adds \/v1\/models itself\)/);
+      for (const part of ["SECRET", "evil", "proxy", "a=1", KEY]) expect(out, `${base}: ${part}`).not.toContain(part);
+    }
+    expect(f).not.toHaveBeenCalled();
+    // The same check as the app's (src/lib/models/gateway-url.ts): a trailing slash and an upper-case scheme are the origin.
+    for (const base of ["https://api.straitly.ai/", "HTTPS://API.STRAITLY.AI"]) {
+      expect((await checkModels({ STRAITLY_API_KEY: KEY, STRAITLY_BASE_URL: base }, f)).code, base).toBe(0);
+      expect(f.mock.calls.at(-1)?.[0], base).toBe("https://api.straitly.ai/v1/models");
+    }
   });
 });

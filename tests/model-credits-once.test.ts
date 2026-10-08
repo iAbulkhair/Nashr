@@ -118,4 +118,17 @@ describe("a retry on another model never reuses a hold priced for a different mo
     expect(await chargeOnce(u.email, 30, meta, "c")).toMatchObject({ ok: false, reason: "no_credits", need: 30, credits: 17 });
     expect([(await getUser(u.email))!.credits, (await getUser(u.email))!.paidOnce?.c?.credits]).toEqual([17, 3]);
   });
+
+  it("a swap refused at the agent's cap reports the record as it was: the balance, and the agent's spend with the old hold still in it", async () => {
+    const u = await owner("once-cap", 20);
+    const meta = { scope: u.email, agent: "noor" as const, cap: 8 };
+    expect(await chargeOnce(u.email, 5, meta, "c")).toMatchObject({ ok: true, reused: false, credits: 15, spent: 5, cap: 8 });
+    // 10 is over the cap of 8 even with the hold's 5 given back. Nothing is saved, so the refusal says what the record
+    // says: 5 spent of 8 (not the 0 the in-memory give-back left before the refusal), 15 credits.
+    expect(await chargeOnce(u.email, 10, meta, "c")).toEqual({ ok: false, reason: "agent_cap", credits: 15, agent: "noor", spent: 5, cap: 8 });
+    const after = (await getUser(u.email))!;
+    expect([after.credits, after.paidOnce?.c?.credits, agentSpendFor(after, u.email).noor]).toEqual([15, 5, 5]);
+    // Within the cap with the hold given back (5 spent - 5 + 7 = 7 of 8): the swap goes through.
+    expect(await chargeOnce(u.email, 7, meta, "c")).toMatchObject({ ok: true, reused: false, credits: 13, spent: 7, replaced: 5 });
+  });
 });

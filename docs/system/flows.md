@@ -851,7 +851,7 @@ Spec `docs/superpowers/specs/2026-10-08-straitly-model-routing-design.md` sectio
   - a non-Claude model on `/v1/messages`;
   - the rate limits and the auth header (`x-api-key` or `Authorization: Bearer`).
 
-  The SDK adds `/v1/messages` itself, so the base it is given is `https://api.straitly.ai`, without `/v1`.
+  The SDK adds `/v1/messages` itself, so the base it is given is `https://api.straitly.ai`, without `/v1`. `STRAITLY_BASE_URL`, when set, is an origin only: the app and the script refuse a `/v1` or any other path, a query, a fragment or user info (rule 810).
 - [ ] Catalog ids: with `STRAITLY_API_KEY` exported in the same shell, run `npx --no-install jiti scripts/check-models.ts`. This reads `GET /v1/models` (rule 812). Exit 0: every catalog id is listed. Exit 1: it prints the ids the list lacks. Exit 2: the check could not be made.
 - [ ] Staging first: set `LLM_PROVIDER=straitly` and `STRAITLY_API_KEY` on staging.thakeen.com only, keeping `ANTHROPIC_API_KEY` for the direct fallback, and rebuild (item 10). Production keeps `LLM_PROVIDER` unset.
 - [ ] Golden set on staging: in the founder console's Golden set panel, press "Run" (`POST /api/admin/golden`; `src/lib/golden.ts`).

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, sep } from "node:path";
 
 /**
  * `route()` owns every model choice, and a choice is one decision (spec 2026-10-08-straitly-model-routing, section 4; plan
@@ -345,10 +346,31 @@ describe("the other call sites ask route() for their purpose and send what it re
 });
 
 describe("no call site names a model", () => {
-  it("noor.ts, judge.ts, onboard.ts, media/prompts.ts, the tools route, chat.ts and generate-batch.ts hold no Claude model id", () => {
-    const code = (f: string) => readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-    for (const f of ["src/lib/noor.ts", "src/lib/judge.ts", "src/lib/onboard.ts", "src/lib/media/prompts.ts", "src/app/api/tools/[tool]/route.ts", "src/lib/chat.ts", "src/lib/generate-batch.ts", "src/lib/chat-allowance.ts", "src/lib/task-costs.ts", "src/app/api/chat/route.ts", "src/app/api/mcp/route.ts"]) {
-      expect(code(f), f).not.toMatch(/["'`]claude-[a-z0-9.-]+["'`]/);
-    }
+  /**
+   * The only files under src that may hold a Claude model id as a string, each for one reason. A file that is not here
+   * and holds one fails; so does a file that is here and no longer holds one, so the list never outlives its reason.
+   */
+  const ALLOWED: Record<string, string> = {
+    "src/lib/models/route.ts": "DEFAULTS: the model each purpose runs on when nobody picked",
+    "src/lib/models/catalog.ts": "MODELS: the catalog entries themselves (id, label, tier, rates)",
+    "src/lib/models/tiers.ts": "PRICED_AT: the models the credit multipliers are relative to (import-free, so the browser may read it)",
+    "src/lib/usage.ts": "RATES: the rate table from before the catalog, the fallback for an id the catalog lacks until a contract release removes it (rule 679)",
+  };
+  const LITERAL = /["'`]claude-[a-z0-9.-]+["'`]/;
+  /** The code without its comments: a comment may name a model, a string may not. */
+  const code = (f: string) => readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+  it("no file under src holds a Claude model id outside the four that define the defaults, the catalog, the priced-at models and the old rates", () => {
+    const files = (readdirSync("src", { recursive: true }) as string[]).map((f) => join("src", f).split(sep).join("/")).filter((f) => /\.(?:ts|tsx|js|jsx|mjs|cjs)$/.test(f));
+    expect(files.length).toBeGreaterThan(200);
+    expect(files.filter((f) => LITERAL.test(code(f))).sort()).toEqual(Object.keys(ALLOWED).sort());
+    for (const [f, why] of Object.entries(ALLOWED)) expect(why.trim().length, f).toBeGreaterThan(20);
+  });
+
+  it("the scan sees a literal in code and ignores one in a comment", () => {
+    expect(LITERAL.test('const m = "claude-opus-5";')).toBe(true);
+    expect(LITERAL.test("const m = `claude-sonnet-5-5`;")).toBe(true);
+    expect(LITERAL.test('if (model.startsWith("claude-")) retry();')).toBe(false);
+    expect(readFileSync("src/lib/model.ts", "utf8")).toMatch(/startsWith\("claude-"\)/);
   });
 });

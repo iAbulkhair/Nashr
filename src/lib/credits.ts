@@ -325,12 +325,16 @@ export async function chargeOnce(email: string, cost: number, meta: SpendMeta, c
     // A hold of another price (or a malformed one, given back as `refundOnce` would): given back in memory first, so the
     // debit below sees its credits and its agent counter lowered; saved together with the new charge, or not at all.
     const replaced = held ? heldCredits(held) : undefined;
+    const spentBefore = agentSpendFor(u, meta.scope)[meta.agent] ?? 0;
     if (held) giveBack(u, replaced!, held);
     const { out, dirty } = debit(u, cost, meta);
     if (!out.ok || !("month" in out)) {
-      if (held) return { ...(out as Exclude<AgentCharge, { ok: true }>), credits: balance };
+      // Nothing is saved, so the refusal reports the record as it is: the balance and, at the agent's cap, the spend with
+      // the old hold still in it, not the figures the in-memory give-back left.
+      const refused = out as Exclude<AgentCharge, { ok: true }>;
+      if (held) return refused.reason === "agent_cap" ? { ...refused, credits: balance, spent: spentBefore } : { ...refused, credits: balance };
       if (dirty) await saveUser(u);
-      return out as Exclude<AgentCharge, { ok: true }>;
+      return refused;
     }
     const now = Date.now();
     // An old hold's charge is spent for good: dropped here, so the record keeps only the live ones. A malformed time

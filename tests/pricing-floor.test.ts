@@ -151,28 +151,28 @@ describe("Majed's auto-run is a cron path: every type it may start keeps the flo
 describe("the estimates price the models the code calls (rule 241)", () => {
   const src = (p: string) => readFileSync(p, "utf8");
 
-  it("each call site sends route(purpose).model, and the estimates price exactly what route() resolves for that purpose", () => {
-    // One table: the estimates read the routing's defaults, so a model change in route.ts moves the estimates with it.
-    expect({ ...ESTIMATE_MODELS }).toEqual({
-      generate: route("generate").model,
-      review: route("review").model,
-      judge: route("judge").model,
-      onboard: route("onboard").model,
-      mediaPrompt: route("imagePrompt").model,
-    });
-    // The calls: no literal, each site asks for its own purpose (tests/model-route-calls.test.ts runs them and checks what is sent).
+  it("each call site sends route(purpose).model for its own purpose", () => {
+    // That the estimates price exactly the routing's defaults (`ESTIMATE_MODELS`) is pinned once, in tests/model-route.test.ts.
+    // The calls: no literal (tests/model-route-calls.test.ts scans all of src), each site asks for its own purpose; that
+    // test also runs every site and checks the model each request really carries, so the source pins below stay few.
     const noor = src("src/lib/noor.ts");
     expect(noor).toContain('model: opts.model ?? route("generate").model,');
     // The reviewer (`critique`) asks for "review"; the cross-agent review asks once for "xreview" and both reviewers use it.
     expect(noor.match(/model: route\("review"\)\.model,/g)?.length).toBe(1);
     expect(noor.match(/const model = route\("xreview"\)\.model;/g)?.length).toBe(1);
-    expect(noor.match(/^\s+model,$/gm)?.length).toBe(1);
     expect(src("src/lib/judge.ts")).toContain('model: route("judge", { generatedBy: ctx.generatedBy }).model,');
     // Onboarding asks once; its three parts and a retry run on the same model.
     expect(src("src/lib/onboard.ts")).toContain('const model = route("onboard").model;');
-    expect(src("src/lib/onboard.ts").match(/^\s+model,$/gm)?.length).toBe(1);
     expect(src("src/lib/media/prompts.ts")).toContain('model: route("imagePrompt").model,');
     expect(src("src/app/api/tools/[tool]/route.ts")).toContain('model: route("tool").model,');
+  });
+
+  it("the cross-agent review runs on a model no dearer than the estimate's reviewer on every bucket", () => {
+    // `estimateBatch` does not add the cross-review; its cost is worked out by hand at the reviewer's rates (docs/system/costs.md,
+    // the `xreview` table, every row under the ceiling). A dearer `DEFAULTS.xreview` would make that table wrong without a test failing.
+    const est = modelById(ESTIMATE_MODELS.review)!.rate;
+    const xreview = modelById(route("xreview").model)!;
+    for (const b of ["in", "out", "cacheRead", "cacheWrite"] as const) expect(xreview.rate[b], `${xreview.id} ${b}`).toBeLessThanOrEqual(est[b]);
   });
 
   it("whichever model generated the batch, the judge the routing picks costs no more than the estimate's judge on every bucket", () => {

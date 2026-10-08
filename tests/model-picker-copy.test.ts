@@ -121,9 +121,12 @@ const MAKERS = /\bAnthropic\b|أنثروبيك/;
 /**
  * The one allowed maker mention: the privacy policy's list of AI providers that process the customer's content
  * (`src/lib/legal.ts`, shown on the privacy and terms pages and in `llms.txt`). A sub-processor disclosure is owed to
- * the customer, so it names the text provider; it names no model.
+ * the customer, so it names the text provider; it names no model. Allowed is the phrase, once per line, in that file:
+ * it is taken out of the line and the rest is scanned like any other line.
  */
-const MAKER_ALLOWED = [{ file: "src/lib/legal.ts", line: /Anthropic للنصوص|Anthropic for text/ }];
+const MAKER_ALLOWED = [{ file: "src/lib/legal.ts", phrase: /Anthropic للنصوص|Anthropic for text/ }];
+/** Does line `l` of file `f` name a maker outside the allowed disclosure? */
+const makerHit = (f: string, l: string) => MAKERS.test(MAKER_ALLOWED.filter((a) => a.file === f).reduce((rest, a) => rest.replace(a.phrase, ""), l));
 const walk = (p: string): string[] =>
   statSync(p).isDirectory() ? readdirSync(p).flatMap((f) => walk(join(p, f))) : /\.(ts|tsx|md|mdx|txt)$/.test(p) ? [p] : [];
 /** Comments removed with their line breaks kept, so a hit still reports its own line. A `//` after `:` (a URL) stays. */
@@ -156,8 +159,15 @@ describe("no public marketing page mentions a model name", () => {
 
   it("a model maker is named only in the privacy policy's AI-provider disclosure, which is allow-listed by file and line", () => {
     const files = [...PUBLIC(), ...PUBLIC_CODE];
-    const hits = files.flatMap((f) => linesOf(f).flatMap((l, i) => (MAKERS.test(l) && !MAKER_ALLOWED.some((a) => a.file === f && a.line.test(l)) ? [`${f}:${i + 1}`] : [])));
+    const hits = files.flatMap((f) => linesOf(f).flatMap((l, i) => (makerHit(f, l) ? [`${f}:${i + 1}`] : [])));
     expect(hits).toEqual([]);
+    // The allowance is the disclosure phrase, not its whole line: legal.ts keeps a page's paragraphs on one line, so
+    // another maker mention next to the disclosure is still a hit; the phrase anywhere else is too.
+    expect(makerHit("src/lib/legal.ts", "We use AI providers (Anthropic for text; fal.ai for images).")).toBe(false);
+    expect(makerHit("src/lib/legal.ts", "مزودي الذكاء الاصطناعي (Anthropic للنصوص، وfal.ai للصور).")).toBe(false);
+    expect(makerHit("src/lib/legal.ts", "We use AI providers (Anthropic for text). Our agents run on Anthropic models.")).toBe(true);
+    expect(makerHit("src/lib/legal.ts", "(Anthropic للنصوص) ونستخدم نماذج أنثروبيك")).toBe(true);
+    expect(makerHit("src/lib/home.ts", "We use AI providers (Anthropic for text).")).toBe(true);
     // The disclosure is there (in both languages), so the allow-list is not hiding a line that moved away.
     const legal = readFileSync("src/lib/legal.ts", "utf8");
     expect(legal).toMatch(/Anthropic للنصوص/);

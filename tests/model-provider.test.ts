@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { inspect } from "node:util";
 import { anthropic, effectiveProvider, llmProvider, modelState } from "@/lib/model";
 import { db } from "@/lib/db";
@@ -36,7 +36,13 @@ const reason = async (p: Promise<unknown>) => { try { await p; return null; } ca
 /** Every place a key could leak to from a failed call: message, stack, cause chain, own properties. */
 const everything = (e: unknown) => inspect(e, { depth: 8, showHidden: true });
 
+/**
+ * console.warn, silenced and recorded for every test: the fallback writes one line per request it re-sends, and a test
+ * that does not look at them should not print them. Restored after each test (`vi.restoreAllMocks`).
+ */
+let warn: MockInstance<typeof console.warn>;
 beforeEach(() => {
+  warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   // The machine running the tests may carry these; the SDK reads them implicitly when an option is not passed.
   vi.stubEnv("ANTHROPIC_BASE_URL", "");
   vi.stubEnv("ANTHROPIC_AUTH_TOKEN", "");
@@ -104,15 +110,54 @@ describe("the provider switch", () => {
 
   it("STRAITLY_BASE_URL must be https (or loopback) and a URL, and the error names neither it nor a key", async () => {
     straitly();
-    for (const bad of ["http://gateway.example.test", "not a url", "ftp://gateway.example.test", "//gateway.example.test"]) {
+    const calls = stubFetch(ok);
+    const refused = async (bad: string) => {
+      vi.stubEnv("STRAITLY_BASE_URL", bad);
+      return reason(Promise.resolve().then(() => anthropic({ timeoutMs: 1000, maxRetries: 0 })));
+    };
+    // Not a URL, or a scheme the key may not travel over: plain http is for a loopback HOST only, and a host that merely
+    // starts with "localhost" or puts it in the user info is not one.
+    for (const bad of ["http://gateway.example.test", "not a url", "ftp://gateway.example.test", "//gateway.example.test", "http://localhost.evil.com", "http://localhost@evil.com", "http://127.0.0.1@evil.com", "http://127.0.0.2:8787"]) {
+      const e = await refused(bad);
+      expect(e?.message, bad).toBe("invalid_straitly_base_url");
+      expect(everything(e), bad).not.toContain("evil");
+    }
+    expect(calls, "nothing was sent").toHaveLength(0);
+  });
+
+  it("STRAITLY_BASE_URL is an origin only: no /v1 or other path, no query, fragment or user info, and the error never prints it", async () => {
+    straitly();
+    const calls = stubFetch(ok);
+    // The SDK adds /v1/messages itself, so a base with /v1 would send every call to /v1/v1/messages; a path or a query
+    // changes where the key goes, and user info puts a secret in the URL.
+    for (const bad of [
+      "https://api.straitly.ai/v1", "https://api.straitly.ai/v1/", "https://gateway.example.test/proxy", "https://gateway.example.test/proxy/",
+      "https://gateway.example.test/?x=1", "https://gateway.example.test?", "https://gateway.example.test#top", "https://gateway.example.test#",
+      "https://user:pw-SECRET@gateway.example.test", "https://user-SECRET@gateway.example.test", "https://:pw-SECRET@gateway.example.test", "https://localhost@evil.com", "http://user:pw-SECRET@localhost:8787",
+    ]) {
       vi.stubEnv("STRAITLY_BASE_URL", bad);
       const e = await reason(Promise.resolve().then(() => anthropic({ timeoutMs: 1000, maxRetries: 0 })));
-      expect(e?.message, bad).toBe("invalid_straitly_base_url");
+      expect(e?.message, bad).toBe("invalid_straitly_base_url: origin only, no /v1 or other path, no query, fragment or user info");
+      for (const part of [bad, "SECRET", "gateway.example.test", "evil", STRAITLY_KEY, ANTHROPIC_KEY]) expect(everything(e), `${bad}: ${part}`).not.toContain(part);
     }
-    const calls = stubFetch(ok);
-    vi.stubEnv("STRAITLY_BASE_URL", "http://localhost:8787");
-    await ask("claude-opus-5");
-    expect(calls[0].url).toBe("http://localhost:8787/v1/messages");
+    expect(calls, "nothing was sent").toHaveLength(0);
+
+    // Accepted, and sent to the origin: a trailing slash, an upper-case scheme or host, a port, a loopback stand-in.
+    for (const [base, sent] of [
+      ["https://gateway.example.test/", "https://gateway.example.test/v1/messages"],
+      ["HTTPS://Gateway.Example.TEST", "https://gateway.example.test/v1/messages"],
+      ["https://gateway.example.test:8443", "https://gateway.example.test:8443/v1/messages"],
+      ["http://localhost:8787", "http://localhost:8787/v1/messages"],
+      ["HTTP://LOCALHOST:8787/", "http://localhost:8787/v1/messages"],
+      ["http://127.0.0.1:8787", "http://127.0.0.1:8787/v1/messages"],
+      ["http://[::1]:8787", "http://[::1]:8787/v1/messages"],
+      ["  https://gateway.example.test  ", "https://gateway.example.test/v1/messages"],
+    ] as const) {
+      vi.stubEnv("STRAITLY_BASE_URL", base);
+      await ask("claude-opus-5");
+      expect(calls.at(-1)?.url, base).toBe(sent);
+      expect(calls.at(-1)?.headers.get("x-api-key"), base).toBe(STRAITLY_KEY);
+    }
   });
 
   it("straitly without STRAITLY_API_KEY sends to Anthropic and never hands the Anthropic key to the gateway", async () => {
@@ -182,8 +227,11 @@ describe("the direct Anthropic fallback", () => {
       expect(calls[1].body, "the same request body, read once").toBe(calls[0].body);
       expect(JSON.parse(calls[1].body)).toMatchObject({ model: "claude-sonnet-5-5", max_tokens: 16 });
       expect(JSON.stringify([...calls[1].headers])).not.toContain(STRAITLY_KEY);
+      // One log line per re-sent request: a status code or "connection error", never a key, a header or a body.
+      expect(warn.mock.calls.at(-1), first).toEqual([first === "network" ? "model_fallback: straitly connection error, retried on anthropic" : `model_fallback: straitly status ${first}, retried on anthropic`]);
       vi.unstubAllGlobals();
     }
+    expect(warn).toHaveBeenCalledTimes(4);
   });
 
   it("is one retry: when Anthropic fails too, the error comes out and nothing is sent a third time", async () => {
@@ -235,7 +283,7 @@ describe("the direct Anthropic fallback", () => {
       vi.unstubAllGlobals();
     }
     await vi.waitFor(async () => expect(await count()).toBe(base + 2));
-    // The counter has no account, model or key in its name: every key written is a global usage counter of this month.
+    // Nothing else is written: the one key is this month's fallback counter, with no account, model or key in its name.
     const written = incrKeys();
     expect(written.length).toBeGreaterThan(0);
     expect(written.filter((k) => k !== key)).toEqual([]);
@@ -243,7 +291,6 @@ describe("the direct Anthropic fallback", () => {
 
   it("a store that fails never changes the retry or what is logged", async () => {
     straitly();
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const incr = vi.spyOn(db, "incrby").mockImplementation(() => { throw new Error(`store down ${STRAITLY_KEY} ${ANTHROPIC_KEY}`); });
     const calls = stubFetch((_c, n) => (n === 0 ? fail(503) : ok()));
@@ -261,12 +308,12 @@ describe("the direct Anthropic fallback", () => {
     expect(logged).not.toContain("store down");
   });
 
-  it("keeps the path after the gateway's own base path and the query string", async () => {
+  it("keeps the SDK's path and the query string, and changes only the origin", async () => {
     straitly();
-    vi.stubEnv("STRAITLY_BASE_URL", "https://gateway.example.test/proxy/");
+    vi.stubEnv("STRAITLY_BASE_URL", "https://gateway.example.test");
     const calls = stubFetch((_c, n) => (n === 0 ? fail(502) : ok()));
     await anthropic({ timeoutMs: 30_000, maxRetries: 0 }).beta.messages.create({ model: "claude-opus-5", max_tokens: 16, messages: [{ role: "user", content: "hi" }] });
-    expect(calls[0].url).toBe("https://gateway.example.test/proxy/v1/messages?beta=true");
+    expect(calls[0].url).toBe("https://gateway.example.test/v1/messages?beta=true");
     expect(calls[1].url).toBe("https://api.anthropic.com/v1/messages?beta=true");
   });
 
@@ -330,7 +377,8 @@ describe("the direct Anthropic fallback", () => {
 
 describe("the keys stay secret", () => {
   it("the key never appears in a thrown error message or console output", async () => {
-    const spies = (["log", "info", "warn", "error", "debug"] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => {}));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const spies = [warn, error, ...(["log", "info", "debug"] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => {}))];
     const seen: unknown[] = [];
 
     for (const mode of ["5xx", "network", "non-claude", "4xx"] as const) {
@@ -339,10 +387,27 @@ describe("the keys stay secret", () => {
       seen.push(await reason(ask(mode === "non-claude" ? "deepseek-v3.2" : "claude-opus-5")));
       vi.unstubAllGlobals();
     }
-    // Neither key anywhere, in production: the one log line names the variable only.
-    straitly({});
-    vi.stubEnv("NODE_ENV", "production");
-    modelState();
+    expect(warn, "the 5xx and the network error were re-sent, and logged").toHaveBeenCalledTimes(2);
+
+    // The no-key line in production, from a fresh copy of the module each time: the line is written once per instance,
+    // and an earlier test in this file already wrote it from the copy imported above, so that copy would write nothing
+    // here and the check below would pass on no line at all. The first case has the other provider's key set, so a value
+    // that leaked into the line would be found.
+    const cases = [
+      ["anthropic with only a Straitly key", () => { vi.stubEnv("LLM_PROVIDER", "anthropic"); vi.stubEnv("STRAITLY_API_KEY", STRAITLY_KEY); vi.stubEnv("ANTHROPIC_API_KEY", ""); }, "model_not_configured: ANTHROPIC_API_KEY is not set in production; the agents refuse as paused"],
+      ["straitly with no key", () => straitly({}), "model_not_configured: STRAITLY_API_KEY and ANTHROPIC_API_KEY are not set in production; the agents refuse as paused"],
+    ] as const;
+    for (const [label, setup, line] of cases) {
+      setup();
+      vi.stubEnv("NODE_ENV", "production"); vi.stubEnv("VERCEL_ENV", ""); vi.stubEnv("APP_ENV", "");
+      vi.resetModules();
+      const fresh = await import("@/lib/model");
+      const from = error.mock.calls.length;
+      expect(fresh.modelState(), label).toBe("paused");
+      expect(fresh.modelState(), label).toBe("paused");
+      expect(error.mock.calls.slice(from), `${label}: one line, naming variables only`).toEqual([[line]]);
+    }
+    vi.resetModules();
 
     for (const e of seen) {
       expect(e).toBeInstanceOf(Error);
