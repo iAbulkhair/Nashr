@@ -115,8 +115,9 @@ describe("share-for-credits is granted once (P1: credit minting)", () => {
     const bodies = (await Promise.all(results.map((r) => r.json()))) as { credited: number }[];
     const granted = bodies.reduce((sum, b) => sum + (b.credited ?? 0), 0);
 
-    expect(granted, "the bonus is once per platform, however many requests race").toBe(share.SHARE_CREDITS);
-    expect((await getUser(u.email))!.credits).toBe(50 + share.SHARE_CREDITS);
+    const { SHARE_CREDITS } = await import("@/lib/referral");
+    expect(granted, "the bonus is once per platform, however many requests race").toBe(SHARE_CREDITS);
+    expect((await getUser(u.email))!.credits).toBe(50 + SHARE_CREDITS);
   });
 });
 
