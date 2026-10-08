@@ -43,14 +43,53 @@ export type EntUser = Pick<User, "plan" | "trialEnds" | "suspended" | "billing" 
 export const ALL_VIDEO_MODELS: readonly VideoModelId[] = MEDIA_MODELS.filter((m) => m.kind === "video").map((m) => m.id as VideoModelId);
 
 /**
- * Whether a founder grant is in force at `now`: it names who set it and when (`by`, `at`), `until` is a YYYY-MM-DD day,
- * and `now` is not past the end of that UTC day. Anything else, a grant that is missing, malformed or past, reads as
- * absent; nothing deletes it (`User.grants`).
+ * Whether `s` is a real UTC calendar day written `YYYY-MM-DD`. A regex alone is not enough: `Date.parse` rolls a day that
+ * does not exist forward (`2026-02-31` becomes 3 March), so the day must also come back the same from a round trip
+ * through `Date` (ruling R8). The one check for a grant's `until`, on the way in (`parseVideoGrant`) and when it is read
+ * (`grantActive`).
+ */
+export function isUtcDay(s: unknown): s is string {
+  if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const t = Date.parse(`${s}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === s;
+}
+
+/**
+ * Whether a founder grant is in force at `now`: it names who set it and when (`by`, `at`), `until` is a real
+ * YYYY-MM-DD day (`isUtcDay`), and `now` is not past the end of that UTC day. Anything else, a grant that is missing,
+ * malformed or past, reads as absent; nothing deletes it (`User.grants`).
  */
 export function grantActive(g: Grant<unknown> | undefined, now: number = Date.now()): boolean {
   if (!g || !g.by || !g.at) return false;
-  if (typeof g.until !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(g.until)) return false;
+  if (!isUtcDay(g.until)) return false;
   return now <= Date.parse(`${g.until}T23:59:59.999Z`);
+}
+
+/** Longest founder grant: it must end within this many days of today. */
+const MAX_GRANT_DAYS = 366;
+/** Longest grant note, in characters, after it is collapsed to one line. */
+const MAX_GRANT_NOTE = 200;
+
+/**
+ * Checks a founder's video grant request body (`POST /api/admin/plan` `videoGrant`, rule 783) and returns only what is
+ * read from it: `until` (a real UTC day after today and at most 366 days ahead, so the grant always ends) and an
+ * optional note (a string of at most 200 characters, whitespace and control characters collapsed to one line, nothing
+ * left of it means no note). Anything else, including a body that is not an object, is `{ ok: false }`. `by`, `at` and
+ * the value are never read from the body: the route sets them. `now` is for tests.
+ */
+export function parseVideoGrant(v: unknown, now: number = Date.now()): { ok: true; until: string; note?: string } | { ok: false } {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return { ok: false };
+  const { until, note } = v as { until?: unknown; note?: unknown };
+  if (!isUtcDay(until)) return { ok: false };
+  // Both are YYYY-MM-DD, so comparing the strings compares the days.
+  const today = new Date(now).toISOString().slice(0, 10);
+  const last = new Date(now + MAX_GRANT_DAYS * 86400_000).toISOString().slice(0, 10);
+  if (until <= today || until > last) return { ok: false };
+  if (note === undefined || note === null) return { ok: true, until };
+  if (typeof note !== "string") return { ok: false };
+  const line = note.replace(/[\s\p{Cc}]+/gu, " ").trim();
+  if (line.length > MAX_GRANT_NOTE) return { ok: false };
+  return line ? { ok: true, until, note: line } : { ok: true, until };
 }
 
 /** The first reason the account is not active, or undefined. Suspension first, then a locked subscription, then an ended trial. */

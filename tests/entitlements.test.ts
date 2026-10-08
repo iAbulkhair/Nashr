@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALL_VIDEO_MODELS, entitlements, grantActive, type EntUser } from "@/lib/entitlements";
+import { ALL_VIDEO_MODELS, entitlements, grantActive, isUtcDay, type EntUser } from "@/lib/entitlements";
 import { AGENT_IDS } from "@/lib/agents";
 import { allowanceOf, chatAllowanceOf, seatLimit } from "@/lib/pricing";
 import { chatCaps } from "@/lib/rate";
@@ -58,6 +58,22 @@ describe("entitlements (rule 780)", () => {
     expect(grantActive({ ...grant(day(3)).video, by: "" }, NOW)).toBe(false);   // a grant needs by and at (spec 9)
     expect(grantActive({ ...grant(day(3)).video, at: "" }, NOW)).toBe(false);
     expect(grantActive(grant(day(3)).video, NOW)).toBe(true);
+  });
+
+  it("a stored grant dated with a day that does not exist reads as absent (ruling R8)", () => {
+    // Date.parse rolls 2026-02-31 forward to 3 March, so a regex alone would keep this grant alive until then: asked
+    // on 20 February it must already read as absent. The same stored grant with a real last day of the month is live.
+    const feb20 = Date.parse("2026-02-20T00:00:00Z");
+    expect(grantActive({ ...grant("2026-02-31").video }, feb20)).toBe(false);
+    expect(grantActive({ ...grant("2026-02-28").video }, feb20)).toBe(true);
+    expect(entitlements(user({ plan: "trial", trialEnds: "2026-03-20T00:00:00Z", grants: grant("2026-02-31") }), feb20).media.video).toEqual(TRIAL_VIDEO_MODELS);
+  });
+
+  it("isUtcDay: a YYYY-MM-DD day that exists, leap days included", () => {
+    for (const s of ["2026-10-08", "2028-02-29", "2026-12-31", "0001-01-01"]) expect(isUtcDay(s), s).toBe(true);
+    for (const s of ["2026-02-31", "2027-02-29", "2026-04-31", "2026-13-01", "2026-00-10", "2026-10-00", "2026-10-32", "2026-1-9", "26-10-09", "2026-10-08T00:00:00Z", " 2026-10-08", "", "soon"]) expect(isUtcDay(s), s).toBe(false);
+    expect(isUtcDay(20261008)).toBe(false);
+    expect(isUtcDay(undefined)).toBe(false);
   });
 
   it("inactive: suspended, ended trial, locked Paymob subscription", () => {
