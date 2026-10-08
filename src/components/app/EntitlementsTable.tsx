@@ -4,33 +4,33 @@ import { mediaModel, type VideoModelId } from "@/lib/media-catalog";
 // Type only: src/lib/entitlements.ts reaches the store (rate.ts, team.ts, chat-allowance.ts), so it is never imported at
 // runtime here or in AdminConsole (rule 781, tests/entitlements-scan.test.ts); the type is erased from the bundle.
 import type { EntitlementView } from "@/lib/entitlements";
+import type { AgencyDeal } from "@/lib/pricing";
 
 /**
  * The founder's entitlements table for one account (spec 6.1, rule 784): one row per dimension, with the plan's own
- * value, the founder's override (value, until, who, note), the effective value, what is used and when it resets. Every
- * figure comes from `view` (`entitlementView`), none is worked out here.
+ * value (`view.base`, the account's `entitlements()` without its four overrides), what differs from it (the override),
+ * the effective value (`view.ent`), what is used and when it resets. Every figure comes from `view`, none is worked out
+ * here.
  *
- * The view carries one dated override, the video grant, so that is the only row with an override cell. The deal, seat
- * and chat overrides (no end date) are folded into the effective numbers and set from the account's own controls, so the
- * Plan cell of those three rows is a dash rather than a number that would be wrong whenever an override is set. A grant
- * that has run out is greyed and marked "expired": the effective value is then the plan's own list.
+ * The Override cell shows what differs from the plan: the Agency deal (credits@price and who set it, from `deal`, which the
+ * view does not carry), a seat override, a chat override and the dated video grant (day, who, note). The deal, seat and
+ * chat overrides have no end date. A grant that has run out is greyed and marked "expired": the effective list is then the
+ * plan's own.
  */
 const T = {
   en: {
     title: "Entitlements", dimension: "Dimension", plan: "Plan", override: "Override", effective: "Effective", used: "Used", resets: "Resets",
     credits: "Credits per month", seats: "Seats", chatMonth: "Chat messages (month)", chatTrial: "Chat messages (trial)", chatRate: "Chat rate (hour / day)",
     video: "Video models", agents: "Agents", status: "Active / ends",
-    balance: "balance", noEnd: "no end date", active: "active", expired: "expired", until: "until", by: "by", all: "all models",
+    balance: "balance", noEnd: "no end date", active: "active", expired: "expired", until: "until", by: "by", all: "all models", deal: "deal",
     inactive: { suspended: "suspended", trial_over: "trial over", billing_locked: "billing locked" },
-    note: "Credits, seats and chat month: the deal, seat and chat overrides are set from the account's controls and are inside the effective number.",
   },
   ar: {
     title: "الاستحقاقات", dimension: "البند", plan: "الخطة", override: "التخصيص", effective: "الفعلي", used: "المستخدم", resets: "يتجدد",
     credits: "الكريدت الشهري", seats: "المقاعد", chatMonth: "رسائل الدردشة (الشهر)", chatTrial: "رسائل الدردشة (التجربة)", chatRate: "سقف الدردشة (ساعة / يوم)",
     video: "نماذج الفيديو", agents: "الوكلاء", status: "مفعّل / ينتهي",
-    balance: "الرصيد", noEnd: "بلا تاريخ انتهاء", active: "مفعّل", expired: "منتهية", until: "حتى", by: "بواسطة", all: "كل النماذج",
+    balance: "الرصيد", noEnd: "بلا تاريخ انتهاء", active: "مفعّل", expired: "منتهية", until: "حتى", by: "بواسطة", all: "كل النماذج", deal: "عقد",
     inactive: { suspended: "موقوف", trial_over: "انتهت التجربة", billing_locked: "الدفع مقفل" },
-    note: "الكريدت والمقاعد ورسائل الدردشة الشهرية: تخصيصات العقد والمقاعد والدردشة تُضبط من أدوات الحساب وهي داخل الرقم الفعلي.",
   },
 } as const;
 
@@ -39,23 +39,43 @@ type Row = { key: string; label: string; plan: string; override: ReactNode; effe
 
 const DASH = "—";
 
-export default function EntitlementsTable({ view, lang }: { view: EntitlementView; lang: "ar" | "en" }) {
+/** The Agency deal as the stored record has it; `setBy` may be missing on an old deal. */
+type DealCell = Pick<AgencyDeal, "credits" | "priceSar"> & Partial<Pick<AgencyDeal, "setBy">>;
+
+/**
+ * What the console's "Video grant" button sends to `POST /api/admin/plan` (rules 783-784, ruling R13), from the day and the
+ * note the founder typed and whether the account has a grant on the record (live or expired). A day sends the grant (the
+ * note trimmed, left out when blank); an empty day clears the grant when there is one and sends nothing when there is none,
+ * so no request and no `admin:log` entry is made for a no-op. The day is not checked here: the server answers `bad_grant`
+ * (`parseVideoGrant` pulls the store into whatever imports it, so the browser cannot use it).
+ */
+export function videoGrantRequest(until: string, note: string, hasGrant: boolean): { videoGrant: { until: string; note?: string } | null } | null {
+  const day = until.trim();
+  if (day === "") return hasGrant ? { videoGrant: null } : null;
+  const text = note.trim();
+  return { videoGrant: text ? { until: day, note: text } : { until: day } };
+}
+
+export default function EntitlementsTable({ view, lang, deal }: { view: EntitlementView; lang: "ar" | "en"; deal?: DealCell | null }) {
   const t = T[lang];
-  const { ent, used, resetsAt, grants } = view;
+  const { ent, base, used, resetsAt, grants } = view;
   const g = grants.video;
   const models = (ids: readonly VideoModelId[]) => ids.map((id) => mediaModel(id).label[lang]).join(", ");
-  const agents = ent.agents.map((id) => agentById(id).name[lang]).join(", ");
+  const agents = (e: typeof ent) => e.agents.map((id) => agentById(id).name[lang]).join(", ");
+  const status = (e: typeof ent) => [e.active ? t.active : t.inactive[e.inactive ?? "suspended"], e.endsAt ? e.endsAt.slice(0, 10) : t.noEnd].join(" · ");
   const monthly = used.chat.period === "month";
+  /** The override cell of a number: a dash when the effective value is the plan's, else the value (and the deal's details). */
+  const differs = (effective: string, plan: string, detail?: string): ReactNode => (effective === plan ? DASH : `${detail ?? effective} · ${t.noEnd}`);
+  const dealText = deal ? `${t.deal} ${deal.credits}@${deal.priceSar} SAR${deal.setBy ? ` · ${t.by} ${deal.setBy}` : ""}` : undefined;
+  const rate = (e: typeof ent) => `${e.chat.hour} / ${e.chat.day}`;
 
   const rows: Row[] = [
-    { key: "credits", label: t.credits, plan: DASH, override: DASH, effective: String(ent.credits.monthly), used: `${t.balance} ${used.credits}`, resets: resetsAt ?? DASH },
-    { key: "seats", label: t.seats, plan: DASH, override: DASH, effective: String(ent.seats), used: `${used.seats} / ${ent.seats}`, resets: DASH },
-    { key: "chat", label: monthly ? t.chatMonth : t.chatTrial, plan: DASH, override: DASH, effective: String(ent.chat.monthly), used: `${used.chat.counted} / ${used.chat.allowance}`, resets: monthly ? resetsAt ?? DASH : DASH },
-    { key: "rate", label: t.chatRate, plan: `${ent.chat.hour} / ${ent.chat.day}`, override: DASH, effective: `${ent.chat.hour} / ${ent.chat.day}`, used: DASH, resets: DASH },
+    { key: "credits", label: t.credits, plan: String(base.credits.monthly), override: differs(String(ent.credits.monthly), String(base.credits.monthly), dealText), effective: String(ent.credits.monthly), used: `${t.balance} ${used.credits}`, resets: resetsAt ?? DASH },
+    { key: "seats", label: t.seats, plan: String(base.seats), override: differs(String(ent.seats), String(base.seats)), effective: String(ent.seats), used: `${used.seats} / ${ent.seats}`, resets: DASH },
+    { key: "chat", label: monthly ? t.chatMonth : t.chatTrial, plan: String(base.chat.monthly), override: differs(String(ent.chat.monthly), String(base.chat.monthly)), effective: String(ent.chat.monthly), used: `${used.chat.counted} / ${used.chat.allowance}`, resets: monthly ? resetsAt ?? DASH : DASH },
+    { key: "rate", label: t.chatRate, plan: rate(base), override: differs(rate(ent), rate(base)), effective: rate(ent), used: DASH, resets: DASH },
     {
-      key: "video", label: t.video,
-      // Without a grant, or with a spent one, the effective list is the plan's own. A live grant hides the plan's list from this view.
-      plan: !g || g.expired ? models(ent.media.video) : DASH,
+      key: "video", label: t.video, plan: models(base.media.video),
       override: g ? (
         <span className={g.expired ? "text-muted opacity-60" : ""} data-testid="video-grant" data-expired={g.expired ? "true" : "false"}>
           {t.all} {t.until} <span dir="ltr">{g.until}</span> · {t.by} <span dir="ltr">{g.by}</span>{g.note ? ` · ${g.note}` : ""}
@@ -64,12 +84,8 @@ export default function EntitlementsTable({ view, lang }: { view: EntitlementVie
       ) : DASH,
       effective: models(ent.media.video), used: DASH, resets: DASH,
     },
-    { key: "agents", label: t.agents, plan: agents, override: DASH, effective: agents, used: DASH, resets: DASH },
-    {
-      key: "status", label: t.status, plan: DASH, override: DASH,
-      effective: [ent.active ? t.active : t.inactive[ent.inactive ?? "suspended"], ent.endsAt ? ent.endsAt.slice(0, 10) : t.noEnd].join(" · "),
-      used: DASH, resets: DASH,
-    },
+    { key: "agents", label: t.agents, plan: agents(base), override: differs(agents(ent), agents(base)), effective: agents(ent), used: DASH, resets: DASH },
+    { key: "status", label: t.status, plan: status(base), override: differs(status(ent), status(base)), effective: status(ent), used: DASH, resets: DASH },
   ];
 
   return (
@@ -96,7 +112,6 @@ export default function EntitlementsTable({ view, lang }: { view: EntitlementVie
           </tbody>
         </table>
       </div>
-      <p className="mt-1 text-muted">{t.note}</p>
     </div>
   );
 }

@@ -124,12 +124,19 @@ export function entitlements(u: EntUser, now: number = Date.now()): Entitlements
 }
 
 /**
- * What the founder's console shows for one account (rule 784): the plan's numbers (`ent`), what the account has used,
- * when the month's numbers start again, and the video grant with whether it has run out. `grants.video` is the stored
- * grant with `expired` set by `grantActive`, so an old grant is shown as expired and never as in force.
+ * What the founder's console shows for one account (rule 784): what the account gets now (`ent`), the plan's own values
+ * without the founder's overrides (`base`, ruling R12), what the account has used, when the month's numbers start again,
+ * and the video grant with whether it has run out. `grants.video` is the stored grant with `expired` set by
+ * `grantActive`, so an old grant is shown as expired and never as in force.
  */
 export type EntitlementView = {
   ent: Entitlements;
+  /**
+   * `entitlements()` of the same record with the four overrides of spec 3.2 removed (`deal`, `seats`, `chatAllowance`,
+   * `grants`) and the same `now`: the plan's own values. The account's state (suspended, trial end, billing) is kept, so
+   * `base` and `ent` differ only where an override is set.
+   */
+  base: Entitlements;
   used: { credits: number; seats: number; chat: ChatStatus };
   /** The next 1st of the month (a UTC day, YYYY-MM-DD) for a paid plan that renews; null for a trial and for a locked Paymob subscription. */
   resetsAt: string | null;
@@ -155,8 +162,10 @@ function resetsAtOf(u: EntUser, now: number): string | null {
 export async function entitlementView(u: User, now: number = Date.now()): Promise<EntitlementView> {
   const [seats, chat] = await Promise.all([seatsUsed(u.email), chatStatus(u)]);
   const g = u.grants?.video;
+  const own: EntUser = { plan: u.plan, trialEnds: u.trialEnds, suspended: u.suspended, billing: u.billing };
   return {
     ent: entitlements(u, now),
+    base: entitlements(own, now),
     used: { credits: u.credits, seats, chat },
     resetsAt: resetsAtOf(u, now),
     grants: { video: g ? { ...g, expired: !grantActive(g, now) } : null },

@@ -19,7 +19,7 @@ import type { ChatStatus } from "@/lib/chat-allowance";
 // Type only: entitlements.ts reaches the store (rate.ts, team.ts, chat-allowance.ts), so the console never imports it at
 // runtime; the video grant is checked by the server, which answers 400 bad_grant (rule 784, tests/entitlements-scan.test.ts).
 import type { EntitlementView } from "@/lib/entitlements";
-import EntitlementsTable from "./EntitlementsTable";
+import EntitlementsTable, { videoGrantRequest } from "./EntitlementsTable";
 
 type KindUsage = { calls: number; in: number; out: number; usd: number };
 /**
@@ -272,26 +272,24 @@ export default function AdminConsole({ lang = "en", keySession = false }: { lang
   }
   /**
    * The founder's video grant (rule 783): every video model for a trial, through the end of a UTC day. Asks for the day and
-   * a note and sends `videoGrant: {until, note?}`; an empty day sends `null`, which clears the grant. The day is not
-   * checked here: the server is the one check (`parseVideoGrant`, which pulls the store into whatever imports it, so the
-   * console cannot) and answers 400 `bad_grant` for a day that is today, past, over 366 days ahead or not a day, or a note
-   * over 200 characters. The error is shown as the other actions show theirs, and the detail is read again.
+   * a note and sends `videoGrant: {until, note?}` (`videoGrantRequest`); an empty day clears the grant, and sends nothing
+   * when the account has none (ruling R13, so no no-op `admin:log` entry). The day is not checked here: the server is the
+   * one check (`parseVideoGrant`, which pulls the store into whatever imports it, so the console cannot) and answers 400
+   * `bad_grant` for a day that is today, past, over 366 days ahead or not a day, or a note over 200 characters. The error is
+   * shown as the other actions show theirs, and the detail is read again.
    */
   async function setVideoGrant(u: U) {
-    const live = sel?.user.email === u.email ? sel.entitlements?.grants.video : null;
-    const raw = prompt(S.promptGrantUntil, live && !live.expired ? live.until : "");
+    const have = sel?.user.email === u.email ? sel.entitlements?.grants.video : null;
+    const raw = prompt(S.promptGrantUntil, have && !have.expired ? have.until : "");
     if (raw === null) return;
-    const until = raw.trim();
-    let videoGrant: { until: string; note?: string } | null = null;
-    if (until !== "") {
-      const note = prompt(S.promptGrantNote, live?.note ?? "");
-      if (note === null) return;
-      videoGrant = note.trim() ? { until, note: note.trim() } : { until };
-    }
+    const note = raw.trim() === "" ? "" : prompt(S.promptGrantNote, have?.note ?? "");
+    if (note === null) return;
+    const body = videoGrantRequest(raw, note, !!have);
+    if (!body) return;
     setBusy(true);
-    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, videoGrant }) });
+    const r = await adminFetch("/api/admin/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email, ...body }) });
     const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-    setMsg(j.ok ? `${u.email}: ${S.grantVideo} ${videoGrant ? videoGrant.until : "✓"}` : `${u.email}: ${j.error ?? r.status}`);
+    setMsg(j.ok ? `${u.email}: ${S.grantVideo} ${body.videoGrant ? body.videoGrant.until : "✓"}` : `${u.email}: ${j.error ?? r.status}`);
     await load();
     if (sel?.user.email === u.email) await open(u.email);
     setBusy(false);
@@ -708,7 +706,7 @@ export default function AdminConsole({ lang = "en", keySession = false }: { lang
                 <p className="font-mono text-xs text-muted">{S.overflow}: {!sel.chat.overflow.available ? S.overflowTrial : sel.chat.overflow.on ? S.overflowOn : S.overflowOff}{sel.usage.byKind?.chat ? ` · ${S.chatCost} ${sel.usage.byKind.chat.usd.toFixed(2)}` : ""}{sel.chatUsdPerMsg != null ? ` · ${S.perMsg} ${sel.chatUsdPerMsg.toFixed(4)}` : ""}</p>
               </div>
             )}
-            {sel.entitlements && <div className="col-span-full"><EntitlementsTable view={sel.entitlements} lang={lang} /></div>}
+            {sel.entitlements && <div className="col-span-full"><EntitlementsTable view={sel.entitlements} lang={lang} deal={sel.user.deal} /></div>}
             {sel.usage.byKind && Object.keys(sel.usage.byKind).length > 0 && (
               <div className="col-span-full rounded border border-ink/10 p-2">
                 <p className="text-muted">{S.perKind}</p>

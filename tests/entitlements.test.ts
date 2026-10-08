@@ -12,7 +12,7 @@ import { AGENT_IDS } from "@/lib/agents";
 import { allowanceOf, chatAllowanceOf, seatLimit } from "@/lib/pricing";
 import { chatCaps } from "@/lib/rate";
 import { MEDIA_MODELS, TRIAL_VIDEO_MODELS } from "@/lib/media-catalog";
-import EntitlementsTable from "@/components/app/EntitlementsTable";
+import EntitlementsTable, { videoGrantRequest } from "@/components/app/EntitlementsTable";
 import type { Billing } from "@/lib/billing-state";
 
 /**
@@ -166,6 +166,39 @@ describe("entitlementView (rule 784)", () => {
     expect(v.ent).toMatchObject({ active: false, inactive: "billing_locked" });
   });
 
+  it("base is the plan's own values, with the deal, seat, chat and grant overrides removed (ruling R12)", async () => {
+    // An Agency deal: the plan's credits are Business's, the effective ones are the deal's.
+    const agency = await stored({ plan: "agency", deal: { credits: 4000, priceSar: 2800, setAt: "x", setBy: "founder@x" } });
+    const a = await entitlementView(agency, NOW);
+    expect(a.base.credits.monthly).toBe(allowanceOf({ plan: "agency" }));
+    expect(a.base.credits.monthly).not.toBe(4000);
+    expect(a.ent.credits.monthly).toBe(4000);
+    // A seat override.
+    const seats = await stored({ plan: "pro", seats: 9 });
+    const s = await entitlementView(seats, NOW);
+    expect(s.base.seats).toBe(seatLimit({ plan: "pro" }));
+    expect(s.ent.seats).toBe(9);
+    // A chat override.
+    const chat = await stored({ plan: "pro", chatAllowance: 900 });
+    const c = await entitlementView(chat, NOW);
+    expect(c.base.chat.monthly).toBe(chatAllowanceOf({ plan: "pro" }));
+    expect(c.ent.chat.monthly).toBe(900);
+    // A trial with a live video grant.
+    const trial = await stored({ plan: "trial", trialEnds: "2026-10-20T00:00:00Z", grants: grant(day(3)) });
+    const t = await entitlementView(trial, NOW);
+    expect(t.base.media.video).toEqual(TRIAL_VIDEO_MODELS);
+    expect(t.ent.media.video).toEqual(ALL_VIDEO_MODELS);
+  });
+
+  it("base equals ent when nothing is overridden, and keeps the account's state (suspended, locked, ends)", async () => {
+    const plain = await stored({ plan: "pro" });
+    const p = await entitlementView(plain, NOW);
+    expect(p.base).toEqual(p.ent);
+    const locked = await stored({ plan: "pro", seats: 7, billing: billingFixture({ status: "locked", paidThrough: "2026-10-05" }) });
+    const l = await entitlementView(locked, NOW);
+    expect(l.base).toMatchObject({ active: false, inactive: "billing_locked", endsAt: "2026-10-05", seats: seatLimit({ plan: "pro" }) });
+  });
+
   it("is read-only: it writes nothing to the store", async () => {
     const mem = (globalThis as unknown as { __nashrMem: { kv: Map<string, unknown>; lists: Map<string, string[]>; sets: Map<string, Set<string>> } }).__nashrMem;
     const snapshot = () => JSON.stringify([[...mem.kv], [...mem.lists], [...mem.sets].map(([k, v]) => [k, [...v]])]);
@@ -225,5 +258,68 @@ describe("EntitlementsTable (rule 784)", () => {
     expect(locked).toContain("billing locked");
     expect(locked).toContain("2026-10-05");
     expect(await html({ plan: "pro", suspended: true }, "ar")).toContain("موقوف");
+  });
+
+  /** The cells of one row, as text, in column order: dimension, plan, override, effective, used, resets. */
+  const cells = (out: string, key: string) => {
+    const row = out.slice(out.indexOf(`data-row="${key}"`));
+    return [...row.slice(0, row.indexOf("</tr>")).matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m) => m[1].replace(/<[^>]+>/g, "").trim());
+  };
+
+  it("the Plan column reads the plan's own value and the Override column what differs from it (ruling R12)", async () => {
+    const seats = await html({ plan: "pro", seats: 9 }, "en");
+    const [, plan, override, effective] = cells(seats, "seats");
+    expect([plan, effective]).toEqual([String(seatLimit({ plan: "pro" })), "9"]);
+    expect(override).toContain("9");
+    // Nothing differs on an untouched account: the override cell is a dash and the plan equals the effective number.
+    const plain = await html({ plan: "pro" }, "en");
+    for (const key of ["credits", "seats", "chat"]) {
+      const [, p, o, e] = cells(plain, key);
+      expect([p, o], key).toEqual([e, "—"]);
+    }
+  });
+
+  it("an Agency deal shows its credits@price and who set it in the Override cell, the plan's credits in the Plan cell", async () => {
+    const u = await stored({ plan: "agency", deal: { credits: 4000, priceSar: 2800, setAt: "x", setBy: "founder@x" } });
+    const out = renderToStaticMarkup(createElement(EntitlementsTable, { view: await entitlementView(u, NOW), lang: "en", deal: u.deal }));
+    const [, plan, override, effective] = cells(out, "credits");
+    expect(plan).toBe(String(allowanceOf({ plan: "agency" })));
+    expect(effective).toBe("4000");
+    expect(override).toContain("4000@2800");
+    expect(override).toContain("founder@x");
+  });
+
+  it("a chat override and a live grant on a trial: base values in Plan, the override in its cell", async () => {
+    const out = await html({ ...trial, chatAllowance: 900, grants: grant(day(3)) }, "ar");
+    const [, chatPlan, chatOverride, chatEffective] = cells(out, "chat");
+    expect([chatPlan, chatEffective]).toEqual([String(chatAllowanceOf({ plan: "trial" })), "900"]);
+    expect(chatOverride).toContain("900");
+    const [, videoPlan, , videoEffective] = cells(out, "video");
+    for (const id of TRIAL_VIDEO_MODELS) expect(videoPlan).toContain(label(id, "ar"));
+    expect(videoPlan).not.toContain(label("vid-cinematic", "ar"));
+    expect(videoEffective).toContain(label("vid-cinematic", "ar"));
+  });
+
+  it("has no footnote explaining blank Plan cells", async () => {
+    const out = await html({ plan: "pro", seats: 9 }, "en");
+    expect(out).not.toContain("inside the effective number");
+    expect(out).not.toContain("set from the account's controls");
+  });
+});
+
+describe("videoGrantRequest: what the Video grant button sends (rules 783-784, ruling R13)", () => {
+  it("a day sends the grant, with the note trimmed and left out when blank", () => {
+    expect(videoGrantRequest(" 2026-11-01 ", "  demo for a lead ", false)).toEqual({ videoGrant: { until: "2026-11-01", note: "demo for a lead" } });
+    expect(videoGrantRequest("2026-11-01", "   ", true)).toEqual({ videoGrant: { until: "2026-11-01" } });
+  });
+
+  it("an empty day clears the grant when the account has one, and sends nothing when it has none", () => {
+    expect(videoGrantRequest("", "", true)).toEqual({ videoGrant: null });
+    expect(videoGrantRequest("   ", "", true)).toEqual({ videoGrant: null });
+    expect(videoGrantRequest("", "", false)).toBeNull();
+  });
+
+  it("does not check the day: the server answers bad_grant", () => {
+    expect(videoGrantRequest("tomorrow", "", false)).toEqual({ videoGrant: { until: "tomorrow" } });
   });
 });

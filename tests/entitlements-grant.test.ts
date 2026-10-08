@@ -249,6 +249,15 @@ describe("the founder's detail carries the entitlement view (rule 784)", () => {
     expect(v.grants.video).toMatchObject({ value: "all", until, note: "for the demo", by: "key", expired: false });
   });
 
+  it("carries the plan's own values as base beside the effective ones (ruling R12)", async () => {
+    const u = await account("pro");
+    await saveUser({ ...(await getUser(u.email))!, seats: 9 });
+    const v = ((await (await detail(u.email)).json()) as { entitlements: EntitlementView }).entitlements;
+    expect(v.base.seats).toBe(seatLimit({ plan: "pro" }));
+    expect(v.ent.seats).toBe(9);
+    expect(v.base.credits).toEqual(v.ent.credits);
+  });
+
   it("a trial whose grant has run out reads as the trial's own list, with the grant marked expired", async () => {
     const u = await account("trial");
     await saveUser({ ...(await getUser(u.email))!, grants: { video: { value: "all", until: dayFromNow(-3), by: "key", at: "2026-01-01T00:00:00.000Z" } } });
