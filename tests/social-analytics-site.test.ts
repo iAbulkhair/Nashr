@@ -1,18 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { newUser, settle } from "./helpers/session";
-import { saveConnection, type Connection } from "@/lib/connectors/store";
+import { json, newMember, newUser, settle, signIn } from "./helpers/session";
+import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
 import { setComposioClientForTests } from "@/lib/connectors/composio";
+import { selectPropertyVia } from "@/lib/connectors/via-composio";
 import { getSiteSnapshot, readSiteSoon, siteDataBlock, syncSite, syncSiteIfDue, type SiteSnapshot } from "@/lib/site-stats";
 import SiteStats from "@/components/app/SiteStats";
+import * as connRoute from "@/app/api/connect/[provider]/route";
 import { fakeComposio, ok, type Answer, type Call } from "./helpers/composio-fake";
 
 /**
- * Rules 733 and 737, site part (spec docs/superpowers/specs/2026-10-08-social-analytics-reports-design.md, A2 and A3):
- * GA4 and Search Console read the 28 days before their window in the same run, only from ranges Google returned; a
- * figure Google did not return is null, never 0; `force` reads again at once. Composio is the shared fake; its answers
- * follow GA4's runReport and Search Console's searchAnalytics.query shapes.
+ * Rules 733, 734 and 737, site part (spec docs/superpowers/specs/2026-10-08-social-analytics-reports-design.md, A2 and
+ * A3): GA4 and Search Console read the 28 days before their window in the same run, only from ranges Google returned; a
+ * figure Google did not return is null, never 0; `force` reads again at once; the owner or an admin chooses the property
+ * and the site among those listed at connect time. Composio is the shared fake; its answers follow GA4's runReport and
+ * Search Console's searchAnalytics.query shapes.
  */
 const NOW = new Date("2026-10-08T09:00:00Z");
 /** GA4's window ends yesterday; Search Console's three days before the read (its figures settle late). */
@@ -264,5 +267,133 @@ describe("Dana's <site_data> and the site card (rules 733, 737)", () => {
 
     const ar = renderToStaticMarkup(createElement(SiteStats, { lang: "ar", site: { ...site, ga: { ...site.ga!, prev: undefined } } }));
     expect(ar).not.toMatch(/%/);
+  });
+});
+
+describe("choosing the GA4 property and the Search Console site (rule 734)", () => {
+  const ctx = (provider: string) => ({ params: Promise.resolve({ provider }) });
+  const post = (provider: string, body: Record<string, unknown>) => connRoute.POST(json(`/api/connect/${provider}`, "POST", body), ctx(provider));
+  /** What connect stored when the login could read two properties and two verified sites (via-composio.ts). */
+  const PROPS = JSON.stringify([{ id: "properties/987", name: "roastery.example" }, { id: "properties/2", name: "Shop B" }]);
+  const SITES = JSON.stringify([SITE, "https://shop-b.example/"]);
+  const held = () => google({ gaProperties: PROPS, gscSites: SITES, account: "roastery.example · roastery.example" });
+  const answer = () => {
+    answers.GOOGLE_ANALYTICS_RUN_REPORT = gaReport;
+    answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = gscQuery;
+  };
+
+  it("takes only a stored property or site, on a Composio Google record (734)", async () => {
+    const owner = await newUser("siteprop");
+    await saveConnection(owner.email, held());
+    await signIn(owner.email);
+    answer();
+
+    const unknown = await post("google", { action: "select_property", kind: "ga4", id: "properties/999" });
+    expect(unknown.status).toBe(400);
+    expect((await unknown.json()).error).toBe("unknown_property");
+    // The two lists are not mixed: a site is not a property, a property is not a site.
+    expect((await post("google", { action: "select_property", kind: "ga4", id: SITE })).status).toBe(400);
+    expect((await post("google", { action: "select_property", kind: "gsc", id: "properties/2" })).status).toBe(400);
+    expect((await post("google", { action: "select_property", kind: "gsc", id: "sc-domain:other.example" })).status).toBe(400);
+    for (const kind of ["ads", "", undefined]) {
+      const bad = await post("google", { action: "select_property", kind, id: "properties/2" });
+      expect(bad.status).toBe(400);
+      expect((await bad.json()).error).toBe("bad_value");
+    }
+    await settle();
+    expect((await getConnection(owner.email, "google"))?.meta).toEqual(held().meta);
+    expect(calls, "a refused choice reads nothing").toEqual([]);
+
+    const r = await post("google", { action: "select_property", kind: "ga4", id: "properties/2" });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, account: "Shop B · roastery.example" });
+    expect((await getConnection(owner.email, "google"))?.meta).toMatchObject({ gaProperty: "properties/2", gaName: "Shop B", gscSite: SITE, gaProperties: PROPS, gscSites: SITES });
+    expect((await getConnection(owner.email, "google"))?.meta?.account).toContain("Shop B");
+    const s = await post("google", { action: "select_property", kind: "gsc", id: "https://shop-b.example/" });
+    expect(s.status).toBe(200);
+    expect((await getConnection(owner.email, "google"))?.meta).toMatchObject({ gaProperty: "properties/2", gaName: "Shop B", gscSite: "https://shop-b.example/", account: "Shop B · shop-b.example" });
+    await settle();
+  });
+
+  it("runs only on a Composio Google record; another record, or a list that is not JSON, chooses nothing (734)", async () => {
+    const owner = await newUser("sitepropvia");
+    await signIn(owner.email);
+    // A direct Google record, even one carrying a list, has no Composio read to point anywhere.
+    const direct: Connection = { provider: "google", data: { access_token: "t" }, meta: { gaProperties: PROPS, gaProperty: "properties/987" }, connectedAt: NOW.toISOString() };
+    await saveConnection(owner.email, direct);
+    const d = await post("google", { action: "select_property", kind: "ga4", id: "properties/2" });
+    expect(d.status).toBe(400);
+    expect((await d.json()).error).toBe("bad_action");
+    expect((await getConnection(owner.email, "google"))?.meta).toEqual(direct.meta);
+    // The action belongs to the Google path only: a Composio Meta record with the same list is not changed.
+    const meta: Connection = { provider: "meta", data: { facebook: "ca_fb" }, meta: { via: "composio", pageId: "1", gaProperties: PROPS }, connectedAt: NOW.toISOString() };
+    await saveConnection(owner.email, meta);
+    expect((await post("meta", { action: "select_property", kind: "ga4", id: "properties/2" })).status).toBe(400);
+    expect((await getConnection(owner.email, "meta"))?.meta).toEqual(meta.meta);
+    // A stored list that does not parse is an empty list, never a 502.
+    await saveConnection(owner.email, google({ gaProperties: "[{", gscSites: "{}" }));
+    expect((await post("google", { action: "select_property", kind: "ga4", id: "properties/2" })).status).toBe(400);
+    expect((await post("google", { action: "select_property", kind: "gsc", id: SITE })).status).toBe(400);
+    await settle();
+    expect(calls).toEqual([]);
+
+    // The record handed in is never changed in place.
+    const c = held();
+    expect(selectPropertyVia(c, "ga4", "properties/2")?.meta).toMatchObject({ gaProperty: "properties/2", gaName: "Shop B" });
+    expect(c.meta).toEqual(held().meta);
+    expect(selectPropertyVia(c, "gsc", "properties/2")).toBeNull();
+  });
+
+  it("a member is refused; a record with no stored list has nothing to choose from (734)", async () => {
+    const owner = await newUser("sitepropm");
+    await saveConnection(owner.email, held());
+    answer();
+    const member = await newMember(owner, "member");
+    await signIn(member.email);
+    const no = await post("google", { action: "select_property", kind: "ga4", id: "properties/2" });
+    expect(no.status).toBe(403);
+    expect((await getConnection(owner.email, "google"))?.meta?.gaProperty).toBe("properties/987");
+    // Role `connectors`: an admin may choose, like the owner.
+    const admin = await newMember(owner, "admin");
+    await signIn(admin.email);
+    expect((await post("google", { action: "select_property", kind: "ga4", id: "properties/2" })).status).toBe(200);
+    expect((await getConnection(owner.email, "google"))?.meta?.gaProperty).toBe("properties/2");
+    await settle();
+
+    // One property and one site: connect stored no list, so even the current ones are not a choice.
+    await signIn(owner.email);
+    await saveConnection(owner.email, google());
+    const one = await post("google", { action: "select_property", kind: "ga4", id: "properties/987" });
+    expect(one.status).toBe(400);
+    expect((await one.json()).error).toBe("unknown_property");
+    expect((await post("google", { action: "select_property", kind: "gsc", id: SITE })).status).toBe(400);
+  });
+
+  it("a choice reads the site again at once", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    const owner = await newUser("sitepropread");
+    await saveConnection(owner.email, held());
+    answer();
+    // Read an hour ago: the daily run would not read again for 19 hours.
+    await syncSite(owner.email, held(), new Date(NOW.getTime() - 3600e3));
+    expect(await syncSiteIfDue(owner.email, NOW)).toBe(false);
+    calls.length = 0;
+    await signIn(owner.email);
+
+    expect((await post("google", { action: "select_property", kind: "ga4", id: "properties/2" })).status).toBe(200);
+    await settle();
+    const reports = calls.filter((c) => c.slug === "GOOGLE_ANALYTICS_RUN_REPORT");
+    expect(reports).toHaveLength(2);
+    for (const r of reports) expect(r.args.property).toBe("properties/2");
+    const snap = await getSiteSnapshot(owner.email);
+    expect(snap).toMatchObject({ at: NOW.toISOString(), ga: { property: "properties/2", name: "Shop B" }, gsc: { site: SITE } });
+
+    calls.length = 0;
+    expect((await post("google", { action: "select_property", kind: "gsc", id: "https://shop-b.example/" })).status).toBe(200);
+    await settle();
+    const sites = calls.filter((c) => c.slug === "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY").map((c) => c.args.site_url);
+    expect(sites).toEqual(["https://shop-b.example/", "https://shop-b.example/", "https://shop-b.example/"]);
+    expect((await getSiteSnapshot(owner.email))?.gsc?.site).toBe("https://shop-b.example/");
   });
 });

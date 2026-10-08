@@ -210,6 +210,8 @@ async function adminPages(scope: string, acc: string): Promise<Org[]> {
 }
 
 const metaLabel = (pageName?: string, ig?: string) => [pageName, ig ? `@${ig}` : ""].filter(Boolean).join(" · ") || "Meta";
+/** The Google record's label: the GA4 property's name and the Search Console site without its scheme. */
+const googleLabel = (meta: Record<string, string>) => [meta.gaName, meta.gscSite?.replace(/^sc-domain:|^https?:\/\/|\/$/g, "")].filter(Boolean).join(" · ") || "Google";
 
 /**
  * The record after one toolkit was connected and verified (composioVerify). Starts a new Composio record, or adds the
@@ -302,7 +304,7 @@ export async function connectViaComposio(scope: string, provider: string, toolki
     if (sites.length > 1) meta.gscSites = JSON.stringify(sites.slice(0, 50));
     else delete meta.gscSites;
   }
-  if (provider === "google") meta.account = [meta.gaName, meta.gscSite?.replace(/^sc-domain:|^https?:\/\/|\/$/g, "")].filter(Boolean).join(" · ") || "Google";
+  if (provider === "google") meta.account = googleLabel(meta);
   // A reconnected toolkit leaves its old Composio account behind; it is revoked, quietly, after the new one is in hand.
   if (before && before !== accountId) await composioRevoke(scope, before).catch(() => console.error("composio revoke of replaced account failed"));
   return { ...base, meta, expiresAt: undefined };
@@ -328,6 +330,32 @@ export function selectOrgVia(c: Connection, org: string): Connection | null {
   try { orgs = JSON.parse(c.meta?.liOrgs ?? "[]") as Org[]; } catch { return null; }
   if (!Array.isArray(orgs) || !orgs.some((o) => o?.urn === org)) return null;
   return { ...c, meta: { ...c.meta, liOrg: org, liPostAs: "me" } };
+}
+
+/**
+ * Choose the GA4 property or the Search Console site whose figures are read (rule 734). The id must be one listed at
+ * connect time (`meta.gaProperties`, `meta.gscSites`, stored only when there were two or more); a list that does not
+ * parse lists nothing. The label is rebuilt as at connect.
+ */
+export function selectPropertyVia(c: Connection, kind: "ga4" | "gsc", id: string): Connection | null {
+  const meta: Record<string, string> = { ...c.meta };
+  try {
+    if (kind === "ga4") {
+      const props = JSON.parse(c.meta?.gaProperties ?? "[]") as Page[];
+      const p = Array.isArray(props) ? props.find((x) => x?.id === id) : undefined;
+      if (!p) return null;
+      meta.gaProperty = p.id;
+      meta.gaName = typeof p.name === "string" ? p.name : p.id;
+    } else {
+      const sites = JSON.parse(c.meta?.gscSites ?? "[]") as string[];
+      if (!Array.isArray(sites) || !sites.includes(id)) return null;
+      meta.gscSite = id;
+    }
+  } catch {
+    return null;
+  }
+  meta.account = googleLabel(meta);
+  return { ...c, meta };
 }
 
 /** The chosen company page's name, as listed at connect time; "" when it is not listed. */

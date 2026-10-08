@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { deleteConnection, getConnection } from "@/lib/connectors/store";
-import { isComposio, liOrgName, postAsVia, revokeAll, selectOrgVia, selectPageVia } from "@/lib/connectors/via-composio";
+import { isComposio, liOrgName, postAsVia, revokeAll, selectOrgVia, selectPageVia, selectPropertyVia } from "@/lib/connectors/via-composio";
 import { recordActivity } from "@/lib/activity";
 import { readSocialSoon } from "@/lib/social-stats";
+import { readSiteSoon } from "@/lib/site-stats";
 import { byOf } from "@/lib/actor";
 import { getFreshConnection, refusedToken } from "@/lib/connectors/fresh";
 import { importShopify } from "@/lib/connectors/shopify";
@@ -42,18 +43,19 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ provider: s
 }
 
 /**
- * What each action needs (src/lib/roles.ts). Choosing the page or ad account a connection posts to is connector setup,
- * admin and owner only, and so is overwriting products.md from the store. The syncs only pull the platform's own
- * numbers into the reports, which any member may refresh. An action not listed here is refused.
+ * What each action needs (src/lib/roles.ts). Choosing the page or ad account a connection posts to, or the GA4 property
+ * and Search Console site it reads, is connector setup, admin and owner only, and so is overwriting products.md from the
+ * store. The syncs only pull the platform's own numbers into the reports, which any member may refresh. An action not
+ * listed here is refused.
  */
-const ACTION_ROLE: Record<string, Action> = { select_page: "connectors", select_org: "connectors", post_as: "connectors", select_ad_account: "connectors", import_products: "catalog.import", sync_ads: "read", sync_sales: "read" };
+const ACTION_ROLE: Record<string, Action> = { select_page: "connectors", select_org: "connectors", post_as: "connectors", select_ad_account: "connectors", select_property: "connectors", import_products: "catalog.import", sync_ads: "read", sync_sales: "read" };
 
-/** POST {action:"import_products"}, for Salla, Shopify, WooCommerce and Zid {action:"sync_sales"}, for Meta {action:"select_page", pageId}, for LinkedIn {action:"select_org", org} and {action:"post_as", value:"me"|"org"} */
+/** POST {action:"import_products"}, for Salla, Shopify, WooCommerce and Zid {action:"sync_sales"}, for Meta {action:"select_page", pageId}, for LinkedIn {action:"select_org", org} and {action:"post_as", value:"me"|"org"}, for Google {action:"select_property", kind:"ga4"|"gsc", id} */
 export async function POST(req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const { provider } = await ctx.params;
-  const b = (await req.json().catch(() => ({}))) as { action?: string; pageId?: string; accountId?: string; org?: string; value?: string };
+  const b = (await req.json().catch(() => ({}))) as { action?: string; pageId?: string; accountId?: string; org?: string; value?: string; kind?: string; id?: string };
   const need = Object.prototype.hasOwnProperty.call(ACTION_ROLE, String(b.action)) ? ACTION_ROLE[String(b.action)] : null;
   if (!need) return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
   const no = forbid(u, need);
@@ -96,6 +98,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
         ]);
       }
       return NextResponse.json({ ok: true, postAs: value });
+    }
+    // The GA4 property or Search Console site whose figures are read (rule 734): only one listed at connect time, then
+    // the site is read again at once so the next report carries the new choice.
+    if (b.action === "select_property" && provider === "google" && isComposio(c)) {
+      const kind = String(b.kind ?? "");
+      if (kind !== "ga4" && kind !== "gsc") return NextResponse.json({ ok: false, error: "bad_value" }, { status: 400 });
+      const next = selectPropertyVia(c, kind, String(b.id ?? ""));
+      if (!next) return NextResponse.json({ ok: false, error: "unknown_property" }, { status: 400 });
+      await saveConnection(sc(u), next);
+      readSiteSoon(sc(u));
+      return NextResponse.json({ ok: true, account: next.meta?.account });
     }
     if (b.action === "select_ad_account" && isAdProvider(provider)) {
       const next = selectAdAccount(c, String(b.accountId ?? ""));
