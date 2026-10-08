@@ -4,10 +4,12 @@ import { db } from "@/lib/db";
 import { getUser, saveUser } from "@/lib/auth";
 import { addBrand, scopeFor } from "@/lib/brands";
 import { wipeAccount } from "@/lib/account";
-import { statsFor } from "@/lib/stats";
+import { statsFor, statsText, type Kpis } from "@/lib/stats";
 import { getPerf, savePerf, syncAds } from "@/lib/perf-store";
 import type { Row } from "@/lib/perf-import";
 import type { Connection } from "@/lib/connectors/store";
+import type { SalesSnapshot } from "@/lib/connectors/sales";
+import type { SiteSnapshot } from "@/lib/site-stats";
 import { AD_PROVIDERS } from "@/lib/connectors/ads";
 import { AD_STATS_SOURCES, ADSTATS_KEY, adDataBlock, adStatsFrom, getAdStats, totalsOf, type AdStats } from "@/lib/ad-stats";
 import * as route from "@/app/api/performance/route";
@@ -171,6 +173,66 @@ describe("<ad_data> for Dana's reports (rule 731)", () => {
     const b = await adDataBlock(scope, NOW);
     expect(b.match(/<\/ad_data>/g)).toHaveLength(1);
     expect(block(b)[0]).toMatchObject({ platform: "uploaded file", account: "export.csv", from: null, to: null });
+  });
+});
+
+describe("the workspace block says a figure is absent only when its block is (rule 730)", () => {
+  const k: Kpis = {
+    month: "2026-10", created: 12, createdPrev: 9, approved: 8, rejected: 1, pending: 3, approvalRate: 89, autoApproved: 0,
+    published: 5, images: 4, videos: 1, scheduled: 2, creditsUsed: 30, creditsUsedPrev: 21,
+    byType: { social: 10, weekly_report: 2 }, byChannel: { instagram: 10 }, weeks: [{ label: "10-04", created: 12, approved: 8 }],
+    daily: [], window: { from: "2026-10-01", to: "2026-10-08", label: "2026-10" },
+  };
+  /** The one line that says what is missing, or undefined when nothing is. */
+  const absent = (text: string) => text.split("\n").find((l) => l.includes("figures are NOT in this data"));
+
+  it("names only the missing figures (730)", () => {
+    expect(statsText(k, { store: true, site: true, ads: true })).not.toMatch(/traffic|ad-spend/i);
+    expect(absent(statsText(k, { store: true, site: true, ads: true }))).toBeUndefined();
+    expect(statsText(k, { site: true })).toMatch(/ad-spend figures are NOT/);
+    expect(statsText(k, { site: true })).not.toMatch(/traffic/i);
+    expect(statsText(k)).toMatch(/Sales, revenue, traffic and ad-spend figures are NOT/);
+    expect(absent(statsText(k, { site: true }))).toBe("- Sales, revenue and ad-spend figures are NOT in this data. If the owner did not provide them in notes or files, use [رقم] placeholders and list what to track.");
+    expect(absent(statsText(k, { ads: true }))).toMatch(/^- Sales, revenue and traffic figures are NOT in this data\./);
+    expect(absent(statsText(k, { site: true, ads: true }))).toMatch(/^- Sales and revenue figures are NOT in this data\./);
+    // A synced store keeps its pointer; only what no block carries is said to be missing.
+    expect(statsText(k, { store: true })).toContain("- Store orders and revenue are in STORE DATA below. Traffic and ad-spend figures are NOT in this data.");
+    expect(absent(statsText(k, { store: true, site: true }))).toMatch(/^- Store orders and revenue are in STORE DATA below\. Ad-spend figures are NOT in this data\./);
+    expect(absent(statsText(k, { store: true, ads: true }))).toMatch(/STORE DATA below\. Traffic figures are NOT in this data\./);
+    expect(statsText(k, { store: true, site: true, ads: true })).toContain("- Store orders and revenue are in STORE DATA below.");
+    // Social reach and followers are none of these figures: a social block alone names nothing as present.
+    expect(absent(statsText(k, { social: true }))).toMatch(/^- Sales, revenue, traffic and ad-spend figures are NOT/);
+    // The workspace counts themselves are unchanged.
+    expect(statsText(k, { store: true, site: true, social: true, ads: true })).toContain("- Items created this month: 12 (previous month: 9)");
+  });
+
+  it("statsFor sets each flag from a non-empty block (730)", async () => {
+    const scope = (await newUser("absent")).email;
+    // Nothing read: every figure is said to be missing.
+    expect(absent(await statsFor("weekly_report", scope))).toMatch(/^- Sales, revenue, traffic and ad-spend figures are NOT/);
+
+    // Only a site read: traffic is no longer said to be missing, ad spend still is.
+    const site: SiteSnapshot = { at: NOW.toISOString(), gsc: { site: "sc-domain:roastery.example", range: { from: "2026-09-08", to: "2026-10-05" }, clicks: 40, impressions: 400, ctr: 0.1, position: 7, queries: [] } };
+    await db.set(`sitestats:${scope}`, site);
+    const withSite = await statsFor("weekly_report", scope);
+    expect(withSite).toContain("<site_data>");
+    expect(absent(withSite)).not.toMatch(/traffic/i);
+    expect(absent(withSite)).toMatch(/^- Sales, revenue and ad-spend figures are NOT/);
+
+    // Site and an ad account: only sales and revenue are missing.
+    await db.set(ADSTATS_KEY(scope, "meta_ads"), adStatsFrom("meta_ads", { rows: [{ ...row, spend: 300 }], range: R, account: "Roastery Ads", currency: "SAR" }, null, NOW));
+    const withAds = await statsFor("board_deck", scope);
+    expect(withAds).toContain("<ad_data>");
+    expect(absent(withAds)).toMatch(/^- Sales and revenue figures are NOT/);
+
+    // Store, site and ads: nothing is said to be missing.
+    const sales: SalesSnapshot = { provider: "salla", at: NOW.toISOString(), days: 30, orders: { count: 4, read: 4, canceled: 0, revenue: { SAR: 900 }, top: [] }, carts: { count: 0, read: 0, value: {}, top: [] }, unread: 0 };
+    await db.set(`storesales:${scope}`, sales);
+    const all = await statsFor("strategy_review", scope);
+    expect(all).toContain("<store_data>");
+    expect(all).toContain("Store orders and revenue are in STORE DATA below.");
+    expect(absent(all)).toBeUndefined();
+    expect(all.split("<store_data>")[0]).not.toMatch(/traffic|ad-spend/i);
   });
 });
 
