@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { isProductionDeploy } from "./deploy-env";
 
 /**
  * One switch for every Claude call in the product: chat, generation and its reviewer, the judge, onboarding, image
@@ -7,8 +8,8 @@ import Anthropic from "@anthropic-ai/sdk";
  * Paused on 2026-09-28 at the owner's request, back on since 2026-10-05 at the owner's request. To pause again, set
  * CLAUDE_PAUSED to true and deploy.
  *
- * Paused is not the no-key development path. Without ANTHROPIC_API_KEY (outside a Vercel production deployment, which
- * refuses as paused instead: `modelState`) the app answers with [DEV MOCK] placeholders,
+ * Paused is not the no-key development path. Without ANTHROPIC_API_KEY (outside a production deployment, which refuses
+ * as paused instead: `modelState`) the app answers with [DEV MOCK] placeholders,
  * which is right on a laptop and in CI and wrong for a customer: the mock items would be charged for, and onboarding
  * would save a mock brand file that then blocks the real onboarding. Paused surfaces refuse instead, before a credit
  * moves or anything is written.
@@ -18,14 +19,15 @@ export const CLAUDE_PAUSED = false;
 export type ModelState = "on" | "paused" | "mock";
 
 /**
- * "mock" only where no customer can be: no key and not a Vercel production deployment (a laptop, vitest, CI, the e2e
- * suite). A production deployment without ANTHROPIC_API_KEY answers "paused", so every surface refuses before a credit
+ * "mock" only where no customer can be: no key and not a production deployment on any host (`isProductionDeploy`; a
+ * laptop, vitest, a Vercel preview, the e2e suite under `APP_ENV=test`). A production deployment without
+ * ANTHROPIC_API_KEY answers "paused", so every surface refuses before a credit
  * moves (rule 76) and no [DEV MOCK] item, chat reply or brand file is ever saved for a customer. Rule 431,
  * tests/launch-security.test.ts.
  */
 export function modelState(): ModelState {
   if (!process.env.ANTHROPIC_API_KEY) {
-    if (process.env.VERCEL_ENV === "production") {
+    if (isProductionDeploy()) {
       warnNoKey();
       return "paused";
     }
