@@ -46,6 +46,8 @@ const post = (over: Partial<Task> = {}): Task => ({ id: `t${Math.random().toStri
 const NEW_READS = {
   instagram: ["INSTAGRAM_GET_USER_INSIGHTS", "INSTAGRAM_GET_IG_USER_MEDIA", "INSTAGRAM_GET_IG_MEDIA_INSIGHTS"],
   linkedin: ["LINKEDIN_GET_COMPANY_INFO", "LINKEDIN_GET_SHARE_STATS", "LINKEDIN_GET_NETWORK_SIZE"],
+  // The ad account's previous spend (rule 733): Snap serves only spend at the account level.
+  snapchat: ["SNAPCHAT_GET_AD_ACCOUNTS_STATS"],
 } as const;
 
 describe("social results are reads only (rule 663)", () => {
@@ -54,9 +56,13 @@ describe("social results are reads only (rule 663)", () => {
       expect(Object.keys(TOOLKITS[tk as Toolkit].read)).toContain(s);
       for (const t of Object.values(TOOLKITS)) expect(Object.keys(t.write)).not.toContain(s);
     }
+    // Snapchat's account read sends exactly the spec's arguments (A2) and no others.
+    expect(TOOLKITS.snapchat.read.SNAPCHAT_GET_AD_ACCOUNTS_STATS).toEqual(["ad_account_id", "fields", "start_time", "end_time", "granularity"]);
+    expect(TOOLKITS.snapchat.write).toEqual({});
   });
   it("refuses a new read slug through composioWrite", async () => {
     await expect(composioWrite("s1", "instagram", "INSTAGRAM_GET_IG_USER_MEDIA", { ig_user_id: "1" }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
+    await expect(composioWrite("s1", "snapchat", "SNAPCHAT_GET_AD_ACCOUNTS_STATS", { ad_account_id: "x" }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
     expect(calls).toEqual([]);
   });
 });

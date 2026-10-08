@@ -144,8 +144,12 @@ describe("reading results (rule 88)", () => {
     expect(snap.totals.conversions).toBe(META_ADS.reduce((s, a) => s + Number(a.actions[0].value), 0)); // omni only, never the pixel's double count
     expect(snap.findings.some((f) => f.kind === "pattern" && /offer/.test(f.text.en))).toBe(true);
     expect((await readFile(u.email, "performance-learnings.md"))!.content).toContain("Meta Ads");
+    // Two pages for the window, and the same reader again for the 30 days before it (rule 733), which this fake answers
+    // with the same two pages; Noor's analysis above holds the window's 10 ads only.
     const insights = calls.filter((k) => k.url.includes("/insights"));
-    expect(insights).toHaveLength(2);
+    const since = (k: Call) => (JSON.parse(new URL(k.url).searchParams.get("time_range") ?? "{}") as { since?: string }).since;
+    expect(insights).toHaveLength(4);
+    expect(new Set(insights.filter(since).map(since)).size).toBe(2);
     expect(new URL(insights[0].url).searchParams.get("level")).toBe("ad");
     expect((await (await import("@/lib/auth")).getUser(u.email))!.credits).toBe(credits);
   });

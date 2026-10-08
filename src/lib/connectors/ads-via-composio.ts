@@ -3,7 +3,8 @@ import { clean, type Row } from "../perf-import";
 import { pmap } from "../parallel";
 import { composioRead } from "./composio";
 import { accountOf, at, listOf, num, pick } from "./composio-shape";
-import { adWindow, MAX_ROWS, micro, PAGES, purchases, type AdAccount, type AdPull, type MetaAction } from "./ads";
+import { adWindow, MAX_ROWS, micro, PAGES, prevNow, purchases, type AdAccount, type AdPull, type MetaAction } from "./ads";
+import type { AdPrev } from "../ad-stats";
 
 /**
  * Ad results read through Composio, as the same rows the CSV import and the direct readers produce (ads.ts), so every
@@ -14,8 +15,8 @@ import { adWindow, MAX_ROWS, micro, PAGES, purchases, type AdAccount, type AdPul
  * platform listed for this connection at connect time, never a value from a request; Google's query text is a constant
  * below with dates the code computed.
  *
- * Shapes follow Composio's output schemas read on 2026-10-05; tests mock them, and the measured run on real accounts
- * (plan Task 8) is the real check. TikTok's revenue is spend × payment ROAS.
+ * Shapes follow Composio's output schemas read on 2026-10-05 (Snapchat's account stats on 2026-10-08); tests mock them,
+ * and the measured run on real accounts (plan Task 8) is the real check. TikTok's revenue is spend × payment ROAS.
  */
 
 const ACT = /^act_\d+$/;
@@ -141,6 +142,23 @@ async function snapVia(scope: string, c: Connection, now: Date): Promise<AdPull>
     impressions: s.impressions, clicks: s.swipes, spend: micro(s.spend), conversions: s.purchases, revenue: micro(s.value), sends: null, opens: null,
   }));
   return { rows, range: w.range, platform: "Snapchat Ads", account: c.meta?.account ?? account, currency: c.meta?.currency };
+}
+
+/**
+ * The ad account's spend over the 30 days before the window (rule 733), in one account-level call: Snap serves only
+ * spend at this level, so the other previous figures stay null, and a second per-ad pass (up to 50 more calls) is not
+ * run. The same id check and time format as snapVia. No spend figure, junk or zero spend gives no previous period: a new
+ * account has nothing to compare with, so no change is ever written from it.
+ */
+export async function snapPrevSpendVia(scope: string, c: Connection, now: Date): Promise<AdPrev | null> {
+  const account = c.meta?.adAccount;
+  if (!account || !SNAP_ID.test(account)) throw new Error("no_ad_account");
+  const w = adWindow(prevNow(now));
+  const r = await composioRead(scope, "snapchat", "SNAPCHAT_GET_AD_ACCOUNTS_STATS", { ad_account_id: account, fields: "spend", granularity: "TOTAL", start_time: w.start.toISOString(), end_time: w.end.toISOString() }, accountOf(c, "snapchat"));
+  // Micro-currency, under Composio's wrapper as total_stats[].total_stat.stats: deeper than pick's default.
+  const spend = micro(num(pick(r, ["spend"], 7)));
+  if (spend == null || spend <= 0) return null;
+  return { range: w.range, spend: Math.round(spend * 100) / 100, impressions: null, clicks: null, conversions: null, revenue: null };
 }
 
 /** Google Ads results per ad over the window. The text is fixed; only the two dates (computed, checked) vary. */

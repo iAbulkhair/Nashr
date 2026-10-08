@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { json, newUser, signIn } from "./helpers/session";
 import { db } from "@/lib/db";
 import { getUser, saveUser } from "@/lib/auth";
@@ -10,15 +10,20 @@ import type { Row } from "@/lib/perf-import";
 import type { Connection } from "@/lib/connectors/store";
 import type { SalesSnapshot } from "@/lib/connectors/sales";
 import type { SiteSnapshot } from "@/lib/site-stats";
-import { AD_PROVIDERS } from "@/lib/connectors/ads";
+import { AD_PROVIDERS, adWindow, prevNow } from "@/lib/connectors/ads";
+import { googleQuery, snapPrevSpendVia } from "@/lib/connectors/ads-via-composio";
+import { setComposioClientForTests } from "@/lib/connectors/composio";
 import { AD_STATS_SOURCES, ADSTATS_KEY, adDataBlock, adStatsFrom, getAdStats, totalsOf, type AdStats } from "@/lib/ad-stats";
+import { fakeComposio, ok, type Answer, type Call } from "./helpers/composio-fake";
 import * as route from "@/app/api/performance/route";
 
 /**
  * Rules 731, 732 and 747 (spec docs/superpowers/specs/2026-10-08-social-analytics-reports-design.md, A1): each ad sync and
  * each CSV upload keeps its own per-platform totals in `adstats:{scope}:{p}`, built from the read's raw rows, so one
  * platform never erases another; the names in them are cleaned; Dana's reports get them as `<ad_data>`; the account's
- * deletion takes them. Meta and Snapchat are mocked in the shapes tests/ads-connectors.test.ts uses.
+ * deletion takes them. Rule 733 (A2, ads): each ad read also reads the 30 days before its window, and a `prev` exists
+ * only where that read returned rows. Meta and Snapchat are mocked in the shapes tests/ads-connectors.test.ts uses;
+ * Composio is the shared fake.
  */
 const NOW = new Date("2026-10-08T09:00:00Z");
 const R = { from: "2026-09-08", to: "2026-10-07" };
@@ -26,22 +31,43 @@ const row: Row = { name: "ad", text: "", group: "", impressions: null, clicks: n
 
 const SNAP_ACC = "8f3b1c2d-1111-2222-3333-444455556666";
 const realFetch = globalThis.fetch;
-function fakePlatforms() {
+/** Every URL the fake platforms were asked for, in order. */
+let fetched: string[] = [];
+/**
+ * Meta and Snapchat in their documented shapes. The current window (from 2026-09-08 for NOW) answers the ads below; the
+ * 30 days before it answer per `prev`: one smaller ad, nothing ("empty", a new account), or a server error ("fail").
+ * `cur: "fail"` makes the current window fail instead.
+ */
+function fakePlatforms(opts: { prev?: "rows" | "empty" | "fail"; cur?: "fail" } = {}) {
+  fetched = [];
+  const prev = opts.prev ?? "rows";
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
-    const u = new URL(String(input));
+    const url = String(input);
+    fetched.push(url);
+    const u = new URL(url);
     if (u.host === "graph.facebook.com") {
       const path = u.pathname.replace(/^\/v[\d.]+/, "");
-      if (path === "/act_111/insights") return Response.json({ data: [
-        { ad_id: "1001", ad_name: "خصم 20% على القهوة", impressions: "9000", inline_link_clicks: "360", spend: "300.10", actions: [{ action_type: "omni_purchase", value: "12" }], action_values: [{ action_type: "omni_purchase", value: "1440" }] },
-        { ad_id: "1002", ad_name: "قصة المحمصة", impressions: "8000", inline_link_clicks: "100", spend: "200.20" },
-      ] });
+      if (path === "/act_111/insights") {
+        const current = JSON.parse(u.searchParams.get("time_range") ?? "{}").since === "2026-09-08";
+        if (current ? opts.cur === "fail" : prev === "fail") return Response.json({ error: { message: "Service temporarily unavailable", code: 2 } }, { status: 500 });
+        if (!current) return Response.json({ data: prev === "empty" ? [] : [{ ad_id: "0901", ad_name: "إطلاق المحمصة", impressions: "500", inline_link_clicks: "20", spend: "7" }] });
+        return Response.json({ data: [
+          { ad_id: "1001", ad_name: "خصم 20% على القهوة", impressions: "9000", inline_link_clicks: "360", spend: "300.10", actions: [{ action_type: "omni_purchase", value: "12" }], action_values: [{ action_type: "omni_purchase", value: "1440" }] },
+          { ad_id: "1002", ad_name: "قصة المحمصة", impressions: "8000", inline_link_clicks: "100", spend: "200.20" },
+        ] });
+      }
       if (path === "/" && u.searchParams.get("ids")) return Response.json({});
     }
     if (u.host === "adsapi.snapchat.com") {
       if (u.pathname === `/v1/adaccounts/${SNAP_ACC}/ads`) return Response.json({ ads: [{ ad: { id: "a1", name: "عرض الجمعة" } }] });
-      if (u.pathname === `/v1/adaccounts/${SNAP_ACC}/stats`) return Response.json({ total_stats: [{ total_stat: { breakdown_stats: { ad: [
-        { id: "a1", stats: { impressions: 12000, swipes: 480, spend: 150_000_000, conversion_purchases: 12, conversion_purchases_value: 1_800_000_000 } },
-      ] } } }] });
+      if (u.pathname === `/v1/adaccounts/${SNAP_ACC}/stats`) {
+        const current = u.searchParams.get("start_time") === "2026-09-08T00:00:00.000Z";
+        if (current ? opts.cur === "fail" : prev === "fail") return Response.json({ request_status: "ERROR", debug_message: "Internal error" }, { status: 500 });
+        const ad = current
+          ? [{ id: "a1", stats: { impressions: 12000, swipes: 480, spend: 150_000_000, conversion_purchases: 12, conversion_purchases_value: 1_800_000_000 } }]
+          : prev === "empty" ? [] : [{ id: "a1", stats: { impressions: 4000, swipes: 100, spend: 60_000_000, conversion_purchases: 3, conversion_purchases_value: 450_000_000 } }];
+        return Response.json({ total_stats: [{ total_stat: { breakdown_stats: { ad } } }] });
+      }
     }
     return new Response("not mocked", { status: 500 });
   }) as typeof fetch;
@@ -173,6 +199,166 @@ describe("<ad_data> for Dana's reports (rule 731)", () => {
     const b = await adDataBlock(scope, NOW);
     expect(b.match(/<\/ad_data>/g)).toHaveLength(1);
     expect(block(b)[0]).toMatchObject({ platform: "uploaded file", account: "export.csv", from: null, to: null });
+  });
+});
+
+describe("the previous 30 days beside each ad read (rule 733)", () => {
+  let calls: Call[];
+  let answers: Record<string, Answer>;
+  beforeEach(() => {
+    const f = fakeComposio();
+    ({ calls, answers } = f);
+    vi.stubEnv("COMPOSIO_API_KEY", "test-key");
+    setComposioClientForTests(f.client);
+  });
+  afterEach(() => { setComposioClientForTests(null); vi.unstubAllEnvs(); });
+
+  const CUR = adWindow(NOW);
+  const PREV = adWindow(prevNow(NOW));
+  const dayBefore = (d: string) => new Date(Date.parse(`${d}T00:00:00Z`) - 864e5).toISOString().slice(0, 10);
+  const stored = async (scope: string, p: "meta_ads" | "snapchat" | "google_ads") => (await db.get<AdStats>(ADSTATS_KEY(scope, p)))!;
+  const SNAP_AD = "0b1c2d3e-4f50-6172-8394-000000000001";
+  const snapComposio = (meta: Record<string, string> = {}): Connection => ({ provider: "snapchat", connectedAt: NOW.toISOString(), data: { snapchat: "ca_s" }, meta: { via: "composio", adAccount: SNAP_ACC, account: "Roastery Snap", currency: "SAR", ...meta } });
+  /** Snap's account-level stats in Composio's wrapper; `spend` is micro-currency. */
+  const accountStats = (stats: Record<string, unknown>) => ok({ data: { request_status: "SUCCESS", total_stats: [{ sub_request_status: "SUCCESS", total_stat: { id: SNAP_ACC, type: "AD_ACCOUNT", granularity: "TOTAL", stats } }] } });
+  const snapAds = () => {
+    answers.SNAPCHAT_LIST_ADS_BY_ACCOUNT = ok({ ads: [{ ad: { id: SNAP_AD, name: "عرض الجمعة", status: "ACTIVE" } }] });
+    answers.SNAPCHAT_GET_AD_STATS = ok({ data: { request_status: "SUCCESS", total_stats: [{ sub_request_status: "SUCCESS", total_stat: { id: SNAP_AD, granularity: "TOTAL", stats: { impressions: 2000, swipes: 30, spend: 25_500_000, conversion_purchases: 2, conversion_purchases_value: 90_000_000 } } }] } });
+  };
+
+  it("the previous window ends the day before the current one starts (733)", () => {
+    expect(PREV.range.to).toBe(dayBefore(CUR.range.from));
+    expect(PREV.range).toEqual({ from: "2026-08-09", to: "2026-09-07" });
+    expect(PREV.end.getTime()).toBe(CUR.start.getTime());
+    // Back to back and the same length, across a month end and a leap day.
+    for (const at of ["2026-03-01T00:00:00Z", "2028-03-01T23:59:59Z", "2027-01-01T12:00:00Z"]) {
+      const cur = adWindow(new Date(at));
+      const prev = adWindow(prevNow(new Date(at)));
+      expect(prev.end.getTime()).toBe(cur.start.getTime());
+      expect(prev.end.getTime() - prev.start.getTime()).toBe(cur.end.getTime() - cur.start.getTime());
+    }
+  });
+
+  it("Meta reads the previous 30 days with the same constant query (733)", async () => {
+    fakePlatforms();
+    const scope = (await newUser("adprev")).email;
+    await syncAds(scope, "meta_ads", metaConn(), NOW);
+    const insights = fetched.filter((u) => u.includes("/insights"));
+    const ranges = insights.map((u) => JSON.parse(new URL(u).searchParams.get("time_range")!));
+    expect(ranges).toEqual([CUR.range, PREV.range].map((r) => ({ since: r.from, until: r.to })));
+    // Only the dates differ between the two reads.
+    const rest = (u: string) => { const p = new URL(u).searchParams; p.delete("time_range"); return p.toString(); };
+    expect(rest(insights[1])).toBe(rest(insights[0]));
+    expect((await getAdStats(scope))[0].prev?.spend).toBe(7);
+    const s = await stored(scope, "meta_ads");
+    expect(s.prev).toEqual({ range: { from: "2026-08-09", to: "2026-09-07" }, spend: 7, impressions: 500, clicks: 20, conversions: null, revenue: null });
+    // The current figures and Noor's analysis are the current window's alone.
+    expect(s).toMatchObject({ range: CUR.range, spend: 500.3, impressions: 17000 });
+    expect((await getPerf(scope))!.rows).toBe(2);
+    expect(block(await adDataBlock(scope, NOW))[0]).toMatchObject({ spend: 500.3, prev: { from: "2026-08-09", to: "2026-09-07", spend: 7, clicks: 20, revenue: null } });
+  });
+
+  it("Snapchat reads the 30 days before with the same per-ad query (733)", async () => {
+    fakePlatforms();
+    const scope = (await newUser("adprev")).email;
+    await syncAds(scope, "snapchat", snapConn(), NOW);
+    const stats = fetched.filter((u) => u.includes("/stats")).map((u) => new URL(u).searchParams);
+    expect(stats.map((p) => p.get("start_time")).sort()).toEqual([PREV.start.toISOString(), CUR.start.toISOString()]);
+    expect(stats.map((p) => p.get("end_time")).sort()).toEqual([PREV.end.toISOString(), CUR.end.toISOString()]);
+    const fixed = (p: URLSearchParams) => ({ granularity: p.get("granularity"), breakdown: p.get("breakdown"), fields: p.get("fields") });
+    expect(fixed(stats[1])).toEqual(fixed(stats[0]));
+    const s = await stored(scope, "snapchat");
+    expect(s.prev).toEqual({ range: PREV.range, spend: 60, impressions: 4000, clicks: 100, conversions: 3, revenue: 450 });
+    expect(s).toMatchObject({ range: CUR.range, spend: 150, impressions: 12000 });
+  });
+
+  it("an empty previous window leaves no prev (Review Focus 3)", async () => {
+    fakePlatforms({ prev: "empty" });
+    const scope = (await newUser("adprev")).email;
+    await syncAds(scope, "meta_ads", metaConn(), NOW);
+    await syncAds(scope, "snapchat", snapConn(), NOW);
+    const all = await getAdStats(scope);
+    expect(all).toHaveLength(2);
+    for (const s of all) expect(s).not.toHaveProperty("prev");
+    // Nothing for the model to compare with, so no "up 100%" can be written from it.
+    expect(block(await adDataBlock(scope, NOW)).every((r) => !("prev" in r))).toBe(true);
+  });
+
+  it("a failed previous read leaves no prev and the sync succeeds (733)", async () => {
+    fakePlatforms({ prev: "fail" });
+    const scope = (await newUser("adprev")).email;
+    const snap = await syncAds(scope, "meta_ads", metaConn(), NOW);
+    expect(snap.source).toBe("meta_ads");
+    await syncAds(scope, "snapchat", snapConn(), NOW);
+    expect(fetched.filter((u) => u.includes("/insights")).length).toBe(2);
+    for (const p of ["meta_ads", "snapchat"] as const) {
+      const s = await stored(scope, p);
+      expect(s).not.toHaveProperty("prev");
+      expect(s.spend).not.toBeNull();
+      expect(await db.get(`adsync:${scope}:${p}`)).toBe(NOW.toISOString());
+    }
+    expect((await getPerf(scope))!.source).toBe("snapchat");
+  });
+
+  it("a failed current read still fails the sync and writes nothing, whatever the previous read did (733)", async () => {
+    fakePlatforms({ cur: "fail" });
+    const scope = (await newUser("adprev")).email;
+    await expect(syncAds(scope, "meta_ads", metaConn(), NOW)).rejects.toThrow(/^meta_ads insights 500/);
+    expect(await db.get(ADSTATS_KEY(scope, "meta_ads"))).toBeNull();
+    expect(await getPerf(scope)).toBeNull();
+    expect(await db.get(`adsync:${scope}:meta_ads`)).toBeNull();
+  });
+
+  it("Snapchat through Composio reads only the account's previous spend (733)", async () => {
+    snapAds();
+    answers.SNAPCHAT_GET_AD_ACCOUNTS_STATS = accountStats({ spend: 12_500_000 });
+    const scope = (await newUser("adprev")).email;
+    await syncAds(scope, "snapchat", snapComposio(), NOW);
+    const prevCalls = calls.filter((c) => c.slug === "SNAPCHAT_GET_AD_ACCOUNTS_STATS");
+    expect(prevCalls).toHaveLength(1);
+    expect(prevCalls[0].args).toEqual({ ad_account_id: SNAP_ACC, fields: "spend", granularity: "TOTAL", start_time: PREV.start.toISOString(), end_time: PREV.end.toISOString() });
+    // No second per-ad pass: each ad's stats are read once, for the current window, in the same time format.
+    expect(calls.filter((c) => c.slug === "SNAPCHAT_GET_AD_STATS").map((c) => [c.args.start_time, c.args.end_time])).toEqual([[CUR.start.toISOString(), CUR.end.toISOString()]]);
+    expect(calls.filter((c) => c.slug === "SNAPCHAT_LIST_ADS_BY_ACCOUNT")).toHaveLength(1);
+    const s = await stored(scope, "snapchat");
+    // Snap serves only spend at the account level: the other previous figures stay null, never 0.
+    expect(s.prev).toEqual({ range: PREV.range, spend: 12.5, impressions: null, clicks: null, conversions: null, revenue: null });
+    expect(s).toMatchObject({ spend: 25.5, impressions: 2000, clicks: 30, conversions: 2, revenue: 90 });
+  });
+
+  it("the account read keeps the id check; no, zero or junk spend, or a refused read, leaves no prev (733)", async () => {
+    await expect(snapPrevSpendVia("s", snapComposio({ adAccount: "act_111" }), NOW)).rejects.toThrow("no_ad_account");
+    await expect(snapPrevSpendVia("s", snapComposio({ adAccount: `${SNAP_ACC}/../x` }), NOW)).rejects.toThrow("no_ad_account");
+    expect(calls).toEqual([]);
+    for (const stats of [{}, { spend: 0 }, { spend: "N/A" }, { spend: {} }, { impressions: 900 }]) {
+      answers.SNAPCHAT_GET_AD_ACCOUNTS_STATS = accountStats(stats);
+      expect(await snapPrevSpendVia("s", snapComposio(), NOW)).toBeNull();
+    }
+    answers.SNAPCHAT_GET_AD_ACCOUNTS_STATS = accountStats({ spend: "3250000" });
+    expect(await snapPrevSpendVia("s", snapComposio(), NOW)).toEqual({ range: PREV.range, spend: 3.25, impressions: null, clicks: null, conversions: null, revenue: null });
+
+    // A refused account read never fails the sync.
+    snapAds();
+    answers.SNAPCHAT_GET_AD_ACCOUNTS_STATS = { successful: false, error: "Forbidden (403)" };
+    const scope = (await newUser("adprev")).email;
+    await syncAds(scope, "snapchat", snapComposio(), NOW);
+    const s = await stored(scope, "snapchat");
+    expect(s).not.toHaveProperty("prev");
+    expect(s.spend).toBe(25.5);
+  });
+
+  it("Google Ads through Composio sends the same constant query for the previous dates (733)", async () => {
+    answers.GOOGLEADS_SEARCH_STREAM_GAQL = (args) => ok({ results: [{ adGroupAd: { ad: { id: "778899" } }, adGroup: { name: "Oud" }, campaign: { name: "Search SA" }, metrics: String(args.query).includes(`'${CUR.range.from}'`)
+      ? { impressions: "900", clicks: "60", costMicros: "75000000", conversions: 4, conversionsValue: 800 }
+      : { impressions: "600", clicks: "30", costMicros: "50000000", conversions: 1, conversionsValue: 200 } }] });
+    const scope = (await newUser("adprev")).email;
+    await syncAds(scope, "google_ads", { provider: "google_ads", connectedAt: NOW.toISOString(), data: { googleads: "ca_g" }, meta: { via: "composio", adAccount: "2223334445", account: "Ward Google", currency: "SAR" } }, NOW);
+    const queries = calls.filter((c) => c.slug === "GOOGLEADS_SEARCH_STREAM_GAQL").map((c) => c.args);
+    expect(queries).toEqual([
+      { query: googleQuery(CUR.range.from, CUR.range.to), customer_id: "2223334445" },
+      { query: googleQuery(PREV.range.from, PREV.range.to), customer_id: "2223334445" },
+    ]);
+    expect((await stored(scope, "google_ads")).prev).toEqual({ range: PREV.range, spend: 50, impressions: 600, clicks: 30, conversions: 1, revenue: 200 });
   });
 });
 

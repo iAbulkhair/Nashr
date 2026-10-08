@@ -45,6 +45,12 @@ export function adWindow(now = new Date()) {
   const start = new Date(end.getTime() - DAYS * 864e5);
   return { start, end, range: { from: day(start), to: day(new Date(end.getTime() - 864e5)) } };
 }
+/**
+ * The moment whose window is the 30 days before `now`'s: `adWindow(prevNow(now))` ends the day before
+ * `adWindow(now)` starts, back to back and the same length, so a previous period is read with the same reader, the same
+ * constant query and the same date checks (rule 733).
+ */
+export const prevNow = (now: Date) => new Date(now.getTime() - DAYS * 864e5);
 
 // ---------- Meta ----------
 

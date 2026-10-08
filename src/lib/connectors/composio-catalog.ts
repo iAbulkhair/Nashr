@@ -103,7 +103,11 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
   snapchat: {
     provider: "snapchat",
     authEnv: "COMPOSIO_AUTH_SNAPCHAT",
-    read: { SNAPCHAT_LIST_ORGANIZATIONS: ["with_ad_accounts"], SNAPCHAT_LIST_ADS_BY_ACCOUNT: ["ad_account_id", "limit", "cursor"], SNAPCHAT_GET_AD_STATS: ["ad_id", "fields", "start_time", "end_time", "granularity"] },
+    read: {
+      SNAPCHAT_LIST_ORGANIZATIONS: ["with_ad_accounts"], SNAPCHAT_LIST_ADS_BY_ACCOUNT: ["ad_account_id", "limit", "cursor"], SNAPCHAT_GET_AD_STATS: ["ad_id", "fields", "start_time", "end_time", "granularity"],
+      // The ad account's spend over the previous 30 days, one call (rule 733): Snap serves only spend at this level.
+      SNAPCHAT_GET_AD_ACCOUNTS_STATS: ["ad_account_id", "fields", "start_time", "end_time", "granularity"],
+    },
     write: {},
   },
   googleads: {
