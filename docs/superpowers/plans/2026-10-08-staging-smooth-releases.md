@@ -518,6 +518,7 @@ describe("probe summary", () => {
 - [ ] **Step 3:** Open the pull request with the Task 9 findings in its description and bind it with `ccd_pr`. The founder reviews and merges. Only staging builds.
 - [ ] **Step 4:** Check staging once its build completes:
   - `curl -s -o /dev/null -w "%{http_code}" https://staging.thakeen.com/ar` is 404 without the cookie.
+  - `curl -s https://staging.thakeen.com/robots.txt` contains `Disallow: /` and no `Sitemap:` line. `robots.txt` is built statically, so a staging build made without `APP_ENV=staging` serves the live body (`Allow: /`) here even though the lock still works; if so, set `APP_ENV=staging` in hPanel and rebuild. This curl is also the only check of the real Hostinger edge for a static `/robots.txt`.
   - The access page works in a browser.
   - `/api/health` shows the merge commit.
   - The two host facts of `docs/system/flows.md` section 49, item 7, last, because they use up a network's access tries for 15 minutes:
