@@ -19,14 +19,35 @@ export const CLAUDE_PAUSED = false;
 export type ModelState = "on" | "paused" | "mock";
 
 /**
+ * Provider switch (tests/model-provider.test.ts). Where the model calls go: Anthropic directly (the default, and what
+ * any other value of LLM_PROVIDER means, a typo included) or the Straitly gateway (`LLM_PROVIDER=straitly`). Read at call
+ * time, so a deploy that changes the variable changes the next call.
+ */
+export type LlmProvider = "anthropic" | "straitly";
+
+export function llmProvider(): LlmProvider {
+  return process.env.LLM_PROVIDER === "straitly" ? "straitly" : "anthropic";
+}
+
+/**
+ * Is there a key for the active provider? With `anthropic`, ANTHROPIC_API_KEY. With `straitly`, either key: STRAITLY_API_KEY
+ * sends the calls through the gateway, and ANTHROPIC_API_KEY alone sends them to Anthropic directly (`anthropic` below),
+ * the same key the gateway's fallback uses. STRAITLY_API_KEY is read here and in `anthropic` and nowhere else in `src`
+ * (tests/model-timeouts.test.ts), never logged and never put in an error or a URL.
+ */
+export function hasModelKey(): boolean {
+  return llmProvider() === "straitly" ? !!(process.env.STRAITLY_API_KEY || process.env.ANTHROPIC_API_KEY) : !!process.env.ANTHROPIC_API_KEY;
+}
+
+/**
  * "mock" only where no customer can be: no key and not a production deployment on any host (`isProductionDeploy`; a
- * laptop, vitest, a Vercel preview, the e2e suite under `APP_ENV=test`). A production deployment without
- * ANTHROPIC_API_KEY answers "paused", so every surface refuses before a credit
+ * laptop, vitest, a Vercel preview, the e2e suite under `APP_ENV=test`). A production deployment without a key for the
+ * active provider (`hasModelKey`) answers "paused", so every surface refuses before a credit
  * moves (rule 76) and no [DEV MOCK] item, chat reply or brand file is ever saved for a customer. Rule 431,
  * tests/launch-security.test.ts.
  */
 export function modelState(): ModelState {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!hasModelKey()) {
     if (isProductionDeploy()) {
       warnNoKey();
       return "paused";
@@ -41,7 +62,8 @@ let warned = false;
 function warnNoKey() {
   if (warned) return;
   warned = true;
-  console.error("model_not_configured: ANTHROPIC_API_KEY is not set in production; the agents refuse as paused");
+  const missing = llmProvider() === "straitly" ? "STRAITLY_API_KEY and ANTHROPIC_API_KEY are not set" : "ANTHROPIC_API_KEY is not set";
+  console.error(`model_not_configured: ${missing} in production; the agents refuse as paused`);
 }
 
 /** Thrown by the model-backed helpers while paused. A backstop: every caller that charges first refunds on a throw. */
@@ -59,6 +81,15 @@ export const PAUSED_REPLY = {
 } as const;
 
 /**
+ * The SDK appends `/v1/messages` to its base URL, so the gateway's default base has no `/v1` (Straitly's docs show
+ * `https://api.straitly.ai/v1` as the base of their own clients, which add the path differently).
+ */
+const STRAITLY_DEFAULT_BASE_URL = "https://api.straitly.ai";
+const ANTHROPIC_ORIGIN = "https://api.anthropic.com";
+
+type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+
+/**
  * The only way to make a model client (rule 335; tests/model-timeouts.test.ts fails on any other `new Anthropic(` in src).
  * The SDK's defaults are a 10-minute timeout and two retries, longer than any route's maxDuration (300 s at most): a slow
  * call was killed by the platform first, and a killed function runs no catch or finally, so a charge taken before the
@@ -66,11 +97,100 @@ export const PAUSED_REPLY = {
  *
  * `timeoutMs` bounds each attempt until the response headers arrive; a streamed reply sends them at once, so a stream's
  * body is bounded only by `until(deadline)` passed with the call. `maxRetries` counts the attempts after the first.
+ *
+ * Provider switch: with `LLM_PROVIDER=straitly` and STRAITLY_API_KEY set, the same client talks to the Straitly gateway
+ * (STRAITLY_BASE_URL, default below) and a Claude model it fails on is retried once against Anthropic
+ * (`withDirectFallback`). With `straitly` and only ANTHROPIC_API_KEY, the client is the plain Anthropic one: that key is
+ * never sent to the gateway. The default (no LLM_PROVIDER) builds exactly the client it always did.
  */
 export function anthropic(o: { timeoutMs: number; maxRetries: number }): Anthropic {
   if (!(Number.isFinite(o.timeoutMs) && o.timeoutMs > 0)) throw new Error(`invalid_model_timeout:${String(o.timeoutMs)}`);
   if (!(Number.isInteger(o.maxRetries) && o.maxRetries >= 0 && o.maxRetries <= 2)) throw new Error(`invalid_model_retries:${String(o.maxRetries)}`);
-  return new Anthropic({ timeout: Math.floor(o.timeoutMs), maxRetries: o.maxRetries });
+  const timeout = Math.floor(o.timeoutMs);
+  const gatewayKey = llmProvider() === "straitly" ? process.env.STRAITLY_API_KEY : undefined;
+  if (!gatewayKey) return new Anthropic({ timeout, maxRetries: o.maxRetries });
+  const baseURL = gatewayBaseUrl();
+  // `authToken: null` so an ambient ANTHROPIC_AUTH_TOKEN is not sent to the gateway along with its key.
+  return new Anthropic({ timeout, maxRetries: o.maxRetries, baseURL, apiKey: gatewayKey, authToken: null, fetch: withDirectFallback(baseURL) });
+}
+
+/**
+ * STRAITLY_BASE_URL, or the default. https only (the gateway's key travels in a header), except a loopback address for a
+ * local stand-in. Anything else throws a message that names neither the value nor a key.
+ */
+function gatewayBaseUrl(): string {
+  const raw = process.env.STRAITLY_BASE_URL?.trim() || STRAITLY_DEFAULT_BASE_URL;
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new Error("invalid_straitly_base_url");
+  }
+  const loopback = u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "[::1]";
+  if (u.protocol !== "https:" && !(u.protocol === "http:" && loopback)) throw new Error("invalid_straitly_base_url");
+  return raw;
+}
+
+/**
+ * The gateway's fallback: a `fetch` for the SDK client that sends a request to Straitly and, only when that failed before
+ * any response body was read, sends the same request once to Anthropic with ANTHROPIC_API_KEY.
+ *
+ * Retried: a connection error (the call threw) or a status of 500 or more, for a request whose JSON body names a
+ * `claude-*` model, with ANTHROPIC_API_KEY set. The body is a string the SDK built; it is read for its `model` only after
+ * a failure, and the same string is sent again (nothing here consumes it twice). The origin becomes Anthropic's, the path
+ * after the gateway's base path and the query string stay, and the gateway's key is replaced by Anthropic's; every other
+ * header (anthropic-version, anthropic-beta, content-type) stays.
+ *
+ * Never retried: a status below 500 (a 4xx is the request's fault and would fail again), and so never a reply that has
+ * started, whatever happens to its body afterwards (a second request would repeat it, and a streamed chat turn would
+ * duplicate text and tool actions); a non-Claude model (Anthropic does not serve it); a request the caller aborted; a
+ * body that is not a string; no ANTHROPIC_API_KEY.
+ *
+ * The SDK arms its per-attempt timeout and the caller's abort signal around this whole function, so the gateway and the
+ * retry share one attempt's time, and a timeout is an abort and is not retried here; the SDK's own `maxRetries` run on top
+ * and start at the gateway again. Logs a status code or "network" and no key, no header and no body.
+ */
+function withDirectFallback(gatewayBase: string): Fetch {
+  const basePath = new URL(gatewayBase).pathname.replace(/\/+$/, "");
+  return async (input, init) => {
+    let first: Response | undefined;
+    try {
+      first = await globalThis.fetch(input, init);
+      if (first.status < 500) return first;
+    } catch (e) {
+      if (init?.signal?.aborted) throw e;
+      const retry = directRequest(input, init, basePath);
+      if (!retry) throw e;
+      console.warn("model_fallback: straitly connection error, retried on anthropic");
+      return globalThis.fetch(retry.url, retry.init);
+    }
+    const retry = directRequest(input, init, basePath);
+    if (!retry) return first;
+    console.warn(`model_fallback: straitly status ${first.status}, retried on anthropic`);
+    // Unread, so the connection is released instead of held until the body is collected.
+    void first.body?.cancel().catch(() => {});
+    return globalThis.fetch(retry.url, retry.init);
+  };
+}
+
+/** The same request aimed at Anthropic, or null when this request is not one to send there (see `withDirectFallback`). */
+function directRequest(input: string | URL | Request, init: RequestInit | undefined, basePath: string): { url: string; init: RequestInit } | null {
+  const key = process.env.ANTHROPIC_API_KEY;
+  const raw = typeof input === "string" ? input : input instanceof URL ? input.href : null;
+  if (!key || !raw || typeof init?.body !== "string") return null;
+  let model: unknown;
+  try {
+    model = (JSON.parse(init.body) as { model?: unknown } | null)?.model;
+  } catch {
+    return null;
+  }
+  if (typeof model !== "string" || !model.startsWith("claude-")) return null;
+  const u = new URL(raw);
+  const path = basePath && (u.pathname === basePath || u.pathname.startsWith(`${basePath}/`)) ? u.pathname.slice(basePath.length) || "/" : u.pathname;
+  const headers = new Headers(init.headers);
+  headers.delete("authorization");
+  headers.set("x-api-key", key);
+  return { url: `${ANTHROPIC_ORIGIN}${path}${u.search}`, init: { ...init, headers } };
 }
 
 /**
