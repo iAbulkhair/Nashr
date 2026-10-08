@@ -14,8 +14,12 @@ import { setComposioClientForTests } from "@/lib/connectors/composio";
 import { EMPTY_TOTALS, PLATFORMS, READERS, SOCIAL_DEADLINE_MS, SOCIAL_KEY, SOCIAL_PUB_KEY, beforeDeadline, getSocialSnapshot, holdsSocial, rangeBefore, socialDataBlock, socialForPage, splitDays, syncSocial, syncSocialIfDue, upsertHistory, type HistoryRow, type Platform, type PlatformPart, type SocialSnapshot } from "@/lib/social-stats";
 import { connectedSources, reportSources, socialRead } from "@/lib/report-sources";
 import SocialStats from "@/components/app/SocialStats";
-import { syncSiteIfDue } from "@/lib/site-stats";
+import { syncSiteIfDue, type SiteSnapshot } from "@/lib/site-stats";
 import { OWNER_SYNC_KEY, ROUTINES } from "@/lib/routines";
+import { NOT_READ_PLATFORMS, notRead, notReadBlock, type NotReadItem, type NotReadPlatform } from "@/lib/not-read";
+import { statsFor } from "@/lib/stats";
+import { XSTATS_KEY, type XStats } from "@/lib/x-stats";
+import { ADSTATS_KEY, adStatsFrom } from "@/lib/ad-stats";
 import * as connRoute from "@/app/api/connect/[provider]/route";
 import { fakeComposio, ok, type Answer, type Call } from "./helpers/composio-fake";
 
@@ -26,8 +30,9 @@ import { fakeComposio, ok, type Answer, type Call } from "./helpers/composio-fak
  * as activity for Dana's weekly-report routine (`ownersync:{scope}`). Rules 737 and 746 (A8, section 7): the social
  * snapshot v2, one part per platform with `null` for a figure not read, a v1 snapshot read as "not read yet" and due, and
  * the monthly history. Rules 733 and 741 (A2, B4): the previous period each social reader reads in the same run, and the
- * one 30-second deadline every reader shares. Rule 748 (B3): the LinkedIn page's own views. Composio is the shared fake; its
- * answers follow the Instagram, LinkedIn, GA4 and Search Console shapes the reader tests use.
+ * one 30-second deadline every reader shares. Rule 748 (B3): the LinkedIn page's own views. Rule 738 (A6): the Not-read
+ * list, built in code from the connection records and the stored reads. Composio is the shared fake; its answers follow
+ * the Instagram, LinkedIn, GA4 and Search Console shapes the reader tests use.
  */
 const NOW = new Date("2026-10-08T09:00:00Z");
 const HOUR = 3600e3;
@@ -761,5 +766,174 @@ describe("LinkedIn page views (rule 748)", () => {
     for (const part of [s.parts.instagram!, s.parts.linkedin!]) {
       for (const v of [part.followers, ...Object.values(part.totals)]) expect(v === null || (typeof v === "number" && Number.isFinite(v) && v >= 0), `${part.platform} ${v}`).toBe(true);
     }
+  });
+});
+
+describe("the not-read list, built in code (rule 738)", () => {
+  const part = (platform: Platform, over: Partial<PlatformPart> = {}): PlatformPart => ({
+    platform, account: platform, range: { from: "2026-09-10", to: "2026-10-07" }, followers: 100, totals: { ...EMPTY_TOTALS, views: 10 }, posts: [], ...over,
+  });
+  const snapOf = (parts: SocialSnapshot["parts"], errors: SocialSnapshot["errors"] = {}): SocialSnapshot => ({ v: 2, at: NOW.toISOString(), parts, errors, history: [] });
+  const xRead = (at: Date): XStats => ({ platform: "x", account: "@oud", range: { from: "2026-09-08", to: "2026-10-08" }, followers: 50, totals: { ...EMPTY_TOTALS }, posts: [], at: at.toISOString(), history: [] });
+  const xConn = (meta: Record<string, string> = {}): Connection => ({ provider: "x", data: { access_token: "x-token" }, meta, connectedAt: NOW.toISOString() });
+  const ytConn = () => via("youtube", { youtube: "ca_yt" }, { channelId: "UCddiUEpeqJcYeBxX1IVBKvQ" });
+  const reasons = (items: NotReadItem[]) => Object.fromEntries(items.map((i) => [i.platform, i.reason])) as Partial<Record<NotReadPlatform, string>>;
+  const R = { from: "2026-09-08", to: "2026-10-07" };
+  const adRow = { name: "Ad", text: "", group: "", impressions: 9000, clicks: 90, spend: 300, conversions: null, revenue: null, sends: null, opens: null };
+
+  it("lists every founder-named platform with no read, with its reason (738)", async () => {
+    const scope = (await newUser("nrlist")).email;
+    await Promise.all([saveConnection(scope, igConn()), db.set(SOCIAL_KEY(scope), snapOf({ instagram: part("instagram") }))]);
+    const items = await notRead(scope);
+    expect(items).toContainEqual({ platform: "x", reason: "not_connected" });
+    expect(items).toContainEqual({ platform: "snapchat_organic", reason: "closed_to_apps" });
+    expect(items).toContainEqual({ platform: "google_business_profile", reason: "waiting_approval" });
+    expect(items.find((i) => i.platform === "instagram")).toBeUndefined();
+    // Every other founder-named platform once, in the fixed order: the Meta record carries no Facebook Page.
+    const fixed: Partial<Record<NotReadPlatform, string>> = { snapchat_organic: "closed_to_apps", google_business_profile: "waiting_approval" };
+    expect(items).toEqual(NOT_READ_PLATFORMS.filter((p) => p !== "instagram").map((platform) => ({ platform, reason: fixed[platform] ?? "not_connected" })));
+    // A workspace with nothing connected and nothing read lists all fifteen; another workspace's read is never this one's.
+    const empty = await notRead((await newUser("nrnone")).email);
+    expect(empty.map((i) => i.platform)).toEqual([...NOT_READ_PLATFORMS]);
+    expect(NOT_READ_PLATFORMS).toHaveLength(15);
+  });
+
+  it("X connected directly with no read says refresh_x; Composio X says x_direct_only; a read on an earlier day counts (738)", async () => {
+    const scope = (await newUser("nrx")).email;
+    await saveConnection(scope, xConn({ account: "@oud" }));
+    expect(reasons(await notRead(scope)).x).toBe("refresh_x");
+    // A read on an earlier UTC day is a read result: Dana's block prints it with its own date, so it is not listed.
+    await db.set(XSTATS_KEY(scope), xRead(new Date(NOW.getTime() - 3 * 864e5)));
+    expect(reasons(await notRead(scope)).x).toBeUndefined();
+    // A stored value Dana's block would not print (no posts list) is no read.
+    await db.set(XSTATS_KEY(scope), { at: NOW.toISOString() });
+    expect(reasons(await notRead(scope)).x).toBe("refresh_x");
+    await db.del(XSTATS_KEY(scope));
+    // Routed through Composio, X is never read or charged (rule 744).
+    await saveConnection(scope, xConn({ via: "composio" }));
+    expect(reasons(await notRead(scope)).x).toBe("x_direct_only");
+    // A record waiting for the owner to connect again says so first.
+    await saveConnection(scope, { ...xConn(), needsReconnect: NOW.toISOString() });
+    expect(reasons(await notRead(scope)).x).toBe("reconnect");
+    expect(reasons(await notRead((await newUser("nrx2")).email)).x).toBe("not_connected");
+  });
+
+  it("reasons by precedence: reconnect, choose_page, analytics_scope, read_failed, then not_connected (738)", async () => {
+    const scope = (await newUser("nrwhy")).email;
+    await Promise.all([
+      saveConnection(scope, { ...via("meta", { instagram: "ca_ig", facebook: "ca_fb" }, { igId: "1784", pageId: "55" }), needsReconnect: NOW.toISOString() }),
+      // LinkedIn connected through Composio with no company page chosen.
+      saveConnection(scope, via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc" })),
+      saveConnection(scope, ytConn()),
+      saveConnection(scope, via("tiktok", { tiktok: "ca_tt" })),
+      db.set(SOCIAL_KEY(scope), snapOf({ facebook: part("facebook"), youtube: part("youtube") }, { instagram: "ig_not_professional", youtube: "yt_no_analytics", tiktok: "tt_no_scope" })),
+    ]);
+    const r = reasons(await notRead(scope));
+    // The Meta record waits for a reconnect: Instagram, with no part, says so before its own error. The Facebook Page read
+    // before the token was refused is still a read, printed with its date.
+    expect(r.instagram).toBe("reconnect");
+    expect(r.facebook).toBeUndefined();
+    expect(r.linkedin).toBe("choose_page");
+    // YouTube's public counts were read, its analytics were not: listed, with the permission to grant (spec A6).
+    expect(r.youtube).toBe("analytics_scope");
+    // TikTok refused both reads for want of a scope: no part.
+    expect(r.tiktok).toBe("analytics_scope");
+  });
+
+  it("an error without a part is read_failed; a part read beside a known state stays read (738)", async () => {
+    const scope = (await newUser("nrcode")).email;
+    await Promise.all([
+      saveConnection(scope, via("meta", { instagram: "ca_ig", facebook: "ca_fb" }, { igId: "1784", pageId: "55" })),
+      saveConnection(scope, liConn()),
+      saveConnection(scope, ytConn()),
+      saveConnection(scope, via("tiktok", { tiktok: "ca_tt" })),
+      db.set(SOCIAL_KEY(scope), snapOf({ tiktok: part("tiktok", { totals: { ...EMPTY_TOTALS } }) }, { instagram: "ig_not_professional", facebook: "fb_no_insights", linkedin: "li_no_page_access", youtube: "yt_other_channel", tiktok: "tt_no_scope" })),
+    ]);
+    let r = reasons(await notRead(scope));
+    // The card keeps its own line for a non-professional account and a page the member does not administer; the nine
+    // reasons are not widened. Rows for another channel are a failed read (yt_other_channel).
+    expect(r).toMatchObject({ instagram: "read_failed", facebook: "analytics_scope", linkedin: "read_failed", youtube: "read_failed" });
+    expect(r.tiktok, "a TikTok part read beside a scope state is a read").toBeUndefined();
+
+    // A Facebook Page part with no figure read (totals and followers all null) was not read, posts or not. A LinkedIn part
+    // whose page views were refused (pageViews null) was read: the refusal adds no reason.
+    const post = { id: "55_1", date: "2026-10-01", type: "POST", caption: "x", url: null, views: null, reach: null, likes: 3, comments: null, shares: null, saved: null, fromThakeen: false };
+    await db.set(SOCIAL_KEY(scope), snapOf({ facebook: part("facebook", { followers: null, totals: { ...EMPTY_TOTALS }, posts: [post] }), linkedin: part("linkedin", { totals: { ...EMPTY_TOTALS, views: 900, pageViews: null } }) }));
+    r = reasons(await notRead(scope));
+    expect(r.facebook).toBe("read_failed");
+    expect(r.linkedin).toBeUndefined();
+    // A held platform with no part and no error (its first read has not landed) is not read; it is connected, so never
+    // not_connected.
+    expect(r.instagram).toBe("read_failed");
+    expect(r.youtube).toBe("read_failed");
+  });
+
+  it("only a record the platform's reader reads counts as connected; a v1 snapshot holds no read (738, Review Focus 2)", async () => {
+    const scope = (await newUser("nrrec")).email;
+    // A direct Meta record (from before Composio) has no reader; an error stored for a platform no record holds is old.
+    await Promise.all([
+      saveConnection(scope, { provider: "meta", data: { token: "t" }, meta: { igId: "1784", pageId: "55" }, connectedAt: NOW.toISOString() }),
+      db.set(SOCIAL_KEY(scope), snapOf({}, { instagram: "ig_not_professional", youtube: "yt_other_channel" })),
+    ]);
+    let r = reasons(await notRead(scope));
+    expect(r).toMatchObject({ instagram: "not_connected", facebook: "not_connected", youtube: "not_connected" });
+    // Right after the deploy a workspace holds a v1 snapshot: nothing in it is a read, and the held Instagram account says
+    // its read has not succeeded yet.
+    await Promise.all([saveConnection(scope, igConn()), db.set(SOCIAL_KEY(scope), { at: NOW.toISOString(), ig: { user: "oud", followers: 1200 } })]);
+    r = reasons(await notRead(scope));
+    expect(r.instagram).toBe("read_failed");
+    expect(r.facebook, "the Composio record holds no Page").toBe("not_connected");
+  });
+
+  it("an ad account counts as read with its row, the site's parts with theirs (738)", async () => {
+    const scope = (await newUser("nrads")).email;
+    const ga = { property: "properties/987", name: "Roastery", range: R, sessions: 120, keyEvents: null, revenue: null, engagementRate: null, channels: [], pages: [] };
+    const site: SiteSnapshot = { at: NOW.toISOString(), ga, gscError: "no_gsc_site" };
+    await Promise.all([
+      saveConnection(scope, { provider: "meta_ads", data: { token: "t" }, meta: { adAccount: "act_1", account: "Roastery Ads" }, connectedAt: NOW.toISOString() }),
+      saveConnection(scope, via("snapchat", { snapchat: "ca_sn" }, { adAccount: "3f6c1e52-0f3a-4b8e-9a51-6d2a7a0f1c11" })),
+      saveConnection(scope, { ...via("linkedin_ads", { linkedin_ads: "ca_la" }, { adAccount: "5001" }), needsReconnect: NOW.toISOString() }),
+      saveConnection(scope, google()),
+      db.set(ADSTATS_KEY(scope, "meta_ads"), adStatsFrom("meta_ads", { rows: [adRow], range: R, account: "Roastery Ads", currency: "SAR" }, null, NOW)),
+      // An uploaded file names no platform: it reads none of them.
+      db.set(ADSTATS_KEY(scope, "csv"), adStatsFrom("csv", { rows: [adRow], range: null, account: "export.csv" }, null, NOW)),
+      db.set(`sitestats:${scope}`, site),
+    ]);
+    const r = reasons(await notRead(scope));
+    expect(r.meta_ads).toBeUndefined();
+    expect(r.snapchat_ads, "connected, no read yet").toBe("read_failed");
+    expect(r.linkedin_ads).toBe("reconnect");
+    expect(r).toMatchObject({ google_ads: "not_connected", tiktok_ads: "not_connected" });
+    expect(r.google_analytics).toBeUndefined();
+    expect(r.search_console).toBe("read_failed");
+    // A direct Google record (from before Composio) has no reader behind it.
+    await saveConnection(scope, { provider: "google", data: { token: "t" }, meta: { gaProperty: "properties/987", gscSite: "sc-domain:roastery.example" }, connectedAt: NOW.toISOString() });
+    await db.del(`sitestats:${scope}`);
+    expect(reasons(await notRead(scope))).toMatchObject({ google_analytics: "not_connected", search_console: "not_connected" });
+  });
+
+  it("the block tells the model to list exactly these, and goes to Dana and Majed only (738)", async () => {
+    const scope = (await newUser("nrblock")).email;
+    await saveConnection(scope, xConn());
+    const items = await notRead(scope);
+    const block = notReadBlock(items);
+    expect(block).toMatch(/never add or drop one/);
+    expect(block.split("\n")[0]).toMatch(/^NOT READ /);
+    const data = JSON.parse(block.match(/<not_read>(.*)<\/not_read>/)![1]) as { platform: string; reason: string }[];
+    expect(data).toHaveLength(items.length);
+    expect(data).toContainEqual({ platform: "X account", reason: "refresh_x" });
+    expect(data).toContainEqual({ platform: "Snapchat organic", reason: "closed_to_apps" });
+    // The legend explains only the reasons listed.
+    for (const r of ["refresh_x", "not_connected", "closed_to_apps", "waiting_approval"]) expect(block, r).toContain(`${r}:`);
+    for (const r of ["x_direct_only", "reconnect", "choose_page", "read_failed", "analytics_scope"]) expect(block, r).not.toContain(`${r}:`);
+    expect(notReadBlock([])).toBe("");
+    for (const t of ["weekly_report", "board_deck", "dashboard_spec", "strategy_review"] as const) {
+      const text = await statsFor(t, scope);
+      expect(text, t).toContain("<not_read>");
+      expect(text.indexOf("WORKSPACE DATA"), t).toBeLessThan(text.indexOf("NOT READ"));
+    }
+    // Every other agent's work gets no block; Razan's cash forecast keeps the store block alone.
+    expect(await statsFor("social", scope)).toBe("");
+    expect(await statsFor("cash_forecast", scope)).toBe("");
   });
 });

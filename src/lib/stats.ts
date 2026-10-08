@@ -6,6 +6,7 @@ import { salesDataBlock } from "./store-sales";
 import { siteDataBlock } from "./site-stats";
 import { socialDataBlock } from "./social-stats";
 import { adDataBlock } from "./ad-stats";
+import { notRead, notReadBlock } from "./not-read";
 
 /** Workspace KPIs for the Reports page and for Dana's prompts. Computed from stored tasks only; no model call. */
 export type Kpis = {
@@ -178,11 +179,13 @@ export function statsText(k: Kpis, opts: { store?: boolean; site?: boolean; soci
  * SOCIAL DATA when Instagram or a LinkedIn page was read (src/lib/social-stats.ts), AD DATA when an ad account was read
  * or a CSV uploaded (src/lib/ad-stats.ts); STORE DATA alone for Razan's cash forecast ("" when no store was synced); the
  * store's abandoned carts for cart-recovery drafts; and nothing for everything else. Each block is labelled as data, and
- * the workspace block says a figure is missing only when the block that would carry it came back empty (rule 730). */
+ * the workspace block says a figure is missing only when the block that would carry it came back empty (rule 730). Dana's
+ * reports and Majed's review end with NOT READ: the platforms the owner named that hold no read, each with its reason,
+ * built in code from the connections and the stored reads (src/lib/not-read.ts, rule 738), "" when every one was read. */
 export async function statsFor(type: TaskType, scope: string): Promise<string> {
   if (type === "cart_recovery") return cartDataBlock(scope);
   if (type === "cash_forecast") return salesDataBlock(scope);
   if (agentForTask(type).id !== "dana" && type !== "strategy_review") return "";
-  const [k, store, site, social, ads] = await Promise.all([kpis(scope), salesDataBlock(scope), siteDataBlock(scope), socialDataBlock(scope), adDataBlock(scope)]);
-  return [statsText(k, { store: !!store, site: !!site, social: !!social, ads: !!ads }), store, site, social, ads].filter(Boolean).join("\n\n");
+  const [k, store, site, social, ads, missed] = await Promise.all([kpis(scope), salesDataBlock(scope), siteDataBlock(scope), socialDataBlock(scope), adDataBlock(scope), notRead(scope)]);
+  return [statsText(k, { store: !!store, site: !!site, social: !!social, ads: !!ads }), store, site, social, ads, notReadBlock(missed)].filter(Boolean).join("\n\n");
 }

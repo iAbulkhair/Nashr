@@ -518,6 +518,12 @@ export function readSocialSoon(scope: string) {
   try { after(later); } catch { void later(); }
 }
 
+/**
+ * A stored X read as Dana's block prints it, or null: a value with its read time and its posts list. `notRead` uses the
+ * same test, so X is said to be not read exactly when the block holds no X (rule 738).
+ */
+export const xReadOf = (v: XStats | null | undefined): XStats | null => (v && typeof v.at === "string" && Array.isArray(v.posts) ? v : null);
+
 const NA = "not available (unknown, not zero)";
 /** Engagements over views, as a fraction (0.0733 is 7.33%), four decimals; null when either was not read or views are 0. */
 const rate = (t: Totals) => {
@@ -537,7 +543,7 @@ const best = (posts: SocialPost[]) => [...posts].sort((a, b) => (b.views ?? -1) 
 export async function socialDataBlock(scope: string, now = new Date()): Promise<string> {
   const [s, held] = await Promise.all([getSocialSnapshot(scope), db.get<XStats>(XSTATS_KEY(scope))]);
   const social = s?.v === 2 && PLATFORMS.some((p) => s.parts[p]) ? s : null;
-  const xRead = held && typeof held.at === "string" && Array.isArray(held.posts) ? held : null;
+  const xRead = xReadOf(held);
   if (!social && !xRead) return "";
   const daysAgo = (at: string) => Math.max(0, Math.floor((now.getTime() - Date.parse(at)) / 864e5));
   const age = social ? daysAgo(social.at) : 0;
