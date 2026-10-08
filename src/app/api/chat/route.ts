@@ -4,6 +4,7 @@ import { currentUser, sc, trialOver } from "@/lib/auth";
 import { chat, chatRefusedText, history, type ChatRefused } from "@/lib/chat";
 import { touchConversation } from "@/lib/conversations";
 import { isAgentId } from "@/lib/agents";
+import { entitlements } from "@/lib/entitlements";
 import { WINDOW, chatCaps, chatRefusal, retryLater } from "@/lib/rate";
 import { deadlineFor } from "@/lib/media/keys";
 import { chatStatus, reserveChatTurn, runChatTurn } from "@/lib/chat-allowance";
@@ -22,7 +23,8 @@ export async function GET(req: Request) {
  * POST {text, conv?, agent?, stream?} → JSON reply, or with stream=true a text/event-stream:
  *   data: {"type":"status","text":"…"}  (one per working step)
  *   data: {"type":"message","message":…,"credits":n,"limit":"credits"|"trial"|"agent_cap"|null,"chat":ChatStatus,"charged":n}
- * Refused before anything is saved, counted or streamed, always as JSON: 402 `trial_over` (an ended trial, rule 330: limit
+ * Refused before anything is saved, counted or streamed, always as JSON: 403 `agent_not_included` (an agent the plan does not
+ * include, rule 782), 402 `trial_over` (an ended trial, rule 330: limit
  * "trial", which raises the subscription dialog, and a `message` the chat shows), 429 `slow_down` with `retry` "hour" or
  * "day" and a `message` (rule 331), and a message past the plan's chat allowance: 402 {error:"chat_allowance"} (paused)
  * or {error:"chat_credits"} (continue-on-credits is on but the balance is below the most a message can cost), with
@@ -37,6 +39,9 @@ export async function POST(req: Request) {
   const text = (b.text ?? "").trim().slice(0, 4000);
   if (!text) return NextResponse.json({ ok: false, error: "empty" }, { status: 400 });
   const agent = isAgentId(b.agent) ? b.agent : "noor";
+  // An agent the plan does not include (rule 782): refused before the trial gate and every count. Every plan includes all
+  // eight today, so nothing reaches this yet.
+  if (!entitlements(u).agents.includes(agent)) return NextResponse.json({ ok: false, error: "agent_not_included" }, { status: 403 });
   const lang = req.headers.get("x-lang") === "en" ? "en" : u.lang;
   const refused = (kind: ChatRefused, cap?: number) => ({ role: "assistant" as const, content: chatRefusedText(kind, lang, { cap }), at: new Date().toISOString(), agent });
   // An ended trial that never subscribed gets no model turn (rule 330): checked first, so it uses up neither a ceiling
