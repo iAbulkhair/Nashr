@@ -46,8 +46,9 @@ Rules 685-699 and flows §49 are reserved for this branch (see `docs/system/test
 2. **Cross-site request check** (rules 690-693). `src/lib/csrf.ts` refuses a state-changing `/api` request whose
    `Sec-Fetch-Site` is `cross-site` or `same-site`; when that header is present it decides alone (Go 1.25's order), and
    only without it must `Origin` match the request's own origin or `appOrigin()`. Requests with neither header pass (cron, webhooks and MCP clients send none and carry no browser
-   cookie). Bearer and webhook paths are exempt by path. `src/proxy.ts` adds every `/api` path except the exempt ones to its matcher (Next buffers
-   the body of each request the proxy sees, which would undo the 64 KB caps on webhooks and crons). This closes
+   cookie). Bearer and webhook paths are exempt by path. `src/proxy.ts` runs the check on every `/api` path after the
+   staging lock (rule 674), whose catch-all matcher sends every path through the proxy; leaving the exempt paths out of
+   the matcher, to keep Next from buffering their bodies before the 64 KB caps, is no longer possible. This closes
    login and logout CSRF, `text/plain` form JSON, and posts from same-site siblings such as `staging.thakeen.com`,
    which `SameSite=Lax` does not stop.
 3. **`safeNext` normalisation** (rule 694). Return the normalised path (`pathname + search + hash`) and refuse it if

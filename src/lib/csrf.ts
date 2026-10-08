@@ -24,8 +24,9 @@ import { appOrigin } from "@/lib/origin";
  * 4. A request with neither header passes. Only browsers send them, and the callers that send neither (crons with the
  *    CRON_SECRET bearer, QStash, webhooks, MCP and OAuth clients, curl) hold no browser's cookie.
  *
- * Paths in `CROSS_SITE_EXEMPT` skip the check, and the proxy's matcher leaves their canonical spelling out so the proxy
- * does not run on them (src/proxy.ts `config`). None of their state-changing handlers reaches the session or a cookie,
+ * Paths in `CROSS_SITE_EXEMPT` skip the check. The proxy still runs on them, because the staging lock must see every
+ * path (src/proxy.ts `config`, rule 674), so Next buffers their body up to `experimental.proxyClientMaxBodySize` (10 MB)
+ * before the routes' own 64 KB caps refuse it. None of their state-changing handlers reaches the session or a cookie,
  * even through what they import, which tests/csrf.test.ts pins, so a cross-site post to them can only do what its own
  * token or signature allows.
  */
@@ -43,13 +44,11 @@ export const CROSS_SITE_ERROR = "cross_site";
  * Routes that take cross-site browser or third-party posts, or that no browser session can reach. An entry ending in
  * `/` is a prefix; any other entry is one exact path, because a prefix would also cover the cookie routes beside it.
  *
- * The list is also what the proxy must stay away from. For every request it sees with a body, Next clones that body,
- * buffers up to 10 MB of it and waits for the whole upload before the proxy's answer or the route runs. The webhook and
- * cron routes below refuse a body over 64 KB unread, which holds only if the proxy never sees them, so src/proxy.ts
- * repeats this list in its matcher (Next reads the matcher at build time and cannot import it). Change both together;
- * tests/csrf.test.ts compiles the matcher with Next's own code and fails when they differ. The exclusion covers the
- * canonical spelling only: Next runs the proxy when the raw OR the decoded path matches, so `/api/%63ron/secretary`
- * still reaches it and is buffered like any checked `/api` request (the 10 MB each of those already allows).
+ * Buffering. For every request the proxy sees with a body, Next clones that body, buffers up to 10 MB of it
+ * (`experimental.proxyClientMaxBodySize`) and waits for the whole upload before the proxy's answer or the route runs.
+ * Since the staging lock (rule 674) the proxy sees every path, these included, so the webhook and cron routes' 64 KB
+ * caps refuse a larger body only after Next has read it. Lowering that limit for every route is a separate decision:
+ * file and media uploads go through the same proxy.
  *
  * - `/api/mcp`: the MCP endpoint. Bearer token only, `Access-Control-Allow-Origin: *`, and browser-based MCP clients
  *   post to it from their own origin. Exact: `/api/mcp/token` and `/api/mcp/grants` are cookie routes and stay checked.
@@ -66,7 +65,7 @@ export const CROSS_SITE_ERROR = "cross_site";
  *   Paymob's page, which is another site.
  * - `/api/cron/`: the cron runner (GET with the CRON_SECRET bearer, which the check never looks at) and POST
  *   `/api/cron/secretary` from our own QStash schedule or with that bearer. They send neither header and would pass
- *   anyway; the entry is here so the proxy stays off the 64 KB cap on the QStash tick. No cron handler reads a session.
+ *   anyway; the entry keeps that true if a cron route ever reads a browser header. No cron handler reads a session.
  *
  * The other routes that a provider or a feed reader calls, `/api/connect/{provider}/callback` and
  * `/api/secretary/feed/{token}`, are GET, so the check never looks at them.

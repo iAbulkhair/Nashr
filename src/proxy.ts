@@ -1,7 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { crossSiteRefusal } from "@/lib/csrf";
+import { isStaging } from "@/lib/deploy-env";
+import { STAGING_COOKIE, STAGING_OPEN_PATHS, hasAccess } from "@/lib/staging-access";
 
 type Lang = "ar" | "en";
+
+const NOINDEX = "noindex, nofollow";
+// `/ar/app`, `/en/app/tasks`: the paths whose layout reads the `x-pathname` header.
+const APP_PATH = /^\/[^/]+\/app(\/|$)/;
 
 function pickLang(req: NextRequest): Lang {
   const c = req.cookies.get("nashr_lang")?.value;
@@ -15,27 +21,44 @@ function pickLang(req: NextRequest): Lang {
 
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
-  // API routes: refuse a state-changing request another site started (src/lib/csrf.ts, rules 690-693), else pass it on
-  // untouched. The language and x-pathname logic below is for pages only.
-  if (pathname.startsWith("/api/")) return crossSiteRefusal(req) ?? NextResponse.next();
+  const staging = isStaging();
 
-  // Root: pick language from cookie, then Accept-Language, default Arabic. `/app` is the installed app's start URL
-  // (src/app/manifest.ts, rule 681): the same choice, into the app.
-  if (pathname === "/" || pathname === "/app") {
+  // Staging lock (rules 674, 677): without the access cookie every path but the four open ones is a bare 404, and
+  // with no STAGING_ACCESS_KEY nobody gets in. The proxy sees every path, so this runs before anything else.
+  if (staging && !STAGING_OPEN_PATHS.has(pathname) && !hasAccess(req.cookies.get(STAGING_COOKIE)?.value)) {
+    return new NextResponse(null, { status: 404, headers: { "x-robots-tag": NOINDEX } });
+  }
+
+  let res: NextResponse;
+  if (pathname.startsWith("/api/")) {
+    // API routes: refuse a state-changing request another site started (src/lib/csrf.ts, rules 690-693), else pass it
+    // on untouched. The exempt paths (webhooks, crons, MCP, OAuth token) pass inside crossSiteRefusal. The language and
+    // x-pathname logic below is for pages only.
+    res = crossSiteRefusal(req) ?? NextResponse.next();
+  } else if (pathname === "/" || pathname === "/app") {
+    // Root: pick language from cookie, then Accept-Language, default Arabic. `/app` is the installed app's start URL
+    // (src/app/manifest.ts, rule 681): the same choice, into the app.
     const url = req.nextUrl.clone();
     url.pathname = pathname === "/" ? `/${pickLang(req)}` : `/${pickLang(req)}/app`;
     url.search = search;
-    return NextResponse.redirect(url, 307);
+    res = NextResponse.redirect(url, 307);
+  } else if (APP_PATH.test(pathname)) {
+    // App routes: forward the pathname to server components.
+    const reqHeaders = new Headers(req.headers);
+    reqHeaders.set("x-pathname", pathname);
+    res = NextResponse.next({ request: { headers: reqHeaders } });
+  } else {
+    res = NextResponse.next();
   }
 
-  // App routes: forward the pathname to server components.
-  const reqHeaders = new Headers(req.headers);
-  reqHeaders.set("x-pathname", pathname);
-  return NextResponse.next({ request: { headers: reqHeaders } });
+  if (staging) res.headers.set("x-robots-tag", NOINDEX);
+  return res;
 }
 
-// The /api entry is every API path except the ones in CROSS_SITE_EXEMPT (src/lib/csrf.ts), where the check passes
-// anyway: Next buffers the body of each request the proxy sees and waits for the whole upload, which would undo the
-// webhook and cron routes' 64 KB caps. An exact entry is written `name/*$`; a prefix needs a character after its slash,
-// as isCrossSiteExempt reads it. Next needs a literal here, so the list is repeated; tests/csrf.test.ts pins the two.
-export const config = { matcher: ["/", "/app", "/:lang/app/:path*", "/api/((?!mcp/*$|oauth/token/*$|oauth/register/*$|media/hook/[^/]|secretary/booking/[^/]|billing/paymob/[^/]|cron/[^/]).*)"] };
+// Every path except Next's static assets and the favicon: the staging lock must see them all (`/` and `/app` included).
+// The exclusions are anchored (`_next/static/`, `_next/image` and `favicon.ico` end the path), so a look-alike such as
+// `/favicon.icox` or `/_next/staticx/a` still meets the lock. Off staging the other paths pass through untouched, but
+// for the cross-site check on /api. Next buffers the body of every request the proxy sees, up to
+// `experimental.proxyClientMaxBodySize` (10 MB by default), the webhook and cron routes included: their 64 KB caps still
+// refuse a larger body, after Next has read it (src/lib/csrf.ts, the CROSS_SITE_EXEMPT comment).
+export const config = { matcher: ["/((?!_next/static/|_next/image$|favicon\\.ico$).*)"] };

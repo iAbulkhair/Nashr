@@ -5,7 +5,8 @@ import { tryToParsePath } from "next/dist/lib/try-to-parse-path";
 import { GET, dynamic } from "@/app/llms.txt/route";
 import sitemap from "@/app/sitemap";
 import robots from "@/app/robots";
-import { config } from "@/proxy";
+import { NextRequest } from "next/server";
+import { config, proxy } from "@/proxy";
 import { appOrigin } from "@/lib/origin";
 import { dict } from "@/lib/i18n";
 import { AGENTS } from "@/lib/agents";
@@ -221,19 +222,21 @@ describe("rule 698: /llms.txt is a static plain-text index of the sitemap's publ
     expect([...urls].sort()).toEqual(map.map((e) => e.url).sort());
   });
 
-  it("robots does not disallow it and the proxy's matcher does not intercept it", () => {
+  it("robots does not disallow it and, off staging, the proxy passes it on untouched", () => {
+    vi.stubEnv("APP_ENV", "");
     const rules = robots().rules;
     const disallow = (Array.isArray(rules) ? rules : [rules]).flatMap((r) => r.disallow ?? []);
     expect(disallow.length).toBeGreaterThan(0);
     for (const d of disallow) expect("/llms.txt".startsWith(d), d).toBe(false);
+    // The proxy sees every path since the staging lock (rule 674), so on staging /llms.txt is locked like every page;
+    // off staging it passes untouched: no redirect, no x-pathname, no robots header.
     const matchers = (Array.isArray(config.matcher) ? config.matcher : [config.matcher]) as string[];
-    expect(matchers.length).toBeGreaterThan(0);
-    for (const m of matchers) {
-      const re = tryToParsePath(m).regexStr;
-      expect(re, m).toBeDefined();
-      expect(new RegExp(re!).test("/llms.txt"), m).toBe(false);
-    }
-    // The check itself still sees the paths the proxy is for.
-    expect(matchers.some((m) => new RegExp(tryToParsePath(m).regexStr!).test("/ar/app/chat"))).toBe(true);
+    expect(matchers.some((m) => new RegExp(tryToParsePath(m).regexStr!).test("/llms.txt"))).toBe(true);
+    const res = proxy(new NextRequest("https://thakeen.com/llms.txt"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-middleware-next")).toBe("1");
+    expect(res.headers.get("x-middleware-override-headers")).toBeNull();
+    expect(res.headers.get("location")).toBeNull();
+    expect(res.headers.get("x-robots-tag")).toBeNull();
   });
 });

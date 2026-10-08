@@ -7,6 +7,7 @@ import type { ProxyMatcher } from "next/dist/build/analysis/get-page-static-info
 import { getMiddlewareRouteMatcher } from "next/dist/shared/lib/router/utils/middleware-route-matcher";
 import { CROSS_SITE_EXEMPT, CROSS_SITE_METHODS, crossSiteRefusal, isCrossSiteExempt } from "@/lib/csrf";
 import { appOrigin } from "@/lib/origin";
+import { STAGING_COOKIE, accessToken } from "@/lib/staging-access";
 import { config, proxy } from "@/proxy";
 
 /**
@@ -270,47 +271,39 @@ describe("rule 692: same-origin requests, requests with neither header, GET, HEA
   });
 });
 
-describe("rule 693: proxy() runs the cross-site check first for every /api/ path, and its matcher covers every /api path except the exempt ones", () => {
+describe("rule 693: proxy() runs the cross-site check for every /api/ path after the staging lock, and its matcher sends every /api path through it", () => {
   // Next's own build-time and run-time matcher code (the same calls next-server makes), so what is pinned is what runs.
   const { getMiddlewareMatchers } = pageStaticInfo as unknown as { getMiddlewareMatchers: (m: unknown, c: object) => ProxyMatcher[] };
   const proxyRuns = getMiddlewareRouteMatcher(getMiddlewareMatchers(config.matcher, {}));
   const runs = (path: string) => proxyRuns(path, {} as never, {});
-  const apiEntries = config.matcher.filter((m) => m.startsWith("/api"));
+  const routes = readdirSync("src/app/api", { recursive: true })
+    .map(String)
+    .filter((p) => p.endsWith("route.ts"))
+    .map((p) => "/api/" + p.replace(/\/?route\.ts$/, "").replace(/\[[^\]]+\]/g, "x1"));
+  const edges = ["/api/mcp/", "/api/mcp//", "/api/mcpx", "/api/oauth/token/", "/api/oauth/tokenx", "/api/media/hook", "/api/media/hook/", "/api/media/hookx/a", "/api/secretary/booking/", "/api/billing/paymobx", "/api/billing/paymob/webhook", "/api/cron", "/api/cron/", "/api/cronx/a"];
 
-  it("the matcher keeps the page paths and has one /api entry", () => {
-    expect(config.matcher).toContain("/");
-    expect(config.matcher).toContain("/:lang/app/:path*");
-    expect(apiEntries).toHaveLength(1);
-    expect(runs("/")).toBe(true);
-    expect(runs("/ar/app/chat")).toBe(true);
-  });
-
-  it("the exclusion covers the canonical spelling only: a percent-encoded exempt path still matches (Next ORs raw and decoded)", () => {
-    // Recorded, not wanted: no matcher can avoid it. Such a request is buffered up to 10 MB like any checked /api route,
-    // so the 64 KB caps hold for the canonical paths only (src/lib/csrf.ts, the CROSS_SITE_EXEMPT comment).
-    expect(runs("/api/cron/secretary")).toBe(false);
-    expect(runs("/api/%63ron/secretary")).toBe(true);
-  });
-
-  it("the /api entry leaves out exactly CROSS_SITE_EXEMPT: an exact entry as name/*$, a prefix as prefix[^/]", () => {
-    const skipped = /^\/api\/\(\(\?!(.*)\)\.\*\)$/.exec(apiEntries[0])?.[1].split("|");
-    const expected = CROSS_SITE_EXEMPT.map((e) => (e.endsWith("/") ? `${e.slice("/api/".length)}[^/]` : `${e.slice("/api/".length)}/*$`));
-    expect(skipped).toEqual(expected);
-  });
-
-  it("for every API route, and the edges beside each exemption, the proxy runs exactly when the path is not exempt", () => {
-    const routes = readdirSync("src/app/api", { recursive: true })
-      .map(String)
-      .filter((p) => p.endsWith("route.ts"))
-      .map((p) => "/api/" + p.replace(/\/?route\.ts$/, "").replace(/\[[^\]]+\]/g, "x1"));
+  it("the matcher sends every API route, the exempt ones included, and the pages through the proxy", () => {
     expect(routes.length).toBeGreaterThan(50);
-    const edges = ["/api/mcp/", "/api/mcp//", "/api/mcpx", "/api/oauth/token/", "/api/oauth/tokenx", "/api/media/hook", "/api/media/hook/", "/api/media/hookx/a", "/api/secretary/booking/", "/api/billing/paymobx", "/api/billing/paymob/webhook", "/api/cron", "/api/cron/", "/api/cronx/a"];
-    for (const path of [...routes, ...edges]) expect(runs(path), path).toBe(!isCrossSiteExempt(path));
+    for (const path of [...routes, ...edges, "/api/%63ron/secretary", "/", "/app", "/ar/app/chat"]) expect(runs(path), path).toBe(true);
   });
 
-  it("a capped webhook or cron post never reaches the proxy, so Next does not buffer its body before the route's 64 KB check", () => {
-    for (const path of ["/api/cron/secretary", "/api/media/hook/kie", "/api/secretary/booking/0123abcd", "/api/billing/paymob/webhook"]) expect(runs(path), path).toBe(false);
-    for (const path of ["/api/auth/login", "/api/auth/logout", "/api/files", "/api/secretary/booking", "/api/oauth/approve", "/api/mcp/token"]) expect(runs(path), path).toBe(true);
+  it("for every API route, and the edges beside each exemption, a cross-site POST is refused exactly when the path is not exempt", async () => {
+    for (const path of [...routes, ...edges]) {
+      const res = proxy(req(path, { headers: CROSS }));
+      if (isCrossSiteExempt(path)) {
+        expect(res.status, path).toBe(200);
+        expect(res.headers.get("x-middleware-next"), path).toBe("1");
+      } else await expectRefused(res);
+    }
+  });
+
+  it("a capped webhook or cron post passes the proxy untouched; Next still buffers its body (up to 10 MB) before the route's 64 KB check", () => {
+    // Recorded, not wanted: the staging lock needs the proxy on every path (rule 674), so no matcher can leave these out.
+    for (const path of ["/api/cron/secretary", "/api/media/hook/kie", "/api/secretary/booking/0123abcd", "/api/billing/paymob/webhook"]) {
+      const res = proxy(req(path, { headers: CROSS }));
+      expect(res.status, path).toBe(200);
+      expect(res.headers.get("x-middleware-override-headers"), path).toBeNull();
+    }
   });
 
   it("a cross-site POST to /api gets the 403", async () => {
@@ -333,5 +326,22 @@ describe("rule 693: proxy() runs the cross-site check first for every /api/ path
     const page = proxy(req("/ar/app/inbox", { headers: CROSS }));
     expect(page.status).toBe(200);
     expect(page.headers.get("x-middleware-request-x-pathname")).toBe("/ar/app/inbox");
+  });
+
+  it("on staging the lock comes first: no cookie is a 404 even for a cross-site post; with the cookie the check still refuses, with noindex", async () => {
+    const key = "staging-key-" + "z".repeat(30);
+    vi.stubEnv("APP_ENV", "staging");
+    vi.stubEnv("STAGING_ACCESS_KEY", key);
+    const locked = proxy(req("/api/auth/login", { headers: CROSS }));
+    expect(locked.status).toBe(404);
+    expect(locked.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    const cookie = { cookie: `${STAGING_COOKIE}=${accessToken(key)}` };
+    const refused = proxy(req("/api/auth/login", { headers: { ...CROSS, ...cookie } }));
+    expect(refused.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    await expectRefused(refused);
+    const same = proxy(req("/api/tasks/abc", { method: "PATCH", headers: { ...SAME, ...cookie } }));
+    expect(same.status).toBe(200);
+    expect(same.headers.get("x-middleware-next")).toBe("1");
+    expect(same.headers.get("x-robots-tag")).toBe("noindex, nofollow");
   });
 });
