@@ -174,11 +174,14 @@ async function managedPages(scope: string, acc: string): Promise<Page[]> {
   return listOf(r).map((p) => ({ id: String(p.id), name: typeof p.name === "string" ? p.name : String(p.id) })).filter((p) => /^\d+$/.test(p.id));
 }
 
-/** GA4: the properties the login can read, `properties/{digits}` only. */
+/** GA4: the properties the login can read, `properties/{digits}` only; a name is one clean line of 80 (rule 734). */
 async function gaProperties(scope: string, acc: string): Promise<Page[]> {
   const r = await composioRead(scope, "google_analytics", "GOOGLE_ANALYTICS_LIST_ACCOUNT_SUMMARIES", { pageSize: 50 }, acc);
   return listOf(r, "propertySummaries").flatMap((a) => (Array.isArray(a.propertySummaries) ? a.propertySummaries : []) as Record<string, unknown>[])
-    .map((p) => ({ id: String(p.property ?? ""), name: typeof p.displayName === "string" ? p.displayName.slice(0, 80) : String(p.property ?? "") }))
+    .map((p) => {
+      const id = String(p.property ?? "");
+      return { id, name: (typeof p.displayName === "string" ? clean(p.displayName, 80) : "") || id };
+    })
     .filter((p) => /^properties\/\d+$/.test(p.id));
 }
 
@@ -345,7 +348,8 @@ export function selectPropertyVia(c: Connection, kind: "ga4" | "gsc", id: string
       const p = Array.isArray(props) ? props.find((x) => x?.id === id) : undefined;
       if (!p) return null;
       meta.gaProperty = p.id;
-      meta.gaName = typeof p.name === "string" ? p.name : p.id;
+      // A list stored before names were cleaned is cleaned here too (rule 734).
+      meta.gaName = (typeof p.name === "string" ? clean(p.name, 80) : "") || p.id;
     } else {
       const sites = JSON.parse(c.meta?.gscSites ?? "[]") as string[];
       if (!Array.isArray(sites) || !sites.includes(id)) return null;

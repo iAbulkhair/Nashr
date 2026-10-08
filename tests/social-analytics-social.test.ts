@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, settle, signIn } from "./helpers/session";
 import { db } from "@/lib/db";
 import { getUser } from "@/lib/auth";
-import { saveConnection, type Connection } from "@/lib/connectors/store";
+import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
+import * as fresh from "@/lib/connectors/fresh";
 import { setComposioClientForTests } from "@/lib/connectors/composio";
 import { getSocialSnapshot, syncSocial, syncSocialIfDue } from "@/lib/social-stats";
 import { syncSiteIfDue } from "@/lib/site-stats";
@@ -147,6 +148,52 @@ describe("the owner's refresh of the social results (rule 735)", () => {
     // None of the refusals spent the hour's six.
     await saveConnection(owner.email, igConn());
     for (let i = 0; i < 6; i++) expect((await post("meta", { action: "sync_social" })).status).toBe(200);
+  });
+
+  it("a refused token is converted inside syncSocialIfDue only, for the part that was refused (735)", async () => {
+    const owner = await newUser("socrefused");
+    await Promise.all([saveConnection(owner.email, igConn()), saveConnection(owner.email, liConn())]);
+    await signIn(owner.email);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const convert = vi.spyOn(fresh, "refusedToken");
+    // Pressed on the LinkedIn path: Instagram's token is refused and the LinkedIn read fails, so nothing is read.
+    answers.INSTAGRAM_GET_USER_INFO = { successful: false, error: "expired token" };
+    answers.INSTAGRAM_GET_USER_INSIGHTS = { successful: false, error: "expired token" };
+    answers.INSTAGRAM_GET_IG_USER_MEDIA = { successful: false, error: "expired token" };
+    answers.LINKEDIN_GET_SHARE_STATS = { successful: false, error: "Internal error (500)" };
+    answers.LINKEDIN_GET_NETWORK_SIZE = { successful: false, error: "Internal error (500)" };
+    const r = await post("linkedin", { action: "sync_social" });
+    expect(r.status).toBe(502);
+    expect(await r.json()).toEqual({ ok: false, error: "reconnect_required" });
+    // The reader converted it with the refused part's provider; the route never converts with its path's provider.
+    expect(convert.mock.calls.map((c) => c[1])).toEqual(["meta"]);
+    const [meta, linkedin] = await Promise.all([getConnection(owner.email, "meta"), getConnection(owner.email, "linkedin")]);
+    expect(meta?.needsReconnect).toBe(NOW.toISOString());
+    expect(linkedin?.needsReconnect, "the path's own record is not asked to reconnect").toBeUndefined();
+  });
+
+  it("a read that saved the snapshot while one part's token was refused answers 200 with that part to reconnect (735)", async () => {
+    const owner = await newUser("socpartial");
+    await Promise.all([saveConnection(owner.email, igConn()), saveConnection(owner.email, liConn())]);
+    await signIn(owner.email);
+    igAnswers();
+    answers.LINKEDIN_GET_SHARE_STATS = { successful: false, error: "token expired" };
+    answers.LINKEDIN_GET_NETWORK_SIZE = { successful: false, error: "token expired" };
+    const r = await post("meta", { action: "sync_social" });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, read: true, reconnect: "linkedin" });
+    const snap = await getSocialSnapshot(owner.email);
+    expect(snap).toMatchObject({ at: NOW.toISOString(), ig: { followers: 1200 } });
+    expect(snap?.li).toBeUndefined();
+    const [meta, linkedin] = await Promise.all([getConnection(owner.email, "meta"), getConnection(owner.email, "linkedin")]);
+    expect(linkedin?.needsReconnect).toBe(NOW.toISOString());
+    expect(meta?.needsReconnect, "the part that read is not asked to reconnect").toBeUndefined();
+    expect(await db.get(OWNER_SYNC_KEY(owner.email)), "the click counts").toBe(NOW.toISOString());
+
+    // The daily run reads the same way and still reports the reconnect it needs.
+    await saveConnection(owner.email, liConn());
+    await expect(syncSocialIfDue(owner.email, NOW, true)).rejects.toThrow("reconnect_required");
+    expect((await getSocialSnapshot(owner.email))?.ig?.followers).toBe(1200);
   });
 });
 

@@ -3,7 +3,7 @@ import { currentUser, sc } from "@/lib/auth";
 import { deleteConnection, getConnection } from "@/lib/connectors/store";
 import { isComposio, liOrgName, postAsVia, revokeAll, selectOrgVia, selectPageVia, selectPropertyVia } from "@/lib/connectors/via-composio";
 import { recordActivity } from "@/lib/activity";
-import { holdsSocial, isSocialProvider, readSocialSoon, syncSocialIfDue } from "@/lib/social-stats";
+import { PartlyRead, holdsSocial, isSocialProvider, readSocialSoon, syncSocialIfDue } from "@/lib/social-stats";
 import { holdsSite, readSiteSoon, syncSiteIfDue } from "@/lib/site-stats";
 import { markOwnerSync } from "@/lib/routines";
 import { WINDOW, allow, retryLater } from "@/lib/rate";
@@ -57,13 +57,17 @@ const OWNER_SYNCS_PER_HOUR = 6;
 
 /**
  * An owner's refresh (rules 735, 736): the read, forced whatever the last read's age, and the mark Dana's routine counts
- * as activity, side by side. The click counts even when the platform fails; a failed read is thrown to the route's catch.
+ * as activity, side by side. The click counts even when the platform fails. The readers convert a refused token
+ * themselves (syncSiteIfDue for Google, syncSocialIfDue with the refused part's own provider), so a read's failure is
+ * answered here and never reaches the route's refusedToken, which would use the path's provider. A social read that saved the
+ * snapshot while one part's token was refused is a read: 200 with the part to reconnect.
  */
 async function ownerRefresh(scope: string, read: () => Promise<boolean>) {
   const [r, mark] = await Promise.allSettled([read(), markOwnerSync(scope)]);
   if (mark.status === "rejected") console.error("owner sync mark failed");
-  if (r.status === "rejected") throw r.reason;
-  return NextResponse.json({ ok: true, read: r.value });
+  if (r.status === "fulfilled") return NextResponse.json({ ok: true, read: r.value });
+  if (r.reason instanceof PartlyRead) return NextResponse.json({ ok: true, read: true, reconnect: r.reason.provider });
+  return NextResponse.json({ ok: false, error: r.reason instanceof Error ? r.reason.message : "failed" }, { status: 502 });
 }
 
 /** POST {action:"import_products"}, for Salla, Shopify, WooCommerce and Zid {action:"sync_sales"}, for Meta {action:"select_page", pageId}, for LinkedIn {action:"select_org", org} and {action:"post_as", value:"me"|"org"}, for Google {action:"select_property", kind:"ga4"|"gsc", id} and {action:"sync_site"}, for Meta, LinkedIn, YouTube and TikTok {action:"sync_social"} */
@@ -115,16 +119,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
       }
       return NextResponse.json({ ok: true, postAs: value });
     }
-    // The GA4 property or Search Console site whose figures are read (rule 734): only one listed at connect time, then
-    // the site is read again at once so the next report carries the new choice.
+    // The GA4 property or Search Console site whose figures are read (rule 734): only one listed at connect time. The
+    // choice is always saved; the site is read again at once only while the workspace's six site reads an hour last
+    // (the sync_site bucket), else the daily run or a later refresh reads it.
     if (b.action === "select_property" && provider === "google" && isComposio(c)) {
       const kind = String(b.kind ?? "");
       if (kind !== "ga4" && kind !== "gsc") return NextResponse.json({ ok: false, error: "bad_value" }, { status: 400 });
       const next = selectPropertyVia(c, kind, String(b.id ?? ""));
       if (!next) return NextResponse.json({ ok: false, error: "unknown_property" }, { status: 400 });
       await saveConnection(sc(u), next);
-      readSiteSoon(sc(u));
-      return NextResponse.json({ ok: true, account: next.meta?.account });
+      const read = await allow(`sitesync:${sc(u)}`, OWNER_SYNCS_PER_HOUR, WINDOW.hour);
+      if (read) readSiteSoon(sc(u));
+      return NextResponse.json({ ok: true, account: next.meta?.account, read });
     }
     if (b.action === "select_ad_account" && isAdProvider(provider)) {
       const next = selectAdAccount(c, String(b.accountId ?? ""));

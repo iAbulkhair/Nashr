@@ -5,7 +5,7 @@ import { json, newMember, newUser, settle, signIn } from "./helpers/session";
 import { getUser } from "@/lib/auth";
 import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
 import { setComposioClientForTests } from "@/lib/connectors/composio";
-import { selectPropertyVia } from "@/lib/connectors/via-composio";
+import { connectViaComposio, selectPropertyVia } from "@/lib/connectors/via-composio";
 import { getSiteSnapshot, readSiteSoon, siteDataBlock, syncSite, syncSiteIfDue, type SiteSnapshot } from "@/lib/site-stats";
 import SiteStats from "@/components/app/SiteStats";
 import * as connRoute from "@/app/api/connect/[provider]/route";
@@ -379,6 +379,8 @@ describe("choosing the GA4 property and the Search Console site (rule 734)", () 
   };
 
   it("takes only a stored property or site, on a Composio Google record (734)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
     const owner = await newUser("siteprop");
     await saveConnection(owner.email, held());
     await signIn(owner.email);
@@ -402,7 +404,7 @@ describe("choosing the GA4 property and the Search Console site (rule 734)", () 
 
     const r = await post("google", { action: "select_property", kind: "ga4", id: "properties/2" });
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ ok: true, account: "Shop B · roastery.example" });
+    expect(await r.json()).toEqual({ ok: true, account: "Shop B · roastery.example", read: true });
     expect((await getConnection(owner.email, "google"))?.meta).toMatchObject({ gaProperty: "properties/2", gaName: "Shop B", gscSite: SITE, gaProperties: PROPS, gscSites: SITES });
     expect((await getConnection(owner.email, "google"))?.meta?.account).toContain("Shop B");
     const s = await post("google", { action: "select_property", kind: "gsc", id: "https://shop-b.example/" });
@@ -441,6 +443,8 @@ describe("choosing the GA4 property and the Search Console site (rule 734)", () 
   });
 
   it("a member is refused; a record with no stored list has nothing to choose from (734)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
     const owner = await newUser("sitepropm");
     await saveConnection(owner.email, held());
     answer();
@@ -491,6 +495,55 @@ describe("choosing the GA4 property and the Search Console site (rule 734)", () 
     const sites = calls.filter((c) => c.slug === "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY").map((c) => c.args.site_url);
     expect(sites).toEqual(["https://shop-b.example/", "https://shop-b.example/", "https://shop-b.example/"]);
     expect((await getSiteSnapshot(owner.email))?.gsc?.site).toBe("https://shop-b.example/");
+  });
+
+  it("a choice always saves, and reads only while the hour's six site reads last (734, 735)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    const owner = await newUser("sitepropmany");
+    await saveConnection(owner.email, held());
+    answer();
+    await signIn(owner.email);
+    const ids = ["properties/2", "properties/987"];
+    for (let i = 0; i < 6; i++) {
+      const r = await post("google", { action: "select_property", kind: "ga4", id: ids[i % 2] });
+      expect(r.status, `choice ${i + 1}`).toBe(200);
+      expect((await r.json()).read, `choice ${i + 1}`).toBe(true);
+      await settle();
+    }
+    expect(calls.filter((c) => c.slug === "GOOGLE_ANALYTICS_RUN_REPORT")).toHaveLength(12);
+
+    // The seventh in the hour is saved and read by the daily run or a later refresh, never at once.
+    calls.length = 0;
+    const seventh = await post("google", { action: "select_property", kind: "ga4", id: "properties/2" });
+    expect(seventh.status).toBe(200);
+    expect(await seventh.json()).toEqual({ ok: true, account: "Shop B · roastery.example", read: false });
+    await settle();
+    expect(calls, "no read past the hour's six").toEqual([]);
+    expect((await getConnection(owner.email, "google"))?.meta).toMatchObject({ gaProperty: "properties/2", gaName: "Shop B" });
+    // The choices and the owner's refreshes share the workspace's bucket.
+    expect((await post("google", { action: "sync_site" })).status).toBe(429);
+  });
+
+  it("a property name is stored as one clean line of 80 characters, at connect and when chosen (734)", async () => {
+    const u = await newUser("sitepropname");
+    const raw = `Shop\tB\r\n**Roastery** ${"x".repeat(90)}`;
+    const cleaned = `Shop B Roastery ${"x".repeat(90)}`.slice(0, 80);
+    answers.GOOGLE_ANALYTICS_LIST_ACCOUNT_SUMMARIES = ok({ accountSummaries: [{ propertySummaries: [{ property: "properties/2", displayName: raw }, { property: "properties/987", displayName: "roastery.example" }] }] });
+    const c = await connectViaComposio(u.email, "google", "google_analytics", "ca_ga", null);
+    expect(c.meta?.gaName).toBe(cleaned);
+    expect(JSON.parse(c.meta!.gaProperties)).toEqual([{ id: "properties/2", name: cleaned }, { id: "properties/987", name: "roastery.example" }]);
+    expect(c.meta?.account).toBe(cleaned);
+
+    // A list stored before names were cleaned is cleaned when a property is chosen from it.
+    const old = google({ gaProperties: JSON.stringify([{ id: "properties/987", name: "roastery.example" }, { id: "properties/2", name: raw }]) });
+    const next = selectPropertyVia(old, "ga4", "properties/2");
+    expect(next?.meta?.gaName).toBe(cleaned);
+    expect(next?.meta?.account).toBe(`${cleaned} · roastery.example`);
+    expect(next?.meta?.gaName).not.toMatch(/[\r\n\t*]/);
+    // A name that cleans to nothing falls back to the property id.
+    const blank = google({ gaProperties: JSON.stringify([{ id: "properties/987", name: "roastery.example" }, { id: "properties/2", name: "\r\n**" }]) });
+    expect(selectPropertyVia(blank, "ga4", "properties/2")?.meta?.gaName).toBe("properties/2");
   });
 });
 

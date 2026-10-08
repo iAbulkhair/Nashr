@@ -5,7 +5,7 @@ import { clean } from "./perf-import";
 import { pmap } from "./parallel";
 import { composioRead } from "./connectors/composio";
 import { accountOf, at, isComposio, listOf, num, pick } from "./connectors/composio-shape";
-import { getFreshConnection, refusedToken } from "./connectors/fresh";
+import { ReconnectRequired, getFreshConnection, refusedToken } from "./connectors/fresh";
 import { getConnection, type Connection } from "./connectors/store";
 
 /**
@@ -46,11 +46,27 @@ export type Li = {
 /** `null` is "not read", never zero. */
 export type SocialSnapshot = { at: string; ig?: Ig; igError?: string; li?: Li; liError?: string };
 
-/** A failed part keeps its provider, so the daily sync asks the right record to reconnect (refusedToken). */
+/**
+ * A failed part keeps its provider, so the daily sync asks the right record to reconnect (refusedToken). `saved` is set
+ * when the snapshot was written before the error was thrown: the other part was read.
+ */
 export class SocialReadError extends Error {
+  saved = false;
   constructor(readonly provider: "meta" | "linkedin", cause: unknown) {
     super(cause instanceof Error ? cause.message : "read_failed");
     this.name = "SocialReadError";
+  }
+}
+
+/**
+ * A read that saved the snapshot while one part's token was refused (rule 735): the record of `provider` waits for a
+ * reconnect and the part that was read stands. The owner's refresh answers it as a read; anything that only checks for
+ * ReconnectRequired (the daily run) sees a reconnect, as before.
+ */
+export class PartlyRead extends ReconnectRequired {
+  constructor(provider: string) {
+    super(provider);
+    this.name = "PartlyRead";
   }
 }
 
@@ -254,7 +270,10 @@ export async function syncSocial(scope: string, conns: { meta?: Connection | nul
   const known = [snap.igError, snap.liError].some((x) => x && KNOWN.has(x));
   if (!snap.ig && !snap.li && !known) throw token ?? failed[0];
   await db.set(SOCIAL_KEY(scope), snap);
-  if (token) throw token;
+  if (token) {
+    token.saved = true;
+    throw token;
+  }
   return snap;
 }
 
@@ -273,7 +292,10 @@ export async function syncSocialIfDue(scope: string, now = new Date(), force = f
     const [m, l] = await Promise.all([ig ? getFreshConnection(scope, "meta") : null, li ? getFreshConnection(scope, "linkedin") : null]);
     await syncSocial(scope, { meta: m, linkedin: l }, now);
   } catch (e) {
-    throw e instanceof SocialReadError ? await refusedToken(scope, e.provider, e) : e;
+    // The only place a social read's refused token is converted: with the refused part's own provider, never the path's.
+    if (!(e instanceof SocialReadError)) throw e;
+    const err = await refusedToken(scope, e.provider, e);
+    throw e.saved && err instanceof ReconnectRequired ? new PartlyRead(e.provider) : err;
   }
   return true;
 }
