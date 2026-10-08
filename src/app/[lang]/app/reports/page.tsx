@@ -11,13 +11,14 @@ import { getSalesSnapshot, getSyncFailure } from "@/lib/store-sales";
 import { getPerf } from "@/lib/perf-store";
 import { getSiteSnapshot } from "@/lib/site-stats";
 import { getSocialSnapshot } from "@/lib/social-stats";
+import { liNeedsPage } from "@/lib/report-sources";
 import { isComposio } from "@/lib/connectors/composio-shape";
 import ReportsPanel from "@/components/app/ReportsPanel";
 import { can } from "@/lib/roles";
 import { topupsSold } from "@/lib/pricing";
 
 /** Providers whose figures are read only through Composio (site-stats.ts, social-stats.ts). */
-const READ_VIA_COMPOSIO = ["google", "meta"];
+const READ_VIA_COMPOSIO = ["google", "meta", "linkedin"];
 
 export const dynamic = "force-dynamic";
 
@@ -38,5 +39,5 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   const connected = connections.filter((c) => !READ_VIA_COMPOSIO.includes(c.provider) || isComposio(c)).map((c) => c.provider);
   const dana = agentById("dana").tasks;
   const items = tasks.filter((t) => dana.includes(t.type)).slice(0, 20).map((t) => ({ id: t.id, type: t.type, title: t.title, status: t.status, createdAt: t.createdAt }));
-  return <ReportsPanel t={appDict[lang]} lang={lang} k={k} items={items} credits={u.credits} quality={quality} range={range} connected={connected} store={store} site={site} social={social} syncFailure={syncFailure} perf={perf} perfImport={can(u, "performance.import")} perfDelete={can(u, "performance.delete")} owner={can(u, "billing")} topups={topupsSold(u.plan)} />;
+  return <ReportsPanel t={appDict[lang]} lang={lang} k={k} items={items} credits={u.credits} quality={quality} range={range} connected={connected} store={store} site={site} social={social} liNoPage={liNeedsPage(connections)} syncFailure={syncFailure} perf={perf} perfImport={can(u, "performance.import")} perfDelete={can(u, "performance.delete")} owner={can(u, "billing")} topups={topupsSold(u.plan)} />;
 }

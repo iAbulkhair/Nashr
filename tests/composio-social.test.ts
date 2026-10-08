@@ -12,7 +12,7 @@ import type { Connection } from "@/lib/connectors/store";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import SocialStats from "@/components/app/SocialStats";
-import { socialRead } from "@/lib/report-sources";
+import { liNeedsPage, reportSources, socialRead } from "@/lib/report-sources";
 import { connectViaComposio } from "@/lib/connectors/via-composio";
 import * as connRoute from "@/app/api/connect/[provider]/route";
 
@@ -108,7 +108,13 @@ describe("the post id is kept on publish, for results", () => {
 
 const NOW = new Date("2026-10-08T09:00:00Z");
 const igConn = () => via("meta", { instagram: "ca_ig" }, { igId: "1784" });
-const liConn = () => via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrg: "urn:li:organization:42" });
+const liConn = () => via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrg: "urn:li:organization:42", liOrgs: JSON.stringify([{ urn: "urn:li:organization:42", name: "عود الشرق" }]) });
+const dayRow = (impressionCount: number, clickCount: number, likeCount: number, commentCount: number, shareCount: number) =>
+  ({ organizationalEntity: "urn:li:organization:42", timeRange: { start: 0, end: 0 }, totalShareStatistics: { impressionCount, clickCount, likeCount, commentCount, shareCount, uniqueImpressionsCount: 0, engagement: 0 } });
+function liAnswers(rows = [dayRow(100, 5, 3, 1, 0), dayRow(50, 0, 1, 0, 1), dayRow(0, 0, 0, 0, 0)]) {
+  answers.LINKEDIN_GET_SHARE_STATS = ok({ elements: rows, paging: { count: 10, start: 0 } });
+  answers.LINKEDIN_GET_NETWORK_SIZE = ok({ firstDegreeSize: 812 });
+}
 const media = (n: number, over: Record<string, unknown> = {}) => ({ id: `m${n}`, caption: `post ${n}`, media_type: "IMAGE", permalink: `https://www.instagram.com/p/${n}/`, timestamp: "2026-10-01T10:00:00+0000", ...over });
 function igAnswers(posts: Record<string, unknown>[] = [media(1), media(2, { media_type: "VIDEO", media_product_type: "REELS" })]) {
   answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1784", username: "oud", followers_count: 1200 } });
@@ -232,8 +238,10 @@ describe("Instagram results (rules 662-665, 667)", () => {
   it("skips a Meta record without Instagram, and refuses a workspace with nothing to read", async () => {
     const u = await newUser("signoig");
     const fbOnly = via("meta", { facebook: "ca_fb" }, { pageId: "1" });
-    // The LinkedIn part fails until plan Task 8; the failure is LinkedIn's, and Instagram is never called.
-    await expect(syncSocial(u.email, { meta: fbOnly, linkedin: liConn() }, NOW)).rejects.toMatchObject({ provider: "linkedin" });
+    liAnswers();
+    const snap = await syncSocial(u.email, { meta: fbOnly, linkedin: liConn() }, NOW);
+    expect(snap.li).toBeDefined();
+    expect(snap.igError, "a part not held is skipped, not failed").toBeUndefined();
     expect(calls.some((c) => c.slug.startsWith("INSTAGRAM_"))).toBe(false);
     await expect(syncSocial(u.email, { meta: fbOnly }, NOW)).rejects.toThrow("not_connected");
     await expect(syncSocial(u.email, { meta: via("meta", { instagram: "ca_ig" }, { igId: "1784", via: "oauth" }) }, NOW)).rejects.toThrow("not_connected");
@@ -436,5 +444,79 @@ describe("LinkedIn company pages (rule 669)", () => {
     const okr = await connRoute.POST(json("/api/connect/linkedin", "POST", { action: "select_org", org: "urn:li:organization:2" }), ctx("linkedin"));
     expect(okr.status).toBe(200);
     expect((await getConnection(owner.email, "linkedin"))!.meta).toMatchObject({ liOrg: "urn:li:organization:2", liPostAs: "me" });
+  });
+});
+
+describe("LinkedIn page results (rule 662)", () => {
+  it("sums 28 days of the page's share statistics and reads its followers, with fixed arguments", async () => {
+    const u = await newUser("sli662");
+    liAnswers();
+    const snap = await syncSocial(u.email, { linkedin: liConn() }, NOW);
+    expect(snap.li).toEqual({
+      org: "urn:li:organization:42", name: "عود الشرق", followers: 812, range: { from: "2026-09-10", to: "2026-10-08" },
+      impressions: 150, clicks: 5, reactions: 4, comments: 1, shares: 1, engagement: Math.round((11 / 150) * 1e4) / 1e4,
+    });
+    const end = NOW.getTime();
+    expect(calls.find((c) => c.slug === "LINKEDIN_GET_SHARE_STATS")!.args).toEqual({ organizational_entity: "urn:li:organization:42", time_intervals: `(timeRange:(start:${end - 28 * 864e5},end:${end}),timeGranularityType:DAY)` });
+    expect(calls.find((c) => c.slug === "LINKEDIN_GET_NETWORK_SIZE")!.args).toEqual({ organization_id: "42", edgeType: "COMPANY_FOLLOWED_BY_MEMBER" });
+    expect(await getSocialSnapshot(u.email)).toEqual(snap);
+  });
+
+  it("zero impressions give no engagement rate, and no rows leave every total unknown", async () => {
+    const u = await newUser("sli0");
+    liAnswers([dayRow(0, 0, 0, 0, 0)]);
+    expect((await syncSocial(u.email, { linkedin: liConn() }, NOW)).li).toMatchObject({ impressions: 0, engagement: null });
+    liAnswers([]);
+    expect((await syncSocial(u.email, { linkedin: liConn() }, NOW)).li).toMatchObject({ impressions: null, clicks: null, reactions: null, engagement: null, followers: 812 });
+  });
+
+  it("followers that cannot be read stay unknown and the totals are kept", async () => {
+    const u = await newUser("slifol");
+    liAnswers();
+    answers.LINKEDIN_GET_NETWORK_SIZE = { successful: false, error: "Internal error" };
+    expect((await syncSocial(u.email, { linkedin: liConn() }, NOW)).li).toMatchObject({ followers: null, impressions: 150 });
+  });
+
+  it("keeps LinkedIn when Instagram fails, and calls a page the member cannot read a known state", async () => {
+    const u = await newUser("sli2");
+    liAnswers();
+    answers.INSTAGRAM_GET_USER_INFO = { successful: false, error: "Internal error" };
+    const snap = await syncSocial(u.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    expect(snap.li).toBeDefined();
+    expect(snap.igError).toBeTruthy();
+    answers.LINKEDIN_GET_SHARE_STATS = { successful: false, error: "403 Forbidden: Not enough permissions to access: organizationalEntityShareStatistics" };
+    const denied = await syncSocial(u.email, { linkedin: liConn() }, NOW);
+    expect(denied).toMatchObject({ liError: "li_no_page_access" });
+    expect(denied.li).toBeUndefined();
+    expect(await getSocialSnapshot(u.email)).toMatchObject({ liError: "li_no_page_access" });
+  });
+
+  it("a refused LinkedIn token is thrown with its provider after Instagram's part is written", async () => {
+    const u = await newUser("sli401");
+    igAnswers();
+    answers.LINKEDIN_GET_SHARE_STATS = { successful: false, error: "The token used in the request has expired" };
+    await expect(syncSocial(u.email, { meta: igConn(), linkedin: liConn() }, NOW)).rejects.toMatchObject({ provider: "linkedin", message: expect.stringMatching(/401/) });
+    const saved = await getSocialSnapshot(u.email);
+    expect(saved?.ig).toBeDefined();
+    expect(saved?.liError).toBeTruthy();
+  });
+
+  it("counts a Composio LinkedIn record as a social source, and says when no page is chosen", () => {
+    expect(reportSources(["linkedin"]).read).toEqual(["social"]);
+    expect(liNeedsPage([{ provider: "linkedin", meta: { via: "composio", author: "urn:li:person:abc" } }])).toBe(true);
+    expect(liNeedsPage([{ provider: "linkedin", meta: { via: "composio", liOrg: "urn:li:organization:42" } }])).toBe(false);
+    expect(liNeedsPage([{ provider: "linkedin", meta: { author: "urn:li:person:abc" } }]), "a direct record has no reader").toBe(false);
+  });
+
+  it("the card shows the page's followers and 28-day totals, and asks for a page when there is none", () => {
+    const li = { org: "urn:li:organization:42", name: "<b>عود</b>", followers: 812, range: { from: "2026-09-10", to: "2026-10-08" }, impressions: 150, clicks: 5, reactions: 4, comments: 1, shares: 1, engagement: 0.0733 };
+    const out = renderToStaticMarkup(createElement(SocialStats, { lang: "en", social: { at: NOW.toISOString(), li } }));
+    expect(out).toContain("812");
+    expect(out).toContain("150");
+    expect(out).toContain("7.33%");
+    expect(out).not.toContain("<b>");
+    expect(out, "Instagram not held: no Instagram line").not.toContain("Instagram has not been read yet");
+    expect(renderToStaticMarkup(createElement(SocialStats, { lang: "en", social: { at: NOW.toISOString(), liError: "li_no_page_access" } }))).toContain("Connect a company page");
+    expect(renderToStaticMarkup(createElement(SocialStats, { lang: "ar", social: null, liNoPage: true }))).toContain("اربط صفحة شركة");
   });
 });

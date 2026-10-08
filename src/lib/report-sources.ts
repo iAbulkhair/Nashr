@@ -12,7 +12,8 @@ export const SOURCES: { key: SourceKey; provs: string[] }[] = [
   // Ad accounts only: "snapchat" is Snapchat Ads, and "google" is the site connection (analytics), never an ad account.
   { key: "ads", provs: ["meta_ads", "snapchat", "tiktok_ads", "google_ads"] },
   { key: "store", provs: ["shopify", "salla", "zid", "woocommerce"] },
-  // "meta" is the Facebook and Instagram connection; through Composio it reads Instagram results.
+  // "meta" is the Facebook and Instagram connection; through Composio it reads Instagram results, and "linkedin" the
+  // chosen company page.
   { key: "social", provs: ["meta", "instagram", "tiktok", "x", "linkedin"] },
 ];
 export const PLATFORM_METRICS: { key: string; source: SourceKey }[] = [
@@ -30,3 +31,10 @@ export function reportSources(connected: readonly string[]) {
 
 /** Followers unlock only once Instagram or a LinkedIn page was actually read, not when a record merely exists. */
 export const socialRead = (s: SocialSnapshot | null | undefined) => !!(s?.ig || s?.li);
+
+/**
+ * A LinkedIn connection through Composio with no company page chosen reads nothing, so the social card asks for a page.
+ * A direct LinkedIn record has no reader at all.
+ */
+export const liNeedsPage = (conns: readonly { provider: string; meta?: Record<string, string> }[]) =>
+  conns.some((c) => c.provider === "linkedin" && c.meta?.via === "composio" && !c.meta?.liOrg);

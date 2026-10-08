@@ -20,6 +20,6 @@ export const READS_ADS: readonly string[] = ["meta_ads", "snapchat", "google_ads
 /** Google Analytics 4 and Search Console, read into the reports' site block (syncSite in src/lib/site-stats.ts). */
 export const READS_SITE: readonly string[] = ["google"];
 /** Meta through Composio: Instagram account and post results, read into the reports' social block (src/lib/social-stats.ts). */
-export const READS_SOCIAL: readonly string[] = ["meta"];
+export const READS_SOCIAL: readonly string[] = ["meta", "linkedin"];
 export const READS_METRICS: readonly string[] = ["salla", "shopify", "woocommerce", "zid", ...READS_ADS, ...READS_SITE, ...READS_SOCIAL];
 export const isWorking = (id: string) => WORKING_PROVIDERS.includes(id);

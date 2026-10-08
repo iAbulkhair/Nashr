@@ -53,7 +53,9 @@ const errCode = (e: unknown) => (e instanceof Error && /^[a-z_]+$/.test(e.messag
 /** The adapter's 401 (composio.ts statusOf): only a new connection fixes it, so it is never retried or hidden. */
 const refused = (e: unknown) => e instanceof Error && / 401:/.test(e.message);
 /** States the owner fixes on the platform, not by reconnecting: written to the snapshot and never thrown. */
-const KNOWN = new Set(["ig_not_professional"]);
+const KNOWN = new Set(["ig_not_professional", "li_no_page_access"]);
+/** LinkedIn refuses a page the member does not administer, or an app without organization access, with a 403. */
+const denied = (e: unknown) => e instanceof Error && /403|forbidden|access.?denied/i.test(e.message);
 
 const TYPES: readonly IgPost["type"][] = ["IMAGE", "VIDEO", "CAROUSEL_ALBUM"];
 const METRICS = ["views", "reach", "likes", "comments", "saved", "shares"] as const;
@@ -151,9 +153,43 @@ async function readIg(scope: string, c: Connection, now: Date): Promise<Ig> {
 const holdsIg = (c: Connection | null | undefined): c is Connection => !!(c && isComposio(c) && c.data.instagram && c.meta?.igId);
 const holdsLi = (c: Connection | null | undefined): c is Connection => !!(c && isComposio(c) && c.meta?.liOrg);
 
-/** Filled in by the LinkedIn task (plan Task 8). */
-async function readLi(): Promise<Li> {
-  throw new Error("not_connected");
+/** The sum of one statistic over the days LinkedIn answered for; `null` when no day carried it. */
+function total(rows: Record<string, unknown>[], key: string): number | null {
+  let sum: number | null = null;
+  for (const row of rows) {
+    const n = num(at(row, `totalShareStatistics.${key}`));
+    if (n != null) sum = (sum ?? 0) + n;
+  }
+  return sum;
+}
+
+/** The company page's last 28 days, one row per day summed here, and its followers on the read date. */
+async function readLi(scope: string, c: Connection, now: Date): Promise<Li> {
+  const acc = accountOf(c, "linkedin");
+  const org = c.meta?.liOrg;
+  if (!org || !/^urn:li:organization:\d+$/.test(org)) throw new Error("not_connected");
+  const end = now.getTime();
+  const start = end - DAYS * 864e5;
+  const [stats, size] = await Promise.all([
+    composioRead(scope, "linkedin", "LINKEDIN_GET_SHARE_STATS", { organizational_entity: org, time_intervals: `(timeRange:(start:${start},end:${end}),timeGranularityType:DAY)` }, acc).catch((e) => {
+      throw refused(e) || !denied(e) ? e : new Error("li_no_page_access");
+    }),
+    composioRead(scope, "linkedin", "LINKEDIN_GET_NETWORK_SIZE", { organization_id: org.slice(org.lastIndexOf(":") + 1), edgeType: "COMPANY_FOLLOWED_BY_MEMBER" }, acc)
+      .catch((e) => { if (refused(e)) throw e; return null; }),
+  ]);
+  const rows = listOf(stats, "totalShareStatistics");
+  const [impressions, clicks, reactions, comments, shares] = ["impressionCount", "clickCount", "likeCount", "commentCount", "shareCount"].map((k) => total(rows, k));
+  const acts = (clicks ?? 0) + (reactions ?? 0) + (comments ?? 0) + (shares ?? 0);
+  let name = "";
+  try { name = (JSON.parse(c.meta?.liOrgs ?? "[]") as { urn: string; name: string }[]).find((o) => o?.urn === org)?.name ?? ""; } catch { /* the page list is optional */ }
+  return {
+    org,
+    name: clean(name, 80) || `Page ${org.slice(org.lastIndexOf(":") + 1)}`,
+    followers: size == null ? null : num(pick(size, ["firstDegreeSize"])),
+    range: { from: day(new Date(start)), to: day(now) },
+    impressions, clicks, reactions, comments, shares,
+    engagement: impressions ? Math.round((acts / impressions) * 1e4) / 1e4 : null,
+  };
 }
 
 export async function getSocialSnapshot(scope: string) {
@@ -172,7 +208,7 @@ export async function syncSocial(scope: string, conns: { meta?: Connection | nul
   if (!igHeld && !liHeld) throw new Error("not_connected");
   const [ig, li] = await Promise.allSettled([
     igHeld ? readIg(scope, meta, now) : Promise.reject(new Error("not_connected")),
-    liHeld ? readLi() : Promise.reject(new Error("not_connected")),
+    liHeld ? readLi(scope, linkedin, now) : Promise.reject(new Error("not_connected")),
   ]);
   const snap: SocialSnapshot = { at: now.toISOString() };
   const failed: SocialReadError[] = [];

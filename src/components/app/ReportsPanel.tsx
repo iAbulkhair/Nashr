@@ -26,7 +26,7 @@ type Item = { id: string; type: TaskType; title: string; status: string; created
 
 const METRICS = ["created", "approved", "approvalRate", "pending", "published", "images", "videos", "creditsUsed", "scheduled"] as const;
 type MetricKey = (typeof METRICS)[number];
-export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null, site = null, social = null, syncFailure = null, perf = null, perfImport = true, perfDelete = true, owner = true, topups = true }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null; /** `getSiteSnapshot`: GA4 and Search Console totals (src/lib/site-stats.ts). */ site?: SiteSnapshot | null; /** `getSocialSnapshot`: Instagram and LinkedIn page results (src/lib/social-stats.ts). */ social?: SocialSnapshot | null; /** `getSyncFailure`: the last automatic store sync that failed, until one succeeds. */ syncFailure?: { at: string; provider: string } | null; perf?: PerfSnapshot | null; /** `can(u, "performance.import")` */ perfImport?: boolean; /** `can(u, "performance.delete")` */ perfDelete?: boolean; /** `can(u, "billing")`: picks the out-of-credits line (rule 457). */ owner?: boolean; /** `topupsSold(u.plan)` */ topups?: boolean }) {
+export default function ReportsPanel({ t, lang, k, items, credits, quality, range = "7", connected = [], store = null, site = null, social = null, liNoPage = false, syncFailure = null, perf = null, perfImport = true, perfDelete = true, owner = true, topups = true }: { t: AppDict; lang: Lang; k: Kpis; items: Item[]; credits: number; quality: AgentMetrics[]; range?: string; connected?: string[]; store?: SalesSnapshot | null; /** `getSiteSnapshot`: GA4 and Search Console totals (src/lib/site-stats.ts). */ site?: SiteSnapshot | null; /** `getSocialSnapshot`: Instagram and LinkedIn page results (src/lib/social-stats.ts). */ social?: SocialSnapshot | null; /** `liNeedsPage`: LinkedIn is connected through Composio with no company page chosen. */ liNoPage?: boolean; /** `getSyncFailure`: the last automatic store sync that failed, until one succeeds. */ syncFailure?: { at: string; provider: string } | null; perf?: PerfSnapshot | null; /** `can(u, "performance.import")` */ perfImport?: boolean; /** `can(u, "performance.delete")` */ perfDelete?: boolean; /** `can(u, "billing")`: picks the out-of-credits line (rule 457). */ owner?: boolean; /** `topupsSold(u.plan)` */ topups?: boolean }) {
   const r = useRouter();
   const R = t.reports;
   const [busy, setBusy] = useState<TaskType | null>(null);
@@ -102,7 +102,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
       <p className="mt-2 font-mono text-xs text-muted" dir="ltr">{k.window.from} → {k.window.to}</p>
       <PerformanceImport lang={lang} initial={perf} ads={connected.filter((p) => READS_ADS.includes(p))} canImport={perfImport} canDelete={perfDelete} />
       {site && (site.ga || site.gsc) && <SiteStats lang={lang} site={site} />}
-      {social && <SocialStats lang={lang} social={social} />}
+      {(social || liNoPage) && <SocialStats lang={lang} social={social} liNoPage={liNoPage} />}
       {salesProvider && <StoreSales R={R.store} paused={t.generate.paused} provider={salesProvider} store={store?.provider === salesProvider ? store : null} failedAt={syncFailure?.provider === salesProvider ? syncFailure.at : null} lang={lang} />}
 
       <h2 className="mt-8 font-display text-xl font-bold">{R.metricsTitle}</h2>

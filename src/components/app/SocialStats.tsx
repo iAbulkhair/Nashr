@@ -1,5 +1,5 @@
 import type { Lang } from "@/lib/i18n";
-import type { IgPost, SocialSnapshot } from "@/lib/social-stats";
+import type { IgPost, Li, SocialSnapshot } from "@/lib/social-stats";
 import { dateFormat } from "@/lib/dates";
 
 /**
@@ -12,14 +12,14 @@ const STR = {
     title: "نتائج السوشال", read: "آخر قراءة", followers: "المتابعون", reach28: "الوصول (28 يوماً)", views28: "المشاهدات (28 يوماً)",
     topPosts: "أفضل المنشورات", fromThakeen: "من ذكين", open: "افتح", views: "مشاهدات", reach: "وصول", likes: "إعجابات", comments: "تعليقات",
     notProfessional: "حساب إنستقرام ليس احترافياً، فلا نتائج له", liNoPage: "اربط صفحة شركة لترى نتائج لينكدإن",
-    noIg: "إنستقرام لم يُقرأ بعد.", note: "تُحدَّث يومياً. دانة تستخدم هذه الأرقام في تقاريرها.",
+    noIg: "إنستقرام لم يُقرأ بعد.", impressions28: "مرات الظهور (28 يوماً)", clicks: "النقرات", reactions: "الإعجابات", shares: "إعادة النشر", engagement: "معدل التفاعل", note: "تُحدَّث يومياً. دانة تستخدم هذه الأرقام في تقاريرها.",
     types: { IMAGE: "صورة", VIDEO: "فيديو", CAROUSEL_ALBUM: "ألبوم", REELS: "ريلز" },
   },
   en: {
     title: "Social results", read: "Last read", followers: "Followers", reach28: "Reach (28 days)", views28: "Views (28 days)",
     topPosts: "Top posts", fromThakeen: "from Thakeen", open: "Open", views: "views", reach: "reach", likes: "likes", comments: "comments",
     notProfessional: "This Instagram account is not a professional account, so it has no results", liNoPage: "Connect a company page to see LinkedIn results",
-    noIg: "Instagram has not been read yet.", note: "Refreshed daily. Dana uses these figures in her reports.",
+    noIg: "Instagram has not been read yet.", impressions28: "Impressions (28 days)", clicks: "Clicks", reactions: "Reactions", shares: "Reposts", engagement: "Engagement rate", note: "Refreshed daily. Dana uses these figures in her reports.",
     types: { IMAGE: "Image", VIDEO: "Video", CAROUSEL_ALBUM: "Carousel", REELS: "Reel" },
   },
 } as const;
@@ -29,9 +29,12 @@ const fmt = (n: number | null) => (n == null ? "—" : NUM.format(n));
 /** Best first: views, then reach; a post with neither read sorts last. */
 const top = (posts: IgPost[]) => [...posts].sort((a, b) => (b.views ?? -1) - (a.views ?? -1) || (b.reach ?? -1) - (a.reach ?? -1)).slice(0, 5);
 
-export default function SocialStats({ lang, social }: { lang: Lang; social: SocialSnapshot }) {
+const pct = (n: number | null) => (n == null ? "—" : `${NUM.format(n * 100)}%`);
+
+/** `liNoPage`: LinkedIn is connected through Composio with no company page chosen (report-sources.ts `liNeedsPage`). */
+export default function SocialStats({ lang, social, liNoPage = false }: { lang: Lang; social: SocialSnapshot | null; liNoPage?: boolean }) {
   const S = STR[lang];
-  const when = dateFormat(lang, { day: "numeric", month: "short", year: "numeric" }).format(new Date(social.at));
+  const when = social ? dateFormat(lang, { day: "numeric", month: "short", year: "numeric" }).format(new Date(social.at)) : null;
   const tile = (label: string, value: string, sub?: string) => (
     <div className="rounded-lg border border-ink/10 p-3">
       <p className="text-xs text-muted">{label}</p>
@@ -39,12 +42,13 @@ export default function SocialStats({ lang, social }: { lang: Lang; social: Soci
       {sub && <p className="mt-0.5 text-xs text-muted" dir="ltr">{sub}</p>}
     </div>
   );
-  const ig = social.ig;
+  const ig = social?.ig;
+  const li: Li | undefined = social?.li;
   return (
     <div id="social-stats" className="card mt-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-display text-xl font-bold">{S.title}</h2>
-        <p className="text-xs text-muted">{S.read}: {when}</p>
+        {when && <p className="text-xs text-muted">{S.read}: {when}</p>}
       </div>
       {ig ? (
         <>
@@ -75,8 +79,21 @@ export default function SocialStats({ lang, social }: { lang: Lang; social: Soci
             </div>
           )}
         </>
-      ) : <p className="mt-3 text-sm text-muted">{social.igError === "ig_not_professional" ? S.notProfessional : S.noIg}</p>}
-      {social.liError === "li_no_page_access" && <p className="mt-3 text-sm text-muted">{S.liNoPage}</p>}
+      ) : social?.igError ? <p className="mt-3 text-sm text-muted">{social.igError === "ig_not_professional" ? S.notProfessional : S.noIg}</p> : null}
+      {li && (
+        <>
+          <p className="mt-4 text-sm font-semibold" dir="auto">{li.name}</p>
+          <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {tile(S.followers, fmt(li.followers))}
+            {tile(S.impressions28, fmt(li.impressions), `${li.range.from} → ${li.range.to}`)}
+            {tile(S.engagement, pct(li.engagement))}
+          </div>
+          <p className="mt-2 text-xs text-muted" dir="ltr">
+            {fmt(li.clicks)} {S.clicks} · {fmt(li.reactions)} {S.reactions} · {fmt(li.comments)} {S.comments} · {fmt(li.shares)} {S.shares}
+          </p>
+        </>
+      )}
+      {(liNoPage || social?.liError === "li_no_page_access") && <p className="mt-3 text-sm text-muted">{S.liNoPage}</p>}
       <p className="mt-3 text-xs text-muted">{S.note}</p>
     </div>
   );
