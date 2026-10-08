@@ -14,8 +14,8 @@ import { clean, type Row } from "../perf-import";
  */
 export const META_ADS = "https://graph.facebook.com/v23.0";
 export const SNAP_ADS = "https://adsapi.snapchat.com/v1";
-/** google_ads and tiktok_ads connect only through Composio (src/lib/connectors/ads-via-composio.ts). */
-export const AD_PROVIDERS = ["meta_ads", "snapchat", "google_ads", "tiktok_ads"] as const;
+/** google_ads, tiktok_ads and linkedin_ads connect only through Composio (src/lib/connectors/ads-via-composio.ts). */
+export const AD_PROVIDERS = ["meta_ads", "snapchat", "google_ads", "tiktok_ads", "linkedin_ads"] as const;
 export type AdProvider = (typeof AD_PROVIDERS)[number];
 export const isAdProvider = (p: string): p is AdProvider => (AD_PROVIDERS as readonly string[]).includes(p);
 export type AdAccount = { id: string; name: string; currency?: string };

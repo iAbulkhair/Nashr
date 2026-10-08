@@ -35,7 +35,7 @@ export async function clearPerf(scope: string) {
  * logged by its code alone, `failCode`), while a failed current read throws as before.
  */
 export async function syncAds(scope: string, provider: AdProvider, c: Connection, now = new Date()): Promise<PerfSnapshot> {
-  const read = (at: Date, totalsOnly = false) => (isComposio(c) ? adRowsVia(scope, c, at) : adRows(c, at, { totalsOnly }));
+  const read = (at: Date, totalsOnly = false) => (isComposio(c) ? adRowsVia(scope, c, at, { totalsOnly }) : adRows(c, at, { totalsOnly }));
   const [pull, prev, codes] = await Promise.all([
     read(now),
     prevOf(scope, c, read, now).catch((e) => {

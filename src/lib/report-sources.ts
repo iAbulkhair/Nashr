@@ -9,8 +9,9 @@ import type { StoredSocial } from "./social-stats";
 export type SourceKey = "analytics" | "ads" | "store" | "social";
 export const SOURCES: { key: SourceKey; provs: string[] }[] = [
   { key: "analytics", provs: ["google"] },
-  // Ad accounts only: "snapchat" is Snapchat Ads, and "google" is the site connection (analytics), never an ad account.
-  { key: "ads", provs: ["meta_ads", "snapchat", "tiktok_ads", "google_ads"] },
+  // Ad accounts only: "snapchat" is Snapchat Ads, "linkedin_ads" LinkedIn Ads (the company page is "linkedin", social),
+  // and "google" is the site connection (analytics), never an ad account.
+  { key: "ads", provs: ["meta_ads", "snapchat", "tiktok_ads", "google_ads", "linkedin_ads"] },
   { key: "store", provs: ["shopify", "salla", "zid", "woocommerce"] },
   // "meta" is the Facebook and Instagram connection; through Composio it reads the Instagram account and the Facebook
   // Page, "linkedin" the chosen company page, "youtube" the channel and "tiktok" the account. "x" is read directly.

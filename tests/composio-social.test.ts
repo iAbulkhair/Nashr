@@ -55,6 +55,8 @@ const NEW_READS = {
   tiktok: ["TIKTOK_GET_USER_STATS", "TIKTOK_LIST_VIDEOS"],
   // The ad account's previous spend (rule 733): Snap serves only spend at the account level.
   snapchat: ["SNAPCHAT_GET_AD_ACCOUNTS_STATS"],
+  // LinkedIn Ads (rule 743): the ad accounts, one account, its analytics and its campaign names.
+  linkedin_ads: ["LINKEDIN_ADS_SEARCH_AD_ACCOUNTS", "LINKEDIN_ADS_GET_AD_ACCOUNT", "LINKEDIN_ADS_GET_AD_ANALYTICS", "LINKEDIN_ADS_SEARCH_CAMPAIGNS"],
 } as const;
 
 describe("social results are reads only (rule 663)", () => {
@@ -90,6 +92,14 @@ describe("social results are reads only (rule 663)", () => {
     expect(TOOLKITS.tiktok.read).toEqual({ TIKTOK_GET_USER_STATS: ["fields"], TIKTOK_LIST_VIDEOS: ["max_count", "cursor"] });
     expect(Object.keys(TOOLKITS.tiktok.write)).toEqual(["TIKTOK_POST_PHOTO"]);
     expect(TOOLKITS.tiktok.fixed).toEqual({ TIKTOK_POST_PHOTO: { post_mode: "MEDIA_UPLOAD" } });
+    // LinkedIn Ads' four reads take exactly the spec's arguments (C2), and the toolkit has no write at all.
+    expect(TOOLKITS.linkedin_ads.read).toEqual({
+      LINKEDIN_ADS_SEARCH_AD_ACCOUNTS: ["status", "test", "page_size", "page_token"],
+      LINKEDIN_ADS_GET_AD_ACCOUNT: ["ad_account_id"],
+      LINKEDIN_ADS_GET_AD_ANALYTICS: ["q", "pivot", "fields", "accounts", "dateRange", "timeGranularity"],
+      LINKEDIN_ADS_SEARCH_CAMPAIGNS: ["adAccountId", "pageSize", "pageToken"],
+    });
+    expect(TOOLKITS.linkedin_ads.write).toEqual({});
   });
   it("refuses a new read slug through composioWrite", async () => {
     await expect(composioWrite("s1", "instagram", "INSTAGRAM_GET_IG_USER_MEDIA", { ig_user_id: "1" }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
@@ -98,6 +108,7 @@ describe("social results are reads only (rule 663)", () => {
     for (const slug of NEW_READS.facebook) await expect(composioWrite("s1", "facebook", slug, { page_id: "1" }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
     for (const slug of NEW_READS.youtube) await expect(composioWrite("s1", "youtube", slug, { mine: true }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
     for (const slug of NEW_READS.tiktok) await expect(composioWrite("s1", "tiktok", slug, { max_count: 20 }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
+    for (const slug of NEW_READS.linkedin_ads) await expect(composioWrite("s1", "linkedin_ads", slug, { q: "analytics" }, "ca_1")).rejects.toThrow("composio_tool_not_allowed");
     expect(calls).toEqual([]);
   });
 });

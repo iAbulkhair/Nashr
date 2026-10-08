@@ -9,8 +9,8 @@ import { sumRead, type N } from "./figures";
  *
  * `perfimport:{scope}` holds only the latest read of any platform, drops null figures and keeps three ranked rows, so
  * one platform's sync erases another's. Each ad sync and each CSV upload therefore also writes its own
- * `adstats:{scope}:{p}`, built from the read's raw rows: Meta, Snapchat, Google Ads, TikTok Ads and the last upload
- * stand side by side. `savePerf` never writes here.
+ * `adstats:{scope}:{p}`, built from the read's raw rows: Meta, Snapchat, Google Ads, TikTok Ads, LinkedIn Ads and the
+ * last upload stand side by side. `savePerf` never writes here.
  *
  * `null` is a figure that was not read, never zero. Ad names and the account label are the advertiser's text: cleaned to
  * one plain line of 80 characters before storage, and handed to the model only inside <ad_data> through asData.
@@ -37,7 +37,7 @@ export type AdStats = AdTotals & {
 export const ADSTATS_KEY = (scope: string, p: AdSource) => `adstats:${scope}:${p}`;
 const TOP = 10;
 const NAME_MAX = 80;
-const SOURCE_NAME: Record<AdSource, string> = { meta_ads: "Meta Ads", snapchat: "Snapchat Ads", google_ads: "Google Ads", tiktok_ads: "TikTok Ads", csv: "uploaded file" };
+const SOURCE_NAME: Record<AdSource, string> = { meta_ads: "Meta Ads", snapchat: "Snapchat Ads", google_ads: "Google Ads", tiktok_ads: "TikTok Ads", linkedin_ads: "LinkedIn Ads", csv: "uploaded file" };
 
 const fig = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const orNull = (v: unknown): N => (fig(v) ? v : null);

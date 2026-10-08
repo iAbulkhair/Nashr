@@ -43,7 +43,7 @@ const STR = {
 
 const MEDAL = ["bg-lemon text-ink", "bg-lilac/75 text-ink", "bg-agent-sami/20 text-danger"];
 
-const AD_NAMES: Record<string, string> = { meta_ads: "Meta Ads", snapchat: "Snapchat Ads", google_ads: "Google Ads", tiktok_ads: "TikTok Ads" };
+const AD_NAMES: Record<string, string> = { meta_ads: "Meta Ads", snapchat: "Snapchat Ads", google_ads: "Google Ads", tiktok_ads: "TikTok Ads", linkedin_ads: "LinkedIn Ads" };
 
 /**
  * `canImport` / `canDelete` come from `can()` on the server ("performance.import", "performance.delete": admin and

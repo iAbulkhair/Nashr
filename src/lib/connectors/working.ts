@@ -16,7 +16,7 @@ export const WORKING_PROVIDERS: readonly string[] = ["wordpress", "shopify", "te
 /** Stores whose products the Integrations card can import (the import_products action). */
 export const IMPORTS_PRODUCTS: readonly string[] = ["shopify", "woocommerce", "odoo", "prestashop", "salla", "zid"];
 /** Ad accounts whose results are read into the campaign results card (syncAds in src/lib/perf-store.ts). */
-export const READS_ADS: readonly string[] = ["meta_ads", "snapchat", "google_ads", "tiktok_ads"];
+export const READS_ADS: readonly string[] = ["meta_ads", "snapchat", "google_ads", "tiktok_ads", "linkedin_ads"];
 /** Google Analytics 4 and Search Console, read into the reports' site block (syncSite in src/lib/site-stats.ts). */
 export const READS_SITE: readonly string[] = ["google"];
 /**

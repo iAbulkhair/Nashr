@@ -399,7 +399,7 @@ describe("who can reach Composio (rule 652)", () => {
 
 describe("pins and the importer check (rule 749)", () => {
   it("pins the toolkits whose schemas were read on 2026-10-08 (rule 749)", () => {
-    expect(TOOLKIT_VERSION).toMatchObject({ facebook: "20261008_00", youtube: "20261008_00", linkedin: "20260924_00", tiktok: "20260917_00", snapchat: "20260918_00" });
+    expect(TOOLKIT_VERSION).toMatchObject({ facebook: "20261008_00", youtube: "20261008_00", linkedin: "20260924_00", tiktok: "20260917_00", snapchat: "20260918_00", linkedin_ads: "20260826_00" });
   });
 
   it("the importer check also catches a relative import of the adapter (rule 749)", () => {

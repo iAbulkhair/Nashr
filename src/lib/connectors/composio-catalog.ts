@@ -22,7 +22,7 @@
  */
 export type Toolkit =
   | "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok" | "whatsapp" | "youtube"
-  | "metaads" | "snapchat" | "googleads" | "tiktok_ads" | "google_analytics" | "google_search_console";
+  | "metaads" | "snapchat" | "googleads" | "tiktok_ads" | "linkedin_ads" | "google_analytics" | "google_search_console";
 
 type Tools = Readonly<Record<string, readonly string[]>>;
 /**
@@ -142,6 +142,19 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
     read: { TIKTOK_ADS_GET_ADVERTISER_ACCOUNTS: ["fields"], TIKTOK_ADS_GET_REPORT_INTEGRATED: ["report_type", "advertiser_id", "data_level", "dimensions", "metrics", "start_date", "end_date", "page", "page_size"] },
     write: {},
   },
+  // LinkedIn Ads (rule 743, spec C2): the ad accounts at connect time, then one constant analytics call per period and
+  // one campaign-name call. Its own LinkedIn app (Advertising API), separate from the page toolkit above.
+  linkedin_ads: {
+    provider: "linkedin_ads",
+    authEnv: "COMPOSIO_AUTH_LINKEDIN_ADS",
+    read: {
+      LINKEDIN_ADS_SEARCH_AD_ACCOUNTS: ["status", "test", "page_size", "page_token"],
+      LINKEDIN_ADS_GET_AD_ACCOUNT: ["ad_account_id"],
+      LINKEDIN_ADS_GET_AD_ANALYTICS: ["q", "pivot", "fields", "accounts", "dateRange", "timeGranularity"],
+      LINKEDIN_ADS_SEARCH_CAMPAIGNS: ["adAccountId", "pageSize", "pageToken"],
+    },
+    write: {},
+  },
   // ---------- read only: the site's traffic and search (src/lib/site-stats.ts) ----------
   google_analytics: {
     provider: "google",
@@ -169,6 +182,7 @@ export const PROVIDER_TOOLKITS: Readonly<Record<string, readonly Toolkit[]>> = {
   snapchat: ["snapchat"],
   google_ads: ["googleads"],
   tiktok_ads: ["tiktok_ads"],
+  linkedin_ads: ["linkedin_ads"],
   google: ["google_analytics", "google_search_console"],
 };
 

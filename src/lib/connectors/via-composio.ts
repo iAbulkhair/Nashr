@@ -285,7 +285,7 @@ export async function connectViaComposio(scope: string, provider: string, toolki
     const snip = ch.snippet as Record<string, unknown> | undefined;
     meta.account = (typeof snip?.title === "string" ? snip.title : "YouTube").slice(0, 80);
   }
-  if (toolkit === "metaads" || toolkit === "snapchat" || toolkit === "googleads" || toolkit === "tiktok_ads") {
+  if (toolkit === "metaads" || toolkit === "snapchat" || toolkit === "googleads" || toolkit === "tiktok_ads" || toolkit === "linkedin_ads") {
     // Read only: the ad accounts this login can read, the first chosen until the owner picks another (select_ad_account).
     const accounts = await adAccountsVia(scope, provider, accountId);
     if (!accounts.length) throw new Error("no_ad_account");
