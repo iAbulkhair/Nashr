@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { monthKey } from "./credits";
 import { AGENT_IDS, isAgentId, type AgentId } from "./agents";
+import { modelById } from "./models/catalog";
 
 /**
  * Model token metering per account per month. Credits are what users pay;
@@ -15,7 +16,13 @@ export type TokenUsage = {
   cache_creation_input_tokens?: number | null;
 };
 
-/** USD per million tokens: Anthropic list prices, checked 2026-09-27 (Sonnet 5.5 added 2026-10-02). Update when Anthropic changes them. */
+/**
+ * USD per million tokens: Anthropic list prices, checked 2026-09-27 (Sonnet 5.5 added 2026-10-02). Since 2026-10-08 the
+ * model catalog (`models/catalog.ts`) is the source of rates and this table is only the fallback behind it: `knownRate`
+ * asks the catalog first. The three models here are in the catalog with the same numbers, so nothing is priced differently;
+ * the table goes in a later release, once nothing reads it (expand, then contract: rule 679). Until then a change of an
+ * Anthropic price is made in both places.
+ */
 const RATES: Record<string, { in: number; out: number; cacheRead: number; cacheWrite: number }> = {
   "claude-opus-5": { in: 5, out: 25, cacheRead: 0.5, cacheWrite: 6.25 },
   "claude-sonnet-5": { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 },
@@ -23,11 +30,14 @@ const RATES: Record<string, { in: number; out: number; cacheRead: number; cacheW
   "claude-sonnet-5-5": { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 },
 };
 const DEFAULT_RATE = RATES["claude-opus-5"];
+const hasOldRate = (model: string): boolean => Object.prototype.hasOwnProperty.call(RATES, model);
+/** The catalog's rate for `model`, else the old table's, else undefined. Own keys only: "constructor" has no rate. */
+const knownRate = (model: string) => modelById(model)?.rate ?? (hasOldRate(model) ? RATES[model] : undefined);
 /**
- * True when `model` has its own entry in RATES. `costUsd` prices an unknown id as Opus, so the floor test
- * (tests/pricing-floor.test.ts) asks this for every model the estimates assume. RATES itself stays private.
+ * True when `model` has a rate of its own, in the catalog or in the old table. `costUsd` prices an unknown id as Opus, so
+ * the floor test (tests/pricing-floor.test.ts) asks this for every model the estimates assume. The tables stay private.
  */
-export const hasRate = (model: string): boolean => Object.prototype.hasOwnProperty.call(RATES, model);
+export const hasRate = (model: string): boolean => knownRate(model) !== undefined;
 
 /**
  * `xreview` is the cross-agent review (`crossReview` in noor.ts): Razan's and Majed's notes on another agent's batch. It
@@ -37,7 +47,7 @@ export const KINDS = ["generate", "review", "chat", "onboard", "image_prompt", "
 export type Kind = (typeof KINDS)[number];
 
 export function costUsd(model: string, u: TokenUsage): number {
-  const r = RATES[model] ?? DEFAULT_RATE;
+  const r = knownRate(model) ?? DEFAULT_RATE;
   const inp = u.input_tokens ?? 0, out = u.output_tokens ?? 0, cr = u.cache_read_input_tokens ?? 0, cw = u.cache_creation_input_tokens ?? 0;
   return (inp * r.in + out * r.out + cr * r.cacheRead + cw * r.cacheWrite) / 1e6;
 }
