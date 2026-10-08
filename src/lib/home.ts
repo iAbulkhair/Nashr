@@ -634,7 +634,7 @@ export const SCENES: Scene[] = [
   },
   {
     role: { ar: "صاحبة صالون", en: "Salon owner" },
-    line: { ar: "أحلى عادة: كل سبت أوافق على خطة نور للأسبوع، وبعدها أركّز على متجري.", en: "Best habit: every Saturday I approve Noor's plan for the week, then I focus on my shop." },
+    line: { ar: "أحلى عادة: كل سبت أوافق على خطة نور للأسبوع، وبعدها أركّز على صالوني.", en: "Best habit: every Saturday I approve Noor's plan for the week, then I focus on my salon." },
     kind: "tip", agent: "noor", task: "weekly_plan",
     look: { head: "shayla", glasses: true, eyes: "laugh", tone: "razan" },
   },
