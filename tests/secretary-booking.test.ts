@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { json, markVerified, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
 import { forceRemoveMember, getMember, leaveTeam, removeMember, wipeTeam } from "@/lib/team";
 import * as resetRoute from "@/app/api/auth/reset/route";
@@ -749,7 +749,7 @@ describe("booking webhook (rules 594-595)", () => {
   const calcomSig = (body: string, key: string) => ({ "x-cal-signature-256": hex(key, body) });
   const calendlySig = (body: string, key: string, t = Math.floor(Date.now() / 1000)) => ({ "calendly-webhook-signature": `t=${t},v1=${hex(key, `${t}.${body}`)}` });
   const post = (token: string, body: string, headers: Record<string, string> = {}, ip = nextIp()) =>
-    bookingRoute.POST(new Request(`http://x/api/secretary/booking/${token}`, { method: "POST", headers: { "x-real-ip": ip, "content-type": "application/json", ...headers }, body }), params({ token }));
+    bookingRoute.POST(new Request(`http://x/api/secretary/booking/${token}`, { method: "POST", headers: { "x-forwarded-for": ip, "content-type": "application/json", ...headers }, body }), params({ token }));
   const calcomCreate = (startMs: number, uid: string) => {
     const o = clone(fx("booking-calcom-created")) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
     o.payload.uid = uid; o.payload.startTime = iso(startMs); o.payload.endTime = iso(startMs + 30 * MIN);
@@ -1244,7 +1244,7 @@ describe("booking revocation (rule 598)", () => {
   const mem = () => (globalThis as unknown as { __nashrMem: { kv: Map<string, unknown>; sets: Map<string, unknown> } }).__nashrMem;
   const resolveAs = async (email: string) => { await signIn(email); return currentUser(); };
   let ipN = 0;
-  const ipH = () => ({ "x-real-ip": `198.18.9.${++ipN}` });
+  const ipH = () => ({ "x-forwarded-for": `198.18.9.${++ipN}` });
   /** A real reset link for this login (what /api/auth/forgot stores), redeemed through the real route. */
   const resetAs = async (email: string, kind: "owner" | "member", password: string) => {
     const token = randomBytes(32).toString("hex");
@@ -1346,7 +1346,7 @@ describe("booking revocation (rule 598)", () => {
     // 7. The founder's reset of the owner: the same, for the owner and the members that have links again.
     t.owner = await live(owner.email, owner.email);
     t.m5 = await live(m5.email, owner.email);
-    if (!(await getUser(FOUNDER))) await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" });
+    if (!(await getUser(FOUNDER))) await markVerified((await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" })).email);
     await signIn(FOUNDER);
     const res = await adminUserRoute.POST(json("/api/admin/users/x", "POST", { action: "resetPassword" }), params({ email: encodeURIComponent(owner.email) }));
     expect(res.status).toBe(200);

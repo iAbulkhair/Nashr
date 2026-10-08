@@ -375,3 +375,33 @@ describe("the copy: both languages, no typed numbers, chat outside the agent cap
     }
   });
 });
+
+describe("a chat stream that ends without an answer is recovered, and an unanswered message goes back into the box (rule 771)", () => {
+  const src = readFileSync("src/components/app/ChatPanel.tsx", "utf8");
+  const send = src.slice(src.indexOf("async function send("), src.indexOf("async function vote("));
+  const onboard = src.slice(src.indexOf("// First run: Noor builds"), src.indexOf("async function newConv("));
+
+  it("send: only a message or an error ends the turn; a clean end without one falls into the recovery", () => {
+    expect(send).toContain('else if (ev.type === "message") { got = true; done({ ok: true, ...ev }); }');
+    expect(send).toContain('else if (ev.type === "error") { got = true; done({ ok: false, error: ev.error }); }');
+    expect(send.match(/got = true/g)).toHaveLength(2);
+    // After the read loop and inside the try, so the existing catch (look for the saved reply) takes it.
+    const check = send.indexOf('if (!got) throw new Error("ended");');
+    expect(check).toBeGreaterThan(send.indexOf("for (;;) {"));
+    expect(check).toBeLessThan(send.indexOf("} catch {"));
+  });
+
+  it("send: when the recovery finds no saved reply, the typed text comes back unless something new was typed", () => {
+    expect(send).toContain('else { done({ ok: false, error: "network" }); setText((cur) => cur || m); }');
+    // In the recovery branch, after the polls, not before them.
+    expect(send.lastIndexOf("setText((cur) => cur || m);")).toBeGreaterThan(send.indexOf("for (let n = 0; n < 40 && !found; n++)"));
+  });
+
+  it("first-run onboarding: a stream that ends without done or error says setup failed instead of nothing", () => {
+    expect(onboard).toContain('else if (ev.type === "done") { got = true;');
+    expect(onboard).toContain('else if (ev.type === "error") { got = true;');
+    const check = onboard.indexOf('if (!got) throw new Error("ended");');
+    expect(check).toBeGreaterThan(onboard.indexOf("for (;;) {"));
+    expect(check).toBeLessThan(onboard.indexOf("} catch { fail(); }"));
+  });
+});

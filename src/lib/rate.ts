@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "./db";
 import type { User } from "./auth";
+import { onVercel } from "./deploy-env";
 
 /** The two windows the per-account buckets use, in seconds; a refusal that names one ("hour", "day") waits this long. */
 export const WINDOW = { hour: 3600, day: 86400 } as const;
@@ -39,9 +40,20 @@ export function retryLater(body: Record<string, unknown> | string | null, window
   return body !== null && typeof body === "object" ? NextResponse.json(body, init) : new NextResponse(body, init);
 }
 
-/** Client IP for throttling. Platform-set headers first; the caller-suppliable x-forwarded-for is the last resort and its LAST hop is used. */
+/**
+ * Client IP for throttling. Only a header the host's own front proxy sets or overwrites counts: any other the caller
+ * writes, and so picks a fresh bucket per request (rule 773).
+ *  - On Vercel (`onVercel()`, `VERCEL=1`): Vercel overwrites `x-vercel-forwarded-for` and `x-real-ip` with the client's
+ *    address, so they are read first.
+ *  - Anywhere else (live Hostinger since 2026-10-07): those two pass through from the client, as
+ *    `x-vercel-forwarded-for` did on thakeen.com on 2026-10-08, and are ignored. Only the LAST `x-forwarded-for` hop is
+ *    read: the one the proxy nearest the app appended, or the socket address `next start` fills in when no proxy sent
+ *    the header. Unverified on Hostinger: if its CDN (hcdn) is that nearest proxy's client, the hop is the CDN's edge
+ *    and callers behind one edge share a bucket. flows.md section 51 item 7 is the staging check.
+ * No address at all: the one shared "unknown" bucket, so a missing header throttles everyone rather than no one.
+ */
 export const clientIp = (req: Request) =>
-  (req.headers.get("x-vercel-forwarded-for") ?? req.headers.get("x-real-ip") ?? "").split(",")[0].trim() ||
+  (onVercel() ? (req.headers.get("x-vercel-forwarded-for") ?? req.headers.get("x-real-ip") ?? "").split(",")[0].trim() : "") ||
   (req.headers.get("x-forwarded-for") ?? "").split(",").pop()!.trim() || "unknown";
 
 /**

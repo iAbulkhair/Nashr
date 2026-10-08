@@ -6,6 +6,7 @@ import type { AgentId } from "./agents";
 import type { Member } from "./team";
 import { PLAN_CREDITS, planFromStore, type AgencyDeal, type Plan } from "./pricing";
 import { settleTopups, type Receipt, type TopupLot } from "./topups";
+import { billingLocked, type Billing } from "./billing-state";
 
 // The plan table lives in src/lib/pricing.ts (import-free, so client components can read it). Re-exported here so the
 // existing `@/lib/auth` imports keep working.
@@ -123,10 +124,26 @@ export type User = {
    * (src/lib/credits.ts), all under `withUserLock`. `credits` above is the whole balance, packs included.
    */
   topups?: TopupLot[];
+  /**
+   * The online subscription (Paymob KSA, src/lib/billing.ts, rules 700-729): the paid-through day, the renewal state and
+   * the saved card's brand and last four digits (the card token itself lives in `paymob:card:{email}`, never here).
+   * Written only by src/lib/billing.ts under `withUserLock`. Absent for accounts activated by hand.
+   */
+  billing?: Billing;
   /** Runtime only: `getUser` settled the stored packs (one expired); the next locked save writes them. Never persisted. */
   topupsDirty?: boolean;
   /** ISO time: every MEMBER session issued before it is dead (founder reset, owner reset). The owner's own sessions follow `sessionsAfter`. */
   teamSessionsAfter?: string;
+  /**
+   * ISO time the owner proved the address with an emailed code (rules 751-766). Written only by the verify routes. An owner
+   * without a stamp reads as signed out everywhere (`currentUser`): older accounts are not grandfathered, they verify on
+   * their next visit.
+   */
+  emailVerifiedAt?: string;
+  /** Set once by `createUser`: this account was created under the gate, so its address was never trusted. Only these accounts may change the address on the verify page. Never cleared. */
+  gatedSignup?: true;
+  /** Change-email budget carried across address moves (3 per account per UTC day): the day (YYYY-MM-DD) and moves made on it. */
+  emailMoves?: { day: string; n: number };
   /** Runtime only: storage scope of the active brand (email for the default brand). Never persisted. */
   scope?: string;
   brandId?: string;
@@ -142,9 +159,10 @@ const COOKIE = "nashr_session";
 /**
  * An ended trial may not spend. Written once because it was written five times: the image route and the chat's
  * generate_image tool were the two spending paths that never got a copy, so an expired trial went on paying for
- * fal.ai and Anthropic calls indefinitely.
+ * fal.ai and Anthropic calls indefinitely. A Paymob subscription locked after its failed renewal's grace (rule 712)
+ * stops the same way, through every gate that already reads this.
  */
-export const trialOver = (u: Pick<User, "plan" | "trialEnds">) => u.plan === "trial" && new Date(u.trialEnds) < new Date();
+export const trialOver = (u: Pick<User, "plan" | "trialEnds" | "billing">) => (u.plan === "trial" && new Date(u.trialEnds) < new Date()) || billingLocked(u.billing);
 
 export const trialDaysLeft = (trialEnds: string) => Math.max(0, Math.ceil((new Date(trialEnds).getTime() - Date.now()) / 864e5));
 
@@ -208,6 +226,7 @@ export async function createUser(input: { email: string; name: string; phone: st
     // Sessions cannot be enumerated, so a deleted account's cookies outlive it. Stamping the creation time kills every
     // session issued before this account existed: a re-registered address never inherits an old login.
     sessionsAfter: now.toISOString(),
+    gatedSignup: true,
   };
   await saveUser(u);
   return u;
@@ -286,14 +305,33 @@ export async function destroySession() {
   jar.delete(COOKIE);
 }
 
-export async function currentUser(): Promise<User | null> {
+/** An owner is verified when the address was proved with an emailed code (`User.emailVerifiedAt`). */
+export const emailVerified = (u: Pick<User, "emailVerifiedAt">): boolean => !!u.emailVerifiedAt;
+
+/** The session behind the cookie, or null (no cookie, expired, a key impersonation whose key changed). */
+async function readSession(): Promise<Session | null> {
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
   if (!token) return null;
   const s = sessionOf(await db.get<SessionRec>(`session:${token}`));
   if (!s) return null;
   if (s.imp === "key" && !(await keyImpLive(s))) return null;
-  return resolveSession(s);
+  return s;
+}
+
+export async function currentUser(): Promise<User | null> {
+  const s = await readSession();
+  return s ? resolveSession(s) : null;
+}
+
+/**
+ * Like `currentUser`, but an owner who has not verified the address yet resolves too. Only the verify page, the verify
+ * routes and the app layout may call it (rule 752, pinned by tests/email-verify-gate.test.ts): every other caller keeps
+ * `currentUser`, where such an owner reads as signed out.
+ */
+export async function currentUserUnverified(): Promise<User | null> {
+  const s = await readSession();
+  return s ? resolveSession(s, { unverified: true }) : null;
 }
 
 /**
@@ -301,11 +339,11 @@ export async function currentUser(): Promise<User | null> {
  *
  * The account is always the owner's `User`, so every `sc(u)`, charge and plan check keeps working unchanged. Scope is
  * built from the OWNER email: a member's own address never becomes a workspace key. A member is refused when disabled,
- * when the session predates their own or the team's revocation stamp, when the owner is gone or suspended, when the
- * member is not on the owner's roster (`members:{owner}`), or when the member record predates the owner record (a
+ * when the session predates their own or the team's revocation stamp, when the owner is gone, suspended or has not
+ * verified the address (rule 767), when the member is not on the owner's roster (`members:{owner}`), or when the member record predates the owner record (a
  * re-registered owner address never inherits an old team).
  */
-async function resolveSession(s: Session): Promise<User | null> {
+async function resolveSession(s: Session, opts: { unverified?: boolean } = {}): Promise<User | null> {
   const email = normalizeEmail(s.email);
   const [{ getMember, onRoster }, { activeBrandId, listBrands, scopeFor }] = await Promise.all([import("./team"), import("./brands")]);
   // The active brand is per login (`activebrand:{login}`), so it is read in the same round as the login records.
@@ -313,6 +351,10 @@ async function resolveSession(s: Session): Promise<User | null> {
   if (u) {
     if (u.suspended) return null;
     if (issuedBefore(s.at, u.sessionsAfter)) return null; // issued before the last password change (or before the account existed)
+    // The verification gate (rule 751): an owner who has not proved the address is signed out for every caller except
+    // `currentUserUnverified`. A founder impersonation passes (support must reach the account). A member login (below)
+    // is gated by its owner's state too (rule 767).
+    if (!emailVerified(u) && !s.imp && !opts.unverified) return null;
     u.brandId = brandId;
     u.scope = scopeFor(u.email, brandId);
     const base = { email: u.email, name: u.name, lang: u.lang, role: "owner" as const };
@@ -329,6 +371,10 @@ async function resolveSession(s: Session): Promise<User | null> {
   // not sign in either.
   const [owner, brands, listed] = await Promise.all([getUser(m.memberOf), listBrands(m.memberOf), onRoster(m.memberOf, email)]);
   if (!owner || owner.suspended || !listed) return null;
+  // Rule 767: while the owner has not proved the address, the account spends nothing, so its members are signed out too,
+  // in both resolvers. A member has no address of the owner's to prove, so `currentUserUnverified` never hands one to the
+  // verify page: they read as signed out, and login answers `owner_unverified`. (Impersonation never reaches this branch.)
+  if (!emailVerified(owner)) return null;
   if (issuedBefore(s.at, owner.teamSessionsAfter)) return null;
   // NaN on either side (a malformed date) refuses too.
   if (!(new Date(m.acceptedAt).getTime() >= new Date(owner.createdAt).getTime())) return null;

@@ -17,8 +17,11 @@ import { grantEarlyOffer, lastDayOfferOwed, offerLastDay, openOffer } from "@/li
 import ChatAllowanceCard from "@/components/app/ChatAllowanceCard";
 import TopupCard from "@/components/app/TopupCard";
 import Scribble from "@/components/Scribble";
+import { PaymobPayButton, PaymobPlanCard } from "@/components/app/PaymobBilling";
+import { paymobConfig } from "@/lib/paymob";
+import { billingView } from "@/lib/billing";
 
-export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ lang: string }>; searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const { lang } = await params;
   if (!isLang(lang)) notFound();
   const u = await currentUser();
@@ -28,6 +31,12 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   // Paying is the owner's: pay links and the WhatsApp activation thread (which carries the account email) are built and
   // shown for the owner only. Everyone sees the plan, credits and seats, and is told to ask the owner.
   const owner = can(u, "billing");
+  // Online payment through Paymob KSA (src/lib/billing.ts, rules 700-729): only when it is configured, and only for the
+  // owner themself (`billing.pay` is refused while the founder impersonates). Otherwise the pay links and WhatsApp below
+  // stay the way to pay, exactly as before.
+  const online = can(u, "billing.pay") && !!paymobConfig();
+  const sub = online ? billingView(u.billing) : null;
+  const returned = (await searchParams)?.paymob === "return";
   // One pay link per self-serve tier, keyed by plan id: each card finds its own copy by id, never by position, so a card
   // can never show one tier's price with another tier's link. Agency has no pay link (PAY_LINK_AGENCY is not read): it is
   // sold by contract, through the contact card below.
@@ -73,8 +82,12 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
         {u.plan === "trial" && <div><p className="text-muted">{t.billing.trialEnds}</p><p className="font-mono text-lg" dir="ltr">{u.trialEnds.slice(0, 10)}</p></div>}
       </div>
       {!owner && <ReadOnlyNote className="mt-4" text={t.billing.ownerOnly} />}
+      {returned && online && (
+        <p role="status" className="mt-4 card text-sm" data-paymob-return="">{lang === "ar" ? "إذا تمّ الدفع، يتفعّل اشتراكك خلال دقيقة. حدّث الصفحة لترى حالته." : "If your payment went through, your plan is activated within a minute. Refresh this page to see it."}</p>
+      )}
+      {sub && <PaymobPlanCard lang={lang} billing={sub} />}
       <ChatAllowanceCard lang={lang} status={chat} owner={owner} nextReset={nextReset} trialEnds={u.trialEnds.slice(0, 10)} runway={chatRunway} credits={u.credits} />
-      <TopupCard lang={lang} plan={u.plan} owner={owner} email={owner ? u.email : undefined} whatsapp={owner && waNumber ? waNumber : null} lots={lots} topupCredits={fromTopups} />
+      <TopupCard lang={lang} plan={u.plan} owner={owner} email={owner ? u.email : undefined} whatsapp={owner && waNumber ? waNumber : null} lots={lots} topupCredits={fromTopups} payOnline={online} />
       {owner && u.plan === "trial" && (
         <div className="mt-6 rounded-2xl bg-ink p-6 text-lilac">
           <p className="eyebrow eyebrow-accent">{lang === "ar" ? "ماذا يحدث عند التفعيل" : "What happens when you activate"}</p>
@@ -97,12 +110,15 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
               {offer && <p data-offer-price className="text-sm font-semibold text-ink">{O.card(firstMonthPriceSar(k), PLAN_PRICE_SAR[k])}</p>}
               <p className="text-sm text-danger">{plan.credits}</p>
               <ul className="mt-3 flex-1 space-y-1 text-xs text-ink/70">{plan.features.slice(0, 4).map((f) => <li key={f}>• {f}</li>)}</ul>
-              {!owner ? null : href ? (
+              {!owner ? null : online ? (
+                // The same plan already active is renewed from the subscription card above, not bought again here.
+                sub?.status === "active" && sub.plan === k ? null : <PaymobPayButton lang={lang} kind="plan" plan={k} label={offer ? O.activate : t.billing.pay} />
+              ) : href ? (
                 <a href={href} target="_blank" rel="noreferrer" className="mt-4 rounded-full bg-ink px-4 py-2 text-center text-sm font-semibold text-lilac">{offer ? O.activate : links[k] ? t.billing.pay : t.billing.contact}</a>
               ) : (
                 <a href="mailto:hello@nashr.ai" className="mt-4 rounded-full border border-ink/20 px-4 py-2 text-center text-sm">{offer ? `${O.noWa} ` : ""}hello@nashr.ai</a>
               )}
-              {offer && links[k] && <a href={links[k]} target="_blank" rel="noreferrer" className="mt-2 text-center text-xs text-muted underline">{O.fullPrice}</a>}
+              {offer && !online && links[k] && <a href={links[k]} target="_blank" rel="noreferrer" className="mt-2 text-center text-xs text-muted underline">{O.fullPrice}</a>}
             </div>
           );
         })}

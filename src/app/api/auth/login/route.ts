@@ -1,7 +1,7 @@
 import { track } from "@/lib/track";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
-import { createSession, getLogin, normalizeEmail } from "@/lib/auth";
+import { createSession, emailVerified, getLogin, normalizeEmail } from "@/lib/auth";
 import { allow, clientIp, retryLater } from "@/lib/rate";
 
 /**
@@ -9,6 +9,10 @@ import { allow, clientIp, retryLater } from "@/lib/rate";
  * member of one. The password is checked against THAT login's own hash, so an owner's password never opens a member
  * login and a member's never opens the owner's. The session is issued for the login email; `currentUser` resolves a
  * member session to the owner's account on every request.
+ *
+ * An owner who has not proved the address yet still gets a session, and the answer says `verify: true`: the form then
+ * goes to the verify page with the destination in `next`, so a destination outside `/[lang]/app` (the OAuth consent
+ * page) cannot loop back to login (rule 754). A member of such an owner gets no session at all (rule 767).
  */
 export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as Record<string, string>;
@@ -25,7 +29,7 @@ export async function POST(req: Request) {
     if (owner.suspended) return NextResponse.json({ ok: false, error: "suspended" }, { status: 403 });
     await createSession(owner.email);
     await track(owner.email, "login");
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, verify: !emailVerified(owner) });
   }
 
   // A member: the account it belongs to must still exist, not be suspended, and not be a newer account registered at
@@ -35,6 +39,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "invalid" }, { status: 401 });
   }
   if (owner.suspended) return NextResponse.json({ ok: false, error: "suspended" }, { status: 403 });
+  // Rule 767: the account is paused until its owner proves the address, and only the owner can.
+  if (!emailVerified(owner)) return NextResponse.json({ ok: false, error: "owner_unverified" }, { status: 403 });
   // Paused by the seat limit (a plan downgrade): kept, never deleted, and back when the owner has room again.
   if (member.disabled) return NextResponse.json({ ok: false, error: "disabled" }, { status: 403 });
   await createSession(member.email);

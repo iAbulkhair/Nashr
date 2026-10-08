@@ -23,7 +23,7 @@ const ip = () => `192.0.2.${++ipN}`;
 const stop = (addr = ip()) => {
   const form = new FormData();
   form.set("lang", "en");
-  return impersonate.POST(new Request("https://nashr.test/api/admin/impersonate", { method: "POST", body: form, headers: { "x-real-ip": addr } }));
+  return impersonate.POST(new Request("https://nashr.test/api/admin/impersonate", { method: "POST", body: form, headers: { "x-forwarded-for": addr } }));
 };
 const adminLog = async () => (await db.lrange("admin:log", 0, -1)).map((r) => JSON.parse(r) as { actor: string; email: string; what: string });
 
@@ -108,7 +108,7 @@ describe("password reset link (rules 546-547)", () => {
 
   it("546: the emailed link carries the token in the fragment #t=, never ?token=", async () => {
     const u = await newUser("reset");
-    await forgot.POST(json("/api/auth/forgot", "POST", { email: u.email, lang: "en" }, { "x-real-ip": ip() }));
+    await forgot.POST(json("/api/auth/forgot", "POST", { email: u.email, lang: "en" }, { "x-forwarded-for": ip() }));
     expect(sent).toHaveLength(1);
     expect(sent[0].text).toMatch(/\/en\/app\/reset#t=[a-f0-9]{64}/);
     expect(sent[0].text).not.toContain("?token=");

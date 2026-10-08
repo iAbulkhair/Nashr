@@ -51,8 +51,10 @@ describe("rule 356: the Vercel host lives in one place", () => {
   });
 
   it("no link is built from the request's Host header", () => {
-    // auth.ts reads Host only to decide the session cookie's Secure flag on loopback, never to build a URL.
-    const hits = files("src").filter((p) => p !== join("src", "lib", "auth.ts") && /get\(["']host["']\)|x-forwarded-host|\$\{[^}]*\.host\}/.test(readFileSync(p, "utf8")));
+    // auth.ts reads Host only to decide the session cookie's Secure flag on loopback, never to build a URL. csrf.ts reads
+    // Host and X-Forwarded-Host only to compare them with the request's Origin (rules 690-693), never to build a link.
+    const exempt = new Set([join("src", "lib", "auth.ts"), join("src", "lib", "csrf.ts")]);
+    const hits = files("src").filter((p) => !exempt.has(p) && /get\(["']host["']\)|x-forwarded-host|\$\{[^}]*\.host\}/.test(readFileSync(p, "utf8")));
     expect(hits, `Host-derived origin in: ${hits.join(", ")}`).toEqual([]);
     for (const p of ["src/app/[lang]/app/mcp/page.tsx", "src/app/api/connect/[provider]/callback/route.ts"]) expect(readFileSync(p, "utf8")).toMatch(/appOrigin\(\)/);
   });

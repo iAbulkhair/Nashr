@@ -1,12 +1,15 @@
 name: CI
 
-# Build, type-check, lint, unit tests and the end-to-end suite on every push and pull request.
+# Build, type-check, lint and unit tests on every pull request and every push to main; the end-to-end suite on
+# pull requests that are ready for review (the Scope step below says what each run checks).
 # Vercel deploys from Git on its own. To make a red run block production, add the "Nashr CI" check under
 # Vercel project Settings > Build and Deployment > Deployment Checks (provider: GitHub).
 on:
   push:
     branches: [main]
   pull_request:
+    # ready_for_review: marking a draft ready starts the full suite (see the Scope step).
+    types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -23,6 +26,31 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history, so the Scope step can diff a push against `before`.
+          fetch-depth: 0
+      # What this run checks, to keep inside the plan's Actions minutes (a full run is about 20 minutes, 12 of them the
+      # end-to-end suite). Draft PRs and pushes to main skip the end-to-end suite: a PR runs it once it is marked ready
+      # for review and on every push after that, and GitHub cannot merge a draft, so every PR gets that run first.
+      # A change that touches only docs/, .archify/ or a top-level .md file runs the unit tests alone (they read the
+      # docs). The job itself always runs and always reports "Nashr CI": Vercel's Deployment Check waits for that
+      # check before a production deploy, and a workflow skipped by `paths`/`paths-ignore` would never report it.
+      - name: Scope
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # A pull_request run checks out GitHub's merge commit: its first parent is the base, so HEAD^1..HEAD is the PR.
+          if [ "$EVENT" = pull_request ]; then base="HEAD^1"; else base="$BEFORE"; fi
+          changed=$(git diff --name-only "$base" HEAD 2>/dev/null) || changed=""
+          if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qvE '^(docs/|\.archify/)|^[^/]+\.md$'; then docs_only=true; else docs_only=false; fi
+          if [ "$docs_only" = false ] && [ "$EVENT" = pull_request ] && [ "$DRAFT" != true ]; then e2e=true; else e2e=false; fi
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+          echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
+          echo "docs_only=$docs_only e2e=$e2e"
+          printf '%s\n' "$changed" | head -40
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -33,19 +61,24 @@ jobs:
       # developer's local run — every one of Next's generated route-signature validators is skipped. A renamed route
       # segment merged green and left main undeployable until someone opened the Vercel dashboard.
       - name: Build
+        if: steps.scope.outputs.docs_only != 'true'
         run: npx next build
       - name: Type-check
+        if: steps.scope.outputs.docs_only != 'true'
         run: npx tsc --noEmit -p .
       - name: Lint
+        if: steps.scope.outputs.docs_only != 'true'
         run: npx eslint
       - name: Unit tests
         run: npx vitest run
       - name: Install Playwright browsers
+        if: steps.scope.outputs.e2e == 'true'
         run: npx playwright install --with-deps chromium webkit
       - name: End-to-end tests
+        if: steps.scope.outputs.e2e == 'true'
         run: npx playwright test
       - name: Upload Playwright report
-        if: failure()
+        if: failure() && steps.scope.outputs.e2e == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
