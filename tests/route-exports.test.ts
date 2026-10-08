@@ -11,12 +11,10 @@ const ALLOWED = new Set([
   "revalidate", "dynamic", "dynamicParams", "fetchCache", "preferredRegion", "runtime", "maxDuration",
 ]);
 
-// Exports that predate this rule. Moving them is its own change; this list may only shrink.
-const LEGACY: Record<string, string[]> = {
-  "src/app/api/referral/share/route.ts": ["SHARE_CREDITS"],
-  "src/app/api/tasks/[id]/pptx/route.ts": ["parseSlides"],
-  "src/app/api/tools/[tool]/route.ts": ["SIGNED_IN_PER_DAY"],
-};
+// Exports that predate this rule. Moving them is its own change; this list may only shrink. It is empty since the
+// Hostinger build (rule 661), which runs the webpack type check: SHARE_CREDITS, parseSlides and SIGNED_IN_PER_DAY now
+// live in src/lib/referral.ts, src/lib/slides.ts and src/lib/tools.ts.
+const LEGACY: Record<string, string[]> = {};
 
 function routeFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {
