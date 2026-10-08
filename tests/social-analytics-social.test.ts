@@ -11,7 +11,7 @@ import * as publish from "@/lib/connectors/publish";
 import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
 import * as fresh from "@/lib/connectors/fresh";
 import { setComposioClientForTests } from "@/lib/connectors/composio";
-import { EMPTY_TOTALS, READERS, SOCIAL_KEY, SOCIAL_PUB_KEY, getSocialSnapshot, holdsSocial, socialDataBlock, syncSocial, syncSocialIfDue, upsertHistory, type HistoryRow, type Platform, type PlatformPart } from "@/lib/social-stats";
+import { EMPTY_TOTALS, PLATFORMS, READERS, SOCIAL_KEY, SOCIAL_PUB_KEY, getSocialSnapshot, holdsSocial, socialDataBlock, syncSocial, syncSocialIfDue, upsertHistory, type HistoryRow, type Platform, type PlatformPart, type SocialSnapshot } from "@/lib/social-stats";
 import { connectedSources, reportSources, socialRead } from "@/lib/report-sources";
 import SocialStats from "@/components/app/SocialStats";
 import { syncSiteIfDue } from "@/lib/site-stats";
@@ -315,6 +315,35 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
     // A v1 snapshot has no history: the first v2 read starts one.
     await db.set(SOCIAL_KEY(owner.email), legacyV1);
     expect((await syncSocial(owner.email, { meta: igConn() }, NOW)).history.map((r) => r.platform)).toEqual(["instagram"]);
+  });
+
+  it("a part read from another account starts its platform's history again; a name not read keeps it (746)", async () => {
+    const owner = await newUser("sochistacct");
+    igAnswers();
+    liAnswers();
+    const months = async () => {
+      const s = await getSocialSnapshot(owner.email);
+      return s?.v === 2 ? s.history.map((r) => `${r.month} ${r.platform}`).sort() : [];
+    };
+    await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    // November: another Instagram account was connected; the company page is the same.
+    answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1785", username: "rose", followers_count: 40 } });
+    await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, new Date(Date.UTC(2026, 10, 1, 0, 30)));
+    expect(await months(), "October's Instagram row was another account's").toEqual(["2026-10 linkedin", "2026-11 instagram", "2026-11 linkedin"]);
+    // December: the owner chose another company page, and Instagram answered without its username.
+    answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1785", followers_count: 41 } });
+    const page43 = via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrg: "urn:li:organization:43" });
+    const s = await syncSocial(owner.email, { meta: igConn(), linkedin: page43 }, new Date(Date.UTC(2026, 11, 1, 0, 30)));
+    expect(s.parts.linkedin?.account).toBe("Page 43");
+    expect(await months()).toEqual(["2026-11 instagram", "2026-12 instagram", "2026-12 linkedin"]);
+  });
+
+  it("the card lists one block per part in the order of PLATFORMS (670)", () => {
+    // The card keeps its own list so the client bundle imports only types; a platform missing from it, or out of order, fails here.
+    const social: SocialSnapshot = { v: 2, at: NOW.toISOString(), errors: {}, history: [], parts: Object.fromEntries(PLATFORMS.map((p) => [p, part(p, { account: `acct-${p}` })])) as SocialSnapshot["parts"] };
+    const html = renderToStaticMarkup(createElement(SocialStats, { lang: "en", social }));
+    const at = PLATFORMS.map((p) => html.indexOf(`acct-${p}`));
+    expect(at.every((x, i) => x >= 0 && (i === 0 || x > at[i - 1])), at.join(",")).toBe(true);
   });
 
   it("history goes with the account (746)", async () => {

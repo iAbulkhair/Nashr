@@ -38,7 +38,9 @@ export const READ_VIA_COMPOSIO = ["google", "meta", "linkedin", "youtube", "tikt
  * The connected providers that can be read, for reportSources. A Google, Meta, LinkedIn, YouTube or TikTok record counts
  * only through Composio, and only once its part exists: Meta needs an Instagram account or a Facebook Page (`igId` or
  * `pageId`) and LinkedIn a chosen company page (`liOrg`). X is read only on its direct record. Anything less would
- * silence the social warning with nothing behind it.
+ * silence the social warning with nothing behind it. The Facebook Page, YouTube, TikTok and X count here before their
+ * readers land (rules 739, 740, 742, 744): the branch that adds them ships as one release, so that interim state is never
+ * released on its own (docs/system/flows.md section 50 step 10), and `socialRead` keeps the followers tile shut meanwhile.
  */
 export function connectedSources(conns: readonly Conn[]): string[] {
   return conns

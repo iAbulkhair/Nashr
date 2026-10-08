@@ -29,7 +29,10 @@ const STR = {
   },
 } as const;
 
-/** The card's order, kept here so this client file imports only types from social-stats (PLATFORMS there). */
+/**
+ * The card's order, kept here so this client file imports only types from social-stats. It must list exactly `PLATFORMS`
+ * there, in the same order: tests/social-analytics-social.test.ts renders a part of every platform and checks it.
+ */
 const ORDER: readonly Platform[] = ["instagram", "facebook", "linkedin", "youtube", "tiktok"];
 
 const NUM = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });

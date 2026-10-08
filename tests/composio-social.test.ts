@@ -327,6 +327,33 @@ describe("Dana's social data (rule 668)", () => {
     expect(block).not.toMatch(/read is \d+ days old/);
   });
 
+  it("prints prev only where it was read, posts_read, and the ten best posts by views then reach (668, v2)", async () => {
+    const u = await newUser("sblkv2");
+    const prevTotals = { ...EMPTY_TOTALS, views: 8000, engagements: 400 };
+    // Twelve posts with views 1..10, and two that tie on 12 views, where reach decides.
+    const posts: SocialPost[] = Array.from({ length: 12 }, (_, i) => ({
+      id: `m${i + 1}`, date: "2026-10-01", type: "IMAGE", caption: `post ${i + 1}`, url: null, views: i < 10 ? i + 1 : 12, reach: i === 10 ? 9 : 1,
+      likes: null, comments: null, saved: null, shares: null, fromThakeen: false,
+    }));
+    await db.set(SOCIAL_KEY(u.email), snap({ parts: {
+      instagram: { platform: "instagram", account: "oud", followers: 1200, range: { from: "2026-09-10", to: "2026-10-08" }, totals: { ...EMPTY_TOTALS, views: 9100 }, prev: { range: { from: "2026-08-13", to: "2026-09-10" }, totals: prevTotals }, posts },
+      linkedin: { platform: "linkedin", account: "عود الشرق", followers: 812, range: { from: "2026-09-10", to: "2026-10-08" }, totals: { ...EMPTY_TOTALS, views: 900 }, posts: [] },
+    } }));
+    const block = await socialDataBlock(u.email, NOW);
+    const open = "<social_data>";
+    const data = JSON.parse(block.slice(block.indexOf(open) + open.length, block.indexOf("</social_data>")));
+    expect(data.instagram.prev).toEqual({ from: "2026-08-13", to: "2026-09-10", totals: prevTotals, engagement_rate: 0.05 });
+    expect(data.instagram.posts_read).toBe(12);
+    expect(data.instagram.top_posts).toHaveLength(10);
+    expect(data.instagram.top_posts[0].views).toBe(12);
+    expect(data.instagram.top_posts.map((p: { caption: string }) => p.caption)).toEqual(["post 11", "post 12", ...[10, 9, 8, 7, 6, 5, 4, 3].map((n) => `post ${n}`)]);
+    expect(data.linkedin, "a part with no prev prints none").not.toHaveProperty("prev");
+    expect(data.linkedin.posts_read).toBe(0);
+    expect(data.facebook).toBe("not available (unknown, not zero)");
+    expect(block).toContain("Compare only with prev");
+    expect(block).not.toMatch(/No previous period/);
+  });
+
   it("a read older than 7 days carries its date", async () => {
     const u = await newUser("sblkold");
     await db.set(SOCIAL_KEY(u.email), snap({ at: new Date(NOW.getTime() - 9 * 864e5).toISOString() }));

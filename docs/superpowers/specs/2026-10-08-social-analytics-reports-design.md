@@ -292,6 +292,8 @@ type XStats = PlatformPart & { platform: "x"; at: string; history: HistoryRow[] 
 History: each sync upserts one row per read platform for the read's UTC month (the last read of a month wins) and keeps
 the newest 13 per platform. It covers the platforms' short windows (Instagram 90 days, TikTok lifetime counters, X 30
 days for private metrics). It lives in the same object, is written in the same set, and is deleted with the account.
+A part read from another account than the stored part's (both names read and different) starts that platform's rows
+again, so a change is never worked out across two accounts (review of Task 8, 2026-10-08).
 
 `fromThakeen` is true only for ids in `socialpub:{scope}`. `publish-once.ts:126` is widened to add the post id for
 facebook, linkedin, youtube, tiktok and x; until a platform's ids land, its posts carry `fromThakeen: false`.

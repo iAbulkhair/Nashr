@@ -288,7 +288,8 @@ export function holdsSocial(provider: SocialProvider, c: Connection | null | und
 
 /**
  * The history after a read: one row per part read, for the read's UTC month (the month's last read wins), and at most
- * the newest 13 months per platform (rule 746). A platform not read this time keeps its rows.
+ * the newest 13 months per platform (rule 746). A platform not read this time keeps its rows. `syncSocial` first drops
+ * the rows of a platform whose account changed.
  */
 export function upsertHistory(history: HistoryRow[], parts: PlatformPart[], now: Date): HistoryRow[] {
   const month = now.toISOString().slice(0, 7);
@@ -336,7 +337,12 @@ export async function syncSocial(scope: string, conns: Partial<Record<SocialProv
   const token = failed.find(refused);
   const known = Object.values(errors).some((x) => x && KNOWN.has(x));
   if (!Object.keys(parts).length && !known) throw token ?? failed[0];
-  const before = last?.v === 2 && Array.isArray(last.history) ? last.history : [];
+  const stored = last?.v === 2 ? last : null;
+  // A part read from another account than the stored part's (another company page, another Instagram account) starts its
+  // platform's history again, so no change is ever worked out across two accounts (rule 746). Only when both names were
+  // read: a name not read keeps the rows. A platform whose stored part is missing (its last read failed) cannot be compared.
+  const moved = new Set<string>(PLATFORMS.filter((p) => parts[p]?.account && stored?.parts?.[p]?.account && parts[p]!.account !== stored.parts[p]!.account));
+  const before = stored && Array.isArray(stored.history) ? stored.history.filter((r) => !moved.has(r.platform)) : [];
   const snap: SocialSnapshot = { v: 2, at: now.toISOString(), parts, errors, history: upsertHistory(before, Object.values(parts), now) };
   await db.set(SOCIAL_KEY(scope), snap);
   if (token) {
