@@ -706,7 +706,7 @@ export default function AdminConsole({ lang = "en", keySession = false }: { lang
                 <p className="font-mono text-xs text-muted">{S.overflow}: {!sel.chat.overflow.available ? S.overflowTrial : sel.chat.overflow.on ? S.overflowOn : S.overflowOff}{sel.usage.byKind?.chat ? ` · ${S.chatCost} ${sel.usage.byKind.chat.usd.toFixed(2)}` : ""}{sel.chatUsdPerMsg != null ? ` · ${S.perMsg} ${sel.chatUsdPerMsg.toFixed(4)}` : ""}</p>
               </div>
             )}
-            {sel.entitlements && <div className="col-span-full"><EntitlementsTable view={sel.entitlements} lang={lang} deal={sel.user.deal} /></div>}
+            {sel.entitlements && <div className="col-span-full min-w-0"><EntitlementsTable view={sel.entitlements} lang={lang} deal={sel.user.deal} /></div>}
             {sel.usage.byKind && Object.keys(sel.usage.byKind).length > 0 && (
               <div className="col-span-full rounded border border-ink/10 p-2">
                 <p className="text-muted">{S.perKind}</p>

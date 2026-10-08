@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -358,6 +359,10 @@ describe("EntitlementsTable (rule 784)", () => {
     expect(bare).not.toMatch(/[\w.-]+@[\w.-]+/);
     // The table scrolls inside its own box instead of widening the page.
     expect(out).toMatch(/<div class="overflow-x-auto"><table/);
+    // The console's wrapper lets that box shrink: without min-w-0 the one-column grid below sm
+    // takes the table's width and the whole page scrolls sideways on a phone.
+    const consoleSrc = readFileSync("src/components/app/AdminConsole.tsx", "utf8");
+    expect(consoleSrc).toMatch(/<div className="col-span-full min-w-0"><EntitlementsTable /);
   });
 
   it("a chat override and a live grant on a trial: base values in Plan, the override in its cell", async () => {
