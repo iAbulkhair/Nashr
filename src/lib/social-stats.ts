@@ -171,6 +171,18 @@ async function readIg(scope: string, c: Connection, now: Date): Promise<Ig> {
 const holdsIg = (c: Connection | null | undefined): c is Connection => !!(c && isComposio(c) && c.data.instagram && c.meta?.igId);
 const holdsLi = (c: Connection | null | undefined): c is Connection => !!(c && isComposio(c) && c.meta?.liOrg);
 
+/** The providers whose records can hold a social part; `sync_social` is accepted only on their paths (rule 735). */
+export const SOCIAL_PROVIDERS = ["meta", "linkedin", "youtube", "tiktok"] as const;
+export type SocialProvider = (typeof SOCIAL_PROVIDERS)[number];
+export const isSocialProvider = (p: string): p is SocialProvider => (SOCIAL_PROVIDERS as readonly string[]).includes(p);
+/**
+ * Whether this provider's record holds a part `syncSocial` reads: Instagram on a Meta record, the chosen LinkedIn page.
+ * YouTube and TikTok hold none until their readers exist (rules 740, 742).
+ */
+export function holdsSocial(provider: SocialProvider, c: Connection | null | undefined): boolean {
+  return provider === "meta" ? holdsIg(c) : provider === "linkedin" ? holdsLi(c) : false;
+}
+
 /** The sum of one statistic over the days LinkedIn answered for; `null` when no day carried it. */
 function total(rows: Record<string, unknown>[], key: string): number | null {
   let sum: number | null = null;

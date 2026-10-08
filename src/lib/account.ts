@@ -9,7 +9,7 @@ import { forgetPartnerData } from "./partners";
 import { monthKey } from "./credits";
 import { AGENTS, AGENT_IDS } from "./agents";
 import { chatTrialKey, usageMonthKeys } from "./usage";
-import { autoHoldKey, routineFingerprints, routineKeys, routineSkipKeys } from "./routines";
+import { OWNER_SYNC_KEY, autoHoldKey, routineFingerprints, routineKeys, routineSkipKeys } from "./routines";
 import { activityKey } from "./activity";
 import { agentCapFingerprint, seenKey } from "./notifications";
 import { membersKey, wipeTeam } from "./team";
@@ -101,6 +101,8 @@ export async function wipeAccount(email: string) {
       // Each routine's last run, locks, hold and attempt counts, for every routine id (routines.ts), and the hold of
       // Majed's auto-run under the same weekly cap (360 s).
       ...routineKeys(s), autoHoldKey(s),
+      // When someone last pressed Refresh on the site or social results, which Dana's routine counts (8 days, rule 747).
+      OWNER_SYNC_KEY(s),
       // Follow-up markers that name this brand and live for weeks: the 80% cap warning (35 days) and a routine's run
       // (8 or 35 days), for this and the previous month or period. Left behind, a new account at the same address
       // would never get those follow-ups, and the deleted scope would stay in key names for a month.

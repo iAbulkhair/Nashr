@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { json, newMember, newUser, settle, signIn } from "./helpers/session";
+import { getUser } from "@/lib/auth";
 import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
 import { setComposioClientForTests } from "@/lib/connectors/composio";
 import { selectPropertyVia } from "@/lib/connectors/via-composio";
@@ -11,11 +12,12 @@ import * as connRoute from "@/app/api/connect/[provider]/route";
 import { fakeComposio, ok, type Answer, type Call } from "./helpers/composio-fake";
 
 /**
- * Rules 733, 734 and 737, site part (spec docs/superpowers/specs/2026-10-08-social-analytics-reports-design.md, A2 and
- * A3): GA4 and Search Console read the 28 days before their window in the same run, only from ranges Google returned; a
- * figure Google did not return is null, never 0; `force` reads again at once; the owner or an admin chooses the property
- * and the site among those listed at connect time. Composio is the shared fake; its answers follow GA4's runReport and
- * Search Console's searchAnalytics.query shapes.
+ * Rules 733, 734 and 737, site part, and 735, site part (spec docs/superpowers/specs/2026-10-08-social-analytics-reports-design.md,
+ * A2 to A4): GA4 and Search Console read the 28 days before their window in the same run, only from ranges Google
+ * returned; a figure Google did not return is null, never 0; `force` reads again at once; the owner or an admin chooses
+ * the property and the site among those listed at connect time; any member may refresh the site at once, six times an
+ * hour per workspace. Composio is the shared fake; its answers follow GA4's runReport and Search Console's
+ * searchAnalytics.query shapes.
  */
 const NOW = new Date("2026-10-08T09:00:00Z");
 /** GA4's window ends yesterday; Search Console's three days before the read (its figures settle late). */
@@ -395,5 +397,79 @@ describe("choosing the GA4 property and the Search Console site (rule 734)", () 
     const sites = calls.filter((c) => c.slug === "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY").map((c) => c.args.site_url);
     expect(sites).toEqual(["https://shop-b.example/", "https://shop-b.example/", "https://shop-b.example/"]);
     expect((await getSiteSnapshot(owner.email))?.gsc?.site).toBe("https://shop-b.example/");
+  });
+});
+
+describe("the owner's refresh of the site figures (rule 735)", () => {
+  const ctx = (provider: string) => ({ params: Promise.resolve({ provider }) });
+  const post = (provider: string, body: Record<string, unknown>) => connRoute.POST(json(`/api/connect/${provider}`, "POST", body), ctx(provider));
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    answers.GOOGLE_ANALYTICS_RUN_REPORT = gaReport;
+    answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = gscQuery;
+  });
+
+  it("sync_site is free, any member may press it, six an hour per workspace (735)", async () => {
+    const owner = await newUser("sitesync");
+    await saveConnection(owner.email, google());
+    // Read an hour ago: the daily run would not read again for 19 hours, a click reads at once.
+    await syncSite(owner.email, google(), new Date(NOW.getTime() - 3600e3));
+    calls.length = 0;
+    const start = (await getUser(owner.email))!.credits;
+    const member = await newMember(owner, "member");
+    await signIn(member.email);
+    for (let i = 0; i < 6; i++) {
+      const r = await post("google", { action: "sync_site" });
+      expect(r.status, `click ${i + 1}`).toBe(200);
+      expect(await r.json()).toEqual({ ok: true, read: true });
+    }
+    expect(calls.filter((c) => c.slug === "GOOGLE_ANALYTICS_RUN_REPORT")).toHaveLength(12);
+    expect((await getSiteSnapshot(owner.email))?.at).toBe(NOW.toISOString());
+
+    // The seventh in the hour is refused for the whole workspace, the owner included, with the window to wait.
+    calls.length = 0;
+    await signIn(owner.email);
+    const r = await post("google", { action: "sync_site" });
+    expect(r.status).toBe(429);
+    expect(r.headers.get("Retry-After")).toBe("3600");
+    expect(await r.json()).toEqual({ ok: false, error: "slow_down" });
+    expect(calls, "a refused click reads nothing").toEqual([]);
+    expect((await getUser(owner.email))!.credits, "free: no credit leaves the account").toBe(start);
+
+    // Another workspace has its own six; this one has six again once the hour is over.
+    const other = await newUser("sitesync2");
+    await saveConnection(other.email, google());
+    await signIn(other.email);
+    expect((await post("google", { action: "sync_site" })).status).toBe(200);
+    vi.setSystemTime(NOW.getTime() + 3600e3 + 1000);
+    await signIn(owner.email);
+    expect((await post("google", { action: "sync_site" })).status).toBe(200);
+  });
+
+  it("sync_site needs a Composio Google record that holds the site; another path refuses the action (735)", async () => {
+    const owner = await newUser("sitesyncnone");
+    await signIn(owner.email);
+    const none = await post("google", { action: "sync_site" });
+    expect(none.status).toBe(404);
+    expect(await none.json()).toEqual({ ok: false, error: "not_connected" });
+    // A direct Google record holds nothing the site reader reads.
+    await saveConnection(owner.email, { provider: "google", data: { access_token: "t" }, meta: { gaProperty: "properties/987" }, connectedAt: NOW.toISOString() });
+    expect((await post("google", { action: "sync_site" })).status).toBe(404);
+    // On a social path the action is not an action at all.
+    await saveConnection(owner.email, { provider: "meta", data: { instagram: "ca_ig" }, meta: { via: "composio", igId: "1784" }, connectedAt: NOW.toISOString() });
+    const meta = await post("meta", { action: "sync_site" });
+    expect(meta.status).toBe(400);
+    expect((await meta.json()).error).toBe("bad_action");
+    // A record waiting for a reconnect asks for it and reads nothing.
+    await saveConnection(owner.email, { ...google(), needsReconnect: NOW.toISOString() });
+    const stale = await post("google", { action: "sync_site" });
+    expect(stale.status).toBe(502);
+    expect((await stale.json()).error).toBe("reconnect_required");
+    await settle();
+    expect(calls).toEqual([]);
+    // None of the refusals spent the hour's six.
+    await saveConnection(owner.email, google());
+    for (let i = 0; i < 6; i++) expect((await post("google", { action: "sync_site" })).status).toBe(200);
   });
 });

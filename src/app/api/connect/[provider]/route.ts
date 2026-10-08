@@ -3,8 +3,10 @@ import { currentUser, sc } from "@/lib/auth";
 import { deleteConnection, getConnection } from "@/lib/connectors/store";
 import { isComposio, liOrgName, postAsVia, revokeAll, selectOrgVia, selectPageVia, selectPropertyVia } from "@/lib/connectors/via-composio";
 import { recordActivity } from "@/lib/activity";
-import { readSocialSoon } from "@/lib/social-stats";
-import { readSiteSoon } from "@/lib/site-stats";
+import { holdsSocial, isSocialProvider, readSocialSoon, syncSocialIfDue } from "@/lib/social-stats";
+import { holdsSite, readSiteSoon, syncSiteIfDue } from "@/lib/site-stats";
+import { markOwnerSync } from "@/lib/routines";
+import { WINDOW, allow, retryLater } from "@/lib/rate";
 import { byOf } from "@/lib/actor";
 import { getFreshConnection, refusedToken } from "@/lib/connectors/fresh";
 import { importShopify } from "@/lib/connectors/shopify";
@@ -48,9 +50,23 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ provider: s
  * store. The syncs only pull the platform's own numbers into the reports, which any member may refresh. An action not
  * listed here is refused.
  */
-const ACTION_ROLE: Record<string, Action> = { select_page: "connectors", select_org: "connectors", post_as: "connectors", select_ad_account: "connectors", select_property: "connectors", import_products: "catalog.import", sync_ads: "read", sync_sales: "read" };
+const ACTION_ROLE: Record<string, Action> = { select_page: "connectors", select_org: "connectors", post_as: "connectors", select_ad_account: "connectors", select_property: "connectors", import_products: "catalog.import", sync_ads: "read", sync_sales: "read", sync_site: "read", sync_social: "read" };
 
-/** POST {action:"import_products"}, for Salla, Shopify, WooCommerce and Zid {action:"sync_sales"}, for Meta {action:"select_page", pageId}, for LinkedIn {action:"select_org", org} and {action:"post_as", value:"me"|"org"}, for Google {action:"select_property", kind:"ga4"|"gsc", id} */
+/** Refreshes of the site or the social results one workspace may ask for in an hour, the team together (rule 735). */
+const OWNER_SYNCS_PER_HOUR = 6;
+
+/**
+ * An owner's refresh (rules 735, 736): the read, forced whatever the last read's age, and the mark Dana's routine counts
+ * as activity, side by side. The click counts even when the platform fails; a failed read is thrown to the route's catch.
+ */
+async function ownerRefresh(scope: string, read: () => Promise<boolean>) {
+  const [r, mark] = await Promise.allSettled([read(), markOwnerSync(scope)]);
+  if (mark.status === "rejected") console.error("owner sync mark failed");
+  if (r.status === "rejected") throw r.reason;
+  return NextResponse.json({ ok: true, read: r.value });
+}
+
+/** POST {action:"import_products"}, for Salla, Shopify, WooCommerce and Zid {action:"sync_sales"}, for Meta {action:"select_page", pageId}, for LinkedIn {action:"select_org", org} and {action:"post_as", value:"me"|"org"}, for Google {action:"select_property", kind:"ga4"|"gsc", id} and {action:"sync_site"}, for Meta, LinkedIn, YouTube and TikTok {action:"sync_social"} */
 export async function POST(req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
@@ -119,6 +135,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
     // Read only, no model call, no credits: the ads' own numbers into the same analysis as a CSV upload.
     if (b.action === "sync_ads" && isAdProvider(provider)) return NextResponse.json({ ok: true, snapshot: await syncAds(sc(u), provider, c) });
     if (b.action === "sync_sales" && (SALES_PROVIDERS as readonly string[]).includes(provider)) return NextResponse.json({ ok: true, sales: await syncSales(sc(u), provider as SalesProvider, c) });
+    // Read only, no model call, no credits: the site's figures or every social part the workspace holds, read at once.
+    // Six an hour per workspace, the bucket keyed by scope so the team and every social path share it (rule 735).
+    if (b.action === "sync_site" && provider === "google") {
+      if (!holdsSite(c)) return NextResponse.json({ ok: false, error: "not_connected" }, { status: 404 });
+      if (!(await allow(`sitesync:${sc(u)}`, OWNER_SYNCS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
+      return await ownerRefresh(sc(u), () => syncSiteIfDue(sc(u), new Date(), true));
+    }
+    if (b.action === "sync_social" && isSocialProvider(provider)) {
+      if (!holdsSocial(provider, c)) return NextResponse.json({ ok: false, error: "not_connected" }, { status: 404 });
+      if (!(await allow(`socialsync:${sc(u)}`, OWNER_SYNCS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
+      return await ownerRefresh(sc(u), () => syncSocialIfDue(sc(u), new Date(), true));
+    }
     return NextResponse.json({ ok: false, error: "bad_action" }, { status: 400 });
   } catch (e) {
     const err = await refusedToken(sc(u), provider, e);

@@ -164,12 +164,15 @@ export async function getSiteSnapshot(scope: string) {
   return db.get<SiteSnapshot>(KEY(scope));
 }
 
+/** A record the site is read from: a Composio Google record holding GA4, Search Console or both. */
+export const holdsSite = (c: Connection | null | undefined): c is Connection => !!(c && isComposio(c) && (c.data.google_analytics || c.data.google_search_console));
+
 /**
  * Read both parts the record holds and keep what succeeded. When every part it holds failed, the first failure is
  * thrown, so a refused token reaches refusedToken and asks the owner to reconnect.
  */
 export async function syncSite(scope: string, c: Connection, now = new Date()): Promise<SiteSnapshot> {
-  if (!isComposio(c) || (!c.data.google_analytics && !c.data.google_search_console)) throw new Error("not_connected");
+  if (!holdsSite(c)) throw new Error("not_connected");
   const [ga, gsc] = await Promise.allSettled([
     c.data.google_analytics ? readGa(scope, c, now) : Promise.reject(new Error("not_connected")),
     c.data.google_search_console ? readGsc(scope, c, now) : Promise.reject(new Error("not_connected")),
