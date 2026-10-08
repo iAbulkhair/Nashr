@@ -66,6 +66,28 @@ export async function applyReferral(newEmail: string, code: string) {
   return true;
 }
 
+/**
+ * An unverified owner corrected the address they signed up with (src/lib/verify-email.ts `moveUnverifiedAccount`): carry
+ * the referral they came in with from `from` to `to`. Writes the new side first and removes the old one last, so a stop
+ * half way leaves both and a retry finishes it. Nothing happens when `from` was not referred.
+ */
+export async function moveReferral(from: string, to: string): Promise<void> {
+  const refEmail = await db.get<string>(`referredBy:${from}`);
+  if (!refEmail) return;
+  const [states, rows] = await Promise.all([db.hgetall<PendingReferral>(pendingKey(refEmail)), db.lrange(`referrals:${refEmail}`, 0, -1)]);
+  await db.set(`referredBy:${to}`, refEmail);
+  const fromId = who(from);
+  if (states[fromId]) {
+    await db.hset(pendingKey(refEmail), who(to), states[fromId]);
+    await db.hdel(pendingKey(refEmail), fromId);
+  }
+  const row = rows.find((r) => { try { return (JSON.parse(r) as { email?: string }).email === from; } catch { return false; } });
+  if (row && !rows.some((r) => { try { return (JSON.parse(r) as { email?: string }).email === to; } catch { return false; } })) {
+    await db.lpush(`referrals:${refEmail}`, JSON.stringify({ ...JSON.parse(row), email: to }));
+  }
+  if (row) await db.lrem(`referrals:${refEmail}`, row);
+}
+
 export type ReferrerReward = "paid" | "capped" | "already" | "none";
 /**
  * The referred account's first payment was recorded (src/lib/partners.ts `recordPayment`, rules 557-558): pay its

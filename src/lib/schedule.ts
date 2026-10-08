@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { getUser, trialOver, type User } from "./auth";
+import { emailVerified, getUser, trialOver, type User } from "./auth";
 import { getBrand, indexedAt, isAutonomous, listLite, rebuildIndex, rebuildPending, type Brand } from "./brand";
 import { generateBatch } from "./generate-batch";
 import { resolveOnceHolds } from "./credits";
@@ -232,7 +232,7 @@ export async function runDaily(user: User): Promise<Brief | null> {
 /**
  * The scheduler's roster in one pass: `users`, one entry per (user, active brand), extra brands with their own copy and
  * scope set; and `idle`, the brand scopes that get no scheduled work (archived brands, and every brand of a suspended
- * account) but where the daily job still purges Reem's items deleted over 30 days ago.
+ * account or of an unverified owner) but where the daily job still purges Reem's items deleted over 30 days ago.
  */
 export async function dailyRoster(): Promise<{ users: User[]; idle: string[] }> {
   const { listBrands, scopeFor } = await import("./brands");
@@ -242,8 +242,8 @@ export async function dailyRoster(): Promise<{ users: User[]; idle: string[] }> 
     const u = await getUser(e);
     if (!u) return { users: [] as User[], idle: [] as string[] };
     const brands = (await listBrands(e)).map((b) => ({ b, scope: scopeFor(e, b.id) }));
-    // Suspended accounts get no scheduled work, no charges and no email.
-    if (u.suspended) return { users: [] as User[], idle: brands.map((x) => x.scope) };
+    // Suspended accounts, and owners who have not verified the address (rule 755), get no scheduled work, no charges and no email.
+    if (u.suspended || !emailVerified(u)) return { users: [] as User[], idle: brands.map((x) => x.scope) };
     return {
       users: brands.filter((x) => x.b.status === "active").map((x) => ({ ...u, brandId: x.b.id, scope: x.scope })),
       idle: brands.filter((x) => x.b.status !== "active").map((x) => x.scope),

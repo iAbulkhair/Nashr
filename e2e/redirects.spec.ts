@@ -31,6 +31,16 @@ test.describe("unauthenticated access to the app", () => {
     }
   }
 
+  // The verify page is in the layout's PUBLIC list so an owner who has not proved the address can reach it, but with no
+  // session at all it goes to login (rule 754).
+  for (const lang of LANGS) {
+    test(`/${lang}/app/verify sends a signed-out visitor to the login page`, async ({ page }) => {
+      const res = await open(page, `/${lang}/app/verify`);
+      expect(res.status()).toBe(200);
+      expect(new URL(page.url()).pathname).toBe(`/${lang}/app/login`);
+    });
+  }
+
   for (const lang of LANGS) {
     for (const path of APP_PUBLIC_ROUTES.filter((p) => p !== "/app/admin")) {
       test(`/${lang}${path} is reachable signed out`, async ({ page }) => {

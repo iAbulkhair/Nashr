@@ -181,9 +181,10 @@ describe("rule 692: same-origin requests, requests with neither header, GET, HEA
   // do, is not reading it. A merge that makes an exempt route reach a new name adds it here once someone has read that
   // it touches no cookie: the Paymob webhook (#279) reaches auth.ts normalizePhone and the six partners.ts payment and
   // offer names through billing.ts, read on 2026-10-08 with everything they call (only getUser, normalizeEmail and
-  // saveUser from auth.ts, no cookieRef, signupPartner, afterSignup or partnerCookie).
+  // saveUser from auth.ts, no cookieRef, signupPartner, afterSignup or partnerCookie). Email verification (#286) made
+  // the MCP route and the cron's schedule.ts reach auth.ts emailVerified, a test of the record it is handed.
   const COOKIE_MODULES: Record<string, ReadonlySet<string>> = {
-    "src/lib/auth.ts": new Set(["getLogin", "getUser", "normalizeEmail", "normalizePhone", "saveUser", "sc", "seatLimit", "strongPassword", "trialOver", "validEmail"]),
+    "src/lib/auth.ts": new Set(["emailVerified", "getLogin", "getUser", "normalizeEmail", "normalizePhone", "saveUser", "sc", "seatLimit", "strongPassword", "trialOver", "validEmail"]),
     "src/lib/partners.ts": new Set(["addPaidTopup", "openOffer", "paymentsKey", "recordPayment", "voidPaidTopup", "voidPayment"]),
   };
   const COOKIE_ACCESS = /cookies\(|\.cookies\b|\.get\(\s*["'`]cookie["'`]\s*\)|["']next\/headers["']|["'`]nashr_(session|admin|impersonate|return)["'`]/i;
