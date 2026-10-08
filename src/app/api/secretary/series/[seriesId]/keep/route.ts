@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { can, forbid } from "@/lib/roles";
 import { db } from "@/lib/db";
-import { allow } from "@/lib/rate";
+import { allow, retryLater } from "@/lib/rate";
 import { SEC_KEYS, SEC_WRITES_PER_HOUR, SERIES_ID } from "@/lib/secretary";
 import { setSeriesKeep } from "@/lib/secretary-series";
 
@@ -19,7 +19,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ seriesId: strin
   if (!u) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const no = forbid(u, "todo.write");
   if (no) return no;
-  if (!(await allow(`sec:write:${u.email}`, SEC_WRITES_PER_HOUR, 3600))) return NextResponse.json({ ok: false, error: "too_many" }, { status: 429 });
+  if (!(await allow(`sec:write:${u.email}`, SEC_WRITES_PER_HOUR, 3600))) return retryLater({ ok: false, error: "too_many" }, 3600);
   const { seriesId } = await ctx.params;
   const scope = sc(u);
   const notFound = () => NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });

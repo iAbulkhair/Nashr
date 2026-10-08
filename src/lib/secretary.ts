@@ -230,7 +230,8 @@ export type SecError =
   | "already_decided" | "busy"
   // Recurring items: a rule out of range (`parseRepeat`), a rule on an item with no due date, and the 500-series keep limit.
   | "repeat_invalid" | "repeat_needs_due" | "repeat_until_before_due" | "keep_limit";
-export type SecFail = { ok: false; error: SecError; field?: string; status: number; item?: SecItem };
+/** `retryAfter`, with a 429 only: the refusing bucket's window in seconds, which the route sends as `Retry-After` (rule 672). */
+export type SecFail = { ok: false; error: SecError; field?: string; status: number; item?: SecItem; retryAfter?: number };
 export const fail = (error: SecError, status = 400, field?: string): SecFail => ({ ok: false, error, status, ...(field ? { field } : {}) });
 
 // C0 controls other than tab and new line, DEL, C1 controls, zero-width space, the direction marks, embeddings,
@@ -791,7 +792,7 @@ export async function createItem(user: Pick<User, "email" | "scope">, raw: Recor
   if (p.fields.phone !== undefined && !isOwner(who)) return fail("owner_only", 403, "phone");
   // An agent's own item (a handoff) never repeats: only a person, Reem or MCP sets a rule (code gate, not a prompt).
   if (p.fields.repeat !== undefined && who.source === "agent") return fail("owner_only", 403, "repeat");
-  if (!(await allow(`sec:create:${user.email}`, SEC_CREATE_PER_DAY, 86400))) return fail("too_many", 429);
+  if (!(await allow(`sec:create:${user.email}`, SEC_CREATE_PER_DAY, 86400))) return { ...fail("too_many", 429), retryAfter: 86400 };
   const [open, task] = await Promise.all([db.zcard(SEC_KEYS.open(scope)), p.fields.taskId ? getTask(scope, p.fields.taskId) : null]);
   if (open >= SEC_OPEN_MAX) return fail("open_limit", 409);
   // A link must name an inbox item of this same brand: the id is read under the caller's scope, so another workspace's

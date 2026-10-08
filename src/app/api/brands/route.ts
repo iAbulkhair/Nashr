@@ -3,7 +3,7 @@ import { currentUser, type User } from "@/lib/auth";
 import { activeBrandId, addBrand, listBrands, saveBrands, scopeFor, setActiveBrand, withBrandsLock, type BrandMeta } from "@/lib/brands";
 import { getBrand } from "@/lib/brand";
 import { pmap } from "@/lib/parallel";
-import { brandAddRefusal } from "@/lib/rate";
+import { WINDOW, brandAddRefusal, retryLater } from "@/lib/rate";
 import { forbid } from "@/lib/roles";
 
 /** The login whose active brand a switch moves: the person acting, never the account as a whole. */
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
   if (b.action === "add") {
     // Account-wide (u.email), so members and admins of one account share the owner's buckets.
     const refused = await brandAddRefusal(u.email);
-    if (refused) return NextResponse.json({ ok: false, error: "slow_down", retry: refused }, { status: 429, headers: { "Retry-After": String(refused === "hour" ? 3600 : 86400) } });
+    if (refused) return retryLater({ ok: false, error: "slow_down", retry: refused }, WINDOW[refused]);
     const r = await addBrand(u, b.name ?? "");
     return "error" in r ? NextResponse.json({ ok: false, error: r.error }, { status: 409 }) : NextResponse.json({ ok: true, brand: r });
   }

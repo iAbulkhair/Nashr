@@ -46,6 +46,11 @@ export const POLL_GAP_S = 4;
 export const STORE_TRIES = 3, STORE_RETRY_S = 30;
 /** kie allows 20 creates per 10 s for the whole account, which every tenant shares. */
 export const KIE_CREATES = { max: 18, windowS: 10 };
+/**
+ * The `Retry-After` of a 429 no bucket of ours timed: a full Higgsfield queue, the owner's own render still open there,
+ * the provider's own throttle, a held ledger lock. Each clears when a render ends or a lock is let go, so a minute.
+ */
+export const BUSY_RETRY_S = 60;
 export const HF_MAX_OPEN = 2; // Higgsfield's floor for a new account; raise to what the console shows
 export const RENDER_LIMITS: Record<MediaKind, { hour: number; day: number }> = { image: { hour: 30, day: 150 }, video: { hour: 6, day: 20 } };
 export const TRIAL_VIDEO_TTL_S = 14 * 86400;
@@ -142,17 +147,17 @@ export async function startMedia(input: StartInput, deps: MediaDeps): Promise<St
     // 5. Account limits, counted only for requests that got this far.
     const lim = RENDER_LIMITS[m.kind];
     const [hour, day] = await Promise.all([allow(`media:${m.kind}:h:${email}`, lim.hour, 3600), allow(`media:${m.kind}:d:${email}`, lim.day, 86400)]);
-    if (!hour || !day) return { ok: false, status: 429, error: "too_many" };
+    if (!hour || !day) return { ok: false, status: 429, error: "too_many", retryAfter: day ? 3600 : 86400 };
     // 6. A trial keeps one video (spec A29); a refund of that video releases the marker again.
     if (input.plan === "trial" && m.kind === "video") {
       if (!(await db.lock(mk.trialVideo(email), TRIAL_VIDEO_TTL_S))) return { ok: false, status: 402, error: "trial_video_used" };
       trialVideo = true;
     }
     // 7. Provider throttles, shared by every tenant.
-    if (m.provider === "kie" && !(await allow("kie:create", KIE_CREATES.max, KIE_CREATES.windowS))) return { ok: false, status: 429, error: "busy" };
+    if (m.provider === "kie" && !(await allow("kie:create", KIE_CREATES.max, KIE_CREATES.windowS))) return { ok: false, status: 429, error: "busy", retryAfter: KIE_CREATES.windowS };
     if (m.provider === "higgsfield") {
       const refused = await hfAdmission(email, m.kind, deps, input.deadline);
-      if (refused) return { ok: false, status: 429, error: refused };
+      if (refused) return { ok: false, status: 429, error: refused, retryAfter: BUSY_RETRY_S };
     }
     // 8. The charge, to the agent that owns the task in this scope, under the owner's monthly cap for that agent: the
     // ledger checks the cap and moves the agent's counter in the same save as the balance. A throw (the ledger lock timed
@@ -162,7 +167,7 @@ export async function startMedia(input: StartInput, deps: MediaDeps): Promise<St
       paid = await charge(email, m.credits, { scope, agent: input.agent, cap: input.cap });
     } catch (e) {
       console.error("media charge failed", codeOf(e));
-      return { ok: false, status: 429, error: "busy" };
+      return { ok: false, status: 429, error: "busy", retryAfter: BUSY_RETRY_S };
     }
     if (!paid.ok && paid.reason === "agent_cap") return refused("cap_reached", { ok: false, status: 402, error: "agent_cap", agent: paid.agent, spent: paid.spent, cap: paid.cap }, `${paid.spent}/${paid.cap}`);
     if (!paid.ok) return refused("no_credits", { ok: false, status: 402, error: "no_credits", need: m.credits, have: paid.credits });
@@ -267,7 +272,7 @@ async function submitLocked(job: MediaJob, task: Task | null, credits: number, i
   const ctx: Ctx = { deadline: input.deadline, via: "start" };
   const refuse = async (reason: MediaFailure, status: 422 | 429 | 502, error: StartError, cause?: ProviderErrorCode): Promise<StartResult> => {
     const r = await failLocked(job, reason, deps, { ...ctx, cause });
-    return { ok: false, status, error, ...(r.credits != null ? { credits: r.credits } : {}) };
+    return { ok: false, status, error, ...(status === 429 ? { retryAfter: BUSY_RETRY_S } : {}), ...(r.credits != null ? { credits: r.credits } : {}) };
   };
 
   try {

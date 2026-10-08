@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { getClient, issueTokens, redeemCode, rotateRefresh } from "@/lib/oauth";
-import { allow, clientIp, OAUTH_TOKEN_PER_IP, OAUTH_TOKEN_WINDOW, sameSecret } from "@/lib/rate";
+import { allow, clientIp, OAUTH_TOKEN_PER_IP, OAUTH_TOKEN_WINDOW, retryLater, sameSecret } from "@/lib/rate";
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "*", "Cache-Control": "no-store" };
 const err = (e: string, d?: string) => NextResponse.json({ error: e, error_description: d }, { status: 400, headers: cors });
 
 export async function POST(req: Request) {
   // Before the body is read or any client is looked up.
   if (!(await allow(`oauth:token:ip:${clientIp(req)}`, OAUTH_TOKEN_PER_IP, OAUTH_TOKEN_WINDOW)))
-    return NextResponse.json({ error: "slow_down", error_description: "too many requests" }, { status: 429, headers: { ...cors, "Retry-After": String(OAUTH_TOKEN_WINDOW) } });
+    return retryLater({ error: "slow_down", error_description: "too many requests" }, OAUTH_TOKEN_WINDOW, cors);
   const ct = req.headers.get("content-type") ?? "";
   let b: Record<string, string> = {};
   if (ct.includes("application/json")) b = await req.json().catch(() => ({}));

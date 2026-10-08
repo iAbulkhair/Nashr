@@ -17,7 +17,7 @@ import { MEDIA_MODELS, type MediaModelId } from "@/lib/media-catalog";
 import { offModels } from "@/lib/media/config";
 import { mk } from "@/lib/media/keys";
 import { ProviderError, type AdvanceOpts, type MediaJob, type StartInput, type StartResult } from "@/lib/media/types";
-import { advance, getJob, jobForHook, maybeSweep, publicJob, startMedia, sweepMedia } from "@/lib/media/jobs";
+import { BUSY_RETRY_S, KIE_CREATES, advance, getJob, jobForHook, maybeSweep, publicJob, startMedia, sweepMedia } from "@/lib/media/jobs";
 import { fakeAdapter, fakeDeps, mediaEnv, noNetwork, resetMediaCounters } from "./helpers/media";
 import { newUser } from "./helpers/session";
 
@@ -188,7 +188,7 @@ describe("starting a render: charge, submit, deliver", () => {
     const u = await owner();
     const busy = fakeDeps({ kie: fakeAdapter("kie", { submit: () => { throw new ProviderError("busy", 429); } }) });
     const r = await startMedia(input(u, await taskFor(u), "img-balanced"), busy);
-    expect(r).toMatchObject({ ok: false, status: 429, error: "busy", credits: 50 });
+    expect(r).toMatchObject({ ok: false, status: 429, error: "busy", credits: 50, retryAfter: BUSY_RETRY_S });
     expect((await recent())[0]).toMatchObject({ state: "failed", error: "submit_failed" });
 
     const broken = fakeDeps({ kie: fakeAdapter("kie", { submit: () => { throw new Error("upstream said <html>sk-secret-body</html>"); } }) });
@@ -252,20 +252,26 @@ describe("starting a render: charge, submit, deliver", () => {
     const tasks = await Promise.all(Array.from({ length: 19 }, () => taskFor(u)));
     const deps = fakeDeps({ kie: fakeAdapter("kie") });
     for (const t of tasks.slice(0, 18)) expect((await startMedia(input(u, t, "img-balanced"), deps)).ok).toBe(true);
-    expect(await startMedia(input(u, tasks[18], "img-balanced"), deps)).toMatchObject({ ok: false, status: 429, error: "busy" });
+    expect(await startMedia(input(u, tasks[18], "img-balanced"), deps)).toMatchObject({ ok: false, status: 429, error: "busy", retryAfter: KIE_CREATES.windowS });
     expect(await balance(u)).toBe(32);
     expect(await flightFree(u, tasks[18])).toBe(true);
   });
 
-  it("the account render limit answers 429 too_many before the charge", async () => {
+  it("the account render limit answers 429 too_many before the charge, with the window that refused (rule 672)", async () => {
     const u = await owner();
     const t = await taskFor(u);
     await db.set(`rate:media:image:h:${u.email}`, 30, 3600);
     const fal = fakeAdapter("fal");
-    expect(await startMedia(input(u, t, "img-fast"), fakeDeps({ fal }))).toMatchObject({ ok: false, status: 429, error: "too_many" });
+    expect(await startMedia(input(u, t, "img-fast"), fakeDeps({ fal }))).toMatchObject({ ok: false, status: 429, error: "too_many", retryAfter: 3600 });
     expect(fal.submits).toHaveLength(0);
     expect(await balance(u)).toBe(50);
     expect(await flightFree(u, t)).toBe(true);
+    // The day spent too: the longer wait is the one to report.
+    await db.set(`rate:media:image:d:${u.email}`, 150, 86400);
+    expect(await startMedia(input(u, t, "img-fast"), fakeDeps({ fal }))).toMatchObject({ ok: false, status: 429, error: "too_many", retryAfter: 86400 });
+    await db.del(`rate:media:image:h:${u.email}`);
+    expect(await startMedia(input(u, t, "img-fast"), fakeDeps({ fal }))).toMatchObject({ ok: false, status: 429, error: "too_many", retryAfter: 86400 });
+    expect(fal.submits).toHaveLength(0);
   });
 
   it("no credits: 402 with need and have, the flight free and no counter moved", async () => {
@@ -311,7 +317,7 @@ describe("starting a render: charge, submit, deliver", () => {
     const t = await taskFor(u);
     vi.mocked(charge).mockRejectedValueOnce(new Error("user_lock_timeout"));
     const deps = fakeDeps({ fal: fakeAdapter("fal") });
-    expect(await startMedia(input(u, t, "img-fast"), deps)).toMatchObject({ ok: false, status: 429, error: "busy" });
+    expect(await startMedia(input(u, t, "img-fast"), deps)).toMatchObject({ ok: false, status: 429, error: "busy", retryAfter: BUSY_RETRY_S });
     expect(await balance(u)).toBe(50);
     expect((await startMedia(input(u, t, "img-fast"), deps)).ok).toBe(true);
   });
@@ -682,7 +688,7 @@ describe("Higgsfield admission (spec A10)", () => {
     started(await startMedia(input(a, await taskFor(a), "img-lifestyle"), deps));
     started(await startMedia(input(b, await taskFor(b), "img-lifestyle"), deps));
     const tc = await taskFor(c);
-    expect(await startMedia(input(c, tc, "img-lifestyle"), deps)).toMatchObject({ ok: false, status: 429, error: "busy" });
+    expect(await startMedia(input(c, tc, "img-lifestyle"), deps)).toMatchObject({ ok: false, status: 429, error: "busy", retryAfter: BUSY_RETRY_S });
     expect(await balance(c)).toBe(50);
     expect(hf.submits).toHaveLength(2);
     expect(await flightFree(c, tc)).toBe(true);
@@ -692,7 +698,7 @@ describe("Higgsfield admission (spec A10)", () => {
     const deps = fakeDeps({ higgsfield: fakeAdapter("higgsfield") });
     const a = await owner();
     started(await startMedia(input(a, await taskFor(a), "img-lifestyle"), deps));
-    expect(await startMedia(input(a, await taskFor(a), "img-design"), deps)).toMatchObject({ ok: false, status: 429, error: "one_open" });
+    expect(await startMedia(input(a, await taskFor(a), "img-design"), deps)).toMatchObject({ ok: false, status: 429, error: "one_open", retryAfter: BUSY_RETRY_S });
     expect(await balance(a)).toBe(49);
   });
 

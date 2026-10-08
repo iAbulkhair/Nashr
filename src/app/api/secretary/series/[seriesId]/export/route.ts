@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { forbid } from "@/lib/roles";
 import { db } from "@/lib/db";
-import { allow } from "@/lib/rate";
+import { allow, retryLater } from "@/lib/rate";
 import { csvSafe } from "@/lib/admin-stats";
 import { SEC_KEYS, SEC_READS_PER_HOUR, SERIES_ID } from "@/lib/secretary";
 import { AUTO_CLOSE_RESULT, resultText, zoneDay, zoneLocalInput } from "@/lib/secretary-agenda";
@@ -34,7 +34,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ seriesId: strin
   if (!u) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const no = forbid(u, "read");
   if (no) return no;
-  if (!(await allow(`sec:read:${u.email}`, SEC_READS_PER_HOUR, 3600))) return NextResponse.json({ ok: false, error: "too_many" }, { status: 429 });
+  if (!(await allow(`sec:read:${u.email}`, SEC_READS_PER_HOUR, 3600))) return retryLater({ ok: false, error: "too_many" }, 3600);
   const { seriesId } = await ctx.params;
   const scope = sc(u);
   const notFound = () => NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });

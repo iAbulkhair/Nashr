@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { forbid } from "@/lib/roles";
-import { allow } from "@/lib/rate";
+import { allow, retryLater } from "@/lib/rate";
 import { SEC_WRITES_PER_HOUR } from "@/lib/secretary";
 import { AWAY_PROPOSAL_ID, decideAwayProposal } from "@/lib/secretary-away";
 
@@ -17,7 +17,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!u) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const no = forbid(u, "todo.write");
   if (no) return no;
-  if (!(await allow(`sec:write:${u.email}`, SEC_WRITES_PER_HOUR, 3600))) return NextResponse.json({ ok: false, error: "too_many" }, { status: 429 });
+  if (!(await allow(`sec:write:${u.email}`, SEC_WRITES_PER_HOUR, 3600))) return retryLater({ ok: false, error: "too_many" }, 3600);
   const { id } = await ctx.params;
   if (!AWAY_PROPOSAL_ID.test(id)) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   const b: unknown = await req.json().catch(() => null);

@@ -3,7 +3,7 @@ import { currentUser, sc, trialOver, type User } from "@/lib/auth";
 import { crawl } from "@/lib/crawl";
 import { buildFromSite } from "@/lib/onboard";
 import { getBrand, saveBrand } from "@/lib/brand";
-import { allow } from "@/lib/rate";
+import { allow, retryLater } from "@/lib/rate";
 import { readFile, writeFile } from "@/lib/files";
 import { push, type ChatMsg } from "@/lib/chat";
 import { db } from "@/lib/db";
@@ -119,7 +119,7 @@ export async function POST(req: Request) {
     const refusal = cannotPay(u, cost, scope, gov?.agentCaps.noor);
     if (refusal) return refuse(u, scope, cost, refusal);
   }
-  if (!(await allow(`onboard:${u.email}`, 3, 86400))) return new Response("slow_down", { status: 429 });
+  if (!(await allow(`onboard:${u.email}`, 3, 86400))) return retryLater("slow_down", 86400);
   // One run at a time per workspace: a reload during the run must not start a second one.
   const lockKey = `onboardlock:${scope}`;
   const token = await db.lockOwned(lockKey, LOCK_TTL);
