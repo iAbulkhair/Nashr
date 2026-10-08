@@ -12,7 +12,7 @@ import VerifyForm from "@/components/app/VerifyForm";
  * address shown is the session's, never one from the URL. A member, a founder session or an owner who is already verified
  * has nothing to prove and goes on to the app.
  */
-export default async function Page({ params, searchParams }: { params: Promise<{ lang: string }>; searchParams: Promise<{ next?: string | string[] }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ lang: string }>; searchParams: Promise<{ next?: string | string[]; sent?: string | string[] }> }) {
   const { lang } = await params;
   if (!isLang(lang)) notFound();
   const u = await currentUserUnverified();
@@ -24,6 +24,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const autoSend = !(await hasPendingCode(u.email));
   const canChangeEmail = !!u.gatedSignup;
   const mailOn = mailReady() || devCodeExposed();
+  // `sent=0` is signup saying its mail did not go out. It only changes which line the page shows; nothing trusts it.
+  const mailSent = (Array.isArray(sp.sent) ? sp.sent[0] : sp.sent) !== "0";
   const whatsapp = process.env.SUPPORT_WHATSAPP ? `https://wa.me/${process.env.SUPPORT_WHATSAPP.replace(/\D/g, "")}` : `/${lang}/help`; // the public help page: /app/help needs a verified session
-  return <VerifyForm lang={lang} email={u.email} canChangeEmail={canChangeEmail} autoSend={autoSend} mailOn={mailOn} whatsapp={whatsapp} next={next} />;
+  return <VerifyForm lang={lang} email={u.email} canChangeEmail={canChangeEmail} autoSend={autoSend} mailOn={mailOn} whatsapp={whatsapp} next={next} mailSent={mailSent} />;
 }

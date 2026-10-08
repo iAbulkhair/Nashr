@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { afterSignup, signupPartner } from "@/lib/partners";
 import { createSession, createUser, getLogin, normalizeEmail, strongPassword, validEmail } from "@/lib/auth";
 import { allow, clientIp, retryLater } from "@/lib/rate";
-import { devCodeExposed, sendVerifyCode } from "@/lib/verify-email";
+import { countVerifySend, devCodeExposed, sendVerifyCode } from "@/lib/verify-email";
 import { applyReferral, registerCode } from "@/lib/referral";
 import { captchaRefusal } from "@/lib/turnstile";
 import { withLoginLock } from "@/lib/team";
@@ -46,6 +46,8 @@ export async function POST(req: Request) {
   let mail = false;
   let devCode: string | undefined;
   try {
+    // The send counts in the address buckets of the send route (rule 759): a resend right after signup waits its minute.
+    await countVerifySend(account.email);
     const r = await sendVerifyCode(account);
     mail = r.sent;
     if (devCodeExposed()) devCode = r.code;

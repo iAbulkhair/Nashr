@@ -60,7 +60,8 @@ export function SignupForm({ t, lang, turnstileKey = null }: { t: AppDict; lang:
       // The new owner proves the address first (rule 754): the verify page carries the old destination on in `next`. A carried
       // site only pre-fills the start page: the owner confirms it there before anything is read (onboard-confirm.ts).
       const after = next || `/${lang}/app/start${site.length >= 4 ? `?url=${encodeURIComponent(site)}` : ""}`;
-      r.push(`/${lang}/app/verify?next=${encodeURIComponent(after)}`);
+      // `sent=0`: the first mail did not go out, so the verify page does not say it did (copy only).
+      r.push(`/${lang}/app/verify?next=${encodeURIComponent(after)}${p.body.mail === false ? "&sent=0" : ""}`);
       r.refresh();
     } finally {
       setBusy(false);

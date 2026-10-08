@@ -125,6 +125,18 @@ export async function sendVerifyCode(u: Pick<User, "email" | "lang">): Promise<{
   return { sent, code };
 }
 
+const gapBucket = (email: string) => allow(`verify:gap:${email}`, 1, VERIFY.gap);
+const hourBucket = (email: string) => allow(`verify:hour:${email}`, VERIFY.perHour, 3600);
+
+/**
+ * Count a send that did not go through `verifySendRefusal` (signup's first code) in the per-address buckets, so a resend
+ * a moment later is refused honestly instead of replacing the code that was just mailed. The IP bucket is the send
+ * route's own and is left alone: signup has its own per-IP limit.
+ */
+export async function countVerifySend(email: string): Promise<void> {
+  await Promise.all([gapBucket(email), hourBucket(email)]);
+}
+
 /**
  * The refusals every code send goes through, in order (rules 759-760, 766): mail is off (503, unless a test deploy hands the
  * code back), then three buckets, the refusing one names the wait: one send a minute and five an hour per address, twenty
@@ -133,8 +145,8 @@ export async function sendVerifyCode(u: Pick<User, "email" | "lang">): Promise<{
  */
 export async function verifySendRefusal(email: string, req: Request): Promise<NextResponse | null> {
   if (!devCodeExposed() && !mailReady()) return NextResponse.json({ ok: false, error: "mail_unavailable" }, { status: 503 });
-  if (!(await allow(`verify:gap:${email}`, 1, VERIFY.gap))) return retryLater({ ok: false, error: "slow_down" }, VERIFY.gap);
-  if (!(await allow(`verify:hour:${email}`, VERIFY.perHour, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
+  if (!(await gapBucket(email))) return retryLater({ ok: false, error: "slow_down" }, VERIFY.gap);
+  if (!(await hourBucket(email))) return retryLater({ ok: false, error: "slow_down" }, 3600);
   if (!(await allow(`verify:ip:${clientIp(req)}`, VERIFY.perIpHour, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
   return null;
 }

@@ -10,7 +10,7 @@
 export type AuthLang = "ar" | "en";
 
 /** A finished POST: the HTTP status (0 when the request never got an answer) and the JSON body ({} when there is none). */
-export type Posted = { status: number; body: Record<string, unknown> };
+export type Posted = { status: number; body: Record<string, unknown>; /** The `Retry-After` header, only when the answer carried one. */ retry?: string };
 
 /** POST JSON and never throw. A dropped connection is status 0; a body that is not JSON (an HTML error page) is {}. */
 export async function postJson(url: string, data: unknown, f: typeof fetch = fetch): Promise<Posted> {
@@ -21,7 +21,8 @@ export async function postJson(url: string, data: unknown, f: typeof fetch = fet
     return { status: 0, body: {} };
   }
   const body: unknown = await res.json().catch(() => ({}));
-  return { status: res.status, body: body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {} };
+  const retry = res.headers?.get("Retry-After") ?? undefined;
+  return { status: res.status, body: body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {}, ...(retry ? { retry } : {}) };
 }
 
 /** True when the server accepted the request. */

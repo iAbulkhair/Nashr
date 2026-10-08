@@ -234,6 +234,18 @@ describe("email verify routes", () => {
     expect(await hasPendingCode(email)).toBe(true);
   });
 
+  it("an early resend right after signup is refused with Retry-After, and the mailed code stays valid", async () => {
+    const email = `signup-g-${Date.now()}@test.example`;
+    expect((await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "N" }, { "x-real-ip": freshIp() }))).status).toBe(200);
+    expect(mails).toHaveLength(1);
+    await signIn(email);
+    const res = await sendCode();
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("60");
+    expect(mails).toHaveLength(1);
+    expect((await checkCode(codeIn(mails[0]))).status).toBe(200);
+  });
+
   it("signup still succeeds when the mail fails, with mail false", async () => {
     mailOk = false;
     const email = `signup-f-${Date.now()}@test.example`;

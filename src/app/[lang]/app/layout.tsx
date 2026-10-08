@@ -2,6 +2,7 @@ import Link from "next/link";
 import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
+import { safeNext } from "@/lib/safe-next";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, currentUserUnverified, isFounderActor, trialDaysLeft } from "@/lib/auth";
 import Sidebar from "@/components/app/Sidebar";
@@ -31,7 +32,11 @@ export default async function AppLayout({ children, params }: { children: React.
   const user = await currentUser();
   // An owner who has not verified the address reads as signed out above; send them to the code page, not to login (rule 754).
   const pending = !user && !isPublic && path ? await currentUserUnverified() : null;
-  if (pending?.actor?.kind === "owner") redirect(`/${lang}/app/verify`);
+  if (pending?.actor?.kind === "owner") {
+    // The requested page rides along in `next`, kept to a same-site path, so verifying lands where the owner was going.
+    const back = safeNext(path);
+    redirect(`/${lang}/app/verify${back ? `?next=${encodeURIComponent(back)}` : ""}`);
+  }
   if (!user && !isPublic && path) redirect(`/${lang}/app/login`);
 
   if (!user) {

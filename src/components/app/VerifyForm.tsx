@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Lang } from "@/lib/i18n";
 import Scribble from "@/components/Scribble";
 import LogoutButton from "./LogoutButton";
-import { authMessage, failureCode, succeeded } from "@/lib/auth-client";
+import { authMessage, failureCode, postJson, succeeded } from "@/lib/auth-client";
 import { safeNext } from "@/lib/safe-next";
 import { retryWait, typedDigits, waitLabel } from "@/lib/verify-client";
 
@@ -14,6 +14,7 @@ const V = {
   ar: {
     title: "تحقق من بريدك",
     sentTo: "أرسلنا رمزاً من 6 أرقام إلى",
+    yourEmail: "بريدك:",
     codeLabel: "الرمز المكوّن من 6 أرقام",
     confirm: "تأكيد",
     resend: "إرسال رمز جديد",
@@ -26,6 +27,8 @@ const V = {
     cancel: "إلغاء",
     mailOff: "لا نستطيع إرسال البريد الآن. راسلنا على واتساب",
     support: "راسلنا على واتساب",
+    contact: "تواصل معنا",
+    mailOffHelp: "لا نستطيع إرسال البريد الآن. تواصل معنا",
     notSent: "لم نرسل الرمز بعد. اضغط «إرسال رمز جديد».",
     sendFailed: "تعذّر إرسال الرمز. حاول مرة أخرى بعد قليل.",
     tooMany: "محاولات كثيرة. حاول مرة أخرى لاحقاً.",
@@ -38,6 +41,7 @@ const V = {
   en: {
     title: "Check your email",
     sentTo: "We sent a 6-digit code to",
+    yourEmail: "Your email:",
     codeLabel: "The 6-digit code",
     confirm: "Confirm",
     resend: "Send a new code",
@@ -50,6 +54,8 @@ const V = {
     cancel: "Cancel",
     mailOff: "We cannot send email right now. Message us on WhatsApp",
     support: "Message us on WhatsApp",
+    contact: "Contact us",
+    mailOffHelp: "We cannot send email right now. Contact us",
     notSent: "The code has not been sent yet. Press “Send a new code”.",
     sendFailed: "We could not send the code. Try again shortly.",
     tooMany: "Too many tries. Try again later.",
@@ -61,26 +67,14 @@ const V = {
   },
 } as const;
 
-type Reply = { status: number; body: Record<string, unknown>; retry: string | null };
-
-/** POST JSON and never throw (`postJson` in auth-client.ts drops the `Retry-After` header, which the countdown needs). */
-async function post(url: string, data: unknown): Promise<Reply> {
-  try {
-    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
-    const body: unknown = await res.json().catch(() => ({}));
-    return { status: res.status, body: body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {}, retry: res.headers.get("Retry-After") };
-  } catch {
-    return { status: 0, body: {}, retry: null };
-  }
-}
-
 /**
  * The code page for an owner who has not proved the address (rule 754). `autoSend` is set when no code is waiting (a login
  * that lands here), so the page asks for one once on open; right after signup the first code is already on its way.
  * `mailOn` false means this deploy cannot send mail: the WhatsApp line shows at once. The code and the address are never
- * put in a URL; the code goes in a JSON body and is not logged.
+ * put in a URL; the code goes in a JSON body and is not logged. "We sent a code" is said only while a mail is known to have
+ * gone out (`sentMail`); `mailSent` false (signup's mail did not go) and every mail failure fall back to the neutral "Your email".
  */
-export default function VerifyForm({ lang, email, canChangeEmail, autoSend, mailOn, whatsapp, next }: { lang: Lang; email: string; canChangeEmail: boolean; autoSend: boolean; mailOn: boolean; whatsapp: string | null; next: string }) {
+export default function VerifyForm({ lang, email, canChangeEmail, autoSend, mailOn, whatsapp, next, mailSent = true }: { lang: Lang; email: string; canChangeEmail: boolean; autoSend: boolean; mailOn: boolean; whatsapp: string | null; next: string; mailSent?: boolean }) {
   const r = useRouter();
   const S = V[lang];
   const dest = safeNext(next) || `/${lang}/app`;
@@ -93,6 +87,9 @@ export default function VerifyForm({ lang, email, canChangeEmail, autoSend, mail
   const [sending, setSending] = useState(false);
   const [wait, setWait] = useState(0);
   const [mailDown, setMailDown] = useState(!mailOn);
+  // A code is waiting and its mail went out: signup said so, or this page's own send did. Until then the line is neutral.
+  const [sentMail, setSentMail] = useState(mailOn && mailSent && !autoSend);
+  const viaWhatsapp = !!whatsapp && whatsapp.startsWith("https://wa.me/");
   const [changing, setChanging] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [moving, setMoving] = useState(false);
@@ -109,20 +106,25 @@ export default function VerifyForm({ lang, email, canChangeEmail, autoSend, mail
     setSending(true);
     setErr("");
     setInfo("");
-    const p = await post("/api/auth/verify/send", {});
+    const p = await postJson("/api/auth/verify/send", {});
     setSending(false);
     if (succeeded(p)) {
       setMailDown(false);
+      setSentMail(true);
       setWait(typeof p.body.resendIn === "number" ? Math.ceil(p.body.resendIn) : 60);
       return;
     }
     if (p.status === 401) return r.replace(login);
     if (p.status === 409 && p.body.error === "already_verified") return window.location.assign(dest);
-    if (p.status === 503 && p.body.error === "mail_unavailable") return setMailDown(true);
+    if (p.status === 503 && p.body.error === "mail_unavailable") {
+      setSentMail(false);
+      return setMailDown(true);
+    }
     if (p.status === 429) {
       setWait(retryWait(p.retry));
       return;
     }
+    if (p.body.error === "send_failed") setSentMail(false);
     setErr(p.body.error === "send_failed" ? S.sendFailed : authMessage(failureCode(p), lang));
   }
 
@@ -140,7 +142,7 @@ export default function VerifyForm({ lang, email, canChangeEmail, autoSend, mail
     const digits = typedDigits(code);
     if (digits.length !== 6) return setErr(S.sixDigits);
     setBusy(true);
-    const p = await post("/api/auth/verify/check", { code: digits });
+    const p = await postJson("/api/auth/verify/check", { code: digits });
     if (succeeded(p)) return window.location.assign(dest);
     setBusy(false);
     if (p.status === 401) return r.replace(login);
@@ -161,7 +163,7 @@ export default function VerifyForm({ lang, email, canChangeEmail, autoSend, mail
     const to = newEmail.trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return setErr(S.badEmail);
     setMoving(true);
-    const p = await post("/api/auth/verify/email", { email: to });
+    const p = await postJson("/api/auth/verify/email", { email: to });
     setMoving(false);
     if (!succeeded(p)) {
       if (p.status === 401) return r.replace(login);
@@ -179,10 +181,12 @@ export default function VerifyForm({ lang, email, canChangeEmail, autoSend, mail
     setNewEmail("");
     setCode("");
     if (p.body.mail === false) {
+      setSentMail(false);
       setWait(0);
       setInfo(S.notSent);
     } else {
       setMailDown(false);
+      setSentMail(true);
       setWait(60);
     }
   }
@@ -191,12 +195,12 @@ export default function VerifyForm({ lang, email, canChangeEmail, autoSend, mail
     <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="verify-t1" />{S.title}</span></h1>
       <p className="mt-2 text-ink/70">
-        {S.sentTo} <span dir="ltr" className="clip font-medium text-ink">{shown}</span>
+        {sentMail ? S.sentTo : S.yourEmail} <span dir="ltr" className="clip font-medium text-ink">{shown}</span>
       </p>
       {mailDown && (
         <div role="status" className="mt-4 rounded-xl border border-ink/10 bg-ground p-4 text-sm">
-          <p>{S.mailOff}</p>
-          {whatsapp && <a href={whatsapp} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm mt-3">{S.support}</a>}
+          <p>{viaWhatsapp ? S.mailOff : S.mailOffHelp}</p>
+          {whatsapp && <a href={whatsapp} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm mt-3">{viaWhatsapp ? S.support : S.contact}</a>}
         </div>
       )}
       <form onSubmit={onSubmit} className="mt-6 grid gap-3">
