@@ -11,6 +11,7 @@ Rules that must hold after every change:
 - The model is never the only approval: publishing, spending credits outside a user request and brand changes are checked in code, not only in prompts. Crawled text, catalogs, uploads and connector data are untrusted input.
 - Secrets are compared with `sameSecret`, never accepted in URLs, never logged. Environment variables are named in `docs/system/variables.md`, never pasted into chat or committed.
 - Redis is HTTP per command: no `await db.*` inside a loop. Use `Promise.all` or `pmap` from `src/lib/parallel.ts`.
+- Stored shapes change in two releases, expand then contract (rule 679, `docs/system/flows.md` "Releases"). Expand: the new code reads the old and the new shape and writes the new one, and old code still reads it or ignores it safely. Contract: the old reading goes in a later release. The release pull request names the step; a one-time data conversion is an idempotent script run after the expand release is live, never at build time.
 - Model output rendered as HTML goes through `render` in `src/lib/md.ts`. CSV cells go through `csvSafe`.
 - No invented customers, logos, testimonials, numbers or results promises anywhere in the product or the site.
 - Run `npm run check` (type-check, lint, unit tests) and `npx next build` before every commit, and verify on production after the push. Add or update a test in `tests/` for every rule you touch; `docs/system/tests.md` lists which rules are pinned and which are not.
