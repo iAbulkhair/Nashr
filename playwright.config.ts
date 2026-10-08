@@ -1,9 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * End-to-end suite. Runs against a production build of the app with NO environment variables: `src/lib/db.ts` falls back
- * to a process-local store and `ANTHROPIC_API_KEY` being unset puts every agent call on its mock path, so the suite
- * needs no Redis, no model key and no network. That also means the server must be a single process — `next start`,
+ * End-to-end suite. Runs against a production build of the app with no environment variables except `APP_ENV=test`
+ * (set on the web server below): `src/lib/db.ts` falls back to a process-local store and `ANTHROPIC_API_KEY` being unset
+ * puts every agent call on its mock path, so the suite needs no Redis, no model key and no network. Without
+ * `APP_ENV=test` a production build counts as a production deployment and refuses both (rules 430-431,
+ * `src/lib/deploy-env.ts`). The process-local store also means the server must be a single process — `next start`,
  * not a cluster — or the in-memory store would differ between requests.
  */
 const PORT = Number(process.env.E2E_PORT ?? 3210);
@@ -61,6 +63,8 @@ export default defineConfig({
   // Against a deployed preview (`E2E_BASE_URL`) there is nothing to start.
   webServer: process.env.E2E_BASE_URL ? undefined : {
     command: `npm run build && npx next start -p ${PORT}`,
+    // Marks this production build as a test so the memory store and the model mock stay on (rules 430-431).
+    env: { APP_ENV: "test" },
     url: baseURL,
     // Never reuse. The rate limiters (signup five per IP per hour, forgot three per address per fifteen minutes, login
     // eight per account) live in the same process-local store as the data, so a server left running from an earlier run

@@ -11,6 +11,8 @@ export const LANG_CHOICES = ["عربي سعودي", "عربي فصحى", "Englis
  * tokens on a call that charges no credits.
  */
 export const toolLang = (v: unknown): string => (typeof v === "string" && (LANG_CHOICES as readonly string[]).includes(v) ? v : LANG_CHOICES[0]);
+/** A signed-in caller is not anonymous, but /api/tools/{tool} still makes a real model call and charges no credits. */
+export const SIGNED_IN_PER_DAY = 50;
 
 const langField = { name: "lang", label: { ar: "اللغة", en: "Language" }, type: "select" as const, options: [...LANG_CHOICES] };
 const brand = { name: "brand", label: { ar: "اسم العلامة / المنتج", en: "Brand / product" }, placeholder: { ar: "مثال: عطور الواحة، عود كمبودي", en: "e.g. Oasis Perfumes, Cambodian oud" } };

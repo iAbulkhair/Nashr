@@ -47,7 +47,8 @@ describe("the free tools endpoint bounds what one account can spend (P1: unmeter
     const call = () => tools.POST(json("/api/tools/hook-generator", "POST", { brand: "x", audience: "y" }), { params: Promise.resolve({ tool: "hook-generator" }) });
 
     const codes: number[] = [];
-    for (let i = 0; i < tools.SIGNED_IN_PER_DAY + 1; i++) codes.push((await call()).status);
+    const { SIGNED_IN_PER_DAY } = await import("@/lib/tools");
+    for (let i = 0; i < SIGNED_IN_PER_DAY + 1; i++) codes.push((await call()).status);
     expect(codes.filter((c) => c === 429), "the cap must bite for a signed-in account too").toHaveLength(1);
   });
 

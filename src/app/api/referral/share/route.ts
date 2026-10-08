@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth";
 import { adjust } from "@/lib/credits";
 import { db } from "@/lib/db";
+import { SHARE_CREDITS } from "@/lib/referral";
 import { forbid } from "@/lib/roles";
 
-export const SHARE_CREDITS = 20;
 const PLATFORMS = ["x", "linkedin", "whatsapp", "instagram"];
 /** Accounts that claimed before the marker moved into a set still have their per-platform key. */
 const legacyKey = (email: string, platform: string) => `shared:${email}:${platform}`;

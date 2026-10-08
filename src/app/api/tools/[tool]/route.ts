@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getTool, toolLang } from "@/lib/tools";
+import { SIGNED_IN_PER_DAY, getTool, toolLang } from "@/lib/tools";
 import { meter } from "@/lib/usage";
 import { db } from "@/lib/db";
 import { allow, clientIp } from "@/lib/rate";
@@ -9,8 +9,6 @@ import { deadlineFor } from "@/lib/media/keys";
 
 export const maxDuration = 60;
 const FREE_PER_DAY = 5;
-/** A signed-in caller is not anonymous, but this route still makes a real model call and charges no credits. */
-export const SIGNED_IN_PER_DAY = 50;
 
 export async function POST(req: Request, ctx: { params: Promise<{ tool: string }> }) {
   const deadline = deadlineFor(maxDuration);
