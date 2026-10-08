@@ -10,6 +10,7 @@ import { ReconnectRequired, getFreshConnection, refusedToken } from "./connector
 import { getConnection, type Connection } from "./connectors/store";
 import { DAY_MS, EMPTY_TOTALS, SOCIAL_PUB_KEY, beforeDeadline, busy, dateOf, day, late, rangeBefore, refused, splitDays } from "./social-read/common";
 import { holdsFb, readFacebook } from "./social-read/facebook";
+import { holdsTt, readTiktok } from "./social-read/tiktok";
 import { holdsYt, readYoutube } from "./social-read/youtube";
 
 /**
@@ -113,9 +114,11 @@ const errCode = (e: unknown) => (e instanceof Error && /^[a-z_]+$/.test(e.messag
  * States the owner fixes on the platform, not by reconnecting: written to the snapshot and never thrown. `fb_no_insights`:
  * the Facebook Page's insights need the `read_insights` permission the connected app does not hold (rule 739).
  * `yt_no_analytics`: the channel's analytics were refused (no `yt-analytics.readonly`); it stands beside the YouTube part,
- * which keeps the public counts (rule 740).
+ * which keeps the public counts (rule 740). `tt_no_scope`: TikTok refused a read for want of a scope on Thakeen's TikTok
+ * app or on the login; beside the TikTok part when the other read answered, alone when neither did, and never a refused
+ * token, so the TikTok record, which also publishes, is not asked to reconnect (rule 742).
  */
-const KNOWN = new Set(["ig_not_professional", "li_no_page_access", "fb_no_insights", "yt_no_analytics"]);
+const KNOWN = new Set(["ig_not_professional", "li_no_page_access", "fb_no_insights", "yt_no_analytics", "tt_no_scope"]);
 /** LinkedIn refuses a page the member does not administer, or an app without organization access, with a 403. */
 const denied = (e: unknown) => e instanceof Error && /403|forbidden|access.?denied/i.test(e.message);
 /**
@@ -326,19 +329,19 @@ export type SocialReader = {
   holds(c: Connection | null | undefined): boolean;
   read(scope: string, c: Connection, now: Date, deadline: number): Promise<ReadPart>;
 };
-const notYet: SocialReader = { provider: "meta", holds: () => false, read: async () => { throw new Error("not_connected"); } };
 /**
  * Every platform's reader. Instagram: a Composio Meta record with the Instagram part and its id. The Facebook Page (rule
  * 739, social-read/facebook.ts): a Composio Meta record with the Facebook part and the page chosen for publishing.
  * LinkedIn: a Composio record with the chosen company page. YouTube (rule 740, social-read/youtube.ts): a Composio
- * YouTube record with the channel chosen at connect. TikTok (742) holds nothing until its reader exists.
+ * YouTube record with the channel chosen at connect. TikTok (rule 742, social-read/tiktok.ts): a Composio TikTok record
+ * with its account.
  */
 export const READERS: Record<Platform, SocialReader> = {
   instagram: { provider: "meta", holds: (c) => !!(c && isComposio(c) && c.data.instagram && c.meta?.igId), read: readIg },
   facebook: { provider: "meta", holds: holdsFb, read: readFacebook },
   linkedin: { provider: "linkedin", holds: (c) => !!(c && isComposio(c) && c.meta?.liOrg), read: readLi },
   youtube: { provider: "youtube", holds: holdsYt, read: readYoutube },
-  tiktok: { ...notYet, provider: "tiktok" },
+  tiktok: { provider: "tiktok", holds: holdsTt, read: readTiktok },
 };
 
 /**
@@ -488,6 +491,7 @@ export async function socialDataBlock(scope: string, now = new Date()): Promise<
     "- engagement_rate is a fraction of views, not a percent: 0.0733 means 7.33%. On the LinkedIn page, views are impressions, likes are reactions and pageViews are visits to the page itself.",
     "- On the Facebook Page, reach adds up each day's unique viewers (one person seen on three days counts three times), engagements are engagements with its posts and clicks are actions on the Page.",
     "- On the YouTube channel, followers are subscribers, followsGained and followsLost are subscribers gained and lost, and watchMinutes are minutes watched; YouTube gives no reach.",
+    "- On the TikTok account, only followers and posts are read: TikTok counts only over the account's lifetime, so its totals are null and it has no prev.",
     "- null is a figure that was not read: unknown, never zero. from_thakeen marks a post Thakeen published.",
     ...(age > SOCIAL_STALE_DAYS ? [`- The read is ${age} days old: label these figures with the read date.`] : []),
   ].join("\n");

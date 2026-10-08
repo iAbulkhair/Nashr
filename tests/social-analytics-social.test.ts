@@ -148,14 +148,17 @@ describe("the owner's refresh of the social results (rule 735)", () => {
     expect(none.status).toBe(404);
     expect(await none.json()).toEqual({ ok: false, error: "not_connected" });
     // A direct Meta record, a Facebook-only Composio record with no Page chosen (or an id that is not one), a LinkedIn
-    // record with no page chosen, and a YouTube record whose channel id is not one (rule 740 reads only a UC channel id
-    // chosen at connect): none holds a part this path reads.
+    // record with no page chosen, a YouTube record whose channel id is not one (rule 740 reads only a UC channel id
+    // chosen at connect), and a TikTok record without its account or a direct one (rule 742): none holds a part this
+    // path reads.
     const held: [string, Connection][] = [
       ["meta", { provider: "meta", data: { access_token: "t" }, meta: { pageId: "1", igId: "1784" }, connectedAt: NOW.toISOString() }],
       ["meta", via("meta", { facebook: "ca_fb" })],
       ["meta", via("meta", { facebook: "ca_fb" }, { pageId: "p-1" })],
       ["linkedin", via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc" })],
       ["youtube", via("youtube", { youtube: "ca_yt" }, { channelId: "UC1" })],
+      ["tiktok", via("tiktok", {})],
+      ["tiktok", { provider: "tiktok", data: { access_token: "t", tiktok: "x" }, meta: {}, connectedAt: NOW.toISOString() }],
     ];
     for (const [provider, c] of held) {
       await saveConnection(owner.email, c);
@@ -383,11 +386,13 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
     expect(holdsSocial("linkedin", liConn())).toBe(true);
     expect(holdsSocial("linkedin", igConn())).toBe(false);
     // The Facebook Page holds once a Page is chosen (rule 739), the YouTube channel once its UC channel id is stored
-    // (rule 740); TikTok holds nothing until its reader exists (rule 742).
+    // (rule 740), the TikTok account once a Composio record carries it (rule 742).
     expect(holdsSocial("meta", via("meta", { facebook: "ca_fb" }, { pageId: "1" }))).toBe(true);
     expect(holdsSocial("meta", via("meta", { facebook: "ca_fb" }))).toBe(false);
     expect(holdsSocial("youtube", via("youtube", { youtube: "ca_yt" }, { channelId: "UCddiUEpeqJcYeBxX1IVBKvQ" }))).toBe(true);
-    expect(holdsSocial("tiktok", via("tiktok", { tiktok: "ca_tt" }))).toBe(false);
+    expect(holdsSocial("tiktok", via("tiktok", { tiktok: "ca_tt" }))).toBe(true);
+    expect(holdsSocial("tiktok", via("tiktok", {}))).toBe(false);
+    expect(READERS.tiktok.provider).toBe("tiktok");
     expect(holdsSocial("youtube", yt)).toBe(false);
     expect(READERS.youtube.provider).toBe("youtube");
     expect(READERS.facebook.provider).toBe("meta");

@@ -9,9 +9,9 @@
  * below list no write tool at all, so nothing here can create, edit, pause or fund an ad, or change a property (the
  * founder's rule of 2026-10-05: ads are read and analysed, never published or edited; rule 653).
  *
- * Instagram, Facebook Page, LinkedIn page and YouTube channel results are reads (rules 663, 739 and 740, specs
- * 2026-10-08-social-results and 2026-10-08-social-analytics-reports B1, B2): no tool here posts, replies, likes or edits
- * on the strength of them.
+ * Instagram, Facebook Page, LinkedIn page, YouTube channel and TikTok account results are reads (rules 663, 739, 740 and
+ * 742, specs 2026-10-08-social-results and 2026-10-08-social-analytics-reports B1, B2, C1): no tool here posts, replies,
+ * likes or edits on the strength of them.
  *
  * WhatsApp and YouTube are drafts only (rule 657): WhatsApp's one write submits a message template to Meta's review and
  * no tool sends a message; YouTube's one write uploads a video whose privacyStatus is pinned to "private" in `fixed`.
@@ -83,7 +83,9 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
     provider: "tiktok",
     // TikTok has no managed app on Composio: this auth config carries Thakeen's own TikTok app (plan Task 8).
     authEnv: "COMPOSIO_AUTH_TIKTOK",
-    read: {},
+    // The account's results (rule 742, social-read/tiktok.ts): its lifetime counts with constant fields and its public
+    // videos, at most two pages of 20. Both act on the login's own account: no user or video id is ever sent.
+    read: { TIKTOK_GET_USER_STATS: ["fields"], TIKTOK_LIST_VIDEOS: ["max_count", "cursor"] },
     write: { TIKTOK_POST_PHOTO: ["photo_images", "photo_cover_index", "post_mode", "title", "description"] },
     fixed: { TIKTOK_POST_PHOTO: { post_mode: "MEDIA_UPLOAD" } },
   },

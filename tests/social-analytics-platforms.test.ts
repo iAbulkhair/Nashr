@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { json, newUser, settle, signIn } from "./helpers/session";
 import { db } from "@/lib/db";
-import { saveConnection, type Connection } from "@/lib/connectors/store";
+import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
 import { setComposioClientForTests } from "@/lib/connectors/composio";
 import { EMPTY_TOTALS, SOCIAL_PUB_KEY, getSocialSnapshot, holdsSocial, socialDataBlock, syncSocial, syncSocialIfDue, type Totals } from "@/lib/social-stats";
 import { fbUrl, holdsFb } from "@/lib/social-read/facebook";
 import { holdsYt, ytUrl } from "@/lib/social-read/youtube";
+import { holdsTt, ttUrl } from "@/lib/social-read/tiktok";
 import * as connRoute from "@/app/api/connect/[provider]/route";
 import { fakeComposio, ok, type Answer, type Call, type Result } from "./helpers/composio-fake";
 
@@ -20,6 +21,12 @@ import { fakeComposio, ok, type Answer, type Call, type Result } from "./helpers
  * daily channel analytics split into the window and the 28 days before it, and its latest uploads (at most 30) with each
  * video's public counts. Amends 663 (the three new tools are reads only), 664 (the channel is a part), 673 (a YouTube
  * record is read daily) and 735 (the YouTube path answers sync_social). Answers follow the Data and Analytics API shapes.
+ *
+ * Rule 742 (same spec, C1): the TikTok account, read through Composio with Thakeen's own TikTok app: its lifetime
+ * counts with constant fields (only followers are kept) and its public videos, at most two pages of 20, the ones created
+ * inside the window kept (at most 30). No previous period: TikTok's counters are lifetime, so a change comes only from
+ * the monthly history. Amends 663 (the two tools are reads only), 664 (a known state beside the part), 673 (a TikTok
+ * record is read daily) and 735 (the TikTok path answers sync_social). Answers follow TikTok's v2 API shapes.
  */
 const NOW = new Date("2026-10-08T09:00:00Z");
 
@@ -529,5 +536,239 @@ describe("YouTube channel results (rule 740)", () => {
     expect(ytUrl(vid(1))).toBe(`https://www.youtube.com/watch?v=${vid(1)}`);
     expect(ytUrl("dQw4w9WgX-_")).toBe("https://www.youtube.com/watch?v=dQw4w9WgX-_");
     for (const bad of ["vid0000001", "vid000000012", "vid00000/01", "vid0000000 ", "javascript:", "a&list=xyz1", "", "https://e.x"]) expect(ytUrl(bad), bad).toBeNull();
+  });
+});
+
+const TT_FIELDS = ["follower_count", "likes_count", "video_count"];
+const ttConn = (meta: Record<string, string> = {}) => via("tiktok", { tiktok: "ca_tt" }, { account: "TikTok", ...meta });
+/** A nineteen-digit video id, as TikTok gives it: 7000000000000000001, 7000000000000000002, ... */
+const ttId = (n: number) => `7${String(n).padStart(18, "0")}`;
+/** The day `k` days before NOW (2026-10-08): the window is 2026-09-10 (back(28)) to 2026-10-07 (back(1)). */
+const back = (k: number) => new Date(NOW.getTime() - k * 864e5).toISOString().slice(0, 10);
+const ttVideo = (n: number, d: string, over: Record<string, unknown> = {}) => ({
+  id: ttId(n), create_time: Date.parse(`${d}T12:00:00Z`) / 1000, title: `clip ${n}`, video_description: `about clip ${n}`, duration: 15,
+  share_url: `https://www.tiktok.com/@ward/video/${ttId(n)}?utm_campaign=tt4d_open_api&utm_source=aw1`,
+  view_count: 1000 + n, like_count: 50, comment_count: 4, share_count: 2, ...over,
+});
+/** One page of TIKTOK_LIST_VIDEOS, in TikTok's own shape. */
+const page = (videos: unknown[], more = false, cursor: unknown = 0) => ok({ data: { videos, cursor, has_more: more } });
+function ttAnswers(pages: Result[] = [page([ttVideo(1, back(3))])], followers: unknown = 1000) {
+  answers.TIKTOK_GET_USER_STATS = ok({ data: { user: { follower_count: followers, following_count: 12, likes_count: 52000, video_count: 40 } } });
+  answers.TIKTOK_LIST_VIDEOS = (a) => (a.cursor === undefined ? pages[0] : pages[1] ?? page([]));
+}
+const listCalls = () => calls.filter((c) => c.slug === "TIKTOK_LIST_VIDEOS").map((c) => c.args);
+
+describe("TikTok account results (rule 742)", () => {
+  it("reads stats with constant fields and at most two pages of videos (742)", async () => {
+    const u = await newUser("ttread");
+    await db.sadd(SOCIAL_PUB_KEY(u.email), ttId(1));
+    // 35 videos inside the window, two a day, newest first; TikTok says there are more after the second page.
+    const vids = Array.from({ length: 35 }, (_, i) => ttVideo(i + 1, back(1 + Math.floor(i / 2))));
+    ttAnswers([page(vids.slice(0, 20), true, 1700000000000), page(vids.slice(20), true, 1690000000000)]);
+    const snap = await syncSocial(u.email, { tiktok: ttConn() }, NOW);
+    expect(calls.find((c) => c.slug === "TIKTOK_GET_USER_STATS")?.args).toEqual({ fields: TT_FIELDS });
+    expect(listCalls()).toEqual([{ max_count: 20 }, { max_count: 20, cursor: 1700000000000 }]);
+    expect(calls).toHaveLength(3);
+    for (const c of calls) expect(JSON.stringify(c.args)).not.toMatch(/ca_tt|access_token|open_id/);
+
+    const tt = snap.parts.tiktok!;
+    expect(tt).toMatchObject({ platform: "tiktok", account: "TikTok", range: { from: "2026-09-10", to: "2026-10-07" }, followers: 1000 });
+    // Lifetime counts are not the window's totals: likes_count and video_count are never stored as figures.
+    expect(tt.totals).toEqual(EMPTY_TOTALS);
+    expect(JSON.stringify(snap)).not.toMatch(/52000|"video_count"|"likes_count"/);
+    expect(tt).not.toHaveProperty("prev");
+    expect(tt.posts.map((p) => p.id)).toEqual(vids.slice(0, 30).map((v) => v.id));
+    expect(tt.posts[0]).toEqual({ id: ttId(1), date: "2026-10-07", type: "VIDEO", caption: "clip 1", url: `https://www.tiktok.com/@ward/video/${ttId(1)}`, views: 1001, reach: null, likes: 50, comments: 4, shares: 2, saved: null, fromThakeen: true });
+    expect(tt.posts[1].fromThakeen).toBe(false);
+    expect(snap.errors).toEqual({});
+    expect(snap.history).toEqual([{ month: "2026-10", platform: "tiktok", followers: 1000, totals: EMPTY_TOTALS }]);
+    // Dana is told what TikTok's figures are, beside them.
+    const block = await socialDataBlock(u.email, NOW);
+    expect(block).toContain('"tiktok":{"account":"TikTok"');
+    expect(block).toContain("On the TikTok account, only followers and posts are read");
+  });
+
+  it("an account with no public videos is read, with no posts (742)", async () => {
+    const u = await newUser("ttnone");
+    ttAnswers([page([], false, 0)]);
+    const snap = await syncSocial(u.email, { tiktok: ttConn() }, NOW);
+    expect(snap.parts.tiktok).toMatchObject({ followers: 1000, totals: EMPTY_TOTALS, posts: [] });
+    expect(snap.errors).toEqual({});
+    expect(listCalls()).toEqual([{ max_count: 20 }]);
+    // An empty first page that says there is more is not paged: nothing on it shows the next page is in the window.
+    ttAnswers([page([], true, 1700000000000)]);
+    calls.length = 0;
+    expect((await syncSocial(u.email, { tiktok: ttConn() }, NOW)).parts.tiktok?.posts).toEqual([]);
+    expect(listCalls()).toEqual([{ max_count: 20 }]);
+  });
+
+  it("lifetime counters give a change only through history (742)", async () => {
+    const u = await newUser("tthist");
+    ttAnswers(undefined, 900);
+    const sept = new Date("2026-09-08T09:00:00Z");
+    expect((await syncSocial(u.email, { tiktok: ttConn() }, sept)).parts.tiktok).toMatchObject({ range: { from: "2026-08-11", to: "2026-09-07" }, followers: 900 });
+    ttAnswers(undefined, 1000);
+    const snap = await syncSocial(u.email, { tiktok: ttConn() }, NOW);
+    expect(snap.parts.tiktok).not.toHaveProperty("prev");
+    expect(snap.history).toEqual([
+      { month: "2026-09", platform: "tiktok", followers: 900, totals: EMPTY_TOTALS },
+      { month: "2026-10", platform: "tiktok", followers: 1000, totals: EMPTY_TOTALS },
+    ]);
+  });
+
+  it("keeps only unique videos created inside the window, links only on tiktok.com (742)", async () => {
+    const u = await newUser("ttposts");
+    ttAnswers([page([
+      ttVideo(1, "2026-10-08"), // today: after the window
+      ttVideo(2, back(2), { title: "", video_description: "<b>ورد</b> طائفي\n" + "x".repeat(200) }),
+      ttVideo(3, back(3), { share_url: "https://evil.example/@ward/video/3" }),
+      ttVideo(4, back(4), { share_url: "http://www.tiktok.com/@ward/video/4" }),
+      ttVideo(5, back(5), { share_url: "https://vm.tiktok.com/ZMabc/", view_count: "1234", like_count: "N/A", comment_count: {}, share_count: -1 }),
+      ttVideo(6, back(6), { id: "../../me" }), // not a video id
+      ttVideo(2, back(6), { title: "a repeat" }), // the same video again
+      ttVideo(7, back(7), { create_time: "soon" }), // no date: not known to be in the window
+      ttVideo(8, back(8), { create_time: 1e13 }), // a stamp no date can hold
+      ttVideo(9, back(28), { title: "   ", video_description: "last day of the window" }),
+      ttVideo(10, back(29)), // older than the window
+    ], true, 1700000000000)]);
+    const tt = (await syncSocial(u.email, { tiktok: ttConn() }, NOW)).parts.tiktok!;
+    // A video older than the window is on this page, so the next page is older still: it is never asked for.
+    expect(listCalls()).toEqual([{ max_count: 20 }]);
+    expect(tt.posts.map((p) => p.id)).toEqual([ttId(2), ttId(3), ttId(4), ttId(5), ttId(9)]);
+    const [p2, p3, p4, p5, p9] = tt.posts;
+    expect(p2.caption.length).toBeLessThanOrEqual(80);
+    expect(p2.caption).not.toMatch(/[<>\n]/);
+    expect(p2.caption.startsWith("bورد/b طائفي")).toBe(true);
+    expect(p9).toMatchObject({ date: "2026-09-10", caption: "last day of the window" });
+    expect([p2.url, p3.url, p4.url, p5.url]).toEqual([`https://www.tiktok.com/@ward/video/${ttId(2)}`, null, null, null]);
+    // A count written in digits is read; anything else is not read, never zero.
+    expect(p5).toMatchObject({ views: 1234, likes: null, comments: null, shares: null, reach: null, saved: null, type: "VIDEO" });
+    const figures: unknown[] = [tt.followers, ...Object.values(tt.totals as Totals), ...tt.posts.flatMap((p) => [p.views, p.reach, p.likes, p.comments, p.shares, p.saved])];
+    for (const v of figures) expect(clean(v), String(v)).toBe(true);
+  });
+
+  it("followers and the cursor tolerate strings, empty objects and junk (Review Focus 5)", async () => {
+    const u = await newUser("ttjunk");
+    const full = Array.from({ length: 20 }, (_, i) => ttVideo(i + 1, back(1)));
+    for (const [followers, want] of [["1234", 1234], [{}, null], ["N/A", null], [-3, null], [Infinity, null], [0, 0]] as [unknown, number | null][]) {
+      ttAnswers([page(full, false)], followers);
+      expect((await syncSocial(u.email, { tiktok: ttConn() }, NOW)).parts.tiktok!.followers, String(followers)).toBe(want);
+    }
+    // A cursor that is not a whole number above zero is never sent: the read stops at the first page.
+    for (const cursor of ["abc", -5, 1.5, "9".repeat(30), {}, 0, null]) {
+      calls.length = 0;
+      ttAnswers([page(full, true, cursor)]);
+      expect((await syncSocial(u.email, { tiktok: ttConn() }, NOW)).parts.tiktok!.posts, String(cursor)).toHaveLength(20);
+      expect(listCalls(), String(cursor)).toEqual([{ max_count: 20 }]);
+    }
+    // A cursor written in digits is sent as the number it is.
+    calls.length = 0;
+    ttAnswers([page(full, true, "1700000000000")]);
+    await syncSocial(u.email, { tiktok: ttConn() }, NOW);
+    expect(listCalls()).toEqual([{ max_count: 20 }, { max_count: 20, cursor: 1700000000000 }]);
+  });
+
+  it("a refused token ends the read; one failed side keeps the other; nothing read is a failed read", async () => {
+    const u = await newUser("ttfail");
+    ttAnswers();
+    answers.TIKTOK_GET_USER_STATS = { successful: false, error: "Token has been expired or revoked." };
+    await expect(syncSocial(u.email, { tiktok: ttConn() }, NOW)).rejects.toMatchObject({ provider: "tiktok", message: expect.stringMatching(/ 401:/) });
+    expect(await getSocialSnapshot(u.email)).toBeNull();
+
+    // A refused token on the second page too.
+    const full = Array.from({ length: 20 }, (_, i) => ttVideo(i + 1, back(1)));
+    ttAnswers([page(full, true, 1700000000000), { successful: false, error: "Unauthorized" }]);
+    await expect(syncSocial(u.email, { tiktok: ttConn() }, NOW)).rejects.toMatchObject({ provider: "tiktok", message: expect.stringMatching(/ 401:/) });
+    // Any other failure of the second page keeps the first.
+    ttAnswers([page(full, true, 1700000000000), { successful: false, error: "internal_error" }]);
+    expect((await syncSocial(u.email, { tiktok: ttConn() }, NOW)).parts.tiktok?.posts).toHaveLength(20);
+
+    // Failed stats keep the videos; a failed list keeps the followers.
+    ttAnswers();
+    answers.TIKTOK_GET_USER_STATS = { successful: false, error: "internal_error" };
+    expect((await syncSocial(u.email, { tiktok: ttConn() }, NOW)).parts.tiktok).toMatchObject({ followers: null, posts: [{ id: ttId(1) }] });
+    ttAnswers();
+    answers.TIKTOK_LIST_VIDEOS = { successful: false, error: "internal_error" };
+    expect((await syncSocial(u.email, { tiktok: ttConn() }, NOW)).parts.tiktok).toMatchObject({ followers: 1000, posts: [] });
+
+    // Both failing: the account is not read and the last read stands.
+    answers.TIKTOK_GET_USER_STATS = { successful: false, error: "internal_error" };
+    const kept = await getSocialSnapshot(u.email);
+    await expect(syncSocial(u.email, { tiktok: ttConn() }, NOW)).rejects.toMatchObject({ provider: "tiktok", message: expect.stringMatching(/ 502:/) });
+    expect(await getSocialSnapshot(u.email)).toEqual(kept);
+  });
+
+  it("a scope refusal is a known state, never a refused token, and the record is not marked for reconnect", async () => {
+    const u = await newUser("ttscope");
+    await saveConnection(u.email, ttConn());
+    // TikTok's words when the app or the login lacks user.info.stats or video.list; the adapter reads "Unauthorized" as 401.
+    ttAnswers();
+    answers.TIKTOK_GET_USER_STATS = { successful: false, error: "Unauthorized: scope_not_authorized: The user did not authorize the scope required for completing this request." };
+    const one = await syncSocial(u.email, { tiktok: ttConn() }, NOW);
+    expect(one.errors).toEqual({ tiktok: "tt_no_scope" });
+    expect(one.parts.tiktok).toMatchObject({ followers: null, posts: [{ id: ttId(1) }] });
+    expect(one.parts.tiktok).not.toHaveProperty("known");
+    // Both refused: no part, written and not thrown, and the TikTok record (which also publishes) stays connected.
+    answers.TIKTOK_LIST_VIDEOS = { successful: false, error: "scope_permission_missed" };
+    expect(await syncSocialIfDue(u.email, NOW, true)).toBe(true);
+    expect(await getSocialSnapshot(u.email)).toMatchObject({ v: 2, parts: {}, errors: { tiktok: "tt_no_scope" } });
+    expect((await getConnection(u.email, "tiktok"))?.needsReconnect).toBeFalsy();
+  });
+
+  it("no second page is asked past the shared deadline (741)", async () => {
+    const u = await newUser("ttdeadline");
+    const full = Array.from({ length: 20 }, (_, i) => ttVideo(i + 1, back(1)));
+    const first = page(full, true, 1700000000000);
+    ttAnswers([first, page([ttVideo(30, back(2))])]);
+    answers.TIKTOK_LIST_VIDEOS = (a) => { vi.setSystemTime(NOW.getTime() + 31_000); return a.cursor === undefined ? first : page([]); };
+    const tt = (await syncSocial(u.email, { tiktok: ttConn() }, NOW)).parts.tiktok!;
+    expect(listCalls()).toEqual([{ max_count: 20 }]);
+    expect(tt).toMatchObject({ followers: 1000 });
+    expect(tt.posts).toHaveLength(20);
+  });
+
+  it("a TikTok record is read daily, and the owner's refresh on the TikTok path reads it (673, 735)", async () => {
+    const u = await newUser("ttdaily");
+    await saveConnection(u.email, ttConn());
+    ttAnswers();
+    expect(await syncSocialIfDue(u.email, NOW)).toBe(true);
+    const s = await getSocialSnapshot(u.email);
+    expect(s?.v === 2 && s.parts.tiktok?.followers).toBe(1000);
+    expect(await syncSocialIfDue(u.email, new Date(NOW.getTime() + 19 * 3600e3))).toBe(false);
+    // holdsSocial derives from READERS: the TikTok path answers sync_social and reads, never 404 not_connected.
+    expect(holdsSocial("tiktok", ttConn())).toBe(true);
+    await signIn(u.email);
+    calls.length = 0;
+    const r = await post("tiktok", { action: "sync_social" });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, read: true });
+    expect(calls.map((c) => c.slug).sort()).toEqual(["TIKTOK_GET_USER_STATS", "TIKTOK_LIST_VIDEOS"]);
+    await settle();
+  });
+
+  it("holds a Composio TikTok record with its account, and the account label is cleaned", async () => {
+    expect(holdsTt(ttConn())).toBe(true);
+    expect(holdsTt(via("tiktok", {}))).toBe(false);
+    expect(holdsTt(via("tiktok", { youtube: "ca_yt" }))).toBe(false);
+    expect(holdsTt({ provider: "tiktok", data: { access_token: "t", tiktok: "x" }, meta: {}, connectedAt: NOW.toISOString() })).toBe(false);
+    expect(holdsTt(null)).toBe(false);
+    const u = await newUser("ttname");
+    ttAnswers();
+    const conn = ttConn();
+    delete conn.meta!.account;
+    expect((await syncSocial(u.email, { tiktok: conn }, NOW)).parts.tiktok?.account).toBe("TikTok");
+    const marked = await syncSocial(u.email, { tiktok: ttConn({ account: "<b>Ward</b>\n" + "y".repeat(120) }) }, NOW);
+    expect(marked.parts.tiktok!.account).not.toMatch(/[<>\n]/);
+    expect(marked.parts.tiktok!.account.length).toBeLessThanOrEqual(80);
+  });
+
+  it("links only to a page on tiktok.com or www.tiktok.com over https, without its query string", () => {
+    expect(ttUrl(`https://www.tiktok.com/@ward/video/${ttId(1)}?utm_campaign=tt4d_open_api&utm_source=aw1#top`)).toBe(`https://www.tiktok.com/@ward/video/${ttId(1)}`);
+    expect(ttUrl("https://tiktok.com/@ward/video/1")).toBe("https://tiktok.com/@ward/video/1");
+    expect(ttUrl("https://user:pass@www.tiktok.com/@ward/video/1")).toBe("https://www.tiktok.com/@ward/video/1");
+    for (const bad of [
+      "http://www.tiktok.com/@ward/video/1", "https://m.tiktok.com/v/1.html", "https://vm.tiktok.com/ZMabc/", "https://www.tiktok.com.evil.example/x",
+      "https://www.tiktok.com:8443/@ward/video/1", "javascript:alert(1)", "not a link", 42, null,
+    ]) expect(ttUrl(bad), String(bad)).toBeNull();
   });
 });
