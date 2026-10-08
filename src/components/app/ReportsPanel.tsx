@@ -126,7 +126,7 @@ export default function ReportsPanel({ t, lang, k, items, credits, quality, rang
           <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted">{R.platformMetrics}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {PLATFORM_METRICS.map((m) => {
-              // Followers unlock once a social part was read, not when a record merely exists (rule 668).
+              // Followers unlock once a social part was read, not when a record merely exists (rule 670).
               const on = m.source === "social" ? socialRead(social) : sources.read.includes(m.source);
               // A read source's numbers live in their own card (store, campaign results, site, social), not in a tile.
               return on

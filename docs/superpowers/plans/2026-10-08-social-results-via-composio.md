@@ -1,5 +1,7 @@
 # Social post results through Composio — Implementation Plan
 
+> **Rule numbers:** renumbered 661-671 → 663-673 when this branch met main on 2026-10-08 (main had taken 661 and 662 for the Hostinger build and the dependency floor). Read every rule number below as two higher.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Read Instagram results and LinkedIn company-page results through Composio, read only, for Dana's reports

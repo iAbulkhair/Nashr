@@ -87,7 +87,7 @@ const LI_TEXT = 3000;
 export const liEscape = (s: string) => s.replace(/[\\|{}@[\]()<>#*_~]/g, (ch) => `\\${ch}`);
 
 export async function postToLinkedInVia(scope: string, c: Connection, text: string): Promise<{ url: string; id: string }> {
-  // The company page only when the owner chose it (rule 670); absent means the member's own profile.
+  // The company page only when the owner chose it (rule 672); absent means the member's own profile.
   const author = c.meta?.liPostAs === "org" && c.meta?.liOrg ? c.meta.liOrg : c.meta?.author;
   if (!author) throw new Error("linkedin_no_author");
   const r = await composioWrite(scope, "linkedin", "LINKEDIN_CREATE_LINKED_IN_POST", { author, commentary: liEscape(plain(text).slice(0, LI_TEXT)), visibility: "PUBLIC", lifecycleState: "PUBLISHED" }, account(c, "linkedin"));
@@ -193,7 +193,7 @@ type Org = { urn: string; name: string };
 const ORG_URN = /^urn:li:organization:\d+$/;
 
 /**
- * LinkedIn: the company pages this member administers (rule 669), at most 20. A page they only analyse has no results
+ * LinkedIn: the company pages this member administers (rule 671), at most 20. A page they only analyse has no results
  * we may read and nothing they may post. A refusal (no organization scope) is the caller's to ignore: the connect stands.
  */
 async function adminPages(scope: string, acc: string): Promise<Org[]> {
@@ -252,7 +252,7 @@ export async function connectViaComposio(scope: string, provider: string, toolki
     if (!author) throw new Error("linkedin_no_author");
     meta.author = author;
     meta.account = pick(me, ["name", "localizedFirstName"]) ?? "LinkedIn";
-    // Posting as a page is chosen again after every connect (rule 670): the page list may have changed.
+    // Posting as a page is chosen again after every connect (rule 672): the page list may have changed.
     delete meta.liPostAs;
     const orgs = await adminPages(scope, accountId).catch(() => [] as Org[]);
     if (orgs.length) {
@@ -321,7 +321,7 @@ export function selectPageVia(c: Connection, pageId: string): Connection | null 
 
 /**
  * Choose the LinkedIn company page whose results are read. The URN must be one listed at connect time. Posting goes back
- * to the member's own profile: posting as the new page is a separate, explicit choice (rule 670).
+ * to the member's own profile: posting as the new page is a separate, explicit choice (rule 672).
  */
 export function selectOrgVia(c: Connection, org: string): Connection | null {
   let orgs: Org[] = [];
@@ -341,7 +341,7 @@ export function liOrgName(c: Connection): string {
 }
 
 /**
- * Post to LinkedIn as the member ("me") or as the chosen company page ("org", rule 670). Null when the value is neither,
+ * Post to LinkedIn as the member ("me") or as the chosen company page ("org", rule 672). Null when the value is neither,
  * or "org" without a chosen page.
  */
 export function postAsVia(c: Connection, value: string): Connection | null {

@@ -1,5 +1,7 @@
 # Social post results through Composio (Instagram + LinkedIn page) — design
 
+> **Rule numbers:** renumbered 661-671 → 663-673 when this branch met main on 2026-10-08 (main had taken 661 and 662 for the Hostinger build and the dependency floor). Read every rule number below as two higher.
+
 Date: 2026-10-08. Branch: `claude/composio-api-install-1d5bfc` (PR #272). Status: draft for founder review.
 
 ## Why

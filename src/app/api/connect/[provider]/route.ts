@@ -71,7 +71,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
       await saveConnection(sc(u), next);
       return NextResponse.json({ ok: true, account: next.meta?.account });
     }
-    // The LinkedIn company page whose results are read (rule 669); only a page listed at connect time.
+    // The LinkedIn company page whose results are read (rule 671); only a page listed at connect time.
     if (b.action === "select_org" && provider === "linkedin" && isComposio(c)) {
       const next = selectOrgVia(c, String(b.org ?? ""));
       if (!next) return NextResponse.json({ ok: false, error: "unknown_org" }, { status: 400 });
@@ -83,7 +83,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
       readSocialSoon(sc(u));
       return NextResponse.json({ ok: true, account: next.meta?.account });
     }
-    // Publish to LinkedIn as the member or as the chosen page (rule 670): checked here, never left to a prompt.
+    // Publish to LinkedIn as the member or as the chosen page (rule 672): checked here, never left to a prompt.
     if (b.action === "post_as" && provider === "linkedin" && isComposio(c)) {
       const value = String(b.value ?? "");
       if (value !== "me" && value !== "org") return NextResponse.json({ ok: false, error: "bad_value" }, { status: 400 });

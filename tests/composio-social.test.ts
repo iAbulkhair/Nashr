@@ -19,7 +19,7 @@ import * as connRoute from "@/app/api/connect/[provider]/route";
 import * as callbackRoute from "@/app/api/connect/[provider]/callback/route";
 
 /**
- * Rules 661-671: Instagram and LinkedIn page results read through Composio (social-stats.ts), and the owner's choice to
+ * Rules 663-673: Instagram and LinkedIn page results read through Composio (social-stats.ts), and the owner's choice to
  * publish to LinkedIn as the page (docs/superpowers/specs/2026-10-08-social-results-via-composio-design.md). Read only:
  * the founder's rule of 2026-10-05 is that results are fetched and analysed, never posted, replied to or edited.
  * Composio's client is a fake; answers follow the shapes of Composio's output schemas.
@@ -71,7 +71,7 @@ const NEW_READS = {
   linkedin: ["LINKEDIN_GET_COMPANY_INFO", "LINKEDIN_GET_SHARE_STATS", "LINKEDIN_GET_NETWORK_SIZE"],
 } as const;
 
-describe("social results are reads only (rule 661)", () => {
+describe("social results are reads only (rule 663)", () => {
   it("lists each new tool as a read and never as a write", () => {
     for (const [tk, slugs] of Object.entries(NEW_READS)) for (const s of slugs) {
       expect(Object.keys(TOOLKITS[tk as Toolkit].read)).toContain(s);
@@ -127,7 +127,7 @@ function igAnswers(posts: Record<string, unknown>[] = [media(1), media(2, { medi
   answers.INSTAGRAM_GET_IG_MEDIA_INSIGHTS = (a) => ok({ data: { data: (a.metric as string[]).map((m, i) => ({ name: m, period: "lifetime", values: [{ value: 10 + i }] })) } });
 }
 
-describe("Instagram results (rules 662-665, 667)", () => {
+describe("Instagram results (rules 664-667, 669)", () => {
   it("reads the account and its recent posts with fixed arguments", async () => {
     const u = await newUser("sig");
     igAnswers();
@@ -143,7 +143,7 @@ describe("Instagram results (rules 662-665, 667)", () => {
     expect(await getSocialSnapshot(u.email)).toEqual(snap);
   });
 
-  it("keeps Instagram when LinkedIn fails, and throws only when every held part fails (662)", async () => {
+  it("keeps Instagram when LinkedIn fails, and throws only when every held part fails (664)", async () => {
     const u = await newUser("sig662");
     igAnswers();
     const snap = await syncSocial(u.email, { meta: igConn(), linkedin: liConn() }, NOW);
@@ -162,7 +162,7 @@ describe("Instagram results (rules 662-665, 667)", () => {
     expect(calls.filter((c) => c.slug === "INSTAGRAM_GET_IG_MEDIA_INSIGHTS").length).toBeLessThanOrEqual(4);
   });
 
-  it("a post whose insights fail twice keeps null numbers, and the read succeeds (663)", async () => {
+  it("a post whose insights fail twice keeps null numbers, and the read succeeds (665)", async () => {
     const u = await newUser("sig663");
     igAnswers([media(1)]);
     answers.INSTAGRAM_GET_IG_MEDIA_INSIGHTS = { successful: false, error: "metric not supported for this media" };
@@ -174,7 +174,7 @@ describe("Instagram results (rules 662-665, 667)", () => {
     ]);
   });
 
-  it("caps posts at 30, never keeps paging.next or a foreign link, and stops on a repeated cursor (664)", async () => {
+  it("caps posts at 30, never keeps paging.next or a foreign link, and stops on a repeated cursor (666)", async () => {
     const u = await newUser("sig664");
     igAnswers();
     const page = (from: number) => Array.from({ length: 25 }, (_, i) => media(from + i, from + i === 3 ? { permalink: "https://evil.example/p" } : {}));
@@ -221,7 +221,7 @@ describe("Instagram results (rules 662-665, 667)", () => {
     expect(snap.ig!.posts[0].caption).not.toContain("<");
   });
 
-  it("marks a post from Thakeen only in the workspace that published it (665)", async () => {
+  it("marks a post from Thakeen only in the workspace that published it (667)", async () => {
     const a = await newUser("sig665a");
     const b = await newUser("sig665b");
     await db.sadd(SOCIAL_PUB_KEY(a.email), "m1");
@@ -251,7 +251,7 @@ describe("Instagram results (rules 662-665, 667)", () => {
     await expect(syncSocial(u.email, { meta: via("meta", { instagram: "ca_ig" }, { igId: "1784", via: "oauth" }) }, NOW)).rejects.toThrow("not_connected");
   });
 
-  it("wipes the snapshot with the account (667)", async () => {
+  it("wipes the snapshot with the account (669)", async () => {
     const u = await newUser("sig667");
     await db.set(SOCIAL_KEY(u.email), { at: NOW.toISOString() });
     await wipeAccount(u.email);
@@ -259,7 +259,7 @@ describe("Instagram results (rules 662-665, 667)", () => {
   });
 });
 
-describe("daily social read (rule 671)", () => {
+describe("daily social read (rule 673)", () => {
   const H = 3600e3;
   it("reads only a Composio record that holds a part, once per 20 hours", async () => {
     const u = await newUser("sdue");
@@ -309,7 +309,7 @@ describe("daily social read (rule 671)", () => {
   });
 });
 
-describe("Dana's social data (rule 666)", () => {
+describe("Dana's social data (rule 668)", () => {
   const snap = (over: Partial<SocialSnapshot> = {}): SocialSnapshot => ({
     at: NOW.toISOString(),
     ig: { user: "oud", followers: 1200, range: { from: "2026-09-10", to: "2026-10-08" }, reach: null, views: 9100, posts: [
@@ -357,7 +357,7 @@ describe("Dana's social data (rule 666)", () => {
   });
 });
 
-describe("the social card on Reports (rule 668)", () => {
+describe("the social card on Reports (rule 670)", () => {
   const ig = (posts: Partial<IgPostT>[]): SocialSnapshot => ({
     at: NOW.toISOString(),
     ig: { user: "oud", followers: 1200, range: { from: "2026-09-10", to: "2026-10-08" }, reach: 5400, views: null, posts: posts.map((p, i) => ({
@@ -398,7 +398,7 @@ describe("the social card on Reports (rule 668)", () => {
   });
 });
 
-describe("LinkedIn company pages (rule 669)", () => {
+describe("LinkedIn company pages (rule 671)", () => {
   const acl = (role: string, id: string, name?: string) => ({ role, state: "APPROVED", organization: `urn:li:organization:${id}`, roleAssignee: "urn:li:person:abc", ...(name ? { organization_name: name } : {}) });
   const me = () => { answers.LINKEDIN_GET_MY_INFO = ok({ response_dict: { sub: "abc", name: "Abulkhair" } }); };
   const ctx = (provider: string) => ({ params: Promise.resolve({ provider }) });
@@ -451,7 +451,7 @@ describe("LinkedIn company pages (rule 669)", () => {
   });
 });
 
-describe("LinkedIn page results (rule 662)", () => {
+describe("LinkedIn page results (rule 664)", () => {
   it("sums 28 days of the page's share statistics and reads its followers, with fixed arguments", async () => {
     const u = await newUser("sli662");
     liAnswers();
@@ -525,7 +525,7 @@ describe("LinkedIn page results (rule 662)", () => {
   });
 });
 
-describe("posting to LinkedIn as the company page (rule 670)", () => {
+describe("posting to LinkedIn as the company page (rule 672)", () => {
   const ctx = { params: Promise.resolve({ provider: "linkedin" }) };
   const call = (body: Record<string, unknown>) => connRoute.POST(json("/api/connect/linkedin", "POST", body), ctx);
   const orgs = JSON.stringify([{ urn: "urn:li:organization:42", name: "عود الشرق" }, { urn: "urn:li:organization:43", name: "B" }]);

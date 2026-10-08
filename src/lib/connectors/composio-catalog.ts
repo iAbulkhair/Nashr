@@ -8,7 +8,7 @@
  * create, edit, pause or fund an ad, or change a property (the founder's rule of 2026-10-05: ads are read and analysed,
  * never published or edited).
  *
- * Instagram and LinkedIn page results are reads (rule 661, spec 2026-10-08-social-results): no tool here posts, replies,
+ * Instagram and LinkedIn page results are reads (rule 663, spec 2026-10-08-social-results): no tool here posts, replies,
  * likes or edits on the strength of them.
  *
  * WhatsApp and YouTube are drafts only (rule 657): WhatsApp's one write submits a message template to Meta's review and
@@ -43,7 +43,7 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
     read: {
       INSTAGRAM_GET_USER_INFO: ["fields"],
       INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT: ["ig_user_id", "fields"],
-      // Results (rule 661): the account's totals, its recent posts, and each post's lifetime numbers.
+      // Results (rule 663): the account's totals, its recent posts, and each post's lifetime numbers.
       INSTAGRAM_GET_USER_INSIGHTS: ["ig_user_id", "metric", "period", "metric_type", "since", "until"],
       INSTAGRAM_GET_IG_USER_MEDIA: ["ig_user_id", "fields", "limit", "since", "after"],
       INSTAGRAM_GET_IG_MEDIA_INSIGHTS: ["ig_media_id", "metric"],
@@ -61,7 +61,7 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
     authEnv: "COMPOSIO_AUTH_LINKEDIN",
     read: {
       LINKEDIN_GET_MY_INFO: [],
-      // Company pages the member runs, and a page's totals and followers (rule 661). Results exist only for pages.
+      // Company pages the member runs, and a page's totals and followers (rule 663). Results exist only for pages.
       LINKEDIN_GET_COMPANY_INFO: ["start", "count", "state"],
       LINKEDIN_GET_SHARE_STATS: ["organizational_entity", "time_intervals"],
       LINKEDIN_GET_NETWORK_SIZE: ["organization_id", "edgeType"],
