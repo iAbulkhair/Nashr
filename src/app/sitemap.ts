@@ -6,10 +6,13 @@ import { VS_SLUGS } from "@/lib/pages-vs";
 import { postIndex } from "@/lib/blog";
 import { AGENT_SLUGS } from "@/lib/site";
 import { appOrigin } from "@/lib/origin";
+import { isStaging } from "@/lib/deploy-env";
 
 const BASE = appOrigin();
 
 export default function sitemap(): MetadataRoute.Sitemap {
+  // Staging is never indexed (rule 677): an empty sitemap, built statically like robots, so set `APP_ENV=staging` before the build.
+  if (isStaging()) return [];
   // `lastModified` is omitted rather than stamped with the build time. Every deploy used to re-date all 114 URLs,
   // including pages that had not changed in months, which tells a crawler nothing and teaches it to ignore the
   // field. Only the blog posts carry a real date, from their own front matter.
