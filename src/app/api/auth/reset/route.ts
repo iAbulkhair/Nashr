@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
-import { createSession, getLogin, revokeSessions, revokeTeamSessions, saveUser, strongPassword } from "@/lib/auth";
+import { createSession, emailVerified, getLogin, revokeSessions, revokeTeamSessions, saveUser, strongPassword } from "@/lib/auth";
 import { withUserLock } from "@/lib/credits";
 import { revokeAllMcp } from "@/lib/mcp";
 import { revokeBook, revokeBooks } from "@/lib/booking-token";
@@ -58,6 +58,8 @@ export async function POST(req: Request) {
     await Promise.all([revokeFeed(member.email), revokeBook(member.email)]);
     // A seat-paused member gets the new password but no session: `currentUser` refuses it until the owner has room.
     if (member.disabled) return NextResponse.json({ ok: false, error: "disabled" }, { status: 403 });
+    // Likewise while the owner has not proved the address (rule 767): `currentUser` refuses the member, as login does.
+    if (!emailVerified(owner)) return NextResponse.json({ ok: false, error: "owner_unverified" }, { status: 403 });
     await createSession(member.email);
     return NextResponse.json({ ok: true });
   }
@@ -66,7 +68,10 @@ export async function POST(req: Request) {
   if (owner.suspended) return NextResponse.json({ ok: false, error: "suspended" }, { status: 403 });
   // A reset is what an owner does after losing control of the account: the owner's sessions, every member's session
   // (each signs back in with their own password) and every MCP token die with the old password.
-  await withUserLock(owner.email, async (x) => { x.passHash = hash; revokeSessions(x); revokeTeamSessions(x); await saveUser(x); });
+  // Rule 769: the link was mailed to this very address and used once, which proves the inbox as well as a code does, so
+  // an owner who has not verified yet is verified here (the date is kept when there is one). A member's reset proves the
+  // member's address, not the owner's, and never comes here.
+  await withUserLock(owner.email, async (x) => { x.passHash = hash; x.emailVerifiedAt ??= new Date().toISOString(); revokeSessions(x); revokeTeamSessions(x); await saveUser(x); });
   // The owner's calendar feed and booking links and every member's go with the MCP tokens, as every member's session does above (the
   // password and the sessions are already saved: a failure here is a 500 and the user asks for a new reset link).
   const roster = await db.smembers(membersKey(owner.email));

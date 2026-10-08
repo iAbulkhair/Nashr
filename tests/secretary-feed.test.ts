@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
+import { json, markVerified, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
 import { saveBrands } from "@/lib/brands";
 import { createMember, forceRemoveMember, getMember, leaveTeam, removeMember, saveMember, type Member } from "@/lib/team";
@@ -470,7 +470,7 @@ describe("public feed route (rules 539, 577-579)", () => {
     expect((await callFeed(oldOwner, ip)).status).toBe(200);
     await db.del(`user:${o2.email}`);
     await later();
-    await createUser({ email: o2.email, name: "Again", phone: "", password: "abc12345", lang: "ar" });
+    await markVerified((await createUser({ email: o2.email, name: "Again", phone: "", password: "abc12345", lang: "ar" })).email);
     expect((await callFeed(oldOwner, ip)).status).toBe(404);
     const freshOwner = (await createFeed(o2.email, o2.email, "en")) as string;
     expect((await callFeed(freshOwner, ip)).status).toBe(200);
@@ -823,7 +823,7 @@ describe("feed revocation (rules 582-583)", () => {
     t.owner = await live(owner.email, owner.email);
     t.m5 = await live(m5.email, owner.email);
     // The founder is a real account signed in as themselves (as in teams-core.test.ts).
-    if (!(await getUser(FOUNDER))) await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" });
+    if (!(await getUser(FOUNDER))) await markVerified((await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" })).email);
     await signIn(FOUNDER);
     const res = await adminUserRoute.POST(json("/api/admin/users/x", "POST", { action: "resetPassword" }), params({ email: encodeURIComponent(owner.email) }));
     expect(res.status).toBe(200);
@@ -890,7 +890,7 @@ describe("feed revocation (rules 582-583)", () => {
     await wait();
 
     // 5. The founder's reset of the owner: the same.
-    if (!(await getUser(FOUNDER))) await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" });
+    if (!(await getUser(FOUNDER))) await markVerified((await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" })).email);
     await signIn(FOUNDER);
     await failing(() => adminUserRoute.POST(json("/api/admin/users/x", "POST", { action: "resetPassword" }), params({ email: encodeURIComponent(owner.email) })));
     for (const k of ["owner", "m1", "m2"] as const) expect((await callFeed(t[k])).status, k).toBe(404);

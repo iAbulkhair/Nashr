@@ -80,6 +80,9 @@ export const APP: string[] = [
   "src/components/app/TopupCard.tsx",
   "src/components/app/WishlistPanel.tsx",
   "src/app/oauth/authorize/page.tsx",
+  // Email verification (rule 754).
+  "src/app/[lang]/app/verify/page.tsx",
+  "src/components/app/VerifyForm.tsx",
 ];
 const read = (p: string) => readFileSync(p, "utf8");
 
@@ -103,7 +106,7 @@ describe("app screens are quiet D (rule 519)", () => {
   }
 
   it("the sign-in, sign-up, reset and join screens lead with the ink pill", () => {
-    for (const file of ["src/components/app/AuthForm.tsx", "src/components/app/JoinForm.tsx", "src/components/app/AdminLogin.tsx"]) {
+    for (const file of ["src/components/app/AuthForm.tsx", "src/components/app/JoinForm.tsx", "src/components/app/AdminLogin.tsx", "src/components/app/VerifyForm.tsx"]) {
       const src = read(file);
       expect(src, file).not.toMatch(/<button\b[^>]*className="btn btn-primary"/);
       expect(src.match(/className="s-btn"><Scribble kind="pill" seed="[^"]+" fill="ink" shadow ring \/>/g)?.length ?? 0, file).toBeGreaterThan(0);
