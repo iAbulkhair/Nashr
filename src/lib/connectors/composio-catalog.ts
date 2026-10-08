@@ -1,0 +1,135 @@
+/**
+ * What Thakeen may call through Composio, per toolkit: the exact tool slugs and, for each, the argument names the code
+ * may send. Nothing outside these lists is ever executed (docs/superpowers/specs/2026-10-05-meta-via-composio-design.md,
+ * section 3). Slugs and argument names were read from Composio's tool schemas on 2026-10-05; the measured run on the
+ * founder's own accounts confirms them (plan Task 8). No imports: the registry and tests read it freely.
+ *
+ * Ad accounts and Google's analytics are read only: their toolkits list no write tool at all, so nothing here can
+ * create, edit, pause or fund an ad, or change a property (the founder's rule of 2026-10-05: ads are read and analysed,
+ * never published or edited).
+ *
+ * WhatsApp and YouTube are drafts only (rule 657): WhatsApp's one write submits a message template to Meta's review and
+ * no tool sends a message; YouTube's one write uploads a video whose privacyStatus is pinned to "private" in `fixed`.
+ *
+ * Not here on purpose: ad writes (money moves need their own spec, evaluation spec C-R1), comments and messages (untrusted
+ * input with no feature to use it), Google Business Profile (Composio lists no toolkit for it), Calendly and Cal.com
+ * (Reem B2 receives their webhooks directly, evaluation spec C-R4).
+ */
+export type Toolkit =
+  | "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok" | "whatsapp" | "youtube"
+  | "metaads" | "snapchat" | "googleads" | "tiktok_ads" | "google_analytics" | "google_search_console";
+
+type Tools = Readonly<Record<string, readonly string[]>>;
+/**
+ * `fixed`: argument values a write must carry exactly, checked in composio.ts before anything is sent. They keep a
+ * draft a draft in code, not only in the caller: TikTok's photo lands in the owner's inbox, YouTube's upload is private.
+ */
+export type ToolkitEntry = Readonly<{ provider: string; authEnv: string; read: Tools; write: Tools; fixed?: Readonly<Record<string, Readonly<Record<string, unknown>>>> }>;
+
+export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
+  facebook: {
+    provider: "meta",
+    authEnv: "COMPOSIO_AUTH_FACEBOOK",
+    // `fields` is always sent: the tool's default includes each Page's access_token, which Thakeen must never receive.
+    read: { FACEBOOK_LIST_MANAGED_PAGES: ["fields", "limit"] },
+    write: { FACEBOOK_CREATE_POST: ["page_id", "message", "published"], FACEBOOK_CREATE_PHOTO_POST: ["page_id", "url", "message", "published"] },
+  },
+  instagram: {
+    provider: "meta",
+    authEnv: "COMPOSIO_AUTH_INSTAGRAM",
+    read: { INSTAGRAM_GET_USER_INFO: ["fields"], INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT: ["ig_user_id", "fields"] },
+    write: { INSTAGRAM_POST_IG_USER_MEDIA: ["ig_user_id", "image_url", "caption"], INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH: ["ig_user_id", "creation_id", "max_wait_seconds"] },
+  },
+  twitter: {
+    provider: "x",
+    authEnv: "COMPOSIO_AUTH_TWITTER",
+    read: { TWITTER_USER_LOOKUP_ME: [] },
+    write: { TWITTER_CREATION_OF_A_POST: ["text"] },
+  },
+  linkedin: {
+    provider: "linkedin",
+    authEnv: "COMPOSIO_AUTH_LINKEDIN",
+    read: { LINKEDIN_GET_MY_INFO: [] },
+    write: { LINKEDIN_CREATE_LINKED_IN_POST: ["author", "commentary", "visibility", "lifecycleState"] },
+  },
+  tiktok: {
+    provider: "tiktok",
+    // TikTok has no managed app on Composio: this auth config carries Thakeen's own TikTok app (plan Task 8).
+    authEnv: "COMPOSIO_AUTH_TIKTOK",
+    read: {},
+    write: { TIKTOK_POST_PHOTO: ["photo_images", "photo_cover_index", "post_mode", "title", "description"] },
+    fixed: { TIKTOK_POST_PHOTO: { post_mode: "MEDIA_UPLOAD" } },
+  },
+  // ---------- drafts only: nothing here reaches a customer or the public ----------
+  whatsapp: {
+    provider: "whatsapp",
+    authEnv: "COMPOSIO_AUTH_WHATSAPP",
+    // The WhatsApp Business Account comes from the connection; no waba_id argument is ever sent. No send tool is listed:
+    // a template goes to Meta's review and the owner sends it from their own tools.
+    read: { WHATSAPP_GET_BUSINESS_ACCOUNT_DETAILS: ["fields"] },
+    write: { WHATSAPP_CREATE_MESSAGE_TEMPLATE: ["name", "category", "language", "components", "allow_category_change"] },
+  },
+  youtube: {
+    provider: "youtube",
+    authEnv: "COMPOSIO_AUTH_YOUTUBE",
+    read: { YOUTUBE_LIST_CHANNELS: ["part", "mine", "maxResults"] },
+    write: { YOUTUBE_UPLOAD_VIDEO: ["title", "description", "tags", "categoryId", "privacyStatus", "videoFilePath"] },
+    fixed: { YOUTUBE_UPLOAD_VIDEO: { privacyStatus: "private" } },
+  },
+  // ---------- read only: ad results (src/lib/connectors/ads-via-composio.ts) ----------
+  metaads: {
+    provider: "meta_ads",
+    authEnv: "COMPOSIO_AUTH_METAADS",
+    read: { METAADS_GET_AD_ACCOUNTS: ["fields", "limit"], METAADS_GET_INSIGHTS: ["object_id", "level", "fields", "time_range", "limit", "after"] },
+    write: {},
+  },
+  snapchat: {
+    provider: "snapchat",
+    authEnv: "COMPOSIO_AUTH_SNAPCHAT",
+    read: { SNAPCHAT_LIST_ORGANIZATIONS: ["with_ad_accounts"], SNAPCHAT_LIST_ADS_BY_ACCOUNT: ["ad_account_id", "limit", "cursor"], SNAPCHAT_GET_AD_STATS: ["ad_id", "fields", "start_time", "end_time", "granularity"] },
+    write: {},
+  },
+  googleads: {
+    provider: "google_ads",
+    authEnv: "COMPOSIO_AUTH_GOOGLEADS",
+    // GAQL is a read-only query language; the query text itself is a constant in ads-via-composio.ts, never model text.
+    read: { GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS: [], GOOGLEADS_SEARCH_STREAM_GAQL: ["query", "customer_id"] },
+    write: {},
+  },
+  tiktok_ads: {
+    provider: "tiktok_ads",
+    authEnv: "COMPOSIO_AUTH_TIKTOK_ADS",
+    read: { TIKTOK_ADS_GET_ADVERTISER_ACCOUNTS: ["fields"], TIKTOK_ADS_GET_REPORT_INTEGRATED: ["report_type", "advertiser_id", "data_level", "dimensions", "metrics", "start_date", "end_date", "page", "page_size"] },
+    write: {},
+  },
+  // ---------- read only: the site's traffic and search (src/lib/site-stats.ts) ----------
+  google_analytics: {
+    provider: "google",
+    authEnv: "COMPOSIO_AUTH_GOOGLE_ANALYTICS",
+    read: { GOOGLE_ANALYTICS_LIST_ACCOUNT_SUMMARIES: ["pageSize"], GOOGLE_ANALYTICS_RUN_REPORT: ["property", "dateRanges", "dimensions", "metrics", "orderBys", "limit"] },
+    write: {},
+  },
+  google_search_console: {
+    provider: "google",
+    authEnv: "COMPOSIO_AUTH_GOOGLE_SEARCH_CONSOLE",
+    read: { GOOGLE_SEARCH_CONSOLE_LIST_SITES: [], GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY: ["site_url", "start_date", "end_date", "dimensions", "row_limit"] },
+    write: {},
+  },
+};
+
+/** Which toolkits each provider connects through, in the order the Integrations card offers them. */
+export const PROVIDER_TOOLKITS: Readonly<Record<string, readonly Toolkit[]>> = {
+  meta: ["instagram", "facebook"],
+  x: ["twitter"],
+  linkedin: ["linkedin"],
+  tiktok: ["tiktok"],
+  whatsapp: ["whatsapp"],
+  youtube: ["youtube"],
+  meta_ads: ["metaads"],
+  snapchat: ["snapchat"],
+  google_ads: ["googleads"],
+  tiktok_ads: ["tiktok_ads"],
+  google: ["google_analytics", "google_search_console"],
+};
+
+export const isToolkit = (s: string): s is Toolkit => Object.prototype.hasOwnProperty.call(TOOLKITS, s);

@@ -92,7 +92,7 @@ export function selectPage(conn: Connection, pageId: string): Connection | null 
   return { ...conn, data: { ...conn.data, ...choice.data }, meta: { ...meta, ...choice.meta } };
 }
 
-const plain = (s: string) => s.replace(/^#{1,6}\s+/gm, "").replace(/\*\*(.+?)\*\*/g, "$1").trim();
+export const plain = (s: string) => s.replace(/^#{1,6}\s+/gm, "").replace(/\*\*(.+?)\*\*/g, "$1").trim();
 
 export async function postToFacebook(c: Connection, text: string, imageUrl?: string): Promise<{ url: string; id: string }> {
   const page = c.meta?.pageId;

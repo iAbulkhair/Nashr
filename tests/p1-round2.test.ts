@@ -118,7 +118,7 @@ describe("the agent cannot destroy an owner-written file (P1: curated products.m
 
 describe("a deck slide keeps its table (P1: numbers dropped from the export)", () => {
   it("table rows survive as bullets instead of vanishing", async () => {
-    const { parseSlides } = await import("@/app/api/tasks/[id]/pptx/route");
+    const { parseSlides } = await import("@/lib/slides");
     const body = [
       "## Slide 3: Scorecard",
       "| Metric | Target | Actual |",
@@ -137,7 +137,7 @@ describe("a deck slide keeps its table (P1: numbers dropped from the export)", (
 
 describe("deck outlines at any heading depth", () => {
   it("starts a slide on h4-h6 instead of printing the markdown as a bullet", async () => {
-    const { parseSlides } = await import("@/app/api/tasks/[id]/pptx/route");
+    const { parseSlides } = await import("@/lib/slides");
     const slides = parseSlides("#### Opening\n- one\n##### Middle\n- two\n###### Close\n- three", "Deck");
     expect(slides.map((s) => s.title)).toEqual(["Opening", "Middle", "Close"]);
     expect(JSON.stringify(slides), "no heading marker may survive into the slide text").not.toContain("#");
@@ -145,7 +145,7 @@ describe("deck outlines at any heading depth", () => {
   });
 
   it("continues a long section onto numbered slides rather than off the bottom edge", async () => {
-    const { parseSlides } = await import("@/app/api/tasks/[id]/pptx/route");
+    const { parseSlides } = await import("@/lib/slides");
     const body = "## Findings\n" + Array.from({ length: 20 }, (_, i) => `- point ${i + 1}`).join("\n");
     const slides = parseSlides(body, "Deck");
     expect(slides.length).toBe(3);
@@ -156,7 +156,7 @@ describe("deck outlines at any heading depth", () => {
   });
 
   it("keeps the speaker notes on the slide that owns them", async () => {
-    const { parseSlides } = await import("@/app/api/tasks/[id]/pptx/route");
+    const { parseSlides } = await import("@/lib/slides");
     const body = "## Findings\nNotes: say this once\n" + Array.from({ length: 12 }, (_, i) => `- p${i}`).join("\n");
     const slides = parseSlides(body, "Deck");
     expect(slides[0].notes).toBe("say this once");

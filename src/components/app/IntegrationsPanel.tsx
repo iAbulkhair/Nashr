@@ -9,7 +9,7 @@ import type { Lang } from "@/lib/i18n";
 import ReadOnlyNote from "./ReadOnlyNote";
 import Scribble from "@/components/Scribble";
 
-type P = { id: string; name: string; kind: "oauth" | "key"; capabilities: string[]; available: boolean; keyFields?: KeyField[]; docs?: string; needsShop: boolean };
+type P = { id: string; name: string; kind: "oauth" | "key"; capabilities: string[]; available: boolean; keyFields?: KeyField[]; docs?: string; needsShop: boolean; toolkits?: string[] };
 type C = { provider: string; meta?: Record<string, string>; connectedAt: string; needsReconnect?: string };
 
 /**
@@ -84,13 +84,18 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
     await load();
     r.refresh();
   }
-  const startOAuth = (p: P) => {
+  // `toolkit`: which account of a provider connected in parts (Meta's Instagram and Facebook) this flow connects.
+  const startOAuth = (p: P, toolkit?: string) => {
     if (p.needsShop) { setShopFor(p); return; }
     // Not an internal page: this route answers 302 to the provider's own consent screen. router.push() performs a
     // client-side RSC navigation, which cannot leave the origin, so the hand-off has to be a real navigation.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- leaves the origin via a 302
-    window.location.assign(`/api/connect/${p.id}/start?lang=${lang}`);
+    window.location.assign(`/api/connect/${p.id}/start?lang=${lang}${toolkit ? `&toolkit=${encodeURIComponent(toolkit)}` : ""}`);
   };
+  // A provider connected in parts shows each part's card as connected only when that part is: Instagram by its account,
+  // Facebook by its Page.
+  const PART_MARK: Record<string, string> = { instagram: "igId", facebook: "pageId" };
+  const partLabel: Record<string, string> = { instagram: "Instagram", facebook: "Facebook" };
 
   const connectedIds = new Set(conns.map((c) => c.provider));
   const providerById = new Map(providers.map((p) => [p.id, p]));
@@ -128,7 +133,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
                       </select>
                     </label>
                   )}
-                  {c.provider === "meta" && c.meta?.pageId && !c.meta.igId && <p className="mt-1 text-xs text-muted">{g.metaNoIg}</p>}
+                  {c.provider === "meta" && c.meta?.pageId && !c.meta.igId && c.meta.via !== "composio" && <p className="mt-1 text-xs text-muted">{g.metaNoIg}</p>}
                   {READS_ADS.includes(c.provider) && c.meta?.adAccounts && (
                     <label className="mt-2 grid gap-1 text-xs text-muted">
                       <span>{g.adAccount}</span>
@@ -139,7 +144,9 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
                   )}
                 </div>
                 {manage && <div className="flex shrink-0 flex-col gap-1">
-                  {c.needsReconnect && providerById.get(c.provider)?.kind === "oauth" && <button onClick={() => startOAuth(providerById.get(c.provider)!)} className="rounded-full bg-ink px-3 py-1 text-xs font-semibold text-lilac">{g.reconnectBtn}</button>}
+                  {c.needsReconnect && providerById.get(c.provider)?.kind === "oauth" && ((providerById.get(c.provider)!.toolkits?.length ?? 0) > 1 ? providerById.get(c.provider)!.toolkits! : [undefined]).map((tk) => (
+                    <button key={tk ?? "all"} onClick={() => startOAuth(providerById.get(c.provider)!, tk)} className="rounded-full bg-ink px-3 py-1 text-xs font-semibold text-lilac">{g.reconnectBtn}{tk ? ` · ${partLabel[tk] ?? tk}` : ""}</button>
+                  ))}
                   {IMPORTS_PRODUCTS.includes(c.provider) && <button disabled={busy} onClick={() => importProducts(c.provider)} className="rounded-full border border-ink/40 px-3 py-1 text-xs text-ink">{g.importProducts}</button>}
                   <button onClick={() => disconnect(c.provider)} className="rounded-full border border-danger px-3 py-1 text-xs text-danger">{g.disconnect}</button>
                 </div>}
@@ -159,7 +166,8 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
               const found = providerById.get(connectorId(i));
               // Working: publishes or imports. Reading ad results counts too (READS_ADS).
               const p = found && (isWorking(found.id) || READS_ADS.includes(found.id)) ? found : undefined;
-              const isConnected = p ? connectedIds.has(p.id) : false;
+              const part = p?.toolkits && p.toolkits.length > 1 && p.toolkits.includes(i.id) ? i.id : undefined;
+              const isConnected = p ? (part ? !!conns.find((c) => c.provider === p.id)?.meta?.[PART_MARK[part]] : connectedIds.has(p.id)) : false;
               const ready = !!p?.available && !isConnected;
               // A lower role sees "ready to connect" with no button: asking for something that already exists would be noise.
               const canConnect = manage && ready;
@@ -172,7 +180,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true }: { t
                     <span className={`mt-2 inline-block rounded px-2 py-0.5 text-xs ${badge(status === "ready" ? "soon" : status)}`}>{status === "ready" ? g.ready : status === "live" ? g.connected : status === "soon" && p?.kind === "oauth" ? g.waiting : g.status[i.status]}</span>
                   </div>
                   {canConnect ? (
-                    <button onClick={() => (p!.kind === "key" ? setKeyFor(p!) : startOAuth(p!))} className="shrink-0 rounded-full bg-ink px-3 py-1 text-xs font-semibold text-lilac">{g.connect}</button>
+                    <button onClick={() => (p!.kind === "key" ? setKeyFor(p!) : startOAuth(p!, part))} className="shrink-0 rounded-full bg-ink px-3 py-1 text-xs font-semibold text-lilac">{g.connect}</button>
                   ) : !isConnected && !ready ? (
                     <button onClick={() => req(i.id, i.name)} disabled={!!done[i.id]} className="shrink-0 rounded-full border border-ink/40 px-3 py-1 text-xs text-ink disabled:border-ink/10 disabled:text-ink/40">{done[i.id] ? `${g.requested} · ${done[i.id]}` : g.request}</button>
                   ) : null}

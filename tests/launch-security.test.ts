@@ -381,32 +381,92 @@ describe("founder emails fail closed (rule 425)", () => {
   });
 });
 
+/** The deployment signals `isProductionDeploy` reads, all cleared, then the given ones set. vitest runs as NODE_ENV=test. */
+const deployEnv = (env: { VERCEL_ENV?: string; APP_ENV?: string; NODE_ENV?: string } = {}) => {
+  vi.stubEnv("VERCEL_ENV", env.VERCEL_ENV ?? "");
+  vi.stubEnv("APP_ENV", env.APP_ENV ?? "");
+  vi.stubEnv("NODE_ENV", env.NODE_ENV ?? "test");
+};
+
+describe("production is detected on any host, failing closed (rules 430-431)", () => {
+  it("Vercel production, APP_ENV=production and any unmarked production build are production", async () => {
+    const { isProductionDeploy } = await import("@/lib/deploy-env");
+    const production = [
+      { VERCEL_ENV: "production" },
+      { APP_ENV: "production" },
+      // Hostinger or any other host: a production build with no deployment variable at all (env vars wiped).
+      { NODE_ENV: "production" },
+      // VERCEL_ENV=production and APP_ENV=production cannot be overridden by an opt-out.
+      { VERCEL_ENV: "production", APP_ENV: "test", NODE_ENV: "production" },
+      { APP_ENV: "production", VERCEL_ENV: "preview" },
+      // An unknown or misspelt APP_ENV is production, never a silent opt-out.
+      { APP_ENV: "prod", NODE_ENV: "production" },
+      { APP_ENV: "staging" },
+    ];
+    for (const env of production) {
+      deployEnv(env);
+      expect(isProductionDeploy(), JSON.stringify(env)).toBe(true);
+    }
+  });
+
+  it("local dev, vitest, Vercel previews and the e2e suite (APP_ENV=test) are not", async () => {
+    const { isProductionDeploy } = await import("@/lib/deploy-env");
+    const notProduction = [
+      {},
+      { NODE_ENV: "development" },
+      { VERCEL_ENV: "preview", NODE_ENV: "production" },
+      { VERCEL_ENV: "development", NODE_ENV: "production" },
+      // The e2e suite: a production build marked as a test (playwright.config.ts webServer.env).
+      { APP_ENV: "test", NODE_ENV: "production" },
+      { APP_ENV: "development", NODE_ENV: "production" },
+      { APP_ENV: "preview", NODE_ENV: "production" },
+    ];
+    for (const env of notProduction) {
+      deployEnv(env);
+      expect(isProductionDeploy(), JSON.stringify(env)).toBe(false);
+    }
+  });
+
+  it("db and the model ask isProductionDeploy, not VERCEL_ENV; the e2e server is marked APP_ENV=test", () => {
+    for (const f of ["src/lib/db.ts", "src/lib/model.ts"]) {
+      const src = readFileSync(f, "utf8");
+      expect(src, f).toMatch(/isProductionDeploy\(\)/);
+      expect(src, f).not.toMatch(/process\.env\.VERCEL_ENV/);
+    }
+    expect(readFileSync("playwright.config.ts", "utf8")).toMatch(/env:\s*\{\s*APP_ENV:\s*"test"\s*\}/);
+  });
+});
+
 describe("production never runs on the memory store (rule 430)", () => {
   const noRedis = () => { for (const k of ["KV_REST_API_URL", "KV_REST_API_TOKEN", "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"]) vi.stubEnv(k, ""); };
 
-  it("a production deployment without Redis credentials rejects every call with store_not_configured", async () => {
-    noRedis();
-    vi.stubEnv("VERCEL_ENV", "production");
-    const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.resetModules();
-    const fresh = await import("@/lib/db");
-    expect(fresh.usingPersistentStore).toBe(false);
-    await expect(fresh.db.get("x")).rejects.toBeInstanceOf(fresh.StoreNotConfigured);
-    await expect(fresh.db.set("x", 1)).rejects.toThrow(/store_not_configured/);
-    await expect(fresh.db.incrby("rate:x", 1)).rejects.toThrow(/store_not_configured/);
-    // Importing it (what `next build` does) is fine; only a call fails, and the log names the variables, never a value.
-    expect(err.mock.calls.flat().join(" ")).toMatch(/store_not_configured/);
-    err.mockRestore();
-  });
-
-  it("local dev, tests, CI and preview keep the memory store", async () => {
-    noRedis();
-    for (const env of ["", "preview", "development"]) {
-      vi.stubEnv("VERCEL_ENV", env);
+  it("a production deployment on any host without Redis credentials rejects every call with store_not_configured", async () => {
+    // Vercel production, an explicit APP_ENV, and a bare production build on another host (Hostinger with no variables).
+    for (const env of [{ VERCEL_ENV: "production" }, { APP_ENV: "production" }, { NODE_ENV: "production" }]) {
+      noRedis();
+      deployEnv(env);
+      const err = vi.spyOn(console, "error").mockImplementation(() => {});
       vi.resetModules();
       const fresh = await import("@/lib/db");
-      await fresh.db.set("launch:mem", env || "none");
-      expect(await fresh.db.get("launch:mem")).toBe(env || "none");
+      expect(fresh.usingPersistentStore).toBe(false);
+      await expect(fresh.db.get("x")).rejects.toBeInstanceOf(fresh.StoreNotConfigured);
+      await expect(fresh.db.set("x", 1)).rejects.toThrow(/store_not_configured/);
+      await expect(fresh.db.incrby("rate:x", 1)).rejects.toThrow(/store_not_configured/);
+      // Importing it (what `next build` does) is fine; only a call fails, and the log names the variables, never a value.
+      expect(err.mock.calls.flat().join(" ")).toMatch(/store_not_configured/);
+      err.mockRestore();
+    }
+  });
+
+  it("local dev, tests, previews and the e2e suite keep the memory store", async () => {
+    noRedis();
+    const envs = [{}, { VERCEL_ENV: "preview" }, { VERCEL_ENV: "development" }, { NODE_ENV: "development" }, { APP_ENV: "test", NODE_ENV: "production" }];
+    for (const env of envs) {
+      deployEnv(env);
+      vi.resetModules();
+      const fresh = await import("@/lib/db");
+      await fresh.db.set("launch:mem", JSON.stringify(env));
+      expect(await fresh.db.get("launch:mem")).toBe(JSON.stringify(env));
     }
   });
 });
@@ -415,13 +475,15 @@ describe("production never answers with the model mock (rule 431)", () => {
   it("no key in a production deployment is 'paused', never 'mock'; elsewhere the dev mock stays", async () => {
     const { modelState } = await import("@/lib/model");
     vi.stubEnv("ANTHROPIC_API_KEY", "");
-    vi.stubEnv("VERCEL_ENV", "");
-    expect(modelState()).toBe("mock");
-    vi.stubEnv("VERCEL_ENV", "preview");
-    expect(modelState()).toBe("mock");
+    for (const env of [{}, { VERCEL_ENV: "preview" }, { NODE_ENV: "development" }, { APP_ENV: "test", NODE_ENV: "production" }]) {
+      deployEnv(env);
+      expect(modelState(), JSON.stringify(env)).toBe("mock");
+    }
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.stubEnv("VERCEL_ENV", "production");
-    expect(modelState()).toBe("paused");
+    for (const env of [{ VERCEL_ENV: "production" }, { APP_ENV: "production" }, { NODE_ENV: "production" }]) {
+      deployEnv(env);
+      expect(modelState(), JSON.stringify(env)).toBe("paused");
+    }
     err.mockRestore();
   });
 
@@ -435,7 +497,8 @@ describe("production never answers with the model mock (rule 431)", () => {
     const toolRoute = await import("@/app/api/tools/[tool]/route");
     const { TOOLS } = await import("@/lib/tools");
     vi.stubEnv("ANTHROPIC_API_KEY", "");
-    vi.stubEnv("VERCEL_ENV", "production");
+    // A production build on a host other than Vercel, with no deployment variable set.
+    deployEnv({ NODE_ENV: "production" });
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     const u = await newUser("prodnokey");
     await db.set(`brand:${u.email}`, { name: "محمصة", website: "", industry: "قهوة", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-10-01T00:00:00.000Z" });

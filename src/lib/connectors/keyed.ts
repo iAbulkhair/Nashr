@@ -69,6 +69,45 @@ export async function postTelegram(c: Connection, text: string): Promise<{ id: s
   return { id: String(j.result.message_id), url: u ? `https://t.me/${u}/${j.result.message_id}` : `https://t.me/c/${String(j.result.chat.id).replace(/^-100/, "")}/${j.result.message_id}` };
 }
 
+// ---------- email drafts: Brevo and Klaviyo (API key, fixed hosts) ----------
+// Never a send: Brevo gets a campaign with no recipients and no schedule, Klaviyo a template in its library. The owner
+// picks the list and sends from their own account. The HTML is the body through render() (src/lib/md.ts).
+const EMAIL_TIMEOUT_MS = 20_000;
+
+async function jsonOf(r: Response): Promise<Record<string, unknown> | null> {
+  return (await r.json().catch(() => null)) as Record<string, unknown> | null;
+}
+
+export async function draftBrevoCampaign(c: Connection, d: { name: string; subject: string; html: string }): Promise<{ id: string; url: string }> {
+  const headers = { "api-key": c.data.apiKey, "Content-Type": "application/json", accept: "application/json" };
+  const s = await fetch("https://api.brevo.com/v3/senders", { headers, signal: AbortSignal.timeout(EMAIL_TIMEOUT_MS) });
+  // A failed read means nothing was created: a refusal (4xx), whatever Brevo answered.
+  if (!s.ok) throw new Error(`brevo ${s.status >= 500 ? 400 : s.status}: senders`);
+  const senders = ((await jsonOf(s))?.senders ?? []) as { id?: number; active?: boolean }[];
+  const sender = senders.find((x) => x.active !== false && typeof x.id === "number");
+  if (!sender) throw new Error("brevo_no_sender");
+  const r = await fetch("https://api.brevo.com/v3/emailCampaigns", {
+    method: "POST", headers, signal: AbortSignal.timeout(EMAIL_TIMEOUT_MS),
+    body: JSON.stringify({ name: d.name.slice(0, 120), subject: d.subject.slice(0, 150), sender: { id: sender.id }, htmlContent: d.html }),
+  });
+  const j = await jsonOf(r);
+  if (!r.ok || typeof j?.id !== "number") throw new Error(`brevo ${r.ok ? 502 : r.status}: ${String(j?.message ?? "failed").slice(0, 120)}`);
+  return { id: String(j.id), url: "https://app.brevo.com/marketing-campaign/list" };
+}
+
+export async function draftKlaviyoTemplate(c: Connection, d: { name: string; html: string }): Promise<{ id: string; url: string }> {
+  const r = await fetch("https://a.klaviyo.com/api/templates", {
+    method: "POST",
+    headers: { Authorization: `Klaviyo-API-Key ${c.data.apiKey}`, revision: "2024-10-15", "Content-Type": "application/vnd.api+json", accept: "application/vnd.api+json" },
+    signal: AbortSignal.timeout(EMAIL_TIMEOUT_MS),
+    body: JSON.stringify({ data: { type: "template", attributes: { name: d.name.slice(0, 120), editor_type: "CODE", html: d.html } } }),
+  });
+  const j = await jsonOf(r);
+  const id = (j?.data as { id?: unknown } | undefined)?.id;
+  if (!r.ok || typeof id !== "string") throw new Error(`klaviyo ${r.ok ? 502 : r.status}: template`);
+  return { id, url: "https://www.klaviyo.com/email-templates" };
+}
+
 // ---------- Brevo (API key) ----------
 export async function verifyBrevo(d: Record<string, string>) {
   try {

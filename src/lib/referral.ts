@@ -8,6 +8,8 @@ import { ksaDay } from "./partner-rules";
 export const REFERRAL_CREDITS = 50;
 /** At most this many referrer bonuses are paid to one referrer per calendar month (Riyadh time, rules 557-558). */
 export const REFERRAL_MONTHLY_CAP = 10;
+/** One-time credits for sharing Thakeen on a social platform, once per platform per account (/api/referral/share). */
+export const SHARE_CREDITS = 20;
 /** How long a month's counter lives: past the end of its month, then it goes on its own. */
 const MONTH_COUNTER_TTL = 62 * 86400;
 

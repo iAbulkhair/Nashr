@@ -1,5 +1,6 @@
 import { randomBytes } from "crypto";
 import { Redis } from "@upstash/redis";
+import { isProductionDeploy } from "./deploy-env";
 
 /**
  * Storage adapter. Upstash Redis in production; in-memory Map when no
@@ -451,14 +452,15 @@ function unconfigured(): Store {
 }
 
 /**
- * Upstash when its credentials are set. Without them: the memory store everywhere except a Vercel PRODUCTION deployment
- * (`VERCEL_ENV === "production"`), which gets `unconfigured()`. Local dev, vitest, CI and the e2e suite run with no
- * `VERCEL_ENV` and keep the memory store. Rule 430, tests/launch-security.test.ts.
+ * Upstash when its credentials are set. Without them: the memory store everywhere except a production deployment on any
+ * host (`isProductionDeploy`: Vercel production, `APP_ENV=production`, or any production build not marked as a test),
+ * which gets `unconfigured()`. Local dev, vitest, Vercel previews and the e2e suite (`APP_ENV=test`) keep the memory
+ * store. Rule 430, tests/launch-security.test.ts.
  */
 function pickStore(): Store {
   const u = upstash();
   if (u) return u;
-  if (process.env.VERCEL_ENV === "production") {
+  if (isProductionDeploy()) {
     console.error("store_not_configured: Redis credentials are missing in production; every data call will fail");
     return unconfigured();
   }

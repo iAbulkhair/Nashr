@@ -8,10 +8,12 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "check": "tsc --noEmit -p . && eslint && vitest run"
+    "check": "tsc --noEmit -p . && eslint && vitest run",
+    "build:hostinger": "next build --webpack"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.126.0",
+    "@composio/core": "^0.22.0",
     "@upstash/redis": "^1.38.4",
     "@vercel/blob": "^2.8.0",
     "bcryptjs": "^3.0.3",
