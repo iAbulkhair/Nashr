@@ -116,6 +116,30 @@ describe("the staging access route (rule 675)", () => {
     expect(c).toMatch(/HttpOnly/i); expect(c).toMatch(/Secure/i); expect(c).toMatch(/SameSite=lax/i);
     expect(c).not.toContain(key);
   });
+  it("Secure follows the https APP_ORIGIN, whatever Host and x-forwarded-proto the proxy forwards (rule 675)", async () => {
+    // The worst case for `sessionCookie`: a loopback Host and no x-forwarded-proto reads as plain http to localhost, and
+    // its own rule then drops Secure. Behind Hostinger the request can look like that, so the route must not rely on it.
+    const seen: Record<string, string>[] = [
+      {}, { host: "localhost:3000" }, { host: "127.0.0.1:3000" }, { host: "[::1]:3000" },
+      { host: "localhost:3000", "x-forwarded-proto": "http" }, { host: "staging.example", "x-forwarded-proto": "https" },
+    ];
+    const { withHeaders } = await import("./helpers/session");
+    for (const [i, h] of seen.entries()) {
+      const c = (await withHeaders(h, () => post(key, `10.0.1.${i}`))).headers.get("set-cookie") ?? "";
+      expect(c, JSON.stringify(h)).toMatch(/;\s*Secure(;|$)/i);
+      expect(c, JSON.stringify(h)).toMatch(/HttpOnly/i);
+    }
+  });
+  it("over an http APP_ORIGIN (local development) the helper's rule stays: no Secure on plain http to loopback", async () => {
+    vi.stubEnv("APP_ORIGIN", "http://localhost:3000");
+    const { withHeaders } = await import("./helpers/session");
+    const local = await withHeaders({ host: "localhost:3000" }, () => post(key, "10.0.1.20"));
+    expect(local.headers.get("location")).toBe("http://localhost:3000/ar");
+    expect(local.headers.get("set-cookie") ?? "").not.toMatch(/Secure/i);
+    // A real host over plain http keeps the flag, so that mistake fails loudly instead of quietly dropping it.
+    const real = await withHeaders({ host: "staging.example" }, () => post(key, "10.0.1.21"));
+    expect(real.headers.get("set-cookie") ?? "").toMatch(/;\s*Secure(;|$)/i);
+  });
   it("wrong code, a code only in the URL, and a missing key: back to the page with e=1, no cookie", async () => {
     for (const [code, url] of [["nope", undefined], [null, `http://localhost:3000/api/staging-access?code=${key}`]] as const) {
       const r = await post(code, "10.0.0.2", url);
@@ -132,6 +156,32 @@ describe("the staging access route (rule 675)", () => {
     expect(r.headers.get("retry-after")).toBe("900");
     expect(r.headers.get("set-cookie")).toBeNull();
     expect(await r.json()).toEqual({ ok: false, error: "slow_down" });
+  });
+  it("the bucket is per client address: x-real-ip or the last x-forwarded-for hop each get their own five tries", async () => {
+    const { POST } = await import("@/app/api/staging-access/route");
+    const from = (h: Record<string, string>) => POST(new Request("http://localhost:3000/api/staging-access", {
+      method: "POST", body: new URLSearchParams({ code: "nope", lang: "ar" }), headers: { ...h, "content-type": "application/x-www-form-urlencoded" },
+    }));
+    const clients: Record<string, string>[][] = [
+      [{ "x-real-ip": "10.0.2.1" }, { "x-real-ip": "10.0.2.2" }],
+      // A proxy that only appends to x-forwarded-for: the caller's own earlier hops do not matter, the last one does.
+      [{ "x-forwarded-for": "9.9.9.9, 10.0.2.3" }, { "x-forwarded-for": "9.9.9.9, 10.0.2.4" }],
+    ];
+    for (const [a, b] of clients) {
+      for (let i = 0; i < 5; i++) expect((await from(a)).status).toBe(303);
+      expect((await from(a)).status, "the sixth try of the first client").toBe(429);
+      expect((await from(b)).status, "a second client is not locked out by the first").toBe(303);
+    }
+  });
+  it("with no address header at all every caller shares one bucket: the case the staging check rules out", async () => {
+    // Pins the known limit so a change is deliberate: if the host forwarded no client address, five tries from anyone
+    // would lock everyone out for 15 minutes. flows.md section 49 (item 7) has the check that Hostinger does forward one.
+    const { POST } = await import("@/app/api/staging-access/route");
+    const blind = () => POST(new Request("http://localhost:3000/api/staging-access", {
+      method: "POST", body: new URLSearchParams({ code: key, lang: "ar" }), headers: { "content-type": "application/x-www-form-urlencoded" },
+    }));
+    for (let i = 0; i < 5; i++) expect((await blind()).status).toBe(303);
+    expect((await blind()).status).toBe(429);
   });
   it("off staging the route and the page are 404", async () => {
     vi.stubEnv("APP_ENV", "");

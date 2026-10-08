@@ -520,6 +520,9 @@ describe("probe summary", () => {
   - `curl -s -o /dev/null -w "%{http_code}" https://staging.thakeen.com/ar` is 404 without the cookie.
   - The access page works in a browser.
   - `/api/health` shows the merge commit.
+  - The two host facts of `docs/system/flows.md` section 49, item 7, last, because they use up a network's access tries for 15 minutes:
+    - The right code's `Set-Cookie` lists `HttpOnly`, `Secure`, `SameSite=lax` and `Max-Age` (the `curl` there prints flag names only).
+    - The tries are per client: six tries from one network end in 429, and one try from a second network is still 303. If it is 429, stop: Hostinger forwards no client address and `clientIp` needs fixing before staging is relied on.
 
 ### Task 14: Step 0 measurement on staging
 
