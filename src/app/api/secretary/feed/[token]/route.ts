@@ -1,5 +1,5 @@
 import { FEED_TOKEN, resolveFeed } from "@/lib/feed-token";
-import { allow, clientIp } from "@/lib/rate";
+import { allow, clientIp, retryLater } from "@/lib/rate";
 import { buildIcs, feedHolds, feedItems } from "@/lib/secretary-feed";
 import { getBrand } from "@/lib/brand";
 import { zoneOf } from "@/lib/zones";
@@ -19,7 +19,7 @@ import { appOrigin } from "@/lib/origin";
 const PER_IP_HOUR = 120;
 const PER_LINK_HOUR = 60;
 const notFound = () => new Response(null, { status: 404 });
-const tooMany = () => new Response(null, { status: 429, headers: { "retry-after": "3600" } });
+const tooMany = () => retryLater(null, 3600);
 
 export async function GET(req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token: raw } = await ctx.params;

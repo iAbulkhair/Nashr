@@ -8,7 +8,7 @@ import { revokeBook, revokeBooks } from "@/lib/booking-token";
 import { revokeFeed, revokeFeeds } from "@/lib/feed-token";
 import { membersKey, saveMember, withMemberLock } from "@/lib/team";
 import { db } from "@/lib/db";
-import { allow, clientIp } from "@/lib/rate";
+import { allow, clientIp, retryLater } from "@/lib/rate";
 
 /** Written by ../forgot/route.ts. Records from before teams carry no `kind`: every login was an owner then. */
 type ResetRecord = { email: string; kind?: "owner" | "member" };
@@ -21,7 +21,7 @@ const badToken = () => NextResponse.json({ ok: false, error: "bad_token" }, { st
  */
 export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as { token?: string; password?: string };
-  if (!(await allow(`reset:ip:${clientIp(req)}`, 10, 900))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
+  if (!(await allow(`reset:ip:${clientIp(req)}`, 10, 900))) return retryLater({ ok: false, error: "slow_down" }, 900);
   const pw = typeof b.password === "string" ? b.password : "";
   if (!strongPassword(pw)) return NextResponse.json({ ok: false, error: "weak_password" }, { status: 400 });
   if (typeof b.token !== "string" || !/^[a-f0-9]{64}$/.test(b.token)) return badToken();

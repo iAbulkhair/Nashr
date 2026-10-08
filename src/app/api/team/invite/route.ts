@@ -83,7 +83,8 @@ export async function POST(req: Request) {
     // Keyed by a hash: the counter is about the address, and the address itself never becomes part of a key.
     validEmail(to) ? allow(`team:invite:to:${createHash("sha256").update(to).digest("hex")}`, PER_ADDRESS_DAY, 86400) : Promise.resolve(true),
   ]);
-  if (!perAccount || !perIp || !perAddress) return rateLimited();
+  // The window of the bucket that refused, the day when a daily one did.
+  if (!perAccount || !perIp || !perAddress) return rateLimited(!perAccount || !perAddress ? 86400 : 3600);
   const lang = b.lang === "ar" || b.lang === "en" ? b.lang : a.lang;
   // Decided once, before anything is created: with mail on, the link must reach the invited address or nobody.
   const byEmail = mailReady();

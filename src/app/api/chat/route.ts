@@ -4,7 +4,7 @@ import { currentUser, sc, trialOver } from "@/lib/auth";
 import { chat, chatRefusedText, history, type ChatRefused } from "@/lib/chat";
 import { touchConversation } from "@/lib/conversations";
 import { isAgentId } from "@/lib/agents";
-import { chatCaps, chatRefusal } from "@/lib/rate";
+import { WINDOW, chatCaps, chatRefusal, retryLater } from "@/lib/rate";
 import { deadlineFor } from "@/lib/media/keys";
 import { chatStatus, reserveChatTurn, runChatTurn } from "@/lib/chat-allowance";
 
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
   // The short-window ceiling next (a burst never touches the month's count, rule 331), then the plan's monthly
   // allowance, all before chat() saves the owner's message (src/lib/chat-allowance.ts).
   const slow = await chatRefusal(u);
-  if (slow) return NextResponse.json({ ok: false, error: "slow_down", retry: slow, message: refused(slow, chatCaps(u)[slow]) }, { status: 429 });
+  if (slow) return retryLater({ ok: false, error: "slow_down", retry: slow, message: refused(slow, chatCaps(u)[slow]) }, WINDOW[slow]);
   const gate = await reserveChatTurn(u);
   if (!gate.ok) return NextResponse.json({ ok: false, error: gate.error, chat: gate.status, credits: gate.credits }, { status: 402 });
 

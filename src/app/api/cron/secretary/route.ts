@@ -1,5 +1,5 @@
 import { NextResponse, after } from "next/server";
-import { allow, clientIp, sameSecret } from "@/lib/rate";
+import { allow, clientIp, sameSecret, retryLater } from "@/lib/rate";
 import { verifyQstash } from "@/lib/qstash";
 import { SWEEP_BUDGET_TICK_MS, sweepReminders } from "@/lib/secretary-remind";
 import { zonesDue } from "@/lib/secretary-evening";
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
   const byBearer = sameSecret(bearer, process.env.CRON_SECRET);
   const byQstash = !byBearer && verifyQstash(sig, raw, { path: "/api/cron/secretary" });
   if (!byBearer && !byQstash) {
-    if (!(await allow(`cronsec:${clientIp(req)}`, PER_IP_PER_MINUTE, 60))) return NextResponse.json({ ok: false, error: "too_many" }, { status: 429 });
+    if (!(await allow(`cronsec:${clientIp(req)}`, PER_IP_PER_MINUTE, 60))) return retryLater({ ok: false, error: "too_many" }, 60);
     return NextResponse.json({ ok: false }, { status: 401 });
   }
   const now = Date.now();

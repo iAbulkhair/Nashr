@@ -15,7 +15,8 @@ import {
 } from "../media-catalog";
 import { modelAvailable, offModels } from "./config";
 import { fixedImagePrompt, imagePrompt, videoPrompt } from "./prompts";
-import { getJob, publicJob, startMedia } from "./jobs";
+import { BUSY_RETRY_S, getJob, publicJob, startMedia } from "./jobs";
+import { retryAfter } from "../rate";
 import { mediaDeps } from "./registry";
 import type { MediaDeps, StartError, StartResult } from "./types";
 import { byOf, type By } from "../actor";
@@ -111,7 +112,7 @@ export async function renderVideo(u: User, t: Task, brand: Brand, requested: unk
 /** What a route's log line may say about an error: a fixed code (store_put_failed, user_lock_timeout), else its name, never a message that could carry a provider body. */
 export const errCode = (e: unknown) => (e instanceof Error ? (/^[a-z_]+(:\d+)?$/.test(e.message) ? e.message : e.name) : "error");
 
-type MediaHttp = { status: number; body: Record<string, unknown> };
+type MediaHttp = { status: number; body: Record<string, unknown>; headers?: Record<string, string> };
 
 /**
  * The HTTP contract the inbox reads (plan P7): 200 finished, 202 rendering, else the refusal with what it carries. The
@@ -126,6 +127,8 @@ export function mediaResponse(r: ImageOutcome): MediaHttp {
   const error = r.error === "media_failed" && credits == null ? "media_pending" : r.error;
   return {
     status,
+    // A 429 says when to try again: the refusing bucket's window, else a minute (rule 680).
+    ...(status === 429 ? { headers: retryAfter(r.retryAfter ?? BUSY_RETRY_S) } : {}),
     body: {
       ok: false, error, ...(need != null ? { need } : {}), ...(have != null ? { have } : {}), ...(credits != null ? { credits } : {}), ...(job ? { job } : {}),
       // The same body /api/generate answers at an agent's cap, so the app raises the same dialog.

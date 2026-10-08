@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc, type User } from "@/lib/auth";
 import { forbid } from "@/lib/roles";
-import { allow } from "@/lib/rate";
+import { allow, retryLater } from "@/lib/rate";
 import { createFeed, getFeedStatus, revokeFeed } from "@/lib/feed-token";
 import { appOrigin } from "@/lib/origin";
 import { SEC_READS_PER_HOUR } from "@/lib/secretary";
@@ -21,7 +21,8 @@ import { SEC_READS_PER_HOUR } from "@/lib/secretary";
 const PER_HOUR = 20;
 const loginOf = (u: User): string => (u.actor?.kind === "member" ? u.actor.email : u.email);
 const unauthorized = () => NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-const tooMany = () => NextResponse.json({ ok: false, error: "too_many" }, { status: 429 });
+/** Every bucket here is an hour long. */
+const tooMany = () => retryLater({ ok: false, error: "too_many" }, 3600);
 
 export async function GET() {
   const u = await currentUser();

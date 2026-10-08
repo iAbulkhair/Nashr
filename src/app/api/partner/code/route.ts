@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth";
-import { allow } from "@/lib/rate";
+import { allow, retryLater } from "@/lib/rate";
 import { forbid } from "@/lib/roles";
 import { claimPartnerCode } from "@/lib/partners";
 
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const no = forbid(u, "billing");
   if (no) return no;
-  if (!(await allow(`partnerclaim:${u.email}`, 10, 3600))) return NextResponse.json({ ok: false, error: "slow_down" }, { status: 429 });
+  if (!(await allow(`partnerclaim:${u.email}`, 10, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
   const b = (await req.json().catch(() => ({}))) as { code?: unknown };
   const res = await claimPartnerCode(u, b.code);
   if (!res.ok) return NextResponse.json(res, { status: res.error === "bad_partner_code" || res.error === "self_referral" ? 400 : 409 });

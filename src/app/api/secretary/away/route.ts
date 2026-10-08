@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc, type User } from "@/lib/auth";
 import { forbid } from "@/lib/roles";
-import { allow } from "@/lib/rate";
+import { allow, retryLater } from "@/lib/rate";
 import { SEC_READS_PER_HOUR, SEC_WRITES_PER_HOUR, zoneFor, type SecFail, type Who } from "@/lib/secretary";
 import { endAway, listAway, setAway } from "@/lib/secretary-away";
 
@@ -31,7 +31,7 @@ export async function GET() {
   if (!u) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const no = forbid(u, "read");
   if (no) return no;
-  if (!(await allow(`sec:read:${u.email}`, SEC_READS_PER_HOUR, 3600))) return NextResponse.json({ ok: false, error: "too_many" }, { status: 429 });
+  if (!(await allow(`sec:read:${u.email}`, SEC_READS_PER_HOUR, 3600))) return retryLater({ ok: false, error: "too_many" }, 3600);
   const scope = sc(u);
   const now = Date.now();
   return NextResponse.json({ ok: true, entries: await listAway(scope, now, await zoneFor(scope)) });
@@ -42,7 +42,7 @@ export async function PUT(req: Request) {
   if (!u) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const no = forbid(u, "todo.write");
   if (no) return no;
-  if (!(await allow(`sec:write:${u.email}`, SEC_WRITES_PER_HOUR, 3600))) return NextResponse.json({ ok: false, error: "too_many" }, { status: 429 });
+  if (!(await allow(`sec:write:${u.email}`, SEC_WRITES_PER_HOUR, 3600))) return retryLater({ ok: false, error: "too_many" }, 3600);
   const b = await bodyOf(req);
   if (!b) return badRequest();
   const scope = sc(u);
@@ -57,7 +57,7 @@ export async function DELETE(req: Request) {
   if (!u) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const no = forbid(u, "todo.write");
   if (no) return no;
-  if (!(await allow(`sec:write:${u.email}`, SEC_WRITES_PER_HOUR, 3600))) return NextResponse.json({ ok: false, error: "too_many" }, { status: 429 });
+  if (!(await allow(`sec:write:${u.email}`, SEC_WRITES_PER_HOUR, 3600))) return retryLater({ ok: false, error: "too_many" }, 3600);
   const b = await bodyOf(req);
   if (!b || (b.remove !== undefined && typeof b.remove !== "boolean")) return badRequest();
   const scope = sc(u);
