@@ -484,11 +484,10 @@ export type SceneKind = "like" | "tip" | "idea";
  */
 export type Scene = { role: L; line: L; kind: SceneKind; agent: HomeAgentId; look: Look } & ({ task: TaskType; feature?: never } | { feature: Feature; task?: never });
 
-export const SCENES_COPY: { h: L; sub: L; note: L; kinds: Record<SceneKind, L>; with: L; prev: L; next: L; slide: L } = {
+export const SCENES_COPY: { h: L; sub: L; kinds: Record<SceneKind, L>; with: L; prev: L; next: L; slide: L } = {
   h: { ar: "كيف يشتغلون مع ذكين.", en: "How owners work with Thakeen." },
-  sub: { ar: "وش يعجبهم، وش تعلّموا، ووش ينصحون فيه.", en: "What they like, what they learned, and what they recommend." },
+  sub: { ar: "أمثلة توضيحية: وش يعجبهم، وش تعلّموا، ووش ينصحون فيه.", en: "Illustrative examples: what they like, what they learned, and what they recommend." },
   // Required by rule 775: the scenes are not reviews, and the page says so where the scenes are.
-  note: { ar: "شخصيات ومشاهد توضيحية، مو آراء عملاء.", en: "Illustrative people and scenes, not customer reviews." },
   kinds: {
     like: { ar: "يعجبني", en: "What I like" },
     tip: { ar: "نصيحة", en: "Tip" },

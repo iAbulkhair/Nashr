@@ -12,8 +12,8 @@ const agentName = (id: string, lang: Lang) => AGENT_CAST.find((a) => a.id === id
 
 /**
  * The scenes under the cover (rule 775): illustrative owners, four to a slide, each saying in a bubble what they like,
- * a habit they recommend, or a suggestion, with the agent it is about. The note that they are illustrative, not
- * reviews, sits under the heading, before any scene. Without script the slides still scroll and snap.
+ * a habit they recommend, or a suggestion, with the agent it is about. The line under the heading says they are
+ * illustrative examples, before any scene. Without script the slides still scroll and snap.
  */
 export default function Stories({ lang }: { lang: Lang }) {
   const c = SCENES_COPY;
@@ -29,7 +29,6 @@ export default function Stories({ lang }: { lang: Lang }) {
           </span>
         </h2>
         <p className={styles.sub}>{c.sub[lang]}</p>
-        <p className={styles.note}>{c.note[lang]}</p>
       </div>
       <SceneTrack lang={lang} label={c.h[lang]} prev={c.prev[lang]} next={c.next[lang]} slide={c.slide[lang]}>
         {sets.map((set, i) => (

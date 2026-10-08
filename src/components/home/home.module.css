@@ -970,7 +970,6 @@ html[data-motion="off"] .home * { animation: none !important; transition: none !
 
 /* ---------- Scenes under the cover (Stories.tsx, rule 775) ---------- */
 
-.note { font-size: var(--t-xs); color: var(--color-muted); font-style: italic; }
 .car { min-width: 0; }
 .track {
   display: grid;

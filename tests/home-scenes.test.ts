@@ -55,12 +55,12 @@ describe("the scenes under the cover are illustrative and true to the product (r
   it("keeps Reem's lines free of what she does not do yet", () => {
     for (const s of SCENES.filter((x) => x.agent === "reem")) for (const p of NOT_YET) expect(`${s.line.ar} ${s.line.en}`).not.toMatch(p);
   });
-  it("says on the page, before the first scene, that these are not customer reviews", () => {
-    expect(SCENES_COPY.note.ar).toMatch(/توضيحية/);
-    expect(SCENES_COPY.note.en).toMatch(/not customer reviews/i);
+  it("says on the page, before the first scene, that these are illustrative examples", () => {
+    expect(SCENES_COPY.sub.ar).toMatch(/^أمثلة توضيحية/);
+    expect(SCENES_COPY.sub.en).toMatch(/^Illustrative examples/);
     const src = read("src/components/home/Stories.tsx");
-    expect(src.indexOf("c.note[lang]")).toBeGreaterThan(-1);
-    expect(src.indexOf("c.note[lang]")).toBeLessThan(src.indexOf("<SceneTrack"));
+    expect(src.indexOf("c.sub[lang]")).toBeGreaterThan(-1);
+    expect(src.indexOf("c.sub[lang]")).toBeLessThan(src.indexOf("<SceneTrack"));
   });
   it("draws every face smiling, in an empty ring", () => {
     const person = read("src/components/home/Person.tsx");
